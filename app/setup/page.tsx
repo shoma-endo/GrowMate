@@ -5,6 +5,7 @@ import SetupDashboard from '@/components/SetupDashboard';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { toGscConnectionStatus } from '@/server/lib/gsc-status';
+import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
 import { toUser } from '@/types/user';
 import { isAdmin } from '@/authUtils';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
@@ -47,6 +48,7 @@ export default async function SetupPage() {
 
   const gscCredential = await supabaseService.getGscCredentialByUserId(authResult.userId);
   const gscStatus = toGscConnectionStatus(gscCredential);
+  const ga4Status = toGa4ConnectionStatus(gscCredential);
 
   // ユーザー情報を取得して管理者かどうかを判定
   const userResult = await supabaseService.getUserById(authResult.userId);
@@ -74,6 +76,7 @@ export default async function SetupPage() {
         ...(wordpressSettings?.wpSiteUrl && { siteUrl: wordpressSettings.wpSiteUrl }),
       }}
       gscStatus={gscStatus}
+      ga4Status={ga4Status}
       googleAdsStatus={googleAdsStatus}
       isAdmin={userIsAdmin}
     />

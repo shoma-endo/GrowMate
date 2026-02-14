@@ -91,6 +91,21 @@ export default function FieldConfigurator({
     [columns, normalizeOrder, onChange, persistConfig]
   );
 
+  const mergeNewDefaultVisibleColumns = useCallback(
+    (visible: string[], order: string[]) => {
+      const visibleSet = new Set(visible);
+      const orderSet = new Set(order);
+      const newlyAddedDefaultVisibleIds = defaultVisibleIds.filter(
+        id => !visibleSet.has(id) && !orderSet.has(id)
+      );
+      if (newlyAddedDefaultVisibleIds.length === 0) {
+        return visible;
+      }
+      return [...visible, ...newlyAddedDefaultVisibleIds];
+    },
+    [defaultVisibleIds]
+  );
+
   useEffect(() => {
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
@@ -101,7 +116,8 @@ export default function FieldConfigurator({
         if (Array.isArray(parsed)) {
           const normalizedVisible = parsed.filter(id => columns.some(c => c.id === id));
           if (normalizedVisible.length > 0) {
-            applyConfig(normalizedVisible, defaultOrder, true);
+            const mergedVisible = mergeNewDefaultVisibleColumns(normalizedVisible, defaultOrder);
+            applyConfig(mergedVisible, defaultOrder, true);
             return;
           }
         }
@@ -109,7 +125,8 @@ export default function FieldConfigurator({
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           const visible = Array.isArray(parsed.visible) ? parsed.visible : defaultVisibleIds;
           const order = Array.isArray(parsed.order) ? parsed.order : defaultOrder;
-          applyConfig(visible, order, true);
+          const mergedVisible = mergeNewDefaultVisibleColumns(visible, order);
+          applyConfig(mergedVisible, order, true);
           return;
         }
       }
@@ -117,7 +134,14 @@ export default function FieldConfigurator({
     } catch {
       applyConfig(defaultVisibleIds, defaultOrder, true);
     }
-  }, [applyConfig, columns, defaultOrder, defaultVisibleIds, storageKey]);
+  }, [
+    applyConfig,
+    columns,
+    defaultOrder,
+    defaultVisibleIds,
+    mergeNewDefaultVisibleColumns,
+    storageKey,
+  ]);
 
   const visibleSet = useMemo(() => new Set(visibleIds), [visibleIds]);
 

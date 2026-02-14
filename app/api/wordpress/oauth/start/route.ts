@@ -1,11 +1,20 @@
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { generateOAuthState } from '@/server/lib/oauth-state';
 import { isAdmin as isAdminRole } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
-export async function GET() {
+const ALLOWED_RETURN_TO_PATHS = new Set(['/setup', '/setup/wordpress']);
+
+export async function GET(request: NextRequest) {
+  const requestUrl = new URL(request.url);
+  const requestedReturnTo = requestUrl.searchParams.get('returnTo');
+  const returnTo =
+    requestedReturnTo && ALLOWED_RETURN_TO_PATHS.has(requestedReturnTo)
+      ? requestedReturnTo
+      : '/setup/wordpress';
+
   const cookieStore = await cookies();
   const clientId = process.env.WORDPRESS_COM_CLIENT_ID;
   const clientSecret = process.env.WORDPRESS_COM_CLIENT_SECRET;
@@ -49,7 +58,7 @@ export async function GET() {
     );
   }
 
-  const { state } = generateOAuthState(authResult.userId, cookieSecret);
+  const { state } = generateOAuthState(authResult.userId, cookieSecret, returnTo);
 
   const params = new URLSearchParams({
     client_id: clientId,

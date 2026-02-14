@@ -110,12 +110,53 @@ export function formatDate(value?: string | null): string | null {
 }
 
 /**
- * Date オブジェクトを YYYY-MM-DD 形式の ISO 日付文字列に変換する
+ * Date オブジェクトを YYYY-MM-DD 形式の ISO 日付文字列に変換する（UTC）
  * @param date - Date オブジェクト
  * @returns YYYY-MM-DD 形式の日付文字列
  */
 export function formatDateISO(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Date を JST（Asia/Tokyo）のカレンダー日付で YYYY-MM-DD に変換する
+ * toISOString() は UTC のため JST と日付がずれる場合がある（例: JST 2026-02-08 01:00 → UTC 2026-02-07）
+ * @param date - Date オブジェクト
+ * @returns YYYY-MM-DD 形式の日付文字列（JST）
+ */
+export function formatJstDateISO(date: Date): string {
+  const parts = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+
+  const year = parts.find(part => part.type === 'year')?.value;
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+
+  if (!year || !month || !day) {
+    // フォールバック: JST = UTC+9 なのでオフセットを足してから UTC 日付を取る
+    const jstDate = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+    return jstDate.toISOString().slice(0, 10);
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * タイムスタンプ文字列を JST の YYYY-MM-DD に変換する
+ * @param timestamp - ISO 形式などの日時文字列
+ * @returns YYYY-MM-DD 形式の日付文字列（JST）
+ * @throws Error タイムスタンプが無効な場合
+ */
+export function getJstDateISOFromTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid timestamp: ${timestamp}`);
+  }
+  return formatJstDateISO(date);
 }
 
 /**

@@ -8,11 +8,11 @@ import { toGscConnectionStatus, propertyTypeFromUri } from '@/server/lib/gsc-sta
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GscSiteEntry, GscCredential, GscConnectionStatus } from '@/types/gsc';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { ensureValidAccessToken } from '@/server/services/googleTokenService';
 
 const supabaseService = new SupabaseService();
 const gscService = new GscService();
 
-const ACCESS_TOKEN_SAFETY_MARGIN_MS = 60 * 1000; // 1 minute
 const OWNER_ONLY_ERROR_MESSAGE = ERROR_MESSAGES.AUTH.STAFF_OPERATION_NOT_ALLOWED;
 
 /** トークン期限切れ/取り消しエラーかどうかを判定 */
@@ -27,36 +27,16 @@ const isTokenExpiredError = (error: unknown): boolean => {
   );
 };
 
-type CredentialWithActiveToken = GscCredential & {
-  accessToken: string;
-  accessTokenExpiresAt: string;
-};
-
-const hasReusableAccessToken = (
-  credential: GscCredential
-): credential is CredentialWithActiveToken => {
-  if (!credential.accessToken || !credential.accessTokenExpiresAt) {
-    return false;
-  }
-  const expiresAtMs = new Date(credential.accessTokenExpiresAt).getTime();
-  return expiresAtMs - Date.now() > ACCESS_TOKEN_SAFETY_MARGIN_MS;
-};
-
-const ensureAccessToken = async (userId: string, credential: GscCredential): Promise<string> => {
-  if (hasReusableAccessToken(credential)) {
-    return credential.accessToken;
-  }
-  const refreshed = await gscService.refreshAccessToken(credential.refreshToken);
-  const expiresAt = refreshed.expiresIn
-    ? new Date(Date.now() + refreshed.expiresIn * 1000).toISOString()
-    : null;
-  await supabaseService.updateGscCredential(userId, {
-    accessToken: refreshed.accessToken,
-    accessTokenExpiresAt: expiresAt,
-    scope: refreshed.scope ?? null,
+const ensureAccessToken = async (userId: string, credential: GscCredential): Promise<string> =>
+  ensureValidAccessToken(credential, {
+    refreshAccessToken: (rt) => gscService.refreshAccessToken(rt),
+    persistToken: (accessToken, expiresAt, scope) =>
+      supabaseService.updateGscCredential(userId, {
+        accessToken,
+        accessTokenExpiresAt: expiresAt,
+        scope: scope ?? credential.scope ?? null,
+      }),
   });
-  return refreshed.accessToken;
-};
 
 const getAuthUserId = async () => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();

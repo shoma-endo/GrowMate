@@ -9,6 +9,8 @@ import { getLiffTokensFromRequest } from '@/server/lib/auth-helpers';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 const supabaseService = new SupabaseService();
+const ALLOWED_RETURN_TO_PATHS = new Set(['/setup', '/setup/wordpress']);
+const DEFAULT_REDIRECT_PATH = '/setup/wordpress';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -56,6 +58,13 @@ export async function GET(request: NextRequest) {
     console.error('Authorization code not found in callback.');
     return NextResponse.json({ error: 'Authorization code missing.' }, { status: 400 });
   }
+
+  const stateReturnTo = stateVerification.payload.returnTo;
+  const returnPath =
+    stateReturnTo && ALLOWED_RETURN_TO_PATHS.has(stateReturnTo)
+      ? stateReturnTo
+      : DEFAULT_REDIRECT_PATH;
+  const appOrigin = new URL(redirectUri).origin;
 
   try {
     const tokenResponse = await fetch('https://public-api.wordpress.com/oauth2/token', {
@@ -208,7 +217,7 @@ export async function GET(request: NextRequest) {
 
     // Store the access token securely in an HTTP Only cookie
     // Note: For production, consider server-side session storage for tokens.
-    const response = NextResponse.redirect(new URL('/setup', request.url)); // Redirect to setup page
+    const response = NextResponse.redirect(`${appOrigin}${returnPath}`); // Redirect to setup page
     response.cookies.set(tokenCookieName, access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

@@ -27,10 +27,11 @@ interface DashboardContentProps {
 export function DashboardContent({
   campaigns,
   keywordMetrics,
-  isMockData,
+  isMockData, // 将来のモック表示用に受け取りのみ
   errorMessage,
   errorKind = 'unknown',
 }: DashboardContentProps) {
+  void isMockData;
   const summary = calculateCampaignSummary(campaigns);
   const hasData = campaigns.length > 0;
   const hasError = Boolean(errorMessage);

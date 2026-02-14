@@ -222,7 +222,7 @@ export default function WordPressSettingsForm({
 
   const redirectToWordPressOAuth = () => {
     if (isReadOnly) return;
-    window.location.href = '/api/wordpress/oauth/start';
+    window.location.href = '/api/wordpress/oauth/start?returnTo=/setup/wordpress';
   };
 
   const executeConnectionTest = async (): Promise<{

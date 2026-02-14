@@ -1,11 +1,20 @@
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { generateOAuthState } from '@/server/lib/oauth-state';
 import { GOOGLE_SEARCH_CONSOLE_SCOPES } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
-export async function GET() {
+const ALLOWED_RETURN_TO_PATHS = new Set(['/setup/gsc', '/setup/ga4']);
+
+export async function GET(request: NextRequest) {
+  const requestUrl = new URL(request.url);
+  const requestedReturnTo = requestUrl.searchParams.get('returnTo');
+  const returnTo =
+    requestedReturnTo && ALLOWED_RETURN_TO_PATHS.has(requestedReturnTo)
+      ? requestedReturnTo
+      : '/setup/gsc';
+
   const cookieStore = await cookies();
   const liffAccessToken = cookieStore.get('line_access_token')?.value;
   const refreshToken = cookieStore.get('line_refresh_token')?.value;
@@ -48,7 +57,7 @@ export async function GET() {
     return NextResponse.json({ error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED }, { status: 403 });
   }
 
-  const { state } = generateOAuthState(authResult.userId, cookieSecret);
+  const { state } = generateOAuthState(authResult.userId, cookieSecret, returnTo);
 
   const params = new URLSearchParams({
     client_id: clientId,

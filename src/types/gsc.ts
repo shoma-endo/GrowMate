@@ -14,6 +14,12 @@ export interface GscCredential {
   permissionLevel?: string | null;
   verified?: boolean | null;
   lastSyncedAt?: string | null;
+  ga4PropertyId?: string | null;
+  ga4PropertyName?: string | null;
+  ga4ConversionEvents?: string[] | null;
+  ga4ThresholdEngagementSec?: number | null;
+  ga4ThresholdReadRate?: number | null;
+  ga4LastSyncedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

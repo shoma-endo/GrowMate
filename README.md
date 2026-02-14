@@ -582,9 +582,9 @@ erDiagram
 | Server | `ANTHROPIC_API_KEY`                  | ✅                                 | Claude ストリーミング用 API キー                                                       |
 | Server | `LINE_CHANNEL_ID`                    | ✅                                 | LINE Login 用チャネル ID                                                               |
 | Server | `LINE_CHANNEL_SECRET`                | ✅                                 | LINE Login 用チャネルシークレット                                                      |
-| Server | `GOOGLE_OAUTH_CLIENT_ID`             | 任意（GSC 連携利用時は必須）       | Google Search Console OAuth 用クライアント ID                                          |
-| Server | `GOOGLE_OAUTH_CLIENT_SECRET`         | 任意（GSC 連携利用時は必須）       | Google Search Console OAuth 用クライアントシークレット                                 |
-| Server | `GOOGLE_SEARCH_CONSOLE_REDIRECT_URI` | 任意（GSC 連携利用時は必須）       | Google OAuth のリダイレクト先（`https://<host>/api/gsc/oauth/callback` など）          |
+| Server | `GOOGLE_OAUTH_CLIENT_ID`             | 任意（GSC/GA4 連携利用時は必須）   | Google Search Console / GA4 OAuth 用クライアント ID                                    |
+| Server | `GOOGLE_OAUTH_CLIENT_SECRET`         | 任意（GSC/GA4 連携利用時は必須）   | Google Search Console / GA4 OAuth 用クライアントシークレット                           |
+| Server | `GOOGLE_SEARCH_CONSOLE_REDIRECT_URI` | 任意（GSC/GA4 連携利用時は必須）   | Google OAuth のリダイレクト先（`https://<host>/api/gsc/oauth/callback` など）          |
 | Server | `GOOGLE_ADS_REDIRECT_URI`            | 任意（Google Ads 連携利用時は必須）| Google Ads OAuth のリダイレクト先（`https://<host>/api/google-ads/oauth/callback` など）|
 | Server | `GOOGLE_ADS_DEVELOPER_TOKEN`         | 任意（Google Ads 連携利用時は必須）| Google Ads API 開発者トークン（MCCアカウントの管理者が発行）                           |
 | Server | `WORDPRESS_COM_CLIENT_ID`            | 任意（WordPress 連携利用時は必須） | WordPress.com OAuth 用クライアント ID                                                  |
@@ -692,11 +692,11 @@ npm install
 - `STRIPE_ENABLED=false` を設定
 - ただし、`STRIPE_SECRET_KEY` と `STRIPE_PRICE_ID` にはダミー値（例: `sk_test_dummy`）を設定する必要があります
 
-### 5. Google Search Console の設定（GSC 連携機能を使用する場合）
+### 5. Google Search Console / GA4 の設定（GSC/GA4 連携機能を使用する場合）
 
 #### 5.1 Google Cloud Console での設定
 
-**重要**: GSC 連携機能を使用する場合は、Google Cloud Console で OAuth 2.0 クライアント ID を作成する必要があります。
+**重要**: GSC/GA4 連携機能を使用する場合は、Google Cloud Console で OAuth 2.0 クライアント ID を作成する必要があります。GSC と GA4 は同じ OAuth クライアントを使用します。
 
 ##### 5.1.1 プロジェクトの作成または選択
 
@@ -716,6 +716,7 @@ npm install
 4. **スコープ**を追加：
    - 「スコープを追加または削除」をクリック
    - `https://www.googleapis.com/auth/webmasters.readonly` を追加（Search Console API の読み取り専用アクセス）
+   - **GA4連携を使用する場合**: `https://www.googleapis.com/auth/analytics.readonly` も追加（GA4 Data API / Admin API の読み取り専用アクセス）
 5. **テストユーザー**を追加（外部ユーザータイプの場合）：
    - 「テストユーザー」セクションで「ユーザーを追加」
    - GSC 連携をテストする Google アカウントのメールアドレスを追加
@@ -735,11 +736,13 @@ npm install
 6. 「作成」をクリック
 7. **クライアント ID** と **クライアントシークレット** をコピー（後で `.env.local` に設定します）
 
-##### 5.1.4 Search Console API の有効化
+##### 5.1.4 必要な API の有効化
 
 1. 「API とサービス」→「ライブラリ」に移動
-2. 「Google Search Console API」を検索
-3. 「有効にする」をクリック
+2. 以下の API を検索して有効化：
+   - **Google Search Console API**（GSC連携に必須）
+   - **Google Analytics Data API**（GA4連携に必須）
+   - **Google Analytics Admin API**（GA4連携に必須）
 
 #### 5.2 環境変数の設定
 
@@ -747,7 +750,7 @@ npm install
 
 ```bash
 # ────────────────────────────────────────────────────────
-# Google Search Console OAuth 設定（GSC連携利用時は必須）
+# Google Search Console / GA4 OAuth 設定（GSC/GA4連携利用時は必須）
 # ────────────────────────────────────────────────────────
 GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
 GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret
@@ -773,7 +776,9 @@ GOOGLE_SEARCH_CONSOLE_REDIRECT_URI=http://localhost:3000/api/gsc/oauth/callback 
 ##### 正常な動作フロー
 
 1. `/setup/gsc` にアクセスし、「Google Search Console と連携」ボタンをクリック
-2. Google 認証画面が表示され、`webmasters.readonly` スコープの許可を求められる
+2. Google 認証画面が表示され、以下のスコープの許可を求められる：
+   - `webmasters.readonly`（GSC連携用）
+   - `analytics.readonly`（GA4連携用、GA4連携を使用する場合）
 3. 認証完了後、`/api/gsc/oauth/callback` 経由でコールバックが処理される
 4. プロパティ一覧が表示され、Search Console に登録されているプロパティ（サイト）を選択できる
 5. プロパティ選択後、Supabase `gsc_credentials` テーブルに認証情報が保存される
@@ -976,9 +981,10 @@ WORDPRESS_COM_REDIRECT_URI=https://your-static-domain.ngrok-free.dev/api/wordpre
 COOKIE_SECRET=your_random_32_char_secret_key  # openssl rand -hex 32 で生成
 
 # ────────────────────────────────────────────────────────
-# Google Search Console OAuth 設定（任意、GSC連携利用時は必須）
+# Google Search Console / GA4 OAuth 設定（任意、GSC/GA4連携利用時は必須）
 # ────────────────────────────────────────────────────────
-# 詳細は「5. Google Search Console の設定」セクションを参照してください。
+# 詳細は「5. Google Search Console / GA4 の設定」セクションを参照してください。
+# 注意: GA4連携を使用する場合、OAuth同意画面で `analytics.readonly` スコープを追加してください。
 GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
 GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret
 GOOGLE_SEARCH_CONSOLE_REDIRECT_URI=http://localhost:3000/api/gsc/oauth/callback  # ローカル開発時
@@ -1158,7 +1164,7 @@ GSC 連携機能を変更した場合は、以下の手順で動作確認を行�
 1. **管理者ロールの付与**: Supabase の `users` テーブルで自分のユーザーの `role` を `admin` に変更
 2. **事業者情報の登録**: `/business-info` で 5W2H などの基本情報を入力
 3. **WordPress 連携**（任意）: `/setup/wordpress` で WordPress サイトを接続
-4. **Google Search Console 連携**（任意）: `/setup/gsc` で GSC プロパティを接続
+4. **Google Search Console / GA4 連携**（任意）: `/setup/gsc` で GSC プロパティと GA4 プロパティを接続
 5. **Google Ads 連携**（任意、管理者のみ）: `/setup/google-ads` で Google Ads アカウントを接続
 6. **プロンプトテンプレートの確認**: `/admin/prompts` でデフォルトテンプレートを確認・編集
 

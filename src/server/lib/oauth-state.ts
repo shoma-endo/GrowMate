@@ -4,6 +4,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 export interface OAuthStatePayload {
   nonce: string;
   userId: string;
+  returnTo?: string;
   issuedAt: number;
   version: 'v1';
 }
@@ -39,11 +40,13 @@ const sign = (payloadEncoded: string, secret: string) =>
 
 export function generateOAuthState(
   userId: string,
-  secret: string
+  secret: string,
+  returnTo?: string
 ): { state: string; payload: OAuthStatePayload } {
   const payload: OAuthStatePayload = {
     nonce: randomBytes(16).toString('hex'),
     userId,
+    ...(returnTo ? { returnTo } : {}),
     issuedAt: Date.now(),
     version: STATE_VERSION,
   };
