@@ -11,12 +11,14 @@ import type {
   GetCampaignMetricsResult,
   GoogleAdsCampaignMetrics,
   GoogleAdsSearchStreamRow,
-  GoogleAdsApiError,
 } from '@/types/googleAds.types';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 /** Google Ads API v22 のベース URL */
-const GOOGLE_ADS_API_BASE_URL = 'https://googleads.googleapis.com/v22';
+/** Google Ads API バージョン */
+const API_VERSION = 'v22';
+/** Google Ads API のベース URL */
+const GOOGLE_ADS_API_BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 
 /**
  * micros 単位（1/1,000,000）を円に変換
@@ -82,8 +84,7 @@ export class GoogleAdsService {
       throw new Error(ERROR_MESSAGES.GOOGLE_ADS.DEVELOPER_TOKEN_MISSING);
     }
 
-    const API_VERSION = 'v22';
-    const url = `https://googleads.googleapis.com/${API_VERSION}/customers:listAccessibleCustomers`;
+    const url = `${GOOGLE_ADS_API_BASE_URL}/customers:listAccessibleCustomers`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -96,57 +97,19 @@ export class GoogleAdsService {
 
     if (!response.ok) {
       const text = await response.text();
-      let errorMessage = `Google Adsアカウント一覧の取得に失敗しました: Status ${response.status}`;
-
       // エラーレスポンスをパースして詳細なエラーメッセージを抽出
-      try {
-        const errorData = JSON.parse(text) as {
-          error?: {
-            message?: string;
-            details?: Array<{
-              '@type'?: string;
-              errors?: Array<{
-                errorCode?: {
-                  authenticationError?: string;
-                };
-                message?: string;
-              }>;
-            }>;
-          };
-        };
-
-        if (errorData.error) {
-          // 一般的なエラーメッセージ
-          if (errorData.error.message) {
-            errorMessage = errorData.error.message;
-          }
-
-          // Google Ads API固有のエラー詳細を抽出
-          if (errorData.error.details && errorData.error.details.length > 0) {
-            const adsError = errorData.error.details[0];
-            if (adsError && adsError.errors && adsError.errors.length > 0) {
-              const firstError = adsError.errors[0];
-              if (firstError?.errorCode?.authenticationError === 'NOT_ADS_USER') {
-                errorMessage =
-                  '認証したGoogleアカウントがGoogle Adsアカウントと関連付けられていません。Google Adsアカウントにアクセス権限があるGoogleアカウントで再認証してください。';
-              } else if (firstError?.message) {
-                errorMessage = firstError.message;
-              }
-            }
-          }
-        }
-      } catch (parseError) {
-        // JSONパースに失敗した場合は元のエラーメッセージを使用
-        console.warn('Failed to parse error response:', parseError);
-      }
+      const parsed = this.parseGoogleAdsError(
+        text,
+        `Google Adsアカウント一覧の取得に失敗しました: Status ${response.status}`
+      );
 
       console.error('Google Ads API エラー:', {
         status: response.status,
         body: text,
-        parsedMessage: errorMessage,
+        parsedMessage: parsed.message,
       });
 
-      throw new Error(errorMessage);
+      throw new Error(parsed.message);
     }
 
     const data = (await response.json()) as { resourceNames?: string[] };
@@ -174,8 +137,7 @@ export class GoogleAdsService {
       throw new Error(ERROR_MESSAGES.GOOGLE_ADS.DEVELOPER_TOKEN_MISSING);
     }
 
-    const API_VERSION = 'v22';
-    const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`;
+    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${customerId}/googleAds:searchStream`;
 
     try {
       const headers: Record<string, string> = {
@@ -296,8 +258,7 @@ export class GoogleAdsService {
       throw new Error(ERROR_MESSAGES.GOOGLE_ADS.DEVELOPER_TOKEN_MISSING);
     }
 
-    const API_VERSION = 'v22';
-    const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${managerCustomerId}/googleAds:searchStream`;
+    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${managerCustomerId}/googleAds:searchStream`;
 
     try {
       const headers: Record<string, string> = {
@@ -388,8 +349,7 @@ export class GoogleAdsService {
       throw new Error(ERROR_MESSAGES.GOOGLE_ADS.DEVELOPER_TOKEN_MISSING);
     }
 
-    const API_VERSION = 'v22';
-    const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${managerCustomerId}/googleAds:searchStream`;
+    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${managerCustomerId}/googleAds:searchStream`;
 
     try {
       const headers: Record<string, string> = {
@@ -508,36 +468,22 @@ export class GoogleAdsService {
       });
 
       if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         const errorText = await response.text();
-        try {
-          const errorBody = JSON.parse(errorText) as GoogleAdsApiError;
-          errorMessage = errorBody.error?.message ?? errorMessage;
+        const parsed = this.parseGoogleAdsError(
+          errorText,
+          `HTTP ${response.status}: ${response.statusText}`
+        );
 
-          // デバッグ用: エラー詳細をログ出力（エラーコードを含む）
-          const errorDetails = errorBody.error?.details?.[0];
-          const errorCode = errorDetails?.errors?.[0]?.errorCode
-            ? Object.values(errorDetails.errors[0].errorCode)[0]
-            : undefined;
-
-          console.error('[GoogleAdsService] getCampaignMetrics API error:', {
-            status: response.status,
-            message: errorMessage,
-            customerId,
-            campaignIds,
-            errorCode,
-          });
-        } catch {
-          console.error(
-            '[GoogleAdsService] getCampaignMetrics API error (non-JSON response):',
-            response.status,
-            response.statusText
-          );
-        }
-
+        console.error('[GoogleAdsService] getCampaignMetrics API error:', {
+          status: response.status,
+          message: parsed.message,
+          customerId,
+          campaignIds,
+          errorCode: parsed.errorCode,
+        });
         console.error('[GoogleAdsService] getCampaignMetrics API error body:', errorText);
 
-        return { success: false, error: errorMessage };
+        return { success: false, error: parsed.message };
       }
 
       const responseText = await response.text();
@@ -653,35 +599,21 @@ export class GoogleAdsService {
       });
 
       if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         const errorText = await response.text();
-        try {
-          const errorBody = JSON.parse(errorText) as GoogleAdsApiError;
-          errorMessage = errorBody.error?.message ?? errorMessage;
+        const parsed = this.parseGoogleAdsError(
+          errorText,
+          `HTTP ${response.status}: ${response.statusText}`
+        );
 
-          // デバッグ用: エラー詳細をログ出力（エラーコードを含む）
-          const errorDetails = errorBody.error?.details?.[0];
-          const errorCode = errorDetails?.errors?.[0]?.errorCode
-            ? Object.values(errorDetails.errors[0].errorCode)[0]
-            : undefined;
-
-          console.error('[GoogleAdsService] API error:', {
-            status: response.status,
-            message: errorMessage,
-            errorCode,
-            customerId,
-          });
-        } catch {
-          console.error(
-            '[GoogleAdsService] API error (non-JSON response):',
-            response.status,
-            response.statusText
-          );
-        }
-
+        console.error('[GoogleAdsService] API error:', {
+          status: response.status,
+          message: parsed.message,
+          errorCode: parsed.errorCode,
+          customerId,
+        });
         console.error('[GoogleAdsService] API error body:', errorText);
 
-        return { success: false, error: errorMessage };
+        return { success: false, error: parsed.message };
       }
 
       const responseText = await response.text();
@@ -783,5 +715,62 @@ export class GoogleAdsService {
     }
 
     return rows;
+  }
+
+  /**
+   * Google Ads API のエラーレスポンスを1回だけパースし、メッセージとエラーコードを返す
+   */
+  private parseGoogleAdsError(
+    responseText: string,
+    defaultMessage: string
+  ): { message: string; errorCode?: string } {
+    try {
+      const errorData = JSON.parse(responseText) as {
+        error?: {
+          message?: string;
+          details?: Array<{
+            errors?: Array<{
+              errorCode?: {
+                authenticationError?: string;
+                authorizationError?: string;
+                queryError?: string;
+                requestError?: string;
+              };
+              message?: string;
+            }>;
+          }>;
+        };
+      };
+
+      if (errorData.error) {
+        let message: string | undefined;
+        let errorCode: string | undefined;
+
+        if (errorData.error.details && errorData.error.details.length > 0) {
+          const adsError = errorData.error.details[0];
+          const firstError = adsError?.errors?.[0];
+          if (firstError?.errorCode) {
+            // errorCode オブジェクトから最初の非 undefined 値を取得
+            const codes = firstError.errorCode as Record<string, string | undefined>;
+            errorCode = Object.values(codes).find(v => v !== undefined);
+          }
+          if (firstError?.errorCode?.authenticationError === 'NOT_ADS_USER') {
+            message =
+              '認証したGoogleアカウントがGoogle Adsアカウントと関連付けられていません。Google Adsアカウントにアクセス権限があるGoogleアカウントで再認証してください。';
+          } else if (firstError?.message) {
+            message = firstError.message;
+          }
+        }
+        if (!message && errorData.error.message) {
+          message = errorData.error.message;
+        }
+        if (message) {
+          return errorCode !== undefined ? { message, errorCode } : { message };
+        }
+      }
+    } catch {
+      // JSONパースに失敗した場合はデフォルトメッセージを返す
+    }
+    return { message: defaultMessage };
   }
 }

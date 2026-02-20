@@ -13,8 +13,11 @@ export const ERROR_MESSAGES = {
 export const CHAT_HISTORY_LIMIT = 10; // 件数制限を緩和し、文字数制限(CHAR_LIMIT)を主とする
 export const CHAT_HISTORY_CHAR_LIMIT = 30000; // 約20k-30kトークン相当
 
+export const GA4_SCOPE = 'https://www.googleapis.com/auth/analytics.readonly';
+
 export const GOOGLE_SEARCH_CONSOLE_SCOPES = [
   'https://www.googleapis.com/auth/webmasters.readonly',
+  GA4_SCOPE,
   'https://www.googleapis.com/auth/userinfo.email',
   'openid',
 ];
@@ -156,6 +159,15 @@ export const ANALYTICS_COLUMNS = [
   { id: 'main_kw', label: '主軸kw' },
   { id: 'kw', label: 'kw（参考）' },
   { id: 'impressions', label: '表示回数' },
+  { id: 'ga4_search_clicks', label: 'GA4検索クリック数' },
+  { id: 'ga4_impressions', label: 'GA4インプレッション数' },
+  { id: 'ga4_ctr', label: 'GA4 CTR' },
+  { id: 'ga4_avg_engagement_time', label: '滞在時間(平均)' },
+  { id: 'ga4_read_rate', label: '読了率' },
+  { id: 'ga4_bounce_rate', label: '直帰率' },
+  { id: 'ga4_cv_count', label: 'CV数' },
+  { id: 'ga4_cvr', label: 'CVR' },
+  { id: 'ga4_flags', label: 'GA4状態' },
   { id: 'needs', label: 'ニーズ' },
   { id: 'persona', label: 'デモグラ・ペルソナ' },
   { id: 'goal', label: 'ゴール' },

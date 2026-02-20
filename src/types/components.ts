@@ -4,6 +4,7 @@
 import type { WordPressType } from './wordpress';
 import type { UserRole } from './user';
 import type { GscConnectionStatus } from './gsc';
+import type { Ga4ConnectionStatus } from './ga4';
 import type { LiffProfile } from './hooks';
 
 /**
@@ -57,6 +58,7 @@ export interface GoogleAdsConnectionStatus {
 export interface SetupDashboardProps {
   wordpressSettings: WordPressSettingsState;
   gscStatus: GscConnectionStatus;
+  ga4Status: Ga4ConnectionStatus;
   googleAdsStatus?: GoogleAdsConnectionStatus | undefined;
   isAdmin?: boolean | undefined;
 }

@@ -11,6 +11,8 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 const supabaseService = new SupabaseService();
 const gscService = new GscService();
+const ALLOWED_RETURN_TO_PATHS = new Set(['/setup/gsc', '/setup/ga4']);
+const DEFAULT_REDIRECT_PATH = '/setup/gsc';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -52,7 +54,13 @@ export async function GET(request: NextRequest) {
     return buildJsonResponse({ error: 'codeが指定されていません' }, { status: 400 });
   }
 
-  const response = NextResponse.redirect(new URL('/setup/gsc?connected=1', request.url));
+  const stateReturnTo = stateVerification.payload.returnTo;
+  const returnPath =
+    stateReturnTo && ALLOWED_RETURN_TO_PATHS.has(stateReturnTo)
+      ? stateReturnTo
+      : DEFAULT_REDIRECT_PATH;
+  const appOrigin = new URL(redirectUri).origin;
+  const response = NextResponse.redirect(`${appOrigin}${returnPath}?connected=1`);
   response.cookies.delete(stateCookieName);
 
   const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(request);

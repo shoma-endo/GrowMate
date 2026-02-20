@@ -23,10 +23,7 @@ import {
   AlertTriangle,
   BarChart3,
 } from 'lucide-react';
-import {
-  disconnectGsc,
-  saveGscProperty,
-} from '@/server/actions/gscSetup.actions';
+import { disconnectGsc, saveGscProperty } from '@/server/actions/gscSetup.actions';
 import { formatDate } from '@/lib/date-utils';
 import { GscStatusBadge } from '@/components/ui/GscStatusBadge';
 import { useGscSetup } from '@/hooks/useGscSetup';
@@ -40,8 +37,22 @@ interface GscSetupClientProps {
 }
 
 const OAUTH_START_PATH = '/api/gsc/oauth/start';
+const GSC_PERMISSION_LABELS: Record<string, string> = {
+  siteOwner: '所有者',
+  siteFullUser: 'フル権限',
+  siteRestrictedUser: '制限付き',
+  siteUnverifiedUser: '未検証ユーザー',
+  unknown: '不明',
+};
 
-export default function GscSetupClient({ initialStatus, isOauthConfigured }: GscSetupClientProps) {
+const getGscPermissionLabel = (permissionLevel: string) => {
+  return GSC_PERMISSION_LABELS[permissionLevel] ?? '不明';
+};
+
+export default function GscSetupClient({
+  initialStatus,
+  isOauthConfigured,
+}: GscSetupClientProps) {
   const { user } = useLiffContext();
   const {
     status,
@@ -55,7 +66,6 @@ export default function GscSetupClient({ initialStatus, isOauthConfigured }: Gsc
     refreshStatus,
     refetchProperties,
   } = useGscSetup(initialStatus);
-
   const isStaffUser = Boolean(user?.ownerUserId);
   // Setup画面は閲覧モード対象外（オーナーは常に操作可能）
   const isReadOnly = isStaffUser;
@@ -218,7 +228,7 @@ export default function GscSetupClient({ initialStatus, isOauthConfigured }: Gsc
               <div className="flex flex-wrap gap-2 text-xs">
                 {status.permissionLevel && (
                   <Badge variant="secondary">
-                    {status.permissionLevel === 'siteOwner' ? '所有者' : status.permissionLevel}
+                    {getGscPermissionLabel(status.permissionLevel)}
                   </Badge>
                 )}
                 {status.verified ? (
@@ -268,7 +278,7 @@ export default function GscSetupClient({ initialStatus, isOauthConfigured }: Gsc
                       <div className="flex flex-col">
                         <span>{property.displayName}</span>
                         <span className="text-xs text-gray-500">
-                          {property.permissionLevel}
+                          {getGscPermissionLabel(property.permissionLevel)}
                           {property.propertyType === 'sc-domain'
                             ? ' · ドメイン'
                             : ' · URLプレフィックス'}
@@ -292,7 +302,8 @@ export default function GscSetupClient({ initialStatus, isOauthConfigured }: Gsc
             {connectedProperty && (
               <div className="rounded-md bg-gray-50 p-4 text-sm text-gray-700 space-y-1">
                 <div>
-                  <span className="font-medium">権限:</span> {connectedProperty.permissionLevel}
+                  <span className="font-medium">権限:</span>{' '}
+                  {getGscPermissionLabel(connectedProperty.permissionLevel)}
                 </div>
                 <div>
                   <span className="font-medium">種別:</span>{' '}
@@ -407,7 +418,9 @@ export default function GscSetupClient({ initialStatus, isOauthConfigured }: Gsc
               <h4 className="font-medium mb-2">必要な権限</h4>
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>Search Consoleでサイト全体の「所有者」または「フルユーザー」権限が必要です</li>
-                <li>読み取り専用スコープ（webmasters.readonly）のみを使用します</li>
+                <li>
+                  読み取り専用スコープ（webmasters.readonly / analytics.readonly）を使用します
+                </li>
                 <li>データの書き込み・削除は一切行いません</li>
               </ul>
             </div>

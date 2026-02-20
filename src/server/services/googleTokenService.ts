@@ -16,6 +16,48 @@ const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const USER_INFO_ENDPOINT = 'https://openidconnect.googleapis.com/v1/userinfo';
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
 
+/**
+ * アクセストークンの有効期限マージン（1分）
+ * トークンがこの時間以内に期限切れになる場合はリフレッシュする
+ */
+export const ACCESS_TOKEN_SAFETY_MARGIN_MS = 60 * 1000;
+
+/**
+ * アクセストークンがまだ再利用可能かどうかを判定する
+ */
+export function hasReusableAccessToken(
+  credential: { accessToken?: string | null; accessTokenExpiresAt?: string | null }
+): credential is { accessToken: string; accessTokenExpiresAt: string } {
+  if (!credential.accessToken || !credential.accessTokenExpiresAt) {
+    return false;
+  }
+  const expiresAtMs = new Date(credential.accessTokenExpiresAt).getTime();
+  return expiresAtMs - Date.now() > ACCESS_TOKEN_SAFETY_MARGIN_MS;
+}
+
+export interface EnsureAccessTokenDeps {
+  refreshAccessToken: (refreshToken: string) => Promise<GoogleOAuthTokens>;
+  persistToken: (accessToken: string, expiresAt: string | null, scope: string[] | null) => Promise<void>;
+}
+
+/**
+ * アクセストークンが有効ならそのまま返し、期限切れならリフレッシュ + DB永続化して返す
+ */
+export async function ensureValidAccessToken(
+  credential: { refreshToken: string; accessToken?: string | null; accessTokenExpiresAt?: string | null },
+  deps: EnsureAccessTokenDeps
+): Promise<string> {
+  if (hasReusableAccessToken(credential)) {
+    return credential.accessToken;
+  }
+  const refreshed = await deps.refreshAccessToken(credential.refreshToken);
+  const expiresAt = refreshed.expiresIn
+    ? new Date(Date.now() + refreshed.expiresIn * 1000).toISOString()
+    : null;
+  await deps.persistToken(refreshed.accessToken, expiresAt, refreshed.scope ?? null);
+  return refreshed.accessToken;
+}
+
 export class GoogleTokenService {
   private readonly clientId: string | undefined;
   private readonly clientSecret: string | undefined;

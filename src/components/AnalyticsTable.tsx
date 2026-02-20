@@ -19,6 +19,7 @@ import {
   deleteContentAnnotation,
 } from '@/server/actions/wordpress.actions';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -93,6 +94,17 @@ function LaunchChatButton({ label, isPending, onClick }: LaunchChatButtonProps) 
     </Button>
   );
 }
+
+const formatPercent = (value: number, fractionDigits: number = 1): string =>
+  `${(value * 100).toFixed(fractionDigits)}%`;
+
+const formatSeconds = (seconds: number): string => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0秒';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  if (mins <= 0) return `${secs}秒`;
+  return `${mins}分${secs}秒`;
+};
 
 const createEmptyForm = (): Record<AnnotationFieldKey, string> =>
   Object.fromEntries(ANNOTATION_FIELD_KEYS.map(key => [key, ''])) as Record<
@@ -592,6 +604,20 @@ export default function AnalyticsTable({
                             id === 'wp_post_title' || id === 'wp_excerpt' ? 'min-w-[360px]' : ''
                           } ${id === 'url' ? 'min-w-[300px]' : ''} ${
                             ['main_kw', 'kw'].includes(id) ? 'min-w-[180px]' : ''
+                          } ${
+                            [
+                              'ga4_search_clicks',
+                              'ga4_impressions',
+                              'ga4_ctr',
+                              'ga4_avg_engagement_time',
+                              'ga4_read_rate',
+                              'ga4_bounce_rate',
+                              'ga4_cv_count',
+                              'ga4_cvr',
+                              'ga4_flags',
+                            ].includes(id)
+                              ? 'min-w-[140px]'
+                              : ''
                           } ${['needs', 'persona', 'goal', 'prep', 'basic_structure', 'opening_proposal'].includes(id) ? 'min-w-[220px]' : ''} ${
                             id === 'date' ? 'min-w-[120px]' : ''
                           }`}
@@ -604,6 +630,7 @@ export default function AnalyticsTable({
                 <tbody className="divide-y divide-gray-200">
                   {items.map(item => {
                     const annotation = item.annotation;
+                    const ga4Summary = item.ga4Summary ?? null;
                     const wpPostId =
                       annotation?.wp_post_id != null && Number.isFinite(annotation.wp_post_id)
                         ? annotation.wp_post_id
@@ -617,6 +644,18 @@ export default function AnalyticsTable({
                     const hasUnreadSuggestion = annotation?.id
                       ? (unreadAnnotationIds?.has(annotation.id) ?? false)
                       : false;
+                    const avgEngagementSeconds =
+                      ga4Summary && ga4Summary.sessions > 0
+                        ? ga4Summary.engagementTimeSec / ga4Summary.sessions
+                        : 0;
+                    const readRate =
+                      ga4Summary && ga4Summary.users > 0
+                        ? ga4Summary.scroll90EventCount / ga4Summary.users
+                        : 0;
+                    const cvr =
+                      ga4Summary && ga4Summary.users > 0
+                        ? ga4Summary.cvEventCount / ga4Summary.users
+                        : 0;
 
                     return (
                       <tr key={item.rowKey} className="analytics-row group">
@@ -810,6 +849,74 @@ export default function AnalyticsTable({
                                     className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
                                   >
                                     {annotation?.impressions ?? '—'}
+                                  </td>
+                                );
+                              case 'ga4_search_clicks':
+                                return (
+                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                    {ga4Summary ? ga4Summary.searchClicks.toLocaleString() : '—'}
+                                  </td>
+                                );
+                              case 'ga4_impressions':
+                                return (
+                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                    {ga4Summary ? ga4Summary.impressions.toLocaleString() : '—'}
+                                  </td>
+                                );
+                              case 'ga4_ctr':
+                                return (
+                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                    {ga4Summary ? (ga4Summary.ctr === null ? '—' : formatPercent(ga4Summary.ctr)) : '—'}
+                                  </td>
+                                );
+                              case 'ga4_avg_engagement_time':
+                                return (
+                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                    {ga4Summary ? formatSeconds(avgEngagementSeconds) : '—'}
+                                  </td>
+                                );
+                              case 'ga4_read_rate':
+                                return (
+                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                    {ga4Summary ? formatPercent(readRate) : '—'}
+                                  </td>
+                                );
+                              case 'ga4_bounce_rate':
+                                return (
+                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                    {ga4Summary ? formatPercent(ga4Summary.bounceRate) : '—'}
+                                  </td>
+                                );
+                              case 'ga4_cv_count':
+                                return (
+                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                    {ga4Summary ? ga4Summary.cvEventCount : '—'}
+                                  </td>
+                                );
+                              case 'ga4_cvr':
+                                return (
+                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                    {ga4Summary ? formatPercent(cvr) : '—'}
+                                  </td>
+                                );
+                              case 'ga4_flags':
+                                return (
+                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                    {ga4Summary ? (
+                                      <div className="flex flex-wrap gap-2">
+                                        {ga4Summary.isSampled && (
+                                          <Badge variant="outline">サンプリング</Badge>
+                                        )}
+                                        {ga4Summary.isPartial && (
+                                          <Badge variant="outline">部分取得</Badge>
+                                        )}
+                                        {!ga4Summary.isSampled && !ga4Summary.isPartial && (
+                                          <span className="text-xs text-gray-500">正常</span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      '—'
+                                    )}
                                   </td>
                                 );
                               case 'needs':

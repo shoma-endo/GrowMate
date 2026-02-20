@@ -386,6 +386,41 @@ export const ERROR_MESSAGES = {
   },
 
   /**
+   * GA4関連のエラーメッセージ
+   */
+  GA4: {
+    /** GA4が未接続の場合 */
+    NOT_CONNECTED: 'GA4が未接続です',
+
+    /** ステータスの取得に失敗した場合 */
+    STATUS_FETCH_FAILED: 'ステータスの取得に失敗しました',
+
+    /** GA4の権限が不足している場合 */
+    INSUFFICIENT_PERMISSION: 'GA4の権限が不足しています',
+
+    /** Googleアカウントの認証が期限切れまたは取り消されている場合 */
+    AUTH_EXPIRED_OR_REVOKED: 'Googleアカウントの認証が期限切れまたは取り消されています',
+
+    /** GA4のスコープが不足している場合 */
+    SCOPE_MISSING: 'GA4の権限スコープが不足しています。再認証してください。',
+
+    /** GA4プロパティ一覧の取得に失敗した場合 */
+    PROPERTIES_FETCH_FAILED: 'GA4プロパティ一覧の取得に失敗しました',
+
+    /** GA4キーイベント一覧の取得に失敗した場合 */
+    KEY_EVENTS_FETCH_FAILED: 'GA4キーイベント一覧の取得に失敗しました',
+
+    /** GA4プロパティIDが必須の場合 */
+    PROPERTY_ID_REQUIRED: 'GA4プロパティIDは必須です',
+
+    /** GA4設定の保存に失敗した場合 */
+    SETTINGS_SAVE_FAILED: 'GA4設定の保存に失敗しました',
+
+    /** GA4同期に失敗した場合 */
+    SYNC_FAILED: 'GA4同期に失敗しました',
+  },
+
+  /**
    * Google Ads関連のエラーメッセージ
    */
   GOOGLE_ADS: {

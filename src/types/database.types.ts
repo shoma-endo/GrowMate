@@ -405,6 +405,12 @@ export type Database = {
           access_token: string | null;
           access_token_expires_at: string | null;
           created_at: string | null;
+          ga4_conversion_events: string[] | null;
+          ga4_last_synced_at: string | null;
+          ga4_property_id: string | null;
+          ga4_property_name: string | null;
+          ga4_threshold_engagement_sec: number | null;
+          ga4_threshold_read_rate: number | null;
           google_account_email: string | null;
           id: string;
           last_synced_at: string | null;
@@ -422,6 +428,12 @@ export type Database = {
           access_token?: string | null;
           access_token_expires_at?: string | null;
           created_at?: string | null;
+          ga4_conversion_events?: string[] | null;
+          ga4_last_synced_at?: string | null;
+          ga4_property_id?: string | null;
+          ga4_property_name?: string | null;
+          ga4_threshold_engagement_sec?: number | null;
+          ga4_threshold_read_rate?: number | null;
           google_account_email?: string | null;
           id?: string;
           last_synced_at?: string | null;
@@ -439,6 +451,12 @@ export type Database = {
           access_token?: string | null;
           access_token_expires_at?: string | null;
           created_at?: string | null;
+          ga4_conversion_events?: string[] | null;
+          ga4_last_synced_at?: string | null;
+          ga4_property_id?: string | null;
+          ga4_property_name?: string | null;
+          ga4_threshold_engagement_sec?: number | null;
+          ga4_threshold_read_rate?: number | null;
           google_account_email?: string | null;
           id?: string;
           last_synced_at?: string | null;
@@ -457,6 +475,83 @@ export type Database = {
             foreignKeyName: 'gsc_credentials_user_id_fkey';
             columns: ['user_id'];
             isOneToOne: true;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      ga4_page_metrics_daily: {
+        Row: {
+          bounce_rate: number;
+          created_at: string;
+          cv_event_count: number;
+          date: string;
+          engagement_time_sec: number;
+          id: string;
+          imported_at: string;
+          is_partial: boolean;
+          is_sampled: boolean;
+          normalized_path: string;
+          page_path: string;
+          search_clicks: number;
+          property_id: string;
+          scroll_90_event_count: number;
+          sessions: number;
+          updated_at: string;
+          user_id: string;
+          users: number;
+          impressions: number;
+          ctr: number | null;
+        };
+        Insert: {
+          bounce_rate?: number;
+          created_at?: string;
+          cv_event_count?: number;
+          date: string;
+          engagement_time_sec?: number;
+          id?: string;
+          imported_at?: string;
+          is_partial?: boolean;
+          is_sampled?: boolean;
+          normalized_path?: string;
+          page_path: string;
+          search_clicks?: number;
+          property_id: string;
+          scroll_90_event_count?: number;
+          sessions?: number;
+          updated_at?: string;
+          user_id: string;
+          users?: number;
+          impressions?: number;
+          ctr?: number | null;
+        };
+        Update: {
+          bounce_rate?: number;
+          created_at?: string;
+          cv_event_count?: number;
+          date?: string;
+          engagement_time_sec?: number;
+          id?: string;
+          imported_at?: string;
+          is_partial?: boolean;
+          is_sampled?: boolean;
+          normalized_path?: string;
+          page_path?: string;
+          search_clicks?: number;
+          property_id?: string;
+          scroll_90_event_count?: number;
+          sessions?: number;
+          updated_at?: string;
+          user_id?: string;
+          users?: number;
+          impressions?: number;
+          ctr?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'ga4_page_metrics_daily_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
             referencedRelation: 'users';
             referencedColumns: ['id'];
           },
@@ -967,6 +1062,7 @@ export type Database = {
         Returns: undefined;
       };
       normalize_keyword: { Args: { input_text: string }; Returns: string };
+      normalize_to_path: { Args: { input_text: string }; Returns: string };
       normalize_url: { Args: { url: string }; Returns: string };
       search_chat_sessions: {
         Args: { p_limit?: number; p_query: string; p_user_id: string };

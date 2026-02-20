@@ -1,7 +1,6 @@
 import type { GscConnectionStatus, GscCredential, GscPropertyType } from '@/types/gsc';
 import { formatGscPropertyDisplayName } from '@/server/services/gscService';
-
-const ACCESS_TOKEN_SAFETY_MARGIN_MS = 60 * 1000; // 1 minute
+import { hasReusableAccessToken } from '@/server/services/googleTokenService';
 
 export function toGscConnectionStatus(credential: GscCredential | null): GscConnectionStatus {
   if (!credential) {
@@ -10,10 +9,7 @@ export function toGscConnectionStatus(credential: GscCredential | null): GscConn
 
   // トークンの有効性をチェック
   // accessToken と accessTokenExpiresAt が存在し、かつ有効期限内である場合のみトークン有効とする
-  const hasValidToken =
-    credential.accessToken &&
-    credential.accessTokenExpiresAt &&
-    new Date(credential.accessTokenExpiresAt).getTime() - Date.now() > ACCESS_TOKEN_SAFETY_MARGIN_MS;
+  const hasValidToken = hasReusableAccessToken(credential);
 
   const propertyDisplayName =
     credential.propertyDisplayName ||

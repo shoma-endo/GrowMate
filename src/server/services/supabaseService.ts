@@ -953,6 +953,18 @@ export class SupabaseService {
       permissionLevel: data.permission_level,
       verified: data.verified,
       lastSyncedAt: data.last_synced_at,
+      ga4PropertyId: data.ga4_property_id,
+      ga4PropertyName: data.ga4_property_name,
+      ga4ConversionEvents: Array.isArray(data.ga4_conversion_events)
+        ? (data.ga4_conversion_events as string[])
+        : null,
+      ga4ThresholdEngagementSec:
+        typeof data.ga4_threshold_engagement_sec === 'number'
+          ? data.ga4_threshold_engagement_sec
+          : null,
+      ga4ThresholdReadRate:
+        typeof data.ga4_threshold_read_rate === 'number' ? data.ga4_threshold_read_rate : null,
+      ga4LastSyncedAt: data.ga4_last_synced_at,
       createdAt: data.created_at ?? new Date().toISOString(),
       updatedAt: data.updated_at ?? new Date().toISOString(),
     };
@@ -1108,6 +1120,12 @@ export class SupabaseService {
       permissionLevel?: string | null;
       verified?: boolean | null;
       lastSyncedAt?: string | null;
+      ga4PropertyId?: string | null;
+      ga4PropertyName?: string | null;
+      ga4ConversionEvents?: string[] | null;
+      ga4ThresholdEngagementSec?: number | null;
+      ga4ThresholdReadRate?: number | null;
+      ga4LastSyncedAt?: string | null;
     }
   ): Promise<void> {
     const record: Database['public']['Tables']['gsc_credentials']['Insert'] = {
@@ -1125,6 +1143,25 @@ export class SupabaseService {
       last_synced_at: payload.lastSyncedAt ?? null,
       updated_at: new Date().toISOString(),
     };
+
+    if ('ga4PropertyId' in payload) {
+      record.ga4_property_id = payload.ga4PropertyId ?? null;
+    }
+    if ('ga4PropertyName' in payload) {
+      record.ga4_property_name = payload.ga4PropertyName ?? null;
+    }
+    if ('ga4ConversionEvents' in payload) {
+      record.ga4_conversion_events = payload.ga4ConversionEvents ?? null;
+    }
+    if ('ga4ThresholdEngagementSec' in payload) {
+      record.ga4_threshold_engagement_sec = payload.ga4ThresholdEngagementSec ?? null;
+    }
+    if ('ga4ThresholdReadRate' in payload) {
+      record.ga4_threshold_read_rate = payload.ga4ThresholdReadRate ?? null;
+    }
+    if ('ga4LastSyncedAt' in payload) {
+      record.ga4_last_synced_at = payload.ga4LastSyncedAt ?? null;
+    }
 
     const { error } = await this.supabase
       .from('gsc_credentials')
@@ -1153,6 +1190,12 @@ export class SupabaseService {
       permissionLevel: string | null;
       verified: boolean | null;
       lastSyncedAt: string | null;
+      ga4PropertyId: string | null;
+      ga4PropertyName: string | null;
+      ga4ConversionEvents: string[] | null;
+      ga4ThresholdEngagementSec: number | null;
+      ga4ThresholdReadRate: number | null;
+      ga4LastSyncedAt: string | null;
     }>
   ): Promise<void> {
     const record: Record<string, unknown> = {
@@ -1189,6 +1232,24 @@ export class SupabaseService {
     if ('lastSyncedAt' in updates) {
       record.last_synced_at = updates.lastSyncedAt ?? null;
     }
+    if ('ga4PropertyId' in updates) {
+      record.ga4_property_id = updates.ga4PropertyId ?? null;
+    }
+    if ('ga4PropertyName' in updates) {
+      record.ga4_property_name = updates.ga4PropertyName ?? null;
+    }
+    if ('ga4ConversionEvents' in updates) {
+      record.ga4_conversion_events = updates.ga4ConversionEvents ?? null;
+    }
+    if ('ga4ThresholdEngagementSec' in updates) {
+      record.ga4_threshold_engagement_sec = updates.ga4ThresholdEngagementSec ?? null;
+    }
+    if ('ga4ThresholdReadRate' in updates) {
+      record.ga4_threshold_read_rate = updates.ga4ThresholdReadRate ?? null;
+    }
+    if ('ga4LastSyncedAt' in updates) {
+      record.ga4_last_synced_at = updates.ga4LastSyncedAt ?? null;
+    }
 
     const { error } = await this.supabase
       .from('gsc_credentials')
@@ -1218,6 +1279,106 @@ export class SupabaseService {
       });
       throw new Error(`Google Search Console資格情報の削除に失敗しました: ${error.message}`);
     }
+  }
+
+  async upsertGa4PageMetricsDaily(
+    rows: Array<{
+      userId: string;
+      propertyId: string;
+      date: string;
+      pagePath: string;
+      normalizedPath: string;
+      sessions: number;
+      users: number;
+      engagementTimeSec: number;
+      bounceRate: number;
+      cvEventCount: number;
+      scroll90EventCount: number;
+      searchClicks: number;
+      impressions: number;
+      ctr: number | null;
+      isSampled: boolean;
+      isPartial: boolean;
+      importedAt: string;
+    }>
+  ): Promise<void> {
+    if (!rows.length) return;
+
+    const chunkSize = 500;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const nowIso = new Date().toISOString();
+      const payload = chunk.map(row => ({
+        user_id: row.userId,
+        property_id: row.propertyId,
+        date: row.date,
+        page_path: row.pagePath,
+        sessions: row.sessions,
+        users: row.users,
+        engagement_time_sec: row.engagementTimeSec,
+        bounce_rate: row.bounceRate,
+        cv_event_count: row.cvEventCount,
+        scroll_90_event_count: row.scroll90EventCount,
+        search_clicks: row.searchClicks,
+        impressions: row.impressions,
+        ctr: row.ctr,
+        is_sampled: row.isSampled,
+        is_partial: row.isPartial,
+        imported_at: row.importedAt,
+        created_at: row.importedAt,
+        updated_at: nowIso,
+      }));
+
+      const { error } = await this.supabase.from('ga4_page_metrics_daily').upsert(payload, {
+        onConflict: 'user_id,property_id,date,normalized_path',
+      });
+
+      if (error) {
+        const chunkIndex = Math.floor(i / chunkSize);
+        const totalChunks = Math.ceil(rows.length / chunkSize);
+        const samplePropertyId = chunk[0]?.propertyId ?? 'unknown';
+        console.error('[SupabaseService] upsertGa4PageMetricsDaily failed', {
+          chunkIndex,
+          totalChunks,
+          chunkSize: chunk.length,
+          totalRows: rows.length,
+          propertyId: samplePropertyId,
+          errorCode: error.code,
+          errorMessage: error.message,
+          errorDetails: error.details,
+          errorHint: error.hint,
+        });
+        throw new Error(`GA4日次指標の保存に失敗しました: ${error.message}`);
+      }
+    }
+  }
+
+  async listGa4SyncTargets(limit: number): Promise<
+    Array<{
+      userId: string;
+      propertyId: string;
+      lastSyncedAt: string | null;
+    }>
+  > {
+    const { data, error } = await this.supabase
+      .from('gsc_credentials')
+      .select('user_id, ga4_property_id, ga4_last_synced_at')
+      .not('ga4_property_id', 'is', null)
+      .order('ga4_last_synced_at', { ascending: true, nullsFirst: true })
+      .limit(limit);
+
+    if (error) {
+      console.error('Failed to list GA4 sync targets:', error);
+      throw new Error(`GA4同期対象の取得に失敗しました: ${error.message}`);
+    }
+
+    return (data ?? [])
+      .filter(row => row.ga4_property_id)
+      .map(row => ({
+        userId: row.user_id,
+        propertyId: row.ga4_property_id as string,
+        lastSyncedAt: row.ga4_last_synced_at ?? null,
+      }));
   }
 
   /**
