@@ -908,17 +908,40 @@ export async function getSystemPrompt(
   if (liffAccessToken) {
     // セッションに紐づくサービスIDを解決（オーバーライドがなければ）
     let serviceId = serviceIdOverride;
-    if (!serviceId && sessionId) {
+    let authUserId: string | null = null;
+    if (sessionId) {
       const authResult = await authMiddleware(liffAccessToken);
       if (!authResult.error && authResult.userId) {
-        const result = await supabaseService.getSessionServiceId(sessionId, authResult.userId);
+        authUserId = authResult.userId;
+      }
+      if (!serviceId && authUserId) {
+        const result = await supabaseService.getSessionServiceId(sessionId, authUserId);
         if (result.success && result.data) serviceId = result.data;
       }
     }
 
     if (model.startsWith('blog_creation_')) {
       const step = model.substring('blog_creation_'.length) as BlogStepId;
-      return await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
+      const basePrompt = await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
+      if (step !== 'step7' || !sessionId || !authUserId) {
+        return basePrompt;
+      }
+
+      const latestCombinedResult = await supabaseService.getLatestCombinedContentBySession(
+        sessionId,
+        authUserId
+      );
+      if (!latestCombinedResult.success || !latestCombinedResult.data?.trim()) {
+        return basePrompt;
+      }
+
+      return [
+        basePrompt,
+        '',
+        '## Step6最新完成形（必須入力）',
+        '以下の本文を入力の正本として使用してください。内容を反映したうえで最終本文を作成してください。',
+        latestCombinedResult.data,
+      ].join('\n');
     }
     switch (model) {
       case 'ad_copy_creation':

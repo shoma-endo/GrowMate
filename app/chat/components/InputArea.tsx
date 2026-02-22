@@ -76,6 +76,9 @@ interface InputAreaProps {
   onNextStepChange?: (nextStep: BlogStepId | null) => void;
   onLoadBlogArticle?: (() => Promise<void>) | undefined;
   onManualStepChange?: (step: BlogStepId) => void;
+  headingIndex?: number;
+  totalHeadings?: number;
+  currentHeadingText?: string;
   searchQuery: string;
   searchError: string | null;
   isSearching: boolean;
@@ -122,6 +125,9 @@ const InputArea: React.FC<InputAreaProps> = ({
   onNextStepChange,
   onLoadBlogArticle,
   onManualStepChange,
+  headingIndex,
+  totalHeadings,
+  currentHeadingText,
   searchQuery,
   searchError,
   isSearching,
@@ -512,6 +518,9 @@ const InputArea: React.FC<InputAreaProps> = ({
               onLoadBlogArticle={handleLoadBlogArticle}
               isLoadBlogArticleLoading={isLoadingBlogArticle}
               onManualStepChange={onManualStepChange}
+              {...(headingIndex !== undefined && { headingIndex })}
+              {...(totalHeadings !== undefined && { totalHeadings })}
+              {...(currentHeadingText !== undefined && { currentHeadingText })}
             />
             {blogArticleError && (
               <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>

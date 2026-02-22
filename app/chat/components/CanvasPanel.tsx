@@ -161,6 +161,18 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   activeStepId,
   onStepSelect,
   streamingContent = '',
+  canvasContentRef,
+  headingIndex,
+  totalHeadings,
+  currentHeadingText,
+  onSaveHeadingSection,
+  isSavingHeading,
+  isStep6SaveDisabled = false,
+  headingSaveError,
+  headingInitError,
+  onRetryHeadingInit,
+  isRetryingHeadingInit,
+  isStreaming,
 }) => {
   const [markdownContent, setMarkdownContent] = useState('');
   const [bubble, setBubble] = useState<CanvasBubbleState>({
@@ -649,6 +661,9 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   // ✅ コンテンツが更新された時の処理
   useEffect(() => {
     const currentContent = streamingContent || content;
+    if (canvasContentRef) {
+      canvasContentRef.current = currentContent;
+    }
     const effectiveStepId =
       activeStepId ?? (stepOptions.length > 0 ? stepOptions[stepOptions.length - 1] : null);
     const shouldOpenLinksInNewTab = effectiveStepId ? isBlogStep7(effectiveStepId) : false;
@@ -669,11 +684,17 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
         editor.commands.setContent(htmlContent);
       }
+    } else if (editor) {
+      // stale 時など content が空のときはエディタを明示的にクリア（前見出し本文の残留を防ぐ）
+      setMarkdownContent('');
+      setHeadings([]);
+      editor.commands.setContent('');
     }
   }, [
     editor,
     content,
     streamingContent,
+    canvasContentRef,
     extractHeadings,
     buildHtmlFromMarkdown,
     activeStepId,
@@ -1003,8 +1024,25 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <h3 className="text-lg font-semibold text-gray-800">Canvas</h3>
+            <h3 className="text-lg font-semibold text-gray-800">
+              {activeStepId === 'step6' ? '見出し単位生成' : 'Canvas'}
+            </h3>
           </div>
+          {headingIndex !== undefined && totalHeadings !== undefined && (
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-[11px] font-medium text-blue-700">
+              <span>
+                進捗: {headingIndex + 1} / {totalHeadings}
+              </span>
+              {currentHeadingText && (
+                <>
+                  <span className="text-blue-300">|</span>
+                  <span className="truncate max-w-[120px]" title={currentHeadingText}>
+                    {currentHeadingText}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
           {headings.length > 0 && (
             <Button
               variant="ghost"
@@ -1096,11 +1134,62 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
             <ClipboardCheck size={14} className="mr-1" />
             コピー
           </Button>
+          {activeStepId === 'step6' && onSaveHeadingSection && headingIndex !== undefined && (
+            <Button
+              size="sm"
+              onClick={onSaveHeadingSection}
+              disabled={isSavingHeading || isStreaming || isStep6SaveDisabled}
+              className="bg-blue-600 hover:bg-blue-700 text-white transition-colors px-3 py-1 text-xs font-bold shadow-sm"
+            >
+              {isSavingHeading ? (
+                <Loader2 size={14} className="mr-1 animate-spin" />
+              ) : (
+                <ClipboardCheck size={14} className="mr-1" />
+              )}
+              {headingIndex !== undefined &&
+              totalHeadings !== undefined &&
+              headingIndex + 1 === totalHeadings
+                ? '保存して全構成を確認'
+                : '保存して次の見出しへ'}
+            </Button>
+          )}
+          {activeStepId === 'step6' && headingSaveError && (
+            <span
+              className="text-[10px] text-red-600 max-w-[180px] truncate"
+              title={headingSaveError}
+            >
+              {headingSaveError}
+            </span>
+          )}
+          {activeStepId === 'step6' && headingInitError && onRetryHeadingInit && (
+            <div className="flex shrink-0 items-center gap-2">
+              <span
+                className="text-[10px] text-red-500 max-w-[120px] truncate sm:max-w-[150px]"
+                title={headingInitError}
+              >
+                生成エラー
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onRetryHeadingInit}
+                disabled={isRetryingHeadingInit}
+                className="h-8 px-2 text-[10px] border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-bold disabled:opacity-50"
+              >
+                {isRetryingHeadingInit ? (
+                  <Loader2 size={12} className="mr-1 animate-spin" />
+                ) : (
+                  <RotateCw size={12} className="mr-1" />
+                )}
+                再試行
+              </Button>
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="w-8 h-8 hover:bg-red-100 hover:text-red-600 transition-colors"
+            className="h-8 w-8 shrink-0 hover:bg-red-100 hover:text-red-600 transition-colors"
             title="Canvasを閉じる"
           >
             <X size={16} />

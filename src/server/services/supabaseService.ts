@@ -431,6 +431,46 @@ export class SupabaseService {
   }
 
   /**
+   * セッションの最新完成形（session_combined_contents.is_latest = true）を取得
+   * オーナー/スタッフ間のアクセス制御に対応
+   */
+  async getLatestCombinedContentBySession(
+    sessionId: string,
+    userId: string
+  ): Promise<SupabaseResult<string | null>> {
+    const sessionResult = await this.getChatSessionById(sessionId, userId);
+    if (!sessionResult.success) {
+      return this.failure('セッションのアクセス確認に失敗しました', {
+        developerMessage: 'Failed to verify session access before reading latest combined content',
+        context: { sessionId, userId },
+      });
+    }
+    if (!sessionResult.data) {
+      return this.failure('セッションへのアクセス権がありません', {
+        developerMessage: 'Unauthorized session access for latest combined content',
+        context: { sessionId, userId },
+      });
+    }
+
+    const { data, error } = await this.supabase
+      .from('session_combined_contents')
+      .select('content')
+      .eq('session_id', sessionId)
+      .eq('is_latest', true)
+      .maybeSingle();
+
+    if (error) {
+      return this.failure('最新完成形の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to get latest combined content by session',
+        context: { sessionId, userId },
+      });
+    }
+
+    return this.success(data?.content ?? null);
+  }
+
+  /**
    * チャットセッションのサービスIDを更新
    * オーナー/スタッフ間のアクセス制御に対応
    */

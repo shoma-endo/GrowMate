@@ -25,6 +25,7 @@ import AnnotationPanel from './AnnotationPanel';
 import type { StepActionBarRef } from './StepActionBar';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 import { getLatestBlogStep7MessageBySession } from '@/server/actions/chat.actions';
+import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { Service } from '@/server/schemas/brief.schema';
 import { BlogStepId, BLOG_STEP_IDS } from '@/lib/constants';
 import type { AnnotationRecord } from '@/types/annotation';
@@ -262,6 +263,9 @@ interface ChatLayoutCtx {
   onGenerateTitleMeta: () => void;
   isGenerateTitleMetaLoading: boolean;
   onLoadBlogArticle?: (() => Promise<void>) | null | undefined;
+  headingIndex?: number;
+  totalHeadings: number;
+  currentHeadingText?: string;
   initialStep?: BlogStepId | null;
   services: Service[];
   selectedServiceId: string | null;
@@ -299,6 +303,9 @@ const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
     onGenerateTitleMeta,
     isGenerateTitleMetaLoading,
     onLoadBlogArticle,
+    headingIndex,
+    totalHeadings,
+    currentHeadingText,
     initialStep,
     services,
     selectedServiceId,
@@ -441,9 +448,7 @@ const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
           />
         )}
 
-        {servicesError && (
-          <WarningAlert message={servicesError} onClose={onDismissServicesError} />
-        )}
+        {servicesError && <WarningAlert message={servicesError} onClose={onDismissServicesError} />}
 
         <MessageArea
           messages={[...chatSession.state.messages, ...optimisticMessages]}
@@ -498,6 +503,9 @@ const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
               ? onLoadBlogArticle
               : undefined
           }
+          totalHeadings={totalHeadings}
+          {...(headingIndex !== undefined && { headingIndex })}
+          {...(currentHeadingText !== undefined && { currentHeadingText })}
           services={services}
           selectedServiceId={selectedServiceId}
           onServiceChange={onServiceChange}
@@ -569,14 +577,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [chatSession.state.sessions, chatSession.state.currentSessionId]
   );
   const currentSessionTitle = currentSession?.title ?? '新しいチャット';
-  // 保存済みステップを計算（保存されているフィールドから判断）
-  const chatStateRef = useRef(chatSession.state);
   const canvasEditInFlightRef = useRef(false);
   const prevSessionIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    chatStateRef.current = chatSession.state;
-  }, [chatSession.state]);
+  const canvasContentRef = useRef<string>('');
 
   useEffect(() => {
     const sessionId = chatSession.state.currentSessionId;
@@ -792,6 +795,33 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     ? (selectedVersionByStep[resolvedCanvasStep] ?? null)
     : null;
 
+  // 見出し単位生成フロー用ステート・ロジック（カスタムフックで管理）
+  const step5Content = useMemo(
+    () =>
+      [...(chatSession.state.messages ?? [])].reverse().find(m => m.model === 'blog_creation_step5')
+        ?.content ?? null,
+    [chatSession.state.messages]
+  );
+
+  const {
+    headingSections,
+    isSavingHeading,
+    isHeadingInitInFlight,
+    headingInitError,
+    headingSaveError,
+    activeHeadingIndex,
+    activeHeading,
+    latestCombinedContent,
+    handleSaveHeadingSection: _handleSaveHeadingSection,
+    handleRetryHeadingInit,
+  } = useHeadingFlow({
+    sessionId: chatSession.state.currentSessionId ?? null,
+    isSessionLoading: chatSession.state.isLoading,
+    step5Content,
+    getAccessToken,
+    resolvedCanvasStep,
+  });
+
   const activeCanvasVersion = useMemo(() => {
     if (!resolvedCanvasStep) return null;
     const versions = blogCanvasVersionsByStep[resolvedCanvasStep] ?? [];
@@ -803,7 +833,105 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     return versions[versions.length - 1];
   }, [resolvedCanvasStep, activeVersionId, blogCanvasVersionsByStep]);
 
-  const canvasContent = activeCanvasVersion?.content ?? '';
+  // 見出し保存後に activeHeadingIndex が進んでも Canvas は前見出しの本文のまま。
+  // この状態で再保存すると誤保存になるため、新規生成が入るまで内容を空表示・保存無効化する。
+  const prevActiveHeadingIndexRef = useRef<number | undefined>(undefined);
+  const [isStep6ContentStale, setIsStep6ContentStale] = useState(false);
+  const prevStep6SessionIdRef = useRef<string | null>(null);
+  const step6Versions = blogCanvasVersionsByStep.step6 ?? [];
+  const latestStep6Version = step6Versions[step6Versions.length - 1] ?? null;
+  // 直前の確定見出しの updated_at より最新バージョンの createdAt が新しければ「現在見出し向け」と判定。
+  // 注意: updated_at はサーバー (ISO8601)、createdAt はフロント (message.timestamp) 由来で時刻ソースが異なる。
+  // 単一ユーザーフローでは問題にならない想定だが、差異による誤判定の可能性を留意すること。
+  const hasContentForCurrentHeading = useMemo(() => {
+    const headingIdx = activeHeadingIndex ?? 0;
+    // 初回見出し: 最新Step6本文 or ストリーミング中本文が存在し空でなければ true（未生成のまま保存させない）
+    if (headingIdx === 0) {
+      const fromVersion = (latestStep6Version?.content?.trim().length ?? 0) > 0;
+      const fromStreaming = (canvasStreamingContent?.trim().length ?? 0) > 0;
+      return fromVersion || fromStreaming;
+    }
+    const prevHeading = headingSections[headingIdx - 1];
+    if (!prevHeading?.isConfirmed) return false;
+    const prevUpdatedMs = prevHeading.updatedAt
+      ? new Date(prevHeading.updatedAt).getTime()
+      : 0;
+    const versionCreatedMs = latestStep6Version?.createdAt ?? 0;
+    return versionCreatedMs > prevUpdatedMs;
+  }, [activeHeadingIndex, headingSections, latestStep6Version, canvasStreamingContent]);
+
+  // ステール判定を単一の effect に統合
+  useEffect(() => {
+    const currentSessionId = chatSession.state.currentSessionId ?? null;
+
+    if (resolvedCanvasStep !== 'step6') {
+      setIsStep6ContentStale(false);
+      prevStep6SessionIdRef.current = currentSessionId;
+      return;
+    }
+
+    // セッション切り替え時: ref をリセット
+    if (prevStep6SessionIdRef.current !== currentSessionId) {
+      prevStep6SessionIdRef.current = currentSessionId;
+      prevActiveHeadingIndexRef.current = undefined;
+    }
+
+    // ストリーミング中は常に非ステール
+    if (canvasStreamingContent) {
+      setIsStep6ContentStale(false);
+      prevActiveHeadingIndexRef.current = activeHeadingIndex;
+      return;
+    }
+
+    // 現在見出し向けコンテンツがあれば非ステール
+    if ((activeHeadingIndex ?? 0) > 0 && hasContentForCurrentHeading) {
+      setIsStep6ContentStale(false);
+      prevActiveHeadingIndexRef.current = activeHeadingIndex;
+      return;
+    }
+
+    // 見出しが進んだ or 現在見出し向けコンテンツがない場合はステール（初回見出し含む）
+    const prev = prevActiveHeadingIndexRef.current;
+    const headingAdvanced =
+      prev !== undefined &&
+      activeHeadingIndex !== undefined &&
+      activeHeadingIndex > prev;
+    setIsStep6ContentStale(headingAdvanced || !hasContentForCurrentHeading);
+    prevActiveHeadingIndexRef.current = activeHeadingIndex;
+  }, [
+    chatSession.state.currentSessionId,
+    resolvedCanvasStep,
+    activeHeadingIndex,
+    hasContentForCurrentHeading,
+    canvasStreamingContent,
+  ]);
+
+  const canvasContent = useMemo(() => {
+    if (resolvedCanvasStep === 'step6') {
+      // 全見出し確定済み → session_combined_contents の結合コンテンツを表示
+      // 取得遅延/失敗時は activeCanvasVersion にフォールバック（空表示を防ぐ）
+      if (!activeHeading && headingSections.length > 0) {
+        return latestCombinedContent ?? activeCanvasVersion?.content ?? '';
+      }
+      // 確定済みの場合はDBに保存された確定コンテンツを優先
+      if (activeHeading?.isConfirmed) {
+        return activeHeading.content;
+      }
+      // 見出し遷移直後は前見出し本文を表示しない（誤保存防止）
+      if (isStep6ContentStale) {
+        return '';
+      }
+    }
+    // 未確定の場合は最新のバージョン（生成中の内容含む）を表示
+    return activeCanvasVersion?.content ?? '';
+  }, [
+    resolvedCanvasStep,
+    activeHeading,
+    headingSections.length,
+    latestCombinedContent,
+    activeCanvasVersion,
+    isStep6ContentStale,
+  ]);
 
   const canvasVersionsWithMeta = useMemo(() => {
     return canvasVersionsForStep.map((version, index) => ({
@@ -820,6 +948,15 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       ),
     [blogCanvasVersionsByStep, nextStepForPlaceholder]
   );
+
+  // handleSaveHeadingSection はフック側のシグネチャが (content: string) のため、ここでラップする。
+  // CanvasPanel が contentRef に表示中の内容を随時更新するため、保存時は ref を優先して
+  // ストリーミング完了直後のクリックでも最新編集内容が保存される。
+  const handleSaveHeadingSection = useCallback(async () => {
+    if (isStep6ContentStale) return;
+    const contentToSave = canvasContentRef.current || canvasStreamingContent || canvasContent;
+    await _handleSaveHeadingSection(contentToSave);
+  }, [_handleSaveHeadingSection, canvasStreamingContent, canvasContent, isStep6ContentStale]);
 
   // 履歴ベースのモデル自動検出は削除（InputArea 側でフロー状態から自動選択）
 
@@ -1477,6 +1614,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           onGenerateTitleMeta: handleGenerateTitleMeta,
           isGenerateTitleMetaLoading: isGeneratingTitleMeta,
           onLoadBlogArticle: handleLoadBlogArticle,
+          totalHeadings: headingSections.length,
+          ...(activeHeadingIndex !== undefined && { headingIndex: activeHeadingIndex }),
+          ...(activeHeading?.headingText !== undefined && {
+            currentHeadingText: activeHeading.headingText,
+          }),
           initialStep,
           services,
           selectedServiceId,
@@ -1500,6 +1642,21 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           activeStepId={resolvedCanvasStep ?? null}
           onStepSelect={handleCanvasStepSelect}
           streamingContent={canvasStreamingContent}
+          canvasContentRef={canvasContentRef}
+          // 見出し単位生成フロー用（exactOptionalPropertyTypes のため undefined 時は渡さない）
+          {...(activeHeadingIndex !== undefined && { headingIndex: activeHeadingIndex })}
+          totalHeadings={headingSections.length}
+          {...(activeHeading?.headingText !== undefined && {
+            currentHeadingText: activeHeading.headingText,
+          })}
+          onSaveHeadingSection={handleSaveHeadingSection}
+          isSavingHeading={isSavingHeading}
+          isStep6SaveDisabled={isStep6ContentStale}
+          headingSaveError={headingSaveError}
+          headingInitError={headingInitError}
+          onRetryHeadingInit={handleRetryHeadingInit}
+          isRetryingHeadingInit={isHeadingInitInFlight}
+          isStreaming={isCanvasStreaming}
         />
       )}
     </div>
