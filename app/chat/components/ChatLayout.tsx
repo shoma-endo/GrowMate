@@ -1146,11 +1146,23 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           const hashes = '#'.repeat(section.headingLevel);
           return `${hashes} ${section.headingText}\n\n${section.content}`;
         }
-        // リセット直後: 全見出しが未生成の場合は旧chatメッセージ由来の内容を表示しない
         const allSectionsEmpty = headingSections.every(
           s => !s.content || s.content.trim() === ''
         );
-        if (allSectionsEmpty) {
+        if (allSectionsEmpty && activeCanvasVersion?.content?.trim()) {
+          // 構成リセット直後の旧バージョンのみ非表示。今回の生成内容はCanvasに表示する
+          const versionCreatedMs = activeCanvasVersion?.createdAtIso
+            ? new Date(activeCanvasVersion.createdAtIso).getTime()
+            : (activeCanvasVersion?.createdAt ?? 0);
+          const sectionsCreatedMs = Math.min(
+            ...headingSections.map(s =>
+              s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity
+            )
+          );
+          if (sectionsCreatedMs !== Infinity && versionCreatedMs < sectionsCreatedMs) {
+            return ''; // 旧バージョン → 非表示
+          }
+        } else if (allSectionsEmpty) {
           return '';
         }
       }
