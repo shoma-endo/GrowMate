@@ -57,7 +57,16 @@ async function verifySessionReadAccess(sessionId: string, userId: string) {
 export async function initializeHeadingSections(data: z.infer<typeof initializeHeadingSchema>) {
   const parseResult = initializeHeadingSchema.safeParse(data);
   if (!parseResult.success) {
-    return { success: false, error: '入力データが不正です' };
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[initializeHeadingSections] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error };
   }
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
@@ -93,7 +102,16 @@ export async function initializeHeadingSections(data: z.infer<typeof initializeH
 export async function getHeadingSections(data: z.infer<typeof getHeadingSectionsSchema>) {
   const parseResult = getHeadingSectionsSchema.safeParse(data);
   if (!parseResult.success) {
-    return { success: false, error: '入力データが不正です', data: [] };
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[getHeadingSections] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error, data: [] };
   }
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
@@ -133,7 +151,21 @@ export async function getHeadingSections(data: z.infer<typeof getHeadingSections
 export async function saveHeadingSection(data: z.infer<typeof saveHeadingSectionSchema>) {
   const parseResult = saveHeadingSectionSchema.safeParse(data);
   if (!parseResult.success) {
-    return { success: false, error: '入力データが不正です' };
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const isContentError = parseResult.error.issues.some(
+      i => i.path.includes('content') || (i.message && i.message.includes('本文'))
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : isContentError
+        ? '本文が空です。内容を入力してから保存してください。'
+        : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[saveHeadingSection] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error };
   }
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
@@ -172,7 +204,16 @@ export async function getLatestCombinedContent(
 ) {
   const parseResult = getLatestCombinedContentSchema.safeParse(data);
   if (!parseResult.success) {
-    return { success: false, error: '入力データが不正です', data: null };
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[getLatestCombinedContent] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error, data: null };
   }
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
@@ -206,7 +247,16 @@ export async function getCombinedContentVersions(
 ) {
   const parseResult = getCombinedContentVersionsSchema.safeParse(data);
   if (!parseResult.success) {
-    return { success: false, error: '入力データが不正です', data: [] };
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[getCombinedContentVersions] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error, data: [] };
   }
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
@@ -245,7 +295,16 @@ export async function getCombinedContentVersions(
 export async function resetHeadingSections(data: z.infer<typeof resetHeadingSectionsSchema>) {
   const parseResult = resetHeadingSectionsSchema.safeParse(data);
   if (!parseResult.success) {
-    return { success: false, error: '入力データが不正です' };
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[resetHeadingSections] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error };
   }
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
@@ -279,7 +338,16 @@ export async function rebuildCombinedContentFromHeadings(
 ) {
   const parseResult = rebuildCombinedContentSchema.safeParse(data);
   if (!parseResult.success) {
-    return { success: false, error: '入力データが不正です' };
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[rebuildCombinedContentFromHeadings] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error };
   }
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);

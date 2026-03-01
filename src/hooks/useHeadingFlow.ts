@@ -113,7 +113,13 @@ export function useHeadingFlow({
   const fetchHeadingSections = useCallback(
     async (sid: string): Promise<SessionHeadingSection[]> => {
       const liffAccessToken = await getAccessToken();
-      const res = await headingActions.getHeadingSections({ sessionId: sid, liffAccessToken });
+      if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
+        return [];
+      }
+      const res = await headingActions.getHeadingSections({
+        sessionId: sid,
+        liffAccessToken: liffAccessToken.trim(),
+      });
       // セッション切り替え時の競合防止
       if (res.success && res.data && sid === currentSessionIdRef.current) {
         setHeadingSections(res.data);
@@ -127,9 +133,12 @@ export function useHeadingFlow({
   const fetchLatestCombinedContent = useCallback(
     async (sid: string): Promise<void> => {
       const liffAccessToken = await getAccessToken();
+      if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
+        return;
+      }
       const res = await headingActions.getLatestCombinedContent({
         sessionId: sid,
-        liffAccessToken,
+        liffAccessToken: liffAccessToken.trim(),
       });
       if (res.success && sid === currentSessionIdRef.current) {
         setLatestCombinedContent(res.data ?? null);
@@ -141,9 +150,12 @@ export function useHeadingFlow({
   const fetchCombinedContentVersions = useCallback(
     async (sid: string): Promise<void> => {
       const liffAccessToken = await getAccessToken();
+      if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
+        return;
+      }
       const res = await headingActions.getCombinedContentVersions({
         sessionId: sid,
-        liffAccessToken,
+        liffAccessToken: liffAccessToken.trim(),
       });
       if (res.success && sid === currentSessionIdRef.current) {
         setCombinedContentVersions(res.data);
@@ -222,10 +234,16 @@ export function useHeadingFlow({
           didInitWithStep5ContentRef.current = true;
           lastInitStep5ContentRef.current = trimmedStep5;
           const liffAccessToken = await getAccessToken();
+          if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
+            if (sessionId === currentSessionIdRef.current) {
+              setHeadingInitError('認証トークンを取得できませんでした。LINEで再ログインしてください。');
+            }
+            return;
+          }
           const res = await headingActions.initializeHeadingSections({
             sessionId,
             step5Markdown: trimmedStep5,
-            liffAccessToken,
+            liffAccessToken: liffAccessToken.trim(),
           });
           if (res.success) {
             const sections = await fetchHeadingSections(sessionId);
@@ -325,11 +343,17 @@ export function useHeadingFlow({
       setHeadingSaveError(null);
       try {
         const liffAccessToken = await getAccessToken();
+        if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
+          const errorMessage = '認証トークンを取得できませんでした。LINEで再ログインしてください。';
+          setHeadingSaveError(errorMessage);
+          toast.error(errorMessage);
+          return false;
+        }
         const res = await headingActions.saveHeadingSection({
           sessionId,
           headingKey,
           content,
-          liffAccessToken,
+          liffAccessToken: liffAccessToken.trim(),
         });
 
         if (res.success) {
