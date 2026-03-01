@@ -1061,8 +1061,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                       <Info size={16} />
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent className="max-w-[270px] text-xs space-y-2">
-                    <p>ステップ5 の構成案から以下を抽出します。</p>
+                  <TooltipContent className="max-w-[300px] text-xs space-y-2">
+                    <p>
+                      メモ・補足情報の基本構成（###/####形式）を優先し、なければステップ5の構成案から以下を抽出します。
+                    </p>
                     <ul className="list-disc pl-3 space-y-0.5">
                       <li>
                         <code className="text-[10px] px-1 py-0.5 bg-gray-200 text-gray-900 rounded font-mono">
@@ -1077,7 +1079,9 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                         　小見出し
                       </li>
                     </ul>
-                    <p>ステップ7 開始後にステップ5を再保存しても、見出しは自動更新されません。</p>
+                    <p>
+                      ステップ7 開始後に基本構成や構成案を変更しても、見出しは自動更新されません。構成を変更したい場合は「構成リセット」を行ってください。
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

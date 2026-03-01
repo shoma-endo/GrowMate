@@ -172,7 +172,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                 <span className="ml-2 inline-flex items-center gap-1.5">
                   {hasAttemptedHeadingInit && !isHeadingInitInFlight && (
                     <span className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
-                      見出しが見つかりません。ステップ5を見直してください
+                      見出しが見つかりません。メモ・補足情報の基本構成、またはステップ5の構成案に###/####形式で見出しを記載してください
                     </span>
                   )}
                   {onRetryHeadingInit && (
@@ -187,7 +187,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                       }}
                       disabled={isHeadingInitInFlight}
                       className="h-6 px-2 text-[10px] border-amber-300 text-amber-800 hover:bg-amber-50"
-                      title="Step5を###形式で保存した後、ここで再試行"
+                      title="メモ・補足情報の基本構成、またはステップ5を###/####形式で保存した後、ここで再試行"
                     >
                       {isHeadingInitInFlight ? (
                         <Loader2 size={10} className="animate-spin" />
@@ -265,7 +265,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
           <Button
             onClick={() => {
               const confirmMessage =
-                '見出し構成と生成済みの本文（各見出しの中身）をすべてリセットします。※チャット履歴や書き出し案は保持されます。\n\n構成案（ステップ5）の内容から見出しの抽出・生成を最初からやり直しますか？';
+                '見出し構成と生成済みの本文（各見出しの中身）をすべてリセットします。※チャット履歴や書き出し案は保持されます。\n\nメモ・補足情報の基本構成、またはステップ5の構成案の内容から見出しの抽出・生成を最初からやり直しますか？';
               if (window.confirm(confirmMessage)) {
                 void onResetHeadingConfiguration();
               }
@@ -273,7 +273,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             disabled={isDisabled || isHeadingFlowBusy}
             size="sm"
             variant="outline"
-            title="step5の構成案からstep7見出し構成を再抽出します"
+            title="メモ・補足情報の基本構成、またはステップ5の構成案からstep7見出し構成を再抽出します"
             className="flex items-center gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
           >
             <RotateCw size={14} />

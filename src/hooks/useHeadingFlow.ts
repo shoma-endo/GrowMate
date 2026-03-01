@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { extractHeadingsFromMarkdown } from '@/lib/heading-extractor';
 import * as headingActions from '@/server/actions/heading-flow.actions';
+import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 import type { SessionHeadingSection } from '@/types/heading-flow';
 import { type BlogStepId, HEADING_FLOW_STEP_ID } from '@/lib/constants';
 
@@ -229,10 +230,25 @@ export function useHeadingFlow({
     const initAndFetch = async () => {
       setIsHeadingInitInFlight(true);
       try {
-        const trimmedStep5 = step5Content?.trim();
-        if (trimmedStep5) {
+        // 見出し抽出元: メモ・補足情報の基本構成（content_annotations.basic_structure）を優先、
+        // 見出しが抽出できない場合は最新の step5 構成案をフォールバック
+        const trimmedStep5 = step5Content?.trim() ?? '';
+        let outlineSource = trimmedStep5;
+
+        const annotationRes = await getContentAnnotationBySession(sessionId);
+        if (annotationRes.success && annotationRes.data?.basic_structure) {
+          const trimmedBasic = annotationRes.data.basic_structure.trim();
+          if (
+            trimmedBasic &&
+            extractHeadingsFromMarkdown(trimmedBasic).length > 0
+          ) {
+            outlineSource = trimmedBasic;
+          }
+        }
+
+        if (outlineSource) {
           didInitWithStep5ContentRef.current = true;
-          lastInitStep5ContentRef.current = trimmedStep5;
+          lastInitStep5ContentRef.current = outlineSource;
           const liffAccessToken = await getAccessToken();
           if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
             if (sessionId === currentSessionIdRef.current) {
@@ -242,7 +258,7 @@ export function useHeadingFlow({
           }
           const res = await headingActions.initializeHeadingSections({
             sessionId,
-            step5Markdown: trimmedStep5,
+            step5Markdown: outlineSource,
             liffAccessToken: liffAccessToken.trim(),
           });
           if (res.success) {
@@ -262,7 +278,7 @@ export function useHeadingFlow({
             }
           }
         } else {
-          // step5 メッセージがない、または空の場合は「試行済み」としてループを止める
+          // 基本構成も step5 もない、または見出しが抽出できない場合は「試行済み」としてループを止める
           if (sessionId === currentSessionIdRef.current) {
             setHasAttemptedHeadingInit(true);
           }
