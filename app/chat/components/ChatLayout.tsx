@@ -812,8 +812,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     return initialMap;
   }, [chatSession.state.messages]);
 
-  const hasStep7Content = (blogCanvasVersionsByStep.step7 ?? []).length > 0;
-
   useEffect(() => {
     const selectionUpdates: Partial<Record<BlogStepId, string | null>> = {};
     const followUpdates: Partial<Record<BlogStepId, boolean>> = {};
@@ -932,6 +930,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     getAccessToken,
     resolvedCanvasStep,
   });
+
+  const hasStep7Content = (blogCanvasVersionsByStep.step7 ?? []).length > 0;
 
   const {
     viewingHeadingIndex,
@@ -1054,9 +1054,29 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     if (section?.isConfirmed) return true;
     const headingIdx = idx;
     if (headingIdx === 0) {
-      const fromVersion = (latestStep6Version?.content?.trim().length ?? 0) > 0;
       const fromStreaming = (canvasStreamingContent?.trim().length ?? 0) > 0;
-      return fromVersion || fromStreaming;
+      if (fromStreaming) return true;
+      const allSectionsEmpty = headingSections.every(
+        s => !s.content || s.content.trim() === ''
+      );
+      const fromVersion = (latestStep6Version?.content?.trim().length ?? 0) > 0;
+      if (allSectionsEmpty && fromVersion) {
+        // 構成リセット直後は旧バージョン（sections作成前のchat）を無視。今回の生成（sections作成後）なら保存可能にする
+        const versionCreatedMs = latestStep6Version?.createdAtIso
+          ? new Date(latestStep6Version.createdAtIso).getTime()
+          : (latestStep6Version?.createdAt ?? 0);
+        const sectionsCreatedMs = Math.min(
+          ...headingSections.map(s =>
+            s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity
+          )
+        );
+        if (sectionsCreatedMs !== Infinity && versionCreatedMs < sectionsCreatedMs) {
+          return false; // 旧バージョン → 生成ボタン
+        }
+        return true; // 今回の生成 → 保存ボタン
+      }
+      if (allSectionsEmpty) return false;
+      return fromVersion;
     }
     const prevHeading = headingSections[headingIdx - 1];
     if (!prevHeading?.isConfirmed) return false;
