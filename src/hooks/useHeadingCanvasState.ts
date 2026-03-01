@@ -119,7 +119,7 @@ export function useHeadingCanvasState({
       });
 
       if (res.success) {
-        toast.success('見出し構成をリセットしました');
+        toast.info('見出し構成をリセットしました。見出しを再抽出しています…');
         setViewingHeadingIndex(null);
         await onResetComplete();
         return true;

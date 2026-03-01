@@ -48,7 +48,7 @@ interface UseHeadingFlowReturn {
    * @param overrideHeadingKey 指定時はその見出しを保存（再編集用）。未指定時は activeHeading を保存
    */
   handleSaveHeadingSection: (content: string, overrideHeadingKey?: string) => Promise<boolean>;
-  handleRetryHeadingInit: () => void;
+  handleRetryHeadingInit: (options?: { fromReset?: boolean }) => void;
   /** 見出し確定内容から完成形を再生成して新バージョン保存する */
   handleRebuildCombinedContent: () => Promise<boolean>;
   isRebuildingCombinedContent: boolean;
@@ -97,6 +97,8 @@ export function useHeadingFlow({
   const didInitWithStep5ContentRef = useRef(false);
   /** 最後に init を試行した step5Content。更新検知による無限ループ防止用 */
   const lastInitStep5ContentRef = useRef<string | null>(null);
+  /** 構成リセット後に init が成功したら完了トーストを表示するためのフラグ */
+  const isResetInitRef = useRef(false);
 
   const activeHeadingIndex = useMemo(() => {
     if (headingSections.length === 0) return undefined;
@@ -163,6 +165,7 @@ export function useHeadingFlow({
     setHasAttemptedHeadingInit(false);
     didInitWithStep5ContentRef.current = false;
     lastInitStep5ContentRef.current = null;
+    isResetInitRef.current = false;
     setIsHeadingInitInFlight(false);
     setHeadingInitError(null);
     setHeadingSaveError(null);
@@ -224,10 +227,14 @@ export function useHeadingFlow({
             liffAccessToken,
           });
           if (res.success) {
-            await fetchHeadingSections(sessionId);
+            const sections = await fetchHeadingSections(sessionId);
             if (sessionId === currentSessionIdRef.current) {
               setHeadingInitError(null);
               setHasAttemptedHeadingInit(true);
+              if (sections.length > 0 && isResetInitRef.current) {
+                isResetInitRef.current = false;
+                toast.success('見出しを抽出しました');
+              }
             }
           } else {
             console.error('Failed to initialize heading sections:', res.error);
@@ -249,6 +256,7 @@ export function useHeadingFlow({
       } finally {
         if (sessionId === currentSessionIdRef.current) {
           setIsHeadingInitInFlight(false);
+          isResetInitRef.current = false;
         }
       }
     };
@@ -370,13 +378,16 @@ export function useHeadingFlow({
     ]
   );
 
-  const handleRetryHeadingInit = useCallback(() => {
+  const handleRetryHeadingInit = useCallback((options?: { fromReset?: boolean }) => {
     // 明示リトライ時は初回化トラッカーも戻し、Step5 再読込後に自動初期化できるようにする。
     didInitWithStep5ContentRef.current = false;
     lastInitStep5ContentRef.current = null;
     setHeadingInitError(null);
     setHeadingSaveError(null);
     setHasAttemptedHeadingInit(false);
+    if (options?.fromReset) {
+      isResetInitRef.current = true;
+    }
   }, []);
 
   const handleRebuildCombinedContent = useCallback(async (): Promise<boolean> => {

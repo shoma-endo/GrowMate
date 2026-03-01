@@ -963,12 +963,15 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     },
     onResetComplete: async () => {
       if (chatSession.state.currentSessionId) {
+        // Canvasを開き、再抽出された見出し1からスタートできる状態にする
+        setCanvasPanelOpen(true);
+        pendingViewingIndexRef.current = 0;
         // 明示リセット後は初期化ガードを解除し、Step5 からの再抽出を再実行できる状態に戻す
         await Promise.all([
           chatSession.actions.loadSession(chatSession.state.currentSessionId),
           refetchHeadings(),
         ]);
-        handleRetryHeadingInit();
+        handleRetryHeadingInit({ fromReset: true });
       }
     },
   });
