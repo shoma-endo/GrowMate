@@ -217,13 +217,14 @@ export function useHeadingFlow({
     const initAndFetch = async () => {
       setIsHeadingInitInFlight(true);
       try {
-        if (step5Content) {
+        const trimmedStep5 = step5Content?.trim();
+        if (trimmedStep5) {
           didInitWithStep5ContentRef.current = true;
-          lastInitStep5ContentRef.current = step5Content;
+          lastInitStep5ContentRef.current = trimmedStep5;
           const liffAccessToken = await getAccessToken();
           const res = await headingActions.initializeHeadingSections({
             sessionId,
-            step5Markdown: step5Content,
+            step5Markdown: trimmedStep5,
             liffAccessToken,
           });
           if (res.success) {
@@ -243,7 +244,7 @@ export function useHeadingFlow({
             }
           }
         } else {
-          // step5 メッセージがない場合は「試行済み」としてループを止める
+          // step5 メッセージがない、または空の場合は「試行済み」としてループを止める
           if (sessionId === currentSessionIdRef.current) {
             setHasAttemptedHeadingInit(true);
           }
@@ -288,13 +289,14 @@ export function useHeadingFlow({
       headingSections.length > 0;
     if (baseGuard) return;
 
-    const shouldResetForDelayedContent = !didInitWithStep5ContentRef.current && step5Content;
-
+    const trimmedCurrent = step5Content?.trim() ?? '';
+    const shouldResetForDelayedContent =
+      !didInitWithStep5ContentRef.current && trimmedCurrent.length > 0;
     const shouldResetForUpdatedContent =
-      step5Content &&
+      trimmedCurrent &&
       !isHeadingInitInFlight &&
-      step5Content !== lastInitStep5ContentRef.current &&
-      extractHeadingsFromMarkdown(step5Content).length > 0;
+      trimmedCurrent !== lastInitStep5ContentRef.current &&
+      extractHeadingsFromMarkdown(trimmedCurrent).length > 0;
 
     if (shouldResetForDelayedContent || shouldResetForUpdatedContent) {
       setHasAttemptedHeadingInit(false);
