@@ -331,6 +331,7 @@ interface ChatLayoutCtx {
   isSavingHeading: boolean;
   headingIndex?: number;
   totalHeadings: number;
+  currentHeadingText?: string;
   headingSections: SessionHeadingSection[];
   initialStep?: BlogStepId | null;
   services: Service[];
@@ -382,6 +383,7 @@ const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
     isSavingHeading,
     headingIndex,
     totalHeadings,
+    currentHeadingText,
     headingSections,
     initialStep,
     services,
@@ -603,6 +605,7 @@ const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
           isLegacyStep6ResetEligible={isLegacyStep6ResetEligible}
           totalHeadings={totalHeadings}
           {...(headingIndex !== undefined && { headingIndex })}
+          {...(currentHeadingText !== undefined && { currentHeadingText })}
           services={services}
           selectedServiceId={selectedServiceId}
           onServiceChange={onServiceChange}
@@ -963,6 +966,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     },
     onResetComplete: async () => {
       if (chatSession.state.currentSessionId) {
+        // ストリーミング中コンテンツをクリア（リセット後の旧表示防止）
+        setCanvasStreamingContent('');
         // 先にrefetchして古い見出しをクリアしてからCanvasを開く（順序を逆にすると古い見出し1が一瞬表示される）
         await Promise.all([
           chatSession.actions.loadSession(chatSession.state.currentSessionId),
@@ -1120,6 +1125,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         if (section?.isConfirmed && section.content) {
           const hashes = '#'.repeat(section.headingLevel);
           return `${hashes} ${section.headingText}\n\n${section.content}`;
+        }
+        // リセット直後: 全見出しが未生成の場合は旧chatメッセージ由来の内容を表示しない
+        const allSectionsEmpty = headingSections.every(
+          s => !s.content || s.content.trim() === ''
+        );
+        if (allSectionsEmpty) {
+          return '';
         }
       }
     }
@@ -2073,8 +2085,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           isSavingHeading: isSaving,
           headingSections,
           totalHeadings: headingSections.length,
-          ...(viewingHeadingIndex !== null && {
-            headingIndex: viewingHeadingIndex,
+          ...(viewingSection && {
+            headingIndex: viewingHeadingIndex as number,
+            currentHeadingText: viewingSection.headingText,
           }),
           initialStep,
           services,

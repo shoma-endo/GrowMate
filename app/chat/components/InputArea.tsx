@@ -92,6 +92,7 @@ interface InputAreaProps {
   onRetryHeadingInit?: () => void;
   headingIndex?: number;
   totalHeadings?: number;
+  currentHeadingText?: string;
   searchQuery: string;
   searchError: string | null;
   isSearching: boolean;
@@ -147,6 +148,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   onRetryHeadingInit,
   headingIndex,
   totalHeadings,
+  currentHeadingText,
   searchQuery,
   searchError,
   isSearching,
@@ -523,6 +525,7 @@ const InputArea: React.FC<InputAreaProps> = ({
               {...(onRetryHeadingInit !== undefined && { onRetryHeadingInit })}
               {...(headingIndex !== undefined && { headingIndex })}
               {...(totalHeadings !== undefined && { totalHeadings })}
+              {...(currentHeadingText !== undefined && { currentHeadingText })}
               {...(onResetHeadingConfiguration !== undefined && { onResetHeadingConfiguration })}
               isLegacyStep6ResetEligible={isLegacyStep6ResetEligible}
             />
