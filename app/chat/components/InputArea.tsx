@@ -168,7 +168,6 @@ const InputArea: React.FC<InputAreaProps> = ({
   const [blogArticleError, setBlogArticleError] = useState<string | null>(null);
 
   const isModelSelected = Boolean(selectedModel);
-  const isInputDisabled = disabled || !isModelSelected || isReadOnly;
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
   /**
@@ -209,6 +208,10 @@ const InputArea: React.FC<InputAreaProps> = ({
     return targetBlogStep;
   }, [nextStepForPlaceholder, targetBlogStep]);
 
+  const isStep7GuidanceMode =
+    selectedModel === 'blog_creation' && placeholderBlogStep === 'step7';
+  const isInputDisabled = disabled || !isModelSelected || isReadOnly || isStep7GuidanceMode;
+
   // ブログ作成のプレースホルダーはUIヒント用ステップを表示
   const placeholderMessage = (() => {
     if (!isModelSelected) {
@@ -216,6 +219,9 @@ const InputArea: React.FC<InputAreaProps> = ({
     }
 
     if (selectedModel === 'blog_creation') {
+      if (isStep7GuidanceMode) {
+        return 'step7はCanvasで「1件目の生成をスタート」または「この見出しを生成」を押して進めてください';
+      }
       const key = `blog_creation_${placeholderBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
       return BLOG_PLACEHOLDERS[key];
     }
@@ -306,7 +312,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isInputDisabled) return;
+    if (!input.trim() || isInputDisabled || isStep7GuidanceMode) return;
 
     const originalMessage = input.trim();
     // ブログ作成モデルの場合は、表示中ステップ(targetBlogStep)に送信する。
