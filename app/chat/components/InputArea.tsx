@@ -178,33 +178,34 @@ const InputArea: React.FC<InputAreaProps> = ({
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
   /**
-   * ブログ作成で「今回の入力をどのステップとして送るか」を一元化する。
-   * プレースホルダー表示と API/DB 送信モデルで同じ値を使い、表示と保存先の不整合を防ぐ。
+   * ブログ作成で「今回の入力をどのステップとして送るか」を決定する。
+   * 送信先は常に表示中ステップに固定し、手動移動なしでの意図しない先行送信を防ぐ。
    */
   const targetBlogStep = useMemo<BlogStepId>(() => {
-    if (hasDetectedBlogStep === false) return 'step1';
-
     const currentStep = displayStep ?? initialBlogStep ?? 'step1';
     const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
     if (currentIdx === -1) return 'step1';
 
+    return BLOG_STEP_IDS[currentIdx] as BlogStepId;
+  }, [displayStep, initialBlogStep]);
+
+  /**
+   * プレースホルダー表示専用の次ステップ。
+   * UIヒント用途のみに使い、実際の送信モデルには使用しない。
+   */
+  const placeholderBlogStep = useMemo<BlogStepId>(() => {
     if (nextStepForPlaceholder) return nextStepForPlaceholder;
+    return targetBlogStep;
+  }, [nextStepForPlaceholder, targetBlogStep]);
 
-    const shouldAdvance =
-      blogFlowStatus === 'waitingAction' || (blogFlowStatus === 'idle' && hasDetectedBlogStep);
-    const nextIdx = shouldAdvance ? currentIdx + 1 : currentIdx;
-    const targetIdx = Math.min(nextIdx, BLOG_STEP_IDS.length - 1);
-    return BLOG_STEP_IDS[targetIdx] as BlogStepId;
-  }, [hasDetectedBlogStep, displayStep, initialBlogStep, nextStepForPlaceholder, blogFlowStatus]);
-
-  // ブログ作成のプレースホルダーは targetBlogStep と一致させる（送信モデルと同一）
+  // ブログ作成のプレースホルダーはUIヒント用ステップを表示
   const placeholderMessage = (() => {
     if (!isModelSelected) {
       return '画面上部のチャットモデルを選択してください';
     }
 
     if (selectedModel === 'blog_creation') {
-      const key = `blog_creation_${targetBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
+      const key = `blog_creation_${placeholderBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
       return BLOG_PLACEHOLDERS[key];
     }
 
@@ -298,7 +299,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     if (!input.trim() || isInputDisabled) return;
 
     const originalMessage = input.trim();
-    // ブログ作成モデルの場合は、プレースホルダーと同じ targetBlogStep に送信する。
+    // ブログ作成モデルの場合は、表示中ステップ(targetBlogStep)に送信する。
     let effectiveModel: string = selectedModel;
     if (selectedModel === 'blog_creation') {
       effectiveModel = `blog_creation_${targetBlogStep}`;
