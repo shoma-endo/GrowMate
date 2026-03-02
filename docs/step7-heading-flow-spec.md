@@ -54,10 +54,36 @@ Step5 の構成案テキストから、以下のルールで見出しを認識�
 ### 5.2 Step7（見出し単位生成）
 
 1. Step7 初回開始時（および構成リセット後）の見出し抽出元は以下の優先順位とする。
-   - **優先**: メモ・補足情報の基本構成（`content_annotations.basic_structure`）。`###`/`####` が見出しとして抽出できる場合のみ使用。
+   - **優先**: メモ・補足情報の基本構成（`content_annotations.basic_structure`）を READ し、`###`/`####` が見出しとして抽出できる場合のみ使用。basic_structure 自体の初期化（書き込み）は一切行わない。
    - **フォールバック**: 上記が空または見出しを抽出できない場合、チャットの Step5 構成案テキストを使用。
    以降の再開時は再抽出せず、`session_heading_sections` を正本として読み込む。
+   詳細は 5.2.1 を参照。
 2. 見出し配列の先頭から順に「1見出し+本文」を生成する。
+
+### 5.2.1 content_annotations.basic_structure の仕様
+
+#### 格納場所
+- **テーブル**: `content_annotations`
+- **カラム**: `basic_structure` (text, NULL 許容)
+- **紐付け**: `session_id` で `chat_sessions` に紐づく。1 セッションあたり 1 件（UNIQUE 制約）
+
+#### データ形式
+- Markdown 形式のテキスト
+- Step5 構成案と同じ形式（`###` で中見出し、`####` で小見出し。`extractHeadingsFromMarkdown` で抽出）
+
+#### 読み取り時のエラーハンドリング
+- `content_annotations` が存在しない、または `session_id` に紐づくレコードがない場合: フォールバック（Step5 構成案）へ
+- `basic_structure` が null または空文字列の場合: フォールバック（Step5 構成案）へ
+- 見出し抽出結果が 0 件（`###`/`####` が含まれない）の場合: フォールバック（Step5 構成案）へ
+- malformed なデータ（例: 型が text でない）: 読み取り側で null/空として扱い、フォールバックへ
+
+#### 実装ファイル
+| ファイル | 責務 |
+|----------|------|
+| `src/server/actions/wordpress.actions.ts` | `getContentAnnotationBySession(sessionId)` で `content_annotations` から `basic_structure` を取得 |
+| `src/hooks/useHeadingFlow.ts` | 見出し抽出元の解決（basic_structure 優先、なければ step5Content）。`initializeHeadingSections` に outlineSource を渡す |
+| `src/lib/heading-extractor.ts` | `extractHeadingsFromMarkdown(markdown)` で `###`/`####` から見出し抽出（basic_structure も step5 も同一ロジック） |
+| `src/server/services/headingFlowService.ts` | `initializeHeadingSections(sessionId, step5Markdown)` で受け取った Markdown から見出し抽出・`session_heading_sections` に投入。抽出元の区別は行わない |
 3. 生成結果は Canvas で確認・修正可能。
 4. ユーザーが「保存して次へ」を押した時点で、その見出し本文を確定保存する。
 5. 見出し保存時は `session_heading_sections` のみ更新し、`session_combined_contents` へは保存しない。
@@ -576,8 +602,9 @@ Step7 移行時に触る想定ファイルを一覧化する。実装漏れ防�
 | `src/lib/constants.ts` | `HEADING_FLOW_STEP_ID` 追加 |
 | `src/lib/heading-extractor.ts` | `isStep7HeadingUnitMode` 化、step7 条件、`generateHeadingKey` の short_hash を SHA-256 先頭8文字に変更 |
 | `src/server/services/headingFlowService.ts` | `combineSections` に Step6 先頭付与、Step6 取得、`initializeHeadingSections` の UNIQUE 制約違反時エラー返却、`resetHeadingSections`（Step7 初期化用） |
+| `src/server/actions/wordpress.actions.ts` | `getContentAnnotationBySession` で `content_annotations.basic_structure` 取得（見出し抽出元の READ 用） |
 | `app/api/chat/canvas/stream/route.ts` | `isStep7HeadingUnit`、targetStep 条件、saveCombined の step7 対応 |
-| `src/hooks/useHeadingFlow.ts` | step7 条件、トースト文言 |
+| `src/hooks/useHeadingFlow.ts` | step7 条件、トースト文言、見出し抽出元の解決（basic_structure 優先 → step5 フォールバック） |
 | `src/hooks/useHeadingCanvasState.ts` | **新規**。見出し Canvas 状態の集約 |
 | `app/chat/components/ChatLayout.tsx` | フック利用、step7 分岐集約、タイルクリック |
 | `app/chat/components/CanvasPanel.tsx` | `activeStepId === 'step7'`、「見出し構成を初期化」ボタン、contentRef を onChange 毎に更新（8.7） |

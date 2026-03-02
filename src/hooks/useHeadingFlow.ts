@@ -96,8 +96,10 @@ export function useHeadingFlow({
 
   // step5Content が null のまま init した場合、後から content が入ったら再試行を許可する
   const didInitWithStep5ContentRef = useRef(false);
-  /** 最後に init を試行した step5Content。更新検知による無限ループ防止用 */
+  /** 最後に init で使用した抽出元の内容（outlineSource）。更新検知による無限ループ防止用 */
   const lastInitStep5ContentRef = useRef<string | null>(null);
+  /** 最後に init で使用した抽出元: basic_structure の場合は step5 の変更では再初期化しない */
+  const lastInitSourceRef = useRef<'basic_structure' | 'step5' | null>(null);
   /** 構成リセット後に init が成功したら完了トーストを表示するためのフラグ */
   const isResetInitRef = useRef(false);
 
@@ -178,6 +180,7 @@ export function useHeadingFlow({
     setHasAttemptedHeadingInit(false);
     didInitWithStep5ContentRef.current = false;
     lastInitStep5ContentRef.current = null;
+    lastInitSourceRef.current = null;
     isResetInitRef.current = false;
     setIsHeadingInitInFlight(false);
     setHeadingInitError(null);
@@ -230,8 +233,9 @@ export function useHeadingFlow({
     const initAndFetch = async () => {
       setIsHeadingInitInFlight(true);
       try {
-        // 見出し抽出元: メモ・補足情報の基本構成（content_annotations.basic_structure）を優先、
-        // 見出しが抽出できない場合は最新の step5 構成案をフォールバック
+        // 見出し抽出元: 基本構成（content_annotations.basic_structure）を優先して READ し、
+        // 見出しが抽出できる場合は使用。なければ step5 構成案。basic_structure 自体は DB に
+        // 保存されたメモ・補足情報なので、こちらから初期化（書き込み）は一切しない。
         const trimmedStep5 = step5Content?.trim() ?? '';
         let outlineSource = trimmedStep5;
 
@@ -249,6 +253,8 @@ export function useHeadingFlow({
         if (outlineSource) {
           didInitWithStep5ContentRef.current = true;
           lastInitStep5ContentRef.current = outlineSource;
+          lastInitSourceRef.current =
+            outlineSource !== trimmedStep5 ? 'basic_structure' : 'step5';
           const liffAccessToken = await getAccessToken();
           if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
             if (sessionId === currentSessionIdRef.current) {
@@ -312,9 +318,10 @@ export function useHeadingFlow({
   ]);
 
   // hasAttemptedHeadingInit をリセットして再初期化を許可する。
-  // (a) step5Content が null のまま init した後、後から content が入った場合
-  // (b) step5Content が後から ###/#### 形式で保存し直された場合（更新検知でリセットすると
-  //     fetch 一時失敗時の無限ループになるため、前回 init 時と「異なる」ときのみ）
+  // (a) step5Content が null のまま init した後、後から content が入った場合（遅延コンテンツ）
+  // (b) step5Content が後から ###/#### 形式で保存し直された場合（step5 を抽出元に使った時のみ。
+  //     basic_structure で初期化した場合は step5 の変更では再初期化しない＝不要な再 fetch を防ぐ）
+  // ※ basic_structure を変更した場合は再初期化されない。構成を反映させるには「構成リセット」を実行すること。
   useEffect(() => {
     const baseGuard =
       !isHeadingFlowActive(resolvedCanvasStep) ||
@@ -326,13 +333,14 @@ export function useHeadingFlow({
     const trimmedCurrent = step5Content?.trim() ?? '';
     const shouldResetForDelayedContent =
       !didInitWithStep5ContentRef.current && trimmedCurrent.length > 0;
-    const shouldResetForUpdatedContent =
+    const shouldResetForUpdatedStep5 =
+      lastInitSourceRef.current === 'step5' &&
       trimmedCurrent &&
       !isHeadingInitInFlight &&
       trimmedCurrent !== lastInitStep5ContentRef.current &&
       extractHeadingsFromMarkdown(trimmedCurrent).length > 0;
 
-    if (shouldResetForDelayedContent || shouldResetForUpdatedContent) {
+    if (shouldResetForDelayedContent || shouldResetForUpdatedStep5) {
       setHasAttemptedHeadingInit(false);
     }
   }, [
@@ -421,9 +429,10 @@ export function useHeadingFlow({
   );
 
   const handleRetryHeadingInit = useCallback((options?: { fromReset?: boolean }) => {
-    // 明示リトライ時は初回化トラッカーも戻し、Step5 再読込後に自動初期化できるようにする。
+    // 明示リトライ時は初回化トラッカーも戻し、再読込後に自動初期化できるようにする。
     didInitWithStep5ContentRef.current = false;
     lastInitStep5ContentRef.current = null;
+    lastInitSourceRef.current = null;
     setHeadingInitError(null);
     setHeadingSaveError(null);
     setHasAttemptedHeadingInit(false);
