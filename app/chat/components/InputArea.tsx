@@ -312,7 +312,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isInputDisabled || isStep7GuidanceMode) return;
+    if (!input.trim() || isInputDisabled) return;
 
     const originalMessage = input.trim();
     // ブログ作成モデルの場合は、表示中ステップ(targetBlogStep)に送信する。
