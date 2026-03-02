@@ -84,6 +84,7 @@ const getStep7HeadingLabel = (
     total = sections.length;
   } else if (headingIndexFromModel !== null && headingIndexFromModel >= 0) {
     displayNum = headingIndexFromModel + 1;
+    // 範囲外の履歴（構成変更後等）では分子>分母を防ぐため step7Total を使用
     total = step7Total;
   } else {
     // _h{n} がない場合: 本文 ### と sections を照合し、時系列と見出し順がズレたセッションでも正しい orderIndex を表示
@@ -110,8 +111,9 @@ const getStep7HeadingLabel = (
       total = sections.length;
     } else {
       displayNum = step7MessageIndex + 1;
+      // step7MessageIndex が sections を超える履歴では分子>分母を防ぐため step7Total を使用
       total =
-        sections.length > 0 && step7MessageIndex < sections.length
+        sections.length > 0 && displayNum <= sections.length
           ? sections.length
           : step7Total;
     }
