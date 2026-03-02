@@ -47,44 +47,62 @@ interface MessageAreaProps {
 const getStep7HeadingLabel = (
   message: ChatMessage,
   sections: SessionHeadingSection[],
-  step7MessageIndex: number
+  step7MessageIndex: number,
+  step7Total: number
 ): string | null => {
-  if (!sections.length) return null;
-  // 新方式: model に埋め込まれた見出しインデックスを最優先で使用
-  const indexedHeading = extractStep7HeadingIndexFromModel(message.model);
-  if (indexedHeading !== null && indexedHeading >= 0 && indexedHeading < sections.length) {
-    const section = sections[indexedHeading]!;
-    return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
-  }
-  // 旧データ互換: 本文中の見出し行から推測
   const normalized = normalizeCanvasContent(message.content ?? '').trim();
+
+  if (sections.length > 0) {
+    // 新方式: model に埋め込まれた見出しインデックスを最優先で使用
+    const indexedHeading = extractStep7HeadingIndexFromModel(message.model);
+    if (indexedHeading !== null && indexedHeading >= 0 && indexedHeading < sections.length) {
+      const section = sections[indexedHeading]!;
+      return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
+    }
+    // 旧データ互換: 本文中の見出し行から推測
+    for (const line of normalized.split('\n')) {
+      const match = line.trim().match(MARKDOWN_HEADING_REGEX);
+      if (match?.[1]) {
+        const headingText = normalizeForHeadingMatch(match[1]);
+        const matched = sections.filter(
+          s => normalizeForHeadingMatch(s.headingText) === headingText
+        );
+        if (matched.length === 1) {
+          const section = matched[0]!;
+          return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
+        }
+        if (matched.length > 1) {
+          // 重複見出しは step7 メッセージ順に最も近い orderIndex を選ぶ
+          const best = matched.reduce((prev, curr) =>
+            Math.abs(curr.orderIndex - step7MessageIndex) <
+            Math.abs(prev.orderIndex - step7MessageIndex)
+              ? curr
+              : prev
+          );
+          return `見出し ${best.orderIndex + 1}/${sections.length}：「${best.headingText}」`;
+        }
+      }
+    }
+    // 旧/通常経路互換: model や本文から特定できない場合は step7 メッセージ順で補完
+    if (step7MessageIndex >= 0 && step7MessageIndex < sections.length) {
+      const section = sections[step7MessageIndex]!;
+      return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
+    }
+  }
+
+  // フォールバック: headingSections が空（session_headings 未初期化等）でも本文から見出しを抽出して表示
   for (const line of normalized.split('\n')) {
     const match = line.trim().match(MARKDOWN_HEADING_REGEX);
     if (match?.[1]) {
-      const headingText = normalizeForHeadingMatch(match[1]);
-      const matched = sections.filter(
-        s => normalizeForHeadingMatch(s.headingText) === headingText
-      );
-      if (matched.length === 1) {
-        const section = matched[0]!;
-        return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
-      }
-      if (matched.length > 1) {
-        // 重複見出しは step7 メッセージ順に最も近い orderIndex を選ぶ
-        const best = matched.reduce((prev, curr) =>
-          Math.abs(curr.orderIndex - step7MessageIndex) <
-          Math.abs(prev.orderIndex - step7MessageIndex)
-            ? curr
-            : prev
-        );
-        return `見出し ${best.orderIndex + 1}/${sections.length}：「${best.headingText}」`;
+      const headingText = (match[1] ?? '').trim();
+      if (headingText) {
+        return `見出し ${step7MessageIndex + 1}/${step7Total}：「${headingText}」`;
       }
     }
   }
-  // 旧/通常経路互換: model や本文から特定できない場合は step7 メッセージ順で補完
-  if (step7MessageIndex >= 0 && step7MessageIndex < sections.length) {
-    const section = sections[step7MessageIndex]!;
-    return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
+  // 見出し行がなければメッセージ順のみ表示
+  if (step7MessageIndex >= 0) {
+    return `見出し ${step7MessageIndex + 1}/${step7Total}`;
   }
   return null;
 };
@@ -413,8 +431,13 @@ const MessageArea: React.FC<MessageAreaProps> = ({
               blogPreviewMeta && onOpenCanvas ? () => onOpenCanvas(message) : null;
             const step7Index = step7MessageIds.indexOf(message.id);
             const headingLabel =
-              blogPreviewMeta?.step === 'step7' && headingSections?.length && step7Index >= 0
-                ? getStep7HeadingLabel(message, headingSections, step7Index)
+              blogPreviewMeta?.step === 'step7' && step7Index >= 0
+                ? getStep7HeadingLabel(
+                    message,
+                    headingSections ?? [],
+                    step7Index,
+                    step7MessageIds.length
+                  )
                 : null;
 
             return (
