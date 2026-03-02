@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { Bot } from 'lucide-react';
-import { cn, normalizeForHeadingMatch } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import BlogPreviewTile from './common/BlogPreviewTile';
 import { BLOG_STEP_LABELS } from '@/lib/constants';
 import type { BlogStepId } from '@/lib/constants';
@@ -56,71 +56,18 @@ const extractHeadingTextFromContent = (content: string): string | null => {
   return null;
 };
 
-// 見出しラベル生成。
-// - 番号: model の _h{n} を最優先（同一見出しの再生成でも正しい番号が表示される）
-// - 文言: メッセージ本文の ### を優先（Canvasと同源。構成リセット後も正しく表示）
+// 見出しラベル生成。見出し文言のみ返す（番号 X/Y は表示しない）
 const getStep7HeadingLabel = (
   message: ChatMessage,
   sections: SessionHeadingSection[],
-  step7MessageIndex: number,
-  step7Total: number
+  step7MessageIndex: number
 ): string | null => {
   if (step7MessageIndex < 0) return null;
 
   const headingIndexFromModel = extractStep7HeadingIndexFromModel(message.model);
   const headingTextFromContent = extractHeadingTextFromContent(message.content ?? '');
 
-  // 番号: model の _h{n} を最優先（blog_creation_step7_h0 等。再生成履歴でも一致）
-  // _h{n} がない既存メッセージ: 本文の ### と sections を照合して orderIndex に寄せる（旧データ互換）
-  let displayNum: number;
-  let total: number;
-  if (
-    headingIndexFromModel !== null &&
-    headingIndexFromModel >= 0 &&
-    sections.length > 0 &&
-    headingIndexFromModel < sections.length
-  ) {
-    displayNum = headingIndexFromModel + 1;
-    total = sections.length;
-  } else if (headingIndexFromModel !== null && headingIndexFromModel >= 0) {
-    displayNum = headingIndexFromModel + 1;
-    // 範囲外の履歴（構成変更後等）では分子>分母を防ぐため step7Total を使用
-    total = step7Total;
-  } else {
-    // _h{n} がない場合: 本文 ### と sections を照合し、時系列と見出し順がズレたセッションでも正しい orderIndex を表示
-    let orderIndexFromContent: number | null = null;
-    if (headingTextFromContent && sections.length > 0) {
-      const normalizedHeading = normalizeForHeadingMatch(headingTextFromContent);
-      const matched = sections.filter(
-        s => normalizeForHeadingMatch(s.headingText) === normalizedHeading
-      );
-      if (matched.length === 1) {
-        orderIndexFromContent = matched[0]!.orderIndex;
-      } else if (matched.length > 1) {
-        const best = matched.reduce((prev, curr) =>
-          Math.abs(curr.orderIndex - step7MessageIndex) <
-          Math.abs(prev.orderIndex - step7MessageIndex)
-            ? curr
-            : prev
-        );
-        orderIndexFromContent = best.orderIndex;
-      }
-    }
-    if (orderIndexFromContent !== null) {
-      displayNum = orderIndexFromContent + 1;
-      total = sections.length;
-    } else {
-      displayNum = step7MessageIndex + 1;
-      // step7MessageIndex が sections を超える履歴では分子>分母を防ぐため step7Total を使用
-      total =
-        sections.length > 0 && displayNum <= sections.length
-          ? sections.length
-          : step7Total;
-    }
-  }
-
-  // 文言: 本文の ### を優先、なければ sections から。
-  // model の h{n} が範囲外の場合でも step7MessageIndex で sections にフォールバックする
+  // 文言: 本文の ### を優先、なければ sections から
   const effectiveSectionIndex =
     headingIndexFromModel !== null &&
     headingIndexFromModel >= 0 &&
@@ -133,13 +80,7 @@ const getStep7HeadingLabel = (
       ? sections[effectiveSectionIndex]?.headingText
       : null);
 
-  // 分子 > 分母の不正表示は出さない（構成変更後・再生成履歴等の不整合ケース）
-  if (displayNum > total) return null;
-
-  if (headingText) {
-    return `見出し ${displayNum}/${total}：「${headingText}」`;
-  }
-  return `見出し ${displayNum}/${total}`;
+  return headingText ?? null;
 };
 
 const MessageArea: React.FC<MessageAreaProps> = ({
@@ -467,12 +408,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
             const step7Index = step7MessageIds.indexOf(message.id);
             const headingLabel =
               blogPreviewMeta?.step === 'step7' && step7Index >= 0
-                ? getStep7HeadingLabel(
-                    message,
-                    headingSections ?? [],
-                    step7Index,
-                    step7MessageIds.length
-                  )
+                ? getStep7HeadingLabel(message, headingSections ?? [], step7Index)
                 : null;
 
             return (
