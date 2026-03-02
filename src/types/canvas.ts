@@ -51,6 +51,8 @@ export interface CanvasPanelProps {
   canvasContentRef?: React.MutableRefObject<string>;
   // 見出し単位生成フロー用
   headingIndex?: number;
+  /** Step7 で見出し単体操作UI（戻る/進む/生成/保存）を表示するか */
+  showHeadingUnitActions?: boolean;
   /** 生成・保存対象の見出しインデックス（最初の未確定）。headingIndex と一致するときのみ生成/保存ボタンを表示 */
   activeHeadingIndex?: number;
   totalHeadings?: number;
@@ -68,6 +70,8 @@ export interface CanvasPanelProps {
   headingInitError?: string | null;
   onRetryHeadingInit?: () => void;
   isRetryingHeadingInit?: boolean;
+  onRebuildCombinedContent?: () => Promise<boolean> | void;
+  isRebuildingCombinedContent?: boolean;
   isStreaming?: boolean;
   /** 前の見出しに戻る */
   onPrevHeading?: () => void;

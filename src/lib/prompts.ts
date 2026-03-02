@@ -276,7 +276,7 @@ import { getBrief } from '@/server/actions/brief.actions';
 import type { BriefInput } from '@/server/schemas/brief.schema';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { BlogStepId, isStep7 as isBlogStep7, toTemplateName } from '@/lib/constants';
+import { BLOG_STEP_IDS, BlogStepId, isStep7 as isBlogStep7, toTemplateName } from '@/lib/constants';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { headingFlowService } from '@/server/services/headingFlowService';
 
@@ -754,10 +754,11 @@ const generateLpDraftPrompt = cache(
 );
 
 /**
- * Step6見出し単位生成用の最小プロンプト（DBテンプレート不使用）
- * 事業者情報とコンテンツ変数のみで構成し、見出し構成の混在による混乱を防ぐ
+ * 見出し単位生成用の最小プロンプト（DBテンプレート不使用）
+ * Step 6（書き出し案/旧見出しフロー）および Step 7（本文作成/新見出しフロー）で使用。
+ * 事業者情報とコンテンツ変数のみで構成し、見出し構成の混在による混乱を防ぐ。
  */
-async function generateStep6HeadingUnitPrompt(
+async function generateHeadingUnitPrompt(
   liffAccessToken: string,
   sessionId: string,
   activeSection: { heading_text: string; heading_level?: number }
@@ -786,7 +787,11 @@ async function generateStep6HeadingUnitPrompt(
     if (businessInfo) {
       const profile = businessInfo.profile;
       const service = businessInfo.services?.[0];
-      lines.push('', '## 事業者情報', `- 会社・サービス: ${profile?.company ?? ''} / ${service?.name ?? ''}`);
+      lines.push(
+        '',
+        '## 事業者情報',
+        `- 会社・サービス: ${profile?.company ?? ''} / ${service?.name ?? ''}`
+      );
       if (businessInfo.persona) {
         lines.push(`- ターゲット: ${businessInfo.persona}`);
       }
@@ -794,17 +799,18 @@ async function generateStep6HeadingUnitPrompt(
 
     if (
       contentVars.contentMainKw ||
-    contentVars.contentKw ||
-    contentVars.contentGoal ||
-    contentVars.contentPersona ||
-    contentVars.contentNeeds ||
+      contentVars.contentKw ||
+      contentVars.contentGoal ||
+      contentVars.contentPersona ||
+      contentVars.contentNeeds ||
       contentVars.contentPrep
     ) {
       lines.push('', '## キーワード・記事方針');
       if (contentVars.contentMainKw) lines.push(`- メインKW: ${contentVars.contentMainKw}`);
       if (contentVars.contentKw) lines.push(`- KW: ${contentVars.contentKw}`);
       if (contentVars.contentGoal) lines.push(`- ユーザーゴール: ${contentVars.contentGoal}`);
-      if (contentVars.contentPersona) lines.push(`- デモグラ・ペルソナ: ${contentVars.contentPersona}`);
+      if (contentVars.contentPersona)
+        lines.push(`- デモグラ・ペルソナ: ${contentVars.contentPersona}`);
       if (contentVars.contentNeeds) lines.push(`- ニーズ: ${contentVars.contentNeeds}`);
       if (contentVars.contentPrep) lines.push(`- PREP構成（参考）: ${contentVars.contentPrep}`);
     }
@@ -987,6 +993,7 @@ const STATIC_PROMPTS: Record<string, string> = {
   ad_copy_finishing: AD_COPY_FINISHING_PROMPT,
   lp_draft_creation: LP_DRAFT_PROMPT,
 };
+const BLOG_STEP_PATTERN = new RegExp(`^blog_creation_(${BLOG_STEP_IDS.join('|')})(?:_|$)`);
 
 /**
  * モデルに応じたシステムプロンプトを取得する（LIFFトークンがあれば動的生成、なければ静的）
@@ -1013,65 +1020,63 @@ export async function getSystemPrompt(
     }
 
     if (model.startsWith('blog_creation_')) {
-      const step = model.substring('blog_creation_'.length) as BlogStepId;
-      if (!isBlogStep7(step)) {
-        // Step6見出し単位生成: 該当時は basePrompt をスキップし、最小プロンプトのみ生成（DBテンプレート取得などの重い処理を回避）
-        if (step === 'step6' && sessionId && authUserId) {
-          const sessionRes = await supabaseService.getChatSessionById(sessionId, authUserId);
-          if (sessionRes.success && sessionRes.data) {
-            const sectionsResult = await headingFlowService.getHeadingSections(sessionId);
-            if (sectionsResult.success && Array.isArray(sectionsResult.data)) {
-              const activeSection = sectionsResult.data.find(s => !s.is_confirmed);
-              if (activeSection) {
-                return generateStep6HeadingUnitPrompt(liffAccessToken, sessionId, activeSection);
-              }
+      const stepMatch = model.match(BLOG_STEP_PATTERN);
+      if (!stepMatch?.[1]) {
+        return STATIC_PROMPTS[model] ?? SYSTEM_PROMPT;
+      }
+      const step = stepMatch[1] as BlogStepId;
+
+      // 見出し構成・本文作成ステップ (Step 7): 見出し単位生成モードの判定
+      // 該当時は固有の生成プロンプトのみを返し、DBテンプレートの取得等を回避する
+      if (isBlogStep7(step) && sessionId && authUserId) {
+        const sessionRes = await supabaseService.getChatSessionById(sessionId, authUserId);
+        if (sessionRes.success && sessionRes.data) {
+          const sectionsResult = await headingFlowService.getHeadingSections(sessionId);
+          if (sectionsResult.success && Array.isArray(sectionsResult.data)) {
+            const activeSection = sectionsResult.data.find(s => !s.is_confirmed);
+            if (activeSection) {
+              return generateHeadingUnitPrompt(liffAccessToken, sessionId, activeSection);
             }
           }
         }
-        return await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
       }
 
+      // 通常のステッププロンプト生成
       const basePrompt = await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
 
-      if (!sessionId || !authUserId) {
-        throw new Error(
-          'Step7は最新完成形（Step6）の取得が必須です。セッション情報または認証情報が不足しているため実行できません。'
-        );
-      }
+      // Step 7 (最終生成モード): 既存本文があればコンテキストとして追加する (必須ではない)
+      if (isBlogStep7(step) && sessionId && authUserId) {
+        const [latestCombinedResult, legacyStep6Result] = await Promise.all([
+          supabaseService.getLatestCombinedContentBySession(sessionId, authUserId),
+          supabaseService.getLatestAccessibleAssistantMessageBySessionAndModel(
+            sessionId,
+            authUserId,
+            'blog_creation_step6'
+          ),
+        ]);
 
-      const latestCombinedResult = await supabaseService.getLatestCombinedContentBySession(
-        sessionId,
-        authUserId
-      );
-      if (!latestCombinedResult.success || !latestCombinedResult.data?.trim()) {
-        const legacyStep6Result = await supabaseService.getLatestAccessibleAssistantMessageBySessionAndModel(
-          sessionId,
-          authUserId,
-          'blog_creation_step6'
-        );
-        if (!legacyStep6Result.success || !legacyStep6Result.data?.content?.trim()) {
-          throw new Error(
-            'Step7は最新完成形（Step6）の取得が必須です。最新完成形を取得できないため実行できません。'
-          );
+        if (latestCombinedResult.success && latestCombinedResult.data?.trim()) {
+          return [
+            basePrompt,
+            '',
+            '## 現在の本文内容',
+            '以下の内容を正本として、指示に従って更新または追加してください。',
+            latestCombinedResult.data,
+          ].join('\n');
         }
 
-        return [
-          basePrompt,
-          '',
-          '## Step6最新完成形（必須入力）',
-          '以下の本文を入力の正本として使用してください。内容を反映したうえで最終本文を作成してください。',
-          '※ 移行前セッションのため、session_combined_contents の代わりに Step6 の最新本文を使用しています。',
-          legacyStep6Result.data.content,
-        ].join('\n');
+        if (legacyStep6Result.success && legacyStep6Result.data?.content?.trim()) {
+          return [
+            basePrompt,
+            '',
+            '## 現在の本文内容 (移行データ)',
+            '以下の内容を正本として、指示に従って更新または追加してください。',
+            legacyStep6Result.data.content,
+          ].join('\n');
+        }
       }
 
-      return [
-        basePrompt,
-        '',
-        '## Step6最新完成形（必須入力）',
-        '以下の本文を入力の正本として使用してください。内容を反映したうえで最終本文を作成してください。',
-        latestCombinedResult.data,
-      ].join('\n');
+      return basePrompt;
     }
     switch (model) {
       case 'ad_copy_creation':

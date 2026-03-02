@@ -28,7 +28,6 @@ export const GOOGLE_ADS_SCOPES = [
   'openid',
 ];
 
-
 // Feature Flags
 // AI モデル設定
 interface ModelConfig {
@@ -109,6 +108,9 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
 // Blog Creation Steps (centralized definitions)
 // =============================================================================
 
+/** 見出し単位生成フローが紐づくステップID */
+export const HEADING_FLOW_STEP_ID: BlogStepId = 'step7';
+
 export type BlogStepId = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7';
 
 export const BLOG_STEP_IDS: BlogStepId[] = [
@@ -133,7 +135,7 @@ export const BLOG_STEP_LABELS: Record<BlogStepId, string> = {
 
 // Step7判定（canonicalUrlsの適用/表示で利用）
 export const isStep7 = (stepOrModel: string) =>
-  stepOrModel === 'step7' || stepOrModel === 'blog_creation_step7';
+  stepOrModel === HEADING_FLOW_STEP_ID || stepOrModel === `blog_creation_${HEADING_FLOW_STEP_ID}`;
 
 export const BLOG_PLACEHOLDERS: Record<string, string> = {
   blog_creation_step1: '顕在/潜在ニーズの内容を入力してください',
@@ -147,6 +149,11 @@ export const BLOG_PLACEHOLDERS: Record<string, string> = {
 
 // prompts.ts 用のテンプレ名解決
 export const toTemplateName = (step: BlogStepId) => `blog_creation_${step}`;
+
+/** ステップバーに表示するヒントテキスト。null = デフォルト（次ステップ名を使った汎用テキスト） */
+export const BLOG_STEP_HINTS: Partial<Record<BlogStepId, string>> = {
+  step5: '構成案を「この内容で保存」で確定するか、メッセージを送信して次の「書き出し案」へ',
+};
 
 export const ANALYTICS_COLUMNS = [
   { id: 'main_kw', label: '主軸kw' },
@@ -195,9 +202,7 @@ export function loadCategoryFilterFromStorage(): CategoryFilterConfig {
           ? parsed.selectedCategoryNames
           : [],
         includeUncategorized:
-          typeof parsed.includeUncategorized === 'boolean'
-            ? parsed.includeUncategorized
-            : false,
+          typeof parsed.includeUncategorized === 'boolean' ? parsed.includeUncategorized : false,
       };
     }
   } catch {

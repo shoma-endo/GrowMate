@@ -3,11 +3,15 @@
 import React, { useEffect, useRef } from 'react';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { Bot } from 'lucide-react';
-import { cn, normalizeForHeadingMatch } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import BlogPreviewTile from './common/BlogPreviewTile';
 import { BLOG_STEP_LABELS } from '@/lib/constants';
 import type { BlogStepId } from '@/lib/constants';
-import { extractBlogStepFromModel, normalizeCanvasContent } from '@/lib/canvas-content';
+import {
+  extractBlogStepFromModel,
+  extractStep7HeadingIndexFromModel,
+  normalizeCanvasContent,
+} from '@/lib/canvas-content';
 import { MARKDOWN_HEADING_REGEX } from '@/lib/heading-extractor';
 import type { SessionHeadingSection } from '@/types/heading-flow';
 
@@ -39,38 +43,44 @@ interface MessageAreaProps {
   headingSections?: SessionHeadingSection[];
 }
 
-// 末尾句読点・全角コロン等を除去して照合用に正規化
-const getStep6HeadingLabel = (
-  message: ChatMessage,
-  sections: SessionHeadingSection[],
-  step6MessageIndex: number
-): string | null => {
-  if (!sections.length) return null;
-  const normalized = normalizeCanvasContent(message.content ?? '').trim();
+// メッセージ本文の先頭 ### 行から見出し文言を抽出（Canvas表示と同源）
+const extractHeadingTextFromContent = (content: string): string | null => {
+  const normalized = normalizeCanvasContent(content ?? '').trim();
   for (const line of normalized.split('\n')) {
     const match = line.trim().match(MARKDOWN_HEADING_REGEX);
     if (match?.[1]) {
-      const headingText = normalizeForHeadingMatch(match[1]);
-      const matched = sections.filter(
-        s => normalizeForHeadingMatch(s.headingText) === headingText
-      );
-      if (matched.length === 1) {
-        const section = matched[0]!;
-        return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
-      }
-      if (matched.length > 1) {
-        // 重複見出しは step6 メッセージ順に最も近い orderIndex を選ぶ
-        const best = matched.reduce((prev, curr) =>
-          Math.abs(curr.orderIndex - step6MessageIndex) <
-          Math.abs(prev.orderIndex - step6MessageIndex)
-            ? curr
-            : prev
-        );
-        return `見出し ${best.orderIndex + 1}/${sections.length}：「${best.headingText}」`;
-      }
+      const text = (match[1] ?? '').trim();
+      if (text) return text;
     }
   }
   return null;
+};
+
+// 見出しラベル生成。見出し文言のみ返す（番号 X/Y は表示しない）
+const getStep7HeadingLabel = (
+  message: ChatMessage,
+  sections: SessionHeadingSection[],
+  step7MessageIndex: number
+): string | null => {
+  if (step7MessageIndex < 0) return null;
+
+  const headingIndexFromModel = extractStep7HeadingIndexFromModel(message.model);
+  const headingTextFromContent = extractHeadingTextFromContent(message.content ?? '');
+
+  // 文言: 本文の ### を優先、なければ sections から
+  const effectiveSectionIndex =
+    headingIndexFromModel !== null &&
+    headingIndexFromModel >= 0 &&
+    headingIndexFromModel < sections.length
+      ? headingIndexFromModel
+      : step7MessageIndex;
+  const headingText =
+    headingTextFromContent ??
+    (sections.length > 0 && effectiveSectionIndex >= 0 && effectiveSectionIndex < sections.length
+      ? sections[effectiveSectionIndex]?.headingText
+      : null);
+
+  return headingText ?? null;
 };
 
 const MessageArea: React.FC<MessageAreaProps> = ({
@@ -378,9 +388,9 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     );
   };
 
-  // step6 アシスタントメッセージの ID 一覧（時系列順）。重複見出し照合に使用
-  const step6MessageIds = messages
-    .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === 'step6')
+  // step7 アシスタントメッセージの ID 一覧（時系列順）。重複見出し照合に使用
+  const step7MessageIds = messages
+    .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === 'step7')
     .map(m => m.id);
 
   return (
@@ -395,10 +405,10 @@ const MessageArea: React.FC<MessageAreaProps> = ({
             const blogPreviewMeta = isBlogMessage(message) ? derivePreviewMeta(message) : null;
             const openHandler =
               blogPreviewMeta && onOpenCanvas ? () => onOpenCanvas(message) : null;
-            const step6Index = step6MessageIds.indexOf(message.id);
+            const step7Index = step7MessageIds.indexOf(message.id);
             const headingLabel =
-              blogPreviewMeta?.step === 'step6' && headingSections?.length && step6Index >= 0
-                ? getStep6HeadingLabel(message, headingSections, step6Index)
+              blogPreviewMeta?.step === 'step7' && step7Index >= 0
+                ? getStep7HeadingLabel(message, headingSections ?? [], step7Index)
                 : null;
 
             return (

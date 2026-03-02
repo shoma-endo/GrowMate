@@ -3,12 +3,14 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { chatService } from '@/server/services/chatService';
 import { headingFlowService } from '@/server/services/headingFlowService';
+import { SupabaseService } from '@/server/services/supabaseService';
 import { env } from '@/env';
 import { MODEL_CONFIGS } from '@/lib/constants';
 import { htmlToMarkdownForCanvas, sanitizeHtmlForCanvas } from '@/lib/canvas-content';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
+import { HEADING_FLOW_STEP_ID } from '@/lib/constants';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -26,8 +28,10 @@ interface CanvasStreamRequest {
   targetStep: string;
   enableWebSearch?: boolean;
   freeFormUserPrompt?: string;
-  /** Step6見出し単位生成中の場合 true。1見出し分のみ編集するようプロンプトを制約する */
-  isStep6HeadingUnit?: boolean;
+  /** Step7見出し単位生成中の場合 true。1見出し分のみ編集するようプロンプトを制約する */
+  isHeadingUnit?: boolean;
+  /** Step7見出し単位生成時の見出しインデックス。BlogPreviewTile の見出し表示に利用 */
+  step7HeadingIndex?: number;
   webSearchConfig?: {
     maxUses?: number;
     allowedDomains?: string[];
@@ -38,6 +42,7 @@ interface CanvasStreamRequest {
 const anthropic = new Anthropic({
   apiKey: env.ANTHROPIC_API_KEY,
 });
+const supabaseService = new SupabaseService();
 
 const URL_REGEX = /(https?:\/\/[^\s)'"<>]+)(?![^[]*])/gi;
 const DISALLOWED_HOST_NAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
@@ -120,7 +125,8 @@ export async function POST(req: NextRequest) {
       targetStep,
       enableWebSearch = false,
       freeFormUserPrompt,
-      isStep6HeadingUnit = false,
+      isHeadingUnit = false,
+      step7HeadingIndex,
       webSearchConfig = {},
     }: CanvasStreamRequest = await req.json();
     const normalizedFreeFormPrompt =
@@ -207,9 +213,11 @@ export async function POST(req: NextRequest) {
 
     const { maxTokens, temperature, actualModel } = modelConfig;
 
-    // Step6見出し単位モード時の前置制約（全文生成を防ぎ、1見出し分のみ編集させる）
-    const step6HeadingUnitPrefix =
-      targetStep === 'step6' && isStep6HeadingUnit
+    const isHeadingUnitRequest = targetStep === HEADING_FLOW_STEP_ID && isHeadingUnit;
+
+    // Step7 見出し単位モード時の前置制約（全文生成を防ぎ、1見出し分のみ編集させる）
+    const headingUnitPrefix =
+      isHeadingUnitRequest
         ? [
             '## 【重要】見出し単位編集モード',
             '',
@@ -224,21 +232,48 @@ export async function POST(req: NextRequest) {
             '',
           ]
         : [];
+    const outputRules = isHeadingUnitRequest
+      ? [
+          '1. **必ず apply_full_text_replacement ツールを使用する**',
+          '2. **full_markdown には、この1見出し分の本文のみを含める**',
+          '3. **見出し行（###/####）は含めない**',
+          '4. **他セクション・タイトル・リード文を追加しない**',
+        ]
+      : [
+          '1. **必ず apply_full_text_replacement ツールを使用する**',
+          '2. **full_markdown パラメータには、編集後の文章全体を最初から最後まで完全に含める**',
+          '3. **絶対に省略しない：** 「...（省略）...」「※以下同様」「（中略）」などの表現は厳禁',
+          '4. **選択範囲以外の部分も必ず全て含める：** タイトル、見出し、本文、すべてのセクションを出力',
+          '5. **文章の一部だけを返すことは厳禁：** 必ず冒頭から末尾まで完全で高品質な文章を返す',
+        ];
+    const roleInstruction = isHeadingUnitRequest
+      ? 'あなたは文章編集の専門エディターです。ユーザーが選択した部分の改善指示を受けて、**表示中の1見出し分本文だけを編集して出力**します。'
+      : 'あなたは文章編集の専門エディターです。ユーザーが選択した部分の改善指示を受けて、**高品質で一貫性のある文章全体を編集して完全な全文を出力**します。';
+    const finalCheckRules = isHeadingUnitRequest
+      ? [
+          '- 編集後の本文を読み直す',
+          '- 他セクション・タイトル・リード文が混入していないか確認する',
+          '- 見出し行（###/####）を含めていないか確認する',
+        ]
+      : [
+          '- 編集後の文章全体を読み直す',
+          '- 矛盾や違和感がないか確認する',
+          '- 冒頭から末尾まで完全に含まれているか確認する',
+        ];
+    const finalOutputInstruction = isHeadingUnitRequest
+      ? '改善を適用した上で、**この1見出し分の本文のみを省略なく出力してください。**'
+      : '改善を適用した上で、**文章全体を省略なく完全に出力してください。**';
 
     // システムプロンプト（Claude 4ベストプラクティス準拠）
     const systemPrompt = [
-      ...step6HeadingUnitPrefix,
+      ...headingUnitPrefix,
       '# Canvas編集専用モード',
       '',
       '## あなたの役割',
-      'あなたは文章編集の専門エディターです。ユーザーが選択した部分の改善指示を受けて、**高品質で一貫性のある文章全体を編集して完全な全文を出力**します。',
+      roleInstruction,
       '',
       '## 【最重要】出力形式の絶対ルール',
-      '1. **必ず apply_full_text_replacement ツールを使用する**',
-      '2. **full_markdown パラメータには、編集後の文章全体を最初から最後まで完全に含める**',
-      '3. **絶対に省略しない：** 「...（省略）...」「※以下同様」「（中略）」などの表現は厳禁',
-      '4. **選択範囲以外の部分も必ず全て含める：** タイトル、見出し、本文、すべてのセクションを出力',
-      '5. **文章の一部だけを返すことは厳禁：** 必ず冒頭から末尾まで完全で高品質な文章を返す',
+      ...outputRules,
       '',
       '## 編集の進め方（各ステップで慎重に検討してください）',
       '**ステップ1：全体把握**',
@@ -263,9 +298,7 @@ export async function POST(req: NextRequest) {
       '- 重複表現を削除し、自然な流れを保つ',
       '',
       '**ステップ5：最終検証**',
-      '- 編集後の文章全体を読み直す',
-      '- 矛盾や違和感がないか確認する',
-      '- 冒頭から末尾まで完全に含まれているか確認する',
+      ...finalCheckRules,
       '- 確認が完了したら apply_full_text_replacement を実行する',
       '',
       '## 重要な品質基準',
@@ -289,7 +322,7 @@ export async function POST(req: NextRequest) {
       '```',
       '',
       '上記の「選択した範囲」に対する改善指示がユーザーメッセージで送られます。',
-      '改善を適用した上で、**文章全体を省略なく完全に出力してください。**',
+      finalOutputInstruction,
       '各ステップを慎重に実行し、高品質で一貫性のある編集結果を提供してください。',
     ]
       .filter(Boolean)
@@ -442,9 +475,8 @@ export async function POST(req: NextRequest) {
           ].join('\n');
 
           // Anthropic Streaming API 呼び出し
-          // Canvas編集ではTool Useで全文を返すため、最低30000トークンを保証
-          // （step7の本文編集で15000では不足するケースがあるため）
-          const canvasMaxTokens = Math.max(maxTokens, 30000);
+          // Step7 の見出し単位編集時は上限を抑え、それ以外はモデル設定値を使う。
+          const canvasMaxTokens = isHeadingUnitRequest ? Math.min(5000, maxTokens) : maxTokens;
           const apiStream = await anthropic.messages.stream({
             model: actualModel,
             max_tokens: canvasMaxTokens,
@@ -505,8 +537,7 @@ export async function POST(req: NextRequest) {
                   html?: string;
                 };
 
-                const markdownCandidate =
-                  toolInput.full_markdown ?? toolInput.markdown ?? '';
+                const markdownCandidate = toolInput.full_markdown ?? toolInput.markdown ?? '';
                 finalMarkdown = markdownCandidate.trim();
 
                 if (!finalMarkdown) {
@@ -697,7 +728,18 @@ export async function POST(req: NextRequest) {
               // 1回だけ呼び出してユーザーメッセージを保存し、2つのアシスタントメッセージは別々に保存する
 
               // 1つ目: Canvas編集結果（blog_creation_${targetStep}）
-              const canvasModel = `blog_creation_${targetStep}`;
+              const resolvedStep7HeadingIndex =
+                targetStep === HEADING_FLOW_STEP_ID &&
+                isHeadingUnit &&
+                typeof step7HeadingIndex === 'number' &&
+                Number.isInteger(step7HeadingIndex) &&
+                step7HeadingIndex >= 0
+                  ? step7HeadingIndex
+                  : null;
+              const canvasModel =
+                targetStep === HEADING_FLOW_STEP_ID && resolvedStep7HeadingIndex !== null
+                  ? `blog_creation_${targetStep}_h${resolvedStep7HeadingIndex}`
+                  : `blog_creation_${targetStep}`;
               const postStreamLimitError = await checkTrialDailyLimit(userRole, userId);
               if (postStreamLimitError) {
                 controller.enqueue(
@@ -709,44 +751,56 @@ export async function POST(req: NextRequest) {
                 return;
               }
 
-              // Step6完了後の全文Canvas修正は session_combined_contents にも新バージョンとして保存する
+              // Step7(見出しフロー)完了後の全文Canvas修正は session_combined_contents にも新バージョンとして保存する
               // 副次処理のため、失敗してもチャット履歴保存は継続する
-              if (targetStep === 'step6') {
+              if (targetStep === HEADING_FLOW_STEP_ID && !isHeadingUnit) {
                 try {
-                  const sectionsResult = await headingFlowService.getHeadingSections(sessionId);
-                  if (!sectionsResult.success) {
-                    console.warn('[Canvas Stream] Failed to check heading sections:', {
-                      sessionId,
-                      error: sectionsResult.error,
-                    });
+                  const sessionCheck = await supabaseService.getChatSessionById(sessionId, userId!);
+                  if (!sessionCheck.success || !sessionCheck.data) {
+                    console.warn(
+                      '[Canvas Stream] Skip combined-content side effect: no session access',
+                      {
+                        sessionId,
+                        userId,
+                      }
+                    );
                   } else {
-                    const sections = sectionsResult.data;
-                    if (!Array.isArray(sections)) {
-                      console.warn('[Canvas Stream] Invalid heading sections payload:', {
+                    const sectionsResult = await headingFlowService.getHeadingSections(sessionId);
+                    if (!sectionsResult.success) {
+                      console.warn('[Canvas Stream] Failed to check heading sections:', {
                         sessionId,
-                        sections,
+                        error: sectionsResult.error,
                       });
-                    }
-                    const isStep6Completed =
-                      Array.isArray(sections) &&
-                      sections.length > 0 &&
-                      sections.every(s => s.is_confirmed);
-                    if (isStep6Completed) {
-                      const saveCombinedResult = await headingFlowService.saveCombinedContentSnapshot(
-                        sessionId,
-                        finalMarkdown,
-                        userId!
-                      );
-                      if (!saveCombinedResult.success) {
-                        console.warn('[Canvas Stream] Failed to save combined content snapshot:', {
+                    } else {
+                      const sections = sectionsResult.data;
+                      if (!Array.isArray(sections)) {
+                        console.warn('[Canvas Stream] Invalid heading sections payload:', {
                           sessionId,
-                          error: saveCombinedResult.error,
+                          sections,
                         });
+                      }
+                      const isStep6Completed =
+                        Array.isArray(sections) &&
+                        sections.length > 0 &&
+                        sections.every(s => s.is_confirmed);
+                      if (isStep6Completed) {
+                        const saveCombinedResult =
+                          await headingFlowService.saveCombinedContentSnapshot(
+                            sessionId,
+                            finalMarkdown,
+                            userId!
+                          );
+                        if (!saveCombinedResult.success) {
+                          console.warn('[Canvas Stream] Failed to save combined content snapshot:', {
+                            sessionId,
+                            error: saveCombinedResult.error,
+                          });
+                        }
                       }
                     }
                   }
                 } catch (step6SideEffectError) {
-                  console.error('[Canvas Stream] Step6 side effect failed:', {
+                  console.error('[Canvas Stream] Step7 side effect failed:', {
                     sessionId,
                     error: step6SideEffectError,
                   });
@@ -776,12 +830,12 @@ export async function POST(req: NextRequest) {
                 };
 
                 // Supabaseに直接保存
-                const { SupabaseService } = await import('@/server/services/supabaseService');
-                const supabaseService = new SupabaseService();
                 await supabaseService.createChatMessage(assistantAnalysisMessage);
               }
 
-              controller.enqueue(sendSSE('done', { fullMarkdown: finalMarkdown, analysis: analysisResult }));
+              controller.enqueue(
+                sendSSE('done', { fullMarkdown: finalMarkdown, analysis: analysisResult })
+              );
             }
           }
 

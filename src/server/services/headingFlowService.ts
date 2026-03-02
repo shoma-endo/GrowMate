@@ -1,5 +1,8 @@
 import { SupabaseService, type SupabaseResult } from './supabaseService';
-import { extractHeadingsFromMarkdown, generateHeadingKey } from '@/lib/heading-extractor';
+import {
+  extractHeadingsFromMarkdown,
+  generateHeadingKey,
+} from '@/lib/heading-extractor';
 import type { DbHeadingSection, DbSessionHeadingSectionInsert } from '@/types/heading-flow';
 
 export class HeadingFlowService extends SupabaseService {
@@ -41,7 +44,7 @@ export class HeadingFlowService extends SupabaseService {
 
     const { error: insertError } = await this.supabase
       .from('session_heading_sections')
-      .upsert(sections, { onConflict: 'session_id,heading_key', ignoreDuplicates: true });
+      .upsert(sections, { onConflict: 'session_id,heading_key' });
 
     if (insertError) {
       return this.failure('見出しの同期に失敗しました', {
@@ -69,13 +72,11 @@ export class HeadingFlowService extends SupabaseService {
 
   /**
    * 見出しセクションの本文を保存し、確定状態にする。
-   * 保存後、自動的に完成形の再結合を行う。
    */
   async saveHeadingSection(
     sessionId: string,
     headingKey: string,
-    content: string,
-    userId: string
+    content: string
   ): Promise<SupabaseResult<void>> {
     const { error: updateError, count } = await this.supabase
       .from('session_heading_sections')
@@ -96,15 +97,6 @@ export class HeadingFlowService extends SupabaseService {
         '保存対象の見出しが見つかりませんでした。構成が更新された可能性があります。'
       );
     }
-
-    // 完成形の再結合（失敗時はセクションは保存済みのため、リカバリ可能である旨を伝える）
-    const combineResult = await this.combineSections(sessionId, userId);
-    if (!combineResult.success) {
-      return this.failure(
-        'セクションは保存されましたが、完成形の更新に失敗しました。次の見出しを保存すると自動的に反映されます。',
-        { context: { combineError: combineResult.error } }
-      );
-    }
     return this.success(undefined);
   }
 
@@ -122,12 +114,16 @@ export class HeadingFlowService extends SupabaseService {
       return this.success(undefined);
     }
 
-    const combinedContent = confirmedSections
+    const sectionContents = confirmedSections
       .map(s => {
         const hashes = '#'.repeat(s.heading_level);
         return `${hashes} ${s.heading_text}\n\n${s.content}`;
       })
       .join('\n\n');
+
+    // Step6 の書き出し案（リード）を取得して先頭に結合
+    const step6Lead = await this.getStep6Lead(sessionId);
+    const combinedContent = step6Lead ? `${step6Lead}\n\n${sectionContents}` : sectionContents;
 
     // 原子性を確保するため RPC (Database Function) を使用
     const { error: rpcError } = await this.supabase.rpc('save_atomic_combined_content', {
@@ -188,7 +184,9 @@ export class HeadingFlowService extends SupabaseService {
    */
   async getCombinedContentVersions(
     sessionId: string
-  ): Promise<SupabaseResult<Array<{ id: string; version_no: number; content: string; is_latest: boolean }>>> {
+  ): Promise<
+    SupabaseResult<Array<{ id: string; version_no: number; content: string; is_latest: boolean }>>
+  > {
     const { data, error } = await this.supabase
       .from('session_combined_contents')
       .select('id, version_no, content, is_latest')
@@ -199,6 +197,50 @@ export class HeadingFlowService extends SupabaseService {
       return this.failure('完成形バージョン一覧の取得に失敗しました', { error });
     }
     return this.success(data ?? []);
+  }
+  /**
+   * Step6 の最新書き出し案を取得する。
+   */
+  private async getStep6Lead(sessionId: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('chat_messages')
+      .select('content')
+      .eq('session_id', sessionId)
+      .eq('role', 'assistant')
+      .like('model', 'blog_creation_step6%')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data?.content) return null;
+
+    const candidate = data.content.trim();
+    if (!candidate) return null;
+
+    const firstLine = candidate.split('\n')[0]?.trim() ?? '';
+    // 互換対応: 旧 step6 見出しフロー本文（###/#### 始まり）はリード文として結合しない。
+    if (/^#{3,4}\s+.+$/.test(firstLine)) {
+      return null;
+    }
+
+    return candidate;
+  }
+
+  /**
+   * セッションに紐づく見出し構成データを初期化（全削除）する。
+   */
+  async resetHeadingSections(sessionId: string): Promise<SupabaseResult<void>> {
+    // 見出しセクションを削除
+    const { error: deleteSectionsError } = await this.supabase
+      .from('session_heading_sections')
+      .delete()
+      .eq('session_id', sessionId);
+
+    if (deleteSectionsError) {
+      return this.failure('見出し構成の削除に失敗しました', { error: deleteSectionsError });
+    }
+
+    return this.success(undefined);
   }
 }
 

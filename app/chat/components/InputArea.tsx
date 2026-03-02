@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect, useId } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useId, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -98,10 +98,11 @@ interface InputAreaProps {
   isSearching: boolean;
   onSearch: (query: string) => void;
   onClearSearch: () => void;
-  // Service selector props
-  services?: Service[];
   selectedServiceId?: string | null;
   onServiceChange?: (serviceId: string) => void;
+  onResetHeadingConfiguration?: () => Promise<void>;
+  isLegacyStep6ResetEligible?: boolean;
+  services?: Service[];
 }
 
 const InputArea: React.FC<InputAreaProps> = ({
@@ -156,6 +157,8 @@ const InputArea: React.FC<InputAreaProps> = ({
   services,
   selectedServiceId,
   onServiceChange,
+  onResetHeadingConfiguration,
+  isLegacyStep6ResetEligible = false,
 }) => {
   const { isOwnerViewMode } = useLiffContext();
   const [input, setInput] = useState('');
@@ -174,51 +177,41 @@ const InputArea: React.FC<InputAreaProps> = ({
   const isInputDisabled = disabled || !isModelSelected || isReadOnly;
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
-  // ブログ作成中は「次に進む」タイミングでは次ステップのプレースホルダーを表示
+  /**
+   * ブログ作成で「今回の入力をどのステップとして送るか」を一元化する。
+   * プレースホルダー表示と API/DB 送信モデルで同じ値を使い、表示と保存先の不整合を防ぐ。
+   */
+  const targetBlogStep = useMemo<BlogStepId>(() => {
+    if (hasDetectedBlogStep === false) return 'step1';
+
+    const currentStep = displayStep ?? initialBlogStep ?? 'step1';
+    const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
+    if (currentIdx === -1) return 'step1';
+
+    if (nextStepForPlaceholder) return nextStepForPlaceholder;
+
+    const shouldAdvance =
+      blogFlowStatus === 'waitingAction' || (blogFlowStatus === 'idle' && hasDetectedBlogStep);
+    const nextIdx = shouldAdvance ? currentIdx + 1 : currentIdx;
+    const targetIdx = Math.min(nextIdx, BLOG_STEP_IDS.length - 1);
+    return BLOG_STEP_IDS[targetIdx] as BlogStepId;
+  }, [hasDetectedBlogStep, displayStep, initialBlogStep, nextStepForPlaceholder, blogFlowStatus]);
+
+  // ブログ作成のプレースホルダーは targetBlogStep と一致させる（送信モデルと同一）
   const placeholderMessage = (() => {
     if (!isModelSelected) {
       return '画面上部のチャットモデルを選択してください';
     }
 
     if (selectedModel === 'blog_creation') {
-      // ブログ作成を開始していない場合（hasDetectedBlogStep === false）はstep1を表示
-      if (!hasDetectedBlogStep) {
-        return BLOG_PLACEHOLDERS.blog_creation_step1;
-      }
-
-      // 見出し単位生成中（step6）は現在ステップのプレースホルダーを表示（次ステップでなく）
-      if (initialBlogStep === 'step6') {
-        return BLOG_PLACEHOLDERS.blog_creation_step6;
-      }
-
-      // Step5 では「この内容で保存」が構成案として保存するため、プレースホルダーは構成案用に統一
-      if (initialBlogStep === 'step5') {
-        return BLOG_PLACEHOLDERS.blog_creation_step5;
-      }
-
-      // nextStepForPlaceholderが設定されている場合はそれを使用（StepActionBarのnextStepと連動）
-      // ブログ作成進行中（hasDetectedBlogStep === true）の場合のみ適用
-      if (nextStepForPlaceholder) {
-        const key = `blog_creation_${nextStepForPlaceholder}` as keyof typeof BLOG_PLACEHOLDERS;
-        return BLOG_PLACEHOLDERS[key];
-      }
-
-      // フォールバック: 次のステップのプレースホルダーを表示
-      // - waitingActionまたはhasDetectedBlogStep時は次のステップへ
-      // - それ以外は現在のステップ
-      const currentStep = initialBlogStep ?? 'step1';
-      const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
-      const shouldAdvance = hasDetectedBlogStep; // すでにブログ作成が始まっている場合は次へ
-      const nextIdx = shouldAdvance ? currentIdx + 1 : currentIdx;
-      const targetIdx = Math.min(nextIdx, BLOG_STEP_IDS.length - 1);
-      const fallbackStep = BLOG_STEP_IDS[targetIdx] as BlogStepId;
-      const key = `blog_creation_${fallbackStep}` as keyof typeof BLOG_PLACEHOLDERS;
+      const key = `blog_creation_${targetBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
       return BLOG_PLACEHOLDERS[key];
     }
 
     // 通常モデル
     return MODEL_PLACEHOLDERS[selectedModel] ?? 'チャットモデルを選択してください';
   })();
+  const isStep5Visible = (displayStep ?? initialBlogStep) === 'step5';
 
   useEffect(() => {
     if (!isModelSelected) {
@@ -260,8 +253,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     try {
       await onLoadBlogArticle();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'ブログ記事の取得に失敗しました';
+      const message = error instanceof Error ? error.message : 'ブログ記事の取得に失敗しました';
       setBlogArticleError(message);
     } finally {
       setIsLoadingBlogArticle(false);
@@ -306,36 +298,11 @@ const InputArea: React.FC<InputAreaProps> = ({
     if (!input.trim() || isInputDisabled) return;
 
     const originalMessage = input.trim();
-    // ブログ作成モデルの場合の制御：
-    // - アクション待ち（waitingAction）での通常送信は「次のステップへ進む」扱い
+    // ブログ作成モデルの場合は、プレースホルダーと同じ targetBlogStep に送信する。
     let effectiveModel: string = selectedModel;
     if (selectedModel === 'blog_creation') {
-      // 通常送信は次ステップへ（初回はstep1）
-      const currentStep = initialBlogStep ?? 'step1';
-      const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
-
-      // 型定義上はありえないが、実行時の安全性のため念のためチェック
-      if (currentIdx === -1) {
-        console.error(
-          `[InputArea] initialBlogStep is invalid: ${currentStep}. Falling back to step1.`
-        );
-        const fallbackStep = 'step1';
-        effectiveModel = `blog_creation_${fallbackStep}`;
-        onModelChange?.('blog_creation', fallbackStep);
-      } else {
-        const shouldAdvance =
-          blogFlowStatus === 'waitingAction' ||
-          (blogFlowStatus === 'idle' && hasDetectedBlogStep);
-
-        // 次のステップのインデックスを計算（現在のステップまたは次のステップ）
-        const nextIdx = shouldAdvance ? currentIdx + 1 : currentIdx;
-        // 配列範囲内に収める（最後のステップを超えない）
-        const targetIdx = Math.min(nextIdx, BLOG_STEP_IDS.length - 1);
-        const targetStep = BLOG_STEP_IDS[targetIdx] as BlogStepId;
-
-        effectiveModel = `blog_creation_${targetStep}`;
-        onModelChange?.('blog_creation', targetStep);
-      }
+      effectiveModel = `blog_creation_${targetBlogStep}`;
+      onModelChange?.('blog_creation', targetBlogStep);
     }
 
     setInput('');
@@ -559,10 +526,10 @@ const InputArea: React.FC<InputAreaProps> = ({
               {...(headingIndex !== undefined && { headingIndex })}
               {...(totalHeadings !== undefined && { totalHeadings })}
               {...(currentHeadingText !== undefined && { currentHeadingText })}
+              {...(onResetHeadingConfiguration !== undefined && { onResetHeadingConfiguration })}
+              isLegacyStep6ResetEligible={isLegacyStep6ResetEligible}
             />
-            {blogArticleError && (
-              <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>
-            )}
+            {blogArticleError && <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>}
           </div>
         )}
         <div className="px-3 py-2">
@@ -583,9 +550,8 @@ const InputArea: React.FC<InputAreaProps> = ({
                   rows={1}
                 />
                 <div className="flex gap-1 items-center">
-                  {/* Step5 表示時のみ表示。nextStepForPlaceholder を含めると Step4 でも表示され
-                     Step5 をスキップして Step6 へ飛ぶバグの原因となるため、Step5 のみに限定 */}
-                  {(displayStep === 'step5' || initialBlogStep === 'step5') &&
+                  {/* Step5表示中は手動保存導線を常に表示する */}
+                  {isStep5Visible &&
                     onSaveManualStep5 &&
                     currentSessionId &&
                     input.trim() &&
@@ -622,10 +588,7 @@ const InputArea: React.FC<InputAreaProps> = ({
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={
-                      isInputDisabled ||
-                      !input.trim()
-                    }
+                    disabled={isInputDisabled || !input.trim()}
                     className="rounded-full size-10 bg-[#06c755] hover:bg-[#05b64b] mt-1"
                   >
                     <Send size={18} className="text-white" />

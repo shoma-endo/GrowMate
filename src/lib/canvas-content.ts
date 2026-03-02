@@ -14,9 +14,18 @@ const isBlogStepId = (value: string): value is BlogStepId =>
 const extractBlogStepFromModel = (model?: string): BlogStepId | null => {
   if (!model || !model.startsWith(BLOG_MODEL_PREFIX)) return null;
   const suffix = model.slice(BLOG_MODEL_PREFIX.length);
-  // blog_creation_step5_manual → step5 にマッピング（手動保存をバージョンに含める）
-  const candidate = suffix.replace(/_manual$/, '');
-  return isBlogStepId(candidate) ? (candidate as BlogStepId) : null;
+  // blog_creation_step7_h0 / blog_creation_step5_manual などの拡張サフィックスにも対応
+  const matchedStep = suffix.match(/^(step[1-7])(?:_|$)/)?.[1];
+  return matchedStep && isBlogStepId(matchedStep) ? (matchedStep as BlogStepId) : null;
+};
+
+const extractStep7HeadingIndexFromModel = (model?: string): number | null => {
+  if (!model) return null;
+  const pattern = new RegExp(`^${BLOG_MODEL_PREFIX}step7_h(\\d+)(?:_|$)`);
+  const match = model.match(pattern);
+  if (!match?.[1]) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isNaN(parsed) ? null : parsed;
 };
 
 const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null => {
@@ -178,6 +187,7 @@ const normalizeCanvasContent = (raw: string): string => {
 
 export {
   extractBlogStepFromModel,
+  extractStep7HeadingIndexFromModel,
   findLatestAssistantBlogStep,
   normalizeCanvasContent,
   htmlToMarkdownForCanvas,
