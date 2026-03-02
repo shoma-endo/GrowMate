@@ -233,9 +233,13 @@ BEGIN
       auth_provider = 'email',
       last_login_at = now(),
       updated_at = now()
-    -- LINE ユーザーが email を持つ場合でも、Supabase Auth ログイン時に email 認証に切り替える
-    WHERE public.users.auth_provider = 'email'
-       OR public.users.supabase_auth_id IS NULL;
+    -- 既存の email ユーザー（再ログイン時）のみ更新する。
+    -- LINE ユーザーが同一 email を持つ場合はトリガーでは切り替えない
+    -- （Phase 1.5 の明示的な移行フローで対応する）。
+    -- ※ supabase_auth_id IS NULL の行を含めると、LINE ユーザー行を
+    --   auth_provider='email' に切り替えてしまい、users_auth_provider_check
+    --   制約（email ユーザーは line_user_id IS NULL が必須）に違反する。
+    WHERE public.users.auth_provider = 'email';
   END IF;
   RETURN NEW;
 END;
