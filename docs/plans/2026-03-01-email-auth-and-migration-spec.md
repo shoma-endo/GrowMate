@@ -765,13 +765,15 @@ POST /api/auth/account-migration/execute
 サーバー処理:
   1. Supabase Auth セッションでメールユーザーを認証（所有権の二重確認）
   2. migration_tokens からトークン取得・再検証
-  3. status を 'processing' に更新（二重実行防止）
-  4. 移行先ユーザー（UUID-B）を特定:
+  3. セッションユーザーの email と migration_tokens.target_email の一致を検証
+     → 不一致の場合 403 で拒否（トークン漏洩時の不正移行を防止）
+  4. status を 'processing' に更新（二重実行防止）
+  5. 移行先ユーザー（UUID-B）を特定:
      - パターン A: trigger で作成済みの public.users を supabase_auth_id で検索
      - パターン B: 既存の public.users を email で検索
-  5. migrate_user_data RPC を実行（後述 6.4）
-  6. migration_tokens.status を 'completed' に更新
-  7. レスポンス: { success: true, redirectTo: '/' }
+  6. migrate_user_data RPC を実行（後述 6.4）
+  7. migration_tokens.status を 'completed' に更新
+  8. レスポンス: { success: true, redirectTo: '/' }
 
 エラー時:
   - migration_tokens.status を 'failed' に更新
