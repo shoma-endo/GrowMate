@@ -173,19 +173,36 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   /**
    * ブログ作成で「今回の入力をどのステップとして送るか」を決定する。
-   * 送信先は常に表示中ステップに固定し、手動移動なしでの意図しない先行送信を防ぐ。
+   * 自動進行（次ステップ送信）は維持しつつ、送信先の決定はこの関数に集約する。
    */
   const targetBlogStep = useMemo<BlogStepId>(() => {
+    if (hasDetectedBlogStep === false) return 'step1';
+
     const currentStep = displayStep ?? initialBlogStep ?? 'step1';
     const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
     if (currentIdx === -1) return 'step1';
 
-    return BLOG_STEP_IDS[currentIdx] as BlogStepId;
-  }, [displayStep, initialBlogStep]);
+    const shouldAdvance =
+      blogFlowStatus === 'waitingAction' || (blogFlowStatus === 'idle' && hasDetectedBlogStep);
+    if (!shouldAdvance) {
+      return BLOG_STEP_IDS[currentIdx] as BlogStepId;
+    }
+
+    if (nextStepForPlaceholder) return nextStepForPlaceholder;
+
+    const nextIdx = Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1);
+    return BLOG_STEP_IDS[nextIdx] as BlogStepId;
+  }, [
+    hasDetectedBlogStep,
+    displayStep,
+    initialBlogStep,
+    blogFlowStatus,
+    nextStepForPlaceholder,
+  ]);
 
   /**
    * プレースホルダー表示専用の次ステップ。
-   * UIヒント用途のみに使い、実際の送信モデルには使用しない。
+   * UIの表示優先値。nextStepが未指定なら送信先ステップを表示する。
    */
   const placeholderBlogStep = useMemo<BlogStepId>(() => {
     if (nextStepForPlaceholder) return nextStepForPlaceholder;
