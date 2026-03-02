@@ -27,7 +27,6 @@ import type { StepActionBarRef } from './StepActionBar';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 import {
   getLatestBlogStep7MessageBySession,
-  saveManualStep5Content,
 } from '@/server/actions/chat.actions';
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
@@ -322,9 +321,6 @@ interface ChatLayoutCtx {
     targetStep: BlogStepId;
   }) => boolean;
   onManualStepChange?: (targetStep: BlogStepId) => void;
-  onSaveManualStep5?: (
-    content: string
-  ) => Promise<{ success: true } | { success: false; error: string }>;
   isHeadingInitInFlight: boolean;
   hasAttemptedHeadingInit: boolean;
   onRetryHeadingInit?: () => void;
@@ -376,7 +372,6 @@ const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
     onLoadBlogArticle,
     onBeforeManualStepChange,
     onManualStepChange: ctxOnManualStepChange,
-    onSaveManualStep5: ctxOnSaveManualStep5,
     isHeadingInitInFlight,
     hasAttemptedHeadingInit,
     onRetryHeadingInit,
@@ -573,9 +568,6 @@ const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
           nextStepForPlaceholder={nextStepForPlaceholder}
           onNextStepChange={onNextStepChange}
           onManualStepChange={handleManualStepChange}
-          {...(ctxOnSaveManualStep5 !== undefined && {
-            onSaveManualStep5: ctxOnSaveManualStep5,
-          })}
           isEditingTitle={isEditingSessionTitle}
           draftSessionTitle={draftSessionTitle}
           sessionTitleError={sessionTitleError}
@@ -1500,24 +1492,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [chatSession.actions, selectedServiceId]
   );
 
-  // ✅ Step5: 入力内容をそのまま構成案として保存（AI経由なし）
-  const handleSaveManualStep5 = useCallback(
-    async (content: string) => {
-      const sessionId = chatSession.state.currentSessionId;
-      if (!sessionId) return { success: false as const, error: 'セッションがありません' };
-
-      const token = await getAccessToken();
-      if (!token) return { success: false as const, error: '認証できませんでした' };
-
-      const result = await saveManualStep5Content(sessionId, content, token);
-      if (result.success && chatSession.actions.loadSession) {
-        await chatSession.actions.loadSession(sessionId);
-      }
-      return result;
-    },
-    [chatSession.state.currentSessionId, chatSession.actions, getAccessToken]
-  );
-
   // ✅ 見出し単位生成: スタート/この見出しを生成ボタンでチャット送信の代わりに生成開始
   const handleStartHeadingGeneration = useCallback(() => {
     setSelectedModel('blog_creation');
@@ -2110,7 +2084,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           onLoadBlogArticle: handleLoadBlogArticle,
           onBeforeManualStepChange: handleBeforeManualStepChange,
           onManualStepChange: handleManualStepChangeForCanvas,
-          onSaveManualStep5: handleSaveManualStep5,
           isHeadingInitInFlight,
           hasAttemptedHeadingInit,
           onRetryHeadingInit: handleRetryHeadingInit,

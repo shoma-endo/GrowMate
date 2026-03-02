@@ -78,10 +78,6 @@ interface InputAreaProps {
   onNextStepChange?: (nextStep: BlogStepId | null) => void;
   onLoadBlogArticle?: (() => Promise<void>) | undefined;
   onManualStepChange?: (step: BlogStepId) => void;
-  /** Step5で入力内容をそのまま構成案として保存（AI経由なし） */
-  onSaveManualStep5?: (
-    content: string
-  ) => Promise<{ success: true } | { success: false; error: string }>;
   onBeforeManualStepChange?: (params: {
     direction: 'forward' | 'backward';
     currentStep: BlogStepId;
@@ -141,7 +137,6 @@ const InputArea: React.FC<InputAreaProps> = ({
   onNextStepChange,
   onLoadBlogArticle,
   onManualStepChange,
-  onSaveManualStep5,
   onBeforeManualStepChange,
   isHeadingInitInFlight,
   hasAttemptedHeadingInit,
@@ -171,15 +166,14 @@ const InputArea: React.FC<InputAreaProps> = ({
   const effectiveDraftTitle = draftSessionTitle ?? currentSessionTitle ?? '';
   const [isLoadingBlogArticle, setIsLoadingBlogArticle] = useState(false);
   const [blogArticleError, setBlogArticleError] = useState<string | null>(null);
-  const [isSavingManualStep5, setIsSavingManualStep5] = useState(false);
 
   const isModelSelected = Boolean(selectedModel);
   const isInputDisabled = disabled || !isModelSelected || isReadOnly;
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
   /**
-   * ブログ作成で「今回の入力をどのステップとして送るか」を一元化する。
-   * プレースホルダー表示と API/DB 送信モデルで同じ値を使い、表示と保存先の不整合を防ぐ。
+   * ブログ作成で「今回の入力をどのステップとして送るか」を決定する。
+   * 自動進行（次ステップ送信）は維持しつつ、送信先の決定はこの関数に集約する。
    */
   const targetBlogStep = useMemo<BlogStepId>(() => {
     if (hasDetectedBlogStep === false) return 'step1';
@@ -188,30 +182,47 @@ const InputArea: React.FC<InputAreaProps> = ({
     const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
     if (currentIdx === -1) return 'step1';
 
-    if (nextStepForPlaceholder) return nextStepForPlaceholder;
-
     const shouldAdvance =
       blogFlowStatus === 'waitingAction' || (blogFlowStatus === 'idle' && hasDetectedBlogStep);
-    const nextIdx = shouldAdvance ? currentIdx + 1 : currentIdx;
-    const targetIdx = Math.min(nextIdx, BLOG_STEP_IDS.length - 1);
-    return BLOG_STEP_IDS[targetIdx] as BlogStepId;
-  }, [hasDetectedBlogStep, displayStep, initialBlogStep, nextStepForPlaceholder, blogFlowStatus]);
+    if (!shouldAdvance) {
+      return BLOG_STEP_IDS[currentIdx] as BlogStepId;
+    }
 
-  // ブログ作成のプレースホルダーは targetBlogStep と一致させる（送信モデルと同一）
+    if (nextStepForPlaceholder) return nextStepForPlaceholder;
+
+    const nextIdx = Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1);
+    return BLOG_STEP_IDS[nextIdx] as BlogStepId;
+  }, [
+    hasDetectedBlogStep,
+    displayStep,
+    initialBlogStep,
+    blogFlowStatus,
+    nextStepForPlaceholder,
+  ]);
+
+  /**
+   * プレースホルダー表示専用の次ステップ。
+   * UIの表示優先値。nextStepが未指定なら送信先ステップを表示する。
+   */
+  const placeholderBlogStep = useMemo<BlogStepId>(() => {
+    if (nextStepForPlaceholder) return nextStepForPlaceholder;
+    return targetBlogStep;
+  }, [nextStepForPlaceholder, targetBlogStep]);
+
+  // ブログ作成のプレースホルダーはUIヒント用ステップを表示
   const placeholderMessage = (() => {
     if (!isModelSelected) {
       return '画面上部のチャットモデルを選択してください';
     }
 
     if (selectedModel === 'blog_creation') {
-      const key = `blog_creation_${targetBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
+      const key = `blog_creation_${placeholderBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
       return BLOG_PLACEHOLDERS[key];
     }
 
     // 通常モデル
     return MODEL_PLACEHOLDERS[selectedModel] ?? 'チャットモデルを選択してください';
   })();
-  const isStep5Visible = (displayStep ?? initialBlogStep) === 'step5';
 
   useEffect(() => {
     if (!isModelSelected) {
@@ -298,7 +309,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     if (!input.trim() || isInputDisabled) return;
 
     const originalMessage = input.trim();
-    // ブログ作成モデルの場合は、プレースホルダーと同じ targetBlogStep に送信する。
+    // ブログ作成モデルの場合は、表示中ステップ(targetBlogStep)に送信する。
     let effectiveModel: string = selectedModel;
     if (selectedModel === 'blog_creation') {
       effectiveModel = `blog_creation_${targetBlogStep}`;
@@ -550,41 +561,6 @@ const InputArea: React.FC<InputAreaProps> = ({
                   rows={1}
                 />
                 <div className="flex gap-1 items-center">
-                  {/* Step5表示中は手動保存導線を常に表示する */}
-                  {isStep5Visible &&
-                    onSaveManualStep5 &&
-                    currentSessionId &&
-                    input.trim() &&
-                    !isReadOnly && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={isSavingManualStep5 || isInputDisabled}
-                        className="text-xs shrink-0"
-                        onClick={async () => {
-                          const content = input.trim();
-                          if (!content || !onSaveManualStep5) return;
-                          setIsSavingManualStep5(true);
-                          try {
-                            const result = await onSaveManualStep5(content);
-                            if (result.success) {
-                              setInput('');
-                            } else {
-                              setBlogArticleError(result.error ?? '保存に失敗しました');
-                            }
-                          } finally {
-                            setIsSavingManualStep5(false);
-                          }
-                        }}
-                      >
-                        {isSavingManualStep5 ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          'この内容で保存'
-                        )}
-                      </Button>
-                    )}
                   <Button
                     type="submit"
                     size="icon"
