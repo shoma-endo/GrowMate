@@ -43,68 +43,98 @@ interface MessageAreaProps {
   headingSections?: SessionHeadingSection[];
 }
 
-// 末尾句読点・全角コロン等を除去して照合用に正規化
+// メッセージ本文の先頭 ### 行から見出し文言を抽出（Canvas表示と同源）
+const extractHeadingTextFromContent = (content: string): string | null => {
+  const normalized = normalizeCanvasContent(content ?? '').trim();
+  for (const line of normalized.split('\n')) {
+    const match = line.trim().match(MARKDOWN_HEADING_REGEX);
+    if (match?.[1]) {
+      const text = (match[1] ?? '').trim();
+      if (text) return text;
+    }
+  }
+  return null;
+};
+
+// 見出しラベル生成。
+// - 番号: model の _h{n} を最優先（同一見出しの再生成でも正しい番号が表示される）
+// - 文言: メッセージ本文の ### を優先（Canvasと同源。構成リセット後も正しく表示）
 const getStep7HeadingLabel = (
   message: ChatMessage,
   sections: SessionHeadingSection[],
   step7MessageIndex: number,
   step7Total: number
 ): string | null => {
-  const normalized = normalizeCanvasContent(message.content ?? '').trim();
+  if (step7MessageIndex < 0) return null;
 
-  if (sections.length > 0) {
-    // 新方式: model に埋め込まれた見出しインデックスを最優先で使用
-    const indexedHeading = extractStep7HeadingIndexFromModel(message.model);
-    if (indexedHeading !== null && indexedHeading >= 0 && indexedHeading < sections.length) {
-      const section = sections[indexedHeading]!;
-      return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
-    }
-    // 旧データ互換: 本文中の見出し行から推測
-    for (const line of normalized.split('\n')) {
-      const match = line.trim().match(MARKDOWN_HEADING_REGEX);
-      if (match?.[1]) {
-        const headingText = normalizeForHeadingMatch(match[1]);
-        const matched = sections.filter(
-          s => normalizeForHeadingMatch(s.headingText) === headingText
+  const headingIndexFromModel = extractStep7HeadingIndexFromModel(message.model);
+  const headingTextFromContent = extractHeadingTextFromContent(message.content ?? '');
+
+  // 番号: model の _h{n} を最優先（blog_creation_step7_h0 等。再生成履歴でも一致）
+  // _h{n} がない既存メッセージ: 本文の ### と sections を照合して orderIndex に寄せる（旧データ互換）
+  let displayNum: number;
+  let total: number;
+  if (
+    headingIndexFromModel !== null &&
+    headingIndexFromModel >= 0 &&
+    sections.length > 0 &&
+    headingIndexFromModel < sections.length
+  ) {
+    displayNum = headingIndexFromModel + 1;
+    total = sections.length;
+  } else if (headingIndexFromModel !== null && headingIndexFromModel >= 0) {
+    displayNum = headingIndexFromModel + 1;
+    total = step7Total;
+  } else {
+    // _h{n} がない場合: 本文 ### と sections を照合し、時系列と見出し順がズレたセッションでも正しい orderIndex を表示
+    let orderIndexFromContent: number | null = null;
+    if (headingTextFromContent && sections.length > 0) {
+      const normalizedHeading = normalizeForHeadingMatch(headingTextFromContent);
+      const matched = sections.filter(
+        s => normalizeForHeadingMatch(s.headingText) === normalizedHeading
+      );
+      if (matched.length === 1) {
+        orderIndexFromContent = matched[0]!.orderIndex;
+      } else if (matched.length > 1) {
+        const best = matched.reduce((prev, curr) =>
+          Math.abs(curr.orderIndex - step7MessageIndex) <
+          Math.abs(prev.orderIndex - step7MessageIndex)
+            ? curr
+            : prev
         );
-        if (matched.length === 1) {
-          const section = matched[0]!;
-          return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
-        }
-        if (matched.length > 1) {
-          // 重複見出しは step7 メッセージ順に最も近い orderIndex を選ぶ
-          const best = matched.reduce((prev, curr) =>
-            Math.abs(curr.orderIndex - step7MessageIndex) <
-            Math.abs(prev.orderIndex - step7MessageIndex)
-              ? curr
-              : prev
-          );
-          return `見出し ${best.orderIndex + 1}/${sections.length}：「${best.headingText}」`;
-        }
+        orderIndexFromContent = best.orderIndex;
       }
     }
-    // 旧/通常経路互換: model や本文から特定できない場合は step7 メッセージ順で補完
-    if (step7MessageIndex >= 0 && step7MessageIndex < sections.length) {
-      const section = sections[step7MessageIndex]!;
-      return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
+    if (orderIndexFromContent !== null) {
+      displayNum = orderIndexFromContent + 1;
+      total = sections.length;
+    } else {
+      displayNum = step7MessageIndex + 1;
+      total =
+        sections.length > 0 && step7MessageIndex < sections.length
+          ? sections.length
+          : step7Total;
     }
   }
 
-  // フォールバック: headingSections が空（session_headings 未初期化等）でも本文から見出しを抽出して表示
-  for (const line of normalized.split('\n')) {
-    const match = line.trim().match(MARKDOWN_HEADING_REGEX);
-    if (match?.[1]) {
-      const headingText = (match[1] ?? '').trim();
-      if (headingText) {
-        return `見出し ${step7MessageIndex + 1}/${step7Total}：「${headingText}」`;
-      }
-    }
+  // 文言: 本文の ### を優先、なければ sections から。
+  // model の h{n} が範囲外の場合でも step7MessageIndex で sections にフォールバックする
+  const effectiveSectionIndex =
+    headingIndexFromModel !== null &&
+    headingIndexFromModel >= 0 &&
+    headingIndexFromModel < sections.length
+      ? headingIndexFromModel
+      : step7MessageIndex;
+  const headingText =
+    headingTextFromContent ??
+    (sections.length > 0 && effectiveSectionIndex >= 0 && effectiveSectionIndex < sections.length
+      ? sections[effectiveSectionIndex]?.headingText
+      : null);
+
+  if (headingText) {
+    return `見出し ${displayNum}/${total}：「${headingText}」`;
   }
-  // 見出し行がなければメッセージ順のみ表示
-  if (step7MessageIndex >= 0) {
-    return `見出し ${step7MessageIndex + 1}/${step7Total}`;
-  }
-  return null;
+  return `見出し ${displayNum}/${total}`;
 };
 
 const MessageArea: React.FC<MessageAreaProps> = ({
