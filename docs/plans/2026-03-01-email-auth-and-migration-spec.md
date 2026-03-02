@@ -910,7 +910,19 @@ BEGIN
   END IF;
   RETURN NEXT;
 
-  -- 7. gsc_page_metrics
+  -- 7. gsc_page_metrics（複合UNIQUE: user_id, property_uri, date, normalized_url, search_type）
+  -- Pattern B 対応: 移行先に同一キーの行が存在する場合、移行元の重複行を事前削除（移行先データを正とする）
+  DELETE FROM gsc_page_metrics AS src
+    WHERE src.user_id = p_source_user_id
+    AND EXISTS (
+      SELECT 1 FROM gsc_page_metrics AS tgt
+      WHERE tgt.user_id = p_target_user_id
+        AND tgt.property_uri = src.property_uri
+        AND tgt.date = src.date
+        AND tgt.normalized_url = src.normalized_url
+        AND tgt.search_type = src.search_type
+    );
+  -- 残りの非重複行を移行
   UPDATE gsc_page_metrics
     SET user_id = p_target_user_id
     WHERE user_id = p_source_user_id;
@@ -937,7 +949,20 @@ BEGIN
   migrated_rows := v_row_count;
   RETURN NEXT;
 
-  -- 10. gsc_query_metrics
+  -- 10. gsc_query_metrics（複合UNIQUE: user_id, property_uri, date, normalized_url, query_normalized, search_type）
+  -- Pattern B 対応: 移行先に同一キーの行が存在する場合、移行元の重複行を事前削除（移行先データを正とする）
+  DELETE FROM gsc_query_metrics AS src
+    WHERE src.user_id = p_source_user_id
+    AND EXISTS (
+      SELECT 1 FROM gsc_query_metrics AS tgt
+      WHERE tgt.user_id = p_target_user_id
+        AND tgt.property_uri = src.property_uri
+        AND tgt.date = src.date
+        AND tgt.normalized_url = src.normalized_url
+        AND tgt.query_normalized = src.query_normalized
+        AND tgt.search_type = src.search_type
+    );
+  -- 残りの非重複行を移行
   UPDATE gsc_query_metrics
     SET user_id = p_target_user_id
     WHERE user_id = p_source_user_id;
@@ -946,7 +971,18 @@ BEGIN
   migrated_rows := v_row_count;
   RETURN NEXT;
 
-  -- 11. ga4_page_metrics_daily
+  -- 11. ga4_page_metrics_daily（複合UNIQUE: user_id, property_id, date, normalized_path）
+  -- Pattern B 対応: 移行先に同一キーの行が存在する場合、移行元の重複行を事前削除（移行先データを正とする）
+  DELETE FROM ga4_page_metrics_daily AS src
+    WHERE src.user_id = p_source_user_id
+    AND EXISTS (
+      SELECT 1 FROM ga4_page_metrics_daily AS tgt
+      WHERE tgt.user_id = p_target_user_id
+        AND tgt.property_id = src.property_id
+        AND tgt.date = src.date
+        AND tgt.normalized_path = src.normalized_path
+    );
+  -- 残りの非重複行を移行
   UPDATE ga4_page_metrics_daily
     SET user_id = p_target_user_id
     WHERE user_id = p_source_user_id;
