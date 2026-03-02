@@ -1,6 +1,6 @@
 'use client';
 import React, { forwardRef, useImperativeHandle, useEffect, useState } from 'react';
-import { BlogStepId, BLOG_STEP_HINTS, BLOG_STEP_LABELS, BLOG_STEP_IDS } from '@/lib/constants';
+import { BlogStepId, BLOG_STEP_LABELS, BLOG_STEP_IDS } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {
   BookMarked,
@@ -120,9 +120,9 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     // ラベル・ヒント
     const currentLabel = BLOG_STEP_LABELS[displayStep] ?? '';
     const nextStepLabel = nextStep ? BLOG_STEP_LABELS[nextStep]?.replace(/^\d+\.\s*/, '') : '';
-    const hintText =
-      BLOG_STEP_HINTS[displayStep] ??
-      (nextStepLabel ? `次の${nextStepLabel}に進むにはメッセージを送信してください` : null);
+    const hintText = nextStepLabel
+      ? `次の${nextStepLabel}に進むにはメッセージを送信してください`
+      : null;
 
     // ボタン表示制御
     const showLoadButton = isStep7 && typeof onLoadBlogArticle === 'function';
