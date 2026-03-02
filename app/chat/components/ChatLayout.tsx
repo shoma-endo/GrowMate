@@ -25,9 +25,8 @@ import type { CanvasSelectionEditPayload, CanvasSelectionEditResult } from '@/ty
 import AnnotationPanel from './AnnotationPanel';
 import type { StepActionBarRef } from './StepActionBar';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
-import {
-  getLatestBlogStep7MessageBySession,
-} from '@/server/actions/chat.actions';
+import { getLatestBlogStep7MessageBySession } from '@/server/actions/chat.actions';
+import { getLatestCombinedContent } from '@/server/actions/heading-flow.actions';
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
 import type { SessionHeadingSection } from '@/types/heading-flow';
@@ -906,6 +905,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     headingSaveError,
     activeHeadingIndex,
     activeHeading,
+    latestCombinedContent,
     combinedContentVersions,
     selectedCombinedVersionId,
     selectedCombinedContent,
@@ -923,7 +923,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     resolvedCanvasStep,
   });
 
-  const hasStep7Content = (blogCanvasVersionsByStep.step7 ?? []).length > 0;
+  const hasStep7Content =
+    (chatSession.state.messages ?? []).some(
+      m => m?.role === 'assistant' && m.model === 'blog_creation_step7'
+    ) || Boolean(latestCombinedContent?.trim());
 
   const {
     viewingHeadingIndex,
@@ -1645,18 +1648,33 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     setIsGeneratingTitleMeta(true);
     try {
       const accessToken = await getAccessToken();
+      let bodyContent: string | null = null;
+
       const res = await getLatestBlogStep7MessageBySession(sessionId, accessToken);
       if (!res.success) {
-        const errorMessage = res.error || '本文の取得に失敗しました';
-        chatSession.actions.setError(errorMessage);
+        chatSession.actions.setError(res.error || '本文の取得に失敗しました');
         return;
       }
-      if (!res.data?.content?.trim()) {
+      if (res.data?.content?.trim()) {
+        bodyContent = res.data.content;
+      }
+
+      if (!bodyContent) {
+        const combinedRes = await getLatestCombinedContent({
+          sessionId,
+          liffAccessToken: accessToken,
+        });
+        if (combinedRes.success && combinedRes.data?.trim()) {
+          bodyContent = combinedRes.data;
+        }
+      }
+
+      if (!bodyContent?.trim()) {
         chatSession.actions.setError('本文が見つかりませんでした');
         return;
       }
 
-      const systemPrompt = `${TITLE_META_SYSTEM_PROMPT}\n\n本文:\n${res.data.content}`;
+      const systemPrompt = `${TITLE_META_SYSTEM_PROMPT}\n\n本文:\n${bodyContent}`;
       await chatSession.actions.sendMessage(
         '本文を元にタイトルと説明文を作成してください。',
         'blog_title_meta_generation',
