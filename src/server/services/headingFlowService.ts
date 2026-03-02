@@ -199,10 +199,25 @@ export class HeadingFlowService extends SupabaseService {
     return this.success(data ?? []);
   }
   /**
-   * Step6 の最新書き出し案を取得する。
+   * Step6 の書き出し案を取得する。
+   * 1) content_annotations.opening_proposal を優先
+   * 2) 取得できない場合は chat_messages（blog_creation_step6）へのフォールバック
    */
   private async getStep6Lead(sessionId: string): Promise<string | null> {
-    const { data, error } = await this.supabase
+    // 1. content_annotations.opening_proposal を優先
+    const { data: annotationData, error: annotationError } = await this.supabase
+      .from('content_annotations')
+      .select('opening_proposal')
+      .eq('session_id', sessionId)
+      .maybeSingle();
+
+    if (!annotationError && annotationData?.opening_proposal) {
+      const candidate = annotationData.opening_proposal.trim();
+      if (candidate) return candidate;
+    }
+
+    // 2. フォールバック: chat_messages の Step6 assistant メッセージ
+    const { data: messageData, error: messageError } = await this.supabase
       .from('chat_messages')
       .select('content')
       .eq('session_id', sessionId)
@@ -212,16 +227,14 @@ export class HeadingFlowService extends SupabaseService {
       .limit(1)
       .maybeSingle();
 
-    if (error || !data?.content) return null;
+    if (messageError || !messageData?.content) return null;
 
-    const candidate = data.content.trim();
+    const candidate = messageData.content.trim();
     if (!candidate) return null;
 
     const firstLine = candidate.split('\n')[0]?.trim() ?? '';
-    // 互換対応: 旧 step6 見出しフロー本文（###/#### 始まり）はリード文として結合しない。
-    if (/^#{3,4}\s+.+$/.test(firstLine)) {
-      return null;
-    }
+    // 互換対応: 旧 step6 見出しフロー本文（###/#### 始まり）はリード文として結合しない
+    if (/^#{3,4}\s+.+$/.test(firstLine)) return null;
 
     return candidate;
   }
