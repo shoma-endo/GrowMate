@@ -133,6 +133,9 @@ const getStep7HeadingLabel = (
       ? sections[effectiveSectionIndex]?.headingText
       : null);
 
+  // 分子 > 分母の不正表示は出さない（構成変更後・再生成履歴等の不整合ケース）
+  if (displayNum > total) return null;
+
   if (headingText) {
     return `見出し ${displayNum}/${total}：「${headingText}」`;
   }
