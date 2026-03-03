@@ -249,7 +249,22 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                 <MoreHorizontal size={16} />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[200px]">
+            <DropdownMenuContent side="top" align="end" className="min-w-[200px]">
+              {showTitleMetaButton && (
+                <DropdownMenuItem
+                  disabled={isDisabled || !onGenerateTitleMeta || isGenerateTitleMetaLoading}
+                  onSelect={() => onGenerateTitleMeta?.()}
+                >
+                  {isGenerateTitleMetaLoading ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <FilePenLine size={14} />
+                  )}
+                  <span>
+                    {isGenerateTitleMetaLoading ? '生成中…' : 'タイトル・説明文生成'}
+                  </span>
+                </DropdownMenuItem>
+              )}
               {showLoadButton && (
                 <DropdownMenuItem
                   disabled={isDisabled || isLoadBlogArticleLoading}
@@ -280,21 +295,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                 >
                   <RotateCw size={14} />
                   <span>構成リセット</span>
-                </DropdownMenuItem>
-              )}
-              {showTitleMetaButton && (
-                <DropdownMenuItem
-                  disabled={isDisabled || !onGenerateTitleMeta || isGenerateTitleMetaLoading}
-                  onSelect={() => onGenerateTitleMeta?.()}
-                >
-                  {isGenerateTitleMetaLoading ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <FilePenLine size={14} />
-                  )}
-                  <span>
-                    {isGenerateTitleMetaLoading ? '生成中…' : 'タイトル・説明文生成'}
-                  </span>
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
