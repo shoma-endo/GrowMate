@@ -745,9 +745,12 @@ POST /api/auth/account-migration/initiate
 GET /api/auth/account-migration/callback?code={code}&migration_token={token}
 
 サーバー処理:
-  1. Supabase Auth で code → session 交換（メール所有権確認完了）
-  2. migration_tokens からトークン取得・検証
+  1. migration_tokens からトークン取得・検証（セッション確立前に実施）
      - 存在確認、status='pending'確認、有効期限確認
+     → 無効の場合はセッションを作らずエラー画面にリダイレクト
+  2. Supabase Auth で code → session 交換（メール所有権確認完了）
+     ※ token が有効な場合のみ session を確立する。
+       期限切れ・改ざん token で認証状態だけ残る不整合を防止。
   3. パターン A の場合:
      - auth.users への INSERT は Supabase Auth が処理済み
      - trigger により public.users にレコードが作成済み
