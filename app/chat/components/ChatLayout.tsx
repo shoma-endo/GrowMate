@@ -211,12 +211,22 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const totalHeadings = headingSections.length;
   const isLegacyStep6ResetEligible = latestBlogStep === 'step6' && totalHeadings > 0;
   const isHeadingFlowCanvasStep = resolvedCanvasStep === HEADING_FLOW_STEP_ID;
-  // Step7 キャンバスの表示状態を計算
+  // Step7 キャンバスの表示状態を計算。
+  // タイルクリック直後は pendingViewingIndexRef を優先（effect 適用前の render で正しい進捗を表示）。
+  const effectiveViewingHeadingIndex =
+    pendingViewingIndexRef.current !== null
+      ? pendingViewingIndexRef.current
+      : viewingHeadingIndex;
+  const effectiveViewingSection =
+    effectiveViewingHeadingIndex !== null &&
+    effectiveViewingHeadingIndex >= 0 &&
+    effectiveViewingHeadingIndex < headingSections.length
+      ? headingSections[effectiveViewingHeadingIndex]
+      : undefined;
   const headingCanvasViewMode = resolveHeadingCanvasViewMode({
     step: resolvedCanvasStep,
     headingCount: totalHeadings,
-    viewingHeadingIndex:
-      viewingHeadingIndex !== null ? viewingHeadingIndex : pendingViewingIndexRef.current,
+    viewingHeadingIndex: effectiveViewingHeadingIndex,
     activeHeadingIndex,
   });
 
@@ -1251,22 +1261,26 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           })}
           {...(activeHeadingIndex !== undefined && { activeHeadingIndex })}
           totalHeadings={headingSections.length}
-          {...(currentHeading?.headingText && {
-            currentHeadingText: currentHeading.headingText,
+          {...((effectiveViewingSection ?? currentHeading)?.headingText && {
+            currentHeadingText: (effectiveViewingSection ?? currentHeading)!.headingText,
           })}
           onPrevHeading={handlePrevHeadingLocal}
           onNextHeading={handleNextHeadingLocal}
           canGoPrevHeading={
-            (viewingHeadingIndex !== null && viewingHeadingIndex > 0) ||
-            (viewingHeadingIndex === null && totalHeadings > 1)
+            (effectiveViewingHeadingIndex !== null && effectiveViewingHeadingIndex > 0) ||
+            (effectiveViewingHeadingIndex === null && totalHeadings > 1)
           }
           canGoNextHeading={
-            viewingHeadingIndex !== null &&
-            (viewingHeadingIndex < maxViewableIndex ||
+            effectiveViewingHeadingIndex !== null &&
+            (effectiveViewingHeadingIndex < maxViewableIndex ||
               // 全確定済みの場合は最後の見出しからも完成形へ進める
               (activeHeadingIndex === undefined && headingSections.length > 0))
           }
-          hideOutline={isHeadingFlowCanvasStep && viewingHeadingIndex !== null && totalHeadings > 0}
+          hideOutline={
+            isHeadingFlowCanvasStep &&
+            effectiveViewingHeadingIndex !== null &&
+            totalHeadings > 0
+          }
           onSaveHeadingSection={handleSaveHeadingClick}
           onStartHeadingGeneration={handleStartHeadingGeneration}
           isChatLoading={chatSession.state.isLoading}
