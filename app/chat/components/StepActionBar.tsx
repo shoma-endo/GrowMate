@@ -77,7 +77,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       onRetryHeadingInit,
       headingIndex,
       totalHeadings,
-      currentHeadingText,
       onResetHeadingConfiguration,
       isLegacyStep6ResetEligible = false,
     },
@@ -109,13 +108,8 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const isStep6 = displayStep === 'step6';
     const isStep7 = displayStep === 'step7';
     const isStep1 = displayStep === 'step1';
-    const isHeadingFlowStep = isStep7;
     const isHeadingFlowBusy = (isStep6 || isStep7) && (isSavingHeading || isHeadingInitInFlight);
     const isHeadingWarningStep = isStep7;
-    const headingLabel =
-      currentHeadingText && currentHeadingText.trim().length > 0
-        ? currentHeadingText
-        : '（見出し未設定）';
 
     // ラベル・ヒント
     const currentLabel = BLOG_STEP_LABELS[displayStep] ?? '';
@@ -158,14 +152,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
         <div className="text-xs px-3 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700">
           <span>
             現在のステップ: {currentLabel}
-            {isHeadingFlowStep &&
-              headingIndex !== undefined &&
-              totalHeadings !== undefined &&
-              totalHeadings > 0 && (
-                <span className="ml-2 font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded border border-blue-300 animate-in fade-in slide-in-from-left-2 duration-300">
-                  見出し {headingIndex + 1}/{totalHeadings}: 「{headingLabel}」
-                </span>
-              )}
             {isHeadingWarningStep &&
               totalHeadings === 0 &&
               (hasAttemptedHeadingInit || (isRetrying && isHeadingInitInFlight)) && (
