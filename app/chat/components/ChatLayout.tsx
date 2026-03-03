@@ -492,7 +492,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       canvasStreamingContent ??
       canvasContent
     ).trim();
-    const baselineContent = canvasContent.trim();
+    const baselineContent = (canvasStreamingContent || canvasContent).trim();
     const hasEditedDiff = currentContent !== baselineContent;
     if (!hasEditedDiff) return true;
     return window.confirm('現在の見出しの未保存変更が破棄されます。移動しますか？');
@@ -545,13 +545,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         canvasStreamingContent ??
         canvasContent
       ).trim();
-      const baselineContent = canvasContent.trim();
+      const baselineContent = (canvasStreamingContent || canvasContent).trim();
       const hasEditedDiff = currentContent !== baselineContent;
-      // ユーザーが実際に編集した場合のみ確認（未確定でも編集なしなら確認不要）
-      if (!hasEditedDiff) {
-        return true;
-      }
-
+      if (!hasEditedDiff) return true;
       return window.confirm('現在の見出しの未保存変更が破棄されます。前の見出しに戻りますか？');
     },
     [isHeadingFlowCanvasStep, canvasStreamingContent, canvasContent]
