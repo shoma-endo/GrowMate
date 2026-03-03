@@ -265,7 +265,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
           <Button
             onClick={() => {
               const confirmMessage =
-                '見出し構成と生成済みの本文（各見出しの中身）をすべてリセットします。※チャット履歴や書き出し案は保持されます。\n\nメモ・補足情報の基本構成、またはステップ5の構成案の内容から見出しの抽出・生成を最初からやり直しますか？';
+                '見出し単位の編集データは初期化され、新しい構成からやり直しになります。\n完成形の履歴は保持され、バージョンから参照できます。\n※チャット履歴・書き出し案も保持されます。\n\nメモ・補足情報の基本構成から見出しを再抽出して最初からやり直しますか？';
               if (window.confirm(confirmMessage)) {
                 void onResetHeadingConfiguration();
               }
@@ -273,7 +273,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             disabled={isDisabled || isHeadingFlowBusy}
             size="sm"
             variant="outline"
-            title="メモ・補足情報の基本構成、またはステップ5の構成案からstep7見出し構成を再抽出します"
+            title="メモ・補足情報の基本構成からstep7見出し構成を再抽出します"
             className="flex items-center gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
           >
             <RotateCw size={14} />
