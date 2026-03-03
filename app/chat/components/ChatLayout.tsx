@@ -608,7 +608,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
 
     if (!contentToSave?.trim()) return;
-    await handleSaveHeadingSection(contentToSave, section.headingKey);
+    const success = await handleSaveHeadingSection(contentToSave, section.headingKey);
+    if (success) {
+      setCanvasStreamingContent('');
+    }
   }, [
     isStep6ContentStale,
     activeHeadingIndex,
