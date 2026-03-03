@@ -1199,6 +1199,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
             </>
           )}
           {shouldShowHeadingUnitActions &&
+            !hideHeadingProgressAndNav &&
             headingIndex !== undefined &&
             headingIndex === activeHeadingIndexForFlow &&
             onStartHeadingGeneration &&
@@ -1218,6 +1219,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               </Button>
             )}
           {shouldShowHeadingUnitActions &&
+            !hideHeadingProgressAndNav &&
             onSaveHeadingSection &&
             headingIndex !== undefined &&
             !isStep6SaveDisabled && (
