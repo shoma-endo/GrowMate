@@ -5,6 +5,7 @@ import { chatService } from '@/server/services/chatService';
 import { env } from '@/env';
 import { MODEL_CONFIGS } from '@/lib/constants';
 import { ChatError } from '@/domain/errors/ChatError';
+import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
@@ -288,6 +289,8 @@ export async function POST(req: NextRequest) {
                 // Step6: パターンによる後処理除去はやめた（正当な記事末尾と区別不可のためデータ欠落リスク）。
                 // プロンプトで「【主な修正内容】を出力しない」指示に一本化。
                 const messageToSave = fullMessage;
+                // ブログ作成フロー: リクエストstepN→応答はstepN+1の内容のため、assistantは次のモデルで保存
+                const saveModel = getResponseModelForBlogCreation(model);
 
                 let result;
                 if (sessionId) {
@@ -306,14 +309,14 @@ export async function POST(req: NextRequest) {
                     [userMessage, messageToSave], // 再生成を回避
                     '',
                     [],
-                    model
+                    saveModel
                   );
                 } else {
                   result = await chatService.startChat(
                     userId,
                     'あなたは優秀なAIアシスタントです。',
                     [userMessage, messageToSave],
-                    model,
+                    saveModel,
                     serviceId
                   );
                 }

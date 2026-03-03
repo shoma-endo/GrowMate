@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect, useId, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ import {
 import { Bot, Send, Menu, Pencil, Check, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { BLOG_PLACEHOLDERS, BLOG_STEP_IDS, BlogStepId } from '@/lib/constants';
+import { BLOG_PLACEHOLDERS, BlogStepId } from '@/lib/constants';
 import { TITLE_MAX_LENGTH } from '@/lib/validators/common';
 import { useLiffContext } from '@/components/LiffProvider';
 import StepActionBar, { StepActionBarRef } from './StepActionBar';
@@ -55,7 +55,9 @@ interface InputAreaProps {
   blogFlowStatus?: string;
   selectedModelExternal?: string;
   initialBlogStep?: BlogStepId;
-  nextStepForPlaceholder?: BlogStepId | null;
+  /** ヒント・プレースホルダー・送信先の単一ソース（親で算出） */
+  nextStepForSend?: BlogStepId;
+  hintText?: string | null;
   isEditingTitle?: boolean;
   draftSessionTitle?: string;
   sessionTitleError?: string | null;
@@ -128,7 +130,8 @@ const InputArea: React.FC<InputAreaProps> = ({
   blogFlowStatus,
   selectedModelExternal,
   initialBlogStep,
-  nextStepForPlaceholder,
+  nextStepForSend,
+  hintText,
   isEditingTitle = false,
   draftSessionTitle,
   sessionTitleError,
@@ -190,43 +193,8 @@ const InputArea: React.FC<InputAreaProps> = ({
   const isModelSelected = Boolean(selectedModel);
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
-  /**
-   * ブログ作成で「今回の入力をどのステップとして送るか」を決定する。
-   * 自動進行（次ステップ送信）は維持しつつ、送信先の決定はこの関数に集約する。
-   */
-  const targetBlogStep = useMemo<BlogStepId>(() => {
-    if (hasDetectedBlogStep === false) return 'step1';
-
-    const currentStep = displayStep ?? initialBlogStep ?? 'step1';
-    const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
-    if (currentIdx === -1) return 'step1';
-
-    const shouldAdvance =
-      blogFlowStatus === 'waitingAction' || (blogFlowStatus === 'idle' && hasDetectedBlogStep);
-    if (!shouldAdvance) {
-      return BLOG_STEP_IDS[currentIdx] as BlogStepId;
-    }
-
-    if (nextStepForPlaceholder) return nextStepForPlaceholder;
-
-    const nextIdx = Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1);
-    return BLOG_STEP_IDS[nextIdx] as BlogStepId;
-  }, [
-    hasDetectedBlogStep,
-    displayStep,
-    initialBlogStep,
-    blogFlowStatus,
-    nextStepForPlaceholder,
-  ]);
-
-  /**
-   * プレースホルダー表示専用の次ステップ。
-   * UIの表示優先値。nextStepが未指定なら送信先ステップを表示する。
-   */
-  const placeholderBlogStep = useMemo<BlogStepId>(() => {
-    if (nextStepForPlaceholder) return nextStepForPlaceholder;
-    return targetBlogStep;
-  }, [nextStepForPlaceholder, targetBlogStep]);
+  // 親から渡された nextStepForSend を送信先・プレースホルダーで共通利用
+  const targetBlogStep = nextStepForSend ?? initialBlogStep ?? 'step1';
 
   // Step7 見出し生成フェーズ: 入力無効・見出し生成/保存ボタンのみ
   const isStep7HeadingPhase =
@@ -259,7 +227,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     }
 
     if (selectedModel === 'blog_creation') {
-      const key = `blog_creation_${placeholderBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
+      const key = `blog_creation_${targetBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
       return BLOG_PLACEHOLDERS[key];
     }
 
@@ -577,6 +545,8 @@ const InputArea: React.FC<InputAreaProps> = ({
               ref={stepActionBarRef}
               {...(displayStep !== undefined && { step: displayStep })}
               {...(hasDetectedBlogStep !== undefined && { hasDetectedBlogStep })}
+              {...(hintText !== undefined && { hintText })}
+              {...(nextStepForSend !== undefined && { nextStepForSend })}
               className="flex-wrap gap-3"
               disabled={isStepActionBarDisabled}
               {...(onSaveClick !== undefined && { onSaveClick })}

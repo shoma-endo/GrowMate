@@ -63,6 +63,10 @@ interface StepActionBarProps {
   onSaveHeadingSection?: () => Promise<void>;
   /** 見出し生成中・チャットローディング中 */
   isChatLoading?: boolean;
+  /** ヒント文言（親で算出済みの場合はこちらを優先） */
+  hintText?: string | null;
+  /** 次ステップ（親で算出済みの場合は ref の nextStep に使用） */
+  nextStepForSend?: BlogStepId;
 }
 
 export interface StepActionBarRef {
@@ -100,6 +104,8 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       onStartHeadingGeneration,
       onSaveHeadingSection,
       isChatLoading = false,
+      hintText: hintTextProp,
+      nextStepForSend,
     },
     ref
   ) => {
@@ -107,7 +113,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const actualIndex = BLOG_STEP_IDS.indexOf(actualStep);
     const displayIndex = actualIndex >= 0 ? actualIndex : 0;
     const displayStep = BLOG_STEP_IDS[displayIndex] ?? actualStep ?? BLOG_STEP_IDS[0];
-    const nextStep = BLOG_STEP_IDS[displayIndex + 1] ?? null;
+    const nextStepFallback = BLOG_STEP_IDS[displayIndex + 1] ?? null;
 
     // 再試行クリック時のみローディング表示。初回初期化中は警告を出さない。
     const [isRetrying, setIsRetrying] = useState(false);
@@ -118,7 +124,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     useImperativeHandle(ref, () => ({
       getCurrentStepInfo: () => ({
         currentStep: displayStep,
-        nextStep: nextStep ?? null,
+        nextStep: nextStepForSend ?? nextStepFallback ?? null,
       }),
     }));
 
@@ -131,12 +137,13 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const isStep1 = displayStep === 'step1';
     const isHeadingFlowBusy = (isStep6 || isStep7) && (isSavingHeading || isHeadingInitInFlight);
 
-    // ラベル・ヒント
+    // ラベル・ヒント（親から渡された場合はそれを優先）
     const currentLabel = BLOG_STEP_LABELS[displayStep] ?? '';
-    const nextStepLabel = nextStep ? BLOG_STEP_LABELS[nextStep]?.replace(/^\d+\.\s*/, '') : '';
-    const hintText = nextStepLabel
-      ? `次の${nextStepLabel}に進むにはメッセージを送信してください`
-      : null;
+    const nextStepLabelFallback = nextStepFallback
+      ? (BLOG_STEP_LABELS[nextStepFallback] ?? '').replace(/^\d+\.\s*/, '')
+      : '';
+    const hintText =
+      hintTextProp ?? (nextStepLabelFallback ? `次の${nextStepLabelFallback}に進むにはメッセージを送信してください` : null);
 
     // ボタン表示制御
     const showLoadButton = isStep7 && typeof onLoadBlogArticle === 'function';
@@ -162,10 +169,11 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       isStep7HeadingPhase && !isStep7SaveDisabled && Boolean(onSaveHeadingSection);
     const isStep7HeadingBusy = isSavingHeading || isChatLoading;
 
-    // nextStep の変更を親コンポーネントに通知
+    // 次ステップの変更を親コンポーネントに通知
+    const effectiveNextStep = nextStepForSend ?? nextStepFallback;
     useEffect(() => {
-      onNextStepChange?.(nextStep);
-    }, [nextStep, onNextStepChange]);
+      onNextStepChange?.(effectiveNextStep);
+    }, [effectiveNextStep, onNextStepChange]);
 
     const handleManualStepShift = (direction: 'forward' | 'backward') => {
       if (!onManualStepChange) {

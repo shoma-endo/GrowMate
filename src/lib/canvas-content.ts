@@ -38,6 +38,18 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
   return null;
 };
 
+/**
+ * ブログ作成フロー: リクエストモデル(stepN)に対して、応答内容が属する次のステップのモデルを返す。
+ * step5構成案送信 → 書き出し案(step6)が返るため、assistantメッセージは blog_creation_step6 で保存する。
+ */
+export const getResponseModelForBlogCreation = (requestModel: string): string => {
+  const match = requestModel.match(/^blog_creation_step(\d+)$/);
+  if (!match?.[1]) return requestModel;
+  const step = Number.parseInt(match[1], 10);
+  if (step < 1 || step >= 7) return requestModel;
+  return `blog_creation_step${step + 1}`;
+};
+
 const extractCanvasStructuredContent = (raw: string): CanvasStructuredContent | null => {
   if (!raw) return null;
   const trimmed = raw.trim();

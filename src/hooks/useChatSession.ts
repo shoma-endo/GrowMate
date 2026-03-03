@@ -10,6 +10,7 @@ import {
 } from '@/domain/models/chatModels';
 import { ChatError } from '@/domain/errors/ChatError';
 import type { ChatSessionActions, ChatSessionHook } from '@/types/hooks';
+import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { ERROR_MESSAGES as CHAT_ERROR_MESSAGES, CHAT_HISTORY_LIMIT } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
@@ -181,11 +182,14 @@ export const useChatSession = (
                   }));
                 } else if (eventType === 'final') {
                   const data = JSON.parse(dataCombined);
+                  const responseModel = getResponseModelForBlogCreation(model);
                   setState(prev => ({
                     ...prev,
                     currentSessionId: data.sessionId || prev.currentSessionId,
                     messages: prev.messages.map((msg, idx) =>
-                      idx === prev.messages.length - 1 ? { ...msg, content: data.message } : msg
+                      idx === prev.messages.length - 1
+                        ? { ...msg, content: data.message, model: responseModel }
+                        : msg
                     ),
                     isLoading: false,
                   }));

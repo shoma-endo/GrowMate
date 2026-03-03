@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { BLOG_STEP_IDS, BlogStepId } from '@/lib/constants';
+import { BLOG_STEP_IDS, BLOG_STEP_LABELS, BlogStepId } from '@/lib/constants';
 import SessionSidebar from './SessionSidebar';
 import MessageArea from './MessageArea';
 import InputArea from './InputArea';
@@ -70,7 +70,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
 
   const currentStep: BlogStepId = BLOG_STEP_IDS[0] as BlogStepId;
-  const flowStatus: 'idle' | 'running' | 'waitingAction' | 'error' = 'idle';
+  const flowStatus = 'idle' as 'idle' | 'running' | 'waitingAction' | 'error';
   const normalizedInitialStep =
     initialStep && BLOG_STEP_IDS.includes(initialStep) ? initialStep : null;
   // 最新メッセージのステップを優先し、なければ初期ステップにフォールバック
@@ -84,6 +84,41 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     return index >= 0 ? index : 0;
   }, [displayStep]);
   const shouldShowLoadButton = displayStep === 'step7';
+
+  /**
+   * ヒント・プレースホルダー・送信先モデルの単一ソース。
+   * 論理の分散を避け、StepActionBar と InputArea で一貫した値を共有する。
+   */
+  const { nextStepForSend, hintText } = useMemo(() => {
+    if (hasDetectedBlogStep === false) {
+      return {
+        nextStepForSend: 'step1' as BlogStepId,
+        hintText: null as string | null,
+      };
+    }
+    const currentStep = displayStep ?? initialStep ?? ('step1' as BlogStepId);
+    const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
+    if (currentIdx === -1) {
+      return { nextStepForSend: 'step1' as BlogStepId, hintText: null as string | null };
+    }
+    const shouldAdvance =
+      flowStatus === 'waitingAction' || (flowStatus === 'idle' && hasDetectedBlogStep);
+    const resolved: BlogStepId = shouldAdvance
+      ? (nextStepForPlaceholder ?? (BLOG_STEP_IDS[Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1)] as BlogStepId))
+      : (BLOG_STEP_IDS[currentIdx] ?? 'step1') as BlogStepId;
+    const label = BLOG_STEP_LABELS[resolved]?.replace(/^\d+\.\s*/, '');
+    const hint =
+      resolved !== displayStep && label
+        ? `次の${label}に進むにはメッセージを送信してください`
+        : null;
+    return { nextStepForSend: resolved, hintText: hint };
+  }, [
+    hasDetectedBlogStep,
+    displayStep,
+    initialStep,
+    flowStatus,
+    nextStepForPlaceholder,
+  ]);
   useEffect(() => {
     setManualBlogStep(null);
   }, [chatSession.state.currentSessionId]);
@@ -243,7 +278,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           onModelChange={handleModelChange}
           blogFlowStatus={flowStatus}
           selectedModelExternal={selectedModel}
-          nextStepForPlaceholder={nextStepForPlaceholder}
+          nextStepForSend={nextStepForSend}
+          hintText={hintText}
           onNextStepChange={onNextStepChange}
           onManualStepChange={handleManualStepChange}
           isEditingTitle={isEditingSessionTitle}
