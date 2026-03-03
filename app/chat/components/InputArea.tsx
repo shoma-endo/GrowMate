@@ -219,7 +219,9 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     if (selectedModel === 'blog_creation' && displayStep === 'step7') {
       if (isStep7HeadingPhase) {
-        return '上記見出しの内容を確認して、見出し生成をクリックしてください。保存を押すと次に進みます。';
+        return isStep7SaveDisabled
+          ? '上記見出しの内容を確認して、見出し生成をクリックしてください。'
+          : '上記見出しの内容を確認して、保存を押すと次に進みます。';
       }
       if (isStep7CombinedPhase) {
         return '書き出し案を入力してください、本文を出力します。';
