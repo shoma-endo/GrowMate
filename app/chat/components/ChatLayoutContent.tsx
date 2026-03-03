@@ -90,7 +90,9 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
    * 論理の分散を避け、StepActionBar と InputArea で一貫した値を共有する。
    */
   const { nextStepForSend, hintText } = useMemo(() => {
-    if (hasDetectedBlogStep === false) {
+    // 手動でスキップ/バックしている場合は displayStep を反映（プレースホルダー更新のため）
+    const useDisplayStep = manualBlogStep !== null || hasDetectedBlogStep;
+    if (!useDisplayStep) {
       return {
         nextStepForSend: 'step1' as BlogStepId,
         hintText: null as string | null,
@@ -103,8 +105,10 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     }
     const shouldAdvance =
       flowStatus === 'waitingAction' || (flowStatus === 'idle' && hasDetectedBlogStep);
+    // 手動スキップ時は nextStepForPlaceholder を使わない（useEffect のタイミングで古い値が入るため）
+    const nextFromIndex = BLOG_STEP_IDS[Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1)] as BlogStepId;
     const resolved: BlogStepId = shouldAdvance
-      ? (nextStepForPlaceholder ?? (BLOG_STEP_IDS[Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1)] as BlogStepId))
+      ? (manualBlogStep !== null ? nextFromIndex : (nextStepForPlaceholder ?? nextFromIndex))
       : (BLOG_STEP_IDS[currentIdx] ?? 'step1') as BlogStepId;
     const label = BLOG_STEP_LABELS[resolved]?.replace(/^\d+\.\s*/, '');
     const hint =
@@ -113,6 +117,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
         : null;
     return { nextStepForSend: resolved, hintText: hint };
   }, [
+    manualBlogStep,
     hasDetectedBlogStep,
     displayStep,
     initialStep,
