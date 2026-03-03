@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useServiceSelection } from '@/hooks/useServiceSelection';
 import { useLiffContext } from '@/components/LiffProvider';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
-import { normalizeForHeadingMatch } from '@/lib/utils';
 import {
   extractBlogStepFromModel,
   extractStep7HeadingIndexFromModel,
@@ -19,10 +18,7 @@ import { getContentAnnotationBySession } from '@/server/actions/wordpress.action
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
 import type { SessionHeadingSection } from '@/types/heading-flow';
-import {
-  extractHeadingTextFromLine,
-  stripLeadingHeadingLine,
-} from '@/lib/heading-extractor';
+import { stripLeadingHeadingLine } from '@/lib/heading-extractor';
 import { BlogStepId, BLOG_STEP_IDS, HEADING_FLOW_STEP_ID } from '@/lib/constants';
 import { ChatLayoutContent } from './ChatLayoutContent';
 import { ChatLayoutProps } from '@/types/chat-layout';
@@ -367,6 +363,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   const canvasContent = useMemo(() => {
     if (isHeadingFlowCanvasStep) {
+      // 旧 model (blog_creation_step7) のタイル: バージョン管理で選ばれた内容をそのまま表示
+      if (isViewingPastHeadingContent) {
+        return (canvasStreamingContent || activeCanvasVersion?.content) ?? '';
+      }
       if (headingCanvasViewMode.isCombinedView) {
         return selectedCombinedContent ?? '';
       }
@@ -406,6 +406,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     return activeCanvasVersion?.content ?? '';
   }, [
     isHeadingFlowCanvasStep,
+    isViewingPastHeadingContent,
+    canvasStreamingContent,
     headingCanvasViewMode.isCombinedView,
     headingSections,
     selectedCombinedContent,
@@ -668,42 +670,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           targetIdx = null;
         }
 
-        // model から特定できない旧メッセージのみ本文見出し一致でフォールバック
-        const normalizedContent = normalizeCanvasContent(message.content ?? '').trim();
-        if (targetIdx === null) {
-          const flowMessages = (chatSession.state.messages ?? []).filter(m => {
-            const step = extractBlogStepFromModel(m.model);
-            return m.role === 'assistant' && step === HEADING_FLOW_STEP_ID;
-          });
-          const rawFlowMsgIndex = flowMessages.findIndex(m => m.id === message.id);
-          const flowMsgIndex = rawFlowMsgIndex >= 0 ? rawFlowMsgIndex : flowMessages.length;
-
-          for (const line of normalizedContent.split('\n')) {
-            const extractedHeading = extractHeadingTextFromLine(line);
-            if (extractedHeading !== null) {
-              const headingText = normalizeForHeadingMatch(extractedHeading);
-              const matched = headingSections.filter(
-                s => normalizeForHeadingMatch(s.headingText) === headingText
-              );
-              if (matched.length === 1) {
-                targetIdx = matched[0]!.orderIndex;
-                break;
-              }
-              if (matched.length > 1) {
-                const best = matched.reduce((prev, curr) =>
-                  Math.abs(curr.orderIndex - flowMsgIndex) <
-                  Math.abs(prev.orderIndex - flowMsgIndex)
-                    ? curr
-                    : prev
-                );
-                targetIdx = best.orderIndex;
-                break;
-              }
-              // matched.length === 0: この見出しは構成にない。後続行を探すため break しない
-            }
-          }
-        }
-
+        // model に _hN がない旧メッセージはバージョン管理のみ。本文フォールバックは行わない。
         if (targetIdx !== null) {
           // step7 未表示時にタイルクリック: effect が上書きするため pending を使用。step7 表示中は setViewingHeadingIndex のみ（effect は deps 変化で動かないため）
           if (!isHeadingFlowCanvasStep) {
@@ -729,7 +696,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [
       annotationOpen,
       blogCanvasVersionsByStep,
-      chatSession.state.messages,
       headingSections,
       latestBlogStep,
       isHeadingFlowCanvasStep,
