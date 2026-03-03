@@ -1342,11 +1342,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               size="sm"
               variant="default"
               onClick={handleCopyMarkdown}
-              className="bg-green-600 hover:bg-green-700 transition-colors px-3 py-1 text-xs"
-              title="マークダウンとしてコピー"
+              className="bg-green-600 hover:bg-green-700 transition-colors p-2"
+              title="コピー"
             >
-              <ClipboardCheck size={14} className="mr-1" />
-              コピー
+              <ClipboardCheck size={16} />
             </Button>
           )}
           {isHeadingFlowCanvas && headingSaveError && (
