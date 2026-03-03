@@ -195,7 +195,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
               totalHeadings > 0 &&
               activeHeadingIndex !== undefined && (
                 <span className="ml-2">
-                  構成案から抽出した見出し {activeHeadingIndex + 1}/{totalHeadings}
+                  見出し {activeHeadingIndex + 1}/{totalHeadings}
                   {currentHeadingText && (
                     <span className="ml-1.5 text-blue-600" title={currentHeadingText}>
                       | {currentHeadingText.length > 20 ? `${currentHeadingText.slice(0, 20)}…` : currentHeadingText}
