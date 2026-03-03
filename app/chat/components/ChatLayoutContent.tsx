@@ -58,7 +58,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     onServiceChange,
     servicesError,
     onDismissServicesError,
-    isLegacyStep6ResetEligible,
   } = ctx;
   const { isOwnerViewMode } = useLiffContext();
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
@@ -266,7 +265,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           hasAttemptedHeadingInit={hasAttemptedHeadingInit}
           {...(onRetryHeadingInit !== undefined && { onRetryHeadingInit })}
           onResetHeadingConfiguration={handleResetHeadingConfiguration}
-          isLegacyStep6ResetEligible={isLegacyStep6ResetEligible}
           totalHeadings={totalHeadings}
           {...(headingIndex !== undefined && { headingIndex })}
           {...(currentHeadingText !== undefined && { currentHeadingText })}

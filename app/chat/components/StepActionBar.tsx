@@ -3,10 +3,17 @@ import React, { forwardRef, useImperativeHandle, useEffect, useState } from 'rea
 import { BlogStepId, BLOG_STEP_LABELS, BLOG_STEP_IDS } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   BookMarked,
   BookOpen,
   FilePenLine,
   Loader2,
+  MoreHorizontal,
   RotateCw,
   SkipBack,
   SkipForward,
@@ -45,8 +52,6 @@ interface StepActionBarProps {
   currentHeadingText?: string;
   /** 見出し構成を初期化し、基本構成から再抽出する */
   onResetHeadingConfiguration?: () => Promise<void>;
-  /** 旧step6データ（step7移行対象）かどうか */
-  isLegacyStep6ResetEligible?: boolean;
 }
 
 export interface StepActionBarRef {
@@ -78,7 +83,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       headingIndex,
       totalHeadings,
       onResetHeadingConfiguration,
-      isLegacyStep6ResetEligible = false,
     },
     ref
   ) => {
@@ -122,6 +126,11 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const showLoadButton = isStep7 && typeof onLoadBlogArticle === 'function';
     const showTitleMetaButton =
       isStep7 && Boolean(hasStep7Content) && typeof onGenerateTitleMeta === 'function';
+    const showResetButton =
+      isStep7 &&
+      Boolean(onResetHeadingConfiguration) &&
+      totalHeadings !== undefined &&
+      totalHeadings > 0;
     const showSkipButton = !isStep7;
     const showBackButton = !isStep1;
 
@@ -216,25 +225,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             </Button>
           )}
         </div>
-        {showLoadButton && (
-          <Button
-            onClick={() => {
-              if (isDisabled || isLoadBlogArticleLoading) return;
-              void onLoadBlogArticle?.();
-            }}
-            disabled={isDisabled || isLoadBlogArticleLoading}
-            size="sm"
-            variant="outline"
-            className="flex items-center gap-1 bg-white text-gray-900 hover:bg-gray-100"
-          >
-            {isLoadBlogArticleLoading ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <BookOpen size={14} />
-            )}
-            <span>{isLoadBlogArticleLoading ? '取得中…' : 'ブログ記事取得'}</span>
-          </Button>
-        )}
         <Button
           onClick={() => onSaveClick?.()}
           disabled={isDisabled || isHeadingFlowBusy || !onSaveClick || annotationLoading}
@@ -244,43 +234,71 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
           <BookMarked size={14} />
           <span>{annotationLoading ? '読み込み中...' : 'ブログ保存'}</span>
         </Button>
-        {(isStep7 || (isStep6 && isLegacyStep6ResetEligible)) &&
-          onResetHeadingConfiguration &&
-          totalHeadings !== undefined &&
-          totalHeadings > 0 && (
-          <Button
-            onClick={() => {
-              const confirmMessage =
-                '見出し単位の編集データは初期化され、新しい構成からやり直しになります。\n完成形の履歴は保持され、バージョンから参照できます。\n※チャット履歴・書き出し案も保持されます。\n\nメモ・補足情報の基本構成から見出しを再抽出して最初からやり直しますか？';
-              if (window.confirm(confirmMessage)) {
-                void onResetHeadingConfiguration();
-              }
-            }}
-            disabled={isDisabled || isHeadingFlowBusy}
-            size="sm"
-            variant="outline"
-            title="メモ・補足情報の基本構成からstep7見出し構成を再抽出します"
-            className="flex items-center gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-          >
-            <RotateCw size={14} />
-            <span>構成リセット</span>
-          </Button>
-        )}
-        {showTitleMetaButton && (
-          <Button
-            onClick={() => onGenerateTitleMeta?.()}
-            disabled={isDisabled || !onGenerateTitleMeta || isGenerateTitleMetaLoading}
-            size="sm"
-            variant="outline"
-            className="flex items-center gap-1 bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100"
-          >
-            {isGenerateTitleMetaLoading ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <FilePenLine size={14} />
-            )}
-            <span>{isGenerateTitleMetaLoading ? '生成中…' : 'タイトル・説明文生成'}</span>
-          </Button>
+        {isStep7 && (showLoadButton || showTitleMetaButton || showResetButton) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isDisabled || isHeadingFlowBusy}
+                className="flex items-center gap-1 px-2.5"
+                title="その他の操作"
+                aria-label="その他の操作"
+              >
+                <MoreHorizontal size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[200px]">
+              {showLoadButton && (
+                <DropdownMenuItem
+                  disabled={isDisabled || isLoadBlogArticleLoading}
+                  onSelect={() => {
+                    if (isDisabled || isLoadBlogArticleLoading) return;
+                    void onLoadBlogArticle?.();
+                  }}
+                >
+                  {isLoadBlogArticleLoading ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <BookOpen size={14} />
+                  )}
+                  <span>{isLoadBlogArticleLoading ? '取得中…' : 'ブログ記事取得'}</span>
+                </DropdownMenuItem>
+              )}
+              {showResetButton && (
+                <DropdownMenuItem
+                  disabled={isDisabled || isHeadingFlowBusy}
+                  onSelect={() => {
+                    const confirmMessage =
+                      '見出し単位の編集データは初期化され、新しい構成からやり直しになります。\n完成形の履歴は保持され、バージョンから参照できます。\n※チャット履歴・書き出し案も保持されます。\n\nメモ・補足情報の基本構成から見出しを再抽出して最初からやり直しますか？';
+                    if (window.confirm(confirmMessage)) {
+                      void onResetHeadingConfiguration?.();
+                    }
+                  }}
+                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                >
+                  <RotateCw size={14} />
+                  <span>構成リセット</span>
+                </DropdownMenuItem>
+              )}
+              {showTitleMetaButton && (
+                <DropdownMenuItem
+                  disabled={isDisabled || !onGenerateTitleMeta || isGenerateTitleMetaLoading}
+                  onSelect={() => onGenerateTitleMeta?.()}
+                >
+                  {isGenerateTitleMetaLoading ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <FilePenLine size={14} />
+                  )}
+                  <span>
+                    {isGenerateTitleMetaLoading ? '生成中…' : 'タイトル・説明文生成'}
+                  </span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
     );

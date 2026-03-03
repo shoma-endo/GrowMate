@@ -201,7 +201,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   // 表示中の見出しインデックス（0..n-1）。null = 全確定時の結合表示 は useHeadingCanvasState が管理
   const totalHeadings = headingSections.length;
-  const isLegacyStep6ResetEligible = latestBlogStep === 'step6' && totalHeadings > 0;
   const isHeadingFlowCanvasStep = resolvedCanvasStep === HEADING_FLOW_STEP_ID;
   // Step7 キャンバスの表示状態を計算。
   // タイルクリック直後は pendingViewingIndexRef を優先（effect 適用前の render で正しい進捗を表示）。
@@ -1200,7 +1199,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           servicesError,
           onDismissServicesError: dismissServicesError,
           onResetHeadingConfiguration: handleResetHeadingConfiguration,
-          isLegacyStep6ResetEligible,
           resolvedCanvasStep,
           setCanvasStep,
         }}

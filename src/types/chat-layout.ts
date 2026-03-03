@@ -86,7 +86,6 @@ export interface ChatLayoutCtx {
   servicesError: string | null;
   onDismissServicesError: () => void;
   onResetHeadingConfiguration: () => Promise<boolean>;
-  isLegacyStep6ResetEligible: boolean;
   resolvedCanvasStep: BlogStepId | null;
   setCanvasStep: (step: BlogStepId | null) => void;
 }

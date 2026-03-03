@@ -97,7 +97,6 @@ interface InputAreaProps {
   selectedServiceId?: string | null;
   onServiceChange?: (serviceId: string) => void;
   onResetHeadingConfiguration?: () => Promise<void>;
-  isLegacyStep6ResetEligible?: boolean;
   services?: Service[];
 }
 
@@ -152,8 +151,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   services,
   selectedServiceId,
   onServiceChange,
-  onResetHeadingConfiguration,
-  isLegacyStep6ResetEligible = false,
+      onResetHeadingConfiguration,
 }) => {
   const { isOwnerViewMode } = useLiffContext();
   const [input, setInput] = useState('');
@@ -544,7 +542,6 @@ const InputArea: React.FC<InputAreaProps> = ({
               {...(totalHeadings !== undefined && { totalHeadings })}
               {...(currentHeadingText !== undefined && { currentHeadingText })}
               {...(onResetHeadingConfiguration !== undefined && { onResetHeadingConfiguration })}
-              isLegacyStep6ResetEligible={isLegacyStep6ResetEligible}
             />
             {blogArticleError && <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>}
           </div>
