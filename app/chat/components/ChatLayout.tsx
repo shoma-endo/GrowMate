@@ -522,35 +522,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     setCanvasStreamingContent,
   ]);
 
-  const handleBeforeManualStepChange = useCallback(
-    ({
-      direction,
-      currentStep,
-    }: {
-      direction: 'forward' | 'backward';
-      currentStep: BlogStepId;
-      targetStep: BlogStepId;
-    }): boolean => {
-      if (
-        direction !== 'backward' ||
-        !isHeadingFlowCanvasStep ||
-        currentStep !== HEADING_FLOW_STEP_ID
-      ) {
-        return true;
-      }
-
-      const currentContent = (
-        canvasContentRef.current ??
-        canvasStreamingContent ??
-        canvasContent
-      ).trim();
-      const baselineContent = (canvasStreamingContent || canvasContent).trim();
-      const hasEditedDiff = currentContent !== baselineContent;
-      if (!hasEditedDiff) return true;
-      return window.confirm('現在の見出しの未保存変更が破棄されます。前の見出しに戻りますか？');
-    },
-    [isHeadingFlowCanvasStep, canvasStreamingContent, canvasContent]
-  );
+  const handleBeforeManualStepChange = useCallback((): boolean => true, []);
 
   // スキップ/バック時に resolvedCanvasStep を同期（見出しフロー・Canvas コンテンツの表示に必要）
   const handleManualStepChangeForCanvas = useCallback((targetStep: BlogStepId) => {
