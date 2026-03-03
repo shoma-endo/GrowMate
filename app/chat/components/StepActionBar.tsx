@@ -9,12 +9,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  BookMarked,
   BookOpen,
   FilePenLine,
   Loader2,
   MoreHorizontal,
   RotateCw,
+  Save,
   SkipBack,
   SkipForward,
 } from 'lucide-react';
@@ -231,7 +231,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
           size="sm"
           className="flex items-center gap-1 bg-black text-white hover:bg-black/90"
         >
-          <BookMarked size={14} />
+          <Save size={14} />
           <span>{annotationLoading ? '読み込み中...' : 'ブログ保存'}</span>
         </Button>
         {isStep7 && (showLoadButton || showTitleMetaButton || showResetButton) && (

@@ -20,7 +20,8 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  ClipboardCheck,
+  Copy,
+  Save,
   List,
   Loader2,
   Info,
@@ -1253,7 +1254,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                 {isSavingHeading ? (
                   <Loader2 size={14} className="mr-1 animate-spin" />
                 ) : (
-                  <ClipboardCheck size={14} className="mr-1" />
+                  <Save size={14} className="mr-1" />
                 )}
                 {headingIndex === activeHeadingIndexForFlow &&
                 totalHeadings !== undefined &&
@@ -1340,7 +1341,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                     onClick={handleCopyMarkdown}
                     className="bg-green-600 hover:bg-green-700 transition-colors p-2"
                   >
-                    <ClipboardCheck size={16} />
+                    <Copy size={16} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="end">
