@@ -244,7 +244,13 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   const hasHeadingFlowActions =
     isHeadingFlowCanvas && showHeadingUnitActions && !isBasicStructureRequiredError;
   const isHeadingUnitView = hasHeadingFlowActions && headingIndex !== undefined;
-  const isCombinedView = isHeadingFlowCanvas && !isHeadingUnitView && (totalHeadings ?? 0) > 0;
+  // 完成形 = Step6書き出し案＋見出し確定本文の結合（AI直接生成ではない）。
+  // タイルクリック時（hideHeadingProgressAndNav）は過去のAI生成文を表示しており完成形ではないため除外。
+  const isCombinedView =
+    isHeadingFlowCanvas &&
+    !isHeadingUnitView &&
+    (totalHeadings ?? 0) > 0 &&
+    !hideHeadingProgressAndNav;
 
   /** 見出し単位の操作UI（進捗・生成・保存・戻る/進む）を表示するか。基本構成エラー時・構成リセット前の過去見出し表示時は非表示。 */
   const showHeadingUnitProgressAndActions =
