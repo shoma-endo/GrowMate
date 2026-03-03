@@ -1064,7 +1064,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[300px] text-xs space-y-2">
                     <p>
-                      メモ・補足情報の基本構成（###/####形式）を優先し、なければステップ5の構成案から以下を抽出します。
+                      メモ・補足情報の「基本構成」から、以下の形式で見出しを抽出します。
                     </p>
                     <ul className="list-disc pl-3 space-y-0.5">
                       <li>
@@ -1081,7 +1081,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                       </li>
                     </ul>
                     <p>
-                      ステップ7 開始後に基本構成や構成案を変更しても、見出しは自動更新されません。構成を変更したい場合は「構成リセット」を行ってください。
+                      ステップ7 開始後に基本構成を変更しても、見出しは自動更新されません。構成を変更したい場合は「構成リセット」を行ってください。
                     </p>
                   </TooltipContent>
                 </Tooltip>

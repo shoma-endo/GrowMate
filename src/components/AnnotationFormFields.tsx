@@ -21,7 +21,8 @@ const PLACEHOLDERS: Record<AnnotationFieldKey, string> = {
   persona: 'デモグラフィック情報やペルソナ',
   goal: '達成したいゴールや目標',
   prep: 'PREP法の要点や伝えたい流れ',
-  basic_structure: '導入や見出し構成など基本的な流れ',
+  basic_structure:
+    '導入や見出し構成。本文作成（Step7）では ### 中見出し / #### 小見出し 形式で抽出されます',
   opening_proposal: '書き出しの方向性や冒頭で伝えたい内容',
 };
 

@@ -123,16 +123,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     getAccessToken,
   });
 
-  // 見出し単位生成フロー用ステート・ロジック（カスタムフックで管理）
-  const step5Content = useMemo(
-    () =>
-      [...(chatSession.state.messages ?? [])]
-        .reverse()
-        .find(m => m.model === 'blog_creation_step5' || m.model === 'blog_creation_step5_manual')
-        ?.content ?? null,
-    [chatSession.state.messages]
-  );
-
   const {
     headingSections,
     isHeadingInitInFlight,
@@ -154,7 +144,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   } = useHeadingFlow({
     sessionId: chatSession.state.currentSessionId ?? null,
     isSessionLoading: chatSession.state.isLoading,
-    step5Content,
     getAccessToken,
     resolvedCanvasStep,
   });

@@ -11,7 +11,6 @@ import { type BlogStepId, HEADING_FLOW_STEP_ID } from '@/lib/constants';
 interface UseHeadingFlowParams {
   sessionId: string | null;
   isSessionLoading: boolean;
-  step5Content: string | null;
   getAccessToken: () => Promise<string>;
   resolvedCanvasStep: BlogStepId | null;
 }
@@ -57,10 +56,12 @@ interface UseHeadingFlowReturn {
   refetchHeadings: () => Promise<SessionHeadingSection[]>;
 }
 
+const BASIC_STRUCTURE_REQUIRED_MESSAGE =
+  'メモ・補足情報の「基本構成」に、### と #### 形式で見出しを入力して保存してください。';
+
 export function useHeadingFlow({
   sessionId,
   isSessionLoading,
-  step5Content,
   getAccessToken,
   resolvedCanvasStep,
 }: UseHeadingFlowParams): UseHeadingFlowReturn {
@@ -94,12 +95,6 @@ export function useHeadingFlow({
     currentSessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  // step5Content が null のまま init した場合、後から content が入ったら再試行を許可する
-  const didInitWithStep5ContentRef = useRef(false);
-  /** 最後に init で使用した抽出元の内容（outlineSource）。更新検知による無限ループ防止用 */
-  const lastInitStep5ContentRef = useRef<string | null>(null);
-  /** 最後に init で使用した抽出元: basic_structure の場合は step5 の変更では再初期化しない */
-  const lastInitSourceRef = useRef<'basic_structure' | 'step5' | null>(null);
   /** 構成リセット後に init が成功したら完了トーストを表示するためのフラグ */
   const isResetInitRef = useRef(false);
 
@@ -178,9 +173,6 @@ export function useHeadingFlow({
     setCombinedContentVersions([]);
     setSelectedCombinedVersionId(null);
     setHasAttemptedHeadingInit(false);
-    didInitWithStep5ContentRef.current = false;
-    lastInitStep5ContentRef.current = null;
-    lastInitSourceRef.current = null;
     isResetInitRef.current = false;
     setIsHeadingInitInFlight(false);
     setHeadingInitError(null);
@@ -233,28 +225,24 @@ export function useHeadingFlow({
     const initAndFetch = async () => {
       setIsHeadingInitInFlight(true);
       try {
-        // 見出し抽出元: 基本構成（content_annotations.basic_structure）を優先して READ し、
-        // 見出しが抽出できる場合は使用。なければ step5 構成案。basic_structure 自体は DB に
-        // 保存されたメモ・補足情報なので、こちらから初期化（書き込み）は一切しない。
-        const trimmedStep5 = step5Content?.trim() ?? '';
-        let outlineSource = trimmedStep5;
-
+        // 見出し抽出元: メモ・補足情報の「基本構成」（content_annotations.basic_structure）のみ。
+        // step5 チャットは使用しない。basic_structure の初期化（書き込み）は行わない。
         const annotationRes = await getContentAnnotationBySession(sessionId);
-        if (annotationRes.success && annotationRes.data?.basic_structure) {
-          const trimmedBasic = annotationRes.data.basic_structure.trim();
-          if (
-            trimmedBasic &&
-            extractHeadingsFromMarkdown(trimmedBasic).length > 0
-          ) {
-            outlineSource = trimmedBasic;
+        if (!annotationRes.success) {
+          if (sessionId === currentSessionIdRef.current) {
+            setHeadingInitError(
+              annotationRes.error || 'メモ・補足情報の取得に失敗しました。再試行してください。'
+            );
+            setHasAttemptedHeadingInit(true);
           }
+          return;
         }
+        const trimmedBasic = annotationRes.data?.basic_structure?.trim() ?? '';
+        const headings = trimmedBasic
+          ? extractHeadingsFromMarkdown(trimmedBasic)
+          : [];
 
-        if (outlineSource) {
-          didInitWithStep5ContentRef.current = true;
-          lastInitStep5ContentRef.current = outlineSource;
-          lastInitSourceRef.current =
-            outlineSource !== trimmedStep5 ? 'basic_structure' : 'step5';
+        if (headings.length > 0) {
           const liffAccessToken = await getAccessToken();
           if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
             if (sessionId === currentSessionIdRef.current) {
@@ -264,7 +252,7 @@ export function useHeadingFlow({
           }
           const res = await headingActions.initializeHeadingSections({
             sessionId,
-            step5Markdown: outlineSource,
+            step5Markdown: trimmedBasic,
             liffAccessToken: liffAccessToken.trim(),
           });
           if (res.success) {
@@ -284,8 +272,9 @@ export function useHeadingFlow({
             }
           }
         } else {
-          // 基本構成も step5 もない、または見出しが抽出できない場合は「試行済み」としてループを止める
+          // 基本構成が空、または ###/#### 見出しが抽出できない場合は導線を表示
           if (sessionId === currentSessionIdRef.current) {
+            setHeadingInitError(BASIC_STRUCTURE_REQUIRED_MESSAGE);
             setHasAttemptedHeadingInit(true);
           }
         }
@@ -307,49 +296,12 @@ export function useHeadingFlow({
     sessionId,
     resolvedCanvasStep,
     isHeadingInitInFlight,
-    step5Content,
     isSessionLoading,
     fetchHeadingSections,
     getAccessToken,
     hasAttemptedHeadingInit,
     headingInitError,
     hasFetchCompleted,
-    isHeadingFlowActive,
-  ]);
-
-  // hasAttemptedHeadingInit をリセットして再初期化を許可する。
-  // (a) step5Content が null のまま init した後、後から content が入った場合（遅延コンテンツ）
-  // (b) step5Content が後から ###/#### 形式で保存し直された場合（step5 を抽出元に使った時のみ。
-  //     basic_structure で初期化した場合は step5 の変更では再初期化しない＝不要な再 fetch を防ぐ）
-  // ※ basic_structure を変更した場合は再初期化されない。構成を反映させるには「構成リセット」を実行すること。
-  useEffect(() => {
-    const baseGuard =
-      !isHeadingFlowActive(resolvedCanvasStep) ||
-      !sessionId ||
-      !hasAttemptedHeadingInit ||
-      headingSections.length > 0;
-    if (baseGuard) return;
-
-    const trimmedCurrent = step5Content?.trim() ?? '';
-    const shouldResetForDelayedContent =
-      !didInitWithStep5ContentRef.current && trimmedCurrent.length > 0;
-    const shouldResetForUpdatedStep5 =
-      lastInitSourceRef.current === 'step5' &&
-      trimmedCurrent &&
-      !isHeadingInitInFlight &&
-      trimmedCurrent !== lastInitStep5ContentRef.current &&
-      extractHeadingsFromMarkdown(trimmedCurrent).length > 0;
-
-    if (shouldResetForDelayedContent || shouldResetForUpdatedStep5) {
-      setHasAttemptedHeadingInit(false);
-    }
-  }, [
-    resolvedCanvasStep,
-    sessionId,
-    step5Content,
-    hasAttemptedHeadingInit,
-    headingSections.length,
-    isHeadingInitInFlight,
     isHeadingFlowActive,
   ]);
 
@@ -429,10 +381,6 @@ export function useHeadingFlow({
   );
 
   const handleRetryHeadingInit = useCallback((options?: { fromReset?: boolean }) => {
-    // 明示リトライ時は初回化トラッカーも戻し、再読込後に自動初期化できるようにする。
-    didInitWithStep5ContentRef.current = false;
-    lastInitStep5ContentRef.current = null;
-    lastInitSourceRef.current = null;
     setHeadingInitError(null);
     setHeadingSaveError(null);
     setHasAttemptedHeadingInit(false);
