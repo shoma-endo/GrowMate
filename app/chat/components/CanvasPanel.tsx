@@ -1216,7 +1216,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                 ) : (
                   <Play size={14} className="mr-1" />
                 )}
-                {headingIndex === 0 ? '1件目の生成をスタート' : 'この見出しを生成'}
+                {headingIndex === 0 ? '1件目の生成をスタート' : '見出し本文を生成'}
               </Button>
             )}
           {shouldShowHeadingUnitActions &&
