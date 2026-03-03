@@ -239,10 +239,19 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   const versionTriggerLabel = currentVersion ? `Ver.${currentVersion.versionNumber}` : 'Ver.-';
 
   const isHeadingFlowCanvas = activeStepId === HEADING_FLOW_STEP_ID;
-  const hasHeadingFlowActions = isHeadingFlowCanvas && showHeadingUnitActions;
+  const isBasicStructureRequiredError =
+    headingInitError === BASIC_STRUCTURE_REQUIRED_MESSAGE;
+  const hasHeadingFlowActions =
+    isHeadingFlowCanvas && showHeadingUnitActions && !isBasicStructureRequiredError;
   const isHeadingUnitView = hasHeadingFlowActions && headingIndex !== undefined;
   const isCombinedView = isHeadingFlowCanvas && !isHeadingUnitView && (totalHeadings ?? 0) > 0;
-  const shouldShowHeadingUnitActions = isHeadingUnitView;
+
+  /** 見出し単位の操作UI（進捗・生成・保存・戻る/進む）を表示するか。基本構成エラー時・構成リセット前の過去見出し表示時は非表示。 */
+  const showHeadingUnitProgressAndActions =
+    hasHeadingFlowActions &&
+    (totalHeadings ?? 0) > 0 &&
+    headingIndex !== undefined &&
+    !hideHeadingProgressAndNav;
 
   const hasStepOptions = stepOptions.length > 0;
 
@@ -1100,7 +1109,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               </TooltipProvider>
             )}
           </div>
-          {isHeadingUnitView && totalHeadings !== undefined && !hideHeadingProgressAndNav && (
+          {showHeadingUnitProgressAndActions && (
             <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-[11px] font-medium text-blue-700">
               <span>
                 進捗: {headingIndex + 1} / {totalHeadings}
@@ -1165,10 +1174,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               <List size={16} />
             </Button>
           )}
-          {hasHeadingFlowActions &&
-            totalHeadings !== undefined &&
-            totalHeadings > 1 &&
-            !hideHeadingProgressAndNav && (
+          {showHeadingUnitProgressAndActions && (totalHeadings ?? 0) > 1 && (
             <>
               {canGoPrevHeading && onPrevHeading && (
                 <Button
@@ -1210,9 +1216,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               )}
             </>
           )}
-          {shouldShowHeadingUnitActions &&
-            !hideHeadingProgressAndNav &&
-            headingIndex !== undefined &&
+          {showHeadingUnitProgressAndActions &&
             headingIndex === activeHeadingIndexForFlow &&
             onStartHeadingGeneration &&
             isStep6SaveDisabled && (
@@ -1230,10 +1234,8 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                 {headingIndex === 0 ? '1件目の生成をスタート' : '見出し本文を生成'}
               </Button>
             )}
-          {shouldShowHeadingUnitActions &&
-            !hideHeadingProgressAndNav &&
+          {showHeadingUnitProgressAndActions &&
             onSaveHeadingSection &&
-            headingIndex !== undefined &&
             !isStep6SaveDisabled && (
               <Button
                 size="sm"
