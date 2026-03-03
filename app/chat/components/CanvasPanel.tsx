@@ -1336,7 +1336,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               </SelectContent>
             </Select>
           )}
-          {!isHeadingFlowCanvas && (
+          {!isHeadingUnitView && (
             <Button
               ref={markdownBtnRef}
               size="sm"
