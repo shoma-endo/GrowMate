@@ -56,7 +56,8 @@ interface UseHeadingFlowReturn {
   refetchHeadings: () => Promise<SessionHeadingSection[]>;
 }
 
-const BASIC_STRUCTURE_REQUIRED_MESSAGE =
+/** 基本構成未入力時に表示。CanvasPanel 等でラベル切り替えに利用 */
+export const BASIC_STRUCTURE_REQUIRED_MESSAGE =
   'メモ・補足情報の「基本構成」に、### と #### 形式で見出しを入力して保存してください。';
 
 export function useHeadingFlow({

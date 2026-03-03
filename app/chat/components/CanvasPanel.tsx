@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { HEADING_FLOW_STEP_ID, BLOG_STEP_LABELS, isStep7 as isBlogStep7 } from '@/lib/constants';
+import { BASIC_STRUCTURE_REQUIRED_MESSAGE } from '@/hooks/useHeadingFlow';
 import type { BlogStepId } from '@/lib/constants';
 import type {
   CanvasSelectionEditPayload,
@@ -1335,7 +1336,9 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                 className="text-[10px] text-red-500 max-w-[120px] truncate sm:max-w-[150px]"
                 title={headingInitError}
               >
-                生成エラー
+                {headingInitError === BASIC_STRUCTURE_REQUIRED_MESSAGE
+                  ? '基本構成が必要'
+                  : '初期化エラー'}
               </span>
               <Button
                 size="sm"
