@@ -345,7 +345,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
         flushBlockquote();
 
-        const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        const headingMatch = trimmed.match(/^(#{1,6})[\s\u3000]+(.+)$/);
         if (headingMatch && headingMatch[1] && headingMatch[2]) {
           closeList();
           const level = headingMatch[1].length;
@@ -423,7 +423,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
       lines.forEach((line, index) => {
         const trimmed = line.trim();
-        const match = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        const match = trimmed.match(/^(#{1,6})[\s\u3000]+(.+)$/);
 
         if (match && match[1] && match[2]) {
           const level = match[1].length;

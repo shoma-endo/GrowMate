@@ -234,7 +234,7 @@ export class HeadingFlowService extends SupabaseService {
 
     const firstLine = candidate.split('\n')[0]?.trim() ?? '';
     // 互換対応: 旧 step6 見出しフロー本文（###/#### 始まり）はリード文として結合しない
-    if (/^#{3,4}\s+.+$/.test(firstLine)) return null;
+    if (/^#{3,4}[\s\u3000]+.+$/.test(firstLine)) return null;
 
     return candidate;
   }

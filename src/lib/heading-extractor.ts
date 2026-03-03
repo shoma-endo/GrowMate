@@ -52,8 +52,8 @@ export function extractHeadingsFromMarkdown(markdown: string): ExtractedHeading[
     if (inCodeBlock) continue;
 
     // H3 (###) または H4 (####) の見出しにマッチ
-    // 正規表現: 行頭から # が 3〜4 つ続き、その後に空白、そして見出しテキスト
-    const match = trimmed.match(/^(#{3,4})\s+(.+)$/);
+    // 正規表現: 行頭から # が 3〜4 つ続き、その後に空白（半角・全角・タブ）、そして見出しテキスト
+    const match = trimmed.match(/^(#{3,4})[\s\u3000]+(.+)$/);
     if (match) {
       const hashes = match[1] || '';
       const text = (match[2] || '').trim();
