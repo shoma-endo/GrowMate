@@ -98,8 +98,10 @@ export interface ChatLayoutCtx {
   onSaveHeadingSection?: () => Promise<void>;
   /** チャットローディング中 */
   isChatLoading?: boolean;
-  /** Step7 完成形フェーズ: 書き出し+各見出しを結合して保存（AI 不使用） */
+  /** Step7 完成形フェーズ: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
   onBuildCombinedWithUserLead?: (userProvidedLead: string) => Promise<{ success: boolean; error?: string }>;
-  /** Step7 完成形を1回以上保存済みのとき true。保存後は通常送信を許可する */
-  hasCombinedContentSaved?: boolean;
+  /** Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし） */
+  onSaveStep7UserLead?: (userLead: string) => Promise<{ success: boolean; error?: string }>;
+  /** Step6→Step7 で書き出し案保存済み。step7 表示に遷移するためのフラグ */
+  step6ToStep7LeadSaved?: boolean;
 }

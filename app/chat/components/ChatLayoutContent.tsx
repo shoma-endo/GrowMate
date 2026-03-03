@@ -64,7 +64,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     onSaveHeadingSection,
     isChatLoading,
     onBuildCombinedWithUserLead,
-    hasCombinedContentSaved,
+    onSaveStep7UserLead,
+    step6ToStep7LeadSaved,
   } = ctx;
   const { isOwnerViewMode } = useLiffContext();
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
@@ -136,6 +137,13 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
       setManualBlogStep(null);
     }
   }, [manualBlogStep, detectedStep]);
+
+  // Step6→Step7 で書き出し案保存済みのとき、step7 表示に遷移
+  useEffect(() => {
+    if (step6ToStep7LeadSaved && detectedStep === 'step6') {
+      setManualBlogStep('step7');
+    }
+  }, [step6ToStep7LeadSaved, detectedStep]);
   const handleManualStepChange = useCallback(
     (targetStep: BlogStepId) => {
       setManualBlogStep(targetStep);
@@ -161,7 +169,14 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     setIsSubscriptionErrorDismissed(false);
   }, [subscription.error]);
 
-  const shouldShowStepActionBar = blogFlowActive && !chatSession.state.isLoading;
+  // Step7 見出し生成フェーズではプレースホルダーと見出し生成ボタンの両方を表示するため必須
+  const isStep7HeadingPhaseForBar =
+    displayStep === 'step7' &&
+    selectedModel === 'blog_creation' &&
+    activeHeadingIndex !== undefined &&
+    (totalHeadings ?? 0) > 0;
+  const shouldShowStepActionBar =
+    (blogFlowActive && !chatSession.state.isLoading) || isStep7HeadingPhaseForBar;
 
   const isReadOnly = isOwnerViewMode;
 
@@ -322,7 +337,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           {...(onSaveHeadingSection && { onSaveHeadingSection })}
           isChatLoading={isChatLoading ?? false}
           {...(onBuildCombinedWithUserLead && { onBuildCombinedWithUserLead })}
-          {...(hasCombinedContentSaved !== undefined && { hasCombinedContentSaved })}
+          {...(onSaveStep7UserLead && { onSaveStep7UserLead })}
           services={services}
           selectedServiceId={selectedServiceId}
           onServiceChange={onServiceChange}

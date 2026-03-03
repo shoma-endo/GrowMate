@@ -99,12 +99,12 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const shouldShowTimestamp = (index: number) => {
-    if (index === messages.length - 1) return true;
-    if (index < 0 || index >= messages.length - 1) return false;
+  const shouldShowTimestamp = (list: ChatMessage[], index: number) => {
+    if (index === list.length - 1) return true;
+    if (index < 0 || index >= list.length - 1) return false;
 
-    const currentMsg = messages[index];
-    const nextMsg = messages[index + 1];
+    const currentMsg = list[index];
+    const nextMsg = list[index + 1];
 
     if (!currentMsg || !nextMsg) return true;
 
@@ -390,15 +390,18 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === 'step7')
     .map(m => m.id);
 
+  // Step6→Step7 で保存した書き出し案（chat_messages の user メッセージ）は非表示
+  const visibleMessages = messages.filter(m => m.model !== 'blog_creation_step7_lead');
+
   return (
     <div className="flex-1 overflow-y-auto p-3 bg-slate-100">
       {isLoading && messages.length === 0 ? (
         <ActivityIndicator variant="full" label="メッセージを取得中です" />
-      ) : messages.length === 0 ? (
+      ) : visibleMessages.length === 0 ? (
         <EmptyState />
       ) : (
         <>
-          {messages.map((message, index) => {
+          {visibleMessages.map((message, index) => {
             const blogPreviewMeta = isBlogMessage(message) ? derivePreviewMeta(message) : null;
             const openHandler =
               blogPreviewMeta && onOpenCanvas ? () => onOpenCanvas(message) : null;
@@ -449,7 +452,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
                     {message.role === 'user' && <div className="opacity-0 w-8 h-8" />}
                   </div>
 
-                  {shouldShowTimestamp(index) && (
+                  {shouldShowTimestamp(visibleMessages, index) && (
                     <div
                       className={cn(
                         'text-[10px] text-gray-400 mt-1 px-2',

@@ -15,7 +15,10 @@ import CanvasPanel from './CanvasPanel';
 import type { CanvasSelectionEditPayload, CanvasSelectionEditResult } from '@/types/canvas';
 import type { StepActionBarRef } from './StepActionBar';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
-import { buildCombinedContentWithUserLead } from '@/server/actions/heading-flow.actions';
+import {
+  buildCombinedContentWithUserLead,
+  saveStep7UserLead,
+} from '@/server/actions/heading-flow.actions';
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
 import type { SessionHeadingSection } from '@/types/heading-flow';
@@ -71,11 +74,24 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   /** マッピングできない旧形式の Step7 タイル表示中（model に _hN がない等） */
   const [isViewingPastHeadingContent, setIsViewingPastHeadingContent] = useState(false);
 
+  /** Step6→Step7 で書き出し案を保存済みか（chat_messages から復元、再読込・再オープン時も維持） */
+  const step6ToStep7LeadSaved = useMemo(() => {
+    const msgs = chatSession.state.messages ?? [];
+    return msgs.some(m => m.model === 'blog_creation_step7_lead');
+  }, [chatSession.state.messages]);
+
   const resolvedCanvasStep = useMemo<BlogStepId | null>(() => {
     if (canvasStep) return canvasStep;
+    // step6ToStep7LeadSaved は latestBlogStep が step6 のときのみ step7 にブリッジ（最新実ステップを尊重）
+    if (
+      step6ToStep7LeadSaved &&
+      (latestBlogStep === 'step6' || latestBlogStep === null)
+    ) {
+      return HEADING_FLOW_STEP_ID;
+    }
     if (latestBlogStep) return latestBlogStep;
     return null;
-  }, [canvasStep, latestBlogStep]);
+  }, [canvasStep, step6ToStep7LeadSaved, latestBlogStep]);
 
   const allMessagesForVersions = useMemo(
     () => [...(chatSession.state.messages ?? []), ...optimisticMessages],
@@ -705,6 +721,37 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [chatSession.actions, selectedServiceId]
   );
 
+  /** Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。成功時に step7 表示に遷移。 */
+  const handleSaveStep7UserLead = useCallback(
+    async (userLead: string) => {
+      try {
+        if (!chatSession.state.currentSessionId) {
+          return { success: false, error: 'セッションが見つかりません' };
+        }
+        const token = await getAccessToken();
+        if (!token?.trim()) {
+          return { success: false, error: '認証トークンが無効です' };
+        }
+        const res = await saveStep7UserLead({
+          sessionId: chatSession.state.currentSessionId,
+          userLead: userLead.trim(),
+          liffAccessToken: token,
+        });
+        if (res.success) {
+          await chatSession.actions.loadSession(chatSession.state.currentSessionId);
+        }
+        return { success: res.success, ...(res.error && { error: res.error }) };
+      } catch (error) {
+        console.error('Failed to save step7 user lead:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '保存に失敗しました',
+        };
+      }
+    },
+    [chatSession.state.currentSessionId, chatSession.actions, getAccessToken]
+  );
+
   // ✅ 見出し単位生成: スタート/この見出しを生成ボタンでチャット送信の代わりに生成開始。
   // headingIndex を model に含めることで、タイルクリック時に該当見出しを正しく開けるようにする。
   const handleStartHeadingGeneration = useCallback(
@@ -1284,28 +1331,36 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           onStartHeadingGeneration: handleStartHeadingGeneration,
           onSaveHeadingSection: handleSaveHeadingClick,
           isChatLoading: chatSession.state.isLoading,
-          hasCombinedContentSaved:
-            combinedContentVersions.length > 0 || Boolean(latestCombinedContent?.trim()),
           onBuildCombinedWithUserLead: async (userProvidedLead: string) => {
-            if (!chatSession.state.currentSessionId) {
-              return { success: false, error: 'セッションが見つかりません' };
+            try {
+              if (!chatSession.state.currentSessionId) {
+                return { success: false, error: 'セッションが見つかりません' };
+              }
+              const token = await getAccessToken();
+              if (!token?.trim()) {
+                return { success: false, error: '認証トークンが無効です' };
+              }
+              const res = await buildCombinedContentWithUserLead({
+                sessionId: chatSession.state.currentSessionId,
+                userProvidedLead: userProvidedLead.trim(),
+                liffAccessToken: token,
+              });
+              if (res.success) {
+                resetCombinedVersionToLatest();
+                await refetchCombinedContentVersions();
+                await chatSession.actions.loadSession(chatSession.state.currentSessionId!);
+              }
+              return { success: res.success, ...(res.error && { error: res.error }) };
+            } catch (error) {
+              console.error('Failed to build combined content:', error);
+              return {
+                success: false,
+                error: error instanceof Error ? error.message : '完成形の保存に失敗しました',
+              };
             }
-            const token = await getAccessToken();
-            if (!token?.trim()) {
-              return { success: false, error: '認証トークンが無効です' };
-            }
-            const res = await buildCombinedContentWithUserLead({
-              sessionId: chatSession.state.currentSessionId,
-              userProvidedLead: userProvidedLead.trim(),
-              liffAccessToken: token,
-            });
-            if (res.success) {
-              resetCombinedVersionToLatest();
-              await refetchCombinedContentVersions();
-              await chatSession.actions.loadSession(chatSession.state.currentSessionId!);
-            }
-            return { success: res.success, ...(res.error && { error: res.error }) };
           },
+          onSaveStep7UserLead: handleSaveStep7UserLead,
+          step6ToStep7LeadSaved,
         }}
       />
       {canvasPanelOpen && (

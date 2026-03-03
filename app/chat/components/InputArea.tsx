@@ -111,10 +111,10 @@ interface InputAreaProps {
   onSaveHeadingSection?: () => Promise<void>;
   /** チャットローディング中 */
   isChatLoading?: boolean;
-  /** Step7 完成形: 書き出し+各見出しを結合して保存 */
+  /** Step7 完成形: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
   onBuildCombinedWithUserLead?: (userProvidedLead: string) => Promise<{ success: boolean; error?: string }>;
-  /** Step7 完成形を1回以上保存済み。true なら通常送信を許可 */
-  hasCombinedContentSaved?: boolean;
+  /** Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし） */
+  onSaveStep7UserLead?: (userLead: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const InputArea: React.FC<InputAreaProps> = ({
@@ -176,7 +176,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   onSaveHeadingSection,
   isChatLoading = false,
   onBuildCombinedWithUserLead,
-  hasCombinedContentSaved = false,
+  onSaveStep7UserLead,
 }) => {
   const { isOwnerViewMode } = useLiffContext();
   const [input, setInput] = useState('');
@@ -316,14 +316,39 @@ const InputArea: React.FC<InputAreaProps> = ({
   }, [input, adjustTextareaHeight]);
 
   const [isBuildingCombined, setIsBuildingCombined] = useState(false);
+  const [isSavingStep7Lead, setIsSavingStep7Lead] = useState(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isInputDisabled) return;
+    const trimmedInput = input.trim();
+    const maySubmitEmpty = isStep7CombinedPhase && onBuildCombinedWithUserLead;
+    if ((!trimmedInput && !maySubmitEmpty) || isInputDisabled) return;
 
-    const originalMessage = input.trim();
+    const originalMessage = trimmedInput || '';
 
-    // Step7 完成形フェーズ: 未保存時のみ書き出し+各見出しを結合。保存済みなら通常送信を許可
-    if (isStep7CombinedPhase && !hasCombinedContentSaved && onBuildCombinedWithUserLead) {
+    // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。見出し生成はボタンで行う
+    const isStep6ToStep7Transition =
+      displayStep === 'step6' &&
+      nextStepForSend === 'step7' &&
+      selectedModel === 'blog_creation' &&
+      onSaveStep7UserLead;
+    if (isStep6ToStep7Transition) {
+      setIsSavingStep7Lead(true);
+      try {
+        const res = await onSaveStep7UserLead(originalMessage);
+        if (res.success) {
+          setInput('');
+          toast.success('書き出し案を保存しました。見出し生成ボタンで1つ目の見出しを生成してください。');
+          return;
+        }
+        toast.error(res.error ?? '書き出し案の保存に失敗しました');
+        return;
+      } finally {
+        setIsSavingStep7Lead(false);
+      }
+    }
+
+    // Step7 完成形フェーズ: 書き出し+各見出しを結合して保存（再確定後も再保存可能）
+    if (isStep7CombinedPhase && onBuildCombinedWithUserLead) {
       setIsBuildingCombined(true);
       try {
         const res = await onBuildCombinedWithUserLead(originalMessage);
@@ -600,10 +625,15 @@ const InputArea: React.FC<InputAreaProps> = ({
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={isInputDisabled || !input.trim() || isBuildingCombined}
+                    disabled={
+                      isInputDisabled ||
+                      (!input.trim() && !(isStep7CombinedPhase && onBuildCombinedWithUserLead)) ||
+                      isBuildingCombined ||
+                      isSavingStep7Lead
+                    }
                     className="rounded-full size-10 bg-[#06c755] hover:bg-[#05b64b] mt-1"
                   >
-                    {isBuildingCombined ? (
+                    {isBuildingCombined || isSavingStep7Lead ? (
                       <Loader2 size={18} className="text-white animate-spin" />
                     ) : (
                       <Send size={18} className="text-white" />

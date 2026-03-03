@@ -4,6 +4,11 @@ import {
   generateHeadingKey,
 } from '@/lib/heading-extractor';
 import type { DbHeadingSection, DbSessionHeadingSectionInsert } from '@/types/heading-flow';
+import type { DbChatMessage } from '@/types/chat';
+import { generateOrderedTimestamps } from '@/lib/timestamps';
+
+/** Step6→Step7 で保存した書き出し案を識別する model 値 */
+const STEP7_LEAD_SAVED_MODEL = 'blog_creation_step7_lead';
 
 export class HeadingFlowService extends SupabaseService {
   /**
@@ -126,11 +131,14 @@ export class HeadingFlowService extends SupabaseService {
       })
       .join('\n\n');
 
-    // ユーザー入力の書き出しを優先。未指定時は Step6 を取得
-    const lead =
-      userProvidedLead !== undefined
-        ? (typeof userProvidedLead === 'string' ? userProvidedLead : '').trim()
-        : await this.getStep6Lead(sessionId);
+    // ユーザー入力 > Step7 保存済み > Step6 chat_messages（content_annotations は使用しない）
+    const userLead =
+      userProvidedLead !== undefined && typeof userProvidedLead === 'string'
+        ? userProvidedLead.trim()
+        : '';
+    let lead: string | null = userLead || null;
+    if (!lead) lead = await this.getStep7UserLead(sessionId);
+    if (!lead) lead = await this.getStep6Lead(sessionId);
     const combinedContent = lead ? `${lead}\n\n${sectionContents}` : sectionContents;
 
     // 原子性を確保するため RPC (Database Function) を使用
@@ -207,24 +215,68 @@ export class HeadingFlowService extends SupabaseService {
     return this.success(data ?? []);
   }
   /**
-   * Step6 の書き出し案を取得する。
-   * 1) content_annotations.opening_proposal を優先
-   * 2) 取得できない場合は chat_messages（blog_creation_step6）へのフォールバック
+   * Step6→Step7 遷移時に保存した書き出し案を取得する。
+   * chat_messages の user メッセージ（model=blog_creation_step7_lead）から取得。
    */
-  private async getStep6Lead(sessionId: string): Promise<string | null> {
-    // 1. content_annotations.opening_proposal を優先
-    const { data: annotationData, error: annotationError } = await this.supabase
-      .from('content_annotations')
-      .select('opening_proposal')
+  async getStep7UserLead(sessionId: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('chat_messages')
+      .select('content')
       .eq('session_id', sessionId)
-      .maybeSingle();
+      .eq('role', 'user')
+      .eq('model', STEP7_LEAD_SAVED_MODEL)
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-    if (!annotationError && annotationData?.opening_proposal) {
-      const candidate = annotationData.opening_proposal.trim();
-      if (candidate) return candidate;
+    if (error || !data?.length || !data[0]?.content?.trim()) return null;
+    return data[0].content.trim();
+  }
+
+  /**
+   * Step6→Step7 遷移時に書き出し案を保存する（AI呼び出しなし）。
+   * chat_messages に user メッセージとして挿入。既存テーブルのみ使用。
+   */
+  async saveStep7UserLead(
+    sessionId: string,
+    userId: string,
+    userLead: string
+  ): Promise<SupabaseResult<void>> {
+    const trimmed = userLead.trim();
+    if (!trimmed) {
+      return this.failure('書き出し案を入力してください');
     }
 
-    // 2. フォールバック: chat_messages の Step6 assistant メッセージ
+    const [nowIso] = generateOrderedTimestamps(1);
+    const message: DbChatMessage = {
+      id: crypto.randomUUID(),
+      user_id: userId,
+      session_id: sessionId,
+      role: 'user',
+      content: trimmed,
+      created_at: nowIso,
+      model: STEP7_LEAD_SAVED_MODEL,
+    };
+
+    const insertRes = await this.createChatMessage(message);
+    if (!insertRes.success) {
+      return this.failure(insertRes.error.userMessage);
+    }
+
+    const updateRes = await this.updateSessionLastMessageAt(sessionId, userId, nowIso);
+    if (!updateRes.success) {
+      // メッセージは保存済み。last_message_at の更新失敗はログのみ
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[saveStep7UserLead] last_message_at update failed:', updateRes.error);
+      }
+    }
+
+    return this.success(undefined);
+  }
+
+  /**
+   * Step6 の書き出し案を取得する（chat_messages のみ。content_annotations は使用しない）。
+   */
+  private async getStep6Lead(sessionId: string): Promise<string | null> {
     const { data: messageData, error: messageError } = await this.supabase
       .from('chat_messages')
       .select('content')
@@ -249,9 +301,9 @@ export class HeadingFlowService extends SupabaseService {
 
   /**
    * セッションに紐づく見出し構成データを初期化（全削除）する。
+   * Step7 書き出し案（blog_creation_step7_lead）も併せて削除し、次回 run で古い lead が使われないようにする。
    */
   async resetHeadingSections(sessionId: string): Promise<SupabaseResult<void>> {
-    // 見出しセクションを削除
     const { error: deleteSectionsError } = await this.supabase
       .from('session_heading_sections')
       .delete()
@@ -259,6 +311,16 @@ export class HeadingFlowService extends SupabaseService {
 
     if (deleteSectionsError) {
       return this.failure('見出し構成の削除に失敗しました', { error: deleteSectionsError });
+    }
+
+    const { error: deleteLeadError } = await this.supabase
+      .from('chat_messages')
+      .delete()
+      .eq('session_id', sessionId)
+      .eq('model', STEP7_LEAD_SAVED_MODEL);
+
+    if (deleteLeadError) {
+      return this.failure('書き出し案の削除に失敗しました', { error: deleteLeadError });
     }
 
     return this.success(undefined);

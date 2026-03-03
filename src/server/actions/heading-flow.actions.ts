@@ -40,9 +40,14 @@ const resetHeadingSectionsSchema = z.object({
 });
 const buildCombinedWithUserLeadSchema = z.object({
   sessionId: z.string().min(1),
-  userProvidedLead: z
-    .string()
-    .refine(v => v.trim().length > 0, { message: '書き出し案を入力してください' }),
+  /** 未指定または空の場合は Step7 保存済み／Step6 の書き出し案を使用 */
+  userProvidedLead: z.string().optional(),
+  liffAccessToken: z.string().min(1),
+});
+
+const saveStep7UserLeadSchema = z.object({
+  sessionId: z.string().min(1),
+  userLead: z.string().refine(v => v.trim().length > 0, { message: '書き出し案を入力してください' }),
   liffAccessToken: z.string().min(1),
 });
 
@@ -334,7 +339,57 @@ export async function resetHeadingSections(data: z.infer<typeof resetHeadingSect
 }
 
 /**
+ * Step6→Step7 遷移時に書き出し案のみを保存する（AI呼び出しなし）。
+ */
+export async function saveStep7UserLead(data: z.infer<typeof saveStep7UserLeadSchema>) {
+  const parseResult = saveStep7UserLeadSchema.safeParse(data);
+  if (!parseResult.success) {
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const isLeadError = parseResult.error.issues.some(
+      i => i.path.includes('userLead') || i.message?.includes('書き出し')
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : isLeadError
+        ? '書き出し案を入力してください'
+        : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[saveStep7UserLead] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error };
+  }
+  const parsed = parseResult.data;
+  const auth = await authMiddleware(parsed.liffAccessToken);
+
+  if (auth.error || !auth.userId) {
+    return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+  }
+
+  if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
+    return { success: false, error: 'セッションへのアクセス権がありません' };
+  }
+
+  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
+    return { success: false, error: '閲覧モードでは実行できません' };
+  }
+
+  const result = await headingFlowService.saveStep7UserLead(
+    parsed.sessionId,
+    auth.userId,
+    parsed.userLead.trim()
+  );
+  if (!result.success) {
+    return { success: false, error: result.error.userMessage };
+  }
+
+  return { success: true };
+}
+
+/**
  * ユーザー入力の書き出し＋各見出しを結合し、完成形として保存する（AI 不使用）。
+ * userProvidedLead 未指定時は Step7 保存済みまたは Step6 の書き出し案を使用。
  */
 export async function buildCombinedContentWithUserLead(
   data: z.infer<typeof buildCombinedWithUserLeadSchema>
@@ -344,14 +399,9 @@ export async function buildCombinedContentWithUserLead(
     const isTokenError = parseResult.error.issues.some(
       i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
     );
-    const isLeadError = parseResult.error.issues.some(
-      i => i.path.includes('userProvidedLead') || i.message?.includes('書き出し')
-    );
     const error = isTokenError
       ? '認証トークンが無効です。LINEで再ログインしてください。'
-      : isLeadError
-        ? '書き出し案を入力してください'
-        : '入力データが不正です。ページを更新してから再度お試しください。';
+      : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[buildCombinedContentWithUserLead] Validation failed:', parseResult.error.issues);
     }
@@ -372,10 +422,14 @@ export async function buildCombinedContentWithUserLead(
     return { success: false, error: '閲覧モードでは実行できません' };
   }
 
+  const userLead =
+    parsed.userProvidedLead !== undefined && parsed.userProvidedLead.trim().length > 0
+      ? parsed.userProvidedLead.trim()
+      : undefined;
   const result = await headingFlowService.combineSections(
     parsed.sessionId,
     auth.userId,
-    parsed.userProvidedLead.trim()
+    userLead
   );
   if (!result.success) {
     return { success: false, error: result.error.userMessage };
