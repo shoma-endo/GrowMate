@@ -83,6 +83,11 @@ export default function AnnotationFormFields({
             onChange={e => onFormChange(key, e.target.value)}
             placeholder={PLACEHOLDERS[key]}
           />
+          {key === 'basic_structure' && (
+            <p className="mt-1.5 text-xs text-gray-500">
+              本文作成（Step7）では <code className="px-1 py-0.5 bg-gray-100 rounded font-mono">###</code> 中見出し / <code className="px-1 py-0.5 bg-gray-100 rounded font-mono">####</code> 小見出し 形式で見出しを抽出します。
+            </p>
+          )}
         </div>
       ))}
 
