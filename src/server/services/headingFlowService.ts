@@ -301,9 +301,12 @@ export class HeadingFlowService extends SupabaseService {
 
   /**
    * セッションに紐づく見出し構成データを初期化（全削除）する。
-   * Step7 書き出し案（blog_creation_step7_lead）も併せて削除し、次回 run で古い lead が使われないようにする。
+   * @param preserveStep7Lead true のとき Step7 書き出し案（blog_creation_step7_lead）を削除しない
    */
-  async resetHeadingSections(sessionId: string): Promise<SupabaseResult<void>> {
+  async resetHeadingSections(
+    sessionId: string,
+    options?: { preserveStep7Lead?: boolean }
+  ): Promise<SupabaseResult<void>> {
     const { error: deleteSectionsError } = await this.supabase
       .from('session_heading_sections')
       .delete()
@@ -313,14 +316,16 @@ export class HeadingFlowService extends SupabaseService {
       return this.failure('見出し構成の削除に失敗しました', { error: deleteSectionsError });
     }
 
-    const { error: deleteLeadError } = await this.supabase
-      .from('chat_messages')
-      .delete()
-      .eq('session_id', sessionId)
-      .eq('model', STEP7_LEAD_SAVED_MODEL);
+    if (!options?.preserveStep7Lead) {
+      const { error: deleteLeadError } = await this.supabase
+        .from('chat_messages')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('model', STEP7_LEAD_SAVED_MODEL);
 
-    if (deleteLeadError) {
-      return this.failure('書き出し案の削除に失敗しました', { error: deleteLeadError });
+      if (deleteLeadError) {
+        return this.failure('書き出し案の削除に失敗しました', { error: deleteLeadError });
+      }
     }
 
     return this.success(undefined);

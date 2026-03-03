@@ -86,34 +86,42 @@ export function useHeadingCanvasState({
     ]
   );
 
-  const handleResetHeadingConfiguration = useCallback(async (): Promise<boolean> => {
-    try {
-      const token = await getAccessToken();
-      if (!sessionId || !token) {
-        toast.error(ERROR_MESSAGES.AUTH.REAUTHENTICATION_REQUIRED);
+  const handleResetHeadingConfiguration = useCallback(
+    async (options?: { preserveStep7Lead?: boolean }): Promise<boolean> => {
+      try {
+        const token = await getAccessToken();
+        if (!sessionId || !token) {
+          toast.error(ERROR_MESSAGES.AUTH.REAUTHENTICATION_REQUIRED);
+          return false;
+        }
+
+        const res = await resetHeadingSections({
+          sessionId,
+          liffAccessToken: token,
+          preserveStep7Lead: options?.preserveStep7Lead,
+        });
+
+        if (res.success) {
+          toast.info(
+            options?.preserveStep7Lead
+              ? '見出し構成をリセットしました。見出し生成ボタンで1つ目の見出しを生成してください。'
+              : '見出し構成をリセットしました。見出しを再抽出しています…'
+          );
+          setViewingHeadingIndex(null);
+          await onResetComplete();
+          return true;
+        } else {
+          toast.error(res.error || ERROR_MESSAGES.COMMON.UPDATE_FAILED);
+          return false;
+        }
+      } catch (err) {
+        console.error('Failed to reset heading configuration:', err);
+        toast.error(ERROR_MESSAGES.COMMON.NETWORK_ERROR);
         return false;
       }
-
-      const res = await resetHeadingSections({
-        sessionId,
-        liffAccessToken: token,
-      });
-
-      if (res.success) {
-        toast.info('見出し構成をリセットしました。見出しを再抽出しています…');
-        setViewingHeadingIndex(null);
-        await onResetComplete();
-        return true;
-      } else {
-        toast.error(res.error || ERROR_MESSAGES.COMMON.UPDATE_FAILED);
-        return false;
-      }
-    } catch (err) {
-      console.error('Failed to reset heading configuration:', err);
-      toast.error(ERROR_MESSAGES.COMMON.NETWORK_ERROR);
-      return false;
-    }
-  }, [sessionId, getAccessToken, onResetComplete]);
+    },
+    [sessionId, getAccessToken, onResetComplete]
+  );
 
   return {
     viewingHeadingIndex,

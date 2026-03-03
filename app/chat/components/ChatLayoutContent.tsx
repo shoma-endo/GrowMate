@@ -183,10 +183,12 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
   const isReadOnly = isOwnerViewMode;
 
-  const handleResetHeadingConfiguration = useCallback(async () => {
-    const success = await ctx.onResetHeadingConfiguration();
-    if (!success) return;
-  }, [ctx]);
+  const handleResetHeadingConfiguration = useCallback(
+    async (options?: { preserveStep7Lead?: boolean }): Promise<boolean> => {
+      return await ctx.onResetHeadingConfiguration(options);
+    },
+    [ctx]
+  );
 
   return (
     <>

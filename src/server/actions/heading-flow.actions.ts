@@ -37,6 +37,8 @@ const getCombinedContentVersionsSchema = z.object({
 const resetHeadingSectionsSchema = z.object({
   sessionId: z.string().min(1),
   liffAccessToken: z.string().min(1),
+  /** true のとき Step7 書き出し案を削除しない（完成形フェーズで書き出し入力→見出し1再開用） */
+  preserveStep7Lead: z.boolean().optional(),
 });
 const buildCombinedWithUserLeadSchema = z.object({
   sessionId: z.string().min(1),
@@ -330,7 +332,9 @@ export async function resetHeadingSections(data: z.infer<typeof resetHeadingSect
     return { success: false, error: '閲覧モードでは初期化できません' };
   }
 
-  const result = await headingFlowService.resetHeadingSections(parsed.sessionId);
+  const result = await headingFlowService.resetHeadingSections(parsed.sessionId, 
+    parsed.preserveStep7Lead === true ? { preserveStep7Lead: true } : undefined
+  );
   if (!result.success) {
     return { success: false, error: result.error.userMessage };
   }

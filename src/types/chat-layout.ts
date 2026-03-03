@@ -85,7 +85,7 @@ export interface ChatLayoutCtx {
   onServiceChange: (serviceId: string) => void;
   servicesError: string | null;
   onDismissServicesError: () => void;
-  onResetHeadingConfiguration: () => Promise<boolean>;
+  onResetHeadingConfiguration: (options?: { preserveStep7Lead?: boolean }) => Promise<boolean>;
   resolvedCanvasStep: BlogStepId | null;
   setCanvasStep: (step: BlogStepId | null) => void;
   /** Step7: 現在生成対象の見出しインデックス。undefined = 完成形フェーズ */

@@ -53,7 +53,7 @@ interface StepActionBarProps {
   /** Step6/Step7 本文生成時: 現在の見出しテキスト */
   currentHeadingText?: string;
   /** 見出し構成を初期化し、基本構成から再抽出する */
-  onResetHeadingConfiguration?: () => Promise<void>;
+  onResetHeadingConfiguration?: (options?: { preserveStep7Lead?: boolean }) => Promise<boolean | void>;
   /** Step7 見出し生成: 現在生成対象の見出しインデックス（0-based）。undefined = 全確定・完成形フェーズ */
   activeHeadingIndex?: number;
   /** Step7 見出し生成: 保存ボタン無効化（コンテンツ未生成時 true） */
@@ -404,7 +404,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                     const confirmMessage =
                       '見出し単位の編集データは初期化され、新しい構成からやり直しになります。\n完成形の履歴は保持され、バージョンから参照できます。\n※チャット履歴・書き出し案も保持されます。\n\nメモ・補足情報の基本構成から見出しを再抽出して最初からやり直しますか？';
                     if (window.confirm(confirmMessage)) {
-                      void onResetHeadingConfiguration?.();
+                      void onResetHeadingConfiguration?.({ preserveStep7Lead: true });
                     }
                   }}
                   className="text-red-600 focus:text-red-600 focus:bg-red-50"

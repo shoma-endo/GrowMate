@@ -99,7 +99,7 @@ interface InputAreaProps {
   onClearSearch: () => void;
   selectedServiceId?: string | null;
   onServiceChange?: (serviceId: string) => void;
-  onResetHeadingConfiguration?: () => Promise<void>;
+  onResetHeadingConfiguration?: (options?: { preserveStep7Lead?: boolean }) => Promise<boolean>;
   services?: Service[];
   /** Step7: 現在生成対象の見出しインデックス。undefined = 完成形フェーズ */
   activeHeadingIndex?: number;
@@ -359,7 +359,35 @@ const InputArea: React.FC<InputAreaProps> = ({
       }
     }
 
-    // Step7 完成形フェーズ: 書き出し+各見出しを結合して保存（再確定後も再保存可能）
+    // Step7 完成形フェーズ: 書き出し案入力あり → 保存＋構成リセット(書き出し保持)で見出し1から再開
+    if (
+      isStep7CombinedPhase &&
+      trimmedInput &&
+      onSaveStep7UserLead &&
+      onResetHeadingConfiguration
+    ) {
+      setIsSavingStep7Lead(true);
+      try {
+        const res = await onSaveStep7UserLead(originalMessage);
+        if (res.success) {
+          setInput('');
+          const resetOk = await onResetHeadingConfiguration({ preserveStep7Lead: true });
+          if (resetOk) {
+            return;
+          } else {
+            toast.error('見出し構成のリセットに失敗しました');
+            return;
+          }
+        } else {
+          toast.error(res.error ?? '書き出し案の保存に失敗しました');
+          return;
+        }
+      } finally {
+        setIsSavingStep7Lead(false);
+      }
+    }
+
+    // Step7 完成形フェーズ: 空送信（Step6→7保存済みの書き出し使用）で完成形を結合保存
     if (isStep7CombinedPhase && onBuildCombinedWithUserLead) {
       setIsBuildingCombined(true);
       try {
@@ -369,7 +397,6 @@ const InputArea: React.FC<InputAreaProps> = ({
           toast.success('完成形を保存しました');
           return;
         }
-        // success=false の場合は常に早期リターン（通常送信へのフォールスルー防止）
         toast.error(res.error ?? '完成形の保存に失敗しました');
         return;
       } finally {
