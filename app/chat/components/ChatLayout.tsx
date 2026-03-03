@@ -502,16 +502,16 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     const current = viewingHeadingIndex ?? totalHeadings;
     if (current <= 0) return;
     if (!handleBeforeHeadingChange()) return;
+    setCanvasStreamingContent('');
     handlePrevHeading();
-  }, [viewingHeadingIndex, totalHeadings, handleBeforeHeadingChange, handlePrevHeading]);
+  }, [viewingHeadingIndex, totalHeadings, handleBeforeHeadingChange, handlePrevHeading, setCanvasStreamingContent]);
 
   const handleNextHeadingLocal = useCallback(() => {
     const current = viewingHeadingIndex ?? totalHeadings;
     const allConfirmed = activeHeadingIndex === undefined && headingSections.length > 0;
-    // 全確定済みでない場合は maxViewableIndex で止める
     if (!allConfirmed && current >= maxViewableIndex) return;
     if (!handleBeforeHeadingChange()) return;
-
+    setCanvasStreamingContent('');
     handleNextHeading();
   }, [
     viewingHeadingIndex,
@@ -521,6 +521,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     handleNextHeading,
     activeHeadingIndex,
     headingSections.length,
+    setCanvasStreamingContent,
   ]);
 
   const handleBeforeManualStepChange = useCallback(
