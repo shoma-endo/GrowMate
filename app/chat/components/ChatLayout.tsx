@@ -75,11 +75,20 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   /** マッピングできない旧形式の Step7 タイル表示中（model に _hN がない等） */
   const [isViewingPastHeadingContent, setIsViewingPastHeadingContent] = useState(false);
 
-  /** Step6→Step7 で書き出し案を保存済みか（chat_messages から復元、再読込・再オープン時も維持） */
-  const step6ToStep7LeadSaved = useMemo(() => {
-    const msgs = chatSession.state.messages ?? [];
-    return msgs.some(m => m.model === 'blog_creation_step7_lead');
-  }, [chatSession.state.messages]);
+  /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元） */
+  const step6ToStep7Lead = useMemo(() => {
+    const msgs = [...(chatSession.state.messages ?? []), ...optimisticMessages];
+    let latest: { content: string; ts: number } | null = null;
+    for (const m of msgs) {
+      if (m?.role !== 'user' || m.model !== 'blog_creation_step7_lead') continue;
+      const ts = m.timestamp?.getTime() ?? 0;
+      const c = (m.content ?? '').trim();
+      if (c && (!latest || ts >= latest.ts)) latest = { content: c, ts };
+    }
+    return { saved: latest !== null, content: latest?.content ?? null };
+  }, [chatSession.state.messages, optimisticMessages]);
+
+  const step6ToStep7LeadSaved = step6ToStep7Lead.saved;
 
   const resolvedCanvasStep = useMemo<BlogStepId | null>(() => {
     if (canvasStep) return canvasStep;
@@ -475,7 +484,23 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return (canvasStreamingContent || activeCanvasVersion?.content) ?? '';
       }
       if (headingCanvasViewMode.isCombinedView) {
-        return selectedCombinedContent ?? '';
+        const combined = selectedCombinedContent ?? '';
+        if (combined.trim()) return combined;
+        // 本文作成未実施時: 書き出し案＋見出しセクションから結合フォールバックを表示（スキップで開いたときの空表示を防止）
+        if (combinedContentVersions.length === 0 && headingSections.length > 0) {
+          const sectionContents = headingSections
+            .map(s => {
+              const hashes = '#'.repeat(s.headingLevel);
+              return `${hashes} ${s.headingText}\n\n${(s.content || '').trim()}`;
+            })
+            .join('\n\n')
+            .trim();
+          if (sectionContents) {
+            const lead = step6ToStep7Lead.content?.trim();
+            return lead ? `${lead}\n\n${sectionContents}` : sectionContents;
+          }
+        }
+        return combined;
       }
       // 見出し遷移直後は前見出し本文を表示しない（誤保存防止）。表示中がアクティブでなければ stale を無視
       if (
@@ -518,6 +543,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     headingCanvasViewMode.isCombinedView,
     headingSections,
     selectedCombinedContent,
+    combinedContentVersions.length,
+    step6ToStep7Lead.content,
     activeCanvasVersion,
     isStep6ContentStale,
     viewingHeadingIndex,
