@@ -179,6 +179,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     refetchCombinedContentVersions,
     handleRetryHeadingInit,
     refetchHeadings,
+    handleSaveHeadingSection: handleSaveHeadingSectionFromFlow,
   } = useHeadingFlow({
     sessionId: chatSession.state.currentSessionId ?? null,
     isSessionLoading: chatSession.state.isLoading,
@@ -608,7 +609,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
 
     if (!contentToSave?.trim()) return;
-    const success = await handleSaveHeadingSection(contentToSave, section.headingKey);
+    const success = await handleSaveHeadingSectionFromFlow(contentToSave, section.headingKey);
     if (success) {
       setCanvasStreamingContent('');
     }
@@ -621,7 +622,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     effectiveViewingHeadingIndex,
     allMessagesForVersions,
     getLatestStep7HeadingContent,
-    handleSaveHeadingSection,
+    handleSaveHeadingSectionFromFlow,
   ]);
 
   const handleBeforeManualStepChange = useCallback((): boolean => true, []);
