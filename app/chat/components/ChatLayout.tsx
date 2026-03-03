@@ -1236,7 +1236,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           onNextHeading={handleNextHeadingLocal}
           canGoPrevHeading={
             (effectiveViewingHeadingIndex !== null && effectiveViewingHeadingIndex > 0) ||
-            (effectiveViewingHeadingIndex === null && totalHeadings > 1)
+            (effectiveViewingHeadingIndex === null && totalHeadings >= 1)
           }
           canGoNextHeading={
             effectiveViewingHeadingIndex !== null &&

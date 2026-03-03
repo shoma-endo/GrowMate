@@ -1180,48 +1180,53 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               <List size={16} />
             </Button>
           )}
-          {showHeadingUnitProgressAndActions && (totalHeadings ?? 0) > 1 && (
-            <>
-              {canGoPrevHeading && onPrevHeading && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={onPrevHeading}
-                  disabled={isSavingHeading || isStreaming}
-                  className="border-slate-300 text-slate-700 hover:bg-slate-50"
-                  title="前の見出しに戻る"
-                >
-                  <ChevronLeft size={14} />
-                  戻る
-                </Button>
-              )}
-              {canGoNextHeading && onNextHeading && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={onNextHeading}
-                  disabled={isSavingHeading || isStreaming}
-                  className="border-slate-300 text-slate-700 hover:bg-slate-50"
-                  title={
-                    activeHeadingIndexForFlow === undefined &&
+          {(showHeadingUnitProgressAndActions || isCombinedView) &&
+            (totalHeadings ?? 0) >= 1 && (
+              <>
+                {canGoPrevHeading && onPrevHeading && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={onPrevHeading}
+                    disabled={isSavingHeading || isStreaming}
+                    className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                    title={
+                      headingIndex === undefined
+                        ? '最後の見出しに戻る'
+                        : '前の見出しに戻る'
+                    }
+                  >
+                    <ChevronLeft size={14} />
+                    戻る
+                  </Button>
+                )}
+                {canGoNextHeading && onNextHeading && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={onNextHeading}
+                    disabled={isSavingHeading || isStreaming}
+                    className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                    title={
+                      activeHeadingIndexForFlow === undefined &&
+                      headingIndex !== undefined &&
+                      headingIndex === (totalHeadings ?? 0) - 1
+                        ? '完成形を確認する'
+                        : '次の見出しに進む'
+                    }
+                  >
+                    {activeHeadingIndexForFlow === undefined &&
                     headingIndex !== undefined &&
                     headingIndex === (totalHeadings ?? 0) - 1
-                      ? '完成形を確認する'
-                      : '次の見出しに進む'
-                  }
-                >
-                  {activeHeadingIndexForFlow === undefined &&
-                  headingIndex !== undefined &&
-                  headingIndex === (totalHeadings ?? 0) - 1
-                    ? '完成形を確認'
-                    : '進む'}
-                  <ChevronRight size={14} />
-                </Button>
-              )}
-            </>
-          )}
+                      ? '完成形を確認'
+                      : '進む'}
+                    <ChevronRight size={14} />
+                  </Button>
+                )}
+              </>
+            )}
           {showHeadingUnitProgressAndActions &&
             headingIndex === activeHeadingIndexForFlow &&
             onStartHeadingGeneration &&
