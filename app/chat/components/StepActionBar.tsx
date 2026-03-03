@@ -328,6 +328,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                 <DropdownMenuItem
                   disabled={isDisabled || !onGenerateTitleMeta || isGenerateTitleMetaLoading}
                   onSelect={() => onGenerateTitleMeta?.()}
+                  className="flex items-center gap-1 bg-purple-50 text-purple-900 border border-purple-200 hover:bg-purple-100 data-[highlighted]:bg-purple-100"
                 >
                   {isGenerateTitleMetaLoading ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -346,6 +347,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                     if (isDisabled || isLoadBlogArticleLoading) return;
                     void onLoadBlogArticle?.();
                   }}
+                  className="flex items-center gap-1 bg-white text-gray-900 hover:bg-gray-100 data-[highlighted]:bg-gray-100"
                 >
                   {isLoadBlogArticleLoading ? (
                     <Loader2 size={14} className="animate-spin" />
