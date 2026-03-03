@@ -62,10 +62,13 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     isStep7SaveDisabled,
     onStartHeadingGeneration,
     onSaveHeadingSection,
+    onSaveLastHeadingAndBuildCombined,
     isChatLoading,
     onBuildCombinedWithUserLead,
     onSaveStep7UserLead,
     step6ToStep7LeadSaved,
+    combinedTile,
+    onOpenCombinedCanvas,
   } = ctx;
   const { isOwnerViewMode } = useLiffContext();
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
@@ -273,6 +276,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           blogFlowActive={blogFlowActive}
           onOpenCanvas={message => ui.canvas.show(message)}
           headingSections={headingSections}
+          {...(combinedTile && { combinedTile })}
+          {...(onOpenCombinedCanvas && { onOpenCombinedCanvas })}
         />
 
         <InputArea
@@ -335,6 +340,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           isStep7SaveDisabled={isStep7SaveDisabled ?? true}
           {...(onStartHeadingGeneration && { onStartHeadingGeneration })}
           {...(onSaveHeadingSection && { onSaveHeadingSection })}
+          {...(onSaveLastHeadingAndBuildCombined && { onSaveLastHeadingAndBuildCombined })}
           isChatLoading={isChatLoading ?? false}
           {...(onBuildCombinedWithUserLead && { onBuildCombinedWithUserLead })}
           {...(onSaveStep7UserLead && { onSaveStep7UserLead })}

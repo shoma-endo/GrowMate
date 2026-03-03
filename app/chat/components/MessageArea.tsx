@@ -41,6 +41,9 @@ interface MessageAreaProps {
   blogFlowActive?: boolean;
   onOpenCanvas?: (message: ChatMessage) => void;
   headingSections?: SessionHeadingSection[];
+  /** Step7 完成形タイル（メッセージ末尾に表示） */
+  combinedTile?: { show: boolean; title: string; excerpt: string };
+  onOpenCombinedCanvas?: () => void;
 }
 
 // メッセージ本文の先頭 ### 行から見出し文言を抽出（Canvas表示と同源）
@@ -86,6 +89,8 @@ const MessageArea: React.FC<MessageAreaProps> = ({
   renderAfterMessage,
   onOpenCanvas,
   headingSections,
+  combinedTile,
+  onOpenCombinedCanvas,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -467,6 +472,24 @@ const MessageArea: React.FC<MessageAreaProps> = ({
               </React.Fragment>
             );
           })}
+
+          {combinedTile?.show && onOpenCombinedCanvas && (
+            <div className="mb-4 last:mb-2 group">
+              <div className="flex items-start gap-2 relative flex-row">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-200">
+                  <Bot size={18} className="text-[#06c755]" />
+                </div>
+                <div className="max-w-[85%] rounded-2xl relative transition-all duration-200 bg-transparent text-gray-800 p-0">
+                  <BlogPreviewTile
+                    stepLabel={BLOG_STEP_LABELS.step7 ?? '7. 本文作成'}
+                    title={combinedTile.title}
+                    excerpt={combinedTile.excerpt}
+                    onOpen={onOpenCombinedCanvas}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div ref={messagesEndRef} />
 

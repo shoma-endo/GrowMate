@@ -96,6 +96,8 @@ export interface ChatLayoutCtx {
   onStartHeadingGeneration?: (headingIndex: number) => void;
   /** Step7: 見出し保存（保存して次へ） */
   onSaveHeadingSection?: () => Promise<void>;
+  /** Step7 最後の見出し: 保存＋全文結合を実行（本文生成ボタン用） */
+  onSaveLastHeadingAndBuildCombined?: () => Promise<void>;
   /** チャットローディング中 */
   isChatLoading?: boolean;
   /** Step7 完成形フェーズ: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
@@ -104,4 +106,8 @@ export interface ChatLayoutCtx {
   onSaveStep7UserLead?: (userLead: string) => Promise<{ success: boolean; error?: string }>;
   /** Step6→Step7 で書き出し案保存済み。step7 表示に遷移するためのフラグ */
   step6ToStep7LeadSaved?: boolean;
+  /** Step7 完成形: タイル表示用。表示時はメッセージ末尾に完成形タイルを出す */
+  combinedTile?: { show: boolean; title: string; excerpt: string };
+  /** Step7 完成形タイルクリック時: Canvas で完成形を開く */
+  onOpenCombinedCanvas?: () => void;
 }

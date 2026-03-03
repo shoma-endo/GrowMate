@@ -31,6 +31,7 @@ import { resolveHeadingCanvasViewMode } from '@/lib/canvas-mode';
 import { useCanvasVersions } from '@/hooks/useCanvasVersions';
 import { useWordpressSync } from '@/hooks/useWordpressSync';
 import { useSessionTitle } from '@/hooks/useSessionTitle';
+import { toast } from 'sonner';
 
 export const ChatLayout: React.FC<ChatLayoutProps> = ({
   chatSession,
@@ -566,6 +567,27 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [blogCanvasVersionsByStep, nextStepForPlaceholder]
   );
 
+  // Step7 完成形タイル: メッセージ末尾に表示。クリックで Canvas で完成形を開く
+  const combinedTile = useMemo(() => {
+    if (combinedContentVersions.length === 0) return undefined;
+    const content = latestCombinedContent?.trim() ?? '';
+    if (!content) return { show: true, title: '完成形', excerpt: 'クリックしてCanvasで確認' };
+    const rawLines = content.split('\n');
+    const headingIdx = rawLines.findIndex(line => /^#+\s*/.test(line.trim()));
+    const firstIdx = rawLines.findIndex(line => line.trim().length > 0);
+    const titleLine = (headingIdx >= 0 ? rawLines[headingIdx] : rawLines[firstIdx]) ?? rawLines[0] ?? '';
+    const title = titleLine.trim().replace(/^#+\s*/, '').trim() || '完成形';
+    const bodyLines = rawLines.filter((_, i) => i !== headingIdx);
+    const body = bodyLines.join('\n').trim();
+    const excerptPlain = (body || content)
+      .split('\n')
+      .map(line => line.trim().replace(/^[-*]\s+/, '').replace(/^[0-9]+\.\s+/, ''))
+      .filter(Boolean)
+      .join(' ');
+    const excerpt = excerptPlain.length > 140 ? `${excerptPlain.slice(0, 140)}…` : excerptPlain || 'クリックしてCanvasで確認';
+    return { show: true, title, excerpt };
+  }, [combinedContentVersions.length, latestCombinedContent]);
+
   // handleSaveHeadingSection はフック側のシグネチャが (content: string, overrideHeadingKey?: string) のため、ここでラップする。
   // CanvasPanel が contentRef に表示中の内容を随時更新するため、保存時は ref を優先して
   // ストリーミング完了直後のクリックでも最新編集内容が保存される。
@@ -623,6 +645,85 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     allMessagesForVersions,
     getLatestStep7HeadingContent,
     handleSaveHeadingSectionFromFlow,
+  ]);
+
+  /** 最後の見出し: 保存＋全文結合（書き出しは Step6→7 保存分または空で使用） */
+  const handleSaveLastHeadingAndBuildCombined = useCallback(async () => {
+    if (isStep6ContentStale) return;
+    if (activeHeadingIndex === undefined || !activeHeading) return;
+    const section = activeHeading;
+    const sectionsMinUpdatedMs =
+      headingSections.length > 0
+        ? Math.min(
+            ...headingSections.map(s =>
+              s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity
+            )
+          )
+        : 0;
+    const minTs = sectionsMinUpdatedMs !== Infinity ? sectionsMinUpdatedMs : undefined;
+    const isViewingTargetInCanvas =
+      canvasPanelOpen && effectiveViewingHeadingIndex === activeHeadingIndex;
+    let rawContent: string | undefined;
+    if (isViewingTargetInCanvas && canvasContentRef.current?.trim()) {
+      rawContent = canvasContentRef.current;
+    } else {
+      rawContent =
+        getLatestStep7HeadingContent(
+          allMessagesForVersions,
+          activeHeadingIndex,
+          minTs
+        ) ?? undefined;
+    }
+    if (!rawContent?.trim()) return;
+    const contentToSave =
+      section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
+    if (!contentToSave?.trim()) return;
+
+    const success = await handleSaveHeadingSectionFromFlow(contentToSave, section.headingKey);
+    if (!success) return;
+
+    setCanvasStreamingContent('');
+    try {
+      if (!chatSession.state.currentSessionId) return;
+      const token = await getAccessToken();
+      if (!token?.trim()) {
+        toast.error('認証トークンを取得できませんでした。LINEで再ログインしてください。');
+        return;
+      }
+      const res = await buildCombinedContentWithUserLead({
+        sessionId: chatSession.state.currentSessionId,
+        userProvidedLead: '',
+        liffAccessToken: token,
+      });
+      if (res.success) {
+        resetCombinedVersionToLatest();
+        await refetchCombinedContentVersions();
+        await chatSession.actions.loadSession(chatSession.state.currentSessionId);
+      } else {
+        toast.error(
+          res.error ?? '完成形の構築に失敗しました。書き出し案の入力を再度お試しください。'
+        );
+      }
+    } catch (error) {
+      console.error('Failed to build combined content:', error);
+      toast.error(
+        error instanceof Error ? error.message : '完成形の構築に失敗しました。しばらく経ってから再度お試しください。'
+      );
+    }
+  }, [
+    isStep6ContentStale,
+    activeHeadingIndex,
+    activeHeading,
+    headingSections,
+    canvasPanelOpen,
+    effectiveViewingHeadingIndex,
+    allMessagesForVersions,
+    getLatestStep7HeadingContent,
+    handleSaveHeadingSectionFromFlow,
+    chatSession,
+    getAccessToken,
+    resetCombinedVersionToLatest,
+    refetchCombinedContentVersions,
   ]);
 
   const handleBeforeManualStepChange = useCallback((): boolean => true, []);
@@ -842,6 +943,28 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setSelectedVersionByStep,
     ]
   );
+
+  /** Step7 完成形タイルクリック時: Canvas で完成形を開く */
+  const handleOpenCombinedCanvas = useCallback(() => {
+    setViewingHeadingIndex(null);
+    pendingViewingIndexRef.current = null;
+    setIsViewingPastHeadingContent(false);
+    setCanvasStep(HEADING_FLOW_STEP_ID);
+    setCanvasStreamingContent('');
+    resetCombinedVersionToLatest();
+    if (annotationOpen) {
+      setAnnotationOpen(false);
+      setAnnotationData(null);
+    }
+    setCanvasPanelOpen(true);
+  }, [
+    annotationOpen,
+    setViewingHeadingIndex,
+    setIsViewingPastHeadingContent,
+    setCanvasStreamingContent,
+    setAnnotationData,
+    resetCombinedVersionToLatest,
+  ]);
 
   // ✅ 保存ボタンクリック時にAnnotationPanelを表示する関数
   const handleOpenAnnotation = async () => {
@@ -1334,6 +1457,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           ...(isHeadingFlowCanvasStep && { isStep7SaveDisabled: isStep6ContentStale }),
           onStartHeadingGeneration: handleStartHeadingGeneration,
           onSaveHeadingSection: handleSaveHeadingClick,
+          onSaveLastHeadingAndBuildCombined: handleSaveLastHeadingAndBuildCombined,
           isChatLoading: chatSession.state.isLoading,
           onBuildCombinedWithUserLead: async (userProvidedLead: string) => {
             try {
@@ -1365,6 +1489,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           },
           onSaveStep7UserLead: handleSaveStep7UserLead,
           step6ToStep7LeadSaved,
+          ...(combinedTile && { combinedTile }),
+          onOpenCombinedCanvas: handleOpenCombinedCanvas,
         }}
       />
       {canvasPanelOpen && (

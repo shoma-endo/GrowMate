@@ -11,6 +11,7 @@ import {
 import {
   BookOpen,
   FilePenLine,
+  FileText,
   Loader2,
   MoreHorizontal,
   Play,
@@ -61,6 +62,8 @@ interface StepActionBarProps {
   onStartHeadingGeneration?: (headingIndex: number) => void;
   /** Step7 見出し保存: 保存して次へ */
   onSaveHeadingSection?: () => Promise<void>;
+  /** Step7 最後の見出し: 保存＋全文結合を実行（本文生成ボタン用） */
+  onSaveLastHeadingAndBuildCombined?: () => Promise<void>;
   /** 見出し生成中・チャットローディング中 */
   isChatLoading?: boolean;
   /** ヒント文言（親で算出済みの場合はこちらを優先） */
@@ -103,6 +106,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       isStep7SaveDisabled = true,
       onStartHeadingGeneration,
       onSaveHeadingSection,
+      onSaveLastHeadingAndBuildCombined,
       isChatLoading = false,
       hintText: hintTextProp,
       nextStepForSend,
@@ -163,10 +167,22 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       totalHeadings !== undefined &&
       totalHeadings > 0 &&
       activeHeadingIndex !== undefined;
+    const isLastHeading =
+      activeHeadingIndex !== undefined &&
+      totalHeadings !== undefined &&
+      activeHeadingIndex === totalHeadings - 1;
     const showHeadingGenerateButton =
       isStep7HeadingPhase && isStep7SaveDisabled && Boolean(onStartHeadingGeneration);
+    const showLastHeadingBuildButton =
+      isStep7HeadingPhase &&
+      !isStep7SaveDisabled &&
+      isLastHeading &&
+      Boolean(onSaveLastHeadingAndBuildCombined);
     const showHeadingSaveButton =
-      isStep7HeadingPhase && !isStep7SaveDisabled && Boolean(onSaveHeadingSection);
+      isStep7HeadingPhase &&
+      !isStep7SaveDisabled &&
+      !showLastHeadingBuildButton &&
+      Boolean(onSaveHeadingSection);
     const isStep7HeadingBusy = isSavingHeading || isChatLoading;
 
     // 次ステップの変更を親コンポーネントに通知
@@ -289,6 +305,22 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
               <Play size={14} />
             )}
             <span>見出し生成</span>
+          </Button>
+        )}
+        {showLastHeadingBuildButton && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void onSaveLastHeadingAndBuildCombined?.()}
+            disabled={isDisabled || isStep7HeadingBusy}
+            className="flex items-center gap-1 bg-green-600 text-white hover:bg-green-700 disabled:bg-green-400"
+          >
+            {isSavingHeading ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <FileText size={14} />
+            )}
+            <span>本文生成</span>
           </Button>
         )}
         {showHeadingSaveButton && (

@@ -109,6 +109,8 @@ interface InputAreaProps {
   onStartHeadingGeneration?: (headingIndex: number) => void;
   /** Step7: 見出し保存 */
   onSaveHeadingSection?: () => Promise<void>;
+  /** Step7 最後の見出し: 保存＋全文結合を実行（本文生成ボタン用） */
+  onSaveLastHeadingAndBuildCombined?: () => Promise<void>;
   /** チャットローディング中 */
   isChatLoading?: boolean;
   /** Step7 完成形: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
@@ -174,6 +176,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   isStep7SaveDisabled = true,
   onStartHeadingGeneration,
   onSaveHeadingSection,
+  onSaveLastHeadingAndBuildCombined,
   isChatLoading = false,
   onBuildCombinedWithUserLead,
   onSaveStep7UserLead,
@@ -219,8 +222,15 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     if (selectedModel === 'blog_creation' && displayStep === 'step7') {
       if (isStep7HeadingPhase) {
-        return isStep7SaveDisabled
-          ? '上記見出しの内容を確認して、見出し生成をクリックしてください。'
+        if (isStep7SaveDisabled) {
+          return '上記見出しの内容を確認して、見出し生成をクリックしてください。';
+        }
+        const isLastHeading =
+          activeHeadingIndex !== undefined &&
+          totalHeadings !== undefined &&
+          activeHeadingIndex === totalHeadings - 1;
+        return isLastHeading
+          ? '本文生成ボタンを押すと、書き出し＋各見出しを結合した最終記事が作成されます。'
           : '上記見出しの内容を確認して、保存を押すと次に進みます。';
       }
       if (isStep7CombinedPhase) {
@@ -601,6 +611,7 @@ const InputArea: React.FC<InputAreaProps> = ({
               isStep7SaveDisabled={isStep7SaveDisabled}
               {...(onStartHeadingGeneration && { onStartHeadingGeneration })}
               {...(onSaveHeadingSection && { onSaveHeadingSection })}
+              {...(onSaveLastHeadingAndBuildCombined && { onSaveLastHeadingAndBuildCombined })}
               isChatLoading={isChatLoading}
             />
             {blogArticleError && <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>}
