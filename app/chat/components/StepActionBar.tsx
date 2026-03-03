@@ -35,7 +35,7 @@ interface StepActionBarProps {
   }) => boolean;
   isHeadingInitInFlight?: boolean;
   hasAttemptedHeadingInit?: boolean;
-  /** 見出し0件時に再初期化を試行（Step5保存後に手動復旧用） */
+  /** 見出し0件時に再初期化を試行（基本構成保存後に手動復旧用） */
   onRetryHeadingInit?: () => void;
   /** Step6/Step7 本文生成時: 現在の見出しインデックス（0-based） */
   headingIndex?: number;
@@ -43,7 +43,7 @@ interface StepActionBarProps {
   totalHeadings?: number;
   /** Step6/Step7 本文生成時: 現在の見出しテキスト */
   currentHeadingText?: string;
-  /** 見出し構成をリセットしてStep5に戻る */
+  /** 見出し構成を初期化し、基本構成から再抽出する */
   onResetHeadingConfiguration?: () => Promise<void>;
   /** 旧step6データ（step7移行対象）かどうか */
   isLegacyStep6ResetEligible?: boolean;
