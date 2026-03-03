@@ -68,7 +68,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const pendingViewingIndexRef = useRef<number | null>(null);
   /** hasExactMatch=false 時のフォールバック表示対象 message.id（canvasVersions 反映後に自動解除） */
   const fallbackMessageIdRef = useRef<string | null>(null);
-  /** 構成リセット前の過去見出しを表示中。進捗・戻る/進むを非表示にする */
+  /** マッピングできない旧形式の Step7 タイル表示中（model に _hN がない等） */
   const [isViewingPastHeadingContent, setIsViewingPastHeadingContent] = useState(false);
 
   const resolvedCanvasStep = useMemo<BlogStepId | null>(() => {

@@ -222,7 +222,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     isHeadingFlowCanvas && showHeadingUnitActions && !isBasicStructureRequiredError;
   const isHeadingUnitView = hasHeadingFlowActions && headingIndex !== undefined;
   // 完成形 = ユーザー入力の書き出し＋見出し確定本文の結合（AI直接生成ではない）。
-  // タイルクリック時（hideHeadingProgressAndNav）は過去のAI生成文を表示しており完成形ではないため除外。
+  // hideHeadingProgressAndNav = 旧形式タイル表示時は完成形ではないため除外。
   const isCombinedView =
     isHeadingFlowCanvas &&
     !isHeadingUnitView &&
@@ -1001,14 +1001,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               </TooltipProvider>
             )}
           </div>
-          {hasHeadingFlowActions && hideHeadingProgressAndNav && (
-            <div
-              className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] font-medium text-amber-800"
-              title="構成リセット前に生成された見出し本文です。現在の構成とは対応していません。"
-            >
-              <span>構成リセット前の見出し本文</span>
-            </div>
-          )}
           {headings.length > 0 && !hideOutline && (
             <Button
               variant="ghost"
