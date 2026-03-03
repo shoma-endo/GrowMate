@@ -217,9 +217,6 @@ const InputArea: React.FC<InputAreaProps> = ({
     }
 
     if (selectedModel === 'blog_creation') {
-      if (isStep7GuidanceMode) {
-        return 'ステップ:7 本文作成はCanvasの見出し単位の本文生成ボタンから進めてください';
-      }
       const key = `blog_creation_${placeholderBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
       return BLOG_PLACEHOLDERS[key];
     }

@@ -138,13 +138,19 @@ export const isStep7 = (stepOrModel: string) =>
   stepOrModel === HEADING_FLOW_STEP_ID || stepOrModel === `blog_creation_${HEADING_FLOW_STEP_ID}`;
 
 export const BLOG_PLACEHOLDERS: Record<string, string> = {
-  blog_creation_step1: '顕在/潜在ニーズの内容を入力してください',
-  blog_creation_step2: '想定ペルソナ/デモグラの内容を入力してください',
-  blog_creation_step3: 'ユーザーのゴールに関する内容を入力してください',
-  blog_creation_step4: 'PREP（主張・理由・具体例・結論）の確認事項を入力してください',
-  blog_creation_step5: '構成案確認内容を入力してください',
-  blog_creation_step6: '書き出し案を入力してください',
-  blog_creation_step7: '本文作成の要件/トーンを入力してください',
+  blog_creation_step1:
+    'キーワードを入力してください（複数ある場合は改行）。顕在/潜在ニーズを出力します。',
+  blog_creation_step2:
+    '顕在/潜在ニーズを入力してください、想定ペルソナ/デモグラを出力します。',
+  blog_creation_step3:
+    '想定ペルソナ/デモグラを入力してください、ユーザーのゴールを出力します。',
+  blog_creation_step4:
+    'ユーザーのゴールを入力してください、PREP（主張・理由・具体例・結論）を出力します。',
+  blog_creation_step5:
+    'PREP（主張・理由・具体例・結論）を入力してください、構成案を出力します。',
+  blog_creation_step6: '構成案を入力してください、書き出し案を出力します。',
+  blog_creation_step7:
+    '書き出し案を入力してください、構成案を元に本文を1見出しずつ出力します。',
 };
 
 // prompts.ts 用のテンプレ名解決
