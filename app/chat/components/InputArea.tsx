@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Bot, Send, Menu, Pencil, Check, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { BLOG_PLACEHOLDERS, BLOG_STEP_IDS, BlogStepId } from '@/lib/constants';
 import { TITLE_MAX_LENGTH } from '@/lib/validators/common';
@@ -98,6 +99,20 @@ interface InputAreaProps {
   onServiceChange?: (serviceId: string) => void;
   onResetHeadingConfiguration?: () => Promise<void>;
   services?: Service[];
+  /** Step7: 現在生成対象の見出しインデックス。undefined = 完成形フェーズ */
+  activeHeadingIndex?: number;
+  /** Step7: 見出し保存ボタン無効化 */
+  isStep7SaveDisabled?: boolean;
+  /** Step7: 見出し生成トリガー */
+  onStartHeadingGeneration?: (headingIndex: number) => void;
+  /** Step7: 見出し保存 */
+  onSaveHeadingSection?: () => Promise<void>;
+  /** チャットローディング中 */
+  isChatLoading?: boolean;
+  /** Step7 完成形: 書き出し+各見出しを結合して保存 */
+  onBuildCombinedWithUserLead?: (userProvidedLead: string) => Promise<{ success: boolean; error?: string }>;
+  /** Step7 完成形を1回以上保存済み。true なら通常送信を許可 */
+  hasCombinedContentSaved?: boolean;
 }
 
 const InputArea: React.FC<InputAreaProps> = ({
@@ -151,7 +166,14 @@ const InputArea: React.FC<InputAreaProps> = ({
   services,
   selectedServiceId,
   onServiceChange,
-      onResetHeadingConfiguration,
+  onResetHeadingConfiguration,
+  activeHeadingIndex,
+  isStep7SaveDisabled = true,
+  onStartHeadingGeneration,
+  onSaveHeadingSection,
+  isChatLoading = false,
+  onBuildCombinedWithUserLead,
+  hasCombinedContentSaved = false,
 }) => {
   const { isOwnerViewMode } = useLiffContext();
   const [input, setInput] = useState('');
@@ -206,14 +228,34 @@ const InputArea: React.FC<InputAreaProps> = ({
     return targetBlogStep;
   }, [nextStepForPlaceholder, targetBlogStep]);
 
-  const isStep7GuidanceMode =
-    selectedModel === 'blog_creation' && placeholderBlogStep === 'step7';
+  // Step7 見出し生成フェーズ: 入力無効・見出し生成/保存ボタンのみ
+  const isStep7HeadingPhase =
+    displayStep === 'step7' &&
+    selectedModel === 'blog_creation' &&
+    activeHeadingIndex !== undefined &&
+    (totalHeadings ?? 0) > 0;
+  // Step7 完成形フェーズ: 書き出し案入力して送信
+  const isStep7CombinedPhase =
+    displayStep === 'step7' &&
+    selectedModel === 'blog_creation' &&
+    activeHeadingIndex === undefined &&
+    (totalHeadings ?? 0) > 0;
+  const isStep7GuidanceMode = isStep7HeadingPhase;
   const isInputDisabled = disabled || !isModelSelected || isReadOnly || isStep7GuidanceMode;
 
   // ブログ作成のプレースホルダーはUIヒント用ステップを表示
   const placeholderMessage = (() => {
     if (!isModelSelected) {
       return '画面上部のチャットモデルを選択してください';
+    }
+
+    if (selectedModel === 'blog_creation' && displayStep === 'step7') {
+      if (isStep7HeadingPhase) {
+        return '上記見出しの内容を確認して、見出し生成をクリックしてください。保存を押すと次に進みます。';
+      }
+      if (isStep7CombinedPhase) {
+        return '書き出し案を入力してください、本文を出力します。';
+      }
     }
 
     if (selectedModel === 'blog_creation') {
@@ -305,12 +347,32 @@ const InputArea: React.FC<InputAreaProps> = ({
     adjustTextareaHeight();
   }, [input, adjustTextareaHeight]);
 
+  const [isBuildingCombined, setIsBuildingCombined] = useState(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isInputDisabled) return;
 
     const originalMessage = input.trim();
-    // ブログ作成モデルの場合は、表示中ステップ(targetBlogStep)に送信する。
+
+    // Step7 完成形フェーズ: 未保存時のみ書き出し+各見出しを結合。保存済みなら通常送信を許可
+    if (isStep7CombinedPhase && !hasCombinedContentSaved && onBuildCombinedWithUserLead) {
+      setIsBuildingCombined(true);
+      try {
+        const res = await onBuildCombinedWithUserLead(originalMessage);
+        if (res.success) {
+          setInput('');
+          toast.success('完成形を保存しました');
+          return;
+        }
+        // success=false の場合は常に早期リターン（通常送信へのフォールスルー防止）
+        toast.error(res.error ?? '完成形の保存に失敗しました');
+        return;
+      } finally {
+        setIsBuildingCombined(false);
+      }
+    }
+
+    // 通常のチャット送信
     let effectiveModel: string = selectedModel;
     if (selectedModel === 'blog_creation') {
       effectiveModel = `blog_creation_${targetBlogStep}`;
@@ -318,7 +380,6 @@ const InputArea: React.FC<InputAreaProps> = ({
     }
 
     setInput('');
-
     await onSendMessage(originalMessage, effectiveModel);
   };
 
@@ -539,6 +600,11 @@ const InputArea: React.FC<InputAreaProps> = ({
               {...(totalHeadings !== undefined && { totalHeadings })}
               {...(currentHeadingText !== undefined && { currentHeadingText })}
               {...(onResetHeadingConfiguration !== undefined && { onResetHeadingConfiguration })}
+              {...(activeHeadingIndex !== undefined && { activeHeadingIndex })}
+              isStep7SaveDisabled={isStep7SaveDisabled}
+              {...(onStartHeadingGeneration && { onStartHeadingGeneration })}
+              {...(onSaveHeadingSection && { onSaveHeadingSection })}
+              isChatLoading={isChatLoading}
             />
             {blogArticleError && <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>}
           </div>
@@ -564,10 +630,14 @@ const InputArea: React.FC<InputAreaProps> = ({
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={isInputDisabled || !input.trim()}
+                    disabled={isInputDisabled || !input.trim() || isBuildingCombined}
                     className="rounded-full size-10 bg-[#06c755] hover:bg-[#05b64b] mt-1"
                   >
-                    <Send size={18} className="text-white" />
+                    {isBuildingCombined ? (
+                      <Loader2 size={18} className="text-white animate-spin" />
+                    ) : (
+                      <Send size={18} className="text-white" />
+                    )}
                   </Button>
                 </div>
               </div>

@@ -102,8 +102,13 @@ export class HeadingFlowService extends SupabaseService {
 
   /**
    * 全セクションを order_index 順に連結し、session_combined_contents に保存する。
+   * @param userProvidedLead ユーザー入力の書き出し（指定時は Step6 を無視してこれを使う）
    */
-  async combineSections(sessionId: string, userId: string): Promise<SupabaseResult<void>> {
+  async combineSections(
+    sessionId: string,
+    userId: string,
+    userProvidedLead?: string | null
+  ): Promise<SupabaseResult<void>> {
     const sectionsResult = await this.getHeadingSections(sessionId);
     if (!sectionsResult.success) return sectionsResult;
 
@@ -121,9 +126,12 @@ export class HeadingFlowService extends SupabaseService {
       })
       .join('\n\n');
 
-    // Step6 の書き出し案（リード）を取得して先頭に結合
-    const step6Lead = await this.getStep6Lead(sessionId);
-    const combinedContent = step6Lead ? `${step6Lead}\n\n${sectionContents}` : sectionContents;
+    // ユーザー入力の書き出しを優先。未指定時は Step6 を取得
+    const lead =
+      userProvidedLead !== undefined
+        ? (typeof userProvidedLead === 'string' ? userProvidedLead : '').trim()
+        : await this.getStep6Lead(sessionId);
+    const combinedContent = lead ? `${lead}\n\n${sectionContents}` : sectionContents;
 
     // 原子性を確保するため RPC (Database Function) を使用
     const { error: rpcError } = await this.supabase.rpc('save_atomic_combined_content', {

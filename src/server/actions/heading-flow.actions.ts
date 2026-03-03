@@ -38,8 +38,11 @@ const resetHeadingSectionsSchema = z.object({
   sessionId: z.string().min(1),
   liffAccessToken: z.string().min(1),
 });
-const rebuildCombinedContentSchema = z.object({
+const buildCombinedWithUserLeadSchema = z.object({
   sessionId: z.string().min(1),
+  userProvidedLead: z
+    .string()
+    .refine(v => v.trim().length > 0, { message: '書き出し案を入力してください' }),
   liffAccessToken: z.string().min(1),
 });
 
@@ -331,21 +334,26 @@ export async function resetHeadingSections(data: z.infer<typeof resetHeadingSect
 }
 
 /**
- * 最新の見出し確定内容から完成形を再生成し、新バージョンとして保存する。
+ * ユーザー入力の書き出し＋各見出しを結合し、完成形として保存する（AI 不使用）。
  */
-export async function rebuildCombinedContentFromHeadings(
-  data: z.infer<typeof rebuildCombinedContentSchema>
+export async function buildCombinedContentWithUserLead(
+  data: z.infer<typeof buildCombinedWithUserLeadSchema>
 ) {
-  const parseResult = rebuildCombinedContentSchema.safeParse(data);
+  const parseResult = buildCombinedWithUserLeadSchema.safeParse(data);
   if (!parseResult.success) {
     const isTokenError = parseResult.error.issues.some(
       i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
     );
+    const isLeadError = parseResult.error.issues.some(
+      i => i.path.includes('userProvidedLead') || i.message?.includes('書き出し')
+    );
     const error = isTokenError
       ? '認証トークンが無効です。LINEで再ログインしてください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+      : isLeadError
+        ? '書き出し案を入力してください'
+        : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
-      console.warn('[rebuildCombinedContentFromHeadings] Validation failed:', parseResult.error.issues);
+      console.warn('[buildCombinedContentWithUserLead] Validation failed:', parseResult.error.issues);
     }
     return { success: false, error };
   }
@@ -364,7 +372,11 @@ export async function rebuildCombinedContentFromHeadings(
     return { success: false, error: '閲覧モードでは実行できません' };
   }
 
-  const result = await headingFlowService.combineSections(parsed.sessionId, auth.userId);
+  const result = await headingFlowService.combineSections(
+    parsed.sessionId,
+    auth.userId,
+    parsed.userProvidedLead.trim()
+  );
   if (!result.success) {
     return { success: false, error: result.error.userMessage };
   }

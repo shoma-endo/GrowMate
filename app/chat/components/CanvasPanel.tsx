@@ -17,17 +17,13 @@ import { Highlight } from '@tiptap/extension-highlight';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { createLowlight, common } from 'lowlight';
 import {
-  ChevronLeft,
-  ChevronRight,
   X,
   Copy,
-  Save,
   List,
   Loader2,
   Info,
   SearchCheck,
   PenLine,
-  Play,
   RotateCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -169,25 +165,11 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   canvasContentRef,
   headingIndex,
   showHeadingUnitActions = false,
-  activeHeadingIndex: activeHeadingIndexForFlow,
   totalHeadings,
-  currentHeadingText,
-  onSaveHeadingSection,
-  onStartHeadingGeneration,
-  isChatLoading = false,
-  isSavingHeading,
-  isStep6SaveDisabled = false,
   headingSaveError,
   headingInitError,
   onRetryHeadingInit,
   isRetryingHeadingInit,
-  onRebuildCombinedContent,
-  isRebuildingCombinedContent = false,
-  isStreaming,
-  onPrevHeading,
-  onNextHeading,
-  canGoPrevHeading,
-  canGoNextHeading,
   hideOutline = false,
   hideHeadingProgressAndNav = false,
 }) => {
@@ -245,13 +227,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     isHeadingFlowCanvas &&
     !isHeadingUnitView &&
     (totalHeadings ?? 0) > 0 &&
-    !hideHeadingProgressAndNav;
-
-  /** 見出し単位の操作UI（進捗・生成・保存・戻る/進む）を表示するか。基本構成エラー時・構成リセット前の過去見出し表示時は非表示。 */
-  const showHeadingUnitProgressAndActions =
-    hasHeadingFlowActions &&
-    (totalHeadings ?? 0) > 0 &&
-    headingIndex !== undefined &&
     !hideHeadingProgressAndNav;
 
   const hasStepOptions = stepOptions.length > 0;
@@ -985,15 +960,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <h3 className="text-lg font-semibold text-gray-800">
-              {isHeadingFlowCanvas
-                ? isCombinedView
-                  ? '完成形'
-                  : isHeadingUnitView
-                    ? '見出し単位生成'
-                    : 'Canvas'
-                : 'Canvas'}
-            </h3>
+            <h3 className="text-lg font-semibold text-gray-800">Canvas</h3>
             {isHeadingFlowCanvas && (
               <TooltipProvider>
                 <Tooltip>
@@ -1004,12 +971,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[300px] text-xs space-y-2">
                     {isCombinedView ? (
-                      <>
-                        <p>完成形は、メモ・補足の書き出し案と各見出しの本文を結合して表示したものです。</p>
-                        <p>
-                          見出しごとの内容を変更したい場合は「戻る」で該当見出しに戻り、編集後に「保存して次へ」で確定してください。
-                        </p>
-                      </>
+                      <p>完成形は、入力された書き出し案と各見出しの本文を結合したものです。選択範囲の修正指示で編集できます。</p>
                     ) : (
                       <>
                         <p>
@@ -1039,21 +1001,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               </TooltipProvider>
             )}
           </div>
-          {showHeadingUnitProgressAndActions && (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-[11px] font-medium text-blue-700">
-              <span>
-                進捗: {headingIndex + 1} / {totalHeadings}
-              </span>
-              {currentHeadingText && (
-                <>
-                  <span className="text-blue-300">|</span>
-                  <span className="truncate max-w-[120px]" title={currentHeadingText}>
-                    {currentHeadingText}
-                  </span>
-                </>
-              )}
-            </div>
-          )}
           {hasHeadingFlowActions && hideHeadingProgressAndNav && (
             <div
               className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] font-medium text-amber-800"
@@ -1061,35 +1008,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
             >
               <span>構成リセット前の見出し本文</span>
             </div>
-          )}
-          {isCombinedView && onRebuildCombinedContent && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      void onRebuildCombinedContent();
-                    }}
-                    disabled={isRebuildingCombinedContent || isSavingHeading || isStreaming}
-                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                  >
-                    {isRebuildingCombinedContent ? (
-                      <Loader2 size={14} className="mr-1 animate-spin" />
-                    ) : (
-                      <RotateCw size={14} className="mr-1" />
-                    )}
-                    更新
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-[280px] text-xs space-y-1">
-                  <p>各見出しの確定内容を結合し、新しいバージョンとして完成形を保存します。</p>
-                  <p>バージョン選択から過去の完成形を参照できます。</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
           )}
           {headings.length > 0 && !hideOutline && (
             <Button
@@ -1106,88 +1024,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               <List size={16} />
             </Button>
           )}
-          {(showHeadingUnitProgressAndActions || isCombinedView) &&
-            (totalHeadings ?? 0) >= 1 && (
-              <>
-                {canGoPrevHeading && onPrevHeading && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={onPrevHeading}
-                    disabled={isSavingHeading || isStreaming}
-                    className="border-slate-300 text-slate-700 hover:bg-slate-50"
-                    title="戻る"
-                  >
-                    <ChevronLeft size={14} />
-                    戻る
-                  </Button>
-                )}
-                {canGoNextHeading && onNextHeading && (() => {
-                  const isLastHeading =
-                    activeHeadingIndexForFlow === undefined &&
-                    headingIndex !== undefined &&
-                    headingIndex === (totalHeadings ?? 0) - 1;
-                  const nextLabel = isLastHeading ? '完成形' : '進む';
-                  return (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={onNextHeading}
-                      disabled={isSavingHeading || isStreaming}
-                      className="border-slate-300 text-slate-700 hover:bg-slate-50"
-                      title={nextLabel}
-                    >
-                      {nextLabel}
-                      <ChevronRight size={14} />
-                    </Button>
-                  );
-                })()}
-              </>
-            )}
-          {showHeadingUnitProgressAndActions &&
-            headingIndex === activeHeadingIndexForFlow &&
-            onStartHeadingGeneration &&
-            headingIndex !== undefined &&
-            isStep6SaveDisabled && (
-              <Button
-                size="sm"
-                onClick={() => onStartHeadingGeneration(headingIndex)}
-                disabled={isStreaming || isChatLoading}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white transition-colors px-3 py-1 text-xs font-bold shadow-sm"
-              >
-                {isStreaming || isChatLoading ? (
-                  <Loader2 size={14} className="mr-1 animate-spin" />
-                ) : (
-                  <Play size={14} className="mr-1" />
-                )}
-                {headingIndex === 0 ? '1件目の生成をスタート' : '見出し本文を生成'}
-              </Button>
-            )}
-          {showHeadingUnitProgressAndActions &&
-            onSaveHeadingSection &&
-            !isStep6SaveDisabled && (
-              <Button
-                size="sm"
-                onClick={onSaveHeadingSection}
-                disabled={isSavingHeading || isStreaming}
-                className="bg-blue-600 hover:bg-blue-700 text-white transition-colors px-3 py-1 text-xs font-bold shadow-sm"
-              >
-                {isSavingHeading ? (
-                  <Loader2 size={14} className="mr-1 animate-spin" />
-                ) : (
-                  <Save size={14} className="mr-1" />
-                )}
-                {headingIndex === activeHeadingIndexForFlow &&
-                totalHeadings !== undefined &&
-                headingIndex + 1 === totalHeadings
-                  ? '保存して完成形'
-                  : headingIndex === activeHeadingIndexForFlow
-                    ? '保存して次へ'
-                    : '保存'}
-              </Button>
-            )}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">

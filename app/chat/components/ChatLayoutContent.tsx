@@ -58,6 +58,13 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     onServiceChange,
     servicesError,
     onDismissServicesError,
+    activeHeadingIndex,
+    isStep7SaveDisabled,
+    onStartHeadingGeneration,
+    onSaveHeadingSection,
+    isChatLoading,
+    onBuildCombinedWithUserLead,
+    hasCombinedContentSaved,
   } = ctx;
   const { isOwnerViewMode } = useLiffContext();
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
@@ -268,6 +275,13 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           totalHeadings={totalHeadings}
           {...(headingIndex !== undefined && { headingIndex })}
           {...(currentHeadingText !== undefined && { currentHeadingText })}
+          {...(activeHeadingIndex !== undefined && { activeHeadingIndex })}
+          isStep7SaveDisabled={isStep7SaveDisabled ?? true}
+          {...(onStartHeadingGeneration && { onStartHeadingGeneration })}
+          {...(onSaveHeadingSection && { onSaveHeadingSection })}
+          isChatLoading={isChatLoading ?? false}
+          {...(onBuildCombinedWithUserLead && { onBuildCombinedWithUserLead })}
+          {...(hasCombinedContentSaved !== undefined && { hasCombinedContentSaved })}
           services={services}
           selectedServiceId={selectedServiceId}
           onServiceChange={onServiceChange}

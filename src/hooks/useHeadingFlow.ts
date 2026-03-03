@@ -40,6 +40,8 @@ interface UseHeadingFlowReturn {
   /** 選択バージョンに応じた完成形コンテンツ。完成形表示時に使用 */
   selectedCombinedContent: string | null;
   handleCombinedVersionSelect: (versionId: string) => void;
+  /** 選択を最新表示に戻す（完成形保存後など） */
+  resetCombinedVersionToLatest: () => void;
   /** 完成形のバージョン一覧と最新を再取得（Canvas編集完了後など） */
   refetchCombinedContentVersions: (targetSections?: SessionHeadingSection[]) => void;
   /**
@@ -49,9 +51,6 @@ interface UseHeadingFlowReturn {
    */
   handleSaveHeadingSection: (content: string, overrideHeadingKey?: string) => Promise<boolean>;
   handleRetryHeadingInit: (options?: { fromReset?: boolean }) => void;
-  /** 見出し確定内容から完成形を再生成して新バージョン保存する */
-  handleRebuildCombinedContent: () => Promise<boolean>;
-  isRebuildingCombinedContent: boolean;
   /** 見出しセクションの状態を強制的に再取得する（保存・確定後の同期用） */
   refetchHeadings: () => Promise<SessionHeadingSection[]>;
 }
@@ -77,7 +76,6 @@ export function useHeadingFlow({
     Array<{ id: string; versionNo: number; content: string; isLatest: boolean }>
   >([]);
   const [selectedCombinedVersionId, setSelectedCombinedVersionId] = useState<string | null>(null);
-  const [isRebuildingCombinedContent, setIsRebuildingCombinedContent] = useState(false);
   // セッション切り替え直後の fetch 完了を待つフラグ。
   // false の間は初期化 effect が走らないようにブロックする。
   const [hasFetchCompleted, setHasFetchCompleted] = useState(false);
@@ -390,42 +388,6 @@ export function useHeadingFlow({
     }
   }, []);
 
-  const handleRebuildCombinedContent = useCallback(async (): Promise<boolean> => {
-    if (!sessionId || isRebuildingCombinedContent) return false;
-
-    setIsRebuildingCombinedContent(true);
-    try {
-      const liffAccessToken = await getAccessToken();
-      const res = await headingActions.rebuildCombinedContentFromHeadings({
-        sessionId,
-        liffAccessToken,
-      });
-
-      if (!res.success) {
-        const message = res.error || '完成形の再生成に失敗しました';
-        toast.error(message);
-        return false;
-      }
-
-      await Promise.all([fetchLatestCombinedContent(sessionId), fetchCombinedContentVersions(sessionId)]);
-      setSelectedCombinedVersionId(null);
-      toast.success('最新の見出し内容から完成形を作成しました');
-      return true;
-    } catch (error) {
-      console.error('Failed to rebuild combined content:', error);
-      toast.error('完成形の再生成に失敗しました');
-      return false;
-    } finally {
-      setIsRebuildingCombinedContent(false);
-    }
-  }, [
-    sessionId,
-    isRebuildingCombinedContent,
-    getAccessToken,
-    fetchLatestCombinedContent,
-    fetchCombinedContentVersions,
-  ]);
-
   const selectedCombinedContent = useMemo(() => {
     if (selectedCombinedVersionId) {
       const v = combinedContentVersions.find(c => c.id === selectedCombinedVersionId);
@@ -436,6 +398,10 @@ export function useHeadingFlow({
 
   const handleCombinedVersionSelect = useCallback((versionId: string) => {
     setSelectedCombinedVersionId(versionId);
+  }, []);
+
+  const resetCombinedVersionToLatest = useCallback(() => {
+    setSelectedCombinedVersionId(null);
   }, []);
 
   /** 見出しセクションの状態を強制的に再取得する（保存・確定後の同期用） */
@@ -472,11 +438,10 @@ export function useHeadingFlow({
     selectedCombinedVersionId,
     selectedCombinedContent,
     handleCombinedVersionSelect,
+    resetCombinedVersionToLatest,
     refetchCombinedContentVersions,
     handleSaveHeadingSection,
     handleRetryHeadingInit,
-    handleRebuildCombinedContent,
-    isRebuildingCombinedContent,
     refetchHeadings,
   };
 }

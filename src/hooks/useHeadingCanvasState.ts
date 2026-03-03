@@ -30,31 +30,12 @@ export function useHeadingCanvasState({
 
   const currentHeading = viewingHeadingIndex !== null ? sections[viewingHeadingIndex] : null;
 
-  const handlePrevHeading = useCallback(() => {
-    if (viewingHeadingIndex === null) {
-      if (sections.length > 0) {
-        setViewingHeadingIndex(sections.length - 1);
-      }
-      return;
-    }
-    if (viewingHeadingIndex > 0) {
-      setViewingHeadingIndex(viewingHeadingIndex - 1);
-    }
-  }, [viewingHeadingIndex, sections.length]);
-
-  const handleNextHeading = useCallback(() => {
-    if (viewingHeadingIndex === null) return;
-    if (viewingHeadingIndex < sections.length - 1) {
-      setViewingHeadingIndex(viewingHeadingIndex + 1);
-    } else {
-      // 最終見出しの場合は完成形表示(null)へ戻す
-      setViewingHeadingIndex(null);
-    }
-  }, [viewingHeadingIndex, sections.length]);
-
   const handleSaveHeadingSection = useCallback(
-    async (content: string) => {
-      if (viewingHeadingIndex === null || !currentHeading) return;
+    async (content: string, overrideHeadingKey?: string) => {
+      const targetHeading = overrideHeadingKey
+        ? sections.find(s => s.headingKey === overrideHeadingKey)
+        : currentHeading;
+      if (!targetHeading) return;
 
       setIsSaving(true);
       try {
@@ -66,7 +47,7 @@ export function useHeadingCanvasState({
 
         const res = await saveHeadingSection({
           sessionId,
-          headingKey: currentHeading.headingKey,
+          headingKey: targetHeading.headingKey,
           content,
           liffAccessToken: token,
         });
@@ -74,11 +55,11 @@ export function useHeadingCanvasState({
         if (res.success) {
           toast.success('見出し本文を保存しました');
 
-          const wasConfirmed = currentHeading.isConfirmed;
+          const wasConfirmed = targetHeading.isConfirmed;
           await onHeadingSaved();
 
-          // 未確定の状態から保存した場合のみ次へ進む（再編集時はその場に留まる）
-          if (!wasConfirmed) {
+          // 表示中の見出しを保存した場合のみ次へ進む。override 時（StepActionBar 保存）は表示は変更しない
+          if (!overrideHeadingKey && !wasConfirmed && viewingHeadingIndex !== null) {
             if (viewingHeadingIndex === sections.length - 1) {
               setViewingHeadingIndex(null);
             } else {
@@ -100,7 +81,7 @@ export function useHeadingCanvasState({
       getAccessToken,
       viewingHeadingIndex,
       currentHeading,
-      sections.length,
+      sections,
       onHeadingSaved,
     ]
   );
@@ -140,8 +121,6 @@ export function useHeadingCanvasState({
     currentHeading,
     sections,
     isSaving,
-    handlePrevHeading,
-    handleNextHeading,
     handleSaveHeadingSection,
     handleResetHeadingConfiguration,
   };

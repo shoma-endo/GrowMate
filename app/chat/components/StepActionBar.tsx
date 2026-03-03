@@ -13,6 +13,7 @@ import {
   FilePenLine,
   Loader2,
   MoreHorizontal,
+  Play,
   RotateCw,
   Save,
   SkipBack,
@@ -52,6 +53,16 @@ interface StepActionBarProps {
   currentHeadingText?: string;
   /** 見出し構成を初期化し、基本構成から再抽出する */
   onResetHeadingConfiguration?: () => Promise<void>;
+  /** Step7 見出し生成: 現在生成対象の見出しインデックス（0-based）。undefined = 全確定・完成形フェーズ */
+  activeHeadingIndex?: number;
+  /** Step7 見出し生成: 保存ボタン無効化（コンテンツ未生成時 true） */
+  isStep7SaveDisabled?: boolean;
+  /** Step7 見出し生成: 見出し生成トリガー */
+  onStartHeadingGeneration?: (headingIndex: number) => void;
+  /** Step7 見出し保存: 保存して次へ */
+  onSaveHeadingSection?: () => Promise<void>;
+  /** 見出し生成中・チャットローディング中 */
+  isChatLoading?: boolean;
 }
 
 export interface StepActionBarRef {
@@ -82,7 +93,13 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       onRetryHeadingInit,
       headingIndex,
       totalHeadings,
+      currentHeadingText,
       onResetHeadingConfiguration,
+      activeHeadingIndex,
+      isStep7SaveDisabled = true,
+      onStartHeadingGeneration,
+      onSaveHeadingSection,
+      isChatLoading = false,
     },
     ref
   ) => {
@@ -134,6 +151,18 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const showSkipButton = !isStep7;
     const showBackButton = !isStep1;
 
+    // Step7 見出し生成フェーズ: 見出し生成・保存ボタン
+    const isStep7HeadingPhase =
+      isStep7 &&
+      totalHeadings !== undefined &&
+      totalHeadings > 0 &&
+      activeHeadingIndex !== undefined;
+    const showHeadingGenerateButton =
+      isStep7HeadingPhase && isStep7SaveDisabled && Boolean(onStartHeadingGeneration);
+    const showHeadingSaveButton =
+      isStep7HeadingPhase && !isStep7SaveDisabled && Boolean(onSaveHeadingSection);
+    const isStep7HeadingBusy = isSavingHeading || isChatLoading;
+
     // nextStep の変更を親コンポーネントに通知
     useEffect(() => {
       onNextStepChange?.(nextStep);
@@ -161,6 +190,19 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
         <div className="text-xs px-3 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700">
           <span>
             現在のステップ: {currentLabel}
+            {isStep7 &&
+              totalHeadings !== undefined &&
+              totalHeadings > 0 &&
+              activeHeadingIndex !== undefined && (
+                <span className="ml-2">
+                  構成案から抽出した見出し {activeHeadingIndex + 1}/{totalHeadings}
+                  {currentHeadingText && (
+                    <span className="ml-1.5 text-blue-600" title={currentHeadingText}>
+                      | {currentHeadingText.length > 20 ? `${currentHeadingText.slice(0, 20)}…` : currentHeadingText}
+                    </span>
+                  )}
+                </span>
+              )}
             {isHeadingWarningStep &&
               totalHeadings === 0 &&
               (hasAttemptedHeadingInit || (isRetrying && isHeadingInitInFlight)) && (
@@ -194,9 +236,11 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                   )}
                 </span>
               )}
-            {hintText && (!isHeadingWarningStep || headingIndex === undefined) && (
-              <span className="ml-1 opacity-80">／{hintText}</span>
-            )}
+            {hintText &&
+              (!isHeadingWarningStep || headingIndex === undefined) &&
+              activeHeadingIndex === undefined && (
+                <span className="ml-1 opacity-80">／{hintText}</span>
+              )}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -225,6 +269,38 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             </Button>
           )}
         </div>
+        {showHeadingGenerateButton && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => onStartHeadingGeneration?.(activeHeadingIndex!)}
+            disabled={isDisabled || isStep7HeadingBusy}
+            className="flex items-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400"
+          >
+            {isStep7HeadingBusy ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Play size={14} />
+            )}
+            <span>見出し生成</span>
+          </Button>
+        )}
+        {showHeadingSaveButton && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void onSaveHeadingSection?.()}
+            disabled={isDisabled || isStep7HeadingBusy}
+            className="flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400"
+          >
+            {isSavingHeading ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Save size={14} />
+            )}
+            <span>保存</span>
+          </Button>
+        )}
         <Button
           onClick={() => onSaveClick?.()}
           disabled={isDisabled || isHeadingFlowBusy || !onSaveClick || annotationLoading}

@@ -88,4 +88,18 @@ export interface ChatLayoutCtx {
   onResetHeadingConfiguration: () => Promise<boolean>;
   resolvedCanvasStep: BlogStepId | null;
   setCanvasStep: (step: BlogStepId | null) => void;
+  /** Step7: 現在生成対象の見出しインデックス。undefined = 完成形フェーズ */
+  activeHeadingIndex?: number;
+  /** Step7: 見出し保存ボタン無効化 */
+  isStep7SaveDisabled?: boolean;
+  /** Step7: 見出し生成トリガー */
+  onStartHeadingGeneration?: (headingIndex: number) => void;
+  /** Step7: 見出し保存（保存して次へ） */
+  onSaveHeadingSection?: () => Promise<void>;
+  /** チャットローディング中 */
+  isChatLoading?: boolean;
+  /** Step7 完成形フェーズ: 書き出し+各見出しを結合して保存（AI 不使用） */
+  onBuildCombinedWithUserLead?: (userProvidedLead: string) => Promise<{ success: boolean; error?: string }>;
+  /** Step7 完成形を1回以上保存済みのとき true。保存後は通常送信を許可する */
+  hasCombinedContentSaved?: boolean;
 }
