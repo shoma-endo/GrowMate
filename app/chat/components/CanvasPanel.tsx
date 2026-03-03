@@ -1330,16 +1330,24 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
             </Select>
           )}
           {!isHeadingUnitView && (
-            <Button
-              ref={markdownBtnRef}
-              size="sm"
-              variant="default"
-              onClick={handleCopyMarkdown}
-              className="bg-green-600 hover:bg-green-700 transition-colors p-2"
-              title="コピー"
-            >
-              <ClipboardCheck size={16} />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    ref={markdownBtnRef}
+                    size="sm"
+                    variant="default"
+                    onClick={handleCopyMarkdown}
+                    className="bg-green-600 hover:bg-green-700 transition-colors p-2"
+                  >
+                    <ClipboardCheck size={16} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="end">
+                  <p>コピー</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
           {isHeadingFlowCanvas && headingSaveError && (
             <span
