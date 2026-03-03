@@ -130,7 +130,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const isStep7 = displayStep === 'step7';
     const isStep1 = displayStep === 'step1';
     const isHeadingFlowBusy = (isStep6 || isStep7) && (isSavingHeading || isHeadingInitInFlight);
-    const isHeadingWarningStep = isStep7;
 
     // ラベル・ヒント
     const currentLabel = BLOG_STEP_LABELS[displayStep] ?? '';
@@ -203,7 +202,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                   )}
                 </span>
               )}
-            {isHeadingWarningStep &&
+            {isStep7 &&
               totalHeadings === 0 &&
               (hasAttemptedHeadingInit || (isRetrying && isHeadingInitInFlight)) && (
                 <span className="ml-2 inline-flex items-center gap-1.5">
@@ -237,8 +236,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                 </span>
               )}
             {hintText &&
-              (!isHeadingWarningStep || headingIndex === undefined) &&
-              activeHeadingIndex === undefined && (
+              (!isStep7 || (headingIndex === undefined && activeHeadingIndex === undefined)) && (
                 <span className="ml-1 opacity-80">／{hintText}</span>
               )}
           </span>

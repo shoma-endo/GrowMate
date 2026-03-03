@@ -221,7 +221,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   const hasHeadingFlowActions =
     isHeadingFlowCanvas && showHeadingUnitActions && !isBasicStructureRequiredError;
   const isHeadingUnitView = hasHeadingFlowActions && headingIndex !== undefined;
-  // 完成形 = Step6書き出し案＋見出し確定本文の結合（AI直接生成ではない）。
+  // 完成形 = ユーザー入力の書き出し＋見出し確定本文の結合（AI直接生成ではない）。
   // タイルクリック時（hideHeadingProgressAndNav）は過去のAI生成文を表示しており完成形ではないため除外。
   const isCombinedView =
     isHeadingFlowCanvas &&
