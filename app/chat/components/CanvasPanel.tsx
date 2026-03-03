@@ -44,13 +44,13 @@ import { BASIC_STRUCTURE_REQUIRED_MESSAGE } from '@/hooks/useHeadingFlow';
 import type { BlogStepId } from '@/lib/constants';
 import type {
   CanvasSelectionEditPayload,
-  CanvasBubbleState,
   CanvasHeadingItem,
   CanvasSelectionState,
   CanvasPanelProps,
   CanvasVersionOption,
 } from '@/types/canvas';
 import { usePersistedResizableWidth } from '@/hooks/usePersistedResizableWidth';
+import { toast } from 'sonner';
 
 const lowlight = createLowlight(common);
 
@@ -192,12 +192,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   hideHeadingProgressAndNav = false,
 }) => {
   const [markdownContent, setMarkdownContent] = useState('');
-  const [bubble, setBubble] = useState<CanvasBubbleState>({
-    isVisible: false,
-    message: '',
-    type: 'markdown',
-    position: { top: 0, left: 0 },
-  });
 
   // ✅ アウトラインパネル用のstate
   const [outlineVisible, setOutlineVisible] = useState(false);
@@ -274,8 +268,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     maxWidth: 1000,
   });
 
-  // ✅ ボタンの参照を保持
-  const markdownBtnRef = useRef<HTMLButtonElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const selectionAnchorRef = useRef<{ top: number; left: number } | null>(null);
 
@@ -755,39 +747,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     }
   }, [instruction, lastAiError]);
 
-  // ✅ 吹き出し表示関数
-  const showBubble = useCallback(
-    (
-      buttonRef: React.RefObject<HTMLButtonElement | null>,
-      message: string,
-      type: 'markdown' | 'text' | 'download'
-    ) => {
-      if (buttonRef.current) {
-        const rect = buttonRef.current.getBoundingClientRect();
-        const containerRect = buttonRef.current.closest('.canvas-panel')?.getBoundingClientRect();
-
-        if (containerRect) {
-          // コンテナ内での相対位置を計算
-          const relativeTop = rect.top - containerRect.top - 60; // 吹き出しの高さ分上に表示
-          const relativeLeft = rect.left - containerRect.left + rect.width / 2 - 75; // 中央揃え
-
-          setBubble({
-            isVisible: true,
-            message,
-            type,
-            position: { top: relativeTop, left: relativeLeft },
-          });
-
-          // 3秒後に自動で消す
-          setTimeout(() => {
-            setBubble(prev => ({ ...prev, isVisible: false }));
-          }, 3000);
-        }
-      }
-    },
-    []
-  );
-
   const handleCancelSelectionPanel = useCallback(() => {
     setSelectionMode(null);
     setSelectionState(null);
@@ -991,10 +950,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     if (markdownContent) {
       try {
         await navigator.clipboard.writeText(markdownContent);
-        showBubble(markdownBtnRef, '📝 マークダウンを\nコピーしました！', 'markdown');
+        toast.success('コピーしました');
       } catch (error) {
         console.error('マークダウンコピーエラー:', error);
-        showBubble(markdownBtnRef, '❌ コピーに\n失敗しました', 'markdown');
+        toast.error('コピーに失敗しました');
       }
     }
   };
@@ -1020,42 +979,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
           <div className="w-0.5 h-8 bg-white/70 rounded-full"></div>
         </div>
       </div>
-
-      {/* ✅ CSS吹き出し（サルワカデザイン） - 最上位に表示 */}
-      {bubble.isVisible && (
-        <div
-          className={`absolute z-[60] px-3 py-2 text-sm font-medium text-white rounded-lg shadow-lg transition-all duration-300 ease-in-out transform ${
-            bubble.type === 'markdown'
-              ? 'bg-green-600'
-              : bubble.type === 'text'
-                ? 'bg-blue-600'
-                : 'bg-purple-600'
-          } animate-bounce-in`}
-          style={{
-            top: `${bubble.position.top}px`,
-            left: `${bubble.position.left}px`,
-            minWidth: '150px',
-            minHeight: '48px',
-            textAlign: 'center',
-            whiteSpace: 'pre-line',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {bubble.message}
-          {/* ✅ 三角形（下向き）- サルワカスタイル */}
-          <div
-            className={`absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[8px] border-r-[8px] border-t-[8px] border-l-transparent border-r-transparent ${
-              bubble.type === 'markdown'
-                ? 'border-t-green-600'
-                : bubble.type === 'text'
-                  ? 'border-t-blue-600'
-                  : 'border-t-purple-600'
-            }`}
-          />
-        </div>
-      )}
 
       {/* ヘッダー部分 - 固定ヘッダー分のtop位置を調整 */}
       <div className="sticky top-16 z-40 flex items-center justify-between p-4 border-b bg-white/90 backdrop-blur-sm ml-2 shadow-sm">
@@ -1335,7 +1258,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    ref={markdownBtnRef}
                     size="sm"
                     variant="default"
                     onClick={handleCopyMarkdown}

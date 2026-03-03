@@ -14,13 +14,6 @@ export interface CanvasSelectionEditResult {
   explanation?: string;
 }
 
-export interface CanvasBubbleState {
-  isVisible: boolean;
-  message: string;
-  type: 'markdown' | 'text' | 'download';
-  position: { top: number; left: number };
-}
-
 export interface CanvasHeadingItem {
   level: number;
   text: string;
