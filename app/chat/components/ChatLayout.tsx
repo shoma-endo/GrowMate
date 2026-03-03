@@ -229,9 +229,15 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const maxViewableIndex =
     activeHeadingIndex !== undefined ? activeHeadingIndex : Math.max(0, totalHeadings - 1);
   useEffect(() => {
-    if (!isHeadingFlowCanvasStep || totalHeadings === 0) {
+    if (!isHeadingFlowCanvasStep) {
+      pendingViewingIndexRef.current = null;
       setViewingHeadingIndex(null);
       return;
+    }
+    if (totalHeadings === 0) {
+      setViewingHeadingIndex(null);
+      return;
+      // pending は消さない（onResetComplete で 0 を予約し、再抽出後に見出し1を開く意図がある）
     }
     const activeIdx = activeHeadingIndex ?? totalHeadings;
     // タイルクリックで指定した見出しインデックスを優先する（effect のデフォルト上書きを防止）
@@ -498,6 +504,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     const current = viewingHeadingIndex ?? totalHeadings;
     if (current <= 0) return;
     if (!handleBeforeHeadingChange()) return;
+    pendingViewingIndexRef.current = null;
     setIsViewingPastHeadingContent(false);
     setCanvasStreamingContent('');
     handlePrevHeading();
@@ -508,6 +515,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     const allConfirmed = activeHeadingIndex === undefined && headingSections.length > 0;
     if (!allConfirmed && current >= maxViewableIndex) return;
     if (!handleBeforeHeadingChange()) return;
+    pendingViewingIndexRef.current = null;
     setIsViewingPastHeadingContent(false);
     setCanvasStreamingContent('');
     handleNextHeading();
@@ -697,6 +705,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         }
 
         if (targetIdx !== null) {
+          // step7 未表示時にタイルクリック: effect が上書きするため pending を使用。step7 表示中は setViewingHeadingIndex のみ（effect は deps 変化で動かないため）
           if (!isHeadingFlowCanvasStep) {
             pendingViewingIndexRef.current = targetIdx;
           }
