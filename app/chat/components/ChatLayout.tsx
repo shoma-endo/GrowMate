@@ -68,6 +68,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const pendingViewingIndexRef = useRef<number | null>(null);
   /** hasExactMatch=false 時のフォールバック表示対象 message.id（canvasVersions 反映後に自動解除） */
   const fallbackMessageIdRef = useRef<string | null>(null);
+  /** 構成リセット前の過去見出しを表示中。進捗・戻る/進むを非表示にする */
+  const [isViewingPastHeadingContent, setIsViewingPastHeadingContent] = useState(false);
 
   const resolvedCanvasStep = useMemo<BlogStepId | null>(() => {
     if (canvasStep) return canvasStep;
@@ -502,6 +504,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     const current = viewingHeadingIndex ?? totalHeadings;
     if (current <= 0) return;
     if (!handleBeforeHeadingChange()) return;
+    setIsViewingPastHeadingContent(false);
     setCanvasStreamingContent('');
     handlePrevHeading();
   }, [viewingHeadingIndex, totalHeadings, handleBeforeHeadingChange, handlePrevHeading, setCanvasStreamingContent]);
@@ -511,6 +514,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     const allConfirmed = activeHeadingIndex === undefined && headingSections.length > 0;
     if (!allConfirmed && current >= maxViewableIndex) return;
     if (!handleBeforeHeadingChange()) return;
+    setIsViewingPastHeadingContent(false);
     setCanvasStreamingContent('');
     handleNextHeading();
   }, [
@@ -556,6 +560,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   // スキップ/バック時に resolvedCanvasStep を同期（見出しフロー・Canvas コンテンツの表示に必要）
   const handleManualStepChangeForCanvas = useCallback((targetStep: BlogStepId) => {
+    setIsViewingPastHeadingContent(false);
     setCanvasStreamingContent('');
     setCanvasStep(targetStep);
     if (targetStep === 'step6' || targetStep === HEADING_FLOW_STEP_ID) {
@@ -595,6 +600,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     setAnnotationOpen(false);
     setAnnotationData(null);
     setAnnotationLoading(false);
+    setIsViewingPastHeadingContent(false);
     setCanvasStep(null);
     setSelectedVersionByStep({});
     setFollowLatestByStep({});
@@ -719,13 +725,16 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         }
 
         if (targetIdx !== null) {
-          // step7 以外から遷移する場合のみ ref を設定（effect が resolvedCanvasStep 変化で再走するため）
-          // すでに step7 表示中は effect が走らないので direct setState のみで十分。stale ref を残さない
           if (!isHeadingFlowCanvasStep) {
             pendingViewingIndexRef.current = targetIdx;
           }
           setViewingHeadingIndex(targetIdx);
+          setIsViewingPastHeadingContent(false);
+        } else {
+          setIsViewingPastHeadingContent(true);
         }
+      } else {
+        setIsViewingPastHeadingContent(false);
       }
 
       if (annotationOpen) {
@@ -831,6 +840,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       const versions = blogCanvasVersionsByStep[step] ?? [];
       const latestId = versions.length ? (versions[versions.length - 1]?.id ?? null) : null;
 
+      setIsViewingPastHeadingContent(false);
       setCanvasStreamingContent('');
       setCanvasStep(step);
       setSelectedVersionByStep(prev => {
@@ -1278,6 +1288,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             effectiveViewingHeadingIndex !== null &&
             totalHeadings > 0
           }
+          hideHeadingProgressAndNav={isViewingPastHeadingContent}
           onSaveHeadingSection={handleSaveHeadingClick}
           onStartHeadingGeneration={handleStartHeadingGeneration}
           isChatLoading={chatSession.state.isLoading}

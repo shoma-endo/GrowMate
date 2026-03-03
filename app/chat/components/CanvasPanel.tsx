@@ -187,6 +187,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   canGoPrevHeading,
   canGoNextHeading,
   hideOutline = false,
+  hideHeadingProgressAndNav = false,
 }) => {
   const [markdownContent, setMarkdownContent] = useState('');
   const [bubble, setBubble] = useState<CanvasBubbleState>({
@@ -1087,7 +1088,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               </TooltipProvider>
             )}
           </div>
-          {isHeadingUnitView && totalHeadings !== undefined && (
+          {isHeadingUnitView && totalHeadings !== undefined && !hideHeadingProgressAndNav && (
             <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-[11px] font-medium text-blue-700">
               <span>
                 進捗: {headingIndex + 1} / {totalHeadings}
@@ -1100,6 +1101,14 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                   </span>
                 </>
               )}
+            </div>
+          )}
+          {hasHeadingFlowActions && hideHeadingProgressAndNav && (
+            <div
+              className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] font-medium text-amber-800"
+              title="構成リセット前に生成された見出し本文です。現在の構成とは対応していません。"
+            >
+              <span>構成リセット前の見出し本文</span>
             </div>
           )}
           {isCombinedView && (
@@ -1144,7 +1153,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               <List size={16} />
             </Button>
           )}
-          {hasHeadingFlowActions && totalHeadings !== undefined && totalHeadings > 1 && (
+          {hasHeadingFlowActions &&
+            totalHeadings !== undefined &&
+            totalHeadings > 1 &&
+            !hideHeadingProgressAndNav && (
             <>
               {canGoPrevHeading && onPrevHeading && (
                 <Button
