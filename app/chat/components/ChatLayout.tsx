@@ -535,14 +535,26 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const handleBeforeManualStepChange = useCallback((): boolean => true, []);
 
   // スキップ/バック時に resolvedCanvasStep を同期（見出しフロー・Canvas コンテンツの表示に必要）
-  const handleManualStepChangeForCanvas = useCallback((targetStep: BlogStepId) => {
-    setIsViewingPastHeadingContent(false);
-    setCanvasStreamingContent('');
-    setCanvasStep(targetStep);
-    if (targetStep === 'step6' || targetStep === HEADING_FLOW_STEP_ID) {
-      setCanvasPanelOpen(true);
-    }
-  }, [setCanvasStreamingContent]);
+  const handleManualStepChangeForCanvas = useCallback(
+    (targetStep: BlogStepId) => {
+      setIsViewingPastHeadingContent(false);
+      setCanvasStreamingContent('');
+      setCanvasStep(targetStep);
+      if (targetStep === 'step6' || targetStep === HEADING_FLOW_STEP_ID) {
+        setCanvasPanelOpen(true);
+      }
+      // Step7 へ遷移かつ未確定見出しあり → 完成形ではなく見出し1を表示
+      // 完成形は全見出し確定時のみ存在。未確定があれば完成形は存在せず、取得中かどうかに依存しない。
+      if (
+        targetStep === HEADING_FLOW_STEP_ID &&
+        headingSections.length > 0 &&
+        activeHeadingIndex !== undefined
+      ) {
+        pendingViewingIndexRef.current = 0;
+      }
+    },
+    [setCanvasStreamingContent, headingSections, activeHeadingIndex]
+  );
 
   // 履歴ベースのモデル自動検出は削除（InputArea 側でフロー状態から自動選択）
 
