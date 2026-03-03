@@ -177,7 +177,13 @@ export async function POST(req: NextRequest) {
           resetIdleTimeout();
 
           // モデル設定の解決（constantsの設定を優先）
-          const cfg = MODEL_CONFIGS[model];
+          // blog_creation_step7_h0 等は step7 の設定を流用（タイルクリック時の見出し特定用サフィックス）
+          const configKey =
+            Object.prototype.hasOwnProperty.call(MODEL_CONFIGS, model) ||
+            !/^blog_creation_step7_h\d+$/.test(model)
+              ? model
+              : 'blog_creation_step7';
+          const cfg = MODEL_CONFIGS[configKey];
           const resolvedModel =
             cfg && cfg.provider === 'anthropic'
               ? cfg.actualModel

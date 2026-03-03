@@ -765,6 +765,38 @@ export class SupabaseService {
   }
 
   /**
+   * 指定モデル（プレフィックス一致）の最新 assistant メッセージを取得する。
+   * blog_creation_step7 / blog_creation_step7_h0 等の両方にマッチさせたい場合に使用。
+   */
+  async getLatestChatMessageBySessionAndModelPrefix(
+    sessionId: string,
+    userId: string,
+    modelPrefix: string
+  ): Promise<SupabaseResult<DbChatMessage | null>> {
+    const pattern = `${modelPrefix}%`;
+    const { data, error } = await this.supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .ilike('model', pattern)
+      .eq('role', 'assistant')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      return this.failure('チャットメッセージの取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to get latest chat message by model prefix',
+        context: { sessionId, userId, modelPrefix },
+      });
+    }
+
+    return this.success(data ?? null);
+  }
+
+  /**
    * セッション内でアクセス可能なユーザー範囲から、指定モデルの最新assistantメッセージを取得する。
    * オーナー/スタッフ共有アクセスに対応。
    */

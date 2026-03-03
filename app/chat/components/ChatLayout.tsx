@@ -150,7 +150,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   const hasStep7Content =
     (chatSession.state.messages ?? []).some(
-      m => m?.role === 'assistant' && m.model === 'blog_creation_step7'
+      m =>
+        m?.role === 'assistant' &&
+        (m.model === 'blog_creation_step7' || m.model?.startsWith('blog_creation_step7_'))
     ) || Boolean(latestCombinedContent?.trim());
 
   const {
@@ -636,11 +638,19 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [chatSession.actions, selectedServiceId]
   );
 
-  // ✅ 見出し単位生成: スタート/この見出しを生成ボタンでチャット送信の代わりに生成開始
-  const handleStartHeadingGeneration = useCallback(() => {
-    setSelectedModel('blog_creation');
-    void handleSendMessage('この見出しの本文を書いてください', 'blog_creation_step7');
-  }, [handleSendMessage]);
+  // ✅ 見出し単位生成: スタート/この見出しを生成ボタンでチャット送信の代わりに生成開始。
+  // headingIndex を model に含めることで、タイルクリック時に該当見出しを正しく開けるようにする。
+  const handleStartHeadingGeneration = useCallback(
+    (headingIndex: number) => {
+      setSelectedModel('blog_creation');
+      const model =
+        Number.isInteger(headingIndex) && headingIndex >= 0
+          ? `blog_creation_step7_h${headingIndex}`
+          : 'blog_creation_step7';
+      void handleSendMessage('この見出しの本文を書いてください', model);
+    },
+    [handleSendMessage]
+  );
 
   // ✅ Canvasボタンクリック時にCanvasPanelを表示する関数
   const handleShowCanvas = useCallback(

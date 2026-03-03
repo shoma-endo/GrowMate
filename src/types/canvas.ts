@@ -58,8 +58,8 @@ export interface CanvasPanelProps {
   totalHeadings?: number;
   currentHeadingText?: string;
   onSaveHeadingSection?: () => Promise<void>;
-  /** 見出しの本文生成を開始する（チャット送信の代わりにボタンで起動） */
-  onStartHeadingGeneration?: () => void;
+  /** 見出しの本文生成を開始する（チャット送信の代わりにボタンで起動）。headingIndex を渡すと model に _hN を含めて保存し、タイルクリック時の見出し特定に利用する */
+  onStartHeadingGeneration?: (headingIndex: number) => void;
   /** チャット送信中（見出し生成リクエスト中）は true。連打防止のためボタン無効化に使用 */
   isChatLoading?: boolean;
   isSavingHeading?: boolean;

@@ -1219,10 +1219,11 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
           {showHeadingUnitProgressAndActions &&
             headingIndex === activeHeadingIndexForFlow &&
             onStartHeadingGeneration &&
+            headingIndex !== undefined &&
             isStep6SaveDisabled && (
               <Button
                 size="sm"
-                onClick={onStartHeadingGeneration}
+                onClick={() => onStartHeadingGeneration(headingIndex)}
                 disabled={isStreaming || isChatLoading}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white transition-colors px-3 py-1 text-xs font-bold shadow-sm"
               >
