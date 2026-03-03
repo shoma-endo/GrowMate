@@ -1064,26 +1064,37 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                     </div>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[300px] text-xs space-y-2">
-                    <p>
-                      メモ・補足情報の「基本構成」から、以下の形式で見出しを抽出します。
-                    </p>
-                    <ul className="list-disc pl-3 space-y-0.5">
-                      <li>
-                        <code className="text-[10px] px-1 py-0.5 bg-gray-200 text-gray-900 rounded font-mono">
-                          ###
-                        </code>
-                        　中見出し
-                      </li>
-                      <li>
-                        <code className="text-[10px] px-1 py-0.5 bg-gray-200 text-gray-900 rounded font-mono">
-                          ####
-                        </code>
-                        　小見出し
-                      </li>
-                    </ul>
-                    <p>
-                      ステップ7 開始後に基本構成を変更しても、見出しは自動更新されません。構成を変更したい場合は「構成リセット」を行ってください。
-                    </p>
+                    {isCombinedView ? (
+                      <>
+                        <p>完成形は、メモ・補足の書き出し案と各見出しの本文を結合して表示したものです。</p>
+                        <p>
+                          見出しごとの内容を変更したい場合は「戻る」で該当見出しに戻り、編集後に「保存して次の見出しへ」で確定してください。
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p>
+                          メモ・補足情報の「基本構成」から、以下の形式で見出しを抽出します。
+                        </p>
+                        <ul className="list-disc pl-3 space-y-0.5">
+                          <li>
+                            <code className="text-[10px] px-1 py-0.5 bg-gray-200 text-gray-900 rounded font-mono">
+                              ###
+                            </code>
+                            　中見出し
+                          </li>
+                          <li>
+                            <code className="text-[10px] px-1 py-0.5 bg-gray-200 text-gray-900 rounded font-mono">
+                              ####
+                            </code>
+                            　小見出し
+                          </li>
+                        </ul>
+                        <p>
+                          ステップ7 開始後に基本構成を変更しても、見出しは自動更新されません。構成を変更したい場合は「構成リセット」を行ってください。
+                        </p>
+                      </>
+                    )}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1333,11 +1344,11 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
           {isHeadingFlowCanvas && headingInitError && onRetryHeadingInit && (
             <div className="flex shrink-0 items-center gap-2">
               <span
-                className="text-[10px] text-red-500 max-w-[120px] truncate sm:max-w-[150px]"
+                className="text-[10px] text-red-500 max-w-[180px] truncate sm:max-w-[220px]"
                 title={headingInitError}
               >
                 {headingInitError === BASIC_STRUCTURE_REQUIRED_MESSAGE
-                  ? '基本構成が必要'
+                  ? '基本構成に###/####で見出しを入力して保存→再試行'
                   : '初期化エラー'}
               </span>
               <Button
