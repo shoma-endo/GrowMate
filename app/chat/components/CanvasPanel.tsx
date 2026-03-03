@@ -1083,7 +1083,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                       <>
                         <p>完成形は、メモ・補足の書き出し案と各見出しの本文を結合して表示したものです。</p>
                         <p>
-                          見出しごとの内容を変更したい場合は「戻る」で該当見出しに戻り、編集後に「保存して次の見出しへ」で確定してください。
+                          見出しごとの内容を変更したい場合は「戻る」で該当見出しに戻り、編集後に「保存して次へ」で確定してください。
                         </p>
                       </>
                     ) : (
@@ -1157,7 +1157,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                     ) : (
                       <RotateCw size={14} className="mr-1" />
                     )}
-                    完成形を更新
+                    更新
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[280px] text-xs space-y-1">
@@ -1193,40 +1193,33 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                     onClick={onPrevHeading}
                     disabled={isSavingHeading || isStreaming}
                     className="border-slate-300 text-slate-700 hover:bg-slate-50"
-                    title={
-                      headingIndex === undefined
-                        ? '最後の見出しに戻る'
-                        : '前の見出しに戻る'
-                    }
+                    title="戻る"
                   >
                     <ChevronLeft size={14} />
                     戻る
                   </Button>
                 )}
-                {canGoNextHeading && onNextHeading && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={onNextHeading}
-                    disabled={isSavingHeading || isStreaming}
-                    className="border-slate-300 text-slate-700 hover:bg-slate-50"
-                    title={
-                      activeHeadingIndexForFlow === undefined &&
-                      headingIndex !== undefined &&
-                      headingIndex === (totalHeadings ?? 0) - 1
-                        ? '完成形を確認する'
-                        : '次の見出しに進む'
-                    }
-                  >
-                    {activeHeadingIndexForFlow === undefined &&
+                {canGoNextHeading && onNextHeading && (() => {
+                  const isLastHeading =
+                    activeHeadingIndexForFlow === undefined &&
                     headingIndex !== undefined &&
-                    headingIndex === (totalHeadings ?? 0) - 1
-                      ? '完成形を確認'
-                      : '進む'}
-                    <ChevronRight size={14} />
-                  </Button>
-                )}
+                    headingIndex === (totalHeadings ?? 0) - 1;
+                  const nextLabel = isLastHeading ? '完成形' : '進む';
+                  return (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={onNextHeading}
+                      disabled={isSavingHeading || isStreaming}
+                      className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                      title={nextLabel}
+                    >
+                      {nextLabel}
+                      <ChevronRight size={14} />
+                    </Button>
+                  );
+                })()}
               </>
             )}
           {showHeadingUnitProgressAndActions &&
@@ -1265,9 +1258,9 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                 {headingIndex === activeHeadingIndexForFlow &&
                 totalHeadings !== undefined &&
                 headingIndex + 1 === totalHeadings
-                  ? '保存して全構成を確認'
+                  ? '保存して完成形'
                   : headingIndex === activeHeadingIndexForFlow
-                    ? '保存して次の見出しへ'
+                    ? '保存して次へ'
                     : '保存'}
               </Button>
             )}
