@@ -66,6 +66,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const canvasContentRef = useRef<string>('');
   /** タイルクリック時に指定した見出しインデックスを effect より優先するための ref */
   const pendingViewingIndexRef = useRef<number | null>(null);
+  /** hasExactMatch=false 時のフォールバック表示対象 message.id（canvasVersions 反映後に自動解除） */
+  const fallbackMessageIdRef = useRef<string | null>(null);
 
   const resolvedCanvasStep = useMemo<BlogStepId | null>(() => {
     if (canvasStep) return canvasStep;
@@ -73,13 +75,18 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     return null;
   }, [canvasStep, latestBlogStep]);
 
+  const allMessagesForVersions = useMemo(
+    () => [...(chatSession.state.messages ?? []), ...optimisticMessages],
+    [chatSession.state.messages, optimisticMessages]
+  );
+
   const {
     blogCanvasVersionsByStep,
     setSelectedVersionByStep,
     setFollowLatestByStep,
     canvasVersionsForStep,
     activeCanvasVersion,
-  } = useCanvasVersions(chatSession.state.messages ?? [], resolvedCanvasStep);
+  } = useCanvasVersions(allMessagesForVersions, resolvedCanvasStep);
 
   const {
     annotationData,
@@ -328,6 +335,23 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     hasContentForCurrentHeading,
     canvasStreamingContent,
   ]);
+
+  // フォールバック表示の自動解除: canvasVersions に待機中 message.id が現れたら streamingContent をクリア
+  useEffect(() => {
+    const pendingId = fallbackMessageIdRef.current;
+    if (!pendingId) return;
+
+    const isResolved = Object.values(blogCanvasVersionsByStep).some(versions =>
+      versions.some(v => v.id === pendingId)
+    );
+    if (isResolved) {
+      fallbackMessageIdRef.current = null;
+      // AI キャンバス編集が進行中の場合は streamingContent を上書きしない
+      if (!isCanvasStreaming && !canvasEditInFlightRef.current) {
+        setCanvasStreamingContent('');
+      }
+    }
+  }, [blogCanvasVersionsByStep, isCanvasStreaming]);
 
   const canvasContent = useMemo(() => {
     if (isHeadingFlowCanvasStep) {
@@ -623,11 +647,25 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       const targetVersionId = hasExactMatch ? message.id : latestVersionId;
 
       if (message.id.startsWith('temp-assistant-')) {
+        fallbackMessageIdRef.current = null;
         const normalizedStreaming = normalizeCanvasContent(message.content ?? '');
         if (normalizedStreaming) {
           setCanvasStreamingContent(normalizedStreaming);
         }
+      } else if (!hasExactMatch) {
+        // DBに保存済みだがcanvasVersionsにまだ反映されていない場合のフォールバック
+        console.warn('[handleShowCanvas] hasExactMatch=false', { messageId: message.id, step: detectedStep });
+        // 空コンテンツ時のスティッキー防止: 常に先行リセットしてから設定
+        fallbackMessageIdRef.current = null;
+        const normalizedFallback = normalizeCanvasContent(message.content ?? '');
+        if (normalizedFallback) {
+          fallbackMessageIdRef.current = message.id;
+          setCanvasStreamingContent(normalizedFallback);
+        } else {
+          setCanvasStreamingContent('');
+        }
       } else {
+        fallbackMessageIdRef.current = null;
         setCanvasStreamingContent('');
       }
 
