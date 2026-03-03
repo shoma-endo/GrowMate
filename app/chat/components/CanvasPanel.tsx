@@ -1349,7 +1349,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               >
                 {headingInitError === BASIC_STRUCTURE_REQUIRED_MESSAGE
                   ? '基本構成に見出しを入力して保存→再試行'
-                  : '初期化エラー'}
+                  : headingInitError}
               </span>
               <Button
                 size="sm"
