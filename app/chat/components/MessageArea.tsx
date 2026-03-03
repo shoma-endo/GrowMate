@@ -12,7 +12,7 @@ import {
   extractStep7HeadingIndexFromModel,
   normalizeCanvasContent,
 } from '@/lib/canvas-content';
-import { MARKDOWN_HEADING_REGEX } from '@/lib/heading-extractor';
+import { extractHeadingTextFromLine } from '@/lib/heading-extractor';
 import type { SessionHeadingSection } from '@/types/heading-flow';
 
 interface BlogPreviewMeta {
@@ -47,11 +47,8 @@ interface MessageAreaProps {
 const extractHeadingTextFromContent = (content: string): string | null => {
   const normalized = normalizeCanvasContent(content ?? '').trim();
   for (const line of normalized.split('\n')) {
-    const match = line.trim().match(MARKDOWN_HEADING_REGEX);
-    if (match?.[1]) {
-      const text = (match[1] ?? '').trim();
-      if (text) return text;
-    }
+    const text = extractHeadingTextFromLine(line);
+    if (text) return text;
   }
   return null;
 };

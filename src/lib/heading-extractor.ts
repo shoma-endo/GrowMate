@@ -2,8 +2,25 @@
  * Extract H3 and H4 headings from markdown text.
  */
 
-/** 任意レベルの markdown 見出し行にマッチ（例: `### 見出し` → capture group 1 が見出しテキスト） */
-export const MARKDOWN_HEADING_REGEX = /^#+\s+(.+)$/;
+const HEADING_WHITESPACE =
+  new Set<string>([' ', '\t', '\u3000']);
+
+/**
+ * markdown 見出し行から見出しテキストを抽出する（正規表現を使用しない）。
+ * 例: "### 見出し" → "見出し", "###　見出し"（全角空白）→ "見出し"
+ * # の直後に空白（半角・全角スペース、タブ）を必須とする。
+ */
+export function extractHeadingTextFromLine(line: string): string | null {
+  const t = line.trim();
+  if (t.length === 0 || t.charAt(0) !== '#') return null;
+  let i = 1;
+  while (i < t.length && t.charAt(i) === '#') i++;
+  if (i >= t.length) return null;
+  if (!HEADING_WHITESPACE.has(t.charAt(i))) return null;
+  while (i < t.length && HEADING_WHITESPACE.has(t.charAt(i))) i++;
+  const text = t.slice(i).trim();
+  return text || null;
+}
 
 export interface ExtractedHeading {
   text: string;
@@ -110,10 +127,8 @@ export function stripLeadingHeadingLine(content: string, headingText: string): s
   if (!trimmed || !headingText) return content;
 
   const firstLine = trimmed.split('\n')[0]?.trim() ?? '';
-  const match = firstLine.match(MARKDOWN_HEADING_REGEX);
-  if (!match) return content;
-
-  const lineHeadingText = (match[1] ?? '').trim();
+  const lineHeadingText = extractHeadingTextFromLine(firstLine);
+  if (lineHeadingText === null) return content;
   const a = normalizeHeadingForComparison(lineHeadingText);
   const b = normalizeHeadingForComparison(headingText);
   if (!headingsMatchAfterNormalization(a, b)) return content;

@@ -19,7 +19,10 @@ import { getContentAnnotationBySession } from '@/server/actions/wordpress.action
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
 import type { SessionHeadingSection } from '@/types/heading-flow';
-import { stripLeadingHeadingLine, MARKDOWN_HEADING_REGEX } from '@/lib/heading-extractor';
+import {
+  extractHeadingTextFromLine,
+  stripLeadingHeadingLine,
+} from '@/lib/heading-extractor';
 import { BlogStepId, BLOG_STEP_IDS, HEADING_FLOW_STEP_ID } from '@/lib/constants';
 import { ChatLayoutContent } from './ChatLayoutContent';
 import { ChatLayoutProps } from '@/types/chat-layout';
@@ -689,20 +692,17 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         // model から特定できない旧メッセージのみ本文見出し一致でフォールバック
         const normalizedContent = normalizeCanvasContent(message.content ?? '').trim();
         if (targetIdx === null) {
-          // 見出しフローメッセージ中の順序（重複見出し解決に使用）
           const flowMessages = (chatSession.state.messages ?? []).filter(m => {
             const step = extractBlogStepFromModel(m.model);
             return m.role === 'assistant' && step === HEADING_FLOW_STEP_ID;
           });
-          // 楽観的メッセージは chatSession.state.messages に存在しないため -1 になりうる。
-          // その場合は「確定メッセージ数」を使い、最後尾の見出しに最も近いものを選ぶ
           const rawFlowMsgIndex = flowMessages.findIndex(m => m.id === message.id);
           const flowMsgIndex = rawFlowMsgIndex >= 0 ? rawFlowMsgIndex : flowMessages.length;
 
           for (const line of normalizedContent.split('\n')) {
-            const match = line.trim().match(MARKDOWN_HEADING_REGEX);
-            if (match?.[1]) {
-              const headingText = normalizeForHeadingMatch(match[1]);
+            const extractedHeading = extractHeadingTextFromLine(line);
+            if (extractedHeading !== null) {
+              const headingText = normalizeForHeadingMatch(extractedHeading);
               const matched = headingSections.filter(
                 s => normalizeForHeadingMatch(s.headingText) === headingText
               );
@@ -720,6 +720,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
                 targetIdx = best.orderIndex;
                 break;
               }
+              // matched.length === 0: この見出しは構成にない。後続行を探すため break しない
             }
           }
         }
@@ -731,6 +732,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           setViewingHeadingIndex(targetIdx);
           setIsViewingPastHeadingContent(false);
         } else {
+          // targetIdx が解決できない場合は、見出し行の有無に関わらず過去／未マッピング扱いにする。
+          // 旧フォーマット（### なし）メッセージでも保存を有効にすると誤上書きの原因になるため。
           setIsViewingPastHeadingContent(true);
         }
       } else {
