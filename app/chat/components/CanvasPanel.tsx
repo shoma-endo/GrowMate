@@ -1138,41 +1138,34 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               <span>構成リセット前の見出し本文</span>
             </div>
           )}
-          {isCombinedView && (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 border border-green-200 rounded text-[11px] font-medium text-green-700">
-                <span>全見出し結合を表示中</span>
-              </div>
-              {onRebuildCombinedContent && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          void onRebuildCombinedContent();
-                        }}
-                        disabled={isRebuildingCombinedContent || isSavingHeading || isStreaming}
-                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                      >
-                        {isRebuildingCombinedContent ? (
-                          <Loader2 size={14} className="mr-1 animate-spin" />
-                        ) : (
-                          <RotateCw size={14} className="mr-1" />
-                        )}
-                        完成形を更新
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-[280px] text-xs space-y-1">
-                      <p>各見出しの確定内容を結合し、新しいバージョンとして完成形を保存します。</p>
-                      <p>バージョン選択から過去の完成形を参照できます。</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </div>
+          {isCombinedView && onRebuildCombinedContent && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      void onRebuildCombinedContent();
+                    }}
+                    disabled={isRebuildingCombinedContent || isSavingHeading || isStreaming}
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  >
+                    {isRebuildingCombinedContent ? (
+                      <Loader2 size={14} className="mr-1 animate-spin" />
+                    ) : (
+                      <RotateCw size={14} className="mr-1" />
+                    )}
+                    完成形を更新
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[280px] text-xs space-y-1">
+                  <p>各見出しの確定内容を結合し、新しいバージョンとして完成形を保存します。</p>
+                  <p>バージョン選択から過去の完成形を参照できます。</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
           {headings.length > 0 && !hideOutline && (
             <Button
