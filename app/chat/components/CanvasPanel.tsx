@@ -1347,12 +1347,18 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
           {isHeadingFlowCanvas && headingInitError && onRetryHeadingInit && (
             <div className="flex shrink-0 items-center gap-2">
               <span
-                className="text-[10px] text-red-500 max-w-[180px] truncate sm:max-w-[220px]"
+                className="text-[10px] text-red-500 max-w-[180px] sm:max-w-[220px]"
                 title={headingInitError}
               >
-                {headingInitError === BASIC_STRUCTURE_REQUIRED_MESSAGE
-                  ? '基本構成に見出しを入力して保存→再試行'
-                  : headingInitError}
+                {headingInitError === BASIC_STRUCTURE_REQUIRED_MESSAGE ? (
+                  <>
+                    基本構成に見出しを入力して保存→再試行
+                    <br />
+                    してください。
+                  </>
+                ) : (
+                  headingInitError
+                )}
               </span>
               <Button
                 size="sm"
