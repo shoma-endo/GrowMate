@@ -549,11 +549,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   // スキップ/バック時に resolvedCanvasStep を同期（見出しフロー・Canvas コンテンツの表示に必要）
   const handleManualStepChangeForCanvas = useCallback((targetStep: BlogStepId) => {
+    setCanvasStreamingContent('');
     setCanvasStep(targetStep);
     if (targetStep === 'step6' || targetStep === HEADING_FLOW_STEP_ID) {
       setCanvasPanelOpen(true);
     }
-  }, []);
+  }, [setCanvasStreamingContent]);
 
   // 履歴ベースのモデル自動検出は削除（InputArea 側でフロー状態から自動選択）
 
@@ -646,28 +647,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       const hasExactMatch = versions.some(version => version.id === message.id);
       const targetVersionId = hasExactMatch ? message.id : latestVersionId;
 
-      if (message.id.startsWith('temp-assistant-')) {
-        fallbackMessageIdRef.current = null;
-        const normalizedStreaming = normalizeCanvasContent(message.content ?? '');
-        if (normalizedStreaming) {
-          setCanvasStreamingContent(normalizedStreaming);
-        }
-      } else if (!hasExactMatch) {
-        // DBに保存済みだがcanvasVersionsにまだ反映されていない場合のフォールバック
-        console.warn('[handleShowCanvas] hasExactMatch=false', { messageId: message.id, step: detectedStep });
-        // 空コンテンツ時のスティッキー防止: 常に先行リセットしてから設定
-        fallbackMessageIdRef.current = null;
-        const normalizedFallback = normalizeCanvasContent(message.content ?? '');
-        if (normalizedFallback) {
-          fallbackMessageIdRef.current = message.id;
-          setCanvasStreamingContent(normalizedFallback);
-        } else {
-          setCanvasStreamingContent('');
-        }
-      } else {
-        fallbackMessageIdRef.current = null;
-        setCanvasStreamingContent('');
-      }
+      // タイルクリック時: クリックした message の content をそのまま表示する。
+      // バージョン管理に依存せず、step1〜7・見出し単体を問わず確実に該当コンテンツを開く。
+      const normalizedFromMessage = normalizeCanvasContent(message.content ?? '');
+      fallbackMessageIdRef.current = null;
+      setCanvasStreamingContent(normalizedFromMessage || '');
 
       setCanvasStep(detectedStep);
       setSelectedVersionByStep(prev => {
@@ -800,6 +784,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       const versions = blogCanvasVersionsByStep[step] ?? [];
       const latestId = versions.length ? (versions[versions.length - 1]?.id ?? null) : null;
 
+      setCanvasStreamingContent('');
       setSelectedVersionByStep(prev => {
         const next = { ...prev };
         next[step] = versionId;
@@ -811,7 +796,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return next;
       });
     },
-    [blogCanvasVersionsByStep, resolvedCanvasStep, setFollowLatestByStep, setSelectedVersionByStep]
+    [
+      blogCanvasVersionsByStep,
+      resolvedCanvasStep,
+      setCanvasStreamingContent,
+      setFollowLatestByStep,
+      setSelectedVersionByStep,
+    ]
   );
   // Step7見出し単体: バージョン選択無効 / Step7完成形: 結合版バージョン / 通常: キャンバス版バージョン
   const effectiveActiveVersionId = isHeadingUnitStep7View
@@ -822,7 +813,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const effectiveOnVersionSelect = isHeadingUnitStep7View
     ? undefined
     : isCombinedFormViewWithVersions
-      ? handleCombinedVersionSelect
+      ? (versionId: string) => {
+          setCanvasStreamingContent('');
+          handleCombinedVersionSelect(versionId);
+        }
       : handleCanvasVersionSelect;
 
   const handleCanvasStepChange = useCallback(
@@ -830,6 +824,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       const versions = blogCanvasVersionsByStep[step] ?? [];
       const latestId = versions.length ? (versions[versions.length - 1]?.id ?? null) : null;
 
+      setCanvasStreamingContent('');
       setCanvasStep(step);
       setSelectedVersionByStep(prev => {
         const next = { ...prev };
@@ -850,7 +845,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return next;
       });
     },
-    [blogCanvasVersionsByStep, setFollowLatestByStep, setSelectedVersionByStep]
+    [
+      blogCanvasVersionsByStep,
+      setCanvasStreamingContent,
+      setFollowLatestByStep,
+      setSelectedVersionByStep,
+    ]
   );
 
   const handleCanvasStepSelect = useCallback(
