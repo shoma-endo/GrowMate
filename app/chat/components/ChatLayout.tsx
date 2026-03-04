@@ -549,6 +549,21 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           return `${hashes} ${section.headingText}\n\n${section.content}`;
         }
         const allSectionsEmpty = headingSections.every(s => !s.content || s.content.trim() === '');
+        // 未確定見出し: canvasStreamingContent または getLatestStep7HeadingContent を優先
+        // （blog_creation_step7_hN はバージョン管理対象外のため activeCanvasVersion に含まれない）
+        if (canvasStreamingContent?.trim()) {
+          const hashes = '#'.repeat(section?.headingLevel ?? 3);
+          return `${hashes} ${section?.headingText ?? ''}\n\n${canvasStreamingContent}`;
+        }
+        const fromChat = getLatestStep7HeadingContent(
+          allMessagesForVersions,
+          idx,
+          minTsForContentCheck
+        );
+        if (fromChat?.trim()) {
+          const hashes = '#'.repeat(section?.headingLevel ?? 3);
+          return `${hashes} ${section?.headingText ?? ''}\n\n${fromChat}`;
+        }
         if (allSectionsEmpty && activeCanvasVersion?.content?.trim()) {
           // 構成リセット直後の旧バージョンのみ非表示。今回の生成内容はCanvasに表示する
           const versionCreatedMs = activeCanvasVersion?.createdAtIso
@@ -580,6 +595,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     isStep6ContentStale,
     viewingHeadingIndex,
     activeHeadingIndex,
+    allMessagesForVersions,
+    getLatestStep7HeadingContent,
+    minTsForContentCheck,
   ]);
 
   const isCombinedFormView = headingCanvasViewMode.isCombinedView;
