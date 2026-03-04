@@ -50,9 +50,6 @@ export interface CanvasPanelProps {
   isSavingHeading?: boolean;
   /** 見出し保存エラー（保存/再結合失敗）を操作ボタン付近に表示する */
   headingSaveError?: string | null;
-  headingInitError?: string | null;
-  onRetryHeadingInit?: () => void;
-  isRetryingHeadingInit?: boolean;
   isStreaming?: boolean;
   /** true のときアウトラインを非表示（見出し単位編集時のみ） */
   hideOutline?: boolean;

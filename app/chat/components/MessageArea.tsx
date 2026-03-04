@@ -279,7 +279,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
   };
 
   const derivePreviewMeta = (message: ChatMessage): BlogPreviewMeta | null => {
-    const step = getContentStepFromAssistantModel(message.model);
+    const step = getContentStepFromAssistantModel(message.model, message.content);
     if (!step) return null;
 
     const normalized = normalizeCanvasContent(message.content ?? '').trim();

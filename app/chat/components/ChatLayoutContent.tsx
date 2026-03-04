@@ -81,6 +81,17 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   // 最新メッセージのステップを優先し、なければ初期ステップにフォールバック
   const detectedStep = latestBlogStep ?? normalizedInitialStep ?? currentStep;
   const displayStep = manualBlogStep ?? detectedStep;
+  /** 最後の assistant（20文字以上）が 構成案（基本構成）の場合は true。step6→7 保存をスキップし通常送信にする */
+  const lastAssistantIsBasicStructure = useMemo(() => {
+    const msgs = [...(chatSession?.state?.messages ?? []), ...(optimisticMessages ?? [])];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (!m || m.role !== 'assistant' || (m.content ?? '').trim().length < 20) continue;
+      const head = (m.content ?? '').slice(0, 150);
+      return /基本構成|【基本構成|構成案（記事全体|記事全体の設計図/.test(head);
+    }
+    return false;
+  }, [chatSession?.state?.messages, optimisticMessages]);
   const hasDetectedBlogStep =
     latestBlogStep !== null ||
     (normalizedInitialStep !== null && normalizedInitialStep !== BLOG_STEP_IDS[0]);
@@ -354,6 +365,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           isChatLoading={isChatLoading ?? false}
           isBuildingCombined={isBuildingCombined ?? false}
           {...(onSaveStep7UserLead && { onSaveStep7UserLead })}
+          lastAssistantIsBasicStructure={lastAssistantIsBasicStructure}
           services={services}
           selectedServiceId={selectedServiceId}
           onServiceChange={onServiceChange}

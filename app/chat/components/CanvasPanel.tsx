@@ -36,7 +36,6 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { HEADING_FLOW_STEP_ID, BLOG_STEP_LABELS, isStep7 as isBlogStep7 } from '@/lib/constants';
-import { BASIC_STRUCTURE_REQUIRED_MESSAGE } from '@/hooks/useHeadingFlow';
 import type { BlogStepId } from '@/lib/constants';
 import type {
   CanvasSelectionEditPayload,
@@ -163,9 +162,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   showHeadingUnitActions = false,
   totalHeadings,
   headingSaveError,
-  headingInitError,
-  onRetryHeadingInit,
-  isRetryingHeadingInit,
   hideOutline = false,
   hideHeadingProgressAndNav = false,
   isStreaming = false,
@@ -194,10 +190,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   const versionTriggerLabel = currentVersion ? `Ver.${currentVersion.versionNumber}` : 'Ver.-';
 
   const isHeadingFlowCanvas = activeStepId === HEADING_FLOW_STEP_ID;
-  const isBasicStructureRequiredError =
-    headingInitError === BASIC_STRUCTURE_REQUIRED_MESSAGE;
-  const hasHeadingFlowActions =
-    isHeadingFlowCanvas && showHeadingUnitActions && !isBasicStructureRequiredError;
+  const hasHeadingFlowActions = isHeadingFlowCanvas && showHeadingUnitActions;
   const isHeadingUnitView = hasHeadingFlowActions && headingIndex !== undefined;
   // 完成形 = ユーザー入力の書き出し＋見出し確定本文の結合（AI直接生成ではない）。
   // hideHeadingProgressAndNav = 旧形式タイル表示時は完成形ではないため除外。
@@ -959,38 +952,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
             >
               {headingSaveError}
             </span>
-          )}
-          {isHeadingFlowCanvas && headingInitError && onRetryHeadingInit && (
-            <div className="flex shrink-0 items-center gap-2">
-              <span
-                className="text-[10px] text-red-500 max-w-[180px] sm:max-w-[220px]"
-                title={headingInitError}
-              >
-                {headingInitError === BASIC_STRUCTURE_REQUIRED_MESSAGE ? (
-                  <>
-                    基本構成に見出しを入力して保存→再試行
-                    <br />
-                    してください。
-                  </>
-                ) : (
-                  headingInitError
-                )}
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onRetryHeadingInit}
-                disabled={isRetryingHeadingInit}
-                className="h-8 px-2 text-[10px] border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-bold disabled:opacity-50"
-              >
-                {isRetryingHeadingInit ? (
-                  <Loader2 size={12} className="mr-1 animate-spin" />
-                ) : (
-                  <RotateCw size={12} className="mr-1" />
-                )}
-                再試行
-              </Button>
-            </div>
           )}
           <Button
             variant="ghost"

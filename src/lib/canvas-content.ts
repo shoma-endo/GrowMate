@@ -32,8 +32,20 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
     if (!message || message.role !== 'assistant') continue;
-    const step = extractBlogStepFromModel(message.model);
-    if (step) return step;
+    const contentLen = (message.content ?? '').trim().length;
+    // ストリーミング中は空の assistant をスキップ（step6 リクエスト後に step7 の空メッセージが即追加され、書き出し案到着前に step7 表示になるのを防ぐ）
+    if (contentLen < 20) continue;
+    let modelStep = extractBlogStepFromModel(message.model);
+    if (!modelStep) continue;
+    // 補正: step7 で誤保存された 構成案（基本構成）は model step6 相当
+    const contentHead = (message.content ?? '').slice(0, 150);
+    if (
+      modelStep === 'step7' &&
+      /基本構成|【基本構成|構成案（記事全体|記事全体の設計図/.test(contentHead)
+    ) {
+      modelStep = 'step6';
+    }
+    return modelStep;
   }
   return null;
 };
@@ -42,13 +54,32 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
  * assistant メッセージの model から、そのコンテンツが属する表示用ステップを返す。
  * getResponseModelForBlogCreation により request stepN → response stepN+1 で保存されるため、
  * model step2 のコンテンツは step1 の出力。タイル・Canvas のラベル表示には content step を使用する。
+ * @param content 省略可。指定時は step7 で誤保存された 構成案 を step5 に補正
  */
-export const getContentStepFromAssistantModel = (model?: string): BlogStepId | null => {
+export const getContentStepFromAssistantModel = (
+  model?: string,
+  content?: string
+): BlogStepId | null => {
   const modelStep = extractBlogStepFromModel(model);
   if (!modelStep) return null;
   const num = Number.parseInt(modelStep.replace(/^step/, ''), 10);
   if (Number.isNaN(num) || num < 1 || num > 7) return modelStep;
-  if (num === 1 || num === 7) return modelStep;
+  if (num === 1 || num === 7) {
+    if (num === 7) {
+      // step7_h0 等は見出し本文 → step7
+      if (/^blog_creation_step7_h\d+/.test(model ?? '')) return modelStep;
+      // blog_creation_step7（プレーンのみ）: 構成案 or 書き出し案
+      if (content !== undefined) {
+        const head = content.slice(0, 150);
+        if (/基本構成|【基本構成|構成案（記事全体|記事全体の設計図/.test(head)) {
+          return 'step5'; // 構成案
+        }
+        return 'step6'; // 書き出し案
+      }
+      return modelStep; // content なし時は従来どおり
+    }
+    return modelStep;
+  }
   return `step${num - 1}` as BlogStepId;
 };
 
@@ -214,7 +245,6 @@ const normalizeCanvasContent = (raw: string): string => {
 export {
   extractBlogStepFromModel,
   extractStep7HeadingIndexFromModel,
-  getContentStepFromAssistantModel,
   findLatestAssistantBlogStep,
   normalizeCanvasContent,
   htmlToMarkdownForCanvas,

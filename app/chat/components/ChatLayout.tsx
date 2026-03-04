@@ -192,7 +192,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     isSavingHeading,
     isHeadingInitInFlight,
     hasAttemptedHeadingInit,
-    headingInitError,
     headingSaveError,
     activeHeadingIndex,
     activeHeading,
@@ -1064,7 +1063,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const handleShowCanvas = useCallback(
     (message: ChatMessage) => {
       const fallbackStep = (latestBlogStep ?? BLOG_STEP_IDS[0]) as BlogStepId;
-      const detectedStep = (getContentStepFromAssistantModel(message.model) ?? fallbackStep) as BlogStepId;
+      const detectedStep = (getContentStepFromAssistantModel(message.model, message.content) ?? fallbackStep) as BlogStepId;
 
       // Step7 見出しタイル: 編集中の見出しに未保存コンテンツがある場合は他見出しへの切り替えを禁止
       if (detectedStep === HEADING_FLOW_STEP_ID && headingSections.length > 0) {
@@ -1765,9 +1764,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           hideHeadingProgressAndNav={isViewingPastHeadingContent}
           isSavingHeading={isSavingHeading}
           headingSaveError={headingSaveError}
-          headingInitError={headingInitError}
-          onRetryHeadingInit={handleRetryHeadingInit}
-          isRetryingHeadingInit={isHeadingInitInFlight}
           isStreaming={isCanvasStreaming}
         />
       )}

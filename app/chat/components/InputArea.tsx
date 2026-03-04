@@ -120,6 +120,8 @@ interface InputAreaProps {
   /** Step7 完成形: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
   /** Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし） */
   onSaveStep7UserLead?: (userLead: string) => Promise<{ success: boolean; error?: string }>;
+  /** true のとき step6→7 保存をスキップ（構成案の場合は書き出し案取得の通常送信） */
+  lastAssistantIsBasicStructure?: boolean;
 }
 
 const InputArea: React.FC<InputAreaProps> = ({
@@ -184,6 +186,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   isChatLoading = false,
   isBuildingCombined = false,
   onSaveStep7UserLead,
+  lastAssistantIsBasicStructure = false,
 }) => {
   const { isOwnerViewMode } = useLiffContext();
   const [input, setInput] = useState('');
@@ -327,11 +330,13 @@ const InputArea: React.FC<InputAreaProps> = ({
     const originalMessage = trimmedInput;
 
     // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。見出し生成はボタンで行う
+    // 構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる
     const isStep6ToStep7Transition =
       displayStep === 'step6' &&
       nextStepForSend === 'step7' &&
       selectedModel === 'blog_creation' &&
-      onSaveStep7UserLead;
+      onSaveStep7UserLead &&
+      !lastAssistantIsBasicStructure;
     if (isStep6ToStep7Transition) {
       setIsSavingStep7Lead(true);
       try {

@@ -42,7 +42,7 @@ export function useCanvasVersions(
       if (!modelStep) return;
       // Step7 見出し単体はバージョン管理に含めない（Canvas表示は別経路で行う）
       if (modelStep === HEADING_FLOW_STEP_ID && isStep7HeadingModel(message.model)) return;
-      const step = getContentStepFromAssistantModel(message.model);
+      const step = getContentStepFromAssistantModel(message.model, message.content);
       if (!step) return;
 
       const normalizedContent = normalizeCanvasContent(message.content);
