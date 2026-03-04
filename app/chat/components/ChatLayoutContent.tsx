@@ -136,8 +136,15 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
       flowStatus === 'waitingAction' || (flowStatus === 'idle' && hasDetectedBlogStep);
     // 手動スキップ時は nextStepForPlaceholder を使わない（useEffect のタイミングで古い値が入るため）
     const nextFromIndex = BLOG_STEP_IDS[Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1)] as BlogStepId;
+    // nextStepForPlaceholder が displayStep より前（例: step6 表示中に step5）の場合は無視し、逆順表示を防ぐ。
+    // nextPlaceholderIdx >= currentIdx なら使用（同値は step2 等で「送信する step」が一致する場合に必要）
+    const nextPlaceholderIdx = nextStepForPlaceholder
+      ? BLOG_STEP_IDS.indexOf(nextStepForPlaceholder)
+      : -1;
+    const usePlaceholder =
+      nextStepForPlaceholder && nextPlaceholderIdx >= currentIdx;
     const resolved: BlogStepId = shouldAdvance
-      ? (manualBlogStep !== null ? nextFromIndex : (nextStepForPlaceholder ?? nextFromIndex))
+      ? (manualBlogStep !== null ? nextFromIndex : (usePlaceholder ? nextStepForPlaceholder : nextFromIndex))
       : (BLOG_STEP_IDS[currentIdx] ?? 'step1') as BlogStepId;
     // ヒント: この送信で進む先（resolved）のラベル
     const nextLabel = BLOG_STEP_LABELS[resolved]?.replace(/^\d+\.\s*/, '');
