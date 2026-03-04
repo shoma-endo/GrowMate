@@ -25,9 +25,6 @@ const serverEnvSchema = z.object({
   WORDPRESS_COM_CLIENT_SECRET: z.string().min(1).optional(),
   WORDPRESS_COM_REDIRECT_URI: z.string().url().optional(),
   COOKIE_SECRET: z.string().min(1).optional(),
-  GOOGLE_ADS_REDIRECT_URI: z.string().url().optional(),
-  GOOGLE_ADS_DEVELOPER_TOKEN: z.string().min(1).optional(),
-  CRON_SECRET: z.string().min(1).optional(),
 });
 
 type ClientEnv = z.infer<typeof clientEnvSchema>;
@@ -65,9 +62,6 @@ if (isServer) {
     WORDPRESS_COM_CLIENT_SECRET: process.env.WORDPRESS_COM_CLIENT_SECRET,
     WORDPRESS_COM_REDIRECT_URI: process.env.WORDPRESS_COM_REDIRECT_URI,
     COOKIE_SECRET: process.env.COOKIE_SECRET,
-    GOOGLE_ADS_REDIRECT_URI: process.env.GOOGLE_ADS_REDIRECT_URI,
-    GOOGLE_ADS_DEVELOPER_TOKEN: process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-    CRON_SECRET: process.env.CRON_SECRET,
   } satisfies { [K in keyof ServerEnv]?: ServerEnv[K] | undefined };
 
   parsedServerEnv = serverEnvSchema.parse(serverRuntimeEnv);
@@ -89,9 +83,6 @@ const serverOnlyKeys = new Set<keyof ServerEnv>([
   'WORDPRESS_COM_CLIENT_SECRET',
   'WORDPRESS_COM_REDIRECT_URI',
   'COOKIE_SECRET',
-  'GOOGLE_ADS_REDIRECT_URI',
-  'GOOGLE_ADS_DEVELOPER_TOKEN',
-  'CRON_SECRET',
 ]);
 
 const clientKeys = new Set<keyof ClientEnv>([

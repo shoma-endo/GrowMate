@@ -56,7 +56,7 @@ If an error occurs during execution or the plan fails:
 
 ## プロジェクト概要
 
-- LINE LIFF 認証を入り口に、業界特化のマーケティングコンテンツ（広告・LP・ブログ等）を AI で生成・管理する Next.js 15.5.12 ベースの SaaS。
+- LINE LIFF 認証を入り口に、業界特化のマーケティングコンテンツ（広告・LP・ブログ等）を AI で生成・管理する Next.js 15.5 ベースの SaaS。
 - Supabase がユーザー・セッション・注釈・プロンプトなどのデータを保持し、WordPress 連携で既存記事を取り込みます。
 - Stripe サブスクリプションとロール（`trial` / `paid` / `admin` / `unavailable`）により機能制御を行い、Anthropic Claude Sonnet 4.5 と OpenAI モデルを用途に応じて切替します。
 - チャット履歴検索は Supabase RPC `search_chat_sessions`（`pg_trgm` + `tsvector`）を利用し、サイドバーの検索バーからタイトルや正規化済み URL を横断検索できます。

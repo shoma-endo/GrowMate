@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils';
 
 interface BlogPreviewTileProps {
   stepLabel: string;
-  headingLabel?: string | null;
   title?: string | null;
   excerpt?: string | null;
   onOpen?: () => void;
@@ -15,7 +14,6 @@ interface BlogPreviewTileProps {
 
 const BlogPreviewTile: React.FC<BlogPreviewTileProps> = ({
   stepLabel,
-  headingLabel,
   title,
   excerpt,
   onOpen,
@@ -33,16 +31,9 @@ const BlogPreviewTile: React.FC<BlogPreviewTileProps> = ({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-              {stepLabel}
-            </span>
-            {headingLabel && (
-              <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-medium text-blue-700">
-                {headingLabel}
-              </span>
-            )}
-          </div>
+          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+            {stepLabel}
+          </span>
           {title && (
             <p className="mt-2 line-clamp-1 text-sm font-semibold text-slate-900">{title}</p>
           )}

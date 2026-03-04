@@ -279,10 +279,6 @@ export async function POST(req: NextRequest) {
                   return;
                 }
 
-                // Step6: パターンによる後処理除去はやめた（正当な記事末尾と区別不可のためデータ欠落リスク）。
-                // プロンプトで「【主な修正内容】を出力しない」指示に一本化。
-                const messageToSave = fullMessage;
-
                 let result;
                 if (sessionId) {
                   // continueChat は serviceId を受け取らないため、継続時は事前更新で一貫性を保つ
@@ -297,7 +293,7 @@ export async function POST(req: NextRequest) {
                   result = await chatService.continueChat(
                     userId,
                     sessionId,
-                    [userMessage, messageToSave], // 再生成を回避
+                    [userMessage, fullMessage], // 再生成を回避
                     '',
                     [],
                     model
@@ -306,7 +302,7 @@ export async function POST(req: NextRequest) {
                   result = await chatService.startChat(
                     userId,
                     'あなたは優秀なAIアシスタントです。',
-                    [userMessage, messageToSave],
+                    [userMessage, fullMessage],
                     model,
                     serviceId
                   );
@@ -314,7 +310,7 @@ export async function POST(req: NextRequest) {
 
                 controller.enqueue(
                   sendSSE('final', {
-                    message: messageToSave,
+                    message: fullMessage,
                     sessionId: result.sessionId || sessionId,
                   })
                 );

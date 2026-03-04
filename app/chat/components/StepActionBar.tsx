@@ -1,48 +1,24 @@
 'use client';
-import React, { forwardRef, useImperativeHandle, useEffect, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useEffect } from 'react';
 import { BlogStepId, BLOG_STEP_LABELS, BLOG_STEP_IDS } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
-import {
-  BookMarked,
-  BookOpen,
-  FilePenLine,
-  Loader2,
-  RotateCw,
-  SkipBack,
-  SkipForward,
-} from 'lucide-react';
+import { BookMarked, BookOpen, FilePenLine, Loader2, SkipBack, SkipForward } from 'lucide-react';
 
 interface StepActionBarProps {
-  step?: BlogStepId;
-  className?: string;
-  disabled?: boolean;
-  hasDetectedBlogStep?: boolean;
-  onSaveClick?: () => void;
-  annotationLoading?: boolean;
-  isSavingHeading?: boolean;
-  hasStep7Content?: boolean;
-  onGenerateTitleMeta?: () => void;
-  isGenerateTitleMetaLoading?: boolean;
-  onNextStepChange?: (nextStep: BlogStepId | null) => void;
-  flowStatus?: string;
-  onLoadBlogArticle?: () => Promise<void>;
+  step?: BlogStepId | undefined;
+  className?: string | undefined;
+  disabled?: boolean | undefined;
+  hasDetectedBlogStep?: boolean | undefined;
+  onSaveClick?: (() => void) | undefined;
+  annotationLoading?: boolean | undefined;
+  hasStep7Content?: boolean | undefined;
+  onGenerateTitleMeta?: (() => void) | undefined;
+  isGenerateTitleMetaLoading?: boolean | undefined;
+  onNextStepChange?: ((nextStep: BlogStepId | null) => void) | undefined;
+  flowStatus?: string | undefined;
+  onLoadBlogArticle?: (() => Promise<void>) | undefined;
   isLoadBlogArticleLoading?: boolean;
-  onManualStepChange?: (step: BlogStepId) => void;
-  onBeforeManualStepChange?: (params: {
-    direction: 'forward' | 'backward';
-    currentStep: BlogStepId;
-    targetStep: BlogStepId;
-  }) => boolean;
-  isHeadingInitInFlight?: boolean;
-  hasAttemptedHeadingInit?: boolean;
-  /** 見出し0件時に再初期化を試行（Step5保存後に手動復旧用） */
-  onRetryHeadingInit?: () => void;
-  /** Step6/Step7 本文生成時: 現在の見出しインデックス（0-based） */
-  headingIndex?: number;
-  /** Step6/Step7 本文生成時: 見出しの総数 */
-  totalHeadings?: number;
-  /** Step6/Step7 本文生成時: 現在の見出しテキスト */
-  currentHeadingText?: string;
+  onManualStepChange?: ((step: BlogStepId) => void) | undefined;
 }
 
 export interface StepActionBarRef {
@@ -58,7 +34,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       hasDetectedBlogStep,
       onSaveClick,
       annotationLoading,
-      isSavingHeading = false,
       hasStep7Content,
       onGenerateTitleMeta,
       isGenerateTitleMetaLoading = false,
@@ -67,13 +42,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       onLoadBlogArticle,
       isLoadBlogArticleLoading = false,
       onManualStepChange,
-      onBeforeManualStepChange,
-      isHeadingInitInFlight = false,
-      hasAttemptedHeadingInit = false,
-      onRetryHeadingInit,
-      headingIndex,
-      totalHeadings,
-      currentHeadingText,
     },
     ref
   ) => {
@@ -82,12 +50,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const displayIndex = actualIndex >= 0 ? actualIndex : 0;
     const displayStep = BLOG_STEP_IDS[displayIndex] ?? actualStep ?? BLOG_STEP_IDS[0];
     const nextStep = BLOG_STEP_IDS[displayIndex + 1] ?? null;
-
-    // 再試行クリック時のみローディング表示。初回初期化中は警告を出さない。
-    const [isRetrying, setIsRetrying] = useState(false);
-    useEffect(() => {
-      if (!isHeadingInitInFlight) setIsRetrying(false);
-    }, [isHeadingInitInFlight]);
 
     useImperativeHandle(ref, () => ({
       getCurrentStepInfo: () => ({
@@ -99,7 +61,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     // UI制御
     const isStepReady = flowStatus === 'waitingAction' || (hasDetectedBlogStep && flowStatus === 'idle');
     const isDisabled = disabled || !isStepReady;
-    const isStep6 = displayStep === 'step6';
     const isStep7 = displayStep === 'step7';
     const isStep1 = displayStep === 'step1';
     const showLoadButton = isStep7 && typeof onLoadBlogArticle === 'function';
@@ -107,12 +68,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       isStep7 && Boolean(hasStep7Content) && typeof onGenerateTitleMeta === 'function';
     const showSkipButton = !isStep7;
     const showBackButton = !isStep1;
-    const isHeadingFlowStep = isStep6;
-    const isStep6Busy = isStep6 && (isSavingHeading || isHeadingInitInFlight);
-    const headingLabel =
-      currentHeadingText && currentHeadingText.trim().length > 0
-        ? currentHeadingText
-        : '（見出し未設定）';
 
     // ラベル
     const currentLabel = BLOG_STEP_LABELS[displayStep] ?? '';
@@ -132,11 +87,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       if (!targetStep) {
         return;
       }
-      const shouldContinue =
-        onBeforeManualStepChange?.({ direction, currentStep: displayStep, targetStep }) ?? true;
-      if (!shouldContinue) {
-        return;
-      }
       onManualStepChange(targetStep);
     };
 
@@ -145,55 +95,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
         <div className="text-xs px-3 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700">
           <span>
             現在のステップ: {currentLabel}
-            {isHeadingFlowStep &&
-              headingIndex !== undefined &&
-              totalHeadings !== undefined &&
-              totalHeadings > 0 && (
-              <span className="ml-2 font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded border border-blue-300 animate-in fade-in slide-in-from-left-2 duration-300">
-                見出し {headingIndex + 1}/{totalHeadings}: 「{headingLabel}」
-              </span>
-            )}
-            {isStep6 &&
-              totalHeadings === 0 &&
-              (hasAttemptedHeadingInit || (isRetrying && isHeadingInitInFlight)) && (
-              <span className="ml-2 inline-flex items-center gap-1.5">
-                {hasAttemptedHeadingInit && !isHeadingInitInFlight && (
-                  <span className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
-                    見出しが見つかりません。ステップ5を見直してください
-                  </span>
-                )}
-                {onRetryHeadingInit && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      if (isRetrying || isHeadingInitInFlight) return;
-                      setIsRetrying(true);
-                      onRetryHeadingInit();
-                    }}
-                    disabled={isHeadingInitInFlight}
-                    className="h-6 px-2 text-[10px] border-amber-300 text-amber-800 hover:bg-amber-50"
-                    title="Step5を###形式で保存した後、ここで再試行"
-                  >
-                    {isHeadingInitInFlight ? (
-                      <Loader2 size={10} className="animate-spin" />
-                    ) : (
-                      <RotateCw size={10} className="mr-0.5" />
-                    )}
-                    再試行
-                  </Button>
-                )}
-              </span>
-            )}
-            {nextStepLabel && (displayStep !== 'step6' || headingIndex === undefined) && (
-              <span className="ml-1 opacity-80">
-                ／
-                {displayStep === 'step5'
-                  ? '構成案を入力し「この内容で保存」で確定するか、送信して次へ'
-                  : `次の${nextStepLabel}に進むにはメッセージを送信してください`}
-              </span>
-            )}
+            {nextStepLabel ? ` ／ 次の${nextStepLabel}に進むにはメッセージを送信してください` : ''}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -201,7 +103,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             <Button
               type="button"
               onClick={() => handleManualStepShift('backward')}
-              disabled={isDisabled || isStep6Busy || !onManualStepChange}
+              disabled={isDisabled || !onManualStepChange}
               size="sm"
               className="flex items-center gap-1 bg-slate-600 text-white hover:bg-slate-700 disabled:bg-slate-400"
             >
@@ -213,7 +115,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             <Button
               type="button"
               onClick={() => handleManualStepShift('forward')}
-              disabled={isDisabled || isStep6Busy || !onManualStepChange}
+              disabled={isDisabled || !onManualStepChange}
               size="sm"
               className="flex items-center gap-1 bg-emerald-500 text-white hover:bg-emerald-600 disabled:bg-emerald-300"
             >
@@ -243,7 +145,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
         )}
         <Button
           onClick={() => onSaveClick?.()}
-          disabled={isDisabled || isStep6Busy || !onSaveClick || annotationLoading}
+          disabled={isDisabled || !onSaveClick || annotationLoading}
           size="sm"
           className="flex items-center gap-1 bg-black text-white hover:bg-black/90"
         >

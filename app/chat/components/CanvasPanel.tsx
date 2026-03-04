@@ -17,8 +17,6 @@ import { Highlight } from '@tiptap/extension-highlight';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { createLowlight, common } from 'lowlight';
 import {
-  ChevronLeft,
-  ChevronRight,
   X,
   ClipboardCheck,
   List,
@@ -26,7 +24,6 @@ import {
   Info,
   SearchCheck,
   PenLine,
-  Play,
   RotateCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -39,7 +36,6 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BLOG_STEP_LABELS, isStep7 as isBlogStep7 } from '@/lib/constants';
-import { isStep6HeadingUnitMode } from '@/lib/heading-extractor';
 import type { BlogStepId } from '@/lib/constants';
 import type {
   CanvasSelectionEditPayload,
@@ -165,26 +161,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   activeStepId,
   onStepSelect,
   streamingContent = '',
-  canvasContentRef,
-  headingIndex,
-  activeHeadingIndex: activeHeadingIndexForFlow,
-  totalHeadings,
-  currentHeadingText,
-  onSaveHeadingSection,
-  onStartHeadingGeneration,
-  isChatLoading = false,
-  isSavingHeading,
-  isStep6SaveDisabled = false,
-  headingSaveError,
-  headingInitError,
-  onRetryHeadingInit,
-  isRetryingHeadingInit,
-  isStreaming,
-  onPrevHeading,
-  onNextHeading,
-  canGoPrevHeading,
-  canGoNextHeading,
-  hideOutline = false,
 }) => {
   const [markdownContent, setMarkdownContent] = useState('');
   const [bubble, setBubble] = useState<CanvasBubbleState>({
@@ -233,13 +209,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   }, [versions, activeVersionId]);
 
   const versionTriggerLabel = currentVersion ? `Ver.${currentVersion.versionNumber}` : 'Ver.-';
-
-  // Step6見出し単位編集時はバージョン管理UIを非表示。完成形表示時は表示する（仕様: 見出し単位のみバージョン管理しない）
-  const isStep6HeadingFlow = isStep6HeadingUnitMode(
-    activeStepId,
-    (totalHeadings ?? 0) > 0,
-    headingIndex !== undefined
-  );
 
   const hasStepOptions = stepOptions.length > 0;
 
@@ -680,9 +649,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   // ✅ コンテンツが更新された時の処理
   useEffect(() => {
     const currentContent = streamingContent || content;
-    if (canvasContentRef) {
-      canvasContentRef.current = currentContent;
-    }
     const effectiveStepId =
       activeStepId ?? (stepOptions.length > 0 ? stepOptions[stepOptions.length - 1] : null);
     const shouldOpenLinksInNewTab = effectiveStepId ? isBlogStep7(effectiveStepId) : false;
@@ -703,17 +669,11 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
         editor.commands.setContent(htmlContent);
       }
-    } else if (editor) {
-      // stale 時など content が空のときはエディタを明示的にクリア（前見出し本文の残留を防ぐ）
-      setMarkdownContent('');
-      setHeadings([]);
-      editor.commands.setContent('');
     }
   }, [
     editor,
     content,
     streamingContent,
-    canvasContentRef,
     extractHeadings,
     buildHtmlFromMarkdown,
     activeStepId,
@@ -1043,60 +1003,9 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <h3 className="text-lg font-semibold text-gray-800">
-              {activeStepId === 'step6'
-                ? headingIndex === undefined && (totalHeadings ?? 0) > 0
-                  ? '完成形'
-                  : '見出し単位生成'
-                : 'Canvas'}
-            </h3>
-            {activeStepId === 'step6' && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center justify-center w-5 h-5 text-gray-500 hover:text-gray-700 cursor-help transition-colors">
-                      <Info size={16} />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[270px] text-xs space-y-2">
-                    <p>ステップ5 の構成案から以下を抽出します。</p>
-                    <ul className="list-disc pl-3 space-y-0.5">
-                      <li><code className="text-[10px] px-1 py-0.5 bg-gray-200 text-gray-900 rounded font-mono">###</code>　中見出し</li>
-                      <li><code className="text-[10px] px-1 py-0.5 bg-gray-200 text-gray-900 rounded font-mono">####</code>　小見出し</li>
-                    </ul>
-                    <p>
-                      ステップ6 開始後にステップ5を再保存しても、見出しは自動更新されません。
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
+            <h3 className="text-lg font-semibold text-gray-800">Canvas</h3>
           </div>
-          {activeStepId === 'step6' &&
-            headingIndex !== undefined &&
-            totalHeadings !== undefined && (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-[11px] font-medium text-blue-700">
-              <span>
-                進捗: {headingIndex + 1} / {totalHeadings}
-              </span>
-              {currentHeadingText && (
-                <>
-                  <span className="text-blue-300">|</span>
-                  <span className="truncate max-w-[120px]" title={currentHeadingText}>
-                    {currentHeadingText}
-                  </span>
-                </>
-              )}
-            </div>
-          )}
-          {activeStepId === 'step6' &&
-            headingIndex === undefined &&
-            (totalHeadings ?? 0) > 0 && (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 border border-green-200 rounded text-[11px] font-medium text-green-700">
-              <span>全見出し結合を表示中</span>
-            </div>
-          )}
-          {headings.length > 0 && !hideOutline && (
+          {headings.length > 0 && (
             <Button
               variant="ghost"
               size="sm"
@@ -1111,101 +1020,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               <List size={16} />
             </Button>
           )}
-          {activeStepId === 'step6' && totalHeadings !== undefined && totalHeadings > 1 && (
-            <>
-              {canGoPrevHeading && onPrevHeading && (() => {
-                // 完成形から見出しに戻る場合のみ文言を変える
-                const fromCombinedForm =
-                  activeHeadingIndexForFlow === undefined && headingIndex === undefined;
-                const label = fromCombinedForm ? '見出しを確認' : '戻る';
-                const title = fromCombinedForm ? '見出し一覧に戻る' : '前の見出しに戻る';
-                return (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={onPrevHeading}
-                    disabled={isSavingHeading || isStreaming}
-                    className="border-slate-300 text-slate-700 hover:bg-slate-50"
-                    title={title}
-                  >
-                    <ChevronLeft size={14} />
-                    {label}
-                  </Button>
-                );
-              })()}
-              {canGoNextHeading && onNextHeading && (() => {
-                // 全確定済みの最後の見出しから完成形へ進む場合のみ文言を変える
-                const isAtLastConfirmedHeading =
-                  activeHeadingIndexForFlow === undefined &&
-                  headingIndex !== undefined &&
-                  headingIndex === (totalHeadings ?? 0) - 1;
-                const label = isAtLastConfirmedHeading ? '完成形を確認' : '進む';
-                const title = isAtLastConfirmedHeading ? '完成形を確認する' : '次の見出しに進む';
-                return (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={onNextHeading}
-                    disabled={isSavingHeading || isStreaming}
-                    className="border-slate-300 text-slate-700 hover:bg-slate-50"
-                    title={title}
-                  >
-                    {label}
-                    <ChevronRight size={14} />
-                  </Button>
-                );
-              })()}
-            </>
-          )}
-          {activeStepId === 'step6' &&
-            headingIndex !== undefined &&
-            headingIndex === activeHeadingIndexForFlow &&
-            onStartHeadingGeneration &&
-            isStep6SaveDisabled && (
-            <Button
-              size="sm"
-              onClick={onStartHeadingGeneration}
-              disabled={isStreaming || isChatLoading}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white transition-colors px-3 py-1 text-xs font-bold shadow-sm"
-            >
-              {(isStreaming || isChatLoading) ? (
-                <Loader2 size={14} className="mr-1 animate-spin" />
-              ) : (
-                <Play size={14} className="mr-1" />
-              )}
-              {headingIndex === 0 ? '1件目の生成をスタート' : 'この見出しを生成'}
-            </Button>
-          )}
-          {activeStepId === 'step6' &&
-            onSaveHeadingSection &&
-            headingIndex !== undefined &&
-            !isStep6SaveDisabled && (
-            <Button
-              size="sm"
-              onClick={onSaveHeadingSection}
-              disabled={isSavingHeading || isStreaming}
-              className="bg-blue-600 hover:bg-blue-700 text-white transition-colors px-3 py-1 text-xs font-bold shadow-sm"
-            >
-              {isSavingHeading ? (
-                <Loader2 size={14} className="mr-1 animate-spin" />
-              ) : (
-                <ClipboardCheck size={14} className="mr-1" />
-              )}
-              {headingIndex === activeHeadingIndexForFlow &&
-              totalHeadings !== undefined &&
-              headingIndex + 1 === totalHeadings
-                ? '保存して全構成を確認'
-                : headingIndex === activeHeadingIndexForFlow
-                  ? '保存して次の見出しへ'
-                  : '保存'}
-            </Button>
-          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {orderedVersions.length > 0 && !(isStep6HeadingFlow && hideOutline) && (
+          {orderedVersions.length > 0 && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1221,7 +1039,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               </Tooltip>
             </TooltipProvider>
           )}
-          {hasStepOptions && !(isStep6HeadingFlow && hideOutline) && (
+          {hasStepOptions && (
             <Select
               value={activeStepId ?? stepOptions[stepOptions.length - 1] ?? ''}
               onValueChange={value => onStepSelect?.(value as BlogStepId)}
@@ -1245,7 +1063,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               </SelectContent>
             </Select>
           )}
-          {orderedVersions.length > 0 && !(isStep6HeadingFlow && hideOutline) && (
+          {orderedVersions.length > 0 && (
             <Select
               value={activeVersionId ?? orderedVersions[orderedVersions.length - 1]?.id ?? ''}
               onValueChange={value => onVersionSelect?.(value)}
@@ -1267,56 +1085,22 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
               </SelectContent>
             </Select>
           )}
-          {activeStepId !== 'step6' && (
-            <Button
-              ref={markdownBtnRef}
-              size="sm"
-              variant="default"
-              onClick={handleCopyMarkdown}
-              className="bg-green-600 hover:bg-green-700 transition-colors px-3 py-1 text-xs"
-              title="マークダウンとしてコピー"
-            >
-              <ClipboardCheck size={14} className="mr-1" />
-              コピー
-            </Button>
-          )}
-          {activeStepId === 'step6' && headingSaveError && (
-            <span
-              className="text-[10px] text-red-600 max-w-[180px] truncate"
-              title={headingSaveError}
-            >
-              {headingSaveError}
-            </span>
-          )}
-          {activeStepId === 'step6' && headingInitError && onRetryHeadingInit && (
-            <div className="flex shrink-0 items-center gap-2">
-              <span
-                className="text-[10px] text-red-500 max-w-[120px] truncate sm:max-w-[150px]"
-                title={headingInitError}
-              >
-                生成エラー
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onRetryHeadingInit}
-                disabled={isRetryingHeadingInit}
-                className="h-8 px-2 text-[10px] border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-bold disabled:opacity-50"
-              >
-                {isRetryingHeadingInit ? (
-                  <Loader2 size={12} className="mr-1 animate-spin" />
-                ) : (
-                  <RotateCw size={12} className="mr-1" />
-                )}
-                再試行
-              </Button>
-            </div>
-          )}
+          <Button
+            ref={markdownBtnRef}
+            size="sm"
+            variant="default"
+            onClick={handleCopyMarkdown}
+            className="bg-green-600 hover:bg-green-700 transition-colors px-3 py-1 text-xs"
+            title="マークダウンとしてコピー"
+          >
+            <ClipboardCheck size={14} className="mr-1" />
+            コピー
+          </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="h-8 w-8 shrink-0 hover:bg-red-100 hover:text-red-600 transition-colors"
+            className="w-8 h-8 hover:bg-red-100 hover:text-red-600 transition-colors"
             title="Canvasを閉じる"
           >
             <X size={16} />
@@ -1325,7 +1109,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
       </div>
 
       {/* ✅ アウトラインパネル - ヘッダー下の適切な位置に配置 */}
-      {outlineVisible && headings.length > 0 && !hideOutline && (
+      {outlineVisible && headings.length > 0 && (
         <div className="sticky top-32 z-30 border-b bg-white ml-2 max-h-48 overflow-y-auto shadow-sm">
           <div className="p-3">
             <h4 className="text-sm font-medium text-gray-600 mb-2">アウトライン</h4>

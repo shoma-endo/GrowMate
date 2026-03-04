@@ -56,11 +56,3 @@ export function formatPercent(value: number | null): string {
   if (value === null) return '-';
   return `${(value * 100).toFixed(2)}%`;
 }
-
-// 末尾句読点・全角コロン等を除去して照合用に正規化
-export function normalizeForHeadingMatch(text: string): string {
-  return text
-    .trim()
-    .replace(/[：:。、，,！!？?・…\s]+$/, '')
-    .trim();
-}
