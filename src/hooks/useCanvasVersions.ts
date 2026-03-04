@@ -3,11 +3,22 @@ import { BlogStepId, BLOG_STEP_IDS, HEADING_FLOW_STEP_ID } from '@/lib/constants
 import { extractBlogStepFromModel, normalizeCanvasContent } from '@/lib/canvas-content';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { BlogCanvasVersion, StepVersionsMap } from '@/types/chat-layout';
+import type { CombinedContentVersion } from '@/hooks/useHeadingFlow';
 
 /** 見出し単体（blog_creation_step7_hN）はバージョン管理対象外。旧 step7 と完成形のみ管理。 */
 const isStep7HeadingModel = (model?: string) => /^blog_creation_step7_h\d+/.test(model ?? '');
 
-export function useCanvasVersions(messages: ChatMessage[], resolvedCanvasStep: BlogStepId | null) {
+export interface UseCanvasVersionsParams {
+  /** Step7 完成形（session_combined_contents）を step7 のバージョンとして他ステップと同様に扱う */
+  step7VersionsOverride?: CombinedContentVersion[];
+}
+
+export function useCanvasVersions(
+  messages: ChatMessage[],
+  resolvedCanvasStep: BlogStepId | null,
+  params?: UseCanvasVersionsParams
+) {
+  const { step7VersionsOverride } = params ?? {};
   const [selectedVersionByStep, setSelectedVersionByStep] = useState<
     Partial<Record<BlogStepId, string | null>>
   >({});
@@ -15,7 +26,7 @@ export function useCanvasVersions(messages: ChatMessage[], resolvedCanvasStep: B
     Partial<Record<BlogStepId, boolean>>
   >({});
 
-  const blogCanvasVersionsByStep = useMemo<StepVersionsMap>(() => {
+  const { map: blogCanvasVersionsByStep, step7FromMessages } = useMemo(() => {
     const initialMap = BLOG_STEP_IDS.reduce((acc, step) => {
       acc[step] = [] as BlogCanvasVersion[];
       return acc;
@@ -54,8 +65,25 @@ export function useCanvasVersions(messages: ChatMessage[], resolvedCanvasStep: B
       });
     });
 
-    return initialMap;
-  }, [messages]);
+    // Step7 メッセージ由来（見出し編集判定用。完成形で汚染しない）
+    const step7FromMessages = initialMap[HEADING_FLOW_STEP_ID] ?? [];
+
+    // Step7 完成形は session_combined_contents 由来。バージョン選択UI用に step7 スロットを上書き
+    if (step7VersionsOverride && step7VersionsOverride.length > 0) {
+      const mapped: BlogCanvasVersion[] = step7VersionsOverride.map(v => ({
+        id: v.id,
+        content: v.content,
+        raw: v.content,
+        step: HEADING_FLOW_STEP_ID,
+        createdAt: v.createdAt ? new Date(v.createdAt).getTime() : 0,
+        createdAtIso: v.createdAt ?? null,
+      }));
+      mapped.sort((a, b) => a.createdAt - b.createdAt); // 他ステップと同様 昇順（最新=末尾）
+      initialMap[HEADING_FLOW_STEP_ID] = mapped;
+    }
+
+    return { map: initialMap, step7FromMessages };
+  }, [messages, step7VersionsOverride]);
 
   useEffect(() => {
     const selectionUpdates: Partial<Record<BlogStepId, string | null>> = {};
@@ -148,6 +176,7 @@ export function useCanvasVersions(messages: ChatMessage[], resolvedCanvasStep: B
 
   return {
     blogCanvasVersionsByStep,
+    step7FromMessages,
     selectedVersionByStep,
     followLatestByStep,
     setSelectedVersionByStep,

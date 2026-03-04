@@ -105,6 +105,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const prevChatLoadingRef = useRef(false);
   /** 完成形Canvasオープン（handleOpenCombinedCanvas を遅延参照） */
   const openCombinedCanvasRef = useRef<(versionId?: string) => void>(() => {});
+  /** 完成形表示を明示的に要求した場合、effect による viewingHeadingIndex 上書きを防止 */
+  const requestedCombinedViewRef = useRef(false);
 
   /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元） */
   const step6ToStep7Lead = useMemo(() => {
@@ -166,28 +168,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   );
 
   const {
-    blogCanvasVersionsByStep,
-    setSelectedVersionByStep,
-    setFollowLatestByStep,
-    canvasVersionsForStep,
-    activeCanvasVersion,
-  } = useCanvasVersions(allMessagesForVersions, resolvedCanvasStep);
-
-  const {
-    annotationData,
-    setAnnotationData,
-    annotationLoading,
-    setAnnotationLoading,
-    handleLoadBlogArticle,
-  } = useWordpressSync({
-    currentSessionId: chatSession.state.currentSessionId,
-    getAccessToken,
-    loadSession: chatSession.actions.loadSession,
-    setFollowLatestByStep,
-    setSelectedVersionByStep,
-  });
-
-  const {
     isEditingTitle,
     draftTitle,
     titleError,
@@ -214,9 +194,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     activeHeading,
     latestCombinedContent,
     combinedContentVersions,
-    selectedCombinedVersionId,
-    selectedCombinedContent,
-    handleCombinedVersionSelect,
     resetCombinedVersionToLatest,
     refetchCombinedContentVersions,
     handleRetryHeadingInit,
@@ -294,11 +271,40 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     activeHeadingIndex,
   });
 
+  const {
+    blogCanvasVersionsByStep,
+    step7FromMessages,
+    setSelectedVersionByStep,
+    setFollowLatestByStep,
+    canvasVersionsForStep,
+    activeCanvasVersion,
+    activeVersionId,
+  } = useCanvasVersions(allMessagesForVersions, resolvedCanvasStep, {
+    // 完成形あり時は常時 override を渡し、ステップ移動時も選択状態を保持
+    step7VersionsOverride:
+      combinedContentVersions.length > 0 ? combinedContentVersions : undefined,
+  });
+
+  const {
+    annotationData,
+    setAnnotationData,
+    annotationLoading,
+    setAnnotationLoading,
+    handleLoadBlogArticle,
+  } = useWordpressSync({
+    currentSessionId: chatSession.state.currentSessionId,
+    getAccessToken,
+    loadSession: chatSession.actions.loadSession,
+    setFollowLatestByStep,
+    setSelectedVersionByStep,
+  });
+
   const maxViewableIndex =
     activeHeadingIndex !== undefined ? activeHeadingIndex : Math.max(0, totalHeadings - 1);
   useEffect(() => {
     if (!isHeadingFlowCanvasStep) {
       pendingViewingIndexRef.current = null;
+      requestedCombinedViewRef.current = false;
       setViewingHeadingIndex(null);
       return;
     }
@@ -308,11 +314,18 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       // pending は消さない（onResetComplete で 0 を予約し、再抽出後に見出し1を開く意図がある）
     }
     const activeIdx = activeHeadingIndex ?? totalHeadings;
-    // タイルクリックで指定した見出しインデックスを優先する（effect のデフォルト上書きを防止）
+    // 見出しタイルクリックを優先（完成形フラグより先に消費し、残留による意図しない null 復帰を防止）
     const pending = pendingViewingIndexRef.current;
     if (pending !== null) {
       pendingViewingIndexRef.current = null;
+      requestedCombinedViewRef.current = false;
       setViewingHeadingIndex(Math.min(Math.max(pending, 0), Math.max(0, totalHeadings - 1)));
+      return;
+    }
+    // 完成形表示を明示的に要求した場合、viewingHeadingIndex を null に維持（effect のデフォルト上書きを防止）
+    if (requestedCombinedViewRef.current) {
+      requestedCombinedViewRef.current = false;
+      setViewingHeadingIndex(null);
       return;
     }
     setViewingHeadingIndex(prev => {
@@ -336,7 +349,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   // （タイルクリックのロックで切り替え自体は防止しているが、エッジケースの防御として維持）
   const [isStep6ContentStale, setIsStep6ContentStale] = useState(false);
   const prevStep6SessionIdRef = useRef<string | null>(null);
-  const versionsForHeadingStep = blogCanvasVersionsByStep[HEADING_FLOW_STEP_ID] ?? [];
+  // 見出し編集中は完成形で汚染しない（step7FromMessages = メッセージ由来のみ）
+  const versionsForHeadingStep =
+    headingCanvasViewMode.isHeadingUnit
+      ? step7FromMessages
+      : (blogCanvasVersionsByStep[HEADING_FLOW_STEP_ID] ?? []);
   const latestStep6Version = versionsForHeadingStep[versionsForHeadingStep.length - 1] ?? null;
   // 表示中見出し向けコンテンツがあるか。確定見出しは常にあり、アクティブ（未確定）はバージョン/ストリーミング/チャットメッセージで判定
   const sectionsMinUpdatedMs =
@@ -518,7 +535,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return (canvasStreamingContent || activeCanvasVersion?.content) ?? '';
       }
       if (headingCanvasViewMode.isCombinedView) {
-        const combined = selectedCombinedContent ?? '';
+        const combined =
+          combinedContentVersions.find(v => v.id === activeVersionId)?.content ??
+          latestCombinedContent ??
+          '';
         if (combined.trim()) return combined;
         // 本文作成未実施時: 書き出し案＋見出しセクションから結合フォールバックを表示（スキップで開いたときの空表示を防止）
         if (combinedContentVersions.length === 0 && headingSections.length > 0) {
@@ -591,8 +611,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     canvasStreamingContent,
     headingCanvasViewMode.isCombinedView,
     headingSections,
-    selectedCombinedContent,
-    combinedContentVersions.length,
+    combinedContentVersions,
+    activeVersionId,
+    latestCombinedContent,
     step6ToStep7Lead.content,
     activeCanvasVersion,
     isStep6ContentStale,
@@ -605,13 +626,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   const isCombinedFormView = headingCanvasViewMode.isCombinedView;
   const isHeadingUnitStep7View = headingCanvasViewMode.isViewingHeading;
-  // 完成形かつバージョン取得完了時のみ combined 由来に切り替え（過渡期のブリンク防止）
   const isCombinedFormViewWithVersions = isCombinedFormView && combinedContentVersions.length > 0;
 
+  // 他ステップと同様: canvasVersionsForStep をベースに。Step7 見出し単体のみバージョン管理なし
   const canvasVersionsWithMeta = useMemo(() => {
-    // Step7 の見出し単体表示ではバージョン管理しない
-    if (isHeadingUnitStep7View) {
-      return [];
+    if (isHeadingUnitStep7View) return [];
+    if (isCombinedFormView && combinedContentVersions.length === 0) {
+      return []; // 完成形未取得時はバージョンUI非表示（本文ソースとの不整合を防止）
     }
     if (isCombinedFormViewWithVersions) {
       return combinedContentVersions.map(v => ({
@@ -621,10 +642,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         isLatest: v.isLatest,
       }));
     }
-    if (isCombinedFormView) {
-      // 完成形だがバージョン未取得 → 空（過渡期はバージョンUI非表示でミスマッチ防止）
-      return [];
-    }
     return canvasVersionsForStep.map((version, index) => ({
       ...version,
       versionNumber: index + 1,
@@ -632,8 +649,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     }));
   }, [
     isHeadingUnitStep7View,
-    isCombinedFormViewWithVersions,
     isCombinedFormView,
+    isCombinedFormViewWithVersions,
     combinedContentVersions,
     canvasVersionsForStep,
   ]);
@@ -763,6 +780,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       });
       if (res.success) {
         resetCombinedVersionToLatest();
+        setSelectedVersionByStep(prev => ({
+          ...prev,
+          [HEADING_FLOW_STEP_ID]: null,
+        }));
         await refetchCombinedContentVersions({ force: true });
         await chatSession.actions.loadSession(chatSession.state.currentSessionId);
         toast.success('完成形を保存しました');
@@ -787,6 +808,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     getAccessToken,
     resetCombinedVersionToLatest,
     refetchCombinedContentVersions,
+    setSelectedVersionByStep,
   ]);
 
   const handleBeforeManualStepChange = useCallback((): boolean => true, []);
@@ -1051,18 +1073,25 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     }
   }, [chatSession.state.isLoading, chatSession.state.messages, handleShowCanvas]);
 
-  /** Step7 完成形タイルクリック時: Canvas で完成形を開く。versionId 指定でそのバージョンを選択 */
+  /** Step7 完成形タイルクリック時: Canvas で完成形を開く。他ステップと同様 selectedVersionByStep で選択 */
   const handleOpenCombinedCanvas = useCallback(
     (versionId?: string) => {
+      requestedCombinedViewRef.current = true;
       setViewingHeadingIndex(null);
       pendingViewingIndexRef.current = null;
       setIsViewingPastHeadingContent(false);
       setCanvasStep(HEADING_FLOW_STEP_ID);
       setCanvasStreamingContent('');
+      setSelectedVersionByStep(prev => ({
+        ...prev,
+        [HEADING_FLOW_STEP_ID]: versionId ?? null,
+      }));
+      // 特定バージョン選択時は追従を無効化し、effect による選択上書きを防止
       if (versionId) {
-        handleCombinedVersionSelect(versionId);
-      } else {
-        resetCombinedVersionToLatest();
+        setFollowLatestByStep(prev => ({
+          ...prev,
+          [HEADING_FLOW_STEP_ID]: false,
+        }));
       }
       if (annotationOpen) {
         setAnnotationOpen(false);
@@ -1072,12 +1101,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     },
     [
       annotationOpen,
-      handleCombinedVersionSelect,
       setViewingHeadingIndex,
       setIsViewingPastHeadingContent,
       setCanvasStreamingContent,
       setAnnotationData,
-      resetCombinedVersionToLatest,
+      setSelectedVersionByStep,
+      setFollowLatestByStep,
     ]
   );
 
@@ -1145,20 +1174,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setSelectedVersionByStep,
     ]
   );
-  // Step7見出し単体: バージョン選択無効 / Step7完成形: 結合版バージョン / 通常: キャンバス版バージョン
-  const effectiveActiveVersionId = isHeadingUnitStep7View
-    ? null
-    : isCombinedFormViewWithVersions
-      ? (selectedCombinedVersionId ?? combinedContentVersions.find(v => v.isLatest)?.id ?? null)
-      : (activeCanvasVersion?.id ?? null);
-  const effectiveOnVersionSelect = isHeadingUnitStep7View
-    ? undefined
-    : isCombinedFormViewWithVersions
-      ? (versionId: string) => {
-          setCanvasStreamingContent('');
-          handleCombinedVersionSelect(versionId);
-        }
-      : handleCanvasVersionSelect;
+  // 他ステップと同様: activeVersionId をそのまま使用。見出し単体のみバージョン選択無効
+  const effectiveActiveVersionId = isHeadingUnitStep7View ? null : activeVersionId;
+  const effectiveOnVersionSelect = isHeadingUnitStep7View ? undefined : handleCanvasVersionSelect;
 
   const handleCanvasStepChange = useCallback(
     (step: BlogStepId) => {
@@ -1167,6 +1185,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
       setIsViewingPastHeadingContent(false);
       setCanvasStreamingContent('');
+      if (step === HEADING_FLOW_STEP_ID && combinedContentVersions.length > 0) {
+        setViewingHeadingIndex(null);
+      }
       setCanvasStep(step);
       setSelectedVersionByStep(prev => {
         const next = { ...prev };
@@ -1189,9 +1210,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     },
     [
       blogCanvasVersionsByStep,
+      combinedContentVersions.length,
       setCanvasStreamingContent,
       setFollowLatestByStep,
       setSelectedVersionByStep,
+      setViewingHeadingIndex,
     ]
   );
 
