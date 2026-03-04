@@ -53,8 +53,6 @@ interface StepActionBarProps {
   totalHeadings?: number;
   /** Step6/Step7 本文生成時: 現在の見出しテキスト */
   currentHeadingText?: string;
-  /** 見出し構成を初期化し、基本構成から再抽出する */
-  onResetHeadingConfiguration?: (options?: { preserveStep7Lead?: boolean }) => Promise<boolean | void>;
   /** Step7 見出し生成: 現在生成対象の見出しインデックス（0-based）。undefined = 全確定・完成形フェーズ */
   activeHeadingIndex?: number;
   /** Step7 見出し生成: 保存ボタン無効化（コンテンツ未生成時 true） */
@@ -104,7 +102,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       headingIndex,
       totalHeadings,
       currentHeadingText,
-      onResetHeadingConfiguration,
       activeHeadingIndex,
       isStep7SaveDisabled = true,
       onStartHeadingGeneration,
@@ -157,11 +154,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const showLoadButton = isStep7 && typeof onLoadBlogArticle === 'function';
     const showTitleMetaButton =
       isStep7 && Boolean(hasStep7Content) && typeof onGenerateTitleMeta === 'function';
-    const showResetButton =
-      isStep7 &&
-      Boolean(onResetHeadingConfiguration) &&
-      totalHeadings !== undefined &&
-      totalHeadings > 0;
     const showSkipButton = !isStep7;
     const showBackButton = !isStep1;
 
@@ -361,7 +353,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
           <Save size={14} />
           <span>{annotationLoading ? '読み込み中...' : 'ブログ保存'}</span>
         </Button>
-        {isStep7 && (showLoadButton || showTitleMetaButton || showResetButton) && (
+        {isStep7 && (showLoadButton || showTitleMetaButton) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -408,22 +400,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                     <BookOpen size={14} />
                   )}
                   <span>{isLoadBlogArticleLoading ? '取得中…' : 'ブログ記事取得'}</span>
-                </DropdownMenuItem>
-              )}
-              {showResetButton && (
-                <DropdownMenuItem
-                  disabled={isDisabled || isHeadingFlowBusy}
-                  onSelect={() => {
-                    const confirmMessage =
-                      '見出し単位の編集データは初期化され、新しい構成からやり直しになります。\n完成形の履歴は保持され、バージョンから参照できます。\n※チャット履歴・書き出し案も保持されます。\n\nメモ・補足情報の基本構成から見出しを再抽出して最初からやり直しますか？';
-                    if (window.confirm(confirmMessage)) {
-                      void onResetHeadingConfiguration?.({ preserveStep7Lead: true });
-                    }
-                  }}
-                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                >
-                  <RotateCw size={14} />
-                  <span>構成リセット</span>
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

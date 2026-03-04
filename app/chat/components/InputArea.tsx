@@ -202,20 +202,20 @@ const InputArea: React.FC<InputAreaProps> = ({
   // 親から渡された nextStepForSend を送信先・プレースホルダーで共通利用
   const targetBlogStep = nextStepForSend ?? initialBlogStep ?? 'step1';
 
-  // Step7 見出し生成フェーズ: 入力無効・見出し生成/保存ボタンのみ
+  // Step7 見出し生成フェーズ: 見出し生成・保存ボタン表示用（入力は無効）
   const isStep7HeadingPhase =
     displayStep === 'step7' &&
     selectedModel === 'blog_creation' &&
     activeHeadingIndex !== undefined &&
     (totalHeadings ?? 0) > 0;
-  // Step7 完成形フェーズ: 書き出し案入力して送信
+  // Step7 完成形フェーズ: 書き出し案入力して送信 or 空送信で完成形保存
   const isStep7CombinedPhase =
     displayStep === 'step7' &&
     selectedModel === 'blog_creation' &&
     activeHeadingIndex === undefined &&
     (totalHeadings ?? 0) > 0;
-  const isStep7GuidanceMode = isStep7HeadingPhase;
-  const isInputDisabled = disabled || !isModelSelected || isReadOnly || isStep7GuidanceMode;
+  const isInputDisabled =
+    disabled || !isModelSelected || isReadOnly || isStep7HeadingPhase;
 
   // ブログ作成のプレースホルダーはUIヒント用ステップを表示
   const placeholderMessage = (() => {
@@ -223,22 +223,13 @@ const InputArea: React.FC<InputAreaProps> = ({
       return '画面上部のチャットモデルを選択してください';
     }
 
+    // Step7 見出し生成フェーズ: 入力無効時の案内
+    if (isStep7HeadingPhase) {
+      return 'ステップ:7 本文作成はCanvasの見出し単位の本文生成ボタンから進めてください';
+    }
+    // Step7 完成形フェーズ: 書き出し案入力を案内
     if (selectedModel === 'blog_creation' && displayStep === 'step7') {
-      if (isStep7HeadingPhase) {
-        if (isStep7SaveDisabled) {
-          return '上記見出しの内容を確認して、見出し生成をクリックしてください。';
-        }
-        const isLastHeading =
-          activeHeadingIndex !== undefined &&
-          totalHeadings !== undefined &&
-          activeHeadingIndex === totalHeadings - 1;
-        return isLastHeading
-          ? '保存を押して確定すると、本文生成ボタンで完成形を作成できます。'
-          : '上記見出しの内容を確認して、保存を押すと次に進みます。';
-      }
-      if (isStep7CombinedPhase) {
-        return BLOG_PLACEHOLDERS.blog_creation_step7;
-      }
+      return BLOG_PLACEHOLDERS.blog_creation_step7;
     }
 
     if (selectedModel === 'blog_creation') {
@@ -362,9 +353,10 @@ const InputArea: React.FC<InputAreaProps> = ({
       }
     }
 
-    // Step7 完成形フェーズ: 書き出し案入力あり → 保存＋構成リセット(書き出し保持)で見出し1から再開
+    // Step7: 書き出し案入力あり → 保存＋構成リセットで見出し1から再スタート（見出し生成中・完成形後いずれも同様）
     if (
-      isStep7CombinedPhase &&
+      displayStep === 'step7' &&
+      selectedModel === 'blog_creation' &&
       trimmedInput &&
       onSaveStep7UserLead &&
       onResetHeadingConfiguration
@@ -376,6 +368,7 @@ const InputArea: React.FC<InputAreaProps> = ({
           setInput('');
           const resetOk = await onResetHeadingConfiguration({ preserveStep7Lead: true });
           if (resetOk) {
+            toast.success('書き出し案を保存しました。見出し1から再スタートします。');
             return;
           } else {
             toast.error('見出し構成のリセットに失敗しました');
@@ -636,7 +629,6 @@ const InputArea: React.FC<InputAreaProps> = ({
               {...(headingIndex !== undefined && { headingIndex })}
               {...(totalHeadings !== undefined && { totalHeadings })}
               {...(currentHeadingText !== undefined && { currentHeadingText })}
-              {...(onResetHeadingConfiguration !== undefined && { onResetHeadingConfiguration })}
               {...(activeHeadingIndex !== undefined && { activeHeadingIndex })}
               isStep7SaveDisabled={isStep7SaveDisabled}
               {...(onStartHeadingGeneration && { onStartHeadingGeneration })}
