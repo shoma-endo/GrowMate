@@ -150,6 +150,8 @@ export const BLOG_PLACEHOLDERS: Record<string, string> = {
     'PREP（主張・理由・具体例・結論）を入力してください、構成案を出力します。',
   blog_creation_step6: '構成案を入力してください、書き出し案を出力します。',
   blog_creation_step7: '書き出し案を入力して送信すると、見出し1から始まります。',
+  /** Step7 見出し生成フェーズ（入力無効時）: 既存トースト「見出し生成ボタンで1つ目の見出しを生成してください」と同系統 */
+  blog_creation_step7_heading: '見出し生成・保存ボタンで進めてください',
 };
 
 // prompts.ts 用のテンプレ名解決

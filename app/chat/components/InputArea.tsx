@@ -223,9 +223,9 @@ const InputArea: React.FC<InputAreaProps> = ({
       return '画面上部のチャットモデルを選択してください';
     }
 
-    // Step7 見出し生成フェーズ: 入力無効時の案内
+    // Step7 見出し生成フェーズ: 入力無効時（BLOG_PLACEHOLDERS で一元管理）
     if (isStep7HeadingPhase) {
-      return 'ステップ:7 本文作成はCanvasの見出し単位の本文生成ボタンから進めてください';
+      return BLOG_PLACEHOLDERS.blog_creation_step7_heading;
     }
     // Step7 完成形フェーズ: 書き出し案入力を案内
     if (selectedModel === 'blog_creation' && displayStep === 'step7') {
