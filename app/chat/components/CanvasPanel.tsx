@@ -597,7 +597,19 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
       const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
 
       const container = scrollContainerRef.current;
-      if (from === to || !domSelection || domSelection.isCollapsed || !container) {
+      if (from === to || !domSelection || domSelection.rangeCount === 0 || !container) {
+        setSelectionState(null);
+        selectionSnapshotRef.current = null;
+        setSelectionMode(null);
+        setSelectionMenuPosition(null);
+        setInstruction('');
+        selectionAnchorRef.current = null;
+        return;
+      }
+
+      const range = domSelection.getRangeAt(0);
+      // フォーカスだけ（キャレットのみ）の場合は非表示。実際にテキストが選択されたときのみボタンを出す
+      if (range.collapsed || range.toString().trim().length === 0) {
         setSelectionState(null);
         selectionSnapshotRef.current = null;
         setSelectionMode(null);
@@ -617,8 +629,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
         selectionAnchorRef.current = null;
         return;
       }
-
-      const range = domSelection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
       const anchor = {
