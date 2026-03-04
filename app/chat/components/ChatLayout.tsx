@@ -74,6 +74,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const fallbackMessageIdRef = useRef<string | null>(null);
   /** マッピングできない旧形式の Step7 タイル表示中（model に _hN がない等） */
   const [isViewingPastHeadingContent, setIsViewingPastHeadingContent] = useState(false);
+  /** 本文生成（完成形構築）中 */
+  const [isBuildingCombined, setIsBuildingCombined] = useState(false);
 
   /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元） */
   const step6ToStep7Lead = useMemo(() => {
@@ -174,6 +176,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   const {
     headingSections,
+    isSavingHeading,
     isHeadingInitInFlight,
     hasAttemptedHeadingInit,
     headingInitError,
@@ -207,8 +210,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const {
     viewingHeadingIndex,
     setViewingHeadingIndex,
-    isSaving,
-    handleSaveHeadingSection,
     handleResetHeadingConfiguration,
   } = useHeadingCanvasState({
     sessionId: chatSession.state.currentSessionId || '',
@@ -710,6 +711,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     if (!success) return;
 
     setCanvasStreamingContent('');
+    setIsBuildingCombined(true);
     try {
       if (!chatSession.state.currentSessionId) return;
       const token = await getAccessToken();
@@ -724,8 +726,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       });
       if (res.success) {
         resetCombinedVersionToLatest();
-        await refetchCombinedContentVersions();
+        await refetchCombinedContentVersions({ force: true });
         await chatSession.actions.loadSession(chatSession.state.currentSessionId);
+        toast.success('完成形を保存しました');
       } else {
         toast.error(
           res.error ?? '完成形の構築に失敗しました。書き出し案の入力を再度お試しください。'
@@ -736,6 +739,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       toast.error(
         error instanceof Error ? error.message : '完成形の構築に失敗しました。しばらく経ってから再度お試しください。'
       );
+    } finally {
+      setIsBuildingCombined(false);
     }
   }, [
     isStep6ContentStale,
@@ -1460,7 +1465,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           isHeadingInitInFlight,
           hasAttemptedHeadingInit,
           onRetryHeadingInit: handleRetryHeadingInit,
-          isSavingHeading: isSaving,
+          isSavingHeading,
           headingSections,
           totalHeadings: headingSections.length,
           ...(viewingSection && { headingIndex: viewingHeadingIndex as number }),
@@ -1486,6 +1491,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           onSaveHeadingSection: handleSaveHeadingClick,
           onSaveLastHeadingAndBuildCombined: handleSaveLastHeadingAndBuildCombined,
           isChatLoading: chatSession.state.isLoading,
+          isBuildingCombined,
           onBuildCombinedWithUserLead: async (userProvidedLead: string) => {
             try {
               if (!chatSession.state.currentSessionId) {
@@ -1549,7 +1555,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             totalHeadings > 0
           }
           hideHeadingProgressAndNav={isViewingPastHeadingContent}
-          isSavingHeading={isSaving}
+          isSavingHeading={isSavingHeading}
           headingSaveError={headingSaveError}
           headingInitError={headingInitError}
           onRetryHeadingInit={handleRetryHeadingInit}

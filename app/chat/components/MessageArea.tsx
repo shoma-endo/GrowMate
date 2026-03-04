@@ -94,10 +94,10 @@ const MessageArea: React.FC<MessageAreaProps> = ({
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // メッセージが追加されたときに自動スクロール
+  // メッセージ追加時・完成形タイル表示時に自動スクロール
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, combinedTile?.show]);
 
   const formatTime = (date?: Date) => {
     if (!date) return '';

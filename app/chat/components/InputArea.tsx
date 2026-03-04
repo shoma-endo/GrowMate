@@ -113,6 +113,8 @@ interface InputAreaProps {
   onSaveLastHeadingAndBuildCombined?: () => Promise<void>;
   /** チャットローディング中 */
   isChatLoading?: boolean;
+  /** 本文生成（完成形構築）中 */
+  isBuildingCombined?: boolean;
   /** Step7 完成形: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
   onBuildCombinedWithUserLead?: (userProvidedLead: string) => Promise<{ success: boolean; error?: string }>;
   /** Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし） */
@@ -178,6 +180,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   onSaveHeadingSection,
   onSaveLastHeadingAndBuildCombined,
   isChatLoading = false,
+  isBuildingCombined = false,
   onBuildCombinedWithUserLead,
   onSaveStep7UserLead,
 }) => {
@@ -327,7 +330,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     adjustTextareaHeight();
   }, [input, adjustTextareaHeight]);
 
-  const [isBuildingCombined, setIsBuildingCombined] = useState(false);
+  const [isBuildingCombinedFromForm, setIsBuildingCombinedFromForm] = useState(false);
   const [isSavingStep7Lead, setIsSavingStep7Lead] = useState(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -389,7 +392,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     // Step7 完成形フェーズ: 空送信（Step6→7保存済みの書き出し使用）で完成形を結合保存
     if (isStep7CombinedPhase && onBuildCombinedWithUserLead) {
-      setIsBuildingCombined(true);
+      setIsBuildingCombinedFromForm(true);
       try {
         const res = await onBuildCombinedWithUserLead(originalMessage);
         if (res.success) {
@@ -400,7 +403,7 @@ const InputArea: React.FC<InputAreaProps> = ({
         toast.error(res.error ?? '完成形の保存に失敗しました');
         return;
       } finally {
-        setIsBuildingCombined(false);
+        setIsBuildingCombinedFromForm(false);
       }
     }
 
@@ -640,6 +643,7 @@ const InputArea: React.FC<InputAreaProps> = ({
               {...(onSaveHeadingSection && { onSaveHeadingSection })}
               {...(onSaveLastHeadingAndBuildCombined && { onSaveLastHeadingAndBuildCombined })}
               isChatLoading={isChatLoading}
+              isBuildingCombined={isBuildingCombined}
             />
             {blogArticleError && <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>}
           </div>
@@ -669,11 +673,12 @@ const InputArea: React.FC<InputAreaProps> = ({
                       isInputDisabled ||
                       (!input.trim() && !(isStep7CombinedPhase && onBuildCombinedWithUserLead)) ||
                       isBuildingCombined ||
+                      isBuildingCombinedFromForm ||
                       isSavingStep7Lead
                     }
                     className="rounded-full size-10 bg-[#06c755] hover:bg-[#05b64b] mt-1"
                   >
-                    {isBuildingCombined || isSavingStep7Lead ? (
+                    {(isBuildingCombined || isBuildingCombinedFromForm || isSavingStep7Lead) ? (
                       <Loader2 size={18} className="text-white animate-spin" />
                     ) : (
                       <Send size={18} className="text-white" />

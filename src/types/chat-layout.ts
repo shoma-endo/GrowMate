@@ -100,6 +100,8 @@ export interface ChatLayoutCtx {
   onSaveLastHeadingAndBuildCombined?: () => Promise<void>;
   /** チャットローディング中 */
   isChatLoading?: boolean;
+  /** 本文生成（完成形構築）中 */
+  isBuildingCombined?: boolean;
   /** Step7 完成形フェーズ: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
   onBuildCombinedWithUserLead?: (userProvidedLead: string) => Promise<{ success: boolean; error?: string }>;
   /** Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし） */

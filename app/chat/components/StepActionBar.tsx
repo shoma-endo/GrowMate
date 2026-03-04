@@ -66,6 +66,8 @@ interface StepActionBarProps {
   onSaveLastHeadingAndBuildCombined?: () => Promise<void>;
   /** 見出し生成中・チャットローディング中 */
   isChatLoading?: boolean;
+  /** 本文生成（完成形構築）中 */
+  isBuildingCombined?: boolean;
   /** ヒント文言（親で算出済みの場合はこちらを優先） */
   hintText?: string | null;
   /** 次ステップ（親で算出済みの場合は ref の nextStep に使用） */
@@ -108,6 +110,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       onSaveHeadingSection,
       onSaveLastHeadingAndBuildCombined,
       isChatLoading = false,
+      isBuildingCombined = false,
       hintText: hintTextProp,
       nextStepForSend,
     },
@@ -139,7 +142,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const isStep6 = displayStep === 'step6';
     const isStep7 = displayStep === 'step7';
     const isStep1 = displayStep === 'step1';
-    const isHeadingFlowBusy = (isStep6 || isStep7) && (isSavingHeading || isHeadingInitInFlight);
+    const isHeadingFlowBusy = (isStep6 || isStep7) && (isSavingHeading || isHeadingInitInFlight || isBuildingCombined);
 
     // ラベル・ヒント（親から渡された場合はそれを優先）
     const currentLabel = BLOG_STEP_LABELS[displayStep] ?? '';
@@ -183,7 +186,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       !isStep7SaveDisabled &&
       !showLastHeadingBuildButton &&
       Boolean(onSaveHeadingSection);
-    const isStep7HeadingBusy = isSavingHeading || isChatLoading;
+    const isStep7HeadingBusy = isSavingHeading || isChatLoading || isBuildingCombined;
 
     // 次ステップの変更を親コンポーネントに通知
     const effectiveNextStep = nextStepForSend ?? nextStepFallback;
@@ -315,12 +318,12 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             disabled={isDisabled || isStep7HeadingBusy}
             className="flex items-center gap-1 bg-green-600 text-white hover:bg-green-700 disabled:bg-green-400"
           >
-            {isSavingHeading ? (
+            {(isSavingHeading || isBuildingCombined) ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
               <FileText size={14} />
             )}
-            <span>本文生成</span>
+            <span>{isBuildingCombined ? '生成中...' : '本文生成'}</span>
           </Button>
         )}
         {showHeadingSaveButton && (

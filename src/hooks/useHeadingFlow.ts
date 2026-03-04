@@ -42,8 +42,12 @@ interface UseHeadingFlowReturn {
   handleCombinedVersionSelect: (versionId: string) => void;
   /** 選択を最新表示に戻す（完成形保存後など） */
   resetCombinedVersionToLatest: () => void;
-  /** 完成形のバージョン一覧と最新を再取得（Canvas編集完了後など） */
-  refetchCombinedContentVersions: (targetSections?: SessionHeadingSection[]) => void;
+  /** 完成形のバージョン一覧と最新を再取得（Canvas編集完了後など）
+   * @param arg targetSections or { force: true }（本文生成直後は force でセクション確認スキップ）
+   */
+  refetchCombinedContentVersions: (
+    arg?: SessionHeadingSection[] | { force?: boolean }
+  ) => void;
   /**
    * 見出しセクションを保存する。
    * @param content 保存するコンテンツ（canvasStreamingContent || canvasContent）
@@ -412,11 +416,17 @@ export function useHeadingFlow({
     return [];
   }, [sessionId, fetchHeadingSections]);
 
-  /** 完成形のバージョン一覧と最新を再取得（Canvas編集完了後など） */
+  /** 完成形のバージョン一覧と最新を再取得（Canvas編集完了後など）
+   * @param arg targetSections or { force: true }（本文生成直後は force でセクション確認スキップ）
+   */
   const refetchCombinedContentVersions = useCallback(
-    (targetSections?: SessionHeadingSection[]) => {
-      const sectionsToCheck = targetSections || headingSections;
-      if (sessionId && sectionsToCheck.length > 0 && sectionsToCheck.every(s => s.isConfirmed)) {
+    (arg?: SessionHeadingSection[] | { force?: boolean }) => {
+      const force = typeof arg === 'object' && arg !== null && !Array.isArray(arg) && arg.force === true;
+      const sections = Array.isArray(arg) ? arg : headingSections;
+      const canFetch =
+        sessionId &&
+        (force || (sections.length > 0 && sections.every(s => s.isConfirmed)));
+      if (canFetch) {
         void fetchLatestCombinedContent(sessionId);
         void fetchCombinedContentVersions(sessionId);
       }
