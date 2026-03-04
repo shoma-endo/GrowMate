@@ -640,11 +640,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       step => (blogCanvasVersionsByStep[step] ?? []).length > 0 && step !== nextStepForPlaceholder
     );
     // Step7 完成形は session_combined_contents に保存されるため、combinedContentVersions があれば追加
-    if (
-      !base.includes(HEADING_FLOW_STEP_ID) &&
-      combinedContentVersions.length > 0 &&
-      nextStepForPlaceholder !== HEADING_FLOW_STEP_ID
-    ) {
+    // nextStepForPlaceholder は問わない（本文作成中もヘッダーから Step7 を選択可能にする）
+    if (!base.includes(HEADING_FLOW_STEP_ID) && combinedContentVersions.length > 0) {
       return [...base, HEADING_FLOW_STEP_ID];
     }
     return base;
