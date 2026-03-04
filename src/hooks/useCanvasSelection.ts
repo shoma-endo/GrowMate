@@ -36,7 +36,8 @@ export interface UseCanvasSelectionReturn {
     modeOverride?: SelectionMode,
     anchorOverride?: { top: number; left: number } | null
   ) => void;
-  clearSelectionMenu: () => void;
+  /** @param clearDomSelection - false のときは removeAllRanges() を呼ばない（ドラッグ選択開始時のカーソルを保持） */
+  clearSelectionMenu: (clearDomSelection?: boolean) => void;
   handleCancelSelectionPanel: () => void;
   /** メニューのみ非表示（選択状態は保持。編集実行前に使用） */
   hideSelectionMenu: () => void;
@@ -93,7 +94,7 @@ export function useCanvasSelection(
     }
   }, []);
 
-  const clearSelectionMenu = useCallback(() => {
+  const clearSelectionMenu = useCallback((clearDomSelection = true) => {
     clearSelectionDelay();
     setSelectionState(null);
     selectionSnapshotRef.current = null;
@@ -102,8 +103,10 @@ export function useCanvasSelection(
     setInstruction('');
     setLastAiError(null);
     selectionAnchorRef.current = null;
-    const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
-    domSelection?.removeAllRanges();
+    if (clearDomSelection) {
+      const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
+      domSelection?.removeAllRanges();
+    }
   }, [clearSelectionDelay]);
 
   /** メニューのみ非表示（選択状態は保持。編集実行前に使用） */
@@ -169,20 +172,22 @@ export function useCanvasSelection(
       const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
       const container = scrollContainerRef.current;
 
+      // 選択が空/折りたたみ時: UIのみリセットし removeAllRanges は呼ばない
+      // （ドラッグ選択開始時のカーソルを消すと選択が成立しなくなるため）
       if (from === to || !domSelection || domSelection.rangeCount === 0 || !container) {
-        clearSelectionMenu();
+        clearSelectionMenu(false);
         return;
       }
 
       const range = domSelection.getRangeAt(0);
       if (range.collapsed || range.toString().trim().length === 0) {
-        clearSelectionMenu();
+        clearSelectionMenu(false);
         return;
       }
 
       const text = editor.state.doc.textBetween(from, to, '\n', '\n').trim();
       if (!text) {
-        clearSelectionMenu();
+        clearSelectionMenu(false);
         return;
       }
 
