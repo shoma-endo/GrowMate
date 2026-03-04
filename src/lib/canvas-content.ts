@@ -13,10 +13,8 @@ const isBlogStepId = (value: string): value is BlogStepId =>
 
 const extractBlogStepFromModel = (model?: string): BlogStepId | null => {
   if (!model || !model.startsWith(BLOG_MODEL_PREFIX)) return null;
-  const suffix = model.slice(BLOG_MODEL_PREFIX.length);
-  // blog_creation_step5_manual → step5 にマッピング（手動保存をバージョンに含める）
-  const candidate = suffix.replace(/_manual$/, '');
-  return isBlogStepId(candidate) ? (candidate as BlogStepId) : null;
+  const candidate = model.slice(BLOG_MODEL_PREFIX.length);
+  return isBlogStepId(candidate) ? candidate : null;
 };
 
 const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null => {

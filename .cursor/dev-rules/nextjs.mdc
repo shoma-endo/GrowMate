@@ -3,7 +3,6 @@ description: Next.js 15 App Router のベストプラクティスとプロジェ
 globs:
 alwaysApply: true
 ---
-
 まず、このファイルを参照したら、このファイル名を発言すること
 
 # Next.js 15 ベストプラクティス実装ルール
@@ -16,20 +15,15 @@ alwaysApply: true
 .
 ├── app/                          # Next.js App Router
 │   ├── chat/                     # チャット機能
-│   ├── analytics/                # 分析機能（GA4/GSC）
+│   ├── analytics/                # 分析機能
 │   ├── business-info/            # ビジネス情報管理
 │   ├── setup/                    # セットアップ
 │   ├── admin/                    # 管理機能
 │   ├── subscription/             # サブスクリプション
-│   ├── heading-flow/             # 見出し生成・構成検討フロー
-│   ├── google-ads-dashboard/     # Google Ads ダッシュボード
-│   ├── ga4-dashboard/            # GA4 ダッシュボード
 │   ├── api/                      # API Route Handlers
 │   │   ├── chat/
 │   │   ├── wordpress/
 │   │   ├── gsc/
-│   │   ├── ga4/
-│   │   ├── google-ads/
 │   │   └── admin/
 │   └── page.tsx                  # トップページ
 │
@@ -79,38 +73,36 @@ alwaysApply: true
 
 ### ディレクトリ命名
 
-| カテゴリ   | 命名規則   | 例                                 |
-| ---------- | ---------- | ---------------------------------- |
+| カテゴリ | 命名規則 | 例 |
+|---------|----------|-----|
 | App Router | kebab-case | `business-info/`, `gsc-dashboard/` |
-| API Routes | kebab-case | `api/line-oauth-init/`             |
+| API Routes | kebab-case | `api/line-oauth-init/` |
 
 ### ファイル命名
 
-| カテゴリ              | 命名規則                | 拡張子 | 例                                   |
-| --------------------- | ----------------------- | ------ | ------------------------------------ |
-| Page/Layout           | 固定名                  | `.tsx` | `page.tsx`, `layout.tsx`             |
-| Route Handlers        | 固定名                  | `.ts`  | `route.ts`                           |
-| Components (shadcn)   | kebab-case              | `.tsx` | `avatar.tsx`, `button.tsx`           |
-| Components (カスタム) | PascalCase              | `.tsx` | `ChatClient.tsx`, `CanvasPanel.tsx`  |
-| Hooks                 | camelCase               | `.ts`  | `useChatSession.ts`                  |
-| Services              | camelCase + Service     | `.ts`  | `chatService.ts`, `stripeService.ts` |
-| Actions               | camelCase + .actions    | `.ts`  | `chat.actions.ts`                    |
-| Middleware            | camelCase + .middleware | `.ts`  | `auth.middleware.ts`                 |
-| Schemas               | camelCase + .schema     | `.ts`  | `brief.schema.ts`                    |
-| Models                | camelCase + Models      | `.ts`  | `chatModels.ts`                      |
-| Types                 | kebab-case              | `.ts`  | `analytics.ts`, `chat.ts`            |
-| Lib/Utils             | kebab-case              | `.ts`  | `blog-canvas.ts`                     |
+| カテゴリ | 命名規則 | 拡張子 | 例 |
+|---------|----------|--------|-----|
+| Page/Layout | 固定名 | `.tsx` | `page.tsx`, `layout.tsx` |
+| Route Handlers | 固定名 | `.ts` | `route.ts` |
+| Components (shadcn) | kebab-case | `.tsx` | `avatar.tsx`, `button.tsx` |
+| Components (カスタム) | PascalCase | `.tsx` | `ChatClient.tsx`, `CanvasPanel.tsx` |
+| Hooks | camelCase | `.ts` | `useChatSession.ts` |
+| Services | camelCase + Service | `.ts` | `chatService.ts`, `stripeService.ts` |
+| Actions | camelCase + .actions | `.ts` | `chat.actions.ts` |
+| Middleware | camelCase + .middleware | `.ts` | `auth.middleware.ts` |
+| Schemas | camelCase + .schema | `.ts` | `brief.schema.ts` |
+| Models | camelCase + Models | `.ts` | `chatModels.ts` |
+| Types | kebab-case | `.ts` | `analytics.ts`, `chat.ts` |
+| Lib/Utils | kebab-case | `.ts` | `blog-canvas.ts` |
 
 ### 命名規則の使い分け基準
 
 **kebab-case を使う場合:**
-
 - URL に直結するもの（App Router ディレクトリ、API Routes）
 - モジュールとして識別されるもの（Types, Lib/Utils）
 - 外部ライブラリの規約（shadcn/ui）
 
 **camelCase を使う場合:**
-
 - TypeScript/JavaScript の実装ファイル（Services, Actions, Hooks, Middleware, Schemas, Models）
 - 関数名やクラス名とファイル名の対応を明確にする場合
 
@@ -143,7 +135,7 @@ alwaysApply: true
 ### 'use client' ディレクティブ
 
 ```typescript
-'use client';
+"use client";
 // クライアントコンポーネントの先頭に記述
 ```
 
@@ -157,7 +149,7 @@ alwaysApply: true
 
 ```typescript
 // app/api/articles/route.ts
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 
 // POST: 新規記事の作成
 export async function POST(request: Request) {
@@ -168,7 +160,10 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(article, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
 ```
@@ -181,25 +176,25 @@ export async function POST(request: Request) {
 
 ```typescript
 // components/articles/create-article.tsx
-'use client';
+"use client";
 
 export async function createArticle(data: ArticleData) {
   try {
-    const response = await fetch('/api/articles', {
-      method: 'POST',
+    const response = await fetch("/api/articles", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(data),
     });
 
     if (!response.ok) {
-      throw new Error('API request failed');
+      throw new Error("API request failed");
     }
 
     return await response.json();
   } catch (error) {
-    console.error('Error creating article:', error);
+    console.error("Error creating article:", error);
     throw error;
   }
 }
@@ -215,7 +210,7 @@ export async function createArticle(data: ArticleData) {
 fetch(url, { next: { revalidate: 3600 } }); // 1時間ごとに再検証
 
 // キャッシュを無効化する場合
-fetch(url, { cache: 'no-store' });
+fetch(url, { cache: "no-store" });
 ```
 
 ### エラーハンドリング

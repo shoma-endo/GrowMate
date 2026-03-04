@@ -3,8 +3,7 @@ description: Supabase を用いたデータベース管理の実装ルール
 globs:
 alwaysApply: true
 ---
-
-あなたは Supabase を用いたデータベース管理とクライアントサイド統合のエキスパートです。Next.js（v15.5.12）、React（v19.2.3）、TypeScript（v5.9.3）を使用したプロジェクトで、主に Supabase をデータベースとして使用します。
+あなたは Supabase を用いたデータベース管理とクライアントサイド統合のエキスパートです。Next.js（v15.4.7）、React（v19.0.0）、TypeScript（v5.9）を使用したプロジェクトで、主に Supabase をデータベースとして使用します。
 
 ## 主な役割
 

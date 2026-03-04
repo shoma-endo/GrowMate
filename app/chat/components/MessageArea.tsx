@@ -3,13 +3,11 @@
 import React, { useEffect, useRef } from 'react';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { Bot } from 'lucide-react';
-import { cn, normalizeForHeadingMatch } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import BlogPreviewTile from './common/BlogPreviewTile';
 import { BLOG_STEP_LABELS } from '@/lib/constants';
 import type { BlogStepId } from '@/lib/constants';
 import { extractBlogStepFromModel, normalizeCanvasContent } from '@/lib/canvas-content';
-import { MARKDOWN_HEADING_REGEX } from '@/lib/heading-extractor';
-import type { SessionHeadingSection } from '@/types/heading-flow';
 
 interface BlogPreviewMeta {
   step: BlogStepId;
@@ -36,49 +34,13 @@ interface MessageAreaProps {
   renderAfterMessage?: (message: ChatMessage) => React.ReactNode;
   blogFlowActive?: boolean;
   onOpenCanvas?: (message: ChatMessage) => void;
-  headingSections?: SessionHeadingSection[];
 }
-
-// 末尾句読点・全角コロン等を除去して照合用に正規化
-const getStep6HeadingLabel = (
-  message: ChatMessage,
-  sections: SessionHeadingSection[],
-  step6MessageIndex: number
-): string | null => {
-  if (!sections.length) return null;
-  const normalized = normalizeCanvasContent(message.content ?? '').trim();
-  for (const line of normalized.split('\n')) {
-    const match = line.trim().match(MARKDOWN_HEADING_REGEX);
-    if (match?.[1]) {
-      const headingText = normalizeForHeadingMatch(match[1]);
-      const matched = sections.filter(
-        s => normalizeForHeadingMatch(s.headingText) === headingText
-      );
-      if (matched.length === 1) {
-        const section = matched[0]!;
-        return `見出し ${section.orderIndex + 1}/${sections.length}：「${section.headingText}」`;
-      }
-      if (matched.length > 1) {
-        // 重複見出しは step6 メッセージ順に最も近い orderIndex を選ぶ
-        const best = matched.reduce((prev, curr) =>
-          Math.abs(curr.orderIndex - step6MessageIndex) <
-          Math.abs(prev.orderIndex - step6MessageIndex)
-            ? curr
-            : prev
-        );
-        return `見出し ${best.orderIndex + 1}/${sections.length}：「${best.headingText}」`;
-      }
-    }
-  }
-  return null;
-};
 
 const MessageArea: React.FC<MessageAreaProps> = ({
   messages,
   isLoading,
   renderAfterMessage,
   onOpenCanvas,
-  headingSections,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -378,11 +340,6 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     );
   };
 
-  // step6 アシスタントメッセージの ID 一覧（時系列順）。重複見出し照合に使用
-  const step6MessageIds = messages
-    .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === 'step6')
-    .map(m => m.id);
-
   return (
     <div className="flex-1 overflow-y-auto p-3 bg-slate-100">
       {isLoading && messages.length === 0 ? (
@@ -395,11 +352,6 @@ const MessageArea: React.FC<MessageAreaProps> = ({
             const blogPreviewMeta = isBlogMessage(message) ? derivePreviewMeta(message) : null;
             const openHandler =
               blogPreviewMeta && onOpenCanvas ? () => onOpenCanvas(message) : null;
-            const step6Index = step6MessageIds.indexOf(message.id);
-            const headingLabel =
-              blogPreviewMeta?.step === 'step6' && headingSections?.length && step6Index >= 0
-                ? getStep6HeadingLabel(message, headingSections, step6Index)
-                : null;
 
             return (
               <React.Fragment key={message.id || index}>
@@ -428,7 +380,6 @@ const MessageArea: React.FC<MessageAreaProps> = ({
                       {blogPreviewMeta ? (
                         <BlogPreviewTile
                           stepLabel={BLOG_STEP_LABELS[blogPreviewMeta.step] ?? 'ブログ'}
-                          headingLabel={headingLabel}
                           title={blogPreviewMeta.title}
                           excerpt={blogPreviewMeta.excerpt}
                           {...(openHandler ? { onOpen: openHandler } : {})}
