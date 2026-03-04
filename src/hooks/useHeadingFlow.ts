@@ -47,7 +47,7 @@ interface UseHeadingFlowReturn {
    */
   refetchCombinedContentVersions: (
     arg?: SessionHeadingSection[] | { force?: boolean }
-  ) => void;
+  ) => Promise<void>;
   /**
    * 見出しセクションを保存する。
    * @param content 保存するコンテンツ（canvasStreamingContent || canvasContent）
@@ -418,15 +418,17 @@ export function useHeadingFlow({
    * @param arg targetSections or { force: true }（本文生成直後は force でセクション確認スキップ）
    */
   const refetchCombinedContentVersions = useCallback(
-    (arg?: SessionHeadingSection[] | { force?: boolean }) => {
+    async (arg?: SessionHeadingSection[] | { force?: boolean }) => {
       const force = typeof arg === 'object' && arg !== null && !Array.isArray(arg) && arg.force === true;
       const sections = Array.isArray(arg) ? arg : headingSections;
       const canFetch =
         sessionId &&
         (force || (sections.length > 0 && sections.every(s => s.isConfirmed)));
       if (canFetch) {
-        void fetchLatestCombinedContent(sessionId);
-        void fetchCombinedContentVersions(sessionId);
+        await Promise.all([
+          fetchLatestCombinedContent(sessionId),
+          fetchCombinedContentVersions(sessionId),
+        ]);
       }
     },
     [sessionId, headingSections, fetchLatestCombinedContent, fetchCombinedContentVersions]
