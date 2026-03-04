@@ -330,6 +330,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             size="sm"
             onClick={() => void onSaveHeadingSection?.()}
             disabled={isDisabled || isStep7HeadingBusy}
+            title="この見出しを保存して次に進みます"
             className="flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400"
           >
             {isSavingHeading ? (
@@ -337,7 +338,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             ) : (
               <Save size={14} />
             )}
-            <span>保存</span>
+            <span>見出し保存</span>
           </Button>
         )}
         <Button
