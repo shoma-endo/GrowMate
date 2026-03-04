@@ -306,6 +306,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   // 見出し保存後に activeHeadingIndex が進んでも Canvas は前見出しの本文のまま。
   // この状態で再保存すると誤保存になるため、新規生成が入るまで内容を空表示・保存無効化する。
+  // （タイルクリックのロックで切り替え自体は防止しているが、エッジケースの防御として維持）
   const [isStep6ContentStale, setIsStep6ContentStale] = useState(false);
   const prevStep6SessionIdRef = useRef<string | null>(null);
   const versionsForHeadingStep = blogCanvasVersionsByStep[HEADING_FLOW_STEP_ID] ?? [];
@@ -682,8 +683,14 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   /** 最後の見出し: 保存＋全文結合（書き出しは Step6→7 保存分または空で使用） */
   const handleSaveLastHeadingAndBuildCombined = useCallback(async () => {
-    if (isStep6ContentStale) return;
-    if (activeHeadingIndex === undefined || !activeHeading) return;
+    if (isStep6ContentStale) {
+      toast.error('コンテンツが古くなっています。見出しを再度生成してからお試しください。');
+      return;
+    }
+    if (activeHeadingIndex === undefined || !activeHeading) {
+      toast.error('見出しの状態を取得できませんでした。画面を更新して再度お試しください。');
+      return;
+    }
     const section = activeHeading;
     const sectionsMinUpdatedMs =
       headingSections.length > 0
@@ -707,18 +714,32 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           minTs
         ) ?? undefined;
     }
-    if (!rawContent?.trim()) return;
+    if (!rawContent?.trim()) {
+      toast.error(
+        '最後の見出しの本文が見つかりません。Canvas に表示されている内容を確認し、見出し生成をもう一度実行してください。'
+      );
+      return;
+    }
     const contentToSave =
       section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
-    if (!contentToSave?.trim()) return;
+    if (!contentToSave?.trim()) {
+      toast.error('見出しの本文が空です。再度生成してからお試しください。');
+      return;
+    }
 
     const success = await handleSaveHeadingSectionFromFlow(contentToSave, section.headingKey);
-    if (!success) return;
+    if (!success) {
+      toast.error('見出しの保存に失敗しました。再度お試しください。');
+      return;
+    }
 
     setCanvasStreamingContent('');
     setIsBuildingCombined(true);
     try {
-      if (!chatSession.state.currentSessionId) return;
+      if (!chatSession.state.currentSessionId) {
+        toast.error('セッションがありません。チャットを再度読み込んでください。');
+        return;
+      }
       const token = await getAccessToken();
       if (!token?.trim()) {
         toast.error('認証トークンを取得できませんでした。LINEで再ログインしてください。');
@@ -915,6 +936,27 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     (message: ChatMessage) => {
       const fallbackStep = (latestBlogStep ?? BLOG_STEP_IDS[0]) as BlogStepId;
       const detectedStep = (extractBlogStepFromModel(message.model) ?? fallbackStep) as BlogStepId;
+
+      // Step7 見出しタイル: 編集中の見出しに未保存コンテンツがある場合は他見出しへの切り替えを禁止
+      if (detectedStep === HEADING_FLOW_STEP_ID && headingSections.length > 0) {
+        const targetIdx = extractStep7HeadingIndexFromModel(message.model);
+        const validTargetIdx =
+          targetIdx !== null && targetIdx >= 0 && targetIdx < headingSections.length
+            ? targetIdx
+            : null;
+        if (
+          validTargetIdx !== null &&
+          activeHeadingIndex !== undefined &&
+          validTargetIdx !== activeHeadingIndex
+        ) {
+          const section = headingSections[activeHeadingIndex];
+          if (hasContentForActiveHeading && !section?.isConfirmed) {
+            toast.error('編集中の見出しを保存してから、他の見出しを開けます。');
+            return;
+          }
+        }
+      }
+
       const versions = blogCanvasVersionsByStep[detectedStep] ?? [];
       const latestVersionId = versions.length ? (versions[versions.length - 1]?.id ?? null) : null;
       const hasExactMatch = versions.some(version => version.id === message.id);
@@ -970,11 +1012,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setCanvasPanelOpen(true);
     },
     [
+      activeHeadingIndex,
       annotationOpen,
       blogCanvasVersionsByStep,
+      hasContentForActiveHeading,
       headingSections,
-      latestBlogStep,
       isHeadingFlowCanvasStep,
+      latestBlogStep,
       setCanvasStreamingContent,
       setViewingHeadingIndex,
       setAnnotationData,
