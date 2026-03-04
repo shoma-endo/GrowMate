@@ -617,13 +617,20 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     canvasVersionsForStep,
   ]);
 
-  const canvasStepOptions = useMemo(
-    () =>
-      BLOG_STEP_IDS.filter(
-        step => (blogCanvasVersionsByStep[step] ?? []).length > 0 && step !== nextStepForPlaceholder
-      ),
-    [blogCanvasVersionsByStep, nextStepForPlaceholder]
-  );
+  const canvasStepOptions = useMemo(() => {
+    const base = BLOG_STEP_IDS.filter(
+      step => (blogCanvasVersionsByStep[step] ?? []).length > 0 && step !== nextStepForPlaceholder
+    );
+    // Step7 完成形は session_combined_contents に保存されるため、combinedContentVersions があれば追加
+    if (
+      !base.includes(HEADING_FLOW_STEP_ID) &&
+      combinedContentVersions.length > 0 &&
+      nextStepForPlaceholder !== HEADING_FLOW_STEP_ID
+    ) {
+      return [...base, HEADING_FLOW_STEP_ID];
+    }
+    return base;
+  }, [blogCanvasVersionsByStep, nextStepForPlaceholder, combinedContentVersions.length]);
 
   // Step7 完成形タイル: 各バージョンをタイル化。他ステップ同様に時系列（古い→新しい）で表示
   // combinedContentVersions は version_no DESC で取得されるため反転して時系列順にする

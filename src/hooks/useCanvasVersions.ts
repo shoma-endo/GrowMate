@@ -1,8 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
-import { BlogStepId, BLOG_STEP_IDS } from '@/lib/constants';
+import { BlogStepId, BLOG_STEP_IDS, HEADING_FLOW_STEP_ID } from '@/lib/constants';
 import { extractBlogStepFromModel, normalizeCanvasContent } from '@/lib/canvas-content';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { BlogCanvasVersion, StepVersionsMap } from '@/types/chat-layout';
+
+/** 見出し単体（blog_creation_step7_hN）はバージョン管理対象外。旧 step7 と完成形のみ管理。 */
+const isStep7HeadingModel = (model?: string) => /^blog_creation_step7_h\d+/.test(model ?? '');
 
 export function useCanvasVersions(messages: ChatMessage[], resolvedCanvasStep: BlogStepId | null) {
   const [selectedVersionByStep, setSelectedVersionByStep] = useState<
@@ -22,6 +25,8 @@ export function useCanvasVersions(messages: ChatMessage[], resolvedCanvasStep: B
       if (!message || message.role !== 'assistant') return;
       const step = extractBlogStepFromModel(message.model);
       if (!step) return;
+      // Step7 見出し単体はバージョン管理に含めない（Canvas表示は別経路で行う）
+      if (step === HEADING_FLOW_STEP_ID && isStep7HeadingModel(message.model)) return;
 
       const normalizedContent = normalizeCanvasContent(message.content);
       const version: BlogCanvasVersion = {
