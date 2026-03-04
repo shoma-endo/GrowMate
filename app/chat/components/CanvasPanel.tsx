@@ -46,6 +46,7 @@ import type {
   CanvasVersionOption,
 } from '@/types/canvas';
 import { usePersistedResizableWidth } from '@/hooks/usePersistedResizableWidth';
+import { useCanvasSelection } from '@/hooks/useCanvasSelection';
 import { toast } from 'sonner';
 
 const lowlight = createLowlight(common);
@@ -130,11 +131,6 @@ const ensureAnchorsOpenInNewTab = (html: string): string => {
   });
 };
 
-const MENU_SIZE = {
-  menu: { width: 120, height: 40 },
-  input: { width: 260, height: 190 },
-} as const;
-
 const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -179,27 +175,8 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   const [outlineVisible, setOutlineVisible] = useState(false);
   const [headings, setHeadings] = useState<CanvasHeadingItem[]>([]);
 
-  // ✅ 選択範囲編集用のstate
-  const [selectionState, setSelectionState] = useState<CanvasSelectionState | null>(null);
-  const selectionSnapshotRef = useRef<CanvasSelectionState | null>(null);
-  const [instruction, setInstruction] = useState('');
   const [isApplyingSelectionEdit, setIsApplyingSelectionEdit] = useState(false);
-  const [selectionMode, setSelectionMode] = useState<'menu' | 'choice' | 'input' | null>(null);
-  const [selectionMenuPosition, setSelectionMenuPosition] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
   const [lastAiExplanation, setLastAiExplanation] = useState<string | null>(null);
-  const [lastAiError, setLastAiError] = useState<string | null>(null);
-  const activeSelection = useMemo(
-    () => selectionState ?? selectionSnapshotRef.current,
-    [selectionState]
-  );
-  const selectionPreview = useMemo(() => {
-    if (!activeSelection) return '';
-    const trimmed = activeSelection.text.replace(/\s+/g, ' ').trim();
-    return trimmed.length > 120 ? `${trimmed.slice(0, 120)}…` : trimmed;
-  }, [activeSelection]);
 
   const orderedVersions = useMemo(() => {
     if (!versions.length) return [] as CanvasVersionOption[];
@@ -244,10 +221,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   });
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const selectionAnchorRef = useRef<{ top: number; left: number } | null>(null);
-  const selectionShowDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const SELECTION_MENU_DELAY_MS = 250;
 
   // ✅ 見出しIDを生成する関数
   const generateHeadingId = useCallback((text: string): string => {
@@ -426,54 +399,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     [generateHeadingId]
   );
 
-  const updateSelectionMenuPosition = useCallback(
-    (
-      modeOverride?: 'menu' | 'choice' | 'input',
-      anchorOverride?: { top: number; left: number } | null
-    ) => {
-      const container = scrollContainerRef.current;
-      if (!container) return;
-
-      let anchor = anchorOverride ?? selectionAnchorRef.current;
-
-      if (!anchor) {
-        const selection = typeof window !== 'undefined' ? window.getSelection() : null;
-        if (!selection || selection.rangeCount === 0) {
-          setSelectionMenuPosition(null);
-          return;
-        }
-
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        anchor = {
-          top: rect.top - containerRect.top + container.scrollTop,
-          left: rect.right - containerRect.left + container.scrollLeft + 6,
-        };
-        selectionAnchorRef.current = anchor;
-      }
-
-      const { top: anchorTop, left: anchorLeft } = anchor;
-      const scrollTop = container.scrollTop;
-      const scrollLeft = container.scrollLeft;
-      const mode = modeOverride ?? selectionMode ?? 'menu';
-      const size =
-        mode === 'choice' ? { width: 200, height: 90 } : MENU_SIZE[mode as keyof typeof MENU_SIZE];
-
-      const minTop = scrollTop + 8;
-      const minLeft = scrollLeft + 8;
-      const maxLeft = scrollLeft + container.clientWidth - size.width - 8;
-
-      const top = Math.max(anchorTop, minTop);
-      const left = Math.min(Math.max(anchorLeft, minLeft), Math.max(minLeft, maxLeft));
-
-      if (Number.isFinite(top) && Number.isFinite(left)) {
-        setSelectionMenuPosition({ top, left });
-      }
-    },
-    [selectionMode]
-  );
-
   // ✅ Claude web版Canvas同様のマークダウン対応TipTapエディタ
   const editor = useEditor({
     extensions: [
@@ -521,6 +446,29 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
       },
     },
   });
+
+  const {
+    activeSelection,
+    selectionPreview,
+    selectionMode,
+    setSelectionMode,
+    selectionMenuPosition,
+    instruction,
+    setInstruction,
+    lastAiError,
+    setLastAiError,
+    updateSelectionMenuPosition,
+    clearSelectionMenu,
+    handleCancelSelectionPanel,
+    hideSelectionMenu,
+  } = useCanvasSelection(
+    editor,
+    scrollContainerRef,
+    !!onSelectionEdit,
+    content ?? '',
+    streamingContent ?? '',
+    { delayMs: 1000 }
+  );
 
   // ✅ Markdown 形式と URL テキスト形式の両方のリンクを検出して配列に格納
   // 例: [テキスト](https://example.com) → { text, url, index }
@@ -591,101 +539,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     [editor]
   );
 
-  // ✅ 選択範囲の監視（Canvas AI編集用）
-  useEffect(() => {
-    if (!editor || !onSelectionEdit) return;
-
-    const clearSelectionMenu = () => {
-      if (selectionShowDelayRef.current) {
-        clearTimeout(selectionShowDelayRef.current);
-        selectionShowDelayRef.current = null;
-      }
-      setSelectionState(null);
-      selectionSnapshotRef.current = null;
-      setSelectionMode(null);
-      setSelectionMenuPosition(null);
-      setInstruction('');
-      selectionAnchorRef.current = null;
-    };
-
-    const handleSelectionUpdate = () => {
-      const { from, to } = editor.state.selection;
-      const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
-
-      const container = scrollContainerRef.current;
-      if (from === to || !domSelection || domSelection.rangeCount === 0 || !container) {
-        clearSelectionMenu();
-        return;
-      }
-
-      const range = domSelection.getRangeAt(0);
-      // フォーカスだけ（キャレットのみ）の場合は非表示。実際にテキストが選択されたときのみボタンを出す
-      if (range.collapsed || range.toString().trim().length === 0) {
-        clearSelectionMenu();
-        return;
-      }
-
-      const text = editor.state.doc.textBetween(from, to, '\n', '\n').trim();
-      if (!text) {
-        clearSelectionMenu();
-        return;
-      }
-
-      const rect = range.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      const anchor = {
-        top: rect.top - containerRect.top + container.scrollTop,
-        left: rect.right - containerRect.left + container.scrollLeft + 6,
-      };
-
-      const nextState: CanvasSelectionState = { from, to, text };
-
-      if (selectionShowDelayRef.current) {
-        clearTimeout(selectionShowDelayRef.current);
-      }
-      selectionShowDelayRef.current = setTimeout(() => {
-        selectionShowDelayRef.current = null;
-        setSelectionState(nextState);
-        selectionSnapshotRef.current = nextState;
-        selectionAnchorRef.current = anchor;
-        setSelectionMode('choice');
-        setInstruction('');
-        setLastAiError(null);
-        updateSelectionMenuPosition('choice', anchor);
-      }, SELECTION_MENU_DELAY_MS);
-    };
-
-    editor.on('selectionUpdate', handleSelectionUpdate);
-    return () => {
-      if (selectionShowDelayRef.current) {
-        clearTimeout(selectionShowDelayRef.current);
-        selectionShowDelayRef.current = null;
-      }
-      editor.off('selectionUpdate', handleSelectionUpdate);
-    };
-  }, [editor, onSelectionEdit, updateSelectionMenuPosition]);
-
-  useEffect(() => {
-    if (!selectionMode) return;
-
-    const handle = () => updateSelectionMenuPosition(selectionMode);
-    const scrollEl = scrollContainerRef.current;
-
-    window.addEventListener('resize', handle);
-    scrollEl?.addEventListener('scroll', handle);
-
-    return () => {
-      window.removeEventListener('resize', handle);
-      scrollEl?.removeEventListener('scroll', handle);
-    };
-  }, [selectionMode, updateSelectionMenuPosition]);
-
-  useEffect(() => {
-    if (selectionMode) {
-      updateSelectionMenuPosition(selectionMode);
-    }
-  }, [selectionMode, updateSelectionMenuPosition]);
-
   // ✅ コンテンツが更新された時の処理
   useEffect(() => {
     const currentContent = streamingContent || content;
@@ -729,40 +582,6 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     stepOptions,
   ]);
 
-  useEffect(() => {
-    if (selectionShowDelayRef.current) {
-      clearTimeout(selectionShowDelayRef.current);
-      selectionShowDelayRef.current = null;
-    }
-    setSelectionMode(null);
-    setSelectionState(null);
-    selectionSnapshotRef.current = null;
-    setSelectionMenuPosition(null);
-    setInstruction('');
-    setLastAiError(null);
-    selectionAnchorRef.current = null;
-  }, [content, streamingContent]);
-
-  useEffect(() => {
-    if (lastAiError && instruction.trim().length > 0) {
-      setLastAiError(null);
-    }
-  }, [instruction, lastAiError]);
-
-  const handleCancelSelectionPanel = useCallback(() => {
-    if (selectionShowDelayRef.current) {
-      clearTimeout(selectionShowDelayRef.current);
-      selectionShowDelayRef.current = null;
-    }
-    setSelectionMode(null);
-    setSelectionState(null);
-    selectionSnapshotRef.current = null;
-    setSelectionMenuPosition(null);
-    setInstruction('');
-    setLastAiError(null);
-    selectionAnchorRef.current = null;
-  }, []);
-
   // ✅ リンク先変更をクリック → 直接 Claude API でリンク修正を実行
   const handleApplyLinkModification = useCallback(async () => {
     if (!editor || !onSelectionEdit) return;
@@ -781,12 +600,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
     setIsApplyingSelectionEdit(true);
     setLastAiError(null);
-    if (selectionShowDelayRef.current) {
-      clearTimeout(selectionShowDelayRef.current);
-      selectionShowDelayRef.current = null;
-    }
-    setSelectionMode(null);
-    setSelectionMenuPosition(null);
+    hideSelectionMenu();
 
     try {
       const selectionText = selection.text.trim();
@@ -809,17 +623,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
       await onSelectionEdit(payload);
 
-      if (selectionShowDelayRef.current) {
-        clearTimeout(selectionShowDelayRef.current);
-        selectionShowDelayRef.current = null;
-      }
-      setLastAiError(null);
-      setSelectionState(null);
-      selectionSnapshotRef.current = null;
-      setInstruction('');
-      selectionAnchorRef.current = null;
-      const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
-      domSelection?.removeAllRanges();
+      clearSelectionMenu();
     } catch (error) {
       console.error('Canvas link modification failed:', error);
       const message = error instanceof Error ? error.message : 'リンク先の修正に失敗しました';
@@ -827,7 +631,16 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     } finally {
       setIsApplyingSelectionEdit(false);
     }
-  }, [activeSelection, editor, extractLinksFromSelection, markdownContent, onSelectionEdit]);
+  }, [
+    activeSelection,
+    clearSelectionMenu,
+    editor,
+    extractLinksFromSelection,
+    hideSelectionMenu,
+    markdownContent,
+    onSelectionEdit,
+    setLastAiError,
+  ]);
 
   const handleApplySelectionEdit = useCallback(
     async (instructionOverride?: string) => {
@@ -848,12 +661,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
       setLastAiError(null);
 
       // ✅ 送信ボタンを押した直後に入力欄を非表示にする
-      if (selectionShowDelayRef.current) {
-        clearTimeout(selectionShowDelayRef.current);
-        selectionShowDelayRef.current = null;
-      }
-      setSelectionMode(null);
-      setSelectionMenuPosition(null);
+      hideSelectionMenu();
 
       try {
         const selectionText = selection.text.trim();
@@ -879,17 +687,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
         // ✅ ClaudeのArtifacts風: 通常のブログ作成と同じように、新しいメッセージがチャットに表示される
         // ユーザーはBlogPreviewTileをクリックしてCanvasを開く
-        if (selectionShowDelayRef.current) {
-          clearTimeout(selectionShowDelayRef.current);
-          selectionShowDelayRef.current = null;
-        }
-        setLastAiError(null);
-        setSelectionState(null);
-        selectionSnapshotRef.current = null;
-        setInstruction('');
-        selectionAnchorRef.current = null;
-        const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
-        domSelection?.removeAllRanges();
+        clearSelectionMenu();
       } catch (error) {
         console.error('Canvas selection edit failed:', error);
         const message = error instanceof Error ? error.message : 'AIによる編集の適用に失敗しました';
@@ -903,10 +701,14 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     },
     [
       activeSelection,
+      clearSelectionMenu,
       editor,
+      hideSelectionMenu,
       instruction,
       markdownContent,
       onSelectionEdit,
+      setLastAiError,
+      setSelectionMode,
       updateSelectionMenuPosition,
     ]
   );
