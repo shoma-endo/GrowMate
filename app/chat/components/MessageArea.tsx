@@ -482,9 +482,11 @@ const MessageArea: React.FC<MessageAreaProps> = ({
                 <div className="max-w-[85%] rounded-2xl relative transition-all duration-200 bg-transparent text-gray-800 p-0">
                   <BlogPreviewTile
                     stepLabel={BLOG_STEP_LABELS.step7 ?? '7. 本文作成'}
+                    headingLabel="完成形"
                     title={combinedTile.title}
                     excerpt={combinedTile.excerpt}
                     onOpen={onOpenCombinedCanvas}
+                    variant="completed"
                   />
                 </div>
               </div>

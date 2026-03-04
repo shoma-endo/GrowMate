@@ -11,6 +11,8 @@ interface BlogPreviewTileProps {
   excerpt?: string | null;
   onOpen?: () => void;
   className?: string;
+  /** 完成形タイル用: 緑色で強調表示 */
+  variant?: 'default' | 'completed';
 }
 
 const BlogPreviewTile: React.FC<BlogPreviewTileProps> = ({
@@ -20,7 +22,9 @@ const BlogPreviewTile: React.FC<BlogPreviewTileProps> = ({
   excerpt,
   onOpen,
   className,
+  variant = 'default',
 }) => {
+  const isCompletedBadge = variant === 'completed';
   return (
     <button
       type="button"
@@ -38,7 +42,14 @@ const BlogPreviewTile: React.FC<BlogPreviewTileProps> = ({
               {stepLabel}
             </span>
             {headingLabel && (
-              <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                  isCompletedBadge
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : 'bg-blue-50 border-blue-200 text-blue-700'
+                )}
+              >
                 {headingLabel}
               </span>
             )}
