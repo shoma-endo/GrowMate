@@ -625,13 +625,16 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [blogCanvasVersionsByStep, nextStepForPlaceholder]
   );
 
-  // Step7 完成形タイル: 各バージョンをタイル化。他ステップ同様に複数・バージョン管理
+  // Step7 完成形タイル: 各バージョンをタイル化。他ステップ同様に時系列（古い→新しい）で表示
+  // combinedContentVersions は version_no DESC で取得されるため反転して時系列順にする
   const combinedTiles = useMemo(
     () =>
-      combinedContentVersions.map(v => {
-        const { title, excerpt } = deriveTileFromContent(v.content);
-        return { id: v.id, title, excerpt };
-      }),
+      [...combinedContentVersions]
+        .reverse()
+        .map(v => {
+          const { title, excerpt } = deriveTileFromContent(v.content);
+          return { id: v.id, title, excerpt };
+        }),
     [combinedContentVersions]
   );
 

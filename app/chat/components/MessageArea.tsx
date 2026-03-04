@@ -398,56 +398,16 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === 'step7')
     .map(m => m.id);
 
-  const leadIndices = useMemo(
-    () => messages.map((m, i) => (isLeadModel(m) ? i : -1)).filter(i => i >= 0),
-    [messages]
-  );
-  const leadCount = leadIndices.length;
-  const completionCount = Math.min(combinedTiles?.length ?? 0, Math.floor(leadCount / 2));
-
-  // 各 run ごとに完成形タイルを時系列で配置。lead 偶数番目が run 開始、奇数番目が完成形トリガー
+  // Step1-6同様: メッセージ表示後に完成形タイルを時系列で追加
   const segments = useMemo(() => {
     const segs: Array<{ type: 'messages'; list: ChatMessage[] } | { type: 'completion'; tileIndex: number }> = [];
-    if (leadCount === 0) {
-      segs.push({ type: 'messages', list: messages.filter(m => !isLeadModel(m)) });
-      for (let k = 0; k < (combinedTiles?.length ?? 0); k++) {
-        segs.push({ type: 'completion', tileIndex: k });
-      }
-      return segs;
-    }
-    // lead の前のメッセージ
-    const firstLeadIdx = leadIndices[0];
-    if (firstLeadIdx !== undefined && firstLeadIdx > 0) {
-      segs.push({
-        type: 'messages',
-        list: messages.slice(0, firstLeadIdx).filter(m => !isLeadModel(m)),
-      });
-    }
-    for (let k = 0; k < completionCount; k++) {
-      const runStart = (leadIndices[2 * k] ?? 0) + 1;
-      const runEnd = leadIndices[2 * k + 1] ?? messages.length;
-      segs.push({
-        type: 'messages',
-        list: messages.slice(runStart, runEnd).filter(m => !isLeadModel(m)),
-      });
+    segs.push({ type: 'messages', list: messages.filter(m => !isLeadModel(m)) });
+    const tileCount = combinedTiles?.length ?? 0;
+    for (let k = 0; k < tileCount; k++) {
       segs.push({ type: 'completion', tileIndex: k });
     }
-    const lastLeadIdx = leadIndices[leadCount - 1];
-    if (leadCount % 2 === 1 && lastLeadIdx !== undefined && lastLeadIdx + 1 < messages.length) {
-      segs.push({
-        type: 'messages',
-        list: messages.slice(lastLeadIdx + 1).filter(m => !isLeadModel(m)),
-      });
-    }
-    // 本文生成ボタンで作成された完成形（lead とペアにならない分）を末尾に表示
-    const tileCount = combinedTiles?.length ?? 0;
-    if (tileCount > completionCount) {
-      for (let k = completionCount; k < tileCount; k++) {
-        segs.push({ type: 'completion', tileIndex: k });
-      }
-    }
     return segs;
-  }, [messages, leadIndices, leadCount, completionCount, combinedTiles?.length]);
+  }, [messages, combinedTiles?.length]);
 
   const hasContent = segments.some(s => (s.type === 'messages' && s.list.length > 0) || s.type === 'completion');
 
