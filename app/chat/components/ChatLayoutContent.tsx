@@ -65,7 +65,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     onBuildCombinedOnly,
     isChatLoading,
     isBuildingCombined,
-    onBuildCombinedWithUserLead,
     onSaveStep7UserLead,
     step6ToStep7LeadSaved,
     combinedTiles,
@@ -346,7 +345,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           {...(onBuildCombinedOnly && { onBuildCombinedOnly })}
           isChatLoading={isChatLoading ?? false}
           isBuildingCombined={isBuildingCombined ?? false}
-          {...(onBuildCombinedWithUserLead && { onBuildCombinedWithUserLead })}
           {...(onSaveStep7UserLead && { onSaveStep7UserLead })}
           services={services}
           selectedServiceId={selectedServiceId}

@@ -116,7 +116,6 @@ interface InputAreaProps {
   /** 本文生成（完成形構築）中 */
   isBuildingCombined?: boolean;
   /** Step7 完成形: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
-  onBuildCombinedWithUserLead?: (userProvidedLead: string) => Promise<{ success: boolean; error?: string }>;
   /** Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし） */
   onSaveStep7UserLead?: (userLead: string) => Promise<{ success: boolean; error?: string }>;
 }
@@ -181,7 +180,6 @@ const InputArea: React.FC<InputAreaProps> = ({
   onBuildCombinedOnly,
   isChatLoading = false,
   isBuildingCombined = false,
-  onBuildCombinedWithUserLead,
   onSaveStep7UserLead,
 }) => {
   const { isOwnerViewMode } = useLiffContext();
@@ -207,12 +205,6 @@ const InputArea: React.FC<InputAreaProps> = ({
     displayStep === 'step7' &&
     selectedModel === 'blog_creation' &&
     activeHeadingIndex !== undefined &&
-    (totalHeadings ?? 0) > 0;
-  // Step7 完成形フェーズ: 書き出し案入力して送信 or 空送信で完成形保存
-  const isStep7CombinedPhase =
-    displayStep === 'step7' &&
-    selectedModel === 'blog_creation' &&
-    activeHeadingIndex === undefined &&
     (totalHeadings ?? 0) > 0;
   const isInputDisabled =
     disabled || !isModelSelected || isReadOnly || isStep7HeadingPhase;
@@ -321,15 +313,13 @@ const InputArea: React.FC<InputAreaProps> = ({
     adjustTextareaHeight();
   }, [input, adjustTextareaHeight]);
 
-  const [isBuildingCombinedFromForm, setIsBuildingCombinedFromForm] = useState(false);
   const [isSavingStep7Lead, setIsSavingStep7Lead] = useState(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedInput = input.trim();
-    const maySubmitEmpty = isStep7CombinedPhase && onBuildCombinedWithUserLead;
-    if ((!trimmedInput && !maySubmitEmpty) || isInputDisabled) return;
+    if (!trimmedInput || isInputDisabled) return;
 
-    const originalMessage = trimmedInput || '';
+    const originalMessage = trimmedInput;
 
     // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。見出し生成はボタンで行う
     const isStep6ToStep7Transition =
@@ -380,23 +370,6 @@ const InputArea: React.FC<InputAreaProps> = ({
         }
       } finally {
         setIsSavingStep7Lead(false);
-      }
-    }
-
-    // Step7 完成形フェーズ: 空送信（Step6→7保存済みの書き出し使用）で完成形を結合保存
-    if (isStep7CombinedPhase && onBuildCombinedWithUserLead) {
-      setIsBuildingCombinedFromForm(true);
-      try {
-        const res = await onBuildCombinedWithUserLead(originalMessage);
-        if (res.success) {
-          setInput('');
-          toast.success('完成形を保存しました');
-          return;
-        }
-        toast.error(res.error ?? '完成形の保存に失敗しました');
-        return;
-      } finally {
-        setIsBuildingCombinedFromForm(false);
       }
     }
 
@@ -663,14 +636,13 @@ const InputArea: React.FC<InputAreaProps> = ({
                     size="icon"
                     disabled={
                       isInputDisabled ||
-                      (!input.trim() && !(isStep7CombinedPhase && onBuildCombinedWithUserLead)) ||
+                      !input.trim() ||
                       isBuildingCombined ||
-                      isBuildingCombinedFromForm ||
                       isSavingStep7Lead
                     }
                     className="rounded-full size-10 bg-[#06c755] hover:bg-[#05b64b] mt-1"
                   >
-                    {(isBuildingCombined || isBuildingCombinedFromForm || isSavingStep7Lead) ? (
+                    {(isBuildingCombined || isSavingStep7Lead) ? (
                       <Loader2 size={18} className="text-white animate-spin" />
                     ) : (
                       <Send size={18} className="text-white" />

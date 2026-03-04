@@ -1577,35 +1577,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           onBuildCombinedOnly: handleBuildCombinedOnly,
           isChatLoading: chatSession.state.isLoading,
           isBuildingCombined,
-          onBuildCombinedWithUserLead: async (userProvidedLead: string) => {
-            try {
-              if (!chatSession.state.currentSessionId) {
-                return { success: false, error: 'セッションが見つかりません' };
-              }
-              const token = await getAccessToken();
-              if (!token?.trim()) {
-                return { success: false, error: '認証トークンが無効です' };
-              }
-              const res = await buildCombinedContentWithUserLead({
-                sessionId: chatSession.state.currentSessionId,
-                userProvidedLead: userProvidedLead.trim(),
-                liffAccessToken: token,
-              });
-              if (res.success) {
-                resetCombinedVersionToLatest();
-                await refetchCombinedContentVersions();
-                await chatSession.actions.loadSession(chatSession.state.currentSessionId!);
-                openCombinedCanvasRef.current();
-              }
-              return { success: res.success, ...(res.error && { error: res.error }) };
-            } catch (error) {
-              console.error('Failed to build combined content:', error);
-              return {
-                success: false,
-                error: error instanceof Error ? error.message : '完成形の保存に失敗しました',
-              };
-            }
-          },
           onSaveStep7UserLead: handleSaveStep7UserLead,
           step6ToStep7LeadSaved,
           ...(combinedTiles.length > 0 && { combinedTiles }),
