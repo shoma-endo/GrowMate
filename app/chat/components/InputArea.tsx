@@ -237,7 +237,7 @@ const InputArea: React.FC<InputAreaProps> = ({
           : '上記見出しの内容を確認して、保存を押すと次に進みます。';
       }
       if (isStep7CombinedPhase) {
-        return '書き出し案を入力してください、本文を出力します。';
+        return '書き出し案を入力して送信すると、見出し1から再開します。';
       }
     }
 
