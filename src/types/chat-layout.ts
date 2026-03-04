@@ -96,8 +96,8 @@ export interface ChatLayoutCtx {
   onStartHeadingGeneration?: (headingIndex: number) => void;
   /** Step7: 見出し保存（保存して次へ） */
   onSaveHeadingSection?: () => Promise<void>;
-  /** Step7 最後の見出し: 保存＋全文結合を実行（本文生成ボタン用） */
-  onSaveLastHeadingAndBuildCombined?: () => Promise<void>;
+  /** Step7 全見出し保存後: 結合のみ実行（本文生成ボタン用） */
+  onBuildCombinedOnly?: () => Promise<void>;
   /** チャットローディング中 */
   isChatLoading?: boolean;
   /** 本文生成（完成形構築）中 */

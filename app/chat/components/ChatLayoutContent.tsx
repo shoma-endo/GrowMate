@@ -62,7 +62,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     isStep7SaveDisabled,
     onStartHeadingGeneration,
     onSaveHeadingSection,
-    onSaveLastHeadingAndBuildCombined,
+    onBuildCombinedOnly,
     isChatLoading,
     isBuildingCombined,
     onBuildCombinedWithUserLead,
@@ -343,7 +343,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           isStep7SaveDisabled={isStep7SaveDisabled ?? true}
           {...(onStartHeadingGeneration && { onStartHeadingGeneration })}
           {...(onSaveHeadingSection && { onSaveHeadingSection })}
-          {...(onSaveLastHeadingAndBuildCombined && { onSaveLastHeadingAndBuildCombined })}
+          {...(onBuildCombinedOnly && { onBuildCombinedOnly })}
           isChatLoading={isChatLoading ?? false}
           isBuildingCombined={isBuildingCombined ?? false}
           {...(onBuildCombinedWithUserLead && { onBuildCombinedWithUserLead })}

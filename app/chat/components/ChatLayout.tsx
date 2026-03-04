@@ -660,7 +660,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         minTs
       ) ?? undefined;
     }
-    if (!rawContent?.trim()) return;
+    if (!rawContent?.trim()) {
+      setIsStep6ContentStale(true);
+      toast.error(
+        '最後の見出しの本文が見つかりません。Canvas に表示されている内容を確認し、見出し生成をもう一度実行してください。'
+      );
+      return;
+    }
     const contentToSave =
       section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
 
@@ -681,58 +687,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     handleSaveHeadingSectionFromFlow,
   ]);
 
-  /** 最後の見出し: 保存＋全文結合（書き出しは Step6→7 保存分または空で使用） */
-  const handleSaveLastHeadingAndBuildCombined = useCallback(async () => {
-    if (isStep6ContentStale) {
-      toast.error('コンテンツが古くなっています。見出しを再度生成してからお試しください。');
-      return;
-    }
-    if (activeHeadingIndex === undefined || !activeHeading) {
-      toast.error('見出しの状態を取得できませんでした。画面を更新して再度お試しください。');
-      return;
-    }
-    const section = activeHeading;
-    const sectionsMinUpdatedMs =
-      headingSections.length > 0
-        ? Math.min(
-            ...headingSections.map(s =>
-              s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity
-            )
-          )
-        : 0;
-    const minTs = sectionsMinUpdatedMs !== Infinity ? sectionsMinUpdatedMs : undefined;
-    const isViewingTargetInCanvas =
-      canvasPanelOpen && effectiveViewingHeadingIndex === activeHeadingIndex;
-    let rawContent: string | undefined;
-    if (isViewingTargetInCanvas && canvasContentRef.current?.trim()) {
-      rawContent = canvasContentRef.current;
-    } else {
-      rawContent =
-        getLatestStep7HeadingContent(
-          allMessagesForVersions,
-          activeHeadingIndex,
-          minTs
-        ) ?? undefined;
-    }
-    if (!rawContent?.trim()) {
-      toast.error(
-        '最後の見出しの本文が見つかりません。Canvas に表示されている内容を確認し、見出し生成をもう一度実行してください。'
-      );
-      return;
-    }
-    const contentToSave =
-      section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
-    if (!contentToSave?.trim()) {
-      toast.error('見出しの本文が空です。再度生成してからお試しください。');
-      return;
-    }
-
-    const success = await handleSaveHeadingSectionFromFlow(contentToSave, section.headingKey);
-    if (!success) {
-      toast.error('見出しの保存に失敗しました。再度お試しください。');
-      return;
-    }
-
+  /** 全見出し保存後: 結合のみ実行（本文生成ボタン用） */
+  const handleBuildCombinedOnly = useCallback(async () => {
     setCanvasStreamingContent('');
     setIsBuildingCombined(true);
     try {
@@ -770,16 +726,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setIsBuildingCombined(false);
     }
   }, [
-    isStep6ContentStale,
-    activeHeadingIndex,
-    activeHeading,
-    headingSections,
-    canvasPanelOpen,
-    effectiveViewingHeadingIndex,
-    allMessagesForVersions,
-    getLatestStep7HeadingContent,
-    handleSaveHeadingSectionFromFlow,
-    chatSession,
+    chatSession.state.currentSessionId,
+    chatSession.actions,
     getAccessToken,
     resetCombinedVersionToLatest,
     refetchCombinedContentVersions,
@@ -1562,7 +1510,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           ...(isHeadingFlowCanvasStep && { isStep7SaveDisabled: isStep6ContentStale }),
           onStartHeadingGeneration: handleStartHeadingGeneration,
           onSaveHeadingSection: handleSaveHeadingClick,
-          onSaveLastHeadingAndBuildCombined: handleSaveLastHeadingAndBuildCombined,
+          onBuildCombinedOnly: handleBuildCombinedOnly,
           isChatLoading: chatSession.state.isLoading,
           isBuildingCombined,
           onBuildCombinedWithUserLead: async (userProvidedLead: string) => {

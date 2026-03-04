@@ -109,8 +109,8 @@ interface InputAreaProps {
   onStartHeadingGeneration?: (headingIndex: number) => void;
   /** Step7: 見出し保存 */
   onSaveHeadingSection?: () => Promise<void>;
-  /** Step7 最後の見出し: 保存＋全文結合を実行（本文生成ボタン用） */
-  onSaveLastHeadingAndBuildCombined?: () => Promise<void>;
+  /** Step7 全見出し保存後: 結合のみ実行（本文生成ボタン用） */
+  onBuildCombinedOnly?: () => Promise<void>;
   /** チャットローディング中 */
   isChatLoading?: boolean;
   /** 本文生成（完成形構築）中 */
@@ -178,7 +178,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   isStep7SaveDisabled = true,
   onStartHeadingGeneration,
   onSaveHeadingSection,
-  onSaveLastHeadingAndBuildCombined,
+  onBuildCombinedOnly,
   isChatLoading = false,
   isBuildingCombined = false,
   onBuildCombinedWithUserLead,
@@ -233,7 +233,7 @@ const InputArea: React.FC<InputAreaProps> = ({
           totalHeadings !== undefined &&
           activeHeadingIndex === totalHeadings - 1;
         return isLastHeading
-          ? '本文生成ボタンを押すと、書き出し＋各見出しを結合した最終記事が作成されます。'
+          ? '保存を押して確定すると、本文生成ボタンで完成形を作成できます。'
           : '上記見出しの内容を確認して、保存を押すと次に進みます。';
       }
       if (isStep7CombinedPhase) {
@@ -641,7 +641,7 @@ const InputArea: React.FC<InputAreaProps> = ({
               isStep7SaveDisabled={isStep7SaveDisabled}
               {...(onStartHeadingGeneration && { onStartHeadingGeneration })}
               {...(onSaveHeadingSection && { onSaveHeadingSection })}
-              {...(onSaveLastHeadingAndBuildCombined && { onSaveLastHeadingAndBuildCombined })}
+              {...(onBuildCombinedOnly && { onBuildCombinedOnly })}
               isChatLoading={isChatLoading}
               isBuildingCombined={isBuildingCombined}
             />
