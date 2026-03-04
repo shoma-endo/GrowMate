@@ -350,9 +350,7 @@ export function useHeadingFlow({
           const allDone = updatedSections.every(s => s.isConfirmed);
 
           if (allDone) {
-            toast.success(
-              '全見出しの保存が完了しました。完成形はCanvasの全文編集時に保存されます。'
-            );
+            toast.success('全見出しの保存が完了しました。');
           }
           return true;
         } else {
