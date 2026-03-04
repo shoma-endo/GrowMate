@@ -361,6 +361,17 @@ const InputArea: React.FC<InputAreaProps> = ({
       onSaveStep7UserLead &&
       onResetHeadingConfiguration
     ) {
+      // 見出しが見つかりません状態では、基本構成に ###/#### を記載してから再試行するよう警告
+      const isHeadingNotFoundError =
+        (totalHeadings ?? 0) === 0 &&
+        (hasAttemptedHeadingInit ?? false) &&
+        !(isHeadingInitInFlight ?? false);
+      if (isHeadingNotFoundError) {
+        toast.warning(
+          '見出しが見つかりません。メモ・補足情報の「基本構成」に ###/#### 形式で見出しを記載してから、再試行してください。'
+        );
+        return;
+      }
       setIsSavingStep7Lead(true);
       try {
         const res = await onSaveStep7UserLead(originalMessage);
