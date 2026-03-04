@@ -149,8 +149,7 @@ export const BLOG_PLACEHOLDERS: Record<string, string> = {
   blog_creation_step5:
     'PREP（主張・理由・具体例・結論）を入力してください、構成案を出力します。',
   blog_creation_step6: '構成案を入力してください、書き出し案を出力します。',
-  blog_creation_step7:
-    '書き出し案を入力してください、構成案を元に本文を1見出しずつ出力します。',
+  blog_creation_step7: '書き出し案を入力して送信すると、見出し1から出力します。',
 };
 
 // prompts.ts 用のテンプレ名解決
