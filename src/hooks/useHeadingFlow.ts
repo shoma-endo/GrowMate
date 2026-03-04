@@ -191,8 +191,8 @@ export function useHeadingFlow({
         );
         if (sessionId === currentSessionIdRef.current) {
           setHasFetchCompleted(true);
-          // 全確定済みの場合は結合コンテンツ（最新＋バージョン一覧）を取得
-          if (sections.length > 0 && sections.every(s => s.isConfirmed)) {
+          // Step7 フロー中（見出しあり）は結合コンテンツを取得。再開後・リロード後も完成形タイルを表示するため全確定に限定しない
+          if (sections.length > 0) {
             void fetchLatestCombinedContent(sessionId);
             void fetchCombinedContentVersions(sessionId);
           }

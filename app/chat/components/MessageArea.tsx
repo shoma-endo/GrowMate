@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -41,9 +41,9 @@ interface MessageAreaProps {
   blogFlowActive?: boolean;
   onOpenCanvas?: (message: ChatMessage) => void;
   headingSections?: SessionHeadingSection[];
-  /** Step7 完成形タイル（メッセージ末尾に表示） */
-  combinedTile?: { show: boolean; title: string; excerpt: string };
-  onOpenCombinedCanvas?: () => void;
+  /** Step7 完成形タイル。各 run ごとに時系列で表示（他ステップ同様に複数・バージョン管理） */
+  combinedTiles?: Array<{ id: string; title: string; excerpt: string }>;
+  onOpenCombinedCanvas?: (versionId: string) => void;
 }
 
 // メッセージ本文の先頭 ### 行から見出し文言を抽出（Canvas表示と同源）
@@ -83,13 +83,16 @@ const getStep7HeadingLabel = (
   return headingText ?? null;
 };
 
+// Step6→7 や完成形フェーズで保存した書き出し案（blog_creation_step7_lead）は非表示
+const isLeadModel = (m: ChatMessage) => m.model === 'blog_creation_step7_lead';
+
 const MessageArea: React.FC<MessageAreaProps> = ({
   messages,
   isLoading,
   renderAfterMessage,
   onOpenCanvas,
   headingSections,
-  combinedTile,
+  combinedTiles,
   onOpenCombinedCanvas,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -97,7 +100,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
   // メッセージ追加時・完成形タイル表示時に自動スクロール
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, combinedTile?.show]);
+  }, [messages, combinedTiles?.length]);
 
   const formatTime = (date?: Date) => {
     if (!date) return '';
@@ -395,102 +398,156 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === 'step7')
     .map(m => m.id);
 
-  // Step6→Step7 で保存した書き出し案（chat_messages の user メッセージ）は非表示
-  const visibleMessages = messages.filter(m => m.model !== 'blog_creation_step7_lead');
+  const leadIndices = useMemo(
+    () => messages.map((m, i) => (isLeadModel(m) ? i : -1)).filter(i => i >= 0),
+    [messages]
+  );
+  const leadCount = leadIndices.length;
+  const completionCount = Math.min(combinedTiles?.length ?? 0, Math.floor(leadCount / 2));
+
+  // 各 run ごとに完成形タイルを時系列で配置。lead 偶数番目が run 開始、奇数番目が完成形トリガー
+  const segments = useMemo(() => {
+    const segs: Array<{ type: 'messages'; list: ChatMessage[] } | { type: 'completion'; tileIndex: number }> = [];
+    if (leadCount === 0) {
+      segs.push({ type: 'messages', list: messages.filter(m => !isLeadModel(m)) });
+      for (let k = 0; k < (combinedTiles?.length ?? 0); k++) {
+        segs.push({ type: 'completion', tileIndex: k });
+      }
+      return segs;
+    }
+    // lead の前のメッセージ
+    const firstLeadIdx = leadIndices[0];
+    if (firstLeadIdx !== undefined && firstLeadIdx > 0) {
+      segs.push({
+        type: 'messages',
+        list: messages.slice(0, firstLeadIdx).filter(m => !isLeadModel(m)),
+      });
+    }
+    for (let k = 0; k < completionCount; k++) {
+      const runStart = (leadIndices[2 * k] ?? 0) + 1;
+      const runEnd = leadIndices[2 * k + 1] ?? messages.length;
+      segs.push({
+        type: 'messages',
+        list: messages.slice(runStart, runEnd).filter(m => !isLeadModel(m)),
+      });
+      segs.push({ type: 'completion', tileIndex: k });
+    }
+    const lastLeadIdx = leadIndices[leadCount - 1];
+    if (leadCount % 2 === 1 && lastLeadIdx !== undefined && lastLeadIdx + 1 < messages.length) {
+      segs.push({
+        type: 'messages',
+        list: messages.slice(lastLeadIdx + 1).filter(m => !isLeadModel(m)),
+      });
+    }
+    return segs;
+  }, [messages, leadIndices, leadCount, completionCount, combinedTiles?.length]);
+
+  const hasContent = segments.some(s => (s.type === 'messages' && s.list.length > 0) || s.type === 'completion');
+
+  const renderMessageList = (list: ChatMessage[]) =>
+    list.map((message, index) => {
+      const blogPreviewMeta = isBlogMessage(message) ? derivePreviewMeta(message) : null;
+      const openHandler =
+        blogPreviewMeta && onOpenCanvas ? () => onOpenCanvas(message) : null;
+      const step7Index = step7MessageIds.indexOf(message.id);
+      const headingLabel =
+        blogPreviewMeta?.step === 'step7' && step7Index >= 0
+          ? getStep7HeadingLabel(message, headingSections ?? [], step7Index)
+          : null;
+
+      return (
+        <React.Fragment key={message.id || index}>
+          <div className="mb-4 last:mb-2 group">
+            <div
+              className={cn(
+                'flex items-start gap-2 relative',
+                message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+              )}
+            >
+              {message.role !== 'user' && (
+                <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-200">
+                  <Bot size={18} className="text-[#06c755]" />
+                </div>
+              )}
+              <div
+                className={cn(
+                  'max-w-[85%] rounded-2xl relative transition-all duration-200',
+                  message.role === 'user'
+                    ? 'bg-[#06c755] text-white p-3'
+                    : blogPreviewMeta
+                      ? 'bg-transparent text-gray-800 p-0'
+                      : 'bg-white text-gray-800 border border-gray-100 p-3'
+                )}
+              >
+                {blogPreviewMeta ? (
+                  <BlogPreviewTile
+                    stepLabel={BLOG_STEP_LABELS[blogPreviewMeta.step] ?? 'ブログ'}
+                    headingLabel={headingLabel}
+                    title={blogPreviewMeta.title}
+                    excerpt={blogPreviewMeta.excerpt}
+                    {...(openHandler ? { onOpen: openHandler } : {})}
+                  />
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm">
+                    {formatMessageContent(message.content)}
+                  </div>
+                )}
+              </div>
+              {message.role === 'user' && <div className="opacity-0 w-8 h-8" />}
+            </div>
+
+            {shouldShowTimestamp(list, index) && (
+              <div
+                className={cn(
+                  'text-[10px] text-gray-400 mt-1 px-2',
+                  message.role === 'user' ? 'text-right' : 'text-left'
+                )}
+              >
+                {formatTime(message.timestamp)}
+              </div>
+            )}
+          </div>
+          {renderAfterMessage?.(message)}
+        </React.Fragment>
+      );
+    });
+
+  const renderCombinedTile = (tile: { id: string; title: string; excerpt: string }) => (
+    <div key={tile.id} className="mb-4 last:mb-2 group">
+      <div className="flex items-start gap-2 relative flex-row">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-200">
+          <Bot size={18} className="text-[#06c755]" />
+        </div>
+        <div className="max-w-[85%] rounded-2xl relative transition-all duration-200 bg-transparent text-gray-800 p-0">
+          <BlogPreviewTile
+            stepLabel={BLOG_STEP_LABELS.step7 ?? '7. 本文作成'}
+            headingLabel="完成形"
+            title={tile.title}
+            excerpt={tile.excerpt}
+            {...(onOpenCombinedCanvas && { onOpen: () => onOpenCombinedCanvas(tile.id) })}
+            variant="completed"
+          />
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex-1 overflow-y-auto p-3 bg-slate-100">
       {isLoading && messages.length === 0 ? (
         <ActivityIndicator variant="full" label="メッセージを取得中です" />
-      ) : visibleMessages.length === 0 ? (
+      ) : !hasContent ? (
         <EmptyState />
       ) : (
         <>
-          {visibleMessages.map((message, index) => {
-            const blogPreviewMeta = isBlogMessage(message) ? derivePreviewMeta(message) : null;
-            const openHandler =
-              blogPreviewMeta && onOpenCanvas ? () => onOpenCanvas(message) : null;
-            const step7Index = step7MessageIds.indexOf(message.id);
-            const headingLabel =
-              blogPreviewMeta?.step === 'step7' && step7Index >= 0
-                ? getStep7HeadingLabel(message, headingSections ?? [], step7Index)
-                : null;
-
-            return (
-              <React.Fragment key={message.id || index}>
-                <div className="mb-4 last:mb-2 group">
-                  <div
-                    className={cn(
-                      'flex items-start gap-2 relative',
-                      message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-                    )}
-                  >
-                    {message.role !== 'user' && (
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-200">
-                        <Bot size={18} className="text-[#06c755]" />
-                      </div>
-                    )}
-                    <div
-                      className={cn(
-                        'max-w-[85%] rounded-2xl relative transition-all duration-200',
-                        message.role === 'user'
-                          ? 'bg-[#06c755] text-white p-3'
-                          : blogPreviewMeta
-                            ? 'bg-transparent text-gray-800 p-0'
-                            : 'bg-white text-gray-800 border border-gray-100 p-3'
-                      )}
-                    >
-                      {blogPreviewMeta ? (
-                        <BlogPreviewTile
-                          stepLabel={BLOG_STEP_LABELS[blogPreviewMeta.step] ?? 'ブログ'}
-                          headingLabel={headingLabel}
-                          title={blogPreviewMeta.title}
-                          excerpt={blogPreviewMeta.excerpt}
-                          {...(openHandler ? { onOpen: openHandler } : {})}
-                        />
-                      ) : (
-                        <div className="whitespace-pre-wrap text-sm">
-                          {formatMessageContent(message.content)}
-                        </div>
-                      )}
-                    </div>
-                    {message.role === 'user' && <div className="opacity-0 w-8 h-8" />}
-                  </div>
-
-                  {shouldShowTimestamp(visibleMessages, index) && (
-                    <div
-                      className={cn(
-                        'text-[10px] text-gray-400 mt-1 px-2',
-                        message.role === 'user' ? 'text-right' : 'text-left'
-                      )}
-                    >
-                      {formatTime(message.timestamp)}
-                    </div>
-                  )}
-                </div>
-                {renderAfterMessage?.(message)}
+          {segments.map((seg, idx) =>
+            seg.type === 'messages' ? (
+              <React.Fragment key={`seg-${idx}-msg`}>{renderMessageList(seg.list)}</React.Fragment>
+            ) : combinedTiles && seg.tileIndex < combinedTiles.length ? (
+              <React.Fragment key={`seg-${idx}-combined`}>
+                {renderCombinedTile(combinedTiles[seg.tileIndex]!)}
               </React.Fragment>
-            );
-          })}
-
-          {combinedTile?.show && onOpenCombinedCanvas && (
-            <div className="mb-4 last:mb-2 group">
-              <div className="flex items-start gap-2 relative flex-row">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-200">
-                  <Bot size={18} className="text-[#06c755]" />
-                </div>
-                <div className="max-w-[85%] rounded-2xl relative transition-all duration-200 bg-transparent text-gray-800 p-0">
-                  <BlogPreviewTile
-                    stepLabel={BLOG_STEP_LABELS.step7 ?? '7. 本文作成'}
-                    headingLabel="完成形"
-                    title={combinedTile.title}
-                    excerpt={combinedTile.excerpt}
-                    onOpen={onOpenCombinedCanvas}
-                    variant="completed"
-                  />
-                </div>
-              </div>
-            </div>
+            ) : null
           )}
 
           <div ref={messagesEndRef} />

@@ -33,6 +33,26 @@ import { useWordpressSync } from '@/hooks/useWordpressSync';
 import { useSessionTitle } from '@/hooks/useSessionTitle';
 import { toast } from 'sonner';
 
+/** Step7 完成形タイル: コンテンツからタイトルと抜粋を抽出 */
+const deriveTileFromContent = (content: string) => {
+  const c = content?.trim() ?? '';
+  if (!c) return { title: '完成形', excerpt: 'クリックしてCanvasで確認' };
+  const rawLines = c.split('\n');
+  const headingIdx = rawLines.findIndex(line => /^#+\s*/.test(line.trim()));
+  const firstIdx = rawLines.findIndex(line => line.trim().length > 0);
+  const titleLine = (headingIdx >= 0 ? rawLines[headingIdx] : rawLines[firstIdx]) ?? rawLines[0] ?? '';
+  const title = titleLine.trim().replace(/^#+\s*/, '').trim() || '完成形';
+  const bodyLines = rawLines.filter((_, i) => i !== headingIdx);
+  const body = bodyLines.join('\n').trim();
+  const excerptPlain = (body || c)
+    .split('\n')
+    .map(line => line.trim().replace(/^[-*]\s+/, '').replace(/^[0-9]+\.\s+/, ''))
+    .filter(Boolean)
+    .join(' ');
+  const excerpt = excerptPlain.length > 140 ? `${excerptPlain.slice(0, 140)}…` : excerptPlain || 'クリックしてCanvasで確認';
+  return { title, excerpt };
+};
+
 export const ChatLayout: React.FC<ChatLayoutProps> = ({
   chatSession,
   subscription,
@@ -84,7 +104,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const pendingAutoOpenHeadingRef = useRef(false);
   const prevChatLoadingRef = useRef(false);
   /** 完成形Canvasオープン（handleOpenCombinedCanvas を遅延参照） */
-  const openCombinedCanvasRef = useRef<() => void>(() => {});
+  const openCombinedCanvasRef = useRef<(versionId?: string) => void>(() => {});
 
   /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元） */
   const step6ToStep7Lead = useMemo(() => {
@@ -605,26 +625,15 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [blogCanvasVersionsByStep, nextStepForPlaceholder]
   );
 
-  // Step7 完成形タイル: メッセージ末尾に表示。クリックで Canvas で完成形を開く
-  const combinedTile = useMemo(() => {
-    if (combinedContentVersions.length === 0) return undefined;
-    const content = latestCombinedContent?.trim() ?? '';
-    if (!content) return { show: true, title: '完成形', excerpt: 'クリックしてCanvasで確認' };
-    const rawLines = content.split('\n');
-    const headingIdx = rawLines.findIndex(line => /^#+\s*/.test(line.trim()));
-    const firstIdx = rawLines.findIndex(line => line.trim().length > 0);
-    const titleLine = (headingIdx >= 0 ? rawLines[headingIdx] : rawLines[firstIdx]) ?? rawLines[0] ?? '';
-    const title = titleLine.trim().replace(/^#+\s*/, '').trim() || '完成形';
-    const bodyLines = rawLines.filter((_, i) => i !== headingIdx);
-    const body = bodyLines.join('\n').trim();
-    const excerptPlain = (body || content)
-      .split('\n')
-      .map(line => line.trim().replace(/^[-*]\s+/, '').replace(/^[0-9]+\.\s+/, ''))
-      .filter(Boolean)
-      .join(' ');
-    const excerpt = excerptPlain.length > 140 ? `${excerptPlain.slice(0, 140)}…` : excerptPlain || 'クリックしてCanvasで確認';
-    return { show: true, title, excerpt };
-  }, [combinedContentVersions.length, latestCombinedContent]);
+  // Step7 完成形タイル: 各バージョンをタイル化。他ステップ同様に複数・バージョン管理
+  const combinedTiles = useMemo(
+    () =>
+      combinedContentVersions.map(v => {
+        const { title, excerpt } = deriveTileFromContent(v.content);
+        return { id: v.id, title, excerpt };
+      }),
+    [combinedContentVersions]
+  );
 
   // handleSaveHeadingSection はフック側のシグネチャが (content: string, overrideHeadingKey?: string) のため、ここでラップする。
   // CanvasPanel が contentRef に表示中の内容を随時更新するため、保存時は ref を優先して
@@ -1012,27 +1021,35 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     }
   }, [chatSession.state.isLoading, chatSession.state.messages, handleShowCanvas]);
 
-  /** Step7 完成形タイルクリック時: Canvas で完成形を開く */
-  const handleOpenCombinedCanvas = useCallback(() => {
-    setViewingHeadingIndex(null);
-    pendingViewingIndexRef.current = null;
-    setIsViewingPastHeadingContent(false);
-    setCanvasStep(HEADING_FLOW_STEP_ID);
-    setCanvasStreamingContent('');
-    resetCombinedVersionToLatest();
-    if (annotationOpen) {
-      setAnnotationOpen(false);
-      setAnnotationData(null);
-    }
-    setCanvasPanelOpen(true);
-  }, [
-    annotationOpen,
-    setViewingHeadingIndex,
-    setIsViewingPastHeadingContent,
-    setCanvasStreamingContent,
-    setAnnotationData,
-    resetCombinedVersionToLatest,
-  ]);
+  /** Step7 完成形タイルクリック時: Canvas で完成形を開く。versionId 指定でそのバージョンを選択 */
+  const handleOpenCombinedCanvas = useCallback(
+    (versionId?: string) => {
+      setViewingHeadingIndex(null);
+      pendingViewingIndexRef.current = null;
+      setIsViewingPastHeadingContent(false);
+      setCanvasStep(HEADING_FLOW_STEP_ID);
+      setCanvasStreamingContent('');
+      if (versionId) {
+        handleCombinedVersionSelect(versionId);
+      } else {
+        resetCombinedVersionToLatest();
+      }
+      if (annotationOpen) {
+        setAnnotationOpen(false);
+        setAnnotationData(null);
+      }
+      setCanvasPanelOpen(true);
+    },
+    [
+      annotationOpen,
+      handleCombinedVersionSelect,
+      setViewingHeadingIndex,
+      setIsViewingPastHeadingContent,
+      setCanvasStreamingContent,
+      setAnnotationData,
+      resetCombinedVersionToLatest,
+    ]
+  );
 
   openCombinedCanvasRef.current = handleOpenCombinedCanvas;
 
@@ -1561,7 +1578,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           },
           onSaveStep7UserLead: handleSaveStep7UserLead,
           step6ToStep7LeadSaved,
-          ...(combinedTile && { combinedTile }),
+          ...(combinedTiles.length > 0 && { combinedTiles }),
           onOpenCombinedCanvas: handleOpenCombinedCanvas,
         }}
       />

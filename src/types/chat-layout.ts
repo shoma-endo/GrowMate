@@ -108,8 +108,8 @@ export interface ChatLayoutCtx {
   onSaveStep7UserLead?: (userLead: string) => Promise<{ success: boolean; error?: string }>;
   /** Step6→Step7 で書き出し案保存済み。step7 表示に遷移するためのフラグ */
   step6ToStep7LeadSaved?: boolean;
-  /** Step7 完成形: タイル表示用。表示時はメッセージ末尾に完成形タイルを出す */
-  combinedTile?: { show: boolean; title: string; excerpt: string };
-  /** Step7 完成形タイルクリック時: Canvas で完成形を開く */
-  onOpenCombinedCanvas?: () => void;
+  /** Step7 完成形: タイル表示用。各 run ごとに完成形タイルを表示（他ステップ同様に複数・バージョン管理） */
+  combinedTiles?: Array<{ id: string; title: string; excerpt: string }>;
+  /** Step7 完成形タイルクリック時: Canvas で完成形を開く（versionId 指定でそのバージョンを選択表示） */
+  onOpenCombinedCanvas?: (versionId?: string) => void;
 }

@@ -68,7 +68,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     onBuildCombinedWithUserLead,
     onSaveStep7UserLead,
     step6ToStep7LeadSaved,
-    combinedTile,
+    combinedTiles,
     onOpenCombinedCanvas,
   } = ctx;
   const { isOwnerViewMode } = useLiffContext();
@@ -279,7 +279,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           blogFlowActive={blogFlowActive}
           onOpenCanvas={message => ui.canvas.show(message)}
           headingSections={headingSections}
-          {...(combinedTile && { combinedTile })}
+          {...(combinedTiles && combinedTiles.length > 0 && { combinedTiles })}
           {...(onOpenCombinedCanvas && { onOpenCombinedCanvas })}
         />
 
