@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     if (!liffToken || !wpType) {
       return NextResponse.json(
-        { success: false, error: 'Authentication required or required fields missing' },
+        { success: false, error: ERROR_MESSAGES.AUTH.AUTHENTICATION_REQUIRED },
         { status: 401 }
       );
     }
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return NextResponse.json(
-        { success: false, error: 'Authentication failed' },
+        { success: false, error: ERROR_MESSAGES.AUTH.AUTHENTICATION_FAILED },
         { status: 401 }
       );
     }
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     if (wpType === 'self_hosted') {
       if (!wpSiteUrl || !wpUsername || !wpApplicationPassword) {
         return NextResponse.json(
-          { success: false, error: 'Self-hosted WordPress requires site URL, username, and application password' },
+          { success: false, error: ERROR_MESSAGES.WORDPRESS.SELF_HOSTED_REQUIRED_FIELDS },
           { status: 400 }
         );
       }
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     } else if (wpType === 'wordpress_com') {
       if (!wpSiteId) {
         return NextResponse.json(
-          { success: false, error: 'WordPress.com requires site ID' },
+          { success: false, error: ERROR_MESSAGES.WORDPRESS.WORDPRESS_COM_SITE_ID_REQUIRED },
           { status: 400 }
         );
       }
@@ -111,14 +111,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ 
       success: true, 
-      message: 'WordPress settings saved successfully' 
+      message: ERROR_MESSAGES.WORDPRESS.SETTINGS_SAVED 
     });
   } catch (error) {
     console.error('[WordPress Settings API] Error:', error);
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+        error: error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR 
       },
       { status: 500 }
     );

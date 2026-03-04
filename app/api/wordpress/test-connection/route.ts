@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
       success: false,
       connected: false,
       message: ERROR_MESSAGES.WORDPRESS.CONNECTION_FAILED,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
       wpType: 'wordpress_com', // エラー時のデフォルト値
     });
   }

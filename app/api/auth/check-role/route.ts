@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getUserRoleWithRefresh } from '@/authUtils';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 // Node.jsランタイムを強制（Cookie更新の一貫性を確保）
 export const runtime = 'nodejs';
@@ -12,7 +13,7 @@ export async function GET() {
     const lineRefreshToken = cookieStore.get('line_refresh_token')?.value;
 
     if (!lineAccessToken) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      return NextResponse.json({ error: ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED }, { status: 401 });
     }
 
     const result = await getUserRoleWithRefresh(lineAccessToken, lineRefreshToken);
@@ -20,13 +21,13 @@ export async function GET() {
     // 再認証が必要な場合
     if (result.needsReauth) {
       return NextResponse.json(
-        { error: 'Token expired, re-authentication required', requires_login: true },
+        { error: ERROR_MESSAGES.AUTH.TOKEN_EXPIRED_REAUTH, requires_login: true },
         { status: 401 }
       );
     }
 
     if (!result.role) {
-      return NextResponse.json({ error: 'Unable to get user role' }, { status: 401 });
+      return NextResponse.json({ error: ERROR_MESSAGES.AUTH.USER_ROLE_FETCH_FAILED }, { status: 401 });
     }
 
     // レスポンスを作成
@@ -60,6 +61,6 @@ export async function GET() {
     return response;
   } catch (error) {
     console.error('Role check API error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: ERROR_MESSAGES.COMMON.SERVER_ERROR }, { status: 500 });
   }
 }

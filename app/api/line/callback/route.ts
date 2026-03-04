@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { env } from '@/env'; // env モジュールをインポート
+import { env } from '@/env';
 import { cookies } from 'next/headers';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { userService } from '@/server/services/userService';
 
 // Node.jsランタイムを強制（Vercelエッジ環境でのCookie永続化問題を回避）
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
   if (!state || !savedState || state !== savedState) {
     console.error('Invalid state parameter:', { state, savedState });
     return NextResponse.json(
-      { error: 'Invalid state parameter. Possible CSRF attack.' },
+      { error: ERROR_MESSAGES.AUTH.INVALID_STATE },
       { status: 403 }
     );
   }
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
   // nonce検証（使い捨てトークン確認）
   if (!savedNonce) {
     console.error('Missing nonce in cookies');
-    return NextResponse.json({ error: 'Invalid OAuth session' }, { status: 403 });
+    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.OAUTH_SESSION_INVALID }, { status: 403 });
   }
 
   // 使用済みのstate/nonceを即座に削除（再利用攻撃防止）
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
   cookieStore.delete('line_oauth_nonce');
 
   if (!code) {
-    return NextResponse.json({ error: 'No code provided' }, { status: 400 });
+    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.AUTHORIZATION_CODE_MISSING }, { status: 400 });
   }
 
   try {
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
     if (!tokenRes.ok) {
       console.error('LINE Token API Error:', tokenData);
       return NextResponse.json(
-        { error: 'Failed to fetch LINE token', details: tokenData },
+        { error: ERROR_MESSAGES.AUTH.LINE_TOKEN_FETCH_FAILED, details: tokenData },
         { status: tokenRes.status }
       );
     }
@@ -119,6 +120,6 @@ export async function GET(request: NextRequest) {
     return res;
   } catch (error) {
     console.error('Callback Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: ERROR_MESSAGES.COMMON.SERVER_ERROR }, { status: 500 });
   }
 }

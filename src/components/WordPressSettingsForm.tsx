@@ -206,7 +206,7 @@ export default function WordPressSettingsForm({
         });
       }
     } catch (error) {
-      const details = error instanceof Error ? error.message : 'Unknown error';
+      const details = error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR;
       const { cause, hints } = diagnoseWordPressError(details);
       setSaveStatus({
         success: false,
@@ -249,7 +249,7 @@ export default function WordPressSettingsForm({
         },
       };
     } catch (error) {
-      const details = error instanceof Error ? error.message : 'Unknown error';
+      const details = error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR;
       const { cause, hints } = diagnoseWordPressError(details);
       return {
         success: false,

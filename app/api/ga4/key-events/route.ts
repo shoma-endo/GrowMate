@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
 
   if (!propertyId) {
     return NextResponse.json(
-      { success: false, error: 'propertyId is required' },
+      { success: false, error: ERROR_MESSAGES.GA4.PROPERTY_ID_REQUIRED },
       { status: 400 }
     );
   }
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Failed to fetch GA4 key events:', error);
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: ERROR_MESSAGES.COMMON.SERVER_ERROR },
       { status: 500 }
     );
   }

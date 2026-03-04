@@ -1,4 +1,5 @@
 import { SupabaseClient, type PostgrestError } from '@supabase/supabase-js';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { SupabaseClientManager } from '@/lib/client-manager';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json } from '@/types/database.types';
@@ -1050,7 +1051,7 @@ export class SupabaseService {
         expires_in?: number;
       };
       if (!json.access_token) {
-        return { success: false, error: 'token refresh failed: access_token missing' };
+        return { success: false, error: ERROR_MESSAGES.COMMON.TOKEN_REFRESH_ACCESS_MISSING };
       }
 
       const expiresAt =
@@ -1076,7 +1077,7 @@ export class SupabaseService {
       };
     } catch (error) {
       console.error('[SupabaseService.refreshWpComToken] error', error);
-      return { success: false, error: 'token refresh request failed' };
+      return { success: false, error: ERROR_MESSAGES.COMMON.TOKEN_REFRESH_REQUEST_FAILED };
     }
   }
 
