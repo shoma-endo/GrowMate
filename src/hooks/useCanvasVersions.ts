@@ -1,6 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { BlogStepId, BLOG_STEP_IDS, HEADING_FLOW_STEP_ID } from '@/lib/constants';
-import { extractBlogStepFromModel, normalizeCanvasContent } from '@/lib/canvas-content';
+import {
+  extractBlogStepFromModel,
+  getContentStepFromAssistantModel,
+  normalizeCanvasContent,
+} from '@/lib/canvas-content';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { BlogCanvasVersion, StepVersionsMap } from '@/types/chat-layout';
 import type { CombinedContentVersion } from '@/hooks/useHeadingFlow';
@@ -34,10 +38,12 @@ export function useCanvasVersions(
 
     (messages ?? []).forEach(message => {
       if (!message || message.role !== 'assistant') return;
-      const step = extractBlogStepFromModel(message.model);
-      if (!step) return;
+      const modelStep = extractBlogStepFromModel(message.model);
+      if (!modelStep) return;
       // Step7 見出し単体はバージョン管理に含めない（Canvas表示は別経路で行う）
-      if (step === HEADING_FLOW_STEP_ID && isStep7HeadingModel(message.model)) return;
+      if (modelStep === HEADING_FLOW_STEP_ID && isStep7HeadingModel(message.model)) return;
+      const step = getContentStepFromAssistantModel(message.model);
+      if (!step) return;
 
       const normalizedContent = normalizeCanvasContent(message.content);
       const version: BlogCanvasVersion = {

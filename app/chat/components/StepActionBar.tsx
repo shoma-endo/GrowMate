@@ -24,6 +24,8 @@ import {
 
 interface StepActionBarProps {
   step?: BlogStepId;
+  /** スキップ/バックの遷移計算用。未指定時は step を使用 */
+  stepForNavigation?: BlogStepId;
   className?: string;
   disabled?: boolean;
   hasDetectedBlogStep?: boolean;
@@ -83,6 +85,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       className,
       disabled,
       step,
+      stepForNavigation,
       hasDetectedBlogStep,
       onSaveClick,
       annotationLoading,
@@ -189,13 +192,16 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       if (!onManualStepChange) {
         return;
       }
-      const targetIndex = direction === 'forward' ? displayIndex + 1 : displayIndex - 1;
+      const navStep = stepForNavigation ?? step ?? (BLOG_STEP_IDS[0] as BlogStepId);
+      const navIndex = BLOG_STEP_IDS.indexOf(navStep);
+      const navIdx = navIndex >= 0 ? navIndex : 0;
+      const targetIndex = direction === 'forward' ? navIdx + 1 : navIdx - 1;
       const targetStep = BLOG_STEP_IDS[targetIndex];
       if (!targetStep) {
         return;
       }
       const shouldContinue =
-        onBeforeManualStepChange?.({ direction, currentStep: displayStep, targetStep }) ?? true;
+        onBeforeManualStepChange?.({ direction, currentStep: navStep, targetStep }) ?? true;
       if (!shouldContinue) {
         return;
       }

@@ -39,6 +39,20 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
 };
 
 /**
+ * assistant メッセージの model から、そのコンテンツが属する表示用ステップを返す。
+ * getResponseModelForBlogCreation により request stepN → response stepN+1 で保存されるため、
+ * model step2 のコンテンツは step1 の出力。タイル・Canvas のラベル表示には content step を使用する。
+ */
+export const getContentStepFromAssistantModel = (model?: string): BlogStepId | null => {
+  const modelStep = extractBlogStepFromModel(model);
+  if (!modelStep) return null;
+  const num = Number.parseInt(modelStep.replace(/^step/, ''), 10);
+  if (Number.isNaN(num) || num < 1 || num > 7) return modelStep;
+  if (num === 1 || num === 7) return modelStep;
+  return `step${num - 1}` as BlogStepId;
+};
+
+/**
  * ブログ作成フロー: リクエストモデル(stepN)に対して、応答内容が属する次のステップのモデルを返す。
  * step5構成案送信 → 書き出し案(step6)が返るため、assistantメッセージは blog_creation_step6 で保存する。
  */
@@ -200,6 +214,7 @@ const normalizeCanvasContent = (raw: string): string => {
 export {
   extractBlogStepFromModel,
   extractStep7HeadingIndexFromModel,
+  getContentStepFromAssistantModel,
   findLatestAssistantBlogStep,
   normalizeCanvasContent,
   htmlToMarkdownForCanvas,

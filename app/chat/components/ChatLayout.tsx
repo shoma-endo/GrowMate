@@ -5,9 +5,9 @@ import { useServiceSelection } from '@/hooks/useServiceSelection';
 import { useLiffContext } from '@/components/LiffProvider';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import {
-  extractBlogStepFromModel,
   extractStep7HeadingIndexFromModel,
   findLatestAssistantBlogStep,
+  getContentStepFromAssistantModel,
   normalizeCanvasContent,
   isBlogStepId,
 } from '@/lib/canvas-content';
@@ -1064,7 +1064,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const handleShowCanvas = useCallback(
     (message: ChatMessage) => {
       const fallbackStep = (latestBlogStep ?? BLOG_STEP_IDS[0]) as BlogStepId;
-      const detectedStep = (extractBlogStepFromModel(message.model) ?? fallbackStep) as BlogStepId;
+      const detectedStep = (getContentStepFromAssistantModel(message.model) ?? fallbackStep) as BlogStepId;
 
       // Step7 見出しタイル: 編集中の見出しに未保存コンテンツがある場合は他見出しへの切り替えを禁止
       if (detectedStep === HEADING_FLOW_STEP_ID && headingSections.length > 0) {

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BLOG_STEP_IDS, BLOG_STEP_LABELS, BlogStepId } from '@/lib/constants';
+import { getContentStepFromAssistantModel } from '@/lib/canvas-content';
 import SessionSidebar from './SessionSidebar';
 import MessageArea from './MessageArea';
 import InputArea from './InputArea';
@@ -88,6 +89,11 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     return index >= 0 ? index : 0;
   }, [displayStep]);
   const shouldShowLoadButton = displayStep === 'step7';
+  /** StepActionBar「現在のステップ」用。assistantのmodelはstep+1で保存されるため、持っている成果物のstepで表示 */
+  const stepForStepActionBar = useMemo(() => {
+    const contentStep = getContentStepFromAssistantModel(`blog_creation_${displayStep}`);
+    return contentStep ?? displayStep;
+  }, [displayStep]);
 
   /**
    * ヒント・プレースホルダー・送信先モデルの単一ソース。
@@ -114,10 +120,11 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     const resolved: BlogStepId = shouldAdvance
       ? (manualBlogStep !== null ? nextFromIndex : (nextStepForPlaceholder ?? nextFromIndex))
       : (BLOG_STEP_IDS[currentIdx] ?? 'step1') as BlogStepId;
-    const label = BLOG_STEP_LABELS[resolved]?.replace(/^\d+\.\s*/, '');
+    // ヒント: 次ステップ = この送信で得る step（displayStep）。stepForStepActionBar の次 = displayStep
+    const nextLabel = BLOG_STEP_LABELS[displayStep]?.replace(/^\d+\.\s*/, '');
     const hint =
-      resolved !== displayStep && label
-        ? `次の${label}に進むにはメッセージを送信してください`
+      nextLabel && displayStep !== 'step7'
+        ? `次の${nextLabel}に進むにはメッセージを送信してください`
         : null;
     return { nextStepForSend: resolved, hintText: hint };
   }, [
@@ -287,7 +294,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           disabled={chatSession.state.isLoading || ui.annotation.loading || isReadOnly}
           shouldShowStepActionBar={shouldShowStepActionBar}
           stepActionBarRef={stepActionBarRef}
-          displayStep={displayStep}
+              displayStep={displayStep}
+              stepForStepActionBar={stepForStepActionBar}
           hasDetectedBlogStep={hasDetectedBlogStep}
           onSaveClick={() => ui.annotation.openWith()}
           annotationLoading={ui.annotation.loading}

@@ -70,6 +70,8 @@ interface InputAreaProps {
   shouldShowStepActionBar?: boolean;
   stepActionBarRef?: React.RefObject<StepActionBarRef | null>;
   displayStep?: BlogStepId;
+  /** StepActionBar「現在のステップ」表示用。持っている成果物のstep（content step） */
+  stepForStepActionBar?: BlogStepId;
   hasDetectedBlogStep?: boolean;
   onSaveClick?: () => void;
   annotationLoading?: boolean;
@@ -146,6 +148,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   shouldShowStepActionBar,
   stepActionBarRef,
   displayStep,
+  stepForStepActionBar,
   hasDetectedBlogStep,
   onSaveClick,
   annotationLoading,
@@ -197,8 +200,10 @@ const InputArea: React.FC<InputAreaProps> = ({
   const isModelSelected = Boolean(selectedModel);
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
-  // 親から渡された nextStepForSend を送信先・プレースホルダーで共通利用
-  const targetBlogStep = nextStepForSend ?? initialBlogStep ?? 'step1';
+  // 送信モデルは現在の表示ステップ（displayStep）。nextStepForSend はヒント用で送信には使わない。
+  // 理由: nextStepForSend は「次に進む先」を表すが、API は「現在の step の変換」を期待する。
+  // nextStepForSend で送ると step が 1 つ飛び、奇数ステップ（1,3,5）がスキップされる。
+  const targetBlogStep = displayStep ?? initialBlogStep ?? 'step1';
 
   // Step7 見出し生成フェーズ: 見出し生成・保存ボタン表示用（入力は無効）
   const isStep7HeadingPhase =
@@ -576,7 +581,10 @@ const InputArea: React.FC<InputAreaProps> = ({
           <div className="px-3 py-3 border-b border-gray-200 bg-white shadow-sm">
             <StepActionBar
               ref={stepActionBarRef}
-              {...(displayStep !== undefined && { step: displayStep })}
+              {...(displayStep !== undefined && {
+                step: stepForStepActionBar ?? displayStep,
+                stepForNavigation: displayStep,
+              })}
               {...(hasDetectedBlogStep !== undefined && { hasDetectedBlogStep })}
               {...(hintText !== undefined && { hintText })}
               {...(nextStepForSend !== undefined && { nextStepForSend })}

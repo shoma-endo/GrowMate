@@ -34,10 +34,13 @@ const createSessionPreview = (content: string, sessionId: string): ChatSession =
   lastMessage: content,
 });
 
-const createStreamingMessagePair = (content: string, model: string) => ({
-  userMessage: createUserMessage(content, model),
-  assistantMessage: createAssistantMessage('', model),
-});
+const createStreamingMessagePair = (content: string, model: string) => {
+  const responseModel = getResponseModelForBlogCreation(model);
+  return {
+    userMessage: createUserMessage(content, model),
+    assistantMessage: createAssistantMessage('', responseModel),
+  };
+};
 
 interface StreamingParams {
   content: string;
