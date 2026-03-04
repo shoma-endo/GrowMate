@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BLOG_STEP_IDS, BLOG_STEP_LABELS, BlogStepId } from '@/lib/constants';
-import { getContentStepFromAssistantModel } from '@/lib/canvas-content';
 import SessionSidebar from './SessionSidebar';
 import MessageArea from './MessageArea';
 import InputArea from './InputArea';
@@ -84,29 +83,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   const displayStep =
     manualBlogStep ??
     (step6ToStep7LeadSaved && detectedStep === 'step6' ? ('step7' as BlogStepId) : detectedStep);
-  // #region agent log
-  useEffect(() => {
-    if (displayStep === 'step6' || displayStep === 'step7') {
-      fetch('http://127.0.0.1:7695/ingest/eb46a2ef-aaec-4b22-8633-de99bc70412e', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6038b7' },
-        body: JSON.stringify({
-          sessionId: '6038b7',
-          location: 'ChatLayoutContent.tsx:displayStep',
-          message: 'display-step-state',
-          data: {
-            displayStep,
-            manualBlogStep,
-            step6ToStep7LeadSaved,
-            detectedStep,
-            latestBlogStep,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-  }, [displayStep, manualBlogStep, step6ToStep7LeadSaved, detectedStep, latestBlogStep]);
-  // #endregion
   /** 最後の assistant（20文字以上）が 構成案（基本構成）の場合は true。step6→7 保存をスキップし通常送信にする */
   const lastAssistantIsBasicStructure = useMemo(() => {
     const msgs = [...(chatSession?.state?.messages ?? []), ...(optimisticMessages ?? [])];
@@ -126,11 +102,10 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     return index >= 0 ? index : 0;
   }, [displayStep]);
   const shouldShowLoadButton = displayStep === 'step7';
-  /** StepActionBar「現在のステップ」用。assistantのmodelはstep+1で保存されるため、持っている成果物のstepで表示 */
-  const stepForStepActionBar = useMemo(() => {
-    const contentStep = getContentStepFromAssistantModel(`blog_creation_${displayStep}`);
-    return contentStep ?? displayStep;
-  }, [displayStep]);
+  /** StepActionBar「現在のステップ」用。ユーザーが取り組むステップ（displayStep）を表示し、next と整合させる。
+   * 以前は content step（成果物の step）を表示していたが、displayStep=step2 のとき current=step1, next=step3 となり
+   * 「ステップが飛んでいる」ように見えていた。displayStep に統一することで current=step2, next=step3 と連続して表示される。 */
+  const stepForStepActionBar = displayStep;
 
   /**
    * ヒント・プレースホルダー・送信先モデルの単一ソース。

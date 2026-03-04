@@ -112,17 +112,28 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   /** 完成形タイルクリック時に state 更新遅延を補うため、クリック時点で即時解決したコンテンツを保持 */
   const pendingCombinedContentRef = useRef<string | null>(null);
 
-  /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元） */
+  /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元）
+   * saved: step7_lead が存在し、かつ最新の書き出し案(step6)より後に保存されている場合のみ true。
+   * バックで step5 に戻り書き出し案を再生成した場合、新しい書き出し案が step7_lead より後になるため
+   * saved=false となり「6. 書き出し案」を正しく表示できる。 */
   const step6ToStep7Lead = useMemo(() => {
     const msgs = [...(chatSession.state.messages ?? []), ...optimisticMessages];
-    let latest: { content: string; ts: number } | null = null;
+    let latestLead: { content: string; ts: number } | null = null;
+    let latestStep6Ts = 0;
     for (const m of msgs) {
-      if (m?.role !== 'user' || m.model !== 'blog_creation_step7_lead') continue;
-      const ts = m.timestamp?.getTime() ?? 0;
-      const c = (m.content ?? '').trim();
-      if (c && (!latest || ts >= latest.ts)) latest = { content: c, ts };
+      const ts = m?.timestamp?.getTime() ?? 0;
+      if (m?.role === 'user' && m.model === 'blog_creation_step7_lead') {
+        const c = (m.content ?? '').trim();
+        if (c && (!latestLead || ts >= latestLead.ts)) latestLead = { content: c, ts };
+      } else if (m?.role === 'assistant' && m.model && /^blog_creation_step6(?:_|$)/.test(m.model)) {
+        const len = (m.content ?? '').trim().length;
+        if (len >= 20 && ts >= latestStep6Ts) latestStep6Ts = ts;
+      }
     }
-    return { saved: latest !== null, content: latest?.content ?? null };
+    const saved =
+      latestLead !== null &&
+      (latestStep6Ts === 0 || latestLead.ts >= latestStep6Ts);
+    return { saved, content: latestLead?.content ?? null };
   }, [chatSession.state.messages, optimisticMessages]);
 
   const step6ToStep7LeadSaved = step6ToStep7Lead.saved;

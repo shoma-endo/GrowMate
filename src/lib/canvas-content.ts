@@ -50,11 +50,14 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
   return null;
 };
 
+const BASIC_STRUCTURE_PATTERN =
+  /基本構成|【基本構成|構成案（記事全体|記事全体の設計図/;
+
 /**
  * assistant メッセージの model から、そのコンテンツが属する表示用ステップを返す。
  * getResponseModelForBlogCreation により request stepN → response stepN+1 で保存される。
- * model stepN のコンテンツは stepN に属する（例: step6 = 書き出し案、step5 = 構成案）。
- * @param content 省略可。指定時は step7 で誤保存された 構成案 を step5 に補正
+ * 表示用: コンテンツが属するステップ（request stepN の出力なら表示は stepN）。
+ * @param content 省略可。指定時は 構成案/書き出し案 の区別に使用
  */
 export const getContentStepFromAssistantModel = (
   model?: string,
@@ -64,24 +67,31 @@ export const getContentStepFromAssistantModel = (
   if (!modelStep) return null;
   const num = Number.parseInt(modelStep.replace(/^step/, ''), 10);
   if (Number.isNaN(num) || num < 1 || num > 7) return modelStep;
-  if (num === 1 || num === 7) {
-    if (num === 7) {
-      // step7_h0 等は見出し本文 → step7
-      if (/^blog_creation_step7_h\d+/.test(model ?? '')) return modelStep;
-      // blog_creation_step7（プレーンのみ）: 構成案 or 書き出し案
-      if (content !== undefined) {
-        const head = content.slice(0, 150);
-        if (/基本構成|【基本構成|構成案（記事全体|記事全体の設計図/.test(head)) {
-          return 'step5'; // 構成案
-        }
-        return 'step6'; // 書き出し案
-      }
-      return modelStep; // content なし時は従来どおり
+  if (num === 1) return modelStep;
+  if (num === 7) {
+    // step7_h0 等は見出し本文 → step7
+    if (/^blog_creation_step7_h\d+/.test(model ?? '')) return modelStep;
+    // blog_creation_step7（プレーンのみ）: 構成案 or 書き出し案
+    if (content !== undefined) {
+      const head = content.slice(0, 150);
+      if (BASIC_STRUCTURE_PATTERN.test(head)) return 'step5'; // 構成案
+      return 'step6'; // 書き出し案
     }
-    return modelStep;
+    return modelStep; // content なし時は従来どおり
   }
-  // step2〜6: model stepN = コンテンツは stepN に属する（例: step6 = 書き出し案）
-  return modelStep;
+  // step2〜6: request stepN → response model stepN+1 のため、表示は stepN（出力元）
+  // step6 のみ例外: 構成案(step5出力)か書き出し案(step6出力)で content 判定
+  if (num === 6) {
+    if (content !== undefined) {
+      const head = content.slice(0, 150);
+      if (BASIC_STRUCTURE_PATTERN.test(head)) return 'step5'; // 構成案
+    }
+    return 'step6'; // 書き出し案（content 未指定時もデフォルト）
+  }
+  // step2〜5: model stepN = 出力元は stepN-1
+  const displayNum = num - 1;
+  const stepId = `step${displayNum}` as BlogStepId;
+  return BLOG_STEP_IDS.includes(stepId) ? stepId : modelStep;
 };
 
 /**

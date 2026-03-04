@@ -212,10 +212,9 @@ const InputArea: React.FC<InputAreaProps> = ({
   const isModelSelected = Boolean(selectedModel);
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
-  // 送信モデルは現在の表示ステップ（displayStep）。nextStepForSend はヒント用で送信には使わない。
-  // 理由: nextStepForSend は「次に進む先」を表すが、API は「現在の step の変換」を期待する。
-  // nextStepForSend で送ると step が 1 つ飛び、奇数ステップ（1,3,5）がスキップされる。
-  const targetBlogStep = displayStep ?? initialBlogStep ?? 'step1';
+  // 送信モデルは「次のステップ」（nextStepForSend）を優先。ヒント「次のペルソナに進むには」と送信モデルを整合させる。
+  // displayStep が latestBlogStep 由来で遅延・ずれる場合、ヒントは nextStepForSend を表示するため、送信も nextStepForSend を使う。
+  const targetBlogStep = nextStepForSend ?? displayStep ?? initialBlogStep ?? 'step1';
   // プレースホルダーはヒントと整合（親で算出。未指定時は displayStep にフォールバック）
   const stepForPlaceholder =
     stepForPlaceholderProp ?? displayStep ?? initialBlogStep ?? 'step1';
@@ -348,46 +347,10 @@ const InputArea: React.FC<InputAreaProps> = ({
       selectedModel === 'blog_creation' &&
       onSaveStep7UserLead &&
       !lastAssistantIsBasicStructure;
-    // #region agent log
-    if (displayStep === 'step6' && trimmedInput) {
-      fetch('http://127.0.0.1:7695/ingest/eb46a2ef-aaec-4b22-8633-de99bc70412e', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6038b7' },
-        body: JSON.stringify({
-          sessionId: '6038b7',
-          location: 'InputArea.tsx:handleSubmit',
-          message: 'step6-submit',
-          data: {
-            displayStep,
-            nextStepForSend,
-            selectedModel,
-            hasOnSaveStep7UserLead: !!onSaveStep7UserLead,
-            lastAssistantIsBasicStructure,
-            isStep6ToStep7Transition,
-            targetBlogStep,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
     if (isStep6ToStep7Transition) {
       setIsSavingStep7Lead(true);
       try {
         const res = await onSaveStep7UserLead(originalMessage);
-        // #region agent log
-        fetch('http://127.0.0.1:7695/ingest/eb46a2ef-aaec-4b22-8633-de99bc70412e', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6038b7' },
-          body: JSON.stringify({
-            sessionId: '6038b7',
-            location: 'InputArea.tsx:saveResult',
-            message: 'step6-to-7-result',
-            data: { success: res.success, error: res.error },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        // #endregion
         if (res.success) {
           onStep6ToStep7Success?.();
           setInput('');

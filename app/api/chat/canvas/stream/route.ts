@@ -5,7 +5,8 @@ import { chatService } from '@/server/services/chatService';
 import { headingFlowService } from '@/server/services/headingFlowService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { env } from '@/env';
-import { MODEL_CONFIGS } from '@/lib/constants';
+import { BLOG_STEP_LABELS, MODEL_CONFIGS } from '@/lib/constants';
+import type { BlogStepId } from '@/lib/constants';
 import { htmlToMarkdownForCanvas, sanitizeHtmlForCanvas } from '@/lib/canvas-content';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
@@ -264,9 +265,17 @@ export async function POST(req: NextRequest) {
       ? '改善を適用した上で、**この1見出し分の本文のみを省略なく出力してください。**'
       : '改善を適用した上で、**文章全体を省略なく完全に出力してください。**';
 
+    // 編集対象ステップのコンテキスト（形式・トーン維持のため）
+    const stepLabel =
+      targetStep &&
+      BLOG_STEP_LABELS[targetStep as BlogStepId]
+        ? `このコンテンツは「${BLOG_STEP_LABELS[targetStep as BlogStepId]}」の出力です。形式とトーンを維持して編集してください。`
+        : null;
+
     // システムプロンプト（Claude 4ベストプラクティス準拠）
     const systemPrompt = [
       ...headingUnitPrefix,
+      ...(stepLabel ? ['## 編集対象のステップ', '', stepLabel, '', '---', ''] : []),
       '# Canvas編集専用モード',
       '',
       '## あなたの役割',
