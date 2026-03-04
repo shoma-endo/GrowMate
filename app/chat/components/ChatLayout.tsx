@@ -281,8 +281,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     activeVersionId,
   } = useCanvasVersions(allMessagesForVersions, resolvedCanvasStep, {
     // 完成形あり時は常時 override を渡し、ステップ移動時も選択状態を保持
-    step7VersionsOverride:
-      combinedContentVersions.length > 0 ? combinedContentVersions : undefined,
+    // exactOptionalPropertyTypes のため undefined ではなくプロパティ自体を省略
+    ...(combinedContentVersions.length > 0 && {
+      step7VersionsOverride: combinedContentVersions,
+    }),
   });
 
   const {
