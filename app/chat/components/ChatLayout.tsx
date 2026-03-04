@@ -546,8 +546,16 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         if (effectiveVersionId === activeVersionId) {
           pendingCombinedVersionIdRef.current = null;
         }
+        const foundVersion =
+          combinedContentVersions.find(v => v.id === effectiveVersionId) ??
+          (effectiveVersionId != null
+            ? combinedContentVersions.find(v => String(v.id) === String(effectiveVersionId))
+            : undefined);
         const combined =
-          combinedContentVersions.find(v => v.id === effectiveVersionId)?.content ??
+          foundVersion?.content ??
+          (combinedContentVersions.length > 0
+            ? combinedContentVersions[combinedContentVersions.length - 1]?.content
+            : null) ??
           latestCombinedContent ??
           '';
         if (combined.trim()) return combined;
@@ -571,8 +579,26 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             return lead ? `${lead}\n\n${sectionContents}` : sectionContents;
           }
         }
-        return combined;
+        // combined が空でも完成形データがあれば表示（ID不一致・遅延などの保険）
+        const combinedFallback =
+          latestCombinedContent?.trim() ||
+          combinedContentVersions[combinedContentVersions.length - 1]?.content?.trim() ||
+          '';
+        const result = combinedFallback || combined;
+        // #region agent log
+        {
+          const effId = activeVersionId ?? pendingCombinedVersionIdRef.current;
+          const ids = combinedContentVersions.map(v => v.id);
+          fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'ed6f27',location:'ChatLayout.tsx:canvasContent',message:'step7 isCombinedView',data:{branch:'isCombinedView',empty:!result.trim(),activeVersionId,effectiveVersionId:effId,combinedVersionIds:ids,findHit:!!foundVersion,idsMatch:effId!=null&&ids.some((id: string) => String(id) === String(effId)),viewingHeadingIndex:effectiveViewingHeadingIndex,activeHeadingIndex,totalHeadings,combinedLen:combinedContentVersions.length,latestLen:latestCombinedContent?.length,resultLen:result.length},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+        }
+        // #endregion
+        return result;
       }
+      // #region agent log
+      if (!headingCanvasViewMode.isCombinedView) {
+        fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'ed6f27',location:'ChatLayout.tsx:canvasContent',message:'step7 NOT isCombinedView',data:{branch:'headingUnit',viewingHeadingIndex:effectiveViewingHeadingIndex,activeHeadingIndex,totalHeadings,combinedLen:combinedContentVersions.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+      }
+      // #endregion
       // 見出し遷移直後は前見出し本文を表示しない（誤保存防止）。表示中がアクティブでなければ stale を無視
       if (
         isStep6ContentStale &&
@@ -613,15 +639,73 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             ...headingSections.map(s => (s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity))
           );
           if (sectionsCreatedMs !== Infinity && versionCreatedMs < sectionsCreatedMs) {
-            return ''; // 旧バージョン → 非表示
+            // 旧バージョン → 非表示。ただし既存完成形があれば表示（選択バージョン反映）
+            if (combinedContentVersions.length > 0) {
+              const byId =
+                activeVersionId != null
+                  ? combinedContentVersions.find(
+                      v => v.id === activeVersionId || String(v.id) === String(activeVersionId)
+                    )?.content?.trim()
+                  : null;
+              const cv =
+                byId ||
+                latestCombinedContent?.trim() ||
+                combinedContentVersions[combinedContentVersions.length - 1]?.content?.trim() ||
+                '';
+              if (cv) return cv;
+            }
+            return '';
           }
         } else if (allSectionsEmpty) {
+          // 見出し本文が空でも、既存完成形（session_combined_contents）があれば表示。バージョン選択反映。
+          if (combinedContentVersions.length > 0) {
+            const byId =
+              activeVersionId != null
+                ? combinedContentVersions.find(
+                    v => v.id === activeVersionId || String(v.id) === String(activeVersionId)
+                  )?.content?.trim()
+                : null;
+            const cv =
+              byId ||
+              latestCombinedContent?.trim() ||
+              combinedContentVersions[combinedContentVersions.length - 1]?.content?.trim() ||
+              '';
+            if (cv) return cv;
+          }
           return '';
         }
       }
+      // Step7 のみ: 上記で解決できなかった場合の最終フォールバック（空表示の恒久防止）。バージョン選択反映。
+      if (combinedContentVersions.length > 0) {
+        const byId =
+          activeVersionId != null
+            ? combinedContentVersions.find(
+                v => v.id === activeVersionId || String(v.id) === String(activeVersionId)
+              )?.content?.trim()
+            : null;
+        const fallback =
+          byId ||
+          latestCombinedContent?.trim() ||
+          combinedContentVersions[combinedContentVersions.length - 1]?.content?.trim() ||
+          '';
+        if (fallback) return fallback;
+      }
+      const finalFallback = activeCanvasVersion?.content ?? '';
+      // #region agent log
+      if (!finalFallback.trim()) {
+        fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'ed6f27',location:'ChatLayout.tsx:canvasContent',message:'step7 empty (fallback)',data:{branch:'fallback',activeVersionId,combinedLen:combinedContentVersions.length,viewingHeadingIndex:effectiveViewingHeadingIndex,activeHeadingIndex,totalHeadings,isCombinedView:headingCanvasViewMode.isCombinedView},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+      }
+      // #endregion
+      return finalFallback;
     }
     // 未確定の場合は最新のバージョン（生成中の内容含む）を表示
-    return activeCanvasVersion?.content ?? '';
+    const finalContent = activeCanvasVersion?.content ?? '';
+    // #region agent log
+    if (isHeadingFlowCanvasStep&&!finalContent.trim()&&(combinedContentVersions.length>0||activeCanvasVersion)) {
+      fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'ed6f27',location:'ChatLayout.tsx:canvasContent',message:'step7 empty (activeCanvasVersion)',data:{branch:'activeCanvasVersion',activeVersionId,combinedLen:combinedContentVersions.length,activeHasContent:!!activeCanvasVersion?.content?.trim(),isCombinedView:headingCanvasViewMode.isCombinedView},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+    }
+    // #endregion
+    return finalContent;
   }, [
     isHeadingFlowCanvasStep,
     isViewingPastHeadingContent,
@@ -636,6 +720,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     isStep6ContentStale,
     viewingHeadingIndex,
     activeHeadingIndex,
+    effectiveViewingHeadingIndex,
+    totalHeadings,
     allMessagesForVersions,
     getLatestStep7HeadingContent,
     minTsForContentCheck,
@@ -1216,7 +1302,18 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setIsViewingPastHeadingContent(false);
       setCanvasStreamingContent('');
       if (step === HEADING_FLOW_STEP_ID && combinedContentVersions.length > 0) {
+        requestedCombinedViewRef.current = true;
         setViewingHeadingIndex(null);
+        // ステップ選択時も即時コンテンツ解決で空表示を防止（タイルクリックと同様）
+        const resolvedContent =
+          latestId != null
+            ? combinedContentVersions.find(v => v.id === latestId)?.content ?? null
+            : latestCombinedContent;
+        if (resolvedContent != null && resolvedContent.trim()) {
+          pendingCombinedContentRef.current = resolvedContent;
+        } else {
+          pendingCombinedContentRef.current = null;
+        }
       }
       setCanvasStep(step);
       setSelectedVersionByStep(prev => {
@@ -1240,7 +1337,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     },
     [
       blogCanvasVersionsByStep,
-      combinedContentVersions.length,
+      combinedContentVersions,
+      latestCombinedContent,
       setCanvasStreamingContent,
       setFollowLatestByStep,
       setSelectedVersionByStep,
