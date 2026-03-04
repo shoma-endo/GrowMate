@@ -80,6 +80,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     initialStep && BLOG_STEP_IDS.includes(initialStep) ? initialStep : null;
   // 最新メッセージのステップを優先し、なければ初期ステップにフォールバック
   const detectedStep = latestBlogStep ?? normalizedInitialStep ?? currentStep;
+  // 書き出し案取得後は effect を待たず同期的に Step7 表示（プレースホルダー・ステップ表示のずれを防ぐ）
   const displayStep = manualBlogStep ?? detectedStep;
   /** 最後の assistant（20文字以上）が 構成案（基本構成）の場合は true。step6→7 保存をスキップし通常送信にする */
   const lastAssistantIsBasicStructure = useMemo(() => {
@@ -110,19 +111,26 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
    * ヒント・プレースホルダー・送信先モデルの単一ソース。
    * 論理の分散を避け、StepActionBar と InputArea で一貫した値を共有する。
    */
-  const { nextStepForSend, hintText } = useMemo(() => {
+  const { nextStepForSend, hintText, stepForPlaceholder, placeholderKey } = useMemo(() => {
     // 手動でスキップ/バックしている場合は displayStep を反映（プレースホルダー更新のため）
     const useDisplayStep = manualBlogStep !== null || hasDetectedBlogStep;
     if (!useDisplayStep) {
       return {
         nextStepForSend: 'step1' as BlogStepId,
         hintText: null as string | null,
+        stepForPlaceholder: 'step1' as BlogStepId,
+        placeholderKey: 'blog_creation_step1',
       };
     }
     const currentStep = displayStep ?? initialStep ?? ('step1' as BlogStepId);
     const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
     if (currentIdx === -1) {
-      return { nextStepForSend: 'step1' as BlogStepId, hintText: null as string | null };
+      return {
+        nextStepForSend: 'step1' as BlogStepId,
+        hintText: null as string | null,
+        stepForPlaceholder: 'step1' as BlogStepId,
+        placeholderKey: 'blog_creation_step1',
+      };
     }
     const shouldAdvance =
       flowStatus === 'waitingAction' || (flowStatus === 'idle' && hasDetectedBlogStep);
@@ -131,13 +139,24 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     const resolved: BlogStepId = shouldAdvance
       ? (manualBlogStep !== null ? nextFromIndex : (nextStepForPlaceholder ?? nextFromIndex))
       : (BLOG_STEP_IDS[currentIdx] ?? 'step1') as BlogStepId;
-    // ヒント: 次ステップ = この送信で得る step（displayStep）。stepForStepActionBar の次 = displayStep
-    const nextLabel = BLOG_STEP_LABELS[displayStep]?.replace(/^\d+\.\s*/, '');
+    // ヒント: この送信で進む先（resolved）のラベル
+    const nextLabel = BLOG_STEP_LABELS[resolved]?.replace(/^\d+\.\s*/, '');
+    // プレースホルダー: step5→6はAI取得のため別キー、step6は保存のため displayStep 維持
+    const placeholderKey =
+      displayStep === 'step7'
+        ? 'blog_creation_step7'
+        : displayStep === 'step6'
+          ? 'blog_creation_step6'
+          : displayStep === 'step5' && resolved === 'step6'
+            ? 'blog_creation_step6_get'
+            : `blog_creation_${resolved}`;
+    const stepForPlaceholder =
+      displayStep === 'step7' ? 'step7' : displayStep === 'step6' ? 'step6' : resolved;
     const hint =
       nextLabel && displayStep !== 'step7'
         ? `次の${nextLabel}に進むにはメッセージを送信してください`
         : null;
-    return { nextStepForSend: resolved, hintText: hint };
+    return { nextStepForSend: resolved, hintText: hint, stepForPlaceholder, placeholderKey };
   }, [
     manualBlogStep,
     hasDetectedBlogStep,
@@ -326,6 +345,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           selectedModelExternal={selectedModel}
           nextStepForSend={nextStepForSend}
           hintText={hintText}
+          stepForPlaceholder={stepForPlaceholder}
+          placeholderKey={placeholderKey}
           onNextStepChange={onNextStepChange}
           onManualStepChange={handleManualStepChange}
           isEditingTitle={isEditingSessionTitle}

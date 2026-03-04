@@ -129,7 +129,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   const resolvedCanvasStep = useMemo<BlogStepId | null>(() => {
     if (canvasStep) return canvasStep;
-    // step6ToStep7LeadSaved は latestBlogStep が step6 のときのみ step7 にブリッジ（最新実ステップを尊重）
+    // step6ToStep7LeadSaved は latestBlogStep が step6 のときのみ step7 にブリッジ
     if (
       step6ToStep7LeadSaved &&
       (latestBlogStep === 'step6' || latestBlogStep === null)

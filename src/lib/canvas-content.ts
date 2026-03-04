@@ -52,8 +52,8 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
 
 /**
  * assistant メッセージの model から、そのコンテンツが属する表示用ステップを返す。
- * getResponseModelForBlogCreation により request stepN → response stepN+1 で保存されるため、
- * model step2 のコンテンツは step1 の出力。タイル・Canvas のラベル表示には content step を使用する。
+ * getResponseModelForBlogCreation により request stepN → response stepN+1 で保存される。
+ * model stepN のコンテンツは stepN に属する（例: step6 = 書き出し案、step5 = 構成案）。
  * @param content 省略可。指定時は step7 で誤保存された 構成案 を step5 に補正
  */
 export const getContentStepFromAssistantModel = (
@@ -80,7 +80,8 @@ export const getContentStepFromAssistantModel = (
     }
     return modelStep;
   }
-  return `step${num - 1}` as BlogStepId;
+  // step2〜6: model stepN = コンテンツは stepN に属する（例: step6 = 書き出し案）
+  return modelStep;
 };
 
 /**

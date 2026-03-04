@@ -58,6 +58,10 @@ interface InputAreaProps {
   /** ヒント・プレースホルダー・送信先の単一ソース（親で算出） */
   nextStepForSend?: BlogStepId;
   hintText?: string | null;
+  /** プレースホルダー用ステップ（ヒントと整合） */
+  stepForPlaceholder?: BlogStepId;
+  /** プレースホルダー用キー（step5→6 の AI 取得時は blog_creation_step6_get） */
+  placeholderKey?: string;
   isEditingTitle?: boolean;
   draftSessionTitle?: string;
   sessionTitleError?: string | null;
@@ -118,7 +122,7 @@ interface InputAreaProps {
   /** 本文生成（完成形構築）中 */
   isBuildingCombined?: boolean;
   /** Step7 完成形: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
-  /** Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし） */
+  /** Step7: 書き出し案を保存して見出し生成スタート */
   onSaveStep7UserLead?: (userLead: string) => Promise<{ success: boolean; error?: string }>;
   /** true のとき step6→7 保存をスキップ（構成案の場合は書き出し案取得の通常送信） */
   lastAssistantIsBasicStructure?: boolean;
@@ -139,6 +143,8 @@ const InputArea: React.FC<InputAreaProps> = ({
   initialBlogStep,
   nextStepForSend,
   hintText,
+  stepForPlaceholder: stepForPlaceholderProp,
+  placeholderKey: placeholderKeyProp,
   isEditingTitle = false,
   draftSessionTitle,
   sessionTitleError,
@@ -207,6 +213,9 @@ const InputArea: React.FC<InputAreaProps> = ({
   // 理由: nextStepForSend は「次に進む先」を表すが、API は「現在の step の変換」を期待する。
   // nextStepForSend で送ると step が 1 つ飛び、奇数ステップ（1,3,5）がスキップされる。
   const targetBlogStep = displayStep ?? initialBlogStep ?? 'step1';
+  // プレースホルダーはヒントと整合（親で算出。未指定時は displayStep にフォールバック）
+  const stepForPlaceholder =
+    stepForPlaceholderProp ?? displayStep ?? initialBlogStep ?? 'step1';
 
   // Step7 見出し生成フェーズ: 見出し生成・保存ボタン表示用（入力は無効）
   const isStep7HeadingPhase =
@@ -233,8 +242,8 @@ const InputArea: React.FC<InputAreaProps> = ({
     }
 
     if (selectedModel === 'blog_creation') {
-      const key = `blog_creation_${targetBlogStep}` as keyof typeof BLOG_PLACEHOLDERS;
-      return BLOG_PLACEHOLDERS[key];
+      const key = (placeholderKeyProp ?? `blog_creation_${stepForPlaceholder}`) as keyof typeof BLOG_PLACEHOLDERS;
+      return BLOG_PLACEHOLDERS[key] ?? BLOG_PLACEHOLDERS.blog_creation_step1;
     }
 
     // 通常モデル
@@ -329,8 +338,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     const originalMessage = trimmedInput;
 
-    // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。見出し生成はボタンで行う
-    // 構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる
+    // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる
     const isStep6ToStep7Transition =
       displayStep === 'step6' &&
       nextStepForSend === 'step7' &&

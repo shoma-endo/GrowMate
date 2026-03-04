@@ -148,7 +148,9 @@ export const BLOG_PLACEHOLDERS: Record<string, string> = {
     'ユーザーのゴールを入力してください、PREP（主張・理由・具体例・結論）を出力します。',
   blog_creation_step5:
     'PREP（主張・理由・具体例・結論）を入力してください、構成案を出力します。',
-  blog_creation_step6: '構成案を入力してください、書き出し案を出力します。',
+  blog_creation_step6: '書き出し案を入力して送信すると、見出し生成に進みます。',
+  /** Step5→6: 構成案を入力して書き出し案を取得（AI呼び出し） */
+  blog_creation_step6_get: '構成案を入力してください、書き出し案を出力します。',
   blog_creation_step7: '書き出し案を入力して送信すると、見出し1から始まります。',
   /** Step7 見出し生成フェーズ（入力無効時）: 既存トースト「見出し生成ボタンで1つ目の見出しを生成してください」と同系統 */
   blog_creation_step7_heading: '見出し生成・保存ボタンで進めてください',
