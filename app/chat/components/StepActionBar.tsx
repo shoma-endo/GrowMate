@@ -298,6 +298,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             size="sm"
             onClick={() => onStartHeadingGeneration?.(activeHeadingIndex!)}
             disabled={isDisabled || isStep7HeadingBusy}
+            title="現在の見出しの本文をAIで生成します"
             className="flex items-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400"
           >
             {isStep7HeadingBusy ? (
@@ -314,6 +315,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             size="sm"
             onClick={() => void onBuildCombinedOnly?.()}
             disabled={isDisabled || isStep7HeadingBusy}
+            title="書き出し＋全見出しを結合して完成形を作成し、Canvasで開きます"
             className="flex items-center gap-1 bg-green-600 text-white hover:bg-green-700 disabled:bg-green-400"
           >
             {(isSavingHeading || isBuildingCombined) ? (

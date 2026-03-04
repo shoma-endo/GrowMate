@@ -76,6 +76,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const [isViewingPastHeadingContent, setIsViewingPastHeadingContent] = useState(false);
   /** 本文生成（完成形構築）中 */
   const [isBuildingCombined, setIsBuildingCombined] = useState(false);
+  /** 本文生成の二重実行防止（state更新遅延より先にブロック） */
+  const buildCombinedInFlightRef = useRef(false);
+  /** 見出し保存の二重実行防止 */
+  const saveHeadingInFlightRef = useRef(false);
   /** 見出し生成トリガー後のストリーミング完了時にCanvas自動オープンするためのフラグ */
   const pendingAutoOpenHeadingRef = useRef(false);
   const prevChatLoadingRef = useRef(false);
@@ -634,9 +638,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       : undefined;
 
   const handleSaveHeadingClick = useCallback(async () => {
+    if (saveHeadingInFlightRef.current) return;
     if (isStep6ContentStale) return;
     // StepActionBar 保存は常に active（最初の未確定）見出しに保存する。表示中の見出しと乖離していても正しい。
     if (activeHeadingIndex === undefined || !activeHeading) return;
+    saveHeadingInFlightRef.current = true;
     const section = activeHeading;
     const sectionsMinUpdatedMs =
       headingSections.length > 0
@@ -661,6 +667,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       ) ?? undefined;
     }
     if (!rawContent?.trim()) {
+      saveHeadingInFlightRef.current = false;
       setIsStep6ContentStale(true);
       toast.error(
         '最後の見出しの本文が見つかりません。Canvas に表示されている内容を確認し、見出し生成をもう一度実行してください。'
@@ -670,10 +677,17 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     const contentToSave =
       section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
 
-    if (!contentToSave?.trim()) return;
-    const success = await handleSaveHeadingSectionFromFlow(contentToSave, section.headingKey);
-    if (success) {
-      setCanvasStreamingContent('');
+    if (!contentToSave?.trim()) {
+      saveHeadingInFlightRef.current = false;
+      return;
+    }
+    try {
+      const success = await handleSaveHeadingSectionFromFlow(contentToSave, section.headingKey);
+      if (success) {
+        setCanvasStreamingContent('');
+      }
+    } finally {
+      saveHeadingInFlightRef.current = false;
     }
   }, [
     isStep6ContentStale,
@@ -689,6 +703,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   /** 全見出し保存後: 結合のみ実行（本文生成ボタン用） */
   const handleBuildCombinedOnly = useCallback(async () => {
+    if (buildCombinedInFlightRef.current) return;
+    buildCombinedInFlightRef.current = true;
     setCanvasStreamingContent('');
     setIsBuildingCombined(true);
     try {
@@ -723,6 +739,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         error instanceof Error ? error.message : '完成形の構築に失敗しました。しばらく経ってから再度お試しください。'
       );
     } finally {
+      buildCombinedInFlightRef.current = false;
       setIsBuildingCombined(false);
     }
   }, [
