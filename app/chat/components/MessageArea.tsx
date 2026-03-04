@@ -439,6 +439,13 @@ const MessageArea: React.FC<MessageAreaProps> = ({
         list: messages.slice(lastLeadIdx + 1).filter(m => !isLeadModel(m)),
       });
     }
+    // 本文生成ボタンで作成された完成形（lead とペアにならない分）を末尾に表示
+    const tileCount = combinedTiles?.length ?? 0;
+    if (tileCount > completionCount) {
+      for (let k = completionCount; k < tileCount; k++) {
+        segs.push({ type: 'completion', tileIndex: k });
+      }
+    }
     return segs;
   }, [messages, leadIndices, leadCount, completionCount, combinedTiles?.length]);
 
