@@ -76,6 +76,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const [isViewingPastHeadingContent, setIsViewingPastHeadingContent] = useState(false);
   /** 本文生成（完成形構築）中 */
   const [isBuildingCombined, setIsBuildingCombined] = useState(false);
+  /** 見出し生成トリガー後のストリーミング完了時にCanvas自動オープンするためのフラグ */
+  const pendingAutoOpenHeadingRef = useRef(false);
+  const prevChatLoadingRef = useRef(false);
+  /** 完成形Canvasオープン（handleOpenCombinedCanvas を遅延参照） */
+  const openCombinedCanvasRef = useRef<() => void>(() => {});
 
   /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元） */
   const step6ToStep7Lead = useMemo(() => {
@@ -729,6 +734,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         await refetchCombinedContentVersions({ force: true });
         await chatSession.actions.loadSession(chatSession.state.currentSessionId);
         toast.success('完成形を保存しました');
+        openCombinedCanvasRef.current();
       } else {
         toast.error(
           res.error ?? '完成形の構築に失敗しました。書き出し案の入力を再度お試しください。'
@@ -893,6 +899,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   // headingIndex を model に含めることで、タイルクリック時に該当見出しを正しく開けるようにする。
   const handleStartHeadingGeneration = useCallback(
     (headingIndex: number) => {
+      pendingAutoOpenHeadingRef.current = true;
       setSelectedModel('blog_creation');
       const model =
         Number.isInteger(headingIndex) && headingIndex >= 0
@@ -976,6 +983,26 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     ]
   );
 
+  // ✅ 見出し生成ストリーミング完了時にCanvasを自動オープン
+  useEffect(() => {
+    const wasLoading = prevChatLoadingRef.current;
+    const nowLoading = chatSession.state.isLoading ?? false;
+    prevChatLoadingRef.current = nowLoading;
+
+    if (wasLoading && !nowLoading && pendingAutoOpenHeadingRef.current) {
+      pendingAutoOpenHeadingRef.current = false;
+      const messages = chatSession.state.messages ?? [];
+      const last = messages[messages.length - 1];
+      if (
+        last?.role === 'assistant' &&
+        last?.model &&
+        /blog_creation_step7_h\d+/.test(last.model)
+      ) {
+        handleShowCanvas(last);
+      }
+    }
+  }, [chatSession.state.isLoading, chatSession.state.messages, handleShowCanvas]);
+
   /** Step7 完成形タイルクリック時: Canvas で完成形を開く */
   const handleOpenCombinedCanvas = useCallback(() => {
     setViewingHeadingIndex(null);
@@ -997,6 +1024,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     setAnnotationData,
     resetCombinedVersionToLatest,
   ]);
+
+  openCombinedCanvasRef.current = handleOpenCombinedCanvas;
 
   // ✅ 保存ボタンクリック時にAnnotationPanelを表示する関数
   const handleOpenAnnotation = async () => {
@@ -1510,6 +1539,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
                 resetCombinedVersionToLatest();
                 await refetchCombinedContentVersions();
                 await chatSession.actions.loadSession(chatSession.state.currentSessionId!);
+                openCombinedCanvasRef.current();
               }
               return { success: res.success, ...(res.error && { error: res.error }) };
             } catch (error) {
