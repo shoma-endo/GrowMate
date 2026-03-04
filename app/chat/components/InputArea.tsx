@@ -353,7 +353,7 @@ const InputArea: React.FC<InputAreaProps> = ({
       }
     }
 
-    // Step7: 書き出し案入力あり → 保存＋構成リセットで見出し1から再スタート（見出し生成中・完成形後いずれも同様）
+    // Step7: 書き出し案入力あり → 保存＋見出しセクション削除で見出し1から再スタート（見出し生成中・完成形後いずれも同様）
     if (
       displayStep === 'step7' &&
       selectedModel === 'blog_creation' &&

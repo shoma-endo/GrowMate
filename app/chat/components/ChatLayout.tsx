@@ -144,7 +144,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     (
       messages: ChatMessage[],
       headingIndex: number,
-      /** 指定時はこの時刻以降のメッセージのみ対象（構成リセット後の誤判定防止） */
+      /** 指定時はこの時刻以降のメッセージのみ対象（書き出し案送信後の誤判定防止） */
       minTimestamp?: number
     ): string | null => {
       const re = new RegExp(`^blog_creation_step7_h${headingIndex}(?:_|$)`);
@@ -220,6 +220,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     resetCombinedVersionToLatest,
     refetchCombinedContentVersions,
     handleRetryHeadingInit,
+    runHeadingInitFromBasicStructure,
     refetchHeadings,
     handleSaveHeadingSection: handleSaveHeadingSectionFromFlow,
   } = useHeadingFlow({
@@ -259,16 +260,18 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       }
     },
     onResetComplete: async () => {
-      if (chatSession.state.currentSessionId) {
+      const sid = chatSession.state.currentSessionId;
+      if (sid) {
         // ストリーミング中コンテンツをクリア（リセット後の旧表示防止）
         setCanvasStreamingContent('');
-        // 先にrefetchして古い見出しをクリアしてからCanvasを開く（順序を逆にすると古い見出し1が一瞬表示される）
+        // 古い見出しをクリア
         await Promise.all([
-          chatSession.actions.loadSession(chatSession.state.currentSessionId),
+          chatSession.actions.loadSession(sid),
           refetchHeadings(),
         ]);
         handleRetryHeadingInit({ fromReset: true });
-        // Canvasを開き、再抽出された見出し1からスタートできる状態にする
+        // 恒久対応: effect に依存せず basic_structure から見出しを再抽出して確実に見出し生成フェーズへ遷移
+        await runHeadingInitFromBasicStructure(sid);
         setCanvasPanelOpen(true);
         pendingViewingIndexRef.current = 0;
       }
@@ -356,7 +359,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     const section = headingSections[idx];
     if (section?.isConfirmed) return true;
     const headingIdx = idx;
-    // チャットメッセージに blog_creation_step7_h{N} の応答があり、構成リセット後のものなら保存可能
+    // チャットメッセージに blog_creation_step7_h{N} の応答があり、書き出し案送信後のものなら保存可能
     const fromChat = getLatestStep7HeadingContent(
       allMessagesForVersions,
       headingIdx,
@@ -565,7 +568,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           return `${hashes} ${section?.headingText ?? ''}\n\n${fromChat}`;
         }
         if (allSectionsEmpty && activeCanvasVersion?.content?.trim()) {
-          // 構成リセット直後の旧バージョンのみ非表示。今回の生成内容はCanvasに表示する
+          // 書き出し案送信直後の旧バージョンのみ非表示。今回の生成内容はCanvasに表示する
           const versionCreatedMs = activeCanvasVersion?.createdAtIso
             ? new Date(activeCanvasVersion.createdAtIso).getTime()
             : (activeCanvasVersion?.createdAt ?? 0);

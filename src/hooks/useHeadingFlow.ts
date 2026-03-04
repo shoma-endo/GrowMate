@@ -57,6 +57,11 @@ interface UseHeadingFlowReturn {
    */
   handleSaveHeadingSection: (content: string, overrideHeadingKey?: string) => Promise<boolean>;
   handleRetryHeadingInit: (options?: { fromReset?: boolean }) => void;
+  /**
+   * 書き出し案送信で見出しセクション削除後などに、basic_structure から見出しを再抽出して初期化する。
+   * effect の発火条件に依存せず確実に実行するための恒久対応。
+   */
+  runHeadingInitFromBasicStructure: (sid: string) => Promise<void>;
   /** 見出しセクションの状態を強制的に再取得する（保存・確定後の同期用） */
   refetchHeadings: () => Promise<SessionHeadingSection[]>;
 }
@@ -100,7 +105,7 @@ export function useHeadingFlow({
     currentSessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  /** 構成リセット後に init が成功したら完了トーストを表示するためのフラグ */
+  /** 書き出し案送信後の init 成功時に完了トーストを表示するためのフラグ */
   const isResetInitRef = useRef(false);
 
   const activeHeadingIndex = useMemo(() => {
@@ -390,15 +395,76 @@ export function useHeadingFlow({
     if (options?.fromReset) {
       isResetInitRef.current = true;
       // 完成形フェーズ由来の古い状態を即時クリアし、
-      // 見出し生成フェーズへの遷移と init effect の発火を確実にする。
-      // 古い完成形タイルが残ると新しい見出し生成中に表示されるため、
-      // セッション切り替え時と同様に combined 関連もクリアする。
+      // 見出し生成フェーズへの遷移を確実にする。
       setHeadingSections([]);
       setLatestCombinedContent(null);
       setCombinedContentVersions([]);
       setSelectedCombinedVersionId(null);
     }
   }, []);
+
+  /** basic_structure から見出しを抽出し session_heading_sections を初期化。書き出し案送信後の恒久対応。 */
+  const runHeadingInitFromBasicStructure = useCallback(
+    async (sid: string): Promise<void> => {
+      setIsHeadingInitInFlight(true);
+      try {
+        const annotationRes = await getContentAnnotationBySession(sid);
+        if (!annotationRes.success) {
+          if (sid === currentSessionIdRef.current) {
+            setHeadingInitError(
+              annotationRes.error || 'メモ・補足情報の取得に失敗しました。再試行してください。'
+            );
+            setHasAttemptedHeadingInit(true);
+          }
+          return;
+        }
+        const trimmedBasic = annotationRes.data?.basic_structure?.trim() ?? '';
+        const headings = trimmedBasic ? extractHeadingsFromMarkdown(trimmedBasic) : [];
+
+        if (headings.length > 0) {
+          const token = await getAccessToken();
+          if (!token?.trim()) {
+            if (sid === currentSessionIdRef.current) {
+              setHeadingInitError('認証トークンを取得できませんでした。LINEで再ログインしてください。');
+            }
+            return;
+          }
+          const res = await headingActions.initializeHeadingSections({
+            sessionId: sid,
+            step5Markdown: trimmedBasic,
+            liffAccessToken: token.trim(),
+          });
+          if (res.success) {
+            const sections = await fetchHeadingSections(sid);
+            if (sid === currentSessionIdRef.current) {
+              setHeadingInitError(null);
+              setHasAttemptedHeadingInit(true);
+              if (sections.length > 0 && isResetInitRef.current) {
+                isResetInitRef.current = false;
+                toast.success('見出しを抽出しました');
+              }
+            }
+          } else if (sid === currentSessionIdRef.current) {
+            setHeadingInitError(res.error || '初期化に失敗しました');
+          }
+        } else if (sid === currentSessionIdRef.current) {
+          setHeadingInitError(BASIC_STRUCTURE_REQUIRED_MESSAGE);
+          setHasAttemptedHeadingInit(true);
+        }
+      } catch (e) {
+        console.error('Failed to initialize heading sections:', e);
+        if (sid === currentSessionIdRef.current) {
+          setHeadingInitError('予期せぬエラーが発生しました');
+        }
+      } finally {
+        if (sid === currentSessionIdRef.current) {
+          setIsHeadingInitInFlight(false);
+          isResetInitRef.current = false;
+        }
+      }
+    },
+    [fetchHeadingSections, getAccessToken]
+  );
 
   const selectedCombinedContent = useMemo(() => {
     if (selectedCombinedVersionId) {
@@ -462,6 +528,7 @@ export function useHeadingFlow({
     refetchCombinedContentVersions,
     handleSaveHeadingSection,
     handleRetryHeadingInit,
+    runHeadingInitFromBasicStructure,
     refetchHeadings,
   };
 }
