@@ -295,6 +295,7 @@ export async function getCombinedContentVersions(
       versionNo: v.version_no,
       content: v.content,
       isLatest: v.is_latest,
+      createdAt: v.created_at,
     })),
   };
 }

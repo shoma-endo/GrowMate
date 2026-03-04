@@ -21,6 +21,8 @@ export interface CombinedContentVersion {
   versionNo: number;
   content: string;
   isLatest: boolean;
+  /** 時系列表示用。ISO 文字列 */
+  createdAt?: string;
 }
 
 interface UseHeadingFlowReturn {

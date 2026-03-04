@@ -201,11 +201,13 @@ export class HeadingFlowService extends SupabaseService {
   async getCombinedContentVersions(
     sessionId: string
   ): Promise<
-    SupabaseResult<Array<{ id: string; version_no: number; content: string; is_latest: boolean }>>
+    SupabaseResult<
+      Array<{ id: string; version_no: number; content: string; is_latest: boolean; created_at: string }>
+    >
   > {
     const { data, error } = await this.supabase
       .from('session_combined_contents')
-      .select('id, version_no, content, is_latest')
+      .select('id, version_no, content, is_latest, created_at')
       .eq('session_id', sessionId)
       .order('version_no', { ascending: false });
 
