@@ -17,6 +17,8 @@ export type SelectionMode = 'menu' | 'choice' | 'input' | null;
 export interface UseCanvasSelectionOptions {
   /** 選択メニュー表示までの遅延（ms） */
   delayMs?: number;
+  /** ストリーミング中は true。この間は content 変更による選択クリアを行わない */
+  isStreaming?: boolean;
 }
 
 export interface UseCanvasSelectionReturn {
@@ -58,7 +60,7 @@ export function useCanvasSelection(
   streamingContentKey: string,
   options: UseCanvasSelectionOptions = {}
 ): UseCanvasSelectionReturn {
-  const { delayMs = SELECTION_MENU_DELAY_MS } = options;
+  const { delayMs = SELECTION_MENU_DELAY_MS, isStreaming = false } = options;
 
   const [selectionState, setSelectionState] = useState<CanvasSelectionState | null>(null);
   const selectionSnapshotRef = useRef<CanvasSelectionState | null>(null);
@@ -244,9 +246,11 @@ export function useCanvasSelection(
   }, [selectionMode, updateSelectionMenuPosition]);
 
   // content / streamingContent 変更時に選択をリセット
+  // ストリーミング中は選択クリアしない（頻繁な更新で選択が途切れる問題を回避）
   useEffect(() => {
+    if (isStreaming) return;
     clearSelectionMenu();
-  }, [contentKey, streamingContentKey, clearSelectionMenu]);
+  }, [contentKey, streamingContentKey, clearSelectionMenu, isStreaming]);
 
   // 指示入力時にエラーをクリア（入力で上書きされたことを示す）
   useEffect(() => {
