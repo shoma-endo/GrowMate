@@ -389,6 +389,14 @@ export function useHeadingFlow({
     setHasAttemptedHeadingInit(false);
     if (options?.fromReset) {
       isResetInitRef.current = true;
+      // 完成形フェーズ由来の古い状態を即時クリアし、
+      // 見出し生成フェーズへの遷移と init effect の発火を確実にする。
+      // 古い完成形タイルが残ると新しい見出し生成中に表示されるため、
+      // セッション切り替え時と同様に combined 関連もクリアする。
+      setHeadingSections([]);
+      setLatestCombinedContent(null);
+      setCombinedContentVersions([]);
+      setSelectedCombinedVersionId(null);
     }
   }, []);
 
