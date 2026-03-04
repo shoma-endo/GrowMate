@@ -80,8 +80,33 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     initialStep && BLOG_STEP_IDS.includes(initialStep) ? initialStep : null;
   // 最新メッセージのステップを優先し、なければ初期ステップにフォールバック
   const detectedStep = latestBlogStep ?? normalizedInitialStep ?? currentStep;
-  // 書き出し案取得後は effect を待たず同期的に Step7 表示（プレースホルダー・ステップ表示のずれを防ぐ）
-  const displayStep = manualBlogStep ?? detectedStep;
+  // step6ToStep7LeadSaved 時は effect に依存せず同期的に step7 表示（書き出し案保存後の遷移遅延を防ぐ）
+  const displayStep =
+    manualBlogStep ??
+    (step6ToStep7LeadSaved && detectedStep === 'step6' ? ('step7' as BlogStepId) : detectedStep);
+  // #region agent log
+  useEffect(() => {
+    if (displayStep === 'step6' || displayStep === 'step7') {
+      fetch('http://127.0.0.1:7695/ingest/eb46a2ef-aaec-4b22-8633-de99bc70412e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6038b7' },
+        body: JSON.stringify({
+          sessionId: '6038b7',
+          location: 'ChatLayoutContent.tsx:displayStep',
+          message: 'display-step-state',
+          data: {
+            displayStep,
+            manualBlogStep,
+            step6ToStep7LeadSaved,
+            detectedStep,
+            latestBlogStep,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+  }, [displayStep, manualBlogStep, step6ToStep7LeadSaved, detectedStep, latestBlogStep]);
+  // #endregion
   /** 最後の assistant（20文字以上）が 構成案（基本構成）の場合は true。step6→7 保存をスキップし通常送信にする */
   const lastAssistantIsBasicStructure = useMemo(() => {
     const msgs = [...(chatSession?.state?.messages ?? []), ...(optimisticMessages ?? [])];
@@ -170,15 +195,16 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   }, [chatSession.state.currentSessionId]);
 
   useEffect(() => {
-    if (!manualBlogStep) {
-      return;
-    }
+    if (!manualBlogStep) return;
+    // step6ToStep7LeadSaved で step7 表示中にユーザーが Back で step6 を選んだ場合、
+    // manualBlogStep === detectedStep になるが、クリアすると再び step7 表示に戻ってしまうためスキップ
+    if (step6ToStep7LeadSaved && detectedStep === 'step6') return;
     if (manualBlogStep === detectedStep) {
       setManualBlogStep(null);
     }
-  }, [manualBlogStep, detectedStep]);
+  }, [manualBlogStep, detectedStep, step6ToStep7LeadSaved]);
 
-  // Step6→Step7 で書き出し案保存済みのとき、step7 表示に遷移
+  // Step6→Step7 で書き出し案保存済みのとき、step7 表示に遷移（displayStep は上記の同期的な三項で既に step7 になる。manualBlogStep も揃える）
   useEffect(() => {
     if (step6ToStep7LeadSaved && detectedStep === 'step6') {
       setManualBlogStep('step7');
@@ -386,6 +412,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           isChatLoading={isChatLoading ?? false}
           isBuildingCombined={isBuildingCombined ?? false}
           {...(onSaveStep7UserLead && { onSaveStep7UserLead })}
+          onStep6ToStep7Success={() => setManualBlogStep('step7')}
           lastAssistantIsBasicStructure={lastAssistantIsBasicStructure}
           services={services}
           selectedServiceId={selectedServiceId}

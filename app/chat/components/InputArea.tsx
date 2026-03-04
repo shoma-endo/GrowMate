@@ -124,6 +124,8 @@ interface InputAreaProps {
   /** Step7 完成形: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
   /** Step7: 書き出し案を保存して見出し生成スタート */
   onSaveStep7UserLead?: (userLead: string) => Promise<{ success: boolean; error?: string }>;
+  /** Step6→Step7 保存成功時に step7 表示へ遷移（manualBlogStep を step7 に更新） */
+  onStep6ToStep7Success?: () => void;
   /** true のとき step6→7 保存をスキップ（構成案の場合は書き出し案取得の通常送信） */
   lastAssistantIsBasicStructure?: boolean;
 }
@@ -192,6 +194,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   isChatLoading = false,
   isBuildingCombined = false,
   onSaveStep7UserLead,
+  onStep6ToStep7Success,
   lastAssistantIsBasicStructure = false,
 }) => {
   const { isOwnerViewMode } = useLiffContext();
@@ -345,11 +348,48 @@ const InputArea: React.FC<InputAreaProps> = ({
       selectedModel === 'blog_creation' &&
       onSaveStep7UserLead &&
       !lastAssistantIsBasicStructure;
+    // #region agent log
+    if (displayStep === 'step6' && trimmedInput) {
+      fetch('http://127.0.0.1:7695/ingest/eb46a2ef-aaec-4b22-8633-de99bc70412e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6038b7' },
+        body: JSON.stringify({
+          sessionId: '6038b7',
+          location: 'InputArea.tsx:handleSubmit',
+          message: 'step6-submit',
+          data: {
+            displayStep,
+            nextStepForSend,
+            selectedModel,
+            hasOnSaveStep7UserLead: !!onSaveStep7UserLead,
+            lastAssistantIsBasicStructure,
+            isStep6ToStep7Transition,
+            targetBlogStep,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
     if (isStep6ToStep7Transition) {
       setIsSavingStep7Lead(true);
       try {
         const res = await onSaveStep7UserLead(originalMessage);
+        // #region agent log
+        fetch('http://127.0.0.1:7695/ingest/eb46a2ef-aaec-4b22-8633-de99bc70412e', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '6038b7' },
+          body: JSON.stringify({
+            sessionId: '6038b7',
+            location: 'InputArea.tsx:saveResult',
+            message: 'step6-to-7-result',
+            data: { success: res.success, error: res.error },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
         if (res.success) {
+          onStep6ToStep7Success?.();
           setInput('');
           toast.success('書き出し案を保存しました。見出し生成ボタンで1つ目の見出しを生成してください。');
           return;
