@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   BookOpen,
   FilePenLine,
@@ -327,21 +328,29 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
           </Button>
         )}
         {showHeadingSaveButton && (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => void onSaveHeadingSection?.()}
-            disabled={isDisabled || isStep7HeadingBusy}
-            title="この見出しを保存して次に進みます"
-            className="flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400"
-          >
-            {isSavingHeading ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Save size={14} />
-            )}
-            <span>見出し保存</span>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void onSaveHeadingSection?.()}
+                  disabled={isDisabled || isStep7HeadingBusy}
+                  className="flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400"
+                >
+                  {isSavingHeading ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Save size={14} />
+                  )}
+                  <span>見出し保存</span>
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>この見出しを保存して次に進みます</p>
+            </TooltipContent>
+          </Tooltip>
         )}
         <Button
           onClick={() => onSaveClick?.()}
