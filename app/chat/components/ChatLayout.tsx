@@ -758,16 +758,16 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   ]);
 
   const canvasStepOptions = useMemo(() => {
+    // バージョンが1件以上あるステップを表示（nextStepForPlaceholder では除外しない）
     const base = BLOG_STEP_IDS.filter(
-      step => (blogCanvasVersionsByStep[step] ?? []).length > 0 && step !== nextStepForPlaceholder
+      step => (blogCanvasVersionsByStep[step] ?? []).length > 0
     );
     // Step7 完成形は session_combined_contents に保存されるため、combinedContentVersions があれば追加
-    // nextStepForPlaceholder は問わない（本文作成中もヘッダーから Step7 を選択可能にする）
     if (!base.includes(HEADING_FLOW_STEP_ID) && combinedContentVersions.length > 0) {
       return [...base, HEADING_FLOW_STEP_ID];
     }
     return base;
-  }, [blogCanvasVersionsByStep, nextStepForPlaceholder, combinedContentVersions.length]);
+  }, [blogCanvasVersionsByStep, combinedContentVersions.length]);
 
   // Step7 完成形タイル: 各バージョンをタイル化。createdAt で時系列マージ用
   const combinedTiles = useMemo(
