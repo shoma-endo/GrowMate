@@ -107,6 +107,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const openCombinedCanvasRef = useRef<(versionId?: string) => void>(() => {});
   /** 完成形表示を明示的に要求した場合、effect による viewingHeadingIndex 上書きを防止 */
   const requestedCombinedViewRef = useRef(false);
+  /** タイルクリック直後の activeVersionId 遅延を補う。Canvas 表示確実化のため保持 */
+  const pendingCombinedVersionIdRef = useRef<string | null>(null);
 
   /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元） */
   const step6ToStep7Lead = useMemo(() => {
@@ -537,8 +539,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return (canvasStreamingContent || activeCanvasVersion?.content) ?? '';
       }
       if (headingCanvasViewMode.isCombinedView) {
+        const effectiveVersionId =
+          activeVersionId ?? pendingCombinedVersionIdRef.current;
+        if (effectiveVersionId === activeVersionId) {
+          pendingCombinedVersionIdRef.current = null;
+        }
         const combined =
-          combinedContentVersions.find(v => v.id === activeVersionId)?.content ??
+          combinedContentVersions.find(v => v.id === effectiveVersionId)?.content ??
           latestCombinedContent ??
           '';
         if (combined.trim()) return combined;
@@ -1079,6 +1086,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const handleOpenCombinedCanvas = useCallback(
     (versionId?: string) => {
       requestedCombinedViewRef.current = true;
+      pendingCombinedVersionIdRef.current = versionId ?? null;
       setViewingHeadingIndex(null);
       pendingViewingIndexRef.current = null;
       setIsViewingPastHeadingContent(false);
