@@ -109,6 +109,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const requestedCombinedViewRef = useRef(false);
   /** タイルクリック直後の activeVersionId 遅延を補う。Canvas 表示確実化のため保持 */
   const pendingCombinedVersionIdRef = useRef<string | null>(null);
+  /** 完成形タイルクリック時に state 更新遅延を補うため、クリック時点で即時解決したコンテンツを保持 */
+  const pendingCombinedContentRef = useRef<string | null>(null);
 
   /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元） */
   const step6ToStep7Lead = useMemo(() => {
@@ -549,6 +551,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           latestCombinedContent ??
           '';
         if (combined.trim()) return combined;
+        // 恒久対応: タイルクリック直後の state 更新遅延による空表示を防止（pendingCombinedContentRef を優先消費）
+        const pendingContent = pendingCombinedContentRef.current;
+        if (pendingContent != null && pendingContent.trim()) {
+          pendingCombinedContentRef.current = null;
+          return pendingContent;
+        }
         // 本文作成未実施時: 書き出し案＋見出しセクションから結合フォールバックを表示（スキップで開いたときの空表示を防止）
         if (combinedContentVersions.length === 0 && headingSections.length > 0) {
           const sectionContents = headingSections
@@ -1087,6 +1095,16 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     (versionId?: string) => {
       requestedCombinedViewRef.current = true;
       pendingCombinedVersionIdRef.current = versionId ?? null;
+      // 恒久対応: クリック時点で即時コンテンツを解決し、state 更新遅延による Canvas 空表示を防止
+      const resolvedContent =
+        versionId != null
+          ? combinedContentVersions.find(v => v.id === versionId)?.content ?? null
+          : latestCombinedContent;
+      if (resolvedContent != null && resolvedContent.trim()) {
+        pendingCombinedContentRef.current = resolvedContent;
+      } else {
+        pendingCombinedContentRef.current = null;
+      }
       setViewingHeadingIndex(null);
       pendingViewingIndexRef.current = null;
       setIsViewingPastHeadingContent(false);
@@ -1111,6 +1129,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     },
     [
       annotationOpen,
+      combinedContentVersions,
+      latestCombinedContent,
       setViewingHeadingIndex,
       setIsViewingPastHeadingContent,
       setCanvasStreamingContent,
