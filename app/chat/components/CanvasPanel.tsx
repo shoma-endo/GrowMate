@@ -245,6 +245,9 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const selectionAnchorRef = useRef<{ top: number; left: number } | null>(null);
+  const selectionShowDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const SELECTION_MENU_DELAY_MS = 250;
 
   // ✅ 見出しIDを生成する関数
   const generateHeadingId = useCallback((text: string): string => {
@@ -592,43 +595,42 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   useEffect(() => {
     if (!editor || !onSelectionEdit) return;
 
+    const clearSelectionMenu = () => {
+      if (selectionShowDelayRef.current) {
+        clearTimeout(selectionShowDelayRef.current);
+        selectionShowDelayRef.current = null;
+      }
+      setSelectionState(null);
+      selectionSnapshotRef.current = null;
+      setSelectionMode(null);
+      setSelectionMenuPosition(null);
+      setInstruction('');
+      selectionAnchorRef.current = null;
+    };
+
     const handleSelectionUpdate = () => {
       const { from, to } = editor.state.selection;
       const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
 
       const container = scrollContainerRef.current;
       if (from === to || !domSelection || domSelection.rangeCount === 0 || !container) {
-        setSelectionState(null);
-        selectionSnapshotRef.current = null;
-        setSelectionMode(null);
-        setSelectionMenuPosition(null);
-        setInstruction('');
-        selectionAnchorRef.current = null;
+        clearSelectionMenu();
         return;
       }
 
       const range = domSelection.getRangeAt(0);
       // フォーカスだけ（キャレットのみ）の場合は非表示。実際にテキストが選択されたときのみボタンを出す
       if (range.collapsed || range.toString().trim().length === 0) {
-        setSelectionState(null);
-        selectionSnapshotRef.current = null;
-        setSelectionMode(null);
-        setSelectionMenuPosition(null);
-        setInstruction('');
-        selectionAnchorRef.current = null;
+        clearSelectionMenu();
         return;
       }
 
       const text = editor.state.doc.textBetween(from, to, '\n', '\n').trim();
       if (!text) {
-        setSelectionState(null);
-        selectionSnapshotRef.current = null;
-        setSelectionMode(null);
-        setSelectionMenuPosition(null);
-        setInstruction('');
-        selectionAnchorRef.current = null;
+        clearSelectionMenu();
         return;
       }
+
       const rect = range.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
       const anchor = {
@@ -637,17 +639,28 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
       };
 
       const nextState: CanvasSelectionState = { from, to, text };
-      setSelectionState(nextState);
-      selectionSnapshotRef.current = nextState;
-      selectionAnchorRef.current = anchor;
-      setSelectionMode('choice');
-      setInstruction('');
-      setLastAiError(null);
-      updateSelectionMenuPosition('choice', anchor);
+
+      if (selectionShowDelayRef.current) {
+        clearTimeout(selectionShowDelayRef.current);
+      }
+      selectionShowDelayRef.current = setTimeout(() => {
+        selectionShowDelayRef.current = null;
+        setSelectionState(nextState);
+        selectionSnapshotRef.current = nextState;
+        selectionAnchorRef.current = anchor;
+        setSelectionMode('choice');
+        setInstruction('');
+        setLastAiError(null);
+        updateSelectionMenuPosition('choice', anchor);
+      }, SELECTION_MENU_DELAY_MS);
     };
 
     editor.on('selectionUpdate', handleSelectionUpdate);
     return () => {
+      if (selectionShowDelayRef.current) {
+        clearTimeout(selectionShowDelayRef.current);
+        selectionShowDelayRef.current = null;
+      }
       editor.off('selectionUpdate', handleSelectionUpdate);
     };
   }, [editor, onSelectionEdit, updateSelectionMenuPosition]);
@@ -717,6 +730,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   ]);
 
   useEffect(() => {
+    if (selectionShowDelayRef.current) {
+      clearTimeout(selectionShowDelayRef.current);
+      selectionShowDelayRef.current = null;
+    }
     setSelectionMode(null);
     setSelectionState(null);
     selectionSnapshotRef.current = null;
@@ -733,6 +750,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   }, [instruction, lastAiError]);
 
   const handleCancelSelectionPanel = useCallback(() => {
+    if (selectionShowDelayRef.current) {
+      clearTimeout(selectionShowDelayRef.current);
+      selectionShowDelayRef.current = null;
+    }
     setSelectionMode(null);
     setSelectionState(null);
     selectionSnapshotRef.current = null;
@@ -760,6 +781,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
     setIsApplyingSelectionEdit(true);
     setLastAiError(null);
+    if (selectionShowDelayRef.current) {
+      clearTimeout(selectionShowDelayRef.current);
+      selectionShowDelayRef.current = null;
+    }
     setSelectionMode(null);
     setSelectionMenuPosition(null);
 
@@ -784,6 +809,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
       await onSelectionEdit(payload);
 
+      if (selectionShowDelayRef.current) {
+        clearTimeout(selectionShowDelayRef.current);
+        selectionShowDelayRef.current = null;
+      }
       setLastAiError(null);
       setSelectionState(null);
       selectionSnapshotRef.current = null;
@@ -819,6 +848,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
       setLastAiError(null);
 
       // ✅ 送信ボタンを押した直後に入力欄を非表示にする
+      if (selectionShowDelayRef.current) {
+        clearTimeout(selectionShowDelayRef.current);
+        selectionShowDelayRef.current = null;
+      }
       setSelectionMode(null);
       setSelectionMenuPosition(null);
 
@@ -846,6 +879,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
         // ✅ ClaudeのArtifacts風: 通常のブログ作成と同じように、新しいメッセージがチャットに表示される
         // ユーザーはBlogPreviewTileをクリックしてCanvasを開く
+        if (selectionShowDelayRef.current) {
+          clearTimeout(selectionShowDelayRef.current);
+          selectionShowDelayRef.current = null;
+        }
         setLastAiError(null);
         setSelectionState(null);
         selectionSnapshotRef.current = null;
