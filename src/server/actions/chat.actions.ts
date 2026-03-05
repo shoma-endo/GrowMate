@@ -249,7 +249,7 @@ export async function getLatestBlogStep7MessageBySession(
 
   const supabase = new SupabaseService();
   const targetUserId = auth.ownerUserId || auth.userId;
-  const result = await supabase.getLatestChatMessageBySessionAndModelPrefix(
+  const result = await supabase.getLatestChatMessageBySessionAndModel(
     sessionId,
     targetUserId,
     'blog_creation_step7'

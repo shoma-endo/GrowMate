@@ -71,11 +71,11 @@ export const getContentStepFromAssistantModel = (
   if (num === 7) {
     // step7_h0 等は見出し本文 → step7
     if (/^blog_creation_step7_h\d+/.test(model ?? '')) return modelStep;
-    // blog_creation_step7（プレーンのみ）: 構成案 or 書き出し案
+    // blog_creation_step7（プレーンのみ）: 構成案 or 記事本文
     if (content !== undefined) {
       const head = content.slice(0, 150);
       if (BASIC_STRUCTURE_PATTERN.test(head)) return 'step5'; // 構成案
-      return 'step6'; // 書き出し案
+      return modelStep; // 記事本文 → step7
     }
     return modelStep; // content なし時は従来どおり
   }
