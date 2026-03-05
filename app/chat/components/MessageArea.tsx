@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -98,6 +98,27 @@ const MessageArea: React.FC<MessageAreaProps> = ({
   combinedTiles,
   onOpenCombinedCanvas,
 }) => {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      isAtBottomRef.current = distanceFromBottom < 150;
+    };
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
   const formatTime = (date?: Date) => {
     if (!date) return '';
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -513,7 +534,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
   );
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 bg-slate-100">
+    <div className="flex-1 overflow-y-auto p-3 bg-slate-100" ref={scrollContainerRef}>
       {isLoading && messages.length === 0 ? (
         <ActivityIndicator variant="full" label="メッセージを取得中です" />
       ) : !hasContent ? (
@@ -535,7 +556,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
             )
           )}
 
-          <div aria-hidden="true" />
+          <div ref={messagesEndRef} />
 
           {isLoading && <ActivityIndicator variant="inline" label="メッセージを取得中です..." />}
         </>

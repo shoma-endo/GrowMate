@@ -595,20 +595,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           combinedContentVersions[combinedContentVersions.length - 1]?.content?.trim() ||
           '';
         const result = combinedFallback || combined;
-        // #region agent log
-        {
-          const effId = activeVersionId ?? pendingCombinedVersionIdRef.current;
-          const ids = combinedContentVersions.map(v => v.id);
-          fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'ed6f27',location:'ChatLayout.tsx:canvasContent',message:'step7 isCombinedView',data:{branch:'isCombinedView',empty:!result.trim(),activeVersionId,effectiveVersionId:effId,combinedVersionIds:ids,findHit:!!foundVersion,idsMatch:effId!=null&&ids.some((id: string) => String(id) === String(effId)),viewingHeadingIndex:effectiveViewingHeadingIndex,activeHeadingIndex,totalHeadings,combinedLen:combinedContentVersions.length,latestLen:latestCombinedContent?.length,resultLen:result.length},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-        }
-        // #endregion
         return result;
       }
-      // #region agent log
-      if (!headingCanvasViewMode.isCombinedView) {
-        fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'ed6f27',location:'ChatLayout.tsx:canvasContent',message:'step7 NOT isCombinedView',data:{branch:'headingUnit',viewingHeadingIndex:effectiveViewingHeadingIndex,activeHeadingIndex,totalHeadings,combinedLen:combinedContentVersions.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-      }
-      // #endregion
       // 見出し遷移直後は前見出し本文を表示しない（誤保存防止）。表示中がアクティブでなければ stale を無視
       if (
         isStep6ContentStale &&
@@ -701,20 +689,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         if (fallback) return fallback;
       }
       const finalFallback = activeCanvasVersion?.content ?? '';
-      // #region agent log
-      if (!finalFallback.trim()) {
-        fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'ed6f27',location:'ChatLayout.tsx:canvasContent',message:'step7 empty (fallback)',data:{branch:'fallback',activeVersionId,combinedLen:combinedContentVersions.length,viewingHeadingIndex:effectiveViewingHeadingIndex,activeHeadingIndex,totalHeadings,isCombinedView:headingCanvasViewMode.isCombinedView},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-      }
-      // #endregion
       return finalFallback;
     }
     // 未確定の場合は最新のバージョン（生成中の内容含む）を表示
     const finalContent = activeCanvasVersion?.content ?? '';
-    // #region agent log
-    if (isHeadingFlowCanvasStep&&!finalContent.trim()&&(combinedContentVersions.length>0||activeCanvasVersion)) {
-      fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'ed6f27',location:'ChatLayout.tsx:canvasContent',message:'step7 empty (activeCanvasVersion)',data:{branch:'activeCanvasVersion',activeVersionId,combinedLen:combinedContentVersions.length,activeHasContent:!!activeCanvasVersion?.content?.trim(),isCombinedView:headingCanvasViewMode.isCombinedView},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
-    }
-    // #endregion
     return finalContent;
   }, [
     isHeadingFlowCanvasStep,
@@ -730,8 +708,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     isStep6ContentStale,
     viewingHeadingIndex,
     activeHeadingIndex,
-    effectiveViewingHeadingIndex,
-    totalHeadings,
     allMessagesForVersions,
     getLatestStep7HeadingContent,
     minTsForContentCheck,
