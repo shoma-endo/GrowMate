@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { BLOG_STEP_IDS, BLOG_STEP_LABELS, BlogStepId } from '@/lib/constants';
+import { BLOG_STEP_IDS, BlogStepId, getStepHintForSend } from '@/lib/constants';
 import SessionSidebar from './SessionSidebar';
 import MessageArea from './MessageArea';
 import InputArea from './InputArea';
@@ -135,46 +135,27 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
         placeholderKey: 'blog_creation_step1',
       };
     }
-    const shouldAdvance =
-      flowStatus === 'waitingAction' || (flowStatus === 'idle' && hasDetectedBlogStep);
-    // 手動スキップ時は nextStepForPlaceholder を使わない（useEffect のタイミングで古い値が入るため）
-    const nextFromIndex = BLOG_STEP_IDS[Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1)] as BlogStepId;
-    // nextStepForPlaceholder が displayStep より前（例: step6 表示中に step5）の場合は無視し、逆順表示を防ぐ。
-    // nextPlaceholderIdx >= currentIdx なら使用（同値は step2 等で「送信する step」が一致する場合に必要）
-    const nextPlaceholderIdx = nextStepForPlaceholder
-      ? BLOG_STEP_IDS.indexOf(nextStepForPlaceholder)
-      : -1;
-    const usePlaceholder =
-      nextStepForPlaceholder && nextPlaceholderIdx >= currentIdx;
-    const resolved: BlogStepId = shouldAdvance
-      ? (manualBlogStep !== null ? nextFromIndex : (usePlaceholder ? nextStepForPlaceholder : nextFromIndex))
-      : (BLOG_STEP_IDS[currentIdx] ?? 'step1') as BlogStepId;
-    // ヒント: この送信で進む先（resolved）のラベル
-    const nextLabel = BLOG_STEP_LABELS[resolved]?.replace(/^\d+\.\s*/, '');
-    // プレースホルダー: step5→6はAI取得のため別キー、step6は保存のため displayStep 維持
+    // displayStep = 表示中コンテンツのステップ。nextStepForSend = この送信で得る出力のステップ。
+    // step1 表示中（顕在/潜在）→ step2 で送信してペルソナ/デモグラ取得。step6/7 は同ステップで送信。
+    const nextFromIdx =
+      displayStep === 'step6' || displayStep === 'step7'
+        ? currentIdx
+        : Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1);
+    const nextStepForSend = (BLOG_STEP_IDS[nextFromIdx] ?? BLOG_STEP_IDS[currentIdx]) as BlogStepId;
+    // ヒント・プレースホルダー: この送信で得る出力＝nextStepForSend のラベル/プレースホルダー
+    const hint = getStepHintForSend(nextStepForSend);
     const placeholderKey =
       displayStep === 'step7'
         ? 'blog_creation_step7'
         : displayStep === 'step6'
           ? 'blog_creation_step6'
-          : displayStep === 'step5' && resolved === 'step6'
+          : displayStep === 'step5'
             ? 'blog_creation_step6_get'
-            : `blog_creation_${resolved}`;
+            : `blog_creation_${nextStepForSend}`;
     const stepForPlaceholder =
-      displayStep === 'step7' ? 'step7' : displayStep === 'step6' ? 'step6' : resolved;
-    const hint =
-      nextLabel && displayStep !== 'step7'
-        ? `次の${nextLabel}に進むにはメッセージを送信してください`
-        : null;
-    return { nextStepForSend: resolved, hintText: hint, stepForPlaceholder, placeholderKey };
-  }, [
-    manualBlogStep,
-    hasDetectedBlogStep,
-    displayStep,
-    initialStep,
-    flowStatus,
-    nextStepForPlaceholder,
-  ]);
+      displayStep === 'step7' ? 'step7' : displayStep === 'step6' ? 'step6' : nextStepForSend;
+    return { nextStepForSend, hintText: hint, stepForPlaceholder, placeholderKey };
+  }, [manualBlogStep, hasDetectedBlogStep, displayStep, initialStep]);
   useEffect(() => {
     setManualBlogStep(null);
   }, [chatSession.state.currentSessionId]);

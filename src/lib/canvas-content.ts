@@ -45,7 +45,9 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
     ) {
       modelStep = 'step6';
     }
-    return modelStep;
+    // 表示用: model stepN は response 保存形式のため、コンテンツが属する step に変換
+    // (step1 出力は blog_creation_step2 で保存 → 表示は step1)
+    return getContentStepFromAssistantModel(message.model, message.content ?? undefined) ?? modelStep;
   }
   return null;
 };

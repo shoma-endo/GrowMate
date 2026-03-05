@@ -1,6 +1,6 @@
 'use client';
 import React, { forwardRef, useImperativeHandle, useEffect, useState } from 'react';
-import { BlogStepId, BLOG_STEP_LABELS, BLOG_STEP_IDS } from '@/lib/constants';
+import { BlogStepId, BLOG_STEP_IDS, BLOG_STEP_LABELS, getStepHintForSend } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -145,13 +145,9 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const isStep1 = displayStep === 'step1';
     const isHeadingFlowBusy = (isStep6 || isStep7) && (isSavingHeading || isHeadingInitInFlight || isBuildingCombined);
 
-    // ラベル・ヒント（親から渡された場合はそれを優先）
+    // ラベル・ヒント（親から渡された場合はそれを優先。フォールバックは BLOG_STEP_DEFINITIONS から一元化）
     const currentLabel = BLOG_STEP_LABELS[displayStep] ?? '';
-    const nextStepLabelFallback = nextStepFallback
-      ? (BLOG_STEP_LABELS[nextStepFallback] ?? '').replace(/^\d+\.\s*/, '')
-      : '';
-    const hintText =
-      hintTextProp ?? (nextStepLabelFallback ? `次の${nextStepLabelFallback}に進むにはメッセージを送信してください` : null);
+    const hintText = hintTextProp ?? getStepHintForSend(displayStep);
 
     // ボタン表示制御
     const showLoadButton = isStep7 && typeof onLoadBlogArticle === 'function';

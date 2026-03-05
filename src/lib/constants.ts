@@ -105,56 +105,67 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
 };
 
 // =============================================================================
-// Blog Creation Steps (centralized definitions)
+// Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)
 // =============================================================================
+// 各ステップの id / label / placeholder を1箇所で定義し、
+// BLOG_STEP_IDS / BLOG_STEP_LABELS / BLOG_PLACEHOLDERS はここから導出する。
+
+export type BlogStepId = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7';
+
+/** 1ステップ分の定義。プレースホルダーは「このステップの出力を得るための入力」の案内。 */
+interface BlogStepDef {
+  id: BlogStepId;
+  label: string;
+  /** 入力→出力の案内。表示中ステップが N-1 のとき、次に取得する stepN のプレースホルダーとして表示。 */
+  placeholder: string;
+}
+
+const BLOG_STEP_DEFINITIONS: readonly BlogStepDef[] = [
+  { id: 'step1', label: '顕在ニーズ・潜在ニーズ確認', placeholder: 'キーワードを入力してください（複数ある場合は改行）。顕在/潜在ニーズを出力します。' },
+  { id: 'step2', label: 'ペルソナ・デモグラチェック', placeholder: '顕在/潜在ニーズを入力してください、想定ペルソナ/デモグラを出力します。' },
+  { id: 'step3', label: 'ユーザーのゴール', placeholder: '想定ペルソナ/デモグラを入力してください、ユーザーのゴールを出力します。' },
+  { id: 'step4', label: 'PREPチェック', placeholder: 'ユーザーのゴールを入力してください、PREP（主張・理由・具体例・結論）を出力します。' },
+  { id: 'step5', label: '構成案確認', placeholder: 'PREP（主張・理由・具体例・結論）を入力してください、構成案を出力します。' },
+  { id: 'step6', label: '書き出し案', placeholder: '書き出し案を入力して送信すると、見出し生成に進みます。' },
+  { id: 'step7', label: '本文作成', placeholder: '書き出し案を入力して送信すると、見出し1から始まります。' },
+];
+
+export const BLOG_STEP_IDS: BlogStepId[] = BLOG_STEP_DEFINITIONS.map(d => d.id);
+
+export const BLOG_STEP_LABELS: Record<BlogStepId, string> = Object.fromEntries(
+  BLOG_STEP_DEFINITIONS.map((d, i) => [d.id, `${i + 1}. ${d.label}`])
+) as Record<BlogStepId, string>;
+
+/** blog_creation_stepN のプレースホルダー（通常フロー）。step6_get / step7_heading は別途マージ。 */
+const BLOG_PLACEHOLDERS_BASE: Record<string, string> = Object.fromEntries(
+  BLOG_STEP_DEFINITIONS.map(d => [`blog_creation_${d.id}`, d.placeholder])
+);
+
+export const BLOG_PLACEHOLDERS: Record<string, string> = {
+  ...BLOG_PLACEHOLDERS_BASE,
+  blog_creation_step6_get: '構成案を入力してください、書き出し案を出力します。',
+  blog_creation_step7_heading: '見出し生成・保存ボタンで進めてください',
+};
 
 /** 見出し単位生成フローが紐づくステップID */
 export const HEADING_FLOW_STEP_ID: BlogStepId = 'step7';
 
-export type BlogStepId = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7';
-
-export const BLOG_STEP_IDS: BlogStepId[] = [
-  'step1',
-  'step2',
-  'step3',
-  'step4',
-  'step5',
-  'step6',
-  'step7',
-];
-
-export const BLOG_STEP_LABELS: Record<BlogStepId, string> = {
-  step1: '1. 顕在ニーズ・潜在ニーズ確認',
-  step2: '2. ペルソナ・デモグラチェック',
-  step3: '3. ユーザーのゴール',
-  step4: '4. PREPチェック',
-  step5: '5. 構成案確認',
-  step6: '6. 書き出し案',
-  step7: '7. 本文作成',
-};
+/**
+ * StepActionBar 用のヒント文言。
+ * 「次の{label}に進むにはメッセージを送信してください」を生成。
+ * step = この送信で得る出力のステップ（nextStepForSend を渡す）。
+ * step7 は null。
+ */
+export function getStepHintForSend(step: BlogStepId): string | null {
+  if (step === 'step7') return null;
+  const def = BLOG_STEP_DEFINITIONS.find(d => d.id === step);
+  if (!def) return null;
+  return `次の${def.label}に進むにはメッセージを送信してください`;
+}
 
 // Step7判定（canonicalUrlsの適用/表示で利用）
 export const isStep7 = (stepOrModel: string) =>
   stepOrModel === HEADING_FLOW_STEP_ID || stepOrModel === `blog_creation_${HEADING_FLOW_STEP_ID}`;
-
-export const BLOG_PLACEHOLDERS: Record<string, string> = {
-  blog_creation_step1:
-    'キーワードを入力してください（複数ある場合は改行）。顕在/潜在ニーズを出力します。',
-  blog_creation_step2:
-    '顕在/潜在ニーズを入力してください、想定ペルソナ/デモグラを出力します。',
-  blog_creation_step3:
-    '想定ペルソナ/デモグラを入力してください、ユーザーのゴールを出力します。',
-  blog_creation_step4:
-    'ユーザーのゴールを入力してください、PREP（主張・理由・具体例・結論）を出力します。',
-  blog_creation_step5:
-    'PREP（主張・理由・具体例・結論）を入力してください、構成案を出力します。',
-  blog_creation_step6: '書き出し案を入力して送信すると、見出し生成に進みます。',
-  /** Step5→6: 構成案を入力して書き出し案を取得（AI呼び出し） */
-  blog_creation_step6_get: '構成案を入力してください、書き出し案を出力します。',
-  blog_creation_step7: '書き出し案を入力して送信すると、見出し1から始まります。',
-  /** Step7 見出し生成フェーズ（入力無効時）: 既存トースト「見出し生成ボタンで1つ目の見出しを生成してください」と同系統 */
-  blog_creation_step7_heading: '見出し生成・保存ボタンで進めてください',
-};
 
 /** Step7 本文生成: 楽観的表示・API送信・DB保存で使う短いトリガー（長文はシステムプロンプトのみに渡す） */
 export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してください。';
