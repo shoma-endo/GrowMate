@@ -58,7 +58,7 @@ If an error occurs during execution or the plan fails:
 
 必ず日本語で回答してください。作業完了前にローカルで可能な検証（`npm run lint` 等）を実行し、必要に応じて `npx ccusage@latest` で Anthropic API のコストを確認してください。
 
-**主要スタック**: Next.js 15.5.12 (App Router) / React 19.2.3 / TypeScript 5.9.3 / Tailwind CSS v4 / Supabase / Stripe / Anthropic Claude Sonnet 4.5
+**主要スタック**: Next.js 15.5.9 (App Router) / React 19.2.3 / TypeScript 5.9.3 / Tailwind CSS v4 / Supabase / Stripe / Anthropic Claude Sonnet 4.5
 
 ---
 
@@ -242,7 +242,7 @@ if (!canInviteEmployee(user.role)) {
 - **Canvas 選択編集**: `POST /api/chat/canvas/stream` が Tool Use を使って全文置換を生成、保存はクライアント側で実施。
 - **Annotation**: `AnnotationPanel` から `content_annotations` を upsert。ブログ生成時に `PromptService.buildContentVariables` 経由で利用。
 - **WordPress**: `WordPressService` が REST API を複数候補で試行し、ステータスや投稿一覧を返す。OAuth トークンは cookie 管理。
-- **GSC/GA4**: `gscService` / `ga4Service` 等で Google 連携を管理。記事評価、改善提案を自動化。`/api/gsc/*`, `/api/ga4/*` と `/api/cron/gsc-evaluate` で定期処理を実行。GSC インポートは 30 日単位で自動分割し、クエリ指標（`gsc_query_metrics`）は 10,000 行を上限として取得。
+- **GSC**: `gscService` + `gscEvaluationService` で Google Search Console 連携、記事評価、改善提案を自動化。`/api/gsc/*` と `/api/cron/gsc-evaluate` で定期評価を実行。GSC インポートは 30 日単位で自動分割し、クエリ指標（`gsc_query_metrics`）は 1,000 行 × 10 ページ = 最大 10,000 行を上限として取得。
 - **Stripe**: `SubscriptionService` + `stripeService` で購買／解約／ポータル遷移を行う。`authMiddleware` が `requiresSubscription` を返却。
 - **Admin**: `/admin/prompts` がテンプレート編集とバージョン管理、`/admin/users` がロール切り替えとキャッシュクリアを実装。
 - **Business Info**: `briefs` テーブルに 5W2H を含む JSON を保存し、プロンプトの変数へ注入。
