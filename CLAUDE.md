@@ -58,7 +58,7 @@ If an error occurs during execution or the plan fails:
 
 必ず日本語で回答してください。作業完了前にローカルで可能な検証（`npm run lint` 等）を実行し、必要に応じて `npx ccusage@latest` で Anthropic API のコストを確認してください。
 
-**主要スタック**: Next.js 15.5.9 (App Router) / React 19.2.3 / TypeScript 5.9.3 / Tailwind CSS v4 / Supabase / Stripe / Anthropic Claude Sonnet 4.5
+**主要スタック**: Next.js 15.5.12 (App Router) / React 19.2.3 / TypeScript 5.9.3 / Tailwind CSS v4 / Supabase / Stripe / Anthropic Claude Sonnet 4.5
 
 ---
 
@@ -70,9 +70,9 @@ If an error occurs during execution or the plan fails:
 
 ## ディレクトリ速見表
 
-- `app/` … Next.js App Router ルート。`chat`, `analytics`, `business-info`, `setup`, `admin` などが機能単位で配置。
-- `app/api/` … Route Handlers。`chat/anthropic`, `chat/canvas`, `wordpress`, `admin`, `line`, `refresh`, `user` を実装。
-- `src/server/` … サーバーサイドの中核。`services/`（Stripe・WordPress・LLM・Supabase）、`middleware/`（authMiddleware）、`actions/`（Server Actions）、`schemas/` を収容。
+- `app/` … Next.js App Router ルート。`chat`, `analytics`, `business-info`, `setup`, `admin`, `gsc-dashboard`, `gsc-import`, `ga4-dashboard`, `google-ads-dashboard` などが機能単位で配置。
+- `app/api/` … Route Handlers。`chat/anthropic`, `chat/canvas`, `wordpress`, `admin`, `line`, `refresh`, `user`, `employee`, `gsc`, `ga4`, `google-ads`, `cron` を実装。
+- `src/server/` … サーバーサイドの中核。`services/`（Stripe・WordPress・LLM・Supabase・GSC・GA4・Google Ads）、`middleware/`（auth.middleware）、`actions/`（Server Actions）、`schemas/` を収容。
 - `src/domain/` … フロントエンド用サービス層（ChatService, SubscriptionService）。
 - `src/components/` … shadcn ベースの UI と共通コンポーネント（CanvasPanel, AnnotationFormFields 等）。
 - `src/lib/` … `constants`, `prompts`, `client-manager` などのユーティリティと設定。
@@ -82,7 +82,7 @@ If an error occurs during execution or the plan fails:
 
 1. 目的と仕様を整理し、必要なら段階的な作業計画を提示。
 2. ソースを調査する際は `rg` を優先し、`shell` コマンドでは `workdir` を忘れない。
-3. 変更は `apply_patch` で部分編集する。自動生成ファイルには使わない。
+3. 変更は最小編集で行う。自動生成ファイルには直接編集を避ける。
 4. フロント実装は Tailwind クラスを主とし、UI ルールに従う（shadcn コンポーネントを優先）。
 5. 変更後は `npm run lint` や関連コマンドで検証。実行できない場合は理由を明記。
 6. 出力は要点を簡潔にまとめ、日本語で報告。差分のパスと重要箇所を引用する。
@@ -100,7 +100,7 @@ Supabase の DB ポリシー、パフォーマンス、および `SECURITY DEFIN
 オーナー/スタッフ共有アクセスは `get_accessible_user_ids` を前提にし、以下の権限モデルを採用します：
 
 - **オーナー**: 自身のデータに加え、配下スタッフのデータを**読み取り専用**で参照可能。
-- **スタッフ**: 自身のデータに加え、オーナーのデータを参照可能（操作は自身のデータのみ）。
+- **スタッフ**: 自身のデータに加え、オーナーのデータを参照・編集可能（アノテーション、チャットメッセージ等のコンテンツデータ。オーナーのアカウント情報・招待管理は編集不可）。
   ※ `get_accessible_user_ids(user_id)` は、オーナー実行時は「自分 + 全スタッフ」、スタッフ実行時は「自分 + オーナー」の ID リストを返却し、これを RLS のフィルター条件 (`user_id = ANY(...)`) として利用します。
 
 ## ユーザーロール構造
@@ -229,9 +229,9 @@ if (!canInviteEmployee(user.role)) {
 ## テストと検証
 
 - 自動テストは未整備。動作確認は `npm run dev` での手動検証と API 叩きで行う。
-- auth や Stripe 周りの改修では `/app/page.tsx` と購入導線の UI フローまで確認する。
-- WordPress 連携変更時は `/app/analytics` と `AnnotationPanel` の表示・保存動作を手動で確認。
-- GSC 連携変更時は `/app/gsc-dashboard` と `/app/gsc-import` の表示・動作を手動で確認。
+- auth や Stripe 周りの改修では `app/page.tsx` と購入導線の UI フローまで確認する。
+- WordPress 連携変更時は `/analytics` と `AnnotationPanel` の表示・保存動作を手動で確認。
+- GSC 連携変更時は `/gsc-dashboard` と `/gsc-import` の表示・動作を手動で確認。
 - マイグレーション追加時は `supabase db push` 実行とロールバック方針を README / PR で共有する。
 - スタッフ招待ユーザーの参照/削除と、オーナーの書き込み不可を確認する。
 
@@ -243,15 +243,17 @@ if (!canInviteEmployee(user.role)) {
 - **Annotation**: `AnnotationPanel` から `content_annotations` を upsert。ブログ生成時に `PromptService.buildContentVariables` 経由で利用。
 - **WordPress**: `WordPressService` が REST API を複数候補で試行し、ステータスや投稿一覧を返す。OAuth トークンは cookie 管理。
 - **GSC**: `gscService` + `gscEvaluationService` で Google Search Console 連携、記事評価、改善提案を自動化。`/api/gsc/*` と `/api/cron/gsc-evaluate` で定期評価を実行。GSC インポートは 30 日単位で自動分割し、クエリ指標（`gsc_query_metrics`）は 1,000 行 × 10 ページ = 最大 10,000 行を上限として取得。
+- **GA4**: `ga4Service` + `ga4ImportService` で Google Analytics 4 連携、キーイベント設定、日次同期を提供。`/api/ga4/*` でプロパティ・設定・同期を実行。GSC OAuth と同一クライアントを利用し、`analytics.readonly` スコープで連携。
 - **Stripe**: `SubscriptionService` + `stripeService` で購買／解約／ポータル遷移を行う。`authMiddleware` が `requiresSubscription` を返却。
 - **Admin**: `/admin/prompts` がテンプレート編集とバージョン管理、`/admin/users` がロール切り替えとキャッシュクリアを実装。
 - **Business Info**: `briefs` テーブルに 5W2H を含む JSON を保存し、プロンプトの変数へ注入。
 
 ## 外部サービスと環境変数
 
-- `.env.local` に 22 個の環境変数を設定（必須12、オプション10。詳細は README 参照）。Stripe を無効化したい場合もダミー値を入れる。
-- WordPress.com OAuth を使う場合は `WORDPRESS_COM_CLIENT_ID`, `WORDPRESS_COM_CLIENT_SECRET`, `WORDPRESS_COM_REDIRECT_URI`, `COOKIE_SECRET` を設定する。
-- GSC 連携を使う場合は `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_SEARCH_CONSOLE_REDIRECT_URI` を設定する。
+- `.env.local` に 24 項目の環境変数を設定（必須12、オプション12。詳細は README 参照）。Stripe を無効化したい場合もダミー値を入れる。`CRON_SECRET` や `GOOGLE_ADS_*` は Route Handler で直接参照。
+- WordPress.com OAuth を使う場合は `WORDPRESS_COM_CLIENT_ID`, `WORDPRESS_COM_CLIENT_SECRET`, `WORDPRESS_COM_REDIRECT_URI`, `COOKIE_SECRET` を設定する。WordPress.com 連携は管理者のみ利用可能。
+- GSC / GA4 連携を使う場合は `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_SEARCH_CONSOLE_REDIRECT_URI` を設定する。
+- Google Ads 連携を使う場合は `GOOGLE_ADS_REDIRECT_URI`, `GOOGLE_ADS_DEVELOPER_TOKEN` を設定する（管理者のみ利用可能）。
 - `CRON_SECRET` を設定して `/api/cron/gsc-evaluate` を外部スケジューラから実行する。
 - LIFF と Stripe は sandbox／本番でキーを切り替える。
 
