@@ -106,6 +106,42 @@ export class HeadingFlowService extends SupabaseService {
   }
 
   /**
+   * 全セクションを order_index 順に連結したテキストを取得する（DB 保存なし）。
+   * blog_creation_step7 のプロンプト内に渡す用。12.1 の優先順で書き出しを取得。
+   */
+  async getCombinedContentForPrompt(
+    sessionId: string,
+    userProvidedLead?: string | null
+  ): Promise<SupabaseResult<string>> {
+    const sectionsResult = await this.getHeadingSections(sessionId);
+    if (!sectionsResult.success) return sectionsResult;
+
+    const sections = sectionsResult.data;
+    const confirmedSections = sections.filter(s => s.is_confirmed);
+    if (confirmedSections.length === 0) {
+      return this.success('');
+    }
+
+    const sectionContents = confirmedSections
+      .map(s => {
+        const hashes = '#'.repeat(s.heading_level);
+        return `${hashes} ${s.heading_text}\n\n${s.content}`;
+      })
+      .join('\n\n');
+
+    const userLead =
+      userProvidedLead !== undefined && typeof userProvidedLead === 'string'
+        ? userProvidedLead.trim()
+        : '';
+    let lead: string | null = userLead || null;
+    if (!lead) lead = await this.getStep7UserLead(sessionId);
+    if (!lead) lead = await this.getStep6Lead(sessionId);
+    const combinedContent = lead ? `${lead}\n\n${sectionContents}` : sectionContents;
+
+    return this.success(combinedContent);
+  }
+
+  /**
    * 全セクションを order_index 順に連結し、session_combined_contents に保存する。
    * @param userProvidedLead ユーザー入力の書き出し（指定時は Step6 を無視してこれを使う）
    */

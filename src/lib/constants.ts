@@ -156,6 +156,9 @@ export const BLOG_PLACEHOLDERS: Record<string, string> = {
   blog_creation_step7_heading: '見出し生成・保存ボタンで進めてください',
 };
 
+/** Step7 本文生成: 楽観的表示・API送信・DB保存で使う短いトリガー（長文はシステムプロンプトのみに渡す） */
+export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してください。';
+
 // prompts.ts 用のテンプレ名解決
 export const toTemplateName = (step: BlogStepId) => `blog_creation_${step}`;
 

@@ -418,13 +418,20 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     .map(m => m.id);
 
   // メッセージと完成形タイルを時系列でマージ（古い→新しい、最新が一番下）
+  // step7 完成形(blog_creation_step7): combinedTiles が存在する場合はメッセージを除外し重複表示を防ぐ
   const segments = useMemo(() => {
     const filteredMessages = messages.filter(m => !isLeadModel(m));
+    const hasCombinedTiles = (combinedTiles?.length ?? 0) > 0;
+    const excludeStep7CompletionMessage = (m: ChatMessage) =>
+      hasCombinedTiles &&
+      m.role === 'assistant' &&
+      m.model === 'blog_creation_step7';
     const items: Array<
       | { type: 'message'; message: ChatMessage; sortKey: number }
       | { type: 'tile'; tile: CombinedTile; sortKey: number }
     > = [];
     for (const m of filteredMessages) {
+      if (excludeStep7CompletionMessage(m)) continue;
       const ts = m.timestamp instanceof Date ? m.timestamp.getTime() : (m.timestamp as number) ?? 0;
       items.push({ type: 'message', message: m, sortKey: ts });
     }
@@ -446,9 +453,15 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     const openHandler =
       blogPreviewMeta && onOpenCanvas ? () => onOpenCanvas(message) : null;
     const step7Index = step7MessageIds.indexOf(message.id);
+    const isStep7Completion =
+      blogPreviewMeta?.step === 'step7' &&
+      step7Index >= 0 &&
+      message.model === 'blog_creation_step7';
     const headingLabel =
       blogPreviewMeta?.step === 'step7' && step7Index >= 0
-        ? getStep7HeadingLabel(message, headingSections ?? [], step7Index)
+        ? isStep7Completion
+          ? '完成形'
+          : getStep7HeadingLabel(message, headingSections ?? [], step7Index)
         : null;
 
     return (
@@ -482,6 +495,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
                   title={blogPreviewMeta.title}
                   excerpt={blogPreviewMeta.excerpt}
                   {...(openHandler ? { onOpen: openHandler } : {})}
+                  {...(isStep7Completion ? { variant: 'completed' as const } : {})}
                 />
               ) : (
                 <div className="whitespace-pre-wrap text-sm">

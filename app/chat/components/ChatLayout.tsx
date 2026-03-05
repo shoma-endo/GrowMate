@@ -16,7 +16,7 @@ import type { CanvasSelectionEditPayload, CanvasSelectionEditResult } from '@/ty
 import type { StepActionBarRef } from './StepActionBar';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 import {
-  buildCombinedContentWithUserLead,
+  getCombinedContentForStep7,
   saveStep7UserLead,
 } from '@/server/actions/heading-flow.actions';
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
@@ -854,7 +854,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     canvasContent,
   ]);
 
-  /** 全見出し保存後: 結合のみ実行（本文生成ボタン用） */
+  /** 全見出し保存後: AI で本文生成（blog_creation_step7）し、session_combined_contents に保存 */
   const handleBuildCombinedOnly = useCallback(async () => {
     if (buildCombinedInFlightRef.current) return;
     buildCombinedInFlightRef.current = true;
@@ -870,26 +870,41 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         toast.error('認証トークンを取得できませんでした。LINEで再ログインしてください。');
         return;
       }
-      const res = await buildCombinedContentWithUserLead({
+      const res = await getCombinedContentForStep7({
         sessionId: chatSession.state.currentSessionId,
-        userProvidedLead: '',
         liffAccessToken: token,
       });
-      if (res.success) {
-        resetCombinedVersionToLatest();
-        setSelectedVersionByStep(prev => ({
-          ...prev,
-          [HEADING_FLOW_STEP_ID]: null,
-        }));
-        await refetchCombinedContentVersions({ force: true });
-        await chatSession.actions.loadSession(chatSession.state.currentSessionId);
-        toast.success('完成形を保存しました');
-        openCombinedCanvasRef.current();
-      } else {
+      if (!res.success || res.content == null) {
         toast.error(
           res.error ?? '完成形の構築に失敗しました。書き出し案の入力を再度お試しください。'
         );
+        return;
       }
+      if (!res.content.trim()) {
+        toast.error('結合する見出し本文がありません。各見出しを保存してから再度お試しください。');
+        return;
+      }
+
+      setSelectedModel('blog_creation');
+      const serviceOpts = selectedServiceId ? { serviceId: selectedServiceId } : undefined;
+      const sendOk = await chatSession.actions.sendMessage(res.content, 'blog_creation_step7', {
+        ...serviceOpts,
+        step7FullBodyGeneration: true,
+      });
+      if (!sendOk) {
+        toast.error('完成形の生成・保存に失敗しました。チャットのエラー表示をご確認ください。');
+        return;
+      }
+
+      resetCombinedVersionToLatest();
+      setSelectedVersionByStep(prev => ({
+        ...prev,
+        [HEADING_FLOW_STEP_ID]: null,
+      }));
+      await refetchCombinedContentVersions({ force: true });
+      await chatSession.actions.loadSession(chatSession.state.currentSessionId);
+      toast.success('完成形をAIで生成し、保存しました');
+      openCombinedCanvasRef.current();
     } catch (error) {
       console.error('Failed to build combined content:', error);
       toast.error(
@@ -903,6 +918,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     chatSession.state.currentSessionId,
     chatSession.actions,
     getAccessToken,
+    selectedServiceId,
     resetCombinedVersionToLatest,
     refetchCombinedContentVersions,
     setSelectedVersionByStep,

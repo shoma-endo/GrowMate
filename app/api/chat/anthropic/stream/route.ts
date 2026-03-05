@@ -2,14 +2,16 @@ import { NextRequest } from 'next/server';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { chatService } from '@/server/services/chatService';
+import { headingFlowService } from '@/server/services/headingFlowService';
 import { env } from '@/env';
-import { MODEL_CONFIGS } from '@/lib/constants';
+import { MODEL_CONFIGS, STEP7_FULL_BODY_TRIGGER } from '@/lib/constants';
 import { ChatError } from '@/domain/errors/ChatError';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
+import { hasOwnerRole } from '@/authUtils';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -21,6 +23,8 @@ interface StreamRequest {
   model: string;
   systemPrompt?: string;
   serviceId?: string;
+  /** 本文生成ボタン用: blog_creation_step7 で結合テキストをプロンプトに渡し、応答を session_combined_contents に保存 */
+  step7FullBodyGeneration?: boolean;
   enableWebSearch?: boolean;
   webSearchConfig?: {
     maxUses?: number;
@@ -53,6 +57,7 @@ export async function POST(req: NextRequest) {
       model,
       systemPrompt: systemPromptOverride,
       serviceId,
+      step7FullBodyGeneration = false,
       enableWebSearch = false,
       webSearchConfig = {},
     }: StreamRequest = await req.json();
@@ -89,6 +94,28 @@ export async function POST(req: NextRequest) {
     const { userId, userDetails } = authResult;
     const userRole = (userDetails?.role ?? 'trial') as UserRole;
 
+    // step7 本文生成: 閲覧専用オーナーは書き込み不可（buildCombinedContentWithUserLead と同様）
+    if (
+      step7FullBodyGeneration &&
+      model === 'blog_creation_step7' &&
+      hasOwnerRole(userDetails?.role ?? null)
+    ) {
+      return new Response(
+        sendSSE('error', {
+          type: 'forbidden',
+          message: '閲覧専用ユーザーは完成形の保存ができません',
+        }),
+        {
+          status: 403,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-store',
+            Connection: 'keep-alive',
+          },
+        }
+      );
+    }
+
     const limitError = await checkTrialDailyLimit(userRole, userId);
     if (limitError) {
       return new Response(sendSSE('error', { type: 'daily_limit', message: limitError }), {
@@ -116,6 +143,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // step7FullBodyGeneration: 結合本文はシステムプロンプトのみに注入。userMessage は重複を避けるため短いトリガーに置換
+    const effectiveUserMessage =
+      step7FullBodyGeneration && model === 'blog_creation_step7'
+        ? STEP7_FULL_BODY_TRIGGER
+        : combinedUserMessage;
+
     // Anthropic用のメッセージ形式に変換（Prompt Caching対応）
     const anthropicMessages = [
       ...normalizedMessages.map((msg, index) => {
@@ -138,7 +171,7 @@ export async function POST(req: NextRequest) {
           content: msg.content,
         };
       }),
-      { role: 'user' as const, content: combinedUserMessage },
+      { role: 'user' as const, content: effectiveUserMessage },
     ];
 
     // ReadableStreamを作成
@@ -194,9 +227,17 @@ export async function POST(req: NextRequest) {
           const resolvedMaxTokens = cfg && cfg.provider === 'anthropic' ? cfg.maxTokens : 6000;
           const resolvedTemperature = cfg && cfg.provider === 'anthropic' ? cfg.temperature : 0.3;
 
+          const step7CombinedContext =
+            step7FullBodyGeneration && model === 'blog_creation_step7' ? combinedUserMessage : undefined;
           const systemPrompt = systemPromptOverride?.trim()
             ? systemPromptOverride
-            : await getSystemPrompt(model, liffAccessToken || undefined, sessionId, serviceId);
+            : await getSystemPrompt(
+                model,
+                liffAccessToken || undefined,
+                sessionId,
+                serviceId,
+                step7CombinedContext
+              );
 
           // Web検索ツールの設定
           const streamParams = {
@@ -273,28 +314,26 @@ export async function POST(req: NextRequest) {
                 controller.enqueue(sendSSE('usage', usage));
               }
             } else if (chunk.type === 'message_stop') {
-              // 完了時にメッセージをデータベースに保存
+              // 完了時: 全ステップ共通の保存フロー。いずれか失敗したら error を返し、成功時のみ final → done を送る。
+              const messageToSave = fullMessage;
+              const saveModel = getResponseModelForBlogCreation(model);
+
+              const sendSaveErrorAndExit = (type: string, message: string) => {
+                controller.enqueue(sendSSE('error', { type, message }));
+                if (pingInterval) clearInterval(pingInterval);
+                cleanup();
+                controller.close();
+              };
+
               try {
                 const postStreamLimitError = await checkTrialDailyLimit(userRole, userId);
                 if (postStreamLimitError) {
-                  controller.enqueue(
-                    sendSSE('error', { type: 'daily_limit', message: postStreamLimitError })
-                  );
-                  if (pingInterval) clearInterval(pingInterval);
-                  cleanup();
-                  controller.close();
+                  sendSaveErrorAndExit('daily_limit', postStreamLimitError);
                   return;
                 }
 
-                // Step6: パターンによる後処理除去はやめた（正当な記事末尾と区別不可のためデータ欠落リスク）。
-                // プロンプトで「【主な修正内容】を出力しない」指示に一本化。
-                const messageToSave = fullMessage;
-                // ブログ作成フロー: リクエストstepN→応答はstepN+1の内容のため、assistantは次のモデルで保存
-                const saveModel = getResponseModelForBlogCreation(model);
-
                 let result;
                 if (sessionId) {
-                  // continueChat は serviceId を受け取らないため、継続時は事前更新で一貫性を保つ
                   if (serviceId) {
                     try {
                       await chatService.updateSessionServiceId(userId, sessionId, serviceId);
@@ -306,7 +345,7 @@ export async function POST(req: NextRequest) {
                   result = await chatService.continueChat(
                     userId,
                     sessionId,
-                    [userMessage, messageToSave], // 再生成を回避
+                    [effectiveUserMessage, messageToSave],
                     '',
                     [],
                     saveModel
@@ -315,10 +354,39 @@ export async function POST(req: NextRequest) {
                   result = await chatService.startChat(
                     userId,
                     'あなたは優秀なAIアシスタントです。',
-                    [userMessage, messageToSave],
+                    [effectiveUserMessage, messageToSave],
                     saveModel,
                     serviceId
                   );
+                }
+
+                // step7 本文生成のみ: session_combined_contents に追加保存。閲覧専用オーナーは拒否
+                const needsStep7CombinedSave =
+                  step7FullBodyGeneration &&
+                  model === 'blog_creation_step7' &&
+                  sessionId &&
+                  messageToSave.trim();
+                if (needsStep7CombinedSave) {
+                  if (hasOwnerRole(userDetails?.role ?? null)) {
+                    sendSaveErrorAndExit(
+                      'forbidden',
+                      '閲覧専用ユーザーは完成形の保存ができません'
+                    );
+                    return;
+                  }
+                  const snapRes = await headingFlowService.saveCombinedContentSnapshot(
+                    sessionId,
+                    messageToSave,
+                    userId
+                  );
+                  if (!snapRes.success) {
+                    console.error('[Stream] saveCombinedContentSnapshot failed:', snapRes.error);
+                    sendSaveErrorAndExit(
+                      'save_failed',
+                      '完成形の保存に失敗しました。チャットには表示されていますが、Canvas のバージョン管理には反映されていません。'
+                    );
+                    return;
+                  }
                 }
 
                 controller.enqueue(
@@ -329,12 +397,11 @@ export async function POST(req: NextRequest) {
                 );
               } catch (saveError) {
                 console.error('Failed to save chat message:', saveError);
-                controller.enqueue(
-                  sendSSE('error', {
-                    type: 'save_failed',
-                    message: 'メッセージの保存に失敗しましたが、応答は正常に生成されました',
-                  })
+                sendSaveErrorAndExit(
+                  'save_failed',
+                  'メッセージの保存に失敗しましたが、応答は正常に生成されました'
                 );
+                return;
               }
 
               controller.enqueue(sendSSE('done', {}));

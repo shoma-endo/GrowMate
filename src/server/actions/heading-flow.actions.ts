@@ -47,6 +47,11 @@ const buildCombinedWithUserLeadSchema = z.object({
   liffAccessToken: z.string().min(1),
 });
 
+const getCombinedContentForStep7Schema = z.object({
+  sessionId: z.string().min(1),
+  liffAccessToken: z.string().min(1),
+});
+
 const saveStep7UserLeadSchema = z.object({
   sessionId: z.string().min(1),
   userLead: z.string().refine(v => v.trim().length > 0, { message: '書き出し案を入力してください' }),
@@ -390,6 +395,52 @@ export async function saveStep7UserLead(data: z.infer<typeof saveStep7UserLeadSc
   }
 
   return { success: true };
+}
+
+/**
+ * 書き出し＋各見出しを結合したテキストを取得する（DB 保存なし）。
+ * blog_creation_step7 の本文生成ボタン用。プロンプト内に渡す。
+ */
+export async function getCombinedContentForStep7(
+  data: z.infer<typeof getCombinedContentForStep7Schema>
+) {
+  const parseResult = getCombinedContentForStep7Schema.safeParse(data);
+  if (!parseResult.success) {
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[getCombinedContentForStep7] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error, content: null as string | null };
+  }
+  const parsed = parseResult.data;
+  const auth = await authMiddleware(parsed.liffAccessToken);
+
+  if (auth.error || !auth.userId) {
+    return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED, content: null };
+  }
+
+  if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
+    return { success: false, error: 'セッションへのアクセス権がありません', content: null };
+  }
+
+  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
+    return { success: false, error: '閲覧モードでは実行できません', content: null };
+  }
+
+  const result = await headingFlowService.getCombinedContentForPrompt(
+    parsed.sessionId,
+    undefined
+  );
+  if (!result.success) {
+    return { success: false, error: result.error.userMessage, content: null };
+  }
+
+  return { success: true, content: result.data ?? '' };
 }
 
 /**
