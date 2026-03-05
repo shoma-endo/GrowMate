@@ -74,7 +74,10 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
 
   const currentStep: BlogStepId = BLOG_STEP_IDS[0] as BlogStepId;
-  const flowStatus = 'idle' as 'idle' | 'running' | 'waitingAction' | 'error';
+  const flowStatus = useMemo((): 'idle' | 'running' | 'waitingAction' | 'error' => {
+    if (isChatLoading || isBuildingCombined) return 'running';
+    return 'idle';
+  }, [isChatLoading, isBuildingCombined]);
   const normalizedInitialStep =
     initialStep && BLOG_STEP_IDS.includes(initialStep) ? initialStep : null;
   // 最新メッセージのステップを優先し、なければ初期ステップにフォールバック

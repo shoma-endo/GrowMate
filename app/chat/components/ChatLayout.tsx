@@ -79,8 +79,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
   const [isCanvasStreaming, setIsCanvasStreaming] = useState(false);
   const latestBlogStep = useMemo(
-    () => findLatestAssistantBlogStep(chatSession.state.messages ?? []),
-    [chatSession.state.messages]
+    () =>
+      findLatestAssistantBlogStep([
+        ...(chatSession.state.messages ?? []),
+        ...optimisticMessages,
+      ]),
+    [chatSession.state.messages, optimisticMessages]
   );
   const currentSessionTitle =
     chatSession.state.sessions.find(session => session.id === chatSession.state.currentSessionId)
