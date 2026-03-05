@@ -801,8 +801,14 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     const isViewingTargetInCanvas =
       canvasPanelOpen && effectiveViewingHeadingIndex === activeHeadingIndex;
     let rawContent: string | undefined;
-    if (isViewingTargetInCanvas && canvasContentRef.current?.trim()) {
-      rawContent = canvasContentRef.current;
+    if (isViewingTargetInCanvas) {
+      // 仕様 8.8: contentRef ?? canvasStreamingContent ?? canvasContent
+      // ?? 使用で空文字列はフォールバックしない（意図的全削除を保持）。空は後段のバリデーションで拒否。
+      const resolved =
+        canvasContentRef.current ??
+        canvasStreamingContent ??
+        canvasContent;
+      rawContent = resolved !== undefined && resolved !== null ? resolved : undefined;
     } else {
       // 対象見出しを表示していない場合、Canvas表示内容は別見出しのものなので使わない
       rawContent = getLatestStep7HeadingContent(
@@ -844,6 +850,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     allMessagesForVersions,
     getLatestStep7HeadingContent,
     handleSaveHeadingSectionFromFlow,
+    canvasStreamingContent,
+    canvasContent,
   ]);
 
   /** 全見出し保存後: 結合のみ実行（本文生成ボタン用） */
