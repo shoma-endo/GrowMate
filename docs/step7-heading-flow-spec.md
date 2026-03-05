@@ -381,29 +381,12 @@ RLS（方針）:
    - `session_combined_contents` には保存しない（見出し保存時の完成形バージョン作成は行わない）
 
 2. Step7 完了後の全文 Canvas 修正時:
-   - `version_no` 採番は同一トランザクション内で `COALESCE(MAX(version_no), 0) + 1` を `FOR UPDATE` 付きで実行。同時更新時の競合は 9.3.1 のリトライ仕様に従う。
+   - `version_no` 採番は同一トランザクション内で `COALESCE(MAX(version_no), 0) + 1` を実行。`save_atomic_combined_content` RPC では `chat_sessions` を `FOR UPDATE` でロックし同一セッションの競合を直列化する。失敗時はユーザーにエラー表示し、再押下で再試行させる。
    - 旧最新レコード（`is_latest=true`）を `false` に更新
    - 全文修正結果を採番済み `version_no` として INSERT（`is_latest=true`、`UNIQUE(session_id, version_no)` 前提）
 
 3. 最終生成実行時:
    - 常に `session_combined_contents` の `is_latest=true` を入力として使用
-
-#### version_no 採番リトライ仕様（9.3.1）
-
-`version_no` 採番時に DB 競合（デッドロック・一意制約違反等）が発生した場合のリトライ仕様。
-
-| 項目 | 仕様 |
-|------|------|
-| 最大リトライ回数 | 3回（初回含め計4回実行）。ユーザー体験を損なわない待機時間の上限として約1.5秒（200+400+800ms）を想定。 |
-| リトライ間隔 | 指数バックオフ: 200ms → 400ms → 800ms。各リトライ前に待機。初期値200ms は一般的な DB トランザクション競合の解消時間を考慮。 |
-| 最大リトライ超過時 | エラーとして扱い、ユーザーに「保存に失敗しました。しばらく経ってから再試行してください。」と表示する。 |
-| リトライ中のUI状態 | 「保存中...」ローディングを継続する。ボタンは無効化したまま。 |
-| 競合の検知 | トランザクションのコミット失敗、または `FOR UPDATE` 時のロック待ちタイムアウトをリトライ対象とする。 |
-
-補足:
-- 無限ループを防ぐため、最大リトライ回数は厳守する。
-- 3回失敗後はローディングを解除し、エラー表示へ切り替える。ユーザーは「保存して次へ」の再押下で再試行できる。
-- リトライ間隔は FOR UPDATE のロック待ちやトランザクション競合の解消に要する時間を考慮した値。DB 負荷が低い環境では実運用でリトライ発生率をモニタリングし、必要に応じて調整する段階的アプローチも有効。
 
 ### 9.4 更新フロー対応
 
@@ -480,7 +463,7 @@ RLS（方針）:
 - **`combineSections`**（`src/server/services/headingFlowService.ts`）: userProvidedLead が空/未指定時、getStep7UserLead → getStep6Lead の順で取得
 - Supabase 実装時は `supabase/migrations/` に SQL を追加し、ロールバック案をコメントで併記する。
 - `heading_key` の short_hash: `src/lib/heading-extractor.ts` の `simpleHash` を SHA-256 先頭8文字（16進）に置き換える。`initializeHeadingSections` の upsert は、UNIQUE 制約違反時にエラーを返すようにする（`ignoreDuplicates` による静黙スキップをやめる）。
-- `version_no` 採番: `save_atomic_combined_content` RPC または呼び出し元で、9.3.1 のリトライ仕様（最大3回、指数バックオフ 200/400/800ms）を実装する。
+- `version_no` 採番: `save_atomic_combined_content` RPC で `chat_sessions` を `FOR UPDATE` によりロックし、同一セッションの競合を直列化する。アプリ側のリトライは行わない。
 - Canvas 保存時の内容取得: 8.8 に従い、`contentRef.current ?? canvasStreamingContent ?? canvasContent` の順で決定する（空文字列は有効な編集結果のため `??` を使用すること）。CanvasPanel は content/streamingContent の変更時に contentRef を更新すること。
 
 ## 13. ChatLayout 簡素化方針
