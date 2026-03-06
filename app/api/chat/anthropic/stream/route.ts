@@ -8,6 +8,7 @@ import {
   MODEL_CONFIGS,
   STEP7_BLOG_MODEL,
   STEP7_FULL_BODY_TRIGGER,
+  STEP7_HEADING_CONFIG_KEY,
   isStep7HeadingModel,
 } from '@/lib/constants';
 
@@ -221,13 +222,13 @@ export async function POST(req: NextRequest) {
 
           resetIdleTimeout();
 
-          // step7 見出しモデル（step7_h0 等）で MODEL_CONFIGS に直接定義がない場合は、
-          // ベースの step7 設定にフォールバック
+          // step7 見出しモデル（step7_h0 等）は見出し単体生成用（maxTokens: 3000）。
+          // step7 本文生成（完成形）は blog_creation_step7（maxTokens: 20000）。
           const configKey =
             Object.prototype.hasOwnProperty.call(MODEL_CONFIGS, model)
               ? model
               : isStep7HeadingModel(model)
-                ? STEP7_BLOG_MODEL
+                ? STEP7_HEADING_CONFIG_KEY
                 : model;
           const cfg = MODEL_CONFIGS[configKey];
           const resolvedModel =
