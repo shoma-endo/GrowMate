@@ -65,7 +65,6 @@ interface InputAreaProps {
   initialBlogStep?: BlogStepId;
   /** ヒント・プレースホルダー・送信先の単一ソース（親で算出） */
   nextStepForSend?: BlogStepId;
-  hintText?: string | null;
   /** プレースホルダー用ステップ（ヒントと整合） */
   stepForPlaceholder?: BlogStepId;
   /** プレースホルダー用キー（step5→6 の AI 取得時は STEP6_GET_PLACEHOLDER_KEY） */
@@ -152,7 +151,6 @@ const InputArea: React.FC<InputAreaProps> = ({
   selectedModelExternal,
   initialBlogStep,
   nextStepForSend,
-  hintText,
   stepForPlaceholder: stepForPlaceholderProp,
   placeholderKey: placeholderKeyProp,
   isEditingTitle = false,
@@ -621,7 +619,6 @@ const InputArea: React.FC<InputAreaProps> = ({
                 stepForNavigation: displayStep,
               })}
               {...(hasDetectedBlogStep !== undefined && { hasDetectedBlogStep })}
-              {...(hintText !== undefined && { hintText })}
               {...(nextStepForSend !== undefined && { nextStepForSend })}
               className="flex-wrap gap-3"
               disabled={isStepActionBarDisabled}

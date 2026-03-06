@@ -11,7 +11,6 @@ import {
   STEP6_GET_PLACEHOLDER_KEY,
   STEP6_ID,
   BlogStepId,
-  getStepHintForSend,
   toBlogModel,
 } from '@/lib/constants';
 import SessionSidebar from './SessionSidebar';
@@ -124,13 +123,12 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
    * ヒント・プレースホルダー・送信先モデルの単一ソース。
    * 論理の分散を避け、StepActionBar と InputArea で一貫した値を共有する。
    */
-  const { nextStepForSend, hintText, stepForPlaceholder, placeholderKey } = useMemo(() => {
+  const { nextStepForSend, stepForPlaceholder, placeholderKey } = useMemo(() => {
     // 手動でスキップ/バックしている場合は displayStep を反映（プレースホルダー更新のため）
     const useDisplayStep = manualBlogStep !== null || hasDetectedBlogStep;
     if (!useDisplayStep) {
       return {
         nextStepForSend: FIRST_BLOG_STEP_ID,
-        hintText: null as string | null,
         stepForPlaceholder: FIRST_BLOG_STEP_ID,
         placeholderKey: toBlogModel(FIRST_BLOG_STEP_ID),
       };
@@ -140,7 +138,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     if (currentIdx === -1) {
       return {
         nextStepForSend: FIRST_BLOG_STEP_ID,
-        hintText: null as string | null,
         stepForPlaceholder: FIRST_BLOG_STEP_ID,
         placeholderKey: toBlogModel(FIRST_BLOG_STEP_ID),
       };
@@ -152,8 +149,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
         ? currentIdx
         : Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1);
     const nextStepForSend = (BLOG_STEP_IDS[nextFromIdx] ?? BLOG_STEP_IDS[currentIdx]) as BlogStepId;
-    // ヒント・プレースホルダー: この送信で得る出力＝nextStepForSend のラベル/プレースホルダー
-    const hint = getStepHintForSend(nextStepForSend);
+    // プレースホルダー: この送信で得る出力＝nextStepForSend のラベル/プレースホルダー
     const placeholderKey =
       displayStep === HEADING_FLOW_STEP_ID
         ? toBlogModel(HEADING_FLOW_STEP_ID)
@@ -168,7 +164,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
         : displayStep === STEP6_ID
           ? STEP6_ID
           : nextStepForSend;
-    return { nextStepForSend, hintText: hint, stepForPlaceholder, placeholderKey };
+    return { nextStepForSend, stepForPlaceholder, placeholderKey };
   }, [manualBlogStep, hasDetectedBlogStep, displayStep, initialStep]);
   useEffect(() => {
     setManualBlogStep(null);
@@ -330,8 +326,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           disabled={chatSession.state.isLoading || ui.annotation.loading || isReadOnly}
           shouldShowStepActionBar={shouldShowStepActionBar}
           stepActionBarRef={stepActionBarRef}
-              displayStep={displayStep}
-              stepForStepActionBar={stepForStepActionBar}
+          displayStep={displayStep}
+          stepForStepActionBar={stepForStepActionBar}
           hasDetectedBlogStep={hasDetectedBlogStep}
           onSaveClick={() => ui.annotation.openWith()}
           annotationLoading={ui.annotation.loading}
@@ -350,7 +346,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           blogFlowStatus={flowStatus}
           selectedModelExternal={selectedModel}
           nextStepForSend={nextStepForSend}
-          hintText={hintText}
           stepForPlaceholder={stepForPlaceholder}
           placeholderKey={placeholderKey}
           onNextStepChange={onNextStepChange}

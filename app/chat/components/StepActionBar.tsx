@@ -1,6 +1,6 @@
 'use client';
 import React, { forwardRef, useImperativeHandle, useEffect, useState } from 'react';
-import { BlogStepId, BLOG_STEP_IDS, BLOG_STEP_LABELS, getStepHintForSend } from '@/lib/constants';
+import { BlogStepId, BLOG_STEP_IDS, BLOG_STEP_ACTION_BAR_FULL_TEXT } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -69,8 +69,6 @@ interface StepActionBarProps {
   isChatLoading?: boolean;
   /** 本文生成（完成形構築）中 */
   isBuildingCombined?: boolean;
-  /** ヒント文言（親で算出済みの場合はこちらを優先） */
-  hintText?: string | null;
   /** 次ステップ（親で算出済みの場合は ref の nextStep に使用） */
   nextStepForSend?: BlogStepId;
 }
@@ -112,7 +110,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       onBuildCombinedOnly,
       isChatLoading = false,
       isBuildingCombined = false,
-      hintText: hintTextProp,
       nextStepForSend,
     },
     ref
@@ -145,9 +142,8 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     const isStep1 = displayStep === 'step1';
     const isHeadingFlowBusy = (isStep6 || isStep7) && (isSavingHeading || isHeadingInitInFlight || isBuildingCombined);
 
-    // ラベル・ヒント（親から渡された場合はそれを優先。フォールバックは BLOG_STEP_DEFINITIONS から一元化）
-    const currentLabel = BLOG_STEP_LABELS[displayStep] ?? '';
-    const hintText = hintTextProp ?? getStepHintForSend(displayStep);
+    // 「現在のステップ」表示（定数で完全固定。step7 は見出しフェーズで動的追記あり）
+    const stepDisplayText = BLOG_STEP_ACTION_BAR_FULL_TEXT[displayStep] ?? '';
 
     // ボタン表示制御
     const showLoadButton = isStep7 && typeof onLoadBlogArticle === 'function';
@@ -208,7 +204,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       <div className={`flex items-center gap-2 ${className ?? ''}`}>
         <div className="text-xs px-3 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700">
           <span>
-            現在のステップ: {currentLabel}
+            {stepDisplayText}
             {isStep7 &&
               totalHeadings !== undefined &&
               totalHeadings > 0 &&
@@ -254,10 +250,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                     </Button>
                   )}
                 </span>
-              )}
-            {hintText &&
-              (!isStep7 || (headingIndex === undefined && activeHeadingIndex === undefined)) && (
-                <span className="ml-1 opacity-80">／{hintText}</span>
               )}
           </span>
         </div>

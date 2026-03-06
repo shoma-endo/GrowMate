@@ -189,17 +189,18 @@ export const STEP6_ID: BlogStepId = BLOG_STEP_IDS[5] as BlogStepId;
 export const FIRST_BLOG_STEP_ID: BlogStepId = BLOG_STEP_IDS[0] as BlogStepId;
 
 /**
- * StepActionBar 用のヒント文言。
- * 「次の{label}に進むにはメッセージを送信してください」を生成。
- * step = この送信で得る出力のステップ（nextStepForSend を渡す）。
- * step7 は null。
+ * StepActionBar「現在のステップ」表示用。ステップごとの完全な固定文言（普遍）。
+ * step7 は見出しフェーズで「見出し X/Y」を動的追記するためベースのみ。
  */
-export function getStepHintForSend(step: BlogStepId): string | null {
-  if (step === HEADING_FLOW_STEP_ID) return null;
-  const def = BLOG_STEP_DEFINITIONS.find(d => d.id === step);
-  if (!def) return null;
-  return `次の${def.label}に進むにはメッセージを送信してください`;
-}
+export const BLOG_STEP_ACTION_BAR_FULL_TEXT: Record<BlogStepId, string> = {
+  step1: '現在のステップ: 1. 顕在ニーズ・潜在ニーズ確認／次のペルソナ・デモグラチェックに進むにはメッセージを送信してください',
+  step2: '現在のステップ: 2. ペルソナ・デモグラチェック／次のユーザーのゴールに進むにはメッセージを送信してください',
+  step3: '現在のステップ: 3. ユーザーのゴール／次のPREPチェックに進むにはメッセージを送信してください',
+  step4: '現在のステップ: 4. PREPチェック／次の構成案確認に進むにはメッセージを送信してください',
+  step5: '現在のステップ: 5. 構成案確認／次の書き出し案に進むにはメッセージを送信してください',
+  step6: '現在のステップ: 6. 書き出し案／書き出し案を入力して送信すると、見出し生成に進みます。',
+  step7: '現在のステップ: 7. 本文作成',
+};
 
 // Step7判定（canonicalUrlsの適用/表示で利用）
 export const isStep7 = (stepOrModel: string) =>

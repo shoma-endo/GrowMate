@@ -87,6 +87,9 @@ const getStep7HeadingLabel = (
 // Step6→7 や完成形フェーズで保存した書き出し案は非表示
 const isLeadModel = (m: ChatMessage) => m.model === STEP7_LEAD_MODEL;
 
+/** コンテンツが十分に生成されたとみなす最小文字数（ステップラベル表示の閾値。findLatestAssistantBlogStep と整合） */
+const MIN_CONTENT_LENGTH_FOR_STEP_LABEL = 20;
+
 type CombinedTile = { id: string; title: string; excerpt: string; createdAt?: string };
 
 const MessageArea: React.FC<MessageAreaProps> = ({
@@ -490,7 +493,11 @@ const MessageArea: React.FC<MessageAreaProps> = ({
             >
               {blogPreviewMeta ? (
                 <BlogPreviewTile
-                  stepLabel={BLOG_STEP_LABELS[blogPreviewMeta.step] ?? 'ブログ'}
+                  stepLabel={
+                    (message.content ?? '').trim().length < MIN_CONTENT_LENGTH_FOR_STEP_LABEL
+                      ? '生成中'
+                      : (BLOG_STEP_LABELS[blogPreviewMeta.step] ?? 'ブログ')
+                  }
                   headingLabel={headingLabel}
                   title={blogPreviewMeta.title}
                   excerpt={blogPreviewMeta.excerpt}
