@@ -138,6 +138,12 @@ export const isStep7HeadingModel = (model?: string) =>
 /** Step6 モデル（blog_creation_step6 または blog_creation_step6_*）にマッチする正規表現 */
 export const STEP6_MODEL_REGEX = /^blog_creation_step6(?:_|$)/;
 
+/** 書き出し案・構成案として有効とみなす最小文字数（ストリーミング中の空メッセージ除外にも使用） */
+export const MIN_LEAD_CONTENT_LENGTH = 20;
+
+/** 構成案（基本構成）パターン判定に用いる先頭文字数。BASIC_STRUCTURE_PATTERN のチェック範囲 */
+export const STRUCTURE_PATTERN_CHECK_LENGTH = 150;
+
 /** 1ステップ分の定義。プレースホルダーは「このステップの出力を得るための入力」の案内。 */
 interface BlogStepDef {
   id: BlogStepId;

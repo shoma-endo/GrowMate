@@ -66,6 +66,46 @@ export const useChatSession = (
 ): ChatSessionHook => {
   const [state, setState] = useState<ChatState>(initialChatState);
 
+  const loadSessions = useCallback(async () => {
+    try {
+      setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
+      const sessions = await chatService.loadSessions();
+      setState(prev => ({ ...prev, sessions, isLoading: false }));
+    } catch (error) {
+      console.error('Load sessions error:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'セッション一覧の読み込みに失敗しました';
+      setState(prev => ({ ...prev, error: errorMessage, isLoading: false, warning: null }));
+    }
+  }, [chatService]);
+
+  const loadSession = useCallback(
+    async (sessionId: string) => {
+      setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
+
+      try {
+        const messages = await chatService.loadSessionMessages(sessionId);
+        setState(prev => ({
+          ...prev,
+          messages,
+          currentSessionId: sessionId,
+          isLoading: false,
+        }));
+      } catch (error) {
+        console.error('Load session error:', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'セッションの読み込みに失敗しました';
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: errorMessage,
+          warning: null,
+        }));
+      }
+    },
+    [chatService]
+  );
+
   const handleStreamingMessage = useCallback(
     async ({
       content,
@@ -335,46 +375,6 @@ export const useChatSession = (
       }
     },
     [state.currentSessionId, state.messages, getAccessToken, handleStreamingMessage]
-  );
-
-  const loadSessions = useCallback(async () => {
-    try {
-      setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
-      const sessions = await chatService.loadSessions();
-      setState(prev => ({ ...prev, sessions, isLoading: false }));
-    } catch (error) {
-      console.error('Load sessions error:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : 'セッション一覧の読み込みに失敗しました';
-      setState(prev => ({ ...prev, error: errorMessage, isLoading: false, warning: null }));
-    }
-  }, [chatService]);
-
-  const loadSession = useCallback(
-    async (sessionId: string) => {
-      setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
-
-      try {
-        const messages = await chatService.loadSessionMessages(sessionId);
-        setState(prev => ({
-          ...prev,
-          messages,
-          currentSessionId: sessionId,
-          isLoading: false,
-        }));
-      } catch (error) {
-        console.error('Load session error:', error);
-        const errorMessage =
-          error instanceof Error ? error.message : 'セッションの読み込みに失敗しました';
-        setState(prev => ({
-          ...prev,
-          isLoading: false,
-          error: errorMessage,
-          warning: null,
-        }));
-      }
-    },
-    [chatService]
   );
 
   const deleteSession = useCallback(

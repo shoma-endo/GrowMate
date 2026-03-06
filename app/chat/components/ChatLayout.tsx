@@ -5,6 +5,7 @@ import { useServiceSelection } from '@/hooks/useServiceSelection';
 import { useLiffContext } from '@/components/LiffProvider';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import {
+  BASIC_STRUCTURE_PATTERN,
   extractStep7HeadingIndexFromModel,
   findLatestAssistantBlogStep,
   getContentStepFromAssistantModel,
@@ -30,8 +31,10 @@ import {
   FIRST_BLOG_STEP_ID,
   STEP7_ID,
   STEP6_ID,
+  MIN_LEAD_CONTENT_LENGTH,
   STEP6_MODEL_REGEX,
   STEP7_LEAD_MODEL,
+  STRUCTURE_PATTERN_CHECK_LENGTH,
   getStep7HeadingModel,
   isStep7HeadingModel,
   toBlogModel,
@@ -128,13 +131,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   /** 完成形タイルクリック時に state 更新遅延を補うため、クリック時点で即時解決したコンテンツを保持 */
   const pendingCombinedContentRef = useRef<string | null>(null);
 
-  /** Step6→Step7 で書き出し案を保存済みか＋その本文（chat_messages から復元）
-   * saved: step7_lead が存在し、かつ最新の書き出し案(step6)より後に保存されている場合のみ true。
-   * バックで step5 に戻り書き出し案を再生成した場合、新しい書き出し案が step7_lead より後になるため
-   * saved=false となり「6. 書き出し案」を正しく表示できる。 */
+  /** Step6→Step7 で書き出し案があるか＋その本文（前ステップと同様にメッセージから導出）
+   * saved: step7_lead（ユーザー送信）が存在するか、または step6 assistant の書き出し案が存在する場合 true。
+   * バックで step5 に戻り書き出し案を再生成した場合、step7_lead より新しい step6 があれば saved=false。 */
   const step6ToStep7Lead = useMemo(() => {
     const msgs = [...(chatSession.state.messages ?? []), ...optimisticMessages];
     let latestLead: { content: string; ts: number } | null = null;
+    let latestStep6Lead: { content: string; ts: number } | null = null;
     let latestStep6Ts = 0;
     for (const m of msgs) {
       const ts = m?.timestamp?.getTime() ?? 0;
@@ -142,14 +145,36 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         const c = (m.content ?? '').trim();
         if (c && (!latestLead || ts >= latestLead.ts)) latestLead = { content: c, ts };
       } else if (m?.role === 'assistant' && m.model && STEP6_MODEL_REGEX.test(m.model)) {
-        const len = (m.content ?? '').trim().length;
-        if (len >= 20 && ts >= latestStep6Ts) latestStep6Ts = ts;
+        const content = (m.content ?? '').trim();
+        if (
+          content.length >= MIN_LEAD_CONTENT_LENGTH &&
+          !BASIC_STRUCTURE_PATTERN.test(content.slice(0, STRUCTURE_PATTERN_CHECK_LENGTH))
+        ) {
+          if (!latestStep6Lead || ts >= latestStep6Lead.ts) {
+            latestStep6Lead = { content, ts };
+          }
+        }
+        if (content.length >= MIN_LEAD_CONTENT_LENGTH && ts >= latestStep6Ts)
+          latestStep6Ts = ts;
       }
     }
-    const saved =
+    // latestStep6Lead は「最新 step6 が書き出し案」の場合のみ有効（step5 戻り後の古い書き出し案で誤遷移しない）
+    const isStep6LeadValid = (
+      lead: { content: string; ts: number } | null
+    ): lead is { content: string; ts: number } =>
+      lead !== null && lead.ts === latestStep6Ts;
+
+    const isLatestLeadValid =
       latestLead !== null &&
       (latestStep6Ts === 0 || latestLead.ts >= latestStep6Ts);
-    return { saved, content: latestLead?.content ?? null };
+
+    if (isLatestLeadValid && latestLead) {
+      return { saved: true, content: latestLead.content };
+    }
+    if (isStep6LeadValid(latestStep6Lead)) {
+      return { saved: true, content: latestStep6Lead.content };
+    }
+    return { saved: false, content: null };
   }, [chatSession.state.messages, optimisticMessages]);
 
   const step6ToStep7LeadSaved = step6ToStep7Lead.saved;

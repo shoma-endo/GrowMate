@@ -10,6 +10,7 @@ import {
   STEP7_FULL_BODY_TRIGGER,
   isStep7HeadingModel,
 } from '@/lib/constants';
+
 import { ChatError } from '@/domain/errors/ChatError';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
@@ -371,11 +372,13 @@ export async function POST(req: NextRequest) {
                   );
                 }
 
+                const effectiveSessionId = result?.sessionId ?? sessionId ?? undefined;
+
                 // step7 本文生成のみ: session_combined_contents に追加保存。閲覧専用オーナーは拒否
                 const needsStep7CombinedSave =
                   step7FullBodyGeneration &&
                   isStep7Model &&
-                  sessionId &&
+                  effectiveSessionId &&
                   messageToSave.trim();
                 if (needsStep7CombinedSave) {
                   if (hasOwnerRole(userDetails?.role ?? null)) {
@@ -386,7 +389,7 @@ export async function POST(req: NextRequest) {
                     return;
                   }
                   const snapRes = await headingFlowService.saveCombinedContentSnapshot(
-                    sessionId,
+                    effectiveSessionId,
                     messageToSave,
                     userId
                   );

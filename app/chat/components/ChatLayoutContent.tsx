@@ -6,13 +6,16 @@ import { cn } from '@/lib/utils';
 import {
   BLOG_STEP_IDS,
   FIRST_BLOG_STEP_ID,
-  STEP7_ID,
+  MIN_LEAD_CONTENT_LENGTH,
   STEP5_ID,
   STEP6_GET_PLACEHOLDER_KEY,
   STEP6_ID,
+  STEP7_ID,
+  STRUCTURE_PATTERN_CHECK_LENGTH,
   BlogStepId,
   toBlogModel,
 } from '@/lib/constants';
+import { BASIC_STRUCTURE_PATTERN } from '@/lib/canvas-content';
 import SessionSidebar from './SessionSidebar';
 import MessageArea from './MessageArea';
 import InputArea from './InputArea';
@@ -95,14 +98,15 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   const displayStep =
     manualBlogStep ??
     (step6ToStep7LeadSaved && detectedStep === STEP6_ID ? STEP7_ID : detectedStep);
-  /** 最後の assistant（20文字以上）が 構成案（基本構成）の場合は true。step6→7 保存をスキップし通常送信にする */
+  /** 最後の assistant（MIN_LEAD_CONTENT_LENGTH 文字以上）が 構成案（基本構成）の場合は true。step6→7 保存をスキップし通常送信にする */
   const lastAssistantIsBasicStructure = useMemo(() => {
     const msgs = [...(chatSession?.state?.messages ?? []), ...(optimisticMessages ?? [])];
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];
-      if (!m || m.role !== 'assistant' || (m.content ?? '').trim().length < 20) continue;
-      const head = (m.content ?? '').slice(0, 150);
-      return /基本構成|【基本構成|構成案（記事全体|記事全体の設計図/.test(head);
+      if (!m || m.role !== 'assistant' || (m.content ?? '').trim().length < MIN_LEAD_CONTENT_LENGTH)
+        continue;
+      const head = (m.content ?? '').slice(0, STRUCTURE_PATTERN_CHECK_LENGTH);
+      return BASIC_STRUCTURE_PATTERN.test(head);
     }
     return false;
   }, [chatSession?.state?.messages, optimisticMessages]);

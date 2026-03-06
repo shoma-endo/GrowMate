@@ -1,5 +1,12 @@
 import type { ChatMessage } from '@/domain/interfaces/IChatService';
-import { BLOG_MODEL_PREFIX, BLOG_STEP_IDS, isStep7HeadingModel, type BlogStepId } from '@/lib/constants';
+import {
+  BLOG_MODEL_PREFIX,
+  BLOG_STEP_IDS,
+  isStep7HeadingModel,
+  MIN_LEAD_CONTENT_LENGTH,
+  STRUCTURE_PATTERN_CHECK_LENGTH,
+  type BlogStepId,
+} from '@/lib/constants';
 
 export interface CanvasStructuredContent {
   markdown?: string;
@@ -32,11 +39,11 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
     if (!message || message.role !== 'assistant') continue;
     const contentLen = (message.content ?? '').trim().length;
     // ストリーミング中は空の assistant をスキップ（step6 リクエスト後に step7 の空メッセージが即追加され、書き出し案到着前に step7 表示になるのを防ぐ）
-    if (contentLen < 20) continue;
+    if (contentLen < MIN_LEAD_CONTENT_LENGTH) continue;
     let modelStep = extractBlogStepFromModel(message.model);
     if (!modelStep) continue;
     // 補正: step7 で誤保存された 構成案（基本構成）は model step6 相当
-    const contentHead = (message.content ?? '').slice(0, 150);
+    const contentHead = (message.content ?? '').slice(0, STRUCTURE_PATTERN_CHECK_LENGTH);
     if (
       modelStep === 'step7' &&
       /基本構成|【基本構成|構成案（記事全体|記事全体の設計図/.test(contentHead)
@@ -50,7 +57,8 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
   return null;
 };
 
-const BASIC_STRUCTURE_PATTERN =
+/** 構成案（基本構成）の先頭パターン。step5 出力と step6 書き出し案を区別する */
+export const BASIC_STRUCTURE_PATTERN =
   /基本構成|【基本構成|構成案（記事全体|記事全体の設計図/;
 
 /**
@@ -73,7 +81,7 @@ export const getContentStepFromAssistantModel = (
     if (isStep7HeadingModel(model)) return modelStep;
     // blog_creation_step7（プレーンのみ）: 構成案 or 記事本文
     if (content !== undefined) {
-      const head = content.slice(0, 150);
+      const head = content.slice(0, STRUCTURE_PATTERN_CHECK_LENGTH);
       if (BASIC_STRUCTURE_PATTERN.test(head)) return 'step5'; // 構成案
       return modelStep; // 記事本文 → step7
     }
@@ -83,7 +91,7 @@ export const getContentStepFromAssistantModel = (
   // step6 のみ例外: 構成案(step5出力)か書き出し案(step6出力)で content 判定
   if (num === 6) {
     if (content !== undefined) {
-      const head = content.slice(0, 150);
+      const head = content.slice(0, STRUCTURE_PATTERN_CHECK_LENGTH);
       if (BASIC_STRUCTURE_PATTERN.test(head)) return 'step5'; // 構成案
     }
     return 'step6'; // 書き出し案（content 未指定時もデフォルト）
