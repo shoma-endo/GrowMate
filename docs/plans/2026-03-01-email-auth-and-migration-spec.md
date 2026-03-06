@@ -514,7 +514,7 @@ export interface User {
 | `subscription.actions.ts` | `lineProfile.userId` で Stripe customer 作成 | `authResult.userId`（UUID）ベースに変更。`user.email` を Stripe customer name に使用 |
 | `authUtils.ts` | `getUserRole()` / `getUserRoleWithRefresh()` が `getUserFromLiffToken()` を呼出 | メール認証セッション対応の分岐を追加 |
 | `prompt.actions.ts` | `auth.lineUserId` で `getUserByLineId()` を呼出 | `auth.userId` で `getUserById()` に変更 |
-| `middleware.ts`（ルート） | `line_access_token` Cookie のみチェック | Supabase Auth セッションとの分岐を追加 |
+| `middleware.ts`（ルート） | `line_access_token` Cookie のみチェック | Supabase Auth セッションとの分岐を追加 + `isPublicPath` バグ修正（`'/'` を完全一致に変更） |
 | `app/api/user/current` | `lineUserId` をクライアントに返却 | `null` を返却可能にする |
 
 ### 5.5 ログイン UI
@@ -636,9 +636,10 @@ Supabase ダッシュボードで以下を設定する。
   src/server/actions/subscription.actions.ts # Stripe 顧客作成フローの LINE 依存除去（userId ベースに変更）
   src/server/actions/prompt.actions.ts     # lineUserId → userId ベースに変更
   middleware.ts                            # Next.js ミドルウェアに Supabase セッション更新を追加
-                                           # ※ 既知の問題: isPublicPath が '/' を含むため全パスが公開扱い。
-                                           #   本 Phase ではこのバグ修正をスコープ外とするが、
-                                           #   Supabase セッションリフレッシュは isPublicPath 判定前に実行する。
+                                           # + isPublicPath バグ修正（必須）:
+                                           #   PUBLIC_PATHS に '/' が含まれ startsWith で全パスが公開扱いになる問題を修正。
+                                           #   '/' は完全一致（pathname === '/'）に変更し、他のパスは startsWith を維持。
+                                           #   認証方式追加と同時にこのバグを残すと保護漏れが固定化されるため、本 Phase の必須スコープとする。
   package.json                             # @supabase/ssr 追加
 
 マイグレーション:
