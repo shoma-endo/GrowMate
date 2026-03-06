@@ -3,6 +3,7 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { chatService } from '@/server/services/chatService';
 import { headingFlowService } from '@/server/services/headingFlowService';
+import { headingFlowService } from '@/server/services/headingFlowService';
 import { env } from '@/env';
 import {
   MODEL_CONFIGS,
