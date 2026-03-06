@@ -846,6 +846,19 @@ BEGIN
   END IF;
 
   -- ============================================
+  -- ロック取得（同時アクセス防止）
+  -- ============================================
+  -- 移行中の同時アクセスを防止するため、対象ユーザー行を排他ロック
+  -- デッドロック防止のため、ID の昇順でロックを取得
+  IF p_source_user_id < p_target_user_id THEN
+    PERFORM 1 FROM users WHERE id = p_source_user_id FOR UPDATE;
+    PERFORM 1 FROM users WHERE id = p_target_user_id FOR UPDATE;
+  ELSE
+    PERFORM 1 FROM users WHERE id = p_target_user_id FOR UPDATE;
+    PERFORM 1 FROM users WHERE id = p_source_user_id FOR UPDATE;
+  END IF;
+
+  -- ============================================
   -- TEXT 型 user_id テーブル（FK 制約なし）
   -- ============================================
 
@@ -884,7 +897,7 @@ BEGIN
   END IF;
   RETURN NEXT;
 
-  -- 4. content_annotations（UNIQUE 制約: user_id, wp_post_id）
+  -- 4. content_annotations（UNIQUE 制約: user_id + wp_post_id、部分UNIQUE: user_id + canonical_url WHERE NOT NULL）
   --    移行先に同一 wp_post_id のデータが存在する場合は移行元を削除
   DELETE FROM content_annotations
     WHERE user_id = p_source_user_id::TEXT
@@ -893,7 +906,27 @@ BEGIN
         FROM content_annotations
         WHERE user_id = p_target_user_id::TEXT
       );
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  migrated_tables := 'content_annotations (wp_post_id duplicates deleted)';
+  migrated_rows := v_row_count;
+  RETURN NEXT;
 
+  --    移行先に同一 canonical_url のデータが存在する場合も移行元を削除
+  DELETE FROM content_annotations
+    WHERE user_id = p_source_user_id::TEXT
+      AND canonical_url IS NOT NULL
+      AND canonical_url IN (
+        SELECT canonical_url
+        FROM content_annotations
+        WHERE user_id = p_target_user_id::TEXT
+          AND canonical_url IS NOT NULL
+      );
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  migrated_tables := 'content_annotations (canonical_url duplicates deleted)';
+  migrated_rows := v_row_count;
+  RETURN NEXT;
+
+  -- 残りの非重複行を移行
   UPDATE content_annotations
     SET user_id = p_target_user_id::TEXT
     WHERE user_id = p_source_user_id::TEXT;
@@ -961,7 +994,20 @@ BEGIN
   migrated_rows := v_row_count;
   RETURN NEXT;
 
-  -- 8. gsc_article_evaluations
+  -- 8. gsc_article_evaluations（UNIQUE 制約: user_id, content_annotation_id）
+  -- Pattern B 対応: 移行先に同一 content_annotation_id の行が存在する場合、移行元の重複行を事前削除
+  DELETE FROM gsc_article_evaluations AS src
+    WHERE src.user_id = p_source_user_id
+    AND EXISTS (
+      SELECT 1 FROM gsc_article_evaluations AS tgt
+      WHERE tgt.user_id = p_target_user_id
+        AND tgt.content_annotation_id = src.content_annotation_id
+    );
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  migrated_tables := 'gsc_article_evaluations (duplicates deleted)';
+  migrated_rows := v_row_count;
+  RETURN NEXT;
+  -- 残りの非重複行を移行
   UPDATE gsc_article_evaluations
     SET user_id = p_target_user_id
     WHERE user_id = p_source_user_id;
@@ -1136,6 +1182,7 @@ CREATE TABLE migration_tokens (
   error_message   TEXT,
   expires_at      TIMESTAMPTZ NOT NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   completed_at    TIMESTAMPTZ
 );
 
