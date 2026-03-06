@@ -6,7 +6,7 @@ import {
 import type { DbHeadingSection, DbSessionHeadingSectionInsert } from '@/types/heading-flow';
 import type { DbChatMessage } from '@/types/chat';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
-import { STEP6_ID, STEP7_LEAD_MODEL, toBlogModel } from '@/lib/constants';
+import { STEP7_LEAD_MODEL } from '@/lib/constants';
 
 export class HeadingFlowService extends SupabaseService {
   /**
@@ -104,87 +104,29 @@ export class HeadingFlowService extends SupabaseService {
   }
 
   /**
-   * 全セクションを order_index 順に連結したテキストを取得する（DB 保存なし）。
-   * blog_creation_step7 のプロンプト内に渡す用。12.1 の優先順で書き出しを取得。
+   * 書き出しと各見出し本文を分離して取得する（DB 保存なし）。
+   * blog_creation_step7 の本文生成用。lead はユーザープロンプト、sections はシステムプロンプトに渡す。
    */
   async getCombinedContentForPrompt(
-    sessionId: string,
-    userProvidedLead?: string | null
-  ): Promise<SupabaseResult<string>> {
+    sessionId: string
+  ): Promise<SupabaseResult<{ lead: string; sections: string }>> {
     const sectionsResult = await this.getHeadingSections(sessionId);
     if (!sectionsResult.success) return sectionsResult;
 
     const sections = sectionsResult.data;
     const confirmedSections = sections.filter(s => s.is_confirmed);
-    if (confirmedSections.length === 0) {
-      return this.success('');
-    }
+    const sectionContents =
+      confirmedSections.length === 0
+        ? ''
+        : confirmedSections
+            .map(s => {
+              const hashes = '#'.repeat(s.heading_level);
+              return `${hashes} ${s.heading_text}\n\n${s.content}`;
+            })
+            .join('\n\n');
 
-    const sectionContents = confirmedSections
-      .map(s => {
-        const hashes = '#'.repeat(s.heading_level);
-        return `${hashes} ${s.heading_text}\n\n${s.content}`;
-      })
-      .join('\n\n');
-
-    const userLead =
-      userProvidedLead !== undefined && typeof userProvidedLead === 'string'
-        ? userProvidedLead.trim()
-        : '';
-    let lead: string | null = userLead || null;
-    if (!lead) lead = await this.getStep7UserLead(sessionId);
-    if (!lead) lead = await this.getStep6Lead(sessionId);
-    const combinedContent = lead ? `${lead}\n\n${sectionContents}` : sectionContents;
-
-    return this.success(combinedContent);
-  }
-
-  /**
-   * 全セクションを order_index 順に連結し、session_combined_contents に保存する。
-   * @param userProvidedLead ユーザー入力の書き出し（指定時は Step6 を無視してこれを使う）
-   */
-  async combineSections(
-    sessionId: string,
-    userId: string,
-    userProvidedLead?: string | null
-  ): Promise<SupabaseResult<void>> {
-    const sectionsResult = await this.getHeadingSections(sessionId);
-    if (!sectionsResult.success) return sectionsResult;
-
-    const sections = sectionsResult.data;
-    // 確定済みのセクションのみを結合（未確定セクションは空コンテンツのため除外）
-    const confirmedSections = sections.filter(s => s.is_confirmed);
-    if (confirmedSections.length === 0) {
-      return this.success(undefined);
-    }
-
-    const sectionContents = confirmedSections
-      .map(s => {
-        const hashes = '#'.repeat(s.heading_level);
-        return `${hashes} ${s.heading_text}\n\n${s.content}`;
-      })
-      .join('\n\n');
-
-    // ユーザー入力 > Step7 保存済み > Step6 chat_messages（content_annotations は使用しない）
-    const userLead =
-      userProvidedLead !== undefined && typeof userProvidedLead === 'string'
-        ? userProvidedLead.trim()
-        : '';
-    let lead: string | null = userLead || null;
-    if (!lead) lead = await this.getStep7UserLead(sessionId);
-    if (!lead) lead = await this.getStep6Lead(sessionId);
-    const combinedContent = lead ? `${lead}\n\n${sectionContents}` : sectionContents;
-
-    // 原子性を確保するため RPC (Database Function) を使用
-    const { error: rpcError } = await this.supabase.rpc('save_atomic_combined_content', {
-      p_session_id: sessionId,
-      p_content: combinedContent,
-      p_authenticated_user_id: userId,
-    });
-
-    if (rpcError) return this.failure('完成形の保存（RPC）に失敗しました', { error: rpcError });
-
-    return this.success(undefined);
+    const lead = (await this.getStep7UserLead(sessionId)) ?? '';
+    return this.success({ lead, sections: sectionContents });
   }
 
   /**
@@ -307,32 +249,6 @@ export class HeadingFlowService extends SupabaseService {
     }
 
     return this.success(undefined);
-  }
-
-  /**
-   * Step6 の書き出し案を取得する（chat_messages のみ。content_annotations は使用しない）。
-   */
-  private async getStep6Lead(sessionId: string): Promise<string | null> {
-    const { data: messageData, error: messageError } = await this.supabase
-      .from('chat_messages')
-      .select('content')
-      .eq('session_id', sessionId)
-      .eq('role', 'assistant')
-      .like('model', `${toBlogModel(STEP6_ID)}%`)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (messageError || !messageData?.content) return null;
-
-    const candidate = messageData.content.trim();
-    if (!candidate) return null;
-
-    const firstLine = candidate.split('\n')[0]?.trim() ?? '';
-    // 互換対応: 旧 step6 見出しフロー本文（###/#### 始まり）はリード文として結合しない
-    if (/^#{3,4}[\s\u3000]+.+$/.test(firstLine)) return null;
-
-    return candidate;
   }
 
   /**

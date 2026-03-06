@@ -28,7 +28,7 @@ import {
   BLOG_MODEL_PREFIX,
   BLOG_STEP_IDS,
   FIRST_BLOG_STEP_ID,
-  HEADING_FLOW_STEP_ID,
+  STEP7_ID,
   STEP6_ID,
   STEP6_MODEL_REGEX,
   STEP7_LEAD_MODEL,
@@ -161,7 +161,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       step6ToStep7LeadSaved &&
       (latestBlogStep === STEP6_ID || latestBlogStep === null)
     ) {
-      return HEADING_FLOW_STEP_ID;
+      return STEP7_ID;
     }
     if (latestBlogStep) return latestBlogStep;
     return null;
@@ -241,7 +241,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     (chatSession.state.messages ?? []).some(
       m =>
         m?.role === 'assistant' &&
-        (m.model === toBlogModel(HEADING_FLOW_STEP_ID) || m.model?.startsWith(`${BLOG_MODEL_PREFIX}step7_`))
+        (m.model === toBlogModel(STEP7_ID) || m.model?.startsWith(`${BLOG_MODEL_PREFIX}step7_`))
     ) || Boolean(latestCombinedContent?.trim());
 
   const {
@@ -287,7 +287,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   // 表示中の見出しインデックス（0..n-1）。null = 全確定時の結合表示 は useHeadingCanvasState が管理
   const totalHeadings = headingSections.length;
-  const isHeadingFlowCanvasStep = resolvedCanvasStep === HEADING_FLOW_STEP_ID;
+  const isHeadingFlowCanvasStep = resolvedCanvasStep === STEP7_ID;
   // Step7 キャンバスの表示状態を計算。
   // タイルクリック直後は pendingViewingIndexRef を優先（effect 適用前の render で正しい進捗を表示）。
   const effectiveViewingHeadingIndex =
@@ -385,7 +385,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const versionsForHeadingStep =
     headingCanvasViewMode.isHeadingUnit
       ? step7FromMessages
-      : (blogCanvasVersionsByStep[HEADING_FLOW_STEP_ID] ?? []);
+      : (blogCanvasVersionsByStep[STEP7_ID] ?? []);
   const latestStep6Version = versionsForHeadingStep[versionsForHeadingStep.length - 1] ?? null;
   // 表示中見出し向けコンテンツがあるか。確定見出しは常にあり、アクティブ（未確定）はバージョン/ストリーミング/チャットメッセージで判定
   const sectionsMinUpdatedMs =
@@ -766,8 +766,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       step => (blogCanvasVersionsByStep[step] ?? []).length > 0
     );
     // Step7 完成形は session_combined_contents に保存されるため、combinedContentVersions があれば追加
-    if (!base.includes(HEADING_FLOW_STEP_ID) && combinedContentVersions.length > 0) {
-      return [...base, HEADING_FLOW_STEP_ID];
+    if (!base.includes(STEP7_ID) && combinedContentVersions.length > 0) {
+      return [...base, STEP7_ID];
     }
     return base;
   }, [blogCanvasVersionsByStep, combinedContentVersions.length]);
@@ -790,7 +790,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   // handleSaveHeadingSection はフック側のシグネチャが (content: string, overrideHeadingKey?: string) のため、ここでラップする。
   // CanvasPanel が contentRef に表示中の内容を随時更新するため、保存時は ref を優先して
   // ストリーミング完了直後のクリックでも最新編集内容が保存される。
-  // 見出し+本文で表示されている場合、保存時は見出し行を除去して本文のみを渡す（combineSections で二重化防止）
+  // 見出し+本文で表示されている場合、保存時は見出し行を除去して本文のみを渡す（結合時に heading_text を自動付与するため二重化防止）
   const viewingSection =
     viewingHeadingIndex !== null &&
     viewingHeadingIndex >= 0 &&
@@ -908,22 +908,23 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         sessionId: chatSession.state.currentSessionId,
         liffAccessToken: token,
       });
-      if (!res.success || res.content == null) {
+      if (!res.success || res.sections == null) {
         toast.error(
           res.error ?? '完成形の構築に失敗しました。書き出し案の入力を再度お試しください。'
         );
         return;
       }
-      if (!res.content.trim()) {
+      if (!res.sections.trim()) {
         toast.error('結合する見出し本文がありません。各見出しを保存してから再度お試しください。');
         return;
       }
 
       setSelectedModel('blog_creation');
       const serviceOpts = selectedServiceId ? { serviceId: selectedServiceId } : undefined;
-      const sendOk = await chatSession.actions.sendMessage(res.content, toBlogModel(HEADING_FLOW_STEP_ID), {
+      const sendOk = await chatSession.actions.sendMessage(res.sections, toBlogModel(STEP7_ID), {
         ...serviceOpts,
         step7FullBodyGeneration: true,
+        step7Lead: res.lead ?? undefined,
       });
       if (!sendOk) {
         toast.error('完成形の生成・保存に失敗しました。チャットのエラー表示をご確認ください。');
@@ -933,7 +934,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       resetCombinedVersionToLatest();
       setSelectedVersionByStep(prev => ({
         ...prev,
-        [HEADING_FLOW_STEP_ID]: null,
+        [STEP7_ID]: null,
       }));
       await refetchCombinedContentVersions({ force: true });
       await chatSession.actions.loadSession(chatSession.state.currentSessionId);
@@ -970,7 +971,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       // Step7 へ遷移かつ未確定見出しあり → 完成形ではなく見出し1を表示
       // 完成形は全見出し確定時のみ存在。未確定があれば完成形は存在せず、取得中かどうかに依存しない。
       if (
-        targetStep === HEADING_FLOW_STEP_ID &&
+        targetStep === STEP7_ID &&
         headingSections.length > 0 &&
         activeHeadingIndex !== undefined
       ) {
@@ -1096,7 +1097,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       const model =
         Number.isInteger(headingIndex) && headingIndex >= 0
           ? getStep7HeadingModel(headingIndex)
-          : toBlogModel(HEADING_FLOW_STEP_ID);
+          : toBlogModel(STEP7_ID);
       void handleSendMessage('この見出しの本文を書いてください', model);
     },
     [handleSendMessage]
@@ -1109,7 +1110,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       const detectedStep = (getContentStepFromAssistantModel(message.model, message.content) ?? fallbackStep) as BlogStepId;
 
       // Step7 見出しタイル: 編集中の見出しに未保存コンテンツがある場合は他見出しへの切り替えを禁止
-      if (detectedStep === HEADING_FLOW_STEP_ID && headingSections.length > 0) {
+      if (detectedStep === STEP7_ID && headingSections.length > 0) {
         const targetIdx = extractStep7HeadingIndexFromModel(message.model);
         const validTargetIdx =
           targetIdx !== null && targetIdx >= 0 && targetIdx < headingSections.length
@@ -1152,7 +1153,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       });
 
       // Step7 タイルクリック時は該当見出しのインデックスを設定
-      if (detectedStep === HEADING_FLOW_STEP_ID && headingSections.length > 0) {
+      if (detectedStep === STEP7_ID && headingSections.length > 0) {
         let targetIdx = extractStep7HeadingIndexFromModel(message.model);
 
         if (targetIdx !== null && (targetIdx < 0 || targetIdx >= headingSections.length)) {
@@ -1236,17 +1237,17 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setViewingHeadingIndex(null);
       pendingViewingIndexRef.current = null;
       setIsViewingPastHeadingContent(false);
-      setCanvasStep(HEADING_FLOW_STEP_ID);
+      setCanvasStep(STEP7_ID);
       setCanvasStreamingContent('');
       setSelectedVersionByStep(prev => ({
         ...prev,
-        [HEADING_FLOW_STEP_ID]: versionId ?? null,
+        [STEP7_ID]: versionId ?? null,
       }));
       // 特定バージョン選択時は追従を無効化し、effect による選択上書きを防止
       if (versionId) {
         setFollowLatestByStep(prev => ({
           ...prev,
-          [HEADING_FLOW_STEP_ID]: false,
+          [STEP7_ID]: false,
         }));
       }
       if (annotationOpen) {
@@ -1343,7 +1344,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
       setIsViewingPastHeadingContent(false);
       setCanvasStreamingContent('');
-      if (step === HEADING_FLOW_STEP_ID && combinedContentVersions.length > 0) {
+      if (step === STEP7_ID && combinedContentVersions.length > 0) {
         requestedCombinedViewRef.current = true;
         setViewingHeadingIndex(null);
         // ステップ選択時も即時コンテンツ解決で空表示を防止（タイルクリックと同様）
@@ -1438,7 +1439,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         });
         const headingContextIndex = step7ViewModeForRequest.headingIndex;
         const canvasModel =
-          targetStep === HEADING_FLOW_STEP_ID && headingContextIndex !== null
+          targetStep === STEP7_ID && headingContextIndex !== null
             ? `blog_creation_${targetStep}_h${headingContextIndex}`
             : `blog_creation_${targetStep}`;
 
@@ -1649,7 +1650,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
         // Step6 完成形の Canvas 編集時は session_combined_contents に新バージョンが保存されているため再取得
         if (
-          targetStep === HEADING_FLOW_STEP_ID &&
+          targetStep === STEP7_ID &&
           headingSections.length > 0 &&
           headingSections.every(s => s.isConfirmed)
         ) {

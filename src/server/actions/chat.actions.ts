@@ -19,7 +19,7 @@ import {
 } from '@/server/schemas/chat.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { cache } from 'react';
-import { HEADING_FLOW_STEP_ID, toBlogModel } from '@/lib/constants';
+import { STEP7_ID, toBlogModel } from '@/lib/constants';
 
 /**
  * ユーザーロールを取得しメモ化する内部関数
@@ -253,7 +253,7 @@ export async function getLatestBlogStep7MessageBySession(
   const result = await supabase.getLatestChatMessageBySessionAndModel(
     sessionId,
     targetUserId,
-    toBlogModel(HEADING_FLOW_STEP_ID)
+    toBlogModel(STEP7_ID)
   );
 
   if (!result.success) {

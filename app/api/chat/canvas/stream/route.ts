@@ -11,7 +11,7 @@ import { htmlToMarkdownForCanvas, sanitizeHtmlForCanvas } from '@/lib/canvas-con
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
-import { HEADING_FLOW_STEP_ID } from '@/lib/constants';
+import { STEP7_ID } from '@/lib/constants';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
 
     const { maxTokens, temperature, actualModel } = modelConfig;
 
-    const isHeadingUnitRequest = targetStep === HEADING_FLOW_STEP_ID && isHeadingUnit;
+    const isHeadingUnitRequest = targetStep === STEP7_ID && isHeadingUnit;
 
     // Step7 見出し単位モード時の前置制約（全文生成を防ぎ、1見出し分のみ編集させる）
     const headingUnitPrefix =
@@ -738,7 +738,7 @@ export async function POST(req: NextRequest) {
 
               // 1つ目: Canvas編集結果（blog_creation_${targetStep}）
               const resolvedStep7HeadingIndex =
-                targetStep === HEADING_FLOW_STEP_ID &&
+                targetStep === STEP7_ID &&
                 isHeadingUnit &&
                 typeof step7HeadingIndex === 'number' &&
                 Number.isInteger(step7HeadingIndex) &&
@@ -746,7 +746,7 @@ export async function POST(req: NextRequest) {
                   ? step7HeadingIndex
                   : null;
               const canvasModel =
-                targetStep === HEADING_FLOW_STEP_ID && resolvedStep7HeadingIndex !== null
+                targetStep === STEP7_ID && resolvedStep7HeadingIndex !== null
                   ? `blog_creation_${targetStep}_h${resolvedStep7HeadingIndex}`
                   : `blog_creation_${targetStep}`;
               const postStreamLimitError = await checkTrialDailyLimit(userRole, userId);
@@ -762,7 +762,7 @@ export async function POST(req: NextRequest) {
 
               // Step7(見出しフロー)完了後の全文Canvas修正は session_combined_contents にも新バージョンとして保存する
               // 副次処理のため、失敗してもチャット履歴保存は継続する
-              if (targetStep === HEADING_FLOW_STEP_ID && !isHeadingUnit) {
+              if (targetStep === STEP7_ID && !isHeadingUnit) {
                 try {
                   const sessionCheck = await supabaseService.getChatSessionById(sessionId, userId!);
                   if (!sessionCheck.success || !sessionCheck.data) {

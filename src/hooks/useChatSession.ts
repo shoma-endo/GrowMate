@@ -56,6 +56,8 @@ interface StreamingParams {
   serviceId?: string;
   /** 本文生成ボタン用: blog_creation_step7 で結合テキストをプロンプトに渡し、応答を session_combined_contents に保存 */
   step7FullBodyGeneration?: boolean;
+  /** step7FullBodyGeneration 時: 書き出しをユーザープロンプトに渡す */
+  step7Lead?: string;
 }
 
 export const useChatSession = (
@@ -74,6 +76,7 @@ export const useChatSession = (
       systemPrompt,
       serviceId,
       step7FullBodyGeneration,
+      step7Lead,
     }: StreamingParams) => {
       // step7FullBodyGeneration: 楽観的表示は短いトリガーを使い、loadSession 後の表示と一致させる
       const displayContent =
@@ -110,6 +113,7 @@ export const useChatSession = (
             ...(systemPrompt ? { systemPrompt } : {}),
             ...(serviceId ? { serviceId } : {}),
             ...(step7FullBodyGeneration ? { step7FullBodyGeneration: true } : {}),
+            ...(step7FullBodyGeneration && step7Lead != null ? { step7Lead } : {}),
           }),
         });
 
@@ -280,6 +284,7 @@ export const useChatSession = (
         systemPrompt?: string;
         serviceId?: string;
         step7FullBodyGeneration?: boolean;
+        step7Lead?: string;
       }
     ) => {
       setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
@@ -304,6 +309,9 @@ export const useChatSession = (
 
         if (options?.step7FullBodyGeneration) {
           streamingParams.step7FullBodyGeneration = true;
+          if (options.step7Lead != null) {
+            streamingParams.step7Lead = options.step7Lead;
+          }
         }
 
         const success = await handleStreamingMessage(streamingParams);

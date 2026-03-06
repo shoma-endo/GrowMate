@@ -30,6 +30,8 @@ interface StreamRequest {
   serviceId?: string;
   /** 本文生成ボタン用: blog_creation_step7 で結合テキストをプロンプトに渡し、応答を session_combined_contents に保存 */
   step7FullBodyGeneration?: boolean;
+  /** step7FullBodyGeneration 時: 書き出し（ユーザープロンプトに注入）。userMessage は各見出し本文（システムプロンプト用） */
+  step7Lead?: string;
   enableWebSearch?: boolean;
   webSearchConfig?: {
     maxUses?: number;
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
       systemPrompt: systemPromptOverride,
       serviceId,
       step7FullBodyGeneration = false,
+      step7Lead,
       enableWebSearch = false,
       webSearchConfig = {},
     }: StreamRequest = await req.json();
@@ -101,7 +104,7 @@ export async function POST(req: NextRequest) {
     const { userId, userDetails } = authResult;
     const userRole = (userDetails?.role ?? 'trial') as UserRole;
 
-    // step7 本文生成: 閲覧専用オーナーは書き込み不可（buildCombinedContentWithUserLead と同様）
+    // step7 本文生成: 閲覧専用オーナーは書き込み不可
     if (
       step7FullBodyGeneration &&
       isStep7Model &&
@@ -150,9 +153,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // step7FullBodyGeneration: 結合本文はシステムプロンプトのみに注入。userMessage は重複を避けるため短いトリガーに置換
+    // step7FullBodyGeneration: 書き出し(step7Lead)はユーザープロンプト、各見出し本文(userMessage)はシステムプロンプトに注入
     const effectiveUserMessage =
-      step7FullBodyGeneration && isStep7Model ? STEP7_FULL_BODY_TRIGGER : combinedUserMessage;
+      step7FullBodyGeneration && isStep7Model
+        ? (step7Lead?.trim() ? `${step7Lead.trim()}\n\n` : '') + STEP7_FULL_BODY_TRIGGER
+        : combinedUserMessage;
 
     // Anthropic用のメッセージ形式に変換（Prompt Caching対応）
     const anthropicMessages = [
@@ -234,7 +239,7 @@ export async function POST(req: NextRequest) {
           const resolvedTemperature = cfg && cfg.provider === 'anthropic' ? cfg.temperature : 0.3;
 
           const step7CombinedContext =
-            step7FullBodyGeneration && isStep7Model ? combinedUserMessage : undefined;
+            step7FullBodyGeneration && isStep7Model ? userMessage : undefined;
           const systemPrompt = systemPromptOverride?.trim()
             ? systemPromptOverride
             : await getSystemPrompt(

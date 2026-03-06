@@ -6,7 +6,7 @@ import { extractHeadingsFromMarkdown } from '@/lib/heading-extractor';
 import * as headingActions from '@/server/actions/heading-flow.actions';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 import type { SessionHeadingSection } from '@/types/heading-flow';
-import { type BlogStepId, HEADING_FLOW_STEP_ID } from '@/lib/constants';
+import { type BlogStepId, STEP7_ID } from '@/lib/constants';
 
 interface UseHeadingFlowParams {
   sessionId: string | null;
@@ -94,7 +94,7 @@ export function useHeadingFlow({
   /** 指定されたステップが見出し単位生成フロー（step7）の対象かどうか */
   const isHeadingFlowActive = useCallback(
     (step: BlogStepId | null): boolean => {
-      return step === HEADING_FLOW_STEP_ID;
+      return step === STEP7_ID;
     },
     []
   );
@@ -211,7 +211,7 @@ export function useHeadingFlow({
   }, [sessionId, fetchHeadingSections, fetchLatestCombinedContent, fetchCombinedContentVersions]);
 
   useEffect(() => {
-    if (resolvedCanvasStep !== HEADING_FLOW_STEP_ID) {
+    if (resolvedCanvasStep !== STEP7_ID) {
       setHeadingSaveError(null);
     }
   }, [resolvedCanvasStep]);
@@ -222,7 +222,7 @@ export function useHeadingFlow({
     // 2. 既存データがある場合や、ローディング中などはスキップ
     if (
       !sessionId ||
-      resolvedCanvasStep !== HEADING_FLOW_STEP_ID ||
+      resolvedCanvasStep !== STEP7_ID ||
       isHeadingInitInFlight ||
       hasAttemptedHeadingInit ||
       isSessionLoading ||

@@ -40,13 +40,6 @@ const resetHeadingSectionsSchema = z.object({
   /** true のとき Step7 書き出し案を削除しない（完成形フェーズで書き出し入力→見出し1再開用） */
   preserveStep7Lead: z.boolean().optional(),
 });
-const buildCombinedWithUserLeadSchema = z.object({
-  sessionId: z.string().min(1),
-  /** 未指定または空の場合は Step7 保存済み／Step6 の書き出し案を使用 */
-  userProvidedLead: z.string().optional(),
-  liffAccessToken: z.string().min(1),
-});
-
 const getCombinedContentForStep7Schema = z.object({
   sessionId: z.string().min(1),
   liffAccessToken: z.string().min(1),
@@ -415,81 +408,28 @@ export async function getCombinedContentForStep7(
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getCombinedContentForStep7] Validation failed:', parseResult.error.issues);
     }
-    return { success: false, error, content: null as string | null };
+    return { success: false, error, lead: null, sections: null };
   }
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
   if (auth.error || !auth.userId) {
-    return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED, content: null };
+    return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED, lead: null, sections: null };
   }
 
   if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
-    return { success: false, error: 'セッションへのアクセス権がありません', content: null };
+    return { success: false, error: 'セッションへのアクセス権がありません', lead: null, sections: null };
   }
 
   if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
-    return { success: false, error: '閲覧モードでは実行できません', content: null };
+    return { success: false, error: '閲覧モードでは実行できません', lead: null, sections: null };
   }
 
-  const result = await headingFlowService.getCombinedContentForPrompt(
-    parsed.sessionId,
-    undefined
-  );
+  const result = await headingFlowService.getCombinedContentForPrompt(parsed.sessionId);
   if (!result.success) {
-    return { success: false, error: result.error.userMessage, content: null };
+    return { success: false, error: result.error.userMessage, lead: null, sections: null };
   }
 
-  return { success: true, content: result.data ?? '' };
-}
-
-/**
- * ユーザー入力の書き出し＋各見出しを結合し、完成形として保存する（AI 不使用）。
- * userProvidedLead 未指定時は Step7 保存済みまたは Step6 の書き出し案を使用。
- */
-export async function buildCombinedContentWithUserLead(
-  data: z.infer<typeof buildCombinedWithUserLeadSchema>
-) {
-  const parseResult = buildCombinedWithUserLeadSchema.safeParse(data);
-  if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
-    const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[buildCombinedContentWithUserLead] Validation failed:', parseResult.error.issues);
-    }
-    return { success: false, error };
-  }
-  const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
-
-  if (auth.error || !auth.userId) {
-    return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
-  }
-
-  if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
-    return { success: false, error: 'セッションへのアクセス権がありません' };
-  }
-
-  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
-    return { success: false, error: '閲覧モードでは実行できません' };
-  }
-
-  const userLead =
-    parsed.userProvidedLead !== undefined && parsed.userProvidedLead.trim().length > 0
-      ? parsed.userProvidedLead.trim()
-      : undefined;
-  const result = await headingFlowService.combineSections(
-    parsed.sessionId,
-    auth.userId,
-    userLead
-  );
-  if (!result.success) {
-    return { success: false, error: result.error.userMessage };
-  }
-
-  return { success: true };
+  const { lead, sections } = result.data;
+  return { success: true, lead, sections };
 }

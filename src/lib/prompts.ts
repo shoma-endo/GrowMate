@@ -997,7 +997,7 @@ const BLOG_STEP_PATTERN = new RegExp(`^blog_creation_(${BLOG_STEP_IDS.join('|')}
 
 /**
  * モデルに応じたシステムプロンプトを取得する（LIFFトークンがあれば動的生成、なければ静的）
- * @param step7CombinedContext 本文生成ボタン時に渡す結合テキスト（書き出し＋各見出し）。ある場合、これをプロンプト内に注入する
+ * @param step7CombinedContext 本文生成ボタン時に渡す各見出し本文（書き出しはユーザープロンプトに注入）。ある場合、これをシステムプロンプト内に注入する
  */
 export async function getSystemPrompt(
   model: string,
@@ -1048,12 +1048,12 @@ export async function getSystemPrompt(
 
       // Step 7 (最終生成モード): コンテキストを追加する
       if (isBlogStep7(step)) {
-        // 本文生成ボタン: 結合テキストを渡された場合はそれをプロンプトに注入
+        // 本文生成ボタン: 各見出し本文を渡された場合はシステムプロンプトに注入（書き出しはユーザープロンプトで渡済み）
         if (step7CombinedContext?.trim()) {
           return [
             basePrompt,
             '',
-            '## 構成（書き出し＋各見出し本文）',
+            '## 各見出し本文',
             '以下を正本として、流れの良い完成形記事本文を生成してください。見出しレベル（### / ####）を維持しつつ、段落間のつながりを自然に整えてください。',
             '',
             step7CombinedContext.trim(),

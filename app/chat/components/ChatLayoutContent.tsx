@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import {
   BLOG_STEP_IDS,
   FIRST_BLOG_STEP_ID,
-  HEADING_FLOW_STEP_ID,
+  STEP7_ID,
   STEP5_ID,
   STEP6_GET_PLACEHOLDER_KEY,
   STEP6_ID,
@@ -94,7 +94,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   // step6ToStep7LeadSaved 時は effect に依存せず同期的に step7 表示（書き出し案保存後の遷移遅延を防ぐ）
   const displayStep =
     manualBlogStep ??
-    (step6ToStep7LeadSaved && detectedStep === STEP6_ID ? HEADING_FLOW_STEP_ID : detectedStep);
+    (step6ToStep7LeadSaved && detectedStep === STEP6_ID ? STEP7_ID : detectedStep);
   /** 最後の assistant（20文字以上）が 構成案（基本構成）の場合は true。step6→7 保存をスキップし通常送信にする */
   const lastAssistantIsBasicStructure = useMemo(() => {
     const msgs = [...(chatSession?.state?.messages ?? []), ...(optimisticMessages ?? [])];
@@ -113,7 +113,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     const index = BLOG_STEP_IDS.indexOf(displayStep);
     return index >= 0 ? index : 0;
   }, [displayStep]);
-  const shouldShowLoadButton = displayStep === HEADING_FLOW_STEP_ID;
+  const shouldShowLoadButton = displayStep === STEP7_ID;
   /** StepActionBar「現在のステップ」用。ユーザーが取り組むステップ（displayStep）を表示し、next と整合させる。
    * 以前は content step（成果物の step）を表示していたが、displayStep=step2 のとき current=step1, next=step3 となり
    * 「ステップが飛んでいる」ように見えていた。displayStep に統一することで current=step2, next=step3 と連続して表示される。 */
@@ -145,22 +145,22 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     // displayStep = 表示中コンテンツのステップ。nextStepForSend = この送信で得る出力のステップ。
     // step1 表示中（顕在/潜在）→ step2 で送信してペルソナ/デモグラ取得。step6/7 は同ステップで送信。
     const nextFromIdx =
-      displayStep === STEP6_ID || displayStep === HEADING_FLOW_STEP_ID
+      displayStep === STEP6_ID || displayStep === STEP7_ID
         ? currentIdx
         : Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1);
     const nextStepForSend = (BLOG_STEP_IDS[nextFromIdx] ?? BLOG_STEP_IDS[currentIdx]) as BlogStepId;
     // プレースホルダー: この送信で得る出力＝nextStepForSend のラベル/プレースホルダー
     const placeholderKey =
-      displayStep === HEADING_FLOW_STEP_ID
-        ? toBlogModel(HEADING_FLOW_STEP_ID)
+      displayStep === STEP7_ID
+        ? toBlogModel(STEP7_ID)
         : displayStep === STEP6_ID
           ? toBlogModel(STEP6_ID)
           : displayStep === STEP5_ID
             ? STEP6_GET_PLACEHOLDER_KEY
             : toBlogModel(nextStepForSend);
     const stepForPlaceholder =
-      displayStep === HEADING_FLOW_STEP_ID
-        ? HEADING_FLOW_STEP_ID
+      displayStep === STEP7_ID
+        ? STEP7_ID
         : displayStep === STEP6_ID
           ? STEP6_ID
           : nextStepForSend;
@@ -183,7 +183,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   // Step6→Step7 で書き出し案保存済みのとき、step7 表示に遷移（displayStep は上記の同期的な三項で既に step7 になる。manualBlogStep も揃える）
   useEffect(() => {
     if (step6ToStep7LeadSaved && detectedStep === STEP6_ID) {
-      setManualBlogStep(HEADING_FLOW_STEP_ID);
+      setManualBlogStep(STEP7_ID);
     }
   }, [step6ToStep7LeadSaved, detectedStep]);
   const handleManualStepChange = useCallback(
@@ -213,7 +213,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
   // Step7 見出し生成フェーズではプレースホルダーと見出し生成ボタンの両方を表示するため必須
   const isStep7HeadingPhaseForBar =
-    displayStep === HEADING_FLOW_STEP_ID &&
+    displayStep === STEP7_ID &&
     selectedModel === 'blog_creation' &&
     activeHeadingIndex !== undefined &&
     (totalHeadings ?? 0) > 0;
@@ -387,7 +387,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           isChatLoading={isChatLoading ?? false}
           isBuildingCombined={isBuildingCombined ?? false}
           {...(onSaveStep7UserLead && { onSaveStep7UserLead })}
-          onStep6ToStep7Success={() => setManualBlogStep(HEADING_FLOW_STEP_ID)}
+          onStep6ToStep7Success={() => setManualBlogStep(STEP7_ID)}
           lastAssistantIsBasicStructure={lastAssistantIsBasicStructure}
           services={services}
           selectedServiceId={selectedServiceId}

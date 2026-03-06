@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { HEADING_FLOW_STEP_ID, BLOG_STEP_LABELS, isStep7 as isBlogStep7 } from '@/lib/constants';
+import { STEP7_ID, BLOG_STEP_LABELS, isStep7 as isBlogStep7 } from '@/lib/constants';
 import type { BlogStepId } from '@/lib/constants';
 import type {
   CanvasSelectionEditPayload,
@@ -189,7 +189,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
   const versionTriggerLabel = currentVersion ? `Ver.${currentVersion.versionNumber}` : 'Ver.-';
 
-  const isHeadingFlowCanvas = activeStepId === HEADING_FLOW_STEP_ID;
+  const isHeadingFlowCanvas = activeStepId === STEP7_ID;
   const hasHeadingFlowActions = isHeadingFlowCanvas && showHeadingUnitActions;
   const isHeadingUnitView = hasHeadingFlowActions && headingIndex !== undefined;
   // 完成形 = ユーザー入力の書き出し＋見出し確定本文の結合（AI直接生成ではない）。

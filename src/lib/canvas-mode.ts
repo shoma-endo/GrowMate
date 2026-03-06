@@ -1,4 +1,4 @@
-import { BlogStepId, HEADING_FLOW_STEP_ID } from '@/lib/constants';
+import { BlogStepId, STEP7_ID } from '@/lib/constants';
 
 export interface HeadingCanvasViewModeParams {
   step: BlogStepId | null;
@@ -20,7 +20,7 @@ export const resolveHeadingCanvasViewMode = ({
   viewingHeadingIndex,
   activeHeadingIndex,
 }: HeadingCanvasViewModeParams): HeadingCanvasViewMode => {
-  const hasHeadings = step === HEADING_FLOW_STEP_ID && headingCount > 0;
+  const hasHeadings = step === STEP7_ID && headingCount > 0;
   const isViewingHeading = hasHeadings && viewingHeadingIndex !== null;
   const hasActiveHeading = activeHeadingIndex !== undefined;
   const isCombinedView = hasHeadings && !isViewingHeading && !hasActiveHeading;

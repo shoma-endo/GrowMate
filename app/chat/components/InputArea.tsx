@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import {
   BLOG_PLACEHOLDERS,
   FIRST_BLOG_STEP_ID,
-  HEADING_FLOW_STEP_ID,
+  STEP7_ID,
   STEP6_ID,
   STEP7_HEADING_PLACEHOLDER_KEY,
   toBlogModel,
@@ -227,7 +227,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   // Step7 見出し生成フェーズ: 見出し生成・保存ボタン表示用（入力は無効）
   const isStep7HeadingPhase =
-    displayStep === HEADING_FLOW_STEP_ID &&
+    displayStep === STEP7_ID &&
     selectedModel === 'blog_creation' &&
     activeHeadingIndex !== undefined &&
     (totalHeadings ?? 0) > 0;
@@ -245,8 +245,8 @@ const InputArea: React.FC<InputAreaProps> = ({
       return BLOG_PLACEHOLDERS[STEP7_HEADING_PLACEHOLDER_KEY];
     }
     // Step7 完成形フェーズ: 書き出し案入力を案内
-    if (selectedModel === 'blog_creation' && displayStep === HEADING_FLOW_STEP_ID) {
-      return BLOG_PLACEHOLDERS[toBlogModel(HEADING_FLOW_STEP_ID)];
+    if (selectedModel === 'blog_creation' && displayStep === STEP7_ID) {
+      return BLOG_PLACEHOLDERS[toBlogModel(STEP7_ID)];
     }
 
     if (selectedModel === 'blog_creation') {
@@ -349,7 +349,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる
     const isStep6ToStep7Transition =
       displayStep === STEP6_ID &&
-      nextStepForSend === HEADING_FLOW_STEP_ID &&
+      nextStepForSend === STEP7_ID &&
       selectedModel === 'blog_creation' &&
       onSaveStep7UserLead &&
       !lastAssistantIsBasicStructure;
@@ -372,7 +372,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     // Step7: 書き出し案入力あり → 保存＋見出しセクション削除で見出し1から再スタート（見出し生成中・完成形後いずれも同様）
     if (
-      displayStep === HEADING_FLOW_STEP_ID &&
+      displayStep === STEP7_ID &&
       selectedModel === 'blog_creation' &&
       trimmedInput &&
       onSaveStep7UserLead &&

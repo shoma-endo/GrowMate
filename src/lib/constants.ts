@@ -173,11 +173,11 @@ export const BLOG_PLACEHOLDERS: Record<string, string> = {
   [STEP7_HEADING_PLACEHOLDER_KEY]: '見出し生成・保存ボタンで進めてください',
 };
 
-/** 見出し単位生成フローが紐づくステップID。BLOG_STEP_IDS の最終要素（step7） */
-export const HEADING_FLOW_STEP_ID: BlogStepId = BLOG_STEP_IDS[BLOG_STEP_IDS.length - 1] as BlogStepId;
+/** Step7（本文作成）のステップID。見出し単位生成フロー・完成形作成が紐づく。BLOG_STEP_IDS の最終要素 */
+export const STEP7_ID: BlogStepId = BLOG_STEP_IDS[BLOG_STEP_IDS.length - 1] as BlogStepId;
 
 /** Step7 本文作成のモデル名（blog_creation_step7）。複数箇所での比較に再利用 */
-export const STEP7_BLOG_MODEL = toBlogModel(HEADING_FLOW_STEP_ID);
+export const STEP7_BLOG_MODEL = toBlogModel(STEP7_ID);
 
 /** Step5（構成案）のステップID。step5→6 の AI 取得時プレースホルダー判定等で使用。BLOG_STEP_IDS から導出 */
 export const STEP5_ID: BlogStepId = BLOG_STEP_IDS[4] as BlogStepId;
@@ -204,7 +204,7 @@ export const BLOG_STEP_ACTION_BAR_FULL_TEXT: Record<BlogStepId, string> = {
 
 // Step7判定（canonicalUrlsの適用/表示で利用）
 export const isStep7 = (stepOrModel: string) =>
-  stepOrModel === HEADING_FLOW_STEP_ID || stepOrModel === toBlogModel(HEADING_FLOW_STEP_ID);
+  stepOrModel === STEP7_ID || stepOrModel === toBlogModel(STEP7_ID);
 
 /** Step7 本文生成: 楽観的表示・API送信・DB保存で使う短いトリガー（長文はシステムプロンプトのみに渡す） */
 export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してください。';

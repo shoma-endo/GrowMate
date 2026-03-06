@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { BlogStepId, BLOG_STEP_IDS, HEADING_FLOW_STEP_ID, isStep7HeadingModel } from '@/lib/constants';
+import { BlogStepId, BLOG_STEP_IDS, STEP7_ID, isStep7HeadingModel } from '@/lib/constants';
 import {
   extractBlogStepFromModel,
   getContentStepFromAssistantModel,
@@ -38,7 +38,7 @@ export function useCanvasVersions(
       const modelStep = extractBlogStepFromModel(message.model);
       if (!modelStep) return;
       // Step7 見出し単体はバージョン管理に含めない（Canvas表示は別経路で行う）
-      if (modelStep === HEADING_FLOW_STEP_ID && isStep7HeadingModel(message.model)) return;
+      if (modelStep === STEP7_ID && isStep7HeadingModel(message.model)) return;
       const step = getContentStepFromAssistantModel(message.model, message.content);
       if (!step) return;
 
@@ -69,7 +69,7 @@ export function useCanvasVersions(
     });
 
     // Step7 メッセージ由来（見出し編集判定用。完成形で汚染しない）
-    const step7FromMessages = initialMap[HEADING_FLOW_STEP_ID] ?? [];
+    const step7FromMessages = initialMap[STEP7_ID] ?? [];
 
     // Step7 完成形は session_combined_contents 由来。バージョン選択UI用に step7 スロットを上書き
     if (step7VersionsOverride && step7VersionsOverride.length > 0) {
@@ -77,12 +77,12 @@ export function useCanvasVersions(
         id: v.id,
         content: v.content,
         raw: v.content,
-        step: HEADING_FLOW_STEP_ID,
+        step: STEP7_ID,
         createdAt: v.createdAt ? new Date(v.createdAt).getTime() : 0,
         createdAtIso: v.createdAt ?? null,
       }));
       mapped.sort((a, b) => a.createdAt - b.createdAt); // 他ステップと同様 昇順（最新=末尾）
-      initialMap[HEADING_FLOW_STEP_ID] = mapped;
+      initialMap[STEP7_ID] = mapped;
     }
 
     return { map: initialMap, step7FromMessages };

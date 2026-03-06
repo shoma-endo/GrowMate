@@ -118,7 +118,7 @@ function headingsMatchAfterNormalization(lineNorm: string, expectedNorm: string)
 
 /**
  * Step6保存時用: 先頭の見出し行を除去する。
- * combineSections が heading_text を自動付与するため、content には本文のみを保存する。
+ * getCombinedContentForPrompt が heading_text を自動付与するため、content には本文のみを保存する。
  * 先頭行が markdown 見出し (# で始まる) かつ headingText と実質一致する場合に除去。
  * LLM の句読点追加・語尾変更・軽微な言い換えにも耐性を持つ。
  */
