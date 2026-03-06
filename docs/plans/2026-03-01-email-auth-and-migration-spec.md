@@ -720,7 +720,10 @@ POST /api/auth/account-migration/initiate
   1. authMiddleware で LINE ユーザーを認証
   2. email バリデーション（Zod: メール形式 + 空文字チェック）
   3. 同一メールで public.users に既存ユーザーが存在するかチェック
-     a. 存在する場合: パターン B（merge）
+     ※ source_user_id（移行元 LINE ユーザー）自身は検索対象から除外する。
+       auth_provider='line' の行が同じ email を持つ場合（移行前準備状態）、
+       自分自身への merge を防ぐため WHERE id != source_user_id を付与する。
+     a. 除外後に存在する場合: パターン B（merge）
      b. 存在しない場合: パターン A（new）
   4. migration_tokens テーブルにレコード作成
      - token: crypto.randomUUID()
@@ -775,7 +778,14 @@ POST /api/auth/account-migration/execute
   2. migration_tokens からトークン取得・再検証
   3. セッションユーザーの email と migration_tokens.target_email の一致を検証
      → 不一致の場合 403 で拒否（トークン漏洩時の不正移行を防止）
-  4. status を 'processing' に更新（二重実行防止）
+  4. status を原子的に 'processing' へ遷移（二重実行防止）
+     UPDATE migration_tokens
+       SET status = 'processing', updated_at = now()
+       WHERE token = :token AND status = 'pending'
+       RETURNING *;
+     → 0 行返却の場合は 409 Conflict で拒否（既に処理中または完了済み）
+     ※ SELECT → UPDATE の 2 ステップだと並行リクエストが両方 pending を読めるため、
+       必ず単一の UPDATE ... WHERE status = 'pending' RETURNING で原子的に取得すること。
   5. 移行先ユーザー（UUID-B）を特定:
      - パターン A: trigger で作成済みの public.users を supabase_auth_id で検索
      - パターン B: 既存の public.users を email で検索
