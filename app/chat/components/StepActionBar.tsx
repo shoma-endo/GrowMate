@@ -280,38 +280,54 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
           )}
         </div>
         {showHeadingGenerateButton && (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => onStartHeadingGeneration?.(activeHeadingIndex!)}
-            disabled={isDisabled || isStep7HeadingBusy}
-            title="現在の見出しの本文をAIで生成します"
-            className="flex items-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400"
-          >
-            {isStep7HeadingBusy ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Play size={14} />
-            )}
-            <span>見出し生成</span>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onStartHeadingGeneration?.(activeHeadingIndex!)}
+                  disabled={isDisabled || isStep7HeadingBusy}
+                  className="flex items-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400"
+                >
+                  {isStep7HeadingBusy ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Play size={14} />
+                  )}
+                  <span>見出し生成</span>
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>現在の見出しの本文を生成します</p>
+            </TooltipContent>
+          </Tooltip>
         )}
         {showLastHeadingBuildButton && (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => void onBuildCombinedOnly?.()}
-            disabled={isDisabled || isStep7HeadingBusy}
-            title="書き出し＋全見出しを結合して完成形を作成し、Canvasで開きます"
-            className="flex items-center gap-1 bg-green-600 text-white hover:bg-green-700 disabled:bg-green-400"
-          >
-            {(isSavingHeading || isBuildingCombined) ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <FileText size={14} />
-            )}
-            <span>{isBuildingCombined ? '生成中...' : '本文生成'}</span>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void onBuildCombinedOnly?.()}
+                  disabled={isDisabled || isStep7HeadingBusy}
+                  className="flex items-center gap-1 bg-green-600 text-white hover:bg-green-700 disabled:bg-green-400"
+                >
+                  {(isSavingHeading || isBuildingCombined) ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <FileText size={14} />
+                  )}
+                  <span>{isBuildingCombined ? '生成中...' : '本文生成'}</span>
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>保存した全見出しを結合して本文を作成します</p>
+            </TooltipContent>
+          </Tooltip>
         )}
         {showHeadingSaveButton && (
           <Tooltip>
