@@ -1078,7 +1078,14 @@ BEGIN
 END;
 $$;
 
+-- アクセス制御: service_role 限定（API Route Handler 経由でのみ実行可能）
+REVOKE ALL ON FUNCTION migrate_user_data(UUID, UUID) FROM PUBLIC;
+REVOKE ALL ON FUNCTION migrate_user_data(UUID, UUID) FROM authenticated;
+REVOKE ALL ON FUNCTION migrate_user_data(UUID, UUID) FROM anon;
+GRANT EXECUTE ON FUNCTION migrate_user_data(UUID, UUID) TO service_role;
+
 -- ロールバック
+-- GRANT EXECUTE ON FUNCTION migrate_user_data(UUID, UUID) TO authenticated;
 -- DROP FUNCTION IF EXISTS migrate_user_data(UUID, UUID);
 ```
 
@@ -1102,6 +1109,18 @@ CREATE TABLE migration_tokens (
 
 CREATE INDEX idx_migration_tokens_token ON migration_tokens(token);
 CREATE INDEX idx_migration_tokens_source ON migration_tokens(source_user_id);
+
+-- RLS 有効化: クライアントからの直接アクセスを完全遮断
+-- 移行フローは全て API Route Handler（service role クライアント）経由で実行するため、
+-- authenticated/anon ロールには一切のポリシーを付与しない。
+-- service_role は RLS をバイパスするため、ポリシー定義不要。
+ALTER TABLE migration_tokens ENABLE ROW LEVEL SECURITY;
+
+-- テーブル権限: service_role 限定
+REVOKE ALL ON TABLE migration_tokens FROM PUBLIC;
+REVOKE ALL ON TABLE migration_tokens FROM authenticated;
+REVOKE ALL ON TABLE migration_tokens FROM anon;
+GRANT ALL ON TABLE migration_tokens TO service_role;
 
 -- 有効期限切れトークンの自動削除（30日後）
 -- pg_cron または定期バッチで実行
