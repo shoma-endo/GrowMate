@@ -733,29 +733,35 @@ POST /api/auth/account-migration/initiate
      - migration_type: 'new' | 'merge'
      - expires_at: now() + 30分
      - status: 'pending'
-  5. Supabase Auth でメール送信:
+  5. migration_token を httpOnly cookie にセット（callback で復元するため）:
+     Set-Cookie: migration_token={token}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth/account-migration; Max-Age=1800
+     ※ emailRedirectTo にクエリパラメータを含めると、Supabase Auth が &code={code} を
+       付与する際に URL が破損する既知の問題があるため、cookie で受け渡す。
+  6. Supabase Auth でメール送信:
      supabase.auth.signInWithOtp({
        email,
        options: {
-         emailRedirectTo: '{SITE_URL}/api/auth/account-migration/callback?migration_token={token}'
+         emailRedirectTo: '{SITE_URL}/api/auth/account-migration/callback'
        }
      })
-     ※ Supabase Auth (PKCE flow) は emailRedirectTo に &code={code} を付与する。
-       最終 URL: /api/auth/account-migration/callback?migration_token={token}&code={code}
-       Supabase Auth v2.x で動作確認済みであることを実装時に検証する。
-  6. レスポンス:
+     ※ Supabase Auth (PKCE flow) は emailRedirectTo に ?code={code} を付与する。
+       最終 URL: /api/auth/account-migration/callback?code={code}
+       クエリパラメータは Supabase が付与する code のみとなり、URL 破損リスクを排除。
+  7. レスポンス:
      { success: true, migrationType: 'new' | 'merge' }
 ```
 
 #### 6.3.3 ステップ 3: メール検証・移行確認
 
 ```text
-GET /api/auth/account-migration/callback?code={code}&migration_token={token}
+GET /api/auth/account-migration/callback?code={code}
 
 サーバー処理:
-  1. migration_tokens からトークン取得・検証（セッション確立前に実施）
+  1. httpOnly cookie から migration_token を取得し、
+     migration_tokens からトークン取得・検証（セッション確立前に実施）
      - 存在確認、status='pending'確認、有効期限確認
      → 無効の場合はセッションを作らずエラー画面にリダイレクト
+     ※ cookie が存在しない場合もエラー画面にリダイレクト
   2. Supabase Auth で code → session 交換（メール所有権確認完了）
      ※ token が有効な場合のみ session を確立する。
        期限切れ・改ざん token で認証状態だけ残る不整合を防止。
@@ -942,6 +948,10 @@ BEGIN
         AND tgt.normalized_url = src.normalized_url
         AND tgt.search_type = src.search_type
     );
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  migrated_tables := 'gsc_page_metrics (duplicates deleted)';
+  migrated_rows := v_row_count;
+  RETURN NEXT;
   -- 残りの非重複行を移行
   UPDATE gsc_page_metrics
     SET user_id = p_target_user_id
@@ -982,6 +992,10 @@ BEGIN
         AND tgt.query_normalized = src.query_normalized
         AND tgt.search_type = src.search_type
     );
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  migrated_tables := 'gsc_query_metrics (duplicates deleted)';
+  migrated_rows := v_row_count;
+  RETURN NEXT;
   -- 残りの非重複行を移行
   UPDATE gsc_query_metrics
     SET user_id = p_target_user_id
@@ -1002,6 +1016,10 @@ BEGIN
         AND tgt.date = src.date
         AND tgt.normalized_path = src.normalized_path
     );
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  migrated_tables := 'ga4_page_metrics_daily (duplicates deleted)';
+  migrated_rows := v_row_count;
+  RETURN NEXT;
   -- 残りの非重複行を移行
   UPDATE ga4_page_metrics_daily
     SET user_id = p_target_user_id
@@ -1138,6 +1156,16 @@ GRANT ALL ON TABLE migration_tokens TO service_role;
 
 -- 有効期限切れトークンの自動削除（30日後）
 -- pg_cron または定期バッチで実行
+
+-- ロールバック
+-- REVOKE ALL ON TABLE migration_tokens FROM service_role;
+-- GRANT ALL ON TABLE migration_tokens TO authenticated;
+-- GRANT ALL ON TABLE migration_tokens TO anon;
+-- GRANT ALL ON TABLE migration_tokens TO PUBLIC;
+-- ALTER TABLE migration_tokens DISABLE ROW LEVEL SECURITY;
+-- DROP INDEX IF EXISTS idx_migration_tokens_source;
+-- DROP INDEX IF EXISTS idx_migration_tokens_token;
+-- DROP TABLE IF EXISTS migration_tokens;
 ```
 
 ### 6.6 移行 UI（ステップウィザード）
@@ -1416,3 +1444,35 @@ Phase 1.5 (LINE→Email 移行)
   ├── 10. 移行 UI（4画面）
   └── 11. エッジケース対応 + 統合検証
 ```
+
+---
+
+## 10. テスト・検証戦略
+
+### 10.1 Phase 1 検証項目
+
+- [ ] Magic Link メール送信・受信・認証完了フロー
+- [ ] LINE / Email 二重認証の切り替え動作（authMiddleware）
+- [ ] Stripe サブスクリプション作成（Email ユーザー）
+- [ ] GSC / GA4 データ取得（Email ユーザー）
+- [ ] WordPress 投稿取得（Email ユーザー）
+- [ ] 既存 LINE ユーザーのセッション継続に影響がないこと
+
+### 10.2 Phase 1.5 検証項目
+
+- [ ] Pattern A: 新規メールアカウントへの移行（全テーブルのデータ移行）
+- [ ] Pattern B: 既存メールアカウントへの統合（UNIQUE 重複時の正しい解決）
+- [ ] スタッフ関係の維持（オーナー移行時に users.owner_user_id が正しく付替え）
+- [ ] Stripe サブスクリプション引き継ぎ（stripe_customer_id / stripe_subscription_id）
+- [ ] 移行元ユーザーの無効化（role='unavailable'）
+- [ ] 移行中エラー時のステータス復旧（status='failed' + error_message 記録）
+- [ ] 二重実行防止の動作確認（並行リクエストで 409 Conflict が返ること）
+- [ ] migration_token 有効期限切れ時のエラーハンドリング
+- [ ] httpOnly cookie による migration_token 受け渡しの動作確認
+
+### 10.3 手動検証手順（実装 PR に記載）
+
+実装 PR には各検証項目について以下を記載すること：
+- 検証手順（操作ステップ）
+- 期待結果（正常系・異常系）
+- 確認に使用したテストデータ（ユーザー ID、メールアドレス等）
