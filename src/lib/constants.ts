@@ -108,10 +108,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
 
 // =============================================================================
 // Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)
-// Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)
 // =============================================================================
-// 各ステップの id / label / placeholder / model 名を1箇所で定義。
-// BLOG_STEP_IDS / BLOG_STEP_LABELS / BLOG_PLACEHOLDERS はここから導出する。
 // 各ステップの id / label / placeholder / model 名を1箇所で定義。
 // BLOG_STEP_IDS / BLOG_STEP_LABELS / BLOG_PLACEHOLDERS はここから導出する。
 
@@ -169,59 +166,6 @@ const BLOG_STEP_DEFINITIONS: readonly BlogStepDef[] = [
   { id: 'step6', label: '書き出し案', placeholder: '書き出し案を入力して送信すると、見出し生成に進みます。' },
   { id: 'step7', label: '本文作成', placeholder: '書き出し案を入力して送信すると、見出し1から始まります。' },
 ];
-/** ブログ作成モデル名のプレフィックス。blog_creation_stepN 等のベース。 */
-export const BLOG_MODEL_PREFIX = 'blog_creation_';
-
-/** Step6→Step7 で保存した書き出し案を識別する model 値 */
-export const STEP7_LEAD_MODEL = `${BLOG_MODEL_PREFIX}step7_lead`;
-
-/** プレースホルダーキー: step5→6 の AI 取得時（構成案→書き出し案） */
-export const STEP6_GET_PLACEHOLDER_KEY = `${BLOG_MODEL_PREFIX}step6_get`;
-
-/** プレースホルダーキー: step7 見出し生成フェーズ */
-export const STEP7_HEADING_PLACEHOLDER_KEY = `${BLOG_MODEL_PREFIX}step7_heading`;
-
-/** stepN から blog_creation_stepN モデル名を返す */
-export const toBlogModel = (step: BlogStepId) => `${BLOG_MODEL_PREFIX}${step}`;
-
-/** Step7 見出しNのモデル名（blog_creation_step7_h0 等） */
-export const getStep7HeadingModel = (index: number) =>
-  `${BLOG_MODEL_PREFIX}step7_h${index}`;
-
-/** 見出し単体モデル（blog_creation_step7_hN）かどうか */
-export const isStep7HeadingModel = (model?: string) =>
-  /^blog_creation_step7_h\d+/.test(model ?? '');
-
-/** Step6 モデル（blog_creation_step6 または blog_creation_step6_*）にマッチする正規表現 */
-export const STEP6_MODEL_REGEX = /^blog_creation_step6(?:_|$)/;
-
-/** 書き出し案・構成案として有効とみなす最小文字数（ストリーミング中の空メッセージ除外にも使用） */
-export const MIN_LEAD_CONTENT_LENGTH = 20;
-
-/** 構成案（基本構成）パターン判定に用いる先頭文字数。BASIC_STRUCTURE_PATTERN のチェック範囲 */
-export const STRUCTURE_PATTERN_CHECK_LENGTH = 150;
-
-/** 1ステップ分の定義。プレースホルダーは「このステップの出力を得るための入力」の案内。 */
-interface BlogStepDef {
-  id: BlogStepId;
-  label: string;
-  /** 入力→出力の案内。表示中ステップが N-1 のとき、次に取得する stepN のプレースホルダーとして表示。 */
-  placeholder: string;
-}
-
-const BLOG_STEP_DEFINITIONS: readonly BlogStepDef[] = [
-  { id: 'step1', label: '顕在ニーズ・潜在ニーズ確認', placeholder: 'キーワードを入力してください（複数ある場合は改行）。顕在/潜在ニーズを出力します。' },
-  { id: 'step2', label: 'ペルソナ・デモグラチェック', placeholder: '顕在/潜在ニーズを入力してください、想定ペルソナ/デモグラを出力します。' },
-  { id: 'step3', label: 'ユーザーのゴール', placeholder: '想定ペルソナ/デモグラを入力してください、ユーザーのゴールを出力します。' },
-  { id: 'step4', label: 'PREPチェック', placeholder: 'ユーザーのゴールを入力してください、PREP（主張・理由・具体例・結論）を出力します。' },
-  { id: 'step5', label: '構成案確認', placeholder: 'PREP（主張・理由・具体例・結論）を入力してください、構成案を出力します。' },
-  { id: 'step6', label: '書き出し案', placeholder: '書き出し案を入力して送信すると、見出し生成に進みます。' },
-  { id: 'step7', label: '本文作成', placeholder: '書き出し案を入力して送信すると、見出し1から始まります。' },
-];
-
-export const BLOG_STEP_IDS: BlogStepId[] = BLOG_STEP_DEFINITIONS.map(d => d.id);
-
-export const BLOG_STEP_IDS: BlogStepId[] = BLOG_STEP_DEFINITIONS.map(d => d.id);
 
 export const BLOG_STEP_IDS: BlogStepId[] = BLOG_STEP_DEFINITIONS.map(d => d.id);
 
@@ -275,13 +219,6 @@ export const isStep7 = (stepOrModel: string) =>
 
 /** Step7 本文生成: 楽観的表示・API送信・DB保存で使う短いトリガー（長文はシステムプロンプトのみに渡す） */
 export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してください。';
-  stepOrModel === STEP7_ID || stepOrModel === toBlogModel(STEP7_ID);
-
-/** Step7 本文生成: 楽観的表示・API送信・DB保存で使う短いトリガー（長文はシステムプロンプトのみに渡す） */
-export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してください。';
-
-// prompts.ts 用のテンプレ名解決（toBlogModel のエイリアス）
-export const toTemplateName = toBlogModel;
 
 // prompts.ts 用のテンプレ名解決（toBlogModel のエイリアス）
 export const toTemplateName = toBlogModel;
@@ -335,7 +272,6 @@ export function loadCategoryFilterFromStorage(): CategoryFilterConfig {
           : [],
         includeUncategorized:
           typeof parsed.includeUncategorized === 'boolean' ? parsed.includeUncategorized : false,
-          // 重複行を削除（既に上でセットされているので不要）
       };
     }
   } catch {
