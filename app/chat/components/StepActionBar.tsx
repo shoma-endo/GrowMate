@@ -220,7 +220,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
               )}
             {isStep7 &&
               totalHeadings === 0 &&
-              (hasAttemptedHeadingInit || (isRetrying && isHeadingInitInFlight)) && (
+              (hasAttemptedHeadingInit || isRetrying) && (
                 <span className="ml-2 inline-flex items-center gap-1.5">
                   {hasAttemptedHeadingInit && !isHeadingInitInFlight && (
                     <span className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
