@@ -1746,7 +1746,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           resolvedCanvasStep,
           setCanvasStep,
           ...(activeHeadingIndex !== undefined && { activeHeadingIndex }),
-          ...(isHeadingFlowCanvasStep && { isStep7SaveDisabled: isStep6ContentStale }),
+          ...(isHeadingFlowCanvasStep && {
+            isStep7SaveDisabled: isStep6ContentStale || !hasContentForActiveHeading,
+          }),
           onStartHeadingGeneration: handleStartHeadingGeneration,
           onSaveHeadingSection: handleSaveHeadingClick,
           onBuildCombinedOnly: handleBuildCombinedOnly,
