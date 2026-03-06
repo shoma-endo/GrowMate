@@ -1,0 +1,627 @@
+# Step7 見出し単位生成フロー仕様書
+
+> 本仕様は step6-step7-heading-flow-spec.md からの変更版。見出し単位生成を Step6 から Step7 に移行し、Step6 は従来の書き出し案（通常バージョン管理）に戻す。
+
+## 1. 目的
+
+Step6 を従来の「書き出し案」として復元し、Step7 で見出し単位（1見出し+本文）の生成・確認・保存を**チャット部分**で行う。  
+Canvas は修正指示専用。完成形は「本文生成」ボタンで AI（blog_creation_step7）が書き出し＋各見出しの結合テキストをもとに生成し、出力する。
+
+## 2. スコープ
+
+- 対象ステップ:
+  - Step5: 構成案確認（目次/見出しの確定）
+  - Step6: 書き出し案（**通常のバージョン管理**、変更前の挙動）
+  - Step7: 見出し単位本文生成 ＋ 最終本文作成
+- 非対象:
+  - 新しい見出し専用フォームUIの導入（今回は行わない）
+  - Step7 中の見出し単位バージョン管理（今回は行わない）
+  - データ削除ポリシー・データ保持期間の定義（別途データ管理仕様で定義。本仕様の「永続的保存」は通常の編集・生成フローにおける動作を指す）
+
+## 3. 用語定義
+
+- 生成対象見出し: Step5 で保存された構成案テキストから抽出した `###`（H3）および `####`（H4）行。
+- 見出しレベル: 各生成対象見出しのレベル（H3/H4）。保存時に H3=3 / H4=4 へ正規化して保持する。
+- セクション確定本文: 各見出しに対して「保存して次へ」で確定した本文。
+- Step6 書き出し案: Step6 で生成・保存された書き出し案テキスト。Canvas バージョンまたは chat_messages（model=blog_creation_step6）の assistant メッセージ。
+- **完成形の書き出し**: 完成形の先頭に置くテキスト。`getStep7UserLead` で取得。優先順: (1) `chat_messages` の role=user, model=blog_creation_step7_lead の最新1件、(2) なければ最新の step6 assistant 書き出し案（構成案を除く。最新 step6 が構成案の場合は null）をフォールバック。いずれもなければ空文字列。
+- 完成形: Step7 時点で、**完成形の書き出し**（上記）＋**見出し確定本文（order_index 順）**を連結した全体本文。**AI（`blog_creation_step7`）で生成され、`session_combined_contents` に永続的に保存され、バージョン管理される。**通常の編集フローでは削除されない。（ユーザーによるデータ削除要求やデータ保持ポリシーに基づく削除は本仕様のスコープ外。2.スコープ参照）
+
+## 4. 見出し認識ルール
+
+Step5 の構成案テキストから、以下のルールで見出しを認識する。
+
+- 生成対象:
+  - `###`（H3）と `####`（H4）の行を生成対象見出しとして抽出する
+  - 生成順はテキスト内の出現順とする
+  - 抽出した見出しの `heading_level` は保存時に H3=3 / H4=4 へ正規化する
+- 非対象:
+  - `#`, `##`, `#####`, `######` は生成対象見出しとしては扱わない
+
+補足:
+- 箇条書き（`-` / `*`）は見出しとして扱わない。
+- 空見出しは除外する。
+- セクション本文範囲は「対象見出し（`###` or `####`）の直下から、次の対象見出し（`###` or `####`）の直前まで」。
+- 抽出失敗時は Step5 の見直し導線を表示する。
+
+## 5. 機能仕様
+
+### 5.1 Step6（書き出し案・通常バージョン管理）
+
+- Step6 は**変更前の通常のバージョン管理**に戻す。
+- AI が書き出し案を生成し、Canvas で確認・編集する。
+- **Step6→Step7 遷移は前ステップと同様**：最後の assistant メッセージ（step6 書き出し案）から導出。step7_lead の手動保存は任意（Canvas 編集後の上書き用）。AI が書き出し案を返した時点で step7 表示に遷移する。
+- バージョン管理あり（従来どおり）。
+- 見出し単位生成は行わない。
+
+### 5.2 Step7（見出し単位生成）
+
+1. Step7 初回開始時（および書き出し案送信で見出しセクション削除後）の見出し抽出元は**メモ・補足情報の「基本構成」**（`content_annotations.basic_structure`）のみとする。
+   - Step5 チャットは使用しない。basic_structure の初期化（書き込み）は一切行わない。
+   - basic_structure が空、または `###`/`####` が見出しとして抽出できない場合は、ユーザーに「基本構成」入力を促す導線を表示する。
+   以降の再開時は再抽出せず、`session_heading_sections` を正本として読み込む。
+   詳細は 5.2.1 を参照。
+2. 見出し配列の先頭から順に「1見出し+本文」を生成する。
+
+### 5.2.1 content_annotations.basic_structure の仕様
+
+#### 格納場所
+- **テーブル**: `content_annotations`
+- **カラム**: `basic_structure` (text, NULL 許容)
+- **紐付け**: `session_id` で `chat_sessions` に紐づく。1 セッションあたり 1 件（UNIQUE 制約）
+
+#### データ形式
+- Markdown 形式のテキスト
+- Step5 構成案と同じ形式（`###` で中見出し、`####` で小見出し。`extractHeadingsFromMarkdown` で抽出）
+
+#### 読み取り時のエラーハンドリング
+- `content_annotations` が存在しない、または `session_id` に紐づくレコードがない場合: 基本構成入力導線を表示
+- `basic_structure` が null または空文字列の場合: 基本構成入力導線を表示
+- 見出し抽出結果が 0 件（`###`/`####` が含まれない）の場合: 基本構成入力導線を表示
+- malformed なデータ（例: 型が text でない）: 読み取り側で null/空として扱い、基本構成入力導線を表示
+
+#### 実装ファイル
+| ファイル | 責務 |
+|----------|------|
+| `src/server/actions/wordpress.actions.ts` | `getContentAnnotationBySession(sessionId)` で `content_annotations` から `basic_structure` を取得 |
+| `src/hooks/useHeadingFlow.ts` | 見出し抽出元は basic_structure のみ。`initializeHeadingSections` に渡す。空・抽出不可時は基本構成入力導線を表示 |
+| `src/lib/heading-extractor.ts` | `extractHeadingsFromMarkdown(markdown)` で `###`/`####` から見出し抽出（basic_structure も step5 も同一ロジック） |
+| `src/server/services/headingFlowService.ts` | `initializeHeadingSections(sessionId, step5Markdown)` で受け取った Markdown から見出し抽出・`session_heading_sections` に投入。抽出元の区別は行わない |
+3. 見出し生成・保存は**チャット部分（StepActionBar）**で行う。見出し生成ボタンで AI が1見出し分を生成し、チャットに表示。保存ボタンで確定して次見出しへ進む。
+4. 生成結果はチャットに表示。Canvas で開いて修正指示（選択範囲編集）を行うことも可能。
+5. 見出し保存時は `session_heading_sections` のみ更新し、`session_combined_contents` へは保存しない。
+6. **全見出し確定後**（8.3・8.7 参照）:
+   - **書き出し案を入力して送信**: 見出し再スタート。完成形保存は行わず、見出し1からやり直す（空送信は不可）
+   - **完成形の保存**: StepActionBar の「本文生成」ボタンで実行。結合テキストをプロンプトに渡し、AI が完成形を生成して `session_combined_contents` に保存
+
+### 5.3 Step7 再編集（途中）
+
+- 再編集の反映範囲は「対象見出し1つのみ」。
+- 他見出しは変更しない。
+- 保存時に完成形の DB 保存は行わない。
+
+### 5.4 Step7 完了後の修正
+
+- Step7 で最後まで完成した後は、見出し単位ではなく従来どおり Canvas で全文修正する。
+- 以降の修正は全文編集フローとして扱う。
+
+### 5.5 基本構成変更時の見出し再同期
+
+- Step7 未開始（`session_heading_sections` が未作成）の場合:
+  - 見出し抽出元（5.2 参照）に従い、基本構成（basic_structure）から見出しを新規抽出して開始する。
+- Step7 開始後に基本構成を変更した場合:
+  - 既存の `session_heading_sections` を正本として優先し、自動再同期は行わない
+  - 見出し構成を更新したい場合は、完成形フェーズ（8.3）で書き出し案を入力して送信することで見出しセクションが削除され、basic_structure から再抽出して見出し1から再スタートする
+- 理由:
+  - 途中保存済みの見出し本文との不整合を防ぐため
+
+## 6. 保存・バージョン管理方針
+
+- Step6:
+  - **通常のバージョン管理**（変更前の挙動）
+- Step7 の見出し単位保存:
+  - バージョン管理しない（確定版1つを上書き保持）
+- Step7 の完成形（`session_combined_contents`）:
+  - StepActionBar の「本文生成」ボタンで AI（`blog_creation_step7`）が本文を生成。書き出し＋各見出しの結合テキストをプロンプトに渡し、流れの良い完成形記事を出力。応答を `session_combined_contents` に保存
+  - 書き出し案を入力して送信した場合は見出し再スタート（8.7）となり、完成形保存は行わない
+  - **永続的バージョン管理**: 新バージョン保存時は既存行を削除せず `is_latest=false` に更新し、新行を INSERT する。通常の編集フローにおいては、過去バージョンは保持される（ユーザー要求・データ保持ポリシー等に基づく削除は2.スコープ参照）。
+
+## 7. 画面/操作フロー
+
+1. Step5 で目次（見出し）を確定
+2. Step6 で書き出し案を生成・確認（通常フロー）
+3. **Step6→Step7 遷移**: 前ステップと同様にメッセージから導出。最後の assistant（step6 書き出し案）があれば step7 表示に遷移。(a) ユーザーが書き出し案を入力して送信 → step7_lead に保存（Canvas 編集後の上書き用）。(b) AI が書き出し案を返した場合も、その時点で step7 表示に遷移（特別な保存不要）
+4. Step7 で StepActionBar の「見出し生成」をクリック → AI が **1つ目の見出し** をチャットに生成
+5. チャットで確認し、必要ならタイルクリックで Canvas を開いて修正指示
+6. StepActionBar の「保存」をクリック → 次見出しへ進む
+7. 4〜6 を最終見出しまで繰り返し
+8. 全見出し確定後、**書き出し案を入力して送信**で見出し1から再スタート（8.7）。完成形を保存する場合はStepActionBar の「本文生成」ボタンを押す
+9. 必要に応じて Canvas で修正指示
+10. 最終生成（最新完成形を入力に）
+
+## 8. UI仕様
+
+### 8.1 見出し進捗表示（StepActionBar）
+
+表示場所:
+- `app/chat/components/StepActionBar.tsx` の青色メッセージ内
+
+表示条件:
+- **Step7** の見出し生成フェーズ中（`activeHeadingIndex !== undefined`）、見出しが1件以上あるとき
+
+表示内容:
+- `見出し {currentIndex}/{totalCount}` ＋ 現在見出し名（省略表示）
+
+### 8.2 操作ボタン仕様（Step7）
+
+- `見出し生成`
+  - StepActionBar に配置。クリックで AI が現在見出し分をチャットに生成
+  - 全見出し確定後は非表示
+- `保存`
+  - StepActionBar に配置。対象見出し本文を確定保存し、次見出しへ遷移
+  - 保存成功時に `session_combined_contents` は更新しない
+- `スキップ`
+  - 本仕様では提供しない（誤操作防止のため）
+
+### 8.3 完成形フェーズ
+
+全見出し確定後、プレースホルダーが「書き出し案を入力して送信すると、見出し1から始まります。」に変わり、見出し生成ボタンは非表示。
+
+- **書き出し案を入力して送信**: 見出し再スタート（8.7 参照）。完成形は保存せず、見出し1からやり直す。空送信は不可（送信ボタンは入力がある場合のみ有効）。
+- **完成形の保存**: StepActionBar の「本文生成」ボタンで実行。保存済み書き出し案＋各見出し本文を結合したテキストをプロンプトに渡し、AI（`blog_creation_step7`）が完成形記事を生成。応答を `session_combined_contents` に保存する。
+- 完成形は Canvas で開いて修正指示できる
+
+#### プレースホルダー
+
+- 「書き出し案を入力して送信すると、見出し1から始まります。」
+
+### 8.4 コピーボタン
+
+表示条件:
+- **見出し単位作業中**（`isHeadingUnitView` が true）のときは**非表示**
+- それ以外（ステップ1〜6、Step7 の完成形表示時、タイルクリック時の過去生成表示など）は**表示**
+
+機能:
+- マークダウンとしてクリップボードにコピーする
+- コピー成功時は吹き出しでフィードバックを表示
+
+### 8.5 Step7 中の状態表示（必須）
+
+- 生成中:
+  - Canvas または入力欄付近にローディング表示を出す
+  - `保存して次へ` / `戻る` は無効化する
+- 保存中:
+  - `保存して次へ` ボタンをローディング状態にする
+  - `保存して次へ` / `戻る` の二重操作を防ぐため無効化する
+- 状態解除:
+  - 成功/失敗いずれでも処理完了時にローディングと無効化を解除する
+
+### 8.6 エラー表示（必須）
+
+- 表示位置:
+  - Step7 の操作ボタン近傍（`保存して次へ` の近く）にインライン表示する
+- 対象:
+  - 見出し本文の保存失敗
+- 文言方針:
+  - 原因を短く明示し、次アクションを示す（例: `保存に失敗しました。再試行してください。`）
+- 再試行導線:
+  - 同一画面で `保存して次へ` を再押下して再試行できること
+
+### 8.7 書き出し案送信による見出し再スタート（旧「構成リセット」相当）
+
+完成形フェーズ（8.3）でユーザーが**書き出し案を入力して**送信すると、以下の動作が行われ、見出し1から再スタートできる。**空送信は不可（送信ボタンは入力時のみ有効）。**
+
+- 入力した書き出し案を `chat_messages`（model=blog_creation_step7_lead）に保存
+- `session_heading_sections` を削除し、基本構成（basic_structure）から見出しを再抽出して `session_heading_sections` を再投入する
+- `session_combined_contents` は保持する（書き出し案送信後も完成形履歴は参照可能）
+- ユーザーは新しい見出しリストの1件目から再開する
+
+**注意**: 三点メニュー内の「構成リセット」ボタンは廃止されている。見出し構成をやり直すには、完成形フェーズで書き出し案を入力して送信する操作のみがトリガーとなる。
+
+### 8.8 Canvas 編集内容の保存優先順位
+
+「保存して次へ」および完成形の全文 Canvas 修正時、どのコンテンツを保存するかの決定ロジック。
+
+#### contentRef の更新タイミング
+
+| 項目 | 仕様 |
+|------|------|
+| 更新タイミング | CanvasPanel が `content` / `streamingContent` の変更時に `contentRef.current` を更新する。useEffect 内で `currentContent = streamingContent \|\| content` を ref に反映。 |
+| ストリーミング中 | AI 生成のストリーミング結果は `canvasStreamingContent` として別管理。CanvasPanel は受け取った内容を表示し、props 変更時に `contentRef` へ同期する。 |
+
+#### 保存時の内容決定ロジック（優先順位）
+
+「保存して次へ」実行時に、保存する本文を以下の順で決定する。
+
+| 優先度 | ソース | 説明 |
+|--------|--------|------|
+| 1 | `contentRef.current` | CanvasPanel が content/streamingContent の変更時に更新する最新表示内容。ストリーミング完了直後や表示切替直後の保存で確実に取得できる。 |
+| 2 | `canvasStreamingContent` | AI 生成中のストリーミング内容。ストリーミング直後にユーザーが編集せず保存した場合に使用。 |
+| 3 | `canvasContent` | 表示中の確定内容（session_heading_sections の確定本文 or 完成形）。フォールバック。 |
+
+判定式: `保存する内容 = contentRef.current ?? canvasStreamingContent ?? canvasContent`
+
+（`??` を使用すること。`||` だと `contentRef.current` が空文字列のときに誤って次候補にフォールバックし、ユーザーが意図的に全削除した場合に古いコンテンツで上書きしてしまう）
+
+**空文字列の扱い**: 上記により空文字列を取得した場合、サーバー側 `saveHeadingSection` のバリデーションで拒否される（見出し本文は必須）。意図的全削除時はエラー表示となり、誤った古い内容での上書きは防止される。
+
+#### 優先順位の根拠
+
+- **contentRef を最優先**: props（content/streamingContent）の変更時に useEffect で同期的に ref へ反映するため、表示中の最新内容が確実に取得できる。
+- **canvasStreamingContent を次点**: ストリーミング完了直後のクリックでは、canvasContent がまだ更新されていないことがある。このタイミングを逃さないため。
+- **canvasContent をフォールバック**: ref や streaming が空の場合（例: 確定済み見出しの表示のみで編集なし）の保険。
+
+#### 保証事項
+
+「保存して次へ」実行時に、**表示中の最新内容が確実に保存される**ことを本仕様で保証する。実装時は `contentRef` を content/streamingContent の変更時に更新すること。
+
+## 9. データベース設計
+
+### 9.1 追加テーブル
+
+テーブル名: `session_heading_sections`
+
+目的:
+- **Step7** の「見出しごとの確定本文」を永続化する
+- 各保存時に完成形を再結合するための正規化データを保持する
+
+想定カラム:
+
+| カラム | 型 | 必須 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | Yes | 主キー |
+| `session_id` | `uuid` | Yes | `chat_sessions.id` への外部キー |
+| `heading_key` | `text` | Yes | 見出し識別子。`{order_index}:{normalized_heading_text}:{short_hash(original_heading_text)}` 形式で生成 |
+| `heading_level` | `smallint` | Yes | アプリ保存時に H3=3 / H4=4 へ正規化して保持（DB制約は `1..6` を許容） |
+| `heading_text` | `text` | Yes | 見出し本文 |
+| `order_index` | `integer` | Yes | 並び順（0始まり推奨） |
+| `content` | `text` | Yes | 当該見出しの確定本文（最新版1件） |
+| `is_confirmed` | `boolean` | Yes | `保存して次へ`で`true` |
+| `created_at` | `timestamptz` | Yes | 作成日時 |
+| `updated_at` | `timestamptz` | Yes | 更新日時 |
+
+制約:
+- `PRIMARY KEY (id)`
+- `UNIQUE (session_id, heading_key)`
+- `CHECK (heading_level BETWEEN 1 AND 6)`
+- `CHECK (order_index >= 0)`
+
+補足:
+- `heading_level` は将来拡張余地のため DB 制約を `1..6` とするが、本フローの保存処理では必ず H3/H4（3/4）へ正規化し、3/4 以外は保存しない。
+- `heading_key` は `normalized_heading_text` が同一化するケースでも、`original_heading_text` 由来の `short_hash` を付与して衝突回避する。
+
+#### heading_key 生成仕様
+
+| 項目 | 仕様 |
+|------|------|
+| 形式 | `{order_index}:{normalized_heading_text}:{short_hash}`（代替案ではサフィックス付与あり。下記参照） |
+| normalized_heading_text | 小文字化・記号除去・連続ハイフン圧縮（既存の正規化ロジックを踏襲） |
+| ハッシュアルゴリズム | SHA-256 |
+| ハッシュ長 | 先頭8文字（16進数、小文字）。16^8 ≒ 43億通り。 |
+| ハッシュ入力 | `original_heading_text`（正規化前の見出し本文） |
+| 衝突検知 | INSERT / UPSERT 時の `UNIQUE (session_id, heading_key)` 制約違反をキャッチし、呼び出し元にエラーを返す。静黙スキップは行わない。 |
+| 衝突時の挙動 | デフォルト: ユーザーに「見出しの重複の可能性があります。Step5 の構成案を確認してください。」等のメッセージを表示し、Step5 見直しを促す。代替案は下記を参照。 |
+
+補足:
+- `normalized_heading_text` が同一で `original_heading_text` が酷似している場合、short_hash でも衝突する可能性はあるが、SHA-256 先頭8文字（16^8 ≒ 43億通り）であれば現実的な見出し数では極めてまれ。
+- 現行実装の `simpleHash`（4文字 Base36）は衝突リスクが高いため、本仕様に合わせて SHA-256 ベースへの移行を推奨する。
+
+#### heading_key 衝突時の代替案
+
+上記の「衝突時はエラー返却・Step5 見直しを促す」はデータ整合性を優先する方針であるが、万が一の衝突時にユーザーが Step5 に戻って修正する必要がある点は UX 上のハードルとなりうる。
+
+**実装パス（段階的）**:
+- **初回実装**: A 案（現状維持）を採用し、衝突時はエラー表示のまま Step5 見直しを促す。
+- **実運用**: 衝突発生をモニタリング。実際に報告された場合に D 案（retry_count 付与）または B 案（タイムスタンプ追加）へ移行を検討する。
+- **衝突を事前に避けたい場合**: E 案（UUID v4）を初回から採用する。
+
+| 案 | 内容 | メリット | デメリット |
+|----|------|----------|------------|
+| **A. 現状維持**（初回採用） | 衝突時はエラー表示のまま。ユーザーに Step5 見直しを促す。 | 実装がシンプル。データ整合性が明確。過剰な初期実装を防げる。 | 衝突時の UX 負荷が高い。 |
+| **B. タイムスタンプ追加** | 衝突検知時のみ、`heading_key` に `_${timestamp}` サフィックスを付与して再試行（最大1回）。 | 多くの衝突を自動解消。ユーザー操作不要。 | heading_key の形式が変則的になる。同一ミリ秒での再衝突は理論上ありうる（極めてまれ）。 |
+| **C. 段階的アプローチ** | A 案でリリースし、実運用で衝突発生をモニタリング。実際に発生した場合に B/D 案を検討。 | 初期実装が軽い。衝突が稀である前提では十分。 | 衝突発生時に改修が必要。 |
+| **D. retry_count 付与** | 衝突検知時、`{order_index}:{normalized_heading_text}:{hash}:{retry_count}` 形式で再試行。retry_count を 0, 1, 2 とインクリメントし、最大3回まで試行。3回失敗時はユーザーに見出しテキストの修正を促すエラーを表示。 | 衝突を自動解消する確率が高い。形式が一定（タイムスタンプより予測可能）。 | heading_key 形式の拡張が必要。3回連続衝突は極めてまれだが、その場合は Step5 修正が必要。 |
+| **E. UUID v4** | `heading_key` に UUID v4 を使用する。衝突リスクを実質ゼロにする。形式は `{order_index}:{uuid}` 等（order_index は並び順の確保に必要）。 | 衝突が実質的に発生しない。 | 見出しテキストと key の対応が DB 上では uuid のみとなり、デバッグ・手動確認がしづらい。正規化見出しテキストを別カラム（heading_text）で保持する現状の設計なら運用可能。 |
+
+インデックス:
+- `INDEX session_heading_sections_session_order_idx (session_id, order_index)`
+- `INDEX session_heading_sections_session_updated_idx (session_id, updated_at DESC)`
+
+RLS（方針）:
+- `chat_sessions` と同じアクセス境界に従う
+- `session_id` 経由でオーナー/スタッフ共有アクセスを適用
+
+テーブル名: `session_combined_contents`
+
+目的:
+- **Step7** の「完成形履歴」を蓄積する
+- 完成形 = **完成形の書き出し**（3.用語定義・12.1 参照）＋見出し確定本文（order_index 順で連結）
+- `is_latest=true` のレコードを最終生成時の正本として利用する
+
+想定カラム:
+
+| カラム | 型 | 必須 | 説明 |
+|---|---|---|---|
+| `id` | `uuid` | Yes | 主キー |
+| `session_id` | `uuid` | Yes | `chat_sessions.id` への外部キー |
+| `version_no` | `integer` | Yes | セッション内の完成形バージョン番号（1始まり） |
+| `content` | `text` | Yes | 当該バージョンの完成形全文（完成形の書き出し＋見出し本文。用語定義3参照） |
+| `is_latest` | `boolean` | Yes | 最新完成形なら`true`（各`session_id`で1件のみ） |
+| `created_at` | `timestamptz` | Yes | 作成日時 |
+| `updated_at` | `timestamptz` | Yes | 更新日時 |
+
+制約:
+- `PRIMARY KEY (id)`
+- `UNIQUE (session_id, version_no)`
+- `UNIQUE (session_id) WHERE is_latest = true`
+- `CHECK (version_no >= 1)`
+
+インデックス:
+- `INDEX session_combined_contents_session_version_idx (session_id, version_no DESC)`
+- `INDEX session_combined_contents_latest_idx (session_id) WHERE is_latest = true`
+- `INDEX session_combined_contents_updated_idx (session_id, updated_at DESC)`
+
+RLS（方針）:
+- `chat_sessions` と同じアクセス境界に従う
+- `session_id` 経由でオーナー/スタッフ共有アクセスを適用
+
+### 9.2 テーブル関係（ER）
+
+- `chat_sessions (1) - (N) session_heading_sections`
+- `chat_sessions (1) - (N) session_combined_contents`
+
+### 9.3 完成形の扱い
+
+本仕様では、`session_combined_contents` に完成形履歴を蓄積し、`is_latest=true` を正本として扱う。  
+完成形の**先頭**には **完成形の書き出し**（12.1 の取得ロジックで取得したテキスト）を置き、その後に見出し確定本文を `order_index` 順で連結する。取得できない場合は空文字列を先頭に置く（見出し確定本文のみの連結）。
+
+更新時は以下の順序で扱う:
+
+1. Step7 見出し保存時:
+   - `session_heading_sections` の対象見出しのみ更新する
+   - `session_combined_contents` には保存しない（見出し保存時の完成形バージョン作成は行わない）
+
+2. Step7 完了後の全文 Canvas 修正時:
+   - `version_no` 採番は同一トランザクション内で `COALESCE(MAX(version_no), 0) + 1` を実行。`save_atomic_combined_content` RPC では `chat_sessions` を `FOR UPDATE` でロックし同一セッションの競合を直列化する。失敗時はユーザーにエラー表示し、再押下で再試行させる。
+   - 旧最新レコード（`is_latest=true`）を `false` に更新
+   - 全文修正結果を採番済み `version_no` として INSERT（`is_latest=true`、`UNIQUE(session_id, version_no)` 前提）
+
+3. 最終生成実行時:
+   - 常に `session_combined_contents` の `is_latest=true` を入力として使用
+
+### 9.4 更新フロー対応
+
+- Step7 初回入場時（`session_heading_sections` が未作成の場合）:
+  - 基本構成（basic_structure）から見出しを抽出し、`session_heading_sections` に初期投入（`content=''`, `is_confirmed=false`）。5.2 および 5.5 を参照。
+- Step7「保存して次へ」時:
+  - 対象 `heading_key` の `content` / `is_confirmed` / `updated_at` を更新
+  - `session_combined_contents` への保存は行わない
+- Step7 完了後の全文 Canvas 修正時:
+  - 全文修正結果をトランザクション内で新しい `session_combined_contents` レコードとして追加（セクション原本は保持）
+- 最終生成実行時:
+  - 常に `session_combined_contents.is_latest=true` の `content` を入力に使用
+
+## 10. エッジケース
+
+- **step5 に戻り書き出し案を再生成した場合**: 最新の step6 メッセージが構成案（基本構成）なら、step7 表示に遷移しない。`getStep7UserLead` も null を返す（古い書き出し案を返さない）。step6ToStep7Lead の saved 判定では「最新 step6 が書き出し案」の場合のみ有効とする。
+- 見出し0件:
+  - Step7 の見出し単位生成を開始せず、メモ・補足情報の「基本構成」入力を促す
+- 見出し抽出不正（重複・空）:
+  - 実行前に警告表示し修正を促す
+- 未保存状態での遷移:
+  - 確認ダイアログで破棄/継続を選択
+- **空入力・空白のみの入力**で送信しようとした場合:
+  - 送信ボタンは無効（入力必須のため送信不可）。完成形フェーズではStepActionBar の「本文生成」ボタンで完成形を保存する。
+
+## 11. 受け入れ条件
+
+1. Step6 は通常の書き出し案フロー（バージョン管理）である
+2. Step7 で見出し単位生成が順次実行できる
+3. 「保存して次へ」で対象見出しのみ確定保存される
+4. 見出し保存時に `session_combined_contents` へ新規バージョンが作成されない
+5. 完成形の先頭に完成形の書き出し（12.1 の取得ロジック。取得できない場合は空文字列）が入る
+6. 再編集時に対象見出し以外が変更されない
+7. Step7 完了後は全文 Canvas 修正が可能
+8. 最後の見出し保存後、「本文生成」ボタンで完成形を作成すると、完成形の書き出し＋見出し本文が Canvas に表示される
+9. Step7 中、CanvasPanel ヘッダーに現在見出し（番号/総数/見出し名）が表示される
+10. Step7 の生成中/保存中に、ローディング表示と操作無効化が適用される
+11. Step7 保存失敗時に、操作ボタン近傍へエラー表示され再試行できる
+12. Step7 の生成対象見出しが `###`（H3）と `####`（H4）である
+13. Step7 完成形フェーズで書き出し案を入力して送信すると、`session_heading_sections` が削除され、基本構成（basic_structure）から見出しを再抽出して先頭見出しから再開できる（`session_combined_contents` は保持）
+14. 既存の step6 見出し生成済みデータ（レガシー）は特別扱いしない。見出し構成をやり直すには Step7 完成形フェーズで書き出し案を入力して送信するか、Step6 を再生成すればよい
+
+## 12. 実装メモ
+
+- Step7 見出し保存は「ユーザー操作で確定」が前提。自動確定は行わない。
+- 完成形の再結合時は、完成形の書き出しを 12.1 の優先順で取得し先頭に置く。
+- 完成形用: **`getCombinedContentForStep7`**（`src/server/actions/heading-flow.actions.ts`）で `{ lead, sections }` を取得し、Stream API に `step7FullBodyGeneration: true` で送信。書き出し（lead）はユーザープロンプト、各見出し本文（sections）はシステムプロンプトに注入。AI（`blog_creation_step7`、maxTokens: 20000）が完成形を生成し、Stream API 内で `headingFlowService.saveCombinedContentSnapshot` により `session_combined_contents` に保存。
+
+### 12.1 書き出し案の保存・取得仕様
+
+#### データフロー（要約）
+
+- **完成形作成のトリガー**: StepActionBar の「本文生成」ボタンのみ。`getCombinedContentForStep7` で `{ lead, sections }` を取得し、Stream API に送信。書き出しはユーザープロンプト、各見出し本文はシステムプロンプトに注入。
+- **保存先の一貫性**: Step6→7 または見出し再スタート時に `chat_messages`（model=blog_creation_step7_lead）に保存した書き出し案を、完成形作成時にサーバー側で `getStep7UserLead` により取得。step7_lead がなければ最新の step6 assistant 書き出し案をフォールバック（前ステップと同様のメッセージ導出）。
+
+#### Step6→7 遷移時の保存
+
+- InputArea で入力された書き出し案を `chat_messages` に保存（role=user, model=blog_creation_step7_lead）
+- この時点では `session_combined_contents` には保存しない
+- MessageArea では当該メッセージを非表示とする
+- 見出し再スタート時（8.7）は `resetHeadingSections` を `preserveStep7Lead: true` で呼ぶため、直前に保存した書き出し案は保持される。次回の完成形作成時（「本文生成」ボタン）では `getStep7UserLead` が最新1件を取得するため、その書き出し案が使用される
+
+#### 完成形作成時の取得・プロンプト注入
+
+完成形作成は StepActionBar の「本文生成」ボタンで行われる。`getCombinedContentForStep7` 内で `headingFlowService.getCombinedContentForPrompt` が `{ lead, sections }` を返す。
+
+- **lead**: `getStep7UserLead` で取得。優先順: (1) `chat_messages` の role=user, model=blog_creation_step7_lead の最新1件、(2) なければ最新の step6 assistant 書き出し案（構成案を除く。最新 step6 が構成案の場合は null）。ユーザープロンプトに注入。
+- **sections**: 見出し確定本文の連結。システムプロンプトの「## 各見出し本文」セクションに注入。
+
+#### 実装
+
+- **`getCombinedContentForStep7`**（`src/server/actions/heading-flow.actions.ts`）: パラメータ `{ sessionId, liffAccessToken }`。`headingFlowService.getCombinedContentForPrompt` で `{ lead, sections }` を取得し返す（DB 保存なし）。
+- **書き出し案・構成案の区別**: `src/lib/constants.ts` の `MIN_LEAD_CONTENT_LENGTH`（20文字）、`STRUCTURE_PATTERN_CHECK_LENGTH`（150文字）、`src/lib/canvas-content.ts` の `BASIC_STRUCTURE_PATTERN` を使用。20文字未満は無効、先頭150文字が構成案パターンにマッチする場合は構成案として扱う。
+- Supabase 実装時は `supabase/migrations/` に SQL を追加し、ロールバック案をコメントで併記する。
+- `heading_key` の short_hash: `src/lib/heading-extractor.ts` で SHA-256 先頭8文字（16進）を使用（実装済み）。`initializeHeadingSections` は upsert（onConflict で既存行を更新）を使用。衝突検知・エラー返却は将来の拡張として検討。
+- `version_no` 採番: `save_atomic_combined_content` RPC で `chat_sessions` を `FOR UPDATE` によりロックし、同一セッションの競合を直列化する。アプリ側のリトライは行わない。
+- Canvas 保存時の内容取得: 8.8 に従い、`contentRef.current ?? canvasStreamingContent ?? canvasContent` の順で決定する（空文字列は有効な編集結果のため `??` を使用すること）。CanvasPanel は content/streamingContent の変更時に contentRef を更新すること。
+
+## 13. ChatLayout 簡素化方針
+
+### 13.1 課題
+
+ChatLayout には Step7 見出しフロー専用の状態・ロジックが多数直書きされており、以下の問題がある。
+
+- **可読性**: step7 判定と通常 Canvas の分岐が混在し、全体の流れを追いにくい
+- **保守性**: step7 変更時に ChatLayout 内を広範囲に触る必要がある
+- **テスト容易性**: 見出しフロー単体のロジックを分離してテストしづらい
+
+### 13.2 現状の責務分担
+
+Step7 見出しフローは **`useHeadingCanvasState`** と **`useHeadingFlow`** および **ChatLayout** で分担している。
+
+| 担当 | 役割 |
+|------|------|
+| `useHeadingCanvasState` | `viewingHeadingIndex`、`setViewingHeadingIndex`、`handleResetHeadingConfiguration` を提供。見出し表示インデックスと構成リセットの管理。保存処理は `useHeadingFlow` が担当。 |
+| `useHeadingFlow` | `headingSections`、`activeHeadingIndex`、`handleRetryHeadingInit`、`combinedContentVersions` など。見出しデータ・初期化・完成形管理。 |
+| `ChatLayout` | `pendingViewingIndexRef`、`isContentStale`、Canvas 表示内容の決定、`handleBeforeHeadingChange`、タイルクリック時の見出し特定など。Step7 固有の複合ロジック。 |
+
+### 13.3 useHeadingCanvasState のインターフェース（現行）
+
+```ts
+// 入力
+interface UseHeadingCanvasStateProps {
+  sessionId: string;
+  getAccessToken: () => Promise<string>;
+  initialSections: SessionHeadingSection[];
+  onHeadingSaved: () => Promise<void | unknown>;
+  onResetComplete: () => Promise<void | unknown>;
+}
+
+// 戻り値（保存処理は useHeadingFlow が担当）
+interface UseHeadingCanvasStateReturn {
+  viewingHeadingIndex: number | null;
+  setViewingHeadingIndex: (idx: number | null) => void;
+  handleResetHeadingConfiguration: (options?: { preserveStep7Lead?: boolean }) => Promise<boolean>;
+}
+```
+
+### 13.4 ChatLayout 側の責務
+
+- `useHeadingCanvasState` と `useHeadingFlow` を呼び出し、Step7 時はその戻り値を CanvasPanel 等に渡す
+- `resolvedCanvasStep === 'step7'` のときの Canvas 表示内容（見出し単位 or 完成形）の決定
+- タイルクリック時に `pendingViewingIndexRef` で該当見出しインデックスを effect へ渡す
+- `handleBeforeHeadingChange`、`handleBeforeManualStepChange` で未保存変更確認
+
+### 13.5 今後の簡素化余地
+
+- ChatLayout 内の Step7 固有ロジック（`isContentStale`、Canvas 内容決定など）を `useHeadingCanvasState` または新規フックに移すことで、さらに責務を分離できる
+
+## 14. 可読性・保守性のための追加指針
+
+### 14.1 定数の一元化
+
+見出しフロー対象ステップをハードコードせず、定数で管理する。
+
+```ts
+// src/lib/constants.ts 等
+/** 見出し単位生成フローが紐づくステップID */
+export const STEP7_ID: BlogStepId = 'step7';
+```
+
+- `resolvedCanvasStep === 'step7'` → `resolvedCanvasStep === STEP7_ID`
+- 書き出し案・構成案の判定: `MIN_LEAD_CONTENT_LENGTH`（20文字）、`STRUCTURE_PATTERN_CHECK_LENGTH`（150文字）、`BASIC_STRUCTURE_PATTERN` を `src/lib/constants.ts` および `src/lib/canvas-content.ts` で一元管理
+- フックの `headingStepId` にはこの定数を渡す
+- 将来 step 構成が変わっても変更箇所を1点に集約できる
+
+### 14.2 命名規則（step 依存の排除）
+
+フック・コンポーネント内の変数名から step 番号を外し、責務に基づいた名前にする。
+
+| 避ける | 推奨 |
+|--------|------|
+| `isStep7ContentStale` | `isContentStale` |
+| `pendingStep7ViewingIndexRef` | `pendingViewingIndexRef` |
+| `step7Versions` | `versionsForHeadingStep` |
+
+- 「見出しフロー用」であることは `useHeadingCanvasState` の文脈で明らかにする
+- step 番号を変数名に含めないことで、将来の step 変更時のリネームを減らす
+
+### 14.3 変更影響ファイル一覧（実装チェックリスト）
+
+Step7 移行時に触る想定ファイルを一覧化する。実装漏れ防止用。
+
+| ファイル | 主な変更内容 |
+|----------|----------------|
+| `src/lib/constants.ts` | `STEP7_ID` 追加 |
+| `src/lib/heading-extractor.ts` | `generateHeadingKey` の short_hash は SHA-256 先頭8文字（実装済み）。step7 条件等 |
+| `src/server/services/headingFlowService.ts` | `getCombinedContentForPrompt`: 書き出しを getStep7UserLead で取得し見出し本文と結合。`getStep7UserLead` は step7_lead 優先、なければ step6 assistant 書き出し案をフォールバック。`initializeHeadingSections`、`resetHeadingSections`（Step7 初期化用） |
+| `src/server/actions/wordpress.actions.ts` | `getContentAnnotationBySession` で `content_annotations.basic_structure` 取得（見出し抽出元の READ 用） |
+| `app/api/chat/canvas/stream/route.ts` | `isStep7HeadingUnit`、targetStep 条件、saveCombined の step7 対応 |
+| `src/hooks/useHeadingFlow.ts` | step7 条件、トースト文言、見出し抽出元は basic_structure のみ |
+| `src/hooks/useHeadingCanvasState.ts` | **新規**。見出し Canvas 状態の集約 |
+| `app/chat/components/ChatLayout.tsx` | フック利用、step7 分岐集約、step6ToStep7Lead（step7 表示遷移判定）、タイルクリック |
+| `app/chat/components/CanvasPanel.tsx` | `activeStepId === 'step7'`、見出し進捗表示、contentRef を content/streamingContent 変更時に更新（8.8）、コピーボタンは見出し単位作業中のみ非表示（8.4） |
+| `app/chat/components/StepActionBar.tsx` | 見出し0件時の基本構成導線（8.7 の「構成リセット」ボタンは廃止。書き出し案送信で見出し再スタート） |
+| `src/server/actions/heading-flow.actions.ts` | `resetHeadingSections` アクション、`getCombinedContentForStep7`（完成形作成: 結合テキストを取得。Stream API が AI で生成し `session_combined_contents` に保存） |
+| `app/chat/components/MessageArea.tsx` | step7 メッセージ照合、タイルラベル |
+| `app/chat/components/InputArea.tsx` | step7 プレースホルダー（8.3 参照） |
+| `src/lib/prompts.ts` | 見出し生成プロンプトの step7 前提（該当箇所のみ） |
+
+### 14.4 既存データ（Step6 見出し生成済みセッション）の扱い
+
+#### 方針: Step6 レガシーは特別扱いしない
+
+既に step6 で見出し単位生成済みのセッション（レガシーデータ）であっても、**step6 は通常の書き出し案フローとして扱う**。  
+見出しフロー（1見出し+本文）は **step7 のみ**とする。
+
+**Step6 レガシーへの導線は設けない**。`session_heading_sections` に古い見出しが残っている Step6 セッションでは、ユーザーは Step7 に進んでから完成形フェーズで書き出し案を入力して送信して見出しを再スタートするか、Step6 を再度生成すればよい。
+
+#### 既存セッションのデータ構造
+
+- `session_heading_sections`: 既存レコードは保持する（自動利用しない）。
+- `session_combined_contents`: 既存レコードは保持する。
+- チャットメッセージ: `blog_creation_step6` はそのまま保持し、step6 の履歴として扱う。
+
+#### 表示・編集の可否
+
+| 観点 | 方針 |
+|------|------|
+| Step6 表示 | **通常 Canvas 表示**。見出し単位UI（進捗/保存して次へ/戻る）は表示しない。 |
+| Step6 編集 | **通常の全文編集**のみ許可。 |
+| Step7 への移行 | Step7 完成形フェーズで書き出し案を入力して送信した場合、見出し抽出元（5.2 参照）に従い再抽出して step7 を開始する。 |
+| タイル→Canvas 紐づけ | `blog_creation_step6` は常に step6 タイルとして扱う。step7 として解釈しない。 |
+
+#### 書き出し案送信による見出し再スタート時の動作
+
+1. ユーザーが完成形フェーズで**書き出し案を入力して**送信する（空送信は不可）。
+2. `session_heading_sections` を削除する（`session_combined_contents` は保持）。
+3. 見出し抽出元（5.2 参照）に従い、基本構成（basic_structure）から `###`/`####` を再抽出する。
+4. step7 の先頭見出しから見出しフローを再開する。
+
+#### データ移行
+
+- 自動移行は行わない。
+- `blog_creation_step6` を `blog_creation_step7` に書き換える移行も行わない。
+
+#### 受け入れテスト
+
+- 既存の step6 見出し生成済みセッションで、step6 を開いたときに見出し単位UIが表示されないこと。
+- `blog_creation_step6` タイルをクリックしても step7 へ自動解釈されないこと。
+- Step7 完成形フェーズで書き出し案を送信した後に、step7 見出しフローが再開されること。
+
+### 14.5 コメント規約
+
+複雑な条件分岐には、**なぜ**その条件が必要かを JSDoc またはインラインコメントで残す。
+
+例:
+```ts
+// 見出し保存直後は activeHeadingIndex が進むが Canvas は前見出しのまま。
+// この状態で再保存すると誤って前見出しに上書きするため、新規生成が入るまでステール扱いにする。
+if (isContentStale && viewingHeadingIndex === activeHeadingIndex) {
+  return '';
+}
+```
+
+- 「何をしているか」より「なぜそうしているか」を優先して記載
+- エッジケース対応の意図が後から分かるようにする

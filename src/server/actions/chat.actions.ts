@@ -19,6 +19,7 @@ import {
 } from '@/server/schemas/chat.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { cache } from 'react';
+import { STEP7_ID, toBlogModel } from '@/lib/constants';
 
 /**
  * ユーザーロールを取得しメモ化する内部関数
@@ -29,7 +30,7 @@ const getCachedUserRole = cache(async (accessToken: string) => {
     return await getUserRole(accessToken);
   } catch (error) {
     console.error('Failed to get user role in getCachedUserRole:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
       timestamp: new Date().toISOString(),
     });
     return null;
@@ -252,7 +253,7 @@ export async function getLatestBlogStep7MessageBySession(
   const result = await supabase.getLatestChatMessageBySessionAndModel(
     sessionId,
     targetUserId,
-    'blog_creation_step7'
+    toBlogModel(STEP7_ID)
   );
 
   if (!result.success) {

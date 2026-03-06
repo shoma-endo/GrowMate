@@ -26,13 +26,13 @@ export async function GET(request: NextRequest) {
 
   if (!clientId || !clientSecret || !redirectUri || !cookieSecret) {
     console.error('WordPress.com OAuth callback environment variables are not set.');
-    return NextResponse.json({ error: 'OAuth configuration error.' }, { status: 500 });
+    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.OAUTH_CONFIG_ERROR }, { status: 500 });
   }
 
   // LIFFアクセストークンを取得
   if (!state) {
     console.error('Missing OAuth state parameter.');
-    return NextResponse.json({ error: 'Invalid state. CSRF attack?' }, { status: 400 });
+    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.INVALID_STATE }, { status: 400 });
   }
 
   const storedState = request.cookies.get(stateCookieName)?.value;
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       receivedState: state,
       storedState,
     });
-    return NextResponse.json({ error: 'Invalid state. CSRF attack?' }, { status: 400 });
+    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.INVALID_STATE }, { status: 400 });
   }
 
   // State is valid, clear the state cookie
@@ -51,12 +51,12 @@ export async function GET(request: NextRequest) {
   const stateVerification = verifyOAuthState(state, cookieSecret);
   if (!stateVerification.valid) {
     console.error('Failed to verify OAuth state payload.', { reason: stateVerification.reason });
-    return NextResponse.json({ error: 'Invalid state payload.' }, { status: 400 });
+    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.INVALID_STATE_PAYLOAD }, { status: 400 });
   }
 
   if (!code) {
     console.error('Authorization code not found in callback.');
-    return NextResponse.json({ error: 'Authorization code missing.' }, { status: 400 });
+    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.AUTHORIZATION_CODE_MISSING }, { status: 400 });
   }
 
   const stateReturnTo = stateVerification.payload.returnTo;
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
       const errorBody = await tokenResponse.text();
       console.error('Failed to fetch access token:', tokenResponse.status, errorBody);
       return NextResponse.json(
-        { error: 'Failed to obtain access token.', details: errorBody },
+        { error: ERROR_MESSAGES.AUTH.ACCESS_TOKEN_FETCH_FAILED, details: errorBody },
         { status: tokenResponse.status }
       );
     }
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
 
     if (!access_token) {
       console.error('Access token not found in response from WordPress.com', tokenData);
-      return NextResponse.json({ error: 'Access token not received.' }, { status: 500 });
+      return NextResponse.json({ error: ERROR_MESSAGES.AUTH.ACCESS_TOKEN_FETCH_FAILED }, { status: 500 });
     }
 
     let targetUserId: string | null = null;
@@ -233,7 +233,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error during OAuth callback:', error);
     return NextResponse.json(
-      { error: 'Internal server error during OAuth callback.' },
+      { error: ERROR_MESSAGES.AUTH.OAUTH_CALLBACK_SERVER_ERROR },
       { status: 500 }
     );
   }

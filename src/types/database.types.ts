@@ -915,11 +915,104 @@ export type Database = {
           },
         ];
       };
+      session_heading_sections: {
+        Row: {
+          id: string;
+          session_id: string;
+          heading_key: string;
+          heading_level: number;
+          heading_text: string;
+          order_index: number;
+          content: string;
+          is_confirmed: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          heading_key: string;
+          heading_level: number;
+          heading_text: string;
+          order_index: number;
+          content: string;
+          is_confirmed?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          heading_key?: string;
+          heading_level?: number;
+          heading_text?: string;
+          order_index?: number;
+          content?: string;
+          is_confirmed?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'session_heading_sections_session_id_fkey';
+            columns: ['session_id'];
+            isOneToOne: false;
+            referencedRelation: 'chat_sessions';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      session_combined_contents: {
+        Row: {
+          id: string;
+          session_id: string;
+          version_no: number;
+          content: string;
+          is_latest: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          version_no: number;
+          content: string;
+          is_latest?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          version_no?: number;
+          content?: string;
+          is_latest?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'session_combined_contents_session_id_fkey';
+            columns: ['session_id'];
+            isOneToOne: false;
+            referencedRelation: 'chat_sessions';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
+      save_atomic_combined_content: {
+        Args: {
+          p_session_id: string;
+          p_content: string;
+          p_authenticated_user_id?: string;
+        };
+        Returns: undefined;
+      };
       accept_employee_invitation: {
         Args: { p_token: string; p_user_id: string };
         Returns: {

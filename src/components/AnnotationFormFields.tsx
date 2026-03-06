@@ -21,7 +21,7 @@ const PLACEHOLDERS: Record<AnnotationFieldKey, string> = {
   persona: 'デモグラフィック情報やペルソナ',
   goal: '達成したいゴールや目標',
   prep: 'PREP法の要点や伝えたい流れ',
-  basic_structure: '導入や見出し構成など基本的な流れ',
+  basic_structure: '導入や見出し構成を入力',
   opening_proposal: '書き出しの方向性や冒頭で伝えたい内容',
 };
 
@@ -82,6 +82,11 @@ export default function AnnotationFormFields({
             onChange={e => onFormChange(key, e.target.value)}
             placeholder={PLACEHOLDERS[key]}
           />
+          {key === 'basic_structure' && (
+            <p className="mt-1.5 text-xs text-gray-500">
+              本文作成（Step7）では <code className="px-1 py-0.5 bg-gray-100 rounded font-mono">###</code> 中見出し / <code className="px-1 py-0.5 bg-gray-100 rounded font-mono">####</code> 小見出し 形式で見出しを抽出します。
+            </p>
+          )}
         </div>
       ))}
 

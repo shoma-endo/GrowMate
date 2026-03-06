@@ -386,7 +386,7 @@ export async function fetchCampaignMetrics(
           console.error('[fetchCampaignMetrics] Token save failed');
           return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED };
         }
-      } catch (_) {
+      } catch {
         return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED };
       }
     }

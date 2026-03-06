@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
   WordPressPostResponse,
   WordPressSiteInfo,
@@ -207,7 +208,7 @@ export class WordPressService {
       console.error('Error in testConnection:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error during testConnection',
+        error: error instanceof Error ? error.message : ERROR_MESSAGES.WORDPRESS.TEST_CONNECTION_UNEXPECTED,
       };
     }
   }

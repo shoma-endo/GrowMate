@@ -7,6 +7,7 @@ import { htmlToMarkdownForCanvas, sanitizeHtmlForCanvas } from '@/lib/canvas-con
 import type { AnnotationRecord } from '@/types/annotation';
 import type { WordPressPostResponse } from '@/types/wordpress';
 import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
+import { STEP7_ID, toBlogModel } from '@/lib/constants';
 
 interface LoadWordPressRequestBody {
   sessionId?: string;
@@ -235,7 +236,7 @@ export async function POST(request: NextRequest) {
       session_id: sessionId,
       role: 'assistant' as const,
       content: assistantContent,
-      model: 'blog_creation_step7',
+      model: toBlogModel(STEP7_ID),
       created_at: nowIso,
     };
 

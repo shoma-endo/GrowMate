@@ -276,8 +276,9 @@ import { getBrief } from '@/server/actions/brief.actions';
 import type { BriefInput } from '@/server/schemas/brief.schema';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { BlogStepId, isStep7 as isBlogStep7, toTemplateName } from '@/lib/constants';
+import { BLOG_STEP_IDS, BlogStepId, isStep7 as isBlogStep7, toTemplateName } from '@/lib/constants';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { headingFlowService } from '@/server/services/headingFlowService';
 
 const supabaseService = new SupabaseService();
 
@@ -753,6 +754,103 @@ const generateLpDraftPrompt = cache(
 );
 
 /**
+ * 見出し単位生成用の最小プロンプト（DBテンプレート不使用）
+ * Step 6（書き出し案/旧見出しフロー）および Step 7（本文作成/新見出しフロー）で使用。
+ * 事業者情報とコンテンツ変数のみで構成し、見出し構成の混在による混乱を防ぐ。
+ */
+async function generateHeadingUnitPrompt(
+  liffAccessToken: string,
+  sessionId: string,
+  activeSection: { heading_text: string; heading_level?: number }
+): Promise<string> {
+  try {
+    const [auth, businessInfo] = await Promise.all([
+      authMiddleware(liffAccessToken),
+      getCachedBrief(liffAccessToken),
+    ]);
+    const userId = auth.error ? undefined : auth.userId;
+    const contentAnnotation = userId
+      ? sessionId
+        ? await PromptService.getContentAnnotationBySession(userId, sessionId)
+        : await PromptService.getLatestContentAnnotationByUserId(userId)
+      : null;
+    const contentVars = PromptService.buildContentVariables(contentAnnotation ?? null);
+
+    const lines: string[] = [
+      '# 役割',
+      'ブログ記事の見出し本文を書く専門家です。指定された1見出し分の本文のみを出力します。',
+      '',
+      '# コンテキスト',
+      '事業者・サービス、キーワード、ターゲットに沿って一貫性のある本文を書いてください。',
+    ];
+
+    if (businessInfo) {
+      const profile = businessInfo.profile;
+      const service = businessInfo.services?.[0];
+      lines.push(
+        '',
+        '## 事業者情報',
+        `- 会社・サービス: ${profile?.company ?? ''} / ${service?.name ?? ''}`
+      );
+      if (businessInfo.persona) {
+        lines.push(`- ターゲット: ${businessInfo.persona}`);
+      }
+    }
+
+    if (
+      contentVars.contentMainKw ||
+      contentVars.contentKw ||
+      contentVars.contentGoal ||
+      contentVars.contentPersona ||
+      contentVars.contentNeeds ||
+      contentVars.contentPrep
+    ) {
+      lines.push('', '## キーワード・記事方針');
+      if (contentVars.contentMainKw) lines.push(`- メインKW: ${contentVars.contentMainKw}`);
+      if (contentVars.contentKw) lines.push(`- KW: ${contentVars.contentKw}`);
+      if (contentVars.contentGoal) lines.push(`- ユーザーゴール: ${contentVars.contentGoal}`);
+      if (contentVars.contentPersona)
+        lines.push(`- デモグラ・ペルソナ: ${contentVars.contentPersona}`);
+      if (contentVars.contentNeeds) lines.push(`- ニーズ: ${contentVars.contentNeeds}`);
+      if (contentVars.contentPrep) lines.push(`- PREP構成（参考）: ${contentVars.contentPrep}`);
+    }
+
+    const contextBlock = lines.filter(Boolean).join('\n');
+
+    const headingLevel = activeSection.heading_level ?? 3;
+    const hashes = '#'.repeat(headingLevel);
+
+    const headingConstraintBlock = [
+      '',
+      '---',
+      '',
+      '## 【最重要】見出し単位生成モード',
+      '',
+      `**対象見出し（これのみ出力）**: 「${activeSection.heading_text}」`,
+      '',
+      '**絶対ルール**:',
+      '- ユーザーへの確認・質問は不要です。上記の対象見出しの「見出し行＋本文」を即座に出力してください。',
+      '- 「どの見出しを書くか」等の確認メッセージは絶対に出力しないでください。',
+      '- 【主な修正内容】「追加 -」「変更 -」「削除 -」などの修正分析・変更箇所の説明は絶対に出力しないでください。対象見出し＋文章のみを出力してください。',
+      `- 出力は「見出し行＋文章」の形式にしてください。1行目に ${hashes} レベルで見出し行を書き、2行目以降に文章を書いてください。`,
+      '- 他の見出し、全体構成、前後のセクション、タイトル、リード文などは絶対に出力しないでください。',
+      '',
+      '出力形式の例:',
+      '```',
+      `${hashes} ${activeSection.heading_text}`,
+      '',
+      '（ここに本文。200〜400字程度を目安）',
+      '```',
+    ].join('\n');
+
+    return contextBlock + headingConstraintBlock;
+  } catch (error) {
+    console.error('Step6見出し単位プロンプト生成エラー:', error);
+    return SYSTEM_PROMPT;
+  }
+}
+
+/**
  * ブログ作成用プロンプト生成（キャッシュ付き）
  * DBテンプレート + canonicalUrls 変数埋め込み
  */
@@ -895,30 +993,107 @@ const STATIC_PROMPTS: Record<string, string> = {
   ad_copy_finishing: AD_COPY_FINISHING_PROMPT,
   lp_draft_creation: LP_DRAFT_PROMPT,
 };
+const BLOG_STEP_PATTERN = new RegExp(`^blog_creation_(${BLOG_STEP_IDS.join('|')})(?:_|$)`);
 
 /**
  * モデルに応じたシステムプロンプトを取得する（LIFFトークンがあれば動的生成、なければ静的）
+ * @param step7CombinedContext 本文生成ボタン時に渡す各見出し本文（書き出しはユーザープロンプトに注入）。ある場合、これをシステムプロンプト内に注入する
  */
 export async function getSystemPrompt(
   model: string,
   liffAccessToken?: string,
   sessionId?: string,
-  serviceIdOverride?: string
+  serviceIdOverride?: string,
+  step7CombinedContext?: string
 ): Promise<string> {
   if (liffAccessToken) {
     // セッションに紐づくサービスIDを解決（オーバーライドがなければ）
     let serviceId = serviceIdOverride;
-    if (!serviceId && sessionId) {
+    let authUserId: string | null = null;
+    if (sessionId) {
       const authResult = await authMiddleware(liffAccessToken);
       if (!authResult.error && authResult.userId) {
-        const result = await supabaseService.getSessionServiceId(sessionId, authResult.userId);
+        authUserId = authResult.userId;
+      }
+      if (!serviceId && authUserId) {
+        const result = await supabaseService.getSessionServiceId(sessionId, authUserId);
         if (result.success && result.data) serviceId = result.data;
       }
     }
 
     if (model.startsWith('blog_creation_')) {
-      const step = model.substring('blog_creation_'.length) as BlogStepId;
-      return await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
+      const stepMatch = model.match(BLOG_STEP_PATTERN);
+      if (!stepMatch?.[1]) {
+        return STATIC_PROMPTS[model] ?? SYSTEM_PROMPT;
+      }
+      const step = stepMatch[1] as BlogStepId;
+
+      // 見出し構成・本文作成ステップ (Step 7): 見出し単位生成モードの判定
+      // 該当時は固有の生成プロンプトのみを返し、DBテンプレートの取得等を回避する
+      if (isBlogStep7(step) && sessionId && authUserId) {
+        const sessionRes = await supabaseService.getChatSessionById(sessionId, authUserId);
+        if (sessionRes.success && sessionRes.data) {
+          const sectionsResult = await headingFlowService.getHeadingSections(sessionId);
+          if (sectionsResult.success && Array.isArray(sectionsResult.data)) {
+            const activeSection = sectionsResult.data.find(s => !s.is_confirmed);
+            if (activeSection) {
+              return generateHeadingUnitPrompt(liffAccessToken, sessionId, activeSection);
+            }
+          }
+        }
+      }
+
+      // 通常のステッププロンプト生成
+      const basePrompt = await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
+
+      // Step 7 (最終生成モード): コンテキストを追加する
+      if (isBlogStep7(step)) {
+        // 本文生成ボタン: 各見出し本文を渡された場合はシステムプロンプトに注入（書き出しはユーザープロンプトで渡済み）
+        if (step7CombinedContext?.trim()) {
+          return [
+            basePrompt,
+            '',
+            '## 各見出し本文',
+            '以下を正本として、流れの良い完成形記事本文を生成してください。見出しレベル（### / ####）を維持しつつ、段落間のつながりを自然に整えてください。',
+            '',
+            step7CombinedContext.trim(),
+          ].join('\n');
+        }
+
+        // 既存本文があればコンテキストとして追加 (必須ではない)
+        if (sessionId && authUserId) {
+          const [latestCombinedResult, legacyStep6Result] = await Promise.all([
+            supabaseService.getLatestCombinedContentBySession(sessionId, authUserId),
+            supabaseService.getLatestAccessibleAssistantMessageBySessionAndModel(
+              sessionId,
+              authUserId,
+              toTemplateName('step6')
+            ),
+          ]);
+
+          if (latestCombinedResult.success && latestCombinedResult.data?.trim()) {
+            return [
+              basePrompt,
+              '',
+              '## 現在の本文内容',
+              '以下の内容を正本として、指示に従って更新または追加してください。',
+              latestCombinedResult.data,
+            ].join('\n');
+          }
+
+          if (legacyStep6Result.success && legacyStep6Result.data?.content?.trim()) {
+            return [
+              basePrompt,
+              '',
+              '## 現在の本文内容 (移行データ)',
+              '以下の内容を正本として、指示に従って更新または追加してください。',
+              legacyStep6Result.data.content,
+            ].join('\n');
+          }
+        }
+      }
+
+      return basePrompt;
     }
     switch (model) {
       case 'ad_copy_creation':

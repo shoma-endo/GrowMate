@@ -9,6 +9,7 @@ import { userService } from '@/server/services/userService';
 import { isUnavailable, isActualOwner as isActualOwnerHelper } from '@/authUtils';
 import { env } from '@/env';
 import { LiffError } from '@/domain/errors/LiffError';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { User, UserRole } from '@/types/user';
 
 export interface EnsureAuthenticatedOptions {
@@ -93,7 +94,7 @@ export async function ensureAuthenticated({
 
   if (!accessToken) {
     return {
-      error: 'Liff Access Token is required',
+      error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,
       lineUserId: '',
       userId: '',
       requiresSubscription: false,
@@ -116,7 +117,7 @@ export async function ensureAuthenticated({
     if (!verificationResult.isValid || verificationResult.needsReauth) {
       return withTokens(
         {
-          error: 'Invalid or expired LINE token. Re-authentication required.',
+          error: ERROR_MESSAGES.AUTH.LINE_TOKEN_INVALID_OR_EXPIRED,
           lineUserId: '',
           userId: '',
           requiresSubscription: true,
@@ -140,7 +141,7 @@ export async function ensureAuthenticated({
     if (!lineProfile || !lineProfile.userId) {
       return withTokens(
         {
-          error: 'Failed to get LINE user profile',
+          error: ERROR_MESSAGES.AUTH.LINE_PROFILE_FETCH_FAILED,
           lineUserId: '',
           userId: '',
           requiresSubscription: false,
@@ -155,7 +156,7 @@ export async function ensureAuthenticated({
     if (!user) {
       return withTokens(
         {
-          error: 'Application user not found for this LINE user.',
+          error: ERROR_MESSAGES.AUTH.LINE_USER_NOT_FOUND,
           lineUserId: lineProfile.userId,
           userId: '',
           requiresSubscription: false,
@@ -202,7 +203,7 @@ export async function ensureAuthenticated({
     if (isUnavailable(user.role)) {
       return withTokens(
         {
-          error: 'サービスの利用が停止されています',
+          error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
           lineUserId: lineProfile.userId,
           userId: user.id,
           requiresSubscription: false,
@@ -290,7 +291,7 @@ export async function ensureAuthenticated({
     if (!isSubscribed) {
       return {
         ...baseResult,
-        error: 'Subscription required',
+        error: ERROR_MESSAGES.SUBSCRIPTION.SUBSCRIPTION_REQUIRED,
         requiresSubscription: true,
         subscription: actualSubscription,
       };
@@ -356,7 +357,7 @@ export async function refreshTokens(refreshToken: string): Promise<RefreshTokens
     const data = await response.json();
 
     if (!response.ok) {
-      const errorMessage = data?.error_description || 'Failed to refresh LINE token';
+      const errorMessage = data?.error_description || ERROR_MESSAGES.AUTH.LINE_TOKEN_REFRESH_FAILED;
       return {
         success: false,
         error: errorMessage,
@@ -374,7 +375,7 @@ export async function refreshTokens(refreshToken: string): Promise<RefreshTokens
     console.error('[Auth Middleware] Refresh token error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
     };
   }
 }

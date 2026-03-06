@@ -1,523 +1,71 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ChatSessionHook } from '@/hooks/useChatSession';
-import { SubscriptionHook } from '@/hooks/useSubscriptionStatus';
 import { useServiceSelection } from '@/hooks/useServiceSelection';
 import { useLiffContext } from '@/components/LiffProvider';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
-import { Button } from '@/components/ui/button';
-import { AlertCircle, AlertTriangle, Menu } from 'lucide-react';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { cn } from '@/lib/utils';
 import {
-  extractBlogStepFromModel,
+  BASIC_STRUCTURE_PATTERN,
+  extractStep7HeadingIndexFromModel,
   findLatestAssistantBlogStep,
+  getContentStepFromAssistantModel,
   normalizeCanvasContent,
   isBlogStepId,
 } from '@/lib/canvas-content';
-import SessionSidebar from './SessionSidebar';
-import MessageArea from './MessageArea';
-import InputArea from './InputArea';
 import CanvasPanel from './CanvasPanel';
 import type { CanvasSelectionEditPayload, CanvasSelectionEditResult } from '@/types/canvas';
-import AnnotationPanel from './AnnotationPanel';
 import type { StepActionBarRef } from './StepActionBar';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
-import { getLatestBlogStep7MessageBySession } from '@/server/actions/chat.actions';
-import { Service } from '@/server/schemas/brief.schema';
-import { BlogStepId, BLOG_STEP_IDS } from '@/lib/constants';
-import { validateTitle as validateTitleFromCommon } from '@/lib/validators/common';
-import type { AnnotationRecord } from '@/types/annotation';
-import { ViewModeBanner } from '@/components/ViewModeBanner';
+import {
+  getCombinedContentForStep7,
+  saveStep7UserLead,
+} from '@/server/actions/heading-flow.actions';
+import { useHeadingFlow } from '@/hooks/useHeadingFlow';
+import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
+import type { SessionHeadingSection } from '@/types/heading-flow';
+import { stripLeadingHeadingLine } from '@/lib/heading-extractor';
+import {
+  BlogStepId,
+  BLOG_MODEL_PREFIX,
+  BLOG_STEP_IDS,
+  FIRST_BLOG_STEP_ID,
+  STEP7_ID,
+  STEP6_ID,
+  MIN_LEAD_CONTENT_LENGTH,
+  STEP6_MODEL_REGEX,
+  STEP7_LEAD_MODEL,
+  STRUCTURE_PATTERN_CHECK_LENGTH,
+  getStep7HeadingModel,
+  isStep7HeadingModel,
+  toBlogModel,
+} from '@/lib/constants';
+import { ChatLayoutContent } from './ChatLayoutContent';
+import { ChatLayoutProps } from '@/types/chat-layout';
+import { createFullMarkdownDecoder } from '@/lib/markdown-decoder';
+import { resolveHeadingCanvasViewMode } from '@/lib/canvas-mode';
+import { useCanvasVersions } from '@/hooks/useCanvasVersions';
+import { useWordpressSync } from '@/hooks/useWordpressSync';
+import { useSessionTitle } from '@/hooks/useSessionTitle';
+import { toast } from 'sonner';
 
-const FULL_MARKDOWN_PREFIX = '"full_markdown":"';
-const TITLE_META_SYSTEM_PROMPT =
-  '本文を元にタイトル（全角32文字以内で狙うキーワードはなるべく左よせ）、説明文（全角80文字程度）を３パターン作成してください';
-
-interface FullMarkdownDecoder {
-  feed: (chunk: string) => string;
-  reset: () => void;
-}
-
-const createFullMarkdownDecoder = (): FullMarkdownDecoder => {
-  const prefix = FULL_MARKDOWN_PREFIX;
-  let prefixIndex = 0;
-  let capturing = false;
-  let escapeNext = false;
-  let unicodeRemaining = 0;
-  let unicodeBuffer = '';
-  let result = '';
-
-  const feed = (chunk: string) => {
-    for (let i = 0; i < chunk.length; i += 1) {
-      const char = chunk[i]!;
-
-      if (!capturing) {
-        if (char === prefix[prefixIndex]!) {
-          prefixIndex += 1;
-          if (prefixIndex === prefix.length) {
-            capturing = true;
-            prefixIndex = 0;
-          }
-        } else {
-          prefixIndex = char === prefix[0] ? 1 : 0;
-        }
-        continue;
-      }
-
-      if (unicodeRemaining > 0) {
-        if (/[0-9a-fA-F]/.test(char)) {
-          unicodeBuffer += char;
-          unicodeRemaining -= 1;
-          if (unicodeRemaining === 0) {
-            const codePoint = Number.parseInt(unicodeBuffer, 16);
-            if (!Number.isNaN(codePoint)) {
-              result += String.fromCodePoint(codePoint);
-            }
-            unicodeBuffer = '';
-          }
-        } else {
-          unicodeRemaining = 0;
-          unicodeBuffer = '';
-          if (char === '"') {
-            capturing = false;
-          }
-        }
-        continue;
-      }
-
-      if (escapeNext) {
-        switch (char) {
-          case '\\':
-            result += '\\';
-            break;
-          case '"':
-            result += '"';
-            break;
-          case '/':
-            result += '/';
-            break;
-          case 'b':
-            result += '\b';
-            break;
-          case 'f':
-            result += '\f';
-            break;
-          case 'n':
-            result += '\n';
-            break;
-          case 'r':
-            result += '\r';
-            break;
-          case 't':
-            result += '\t';
-            break;
-          case 'u':
-            unicodeRemaining = 4;
-            unicodeBuffer = '';
-            break;
-          default:
-            result += char;
-            break;
-        }
-        escapeNext = false;
-        continue;
-      }
-
-      if (char === '\\') {
-        escapeNext = true;
-        continue;
-      }
-
-      if (char === '"') {
-        capturing = false;
-        continue;
-      }
-
-      result += char;
-    }
-
-    return result;
-  };
-
-  const reset = () => {
-    prefixIndex = 0;
-    capturing = false;
-    escapeNext = false;
-    unicodeRemaining = 0;
-    unicodeBuffer = '';
-    result = '';
-  };
-
-  return { feed, reset };
-};
-
-interface ChatLayoutProps {
-  chatSession: ChatSessionHook;
-  subscription: SubscriptionHook;
-  isMobile?: boolean;
-  initialStep?: BlogStepId | null;
-}
-
-const ErrorAlert: React.FC<{ error: string; onClose?: () => void }> = ({ error, onClose }) => (
-  <div className="bg-red-50 border-l-4 border-red-400 p-4 m-3" role="alert" aria-live="polite">
-    <div className="flex">
-      <div className="flex-shrink-0">
-        <AlertCircle className="h-5 w-5 text-red-400" />
-      </div>
-      <div className="ml-3 flex-1 break-words">
-        <p className="text-sm text-red-700 break-words">{error}</p>
-      </div>
-      {onClose && (
-        <button
-          type="button"
-          className="text-sm text-red-600 ml-4 hover:text-red-800 focus-visible:ring-2 focus-visible:ring-red-300 rounded"
-          onClick={onClose}
-          aria-label="閉じる"
-        >
-          ×
-        </button>
-      )}
-    </div>
-  </div>
-);
-
-const WarningAlert: React.FC<{ message: string; onClose?: () => void }> = ({
-  message,
-  onClose,
-}) => (
-  <div
-    className="bg-yellow-50 border-l-4 border-yellow-400 p-4 m-3"
-    role="status"
-    aria-live="polite"
-  >
-    <div className="flex">
-      <div className="flex-shrink-0">
-        <AlertTriangle className="h-5 w-5 text-yellow-500" />
-      </div>
-      <div className="ml-3 flex-1 break-words">
-        <p className="text-sm text-yellow-800 break-words">{message}</p>
-      </div>
-      {onClose && (
-        <button
-          type="button"
-          className="text-sm text-yellow-700 ml-4 hover:text-yellow-900 focus-visible:ring-2 focus-visible:ring-yellow-300 rounded"
-          onClick={onClose}
-          aria-label="閉じる"
-        >
-          ×
-        </button>
-      )}
-    </div>
-  </div>
-);
-
-interface BlogCanvasVersion {
-  id: string;
-  content: string;
-  raw: string;
-  step: BlogStepId;
-  model?: string;
-  createdAt: number;
-}
-
-type StepVersionsMap = Record<BlogStepId, BlogCanvasVersion[]>;
-
-// 自動開始は行わず、明示ボタンで開始する
-interface ChatLayoutCtx {
-  chatSession: ChatSessionHook;
-  subscription: SubscriptionHook;
-  isMobile: boolean;
-  blogFlowActive: boolean;
-  optimisticMessages: ChatMessage[];
-  isCanvasStreaming: boolean;
-  selectedModel: string;
-  latestBlogStep: BlogStepId | null;
-  stepActionBarRef: React.RefObject<StepActionBarRef | null>;
-  ui: {
-    sidebar: { open: boolean; setOpen: (open: boolean) => void };
-    canvas: { open: boolean; show: (message: ChatMessage) => void };
-    annotation: {
-      open: boolean;
-      loading: boolean;
-      data: AnnotationRecord | null;
-      openWith: () => void;
-      setOpen: (open: boolean) => void;
-    };
-  };
-  onSendMessage: (content: string, model: string) => Promise<void>;
-  handleModelChange: (model: string, step?: BlogStepId) => void;
-  nextStepForPlaceholder: BlogStepId | null;
-  currentSessionTitle: string;
-  isEditingSessionTitle: boolean;
-  draftSessionTitle: string;
-  sessionTitleError: string | null;
-  isSavingSessionTitle: boolean;
-  onSessionTitleEditStart: () => void;
-  onSessionTitleEditChange: (value: string) => void;
-  onSessionTitleEditCancel: () => void;
-  onSessionTitleEditConfirm: () => void;
-  onNextStepChange: (nextStep: BlogStepId | null) => void;
-  hasStep7Content: boolean;
-  onGenerateTitleMeta: () => void;
-  isGenerateTitleMetaLoading: boolean;
-  onLoadBlogArticle?: (() => Promise<void>) | null | undefined;
-  initialStep?: BlogStepId | null;
-  services: Service[];
-  selectedServiceId: string | null;
-  onServiceChange: (serviceId: string) => void;
-  servicesError: string | null;
-  onDismissServicesError: () => void;
-}
-
-const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
-  const {
-    chatSession,
-    subscription,
-    isMobile,
-    blogFlowActive,
-    optimisticMessages,
-    isCanvasStreaming,
-    selectedModel,
-    latestBlogStep,
-    stepActionBarRef,
-    ui,
-    onSendMessage,
-    handleModelChange,
-    nextStepForPlaceholder,
-    currentSessionTitle,
-    isEditingSessionTitle,
-    draftSessionTitle,
-    sessionTitleError,
-    isSavingSessionTitle,
-    onSessionTitleEditStart,
-    onSessionTitleEditChange,
-    onSessionTitleEditCancel,
-    onSessionTitleEditConfirm,
-    onNextStepChange,
-    hasStep7Content,
-    onGenerateTitleMeta,
-    isGenerateTitleMetaLoading,
-    onLoadBlogArticle,
-    initialStep,
-    services,
-    selectedServiceId,
-    onServiceChange,
-    servicesError,
-    onDismissServicesError,
-  } = ctx;
-  const { isOwnerViewMode } = useLiffContext();
-  const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
-
-  const currentStep: BlogStepId = BLOG_STEP_IDS[0] as BlogStepId;
-  const flowStatus: 'idle' | 'running' | 'waitingAction' | 'error' = 'idle';
-  const normalizedInitialStep =
-    initialStep && BLOG_STEP_IDS.includes(initialStep) ? initialStep : null;
-  // 最新メッセージのステップを優先し、なければ初期ステップにフォールバック
-  const detectedStep = latestBlogStep ?? normalizedInitialStep ?? currentStep;
-  const displayStep = manualBlogStep ?? detectedStep;
-  const hasDetectedBlogStep =
-    latestBlogStep !== null ||
-    (normalizedInitialStep !== null && normalizedInitialStep !== BLOG_STEP_IDS[0]);
-  const displayIndex = useMemo(() => {
-    const index = BLOG_STEP_IDS.indexOf(displayStep);
-    return index >= 0 ? index : 0;
-  }, [displayStep]);
-  const shouldShowLoadButton = displayStep === 'step7';
-  useEffect(() => {
-    setManualBlogStep(null);
-  }, [chatSession.state.currentSessionId]);
-
-  useEffect(() => {
-    if (!manualBlogStep) {
-      return;
-    }
-    if (manualBlogStep === detectedStep) {
-      setManualBlogStep(null);
-    }
-  }, [manualBlogStep, detectedStep]);
-  const handleManualStepChange = useCallback((targetStep: BlogStepId) => {
-    setManualBlogStep(targetStep);
-  }, []);
-
-  const [isErrorDismissed, setIsErrorDismissed] = useState(false);
-  const [isWarningDismissed, setIsWarningDismissed] = useState(false);
-  const [isSubscriptionErrorDismissed, setIsSubscriptionErrorDismissed] = useState(false);
-
-  // エラーの表示制御
-  useEffect(() => {
-    setIsErrorDismissed(false);
-  }, [chatSession.state.error]);
-
-  useEffect(() => {
-    setIsWarningDismissed(false);
-  }, [chatSession.state.warning]);
-
-  useEffect(() => {
-    setIsSubscriptionErrorDismissed(false);
-  }, [subscription.error]);
-
-  const shouldShowStepActionBar = blogFlowActive && !chatSession.state.isLoading;
-
-  const isReadOnly = isOwnerViewMode;
-
-  return (
-    <>
-      {isReadOnly && <ViewModeBanner />}
-      {/* デスクトップサイドバー */}
-      {!isMobile && (
-        <SessionSidebar
-          sessions={chatSession.state.sessions}
-          currentSessionId={chatSession.state.currentSessionId}
-          actions={chatSession.actions}
-          isLoading={chatSession.state.isLoading}
-          isMobile={false}
-          searchQuery={chatSession.state.searchQuery}
-          searchResults={chatSession.state.searchResults}
-          searchError={chatSession.state.searchError}
-          isSearching={chatSession.state.isSearching}
-          disableActions={isReadOnly}
-        />
-      )}
-
-      {/* モバイルサイドバー（Sheet） */}
-      {isMobile && (
-        <Sheet open={ui.sidebar.open} onOpenChange={ui.sidebar.setOpen}>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 left-2 z-10"
-              aria-label="メニューを開く"
-            >
-              <Menu size={20} />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 max-w-[280px] sm:max-w-[280px]">
-            <SessionSidebar
-              sessions={chatSession.state.sessions}
-              currentSessionId={chatSession.state.currentSessionId}
-              actions={{
-                ...chatSession.actions,
-                loadSession: async (sessionId: string) => {
-                  await chatSession.actions.loadSession(sessionId);
-                  ui.sidebar.setOpen(false);
-                },
-                startNewSession: () => {
-                  chatSession.actions.startNewSession();
-                  ui.sidebar.setOpen(false);
-                },
-              }}
-              isLoading={chatSession.state.isLoading}
-              isMobile
-              searchQuery={chatSession.state.searchQuery}
-              searchResults={chatSession.state.searchResults}
-              searchError={chatSession.state.searchError}
-              isSearching={chatSession.state.isSearching}
-              disableActions={isReadOnly}
-            />
-          </SheetContent>
-        </Sheet>
-      )}
-
-      <div className={cn('flex-1 flex flex-col pt-16', isMobile && 'pt-16')}>
-        {subscription.error &&
-          !subscription.requiresSubscription &&
-          !isSubscriptionErrorDismissed && (
-            <ErrorAlert
-              error={subscription.error}
-              onClose={() => setIsSubscriptionErrorDismissed(true)}
-            />
-          )}
-
-        {chatSession.state.error && !isErrorDismissed && (
-          <ErrorAlert error={chatSession.state.error} onClose={() => setIsErrorDismissed(true)} />
-        )}
-
-        {chatSession.state.warning && !isWarningDismissed && (
-          <WarningAlert
-            message={chatSession.state.warning}
-            onClose={() => setIsWarningDismissed(true)}
-          />
-        )}
-
-        {servicesError && (
-          <WarningAlert message={servicesError} onClose={onDismissServicesError} />
-        )}
-
-        <MessageArea
-          messages={[...chatSession.state.messages, ...optimisticMessages]}
-          isLoading={chatSession.state.isLoading || isCanvasStreaming}
-          blogFlowActive={blogFlowActive}
-          onOpenCanvas={message => ui.canvas.show(message)}
-        />
-
-        <InputArea
-          onSendMessage={onSendMessage}
-          disabled={chatSession.state.isLoading || ui.annotation.loading || isReadOnly}
-          shouldShowStepActionBar={shouldShowStepActionBar}
-          stepActionBarRef={stepActionBarRef}
-          displayStep={displayStep}
-          hasDetectedBlogStep={hasDetectedBlogStep}
-          onSaveClick={() => ui.annotation.openWith()}
-          annotationLoading={ui.annotation.loading}
-          hasStep7Content={hasStep7Content}
-          onGenerateTitleMeta={onGenerateTitleMeta}
-          isGenerateTitleMetaLoading={isGenerateTitleMetaLoading}
-          stepActionBarDisabled={chatSession.state.isLoading || ui.annotation.loading}
-          currentSessionTitle={currentSessionTitle}
-          currentSessionId={chatSession.state.currentSessionId}
-          isMobile={isMobile}
-          onMenuToggle={isMobile ? () => ui.sidebar.setOpen(!ui.sidebar.open) : undefined}
-          blogFlowActive={blogFlowActive}
-          blogProgress={{ currentIndex: displayIndex, total: BLOG_STEP_IDS.length }}
-          onModelChange={handleModelChange}
-          blogFlowStatus={flowStatus}
-          selectedModelExternal={selectedModel}
-          nextStepForPlaceholder={nextStepForPlaceholder}
-          onNextStepChange={onNextStepChange}
-          onManualStepChange={handleManualStepChange}
-          isEditingTitle={isEditingSessionTitle}
-          draftSessionTitle={draftSessionTitle}
-          sessionTitleError={sessionTitleError}
-          onSessionTitleEditStart={onSessionTitleEditStart}
-          onSessionTitleEditChange={onSessionTitleEditChange}
-          onSessionTitleEditCancel={onSessionTitleEditCancel}
-          onSessionTitleEditConfirm={onSessionTitleEditConfirm}
-          isSavingSessionTitle={isSavingSessionTitle}
-          searchQuery={chatSession.state.searchQuery}
-          searchError={chatSession.state.searchError}
-          isSearching={chatSession.state.isSearching}
-          onSearch={query => {
-            void chatSession.actions.searchSessions(query);
-          }}
-          onClearSearch={chatSession.actions.clearSearch}
-          initialBlogStep={displayStep}
-          onLoadBlogArticle={
-            shouldShowStepActionBar && shouldShowLoadButton && onLoadBlogArticle
-              ? onLoadBlogArticle
-              : undefined
-          }
-          services={services}
-          selectedServiceId={selectedServiceId}
-          onServiceChange={onServiceChange}
-        />
-      </div>
-
-      {ui.annotation.open && (
-        <AnnotationPanel
-          sessionId={chatSession.state.currentSessionId || ''}
-          initialData={ui.annotation.data}
-          onClose={() => {
-            ui.annotation.setOpen(false);
-          }}
-          onSaveSuccess={() => {}}
-          isVisible={ui.annotation.open}
-        />
-      )}
-    </>
-  );
+/** Step7 完成形タイル: コンテンツからタイトルと抜粋を抽出 */
+const deriveTileFromContent = (content: string) => {
+  const c = content?.trim() ?? '';
+  if (!c) return { title: '完成形', excerpt: 'クリックしてCanvasで確認' };
+  const rawLines = c.split('\n');
+  const headingIdx = rawLines.findIndex(line => /^#+\s*/.test(line.trim()));
+  const firstIdx = rawLines.findIndex(line => line.trim().length > 0);
+  const titleLine = (headingIdx >= 0 ? rawLines[headingIdx] : rawLines[firstIdx]) ?? rawLines[0] ?? '';
+  const title = titleLine.trim().replace(/^#+\s*/, '').trim() || '完成形';
+  const bodyLines = rawLines.filter((_, i) => i !== headingIdx);
+  const body = bodyLines.join('\n').trim();
+  const excerptPlain = (body || c)
+    .split('\n')
+    .map(line => line.trim().replace(/^[-*]\s+/, '').replace(/^[0-9]+\.\s+/, ''))
+    .filter(Boolean)
+    .join(' ');
+  const excerpt = excerptPlain.length > 140 ? `${excerptPlain.slice(0, 140)}…` : excerptPlain || 'クリックしてCanvasで確認';
+  return { title, excerpt };
 };
 
 export const ChatLayout: React.FC<ChatLayoutProps> = ({
@@ -538,288 +86,924 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   const [canvasPanelOpen, setCanvasPanelOpen] = useState(false);
   const [annotationOpen, setAnnotationOpen] = useState(false);
-  const [annotationData, setAnnotationData] = useState<AnnotationRecord | null>(null);
-  const [annotationLoading, setAnnotationLoading] = useState(false);
-  const [isGeneratingTitleMeta, setIsGeneratingTitleMeta] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [canvasStep, setCanvasStep] = useState<BlogStepId | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [selectedVersionByStep, setSelectedVersionByStep] = useState<
-    Partial<Record<BlogStepId, string | null>>
-  >({});
-  const [followLatestByStep, setFollowLatestByStep] = useState<
-    Partial<Record<BlogStepId, boolean>>
-  >({});
   const [nextStepForPlaceholder, setNextStepForPlaceholder] = useState<BlogStepId | null>(null);
   const [canvasStreamingContent, setCanvasStreamingContent] = useState<string>('');
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
   const [isCanvasStreaming, setIsCanvasStreaming] = useState(false);
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [draftTitle, setDraftTitle] = useState('');
-  const [titleError, setTitleError] = useState<string | null>(null);
-  const [isSavingTitle, setIsSavingTitle] = useState(false);
   const latestBlogStep = useMemo(
-    () => findLatestAssistantBlogStep(chatSession.state.messages ?? []),
-    [chatSession.state.messages]
-  );
-  const currentSession = useMemo(
     () =>
-      chatSession.state.sessions.find(
-        session => session.id === chatSession.state.currentSessionId
-      ) || null,
-    [chatSession.state.sessions, chatSession.state.currentSessionId]
+      findLatestAssistantBlogStep([
+        ...(chatSession.state.messages ?? []),
+        ...optimisticMessages,
+      ]),
+    [chatSession.state.messages, optimisticMessages]
   );
-  const currentSessionTitle = currentSession?.title ?? '新しいチャット';
-  // 保存済みステップを計算（保存されているフィールドから判断）
-  const chatStateRef = useRef(chatSession.state);
+  const currentSessionTitle =
+    chatSession.state.sessions.find(session => session.id === chatSession.state.currentSessionId)
+      ?.title ?? '新しいチャット';
   const canvasEditInFlightRef = useRef(false);
   const prevSessionIdRef = useRef<string | null>(null);
+  const canvasContentRef = useRef<string>('');
+  /** タイルクリック時に指定した見出しインデックスを effect より優先するための ref */
+  const pendingViewingIndexRef = useRef<number | null>(null);
+  /** hasExactMatch=false 時のフォールバック表示対象 message.id（canvasVersions 反映後に自動解除） */
+  const fallbackMessageIdRef = useRef<string | null>(null);
+  /** マッピングできない旧形式の Step7 タイル表示中（model に _hN がない等） */
+  const [isViewingPastHeadingContent, setIsViewingPastHeadingContent] = useState(false);
+  /** 本文生成（完成形構築）中 */
+  const [isBuildingCombined, setIsBuildingCombined] = useState(false);
+  /** 本文生成の二重実行防止（state更新遅延より先にブロック） */
+  const buildCombinedInFlightRef = useRef(false);
+  /** 見出し保存の二重実行防止 */
+  const saveHeadingInFlightRef = useRef(false);
+  /** 見出し生成トリガー後のストリーミング完了時にCanvas自動オープンするためのフラグ */
+  const pendingAutoOpenHeadingRef = useRef(false);
+  const prevChatLoadingRef = useRef(false);
+  /** 完成形Canvasオープン（handleOpenCombinedCanvas を遅延参照） */
+  const openCombinedCanvasRef = useRef<(versionId?: string) => void>(() => {});
+  /** 完成形表示を明示的に要求した場合、effect による viewingHeadingIndex 上書きを防止 */
+  const requestedCombinedViewRef = useRef(false);
+  /** タイルクリック直後の activeVersionId 遅延を補う。Canvas 表示確実化のため保持 */
+  const pendingCombinedVersionIdRef = useRef<string | null>(null);
+  /** 完成形タイルクリック時に state 更新遅延を補うため、クリック時点で即時解決したコンテンツを保持 */
+  const pendingCombinedContentRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    chatStateRef.current = chatSession.state;
-  }, [chatSession.state]);
-
-  useEffect(() => {
-    const sessionId = chatSession.state.currentSessionId;
-    if (!sessionId) {
-      return;
-    }
-
-    let isActive = true;
-
-    const loadAnnotations = async () => {
-      try {
-        const res = await getContentAnnotationBySession(sessionId);
-        if (!isActive) return;
-
-        if (res.success && res.data) {
-          setAnnotationData(res.data);
-        } else {
-          setAnnotationData(null);
-        }
-      } catch (error) {
-        console.error('Failed to preload annotation data:', error);
-      }
-    };
-
-    loadAnnotations();
-
-    return () => {
-      isActive = false;
-    };
-  }, [chatSession.state.currentSessionId]);
-
-  const handleLoadBlogArticle = useCallback(async () => {
-    if (!chatSession.state.currentSessionId) {
-      throw new Error('セッションが選択されていません');
-    }
-    const sessionId = chatSession.state.currentSessionId;
-    try {
-      const annotationRes = await getContentAnnotationBySession(sessionId);
-      if (!annotationRes.success) {
-        throw new Error(annotationRes.error || 'ブログ記事情報の取得に失敗しました');
-      }
-
-      const latestAnnotation = annotationRes.data ?? null;
-      setAnnotationData(latestAnnotation);
-
-      const canonicalUrl = latestAnnotation?.canonical_url?.trim() ?? '';
-      if (!canonicalUrl) {
-        throw new Error('ブログ記事URLが登録されていません');
-      }
-
-      const accessToken = await getAccessToken();
-      const response = await fetch('/api/chat/canvas/load-wordpress', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({ sessionId }),
-        credentials: 'include',
-      });
-
-      const responseData: { success?: boolean; error?: string } | null = await response
-        .json()
-        .catch(() => null);
-
-      if (!response.ok || !responseData?.success) {
-        const message =
-          (responseData && typeof responseData.error === 'string' && responseData.error.length > 0
-            ? responseData.error
-            : null) ?? 'WordPress記事の取得に失敗しました';
-        throw new Error(message);
-      }
-
-      await chatSession.actions.loadSession(sessionId);
-      setFollowLatestByStep(prev => ({
-        ...prev,
-        step7: true,
-      }));
-      setSelectedVersionByStep(prev => ({
-        ...prev,
-        step7: null,
-      }));
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error('WordPress記事の取得に失敗しました');
-    }
-  }, [chatSession.actions, chatSession.state.currentSessionId, getAccessToken]);
-
-  const blogCanvasVersionsByStep = useMemo<StepVersionsMap>(() => {
-    const initialMap = BLOG_STEP_IDS.reduce((acc, step) => {
-      acc[step] = [] as BlogCanvasVersion[];
-      return acc;
-    }, {} as StepVersionsMap);
-
-    (chatSession.state.messages ?? []).forEach(message => {
-      if (!message || message.role !== 'assistant') return;
-      const step = extractBlogStepFromModel(message.model);
-      if (!step) return;
-
-      const normalizedContent = normalizeCanvasContent(message.content);
-      const version: BlogCanvasVersion = {
-        id: message.id,
-        content: normalizedContent,
-        raw: message.content,
-        step,
-        createdAt: message.timestamp ? message.timestamp.getTime() : 0,
-      };
-
-      if (message.model) {
-        version.model = message.model;
-      }
-
-      initialMap[step].push(version);
-    });
-
-    BLOG_STEP_IDS.forEach(step => {
-      initialMap[step].sort((a, b) => {
-        if (a.createdAt !== b.createdAt) {
-          return a.createdAt - b.createdAt;
-        }
-        return a.id.localeCompare(b.id);
-      });
-    });
-
-    return initialMap;
-  }, [chatSession.state.messages]);
-
-  const hasStep7Content = (blogCanvasVersionsByStep.step7 ?? []).length > 0;
-
-  useEffect(() => {
-    const selectionUpdates: Partial<Record<BlogStepId, string | null>> = {};
-    const followUpdates: Partial<Record<BlogStepId, boolean>> = {};
-    let selectionChanged = false;
-    let followChanged = false;
-
-    BLOG_STEP_IDS.forEach(step => {
-      const versions = blogCanvasVersionsByStep[step] ?? [];
-      const latestId = versions.length ? (versions[versions.length - 1]?.id ?? null) : null;
-      const currentSelection = selectedVersionByStep[step] ?? null;
-      const followLatest = followLatestByStep[step] !== false;
-      const currentExists =
-        currentSelection !== null && versions.some(version => version.id === currentSelection);
-
-      if (!versions.length) {
-        if (currentSelection !== null) {
-          selectionUpdates[step] = null;
-          selectionChanged = true;
-        }
-        if (followLatestByStep[step] !== undefined && followLatestByStep[step] !== true) {
-          followUpdates[step] = true;
-          followChanged = true;
-        }
-        return;
-      }
-
-      if (!currentExists) {
-        if (latestId) {
-          selectionUpdates[step] = latestId;
-          selectionChanged = true;
-        }
-        if (followLatestByStep[step] !== true) {
-          followUpdates[step] = true;
-          followChanged = true;
-        }
-        return;
-      }
-
-      if (followLatest && latestId && currentSelection !== latestId) {
-        selectionUpdates[step] = latestId;
-        selectionChanged = true;
-      }
-    });
-
-    if (selectionChanged) {
-      setSelectedVersionByStep(prev => {
-        const next = { ...prev };
-        BLOG_STEP_IDS.forEach(step => {
-          if (Object.prototype.hasOwnProperty.call(selectionUpdates, step)) {
-            next[step] = selectionUpdates[step] ?? null;
+  /** Step6→Step7 で書き出し案があるか＋その本文（前ステップと同様にメッセージから導出）
+   * saved: step7_lead（ユーザー送信）が存在するか、または step6 assistant の書き出し案が存在する場合 true。
+   * バックで step5 に戻り書き出し案を再生成した場合、step7_lead より新しい step6 があれば saved=false。 */
+  const step6ToStep7Lead = useMemo(() => {
+    const msgs = [...(chatSession.state.messages ?? []), ...optimisticMessages];
+    let latestLead: { content: string; ts: number } | null = null;
+    let latestStep6Lead: { content: string; ts: number } | null = null;
+    let latestStep6Ts = 0;
+    for (const m of msgs) {
+      const ts = m?.timestamp?.getTime() ?? 0;
+      if (m?.role === 'user' && m.model === STEP7_LEAD_MODEL) {
+        const c = (m.content ?? '').trim();
+        if (c && (!latestLead || ts >= latestLead.ts)) latestLead = { content: c, ts };
+      } else if (m?.role === 'assistant' && m.model && STEP6_MODEL_REGEX.test(m.model)) {
+        const content = (m.content ?? '').trim();
+        if (
+          content.length >= MIN_LEAD_CONTENT_LENGTH &&
+          !BASIC_STRUCTURE_PATTERN.test(content.slice(0, STRUCTURE_PATTERN_CHECK_LENGTH))
+        ) {
+          if (!latestStep6Lead || ts >= latestStep6Lead.ts) {
+            latestStep6Lead = { content, ts };
           }
-        });
-        return next;
-      });
+        }
+        if (content.length >= MIN_LEAD_CONTENT_LENGTH && ts >= latestStep6Ts)
+          latestStep6Ts = ts;
+      }
     }
+    // latestStep6Lead は「最新 step6 が書き出し案」の場合のみ有効（step5 戻り後の古い書き出し案で誤遷移しない）
+    const isStep6LeadValid = (
+      lead: { content: string; ts: number } | null
+    ): lead is { content: string; ts: number } =>
+      lead !== null && lead.ts === latestStep6Ts;
 
-    if (followChanged) {
-      setFollowLatestByStep(prev => {
-        const next = { ...prev };
-        BLOG_STEP_IDS.forEach(step => {
-          if (Object.prototype.hasOwnProperty.call(followUpdates, step)) {
-            next[step] = followUpdates[step] ?? true;
-          }
-        });
-        return next;
-      });
+    const isLatestLeadValid =
+      latestLead !== null &&
+      (latestStep6Ts === 0 || latestLead.ts >= latestStep6Ts);
+
+    if (isLatestLeadValid && latestLead) {
+      return { saved: true, content: latestLead.content };
     }
-  }, [blogCanvasVersionsByStep, selectedVersionByStep, followLatestByStep]);
+    if (isStep6LeadValid(latestStep6Lead)) {
+      return { saved: true, content: latestStep6Lead.content };
+    }
+    return { saved: false, content: null };
+  }, [chatSession.state.messages, optimisticMessages]);
+
+  const step6ToStep7LeadSaved = step6ToStep7Lead.saved;
 
   const resolvedCanvasStep = useMemo<BlogStepId | null>(() => {
     if (canvasStep) return canvasStep;
+    // step6ToStep7LeadSaved は latestBlogStep が step6 のときのみ step7 にブリッジ
+    if (
+      step6ToStep7LeadSaved &&
+      (latestBlogStep === STEP6_ID || latestBlogStep === null)
+    ) {
+      return STEP7_ID;
+    }
     if (latestBlogStep) return latestBlogStep;
     return null;
-  }, [canvasStep, latestBlogStep]);
+  }, [canvasStep, step6ToStep7LeadSaved, latestBlogStep]);
 
-  const canvasVersionsForStep = useMemo<BlogCanvasVersion[]>(() => {
-    if (!resolvedCanvasStep) return [];
-    return blogCanvasVersionsByStep[resolvedCanvasStep] ?? [];
-  }, [blogCanvasVersionsByStep, resolvedCanvasStep]);
+  const allMessagesForVersions = useMemo(
+    () => [...(chatSession.state.messages ?? []), ...optimisticMessages],
+    [chatSession.state.messages, optimisticMessages]
+  );
 
-  const activeVersionId = resolvedCanvasStep
-    ? (selectedVersionByStep[resolvedCanvasStep] ?? null)
-    : null;
+  /** Step7 見出しNの最新コンテンツをチャットメッセージから取得（Canvas 未使用時の保存元） */
+  const getLatestStep7HeadingContent = useCallback(
+    (
+      messages: ChatMessage[],
+      headingIndex: number,
+      /** 指定時はこの時刻以降のメッセージのみ対象（書き出し案送信後の誤判定防止） */
+      minTimestamp?: number
+    ): string | null => {
+      const re = new RegExp(`^${getStep7HeadingModel(headingIndex)}(?:_|$)`);
+      let latest: ChatMessage | null = null;
+      let latestTs = 0;
+      for (const m of messages) {
+        if (m?.role !== 'assistant' || !m.model || !re.test(m.model)) continue;
+        const ts = m.timestamp?.getTime() ?? 0;
+        if (minTimestamp !== undefined && ts < minTimestamp) continue;
+        if (ts >= latestTs) {
+          latestTs = ts;
+          latest = m;
+        }
+      }
+      const content = latest?.content?.trim();
+      return content ?? null;
+    },
+    []
+  );
 
-  const activeCanvasVersion = useMemo(() => {
-    if (!resolvedCanvasStep) return null;
-    const versions = blogCanvasVersionsByStep[resolvedCanvasStep] ?? [];
-    if (!versions.length) return null;
-    if (activeVersionId) {
-      const matched = versions.find(version => version.id === activeVersionId);
-      if (matched) return matched;
+  const {
+    isEditingTitle,
+    draftTitle,
+    titleError,
+    isSavingTitle,
+    isGeneratingTitleMeta,
+    handleTitleEditStart,
+    handleTitleEditChange,
+    handleTitleEditCancel,
+    handleTitleEditConfirm,
+    handleGenerateTitleMeta,
+  } = useSessionTitle({
+    chatSession,
+    getAccessToken,
+  });
+
+  const {
+    headingSections,
+    isSavingHeading,
+    isHeadingInitInFlight,
+    hasAttemptedHeadingInit,
+    headingSaveError,
+    activeHeadingIndex,
+    activeHeading,
+    latestCombinedContent,
+    combinedContentVersions,
+    resetCombinedVersionToLatest,
+    refetchCombinedContentVersions,
+    handleRetryHeadingInit,
+    runHeadingInitFromBasicStructure,
+    refetchHeadings,
+    handleSaveHeadingSection: handleSaveHeadingSectionFromFlow,
+  } = useHeadingFlow({
+    sessionId: chatSession.state.currentSessionId ?? null,
+    isSessionLoading: chatSession.state.isLoading,
+    getAccessToken,
+    resolvedCanvasStep,
+  });
+
+  const hasStep7Content =
+    (chatSession.state.messages ?? []).some(
+      m =>
+        m?.role === 'assistant' &&
+        (m.model === toBlogModel(STEP7_ID) || m.model?.startsWith(`${BLOG_MODEL_PREFIX}step7_`))
+    ) || Boolean(latestCombinedContent?.trim());
+
+  const {
+    viewingHeadingIndex,
+    setViewingHeadingIndex,
+    handleResetHeadingConfiguration,
+  } = useHeadingCanvasState({
+    sessionId: chatSession.state.currentSessionId || '',
+    getAccessToken,
+    initialSections: headingSections as SessionHeadingSection[],
+    onHeadingSaved: async () => {
+      // 保存後、最新の状態（確定済みフラグや進捗）を同期するためにセッションをロード
+      if (chatSession.state.currentSessionId) {
+        // 1. まず見出しの確定状態を最新化し、取得したてのデータをキャプチャする
+        const freshSections = await refetchHeadings();
+        // 2. 次にセッション全体を同期
+        await chatSession.actions.loadSession(chatSession.state.currentSessionId);
+        // 3. 全見出し確定時: 完成形はユーザー入力の書き出しが必要のため自動再生成しない
+        // 4. 途中状態では既存の完成形バージョン同期のみ行う
+        (refetchCombinedContentVersions as (sections: SessionHeadingSection[]) => void)(
+          freshSections as unknown as SessionHeadingSection[]
+        );
+      }
+    },
+    onResetComplete: async () => {
+      const sid = chatSession.state.currentSessionId;
+      if (sid) {
+        // ストリーミング中コンテンツをクリア（リセット後の旧表示防止）
+        setCanvasStreamingContent('');
+        // 古い見出しをクリア
+        await Promise.all([
+          chatSession.actions.loadSession(sid),
+          refetchHeadings(),
+        ]);
+        handleRetryHeadingInit({ fromReset: true });
+        // 恒久対応: effect に依存せず basic_structure から見出しを再抽出して確実に見出し生成フェーズへ遷移
+        await runHeadingInitFromBasicStructure(sid);
+        setCanvasPanelOpen(true);
+        pendingViewingIndexRef.current = 0;
+      }
+    },
+  });
+
+  // 表示中の見出しインデックス（0..n-1）。null = 全確定時の結合表示 は useHeadingCanvasState が管理
+  const totalHeadings = headingSections.length;
+  const isHeadingFlowCanvasStep = resolvedCanvasStep === STEP7_ID;
+  // Step7 キャンバスの表示状態を計算。
+  // タイルクリック直後は pendingViewingIndexRef を優先（effect 適用前の render で正しい進捗を表示）。
+  const effectiveViewingHeadingIndex =
+    pendingViewingIndexRef.current !== null
+      ? pendingViewingIndexRef.current
+      : viewingHeadingIndex;
+  const headingCanvasViewMode = resolveHeadingCanvasViewMode({
+    step: resolvedCanvasStep,
+    headingCount: totalHeadings,
+    viewingHeadingIndex: effectiveViewingHeadingIndex,
+    activeHeadingIndex,
+  });
+
+  const {
+    blogCanvasVersionsByStep,
+    step7FromMessages,
+    setSelectedVersionByStep,
+    setFollowLatestByStep,
+    canvasVersionsForStep,
+    activeCanvasVersion,
+    activeVersionId,
+  } = useCanvasVersions(allMessagesForVersions, resolvedCanvasStep, {
+    // 完成形あり時は常時 override を渡し、ステップ移動時も選択状態を保持
+    // exactOptionalPropertyTypes のため undefined ではなくプロパティ自体を省略
+    ...(combinedContentVersions.length > 0 && {
+      step7VersionsOverride: combinedContentVersions,
+    }),
+  });
+
+  const {
+    annotationData,
+    setAnnotationData,
+    annotationLoading,
+    setAnnotationLoading,
+    handleLoadBlogArticle,
+  } = useWordpressSync({
+    currentSessionId: chatSession.state.currentSessionId,
+    getAccessToken,
+    loadSession: chatSession.actions.loadSession,
+    setFollowLatestByStep,
+    setSelectedVersionByStep,
+  });
+
+  const maxViewableIndex =
+    activeHeadingIndex !== undefined ? activeHeadingIndex : Math.max(0, totalHeadings - 1);
+  useEffect(() => {
+    if (!isHeadingFlowCanvasStep) {
+      pendingViewingIndexRef.current = null;
+      requestedCombinedViewRef.current = false;
+      setViewingHeadingIndex(null);
+      return;
     }
-    return versions[versions.length - 1];
-  }, [resolvedCanvasStep, activeVersionId, blogCanvasVersionsByStep]);
+    if (totalHeadings === 0) {
+      setViewingHeadingIndex(null);
+      return;
+      // pending は消さない（onResetComplete で 0 を予約し、再抽出後に見出し1を開く意図がある）
+    }
+    const activeIdx = activeHeadingIndex ?? totalHeadings;
+    // 見出しタイルクリックを優先（完成形フラグより先に消費し、残留による意図しない null 復帰を防止）
+    const pending = pendingViewingIndexRef.current;
+    if (pending !== null) {
+      pendingViewingIndexRef.current = null;
+      requestedCombinedViewRef.current = false;
+      setViewingHeadingIndex(Math.min(Math.max(pending, 0), Math.max(0, totalHeadings - 1)));
+      return;
+    }
+    // 完成形表示を明示的に要求した場合、viewingHeadingIndex を null に維持（effect のデフォルト上書きを防止）
+    if (requestedCombinedViewRef.current) {
+      requestedCombinedViewRef.current = false;
+      setViewingHeadingIndex(null);
+      return;
+    }
+    setViewingHeadingIndex(prev => {
+      if (activeIdx >= totalHeadings) {
+        if (prev === null) return null;
+        return Math.min(Math.max(prev, 0), Math.max(0, totalHeadings - 1));
+      }
+      if (prev === null) return activeIdx;
+      return Math.min(Math.max(prev, 0), maxViewableIndex);
+    });
+  }, [
+    isHeadingFlowCanvasStep,
+    totalHeadings,
+    activeHeadingIndex,
+    maxViewableIndex,
+    setViewingHeadingIndex,
+  ]);
 
-  const canvasContent = activeCanvasVersion?.content ?? '';
+  // 見出し保存後に activeHeadingIndex が進んでも Canvas は前見出しの本文のまま。
+  // この状態で再保存すると誤保存になるため、新規生成が入るまで内容を空表示・保存無効化する。
+  // （タイルクリックのロックで切り替え自体は防止しているが、エッジケースの防御として維持）
+  const [isStep6ContentStale, setIsStep6ContentStale] = useState(false);
+  const prevStep6SessionIdRef = useRef<string | null>(null);
+  // 見出し編集中は完成形で汚染しない（step7FromMessages = メッセージ由来のみ）
+  const versionsForHeadingStep =
+    headingCanvasViewMode.isHeadingUnit
+      ? step7FromMessages
+      : (blogCanvasVersionsByStep[STEP7_ID] ?? []);
+  const latestStep6Version = versionsForHeadingStep[versionsForHeadingStep.length - 1] ?? null;
+  // 表示中見出し向けコンテンツがあるか。確定見出しは常にあり、アクティブ（未確定）はバージョン/ストリーミング/チャットメッセージで判定
+  const sectionsMinUpdatedMs =
+    headingSections.length > 0
+      ? Math.min(
+          ...headingSections.map(s =>
+            s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity
+          )
+        )
+      : Infinity;
+  const minTsForContentCheck =
+    sectionsMinUpdatedMs !== Infinity ? sectionsMinUpdatedMs : undefined;
 
+  const hasContentForViewingHeading = useMemo(() => {
+    const idx = viewingHeadingIndex;
+    if (idx === null) {
+      return headingSections.length > 0 && headingSections.every(s => s.isConfirmed);
+    }
+    if (idx < 0 || idx >= headingSections.length) return false;
+    const section = headingSections[idx];
+    if (section?.isConfirmed) return true;
+    const headingIdx = idx;
+    // チャットメッセージに blog_creation_step7_h{N} の応答があり、書き出し案送信後のものなら保存可能
+    const fromChat = getLatestStep7HeadingContent(
+      allMessagesForVersions,
+      headingIdx,
+      minTsForContentCheck
+    );
+    if (fromChat && fromChat.length > 0) return true;
+    if (headingIdx === 0) {
+      const fromStreaming = (canvasStreamingContent?.trim().length ?? 0) > 0;
+      if (fromStreaming) return true;
+      const allSectionsEmpty = headingSections.every(s => !s.content || s.content.trim() === '');
+      const fromVersion = (latestStep6Version?.content?.trim().length ?? 0) > 0;
+      if (allSectionsEmpty && fromVersion) {
+        const versionCreatedMs = latestStep6Version?.createdAtIso
+          ? new Date(latestStep6Version.createdAtIso).getTime()
+          : (latestStep6Version?.createdAt ?? 0);
+        const sectionsCreatedMs = Math.min(
+          ...headingSections.map(s => (s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity))
+        );
+        if (sectionsCreatedMs !== Infinity && versionCreatedMs < sectionsCreatedMs) {
+          return false;
+        }
+        return true;
+      }
+      if (allSectionsEmpty) return false;
+      return fromVersion;
+    }
+    const prevHeading = headingSections[headingIdx - 1];
+    if (!prevHeading?.isConfirmed) return false;
+    const prevUpdatedMs = prevHeading.updatedAt ? new Date(prevHeading.updatedAt).getTime() : 0;
+    const versionCreatedMs = latestStep6Version?.createdAtIso
+      ? new Date(latestStep6Version.createdAtIso).getTime()
+      : (latestStep6Version?.createdAt ?? 0);
+    return versionCreatedMs > prevUpdatedMs;
+  }, [
+    viewingHeadingIndex,
+    headingSections,
+    latestStep6Version,
+    canvasStreamingContent,
+    allMessagesForVersions,
+    getLatestStep7HeadingContent,
+    minTsForContentCheck,
+  ]);
+
+  // StepActionBar 保存ボタンの可否: 保存対象は active 見出しなので、その content があるかで判定
+  const hasContentForActiveHeading = useMemo(() => {
+    if (activeHeadingIndex === undefined) {
+      return headingSections.length > 0 && headingSections.every(s => s.isConfirmed);
+    }
+    if (activeHeadingIndex < 0 || activeHeadingIndex >= headingSections.length) return false;
+    const section = headingSections[activeHeadingIndex];
+    if (section?.isConfirmed) return true;
+    const fromChat = getLatestStep7HeadingContent(
+      allMessagesForVersions,
+      activeHeadingIndex,
+      minTsForContentCheck
+    );
+    if (fromChat && fromChat.length > 0) return true;
+    if (activeHeadingIndex === 0) {
+      const fromStreaming = (canvasStreamingContent?.trim().length ?? 0) > 0;
+      if (fromStreaming) return true;
+      const allSectionsEmpty = headingSections.every(s => !s.content || s.content.trim() === '');
+      const fromVersion = (latestStep6Version?.content?.trim().length ?? 0) > 0;
+      if (allSectionsEmpty && fromVersion) {
+        const versionCreatedMs = latestStep6Version?.createdAtIso
+          ? new Date(latestStep6Version.createdAtIso).getTime()
+          : (latestStep6Version?.createdAt ?? 0);
+        const sectionsCreatedMs = Math.min(
+          ...headingSections.map(s => (s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity))
+        );
+        if (sectionsCreatedMs !== Infinity && versionCreatedMs < sectionsCreatedMs) {
+          return false;
+        }
+        return true;
+      }
+      if (allSectionsEmpty) return false;
+      return fromVersion;
+    }
+    const prevHeading = headingSections[activeHeadingIndex - 1];
+    if (!prevHeading?.isConfirmed) return false;
+    const prevUpdatedMs = prevHeading.updatedAt ? new Date(prevHeading.updatedAt).getTime() : 0;
+    const versionCreatedMs = latestStep6Version?.createdAtIso
+      ? new Date(latestStep6Version.createdAtIso).getTime()
+      : (latestStep6Version?.createdAt ?? 0);
+    return versionCreatedMs > prevUpdatedMs;
+  }, [
+    activeHeadingIndex,
+    headingSections,
+    latestStep6Version,
+    canvasStreamingContent,
+    allMessagesForVersions,
+    getLatestStep7HeadingContent,
+    minTsForContentCheck,
+  ]);
+
+  const hasContentForCurrentHeading =
+    activeHeadingIndex !== undefined ? hasContentForActiveHeading : hasContentForViewingHeading;
+
+  // ステール判定を単一の effect に統合
+  useEffect(() => {
+    const currentSessionId = chatSession.state.currentSessionId ?? null;
+
+    if (!isHeadingFlowCanvasStep) {
+      setIsStep6ContentStale(false);
+      prevStep6SessionIdRef.current = currentSessionId;
+      return;
+    }
+
+    // セッション切り替え時: ref をリセット
+    if (prevStep6SessionIdRef.current !== currentSessionId) {
+      prevStep6SessionIdRef.current = currentSessionId;
+    }
+
+    // ストリーミング中は常に非ステール
+    if (canvasStreamingContent) {
+      setIsStep6ContentStale(false);
+      return;
+    }
+
+    // 現在見出し向けコンテンツがあれば非ステール
+    if (hasContentForCurrentHeading) {
+      setIsStep6ContentStale(false);
+      return;
+    }
+
+    // hasContentForCurrentHeading の場合は上で return 済みのため、ここでは常にステール
+    setIsStep6ContentStale(true);
+  }, [
+    chatSession.state.currentSessionId,
+    isHeadingFlowCanvasStep,
+    activeHeadingIndex,
+    hasContentForCurrentHeading,
+    canvasStreamingContent,
+  ]);
+
+  // フォールバック表示の自動解除: canvasVersions に待機中 message.id が現れたら streamingContent をクリア
+  useEffect(() => {
+    const pendingId = fallbackMessageIdRef.current;
+    if (!pendingId) return;
+
+    const isResolved = Object.values(blogCanvasVersionsByStep).some(versions =>
+      versions.some(v => v.id === pendingId)
+    );
+    if (isResolved) {
+      fallbackMessageIdRef.current = null;
+      // AI キャンバス編集が進行中の場合は streamingContent を上書きしない
+      if (!isCanvasStreaming && !canvasEditInFlightRef.current) {
+        setCanvasStreamingContent('');
+      }
+    }
+  }, [blogCanvasVersionsByStep, isCanvasStreaming]);
+
+  const canvasContent = useMemo(() => {
+    if (isHeadingFlowCanvasStep) {
+      // 旧 model (blog_creation_step7) のタイル: バージョン管理で選ばれた内容をそのまま表示
+      if (isViewingPastHeadingContent) {
+        return (canvasStreamingContent || activeCanvasVersion?.content) ?? '';
+      }
+      if (headingCanvasViewMode.isCombinedView) {
+        const effectiveVersionId =
+          activeVersionId ?? pendingCombinedVersionIdRef.current;
+        if (effectiveVersionId === activeVersionId) {
+          pendingCombinedVersionIdRef.current = null;
+        }
+        const foundVersion =
+          combinedContentVersions.find(v => v.id === effectiveVersionId) ??
+          (effectiveVersionId != null
+            ? combinedContentVersions.find(v => String(v.id) === String(effectiveVersionId))
+            : undefined);
+        const combined =
+          foundVersion?.content ??
+          (combinedContentVersions.length > 0
+            ? combinedContentVersions[combinedContentVersions.length - 1]?.content
+            : null) ??
+          latestCombinedContent ??
+          '';
+        if (combined.trim()) return combined;
+        // 恒久対応: タイルクリック直後の state 更新遅延による空表示を防止（pendingCombinedContentRef を優先消費）
+        const pendingContent = pendingCombinedContentRef.current;
+        if (pendingContent != null && pendingContent.trim()) {
+          pendingCombinedContentRef.current = null;
+          return pendingContent;
+        }
+        // 本文作成未実施時: 書き出し案＋見出しセクションから結合フォールバックを表示（スキップで開いたときの空表示を防止）
+        if (combinedContentVersions.length === 0 && headingSections.length > 0) {
+          const sectionContents = headingSections
+            .map(s => {
+              const hashes = '#'.repeat(s.headingLevel);
+              return `${hashes} ${s.headingText}\n\n${(s.content || '').trim()}`;
+            })
+            .join('\n\n')
+            .trim();
+          if (sectionContents) {
+            const lead = step6ToStep7Lead.content?.trim();
+            return lead ? `${lead}\n\n${sectionContents}` : sectionContents;
+          }
+        }
+        // combined が空でも完成形データがあれば表示（ID不一致・遅延などの保険）
+        const combinedFallback =
+          latestCombinedContent?.trim() ||
+          combinedContentVersions[combinedContentVersions.length - 1]?.content?.trim() ||
+          '';
+        const result = combinedFallback || combined;
+        return result;
+      }
+      // 見出し遷移直後は前見出し本文を表示しない（誤保存防止）。表示中がアクティブでなければ stale を無視
+      if (
+        isStep6ContentStale &&
+        viewingHeadingIndex !== null &&
+        viewingHeadingIndex === activeHeadingIndex
+      ) {
+        return '';
+      }
+      const idx = viewingHeadingIndex ?? 0;
+      if (idx >= 0 && idx < headingSections.length) {
+        const section = headingSections[idx];
+        if (section?.isConfirmed && section.content) {
+          const hashes = '#'.repeat(section.headingLevel);
+          return `${hashes} ${section.headingText}\n\n${section.content}`;
+        }
+        const allSectionsEmpty = headingSections.every(s => !s.content || s.content.trim() === '');
+        // 未確定見出し: canvasStreamingContent または getLatestStep7HeadingContent を優先
+        // （blog_creation_step7_hN はバージョン管理対象外のため activeCanvasVersion に含まれない）
+        if (canvasStreamingContent?.trim()) {
+          const hashes = '#'.repeat(section?.headingLevel ?? 3);
+          return `${hashes} ${section?.headingText ?? ''}\n\n${canvasStreamingContent}`;
+        }
+        const fromChat = getLatestStep7HeadingContent(
+          allMessagesForVersions,
+          idx,
+          minTsForContentCheck
+        );
+        if (fromChat?.trim()) {
+          const hashes = '#'.repeat(section?.headingLevel ?? 3);
+          return `${hashes} ${section?.headingText ?? ''}\n\n${fromChat}`;
+        }
+        if (allSectionsEmpty && activeCanvasVersion?.content?.trim()) {
+          // 書き出し案送信直後の旧バージョンのみ非表示。今回の生成内容はCanvasに表示する
+          const versionCreatedMs = activeCanvasVersion?.createdAtIso
+            ? new Date(activeCanvasVersion.createdAtIso).getTime()
+            : (activeCanvasVersion?.createdAt ?? 0);
+          const sectionsCreatedMs = Math.min(
+            ...headingSections.map(s => (s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity))
+          );
+          if (sectionsCreatedMs !== Infinity && versionCreatedMs < sectionsCreatedMs) {
+            // 旧バージョン → 非表示。ただし既存完成形があれば表示（選択バージョン反映）
+            if (combinedContentVersions.length > 0) {
+              const byId =
+                activeVersionId != null
+                  ? combinedContentVersions.find(
+                      v => v.id === activeVersionId || String(v.id) === String(activeVersionId)
+                    )?.content?.trim()
+                  : null;
+              const cv =
+                byId ||
+                latestCombinedContent?.trim() ||
+                combinedContentVersions[combinedContentVersions.length - 1]?.content?.trim() ||
+                '';
+              if (cv) return cv;
+            }
+            return '';
+          }
+        } else if (allSectionsEmpty) {
+          // 見出し本文が空でも、既存完成形（session_combined_contents）があれば表示。バージョン選択反映。
+          if (combinedContentVersions.length > 0) {
+            const byId =
+              activeVersionId != null
+                ? combinedContentVersions.find(
+                    v => v.id === activeVersionId || String(v.id) === String(activeVersionId)
+                  )?.content?.trim()
+                : null;
+            const cv =
+              byId ||
+              latestCombinedContent?.trim() ||
+              combinedContentVersions[combinedContentVersions.length - 1]?.content?.trim() ||
+              '';
+            if (cv) return cv;
+          }
+          return '';
+        }
+      }
+      // Step7 のみ: 上記で解決できなかった場合の最終フォールバック（空表示の恒久防止）。バージョン選択反映。
+      if (combinedContentVersions.length > 0) {
+        const byId =
+          activeVersionId != null
+            ? combinedContentVersions.find(
+                v => v.id === activeVersionId || String(v.id) === String(activeVersionId)
+              )?.content?.trim()
+            : null;
+        const fallback =
+          byId ||
+          latestCombinedContent?.trim() ||
+          combinedContentVersions[combinedContentVersions.length - 1]?.content?.trim() ||
+          '';
+        if (fallback) return fallback;
+      }
+      const finalFallback = activeCanvasVersion?.content ?? '';
+      return finalFallback;
+    }
+    // 未確定の場合は最新のバージョン（生成中の内容含む）を表示
+    const finalContent = activeCanvasVersion?.content ?? '';
+    return finalContent;
+  }, [
+    isHeadingFlowCanvasStep,
+    isViewingPastHeadingContent,
+    canvasStreamingContent,
+    headingCanvasViewMode.isCombinedView,
+    headingSections,
+    combinedContentVersions,
+    activeVersionId,
+    latestCombinedContent,
+    step6ToStep7Lead.content,
+    activeCanvasVersion,
+    isStep6ContentStale,
+    viewingHeadingIndex,
+    activeHeadingIndex,
+    allMessagesForVersions,
+    getLatestStep7HeadingContent,
+    minTsForContentCheck,
+  ]);
+
+  const isCombinedFormView = headingCanvasViewMode.isCombinedView;
+  const isHeadingUnitStep7View = headingCanvasViewMode.isViewingHeading;
+  const isCombinedFormViewWithVersions = isCombinedFormView && combinedContentVersions.length > 0;
+
+  // 他ステップと同様: canvasVersionsForStep をベースに。Step7 見出し単体のみバージョン管理なし
   const canvasVersionsWithMeta = useMemo(() => {
+    if (isHeadingUnitStep7View) return [];
+    if (isCombinedFormView && combinedContentVersions.length === 0) {
+      return []; // 完成形未取得時はバージョンUI非表示（本文ソースとの不整合を防止）
+    }
+    if (isCombinedFormViewWithVersions) {
+      return combinedContentVersions.map(v => ({
+        id: v.id,
+        content: v.content,
+        versionNumber: v.versionNo,
+        isLatest: v.isLatest,
+      }));
+    }
     return canvasVersionsForStep.map((version, index) => ({
       ...version,
       versionNumber: index + 1,
       isLatest: index === canvasVersionsForStep.length - 1,
     }));
-  }, [canvasVersionsForStep]);
+  }, [
+    isHeadingUnitStep7View,
+    isCombinedFormView,
+    isCombinedFormViewWithVersions,
+    combinedContentVersions,
+    canvasVersionsForStep,
+  ]);
 
-  const canvasStepOptions = useMemo(
+  const canvasStepOptions = useMemo(() => {
+    // バージョンが1件以上あるステップを表示（nextStepForPlaceholder では除外しない）
+    const base = BLOG_STEP_IDS.filter(
+      step => (blogCanvasVersionsByStep[step] ?? []).length > 0
+    );
+    // Step7 完成形は session_combined_contents に保存されるため、combinedContentVersions があれば追加
+    if (!base.includes(STEP7_ID) && combinedContentVersions.length > 0) {
+      return [...base, STEP7_ID];
+    }
+    return base;
+  }, [blogCanvasVersionsByStep, combinedContentVersions.length]);
+
+  // Step7 完成形タイル: 各バージョンをタイル化。createdAt で時系列マージ用
+  const combinedTiles = useMemo(
     () =>
-      BLOG_STEP_IDS.filter(
-        step => (blogCanvasVersionsByStep[step] ?? []).length > 0 && step !== nextStepForPlaceholder
-      ),
-    [blogCanvasVersionsByStep, nextStepForPlaceholder]
+      combinedContentVersions.map(v => {
+        const { title, excerpt } = deriveTileFromContent(v.content);
+        return {
+          id: v.id,
+          title,
+          excerpt,
+          ...(v.createdAt != null && { createdAt: v.createdAt }),
+        };
+      }),
+    [combinedContentVersions]
+  );
+
+  // handleSaveHeadingSection はフック側のシグネチャが (content: string, overrideHeadingKey?: string) のため、ここでラップする。
+  // CanvasPanel が contentRef に表示中の内容を随時更新するため、保存時は ref を優先して
+  // ストリーミング完了直後のクリックでも最新編集内容が保存される。
+  // 見出し+本文で表示されている場合、保存時は見出し行を除去して本文のみを渡す（結合時に heading_text を自動付与するため二重化防止）
+  const viewingSection =
+    viewingHeadingIndex !== null &&
+    viewingHeadingIndex >= 0 &&
+    viewingHeadingIndex < headingSections.length
+      ? headingSections[viewingHeadingIndex]
+      : undefined;
+
+  const handleSaveHeadingClick = useCallback(async () => {
+    if (saveHeadingInFlightRef.current) return;
+    if (isStep6ContentStale) return;
+    // StepActionBar 保存は常に active（最初の未確定）見出しに保存する。表示中の見出しと乖離していても正しい。
+    if (activeHeadingIndex === undefined || !activeHeading) return;
+    saveHeadingInFlightRef.current = true;
+    const section = activeHeading;
+    const sectionsMinUpdatedMs =
+      headingSections.length > 0
+        ? Math.min(
+            ...headingSections.map(s =>
+              s.updatedAt ? new Date(s.updatedAt).getTime() : Infinity
+            )
+          )
+        : 0;
+    const minTs = sectionsMinUpdatedMs !== Infinity ? sectionsMinUpdatedMs : undefined;
+    const isViewingTargetInCanvas =
+      canvasPanelOpen && effectiveViewingHeadingIndex === activeHeadingIndex;
+    let rawContent: string | undefined;
+    if (isViewingTargetInCanvas) {
+      // 仕様 8.8: contentRef ?? canvasStreamingContent ?? canvasContent
+      // ?? 使用で空文字列はフォールバックしない（意図的全削除を保持）。空は後段のバリデーションで拒否。
+      const resolved =
+        canvasContentRef.current ??
+        canvasStreamingContent ??
+        canvasContent;
+      rawContent = resolved !== undefined && resolved !== null ? resolved : undefined;
+    } else {
+      // 対象見出しを表示していない場合、Canvas表示内容は別見出しのものなので使わない
+      rawContent = getLatestStep7HeadingContent(
+        allMessagesForVersions,
+        activeHeadingIndex,
+        minTs
+      ) ?? undefined;
+    }
+    if (!rawContent?.trim()) {
+      saveHeadingInFlightRef.current = false;
+      if (hasContentForActiveHeading) {
+        // コンテンツは存在すると判定されているが取得に失敗。再試行を促し、見出し生成への切り替えは行わない（編集上書き防止）
+        toast.error(
+          '保存に失敗しました。Canvasの内容を確認し、タイルをクリックして再読み込みしてから保存を再試行してください。'
+        );
+      } else {
+        setIsStep6ContentStale(true);
+        toast.error(
+          '最後の見出しの本文が見つかりません。Canvas に表示されている内容を確認し、見出し生成をもう一度実行してください。'
+        );
+      }
+      return;
+    }
+    const contentToSave =
+      section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
+
+    if (!contentToSave?.trim()) {
+      saveHeadingInFlightRef.current = false;
+      if (hasContentForActiveHeading) {
+        toast.error(
+          '保存する本文が空です。見出し行以外の本文を入力するか、タイルをクリックして再読み込みしてから保存を再試行してください。'
+        );
+      } else {
+        setIsStep6ContentStale(true);
+        toast.error(
+          '最後の見出しの本文が見つかりません。Canvas に表示されている内容を確認し、見出し生成をもう一度実行してください。'
+        );
+      }
+      return;
+    }
+    try {
+      const success = await handleSaveHeadingSectionFromFlow(contentToSave, section.headingKey);
+      if (success) {
+        setCanvasStreamingContent('');
+      }
+    } finally {
+      saveHeadingInFlightRef.current = false;
+    }
+  }, [
+    isStep6ContentStale,
+    activeHeadingIndex,
+    activeHeading,
+    headingSections,
+    canvasPanelOpen,
+    effectiveViewingHeadingIndex,
+    allMessagesForVersions,
+    getLatestStep7HeadingContent,
+    handleSaveHeadingSectionFromFlow,
+    canvasStreamingContent,
+    canvasContent,
+    hasContentForActiveHeading,
+  ]);
+
+  /** 全見出し保存後: AI で本文生成（blog_creation_step7）し、session_combined_contents に保存 */
+  const handleBuildCombinedOnly = useCallback(async () => {
+    if (buildCombinedInFlightRef.current) return;
+    buildCombinedInFlightRef.current = true;
+    setCanvasStreamingContent('');
+    setIsBuildingCombined(true);
+    try {
+      if (!chatSession.state.currentSessionId) {
+        toast.error('セッションがありません。チャットを再度読み込んでください。');
+        return;
+      }
+      const token = await getAccessToken();
+      if (!token?.trim()) {
+        toast.error('認証トークンを取得できませんでした。LINEで再ログインしてください。');
+        return;
+      }
+      const res = await getCombinedContentForStep7({
+        sessionId: chatSession.state.currentSessionId,
+        liffAccessToken: token,
+      });
+      if (!res.success || res.sections == null) {
+        toast.error(
+          res.error ?? '完成形の構築に失敗しました。書き出し案の入力を再度お試しください。'
+        );
+        return;
+      }
+      if (!res.sections.trim()) {
+        toast.error('結合する見出し本文がありません。各見出しを保存してから再度お試しください。');
+        return;
+      }
+
+      setSelectedModel('blog_creation');
+      const serviceOpts = selectedServiceId ? { serviceId: selectedServiceId } : undefined;
+      const sendOk = await chatSession.actions.sendMessage(res.sections, toBlogModel(STEP7_ID), {
+        ...serviceOpts,
+        step7FullBodyGeneration: true,
+        step7Lead: res.lead ?? undefined,
+      });
+      if (!sendOk) {
+        toast.error('完成形の生成・保存に失敗しました。チャットのエラー表示をご確認ください。');
+        return;
+      }
+
+      resetCombinedVersionToLatest();
+      setSelectedVersionByStep(prev => ({
+        ...prev,
+        [STEP7_ID]: null,
+      }));
+      await refetchCombinedContentVersions({ force: true });
+      await chatSession.actions.loadSession(chatSession.state.currentSessionId);
+      toast.success('完成形をAIで生成し、保存しました');
+      openCombinedCanvasRef.current();
+    } catch (error) {
+      console.error('Failed to build combined content:', error);
+      toast.error(
+        error instanceof Error ? error.message : '完成形の構築に失敗しました。しばらく経ってから再度お試しください。'
+      );
+    } finally {
+      buildCombinedInFlightRef.current = false;
+      setIsBuildingCombined(false);
+    }
+  }, [
+    chatSession.state.currentSessionId,
+    chatSession.actions,
+    getAccessToken,
+    selectedServiceId,
+    resetCombinedVersionToLatest,
+    refetchCombinedContentVersions,
+    setSelectedVersionByStep,
+  ]);
+
+  const handleBeforeManualStepChange = useCallback((): boolean => true, []);
+
+  // スキップ/バック時に resolvedCanvasStep を同期（見出しフロー・Canvas コンテンツの表示に必要）
+  // Canvas は AI チャット生成時のみ自動オープン。手動スキップでは開かない。
+  const handleManualStepChangeForCanvas = useCallback(
+    (targetStep: BlogStepId) => {
+      setIsViewingPastHeadingContent(false);
+      setCanvasStreamingContent('');
+      setCanvasStep(targetStep);
+      // Step7 へ遷移かつ未確定見出しあり → 完成形ではなく見出し1を表示
+      // 完成形は全見出し確定時のみ存在。未確定があれば完成形は存在せず、取得中かどうかに依存しない。
+      if (
+        targetStep === STEP7_ID &&
+        headingSections.length > 0 &&
+        activeHeadingIndex !== undefined
+      ) {
+        pendingViewingIndexRef.current = 0;
+      }
+    },
+    [setCanvasStreamingContent, headingSections, activeHeadingIndex]
   );
 
   // 履歴ベースのモデル自動検出は削除（InputArea 側でフロー状態から自動選択）
@@ -854,6 +1038,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     setAnnotationOpen(false);
     setAnnotationData(null);
     setAnnotationLoading(false);
+    setIsViewingPastHeadingContent(false);
     setCanvasStep(null);
     setSelectedVersionByStep({});
     setFollowLatestByStep({});
@@ -862,106 +1047,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     if (shouldResetModel) {
       setSelectedModel('');
     }
-    setIsEditingTitle(false);
-    setTitleError(null);
-    setIsSavingTitle(false);
     prevSessionIdRef.current = nextSessionId;
-  }, [chatSession.state.currentSessionId]);
-
-  useEffect(() => {
-    if (!chatSession.state.currentSessionId) {
-      setDraftTitle('');
-      return;
-    }
-
-    if (isEditingTitle) {
-      return;
-    }
-
-    if (currentSession) {
-      setDraftTitle(currentSession.title);
-    }
   }, [
     chatSession.state.currentSessionId,
-    chatSession.state.sessions,
-    currentSession,
-    isEditingTitle,
-  ]);
-
-  const handleTitleEditStart = useCallback(() => {
-    if (!chatSession.state.currentSessionId || !currentSession) {
-      return;
-    }
-    setDraftTitle(currentSession.title);
-    setTitleError(null);
-    setIsEditingTitle(true);
-  }, [chatSession.state.currentSessionId, currentSession]);
-
-  const handleTitleEditChange = useCallback(
-    (value: string) => {
-      const sanitized = value.replace(/[\r\n]+/g, '');
-      setDraftTitle(sanitized);
-      if (titleError) {
-        setTitleError(null);
-      }
-    },
-    [titleError]
-  );
-
-  const handleTitleEditCancel = useCallback(() => {
-    setIsEditingTitle(false);
-    setTitleError(null);
-    if (currentSession) {
-      setDraftTitle(currentSession.title);
-    }
-  }, [currentSession]);
-
-  const validateTitle = validateTitleFromCommon;
-
-  const handleTitleEditConfirm = useCallback(async () => {
-    const sessionId = chatSession.state.currentSessionId;
-    if (!sessionId || !currentSession) {
-      return;
-    }
-
-    if (isSavingTitle) {
-      return;
-    }
-
-    const trimmed = draftTitle.trim();
-    const validationError = validateTitle(trimmed);
-    if (validationError) {
-      setTitleError(validationError);
-      return;
-    }
-
-    if (currentSession.title === trimmed) {
-      setIsEditingTitle(false);
-      setTitleError(null);
-      return;
-    }
-
-    setIsSavingTitle(true);
-    try {
-      await chatSession.actions.updateSessionTitle(sessionId, trimmed);
-      setIsEditingTitle(false);
-      setTitleError(null);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'タイトルの更新に失敗しました。時間をおいて再試行してください。';
-      setTitleError(message);
-    } finally {
-      setIsSavingTitle(false);
-    }
-  }, [
-    chatSession.actions,
-    chatSession.state.currentSessionId,
-    currentSession,
-    draftTitle,
-    validateTitle,
-    isSavingTitle,
+    setAnnotationData,
+    setAnnotationLoading,
+    setFollowLatestByStep,
+    setSelectedVersionByStep,
   ]);
 
   // ✅ メッセージ履歴にブログステップがある場合、自動的にブログ作成モデルを選択
@@ -990,24 +1082,88 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [chatSession.actions, selectedServiceId]
   );
 
+  /** Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。成功時に step7 表示に遷移。 */
+  const handleSaveStep7UserLead = useCallback(
+    async (userLead: string) => {
+      try {
+        if (!chatSession.state.currentSessionId) {
+          return { success: false, error: 'セッションが見つかりません' };
+        }
+        const token = await getAccessToken();
+        if (!token?.trim()) {
+          return { success: false, error: '認証トークンが無効です' };
+        }
+        const res = await saveStep7UserLead({
+          sessionId: chatSession.state.currentSessionId,
+          userLead: userLead.trim(),
+          liffAccessToken: token,
+        });
+        if (res.success) {
+          await chatSession.actions.loadSession(chatSession.state.currentSessionId);
+        }
+        return { success: res.success, ...(res.error && { error: res.error }) };
+      } catch (error) {
+        console.error('Failed to save step7 user lead:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '保存に失敗しました',
+        };
+      }
+    },
+    [chatSession.state.currentSessionId, chatSession.actions, getAccessToken]
+  );
+
+  // ✅ 見出し単位生成: スタート/この見出しを生成ボタンでチャット送信の代わりに生成開始。
+  // headingIndex を model に含めることで、タイルクリック時に該当見出しを正しく開けるようにする。
+  const handleStartHeadingGeneration = useCallback(
+    (headingIndex: number) => {
+      pendingAutoOpenHeadingRef.current = true;
+      setSelectedModel('blog_creation');
+      const model =
+        Number.isInteger(headingIndex) && headingIndex >= 0
+          ? getStep7HeadingModel(headingIndex)
+          : toBlogModel(STEP7_ID);
+      void handleSendMessage('この見出しの本文を書いてください', model);
+    },
+    [handleSendMessage]
+  );
+
   // ✅ Canvasボタンクリック時にCanvasPanelを表示する関数
   const handleShowCanvas = useCallback(
     (message: ChatMessage) => {
       const fallbackStep = (latestBlogStep ?? BLOG_STEP_IDS[0]) as BlogStepId;
-      const detectedStep = (extractBlogStepFromModel(message.model) ?? fallbackStep) as BlogStepId;
+      const detectedStep = (getContentStepFromAssistantModel(message.model, message.content) ?? fallbackStep) as BlogStepId;
+
+      // Step7 見出しタイル: 編集中の見出しに未保存コンテンツがある場合は他見出しへの切り替えを禁止
+      if (detectedStep === STEP7_ID && headingSections.length > 0) {
+        const targetIdx = extractStep7HeadingIndexFromModel(message.model);
+        const validTargetIdx =
+          targetIdx !== null && targetIdx >= 0 && targetIdx < headingSections.length
+            ? targetIdx
+            : null;
+        if (
+          validTargetIdx !== null &&
+          activeHeadingIndex !== undefined &&
+          validTargetIdx !== activeHeadingIndex
+        ) {
+          const section = headingSections[activeHeadingIndex];
+          if (hasContentForActiveHeading && !section?.isConfirmed) {
+            toast.error('編集中の見出しを保存してから、他の見出しを開けます。');
+            return;
+          }
+        }
+      }
+
       const versions = blogCanvasVersionsByStep[detectedStep] ?? [];
       const latestVersionId = versions.length ? (versions[versions.length - 1]?.id ?? null) : null;
       const hasExactMatch = versions.some(version => version.id === message.id);
       const targetVersionId = hasExactMatch ? message.id : latestVersionId;
 
-      if (message.id.startsWith('temp-assistant-')) {
-        const normalizedStreaming = normalizeCanvasContent(message.content ?? '');
-        if (normalizedStreaming) {
-          setCanvasStreamingContent(normalizedStreaming);
-        }
-      } else {
-        setCanvasStreamingContent('');
-      }
+      // タイルクリック時: クリックした message の content をそのまま表示する。
+      // バージョン管理に依存せず、step1〜7・見出し単体を問わず確実に該当コンテンツを開く。
+      const normalizedFromMessage = normalizeCanvasContent(message.content ?? '');
+      fallbackMessageIdRef.current = null;
+      setCanvasStreamingContent(normalizedFromMessage || '');
 
       setCanvasStep(detectedStep);
       setSelectedVersionByStep(prev => {
@@ -1021,14 +1177,124 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return next;
       });
 
+      // Step7 タイルクリック時は該当見出しのインデックスを設定
+      if (detectedStep === STEP7_ID && headingSections.length > 0) {
+        let targetIdx = extractStep7HeadingIndexFromModel(message.model);
+
+        if (targetIdx !== null && (targetIdx < 0 || targetIdx >= headingSections.length)) {
+          targetIdx = null;
+        }
+
+        // model に _hN がない旧メッセージはバージョン管理のみ。本文フォールバックは行わない。
+        if (targetIdx !== null) {
+          // step7 未表示時にタイルクリック: effect が上書きするため pending を使用。step7 表示中は setViewingHeadingIndex のみ（effect は deps 変化で動かないため）
+          if (!isHeadingFlowCanvasStep) {
+            pendingViewingIndexRef.current = targetIdx;
+          }
+          setViewingHeadingIndex(targetIdx);
+          setIsViewingPastHeadingContent(false);
+        } else {
+          // targetIdx が解決できない場合は、見出し行の有無に関わらず過去／未マッピング扱いにする。
+          // 旧フォーマット（### なし）メッセージでも保存を有効にすると誤上書きの原因になるため。
+          setIsViewingPastHeadingContent(true);
+        }
+      } else {
+        setIsViewingPastHeadingContent(false);
+      }
+
       if (annotationOpen) {
         setAnnotationOpen(false);
         setAnnotationData(null);
       }
       setCanvasPanelOpen(true);
     },
-    [annotationOpen, blogCanvasVersionsByStep, latestBlogStep, setCanvasStreamingContent]
+    [
+      activeHeadingIndex,
+      annotationOpen,
+      blogCanvasVersionsByStep,
+      hasContentForActiveHeading,
+      headingSections,
+      isHeadingFlowCanvasStep,
+      latestBlogStep,
+      setCanvasStreamingContent,
+      setViewingHeadingIndex,
+      setAnnotationData,
+      setFollowLatestByStep,
+      setSelectedVersionByStep,
+    ]
   );
+
+  // ✅ 見出し生成ストリーミング完了時にCanvasを自動オープン
+  useEffect(() => {
+    const wasLoading = prevChatLoadingRef.current;
+    const nowLoading = chatSession.state.isLoading ?? false;
+    prevChatLoadingRef.current = nowLoading;
+
+    if (wasLoading && !nowLoading && pendingAutoOpenHeadingRef.current) {
+      pendingAutoOpenHeadingRef.current = false;
+      const messages = chatSession.state.messages ?? [];
+      const last = messages[messages.length - 1];
+      if (
+        last?.role === 'assistant' &&
+        last?.model &&
+        isStep7HeadingModel(last.model)
+      ) {
+        handleShowCanvas(last);
+      }
+    }
+  }, [chatSession.state.isLoading, chatSession.state.messages, handleShowCanvas]);
+
+  /** Step7 完成形タイルクリック時: Canvas で完成形を開く。他ステップと同様 selectedVersionByStep で選択 */
+  const handleOpenCombinedCanvas = useCallback(
+    (versionId?: string) => {
+      requestedCombinedViewRef.current = true;
+      pendingCombinedVersionIdRef.current = versionId ?? null;
+      // 恒久対応: クリック時点で即時コンテンツを解決し、state 更新遅延による Canvas 空表示を防止
+      const resolvedContent =
+        versionId != null
+          ? combinedContentVersions.find(v => v.id === versionId)?.content ?? null
+          : latestCombinedContent;
+      if (resolvedContent != null && resolvedContent.trim()) {
+        pendingCombinedContentRef.current = resolvedContent;
+      } else {
+        pendingCombinedContentRef.current = null;
+      }
+      setViewingHeadingIndex(null);
+      pendingViewingIndexRef.current = null;
+      setIsViewingPastHeadingContent(false);
+      setCanvasStep(STEP7_ID);
+      setCanvasStreamingContent('');
+      setSelectedVersionByStep(prev => ({
+        ...prev,
+        [STEP7_ID]: versionId ?? null,
+      }));
+      // 特定バージョン選択時は追従を無効化し、effect による選択上書きを防止
+      if (versionId) {
+        setFollowLatestByStep(prev => ({
+          ...prev,
+          [STEP7_ID]: false,
+        }));
+      }
+      if (annotationOpen) {
+        setAnnotationOpen(false);
+        setAnnotationData(null);
+      }
+      setCanvasPanelOpen(true);
+    },
+    [
+      annotationOpen,
+      combinedContentVersions,
+      latestCombinedContent,
+      setViewingHeadingIndex,
+      setIsViewingPastHeadingContent,
+      setCanvasStreamingContent,
+      setAnnotationData,
+      setSelectedVersionByStep,
+      setFollowLatestByStep,
+    ]
+  );
+
+  openCombinedCanvasRef.current = handleOpenCombinedCanvas;
 
   // ✅ 保存ボタンクリック時にAnnotationPanelを表示する関数
   const handleOpenAnnotation = async () => {
@@ -1065,40 +1331,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     }
   };
 
-  const handleGenerateTitleMeta = async () => {
-    const sessionId = chatSession.state.currentSessionId;
-    if (!sessionId) return;
-
-    setIsGeneratingTitleMeta(true);
-    try {
-      const accessToken = await getAccessToken();
-      const res = await getLatestBlogStep7MessageBySession(sessionId, accessToken);
-      if (!res.success) {
-        const errorMessage = res.error || '本文の取得に失敗しました';
-        chatSession.actions.setError(errorMessage);
-        return;
-      }
-      if (!res.data?.content?.trim()) {
-        chatSession.actions.setError('本文が見つかりませんでした');
-        return;
-      }
-
-      const systemPrompt = `${TITLE_META_SYSTEM_PROMPT}\n\n本文:\n${res.data.content}`;
-      await chatSession.actions.sendMessage(
-        '本文を元にタイトルと説明文を作成してください。',
-        'blog_title_meta_generation',
-        { systemPrompt }
-      );
-    } catch (error) {
-      console.error('Failed to generate title/meta:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : 'タイトル・説明文の生成に失敗しました';
-      chatSession.actions.setError(errorMessage);
-    } finally {
-      setIsGeneratingTitleMeta(false);
-    }
-  };
-
   const handleCanvasVersionSelect = useCallback(
     (versionId: string) => {
       const step = resolvedCanvasStep;
@@ -1106,6 +1338,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       const versions = blogCanvasVersionsByStep[step] ?? [];
       const latestId = versions.length ? (versions[versions.length - 1]?.id ?? null) : null;
 
+      setCanvasStreamingContent('');
       setSelectedVersionByStep(prev => {
         const next = { ...prev };
         next[step] = versionId;
@@ -1117,14 +1350,39 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return next;
       });
     },
-    [blogCanvasVersionsByStep, resolvedCanvasStep]
+    [
+      blogCanvasVersionsByStep,
+      resolvedCanvasStep,
+      setCanvasStreamingContent,
+      setFollowLatestByStep,
+      setSelectedVersionByStep,
+    ]
   );
+  // 他ステップと同様: activeVersionId をそのまま使用。見出し単体のみバージョン選択無効
+  const effectiveActiveVersionId = isHeadingUnitStep7View ? null : activeVersionId;
+  const effectiveOnVersionSelect = isHeadingUnitStep7View ? undefined : handleCanvasVersionSelect;
 
   const handleCanvasStepChange = useCallback(
     (step: BlogStepId) => {
       const versions = blogCanvasVersionsByStep[step] ?? [];
       const latestId = versions.length ? (versions[versions.length - 1]?.id ?? null) : null;
 
+      setIsViewingPastHeadingContent(false);
+      setCanvasStreamingContent('');
+      if (step === STEP7_ID && combinedContentVersions.length > 0) {
+        requestedCombinedViewRef.current = true;
+        setViewingHeadingIndex(null);
+        // ステップ選択時も即時コンテンツ解決で空表示を防止（タイルクリックと同様）
+        const resolvedContent =
+          latestId != null
+            ? combinedContentVersions.find(v => v.id === latestId)?.content ?? null
+            : latestCombinedContent;
+        if (resolvedContent != null && resolvedContent.trim()) {
+          pendingCombinedContentRef.current = resolvedContent;
+        } else {
+          pendingCombinedContentRef.current = null;
+        }
+      }
       setCanvasStep(step);
       setSelectedVersionByStep(prev => {
         const next = { ...prev };
@@ -1145,7 +1403,15 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return next;
       });
     },
-    [blogCanvasVersionsByStep]
+    [
+      blogCanvasVersionsByStep,
+      combinedContentVersions,
+      latestCombinedContent,
+      setCanvasStreamingContent,
+      setFollowLatestByStep,
+      setSelectedVersionByStep,
+      setViewingHeadingIndex,
+    ]
   );
 
   const handleCanvasStepSelect = useCallback(
@@ -1177,7 +1443,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           targetStep = resolvedCanvasStep;
         } else {
           const stepInfo = stepActionBarRef.current?.getCurrentStepInfo();
-          targetStep = stepInfo?.currentStep ?? latestBlogStep ?? 'step1';
+          targetStep = stepInfo?.currentStep ?? latestBlogStep ?? FIRST_BLOG_STEP_ID;
         }
 
         const extendedPayload = payload as CanvasSelectionEditPayload & {
@@ -1190,6 +1456,17 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
         const instruction = payload.instruction.trim();
         const selectedText = payload.selectedText.trim();
+        const step7ViewModeForRequest = resolveHeadingCanvasViewMode({
+          step: targetStep,
+          headingCount: headingSections.length,
+          viewingHeadingIndex,
+          activeHeadingIndex,
+        });
+        const headingContextIndex = step7ViewModeForRequest.headingIndex;
+        const canvasModel =
+          targetStep === STEP7_ID && headingContextIndex !== null
+            ? `blog_creation_${targetStep}_h${headingContextIndex}`
+            : `blog_creation_${targetStep}`;
 
         // canvasContentの検証
         if (!payload.canvasContent || payload.canvasContent.trim() === '') {
@@ -1217,7 +1494,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           role: 'user',
           content: instruction,
           timestamp: new Date(),
-          model: `blog_creation_${targetStep}`,
+          model: canvasModel,
         };
 
         const assistantCanvasMessage: ChatMessage = {
@@ -1225,7 +1502,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           role: 'assistant',
           content: '', // ストリーミング中は空
           timestamp: new Date(),
-          model: `blog_creation_${targetStep}`,
+          model: canvasModel,
         };
 
         const assistantAnalysisMessage: ChatMessage = {
@@ -1258,6 +1535,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         const markdownDecoder = createFullMarkdownDecoder();
 
         // ✅ ストリーミングAPI呼び出し（必要に応じてWeb検索を利用）
+        // 見出し単位 = 未確定の見出し編集中 OR 確定済み見出しの再編集（戻るで遷移）。完成形表示時は false
+        const isHeadingUnit = step7ViewModeForRequest.isHeadingUnit;
+
         const response = await fetch('/api/chat/canvas/stream', {
           method: 'POST',
           headers: {
@@ -1271,6 +1551,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             canvasContent: payload.canvasContent,
             targetStep,
             enableWebSearch: shouldEnableWebSearch,
+            ...(isHeadingUnit && { isHeadingUnit: true }),
+            ...(headingContextIndex !== null && { step7HeadingIndex: headingContextIndex }),
             webSearchConfig: {
               maxUses: 3,
             },
@@ -1391,6 +1673,15 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         // セッションを再読み込みして最新メッセージを取得
         await chatSession.actions.loadSession(chatSession.state.currentSessionId);
 
+        // Step6 完成形の Canvas 編集時は session_combined_contents に新バージョンが保存されているため再取得
+        if (
+          targetStep === STEP7_ID &&
+          headingSections.length > 0 &&
+          headingSections.every(s => s.isConfirmed)
+        ) {
+          refetchCombinedContentVersions();
+        }
+
         // 楽観的更新をクリア（実際のメッセージで置き換え）
         setOptimisticMessages([]);
 
@@ -1409,14 +1700,18 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       }
     },
     [
+      activeHeadingIndex,
       annotationOpen,
       chatSession.actions,
       chatSession.state.currentSessionId,
       getAccessToken,
       handleModelChange,
+      headingSections,
       isOwnerViewMode,
       latestBlogStep,
+      refetchCombinedContentVersions,
       resolvedCanvasStep,
+      viewingHeadingIndex,
       setAnnotationData,
       setAnnotationOpen,
       setCanvasPanelOpen,
@@ -1469,12 +1764,44 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           onGenerateTitleMeta: handleGenerateTitleMeta,
           isGenerateTitleMetaLoading: isGeneratingTitleMeta,
           onLoadBlogArticle: handleLoadBlogArticle,
+          onBeforeManualStepChange: handleBeforeManualStepChange,
+          onManualStepChange: handleManualStepChangeForCanvas,
+          isHeadingInitInFlight,
+          hasAttemptedHeadingInit,
+          onRetryHeadingInit: handleRetryHeadingInit,
+          isSavingHeading,
+          headingSections,
+          totalHeadings: headingSections.length,
+          ...(viewingSection && { headingIndex: viewingHeadingIndex as number }),
+          ...((() => {
+            const t =
+              activeHeadingIndex !== undefined
+                ? headingSections[activeHeadingIndex]?.headingText
+                : viewingSection?.headingText;
+            return t ? { currentHeadingText: t } : {};
+          })()),
           initialStep,
           services,
           selectedServiceId,
           onServiceChange: handleServiceChange,
           servicesError,
           onDismissServicesError: dismissServicesError,
+          onResetHeadingConfiguration: handleResetHeadingConfiguration,
+          resolvedCanvasStep,
+          setCanvasStep,
+          ...(activeHeadingIndex !== undefined && { activeHeadingIndex }),
+          ...(isHeadingFlowCanvasStep && {
+            isStep7SaveDisabled: isStep6ContentStale || !hasContentForActiveHeading,
+          }),
+          onStartHeadingGeneration: handleStartHeadingGeneration,
+          onSaveHeadingSection: handleSaveHeadingClick,
+          onBuildCombinedOnly: handleBuildCombinedOnly,
+          isChatLoading: chatSession.state.isLoading,
+          isBuildingCombined,
+          onSaveStep7UserLead: handleSaveStep7UserLead,
+          step6ToStep7LeadSaved,
+          ...(combinedTiles.length > 0 && { combinedTiles }),
+          onOpenCombinedCanvas: handleOpenCombinedCanvas,
         }}
       />
       {canvasPanelOpen && (
@@ -1486,12 +1813,29 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           isVisible={canvasPanelOpen}
           {...(isOwnerViewMode ? {} : { onSelectionEdit: handleCanvasSelectionEdit })}
           versions={canvasVersionsWithMeta}
-          activeVersionId={activeCanvasVersion?.id ?? null}
-          onVersionSelect={handleCanvasVersionSelect}
+          activeVersionId={effectiveActiveVersionId}
+          {...(effectiveOnVersionSelect !== undefined && {
+            onVersionSelect: effectiveOnVersionSelect,
+          })}
           stepOptions={canvasStepOptions}
           activeStepId={resolvedCanvasStep ?? null}
           onStepSelect={handleCanvasStepSelect}
           streamingContent={canvasStreamingContent}
+          canvasContentRef={canvasContentRef}
+          showHeadingUnitActions={isHeadingFlowCanvasStep && totalHeadings > 0}
+          {...(headingCanvasViewMode.headingIndex !== null && {
+            headingIndex: headingCanvasViewMode.headingIndex,
+          })}
+          totalHeadings={headingSections.length}
+          hideOutline={
+            isHeadingFlowCanvasStep &&
+            effectiveViewingHeadingIndex !== null &&
+            totalHeadings > 0
+          }
+          hideHeadingProgressAndNav={isViewingPastHeadingContent}
+          isSavingHeading={isSavingHeading}
+          headingSaveError={headingSaveError}
+          isStreaming={isCanvasStreaming}
         />
       )}
     </div>

@@ -65,7 +65,7 @@ If an error occurs during execution or the plan fails:
 ## 開発ワークフローの原則
 
 - 可能な限り段階的な作業計画を共有し、重要な差分を逐次報告します。
-- ファイル操作は `apply_patch` を用いた最小編集が基本です。生成物や整形は専用コマンドを使用します。
+- ファイル操作は最小編集が基本です。`search_replace` や同様の部分編集を優先し、生成物や整形は専用コマンドを使用します。
 - `rg` / `rg --files` を優先してリポジトリを探索してください。
 - 作業の終わりに `npm run lint` を実行し、結果を共有します（実行できない場合は理由を明記）。
 - Supabase スキーマを変更する際は `supabase/migrations/` に SQL を追加し、ロールバック案をコメントで残します。
@@ -232,7 +232,7 @@ if (!canInviteEmployee(user.role)) {
 
 - 重要フロー（LIFF 認証、Stripe、WordPress 投稿取得、Canvas 編集、GSC 連携）はローカルで手動検証し、手順や想定結果を PR に記述します。
 - Stripe・WordPress・LIFF・GSC は本番キーとサンドボックスで環境変数が変わるため、変更時は README と `.env.local` 用のメモを更新します。
-- GSC 連携の変更時は `/app/gsc-dashboard` と `/app/gsc-import` の表示・動作を手動で確認してください。
+- GSC 連携の変更時は `/gsc-dashboard` と `/gsc-import` の表示・動作を手動で確認してください。
 - スタッフ招待ユーザーの参照/削除と、オーナーの書き込み不可を確認してください。
 
 ## ドキュメントとナレッジ

@@ -65,8 +65,14 @@ export interface ChatSessionActions {
   sendMessage: (
     content: string,
     model: string,
-    options?: { systemPrompt?: string; serviceId?: string }
-  ) => Promise<void>;
+    options?: {
+      systemPrompt?: string;
+      serviceId?: string;
+      step7FullBodyGeneration?: boolean;
+      /** step7FullBodyGeneration 時: 書き出しをユーザープロンプトに渡す */
+      step7Lead?: string;
+    }
+  ) => Promise<boolean>;
   setError: (message: string | null) => void;
   loadSessions: () => Promise<void>;
   loadSession: (sessionId: string) => Promise<void>;

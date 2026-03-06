@@ -12,8 +12,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Bot, Send, Menu, Pencil, Check, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { BLOG_PLACEHOLDERS, BLOG_STEP_IDS, BlogStepId } from '@/lib/constants';
+import {
+  BLOG_PLACEHOLDERS,
+  FIRST_BLOG_STEP_ID,
+  STEP7_ID,
+  STEP6_ID,
+  STEP7_HEADING_PLACEHOLDER_KEY,
+  toBlogModel,
+  type BlogStepId,
+} from '@/lib/constants';
 import { TITLE_MAX_LENGTH } from '@/lib/validators/common';
 import { useLiffContext } from '@/components/LiffProvider';
 import StepActionBar, { StepActionBarRef } from './StepActionBar';
@@ -54,7 +63,12 @@ interface InputAreaProps {
   blogFlowStatus?: string;
   selectedModelExternal?: string;
   initialBlogStep?: BlogStepId;
-  nextStepForPlaceholder?: BlogStepId | null;
+  /** ヒント・プレースホルダー・送信先の単一ソース（親で算出） */
+  nextStepForSend?: BlogStepId;
+  /** プレースホルダー用ステップ（ヒントと整合） */
+  stepForPlaceholder?: BlogStepId;
+  /** プレースホルダー用キー（step5→6 の AI 取得時は STEP6_GET_PLACEHOLDER_KEY） */
+  placeholderKey?: string;
   isEditingTitle?: boolean;
   draftSessionTitle?: string;
   sessionTitleError?: string | null;
@@ -67,9 +81,12 @@ interface InputAreaProps {
   shouldShowStepActionBar?: boolean;
   stepActionBarRef?: React.RefObject<StepActionBarRef | null>;
   displayStep?: BlogStepId;
+  /** StepActionBar「現在のステップ」表示用。持っている成果物のstep（content step） */
+  stepForStepActionBar?: BlogStepId;
   hasDetectedBlogStep?: boolean;
   onSaveClick?: () => void;
   annotationLoading?: boolean;
+  isSavingHeading?: boolean;
   hasStep7Content?: boolean;
   onGenerateTitleMeta?: () => void;
   isGenerateTitleMetaLoading?: boolean;
@@ -77,15 +94,47 @@ interface InputAreaProps {
   onNextStepChange?: (nextStep: BlogStepId | null) => void;
   onLoadBlogArticle?: (() => Promise<void>) | undefined;
   onManualStepChange?: (step: BlogStepId) => void;
+  onBeforeManualStepChange?: (params: {
+    direction: 'forward' | 'backward';
+    currentStep: BlogStepId;
+    targetStep: BlogStepId;
+  }) => boolean;
+  isHeadingInitInFlight?: boolean;
+  hasAttemptedHeadingInit?: boolean;
+  onRetryHeadingInit?: () => void;
+  headingIndex?: number;
+  totalHeadings?: number;
+  currentHeadingText?: string;
   searchQuery: string;
   searchError: string | null;
   isSearching: boolean;
   onSearch: (query: string) => void;
   onClearSearch: () => void;
-  // Service selector props
-  services?: Service[];
   selectedServiceId?: string | null;
   onServiceChange?: (serviceId: string) => void;
+  onResetHeadingConfiguration?: (options?: { preserveStep7Lead?: boolean }) => Promise<boolean>;
+  services?: Service[];
+  /** Step7: 現在生成対象の見出しインデックス。undefined = 完成形フェーズ */
+  activeHeadingIndex?: number;
+  /** Step7: 見出し保存ボタン無効化 */
+  isStep7SaveDisabled?: boolean;
+  /** Step7: 見出し生成トリガー */
+  onStartHeadingGeneration?: (headingIndex: number) => void;
+  /** Step7: 見出し保存 */
+  onSaveHeadingSection?: () => Promise<void>;
+  /** Step7 全見出し保存後: 結合のみ実行（本文生成ボタン用） */
+  onBuildCombinedOnly?: () => Promise<void>;
+  /** チャットローディング中 */
+  isChatLoading?: boolean;
+  /** 本文生成（完成形構築）中 */
+  isBuildingCombined?: boolean;
+  /** Step7 完成形: 書き出し+各見出しを結合して保存（再確定後も再保存可能） */
+  /** Step7: 書き出し案を保存して見出し生成スタート */
+  onSaveStep7UserLead?: (userLead: string) => Promise<{ success: boolean; error?: string }>;
+  /** Step6→Step7 保存成功時に step7 表示へ遷移（manualBlogStep を step7 に更新） */
+  onStep6ToStep7Success?: () => void;
+  /** true のとき step6→7 保存をスキップ（構成案の場合は書き出し案取得の通常送信） */
+  lastAssistantIsBasicStructure?: boolean;
 }
 
 const InputArea: React.FC<InputAreaProps> = ({
@@ -101,7 +150,9 @@ const InputArea: React.FC<InputAreaProps> = ({
   blogFlowStatus,
   selectedModelExternal,
   initialBlogStep,
-  nextStepForPlaceholder,
+  nextStepForSend,
+  stepForPlaceholder: stepForPlaceholderProp,
+  placeholderKey: placeholderKeyProp,
   isEditingTitle = false,
   draftSessionTitle,
   sessionTitleError,
@@ -113,9 +164,11 @@ const InputArea: React.FC<InputAreaProps> = ({
   shouldShowStepActionBar,
   stepActionBarRef,
   displayStep,
+  stepForStepActionBar,
   hasDetectedBlogStep,
   onSaveClick,
   annotationLoading,
+  isSavingHeading,
   hasStep7Content,
   onGenerateTitleMeta,
   isGenerateTitleMetaLoading,
@@ -123,6 +176,13 @@ const InputArea: React.FC<InputAreaProps> = ({
   onNextStepChange,
   onLoadBlogArticle,
   onManualStepChange,
+  onBeforeManualStepChange,
+  isHeadingInitInFlight,
+  hasAttemptedHeadingInit,
+  onRetryHeadingInit,
+  headingIndex,
+  totalHeadings,
+  currentHeadingText,
   searchQuery,
   searchError,
   isSearching,
@@ -131,6 +191,17 @@ const InputArea: React.FC<InputAreaProps> = ({
   services,
   selectedServiceId,
   onServiceChange,
+  onResetHeadingConfiguration,
+  activeHeadingIndex,
+  isStep7SaveDisabled = true,
+  onStartHeadingGeneration,
+  onSaveHeadingSection,
+  onBuildCombinedOnly,
+  isChatLoading = false,
+  isBuildingCombined = false,
+  onSaveStep7UserLead,
+  onStep6ToStep7Success,
+  lastAssistantIsBasicStructure = false,
 }) => {
   const { isOwnerViewMode } = useLiffContext();
   const [input, setInput] = useState('');
@@ -145,39 +216,42 @@ const InputArea: React.FC<InputAreaProps> = ({
   const [blogArticleError, setBlogArticleError] = useState<string | null>(null);
 
   const isModelSelected = Boolean(selectedModel);
-  const isInputDisabled = disabled || !isModelSelected || isReadOnly;
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
-  // ブログ作成中は「次に進む」タイミングでは次ステップのプレースホルダーを表示
+  // 送信モデルは「次のステップ」（nextStepForSend）を優先。ヒント「次のペルソナに進むには」と送信モデルを整合させる。
+  // displayStep が latestBlogStep 由来で遅延・ずれる場合、ヒントは nextStepForSend を表示するため、送信も nextStepForSend を使う。
+  const targetBlogStep = nextStepForSend ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
+  // プレースホルダーはヒントと整合（親で算出。未指定時は displayStep にフォールバック）
+  const stepForPlaceholder =
+    stepForPlaceholderProp ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
+
+  // Step7 見出し生成フェーズ: 見出し生成・保存ボタン表示用（入力は無効）
+  const isStep7HeadingPhase =
+    displayStep === STEP7_ID &&
+    selectedModel === 'blog_creation' &&
+    activeHeadingIndex !== undefined &&
+    (totalHeadings ?? 0) > 0;
+  const isInputDisabled =
+    disabled || !isModelSelected || isReadOnly || isStep7HeadingPhase;
+
+  // ブログ作成のプレースホルダーはUIヒント用ステップを表示
   const placeholderMessage = (() => {
     if (!isModelSelected) {
       return '画面上部のチャットモデルを選択してください';
     }
 
+    // Step7 見出し生成フェーズ: 入力無効時（BLOG_PLACEHOLDERS で一元管理）
+    if (isStep7HeadingPhase) {
+      return BLOG_PLACEHOLDERS[STEP7_HEADING_PLACEHOLDER_KEY];
+    }
+    // Step7 完成形フェーズ: 書き出し案入力を案内
+    if (selectedModel === 'blog_creation' && displayStep === STEP7_ID) {
+      return BLOG_PLACEHOLDERS[toBlogModel(STEP7_ID)];
+    }
+
     if (selectedModel === 'blog_creation') {
-      // ブログ作成を開始していない場合（hasDetectedBlogStep === false）はstep1を表示
-      if (!hasDetectedBlogStep) {
-        return BLOG_PLACEHOLDERS.blog_creation_step1;
-      }
-
-      // nextStepForPlaceholderが設定されている場合はそれを使用（StepActionBarのnextStepと連動）
-      // ブログ作成進行中（hasDetectedBlogStep === true）の場合のみ適用
-      if (nextStepForPlaceholder) {
-        const key = `blog_creation_${nextStepForPlaceholder}` as keyof typeof BLOG_PLACEHOLDERS;
-        return BLOG_PLACEHOLDERS[key];
-      }
-
-      // フォールバック: 次のステップのプレースホルダーを表示
-      // - waitingActionまたはhasDetectedBlogStep時は次のステップへ
-      // - それ以外は現在のステップ
-      const currentStep = initialBlogStep ?? 'step1';
-      const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
-      const shouldAdvance = hasDetectedBlogStep; // すでにブログ作成が始まっている場合は次へ
-      const nextIdx = shouldAdvance ? currentIdx + 1 : currentIdx;
-      const targetIdx = Math.min(nextIdx, BLOG_STEP_IDS.length - 1);
-      const fallbackStep = BLOG_STEP_IDS[targetIdx] as BlogStepId;
-      const key = `blog_creation_${fallbackStep}` as keyof typeof BLOG_PLACEHOLDERS;
-      return BLOG_PLACEHOLDERS[key];
+      const key = (placeholderKeyProp ?? `blog_creation_${stepForPlaceholder}`) as keyof typeof BLOG_PLACEHOLDERS;
+      return BLOG_PLACEHOLDERS[key] ?? BLOG_PLACEHOLDERS[toBlogModel(FIRST_BLOG_STEP_ID)];
     }
 
     // 通常モデル
@@ -224,8 +298,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     try {
       await onLoadBlogArticle();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'ブログ記事の取得に失敗しました';
+      const message = error instanceof Error ? error.message : 'ブログ記事の取得に失敗しました';
       setBlogArticleError(message);
     } finally {
       setIsLoadingBlogArticle(false);
@@ -265,45 +338,87 @@ const InputArea: React.FC<InputAreaProps> = ({
     adjustTextareaHeight();
   }, [input, adjustTextareaHeight]);
 
+  const [isSavingStep7Lead, setIsSavingStep7Lead] = useState(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isInputDisabled) return;
+    const trimmedInput = input.trim();
+    if (!trimmedInput || isInputDisabled) return;
 
-    const originalMessage = input.trim();
-    // ブログ作成モデルの場合の制御：
-    // - アクション待ち（waitingAction）での通常送信は「次のステップへ進む」扱い
-    let effectiveModel: string = selectedModel;
-    if (selectedModel === 'blog_creation') {
-      // 通常送信は次ステップへ（初回はstep1）
-      const currentStep = initialBlogStep ?? 'step1';
-      const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
+    const originalMessage = trimmedInput;
 
-      // 型定義上はありえないが、実行時の安全性のため念のためチェック
-      if (currentIdx === -1) {
-        console.error(
-          `[InputArea] initialBlogStep is invalid: ${currentStep}. Falling back to step1.`
-        );
-        const fallbackStep = 'step1';
-        effectiveModel = `blog_creation_${fallbackStep}`;
-        onModelChange?.('blog_creation', fallbackStep);
-      } else {
-        const shouldAdvance =
-          blogFlowStatus === 'waitingAction' ||
-          (blogFlowStatus === 'idle' && hasDetectedBlogStep);
-
-        // 次のステップのインデックスを計算（現在のステップまたは次のステップ）
-        const nextIdx = shouldAdvance ? currentIdx + 1 : currentIdx;
-        // 配列範囲内に収める（最後のステップを超えない）
-        const targetIdx = Math.min(nextIdx, BLOG_STEP_IDS.length - 1);
-        const targetStep = BLOG_STEP_IDS[targetIdx] as BlogStepId;
-
-        effectiveModel = `blog_creation_${targetStep}`;
-        onModelChange?.('blog_creation', targetStep);
+    // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる
+    const isStep6ToStep7Transition =
+      displayStep === STEP6_ID &&
+      nextStepForSend === STEP7_ID &&
+      selectedModel === 'blog_creation' &&
+      onSaveStep7UserLead &&
+      !lastAssistantIsBasicStructure;
+    if (isStep6ToStep7Transition) {
+      setIsSavingStep7Lead(true);
+      try {
+        const res = await onSaveStep7UserLead(originalMessage);
+        if (res.success) {
+          onStep6ToStep7Success?.();
+          setInput('');
+          toast.success('書き出し案を保存しました。見出し生成ボタンで1つ目の見出しを生成してください。');
+          return;
+        }
+        toast.error(res.error ?? '書き出し案の保存に失敗しました');
+        return;
+      } finally {
+        setIsSavingStep7Lead(false);
       }
     }
 
-    setInput('');
+    // Step7: 書き出し案入力あり → 保存＋見出しセクション削除で見出し1から再スタート（見出し生成中・完成形後いずれも同様）
+    if (
+      displayStep === STEP7_ID &&
+      selectedModel === 'blog_creation' &&
+      trimmedInput &&
+      onSaveStep7UserLead &&
+      onResetHeadingConfiguration
+    ) {
+      // 見出しが見つかりません状態では、基本構成に ###/#### を記載してから再試行するよう警告
+      const isHeadingNotFoundError =
+        (totalHeadings ?? 0) === 0 &&
+        (hasAttemptedHeadingInit ?? false) &&
+        !(isHeadingInitInFlight ?? false);
+      if (isHeadingNotFoundError) {
+        toast.warning(
+          '見出しが見つかりません。メモ・補足情報の「基本構成」に ###/#### 形式で見出しを記載してから、再試行してください。'
+        );
+        return;
+      }
+      setIsSavingStep7Lead(true);
+      try {
+        const res = await onSaveStep7UserLead(originalMessage);
+        if (res.success) {
+          setInput('');
+          const resetOk = await onResetHeadingConfiguration({ preserveStep7Lead: true });
+          if (resetOk) {
+            toast.success('書き出し案を保存しました。見出し1から再スタートします。');
+            return;
+          } else {
+            toast.error('見出し構成のリセットに失敗しました');
+            return;
+          }
+        } else {
+          toast.error(res.error ?? '書き出し案の保存に失敗しました');
+          return;
+        }
+      } finally {
+        setIsSavingStep7Lead(false);
+      }
+    }
 
+    // 通常のチャット送信
+    let effectiveModel: string = selectedModel;
+    if (selectedModel === 'blog_creation') {
+      effectiveModel = `blog_creation_${targetBlogStep}`;
+      onModelChange?.('blog_creation', targetBlogStep);
+    }
+
+    setInput('');
     await onSendMessage(originalMessage, effectiveModel);
   };
 
@@ -444,7 +559,7 @@ const InputArea: React.FC<InputAreaProps> = ({
               onValueChange={value => {
                 setSelectedModel(value);
                 if (value === 'blog_creation') {
-                  const targetStep: BlogStepId = initialBlogStep ?? 'step1';
+                  const targetStep: BlogStepId = initialBlogStep ?? FIRST_BLOG_STEP_ID;
                   onModelChange?.(value, targetStep);
                 } else {
                   onModelChange?.(value);
@@ -499,24 +614,43 @@ const InputArea: React.FC<InputAreaProps> = ({
           <div className="px-3 py-3 border-b border-gray-200 bg-white shadow-sm">
             <StepActionBar
               ref={stepActionBarRef}
-              step={displayStep}
-              hasDetectedBlogStep={hasDetectedBlogStep}
+              {...(displayStep !== undefined && {
+                step: stepForStepActionBar ?? displayStep,
+                stepForNavigation: displayStep,
+              })}
+              {...(hasDetectedBlogStep !== undefined && { hasDetectedBlogStep })}
+              {...(nextStepForSend !== undefined && { nextStepForSend })}
               className="flex-wrap gap-3"
               disabled={isStepActionBarDisabled}
-              onSaveClick={onSaveClick}
-              annotationLoading={annotationLoading}
-              hasStep7Content={hasStep7Content}
-              onGenerateTitleMeta={onGenerateTitleMeta}
-              isGenerateTitleMetaLoading={isGenerateTitleMetaLoading}
-              onNextStepChange={onNextStepChange}
-              flowStatus={blogFlowStatus}
+              {...(onSaveClick !== undefined && { onSaveClick })}
+              {...(annotationLoading !== undefined && { annotationLoading })}
+              {...(isSavingHeading !== undefined && { isSavingHeading })}
+              {...(hasStep7Content !== undefined && { hasStep7Content })}
+              {...(onGenerateTitleMeta !== undefined && { onGenerateTitleMeta })}
+              {...(isGenerateTitleMetaLoading !== undefined && {
+                isGenerateTitleMetaLoading,
+              })}
+              {...(onNextStepChange !== undefined && { onNextStepChange })}
+              {...(blogFlowStatus !== undefined && { flowStatus: blogFlowStatus })}
               onLoadBlogArticle={handleLoadBlogArticle}
               isLoadBlogArticleLoading={isLoadingBlogArticle}
-              onManualStepChange={onManualStepChange}
+              {...(onManualStepChange !== undefined && { onManualStepChange })}
+              {...(onBeforeManualStepChange !== undefined && { onBeforeManualStepChange })}
+              {...(isHeadingInitInFlight !== undefined && { isHeadingInitInFlight })}
+              {...(hasAttemptedHeadingInit !== undefined && { hasAttemptedHeadingInit })}
+              {...(onRetryHeadingInit !== undefined && { onRetryHeadingInit })}
+              {...(headingIndex !== undefined && { headingIndex })}
+              {...(totalHeadings !== undefined && { totalHeadings })}
+              {...(currentHeadingText !== undefined && { currentHeadingText })}
+              {...(activeHeadingIndex !== undefined && { activeHeadingIndex })}
+              isStep7SaveDisabled={isStep7SaveDisabled}
+              {...(onStartHeadingGeneration && { onStartHeadingGeneration })}
+              {...(onSaveHeadingSection && { onSaveHeadingSection })}
+              {...(onBuildCombinedOnly && { onBuildCombinedOnly })}
+              isChatLoading={isChatLoading}
+              isBuildingCombined={isBuildingCombined}
             />
-            {blogArticleError && (
-              <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>
-            )}
+            {blogArticleError && <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>}
           </div>
         )}
         <div className="px-3 py-2">
@@ -536,17 +670,23 @@ const InputArea: React.FC<InputAreaProps> = ({
                   )}
                   rows={1}
                 />
-                <div className="flex gap-1">
+                <div className="flex gap-1 items-center">
                   <Button
                     type="submit"
                     size="icon"
                     disabled={
                       isInputDisabled ||
-                      !input.trim()
+                      !input.trim() ||
+                      isBuildingCombined ||
+                      isSavingStep7Lead
                     }
                     className="rounded-full size-10 bg-[#06c755] hover:bg-[#05b64b] mt-1"
                   >
-                    <Send size={18} className="text-white" />
+                    {(isBuildingCombined || isSavingStep7Lead) ? (
+                      <Loader2 size={18} className="text-white animate-spin" />
+                    ) : (
+                      <Send size={18} className="text-white" />
+                    )}
                   </Button>
                 </div>
               </div>

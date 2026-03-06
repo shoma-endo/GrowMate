@@ -14,13 +14,6 @@ export interface CanvasSelectionEditResult {
   explanation?: string;
 }
 
-export interface CanvasBubbleState {
-  isVisible: boolean;
-  message: string;
-  type: 'markdown' | 'text' | 'download';
-  position: { top: number; left: number };
-}
-
 export interface CanvasHeadingItem {
   level: number;
   text: string;
@@ -47,6 +40,21 @@ export interface CanvasPanelProps {
   activeStepId?: BlogStepId | null;
   onStepSelect?: (stepId: BlogStepId) => void;
   streamingContent?: string;
+  /** Canvas表示内容を保存時に参照するための ref。CanvasPanel が表示更新時に随時更新する */
+  canvasContentRef?: React.MutableRefObject<string>;
+  // 見出し単位生成フロー用
+  headingIndex?: number;
+  /** Step7 で見出し単体操作UI（進捗・コピー等）を表示するか */
+  showHeadingUnitActions?: boolean;
+  totalHeadings?: number;
+  isSavingHeading?: boolean;
+  /** 見出し保存エラー（保存/再結合失敗）を操作ボタン付近に表示する */
+  headingSaveError?: string | null;
+  isStreaming?: boolean;
+  /** true のときアウトラインを非表示（見出し単位編集時のみ） */
+  hideOutline?: boolean;
+  /** マッピングできない旧形式の Step7 タイル表示中の場合 true。完成形 UI を除外する */
+  hideHeadingProgressAndNav?: boolean;
 }
 
 export interface CanvasSelectionState {

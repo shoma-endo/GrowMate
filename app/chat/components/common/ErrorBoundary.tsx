@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -73,17 +74,17 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   };
 
   private getErrorMessage(error: Error | null): string {
-    if (!error) return '予期せぬエラーが発生しました';
+    if (!error) return ERROR_MESSAGES.ERROR_BOUNDARY.FALLBACK;
 
     if (error.name === 'ChunkLoadError' || error.message.includes('Loading chunk')) {
-      return 'アプリケーションの読み込みに失敗しました。ページを再読み込みしてください。';
+      return ERROR_MESSAGES.ERROR_BOUNDARY.CHUNK_LOAD;
     }
 
     if (error.message.includes('Network')) {
-      return 'ネットワークエラーが発生しました。接続を確認してください。';
+      return ERROR_MESSAGES.ERROR_BOUNDARY.NETWORK;
     }
 
-    return error.message || '予期せぬエラーが発生しました';
+    return ERROR_MESSAGES.ERROR_BOUNDARY.FALLBACK;
   }
 
   private isCriticalError(error: Error | null): boolean {

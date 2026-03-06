@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { env } from '@/env';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 // Node.jsランタイムを強制（Vercelエッジ環境でのCookie永続化問題を回避）
 export const runtime = 'nodejs';
@@ -74,6 +75,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ authUrl });
   } catch (error) {
     console.error('LINE OAuth Init Error:', error);
-    return NextResponse.json({ error: 'Failed to initialize OAuth' }, { status: 500 });
+    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.OAUTH_INIT_FAILED }, { status: 500 });
   }
 }

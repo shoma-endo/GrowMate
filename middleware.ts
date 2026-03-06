@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { isAdmin, isUnavailable, getUserRoleWithRefresh, hasOwnerRole } from '@/authUtils';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
 
 const ADMIN_REQUIRED_PATHS = ['/admin'] as const;
@@ -115,7 +116,7 @@ export async function middleware(request: NextRequest) {
     // 🚨 エラーハンドリング
     console.error('[Middleware] Unexpected error:', {
       pathname,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
       stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString(),
     });

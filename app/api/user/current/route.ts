@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies, headers } from 'next/headers';
 
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
   ensureAuthenticated,
   clearAuthCookies,
@@ -50,7 +51,7 @@ export async function GET() {
         return NextResponse.json({
           userId: null,
           user: null,
-          error: 'Unauthorized to use view mode',
+          error: ERROR_MESSAGES.AUTH.VIEW_MODE_UNAUTHORIZED,
         });
       }
 
@@ -60,14 +61,14 @@ export async function GET() {
           return NextResponse.json({
             userId: null,
             user: null,
-            error: 'View mode user not found',
+            error: ERROR_MESSAGES.AUTH.VIEW_MODE_USER_NOT_FOUND,
           });
         }
         if (viewUser.ownerUserId !== actorUserId) {
           return NextResponse.json({
             userId: null,
             user: null,
-            error: 'Unauthorized to view user',
+            error: ERROR_MESSAGES.AUTH.VIEW_USER_UNAUTHORIZED,
           });
         }
         user = viewUser;
@@ -76,7 +77,7 @@ export async function GET() {
         return NextResponse.json({
           userId: null,
           user: null,
-          error: 'Failed to fetch view mode user',
+          error: ERROR_MESSAGES.AUTH.VIEW_MODE_FETCH_FAILED,
         });
       }
     }

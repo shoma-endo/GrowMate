@@ -98,6 +98,12 @@ export const ERROR_MESSAGES = {
 
     /** アノテーションIDが無効 */
     INVALID_ANNOTATION_ID: 'アノテーションIDが無効です',
+
+    /** WordPress設定保存成功時 */
+    SETTINGS_SAVED: 'WordPress設定を保存しました',
+
+    /** 接続テスト中に予期しないエラーが発生した場合 */
+    TEST_CONNECTION_UNEXPECTED: '接続テスト中に予期しないエラーが発生しました',
   },
 
   /**
@@ -148,6 +154,75 @@ export const ERROR_MESSAGES = {
 
     /** View Mode中のオーナーとスタッフが操作できない場合（本人のオーナーアカウントのみ許可） */
     OWNER_ACCOUNT_REQUIRED: 'この操作は本人のオーナーアカウントでのみ実行できます',
+
+    /** LINEのアクセストークンが必要な場合 */
+    LINE_ACCESS_TOKEN_REQUIRED: 'LINEのアクセストークンが必要です',
+
+    /** LINEトークンが無効または期限切れの場合 */
+    LINE_TOKEN_INVALID_OR_EXPIRED: 'LINEの認証情報が無効または期限切れです。再度ログインしてください。',
+
+    /** LINEプロフィールの取得に失敗した場合 */
+    LINE_PROFILE_FETCH_FAILED: 'LINEのプロフィール情報の取得に失敗しました',
+
+    /** LINEユーザーに対応するアプリユーザーが見つからない場合 */
+    LINE_USER_NOT_FOUND: 'このLINEユーザーに対応するアプリユーザーが見つかりません',
+
+    /** LINEトークンの更新に失敗した場合 */
+    LINE_TOKEN_REFRESH_FAILED: 'LINEトークンの更新に失敗しました',
+
+    /** LINEトークンの取得に失敗した場合 */
+    LINE_TOKEN_FETCH_FAILED: 'LINEトークンの取得に失敗しました',
+
+    /** 認証されていない場合（check-role等） */
+    NOT_AUTHENTICATED: '認証されていません',
+
+    /** トークン期限切れで再ログインが必要な場合 */
+    TOKEN_EXPIRED_REAUTH: 'トークンの有効期限が切れました。再度ログインしてください',
+
+    /** ユーザー権限の取得に失敗した場合 */
+    USER_ROLE_FETCH_FAILED: 'ユーザー権限の取得に失敗しました',
+
+    /** OAuthの初期化に失敗した場合 */
+    OAUTH_INIT_FAILED: 'OAuthの初期化に失敗しました',
+
+    /** OAuth設定エラー */
+    OAUTH_CONFIG_ERROR: 'OAuthの設定エラーが発生しました',
+
+    /** OAuth処理中にサーバーエラーが発生した場合 */
+    OAUTH_CALLBACK_SERVER_ERROR: 'OAuth処理中にサーバーエラーが発生しました',
+
+    /** セッションが無効な場合（CSRF対策） */
+    INVALID_STATE: 'セッションが無効です。再度お試しください',
+
+    /** セッション情報が無効な場合 */
+    INVALID_STATE_PAYLOAD: 'セッション情報が無効です',
+
+    /** OAuthセッションが無効な場合 */
+    OAUTH_SESSION_INVALID: 'OAuthセッションが無効です',
+
+    /** 認証コードが取得できなかった場合 */
+    AUTHORIZATION_CODE_MISSING: '認証コードが取得できませんでした',
+
+    /** アクセストークンの取得に失敗した場合 */
+    ACCESS_TOKEN_FETCH_FAILED: 'アクセストークンの取得に失敗しました',
+
+    /** 閲覧モードの利用権限がない場合 */
+    VIEW_MODE_UNAUTHORIZED: '閲覧モードの利用権限がありません',
+
+    /** 閲覧対象のユーザーが見つからない場合 */
+    VIEW_MODE_USER_NOT_FOUND: '閲覧対象のユーザーが見つかりません',
+
+    /** ユーザー閲覧権限がない場合 */
+    VIEW_USER_UNAUTHORIZED: 'このユーザーを閲覧する権限がありません',
+
+    /** 閲覧モードのユーザー情報の取得に失敗した場合 */
+    VIEW_MODE_FETCH_FAILED: '閲覧モードのユーザー情報の取得に失敗しました',
+
+    /** リフレッシュトークンが見つからない場合 */
+    NO_REFRESH_TOKEN: 'リフレッシュトークンが見つかりません',
+
+    /** リフレッシュトークンが無効な場合 */
+    REFRESH_TOKEN_INVALID: 'リフレッシュトークンが無効です',
   },
 
   /**
@@ -202,6 +277,21 @@ export const ERROR_MESSAGES = {
   },
 
   /**
+   * ErrorBoundary・global-error 用のエラーメッセージ
+   * ユーザー向け表示では raw error.message を出さず、ここで定義した日本語を使用する
+   */
+  ERROR_BOUNDARY: {
+    /** チャンク読み込み失敗（コード分割の読み込みエラー） */
+    CHUNK_LOAD: 'アプリケーションの読み込みに失敗しました。ページを再読み込みしてください。',
+
+    /** ネットワークエラー */
+    NETWORK: 'ネットワークエラーが発生しました。接続を確認してください。',
+
+    /** 認識できないエラー時のフォールバック（英語メッセージを表示しない） */
+    FALLBACK: '予期せぬエラーが発生しました',
+  },
+
+  /**
    * 汎用エラーメッセージ
    */
   COMMON: {
@@ -222,6 +312,18 @@ export const ERROR_MESSAGES = {
 
     /** 更新失敗 */
     UPDATE_FAILED: '更新に失敗しました',
+
+    /** トークン更新成功時 */
+    TOKEN_REFRESHED: 'トークンを更新しました',
+
+    /** キャッシュクリア通知送信時 */
+    CACHE_CLEAR_SENT: 'キャッシュクリアの通知を送信しました',
+
+    /** トークン更新リクエスト失敗（WP等） */
+    TOKEN_REFRESH_REQUEST_FAILED: 'トークンの更新リクエストに失敗しました',
+
+    /** トークン更新失敗（アクセストークン未取得） */
+    TOKEN_REFRESH_ACCESS_MISSING: 'トークンの更新に失敗しました（アクセストークンが取得できませんでした）',
   },
 
   /**
@@ -245,6 +347,9 @@ export const ERROR_MESSAGES = {
    * サブスクリプション関連のエラーメッセージ
    */
   SUBSCRIPTION: {
+    /** サブスクリプション登録が必要な場合 */
+    SUBSCRIPTION_REQUIRED: 'サブスクリプション登録が必要です',
+
     /** 価格情報の取得に失敗した場合 */
     PRICE_FETCH_FAILED: '価格情報の取得に失敗しました',
 

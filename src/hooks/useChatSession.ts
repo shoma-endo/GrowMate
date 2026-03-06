@@ -10,7 +10,12 @@ import {
 } from '@/domain/models/chatModels';
 import { ChatError } from '@/domain/errors/ChatError';
 import type { ChatSessionActions, ChatSessionHook } from '@/types/hooks';
-import { ERROR_MESSAGES as CHAT_ERROR_MESSAGES, CHAT_HISTORY_LIMIT } from '@/lib/constants';
+import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
+import {
+  ERROR_MESSAGES as CHAT_ERROR_MESSAGES,
+  CHAT_HISTORY_LIMIT,
+  STEP7_FULL_BODY_TRIGGER,
+} from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 export type { ChatSessionActions, ChatSessionHook };
@@ -33,10 +38,13 @@ const createSessionPreview = (content: string, sessionId: string): ChatSession =
   lastMessage: content,
 });
 
-const createStreamingMessagePair = (content: string, model: string) => ({
-  userMessage: createUserMessage(content, model),
-  assistantMessage: createAssistantMessage('', model),
-});
+const createStreamingMessagePair = (content: string, model: string) => {
+  const responseModel = getResponseModelForBlogCreation(model);
+  return {
+    userMessage: createUserMessage(content, model),
+    assistantMessage: createAssistantMessage('', responseModel),
+  };
+};
 
 interface StreamingParams {
   content: string;
@@ -45,7 +53,11 @@ interface StreamingParams {
   currentSessionId: string;
   recentMessages: SerializableMessage[];
   systemPrompt?: string;
-  serviceId?: string; // 追加
+  serviceId?: string;
+  /** 本文生成ボタン用: blog_creation_step7 で結合テキストをプロンプトに渡し、応答を session_combined_contents に保存 */
+  step7FullBodyGeneration?: boolean;
+  /** step7FullBodyGeneration 時: 書き出しをユーザープロンプトに渡す */
+  step7Lead?: string;
 }
 
 export const useChatSession = (
@@ -53,6 +65,46 @@ export const useChatSession = (
   getAccessToken: () => Promise<string>
 ): ChatSessionHook => {
   const [state, setState] = useState<ChatState>(initialChatState);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
+      const sessions = await chatService.loadSessions();
+      setState(prev => ({ ...prev, sessions, isLoading: false }));
+    } catch (error) {
+      console.error('Load sessions error:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'セッション一覧の読み込みに失敗しました';
+      setState(prev => ({ ...prev, error: errorMessage, isLoading: false, warning: null }));
+    }
+  }, [chatService]);
+
+  const loadSession = useCallback(
+    async (sessionId: string) => {
+      setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
+
+      try {
+        const messages = await chatService.loadSessionMessages(sessionId);
+        setState(prev => ({
+          ...prev,
+          messages,
+          currentSessionId: sessionId,
+          isLoading: false,
+        }));
+      } catch (error) {
+        console.error('Load session error:', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'セッションの読み込みに失敗しました';
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          error: errorMessage,
+          warning: null,
+        }));
+      }
+    },
+    [chatService]
+  );
 
   const handleStreamingMessage = useCallback(
     async ({
@@ -62,9 +114,19 @@ export const useChatSession = (
       currentSessionId,
       recentMessages,
       systemPrompt,
-      serviceId, // 追加
+      serviceId,
+      step7FullBodyGeneration,
+      step7Lead,
     }: StreamingParams) => {
-      const { userMessage, assistantMessage } = createStreamingMessagePair(content, model);
+      // step7FullBodyGeneration: 楽観的表示は短いトリガーを使い、loadSession 後の表示と一致させる
+      const displayContent =
+        step7FullBodyGeneration && model === 'blog_creation_step7'
+          ? STEP7_FULL_BODY_TRIGGER
+          : content;
+      const { userMessage, assistantMessage } = createStreamingMessagePair(
+        displayContent,
+        model
+      );
 
       setState(prev => ({
         ...prev,
@@ -89,7 +151,9 @@ export const useChatSession = (
             userMessage: content,
             model,
             ...(systemPrompt ? { systemPrompt } : {}),
-            ...(serviceId ? { serviceId } : {}), // 追加
+            ...(serviceId ? { serviceId } : {}),
+            ...(step7FullBodyGeneration ? { step7FullBodyGeneration: true } : {}),
+            ...(step7FullBodyGeneration && step7Lead != null ? { step7Lead } : {}),
           }),
         });
 
@@ -113,7 +177,7 @@ export const useChatSession = (
             };
           });
 
-          return;
+          return false;
         }
 
         if (!response.ok) {
@@ -129,6 +193,7 @@ export const useChatSession = (
         let accumulatedText = '';
         let idleTimeout: ReturnType<typeof setTimeout> | null = null;
         let sseBuffer = '';
+        let streamSucceeded = false;
 
         const resetIdleTimeout = () => {
           if (idleTimeout) clearTimeout(idleTimeout);
@@ -180,12 +245,16 @@ export const useChatSession = (
                     ),
                   }));
                 } else if (eventType === 'final') {
+                  streamSucceeded = true;
                   const data = JSON.parse(dataCombined);
+                  const responseModel = getResponseModelForBlogCreation(model);
                   setState(prev => ({
                     ...prev,
                     currentSessionId: data.sessionId || prev.currentSessionId,
                     messages: prev.messages.map((msg, idx) =>
-                      idx === prev.messages.length - 1 ? { ...msg, content: data.message } : msg
+                      idx === prev.messages.length - 1
+                        ? { ...msg, content: data.message, model: responseModel }
+                        : msg
                     ),
                     isLoading: false,
                   }));
@@ -205,7 +274,7 @@ export const useChatSession = (
                     error: data.message || 'ストリーミングエラー',
                     warning: null,
                   }));
-                  return;
+                  return false;
                 } else if (eventType === 'usage' || eventType === 'meta') {
                   try {
                     if (process.env.NODE_ENV === 'development') {
@@ -220,7 +289,7 @@ export const useChatSession = (
                     ...prev,
                     isLoading: false,
                   }));
-                  return;
+                  return streamSucceeded;
                 }
               } catch (e) {
                 console.warn('Failed to parse SSE event:', eventType, e);
@@ -231,6 +300,8 @@ export const useChatSession = (
           if (idleTimeout) clearTimeout(idleTimeout);
           reader.releaseLock();
         }
+
+        return streamSucceeded;
       } catch (error) {
         console.error('Streaming error:', error);
         setState(prev => ({
@@ -239,6 +310,7 @@ export const useChatSession = (
           error: error instanceof Error ? error.message : 'ストリーミングに失敗しました',
           warning: null,
         }));
+        return false;
       }
     },
     []
@@ -248,7 +320,12 @@ export const useChatSession = (
     async (
       content: string,
       model: string,
-      options?: { systemPrompt?: string; serviceId?: string }
+      options?: {
+        systemPrompt?: string;
+        serviceId?: string;
+        step7FullBodyGeneration?: boolean;
+        step7Lead?: string;
+      }
     ) => {
       setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
 
@@ -270,7 +347,15 @@ export const useChatSession = (
           streamingParams.serviceId = options.serviceId;
         }
 
-        await handleStreamingMessage(streamingParams);
+        if (options?.step7FullBodyGeneration) {
+          streamingParams.step7FullBodyGeneration = true;
+          if (options.step7Lead != null) {
+            streamingParams.step7Lead = options.step7Lead;
+          }
+        }
+
+        const success = await handleStreamingMessage(streamingParams);
+        return success;
       } catch (error) {
         console.error('Send message error:', error);
         const errorMessage =
@@ -286,49 +371,10 @@ export const useChatSession = (
           error: errorMessage,
           warning: null,
         }));
+        return false;
       }
     },
     [state.currentSessionId, state.messages, getAccessToken, handleStreamingMessage]
-  );
-
-  const loadSessions = useCallback(async () => {
-    try {
-      setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
-      const sessions = await chatService.loadSessions();
-      setState(prev => ({ ...prev, sessions, isLoading: false }));
-    } catch (error) {
-      console.error('Load sessions error:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : 'セッション一覧の読み込みに失敗しました';
-      setState(prev => ({ ...prev, error: errorMessage, isLoading: false, warning: null }));
-    }
-  }, [chatService]);
-
-  const loadSession = useCallback(
-    async (sessionId: string) => {
-      setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
-
-      try {
-        const messages = await chatService.loadSessionMessages(sessionId);
-        setState(prev => ({
-          ...prev,
-          messages,
-          currentSessionId: sessionId,
-          isLoading: false,
-        }));
-      } catch (error) {
-        console.error('Load session error:', error);
-        const errorMessage =
-          error instanceof Error ? error.message : 'セッションの読み込みに失敗しました';
-        setState(prev => ({
-          ...prev,
-          isLoading: false,
-          error: errorMessage,
-          warning: null,
-        }));
-      }
-    },
-    [chatService]
   );
 
   const deleteSession = useCallback(

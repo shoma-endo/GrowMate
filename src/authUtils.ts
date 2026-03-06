@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { UserRole } from '@/types/user';
 
 // =========================
@@ -94,7 +95,7 @@ export async function getUserRole(accessToken: string): Promise<UserRole | null>
     return user.role || 'trial';
   } catch (error) {
     console.error('[Auth Utils] Failed to get user role:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
       timestamp: new Date().toISOString(),
     });
     return null;
@@ -137,7 +138,7 @@ export async function getUserRoleWithRefresh(
     return returnValue;
   } catch (error) {
     console.error('[Auth Utils] Failed to get user role with refresh:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
       timestamp: new Date().toISOString(),
     });
     return { role: null };

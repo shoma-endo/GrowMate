@@ -838,11 +838,11 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
       });
     }
 
-    return { success: true as const, message: 'WordPress settings saved successfully' };
+    return { success: true as const, message: ERROR_MESSAGES.WORDPRESS.SETTINGS_SAVED };
   } catch (error) {
     return {
       success: false as const,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
     };
   }
 }
