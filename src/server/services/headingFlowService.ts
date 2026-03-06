@@ -226,7 +226,9 @@ export class HeadingFlowService extends SupabaseService {
       .limit(1);
 
     if (step6Error || !step6Data?.length) return null;
-    const c = (step6Data[0].content ?? '').trim();
+    const row = step6Data[0];
+    if (!row) return null;
+    const c = (row.content ?? '').trim();
     if (
       c.length >= MIN_LEAD_CONTENT_LENGTH &&
       !BASIC_STRUCTURE_PATTERN.test(c.slice(0, STRUCTURE_PATTERN_CHECK_LENGTH))
