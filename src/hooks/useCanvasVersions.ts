@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { BlogStepId, BLOG_STEP_IDS, HEADING_FLOW_STEP_ID } from '@/lib/constants';
+import { BlogStepId, BLOG_STEP_IDS, HEADING_FLOW_STEP_ID, isStep7HeadingModel } from '@/lib/constants';
 import {
   extractBlogStepFromModel,
   getContentStepFromAssistantModel,
@@ -8,9 +8,6 @@ import {
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { BlogCanvasVersion, StepVersionsMap } from '@/types/chat-layout';
 import type { CombinedContentVersion } from '@/hooks/useHeadingFlow';
-
-/** 見出し単体（blog_creation_step7_hN）はバージョン管理対象外。旧 step7 と完成形のみ管理。 */
-const isStep7HeadingModel = (model?: string) => /^blog_creation_step7_h\d+/.test(model ?? '');
 
 export interface UseCanvasVersionsParams {
   /** Step7 完成形（session_combined_contents）を step7 のバージョンとして他ステップと同様に扱う */

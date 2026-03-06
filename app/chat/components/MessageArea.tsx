@@ -5,7 +5,7 @@ import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import BlogPreviewTile from './common/BlogPreviewTile';
-import { BLOG_STEP_LABELS } from '@/lib/constants';
+import { BLOG_STEP_LABELS, HEADING_FLOW_STEP_ID, STEP7_LEAD_MODEL, toBlogModel } from '@/lib/constants';
 import type { BlogStepId } from '@/lib/constants';
 import {
   extractBlogStepFromModel,
@@ -84,8 +84,8 @@ const getStep7HeadingLabel = (
   return headingText ?? null;
 };
 
-// Step6→7 や完成形フェーズで保存した書き出し案（blog_creation_step7_lead）は非表示
-const isLeadModel = (m: ChatMessage) => m.model === 'blog_creation_step7_lead';
+// Step6→7 や完成形フェーズで保存した書き出し案は非表示
+const isLeadModel = (m: ChatMessage) => m.model === STEP7_LEAD_MODEL;
 
 type CombinedTile = { id: string; title: string; excerpt: string; createdAt?: string };
 
@@ -414,7 +414,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
 
   // step7 アシスタントメッセージの ID 一覧（時系列順）。重複見出し照合に使用
   const step7MessageIds = messages
-    .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === 'step7')
+    .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === HEADING_FLOW_STEP_ID)
     .map(m => m.id);
 
   // メッセージと完成形タイルを時系列でマージ（古い→新しい、最新が一番下）
@@ -425,7 +425,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     const excludeStep7CompletionMessage = (m: ChatMessage) =>
       hasCombinedTiles &&
       m.role === 'assistant' &&
-      m.model === 'blog_creation_step7';
+      m.model === toBlogModel(HEADING_FLOW_STEP_ID);
     const items: Array<
       | { type: 'message'; message: ChatMessage; sortKey: number }
       | { type: 'tile'; tile: CombinedTile; sortKey: number }
@@ -454,11 +454,11 @@ const MessageArea: React.FC<MessageAreaProps> = ({
       blogPreviewMeta && onOpenCanvas ? () => onOpenCanvas(message) : null;
     const step7Index = step7MessageIds.indexOf(message.id);
     const isStep7Completion =
-      blogPreviewMeta?.step === 'step7' &&
+      blogPreviewMeta?.step === HEADING_FLOW_STEP_ID &&
       step7Index >= 0 &&
-      message.model === 'blog_creation_step7';
+      message.model === toBlogModel(HEADING_FLOW_STEP_ID);
     const headingLabel =
-      blogPreviewMeta?.step === 'step7' && step7Index >= 0
+      blogPreviewMeta?.step === HEADING_FLOW_STEP_ID && step7Index >= 0
         ? isStep7Completion
           ? '完成形'
           : getStep7HeadingLabel(message, headingSections ?? [], step7Index)
@@ -535,7 +535,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
         </div>
         <div className="max-w-[85%] rounded-2xl relative transition-all duration-200 bg-transparent text-gray-800 p-0">
           <BlogPreviewTile
-            stepLabel={BLOG_STEP_LABELS.step7 ?? '7. 本文作成'}
+            stepLabel={BLOG_STEP_LABELS[HEADING_FLOW_STEP_ID] ?? '7. 本文作成'}
             headingLabel="完成形"
             title={tile.title}
             excerpt={tile.excerpt}

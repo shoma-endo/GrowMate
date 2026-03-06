@@ -14,7 +14,15 @@ import {
 import { Bot, Send, Menu, Pencil, Check, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { BLOG_PLACEHOLDERS, BlogStepId } from '@/lib/constants';
+import {
+  BLOG_PLACEHOLDERS,
+  FIRST_BLOG_STEP_ID,
+  HEADING_FLOW_STEP_ID,
+  STEP6_ID,
+  STEP7_HEADING_PLACEHOLDER_KEY,
+  toBlogModel,
+  type BlogStepId,
+} from '@/lib/constants';
 import { TITLE_MAX_LENGTH } from '@/lib/validators/common';
 import { useLiffContext } from '@/components/LiffProvider';
 import StepActionBar, { StepActionBarRef } from './StepActionBar';
@@ -60,7 +68,7 @@ interface InputAreaProps {
   hintText?: string | null;
   /** プレースホルダー用ステップ（ヒントと整合） */
   stepForPlaceholder?: BlogStepId;
-  /** プレースホルダー用キー（step5→6 の AI 取得時は blog_creation_step6_get） */
+  /** プレースホルダー用キー（step5→6 の AI 取得時は STEP6_GET_PLACEHOLDER_KEY） */
   placeholderKey?: string;
   isEditingTitle?: boolean;
   draftSessionTitle?: string;
@@ -214,14 +222,14 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   // 送信モデルは「次のステップ」（nextStepForSend）を優先。ヒント「次のペルソナに進むには」と送信モデルを整合させる。
   // displayStep が latestBlogStep 由来で遅延・ずれる場合、ヒントは nextStepForSend を表示するため、送信も nextStepForSend を使う。
-  const targetBlogStep = nextStepForSend ?? displayStep ?? initialBlogStep ?? 'step1';
+  const targetBlogStep = nextStepForSend ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
   // プレースホルダーはヒントと整合（親で算出。未指定時は displayStep にフォールバック）
   const stepForPlaceholder =
-    stepForPlaceholderProp ?? displayStep ?? initialBlogStep ?? 'step1';
+    stepForPlaceholderProp ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
 
   // Step7 見出し生成フェーズ: 見出し生成・保存ボタン表示用（入力は無効）
   const isStep7HeadingPhase =
-    displayStep === 'step7' &&
+    displayStep === HEADING_FLOW_STEP_ID &&
     selectedModel === 'blog_creation' &&
     activeHeadingIndex !== undefined &&
     (totalHeadings ?? 0) > 0;
@@ -236,16 +244,16 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     // Step7 見出し生成フェーズ: 入力無効時（BLOG_PLACEHOLDERS で一元管理）
     if (isStep7HeadingPhase) {
-      return BLOG_PLACEHOLDERS.blog_creation_step7_heading;
+      return BLOG_PLACEHOLDERS[STEP7_HEADING_PLACEHOLDER_KEY];
     }
     // Step7 完成形フェーズ: 書き出し案入力を案内
-    if (selectedModel === 'blog_creation' && displayStep === 'step7') {
-      return BLOG_PLACEHOLDERS.blog_creation_step7;
+    if (selectedModel === 'blog_creation' && displayStep === HEADING_FLOW_STEP_ID) {
+      return BLOG_PLACEHOLDERS[toBlogModel(HEADING_FLOW_STEP_ID)];
     }
 
     if (selectedModel === 'blog_creation') {
       const key = (placeholderKeyProp ?? `blog_creation_${stepForPlaceholder}`) as keyof typeof BLOG_PLACEHOLDERS;
-      return BLOG_PLACEHOLDERS[key] ?? BLOG_PLACEHOLDERS.blog_creation_step1;
+      return BLOG_PLACEHOLDERS[key] ?? BLOG_PLACEHOLDERS[toBlogModel(FIRST_BLOG_STEP_ID)];
     }
 
     // 通常モデル
@@ -342,8 +350,8 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる
     const isStep6ToStep7Transition =
-      displayStep === 'step6' &&
-      nextStepForSend === 'step7' &&
+      displayStep === STEP6_ID &&
+      nextStepForSend === HEADING_FLOW_STEP_ID &&
       selectedModel === 'blog_creation' &&
       onSaveStep7UserLead &&
       !lastAssistantIsBasicStructure;
@@ -366,7 +374,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     // Step7: 書き出し案入力あり → 保存＋見出しセクション削除で見出し1から再スタート（見出し生成中・完成形後いずれも同様）
     if (
-      displayStep === 'step7' &&
+      displayStep === HEADING_FLOW_STEP_ID &&
       selectedModel === 'blog_creation' &&
       trimmedInput &&
       onSaveStep7UserLead &&
@@ -553,7 +561,7 @@ const InputArea: React.FC<InputAreaProps> = ({
               onValueChange={value => {
                 setSelectedModel(value);
                 if (value === 'blog_creation') {
-                  const targetStep: BlogStepId = initialBlogStep ?? 'step1';
+                  const targetStep: BlogStepId = initialBlogStep ?? FIRST_BLOG_STEP_ID;
                   onModelChange?.(value, targetStep);
                 } else {
                   onModelChange?.(value);

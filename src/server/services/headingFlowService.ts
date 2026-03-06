@@ -6,9 +6,7 @@ import {
 import type { DbHeadingSection, DbSessionHeadingSectionInsert } from '@/types/heading-flow';
 import type { DbChatMessage } from '@/types/chat';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
-
-/** Step6→Step7 で保存した書き出し案を識別する model 値 */
-const STEP7_LEAD_SAVED_MODEL = 'blog_creation_step7_lead';
+import { STEP6_ID, STEP7_LEAD_MODEL, toBlogModel } from '@/lib/constants';
 
 export class HeadingFlowService extends SupabaseService {
   /**
@@ -262,7 +260,7 @@ export class HeadingFlowService extends SupabaseService {
       .select('content')
       .eq('session_id', sessionId)
       .eq('role', 'user')
-      .eq('model', STEP7_LEAD_SAVED_MODEL)
+      .eq('model', STEP7_LEAD_MODEL)
       .order('created_at', { ascending: false })
       .limit(1);
 
@@ -292,7 +290,7 @@ export class HeadingFlowService extends SupabaseService {
       role: 'user',
       content: trimmed,
       created_at: nowIso,
-      model: STEP7_LEAD_SAVED_MODEL,
+      model: STEP7_LEAD_MODEL,
     };
 
     const insertRes = await this.createChatMessage(message);
@@ -320,7 +318,7 @@ export class HeadingFlowService extends SupabaseService {
       .select('content')
       .eq('session_id', sessionId)
       .eq('role', 'assistant')
-      .like('model', 'blog_creation_step6%')
+      .like('model', `${toBlogModel(STEP6_ID)}%`)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -339,7 +337,7 @@ export class HeadingFlowService extends SupabaseService {
 
   /**
    * セッションに紐づく見出し構成データを初期化（全削除）する。
-   * @param preserveStep7Lead true のとき Step7 書き出し案（blog_creation_step7_lead）を削除しない
+   * @param preserveStep7Lead true のとき Step7 書き出し案を削除しない（{@link STEP7_LEAD_MODEL}）
    */
   async resetHeadingSections(
     sessionId: string,
@@ -359,7 +357,7 @@ export class HeadingFlowService extends SupabaseService {
         .from('chat_messages')
         .delete()
         .eq('session_id', sessionId)
-        .eq('model', STEP7_LEAD_SAVED_MODEL);
+        .eq('model', STEP7_LEAD_MODEL);
 
       if (deleteLeadError) {
         return this.failure('書き出し案の削除に失敗しました', { error: deleteLeadError });

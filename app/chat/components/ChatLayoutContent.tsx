@@ -3,7 +3,17 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { BLOG_STEP_IDS, BlogStepId, getStepHintForSend } from '@/lib/constants';
+import {
+  BLOG_STEP_IDS,
+  FIRST_BLOG_STEP_ID,
+  HEADING_FLOW_STEP_ID,
+  STEP5_ID,
+  STEP6_GET_PLACEHOLDER_KEY,
+  STEP6_ID,
+  BlogStepId,
+  getStepHintForSend,
+  toBlogModel,
+} from '@/lib/constants';
 import SessionSidebar from './SessionSidebar';
 import MessageArea from './MessageArea';
 import InputArea from './InputArea';
@@ -85,7 +95,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   // step6ToStep7LeadSaved 時は effect に依存せず同期的に step7 表示（書き出し案保存後の遷移遅延を防ぐ）
   const displayStep =
     manualBlogStep ??
-    (step6ToStep7LeadSaved && detectedStep === 'step6' ? ('step7' as BlogStepId) : detectedStep);
+    (step6ToStep7LeadSaved && detectedStep === STEP6_ID ? HEADING_FLOW_STEP_ID : detectedStep);
   /** 最後の assistant（20文字以上）が 構成案（基本構成）の場合は true。step6→7 保存をスキップし通常送信にする */
   const lastAssistantIsBasicStructure = useMemo(() => {
     const msgs = [...(chatSession?.state?.messages ?? []), ...(optimisticMessages ?? [])];
@@ -104,7 +114,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     const index = BLOG_STEP_IDS.indexOf(displayStep);
     return index >= 0 ? index : 0;
   }, [displayStep]);
-  const shouldShowLoadButton = displayStep === 'step7';
+  const shouldShowLoadButton = displayStep === HEADING_FLOW_STEP_ID;
   /** StepActionBar「現在のステップ」用。ユーザーが取り組むステップ（displayStep）を表示し、next と整合させる。
    * 以前は content step（成果物の step）を表示していたが、displayStep=step2 のとき current=step1, next=step3 となり
    * 「ステップが飛んでいる」ように見えていた。displayStep に統一することで current=step2, next=step3 と連続して表示される。 */
@@ -119,41 +129,45 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     const useDisplayStep = manualBlogStep !== null || hasDetectedBlogStep;
     if (!useDisplayStep) {
       return {
-        nextStepForSend: 'step1' as BlogStepId,
+        nextStepForSend: FIRST_BLOG_STEP_ID,
         hintText: null as string | null,
-        stepForPlaceholder: 'step1' as BlogStepId,
-        placeholderKey: 'blog_creation_step1',
+        stepForPlaceholder: FIRST_BLOG_STEP_ID,
+        placeholderKey: toBlogModel(FIRST_BLOG_STEP_ID),
       };
     }
-    const currentStep = displayStep ?? initialStep ?? ('step1' as BlogStepId);
+    const currentStep = displayStep ?? initialStep ?? FIRST_BLOG_STEP_ID;
     const currentIdx = BLOG_STEP_IDS.indexOf(currentStep);
     if (currentIdx === -1) {
       return {
-        nextStepForSend: 'step1' as BlogStepId,
+        nextStepForSend: FIRST_BLOG_STEP_ID,
         hintText: null as string | null,
-        stepForPlaceholder: 'step1' as BlogStepId,
-        placeholderKey: 'blog_creation_step1',
+        stepForPlaceholder: FIRST_BLOG_STEP_ID,
+        placeholderKey: toBlogModel(FIRST_BLOG_STEP_ID),
       };
     }
     // displayStep = 表示中コンテンツのステップ。nextStepForSend = この送信で得る出力のステップ。
     // step1 表示中（顕在/潜在）→ step2 で送信してペルソナ/デモグラ取得。step6/7 は同ステップで送信。
     const nextFromIdx =
-      displayStep === 'step6' || displayStep === 'step7'
+      displayStep === STEP6_ID || displayStep === HEADING_FLOW_STEP_ID
         ? currentIdx
         : Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1);
     const nextStepForSend = (BLOG_STEP_IDS[nextFromIdx] ?? BLOG_STEP_IDS[currentIdx]) as BlogStepId;
     // ヒント・プレースホルダー: この送信で得る出力＝nextStepForSend のラベル/プレースホルダー
     const hint = getStepHintForSend(nextStepForSend);
     const placeholderKey =
-      displayStep === 'step7'
-        ? 'blog_creation_step7'
-        : displayStep === 'step6'
-          ? 'blog_creation_step6'
-          : displayStep === 'step5'
-            ? 'blog_creation_step6_get'
-            : `blog_creation_${nextStepForSend}`;
+      displayStep === HEADING_FLOW_STEP_ID
+        ? toBlogModel(HEADING_FLOW_STEP_ID)
+        : displayStep === STEP6_ID
+          ? toBlogModel(STEP6_ID)
+          : displayStep === STEP5_ID
+            ? STEP6_GET_PLACEHOLDER_KEY
+            : toBlogModel(nextStepForSend);
     const stepForPlaceholder =
-      displayStep === 'step7' ? 'step7' : displayStep === 'step6' ? 'step6' : nextStepForSend;
+      displayStep === HEADING_FLOW_STEP_ID
+        ? HEADING_FLOW_STEP_ID
+        : displayStep === STEP6_ID
+          ? STEP6_ID
+          : nextStepForSend;
     return { nextStepForSend, hintText: hint, stepForPlaceholder, placeholderKey };
   }, [manualBlogStep, hasDetectedBlogStep, displayStep, initialStep]);
   useEffect(() => {
@@ -164,7 +178,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     if (!manualBlogStep) return;
     // step6ToStep7LeadSaved で step7 表示中にユーザーが Back で step6 を選んだ場合、
     // manualBlogStep === detectedStep になるが、クリアすると再び step7 表示に戻ってしまうためスキップ
-    if (step6ToStep7LeadSaved && detectedStep === 'step6') return;
+    if (step6ToStep7LeadSaved && detectedStep === STEP6_ID) return;
     if (manualBlogStep === detectedStep) {
       setManualBlogStep(null);
     }
@@ -172,8 +186,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
   // Step6→Step7 で書き出し案保存済みのとき、step7 表示に遷移（displayStep は上記の同期的な三項で既に step7 になる。manualBlogStep も揃える）
   useEffect(() => {
-    if (step6ToStep7LeadSaved && detectedStep === 'step6') {
-      setManualBlogStep('step7');
+    if (step6ToStep7LeadSaved && detectedStep === STEP6_ID) {
+      setManualBlogStep(HEADING_FLOW_STEP_ID);
     }
   }, [step6ToStep7LeadSaved, detectedStep]);
   const handleManualStepChange = useCallback(
@@ -203,7 +217,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
   // Step7 見出し生成フェーズではプレースホルダーと見出し生成ボタンの両方を表示するため必須
   const isStep7HeadingPhaseForBar =
-    displayStep === 'step7' &&
+    displayStep === HEADING_FLOW_STEP_ID &&
     selectedModel === 'blog_creation' &&
     activeHeadingIndex !== undefined &&
     (totalHeadings ?? 0) > 0;
@@ -378,7 +392,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           isChatLoading={isChatLoading ?? false}
           isBuildingCombined={isBuildingCombined ?? false}
           {...(onSaveStep7UserLead && { onSaveStep7UserLead })}
-          onStep6ToStep7Success={() => setManualBlogStep('step7')}
+          onStep6ToStep7Success={() => setManualBlogStep(HEADING_FLOW_STEP_ID)}
           lastAssistantIsBasicStructure={lastAssistantIsBasicStructure}
           services={services}
           selectedServiceId={selectedServiceId}

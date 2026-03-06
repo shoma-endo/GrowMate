@@ -1,7 +1,5 @@
 import type { ChatMessage } from '@/domain/interfaces/IChatService';
-import { BLOG_STEP_IDS, type BlogStepId } from '@/lib/constants';
-
-const BLOG_MODEL_PREFIX = 'blog_creation_';
+import { BLOG_MODEL_PREFIX, BLOG_STEP_IDS, isStep7HeadingModel, type BlogStepId } from '@/lib/constants';
 
 export interface CanvasStructuredContent {
   markdown?: string;
@@ -72,7 +70,7 @@ export const getContentStepFromAssistantModel = (
   if (num === 1) return modelStep;
   if (num === 7) {
     // step7_h0 等は見出し本文 → step7
-    if (/^blog_creation_step7_h\d+/.test(model ?? '')) return modelStep;
+    if (isStep7HeadingModel(model)) return modelStep;
     // blog_creation_step7（プレーンのみ）: 構成案 or 記事本文
     if (content !== undefined) {
       const head = content.slice(0, 150);
@@ -101,11 +99,11 @@ export const getContentStepFromAssistantModel = (
  * step5構成案送信 → 書き出し案(step6)が返るため、assistantメッセージは blog_creation_step6 で保存する。
  */
 export const getResponseModelForBlogCreation = (requestModel: string): string => {
-  const match = requestModel.match(/^blog_creation_step(\d+)$/);
+  const match = requestModel.match(new RegExp(`^${BLOG_MODEL_PREFIX}step(\\d+)$`));
   if (!match?.[1]) return requestModel;
   const step = Number.parseInt(match[1], 10);
   if (step < 1 || step >= 7) return requestModel;
-  return `blog_creation_step${step + 1}`;
+  return `${BLOG_MODEL_PREFIX}step${step + 1}`;
 };
 
 const extractCanvasStructuredContent = (raw: string): CanvasStructuredContent | null => {

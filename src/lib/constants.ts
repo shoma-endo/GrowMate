@@ -107,10 +107,36 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
 // =============================================================================
 // Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)
 // =============================================================================
-// 各ステップの id / label / placeholder を1箇所で定義し、
+// 各ステップの id / label / placeholder / model 名を1箇所で定義。
 // BLOG_STEP_IDS / BLOG_STEP_LABELS / BLOG_PLACEHOLDERS はここから導出する。
 
 export type BlogStepId = 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7';
+
+/** ブログ作成モデル名のプレフィックス。blog_creation_stepN 等のベース。 */
+export const BLOG_MODEL_PREFIX = 'blog_creation_';
+
+/** Step6→Step7 で保存した書き出し案を識別する model 値 */
+export const STEP7_LEAD_MODEL = `${BLOG_MODEL_PREFIX}step7_lead`;
+
+/** プレースホルダーキー: step5→6 の AI 取得時（構成案→書き出し案） */
+export const STEP6_GET_PLACEHOLDER_KEY = `${BLOG_MODEL_PREFIX}step6_get`;
+
+/** プレースホルダーキー: step7 見出し生成フェーズ */
+export const STEP7_HEADING_PLACEHOLDER_KEY = `${BLOG_MODEL_PREFIX}step7_heading`;
+
+/** stepN から blog_creation_stepN モデル名を返す */
+export const toBlogModel = (step: BlogStepId) => `${BLOG_MODEL_PREFIX}${step}`;
+
+/** Step7 見出しNのモデル名（blog_creation_step7_h0 等） */
+export const getStep7HeadingModel = (index: number) =>
+  `${BLOG_MODEL_PREFIX}step7_h${index}`;
+
+/** 見出し単体モデル（blog_creation_step7_hN）かどうか */
+export const isStep7HeadingModel = (model?: string) =>
+  /^blog_creation_step7_h\d+/.test(model ?? '');
+
+/** Step6 モデル（blog_creation_step6 または blog_creation_step6_*）にマッチする正規表現 */
+export const STEP6_MODEL_REGEX = /^blog_creation_step6(?:_|$)/;
 
 /** 1ステップ分の定義。プレースホルダーは「このステップの出力を得るための入力」の案内。 */
 interface BlogStepDef {
@@ -138,17 +164,29 @@ export const BLOG_STEP_LABELS: Record<BlogStepId, string> = Object.fromEntries(
 
 /** blog_creation_stepN のプレースホルダー（通常フロー）。step6_get / step7_heading は別途マージ。 */
 const BLOG_PLACEHOLDERS_BASE: Record<string, string> = Object.fromEntries(
-  BLOG_STEP_DEFINITIONS.map(d => [`blog_creation_${d.id}`, d.placeholder])
+  BLOG_STEP_DEFINITIONS.map(d => [toBlogModel(d.id), d.placeholder])
 );
 
 export const BLOG_PLACEHOLDERS: Record<string, string> = {
   ...BLOG_PLACEHOLDERS_BASE,
-  blog_creation_step6_get: '構成案を入力してください、書き出し案を出力します。',
-  blog_creation_step7_heading: '見出し生成・保存ボタンで進めてください',
+  [STEP6_GET_PLACEHOLDER_KEY]: '構成案を入力してください、書き出し案を出力します。',
+  [STEP7_HEADING_PLACEHOLDER_KEY]: '見出し生成・保存ボタンで進めてください',
 };
 
-/** 見出し単位生成フローが紐づくステップID */
-export const HEADING_FLOW_STEP_ID: BlogStepId = 'step7';
+/** 見出し単位生成フローが紐づくステップID。BLOG_STEP_IDS の最終要素（step7） */
+export const HEADING_FLOW_STEP_ID: BlogStepId = BLOG_STEP_IDS[BLOG_STEP_IDS.length - 1] as BlogStepId;
+
+/** Step7 本文作成のモデル名（blog_creation_step7）。複数箇所での比較に再利用 */
+export const STEP7_BLOG_MODEL = toBlogModel(HEADING_FLOW_STEP_ID);
+
+/** Step5（構成案）のステップID。step5→6 の AI 取得時プレースホルダー判定等で使用。BLOG_STEP_IDS から導出 */
+export const STEP5_ID: BlogStepId = BLOG_STEP_IDS[4] as BlogStepId;
+
+/** Step6（書き出し案）のステップID。Step6→7 遷移判定等で使用。BLOG_STEP_IDS から導出 */
+export const STEP6_ID: BlogStepId = BLOG_STEP_IDS[5] as BlogStepId;
+
+/** 初期ステップID（フォールバック用）。BLOG_STEP_IDS の先頭要素（step1） */
+export const FIRST_BLOG_STEP_ID: BlogStepId = BLOG_STEP_IDS[0] as BlogStepId;
 
 /**
  * StepActionBar 用のヒント文言。
@@ -157,7 +195,7 @@ export const HEADING_FLOW_STEP_ID: BlogStepId = 'step7';
  * step7 は null。
  */
 export function getStepHintForSend(step: BlogStepId): string | null {
-  if (step === 'step7') return null;
+  if (step === HEADING_FLOW_STEP_ID) return null;
   const def = BLOG_STEP_DEFINITIONS.find(d => d.id === step);
   if (!def) return null;
   return `次の${def.label}に進むにはメッセージを送信してください`;
@@ -165,13 +203,13 @@ export function getStepHintForSend(step: BlogStepId): string | null {
 
 // Step7判定（canonicalUrlsの適用/表示で利用）
 export const isStep7 = (stepOrModel: string) =>
-  stepOrModel === HEADING_FLOW_STEP_ID || stepOrModel === `blog_creation_${HEADING_FLOW_STEP_ID}`;
+  stepOrModel === HEADING_FLOW_STEP_ID || stepOrModel === toBlogModel(HEADING_FLOW_STEP_ID);
 
 /** Step7 本文生成: 楽観的表示・API送信・DB保存で使う短いトリガー（長文はシステムプロンプトのみに渡す） */
 export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してください。';
 
-// prompts.ts 用のテンプレ名解決
-export const toTemplateName = (step: BlogStepId) => `blog_creation_${step}`;
+// prompts.ts 用のテンプレ名解決（toBlogModel のエイリアス）
+export const toTemplateName = toBlogModel;
 
 
 export const ANALYTICS_COLUMNS = [

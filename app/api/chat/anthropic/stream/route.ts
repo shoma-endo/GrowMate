@@ -4,7 +4,12 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { chatService } from '@/server/services/chatService';
 import { headingFlowService } from '@/server/services/headingFlowService';
 import { env } from '@/env';
-import { MODEL_CONFIGS, STEP7_FULL_BODY_TRIGGER } from '@/lib/constants';
+import {
+  MODEL_CONFIGS,
+  STEP7_BLOG_MODEL,
+  STEP7_FULL_BODY_TRIGGER,
+  isStep7HeadingModel,
+} from '@/lib/constants';
 import { ChatError } from '@/domain/errors/ChatError';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
@@ -62,6 +67,8 @@ export async function POST(req: NextRequest) {
       webSearchConfig = {},
     }: StreamRequest = await req.json();
 
+    const isStep7Model = model === STEP7_BLOG_MODEL;
+
     // 認証チェック
     const authHeader = req.headers.get('authorization');
     const liffAccessToken = authHeader?.replace('Bearer ', '');
@@ -97,7 +104,7 @@ export async function POST(req: NextRequest) {
     // step7 本文生成: 閲覧専用オーナーは書き込み不可（buildCombinedContentWithUserLead と同様）
     if (
       step7FullBodyGeneration &&
-      model === 'blog_creation_step7' &&
+      isStep7Model &&
       hasOwnerRole(userDetails?.role ?? null)
     ) {
       return new Response(
@@ -145,9 +152,7 @@ export async function POST(req: NextRequest) {
 
     // step7FullBodyGeneration: 結合本文はシステムプロンプトのみに注入。userMessage は重複を避けるため短いトリガーに置換
     const effectiveUserMessage =
-      step7FullBodyGeneration && model === 'blog_creation_step7'
-        ? STEP7_FULL_BODY_TRIGGER
-        : combinedUserMessage;
+      step7FullBodyGeneration && isStep7Model ? STEP7_FULL_BODY_TRIGGER : combinedUserMessage;
 
     // Anthropic用のメッセージ形式に変換（Prompt Caching対応）
     const anthropicMessages = [
@@ -210,13 +215,14 @@ export async function POST(req: NextRequest) {
 
           resetIdleTimeout();
 
-          // モデル設定の解決（constantsの設定を優先）
-          // blog_creation_step7_h0 等は step7 の設定を流用（タイルクリック時の見出し特定用サフィックス）
+          // step7 見出しモデル（step7_h0 等）で MODEL_CONFIGS に直接定義がない場合は、
+          // ベースの step7 設定にフォールバック
           const configKey =
-            Object.prototype.hasOwnProperty.call(MODEL_CONFIGS, model) ||
-            !/^blog_creation_step7_h\d+$/.test(model)
+            Object.prototype.hasOwnProperty.call(MODEL_CONFIGS, model)
               ? model
-              : 'blog_creation_step7';
+              : isStep7HeadingModel(model)
+                ? STEP7_BLOG_MODEL
+                : model;
           const cfg = MODEL_CONFIGS[configKey];
           const resolvedModel =
             cfg && cfg.provider === 'anthropic'
@@ -228,7 +234,7 @@ export async function POST(req: NextRequest) {
           const resolvedTemperature = cfg && cfg.provider === 'anthropic' ? cfg.temperature : 0.3;
 
           const step7CombinedContext =
-            step7FullBodyGeneration && model === 'blog_creation_step7' ? combinedUserMessage : undefined;
+            step7FullBodyGeneration && isStep7Model ? combinedUserMessage : undefined;
           const systemPrompt = systemPromptOverride?.trim()
             ? systemPromptOverride
             : await getSystemPrompt(
@@ -363,7 +369,7 @@ export async function POST(req: NextRequest) {
                 // step7 本文生成のみ: session_combined_contents に追加保存。閲覧専用オーナーは拒否
                 const needsStep7CombinedSave =
                   step7FullBodyGeneration &&
-                  model === 'blog_creation_step7' &&
+                  isStep7Model &&
                   sessionId &&
                   messageToSave.trim();
                 if (needsStep7CombinedSave) {

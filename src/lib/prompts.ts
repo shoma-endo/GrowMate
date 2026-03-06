@@ -1067,7 +1067,7 @@ export async function getSystemPrompt(
             supabaseService.getLatestAccessibleAssistantMessageBySessionAndModel(
               sessionId,
               authUserId,
-              'blog_creation_step6'
+              toTemplateName('step6')
             ),
           ]);
 

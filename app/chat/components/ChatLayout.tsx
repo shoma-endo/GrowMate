@@ -23,7 +23,19 @@ import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
 import type { SessionHeadingSection } from '@/types/heading-flow';
 import { stripLeadingHeadingLine } from '@/lib/heading-extractor';
-import { BlogStepId, BLOG_STEP_IDS, HEADING_FLOW_STEP_ID } from '@/lib/constants';
+import {
+  BlogStepId,
+  BLOG_MODEL_PREFIX,
+  BLOG_STEP_IDS,
+  FIRST_BLOG_STEP_ID,
+  HEADING_FLOW_STEP_ID,
+  STEP6_ID,
+  STEP6_MODEL_REGEX,
+  STEP7_LEAD_MODEL,
+  getStep7HeadingModel,
+  isStep7HeadingModel,
+  toBlogModel,
+} from '@/lib/constants';
 import { ChatLayoutContent } from './ChatLayoutContent';
 import { ChatLayoutProps } from '@/types/chat-layout';
 import { createFullMarkdownDecoder } from '@/lib/markdown-decoder';
@@ -126,10 +138,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     let latestStep6Ts = 0;
     for (const m of msgs) {
       const ts = m?.timestamp?.getTime() ?? 0;
-      if (m?.role === 'user' && m.model === 'blog_creation_step7_lead') {
+      if (m?.role === 'user' && m.model === STEP7_LEAD_MODEL) {
         const c = (m.content ?? '').trim();
         if (c && (!latestLead || ts >= latestLead.ts)) latestLead = { content: c, ts };
-      } else if (m?.role === 'assistant' && m.model && /^blog_creation_step6(?:_|$)/.test(m.model)) {
+      } else if (m?.role === 'assistant' && m.model && STEP6_MODEL_REGEX.test(m.model)) {
         const len = (m.content ?? '').trim().length;
         if (len >= 20 && ts >= latestStep6Ts) latestStep6Ts = ts;
       }
@@ -147,7 +159,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     // step6ToStep7LeadSaved は latestBlogStep が step6 のときのみ step7 にブリッジ
     if (
       step6ToStep7LeadSaved &&
-      (latestBlogStep === 'step6' || latestBlogStep === null)
+      (latestBlogStep === STEP6_ID || latestBlogStep === null)
     ) {
       return HEADING_FLOW_STEP_ID;
     }
@@ -168,7 +180,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       /** 指定時はこの時刻以降のメッセージのみ対象（書き出し案送信後の誤判定防止） */
       minTimestamp?: number
     ): string | null => {
-      const re = new RegExp(`^blog_creation_step7_h${headingIndex}(?:_|$)`);
+      const re = new RegExp(`^${getStep7HeadingModel(headingIndex)}(?:_|$)`);
       let latest: ChatMessage | null = null;
       let latestTs = 0;
       for (const m of messages) {
@@ -229,7 +241,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     (chatSession.state.messages ?? []).some(
       m =>
         m?.role === 'assistant' &&
-        (m.model === 'blog_creation_step7' || m.model?.startsWith('blog_creation_step7_'))
+        (m.model === toBlogModel(HEADING_FLOW_STEP_ID) || m.model?.startsWith(`${BLOG_MODEL_PREFIX}step7_`))
     ) || Boolean(latestCombinedContent?.trim());
 
   const {
@@ -891,7 +903,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
       setSelectedModel('blog_creation');
       const serviceOpts = selectedServiceId ? { serviceId: selectedServiceId } : undefined;
-      const sendOk = await chatSession.actions.sendMessage(res.content, 'blog_creation_step7', {
+      const sendOk = await chatSession.actions.sendMessage(res.content, toBlogModel(HEADING_FLOW_STEP_ID), {
         ...serviceOpts,
         step7FullBodyGeneration: true,
       });
@@ -936,7 +948,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setIsViewingPastHeadingContent(false);
       setCanvasStreamingContent('');
       setCanvasStep(targetStep);
-      if (targetStep === 'step6' || targetStep === HEADING_FLOW_STEP_ID) {
+      if (targetStep === STEP6_ID || targetStep === HEADING_FLOW_STEP_ID) {
         setCanvasPanelOpen(true);
       }
       // Step7 へ遷移かつ未確定見出しあり → 完成形ではなく見出し1を表示
@@ -1067,8 +1079,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setSelectedModel('blog_creation');
       const model =
         Number.isInteger(headingIndex) && headingIndex >= 0
-          ? `blog_creation_step7_h${headingIndex}`
-          : 'blog_creation_step7';
+          ? getStep7HeadingModel(headingIndex)
+          : toBlogModel(HEADING_FLOW_STEP_ID);
       void handleSendMessage('この見出しの本文を書いてください', model);
     },
     [handleSendMessage]
@@ -1183,7 +1195,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       if (
         last?.role === 'assistant' &&
         last?.model &&
-        /blog_creation_step7_h\d+/.test(last.model)
+        isStep7HeadingModel(last.model)
       ) {
         handleShowCanvas(last);
       }
@@ -1389,7 +1401,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           targetStep = resolvedCanvasStep;
         } else {
           const stepInfo = stepActionBarRef.current?.getCurrentStepInfo();
-          targetStep = stepInfo?.currentStep ?? latestBlogStep ?? 'step1';
+          targetStep = stepInfo?.currentStep ?? latestBlogStep ?? FIRST_BLOG_STEP_ID;
         }
 
         const extendedPayload = payload as CanvasSelectionEditPayload & {
