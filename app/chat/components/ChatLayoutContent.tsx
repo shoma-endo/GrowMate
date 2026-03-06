@@ -143,12 +143,18 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
       };
     }
     // displayStep = 表示中コンテンツのステップ。nextStepForSend = この送信で得る出力のステップ。
-    // step1 表示中（顕在/潜在）→ step2 で送信してペルソナ/デモグラ取得。step6/7 は同ステップで送信。
-    const nextFromIdx =
-      displayStep === STEP6_ID || displayStep === STEP7_ID
-        ? currentIdx
-        : Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1);
-    const nextStepForSend = (BLOG_STEP_IDS[nextFromIdx] ?? BLOG_STEP_IDS[currentIdx]) as BlogStepId;
+    // step1 表示中（顕在/潜在）→ step2 で送信してペルソナ/デモグラ取得。
+    // step6: 構成案表示中(lastAssistantIsBasicStructure)なら step6 で送信→書き出し案取得。書き出し案表示中なら step7 で送信→保存のみ（AI呼び出しなし）。
+    // step7 は同ステップで送信。
+    let nextStepForSend: BlogStepId;
+    if (displayStep === STEP6_ID && !lastAssistantIsBasicStructure) {
+      nextStepForSend = STEP7_ID; // 書き出し案入力→step7_lead に保存して見出し生成へ
+    } else if (displayStep === STEP6_ID || displayStep === STEP7_ID) {
+      nextStepForSend = (BLOG_STEP_IDS[currentIdx] ?? BLOG_STEP_IDS[0]) as BlogStepId;
+    } else {
+      const nextFromIdx = Math.min(currentIdx + 1, BLOG_STEP_IDS.length - 1);
+      nextStepForSend = (BLOG_STEP_IDS[nextFromIdx] ?? BLOG_STEP_IDS[currentIdx]) as BlogStepId;
+    }
     // プレースホルダー: この送信で得る出力＝nextStepForSend のラベル/プレースホルダー
     const placeholderKey =
       displayStep === STEP7_ID
@@ -165,7 +171,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           ? STEP6_ID
           : nextStepForSend;
     return { nextStepForSend, stepForPlaceholder, placeholderKey };
-  }, [manualBlogStep, hasDetectedBlogStep, displayStep, initialStep]);
+  }, [manualBlogStep, hasDetectedBlogStep, displayStep, initialStep, lastAssistantIsBasicStructure]);
   useEffect(() => {
     setManualBlogStep(null);
   }, [chatSession.state.currentSessionId]);
