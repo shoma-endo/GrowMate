@@ -835,10 +835,17 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     }
     if (!rawContent?.trim()) {
       saveHeadingInFlightRef.current = false;
-      setIsStep6ContentStale(true);
-      toast.error(
-        '最後の見出しの本文が見つかりません。Canvas に表示されている内容を確認し、見出し生成をもう一度実行してください。'
-      );
+      if (hasContentForActiveHeading) {
+        // コンテンツは存在すると判定されているが取得に失敗。再試行を促し、見出し生成への切り替えは行わない（編集上書き防止）
+        toast.error(
+          '保存に失敗しました。Canvasの内容を確認し、タイルをクリックして再読み込みしてから保存を再試行してください。'
+        );
+      } else {
+        setIsStep6ContentStale(true);
+        toast.error(
+          '最後の見出しの本文が見つかりません。Canvas に表示されている内容を確認し、見出し生成をもう一度実行してください。'
+        );
+      }
       return;
     }
     const contentToSave =
@@ -846,6 +853,16 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
     if (!contentToSave?.trim()) {
       saveHeadingInFlightRef.current = false;
+      if (hasContentForActiveHeading) {
+        toast.error(
+          '保存する本文が空です。見出し行以外の本文を入力するか、タイルをクリックして再読み込みしてから保存を再試行してください。'
+        );
+      } else {
+        setIsStep6ContentStale(true);
+        toast.error(
+          '最後の見出しの本文が見つかりません。Canvas に表示されている内容を確認し、見出し生成をもう一度実行してください。'
+        );
+      }
       return;
     }
     try {
@@ -868,6 +885,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     handleSaveHeadingSectionFromFlow,
     canvasStreamingContent,
     canvasContent,
+    hasContentForActiveHeading,
   ]);
 
   /** 全見出し保存後: AI で本文生成（blog_creation_step7）し、session_combined_contents に保存 */
