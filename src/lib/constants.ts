@@ -78,6 +78,8 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   blog_creation_step5: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step6: { ...ANTHROPIC_BASE, maxTokens: 4000 },
   blog_creation_step7: { ...ANTHROPIC_BASE, maxTokens: 20000 },
+  /** Step7 見出し単体生成（blog_creation_step7_h0 等）用。1見出し分のみなので 3000 で十分 */
+  blog_creation_step7_heading: { ...ANTHROPIC_BASE, maxTokens: 3000 },
   blog_title_meta_generation: {
     ...ANTHROPIC_HAIKU_BASE,
     maxTokens: 2000,
@@ -134,6 +136,9 @@ export const getStep7HeadingModel = (index: number) =>
 /** 見出し単体モデル（blog_creation_step7_hN）かどうか */
 export const isStep7HeadingModel = (model?: string) =>
   /^blog_creation_step7_h\d+/.test(model ?? '');
+
+/** Step7 見出し単体生成用の MODEL_CONFIGS キー。blog_creation_step7_h0 等がこの設定（maxTokens: 3000）を参照 */
+export const STEP7_HEADING_CONFIG_KEY = 'blog_creation_step7_heading';
 
 /** Step6 モデル（blog_creation_step6 または blog_creation_step6_*）にマッチする正規表現 */
 export const STEP6_MODEL_REGEX = /^blog_creation_step6(?:_|$)/;
