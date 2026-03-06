@@ -95,14 +95,17 @@ export const getContentStepFromAssistantModel = (
 };
 
 /**
- * ブログ作成フロー: リクエストモデル(stepN)に対して、応答内容が属する次のステップのモデルを返す。
- * step5構成案送信 → 書き出し案(step6)が返るため、assistantメッセージは blog_creation_step6 で保存する。
+ * ブログ作成フロー: リクエストモデル(stepN)に対して、応答内容が属するステップのモデルを返す。
+ * step1〜5: request stepN → response は stepN+1 の内容（例: step5構成案送信 → 書き出し案(step6)が返る）
+ * step6: request step6 → response は 書き出し案(step6)の内容。step7 ではない。
  */
 export const getResponseModelForBlogCreation = (requestModel: string): string => {
   const match = requestModel.match(new RegExp(`^${BLOG_MODEL_PREFIX}step(\\d+)$`));
   if (!match?.[1]) return requestModel;
   const step = Number.parseInt(match[1], 10);
   if (step < 1 || step >= 7) return requestModel;
+  // step6 リクエスト → 書き出し案(step6)が返る。step+1 にすると誤って step7 で保存され「本文作成」と表示される
+  if (step === 6) return `${BLOG_MODEL_PREFIX}step6`;
   return `${BLOG_MODEL_PREFIX}step${step + 1}`;
 };
 
