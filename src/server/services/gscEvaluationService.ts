@@ -304,6 +304,26 @@ export class GscEvaluationService {
       return { status: 'skipped_no_metrics' };
     }
 
+    // 初回評価はベースライン記録のみ（履歴・改善提案は生成しない）
+    if (lastSeen === null) {
+      const { error: updateError } = await this.supabaseService
+        .getClient()
+        .from('gsc_article_evaluations')
+        .update({
+          last_seen_position: currentPos,
+          last_evaluated_on: today,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', evaluation.id)
+        .eq('user_id', userId);
+
+      if (updateError) {
+        throw new Error(updateError.message || '評価レコード更新に失敗しました');
+      }
+
+      return { status: 'success', outcome: 'no_change' };
+    }
+
     const outcome = this.judgeOutcome(lastSeen, currentPos);
 
     // 現在のステージを保存（提案生成に使用）
