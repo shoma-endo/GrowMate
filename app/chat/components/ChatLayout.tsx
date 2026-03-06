@@ -943,14 +943,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const handleBeforeManualStepChange = useCallback((): boolean => true, []);
 
   // スキップ/バック時に resolvedCanvasStep を同期（見出しフロー・Canvas コンテンツの表示に必要）
+  // Canvas は AI チャット生成時のみ自動オープン。手動スキップでは開かない。
   const handleManualStepChangeForCanvas = useCallback(
     (targetStep: BlogStepId) => {
       setIsViewingPastHeadingContent(false);
       setCanvasStreamingContent('');
       setCanvasStep(targetStep);
-      if (targetStep === STEP6_ID || targetStep === HEADING_FLOW_STEP_ID) {
-        setCanvasPanelOpen(true);
-      }
       // Step7 へ遷移かつ未確定見出しあり → 完成形ではなく見出し1を表示
       // 完成形は全見出し確定時のみ存在。未確定があれば完成形は存在せず、取得中かどうかに依存しない。
       if (
