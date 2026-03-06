@@ -371,6 +371,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="end" className="min-w-[200px]">
+              {/* タイトル・説明文生成（非表示）
               {showTitleMetaButton && (
                 <DropdownMenuItem
                   disabled={isDisabled || !onGenerateTitleMeta || isGenerateTitleMetaLoading}
@@ -387,6 +388,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                   </span>
                 </DropdownMenuItem>
               )}
+              */}
               {showLoadButton && (
                 <DropdownMenuItem
                   disabled={isDisabled || isLoadBlogArticleLoading}
