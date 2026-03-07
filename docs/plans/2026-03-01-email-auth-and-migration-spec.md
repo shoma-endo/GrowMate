@@ -25,7 +25,7 @@
 ### 対象
 
 - **Phase 1**: Magic Link によるメールログイン機能
-- **Phase 1.5**: 既存 LINE ユーザーからメールアカウントへのデータ移行機能（ユーザー任意）
+- **Phase 1.5**: 既存 LINE ユーザーからメールアカウントへのデータ移行運用（開発者手動）
 
 ### 非対象
 
@@ -593,7 +593,7 @@ Supabase ダッシュボードで以下を設定する。
 | 設定項目 | 値 |
 |---------|-----|
 | Site URL | `{NEXT_PUBLIC_SITE_URL}` |
-| Redirect URLs | `{NEXT_PUBLIC_SITE_URL}/api/auth/callback`, `{NEXT_PUBLIC_SITE_URL}/api/auth/account-migration/callback` |
+| Redirect URLs | `{NEXT_PUBLIC_SITE_URL}/api/auth/callback` |
 | Email Auth | 有効 |
 | Magic Link | 有効（OTP は無効） |
 | Email template | カスタム（日本語テンプレート） |
@@ -660,149 +660,72 @@ Supabase ダッシュボードで以下を設定する。
 
 ### 6.1 概要
 
-既存の LINE アカウントユーザーが、メールアカウントへ全データを移行できるセルフサービス機能。
-移行はユーザー任意であり、LINE ログインは移行後も他ユーザー向けに維持される。
+既存の LINE アカウントユーザーを、メールアカウントへ移行する。
+Phase 1.5 は **セルフサービス UI/API を実装せず、開発者による手動運用（選択肢A）** で実施する。
 
 ### 6.2 移行パターン
 
-#### パターン A: 新規メールアカウントへの統合（主要フロー）
+#### パターン A: 新規メールアカウントへの統合（標準）
 
 ```text
-前提: ユーザーは LINE アカウントでログイン済み
+前提: ユーザーは LINE アカウントを利用中で、移行先メールアカウントを未保有
 
-1. LINE ユーザー（UUID-A）が設定画面で「メールアカウントに切り替え」を選択
-2. メールアドレスを入力
-3. Supabase Auth の signInWithOtp() でメール送信（所有権確認）
-4. Magic Link クリック → /api/auth/account-migration/callback で検証完了
-5. auth.users にメールユーザーが作成される → trigger で public.users (UUID-B) が作成
-6. UUID-A の全データを UUID-B に移行（migrate_user_data RPC）
-7. UUID-A を無効化（role='unavailable', auth_provider そのまま）
-8. UUID-B の Supabase Auth セッションで自動ログイン
+1. 運用担当が source_user_id（UUID-A）と target_email を確定
+2. Supabase Auth でメールユーザーを作成し、target_user_id（UUID-B）を確定
+3. migrate_user_data(UUID-A, UUID-B) を実行
+4. UUID-A を無効化（role='unavailable'）
+5. ユーザーは UUID-B でメールログイン
 ```
 
-#### パターン B: 既存メールアカウントへの統合
+#### パターン B: 既存メールアカウントへの統合（例外対応）
 
 ```text
-前提: ユーザーが LINE と Email の両方のアカウントを既に持っている場合
+前提: target_email が既存メールユーザー（UUID-B）に紐付いている
 
-1. LINE ユーザー（UUID-A）が設定画面で「メールアカウントに切り替え」を選択
-2. メールアドレスを入力
-3. 入力されたメールが既存ユーザー（UUID-B）に紐付いている場合
-4. 確認ダイアログ: 「このメールアドレスには既にアカウントがあります。データを統合しますか？」
-   ※ UUID-B 側に既存データがある場合、両者のデータが統合される
-5. Supabase Auth の signInWithOtp() でメール送信（所有権確認）
-6. Magic Link クリック → 移行確認画面
-7. UUID-A の全データを UUID-B に移行（既存データとマージ）
-8. UUID-A を無効化
-9. UUID-B の Supabase Auth セッションで自動ログイン
+1. 運用担当が source_user_id（UUID-A）と target_user_id（UUID-B）を確定
+2. migrate_user_data(UUID-A, UUID-B) を実行
+3. UUID-A を無効化
 ```
 
-### 6.3 移行フロー詳細
+### 6.3 移行フロー詳細（運用手順）
 
-#### 6.3.1 ステップ 1: 移行開始（設定画面）
+#### 6.3.1 ステップ 1: 移行対象の確定
 
 ```text
-アクセス条件:
-  - LINE 認証でログイン中（auth_provider = 'line'）
-  - role が 'unavailable' でない
-
-表示場所: /settings または /account（新規ページ）
+確認項目:
+  - source_user_id（LINE ユーザー UUID）
+  - target_email（移行先メール）
+  - target_email の既存有無（new / merge 判定）
 ```
 
-#### 6.3.2 ステップ 2: メールアドレス入力・検証開始
+#### 6.3.2 ステップ 2: 移行先メールアカウント準備
 
 ```text
-POST /api/auth/account-migration/initiate
-  Headers: Cookie (LINE セッション)
-  Body: { email: string }
-
-サーバー処理:
-  1. authMiddleware で LINE ユーザーを認証
-  2. email バリデーション（Zod: メール形式 + 空文字チェック）
-  3. 同一メールで public.users に既存ユーザーが存在するかチェック
-     ※ source_user_id（移行元 LINE ユーザー）自身は検索対象から除外する。
-       auth_provider='line' の行が同じ email を持つ場合（移行前準備状態）、
-       自分自身への merge を防ぐため WHERE id != source_user_id を付与する。
-     a. 除外後に存在する場合: パターン B（merge）
-     b. 存在しない場合: パターン A（new）
-  4. migration_tokens テーブルにレコード作成
-     - token: crypto.randomUUID()
-     - source_user_id: UUID-A（LINE ユーザー）
-     - target_email: 入力されたメールアドレス
-     - target_user_id: UUID-B（既存メールユーザー）or NULL
-     - migration_type: 'new' | 'merge'
-     - expires_at: now() + 30分
-     - status: 'pending'
-  5. migration_token を httpOnly cookie にセット（callback で復元するため）:
-     Set-Cookie: migration_token={token}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth/account-migration; Max-Age=1800
-     ※ emailRedirectTo にクエリパラメータを含めると、Supabase Auth が &code={code} を
-       付与する際に URL が破損する既知の問題があるため、cookie で受け渡す。
-  6. Supabase Auth でメール送信:
-     supabase.auth.signInWithOtp({
-       email,
-       options: {
-         emailRedirectTo: '{SITE_URL}/api/auth/account-migration/callback'
-       }
-     })
-     ※ Supabase Auth (PKCE flow) は emailRedirectTo に ?code={code} を付与する。
-       最終 URL: /api/auth/account-migration/callback?code={code}
-       クエリパラメータは Supabase が付与する code のみとなり、URL 破損リスクを排除。
-  7. レスポンス:
-     { success: true, migrationType: 'new' | 'merge' }
+作業内容:
+  1. target_email が未登録なら Supabase Auth でメールユーザーを作成（UUID-B 発行）
+  2. target_email が既登録なら既存 UUID-B を採用（merge）
+  3. UUID-B でメールログイン可能であることを確認
 ```
 
-#### 6.3.3 ステップ 3: メール検証・移行確認
+#### 6.3.3 ステップ 3: 移行実行（開発者）
 
 ```text
-GET /api/auth/account-migration/callback?code={code}
+実行SQL:
+  SELECT * FROM migrate_user_data(:source_user_id, :target_user_id);
 
-サーバー処理:
-  1. httpOnly cookie から migration_token を取得し、
-     migration_tokens からトークン取得・検証（セッション確立前に実施）
-     - 存在確認、status='pending'確認、有効期限確認
-     → 無効の場合はセッションを作らずエラー画面にリダイレクト
-     ※ cookie が存在しない場合もエラー画面にリダイレクト
-  2. Supabase Auth で code → session 交換（メール所有権確認完了）
-     ※ token が有効な場合のみ session を確立する。
-       期限切れ・改ざん token で認証状態だけ残る不整合を防止。
-  3. パターン A の場合:
-     - auth.users への INSERT は Supabase Auth が処理済み
-     - trigger により public.users にレコードが作成済み
-  4. 確認画面にリダイレクト: /account-migration/confirm?migration_token={token}
-```
-
-#### 6.3.4 ステップ 4: 移行実行
-
-```text
-確認画面で「移行を実行」ボタンをクリック
-
-POST /api/auth/account-migration/execute
-  Body: { migrationToken: string }
-
-サーバー処理:
-  1. Supabase Auth セッションでメールユーザーを認証（所有権の二重確認）
-  2. migration_tokens からトークン取得・再検証
-  3. セッションユーザーの email と migration_tokens.target_email の一致を検証
-     → 不一致の場合 403 で拒否（トークン漏洩時の不正移行を防止）
-  4. status を原子的に 'processing' へ遷移（二重実行防止）
-     UPDATE migration_tokens
-       SET status = 'processing', updated_at = now()
-       WHERE token = :token AND status = 'pending'
-       RETURNING *;
-     → 0 行返却の場合は 409 Conflict で拒否（既に処理中または完了済み）
-     ※ SELECT → UPDATE の 2 ステップだと並行リクエストが両方 pending を読めるため、
-       必ず単一の UPDATE ... WHERE status = 'pending' RETURNING で原子的に取得すること。
-  5. 移行先ユーザー（UUID-B）を特定:
-     - パターン A: trigger で作成済みの public.users を supabase_auth_id で検索
-     - パターン B: 既存の public.users を email で検索
-  6. migrate_user_data RPC を実行（後述 6.4）
-  7. migration_tokens.status を 'completed' に更新
-  8. レスポンス: { success: true, redirectTo: '/' }
+確認項目:
+  1. source_user_id が role='unavailable' になっている
+  2. target_user_id で主要データを参照できる
+     - チャット履歴
+     - 事業者情報
+     - WordPress 設定
+     - GSC/GA4 データ
+     - サブスクリプション情報
+     - スタッフ管理情報
 
 エラー時:
-  - migration_tokens.status を 'failed' に更新
-  - エラー詳細を migration_tokens.error_message に記録
-  - ユーザーに再試行を案内
+  - migrate_user_data は単一トランザクションのため途中失敗時はロールバック
+  - 原因修正後に再実行
 ```
 
 ### 6.4 移行 RPC 関数: `migrate_user_data`
@@ -1167,151 +1090,42 @@ GRANT EXECUTE ON FUNCTION migrate_user_data(UUID, UUID) TO service_role;
 -- DROP FUNCTION IF EXISTS migrate_user_data(UUID, UUID);
 ```
 
-### 6.5 migration_tokens テーブル
-
-```sql
-CREATE TABLE migration_tokens (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  token           TEXT NOT NULL UNIQUE,
-  source_user_id  UUID NOT NULL REFERENCES users(id),
-  target_email    TEXT NOT NULL,
-  target_user_id  UUID REFERENCES users(id),  -- NULL: 新規作成パターン
-  migration_type  TEXT NOT NULL CHECK (migration_type IN ('new', 'merge')),
-  status          TEXT NOT NULL DEFAULT 'pending'
-                  CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
-  error_message   TEXT,
-  expires_at      TIMESTAMPTZ NOT NULL,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  completed_at    TIMESTAMPTZ
-);
-
-CREATE INDEX idx_migration_tokens_token ON migration_tokens(token);
-CREATE INDEX idx_migration_tokens_source ON migration_tokens(source_user_id);
-
--- RLS 有効化: クライアントからの直接アクセスを完全遮断
--- 移行フローは全て API Route Handler（service role クライアント）経由で実行するため、
--- authenticated/anon ロールには一切のポリシーを付与しない。
--- service_role は RLS をバイパスするため、ポリシー定義不要。
-ALTER TABLE migration_tokens ENABLE ROW LEVEL SECURITY;
-
--- テーブル権限: service_role 限定
-REVOKE ALL ON TABLE migration_tokens FROM PUBLIC;
-REVOKE ALL ON TABLE migration_tokens FROM authenticated;
-REVOKE ALL ON TABLE migration_tokens FROM anon;
-GRANT ALL ON TABLE migration_tokens TO service_role;
-
--- 有効期限切れトークンの自動削除（30日後）
--- pg_cron または定期バッチで実行
-
--- ロールバック
--- REVOKE ALL ON TABLE migration_tokens FROM service_role;
--- GRANT ALL ON TABLE migration_tokens TO authenticated;
--- GRANT ALL ON TABLE migration_tokens TO anon;
--- GRANT ALL ON TABLE migration_tokens TO PUBLIC;
--- ALTER TABLE migration_tokens DISABLE ROW LEVEL SECURITY;
--- DROP INDEX IF EXISTS idx_migration_tokens_source;
--- DROP INDEX IF EXISTS idx_migration_tokens_token;
--- DROP TABLE IF EXISTS migration_tokens;
-```
-
-### 6.6 移行 UI（ステップウィザード）
-
-#### 6.6.1 Step 1: 移行案内
+### 6.5 手動移行に必要な情報
 
 ```text
-┌─────────────────────────────────────────────┐
-│  アカウント設定                              │
-│                                             │
-│  現在の認証方法: LINE                        │
-│  LINE ID: @user_display_name               │
-│                                             │
-│  ┌─────────────────────────────────────┐    │
-│  │  メールアカウントに切り替える        │    │
-│  │                                     │    │
-│  │  メールアドレスでログインできるように │    │
-│  │  アカウントを移行します。            │    │
-│  │  すべてのデータは自動的に引き継がれ  │    │
-│  │  ます。                             │    │
-│  │                                     │    │
-│  │  ※ 移行後は LINE ログインは          │    │
-│  │    使用できなくなります              │    │
-│  │                                     │    │
-│  │  ┌───────────────────────────────┐  │    │
-│  │  │ メールアドレスを入力          │  │    │
-│  │  └───────────────────────────────┘  │    │
-│  │                                     │    │
-│  │  [確認メールを送信]                  │    │
-│  └─────────────────────────────────────┘    │
-│                                             │
-└─────────────────────────────────────────────┘
+必須:
+  - source_user_id（移行元 LINE ユーザー UUID）
+  - target_email（移行先メール）
+  - target_user_id（移行先メールユーザー UUID）
+
+確認推奨:
+  - role / owner_user_id（スタッフ・オーナー構造）
+  - stripe_customer_id / stripe_subscription_id（サブスク引継ぎ）
 ```
 
-#### 6.6.2 Step 2: メール送信完了
+### 6.6 手動移行の運用手順（Runbook）
 
 ```text
-┌─────────────────────────────────────────────┐
-│  アカウント移行                              │
-│                                             │
-│  確認メールを送信しました                    │
-│                                             │
-│  user@example.com に確認メールを             │
-│  送信しました。                              │
-│  メール内のリンクをクリックして               │
-│  移行を続行してください。                    │
-│                                             │
-│  ※ 30分以内にリンクをクリックしてください    │
-│                                             │
-└─────────────────────────────────────────────┘
-```
+1. 依頼受付
+   - ユーザーから移行希望を受領し、target_email を確定
 
-#### 6.6.3 Step 3: 移行確認（メールリンク先）
+2. 事前チェック
+   - source_user_id を特定
+   - target_email の既存有無を確認（new / merge）
 
-```text
-┌─────────────────────────────────────────────┐
-│  アカウント移行の確認                        │
-│                                             │
-│  以下の内容でアカウントを移行します:          │
-│                                             │
-│  移行元: LINE (@user_display_name)          │
-│  移行先: user@example.com                   │
-│                                             │
-│  移行されるデータ:                           │
-│  ・チャット履歴                              │
-│  ・事業者情報                                │
-│  ・WordPress 設定                            │
-│  ・GSC/GA4 データ                            │
-│  ・サブスクリプション情報                     │
-│  ・スタッフ管理情報                           │
-│                                             │
-│  ※ この操作は取り消せません。                │
-│  移行後は LINE ログインが無効になります。      │
-│                                             │
-│  [キャンセル]        [移行を実行する]         │
-│                                             │
-└─────────────────────────────────────────────┘
-```
+3. 移行先準備
+   - new の場合: Supabase Auth でメールユーザー作成（target_user_id 発行）
+   - merge の場合: 既存 target_user_id を利用
 
-#### 6.6.4 Step 4: 移行完了
+4. 移行実行
+   - SELECT * FROM migrate_user_data(:source_user_id, :target_user_id);
 
-```text
-┌─────────────────────────────────────────────┐
-│  アカウント移行完了                          │
-│                                             │
-│  アカウントの移行が完了しました。             │
-│                                             │
-│  今後は user@example.com で                  │
-│  ログインしてください。                       │
-│                                             │
-│  移行結果:                                   │
-│  ・チャットセッション: 24件                   │
-│  ・メッセージ: 156件                          │
-│  ・アノテーション: 12件                       │
-│  ・その他データ: すべて移行完了               │
-│                                             │
-│  [ダッシュボードへ]                           │
-│                                             │
-└─────────────────────────────────────────────┘
+5. 完了確認
+   - source_user_id が role='unavailable' であること
+   - target_user_id で主要データ（チャット / 事業者情報 / WordPress / GSC/GA4 / サブスク / スタッフ）が参照可能
+
+6. ユーザー案内
+   - 今後はメールログインを利用するよう通知
 ```
 
 ### 6.7 エッジケース
@@ -1324,8 +1138,7 @@ GRANT ALL ON TABLE migration_tokens TO service_role;
 対応:
   1. migrate_user_data RPC 内で users.owner_user_id は変更しない
      （UUID-A → UUID-B に移行しても、owner_user_id=UUID-X のまま）
-  2. ただし owner 側の get_accessible_user_ids は UUID-B を返す必要がある
-  3. RPC 内で owner 側の参照が正しく UUID-B を指すよう更新済み（ステップ 15）
+  2. owner 側の参照が UUID-B を返すことを確認
 ```
 
 #### 6.7.2 オーナーがスタッフを持つ場合
@@ -1336,8 +1149,8 @@ GRANT ALL ON TABLE migration_tokens TO service_role;
 
 対応:
   1. スタッフの owner_user_id を UUID-A → UUID-B に更新（RPC ステップ 15）
-  2. employee_invitations の owner_user_id も UUID-B に更新（RPC ステップ 13）
-  3. 移行後もスタッフからオーナーへのアクセスが維持される
+  2. employee_invitations.owner_user_id も UUID-B に更新（RPC ステップ 13）
+  3. 移行後もスタッフアクセスが維持されることを確認
 ```
 
 #### 6.7.3 Stripe サブスクリプションの付替え
@@ -1347,10 +1160,7 @@ GRANT ALL ON TABLE migration_tokens TO service_role;
 
 対応:
   1. RPC 内で stripe_customer_id / stripe_subscription_id を UUID-B に転記（ステップ 16）
-  2. Stripe 側のメタデータ更新は不要
-     （Stripe は customer_id で管理しており、アプリ側の user_id は参照しない）
-  3. ただし stripe_customer_id でユーザー検索する箇所（webhook 等）が
-     UUID-B を正しく返すことを確認する
+  2. stripe_customer_id 参照（webhook等）が UUID-B を返すことを確認
 ```
 
 #### 6.7.4 移行中のエラー・中断
@@ -1358,45 +1168,37 @@ GRANT ALL ON TABLE migration_tokens TO service_role;
 ```text
 対応方針:
   - RPC は単一トランザクションで実行されるため、途中エラーは自動ロールバック
-  - migration_tokens.status = 'failed' に更新し、error_message に詳細を記録
-  - ユーザーには「移行に失敗しました。データは変更されていません。」と表示
-  - 再試行: 新しい migration_token を発行して再実行可能
+  - ユーザーには「移行に失敗しました。データは変更されていません。」と案内
+  - 原因修正後に同じ手順で再実行
 ```
 
 #### 6.7.5 移行中の同時アクセス
 
 ```text
 対応方針:
-  - migration_tokens.status = 'processing' をセマフォとして使用
-  - 同一 source_user_id に対して status='processing' のレコードが存在する場合、新規移行を拒否
-  - RPC 実行前に SELECT ... FOR UPDATE で移行元ユーザーをロック
+  - RPC 内で SELECT ... FOR UPDATE によるロックを実施
+  - 同一ユーザーの並行移行は運用で禁止（同一時間帯に1件のみ実施）
 ```
 
 #### 6.7.6 prompt_templates / prompt_versions の created_by
 
 ```text
-状況: 管理者（admin）が移行する場合、created_by に UUID-A が入っている可能性
-
 対応:
-  - prompt_templates.created_by / updated_by は ON DELETE SET NULL のため、
-    移行元削除時に NULL になるが、移行ではなく無効化のため影響なし
-  - 明示的に UUID-B への付替えは行わない（管理者の作成履歴として UUID-A を保持）
-  - 理由: prompt_templates は共有リソースであり、作成者情報の書き換えは監査上望ましくない
-  - 長期的考慮: 将来 role='unavailable' ユーザーの物理削除を実装する場合、
-    created_by / updated_by が SET NULL される。
-    必要に応じてその時点で UUID-B への付替えを検討する。
+  - prompt_templates.created_by / updated_by は明示的に UUID-B へ付替えしない
+  - 管理者の作成履歴として UUID-A を保持する
 ```
 
-### 6.8 移行 API 一覧
+### 6.8 手動移行で新規追加するもの
 
-| メソッド | エンドポイント | 用途 |
-|---------|---------------|------|
-| POST | `/api/auth/account-migration/initiate` | 移行開始・Supabase Auth でメール送信 |
-| GET | `/api/auth/account-migration/callback` | Supabase Auth コールバック・メール検証 |
-| POST | `/api/auth/account-migration/execute` | 移行実行 |
-| GET | `/api/auth/account-migration/status` | 移行ステータス確認 |
+```text
+必須:
+  supabase/migrations/XXXXXX_add_migrate_user_data_rpc.sql
 
-### 6.9 新規ファイル一覧
+任意（運用性向上）:
+  docs/runbooks/manual-line-to-email-migration.md
+```
+
+### 6.9 手動移行で実装しないもの（Phase 1.5 スコープ外）
 
 ```text
 app/api/auth/account-migration/initiate/route.ts
@@ -1407,7 +1209,6 @@ app/account-migration/confirm/page.tsx
 app/account-migration/complete/page.tsx
 src/server/services/migrationService.ts
 supabase/migrations/XXXXXX_create_migration_tokens.sql
-supabase/migrations/XXXXXX_add_migrate_user_data_rpc.sql
 ```
 
 ---
@@ -1428,8 +1229,8 @@ supabase/migrations/XXXXXX_add_migrate_user_data_rpc.sql
 
 | 脅威 | 対策 |
 |------|------|
-| 他人のアカウントへの不正移行 | Supabase Auth の Magic Link でメール所有権を検証 |
-| 二重移行 | migration_tokens.status による排他制御 |
+| 他人のアカウントへの不正移行 | サポート窓口での本人確認 + target_email 確認を実施 |
+| 二重移行 | 運用ルールで同一ユーザーの同時移行を禁止 |
 | 移行中のデータ不整合 | 単一トランザクション + FOR UPDATE ロック |
 | 移行後の旧アカウント悪用 | role='unavailable' に設定。LINE トークンでのログイン時にエラー表示 |
 
@@ -1438,7 +1239,7 @@ supabase/migrations/XXXXXX_add_migrate_user_data_rpc.sql
 | 対象 | 制限 |
 |------|------|
 | Magic Link 送信 | Supabase Auth デフォルト（3600秒あたり30件） |
-| 移行開始 | アプリ層で制御: 同一ユーザー 3回/1時間 |
+| 移行実行 | 運用ルールで制御: 同一ユーザーは1件ずつ順次実行 |
 
 ---
 
@@ -1454,20 +1255,18 @@ supabase/migrations/XXXXXX_add_migrate_user_data_rpc.sql
 | authMiddleware の LINE/Email 二重対応 | 1-2日 |
 | ログイン UI 改修 | 1-2日 |
 
-### Phase 1.5: LINE→Email 移行 — 8-13日
+### Phase 1.5: LINE→Email 手動移行運用（選択肢A） — 3-6日
 
 | タスク | 工数 |
 |--------|------|
-| DB マイグレーション（migration_tokens + migrate_user_data RPC） | 2-3日 |
-| 移行 API（initiate / callback / execute / status） | 2-3日 |
-| 移行 UI（ステップウィザード 4画面） | 2-3日 |
-| migrationService 実装 | 1-2日 |
-| エッジケース対応（スタッフ・Stripe 等） | 1-2日 |
+| DB マイグレーション（migrate_user_data RPC） | 1-2日 |
+| 手動移行 Runbook 作成 | 0.5日 |
+| エッジケース確認（スタッフ・Stripe 等） | 0.5-1日 |
+| ドライラン（検証データで手動移行リハーサル） | 1-2日 |
 
-### 合計: 13-22日
+### 合計: 8-15日（Phase 1 + Phase 1.5）
 
-前回の独自実装案（16-28日）から **約3-6日の短縮**。
-Supabase Auth への委譲により、メール送信・トークン管理・セッション管理の実装が不要となった。
+手動移行運用を採用することで、Phase 1.5 の API/UI 実装工数を削減する。
 
 ---
 
@@ -1484,12 +1283,10 @@ Phase 1 (Magic Link 認証)
   │
 Phase 1.5 (LINE→Email 移行)
   │
-  ├── 6. migration_tokens テーブル作成
-  ├── 7. migrate_user_data RPC 実装
-  ├── 8. migrationService 実装
-  ├── 9. 移行 API（initiate / callback / execute / status）
-  ├── 10. 移行 UI（4画面）
-  └── 11. エッジケース対応 + 統合検証
+  ├── 6. migrate_user_data RPC 実装
+  ├── 7. 手動移行 Runbook 作成
+  ├── 8. 代表ケース（new / merge）のドライラン
+  └── 9. 本番移行（運用手順に従い順次実施）
 ```
 
 ---
@@ -1512,10 +1309,8 @@ Phase 1.5 (LINE→Email 移行)
 - [ ] スタッフ関係の維持（オーナー移行時に users.owner_user_id が正しく付替え）
 - [ ] Stripe サブスクリプション引き継ぎ（stripe_customer_id / stripe_subscription_id）
 - [ ] 移行元ユーザーの無効化（role='unavailable'）
-- [ ] 移行中エラー時のステータス復旧（status='failed' + error_message 記録）
-- [ ] 二重実行防止の動作確認（並行リクエストで 409 Conflict が返ること）
-- [ ] migration_token 有効期限切れ時のエラーハンドリング
-- [ ] httpOnly cookie による migration_token 受け渡しの動作確認
+- [ ] 移行中エラー時のロールバック確認（DB整合性が維持されること）
+- [ ] 同一ユーザーの同時移行を運用ルールで抑止できること
 
 ### 10.3 手動検証手順（実装 PR に記載）
 
