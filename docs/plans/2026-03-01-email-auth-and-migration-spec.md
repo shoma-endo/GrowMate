@@ -1127,23 +1127,35 @@ GRANT EXECUTE ON FUNCTION migrate_user_data(UUID, UUID) TO service_role;
 1. 依頼受付
    - ユーザーから移行希望を受領し、target_email を確定
 
-2. 事前チェック
+2. 本人確認（必須）
+   - target_email 宛に確認コードを送信し、依頼者から正しいコード提示を受ける
+   - 既存アカウント情報を照合（例: 登録時期、直近ログイン時期、利用機能）
+   - 本人確認に失敗した場合は移行依頼を却下し、監査ログへ記録
+
+3. 事前チェック
    - source_user_id を特定
    - target_email の既存有無を確認（new / merge）
+   - 直近24時間の移行依頼履歴を確認し、短期間の連続依頼は不正疑いとして管理者レビューに回す
 
-3. 移行先準備
+4. 承認フロー（必須）
+   - 実行担当者と最終承認者を分離（四眼原則）
+   - 最終承認者（admin）が確認結果をレビューし、実行可否を決定
+   - 承認結果・承認者・実行者・実行時刻を監査ログに保存
+
+5. 移行先準備
    - new の場合: Supabase Auth でメールユーザー作成（target_user_id 発行）
    - merge の場合: 既存 target_user_id を利用
 
-4. 移行実行
+6. 移行実行
    - SELECT * FROM migrate_user_data(:source_user_id, :target_user_id);
 
-5. 完了確認
+7. 完了確認
    - source_user_id が role='unavailable' であること
    - target_user_id で主要データ（チャット / 事業者情報 / WordPress / GSC/GA4 / サブスク / スタッフ）が参照可能
 
-6. ユーザー案内
+8. ユーザー案内・事後監視
    - 今後はメールログインを利用するよう通知
+   - 移行後7日間、旧 LINE アカウントへのログイン試行・再移行依頼を監視し、不審な挙動をアラート
 ```
 
 ### 6.7 エッジケース
@@ -1211,8 +1223,6 @@ GRANT EXECUTE ON FUNCTION migrate_user_data(UUID, UUID) TO service_role;
 ```text
 必須:
   supabase/migrations/XXXXXX_add_migrate_user_data_rpc.sql
-
-任意（運用性向上）:
   docs/runbooks/manual-line-to-email-migration.md
 ```
 
@@ -1247,10 +1257,34 @@ supabase/migrations/XXXXXX_create_migration_tokens.sql
 
 | 脅威 | 対策 |
 |------|------|
-| 他人のアカウントへの不正移行 | サポート窓口での本人確認 + target_email 確認を実施 |
+| 他人のアカウントへの不正移行 | 本人確認プロセス（確認コード + 既存アカウント情報照合）と管理者承認を必須化 |
 | 二重移行・誤再実行 | `migrate_user_data` で source `role='unavailable'` を検知した場合は即時エラー（再移行禁止） |
 | 移行中のデータ不整合 | 単一トランザクション + FOR UPDATE ロック |
 | 移行後の旧アカウント悪用 | role='unavailable' に設定。LINE トークンでのログイン時にエラー表示 |
+
+### 7.2.1 本人確認・承認プロセス（移行依頼時）
+
+```text
+1. 確認コード検証
+   - サポート窓口が target_email 宛に確認コードを送信
+   - 依頼者が提示したコードが一致した場合のみ次工程へ進む
+
+2. 既存アカウント情報の照合
+   - source_user_id に紐づく登録時期、直近ログイン時期、利用機能を確認質問
+   - 不一致がある場合は移行申請を却下し、再審査フラグを付与
+
+3. 最終承認（四眼原則）
+   - 実行担当者とは別の admin が承認
+   - 承認時に source_user_id / target_user_id / target_email / 承認理由を記録
+
+4. 監査ログ保存
+   - 依頼受付、本人確認結果、承認者、実行者、実行時刻、実行結果を監査ログへ保存
+   - 保存期間は最低1年間
+
+5. 不正検知
+   - 同一 source_user_id の短期間（24時間以内）複数依頼は自動アラート
+   - 移行後7日間は旧 LINE アカウントへのログイン試行を監視し、不審時は運用担当へ通知
+```
 
 ### 7.3 レート制限
 
