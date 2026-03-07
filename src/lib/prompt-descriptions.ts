@@ -26,6 +26,11 @@ export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
     description: 'ブログ（記事）の下書きを作成するプロンプト',
     variables: 'canonicalLinkPairs（改行区切りの内部リンク候補「タイトル | URL」一覧）が利用可能です',
   },
+  blog_title_meta_generation: {
+    description: '本文からSEO向けタイトル・説明文を生成するプロンプト',
+    variables:
+      'contentMainKw（content_annotations.main_kw）、contentNeeds、contentPersona、contentGoal、bodyContent（本文）が利用可能です',
+  },
   gsc_insight_ctr_boost: {
     description: 'WordPressの記事スニペット（タイトル/ディスクリプション）を改善し、CTR向上案を出します',
     variables: 'WordPressタイトル（ads_headline相当）、WordPress説明文・抜粋（ads_description相当）を使用します',
@@ -84,9 +89,11 @@ export const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   contentNeeds: 'ユーザーのニーズ',
   contentPersona: 'デモグラ・ペルソナ',
   contentGoal: 'ユーザーのゴール',
+  contentMainKw: '主軸KW（content_annotations.main_kw）',
   contentPrep: 'PREP要約',
   contentBasicStructure: '基本構成',
   contentOpeningProposal: '書き出し案',
+  bodyContent: '本文（Step7生成本文、または結合本文）',
   // GSC インサイト用
   adsHeadline: 'WordPressタイトル（content_annotations.wp_post_title など）',
   adsDescription: 'WordPress説明文（抜粋/メタディスクリプション想定）',

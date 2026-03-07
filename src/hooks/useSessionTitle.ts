@@ -4,9 +4,6 @@ import { validateTitle } from '@/lib/validators/common';
 import { getLatestBlogStep7MessageBySession } from '@/server/actions/chat.actions';
 import { getLatestCombinedContent } from '@/server/actions/heading-flow.actions';
 
-const TITLE_META_SYSTEM_PROMPT =
-  '本文を元にタイトル（全角32文字以内で狙うキーワードはなるべく左よせ）、説明文（全角80文字程度）を３パターン作成してください';
-
 export function useSessionTitle({
   chatSession,
   getAccessToken,
@@ -137,11 +134,9 @@ export function useSessionTitle({
         return;
       }
 
-      const systemPrompt = `${TITLE_META_SYSTEM_PROMPT}\n\n本文:\n${bodyContent}`;
       await chatSession.actions.sendMessage(
-        '本文を元にタイトルと説明文を作成してください。',
-        'blog_title_meta_generation',
-        { systemPrompt }
+        `本文を元にタイトルと説明文を作成してください。\n\n本文:\n${bodyContent}`,
+        'blog_title_meta_generation'
       );
     } catch (error) {
       console.error('Failed to generate title/meta:', error);
