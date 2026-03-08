@@ -63,10 +63,8 @@ interface InputAreaProps {
   blogFlowStatus?: string;
   selectedModelExternal?: string;
   initialBlogStep?: BlogStepId;
-  /** ヒント・プレースホルダー・送信先の単一ソース（親で算出） */
+  /** ヒント・プレースホルダー・送信先の単一ソース（親で算出）。通常チャットは常にこれを使用。Canvas の AI 生成は CanvasPanel 経由で分離。 */
   nextStepForSend?: BlogStepId;
-  /** Canvas 表示中は開いているステップに送信。未指定時は nextStepForSend を使用 */
-  sendStepOverride?: BlogStepId;
   /** プレースホルダー用ステップ（ヒントと整合） */
   stepForPlaceholder?: BlogStepId;
   /** プレースホルダー用キー（step5→6 の AI 取得時は STEP6_GET_PLACEHOLDER_KEY） */
@@ -153,7 +151,6 @@ const InputArea: React.FC<InputAreaProps> = ({
   selectedModelExternal,
   initialBlogStep,
   nextStepForSend,
-  sendStepOverride,
   stepForPlaceholder: stepForPlaceholderProp,
   placeholderKey: placeholderKeyProp,
   isEditingTitle = false,
@@ -221,9 +218,9 @@ const InputArea: React.FC<InputAreaProps> = ({
   const isModelSelected = Boolean(selectedModel);
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
-  // 送信モデル: sendStepOverride（Canvas 表示中は開いているステップ）を優先。ヒント/プレースホルダーは nextStepForSend のまま。
+  // 送信モデル: 通常チャットは nextStepForSend のみ。Canvas の AI 生成は CanvasPanel 経由で分離。
   const targetBlogStep =
-    sendStepOverride ?? nextStepForSend ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
+    nextStepForSend ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
   // プレースホルダーはヒントと整合（親で算出。未指定時は displayStep にフォールバック）
   const stepForPlaceholder =
     stepForPlaceholderProp ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
@@ -350,7 +347,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     const originalMessage = trimmedInput;
 
     // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる。
-    // targetBlogStep を使用（Canvas で別ステップを開いている場合は sendStepOverride が優先され、誤って step6→7 保存に回らない）
+    // targetBlogStep を使用（通常チャットは nextStepForSend ベースで step6→7 判定）
     const isStep6ToStep7Transition =
       displayStep === STEP6_ID &&
       targetBlogStep === STEP7_ID &&

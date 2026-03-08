@@ -81,7 +81,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     step6ToStep7LeadSaved,
     combinedTiles,
     onOpenCombinedCanvas,
-    resolvedCanvasStep,
   } = ctx;
   const { isOwnerViewMode } = useLiffContext();
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
@@ -127,6 +126,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   /**
    * ヒント・プレースホルダー・送信先モデルの単一ソース。
    * 論理の分散を避け、StepActionBar と InputArea で一貫した値を共有する。
+   * 通常チャット入力は常に nextStepForSend のみ使用。Canvas のエビデンスチェック・自由記載は CanvasPanel 経由で分離。
    */
   const { nextStepForSend, stepForPlaceholder, placeholderKey } = useMemo(() => {
     // 手動でスキップ/バックしている場合は displayStep を反映（プレースホルダー更新のため）
@@ -148,8 +148,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
       };
     }
     // displayStep = 表示中コンテンツのステップ。nextStepForSend = この送信で得る出力のステップ。
-    // ヒント・プレースホルダーは進行ロジックのまま。Canvas を開いても変わらない（タイルクリック時のずれ防止）。
-    // 実際の送信モデルは effectiveSendStep で、Canvas 表示中は開いているステップに送信（修正・エビデンスチェック）。
     // step1 表示中（顕在/潜在）→ step2 で送信してペルソナ/デモグラ取得。
     // step6: 構成案表示中(lastAssistantIsBasicStructure)なら step6 で送信→書き出し案取得。書き出し案表示中なら step7 で送信→保存のみ（AI呼び出しなし）。
     // step7 は同ステップで送信。
@@ -179,10 +177,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           : nextStepForSend;
     return { nextStepForSend, stepForPlaceholder, placeholderKey };
   }, [manualBlogStep, hasDetectedBlogStep, displayStep, initialStep, lastAssistantIsBasicStructure]);
-
-  /** Canvas 表示中は開いているステップに送信（修正・エビデンスチェック）。ヒント/プレースホルダーは nextStepForSend のまま。 */
-  const effectiveSendStep =
-    ui.canvas.open && resolvedCanvasStep ? resolvedCanvasStep : nextStepForSend;
 
   useEffect(() => {
     setManualBlogStep(null);
@@ -364,7 +358,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           blogFlowStatus={flowStatus}
           selectedModelExternal={selectedModel}
           nextStepForSend={nextStepForSend}
-          sendStepOverride={effectiveSendStep}
           stepForPlaceholder={stepForPlaceholder}
           placeholderKey={placeholderKey}
           onNextStepChange={onNextStepChange}
