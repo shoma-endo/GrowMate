@@ -266,6 +266,8 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   // ✅ セッション変更時に入力をクリア（モデル選択は外部から制御される）
   const prevSessionIdRef = useRef<string | undefined>(currentSessionId);
+  /** ブログ同期effect用: セッション切り替え検知（前回実行時の sessionId を保持） */
+  const prevSessionForBlogSyncRef = useRef<string | undefined>(currentSessionId);
   useEffect(() => {
     // セッションIDが変更された場合のみ実行
     if (prevSessionIdRef.current !== undefined && prevSessionIdRef.current !== currentSessionId) {
@@ -283,13 +285,34 @@ const InputArea: React.FC<InputAreaProps> = ({
     }
   }, [selectedModelExternal, selectedModel]);
 
-  // 既存チャットルームを開いた際、フロー状態から自動でブログ作成モデルに合わせる（モデル選択に依存しない）
+  // 既存チャットルームを開いた際、ブログフローが検出されたセッションのみフロー状態に合わせてブログ作成モデルに合わせる。
+  // - hasDetectedBlogStep が false のとき（LPドラフト専用セッション等）は切り替えない。
+  // - 同一セッション内で selectedModel が空でないとき（ユーザーが明示的に他モデルを選択済み）は切り替えない。途中から他モデルに切り替えた選択を尊重。
+  // - セッション切り替え直後は selectedModel が前セッションのままの可能性があるため、sessionJustSwitched のときは !selectedModel を要求しない（回帰防止）。
   useEffect(() => {
-    if (blogFlowStatus && blogFlowStatus !== 'idle' && selectedModel !== 'blog_creation') {
+    // undefined→session の初回オープンもセッション切り替えとして扱う（LP事前選択後にブログセッションを開くケース等）
+    const sessionJustSwitched = prevSessionForBlogSyncRef.current !== currentSessionId;
+    prevSessionForBlogSyncRef.current = currentSessionId;
+
+    const shouldSyncToBlog =
+      hasDetectedBlogStep &&
+      blogFlowStatus &&
+      blogFlowStatus !== 'idle' &&
+      selectedModel !== 'blog_creation' &&
+      (sessionJustSwitched || !selectedModel);
+
+    if (shouldSyncToBlog) {
       setSelectedModel('blog_creation');
       onModelChange?.('blog_creation', initialBlogStep);
     }
-  }, [blogFlowStatus, selectedModel, onModelChange, initialBlogStep]);
+  }, [
+    currentSessionId,
+    hasDetectedBlogStep,
+    blogFlowStatus,
+    selectedModel,
+    onModelChange,
+    initialBlogStep,
+  ]);
 
   const handleLoadBlogArticle = useCallback(async () => {
     if (!onLoadBlogArticle || isLoadingBlogArticle) return;
