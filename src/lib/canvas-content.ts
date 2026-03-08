@@ -2,9 +2,9 @@ import type { ChatMessage } from '@/domain/interfaces/IChatService';
 import {
   BLOG_MODEL_PREFIX,
   BLOG_STEP_IDS,
-  isStep7HeadingModel,
   MIN_LEAD_CONTENT_LENGTH,
-  STRUCTURE_PATTERN_CHECK_LENGTH,
+  getStep7HeadingModel,
+  toBlogModel,
   type BlogStepId,
 } from '@/lib/constants';
 
@@ -16,7 +16,7 @@ export interface CanvasStructuredContent {
 const isBlogStepId = (value: string): value is BlogStepId =>
   BLOG_STEP_IDS.includes(value as BlogStepId);
 
-const extractBlogStepFromModel = (model?: string): BlogStepId | null => {
+export const extractBlogStepFromModel = (model?: string): BlogStepId | null => {
   if (!model || !model.startsWith(BLOG_MODEL_PREFIX)) return null;
   const suffix = model.slice(BLOG_MODEL_PREFIX.length);
   // blog_creation_step7_h0 / blog_creation_step5_manual などの拡張サフィックスにも対応
@@ -24,7 +24,7 @@ const extractBlogStepFromModel = (model?: string): BlogStepId | null => {
   return matchedStep && isBlogStepId(matchedStep) ? (matchedStep as BlogStepId) : null;
 };
 
-const extractStep7HeadingIndexFromModel = (model?: string): number | null => {
+export const extractStep7HeadingIndexFromModel = (model?: string): number | null => {
   if (!model) return null;
   const pattern = new RegExp(`^${BLOG_MODEL_PREFIX}step7_h(\\d+)(?:_|$)`);
   const match = model.match(pattern);
@@ -40,19 +40,9 @@ const findLatestAssistantBlogStep = (messages: ChatMessage[]): BlogStepId | null
     const contentLen = (message.content ?? '').trim().length;
     // ストリーミング中は空の assistant をスキップ（step6 リクエスト後に step7 の空メッセージが即追加され、書き出し案到着前に step7 表示になるのを防ぐ）
     if (contentLen < MIN_LEAD_CONTENT_LENGTH) continue;
-    let modelStep = extractBlogStepFromModel(message.model);
+    const modelStep = extractBlogStepFromModel(message.model);
     if (!modelStep) continue;
-    // 補正: step7 で誤保存された 構成案（基本構成）は model step6 相当
-    const contentHead = (message.content ?? '').slice(0, STRUCTURE_PATTERN_CHECK_LENGTH);
-    if (
-      modelStep === 'step7' &&
-      /基本構成|【基本構成|構成案（記事全体|記事全体の設計図/.test(contentHead)
-    ) {
-      modelStep = 'step6';
-    }
-    // 表示用: model stepN は response 保存形式のため、コンテンツが属する step に変換
-    // (step1 出力は blog_creation_step2 で保存 → 表示は step1)
-    return getContentStepFromAssistantModel(message.model, message.content ?? undefined) ?? modelStep;
+    return modelStep;
   }
   return null;
 };
@@ -62,59 +52,33 @@ export const BASIC_STRUCTURE_PATTERN =
   /基本構成|【基本構成|構成案（記事全体|記事全体の設計図/;
 
 /**
- * assistant メッセージの model から、そのコンテンツが属する表示用ステップを返す。
- * getResponseModelForBlogCreation により request stepN → response stepN+1 で保存される。
- * 表示用: コンテンツが属するステップ（request stepN の出力なら表示は stepN）。
- * @param content 省略可。指定時は 構成案/書き出し案 の区別に使用
- */
-export const getContentStepFromAssistantModel = (
-  model?: string,
-  content?: string
-): BlogStepId | null => {
-  const modelStep = extractBlogStepFromModel(model);
-  if (!modelStep) return null;
-  const num = Number.parseInt(modelStep.replace(/^step/, ''), 10);
-  if (Number.isNaN(num) || num < 1 || num > 7) return modelStep;
-  if (num === 1) return modelStep;
-  if (num === 7) {
-    // step7_h0 等は見出し本文 → step7
-    if (isStep7HeadingModel(model)) return modelStep;
-    // blog_creation_step7（プレーンのみ）: 構成案 or 記事本文
-    if (content !== undefined) {
-      const head = content.slice(0, STRUCTURE_PATTERN_CHECK_LENGTH);
-      if (BASIC_STRUCTURE_PATTERN.test(head)) return 'step5'; // 構成案
-      return modelStep; // 記事本文 → step7
-    }
-    return modelStep; // content なし時は従来どおり
-  }
-  // step2〜6: request stepN → response model stepN+1 のため、表示は stepN（出力元）
-  // step6 のみ例外: 構成案(step5出力)か書き出し案(step6出力)で content 判定
-  if (num === 6) {
-    if (content !== undefined) {
-      const head = content.slice(0, STRUCTURE_PATTERN_CHECK_LENGTH);
-      if (BASIC_STRUCTURE_PATTERN.test(head)) return 'step5'; // 構成案
-    }
-    return 'step6'; // 書き出し案（content 未指定時もデフォルト）
-  }
-  // step2〜5: model stepN = 出力元は stepN-1
-  const displayNum = num - 1;
-  const stepId = `step${displayNum}` as BlogStepId;
-  return BLOG_STEP_IDS.includes(stepId) ? stepId : modelStep;
-};
-
-/**
  * ブログ作成フロー: リクエストモデル(stepN)に対して、応答内容が属するステップのモデルを返す。
- * step1〜5: request stepN → response は stepN+1 の内容（例: step5構成案送信 → 書き出し案(step6)が返る）
- * step6: request step6 → response は 書き出し案(step6)の内容。step7 ではない。
+ * 1:1 マッピング: request stepN → response は stepN で保存。
  */
 export const getResponseModelForBlogCreation = (requestModel: string): string => {
   const match = requestModel.match(new RegExp(`^${BLOG_MODEL_PREFIX}step(\\d+)$`));
   if (!match?.[1]) return requestModel;
   const step = Number.parseInt(match[1], 10);
-  if (step < 1 || step >= 7) return requestModel;
-  // step6 リクエスト → 書き出し案(step6)が返る。step+1 にすると誤って step7 で保存され「本文作成」と表示される
-  if (step === 6) return `${BLOG_MODEL_PREFIX}step6`;
-  return `${BLOG_MODEL_PREFIX}step${step + 1}`;
+  if (step < 1 || step > 7) return requestModel;
+  return toBlogModel(BLOG_STEP_IDS[step - 1] as BlogStepId);
+};
+
+/**
+ * Canvas で編集したコンテンツを保存する際に使用するモデルを返す。
+ * 1:1 マッピング: 表示 stepN → 保存 model stepN。step7 見出し単位のみ _hN サフィックス。
+ */
+export const getSaveModelForCanvasStep = (
+  canvasStep: BlogStepId,
+  step7HeadingIndex?: number | null
+): string => {
+  const num = Number.parseInt(canvasStep.replace(/^step/, ''), 10);
+  if (Number.isNaN(num) || num < 1 || num > 7) return toBlogModel(canvasStep);
+  if (num === 7) {
+    if (step7HeadingIndex != null && Number.isInteger(step7HeadingIndex) && step7HeadingIndex >= 0) {
+      return getStep7HeadingModel(step7HeadingIndex);
+    }
+  }
+  return toBlogModel(canvasStep);
 };
 
 const extractCanvasStructuredContent = (raw: string): CanvasStructuredContent | null => {
@@ -265,8 +229,6 @@ const normalizeCanvasContent = (raw: string): string => {
 };
 
 export {
-  extractBlogStepFromModel,
-  extractStep7HeadingIndexFromModel,
   findLatestAssistantBlogStep,
   normalizeCanvasContent,
   htmlToMarkdownForCanvas,

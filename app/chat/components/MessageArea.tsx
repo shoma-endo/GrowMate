@@ -10,7 +10,6 @@ import type { BlogStepId } from '@/lib/constants';
 import {
   extractBlogStepFromModel,
   extractStep7HeadingIndexFromModel,
-  getContentStepFromAssistantModel,
   normalizeCanvasContent,
 } from '@/lib/canvas-content';
 import { extractHeadingTextFromLine } from '@/lib/heading-extractor';
@@ -303,7 +302,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
   };
 
   const derivePreviewMeta = (message: ChatMessage): BlogPreviewMeta | null => {
-    const step = getContentStepFromAssistantModel(message.model, message.content);
+    const step = extractBlogStepFromModel(message.model);
     if (!step) return null;
 
     const normalized = normalizeCanvasContent(message.content ?? '').trim();

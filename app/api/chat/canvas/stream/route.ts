@@ -7,7 +7,11 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { env } from '@/env';
 import { BLOG_STEP_LABELS, MODEL_CONFIGS } from '@/lib/constants';
 import type { BlogStepId } from '@/lib/constants';
-import { htmlToMarkdownForCanvas, sanitizeHtmlForCanvas } from '@/lib/canvas-content';
+import {
+  getSaveModelForCanvasStep,
+  htmlToMarkdownForCanvas,
+  sanitizeHtmlForCanvas,
+} from '@/lib/canvas-content';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
@@ -736,7 +740,7 @@ export async function POST(req: NextRequest) {
               // continueChat は必ずユーザーメッセージとアシスタントメッセージのペアを保存するため、
               // 1回だけ呼び出してユーザーメッセージを保存し、2つのアシスタントメッセージは別々に保存する
 
-              // 1つ目: Canvas編集結果（blog_creation_${targetStep}）
+              // 1つ目: Canvas編集結果。getSaveModelForCanvasStep で BlogPreviewTile の stepLabel と一致させる（P2）
               const resolvedStep7HeadingIndex =
                 targetStep === STEP7_ID &&
                 isHeadingUnit &&
@@ -745,10 +749,10 @@ export async function POST(req: NextRequest) {
                 step7HeadingIndex >= 0
                   ? step7HeadingIndex
                   : null;
-              const canvasModel =
-                targetStep === STEP7_ID && resolvedStep7HeadingIndex !== null
-                  ? `blog_creation_${targetStep}_h${resolvedStep7HeadingIndex}`
-                  : `blog_creation_${targetStep}`;
+              const canvasModel = getSaveModelForCanvasStep(
+                targetStep as BlogStepId,
+                resolvedStep7HeadingIndex
+              );
               const postStreamLimitError = await checkTrialDailyLimit(userRole, userId);
               if (postStreamLimitError) {
                 controller.enqueue(
