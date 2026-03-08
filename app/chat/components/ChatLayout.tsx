@@ -6,9 +6,10 @@ import { useLiffContext } from '@/components/LiffProvider';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import {
   BASIC_STRUCTURE_PATTERN,
+  extractBlogStepFromModel,
   extractStep7HeadingIndexFromModel,
   findLatestAssistantBlogStep,
-  getContentStepFromAssistantModel,
+  getSaveModelForCanvasStep,
   normalizeCanvasContent,
   isBlogStepId,
 } from '@/lib/canvas-content';
@@ -1132,7 +1133,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const handleShowCanvas = useCallback(
     (message: ChatMessage) => {
       const fallbackStep = (latestBlogStep ?? BLOG_STEP_IDS[0]) as BlogStepId;
-      const detectedStep = (getContentStepFromAssistantModel(message.model, message.content) ?? fallbackStep) as BlogStepId;
+      const detectedStep = extractBlogStepFromModel(message.model) ?? fallbackStep;
 
       // Step7 見出しタイル: 編集中の見出しに未保存コンテンツがある場合は他見出しへの切り替えを禁止
       if (detectedStep === STEP7_ID && headingSections.length > 0) {
@@ -1463,10 +1464,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           activeHeadingIndex,
         });
         const headingContextIndex = step7ViewModeForRequest.headingIndex;
-        const canvasModel =
-          targetStep === STEP7_ID && headingContextIndex !== null
-            ? `blog_creation_${targetStep}_h${headingContextIndex}`
-            : `blog_creation_${targetStep}`;
+        // getSaveModelForCanvasStep: BlogPreviewTile の stepLabel と Canvas のステップを一致させるため。
+        const canvasModel = getSaveModelForCanvasStep(targetStep, headingContextIndex);
 
         // canvasContentの検証
         if (!payload.canvasContent || payload.canvasContent.trim() === '') {
@@ -1679,7 +1678,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           headingSections.length > 0 &&
           headingSections.every(s => s.isConfirmed)
         ) {
-          refetchCombinedContentVersions();
+          await refetchCombinedContentVersions({ force: true });
         }
 
         // 楽観的更新をクリア（実際のメッセージで置き換え）
@@ -1692,9 +1691,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         console.error('Canvas selection edit failed:', error);
         // エラー時も楽観的更新をクリア
         setOptimisticMessages([]);
+        // ストリーミング内容のクリアは finally ブロックで実行
         throw error instanceof Error ? error : new Error('AI編集の処理に失敗しました');
       } finally {
         canvasEditInFlightRef.current = false;
+        // 成功/失敗問わずクリア必須。残すと Step7 見出し切り替え時に旧ストリーミング本文が
+        // 別見出しの「現在コンテンツ」として扱われ、誤保存を誘発する（P1）。
+        // loadSession/refetch は await 済みのため、state 反映後にクリアして巻き戻りを防ぐ。
         setCanvasStreamingContent('');
         setIsCanvasStreaming(false);
       }
