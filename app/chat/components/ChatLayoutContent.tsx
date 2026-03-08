@@ -148,15 +148,13 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
       };
     }
     // displayStep = 表示中コンテンツのステップ。nextStepForSend = この送信で得る出力のステップ。
-    // Canvas 表示中: 開いているステップに対してエビデンスチェック・修正指示を出すため、現在のステップで送信。
-    // 通常チャット: 次のステップの出力を得るため nextStep で送信。
+    // ヒント・プレースホルダーは進行ロジックのまま。Canvas を開いても変わらない（タイルクリック時のずれ防止）。
+    // 実際の送信モデルは effectiveSendStep で、Canvas 表示中は開いているステップに送信（修正・エビデンスチェック）。
     // step1 表示中（顕在/潜在）→ step2 で送信してペルソナ/デモグラ取得。
     // step6: 構成案表示中(lastAssistantIsBasicStructure)なら step6 で送信→書き出し案取得。書き出し案表示中なら step7 で送信→保存のみ（AI呼び出しなし）。
     // step7 は同ステップで送信。
     let nextStepForSend: BlogStepId;
-    if (ui.canvas.open && resolvedCanvasStep) {
-      nextStepForSend = resolvedCanvasStep; // Canvas: 開いているステップで送信（修正・エビデンスチェック）
-    } else if (displayStep === STEP6_ID && !lastAssistantIsBasicStructure) {
+    if (displayStep === STEP6_ID && !lastAssistantIsBasicStructure) {
       nextStepForSend = STEP7_ID; // 書き出し案入力→step7_lead に保存して見出し生成へ
     } else if (displayStep === STEP6_ID || displayStep === STEP7_ID) {
       nextStepForSend = (BLOG_STEP_IDS[currentIdx] ?? BLOG_STEP_IDS[0]) as BlogStepId;
@@ -180,15 +178,12 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           ? STEP6_ID
           : nextStepForSend;
     return { nextStepForSend, stepForPlaceholder, placeholderKey };
-  }, [
-    manualBlogStep,
-    hasDetectedBlogStep,
-    displayStep,
-    initialStep,
-    lastAssistantIsBasicStructure,
-    ui.canvas.open,
-    resolvedCanvasStep,
-  ]);
+  }, [manualBlogStep, hasDetectedBlogStep, displayStep, initialStep, lastAssistantIsBasicStructure]);
+
+  /** Canvas 表示中は開いているステップに送信（修正・エビデンスチェック）。ヒント/プレースホルダーは nextStepForSend のまま。 */
+  const effectiveSendStep =
+    ui.canvas.open && resolvedCanvasStep ? resolvedCanvasStep : nextStepForSend;
+
   useEffect(() => {
     setManualBlogStep(null);
   }, [chatSession.state.currentSessionId]);
@@ -369,6 +364,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           blogFlowStatus={flowStatus}
           selectedModelExternal={selectedModel}
           nextStepForSend={nextStepForSend}
+          sendStepOverride={effectiveSendStep}
           stepForPlaceholder={stepForPlaceholder}
           placeholderKey={placeholderKey}
           onNextStepChange={onNextStepChange}

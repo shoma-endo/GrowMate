@@ -65,6 +65,8 @@ interface InputAreaProps {
   initialBlogStep?: BlogStepId;
   /** ヒント・プレースホルダー・送信先の単一ソース（親で算出） */
   nextStepForSend?: BlogStepId;
+  /** Canvas 表示中は開いているステップに送信。未指定時は nextStepForSend を使用 */
+  sendStepOverride?: BlogStepId;
   /** プレースホルダー用ステップ（ヒントと整合） */
   stepForPlaceholder?: BlogStepId;
   /** プレースホルダー用キー（step5→6 の AI 取得時は STEP6_GET_PLACEHOLDER_KEY） */
@@ -151,6 +153,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   selectedModelExternal,
   initialBlogStep,
   nextStepForSend,
+  sendStepOverride,
   stepForPlaceholder: stepForPlaceholderProp,
   placeholderKey: placeholderKeyProp,
   isEditingTitle = false,
@@ -218,9 +221,9 @@ const InputArea: React.FC<InputAreaProps> = ({
   const isModelSelected = Boolean(selectedModel);
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
-  // 送信モデルは「次のステップ」（nextStepForSend）を優先。ヒント「次のペルソナに進むには」と送信モデルを整合させる。
-  // displayStep が latestBlogStep 由来で遅延・ずれる場合、ヒントは nextStepForSend を表示するため、送信も nextStepForSend を使う。
-  const targetBlogStep = nextStepForSend ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
+  // 送信モデル: sendStepOverride（Canvas 表示中は開いているステップ）を優先。ヒント/プレースホルダーは nextStepForSend のまま。
+  const targetBlogStep =
+    sendStepOverride ?? nextStepForSend ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
   // プレースホルダーはヒントと整合（親で算出。未指定時は displayStep にフォールバック）
   const stepForPlaceholder =
     stepForPlaceholderProp ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
@@ -346,10 +349,11 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     const originalMessage = trimmedInput;
 
-    // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる
+    // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる。
+    // targetBlogStep を使用（Canvas で別ステップを開いている場合は sendStepOverride が優先され、誤って step6→7 保存に回らない）
     const isStep6ToStep7Transition =
       displayStep === STEP6_ID &&
-      nextStepForSend === STEP7_ID &&
+      targetBlogStep === STEP7_ID &&
       selectedModel === 'blog_creation' &&
       onSaveStep7UserLead &&
       !lastAssistantIsBasicStructure;
