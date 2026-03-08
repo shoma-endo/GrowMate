@@ -71,12 +71,13 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   lp_draft_creation: { ...ANTHROPIC_BASE, maxTokens: 14000 },
   lp_improvement: { ...ANTHROPIC_BASE, maxTokens: 12000 },
   // ブログ作成ステップ（共通設定を適用し、maxTokensのみ個別指定）
-  blog_creation_step1: { ...ANTHROPIC_BASE, maxTokens: 4000 },
-  blog_creation_step2: { ...ANTHROPIC_BASE, maxTokens: 4000 },
-  blog_creation_step3: { ...ANTHROPIC_BASE, maxTokens: 4000 },
-  blog_creation_step4: { ...ANTHROPIC_BASE, maxTokens: 4000 },
-  blog_creation_step5: { ...ANTHROPIC_BASE, maxTokens: 5000 },
-  blog_creation_step6: { ...ANTHROPIC_BASE, maxTokens: 4000 },
+  // step1-6: 元値+1000（Canvas全文編集の打ち切り軽減）。step7は20000、見出し単位はstep7_headingで3000
+  blog_creation_step1: { ...ANTHROPIC_BASE, maxTokens: 5000 },
+  blog_creation_step2: { ...ANTHROPIC_BASE, maxTokens: 5000 },
+  blog_creation_step3: { ...ANTHROPIC_BASE, maxTokens: 5000 },
+  blog_creation_step4: { ...ANTHROPIC_BASE, maxTokens: 5000 },
+  blog_creation_step5: { ...ANTHROPIC_BASE, maxTokens: 6000 },
+  blog_creation_step6: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step7: { ...ANTHROPIC_BASE, maxTokens: 20000 },
   /** Step7 見出し単体生成（blog_creation_step7_h0 等）用。1見出し分のみなので 3000 で十分 */
   blog_creation_step7_heading: { ...ANTHROPIC_BASE, maxTokens: 3000 },
