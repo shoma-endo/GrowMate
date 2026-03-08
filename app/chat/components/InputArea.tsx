@@ -63,7 +63,7 @@ interface InputAreaProps {
   blogFlowStatus?: string;
   selectedModelExternal?: string;
   initialBlogStep?: BlogStepId;
-  /** ヒント・プレースホルダー・送信先の単一ソース（親で算出） */
+  /** ヒント・プレースホルダー・送信先の単一ソース（親で算出）。通常チャットは常にこれを使用。Canvas の AI 生成は CanvasPanel 経由で分離。 */
   nextStepForSend?: BlogStepId;
   /** プレースホルダー用ステップ（ヒントと整合） */
   stepForPlaceholder?: BlogStepId;
@@ -218,9 +218,9 @@ const InputArea: React.FC<InputAreaProps> = ({
   const isModelSelected = Boolean(selectedModel);
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
 
-  // 送信モデルは「次のステップ」（nextStepForSend）を優先。ヒント「次のペルソナに進むには」と送信モデルを整合させる。
-  // displayStep が latestBlogStep 由来で遅延・ずれる場合、ヒントは nextStepForSend を表示するため、送信も nextStepForSend を使う。
-  const targetBlogStep = nextStepForSend ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
+  // 送信モデル: 通常チャットは nextStepForSend のみ。Canvas の AI 生成は CanvasPanel 経由で分離。
+  const targetBlogStep =
+    nextStepForSend ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
   // プレースホルダーはヒントと整合（親で算出。未指定時は displayStep にフォールバック）
   const stepForPlaceholder =
     stepForPlaceholderProp ?? displayStep ?? initialBlogStep ?? FIRST_BLOG_STEP_ID;
@@ -346,10 +346,11 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     const originalMessage = trimmedInput;
 
-    // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる
+    // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる。
+    // targetBlogStep を使用（通常チャットは nextStepForSend ベースで step6→7 判定）
     const isStep6ToStep7Transition =
       displayStep === STEP6_ID &&
-      nextStepForSend === STEP7_ID &&
+      targetBlogStep === STEP7_ID &&
       selectedModel === 'blog_creation' &&
       onSaveStep7UserLead &&
       !lastAssistantIsBasicStructure;

@@ -620,11 +620,12 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
       await onSelectionEdit(payload);
 
       clearSelectionMenu();
-    } catch (error) {
-      console.error('Canvas link modification failed:', error);
-      const message = error instanceof Error ? error.message : 'リンク先の修正に失敗しました';
-      setLastAiError(message);
-    } finally {
+      } catch (error) {
+        console.error('Canvas link modification failed:', error);
+        const message = error instanceof Error ? error.message : 'リンク先の修正に失敗しました';
+        setLastAiError(message);
+        toast.error(message);
+      } finally {
       setIsApplyingSelectionEdit(false);
     }
   }, [
@@ -688,6 +689,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
         console.error('Canvas selection edit failed:', error);
         const message = error instanceof Error ? error.message : 'AIによる編集の適用に失敗しました';
         setLastAiError(message);
+        toast.error(message);
         // エラー時は入力欄を再表示
         setSelectionMode('input');
         updateSelectionMenuPosition('input');

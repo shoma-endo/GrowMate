@@ -126,6 +126,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   /**
    * ヒント・プレースホルダー・送信先モデルの単一ソース。
    * 論理の分散を避け、StepActionBar と InputArea で一貫した値を共有する。
+   * 通常チャット入力は常に nextStepForSend のみ使用。Canvas のエビデンスチェック・自由記載は CanvasPanel 経由で分離。
    */
   const { nextStepForSend, stepForPlaceholder, placeholderKey } = useMemo(() => {
     // 手動でスキップ/バックしている場合は displayStep を反映（プレースホルダー更新のため）
@@ -176,6 +177,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           : nextStepForSend;
     return { nextStepForSend, stepForPlaceholder, placeholderKey };
   }, [manualBlogStep, hasDetectedBlogStep, displayStep, initialStep, lastAssistantIsBasicStructure]);
+
   useEffect(() => {
     setManualBlogStep(null);
   }, [chatSession.state.currentSessionId]);
