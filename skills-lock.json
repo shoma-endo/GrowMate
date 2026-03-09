@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "react-doctor": {
+      "source": "millionco/react-doctor",
+      "sourceType": "github",
+      "computedHash": "efa8db174b3c60e27b34d76842e3a9a7c0e5e602fd4d66eec897372d0ce3f30b"
+    },
+    "react19-patterns": {
+      "source": "qingqishi/shiqingqi.com",
+      "sourceType": "github",
+      "computedHash": "2990c94159a00f9fa6802b1fa929dbdd87b376359e4a79c53fefc714b4ebb1f0"
+    },
+    "update-docs": {
+      "source": "vercel/next.js",
+      "sourceType": "github",
+      "computedHash": "b5f495ca63a08c70523ed59fbcf5b5665603d77299d8524ccddeacce024cbb33"
+    }
+  }
+}
