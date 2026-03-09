@@ -396,6 +396,9 @@ export async function createSupabaseServerClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      auth: {
+        flowType: 'pkce',
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -423,6 +426,9 @@ export async function updateSupabaseSession(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      auth: {
+        flowType: 'pkce',
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -1383,17 +1389,23 @@ localhost での検証は通るが、本番環境（Vercel 等）にデプロイ
 |------|------|
 | 原因 | 企業メールサーバーやセキュリティスキャナ（Microsoft Defender for Office 365、Proofpoint、Barracuda 等）がメール内のリンクを自動的にプリフェッチ（GET リクエスト）し、トークンが「使用済み」として無効化される |
 | なぜ localhost では問題にならないか | `http://localhost:3000/...` へのリンクはメールサーバーから到達不能なため、プリフェッチが実行されない |
-| 対策（推奨） | Supabase Auth の PKCE フロー（`flowType: 'pkce'`）を使用する。PKCE フローでは Magic Link のクリック先が中間ページとなり、クライアント側で `exchangeCodeForSession()` を明示的に呼び出すまでセッションが確立されない。単純な GET リクエストによるプリフェッチではセッション交換が完了しないため、トークン無効化を回避できる |
+| 対策（推奨） | Supabase Auth の PKCE フロー（`flowType: 'pkce'`）を使用する。PKCE フローでは `signInWithOtp()` 呼び出し時にブラウザ側で `code_verifier` が自動生成・保存され、`exchangeCodeForSession(code)` 実行時にこの `code_verifier` を Supabase サーバーへ送信して検証する。プリフェッチを行うメールサーバーやセキュリティスキャナは別プロセスであり、元のブラウザに保存された `code_verifier` を持たないため、code exchange が必ず失敗する。これによりトークン無効化を回避できる |
 | 対策（補助） | Supabase Dashboard > Authentication > URL Configuration で「Redirect URLs」にデプロイ先の URL（`https://your-domain.com/api/auth/callback`）を正確に登録する |
 
 ```text
 PKCE フローの動作:
-  1. ユーザーが Magic Link をクリック
-  2. Supabase が /api/auth/callback?code=XXX にリダイレクト
-  3. callback ハンドラが exchangeCodeForSession(code) を実行
-  4. セッション確立
+  1. signInWithOtp() 呼び出し時、ブラウザが code_verifier を自動生成しCookieに保存
+  2. ユーザーが Magic Link をクリック
+  3. Supabase が /api/auth/callback?code=XXX にリダイレクト
+  4. callback ハンドラが exchangeCodeForSession(code) を実行
+     → 内部で Cookie から code_verifier を取得し、Supabase サーバーへ送信
+  5. Supabase サーバーが code_verifier を検証 → 一致すればセッション確立
 
-→ プリフェッチは GET のみで code exchange を実行しないため、トークンは消費されない
+→ プリフェッチ元（メールサーバー等）は code_verifier を持たないため、
+   code exchange が失敗し、トークンは消費されない
+   ※ 保護の本質は GET/POST の違いではなく、code_verifier の有無である
+   ※ code_verifier の管理は Supabase Auth が自動で行うため、
+     アプリケーション側での明示的な保存処理は不要
 ```
 
 #### 7.4.2 Safari 長押しプレビューによるトークン消費
@@ -1419,6 +1431,7 @@ PKCE フローの動作:
   - [ ] Supabase クライアント初期化で flowType: 'pkce' を指定している
   - [ ] Supabase Dashboard の Redirect URLs にデプロイ先 URL を登録済み
   - [ ] /api/auth/callback で exchangeCodeForSession() を正しく実装している
+  - [ ] Email Template を PKCE 対応の URL 形式（`token_hash` を含む形式）へ更新済み
   - [ ] メールテンプレートに In-App Browser 回避の案内文を追加済み
   - [ ] 企業メール（Microsoft 365 / Google Workspace）でのログインテストを実施済み
   - [ ] iOS Safari / Android Chrome の In-App Browser でのログインテストを実施済み
