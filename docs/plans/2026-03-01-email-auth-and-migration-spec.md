@@ -204,9 +204,21 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_existing_auth_provider TEXT;
 BEGIN
   -- メール認証ユーザーのみ対象（LINE ユーザーは別経路で作成済み）
   IF NEW.email IS NOT NULL THEN
+    -- LINE ユーザーが同一 email を保持している場合は明示的にエラーとする
+    -- （Phase 1.5 の移行フローで対応すべきケース）
+    SELECT auth_provider INTO v_existing_auth_provider
+      FROM public.users
+      WHERE email = NEW.email;
+
+    IF v_existing_auth_provider = 'line' THEN
+      RAISE EXCEPTION 'このメールアドレスは LINE アカウントに紐付いています。移行手続きを実施してください: %', NEW.email;
+    END IF;
+
     INSERT INTO public.users (
       id,
       email,
@@ -760,6 +772,8 @@ DECLARE
   v_target_exists BOOLEAN;
   v_source_role   TEXT;
   v_target_role   TEXT;
+  v_source_auth_provider TEXT;
+  v_target_auth_provider TEXT;
   v_row_count     INT;
 BEGIN
   -- ============================================
@@ -803,6 +817,20 @@ BEGIN
 
   IF v_target_role = 'unavailable' THEN
     RAISE EXCEPTION '移行先ユーザーが無効化状態のため移行できません: %', p_target_user_id;
+  END IF;
+
+  -- auth_provider の妥当性検証（運用ミスによる誤った方向の移行を防止）
+  SELECT auth_provider INTO v_source_auth_provider FROM users WHERE id = p_source_user_id;
+  SELECT auth_provider INTO v_target_auth_provider FROM users WHERE id = p_target_user_id;
+
+  IF v_source_auth_provider != 'line' THEN
+    RAISE EXCEPTION '移行元は LINE ユーザーである必要があります: % (auth_provider=%)',
+      p_source_user_id, v_source_auth_provider;
+  END IF;
+
+  IF v_target_auth_provider != 'email' THEN
+    RAISE EXCEPTION '移行先はメールユーザーである必要があります: % (auth_provider=%)',
+      p_target_user_id, v_target_auth_provider;
   END IF;
 
   -- ============================================
@@ -1236,6 +1264,14 @@ GRANT EXECUTE ON FUNCTION migrate_user_data(UUID, UUID) TO service_role;
 対応:
   - prompt_templates.created_by / updated_by は明示的に UUID-B へ付替えしない
   - 管理者の作成履歴として UUID-A を保持する
+
+データ保持ポリシー:
+  - role='unavailable' に設定された移行元ユーザーは物理削除しない（永続保持）
+  - これにより prompt_templates.created_by / updated_by の ON DELETE SET NULL が
+    発動せず、管理者の作成履歴が消失するリスクを排除する
+  - 無効化アカウントの物理削除が将来的に必要になった場合は、事前に
+    prompt_templates / prompt_versions の created_by / updated_by を UUID-B に
+    付替えるマイグレーションを実施すること
 ```
 
 ### 6.8 手動移行で新規追加するもの
@@ -1309,6 +1345,21 @@ supabase/migrations/XXXXXX_create_migration_tokens.sql
    - 同一 source_user_id の短期間（24時間以内）複数依頼は自動アラート
    - 移行後7日間は旧 LINE アカウントへのログイン試行を監視し、不審時は運用担当へ通知
 ```
+
+### 7.2.2 確認コードの技術仕様
+
+| 項目 | 仕様 |
+|------|------|
+| コード形式 | 6桁の数字（000000-999999） |
+| 生成方法 | 暗号学的に安全な乱数生成器（`crypto.randomInt`） |
+| 有効期限 | 生成から15分間 |
+| 保存方法 | bcrypt でハッシュ化して保存（平文保存禁止） |
+| 送信方法 | target_email 宛にメール送信（Supabase Auth のメール送信基盤を利用） |
+| 再送制限 | 同一 source_user_id に対して1時間あたり3回まで |
+| 検証試行制限 | 24時間あたり3回まで。5回連続失敗でロック（§7.3 参照） |
+
+※ 手動運用のため、確認コードの生成・送信・検証はサポート窓口が運用ツール経由で実施する。
+将来的にセルフサービス UI を導入する場合は、`migration_verification_codes` テーブル（`user_id`, `code_hash`, `expires_at`, `attempts`）を新設して自動化する。
 
 ### 7.3 レート制限
 
