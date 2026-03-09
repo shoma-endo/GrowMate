@@ -1303,7 +1303,7 @@ supabase/migrations/XXXXXX_create_migration_tokens.sql
 
 | 脅威 | 対策 |
 |------|------|
-| Magic Link の盗聴 | HTTPS 必須。Supabase Auth がトークンを1回限り使用 + 有効期限管理 |
+| Magic Link の盗聴 | HTTPS 必須。Supabase Auth がトークンを1回限り使用 + 有効期限管理。本番環境ではプリフェッチ対策として PKCE フローを必須とする（§7.4 参照） |
 | ブルートフォース | Supabase Auth 側のレート制限が適用される |
 | メール列挙攻撃 | Supabase Auth はデフォルトで存在/非存在に関わらず同一レスポンスを返す |
 | セッションハイジャック | Supabase Auth が httpOnly Cookie でセッション管理 |
@@ -1369,6 +1369,137 @@ supabase/migrations/XXXXXX_create_migration_tokens.sql
 | 移行実行 | RPC ガードで再移行を拒否 + 運用上は同一ユーザーを順次実行 |
 | 確認コード検証 | 同一 source_user_id に対する検証試行は24時間あたり3回まで。5回連続失敗でロックし、管理者レビューを必須化。失敗は監査ログに記録 |
 
+### 7.4 Magic Link デプロイ時の既知問題と対策
+
+localhost での検証は通るが、本番環境（Vercel 等）にデプロイすると Magic Link でログインできなくなる問題が発生しやすい。
+以下に主要な原因と対策を整理する。
+
+#### 7.4.1 メールサーバー / セキュリティスキャナによるリンクプリフェッチ
+
+| 項目 | 内容 |
+|------|------|
+| 原因 | 企業メールサーバーやセキュリティスキャナ（Microsoft Defender for Office 365、Proofpoint、Barracuda 等）がメール内のリンクを自動的にプリフェッチ（GET リクエスト）し、トークンが「使用済み」として無効化される |
+| なぜ localhost では問題にならないか | `http://localhost:3000/...` へのリンクはメールサーバーから到達不能なため、プリフェッチが実行されない |
+| 対策（推奨） | Supabase Auth の PKCE フロー（`flowType: 'pkce'`）を使用する。PKCE フローでは Magic Link のクリック先が中間ページとなり、クライアント側で `exchangeCodeForSession()` を明示的に呼び出すまでセッションが確立されない。単純な GET リクエストによるプリフェッチではセッション交換が完了しないため、トークン無効化を回避できる |
+| 対策（補助） | Supabase Dashboard > Authentication > URL Configuration で「Redirect URLs」にデプロイ先の URL（`https://your-domain.com/api/auth/callback`）を正確に登録する |
+
+```text
+PKCE フローの動作:
+  1. ユーザーが Magic Link をクリック
+  2. Supabase が /api/auth/callback?code=XXX にリダイレクト
+  3. callback ハンドラが exchangeCodeForSession(code) を実行
+  4. セッション確立
+
+→ プリフェッチは GET のみで code exchange を実行しないため、トークンは消費されない
+```
+
+#### 7.4.2 Safari 長押しプレビューによるトークン消費
+
+| 項目 | 内容 |
+|------|------|
+| 原因 | iOS Safari でリンクを長押しするとプレビューウィンドウが開き、バックグラウンドで GET リクエストが発行されてトークンが消費される |
+| 対策 | PKCE フロー（§7.4.1）を採用することで、GET リクエストのみではセッション交換が完了しないため影響を回避できる |
+
+#### 7.4.3 In-App Browser 問題
+
+| 項目 | 内容 |
+|------|------|
+| 原因 | メールアプリ（Gmail アプリ、Outlook アプリ等）内でリンクをタップすると In-App Browser で開かれ、ユーザーが普段使うブラウザ（Safari / Chrome）にセッション Cookie が渡らない。結果として「ログインできたが、ブラウザで開くと未認証」となる |
+| 対策 1 | メール本文に「リンクを長押し → "Safari で開く" / "Chrome で開く" を選択してください」と案内文を追加する（Supabase Dashboard > Authentication > Email Templates で設定可能） |
+| 対策 2 | `/api/auth/callback` で認証完了後、ユーザーにセッション状態を明示する完了画面を表示し、In-App Browser 内でもログイン状態を確認できるようにする |
+| 対策 3（将来検討） | Universal Links / App Links を設定してデフォルトブラウザで開くよう誘導する |
+
+#### 7.4.4 実装時のチェックリスト
+
+```text
+デプロイ前確認:
+  - [ ] Supabase クライアント初期化で flowType: 'pkce' を指定している
+  - [ ] Supabase Dashboard の Redirect URLs にデプロイ先 URL を登録済み
+  - [ ] /api/auth/callback で exchangeCodeForSession() を正しく実装している
+  - [ ] メールテンプレートに In-App Browser 回避の案内文を追加済み
+  - [ ] 企業メール（Microsoft 365 / Google Workspace）でのログインテストを実施済み
+  - [ ] iOS Safari / Android Chrome の In-App Browser でのログインテストを実施済み
+```
+
+### 7.5 メール到達性（Email Deliverability）
+
+Magic Link はメールが届かなければ機能しない。迷惑メール判定を回避し、確実にメールを届けるための構成を整理する。
+
+#### 7.5.1 Supabase デフォルトメール送信の制限
+
+| 項目 | 内容 |
+|------|------|
+| 送信元 | Supabase 共有メールサーバー（`noreply@mail.app.supabase.io`） |
+| レート制限 | 1時間あたり3件（開発用途のみ。本番運用には不十分） |
+| 到達性 | 共有 IP のため、他プロジェクトの送信実績に影響される。迷惑メール判定されるリスクが高い |
+| 推奨 | **本番環境では必ずカスタム SMTP を設定する**（§7.5.2 参照） |
+
+#### 7.5.2 カスタム SMTP の設定
+
+Supabase Dashboard > Project Settings > Authentication > SMTP Settings でカスタム SMTP を設定する。
+
+```text
+推奨 SMTP プロバイダ:
+  - Amazon SES（低コスト・高到達率）
+  - Resend（開発者向け・Supabase との統合実績あり）
+  - SendGrid（実績豊富）
+  - Postmark（トランザクションメール特化・高到達率）
+
+設定項目:
+  - SMTP Host / Port
+  - SMTP Username / Password
+  - Sender Email（独自ドメインのメールアドレス）
+  - Sender Name（例: "GrowMate"）
+```
+
+#### 7.5.3 DNS レコード（SPF / DKIM / DMARC）
+
+カスタム SMTP を使用する場合、送信ドメインに以下の DNS レコードを正しく設定する必要がある。
+これらが未設定・不正確な場合、メールが迷惑メールに分類される、または受信拒否される可能性が高い。
+
+| レコード | 役割 | 設定例 |
+|----------|------|--------|
+| **SPF** (Sender Policy Framework) | 送信元サーバーの正当性を証明する。「このドメインからメールを送信して良い IP / サービス」を宣言 | `v=spf1 include:amazonses.com ~all`（Amazon SES の場合） |
+| **DKIM** (DomainKeys Identified Mail) | メールに電子署名を付与し、改ざんされていないことを証明する。SMTP プロバイダが提供する公開鍵を DNS に登録 | SMTP プロバイダの指示に従い CNAME または TXT レコードを追加 |
+| **DMARC** (Domain-based Message Authentication, Reporting and Conformance) | SPF / DKIM の検証結果に基づくポリシーを宣言し、認証失敗時の処理を指定する。レポート受信で不正送信を検知可能 | `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@your-domain.com`（段階的に `p=reject` へ移行） |
+
+```text
+設定手順:
+  1. SMTP プロバイダで送信ドメインを認証（Verify Domain）
+  2. プロバイダが提示する SPF / DKIM の DNS レコードを追加
+  3. DMARC レコードを追加（まず p=none で監視 → p=quarantine → p=reject へ段階移行）
+  4. 検証ツールで正しく設定されていることを確認:
+     - Google Admin Toolbox（https://toolbox.googleapps.com/apps/checkmx/）
+     - MXToolbox（https://mxtoolbox.com/）
+     - mail-tester.com（テストメール送信で総合スコアを確認）
+  5. DMARC レポートを定期的に確認し、不正送信や設定不備を検知
+```
+
+#### 7.5.4 メールテンプレートの最適化
+
+迷惑メール判定を回避するため、Supabase のメールテンプレートにも注意を払う。
+
+| 対策 | 説明 |
+|------|------|
+| 件名を明確に | 「ログインリンク」「GrowMate ログイン確認」など、スパム的でない件名にする |
+| HTML / テキスト両方を提供 | テキストパートが無いメールはスパム判定されやすい |
+| 短縮 URL を避ける | bit.ly 等の短縮 URL はスパムフィルタに引っかかりやすい。Supabase が生成する直接 URL をそのまま使用する |
+| 送信元アドレスを独自ドメインに | `noreply@growmate.jp` など、サービスのドメインから送信する |
+
+#### 7.5.5 デプロイ前のメール到達性チェックリスト
+
+```text
+必須確認:
+  - [ ] カスタム SMTP を設定済み（Supabase デフォルトを本番で使用しない）
+  - [ ] 送信ドメインの SPF レコードが正しく設定されている
+  - [ ] 送信ドメインの DKIM が正しく設定・検証済み
+  - [ ] DMARC レコードが設定されている（最低 p=none で監視開始）
+  - [ ] Gmail / Outlook / Yahoo メール等の主要メールサービスへの到達テスト実施済み
+  - [ ] mail-tester.com 等でスパムスコアを確認済み（目標: 9/10 以上）
+  - [ ] メールテンプレートのカスタマイズ完了（件名・本文・In-App Browser 案内）
+  - [ ] レート制限がサービス規模に対して十分であることを確認
+```
+
 ---
 
 ## 8. 工数見積もり
@@ -1429,6 +1560,11 @@ Phase 1.5 (LINE→Email 移行)
 - [ ] GSC / GA4 データ取得（Email ユーザー）
 - [ ] WordPress 投稿取得（Email ユーザー）
 - [ ] 既存 LINE ユーザーのセッション継続に影響がないこと
+- [ ] PKCE フローが正しく動作すること（`flowType: 'pkce'` + `exchangeCodeForSession`）
+- [ ] 企業メール環境（Microsoft 365 / Google Workspace）でプリフェッチによるトークン無効化が発生しないこと
+- [ ] iOS Safari / Android Chrome の In-App Browser から Magic Link をタップした場合の動作確認
+- [ ] カスタム SMTP 経由でのメール到達性確認（Gmail / Outlook / Yahoo）
+- [ ] SPF / DKIM / DMARC の DNS レコード検証済み
 
 ### 10.2 Phase 1.5 検証項目
 
