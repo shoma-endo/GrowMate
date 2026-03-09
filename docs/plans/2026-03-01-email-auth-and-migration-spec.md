@@ -1278,6 +1278,7 @@ supabase/migrations/XXXXXX_create_migration_tokens.sql
 | 脅威 | 対策 |
 |------|------|
 | 他人のアカウントへの不正移行 | 本人確認プロセス（確認コード + 既存アカウント情報照合）と管理者承認を必須化 |
+| 確認コードのブルートフォース | 検証試行のレート制限（24時間3回 / 連続5回失敗でロック・管理者レビュー必須化）。詳細は §7.3 参照 |
 | 移行実行権限の逸脱 | `migrate_user_data` 実行は service_role 限定。admin/指名運用担当者のみ実行可能 |
 | 二重移行・誤再実行 | `migrate_user_data` で source `role='unavailable'` を検知した場合は即時エラー（再移行禁止） |
 | 移行中のデータ不整合 | 単一トランザクション + FOR UPDATE ロック |
@@ -1289,6 +1290,8 @@ supabase/migrations/XXXXXX_create_migration_tokens.sql
 1. 確認コード検証
    - サポート窓口が target_email 宛に確認コードを送信
    - 依頼者が提示したコードが一致した場合のみ次工程へ進む
+   - レート制限: 同一 source_user_id に対する検証試行は24時間あたり3回まで
+   - 5回連続失敗した場合は依頼をロックし、管理者レビューを必須化
 
 2. 既存アカウント情報の照合
    - source_user_id に紐づく登録時期、直近ログイン時期、利用機能を確認質問
@@ -1313,6 +1316,7 @@ supabase/migrations/XXXXXX_create_migration_tokens.sql
 |------|------|
 | Magic Link 送信 | Supabase Auth デフォルト（3600秒あたり30件） |
 | 移行実行 | RPC ガードで再移行を拒否 + 運用上は同一ユーザーを順次実行 |
+| 確認コード検証 | 同一 source_user_id に対する検証試行は24時間あたり3回まで。5回連続失敗でロックし、管理者レビューを必須化。失敗は監査ログに記録 |
 
 ---
 
