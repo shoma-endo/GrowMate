@@ -1431,7 +1431,7 @@ PKCE フローの動作:
   - [ ] Supabase クライアント初期化で flowType: 'pkce' を指定している
   - [ ] Supabase Dashboard の Redirect URLs にデプロイ先 URL を登録済み
   - [ ] /api/auth/callback で exchangeCodeForSession() を正しく実装している
-  - [ ] Email Template を PKCE 対応の URL 形式（`token_hash` を含む形式）へ更新済み
+  - [ ] Email Template はデフォルト（{{ .ConfirmationURL }}）のまま変更不要であることを確認済み
   - [ ] メールテンプレートに In-App Browser 回避の案内文を追加済み
   - [ ] 企業メール（Microsoft 365 / Google Workspace）でのログインテストを実施済み
   - [ ] iOS Safari / Android Chrome の In-App Browser でのログインテストを実施済み
@@ -1485,7 +1485,9 @@ PKCE フローの動作:
 ■ OTP vs Magic Link の使い分け（メールテンプレートで制御）
   - Magic Link（デフォルト）: メールテンプレートに {{ .ConfirmationURL }} を使用
   - OTP コード入力方式: メールテンプレートを {{ .Token }} に変更する
-  - PKCE フロー使用時のテンプレート: token_hash を含む URL 形式に変更が必要
+  - PKCE フロー使用時: デフォルトの {{ .ConfirmationURL }} テンプレートをそのまま使用
+      → Supabase サーバーがトークン検証後、callback に ?code=XXX を付与してリダイレクト
+      → token_hash テンプレートは verifyOtp() と組み合わせる別方式のため、本プロジェクトでは不採用
 
 ■ リダイレクト先の設定
   - ユーザーがメール確認後のデフォルトリダイレクト先: SITE_URL
