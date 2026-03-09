@@ -608,8 +608,11 @@ Supabase ダッシュボードで以下を設定する。
 | Redirect URLs | `{NEXT_PUBLIC_SITE_URL}/api/auth/callback` |
 | Email Auth | 有効 |
 | Magic Link | 有効（OTP は無効） |
+| **OTP 有効期限** | **86,400秒（24時間）**（Supabase Auth の上限値。Supabase Dashboard > Authentication > Providers > Email > OTP Expiry で設定） |
 | Email template | カスタム（日本語テンプレート） |
 | Rate limit (email) | Supabase デフォルト（3600秒あたり30件） |
+
+> **Note**: OTP（Magic Link トークン）の有効期限は Supabase Auth の仕様上 **最大 86,400秒（24時間）** が上限。これを超える設定はブルートフォース対策として禁止されており、3日間等の延長は Supabase 標準機能では実現不可。届かなかった場合はメール送信完了画面の「再送信」ボタンで対応する。
 
 **環境変数**: 新規追加は不要。既存の `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` をそのまま使用。
 
@@ -1440,6 +1443,8 @@ PKCE フローの動作:
   - OTP の再送信制限: デフォルトで60秒に1回まで
   - OTP の有効期限: デフォルトで1時間（Supabase Dashboard > Auth > Providers > Email で変更可能）
   - 有効期限の最大値は86,400秒（24時間）まで（ブルートフォース対策）
+  - 【本プロジェクトの設定】上限の 86,400秒（24時間）に設定する（§5.6 参照）
+    → ユーザーがメールを受信してから翌日中であれば有効。届かなかった場合は「再送信」ボタンで対応
 
 ■ PKCE フローの対応範囲
   - PKCE フローが有効な操作:
