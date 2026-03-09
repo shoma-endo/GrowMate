@@ -329,13 +329,12 @@ users
 'use client';
 
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 
 export default function LoginPage() {
-  // クライアントはコンポーネント内で useRef で1回だけインスタンス化する
-  // （毎回 createSupabaseBrowserClient() を呼んでも内部でシングルトン管理されるが、
-  //  明示的に useRef で保持することで意図を明確にする）
-  const supabaseRef = useRef(createSupabaseBrowserClient());
+  // クライアントは lazy initializer で1回だけ生成する
+  // useState の関数引数は初回レンダー時のみ実行されるため、再レンダー時の無駄な生成を防ぐ
+  const [supabase] = useState(() => createSupabaseBrowserClient());
 
   // React 状態管理
   const [email, setEmail] = useState('');
@@ -347,13 +346,14 @@ export default function LoginPage() {
   const handleSendOtp = async () => {
     setIsSending(true);
     setError(null);
-    const { error } = await supabaseRef.current.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { shouldCreateUser: true },
     });
     setIsSending(false);
     if (error) {
-      setError(error.message);
+      // メール列挙攻撃防止: LINE 重複・レート制限等の詳細を隠蔽し汎用メッセージを返す
+      setError('認証に失敗しました。しばらく経ってから再度お試しください。');
       return;
     }
     setStep('otp');
@@ -414,7 +414,7 @@ const verifyOtpSchema = z.object({
 interface VerifyOtpResult {
   success: boolean;
   error?: string;
-  errorType?: 'invalid_otp' | 'otp_expired' | 'line_account_exists' | 'rate_limited' | 'unknown';
+  errorType?: 'invalid_otp' | 'otp_expired' | 'rate_limited' | 'unknown';
   redirectUrl?: string;
 }
 
@@ -438,10 +438,8 @@ export async function verifyOtpAction(
 
   // 3. エラーハンドリング
   if (error) {
-    // LINE アカウント重複（トリガーからの RAISE EXCEPTION）
-    if (error.message.includes('LINE アカウントに紐付いています')) {
-      return { success: false, error: error.message, errorType: 'line_account_exists' };
-    }
+    // NOTE: LINE アカウント重複エラーはここでは発生しない
+    // （重複は signInWithOtp() 時点で auth.users 作成時にトリガーで検出される）
     // OTP 期限切れ
     if (error.message.includes('expired') || error.status === 403) {
       return { success: false, error: '認証コードの有効期限が切れました。再送信してください。', errorType: 'otp_expired' };
@@ -797,20 +795,20 @@ export interface User {
 
 エラーフロー（LINE アカウント重複時）:
   ユーザーが user@example.com で OTP ログインを試みる
-    → signInWithOtp() → Supabase Auth が auth.users にユーザー作成
+    → signInWithOtp({ shouldCreateUser: true })
+    → Supabase Auth が auth.users にユーザーを即座に作成（OTP 送信時点）
     → handle_new_auth_user トリガー発火
-    → 同一メールの LINE アカウントが存在 → RAISE EXCEPTION
-    → verifyOtp() が失敗（トリガーによるエラー）
-    → Server Action がエラーをキャッチし、以下の UI を表示:
+    → 同一メールの LINE アカウントが public.users に存在 → RAISE EXCEPTION
+    → signInWithOtp() がエラーを返す（verifyOtp() ではない）
+    → クライアント側で汎用エラーメッセージを表示
 
     ┌───────────────────────────────────────┐
-    │  ⚠ ログインできませんでした          │
+    │  ⚠ 認証に失敗しました               │
     │                                       │
-    │  このメールアドレスは既に LINE        │
-    │  アカウントに紐付いています。         │
-    │                                       │
-    │  アカウント移行をご希望の場合は、     │
-    │  サポートにお問い合わせください。     │
+    │  メールを送信できませんでした。       │
+    │  しばらく経ってから再度お試し         │
+    │  いただくか、別の方法でログイン       │
+    │  してください。                       │
     │                                       │
     │  ┌─────────────────────────────────┐  │
     │  │       LINE でログイン           │  │
@@ -819,14 +817,14 @@ export interface User {
     │  ┌─────────────────────────────────┐  │
     │  │   別のメールアドレスを使用      │  │
     │  └─────────────────────────────────┘  │
-    │                                       │
-    │  📧 サポート窓口へ問い合わせ         │
     └───────────────────────────────────────┘
 
-  エラー判定方法:
-    - verifyOtp() のエラーメッセージに「LINE アカウントに紐付いています」を含むか判定
-    - 該当する場合は上記の専用エラー UI を表示
-    - 該当しない場合は汎用エラーメッセージ（「認証コードが無効です」等）を表示
+  セキュリティ上の注意:
+    - signInWithOtp() のエラー時は、LINE 重複・レート制限・その他すべて同一の
+      汎用メッセージ（「認証に失敗しました」）を返す
+    - 「このメールは LINE に紐付いています」等の具体的な情報を表示すると
+      メール列挙攻撃（email enumeration）に悪用されるため、意図的に汎用化する
+    - サーバーログには LINE 重複の詳細を記録し、管理者が原因を確認できるようにする
 ```
 
 ### 5.6 Supabase Auth 設定
@@ -839,7 +837,7 @@ Supabase ダッシュボードで以下を設定する。
 | Redirect URLs | 不要（OTP 方式はリダイレクトフローを使わない） |
 | Email Auth | 有効 |
 | Magic Link / OTP 切り替え | メールテンプレートで制御（`{{ .ConfirmationURL }}` → Magic Link、`{{ .Token }}` → OTP）。Dashboard に個別の有効/無効トグルは存在しない。本プロジェクトでは `{{ .Token }}` を使用 |
-| **OTP 有効期限** | **86,400秒（24時間）**（Supabase Auth のデフォルトは 3,600秒（1時間）だが、本プロジェクトでは上限値の24時間に変更する。Supabase Dashboard > Authentication > Providers > Email > OTP Expiry で設定） |
+| **OTP 有効期限** | **3,600秒（1時間）**（Supabase Auth デフォルト値を維持。Phase 1 ではメールアドレス単位のロックアウト（§7.3.1）が未実装のため、有効期限を延長するとブルートフォースリスクが増大する。メール単位ロックアウト実装後に延長を再検討。Supabase Dashboard > Authentication > Providers > Email > OTP Expiry で設定） |
 | OTP 再送信制限 | 60秒に1回（Supabase Auth デフォルト） |
 | Email template | カスタム（日本語テンプレート。`{{ .ConfirmationURL }}` → `{{ .Token }}` に変更） |
 | Auth API rate limit | Supabase デフォルト（3600秒あたり30件。`signInWithOtp` 等の Auth API 呼び出し上限） |
@@ -849,7 +847,7 @@ Supabase ダッシュボードで以下を設定する。
 > `{{ .ConfirmationURL }}` → Magic Link（リンククリック方式）、`{{ .Token }}` → OTP（6桁コード入力方式）。
 > `signInWithOtp()` のAPI自体は同じだが、テンプレートによって送信されるメールの内容が変わる。
 >
-> **Note**: OTP の有効期限は Supabase Auth の仕様上 **最大 86,400秒（24時間）** が上限。これを超える設定はブルートフォース対策として禁止されている。届かなかった場合はコード入力画面の「再送信」ボタンで対応する（60秒間隔制限あり）。
+> **Note**: Phase 1 では OTP 有効期限を **3,600秒（1時間）** のデフォルト値で運用する。メールアドレス単位のロックアウト機構（§7.3.1）を実装した後、必要に応じて延長を検討する（Supabase Auth の上限は 86,400秒）。届かなかった場合はコード入力画面の「再送信」ボタンで対応する（60秒間隔制限あり）。
 >
 > **Note**: 上記の「Auth API rate limit」と「Hosted email 送信枠」は異なる制限。Auth API rate limit は Supabase Auth の API 呼び出し回数制限であり、Hosted email 送信枠は Supabase 内蔵メールサーバーの送信件数制限。本番環境でカスタム SMTP を設定した場合、Hosted email 送信枠の制限は SMTP プロバイダ側の制限に置き換わる。
 
