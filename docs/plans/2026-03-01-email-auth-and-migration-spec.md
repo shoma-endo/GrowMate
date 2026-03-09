@@ -1421,6 +1421,61 @@ PKCE フローの動作:
   - [ ] iOS Safari / Android Chrome の In-App Browser でのログインテストを実施済み
 ```
 
+#### 7.4.5 Supabase 公式ドキュメント参照
+
+以下は実装時に必ず参照すべき公式ドキュメントとその要点。
+
+**参照ドキュメント一覧:**
+- [Passwordless email logins | Supabase Docs](https://supabase.com/docs/guides/auth/auth-email-passwordless)
+- [PKCE flow | Supabase Docs](https://supabase.com/docs/guides/auth/sessions/pkce-flow)
+- [JavaScript API Reference – signInWithOtp | Supabase Docs](https://supabase.com/docs/reference/javascript/auth-signinwithotp)
+- [Server-Side Advanced Guide | Supabase Docs](https://supabase.com/docs/guides/auth/server-side/advanced-guide)
+
+**公式ドキュメントから抜粋した重要仕様:**
+
+```text
+■ signInWithOtp の挙動
+  - ユーザーが存在しない場合、signInWithOtp() は自動的にサインアップを実行する
+  - 自動サインアップを禁止する場合は options.shouldCreateUser: false を指定する
+  - OTP の再送信制限: デフォルトで60秒に1回まで
+  - OTP の有効期限: デフォルトで1時間（Supabase Dashboard > Auth > Providers > Email で変更可能）
+  - 有効期限の最大値は86,400秒（24時間）まで（ブルートフォース対策）
+
+■ PKCE フローの対応範囲
+  - PKCE フローが有効な操作:
+      signInWithOtp（Magic Link）
+      signInWithOAuth
+      signUp
+      resetPasswordForEmail
+  - PKCE フローが使用できないケース:
+      autoconfirm（メール確認スキップ）が有効な場合
+      inviteUserByEmail（招待リンクは PKCE 非対応）
+        → 招待を開くブラウザと送信したブラウザが異なるため PKCE のセキュリティ保証が困難
+
+■ exchangeCodeForSession の仕様
+  - Auth Code の有効期限: 5分間
+  - Auth Code は1回のみ交換可能（使い捨て）
+  - PKCE フロー時のみ使用（flowType: 'pkce' が前提）
+  - code を exchangeCodeForSession に渡すと access_token / refresh_token を取得できる
+  - セキュアな保持のため Cookie（httpOnly 推奨）に保存する
+
+■ メール確認の有効/無効による挙動の違い
+  - Confirm email が有効: signInWithOtp → user は返るが session は null
+      → ユーザーがメールのリンクをクリック後にセッション確立
+  - Confirm email が無効: signInWithOtp → user と session の両方が即座に返る
+
+■ OTP vs Magic Link の使い分け（メールテンプレートで制御）
+  - Magic Link（デフォルト）: メールテンプレートに {{ .ConfirmationURL }} を使用
+  - OTP コード入力方式: メールテンプレートを {{ .Token }} に変更する
+  - PKCE フロー使用時のテンプレート: token_hash を含む URL 形式に変更が必要
+
+■ リダイレクト先の設定
+  - ユーザーがメール確認後のデフォルトリダイレクト先: SITE_URL
+  - カスタムリダイレクト先を使用する場合:
+      Supabase Dashboard > Authentication > URL Configuration > Redirect URLs に追加
+      signInWithOtp の options.emailRedirectTo で URL を指定
+```
+
 ### 7.5 メール到達性（Email Deliverability）
 
 Magic Link はメールが届かなければ機能しない。迷惑メール判定を回避し、確実にメールを届けるための構成を整理する。
