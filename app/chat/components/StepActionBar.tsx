@@ -11,7 +11,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   BookOpen,
-  FilePenLine,
   FileText,
   Loader2,
   MoreHorizontal,
@@ -90,7 +89,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       isSavingHeading = false,
       hasStep7Content,
       onGenerateTitleMeta,
-      isGenerateTitleMetaLoading = false,
       onNextStepChange,
       flowStatus = 'idle',
       onLoadBlogArticle,
@@ -100,7 +98,6 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       isHeadingInitInFlight = false,
       hasAttemptedHeadingInit = false,
       onRetryHeadingInit,
-      headingIndex,
       totalHeadings,
       currentHeadingText,
       activeHeadingIndex,

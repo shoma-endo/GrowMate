@@ -187,22 +187,6 @@ class ChatService {
   }> {
     try {
       // 制限チェックは呼び出し元（サーバーアクション）でロールに応じて実施
-      // ✅ デバッグログ: 履歴の確認
-      if (process.env.NODE_ENV === 'development') {
-        console.log(
-          `[ChatService] continueChat - Model: ${model}, History length: ${messages.length}`
-        );
-        if (messages.length > 0) {
-          console.log(
-            `[ChatService] History preview:`,
-            messages.slice(-3).map(m => ({
-              role: m.role,
-              content: m.content.substring(0, 50) + (m.content.length > 50 ? '...' : ''),
-            }))
-          );
-        }
-      }
-
       let aiResponse: ChatResponse;
       let userMessageString: string;
       if (typeof userMessage === 'string') {
@@ -252,12 +236,6 @@ class ChatService {
 
           if (olderMessages.length > 0) {
             try {
-              // 開発環境ではログ出力
-              if (process.env.NODE_ENV === 'development') {
-                console.log(
-                  `[ChatService] Summarizing ${olderMessages.length} old messages. Active history: ${recentMessages.length} msgs (${currentChars} chars)`
-                );
-              }
               const summary = await this.summarizeHistory(olderMessages);
               if (summary && summary.trim().length > 0) {
                 finalSystemPrompt = `${systemPrompt}\n\n【直前までの会話要約】\n${summary}`;
@@ -276,12 +254,6 @@ class ChatService {
             })),
             { role: 'user' as const, content: userMessage },
           ];
-
-          // ✅ デバッグログ: LLMに送信するメッセージの確認
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`[ChatService] LLM messages length: ${llmMessages.length}`);
-            console.log(`[ChatService] LLM provider: ${providerKey}, model: ${llmModel}`);
-          }
 
           const aiReply = await llmChat(providerKey, llmModel, llmMessages, {
             temperature: config.temperature,

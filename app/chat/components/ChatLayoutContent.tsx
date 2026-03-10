@@ -39,7 +39,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     ui,
     onSendMessage,
     handleModelChange,
-    nextStepForPlaceholder,
     currentSessionTitle,
     isEditingSessionTitle,
     draftSessionTitle,

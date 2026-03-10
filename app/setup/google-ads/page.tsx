@@ -9,6 +9,7 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { GoogleAdsAccountSelector } from '@/components/GoogleAdsAccountSelector';
+import { GoogleAdsSetupClient } from '@/components/GoogleAdsSetupClient';
 
 // エラーコードとメッセージのマッピング
 const ERROR_MAP: Record<string, string> = {
@@ -35,6 +36,7 @@ async function GoogleAdsSetupContent({
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
   const success = searchParams.success === 'true';
+  const disconnected = searchParams.disconnected === '1';
   const error = typeof searchParams.error === 'string' ? searchParams.error : undefined;
 
   // エラーメッセージの解決
@@ -65,7 +67,19 @@ async function GoogleAdsSetupContent({
         </p>
       </div>
 
-      {success && (
+      {disconnected && !isConnected && (
+        <Alert className="bg-green-50 border-green-200">
+          <AlertTitle className="text-green-800 font-medium flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <span>連携を解除しました</span>
+          </AlertTitle>
+          <AlertDescription className="text-green-700">
+            Google Ads 連携を解除しました。再度連携する場合は「Googleでログイン」から手続きしてください。
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {success && isConnected && (
         <Alert className="bg-green-50 border-green-200">
           <AlertTitle className="text-green-800 font-medium flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -162,19 +176,32 @@ async function GoogleAdsSetupContent({
       </Card>
 
       {isConnected && (
-        <Card>
-          <CardHeader>
-            <CardTitle>アカウント選択</CardTitle>
-            <CardDescription>
-              MCCアカウントでログインした場合、配下のアカウントから分析対象とするアカウントをいつでも切り替えできます。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <GoogleAdsAccountSelector
-              initialCustomerId={connectionStatus.customerId}
-            />
-          </CardContent>
-        </Card>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>アカウント選択</CardTitle>
+              <CardDescription>
+                MCCアカウントでログインした場合、配下のアカウントから分析対象とするアカウントをいつでも切り替えできます。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <GoogleAdsAccountSelector
+                initialCustomerId={connectionStatus.customerId}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>連携解除</CardTitle>
+              <CardDescription>
+                別のGoogleアカウントで連携し直す場合や、連携をやめる場合は解除してください。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <GoogleAdsSetupClient />
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );

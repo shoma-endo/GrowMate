@@ -303,14 +303,6 @@ export async function POST(req: NextRequest) {
 
             resetIdleTimeout();
 
-            // Web検索関連イベントのログ出力（デバッグ用）
-            if (chunk.type === 'content_block_start') {
-              console.log(
-                '[Web Search Debug] content_block_start:',
-                JSON.stringify(chunk.content_block)
-              );
-            }
-
             if (chunk.type === 'content_block_delta') {
               if (chunk.delta.type === 'text_delta') {
                 const textChunk = chunk.delta.text;

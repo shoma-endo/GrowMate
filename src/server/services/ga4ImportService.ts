@@ -215,20 +215,6 @@ export class Ga4ImportService {
       });
     }
 
-    console.log('[ga4ImportService.syncUser] completed', {
-      userId,
-      propertyId,
-      startDate,
-      endDate,
-      baseRows: baseReport.rows.length,
-      eventRows: eventReport.rows.length,
-      mergedRows: merged.length,
-      upserted: rowsToSave.length,
-      cursorAdvanced: rowsToSave.length > 0,
-      isSampled: baseReport.isSampled || eventReport.isSampled,
-      isPartial: baseReport.isPartial || eventReport.isPartial,
-    });
-
     return {
       ok: true,
       data: {
@@ -312,7 +298,6 @@ export class Ga4ImportService {
     let isSampled = false;
     let isPartial = false;
 
-    let pageIndex = 0;
     while (rows.length < Ga4ImportService.MAX_TOTAL_ROWS) {
       const remaining = Ga4ImportService.MAX_TOTAL_ROWS - rows.length;
       const limit = Math.min(Ga4ImportService.MAX_ROWS_PER_REQUEST, remaining);
@@ -324,15 +309,6 @@ export class Ga4ImportService {
       });
 
       const responseRows = Array.isArray(response.rows) ? response.rows : [];
-      console.log('[ga4ImportService.fetchReportWithPagination]', {
-        mode,
-        pageIndex,
-        offset,
-        limit,
-        returnedRows: responseRows.length,
-        totalRowCount: response.rowCount ?? null,
-        accumulatedRows: rows.length,
-      });
       const samplingMetadatas = response.metadata?.samplingMetadatas;
       isSampled ||=
         Boolean(response.metadata?.dataLossFromOtherRow) ||
@@ -387,7 +363,6 @@ export class Ga4ImportService {
         break;
       }
 
-      pageIndex += 1;
       offset += limit;
       if (offset >= Ga4ImportService.MAX_TOTAL_ROWS) {
         isPartial = true;

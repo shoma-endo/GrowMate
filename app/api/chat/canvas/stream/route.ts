@@ -383,8 +383,6 @@ export async function POST(req: NextRequest) {
           let extractedReferences: WebReference[] = [];
           if (shouldEnableWebSearch) {
             try {
-              console.log('[Canvas Web Search] Starting web search phase...');
-
               const searchStream = await anthropic.messages.stream({
                 model: actualModel,
                 max_tokens: 2000,
@@ -423,22 +421,11 @@ export async function POST(req: NextRequest) {
                 if (abortController?.signal.aborted) break;
                 resetIdleTimeout();
 
-                if (event.type === 'content_block_start') {
-                  console.log(
-                    '[Canvas Web Search] Search event:',
-                    JSON.stringify(event.content_block)
-                  );
-                }
-
                 if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
                   searchResults += event.delta.text;
                 }
               }
 
-              console.log(
-                '[Canvas Web Search] Search completed. Results length:',
-                searchResults.length
-              );
               extractedReferences = extractWebReferences(searchResults);
             } catch (searchError) {
               console.error('[Canvas Web Search] Search failed:', searchError);
@@ -516,14 +503,6 @@ export async function POST(req: NextRequest) {
             if (abortController?.signal.aborted) break;
 
             resetIdleTimeout();
-
-            // デバッグ用ログ
-            if (event.type === 'content_block_start') {
-              console.log(
-                '[Canvas Edit Debug] content_block_start:',
-                JSON.stringify(event.content_block)
-              );
-            }
 
             if (event.type === 'content_block_delta') {
               if (event.delta.type === 'input_json_delta') {
@@ -733,8 +712,6 @@ export async function POST(req: NextRequest) {
                   );
                 }
               }
-
-              console.log('[Canvas Analysis] Analysis completed. Length:', analysisResult.length);
 
               // ✅ チャット履歴に2つのアシスタントメッセージを別々に保存
               // continueChat は必ずユーザーメッセージとアシスタントメッセージのペアを保存するため、
