@@ -12,12 +12,10 @@ export default function LoginPage() {
   const hasAttemptedAutoLogin = useRef(false);
 
   const loginWithLine = async () => {
-    console.log('[LoginPage] Starting loginWithLine...');
     setIsLoading(true);
     setShowButton(false);
     try {
       // サーバー側でセキュアなstate生成とCookie設定
-      console.log('[LoginPage] Fetching /api/auth/line-oauth-init');
       const response = await fetch('/api/auth/line-oauth-init', {
         cache: 'no-store', // キャッシュ無効化
       });
@@ -27,7 +25,6 @@ export default function LoginPage() {
       }
 
       const { authUrl } = await response.json();
-      console.log('[LoginPage] Redirecting to:', authUrl);
 
       // LINE OAuth認証ページへリダイレクト
       if (authUrl) {
@@ -46,13 +43,11 @@ export default function LoginPage() {
   useEffect(() => {
     // 開発環境のStrict Modeでの二重実行防止
     if (hasAttemptedAutoLogin.current) {
-      console.log('[LoginPage] Skipping autoLogin (already attempted)');
       return;
     }
     hasAttemptedAutoLogin.current = true;
 
     const autoLogin = async () => {
-      console.log('[LoginPage] Starting autoLogin check...');
       setIsLoading(true);
 
       try {
@@ -62,17 +57,13 @@ export default function LoginPage() {
           cache: 'no-store',
         });
 
-        console.log('[LoginPage] check-role status:', response.status);
-
         if (response.ok) {
-          console.log('[LoginPage] Already logged in, redirecting to /');
           // router.replaceだと不安定な場合があるのでwindow.locationを使用
           window.location.href = '/';
           return;
         }
 
         if (response.status === 401) {
-          console.log('[LoginPage] Unauthorized, triggering loginWithLine');
           // 未認証なら即座にLINEログインへ
           await loginWithLine();
           return;

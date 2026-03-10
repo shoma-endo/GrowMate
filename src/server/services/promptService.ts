@@ -520,9 +520,6 @@ export class PromptService extends SupabaseService {
   static async invalidateAllCaches(): Promise<void> {
     // React Cacheは自動で無効化される（Next.js 15の機能）
     // 現時点ではサーバー側の明示的なキャッシュクリア処理は不要
-    if (process.env.NODE_ENV === 'development') {
-      console.log('プロンプトキャッシュ無効化リクエストを受信（処理スキップ）');
-    }
   }
 
   /**
@@ -541,15 +538,6 @@ export class PromptService extends SupabaseService {
       }
       result = result.replace(regex, value || '');
     }
-
-    // 置換後に残っているプレースホルダも確認
-    const unresolved = (result.match(/{{(\w+)}}/g) || []).map(v => v.replace(/[{}]/g, ''));
-
-    // デバッグログ
-    console.log('[PromptService.replaceVariables] 変数置換', {
-      replaced: replacedKeys,
-      unresolved,
-    });
 
     return result;
   }

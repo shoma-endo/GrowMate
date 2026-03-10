@@ -24,16 +24,6 @@ export async function GET() {
 
     const { userId, credential } = authResult;
 
-    // デバッグ: 認証情報をログに出力（本番環境ではPIIを除外）
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Google Ads認証情報:', {
-        googleAccountEmail: credential.googleAccountEmail,
-        userId,
-        hasAccessToken: !!credential.accessToken,
-        hasRefreshToken: !!credential.refreshToken,
-      });
-    }
-
     // アクセストークンが期限切れの場合はリフレッシュ
     const tokenResult = await refreshGoogleAdsTokenIfNeeded(userId, credential);
     if (!tokenResult.success) {
@@ -43,20 +33,6 @@ export async function GET() {
 
     // アカウント一覧を取得
     const googleAdsService = new GoogleAdsService();
-    // デバッグ: API呼び出し情報をログに出力（本番環境ではPIIを除外）
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Google Ads API呼び出し:', {
-        googleAccountEmail: credential.googleAccountEmail,
-        accessTokenLength: accessToken.length,
-        developerTokenSet: !!process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-      });
-    } else {
-      // 本番環境ではPIIを含まないログのみ出力
-      console.log('Google Ads API呼び出し:', {
-        accessTokenLength: accessToken.length,
-        developerTokenSet: !!process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-      });
-    }
     try {
       const customerIds = await googleAdsService.listAccessibleCustomers(accessToken);
 
@@ -93,17 +69,6 @@ export async function GET() {
       const detectedManagerId = infoResults.find(r => r.info?.isManager)?.id || null;
       const mccCustomerId: string | null =
         storedManagerIsManager ? storedManagerId : detectedManagerId;
-
-      // デバッグログ: MCCアカウントの特定状況を確認（開発環境のみ）
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Google Ads] MCC specification:', {
-          managerCustomerId: authResult.credential.managerCustomerId || '(not set)',
-          detectedMccCustomerId: mccCustomerId || '(null)',
-          accessibleCustomerCount: customerIds.length,
-          allAccessibleCustomers: customerIds,
-          managerAccounts: customerIds.filter(id => customerInfoMap.get(id)?.isManager),
-        });
-      }
 
       // 2パス目: MCC配下の子アカウントで名前が取得できなかった場合、login-customer-id を指定して再取得
       if (mccCustomerId) {

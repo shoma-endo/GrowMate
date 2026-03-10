@@ -277,9 +277,7 @@ export const useChatSession = (
                   return false;
                 } else if (eventType === 'usage' || eventType === 'meta') {
                   try {
-                    if (process.env.NODE_ENV === 'development') {
-                      console.log(`[Stream ${eventType}]`, JSON.parse(dataCombined));
-                    }
+                    JSON.parse(dataCombined);
                   } catch (error) {
                     console.warn('[Stream] Failed to parse JSON:', error);
                   }

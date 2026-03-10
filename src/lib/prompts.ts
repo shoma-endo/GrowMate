@@ -861,10 +861,6 @@ async function generateBlogCreationPromptByStep(
 ): Promise<string> {
   try {
     const templateName = toTemplateName(step);
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[BlogPrompt] Fetching step template', { step, templateName });
-    }
-
     const [template, auth, businessInfo] = await Promise.all([
       PromptService.getTemplateByName(templateName),
       authMiddleware(liffAccessToken),
@@ -880,37 +876,6 @@ async function generateBlogCreationPromptByStep(
       const title = entry.wp_post_title || '';
       return title ? `${title} | ${entry.canonical_url}` : entry.canonical_url;
     });
-    if (isStep7) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[BlogPrompt] Step7 canonicalUrls loaded', {
-          step,
-          templateName,
-          userIdLoaded: Boolean(userId),
-          canonicalUrlCount: canonicalUrls.length,
-        });
-      }
-    }
-    // DBテンプレの変数定義と本文内のプレースホルダを可視化
-    const dbVarNames = (template?.variables || []).map(v => v.name);
-    const contentVarNames = Array.from(
-      new Set(
-        ((template?.content || '').match(/\{\{(\w+)\}\}/g) || []).map(m => m.replace(/[{}]/g, ''))
-      )
-    );
-    const varsDiff = {
-      missingInDB: contentVarNames.filter(n => !dbVarNames.includes(n)),
-      extraInDB: dbVarNames.filter(n => !contentVarNames.includes(n)),
-    };
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[BlogPrompt][Vars] テンプレ変数確認', {
-        step,
-        templateName,
-        isStep7,
-        dbVarNames,
-        contentVarNames,
-        varsDiff,
-      });
-    }
     // content_annotations を取得（セッション優先、無ければユーザー最新）し、テンプレ変数としてマージ
     const contentAnnotation = userId
       ? sessionId
@@ -927,26 +892,8 @@ async function generateBlogCreationPromptByStep(
           canonicalLinkPairs: canonicalLinkPairsFormatted.join('\n'),
         }
       : { ...contentVars };
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[BlogPrompt][Vars] 置換に使用する変数ソース', {
-        step,
-        isStep7,
-        applyBusinessInfo: true,
-        applyContentVars: true,
-        contentVarsKeys: Object.keys(contentVars),
-        canonicalUrlCount: canonicalUrls.length,
-      });
-    }
 
     if (template?.content) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[BlogPrompt] Using step template from DB', {
-          step,
-          templateName,
-          withVariables: isStep7,
-          contentLength: template.content.length,
-        });
-      }
       // 1) 事業者情報（{{...}}）を置換 → 2) コンテンツ/Step7変数を置換
       // ブログ作成は今のところ特定のサービスに依存しない（全体Profileを使用）
       const afterBusiness = replaceTemplateVariables(template.content, businessInfo);

@@ -84,9 +84,6 @@ export class GscEvaluationService {
         maxRows: 5000,
       });
       batchHitLimit = importResult.pageMetricsHitLimit;
-      console.log(
-        `[gscEvaluationService] Pre-imported ${maxCycleDays} days of data for user ${userId} (${evaluationRows.length} articles). Hit limit: ${batchHitLimit}`
-      );
     } catch (importError) {
       console.warn(
         `[gscEvaluationService] Failed to pre-import data for user ${userId}. Proceeding article-by-article.`,
@@ -204,9 +201,6 @@ export class GscEvaluationService {
 
     // 2. メトリクスが見つからず、かつバッチ上限に達していた場合はフォールバック
     if (!metric && batchHitLimit) {
-      console.log(
-        `[gscEvaluationService] Metric missing and batch limit hit. Fetching targeted data for: ${evaluation.id}`
-      );
       const cycleDays = evaluation.cycle_days || 30;
       const startDate = addDaysISO(today, -cycleDays);
 
@@ -432,8 +426,6 @@ export class GscEvaluationService {
     const todayJst = formatDateISO(nowJst);
     const currentHourJst = nowJst.getHours();
 
-    console.log(`[gscEvaluationService] Running batch at JST: ${todayJst} ${currentHourJst}:00`);
-
     // 全てのアクティブな評価対象を取得
     const { data: fetchedData, error: evalError } = await this.supabaseService
       .getClient()
@@ -453,13 +445,8 @@ export class GscEvaluationService {
     });
 
     if (dueEvaluations.length === 0) {
-      console.log('[gscEvaluationService] No evaluations due at this time.');
       return summary;
     }
-
-    console.log(
-      `[gscEvaluationService] Found ${dueEvaluations.length} due evaluations out of ${evaluations.length} total`
-    );
 
     // ユーザーIDでグルーピング
     const evaluationsByUserMap = new Map<string, GscEvaluationRow[]>();
@@ -495,10 +482,6 @@ export class GscEvaluationService {
       // 処理ユーザー数のチェック（試行回数で判定）
       if (summary.usersAttempted >= GscEvaluationService.MAX_USERS_PER_BATCH) {
         const remaining = userIds.length - summary.usersAttempted;
-        console.log(
-          `[gscEvaluationService] Max users per batch (${GscEvaluationService.MAX_USERS_PER_BATCH}) reached. ` +
-            `Stopping batch. Remaining: ${remaining} users.`
-        );
         summary.stoppedReason = 'max_users';
         summary.usersSkippedDueToLimit = remaining;
         break;
@@ -511,10 +494,6 @@ export class GscEvaluationService {
       }
 
       try {
-        console.log(
-          `[gscEvaluationService] Processing user ${userId} with ${userEvaluations.length} evaluations`
-        );
-
         const result = await this.runDueEvaluationsForUser(userId, {
           evaluations: userEvaluations,
           nowJst,
@@ -535,7 +514,6 @@ export class GscEvaluationService {
       }
     }
 
-    console.log('[gscEvaluationService] Batch completed summary:', summary);
     return summary;
   }
 

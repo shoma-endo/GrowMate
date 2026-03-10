@@ -76,12 +76,9 @@ export async function GET(request: NextRequest) {
       // 招待Cookieの確認と処理
       invToken = cookieStore.get('employee_invitation_token')?.value;
       if (currentUser && invToken) {
-        console.log('Processing invitation token:', invToken);
         const acceptResult = await userService.acceptEmployeeInvitation(currentUser.id, invToken);
         if (!acceptResult.success) {
           console.error('Failed to accept invitation:', acceptResult.error);
-        } else {
-          console.log('Invitation accepted successfully');
         }
       }
     } catch (e) {

@@ -28,12 +28,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('[cron/gsc-evaluate] Starting scheduled evaluation batch...');
-
     // 次回評価予定日時に達した全ユーザーの評価を実行
     const result = await gscEvaluationService.runAllDueEvaluations();
-
-    console.log('[cron/gsc-evaluate] Batch completed:', result);
 
     return NextResponse.json({
       success: true,

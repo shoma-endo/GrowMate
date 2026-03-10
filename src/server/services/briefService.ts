@@ -125,9 +125,6 @@ export class BriefService {
       if (error) {
         if (error.code === 'PGRST116') {
           // レコードが見つからない場合（正常ケース）
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`事業者情報が未登録: userId=${userId}`);
-          }
           return null;
         }
         console.error('Brief取得エラー:', error);
@@ -170,21 +167,15 @@ export class BriefService {
   /**
    * キャッシュクリア（更新時に呼び出し）
    */
-  static clearCache(userId: string): void {
+  static clearCache(): void {
     // React CacheはAPIレベルでのclear機能が限定的なため
     // 実装上は次回リクエスト時に自然に更新される
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`Brief cache cleared for userId: ${userId}`);
-    }
   }
 
   /**
    * 全てのキャッシュをクリア
    */
   static invalidateAllCaches(): void {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Brief cache invalidated (all)');
-    }
     // React Cacheの制限により、実際のクリアは次回リクエスト時
   }
 }
