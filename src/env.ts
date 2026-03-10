@@ -3,9 +3,9 @@ import { z } from 'zod';
 const clientEnvSchema = z.object({
   NEXT_PUBLIC_LIFF_ID: z.string().min(1),
   NEXT_PUBLIC_LIFF_CHANNEL_ID: z.string().min(1),
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
+  NEXT_PUBLIC_SUPABASE_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
-  NEXT_PUBLIC_SITE_URL: z.string().url(),
+  NEXT_PUBLIC_SITE_URL: z.url(),
   NEXT_PUBLIC_STRIPE_ENABLED: z.string().default('false'),
 });
 
@@ -20,10 +20,10 @@ const serverEnvSchema = z.object({
   LINE_CHANNEL_SECRET: z.string().min(1),
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
-  GOOGLE_SEARCH_CONSOLE_REDIRECT_URI: z.string().url().optional(),
+  GOOGLE_SEARCH_CONSOLE_REDIRECT_URI: z.url().optional(),
   WORDPRESS_COM_CLIENT_ID: z.string().min(1).optional(),
   WORDPRESS_COM_CLIENT_SECRET: z.string().min(1).optional(),
-  WORDPRESS_COM_REDIRECT_URI: z.string().url().optional(),
+  WORDPRESS_COM_REDIRECT_URI: z.url().optional(),
   COOKIE_SECRET: z.string().min(1).optional(),
 });
 

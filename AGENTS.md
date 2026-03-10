@@ -71,8 +71,8 @@ If an error occurs during execution or the plan fails:
 - **Supabase 利用方針**: クライアント生成・Service Role の扱い・ログ方針は `supabase-service-usage` スキルを参照すること。
 - **Server Actions / Route Handlers**: 機密情報露出防止と使い分けの詳細は `server-actions-and-routes` スキルを参照すること。
 - **セルフレビュー手順**: 2 パスの自己レビュー手順は `self-review` スキルを参照し、コーディング完了毎に必ず実施結果を報告すること。
-- **実装指針**: TypeScript / Next.js / Supabase / フロント実装の詳細なポリシーは `implementation-guidelines` スキルを参照すること。
-- **テスト・トラブルシュート**: 画面ごとの確認観点や LIFF / SSE / WordPress / RLS / マイグレーションのトラブルシュートは `testing-and-troubleshooting` スキルを参照すること。
+- **実装指針**: TypeScript / Next.js / Supabase / フロント実装の詳細なポリシーは `implementation-guidelines` と `react19-patterns` スキルを参照すること。
+- **テスト・トラブルシュート**: 画面ごとの確認観点や LIFF / SSE / WordPress / RLS / マイグレーションのトラブルシュートは`testing-and-troubleshooting` スキルを参照すること。
 
 プロジェクト全体の背景や詳細な仕様は、`README.md`と本ファイルを併せて参照すること。
 </law>

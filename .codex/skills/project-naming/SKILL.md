@@ -1,8 +1,6 @@
 ---
 name: project-naming
 description: プロジェクト全域の命名規則。ディレクトリ、ファイル、コード内の全ルールを網羅した唯一の正解（SSoT）。
-metadata:
-  short-description: 完全同期版：プロジェクト命名規約
 ---
 
 # プロジェクト命名規則

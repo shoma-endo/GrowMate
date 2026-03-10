@@ -1,8 +1,6 @@
 ---
 name: supabase-service-usage
 description: アプリ全域の Supabase 利用ルール。サービス層の統一、Service Role の安全な使い分け、ログ付与、Server Actions 連携を規定。
-metadata:
-  short-description: 完全同期版：Supabase 実装規約 (サブクラス推奨版)
 ---
 
 # Supabase サービス利用規約
@@ -47,7 +45,7 @@ metadata:
           const { data, error } = await client
             .from('content_annotations')
             .select('*')
-            .eq('user_id', userId); // 権限チェック의 必須化
+            .eq('user_id', userId); // 権限チェックの必須化
           if (error) throw error;
           return data;
         },
