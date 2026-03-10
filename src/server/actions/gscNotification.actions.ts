@@ -109,7 +109,6 @@ export async function getUnreadSuggestions(): Promise<UnreadSuggestionsResponse>
   }
 
   // クライアント向けに整形
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const suggestions: UnreadSuggestion[] = data.map((item: any) => ({
     id: item.id,
     evaluation_date: item.evaluation_date,

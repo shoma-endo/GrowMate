@@ -7,11 +7,7 @@ import { Unplug } from 'lucide-react';
 import { disconnectGoogleAds } from '@/server/actions/googleAds.actions';
 import { handleAsyncAction } from '@/lib/async-handler';
 
-interface GoogleAdsSetupClientProps {
-  isConnected: boolean;
-}
-
-export function GoogleAdsSetupClient({ isConnected }: GoogleAdsSetupClientProps) {
+export function GoogleAdsSetupClient() {
   const router = useRouter();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
@@ -23,18 +19,14 @@ export function GoogleAdsSetupClient({ isConnected }: GoogleAdsSetupClientProps)
 
     await handleAsyncAction(disconnectGoogleAds, {
       onSuccess: () => {
-        setAlertMessage('連携を解除しました');
-        router.refresh();
+        // ?success=true を残すと解除後も「連携完了」バナーが残るため、クエリを外して遷移しつつ解除完了を伝える
+        router.replace('/setup/google-ads?disconnected=1');
       },
       setLoading: setIsDisconnecting,
       setMessage: setAlertMessage,
       defaultErrorMessage: '連携解除に失敗しました',
     });
   };
-
-  if (!isConnected) {
-    return null;
-  }
 
   return (
     <div className="space-y-4">
