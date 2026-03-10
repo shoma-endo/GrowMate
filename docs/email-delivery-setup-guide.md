@@ -251,7 +251,7 @@ GrowMate の現時点の入力値:
 - Host: `smtp.resend.com`
 - Port: `465`
 - Username: `resend`
-- Password: `Resend API Key`
+- Password: `<Resend Dashboard で発行した API キー>`
 
 ---
 
