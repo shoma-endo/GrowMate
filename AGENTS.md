@@ -61,7 +61,7 @@ If an error occurs during execution or the plan fails:
 ## 開発ワークフローの原則
 
 - 目的と仕様を整理し、必要なら段階的な作業計画を提示する。
-- ソースを調査する際は `rg` / `rg --files` を優先し、`shell` コマンドでは `working_directory` を明示する。
+- ソースを調査する際は `grep` を優先し、`shell` コマンドでは `working_directory` を明示する。
 - 変更は最小編集で行い、自動生成ファイルの直接編集は避ける。
 - 作業完了時は新規ファイルを含めて `git diff` を確認し、日本語の 1 行コミットメッセージ案を必ず提示する。
 
