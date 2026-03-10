@@ -1,6 +1,6 @@
 ---
 name: update-docs
-description: This skill should be used when the user asks to update or review documentation, or when code changes need to be synced with docs. Provides a guided workflow for updating documentation based on code changes.
+description: This skill should be used when the user asks to update or review documentation, or when code changes need to be synced with docs. Provides a guided workflow for updating Next.js-style MDX documentation based on code changes.
 ---
 
 # Documentation Update Workflow

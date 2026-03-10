@@ -39,8 +39,11 @@ export interface ServerActionResult<T> {
 
 ### 2.2 クライアント側の共通ハンドリング
 
-- 取得/更新の実行は `handleAsyncAction` で統一する（`src/lib/async-handler.ts`）。
+- **推奨**: 取得/更新の実行は `handleAsyncAction` で統一する（`src/lib/async-handler.ts`）。
 - `onSuccess` / `setLoading` / `setMessage` で UI 状態とメッセージを集中管理する。
+- **適用範囲**:
+  - **必須**: 設定系の単発取得・更新（GSC / GA4 / Google Ads セットアップ、ステータス取得など）では `handleAsyncAction` を使用する。
+  - **許容**: チャット送信・注釈保存・セッション一覧など、ストリーミングや複数状態を扱う画面では、Server Action を直接呼び `result.error` を自前で扱うパターンも可。その場合も `result.error` は表示専用とし、メッセージは `ERROR_MESSAGES` 由来に限定する。
 - 参考: 実装例（`src/hooks/useGscSetup.ts` と同型の最小パターン）
 
 ```ts
@@ -67,18 +70,18 @@ await handleAsyncAction(fetchGscStatus, {
 1. **メッセージ追加は `src/domain/errors/error-messages.ts` に集約**
 2. **Server Action は `Error` を throw せず `{ success: false, error }` を返す**
 3. **クライアントは `result.error` を表示するだけに留める**
-4. **`handleAsyncAction` を使い UI 状態とメッセージ処理を統一する**
+4. **設定系の単発 Action では `handleAsyncAction` を使い、それ以外でも `result.error` 表示と `ERROR_MESSAGES` の利用を守る**
 
 ## 4. アンチパターン
 
 - [ ] Client Component で `Error.message` を直接表示する
 - [ ] Server Action で例外をそのまま throw する
 - [ ] メッセージ文字列を任意のファイルに直接書く
-- [ ] `handleAsyncAction` を使わずに各所でエラーハンドリングを分散させる
+- [ ] 設定系の単発 Action で `handleAsyncAction` を使わずにエラーハンドリングを分散させる
 
 ## 5. セルフレビュー項目
 
 - [ ] `ERROR_MESSAGES` に追加した文言が他用途で重複しないか
 - [ ] Server Action の返却が `ServerActionResult` の形に沿っているか
 - [ ] Network Boundary 越しに `Error.message` を使っていないか
-- [ ] `handleAsyncAction` で UI 側の処理が統一されているか
+- [ ] 設定系では `handleAsyncAction` を使っているか。他では `result.error` と `ERROR_MESSAGES` を守っているか

@@ -18,9 +18,10 @@ const V = ERROR_MESSAGES.VALIDATION;
 export const TITLE_MAX_LENGTH = 60;
 
 // --- オプショナルURL・メール（空文字→undefined、値あり時のみ形式チェック） ---
+// Zod 4: トップレベル z.url() / z.email() を使用
 
-const urlSchema = z.string().url();
-const emailSchema = z.string().email();
+const urlSchema = z.url();
+const emailSchema = z.email();
 
 export const optionalUrl = z
   .string()
@@ -30,7 +31,7 @@ export const optionalUrl = z
       if (!val || val === '') return true;
       return urlSchema.safeParse(val).success;
     },
-    { message: V.INVALID_URL }
+    { error: V.INVALID_URL }
   )
   .transform(val => (val === '' ? undefined : val));
 
@@ -42,7 +43,7 @@ export const optionalEmail = z
       if (!val || val === '') return true;
       return emailSchema.safeParse(val).success;
     },
-    { message: V.INVALID_EMAIL }
+    { error: V.INVALID_EMAIL }
   )
   .transform(val => (val === '' ? undefined : val));
 
@@ -50,7 +51,7 @@ export const optionalEmail = z
 
 export const dateStringSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: V.DATE_FORMAT_INVALID })
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { error: V.DATE_FORMAT_INVALID })
   .refine(
     value => {
       const parts = value.split('-').map(Number);
@@ -65,7 +66,7 @@ export const dateStringSchema = z
         date.getDate() === d
       );
     },
-    { message: V.DATE_INVALID }
+    { error: V.DATE_INVALID }
   );
 
 /** 日付範囲検証用 refine（startDate <= endDate）。startDate/endDate を持つ任意のオブジェクトで利用可能。
@@ -85,38 +86,38 @@ export const dateRangeSchema = z
     startDate: dateStringSchema,
     endDate: dateStringSchema,
   })
-  .refine(dateRangeRefinement.refine, { message: dateRangeRefinement.message });
+  .refine(dateRangeRefinement.refine, { error: dateRangeRefinement.message });
 
 // --- タイトル（チャットセッション等） ---
 
 export const titleSchema = z
   .string()
   .trim()
-  .min(1, { message: V.TITLE_REQUIRED })
-  .max(TITLE_MAX_LENGTH, { message: V.TITLE_MAX_LENGTH(TITLE_MAX_LENGTH) });
+  .min(1, { error: V.TITLE_REQUIRED })
+  .max(TITLE_MAX_LENGTH, { error: V.TITLE_MAX_LENGTH(TITLE_MAX_LENGTH) });
 
 // --- Google Ads 用 ---
 
 export const customerIdSchema = z.string().regex(/^\d{10}$/, {
-  message: V.CUSTOMER_ID_FORMAT,
+  error: V.CUSTOMER_ID_FORMAT,
 });
 
 export const campaignIdSchema = z.string().regex(/^\d+$/, {
-  message: V.CAMPAIGN_ID_FORMAT,
+  error: V.CAMPAIGN_ID_FORMAT,
 });
 
 // --- GA4 用 ---
 
 export const ga4PropertyIdSchema = z
   .string()
-  .min(1, { message: V.GA4_PROPERTY_ID_REQUIRED });
+  .min(1, { error: V.GA4_PROPERTY_ID_REQUIRED });
 
 const GA4_CONVERSION_EVENTS_MAX = 50;
 
 export const ga4ConversionEventsSchema = z
-  .array(z.string().min(1, { message: V.GA4_EVENT_NAME_REQUIRED }))
+  .array(z.string().min(1, { error: V.GA4_EVENT_NAME_REQUIRED }))
   .max(GA4_CONVERSION_EVENTS_MAX, {
-    message: V.GA4_CONVERSION_EVENTS_MAX(GA4_CONVERSION_EVENTS_MAX),
+    error: V.GA4_CONVERSION_EVENTS_MAX(GA4_CONVERSION_EVENTS_MAX),
   })
   .optional();
 

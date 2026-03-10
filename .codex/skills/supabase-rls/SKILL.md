@@ -1,8 +1,6 @@
 ---
 name: supabase-rls
 description: Supabase RLS パフォーマンス最適化。セキュリティ境界と最適化フィルタの区別、および堅牢な関数定義を規定。
-metadata:
-  short-description: 完全同期版：Supabase RLS 実装規約
 ---
 
 # Supabase RLS パフォーマンス & ベストプラクティス

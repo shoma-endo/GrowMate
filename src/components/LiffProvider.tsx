@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, use, useState, useCallback, useEffect, useRef } from 'react';
 import { useLiff } from '@/hooks/useLiff';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,7 @@ import { hasOwnerRole } from '@/authUtils';
 const LiffContext = createContext<LiffContextType | null>(null);
 
 export function useLiffContext() {
-  const context = useContext(LiffContext);
+  const context = use(LiffContext);
   if (!context) {
     throw new Error('useLiffContext must be used within a LiffProvider');
   }
@@ -342,7 +342,7 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
   */
 
   return (
-    <LiffContext.Provider
+    <LiffContext
       value={{
         isLoggedIn,
         isLoading,
@@ -363,6 +363,6 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
         {/* 公開ページ以外でのみFooterを表示（閲覧モード時は表示する） */}
         {!isPublicPath && (!hasOwnerRole(user?.role ?? null) || isOwnerViewMode) && <Footer />}
       </div>
-    </LiffContext.Provider>
+    </LiffContext>
   );
 }
