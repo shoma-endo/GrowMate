@@ -1,4 +1,4 @@
-# CLAUDE.md
+# Repository Guidelines
 
 <language>Japanese</language>
 <character_code>UTF-8</character_code>
@@ -26,7 +26,7 @@ If an error occurs during execution or the plan fails:
 
 1.  **STOP**: Do not attempt to fix it automatically. Do not try "workarounds" or "hacky solutions".
 2.  **REPORT**: Output the raw error message.
-3.  **AWAIT**: Wait for the user's decision on how to proceed.
+3.  **AWAIT**: Wait for the user\'s decision on how to proceed.
 
 ## 3. The "Silent Execution" Rule (無駄話最小化)
 
@@ -56,21 +56,13 @@ If an error occurs during execution or the plan fails:
 
 ---
 
-必ず日本語で回答してください。
+## 開発ワークフローの原則
 
----
-
-## 作業フローの基本
-
-1. 目的と仕様を整理し、必要なら段階的な作業計画を提示する。
-2. ソースを調査する際は `grep` を優先し、`shell` コマンドでは `workdir` を明示する。
-3. 変更は最小編集で行い、自動生成ファイルの直接編集は避ける。
-4. フロント実装は Tailwind クラスと既存 shadcn コンポーネントを優先する。
-5. プログラム変更後は `npm run lint`と`npm run build`で検証し、実行できない場合は理由を明記する。
-6. 出力は要点を簡潔にまとめ、日本語で報告する。差分のパスと重要箇所を引用する。
-7. 作業完了時は新規ファイルを含めて `git diff` を確認し、1 行の日本語コミットメッセージ案を必ず提示する。
-
----
+- 目的と仕様を整理し、必要なら段階的な作業計画を提示する。
+- ソースを調査する際は `grep` を優先し、`shell` コマンドでは `working_directory` を明示する。
+- 変更は最小編集で行い、自動生成ファイルの直接編集は避ける。
+- プログラム変更後は testing-and-troubleshooting スキルの指針に従い検証を行う（`npm run lint` / `npm run build`）。
+- 作業完了時は新規ファイルを含めて `git diff` を確認し、日本語の 1 行コミットメッセージ案を必ず提示する。
 
 ## 関連スキル・ドキュメント
 
@@ -79,6 +71,8 @@ If an error occurs during execution or the plan fails:
 - **Supabase 利用方針**: クライアント生成・Service Role の扱い・ログ方針は `supabase-service-usage` スキルを参照すること。
 - **Server Actions / Route Handlers**: 機密情報露出防止と使い分けの詳細は `server-actions-and-routes` スキルを参照すること。
 - **セルフレビュー手順**: 2 パスの自己レビュー手順は `self-review` スキルを参照し、コーディング完了毎に必ず実施結果を報告すること。
+- **実装指針**: TypeScript / Next.js / Supabase / フロント実装の詳細なポリシーは `implementation-guidelines` スキルを参照すること。
+- **テスト・トラブルシュート**: 画面ごとの確認観点や LIFF / SSE / WordPress / RLS / マイグレーションのトラブルシュートは `testing-and-troubleshooting` スキルを参照すること。
 
 プロジェクト全体の背景や詳細な仕様は、`README.md`と本ファイルを併せて参照すること。
 </law>
