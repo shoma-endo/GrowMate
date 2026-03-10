@@ -1,7 +1,7 @@
 # メール配信設定ガイド
 
 **対象**: GrowMate の Supabase Auth を用いた OTP メール配信  
-**更新日**: 2026-03-09
+**更新日**: 2026-03-10
 
 ---
 
@@ -84,6 +84,13 @@ GrowMate では以下の基準で採用を決める。
 - 月間 OTP 送信件数が少量〜中量で、導入速度と保守性を優先する場合: `Resend`
 - 月間 OTP 送信件数が多く、コスト最適化を優先する場合: `Amazon SES`
 
+### 3.4 現時点の採用結果
+
+現時点では以下で確定とする。
+
+- SMTP プロバイダー: `Resend`
+- 理由: 現在のアクティブユーザー規模では無料枠で十分に開始でき、初期導入工数が小さいため
+
 ---
 
 ## 4. 推奨構成
@@ -93,8 +100,8 @@ GrowMate では以下の基準で採用を決める。
 ```text
 Supabase Auth
   └─ Custom SMTP
-       └─ Resend または Amazon SES
-            └─ growmate.jp 系ドメイン
+       └─ Resend
+            └─ mail.growmate.tokyo
                  ├─ SPF
                  ├─ DKIM
                  └─ DMARC
@@ -105,6 +112,13 @@ Supabase Auth
 - Sender email: `noreply@mail.<your-domain>`
 - Sender name: `GrowMate`
 - Reply-To: `support@<your-domain>` またはサポート窓口用アドレス
+
+GrowMate の現時点の確定値:
+
+- Mail domain: `mail.growmate.tokyo`
+- Sender email: `noreply@mail.growmate.tokyo`
+- Sender name: `GrowMate`
+- Reply-To: `support@growmate.tokyo`
 
 ---
 
@@ -200,6 +214,15 @@ DNS 設定後は以下を確認する。
 | Sender Name | `GrowMate` |
 | Sender Email | 独自ドメインの `noreply` |
 
+GrowMate の現時点の設定値:
+
+| 項目 | 値 |
+|------|----|
+| SMTP Provider | `Resend` |
+| Sender Name | `GrowMate` |
+| Sender Email | `noreply@mail.growmate.tokyo` |
+| Reply-To | `support@growmate.tokyo` |
+
 ### 6.2 Hosted Email の扱い
 
 Supabase Hosted Email は開発確認用途に限定する。  
@@ -222,6 +245,13 @@ Supabase Dashboard の Authentication で以下を設定する。
 - Port
 - Username
 - Password
+
+GrowMate の現時点の入力値:
+
+- Host: `smtp.resend.com`
+- Port: `465`
+- Username: `resend`
+- Password: `Resend API Key`
 
 ---
 
@@ -256,6 +286,11 @@ GrowMate の認証コードをお送りします。
 
 ご不明点は support@<your-domain> までご連絡ください。
 ```
+
+GrowMate の現時点の件名と送信者:
+
+- Subject: `GrowMate 認証コード`
+- From: `GrowMate <noreply@mail.growmate.tokyo>`
 
 HTML 例の要件:
 

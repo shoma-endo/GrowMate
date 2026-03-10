@@ -91,6 +91,75 @@ const MIN_CONTENT_LENGTH_FOR_STEP_LABEL = 20;
 
 type CombinedTile = { id: string; title: string; excerpt: string; createdAt?: string };
 
+const Dots: React.FC<{ size?: 'sm' | 'md'; colorClass?: string }> = ({
+  size = 'md',
+  colorClass = 'bg-[#06c755]',
+}) => {
+  const dim = size === 'sm' ? 'w-1.5 h-1.5' : 'w-2 h-2';
+  return (
+    <div className="flex gap-2 items-center">
+      <div
+        className={`${dim} ${colorClass} rounded-full animate-bounce`}
+        style={{ animationDelay: '0ms' }}
+      />
+      <div
+        className={`${dim} ${colorClass} rounded-full animate-bounce`}
+        style={{ animationDelay: '200ms' }}
+      />
+      <div
+        className={`${dim} ${colorClass} rounded-full animate-bounce`}
+        style={{ animationDelay: '400ms' }}
+      />
+    </div>
+  );
+};
+
+const ActivityIndicator: React.FC<{ variant: 'full' | 'inline'; label?: string }> = ({
+  variant,
+  label,
+}) => {
+  if (variant === 'inline') {
+    return (
+      <div className="flex items-start gap-2 mb-3 animate-in fade-in">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-200">
+          <Bot size={18} className="text-[#06c755]" />
+        </div>
+        <div className="bg-white text-foreground p-3 rounded-2xl border border-gray-100">
+          <div className="flex gap-2 items-center">
+            <Dots size="sm" />
+            <span className="text-sm text-gray-500">{label ?? 'メッセージを取得中です...'}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full">
+      <div className="bg-white p-6 rounded-xl shadow-sm flex flex-col items-center">
+        <div className="w-10 h-10 rounded-full bg-[#06c755] flex items-center justify-center mb-4">
+          <Bot size={24} className="text-white" />
+        </div>
+        <h3 className="text-lg font-medium mb-3">{label ?? 'メッセージを取得中です'}</h3>
+        <Dots size="md" />
+      </div>
+    </div>
+  );
+};
+
+const EmptyState = () => {
+  // 通常の空状態
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-4">
+      <Bot size={48} className="text-gray-300 mb-3" />
+      <h3 className="text-lg font-medium mb-1">AIアシスタントへようこそ</h3>
+      <p className="text-sm text-gray-500 max-w-xs whitespace-nowrap">
+        Google広告の効果を最大化するお手伝いをします。
+      </p>
+    </div>
+  );
+};
+
 const MessageArea: React.FC<MessageAreaProps> = ({
   messages,
   isLoading,
@@ -343,75 +412,6 @@ const MessageArea: React.FC<MessageAreaProps> = ({
       title: titleCandidate || null,
       excerpt: excerptCandidate || null,
     };
-  };
-
-  const Dots: React.FC<{ size?: 'sm' | 'md'; colorClass?: string }> = ({
-    size = 'md',
-    colorClass = 'bg-[#06c755]',
-  }) => {
-    const dim = size === 'sm' ? 'w-1.5 h-1.5' : 'w-2 h-2';
-    return (
-      <div className="flex gap-2 items-center">
-        <div
-          className={`${dim} ${colorClass} rounded-full animate-bounce`}
-          style={{ animationDelay: '0ms' }}
-        />
-        <div
-          className={`${dim} ${colorClass} rounded-full animate-bounce`}
-          style={{ animationDelay: '200ms' }}
-        />
-        <div
-          className={`${dim} ${colorClass} rounded-full animate-bounce`}
-          style={{ animationDelay: '400ms' }}
-        />
-      </div>
-    );
-  };
-
-  const ActivityIndicator: React.FC<{ variant: 'full' | 'inline'; label?: string }> = ({
-    variant,
-    label,
-  }) => {
-    if (variant === 'inline') {
-      return (
-        <div className="flex items-start gap-2 mb-3 animate-in fade-in">
-          <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-white border border-gray-200">
-            <Bot size={18} className="text-[#06c755]" />
-          </div>
-          <div className="bg-white text-foreground p-3 rounded-2xl border border-gray-100">
-            <div className="flex gap-2 items-center">
-              <Dots size="sm" />
-              <span className="text-sm text-gray-500">{label ?? 'メッセージを取得中です...'}</span>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <div className="bg-white p-6 rounded-xl shadow-sm flex flex-col items-center">
-          <div className="w-10 h-10 rounded-full bg-[#06c755] flex items-center justify-center mb-4">
-            <Bot size={24} className="text-white" />
-          </div>
-          <h3 className="text-lg font-medium mb-3">{label ?? 'メッセージを取得中です'}</h3>
-          <Dots size="md" />
-        </div>
-      </div>
-    );
-  };
-
-  const EmptyState = () => {
-    // 通常の空状態
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center px-4">
-        <Bot size={48} className="text-gray-300 mb-3" />
-        <h3 className="text-lg font-medium mb-1">AIアシスタントへようこそ</h3>
-        <p className="text-sm text-gray-500 max-w-xs whitespace-nowrap">
-          Google広告の効果を最大化するお手伝いをします。
-        </p>
-      </div>
-    );
   };
 
   // step7 アシスタントメッセージの ID 一覧（時系列順）。重複見出し照合に使用

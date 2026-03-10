@@ -56,13 +56,12 @@ If an error occurs during execution or the plan fails:
 
 ---
 
-必ず日本語で回答し、中〜大規模の変更時は `npm run lint` と `npm run build` を実行した結果を報告すること。
-
 ## 開発ワークフローの原則
 
 - 目的と仕様を整理し、必要なら段階的な作業計画を提示する。
-- ソースを調査する際は `rg` / `rg --files` を優先し、`shell` コマンドでは `working_directory` を明示する。
+- ソースを調査する際は `grep` を優先し、`shell` コマンドでは `working_directory` を明示する。
 - 変更は最小編集で行い、自動生成ファイルの直接編集は避ける。
+- プログラム変更後は testing-and-troubleshooting スキルの指針に従い検証を行う（`npm run lint` / `npm run build`）。
 - 作業完了時は新規ファイルを含めて `git diff` を確認し、日本語の 1 行コミットメッセージ案を必ず提示する。
 
 ## 関連スキル・ドキュメント
@@ -72,8 +71,8 @@ If an error occurs during execution or the plan fails:
 - **Supabase 利用方針**: クライアント生成・Service Role の扱い・ログ方針は `supabase-service-usage` スキルを参照すること。
 - **Server Actions / Route Handlers**: 機密情報露出防止と使い分けの詳細は `server-actions-and-routes` スキルを参照すること。
 - **セルフレビュー手順**: 2 パスの自己レビュー手順は `self-review` スキルを参照し、コーディング完了毎に必ず実施結果を報告すること。
-- **実装指針**: TypeScript / Next.js / Supabase / フロント実装の詳細なポリシーは `.claude/skills/implementation-guidelines/SKILL.md` を参照すること。
-- **テスト・トラブルシュート**: 画面ごとの確認観点や LIFF / SSE / WordPress / RLS / マイグレーションのトラブルシュートは `.claude/skills/testing-and-troubleshooting/SKILL.md` を参照すること。
+- **実装指針**: TypeScript / Next.js / Supabase / フロント実装の詳細なポリシーは `implementation-guidelines` スキルを参照すること。
+- **テスト・トラブルシュート**: 画面ごとの確認観点や LIFF / SSE / WordPress / RLS / マイグレーションのトラブルシュートは `testing-and-troubleshooting` スキルを参照すること。
 
 プロジェクト全体の背景や詳細な仕様は、`README.md`と本ファイルを併せて参照すること。
 </law>
