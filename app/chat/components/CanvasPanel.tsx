@@ -50,6 +50,9 @@ import { toast } from 'sonner';
 
 const lowlight = createLowlight(common);
 
+const EMPTY_VERSIONS: CanvasVersionOption[] = [];
+const EMPTY_STEP_OPTIONS: BlogStepId[] = [];
+
 // ✅ プレーンテキストからマークダウンへの変換
 const parseAsMarkdown = (text: string): string => {
   if (!text) return '';
@@ -150,10 +153,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   content = '',
   isVisible = true,
   onSelectionEdit,
-  versions = [],
+  versions = EMPTY_VERSIONS,
   activeVersionId,
   onVersionSelect,
-  stepOptions = [],
+  stepOptions = EMPTY_STEP_OPTIONS,
   activeStepId,
   onStepSelect,
   streamingContent = '',
