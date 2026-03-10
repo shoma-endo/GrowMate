@@ -292,7 +292,7 @@ sequenceDiagram
 
 ### フロントエンド
 
-- **フレームワーク**: Next.js 15.5.12 (App Router), React 19.2.3, TypeScript 5.9.3
+- **フレームワーク**: Next.js 15.5.12 (App Router), React 19.2.4, TypeScript 5.9.3
 - **スタイリング**: Tailwind CSS v4, Radix UI, shadcn/ui, lucide-react, tw-animate-css
 - **テーマ**: next-themes 0.4.6 (ダークモード対応)
 - **エディタ**: TipTap 3.7.2 + lowlight 3.3.0 (シンタックスハイライト)
