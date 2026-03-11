@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getUserRoleWithRefresh } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { userService } from '@/server/services/userService';
 
 // Node.jsランタイムを強制（Cookie更新の一貫性を確保）
 export const runtime = 'nodejs';
@@ -13,7 +15,23 @@ export async function GET() {
     const lineRefreshToken = cookieStore.get('line_refresh_token')?.value;
 
     if (!lineAccessToken) {
-      return NextResponse.json({ error: ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED }, { status: 401 });
+      // LINE token なし: Supabase Auth セッションで Email ユーザーとして処理
+      const supabase = await createSupabaseServerClient();
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
+      if (!authUser?.email) {
+        return NextResponse.json({ error: ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED }, { status: 401 });
+      }
+
+      try {
+        const emailUser = await userService.resolveOrCreateEmailUser(authUser.id, authUser.email);
+        return NextResponse.json({ role: emailUser.role });
+      } catch (err) {
+        console.error('[check-role] Email user resolution failed:', err);
+        return NextResponse.json({ error: ERROR_MESSAGES.AUTH.USER_ROLE_FETCH_FAILED }, { status: 500 });
+      }
     }
 
     const result = await getUserRoleWithRefresh(lineAccessToken, lineRefreshToken);

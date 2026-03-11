@@ -47,12 +47,16 @@ export interface User {
   lastLoginAt?: IsoTimestamp | undefined; // 最終ログイン日時 (UTC ISO文字列)
   fullName?: string | undefined; // フルネーム
 
-  // LINE関連情報
-  lineUserId: string; // LINE UserID
-  lineDisplayName: string; // LINE表示名
+  // LINE関連情報 (Email 専用ユーザーは null になる場合がある)
+  lineUserId?: string | null | undefined; // LINE UserID
+  lineDisplayName?: string | null | undefined; // LINE表示名
   linePictureUrl?: string | undefined; // LINEプロフィール画像URL
   lineStatusMessage?: string | undefined; // LINEステータスメッセージ
   lineAccessToken?: string | undefined; // LINEアクセストークン (一時的)
+
+  // Email 認証関連 (Email ユーザーのみ)
+  email?: string | null | undefined; // メールアドレス
+  supabaseAuthId?: string | null | undefined; // Supabase Auth ユーザー ID
 
   // 権限管理
   role: UserRole; // ユーザーロール（trial: お試し, paid: 有料契約, admin: 管理者, unavailable: サービス利用不可, owner: スタッフを持つあなた）
@@ -80,10 +84,12 @@ export function toDbUserInsert(user: User): DbUserInsert {
     updated_at: updatedAt,
     last_login_at: lastLoginAt,
     full_name: user.fullName ?? null,
-    line_user_id: user.lineUserId,
-    line_display_name: user.lineDisplayName,
+    line_user_id: user.lineUserId ?? null,
+    line_display_name: user.lineDisplayName ?? null,
     line_picture_url: user.linePictureUrl ?? null,
     line_status_message: user.lineStatusMessage ?? null,
+    email: user.email ?? null,
+    supabase_auth_id: user.supabaseAuthId ?? null,
     stripe_customer_id: null,
     stripe_subscription_id: null,
     role: user.role,
@@ -112,10 +118,12 @@ export function toUser(dbUser: DbUser): User {
     updatedAt,
     lastLoginAt: lastLoginAt ?? undefined,
     fullName: dbUser.full_name ?? undefined,
-    lineUserId: dbUser.line_user_id,
-    lineDisplayName: dbUser.line_display_name,
+    lineUserId: dbUser.line_user_id ?? undefined,
+    lineDisplayName: dbUser.line_display_name ?? undefined,
     linePictureUrl: dbUser.line_picture_url ?? undefined,
     lineStatusMessage: dbUser.line_status_message ?? undefined,
+    email: dbUser.email ?? undefined,
+    supabaseAuthId: dbUser.supabase_auth_id ?? undefined,
     role,
     ownerUserId: dbUser.owner_user_id,
     ownerPreviousRole: dbUser.owner_previous_role ?? null,

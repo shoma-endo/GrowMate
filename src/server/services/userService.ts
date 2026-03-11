@@ -316,6 +316,53 @@ export class UserService {
     }
     return { success: true };
   }
+
+  /**
+   * Supabase Auth ユーザーを GrowMate ユーザーに解決または新規作成（idempotent）
+   * 読み取り専用の認証確認から呼び出す。last_login_at は更新しない。
+   * OTP ログイン成功後は updateLastLoginAt() を別途呼び出すこと。
+   */
+  async resolveOrCreateEmailUser(supabaseAuthId: string, email: string): Promise<User> {
+    // 1. supabase_auth_id で既存ユーザーを検索
+    const existingResult = await this.supabaseService.getUserBySupabaseAuthId(supabaseAuthId);
+    if (!existingResult.success) {
+      throw new Error(existingResult.error.developerMessage ?? existingResult.error.userMessage);
+    }
+
+    if (existingResult.data) {
+      return toUser(existingResult.data);
+    }
+
+    // 2. 新規作成（競合時は再フェッチ）
+    const createResult = await this.supabaseService.createEmailUser(email, supabaseAuthId);
+    if (!createResult.success) {
+      // 23505: supabase_auth_id または email の一意制約違反 → 先行 INSERT が完了しているので再フェッチ
+      if (createResult.error.code === '23505') {
+        const retryResult = await this.supabaseService.getUserBySupabaseAuthId(supabaseAuthId);
+        if (retryResult.success && retryResult.data) {
+          return toUser(retryResult.data);
+        }
+      }
+      throw new Error(createResult.error.developerMessage ?? createResult.error.userMessage);
+    }
+
+    return toUser(createResult.data);
+  }
+
+  /**
+   * Email ユーザーの last_login_at を更新する
+   * OTP ログイン成功後（Server Action）でのみ呼び出すこと
+   */
+  async updateLastLoginAt(userId: string): Promise<void> {
+    const now = toIsoTimestamp(new Date());
+    const result = await this.supabaseService.updateUserById(userId, {
+      last_login_at: now,
+      updated_at: now,
+    });
+    if (!result.success) {
+      console.error('[UserService] Failed to update last_login_at:', result.error);
+    }
+  }
 }
 
 export const userService = new UserService();

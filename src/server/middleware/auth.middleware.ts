@@ -85,11 +85,23 @@ export async function ensureAuthenticated({
   }
 
   if (!accessToken) {
+    // LINE token なし: Supabase Auth セッションで Email ユーザーとして処理
+    const { resolveEmailUserFromSession } = await import('@/server/auth/resolveUser');
+    const emailUser = await resolveEmailUserFromSession();
+    if (!emailUser) {
+      return {
+        error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,
+        lineUserId: '',
+        userId: '',
+        userDetails: null,
+      };
+    }
     return {
-      error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,
-      lineUserId: '',
-      userId: '',
-      userDetails: null,
+      lineUserId: '', // Email ユーザーは LINE ID なし
+      userId: emailUser.id,
+      user: { id: emailUser.id },
+      userDetails: emailUser,
+      ownerUserId: emailUser.ownerUserId ?? null,
     };
   }
 

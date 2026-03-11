@@ -8,6 +8,7 @@ import {
   setAuthCookies,
 } from '@/server/middleware/auth.middleware';
 import { userService } from '@/server/services/userService';
+import { resolveEmailUserFromSession } from '@/server/auth/resolveUser';
 
 export async function GET() {
   const cookieStore = await cookies();
@@ -23,7 +24,25 @@ export async function GET() {
   const accessToken = bearerToken ?? cookieAccessToken;
 
   if (!accessToken) {
-    return NextResponse.json({ userId: null, user: null });
+    // LINE token なし: Supabase Auth セッションで Email ユーザーとして処理
+    const emailUser = await resolveEmailUserFromSession();
+    if (!emailUser) {
+      return NextResponse.json({ userId: null, user: null });
+    }
+    return NextResponse.json({
+      userId: emailUser.id,
+      user: {
+        id: emailUser.id,
+        fullName: emailUser.fullName ?? null,
+        role: emailUser.role,
+        lineUserId: emailUser.lineUserId ?? null,
+        lineDisplayName: emailUser.lineDisplayName ?? null,
+        linePictureUrl: emailUser.linePictureUrl ?? null,
+        ownerUserId: emailUser.ownerUserId ?? null,
+      },
+      viewMode: false,
+      tokenRefreshed: false,
+    });
   }
 
   try {

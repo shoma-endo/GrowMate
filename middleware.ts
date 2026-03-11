@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { isAdmin, isUnavailable, getUserRoleWithRefresh, hasOwnerRole } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
+import { updateSupabaseSession } from '@/lib/supabase/middleware';
 
 const ADMIN_REQUIRED_PATHS = ['/admin'] as const;
 const PAID_FEATURE_REQUIRED_PATHS = ['/analytics'] as const;
@@ -17,11 +18,16 @@ const PUBLIC_PATHS = ['/login', '/unauthorized', '/', '/home', '/privacy'] as co
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // 🔑 Supabase セッション refresh（Email ユーザーのトークン自動更新）
+  // supabaseResponse を全レスポンスのベースとして使用し、Set-Cookie を確実に伝播させる
+  const { supabaseResponse, supabaseUser } = await updateSupabaseSession(request);
+
   try {
     // 🔍 1. 公開パスかチェック（ただし、ログイン済みユーザーの場合はホーム画面でも権限チェックを実行）
     if (isPublicPath(pathname)) {
       // ホーム画面は完全に公開扱いとし、ミドルウェア側で外部サービスを呼び出さない
-      return NextResponse.next();
+      // supabaseResponse を返すことで Supabase Cookie（Email セッション）を保持する
+      return supabaseResponse;
     }
 
     // 🔍 3. アクセストークンとリフレッシュトークンの取得
@@ -29,6 +35,19 @@ export async function middleware(request: NextRequest) {
     const refreshToken = request.cookies.get('line_refresh_token')?.value;
 
     if (!accessToken) {
+      // LINE token なし: Supabase セッション（Email ユーザー）を確認
+      if (supabaseUser) {
+        // Email ユーザー認証済み: 権限制限パスは unauthorized へ（Phase 1 では Email ユーザーは trial のみ）
+        if (
+          requiresAdminAccess(pathname) ||
+          requiresPaidFeatureAccess(pathname) ||
+          requiresSetupAccess(pathname) ||
+          requiresGoogleAdsAccess(pathname)
+        ) {
+          return NextResponse.redirect(new URL('/unauthorized', request.url));
+        }
+        return supabaseResponse;
+      }
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
@@ -88,13 +107,12 @@ export async function middleware(request: NextRequest) {
     }
 
     // 🔍 7. 成功時のレスポンス
-    // レスポンスヘッダーにユーザー情報を付与（オプション）
-    const response = NextResponse.next();
-    response.headers.set('x-user-role', authResult.role);
+    // supabaseResponse をベースにすることで Supabase Cookie（Email セッション）を保持する
+    supabaseResponse.headers.set('x-user-role', authResult.role);
 
     // 新しいトークンがある場合はクッキーを更新
     if ('newAccessToken' in authResult && authResult.newAccessToken) {
-      response.cookies.set('line_access_token', authResult.newAccessToken, {
+      supabaseResponse.cookies.set('line_access_token', authResult.newAccessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -103,7 +121,7 @@ export async function middleware(request: NextRequest) {
     }
 
     if ('newRefreshToken' in authResult && authResult.newRefreshToken) {
-      response.cookies.set('line_refresh_token', authResult.newRefreshToken, {
+      supabaseResponse.cookies.set('line_refresh_token', authResult.newRefreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -111,7 +129,7 @@ export async function middleware(request: NextRequest) {
       });
     }
 
-    return response;
+    return supabaseResponse;
   } catch (error) {
     // 🚨 エラーハンドリング
     console.error('[Middleware] Unexpected error:', {
@@ -128,9 +146,9 @@ export async function middleware(request: NextRequest) {
 // 🔧 ヘルパー関数
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(path => {
-    // TypeScriptのエラー回避のため、明示的な比較は削除してstartsWithのみにする
-    // pathは '/login', '/home' などであり、 '/' は含まれていないため startsWith で十分
-    return pathname.startsWith(path);
+    // '/' は完全一致のみ（startsWith だと全パスにマッチするため）
+    if (path === '/') return pathname === '/';
+    return pathname === path || pathname.startsWith(path + '/');
   });
 }
 
