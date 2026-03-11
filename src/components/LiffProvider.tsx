@@ -273,7 +273,33 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
     }
 
     hasRequestedLiffLoginRef.current = true;
-    login();
+
+    // Email セッションかどうか確認してから LINE login を要求する
+    // lineUserId が falsy = Email ユーザー → LIFF login 不要
+    const checkAndMaybeLogin = async () => {
+      try {
+        const res = await fetch('/api/user/current', { credentials: 'include', cache: 'no-store' });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            userId?: string;
+            user?: User;
+            viewMode?: boolean;
+          } | null;
+          if (data?.userId && !data?.user?.lineUserId) {
+            if (data.user) setUser(data.user);
+            setIsOwnerViewMode(Boolean(data?.viewMode));
+            setViewModeResolved(true);
+            setSyncedWithServer(true);
+            return;
+          }
+        }
+      } catch {
+        // ネットワークエラー等は LINE login へフォールバック
+      }
+      login();
+    };
+
+    checkAndMaybeLogin();
   }, [hasServerSession, isLoading, isLoggedIn, isPublicPath, liffObject, login, pathname]);
 
   // エラー表示（公開パス以外）
