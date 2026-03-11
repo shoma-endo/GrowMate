@@ -120,10 +120,8 @@ export function useHeadingFlow({
 
   const fetchHeadingSections = useCallback(
     async (sid: string): Promise<SessionHeadingSection[]> => {
+      // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
       const liffAccessToken = await getAccessToken();
-      if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
-        return [];
-      }
       const res = await headingActions.getHeadingSections({
         sessionId: sid,
         liffAccessToken: liffAccessToken.trim(),
@@ -140,10 +138,8 @@ export function useHeadingFlow({
 
   const fetchLatestCombinedContent = useCallback(
     async (sid: string): Promise<void> => {
+      // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
       const liffAccessToken = await getAccessToken();
-      if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
-        return;
-      }
       const res = await headingActions.getLatestCombinedContent({
         sessionId: sid,
         liffAccessToken: liffAccessToken.trim(),
@@ -157,10 +153,8 @@ export function useHeadingFlow({
 
   const fetchCombinedContentVersions = useCallback(
     async (sid: string): Promise<void> => {
+      // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
       const liffAccessToken = await getAccessToken();
-      if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
-        return;
-      }
       const res = await headingActions.getCombinedContentVersions({
         sessionId: sid,
         liffAccessToken: liffAccessToken.trim(),
@@ -253,13 +247,8 @@ export function useHeadingFlow({
           : [];
 
         if (headings.length > 0) {
+          // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
           const liffAccessToken = await getAccessToken();
-          if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
-            if (sessionId === currentSessionIdRef.current) {
-              setHeadingInitError('認証トークンを取得できませんでした。LINEで再ログインしてください。');
-            }
-            return;
-          }
           const res = await headingActions.initializeHeadingSections({
             sessionId,
             step5Markdown: trimmedBasic,
@@ -328,13 +317,8 @@ export function useHeadingFlow({
       setIsSavingHeading(true);
       setHeadingSaveError(null);
       try {
+        // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
         const liffAccessToken = await getAccessToken();
-        if (!liffAccessToken || typeof liffAccessToken !== 'string' || !liffAccessToken.trim()) {
-          const errorMessage = '認証トークンを取得できませんでした。LINEで再ログインしてください。';
-          setHeadingSaveError(errorMessage);
-          toast.error(errorMessage);
-          return false;
-        }
         const res = await headingActions.saveHeadingSection({
           sessionId,
           headingKey,

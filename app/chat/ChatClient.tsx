@@ -24,7 +24,7 @@ interface ChatClientProps {
 }
 
 const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }) => {
-  const { isLoggedIn, getAccessToken, isLoading: liffLoading } = useLiffContext();
+  const { isLoggedIn, getAccessToken, isLoading: liffLoading, user } = useLiffContext();
   const { isMobile } = useMobile();
 
   const chatService = React.useMemo(() => new ChatService(), []);
@@ -48,7 +48,8 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
   const initialSessionLoadedRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    if (isLoggedIn && !liffLoading) {
+    // isLoggedIn: LINE ユーザー / !!user: Email ユーザー（LIFF 未ログインだが Supabase セッションあり）
+    if ((isLoggedIn || !!user) && !liffLoading) {
       Promise.resolve(chatSession.actions.loadSessions ? chatSession.actions.loadSessions() : undefined)
         .then(async () => {
           const trimmedSessionId = initialSessionId?.trim();
@@ -70,7 +71,7 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, liffLoading, initialSessionId]); // ✅ 安全な依存配列のみ（actionsを含めると無限ループ）
+  }, [isLoggedIn, liffLoading, initialSessionId, user]); // ✅ Email ユーザー対応: user がセットされたタイミングでも初期化
 
   // LIFF初期化中はLiffProviderが表示を担当するため、ここでは何も表示しない
   if (liffLoading) {

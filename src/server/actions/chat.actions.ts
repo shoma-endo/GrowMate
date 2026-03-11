@@ -47,11 +47,15 @@ async function isOwnerViewMode(): Promise<boolean> {
   if (hasCookie) return true;
 
   // クッキーがなくてもオーナーであれば閲覧モード扱いとする（書き込み制限のため）
+  // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const accessToken = cookieStore.get('line_access_token')?.value;
-  if (!accessToken) return false;
-
-  const role = await getCachedUserRole(accessToken);
-  return role === 'owner';
+  if (accessToken) {
+    const role = await getCachedUserRole(accessToken);
+    return role === 'owner';
+  }
+  // Email セッションでロールを確認
+  const authResult = await authMiddleware(undefined, undefined);
+  return authResult.userDetails?.role === 'owner';
 }
 
 const updateChatSessionTitleSchema = z.object({

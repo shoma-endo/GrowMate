@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
-import { getUserRole, isAdmin } from '@/authUtils';
+import { isAdmin } from '@/authUtils';
 import { PromptService } from '@/server/services/promptService';
 import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -33,10 +33,7 @@ export async function GET(request: NextRequest) {
     const { accessToken: cookieAccessToken, refreshToken } = getLiffTokensFromRequest(request);
     const liffAccessToken = bearer || cookieAccessToken;
 
-    if (!liffAccessToken) {
-      return NextResponse.json({ success: false, error: 'LINE認証が必要です' }, { status: 401 });
-    }
-
+    // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
     const authResult = await authMiddleware(liffAccessToken, refreshToken);
     if (authResult.error) {
       const isTokenExpired = authResult.error.includes('expired');
@@ -51,7 +48,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const role = await getUserRole(liffAccessToken);
+    const role = authResult.userDetails?.role ?? null;
     if (!isAdmin(role)) {
       return NextResponse.json({ success: false, error: '管理者権限がありません' }, { status: 403 });
     }
@@ -82,10 +79,7 @@ export async function POST(request: NextRequest) {
     const { accessToken: cookieAccessToken, refreshToken } = getLiffTokensFromRequest(request);
     const liffAccessToken = bearer || cookieAccessToken;
 
-    if (!liffAccessToken) {
-      return NextResponse.json({ success: false, error: 'LINE認証が必要です' }, { status: 401 });
-    }
-
+    // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
     const authResult = await authMiddleware(liffAccessToken, refreshToken);
     if (authResult.error) {
       const isTokenExpired = authResult.error.includes('expired');
@@ -106,7 +100,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const role = await getUserRole(liffAccessToken);
+    const role = authResult.userDetails?.role ?? null;
     if (!isAdmin(role)) {
       return NextResponse.json({ success: false, error: '管理者権限がありません' }, { status: 403 });
     }

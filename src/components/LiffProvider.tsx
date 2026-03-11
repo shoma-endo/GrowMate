@@ -76,7 +76,9 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
     }
 
     if (!currentLoggedIn) {
-      throw new Error('User is not logged in');
+      // Email ユーザー: LIFF 未ログインだが Supabase セッションがある場合
+      // 空文字を返すと Server Action 側が Email セッションで認証を試みる
+      return '';
     }
 
     try {
