@@ -1,5 +1,4 @@
 import { ChatSessionHook } from '@/hooks/useChatSession';
-import { SubscriptionHook } from '@/hooks/useSubscriptionStatus';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { BlogStepId } from '@/lib/constants';
 import type { SessionHeadingSection } from '@/types/heading-flow';
@@ -9,7 +8,6 @@ import type { StepActionBarRef } from '@/../app/chat/components/StepActionBar';
 
 export interface ChatLayoutProps {
   chatSession: ChatSessionHook;
-  subscription: SubscriptionHook;
   isMobile?: boolean;
   initialStep?: BlogStepId | null;
 }
@@ -29,7 +27,6 @@ export type StepVersionsMap = Record<BlogStepId, BlogCanvasVersion[]>;
 // 自動開始は行わず、明示ボタンで開始する
 export interface ChatLayoutCtx {
   chatSession: ChatSessionHook;
-  subscription: SubscriptionHook;
   isMobile: boolean;
   blogFlowActive: boolean;
   optimisticMessages: ChatMessage[];

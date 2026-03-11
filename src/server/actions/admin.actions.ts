@@ -1,8 +1,8 @@
 'use server';
 
 import { userService } from '@/server/services/userService';
-import { checkUserRole } from './subscription.actions';
-import { isUnavailable } from '@/authUtils';
+import { checkUserRole } from './role.actions';
+import { isAdmin, isUnavailable } from '@/authUtils';
 import type { User, UserRole } from '@/types/user';
 import { isViewModeEnabled, VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -31,7 +31,7 @@ export const getAllUsers = async (): Promise<{
       return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
     }
 
-    if (roleResult.role !== 'admin') {
+    if (!isAdmin(roleResult.role)) {
       return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
     }
 
@@ -71,7 +71,7 @@ export const updateUserRole = async (
       return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
     }
 
-    if (roleResult.role !== 'admin') {
+    if (!isAdmin(roleResult.role)) {
       return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
     }
 

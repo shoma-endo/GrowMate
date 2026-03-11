@@ -34,10 +34,7 @@ const resolveRoleFromCookies = async (): Promise<UserRole | null> => {
     return null;
   }
 
-  const authResult = await authMiddleware(accessToken, refreshToken, {
-    // 閲覧モード判定では課金状態ではなくロールのみ必要なためスキップ
-    skipSubscriptionCheck: true,
-  });
+  const authResult = await authMiddleware(accessToken, refreshToken);
 
   if (authResult.error) {
     return null;

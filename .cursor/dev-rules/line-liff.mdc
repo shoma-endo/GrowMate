@@ -50,14 +50,12 @@ if (!liff.isLoggedIn()) {
 ### 4. 認証ミドルウェア（`authMiddleware`）
 ```typescript
 export async function authMiddleware(
-  request: NextRequest,
-  options?: { requiresSubscription?: boolean }
+  request: NextRequest
 ): Promise<AuthResult> {
   // 1. Cookie からトークンを取得
   // 2. トークンを検証
   // 3. ユーザー情報を Supabase から取得
-  // 4. サブスクリプション状態をチェック（オプション）
-  // 5. 結果を返す
+  // 4. 結果を返す
 }
 ```
 
@@ -121,7 +119,7 @@ if (tokenAge > TOKEN_LIFETIME * 0.9) {
 ## プロジェクト固有のルール
 
 - **authMiddleware の統一使用**: すべての保護されたルートで `authMiddleware` を使用してください。
-- **ユーザーロールとサブスクリプション**: `authMiddleware` の結果から `user.role` と `requiresSubscription` を確認してください。
+- **ユーザーロール**: `authMiddleware` の結果から `user.role` を確認してください。
 - **トラブルシューティング**: LIFF トークンエラーは `authMiddleware` のログと `/api/refresh` を確認してください。
 - **Cookie 管理**: Cookie の設定・取得は一貫したヘルパー関数を使用してください。
 

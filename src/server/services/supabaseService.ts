@@ -10,7 +10,7 @@ import {
   ServerChatMessage,
   ServerChatSession,
 } from '@/types/chat';
-import type { DbUser, EmployeeInvitation } from '@/types/user';
+import type { DbUser, DbUserInsert, DbUserUpdate, EmployeeInvitation } from '@/types/user';
 import type { UserRole } from '@/types/user';
 import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
@@ -207,27 +207,7 @@ export class SupabaseService {
     return this.success(data ?? null);
   }
 
-  async getUserByStripeCustomerId(
-    stripeCustomerId: string
-  ): Promise<SupabaseResult<DbUser | null>> {
-    const { data, error } = await this.supabase
-      .from('users')
-      .select('*')
-      .eq('stripe_customer_id', stripeCustomerId)
-      .maybeSingle();
-
-    if (error) {
-      return this.failure('ユーザー情報の取得に失敗しました', {
-        error,
-        developerMessage: 'Error getting user by Stripe customer ID',
-        context: { stripeCustomerId },
-      });
-    }
-
-    return this.success(data ?? null);
-  }
-
-  async createUser(user: DbUser): Promise<SupabaseResult<DbUser>> {
+  async createUser(user: DbUserInsert): Promise<SupabaseResult<DbUser>> {
     const { data, error } = await this.supabase.from('users').insert(user).select('*').single();
 
     if (error) {
@@ -243,7 +223,7 @@ export class SupabaseService {
 
   async updateUserById(
     id: string,
-    updates: Partial<DbUser>
+    updates: DbUserUpdate
   ): Promise<SupabaseResult<DbUser | null>> {
     const { data, error } = await this.supabase
       .from('users')
@@ -265,7 +245,7 @@ export class SupabaseService {
 
   async updateUserByLineUserId(
     lineUserId: string,
-    updates: Partial<DbUser>
+    updates: DbUserUpdate
   ): Promise<SupabaseResult<DbUser | null>> {
     const { data, error } = await this.supabase
       .from('users')

@@ -70,7 +70,7 @@ const modelHandler = new ModelHandlerService();
 
 // 認証チェックを共通化
 async function checkAuth(liffAccessToken: string): Promise<
-  | { isError: true; error: string | undefined; requiresSubscription?: boolean }
+  | { isError: true; error: string }
   | {
       isError: false;
       userId: string;
@@ -80,11 +80,10 @@ async function checkAuth(liffAccessToken: string): Promise<
     }
 > {
   const authResult = await authMiddleware(liffAccessToken);
-  if (authResult.error || authResult.requiresSubscription) {
+  if (authResult.error) {
     return {
       isError: true as const,
-      error: authResult.error,
-      requiresSubscription: authResult.requiresSubscription,
+      error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
     };
   }
 
@@ -101,7 +100,6 @@ async function checkAuth(liffAccessToken: string): Promise<
       return {
         isError: true as const,
         error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
-        requiresSubscription: false,
       };
     }
 
@@ -109,7 +107,6 @@ async function checkAuth(liffAccessToken: string): Promise<
       return {
         isError: true as const,
         error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
-        requiresSubscription: false,
       };
     }
 
@@ -125,7 +122,6 @@ async function checkAuth(liffAccessToken: string): Promise<
     return {
       isError: true as const,
       error: ERROR_MESSAGES.USER.USER_INFO_VERIFY_FAILED,
-      requiresSubscription: false,
     };
   }
 }
@@ -137,31 +133,19 @@ export async function startChat(data: StartChatInput): Promise<ChatResponse> {
     // 認証チェック
     const auth = await checkAuth(validatedData.liffAccessToken);
     if (auth.isError) {
-      return {
-        message: '',
-        error: auth.error,
-        requiresSubscription: auth.requiresSubscription,
-      };
+      return { message: '', error: auth.error };
     }
 
     // 閲覧専用モードでの書き込み制限（内部でservice_roleを使用しているため明示的なガードが必要）
     if (auth.viewMode) {
-      return {
-        message: '',
-        error: ERROR_MESSAGES.USER.VIEW_MODE_OPERATION_NOT_ALLOWED,
-        requiresSubscription: false,
-      };
+      return { message: '', error: ERROR_MESSAGES.USER.VIEW_MODE_OPERATION_NOT_ALLOWED };
     }
 
     // モデル処理に委譲
     return await modelHandler.handleStart(auth.userId, validatedData);
   } catch (e: unknown) {
     console.error('startChat failed:', e);
-    return {
-      message: '',
-      error: (e as Error).message || ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
-      requiresSubscription: false,
-    };
+    return { message: '', error: (e as Error).message || ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR };
   }
 }
 
@@ -172,38 +156,26 @@ export async function continueChat(data: ContinueChatInput): Promise<ChatRespons
     // 認証チェック
     const auth = await checkAuth(validatedData.liffAccessToken);
     if (auth.isError) {
-      return {
-        message: '',
-        error: auth.error,
-        requiresSubscription: auth.requiresSubscription,
-      };
+      return { message: '', error: auth.error };
     }
 
     // 閲覧専用モードでの書き込み制限（内部でservice_roleを使用しているため明示的なガードが必要）
     if (auth.viewMode) {
-      return {
-        message: '',
-        error: ERROR_MESSAGES.USER.VIEW_MODE_OPERATION_NOT_ALLOWED,
-        requiresSubscription: false,
-      };
+      return { message: '', error: ERROR_MESSAGES.USER.VIEW_MODE_OPERATION_NOT_ALLOWED };
     }
 
     // モデル処理に委譲
     return await modelHandler.handleContinue(auth.userId, validatedData);
   } catch (e: unknown) {
     console.error('continueChat failed:', e);
-    return {
-      message: '',
-      error: (e as Error).message || ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
-      requiresSubscription: false,
-    };
+    return { message: '', error: (e as Error).message || ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR };
   }
 }
 
 export async function getChatSessions(liffAccessToken: string) {
   const auth = await checkAuth(liffAccessToken);
   if (auth.isError) {
-    return { sessions: [], error: auth.error, requiresSubscription: auth.requiresSubscription };
+    return { sessions: [], error: auth.error };
   }
 
   // RPC関数を使用してオーナー/従業員の相互閲覧に対応
@@ -225,7 +197,7 @@ export async function getChatSessions(liffAccessToken: string) {
 export async function getSessionMessages(sessionId: string, liffAccessToken: string) {
   const auth = await checkAuth(liffAccessToken);
   if (auth.isError) {
-    return { messages: [], error: auth.error, requiresSubscription: auth.requiresSubscription };
+    return { messages: [], error: auth.error };
   }
   const targetUserId = auth.ownerUserId || auth.userId;
   const messages = await chatService.getSessionMessages(sessionId, targetUserId);
@@ -287,11 +259,7 @@ export async function searchChatSessions(data: z.infer<typeof searchChatSessions
 
   const auth = await checkAuth(parsed.liffAccessToken);
   if (auth.isError) {
-    return {
-      results: [],
-      error: auth.error,
-      requiresSubscription: auth.requiresSubscription,
-    };
+    return { results: [], error: auth.error };
   }
 
   try {
@@ -309,14 +277,12 @@ export async function searchChatSessions(data: z.infer<typeof searchChatSessions
         similarityScore: match.similarityScore,
       })),
       error: null,
-      requiresSubscription: false,
     };
   } catch (error) {
     console.error('Failed to search chat sessions:', error);
     return {
       results: [],
       error: error instanceof Error ? error.message : ERROR_MESSAGES.CHAT.SESSION_SEARCH_FAILED,
-      requiresSubscription: false,
     };
   }
 }
@@ -324,7 +290,7 @@ export async function searchChatSessions(data: z.infer<typeof searchChatSessions
 export async function deleteChatSession(sessionId: string, liffAccessToken: string) {
   const auth = await checkAuth(liffAccessToken);
   if (auth.isError) {
-    return { success: false, error: auth.error, requiresSubscription: auth.requiresSubscription };
+    return { success: false, error: auth.error };
   }
 
   // 閲覧モード（オーナー含む）での書き込み制限
@@ -357,7 +323,7 @@ export async function updateChatSessionTitle(
 
   const auth = await checkAuth(parsed.liffAccessToken);
   if (auth.isError) {
-    return { success: false, error: auth.error, requiresSubscription: auth.requiresSubscription };
+    return { success: false, error: auth.error };
   }
 
   // 閲覧モード（オーナー含む）での書き込み制限
@@ -415,7 +381,7 @@ export async function updateSessionServiceId(
 
   const auth = await checkAuth(parsed.liffAccessToken);
   if (auth.isError) {
-    return { success: false, error: auth.error, requiresSubscription: auth.requiresSubscription };
+    return { success: false, error: auth.error };
   }
 
   // 閲覧モード（オーナー含む）での書き込み制限

@@ -19,7 +19,6 @@ alwaysApply: true
 │   ├── business-info/            # ビジネス情報管理
 │   ├── setup/                    # セットアップ
 │   ├── admin/                    # 管理機能
-│   ├── subscription/             # サブスクリプション
 │   ├── api/                      # API Route Handlers
 │   │   ├── chat/
 │   │   ├── wordpress/
@@ -53,7 +52,6 @@ alwaysApply: true
 │   │   │   └── user.actions.ts
 │   │   ├── services/             # サーバーサイドサービス (camelCase + Service)
 │   │   │   ├── supabaseService.ts
-│   │   │   ├── stripeService.ts
 │   │   │   └── wordpressService.ts
 │   │   ├── middleware/           # ミドルウェア (camelCase + .middleware.ts)
 │   │   │   └── auth.middleware.ts
@@ -87,7 +85,7 @@ alwaysApply: true
 | Components (shadcn) | kebab-case | `.tsx` | `avatar.tsx`, `button.tsx` |
 | Components (カスタム) | PascalCase | `.tsx` | `ChatClient.tsx`, `CanvasPanel.tsx` |
 | Hooks | camelCase | `.ts` | `useChatSession.ts` |
-| Services | camelCase + Service | `.ts` | `chatService.ts`, `stripeService.ts` |
+| Services | camelCase + Service | `.ts` | `chatService.ts`, `wordpressService.ts` |
 | Actions | camelCase + .actions | `.ts` | `chat.actions.ts` |
 | Middleware | camelCase + .middleware | `.ts` | `auth.middleware.ts` |
 | Schemas | camelCase + .schema | `.ts` | `brief.schema.ts` |

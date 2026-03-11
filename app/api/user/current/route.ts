@@ -30,7 +30,6 @@ export async function GET() {
     const authResult = await ensureAuthenticated({
       ...(accessToken ? { accessToken } : {}),
       ...(refreshToken ? { refreshToken } : {}),
-      skipSubscriptionCheck: true,
     });
 
     if (authResult.error) {

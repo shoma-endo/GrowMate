@@ -116,11 +116,6 @@ export default function PrivacyPolicyPage() {
                   <strong>利用状況データ:</strong>{' '}
                   チャット履歴、キャンバス編集履歴、アナリティクス閲覧履歴等の操作ログ。
                 </li>
-                <li>
-                  <strong>決済関連:</strong> 現在 Stripe
-                  決済は未提供であり、クレジットカード情報を当社サーバーに保存しません。将来的に導入する場合も
-                  Stripe 側でのみ処理します。
-                </li>
               </ul>
             </section>
 
@@ -224,7 +219,6 @@ export default function PrivacyPolicyPage() {
                 <li>
                   Anthropic PBC / OpenAI, L.L.C.（AI応答生成。送信データはユーザー入力範囲に限定）
                 </li>
-                <li>Stripe, Inc.（将来の決済機能。決済情報は Stripe が保管）</li>
               </ul>
               <p className="mt-3">
                 これらの事業者へ提供するデータは、業務委託契約の目的達成に必要な最小限に限定します。

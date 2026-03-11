@@ -3,10 +3,10 @@ import { SupabaseService } from './supabaseService';
 import type { SupabaseResult } from './supabaseService';
 import { toIsoTimestamp } from '@/lib/timestamps';
 import type { User, UserRole, EmployeeInvitation } from '@/types/user';
-import { toDbUser, toUser, type DbUser } from '@/types/user';
+import { toDbUserInsert, toUser, type DbUser, type DbUserUpdate } from '@/types/user';
 
 /**
- * ユーザーサービス: ユーザー管理と課金状態の確認機能を提供
+ * ユーザーサービス: ユーザー管理機能を提供
  */
 export class UserService {
   private lineAuthService: LineAuthService;
@@ -27,8 +27,8 @@ export class UserService {
   private buildDbUserUpdates(
     updates: Partial<Omit<User, 'id' | 'createdAt' | 'updatedAt'>>,
     timestampIso = toIsoTimestamp(new Date())
-  ): Partial<DbUser> {
-    const dbUpdates: Partial<DbUser> = {
+  ): DbUserUpdate {
+    const dbUpdates: DbUserUpdate = {
       updated_at: timestampIso,
     };
 
@@ -40,12 +40,6 @@ export class UserService {
     }
     if (updates.lineStatusMessage !== undefined) {
       dbUpdates.line_status_message = updates.lineStatusMessage;
-    }
-    if (updates.stripeCustomerId !== undefined) {
-      dbUpdates.stripe_customer_id = updates.stripeCustomerId;
-    }
-    if (updates.stripeSubscriptionId !== undefined) {
-      dbUpdates.stripe_subscription_id = updates.stripeSubscriptionId;
     }
     if (updates.lastLoginAt !== undefined) {
       dbUpdates.last_login_at = updates.lastLoginAt;
@@ -84,12 +78,10 @@ export class UserService {
           lineDisplayName: lineProfile.displayName,
           linePictureUrl: lineProfile.pictureUrl ?? undefined,
           lineStatusMessage: lineProfile.statusMessage ?? undefined,
-          stripeCustomerId: undefined,
-          stripeSubscriptionId: undefined,
           role: 'trial',
         };
 
-        const createResult = await this.supabaseService.createUser(toDbUser(newUser));
+        const createResult = await this.supabaseService.createUser(toDbUserInsert(newUser));
 
         if (!createResult.success) {
           if (
@@ -186,9 +178,7 @@ export class UserService {
               needsReauth?: boolean;
             } = { user };
 
-            if (refreshResult.newAccessToken) {
-              returnValue.newAccessToken = refreshResult.newAccessToken;
-            }
+            returnValue.newAccessToken = refreshResult.newAccessToken;
 
             if (refreshResult.newRefreshToken) {
               returnValue.newRefreshToken = refreshResult.newRefreshToken;
@@ -228,43 +218,6 @@ export class UserService {
     }
 
     return result.data ? toUser(result.data) : null;
-  }
-
-  /**
-   * Stripeカスタマー作成時にユーザー情報を更新
-   */
-  async updateStripeCustomerId(lineUserId: string, stripeCustomerId: string): Promise<boolean> {
-    const result = await this.supabaseService.updateUserByLineUserId(lineUserId, {
-      stripe_customer_id: stripeCustomerId,
-      updated_at: new Date().toISOString(),
-    });
-
-    if (!result.success) {
-      console.error('Failed to update Stripe customer ID:', result.error);
-      return false;
-    }
-
-    return Boolean(result.data);
-  }
-
-  /**
-   * Stripeサブスクリプション作成時にユーザー情報を更新
-   */
-  async updateStripeSubscriptionId(
-    lineUserId: string,
-    stripeSubscriptionId: string
-  ): Promise<boolean> {
-    const result = await this.supabaseService.updateUserByLineUserId(lineUserId, {
-      stripe_subscription_id: stripeSubscriptionId,
-      updated_at: new Date().toISOString(),
-    });
-
-    if (!result.success) {
-      console.error('Failed to update Stripe subscription ID:', result.error);
-      return false;
-    }
-
-    return true;
   }
 
   async updateFullName(userId: string, fullName: string): Promise<boolean> {

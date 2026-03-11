@@ -54,10 +54,6 @@ export interface User {
   lineStatusMessage?: string | undefined; // LINEステータスメッセージ
   lineAccessToken?: string | undefined; // LINEアクセストークン (一時的)
 
-  // Stripe関連情報
-  stripeCustomerId?: string | undefined; // StripeカスタマーID
-  stripeSubscriptionId?: string | undefined; // Stripeサブスクリプション ID
-
   // 権限管理
   role: UserRole; // ユーザーロール（trial: お試し, paid: 有料契約, admin: 管理者, unavailable: サービス利用不可, owner: スタッフを持つあなた）
   ownerUserId?: string | null | undefined; // スタッフが紐づくあなたのID（あなた自身はNULL）
@@ -65,29 +61,16 @@ export interface User {
 }
 
 /**
- * サブスクリプション状態の列挙型
- * クライアントサイドでのみ使用（Stripe APIから取得）
- */
-export enum SubscriptionStatus {
-  NONE = 'none', // サブスクリプションなし
-  ACTIVE = 'active', // アクティブ
-  CANCELED = 'canceled', // キャンセル済み
-  PAST_DUE = 'past_due', // 支払い遅延
-  UNPAID = 'unpaid', // 未払い
-  TRIAL = 'trial', // 試用期間中
-  INCOMPLETE = 'incomplete', // 不完全
-  INCOMPLETE_EXPIRED = 'incomplete_expired', // 不完全期限切れ
-}
-
-/**
  * データベースモデルへの変換用インターフェース
  */
 export type DbUser = Database['public']['Tables']['users']['Row'];
+export type DbUserInsert = Database['public']['Tables']['users']['Insert'];
+export type DbUserUpdate = Database['public']['Tables']['users']['Update'];
 
 /**
- * アプリケーションモデルとデータベースモデル間の変換関数
+ * アプリケーションモデルから users.Insert 用ペイロードへ変換
  */
-export function toDbUser(user: User): DbUser {
+export function toDbUserInsert(user: User): DbUserInsert {
   const createdAt = toIsoTimestamp(user.createdAt);
   const updatedAt = toIsoTimestamp(user.updatedAt);
   const lastLoginAt = user.lastLoginAt !== undefined ? toIsoTimestamp(user.lastLoginAt) : null;
@@ -101,9 +84,8 @@ export function toDbUser(user: User): DbUser {
     line_display_name: user.lineDisplayName,
     line_picture_url: user.linePictureUrl ?? null,
     line_status_message: user.lineStatusMessage ?? null,
-    stripe_customer_id: user.stripeCustomerId ?? null,
-    stripe_subscription_id: user.stripeSubscriptionId ?? null,
-
+    stripe_customer_id: null,
+    stripe_subscription_id: null,
     role: user.role,
     owner_user_id: user.ownerUserId ?? null,
     owner_previous_role: user.ownerPreviousRole ?? null,
@@ -134,9 +116,6 @@ export function toUser(dbUser: DbUser): User {
     lineDisplayName: dbUser.line_display_name,
     linePictureUrl: dbUser.line_picture_url ?? undefined,
     lineStatusMessage: dbUser.line_status_message ?? undefined,
-    stripeCustomerId: dbUser.stripe_customer_id ?? undefined,
-    stripeSubscriptionId: dbUser.stripe_subscription_id ?? undefined,
-
     role,
     ownerUserId: dbUser.owner_user_id,
     ownerPreviousRole: dbUser.owner_previous_role ?? null,

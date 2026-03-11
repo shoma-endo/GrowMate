@@ -3,9 +3,7 @@
 import React from 'react';
 import { useLiffContext } from '@/components/LiffProvider';
 import { ChatService } from '@/domain/services/chatService';
-import { SubscriptionService } from '@/domain/services/subscriptionService';
 import { useChatSession } from '@/hooks/useChatSession';
-import { useSubscriptionStatus } from '@/hooks/useSubscriptionStatus';
 import { useMobile } from '@/hooks/useMobile';
 import { ChatLayout } from './components/ChatLayout';
 import ErrorBoundary from './components/common/ErrorBoundary';
@@ -29,16 +27,7 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
   const { isLoggedIn, getAccessToken, isLoading: liffLoading } = useLiffContext();
   const { isMobile } = useMobile();
 
-  // ✅ 必要なサービスのみ作成
-  const { chatService, subscriptionService } = React.useMemo(() => {
-    const chat = new ChatService();
-    const subscription = new SubscriptionService();
-
-    return {
-      chatService: chat,
-      subscriptionService: subscription,
-    };
-  }, []);
+  const chatService = React.useMemo(() => new ChatService(), []);
 
   // ✅ サービスにaccessTokenProviderを設定（getAccessTokenが変わっても再作成されない）
   React.useEffect(() => {
@@ -54,18 +43,13 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
 
   // 各機能のフックを初期化
   const chatSession = useChatSession(chatService, getAccessToken);
-  const subscription = useSubscriptionStatus(subscriptionService, getAccessToken, isLoggedIn);
 
   // ✅ 初期マウント時（画面遷移時）のみ初期化（1回のみ実行保証）
   const initialSessionLoadedRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (isLoggedIn && !liffLoading) {
-      // サブスクリプション確認とセッション読み込みを並行実行
-      Promise.all([
-        subscription.actions.checkSubscription(),
-        chatSession.actions.loadSessions ? chatSession.actions.loadSessions() : Promise.resolve(),
-      ])
+      Promise.resolve(chatSession.actions.loadSessions ? chatSession.actions.loadSessions() : undefined)
         .then(async () => {
           const trimmedSessionId = initialSessionId?.trim();
           if (
@@ -83,8 +67,6 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
         })
         .catch(error => {
           console.error('❌ 初期化エラー:', error);
-          // エラー時はサブスクリプション初期化状態をリセット
-          subscription.actions.resetInitialization();
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,7 +81,6 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
     <ErrorBoundary>
       <ChatLayout
         chatSession={chatSession}
-        subscription={subscription}
         isMobile={isMobile}
         initialStep={initialStep ?? null}
       />

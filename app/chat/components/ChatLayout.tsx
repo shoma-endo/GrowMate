@@ -71,7 +71,6 @@ const deriveTileFromContent = (content: string) => {
 
 export const ChatLayout: React.FC<ChatLayoutProps> = ({
   chatSession,
-  subscription,
   isMobile = false,
   initialStep = null,
 }) => {
@@ -1024,10 +1023,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   }, []);
 
   // BlogFlow起動ガード（モデル選択と連動）
-  const blogFlowActive =
-    !subscription.requiresSubscription &&
-    !!chatSession.state.currentSessionId &&
-    selectedModel === 'blog_creation';
+  const blogFlowActive = !!chatSession.state.currentSessionId && selectedModel === 'blog_creation';
 
   // ✅ セッション切り替え時にパネルを自動的に閉じる
   useEffect(() => {
@@ -1731,7 +1727,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       <ChatLayoutContent
         ctx={{
           chatSession,
-          subscription,
           isMobile,
           blogFlowActive,
           optimisticMessages,

@@ -148,10 +148,6 @@ export interface Env {
   // Anthropic
   ANTHROPIC_API_KEY: string;
 
-  // Stripe
-  STRIPE_ENABLED: string;
-  STRIPE_SECRET_KEY?: string;
-  STRIPE_PUBLISHABLE_KEY?: string;
 }
 
 declare global {
