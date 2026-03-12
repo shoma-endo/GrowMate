@@ -222,6 +222,9 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                           LINE表示名
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          メールアドレス / 認証方式
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           最終ログイン
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -242,7 +245,26 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                             {user.fullName || '未入力'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {user.lineDisplayName}
+                            {user.lineDisplayName || '—'}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">
+                            <div className="flex flex-col gap-1">
+                              {user.email && (
+                                <span className="text-xs text-gray-700">{user.email}</span>
+                              )}
+                              <div className="flex gap-1">
+                                {user.lineUserId && (
+                                  <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">
+                                    LINE
+                                  </span>
+                                )}
+                                {user.supabaseAuthId && (
+                                  <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-700">
+                                    メール
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {formatDateTimeWithSeconds(user.lastLoginAt, '未ログイン')}
