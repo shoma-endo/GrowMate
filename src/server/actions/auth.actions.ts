@@ -1,6 +1,6 @@
 'use server';
 
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { featureFlags } from '@/config/featureFlags';
@@ -136,6 +136,10 @@ export async function verifyOtp(
   try {
     const user = await userService.resolveOrCreateEmailUser(data.user.id, data.user.email!);
     await userService.updateLastLoginAt(user.id);
+    // Email セッション確立時に古い LINE Cookie を破棄（middleware が LINE 経路を優先しないよう）
+    const cookieStore = await cookies();
+    cookieStore.delete('line_access_token');
+    cookieStore.delete('line_refresh_token');
     return { success: true };
   } catch (err) {
     console.error('[auth.actions] verifyOtp: failed to resolve public user:', err);

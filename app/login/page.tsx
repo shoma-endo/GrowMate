@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 
 import { Loader2 } from 'lucide-react';
 
@@ -15,29 +15,12 @@ import { sendOtpEmail, verifyOtp } from '@/server/actions/auth.actions';
 type LoginView = 'loading' | 'options' | 'email-form' | 'otp-form';
 
 export default function LoginPage() {
-  const hasChecked = useRef(false);
-  const [view, setView] = useState<LoginView>('loading');
+  const [view, setView] = useState<LoginView>('options');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isPending, startTransition] = useTransition();
-
-  // セッション確認
-  useEffect(() => {
-    if (hasChecked.current) return;
-    hasChecked.current = true;
-
-    fetch('/api/auth/check-role', { credentials: 'include', cache: 'no-store' })
-      .then(res => {
-        if (res.ok) {
-          window.location.href = '/';
-        } else {
-          setView('options');
-        }
-      })
-      .catch(() => setView('options'));
-  }, []);
 
   // 再送信カウントダウン
   useEffect(() => {

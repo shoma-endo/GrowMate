@@ -30,12 +30,14 @@ export async function updateSupabaseSession(request: NextRequest): Promise<Supab
         },
         setAll(cookiesToSet) {
           // request の Cookie を更新（後続のミドルウェア/ハンドラ向け）
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
           // response の Cookie を更新（ブラウザへの Set-Cookie 向け）
           supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(name, value, options);
+          });
         },
       },
     }

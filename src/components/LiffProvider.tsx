@@ -71,14 +71,14 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
     const currentLiff = liffObjectRef.current;
     const currentLoggedIn = isLoggedInRef.current;
 
-    if (!currentLiff) {
-      throw new Error('LIFF is not initialized');
-    }
-
     if (!currentLoggedIn) {
       // Email ユーザー: LIFF 未ログインだが Supabase セッションがある場合
       // 空文字を返すと Server Action 側が Email セッションで認証を試みる
       return '';
+    }
+
+    if (!currentLiff) {
+      throw new Error('LIFF is not initialized');
     }
 
     try {

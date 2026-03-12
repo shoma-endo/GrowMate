@@ -925,13 +925,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return;
       }
       const token = await getAccessToken();
-      if (!token?.trim()) {
-        toast.error('認証トークンを取得できませんでした。LINEで再ログインしてください。');
-        return;
-      }
+      // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
       const res = await getCombinedContentForStep7({
         sessionId: chatSession.state.currentSessionId,
-        liffAccessToken: token,
+        liffAccessToken: token?.trim() ?? '',
       });
       if (!res.success || res.sections == null) {
         toast.error(
@@ -1087,13 +1084,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           return { success: false, error: 'セッションが見つかりません' };
         }
         const token = await getAccessToken();
-        if (!token?.trim()) {
-          return { success: false, error: '認証トークンが無効です' };
-        }
+        // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
         const res = await saveStep7UserLead({
           sessionId: chatSession.state.currentSessionId,
           userLead: userLead.trim(),
-          liffAccessToken: token,
+          liffAccessToken: token?.trim() ?? '',
         });
         if (res.success) {
           await chatSession.actions.loadSession(chatSession.state.currentSessionId);

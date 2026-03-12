@@ -535,7 +535,7 @@ erDiagram
     gsc_article_evaluations ||--o{ gsc_article_evaluation_history : "has history"
 ```
 
-## 📋 環境変数（20 項目: 必須10項目、オプション10項目）
+## 📋 環境変数（21 項目: 必須10項目、オプション11項目）
 
 `src/env.ts` で厳格にバリデーションされる環境変数に加え、Route Handler で直接参照する `CRON_SECRET` を含みます。`.env.local` を手動で用意してください。
 

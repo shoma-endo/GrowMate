@@ -45,31 +45,35 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
   const chatSession = useChatSession(chatService, getAccessToken);
 
   // ✅ 初期マウント時（画面遷移時）のみ初期化（1回のみ実行保証）
+  const sessionsLoadedRef = React.useRef(false);
   const initialSessionLoadedRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     // isLoggedIn: LINE ユーザー / !!user: Email ユーザー（LIFF 未ログインだが Supabase セッションあり）
-    if ((isLoggedIn || !!user) && !liffLoading) {
-      Promise.resolve(chatSession.actions.loadSessions ? chatSession.actions.loadSessions() : undefined)
-        .then(async () => {
-          const trimmedSessionId = initialSessionId?.trim();
-          if (
-            trimmedSessionId &&
-            initialSessionLoadedRef.current !== trimmedSessionId &&
-            chatSession.actions.loadSession
-          ) {
-            try {
-              await chatSession.actions.loadSession(trimmedSessionId);
-              initialSessionLoadedRef.current = trimmedSessionId;
-            } catch (error) {
-              console.error('初期チャットセッションの読み込みに失敗しました:', error);
-            }
+    if (!(isLoggedIn || !!user) || liffLoading) return;
+    // loadSessions は認証確定後1回のみ実行（LINE ユーザーで user が後からセットされても二重実行しない）
+    if (sessionsLoadedRef.current) return;
+    sessionsLoadedRef.current = true;
+
+    Promise.resolve(chatSession.actions.loadSessions ? chatSession.actions.loadSessions() : undefined)
+      .then(async () => {
+        const trimmedSessionId = initialSessionId?.trim();
+        if (
+          trimmedSessionId &&
+          initialSessionLoadedRef.current !== trimmedSessionId &&
+          chatSession.actions.loadSession
+        ) {
+          try {
+            await chatSession.actions.loadSession(trimmedSessionId);
+            initialSessionLoadedRef.current = trimmedSessionId;
+          } catch (error) {
+            console.error('初期チャットセッションの読み込みに失敗しました:', error);
           }
-        })
-        .catch(error => {
-          console.error('❌ 初期化エラー:', error);
-        });
-    }
+        }
+      })
+      .catch(error => {
+        console.error('❌ 初期化エラー:', error);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, liffLoading, initialSessionId, user]); // ✅ Email ユーザー対応: user がセットされたタイミングでも初期化
 

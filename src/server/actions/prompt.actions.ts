@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { PromptService } from '@/server/services/promptService';
-import { isUnavailable } from '@/authUtils';
+import { isAdmin, isUnavailable } from '@/authUtils';
 import { UpdatePromptTemplateInput, PromptTemplate } from '@/types/prompt';
 import { isViewModeEnabled, VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -54,7 +54,7 @@ async function checkAdminPermission(liffAccessToken: string) {
     return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
   }
 
-  if (user.role !== 'admin') {
+  if (!isAdmin(user.role)) {
     return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
   }
 

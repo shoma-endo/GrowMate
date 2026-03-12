@@ -338,9 +338,15 @@ export class UserService {
     if (!createResult.success) {
       // 23505: supabase_auth_id または email の一意制約違反 → 先行 INSERT が完了しているので再フェッチ
       if (createResult.error.code === '23505') {
-        const retryResult = await this.supabaseService.getUserBySupabaseAuthId(supabaseAuthId);
-        if (retryResult.success && retryResult.data) {
-          return toUser(retryResult.data);
+        // supabase_auth_id で再試行（同一 auth ユーザーの競合）
+        const retryByAuthId = await this.supabaseService.getUserBySupabaseAuthId(supabaseAuthId);
+        if (retryByAuthId.success && retryByAuthId.data) {
+          return toUser(retryByAuthId.data);
+        }
+        // email で再試行（LINE ユーザー等が同メールアドレスを持つ場合）
+        const retryByEmail = await this.supabaseService.getUserByEmail(email);
+        if (retryByEmail.success && retryByEmail.data) {
+          return toUser(retryByEmail.data);
         }
       }
       throw new Error(createResult.error.developerMessage ?? createResult.error.userMessage);

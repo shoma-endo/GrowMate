@@ -4,7 +4,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { chatService } from '@/server/services/chatService';
 import { ChatResponse } from '@/types/chat';
 import { ModelHandlerService } from './chat/modelHandlers';
-import { isUnavailable, getUserRole } from '@/authUtils';
+import { isUnavailable, getUserRole, hasOwnerRole } from '@/authUtils';
 import { cookies } from 'next/headers';
 import { userService } from '@/server/services/userService';
 import type { UserRole } from '@/types/user';
@@ -51,11 +51,11 @@ async function isOwnerViewMode(): Promise<boolean> {
   const accessToken = cookieStore.get('line_access_token')?.value;
   if (accessToken) {
     const role = await getCachedUserRole(accessToken);
-    return role === 'owner';
+    return hasOwnerRole(role);
   }
   // Email セッションでロールを確認
   const authResult = await authMiddleware(undefined, undefined);
-  return authResult.userDetails?.role === 'owner';
+  return hasOwnerRole(authResult.userDetails?.role ?? null);
 }
 
 const updateChatSessionTitleSchema = z.object({
@@ -149,7 +149,7 @@ export async function startChat(data: StartChatInput): Promise<ChatResponse> {
     return await modelHandler.handleStart(auth.userId, validatedData);
   } catch (e: unknown) {
     console.error('startChat failed:', e);
-    return { message: '', error: (e as Error).message || ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR };
+    return { message: '', error: ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR };
   }
 }
 
@@ -172,7 +172,7 @@ export async function continueChat(data: ContinueChatInput): Promise<ChatRespons
     return await modelHandler.handleContinue(auth.userId, validatedData);
   } catch (e: unknown) {
     console.error('continueChat failed:', e);
-    return { message: '', error: (e as Error).message || ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR };
+    return { message: '', error: ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR };
   }
 }
 

@@ -225,6 +225,24 @@ export class SupabaseService {
     return this.success(data ?? null);
   }
 
+  async getUserByEmail(email: string): Promise<SupabaseResult<DbUser | null>> {
+    const { data, error } = await this.supabase
+      .from('users')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .maybeSingle();
+
+    if (error) {
+      return this.failure('ユーザー情報の取得に失敗しました', {
+        error,
+        developerMessage: 'Error getting user by email',
+        context: { email },
+      });
+    }
+
+    return this.success(data ?? null);
+  }
+
   async createEmailUser(email: string, supabaseAuthId: string): Promise<SupabaseResult<DbUser>> {
     const now = new Date().toISOString();
     const insert: DbUserInsert = {

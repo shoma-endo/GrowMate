@@ -18,13 +18,31 @@ const PUBLIC_PATHS = ['/login', '/unauthorized', '/', '/home', '/privacy'] as co
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 🔑 Supabase セッション refresh（Email ユーザーのトークン自動更新）
-  // supabaseResponse を全レスポンスのベースとして使用し、Set-Cookie を確実に伝播させる
-  const { supabaseResponse, supabaseUser } = await updateSupabaseSession(request);
-
   try {
+    // 🔑 Supabase セッション refresh（Email ユーザーのトークン自動更新）
+    // supabaseResponse を全レスポンスのベースとして使用し、Set-Cookie を確実に伝播させる
+    const { supabaseResponse, supabaseUser } = await updateSupabaseSession(request);
+
+    // Supabase の Set-Cookie を引き継ぎながらリダイレクトするヘルパー
+    const redirect = (url: URL) => {
+      const res = NextResponse.redirect(url);
+      for (const cookie of supabaseResponse.cookies.getAll()) {
+        res.cookies.set(cookie.name, cookie.value, cookie);
+      }
+      return res;
+    };
+
     // 🔍 1. 公開パスかチェック（ただし、ログイン済みユーザーの場合はホーム画面でも権限チェックを実行）
     if (isPublicPath(pathname)) {
+      // /login: 認証済みユーザーはトップへリダイレクト
+      // LINE token は存在確認のみ（有効期限検証は行わない）
+      // 期限切れ token の場合は / → /login に戻り、そこで cookie がクリアされる
+      if (pathname === '/login') {
+        const lineToken = request.cookies.get('line_access_token')?.value;
+        if (lineToken || supabaseUser) {
+          return redirect(new URL('/', request.url));
+        }
+      }
       // ホーム画面は完全に公開扱いとし、ミドルウェア側で外部サービスを呼び出さない
       // supabaseResponse を返すことで Supabase Cookie（Email セッション）を保持する
       return supabaseResponse;
@@ -44,11 +62,11 @@ export async function middleware(request: NextRequest) {
           requiresSetupAccess(pathname) ||
           requiresGoogleAdsAccess(pathname)
         ) {
-          return NextResponse.redirect(new URL('/unauthorized', request.url));
+          return redirect(new URL('/unauthorized', request.url));
         }
         return supabaseResponse;
       }
-      return NextResponse.redirect(new URL('/login', request.url));
+      return redirect(new URL('/login', request.url));
     }
 
     // 🔍 4. ユーザーロールの取得（リフレッシュトークン対応キャッシュ考慮）
@@ -62,13 +80,13 @@ export async function middleware(request: NextRequest) {
     if (!authResult.role) {
       if ('needsReauth' in authResult && authResult.needsReauth) {
         // クッキーをクリアしてログインページにリダイレクト
-        const response = NextResponse.redirect(new URL('/login', request.url));
-        response.cookies.delete('line_access_token');
-        response.cookies.delete('line_refresh_token');
-        return response;
+        const res = redirect(new URL('/login', request.url));
+        res.cookies.delete('line_access_token');
+        res.cookies.delete('line_refresh_token');
+        return res;
       }
 
-      return NextResponse.redirect(new URL('/login', request.url));
+      return redirect(new URL('/login', request.url));
     }
 
     // 🔍 5. unavailableユーザーのアクセス制限チェック
@@ -78,31 +96,31 @@ export async function middleware(request: NextRequest) {
         return NextResponse.next();
       }
       // その他のページへのアクセスは/unavailableにリダイレクト
-      return NextResponse.redirect(new URL('/unavailable', request.url));
+      return redirect(new URL('/unavailable', request.url));
     }
 
     // 🔍 5-1. Setup画面のアクセス制御（paid / admin / owner を許可）
     // NOTE: /setup は owner にも開放するため、paid 限定チェックより先に評価する
     if (requiresSetupAccess(pathname) && !hasSetupAccess(authResult.role)) {
-      return NextResponse.redirect(new URL('/unauthorized', request.url));
+      return redirect(new URL('/unauthorized', request.url));
     }
 
     // 🔍 5-2. 有料機能のアクセス制御（paid / admin のみ）
     if (requiresPaidFeatureAccess(pathname) && !hasPaidFeatureAccess(authResult.role)) {
-      return NextResponse.redirect(new URL('/unauthorized', request.url));
+      return redirect(new URL('/unauthorized', request.url));
     }
 
     // 🔍 6. 管理者権限チェック
     if (requiresAdminAccess(pathname)) {
       if (!isAdmin(authResult.role)) {
-        return NextResponse.redirect(new URL('/unauthorized', request.url));
+        return redirect(new URL('/unauthorized', request.url));
       }
     }
 
     // 🔍 6-1. Google Ads 機能へのアクセス制限（審査完了まで管理者のみ）
     if (requiresGoogleAdsAccess(pathname)) {
       if (!isAdmin(authResult.role)) {
-        return NextResponse.redirect(new URL('/unauthorized', request.url));
+        return redirect(new URL('/unauthorized', request.url));
       }
     }
 

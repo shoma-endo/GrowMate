@@ -407,16 +407,11 @@ export function useHeadingFlow({
 
         if (headings.length > 0) {
           const token = await getAccessToken();
-          if (!token?.trim()) {
-            if (sid === currentSessionIdRef.current) {
-              setHeadingInitError('認証トークンを取得できませんでした。LINEで再ログインしてください。');
-            }
-            return;
-          }
+          // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
           const res = await headingActions.initializeHeadingSections({
             sessionId: sid,
             step5Markdown: trimmedBasic,
-            liffAccessToken: token.trim(),
+            liffAccessToken: token?.trim() ?? '',
           });
           if (res.success) {
             const sections = await fetchHeadingSections(sid);
