@@ -34,6 +34,7 @@ export async function GET() {
       user: {
         id: emailUser.id,
         fullName: emailUser.fullName ?? null,
+        email: emailUser.email ?? null,
         role: emailUser.role,
         lineUserId: emailUser.lineUserId ?? null,
         lineDisplayName: emailUser.lineDisplayName ?? null,
@@ -104,16 +105,17 @@ export async function GET() {
     const response = NextResponse.json({
       userId: user?.id ?? null,
       user: user
-        ? {
-            id: user.id,
-            fullName: user.fullName ?? null,
-            role: user.role,
-            lineUserId: user.lineUserId,
-            lineDisplayName: user.lineDisplayName,
-            linePictureUrl: user.linePictureUrl ?? null,
-            ownerUserId: user.ownerUserId ?? null,
-          }
-        : null,
+          ? {
+              id: user.id,
+              fullName: user.fullName ?? null,
+              email: user.email ?? null,
+              role: user.role,
+              lineUserId: user.lineUserId,
+              lineDisplayName: user.lineDisplayName,
+              linePictureUrl: user.linePictureUrl ?? null,
+              ownerUserId: user.ownerUserId ?? null,
+            }
+          : null,
       viewMode: Boolean(authResult.viewMode),
       tokenRefreshed: Boolean(authResult.newAccessToken),
     });

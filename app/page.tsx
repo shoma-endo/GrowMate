@@ -27,23 +27,23 @@ interface EmployeeInfo {
 const ProfileDisplay = () => {
   const { profile, isLoading, isLoggedIn, logout, user, isOwnerViewMode } = useLiffContext();
 
-  if (isLoading || !isLoggedIn) {
+  if (isLoading || !user) {
     return null;
   }
 
-  const displayName = isOwnerViewMode ? user?.lineDisplayName : profile?.displayName;
+  const displayName =
+    user.fullName ??
+    (isOwnerViewMode ? user.lineDisplayName : profile?.displayName) ??
+    user.email ??
+    'ユーザー';
   const pictureUrl = isOwnerViewMode ? user?.linePictureUrl : profile?.pictureUrl;
-  const ownerUserId = user?.lineUserId || user?.id;
-  const userId = isOwnerViewMode ? ownerUserId : profile?.userId;
-
-  if (!displayName || !userId) {
-    return null;
-  }
+  const lineDisplayName = isOwnerViewMode ? user.lineDisplayName : profile?.displayName;
+  const userId = user.id;
 
   return (
     <Card className="w-full max-w-md mb-6">
       <CardHeader>
-        <CardTitle className="text-xl text-center">LINEプロフィール</CardTitle>
+        <CardTitle className="text-xl text-center">アカウント情報</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col items-center">
         {pictureUrl && (
@@ -52,8 +52,12 @@ const ProfileDisplay = () => {
           </Avatar>
         )}
         <h3 className="text-xl font-bold mb-2">{displayName}</h3>
+        {user.email && <p className="text-sm text-gray-600">メールアドレス: {user.email}</p>}
+        {lineDisplayName && lineDisplayName !== displayName && (
+          <p className="text-sm text-gray-600">LINE表示名: {lineDisplayName}</p>
+        )}
         <p className="text-sm text-gray-600 mb-4">ユーザーID: {userId}</p>
-        {!isOwnerViewMode && (
+        {!isOwnerViewMode && isLoggedIn && (
           <button
             onClick={logout}
             className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm"
@@ -71,12 +75,12 @@ const ProfileDisplay = () => {
 // 管理者向けカードコンポーネント（constパターン使用）
 interface AdminAccessCardProps {
   isAdmin: boolean;
-  isLoggedIn: boolean;
+  hasAuthenticatedUser: boolean;
   isLoading: boolean;
 }
 
-const AdminAccessCard = ({ isAdmin, isLoggedIn, isLoading }: AdminAccessCardProps) => {
-  if (isLoading || !isLoggedIn || !isAdmin) {
+const AdminAccessCard = ({ isAdmin, hasAuthenticatedUser, isLoading }: AdminAccessCardProps) => {
+  if (isLoading || !hasAuthenticatedUser || !isAdmin) {
     return null;
   }
 
@@ -115,12 +119,16 @@ const AdminAccessCard = ({ isAdmin, isLoggedIn, isLoading }: AdminAccessCardProp
 
 interface EmployeeInviteCardProps {
   canInvite: boolean;
-  isLoggedIn: boolean;
+  hasAuthenticatedUser: boolean;
   isLoading: boolean;
 }
 
-const EmployeeInviteCard = ({ canInvite, isLoggedIn, isLoading }: EmployeeInviteCardProps) => {
-  if (isLoading || !isLoggedIn || !canInvite) {
+const EmployeeInviteCard = ({
+  canInvite,
+  hasAuthenticatedUser,
+  isLoading,
+}: EmployeeInviteCardProps) => {
+  if (isLoading || !hasAuthenticatedUser || !canInvite) {
     return null;
   }
 
@@ -158,18 +166,22 @@ const EmployeeInviteCard = ({ canInvite, isLoggedIn, isLoading }: EmployeeInvite
 
 interface OwnerEmployeeCardProps {
   isOwnerRole: boolean;
-  isLoggedIn: boolean;
+  hasAuthenticatedUser: boolean;
   isLoading: boolean;
 }
 
-const OwnerEmployeeCard = ({ isOwnerRole, isLoggedIn, isLoading }: OwnerEmployeeCardProps) => {
+const OwnerEmployeeCard = ({
+  isOwnerRole,
+  hasAuthenticatedUser,
+  isLoading,
+}: OwnerEmployeeCardProps) => {
   const { getAccessToken } = useLiffContext();
   const router = useRouter();
   const [employee, setEmployee] = useState<EmployeeInfo | null>(null);
   const [fetching, setFetching] = useState(false);
 
   useEffect(() => {
-    if (!isOwnerRole || !isLoggedIn) return;
+    if (!isOwnerRole || !hasAuthenticatedUser) return;
 
     const fetchEmployee = async () => {
       setFetching(true);
@@ -197,9 +209,9 @@ const OwnerEmployeeCard = ({ isOwnerRole, isLoggedIn, isLoading }: OwnerEmployee
     };
 
     void fetchEmployee();
-  }, [getAccessToken, isLoggedIn, isOwnerRole]);
+  }, [getAccessToken, hasAuthenticatedUser, isOwnerRole]);
 
-  if (isLoading || !isLoggedIn || !isOwnerRole) {
+  if (isLoading || !hasAuthenticatedUser || !isOwnerRole) {
     return null;
   }
 
@@ -280,8 +292,9 @@ const OwnerEmployeeCard = ({ isOwnerRole, isLoggedIn, isLoading }: OwnerEmployee
 
 export default function Home() {
   const { isLoading, isLoggedIn, user, isOwnerViewMode } = useLiffContext();
+  const hasAuthenticatedUser = Boolean(user);
   const userRole = user?.role ?? null;
-  const isRoleLoading = isLoggedIn && !user;
+  const isRoleLoading = !isLoading && !hasAuthenticatedUser;
   const isStaffUser = Boolean(user?.ownerUserId);
 
   // フルネーム関連ステート
@@ -296,10 +309,10 @@ export default function Home() {
 
   // フルネーム未入力チェック
   useEffect(() => {
-    if (isLoggedIn && user && !user.fullName && !isLoading) {
+    if (user && !user.fullName && !isLoading) {
       setShowFullNameDialog(true);
     }
-  }, [isLoggedIn, user, isLoading]);
+  }, [user, isLoading]);
 
   const handleSaveFullName = async (fullName: string) => {
     try {
@@ -321,101 +334,101 @@ export default function Home() {
       <Toaster />
       <FullNameDialog open={showFullNameDialog} onSave={handleSaveFullName} />
 
-      {!isLoading && isLoggedIn && (
+      {!isLoading && hasAuthenticatedUser && (
         <div className="flex flex-col items-center justify-center min-h-screen p-4 lg:p-8">
           <h1 className="text-3xl font-bold mb-8">GrowMate</h1>
 
           <ProfileDisplay />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-md lg:max-w-6xl">
-          <AdminAccessCard
-            isAdmin={isAdmin}
-            isLoggedIn={isLoggedIn}
-            isLoading={isLoading || isRoleLoading}
-          />
-          <EmployeeInviteCard
-            canInvite={canInvite}
-            isLoggedIn={isLoggedIn}
-            isLoading={isLoading || isRoleLoading}
-          />
-          <OwnerEmployeeCard
-            isOwnerRole={isOwnerRole}
-            isLoggedIn={isLoggedIn}
-            isLoading={isLoading || isRoleLoading}
-          />
+            <AdminAccessCard
+              isAdmin={isAdmin}
+              hasAuthenticatedUser={hasAuthenticatedUser}
+              isLoading={isLoading || isRoleLoading}
+            />
+            <EmployeeInviteCard
+              canInvite={canInvite}
+              hasAuthenticatedUser={hasAuthenticatedUser}
+              isLoading={isLoading || isRoleLoading}
+            />
+            <OwnerEmployeeCard
+              isOwnerRole={isOwnerRole}
+              hasAuthenticatedUser={hasAuthenticatedUser}
+              isLoading={isLoading || isRoleLoading}
+            />
 
-          {/* 有料/管理者向け 設定ページ導線 */}
-          {isLoggedIn && canManageIntegrations && !isRoleLoading && (
-            <Card className="">
-              <CardHeader>
-                <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
-                  <Settings className="h-5 w-5" />
-                  設定
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600 text-center mb-4">
-                  WordPressやGoogle Search Consoleの
-                  <br />
-                  連携設定はこちらから
-                </p>
-                <Button asChild className="w-full" aria-label="設定ページへ移動" tabIndex={0}>
-                  <Link href="/setup">設定を開く</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+            {/* 有料/管理者向け 設定ページ導線 */}
+            {hasAuthenticatedUser && canManageIntegrations && !isRoleLoading && (
+              <Card className="">
+                <CardHeader>
+                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
+                    <Settings className="h-5 w-5" />
+                    設定
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 text-center mb-4">
+                    WordPressやGoogle Search Consoleの
+                    <br />
+                    連携設定はこちらから
+                  </p>
+                  <Button asChild className="w-full" aria-label="設定ページへ移動" tabIndex={0}>
+                    <Link href="/setup">設定を開く</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
-          {/* 有料/管理者向け コンテンツ一覧導線 */}
-          {isLoggedIn && hasManagementAccess && !isRoleLoading && (
-            <Card className="">
-              <CardHeader>
-                <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
-                  <List className="h-5 w-5" />
-                  コンテンツ一覧
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600 text-center mb-4">
-                  WordPressとGoogle Search Consoleの
-                  <br />
-                  メタ情報を一覧表示します
-                </p>
-                <Button asChild className="w-full" aria-label="コンテンツ一覧へ移動" tabIndex={0}>
-                  <Link href="/analytics">一覧を開く</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+            {/* 有料/管理者向け コンテンツ一覧導線 */}
+            {hasAuthenticatedUser && hasManagementAccess && !isRoleLoading && (
+              <Card className="">
+                <CardHeader>
+                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
+                    <List className="h-5 w-5" />
+                    コンテンツ一覧
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 text-center mb-4">
+                    WordPressとGoogle Search Consoleの
+                    <br />
+                    メタ情報を一覧表示します
+                  </p>
+                  <Button asChild className="w-full" aria-label="コンテンツ一覧へ移動" tabIndex={0}>
+                    <Link href="/analytics">一覧を開く</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
-          {/* 管理者向け Google Ads 分析導線 */}
-          {isAdmin && !isRoleLoading && (
-            <Card className="border-indigo-200 bg-indigo-50">
-              <CardHeader>
-                <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
-                  <Plug className="h-5 w-5 text-indigo-600" />
-                  Google Ads 分析
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-700 text-center mb-4">
-                  広告キャンペーンのパフォーマンスを
-                  <br />
-                  確認・分析できます
-                </p>
-                <Button
-                  asChild
-                  className="w-full bg-indigo-600 hover:bg-indigo-700"
-                  aria-label="Google Ads ダッシュボードへ移動"
-                  tabIndex={0}
-                >
-                  <Link href="/google-ads-dashboard">
-                    ダッシュボードを開く
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+            {/* 管理者向け Google Ads 分析導線 */}
+            {isAdmin && !isRoleLoading && (
+              <Card className="border-indigo-200 bg-indigo-50">
+                <CardHeader>
+                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
+                    <Plug className="h-5 w-5 text-indigo-600" />
+                    Google Ads 分析
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-700 text-center mb-4">
+                    広告キャンペーンのパフォーマンスを
+                    <br />
+                    確認・分析できます
+                  </p>
+                  <Button
+                    asChild
+                    className="w-full bg-indigo-600 hover:bg-indigo-700"
+                    aria-label="Google Ads ダッシュボードへ移動"
+                    tabIndex={0}
+                  >
+                    <Link href="/google-ads-dashboard">
+                      ダッシュボードを開く
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       )}
