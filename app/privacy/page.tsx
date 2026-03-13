@@ -30,7 +30,7 @@ export default function PrivacyPolicyPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-6 border-b pb-4">
             プライバシーポリシー
           </h1>
-          <p className="text-sm text-gray-500 mb-8">最終更新日: 2026年2月18日</p>
+          <p className="text-sm text-gray-500 mb-8">最終更新日: 2026年3月13日</p>
 
           <div
             className="bg-gray-100 rounded-2xl p-6 sm:p-8 text-sm text-gray-700 mb-10"
@@ -75,6 +75,10 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-xl font-bold text-gray-900 mb-3">2. 取得する情報</h2>
               <p className="mb-2">当サービスが取得・生成する主な情報は以下の通りです。</p>
               <ul className="list-disc pl-5 space-y-2">
+                <li>
+                  <strong>メールアドレス:</strong>{' '}
+                  メールOTP認証でログインする場合に取得するメールアドレス。
+                </li>
                 <li>
                   <strong>LINE アカウント情報:</strong> LINE
                   LIFF認証で取得する表示名・プロフィール画像・ユーザーID。
@@ -237,8 +241,8 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-xl font-bold text-gray-900 mb-3">7. ユーザーの権利と手続き</h2>
               <ul className="list-disc pl-5 space-y-2">
                 <li>
-                  <strong>アクセス・訂正:</strong> サポート窓口に連絡するか、LIFF
-                  マイページから登録情報を変更できます。
+                  <strong>アクセス・訂正:</strong>{' '}
+                  サポート窓口に連絡するか、アプリ内のアカウント情報ページから登録情報を変更できます。
                 </li>
                 <li>
                   <strong>連携解除:</strong>{' '}
