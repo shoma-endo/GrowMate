@@ -13,7 +13,7 @@ jobs:
       - name: Call GSC evaluate endpoint
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          TARGET_URL: https://industry-specific-mc-training.vercel.app/api/cron/gsc-evaluate
+          TARGET_URL: https://www.growmate.tokyo/api/cron/gsc-evaluate
         run: |
           if [ -z "$CRON_SECRET" ]; then
             echo "CRON_SECRET is not set" >&2
