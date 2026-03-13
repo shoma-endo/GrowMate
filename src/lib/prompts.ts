@@ -942,6 +942,60 @@ const STATIC_PROMPTS: Record<string, string> = {
 };
 const BLOG_STEP_PATTERN = new RegExp(`^blog_creation_(${BLOG_STEP_IDS.join('|')})(?:_|$)`);
 
+async function generateBlogTitleMetaPrompt(
+  liffAccessToken: string,
+  sessionId?: string
+): Promise<string> {
+  const fallbackInstruction =
+    '本文を元にタイトル（全角32文字以内で狙うキーワードはなるべく左よせ）、説明文（全角80文字程度）を３パターン作成してください';
+
+  if (!sessionId) {
+    return fallbackInstruction;
+  }
+
+  try {
+    const [template, auth] = await Promise.all([
+      PromptService.getTemplateByName('blog_title_meta_generation'),
+      authMiddleware(liffAccessToken),
+    ]);
+
+    let bodyContent = '';
+    if (!auth.error && auth.userId) {
+      const [latestStep7Result, latestCombinedResult] = await Promise.all([
+        supabaseService.getLatestAccessibleAssistantMessageBySessionAndModel(
+          sessionId,
+          auth.userId,
+          'blog_creation_step7'
+        ),
+        supabaseService.getLatestCombinedContentBySession(sessionId, auth.userId),
+      ]);
+
+      if (latestStep7Result.success && latestStep7Result.data?.content?.trim()) {
+        bodyContent = latestStep7Result.data.content;
+      } else if (latestCombinedResult.success && latestCombinedResult.data?.trim()) {
+        bodyContent = latestCombinedResult.data;
+      }
+
+      const annotation = await PromptService.getContentAnnotationBySession(auth.userId, sessionId);
+      const contentVars = PromptService.buildContentVariables(annotation);
+      const variables = {
+        ...contentVars,
+        bodyContent,
+      };
+
+      if (template?.content) {
+        const merged = PromptService.replaceVariables(template.content, variables);
+        return merged.replace(/{{\w+}}/g, '');
+      }
+    }
+
+    return [fallbackInstruction, '', '本文:', bodyContent].join('\n');
+  } catch (error) {
+    console.error('タイトル・説明文プロンプト生成エラー:', error);
+    return fallbackInstruction;
+  }
+}
+
 /**
  * モデルに応じたシステムプロンプトを取得する（LIFFトークンがあれば動的生成、なければ静的）
  * @param step7CombinedContext 本文生成ボタン時に渡す各見出し本文（書き出しはユーザープロンプトに注入）。ある場合、これをシステムプロンプト内に注入する
@@ -1049,6 +1103,8 @@ export async function getSystemPrompt(
         return await generateAdCopyFinishingPrompt(liffAccessToken, serviceId);
       case 'lp_draft_creation':
         return await generateLpDraftPrompt(liffAccessToken, serviceId);
+      case 'blog_title_meta_generation':
+        return await generateBlogTitleMetaPrompt(liffAccessToken, sessionId);
       default:
         return STATIC_PROMPTS[model] ?? SYSTEM_PROMPT;
     }
