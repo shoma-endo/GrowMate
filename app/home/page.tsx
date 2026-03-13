@@ -65,7 +65,7 @@ export default function LandingPage() {
           <div className="mx-auto w-full max-w-7xl px-4 text-center">
             <div className="inline-flex items-center px-4 py-2 rounded-full bg-blue-100 text-blue-800 text-sm font-medium mb-8 animate-fade-in-up">
               <span className="w-2 h-2 rounded-full bg-blue-600 mr-2" />
-              LINE公式アカウントで簡単ログイン
+              LINE / メールで簡単ログイン
             </div>
             <h1 className="text-5xl md:text-6xl font-extrabold text-gray-900 tracking-tight mb-6 leading-tight max-w-4xl mx-auto">
               業界特化のマーケティングを
@@ -180,7 +180,7 @@ export default function LandingPage() {
               <div className="p-8 bg-white rounded-2xl shadow-md border border-blue-100">
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">OAuth フロー概要</h3>
                 <ul className="space-y-3 text-gray-600 text-sm">
-                  <li>1. LINE LIFF で本人確認後、Google に遷移</li>
+                  <li>1. LINE または メール認証で本人確認後、Google に遷移</li>
                   <li>2. 要求されたスコープの許諾内容を確認</li>
                   <li>3. 許可後、ダッシュボードでデータを参照</li>
                   <li>4. データをもとに AI が改善案を提示</li>
