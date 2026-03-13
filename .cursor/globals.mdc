@@ -101,7 +101,6 @@ alwaysApply: true
    - ./.cursor/dev-rules/*.mdc
    - ./.cursor/dev-rules/nextjs.mdc（Next.js 15 ベストプラクティス）
    - ./.cursor/dev-rules/supabase.mdc（Supabase データベース管理）
-   - ./.cursor/dev-rules/stripe.mdc（Stripe 決済機能）
    - ./.cursor/dev-rules/wordpress.mdc（WordPress 連携）
    - ./.cursor/dev-rules/line-liff.mdc（LINE LIFF 認証）
    - ./.cursor/dev-rules/anthropic.mdc（Anthropic Claude API）
