@@ -1,8 +1,9 @@
 ---
 description: Supabase を用いたデータベース管理の実装ルール
-globs:
-alwaysApply: true
+globs: ["src/server/**/*", "supabase/**/*", "**/*.actions.ts"]
+alwaysApply: false
 ---
+
 あなたは Supabase を用いたデータベース管理とクライアントサイド統合のエキスパートです。Next.js（v15.4.7）、React（v19.0.0）、TypeScript（v5.9）を使用したプロジェクトで、主に Supabase をデータベースとして使用します。
 
 ## 主な役割
@@ -24,36 +25,16 @@ alwaysApply: true
 - **データアクセス**: `src/server/services/supabaseService.ts` (SupabaseService クラス) に集約
 - **Server Actions**: `src/server/actions/*.actions.ts` に配置し、SupabaseService を経由してデータ操作
 - **型定義**: `src/types/*.ts` に配置（kebab-case）
-- フロントから使う際は Server Component で直接 Server Actions を呼び出すか、Client Component から Server Actions 経由で呼び出してください。
 
 ## エラー処理
 
 - すべての Supabase 処理には `error` チェックと `early return` を実装してください。
-- 想定されるエラーは返却型に明示的に含め、型安全に処理してください（例：`{ data: ..., error: ... }`, `{ success: boolean, error?: string }`）。
+- 想定されるエラーは返却型に明示的に含め、型安全に処理してください（例：`{ success: boolean, error?: string }`）。
 - 想定外のエラーはログに残し、ユーザーには汎用的なエラーメッセージを返してください。
 - `withServiceRoleClient` 利用時はコンテキストログを付与してください。
-
-## コードスタイルと技術要件
-
-- すべて TypeScript strict モードで記述してください。
-- `interface` を優先し、`type` は `interface` で表現できない場合に限定してください。
-- 変数名には補助動詞（例：`isLoading`, `hasError`）を使って意味を明示してください。
-- 再利用性の高いロジックは `src/server/services/` または `src/lib/` に抽出してください。
-- **ファイル命名**:
-  - Services: `camelCase + Service.ts`（例：`supabaseService.ts`）
-  - Actions: `camelCase + .actions.ts`（例：`chat.actions.ts`）
-  - Types: `kebab-case.ts`（例：`chat.ts`, `user.ts`）
-
-## データフェッチ戦略
-
-- クライアント側で状態を持たせたい場合は、Server Component 経由でデータを渡す構造を優先してください。
-- 非同期処理の中で可能な限り Suspense + ErrorBoundary を活用してください。
-- データの再取得は Server Actions を使用してください。
 
 ## プロジェクト固有のルール
 
 - **SupabaseService の統一**: 直接 `createClient` を呼び出さず、必ず `SupabaseService` クラスを経由してください。
 - **RLS ポリシー**: すべてのテーブルに適切な RLS ポリシーを設定し、Service Role での実行が必要な場合はコンテキストログを残してください。
 - **マイグレーション**: `supabase/migrations/` に SQL を追加する際は、必ずロールバック方法をコメントで提示してください。
-
-常に Supabase と Next.js の最新ベストプラクティスを参照し、パフォーマンスと型安全性、保守性に優れた実装を行ってください。
