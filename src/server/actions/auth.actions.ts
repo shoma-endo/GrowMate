@@ -51,7 +51,7 @@ export async function sendOtpEmail(
   }
 
   const headerStore = await headers();
-  const ip = headerStore.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = headerStore.get('x-forwarded-for')?.split(',')[0]?.trim();
   const normalizedEmail = email.trim().toLowerCase();
   const now = Date.now();
 
@@ -62,22 +62,24 @@ export async function sendOtpEmail(
     return { success: false, error: `${remaining}秒後に再送信できます` };
   }
 
-  // IP 単位レート制限
-  const ipData = ipWindowData.get(ip);
-  if (ipData) {
-    if (now - ipData.windowStart < IP_WINDOW_MS) {
-      if (ipData.count >= IP_MAX_COUNT) {
-        return {
-          success: false,
-          error: '送信回数の上限に達しました。しばらく待ってから再試行してください。',
-        };
+  // IP 単位レート制限（IP が判別できない場合はスキップ。'unknown' を共通キーにすると全ユーザーが共同 throttling されるため）
+  if (ip) {
+    const ipData = ipWindowData.get(ip);
+    if (ipData) {
+      if (now - ipData.windowStart < IP_WINDOW_MS) {
+        if (ipData.count >= IP_MAX_COUNT) {
+          return {
+            success: false,
+            error: '送信回数の上限に達しました。しばらく待ってから再試行してください。',
+          };
+        }
+        ipData.count += 1;
+      } else {
+        ipWindowData.set(ip, { count: 1, windowStart: now });
       }
-      ipData.count += 1;
     } else {
       ipWindowData.set(ip, { count: 1, windowStart: now });
     }
-  } else {
-    ipWindowData.set(ip, { count: 1, windowStart: now });
   }
 
   const supabase = await createSupabaseServerClient();

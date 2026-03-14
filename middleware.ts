@@ -35,12 +35,28 @@ export async function middleware(request: NextRequest) {
     // 🔍 1. 公開パスかチェック（ただし、ログイン済みユーザーの場合はホーム画面でも権限チェックを実行）
     if (isPublicPath(pathname)) {
       // /login: 認証済みユーザーはトップへリダイレクト
-      // LINE token は存在確認のみ（有効期限検証は行わない）
-      // 期限切れ token の場合は / → /login に戻り、そこで cookie がクリアされる
       if (pathname === '/login') {
-        const lineToken = request.cookies.get('line_access_token')?.value;
-        if (lineToken || supabaseUser) {
+        if (supabaseUser) {
           return redirect(new URL('/', request.url));
+        }
+        const lineToken = request.cookies.get('line_access_token')?.value;
+        const lineRefresh = request.cookies.get('line_refresh_token')?.value;
+        if (lineToken) {
+          // LINE token を検証してからリダイレクト（無効/期限切れ cookie で recovery 不能ループを防ぐ）
+          const authResult = await getUserRoleWithCacheAndRefresh(lineToken, lineRefresh).catch(
+            () => ({ role: null, needsReauth: true })
+          );
+          if (authResult.role) {
+            return redirect(new URL('/', request.url));
+          }
+          // 無効/期限切れ: LINE cookie をクリアして /login を表示
+          const res = NextResponse.next();
+          for (const cookie of supabaseResponse.cookies.getAll()) {
+            res.cookies.set(cookie.name, cookie.value, cookie);
+          }
+          res.cookies.delete('line_access_token');
+          res.cookies.delete('line_refresh_token');
+          return res;
         }
       }
       // ホーム画面は完全に公開扱いとし、ミドルウェア側で外部サービスを呼び出さない
