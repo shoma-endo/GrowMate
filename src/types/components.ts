@@ -20,7 +20,7 @@ export interface LiffContextType {
   logout: () => void;
   liffObject: unknown;
   getAccessToken: () => Promise<string>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<boolean>;
 }
 
 export interface LiffProviderProps {

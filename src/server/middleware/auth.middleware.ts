@@ -1,10 +1,6 @@
-'use server';
-
 import { cookies as nextCookies } from 'next/headers';
-import Stripe from 'stripe';
 
 import { LineAuthService, LineTokenExpiredError } from '@/server/services/lineAuthService';
-import { StripeService } from '@/server/services/stripeService';
 import { userService } from '@/server/services/userService';
 import { isUnavailable, isActualOwner as isActualOwnerHelper } from '@/authUtils';
 import { env } from '@/env';
@@ -16,14 +12,11 @@ export interface EnsureAuthenticatedOptions {
   accessToken?: string;
   refreshToken?: string;
   allowDevelopmentBypass?: boolean;
-  skipSubscriptionCheck?: boolean;
 }
 
 export interface AuthenticatedUser {
   lineUserId: string;
   userId: string;
-  requiresSubscription: boolean;
-  subscription: Stripe.Subscription | null;
   user?: { id: string };
   userDetails?: User | null;
   viewMode?: boolean;
@@ -32,6 +25,8 @@ export interface AuthenticatedUser {
   actorRole?: UserRole | null;
   ownerUserId?: string | null;
   error?: string;
+  /** 一時障害時は true。呼び出し元で 503 を返すために使う */
+  transient?: boolean;
   newAccessToken?: string;
   newRefreshToken?: string;
   needsReauth?: boolean;
@@ -63,7 +58,6 @@ export async function ensureAuthenticated({
   accessToken,
   refreshToken,
   allowDevelopmentBypass = true,
-  skipSubscriptionCheck = false,
 }: EnsureAuthenticatedOptions): Promise<AuthenticatedUser> {
   const withTokens = (
     result: AuthenticatedUser,
@@ -85,21 +79,39 @@ export async function ensureAuthenticated({
     return {
       lineUserId: 'dummy-line-user-id',
       userId: 'dummy-app-user-id',
-      requiresSubscription: false,
-      subscription: null,
       user: { id: 'dummy-app-user-id' },
       userDetails: null,
     };
   }
 
   if (!accessToken) {
+    // LINE token なし: 共通の Email 解決（一時障害は transient で返す）
+    const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
+    const result = await resolveEmailUserWithReason();
+    if (!result.ok) {
+      if (result.reason === 'transient') {
+        return {
+          error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+          transient: true,
+          lineUserId: '',
+          userId: '',
+          userDetails: null,
+        };
+      }
+      return {
+        error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,
+        lineUserId: '',
+        userId: '',
+        userDetails: null,
+      };
+    }
+    const emailUser = result.user;
     return {
-      error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,
-      lineUserId: '',
-      userId: '',
-      requiresSubscription: false,
-      subscription: null,
-      userDetails: null,
+      lineUserId: '', // Email ユーザーは LINE ID なし
+      userId: emailUser.id,
+      user: { id: emailUser.id },
+      userDetails: emailUser,
+      ownerUserId: emailUser.ownerUserId ?? null,
     };
   }
 
@@ -120,8 +132,6 @@ export async function ensureAuthenticated({
           error: ERROR_MESSAGES.AUTH.LINE_TOKEN_INVALID_OR_EXPIRED,
           lineUserId: '',
           userId: '',
-          requiresSubscription: true,
-          subscription: null,
           needsReauth: Boolean(verificationResult.needsReauth),
           userDetails: null,
         },
@@ -144,8 +154,6 @@ export async function ensureAuthenticated({
           error: ERROR_MESSAGES.AUTH.LINE_PROFILE_FETCH_FAILED,
           lineUserId: '',
           userId: '',
-          requiresSubscription: false,
-          subscription: null,
           userDetails: null,
         },
         { accessToken: latestAccessToken ?? null, refreshToken: latestRefreshToken ?? null }
@@ -159,8 +167,6 @@ export async function ensureAuthenticated({
           error: ERROR_MESSAGES.AUTH.LINE_USER_NOT_FOUND,
           lineUserId: lineProfile.userId,
           userId: '',
-          requiresSubscription: false,
-          subscription: null,
           userDetails: null,
         },
         { accessToken: latestAccessToken ?? null, refreshToken: latestRefreshToken ?? null }
@@ -206,8 +212,6 @@ export async function ensureAuthenticated({
           error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
           lineUserId: lineProfile.userId,
           userId: user.id,
-          requiresSubscription: false,
-          subscription: null,
           user: { id: user.id },
           userDetails: user,
           ...viewModeInfo,
@@ -220,8 +224,6 @@ export async function ensureAuthenticated({
       {
         lineUserId: lineProfile.userId,
         userId: user.id,
-        requiresSubscription: false,
-        subscription: null,
         user: { id: user.id },
         userDetails: user,
         ...viewModeInfo,
@@ -236,71 +238,7 @@ export async function ensureAuthenticated({
     if (user.role === 'owner') {
       return baseResult;
     }
-
-    const shouldCheckSubscription = !skipSubscriptionCheck && env.STRIPE_ENABLED === 'true';
-
-    if (!shouldCheckSubscription) {
-      return baseResult;
-    }
-
-    const stripeService = new StripeService();
-    const isSubscribed = await stripeService.checkSubscriptionStatus(user.id);
-
-    let actualSubscription: Stripe.Subscription | null = null;
-    if (user.stripeSubscriptionId) {
-      try {
-        actualSubscription = await stripeService.getSubscription(user.stripeSubscriptionId);
-      } catch (subscriptionError) {
-        console.error('[Auth Middleware] Failed to fetch Stripe subscription:', subscriptionError);
-      }
-    }
-
-    if (isSubscribed) {
-      if (user.role !== 'paid') {
-        try {
-          const updated = await userService.updateUserRole(user.id, 'paid');
-          if (updated) {
-            user.role = 'paid';
-            if (baseResult.userDetails) {
-              baseResult.userDetails = { ...baseResult.userDetails, role: 'paid' };
-            }
-          }
-        } catch (roleUpdateError) {
-          console.error('[Auth Middleware] Failed to promote user role to paid:', roleUpdateError);
-        }
-      }
-    } else {
-      if (user.role === 'paid') {
-        try {
-          const updated = await userService.updateUserRole(user.id, 'trial');
-          if (updated) {
-            user.role = 'trial';
-            if (baseResult.userDetails) {
-              baseResult.userDetails = { ...baseResult.userDetails, role: 'trial' };
-            }
-          }
-        } catch (roleUpdateError) {
-          console.error(
-            '[Auth Middleware] Failed to downgrade user role to trial:',
-            roleUpdateError
-          );
-        }
-      }
-    }
-
-    if (!isSubscribed) {
-      return {
-        ...baseResult,
-        error: ERROR_MESSAGES.SUBSCRIPTION.SUBSCRIPTION_REQUIRED,
-        requiresSubscription: true,
-        subscription: actualSubscription,
-      };
-    }
-
-    return {
-      ...baseResult,
-      subscription: actualSubscription,
-    };
+    return baseResult;
   } catch (error) {
     console.error('[Auth Middleware] Error during ensureAuthenticated:', error);
 
@@ -319,8 +257,6 @@ export async function ensureAuthenticated({
         error: liffError.userMessage,
         lineUserId: '',
         userId: '',
-        requiresSubscription: false,
-        subscription: null,
         needsReauth,
         userDetails: null,
       },

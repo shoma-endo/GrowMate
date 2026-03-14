@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getUserRoleWithRefresh } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
 
 // Node.jsランタイムを強制（Cookie更新の一貫性を確保）
 export const runtime = 'nodejs';
@@ -13,7 +14,18 @@ export async function GET() {
     const lineRefreshToken = cookieStore.get('line_refresh_token')?.value;
 
     if (!lineAccessToken) {
-      return NextResponse.json({ error: ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED }, { status: 401 });
+      // LINE token なし: 共通の Email 解決（一時障害は 503 で統一）
+      const result = await resolveEmailUserWithReason();
+      if (result.ok) {
+        return NextResponse.json({ role: result.user.role });
+      }
+      if (result.reason === 'unauthenticated') {
+        return NextResponse.json({ error: ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED }, { status: 401 });
+      }
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.AUTH.USER_ROLE_FETCH_FAILED },
+        { status: 503 }
+      );
     }
 
     const result = await getUserRoleWithRefresh(lineAccessToken, lineRefreshToken);
@@ -61,6 +73,6 @@ export async function GET() {
     return response;
   } catch (error) {
     console.error('Role check API error:', error);
-    return NextResponse.json({ error: ERROR_MESSAGES.COMMON.SERVER_ERROR }, { status: 500 });
+    return NextResponse.json({ error: ERROR_MESSAGES.COMMON.SERVER_ERROR }, { status: 503 });
   }
 }

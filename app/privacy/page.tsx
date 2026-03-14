@@ -30,7 +30,7 @@ export default function PrivacyPolicyPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-6 border-b pb-4">
             プライバシーポリシー
           </h1>
-          <p className="text-sm text-gray-500 mb-8">最終更新日: 2026年2月18日</p>
+          <p className="text-sm text-gray-500 mb-8">最終更新日: 2026年3月13日</p>
 
           <div
             className="bg-gray-100 rounded-2xl p-6 sm:p-8 text-sm text-gray-700 mb-10"
@@ -76,6 +76,10 @@ export default function PrivacyPolicyPage() {
               <p className="mb-2">当サービスが取得・生成する主な情報は以下の通りです。</p>
               <ul className="list-disc pl-5 space-y-2">
                 <li>
+                  <strong>メールアドレス:</strong>{' '}
+                  メールOTP認証でログインする場合に取得するメールアドレス。
+                </li>
+                <li>
                   <strong>LINE アカウント情報:</strong> LINE
                   LIFF認証で取得する表示名・プロフィール画像・ユーザーID。
                 </li>
@@ -115,11 +119,6 @@ export default function PrivacyPolicyPage() {
                 <li>
                   <strong>利用状況データ:</strong>{' '}
                   チャット履歴、キャンバス編集履歴、アナリティクス閲覧履歴等の操作ログ。
-                </li>
-                <li>
-                  <strong>決済関連:</strong> 現在 Stripe
-                  決済は未提供であり、クレジットカード情報を当社サーバーに保存しません。将来的に導入する場合も
-                  Stripe 側でのみ処理します。
                 </li>
               </ul>
             </section>
@@ -224,7 +223,6 @@ export default function PrivacyPolicyPage() {
                 <li>
                   Anthropic PBC / OpenAI, L.L.C.（AI応答生成。送信データはユーザー入力範囲に限定）
                 </li>
-                <li>Stripe, Inc.（将来の決済機能。決済情報は Stripe が保管）</li>
               </ul>
               <p className="mt-3">
                 これらの事業者へ提供するデータは、業務委託契約の目的達成に必要な最小限に限定します。
@@ -243,8 +241,8 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-xl font-bold text-gray-900 mb-3">7. ユーザーの権利と手続き</h2>
               <ul className="list-disc pl-5 space-y-2">
                 <li>
-                  <strong>アクセス・訂正:</strong> サポート窓口に連絡するか、LIFF
-                  マイページから登録情報を変更できます。
+                  <strong>アクセス・訂正:</strong>{' '}
+                  サポート窓口に連絡するか、アプリ内のアカウント情報ページから登録情報を変更できます。
                 </li>
                 <li>
                   <strong>連携解除:</strong>{' '}

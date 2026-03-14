@@ -71,7 +71,6 @@ const deriveTileFromContent = (content: string) => {
 
 export const ChatLayout: React.FC<ChatLayoutProps> = ({
   chatSession,
-  subscription,
   isMobile = false,
   initialStep = null,
 }) => {
@@ -926,13 +925,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return;
       }
       const token = await getAccessToken();
-      if (!token?.trim()) {
-        toast.error('認証トークンを取得できませんでした。LINEで再ログインしてください。');
-        return;
-      }
+      // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
       const res = await getCombinedContentForStep7({
         sessionId: chatSession.state.currentSessionId,
-        liffAccessToken: token,
+        liffAccessToken: token?.trim() ?? '',
       });
       if (!res.success || res.sections == null) {
         toast.error(
@@ -1024,10 +1020,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   }, []);
 
   // BlogFlow起動ガード（モデル選択と連動）
-  const blogFlowActive =
-    !subscription.requiresSubscription &&
-    !!chatSession.state.currentSessionId &&
-    selectedModel === 'blog_creation';
+  const blogFlowActive = !!chatSession.state.currentSessionId && selectedModel === 'blog_creation';
 
   // ✅ セッション切り替え時にパネルを自動的に閉じる
   useEffect(() => {
@@ -1091,13 +1084,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           return { success: false, error: 'セッションが見つかりません' };
         }
         const token = await getAccessToken();
-        if (!token?.trim()) {
-          return { success: false, error: '認証トークンが無効です' };
-        }
+        // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
         const res = await saveStep7UserLead({
           sessionId: chatSession.state.currentSessionId,
           userLead: userLead.trim(),
-          liffAccessToken: token,
+          liffAccessToken: token?.trim() ?? '',
         });
         if (res.success) {
           await chatSession.actions.loadSession(chatSession.state.currentSessionId);
@@ -1731,7 +1722,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       <ChatLayoutContent
         ctx={{
           chatSession,
-          subscription,
           isMobile,
           blogFlowActive,
           optimisticMessages,

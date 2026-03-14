@@ -147,11 +147,11 @@ export async function POST(req: NextRequest) {
     const liffAccessToken = authHeader?.replace('Bearer ', '');
 
     const authResult = await authMiddleware(liffAccessToken);
-    if (authResult.error || authResult.requiresSubscription) {
+    if (authResult.error || !authResult.userId) {
       return new Response(
         sendSSE('error', {
           type: 'auth',
-          message: authResult.error || 'サブスクリプションが必要です',
+          message: authResult.error ?? 'ユーザー認証に失敗しました',
         }),
         {
           status: 401,

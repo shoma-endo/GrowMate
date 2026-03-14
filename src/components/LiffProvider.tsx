@@ -12,6 +12,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { hasOwnerRole } from '@/authUtils';
 
 const LiffContext = createContext<LiffContextType | null>(null);
+const MAX_LOGIN_RETRIES = 3;
+const RETRY_BACKOFF_MS = 30_000; // max retry 到達後、バックエンド回復を待つ間隔
 
 export function useLiffContext() {
   const context = use(LiffContext);
@@ -41,8 +43,12 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
   const [isOwnerViewMode, setIsOwnerViewMode] = useState(false);
   const [viewModeResolved, setViewModeResolved] = useState(false);
   const [hasServerSession, setHasServerSession] = useState<boolean | null>(null);
+  // 5xx 一時障害時のリトライカウンター: インクリメントで useEffect を再実行させる
+  const [loginRetryCount, setLoginRetryCount] = useState(0);
   const hasRequestedLiffLoginRef = useRef(false);
   const viewModeRetryRef = useRef(0);
+  // Email ユーザー初期化の試行済みフラグ（失敗時に isInitialized を立てないため無限リトライを防ぐ）
+  const emailInitAttemptedRef = useRef(false);
   function getOwnerViewModeCookie() {
     if (typeof document === 'undefined') {
       return false;
@@ -71,12 +77,14 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
     const currentLiff = liffObjectRef.current;
     const currentLoggedIn = isLoggedInRef.current;
 
-    if (!currentLiff) {
-      throw new Error('LIFF is not initialized');
+    if (!currentLoggedIn) {
+      // Email ユーザー: LIFF 未ログインだが Supabase セッションがある場合
+      // 空文字を返すと Server Action 側が Email セッションで認証を試みる
+      return '';
     }
 
-    if (!currentLoggedIn) {
-      throw new Error('User is not logged in');
+    if (!currentLiff) {
+      throw new Error('LIFF is not initialized');
     }
 
     try {
@@ -125,31 +133,42 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
     }
   }, [initialize, isLoggedIn, profile, syncedWithServer, getAccessToken]);
 
-  const refreshUser = useCallback(async () => {
+  // ユーザー情報を取得して state を更新する。ユーザーデータを実際に読み込めた場合は true を返す。
+  // Email 初期化フローが「成功したか」を判定するために戻り値を使用する。
+  const refreshUser = useCallback(async (): Promise<boolean> => {
     try {
       const token = await getAccessToken();
+      // token が空文字の場合（未ログイン状態の Email 初期化経路など）はヘッダーを送らない
+      // 空文字を Bearer で送ると /api/user/current 側で LINE Cookie より優先されてしまう
       const res = await fetch('/api/user/current', {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
         const data = await res.json();
         if (data && data.user) {
           setUser(data.user as User);
+          setIsOwnerViewMode(Boolean(data?.viewMode));
+          setViewModeResolved(true);
+          return true;
         } else if (data && data.userId) {
           setUser({ id: data.userId } as User);
+          setIsOwnerViewMode(Boolean(data?.viewMode));
+          setViewModeResolved(true);
+          return true;
         }
-        setIsOwnerViewMode(Boolean(data?.viewMode));
+      }
+      if (!getOwnerViewModeCookie()) {
         setViewModeResolved(true);
       }
+      return false;
     } catch (error) {
       console.error('Failed to refresh user:', error);
       if (!getOwnerViewModeCookie()) {
         setViewModeResolved(true);
       }
+      return false;
     }
   }, [getAccessToken]);
 
@@ -160,6 +179,26 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
       setIsInitialized(true);
     }
   }, [isLoggedIn, profile, isInitialized, syncWithServerIfNeeded]);
+
+  // ✅ Email ユーザー: LIFF の初期化が完了して未ログインのまま Supabase セッションがある場合にユーザー情報取得
+  // isLoading が false になるまで待つことで、LIFF 初期化中の LINE ユーザーを誤って Email ユーザーと扱わない
+  // 失敗時は isInitialized を立てない（ページリロードで再試行可能）。
+  // emailInitAttemptedRef で同一セッション中の無限リトライを防止する。
+  useEffect(() => {
+    if (!initialize || hasServerSession !== true || isLoggedIn || isInitialized || isLoading) return;
+    if (emailInitAttemptedRef.current) return;
+    emailInitAttemptedRef.current = true; // 並行呼び出し防止
+    // refreshUser は成功時 true、失敗時 false を返す（内部で catch するため throw しない）
+    // user が null のまま isInitialized を true にしないよう、true の場合のみ立てる
+    // 失敗時は ref をリセットして、次の画面遷移等のタイミングで再試行できるようにする
+    refreshUser().then(success => {
+      if (success) {
+        setIsInitialized(true);
+      } else {
+        emailInitAttemptedRef.current = false; // 再試行を許容
+      }
+    });
+  }, [initialize, hasServerSession, isLoggedIn, isInitialized, isLoading, refreshUser]);
 
   useEffect(() => {
     const cookieViewMode = getOwnerViewModeCookie();
@@ -202,16 +241,45 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
     }
 
     let cancelled = false;
+    let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let recoveryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    const QUICK_RETRIES = 2;
+    const RECOVERY_DELAY_MS = 15000;
 
-    const checkSession = async () => {
+    const checkSession = async (retryCount = 0) => {
       try {
         const response = await fetch('/api/auth/check-role', {
           credentials: 'include',
           cache: 'no-store',
         });
-        if (!cancelled) {
-          setHasServerSession(response.ok);
+        if (cancelled) return;
+        if (response.ok) {
+          setHasServerSession(true);
+          return;
         }
+        if (response.status === 401 || response.status === 403) {
+          setHasServerSession(false);
+          return;
+        }
+        // 5xx: 一時障害。未認証と区別し保留にして再試行する
+        if (response.status >= 500) {
+          setHasServerSession(null);
+          if (retryCount < QUICK_RETRIES) {
+            const delayMs = 1000 * (retryCount + 1);
+            retryTimeoutId = setTimeout(() => {
+              retryTimeoutId = null;
+              if (!cancelled) checkSession(retryCount + 1);
+            }, delayMs);
+          } else {
+            // クイック再試行上限後も復旧チェックを続ける（手動リロード不要で復帰できるようにする）
+            recoveryTimeoutId = setTimeout(() => {
+              recoveryTimeoutId = null;
+              if (!cancelled) checkSession(0);
+            }, RECOVERY_DELAY_MS);
+          }
+          return;
+        }
+        setHasServerSession(false);
       } catch (sessionError) {
         console.error('Failed to check server session:', sessionError);
         if (!cancelled) {
@@ -224,6 +292,8 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
 
     return () => {
       cancelled = true;
+      if (retryTimeoutId !== null) clearTimeout(retryTimeoutId);
+      if (recoveryTimeoutId !== null) clearTimeout(recoveryTimeoutId);
     };
   }, [isPublicPath, pathname]);
 
@@ -272,9 +342,66 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
       return;
     }
 
-    hasRequestedLiffLoginRef.current = true;
-    login();
-  }, [hasServerSession, isLoading, isLoggedIn, isPublicPath, liffObject, login, pathname]);
+    // Email セッションかどうか確認してから LINE login を要求する
+    // lineUserId が falsy = Email ユーザー → LIFF login 不要
+    //
+    // ref の管理ルール（関数内で一元管理）:
+    //   - 関数先頭で true にして並行呼び出しを防ぐ（in-flight ガード）
+    //   - 「決定済み」パス（Email 確認済み / login() 呼び出し）: true のまま
+    //   - 「一時障害」パス: false にリセットして次のレンダリングで再試行を許容
+    // → 新しいエラーパスを追加するとき、retry したければ false、しなければ true のままにする
+    let cancelled = false;
+    let backoffTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const checkAndMaybeLogin = async () => {
+      hasRequestedLiffLoginRef.current = true; // in-flight ガード
+      try {
+        const res = await fetch('/api/user/current', { credentials: 'include', cache: 'no-store' });
+        if (cancelled) return;
+        if (res.ok) {
+          const data = (await res.json()) as {
+            userId?: string;
+            user?: User;
+            viewMode?: boolean;
+          } | null;
+          if (cancelled) return;
+          if (data?.userId && !data?.user?.lineUserId) {
+            // Email ユーザー確認 → settled（ref は true のまま）
+            if (data.user) setUser(data.user);
+            setIsOwnerViewMode(Boolean(data?.viewMode));
+            setViewModeResolved(true);
+            setSyncedWithServer(true);
+            return;
+          }
+        } else if (res.status >= 500) {
+          // 一時障害: ref をリセットして再試行を許容
+          hasRequestedLiffLoginRef.current = false;
+          if (cancelled) return;
+          if (loginRetryCount < MAX_LOGIN_RETRIES) {
+            // retry 可: カウントアップで useEffect を再実行
+            setLoginRetryCount(c => c + 1);
+          } else {
+            // 上限到達: hasServerSession === true なのでセッションは存在する。
+            // バックエンド一時障害のため方式を LINE へ切り替えない。
+            // RETRY_BACKOFF_MS 後にカウントをリセットしてセルフヒーリングを可能にする。
+            backoffTimeoutId = setTimeout(() => setLoginRetryCount(0), RETRY_BACKOFF_MS);
+          }
+          return;
+        }
+      } catch {
+        // ネットワークエラー → fall through して login() へ
+      }
+      if (cancelled) return;
+      login(); // LINE login 決定 → settled（ref は true のまま）
+    };
+
+    checkAndMaybeLogin();
+
+    return () => {
+      cancelled = true;
+      if (backoffTimeoutId !== null) clearTimeout(backoffTimeoutId);
+    };
+  }, [hasServerSession, isLoading, isLoggedIn, isPublicPath, liffObject, login, loginRetryCount, pathname]);
 
   // エラー表示（公開パス以外）
   if (error && !isPublicPath) {

@@ -12,7 +12,6 @@ export interface SendMessageResponse {
   message: string;
   sessionId?: string | undefined;
   error?: string | undefined;
-  requiresSubscription?: boolean | undefined;
 }
 
 export interface ChatMessage {

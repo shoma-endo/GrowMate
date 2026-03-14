@@ -84,7 +84,6 @@ export function buildWordPressServiceFromSettings(
 }
 
 export type WordPressContextFailureReason =
-  | 'line_auth_missing'
   | 'line_auth_invalid'
   | 'requires_reauth'
   | 'settings_missing'
@@ -118,16 +117,8 @@ export async function resolveWordPressContext(
   options: ResolveWordPressContextOptions = {}
 ): Promise<WordPressContextResult> {
   const accessToken = getCookie('line_access_token');
-  if (!accessToken) {
-    return {
-      success: false,
-      reason: 'line_auth_missing',
-      message: 'LINE認証が必要です',
-      status: 401,
-    };
-  }
-
   const refreshToken = getCookie('line_refresh_token');
+  // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(accessToken, refreshToken);
 
   if (authResult.needsReauth) {

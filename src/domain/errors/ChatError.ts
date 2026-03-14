@@ -9,10 +9,6 @@ export enum ChatErrorCode {
   AUTHENTICATION_FAILED = 'CHAT_AUTH_FAILED',
   TOKEN_EXPIRED = 'CHAT_TOKEN_EXPIRED',
 
-  // サブスクリプションエラー
-  SUBSCRIPTION_REQUIRED = 'CHAT_SUBSCRIPTION_REQUIRED',
-  SUBSCRIPTION_EXPIRED = 'CHAT_SUBSCRIPTION_EXPIRED',
-
   // メッセージエラー
   VALIDATION_ERROR = 'CHAT_VALIDATION_ERROR',
   INVALID_MESSAGE = 'CHAT_INVALID_MESSAGE',
@@ -61,8 +57,6 @@ export class ChatError extends DomainError {
       [ChatErrorCode.CONNECTION_TIMEOUT]: 'AI通信でタイムアウトしました。再度お試しください。',
       [ChatErrorCode.AUTHENTICATION_FAILED]: 'ログインが必要です。LINEで再ログインしてください。',
       [ChatErrorCode.TOKEN_EXPIRED]: 'セッションが期限切れです。再ログインしてください。',
-      [ChatErrorCode.SUBSCRIPTION_REQUIRED]: 'この機能を利用するにはサブスクリプションが必要です。',
-      [ChatErrorCode.SUBSCRIPTION_EXPIRED]: 'サブスクリプションが期限切れです。更新してください。',
       [ChatErrorCode.VALIDATION_ERROR]: 'メッセージの検証に失敗しました。',
       [ChatErrorCode.INVALID_MESSAGE]: 'メッセージの形式が正しくありません。',
       [ChatErrorCode.MESSAGE_TOO_LONG]: 'メッセージが長すぎます。4000文字以内で入力してください。',
@@ -180,10 +174,6 @@ export class ChatError extends DomainError {
 
       if (message.includes('timeout')) {
         return new ChatError(error.message, ChatErrorCode.CONNECTION_TIMEOUT, context);
-      }
-
-      if (message.includes('subscription')) {
-        return new ChatError(error.message, ChatErrorCode.SUBSCRIPTION_REQUIRED, context);
       }
 
       if (message.includes('auth')) {

@@ -1,0 +1,142 @@
+---
+description: TypeScript 型定義とコーディング規約
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: false
+---
+
+あなたは TypeScript（v5.9）を用いた型安全なコーディングのエキスパートです。Next.js（v15.4.7）、React（v19.0.0）を使ったモダンなアプリケーションにおいて、strict モードを活用し、保守性と可読性の高いコードを実装してください。
+
+## 主な責任
+
+- TypeScript strict モードを前提とした型安全なコードを記述してください。
+- `interface` を優先し、型定義の一貫性を保ってください。
+- 共有型は `src/types/` に集約し、フロント・サーバー双方で再利用してください。
+- Zod スキーマと TypeScript 型を連携させ、ランタイム検証と型安全性を両立してください。
+
+## TypeScript strict モード
+
+### 有効化されている strict オプション
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true
+  }
+}
+```
+
+### strict モードの遵守
+- `any` 型の使用は禁止。やむを得ない場合は `unknown` を使用し、型ガードで絞り込む。
+- `null` と `undefined` を明示的に扱い、オプショナルチェーン（`?.`）や Nullish Coalescing（`??`）を活用。
+- 関数の引数と戻り値の型は必ず明示的に定義。
+- クラスのプロパティは初期化または `!` 演算子で明示的に非 null を保証。
+
+## interface vs type
+
+### interface を優先使用
+```typescript
+// ✅ Good: オブジェクトの形状は interface で定義
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'trial' | 'paid' | 'admin' | 'unavailable';
+}
+```
+
+### type を使用するケース
+```typescript
+// ✅ Good: Union 型、Intersection 型、Mapped Types は type で定義
+type UserRole = 'trial' | 'paid' | 'admin' | 'unavailable';
+type Nullable<T> = T | null;
+type MessageHandler = (message: ChatMessage) => void;
+```
+
+## 共有型の配置ルール
+
+- すべての共有型定義は `src/types/` に配置
+- ファイル名は kebab-case（例：`chat.ts`, `user.ts`, `wordpress.ts`）
+- ドメインごとにファイルを分割（1ファイル = 1ドメイン）
+
+## Zod スキーマとの連携
+
+```typescript
+// src/server/schemas/brief.schema.ts
+import { z } from 'zod';
+
+export const briefSchema = z.object({
+  what: z.string().min(1, '商品・サービスは必須です'),
+  who: z.string().min(1, 'ターゲット顧客は必須です'),
+});
+
+export type BriefInput = z.infer<typeof briefSchema>;
+```
+
+### Server Actions での Zod 検証
+```typescript
+'use server';
+
+export async function saveBrief(data: unknown): Promise<{ success: boolean; error?: string }> {
+  const result = briefSchema.safeParse(data);
+
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error.errors.map(e => e.message).join(', '),
+    };
+  }
+
+  const brief: BriefInput = result.data;
+  // データベースに保存...
+}
+```
+
+## 型ガードとユーティリティ型
+
+### 型ガード関数
+```typescript
+export function isUserRole(value: unknown): value is UserRole {
+  return (
+    typeof value === 'string' &&
+    ['trial', 'paid', 'admin', 'unavailable'].includes(value)
+  );
+}
+```
+
+### Result 型パターン
+```typescript
+export type Result<T, E = string> =
+  | { success: true; data: T }
+  | { success: false; error: E };
+```
+
+## コードスタイルと命名規則
+
+- **型・インターフェース名**: PascalCase（`User`, `ChatMessage`）
+- **型エイリアス名**: PascalCase（`UserRole`, `ChatErrorCode`）
+- **ジェネリック型パラメータ**: 単一文字（`T`, `K`）または説明的な名前（`TData`, `TError`）
+
+## 避けるべきパターン
+
+```typescript
+// ❌ Bad
+function processData(data: any) { ... }
+type User = { id: string; }; // objectにtypeを使う
+
+// ✅ Good
+function processData(data: unknown) { ... }
+interface User { id: string; }
+```
+
+## プロジェクト固有のルール
+
+- **型ファイルの配置**: `src/types/` に kebab-case で配置
+- **interface 優先**: オブジェクト型は必ず `interface` で定義
+- **Zod スキーマの配置**: `src/server/schemas/` に配置し、`z.infer` で型を生成
+- **型安全な Result パターン**: Server Actions の戻り値は `Result<T>` 型を使用

@@ -3,10 +3,10 @@ import { SupabaseService } from './supabaseService';
 import type { SupabaseResult } from './supabaseService';
 import { toIsoTimestamp } from '@/lib/timestamps';
 import type { User, UserRole, EmployeeInvitation } from '@/types/user';
-import { toDbUser, toUser, type DbUser } from '@/types/user';
+import { toDbUserInsert, toUser, type DbUser, type DbUserUpdate } from '@/types/user';
 
 /**
- * ユーザーサービス: ユーザー管理と課金状態の確認機能を提供
+ * ユーザーサービス: ユーザー管理機能を提供
  */
 export class UserService {
   private lineAuthService: LineAuthService;
@@ -27,8 +27,8 @@ export class UserService {
   private buildDbUserUpdates(
     updates: Partial<Omit<User, 'id' | 'createdAt' | 'updatedAt'>>,
     timestampIso = toIsoTimestamp(new Date())
-  ): Partial<DbUser> {
-    const dbUpdates: Partial<DbUser> = {
+  ): DbUserUpdate {
+    const dbUpdates: DbUserUpdate = {
       updated_at: timestampIso,
     };
 
@@ -40,12 +40,6 @@ export class UserService {
     }
     if (updates.lineStatusMessage !== undefined) {
       dbUpdates.line_status_message = updates.lineStatusMessage;
-    }
-    if (updates.stripeCustomerId !== undefined) {
-      dbUpdates.stripe_customer_id = updates.stripeCustomerId;
-    }
-    if (updates.stripeSubscriptionId !== undefined) {
-      dbUpdates.stripe_subscription_id = updates.stripeSubscriptionId;
     }
     if (updates.lastLoginAt !== undefined) {
       dbUpdates.last_login_at = updates.lastLoginAt;
@@ -84,12 +78,10 @@ export class UserService {
           lineDisplayName: lineProfile.displayName,
           linePictureUrl: lineProfile.pictureUrl ?? undefined,
           lineStatusMessage: lineProfile.statusMessage ?? undefined,
-          stripeCustomerId: undefined,
-          stripeSubscriptionId: undefined,
           role: 'trial',
         };
 
-        const createResult = await this.supabaseService.createUser(toDbUser(newUser));
+        const createResult = await this.supabaseService.createUser(toDbUserInsert(newUser));
 
         if (!createResult.success) {
           if (
@@ -186,9 +178,7 @@ export class UserService {
               needsReauth?: boolean;
             } = { user };
 
-            if (refreshResult.newAccessToken) {
-              returnValue.newAccessToken = refreshResult.newAccessToken;
-            }
+            returnValue.newAccessToken = refreshResult.newAccessToken;
 
             if (refreshResult.newRefreshToken) {
               returnValue.newRefreshToken = refreshResult.newRefreshToken;
@@ -228,43 +218,6 @@ export class UserService {
     }
 
     return result.data ? toUser(result.data) : null;
-  }
-
-  /**
-   * Stripeカスタマー作成時にユーザー情報を更新
-   */
-  async updateStripeCustomerId(lineUserId: string, stripeCustomerId: string): Promise<boolean> {
-    const result = await this.supabaseService.updateUserByLineUserId(lineUserId, {
-      stripe_customer_id: stripeCustomerId,
-      updated_at: new Date().toISOString(),
-    });
-
-    if (!result.success) {
-      console.error('Failed to update Stripe customer ID:', result.error);
-      return false;
-    }
-
-    return Boolean(result.data);
-  }
-
-  /**
-   * Stripeサブスクリプション作成時にユーザー情報を更新
-   */
-  async updateStripeSubscriptionId(
-    lineUserId: string,
-    stripeSubscriptionId: string
-  ): Promise<boolean> {
-    const result = await this.supabaseService.updateUserByLineUserId(lineUserId, {
-      stripe_subscription_id: stripeSubscriptionId,
-      updated_at: new Date().toISOString(),
-    });
-
-    if (!result.success) {
-      console.error('Failed to update Stripe subscription ID:', result.error);
-      return false;
-    }
-
-    return true;
   }
 
   async updateFullName(userId: string, fullName: string): Promise<boolean> {
@@ -362,6 +315,66 @@ export class UserService {
       return { success: false, error: result.error.userMessage };
     }
     return { success: true };
+  }
+
+  /**
+   * Supabase Auth ユーザーを GrowMate ユーザーに解決または新規作成（idempotent）
+   * 読み取り専用の認証確認から呼び出す。last_login_at は更新しない。
+   * OTP ログイン成功後は updateLastLoginAt() を別途呼び出すこと。
+   */
+  async resolveOrCreateEmailUser(supabaseAuthId: string, email: string): Promise<User> {
+    // 1. supabase_auth_id で既存ユーザーを検索
+    const existingResult = await this.supabaseService.getUserBySupabaseAuthId(supabaseAuthId);
+    if (!existingResult.success) {
+      throw new Error(existingResult.error.developerMessage ?? existingResult.error.userMessage);
+    }
+
+    if (existingResult.data) {
+      return toUser(existingResult.data);
+    }
+
+    // 2. 新規作成（競合時は再フェッチ）
+    const createResult = await this.supabaseService.createEmailUser(email, supabaseAuthId);
+    if (!createResult.success) {
+      // 23505: supabase_auth_id または email の一意制約違反 → 先行 INSERT が完了しているので再フェッチ
+      if (createResult.error.code === '23505') {
+        // supabase_auth_id で再試行（同一 auth ユーザーの競合）
+        const retryByAuthId = await this.supabaseService.getUserBySupabaseAuthId(supabaseAuthId);
+        if (retryByAuthId.success && retryByAuthId.data) {
+          return toUser(retryByAuthId.data);
+        }
+        // email で再試行（LINE ユーザー等が同メールアドレスを持つ場合）
+        const retryByEmail = await this.supabaseService.getUserByEmail(email);
+        if (retryByEmail.success && retryByEmail.data) {
+          // supabase_auth_id が未リンクの場合は紐付ける（次回ログイン時に getUserBySupabaseAuthId で見つかるように）
+          if (!retryByEmail.data.supabase_auth_id) {
+            await this.supabaseService.updateUserById(retryByEmail.data.id, {
+              supabase_auth_id: supabaseAuthId,
+              updated_at: toIsoTimestamp(new Date()),
+            });
+          }
+          return toUser(retryByEmail.data);
+        }
+      }
+      throw new Error(createResult.error.developerMessage ?? createResult.error.userMessage);
+    }
+
+    return toUser(createResult.data);
+  }
+
+  /**
+   * Email ユーザーの last_login_at を更新する
+   * OTP ログイン成功後（Server Action）でのみ呼び出すこと
+   */
+  async updateLastLoginAt(userId: string): Promise<void> {
+    const now = toIsoTimestamp(new Date());
+    const result = await this.supabaseService.updateUserById(userId, {
+      last_login_at: now,
+      updated_at: now,
+    });
+    if (!result.success) {
+      console.error('[UserService] Failed to update last_login_at:', result.error);
+    }
   }
 }
 

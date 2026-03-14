@@ -9,46 +9,46 @@ import { hasOwnerRole } from '@/authUtils';
 const initializeHeadingSchema = z.object({
   sessionId: z.string().min(1),
   step5Markdown: z.string().min(1),
-  liffAccessToken: z.string().min(1),
+  liffAccessToken: z.string(),
 });
 
 const saveHeadingSectionSchema = z.object({
   sessionId: z.string().min(1),
   headingKey: z.string().min(1),
   content: z.string().refine(v => v.trim().length > 0, { message: '本文が空です' }),
-  liffAccessToken: z.string().min(1),
+  liffAccessToken: z.string(),
 });
 
 const getHeadingSectionsSchema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string().min(1),
+  liffAccessToken: z.string(),
 });
 
 const getLatestCombinedContentSchema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string().min(1),
+  liffAccessToken: z.string(),
 });
 
 const getCombinedContentVersionsSchema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string().min(1),
+  liffAccessToken: z.string(),
 });
 
 const resetHeadingSectionsSchema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string().min(1),
+  liffAccessToken: z.string(),
   /** true のとき Step7 書き出し案を削除しない（完成形フェーズで書き出し入力→見出し1再開用） */
   preserveStep7Lead: z.boolean().optional(),
 });
 const getCombinedContentForStep7Schema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string().min(1),
+  liffAccessToken: z.string(),
 });
 
 const saveStep7UserLeadSchema = z.object({
   sessionId: z.string().min(1),
   userLead: z.string().refine(v => v.trim().length > 0, { message: '書き出し案を入力してください' }),
-  liffAccessToken: z.string().min(1),
+  liffAccessToken: z.string(),
 });
 
 /**
@@ -69,7 +69,7 @@ export async function initializeHeadingSections(data: z.infer<typeof initializeH
       i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
     );
     const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      ? '認証に失敗しました。再ログインしてください。'
       : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[initializeHeadingSections] Validation failed:', parseResult.error.issues);
@@ -114,7 +114,7 @@ export async function getHeadingSections(data: z.infer<typeof getHeadingSections
       i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
     );
     const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      ? '認証に失敗しました。再ログインしてください。'
       : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getHeadingSections] Validation failed:', parseResult.error.issues);
@@ -166,7 +166,7 @@ export async function saveHeadingSection(data: z.infer<typeof saveHeadingSection
       i => i.path.includes('content') || (i.message && i.message.includes('本文'))
     );
     const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      ? '認証に失敗しました。再ログインしてください。'
       : isContentError
         ? '本文が空です。内容を入力してから保存してください。'
         : '入力データが不正です。ページを更新してから再度お試しください。';
@@ -216,7 +216,7 @@ export async function getLatestCombinedContent(
       i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
     );
     const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      ? '認証に失敗しました。再ログインしてください。'
       : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getLatestCombinedContent] Validation failed:', parseResult.error.issues);
@@ -259,7 +259,7 @@ export async function getCombinedContentVersions(
       i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
     );
     const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      ? '認証に失敗しました。再ログインしてください。'
       : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getCombinedContentVersions] Validation failed:', parseResult.error.issues);
@@ -308,7 +308,7 @@ export async function resetHeadingSections(data: z.infer<typeof resetHeadingSect
       i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
     );
     const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      ? '認証に失敗しました。再ログインしてください。'
       : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[resetHeadingSections] Validation failed:', parseResult.error.issues);
@@ -354,7 +354,7 @@ export async function saveStep7UserLead(data: z.infer<typeof saveStep7UserLeadSc
       i => i.path.includes('userLead') || i.message?.includes('書き出し')
     );
     const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      ? '認証に失敗しました。再ログインしてください。'
       : isLeadError
         ? '書き出し案を入力してください'
         : '入力データが不正です。ページを更新してから再度お試しください。';
@@ -403,7 +403,7 @@ export async function getCombinedContentForStep7(
       i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
     );
     const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      ? '認証に失敗しました。再ログインしてください。'
       : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getCombinedContentForStep7] Validation failed:', parseResult.error.issues);

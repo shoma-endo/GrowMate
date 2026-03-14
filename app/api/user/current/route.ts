@@ -8,6 +8,7 @@ import {
   setAuthCookies,
 } from '@/server/middleware/auth.middleware';
 import { userService } from '@/server/services/userService';
+import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
 
 export async function GET() {
   const cookieStore = await cookies();
@@ -23,17 +24,42 @@ export async function GET() {
   const accessToken = bearerToken ?? cookieAccessToken;
 
   if (!accessToken) {
-    return NextResponse.json({ userId: null, user: null });
+    // LINE token なし: 共通の Email 解決（一時障害は 503 で統一）
+    const result = await resolveEmailUserWithReason();
+    if (!result.ok) {
+      if (result.reason === 'transient') {
+        return NextResponse.json({ error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE }, { status: 503 });
+      }
+      return NextResponse.json({ userId: null, user: null });
+    }
+    const emailUser = result.user;
+    return NextResponse.json({
+      userId: emailUser.id,
+      user: {
+        id: emailUser.id,
+        fullName: emailUser.fullName ?? null,
+        email: emailUser.email ?? null,
+        role: emailUser.role,
+        lineUserId: emailUser.lineUserId ?? null,
+        lineDisplayName: emailUser.lineDisplayName ?? null,
+        linePictureUrl: emailUser.linePictureUrl ?? null,
+        ownerUserId: emailUser.ownerUserId ?? null,
+      },
+      viewMode: false,
+      tokenRefreshed: false,
+    });
   }
 
   try {
     const authResult = await ensureAuthenticated({
       ...(accessToken ? { accessToken } : {}),
       ...(refreshToken ? { refreshToken } : {}),
-      skipSubscriptionCheck: true,
     });
 
     if (authResult.error) {
+      if (authResult.transient) {
+        return NextResponse.json({ error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE }, { status: 503 });
+      }
       if (authResult.needsReauth) {
         await clearAuthCookies();
         return NextResponse.json({ userId: null, needsReauth: true });
@@ -86,16 +112,17 @@ export async function GET() {
     const response = NextResponse.json({
       userId: user?.id ?? null,
       user: user
-        ? {
-            id: user.id,
-            fullName: user.fullName ?? null,
-            role: user.role,
-            lineUserId: user.lineUserId,
-            lineDisplayName: user.lineDisplayName,
-            linePictureUrl: user.linePictureUrl ?? null,
-            ownerUserId: user.ownerUserId ?? null,
-          }
-        : null,
+          ? {
+              id: user.id,
+              fullName: user.fullName ?? null,
+              email: user.email ?? null,
+              role: user.role,
+              lineUserId: user.lineUserId,
+              lineDisplayName: user.lineDisplayName,
+              linePictureUrl: user.linePictureUrl ?? null,
+              ownerUserId: user.ownerUserId ?? null,
+            }
+          : null,
       viewMode: Boolean(authResult.viewMode),
       tokenRefreshed: Boolean(authResult.newAccessToken),
     });

@@ -1,0 +1,120 @@
+---
+description: Anthropic Claude API 統合の実装ルール
+globs: ["app/api/chat/**/*", "src/server/services/llmService.ts", "src/lib/prompts.ts", "src/lib/constants.ts"]
+alwaysApply: false
+---
+
+あなたは Anthropic Claude API を用いた AI 機能の実装におけるエキスパートです。Next.js（v15.4.7）、React（v19.0.0）、TypeScript（v5.9）を使ったモダンなアプリケーションにおいて、Claude API によるチャット、コンテンツ生成、選択編集などの AI 機能を安全かつ効率的に提供するための実装を行ってください。
+
+## 主な責任
+
+- Anthropic Claude API（Sonnet 4.5）を用いたチャット機能を実装してください。
+- Server-Sent Events（SSE）によるストリーミングレスポンスを実装してください。
+- Tool Use（Function Calling）を活用した選択編集機能を実装してください。
+- Prompt Caching を活用してコストとレイテンシを最適化してください。
+
+## サーバー側の実装ルール
+
+- Anthropic API キーはすべて環境変数で管理し、`.env.local` でのみ定義してください（`ANTHROPIC_API_KEY`）。
+- **すべての Claude API 操作は `src/server/services/llmService.ts` 経由に統一**してください。
+- API Routes は `/api/chat/anthropic` と `/api/chat/canvas/stream` に配置してください。
+- モデル設定は `src/lib/constants.ts` の `MODEL_CONFIGS` で一元管理してください。
+- プロンプトテンプレートは `src/lib/prompts.ts` で管理してください。
+
+## SSE（Server-Sent Events）実装パターン
+
+```typescript
+const encoder = new TextEncoder();
+const stream = new ReadableStream({
+  async start(controller) {
+    try {
+      const response = await anthropic.messages.stream({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 8192,
+        messages: messages,
+      });
+
+      for await (const event of response) {
+        if (event.type === 'content_block_delta') {
+          const data = JSON.stringify({ type: 'content', content: event.delta.text });
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        }
+      }
+
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+      controller.close();
+    } catch (error) {
+      const errorData = JSON.stringify({ type: 'error', error: error.message });
+      controller.enqueue(encoder.encode(`data: ${errorData}\n\n`));
+      controller.close();
+    }
+  }
+});
+
+return new Response(stream, {
+  headers: {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  },
+});
+```
+
+### Ping と Timeout 管理
+- Ping 間隔: 20秒（`sendPing` 関数）
+- Idle Timeout: 5分（300秒）
+
+## モデル設定とコスト最適化
+
+```typescript
+export const MODEL_CONFIGS = {
+  'claude-sonnet-4-5': {
+    id: 'claude-sonnet-4-5-20250929',
+    maxTokens: 8192,
+    contextWindow: 200000,
+    useCases: ['chat', 'analysis', 'generation'],
+  },
+  'claude-haiku-4-5': {
+    id: 'claude-haiku-4-5-20251001',
+    maxTokens: 4096,
+    contextWindow: 200000,
+    useCases: ['simple-tasks', 'quick-responses'],
+  },
+};
+```
+
+### Prompt Caching の活用
+```typescript
+const messages = [
+  {
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: systemPrompt,
+        cache_control: { type: 'ephemeral' },
+      },
+      { type: 'text', text: userMessage },
+    ],
+  },
+];
+```
+
+## エラーハンドリング
+
+- API エラー（401, 429, 500）を適切にハンドリングしてください。
+- レート制限エラー時は、リトライロジックを実装してください（Exponential Backoff）。
+- ストリーミング中のエラーは SSE で `type: 'error'` として送信してください。
+
+## セキュリティ
+
+- API キーをクライアントに露出しないでください。
+- すべての Claude API 呼び出しはサーバーサイド（API Routes または Server Actions）で行ってください。
+- ユーザー入力を適切にサニタイズし、プロンプトインジェクション攻撃を防いでください。
+
+## プロジェクト固有のルール
+
+- **LLMService の統一**: すべての Claude API 操作は `llmService` を経由してください。
+- **モデル切り替え**: `MODEL_CONFIGS` を参照し、用途に応じてモデルを選択してください。
+- **ステップ管理**: ブログ生成の各ステップ（`BLOG_STEP_IDS`）に応じたプロンプトを使用してください。
+- **コスト監視**: `npx ccusage@latest` でコストを定期的に確認してください。

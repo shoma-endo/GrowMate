@@ -890,8 +890,6 @@ export async function testWordPressConnectionAction() {
 
     if (!context.success) {
       switch (context.reason) {
-        case 'line_auth_missing':
-          return { success: false as const, error: ERROR_MESSAGES.AUTH.LINE_AUTH_REQUIRED };
         case 'line_auth_invalid':
         case 'requires_reauth':
           return {
