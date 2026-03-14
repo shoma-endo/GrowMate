@@ -346,6 +346,13 @@ export class UserService {
         // email で再試行（LINE ユーザー等が同メールアドレスを持つ場合）
         const retryByEmail = await this.supabaseService.getUserByEmail(email);
         if (retryByEmail.success && retryByEmail.data) {
+          // supabase_auth_id が未リンクの場合は紐付ける（次回ログイン時に getUserBySupabaseAuthId で見つかるように）
+          if (!retryByEmail.data.supabase_auth_id) {
+            await this.supabaseService.updateUserById(retryByEmail.data.id, {
+              supabase_auth_id: supabaseAuthId,
+              updated_at: toIsoTimestamp(new Date()),
+            });
+          }
           return toUser(retryByEmail.data);
         }
       }

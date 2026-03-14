@@ -167,7 +167,7 @@ export async function middleware(request: NextRequest) {
     if (isUnavailable(authResult.role)) {
       // 既に/unavailableページにいる場合はそのまま通す
       if (pathname === '/unavailable') {
-        return NextResponse.next();
+        return supabaseResponse;
       }
       // その他のページへのアクセスは/unavailableにリダイレクト
       return redirect(new URL('/unavailable', request.url));

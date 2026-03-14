@@ -175,6 +175,9 @@ export async function verifyOtp(
     console.error('[auth.actions] verifyOtp: failed to resolve public user:', err);
     // auth.users は作成済みだが public.users 解決失敗 → セッション破棄して再試行可能な状態に
     await supabase.auth.signOut();
+    const cookieStore = await cookies();
+    cookieStore.delete('line_access_token');
+    cookieStore.delete('line_refresh_token');
     return {
       success: false,
       error: 'ログイン処理に失敗しました。再度お試しください。',

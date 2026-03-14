@@ -286,7 +286,7 @@ export async function searchChatSessions(data: z.infer<typeof searchChatSessions
     console.error('Failed to search chat sessions:', error);
     return {
       results: [],
-      error: error instanceof Error ? error.message : ERROR_MESSAGES.CHAT.SESSION_SEARCH_FAILED,
+      error: ERROR_MESSAGES.CHAT.SESSION_SEARCH_FAILED,
     };
   }
 }
@@ -309,7 +309,7 @@ export async function deleteChatSession(sessionId: string, liffAccessToken: stri
     console.error('Failed to delete chat session:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : ERROR_MESSAGES.CHAT.SESSION_DELETE_FAILED,
+      error: ERROR_MESSAGES.CHAT.SESSION_DELETE_FAILED,
     };
   }
 }

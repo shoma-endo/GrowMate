@@ -177,7 +177,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">ユーザー管理</h1>
           <p className="mt-2 text-gray-600">
-            登録済みユーザーの一覧を表示します（合計: {nonStaffUsers.length}人 / スタッフ: {staffUsers.length}人）
+            登録済みユーザーの一覧を表示します（合計: {users.length}人 / スタッフ: {staffUsers.length}人）
           </p>
           <div className="mt-2 flex flex-wrap gap-2 text-sm text-gray-500">
             {roleSummary.map(({ key, label, count }) => (
