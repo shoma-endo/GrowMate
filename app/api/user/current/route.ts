@@ -8,7 +8,7 @@ import {
   setAuthCookies,
 } from '@/server/middleware/auth.middleware';
 import { userService } from '@/server/services/userService';
-import { resolveEmailUserFromSession } from '@/server/auth/resolveUser';
+import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
 
 export async function GET() {
   const cookieStore = await cookies();
@@ -24,11 +24,15 @@ export async function GET() {
   const accessToken = bearerToken ?? cookieAccessToken;
 
   if (!accessToken) {
-    // LINE token なし: Supabase Auth セッションで Email ユーザーとして処理
-    const emailUser = await resolveEmailUserFromSession();
-    if (!emailUser) {
+    // LINE token なし: 共通の Email 解決（一時障害は 503 で統一）
+    const result = await resolveEmailUserWithReason();
+    if (!result.ok) {
+      if (result.reason === 'transient') {
+        return NextResponse.json({ error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE }, { status: 503 });
+      }
       return NextResponse.json({ userId: null, user: null });
     }
+    const emailUser = result.user;
     return NextResponse.json({
       userId: emailUser.id,
       user: {
@@ -53,6 +57,9 @@ export async function GET() {
     });
 
     if (authResult.error) {
+      if (authResult.transient) {
+        return NextResponse.json({ error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE }, { status: 503 });
+      }
       if (authResult.needsReauth) {
         await clearAuthCookies();
         return NextResponse.json({ userId: null, needsReauth: true });

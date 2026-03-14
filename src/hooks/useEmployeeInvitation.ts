@@ -38,7 +38,7 @@ export type InvitationInfo = z.infer<typeof invitationInfoSchema>;
 
 interface UseEmployeeInvitationOptions {
   getAccessToken: () => Promise<string>;
-  refreshUser?: (() => Promise<void>) | undefined;
+  refreshUser?: (() => Promise<boolean>) | undefined;
   onEmployeeDeleted?: (() => void) | undefined;
 }
 

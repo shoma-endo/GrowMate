@@ -15,6 +15,7 @@ import { FullNameDialog } from '@/components/FullNameDialog';
 import { hasPaidFeatureAccess } from '@/types/user';
 import { InviteDialog } from '@/components/InviteDialog';
 import { canInviteEmployee, hasOwnerRole, isAdmin as isAdminRole } from '@/authUtils';
+import { signOutEmail } from '@/server/actions/auth.actions';
 import { toast } from 'sonner';
 
 interface EmployeeInfo {
@@ -24,8 +25,36 @@ interface EmployeeInfo {
   createdAt: string;
 }
 
+const LOGOUT_ERROR_MSG = 'ログアウトに失敗しました。再度お試しください。';
+
 const ProfileDisplay = () => {
   const { profile, isLoading, isLoggedIn, logout, user, isOwnerViewMode } = useLiffContext();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    const isLineUser = isLoggedIn;
+    try {
+      const result = await signOutEmail(
+        isLineUser ? { allowPartialOnTransientError: true } : undefined
+      );
+      if (!result.success) {
+        toast.error(result.error ?? LOGOUT_ERROR_MSG);
+        return;
+      }
+      if (result.partial) {
+        toast.info(
+          'LINE からはログアウトしました。再度ログインしたように見える場合は、もう一度ログアウトを押してください。'
+        );
+      }
+      if (isLineUser) {
+        logout();
+      } else {
+        router.push('/login');
+      }
+    } catch {
+      toast.error(LOGOUT_ERROR_MSG);
+    }
+  };
 
   if (isLoading || !user) {
     return null;
@@ -57,9 +86,9 @@ const ProfileDisplay = () => {
           <p className="text-sm text-gray-600">LINE表示名: {lineDisplayName}</p>
         )}
         <p className="text-sm text-gray-600 mb-4">ユーザーID: {userId}</p>
-        {!isOwnerViewMode && isLoggedIn && (
+        {!isOwnerViewMode && !!user && (
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm"
             aria-label="ログアウト"
             tabIndex={0}

@@ -1,5 +1,3 @@
-'use server';
-
 import { cookies as nextCookies } from 'next/headers';
 
 import { LineAuthService, LineTokenExpiredError } from '@/server/services/lineAuthService';
@@ -27,6 +25,8 @@ export interface AuthenticatedUser {
   actorRole?: UserRole | null;
   ownerUserId?: string | null;
   error?: string;
+  /** 一時障害時は true。呼び出し元で 503 を返すために使う */
+  transient?: boolean;
   newAccessToken?: string;
   newRefreshToken?: string;
   needsReauth?: boolean;
@@ -85,10 +85,19 @@ export async function ensureAuthenticated({
   }
 
   if (!accessToken) {
-    // LINE token なし: Supabase Auth セッションで Email ユーザーとして処理
-    const { resolveEmailUserFromSession } = await import('@/server/auth/resolveUser');
-    const emailUser = await resolveEmailUserFromSession();
-    if (!emailUser) {
+    // LINE token なし: 共通の Email 解決（一時障害は transient で返す）
+    const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
+    const result = await resolveEmailUserWithReason();
+    if (!result.ok) {
+      if (result.reason === 'transient') {
+        return {
+          error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+          transient: true,
+          lineUserId: '',
+          userId: '',
+          userDetails: null,
+        };
+      }
       return {
         error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,
         lineUserId: '',
@@ -96,6 +105,7 @@ export async function ensureAuthenticated({
         userDetails: null,
       };
     }
+    const emailUser = result.user;
     return {
       lineUserId: '', // Email ユーザーは LINE ID なし
       userId: emailUser.id,

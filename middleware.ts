@@ -48,24 +48,82 @@ export async function middleware(request: NextRequest) {
       return supabaseResponse;
     }
 
-    // 🔍 3. アクセストークンとリフレッシュトークンの取得
+    // 🔍 3. LINE Cookie の有無を確認（Email / LINE 優先判定に使用）
+    // LINE Cookie がある場合は LIFF ログイン後とみなし LINE パスを優先する
+    // LINE Cookie がない場合のみ Supabase セッション（Email）を優先する
     const accessToken = request.cookies.get('line_access_token')?.value;
     const refreshToken = request.cookies.get('line_refresh_token')?.value;
 
-    if (!accessToken) {
-      // LINE token なし: Supabase セッション（Email ユーザー）を確認
-      if (supabaseUser) {
-        // Email ユーザー認証済み: 権限制限パスは unauthorized へ（Phase 1 では Email ユーザーは trial のみ）
-        if (
-          requiresAdminAccess(pathname) ||
-          requiresPaidFeatureAccess(pathname) ||
-          requiresSetupAccess(pathname) ||
-          requiresGoogleAdsAccess(pathname)
-        ) {
-          return redirect(new URL('/unauthorized', request.url));
+    if (supabaseUser && !accessToken) {
+      // Email ユーザー認証済み: DB の role でアクセス制御
+      let emailRole: UserRole | null;
+      try {
+        // updateSupabaseSession() が更新した sb-* Cookie を request Cookie にマージして渡す
+        // request.headers.get('cookie') だけでは更新前の値を内部 API に送ってしまう
+        const cookieMap = new Map(request.cookies.getAll().map(c => [c.name, c.value]));
+        for (const c of supabaseResponse.cookies.getAll()) {
+          cookieMap.set(c.name, c.value);
         }
-        return supabaseResponse;
+        const mergedCookieHeader = [...cookieMap.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+        emailRole = await getEmailUserRoleWithCache(supabaseUser.id, request, mergedCookieHeader);
+      } catch (err) {
+        // 一時的な DB エラー: 未認証と同じ遷移にせず 503 で分離する
+        // /login へ送ると supabaseUser 検知で / へ転送されユーザーが原因不明のホーム送りになる
+        // 空 body だとブラウザの 503 画面のままになるため、再試行できる HTML を返す
+        console.error('[Middleware] Email role fetch error (transient):', err);
+        const html =
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>一時的なエラー</title></head><body style="font-family:sans-serif;max-width:480px;margin:2rem auto;padding:1rem;text-align:center"><p>サービスを一時的に利用できません。</p><p>しばらくしてから「再読み込み」を押してください。</p><button type="button" onclick="location.reload()" style="padding:0.5rem 1rem;font-size:1rem;cursor:pointer">再読み込み</button></body></html>';
+        const res503 = new NextResponse(html, {
+          status: 503,
+          headers: {
+            'Retry-After': '5',
+            'Content-Type': 'text/html; charset=utf-8',
+          },
+        });
+        for (const cookie of supabaseResponse.cookies.getAll()) {
+          res503.cookies.set(cookie.name, cookie.value, cookie);
+        }
+        return res503;
       }
+
+      if (!emailRole) {
+        // public.users に未登録の異常状態（verifyOtp 未完了等）
+        // supabaseResponse を介して Supabase セッション Cookie (sb-* プレフィックス) を削除し
+        // /login へ送る。削除することで次のリクエストで supabaseUser が null になりループしない。
+        for (const cookie of request.cookies.getAll()) {
+          if (cookie.name.startsWith('sb-')) {
+            supabaseResponse.cookies.delete(cookie.name);
+          }
+        }
+        return redirect(new URL('/login', request.url));
+      }
+
+      if (isUnavailable(emailRole)) {
+        if (pathname === '/unavailable') return supabaseResponse;
+        return redirect(new URL('/unavailable', request.url));
+      }
+
+      if (requiresSetupAccess(pathname) && !hasSetupAccess(emailRole)) {
+        return redirect(new URL('/unauthorized', request.url));
+      }
+      if (requiresPaidFeatureAccess(pathname) && !hasPaidFeatureAccess(emailRole)) {
+        return redirect(new URL('/unauthorized', request.url));
+      }
+      if (requiresAdminAccess(pathname) && !isAdmin(emailRole)) {
+        return redirect(new URL('/unauthorized', request.url));
+      }
+      // Google Ads ルートは LINE セッション専用（アクション層が line_access_token を必須とするため）
+      // Email セッション対応が完了するまで管理者を含む全 Email ユーザーをブロック
+      if (requiresGoogleAdsAccess(pathname)) {
+        return redirect(new URL('/unauthorized', request.url));
+      }
+
+      supabaseResponse.headers.set('x-user-role', emailRole);
+      return supabaseResponse;
+    }
+
+    // 🔍 4. LINE ユーザー認証（accessToken / refreshToken は上で取得済み）
+    if (!accessToken) {
       return redirect(new URL('/login', request.url));
     }
 
@@ -193,6 +251,45 @@ function requiresGoogleAdsAccess(pathname: string): boolean {
 // 🚀 パフォーマンス最適化：メモリキャッシュ
 const roleCache = new Map<string, { role: UserRole; timestamp: number }>();
 const CACHE_TTL = 30 * 1000; // 30秒キャッシュ（権限変更の反映を早くするため）
+
+/** Email ユーザーの role を取得（キャッシュ付き）
+ *
+ * Service Role を必要とする DB クエリは Node runtime の Route Handler（/api/auth/check-role）
+ * 側で実行する。Edge middleware に無制限キーを持ち込まないようにするため fetch で委譲する。
+ */
+async function getEmailUserRoleWithCache(
+  supabaseAuthId: string,
+  request: NextRequest,
+  cookieHeader: string
+): Promise<UserRole | null> {
+  const cacheKey = `em:${supabaseAuthId.substring(0, 18)}`; // 'em:' + 18 chars = 20 chars
+  const cached = roleCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.role;
+  }
+
+  const checkRoleUrl = new URL('/api/auth/check-role', request.url);
+  const res = await fetch(checkRoleUrl.toString(), {
+    headers: { cookie: cookieHeader },
+    cache: 'no-store',
+  });
+
+  // 401: 未認証 or 未登録 → null を返して呼び出し元に未登録処理させる
+  if (res.status === 401) return null;
+  // 5xx: 一時障害 → throw して呼び出し元で 503 ハンドリングさせる
+  if (!res.ok) throw new Error(`[check-role] HTTP ${res.status}`);
+
+  const data = (await res.json()) as { role?: UserRole };
+  const role = data.role ?? null;
+  if (role) {
+    roleCache.set(cacheKey, { role, timestamp: Date.now() });
+    if (roleCache.size > 1000) {
+      const oldestKey = roleCache.keys().next().value;
+      if (oldestKey) roleCache.delete(oldestKey);
+    }
+  }
+  return role;
+}
 
 async function getUserRoleWithCacheAndRefresh(accessToken: string, refreshToken?: string) {
   const cacheKey = accessToken.substring(0, 20); // セキュリティのため一部のみ使用

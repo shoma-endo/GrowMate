@@ -99,6 +99,34 @@ export async function sendOtpEmail(
   return { success: true };
 }
 
+export async function signOutEmail(options?: {
+  /** LINE ユーザー用。true のとき signOut 失敗でも LINE Cookie を削除して success を返す（障害時ログアウト不能を防ぐ） */
+  allowPartialOnTransientError?: boolean;
+}): Promise<{ success: boolean; error?: string; /** true のとき LINE のみ解除済みで Supabase セッションが残っている可能性あり */ partial?: boolean }> {
+  const supabase = await createSupabaseServerClient();
+  const cookieStore = await cookies();
+
+  // Supabase セッションのサインアウト。
+  // - AuthSessionMissingError → LINE 専用ユーザー等セッションが元々ない → 正常扱い
+  // - その他エラー（Supabase 一時障害など）:
+  //   - allowPartialOnTransientError: true（LINE 用）→ LINE Cookie を削除し partial: true で返す
+  //   - それ以外（Email 用）→ 失敗を返す（/login 遷移でループするため）
+  let partialLogout = false;
+  const { error: signOutError } = await supabase.auth.signOut();
+  if (signOutError && signOutError.name !== 'AuthSessionMissingError') {
+    console.error('[auth.actions] signOutEmail error:', signOutError.message);
+    if (!options?.allowPartialOnTransientError) {
+      return { success: false, error: 'ログアウトに失敗しました。再度お試しください。' };
+    }
+    partialLogout = true;
+  }
+
+  cookieStore.delete('line_access_token');
+  cookieStore.delete('line_refresh_token');
+
+  return { success: true, ...(partialLogout && { partial: true }) };
+}
+
 export async function verifyOtp(
   email: string,
   token: string
