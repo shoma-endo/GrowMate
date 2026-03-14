@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { featureFlags } from '@/config/featureFlags';
 import { sendOtpEmail, verifyOtp } from '@/server/actions/auth.actions';
 
-type LoginView = 'loading' | 'options' | 'email-form' | 'otp-form';
+type LoginView = 'loading' | 'options' | 'otp-form';
 
 export default function LoginPage() {
   const [view, setView] = useState<LoginView>('options');
@@ -94,10 +94,10 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           {view === 'options' && (
-            <CardDescription>LINE またはメール認証コードでログインできます</CardDescription>
-          )}
-          {view === 'email-form' && (
-            <CardDescription>メールアドレスを入力してください</CardDescription>
+            <>
+              <CardDescription>LINE またはメールでログインできます</CardDescription>
+              <p className="text-sm text-gray-500 mt-2">初めての方もご利用いただけます</p>
+            </>
           )}
           {view === 'otp-form' && (
             <CardDescription>認証コードを入力してください</CardDescription>
@@ -114,82 +114,56 @@ export default function LoginPage() {
 
           {view === 'options' && (
             <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4">
-              <Button
-                onClick={loginWithLine}
-                size="lg"
-                className="w-full bg-[#06C755] text-white hover:bg-[#06C755] hover:opacity-90 active:opacity-70 px-8 py-6 text-lg rounded-xl shadow-md transition-all"
-              >
-                LINEでログイン
-              </Button>
-
               {featureFlags.emailAuthEnabled && (
                 <>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">メールアドレス</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      disabled={isPending}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleSendOtp();
+                      }}
+                    />
+                  </div>
+
+                  <Button onClick={handleSendOtp} disabled={isPending || !email} className="w-full">
+                    {isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        送信中...
+                      </>
+                    ) : (
+                      '認証コードを送信'
+                    )}
+                  </Button>
+
                   <div className="relative flex items-center">
                     <div className="flex-1 border-t border-gray-200" />
                     <span className="mx-3 text-sm text-gray-400">または</span>
                     <div className="flex-1 border-t border-gray-200" />
                   </div>
-
-                  <Button
-                    onClick={() => {
-                      setError('');
-                      setView('email-form');
-                    }}
-                    variant="outline"
-                    size="lg"
-                    className="w-full px-8 py-6 text-lg rounded-xl"
-                  >
-                    メールでログイン
-                  </Button>
                 </>
               )}
 
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-            </div>
-          )}
-
-          {view === 'email-form' && (
-            <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">メールアドレス</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  disabled={isPending}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') handleSendOtp();
-                  }}
-                />
-              </div>
-
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <Button onClick={handleSendOtp} disabled={isPending || !email} className="w-full">
-                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : '認証コードを送信'}
+              <Button
+                onClick={loginWithLine}
+                size="lg"
+                className="w-full bg-[#06C755] text-white hover:opacity-90 active:opacity-70 px-8 py-6 text-lg rounded-xl shadow-md transition-all"
+              >
+                LINEでログイン
               </Button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setError('');
-                  setView('options');
-                }}
-                className="text-sm text-gray-400 underline w-full text-center"
-              >
-                戻る
-              </button>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
             </div>
           )}
 
@@ -229,7 +203,14 @@ export default function LoginPage() {
                 disabled={isPending || otp.length !== 6}
                 className="w-full"
               >
-                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ログイン'}
+                {isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    確認中...
+                  </>
+                ) : (
+                  'ログイン'
+                )}
               </Button>
 
               <button
@@ -246,7 +227,7 @@ export default function LoginPage() {
                 onClick={() => {
                   setError('');
                   setOtp('');
-                  setView('email-form');
+                  setView('options');
                 }}
                 className="text-sm text-gray-400 underline w-full text-center"
               >
