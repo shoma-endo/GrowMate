@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { featureFlags } from '@/config/featureFlags';
@@ -90,10 +90,18 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+      <h1 className="text-3xl font-bold mb-6">ログイン</h1>
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">ログイン</CardTitle>
-          <CardDescription>LINE またはメール認証コードでログインできます</CardDescription>
+          {view === 'options' && (
+            <CardDescription>LINE またはメール認証コードでログインできます</CardDescription>
+          )}
+          {view === 'email-form' && (
+            <CardDescription>メールアドレスを入力してください</CardDescription>
+          )}
+          {view === 'otp-form' && (
+            <CardDescription>認証コードを入力してください</CardDescription>
+          )}
         </CardHeader>
 
         <CardContent>

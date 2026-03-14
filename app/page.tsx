@@ -65,8 +65,7 @@ const ProfileDisplay = () => {
     (isOwnerViewMode ? user.lineDisplayName : profile?.displayName) ??
     user.email ??
     'ユーザー';
-  const pictureUrl = isOwnerViewMode ? user?.linePictureUrl : profile?.pictureUrl;
-  const lineDisplayName = isOwnerViewMode ? user.lineDisplayName : profile?.displayName;
+  const pictureUrl = user?.linePictureUrl ?? profile?.pictureUrl;
   const userId = user.id;
 
   return (
@@ -82,9 +81,6 @@ const ProfileDisplay = () => {
         )}
         <h3 className="text-xl font-bold mb-2">{displayName}</h3>
         {user.email && <p className="text-sm text-gray-600">メールアドレス: {user.email}</p>}
-        {lineDisplayName && lineDisplayName !== displayName && (
-          <p className="text-sm text-gray-600">LINE表示名: {lineDisplayName}</p>
-        )}
         <p className="text-sm text-gray-600 mb-4">ユーザーID: {userId}</p>
         {!isOwnerViewMode && !!user && (
           <button
