@@ -172,6 +172,9 @@ export default function LoginPage() {
               <p className="text-sm text-gray-600">
                 <span className="font-medium">{email}</span> に認証コードを送信しました。
               </p>
+              <p className="text-xs text-gray-400">
+                メールが届かない場合は、迷惑メールフォルダをご確認ください。
+              </p>
 
               <div className="space-y-2">
                 <Label htmlFor="otp">認証コード（6桁）</Label>
