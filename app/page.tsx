@@ -316,19 +316,11 @@ const OwnerEmployeeCard = ({
 };
 
 export default function Home() {
-  const { isLoading, isLoggedIn, user, isOwnerViewMode } = useLiffContext();
-  const router = useRouter();
+  const { isLoading, user, isOwnerViewMode } = useLiffContext();
   const hasAuthenticatedUser = Boolean(user);
   const userRole = user?.role ?? null;
   const isRoleLoading = !isLoading && !hasAuthenticatedUser;
   const isStaffUser = Boolean(user?.ownerUserId);
-
-  // 未認証ユーザーをランディングページへリダイレクト
-  useEffect(() => {
-    if (!isLoading && !hasAuthenticatedUser) {
-      router.replace('/home');
-    }
-  }, [isLoading, hasAuthenticatedUser, router]);
 
   // フルネーム関連ステート
   const [showFullNameDialog, setShowFullNameDialog] = useState(false);
