@@ -15,13 +15,37 @@ const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const
 // 認証不要なパスの定義
 const PUBLIC_PATHS = ['/login', '/unauthorized', '/', '/home', '/privacy'] as const;
 
+function buildCspHeader(nonce: string): string {
+  const isDev = process.env.NODE_ENV === 'development';
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ''}`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' https://profile.line-scdn.net data:",
+    `connect-src 'self'${isDev ? ' ws://localhost:* wss://localhost:*' : ''} https://api.line.me https://oauth2.googleapis.com https://openidconnect.googleapis.com https://www.googleapis.com https://accounts.google.com https://public-api.wordpress.com https://*.supabase.co wss://*.supabase.co`,
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+  ].join('; ');
+}
+
 export async function middleware(request: NextRequest) {
+  const nonce = btoa(crypto.randomUUID());
+  const cspHeader = buildCspHeader(nonce);
+  const response = await handleMiddleware(request, nonce, cspHeader);
+  response.headers.set('Content-Security-Policy', cspHeader);
+  return response;
+}
+
+async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: string): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   try {
     // 🔑 Supabase セッション refresh（Email ユーザーのトークン自動更新）
     // supabaseResponse を全レスポンスのベースとして使用し、Set-Cookie を確実に伝播させる
-    const { supabaseResponse, supabaseUser } = await updateSupabaseSession(request);
+    const { supabaseResponse, supabaseUser } = await updateSupabaseSession(request, nonce, cspHeader);
 
     // Supabase の Set-Cookie を引き継ぎながらリダイレクトするヘルパー
     const redirect = (url: URL) => {
@@ -50,7 +74,11 @@ export async function middleware(request: NextRequest) {
             return redirect(new URL('/', request.url));
           }
           // 無効/期限切れ: LINE cookie をクリアして /login を表示
-          const res = NextResponse.next();
+          // nonce ヘッダーを転送して Next.js がインラインスクリプトに nonce を付与できるようにする
+          const nonceHeaders = new Headers(request.headers);
+          nonceHeaders.set('x-nonce', nonce);
+          nonceHeaders.set('content-security-policy', cspHeader);
+          const res = NextResponse.next({ request: { headers: nonceHeaders } });
           for (const cookie of supabaseResponse.cookies.getAll()) {
             res.cookies.set(cookie.name, cookie.value, cookie);
           }
@@ -87,8 +115,10 @@ export async function middleware(request: NextRequest) {
         // /login へ送ると supabaseUser 検知で / へ転送されユーザーが原因不明のホーム送りになる
         // 空 body だとブラウザの 503 画面のままになるため、再試行できる HTML を返す
         console.error('[Middleware] Email role fetch error (transient):', err);
+        // onclick 等のインラインイベントハンドラは CSP nonce でカバーされないためJS不使用
+        // <meta http-equiv="refresh"> で5秒後に自動リロード、<a href=""> でも即時再試行可能
         const html =
-          '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>一時的なエラー</title></head><body style="font-family:sans-serif;max-width:480px;margin:2rem auto;padding:1rem;text-align:center"><p>サービスを一時的に利用できません。</p><p>しばらくしてから「再読み込み」を押してください。</p><button type="button" onclick="location.reload()" style="padding:0.5rem 1rem;font-size:1rem;cursor:pointer">再読み込み</button></body></html>';
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="5"><title>一時的なエラー</title></head><body style="font-family:sans-serif;max-width:480px;margin:2rem auto;padding:1rem;text-align:center"><p>サービスを一時的に利用できません。</p><p>しばらくしてから再読み込みしてください（5秒後に自動で再試行します）。</p><a href="" style="display:inline-block;padding:0.5rem 1rem;font-size:1rem;text-decoration:none;border:1px solid #ccc;border-radius:4px">今すぐ再読み込み</a></body></html>';
         const res503 = new NextResponse(html, {
           status: 503,
           headers: {
@@ -267,6 +297,13 @@ function requiresGoogleAdsAccess(pathname: string): boolean {
 const roleCache = new Map<string, { role: UserRole; timestamp: number }>();
 const CACHE_TTL = 30 * 1000; // 30秒キャッシュ（権限変更の反映を早くするため）
 
+function pruneRoleCacheIfNeeded() {
+  if (roleCache.size > 1000) {
+    const oldestKey = roleCache.keys().next().value;
+    if (oldestKey) roleCache.delete(oldestKey);
+  }
+}
+
 /** Email ユーザーの role を取得（キャッシュ付き）
  *
  * Service Role を必要とする DB クエリは Node runtime の Route Handler（/api/auth/check-role）
@@ -298,10 +335,7 @@ async function getEmailUserRoleWithCache(
   const role = data.role ?? null;
   if (role) {
     roleCache.set(cacheKey, { role, timestamp: Date.now() });
-    if (roleCache.size > 1000) {
-      const oldestKey = roleCache.keys().next().value;
-      if (oldestKey) roleCache.delete(oldestKey);
-    }
+    pruneRoleCacheIfNeeded();
   }
   return role;
 }
@@ -316,11 +350,6 @@ async function getUserRoleWithCacheAndRefresh(accessToken: string, refreshToken?
   }
 
   try {
-    if (!getUserRoleWithRefresh || typeof getUserRoleWithRefresh !== 'function') {
-      console.error('[Middleware] getUserRoleWithRefresh is not a function');
-      return { role: null, needsReauth: true };
-    }
-
     const result = await getUserRoleWithRefresh(accessToken, refreshToken);
 
     if (result.role) {
@@ -335,12 +364,7 @@ async function getUserRoleWithCacheAndRefresh(accessToken: string, refreshToken?
       }
 
       // メモリリーク防止：古いキャッシュを削除
-      if (roleCache.size > 1000) {
-        const oldestKey = roleCache.keys().next().value;
-        if (oldestKey) {
-          roleCache.delete(oldestKey);
-        }
-      }
+      pruneRoleCacheIfNeeded();
     }
 
     return result;

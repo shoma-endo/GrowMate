@@ -17,8 +17,19 @@ export interface SupabaseSessionResult {
  * 重要: createServerClient と supabase.auth.getUser() の間にコードを挟まないこと
  * Cookie の読み書きタイミングがずれるとセッションが壊れる
  */
-export async function updateSupabaseSession(request: NextRequest): Promise<SupabaseSessionResult> {
-  let supabaseResponse = NextResponse.next({ request });
+export async function updateSupabaseSession(
+  request: NextRequest,
+  nonce?: string,
+  cspHeader?: string
+): Promise<SupabaseSessionResult> {
+  const forwardedHeaders = new Headers(request.headers);
+  if (nonce) {
+    forwardedHeaders.set('x-nonce', nonce);
+  }
+  if (cspHeader) {
+    forwardedHeaders.set('content-security-policy', cspHeader);
+  }
+  let supabaseResponse = NextResponse.next({ request: { headers: forwardedHeaders } });
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,8 +44,14 @@ export async function updateSupabaseSession(request: NextRequest): Promise<Supab
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
           });
+          // forwardedHeaders の cookie ヘッダーを更新済み request.cookies と同期する
+          // （forwardedHeaders は初期スナップショットのため手動で上書きが必要）
+          forwardedHeaders.set(
+            'cookie',
+            request.cookies.getAll().map(({ name, value }) => `${name}=${value}`).join('; ')
+          );
           // response の Cookie を更新（ブラウザへの Set-Cookie 向け）
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = NextResponse.next({ request: { headers: forwardedHeaders } });
           cookiesToSet.forEach(({ name, value, options }) => {
             supabaseResponse.cookies.set(name, value, options);
           });
