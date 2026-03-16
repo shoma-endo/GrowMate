@@ -16,9 +16,10 @@ const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const
 const PUBLIC_PATHS = ['/login', '/unauthorized', '/', '/home', '/privacy'] as const;
 
 function buildCspHeader(nonce: string): string {
+  const isDev = process.env.NODE_ENV === 'development';
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}'`,
+    `script-src 'self' 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' https://profile.line-scdn.net data:",
