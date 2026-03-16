@@ -128,9 +128,8 @@ export async function middleware(request: NextRequest) {
       if (requiresAdminAccess(pathname) && !isAdmin(emailRole)) {
         return redirect(new URL('/unauthorized', request.url));
       }
-      // Google Ads ルートは LINE セッション専用（アクション層が line_access_token を必須とするため）
-      // Email セッション対応が完了するまで管理者を含む全 Email ユーザーをブロック
-      if (requiresGoogleAdsAccess(pathname)) {
+      // Google Ads 機能は管理者のみ許可（LINE と同一ルール）
+      if (requiresGoogleAdsAccess(pathname) && !isAdmin(emailRole)) {
         return redirect(new URL('/unauthorized', request.url));
       }
 
