@@ -44,6 +44,12 @@ export async function updateSupabaseSession(
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
           });
+          // forwardedHeaders の cookie ヘッダーを更新済み request.cookies と同期する
+          // （forwardedHeaders は初期スナップショットのため手動で上書きが必要）
+          forwardedHeaders.set(
+            'cookie',
+            request.cookies.getAll().map(({ name, value }) => `${name}=${value}`).join('; ')
+          );
           // response の Cookie を更新（ブラウザへの Set-Cookie 向け）
           supabaseResponse = NextResponse.next({ request: { headers: forwardedHeaders } });
           cookiesToSet.forEach(({ name, value, options }) => {
