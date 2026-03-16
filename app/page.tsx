@@ -66,7 +66,6 @@ const ProfileDisplay = () => {
     user.email ??
     'ユーザー';
   const pictureUrl = user?.linePictureUrl ?? profile?.pictureUrl;
-  const userId = user.id;
 
   return (
     <Card className="w-full max-w-md mb-6">
@@ -81,7 +80,6 @@ const ProfileDisplay = () => {
         )}
         <h3 className="text-xl font-bold mb-2">{displayName}</h3>
         {user.email && <p className="text-sm text-gray-600">メールアドレス: {user.email}</p>}
-        <p className="text-sm text-gray-600 mb-4">ユーザーID: {userId}</p>
         {!isOwnerViewMode && !!user && (
           <button
             onClick={handleLogout}
