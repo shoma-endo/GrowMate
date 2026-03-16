@@ -297,6 +297,13 @@ function requiresGoogleAdsAccess(pathname: string): boolean {
 const roleCache = new Map<string, { role: UserRole; timestamp: number }>();
 const CACHE_TTL = 30 * 1000; // 30秒キャッシュ（権限変更の反映を早くするため）
 
+function pruneRoleCacheIfNeeded() {
+  if (roleCache.size > 1000) {
+    const oldestKey = roleCache.keys().next().value;
+    if (oldestKey) roleCache.delete(oldestKey);
+  }
+}
+
 /** Email ユーザーの role を取得（キャッシュ付き）
  *
  * Service Role を必要とする DB クエリは Node runtime の Route Handler（/api/auth/check-role）
@@ -328,10 +335,7 @@ async function getEmailUserRoleWithCache(
   const role = data.role ?? null;
   if (role) {
     roleCache.set(cacheKey, { role, timestamp: Date.now() });
-    if (roleCache.size > 1000) {
-      const oldestKey = roleCache.keys().next().value;
-      if (oldestKey) roleCache.delete(oldestKey);
-    }
+    pruneRoleCacheIfNeeded();
   }
   return role;
 }
@@ -346,11 +350,6 @@ async function getUserRoleWithCacheAndRefresh(accessToken: string, refreshToken?
   }
 
   try {
-    if (!getUserRoleWithRefresh || typeof getUserRoleWithRefresh !== 'function') {
-      console.error('[Middleware] getUserRoleWithRefresh is not a function');
-      return { role: null, needsReauth: true };
-    }
-
     const result = await getUserRoleWithRefresh(accessToken, refreshToken);
 
     if (result.role) {
@@ -365,12 +364,7 @@ async function getUserRoleWithCacheAndRefresh(accessToken: string, refreshToken?
       }
 
       // メモリリーク防止：古いキャッシュを削除
-      if (roleCache.size > 1000) {
-        const oldestKey = roleCache.keys().next().value;
-        if (oldestKey) {
-          roleCache.delete(oldestKey);
-        }
-      }
+      pruneRoleCacheIfNeeded();
     }
 
     return result;
