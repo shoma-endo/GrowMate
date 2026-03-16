@@ -74,7 +74,11 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
             return redirect(new URL('/', request.url));
           }
           // 無効/期限切れ: LINE cookie をクリアして /login を表示
-          const res = NextResponse.next();
+          // nonce ヘッダーを転送して Next.js がインラインスクリプトに nonce を付与できるようにする
+          const nonceHeaders = new Headers(request.headers);
+          nonceHeaders.set('x-nonce', nonce);
+          nonceHeaders.set('content-security-policy', cspHeader);
+          const res = NextResponse.next({ request: { headers: nonceHeaders } });
           for (const cookie of supabaseResponse.cookies.getAll()) {
             res.cookies.set(cookie.name, cookie.value, cookie);
           }
