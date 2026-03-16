@@ -32,7 +32,7 @@ function buildCspHeader(nonce: string): string {
 }
 
 export async function middleware(request: NextRequest) {
-  const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
+  const nonce = btoa(crypto.randomUUID());
   const response = await handleMiddleware(request, nonce);
   response.headers.set('Content-Security-Policy', buildCspHeader(nonce));
   return response;
