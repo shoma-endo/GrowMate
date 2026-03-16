@@ -17,8 +17,15 @@ export interface SupabaseSessionResult {
  * 重要: createServerClient と supabase.auth.getUser() の間にコードを挟まないこと
  * Cookie の読み書きタイミングがずれるとセッションが壊れる
  */
-export async function updateSupabaseSession(request: NextRequest): Promise<SupabaseSessionResult> {
-  let supabaseResponse = NextResponse.next({ request });
+export async function updateSupabaseSession(
+  request: NextRequest,
+  nonce?: string
+): Promise<SupabaseSessionResult> {
+  const forwardedHeaders = new Headers(request.headers);
+  if (nonce) {
+    forwardedHeaders.set('x-nonce', nonce);
+  }
+  let supabaseResponse = NextResponse.next({ request: { headers: forwardedHeaders } });
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,7 +41,7 @@ export async function updateSupabaseSession(request: NextRequest): Promise<Supab
             request.cookies.set(name, value);
           });
           // response の Cookie を更新（ブラウザへの Set-Cookie 向け）
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = NextResponse.next({ request: { headers: forwardedHeaders } });
           cookiesToSet.forEach(({ name, value, options }) => {
             supabaseResponse.cookies.set(name, value, options);
           });

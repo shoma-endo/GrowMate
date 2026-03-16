@@ -15,13 +15,35 @@ const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const
 // 認証不要なパスの定義
 const PUBLIC_PATHS = ['/login', '/unauthorized', '/', '/home', '/privacy'] as const;
 
+function buildCspHeader(nonce: string): string {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' https://profile.line-scdn.net data:",
+    "connect-src 'self' https://api.line.me https://oauth2.googleapis.com https://openidconnect.googleapis.com https://www.googleapis.com https://accounts.google.com https://public-api.wordpress.com https://*.supabase.co wss://*.supabase.co",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+  ].join('; ');
+}
+
 export async function middleware(request: NextRequest) {
+  const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
+  const response = await handleMiddleware(request, nonce);
+  response.headers.set('Content-Security-Policy', buildCspHeader(nonce));
+  return response;
+}
+
+async function handleMiddleware(request: NextRequest, nonce: string): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   try {
     // 🔑 Supabase セッション refresh（Email ユーザーのトークン自動更新）
     // supabaseResponse を全レスポンスのベースとして使用し、Set-Cookie を確実に伝播させる
-    const { supabaseResponse, supabaseUser } = await updateSupabaseSession(request);
+    const { supabaseResponse, supabaseUser } = await updateSupabaseSession(request, nonce);
 
     // Supabase の Set-Cookie を引き継ぎながらリダイレクトするヘルパー
     const redirect = (url: URL) => {
