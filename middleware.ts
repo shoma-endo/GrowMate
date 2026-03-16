@@ -115,8 +115,10 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
         // /login へ送ると supabaseUser 検知で / へ転送されユーザーが原因不明のホーム送りになる
         // 空 body だとブラウザの 503 画面のままになるため、再試行できる HTML を返す
         console.error('[Middleware] Email role fetch error (transient):', err);
+        // onclick 等のインラインイベントハンドラは CSP nonce でカバーされないためJS不使用
+        // <meta http-equiv="refresh"> で5秒後に自動リロード、<a href=""> でも即時再試行可能
         const html =
-          '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>一時的なエラー</title></head><body style="font-family:sans-serif;max-width:480px;margin:2rem auto;padding:1rem;text-align:center"><p>サービスを一時的に利用できません。</p><p>しばらくしてから「再読み込み」を押してください。</p><button type="button" onclick="location.reload()" style="padding:0.5rem 1rem;font-size:1rem;cursor:pointer">再読み込み</button></body></html>';
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="5"><title>一時的なエラー</title></head><body style="font-family:sans-serif;max-width:480px;margin:2rem auto;padding:1rem;text-align:center"><p>サービスを一時的に利用できません。</p><p>しばらくしてから再読み込みしてください（5秒後に自動で再試行します）。</p><a href="" style="display:inline-block;padding:0.5rem 1rem;font-size:1rem;text-decoration:none;border:1px solid #ccc;border-radius:4px">今すぐ再読み込み</a></body></html>';
         const res503 = new NextResponse(html, {
           status: 503,
           headers: {
