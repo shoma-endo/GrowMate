@@ -19,11 +19,15 @@ export interface SupabaseSessionResult {
  */
 export async function updateSupabaseSession(
   request: NextRequest,
-  nonce?: string
+  nonce?: string,
+  cspHeader?: string
 ): Promise<SupabaseSessionResult> {
   const forwardedHeaders = new Headers(request.headers);
   if (nonce) {
     forwardedHeaders.set('x-nonce', nonce);
+  }
+  if (cspHeader) {
+    forwardedHeaders.set('content-security-policy', cspHeader);
   }
   let supabaseResponse = NextResponse.next({ request: { headers: forwardedHeaders } });
 

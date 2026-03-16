@@ -33,18 +33,19 @@ function buildCspHeader(nonce: string): string {
 
 export async function middleware(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
-  const response = await handleMiddleware(request, nonce);
-  response.headers.set('Content-Security-Policy', buildCspHeader(nonce));
+  const cspHeader = buildCspHeader(nonce);
+  const response = await handleMiddleware(request, nonce, cspHeader);
+  response.headers.set('Content-Security-Policy', cspHeader);
   return response;
 }
 
-async function handleMiddleware(request: NextRequest, nonce: string): Promise<NextResponse> {
+async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: string): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   try {
     // 🔑 Supabase セッション refresh（Email ユーザーのトークン自動更新）
     // supabaseResponse を全レスポンスのベースとして使用し、Set-Cookie を確実に伝播させる
-    const { supabaseResponse, supabaseUser } = await updateSupabaseSession(request, nonce);
+    const { supabaseResponse, supabaseUser } = await updateSupabaseSession(request, nonce, cspHeader);
 
     // Supabase の Set-Cookie を引き継ぎながらリダイレクトするヘルパー
     const redirect = (url: URL) => {
