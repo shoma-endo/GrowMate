@@ -79,11 +79,11 @@ const ProfileDisplay = () => {
           </Avatar>
         )}
         <h3 className="text-xl font-bold mb-2">{displayName}</h3>
-        {user.email && <p className="text-sm text-gray-600">メールアドレス: {user.email}</p>}
+        {user.email && <p className="text-sm text-gray-600 mb-4">メールアドレス: {user.email}</p>}
         {!isOwnerViewMode && !!user && (
           <button
             onClick={handleLogout}
-            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm"
+            className="mt-4 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm"
             aria-label="ログアウト"
             tabIndex={0}
           >
