@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: '利用規約 - GrowMate',
   description: 'GrowMateの利用規約です。サービスの利用条件、権利義務関係について定めています。',
