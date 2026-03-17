@@ -711,8 +711,8 @@ GSC 連携・スタッフ招待など各機能の詳細な検証手順は `testi
 
 | エンドポイント                      | メソッド | 概要                                                          | 認証                           |
 | ----------------------------------- | -------- | ------------------------------------------------------------- | ------------------------------ |
-| `/api/chat/anthropic/stream`        | POST     | Claude とのチャット SSE ストリーム                            | `Authorization: Bearer <LIFF>` |
-| `/api/chat/canvas/stream`           | POST     | Canvas 編集リクエスト（選択範囲差し替え）                     | `Authorization: Bearer <LIFF>` |
+| `/api/chat/anthropic/stream`        | POST     | Claude とのチャット SSE ストリーム                            | `Authorization: Bearer <LIFF>` または Email Cookie |
+| `/api/chat/canvas/stream`           | POST     | Canvas 編集リクエスト（選択範囲差し替え）                     | `Authorization: Bearer <LIFF>` または Email Cookie |
 | `/api/chat/canvas/load-wordpress`   | POST     | WordPress記事をCanvasに読み込み                               | `Authorization: Bearer <LIFF>` |
 | `/api/refresh`                      | POST     | LINE リフレッシュトークンからアクセストークン再発行           | Cookie (`line_refresh_token`)  |
 | `/api/user/current`                 | GET      | ログインユーザーのプロファイル・ロール情報                    | Cookie (`line_access_token`)   |

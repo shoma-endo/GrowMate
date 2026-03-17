@@ -1051,11 +1051,70 @@ Phase 1 でこの構造を採用しない理由:
 
 ### 14.2 authMiddleware の Email フォールバック実装
 
-`src/server/middleware/auth.middleware.ts` の `ensureAuthenticated()` にて:
+`src/server/middleware/auth.middleware.ts` の `ensureAuthenticated()` には Email fallback のトリガー条件が **2つ**ある。
 
-- `accessToken` が falsy（`undefined` / `''`）の場合、`resolveEmailUserFromSession()` を呼び出す
-- `resolveEmailUserFromSession()` は `supabase.auth.getUser()` → `public.users.supabase_auth_id` で解決
-- `lineUserId: ''`（空文字）を返す（Email ユーザーは LINE ID なし）
+#### トリガー条件 1: `accessToken` が未提供（主経路）
+
+`accessToken` が `undefined` または `''` の場合、**無条件で** `tryEmailFallback()` を呼び出す。これが Email ユーザーの通常ログインパスであり、`allowEmailFallback` の値に関係なく常に動作する。
+
+#### トリガー条件 2: LINE トークン検証失敗 + `allowEmailFallback=true`（LIFF キャッシュ対策）
+
+`accessToken` が存在するが LINE 検証失敗（`isValid=false` または `needsReauth=true`）の場合、`allowEmailFallback=true` のときのみ `tryEmailFallback()` を試みる。LIFF SDK の localStorage キャッシュにより期限切れ LINE トークンが混入した Email ユーザーを救済する経路。
+
+これら2条件の関係:
+
+```
+accessToken が未提供？
+  → YES → tryEmailFallback()（無条件）← Email ユーザーの主経路
+  → NO  → LINE 検証 → 失敗 + allowEmailFallback=true → tryEmailFallback()
+                     → 失敗 + allowEmailFallback=false → エラー返却
+                     → 成功 → LINE ユーザーとして続行
+```
+
+#### tryEmailFallback() ヘルパーの戻り値
+
+`resolveEmailUserWithReason()` → `supabase.auth.getUser()` → `public.users.supabase_auth_id` で解決し、`AuthenticatedUser | null` を返す:
+
+- `ok` → `AuthenticatedUser`（`lineUserId: ''`）
+- `transient` → エラー付き `AuthenticatedUser`（`SERVICE_UNAVAILABLE`）
+- `unauthenticated` → `null`（呼び出し元が適切なエラーを返す）
+
+`lineUserId: ''`（空文字）は Email ユーザーの意図的な設計。`AuthenticatedUser.lineUserId` は `string`（non-optional）で定義されており、呼び出し元は `if (authResult.lineUserId)` で LINE ユーザーか否かを判定する（空文字 = falsy = Email ユーザー）。
+
+#### allowEmailFallback オプション
+
+- **デフォルト `false`**: 既存の Server Actions / Route Handlers は影響なし（トリガー条件 1 のみ有効）
+- **`true` 設定時**: トリガー条件 2 も有効になる
+- Server Actions で明示的に `liffAccessToken` を渡す場合は `false` のままにすること（ユーザー混同防止）
+
+`allowEmailFallback: true` を設定しているエンドポイント:
+
+- `app/api/chat/anthropic/stream/route.ts` — Anthropic ストリーミング API
+- `app/api/chat/canvas/stream/route.ts` — Canvas ストリーミング API
+
+#### allowEmailFallback の設定基準
+
+**`true` にすべきケース**（両方に該当する場合のみ）:
+
+1. クライアントが `Authorization: Bearer ${getAccessToken()}` ヘッダーを送信するエンドポイント
+2. `getAccessToken()` が LIFF キャッシュトークン（期限切れ LINE トークン）を返しうる経路
+
+現状ではストリーミング 2 エンドポイントのみが該当する。
+
+**`false`（デフォルト）を維持すべきケース**:
+
+- Server Action が `liffAccessToken` を引数で明示的に受け取る場合（Email ユーザーは `''` を渡す設計のため混入しない）
+- Cookie ベースで LINE トークンを読む Route Handler（`/api/user/current` 等）— `accessToken` が `undefined` になるため `!accessToken` パスで Email を解決する
+- 権限変更・削除・課金など user identity が critical な操作
+
+**ユーザー混同リスクについて**:
+
+LINE トークンが無効/期限切れのとき、その失効トークンから `userId` を取得する手段はない（LINE Verify API も拒否する）ため、fallback 前の「user_id 一致確認」は実装不可。実際の防御は**ログイン時のセッション排他**が担う:
+
+- Email ログイン成功時 → `line_access_token` Cookie を削除
+- LINE ログイン成功時 → Supabase Auth セッションを破棄
+
+これにより「有効な LINE トークン + 有効な Email セッション」の同時共存は正常フローでは発生しない。`allowEmailFallback` が動作する状況は「LIFF キャッシュ残骸トークン（失効済み）+ Email セッション（有効）」であり、Email セッションが正しいユーザーとなる。
 
 ### 14.3 クライアント側 Email ユーザー判定
 
