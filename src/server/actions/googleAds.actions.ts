@@ -45,10 +45,6 @@ export async function getGoogleAdsConnectionStatus(): Promise<GoogleAdsConnectio
   try {
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
-    if (!accessToken) {
-      return { ...disconnected, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
-    }
-
     const authResult = await authMiddleware(accessToken, refreshToken);
     if (authResult.error || !authResult.userId) {
       return { ...disconnected, error: ERROR_MESSAGES.AUTH.UNAUTHENTICATED };
@@ -194,10 +190,6 @@ export async function fetchKeywordMetrics(
     // 認証チェック
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
-    if (!accessToken) {
-      return { success: false, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
-    }
-
     const authResult = await authMiddleware(accessToken, refreshToken);
     if (authResult.error || !authResult.userId) {
       return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHENTICATED };
@@ -329,9 +321,6 @@ export async function fetchCampaignMetrics(
     }
 
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
-    if (!accessToken) {
-      return { success: false, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
-    }
 
     const authResult = await authMiddleware(accessToken, refreshToken);
     if (authResult.error || !authResult.userId) {
@@ -416,10 +405,6 @@ export async function fetchCampaignMetrics(
 export async function disconnectGoogleAds(): Promise<DisconnectGoogleAdsResult> {
   try {
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
-
-    if (!accessToken) {
-      return { success: false, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
-    }
 
     const authResult = await authMiddleware(accessToken, refreshToken);
     if (authResult.error || !authResult.userId) {

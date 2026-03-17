@@ -780,7 +780,7 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
     // 認証情報はCookieから取得（セキュリティベストプラクティス）
     const { accessToken: liffToken, refreshToken } = await getLiffTokensFromCookies();
 
-    if (!liffToken || !wpType) {
+    if (!wpType) {
       return {
         success: false as const,
         error: ERROR_MESSAGES.AUTH.AUTHENTICATION_REQUIRED,
