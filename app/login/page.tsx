@@ -71,6 +71,21 @@ export default function LoginPage() {
         setError(result.error ?? 'エラーが発生しました');
         return;
       }
+      // LIFF の localStorage キャッシュを削除する。
+      // 以前に LINE ログインした場合、LIFF SDK が isLoggedIn=true をキャッシュしており、
+      // リダイレクト後に syncWithServerIfNeeded() が古い LINE トークンで /api/user/current を
+      // 呼び出してしまい、Email ユーザーが LINE ユーザーとして認証される問題を防ぐ。
+      if (typeof window !== 'undefined') {
+        // 外部ブラウザは localStorage、LIFF in-client は sessionStorage を使うため両方をクリア
+        for (const storage of [localStorage, sessionStorage]) {
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < storage.length; i++) {
+            const key = storage.key(i);
+            if (key?.startsWith('LIFF_STORE:')) keysToRemove.push(key);
+          }
+          keysToRemove.forEach(key => storage.removeItem(key));
+        }
+      }
       window.location.href = '/';
     });
   };
