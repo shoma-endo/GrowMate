@@ -12,6 +12,12 @@ export interface EnsureAuthenticatedOptions {
   accessToken?: string;
   refreshToken?: string;
   allowDevelopmentBypass?: boolean;
+  /**
+   * true のとき、LINE トークン失敗時に Supabase Email セッションへのフォールバックを許可する。
+   * LIFF SDK のキャッシュトークンが混入する可能性があるストリーミング API 専用。
+   * Server Actions で明示的に liffAccessToken を渡す場合は使用しないこと（ユーザー混同防止）。
+   */
+  allowEmailFallback?: boolean;
 }
 
 export interface AuthenticatedUser {
@@ -54,10 +60,41 @@ export interface AuthCookieOptions {
   path?: string;
 }
 
+/**
+ * Email セッションを解決し、成功時は AuthenticatedUser、transient 障害時はエラー結果、
+ * unauthenticated 時は null を返す。
+ * 呼び出し側が null の場合のみ独自のエラーを返す。
+ */
+async function tryEmailFallback(): Promise<AuthenticatedUser | null> {
+  const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
+  const result = await resolveEmailUserWithReason();
+  if (result.ok) {
+    const emailUser = result.user;
+    return {
+      lineUserId: '',
+      userId: emailUser.id,
+      user: { id: emailUser.id },
+      userDetails: emailUser,
+      ownerUserId: emailUser.ownerUserId ?? null,
+    };
+  }
+  if (result.reason === 'transient') {
+    return {
+      error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+      transient: true,
+      lineUserId: '',
+      userId: '',
+      userDetails: null,
+    };
+  }
+  return null;
+}
+
 export async function ensureAuthenticated({
   accessToken,
   refreshToken,
   allowDevelopmentBypass = true,
+  allowEmailFallback = false,
 }: EnsureAuthenticatedOptions): Promise<AuthenticatedUser> {
   const withTokens = (
     result: AuthenticatedUser,
@@ -85,33 +122,14 @@ export async function ensureAuthenticated({
   }
 
   if (!accessToken) {
-    // LINE token なし: 共通の Email 解決（一時障害は transient で返す）
-    const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
-    const result = await resolveEmailUserWithReason();
-    if (!result.ok) {
-      if (result.reason === 'transient') {
-        return {
-          error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
-          transient: true,
-          lineUserId: '',
-          userId: '',
-          userDetails: null,
-        };
-      }
-      return {
-        error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,
-        lineUserId: '',
-        userId: '',
-        userDetails: null,
-      };
-    }
-    const emailUser = result.user;
+    // LINE token なし: Email セッションで解決（unauthenticated 時は LINE_ACCESS_TOKEN_REQUIRED）
+    const emailResult = await tryEmailFallback();
+    if (emailResult) return emailResult;
     return {
-      lineUserId: '', // Email ユーザーは LINE ID なし
-      userId: emailUser.id,
-      user: { id: emailUser.id },
-      userDetails: emailUser,
-      ownerUserId: emailUser.ownerUserId ?? null,
+      error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,
+      lineUserId: '',
+      userId: '',
+      userDetails: null,
     };
   }
 
@@ -127,6 +145,14 @@ export async function ensureAuthenticated({
     );
 
     if (!verificationResult.isValid || verificationResult.needsReauth) {
+      // allowEmailFallback = true のときのみ Email セッションへのフォールバックを試みる。
+      // LIFF SDK キャッシュ由来のトークンが混入し得るストリーミング API 専用オプション。
+      // Server Actions などで明示的に liffAccessToken を渡す場合は false のままにすること。
+      if (allowEmailFallback) {
+        const emailResult = await tryEmailFallback();
+        if (emailResult) return emailResult;
+        // null = unauthenticated → LINE_TOKEN_INVALID_OR_EXPIRED にフォールスルー
+      }
       return withTokens(
         {
           error: ERROR_MESSAGES.AUTH.LINE_TOKEN_INVALID_OR_EXPIRED,

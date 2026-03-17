@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const liffAccessToken = authHeader?.replace('Bearer ', '');
 
-    const authResult = await authMiddleware(liffAccessToken);
+    const authResult = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
     if (authResult.error || !authResult.userId) {
       return new Response(
         sendSSE('error', {

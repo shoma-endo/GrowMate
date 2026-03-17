@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const liffAccessToken = authHeader?.replace('Bearer ', '');
 
-    const authResult = await authMiddleware(liffAccessToken);
+    const authResult = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
     if (authResult.error) {
       return new Response(sendSSE('error', { type: 'auth', message: authResult.error }), {
         status: 401,
