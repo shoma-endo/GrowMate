@@ -41,6 +41,7 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
   const [isInitialized, setIsInitialized] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [isOwnerViewMode, setIsOwnerViewMode] = useState(false);
+  const [isLineCookieAuth, setIsLineCookieAuth] = useState(false);
   const [viewModeResolved, setViewModeResolved] = useState(false);
   const [hasServerSession, setHasServerSession] = useState<boolean | null>(null);
   // 5xx 一時障害時のリトライカウンター: インクリメントで useEffect を再実行させる
@@ -146,14 +147,21 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json() as {
+          user?: User;
+          userId?: string;
+          viewMode?: boolean;
+          authMethod?: 'liff' | 'line_cookie' | 'email';
+        } | null;
         if (data && data.user) {
-          setUser(data.user as User);
+          setUser(data.user);
+          setIsLineCookieAuth(data.authMethod === 'line_cookie');
           setIsOwnerViewMode(Boolean(data?.viewMode));
           setViewModeResolved(true);
           return true;
         } else if (data && data.userId) {
           setUser({ id: data.userId } as User);
+          setIsLineCookieAuth(data.authMethod === 'line_cookie');
           setIsOwnerViewMode(Boolean(data?.viewMode));
           setViewModeResolved(true);
           return true;
@@ -342,8 +350,8 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
       return;
     }
 
-    // Email セッションかどうか確認してから LINE login を要求する
-    // lineUserId が falsy = Email ユーザー → LIFF login 不要
+    // サーバー側の認証種別を確認してから LINE login を要求する
+    // authMethod が 'email' または 'line_cookie' = LIFF login 不要
     //
     // ref の管理ルール（関数内で一元管理）:
     //   - 関数先頭で true にして並行呼び出しを防ぐ（in-flight ガード）
@@ -363,14 +371,19 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
             userId?: string;
             user?: User;
             viewMode?: boolean;
+            authMethod?: 'liff' | 'line_cookie' | 'email';
           } | null;
           if (cancelled) return;
-          if (data?.userId && !data?.user?.lineUserId) {
-            // Email ユーザー確認 → settled（ref は true のまま）
+          if (data?.userId) {
+            // Email ユーザーまたは LINE cookie 認証済みユーザー → LIFF login 不要、settled（ref は true のまま）
+            // LINE cookie ユーザー: サーバーサイド OAuth 後に LIFF localStorage が未更新でも
+            // cookie ベースの認証が有効なため liff.login() によるリダイレクトは不要。
             if (data.user) setUser(data.user);
+            setIsLineCookieAuth(data.authMethod === 'line_cookie');
             setIsOwnerViewMode(Boolean(data?.viewMode));
             setViewModeResolved(true);
             setSyncedWithServer(true);
+            setIsInitialized(true);
             return;
           }
         } else if (res.status >= 500) {
@@ -476,6 +489,7 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
         profile,
         user,
         isOwnerViewMode,
+        isLineCookieAuth,
         login,
         logout,
         liffObject,

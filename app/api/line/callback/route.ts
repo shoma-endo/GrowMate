@@ -3,6 +3,7 @@ import { env } from '@/env';
 import { cookies } from 'next/headers';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { userService } from '@/server/services/userService';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 // Node.jsランタイムを強制（Vercelエッジ環境でのCookie永続化問題を回避）
 export const runtime = 'nodejs';
@@ -83,6 +84,17 @@ export async function GET(request: NextRequest) {
       }
     } catch (e) {
       console.error('Error in user creation/invitation processing:', e);
+    }
+
+    // LINE ログイン成功: 既存の Supabase Email セッションをクリアして共存を防ぐ。
+    // クリアしないと「Email セッション + LINE cookie」が共存し、Server Actions で
+    // どちらのユーザーとして認証するか曖昧になる。
+    try {
+      const supabase = await createSupabaseServerClient();
+      await supabase.auth.signOut();
+    } catch (e) {
+      // 既にセッションがない場合など、失敗は非致命的
+      console.warn('[LINE Callback] Failed to sign out from Supabase:', e);
     }
 
     // ユーザーを認証後のページ（例: ホーム画面）にリダイレクト

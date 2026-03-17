@@ -122,8 +122,33 @@ export async function ensureAuthenticated({
   }
 
   if (!accessToken) {
-    // LINE token なし: Email セッションで解決（unauthenticated 時は LINE_ACCESS_TOKEN_REQUIRED）
+    // Email セッションを優先して解決する。
+    // /api/line/callback が Supabase Email セッションを削除するため通常は共存しないが、
+    // 万が一共存する場合でも Email が勝つことで isOwnerViewMode などの誤判定を防ぐ。
     const emailResult = await tryEmailFallback();
+    if (emailResult && !emailResult.error) return emailResult; // 成功のみ即座に返す
+
+    // Email 未認証または一時障害: LINE cookie で認証を試みる
+    // LIFF 未初期化の LINE cookie ユーザーが Server Actions を実行できるようにする。
+    // transient の場合も LINE cookie があれば継続できる（Supabase 障害時の縮退動作）。
+    // 無限ループは起きない（再帰呼び出しは accessToken が非空のため !accessToken 分岐に入らない）。
+    const cookieStore = await nextCookies();
+    const lineCookieToken = cookieStore.get('line_access_token')?.value;
+    if (lineCookieToken) {
+      const cookieRefreshToken = refreshToken ?? cookieStore.get('line_refresh_token')?.value;
+      const lineResult = await ensureAuthenticated({
+        accessToken: lineCookieToken,
+        ...(cookieRefreshToken ? { refreshToken: cookieRefreshToken } : {}),
+        allowDevelopmentBypass,
+        allowEmailFallback: false,
+      });
+      if (!lineResult.error) return lineResult;
+      // LINE も失敗: email transient があればより詳細なエラーを返す
+      if (emailResult?.transient) return emailResult;
+      return lineResult;
+    }
+
+    // LINE cookie なし: email transient または汎用エラー
     if (emailResult) return emailResult;
     return {
       error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,

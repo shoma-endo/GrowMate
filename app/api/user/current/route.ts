@@ -47,6 +47,7 @@ export async function GET() {
       },
       viewMode: false,
       tokenRefreshed: false,
+      authMethod: 'email',
     });
   }
 
@@ -125,6 +126,7 @@ export async function GET() {
           : null,
       viewMode: Boolean(authResult.viewMode),
       tokenRefreshed: Boolean(authResult.newAccessToken),
+      authMethod: bearerToken ? 'liff' : (authResult.lineUserId ? 'line_cookie' : 'email'),
     });
 
     // 新しいトークンが取得された場合、クッキーを更新

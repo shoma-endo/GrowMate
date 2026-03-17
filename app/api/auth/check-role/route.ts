@@ -30,8 +30,19 @@ export async function GET() {
 
     const result = await getUserRoleWithRefresh(lineAccessToken, lineRefreshToken);
 
-    // 再認証が必要な場合
+    // 再認証が必要な場合: Email セッションで救済を試みる（期限切れ LINE cookie + 有効 Email の共存対応）
+    // /api/line/callback は Supabase email session を削除しないためこのケースが起こり得る
     if (result.needsReauth) {
+      const emailFallback = await resolveEmailUserWithReason();
+      if (emailFallback.ok) {
+        // 期限切れ LINE cookie を削除してから 200 を返す。
+        // 削除しないと後続の /api/user/current が stale cookie を優先して needsReauth を返し、
+        // checkAndMaybeLogin() が liff.login() を再発火させてしまう。
+        const response = NextResponse.json({ role: emailFallback.user.role });
+        response.cookies.delete('line_access_token');
+        response.cookies.delete('line_refresh_token');
+        return response;
+      }
       return NextResponse.json(
         { error: ERROR_MESSAGES.AUTH.TOKEN_EXPIRED_REAUTH, requires_login: true },
         { status: 401 }

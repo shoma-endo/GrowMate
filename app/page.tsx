@@ -28,11 +28,12 @@ interface EmployeeInfo {
 const LOGOUT_ERROR_MSG = 'ログアウトに失敗しました。再度お試しください。';
 
 const ProfileDisplay = () => {
-  const { profile, isLoading, isLoggedIn, logout, user, isOwnerViewMode } = useLiffContext();
+  const { profile, isLoading, isLoggedIn, logout, user, isOwnerViewMode, isLineCookieAuth } = useLiffContext();
   const router = useRouter();
 
   const handleLogout = async () => {
-    const isLineUser = isLoggedIn;
+    // LINE 認証（LIFF SDK ログイン or cookie 認証）かどうかを区別
+    const isLineUser = isLoggedIn || isLineCookieAuth;
     try {
       const result = await signOutEmail(
         isLineUser ? { allowPartialOnTransientError: true } : undefined
@@ -46,9 +47,14 @@ const ProfileDisplay = () => {
           'LINE からはログアウトしました。再度ログインしたように見える場合は、もう一度ログアウトを押してください。'
         );
       }
-      if (isLineUser) {
+      if (isLoggedIn) {
+        // LIFF SDK ログイン済みの場合のみ liff.logout() を呼ぶ
+        // cookie 認証ユーザー（isLineCookieAuth）は LIFF 未ログインのため logout() を呼ばない:
+        // logout() は window.location.reload() を実行するため LINE クライアント内で
+        // login() が再発火し「ログアウトしたのにすぐ戻される」状態になる
         logout();
       } else {
+        // cookie 認証ユーザーまたは Email ユーザー: サーバー cookie は signOutEmail で削除済み
         router.push('/login');
       }
     } catch {
