@@ -156,10 +156,13 @@ alwaysApply: false
 
 ## 3. API実装
 
-- データフェッチ用のAPIはなるべく作成しないでください。サーバーコンポーネントでのデータフェッチを強く推奨します。
-- `app/api`ディレクトリ内に API エンドポイントを作成
-- GET の API はなるべく作らないでください。データフェッチはサーバーコンポーネントでお願いします。
-- API の仕様は POST/PATCH/PUT/DELETE のみに絞ってください。
+- データフェッチは Server Components での直接取得を原則とし、Route Handler の GET は以下に限定してください。
+  - OAuth コールバック（`/api/*/oauth-callback` など外部リダイレクト先）
+  - ステータス確認・ポーリング系（`/api/auth/check-role` など）
+  - クライアント側キャッシュ要件がある読み取りエンドポイント
+- `app/api` ディレクトリ内に API エンドポイントを作成
+- 上記以外の読み取りはすべて Server Components または Server Actions で行ってください。
+- 書き込み系 API は POST/PATCH/PUT/DELETE のみを使用してください。
 
 ```typescript
 // app/api/articles/route.ts

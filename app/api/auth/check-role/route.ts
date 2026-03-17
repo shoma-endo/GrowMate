@@ -14,7 +14,7 @@ export async function GET() {
     const lineRefreshToken = cookieStore.get('line_refresh_token')?.value;
 
     if (!lineAccessToken) {
-      // LINE token なし: 共通の Email 解決（一時障害は 503 で統一）
+      // access token なし: Email セッションで解決（一時障害は 503 で統一）
       const result = await resolveEmailUserWithReason();
       if (result.ok) {
         return NextResponse.json({ role: result.user.role });

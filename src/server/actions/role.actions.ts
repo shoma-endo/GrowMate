@@ -6,9 +6,33 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 /**
  * ユーザーの権限を確認するサーバーアクション
+ * liffAccessToken が空の場合は Email セッション経由で解決する
  */
 export const checkUserRole = async (liffAccessToken: string) => {
   try {
+    if (!liffAccessToken) {
+      const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
+      const result = await resolveEmailUserWithReason();
+      if (!result.ok) {
+        return {
+          success: false,
+          error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND,
+          role: 'trial' as const,
+        };
+      }
+      if (isUnavailable(result.user.role)) {
+        return {
+          success: false,
+          error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+          role: result.user.role || ('trial' as const),
+        };
+      }
+      return {
+        success: true,
+        role: result.user.role || ('trial' as const),
+      };
+    }
+
     const user = await userService.getUserFromLiffToken(liffAccessToken);
 
     if (!user) {

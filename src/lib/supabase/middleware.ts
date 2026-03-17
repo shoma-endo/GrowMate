@@ -30,6 +30,9 @@ export async function updateSupabaseSession(
     forwardedHeaders.set('content-security-policy', cspHeader);
   }
   let supabaseResponse = NextResponse.next({ request: { headers: forwardedHeaders } });
+  if (cspHeader) {
+    supabaseResponse.headers.set('Content-Security-Policy', cspHeader);
+  }
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -52,6 +55,9 @@ export async function updateSupabaseSession(
           );
           // response の Cookie を更新（ブラウザへの Set-Cookie 向け）
           supabaseResponse = NextResponse.next({ request: { headers: forwardedHeaders } });
+          if (cspHeader) {
+            supabaseResponse.headers.set('Content-Security-Policy', cspHeader);
+          }
           cookiesToSet.forEach(({ name, value, options }) => {
             supabaseResponse.cookies.set(name, value, options);
           });

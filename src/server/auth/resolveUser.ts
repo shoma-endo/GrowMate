@@ -30,7 +30,8 @@ export async function resolveEmailUserWithReason(): Promise<EmailAuthResult> {
     const user = await userService.resolveOrCreateEmailUser(authUser.id, authUser.email);
     return { ok: true, user };
   } catch (err) {
-    console.error('[resolveEmailUserWithReason] transient failure:', err);
+    const code = (err as Record<string, unknown>)?.code;
+    console.error('[resolveEmailUserWithReason] transient failure:', code ?? (err instanceof Error ? err.message : 'unknown'));
     return { ok: false, reason: 'transient' };
   }
 }

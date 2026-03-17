@@ -23,9 +23,16 @@ export async function createSupabaseServerClient() {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             );
-          } catch {
-            // Server Component からの呼び出し時は setAll が失敗する場合がある
-            // middleware でセッション更新済みであれば無視してよい
+          } catch (e) {
+            // Server Component は読み取り専用のため set が失敗する（期待動作）
+            // middleware でセッション更新済みのため無視してよい
+            // それ以外の予期しないエラーは再スローして確実に検知する
+            if (
+              !(e instanceof Error) ||
+              !e.message.includes('Cookies can only be modified in a Server Action or Route Handler')
+            ) {
+              throw e;
+            }
           }
         },
       },

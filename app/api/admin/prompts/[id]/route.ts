@@ -81,10 +81,11 @@ export async function POST(request: NextRequest) {
 
     // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
     const authResult = await authMiddleware(liffAccessToken, refreshToken);
-    if (authResult.error) {
-      const isTokenExpired = authResult.error.includes('expired');
+    if (authResult.error || !authResult.userId) {
+      const errorMsg = authResult.error ?? ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED;
+      const isTokenExpired = authResult.error?.includes('expired') ?? false;
       const errorCode = isTokenExpired ? ChatErrorCode.TOKEN_EXPIRED : ChatErrorCode.AUTHENTICATION_FAILED;
-      const chatError = new ChatError(authResult.error, errorCode);
+      const chatError = new ChatError(errorMsg, errorCode);
       return NextResponse.json(
         {
           success: false,
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
       display_name: validated.display_name,
       content: validated.content,
       variables: validated.variables,
-      updated_by: authResult.userId!,
+      updated_by: authResult.userId,
     } as const;
 
     const result = await PromptService.updateTemplate(id, updateInput);

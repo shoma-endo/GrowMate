@@ -46,8 +46,12 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
 
   // ✅ 初期マウント時（画面遷移時）のみ初期化（1回のみ実行保証）
   const sessionsLoadedRef = React.useRef(false);
+  // Effect 2 による「読込済み」管理（Effect 2 のみが更新する）
   const initialSessionLoadedRef = React.useRef<string | null>(null);
+  // Effect 1 の doLoad が処理中のセッション ID（レース条件防止用、Effect 1 のみが更新する）
+  const loadingSessionIdRef = React.useRef<string | null>(null);
 
+  // セッション一覧 + 初期セッションの読み込み（認証確定後1回のみ）
   React.useEffect(() => {
     // isLoggedIn: LINE ユーザー / !!user: Email ユーザー（LIFF 未ログインだが Supabase セッションあり）
     if (!(isLoggedIn || !!user) || liffLoading) return;
@@ -55,27 +59,43 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
     if (sessionsLoadedRef.current) return;
     sessionsLoadedRef.current = true;
 
-    Promise.resolve(chatSession.actions.loadSessions ? chatSession.actions.loadSessions() : undefined)
-      .then(async () => {
-        const trimmedSessionId = initialSessionId?.trim();
-        if (
-          trimmedSessionId &&
-          initialSessionLoadedRef.current !== trimmedSessionId &&
-          chatSession.actions.loadSession
-        ) {
-          try {
-            await chatSession.actions.loadSession(trimmedSessionId);
-            initialSessionLoadedRef.current = trimmedSessionId;
-          } catch (error) {
-            console.error('初期チャットセッションの読み込みに失敗しました:', error);
-          }
-        }
-      })
-      .catch(error => {
-        console.error('❌ 初期化エラー:', error);
-      });
+    const trimmedSessionId = initialSessionId?.trim();
+    // Effect 2 の二重起動を防止するため「今から読み込む ID」を同期的にマーク
+    loadingSessionIdRef.current = trimmedSessionId ?? null;
+
+    const doLoad = async () => {
+      await chatSession.actions.loadSessions?.();
+      // loadSessions() 完了後に Effect 2 が別 ID を読み込んでいた場合はスキップ（レース条件防止）
+      if (trimmedSessionId && loadingSessionIdRef.current === trimmedSessionId) {
+        await chatSession.actions.loadSession?.(trimmedSessionId);
+        initialSessionLoadedRef.current = trimmedSessionId; // 呼び出し完了後に読込済みマーク
+      }
+      loadingSessionIdRef.current = null; // doLoad 完了後にクリア
+    };
+    doLoad().catch(error => console.error('❌ 初期化エラー:', error));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, liffLoading, initialSessionId, user]); // ✅ Email ユーザー対応: user がセットされたタイミングでも初期化
+  }, [isLoggedIn, liffLoading, user]); // ✅ Email ユーザー対応: user がセットされたタイミングでも初期化
+
+  // initialSessionId 変更時に特定セッションを読み込む（セッション一覧ロード後のみ）
+  React.useEffect(() => {
+    if (!(isLoggedIn || !!user) || liffLoading) return;
+    if (!sessionsLoadedRef.current) return; // セッション一覧未ロード時はスキップ
+    const trimmedSessionId = initialSessionId?.trim();
+    if (!trimmedSessionId) return;
+    // Effect 1 が現在この ID を処理中なら二重起動をスキップ
+    if (loadingSessionIdRef.current === trimmedSessionId) return;
+    // 既に読込済みの ID はスキップ
+    if (initialSessionLoadedRef.current === trimmedSessionId) return;
+
+    // Effect 1 の doLoad が別 ID を読む前にキャンセルされるよう loadingRef をクリア
+    loadingSessionIdRef.current = null;
+    const loadAndMark = async () => {
+      await chatSession.actions.loadSession?.(trimmedSessionId);
+      initialSessionLoadedRef.current = trimmedSessionId; // 呼び出し完了後に読込済みマーク
+    };
+    loadAndMark().catch(error => console.error('初期チャットセッションの読み込みに失敗しました:', error));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSessionId, isLoggedIn, liffLoading, user]);
 
   // LIFF初期化中はLiffProviderが表示を担当するため、ここでは何も表示しない
   if (liffLoading) {

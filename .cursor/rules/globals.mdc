@@ -1,6 +1,5 @@
 ---
 description: プロジェクト全体に常時適用するコア行動規範とワークフロー
-globs:
 alwaysApply: true
 ---
 

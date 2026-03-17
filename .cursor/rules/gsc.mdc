@@ -14,9 +14,9 @@ alwaysApply: false
 
 ## サーバー側の実装ルール
 
-- Google Cloud Console の認証情報はすべて環境変数で管理し、`.env.local` でのみ定義してください。
+- Google Cloud Console の認証情報は必ず環境変数で管理してください。ローカル開発では `.env.local` を使用し、本番環境ではデプロイ先の Secret/Environment Variables を使用してください。
 - **すべての GSC 操作は Server Actions（`src/server/actions/gscSetup.actions.ts`）経由に統一**してください。
-- OAuth トークンは Supabase の `users` テーブルの `gsc_credentials` カラムに暗号化して保存してください。
+- OAuth トークンは Supabase の `gsc_credentials` テーブルに保存してください（必要に応じて暗号化）。
 - API Routes は `/api/gsc/oauth-init` と `/api/gsc/oauth-callback` に配置してください。
 
 ## OAuth 2.0 認証フロー

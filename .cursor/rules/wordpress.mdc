@@ -14,7 +14,7 @@ alwaysApply: false
 
 ## サーバー側の実装ルール
 
-- WordPress API の認証情報はすべて環境変数で管理し、`.env.local` でのみ定義してください。
+- WordPress API の認証情報は必ず環境変数で管理してください。ローカル開発では `.env.local` を使用し、本番環境ではデプロイ先の Secret/Environment Variables を使用してください。
 - **すべての WordPress 操作は `src/server/services/wordpressService.ts` 経由に統一**してください。
 - Server Action は `src/server/actions/wordpress.actions.ts` に配置してください。
 - OAuth トークンは Cookie で管理し、`COOKIE_SECRET` で暗号化してください。

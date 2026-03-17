@@ -15,7 +15,7 @@ alwaysApply: false
 
 ## サーバー側の実装ルール
 
-- Anthropic API キーはすべて環境変数で管理し、`.env.local` でのみ定義してください（`ANTHROPIC_API_KEY`）。
+- Anthropic API キーは必ず環境変数で管理してください（`ANTHROPIC_API_KEY`）。ローカル開発では `.env.local` を使用し、本番環境ではデプロイ先の Secret/Environment Variables を使用してください。
 - **すべての Claude API 操作は `src/server/services/llmService.ts` 経由に統一**してください。
 - API Routes は `/api/chat/anthropic` と `/api/chat/canvas/stream` に配置してください。
 - モデル設定は `src/lib/constants.ts` の `MODEL_CONFIGS` で一元管理してください。
