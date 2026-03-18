@@ -754,9 +754,8 @@ const generateLpDraftPrompt = cache(
 );
 
 /**
- * 見出し単位生成用の最小プロンプト（DBテンプレート不使用）
- * Step 6（書き出し案/旧見出しフロー）および Step 7（本文作成/新見出しフロー）で使用。
- * 事業者情報とコンテンツ変数のみで構成し、見出し構成の混在による混乱を防ぐ。
+ * 見出し単位生成用プロンプト。
+ * Step7 の DB テンプレートをベースにしつつ、1見出し分のみを出力する制約を後段で強制する。
  */
 async function generateHeadingUnitPrompt(
   liffAccessToken: string,
@@ -764,58 +763,7 @@ async function generateHeadingUnitPrompt(
   activeSection: { heading_text: string; heading_level?: number }
 ): Promise<string> {
   try {
-    const [auth, businessInfo] = await Promise.all([
-      authMiddleware(liffAccessToken),
-      getCachedBrief(liffAccessToken),
-    ]);
-    const userId = auth.error ? undefined : auth.userId;
-    const contentAnnotation = userId
-      ? sessionId
-        ? await PromptService.getContentAnnotationBySession(userId, sessionId)
-        : await PromptService.getLatestContentAnnotationByUserId(userId)
-      : null;
-    const contentVars = PromptService.buildContentVariables(contentAnnotation ?? null);
-
-    const lines: string[] = [
-      '# 役割',
-      'ブログ記事の見出し本文を書く専門家です。指定された1見出し分の本文のみを出力します。',
-      '',
-      '# コンテキスト',
-      '事業者・サービス、キーワード、ターゲットに沿って一貫性のある本文を書いてください。',
-    ];
-
-    if (businessInfo) {
-      const profile = businessInfo.profile;
-      const service = businessInfo.services?.[0];
-      lines.push(
-        '',
-        '## 事業者情報',
-        `- 会社・サービス: ${profile?.company ?? ''} / ${service?.name ?? ''}`
-      );
-      if (businessInfo.persona) {
-        lines.push(`- ターゲット: ${businessInfo.persona}`);
-      }
-    }
-
-    if (
-      contentVars.contentMainKw ||
-      contentVars.contentKw ||
-      contentVars.contentGoal ||
-      contentVars.contentPersona ||
-      contentVars.contentNeeds ||
-      contentVars.contentPrep
-    ) {
-      lines.push('', '## キーワード・記事方針');
-      if (contentVars.contentMainKw) lines.push(`- メインKW: ${contentVars.contentMainKw}`);
-      if (contentVars.contentKw) lines.push(`- KW: ${contentVars.contentKw}`);
-      if (contentVars.contentGoal) lines.push(`- ユーザーゴール: ${contentVars.contentGoal}`);
-      if (contentVars.contentPersona)
-        lines.push(`- デモグラ・ペルソナ: ${contentVars.contentPersona}`);
-      if (contentVars.contentNeeds) lines.push(`- ニーズ: ${contentVars.contentNeeds}`);
-      if (contentVars.contentPrep) lines.push(`- PREP構成（参考）: ${contentVars.contentPrep}`);
-    }
-
-    const contextBlock = lines.filter(Boolean).join('\n');
+    const basePrompt = await generateBlogCreationPromptByStep(liffAccessToken, 'step7', sessionId);
 
     const headingLevel = activeSection.heading_level ?? 3;
     const hashes = '#'.repeat(headingLevel);
@@ -843,9 +791,9 @@ async function generateHeadingUnitPrompt(
       '```',
     ].join('\n');
 
-    return contextBlock + headingConstraintBlock;
+    return [basePrompt, headingConstraintBlock].filter(Boolean).join('\n');
   } catch (error) {
-    console.error('Step6見出し単位プロンプト生成エラー:', error);
+    console.error('Step7見出し単位プロンプト生成エラー:', error);
     return SYSTEM_PROMPT;
   }
 }
