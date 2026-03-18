@@ -257,7 +257,7 @@ export class SupabaseService {
       line_picture_url: null,
       line_status_message: null,
       full_name: null,
-      role: 'trial',
+      role: 'unavailable',
       owner_user_id: null,
       owner_previous_role: null,
       stripe_customer_id: null,

@@ -78,7 +78,7 @@ export class UserService {
           lineDisplayName: lineProfile.displayName,
           linePictureUrl: lineProfile.pictureUrl ?? undefined,
           lineStatusMessage: lineProfile.statusMessage ?? undefined,
-          role: 'trial',
+          role: 'unavailable',
         };
 
         const createResult = await this.supabaseService.createUser(toDbUserInsert(newUser));
