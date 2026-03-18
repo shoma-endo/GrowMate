@@ -414,7 +414,15 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           onClose={() => {
             ui.annotation.setOpen(false);
           }}
-          onSaveSuccess={() => {}}
+          onSaveSuccess={() => {
+            if (
+              displayStep === STEP7_ID &&
+              totalHeadings === 0 &&
+              typeof onRetryHeadingInit === 'function'
+            ) {
+              onRetryHeadingInit();
+            }
+          }}
           isVisible={ui.annotation.open}
         />
       )}
