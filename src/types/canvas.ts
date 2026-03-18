@@ -7,6 +7,7 @@ export interface CanvasSelectionEditPayload {
   instruction: string;
   selectedText: string;
   canvasContent: string;
+  contentStep: BlogStepId;
 }
 
 export interface CanvasSelectionEditResult {

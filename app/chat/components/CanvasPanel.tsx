@@ -204,6 +204,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     !hideHeadingProgressAndNav;
 
   const hasStepOptions = stepOptions.length > 0;
+  const fallbackContentStep = stepOptions.at(-1) ?? STEP7_ID;
 
   // ✅ リサイザー機能のためのstate
   const {
@@ -618,6 +619,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
         instruction: combinedInstruction,
         selectedText: selection.text,
         canvasContent: markdownContent,
+        contentStep: activeStepId ?? fallbackContentStep,
       };
 
       await onSelectionEdit(payload);
@@ -633,9 +635,11 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     }
   }, [
     activeSelection,
+    activeStepId,
     clearSelectionMenu,
     editor,
     extractLinksFromSelection,
+    fallbackContentStep,
     hideSelectionMenu,
     markdownContent,
     onSelectionEdit,
@@ -677,6 +681,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
           instruction: combinedInstruction,
           selectedText: selection.text,
           canvasContent: markdownContent,
+          contentStep: activeStepId ?? fallbackContentStep,
         };
 
         if (freeFormUserPrompt) {
@@ -702,8 +707,10 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
     },
     [
       activeSelection,
+      activeStepId,
       clearSelectionMenu,
       editor,
+      fallbackContentStep,
       hideSelectionMenu,
       instruction,
       markdownContent,

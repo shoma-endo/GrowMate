@@ -878,6 +878,18 @@ async function generateBlogCreationPromptByStep(
   }
 }
 
+/**
+ * Canvas などからブログ作成ステップの DB テンプレートを直接参照するための公開関数。
+ * Step7 見出し単位生成でも本文生成でも、常に Step7 テンプレートを返す。
+ */
+export async function getBlogCreationTemplatePrompt(
+  step: BlogStepId,
+  liffAccessToken: string,
+  sessionId?: string
+): Promise<string> {
+  return generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
+}
+
 // =============================================================================
 // 共通：モデル別システムプロンプト解決
 // =============================================================================

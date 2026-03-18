@@ -16,6 +16,7 @@ import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { STEP7_ID } from '@/lib/constants';
+import { getBlogCreationTemplatePrompt } from '@/lib/prompts';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -30,6 +31,7 @@ interface CanvasStreamRequest {
   instruction: string;
   selectedText: string;
   canvasContent: string;
+  contentStep: BlogStepId;
   targetStep: string;
   enableWebSearch?: boolean;
   freeFormUserPrompt?: string;
@@ -127,6 +129,7 @@ export async function POST(req: NextRequest) {
       instruction,
       selectedText,
       canvasContent,
+      contentStep,
       targetStep,
       enableWebSearch = false,
       freeFormUserPrompt,
@@ -136,6 +139,30 @@ export async function POST(req: NextRequest) {
     }: CanvasStreamRequest = await req.json();
     const normalizedFreeFormPrompt =
       typeof freeFormUserPrompt === 'string' ? freeFormUserPrompt.trim() : undefined;
+    if (contentStep !== targetStep) {
+      console.warn('[Canvas Stream] Step mismatch detected', {
+        sessionId,
+        contentStep,
+        targetStep,
+      });
+      return new Response(
+        sendSSE('error', {
+          type: 'step_mismatch',
+          message:
+            '編集中のコンテンツとステップ情報が一致しません。再度Canvasを開き直してから、もう一度お試しください。',
+          contentStep,
+          targetStep,
+        }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-store',
+            Connection: 'keep-alive',
+          },
+        }
+      );
+    }
     const enableWebSearchRequested = enableWebSearch ?? false;
     const shouldEnableWebSearch =
       normalizedFreeFormPrompt !== undefined
@@ -268,6 +295,14 @@ export async function POST(req: NextRequest) {
     const finalOutputInstruction = isHeadingUnitRequest
       ? '改善を適用した上で、**この1見出し分の本文のみを省略なく出力してください。**'
       : '改善を適用した上で、**文章全体を省略なく完全に出力してください。**';
+    const freeFormTemplatePrompt =
+      normalizedFreeFormPrompt !== undefined && liffAccessToken
+        ? await getBlogCreationTemplatePrompt(
+            targetStep as BlogStepId,
+            liffAccessToken,
+            sessionId
+          )
+        : null;
 
     // 編集対象ステップのコンテキスト（形式・トーン維持のため）
     const stepLabel =
@@ -278,6 +313,9 @@ export async function POST(req: NextRequest) {
 
     // システムプロンプト（Claude 4ベストプラクティス準拠）
     const systemPrompt = [
+      ...(freeFormTemplatePrompt
+        ? ['## ベーステンプレート', '', freeFormTemplatePrompt, '', '---', '']
+        : []),
       ...headingUnitPrefix,
       ...(stepLabel ? ['## 編集対象のステップ', '', stepLabel, '', '---', ''] : []),
       '# Canvas編集専用モード',

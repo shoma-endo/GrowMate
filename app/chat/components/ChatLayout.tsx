@@ -1454,6 +1454,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
         const instruction = payload.instruction.trim();
         const selectedText = payload.selectedText.trim();
+        const contentStep = payload.contentStep;
         const step7ViewModeForRequest = resolveHeadingCanvasViewMode({
           step: targetStep,
           headingCount: headingSections.length,
@@ -1545,6 +1546,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             instruction,
             selectedText,
             canvasContent: payload.canvasContent,
+            contentStep,
             targetStep,
             enableWebSearch: shouldEnableWebSearch,
             ...(isHeadingUnit && { isHeadingUnit: true }),
@@ -1557,7 +1559,22 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         });
 
         if (!response.ok) {
-          throw new Error(`ストリーミングAPIエラー: ${response.status}`);
+          const errorText = await response.text();
+          let errorMessage = `ストリーミングAPIエラー: ${response.status}`;
+          const sseErrorMatch = errorText.match(/event:\s*error[\s\S]*?data:\s*(\{.*\})/);
+
+          if (sseErrorMatch?.[1]) {
+            try {
+              const parsed = JSON.parse(sseErrorMatch[1]) as { message?: string };
+              if (parsed.message?.trim()) {
+                errorMessage = parsed.message.trim();
+              }
+            } catch (parseError) {
+              console.warn('Canvas error response parse failed:', parseError);
+            }
+          }
+
+          throw new Error(errorMessage);
         }
 
         const reader = response.body?.getReader();
