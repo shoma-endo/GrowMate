@@ -170,16 +170,19 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       latestLead !== null &&
       (latestStep6Ts === 0 || latestLead.ts >= latestStep6Ts);
 
+    const latestLeadTimestamp = latestLead?.ts ?? 0;
+
     if (isLatestLeadValid && latestLead) {
-      return { saved: true, content: latestLead.content };
+      return { saved: true, content: latestLead.content, latestLeadTimestamp };
     }
     if (isStep6LeadValid(latestStep6Lead)) {
-      return { saved: true, content: latestStep6Lead.content };
+      return { saved: true, content: latestStep6Lead.content, latestLeadTimestamp };
     }
-    return { saved: false, content: null };
+    return { saved: false, content: null, latestLeadTimestamp };
   }, [chatSession.state.messages, optimisticMessages]);
 
   const step6ToStep7LeadSaved = step6ToStep7Lead.saved;
+  const latestStep7LeadTimestamp = step6ToStep7Lead.latestLeadTimestamp;
 
   const resolvedCanvasStep = useMemo<BlogStepId | null>(() => {
     if (canvasStep) return canvasStep;
@@ -1749,6 +1752,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           isMobile,
           blogFlowActive,
           optimisticMessages,
+          latestStep7LeadTimestamp,
           isCanvasStreaming,
           selectedModel,
           latestBlogStep,

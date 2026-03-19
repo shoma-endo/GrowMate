@@ -410,15 +410,6 @@ export async function POST(req: NextRequest) {
             sessionId
           )
         : null;
-    if (normalizedFreeFormPrompt !== undefined) {
-      console.info('[Canvas Prompt] Free-form canvas edit prompt source resolved', {
-        targetStep,
-        sessionId,
-        usesDbTemplate: Boolean(freeFormTemplatePrompt),
-        freeFormPromptLength: normalizedFreeFormPrompt.length,
-        templatePromptLength: freeFormTemplatePrompt?.length ?? 0,
-      });
-    }
 
     // 編集対象ステップのコンテキスト（形式・トーン維持のため）
     const stepLabel =
