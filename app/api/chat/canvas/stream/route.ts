@@ -128,9 +128,10 @@ const appendWebReference = (
   const normalizedUrl = normalizeCandidateUrl(rawUrl);
   if (!normalizedUrl) return;
   if (!references.has(normalizedUrl)) {
+    const trimmedContext = context?.trim();
     references.set(normalizedUrl, {
       url: normalizedUrl,
-      context: context?.trim() || undefined,
+      ...(trimmedContext ? { context: trimmedContext } : {}),
     });
   }
 };
