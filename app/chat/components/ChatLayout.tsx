@@ -20,6 +20,7 @@ import { getContentAnnotationBySession } from '@/server/actions/wordpress.action
 import {
   getCombinedContentForStep7,
   saveStep7UserLead,
+  saveCombinedContentForStep7,
 } from '@/server/actions/heading-flow.actions';
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
@@ -132,9 +133,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   /** 完成形タイルクリック時に state 更新遅延を補うため、クリック時点で即時解決したコンテンツを保持 */
   const pendingCombinedContentRef = useRef<string | null>(null);
 
-  /** Step6→Step7 で書き出し案があるか＋その本文（前ステップと同様にメッセージから導出）
-   * saved: step7_lead（ユーザー送信）が存在するか、または step6 assistant の書き出し案が存在する場合 true。
-   * バックで step5 に戻り書き出し案を再生成した場合、step7_lead より新しい step6 があれば saved=false。 */
+  /** Step6→Step7 で保存済みの書き出し案があるか＋その本文。
+   * saved: step7_lead（ユーザー送信）が存在する場合 true。
+   * バックで step5 に戻り step6 を再表示した場合、step7_lead より新しい step6 があれば saved=false。 */
   const step6ToStep7Lead = useMemo(() => {
     const msgs = [...(chatSession.state.messages ?? []), ...optimisticMessages];
     let latestLead: { content: string; ts: number } | null = null;
@@ -159,7 +160,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           latestStep6Ts = ts;
       }
     }
-    // latestStep6Lead は「最新 step6 が書き出し案」の場合のみ有効（step5 戻り後の古い書き出し案で誤遷移しない）
+    // step7_lead より新しい step6 がある場合は、古い保存済み書き出し案で誤遷移しないよう無効化する
     const isStep6LeadValid = (
       lead: { content: string; ts: number } | null
     ): lead is { content: string; ts: number } =>
@@ -169,16 +170,19 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       latestLead !== null &&
       (latestStep6Ts === 0 || latestLead.ts >= latestStep6Ts);
 
+    const latestLeadTimestamp = latestLead?.ts ?? 0;
+
     if (isLatestLeadValid && latestLead) {
-      return { saved: true, content: latestLead.content };
+      return { saved: true, content: latestLead.content, latestLeadTimestamp };
     }
     if (isStep6LeadValid(latestStep6Lead)) {
-      return { saved: true, content: latestStep6Lead.content };
+      return { saved: true, content: latestStep6Lead.content, latestLeadTimestamp };
     }
-    return { saved: false, content: null };
+    return { saved: false, content: null, latestLeadTimestamp };
   }, [chatSession.state.messages, optimisticMessages]);
 
   const step6ToStep7LeadSaved = step6ToStep7Lead.saved;
+  const latestStep7LeadTimestamp = step6ToStep7Lead.latestLeadTimestamp;
 
   const resolvedCanvasStep = useMemo<BlogStepId | null>(() => {
     if (canvasStep) return canvasStep;
@@ -914,7 +918,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     hasContentForActiveHeading,
   ]);
 
-  /** 全見出し保存後: AI で本文生成（blog_creation_step7）し、session_combined_contents に保存 */
+  /** 全見出し保存後: 書き出し＋各見出し本文を結合して完成形として保存 */
   const handleBuildCombinedOnly = useCallback(async () => {
     if (buildCombinedInFlightRef.current) return;
     buildCombinedInFlightRef.current = true;
@@ -945,26 +949,24 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return;
       }
 
-      setSelectedModel('blog_creation');
-      const serviceOpts = selectedServiceId ? { serviceId: selectedServiceId } : undefined;
-      const sendOk = await chatSession.actions.sendMessage(res.sections, toBlogModel(STEP7_ID), {
-        ...serviceOpts,
-        step7FullBodyGeneration: true,
-        step7Lead: res.lead ?? undefined,
+      const saveRes = await saveCombinedContentForStep7({
+        sessionId: chatSession.state.currentSessionId,
+        liffAccessToken: token,
       });
-      if (!sendOk) {
-        toast.error('完成形の生成・保存に失敗しました。チャットのエラー表示をご確認ください。');
+      if (!saveRes.success) {
+        toast.error(saveRes.error ?? '完成形の保存に失敗しました。');
         return;
       }
 
+      setSelectedModel('blog_creation');
+      setCanvasStreamingContent(saveRes.content ?? '');
       resetCombinedVersionToLatest();
       setSelectedVersionByStep(prev => ({
         ...prev,
         [STEP7_ID]: null,
       }));
       await refetchCombinedContentVersions({ force: true });
-      await chatSession.actions.loadSession(chatSession.state.currentSessionId);
-      toast.success('完成形をAIで生成し、保存しました');
+      toast.success('完成形を結合して保存しました');
       openCombinedCanvasRef.current();
     } catch (error) {
       console.error('Failed to build combined content:', error);
@@ -977,9 +979,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     }
   }, [
     chatSession.state.currentSessionId,
-    chatSession.actions,
     getAccessToken,
-    selectedServiceId,
     resetCombinedVersionToLatest,
     refetchCombinedContentVersions,
     setSelectedVersionByStep,
@@ -1457,6 +1457,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
         const instruction = payload.instruction.trim();
         const selectedText = payload.selectedText.trim();
+        const contentStep = payload.contentStep;
         const step7ViewModeForRequest = resolveHeadingCanvasViewMode({
           step: targetStep,
           headingCount: headingSections.length,
@@ -1548,6 +1549,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             instruction,
             selectedText,
             canvasContent: payload.canvasContent,
+            contentStep,
             targetStep,
             enableWebSearch: shouldEnableWebSearch,
             ...(isHeadingUnit && { isHeadingUnit: true }),
@@ -1560,7 +1562,22 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         });
 
         if (!response.ok) {
-          throw new Error(`ストリーミングAPIエラー: ${response.status}`);
+          const errorText = await response.text();
+          let errorMessage = `ストリーミングAPIエラー: ${response.status}`;
+          const sseErrorMatch = errorText.match(/event:\s*error[\s\S]*?data:\s*(\{.*\})/);
+
+          if (sseErrorMatch?.[1]) {
+            try {
+              const parsed = JSON.parse(sseErrorMatch[1]) as { message?: string };
+              if (parsed.message?.trim()) {
+                errorMessage = parsed.message.trim();
+              }
+            } catch (parseError) {
+              console.warn('Canvas error response parse failed:', parseError);
+            }
+          }
+
+          throw new Error(errorMessage);
         }
 
         const reader = response.body?.getReader();
@@ -1735,6 +1752,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           isMobile,
           blogFlowActive,
           optimisticMessages,
+          latestStep7LeadTimestamp,
           isCanvasStreaming,
           selectedModel,
           latestBlogStep,

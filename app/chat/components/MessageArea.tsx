@@ -33,9 +33,14 @@ const TRIMMABLE_TRAILING_CHAR_SET = new Set<string>([
 
 const isUrlSafeChar = (char: string) => URL_SAFE_CHAR_SET.has(char);
 const isTrimmableTrailingChar = (char: string) => TRIMMABLE_TRAILING_CHAR_SET.has(char);
+const getTimestampMs = (timestamp: Date | number | null | undefined): number => {
+  if (timestamp instanceof Date) return timestamp.getTime();
+  return (timestamp as number) ?? 0;
+};
 
 interface MessageAreaProps {
   messages: ChatMessage[];
+  latestStep7LeadTimestamp?: number;
   isLoading: boolean;
   renderAfterMessage?: (message: ChatMessage) => React.ReactNode;
   blogFlowActive?: boolean;
@@ -162,6 +167,7 @@ const EmptyState = () => {
 
 const MessageArea: React.FC<MessageAreaProps> = ({
   messages,
+  latestStep7LeadTimestamp = 0,
   isLoading,
   renderAfterMessage,
   onOpenCanvas,
@@ -206,8 +212,8 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     if (next.type === 'tile') return true;
     const nextMsg = next.message;
     if (!message.timestamp || !nextMsg.timestamp) return true;
-    const t1 = message.timestamp instanceof Date ? message.timestamp.getTime() : (message.timestamp as number);
-    const t2 = nextMsg.timestamp instanceof Date ? nextMsg.timestamp.getTime() : (nextMsg.timestamp as number);
+    const t1 = getTimestampMs(message.timestamp);
+    const t2 = getTimestampMs(nextMsg.timestamp);
     return (
       message.role !== nextMsg.role ||
       t2 - t1 > 5 * 60 * 1000
@@ -416,13 +422,24 @@ const MessageArea: React.FC<MessageAreaProps> = ({
 
   // step7 アシスタントメッセージの ID 一覧（時系列順）。重複見出し照合に使用
   const step7MessageIds = messages
-    .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === STEP7_ID)
+    .filter(m => {
+      if (m.role !== 'assistant' || extractBlogStepFromModel(m.model) !== STEP7_ID) return false;
+      const ts = getTimestampMs(m.timestamp);
+      return latestStep7LeadTimestamp <= 0 || ts >= latestStep7LeadTimestamp;
+    })
     .map(m => m.id);
 
   // メッセージと完成形タイルを時系列でマージ（古い→新しい、最新が一番下）
   // step7 完成形(blog_creation_step7): combinedTiles が存在する場合はメッセージを除外し重複表示を防ぐ
   const segments = useMemo(() => {
-    const filteredMessages = messages.filter(m => !isLeadModel(m));
+    const filteredMessages = messages.filter(m => {
+      if (isLeadModel(m)) return false;
+      if (m.role === 'assistant' && extractBlogStepFromModel(m.model) === STEP7_ID) {
+        const ts = getTimestampMs(m.timestamp);
+        return latestStep7LeadTimestamp <= 0 || ts >= latestStep7LeadTimestamp;
+      }
+      return true;
+    });
     const hasCombinedTiles = (combinedTiles?.length ?? 0) > 0;
     const excludeStep7CompletionMessage = (m: ChatMessage) =>
       hasCombinedTiles &&
@@ -434,7 +451,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     > = [];
     for (const m of filteredMessages) {
       if (excludeStep7CompletionMessage(m)) continue;
-      const ts = m.timestamp instanceof Date ? m.timestamp.getTime() : (m.timestamp as number) ?? 0;
+      const ts = getTimestampMs(m.timestamp);
       items.push({ type: 'message', message: m, sortKey: ts });
     }
     for (const t of combinedTiles ?? []) {
@@ -443,7 +460,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     }
     items.sort((a, b) => a.sortKey - b.sortKey);
     return items;
-  }, [messages, combinedTiles]);
+  }, [messages, combinedTiles, latestStep7LeadTimestamp]);
 
   const hasContent = segments.length > 0;
 
