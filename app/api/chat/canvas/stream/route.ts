@@ -779,7 +779,17 @@ export async function POST(req: NextRequest) {
                 return;
               }
 
+              await chatService.continueChat(
+                userId!,
+                sessionId,
+                [instruction, finalMarkdown],
+                '', // systemPromptは履歴に保存しない
+                [],
+                canvasModel
+              );
+
               // Step7(見出しフロー)完了後の全文Canvas修正は session_combined_contents にも新バージョンとして保存する
+              // ユーザー指示・Canvas結果メッセージより後ろに並ぶよう、チャット履歴保存の後に実行する
               // 副次処理のため、失敗してもチャット履歴保存は継続する
               if (targetStep === STEP7_ID && !isHeadingUnit) {
                 try {
@@ -834,15 +844,6 @@ export async function POST(req: NextRequest) {
                   });
                 }
               }
-
-              await chatService.continueChat(
-                userId!,
-                sessionId,
-                [instruction, finalMarkdown],
-                '', // systemPromptは履歴に保存しない
-                [],
-                canvasModel
-              );
 
               // 2つ目: 分析結果（blog_creation_improvement）
               // アシスタントメッセージのみを追加保存（ユーザーメッセージは既に上で保存済み）
