@@ -219,6 +219,8 @@ const validateWebReferences = async (references: WebReference[]): Promise<WebRef
   return settled.filter((reference): reference is WebReference => reference !== null);
 };
 
+const MAX_VALIDATED_WEB_REFERENCES = 2;
+
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   let eventId = 0;
@@ -580,7 +582,7 @@ export async function POST(req: NextRequest) {
               const referencesFromStructuredResult =
                 extractWebReferencesFromSearchMessage(finalSearchMessage);
               const structuredValidatedReferences = await validateWebReferences(
-                referencesFromStructuredResult
+                referencesFromStructuredResult.slice(0, MAX_VALIDATED_WEB_REFERENCES)
               );
 
               if (structuredValidatedReferences.length > 0) {
@@ -593,7 +595,9 @@ export async function POST(req: NextRequest) {
                 });
               } else {
                 const fallbackReferences = extractWebReferencesFromText(searchResults);
-                const validatedFallbackReferences = await validateWebReferences(fallbackReferences);
+                const validatedFallbackReferences = await validateWebReferences(
+                  fallbackReferences.slice(0, MAX_VALIDATED_WEB_REFERENCES)
+                );
                 extractedReferences = validatedFallbackReferences;
                 console.info('[Canvas Web Search] Using validated fallback references', {
                   sessionId,
@@ -613,7 +617,7 @@ export async function POST(req: NextRequest) {
           // ✅ 第2段階: Canvas編集（検索結果を含める）
           const finalSystemPrompt = [
             systemPrompt,
-            ...(searchResults
+            ...(shouldEnableWebSearch
               ? [
                   '',
                   '---',
@@ -635,16 +639,9 @@ export async function POST(req: NextRequest) {
                         '外部リンクを提示せず、文章そのものを改善してください。存在しないURLを作成してはいけません。',
                       ].join('\n'),
                   '',
-                  '---',
-                  '',
-                  '## Web検索結果の要約テキスト',
-                  '```',
-                  searchResults,
-                  '```',
-                  '',
                   extractedReferences.length > 0
-                    ? '上記リンクと要約を活用して文章を編集してください。'
-                    : '要約は参考情報に留め、外部リンクは追加しないでください。',
+                    ? '上記リンクを活用して文章を編集してください。'
+                    : '検索で利用可能なリンクが確認できないため、外部リンクは追加しないでください。',
                 ]
               : []),
           ].join('\n');
