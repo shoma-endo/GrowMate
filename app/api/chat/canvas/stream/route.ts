@@ -16,6 +16,7 @@ import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { STEP7_ID } from '@/lib/constants';
+import { getBlogCreationTemplatePrompt } from '@/lib/prompts';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -25,11 +26,28 @@ interface WebReference {
   context?: string;
 }
 
+interface SearchMessageContentBlock {
+  type?: string;
+  url?: string;
+  title?: string | null;
+  content?: unknown;
+  text?: string;
+  citations?: SearchCitation[] | null;
+}
+
+interface SearchCitation {
+  type?: string;
+  url?: string;
+  title?: string | null;
+  cited_text?: string;
+}
+
 interface CanvasStreamRequest {
   sessionId: string;
   instruction: string;
   selectedText: string;
   canvasContent: string;
+  contentStep: BlogStepId;
   targetStep: string;
   enableWebSearch?: boolean;
   freeFormUserPrompt?: string;
@@ -71,47 +89,141 @@ const CANVAS_EDIT_TOOL = {
   },
 };
 
-export async function POST(req: NextRequest) {
-  const encoder = new TextEncoder();
-  let eventId = 0;
+const normalizeCandidateUrl = (rawUrl: string): string | null => {
+  const trimmed = rawUrl.trim().replace(/[.,!?;:、。]+$/u, '');
+  if (!trimmed) return null;
 
-  const extractWebReferences = (text: string): WebReference[] => {
-    const references = new Map<string, WebReference>();
-    if (!text) return [];
+  try {
+    // 不完全な percent-encoding を検出する
+    decodeURI(trimmed);
+  } catch {
+    return null;
+  }
 
-    const lines = text
-      .split(/\r?\n/)
-      .map(line => line.trim())
-      .filter(Boolean);
-    for (const line of lines) {
-      const matches = line.match(URL_REGEX);
-      if (!matches) continue;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
 
-      for (const rawUrl of matches) {
-        let parsed: URL | null = null;
-        try {
-          parsed = new URL(rawUrl);
-        } catch {
-          continue;
-        }
+  const hostname = parsed.hostname.toLowerCase();
+  if (!hostname.includes('.')) return null;
+  if (DISALLOWED_HOST_NAMES.has(hostname)) return null;
+  if (DISALLOWED_HOST_KEYWORDS.some(keyword => hostname.includes(keyword))) return null;
 
-        const hostname = parsed.hostname.toLowerCase();
-        if (!hostname.includes('.')) continue;
-        if (DISALLOWED_HOST_NAMES.has(hostname)) continue;
-        if (DISALLOWED_HOST_KEYWORDS.some(keyword => hostname.includes(keyword))) continue;
+  const tld = hostname.split('.').pop() ?? '';
+  if (!/^[a-z]{2,24}$/i.test(tld)) return null;
+  if (DISALLOWED_TLDS.has(tld.toLowerCase())) return null;
 
-        const tld = hostname.split('.').pop() ?? '';
-        if (!/^[a-z]{2,24}$/.test(tld)) continue;
-        if (DISALLOWED_TLDS.has(tld)) continue;
+  return parsed.href;
+};
 
-        if (!references.has(parsed.href)) {
-          references.set(parsed.href, { url: parsed.href, context: line });
+const appendWebReference = (
+  references: Map<string, WebReference>,
+  rawUrl: string | undefined,
+  context?: string
+) => {
+  if (!rawUrl) return;
+  const normalizedUrl = normalizeCandidateUrl(rawUrl);
+  if (!normalizedUrl) return;
+  if (!references.has(normalizedUrl)) {
+    const trimmedContext = context?.trim();
+    references.set(normalizedUrl, {
+      url: normalizedUrl,
+      ...(trimmedContext ? { context: trimmedContext } : {}),
+    });
+  }
+};
+
+const extractWebReferencesFromText = (text: string): WebReference[] => {
+  const references = new Map<string, WebReference>();
+  if (!text) return [];
+
+  const lines = text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  for (const line of lines) {
+    const matches = line.match(URL_REGEX);
+    if (!matches) continue;
+
+    for (const rawUrl of matches) {
+      appendWebReference(references, rawUrl, line);
+    }
+  }
+
+  return Array.from(references.values());
+};
+
+const extractWebReferencesFromSearchMessage = (message: { content?: unknown[] } | null): WebReference[] => {
+  const references = new Map<string, WebReference>();
+  const contentBlocks = Array.isArray(message?.content) ? (message?.content as SearchMessageContentBlock[]) : [];
+
+  for (const block of contentBlocks) {
+    if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
+      for (const item of block.content as SearchMessageContentBlock[]) {
+        if (item.type === 'web_search_result') {
+          appendWebReference(references, item.url, item.title ?? undefined);
         }
       }
     }
 
-    return Array.from(references.values());
-  };
+    if (block.type === 'text' && Array.isArray(block.citations)) {
+      for (const citation of block.citations) {
+        if (citation.type === 'web_search_result_location') {
+          appendWebReference(
+            references,
+            citation.url,
+            citation.title ?? citation.cited_text ?? undefined
+          );
+        }
+      }
+    }
+  }
+
+  return Array.from(references.values());
+};
+
+const validateWebReference = async (reference: WebReference): Promise<WebReference | null> => {
+  const methods: Array<'HEAD' | 'GET'> = ['HEAD', 'GET'];
+  const failures: Array<{ method: 'HEAD' | 'GET'; reason: string }> = [];
+
+  for (const method of methods) {
+    try {
+      const response = await fetch(reference.url, {
+        method,
+        redirect: 'follow',
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (response.ok) {
+        return reference;
+      }
+      failures.push({ method, reason: `HTTP ${response.status}` });
+    } catch {
+      failures.push({ method, reason: 'request_failed' });
+    }
+  }
+
+  console.debug('[validateWebReference] Failed to validate URL', {
+    url: reference.url,
+    failures,
+  });
+  return null;
+};
+
+const validateWebReferences = async (references: WebReference[]): Promise<WebReference[]> => {
+  if (references.length === 0) return [];
+  const settled = await Promise.all(references.map(reference => validateWebReference(reference)));
+  return settled.filter((reference): reference is WebReference => reference !== null);
+};
+
+const MAX_VALIDATED_WEB_REFERENCES = 2;
+
+export async function POST(req: NextRequest) {
+  const encoder = new TextEncoder();
+  let eventId = 0;
 
   const sendSSE = (event: string, data: unknown) => {
     return encoder.encode(`id: ${++eventId}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -127,6 +239,7 @@ export async function POST(req: NextRequest) {
       instruction,
       selectedText,
       canvasContent,
+      contentStep,
       targetStep,
       enableWebSearch = false,
       freeFormUserPrompt,
@@ -136,6 +249,30 @@ export async function POST(req: NextRequest) {
     }: CanvasStreamRequest = await req.json();
     const normalizedFreeFormPrompt =
       typeof freeFormUserPrompt === 'string' ? freeFormUserPrompt.trim() : undefined;
+    if (contentStep !== targetStep) {
+      console.warn('[Canvas Stream] Step mismatch detected', {
+        sessionId,
+        contentStep,
+        targetStep,
+      });
+      return new Response(
+        sendSSE('error', {
+          type: 'step_mismatch',
+          message:
+            '編集中のコンテンツとステップ情報が一致しません。再度Canvasを開き直してから、もう一度お試しください。',
+          contentStep,
+          targetStep,
+        }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-store',
+            Connection: 'keep-alive',
+          },
+        }
+      );
+    }
     const enableWebSearchRequested = enableWebSearch ?? false;
     const shouldEnableWebSearch =
       normalizedFreeFormPrompt !== undefined
@@ -268,6 +405,14 @@ export async function POST(req: NextRequest) {
     const finalOutputInstruction = isHeadingUnitRequest
       ? '改善を適用した上で、**この1見出し分の本文のみを省略なく出力してください。**'
       : '改善を適用した上で、**文章全体を省略なく完全に出力してください。**';
+    const freeFormTemplatePrompt =
+      normalizedFreeFormPrompt !== undefined && liffAccessToken
+        ? await getBlogCreationTemplatePrompt(
+            targetStep as BlogStepId,
+            liffAccessToken,
+            sessionId
+          )
+        : null;
 
     // 編集対象ステップのコンテキスト（形式・トーン維持のため）
     const stepLabel =
@@ -278,6 +423,9 @@ export async function POST(req: NextRequest) {
 
     // システムプロンプト（Claude 4ベストプラクティス準拠）
     const systemPrompt = [
+      ...(freeFormTemplatePrompt
+        ? ['## ベーステンプレート', '', freeFormTemplatePrompt, '', '---', '']
+        : []),
       ...headingUnitPrefix,
       ...(stepLabel ? ['## 編集対象のステップ', '', stepLabel, '', '---', ''] : []),
       '# Canvas編集専用モード',
@@ -426,7 +574,38 @@ export async function POST(req: NextRequest) {
                 }
               }
 
-              extractedReferences = extractWebReferences(searchResults);
+              const finalSearchMessage = await searchStream.finalMessage().catch(error => {
+                console.warn('[Canvas Web Search] Failed to read final search message:', error);
+                return null;
+              });
+
+              const referencesFromStructuredResult =
+                extractWebReferencesFromSearchMessage(finalSearchMessage);
+              const structuredValidatedReferences = await validateWebReferences(
+                referencesFromStructuredResult.slice(0, MAX_VALIDATED_WEB_REFERENCES)
+              );
+
+              if (structuredValidatedReferences.length > 0) {
+                extractedReferences = structuredValidatedReferences;
+                console.info('[Canvas Web Search] Using validated structured references', {
+                  sessionId,
+                  source: 'tool_result_or_citation',
+                  candidateCount: referencesFromStructuredResult.length,
+                  validatedCount: structuredValidatedReferences.length,
+                });
+              } else {
+                const fallbackReferences = extractWebReferencesFromText(searchResults);
+                const validatedFallbackReferences = await validateWebReferences(
+                  fallbackReferences.slice(0, MAX_VALIDATED_WEB_REFERENCES)
+                );
+                extractedReferences = validatedFallbackReferences;
+                console.info('[Canvas Web Search] Using validated fallback references', {
+                  sessionId,
+                  source: 'regex_fallback',
+                  candidateCount: fallbackReferences.length,
+                  validatedCount: validatedFallbackReferences.length,
+                });
+              }
             } catch (searchError) {
               console.error('[Canvas Web Search] Search failed:', searchError);
               // 検索失敗時は空の結果で続行
@@ -438,7 +617,7 @@ export async function POST(req: NextRequest) {
           // ✅ 第2段階: Canvas編集（検索結果を含める）
           const finalSystemPrompt = [
             systemPrompt,
-            ...(searchResults
+            ...(shouldEnableWebSearch
               ? [
                   '',
                   '---',
@@ -460,16 +639,9 @@ export async function POST(req: NextRequest) {
                         '外部リンクを提示せず、文章そのものを改善してください。存在しないURLを作成してはいけません。',
                       ].join('\n'),
                   '',
-                  '---',
-                  '',
-                  '## Web検索結果の要約テキスト',
-                  '```',
-                  searchResults,
-                  '```',
-                  '',
                   extractedReferences.length > 0
-                    ? '上記リンクと要約を活用して文章を編集してください。'
-                    : '要約は参考情報に留め、外部リンクは追加しないでください。',
+                    ? '上記リンクを活用して文章を編集してください。'
+                    : '検索で利用可能なリンクが確認できないため、外部リンクは追加しないでください。',
                 ]
               : []),
           ].join('\n');
@@ -741,7 +913,17 @@ export async function POST(req: NextRequest) {
                 return;
               }
 
+              await chatService.continueChat(
+                userId!,
+                sessionId,
+                [instruction, finalMarkdown],
+                '', // systemPromptは履歴に保存しない
+                [],
+                canvasModel
+              );
+
               // Step7(見出しフロー)完了後の全文Canvas修正は session_combined_contents にも新バージョンとして保存する
+              // ユーザー指示・Canvas結果メッセージより後ろに並ぶよう、チャット履歴保存の後に実行する
               // 副次処理のため、失敗してもチャット履歴保存は継続する
               if (targetStep === STEP7_ID && !isHeadingUnit) {
                 try {
@@ -796,15 +978,6 @@ export async function POST(req: NextRequest) {
                   });
                 }
               }
-
-              await chatService.continueChat(
-                userId!,
-                sessionId,
-                [instruction, finalMarkdown],
-                '', // systemPromptは履歴に保存しない
-                [],
-                canvasModel
-              );
 
               // 2つ目: 分析結果（blog_creation_improvement）
               // アシスタントメッセージのみを追加保存（ユーザーメッセージは既に上で保存済み）

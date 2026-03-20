@@ -369,7 +369,8 @@ const InputArea: React.FC<InputAreaProps> = ({
 
     const originalMessage = trimmedInput;
 
-    // Step6→Step7: 書き出し案を保存のみ（AI呼び出しなし）。構成案の場合は lastAssistantIsBasicStructure=true のため保存に回らず、書き出し案取得の通常送信になる。
+    // Step6→Step7: 書き出し案を step7_lead として保存のみ（AI呼び出しなし）。
+    // 構成案表示中は lastAssistantIsBasicStructure=true のため、通常送信で書き出し案生成に進む。
     // targetBlogStep を使用（通常チャットは nextStepForSend ベースで step6→7 判定）
     const isStep6ToStep7Transition =
       displayStep === STEP6_ID &&

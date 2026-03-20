@@ -433,3 +433,67 @@ export async function getCombinedContentForStep7(
   const { lead, sections } = result.data;
   return { success: true, lead, sections };
 }
+
+/**
+ * 書き出し＋各見出し本文を結合し、完成形として保存する（AI呼び出しなし）。
+ */
+export async function saveCombinedContentForStep7(
+  data: z.infer<typeof getCombinedContentForStep7Schema>
+) {
+  const parseResult = getCombinedContentForStep7Schema.safeParse(data);
+  if (!parseResult.success) {
+    const isTokenError = parseResult.error.issues.some(
+      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
+    );
+    const error = isTokenError
+      ? '認証トークンが無効です。LINEで再ログインしてください。'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[saveCombinedContentForStep7] Validation failed:', parseResult.error.issues);
+    }
+    return { success: false, error, content: null };
+  }
+
+  const parsed = parseResult.data;
+  const auth = await authMiddleware(parsed.liffAccessToken);
+
+  if (auth.error || !auth.userId) {
+    return {
+      success: false,
+      error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
+      content: null,
+    };
+  }
+
+  if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
+    return { success: false, error: 'セッションへのアクセス権がありません', content: null };
+  }
+
+  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
+    return { success: false, error: '閲覧モードでは実行できません', content: null };
+  }
+
+  const combinedResult = await headingFlowService.getCombinedContentForPrompt(parsed.sessionId);
+  if (!combinedResult.success) {
+    return { success: false, error: combinedResult.error.userMessage, content: null };
+  }
+
+  const lead = (combinedResult.data.lead ?? '').trim();
+  const sections = (combinedResult.data.sections ?? '').trim();
+  const content = lead && sections ? `${lead}\n\n${sections}` : lead || sections;
+
+  if (!content) {
+    return { success: false, error: '保存する内容がありません', content: null };
+  }
+
+  const saveResult = await headingFlowService.saveCombinedContentSnapshot(
+    parsed.sessionId,
+    content,
+    auth.userId
+  );
+  if (!saveResult.success) {
+    return { success: false, error: saveResult.error.userMessage, content: null };
+  }
+
+  return { success: true, content };
+}

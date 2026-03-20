@@ -31,6 +31,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     isMobile,
     blogFlowActive,
     optimisticMessages,
+    latestStep7LeadTimestamp,
     isCanvasStreaming,
     selectedModel,
     latestBlogStep,
@@ -147,7 +148,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     }
     // displayStep = 表示中コンテンツのステップ。nextStepForSend = この送信で得る出力のステップ。
     // step1 表示中（顕在/潜在）→ step2 で送信してペルソナ/デモグラ取得。
-    // step6: 構成案表示中(lastAssistantIsBasicStructure)なら step6 で送信→書き出し案取得。書き出し案表示中なら step7 で送信→保存のみ（AI呼び出しなし）。
+    // step6: 構成案表示中(lastAssistantIsBasicStructure)なら step6 で送信→書き出し案生成。
+    // 書き出し案表示中なら step7 で送信→step7_lead に保存のみ（AI呼び出しなし）。
     // step7 は同ステップで送信。
     let nextStepForSend: BlogStepId;
     if (displayStep === STEP6_ID && !lastAssistantIsBasicStructure) {
@@ -308,6 +310,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
         <MessageArea
           messages={[...chatSession.state.messages, ...optimisticMessages]}
+          latestStep7LeadTimestamp={latestStep7LeadTimestamp}
           isLoading={chatSession.state.isLoading || isCanvasStreaming}
           blogFlowActive={blogFlowActive}
           onOpenCanvas={message => ui.canvas.show(message)}
@@ -397,7 +400,15 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           onClose={() => {
             ui.annotation.setOpen(false);
           }}
-          onSaveSuccess={() => {}}
+          onSaveSuccess={() => {
+            if (
+              displayStep === STEP7_ID &&
+              totalHeadings === 0 &&
+              typeof onRetryHeadingInit === 'function'
+            ) {
+              onRetryHeadingInit();
+            }
+          }}
           isVisible={ui.annotation.open}
         />
       )}

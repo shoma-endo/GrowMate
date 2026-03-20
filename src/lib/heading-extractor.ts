@@ -8,7 +8,7 @@ const HEADING_WHITESPACE =
 /**
  * markdown 見出し行から見出しテキストを抽出する（正規表現を使用しない）。
  * 例: "### 見出し" → "見出し", "###　見出し"（全角空白）→ "見出し"
- * # の直後に空白（半角・全角スペース、タブ）を必須とする。
+ * # の直後に空白がない "###見出し" / "####見出し" も許容する。
  */
 export function extractHeadingTextFromLine(line: string): string | null {
   const t = line.trim();
@@ -16,7 +16,6 @@ export function extractHeadingTextFromLine(line: string): string | null {
   let i = 1;
   while (i < t.length && t.charAt(i) === '#') i++;
   if (i >= t.length) return null;
-  if (!HEADING_WHITESPACE.has(t.charAt(i))) return null;
   while (i < t.length && HEADING_WHITESPACE.has(t.charAt(i))) i++;
   const text = t.slice(i).trim();
   return text || null;
@@ -51,19 +50,14 @@ export function extractHeadingsFromMarkdown(markdown: string): ExtractedHeading[
 
     if (inCodeBlock) continue;
 
-    // H3 (###) または H4 (####) の見出しにマッチ
-    // 正規表現: 行頭から # が 3〜4 つ続き、その後に空白（半角・全角・タブ）、そして見出しテキスト
-    const match = trimmed.match(/^(#{3,4})[\s\u3000]+(.+)$/);
-    if (match) {
-      const hashes = match[1] || '';
-      const text = (match[2] || '').trim();
-
-      // 空の見出しは除外
-      if (text) {
-        const level = hashes.length as 3 | 4;
+    const text = extractHeadingTextFromLine(trimmed);
+    if (text) {
+      let hashCount = 0;
+      while (hashCount < trimmed.length && trimmed.charAt(hashCount) === '#') hashCount++;
+      if (hashCount === 3 || hashCount === 4) {
         headings.push({
           text,
-          level,
+          level: hashCount,
           orderIndex: orderIndex++,
         });
       }

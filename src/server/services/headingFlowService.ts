@@ -6,12 +6,7 @@ import {
 import type { DbHeadingSection, DbSessionHeadingSectionInsert } from '@/types/heading-flow';
 import type { DbChatMessage } from '@/types/chat';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
-import {
-  MIN_LEAD_CONTENT_LENGTH,
-  STEP7_LEAD_MODEL,
-  STRUCTURE_PATTERN_CHECK_LENGTH,
-} from '@/lib/constants';
-import { BASIC_STRUCTURE_PATTERN } from '@/lib/canvas-content';
+import { STEP7_LEAD_MODEL } from '@/lib/constants';
 
 export class HeadingFlowService extends SupabaseService {
   /**
@@ -199,8 +194,7 @@ export class HeadingFlowService extends SupabaseService {
   }
   /**
    * Step6→Step7 遷移時に保存した書き出し案を取得する。
-   * 1. chat_messages の user メッセージ（model=blog_creation_step7_lead）から取得。
-   * 2. なければ step6 assistant の書き出し案（構成案を除く）をフォールバック（前ステップと同様のメッセージ導出）。
+   * chat_messages の user メッセージ（model=blog_creation_step7_lead）からのみ取得する。
    */
   async getStep7UserLead(sessionId: string): Promise<string | null> {
     const { data: leadData, error: leadError } = await this.supabase
@@ -214,26 +208,6 @@ export class HeadingFlowService extends SupabaseService {
 
     if (!leadError && leadData?.length && leadData[0]?.content?.trim()) {
       return leadData[0].content.trim();
-    }
-
-    const { data: step6Data, error: step6Error } = await this.supabase
-      .from('chat_messages')
-      .select('content')
-      .eq('session_id', sessionId)
-      .eq('role', 'assistant')
-      .like('model', 'blog_creation_step6%')
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (step6Error || !step6Data?.length) return null;
-    const row = step6Data[0];
-    if (!row) return null;
-    const c = (row.content ?? '').trim();
-    if (
-      c.length >= MIN_LEAD_CONTENT_LENGTH &&
-      !BASIC_STRUCTURE_PATTERN.test(c.slice(0, STRUCTURE_PATTERN_CHECK_LENGTH))
-    ) {
-      return c;
     }
     return null;
   }
