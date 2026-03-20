@@ -10,7 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { featureFlags } from '@/config/featureFlags';
-import { sendOtpEmail, verifyOtp } from '@/server/actions/auth.actions';
+import { sendOtpEmail, verifyOtp, registerFullName } from '@/server/actions/auth.actions';
+import { FullNameDialog } from '@/components/FullNameDialog';
 
 type LoginView = 'loading' | 'options' | 'otp-form';
 
@@ -18,6 +19,7 @@ export default function LoginPage() {
   const [view, setView] = useState<LoginView>('options');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
+  const [showFullNameDialog, setShowFullNameDialog] = useState(false);
   const [error, setError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isPending, startTransition] = useTransition();
@@ -86,8 +88,20 @@ export default function LoginPage() {
           keysToRemove.forEach(key => storage.removeItem(key));
         }
       }
-      window.location.href = '/';
+      if (result.isNewUser) {
+        setShowFullNameDialog(true);
+      } else {
+        window.location.href = '/';
+      }
     });
+  };
+
+  const handleSaveFullName = async (fullName: string) => {
+    const result = await registerFullName(fullName);
+    if (!result.success) {
+      throw new Error(result.error ?? 'フルネーム保存に失敗しました');
+    }
+    window.location.href = '/';
   };
 
   const handleResend = () => {
@@ -104,6 +118,8 @@ export default function LoginPage() {
   };
 
   return (
+    <>
+    <FullNameDialog open={showFullNameDialog} onSave={handleSaveFullName} />
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <h1 className="text-3xl font-bold mb-6">ログイン</h1>
       <Card className="w-full max-w-sm">
@@ -256,5 +272,6 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }

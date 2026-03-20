@@ -129,10 +129,35 @@ export async function signOutEmail(options?: {
   return { success: true, ...(partialLogout && { partial: true }) };
 }
 
+export async function registerFullName(
+  fullName: string
+): Promise<{ success: boolean; error?: string }> {
+  if (typeof fullName !== 'string' || fullName.trim().length === 0) {
+    return { success: false, error: 'フルネームを入力してください。' };
+  }
+  if (fullName.trim().length > 100) {
+    return { success: false, error: 'フルネームは100文字以内で入力してください。' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData.user) {
+    return { success: false, error: 'セッションが無効です。再度ログインしてください。' };
+  }
+
+  const user = await userService.resolveOrCreateEmailUser(authData.user.id, authData.user.email!);
+  const ok = await userService.updateFullName(user.id, fullName.trim());
+  if (!ok) {
+    return { success: false, error: '登録に失敗しました。再度お試しください。' };
+  }
+
+  return { success: true };
+}
+
 export async function verifyOtp(
   email: string,
   token: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; isNewUser?: boolean; error?: string }> {
   maybePurgeMaps();
 
   if (!featureFlags.emailAuthEnabled) {
@@ -170,7 +195,8 @@ export async function verifyOtp(
     const cookieStore = await cookies();
     cookieStore.delete('line_access_token');
     cookieStore.delete('line_refresh_token');
-    return { success: true };
+    const isNewUser = !user.fullName;
+    return { success: true, isNewUser };
   } catch (err) {
     console.error('[auth.actions] verifyOtp: failed to resolve public user:', err);
     // auth.users は作成済みだが public.users 解決失敗 → セッション破棄して再試行可能な状態に
