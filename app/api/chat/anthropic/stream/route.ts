@@ -220,7 +220,7 @@ export async function POST(req: NextRequest) {
           resetIdleTimeout();
 
           // step7 見出しモデル（step7_h0 等）は見出し単体生成用（maxTokens: 3000）。
-          // step7 本文生成（完成形）は blog_creation_step7（maxTokens: 20000）。
+          // step7 本文生成（完成形）は blog_creation_step7（maxTokens: 25000）。
           const configKey =
             Object.prototype.hasOwnProperty.call(MODEL_CONFIGS, model)
               ? model
