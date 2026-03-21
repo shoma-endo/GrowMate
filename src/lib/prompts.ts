@@ -904,14 +904,12 @@ const BLOG_STEP_PATTERN = new RegExp(`^blog_creation_(${BLOG_STEP_IDS.join('|')}
 
 /**
  * モデルに応じたシステムプロンプトを取得する（LIFFトークンがあれば動的生成、なければ静的）
- * @param step7CombinedContext 本文生成ボタン時に渡す各見出し本文（書き出しはユーザープロンプトに注入）。ある場合、これをシステムプロンプト内に注入する
  */
 export async function getSystemPrompt(
   model: string,
   liffAccessToken?: string,
   sessionId?: string,
-  serviceIdOverride?: string,
-  step7CombinedContext?: string
+  serviceIdOverride?: string
 ): Promise<string> {
   if (liffAccessToken) {
     // セッションに紐づくサービスIDを解決（オーバーライドがなければ）
@@ -950,57 +948,7 @@ export async function getSystemPrompt(
         }
       }
 
-      // 通常のステッププロンプト生成
-      const basePrompt = await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
-
-      // Step 7 (最終生成モード): コンテキストを追加する
-      if (isBlogStep7(step)) {
-        // 本文生成ボタン: 各見出し本文を渡された場合はシステムプロンプトに注入（書き出しはユーザープロンプトで渡済み）
-        if (step7CombinedContext?.trim()) {
-          return [
-            basePrompt,
-            '',
-            '## 各見出し本文',
-            '以下を正本として、流れの良い完成形記事本文を生成してください。見出しレベル（### / ####）を維持しつつ、段落間のつながりを自然に整えてください。',
-            '',
-            step7CombinedContext.trim(),
-          ].join('\n');
-        }
-
-        // 既存本文があればコンテキストとして追加 (必須ではない)
-        if (sessionId && authUserId) {
-          const [latestCombinedResult, legacyStep6Result] = await Promise.all([
-            supabaseService.getLatestCombinedContentBySession(sessionId, authUserId),
-            supabaseService.getLatestAccessibleAssistantMessageBySessionAndModel(
-              sessionId,
-              authUserId,
-              toTemplateName('step6')
-            ),
-          ]);
-
-          if (latestCombinedResult.success && latestCombinedResult.data?.trim()) {
-            return [
-              basePrompt,
-              '',
-              '## 現在の本文内容',
-              '以下の内容を正本として、指示に従って更新または追加してください。',
-              latestCombinedResult.data,
-            ].join('\n');
-          }
-
-          if (legacyStep6Result.success && legacyStep6Result.data?.content?.trim()) {
-            return [
-              basePrompt,
-              '',
-              '## 現在の本文内容 (移行データ)',
-              '以下の内容を正本として、指示に従って更新または追加してください。',
-              legacyStep6Result.data.content,
-            ].join('\n');
-          }
-        }
-      }
-
-      return basePrompt;
+      return await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
     }
     switch (model) {
       case 'ad_copy_creation':

@@ -21,14 +21,20 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 export type { ChatSessionActions, ChatSessionHook };
 
 const MAX_MESSAGES = CHAT_HISTORY_LIMIT;
+const STEP7_RECENT_MESSAGE_LIMIT = 2;
 
 interface SerializableMessage {
   role: string;
   content: string;
 }
 
-const createRequestMessages = (messages: ChatMessage[]): SerializableMessage[] =>
-  messages.slice(-MAX_MESSAGES).map(({ role, content }) => ({ role, content }));
+const createRequestMessages = (
+  messages: ChatMessage[],
+  options?: { limit?: number }
+): SerializableMessage[] => {
+  const limit = options?.limit ?? MAX_MESSAGES;
+  return messages.slice(-limit).map(({ role, content }) => ({ role, content }));
+};
 
 const createSessionPreview = (content: string, sessionId: string): ChatSession => ({
   id: sessionId,
@@ -54,10 +60,8 @@ interface StreamingParams {
   recentMessages: SerializableMessage[];
   systemPrompt?: string;
   serviceId?: string;
-  /** 本文生成ボタン用: blog_creation_step7 で結合テキストをプロンプトに渡し、応答を session_combined_contents に保存 */
+  /** 本文生成ボタン用: blog_creation_step7 の応答を session_combined_contents に保存 */
   step7FullBodyGeneration?: boolean;
-  /** step7FullBodyGeneration 時: 書き出しをユーザープロンプトに渡す */
-  step7Lead?: string;
 }
 
 export const useChatSession = (
@@ -116,7 +120,6 @@ export const useChatSession = (
       systemPrompt,
       serviceId,
       step7FullBodyGeneration,
-      step7Lead,
     }: StreamingParams) => {
       // step7FullBodyGeneration: 楽観的表示は短いトリガーを使い、loadSession 後の表示と一致させる
       const displayContent =
@@ -153,7 +156,6 @@ export const useChatSession = (
             ...(systemPrompt ? { systemPrompt } : {}),
             ...(serviceId ? { serviceId } : {}),
             ...(step7FullBodyGeneration ? { step7FullBodyGeneration: true } : {}),
-            ...(step7FullBodyGeneration && step7Lead != null ? { step7Lead } : {}),
           }),
         });
 
@@ -322,7 +324,6 @@ export const useChatSession = (
         systemPrompt?: string;
         serviceId?: string;
         step7FullBodyGeneration?: boolean;
-        step7Lead?: string;
       }
     ) => {
       setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
@@ -334,7 +335,12 @@ export const useChatSession = (
           model,
           accessToken,
           currentSessionId: state.currentSessionId,
-          recentMessages: createRequestMessages(state.messages),
+          recentMessages: createRequestMessages(state.messages, {
+            limit:
+              options?.step7FullBodyGeneration && model === 'blog_creation_step7'
+                ? STEP7_RECENT_MESSAGE_LIMIT
+                : MAX_MESSAGES,
+          }),
         };
 
         if (options?.systemPrompt) {
@@ -347,9 +353,6 @@ export const useChatSession = (
 
         if (options?.step7FullBodyGeneration) {
           streamingParams.step7FullBodyGeneration = true;
-          if (options.step7Lead != null) {
-            streamingParams.step7Lead = options.step7Lead;
-          }
         }
 
         const success = await handleStreamingMessage(streamingParams);
