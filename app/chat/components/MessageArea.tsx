@@ -33,14 +33,18 @@ const TRIMMABLE_TRAILING_CHAR_SET = new Set<string>([
 
 const isUrlSafeChar = (char: string) => URL_SAFE_CHAR_SET.has(char);
 const isTrimmableTrailingChar = (char: string) => TRIMMABLE_TRAILING_CHAR_SET.has(char);
-const getTimestampMs = (timestamp: Date | number | null | undefined): number => {
+const getTimestampMs = (timestamp: Date | number | string | null | undefined): number => {
   if (timestamp instanceof Date) return timestamp.getTime();
-  return (timestamp as number) ?? 0;
+  if (typeof timestamp === 'number') return Number.isFinite(timestamp) ? timestamp : 0;
+  if (typeof timestamp === 'string') {
+    const parsed = Date.parse(timestamp);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
 };
 
 interface MessageAreaProps {
   messages: ChatMessage[];
-  latestStep7LeadTimestamp?: number;
   isLoading: boolean;
   renderAfterMessage?: (message: ChatMessage) => React.ReactNode;
   blogFlowActive?: boolean;
@@ -167,7 +171,6 @@ const EmptyState = () => {
 
 const MessageArea: React.FC<MessageAreaProps> = ({
   messages,
-  latestStep7LeadTimestamp = 0,
   isLoading,
   renderAfterMessage,
   onOpenCanvas,
@@ -422,45 +425,42 @@ const MessageArea: React.FC<MessageAreaProps> = ({
 
   // step7 アシスタントメッセージの ID 一覧（時系列順）。重複見出し照合に使用
   const step7MessageIds = messages
-    .filter(m => {
-      if (m.role !== 'assistant' || extractBlogStepFromModel(m.model) !== STEP7_ID) return false;
-      const ts = getTimestampMs(m.timestamp);
-      return latestStep7LeadTimestamp <= 0 || ts >= latestStep7LeadTimestamp;
-    })
+    .filter(m => m.role === 'assistant' && extractBlogStepFromModel(m.model) === STEP7_ID)
     .map(m => m.id);
 
   // メッセージと完成形タイルを時系列でマージ（古い→新しい、最新が一番下）
   // step7 完成形(blog_creation_step7): combinedTiles が存在する場合はメッセージを除外し重複表示を防ぐ
   const segments = useMemo(() => {
-    const filteredMessages = messages.filter(m => {
-      if (isLeadModel(m)) return false;
-      if (m.role === 'assistant' && extractBlogStepFromModel(m.model) === STEP7_ID) {
-        const ts = getTimestampMs(m.timestamp);
-        return latestStep7LeadTimestamp <= 0 || ts >= latestStep7LeadTimestamp;
-      }
-      return true;
-    });
+    const filteredMessages = messages.filter(m => !isLeadModel(m));
     const hasCombinedTiles = (combinedTiles?.length ?? 0) > 0;
     const excludeStep7CompletionMessage = (m: ChatMessage) =>
       hasCombinedTiles &&
       m.role === 'assistant' &&
       m.model === toBlogModel(STEP7_ID);
     const items: Array<
-      | { type: 'message'; message: ChatMessage; sortKey: number }
-      | { type: 'tile'; tile: CombinedTile; sortKey: number }
+      | { type: 'message'; message: ChatMessage; sortKey: number; order: number }
+      | { type: 'tile'; tile: CombinedTile; sortKey: number; order: number }
     > = [];
+    let order = 0;
     for (const m of filteredMessages) {
       if (excludeStep7CompletionMessage(m)) continue;
       const ts = getTimestampMs(m.timestamp);
-      items.push({ type: 'message', message: m, sortKey: ts });
+      items.push({ type: 'message', message: m, sortKey: ts, order });
+      order += 1;
     }
     for (const t of combinedTiles ?? []) {
-      const ts = t.createdAt ? new Date(t.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
-      items.push({ type: 'tile', tile: t, sortKey: ts });
+      const ts = getTimestampMs(t.createdAt);
+      items.push({ type: 'tile', tile: t, sortKey: ts, order });
+      order += 1;
     }
-    items.sort((a, b) => a.sortKey - b.sortKey);
+    items.sort((a, b) => {
+      if (a.sortKey !== b.sortKey) {
+        return a.sortKey - b.sortKey;
+      }
+      return a.order - b.order;
+    });
     return items;
-  }, [messages, combinedTiles, latestStep7LeadTimestamp]);
+  }, [messages, combinedTiles]);
 
   const hasContent = segments.length > 0;
 

@@ -5,6 +5,7 @@ export interface HeadingCanvasViewModeParams {
   headingCount: number;
   viewingHeadingIndex: number | null;
   activeHeadingIndex: number | undefined;
+  ignoreActiveHeadingIndex?: boolean;
 }
 
 export interface HeadingCanvasViewMode {
@@ -19,10 +20,11 @@ export const resolveHeadingCanvasViewMode = ({
   headingCount,
   viewingHeadingIndex,
   activeHeadingIndex,
+  ignoreActiveHeadingIndex = false,
 }: HeadingCanvasViewModeParams): HeadingCanvasViewMode => {
   const hasHeadings = step === STEP7_ID && headingCount > 0;
   const isViewingHeading = hasHeadings && viewingHeadingIndex !== null;
-  const hasActiveHeading = activeHeadingIndex !== undefined;
+  const hasActiveHeading = !ignoreActiveHeadingIndex && activeHeadingIndex !== undefined;
   const isCombinedView = hasHeadings && !isViewingHeading && !hasActiveHeading;
   const isHeadingUnit = hasHeadings && (isViewingHeading || hasActiveHeading);
   const headingIndex = isHeadingUnit ? (viewingHeadingIndex ?? activeHeadingIndex ?? null) : null;

@@ -32,7 +32,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     isMobile,
     blogFlowActive,
     optimisticMessages,
-    latestStep7LeadTimestamp,
     isCanvasStreaming,
     selectedModel,
     latestBlogStep,
@@ -326,7 +325,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
         <MessageArea
           messages={[...chatSession.state.messages, ...optimisticMessages]}
-          latestStep7LeadTimestamp={latestStep7LeadTimestamp}
           isLoading={chatSession.state.isLoading || isCanvasStreaming}
           blogFlowActive={blogFlowActive}
           onOpenCanvas={message => ui.canvas.show(message)}

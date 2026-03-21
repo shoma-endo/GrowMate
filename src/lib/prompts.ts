@@ -277,6 +277,7 @@ import type { BriefInput } from '@/server/schemas/brief.schema';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { BLOG_STEP_IDS, BlogStepId, isStep7 as isBlogStep7, toTemplateName } from '@/lib/constants';
+import { extractStep7HeadingIndexFromModel } from '@/lib/canvas-content';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { headingFlowService } from '@/server/services/headingFlowService';
 
@@ -770,25 +771,8 @@ async function generateHeadingUnitPrompt(
 
     const headingConstraintBlock = [
       '',
-      '---',
-      '',
-      '## 【最重要】見出し単位生成モード',
-      '',
-      `**対象見出し（これのみ出力）**: 「${activeSection.heading_text}」`,
-      '',
-      '**絶対ルール**:',
-      '- ユーザーへの確認・質問は不要です。上記の対象見出しの「見出し行＋本文」を即座に出力してください。',
-      '- 「どの見出しを書くか」等の確認メッセージは絶対に出力しないでください。',
-      '- 【主な修正内容】「追加 -」「変更 -」「削除 -」などの修正分析・変更箇所の説明は絶対に出力しないでください。対象見出し＋文章のみを出力してください。',
-      `- 出力は「見出し行＋文章」の形式にしてください。1行目に ${hashes} レベルで見出し行を書き、2行目以降に文章を書いてください。`,
-      '- 他の見出し、全体構成、前後のセクション、タイトル、リード文などは絶対に出力しないでください。',
-      '',
-      '出力形式の例:',
-      '```',
-      `${hashes} ${activeSection.heading_text}`,
-      '',
-      '（ここに本文。200〜400字程度を目安）',
-      '```',
+      `このリクエストの対象見出しは「${activeSection.heading_text}」です。`,
+      `確認の質問はせず、${hashes} ${activeSection.heading_text} から始まる見出し行と本文のみを出力してください。`,
     ].join('\n');
 
     return [basePrompt, headingConstraintBlock].filter(Boolean).join('\n');
@@ -933,19 +917,45 @@ export async function getSystemPrompt(
       }
       const step = stepMatch[1] as BlogStepId;
 
-      // 見出し構成・本文作成ステップ (Step 7): 見出し単位生成モードの判定
-      // 該当時は固有の生成プロンプトのみを返し、DBテンプレートの取得等を回避する
-      if (isBlogStep7(step) && sessionId && authUserId) {
+      // Step7 見出し単位生成: model の hN を正として対象見出しを解決する。
+      // 未確定の先頭見出しに暗黙フォールバックすると、抽出済みでも別見出し/空見出しを拾い得るため禁止。
+      const step7HeadingIndex = isBlogStep7(step)
+        ? extractStep7HeadingIndexFromModel(model)
+        : null;
+      if (step7HeadingIndex !== null && sessionId && authUserId) {
+        console.warn('[getSystemPrompt] Resolving Step7 heading prompt', {
+          model,
+          sessionId,
+          step7HeadingIndex,
+        });
         const sessionRes = await supabaseService.getChatSessionById(sessionId, authUserId);
         if (sessionRes.success && sessionRes.data) {
           const sectionsResult = await headingFlowService.getHeadingSections(sessionId);
           if (sectionsResult.success && Array.isArray(sectionsResult.data)) {
-            const activeSection = sectionsResult.data.find(s => !s.is_confirmed);
-            if (activeSection) {
+            const activeSection = sectionsResult.data[step7HeadingIndex];
+            if (activeSection?.heading_text?.trim()) {
+              console.warn('[getSystemPrompt] Step7 heading prompt resolved', {
+                model,
+                sessionId,
+                step7HeadingIndex,
+                headingText: activeSection.heading_text,
+              });
               return generateHeadingUnitPrompt(liffAccessToken, sessionId, activeSection);
             }
+            console.warn('[getSystemPrompt] Step7 heading section could not be resolved', {
+              model,
+              sessionId,
+              step7HeadingIndex,
+              sectionCount: sectionsResult.data.length,
+              resolvedHeadingText: activeSection?.heading_text ?? null,
+            });
           }
         }
+        console.warn('[getSystemPrompt] Falling back from Step7 heading prompt resolution', {
+          model,
+          sessionId,
+          step7HeadingIndex,
+        });
       }
 
       return await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);

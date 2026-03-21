@@ -33,7 +33,6 @@ export interface ChatLayoutCtx {
   isMobile: boolean;
   blogFlowActive: boolean;
   optimisticMessages: ChatMessage[];
-  latestStep7LeadTimestamp: number;
   isCanvasStreaming: boolean;
   selectedModel: string;
   latestBlogStep: BlogStepId | null;
