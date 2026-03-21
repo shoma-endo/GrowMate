@@ -69,8 +69,6 @@ export interface ChatSessionActions {
       systemPrompt?: string;
       serviceId?: string;
       step7FullBodyGeneration?: boolean;
-      /** step7FullBodyGeneration 時: 書き出しをユーザープロンプトに渡す */
-      step7Lead?: string;
     }
   ) => Promise<boolean>;
   setError: (message: string | null) => void;

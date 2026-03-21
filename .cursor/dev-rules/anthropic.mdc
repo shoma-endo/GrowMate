@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## 主な責任
 
-- Anthropic Claude API（Sonnet 4.5）を用いたチャット機能を実装してください。
+- Anthropic Claude API（Sonnet 4.6）を用いたチャット機能を実装してください。
 - Server-Sent Events（SSE）によるストリーミングレスポンスを実装してください。
 - Tool Use（Function Calling）を活用した選択編集機能を実装してください。
 - Prompt Caching を活用してコストとレイテンシを最適化してください。
@@ -30,7 +30,7 @@ const stream = new ReadableStream({
     try {
       // Claude API にストリーミングリクエスト
       const response = await anthropic.messages.stream({
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-4-6',
         max_tokens: 8192,
         messages: messages,
       });
@@ -91,7 +91,7 @@ const tools = [
 ];
 
 const response = await anthropic.messages.create({
-  model: 'claude-sonnet-4-5-20250929',
+  model: 'claude-sonnet-4-6',
   max_tokens: 8192,
   tools: tools,
   messages: [
@@ -115,8 +115,8 @@ if (toolUse && toolUse.name === 'replace_content') {
 ### MODEL_CONFIGS の活用
 ```typescript
 export const MODEL_CONFIGS = {
-  'claude-sonnet-4-5': {
-    id: 'claude-sonnet-4-5-20250929',
+  'claude-sonnet-4-6': {
+    id: 'claude-sonnet-4-6',
     maxTokens: 8192,
     contextWindow: 200000,
     useCases: ['chat', 'analysis', 'generation'],

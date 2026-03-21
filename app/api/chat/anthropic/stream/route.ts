@@ -30,10 +30,8 @@ interface StreamRequest {
   model: string;
   systemPrompt?: string;
   serviceId?: string;
-  /** 本文生成ボタン用: blog_creation_step7 で結合テキストをプロンプトに渡し、応答を session_combined_contents に保存 */
+  /** 本文生成ボタン用: blog_creation_step7 の応答を session_combined_contents に保存 */
   step7FullBodyGeneration?: boolean;
-  /** step7FullBodyGeneration 時: 書き出し（ユーザープロンプトに注入）。userMessage は各見出し本文（システムプロンプト用） */
-  step7Lead?: string;
   enableWebSearch?: boolean;
   webSearchConfig?: {
     maxUses?: number;
@@ -67,7 +65,6 @@ export async function POST(req: NextRequest) {
       systemPrompt: systemPromptOverride,
       serviceId,
       step7FullBodyGeneration = false,
-      step7Lead,
       enableWebSearch = false,
       webSearchConfig = {},
     }: StreamRequest = await req.json();
@@ -155,10 +152,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // step7FullBodyGeneration: 書き出し(step7Lead)はユーザープロンプト、各見出し本文(userMessage)はシステムプロンプトに注入
+    // Step7 完成形は Canvas 側の全文を正本とし、追加コンテキストは注入しない。
     const effectiveUserMessage =
       step7FullBodyGeneration && isStep7Model
-        ? (step7Lead?.trim() ? `${step7Lead.trim()}\n\n` : '') + STEP7_FULL_BODY_TRIGGER
+        ? STEP7_FULL_BODY_TRIGGER
         : combinedUserMessage;
 
     // Anthropic用のメッセージ形式に変換（Prompt Caching対応）
@@ -223,7 +220,7 @@ export async function POST(req: NextRequest) {
           resetIdleTimeout();
 
           // step7 見出しモデル（step7_h0 等）は見出し単体生成用（maxTokens: 3000）。
-          // step7 本文生成（完成形）は blog_creation_step7（maxTokens: 20000）。
+          // step7 本文生成（完成形）は blog_creation_step7（maxTokens: 25000）。
           const configKey =
             Object.prototype.hasOwnProperty.call(MODEL_CONFIGS, model)
               ? model
@@ -236,20 +233,17 @@ export async function POST(req: NextRequest) {
               ? cfg.actualModel
               : model.includes('claude')
                 ? model
-                : 'claude-sonnet-4-5-20250929';
+                : 'claude-sonnet-4-6';
           const resolvedMaxTokens = cfg && cfg.provider === 'anthropic' ? cfg.maxTokens : 6000;
           const resolvedTemperature = cfg && cfg.provider === 'anthropic' ? cfg.temperature : 0.3;
 
-          const step7CombinedContext =
-            step7FullBodyGeneration && isStep7Model ? userMessage : undefined;
           const systemPrompt = systemPromptOverride?.trim()
             ? systemPromptOverride
             : await getSystemPrompt(
                 model,
                 liffAccessToken || undefined,
                 sessionId,
-                serviceId,
-                step7CombinedContext
+                serviceId
               );
 
           // Web検索ツールの設定
@@ -270,7 +264,7 @@ export async function POST(req: NextRequest) {
                 {
                   type: 'web_search_20250305' as const,
                   name: 'web_search' as const,
-                  max_uses: webSearchConfig.maxUses || 3,
+                  max_uses: webSearchConfig.maxUses ?? 3,
                   ...(webSearchConfig.allowedDomains && {
                     allowed_domains: webSearchConfig.allowedDomains,
                   }),
