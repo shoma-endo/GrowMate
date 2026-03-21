@@ -233,7 +233,7 @@ export async function POST(req: NextRequest) {
               ? cfg.actualModel
               : model.includes('claude')
                 ? model
-                : 'claude-sonnet-4-5-20250929';
+                : 'claude-sonnet-4-6';
           const resolvedMaxTokens = cfg && cfg.provider === 'anthropic' ? cfg.maxTokens : 6000;
           const resolvedTemperature = cfg && cfg.provider === 'anthropic' ? cfg.temperature : 0.3;
 
