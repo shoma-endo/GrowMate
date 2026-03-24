@@ -3,7 +3,6 @@
 import { cookies, headers } from 'next/headers';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { featureFlags } from '@/config/featureFlags';
 import { userService } from '@/server/services/userService';
 
 // インメモリ レート制限
@@ -40,10 +39,6 @@ export async function sendOtpEmail(
   email: string
 ): Promise<{ success: boolean; error?: string }> {
   maybePurgeMaps();
-
-  if (!featureFlags.emailAuthEnabled) {
-    return { success: false, error: 'メールログイン機能は現在利用できません。' };
-  }
 
   // 入力バリデーション
   if (typeof email !== 'string' || !EMAIL_REGEX.test(email.trim()) || email.length > 254) {
@@ -159,10 +154,6 @@ export async function verifyOtp(
   token: string
 ): Promise<{ success: boolean; isNewUser?: boolean; error?: string }> {
   maybePurgeMaps();
-
-  if (!featureFlags.emailAuthEnabled) {
-    return { success: false, error: 'メールログイン機能は現在利用できません。' };
-  }
 
   // 入力バリデーション
   if (typeof email !== 'string' || !EMAIL_REGEX.test(email.trim()) || email.length > 254) {

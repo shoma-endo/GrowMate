@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { featureFlags } from '@/config/featureFlags';
 import { sendOtpEmail, verifyOtp, registerFullName } from '@/server/actions/auth.actions';
 import { FullNameDialog } from '@/components/FullNameDialog';
 
@@ -145,42 +144,38 @@ export default function LoginPage() {
 
           {view === 'options' && (
             <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4">
-              {featureFlags.emailAuthEnabled && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">メールアドレス</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      autoComplete="email"
-                      disabled={isPending}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') handleSendOtp();
-                      }}
-                    />
-                  </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">メールアドレス</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  disabled={isPending}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleSendOtp();
+                  }}
+                />
+              </div>
 
-                  <Button onClick={handleSendOtp} disabled={isPending || !email} className="w-full">
-                    {isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        送信中...
-                      </>
-                    ) : (
-                      '認証コードを送信'
-                    )}
-                  </Button>
+              <Button onClick={handleSendOtp} disabled={isPending || !email} className="w-full">
+                {isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    送信中...
+                  </>
+                ) : (
+                  '認証コードを送信'
+                )}
+              </Button>
 
-                  <div className="relative flex items-center">
-                    <div className="flex-1 border-t border-gray-200" />
-                    <span className="mx-3 text-sm text-gray-400">または</span>
-                    <div className="flex-1 border-t border-gray-200" />
-                  </div>
-                </>
-              )}
+              <div className="relative flex items-center">
+                <div className="flex-1 border-t border-gray-200" />
+                <span className="mx-3 text-sm text-gray-400">または</span>
+                <div className="flex-1 border-t border-gray-200" />
+              </div>
 
               <Button
                 onClick={loginWithLine}

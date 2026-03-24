@@ -584,25 +584,6 @@ Phase 1 では既存 LINE ユーザーへのリンクを保証しないため、
   supabase gen types typescript --project-id <ref> > src/types/database.types.ts
 ```
 
-### 7.11 Feature Flag 方針
-
-Phase 1 では Feature Flag は最小構成とする。
-
-```text
-email_auth_enabled
-  - 実装変数名: `NEXT_PUBLIC_EMAIL_AUTH_ENABLED`（環境変数）/ `featureFlags.emailAuthEnabled`（コード）
-  - Email OTP ログイン機能の新規受付 on/off
-  - OFF 時: 新規 Email 導線を非表示・新規 OTP 送信/検証を停止する
-  - 既存 Email セッションの扱いは既定では維持とし、強制停止が必要な場合は別の kill switch または運用手順で対応する
-  - データ削除は行わない（詳細は 12.4 ロールバック・データ方針）
-
-補足:
-
-- `email_auth_enabled` は **新規ログイン受付停止用のフラグ** として扱う
-- 既存 Email セッションまで即時停止したい場合は、middleware で Email セッションを拒否して `supabase.auth.signOut()` 相当の処理へ誘導する **別運用** が必要であり、Phase 1 の必須要件には含めない
-- kill switch が必要になりうることは前提として残しつつ、Phase 1 では実装コストを抑えるため通常フラグと分離する
-```
-
 それ以外の段階公開用 Flag は導入しない。
 
 ---
@@ -1043,13 +1024,7 @@ Phase 1 でこの構造を採用しない理由:
 
 ## 14. Phase 1 実装メモ（仕様書との差分・確定事項）
 
-### 14.1 Feature Flag 実装
-
-- 変数名: `NEXT_PUBLIC_EMAIL_AUTH_ENABLED`（環境変数）
-- コード参照: `src/config/featureFlags.ts` → `featureFlags.emailAuthEnabled`
-- OFF 時の挙動: `sendOtpEmail` / `verifyOtp` Server Action でエラーを返す。既存 Supabase セッションは維持。
-
-### 14.2 authMiddleware の Email フォールバック実装
+### 14.1 authMiddleware の Email フォールバック実装
 
 `src/server/middleware/auth.middleware.ts` の `ensureAuthenticated()` には Email fallback のトリガー条件が **2つ**ある。
 
