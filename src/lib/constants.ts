@@ -82,8 +82,8 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   /** Step7 見出し単体生成（blog_creation_step7_h0 等）用。Step7 テンプレート利用に合わせて上限を拡張 */
   blog_creation_step7_heading: { ...ANTHROPIC_BASE, maxTokens: 4000 },
   blog_title_meta_generation: {
-    ...ANTHROPIC_HAIKU_BASE,
-    maxTokens: 2000,
+    ...ANTHROPIC_BASE,
+    maxTokens: 10000,
   },
   gsc_insight_ctr_boost: {
     ...ANTHROPIC_HAIKU_BASE,
