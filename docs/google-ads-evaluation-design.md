@@ -1,639 +1,771 @@
-# Google Ads評価機能 基本設計書
+# Google Ads AI評価機能 設計書
+
+> **改訂履歴**: 旧設計（ルールベース評価）から AI 分析方式に全面移行。旧設計は Git 履歴を参照のこと。
 
 ## 1. 目的
 
-- `keyword_view` を用いて、キーワード単位で広告状態を評価し改善提案を提示する。
-- 評価結果を `app/google-ads-dashboard/page.tsx` から遷移できる専用画面で確認可能にする。
-- 通知挙動は既存 Search Console 評価機能と同一ルールに合わせる（配色のみ Google Ads 用に分離）。
+- Google Ads のキーワード指標（通常KW + 除外KW）と事業者情報を Claude claude-sonnet-4-6 に分析させ、改善提案をメールで送信する。
+- メールアカウント登録ユーザー限定の機能として提供する。
+- 評価プロンプトは admin/prompts 画面で運用者が編集可能とする。
 
-## 2. スコープ（初期リリース）
+## 2. スコープ
 
-- 評価単位は `customer_id + keyword_id`。
-- 評価対象期間は初期値として「前日基準」を採用する。
-- 品質スコアの比較は「評価開始時のベースライン」と「前日取得値」の比較で判定する（将来拡張で14日間トレンド比較を追加）。
-- コンバージョン数・CVRは「評価開始日以降の累積値」に基づいて判定する。
-- 評価対象指標は `CTR / 品質スコア / コンバージョン数 / CVR / CPA`。
-- `CPC` と `検索インプレッションシェア` は表示対象とし、評価提案ロジックには使用しない。
-- 日付判定は **JST基準** で行う（`(now() at time zone 'Asia/Tokyo')::date`）。DBデフォルトのタイムゾーンに依存しない。
+### 2.1 旧設計との差分
+
+| 項目 | 旧設計 | 新設計 |
+|------|--------|--------|
+| 評価方式 | ルールベース（固定閾値） | AI分析（Claude claude-sonnet-4-6） |
+| 評価入力 | 前日キーワード指標のみ | 全キーワード指標 + 事業者情報 + ペルソナ |
+| 評価単位 | `customer_id + keyword_id` | `customer_id`（アカウント単位で一括分析） |
+| 結果出力 | アプリ内画面 + 通知 | メール送信のみ |
+| 対象ユーザー | 全ユーザー | メールアカウント登録ユーザーのみ |
+| 対象キーワード | ENABLED のみ | 全キーワード（除外KW含む） |
+| 期間 | 前日固定 | ユーザー指定（デフォルト30日） |
+| トリガー | ダッシュボード表示時 | 手動ボタン + 定時 cron |
+| プロンプト管理 | なし | admin/prompts で編集可能 |
+
+### 2.2 不要になるもの（旧設計から削除）
+
+- キーワード単位の評価設定（`keyword_id` ベース管理）
+- 固定閾値（CTR/CVR/CPA/品質スコア閾値）
+- 累積値管理（`cumulative_clicks`, `cumulative_conversions`）
+- ベースライン品質スコア比較
+- 評価一覧画面（`app/google-ads-evaluations/page.tsx`）
+- 通知ハンドラー（`GoogleAdsNotificationHandler`）
+- 既読管理（`is_read`, SECURITY DEFINER 関数）
+- GSC 通知との共存ロジック
+
+### 2.3 機能スコープ
+
+- 評価単位は `customer_id`（アカウント単位で全キーワードを一括分析）。
+- 評価対象期間はデフォルト30日。ユーザーが設定テーブルの `date_range_days` で変更可能。
+- 評価対象キーワードはステータスフィルタなし（ENABLED / PAUSED / REMOVED 全取得）。除外キーワードも別途取得。
+- AI がプロンプトに基づき自由形式の分析・提案を行う（固定閾値による機械的判定は行わない）。
+- 分析結果は Markdown 形式で生成され、HTML 変換後にメール送信される。DB への結果保存は将来拡張（Section 16 参照）。
+- 日付判定は **JST基準** で行う（`(now() at time zone 'Asia/Tokyo')::date`）。
 
 ## 3. 画面設計
 
-### 3.1 画面構成
+### 3.1 ダッシュボード変更
 
-- 追加画面: `app/google-ads-evaluations/page.tsx`
-- 遷移元: `app/google-ads-dashboard/page.tsx` に「評価結果を見る」導線を追加
+既存の `app/google-ads-dashboard/_components/dashboard-content.tsx` にボタンを追加。
 
-### 3.2 一覧表示項目
+- **メールユーザーの場合**: 「AI分析を実行してメール送信」ボタンを表示
+  - クリック → Server Action 呼び出し → ローディング表示 → 完了/エラーメッセージ
+- **非メールユーザー（LINE ユーザー）**: ボタン非表示、またはメール登録誘導メッセージを表示
 
-| 項目 | 説明 |
-|------|------|
-| Keyword | キーワードテキスト |
-| キャンペーン | 所属キャンペーン名 |
-| 判定ステータス | `healthy` / `needs_improvement` / `error` |
-| 提案要約 | 該当した指標の要約（例: 「CTR低下、CVR不足」） |
-| 累積Clicks | 評価開始以降の累積クリック数 |
-| 累積Conversions | 評価開始以降の累積コンバージョン数 |
-| 前日CTR | 前日のCTR値（%表示） |
-| 品質スコア | 前日取得値 |
-| 最終評価日時 | 最後に評価を実行した日時 |
-| 既読状態 | 未読 / 既読 |
+### 3.2 不要な画面
 
-### 3.3 詳細表示項目
+- `app/google-ads-evaluations/page.tsx` — 作成不要（結果はメールで配信）
+- 通知トースト — 不要
+- 既読管理 UI — 不要
 
-- 判定理由（どの指標が条件に該当したか）
-- 使用閾値（CTR: 5%, CVR: 1%, CPA: ○○円 等）
-- 前日実績（各指標の数値）
-- 累積実績（評価開始日〜前日の累積クリック数・コンバージョン数）
-- 提案本文
+## 4. AI 分析ロジック
 
-### 3.4 通知UI
+### 4.1 分析方式
 
-- Search Console 評価通知と同一挙動を採用
-- Google Ads 評価通知は色のみ変更して視覚的に区別（GSC: 青系、Google Ads: 緑系 等）
-- GSC通知とGoogle Ads通知が同時に存在する場合は **それぞれ独立してトーストを表示** する（表示間隔を500ms空ける）
+- Claude claude-sonnet-4-6 にキーワードデータ + 事業者コンテキストを渡し、自然言語で分析・提案を生成する。
+- プロンプトテンプレートは `prompt_templates` テーブルで管理し、admin/prompts 画面で編集可能。
+- モデル設定: `MODEL_CONFIGS['google_ads_ai_evaluation']`（ANTHROPIC_BASE, maxTokens: 8000）
 
-## 4. 評価ロジック（初期値）
+### 4.2 プロンプト変数
 
-### 4.0 値域定義
+AI 分析に渡す変数は以下の通り。`PromptService.replaceVariables()` で `{{variableName}}` 形式を置換する。
 
-実装時の混乱を避けるため、DB格納値と閾値の対応を明示する。
+| 変数名 | ソース | 内容 |
+|--------|--------|------|
+| `persona` | `BriefService.getVariablesByUserId()` → `persona` | ターゲットペルソナ情報 |
+| `strengths` | `BriefService.getVariablesByUserId()` → 各サービスの `strength` | 全サービスの強み（改行区切り） |
+| `keywordData` | `GoogleAdsService.getKeywordMetrics({ includeAllStatuses: true })` | 全キーワード指標（構造化テキスト） |
+| `negativeKeywords` | `GoogleAdsService.getNegativeKeywords()` | 除外キーワード一覧 |
+| `dateRange` | 設定テーブル `date_range_days` から算出 | 分析期間（例: "2026-02-22 〜 2026-03-24"） |
+| `customerName` | DB 保存のアカウント名 | Google Ads アカウント名 |
 
-| 指標 | DB格納値域 | 要件上の閾値 | DB上の閾値 | 比較演算 |
-|------|-----------|-------------|-----------|---------|
-| CTR | `0.000000` 〜 `1.000000` | 5% | `0.050000` | `< 0.05` で提案 |
-| CVR | `0.000000` 〜 `1.000000` | 1% | `0.010000` | `<= 0.01` で提案 |
-| CPA | 円単位（整数） | 要相談 | 設定テーブル参照 | `> threshold` で提案 |
-| 品質スコア | `1` 〜 `10`（整数） | — | ベースライン比較 | `<= baseline` で提案 |
+### 4.3 プロンプトテンプレート
 
-### 4.1 CTR
+- テンプレート名: `google_ads_ai_evaluation`
+- 表示名: `Google Ads AI分析`
+- カテゴリ: admin/prompts 画面に「Google Ads分析」カテゴリを追加
+- 内容: 運用者が admin/prompts で編集（初期テンプレートはシードデータ or マイグレーションで投入）
 
-- **前日** の CTR が `0.05`（5%）未満なら改善提案を出す
-- 対象: 前日に1回以上のインプレッションがあるキーワードのみ
+### 4.4 分析フロー
 
-### 4.2 品質スコア
+```
+手動ボタン押下 or Cron トリガー
+  ↓
+メールユーザーチェック（user.email IS NOT NULL）
+  ↓
+二重実行チェック（last_evaluated_on >= 今日（JST）→ スキップ。force 時は無視）
+  ↓
+Google Ads API からキーワード指標取得
+  ├─ getKeywordMetrics({ includeAllStatuses: true }) — 全ステータスのKW
+  └─ getNegativeKeywords() — 除外KW
+  ↓
+事業者情報取得（BriefService.getVariablesByUserId）
+  ↓
+プロンプト変数構築 → テンプレート取得 → 変数置換
+  ↓
+llmChat('anthropic', 'claude-sonnet-4-6', ...) で分析実行
+  ↓
+分析結果（Markdown）→ HTML 変換 → メール送信
+  ↓
+設定テーブル UPDATE
+  成功時: last_evaluated_on 更新 + consecutive_error_count リセット
+  エラー時: last_evaluated_on 更新しない + consecutive_error_count +1
+  ↓ (consecutive_error_count >= 3)
+cron 対象からスキップ（consecutive_error_count >= 3 の行は cron クエリで除外）
+```
 
-- **比較方式**: 評価開始時に記録した `baseline_quality_score` と前日取得値を比較する
-- 前日値が **ベースラインと同じ、または低下** している場合に改善提案を出す
-- 品質スコアが `10`（最高値）の場合は提案不要
-- 品質スコアが `null`（未算出）の場合は評価スキップ
-- 将来拡張: `quality_score_lookback_days` を導入し、過去N日間のトレンドで判定するモードを追加
+## 5. データ設計
 
-### 4.3 コンバージョン数
-
-- **評価開始日以降の累積** で判定する
-- `累積クリック数 >= 50` かつ `累積コンバージョン数 = 0` の場合に改善提案を出す
-- 累積クリック数が50未満の場合は「データ蓄積中」として評価スキップ
-
-### 4.4 CVR
-
-- **評価開始日以降の累積** で判定する
-- `累積クリック数 >= 50` かつ `累積CVR <= 0.01`（1%）の場合に改善提案を出す
-- 累積CVR = `累積コンバージョン数 / 累積クリック数`
-- 累積クリック数が50未満の場合は「データ蓄積中」として評価スキップ
-
-### 4.5 CPA
-
-- 前日の `CPA > 設定閾値` の場合に改善提案を出す
-- 初期リリースでは CPA 評価を **無効（閾値未設定）** とし、ユーザー設定画面の実装後に有効化する
-- 理由: 市場・業種によって適正CPAが大幅に異なるため、固定値では誤判定リスクが高い
-- 設定テーブルに `cpa_threshold_yen` カラムは予約しておく（`null` = 評価無効）
-
-### 4.6 総合判定
-
-- 1件以上の提案条件に該当: `needs_improvement`
-- すべて非該当（データ蓄積中を含む）: `healthy`
-- API取得失敗: `error`
-
-## 5. データ設計（論理）
-
-GSC評価機能と同様に **設定テーブル + 履歴テーブル** の2テーブル構成を採用する。
+旧設計のキーワード単位管理を廃止し、`customer_id` 単位に簡素化する。
 
 ### 5.1 評価設定テーブル（新規）
 
-- テーブル名: `google_ads_keyword_evaluation_settings`
-- 役割: キーワード単位の評価設定・累積値・閾値を保持する
-- 一意制約: `(user_id, customer_id, keyword_id)`
+- テーブル名: `google_ads_evaluation_settings`
+- 役割: アカウント単位の評価設定を保持する
+- 一意制約: `(user_id, customer_id)`
 
-#### 主な保持項目
+| カラム | 型 | デフォルト | 用途 |
+|--------|-----|----------|------|
+| `id` | uuid | `gen_random_uuid()` | 主キー |
+| `user_id` | uuid | — | 所有ユーザー（`public.users(id)` FK） |
+| `customer_id` | text | — | Google Ads カスタマーID |
+| `date_range_days` | integer | `30` | 分析対象期間（日数） |
+| `cron_enabled` | boolean | `false` | 定時 cron 実行の有効/無効 |
+| `last_evaluated_on` | date | `null` | 最終**成功**評価日（二重実行防止） |
+| `consecutive_error_count` | integer | `0` | 連続エラー回数（3回以上で cron スキップ） |
+| `status` | text | `'active'` | `'active'` / `'paused'` |
+| `created_at` | timestamptz | `now()` | 作成日時 |
+| `updated_at` | timestamptz | `now()` | 更新日時 |
 
-| カラム | 用途 |
-|--------|------|
-| `user_id` | 所有ユーザー |
-| `customer_id` | Google Ads カスタマーID |
-| `keyword_id` | キーワードID |
-| `keyword_text` | キーワードテキスト（表示用） |
-| `campaign_name` | キャンペーン名（表示用） |
-| `evaluation_start_date` | 評価開始日（累積の起算日） |
-| `cumulative_clicks` | 評価開始日以降の累積クリック数 |
-| `cumulative_conversions` | 評価開始日以降の累積コンバージョン数 |
-| `baseline_quality_score` | 評価開始時の品質スコア（比較基準） |
-| `ctr_threshold` | CTR閾値（デフォルト: 0.05） |
-| `cvr_threshold` | CVR閾値（デフォルト: 0.01） |
-| `cpa_threshold_yen` | CPA閾値（null = 評価無効） |
-| `click_threshold` | クリック数閾値（デフォルト: 50） |
-| `quality_score_lookback_days` | 品質スコア比較期間（デフォルト: 1、将来拡張用） |
-| `last_evaluated_on` | 最終評価日（二重実行防止に使用） |
-| `status` | `active` / `paused` |
+### 5.2 旧設計との差分（廃止項目）
 
-### 5.2 評価履歴テーブル（新規）
+- `keyword_id` 単位の管理 → `customer_id` 単位に集約
+- 閾値関連カラム全廃（`ctr_threshold`, `cvr_threshold`, `cpa_threshold_yen`, `click_threshold`）
+- `baseline_quality_score`, `cumulative_*` 廃止
+- `triggered_rules` (text[]), `suggestions` (jsonb) → 廃止（AI 分析結果はメール送信のみ、DB 保存は将来拡張）
+- `is_read` / 通知関連 廃止（メール送信のみ）
+- 既読管理の SECURITY DEFINER 関数 廃止
 
-- テーブル名: `google_ads_keyword_evaluation_history`
-- 役割: 評価実行ごとのスナップショットと判定結果を保持する
-- 主キー相当: `(user_id, customer_id, keyword_id, evaluated_at)`
+## 6. メール送信基盤
 
-#### 主な保持項目
+### 6.1 技術選定
 
-| カラム | 用途 |
-|--------|------|
-| `user_id` | 所有ユーザー |
-| `customer_id` | Google Ads カスタマーID |
-| `keyword_id` | キーワードID |
-| `keyword_text` | キーワードテキスト |
-| `evaluated_at` | 評価実行日時 |
-| `daily_clicks` | 前日クリック数 |
-| `daily_impressions` | 前日インプレッション数 |
-| `daily_cost_micros` | 前日費用（micros） |
-| `daily_ctr` | 前日CTR |
-| `quality_score` | 前日品質スコア |
-| `daily_conversions` | 前日コンバージョン数 |
-| `daily_cvr` | 前日CVR |
-| `daily_cpa_micros` | 前日CPA（micros） |
-| `cumulative_clicks` | 評価開始日以降の累積クリック数（スナップショット） |
-| `cumulative_conversions` | 評価開始日以降の累積コンバージョン数（スナップショット） |
-| `status` | `healthy` / `needs_improvement` / `error` |
-| `triggered_rules` | 該当した評価ルール名の配列（例: `["ctr","cvr"]`） |
-| `suggestions` | 提案内容（JSON） |
-| `is_read` | 未読 / 既読 |
+- **メール送信サービス**: Resend（`resend` パッケージ）
+- **API キー**: `RESEND_API_KEY`（`src/env.ts` に追加）
+- **送信元**: `noreply@mail.growmate.tokyo`
+- **Markdown → HTML 変換**: `marked` ライブラリ
 
-### 5.3 既読管理
+### 6.2 EmailService
 
-- Search Console と同様、`is_read` で未読/既読を管理
-- 既読化は履歴テーブル側で行う
+`src/server/services/emailService.ts` を新規作成。
 
-## 6. 通知設計（Search Console準拠）
-
-### 6.1 未読判定
-
-- `is_read = false` かつ `status = 'needs_improvement'`
-
-### 6.2 表示ルール
-
-- グローバルトーストで未読件数を表示
-- クリックで Google Ads 評価一覧へ遷移
-- GSC通知とは独立して表示する（色で視覚的に区別）
-
-### 6.3 GSC通知との共存
-
-- `GscNotificationHandler` と同パターンで `GoogleAdsNotificationHandler` を新設
-- 両者を `NotificationProvider` 等の共通ラッパーでまとめ、表示間隔を制御（500ms間隔）
-- カスタムイベント名: `google-ads-unread-updated`（GSCの `gsc-unread-updated` と独立）
-
-### 6.4 再通知ルール
-
-- セッション中は1回表示
-- 未読件数更新イベントで再評価・再表示
-
-### 6.5 既読処理
-
-- 個別既読
-- 一括既読
-- 未読件数が0になったら通知を非表示
-
-## 7. サーバー構成
-
-### 7.1 新設ファイル
-
-| ファイル | 役割 |
-|---------|------|
-| `src/server/services/googleAdsEvaluationService.ts` | 評価ロジック（判定・累積更新・履歴保存） |
-| `src/server/actions/googleAdsEvaluation.actions.ts` | 一覧取得 / 未読件数取得 / 既読更新 / 手動評価実行 |
-| `src/server/actions/googleAdsNotification.actions.ts` | 通知用アクション（未読件数・既読化） |
-
-### 7.2 既存ファイルへの追加
-
-| ファイル | 変更内容 |
-|---------|---------|
-| `src/types/googleAds.types.ts` | 評価設定・履歴・通知用の `interface` を追加 |
-| `src/components/GoogleAdsNotificationHandler.tsx` | 新設。通知トースト表示コンポーネント |
-
-### 7.3 評価フロー
-
-```
-ダッシュボード表示
-  ↓
-today_jst = (now() at time zone 'Asia/Tokyo')::date
-yesterday_jst = today_jst - 1
-  ↓
-設定テーブルの last_evaluated_on < today_jst かチェック
-  ↓ (未評価の場合)
-Google Ads API から yesterday_jst のキーワード指標を取得
-  ↓
-キーワードごとに（Service Role で実行）:
-  1. 前日指標を設定テーブルの累積値に加算
-  2. 各評価ルールを適用（CTR / 品質スコア / コンバージョン数 / CVR / CPA）
-  3. 判定結果を履歴テーブルに保存（Service Role INSERT）
-  4. 設定テーブルの last_evaluated_on を today_jst に更新
-  ↓
-通知イベント発火
+```typescript
+class EmailService {
+  /**
+   * Google Ads AI 分析結果をメールで送信
+   */
+  async sendGoogleAdsAnalysis(
+    to: string,
+    subject: string,
+    htmlContent: string
+  ): Promise<{ success: boolean; messageId?: string; error?: string }>
+}
 ```
 
-## 8. 実行タイミング
+- `SupabaseService` と同じクラスベースのパターンに準拠
+- Resend SDK を使用して送信
+- エラーハンドリング: 送信失敗時はサーバーログに出力
 
-### 8.1 初期リリース
+### 6.3 環境変数
 
-- ダッシュボード表示時に前日評価を実行する
-- **二重実行防止**: 設定テーブルの `last_evaluated_on >= (now() at time zone 'Asia/Tokyo')::date` であればスキップ
-- 手動実行ボタンも提供（`force: true` で `last_evaluated_on` チェックを無視）
+`src/env.ts` の `serverEnvSchema` に追加:
+```typescript
+RESEND_API_KEY: z.string().min(1),  // メール送信は本機能の必須要件のため required
+```
 
-### 8.2 将来拡張
+> **`CRON_SECRET` について**: 既存の GSC cron（`app/api/cron/gsc-evaluate/route.ts`）と同様に `process.env.CRON_SECRET` で直接参照する。`src/env.ts` の schema には含めない（既存パターン踏襲。README の環境変数一覧には記載済み）。
 
-- 定時バッチ（cron）へ切替可能な構成にする
-- GSCと同様に `evaluation_hour`（実行時間 JST）を設定テーブルに追加可能
+## 7. Google Ads API 拡張
 
-## 9. エラーハンドリング方針
+### 7.1 新規メソッド
 
-- API取得失敗時は評価結果を `error` として履歴保存し通知対象外とする
-- 累積値の加算は行わない（エラー時はスキップ）
-- UI上は「評価不可（再実行待ち）」を表示する
-- 原因特定はサーバーログで行う
-- 設定テーブルの `last_evaluated_on` はエラー時も更新する（無限リトライ防止）
+`src/server/services/googleAdsService.ts` に以下を追加。
 
-## 10. テスト観点
+#### `getKeywordMetrics()` — オプション拡張
 
-- 判定ロジック単体テスト（閾値境界: CTR 0.049999/0.050000、CVR 0.010000/0.010001）
-- 累積値の加算テスト（複数日にわたる評価の累積が正しいか）
-- 品質スコアのベースライン比較テスト（同値/低下/向上/null/10）
-- 二重実行防止テスト（同日に2回実行した場合にスキップされるか）
-- 通知表示テスト（未読件数の増減、GSC通知との共存）
-- 既読処理テスト（個別・一括）
-- 画面遷移テスト（ダッシュボード→評価一覧）
-- エラー時の累積値非加算テスト
-- JST日跨ぎテスト（UTC 15:00 = JST 0:00 前後で正しく日付判定されるか）
-- SECURITY DEFINER 関数テスト（is_read 以外のカラムが変更されないこと）
-- SECURITY DEFINER 関数テスト（role='owner' が RPC 実行した場合に例外が発生すること）
-- サービスロール経由INSERT テスト（スタッフがオーナー配下データを評価実行できること）
+既存メソッドに `includeAllStatuses?: boolean` オプションを追加。
 
-## 11. 将来拡張（本設計対象外）
+- `includeAllStatuses: false`（デフォルト・既存動作）: `campaign.status = 'ENABLED'` フィルタあり
+- `includeAllStatuses: true`（AI 分析用）: ステータスフィルタなし（ENABLED / PAUSED / REMOVED 全取得）
 
-- 閾値のユーザー設定化（CTR/CVR/CPA/クリック数閾値）
-- 品質スコア評価期間の14日比較モード追加（`quality_score_lookback_days` カラムで制御）
-- 評価対象期間のユーザー設定化
-- 業種別テンプレート閾値
-- 提案文のAI最適化（LLMによる改善提案生成）
-- 定時バッチ実行（cron）
-- 評価開始日のリセット機能（累積値クリア）
+既存の GAQL クエリの WHERE 句でステータス条件を動的に付与/除外するのみ。SELECT 句・戻り値型は変更なし。
 
-## 12. DB物理設計（DDL案）
+#### `getNegativeKeywords()`（新規）
 
-### 12.1 マイグレーション方針
+- `campaign_criterion` と `ad_group_criterion` から除外キーワードを取得
+- キャンペーンレベル・広告グループレベルの両方を取得
+
+```sql
+-- キャンペーンレベル除外KW
+SELECT
+  campaign_criterion.keyword.text,
+  campaign_criterion.keyword.match_type,
+  campaign.name
+FROM campaign_criterion
+WHERE campaign_criterion.type = 'KEYWORD'
+  AND campaign_criterion.negative = true
+
+-- 広告グループレベル除外KW
+SELECT
+  ad_group_criterion.keyword.text,
+  ad_group_criterion.keyword.match_type,
+  campaign.name,
+  ad_group.name
+FROM ad_group_criterion
+WHERE ad_group_criterion.negative = true
+  AND ad_group_criterion.type = 'KEYWORD'
+```
+
+### 7.2 新規型定義
+
+`src/types/googleAds.types.ts` に追加。
+
+```typescript
+/**
+ * Google Ads 除外キーワード
+ */
+export interface GoogleAdsNegativeKeyword {
+  /** キーワードテキスト */
+  keywordText: string;
+  /** マッチタイプ */
+  matchType: GoogleAdsMatchType;
+  /** 除外レベル */
+  level: 'campaign' | 'ad_group';
+  /** キャンペーン名 */
+  campaignName: string;
+  /** 広告グループ名（ad_group レベルの場合のみ） */
+  adGroupName?: string;
+}
+
+/**
+ * 除外キーワード取得の結果
+ */
+export interface GetNegativeKeywordsResult {
+  success: boolean;
+  data?: GoogleAdsNegativeKeyword[];
+  error?: string;
+}
+```
+
+## 8. AI 分析サービス
+
+### 8.1 ファイル構成
+
+`src/server/services/googleAdsAiAnalysisService.ts` を新規作成。
+
+### 8.2 クラス設計
+
+```typescript
+export class GoogleAdsAiAnalysisService {
+  private readonly supabaseService: SupabaseService;
+  private readonly googleAdsService: GoogleAdsService;
+  private readonly emailService: EmailService;
+
+  /**
+   * AI分析を実行しメール送信する
+   */
+  async analyzeAndSend(
+    userId: string,
+    customerId: string,
+    options?: {
+      dateRangeDays?: number;
+      force?: boolean;
+    }
+  ): Promise<AnalysisResult>
+}
+```
+
+### 8.3 処理ステップ
+
+1. **メールユーザーチェック**: `user.email IS NOT NULL` を確認。メールなしは拒否。
+2. **二重実行チェック**: `last_evaluated_on >= 今日（JST）` → スキップ（`force: true` 時は無視）。`consecutive_error_count >= 3` → cron 時はスキップ（手動実行は許可）。
+3. **Google Ads API 呼び出し**:
+   - `getKeywordMetrics({ includeAllStatuses: true })` — 全ステータスのキーワード指標
+   - `getNegativeKeywords()` — 除外キーワード一覧
+4. **事業者情報取得**: `BriefService.getVariablesByUserId(userId)` でペルソナ・強み等を取得
+5. **プロンプト変数構築**: `{{persona}}`, `{{strengths}}`, `{{keywordData}}`, `{{negativeKeywords}}`, `{{dateRange}}`, `{{customerName}}`
+6. **テンプレート取得**: `PromptService.getTemplateByName('google_ads_ai_evaluation')`
+7. **変数置換**: `PromptService.replaceVariables(template.content, variables)`
+8. **AI 分析実行**: `llmChat('anthropic', 'claude-sonnet-4-6', messages, modelConfig)`
+9. **メール送信**: `EmailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent)`
+10. **設定更新**:
+    - **成功時**: `last_evaluated_on` を当日（JST）に更新、`consecutive_error_count` を 0 にリセット
+    - **エラー時**: `last_evaluated_on` は**更新しない**、`consecutive_error_count` を +1。エラー詳細はサーバーログに出力。
+
+#### 二重実行について
+
+手動実行と cron が同時に走った場合、`last_evaluated_on` チェックはアプリケーションレベルのため両方が通過する可能性がある。その場合メールが2通届くが、コスト（数十秒・数円程度）は許容範囲と判断し、MVP ではロック機構を設けない。
+
+### 8.4 MODEL_CONFIGS エントリ
+
+`src/lib/constants.ts` に追加:
+
+```typescript
+google_ads_ai_evaluation: {
+  ...ANTHROPIC_BASE,
+  maxTokens: 8000,
+}
+```
+
+### 8.5 PROMPT_DESCRIPTIONS エントリ
+
+`src/lib/prompt-descriptions.ts` に追加:
+
+```typescript
+google_ads_ai_evaluation: {
+  description: 'Google Adsのキーワード指標をAIで分析し、改善提案をメール送信するプロンプト',
+  variables: 'ペルソナ、事業の強み、キーワード指標、除外キーワード、分析期間、アカウント名が自動で置換されます',
+}
+```
+
+### 8.6 VARIABLE_TYPE_DESCRIPTIONS エントリ
+
+`src/lib/prompt-descriptions.ts` に追加:
+
+```typescript
+keywordData: 'Google Ads 全キーワードの指標データ（構造化テキスト）',
+negativeKeywords: 'Google Ads 除外キーワード一覧',
+dateRange: '分析対象期間（例: 2026-02-22 〜 2026-03-24）',
+customerName: 'Google Ads アカウント名',
+```
+
+## 9. Server Actions & API エンドポイント
+
+### 9.1 Server Actions
+
+`src/server/actions/googleAdsEvaluation.actions.ts` を新規作成。
+
+```typescript
+'use server'
+
+/**
+ * AI分析を手動実行
+ * メールユーザー認証チェック → GoogleAdsAiAnalysisService.analyzeAndSend()
+ */
+export async function runGoogleAdsAiAnalysis(
+  customerId?: string
+): Promise<{ success: boolean; message?: string; error?: string }>
+
+/**
+ * 評価設定を取得
+ */
+export async function getEvaluationSettings(): Promise<EvaluationSettingsResponse>
+
+/**
+ * 評価設定を更新（cron 有効/無効、期間変更）
+ */
+export async function updateEvaluationSettings(
+  input: UpdateEvaluationSettingsInput
+): Promise<{ success: boolean; error?: string }>
+```
+
+**手動実行（`runGoogleAdsAiAnalysis`）の認証・対象ユーザー**
+
+- 認証は既存の `src/server/actions/googleAds.actions.ts` と同様、Cookie からの LIFF トークン取得後に `authMiddleware` で `public.users` のユーザーを解決する。
+- メール送信の送付先は **`public.users.email` を正とする**（解決後の `userDetails.email`）。空なら実行しない（LINE のみの利用者は通常ここで弾かれる）。
+- `supabase.auth.getUser().email` は送付先の根拠にしない（セッションとアプリユーザーの取り違えを防ぐ）。
+
+### 9.2 Cron エンドポイント
+
+`app/api/cron/google-ads-evaluate/route.ts` を新規作成。
+
+```typescript
+export async function GET(request: NextRequest) {
+  // 1. Bearer トークン認証（CRON_SECRET）
+  // 2. cron_enabled = true の全ユーザーを取得
+  // 3. ユーザーごとに GoogleAdsAiAnalysisService.analyzeAndSend() を実行
+  // 4. 二重実行防止（last_evaluated_on チェック）
+  // 5. 結果サマリーを返す
+}
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 300; // 5分
+```
+
+**バッチ処理の仕様**:
+- 対象: `google_ads_evaluation_settings` の `cron_enabled = true AND consecutive_error_count < 3`
+- 二重実行防止: `last_evaluated_on < (now() at time zone 'Asia/Tokyo')::date`
+- タイムアウト対策: 280秒のバッチ制限時間（`maxDuration` の余裕を持つ）
+- エラー分離: 1ユーザーの失敗が他ユーザーに影響しない
+
+## 10. DB 物理設計（DDL案）
+
+### 10.1 マイグレーション方針
 
 - 追加先: `supabase/migrations/`
-- ファイル名例: `20260209_create_google_ads_keyword_evaluation_tables.sql`
-- ロールバック案はマイグレーションSQL内にコメントで併記する
+- ファイル名: `YYYYMMDD_create_google_ads_ai_evaluation_tables.sql`
+- ロールバック案はマイグレーション SQL 内にコメントで併記する
 
-### 12.2 評価設定テーブル
+### 10.2 評価設定テーブル
 
 ```sql
--- 評価設定テーブル: キーワード単位の評価設定・累積値・閾値を管理
--- ロールバック: drop table if exists public.google_ads_keyword_evaluation_settings cascade;
-create table if not exists public.google_ads_keyword_evaluation_settings (
+-- 評価設定テーブル: アカウント単位のAI分析設定を管理
+-- ロールバック: drop table if exists public.google_ads_evaluation_settings cascade;
+create table if not exists public.google_ads_evaluation_settings (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
   customer_id text not null,
-  keyword_id text not null,
-  keyword_text text not null,
-  campaign_name text not null default '',
 
-  -- 評価基準日・累積値
-  evaluation_start_date date not null default (now() at time zone 'Asia/Tokyo')::date,
-  cumulative_clicks integer not null default 0,
-  cumulative_conversions numeric(12,4) not null default 0,
-  baseline_quality_score integer,            -- 評価開始時の品質スコア（null = 未取得）
-
-  -- 閾値（将来ユーザー設定化）
-  ctr_threshold numeric(8,6) not null default 0.050000,   -- 5%
-  cvr_threshold numeric(8,6) not null default 0.010000,   -- 1%
-  cpa_threshold_yen integer,                               -- null = CPA評価無効
-  click_threshold integer not null default 50,
-  quality_score_lookback_days integer not null default 1,  -- 将来拡張用（14日比較等）
+  -- 分析設定
+  date_range_days integer not null default 30,
+  cron_enabled boolean not null default false,
 
   -- 実行管理
-  last_evaluated_on date,                    -- 最終評価日（二重実行防止）
-  status text not null default 'active' check (status in ('active', 'paused')),
+  last_evaluated_on date,                    -- 最終成功評価日（二重実行防止、JST基準）
+  consecutive_error_count integer not null default 0,  -- 連続エラー回数
+  status text not null default 'active'
+    check (status in ('active', 'paused')),
 
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
 
-  -- 同一ユーザー・アカウント・キーワードの設定は1件のみ
-  unique(user_id, customer_id, keyword_id)
+  -- 同一ユーザー・アカウントの設定は1件のみ
+  unique(user_id, customer_id)
 );
 
--- 評価対象キーワードの一覧取得用
-create index if not exists google_ads_eval_settings_user_idx
-  on public.google_ads_keyword_evaluation_settings (user_id, customer_id, status);
+-- 評価対象ユーザーの検索用（cron バッチ実行時）
+create index if not exists idx_google_ads_eval_settings_cron
+  on public.google_ads_evaluation_settings (cron_enabled, consecutive_error_count, last_evaluated_on)
+  where cron_enabled = true and consecutive_error_count < 3;
 
--- 未評価キーワードの検索用（日次評価実行時）
-create index if not exists google_ads_eval_settings_due_idx
-  on public.google_ads_keyword_evaluation_settings (user_id, last_evaluated_on, status)
-  where status = 'active';
+-- ユーザー単位のアカウント設定一覧取得用
+create index if not exists idx_google_ads_eval_settings_user
+  on public.google_ads_evaluation_settings (user_id, status);
+
+alter table public.google_ads_evaluation_settings enable row level security;
 ```
 
-### 12.3 評価履歴テーブル
+### 10.3 RLS ポリシー
 
 ```sql
--- 評価履歴テーブル: 評価実行ごとのスナップショットと判定結果を保持
--- ロールバック: drop table if exists public.google_ads_keyword_evaluation_history cascade;
-create table if not exists public.google_ads_keyword_evaluation_history (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  customer_id text not null,
-  keyword_id text not null,
-  keyword_text text not null,
-  evaluated_at timestamptz not null default now(),
-
-  -- 前日指標（日次スナップショット）
-  daily_clicks integer not null default 0,
-  daily_impressions integer not null default 0,
-  daily_cost_micros bigint not null default 0,
-  daily_ctr numeric(8,6),                    -- 0.000000 〜 1.000000
-  quality_score integer,                     -- 1〜10、null = 未算出
-  daily_conversions numeric(12,4),
-  daily_cvr numeric(8,6),                    -- 0.000000 〜 1.000000
-  daily_cpa_micros bigint,
-
-  -- 累積スナップショット（評価開始日以降）
-  cumulative_clicks integer not null default 0,
-  cumulative_conversions numeric(12,4) not null default 0,
-
-  -- 判定結果
-  status text not null check (status in ('healthy', 'needs_improvement', 'error')),
-  triggered_rules text[] not null default '{}',  -- 該当ルール名: 'ctr','quality_score','conversions','cvr','cpa'
-  suggestions jsonb not null default '[]'::jsonb,
-
-  -- エラー情報（status = 'error' の場合）
-  error_code text,                           -- 'api_failed','no_metrics','system_error'
-  error_message text,
-
-  -- 既読管理
-  is_read boolean not null default false,
-
-  created_at timestamptz not null default now()
-);
-```
-
-### 12.4 インデックス設計
-
-```sql
--- 最新評価の取得（一覧表示用: キーワードごと最新1件）
-create index if not exists google_ads_eval_history_latest_idx
-  on public.google_ads_keyword_evaluation_history (
-    user_id, customer_id, keyword_id, evaluated_at desc
-  );
-
--- 未読提案件数の取得（通知用）
-create index if not exists google_ads_eval_history_unread_idx
-  on public.google_ads_keyword_evaluation_history (user_id, is_read, status)
-  where is_read = false and status = 'needs_improvement';
-
--- キーワード検索用（必要に応じて）
-create index if not exists google_ads_eval_history_keyword_text_idx
-  on public.google_ads_keyword_evaluation_history using gin (to_tsvector('simple', keyword_text));
-```
-
-### 12.5 重複防止ポリシー
-
-- 設定テーブルの `last_evaluated_on` で日次の二重実行を防止する
-- 評価サービスは `WHERE (last_evaluated_on IS NULL OR last_evaluated_on < (now() at time zone 'Asia/Tokyo')::date) AND status = 'active'` で対象を絞り込む
-- 手動実行（`force: true`）時のみ `last_evaluated_on` チェックをスキップする
-- 履歴テーブルは追記専用（同一日に複数回の履歴が入ることを許容する ← 手動実行時のみ発生）
-
-### 12.6 RLS方針
-
-#### 書き込み操作の実行主体
-
-評価の実行（設定テーブルへの INSERT/UPDATE、履歴テーブルへの INSERT）は **サービスロール**（`supabaseAdmin`）経由で行う。理由:
-
-- 評価サービスはサーバー側バッチ処理であり、`auth.uid()` が評価対象ユーザーと一致しないケースがある（スタッフがオーナー配下データを処理する場合等）
-- スタッフの `user_id = auth.uid()` ではオーナーの `user_id` に INSERT できない
-- GSC評価サービスと同様に、サービス層で権限チェック済みの上でサービスロールを使用する
-
-したがって、RLS の INSERT/UPDATE ポリシーは **参照系とユーザー直接操作（既読化）のみ** を定義する。
-
-#### 既読化: SECURITY DEFINER 関数
-
-RLS は行単位の制御であり、列単位の更新制限はできない。既読化操作は `is_read` 以外のカラムが改変されるリスクを排除するため、`SECURITY DEFINER` 関数経由で固定する。
-
-```sql
--- ============================================================
--- 既読化関数（SECURITY DEFINER）
--- ============================================================
-
--- 個別既読
-create or replace function public.mark_google_ads_evaluation_as_read(
-  p_history_id uuid
-) returns void
-language plpgsql security definer set search_path = public
-as $$
-declare
-  v_role text;
-begin
-  -- オーナー（role='owner'）はDB側で拒否する（閲覧専用ユーザーの書き込み防止）
-  select role into v_role from public.users where id = auth.uid();
-  if v_role = 'owner' then
-    raise exception 'owner role cannot mark evaluations as read';
-  end if;
-
-  update public.google_ads_keyword_evaluation_history
-  set is_read = true
-  where id = p_history_id
-    and user_id in (select get_accessible_user_ids(auth.uid()));
-end;
-$$;
-
--- 一括既読
-create or replace function public.mark_all_google_ads_evaluations_as_read()
-returns void
-language plpgsql security definer set search_path = public
-as $$
-declare
-  v_role text;
-begin
-  -- オーナー（role='owner'）はDB側で拒否する（閲覧専用ユーザーの書き込み防止）
-  select role into v_role from public.users where id = auth.uid();
-  if v_role = 'owner' then
-    raise exception 'owner role cannot mark evaluations as read';
-  end if;
-
-  update public.google_ads_keyword_evaluation_history
-  set is_read = true
-  where user_id in (select get_accessible_user_ids(auth.uid()))
-    and is_read = false
-    and status = 'needs_improvement';
-end;
-$$;
-
--- ============================================================
--- 関数実行権限の制御
--- ============================================================
--- PostgreSQL はデフォルトで PUBLIC に EXECUTE を付与するため、明示的に剥奪する
-revoke all on function public.mark_google_ads_evaluation_as_read(uuid) from public;
-revoke all on function public.mark_all_google_ads_evaluations_as_read() from public;
-
--- 認証済みユーザーのみ実行可能にする（関数内で owner ロール拒否済み）
-grant execute on function public.mark_google_ads_evaluation_as_read(uuid) to authenticated;
-grant execute on function public.mark_all_google_ads_evaluations_as_read() to authenticated;
-
 -- ============================================================
 -- RLS ポリシー
 -- ============================================================
 
--- 設定テーブル: 参照ポリシー
+-- 設定テーブル: 参照ポリシー（get_accessible_user_ids 経由）
 create policy "google_ads_eval_settings_select"
-  on public.google_ads_keyword_evaluation_settings for select
+  on public.google_ads_evaluation_settings for select
   using (user_id in (select get_accessible_user_ids(auth.uid())));
 
 -- 設定テーブル: INSERT/UPDATE はサービスロール経由のため RLS ポリシー不要
 -- （RLS は enable だが、supabaseAdmin は RLS をバイパスする）
-
--- 履歴テーブル: 参照ポリシー
-create policy "google_ads_eval_history_select"
-  on public.google_ads_keyword_evaluation_history for select
-  using (user_id in (select get_accessible_user_ids(auth.uid())));
-
--- 履歴テーブル: INSERT はサービスロール経由のため RLS ポリシー不要
-
--- 履歴テーブル: UPDATE は SECURITY DEFINER 関数経由のみ許可
--- ユーザー直接の UPDATE は RLS ポリシーを定義しないことで暗黙的に拒否する
-
--- 注意: オーナー（role='owner'）は get_accessible_user_ids 経由で参照可能だが、
---       既読化は SECURITY DEFINER 関数内で role='owner' を拒否済み（DB層で担保）
---       アプリケーション層でも hasOwnerRole チェックを行い二重防御とする
 ```
 
-#### サービスロール使用箇所の一覧
+### 10.4 サービスロール使用箇所
 
 | 操作 | 使用ロール | 備考 |
 |------|-----------|------|
-| 設定テーブル INSERT（評価登録） | Service Role | 評価サービスが実行 |
-| 設定テーブル UPDATE（累積値更新・last_evaluated_on更新） | Service Role | 評価サービスが実行 |
-| 履歴テーブル INSERT（評価結果保存） | Service Role | 評価サービスが実行 |
-| 履歴テーブル SELECT（一覧・通知） | User Role（RLS） | `get_accessible_user_ids` で絞り込み |
-| 設定テーブル SELECT（閾値表示等） | User Role（RLS） | `get_accessible_user_ids` で絞り込み |
-| 履歴テーブル UPDATE（既読化） | SECURITY DEFINER 関数 | `is_read` のみ更新可能に固定 |
+| 設定テーブル INSERT（評価設定登録） | Service Role | 分析サービスが実行 |
+| 設定テーブル UPDATE（`last_evaluated_on` 更新、設定変更） | Service Role | 分析サービスが実行 |
+| 設定テーブル SELECT（設定参照） | User Role（RLS） | `get_accessible_user_ids` で絞り込み |
 
-### 12.7 代表クエリ
+### 10.5 二重実行防止
+
+アプリケーションレベルで `last_evaluated_on >= 今日（JST）` をチェックする。DB ロック（`FOR UPDATE`）は使用しない。
+
+手動実行と cron が同時に走った場合、両方がチェックを通過しメールが2通届く可能性があるが、コスト（数十秒・数円程度）は許容範囲と判断する。
+
+- **手動実行**: `last_evaluated_on >= 今日` → スキップ（`force: true` 時は無視）
+- **Cron**: `last_evaluated_on >= 今日` または `consecutive_error_count >= 3` → スキップ
+
+### 10.6 代表クエリ
 
 ```sql
--- 未読件数（通知用）
-select count(*)
-from public.google_ads_keyword_evaluation_history h
-where h.user_id in (select get_accessible_user_ids(auth.uid()))
-  and h.is_read = false
-  and h.status = 'needs_improvement';
+-- 手動実行時の二重実行チェック + 設定取得
+SELECT id, date_range_days
+FROM public.google_ads_evaluation_settings
+WHERE user_id = :user_id
+  AND customer_id = :customer_id
+  AND (last_evaluated_on IS NULL
+       OR last_evaluated_on < (now() AT TIME ZONE 'Asia/Tokyo')::date);
 
--- 一覧（キーワードごと最新1件）
-select distinct on (h.customer_id, h.keyword_id)
-  h.id,
-  h.customer_id,
-  h.keyword_id,
-  h.keyword_text,
-  h.status,
-  h.triggered_rules,
-  h.suggestions,
-  h.cumulative_clicks,
-  h.cumulative_conversions,
-  h.daily_ctr,
-  h.quality_score,
-  h.is_read,
-  h.evaluated_at,
-  s.evaluation_start_date,
-  s.ctr_threshold,
-  s.cvr_threshold,
-  s.cpa_threshold_yen,
-  s.click_threshold
-from public.google_ads_keyword_evaluation_history h
-join public.google_ads_keyword_evaluation_settings s
-  on s.user_id = h.user_id
-  and s.customer_id = h.customer_id
-  and s.keyword_id = h.keyword_id
-where h.user_id in (select get_accessible_user_ids(auth.uid()))
-order by h.customer_id, h.keyword_id, h.evaluated_at desc;
+-- Cron 対象ユーザーの取得
+SELECT s.id, s.user_id, s.customer_id, s.date_range_days, u.email
+FROM public.google_ads_evaluation_settings s
+JOIN public.users u ON u.id = s.user_id
+WHERE s.cron_enabled = true
+  AND u.email IS NOT NULL
+  AND s.consecutive_error_count < 3
+  AND (s.last_evaluated_on IS NULL
+       OR s.last_evaluated_on < (now() AT TIME ZONE 'Asia/Tokyo')::date);
 
--- 未評価キーワードの取得（日次評価実行時）
-select *
-from public.google_ads_keyword_evaluation_settings
-where user_id = :target_user_id
-  and status = 'active'
-  and (last_evaluated_on is null or last_evaluated_on < (now() at time zone 'Asia/Tokyo')::date);
+-- 設定更新（成功時）
+UPDATE public.google_ads_evaluation_settings
+SET last_evaluated_on = (now() AT TIME ZONE 'Asia/Tokyo')::date,
+    consecutive_error_count = 0,
+    updated_at = timezone('utc', now())
+WHERE id = :settings_id;
+
+-- 設定更新（エラー時）
+UPDATE public.google_ads_evaluation_settings
+SET consecutive_error_count = consecutive_error_count + 1,
+    updated_at = timezone('utc', now())
+WHERE id = :settings_id;
 ```
 
-## 13. 実装順序（推奨）
+## 11. サーバー構成
 
-設計書承認後、以下の順序で段階的に実装する。
+### 11.1 新規ファイル
 
-| Phase | 内容 | 依存 |
-|-------|------|------|
-| 1 | マイグレーション（設定テーブル + 履歴テーブル + RLS） | なし |
-| 2 | 型定義の追加（`src/types/googleAds.types.ts`） | Phase 1 |
-| 3 | 評価サービス（`googleAdsEvaluationService.ts`） | Phase 2 |
-| 4 | Server Actions（評価実行 / 一覧 / 既読） | Phase 3 |
-| 5 | 評価一覧画面（`app/google-ads-evaluations/page.tsx`） | Phase 4 |
-| 6 | ダッシュボードからの導線追加 + 自動評価トリガー | Phase 5 |
-| 7 | 通知ハンドラー（`GoogleAdsNotificationHandler`） | Phase 4 |
+| ファイル | 役割 |
+|---------|------|
+| `src/server/services/emailService.ts` | メール送信サービス（Resend SDK） |
+| `src/server/services/googleAdsAiAnalysisService.ts` | AI 分析ロジック（コアサービス） |
+| `src/server/actions/googleAdsEvaluation.actions.ts` | 手動実行 / 設定取得・更新 Server Actions |
+| `app/api/cron/google-ads-evaluate/route.ts` | 定時バッチ Cron エンドポイント |
 
-## 14. ビジネス要望（原文ベース）
+### 11.2 既存ファイルへの変更
 
-> **注記**: 本節（14〜17節）は要望トレース用の補助セクションである。実装上の正式仕様は **2節（スコープ）・4節（評価ロジック）・11節（将来拡張）** を優先すること。
+| ファイル | 変更内容 |
+|---------|---------|
+| `package.json` | `resend` パッケージ追加 |
+| `src/env.ts` | `RESEND_API_KEY`（必須）追加 |
+| `src/server/services/googleAdsService.ts` | `getKeywordMetrics()` に `includeAllStatuses` オプション追加、`getNegativeKeywords()` 新規追加 |
+| `src/types/googleAds.types.ts` | `GoogleAdsNegativeKeyword`, `GetNegativeKeywordsResult` 追加 |
+| `src/lib/constants.ts` | `MODEL_CONFIGS['google_ads_ai_evaluation']` 追加 |
+| `src/lib/prompt-descriptions.ts` | `PROMPT_DESCRIPTIONS['google_ads_ai_evaluation']` + 変数説明追加 |
+| `app/google-ads-dashboard/_components/dashboard-content.tsx` | AI分析実行ボタン追加 |
+| `app/google-ads-dashboard/page.tsx` | メールユーザー判定追加 |
 
-本機能は、以下の要望を満たすことを目的とする。
+## 12. プロンプトテンプレート登録
 
-- クリック率（CTR）
-  - 前日（将来的にはユーザーに期間を設定させたいが、初期はデフォルトで前日基準）の CTR が 5% を下回る場合は改善提案を出す。
-- 平均クリック単価（CPC）
-  - 評価・提案には使用しない（総合確認指標として表示のみ）。
-- 品質スコア
-  - 過去14日（将来的にはユーザーに期間を設定させたいが、初期はデフォルトで前日基準）の品質スコアをチェックし、同じ、または低下の場合に改善提案を出す。
-  - 品質スコアが 10 の場合は最高評価のため提案不要。
-- コンバージョン数
-  - 評価開始から 50 クリックに到達してもコンバージョンが 0 の場合に改善提案を出す。
-- コンバージョン単価（CPA）
-  - 一定以上の場合に改善提案を出す（閾値は市場依存のため要相談）。
-- 検索インプレッションシェア
-  - 評価・提案には使用しない（総合確認指標として表示のみ）。
-- コンバージョン率（CVR）
-  - 評価開始から 50 クリックに到達し、CVR が 1% 以下の場合に改善提案を出す。
-  - 基準値は市場/ユーザー依存のため、将来的にユーザー設定可能にする。
+### 12.1 初期プロンプトテンプレート内容
 
-## 15. 初期リリースでの解釈（実装方針）
+以下は `prompt_templates.content` に登録する初期テンプレートである。
+admin/prompts 画面で運用者が自由に編集可能。`{{variableName}}` 形式の変数は `PromptService.replaceVariables()` で実行時に置換される。
 
-> **注記**: 本節は14節の要望に対する初期リリース時点の実装判断を記録する。正式な実装仕様は **4節（評価ロジック）** を参照すること。
+```
+あなたはGoogle広告運用の専門コンサルタントです。
+以下の事業者情報と広告データを分析し、具体的な改善提案をMarkdown形式で作成してください。
 
-- CTR: 前日値で判定（閾値 5%）。評価期間のユーザー設定化は将来拡張。
-- CPC: 表示のみ（評価対象外）。
-- 品質スコア: 初期はベースライン比較（前日取得値 vs 評価開始時記録値）で判定し、14日間トレンド比較は将来拡張で対応。
-- コンバージョン数: 評価開始日以降の累積で判定（50クリック以上かつCV=0）。
-- CPA: 初期は評価無効（`cpa_threshold_yen = null`）。ユーザー設定導入後に有効化。
-- 検索インプレッションシェア: 表示のみ（評価対象外）。
-- CVR: 評価開始日以降の累積で判定（50クリック以上かつCVR<=1%）。閾値のユーザー設定化は将来拡張。
+## 事業者情報
 
-## 16. 評価対象外指標（明示）
+### ターゲットペルソナ
+{{persona}}
 
-> **注記**: 正式な定義は **2節（スコープ）** を参照すること。
+### 事業の強み
+{{strengths}}
 
-以下は評価提案ロジックには使用しない。
+## 広告データ
 
-- 平均クリック単価（CPC）
-- 検索インプレッションシェア
+### アカウント情報
+- アカウント名: {{customerName}}
+- 分析期間: {{dateRange}}
 
-ただし、ダッシュボード上の参照指標としては保持・表示対象とする。
+### キーワード指標
+{{keywordData}}
 
-## 17. 将来拡張（要望起点）
+### 除外キーワード一覧
+{{negativeKeywords}}
 
-> **注記**: 本節はビジネス要望を起点とした将来拡張項目である。設計・技術起点の拡張項目は **11節（将来拡張）** を参照すること。
+## 分析指示
 
-要望との整合を保つため、以下を将来拡張として管理する。
+以下の観点で分析し、改善提案を作成してください。各セクションには具体的な数値根拠を含めてください。
 
-- 品質スコア判定の14日比較モード（`quality_score_lookback_days = 14`）。
-- CTR/CVR/CPA/クリック閾値のユーザー設定化。
-- CTR評価期間・品質スコア比較期間のユーザー設定化（前日/7日/14日/30日）。
-- 業種別テンプレートによる初期閾値の自動設定。
+### 1. パフォーマンス概況
+- 期間全体のクリック数・インプレッション数・費用の傾向
+- CTR・CVR・CPAの全体評価
+
+### 2. キーワード分析
+- **好調キーワード**: CTRやCVRが高く、費用対効果が良いキーワード（上位5件程度）
+- **要改善キーワード**: インプレッションはあるがCTRが低い、またはクリックはあるがCVが出ていないキーワード（上位5件程度）
+- **停止検討キーワード**: 費用に対して成果が乏しく、停止または入札調整を検討すべきキーワード
+- **品質スコア**: 品質スコアが低い（6以下）キーワードの一覧と改善の方向性
+
+### 3. 除外キーワード評価
+- 現在の除外キーワード設定の妥当性
+- 追加すべき除外キーワードの提案（キーワードデータから推定される不要な検索意図）
+
+### 4. マッチタイプ最適化
+- 部分一致・フレーズ一致・完全一致の配分バランス評価
+- マッチタイプ変更の提案
+
+### 5. 事業者コンテキストに基づく提案
+- ペルソナと現在のキーワード戦略の整合性
+- 事業の強みを活かした新規キーワード候補（3〜5件）
+- 競合差別化の観点からの広告文改善ポイント
+
+### 6. 予算・入札戦略
+- 検索インプレッションシェアに基づく予算充足度の評価
+- 予算配分の最適化提案（好調キャンペーンへの傾斜配分など）
+
+### 7. アクションプラン（優先度順）
+上記分析を踏まえ、**今すぐ実行すべきアクション**を優先度の高い順に3〜5件で箇条書きにしてください。
+各アクションには期待される改善効果の見込みも記載してください。
+```
+
+### 12.2 変数の構築仕様
+
+各変数の実行時の構築ルールを以下に定義する。
+
+#### `{{keywordData}}` の構造化テキスト形式
+
+```
+キーワード | マッチタイプ | ステータス | キャンペーン | 広告グループ | IMP | Click | CTR | CPC(円) | CV | CVR | CPA(円) | 費用(円) | 品質スコア | 検索IMP Share
+----------|------------|----------|------------|------------|-----|-------|-----|---------|-----|-----|---------|---------|----------|-------------
+渋谷 美容院 | EXACT | ENABLED | ブランドKW | 美容院系 | 1,200 | 85 | 7.08% | 120 | 3 | 3.53% | 3,400 | 10,200 | 8 | 65.2%
+整体 腰痛 | BROAD | ENABLED | 一般KW | 症状系 | 3,500 | 42 | 1.20% | 250 | 0 | 0.00% | - | 10,500 | 5 | 32.1%
+...
+```
+
+- `GoogleAdsKeywordMetric[]` をタブ区切りテキスト（TSV 風）に変換
+- CTR / CVR はパーセント表示（小数点2桁）
+- CPC / CPA / 費用は円表示（整数、カンマ区切り）
+- 品質スコアが `null` の場合は `-` 表示
+- キーワードはインプレッション数降順
+
+#### `{{negativeKeywords}}` の形式
+
+```
+除外キーワード | マッチタイプ | レベル | キャンペーン | 広告グループ
+------------|------------|-------|------------|------------
+無料 | BROAD | campaign | ブランドKW | -
+求人 | EXACT | ad_group | 一般KW | 症状系
+...
+```
+
+#### `{{persona}}` の形式
+
+`BriefService.getVariablesByUserId()` の `persona` フィールドをそのまま渡す。未設定の場合は `（ペルソナ未設定）` を代入。
+
+#### `{{strengths}}` の形式
+
+```
+サービス1: ○○○（強みの内容）
+サービス2: △△△（強みの内容）
+```
+
+`BriefInput.services[]` の各サービスの `strength` フィールドを改行区切りで結合。サービスが未登録の場合は `（事業の強み未設定）` を代入。
+
+#### `{{dateRange}}` の形式
+
+`YYYY-MM-DD 〜 YYYY-MM-DD`（例: `2026-02-22 〜 2026-03-24`）
+
+#### `{{customerName}}` の形式
+
+DB に保存されたアカウント表示名をそのまま渡す。未設定の場合はカスタマーIDを代入。
+
+### 12.3 期待される出力形式
+
+AI の出力は Markdown 形式とし、以下の構造を持つことを期待する（プロンプトで指示済み）:
+
+```markdown
+# Google Ads パフォーマンス分析レポート
+
+## 1. パフォーマンス概況
+（数値を含む全体評価）
+
+## 2. キーワード分析
+### 好調キーワード
+（テーブル or リスト形式）
+
+### 要改善キーワード
+（テーブル or リスト形式）
+...
+
+## 7. アクションプラン（優先度順）
+1. **【高】○○を実施** — 期待効果: CTR +X% 改善見込み
+2. **【中】△△を検討** — 期待効果: CPA ○○円削減見込み
+3. ...
+```
+
+この Markdown を `marked` ライブラリで HTML 変換し、メール本文として送信する。
+
+### 12.4 テンプレートメタデータ（SQL）
+
+```sql
+insert into public.prompt_templates (name, display_name, content, variables)
+values (
+  'google_ads_ai_evaluation',
+  'Google Ads AI分析',
+  E'（上記 12.1 のプロンプト本文をエスケープして挿入）',
+  '[
+    {"name": "persona", "description": "ターゲットペルソナ情報"},
+    {"name": "strengths", "description": "全サービスの強み（改行区切り）"},
+    {"name": "keywordData", "description": "全キーワード指標（構造化テキスト）"},
+    {"name": "negativeKeywords", "description": "除外キーワード一覧"},
+    {"name": "dateRange", "description": "分析期間"},
+    {"name": "customerName", "description": "Google Adsアカウント名"}
+  ]'::jsonb
+);
+```
+
+### 12.5 admin/prompts 画面での表示
+
+- カテゴリ「Google Ads分析」に分類
+- 変数のプレビュー・テスト送信機能は将来検討
+
+## 13. エラーハンドリング方針
+
+### 13.1 基本方針
+
+| 結果 | `last_evaluated_on` | `consecutive_error_count` | 次回 cron |
+|------|---------------------|--------------------------|-----------|
+| **成功** | **当日（JST）に更新** | **0にリセット** | 翌日 |
+| **エラー**（種別問わず） | **更新しない** | **+1** | 次回実行で自動リトライ |
+| **メール送信失敗**（分析は成功） | **当日に更新** | **0にリセット** | 翌日 |
+
+- エラー時に `last_evaluated_on` を更新しないことで、次回の cron（または手動実行）で自動リトライされる。
+- メール送信失敗は分析自体は成功しているため、成功扱いとする。メール送信失敗はサーバーログに記録（再送機能は将来拡張）。
+- メールユーザーでない場合は Server Action で即座に拒否（設定テーブルは更新しない）。
+
+### 13.2 連続エラーによる cron スキップ
+
+- `consecutive_error_count >= 3` の行は cron クエリの WHERE 句で除外される。
+- 手動実行は `consecutive_error_count` に関わらず常に実行可能（ユーザーが意図的に再試行）。
+- 手動実行が成功すれば `consecutive_error_count` が 0 にリセットされ、cron も再開される。
+
+### 13.3 Cron バッチのエラー分離
+
+- 1ユーザーの失敗が他ユーザーに影響しない（try-catch で分離）
+- 各ユーザーの処理結果をバッチサマリーに集計して返却
+
+## 14. 実装順序（推奨）
+
+Phase 1〜3 は並行実施可能。
+
+| # | Phase | 内容 | 依存 |
+|---|-------|------|------|
+| 1 | メール送信基盤 | `resend` インストール、`EmailService`、`env.ts` 更新 | なし |
+| 2 | DB マイグレーション | 設定テーブル + RLS | なし |
+| 3 | Google Ads API 拡張 | `getKeywordMetrics()` オプション追加, `getNegativeKeywords()`, 型追加 | なし |
+| 4 | AI 分析サービス | `GoogleAdsAiAnalysisService`, `MODEL_CONFIGS`, `PROMPT_DESCRIPTIONS` | Phase 1, 2, 3 |
+| 5 | Server Actions & Cron | Server Actions, Cron エンドポイント | Phase 4 |
+| 6 | ダッシュボード UI | ボタン追加、メールユーザー判定 | Phase 5 |
+| 7 | プロンプト登録 | `prompt_templates` INSERT | Phase 4 |
+| 8 | 設計書更新 | 本ドキュメントの最終確認 | Phase 7 |
+
+## 15. テスト観点
+
+- **メール送信**: Resend テスト送信で到達確認
+- **Google Ads API**: 全キーワード（除外含む）が正しく取得されることを確認
+- **AI 分析**: プロンプト変数が正しく置換され、Claude から有意な分析が返ることを確認
+- **手動実行**: ダッシュボードのボタン → 分析実行 → メール受信の E2E フロー
+- **Cron 実行**: `/api/cron/google-ads-evaluate` エンドポイントの動作確認
+- **メールユーザー制限**: LINE ユーザーではボタン非表示・API 拒否を確認
+- **二重実行防止**: 同日に2回実行した場合にスキップされることを確認（`force: true` では実行される）
+- **エラー分離**: バッチ実行中に1ユーザーがエラーでも他ユーザーの処理が継続されること
+- **JST 日跨ぎ**: UTC 15:00 = JST 0:00 前後で正しく日付判定されるか
+- `npm run lint` / `npm run build` の通過確認
+
+## 16. 将来拡張（本設計対象外）
+
+- **評価履歴テーブル** (`google_ads_evaluation_history`): 分析結果・メール送信状態・エラー詳細を DB に保存し、アプリ内で閲覧可能にする
+- メール再送機能（履歴テーブルの `email_status = 'failed'` のレコードを手動再送）
+- 分析期間のプリセット（7日 / 14日 / 30日 / 90日）
+- 複数アカウントの一括分析
+- 分析結果の PDF エクスポート
+- プロンプトテンプレートのバージョン管理・A/B テスト
+- Slack / LINE への分析結果通知連携
