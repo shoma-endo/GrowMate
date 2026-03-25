@@ -90,6 +90,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       isSavingHeading = false,
       hasStep7Content,
       onGenerateTitleMeta,
+      isGenerateTitleMetaLoading = false,
       onNextStepChange,
       flowStatus = 'idle',
       onLoadBlogArticle,
