@@ -72,6 +72,7 @@ export interface ChatSessionActions {
     }
   ) => Promise<boolean>;
   setError: (message: string | null) => void;
+  addSystemMessage: (content: string) => void;
   loadSessions: () => Promise<void>;
   loadSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;

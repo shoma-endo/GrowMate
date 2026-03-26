@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
-import { Bot } from 'lucide-react';
+import { Bot, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import BlogPreviewTile from './common/BlogPreviewTile';
 import { BLOG_STEP_LABELS, STEP7_ID, STEP7_LEAD_MODEL, toBlogModel } from '@/lib/constants';
@@ -468,6 +468,23 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     message: ChatMessage,
     showTimestamp: boolean
   ): React.ReactNode => {
+    if (message.role === 'system') {
+      return (
+        <React.Fragment key={message.id}>
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 m-3" role="alert" aria-live="polite">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+              </div>
+              <div className="ml-3 flex-1 break-words">
+                <p className="text-sm text-red-700 break-words">{message.content}</p>
+              </div>
+            </div>
+          </div>
+        </React.Fragment>
+      );
+    }
+
     const blogPreviewMeta = isBlogMessage(message) ? derivePreviewMeta(message) : null;
     const openHandler =
       blogPreviewMeta && onOpenCanvas ? () => onOpenCanvas(message) : null;

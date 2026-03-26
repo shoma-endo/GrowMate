@@ -42,3 +42,10 @@ export const createAssistantMessage = (content: string, model?: string | undefin
   timestamp: new Date(),
   model: model || undefined,
 });
+
+export const createSystemMessage = (content: string): ChatMessage => ({
+  id: `system_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+  role: 'system',
+  content,
+  timestamp: new Date(),
+});
