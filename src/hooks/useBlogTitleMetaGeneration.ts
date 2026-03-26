@@ -31,7 +31,7 @@ export function useBlogTitleMetaGeneration({
       if (!annotation?.persona) missingFields.push('ペルソナ');
 
       if (missingFields.length > 0) {
-        chatSession.actions.setError(
+        chatSession.actions.addSystemMessage(
           `タイトル・説明文の生成に必要な情報（${missingFields.join('・')}）が未入力です。ブログ保存を開いて情報を入力・保存してください。`
         );
         return;

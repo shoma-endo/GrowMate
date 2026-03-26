@@ -7,6 +7,7 @@ import {
   initialChatState,
   createUserMessage,
   createAssistantMessage,
+  createSystemMessage,
 } from '@/domain/models/chatModels';
 import { ChatError } from '@/domain/errors/ChatError';
 import type { ChatSessionActions, ChatSessionHook } from '@/types/hooks';
@@ -524,9 +525,17 @@ export const useChatSession = (
     }));
   }, []);
 
+  const addSystemMessage = useCallback((content: string) => {
+    setState(prev => ({
+      ...prev,
+      messages: [...prev.messages, createSystemMessage(content)],
+    }));
+  }, []);
+
   const actions: ChatSessionActions = {
     sendMessage,
     setError,
+    addSystemMessage,
     loadSessions,
     loadSession,
     deleteSession,
