@@ -1,6 +1,18 @@
 import { useRef, useState } from 'react';
 import { ChatSessionHook } from '@/hooks/useChatSession';
+import { ANALYTICS_COLUMNS } from '@/lib/constants';
+import { AnnotationFieldKey } from '@/types/annotation';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
+
+const REQUIRED_ANNOTATION_FIELDS: AnnotationFieldKey[] = ['main_kw', 'kw', 'persona'];
+
+const REQUIRED_FIELD_LABELS = REQUIRED_ANNOTATION_FIELDS.reduce<Record<AnnotationFieldKey, string>>(
+  (acc, key) => {
+    acc[key] = ANALYTICS_COLUMNS.find(column => column.id === key)?.label ?? key;
+    return acc;
+  },
+  {} as Record<AnnotationFieldKey, string>
+);
 
 export function useBlogTitleMetaGeneration({
   chatSession,
@@ -26,9 +38,9 @@ export function useBlogTitleMetaGeneration({
       const annotation = annotationResult.data;
 
       const missingFields: string[] = [];
-      if (!annotation?.main_kw) missingFields.push('メインキーワード');
-      if (!annotation?.kw) missingFields.push('サブキーワード');
-      if (!annotation?.persona) missingFields.push('ペルソナ');
+      if (!annotation?.main_kw) missingFields.push(REQUIRED_FIELD_LABELS.main_kw);
+      if (!annotation?.kw) missingFields.push(REQUIRED_FIELD_LABELS.kw);
+      if (!annotation?.persona) missingFields.push(REQUIRED_FIELD_LABELS.persona);
 
       if (missingFields.length > 0) {
         chatSession.actions.addSystemMessage(
