@@ -245,7 +245,7 @@ export class PromptService extends SupabaseService {
    * content_annotations からテンプレ置換用の変数レコードを作成
    * テンプレ側は {{contentPersona}} / {{contentNeeds}} / {{contentGoal}}
    * {{contentMainKw}} / {{contentKw}} / {{contentImpressions}}
-   * {{contentCanonicalUrl}} / {{contentWpContentText}} を使用可能
+   * {{contentWpContentText}} を使用可能
    */
   static buildContentVariables(annotation: AnnotationRecord | null): Record<string, string> {
     if (!annotation) return {};
@@ -255,7 +255,6 @@ export class PromptService extends SupabaseService {
       contentGoal: annotation.goal || '',
       contentMainKw: annotation.main_kw || '',
       contentKw: annotation.kw || '',
-      contentCanonicalUrl: annotation.canonical_url || '',
       contentImpressions: annotation.impressions || '',
       contentPrep: annotation.prep || '',
       contentBasicStructure: annotation.basic_structure || '',

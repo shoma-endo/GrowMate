@@ -29,7 +29,7 @@ export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
   blog_title_meta_generation: {
     description: 'チャットセッションに紐づく記事情報から、SEO向けのタイトル案と説明文案を生成します',
     variables:
-      'contentPersona、strength、contentCanonicalUrl、contentWpContentText、contentMainKw、contentKw を使用します',
+      'contentPersona、strength、contentWpContentText、contentMainKw、contentKw を使用します',
   },
   gsc_insight_ctr_boost: {
     description: 'WordPressの記事スニペット（タイトル/ディスクリプション）を改善し、CTR向上案を出します',
@@ -94,7 +94,6 @@ export const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   contentOpeningProposal: '書き出し案',
   contentMainKw: '主軸キーワード（content_annotations.main_kw）',
   contentKw: '参考キーワード（content_annotations.kw）',
-  contentCanonicalUrl: '記事URL（content_annotations.canonical_url）',
   contentWpContentText: 'WordPress本文テキスト（content_annotations.wp_content_text）',
   // GSC インサイト用
   adsHeadline: 'WordPressタイトル（content_annotations.wp_post_title など）',
