@@ -19,7 +19,11 @@ export function useBlogTitleMetaGeneration({
     setIsGeneratingTitleMeta(true);
     try {
       const annotationResult = await getContentAnnotationBySession(sessionId);
-      const annotation = annotationResult.success ? annotationResult.data : null;
+      if (!annotationResult.success) {
+        chatSession.actions.setError(annotationResult.error);
+        return;
+      }
+      const annotation = annotationResult.data;
 
       const missingFields: string[] = [];
       if (!annotation?.main_kw) missingFields.push('メインキーワード');
