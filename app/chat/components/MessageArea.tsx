@@ -471,10 +471,14 @@ const MessageArea: React.FC<MessageAreaProps> = ({
     if (message.role === 'system') {
       return (
         <React.Fragment key={message.id}>
-          <div className="mb-4 last:mb-2 flex justify-center">
-            <div className="flex items-start gap-2 max-w-[85%] bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700">
-              <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
-              <span>{message.content}</span>
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 m-3" role="alert" aria-live="polite">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+              </div>
+              <div className="ml-3 flex-1 break-words">
+                <p className="text-sm text-red-700 break-words">{message.content}</p>
+              </div>
             </div>
           </div>
         </React.Fragment>
