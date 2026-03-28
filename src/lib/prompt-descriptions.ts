@@ -123,3 +123,15 @@ export const IMPLICIT_BLOG_CONTENT_VARS = [
   'contentBasicStructure',
   'contentOpeningProposal',
 ] as const;
+
+/**
+ * blog_title_meta_generation テンプレートに暗黙的に注入される変数名一覧
+ * （content_annotations 由来 + ビジネス情報由来）
+ */
+export const IMPLICIT_BLOG_TITLE_META_VARS = [
+  'contentPersona',
+  'contentMainKw',
+  'contentKw',
+  'contentWpContentText',
+  'strength',
+] as const;

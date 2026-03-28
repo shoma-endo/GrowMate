@@ -19,6 +19,7 @@ import {
   getPromptDescription,
   getVariableDescription,
   IMPLICIT_BLOG_CONTENT_VARS,
+  IMPLICIT_BLOG_TITLE_META_VARS,
 } from '@/lib/prompt-descriptions';
 import { Save, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -37,6 +38,7 @@ function buildDisplayVariables(template: PromptTemplate) {
   );
 
   const isBlogCreation = template.name.startsWith('blog_creation_');
+  const isBlogTitleMeta = template.name === 'blog_title_meta_generation';
   const extras = isBlogCreation
     ? [
         ...IMPLICIT_BLOG_CONTENT_VARS.map(name => ({
@@ -45,7 +47,12 @@ function buildDisplayVariables(template: PromptTemplate) {
         })),
         { name: 'canonicalLinkPairs', description: getVariableDescription('canonicalLinkPairs') },
       ]
-    : [];
+    : isBlogTitleMeta
+      ? IMPLICIT_BLOG_TITLE_META_VARS.map(name => ({
+          name,
+          description: getVariableDescription(name),
+        }))
+      : [];
 
   const seen = new Set<string>();
   return [...base, ...extras].filter(v => {
