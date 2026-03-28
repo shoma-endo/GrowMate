@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorAlert } from '@/components/ErrorAlert';
@@ -15,12 +15,46 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { PromptTemplate } from '@/types/prompt';
-import { getPromptDescription, getVariableDescription } from '@/lib/prompt-descriptions';
+import {
+  getPromptDescription,
+  getVariableDescription,
+  IMPLICIT_BLOG_CONTENT_VARS,
+} from '@/lib/prompt-descriptions';
 import { Save, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchPrompts, savePrompt } from '@/server/actions/adminPrompts.actions';
 
 type PromptCategory = 'chat' | 'gsc';
+
+const HIDDEN_VARIABLES: Record<string, string[]> = {
+  blog_title_meta_generation: ['contentCanonicalUrl'],
+};
+
+function buildDisplayVariables(template: PromptTemplate) {
+  const hidden = HIDDEN_VARIABLES[template.name] ?? [];
+  const base = (template.variables || []).filter(
+    v => v.name !== 'canonicalUrls' && v.name !== 'wpPostTitle' && !hidden.includes(v.name)
+  );
+
+  const isBlogCreation = template.name.startsWith('blog_creation_');
+  const extras = isBlogCreation
+    ? [
+        ...IMPLICIT_BLOG_CONTENT_VARS.map(name => ({
+          name,
+          description: getVariableDescription(name),
+        })),
+        { name: 'canonicalLinkPairs', description: getVariableDescription('canonicalLinkPairs') },
+      ]
+    : [];
+
+  const seen = new Set<string>();
+  return [...base, ...extras].filter(v => {
+    if (seen.has(v.name)) return false;
+    seen.add(v.name);
+    return true;
+  });
+}
+
 
 const PROMPT_CATEGORIES: Array<{
   id: PromptCategory;
@@ -48,7 +82,7 @@ export default function PromptsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadTemplates = useCallback(async () => {
+  const loadTemplates = async () => {
     try {
       setIsLoading(true);
       const res = await fetchPrompts();
@@ -64,7 +98,7 @@ export default function PromptsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  };
 
   const handleTemplateSelect = (templateId: string) => {
     const template = templates.find(t => t.id === templateId);
@@ -118,25 +152,21 @@ export default function PromptsPage() {
     }
   };
 
-  useEffect(() => {
-    loadTemplates();
-  }, [loadTemplates]);
+  useEffect(() => { loadTemplates(); }, []);
 
-  const categoryCounts = useMemo(() => {
-    return PROMPT_CATEGORIES.reduce<Record<PromptCategory, number>>(
-      (acc, category) => {
-        acc[category.id] = templates.filter(category.filter).length;
-        return acc;
-      },
-      {} as Record<PromptCategory, number>
-    );
-  }, [templates]);
+  const categoryCounts = PROMPT_CATEGORIES.reduce<Record<PromptCategory, number>>(
+    (acc, category) => {
+      acc[category.id] = templates.filter(category.filter).length;
+      return acc;
+    },
+    {} as Record<PromptCategory, number>
+  );
 
-  const filteredTemplates = useMemo(() => {
+  const filteredTemplates = (() => {
     const category = PROMPT_CATEGORIES.find(c => c.id === activeCategory);
     if (!category) return templates;
     return templates.filter(category.filter);
-  }, [activeCategory, templates]);
+  })();
 
   useEffect(() => {
     if (selectedTemplate && !filteredTemplates.some(t => t.id === selectedTemplate.id)) {
@@ -189,10 +219,9 @@ export default function PromptsPage() {
 
   const promptDescription = selectedTemplate ? getPromptDescription(selectedTemplate.name) : null;
   const variablesInfoText = (() => {
-    const sanitizedVariables = (selectedTemplate?.variables || []).filter(
-      v => v.name !== 'canonicalUrls' && v.name !== 'wpPostTitle'
-    );
-    const names = new Set(sanitizedVariables.map(v => v.name));
+    if (!selectedTemplate) return null;
+    const vars = buildDisplayVariables(selectedTemplate);
+    const names = new Set(vars.map(v => v.name));
     const extra: string[] = [];
     if (names.has('canonicalLinkPairs')) {
       extra.push(getVariableDescription('canonicalLinkPairs'));
@@ -347,57 +376,21 @@ export default function PromptsPage() {
 
             {/* 変数一覧 */}
             {(() => {
-              const displayedVariables = (selectedTemplate.variables || []).filter(
-                v => v.name !== 'canonicalUrls' && v.name !== 'wpPostTitle'
-              );
-              const implicitContentVars = [
-                { name: 'contentNeeds', description: getVariableDescription('contentNeeds') },
-                { name: 'contentPersona', description: getVariableDescription('contentPersona') },
-                { name: 'contentGoal', description: getVariableDescription('contentGoal') },
-                { name: 'contentPrep', description: getVariableDescription('contentPrep') },
-                {
-                  name: 'contentBasicStructure',
-                  description: getVariableDescription('contentBasicStructure'),
-                },
-                {
-                  name: 'contentOpeningProposal',
-                  description: getVariableDescription('contentOpeningProposal'),
-                },
-              ];
-              const implicitCanonical = [
-                {
-                  name: 'canonicalLinkPairs',
-                  description: getVariableDescription('canonicalLinkPairs'),
-                },
-              ];
-              const showImplicit = selectedTemplate.name.startsWith('blog_creation_');
-              const combinedVars = showImplicit
-                ? [...displayedVariables, ...implicitContentVars, ...implicitCanonical]
-                : displayedVariables;
-              const seen = new Set<string>();
-              const allVars = combinedVars.filter(variable => {
-                if (seen.has(variable.name)) {
-                  return false;
-                }
-                seen.add(variable.name);
-                return true;
-              });
-
-              return allVars.length > 0 ? (
+              const vars = buildDisplayVariables(selectedTemplate);
+              if (vars.length === 0) return null;
+              return (
                 <div className="mt-6">
                   <h3 className="text-lg font-medium text-gray-900 mb-3">使用可能な変数</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {allVars.map((variable, index) => (
+                    {vars.map((variable, index) => (
                       <div key={index} className="p-3 bg-gray-50 rounded-md">
-                        <div className="font-mono text-sm text-blue-600">
-                          {`{{${variable.name}}}`}
-                        </div>
+                        <div className="font-mono text-sm text-blue-600">{`{{${variable.name}}}`}</div>
                         <div className="text-sm text-gray-600 mt-1">{variable.description}</div>
                       </div>
                     ))}
                   </div>
                 </div>
-              ) : null;
+              );
             })()}
           </CardContent>
         </Card>
