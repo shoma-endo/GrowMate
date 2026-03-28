@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { ChevronRight, Loader2, CheckCheck, MessageSquare, AlertCircle } from 'lucide-react';
+import { ChevronRight, Loader2, CheckCheck, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Dialog,
   DialogContent,
@@ -12,20 +11,16 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
-import { GSC_EVALUATION_OUTCOME_CONFIG } from '@/types/gsc';
 import { markSuggestionAsRead } from '@/server/actions/gscNotification.actions';
 import type { GscEvaluationHistoryItem } from '../types';
 import { formatDateTime } from '@/lib/date-utils';
-import { MODEL_CONFIGS } from '@/lib/constants';
 import { useLiffContext } from '@/components/LiffProvider';
-
-// 改善提案セクションの共通スタイル
-const SUGGESTION_STYLE = {
-  badgeClass: 'bg-blue-100 text-blue-800',
-  sectionClass: 'bg-white border-gray-200',
-};
+import { EvaluationResultAlert } from './evaluation-history/EvaluationResultAlert';
+import {
+  getEvaluationHistoryState,
+} from './evaluation-history/evaluation-history-view';
+import { SuggestionSections } from './evaluation-history/SuggestionSections';
 
 interface EvaluationHistoryTabProps {
   history: GscEvaluationHistoryItem[] | undefined;
@@ -102,28 +97,22 @@ export function EvaluationHistoryTab({
         <CardContent className="pt-6">
           <div className="space-y-3">
             {history.map(item => {
-              const isNoMetrics = item.outcomeType === 'error' && item.errorCode === 'no_metrics';
-              const isError = item.outcomeType === 'error' && !isNoMetrics;
-              const showUnreadBadge =
-                !isError &&
-                !isNoMetrics &&
-                !item.is_read &&
-                item.outcome !== null &&
-                item.outcome !== 'improved';
+              const viewState = getEvaluationHistoryState(item);
 
               return (
-                <div
+                <button
                   key={item.id}
+                  type="button"
                   className={`group p-4 rounded-lg border flex items-center justify-between shadow-sm cursor-pointer hover:shadow-lg hover:scale-[1.02] transition-all duration-200 ${
-                    isError
+                    viewState.isError
                       ? 'bg-red-50 border-red-200 hover:bg-red-100'
                       : 'bg-white hover:bg-gray-50'
-                  }`}
+                  } w-full text-left`}
                   onClick={() => setSelectedHistory(item)}
                 >
                   <div className="flex items-center gap-3">
-                    {isError && <AlertCircle className="w-5 h-5 text-red-500" />}
-                    {showUnreadBadge && (
+                    {viewState.isError && <AlertCircle className="w-5 h-5 text-red-500" />}
+                    {viewState.showUnreadBadge && (
                       <span className="flex h-2 w-2 rounded-full bg-amber-500" title="未読" />
                     )}
                     <div>
@@ -132,32 +121,14 @@ export function EvaluationHistoryTab({
                       </p>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-gray-500">
-                          {isError ? 'エラー:' : '判定:'}
+                          {viewState.isError ? 'エラー:' : '判定:'}
                         </span>
-                        {isError ? (
-                          <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset bg-red-50 text-red-700 ring-red-600/20">
-                            評価失敗
-                          </span>
-                        ) : isNoMetrics ? (
-                          <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset bg-gray-50 text-gray-700 ring-gray-500/10">
-                            データ未取得
-                          </span>
-                        ) : item.outcome && GSC_EVALUATION_OUTCOME_CONFIG[item.outcome] ? (
-                          <span
-                            className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ring-gray-500/10 ${GSC_EVALUATION_OUTCOME_CONFIG[item.outcome].className}`}
-                          >
-                            {GSC_EVALUATION_OUTCOME_CONFIG[item.outcome].label}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset bg-gray-50 text-gray-700 ring-gray-500/10">
-                            データなし
-                          </span>
-                        )}
+                        <span className={viewState.statusClassName}>{viewState.statusLabel}</span>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    {!isError && !isNoMetrics && (
+                    {!viewState.isError && !viewState.isNoMetrics && (
                       <div className="text-right">
                         <div className="flex items-baseline gap-2 justify-end">
                           <span className="text-xs text-gray-500">
@@ -175,13 +146,13 @@ export function EvaluationHistoryTab({
                     )}
                     <ChevronRight
                       className={`w-5 h-5 transition-all duration-200 ${
-                        isError
+                        viewState.isError
                           ? 'text-red-400 group-hover:text-red-600'
                           : 'text-gray-400 group-hover:text-blue-600'
                       } group-hover:translate-x-1`}
                     />
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -201,59 +172,20 @@ export function EvaluationHistoryTab({
             <div className="space-y-4">
               {selectedHistory.outcomeType === 'error' &&
               selectedHistory.errorCode !== 'no_metrics' ? (
-                // エラー時の表示
-                <Alert variant="destructive">
-                  <div className="flex gap-3">
-                    <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1 space-y-3">
-                      <AlertTitle className="text-red-900 font-semibold text-base">
-                        評価実行エラー
-                      </AlertTitle>
-                      <AlertDescription className="text-red-800 space-y-2">
-                        <p className="text-sm">
-                          <span className="font-medium">エラー種別: </span>
-                          {selectedHistory.errorCode === 'import_failed'
-                            ? 'GSCデータ取得失敗'
-                            : 'メトリクスデータなし'}
-                        </p>
-                        <p className="text-sm">
-                          <span className="font-medium">詳細: </span>
-                          {selectedHistory.errorMessage}
-                        </p>
-                        <p className="text-sm">
-                          <span className="font-medium">発生日時: </span>
-                          {formatDateTime(selectedHistory.created_at)}
-                        </p>
-                      </AlertDescription>
-                    </div>
-                  </div>
-                </Alert>
+                <EvaluationResultAlert
+                  variant="error"
+                  errorCode={selectedHistory.errorCode}
+                  errorMessage={selectedHistory.errorMessage}
+                  createdAt={selectedHistory.created_at}
+                />
               ) : selectedHistory.outcomeType === 'error' &&
                 selectedHistory.errorCode === 'no_metrics' ? (
-                <Alert>
-                  <div className="flex gap-3">
-                    <AlertCircle className="h-5 w-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1 space-y-3">
-                      <AlertTitle className="text-gray-900 font-semibold text-base">
-                        データ未取得
-                      </AlertTitle>
-                      <AlertDescription className="text-gray-700 space-y-2">
-                        <p className="text-sm">
-                          <span className="font-medium">理由: </span>
-                          Google Search Console に該当ページの指標がまだありません。
-                        </p>
-                        <p className="text-sm">
-                          <span className="font-medium">詳細: </span>
-                          {selectedHistory.errorMessage}
-                        </p>
-                        <p className="text-sm">
-                          <span className="font-medium">発生日時: </span>
-                          {formatDateTime(selectedHistory.created_at)}
-                        </p>
-                      </AlertDescription>
-                    </div>
-                  </div>
-                </Alert>
+                <EvaluationResultAlert
+                  variant="no_metrics"
+                  errorCode={selectedHistory.errorCode}
+                  errorMessage={selectedHistory.errorMessage}
+                  createdAt={selectedHistory.created_at}
+                />
               ) : (
                 // 成功時の表示（既存）
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
@@ -265,18 +197,9 @@ export function EvaluationHistoryTab({
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">判定</p>
-                    {selectedHistory.outcome &&
-                    GSC_EVALUATION_OUTCOME_CONFIG[selectedHistory.outcome] ? (
-                      <span
-                        className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ring-gray-500/10 ${GSC_EVALUATION_OUTCOME_CONFIG[selectedHistory.outcome].className}`}
-                      >
-                        {GSC_EVALUATION_OUTCOME_CONFIG[selectedHistory.outcome].label}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset bg-gray-50 text-gray-700 ring-gray-500/10">
-                        データなし
-                      </span>
-                    )}
+                    <span className={getEvaluationHistoryState(selectedHistory).statusClassName}>
+                      {getEvaluationHistoryState(selectedHistory).statusLabel}
+                    </span>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">前回順位</p>
@@ -297,77 +220,7 @@ export function EvaluationHistoryTab({
                 <div>
                   <p className="text-sm font-semibold mb-2">改善提案</p>
                   {selectedHistory.suggestion_summary ? (
-                    <div className="space-y-4">
-                      {(() => {
-                        // セクション分割
-                        const sections = selectedHistory.suggestion_summary.split('\n\n---\n\n');
-
-                        // 各セクションを処理
-                        const processedSections = sections
-                          .map(section => {
-                            // 見出しを抽出
-                            const headingMatch = section.match(/^#\s+(.+)$/m);
-                            const heading = headingMatch?.[1]?.trim() ?? null;
-
-                            // 見出しから templateName を特定
-                            let templateName: string | null = null;
-                            if (heading) {
-                              for (const [name, config] of Object.entries(MODEL_CONFIGS)) {
-                                if (config.label === heading) {
-                                  templateName = name;
-                                  break;
-                                }
-                              }
-                            }
-
-                            // 見出しを除いたコンテンツ
-                            const content = heading
-                              ? section.replace(/^#\s+.+$/m, '').trim()
-                              : section.trim();
-
-                            return { templateName, heading, content };
-                          })
-                          .filter(s => s.templateName !== null && s.content.length > 0);
-
-                        // 順序を保証（CTR改善 → 導入文 → 本文 → ペルソナ再構築）
-                        const order = [
-                          'gsc_insight_ctr_boost',
-                          'gsc_insight_intro_refresh',
-                          'gsc_insight_body_rewrite',
-                          'gsc_insight_persona_rebuild',
-                        ];
-                        processedSections.sort((a, b) => {
-                          const aIndex = order.indexOf(a.templateName!);
-                          const bIndex = order.indexOf(b.templateName!);
-                          return aIndex - bIndex;
-                        });
-
-                        // レンダリング
-                        return processedSections.map((section, index) => {
-                          const config = MODEL_CONFIGS[section.templateName!];
-                          if (!config) return null;
-
-                          return (
-                            <div
-                              key={index}
-                              className={`p-4 rounded-lg border ${SUGGESTION_STYLE.sectionClass}`}
-                            >
-                              <div className="mb-3 flex items-center gap-2">
-                                <MessageSquare className="w-5 h-5 text-blue-600" />
-                                <span
-                                  className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-semibold ${SUGGESTION_STYLE.badgeClass}`}
-                                >
-                                  {config.label}
-                                </span>
-                              </div>
-                              <div className="prose prose-slate max-w-none prose-headings:text-slate-900 prose-headings:font-bold prose-h1:text-lg prose-h1:normal-case prose-h2:text-base prose-h2:mt-4 prose-h2:mb-3 prose-p:text-slate-700 prose-p:leading-relaxed prose-ul:my-2 prose-li:my-1">
-                                <ReactMarkdown>{section.content}</ReactMarkdown>
-                              </div>
-                            </div>
-                          );
-                        });
-                      })()}
-                    </div>
+                    <SuggestionSections summary={selectedHistory.suggestion_summary} />
                   ) : (
                     <p className="text-sm text-gray-500 italic">提案なし</p>
                   )}
@@ -377,10 +230,8 @@ export function EvaluationHistoryTab({
           )}
           <DialogFooter>
             {selectedHistory &&
-              !selectedHistory.is_read &&
-              selectedHistory.outcomeType !== 'error' &&
-              selectedHistory.outcome !== null &&
-              selectedHistory.outcome !== 'improved' && (
+              getEvaluationHistoryState(selectedHistory).canMarkAsRead &&
+              !selectedHistory.is_read && (
                 <Button
                   onClick={() => handleMarkAsRead(selectedHistory.id)}
                   disabled={isPending || isReadOnly}
