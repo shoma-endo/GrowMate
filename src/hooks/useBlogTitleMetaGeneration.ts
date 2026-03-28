@@ -51,7 +51,8 @@ export function useBlogTitleMetaGeneration({
 
       await chatSession.actions.sendMessage(
         'タイトルと説明文を生成してください。',
-        'blog_title_meta_generation'
+        'blog_title_meta_generation',
+        { skipHistory: true }
       );
     } catch (error) {
       console.error('Failed to generate title/meta:', error);

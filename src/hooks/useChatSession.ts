@@ -328,6 +328,8 @@ export const useChatSession = (
         systemPrompt?: string;
         serviceId?: string;
         step7FullBodyGeneration?: boolean;
+        /** true のとき過去のチャット履歴を送信しない */
+        skipHistory?: boolean;
       }
     ) => {
       setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
@@ -339,12 +341,14 @@ export const useChatSession = (
           model,
           accessToken,
           currentSessionId: state.currentSessionId,
-          recentMessages: createRequestMessages(state.messages, {
-            limit:
-              options?.step7FullBodyGeneration && model === 'blog_creation_step7'
-                ? STEP7_RECENT_MESSAGE_LIMIT
-                : MAX_MESSAGES,
-          }),
+          recentMessages: options?.skipHistory
+            ? []
+            : createRequestMessages(state.messages, {
+                limit:
+                  options?.step7FullBodyGeneration && model === 'blog_creation_step7'
+                    ? STEP7_RECENT_MESSAGE_LIMIT
+                    : MAX_MESSAGES,
+              }),
         };
 
         if (options?.systemPrompt) {
