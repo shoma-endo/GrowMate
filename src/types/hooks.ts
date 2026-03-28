@@ -69,9 +69,12 @@ export interface ChatSessionActions {
       systemPrompt?: string;
       serviceId?: string;
       step7FullBodyGeneration?: boolean;
+      /** true のとき過去のチャット履歴を送信しない */
+      skipHistory?: boolean;
     }
   ) => Promise<boolean>;
   setError: (message: string | null) => void;
+  addSystemMessage: (content: string) => void;
   loadSessions: () => Promise<void>;
   loadSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
