@@ -5,17 +5,6 @@ const DEFAULT_INTERVAL_DAYS = 30;
 const DEFAULT_QUERY_ROW_LIMIT = 1000;
 const DEFAULT_QUERY_MAX_PAGES = 10;
 
-/**
- * 将来のユーザー別設定対応を見越して、呼び出し側で統一的に使う設定オブジェクト。
- */
-export function getGscEvaluationConfig() {
-  return {
-    intervalDays: DEFAULT_INTERVAL_DAYS,
-  } as const;
-}
-
-export const GSC_EVALUATION_DEFAULT_INTERVAL = DEFAULT_INTERVAL_DAYS;
-
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
