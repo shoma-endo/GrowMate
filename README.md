@@ -561,8 +561,12 @@ npm install
 
 本番環境と開発環境でプロジェクトを共有しています。管理者から Project URL・anon key・service_role key を取得し `.env.local` に設定してください。
 
-- **マイグレーションの適用は不要**（`npx supabase db push` は実行しないこと）
-- 本番データと同じDBを使用するため、テストデータは自分のユーザーIDに紐付けて作成し、他のユーザーデータを誤って変更・削除しないよう注意
+#### マイグレーション運用（このリポジトリの前提）
+
+- **ローカル開発者は、共有 Supabase プロジェクト（本番と同一のリモート）に対して `npx supabase db push` を実行しないこと。** CLI がリモートへスキーマを流し込むと、全員の参照する DB に直接影響するためです。
+- スキーマ変更が必要な場合は `supabase/migrations/` に SQL を追加し PR に含める。**リモートへの適用は管理者のみ**が手順に従って行う（SQL Editor、または管理者承認済みの手順でのみ `db push` 等）。
+- 初回セットアップで「自分用に DB を流す」必要はない（上記のため、開発者が個別に `db push` する前提ではない）。
+- 本番データと同じ DB を使用するため、テストデータは自分のユーザー ID に紐付けて作成し、他のユーザーデータを誤って変更・削除しないよう注意すること
 - 直近のマイグレーション概要:
   - スタッフ招待ユーザーのチャット/注釈の所有者移行
   - `get_accessible_user_ids` 追加と `search_chat_sessions` / `get_sessions_with_messages` 更新
@@ -763,13 +767,13 @@ GitHub Secrets に `GCP_PROJECT_ID`・`GCS_BUCKET_NAME`・`GCP_SERVICE_ACCOUNT_K
 - Vercel を想定（Edge Runtime と Node.js Runtime をルートごとに切り分け）
 - デプロイ前チェック: `npm run lint` → `npm run build`
 - 環境変数は Vercel Project Settings へ反映し、本番は Stripe 本番キー・WordPress 本番サイトに切り替え
-- Supabase マイグレーションは `npx supabase db push` で同期、ロールバック手順（コメント）を常に更新
+- **Supabase スキーマ**: Vercel のデプロイだけでは DB は更新されない。変更は `supabase/migrations/` にコミットし、マイグレーション内にロールバック案をコメントで残す。**本番（共有プロジェクト）への適用タイミングと手順は「ローカル環境のセットアップ → 2. Supabase」のマイグレーション運用に従う。**
 
 ## 🤝 コントリビューション
 
 1. フィーチャーブランチを作成
 2. 変更を実装し、`npm run lint` の結果を確認
-3. 必要に応じて Supabase マイグレーションを追加し、ロールバック手順を明記
+3. 必要に応じて `supabase/migrations/` にマイグレーションを追加し、ロールバック手順を明記する。**共有プロジェクトへの適用は管理者に依頼し、自分で `npx supabase db push` をリモートに対して実行しないこと**（「2. Supabase」を参照）
 4. 変更内容を簡潔にまとめた PR を作成（ユーザー影響・環境変数・スクリーンショットを添付）
 
 ## 📄 ライセンス
