@@ -217,15 +217,6 @@ export function addDaysISO(isoDate: string, days: number): string {
 }
 
 /**
- * OAuth の expires_in（秒）を ISO 形式の日時文字列に変換する
- * @param expiresIn - 有効期限（秒）
- * @returns ISO 8601 形式の日時文字列
- */
-export function expiresInToISOString(expiresIn: number): string {
-  return new Date(Date.now() + expiresIn * 1000).toISOString();
-}
-
-/**
  * GSCの取得レンジを算出（GSCは2日前まで）
  * @param days - 取得する日数
  * @returns { startIso, endIso } - YYYY-MM-DD 形式の開始日と終了日

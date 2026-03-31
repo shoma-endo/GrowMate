@@ -16,7 +16,7 @@ export interface SendMessageResponse {
 
 export interface ChatMessage {
   readonly id: string;
-  readonly role: 'user' | 'assistant';
+  readonly role: 'user' | 'assistant' | 'system';
   readonly content: string;
   readonly timestamp: Date;
   readonly model?: string | undefined;

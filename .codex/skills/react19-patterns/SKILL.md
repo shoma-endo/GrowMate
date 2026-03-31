@@ -1,6 +1,6 @@
 ---
 name: react19-patterns
-description: React 19 patterns and React Compiler behavior with Context shorthand syntax and use() hook. Use when working with Context, useContext, use() hook, Provider components, optimization patterns like useMemo, useCallback, memo, memoization, or when the user mentions React 19, React Compiler, Context.Provider, or manual optimization.
+description: React 19 patterns and React Compiler behavior with Context shorthand syntax, use() hook, Async React transitions, Suspense boundary strategy, and component design. Use when working with Context, useContext, use() hook, Provider components, optimization patterns like useMemo, useCallback, memo, memoization, startTransition, useTransition, Suspense boundaries, or when the user mentions React 19, React Compiler, Context.Provider, manual optimization, or Async React.
 ---
 
 # React 19 Patterns
@@ -189,6 +189,44 @@ By wrapping all children in Suspense boundaries:
 5. **No memo()**: React Compiler automatically optimizes component re-renders
 6. **Trust the Compiler**: Let React Compiler handle optimization instead of manual patterns
 7. **ViewTransition + Suspense**: When using ViewTransition with Suspense, ensure all children are within Suspense boundaries to prevent hydration errors
+8. **Transition for Non-Blocking Updates**: Prefer `startTransition` for state updates that trigger Suspense or heavy re-renders. **Exception**: controlled text inputs (`<input value={state}>`) must NOT be wrapped in transition — it defers the update and causes typing lag
+9. **Embed Transition in Components**: Build `startTransition` into reusable components (e.g., Button with `action` prop) so callers don't need to think about transitions. **Caveat**: only synchronously scheduled `setState` inside `startTransition` is covered — after `await`, wrap again with `startTransition`
+10. **Suspense Boundaries are Architecture**: Place Suspense boundaries strategically — they define loading UX and transition behavior for the entire app
+
+## Async React: Action Prop Pattern
+
+Reusable components should embed `startTransition` internally and expose an `action` prop instead of `onClick`. This ensures synchronously scheduled state updates are transitions. Note: if the action contains `await`, state updates after the await boundary require an additional `startTransition` wrapper.
+
+**✅ Correct (transition built into component):**
+
+```tsx
+const MyButton: FC<{ action: (e: MouseEvent) => void; children: ReactNode }> = ({
+  action,
+  children,
+}) => {
+  const [isPending, startTransition] = useTransition();
+
+  return (
+    <button
+      disabled={isPending}
+      onClick={(e) => startTransition(() => action(e))}
+    >
+      {children}
+    </button>
+  );
+};
+
+// Caller doesn't need to think about transitions
+<MyButton action={() => setPage(2)}>Next</MyButton>
+```
+
+**❌ Incorrect (caller must remember to wrap in transition):**
+
+```tsx
+<Button onClick={() => startTransition(() => setPage(2))}>Next</Button>
+```
+
+> For detailed patterns including `isPending` UX and Suspense boundary strategy, see [async-react-patterns.md](async-react-patterns.md).
 
 ## When Manual Optimization Might Be Needed
 
@@ -198,4 +236,8 @@ In rare cases, you might still need manual optimization:
 - Performance profiling shows a specific issue that React Compiler doesn't catch
 
 **Always profile first** before adding manual optimizations. The React Compiler is very effective.
+
+## Related Files
+
+- [async-react-patterns.md](async-react-patterns.md) — Async React design patterns: transition wrapping, component design with `action` props, `isPending` UX, Suspense boundary strategy
 

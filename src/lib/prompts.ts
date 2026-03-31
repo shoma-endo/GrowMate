@@ -862,6 +862,57 @@ async function generateBlogCreationPromptByStep(
   }
 }
 
+async function generateTitleMetaPrompt(
+  liffAccessToken: string,
+  serviceId: string | undefined,
+  sessionId?: string
+): Promise<string> {
+  try {
+    const [template, auth, businessInfo] = await Promise.all([
+      PromptService.getTemplateByName('blog_title_meta_generation'),
+      authMiddleware(liffAccessToken),
+      getCachedBrief(liffAccessToken),
+    ]);
+
+    const userId = auth.error ? undefined : auth.userId;
+    const contentAnnotation = userId
+      ? sessionId
+        ? await PromptService.getContentAnnotationBySession(userId, sessionId)
+        : await PromptService.getLatestContentAnnotationByUserId(userId)
+      : null;
+    const contentVars = PromptService.buildContentVariables(contentAnnotation);
+
+    if (template?.content) {
+      const businessMergedPrompt = replaceTemplateVariables(template.content, businessInfo, serviceId);
+      const mergedPrompt = PromptService.replaceVariables(businessMergedPrompt, contentVars);
+      const unresolvedPlaceholders = (mergedPrompt.match(/{{(\w+)}}/g) || []).map(token =>
+        token.replace(/[{}]/g, '')
+      );
+
+      if (unresolvedPlaceholders.length > 0) {
+        console.warn('[TitleMetaPrompt] 未解決のDBプロンプト変数を検出 - 空文字で置換', {
+          unresolvedPlaceholders,
+        });
+        if (process.env.NODE_ENV === 'development') {
+          return mergedPrompt.replace(/{{\w+}}/g, match => `[未解決: ${match}]`);
+        }
+        return mergedPrompt.replace(/{{\w+}}/g, '');
+      }
+
+      return mergedPrompt;
+    }
+
+    console.warn(
+      '[TitleMetaPrompt] Prompt template not found. Using SYSTEM_PROMPT as fallback',
+      { sessionId }
+    );
+    return SYSTEM_PROMPT;
+  } catch (error) {
+    console.error('タイトル・説明文生成プロンプト取得エラー:', error);
+    return SYSTEM_PROMPT;
+  }
+}
+
 /**
  * Canvas などからブログ作成ステップの DB テンプレートを直接参照するための公開関数。
  * Step7 見出し単位生成でも本文生成でも、常に Step7 テンプレートを返す。
@@ -967,6 +1018,8 @@ export async function getSystemPrompt(
         return await generateAdCopyFinishingPrompt(liffAccessToken, serviceId);
       case 'lp_draft_creation':
         return await generateLpDraftPrompt(liffAccessToken, serviceId);
+      case 'blog_title_meta_generation':
+        return await generateTitleMetaPrompt(liffAccessToken, serviceId, sessionId);
       default:
         return STATIC_PROMPTS[model] ?? SYSTEM_PROMPT;
     }

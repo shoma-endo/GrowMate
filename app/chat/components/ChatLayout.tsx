@@ -48,6 +48,7 @@ import { resolveHeadingCanvasViewMode } from '@/lib/canvas-mode';
 import { useCanvasVersions } from '@/hooks/useCanvasVersions';
 import { useWordpressSync } from '@/hooks/useWordpressSync';
 import { useSessionTitle } from '@/hooks/useSessionTitle';
+import { useBlogTitleMetaGeneration } from '@/hooks/useBlogTitleMetaGeneration';
 import { toast } from 'sonner';
 
 /** Step7 完成形タイル: コンテンツからタイトルと抜粋を抽出 */
@@ -233,15 +234,16 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     draftTitle,
     titleError,
     isSavingTitle,
-    isGeneratingTitleMeta,
     handleTitleEditStart,
     handleTitleEditChange,
     handleTitleEditCancel,
     handleTitleEditConfirm,
-    handleGenerateTitleMeta,
   } = useSessionTitle({
     chatSession,
-    getAccessToken,
+  });
+
+  const { isGeneratingTitleMeta, handleGenerateTitleMeta } = useBlogTitleMetaGeneration({
+    chatSession,
   });
 
   const {

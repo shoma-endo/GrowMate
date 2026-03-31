@@ -34,11 +34,6 @@ export function isActualOwner(
   return role === 'owner' && !ownerUserId;
 }
 
-/** @deprecated hasOwnerRole を使用してください */
-export function isOwner(role: UserRole | null): boolean {
-  return role === 'owner';
-}
-
 export function canInviteEmployee(role: UserRole | null): boolean {
   return role === 'paid' || role === 'admin';
 }
