@@ -33,7 +33,8 @@ export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
   },
   gsc_insight_ctr_boost: {
     description: 'WordPressの記事スニペット（タイトル/ディスクリプション）を改善し、CTR向上案を出します',
-    variables: 'WordPressタイトル（ads_headline相当）、WordPress説明文・抜粋（ads_description相当）を使用します',
+    variables:
+      'WordPressタイトル（ads_headline相当）、WordPress説明文・抜粋（ads_description相当）、contentMainKw、contentKw、contentWpContentText を使用します',
   },
   gsc_insight_intro_refresh: {
     description: '記事の書き出し（opening_proposal）を改善し、検索意図と読了率を高める案を出します',
@@ -134,4 +135,15 @@ export const IMPLICIT_BLOG_TITLE_META_VARS = [
   'contentKw',
   'contentWpContentText',
   'strength',
+] as const;
+
+/**
+ * gsc_insight_ctr_boost テンプレートに暗黙的に注入される変数名一覧
+ */
+export const IMPLICIT_GSC_CTR_BOOST_VARS = [
+  'adsHeadline',
+  'adsDescription',
+  'contentMainKw',
+  'contentKw',
+  'contentWpContentText',
 ] as const;

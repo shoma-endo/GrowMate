@@ -20,6 +20,7 @@ import {
   getVariableDescription,
   IMPLICIT_BLOG_CONTENT_VARS,
   IMPLICIT_BLOG_TITLE_META_VARS,
+  IMPLICIT_GSC_CTR_BOOST_VARS,
 } from '@/lib/prompt-descriptions';
 import { Save, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -37,22 +38,29 @@ function buildDisplayVariables(template: PromptTemplate) {
     v => v.name !== 'canonicalUrls' && v.name !== 'wpPostTitle' && !hidden.includes(v.name)
   );
 
-  const isBlogCreation = template.name.startsWith('blog_creation_');
-  const isBlogTitleMeta = template.name === 'blog_title_meta_generation';
-  const extras = isBlogCreation
-    ? [
-        ...IMPLICIT_BLOG_CONTENT_VARS.map(name => ({
-          name,
-          description: getVariableDescription(name),
-        })),
-        { name: 'canonicalLinkPairs', description: getVariableDescription('canonicalLinkPairs') },
-      ]
-    : isBlogTitleMeta
-      ? IMPLICIT_BLOG_TITLE_META_VARS.map(name => ({
-          name,
-          description: getVariableDescription(name),
-        }))
-      : [];
+  const mapVars = (vars: readonly string[]) =>
+    vars.map(name => ({ name, description: getVariableDescription(name) }));
+
+  const getExtras = () => {
+    if (template.name.startsWith('blog_creation_')) {
+      return [
+        ...mapVars(IMPLICIT_BLOG_CONTENT_VARS),
+        ...mapVars(['canonicalLinkPairs']),
+      ];
+    }
+
+    if (template.name === 'blog_title_meta_generation') {
+      return mapVars(IMPLICIT_BLOG_TITLE_META_VARS);
+    }
+
+    if (template.name === 'gsc_insight_ctr_boost') {
+      return mapVars(IMPLICIT_GSC_CTR_BOOST_VARS);
+    }
+
+    return [];
+  };
+
+  const extras = getExtras();
 
   const seen = new Set<string>();
   return [...base, ...extras].filter(v => {

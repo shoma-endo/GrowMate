@@ -191,9 +191,6 @@ export const STEP7_ID: BlogStepId = BLOG_STEP_IDS[BLOG_STEP_IDS.length - 1] as B
 /** Step7 本文作成のモデル名（blog_creation_step7）。複数箇所での比較に再利用 */
 export const STEP7_BLOG_MODEL = toBlogModel(STEP7_ID);
 
-/** Step4（PREPチェック）のステップID。BLOG_STEP_IDS から導出 */
-export const STEP4_ID: BlogStepId = BLOG_STEP_IDS[3] as BlogStepId;
-
 /** Step5（構成案）のステップID。step5→6 の AI 取得時プレースホルダー判定等で使用。BLOG_STEP_IDS から導出 */
 export const STEP5_ID: BlogStepId = BLOG_STEP_IDS[4] as BlogStepId;
 

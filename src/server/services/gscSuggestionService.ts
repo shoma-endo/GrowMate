@@ -77,6 +77,9 @@ export class GscSuggestionService {
               // テンプレートの変数名は広告用だが、実体はWordPressのタイトル/説明を渡す
               adsHeadline: wpTitle || '',
               adsDescription: wpDescription || '',
+              contentMainKw: annotation.main_kw || '',
+              contentKw: annotation.kw || '',
+              contentWpContentText: wpPost?.contentText || annotation.wp_content_text || '',
             },
           }),
         });
@@ -234,7 +237,7 @@ export class GscSuggestionService {
       .getClient()
       .from('content_annotations')
       .select(
-        'id, wp_post_id, wp_post_title, opening_proposal, wp_content_text, wp_excerpt, persona, needs'
+        'id, wp_post_id, wp_post_title, opening_proposal, wp_content_text, wp_excerpt, persona, needs, main_kw, kw'
       )
       .eq('user_id', userId)
       .eq('id', annotationId)
@@ -252,6 +255,8 @@ export class GscSuggestionService {
       wp_excerpt: string | null;
       persona: string | null;
       needs: string | null;
+      main_kw: string | null;
+      kw: string | null;
     } | null;
   }
 
