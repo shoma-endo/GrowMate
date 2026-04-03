@@ -200,6 +200,7 @@ export class GscEvaluationService {
     bulkImportFailed: boolean = false
   ): Promise<
     | { status: 'success'; outcome: GscEvaluationOutcome }
+    | { status: 'baseline_initialized' }
     | { status: 'skipped_import_failed' }
     | { status: 'skipped_no_metrics' }
   > {
