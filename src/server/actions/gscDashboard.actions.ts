@@ -940,6 +940,7 @@ export async function runEvaluationNow(contentAnnotationId: string) {
         processed: summary.processed,
         improved: summary.improved,
         advanced: summary.advanced,
+        baselineInitialized: summary.baselineInitialized,
         skippedNoMetrics: summary.skippedNoMetrics,
         skippedImportFailed: summary.skippedImportFailed,
       },

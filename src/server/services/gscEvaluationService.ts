@@ -32,6 +32,7 @@ export class GscEvaluationService {
       processed: 0,
       improved: 0,
       advanced: 0,
+      baselineInitialized: 0,
       skippedNoMetrics: 0,
       skippedImportFailed: 0,
       skippedSystemError: 0,
@@ -137,6 +138,9 @@ export class GscEvaluationService {
           summary.skippedNoMetrics += 1;
         } else if (evalResult.status === 'skipped_import_failed') {
           summary.skippedImportFailed += 1;
+        } else if (evalResult.status === 'baseline_initialized') {
+          summary.processed += 1;
+          summary.baselineInitialized += 1;
         } else if (evalResult.status === 'success') {
           summary.processed += 1;
           if (evalResult.outcome === 'improved') {
@@ -321,7 +325,7 @@ export class GscEvaluationService {
         throw new Error(updateError.message || '評価レコード更新に失敗しました');
       }
 
-      return { status: 'success', outcome: 'no_change' };
+      return { status: 'baseline_initialized' as const };
     }
 
     const outcome = this.judgeOutcome(lastSeen, currentPos);
@@ -439,6 +443,7 @@ export class GscEvaluationService {
       totalEvaluations: 0,
       totalImproved: 0,
       totalAdvanced: 0,
+      totalBaselineInitialized: 0,
       totalSkipped: 0,
       totalImportFailed: 0,
       totalSystemError: 0,
@@ -545,6 +550,7 @@ export class GscEvaluationService {
         summary.totalEvaluations += result.processed;
         summary.totalImproved += result.improved;
         summary.totalAdvanced += result.advanced;
+        summary.totalBaselineInitialized += result.baselineInitialized;
         summary.totalSkipped += result.skippedNoMetrics;
         summary.totalImportFailed += result.skippedImportFailed;
         summary.totalSystemError += result.skippedSystemError;

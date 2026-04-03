@@ -47,7 +47,7 @@ if (outcome !== 'improved' && historyRow?.id) {
    - current_suggestion_stage は 1 のまま（変更しない）
 3. gsc_article_evaluation_history にはレコードを挿入しない
 4. 改善提案を生成しない（Claude API 呼び出しなし）
-5. 早期リターン
+5. `{ status: 'baseline_initialized' }` で早期リターン（集計で `advanced` に混入しない）
 ```
 
 ### 2回目以降の動作（変更なし）
@@ -73,7 +73,10 @@ const isBaseline = lastSeen === null;
 
 | ファイル | 変更内容 |
 | --- | --- |
-| `src/server/services/gscEvaluationService.ts` | `processEvaluation()` に初回ベースラインの早期リターンを追加（約15行） |
+| `src/server/services/gscEvaluationService.ts` | `processEvaluation()` に初回ベースラインの早期リターンを追加。戻り値を `{ status: 'baseline_initialized' }` とし、集計で `advanced` に混入しないよう分離 |
+| `src/types/gsc.ts` | `EvaluationResultSummary` に `baselineInitialized`、`BatchResultSummary` に `totalBaselineInitialized` を追加 |
+| `app/api/gsc/evaluate/route.ts` | APIレスポンスに `baselineInitialized` を追加 |
+| `src/server/actions/gscDashboard.actions.ts` | 手動評価実行のレスポンスに `baselineInitialized` を追加 |
 
 ### 変更不要なファイル
 
@@ -82,7 +85,6 @@ const isBaseline = lastSeen === null;
 | `src/server/services/gscSuggestionService.ts` | 初回時に呼ばれなくなるだけ。変更不要 |
 | `src/server/actions/gscNotification.actions.ts` | 初回の履歴レコードが作られないため通知クエリの変更不要 |
 | `app/gsc-dashboard/components/EvaluationHistoryTab.tsx` | 同上 |
-| `src/types/gsc.ts` | 新しい outcome 型の追加不要 |
 | DBマイグレーション | スキーマ変更なし |
 
 ## 既存データへの影響

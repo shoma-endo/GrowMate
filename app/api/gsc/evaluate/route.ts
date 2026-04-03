@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
         processed: summary.processed,
         improved: summary.improved,
         advanced: summary.advanced,
+        baselineInitialized: summary.baselineInitialized,
         skippedNoMetrics: summary.skippedNoMetrics,
       },
     });
