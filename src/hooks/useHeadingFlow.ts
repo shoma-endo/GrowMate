@@ -68,7 +68,7 @@ interface UseHeadingFlowReturn {
 
 /** 基本構成未入力時に表示。CanvasPanel 等でラベル切り替えに利用 */
 export const BASIC_STRUCTURE_REQUIRED_MESSAGE =
-  'メモ・補足情報の「基本構成」に、### と #### 形式で見出しを入力して保存してください。';
+  'メモ・補足情報の「基本構成」に、h3 / h4 形式で見出しを入力して保存してください。';
 
 export function useHeadingFlow({
   sessionId,
@@ -282,7 +282,7 @@ export function useHeadingFlow({
             }
           }
         } else {
-          // 基本構成が空、または ###/#### 見出しが抽出できない場合は導線を表示
+          // 基本構成が空、または h3/h4 見出しが抽出できない場合は導線を表示
           if (sessionId === currentSessionIdRef.current) {
             setHeadingInitError(BASIC_STRUCTURE_REQUIRED_MESSAGE);
             setHasAttemptedHeadingInit(true);
