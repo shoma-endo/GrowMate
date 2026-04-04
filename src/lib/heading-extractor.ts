@@ -6,19 +6,31 @@ const HEADING_WHITESPACE =
   new Set<string>([' ', '\t', '\u3000']);
 
 /**
- * markdown 見出し行から見出しテキストを抽出する（正規表現を使用しない）。
- * 例: "### 見出し" → "見出し", "###　見出し"（全角空白）→ "見出し"
- * # の直後に空白がない "###見出し" / "####見出し" も許容する。
+ * h3/h4 見出し行を解析する（正規表現を使用しない）。
+ * 例: "h3 見出し" / "h3　見出し" / "h3見出し" / "H4見出し"
  */
-export function extractHeadingTextFromLine(line: string): string | null {
+function parseH3H4HeadingLine(line: string): { text: string; level: 3 | 4 } | null {
   const t = line.trim();
-  if (t.length === 0 || t.charAt(0) !== '#') return null;
-  let i = 1;
-  while (i < t.length && t.charAt(i) === '#') i++;
+  if (t.length < 3) return null;
+
+  const c0 = t.charAt(0).toLowerCase();
+  const c1 = t.charAt(1);
+  if (c0 !== 'h' || (c1 !== '3' && c1 !== '4')) return null;
+
+  const level = c1 === '3' ? 3 : 4;
+  let i = 2;
   if (i >= t.length) return null;
   while (i < t.length && HEADING_WHITESPACE.has(t.charAt(i))) i++;
   const text = t.slice(i).trim();
-  return text || null;
+  if (!text) return null;
+  return { text, level };
+}
+
+/**
+ * h3/h4 見出し行から見出しテキストを抽出する。
+ */
+export function extractHeadingTextFromLine(line: string): string | null {
+  return parseH3H4HeadingLine(line)?.text ?? null;
 }
 
 export interface ExtractedHeading {
@@ -28,39 +40,25 @@ export interface ExtractedHeading {
 }
 
 /**
- * Step 5の構成案テキストから、H3およびH4の見出しを抽出する。
- * コードブロック内や、その他のレベルの見出しは無視する。
+ * Step 5の構成案テキストから、h3およびh4の見出しを抽出する。
+ * その他のレベルの見出しは無視する。
  */
 export function extractHeadingsFromMarkdown(markdown: string): ExtractedHeading[] {
   if (!markdown) return [];
 
   const lines = markdown.split('\n');
   const headings: ExtractedHeading[] = [];
-  let inCodeBlock = false;
   let orderIndex = 0;
 
   for (const line of lines) {
     const trimmed = line.trim();
-
-    // コードブロックの開始/終了を検知
-    if (trimmed.startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
-
-    if (inCodeBlock) continue;
-
-    const text = extractHeadingTextFromLine(trimmed);
-    if (text) {
-      let hashCount = 0;
-      while (hashCount < trimmed.length && trimmed.charAt(hashCount) === '#') hashCount++;
-      if (hashCount === 3 || hashCount === 4) {
-        headings.push({
-          text,
-          level: hashCount,
-          orderIndex: orderIndex++,
-        });
-      }
+    const parsed = parseH3H4HeadingLine(trimmed);
+    if (parsed) {
+      headings.push({
+        text: parsed.text,
+        level: parsed.level,
+        orderIndex: orderIndex++,
+      });
     }
   }
 
@@ -113,7 +111,7 @@ function headingsMatchAfterNormalization(lineNorm: string, expectedNorm: string)
 /**
  * Step6保存時用: 先頭の見出し行を除去する。
  * getCombinedContentForPrompt が heading_text を自動付与するため、content には本文のみを保存する。
- * 先頭行が markdown 見出し (# で始まる) かつ headingText と実質一致する場合に除去。
+ * 先頭行が h3/h4 見出し かつ headingText と実質一致する場合に除去。
  * LLM の句読点追加・語尾変更・軽微な言い換えにも耐性を持つ。
  */
 export function stripLeadingHeadingLine(content: string, headingText: string): string {

@@ -837,13 +837,13 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
                         <ul className="list-disc pl-3 space-y-0.5">
                           <li>
                             <code className="text-[10px] px-1 py-0.5 bg-gray-200 text-gray-900 rounded font-mono">
-                              ###
+                              h3
                             </code>
                             　中見出し
                           </li>
                           <li>
                             <code className="text-[10px] px-1 py-0.5 bg-gray-200 text-gray-900 rounded font-mono">
-                              ####
+                              h4
                             </code>
                             　小見出し
                           </li>
