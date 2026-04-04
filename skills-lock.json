@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "code-refactoring": {
+      "source": "supercent-io/skills-template",
+      "sourceType": "github",
+      "computedHash": "18da189464fd9a53133a1372599369ac4b7f3a9da653a907762e20e89cdb2102"
+    },
     "react-doctor": {
       "source": "millionco/react-doctor",
       "sourceType": "github",

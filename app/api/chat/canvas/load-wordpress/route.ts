@@ -94,13 +94,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (authResult.requiresSubscription) {
-      return jsonResponse(402, {
-        success: false,
-        error: 'サブスクリプションが必要です',
-      });
-    }
-
     const userId = authResult.userId;
     const supabaseService = new SupabaseService();
     const supabaseClient = supabaseService.getClient();

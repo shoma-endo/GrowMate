@@ -28,7 +28,6 @@ import { ViewModeBanner } from '@/components/ViewModeBanner';
 export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
   const {
     chatSession,
-    subscription,
     isMobile,
     blogFlowActive,
     optimisticMessages,
@@ -208,8 +207,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
   const [isErrorDismissed, setIsErrorDismissed] = useState(false);
   const [isWarningDismissed, setIsWarningDismissed] = useState(false);
-  const [isSubscriptionErrorDismissed, setIsSubscriptionErrorDismissed] = useState(false);
-
   // エラーの表示制御
   useEffect(() => {
     setIsErrorDismissed(false);
@@ -218,10 +215,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   useEffect(() => {
     setIsWarningDismissed(false);
   }, [chatSession.state.warning]);
-
-  useEffect(() => {
-    setIsSubscriptionErrorDismissed(false);
-  }, [subscription.error]);
 
   // Step7 見出し生成フェーズではプレースホルダーと見出し生成ボタンの両方を表示するため必須
   const isStep7HeadingPhaseForBar =
@@ -301,15 +294,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
       )}
 
       <div className={cn('flex-1 flex flex-col pt-16', isMobile && 'pt-16')}>
-        {subscription.error &&
-          !subscription.requiresSubscription &&
-          !isSubscriptionErrorDismissed && (
-            <DismissibleErrorAlert
-              error={subscription.error}
-              onClose={() => setIsSubscriptionErrorDismissed(true)}
-            />
-          )}
-
         {chatSession.state.error && !isErrorDismissed && (
           <DismissibleErrorAlert error={chatSession.state.error} onClose={() => setIsErrorDismissed(true)} />
         )}

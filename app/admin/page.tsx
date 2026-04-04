@@ -36,7 +36,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="flex-1 flex flex-col">
             <p className="text-gray-600 mb-4 flex-1">
-              登録ユーザーの管理とサブスクリプション状況を確認します
+              登録ユーザーの管理と権限状況を確認します
             </p>
             <Button asChild className="w-full">
               <Link href="/admin/users">ユーザー管理画面へ</Link>

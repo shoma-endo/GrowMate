@@ -15,6 +15,7 @@ import { FullNameDialog } from '@/components/FullNameDialog';
 import { hasPaidFeatureAccess } from '@/types/user';
 import { InviteDialog } from '@/components/InviteDialog';
 import { canInviteEmployee, hasOwnerRole, isAdmin as isAdminRole } from '@/authUtils';
+import { signOutEmail } from '@/server/actions/auth.actions';
 import { toast } from 'sonner';
 
 interface EmployeeInfo {
@@ -24,26 +25,58 @@ interface EmployeeInfo {
   createdAt: string;
 }
 
+const LOGOUT_ERROR_MSG = 'ログアウトに失敗しました。再度お試しください。';
+
 const ProfileDisplay = () => {
-  const { profile, isLoading, isLoggedIn, logout, user, isOwnerViewMode } = useLiffContext();
+  const { profile, isLoading, isLoggedIn, logout, user, isOwnerViewMode, isLineCookieAuth } = useLiffContext();
+  const router = useRouter();
 
-  if (isLoading || !isLoggedIn) {
+  const handleLogout = async () => {
+    // LINE 認証（LIFF SDK ログイン or cookie 認証）かどうかを区別
+    const isLineUser = isLoggedIn || isLineCookieAuth;
+    try {
+      const result = await signOutEmail(
+        isLineUser ? { allowPartialOnTransientError: true } : undefined
+      );
+      if (!result.success) {
+        toast.error(result.error ?? LOGOUT_ERROR_MSG);
+        return;
+      }
+      if (result.partial) {
+        toast.info(
+          'LINE からはログアウトしました。再度ログインしたように見える場合は、もう一度ログアウトを押してください。'
+        );
+      }
+      if (isLoggedIn) {
+        // LIFF SDK ログイン済みの場合のみ liff.logout() を呼ぶ
+        // cookie 認証ユーザー（isLineCookieAuth）は LIFF 未ログインのため logout() を呼ばない:
+        // logout() は window.location.reload() を実行するため LINE クライアント内で
+        // login() が再発火し「ログアウトしたのにすぐ戻される」状態になる
+        logout();
+      } else {
+        // cookie 認証ユーザーまたは Email ユーザー: サーバー cookie は signOutEmail で削除済み
+        router.push('/login');
+      }
+    } catch {
+      toast.error(LOGOUT_ERROR_MSG);
+    }
+  };
+
+  if (isLoading || !user) {
     return null;
   }
 
-  const displayName = isOwnerViewMode ? user?.lineDisplayName : profile?.displayName;
-  const pictureUrl = isOwnerViewMode ? user?.linePictureUrl : profile?.pictureUrl;
-  const ownerUserId = user?.lineUserId || user?.id;
-  const userId = isOwnerViewMode ? ownerUserId : profile?.userId;
-
-  if (!displayName || !userId) {
-    return null;
-  }
+  const displayName =
+    user.fullName ??
+    (isOwnerViewMode ? user.lineDisplayName : profile?.displayName) ??
+    user.email ??
+    'ユーザー';
+  const pictureUrl = user?.linePictureUrl ?? profile?.pictureUrl;
 
   return (
     <Card className="w-full max-w-md mb-6">
       <CardHeader>
-        <CardTitle className="text-xl text-center">LINEプロフィール</CardTitle>
+        <CardTitle className="text-xl text-center">アカウント情報</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col items-center">
         {pictureUrl && (
@@ -52,11 +85,11 @@ const ProfileDisplay = () => {
           </Avatar>
         )}
         <h3 className="text-xl font-bold mb-2">{displayName}</h3>
-        <p className="text-sm text-gray-600 mb-4">ユーザーID: {userId}</p>
-        {!isOwnerViewMode && (
+        {user.email && <p className="text-sm text-gray-600 mb-4">メールアドレス: {user.email}</p>}
+        {!isOwnerViewMode && !!user && (
           <button
-            onClick={logout}
-            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm"
+            onClick={handleLogout}
+            className="mt-4 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm"
             aria-label="ログアウト"
             tabIndex={0}
           >
@@ -71,12 +104,12 @@ const ProfileDisplay = () => {
 // 管理者向けカードコンポーネント（constパターン使用）
 interface AdminAccessCardProps {
   isAdmin: boolean;
-  isLoggedIn: boolean;
+  hasAuthenticatedUser: boolean;
   isLoading: boolean;
 }
 
-const AdminAccessCard = ({ isAdmin, isLoggedIn, isLoading }: AdminAccessCardProps) => {
-  if (isLoading || !isLoggedIn || !isAdmin) {
+const AdminAccessCard = ({ isAdmin, hasAuthenticatedUser, isLoading }: AdminAccessCardProps) => {
+  if (isLoading || !hasAuthenticatedUser || !isAdmin) {
     return null;
   }
 
@@ -115,12 +148,16 @@ const AdminAccessCard = ({ isAdmin, isLoggedIn, isLoading }: AdminAccessCardProp
 
 interface EmployeeInviteCardProps {
   canInvite: boolean;
-  isLoggedIn: boolean;
+  hasAuthenticatedUser: boolean;
   isLoading: boolean;
 }
 
-const EmployeeInviteCard = ({ canInvite, isLoggedIn, isLoading }: EmployeeInviteCardProps) => {
-  if (isLoading || !isLoggedIn || !canInvite) {
+const EmployeeInviteCard = ({
+  canInvite,
+  hasAuthenticatedUser,
+  isLoading,
+}: EmployeeInviteCardProps) => {
+  if (isLoading || !hasAuthenticatedUser || !canInvite) {
     return null;
   }
 
@@ -158,18 +195,22 @@ const EmployeeInviteCard = ({ canInvite, isLoggedIn, isLoading }: EmployeeInvite
 
 interface OwnerEmployeeCardProps {
   isOwnerRole: boolean;
-  isLoggedIn: boolean;
+  hasAuthenticatedUser: boolean;
   isLoading: boolean;
 }
 
-const OwnerEmployeeCard = ({ isOwnerRole, isLoggedIn, isLoading }: OwnerEmployeeCardProps) => {
+const OwnerEmployeeCard = ({
+  isOwnerRole,
+  hasAuthenticatedUser,
+  isLoading,
+}: OwnerEmployeeCardProps) => {
   const { getAccessToken } = useLiffContext();
   const router = useRouter();
   const [employee, setEmployee] = useState<EmployeeInfo | null>(null);
   const [fetching, setFetching] = useState(false);
 
   useEffect(() => {
-    if (!isOwnerRole || !isLoggedIn) return;
+    if (!isOwnerRole || !hasAuthenticatedUser) return;
 
     const fetchEmployee = async () => {
       setFetching(true);
@@ -178,7 +219,7 @@ const OwnerEmployeeCard = ({ isOwnerRole, isLoggedIn, isLoading }: OwnerEmployee
         const res = await fetch('/api/employee', {
           method: 'GET',
           headers: {
-            Authorization: `Bearer ${accessToken}`,
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           },
         });
 
@@ -197,9 +238,9 @@ const OwnerEmployeeCard = ({ isOwnerRole, isLoggedIn, isLoading }: OwnerEmployee
     };
 
     void fetchEmployee();
-  }, [getAccessToken, isLoggedIn, isOwnerRole]);
+  }, [getAccessToken, hasAuthenticatedUser, isOwnerRole]);
 
-  if (isLoading || !isLoggedIn || !isOwnerRole) {
+  if (isLoading || !hasAuthenticatedUser || !isOwnerRole) {
     return null;
   }
 
@@ -279,9 +320,10 @@ const OwnerEmployeeCard = ({ isOwnerRole, isLoggedIn, isLoading }: OwnerEmployee
 };
 
 export default function Home() {
-  const { isLoading, isLoggedIn, user, isOwnerViewMode } = useLiffContext();
+  const { isLoading, user, isOwnerViewMode } = useLiffContext();
+  const hasAuthenticatedUser = Boolean(user);
   const userRole = user?.role ?? null;
-  const isRoleLoading = isLoggedIn && !user;
+  const isRoleLoading = !isLoading && !hasAuthenticatedUser;
   const isStaffUser = Boolean(user?.ownerUserId);
 
   // フルネーム関連ステート
@@ -296,10 +338,10 @@ export default function Home() {
 
   // フルネーム未入力チェック
   useEffect(() => {
-    if (isLoggedIn && user && !user.fullName && !isLoading) {
+    if (user && !user.fullName && !isLoading) {
       setShowFullNameDialog(true);
     }
-  }, [isLoggedIn, user, isLoading]);
+  }, [user, isLoading]);
 
   const handleSaveFullName = async (fullName: string) => {
     try {
@@ -321,245 +363,101 @@ export default function Home() {
       <Toaster />
       <FullNameDialog open={showFullNameDialog} onSave={handleSaveFullName} />
 
-      {!isLoading && isLoggedIn && (
+      {!isLoading && hasAuthenticatedUser && (
         <div className="flex flex-col items-center justify-center min-h-screen p-4 lg:p-8">
           <h1 className="text-3xl font-bold mb-8">GrowMate</h1>
 
           <ProfileDisplay />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-md lg:max-w-6xl">
-          <AdminAccessCard
-            isAdmin={isAdmin}
-            isLoggedIn={isLoggedIn}
-            isLoading={isLoading || isRoleLoading}
-          />
-          <EmployeeInviteCard
-            canInvite={canInvite}
-            isLoggedIn={isLoggedIn}
-            isLoading={isLoading || isRoleLoading}
-          />
-          <OwnerEmployeeCard
-            isOwnerRole={isOwnerRole}
-            isLoggedIn={isLoggedIn}
-            isLoading={isLoading || isRoleLoading}
-          />
+            <AdminAccessCard
+              isAdmin={isAdmin}
+              hasAuthenticatedUser={hasAuthenticatedUser}
+              isLoading={isLoading || isRoleLoading}
+            />
+            <EmployeeInviteCard
+              canInvite={canInvite}
+              hasAuthenticatedUser={hasAuthenticatedUser}
+              isLoading={isLoading || isRoleLoading}
+            />
+            <OwnerEmployeeCard
+              isOwnerRole={isOwnerRole}
+              hasAuthenticatedUser={hasAuthenticatedUser}
+              isLoading={isLoading || isRoleLoading}
+            />
 
-          {/* 有料/管理者向け 設定ページ導線 */}
-          {isLoggedIn && canManageIntegrations && !isRoleLoading && (
-            <Card className="">
-              <CardHeader>
-                <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
-                  <Settings className="h-5 w-5" />
-                  設定
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600 text-center mb-4">
-                  WordPressやGoogle Search Consoleの
-                  <br />
-                  連携設定はこちらから
-                </p>
-                <Button asChild className="w-full" aria-label="設定ページへ移動" tabIndex={0}>
-                  <Link href="/setup">設定を開く</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+            {/* 有料/管理者向け 設定ページ導線 */}
+            {hasAuthenticatedUser && canManageIntegrations && !isRoleLoading && (
+              <Card className="">
+                <CardHeader>
+                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
+                    <Settings className="h-5 w-5" />
+                    設定
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 text-center mb-4">
+                    WordPressやGoogle Search Consoleの
+                    <br />
+                    連携設定はこちらから
+                  </p>
+                  <Button asChild className="w-full" aria-label="設定ページへ移動" tabIndex={0}>
+                    <Link href="/setup">設定を開く</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
-          {/* 有料/管理者向け コンテンツ一覧導線 */}
-          {isLoggedIn && hasManagementAccess && !isRoleLoading && (
-            <Card className="">
-              <CardHeader>
-                <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
-                  <List className="h-5 w-5" />
-                  コンテンツ一覧
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600 text-center mb-4">
-                  WordPressとGoogle Search Consoleの
-                  <br />
-                  メタ情報を一覧表示します
-                </p>
-                <Button asChild className="w-full" aria-label="コンテンツ一覧へ移動" tabIndex={0}>
-                  <Link href="/analytics">一覧を開く</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+            {/* 有料/管理者向け コンテンツ一覧導線 */}
+            {hasAuthenticatedUser && hasManagementAccess && !isRoleLoading && (
+              <Card className="">
+                <CardHeader>
+                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
+                    <List className="h-5 w-5" />
+                    コンテンツ一覧
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 text-center mb-4">
+                    WordPressとGoogle Search Consoleの
+                    <br />
+                    メタ情報を一覧表示します
+                  </p>
+                  <Button asChild className="w-full" aria-label="コンテンツ一覧へ移動" tabIndex={0}>
+                    <Link href="/analytics">一覧を開く</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
-          {/* 管理者向け Google Ads 分析導線 */}
-          {isAdmin && !isRoleLoading && (
-            <Card className="border-indigo-200 bg-indigo-50">
-              <CardHeader>
-                <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
-                  <Plug className="h-5 w-5 text-indigo-600" />
-                  Google Ads 分析
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-700 text-center mb-4">
-                  広告キャンペーンのパフォーマンスを
-                  <br />
-                  確認・分析できます
-                </p>
-                <Button
-                  asChild
-                  className="w-full bg-indigo-600 hover:bg-indigo-700"
-                  aria-label="Google Ads ダッシュボードへ移動"
-                  tabIndex={0}
-                >
-                  <Link href="/google-ads-dashboard">
-                    ダッシュボードを開く
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* サブスクリプション情報カード（現在未使用） */}
-          {/* {STRIPE_ENABLED && (
-            <Card className="w-full max-w-md mb-6 mt-4">
-              <CardHeader>
-                <CardTitle className="text-xl font-semibold text-center">
-                  サブスクリプション情報
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {subscriptionLoading ? (
-                  <div className="text-center py-4">読み込み中...</div>
-                ) : !subscriptionInitialized ? (
-                  <div className="p-4 bg-gray-100 rounded">
-                    <p className="text-gray-600">
-                      サブスクリプション情報の取得には少し時間がかかる場合があります。必要なときに読み込んでください。
-                    </p>
-                    <Button
-                      className="mt-4 w-full"
-                      onClick={handleInitializeSubscription}
-                      disabled={subscriptionLoading}
-                      aria-label="サブスクリプション情報を読み込む"
-                      tabIndex={0}
-                    >
-                      情報を読み込む
-                    </Button>
-                  </div>
-                ) : subscriptionError ? (
-                  <div className="mb-4">
-                    <ErrorAlert error={subscriptionError} />
-                  </div>
-                ) : !hasActiveSubscription ? (
-                  <div className="p-4 bg-gray-100 rounded">
-                    <p className="text-gray-600">有効なサブスクリプションがありません。</p>
-                    <Button
-                      className="mt-4 w-full"
-                      onClick={handleSubscribe}
-                      disabled={pendingAction !== null}
-                      aria-label="サブスクリプション登録"
-                      tabIndex={0}
-                    >
-                      {pendingAction === 'subscribe' ? '処理中...' : 'サブスクリプション登録'}
-                    </Button>
-                  </div>
-                ) : activeSubscription && hasActiveSubscription ? (
-                  <>
-                    <div className="p-4 bg-gray-100 rounded mb-4">
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="font-semibold">ステータス：</span>
-                        {renderSubscriptionStatus()}
-                      </div>
-                      <div className="mt-2">
-                        <span className="font-semibold">次回請求日：</span>
-                        <span className="ml-2">
-                          {formatDate(activeSubscription.currentPeriodEnd)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <Button
-                        className="w-full"
-                        onClick={handleUpdatePayment}
-                        disabled={pendingAction !== null}
-                        aria-label="支払い方法変更"
-                        tabIndex={0}
-                      >
-                        {pendingAction === 'updatePayment' ? '処理中...' : '支払い方法変更'}
-                      </Button>
-
-                      {activeSubscription.cancelAtPeriodEnd ? (
-                        <Button
-                          variant="outline"
-                          className="w-full border-blue-300 text-blue-600 hover:bg-blue-50"
-                          onClick={handleResumeSubscription}
-                          disabled={pendingAction !== null}
-                          aria-label="サブスクリプション継続"
-                          tabIndex={0}
-                        >
-                          {pendingAction === 'resume'
-                            ? '処理中...'
-                            : 'サブスクリプションを継続する'}
-                        </Button>
-                      ) : (
-                        (activeSubscription.status === 'active' ||
-                          activeSubscription.status === 'trialing') && (
-                          <Button
-                            variant="outline"
-                            className="w-full border-red-300 text-red-600 hover:bg-red-50"
-                            onClick={handleCancelSubscription}
-                            disabled={pendingAction !== null}
-                            aria-label="サブスクリプション解約"
-                            tabIndex={0}
-                          >
-                            {pendingAction === 'cancel'
-                              ? '処理中...'
-                              : 'サブスクリプションを解約する'}
-                          </Button>
-                        )
-                      )}
-
-                      {!(
-                        activeSubscription.status === 'active' ||
-                        activeSubscription.status === 'trialing' ||
-                        (activeSubscription.status === 'past_due' &&
-                          !activeSubscription.cancelAtPeriodEnd)
-                      ) && (
-                        <div className="p-3 bg-gray-100 rounded text-sm text-gray-700 text-center">
-                          {(() => {
-                            const statusMessages = {
-                              canceled: 'このサブスクリプションは既に終了しています。',
-                              past_due: 'お支払いが遅延しています。新規登録してください。',
-                              trialing: 'トライアル期間が終了すると自動的に課金されます。',
-                            };
-
-                            return (
-                              statusMessages[
-                                activeSubscription.status as keyof typeof statusMessages
-                              ] || 'サブスクリプションに問題があります。'
-                            );
-                          })()}
-                          <Button
-                            className="mt-3 w-full"
-                            onClick={handleSubscribe}
-                            aria-label="新規サブスクリプション登録"
-                            tabIndex={0}
-                            disabled={pendingAction !== null}
-                          >
-                            {pendingAction === 'subscribe'
-                              ? '処理中...'
-                              : '新規サブスクリプション登録'}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : hasActiveSubscription ? (
-                  <div className="p-4 bg-gray-100 rounded text-center text-gray-700">
-                    サブスクリプションは有効です。
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          )} */}
+            {/* 管理者向け Google Ads 分析導線 */}
+            {isAdmin && !isRoleLoading && (
+              <Card className="border-indigo-200 bg-indigo-50">
+                <CardHeader>
+                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
+                    <Plug className="h-5 w-5 text-indigo-600" />
+                    Google Ads 分析
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-700 text-center mb-4">
+                    広告キャンペーンのパフォーマンスを
+                    <br />
+                    確認・分析できます
+                  </p>
+                  <Button
+                    asChild
+                    className="w-full bg-indigo-600 hover:bg-indigo-700"
+                    aria-label="Google Ads ダッシュボードへ移動"
+                    tabIndex={0}
+                  >
+                    <Link href="/google-ads-dashboard">
+                      ダッシュボードを開く
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       )}

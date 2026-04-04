@@ -1,41 +1,32 @@
-'use client';
-import React, { Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
 import ChatClient from './ChatClient';
 import { BLOG_STEP_IDS, type BlogStepId } from '@/lib/constants';
 
-const ChatPageContent = () => {
-  const searchParams = useSearchParams();
-  const initialSessionId = searchParams?.get('session') ?? undefined;
-  const rawInitialStep = searchParams?.get('initialStep');
-  const initialStep = rawInitialStep && BLOG_STEP_IDS.includes(rawInitialStep as BlogStepId)
-    ? (rawInitialStep as BlogStepId)
-    : undefined;
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-  React.useEffect(() => {
-    console.info('[ChatPage] Navigated to chat room');
+interface ChatPageProps {
+  searchParams?: SearchParams;
+}
 
-    const onRestore = (e: Event) => {
-      const ev = e as CustomEvent<{ step?: string; aiMessageId?: string }>;
-      console.info('[ChatPage] Blog flow restored', ev.detail);
-    };
-
-    window.addEventListener('blogFlow:restored', onRestore);
-    return () => window.removeEventListener('blogFlow:restored', onRestore);
-  }, []);
-
-  return (
-    <ChatClient
-      initialSessionId={initialSessionId ?? undefined}
-      initialStep={initialStep}
-    />
-  );
+const getFirstParam = (value: string | string[] | undefined): string | undefined => {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
 };
 
-export default function ChatPage() {
-  return (
-    <Suspense fallback={null}>
-      <ChatPageContent />
-    </Suspense>
-  );
+export default async function ChatPage({ searchParams }: ChatPageProps) {
+  const params = searchParams ? await searchParams : {};
+
+  // session パラメータを取得（複数指定時は先頭を採用）
+  const sessionParam = params.session;
+  const initialSessionId = getFirstParam(sessionParam);
+
+  // initialStep パラメータを取得してバリデーション（複数指定時は先頭を採用）
+  const rawInitialStep = getFirstParam(params.initialStep);
+  const initialStep =
+    rawInitialStep && BLOG_STEP_IDS.includes(rawInitialStep as BlogStepId)
+      ? (rawInitialStep as BlogStepId)
+      : undefined;
+
+  return <ChatClient initialSessionId={initialSessionId} initialStep={initialStep} />;
 }

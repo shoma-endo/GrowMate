@@ -190,14 +190,6 @@ export class ChatService implements IChatService {
         liffAccessToken: accessToken,
       });
 
-      if (result.requiresSubscription) {
-        throw new ChatError(
-          '検索機能を利用するにはサブスクリプションが必要です',
-          ChatErrorCode.SUBSCRIPTION_REQUIRED,
-          { query }
-        );
-      }
-
       if (result.error) {
         throw new ChatError(result.error, ChatErrorCode.SESSION_LOAD_FAILED, { query });
       }
@@ -242,7 +234,6 @@ export class ChatService implements IChatService {
       message: response.message,
       sessionId: response.sessionId as string | undefined,
       error: response.error as string | undefined,
-      requiresSubscription: response.requiresSubscription as boolean | undefined,
     };
   }
 
@@ -264,7 +255,6 @@ export class ChatService implements IChatService {
       message: response.message,
       sessionId: (response.sessionId || params.sessionId) as string | undefined,
       error: response.error as string | undefined,
-      requiresSubscription: response.requiresSubscription as boolean | undefined,
     };
   }
 

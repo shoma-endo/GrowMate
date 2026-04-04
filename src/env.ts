@@ -6,14 +6,10 @@ const clientEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   NEXT_PUBLIC_SITE_URL: z.url(),
-  NEXT_PUBLIC_STRIPE_ENABLED: z.string().default('false'),
 });
 
 const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE: z.string().min(1),
-  STRIPE_ENABLED: z.string().default('false'),
-  STRIPE_SECRET_KEY: z.string().min(1),
-  STRIPE_PRICE_ID: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
   LINE_CHANNEL_ID: z.string().min(1),
@@ -39,7 +35,6 @@ const clientRuntimeEnv = {
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
-  NEXT_PUBLIC_STRIPE_ENABLED: process.env.NEXT_PUBLIC_STRIPE_ENABLED ?? process.env.STRIPE_ENABLED,
 } satisfies { [K in keyof ClientEnv]?: ClientEnv[K] | undefined };
 
 const parsedClientEnv = clientEnvSchema.parse(clientRuntimeEnv);
@@ -48,9 +43,6 @@ let parsedServerEnv: ServerEnv | undefined;
 if (isServer) {
   const serverRuntimeEnv = {
     SUPABASE_SERVICE_ROLE: process.env.SUPABASE_SERVICE_ROLE,
-    STRIPE_ENABLED: process.env.STRIPE_ENABLED,
-    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
-    STRIPE_PRICE_ID: process.env.STRIPE_PRICE_ID,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     LINE_CHANNEL_ID: process.env.LINE_CHANNEL_ID,
@@ -69,9 +61,6 @@ if (isServer) {
 
 const serverOnlyKeys = new Set<keyof ServerEnv>([
   'SUPABASE_SERVICE_ROLE',
-  'STRIPE_ENABLED',
-  'STRIPE_SECRET_KEY',
-  'STRIPE_PRICE_ID',
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',
   'LINE_CHANNEL_ID',
@@ -91,7 +80,6 @@ const clientKeys = new Set<keyof ClientEnv>([
   'NEXT_PUBLIC_SUPABASE_URL',
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'NEXT_PUBLIC_SITE_URL',
-  'NEXT_PUBLIC_STRIPE_ENABLED',
 ]);
 
 const envProxy = new Proxy({} as Env, {

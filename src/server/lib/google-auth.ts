@@ -43,16 +43,7 @@ export async function ensureGoogleAdsAuth(): Promise<GoogleAdsAuthResult> {
   const liffAccessToken = cookieStore.get('line_access_token')?.value;
   const refreshToken = cookieStore.get('line_refresh_token')?.value;
 
-  if (!liffAccessToken) {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN },
-        { status: 401 }
-      ),
-    };
-  }
-
+  // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(liffAccessToken, refreshToken);
   if (authResult.error || !authResult.userId) {
     return {

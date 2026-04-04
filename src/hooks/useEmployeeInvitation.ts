@@ -38,7 +38,7 @@ export type InvitationInfo = z.infer<typeof invitationInfoSchema>;
 
 interface UseEmployeeInvitationOptions {
   getAccessToken: () => Promise<string>;
-  refreshUser?: (() => Promise<void>) | undefined;
+  refreshUser?: (() => Promise<boolean>) | undefined;
   onEmployeeDeleted?: (() => void) | undefined;
 }
 
@@ -246,7 +246,12 @@ export function useEmployeeInvitation({
       setEmployee(null);
       toast.success('スタッフを削除しました');
       try {
-        await refreshUser?.();
+        const refreshed = await refreshUser?.();
+        if (refreshed === false) {
+          toast.warning(
+            'スタッフの削除は完了しましたが、画面の更新に失敗しました。ページを再読み込みしてください。'
+          );
+        }
       } catch (error) {
         console.error('Failed to refresh user after deletion:', error);
         toast.warning(

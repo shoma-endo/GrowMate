@@ -10,7 +10,7 @@ import {
   ServerChatMessage,
   ServerChatSession,
 } from '@/types/chat';
-import type { DbUser, EmployeeInvitation } from '@/types/user';
+import type { DbUser, DbUserInsert, DbUserUpdate, EmployeeInvitation } from '@/types/user';
 import type { UserRole } from '@/types/user';
 import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
@@ -151,8 +151,8 @@ export class SupabaseService {
       .rpc('upsert_user_profile', {
         p_line_user_id: userId,
         p_line_display_name: lineProfile.displayName,
-        p_line_picture_url: lineProfile.pictureUrl ?? null,
-        p_line_status_message: lineProfile.statusMessage ?? null,
+        p_line_picture_url: (lineProfile.pictureUrl ?? null) as string,
+        p_line_status_message: (lineProfile.statusMessage ?? null) as string,
         p_now: now,
       })
       .returns<DbUser[]>();
@@ -207,27 +207,77 @@ export class SupabaseService {
     return this.success(data ?? null);
   }
 
-  async getUserByStripeCustomerId(
-    stripeCustomerId: string
-  ): Promise<SupabaseResult<DbUser | null>> {
+  async getUserBySupabaseAuthId(supabaseAuthId: string): Promise<SupabaseResult<DbUser | null>> {
     const { data, error } = await this.supabase
       .from('users')
       .select('*')
-      .eq('stripe_customer_id', stripeCustomerId)
+      .eq('supabase_auth_id', supabaseAuthId)
       .maybeSingle();
 
     if (error) {
       return this.failure('ユーザー情報の取得に失敗しました', {
         error,
-        developerMessage: 'Error getting user by Stripe customer ID',
-        context: { stripeCustomerId },
+        developerMessage: 'Error getting user by Supabase Auth ID',
+        context: { supabaseAuthId },
       });
     }
 
     return this.success(data ?? null);
   }
 
-  async createUser(user: DbUser): Promise<SupabaseResult<DbUser>> {
+  async getUserByEmail(email: string): Promise<SupabaseResult<DbUser | null>> {
+    const { data, error } = await this.supabase
+      .from('users')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .maybeSingle();
+
+    if (error) {
+      return this.failure('ユーザー情報の取得に失敗しました', {
+        error,
+        developerMessage: 'Error getting user by email',
+        context: { email },
+      });
+    }
+
+    return this.success(data ?? null);
+  }
+
+  async createEmailUser(email: string, supabaseAuthId: string): Promise<SupabaseResult<DbUser>> {
+    const now = new Date().toISOString();
+    const insert: DbUserInsert = {
+      id: crypto.randomUUID(),
+      created_at: now,
+      updated_at: now,
+      last_login_at: now,
+      email: email.toLowerCase(),
+      supabase_auth_id: supabaseAuthId,
+      line_user_id: null,
+      line_display_name: null,
+      line_picture_url: null,
+      line_status_message: null,
+      full_name: null,
+      role: 'unavailable',
+      owner_user_id: null,
+      owner_previous_role: null,
+      stripe_customer_id: null,
+      stripe_subscription_id: null,
+    };
+
+    const { data, error } = await this.supabase.from('users').insert(insert).select('*').single();
+
+    if (error) {
+      return this.failure('メールユーザーの作成に失敗しました', {
+        error,
+        developerMessage: 'Error creating email user',
+        context: { email, supabaseAuthId },
+      });
+    }
+
+    return this.success(data);
+  }
+
+  async createUser(user: DbUserInsert): Promise<SupabaseResult<DbUser>> {
     const { data, error } = await this.supabase.from('users').insert(user).select('*').single();
 
     if (error) {
@@ -243,7 +293,7 @@ export class SupabaseService {
 
   async updateUserById(
     id: string,
-    updates: Partial<DbUser>
+    updates: DbUserUpdate
   ): Promise<SupabaseResult<DbUser | null>> {
     const { data, error } = await this.supabase
       .from('users')
@@ -265,7 +315,7 @@ export class SupabaseService {
 
   async updateUserByLineUserId(
     lineUserId: string,
-    updates: Partial<DbUser>
+    updates: DbUserUpdate
   ): Promise<SupabaseResult<DbUser | null>> {
     const { data, error } = await this.supabase
       .from('users')

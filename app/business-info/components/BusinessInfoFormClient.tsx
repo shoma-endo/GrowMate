@@ -114,35 +114,31 @@ const createInitialState = (data?: Partial<BriefInput>): BriefInput => {
 };
 
 export default function BusinessInfoFormClient({ initialData }: BusinessInfoFormClientProps) {
-  const { getAccessToken, isLoggedIn, isOwnerViewMode } = useLiffContext();
+  const { getAccessToken, user, isOwnerViewMode } = useLiffContext();
+  const isAuthenticated = Boolean(user);
   const [form, setForm] = useState<BriefInput>(() => createInitialState(initialData || undefined));
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string>('');
   const isReadOnly = isOwnerViewMode;
 
-  // 初期データの読み込み（LIFFのトークンが必要な場合があるため）
+  // 初期データの読み込み（認証確定後に実行）
+  // isAuthenticated が true になるまで待つことで、Email ユーザーも安全に処理できる
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const loadData = async () => {
       try {
-        if (!isLoggedIn) {
-          setError('ログインが必要です');
-          return;
-        }
-
-        // initialDataがある場合は一旦スキップするが、トークンが必要な処理があればここで
+        // initialDataがある場合はそのまま使用
         if (initialData) {
           setForm(createInitialState(initialData));
           setIsLoading(false);
           return;
         }
 
+        // getAccessToken() は LINE ユーザーなら有効なトークン、Email ユーザーなら '' を返す
+        // authMiddleware は '' を受け取ると Supabase セッション経由で Email 認証を行う
         const token = await getAccessToken();
-        if (!token) {
-          setError('認証トークンの取得に失敗しました');
-          return;
-        }
-
         const { data, success, error: fetchError } = await getBrief(token);
         if (!success) {
           setError(fetchError || '事業者情報の取得に失敗しました');
@@ -161,7 +157,7 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
     };
 
     loadData();
-  }, [getAccessToken, isLoggedIn, initialData]);
+  }, [getAccessToken, isAuthenticated, initialData]);
 
   const handleUpdateProfile = useCallback(<K extends keyof Profile>(key: K, value: Profile[K]) => {
     setForm(prev => ({
@@ -216,11 +212,6 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
     async (e: React.FormEvent) => {
       e.preventDefault();
 
-      if (!isLoggedIn) {
-        setError('ログインが必要です');
-        return;
-      }
-
       // バリデーション：サービス名が全て入力されているか
       const emptyServiceNameIndex = form.services.findIndex(s => !s.name.trim());
       if (emptyServiceNameIndex !== -1) {
@@ -234,12 +225,8 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
       setError('');
 
       try {
+        // getAccessToken() は LINE ユーザーなら有効なトークン、Email ユーザーなら '' を返す
         const token = await getAccessToken();
-        if (!token) {
-          setError('認証トークンの取得に失敗しました');
-          return;
-        }
-
         const { success, error: saveError } = await saveBrief({
           ...form,
           liffAccessToken: token,
@@ -265,10 +252,10 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
         setIsSaving(false);
       }
     },
-    [form, getAccessToken, isLoggedIn]
+    [form, getAccessToken]
   );
 
-  if (!isLoggedIn) {
+  if (!isAuthenticated) {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
         <p>ログインが必要です</p>

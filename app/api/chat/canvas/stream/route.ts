@@ -283,12 +283,12 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const liffAccessToken = authHeader?.replace('Bearer ', '');
 
-    const authResult = await authMiddleware(liffAccessToken);
-    if (authResult.error || authResult.requiresSubscription) {
+    const authResult = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
+    if (authResult.error || !authResult.userId) {
       return new Response(
         sendSSE('error', {
           type: 'auth',
-          message: authResult.error || 'サブスクリプションが必要です',
+          message: authResult.error ?? 'ユーザー認証に失敗しました',
         }),
         {
           status: 401,

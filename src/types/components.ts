@@ -16,11 +16,13 @@ export interface LiffContextType {
   profile: LiffProfile | null;
   user?: import('@/types/user').User | null;
   isOwnerViewMode: boolean;
+  /** LINE cookie 認証済み（サーバーサイド OAuth 後の LIFF 未初期化状態）かどうか */
+  isLineCookieAuth: boolean;
   login: () => void;
   logout: () => void;
   liffObject: unknown;
   getAccessToken: () => Promise<string>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<boolean>;
 }
 
 export interface LiffProviderProps {

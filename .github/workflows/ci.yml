@@ -38,12 +38,8 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key
           NEXT_PUBLIC_SITE_URL: http://localhost:3000
-          NEXT_PUBLIC_STRIPE_ENABLED: false
           # サーバー環境変数（ビルド時に必須）
           SUPABASE_SERVICE_ROLE: dummy-service-role
-          STRIPE_ENABLED: false
-          STRIPE_SECRET_KEY: sk_test_dummy
-          STRIPE_PRICE_ID: price_dummy
           OPENAI_API_KEY: sk-dummy
           ANTHROPIC_API_KEY: sk-ant-dummy
           LINE_CHANNEL_ID: dummy-line-channel-id

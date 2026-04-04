@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     // 認証情報はCookieから取得（セキュリティベストプラクティス）
     const { accessToken: liffToken, refreshToken } = getLiffTokensFromRequest(request);
 
-    if (!liffToken || !wpType) {
+    if (!wpType) {
       return NextResponse.json(
         { success: false, error: ERROR_MESSAGES.AUTH.AUTHENTICATION_REQUIRED },
         { status: 401 }

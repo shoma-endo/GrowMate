@@ -22,7 +22,7 @@ description: GrowMate の実装ポリシーとフロント/サーバー実装時
 
 - **機密情報の取り扱い**
   - `.env.local` の値をクライアントバンドルに含めないようにする。どうしても必要な場合は public prefix など Next.js のガイドラインに従う。
-  - Stripe / Supabase Service Role / Google 系のクレデンシャルは必ずサーバー側のみで参照する。
+  - Supabase Service Role / Google 系のクレデンシャルは必ずサーバー側のみで参照する。
 
 # Supabase 関連
 
@@ -54,5 +54,5 @@ description: GrowMate の実装ポリシーとフロント/サーバー実装時
 - 自己レビューでは以下を特に確認する:
   - 型エラーが出ないか（`npm run lint` / `npm run build` の結果）。
   - 既存の命名規則・ディレクトリ構造・責務分割に沿っているか。
-  - Supabase / 認証 / 課金まわりでセキュリティ上の抜けがないか。
+  - Supabase / 認証まわりでセキュリティ上の抜けがないか。
 
