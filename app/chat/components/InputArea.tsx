@@ -409,9 +409,6 @@ const InputArea: React.FC<InputAreaProps> = ({
         (hasAttemptedHeadingInit ?? false) &&
         !(isHeadingInitInFlight ?? false);
       if (isHeadingNotFoundError) {
-        toast.warning(
-          '見出しが見つかりません。メモ・補足情報の「基本構成」に h3/h4 形式で見出しを記載してから、再試行してください。'
-        );
         return;
       }
       setIsSavingStep7Lead(true);

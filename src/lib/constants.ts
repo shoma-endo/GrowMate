@@ -214,6 +214,10 @@ export const BLOG_STEP_ACTION_BAR_FULL_TEXT: Record<BlogStepId, string> = {
   step7: '現在のステップ: 7. 本文作成',
 };
 
+/** Step7 見出し未検出時の共通案内メッセージ */
+export const STEP7_BASIC_STRUCTURE_SAVE_MESSAGE =
+  '見出しが見つかりません。メモ・補足情報の「基本構成」に h3/h4 形式で見出しを保存してください。';
+
 // Step7判定（canonicalUrlsの適用/表示で利用）
 export const isStep7 = (stepOrModel: string) =>
   stepOrModel === STEP7_ID || stepOrModel === toBlogModel(STEP7_ID);

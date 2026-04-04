@@ -6,7 +6,7 @@ import { extractHeadingsFromMarkdown } from '@/lib/heading-extractor';
 import * as headingActions from '@/server/actions/heading-flow.actions';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 import type { SessionHeadingSection } from '@/types/heading-flow';
-import { type BlogStepId, STEP7_ID } from '@/lib/constants';
+import { STEP7_BASIC_STRUCTURE_SAVE_MESSAGE, type BlogStepId, STEP7_ID } from '@/lib/constants';
 
 interface UseHeadingFlowParams {
   sessionId: string | null;
@@ -67,8 +67,7 @@ interface UseHeadingFlowReturn {
 }
 
 /** 基本構成未入力時に表示。CanvasPanel 等でラベル切り替えに利用 */
-export const BASIC_STRUCTURE_REQUIRED_MESSAGE =
-  'メモ・補足情報の「基本構成」に、h3 / h4 形式で見出しを入力して保存してください。';
+export const BASIC_STRUCTURE_REQUIRED_MESSAGE = STEP7_BASIC_STRUCTURE_SAVE_MESSAGE;
 
 export function useHeadingFlow({
   sessionId,
