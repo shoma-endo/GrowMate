@@ -66,9 +66,6 @@ interface UseHeadingFlowReturn {
   refetchHeadings: () => Promise<SessionHeadingSection[]>;
 }
 
-/** 基本構成未入力時に表示。CanvasPanel 等でラベル切り替えに利用 */
-export const BASIC_STRUCTURE_REQUIRED_MESSAGE = STEP7_BASIC_STRUCTURE_SAVE_MESSAGE;
-
 export function useHeadingFlow({
   sessionId,
   isSessionLoading,
@@ -283,7 +280,7 @@ export function useHeadingFlow({
         } else {
           // 基本構成が空、または h3/h4 見出しが抽出できない場合は導線を表示
           if (sessionId === currentSessionIdRef.current) {
-            setHeadingInitError(BASIC_STRUCTURE_REQUIRED_MESSAGE);
+            setHeadingInitError(STEP7_BASIC_STRUCTURE_SAVE_MESSAGE);
             setHasAttemptedHeadingInit(true);
           }
         }
@@ -447,7 +444,7 @@ export function useHeadingFlow({
             setHeadingInitError(res.error || '初期化に失敗しました');
           }
         } else if (sid === currentSessionIdRef.current) {
-          setHeadingInitError(BASIC_STRUCTURE_REQUIRED_MESSAGE);
+          setHeadingInitError(STEP7_BASIC_STRUCTURE_SAVE_MESSAGE);
           setHasAttemptedHeadingInit(true);
         }
       } catch (e) {
