@@ -3,6 +3,7 @@ import {
   extractHeadingsFromMarkdown,
   generateHeadingKey,
 } from '@/lib/heading-extractor';
+import { STEP7_BASIC_STRUCTURE_SAVE_MESSAGE } from '@/lib/constants';
 import type { DbHeadingSection, DbSessionHeadingSectionInsert } from '@/types/heading-flow';
 import type { DbChatMessage } from '@/types/chat';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
@@ -114,16 +115,21 @@ export class HeadingFlowService extends SupabaseService {
     if (!sectionsResult.success) return sectionsResult;
 
     const sections = sectionsResult.data;
-    const confirmedSections = sections.filter(s => s.is_confirmed);
-    const sectionContents =
-      confirmedSections.length === 0
-        ? ''
-        : confirmedSections
-            .map(s => {
-              const hashes = '#'.repeat(s.heading_level);
-              return `${hashes} ${s.heading_text}\n\n${s.content}`;
-            })
-            .join('\n\n');
+    if (sections.length === 0) {
+      return this.failure(STEP7_BASIC_STRUCTURE_SAVE_MESSAGE);
+    }
+    if (sections.some(s => !s.is_confirmed)) {
+      return this.failure(
+        '未保存の見出しがあります。すべての見出しを保存してから本文生成を実行してください。'
+      );
+    }
+
+    const sectionContents = sections
+      .map(s => {
+        const hashes = '#'.repeat(s.heading_level);
+        return `${hashes} ${s.heading_text}\n\n${s.content}`;
+      })
+      .join('\n\n');
 
     const lead = (await this.getStep7UserLead(sessionId)) ?? '';
     return this.success({ lead, sections: sectionContents });
