@@ -600,8 +600,7 @@ export class GscEvaluationService {
     return new Date(now.getTime() + jstOffset);
   }
 
-  private judgeOutcome(lastSeen: number | null, currentPos: number): GscEvaluationOutcome {
-    if (lastSeen === null) return 'no_change';
+  private judgeOutcome(lastSeen: number, currentPos: number): GscEvaluationOutcome {
     if (currentPos < lastSeen) return 'improved';
     if (currentPos > lastSeen) return 'worse';
     return 'no_change';
