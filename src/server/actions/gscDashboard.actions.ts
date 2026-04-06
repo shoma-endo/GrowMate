@@ -936,14 +936,7 @@ export async function runEvaluationNow(contentAnnotationId: string) {
 
     return {
       success: true,
-      data: {
-        processed: summary.processed,
-        improved: summary.improved,
-        advanced: summary.advanced,
-        baselineInitialized: summary.baselineInitialized,
-        skippedNoMetrics: summary.skippedNoMetrics,
-        skippedImportFailed: summary.skippedImportFailed,
-      },
+      data: summary,
     };
   } catch (error) {
     console.error('[gsc-dashboard] run evaluation now failed', error);
