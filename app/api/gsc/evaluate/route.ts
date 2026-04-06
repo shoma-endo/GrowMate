@@ -45,13 +45,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: {
-        processed: summary.processed,
-        improved: summary.improved,
-        advanced: summary.advanced,
-        baselineInitialized: summary.baselineInitialized,
-        skippedNoMetrics: summary.skippedNoMetrics,
-      },
+      data: summary,
     });
   } catch (error) {
     console.error('[gsc/evaluate] Evaluation failed', error);
