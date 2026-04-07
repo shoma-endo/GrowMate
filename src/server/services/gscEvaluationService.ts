@@ -603,10 +603,6 @@ export class GscEvaluationService {
     }
   }
 
-  private todayISO(): string {
-    return new Date().toISOString().slice(0, 10);
-  }
-
   private toNumberOrNull(value: unknown): number | null {
     const num = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(num) ? num : null;
