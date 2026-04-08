@@ -23,6 +23,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { useLiffContext } from '@/components/LiffProvider';
+import type { EvaluationResultSummary } from '@/types/gsc';
 
 // 時間選択用の選択肢を生成
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
@@ -40,13 +41,7 @@ interface EvaluationSettingsProps {
   } | null;
   onRegister: (date: string, cycleDays: number, evaluationHour: number) => Promise<void>;
   onUpdate: (date: string, cycleDays: number, evaluationHour: number) => Promise<void>;
-  onRunEvaluation: () => Promise<{
-    processed: number;
-    improved: number;
-    advanced: number;
-    skippedNoMetrics: number;
-    skippedImportFailed: number;
-  }>;
+  onRunEvaluation: () => Promise<EvaluationResultSummary>;
 }
 
 // 日付フォーマット用のユーティリティ
@@ -156,6 +151,9 @@ export function EvaluationSettings({
         toast.success(
           `評価完了: ${result.processed}件処理（改善: ${result.improved}件、その他: ${result.advanced}件）`
         );
+      } else if (result.baselineInitialized > 0) {
+        toast.success(`${result.baselineInitialized}件の評価ベースラインを設定しました`);
+        return;
       } else if (result.skippedNoMetrics > 0) {
         toast.info('評価対象のデータがありませんでした');
       } else if (result.skippedImportFailed === 0) {

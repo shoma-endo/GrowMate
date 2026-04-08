@@ -28,6 +28,7 @@ import type {
   GscVisibleMetrics,
   GscChartDataPoint,
 } from '../types';
+import type { EvaluationResultSummary } from '@/types/gsc';
 
 interface OverviewTabProps {
   detail: GscDashboardDetailResponse | null;
@@ -42,13 +43,7 @@ interface OverviewTabProps {
     evaluationHour: number
   ) => Promise<void>;
   onUpdateEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
-  onRunEvaluation: () => Promise<{
-    processed: number;
-    improved: number;
-    advanced: number;
-    skippedNoMetrics: number;
-    skippedImportFailed: number;
-  }>;
+  onRunEvaluation: () => Promise<EvaluationResultSummary>;
   onRunQueryImport: () => Promise<{
     querySummary: {
       fetchedRows: number;

@@ -136,7 +136,6 @@ export class GscEvaluationService {
         } else if (evalResult.status === 'skipped_import_failed') {
           summary.skippedImportFailed += 1;
         } else if (evalResult.status === 'baseline_initialized') {
-          summary.processed += 1;
           summary.baselineInitialized += 1;
         } else if (evalResult.status === 'success') {
           summary.processed += 1;
