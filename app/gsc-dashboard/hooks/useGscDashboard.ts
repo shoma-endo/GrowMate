@@ -16,6 +16,7 @@ import type {
   GscChartDataPoint,
   GscEvaluationHistoryItem,
 } from '../types';
+import type { EvaluationResultSummary } from '@/types/gsc';
 
 interface UseGscDashboardOptions {
   initialSelectedId?: string | null;
@@ -41,7 +42,7 @@ interface UseGscDashboardReturn {
   toggleMetric: (key: keyof GscVisibleMetrics) => void;
   handleRegisterEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
   handleUpdateEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
-  handleRunEvaluation: () => Promise<{ processed: number; improved: number; advanced: number; skippedNoMetrics: number; skippedImportFailed: number }>;
+  handleRunEvaluation: () => Promise<EvaluationResultSummary>;
   handleRunQueryImport: () => Promise<{
     querySummary: {
       fetchedRows: number;
