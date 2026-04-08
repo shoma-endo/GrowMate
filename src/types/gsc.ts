@@ -208,6 +208,7 @@ export interface EvaluationResultSummary {
   processed: number;
   improved: number;
   advanced: number;
+  baselineInitialized: number;
   skippedNoMetrics: number;
   skippedImportFailed: number;
   skippedSystemError: number;
@@ -221,6 +222,7 @@ export interface BatchResultSummary {
   totalEvaluations: number;
   totalImproved: number;
   totalAdvanced: number;
+  totalBaselineInitialized: number;
   totalSkipped: number;
   totalImportFailed: number;
   totalSystemError: number;

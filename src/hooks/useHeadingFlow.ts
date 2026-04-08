@@ -6,7 +6,7 @@ import { extractHeadingsFromMarkdown } from '@/lib/heading-extractor';
 import * as headingActions from '@/server/actions/heading-flow.actions';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 import type { SessionHeadingSection } from '@/types/heading-flow';
-import { type BlogStepId, STEP7_ID } from '@/lib/constants';
+import { STEP7_BASIC_STRUCTURE_SAVE_MESSAGE, type BlogStepId, STEP7_ID } from '@/lib/constants';
 
 interface UseHeadingFlowParams {
   sessionId: string | null;
@@ -65,10 +65,6 @@ interface UseHeadingFlowReturn {
   /** 見出しセクションの状態を強制的に再取得する（保存・確定後の同期用） */
   refetchHeadings: () => Promise<SessionHeadingSection[]>;
 }
-
-/** 基本構成未入力時に表示。CanvasPanel 等でラベル切り替えに利用 */
-export const BASIC_STRUCTURE_REQUIRED_MESSAGE =
-  'メモ・補足情報の「基本構成」に、### と #### 形式で見出しを入力して保存してください。';
 
 export function useHeadingFlow({
   sessionId,
@@ -271,9 +267,9 @@ export function useHeadingFlow({
             }
           }
         } else {
-          // 基本構成が空、または ###/#### 見出しが抽出できない場合は導線を表示
+          // 基本構成が空、または h3/h4 見出しが抽出できない場合は導線を表示
           if (sessionId === currentSessionIdRef.current) {
-            setHeadingInitError(BASIC_STRUCTURE_REQUIRED_MESSAGE);
+            setHeadingInitError(STEP7_BASIC_STRUCTURE_SAVE_MESSAGE);
             setHasAttemptedHeadingInit(true);
           }
         }
@@ -427,7 +423,7 @@ export function useHeadingFlow({
             setHeadingInitError(res.error || '初期化に失敗しました');
           }
         } else if (sid === currentSessionIdRef.current) {
-          setHeadingInitError(BASIC_STRUCTURE_REQUIRED_MESSAGE);
+          setHeadingInitError(STEP7_BASIC_STRUCTURE_SAVE_MESSAGE);
           setHasAttemptedHeadingInit(true);
         }
       } catch (e) {

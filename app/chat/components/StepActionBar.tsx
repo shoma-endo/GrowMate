@@ -1,6 +1,11 @@
 'use client';
 import React, { forwardRef, useImperativeHandle, useEffect, useState } from 'react';
-import { BlogStepId, BLOG_STEP_IDS, BLOG_STEP_ACTION_BAR_FULL_TEXT } from '@/lib/constants';
+import {
+  BlogStepId,
+  BLOG_STEP_IDS,
+  BLOG_STEP_ACTION_BAR_FULL_TEXT,
+  STEP7_BASIC_STRUCTURE_SAVE_MESSAGE,
+} from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -223,7 +228,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                 <span className="ml-2 inline-flex items-center gap-1.5">
                   {hasAttemptedHeadingInit && !isHeadingInitInFlight && (
                     <span className="font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
-                      見出しが見つかりません。メモ・補足情報の「基本構成」に ###/#### 形式で見出しを記載してください
+                      {STEP7_BASIC_STRUCTURE_SAVE_MESSAGE}
                     </span>
                   )}
                   {onRetryHeadingInit && (
@@ -238,7 +243,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                       }}
                       disabled={isHeadingInitInFlight}
                       className="h-6 px-2 text-[10px] border-amber-300 text-amber-800 hover:bg-amber-50"
-                      title="メモ・補足情報の「基本構成」を ###/#### 形式で保存した後、ここで再試行"
+                      title="メモ・補足情報の「基本構成」を h3/h4 形式で保存した後、ここで再試行"
                     >
                       {isHeadingInitInFlight ? (
                         <Loader2 size={10} className="animate-spin" />
