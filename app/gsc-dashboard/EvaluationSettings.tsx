@@ -350,7 +350,7 @@ export function EvaluationSettings({
                           </div>
                         </div>
                         <p className="mt-3 text-xs text-blue-700">
-                          評価日は月単位ではなく、設定した日数単位で計算されます。
+                          初回計測日と初回評価日は月単位ではなく、設定した評価サイクル日数ごとに計算されます。
                         </p>
                       </div>
                     </div>
