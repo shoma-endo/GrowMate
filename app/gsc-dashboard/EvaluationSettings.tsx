@@ -35,6 +35,7 @@ interface EvaluationSettingsProps {
   currentEvaluation: {
     base_evaluation_date: string;
     last_evaluated_on: string | null;
+    last_seen_position: number | null;
     cycle_days: number;
     evaluation_hour: number;
     status: string;
@@ -168,7 +169,8 @@ export function EvaluationSettings({
 
   const nextEvaluationDateStr = dateStr ? addDays(dateStr, cycleDays) : '';
   const firstEvaluationDateStr = nextEvaluationDateStr ? addDays(nextEvaluationDateStr, cycleDays) : '';
-  const hasCompletedInitialMeasurement = !!currentEvaluation?.last_evaluated_on;
+  // last_evaluated_on は no_metrics クールダウンでも更新されるため、ベースライン有無は last_seen_position で判定する
+  const hasCompletedInitialMeasurement = currentEvaluation?.last_seen_position != null;
   const initialMeasurementDate = currentEvaluation
     ? addDays(currentEvaluation.base_evaluation_date, currentEvaluation.cycle_days || 30)
     : '';
@@ -224,9 +226,7 @@ export function EvaluationSettings({
                 <DialogTitle>
                   {isUpdateMode ? '評価基準日の変更' : '評価サイクルの開始'}
                 </DialogTitle>
-                <DialogDescription>
-                  基準日を設定すると、その日から設定した日数後に初回の順位評価が行われます。
-                </DialogDescription>
+                <DialogDescription />
               </DialogHeader>
 
               <div className="px-6 pt-3 pb-6 space-y-6">
