@@ -171,16 +171,21 @@ export function EvaluationSettings({
   const firstEvaluationDateStr = nextEvaluationDateStr ? addDays(nextEvaluationDateStr, cycleDays) : '';
   // last_evaluated_on は no_metrics クールダウンでも更新されるため、ベースライン有無は last_seen_position で判定する
   const hasCompletedInitialMeasurement = currentEvaluation?.last_seen_position != null;
+  const scheduleRefDate = currentEvaluation
+    ? (currentEvaluation.last_evaluated_on ?? currentEvaluation.base_evaluation_date)
+    : '';
+  const evaluationCycleDays = currentEvaluation?.cycle_days || 30;
+  // isDue と同じ基準: no_metrics 後は last_evaluated_on が立つため、初回計測予定もそこから再計算する
   const initialMeasurementDate = currentEvaluation
-    ? addDays(currentEvaluation.base_evaluation_date, currentEvaluation.cycle_days || 30)
+    ? addDays(scheduleRefDate, evaluationCycleDays)
     : '';
   const initialEvaluationDate = initialMeasurementDate
-    ? addDays(initialMeasurementDate, currentEvaluation?.cycle_days || 30)
+    ? addDays(initialMeasurementDate, evaluationCycleDays)
     : '';
   const nextScheduledEvaluationDate =
     hasCompletedInitialMeasurement && currentEvaluation
       ? addDays(
-          currentEvaluation.last_evaluated_on || currentEvaluation.base_evaluation_date,
+          currentEvaluation.last_evaluated_on ?? currentEvaluation.base_evaluation_date,
           currentEvaluation.cycle_days || 30
         )
       : '';
@@ -221,7 +226,7 @@ export function EvaluationSettings({
                 {isUpdateMode ? '設定を変更' : '評価を開始'}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[670px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
                   {isUpdateMode ? '評価基準日の変更' : '評価サイクルの開始'}
