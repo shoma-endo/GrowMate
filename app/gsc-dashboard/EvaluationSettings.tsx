@@ -167,6 +167,21 @@ export function EvaluationSettings({
   };
 
   const nextEvaluationDateStr = dateStr ? addDays(dateStr, cycleDays) : '';
+  const firstEvaluationDateStr = nextEvaluationDateStr ? addDays(nextEvaluationDateStr, cycleDays) : '';
+  const hasCompletedInitialMeasurement = !!currentEvaluation?.last_evaluated_on;
+  const initialMeasurementDate = currentEvaluation
+    ? addDays(currentEvaluation.base_evaluation_date, currentEvaluation.cycle_days || 30)
+    : '';
+  const initialEvaluationDate = initialMeasurementDate
+    ? addDays(initialMeasurementDate, currentEvaluation?.cycle_days || 30)
+    : '';
+  const nextScheduledEvaluationDate =
+    hasCompletedInitialMeasurement && currentEvaluation
+      ? addDays(
+          currentEvaluation.last_evaluated_on || currentEvaluation.base_evaluation_date,
+          currentEvaluation.cycle_days || 30
+        )
+      : '';
 
   return (
     <div className="space-y-4 border-t pt-6">
@@ -314,15 +329,22 @@ export function EvaluationSettings({
                       <Info className="h-5 w-5 text-blue-600 mt-0.5" />
                       <div className="flex-1">
                         <p className="font-medium text-blue-900">評価スケジュールのプレビュー</p>
-                        <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+                        <div className="mt-3 grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
                           <div>
                             <p className="text-blue-600 text-xs mb-1">基準日</p>
                             <p className="font-semibold text-blue-900">{formatDateJP(dateStr)}</p>
                           </div>
                           <div>
-                            <p className="text-blue-600 text-xs mb-1">初回評価日</p>
+                            <p className="text-blue-600 text-xs mb-1">初回計測日</p>
                             <p className="font-semibold text-blue-900">
                               {formatDateJP(nextEvaluationDateStr)}{' '}
+                              {evaluationHour.toString().padStart(2, '0')}:00 (日本時間)
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-blue-600 text-xs mb-1">初回評価日</p>
+                            <p className="font-semibold text-blue-900">
+                              {formatDateJP(firstEvaluationDateStr)}{' '}
                               {evaluationHour.toString().padStart(2, '0')}:00 (日本時間)
                             </p>
                           </div>
@@ -381,26 +403,46 @@ export function EvaluationSettings({
 
       {/* 現在の状態表示カード */}
       {currentEvaluation ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div
+          className={`grid grid-cols-1 gap-4 mt-4 ${
+            hasCompletedInitialMeasurement ? 'md:grid-cols-2' : 'md:grid-cols-3'
+          }`}
+        >
           <div className="rounded-lg border border-blue-200 bg-blue-50 shadow-sm p-4">
             <div className="text-sm text-blue-600 mb-1">現在の評価基準日</div>
             <div className="text-2xl font-bold text-blue-900">
               {formatDateJP(currentEvaluation.base_evaluation_date)}
             </div>
           </div>
-          <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
-            <div className="text-sm text-green-600 mb-1">次回評価予定</div>
-            <div className="text-2xl font-bold text-green-900">
-              {(() => {
-                const refDate =
-                  currentEvaluation.last_evaluated_on || currentEvaluation.base_evaluation_date;
-                const cycle = currentEvaluation.cycle_days || 30;
-                const hour = currentEvaluation.evaluation_hour ?? 12;
-                const nextDate = addDays(refDate, cycle);
-                return `${formatDateJP(nextDate)} ${hour.toString().padStart(2, '0')}:00 (日本時間)`;
-              })()}
+          {hasCompletedInitialMeasurement ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
+              <div className="text-sm text-green-600 mb-1">次回評価予定</div>
+              <div className="text-2xl font-bold text-green-900">
+                {formatDateJP(nextScheduledEvaluationDate)}{' '}
+                {(currentEvaluation.evaluation_hour ?? 12).toString().padStart(2, '0')}:00
+                (日本時間)
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="rounded-lg border border-cyan-200 bg-cyan-50 shadow-sm p-4">
+                <div className="text-sm text-cyan-600 mb-1">初回計測予定</div>
+                <div className="text-2xl font-bold text-cyan-900">
+                  {formatDateJP(initialMeasurementDate)}{' '}
+                  {(currentEvaluation.evaluation_hour ?? 12).toString().padStart(2, '0')}:00
+                  (日本時間)
+                </div>
+              </div>
+              <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
+                <div className="text-sm text-green-600 mb-1">初回評価予定</div>
+                <div className="text-2xl font-bold text-green-900">
+                  {formatDateJP(initialEvaluationDate)}{' '}
+                  {(currentEvaluation.evaluation_hour ?? 12).toString().padStart(2, '0')}:00
+                  (日本時間)
+                </div>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="rounded-lg border-2 border-dashed p-8 text-center bg-gray-50/50 mt-4">
