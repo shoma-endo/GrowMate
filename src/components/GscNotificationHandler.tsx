@@ -23,7 +23,7 @@ export function GscNotificationHandler() {
 
   // 一般ユーザー向けページでは通知を表示しない
   const isPublicPage = !!pathname
-    ? pathname === '/home' || pathname === '/privacy' || pathname.startsWith('/invite')
+    ? pathname === '/home' || pathname === '/privacy'
     : false;
 
   const showToast = useCallback(

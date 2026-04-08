@@ -10,11 +10,8 @@ export const runtime = 'nodejs';
  * LINE OAuth state生成エンドポイント
  * セキュアなstate値を生成し、HttpOnly Cookieとして設定
  */
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const invitationToken = searchParams.get('invitation_token');
-
     // セキュアなランダムstate生成（32バイト = 64文字の16進数）
     const stateArray = new Uint8Array(32);
     crypto.getRandomValues(stateArray);
@@ -48,18 +45,6 @@ export async function GET(request: Request) {
       maxAge: 1800, // 30分間有効
       path: '/',
     });
-
-    if (invitationToken) {
-      // 招待トークンがある場合はCookieに一時保存（LINEログイン後の紐付け用）
-      // 招待の有効期限（7日）と整合させるため、1週間保持
-      cookieStore.set('employee_invitation_token', invitationToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7, // 7日間有効
-        path: '/',
-      });
-    }
 
     // LINE OAuth認証URLを構築
     const params = new URLSearchParams({

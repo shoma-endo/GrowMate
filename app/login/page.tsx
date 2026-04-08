@@ -1,8 +1,14 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { Suspense, useEffect, useState, useTransition } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import { Loader2 } from 'lucide-react';
+
+import {
+  LINE_OAUTH_CALLBACK_MESSAGES,
+  LINE_OAUTH_CALLBACK_QUERY_PARAM,
+} from '@/domain/lineOauthCallbackErrors';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -14,7 +20,9 @@ import { FullNameDialog } from '@/components/FullNameDialog';
 
 type LoginView = 'loading' | 'options' | 'otp-form';
 
-export default function LoginPage() {
+function LoginPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [view, setView] = useState<LoginView>('options');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -22,6 +30,19 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isPending, startTransition] = useTransition();
+
+  // LINE OAuth コールバック失敗時のクエリ（生 JSON を避けて /login に誘導した場合）
+  useEffect(() => {
+    const code = searchParams?.get(LINE_OAUTH_CALLBACK_QUERY_PARAM);
+    if (!code) return;
+    const message =
+      code in LINE_OAUTH_CALLBACK_MESSAGES
+        ? LINE_OAUTH_CALLBACK_MESSAGES[code as keyof typeof LINE_OAUTH_CALLBACK_MESSAGES]
+        : LINE_OAUTH_CALLBACK_MESSAGES.unexpected;
+    setError(message);
+    setView('options');
+    router.replace('/login', { scroll: false });
+  }, [router, searchParams]);
 
   // 再送信カウントダウン
   useEffect(() => {
@@ -268,5 +289,20 @@ export default function LoginPage() {
       </Card>
     </div>
     </>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+          <Loader2 className="h-10 w-10 animate-spin text-[#06C755]" />
+          <p className="mt-4 text-sm text-gray-500">読み込み中...</p>
+        </div>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }

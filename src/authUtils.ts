@@ -34,10 +34,6 @@ export function isActualOwner(
   return role === 'owner' && !ownerUserId;
 }
 
-export function canInviteEmployee(role: UserRole | null): boolean {
-  return role === 'paid' || role === 'admin';
-}
-
 /**
  * 一括インポート（WordPress / GSC）の操作別認可
  * - role が null / unavailable は不可

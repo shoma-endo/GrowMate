@@ -1,12 +1,21 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { env } from '@/env';
 import { cookies } from 'next/headers';
-import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import {
+  LINE_OAUTH_CALLBACK_QUERY_PARAM,
+  type LineOauthCallbackErrorCode,
+} from '@/domain/lineOauthCallbackErrors';
 import { userService } from '@/server/services/userService';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 // Node.jsランタイムを強制（Vercelエッジ環境でのCookie永続化問題を回避）
 export const runtime = 'nodejs';
+
+function redirectLineOAuthLoginError(code: LineOauthCallbackErrorCode): NextResponse {
+  const url = new URL('/login', env.NEXT_PUBLIC_SITE_URL);
+  url.searchParams.set(LINE_OAUTH_CALLBACK_QUERY_PARAM, code);
+  return NextResponse.redirect(url);
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -21,16 +30,13 @@ export async function GET(request: NextRequest) {
   // state検証: 必須・一致確認
   if (!state || !savedState || state !== savedState) {
     console.error('Invalid state parameter:', { state, savedState });
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.AUTH.INVALID_STATE },
-      { status: 403 }
-    );
+    return redirectLineOAuthLoginError('invalid_state');
   }
 
   // nonce検証（使い捨てトークン確認）
   if (!savedNonce) {
     console.error('Missing nonce in cookies');
-    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.OAUTH_SESSION_INVALID }, { status: 403 });
+    return redirectLineOAuthLoginError('session_invalid');
   }
 
   // 使用済みのstate/nonceを即座に削除（再利用攻撃防止）
@@ -38,7 +44,7 @@ export async function GET(request: NextRequest) {
   cookieStore.delete('line_oauth_nonce');
 
   if (!code) {
-    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.AUTHORIZATION_CODE_MISSING }, { status: 400 });
+    return redirectLineOAuthLoginError('code_missing');
   }
 
   try {
@@ -59,31 +65,19 @@ export async function GET(request: NextRequest) {
 
     if (!tokenRes.ok) {
       console.error('LINE Token API Error:', tokenData);
-      return NextResponse.json(
-        { error: ERROR_MESSAGES.AUTH.LINE_TOKEN_FETCH_FAILED, details: tokenData },
-        { status: tokenRes.status }
-      );
+      return redirectLineOAuthLoginError('token_exchange_failed');
     }
 
     // ここでリフレッシュトークンとアクセストークンを安全に保存します。
     // 例: データベースにユーザー情報と紐付けて保存、セッションストアに保存など。
     // Cookie に保存する場合、httpOnly, secure, sameSite 属性を適切に設定してください。
 
-    // ユーザー情報の取得・作成 (Invitation処理のため)
-    let invToken: string | undefined;
+    // ユーザー情報の取得・作成（失敗時は LINE Cookie を付与せず中断）
     try {
-      const currentUser = await userService.getUserFromLiffToken(tokenData.access_token);
-
-      // 招待Cookieの確認と処理
-      invToken = cookieStore.get('employee_invitation_token')?.value;
-      if (currentUser && invToken) {
-        const acceptResult = await userService.acceptEmployeeInvitation(currentUser.id, invToken);
-        if (!acceptResult.success) {
-          console.error('Failed to accept invitation:', acceptResult.error);
-        }
-      }
+      await userService.getUserFromLiffToken(tokenData.access_token);
     } catch (e) {
-      console.error('Error in user creation/invitation processing:', e);
+      console.error('[LINE Callback] getUserFromLiffToken failed:', e);
+      return redirectLineOAuthLoginError('user_setup_failed');
     }
 
     // LINE ログイン成功: 既存の Supabase Email セッションをクリアして共存を防ぐ。
@@ -93,28 +87,32 @@ export async function GET(request: NextRequest) {
       const supabase = await createSupabaseServerClient();
       await supabase.auth.signOut();
     } catch (e) {
-      // 既にセッションがない場合など、失敗は非致命的
-      console.warn('[LINE Callback] Failed to sign out from Supabase:', e);
+      console.error('[LINE Callback] Failed to clear Supabase session before LINE login:', e);
+      return redirectLineOAuthLoginError('session_handoff_failed');
     }
 
     // ユーザーを認証後のページ（例: ホーム画面）にリダイレクト
     const redirectUrl = new URL('/', env.NEXT_PUBLIC_SITE_URL);
     const res = NextResponse.redirect(redirectUrl);
 
-    // 招待Cookieを削除
-    if (invToken) {
-      res.cookies.delete('employee_invitation_token');
-    }
-
     // Cookieにトークンを保存 (httpOnlyでJSからのアクセスを防ぐ)
     // Secure属性は HTTPS でのみ送信されるようにするため、本番環境では true を推奨
     // SameSite属性は CSRF 対策として 'Lax' または 'Strict' を推奨
-    // maxAge はアクセストークンの有効期限 (秒) に合わせると良いでしょう
+    // maxAge はアクセストークンの有効期限 (秒)。欠落・不正時は check-role と同様に約30日
+    const fallbackLineAccessMaxAgeSec = 60 * 60 * 24 * 30;
+    const expiresInRaw = tokenData.expires_in;
+    const accessTokenMaxAge =
+      expiresInRaw != null &&
+      Number.isFinite(Number(expiresInRaw)) &&
+      Number(expiresInRaw) > 0
+        ? Math.floor(Number(expiresInRaw))
+        : fallbackLineAccessMaxAgeSec;
+
     res.cookies.set('line_access_token', tokenData.access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: tokenData.expires_in,
+      maxAge: accessTokenMaxAge,
       path: '/',
     });
     // リフレッシュトークンは有効期限が長いことが多いですが、アクセストークンよりは厳重に管理
@@ -129,6 +127,6 @@ export async function GET(request: NextRequest) {
     return res;
   } catch (error) {
     console.error('Callback Error:', error);
-    return NextResponse.json({ error: ERROR_MESSAGES.COMMON.SERVER_ERROR }, { status: 500 });
+    return redirectLineOAuthLoginError('unexpected');
   }
 }

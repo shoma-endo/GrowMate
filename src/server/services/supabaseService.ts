@@ -10,7 +10,7 @@ import {
   ServerChatMessage,
   ServerChatSession,
 } from '@/types/chat';
-import type { DbUser, DbUserInsert, DbUserUpdate, EmployeeInvitation } from '@/types/user';
+import type { DbUser, DbUserInsert, DbUserUpdate } from '@/types/user';
 import type { UserRole } from '@/types/user';
 import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
@@ -1896,100 +1896,6 @@ export class SupabaseService {
     return this.success((data?.data as Record<string, unknown>) || null);
   }
 
-  /* === スタッフ招待機能 ================================ */
-
-  async createEmployeeInvitation(
-    invitation: Omit<EmployeeInvitation, 'id' | 'createdAt'>
-  ): Promise<SupabaseResult<string>> {
-    const { data, error } = await this.supabase
-      .from('employee_invitations')
-      .insert({
-        owner_user_id: invitation.ownerUserId,
-        invitation_token: invitation.invitationToken,
-        expires_at: toIsoTimestamp(invitation.expiresAt),
-        created_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single();
-
-    if (error) {
-      return this.failure('招待の作成に失敗しました', { error });
-    }
-    return this.success(data.id);
-  }
-
-  async getEmployeeInvitationByToken(
-    token: string
-  ): Promise<SupabaseResult<EmployeeInvitation | null>> {
-    const { data, error } = await this.supabase
-      .from('employee_invitations')
-      .select('*')
-      .eq('invitation_token', token)
-      .maybeSingle();
-
-    if (error) {
-      return this.failure('招待の取得に失敗しました', { error });
-    }
-    if (!data) return this.success(null);
-
-    return this.success({
-      id: data.id,
-      ownerUserId: data.owner_user_id,
-      invitationToken: data.invitation_token,
-      expiresAt: parseTimestampSafe(data.expires_at),
-      usedAt: data.used_at ? parseTimestampSafe(data.used_at) : undefined,
-      usedByUserId: data.used_by_user_id ?? undefined,
-      createdAt: parseTimestampSafe(data.created_at),
-    });
-  }
-
-  async markInvitationAsUsed(token: string, userId: string): Promise<SupabaseResult<void>> {
-    const { error } = await this.supabase
-      .from('employee_invitations')
-      .update({
-        used_at: new Date().toISOString(),
-        used_by_user_id: userId,
-      })
-      .eq('invitation_token', token);
-
-    if (error) {
-      return this.failure('招待の使用済更新に失敗しました', { error });
-    }
-    return this.success(undefined);
-  }
-
-  async acceptEmployeeInvitation(userId: string, token: string): Promise<SupabaseResult<void>> {
-    const { data, error } = await this.supabase
-      .rpc('accept_employee_invitation', {
-        p_user_id: userId,
-        p_token: token,
-      })
-      .returns<Array<{ success: boolean; error: string | null }>>()
-      .single();
-
-    if (error) {
-      return this.failure('招待の受諾に失敗しました', { error, context: { userId } });
-    }
-
-    if (!data?.success) {
-      return this.failure(data?.error ?? '招待の受諾に失敗しました', {
-        error: new Error(data?.error ?? 'Failed to accept employee invitation'),
-        context: { userId },
-      });
-    }
-
-    return this.success(undefined);
-  }
-
-  async deleteEmployeeInvitation(id: string): Promise<SupabaseResult<void>> {
-    const { error } = await this.supabase.from('employee_invitations').delete().eq('id', id);
-
-    if (error) {
-      return this.failure('招待の削除に失敗しました', { error });
-    }
-    return this.success(undefined);
-  }
-
   async deleteEmployeeAndRestoreOwner(
     employeeId: string,
     ownerId: string
@@ -2017,31 +1923,6 @@ export class SupabaseService {
     }
 
     return this.success(undefined);
-  }
-
-  async getEmployeeInvitationByOwnerId(
-    ownerId: string
-  ): Promise<SupabaseResult<EmployeeInvitation | null>> {
-    const { data, error } = await this.supabase
-      .from('employee_invitations')
-      .select('*')
-      .eq('owner_user_id', ownerId)
-      .maybeSingle();
-
-    if (error) {
-      return this.failure('招待の取得に失敗しました', { error });
-    }
-    if (!data) return this.success(null);
-
-    return this.success({
-      id: data.id,
-      ownerUserId: data.owner_user_id,
-      invitationToken: data.invitation_token,
-      expiresAt: parseTimestampSafe(data.expires_at),
-      usedAt: data.used_at ? parseTimestampSafe(data.used_at) : undefined,
-      usedByUserId: data.used_by_user_id ?? undefined,
-      createdAt: parseTimestampSafe(data.created_at),
-    });
   }
 
   async deleteUserFully(userId: string): Promise<SupabaseResult<void>> {

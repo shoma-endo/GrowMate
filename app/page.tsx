@@ -8,13 +8,12 @@ import { updateUserFullName } from '@/server/actions/user.actions';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import Image from 'next/image';
-import { Settings, Shield, List, UserPlus, UserX, Plug } from 'lucide-react';
+import { Settings, Shield, List, UserPlus, Plug } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FullNameDialog } from '@/components/FullNameDialog';
 import { hasPaidFeatureAccess } from '@/types/user';
-import { InviteDialog } from '@/components/InviteDialog';
-import { canInviteEmployee, hasOwnerRole, isAdmin as isAdminRole } from '@/authUtils';
+import { hasOwnerRole, isAdmin as isAdminRole } from '@/authUtils';
 import { signOutEmail } from '@/server/actions/auth.actions';
 import { toast } from 'sonner';
 
@@ -146,53 +145,6 @@ const AdminAccessCard = ({ isAdmin, hasAuthenticatedUser, isLoading }: AdminAcce
   );
 };
 
-interface EmployeeInviteCardProps {
-  canInvite: boolean;
-  hasAuthenticatedUser: boolean;
-  isLoading: boolean;
-}
-
-const EmployeeInviteCard = ({
-  canInvite,
-  hasAuthenticatedUser,
-  isLoading,
-}: EmployeeInviteCardProps) => {
-  if (isLoading || !hasAuthenticatedUser || !canInvite) {
-    return null;
-  }
-
-  return (
-    <Card className="border-emerald-200 bg-emerald-50">
-      <CardHeader>
-        <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
-          <UserPlus className="h-5 w-5 text-emerald-600" />
-          スタッフ招待
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-gray-700 text-center mb-4">
-          招待リンクを発行して
-          <br />
-          スタッフを招待できます。
-        </p>
-        <div className="flex justify-center w-full">
-          <InviteDialog
-            trigger={
-              <Button
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md transition-colors"
-                aria-label="招待ダイアログを開く"
-              >
-                <UserPlus className="mr-2 h-5 w-5" />
-                スタッフを招待する
-              </Button>
-            }
-          />
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
-
 interface OwnerEmployeeCardProps {
   isOwnerRole: boolean;
   hasAuthenticatedUser: boolean;
@@ -297,18 +249,6 @@ const OwnerEmployeeCard = ({
                   </p>
                 </div>
               </button>
-              <div className="flex justify-end">
-                <InviteDialog
-                  onEmployeeDeleted={() => setEmployee(null)}
-                  defaultOpenMode="delete"
-                  trigger={
-                    <Button variant="destructive" size="sm" className="gap-2">
-                      <UserX className="h-4 w-4" />
-                      スタッフを削除
-                    </Button>
-                  }
-                />
-              </div>
             </div>
           ) : (
             <p className="text-sm text-gray-700 text-center">現在スタッフは登録されていません。</p>
@@ -334,7 +274,6 @@ export default function Home() {
   const hasManagementAccess = hasPaidFeatureAccess(userRole);
   const canManageIntegrations =
     !isOwnerViewMode && !isStaffUser && (isOwnerRole || hasManagementAccess);
-  const canInvite = !isOwnerViewMode && !isStaffUser && canInviteEmployee(userRole);
 
   // フルネーム未入力チェック
   useEffect(() => {
@@ -372,11 +311,6 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-md lg:max-w-6xl">
             <AdminAccessCard
               isAdmin={isAdmin}
-              hasAuthenticatedUser={hasAuthenticatedUser}
-              isLoading={isLoading || isRoleLoading}
-            />
-            <EmployeeInviteCard
-              canInvite={canInvite}
               hasAuthenticatedUser={hasAuthenticatedUser}
               isLoading={isLoading || isRoleLoading}
             />

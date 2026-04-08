@@ -234,7 +234,7 @@ export function LiffProvider({ children, initialize = false }: LiffProviderProps
   }, [refreshUser, viewModeResolved]);
 
   // 公開パスの定義 - ルートを除外
-  const publicPaths = ['/home', '/privacy', '/login', '/invite'];
+  const publicPaths = ['/home', '/privacy', '/login'];
   // pathnameが取得できない場合（稀なケース）はfalseとして扱うが、SSR時はpathnameがあるため正しく判定される
   const isPublicPath = pathname
     ? publicPaths.some(

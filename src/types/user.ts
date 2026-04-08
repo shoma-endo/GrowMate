@@ -129,13 +129,3 @@ export function toUser(dbUser: DbUser): User {
     ownerPreviousRole: dbUser.owner_previous_role ?? null,
   };
 }
-
-export interface EmployeeInvitation {
-  id: string;
-  ownerUserId: string;
-  invitationToken: string;
-  expiresAt: IsoTimestamp;
-  usedAt?: IsoTimestamp | undefined;
-  usedByUserId?: string | undefined;
-  createdAt: IsoTimestamp;
-}
