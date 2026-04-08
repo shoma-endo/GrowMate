@@ -219,7 +219,7 @@ export function EvaluationSettings({
                 {isUpdateMode ? '設定を変更' : '評価を開始'}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
                   {isUpdateMode ? '評価基準日の変更' : '評価サイクルの開始'}
