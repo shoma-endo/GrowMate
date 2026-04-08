@@ -349,6 +349,9 @@ export function EvaluationSettings({
                             </p>
                           </div>
                         </div>
+                        <p className="mt-3 text-xs text-blue-700">
+                          評価日は月単位ではなく、設定した日数単位で計算されます。
+                        </p>
                       </div>
                     </div>
                   </div>
