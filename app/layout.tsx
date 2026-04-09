@@ -11,7 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ja" className={inter.className} suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <LiffProvider initialize={true}>
+        <LiffProvider>
           {children}
           <Toaster />
           <GlobalToastBridge />
