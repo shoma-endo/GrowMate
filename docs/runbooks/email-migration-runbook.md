@@ -67,9 +67,14 @@ BEGIN
     END IF;
 
     -- 3. auth.users を作成
+    -- 注意: 以下の text 系列を省略すると NULL になり、GoTrue が string として読み込めず
+    -- OTP 送信時に Database error finding user（Scan error on confirmation_token / email_change 等）になる。
+    -- 手動 INSERT では空文字 '' を明示する。
     INSERT INTO auth.users (
       instance_id, id, aud, role, email,
       encrypted_password, email_confirmed_at,
+      confirmation_token, recovery_token,
+      email_change, email_change_token_current, email_change_token_new,
       raw_app_meta_data, raw_user_meta_data,
       created_at, updated_at
     ) VALUES (
@@ -78,6 +83,8 @@ BEGIN
       'authenticated', 'authenticated',
       lower(r.email),
       '', now(),
+      '', '',
+      '', '', '',
       jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
       jsonb_build_object('display_name', r.full_name),
       now(), now()
@@ -120,6 +127,48 @@ SELECT id, full_name, email, supabase_auth_id, line_display_name, updated_at
    AND line_user_id IS NOT NULL
  ORDER BY updated_at DESC;
 ```
+
+`auth.users` 側で string 期待の列が NULL のまま残っていないか（OTP 失敗の原因になる）:
+
+```sql
+SELECT id, email,
+       confirmation_token IS NULL AS confirmation_null,
+       recovery_token IS NULL AS recovery_null,
+       email_change IS NULL AS email_change_null,
+       email_change_token_current IS NULL AS email_change_token_current_null,
+       email_change_token_new IS NULL AS email_change_token_new_null
+  FROM auth.users
+ WHERE id IN (SELECT supabase_auth_id FROM users WHERE supabase_auth_id IS NOT NULL);
+```
+
+注意: ホストされている GoTrue の版によって列名が違う（例: `email_change_token` ではなく `email_change_token_current` / `email_change_token_new`）。列一覧は次で確認する:
+
+```sql
+SELECT column_name, data_type
+  FROM information_schema.columns
+ WHERE table_schema = 'auth'
+   AND table_name = 'users'
+ ORDER BY ordinal_position;
+```
+
+一括修復（NULL を空文字にそろえる。本番実行前に件数を `WHERE ... IS NOT NULL` の否定で確認すること）:
+
+```sql
+UPDATE auth.users
+   SET confirmation_token = coalesce(confirmation_token, ''),
+       recovery_token = coalesce(recovery_token, ''),
+       email_change = coalesce(email_change, ''),
+       email_change_token_current = coalesce(email_change_token_current, ''),
+       email_change_token_new = coalesce(email_change_token_new, ''),
+       updated_at = now()
+ WHERE confirmation_token IS NULL
+    OR recovery_token IS NULL
+    OR email_change IS NULL
+    OR email_change_token_current IS NULL
+    OR email_change_token_new IS NULL;
+```
+
+上記の列名が自環境に無い場合は、その列だけ UPDATE から外す。
 
 ---
 
