@@ -151,7 +151,7 @@ SELECT column_name, data_type
  ORDER BY ordinal_position;
 ```
 
-一括修復（NULL を空文字にそろえる。本番実行前に件数を `WHERE ... IS NOT NULL` の否定で確認すること）:
+一括修復（NULL を空文字にそろえる。**実行前に直前の `information_schema` クエリで列名を確認し、自環境に無い列は SET 句と WHERE 句の両方から外すこと**。WHERE にだけ残すと存在しない列を参照して SQL エラーになる。本番では影響件数の確認も推奨）:
 
 ```sql
 UPDATE auth.users
@@ -168,7 +168,7 @@ UPDATE auth.users
     OR email_change_token_new IS NULL;
 ```
 
-上記の列名が自環境に無い場合は、その列だけ UPDATE から外す。
+**重要**: 列を削る場合は **SET と WHERE を対応させる**（SET だけ外して WHERE に `... IS NULL` が残ると、無い列を参照して失敗する）。
 
 ---
 
