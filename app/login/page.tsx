@@ -1,14 +1,8 @@
 'use client';
 
 import { Suspense, useEffect, useState, useTransition } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 
 import { Loader2 } from 'lucide-react';
-
-import {
-  LINE_OAUTH_CALLBACK_MESSAGES,
-  LINE_OAUTH_CALLBACK_QUERY_PARAM,
-} from '@/domain/lineOauthCallbackErrors';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -18,11 +12,9 @@ import { Label } from '@/components/ui/label';
 import { sendOtpEmail, verifyOtp, registerFullName } from '@/server/actions/auth.actions';
 import { FullNameDialog } from '@/components/FullNameDialog';
 
-type LoginView = 'loading' | 'options' | 'otp-form';
+type LoginView = 'options' | 'otp-form';
 
 function LoginPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const [view, setView] = useState<LoginView>('options');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -31,44 +23,12 @@ function LoginPageContent() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isPending, startTransition] = useTransition();
 
-  // LINE OAuth コールバック失敗時のクエリ（生 JSON を避けて /login に誘導した場合）
-  useEffect(() => {
-    const code = searchParams?.get(LINE_OAUTH_CALLBACK_QUERY_PARAM);
-    if (!code) return;
-    const message =
-      code in LINE_OAUTH_CALLBACK_MESSAGES
-        ? LINE_OAUTH_CALLBACK_MESSAGES[code as keyof typeof LINE_OAUTH_CALLBACK_MESSAGES]
-        : LINE_OAUTH_CALLBACK_MESSAGES.unexpected;
-    setError(message);
-    setView('options');
-    router.replace('/login', { scroll: false });
-  }, [router, searchParams]);
-
   // 再送信カウントダウン
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const id = setTimeout(() => setResendCooldown(c => c - 1), 1000);
     return () => clearTimeout(id);
   }, [resendCooldown]);
-
-  const loginWithLine = async () => {
-    setView('loading');
-    setError('');
-    try {
-      const res = await fetch('/api/auth/line-oauth-init', { cache: 'no-store' });
-      if (!res.ok) throw new Error(`OAuth init failed: ${res.status}`);
-      const { authUrl } = await res.json();
-      if (authUrl) {
-        window.location.href = authUrl;
-      } else {
-        throw new Error('No authUrl received');
-      }
-    } catch (err) {
-      console.error('[LoginPage] LINE login error:', err);
-      setError('ログイン処理中にエラーが発生しました。再試行してください。');
-      setView('options');
-    }
-  };
 
   const handleSendOtp = () => {
     if (!email) return;
@@ -92,21 +52,6 @@ function LoginPageContent() {
       if (!result.success) {
         setError(result.error ?? 'エラーが発生しました');
         return;
-      }
-      // LIFF の localStorage キャッシュを削除する。
-      // 以前に LINE ログインした場合、LIFF SDK が isLoggedIn=true をキャッシュしており、
-      // リダイレクト後に syncWithServerIfNeeded() が古い LINE トークンで /api/user/current を
-      // 呼び出してしまい、Email ユーザーが LINE ユーザーとして認証される問題を防ぐ。
-      if (typeof window !== 'undefined') {
-        // 外部ブラウザは localStorage、LIFF in-client は sessionStorage を使うため両方をクリア
-        for (const storage of [localStorage, sessionStorage]) {
-          const keysToRemove: string[] = [];
-          for (let i = 0; i < storage.length; i++) {
-            const key = storage.key(i);
-            if (key?.startsWith('LIFF_STORE:')) keysToRemove.push(key);
-          }
-          keysToRemove.forEach(key => storage.removeItem(key));
-        }
       }
       if (result.isNewUser) {
         setShowFullNameDialog(true);
@@ -146,7 +91,7 @@ function LoginPageContent() {
         <CardHeader className="text-center">
           {view === 'options' && (
             <>
-              <CardDescription>LINE またはメールでログインできます</CardDescription>
+              <CardDescription>メールでログインできます</CardDescription>
               <p className="text-sm text-gray-500 mt-2">初めての方もご利用いただけます</p>
             </>
           )}
@@ -156,13 +101,6 @@ function LoginPageContent() {
         </CardHeader>
 
         <CardContent>
-          {view === 'loading' && (
-            <div className="flex flex-col items-center justify-center space-y-4 py-4">
-              <Loader2 className="h-10 w-10 animate-spin text-[#06C755]" />
-              <p className="text-gray-500">確認中...</p>
-            </div>
-          )}
-
           {view === 'options' && (
             <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4">
               <div className="space-y-2">
@@ -190,20 +128,6 @@ function LoginPageContent() {
                 ) : (
                   '認証コードを送信'
                 )}
-              </Button>
-
-              <div className="relative flex items-center">
-                <div className="flex-1 border-t border-gray-200" />
-                <span className="mx-3 text-sm text-gray-400">または</span>
-                <div className="flex-1 border-t border-gray-200" />
-              </div>
-
-              <Button
-                onClick={loginWithLine}
-                size="lg"
-                className="w-full bg-[#06C755] text-white hover:opacity-90 active:opacity-70 px-8 py-6 text-lg rounded-xl shadow-md transition-all"
-              >
-                LINEでログイン
               </Button>
 
               {error && (
@@ -297,7 +221,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
-          <Loader2 className="h-10 w-10 animate-spin text-[#06C755]" />
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="mt-4 text-sm text-gray-500">読み込み中...</p>
         </div>
       }

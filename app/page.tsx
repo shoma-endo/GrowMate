@@ -8,54 +8,29 @@ import { updateUserFullName } from '@/server/actions/user.actions';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import Image from 'next/image';
-import { Settings, Shield, List, UserPlus, Plug } from 'lucide-react';
+import { Settings, Shield, List, Plug } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FullNameDialog } from '@/components/FullNameDialog';
 import { hasPaidFeatureAccess } from '@/types/user';
-import { hasOwnerRole, isAdmin as isAdminRole } from '@/authUtils';
+import { isAdmin as isAdminRole } from '@/authUtils';
 import { signOutEmail } from '@/server/actions/auth.actions';
 import { toast } from 'sonner';
-
-interface EmployeeInfo {
-  id: string;
-  lineDisplayName: string;
-  linePictureUrl?: string;
-  createdAt: string;
-}
 
 const LOGOUT_ERROR_MSG = 'ログアウトに失敗しました。再度お試しください。';
 
 const ProfileDisplay = () => {
-  const { profile, isLoading, isLoggedIn, logout, user, isOwnerViewMode, isLineCookieAuth } = useLiffContext();
+  const { isLoading, user } = useLiffContext();
   const router = useRouter();
 
   const handleLogout = async () => {
-    // LINE 認証（LIFF SDK ログイン or cookie 認証）かどうかを区別
-    const isLineUser = isLoggedIn || isLineCookieAuth;
     try {
-      const result = await signOutEmail(
-        isLineUser ? { allowPartialOnTransientError: true } : undefined
-      );
+      const result = await signOutEmail();
       if (!result.success) {
         toast.error(result.error ?? LOGOUT_ERROR_MSG);
         return;
       }
-      if (result.partial) {
-        toast.info(
-          'LINE からはログアウトしました。再度ログインしたように見える場合は、もう一度ログアウトを押してください。'
-        );
-      }
-      if (isLoggedIn) {
-        // LIFF SDK ログイン済みの場合のみ liff.logout() を呼ぶ
-        // cookie 認証ユーザー（isLineCookieAuth）は LIFF 未ログインのため logout() を呼ばない:
-        // logout() は window.location.reload() を実行するため LINE クライアント内で
-        // login() が再発火し「ログアウトしたのにすぐ戻される」状態になる
-        logout();
-      } else {
-        // cookie 認証ユーザーまたは Email ユーザー: サーバー cookie は signOutEmail で削除済み
-        router.push('/login');
-      }
+      router.push('/login');
     } catch {
       toast.error(LOGOUT_ERROR_MSG);
     }
@@ -65,12 +40,8 @@ const ProfileDisplay = () => {
     return null;
   }
 
-  const displayName =
-    user.fullName ??
-    (isOwnerViewMode ? user.lineDisplayName : profile?.displayName) ??
-    user.email ??
-    'ユーザー';
-  const pictureUrl = user?.linePictureUrl ?? profile?.pictureUrl;
+  const displayName = user.fullName ?? user.email ?? 'ユーザー';
+  const pictureUrl = user?.linePictureUrl;
 
   return (
     <Card className="w-full max-w-md mb-6">
@@ -85,16 +56,15 @@ const ProfileDisplay = () => {
         )}
         <h3 className="text-xl font-bold mb-2">{displayName}</h3>
         {user.email && <p className="text-sm text-gray-600 mb-4">メールアドレス: {user.email}</p>}
-        {!isOwnerViewMode && !!user && (
-          <button
-            onClick={handleLogout}
-            className="mt-4 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm"
-            aria-label="ログアウト"
-            tabIndex={0}
-          >
-            ログアウト
-          </button>
-        )}
+        <Button
+          onClick={handleLogout}
+          variant="destructive"
+          className="mt-4"
+          aria-label="ログアウト"
+          tabIndex={0}
+        >
+          ログアウト
+        </Button>
       </CardContent>
     </Card>
   );
@@ -145,135 +115,16 @@ const AdminAccessCard = ({ isAdmin, hasAuthenticatedUser, isLoading }: AdminAcce
   );
 };
 
-interface OwnerEmployeeCardProps {
-  isOwnerRole: boolean;
-  hasAuthenticatedUser: boolean;
-  isLoading: boolean;
-}
-
-const OwnerEmployeeCard = ({
-  isOwnerRole,
-  hasAuthenticatedUser,
-  isLoading,
-}: OwnerEmployeeCardProps) => {
-  const { getAccessToken } = useLiffContext();
-  const router = useRouter();
-  const [employee, setEmployee] = useState<EmployeeInfo | null>(null);
-  const [fetching, setFetching] = useState(false);
-
-  useEffect(() => {
-    if (!isOwnerRole || !hasAuthenticatedUser) return;
-
-    const fetchEmployee = async () => {
-      setFetching(true);
-      try {
-        const accessToken = await getAccessToken();
-        const res = await fetch('/api/employee', {
-          method: 'GET',
-          headers: {
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          },
-        });
-
-        if (!res.ok) {
-          throw new Error('スタッフ情報の取得に失敗しました');
-        }
-
-        const data = await res.json();
-        setEmployee(data.employee ?? null);
-      } catch (error) {
-        console.error('Failed to fetch employee:', error);
-        toast.error('スタッフ情報の取得に失敗しました');
-      } finally {
-        setFetching(false);
-      }
-    };
-
-    void fetchEmployee();
-  }, [getAccessToken, hasAuthenticatedUser, isOwnerRole]);
-
-  if (isLoading || !hasAuthenticatedUser || !isOwnerRole) {
-    return null;
-  }
-
-  const enterViewMode = () => {
-    if (!employee) {
-      return;
-    }
-    // Secure フラグは HTTPS 接続時のみ追加
-    const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
-    const secureFlag = isSecure ? '; secure' : '';
-    const cookieOptions = `path=/; samesite=lax; max-age=3600${secureFlag}`; // 1時間の有効期限
-    document.cookie = `owner_view_mode=1; ${cookieOptions}`;
-    document.cookie = `owner_view_mode_employee_id=${employee.id}; ${cookieOptions}`;
-    router.push('/chat');
-  };
-
-  return (
-    <>
-      <Card className="border-amber-200 bg-amber-50">
-        <CardHeader>
-          <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
-            <UserPlus className="h-5 w-5 text-amber-600" />
-            スタッフ管理
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {fetching ? (
-            <div className="text-center py-4">読み込み中...</div>
-          ) : employee ? (
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={enterViewMode}
-                className="w-full text-left p-4 bg-white rounded-lg flex items-center gap-3 hover:bg-amber-100 transition-colors"
-                aria-label="スタッフ画面を閲覧"
-              >
-                {employee.linePictureUrl ? (
-                  <Image
-                    src={employee.linePictureUrl}
-                    alt="Avatar"
-                    width={40}
-                    height={40}
-                    className="w-10 h-10 rounded-full"
-                  />
-                ) : (
-                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                    <span className="text-gray-500 text-xs">No Img</span>
-                  </div>
-                )}
-                <div>
-                  <p className="font-medium text-sm">{employee.lineDisplayName}</p>
-                  <p className="text-xs text-gray-500">
-                    登録日: {new Date(employee.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-              </button>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-700 text-center">現在スタッフは登録されていません。</p>
-          )}
-        </CardContent>
-      </Card>
-    </>
-  );
-};
-
 export default function Home() {
-  const { isLoading, user, isOwnerViewMode } = useLiffContext();
+  const { isLoading, user } = useLiffContext();
   const hasAuthenticatedUser = Boolean(user);
   const userRole = user?.role ?? null;
-  const isRoleLoading = !isLoading && !hasAuthenticatedUser;
-  const isStaffUser = Boolean(user?.ownerUserId);
 
   // フルネーム関連ステート
   const [showFullNameDialog, setShowFullNameDialog] = useState(false);
 
   const isAdmin = isAdminRole(userRole);
-  const isOwnerRole = hasOwnerRole(userRole);
   const hasManagementAccess = hasPaidFeatureAccess(userRole);
-  const canManageIntegrations =
-    !isOwnerViewMode && !isStaffUser && (isOwnerRole || hasManagementAccess);
 
   // フルネーム未入力チェック
   useEffect(() => {
@@ -312,16 +163,11 @@ export default function Home() {
             <AdminAccessCard
               isAdmin={isAdmin}
               hasAuthenticatedUser={hasAuthenticatedUser}
-              isLoading={isLoading || isRoleLoading}
-            />
-            <OwnerEmployeeCard
-              isOwnerRole={isOwnerRole}
-              hasAuthenticatedUser={hasAuthenticatedUser}
-              isLoading={isLoading || isRoleLoading}
+              isLoading={isLoading}
             />
 
             {/* 有料/管理者向け 設定ページ導線 */}
-            {hasAuthenticatedUser && canManageIntegrations && !isRoleLoading && (
+            {hasAuthenticatedUser && hasManagementAccess && (
               <Card className="">
                 <CardHeader>
                   <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
@@ -343,7 +189,7 @@ export default function Home() {
             )}
 
             {/* 有料/管理者向け コンテンツ一覧導線 */}
-            {hasAuthenticatedUser && hasManagementAccess && !isRoleLoading && (
+            {hasAuthenticatedUser && hasManagementAccess && (
               <Card className="">
                 <CardHeader>
                   <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
@@ -365,7 +211,7 @@ export default function Home() {
             )}
 
             {/* 管理者向け Google Ads 分析導線 */}
-            {isAdmin && !isRoleLoading && (
+            {isAdmin && (
               <Card className="border-indigo-200 bg-indigo-50">
                 <CardHeader>
                   <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
