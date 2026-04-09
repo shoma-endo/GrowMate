@@ -123,12 +123,9 @@ export const getBrief = async (
 export const getBriefServer = async (): Promise<ActionResult<BriefInput | null>> => {
   try {
     const { accessToken } = await getLiffTokensFromCookies();
-
-    if (!accessToken) {
-      return { success: false, error: ERROR_MESSAGES.BRIEF.LOGIN_REQUIRED };
-    }
-
-    return getBrief(accessToken);
+    // accessToken が undefined の場合（Email ユーザー）は '' を渡し、
+    // authMiddleware が Supabase セッション経由で Email 認証を試みる
+    return getBrief(accessToken ?? '');
   } catch (error) {
     console.error('事業者情報の取得エラー:', error);
     return {

@@ -1,51 +1,7 @@
 /**
  * フック専用の型定義
  */
-import type { SubscriptionStatus as DomainSubscriptionStatus } from '../domain/interfaces/ISubscriptionService';
 import type { ChatState } from '../domain/models/chatModels';
-import type { getLineProfileServerResponse } from '../server/actions/login.actions';
-
-/**
- * LIFF フック関連
- */
-export interface LiffProfile {
-  userId: string;
-  displayName: string;
-  pictureUrl?: string;
-  statusMessage?: string;
-}
-
-export interface UseLiffResult {
-  isLoggedIn: boolean;
-  isLoading: boolean;
-  error: string | null;
-  liffObject: unknown | null;
-  profile: LiffProfile | null;
-  login: () => void;
-  logout: () => void;
-  getLineProfile: () => Promise<getLineProfileServerResponse>;
-  getAccessToken: () => Promise<string>;
-  initLiff: () => Promise<void>;
-  clearError: () => void;
-}
-
-/**
- * サブスクリプション フック関連
- */
-export interface SubscriptionHook {
-  subscriptionStatus: DomainSubscriptionStatus | null;
-  isLoading: boolean;
-  hasInitialized: boolean;
-  requiresSubscription: boolean;
-  hasActiveSubscription: boolean;
-  error: string | null;
-  actions: {
-    checkSubscription: () => Promise<void>;
-    refreshSubscription: () => Promise<void>;
-    clearError: () => void;
-    resetInitialization: () => void;
-  };
-}
 
 /**
  * モバイル検出フック関連

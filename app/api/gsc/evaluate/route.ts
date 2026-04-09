@@ -21,10 +21,7 @@ export async function POST(request: NextRequest) {
   try {
     const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(request);
 
-    if (!liffAccessToken) {
-      return NextResponse.json({ success: false, error: 'LINE認証が必要です' }, { status: 401 });
-    }
-
+    // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
     const authResult = await authMiddleware(liffAccessToken, refreshToken);
     if (authResult.error || !authResult.userId) {
       return NextResponse.json(

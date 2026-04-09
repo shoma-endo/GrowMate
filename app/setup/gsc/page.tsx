@@ -19,10 +19,7 @@ export default async function GscSetupPage() {
     process.env.GOOGLE_SEARCH_CONSOLE_REDIRECT_URI
   );
 
-  if (!liffAccessToken) {
-    redirect('/login');
-  }
-
+  // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(liffAccessToken, refreshToken);
   if (authResult.error || !authResult.userId) {
     redirect('/login');

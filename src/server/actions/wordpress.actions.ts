@@ -349,7 +349,7 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
     // 認証情報はCookieから取得（セキュリティベストプラクティス）
     const { accessToken: liffToken, refreshToken } = await getLiffTokensFromCookies();
 
-    if (!liffToken || !wpType) {
+    if (!wpType) {
       return {
         success: false as const,
         error: ERROR_MESSAGES.AUTH.AUTHENTICATION_REQUIRED,
@@ -459,8 +459,6 @@ export async function testWordPressConnectionAction() {
 
     if (!context.success) {
       switch (context.reason) {
-        case 'line_auth_missing':
-          return { success: false as const, error: ERROR_MESSAGES.AUTH.LINE_AUTH_REQUIRED };
         case 'line_auth_invalid':
         case 'requires_reauth':
           return {

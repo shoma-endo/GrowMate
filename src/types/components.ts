@@ -5,22 +5,32 @@ import type { WordPressType } from './wordpress';
 import type { UserRole } from './user';
 import type { GscConnectionStatus } from './gsc';
 import type { Ga4ConnectionStatus } from './ga4';
-import type { LiffProfile } from './hooks';
 
 /**
- * LIFF関連の型定義
+ * 認証コンテキスト関連の型定義
+ *
+ * 名称 `LiffContextType` は後方互換のため維持しているが、
+ * LINE LIFF 依存は Phase 1.5 で撤去済みで、実体は Email 認証専用のコンテキスト。
+ * `profile` / `liffObject` / `isLineCookieAuth` / `getAccessToken` など LIFF 由来の
+ * フィールドは消費側との互換のため残置しており、常に固定値（null / false / 空文字）を返す。
  */
 export interface LiffContextType {
   isLoggedIn: boolean;
   isLoading: boolean;
-  profile: LiffProfile | null;
+  /** legacy: 常に null */
+  profile: null;
   user?: import('@/types/user').User | null;
+  /** legacy: 常に false */
   isOwnerViewMode: boolean;
+  /** legacy: 常に false */
+  isLineCookieAuth: boolean;
   login: () => void;
-  logout: () => void;
-  liffObject: unknown;
+  logout: () => void | Promise<void>;
+  /** legacy: 常に null */
+  liffObject: null;
+  /** legacy: 常に空文字を返す（Server Action 側で Email セッション解決にフォールバック） */
   getAccessToken: () => Promise<string>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<boolean>;
 }
 
 export interface LiffProviderProps {

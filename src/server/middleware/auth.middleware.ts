@@ -1,10 +1,6 @@
-'use server';
-
 import { cookies as nextCookies } from 'next/headers';
-import Stripe from 'stripe';
 
 import { LineAuthService, LineTokenExpiredError } from '@/server/services/lineAuthService';
-import { StripeService } from '@/server/services/stripeService';
 import { userService } from '@/server/services/userService';
 import { isUnavailable, isActualOwner as isActualOwnerHelper } from '@/authUtils';
 import { env } from '@/env';
@@ -16,14 +12,17 @@ export interface EnsureAuthenticatedOptions {
   accessToken?: string;
   refreshToken?: string;
   allowDevelopmentBypass?: boolean;
-  skipSubscriptionCheck?: boolean;
+  /**
+   * true のとき、LINE トークン失敗時に Supabase Email セッションへのフォールバックを許可する。
+   * LIFF SDK のキャッシュトークンが混入する可能性があるストリーミング API 専用。
+   * Server Actions で明示的に liffAccessToken を渡す場合は使用しないこと（ユーザー混同防止）。
+   */
+  allowEmailFallback?: boolean;
 }
 
 export interface AuthenticatedUser {
   lineUserId: string;
   userId: string;
-  requiresSubscription: boolean;
-  subscription: Stripe.Subscription | null;
   user?: { id: string };
   userDetails?: User | null;
   viewMode?: boolean;
@@ -32,6 +31,8 @@ export interface AuthenticatedUser {
   actorRole?: UserRole | null;
   ownerUserId?: string | null;
   error?: string;
+  /** 一時障害時は true。呼び出し元で 503 を返すために使う */
+  transient?: boolean;
   newAccessToken?: string;
   newRefreshToken?: string;
   needsReauth?: boolean;
@@ -59,11 +60,41 @@ export interface AuthCookieOptions {
   path?: string;
 }
 
+/**
+ * Email セッションを解決し、成功時は AuthenticatedUser、transient 障害時はエラー結果、
+ * unauthenticated 時は null を返す。
+ * 呼び出し側が null の場合のみ独自のエラーを返す。
+ */
+async function tryEmailFallback(): Promise<AuthenticatedUser | null> {
+  const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
+  const result = await resolveEmailUserWithReason();
+  if (result.ok) {
+    const emailUser = result.user;
+    return {
+      lineUserId: '',
+      userId: emailUser.id,
+      user: { id: emailUser.id },
+      userDetails: emailUser,
+      ownerUserId: emailUser.ownerUserId ?? null,
+    };
+  }
+  if (result.reason === 'transient') {
+    return {
+      error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+      transient: true,
+      lineUserId: '',
+      userId: '',
+      userDetails: null,
+    };
+  }
+  return null;
+}
+
 export async function ensureAuthenticated({
   accessToken,
   refreshToken,
   allowDevelopmentBypass = true,
-  skipSubscriptionCheck = false,
+  allowEmailFallback = false,
 }: EnsureAuthenticatedOptions): Promise<AuthenticatedUser> {
   const withTokens = (
     result: AuthenticatedUser,
@@ -85,20 +116,44 @@ export async function ensureAuthenticated({
     return {
       lineUserId: 'dummy-line-user-id',
       userId: 'dummy-app-user-id',
-      requiresSubscription: false,
-      subscription: null,
       user: { id: 'dummy-app-user-id' },
       userDetails: null,
     };
   }
 
   if (!accessToken) {
+    // Email セッションを優先して解決する。
+    // /api/line/callback が Supabase Email セッションを削除するため通常は共存しないが、
+    // 万が一共存する場合でも Email が勝つことで isOwnerViewMode などの誤判定を防ぐ。
+    const emailResult = await tryEmailFallback();
+    if (emailResult && !emailResult.error) return emailResult; // 成功のみ即座に返す
+
+    // Email 未認証または一時障害: LINE cookie で認証を試みる
+    // LIFF 未初期化の LINE cookie ユーザーが Server Actions を実行できるようにする。
+    // transient の場合も LINE cookie があれば継続できる（Supabase 障害時の縮退動作）。
+    // 無限ループは起きない（再帰呼び出しは accessToken が非空のため !accessToken 分岐に入らない）。
+    const cookieStore = await nextCookies();
+    const lineCookieToken = cookieStore.get('line_access_token')?.value;
+    if (lineCookieToken) {
+      const cookieRefreshToken = refreshToken ?? cookieStore.get('line_refresh_token')?.value;
+      const lineResult = await ensureAuthenticated({
+        accessToken: lineCookieToken,
+        ...(cookieRefreshToken ? { refreshToken: cookieRefreshToken } : {}),
+        allowDevelopmentBypass,
+        allowEmailFallback: false,
+      });
+      if (!lineResult.error) return lineResult;
+      // LINE も失敗: email transient があればより詳細なエラーを返す
+      if (emailResult?.transient) return emailResult;
+      return lineResult;
+    }
+
+    // LINE cookie なし: email transient または汎用エラー
+    if (emailResult) return emailResult;
     return {
       error: ERROR_MESSAGES.AUTH.LINE_ACCESS_TOKEN_REQUIRED,
       lineUserId: '',
       userId: '',
-      requiresSubscription: false,
-      subscription: null,
       userDetails: null,
     };
   }
@@ -115,13 +170,19 @@ export async function ensureAuthenticated({
     );
 
     if (!verificationResult.isValid || verificationResult.needsReauth) {
+      // allowEmailFallback = true のときのみ Email セッションへのフォールバックを試みる。
+      // LIFF SDK キャッシュ由来のトークンが混入し得るストリーミング API 専用オプション。
+      // Server Actions などで明示的に liffAccessToken を渡す場合は false のままにすること。
+      if (allowEmailFallback) {
+        const emailResult = await tryEmailFallback();
+        if (emailResult) return emailResult;
+        // null = unauthenticated → LINE_TOKEN_INVALID_OR_EXPIRED にフォールスルー
+      }
       return withTokens(
         {
           error: ERROR_MESSAGES.AUTH.LINE_TOKEN_INVALID_OR_EXPIRED,
           lineUserId: '',
           userId: '',
-          requiresSubscription: true,
-          subscription: null,
           needsReauth: Boolean(verificationResult.needsReauth),
           userDetails: null,
         },
@@ -144,8 +205,6 @@ export async function ensureAuthenticated({
           error: ERROR_MESSAGES.AUTH.LINE_PROFILE_FETCH_FAILED,
           lineUserId: '',
           userId: '',
-          requiresSubscription: false,
-          subscription: null,
           userDetails: null,
         },
         { accessToken: latestAccessToken ?? null, refreshToken: latestRefreshToken ?? null }
@@ -159,8 +218,6 @@ export async function ensureAuthenticated({
           error: ERROR_MESSAGES.AUTH.LINE_USER_NOT_FOUND,
           lineUserId: lineProfile.userId,
           userId: '',
-          requiresSubscription: false,
-          subscription: null,
           userDetails: null,
         },
         { accessToken: latestAccessToken ?? null, refreshToken: latestRefreshToken ?? null }
@@ -206,8 +263,6 @@ export async function ensureAuthenticated({
           error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
           lineUserId: lineProfile.userId,
           userId: user.id,
-          requiresSubscription: false,
-          subscription: null,
           user: { id: user.id },
           userDetails: user,
           ...viewModeInfo,
@@ -220,8 +275,6 @@ export async function ensureAuthenticated({
       {
         lineUserId: lineProfile.userId,
         userId: user.id,
-        requiresSubscription: false,
-        subscription: null,
         user: { id: user.id },
         userDetails: user,
         ...viewModeInfo,
@@ -236,71 +289,7 @@ export async function ensureAuthenticated({
     if (user.role === 'owner') {
       return baseResult;
     }
-
-    const shouldCheckSubscription = !skipSubscriptionCheck && env.STRIPE_ENABLED === 'true';
-
-    if (!shouldCheckSubscription) {
-      return baseResult;
-    }
-
-    const stripeService = new StripeService();
-    const isSubscribed = await stripeService.checkSubscriptionStatus(user.id);
-
-    let actualSubscription: Stripe.Subscription | null = null;
-    if (user.stripeSubscriptionId) {
-      try {
-        actualSubscription = await stripeService.getSubscription(user.stripeSubscriptionId);
-      } catch (subscriptionError) {
-        console.error('[Auth Middleware] Failed to fetch Stripe subscription:', subscriptionError);
-      }
-    }
-
-    if (isSubscribed) {
-      if (user.role !== 'paid') {
-        try {
-          const updated = await userService.updateUserRole(user.id, 'paid');
-          if (updated) {
-            user.role = 'paid';
-            if (baseResult.userDetails) {
-              baseResult.userDetails = { ...baseResult.userDetails, role: 'paid' };
-            }
-          }
-        } catch (roleUpdateError) {
-          console.error('[Auth Middleware] Failed to promote user role to paid:', roleUpdateError);
-        }
-      }
-    } else {
-      if (user.role === 'paid') {
-        try {
-          const updated = await userService.updateUserRole(user.id, 'trial');
-          if (updated) {
-            user.role = 'trial';
-            if (baseResult.userDetails) {
-              baseResult.userDetails = { ...baseResult.userDetails, role: 'trial' };
-            }
-          }
-        } catch (roleUpdateError) {
-          console.error(
-            '[Auth Middleware] Failed to downgrade user role to trial:',
-            roleUpdateError
-          );
-        }
-      }
-    }
-
-    if (!isSubscribed) {
-      return {
-        ...baseResult,
-        error: ERROR_MESSAGES.SUBSCRIPTION.SUBSCRIPTION_REQUIRED,
-        requiresSubscription: true,
-        subscription: actualSubscription,
-      };
-    }
-
-    return {
-      ...baseResult,
-      subscription: actualSubscription,
-    };
+    return baseResult;
   } catch (error) {
     console.error('[Auth Middleware] Error during ensureAuthenticated:', error);
 
@@ -319,8 +308,6 @@ export async function ensureAuthenticated({
         error: liffError.userMessage,
         lineUserId: '',
         userId: '',
-        requiresSubscription: false,
-        subscription: null,
         needsReauth,
         userDetails: null,
       },

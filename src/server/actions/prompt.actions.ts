@@ -4,11 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { PromptService } from '@/server/services/promptService';
-import { isUnavailable } from '@/authUtils';
+import { isAdmin, isUnavailable } from '@/authUtils';
 import { UpdatePromptTemplateInput, PromptTemplate } from '@/types/prompt';
 import { isViewModeEnabled, VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { toUser } from '@/types/user';
 
 const promptVariableSchema = z.object({
   name: z.string().min(1, '変数名は必須です'),
@@ -44,37 +43,22 @@ async function checkAdminPermission(liffAccessToken: string) {
     return { success: false, error: auth.error || ERROR_MESSAGES.AUTH.AUTH_ERROR };
   }
 
-  // 管理者権限チェック（roleがadminかどうか）
-  try {
-    const service = new PromptService();
-    const userResult = await service.getUserByLineId(auth.lineUserId);
-    if (!userResult.success) {
-      return { success: false, error: userResult.error.userMessage };
-    }
-
-    const dbUser = userResult.data;
-    if (!dbUser) {
-      return { success: false, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
-    }
-
-    // toUser関数でランタイム検証を含むUserオブジェクトに変換
-    // （toUser関数内でisValidUserRoleによる検証が実行される）
-    const user = toUser(dbUser);
-
-    // unavailableユーザーのサービス利用制限チェック
-    if (isUnavailable(user.role)) {
-      return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
-    }
-
-    if (user.role !== 'admin') {
-      return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
-    }
-
-    return { success: true, userId: auth.userId, user };
-  } catch (error) {
-    console.error('管理者権限チェックエラー:', error);
-    return { success: false, error: ERROR_MESSAGES.USER.PERMISSION_CHECK_ERROR };
+  // authMiddleware が解決済みの userDetails を直接使用
+  // （lineUserId ではなく userId ベースで解決されているため Email ユーザーでも動作する）
+  const user = auth.userDetails;
+  if (!user) {
+    return { success: false, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
   }
+
+  if (isUnavailable(user.role)) {
+    return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
+  }
+
+  if (!isAdmin(user.role)) {
+    return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
+  }
+
+  return { success: true, userId: auth.userId, user };
 }
 
 /**

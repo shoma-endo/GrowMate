@@ -14,13 +14,7 @@ export const updateUserFullName = async (fullName: string): Promise<{ success: b
   try {
     const { accessToken: lineAccessToken, refreshToken } = await getLiffTokensFromCookies();
 
-    if (!lineAccessToken) {
-      return { success: false, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
-    }
-
-    const authResult = await authMiddleware(lineAccessToken, refreshToken, {
-      skipSubscriptionCheck: true
-    });
+    const authResult = await authMiddleware(lineAccessToken, refreshToken);
     if (authResult.error) {
       return { success: false, error: authResult.error };
     }
