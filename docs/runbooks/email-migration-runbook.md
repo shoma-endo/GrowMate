@@ -268,3 +268,84 @@ stray 行に `supabase_auth_id` がある場合は 6-1 で対応する auth.user
 | 8 | | | | | | | | |
 | 9 | | | | | | | | |
 | 10 | | | | | | | | |
+
+---
+
+## 8. 同期ルールと定期検証（`public.users` / `auth.users`）
+
+メール OTP やアプリのユーザー解決は **`auth.users` と `public.users` の両方**に依存する。手動 SQL・部分移行・メール変更のあとにズレると、ログイン失敗や「別人として表示」につながる。移行作業後だけでなく、**手動で `auth` または `public.users` を触ったタイミング**で本節の SELECT を実行し、0 件であることを確認する。
+
+### 8-1. 同期ルール（守るべきインバリアント）
+
+1. **`supabase_auth_id` の向き先**: `public.users.supabase_auth_id` が非 NULL のとき、対応する `auth.users.id` が必ず存在する（孤立リンクを作らない）。
+2. **メールの一致**: 上記リンクがある行では、`lower(trim(public.users.email))` と `lower(trim(auth.users.email))` を一致させる（表示・サポート・突合用に `public.email` を正とする運用なら、変更時は **両方同じトランザクション**で更新する）。
+3. **`auth.users` の text 列**: 手動 `INSERT` や古い行で `confirmation_token` / `recovery_token` / `email_change` / `email_change_token_current` / `email_change_token_new` が NULL のままだと、GoTrue が `Scan error` / `Database error finding user` を返す。原則 **空文字 `''`** にそろえる（検査・一括修復は **セクション 2** のクエリを使う）。
+4. **メールの一意性**: `auth.users` 上で同一メール（大小文字の正規化後）の重複がないこと。`public.users` の `email` もアプリの制約どおり重複しないこと。
+
+### 8-2. 検証用クエリ（いずれも「行が返らない」ことが期待）
+
+**A. `public` と `auth` のメール不一致**（リンク済みユーザー）
+
+```sql
+SELECT
+  u.id AS public_id,
+  u.email AS public_email,
+  au.id AS auth_id,
+  au.email AS auth_email
+FROM public.users u
+JOIN auth.users au ON au.id = u.supabase_auth_id
+WHERE u.supabase_auth_id IS NOT NULL
+  AND lower(trim(coalesce(u.email, ''))) <> lower(trim(coalesce(au.email, '')));
+```
+
+**B. `supabase_auth_id` の孤立**（`auth` 側に行がない）
+
+```sql
+SELECT u.id, u.email, u.supabase_auth_id
+FROM public.users u
+LEFT JOIN auth.users au ON au.id = u.supabase_auth_id
+WHERE u.supabase_auth_id IS NOT NULL
+  AND au.id IS NULL;
+```
+
+**C. `auth.users` でのメール重複**（正規化後）
+
+```sql
+SELECT lower(trim(email)) AS email_norm, count(*) AS cnt
+FROM auth.users
+GROUP BY lower(trim(email))
+HAVING count(*) > 1;
+```
+
+**D. OTP 障害の原因になる NULL**（該当列は環境の GoTrue 版で異なる場合あり。列一覧はセクション 2 の `information_schema` クエリで確認。判定ロジックは **セクション 2「結果確認」** の `auth.users` チェックと同じで、**0 行が正常**）
+
+```sql
+SELECT id, email,
+       confirmation_token IS NULL AS confirmation_null,
+       recovery_token IS NULL AS recovery_null,
+       email_change IS NULL AS email_change_null,
+       email_change_token_current IS NULL AS email_change_token_current_null,
+       email_change_token_new IS NULL AS email_change_token_new_null
+  FROM auth.users
+ WHERE confirmation_token IS NULL
+    OR recovery_token IS NULL
+    OR email_change IS NULL
+    OR email_change_token_current IS NULL
+    OR email_change_token_new IS NULL;
+```
+
+（セクション 2 の結果確認では `id IN (SELECT supabase_auth_id FROM public.users WHERE ...)` で **リンク済み**に限定している。こちらは **全 `auth.users`** を対象にする。リンク済みだけを見たい場合は同じ `WHERE id IN (...)` を付け足す。）
+
+**E. （任意）`auth.identities` の email プロバイダ**  
+`identity_data` のキーはインスタンスで異なることがある。必要なら 1 件サンプルを `SELECT identity_data FROM auth.identities WHERE provider = 'email' LIMIT 1` で確認したうえで、メールが `auth.users.email` と揃っているかを調べる。
+
+### 8-3. 検出時の扱い（方針のみ）
+
+| 検証 | 方針の例 |
+|------|----------|
+| A（メール不一致） | どちらを正とするか決め、`public.users` / `auth.users` / `auth.identities` を **同一トランザクション**で更新。他ユーザーとのメール衝突を事前に確認する。 |
+| B（孤立） | 誤リンクなら `supabase_auth_id`（と必要なら `email`）を NULL に戻すか、正しい `auth.users` 行を復元する。 |
+| C（重複） | どちらを残すか決め、重複行の削除・マージは **セクション 6** の手順と衝突しないよう個別設計する。 |
+| D（NULL 列） | **セクション 2** の `UPDATE auth.users ... coalesce(..., '')` を実行。 |
+
+---
