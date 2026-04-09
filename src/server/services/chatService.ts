@@ -19,7 +19,6 @@ import { generateOrderedTimestamps } from '@/lib/timestamps';
 interface ChatResponse {
   message: string;
   error?: string;
-  requiresSubscription?: boolean;
 }
 
 class ChatService {
@@ -61,7 +60,6 @@ class ChatService {
     message: string;
     error?: string;
     sessionId?: string;
-    requiresSubscription?: boolean;
   }> {
     try {
       // 制限チェックは呼び出し元（サーバーアクション）でロールに応じて実施
@@ -183,7 +181,6 @@ class ChatService {
     message: string;
     error?: string;
     sessionId?: string;
-    requiresSubscription?: boolean;
   }> {
     try {
       // 制限チェックは呼び出し元（サーバーアクション）でロールに応じて実施

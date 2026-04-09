@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getUserRoleWithRefresh } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
 
 // Node.jsランタイムを強制（Cookie更新の一貫性を確保）
 export const runtime = 'nodejs';
@@ -13,13 +14,35 @@ export async function GET() {
     const lineRefreshToken = cookieStore.get('line_refresh_token')?.value;
 
     if (!lineAccessToken) {
-      return NextResponse.json({ error: ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED }, { status: 401 });
+      // access token なし: Email セッションで解決（一時障害は 503 で統一）
+      const result = await resolveEmailUserWithReason();
+      if (result.ok) {
+        return NextResponse.json({ role: result.user.role });
+      }
+      if (result.reason === 'unauthenticated') {
+        return NextResponse.json({ error: ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED }, { status: 401 });
+      }
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.AUTH.USER_ROLE_FETCH_FAILED },
+        { status: 503 }
+      );
     }
 
     const result = await getUserRoleWithRefresh(lineAccessToken, lineRefreshToken);
 
-    // 再認証が必要な場合
+    // 再認証が必要な場合: Email セッションで救済を試みる（期限切れ LINE cookie + 有効 Email の共存対応）
+    // /api/line/callback は Supabase email session を削除しないためこのケースが起こり得る
     if (result.needsReauth) {
+      const emailFallback = await resolveEmailUserWithReason();
+      if (emailFallback.ok) {
+        // 期限切れ LINE cookie を削除してから 200 を返す。
+        // 削除しないと後続の /api/user/current が stale cookie を優先して needsReauth を返し、
+        // checkAndMaybeLogin() が liff.login() を再発火させてしまう。
+        const response = NextResponse.json({ role: emailFallback.user.role });
+        response.cookies.delete('line_access_token');
+        response.cookies.delete('line_refresh_token');
+        return response;
+      }
       return NextResponse.json(
         { error: ERROR_MESSAGES.AUTH.TOKEN_EXPIRED_REAUTH, requires_login: true },
         { status: 401 }
@@ -61,6 +84,6 @@ export async function GET() {
     return response;
   } catch (error) {
     console.error('Role check API error:', error);
-    return NextResponse.json({ error: ERROR_MESSAGES.COMMON.SERVER_ERROR }, { status: 500 });
+    return NextResponse.json({ error: ERROR_MESSAGES.COMMON.SERVER_ERROR }, { status: 503 });
   }
 }

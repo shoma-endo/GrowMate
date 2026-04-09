@@ -4,6 +4,7 @@ import type { User, UserRole } from '@/types/user';
 import { userService } from '@/server/services/userService';
 import { getUserRoleWithRefresh } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { authMiddleware } from '@/server/middleware/auth.middleware';
 
 type AuthHeaderSuccess = {
   ok: true;
@@ -20,7 +21,8 @@ type AuthHeaderFailure = {
 export type AuthHeaderResult = AuthHeaderSuccess | AuthHeaderFailure;
 
 /**
- * Authorization ヘッダーから LIFF トークンを取得してユーザー情報を返す
+ * Authorization ヘッダーから LIFF トークンを取得してユーザー情報を返す。
+ * Bearer トークンが空の場合（Email ユーザー）は Cookie の Supabase セッションへフォールバックする。
  * @param req NextRequest
  * @returns AuthHeaderResult
  */
@@ -28,8 +30,23 @@ export async function getUserFromAuthHeader(req: NextRequest): Promise<AuthHeade
   const authHeader = req.headers.get('Authorization');
   const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
 
+  // LIFF トークンがない場合は Supabase Email セッションで解決を試みる
   if (!rawToken) {
-    return { ok: false, response: NextResponse.json({ error: ERROR_MESSAGES.AUTH.UNAUTHENTICATED }, { status: 401 }) };
+    const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(req);
+    const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    if (authResult.error || !authResult.userId) {
+      return { ok: false, response: NextResponse.json({ error: ERROR_MESSAGES.AUTH.UNAUTHENTICATED }, { status: 401 }) };
+    }
+    const user = await userService.getUserById(authResult.userId);
+    if (!user) {
+      return { ok: false, response: NextResponse.json({ error: ERROR_MESSAGES.USER.USER_NOT_FOUND }, { status: 401 }) };
+    }
+    return {
+      ok: true,
+      user,
+      role: authResult.userDetails?.role ?? user.role ?? null,
+      token: '',
+    };
   }
 
   const { role, needsReauth, newAccessToken } = await getUserRoleWithRefresh(rawToken);

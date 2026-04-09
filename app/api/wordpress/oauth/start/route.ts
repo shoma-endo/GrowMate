@@ -36,10 +36,7 @@ export async function GET(request: NextRequest) {
   const accessToken = cookieStore.get('line_access_token')?.value;
   const refreshToken = cookieStore.get('line_refresh_token')?.value;
 
-  if (!accessToken) {
-    return NextResponse.json({ error: 'LINE認証が必要です' }, { status: 401 });
-  }
-
+  // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(accessToken, refreshToken);
   if (authResult.error || !authResult.userId) {
     return NextResponse.json(

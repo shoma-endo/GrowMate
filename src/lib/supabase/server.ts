@@ -1,0 +1,41 @@
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import type { Database } from '@/types/database.types';
+
+/**
+ * サーバー用 Supabase クライアント
+ * Route Handler / Server Action / Server Component で使用する
+ * 認証確認は必ず supabase.auth.getUser() を使用し、getSession() は認証可否判定に使わない
+ */
+export async function createSupabaseServerClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch (e) {
+            // Server Component は読み取り専用のため set が失敗する（期待動作）
+            // middleware でセッション更新済みのため無視してよい
+            // それ以外の予期しないエラーは再スローして確実に検知する
+            if (
+              !(e instanceof Error) ||
+              !e.message.includes('Cookies can only be modified in a Server Action or Route Handler')
+            ) {
+              throw e;
+            }
+          }
+        },
+      },
+    }
+  );
+}

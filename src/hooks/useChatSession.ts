@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ChatMessage, ChatSession, IChatService } from '@/domain/interfaces/IChatService';
 import {
   ChatState,
@@ -73,6 +73,8 @@ export const useChatSession = (
   getAccessToken: () => Promise<string>
 ): ChatSessionHook => {
   const [state, setState] = useState<ChatState>(initialChatState);
+  // loadSession() の最新リクエストを追跡（古いレスポンスで state が上書きされるのを防ぐ）
+  const loadSessionRequestRef = useRef(0);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -89,10 +91,13 @@ export const useChatSession = (
 
   const loadSession = useCallback(
     async (sessionId: string) => {
+      const requestId = ++loadSessionRequestRef.current;
       setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
 
       try {
         const messages = await chatService.loadSessionMessages(sessionId);
+        // 新しいリクエストが来ていた場合は古い結果を捨てる（並行実行時の上書き防止）
+        if (requestId !== loadSessionRequestRef.current) return;
         setState(prev => ({
           ...prev,
           messages,
@@ -100,6 +105,7 @@ export const useChatSession = (
           isLoading: false,
         }));
       } catch (error) {
+        if (requestId !== loadSessionRequestRef.current) return;
         console.error('Load session error:', error);
         const errorMessage =
           error instanceof Error ? error.message : 'セッションの読み込みに失敗しました';

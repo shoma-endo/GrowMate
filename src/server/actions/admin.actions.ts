@@ -1,12 +1,57 @@
 'use server';
 
 import { userService } from '@/server/services/userService';
-import { checkUserRole } from './subscription.actions';
-import { isUnavailable } from '@/authUtils';
+import { checkUserRole } from './role.actions';
+import { isAdmin, isUnavailable } from '@/authUtils';
 import type { User, UserRole } from '@/types/user';
 import { isViewModeEnabled, VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
+
+/** LINE / Email いずれかのセッションで管理者権限を解決する
+ *
+ * middleware と同じ優先順位: LINE Cookie がある場合は LINE パス、なければ Email パス。
+ * 両セッションが共存する場合も middleware と一致した判定になるようにする。
+ */
+async function resolveAdminUser(): Promise<
+  | { success: true; role: UserRole; lineAccessToken: string | undefined }
+  | { success: false; error: string }
+> {
+  // middleware と同じ優先順位: LINE Cookie がある場合は LINE を優先
+  const { accessToken: lineAccessToken } = await getLiffTokensFromCookies();
+
+  if (lineAccessToken) {
+    const roleResult = await checkUserRole(lineAccessToken);
+    if (!roleResult.success) {
+      return { success: false, error: roleResult.error || ERROR_MESSAGES.USER.PERMISSION_ACQUISITION_FAILED };
+    }
+    if (isUnavailable(roleResult.role)) {
+      return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
+    }
+    if (!isAdmin(roleResult.role)) {
+      return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
+    }
+    return { success: true, role: roleResult.role, lineAccessToken };
+  }
+
+  // LINE Cookie なし: 共通の Email 解決（一時障害は SERVICE_UNAVAILABLE で返す）
+  const result = await resolveEmailUserWithReason();
+  if (!result.ok) {
+    if (result.reason === 'transient') {
+      return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
+    }
+    return { success: false, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
+  }
+  const emailUser = result.user;
+  if (isUnavailable(emailUser.role)) {
+    return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
+  }
+  if (!isAdmin(emailUser.role)) {
+    return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
+  }
+  return { success: true, role: emailUser.role, lineAccessToken: undefined };
+}
 
 export const getAllUsers = async (): Promise<{
   success: boolean;
@@ -14,25 +59,9 @@ export const getAllUsers = async (): Promise<{
   error?: string;
 }> => {
   try {
-    const { accessToken: lineAccessToken } = await getLiffTokensFromCookies();
-
-    if (!lineAccessToken) {
-      return { success: false, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
-    }
-
-    // 管理者権限チェック
-    const roleResult = await checkUserRole(lineAccessToken);
-    if (!roleResult.success) {
-      return { success: false, error: roleResult.error || ERROR_MESSAGES.USER.PERMISSION_ACQUISITION_FAILED };
-    }
-
-    // unavailableユーザーのサービス利用制限チェック
-    if (isUnavailable(roleResult.role)) {
-      return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
-    }
-
-    if (roleResult.role !== 'admin') {
-      return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
+    const authResult = await resolveAdminUser();
+    if (!authResult.success) {
+      return { success: false, error: authResult.error };
     }
 
     const users = await userService.getAllUsers();
@@ -51,28 +80,14 @@ export const updateUserRole = async (
   newRole: UserRole
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { accessToken: lineAccessToken } = await getLiffTokensFromCookies();
-
-    if (!lineAccessToken) {
-      return { success: false, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
+    const authResult = await resolveAdminUser();
+    if (!authResult.success) {
+      return { success: false, error: authResult.error };
     }
 
-    // 管理者権限チェック
-    const roleResult = await checkUserRole(lineAccessToken);
-    if (!roleResult.success) {
-      return { success: false, error: roleResult.error || ERROR_MESSAGES.USER.PERMISSION_ACQUISITION_FAILED };
-    }
-    if (await isViewModeEnabled(roleResult.role)) {
+    // 閲覧モードチェック（LINE ユーザーのみ。Email ユーザーはビューモード不使用）
+    if (authResult.lineAccessToken && await isViewModeEnabled(authResult.role)) {
       return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
-    }
-
-    // unavailableユーザーのサービス利用制限チェック
-    if (isUnavailable(roleResult.role)) {
-      return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
-    }
-
-    if (roleResult.role !== 'admin') {
-      return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
     }
 
     // バリデーション: 有効なロールかチェック

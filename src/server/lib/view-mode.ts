@@ -30,14 +30,8 @@ const resolveRoleFromCookies = async (): Promise<UserRole | null> => {
   const accessToken = cookieStore.get('line_access_token')?.value;
   const refreshToken = cookieStore.get('line_refresh_token')?.value;
 
-  if (!accessToken && !refreshToken) {
-    return null;
-  }
-
-  const authResult = await authMiddleware(accessToken, refreshToken, {
-    // 閲覧モード判定では課金状態ではなくロールのみ必要なためスキップ
-    skipSubscriptionCheck: true,
-  });
+  // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
+  const authResult = await authMiddleware(accessToken, refreshToken);
 
   if (authResult.error) {
     return null;
