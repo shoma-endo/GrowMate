@@ -3,6 +3,7 @@
 import { headers } from 'next/headers';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { clearAuthCookies } from '@/server/middleware/auth.middleware';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { EmailAuthLinkConflictError, userService } from '@/server/services/userService';
 
@@ -106,6 +107,9 @@ export async function signOutEmail(): Promise<{ success: boolean; error?: string
     return { success: false, error: 'ログアウトに失敗しました。再度お試しください。' };
   }
 
+  // LINE cookie が残っていると middleware が /login → / へリダイレクトするため削除する
+  await clearAuthCookies();
+
   return { success: true };
 }
 
@@ -189,6 +193,8 @@ export async function verifyOtp(
   try {
     const user = await userService.resolveOrCreateEmailUser(data.user.id, data.user.email!);
     await userService.updateLastLoginAt(user.id);
+    // 古い LINE Cookie が残っていると middleware が LINE 経路を優先するため破棄する
+    await clearAuthCookies();
     const isNewUser = !user.fullName;
     return { success: true, isNewUser };
   } catch (err) {
