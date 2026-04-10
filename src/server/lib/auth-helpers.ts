@@ -5,6 +5,7 @@ import { userService } from '@/server/services/userService';
 import { getUserRoleWithRefresh } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 
 type AuthHeaderSuccess = {
   ok: true;
@@ -34,6 +35,10 @@ export async function getUserFromAuthHeader(req: NextRequest): Promise<AuthHeade
   if (!rawToken) {
     const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(req);
     const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const conflict409 = nextJson409IfEmailLinkConflict(authResult, msg => ({ error: msg }));
+    if (conflict409) {
+      return { ok: false, response: conflict409 };
+    }
     if (authResult.error || !authResult.userId) {
       return { ok: false, response: NextResponse.json({ error: ERROR_MESSAGES.AUTH.UNAUTHENTICATED }, { status: 401 }) };
     }

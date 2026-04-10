@@ -938,7 +938,8 @@ const STATIC_PROMPTS: Record<string, string> = {
 const BLOG_STEP_PATTERN = new RegExp(`^blog_creation_(${BLOG_STEP_IDS.join('|')})(?:_|$)`);
 
 /**
- * モデルに応じたシステムプロンプトを取得する（LIFFトークンがあれば動的生成、なければ静的）
+ * モデルに応じたシステムプロンプトを取得する（認証トークンまたは Email セッションがあれば動的生成、なければ静的）
+ * liffAccessToken が空文字 '' の場合も Email 認証フォールバック経由で動的生成を行う。
  */
 export async function getSystemPrompt(
   model: string,
@@ -946,7 +947,7 @@ export async function getSystemPrompt(
   sessionId?: string,
   serviceIdOverride?: string
 ): Promise<string> {
-  if (liffAccessToken) {
+  if (liffAccessToken != null) {
     // セッションに紐づくサービスIDを解決（オーバーライドがなければ）
     let serviceId = serviceIdOverride;
     let authUserId: string | null = null;

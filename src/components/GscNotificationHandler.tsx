@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Bell, X } from 'lucide-react';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { getUnreadSuggestionsCount } from '@/server/actions/gscNotification.actions';
 import { hasOwnerRole } from '@/authUtils';
 
@@ -12,7 +12,7 @@ const TOAST_SESSION_KEY = 'gsc_notification_toast_shown';
 const UNREAD_EVENT = 'gsc-unread-updated';
 
 export function GscNotificationHandler() {
-  const { isLoggedIn, isLoading, user, isLineCookieAuth } = useLiffContext();
+  const { isLoggedIn, isLoading, user, isLineCookieAuth } = useAuth();
   // LIFF 未初期化の LINE cookie ユーザー（サーバーサイド OAuth 経由）も LINE ユーザーとして扱う
   const isLineAuthenticated = isLoggedIn || isLineCookieAuth;
   const pathname = usePathname();

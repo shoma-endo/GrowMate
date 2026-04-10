@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CheckCircle2, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
@@ -218,6 +219,7 @@ export default async function GoogleAdsSetupPage({
 
   // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  redirectIfEmailLinkConflict(authResult);
   if (authResult.error || !authResult.userId) {
     redirect('/login');
   }

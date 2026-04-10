@@ -13,6 +13,11 @@ import {
   type BlogStepId,
 } from '@/lib/constants';
 import type { AnalyticsContentItem } from '@/types/analytics';
+import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 import {
   ensureAnnotationChatSession,
   updateContentAnnotationFields,
@@ -45,7 +50,7 @@ import { toast } from 'sonner';
 import { ANNOTATION_FIELD_KEYS, type AnnotationFieldKey } from '@/types/annotation';
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
 import { ChatService } from '@/domain/services/chatService';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 
 interface Props {
   items: AnalyticsContentItem[];
@@ -123,7 +128,7 @@ export default function AnalyticsTable({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { getAccessToken, isOwnerViewMode } = useLiffContext();
+  const { getAccessToken, isOwnerViewMode } = useAuth();
   const isReadOnly = isOwnerViewMode;
   const [pendingRowKey, setPendingRowKey] = React.useState<string | null>(null);
   const [editingRowKey, setEditingRowKey] = React.useState<string | null>(null);
@@ -346,6 +351,10 @@ export default function AnalyticsTable({
           canonicalUrl: canonicalUrl ?? null,
           fallbackTitle: fallbackTitle ?? null,
         });
+        if (isEmailLinkConflictResult(result)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         if (result.success) {
           const searchParams = new URLSearchParams({ session: result.sessionId });
           if (initialStep && BLOG_STEP_IDS.includes(initialStep)) {
@@ -418,6 +427,11 @@ export default function AnalyticsTable({
             canonical_url: canonicalUrl || null,
           });
 
+          if (isEmailLinkConflictResult(result)) {
+            toast.dismiss(toastId);
+            replaceToEmailLinkConflictLogin();
+            return;
+          }
           if (!result.success) {
             const message = result.error || '保存に失敗しました';
             toast.error(message, { id: toastId });
@@ -475,6 +489,11 @@ export default function AnalyticsTable({
       } else if (deleteTargetAnnotationId) {
         // session_id がない場合: コンテンツのみ削除
         const result = await deleteContentAnnotation(deleteTargetAnnotationId);
+        if (isEmailLinkConflictResult(result)) {
+          toast.dismiss(toastId);
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         if (!result.success) {
           throw new Error(result.error || 'コンテンツの削除に失敗しました');
         }
@@ -491,6 +510,11 @@ export default function AnalyticsTable({
       setDeletingRowKey(null);
       router.refresh();
     } catch (error) {
+      if (error instanceof AuthEmailLinkConflictError) {
+        toast.dismiss(toastId);
+        replaceToEmailLinkConflictLogin();
+        return;
+      }
       const message = error instanceof Error ? error.message : '削除に失敗しました';
       toast.error(message, { id: toastId });
     } finally {

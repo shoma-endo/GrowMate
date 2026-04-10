@@ -1,6 +1,7 @@
 'use server';
 
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { headingFlowService } from '@/server/services/headingFlowService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { z } from 'zod';
@@ -79,6 +80,8 @@ export async function initializeHeadingSections(data: z.infer<typeof initializeH
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
+  const emailLinkConflict = emailLinkConflictErrorPayload(auth);
+  if (emailLinkConflict) return emailLinkConflict;
   if (auth.error || !auth.userId) {
     return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
@@ -124,6 +127,8 @@ export async function getHeadingSections(data: z.infer<typeof getHeadingSections
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
+  const emailLinkConflict = emailLinkConflictErrorPayload(auth);
+  if (emailLinkConflict) return { ...emailLinkConflict, data: [] };
   if (auth.error || !auth.userId) {
     return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED, data: [] };
   }
@@ -178,6 +183,8 @@ export async function saveHeadingSection(data: z.infer<typeof saveHeadingSection
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
+  const emailLinkConflict = emailLinkConflictErrorPayload(auth);
+  if (emailLinkConflict) return emailLinkConflict;
   if (auth.error || !auth.userId) {
     return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
@@ -226,6 +233,8 @@ export async function getLatestCombinedContent(
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
+  const emailLinkConflict = emailLinkConflictErrorPayload(auth);
+  if (emailLinkConflict) return { ...emailLinkConflict, data: null };
   if (auth.error || !auth.userId) {
     return {
       success: false,
@@ -269,6 +278,8 @@ export async function getCombinedContentVersions(
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
+  const emailLinkConflict = emailLinkConflictErrorPayload(auth);
+  if (emailLinkConflict) return { ...emailLinkConflict, data: [] };
   if (auth.error || !auth.userId) {
     return {
       success: false,
@@ -318,6 +329,8 @@ export async function resetHeadingSections(data: z.infer<typeof resetHeadingSect
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
+  const emailLinkConflict = emailLinkConflictErrorPayload(auth);
+  if (emailLinkConflict) return emailLinkConflict;
   if (auth.error || !auth.userId) {
     return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
@@ -366,6 +379,8 @@ export async function saveStep7UserLead(data: z.infer<typeof saveStep7UserLeadSc
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
+  const emailLinkConflict = emailLinkConflictErrorPayload(auth);
+  if (emailLinkConflict) return emailLinkConflict;
   if (auth.error || !auth.userId) {
     return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
@@ -413,6 +428,9 @@ export async function getCombinedContentForStep7(
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
+  const emailLinkConflict = emailLinkConflictErrorPayload(auth);
+  if (emailLinkConflict)
+    return { ...emailLinkConflict, lead: null, sections: null };
   if (auth.error || !auth.userId) {
     return { success: false, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED, lead: null, sections: null };
   }
@@ -457,6 +475,8 @@ export async function saveCombinedContentForStep7(
   const parsed = parseResult.data;
   const auth = await authMiddleware(parsed.liffAccessToken);
 
+  const emailLinkConflict = emailLinkConflictErrorPayload(auth);
+  if (emailLinkConflict) return { ...emailLinkConflict, content: null };
   if (auth.error || !auth.userId) {
     return {
       success: false,

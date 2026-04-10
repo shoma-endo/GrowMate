@@ -3,12 +3,15 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { getLiffTokensFromRequest } from '@/server/lib/auth-helpers';
 import { ga4ImportService } from '@/server/services/ga4ImportService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { canWriteGa4 } from '@/server/lib/ga4-permissions';
 
 export async function POST(request: NextRequest) {
   const { accessToken, refreshToken } = getLiffTokensFromRequest(request);
   const authResult = await authMiddleware(accessToken, refreshToken);
 
+  const conflict409 = nextJson409IfEmailLinkConflict(authResult);
+  if (conflict409) return conflict409;
   if (authResult.error || !authResult.userId) {
     return NextResponse.json(
       { success: false, error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED },

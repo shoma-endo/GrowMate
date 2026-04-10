@@ -9,12 +9,15 @@ import {
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
 export const updateUserFullName = async (fullName: string): Promise<{ success: boolean; error?: string }> => {
   try {
     const { accessToken: lineAccessToken, refreshToken } = await getLiffTokensFromCookies();
 
     const authResult = await authMiddleware(lineAccessToken, refreshToken);
+    const linkConflict = emailLinkConflictErrorPayload(authResult);
+    if (linkConflict) return linkConflict;
     if (authResult.error) {
       return { success: false, error: authResult.error };
     }

@@ -14,6 +14,20 @@ export const checkUserRole = async (liffAccessToken: string) => {
       const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
       const result = await resolveEmailUserWithReason();
       if (!result.ok) {
+        if (result.reason === 'transient') {
+          return {
+            success: false,
+            error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+            role: 'trial' as const,
+          };
+        }
+        if (result.reason === 'email_link_conflict') {
+          return {
+            success: false,
+            error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT,
+            role: 'trial' as const,
+          };
+        }
         return {
           success: false,
           error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND,

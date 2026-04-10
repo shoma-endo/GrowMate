@@ -23,6 +23,8 @@ export default function UnavailablePage() {
           if (data.role !== 'unavailable') {
             router.push('/');
           }
+        } else if (response.status === 409) {
+          router.push('/login?reason=email_link_conflict');
         } else {
           // 認証エラーの場合はログインページへ
           router.push('/login');

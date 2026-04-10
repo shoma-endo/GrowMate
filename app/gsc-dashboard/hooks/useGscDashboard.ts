@@ -17,6 +17,10 @@ import type {
   GscEvaluationHistoryItem,
 } from '../types';
 import type { EvaluationResultSummary } from '@/types/gsc';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 
 interface UseGscDashboardOptions {
   initialSelectedId?: string | null;
@@ -42,22 +46,25 @@ interface UseGscDashboardReturn {
   toggleMetric: (key: keyof GscVisibleMetrics) => void;
   handleRegisterEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
   handleUpdateEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
-  handleRunEvaluation: () => Promise<EvaluationResultSummary>;
-  handleRunQueryImport: () => Promise<{
-    querySummary: {
-      fetchedRows: number;
-      keptRows: number;
-      dedupedRows: number;
-      fetchErrorPages: number;
-      skipped: {
-        missingKeys: number;
-        invalidUrl: number;
-        emptyQuery: number;
-        zeroMetrics: number;
-      };
-      hitLimit: boolean;
-    };
-  }>;
+  handleRunEvaluation: () => Promise<EvaluationResultSummary | undefined>;
+  handleRunQueryImport: () => Promise<
+    | {
+        querySummary: {
+          fetchedRows: number;
+          keptRows: number;
+          dedupedRows: number;
+          fetchErrorPages: number;
+          skipped: {
+            missingKeys: number;
+            invalidUrl: number;
+            emptyQuery: number;
+            zeroMetrics: number;
+          };
+          hitLimit: boolean;
+        };
+      }
+    | undefined
+  >;
   refreshDetail: (annotationId: string) => Promise<void>;
 }
 
@@ -101,6 +108,10 @@ export function useGscDashboard({
       try {
         const res = await fetchGscDetail(selectedId);
         if (!res.success) {
+          if (isEmailLinkConflictResult(res)) {
+            replaceToEmailLinkConflictLogin();
+            return;
+          }
           throw new Error(res.error || '詳細の取得に失敗しました');
         }
         setDetail(res.data ?? null);
@@ -172,6 +183,10 @@ export function useGscDashboard({
     try {
       const res = await fetchGscDetail(annotationId);
       if (!res.success) {
+        if (isEmailLinkConflictResult(res)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         throw new Error(res.error || '詳細の取得に失敗しました');
       }
       setDetail(res.data ?? null);
@@ -196,6 +211,10 @@ export function useGscDashboard({
       });
 
       if (!res.success) {
+        if (isEmailLinkConflictResult(res)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         throw new Error(res.error || '評価対象の登録に失敗しました');
       }
 
@@ -218,6 +237,10 @@ export function useGscDashboard({
       });
 
       if (!res.success) {
+        if (isEmailLinkConflictResult(res)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         throw new Error(res.error || '評価日の更新に失敗しました');
       }
 
@@ -236,6 +259,10 @@ export function useGscDashboard({
     const res = await runEvaluationNow(selectedId);
 
     if (!res.success) {
+      if (isEmailLinkConflictResult(res)) {
+        replaceToEmailLinkConflictLogin();
+        return undefined;
+      }
       throw new Error(res.error || '評価処理に失敗しました');
     }
 
@@ -254,6 +281,10 @@ export function useGscDashboard({
 
     const res = await runQueryImportForAnnotation(selectedId);
     if (!res.success) {
+      if (isEmailLinkConflictResult(res)) {
+        replaceToEmailLinkConflictLogin();
+        return undefined;
+      }
       throw new Error(res.error || 'クエリ指標の取得に失敗しました');
     }
 

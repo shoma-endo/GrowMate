@@ -1,6 +1,6 @@
 'use client';
 
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { useState, useEffect } from 'react';
@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 const LOGOUT_ERROR_MSG = 'ログアウトに失敗しました。再度お試しください。';
 
 const ProfileDisplay = () => {
-  const { isLoading, user } = useLiffContext();
+  const { isLoading, user } = useAuth();
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -116,7 +116,7 @@ const AdminAccessCard = ({ isAdmin, hasAuthenticatedUser, isLoading }: AdminAcce
 };
 
 export default function Home() {
-  const { isLoading, user } = useLiffContext();
+  const { isLoading, user } = useAuth();
   const hasAuthenticatedUser = Boolean(user);
   const userRole = user?.role ?? null;
 

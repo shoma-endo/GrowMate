@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import WordPressSettingsForm from '@/components/WordPressSettingsForm';
 import { getWordPressSettings } from '@/server/actions/wordpress.actions';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ export default async function WordPressSetupPage() {
 
   // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  redirectIfEmailLinkConflict(authResult);
   if (authResult.error || !authResult.userDetails?.role) {
     redirect('/login');
   }

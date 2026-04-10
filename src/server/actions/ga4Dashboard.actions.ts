@@ -6,6 +6,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { normalizeToPath } from '@/lib/ga4-utils';
 import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { ServerActionResult } from '@/lib/async-handler';
 import type {
@@ -116,11 +117,24 @@ interface AuthResult {
   role: import('@/types/user').UserRole | null;
   actorUserId?: string;
   error?: string;
+  /** メール紐付け競合（クライアントはログイン回復へ誘導） */
+  emailLinkConflict?: true;
 }
 
 const getAuthUserId = async (): Promise<AuthResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
   const authResult = await authMiddleware(accessToken, refreshToken);
+
+  const linkConflict = emailLinkConflictErrorPayload(authResult);
+  if (linkConflict) {
+    return {
+      userId: null,
+      ownerUserId: null,
+      role: null,
+      error: linkConflict.error,
+      emailLinkConflict: true,
+    };
+  }
 
   if (authResult.error || !authResult.userId) {
     return {
@@ -144,6 +158,29 @@ const getAuthUserId = async (): Promise<AuthResult> => {
   };
 };
 
+type Ga4AuthFailure = {
+  success: false;
+  error: string;
+  emailLinkConflict?: true;
+};
+
+function ga4AuthFailureFrom(authResult: AuthResult): Ga4AuthFailure | null {
+  if (authResult.emailLinkConflict) {
+    return {
+      success: false,
+      error: authResult.error ?? ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT,
+      emailLinkConflict: true,
+    };
+  }
+  if (authResult.error || !authResult.userId) {
+    return {
+      success: false,
+      error: authResult.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
+    };
+  }
+  return null;
+}
+
 /**
  * GA4ダッシュボード: 期間サマリーを取得
  */
@@ -152,14 +189,13 @@ export async function fetchGa4DashboardSummary(input: unknown): Promise<
 > {
   try {
     const authResult = await getAuthUserId();
-    if (authResult.error || !authResult.userId) {
-      return {
-        success: false,
-        error: authResult.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
-      };
-    }
+    const authFail = ga4AuthFailureFrom(authResult);
+    if (authFail) return authFail;
 
-    const { userId } = authResult;
+    const userId = authResult.userId;
+    if (!userId) {
+      return { success: false, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    }
     const client = supabaseService.getClient();
 
     // アクセス可能なユーザーIDを取得
@@ -316,14 +352,13 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
 > {
   try {
     const authResult = await getAuthUserId();
-    if (authResult.error || !authResult.userId) {
-      return {
-        success: false,
-        error: authResult.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
-      };
-    }
+    const authFail = ga4AuthFailureFrom(authResult);
+    if (authFail) return authFail;
 
-    const { userId } = authResult;
+    const userId = authResult.userId;
+    if (!userId) {
+      return { success: false, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    }
     const client = supabaseService.getClient();
 
     // アクセス可能なユーザーIDを取得
@@ -543,14 +578,13 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
 > {
   try {
     const authResult = await getAuthUserId();
-    if (authResult.error || !authResult.userId) {
-      return {
-        success: false,
-        error: authResult.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
-      };
-    }
+    const authFail = ga4AuthFailureFrom(authResult);
+    if (authFail) return authFail;
 
-    const { userId } = authResult;
+    const userId = authResult.userId;
+    if (!userId) {
+      return { success: false, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    }
     const client = supabaseService.getClient();
 
     // アクセス可能なユーザーIDを取得
@@ -764,12 +798,8 @@ export async function fetchGa4DashboardData(input: unknown): Promise<
 > {
   try {
     const authResult = await getAuthUserId();
-    if (authResult.error || !authResult.userId) {
-      return {
-        success: false,
-        error: authResult.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
-      };
-    }
+    const authFail = ga4AuthFailureFrom(authResult);
+    if (authFail) return authFail;
 
     // パラメータを解析
     const parsedParams = dateRangeSchema.safeParse(input);
@@ -790,6 +820,7 @@ export async function fetchGa4DashboardData(input: unknown): Promise<
       return {
         success: false,
         error: summaryResult.error ?? 'サマリーの取得に失敗しました',
+        ...(summaryResult.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
       };
     }
 
@@ -797,6 +828,7 @@ export async function fetchGa4DashboardData(input: unknown): Promise<
       return {
         success: false,
         error: rankingResult.error ?? 'ランキングの取得に失敗しました',
+        ...(rankingResult.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
       };
     }
     if (!summaryResult.data || !rankingResult.data) {
@@ -817,6 +849,7 @@ export async function fetchGa4DashboardData(input: unknown): Promise<
       return {
         success: false,
         error: timeseriesResult.error ?? 'タイムシリーズの取得に失敗しました',
+        ...(timeseriesResult.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
       };
     }
     if (!timeseriesResult.data) {

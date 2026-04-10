@@ -2,6 +2,10 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 import { extractHeadingsFromMarkdown } from '@/lib/heading-extractor';
 import * as headingActions from '@/server/actions/heading-flow.actions';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
@@ -229,6 +233,13 @@ export function useHeadingFlow({
         // step5 チャットは使用しない。basic_structure の初期化（書き込み）は行わない。
         const annotationRes = await getContentAnnotationBySession(sessionId);
         if (!annotationRes.success) {
+          if (
+            isEmailLinkConflictResult(annotationRes) &&
+            sessionId === currentSessionIdRef.current
+          ) {
+            replaceToEmailLinkConflictLogin();
+            return;
+          }
           if (sessionId === currentSessionIdRef.current) {
             setHeadingInitError(
               annotationRes.error || 'メモ・補足情報の取得に失敗しました。再試行してください。'
@@ -390,6 +401,13 @@ export function useHeadingFlow({
       try {
         const annotationRes = await getContentAnnotationBySession(sid);
         if (!annotationRes.success) {
+          if (
+            isEmailLinkConflictResult(annotationRes) &&
+            sid === currentSessionIdRef.current
+          ) {
+            replaceToEmailLinkConflictLogin();
+            return;
+          }
           if (sid === currentSessionIdRef.current) {
             setHeadingInitError(
               annotationRes.error || 'メモ・補足情報の取得に失敗しました。再試行してください。'
@@ -402,12 +420,12 @@ export function useHeadingFlow({
         const headings = trimmedBasic ? extractHeadingsFromMarkdown(trimmedBasic) : [];
 
         if (headings.length > 0) {
-          const token = await getAccessToken();
           // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
+          const liffAccessToken = await getAccessToken();
           const res = await headingActions.initializeHeadingSections({
             sessionId: sid,
             step5Markdown: trimmedBasic,
-            liffAccessToken: token?.trim() ?? '',
+            liffAccessToken: liffAccessToken.trim(),
           });
           if (res.success) {
             const sections = await fetchHeadingSections(sid);

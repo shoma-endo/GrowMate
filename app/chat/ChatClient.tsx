@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { ChatService } from '@/domain/services/chatService';
 import { useChatSession } from '@/hooks/useChatSession';
 import { useMobile } from '@/hooks/useMobile';
@@ -24,7 +24,7 @@ interface ChatClientProps {
 }
 
 const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }) => {
-  const { isLoggedIn, getAccessToken, isLoading: liffLoading, user } = useLiffContext();
+  const { isLoggedIn, getAccessToken, isLoading: authLoading, user } = useAuth();
   const { isMobile } = useMobile();
 
   const chatService = React.useMemo(() => new ChatService(), []);
@@ -53,8 +53,8 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
 
   // セッション一覧 + 初期セッションの読み込み（認証確定後1回のみ）
   React.useEffect(() => {
-    // isLoggedIn: LINE ユーザー / !!user: Email ユーザー（LIFF 未ログインだが Supabase セッションあり）
-    if (!(isLoggedIn || !!user) || liffLoading) return;
+    // isLoggedIn: 従来の LINE Cookie 経路 / !!user: Email セッション確定後
+    if (!(isLoggedIn || !!user) || authLoading) return;
     // loadSessions は認証確定後1回のみ実行（LINE ユーザーで user が後からセットされても二重実行しない）
     if (sessionsLoadedRef.current) return;
     sessionsLoadedRef.current = true;
@@ -74,11 +74,11 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
     };
     doLoad().catch(error => console.error('❌ 初期化エラー:', error));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, liffLoading, user]); // ✅ Email ユーザー対応: user がセットされたタイミングでも初期化
+  }, [isLoggedIn, authLoading, user]); // ✅ Email ユーザー対応: user がセットされたタイミングでも初期化
 
   // initialSessionId 変更時に特定セッションを読み込む（セッション一覧ロード後のみ）
   React.useEffect(() => {
-    if (!(isLoggedIn || !!user) || liffLoading) return;
+    if (!(isLoggedIn || !!user) || authLoading) return;
     if (!sessionsLoadedRef.current) return; // セッション一覧未ロード時はスキップ
     const trimmedSessionId = initialSessionId?.trim();
     if (!trimmedSessionId) return;
@@ -95,10 +95,10 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
     };
     loadAndMark().catch(error => console.error('初期チャットセッションの読み込みに失敗しました:', error));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialSessionId, isLoggedIn, liffLoading, user]);
+  }, [initialSessionId, isLoggedIn, authLoading, user]);
 
-  // LIFF初期化中はLiffProviderが表示を担当するため、ここでは何も表示しない
-  if (liffLoading) {
+  // 認証状態読み込み中は AuthProvider がローディング UI を担当するため、ここでは何も表示しない
+  if (authLoading) {
     return null;
   }
 

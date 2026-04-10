@@ -4,6 +4,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { generateOAuthState } from '@/server/lib/oauth-state';
 import { isAdmin as isAdminRole } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { nextResponseRedirectLoginIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 
 const ALLOWED_RETURN_TO_PATHS = new Set(['/setup', '/setup/wordpress']);
 
@@ -38,6 +39,8 @@ export async function GET(request: NextRequest) {
 
   // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(accessToken, refreshToken);
+  const conflictRedirect = nextResponseRedirectLoginIfEmailLinkConflict(authResult, request);
+  if (conflictRedirect) return conflictRedirect;
   if (authResult.error || !authResult.userId) {
     return NextResponse.json(
       { error: authResult.error || 'ユーザー認証に失敗しました' },

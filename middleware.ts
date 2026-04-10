@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { isAdmin, isUnavailable, getUserRoleWithRefresh, hasOwnerRole } from '@/authUtils';
+import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
 import { updateSupabaseSession } from '@/lib/supabase/middleware';
@@ -60,12 +61,16 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
     if (isPublicPath(pathname)) {
       // /login: 認証済みユーザーはトップへリダイレクト
       if (pathname === '/login') {
-        if (supabaseUser) {
+        const emailLinkConflict =
+          request.nextUrl.searchParams.get('reason') === 'email_link_conflict';
+
+        // 競合解消のため Supabase を消した直後も、LINE だけ有効だと / へ飛ばされメッセージが見えない
+        if (supabaseUser && !emailLinkConflict) {
           return redirect(new URL('/', request.url));
         }
         const lineToken = request.cookies.get('line_access_token')?.value;
         const lineRefresh = request.cookies.get('line_refresh_token')?.value;
-        if (lineToken) {
+        if (lineToken && !emailLinkConflict) {
           // LINE token を検証してからリダイレクト（無効/期限切れ cookie で recovery 不能ループを防ぐ）
           const authResult = await getUserRoleWithCacheAndRefresh(lineToken, lineRefresh).catch(
             () => ({ role: null, needsReauth: true })
@@ -111,6 +116,9 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
         const mergedCookieHeader = [...cookieMap.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
         emailRole = await getEmailUserRoleWithCache(supabaseUser.id, request, mergedCookieHeader);
       } catch (err) {
+        if (err instanceof AuthEmailLinkConflictError) {
+          return redirect(new URL('/login?reason=email_link_conflict', request.url));
+        }
         // 一時的な DB エラー: 未認証と同じ遷移にせず 503 で分離する
         // /login へ送ると supabaseUser 検知で / へ転送されユーザーが原因不明のホーム送りになる
         // 空 body だとブラウザの 503 画面のままになるため、再試行できる HTML を返す
@@ -328,7 +336,11 @@ async function getEmailUserRoleWithCache(
 
   // 401: 未認証 or 未登録 → null を返して呼び出し元に未登録処理させる
   if (res.status === 401) return null;
-  // 5xx: 一時障害 → throw して呼び出し元で 503 ハンドリングさせる
+  // 409: /api/auth/check-role がメール紐付け競合を返した → handleMiddleware で専用ログインへ
+  if (res.status === 409) {
+    throw new AuthEmailLinkConflictError();
+  }
+  // その他の非 2xx（5xx 等）: 一時障害 → throw して呼び出し元で 503 ハンドリングさせる
   if (!res.ok) throw new Error(`[check-role] HTTP ${res.status}`);
 
   const data = (await res.json()) as { role?: UserRole };

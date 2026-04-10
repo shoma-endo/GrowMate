@@ -2,6 +2,10 @@ import { useRef, useState } from 'react';
 import { ChatSessionHook } from '@/hooks/useChatSession';
 import { ANALYTICS_COLUMNS } from '@/lib/constants';
 import { AnnotationFieldKey } from '@/types/annotation';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 
 const REQUIRED_ANNOTATION_FIELDS: AnnotationFieldKey[] = ['main_kw', 'kw', 'persona'];
@@ -32,6 +36,10 @@ export function useBlogTitleMetaGeneration({
     try {
       const annotationResult = await getContentAnnotationBySession(sessionId);
       if (!annotationResult.success) {
+        if (isEmailLinkConflictResult(annotationResult)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         chatSession.actions.setError(annotationResult.error);
         return;
       }

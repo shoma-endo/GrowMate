@@ -1,20 +1,25 @@
 'use client';
 
 import { Suspense, useEffect, useState, useTransition } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import { Loader2 } from 'lucide-react';
+
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { sendOtpEmail, verifyOtp, registerFullName } from '@/server/actions/auth.actions';
+import { sendOtpEmail, signOutEmail, verifyOtp, registerFullName } from '@/server/actions/auth.actions';
 import { FullNameDialog } from '@/components/FullNameDialog';
 
 type LoginView = 'options' | 'otp-form';
 
 function LoginPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [view, setView] = useState<LoginView>('options');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -22,6 +27,31 @@ function LoginPageContent() {
   const [error, setError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isPending, startTransition] = useTransition();
+
+  // reason クエリ単体では競合とみなさない（ブックマーク誤表示防止）。409 が返ったときのみ表示し、セッションはそのとき best-effort で破棄。
+  useEffect(() => {
+    if (searchParams?.get('reason') !== 'email_link_conflict') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/user/current', { credentials: 'include', cache: 'no-store' });
+        if (cancelled) return;
+        if (res.status === 409) {
+          setError(ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT);
+          void signOutEmail().catch(() => {
+            /* Supabase セッション解除は best effort */
+          });
+          return;
+        }
+        router.replace('/login');
+      } catch {
+        if (!cancelled) router.replace('/login');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, router]);
 
   // 再送信カウントダウン
   useEffect(() => {

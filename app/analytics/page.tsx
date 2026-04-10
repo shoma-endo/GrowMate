@@ -1,4 +1,7 @@
+import { redirect } from 'next/navigation';
+
 import AnalyticsClient from './AnalyticsClient';
+import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
 import { getAnnotationIdsWithUnreadSuggestions } from '@/server/actions/gscNotification.actions';
 import { addDaysISO } from '@/lib/date-utils';
@@ -57,18 +60,28 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   }
 
   // 並列でデータ取得（一覧・未読・カテゴリ一覧）
-  const [analyticsPage, unreadResult, allCategoryNames] = await Promise.all([
-    analyticsContentService.getPage({
-      page,
-      perPage,
-      startDate,
-      endDate,
-      selectedCategoryNames,
-      includeUncategorized,
-    }),
-    getAnnotationIdsWithUnreadSuggestions(),
-    analyticsContentService.getAvailableCategoryNames(),
-  ]);
+  let analyticsPage: Awaited<ReturnType<typeof analyticsContentService.getPage>>;
+  let unreadResult: Awaited<ReturnType<typeof getAnnotationIdsWithUnreadSuggestions>>;
+  let allCategoryNames: Awaited<ReturnType<typeof analyticsContentService.getAvailableCategoryNames>>;
+  try {
+    [analyticsPage, unreadResult, allCategoryNames] = await Promise.all([
+      analyticsContentService.getPage({
+        page,
+        perPage,
+        startDate,
+        endDate,
+        selectedCategoryNames,
+        includeUncategorized,
+      }),
+      getAnnotationIdsWithUnreadSuggestions(),
+      analyticsContentService.getAvailableCategoryNames(),
+    ]);
+  } catch (e) {
+    if (e instanceof AuthEmailLinkConflictError) {
+      redirect('/login?reason=email_link_conflict');
+    }
+    throw e;
+  }
   const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error } = analyticsPage;
   const currentPage = resolvedPage ?? page;
   const prevDisabled = currentPage <= 1;

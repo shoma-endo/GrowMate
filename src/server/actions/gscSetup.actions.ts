@@ -8,6 +8,7 @@ import { toGscConnectionStatus, propertyTypeFromUri } from '@/server/lib/gsc-sta
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GscSiteEntry, GscCredential, GscConnectionStatus } from '@/types/gsc';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
 
 const supabaseService = new SupabaseService();
@@ -38,9 +39,26 @@ const ensureAccessToken = async (userId: string, credential: GscCredential): Pro
       }),
   });
 
-const getAuthUserId = async () => {
+type GscSetupAuthIdResult =
+  | { error: string; emailLinkConflict?: true }
+  | { userId: string; ownerUserId: string | null };
+
+/** getAuthUserId のエラー枝を Server Action の失敗形へ（競合フラグを落とさない） */
+function gscSetupReturnAuthError(authId: { error: string; emailLinkConflict?: true }) {
+  return {
+    success: false as const,
+    error: authId.error,
+    ...(authId.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+  };
+}
+
+const getAuthUserId = async (): Promise<GscSetupAuthIdResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
   const authResult = await authMiddleware(accessToken, refreshToken);
+  const linkConflict = emailLinkConflictErrorPayload(authResult);
+  if (linkConflict) {
+    return { error: linkConflict.error, emailLinkConflict: true };
+  }
   if (authResult.error || !authResult.userId) {
     return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
@@ -57,10 +75,11 @@ const getAuthUserId = async () => {
 };
 
 export async function fetchGscStatus() {
-  const { userId, ownerUserId, error } = await getAuthUserId();
-  if (error || !userId) {
-    return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+  const authId = await getAuthUserId();
+  if ('error' in authId) {
+    return gscSetupReturnAuthError(authId);
   }
+  const { userId, ownerUserId } = authId;
   if (ownerUserId) {
     return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
   }
@@ -71,10 +90,11 @@ export async function fetchGscStatus() {
 
 export async function fetchGscProperties() {
   try {
-    const { userId, ownerUserId, error } = await getAuthUserId();
-    if (error || !userId) {
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return gscSetupReturnAuthError(authId);
     }
+    const { userId, ownerUserId } = authId;
     if (ownerUserId) {
       return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
     }
@@ -111,10 +131,11 @@ export async function saveGscProperty(params: {
   permissionLevel?: string | null;
 }) {
   try {
-    const { userId, ownerUserId, error } = await getAuthUserId();
-    if (error || !userId) {
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return gscSetupReturnAuthError(authId);
     }
+    const { userId, ownerUserId } = authId;
     if (ownerUserId) {
       return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
     }
@@ -157,12 +178,13 @@ export async function saveGscProperty(params: {
 
 export async function disconnectGsc() {
   try {
-    const { userId, ownerUserId, error } = await getAuthUserId();
+    const authId = await getAuthUserId();
 
-    if (error || !userId) {
-      console.error('[GSC Setup] disconnectGsc: ユーザー認証失敗', { error });
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    if ('error' in authId) {
+      console.error('[GSC Setup] disconnectGsc: ユーザー認証失敗', { error: authId.error });
+      return gscSetupReturnAuthError(authId);
     }
+    const { userId, ownerUserId } = authId;
     if (ownerUserId) {
       return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
     }
@@ -188,16 +210,20 @@ export async function disconnectGsc() {
  */
 export async function refetchGscStatusWithValidation(): Promise<
   | { success: true; data: GscConnectionStatus; needsReauth: boolean }
-  | { success: false; error: string; needsReauth?: boolean }
+  | { success: false; error: string; needsReauth?: boolean; emailLinkConflict?: true }
 > {
   try {
     // ステータスを取得（内部で認証チェックを実行）
     const statusResult = await fetchGscStatus();
     if (!statusResult.success || !statusResult.data) {
-      return {
-        success: false,
+      const base = {
+        success: false as const,
         error: statusResult.error || ERROR_MESSAGES.GSC.STATUS_FETCH_FAILED,
       };
+      if ('emailLinkConflict' in statusResult && statusResult.emailLinkConflict) {
+        return { ...base, emailLinkConflict: true as const };
+      }
+      return base;
     }
 
     const status = statusResult.data as GscConnectionStatus;

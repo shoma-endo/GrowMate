@@ -3,11 +3,13 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { PromptService } from '@/server/services/promptService';
 import { isAdmin, isUnavailable } from '@/authUtils';
 import { UpdatePromptTemplateInput, PromptTemplate } from '@/types/prompt';
 import { isViewModeEnabled, VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import type { User } from '@/types/user';
 
 const promptVariableSchema = z.object({
   name: z.string().min(1, '変数名は必須です'),
@@ -27,18 +29,28 @@ const promptSchema = z.object({
   variables: z.array(promptVariableSchema).default([]),
 });
 
+type PromptActionFailure = {
+  success: false;
+  error: string;
+  emailLinkConflict?: true;
+};
+
 type PromptActionResponse<T = unknown> = T extends void
-  ? { success: true; error?: undefined } | { success: false; error: string }
+  ? { success: true; error?: undefined } | PromptActionFailure
   :
       | { success: true; data: T; error?: undefined }
-      | { success: false; data?: undefined; error: string };
+      | ({ success: false; data?: undefined } & PromptActionFailure);
+
+type AdminPermissionResult = PromptActionFailure | { success: true; userId: string; user: User };
 
 /**
  * 管理者権限をチェックするヘルパー関数
  */
-async function checkAdminPermission(liffAccessToken: string) {
+async function checkAdminPermission(liffAccessToken: string): Promise<AdminPermissionResult> {
   const auth = await authMiddleware(liffAccessToken);
 
+  const linkConflict = emailLinkConflictErrorPayload(auth);
+  if (linkConflict) return linkConflict;
   if (auth.error) {
     return { success: false, error: auth.error || ERROR_MESSAGES.AUTH.AUTH_ERROR };
   }
@@ -73,12 +85,13 @@ export async function updatePromptTemplate(
     // 管理者権限チェック
     const adminCheck = await checkAdminPermission(liffAccessToken);
     if (!adminCheck.success) {
-      return { success: false, error: adminCheck.error || ERROR_MESSAGES.USER.PERMISSION_VERIFY_FAILED };
+      return {
+        success: false,
+        error: adminCheck.error || ERROR_MESSAGES.USER.PERMISSION_VERIFY_FAILED,
+        ...(adminCheck.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+      };
     }
     const adminUser = adminCheck.user;
-    if (!adminUser) {
-      return { success: false, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
-    }
     if (await isViewModeEnabled(adminUser.role)) {
       return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
     }
@@ -138,7 +151,11 @@ export async function getPromptTemplates(
     // 管理者権限チェック
     const adminCheck = await checkAdminPermission(liffAccessToken);
     if (!adminCheck.success) {
-      return { success: false, error: adminCheck.error || ERROR_MESSAGES.USER.PERMISSION_VERIFY_FAILED };
+      return {
+        success: false,
+        error: adminCheck.error || ERROR_MESSAGES.USER.PERMISSION_VERIFY_FAILED,
+        ...(adminCheck.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+      };
     }
 
     const templates = await PromptService.getAllTemplates();

@@ -15,8 +15,12 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 import { updateContentAnnotationFields } from '@/server/actions/wordpress.actions';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 
 interface SuggestionDataReadinessProps {
   annotation: {
@@ -45,7 +49,7 @@ interface DataRequirement {
 }
 
 export function SuggestionDataReadiness({ annotation, onUpdate }: SuggestionDataReadinessProps) {
-  const { isOwnerViewMode } = useLiffContext();
+  const { isOwnerViewMode } = useAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [formData, setFormData] = useState({
@@ -144,6 +148,11 @@ export function SuggestionDataReadiness({ annotation, onUpdate }: SuggestionData
           needs: formData.needs || null,
         });
 
+        if (isEmailLinkConflictResult(result)) {
+          toast.dismiss(toastId);
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         if (result.success) {
           toast.success('データを保存しました', { id: toastId });
           setIsDialogOpen(false);

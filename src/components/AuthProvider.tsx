@@ -4,16 +4,16 @@ import React, { createContext, use, useCallback, useEffect, useState } from 'rea
 import { usePathname, useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Footer } from '@/components/Footer';
-import type { LiffContextType, LiffProviderProps } from '@/types/components';
+import type { AuthContextType, AuthProviderProps } from '@/types/components';
 import type { User } from '@/types/user';
 import { signOutEmail } from '@/server/actions/auth.actions';
 
-const LiffContext = createContext<LiffContextType | null>(null);
+const AuthContext = createContext<AuthContextType | null>(null);
 
-export function useLiffContext() {
-  const context = use(LiffContext);
+export function useAuth() {
+  const context = use(AuthContext);
   if (!context) {
-    throw new Error('useLiffContext must be used within a LiffProvider');
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 }
@@ -26,25 +26,29 @@ function isPublicPath(pathname: string | null): boolean {
   return PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(path + '/'));
 }
 
-async function fetchCurrentUser(): Promise<User | null> {
+type FetchCurrentUserResult = { user: User | null; emailLinkConflict: boolean };
+
+async function fetchCurrentUser(): Promise<FetchCurrentUserResult> {
   const res = await fetch('/api/user/current', {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
   });
-  if (!res.ok) return null;
+  if (res.status === 409) {
+    return { user: null, emailLinkConflict: true };
+  }
+  if (!res.ok) {
+    return { user: null, emailLinkConflict: false };
+  }
   const data = (await res.json()) as { user?: User | null };
-  return data?.user ?? null;
+  return { user: data?.user ?? null, emailLinkConflict: false };
 }
 
 /**
- * Email 専用の認証プロバイダ。
- *
- * 名称・export は LiffProvider / useLiffContext のまま維持しているが、
- * LINE LIFF SDK への依存は Phase 1.5 で撤去済み。将来的に AuthProvider へリネーム予定。
+ * Email セッション用の認証プロバイダ。
  * `initialize` prop は後方互換のため残しているが実質的な効果はない。
  */
-export function LiffProvider({ children }: LiffProviderProps) {
+export function AuthProvider({ children }: AuthProviderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -53,15 +57,21 @@ export function LiffProvider({ children }: LiffProviderProps) {
 
   const refreshUser = useCallback(async (): Promise<boolean> => {
     try {
-      const fetched = await fetchCurrentUser();
-      setUser(fetched);
-      return fetched !== null;
+      const { user: nextUser, emailLinkConflict } = await fetchCurrentUser();
+      setUser(nextUser);
+      if (emailLinkConflict) {
+        if (!isPublicPath(pathname)) {
+          router.replace('/login?reason=email_link_conflict');
+        }
+        return false;
+      }
+      return nextUser !== null;
     } catch (error) {
       console.error('Failed to refresh user:', error);
       setUser(null);
       return false;
     }
-  }, []);
+  }, [router, pathname]);
 
   // 初回マウント時・パス変更時にユーザー情報を取得する。
   // middleware.ts が非公開パスでは認証を強制しているため、
@@ -70,11 +80,17 @@ export function LiffProvider({ children }: LiffProviderProps) {
     let cancelled = false;
     setIsLoading(true);
     fetchCurrentUser()
-      .then(fetched => {
+      .then(({ user: nextUser, emailLinkConflict }) => {
         if (cancelled) return;
-        setUser(fetched);
+        setUser(nextUser);
+        if (emailLinkConflict) {
+          if (!publicPath) {
+            router.replace('/login?reason=email_link_conflict');
+          }
+          return;
+        }
         // 非公開パスで user が取れない場合のみ /login へ誘導（middleware の補助）
-        if (!fetched && !publicPath) {
+        if (!nextUser && !publicPath) {
           router.replace('/login');
         }
       })
@@ -103,9 +119,8 @@ export function LiffProvider({ children }: LiffProviderProps) {
     );
   }
 
-  // LINE LIFF 由来のフィールドは後方互換のため残置し、常に固定値を返す。
-  // 将来的に useLiffContext を useAuth にリネームする際にあわせて削除する。
-  const contextValue: LiffContextType = {
+  // 旧 LINE LIFF 連携由来のフィールドは互換のため残し、常に固定値を返す。
+  const contextValue: AuthContextType = {
     isLoggedIn: Boolean(user),
     isLoading,
     profile: null,
@@ -133,11 +148,11 @@ export function LiffProvider({ children }: LiffProviderProps) {
   };
 
   return (
-    <LiffContext value={contextValue}>
+    <AuthContext value={contextValue}>
       <div className="flex flex-col min-h-screen">
         <main className={`flex-1 ${publicPath ? '' : 'pb-20'}`}>{children}</main>
         {!publicPath && <Footer />}
       </div>
-    </LiffContext>
+    </AuthContext>
   );
 }

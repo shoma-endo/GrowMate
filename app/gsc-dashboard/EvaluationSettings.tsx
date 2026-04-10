@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import type { EvaluationResultSummary } from '@/types/gsc';
 
 // 時間選択用の選択肢を生成
@@ -42,7 +42,7 @@ interface EvaluationSettingsProps {
   } | null;
   onRegister: (date: string, cycleDays: number, evaluationHour: number) => Promise<void>;
   onUpdate: (date: string, cycleDays: number, evaluationHour: number) => Promise<void>;
-  onRunEvaluation: () => Promise<EvaluationResultSummary>;
+  onRunEvaluation: () => Promise<EvaluationResultSummary | undefined>;
 }
 
 // 日付フォーマット用のユーティリティ
@@ -72,7 +72,7 @@ export function EvaluationSettings({
   onUpdate,
   onRunEvaluation,
 }: EvaluationSettingsProps) {
-  const { isOwnerViewMode } = useLiffContext();
+  const { isOwnerViewMode } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   // date string format: YYYY-MM-DD
   const [dateStr, setDateStr] = useState<string>('');
@@ -140,6 +140,7 @@ export function EvaluationSettings({
     setRunningEvaluation(true);
     try {
       const result = await onRunEvaluation();
+      if (result === undefined) return;
 
       // インポート失敗があった場合は警告を表示
       if (result.skippedImportFailed > 0) {

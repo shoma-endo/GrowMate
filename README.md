@@ -2,7 +2,7 @@
 
 メール OTP を入り口に、業界特化のマーケティングコンテンツを一括生成・管理する SaaS アプリケーションです。Next.js（App Router）を基盤に、マルチベンダー AI、WordPress 連携、Supabase による堅牢なデータ管理を統合しています。フレームワークのバージョンは [`package.json`](package.json) を参照してください。
 
-> **認証**: ユーザー向け入口は **メール OTP**（Supabase Auth）。移行手順・`public.users` / `auth.users` 検証 SQL は [docs/runbooks/email-migration-runbook.md](docs/runbooks/email-migration-runbook.md)（**セクション 8**）。LIFF 専用 Route / `@line/liff` は撤去済み。既存 **LINE OAuth Cookie** の検証のみ `middleware` / `authMiddleware` / `LineAuthService` に **legacy** として残る（`LiffProvider` はファイル名のみ旧称・Email セッション用）。
+> **認証**: ユーザー向け入口は **メール OTP**（Supabase Auth）。移行手順・`public.users` / `auth.users` 検証 SQL は [docs/runbooks/email-migration-runbook.md](docs/runbooks/email-migration-runbook.md)（**セクション 8**）。LIFF 専用 Route / `@line/liff` は撤去済み。既存 **LINE OAuth Cookie** の検証のみ `middleware` / `authMiddleware` / `LineAuthService` に **legacy** として残る（クライアントは `AuthProvider` / `useAuth`）。
 
 ## 🧭 プロダクト概要
 
@@ -81,7 +81,7 @@
 ```mermaid
 graph TB
   subgraph Client["Next.js (App Router)"]
-    LiffShell["LiffProvider（Email セッション・名称は後方互換）"]
+    LiffShell["AuthProvider（Email セッション）"]
     ChatUI["Chat / Session UI"]
     Canvas["Canvas（TipTap）"]
     HeadingFlow["HeadingFlow"]

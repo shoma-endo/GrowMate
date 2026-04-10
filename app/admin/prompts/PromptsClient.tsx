@@ -16,6 +16,10 @@ import { PromptTemplate } from '@/types/prompt';
 import { getPromptDescription, getVariableDescription } from '@/lib/prompt-descriptions';
 import { Save, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 import { fetchPrompts, savePrompt } from '@/server/actions/adminPrompts.actions';
 
 type PromptCategory = 'chat' | 'gsc';
@@ -60,6 +64,10 @@ export default function PromptsClient({ initialTemplates, initialError }: Prompt
     try {
       setIsLoading(true);
       const res = await fetchPrompts();
+      if (isEmailLinkConflictResult(res)) {
+        replaceToEmailLinkConflictLogin();
+        return null;
+      }
       if (res?.success && res?.data) {
         const nextTemplates = res.data as PromptTemplate[];
         setTemplates(nextTemplates);
@@ -93,7 +101,11 @@ export default function PromptsClient({ initialTemplates, initialError }: Prompt
         setError(null);
         return nextTemplates;
       } else {
-        setError(res?.error || 'プロンプトの取得に失敗しました');
+        const message =
+          res && !res.success && 'error' in res && typeof res.error === 'string'
+            ? res.error
+            : 'プロンプトの取得に失敗しました';
+        setError(message);
       }
     } catch (error) {
       console.error('プロンプト取得エラー:', error);
@@ -124,6 +136,11 @@ export default function PromptsClient({ initialTemplates, initialError }: Prompt
         content: editedContent,
         variables: selectedTemplate.variables,
       });
+
+      if (isEmailLinkConflictResult(result)) {
+        replaceToEmailLinkConflictLogin();
+        return;
+      }
 
       if (result?.success) {
         // 保存成功時点でローカル状態を即座に更新（リセット押下時の巻き戻しを防止）
@@ -160,7 +177,10 @@ export default function PromptsClient({ initialTemplates, initialError }: Prompt
           toast.error('保存は成功しましたが、最新データの取得に失敗しました');
         }
       } else {
-        const message = result?.error || '保存に失敗しました';
+        const message =
+          result && !result.success && 'error' in result && typeof result.error === 'string'
+            ? result.error
+            : '保存に失敗しました';
         setError(message);
         toast.error('保存に失敗しました', {
           description: message,

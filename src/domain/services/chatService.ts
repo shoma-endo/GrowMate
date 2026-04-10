@@ -16,6 +16,7 @@ import {
   searchChatSessionsSA,
   updateSessionServiceIdSA,
 } from '@/server/actions/chat.actions';
+import { AuthEmailLinkConflictError } from '../errors/AuthEmailLinkConflictError';
 import { ChatError, ChatErrorCode } from '../errors/ChatError';
 import type { ChatMessage as ServerChatMessage } from '@/types/chat';
 
@@ -48,6 +49,9 @@ export class ChatService implements IChatService {
       const accessToken = await this.getAccessToken();
       const result = await deleteChatSessionSA(sessionId, accessToken);
       if (!result.success) {
+        if ('emailLinkConflict' in result && result.emailLinkConflict) {
+          throw new AuthEmailLinkConflictError(result.error);
+        }
         throw new ChatError(
           result.error || 'セッションの削除に失敗しました',
           ChatErrorCode.SESSION_DELETE_FAILED,
@@ -55,6 +59,9 @@ export class ChatService implements IChatService {
         );
       }
     } catch (error) {
+      if (error instanceof AuthEmailLinkConflictError) {
+        throw error;
+      }
       if (error instanceof ChatError) {
         throw error;
       }

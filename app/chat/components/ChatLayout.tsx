@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useServiceSelection } from '@/hooks/useServiceSelection';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { ChatMessage } from '@/domain/interfaces/IChatService';
 import {
   BASIC_STRUCTURE_PATTERN,
@@ -16,6 +16,10 @@ import {
 import CanvasPanel from './CanvasPanel';
 import type { CanvasSelectionEditPayload, CanvasSelectionEditResult } from '@/types/canvas';
 import type { StepActionBarRef } from './StepActionBar';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 import { getContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 import {
   getCombinedContentForStep7,
@@ -76,7 +80,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   isMobile = false,
   initialStep = null,
 }) => {
-  const { getAccessToken, isOwnerViewMode } = useLiffContext();
+  const { getAccessToken, isOwnerViewMode } = useAuth();
 
   // サービス選択ロジックをカスタムフックで管理
   const serviceSelection = useServiceSelection({
@@ -1309,7 +1313,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     try {
       // データベースから既存のアノテーションデータを取得
       const res = await getContentAnnotationBySession(chatSession.state.currentSessionId);
-      if (res.success && res.data) {
+      if (!res.success) {
+        if (isEmailLinkConflictResult(res)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
+        setAnnotationData(null);
+      } else if (res.data) {
         setAnnotationData(res.data);
       } else {
         setAnnotationData(null);
@@ -1566,6 +1576,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             ...(freeFormUserPrompt !== undefined && { freeFormUserPrompt }),
           }),
         });
+
+        if (response.status === 409) {
+          setOptimisticMessages([]);
+          replaceToEmailLinkConflictLogin();
+          return { replacementHtml: '' };
+        }
 
         if (!response.ok) {
           const errorText = await response.text();

@@ -30,6 +30,10 @@ import { RankingTab } from './components/RankingTab';
 import { TimeseriesTab } from './components/TimeseriesTab';
 import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
 import { validateDateRange } from '@/lib/validators/common';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 
 interface DateRange {
   start?: string | null;
@@ -142,6 +146,10 @@ export default function Ga4DashboardClient({
 
         const result = await fetchGa4DashboardData(nextDateRange);
         if (!result.success || !result.data) {
+          if (isEmailLinkConflictResult(result)) {
+            replaceToEmailLinkConflictLogin();
+            return;
+          }
           setError(result.error ?? 'データの取得に失敗しました');
           setData(undefined);
         } else {
@@ -173,6 +181,10 @@ export default function Ga4DashboardClient({
       const nextDateRange = { start: customStart, end: customEnd };
       const result = await fetchGa4DashboardData(nextDateRange);
       if (!result.success || !result.data) {
+        if (isEmailLinkConflictResult(result)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         setError(result.error ?? 'データの取得に失敗しました');
         setData(undefined);
       } else {
@@ -205,6 +217,10 @@ export default function Ga4DashboardClient({
         });
 
         if (!result.success || !result.data) {
+          if (isEmailLinkConflictResult(result)) {
+            replaceToEmailLinkConflictLogin();
+            return;
+          }
           setError(result.error ?? 'データの取得に失敗しました');
         } else {
           setData((prev) =>
@@ -236,6 +252,10 @@ export default function Ga4DashboardClient({
         });
 
         if (!result.success || !result.data) {
+          if (isEmailLinkConflictResult(result)) {
+            replaceToEmailLinkConflictLogin();
+            return;
+          }
           setError(result.error ?? 'データの取得に失敗しました');
         } else {
           setData((prev) =>

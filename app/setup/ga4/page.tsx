@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Ga4SetupClient from '@/components/Ga4SetupClient';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
 
@@ -21,6 +22,7 @@ export default async function Ga4SetupPage() {
 
   // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  redirectIfEmailLinkConflict(authResult);
   if (authResult.error || !authResult.userId) {
     redirect('/login');
   }

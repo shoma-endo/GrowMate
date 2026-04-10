@@ -7,6 +7,7 @@ import { htmlToMarkdownForCanvas, sanitizeHtmlForCanvas } from '@/lib/canvas-con
 import type { AnnotationRecord } from '@/types/annotation';
 import type { WordPressPostResponse } from '@/types/wordpress';
 import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { STEP7_ID, toBlogModel } from '@/lib/constants';
 
 interface LoadWordPressRequestBody {
@@ -73,6 +74,10 @@ export async function POST(request: NextRequest) {
     const liffAccessToken = authHeader?.replace('Bearer ', '') ?? undefined;
 
     const authResult = await authMiddleware(liffAccessToken);
+    const linkConflict = emailLinkConflictErrorPayload(authResult);
+    if (linkConflict) {
+      return jsonResponse(409, linkConflict);
+    }
     if (authResult.needsReauth) {
       return jsonResponse(401, {
         success: false,

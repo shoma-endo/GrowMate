@@ -20,7 +20,7 @@ import SessionSidebar from './SessionSidebar';
 import MessageArea from './MessageArea';
 import InputArea from './InputArea';
 import AnnotationPanel from './AnnotationPanel';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { ChatLayoutCtx } from '@/types/chat-layout';
 import { DismissibleErrorAlert, DismissibleWarningAlert } from '@/components/DismissibleAlerts';
 import { ViewModeBanner } from '@/components/ViewModeBanner';
@@ -80,7 +80,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     combinedTiles,
     onOpenCombinedCanvas,
   } = ctx;
-  const { isOwnerViewMode } = useLiffContext();
+  const { isOwnerViewMode } = useAuth();
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
 
   const currentStep: BlogStepId = BLOG_STEP_IDS[0] as BlogStepId;

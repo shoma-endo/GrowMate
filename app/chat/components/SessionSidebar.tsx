@@ -8,7 +8,7 @@ import { ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import SessionListContent from '@/components/SessionListContent';
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 
 interface SessionSidebarProps {
   sessions: ChatSession[];
@@ -35,7 +35,7 @@ const SessionSidebar: React.FC<SessionSidebarProps> = ({
   isSearching,
   disableActions,
 }) => {
-  const { isOwnerViewMode } = useLiffContext();
+  const { isOwnerViewMode } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<ChatSession | null>(null);

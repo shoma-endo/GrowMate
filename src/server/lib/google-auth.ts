@@ -4,6 +4,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { toUser } from '@/types/user';
 import { isAdmin } from '@/authUtils';
 
@@ -45,6 +46,10 @@ export async function ensureGoogleAdsAuth(): Promise<GoogleAdsAuthResult> {
 
   // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  const conflict409 = nextJson409IfEmailLinkConflict(authResult, msg => ({ error: msg }));
+  if (conflict409) {
+    return { success: false, response: conflict409 };
+  }
   if (authResult.error || !authResult.userId) {
     return {
       success: false,

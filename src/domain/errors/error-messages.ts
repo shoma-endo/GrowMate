@@ -176,6 +176,10 @@ export const ERROR_MESSAGES = {
     /** 認証されていない場合（check-role等） */
     NOT_AUTHENTICATED: '認証されていません',
 
+    /** 同一メールの public.users 行が既に別の Supabase Auth とリンク済み（無条件上書きしない） */
+    EMAIL_LINK_CONFLICT:
+      'このメールアドレスは別のログインと既に紐づいています。サポートへお問い合わせください。',
+
     /** トークン期限切れで再ログインが必要な場合 */
     TOKEN_EXPIRED_REAUTH: 'トークンの有効期限が切れました。再度ログインしてください',
 

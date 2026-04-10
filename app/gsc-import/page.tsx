@@ -18,7 +18,11 @@ import { runGscImport } from '@/server/actions/gscImport.actions';
 import { fetchGscStatus } from '@/server/actions/gscSetup.actions';
 import { getQuerySummaryLabels } from '@/lib/gsc-import';
 import type { GscConnectionStatus } from '@/types/gsc';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 import { canRunBulkImport } from '@/authUtils';
 
 type ImportResponse = {
@@ -73,7 +77,7 @@ const isOAuthTokenError = (errorMessage: string | undefined): boolean => {
 };
 
 export default function GscImportPage() {
-  const { user, isOwnerViewMode } = useLiffContext();
+  const { user, isOwnerViewMode } = useAuth();
   const [startDate, setStartDate] = useState(daysAgoISO(30));
   const [endDate, setEndDate] = useState(todayISO());
   const [searchType, setSearchType] = useState<'web' | 'image' | 'news'>('web');
@@ -114,6 +118,10 @@ export default function GscImportPage() {
       setIsLoadingGscStatus(true);
       try {
         const status = await fetchGscStatus();
+        if (isEmailLinkConflictResult(status)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         if (isMounted) {
           setGscStatus(status);
         }

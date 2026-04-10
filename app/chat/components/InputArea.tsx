@@ -24,7 +24,7 @@ import {
   type BlogStepId,
 } from '@/lib/constants';
 import { TITLE_MAX_LENGTH } from '@/lib/validators/common';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import StepActionBar, { StepActionBarRef } from './StepActionBar';
 import ChatSearch from './search/ChatSearch';
 import { ServiceSelector } from './ServiceSelector';
@@ -203,7 +203,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   onStep6ToStep7Success,
   lastAssistantIsBasicStructure = false,
 }) => {
-  const { isOwnerViewMode } = useLiffContext();
+  const { isOwnerViewMode } = useAuth();
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);

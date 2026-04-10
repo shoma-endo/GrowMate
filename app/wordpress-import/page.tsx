@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import { runWordpressBulkImport } from '@/server/actions/wordpressImport.actions';
@@ -60,7 +60,7 @@ export default function WordPressImportPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
-  const { getAccessToken, user, isOwnerViewMode } = useLiffContext();
+  const { getAccessToken, user, isOwnerViewMode } = useAuth();
   const isStaffUser = Boolean(user?.ownerUserId);
   const canImport = canRunBulkImport({
     role: user?.role ?? null,

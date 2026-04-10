@@ -6,13 +6,21 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { hasOwnerRole } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
+import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 
 const supabaseService = new SupabaseService();
 
-const getAuthUserId = async () => {
+type GscNotificationAuthResult =
+  | { userId: string }
+  | { error: string; emailLinkConflict?: true };
+
+const getAuthUserId = async (): Promise<GscNotificationAuthResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
   const authResult = await authMiddleware(accessToken, refreshToken);
+  const linkConflict = emailLinkConflictErrorPayload(authResult);
+  if (linkConflict) return { ...linkConflict, emailLinkConflict: true as const };
   if (authResult.error || !authResult.userId) {
     return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
@@ -26,10 +34,11 @@ const getAuthUserId = async () => {
  * 未読のGSC改善提案の件数のみを取得する（グローバル通知用の軽量版）
  */
 export async function getUnreadSuggestionsCount(): Promise<{ count: number }> {
-  const { userId, error } = await getAuthUserId();
-  if (error || !userId) {
+  const auth = await getAuthUserId();
+  if ('error' in auth) {
     return { count: 0 };
   }
+  const { userId } = auth;
 
   const { count, error: queryError } = await supabaseService
     .getClient()
@@ -53,10 +62,11 @@ export async function getUnreadSuggestionsCount(): Promise<{ count: number }> {
  * 改善提案を既読にする
  */
 export async function markSuggestionAsRead(historyId: string): Promise<{ success: boolean; error?: string }> {
-  const { userId, error } = await getAuthUserId();
-  if (error || !userId) {
-    return { success: false, error: error || ERROR_MESSAGES.AUTH.UNAUTHORIZED };
+  const auth = await getAuthUserId();
+  if ('error' in auth) {
+    return { success: false, error: auth.error || ERROR_MESSAGES.AUTH.UNAUTHORIZED };
   }
+  const { userId } = auth;
 
   const { error: updateError } = await supabaseService
     .getClient()
@@ -81,10 +91,14 @@ export async function markSuggestionAsRead(historyId: string): Promise<{ success
  * AnalyticsTableでの🔔バッジ表示用
  */
 export async function getAnnotationIdsWithUnreadSuggestions(): Promise<{ annotationIds: string[] }> {
-  const { userId, error } = await getAuthUserId();
-  if (error || !userId) {
+  const auth = await getAuthUserId();
+  if ('error' in auth) {
+    if (auth.emailLinkConflict) {
+      throw new AuthEmailLinkConflictError(auth.error);
+    }
     return { annotationIds: [] };
   }
+  const { userId } = auth;
 
   const { data, error: queryError } = await supabaseService
     .getClient()

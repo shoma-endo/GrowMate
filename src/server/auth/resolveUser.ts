@@ -1,5 +1,5 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { userService } from '@/server/services/userService';
+import { EmailAuthLinkConflictError, userService } from '@/server/services/userService';
 import type { User } from '@/types/user';
 
 /**
@@ -9,7 +9,8 @@ import type { User } from '@/types/user';
 export type EmailAuthResult =
   | { ok: true; user: User }
   | { ok: false; reason: 'unauthenticated' }
-  | { ok: false; reason: 'transient' };
+  | { ok: false; reason: 'transient' }
+  | { ok: false; reason: 'email_link_conflict' };
 
 /**
  * Supabase Auth セッションから Email ユーザーを解決する（結果を理由付きで返す）。
@@ -30,6 +31,9 @@ export async function resolveEmailUserWithReason(): Promise<EmailAuthResult> {
     const user = await userService.resolveOrCreateEmailUser(authUser.id, authUser.email);
     return { ok: true, user };
   } catch (err) {
+    if (err instanceof EmailAuthLinkConflictError) {
+      return { ok: false, reason: 'email_link_conflict' };
+    }
     const code = (err as Record<string, unknown>)?.code;
     console.error('[resolveEmailUserWithReason] transient failure:', code ?? (err instanceof Error ? err.message : 'unknown'));
     return { ok: false, reason: 'transient' };

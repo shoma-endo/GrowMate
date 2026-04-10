@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { getUserRoleWithRefresh } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
+import { nextJson409EmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 
 // Node.jsランタイムを強制（Cookie更新の一貫性を確保）
 export const runtime = 'nodejs';
@@ -22,6 +23,9 @@ export async function GET() {
       if (result.reason === 'unauthenticated') {
         return NextResponse.json({ error: ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED }, { status: 401 });
       }
+      if (result.reason === 'email_link_conflict') {
+        return nextJson409EmailLinkConflict();
+      }
       return NextResponse.json(
         { error: ERROR_MESSAGES.AUTH.USER_ROLE_FETCH_FAILED },
         { status: 503 }
@@ -34,6 +38,9 @@ export async function GET() {
     // /api/line/callback は Supabase email session を削除しないためこのケースが起こり得る
     if (result.needsReauth) {
       const emailFallback = await resolveEmailUserWithReason();
+      if (emailFallback.ok === false && emailFallback.reason === 'email_link_conflict') {
+        return nextJson409EmailLinkConflict();
+      }
       if (emailFallback.ok) {
         // 期限切れ LINE cookie を削除してから 200 を返す。
         // 削除しないと後続の /api/user/current が stale cookie を優先して needsReauth を返し、

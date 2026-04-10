@@ -10,10 +10,13 @@ import {
 } from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
 const getAccessTokenOrError = async () => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
   const authResult = await authMiddleware(accessToken, refreshToken);
+  const linkConflict = emailLinkConflictErrorPayload(authResult);
+  if (linkConflict) return linkConflict;
   if (authResult.error || !authResult.userId) {
     return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
@@ -27,12 +30,22 @@ export async function fetchPrompts() {
   try {
     const auth = await getAccessTokenOrError();
     if ('error' in auth) {
-      return { success: false, error: auth.error };
+      return {
+        success: false,
+        error: auth.error,
+        ...('emailLinkConflict' in auth && auth.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+      };
     }
 
     const result = await getPromptTemplates(auth.accessToken);
     if (!result.success) {
-      return { success: false, error: result.error || ERROR_MESSAGES.PROMPT.FETCH_FAILED };
+      return {
+        success: false,
+        error: result.error || ERROR_MESSAGES.PROMPT.FETCH_FAILED,
+        ...('emailLinkConflict' in result && result.emailLinkConflict
+          ? { emailLinkConflict: true as const }
+          : {}),
+      };
     }
     return { success: true, data: result.data };
   } catch (error) {
@@ -51,7 +64,11 @@ export async function savePrompt(params: {
   try {
     const auth = await getAccessTokenOrError();
     if ('error' in auth) {
-      return { success: false, error: auth.error };
+      return {
+        success: false,
+        error: auth.error,
+        ...('emailLinkConflict' in auth && auth.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+      };
     }
     if (await isViewModeEnabled(resolveViewModeRole(auth.authResult))) {
       return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
@@ -75,7 +92,13 @@ export async function savePrompt(params: {
     });
 
     if (!result.success) {
-      return { success: false, error: result.error || ERROR_MESSAGES.COMMON.SAVE_FAILED };
+      return {
+        success: false,
+        error: result.error || ERROR_MESSAGES.COMMON.SAVE_FAILED,
+        ...('emailLinkConflict' in result && result.emailLinkConflict
+          ? { emailLinkConflict: true as const }
+          : {}),
+      };
     }
 
     revalidatePath('/admin/prompts');
