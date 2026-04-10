@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { markSuggestionAsRead } from '@/server/actions/gscNotification.actions';
 import type { GscEvaluationHistoryItem } from '../types';
 import { formatDateTime } from '@/lib/date-utils';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { EvaluationResultAlert } from './evaluation-history/EvaluationResultAlert';
 import {
   getEvaluationHistoryState,
@@ -31,7 +31,7 @@ export function EvaluationHistoryTab({
   history: initialHistory,
   onHistoryRead,
 }: EvaluationHistoryTabProps) {
-  const { isOwnerViewMode } = useLiffContext();
+  const { isOwnerViewMode } = useAuth();
   const [history, setHistory] = useState(initialHistory);
   const [selectedHistory, setSelectedHistory] = useState<GscEvaluationHistoryItem | null>(null);
   const [isPending, startTransition] = useTransition();

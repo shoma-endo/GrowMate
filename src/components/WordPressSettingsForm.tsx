@@ -23,7 +23,7 @@ import {
 } from '@/server/actions/wordpress.actions';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { diagnoseWordPressError } from '@/domain/errors/wordpress-error-diagnostics';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 
 interface StatusOutcome {
   success: boolean;
@@ -99,7 +99,7 @@ export default function WordPressSettingsForm({
   existingSettings,
   role,
 }: WordPressSettingsFormProps) {
-  const { isOwnerViewMode, user } = useLiffContext();
+  const { isOwnerViewMode, user } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);

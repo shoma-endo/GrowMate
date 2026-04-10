@@ -1,4 +1,5 @@
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { WordPressService, WordPressAuth } from '@/server/services/wordpressService';
 import type { WordPressSettings, WordPressType } from '@/types/wordpress';
@@ -86,6 +87,7 @@ export function buildWordPressServiceFromSettings(
 export type WordPressContextFailureReason =
   | 'line_auth_invalid'
   | 'requires_reauth'
+  | 'email_link_conflict'
   | 'settings_missing'
   | WordPressServiceBuildFailureReason;
 
@@ -120,6 +122,16 @@ export async function resolveWordPressContext(
   const refreshToken = getCookie('line_refresh_token');
   // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(accessToken, refreshToken);
+
+  const conflictMessage = getEmailLinkConflictMessage(authResult);
+  if (conflictMessage !== undefined) {
+    return {
+      success: false,
+      reason: 'email_link_conflict',
+      message: conflictMessage,
+      status: 409,
+    };
+  }
 
   if (authResult.needsReauth) {
     return {

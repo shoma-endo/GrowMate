@@ -13,6 +13,7 @@ import {
 } from '@/lib/constants';
 
 import { ChatError } from '@/domain/errors/ChatError';
+import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
@@ -76,6 +77,8 @@ export async function POST(req: NextRequest) {
     const liffAccessToken = authHeader?.replace('Bearer ', '');
 
     const authResult = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
+    const sseConflict = sse409IfEmailLinkConflict(authResult, sendSSE);
+    if (sseConflict) return sseConflict;
     if (authResult.error) {
       return new Response(sendSSE('error', { type: 'auth', message: authResult.error }), {
         status: 401,

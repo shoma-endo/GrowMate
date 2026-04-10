@@ -11,7 +11,7 @@ import { usePersistedResizableWidth } from '@/hooks/usePersistedResizableWidth';
 import { AnnotationRecord } from '@/types/annotation';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
 import { useAnnotationForm } from '@/hooks/useAnnotationForm';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 
 interface Props {
   sessionId: string;
@@ -28,7 +28,7 @@ export default function AnnotationPanel({
   isVisible = true,
   onSaveSuccess,
 }: Props) {
-  const { isOwnerViewMode } = useLiffContext();
+  const { isOwnerViewMode } = useAuth();
   const {
     form,
     updateField,

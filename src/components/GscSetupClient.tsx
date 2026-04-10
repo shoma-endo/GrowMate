@@ -29,7 +29,7 @@ import { GscStatusBadge } from '@/components/ui/GscStatusBadge';
 import { useGscSetup } from '@/hooks/useGscSetup';
 import { handleAsyncAction } from '@/lib/async-handler';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 
 interface GscSetupClientProps {
   initialStatus: GscConnectionStatus;
@@ -53,7 +53,7 @@ export default function GscSetupClient({
   initialStatus,
   isOauthConfigured,
 }: GscSetupClientProps) {
-  const { user } = useLiffContext();
+  const { user } = useAuth();
   const {
     status,
     properties,

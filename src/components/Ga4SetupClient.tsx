@@ -25,7 +25,7 @@ import { formatDate } from '@/lib/date-utils';
 import { useGa4Setup } from '@/hooks/useGa4Setup';
 import { handleAsyncAction } from '@/lib/async-handler';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { toast } from 'sonner';
 
 interface Ga4SetupClientProps {
@@ -55,7 +55,7 @@ const getGa4EventLabel = (eventName: string): string => {
 };
 
 export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4SetupClientProps) {
-  const { user } = useLiffContext();
+  const { user } = useAuth();
   const {
     status,
     properties,

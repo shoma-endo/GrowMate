@@ -8,6 +8,7 @@ import { toGscConnectionStatus, propertyTypeFromUri } from '@/server/lib/gsc-sta
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GscSiteEntry, GscCredential, GscConnectionStatus } from '@/types/gsc';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
 
 const supabaseService = new SupabaseService();
@@ -38,9 +39,13 @@ const ensureAccessToken = async (userId: string, credential: GscCredential): Pro
       }),
   });
 
-const getAuthUserId = async () => {
+type GscSetupAuthIdResult = { error: string } | { userId: string; ownerUserId: string | null };
+
+const getAuthUserId = async (): Promise<GscSetupAuthIdResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
   const authResult = await authMiddleware(accessToken, refreshToken);
+  const linkConflict = emailLinkConflictErrorPayload(authResult);
+  if (linkConflict) return linkConflict;
   if (authResult.error || !authResult.userId) {
     return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
@@ -57,10 +62,11 @@ const getAuthUserId = async () => {
 };
 
 export async function fetchGscStatus() {
-  const { userId, ownerUserId, error } = await getAuthUserId();
-  if (error || !userId) {
-    return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+  const authId = await getAuthUserId();
+  if ('error' in authId) {
+    return { success: false, error: authId.error };
   }
+  const { userId, ownerUserId } = authId;
   if (ownerUserId) {
     return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
   }
@@ -71,10 +77,11 @@ export async function fetchGscStatus() {
 
 export async function fetchGscProperties() {
   try {
-    const { userId, ownerUserId, error } = await getAuthUserId();
-    if (error || !userId) {
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return { success: false, error: authId.error };
     }
+    const { userId, ownerUserId } = authId;
     if (ownerUserId) {
       return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
     }
@@ -111,10 +118,11 @@ export async function saveGscProperty(params: {
   permissionLevel?: string | null;
 }) {
   try {
-    const { userId, ownerUserId, error } = await getAuthUserId();
-    if (error || !userId) {
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return { success: false, error: authId.error };
     }
+    const { userId, ownerUserId } = authId;
     if (ownerUserId) {
       return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
     }
@@ -157,12 +165,13 @@ export async function saveGscProperty(params: {
 
 export async function disconnectGsc() {
   try {
-    const { userId, ownerUserId, error } = await getAuthUserId();
+    const authId = await getAuthUserId();
 
-    if (error || !userId) {
-      console.error('[GSC Setup] disconnectGsc: ユーザー認証失敗', { error });
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    if ('error' in authId) {
+      console.error('[GSC Setup] disconnectGsc: ユーザー認証失敗', { error: authId.error });
+      return { success: false, error: authId.error };
     }
+    const { userId, ownerUserId } = authId;
     if (ownerUserId) {
       return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
     }

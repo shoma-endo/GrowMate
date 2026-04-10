@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveWordPressContext } from '@/server/services/wordpressContext';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { isAdmin as isAdminRole } from '@/authUtils';
 import {
@@ -19,6 +20,12 @@ export async function GET(request: NextRequest) {
     const { accessToken: liffToken, refreshToken } = getLiffTokensFromRequest(request);
     const authResult = await authMiddleware(liffToken, refreshToken);
 
+    const conflict409get = nextJson409IfEmailLinkConflict(authResult, msg => ({
+      success: false,
+      connected: false,
+      message: msg,
+    }));
+    if (conflict409get) return conflict409get;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return NextResponse.json({ success: false, connected: false, message: 'ユーザー認証に失敗しました' }, { status: 401 });
     }
@@ -126,6 +133,8 @@ export async function POST(request: NextRequest) {
     const { accessToken: liffToken, refreshToken } = getLiffTokensFromRequest(request);
     const authResult = await authMiddleware(liffToken, refreshToken);
 
+    const conflict409post = nextJson409IfEmailLinkConflict(authResult);
+    if (conflict409post) return conflict409post;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return NextResponse.json(
         { success: false, error: 'ユーザー認証に失敗しました' },

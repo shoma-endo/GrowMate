@@ -17,6 +17,7 @@ import { GA4_SCOPE } from '@/lib/constants';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
 import type { ServerActionResult } from '@/lib/async-handler';
 import { canAccessGa4, canWriteGa4 } from '@/server/lib/ga4-permissions';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
 const supabaseService = new SupabaseService();
 const gscService = new GscService();
@@ -78,6 +79,8 @@ type AuthResult = AuthSuccess | AuthFailure;
 const getAuthUserId = async (): Promise<AuthResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
   const authResult = await authMiddleware(accessToken, refreshToken);
+  const linkConflict = emailLinkConflictErrorPayload(authResult);
+  if (linkConflict) return linkConflict;
   if (authResult.error || !authResult.userId) {
     return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }

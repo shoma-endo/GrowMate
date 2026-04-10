@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import GscDashboardClient from './GscDashboardClient';
 import { fetchGscDetail } from '@/server/actions/gscDashboard.actions';
 
@@ -17,6 +18,9 @@ export default async function GscDashboardPage({
   let initialDetail = null;
   if (selectedId) {
     const res = await fetchGscDetail(selectedId);
+    if (!res.success && res.emailLinkConflict) {
+      redirect('/login?reason=email_link_conflict');
+    }
     if (res.success) {
       initialDetail = res.data ?? null;
     }

@@ -7,14 +7,12 @@ import type { GscConnectionStatus } from './gsc';
 import type { Ga4ConnectionStatus } from './ga4';
 
 /**
- * 認証コンテキスト関連の型定義
+ * 認証コンテキスト（クライアント側）。Email セッション中心。
  *
- * 名称 `LiffContextType` は後方互換のため維持しているが、
- * LINE LIFF 依存は Phase 1.5 で撤去済みで、実体は Email 認証専用のコンテキスト。
- * `profile` / `liffObject` / `isLineCookieAuth` / `getAccessToken` など LIFF 由来の
- * フィールドは消費側との互換のため残置しており、常に固定値（null / false / 空文字）を返す。
+ * `profile` / `liffObject` / `isLineCookieAuth` / `getAccessToken` 等は
+ * 旧 LINE LIFF 連携からの互換フィールドで、常に固定値（null / false / 空文字）を返す。
  */
-export interface LiffContextType {
+export interface AuthContextType {
   isLoggedIn: boolean;
   isLoading: boolean;
   /** legacy: 常に null */
@@ -33,8 +31,9 @@ export interface LiffContextType {
   refreshUser: () => Promise<boolean>;
 }
 
-export interface LiffProviderProps {
+export interface AuthProviderProps {
   children: React.ReactNode;
+  /** @deprecated 互換用。効果なし */
   initialize?: boolean;
 }
 

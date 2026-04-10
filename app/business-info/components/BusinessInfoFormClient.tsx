@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { saveBrief, getBrief } from '@/server/actions/brief.actions';
 import { paymentEnum } from '@/server/schemas/brief.schema';
 import type { BriefInput, Payment, Profile, Service, LegacyBriefInput } from '@/types/business-info';
@@ -114,7 +114,7 @@ const createInitialState = (data?: Partial<BriefInput>): BriefInput => {
 };
 
 export default function BusinessInfoFormClient({ initialData }: BusinessInfoFormClientProps) {
-  const { getAccessToken, user, isOwnerViewMode } = useLiffContext();
+  const { getAccessToken, user, isOwnerViewMode } = useAuth();
   const isAuthenticated = Boolean(user);
   const [form, setForm] = useState<BriefInput>(() => createInitialState(initialData || undefined));
   const [isLoading, setIsLoading] = useState(true);

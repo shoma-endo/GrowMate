@@ -7,6 +7,7 @@ import { gscImportService } from '@/server/services/gscImportService';
 import { normalizeUrl } from '@/lib/normalize-url';
 import { buildGscDateRange } from '@/lib/date-utils';
 import type { GscEvaluationOutcome } from '@/types/gsc';
+import type { UserRole } from '@/types/user';
 import {
   isViewModeEnabled,
   resolveViewModeRole,
@@ -14,6 +15,7 @@ import {
 } from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
 const supabaseService = new SupabaseService();
 
@@ -71,12 +73,32 @@ export type GscDetailResponse = {
     } | null;
   };
   error?: string;
+  /** メール紐付け競合（クライアントがログイン回復へ誘導） */
+  emailLinkConflict?: true;
 };
 
-const getAuthUserId = async () => {
+type GscDashboardAuthIdResult =
+  | { error: string; emailLinkConflict?: true }
+  | { userId: string; role: UserRole | null };
+
+function gscAuthErrorPayload(authId: Extract<GscDashboardAuthIdResult, { error: string }>): {
+  success: false;
+  error: string;
+  emailLinkConflict?: true;
+} {
+  return {
+    success: false,
+    error: authId.error,
+    ...(authId.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+  };
+}
+
+const getAuthUserId = async (): Promise<GscDashboardAuthIdResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
   const authResult = await authMiddleware(accessToken, refreshToken);
+  const linkConflict = emailLinkConflictErrorPayload(authResult);
+  if (linkConflict) return { error: linkConflict.error, emailLinkConflict: true };
   if (authResult.error || !authResult.userId) {
       return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
@@ -108,10 +130,11 @@ export async function fetchGscDetail(
   options?: { days?: number }
 ): Promise<GscDetailResponse> {
   try {
-  const { userId, error } = await getAuthUserId();
-  if (error || !userId) {
-    return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+  const authId = await getAuthUserId();
+  if ('error' in authId) {
+    return gscAuthErrorPayload(authId);
   }
+  const { userId } = authId;
 
   const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
   if (accessCheckError || !accessibleIds) {
@@ -377,10 +400,11 @@ export async function registerEvaluation(params: {
   evaluationHour?: number;
 }) {
   try {
-    const { userId, role, error } = await getAuthUserId();
-    if (error || !userId) {
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return gscAuthErrorPayload(authId);
     }
+    const { userId, role } = authId;
     if (await isViewModeEnabled(role ?? null)) {
       return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
     }
@@ -485,10 +509,11 @@ export async function updateEvaluation(params: {
   evaluationHour?: number;
 }) {
   try {
-    const { userId, role, error } = await getAuthUserId();
-    if (error || !userId) {
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return gscAuthErrorPayload(authId);
     }
+    const { userId, role } = authId;
     if (await isViewModeEnabled(role ?? null)) {
       return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
     }
@@ -635,10 +660,11 @@ export async function fetchQueryAnalysis(
   dateRange: '7d' | '28d' | '3m' = '28d'
 ): Promise<QueryAnalysisResponse> {
   try {
-    const { userId, error } = await getAuthUserId();
-    if (error || !userId) {
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return gscAuthErrorPayload(authId);
     }
+    const { userId } = authId;
 
     const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
     if (accessCheckError || !accessibleIds) {
@@ -799,10 +825,11 @@ export async function runQueryImportForAnnotation(
   options?: { days?: number }
 ) {
   try {
-    const { userId, role, error } = await getAuthUserId();
-    if (error || !userId) {
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return gscAuthErrorPayload(authId);
     }
+    const { userId, role } = authId;
     if (await isViewModeEnabled(role ?? null)) {
       return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
     }
@@ -888,10 +915,11 @@ export async function runQueryImportForAnnotation(
  */
 export async function runEvaluationNow(contentAnnotationId: string) {
   try {
-    const { userId, role, error } = await getAuthUserId();
-    if (error || !userId) {
-      return { success: false, error: error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return gscAuthErrorPayload(authId);
     }
+    const { userId, role } = authId;
     if (await isViewModeEnabled(role ?? null)) {
       return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
     }

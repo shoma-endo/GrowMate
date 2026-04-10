@@ -10,6 +10,7 @@ import {
 } from '@/server/lib/view-mode';
 import { getLiffTokensFromRequest } from '@/server/lib/auth-helpers';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 
 const supabaseService = new SupabaseService();
 
@@ -42,7 +43,9 @@ export async function POST(request: NextRequest) {
     }
 
     const authResult = await authMiddleware(liffToken, refreshToken);
-    
+
+    const conflict409 = nextJson409IfEmailLinkConflict(authResult);
+    if (conflict409) return conflict409;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return NextResponse.json(
         { success: false, error: ERROR_MESSAGES.AUTH.AUTHENTICATION_FAILED },

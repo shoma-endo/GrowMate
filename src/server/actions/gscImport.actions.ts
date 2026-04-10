@@ -7,6 +7,7 @@ import { gscEvaluationService } from '@/server/services/gscEvaluationService';
 import { splitRangeByDays, aggregateImportResults } from '@/server/lib/gsc-import-utils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { canRunBulkImport } from '@/authUtils';
 
 export interface GscImportParams {
@@ -22,6 +23,8 @@ export async function runGscImport(params: GscImportParams) {
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
     const authResult = await authMiddleware(accessToken, refreshToken);
+    const linkConflict = emailLinkConflictErrorPayload(authResult);
+    if (linkConflict) return linkConflict;
     if (authResult.error || !authResult.userId) {
       return { success: false, error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
     }

@@ -11,6 +11,10 @@ import {
   type UseAnnotationFormResult,
 } from '@/types/annotation';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 import { validateOptionalUrl } from '@/lib/validators/common';
 
 const EMPTY_FORM_ENTRIES = ANNOTATION_FIELD_KEYS.map(key => [key, ''] as const);
@@ -98,6 +102,10 @@ export function useAnnotationForm({
 
     try {
       const response = (await onSubmit({ fields: form, canonicalUrl: normalizedUrl })) ?? undefined;
+      if (isEmailLinkConflictResult(response)) {
+        replaceToEmailLinkConflictLogin();
+        return { success: false, normalizedCanonicalUrl: normalizedUrl };
+      }
       const success = Boolean(response?.success);
 
       if (success) {

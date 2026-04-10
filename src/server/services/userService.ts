@@ -6,6 +6,22 @@ import type { User, UserRole } from '@/types/user';
 import { toDbUserInsert, toUser, type DbUser, type DbUserUpdate } from '@/types/user';
 
 /**
+ * Phase 1: email 一致による自動リンクを行わず INSERT した結果、メールまたは auth の一意制約に触れた場合に投げる。
+ * （例: 既存 LINE 行が同じメールを保持しており、別の Supabase Auth で新規 users 行を作れない）
+ */
+export class EmailAuthLinkConflictError extends Error {
+  readonly code = 'EMAIL_AUTH_LINK_CONFLICT' as const;
+
+  constructor() {
+    super(
+      'メール認証の紐付け競合: 該当する public.users 行は既に別の Supabase Auth ユーザーに関連付けられています'
+    );
+    this.name = 'EmailAuthLinkConflictError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
  * ユーザーサービス: ユーザー管理機能を提供
  */
 export class UserService {
@@ -271,42 +287,30 @@ export class UserService {
 
   /**
    * Supabase Auth ユーザーを GrowMate ユーザーに解決または新規作成（idempotent）
-   * 読み取り専用の認証確認から呼び出す。last_login_at は更新しない。
+   * Phase 1: `supabase_auth_id` の既存解決と新規 INSERT のみ。email 一致で既存 LINE 行へ自動リンクしない
+   * （仕様: docs/plans/2026-03-01-email-auth-and-migration-spec.md §7）。既存メール併用は Phase 1.5 手動移行。
    * OTP ログイン成功後は updateLastLoginAt() を別途呼び出すこと。
    */
   async resolveOrCreateEmailUser(supabaseAuthId: string, email: string): Promise<User> {
-    // 1. supabase_auth_id で既存ユーザーを検索
-    const existingResult = await this.supabaseService.getUserBySupabaseAuthId(supabaseAuthId);
-    if (!existingResult.success) {
-      throw new Error(existingResult.error.developerMessage ?? existingResult.error.userMessage);
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingByAuth = await this.supabaseService.getUserBySupabaseAuthId(supabaseAuthId);
+    if (!existingByAuth.success) {
+      throw new Error(existingByAuth.error.developerMessage ?? existingByAuth.error.userMessage);
     }
 
-    if (existingResult.data) {
-      return toUser(existingResult.data);
+    if (existingByAuth.data) {
+      return toUser(existingByAuth.data);
     }
 
-    // 2. 新規作成（競合時は再フェッチ）
-    const createResult = await this.supabaseService.createEmailUser(email, supabaseAuthId);
+    const createResult = await this.supabaseService.createEmailUser(normalizedEmail, supabaseAuthId);
     if (!createResult.success) {
-      // 23505: supabase_auth_id または email の一意制約違反 → 先行 INSERT が完了しているので再フェッチ
       if (createResult.error.code === '23505') {
-        // supabase_auth_id で再試行（同一 auth ユーザーの競合）
         const retryByAuthId = await this.supabaseService.getUserBySupabaseAuthId(supabaseAuthId);
         if (retryByAuthId.success && retryByAuthId.data) {
           return toUser(retryByAuthId.data);
         }
-        // email で再試行（LINE ユーザー等が同メールアドレスを持つ場合）
-        const retryByEmail = await this.supabaseService.getUserByEmail(email);
-        if (retryByEmail.success && retryByEmail.data) {
-          // supabase_auth_id が未リンクの場合は紐付ける（次回ログイン時に getUserBySupabaseAuthId で見つかるように）
-          if (!retryByEmail.data.supabase_auth_id) {
-            await this.supabaseService.updateUserById(retryByEmail.data.id, {
-              supabase_auth_id: supabaseAuthId,
-              updated_at: toIsoTimestamp(new Date()),
-            });
-          }
-          return toUser(retryByEmail.data);
-        }
+        throw new EmailAuthLinkConflictError();
       }
       throw new Error(createResult.error.developerMessage ?? createResult.error.userMessage);
     }

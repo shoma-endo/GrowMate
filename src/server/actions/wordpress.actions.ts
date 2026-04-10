@@ -2,9 +2,15 @@
 
 import { randomUUID } from 'crypto';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
-import { withAuth } from '@/server/middleware/withAuth.middleware';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
+import {
+  withAuth,
+  isWithAuthEmailLinkConflict,
+  type WithAuthEmailLinkConflict,
+} from '@/server/middleware/withAuth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { isAdmin as isAdminRole, isActualOwner as isActualOwnerHelper } from '@/authUtils';
 import {
@@ -55,7 +61,7 @@ function isDuplicateCanonicalConstraint(error: {
  * WordPress設定を取得
  */
 export async function getWordPressSettings(): Promise<WordPressSettings | null> {
-  return withAuth(async ({ userId, ownerUserId, actorUserId }) => {
+  const result = await withAuth(async ({ userId, ownerUserId, actorUserId }) => {
     // View Modeの場合は本来のユーザー（オーナー）を使用
     const realUserId = actorUserId || userId;
     const isRealOwner = !!actorUserId;
@@ -65,6 +71,10 @@ export async function getWordPressSettings(): Promise<WordPressSettings | null> 
     }
     return await supabaseService.getWordPressSettingsByUserId(realUserId);
   });
+  if (isWithAuthEmailLinkConflict(result)) {
+    redirect('/login?reason=email_link_conflict');
+  }
+  return result;
 }
 
 type CookieStore = Awaited<ReturnType<typeof cookies>>;
@@ -340,7 +350,11 @@ async function resolveCanonicalAndWpPostId(
   };
 }
 
-export async function saveWordPressSettingsAction(params: SaveWordPressSettingsParams) {
+export async function saveWordPressSettingsAction(params: SaveWordPressSettingsParams): Promise<
+  | WithAuthEmailLinkConflict
+  | { success: true; message: string }
+  | { success: false; error: string }
+> {
   try {
     const { wpType, wpSiteId, wpSiteUrl, wpUsername, wpApplicationPassword, wpContentTypes } =
       params;
@@ -357,6 +371,8 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
     }
 
     const authResult = await authMiddleware(liffToken, refreshToken);
+    const saveWpConflict = emailLinkConflictErrorPayload(authResult);
+    if (saveWpConflict) return saveWpConflict;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return { success: false as const, error: ERROR_MESSAGES.AUTH.AUTHENTICATION_FAILED };
     }
@@ -421,11 +437,17 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
 // 保存済み設定を用いて接続を確認する
 // ==========================================
 
-export async function testWordPressConnectionAction() {
+export async function testWordPressConnectionAction(): Promise<
+  | WithAuthEmailLinkConflict
+  | { success: true; message: string }
+  | { success: false; error: string; needsWordPressAuth?: true }
+> {
   try {
     const { accessToken: liffToken, refreshToken } = await getLiffTokensFromCookies();
     const authResult = await authMiddleware(liffToken, refreshToken);
 
+    const testWpConflict = emailLinkConflictErrorPayload(authResult);
+    if (testWpConflict) return testWpConflict;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return { success: false as const, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
     }
@@ -515,7 +537,11 @@ export async function testWordPressConnectionAction() {
 
 export async function getContentAnnotationBySession(
   session_id: string
-): Promise<{ success: false; error: string } | { success: true; data: AnnotationRecord | null }> {
+): Promise<
+  | WithAuthEmailLinkConflict
+  | { success: false; error: string }
+  | { success: true; data: AnnotationRecord | null }
+> {
   return withAuth(async ({ userId }) => {
     const client = new SupabaseService().getClient();
 
@@ -547,6 +573,7 @@ export async function upsertContentAnnotationBySession(
     wp_post_id?: number | null;
   }
 ): Promise<
+  | WithAuthEmailLinkConflict
   | { success: false; error: string }
   | {
       success: true;
@@ -763,7 +790,11 @@ export interface EnsureAnnotationChatSessionPayload {
 
 export async function ensureAnnotationChatSession(
   payload: EnsureAnnotationChatSessionPayload
-): Promise<{ success: true; sessionId: string } | { success: false; error: string }> {
+): Promise<
+  | WithAuthEmailLinkConflict
+  | { success: true; sessionId: string }
+  | { success: false; error: string }
+> {
   return withAuth(async ({ userId, ownerUserId, viewModeRole }) => {
     if (await isViewModeEnabled(viewModeRole ?? null)) {
       return { success: false as const, error: VIEW_MODE_ERROR_MESSAGE };
@@ -993,6 +1024,7 @@ export async function updateContentAnnotationFields(
   annotationId: string,
   fields: UpdateContentAnnotationFields
 ): Promise<
+  | WithAuthEmailLinkConflict
   | { success: true; wp_post_id?: number | null; wp_post_title?: string | null }
   | { success: false; error: string }
 > {
@@ -1078,7 +1110,9 @@ export async function updateContentAnnotationFields(
 }
 
 export async function fetchWordPressStatusAction(): Promise<
-  { success: true; data: WordPressConnectionStatus } | { success: false; error: string }
+  | WithAuthEmailLinkConflict
+  | { success: true; data: WordPressConnectionStatus }
+  | { success: false; error: string }
 > {
   return withAuth(async ({ userId, cookieStore, userDetails, ownerUserId, actorUserId }) => {
     // View Modeの場合は本来のユーザー（オーナー）を使用
@@ -1176,7 +1210,7 @@ export async function fetchWordPressStatusAction(): Promise<
  */
 export async function deleteContentAnnotation(
   annotationId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<WithAuthEmailLinkConflict | { success: boolean; error?: string }> {
   return withAuth(async ({ userId, ownerUserId, viewModeRole }) => {
     if (await isViewModeEnabled(viewModeRole ?? null)) {
       return { success: false, error: VIEW_MODE_ERROR_MESSAGE };

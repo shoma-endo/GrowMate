@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getWordPressSettings } from '@/server/actions/wordpress.actions';
 import SetupDashboard from '@/components/SetupDashboard';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { toGscConnectionStatus } from '@/server/lib/gsc-status';
 import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
@@ -21,6 +22,7 @@ export default async function SetupPage() {
 
   // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  redirectIfEmailLinkConflict(authResult);
   if (authResult.error || !authResult.userId) {
     redirect('/login');
   }

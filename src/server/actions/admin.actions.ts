@@ -41,6 +41,9 @@ async function resolveAdminUser(): Promise<
     if (result.reason === 'transient') {
       return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
     }
+    if (result.reason === 'email_link_conflict') {
+      return { success: false, error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT };
+    }
     return { success: false, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
   }
   const emailUser = result.user;

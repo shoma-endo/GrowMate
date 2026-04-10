@@ -4,6 +4,7 @@ import { isAdmin } from '@/authUtils';
 import { PromptService } from '@/server/services/promptService';
 import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { z } from 'zod';
 import {
   isViewModeEnabled,
@@ -35,6 +36,8 @@ export async function GET(request: NextRequest) {
 
     // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
     const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const conflict409get = nextJson409IfEmailLinkConflict(authResult);
+    if (conflict409get) return conflict409get;
     if (authResult.error) {
       const isTokenExpired = authResult.error.includes('expired');
       const errorCode = isTokenExpired ? ChatErrorCode.TOKEN_EXPIRED : ChatErrorCode.AUTHENTICATION_FAILED;
@@ -81,6 +84,8 @@ export async function POST(request: NextRequest) {
 
     // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
     const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const conflict409post = nextJson409IfEmailLinkConflict(authResult);
+    if (conflict409post) return conflict409post;
     if (authResult.error || !authResult.userId) {
       const errorMsg = authResult.error ?? ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED;
       const isTokenExpired = authResult.error?.includes('expired') ?? false;

@@ -12,6 +12,8 @@ export interface ServerActionResult<T> {
   success: boolean;
   data?: T;
   error?: string;
+  /** メール紐付け競合（クライアントが専用ログイン導線へ誘導可能） */
+  emailLinkConflict?: true;
 }
 
 /**

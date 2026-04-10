@@ -1,9 +1,10 @@
 'use server';
 
-import { cookies, headers } from 'next/headers';
+import { headers } from 'next/headers';
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { userService } from '@/server/services/userService';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { EmailAuthLinkConflictError, userService } from '@/server/services/userService';
 
 // インメモリ レート制限
 // Note: Vercel/Edge 環境では複数インスタンスが存在するため、Supabase Auth 側の制限を主防衛線とし、
@@ -96,32 +97,29 @@ export async function sendOtpEmail(
   return { success: true };
 }
 
-export async function signOutEmail(options?: {
-  /** LINE ユーザー用。true のとき signOut 失敗でも LINE Cookie を削除して success を返す（障害時ログアウト不能を防ぐ） */
-  allowPartialOnTransientError?: boolean;
-}): Promise<{ success: boolean; error?: string; /** true のとき LINE のみ解除済みで Supabase セッションが残っている可能性あり */ partial?: boolean }> {
+export async function signOutEmail(): Promise<{ success: boolean; error?: string }> {
   const supabase = await createSupabaseServerClient();
-  const cookieStore = await cookies();
 
-  // Supabase セッションのサインアウト。
-  // - AuthSessionMissingError → LINE 専用ユーザー等セッションが元々ない → 正常扱い
-  // - その他エラー（Supabase 一時障害など）:
-  //   - allowPartialOnTransientError: true（LINE 用）→ LINE Cookie を削除し partial: true で返す
-  //   - それ以外（Email 用）→ 失敗を返す（/login 遷移でループするため）
-  let partialLogout = false;
   const { error: signOutError } = await supabase.auth.signOut();
   if (signOutError && signOutError.name !== 'AuthSessionMissingError') {
     console.error('[auth.actions] signOutEmail error:', signOutError.message);
-    if (!options?.allowPartialOnTransientError) {
-      return { success: false, error: 'ログアウトに失敗しました。再度お試しください。' };
-    }
-    partialLogout = true;
+    return { success: false, error: 'ログアウトに失敗しました。再度お試しください。' };
   }
 
-  cookieStore.delete('line_access_token');
-  cookieStore.delete('line_refresh_token');
+  return { success: true };
+}
 
-  return { success: true, ...(partialLogout && { partial: true }) };
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+/**
+ * メール OTP 経路で `public.users` 解決に失敗したとき、Supabase セッションを破棄する。
+ * verifyOtp の競合・汎用失敗、registerFullName の競合と挙動を揃える。
+ */
+async function signOutSupabaseSession(supabase: SupabaseServerClient): Promise<void> {
+  const { error } = await supabase.auth.signOut();
+  if (error && error.name !== 'AuthSessionMissingError') {
+    console.error('[auth.actions] signOutSupabaseSession error:', error.message);
+  }
 }
 
 export async function registerFullName(
@@ -140,7 +138,16 @@ export async function registerFullName(
     return { success: false, error: 'セッションが無効です。再度ログインしてください。' };
   }
 
-  const user = await userService.resolveOrCreateEmailUser(authData.user.id, authData.user.email!);
+  let user;
+  try {
+    user = await userService.resolveOrCreateEmailUser(authData.user.id, authData.user.email!);
+  } catch (e) {
+    if (e instanceof EmailAuthLinkConflictError) {
+      await signOutSupabaseSession(supabase);
+      return { success: false, error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT };
+    }
+    throw e;
+  }
   const ok = await userService.updateFullName(user.id, fullName.trim());
   if (!ok) {
     return { success: false, error: '登録に失敗しました。再度お試しください。' };
@@ -182,19 +189,16 @@ export async function verifyOtp(
   try {
     const user = await userService.resolveOrCreateEmailUser(data.user.id, data.user.email!);
     await userService.updateLastLoginAt(user.id);
-    // Email セッション確立時に古い LINE Cookie を破棄（middleware が LINE 経路を優先しないよう）
-    const cookieStore = await cookies();
-    cookieStore.delete('line_access_token');
-    cookieStore.delete('line_refresh_token');
     const isNewUser = !user.fullName;
     return { success: true, isNewUser };
   } catch (err) {
+    if (err instanceof EmailAuthLinkConflictError) {
+      await signOutSupabaseSession(supabase);
+      return { success: false, error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT };
+    }
     console.error('[auth.actions] verifyOtp: failed to resolve public user:', err);
     // auth.users は作成済みだが public.users 解決失敗 → セッション破棄して再試行可能な状態に
-    await supabase.auth.signOut();
-    const cookieStore = await cookies();
-    cookieStore.delete('line_access_token');
-    cookieStore.delete('line_refresh_token');
+    await signOutSupabaseSession(supabase);
     return {
       success: false,
       error: 'ログイン処理に失敗しました。再度お試しください。',

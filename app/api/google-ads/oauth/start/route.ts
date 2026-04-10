@@ -1,14 +1,16 @@
 import { cookies } from 'next/headers';
+import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { generateOAuthState } from '@/server/lib/oauth-state';
 import { GOOGLE_ADS_SCOPES } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { nextResponseRedirectLoginIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { toUser } from '@/types/user';
 import { isAdmin } from '@/authUtils';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const cookieStore = await cookies();
   const liffAccessToken = cookieStore.get('line_access_token')?.value;
   const refreshToken = cookieStore.get('line_refresh_token')?.value;
@@ -39,6 +41,8 @@ export async function GET() {
 
   // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
   const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  const conflictRedirect = nextResponseRedirectLoginIfEmailLinkConflict(authResult, request);
+  if (conflictRedirect) return conflictRedirect;
   if (authResult.error || !authResult.userId) {
     return NextResponse.json(
       { error: authResult.error || 'ユーザー認証に失敗しました' },

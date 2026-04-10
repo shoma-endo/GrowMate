@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { fetchGa4DashboardData } from '@/server/actions/ga4Dashboard.actions';
 import Ga4DashboardClient from './Ga4DashboardClient';
 
@@ -54,6 +55,9 @@ export default async function Ga4DashboardPage({
   });
 
   if (!initialResult.success || !initialResult.data) {
+    if (initialResult.emailLinkConflict) {
+      redirect('/login?reason=email_link_conflict');
+    }
     // エラーの場合はクライアントサイドでハンドリング
     return (
       <Ga4DashboardClient

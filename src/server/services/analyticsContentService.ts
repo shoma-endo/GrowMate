@@ -1,4 +1,7 @@
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
 import { normalizeToPath } from '@/lib/ga4-utils';
@@ -165,6 +168,9 @@ export class AnalyticsContentService {
         ga4Error,
       };
     } catch (error) {
+      if (error instanceof AuthEmailLinkConflictError) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message : 'ページデータの取得に失敗しました';
       return {
         ...baseline,
@@ -232,6 +238,9 @@ export class AnalyticsContentService {
       }
       return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
     } catch (err) {
+      if (err instanceof AuthEmailLinkConflictError) {
+        throw err;
+      }
       console.error('[AnalyticsContentService] getAvailableCategoryNames error:', err);
       return [];
     }
@@ -371,6 +380,10 @@ export class AnalyticsContentService {
 
     const authResult = await authMiddleware(liffAccessToken, refreshToken);
 
+    const conflictMessage = getEmailLinkConflictMessage(authResult);
+    if (conflictMessage !== undefined) {
+      throw new AuthEmailLinkConflictError(conflictMessage);
+    }
     if (authResult.needsReauth || authResult.error || !authResult.userId) {
       throw new Error(authResult.error || 'ユーザー認証に失敗しました');
     }

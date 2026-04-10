@@ -18,6 +18,7 @@ import {
   type StartChatInput,
 } from '@/server/schemas/chat.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
 import { cache } from 'react';
 import { STEP7_ID, toBlogModel } from '@/lib/constants';
 
@@ -84,6 +85,10 @@ async function checkAuth(liffAccessToken: string): Promise<
     }
 > {
   const authResult = await authMiddleware(liffAccessToken);
+  const conflictMessage = getEmailLinkConflictMessage(authResult);
+  if (conflictMessage !== undefined) {
+    return { isError: true as const, error: conflictMessage };
+  }
   if (authResult.error) {
     return {
       isError: true as const,

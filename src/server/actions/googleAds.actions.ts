@@ -5,6 +5,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { toUser } from '@/types/user';
 import { isAdmin } from '@/authUtils';
@@ -46,6 +47,8 @@ export async function getGoogleAdsConnectionStatus(): Promise<GoogleAdsConnectio
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
     const authResult = await authMiddleware(accessToken, refreshToken);
+    const linkConflict0 = emailLinkConflictErrorPayload(authResult);
+    if (linkConflict0) return { ...disconnected, error: linkConflict0.error };
     if (authResult.error || !authResult.userId) {
       return { ...disconnected, error: ERROR_MESSAGES.AUTH.UNAUTHENTICATED };
     }
@@ -191,6 +194,8 @@ export async function fetchKeywordMetrics(
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
     const authResult = await authMiddleware(accessToken, refreshToken);
+    const linkConflict1 = emailLinkConflictErrorPayload(authResult);
+    if (linkConflict1) return { success: false, error: linkConflict1.error };
     if (authResult.error || !authResult.userId) {
       return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHENTICATED };
     }
@@ -323,6 +328,8 @@ export async function fetchCampaignMetrics(
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
     const authResult = await authMiddleware(accessToken, refreshToken);
+    const linkConflictMetrics = emailLinkConflictErrorPayload(authResult);
+    if (linkConflictMetrics) return { success: false, error: linkConflictMetrics.error };
     if (authResult.error || !authResult.userId) {
       return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHENTICATED };
     }
@@ -407,6 +414,8 @@ export async function disconnectGoogleAds(): Promise<DisconnectGoogleAdsResult> 
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
     const authResult = await authMiddleware(accessToken, refreshToken);
+    const linkConflictDisconnect = emailLinkConflictErrorPayload(authResult);
+    if (linkConflictDisconnect) return { success: false, error: linkConflictDisconnect.error };
     if (authResult.error || !authResult.userId) {
       return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHENTICATED };
     }

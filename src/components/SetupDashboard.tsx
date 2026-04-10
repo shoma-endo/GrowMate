@@ -26,7 +26,7 @@ import {
   type WordPressConnectionStatus,
 } from '@/server/actions/wordpress.actions';
 import { useServerAction } from '@/hooks/useServerAction';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 
 const GA4_STAGE_META: Record<Ga4ConnectionStage, { label: string; className: string }> = {
   unlinked: { label: '未連携', className: 'bg-gray-100 text-gray-800' },
@@ -41,7 +41,7 @@ export default function SetupDashboard({
   googleAdsStatus,
   isAdmin,
 }: SetupDashboardProps) {
-  const { isOwnerViewMode, user } = useLiffContext();
+  const { isOwnerViewMode, user } = useAuth();
   const [wpStatus, setWpStatus] = useState<WordPressConnectionStatus | null>(null);
   const [gscConnection, setGscConnection] = useState(gscStatus);
   const [gscNeedsReauth, setGscNeedsReauth] = useState(false);

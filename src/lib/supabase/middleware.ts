@@ -71,5 +71,9 @@ export async function updateSupabaseSession(
     data: { user },
   } = await supabase.auth.getUser();
 
+  // /login?reason=email_link_conflict での signOut は行わない（クエリだけでセッションを失わせない）。
+  // 競合の有無は /api/user/current 等で確認し、ログイン画面クライアントでメッセージ表示・必要なら signOut する。
+  // ルート middleware が reason 時は /login から / への自動リダイレクトを抑止する。
+
   return { supabaseResponse, supabaseUser: user };
 }

@@ -3,6 +3,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { isAdmin } from '@/authUtils';
 import { PromptService } from '@/server/services/promptService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { getLiffTokensFromRequest } from '@/server/lib/auth-helpers';
 
 export async function GET(request: NextRequest) {
@@ -11,6 +12,8 @@ export async function GET(request: NextRequest) {
 
     // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
     const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const conflict409 = nextJson409IfEmailLinkConflict(authResult);
+    if (conflict409) return conflict409;
     if (authResult.error) {
       return NextResponse.json(
         { success: false, error: 'ユーザー認証に失敗しました' },

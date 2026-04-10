@@ -4,7 +4,7 @@ import React from 'react';
 import { Lock, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import { cn } from '@/lib/utils';
 
 const statusBadgeStyles = cn(
@@ -20,7 +20,7 @@ const exitButtonStyles = cn(
 );
 
 export function ViewModeBanner() {
-  const { refreshUser } = useLiffContext();
+  const { refreshUser } = useAuth();
   const router = useRouter();
 
   const handleExitViewMode = async () => {

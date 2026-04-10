@@ -18,6 +18,7 @@ import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { STEP7_ID } from '@/lib/constants';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
 import { getBlogCreationTemplatePrompt } from '@/lib/prompts';
+import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -285,6 +286,8 @@ export async function POST(req: NextRequest) {
     const liffAccessToken = authHeader?.replace('Bearer ', '');
 
     const authResult = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
+    const sseConflict = sse409IfEmailLinkConflict(authResult, sendSSE);
+    if (sseConflict) return sseConflict;
     if (authResult.error || !authResult.userId) {
       return new Response(
         sendSSE('error', {

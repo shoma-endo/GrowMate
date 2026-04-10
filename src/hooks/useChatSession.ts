@@ -18,6 +18,7 @@ import {
   STEP7_FULL_BODY_TRIGGER,
 } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { replaceToEmailLinkConflictLogin } from '@/lib/auth/emailLinkConflictClient';
 
 export type { ChatSessionActions, ChatSessionHook };
 
@@ -189,6 +190,30 @@ export const useChatSession = (
             };
           });
 
+          return false;
+        }
+
+        if (response.status === 409) {
+          setState(prev => {
+            const msgs = prev.messages;
+            const last = msgs[msgs.length - 1];
+            const second = msgs[msgs.length - 2];
+            if (
+              msgs.length >= 2 &&
+              second?.role === 'user' &&
+              last?.role === 'assistant'
+            ) {
+              return {
+                ...prev,
+                messages: msgs.slice(0, -2),
+                isLoading: false,
+                error: null,
+                warning: null,
+              };
+            }
+            return { ...prev, isLoading: false, error: null, warning: null };
+          });
+          replaceToEmailLinkConflictLogin();
           return false;
         }
 

@@ -21,10 +21,13 @@ import {
   parseWpPostId,
 } from '@/lib/utils';
 import { canRunBulkImport } from '@/authUtils';
+import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
 export async function runWordpressBulkImport(accessToken: string) {
   try {
     const authResult = await authMiddleware(accessToken);
+    const linkConflict = emailLinkConflictErrorPayload(authResult);
+    if (linkConflict) return linkConflict;
     if (authResult.error || !authResult.userId) {
       return { success: false, error: authResult.error || ERROR_MESSAGES.AUTH.LIFF_AUTH_FAILED };
     }

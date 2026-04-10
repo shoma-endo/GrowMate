@@ -3,6 +3,10 @@ import { cookies, headers } from 'next/headers';
 
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
+  nextJson409EmailLinkConflict,
+  nextJson409IfEmailLinkConflict,
+} from '@/server/middleware/authMiddlewareGuards';
+import {
   ensureAuthenticated,
   clearAuthCookies,
   setAuthCookies,
@@ -29,6 +33,9 @@ export async function GET() {
     if (!result.ok) {
       if (result.reason === 'transient') {
         return NextResponse.json({ error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE }, { status: 503 });
+      }
+      if (result.reason === 'email_link_conflict') {
+        return nextJson409EmailLinkConflict({ userId: null, user: null });
       }
       return NextResponse.json({ userId: null, user: null });
     }
@@ -61,6 +68,12 @@ export async function GET() {
       if (authResult.transient) {
         return NextResponse.json({ error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE }, { status: 503 });
       }
+      const conflict409 = nextJson409IfEmailLinkConflict(authResult, msg => ({
+        error: msg,
+        userId: null,
+        user: null,
+      }));
+      if (conflict409) return conflict409;
       if (authResult.needsReauth) {
         await clearAuthCookies();
         return NextResponse.json({ userId: null, needsReauth: true });

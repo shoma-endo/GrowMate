@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { getQueryImportToastMessage } from '@/lib/gsc-import';
 import { cn } from '@/lib/utils';
-import { useLiffContext } from '@/components/LiffProvider';
+import { useAuth } from '@/components/AuthProvider';
 import {
   Dialog,
   DialogContent,
@@ -43,22 +43,25 @@ interface OverviewTabProps {
     evaluationHour: number
   ) => Promise<void>;
   onUpdateEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
-  onRunEvaluation: () => Promise<EvaluationResultSummary>;
-  onRunQueryImport: () => Promise<{
-    querySummary: {
-      fetchedRows: number;
-      keptRows: number;
-      dedupedRows: number;
-      fetchErrorPages: number;
-      skipped: {
-        missingKeys: number;
-        invalidUrl: number;
-        emptyQuery: number;
-        zeroMetrics: number;
-      };
-      hitLimit: boolean;
-    };
-  }>;
+  onRunEvaluation: () => Promise<EvaluationResultSummary | undefined>;
+  onRunQueryImport: () => Promise<
+    | {
+        querySummary: {
+          fetchedRows: number;
+          keptRows: number;
+          dedupedRows: number;
+          fetchErrorPages: number;
+          skipped: {
+            missingKeys: number;
+            invalidUrl: number;
+            emptyQuery: number;
+            zeroMetrics: number;
+          };
+          hitLimit: boolean;
+        };
+      }
+    | undefined
+  >;
   onRefreshDetail?: (annotationId: string) => Promise<void>;
 }
 
@@ -75,7 +78,7 @@ export function OverviewTab({
   onRunQueryImport,
   onRefreshDetail,
 }: OverviewTabProps) {
-  const { isOwnerViewMode } = useLiffContext();
+  const { isOwnerViewMode } = useAuth();
   const [isQueryImporting, setIsQueryImporting] = useState(false);
   const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
   const isReadOnly = isOwnerViewMode;
@@ -112,8 +115,13 @@ export function OverviewTab({
     setIsQueryImporting(true);
     const toastId = toast.loading('クエリ指標を取得中...');
     try {
-    const { querySummary } = await onRunQueryImport();
-    const toastMessage = getQueryImportToastMessage(querySummary);
+      const importResult = await onRunQueryImport();
+      if (importResult === undefined) {
+        toast.dismiss(toastId);
+        return;
+      }
+      const { querySummary } = importResult;
+      const toastMessage = getQueryImportToastMessage(querySummary);
       if (toastMessage.type === 'warning') {
         toast.warning(toastMessage.message, { id: toastId });
       } else {

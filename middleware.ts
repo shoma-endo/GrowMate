@@ -60,12 +60,16 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
     if (isPublicPath(pathname)) {
       // /login: 認証済みユーザーはトップへリダイレクト
       if (pathname === '/login') {
-        if (supabaseUser) {
+        const emailLinkConflict =
+          request.nextUrl.searchParams.get('reason') === 'email_link_conflict';
+
+        // 競合解消のため Supabase を消した直後も、LINE だけ有効だと / へ飛ばされメッセージが見えない
+        if (supabaseUser && !emailLinkConflict) {
           return redirect(new URL('/', request.url));
         }
         const lineToken = request.cookies.get('line_access_token')?.value;
         const lineRefresh = request.cookies.get('line_refresh_token')?.value;
-        if (lineToken) {
+        if (lineToken && !emailLinkConflict) {
           // LINE token を検証してからリダイレクト（無効/期限切れ cookie で recovery 不能ループを防ぐ）
           const authResult = await getUserRoleWithCacheAndRefresh(lineToken, lineRefresh).catch(
             () => ({ role: null, needsReauth: true })
