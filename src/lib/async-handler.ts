@@ -5,6 +5,11 @@
  * エラーハンドリングを統一的に処理します。
  */
 
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
+
 /**
  * Server Actionの標準的な戻り値の型
  */
@@ -86,6 +91,11 @@ export async function handleAsyncAction<T>(
 
   try {
     const result = await action();
+
+    if (!result.success && isEmailLinkConflictResult(result)) {
+      replaceToEmailLinkConflictLogin();
+      return;
+    }
 
     if (result.success) {
       // 成功時はdataの有無に関わらずonSuccessを呼び出す

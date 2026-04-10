@@ -75,7 +75,7 @@ const modelHandler = new ModelHandlerService();
 
 // 認証チェックを共通化
 async function checkAuth(liffAccessToken: string): Promise<
-  | { isError: true; error: string }
+  | { isError: true; error: string; emailLinkConflict?: true }
   | {
       isError: false;
       userId: string;
@@ -87,7 +87,7 @@ async function checkAuth(liffAccessToken: string): Promise<
   const authResult = await authMiddleware(liffAccessToken);
   const conflictMessage = getEmailLinkConflictMessage(authResult);
   if (conflictMessage !== undefined) {
-    return { isError: true as const, error: conflictMessage };
+    return { isError: true as const, error: conflictMessage, emailLinkConflict: true as const };
   }
   if (authResult.error) {
     return {
@@ -226,7 +226,7 @@ export async function getLatestBlogStep7MessageBySession(
 
   const auth = await checkAuth(liffAccessToken);
   if (auth.isError) {
-    return { success: false as const, error: auth.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    return { success: false as const, error: auth.error };
   }
 
   const supabase = new SupabaseService();
@@ -299,7 +299,11 @@ export async function searchChatSessions(data: z.infer<typeof searchChatSessions
 export async function deleteChatSession(sessionId: string, liffAccessToken: string) {
   const auth = await checkAuth(liffAccessToken);
   if (auth.isError) {
-    return { success: false, error: auth.error };
+    return {
+      success: false,
+      error: auth.error,
+      ...(auth.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+    };
   }
 
   // 閲覧モード（オーナー含む）での書き込み制限

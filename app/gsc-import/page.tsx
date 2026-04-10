@@ -19,6 +19,10 @@ import { fetchGscStatus } from '@/server/actions/gscSetup.actions';
 import { getQuerySummaryLabels } from '@/lib/gsc-import';
 import type { GscConnectionStatus } from '@/types/gsc';
 import { useAuth } from '@/components/AuthProvider';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 import { canRunBulkImport } from '@/authUtils';
 
 type ImportResponse = {
@@ -114,6 +118,10 @@ export default function GscImportPage() {
       setIsLoadingGscStatus(true);
       try {
         const status = await fetchGscStatus();
+        if (isEmailLinkConflictResult(status)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         if (isMounted) {
           setGscStatus(status);
         }

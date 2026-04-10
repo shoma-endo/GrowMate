@@ -29,15 +29,19 @@ const promptSchema = z.object({
   variables: z.array(promptVariableSchema).default([]),
 });
 
+type PromptActionFailure = {
+  success: false;
+  error: string;
+  emailLinkConflict?: true;
+};
+
 type PromptActionResponse<T = unknown> = T extends void
-  ? { success: true; error?: undefined } | { success: false; error: string }
+  ? { success: true; error?: undefined } | PromptActionFailure
   :
       | { success: true; data: T; error?: undefined }
-      | { success: false; data?: undefined; error: string };
+      | ({ success: false; data?: undefined } & PromptActionFailure);
 
-type AdminPermissionResult =
-  | { success: false; error: string; emailLinkConflict?: true }
-  | { success: true; userId: string; user: User };
+type AdminPermissionResult = PromptActionFailure | { success: true; userId: string; user: User };
 
 /**
  * 管理者権限をチェックするヘルパー関数
@@ -81,7 +85,11 @@ export async function updatePromptTemplate(
     // 管理者権限チェック
     const adminCheck = await checkAdminPermission(liffAccessToken);
     if (!adminCheck.success) {
-      return { success: false, error: adminCheck.error || ERROR_MESSAGES.USER.PERMISSION_VERIFY_FAILED };
+      return {
+        success: false,
+        error: adminCheck.error || ERROR_MESSAGES.USER.PERMISSION_VERIFY_FAILED,
+        ...(adminCheck.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+      };
     }
     const adminUser = adminCheck.user;
     if (await isViewModeEnabled(adminUser.role)) {
@@ -143,7 +151,11 @@ export async function getPromptTemplates(
     // 管理者権限チェック
     const adminCheck = await checkAdminPermission(liffAccessToken);
     if (!adminCheck.success) {
-      return { success: false, error: adminCheck.error || ERROR_MESSAGES.USER.PERMISSION_VERIFY_FAILED };
+      return {
+        success: false,
+        error: adminCheck.error || ERROR_MESSAGES.USER.PERMISSION_VERIFY_FAILED,
+        ...(adminCheck.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+      };
     }
 
     const templates = await PromptService.getAllTemplates();

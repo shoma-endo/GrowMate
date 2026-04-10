@@ -13,6 +13,7 @@ import {
   type BlogStepId,
 } from '@/lib/constants';
 import type { AnalyticsContentItem } from '@/types/analytics';
+import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 import {
   isEmailLinkConflictResult,
   replaceToEmailLinkConflictLogin,
@@ -509,6 +510,11 @@ export default function AnalyticsTable({
       setDeletingRowKey(null);
       router.refresh();
     } catch (error) {
+      if (error instanceof AuthEmailLinkConflictError) {
+        toast.dismiss(toastId);
+        replaceToEmailLinkConflictLogin();
+        return;
+      }
       const message = error instanceof Error ? error.message : '削除に失敗しました';
       toast.error(message, { id: toastId });
     } finally {

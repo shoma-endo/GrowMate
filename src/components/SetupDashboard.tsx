@@ -27,6 +27,7 @@ import {
 } from '@/server/actions/wordpress.actions';
 import { useServerAction } from '@/hooks/useServerAction';
 import { useAuth } from '@/components/AuthProvider';
+import { replaceToEmailLinkConflictLogin } from '@/lib/auth/emailLinkConflictClient';
 
 const GA4_STAGE_META: Record<Ga4ConnectionStage, { label: string; className: string }> = {
   unlinked: { label: '未連携', className: 'bg-gray-100 text-gray-800' },
@@ -83,6 +84,10 @@ export default function SetupDashboard({
         setGscConnection(result.data);
         setGscNeedsReauth(result.needsReauth);
       } else {
+        if ('emailLinkConflict' in result && result.emailLinkConflict) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
         console.error('GSCステータス取得エラー:', result.error);
       }
     } catch (error) {

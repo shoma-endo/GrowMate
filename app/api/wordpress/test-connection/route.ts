@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
 
     const conflict409get = nextJson409IfEmailLinkConflict(authResult, msg => ({
       success: false,
+      error: msg,
       connected: false,
       message: msg,
     }));
