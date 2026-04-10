@@ -27,7 +27,7 @@ export function useHeadingCanvasState({
     async (options?: { preserveStep7Lead?: boolean }): Promise<boolean> => {
       try {
         const token = await getAccessToken();
-        if (!sessionId || !token) {
+        if (!sessionId || token == null) {
           toast.error(ERROR_MESSAGES.AUTH.REAUTHENTICATION_REQUIRED);
           return false;
         }
