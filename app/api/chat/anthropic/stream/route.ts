@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
             ? systemPromptOverride
             : await getSystemPrompt(
                 model,
-                liffAccessToken || undefined,
+                liffAccessToken ?? '',
                 sessionId,
                 serviceId
               );

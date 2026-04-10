@@ -16,6 +16,7 @@ import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { STEP7_ID } from '@/lib/constants';
+import { generateOrderedTimestamps } from '@/lib/timestamps';
 import { getBlogCreationTemplatePrompt } from '@/lib/prompts';
 
 export const runtime = 'nodejs';
@@ -406,10 +407,10 @@ export async function POST(req: NextRequest) {
       ? '改善を適用した上で、**この1見出し分の本文のみを省略なく出力してください。**'
       : '改善を適用した上で、**文章全体を省略なく完全に出力してください。**';
     const freeFormTemplatePrompt =
-      normalizedFreeFormPrompt !== undefined && liffAccessToken
+      normalizedFreeFormPrompt !== undefined
         ? await getBlogCreationTemplatePrompt(
             targetStep as BlogStepId,
-            liffAccessToken,
+            liffAccessToken ?? '',
             sessionId
           )
         : null;
@@ -989,7 +990,7 @@ export async function POST(req: NextRequest) {
                   role: 'assistant' as const,
                   content: analysisResult,
                   model: 'blog_creation_improvement',
-                  created_at: new Date(Date.now() + 100).toISOString(), // Canvas編集結果の後に表示されるよう順序を保証（余裕を持たせる）
+                  created_at: generateOrderedTimestamps(1, new Date(Date.now() + 100))[0], // continueChat の assistant メッセージ（base+1ms）より確実に後に並ぶようオフセット
                 };
 
                 // Supabaseに直接保存
