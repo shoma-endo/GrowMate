@@ -370,7 +370,7 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
       };
     }
 
-    const authResult = await authMiddleware(liffToken, refreshToken);
+    const authResult = await authMiddleware(liffToken, refreshToken, { allowEmailFallback: true });
     const saveWpConflict = emailLinkConflictErrorPayload(authResult);
     if (saveWpConflict) return saveWpConflict;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
@@ -444,7 +444,7 @@ export async function testWordPressConnectionAction(): Promise<
 > {
   try {
     const { accessToken: liffToken, refreshToken } = await getLiffTokensFromCookies();
-    const authResult = await authMiddleware(liffToken, refreshToken);
+    const authResult = await authMiddleware(liffToken, refreshToken, { allowEmailFallback: true });
 
     const testWpConflict = emailLinkConflictErrorPayload(authResult);
     if (testWpConflict) return testWpConflict;

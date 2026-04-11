@@ -378,7 +378,7 @@ export class AnalyticsContentService {
   private async resolveUser(): Promise<{ userId: string }> {
     const { accessToken: liffAccessToken, refreshToken } = await getLiffTokensFromCookies();
 
-    const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
 
     const conflictMessage = getEmailLinkConflictMessage(authResult);
     if (conflictMessage !== undefined) {

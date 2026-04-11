@@ -46,7 +46,7 @@ export async function getGoogleAdsConnectionStatus(): Promise<GoogleAdsConnectio
   try {
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
-    const authResult = await authMiddleware(accessToken, refreshToken);
+    const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
     const linkConflict0 = emailLinkConflictErrorPayload(authResult);
     if (linkConflict0) return { ...disconnected, error: linkConflict0.error };
     if (authResult.error || !authResult.userId) {
@@ -193,7 +193,7 @@ export async function fetchKeywordMetrics(
     // 認証チェック
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
-    const authResult = await authMiddleware(accessToken, refreshToken);
+    const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
     const linkConflict1 = emailLinkConflictErrorPayload(authResult);
     if (linkConflict1) return { success: false, error: linkConflict1.error };
     if (authResult.error || !authResult.userId) {
@@ -327,7 +327,7 @@ export async function fetchCampaignMetrics(
 
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
-    const authResult = await authMiddleware(accessToken, refreshToken);
+    const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
     const linkConflictMetrics = emailLinkConflictErrorPayload(authResult);
     if (linkConflictMetrics) return { success: false, error: linkConflictMetrics.error };
     if (authResult.error || !authResult.userId) {
@@ -413,7 +413,7 @@ export async function disconnectGoogleAds(): Promise<DisconnectGoogleAdsResult> 
   try {
     const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
-    const authResult = await authMiddleware(accessToken, refreshToken);
+    const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
     const linkConflictDisconnect = emailLinkConflictErrorPayload(authResult);
     if (linkConflictDisconnect) return { success: false, error: linkConflictDisconnect.error };
     if (authResult.error || !authResult.userId) {

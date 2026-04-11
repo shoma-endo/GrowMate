@@ -21,7 +21,7 @@ export default async function GscSetupPage() {
   );
 
   // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
   redirectIfEmailLinkConflict(authResult);
   if (authResult.error || !authResult.userId) {
     redirect('/login');

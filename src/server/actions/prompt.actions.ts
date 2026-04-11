@@ -47,7 +47,7 @@ type AdminPermissionResult = PromptActionFailure | { success: true; userId: stri
  * 管理者権限をチェックするヘルパー関数
  */
 async function checkAdminPermission(liffAccessToken: string): Promise<AdminPermissionResult> {
-  const auth = await authMiddleware(liffAccessToken);
+  const auth = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
 
   const linkConflict = emailLinkConflictErrorPayload(auth);
   if (linkConflict) return linkConflict;

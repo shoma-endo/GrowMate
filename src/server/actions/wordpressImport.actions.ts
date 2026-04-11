@@ -25,7 +25,7 @@ import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewar
 
 export async function runWordpressBulkImport(accessToken: string) {
   try {
-    const authResult = await authMiddleware(accessToken);
+    const authResult = await authMiddleware(accessToken, undefined, { allowEmailFallback: true });
     const linkConflict = emailLinkConflictErrorPayload(authResult);
     if (linkConflict) return linkConflict;
     if (authResult.error || !authResult.userId) {

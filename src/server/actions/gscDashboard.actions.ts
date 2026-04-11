@@ -96,7 +96,7 @@ function gscAuthErrorPayload(authId: Extract<GscDashboardAuthIdResult, { error: 
 const getAuthUserId = async (): Promise<GscDashboardAuthIdResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
-  const authResult = await authMiddleware(accessToken, refreshToken);
+  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
   const linkConflict = emailLinkConflictErrorPayload(authResult);
   if (linkConflict) return { error: linkConflict.error, emailLinkConflict: true };
   if (authResult.error || !authResult.userId) {

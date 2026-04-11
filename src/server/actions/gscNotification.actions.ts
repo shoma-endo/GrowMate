@@ -18,7 +18,7 @@ type GscNotificationAuthResult =
 const getAuthUserId = async (): Promise<GscNotificationAuthResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
 
-  const authResult = await authMiddleware(accessToken, refreshToken);
+  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
   const linkConflict = emailLinkConflictErrorPayload(authResult);
   if (linkConflict) return { ...linkConflict, emailLinkConflict: true as const };
   if (authResult.error || !authResult.userId) {

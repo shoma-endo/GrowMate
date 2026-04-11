@@ -37,7 +37,7 @@ export const saveBrief = async (
     }
 
     // 認証
-    const auth = await authMiddleware(liffAccessToken);
+    const auth = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
     if (auth.error || !auth.userId) {
       return { success: false, error: auth.error || ERROR_MESSAGES.AUTH.AUTH_ERROR_GENERIC };
     }
@@ -72,8 +72,8 @@ export const getBrief = async (
   try {
     const cookieStore = await cookies();
     const isViewMode = cookieStore.get('owner_view_mode')?.value === '1';
-    // 認証
-    const auth = await authMiddleware(liffAccessToken);
+    // 認証（チャットストリームと同様、LINE 失効時は Email セッションへフォールバック）
+    const auth = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
     if (auth.error || !auth.userId) {
       return { success: false, error: auth.error || ERROR_MESSAGES.AUTH.AUTH_ERROR_GENERIC };
     }

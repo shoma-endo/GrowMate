@@ -78,7 +78,7 @@ type AuthResult = AuthSuccess | AuthFailure;
 
 const getAuthUserId = async (): Promise<AuthResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
-  const authResult = await authMiddleware(accessToken, refreshToken);
+  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
   const linkConflict = emailLinkConflictErrorPayload(authResult);
   if (linkConflict) return linkConflict;
   if (authResult.error || !authResult.userId) {

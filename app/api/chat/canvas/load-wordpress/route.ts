@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     const liffAccessToken = authHeader?.replace('Bearer ', '') ?? undefined;
 
-    const authResult = await authMiddleware(liffAccessToken);
+    const authResult = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
     const linkConflict = emailLinkConflictErrorPayload(authResult);
     if (linkConflict) {
       return jsonResponse(409, linkConflict);

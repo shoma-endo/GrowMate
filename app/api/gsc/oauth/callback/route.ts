@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
   let targetUserId: string | null = stateVerification.payload.userId;
 
   if (liffAccessToken) {
-    const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
     if (!authResult.error && authResult.userId) {
       if (authResult.viewMode || authResult.ownerUserId) {
         return buildJsonResponse(

@@ -283,6 +283,10 @@ import { headingFlowService } from '@/server/services/headingFlowService';
 
 const supabaseService = new SupabaseService();
 
+/** チャット API（ストリーム）と同じ認証方針。LINE トークン失効時は Email セッションへフォールバックする */
+const promptAuthMiddleware = (liffAccessToken: string) =>
+  authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
+
 /**
  * 事業者情報取得のキャッシュ化
  * 同一リクエスト内でのDB負荷を最大90%削減
@@ -795,7 +799,7 @@ async function generateBlogCreationPromptByStep(
     const templateName = toTemplateName(step);
     const [template, auth, businessInfo] = await Promise.all([
       PromptService.getTemplateByName(templateName),
-      authMiddleware(liffAccessToken),
+      promptAuthMiddleware(liffAccessToken),
       getCachedBrief(liffAccessToken),
     ]);
 
@@ -870,7 +874,7 @@ async function generateTitleMetaPrompt(
   try {
     const [template, auth, businessInfo] = await Promise.all([
       PromptService.getTemplateByName('blog_title_meta_generation'),
-      authMiddleware(liffAccessToken),
+      promptAuthMiddleware(liffAccessToken),
       getCachedBrief(liffAccessToken),
     ]);
 
@@ -892,6 +896,11 @@ async function generateTitleMetaPrompt(
       if (unresolvedPlaceholders.length > 0) {
         console.warn('[TitleMetaPrompt] 未解決のDBプロンプト変数を検出 - 空文字で置換', {
           unresolvedPlaceholders,
+          sessionId: sessionId ?? null,
+          userId: userId ?? null,
+          authError: auth.error ?? null,
+          hasContentAnnotation: Boolean(contentAnnotation),
+          hasBrief: Boolean(businessInfo),
         });
         if (process.env.NODE_ENV === 'development') {
           return mergedPrompt.replace(/{{\w+}}/g, match => `[未解決: ${match}]`);
@@ -952,7 +961,7 @@ export async function getSystemPrompt(
     let serviceId = serviceIdOverride;
     let authUserId: string | null = null;
     if (sessionId) {
-      const authResult = await authMiddleware(liffAccessToken);
+      const authResult = await promptAuthMiddleware(liffAccessToken);
       if (!authResult.error && authResult.userId) {
         authUserId = authResult.userId;
       }

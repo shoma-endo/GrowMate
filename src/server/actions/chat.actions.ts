@@ -4,9 +4,8 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { chatService } from '@/server/services/chatService';
 import { ChatResponse } from '@/types/chat';
 import { ModelHandlerService } from './chat/modelHandlers';
-import { isUnavailable, getUserRole, hasOwnerRole } from '@/authUtils';
+import { isUnavailable, hasOwnerRole } from '@/authUtils';
 import { cookies } from 'next/headers';
-import { userService } from '@/server/services/userService';
 import type { UserRole } from '@/types/user';
 import { z } from 'zod';
 import { SupabaseService } from '@/server/services/supabaseService';
@@ -19,45 +18,8 @@ import {
 } from '@/server/schemas/chat.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
-import { cache } from 'react';
 import { STEP7_ID, toBlogModel } from '@/lib/constants';
 
-/**
- * ユーザーロールを取得しメモ化する内部関数
- * Next.jsのcacheを使用して同一リクエスト内での外部API呼び出しを最小限に抑える
- */
-const getCachedUserRole = cache(async (accessToken: string) => {
-  try {
-    return await getUserRole(accessToken);
-  } catch (error) {
-    console.error('Failed to get user role in getCachedUserRole:', {
-      error: error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR,
-      timestamp: new Date().toISOString(),
-    });
-    return null;
-  }
-});
-
-/**
- * 閲覧モード判定の内部共通ロジック（クッキー判定含む）
- * @returns 閲覧モード（オーナーまたはクッキー設定あり）の場合は true
- */
-async function isOwnerViewMode(): Promise<boolean> {
-  const cookieStore = await cookies();
-  const hasCookie = cookieStore.get('owner_view_mode')?.value === '1';
-  if (hasCookie) return true;
-
-  // クッキーがなくてもオーナーであれば閲覧モード扱いとする（書き込み制限のため）
-  // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const accessToken = cookieStore.get('line_access_token')?.value;
-  if (accessToken) {
-    const role = await getCachedUserRole(accessToken);
-    return hasOwnerRole(role);
-  }
-  // Email セッションでロールを確認
-  const authResult = await authMiddleware(undefined, undefined);
-  return hasOwnerRole(authResult.userDetails?.role ?? null);
-}
 
 const updateChatSessionTitleSchema = z.object({
   sessionId: z.string(),
@@ -84,7 +46,9 @@ async function checkAuth(liffAccessToken: string): Promise<
       ownerUserId?: string | null | undefined;
     }
 > {
-  const authResult = await authMiddleware(liffAccessToken);
+  const authResult = await authMiddleware(liffAccessToken, undefined, {
+    allowEmailFallback: true,
+  });
   const conflictMessage = getEmailLinkConflictMessage(authResult);
   if (conflictMessage !== undefined) {
     return { isError: true as const, error: conflictMessage, emailLinkConflict: true as const };
@@ -96,43 +60,29 @@ async function checkAuth(liffAccessToken: string): Promise<
     };
   }
 
-  // unavailableユーザーのサービス利用制限チェック
-  try {
-    // 統合的なビューモード判定（クッキー、ロール、およびミドルウェアでの判定を合算）
-    const effectiveViewMode = await isOwnerViewMode();
-    const isViewMode = effectiveViewMode || !!authResult.viewMode;
-
-    const user =
-      authResult.userDetails ?? (await userService.getUserFromLiffToken(liffAccessToken));
-
-    if (user && isUnavailable(user.role)) {
-      return {
-        isError: true as const,
-        error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
-      };
-    }
-
-    if (!authResult.userId) {
-      return {
-        isError: true as const,
-        error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
-      };
-    }
-
-    return {
-      isError: false as const,
-      userId: authResult.userId,
-      role: user?.role ?? 'trial',
-      viewMode: isViewMode,
-      ownerUserId: (user?.ownerUserId ?? authResult.ownerUserId) || null,
-    };
-  } catch (error) {
-    console.error('Auth verification failed in checkAuth:', error);
-    return {
-      isError: true as const,
-      error: ERROR_MESSAGES.USER.USER_INFO_VERIFY_FAILED,
-    };
+  if (!authResult.userId) {
+    return { isError: true as const, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
+
+  const user = authResult.userDetails;
+
+  if (user && isUnavailable(user.role)) {
+    return { isError: true as const, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
+  }
+
+  const cookieStore = await cookies();
+  const isViewMode =
+    cookieStore.get('owner_view_mode')?.value === '1' ||
+    !!authResult.viewMode ||
+    hasOwnerRole(user?.role ?? null);
+
+  return {
+    isError: false as const,
+    userId: authResult.userId,
+    role: user?.role ?? 'trial',
+    viewMode: isViewMode,
+    ownerUserId: (user?.ownerUserId ?? authResult.ownerUserId) || null,
+  };
 }
 
 export async function startChat(data: StartChatInput): Promise<ChatResponse> {

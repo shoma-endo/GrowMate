@@ -31,7 +31,7 @@ const resolveRoleFromCookies = async (): Promise<UserRole | null> => {
   const refreshToken = cookieStore.get('line_refresh_token')?.value;
 
   // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(accessToken, refreshToken);
+  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
 
   if (authResult.error) {
     return null;

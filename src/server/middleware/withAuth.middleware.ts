@@ -38,8 +38,8 @@ export function isWithAuthEmailLinkConflict(
 }
 
 /**
- * Server Actions/Route Handlers用の認証ラッパー
- * ... (snip) ...
+ * Server Actions / Route Handlers 用の認証ラッパー。
+ * メール OTP が主で LINE Cookie が残存し得るため、LINE 検証失敗時は Email セッションへフォールバックする（authMiddleware と同趣旨）。
  */
 export async function withAuth<T>(
   handler: (context: AuthContext) => Promise<T>
@@ -48,7 +48,9 @@ export async function withAuth<T>(
   const liffAccessToken = cookieStore.get('line_access_token')?.value;
   const refreshToken = cookieStore.get('line_refresh_token')?.value;
 
-  const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  const authResult = await authMiddleware(liffAccessToken, refreshToken, {
+    allowEmailFallback: true,
+  });
 
   const conflictMessage = getEmailLinkConflictMessage(authResult);
   if (conflictMessage !== undefined) {

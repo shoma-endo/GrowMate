@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
 
     // LINE token があれば検証（なくても state の userId で進める）
     if (liffAccessToken) {
-      const authResult = await authMiddleware(liffAccessToken, refreshToken);
+      const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
       if (!authResult.error && authResult.userId) {
         if (authResult.viewMode || authResult.ownerUserId) {
           const response = NextResponse.redirect(
