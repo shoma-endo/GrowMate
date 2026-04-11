@@ -110,8 +110,8 @@ export const ERROR_MESSAGES = {
    * 認証関連のエラーメッセージ
    */
   AUTH: {
-    /** LINE認証に失敗した場合 */
-    LIFF_AUTH_FAILED: 'LINE認証に失敗しました。LIFFから再ログインしてください。',
+    /** 認証に失敗した場合 */
+    LIFF_AUTH_FAILED: '認証に失敗しました。再度ログインしてください。',
 
     /** ログインしていない場合 */
     NOT_LOGGED_IN: 'ログインしていません',
@@ -158,8 +158,8 @@ export const ERROR_MESSAGES = {
     /** LINEのアクセストークンが必要な場合 */
     LINE_ACCESS_TOKEN_REQUIRED: 'LINEのアクセストークンが必要です',
 
-    /** LINEトークンが無効または期限切れの場合 */
-    LINE_TOKEN_INVALID_OR_EXPIRED: 'LINEの認証情報が無効または期限切れです。再度ログインしてください。',
+    /** 認証情報が無効または期限切れの場合 */
+    LINE_TOKEN_INVALID_OR_EXPIRED: '認証情報が無効または期限切れです。再度ログインしてください。',
 
     /** LINEプロフィールの取得に失敗した場合 */
     LINE_PROFILE_FETCH_FAILED: 'LINEのプロフィール情報の取得に失敗しました',

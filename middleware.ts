@@ -97,13 +97,13 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
       return supabaseResponse;
     }
 
-    // 🔍 3. LINE Cookie の有無を確認（Email / LINE 優先判定に使用）
-    // LINE Cookie がある場合は LIFF ログイン後とみなし LINE パスを優先する
-    // LINE Cookie がない場合のみ Supabase セッション（Email）を優先する
+    // 🔍 3. 認証 Cookie の有無を確認
+    // メール OTP が正規ログイン経路のため、Supabase セッションがある場合は
+    // legacy LINE Cookie よりも常に Email セッションを優先する。
     const accessToken = request.cookies.get('line_access_token')?.value;
     const refreshToken = request.cookies.get('line_refresh_token')?.value;
 
-    if (supabaseUser && !accessToken) {
+    if (supabaseUser) {
       // Email ユーザー認証済み: DB の role でアクセス制御
       let emailRole: UserRole | null;
       try {
@@ -142,10 +142,15 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
 
       if (!emailRole) {
         // public.users に未登録の異常状態（verifyOtp 未完了等）
-        // supabaseResponse を介して Supabase セッション Cookie (sb-* プレフィックス) を削除し
-        // /login へ送る。削除することで次のリクエストで supabaseUser が null になりループしない。
+        // Supabase / legacy LINE の両 Cookie を削除して /login へ送る。
+        // Email セッションを優先する以上、ここで LINE 側へフォールバックさせると
+        // 別アカウント誤認の温床になるため、必ずクリーンな再ログインへ戻す。
         for (const cookie of request.cookies.getAll()) {
-          if (cookie.name.startsWith('sb-')) {
+          if (
+            cookie.name.startsWith('sb-') ||
+            cookie.name === 'line_access_token' ||
+            cookie.name === 'line_refresh_token'
+          ) {
             supabaseResponse.cookies.delete(cookie.name);
           }
         }
@@ -169,6 +174,14 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
       // Google Ads 機能は管理者のみ許可（LINE と同一ルール）
       if (requiresGoogleAdsAccess(pathname) && !isAdmin(emailRole)) {
         return redirect(new URL('/unauthorized', request.url));
+      }
+
+      // Email セッションが正と確定したため、残存する legacy LINE Cookie は掃除する。
+      if (accessToken) {
+        supabaseResponse.cookies.delete('line_access_token');
+      }
+      if (refreshToken) {
+        supabaseResponse.cookies.delete('line_refresh_token');
       }
 
       supabaseResponse.headers.set('x-user-role', emailRole);

@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!targetUserId) {
-    return buildJsonResponse({ error: 'LINE認証が必要です' }, { status: 401 });
+    return buildJsonResponse({ error: '認証が必要です。再度ログインしてください。' }, { status: 401 });
   }
 
   const userResult = await supabaseService.getUserById(targetUserId);
