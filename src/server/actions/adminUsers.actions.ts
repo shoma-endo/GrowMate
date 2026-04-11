@@ -23,12 +23,16 @@ export async function clearAuthCache() {
       return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
     }
     // 実際のキャッシュクリアエンドポイントを叩く（認証済み想定）
-    await fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/auth/clear-cache`, {
+    const clearRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/auth/clear-cache`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken ?? ''}`,
       },
     }).catch(() => null);
+
+    if (!clearRes || !clearRes.ok) {
+      return { success: false, error: ERROR_MESSAGES.ADMIN.CACHE_CLEAR_FAILED };
+    }
 
     return { success: true };
   } catch (error) {

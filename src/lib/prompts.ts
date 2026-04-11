@@ -896,8 +896,8 @@ async function generateTitleMetaPrompt(
       if (unresolvedPlaceholders.length > 0) {
         console.warn('[TitleMetaPrompt] 未解決のDBプロンプト変数を検出 - 空文字で置換', {
           unresolvedPlaceholders,
-          sessionId: sessionId ?? null,
-          userId: userId ?? null,
+          hasSession: Boolean(sessionId),
+          hasUserId: Boolean(userId),
           authError: auth.error ?? null,
           hasContentAnnotation: Boolean(contentAnnotation),
           hasBrief: Boolean(businessInfo),

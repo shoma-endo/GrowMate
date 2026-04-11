@@ -5,7 +5,6 @@ import { chatService } from '@/server/services/chatService';
 import { ChatResponse } from '@/types/chat';
 import { ModelHandlerService } from './chat/modelHandlers';
 import { isUnavailable, hasOwnerRole } from '@/authUtils';
-import { cookies } from 'next/headers';
 import type { UserRole } from '@/types/user';
 import { z } from 'zod';
 import { SupabaseService } from '@/server/services/supabaseService';
@@ -70,11 +69,7 @@ async function checkAuth(liffAccessToken: string): Promise<
     return { isError: true as const, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
   }
 
-  const cookieStore = await cookies();
-  const isViewMode =
-    cookieStore.get('owner_view_mode')?.value === '1' ||
-    !!authResult.viewMode ||
-    hasOwnerRole(user?.role ?? null);
+  const isViewMode = !!authResult.viewMode || hasOwnerRole(user?.role ?? null);
 
   return {
     isError: false as const,

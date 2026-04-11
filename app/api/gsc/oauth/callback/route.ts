@@ -69,6 +69,9 @@ export async function GET(request: NextRequest) {
 
   if (liffAccessToken) {
     const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+    if (authResult.emailLinkConflict) {
+      return buildJsonResponse({ error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT }, { status: 409 });
+    }
     if (!authResult.error && authResult.userId) {
       if (authResult.viewMode || authResult.ownerUserId) {
         return buildJsonResponse(

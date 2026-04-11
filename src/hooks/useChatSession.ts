@@ -370,12 +370,15 @@ export const useChatSession = (
         const accessToken = await getAccessToken();
         const resolvedSessionId =
           options?.sessionIdOverride?.trim() || state.currentSessionId || '';
+        const isDifferentSession =
+          !!options?.sessionIdOverride?.trim() &&
+          options.sessionIdOverride.trim() !== state.currentSessionId;
         const streamingParams: StreamingParams = {
           content,
           model,
           accessToken,
           currentSessionId: resolvedSessionId,
-          recentMessages: options?.skipHistory
+          recentMessages: options?.skipHistory || isDifferentSession
             ? []
             : createRequestMessages(state.messages, {
                 limit:
