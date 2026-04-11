@@ -163,8 +163,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (!targetUserId) {
-      console.error('Unable to determine user from LINE auth or OAuth state.');
-      return NextResponse.json({ error: 'LINE認証が必要です' }, { status: 401 });
+      console.error('Unable to determine user from auth context or OAuth state.');
+      return NextResponse.json(
+        { error: '認証が必要です。再度ログインしてください。' },
+        { status: 401 }
+      );
     }
 
     // WordPress.com のサイト情報を取得

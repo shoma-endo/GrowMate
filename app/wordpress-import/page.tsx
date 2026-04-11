@@ -159,7 +159,7 @@ export default function WordPressImportPage() {
     } catch (err) {
       if (err instanceof Error) {
         if (err.message.includes('LIFF') || err.message.includes('logged in')) {
-          setError('LIFFアクセストークンを取得できません。LINEで再ログインしてください。');
+          setError('認証情報を確認できません。再度ログインしてください。');
         } else {
           setError(err.message);
         }
