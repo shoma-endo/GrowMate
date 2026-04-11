@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const liffAccessToken = bearer || cookieAccessToken;
 
     // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-    const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
     const conflict409get = nextJson409IfEmailLinkConflict(authResult);
     if (conflict409get) return conflict409get;
     if (authResult.error) {
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     const liffAccessToken = bearer || cookieAccessToken;
 
     // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-    const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
     const conflict409post = nextJson409IfEmailLinkConflict(authResult);
     if (conflict409post) return conflict409post;
     if (authResult.error || !authResult.userId) {

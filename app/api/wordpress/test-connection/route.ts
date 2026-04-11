@@ -18,7 +18,7 @@ const supabaseService = new SupabaseService();
 export async function GET(request: NextRequest) {
   try {
     const { accessToken: liffToken, refreshToken } = getLiffTokensFromRequest(request);
-    const authResult = await authMiddleware(liffToken, refreshToken);
+    const authResult = await authMiddleware(liffToken, refreshToken, { allowEmailFallback: true });
 
     const conflict409get = nextJson409IfEmailLinkConflict(authResult, msg => ({
       success: false,
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { accessToken: liffToken, refreshToken } = getLiffTokensFromRequest(request);
-    const authResult = await authMiddleware(liffToken, refreshToken);
+    const authResult = await authMiddleware(liffToken, refreshToken, { allowEmailFallback: true });
 
     const conflict409post = nextJson409IfEmailLinkConflict(authResult);
     if (conflict409post) return conflict409post;

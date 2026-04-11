@@ -103,7 +103,10 @@ export async function GET(request: NextRequest) {
     const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(request);
 
     if (liffAccessToken) {
-      const authResult = await authMiddleware(liffAccessToken, refreshToken);
+      const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+      if (authResult.emailLinkConflict) {
+        return NextResponse.json({ error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT }, { status: 409 });
+      }
       if (!authResult.error && authResult.userId) {
         cookieUserId = authResult.userId;
         targetUserId = authResult.userId;

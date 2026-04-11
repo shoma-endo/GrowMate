@@ -27,6 +27,11 @@ export interface ChatSessionActions {
       step7FullBodyGeneration?: boolean;
       /** true のとき過去のチャット履歴を送信しない */
       skipHistory?: boolean;
+      /**
+       * ストリーム API に送る sessionId。指定時は state の currentSessionId より優先。
+       * await 後にセッションが切り替わった場合でも、検証済みのセッションで送るために使う。
+       */
+      sessionIdOverride?: string;
     }
   ) => Promise<boolean>;
   setError: (message: string | null) => void;

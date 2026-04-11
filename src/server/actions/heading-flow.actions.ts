@@ -78,7 +78,7 @@ export async function initializeHeadingSections(data: z.infer<typeof initializeH
     return { success: false, error };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
+  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return emailLinkConflict;
@@ -125,7 +125,7 @@ export async function getHeadingSections(data: z.infer<typeof getHeadingSections
     return { success: false, error, data: [] };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
+  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return { ...emailLinkConflict, data: [] };
@@ -181,7 +181,7 @@ export async function saveHeadingSection(data: z.infer<typeof saveHeadingSection
     return { success: false, error };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
+  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return emailLinkConflict;
@@ -231,7 +231,7 @@ export async function getLatestCombinedContent(
     return { success: false, error, data: null };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
+  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return { ...emailLinkConflict, data: null };
@@ -276,7 +276,7 @@ export async function getCombinedContentVersions(
     return { success: false, error, data: [] };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
+  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return { ...emailLinkConflict, data: [] };
@@ -327,7 +327,7 @@ export async function resetHeadingSections(data: z.infer<typeof resetHeadingSect
     return { success: false, error };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
+  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return emailLinkConflict;
@@ -377,7 +377,7 @@ export async function saveStep7UserLead(data: z.infer<typeof saveStep7UserLeadSc
     return { success: false, error };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
+  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return emailLinkConflict;
@@ -426,7 +426,7 @@ export async function getCombinedContentForStep7(
     return { success: false, error, lead: null, sections: null };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
+  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict)
@@ -473,7 +473,7 @@ export async function saveCombinedContentForStep7(
   }
 
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken);
+  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return { ...emailLinkConflict, content: null };

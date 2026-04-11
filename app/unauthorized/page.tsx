@@ -26,7 +26,7 @@ export default async function UnauthorizedPage() {
     const accessToken = cookieStore.get('line_access_token')?.value;
     const refreshToken = cookieStore.get('line_refresh_token')?.value;
     // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-    const authResult = await authMiddleware(accessToken, refreshToken);
+    const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
     if (!authResult.error) {
       currentUserRole = authResult.userDetails?.role ?? null;
     }

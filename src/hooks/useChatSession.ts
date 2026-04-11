@@ -361,18 +361,24 @@ export const useChatSession = (
         step7FullBodyGeneration?: boolean;
         /** true のとき過去のチャット履歴を送信しない */
         skipHistory?: boolean;
+        sessionIdOverride?: string;
       }
     ) => {
       setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
 
       try {
         const accessToken = await getAccessToken();
+        const resolvedSessionId =
+          options?.sessionIdOverride?.trim() || state.currentSessionId || '';
+        const isDifferentSession =
+          !!options?.sessionIdOverride?.trim() &&
+          options.sessionIdOverride.trim() !== state.currentSessionId;
         const streamingParams: StreamingParams = {
           content,
           model,
           accessToken,
-          currentSessionId: state.currentSessionId,
-          recentMessages: options?.skipHistory
+          currentSessionId: resolvedSessionId,
+          recentMessages: options?.skipHistory || isDifferentSession
             ? []
             : createRequestMessages(state.messages, {
                 limit:

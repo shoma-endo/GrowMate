@@ -45,7 +45,7 @@ export async function ensureGoogleAdsAuth(): Promise<GoogleAdsAuthResult> {
   const refreshToken = cookieStore.get('line_refresh_token')?.value;
 
   // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
   const conflict409 = nextJson409IfEmailLinkConflict(authResult, msg => ({ error: msg }));
   if (conflict409) {
     return { success: false, response: conflict409 };

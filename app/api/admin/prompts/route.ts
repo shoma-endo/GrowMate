@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(request);
 
     // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-    const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
     const conflict409 = nextJson409IfEmailLinkConflict(authResult);
     if (conflict409) return conflict409;
     if (authResult.error) {

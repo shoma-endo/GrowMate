@@ -218,7 +218,7 @@ export default async function GoogleAdsSetupPage({
   const refreshToken = cookieStore.get('line_refresh_token')?.value;
 
   // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(liffAccessToken, refreshToken);
+  const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
   redirectIfEmailLinkConflict(authResult);
   if (authResult.error || !authResult.userId) {
     redirect('/login');

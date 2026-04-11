@@ -54,7 +54,7 @@ function gscSetupReturnAuthError(authId: { error: string; emailLinkConflict?: tr
 
 const getAuthUserId = async (): Promise<GscSetupAuthIdResult> => {
   const { accessToken, refreshToken } = await getLiffTokensFromCookies();
-  const authResult = await authMiddleware(accessToken, refreshToken);
+  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
   const linkConflict = emailLinkConflictErrorPayload(authResult);
   if (linkConflict) {
     return { error: linkConflict.error, emailLinkConflict: true };

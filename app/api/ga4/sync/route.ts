@@ -8,7 +8,7 @@ import { canWriteGa4 } from '@/server/lib/ga4-permissions';
 
 export async function POST(request: NextRequest) {
   const { accessToken, refreshToken } = getLiffTokensFromRequest(request);
-  const authResult = await authMiddleware(accessToken, refreshToken);
+  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
 
   const conflict409 = nextJson409IfEmailLinkConflict(authResult);
   if (conflict409) return conflict409;

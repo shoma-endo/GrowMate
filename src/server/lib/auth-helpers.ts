@@ -34,7 +34,7 @@ export async function getUserFromAuthHeader(req: NextRequest): Promise<AuthHeade
   // LIFF トークンがない場合は Supabase Email セッションで解決を試みる
   if (!rawToken) {
     const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(req);
-    const authResult = await authMiddleware(liffAccessToken, refreshToken);
+    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
     const conflict409 = nextJson409IfEmailLinkConflict(authResult, msg => ({ error: msg }));
     if (conflict409) {
       return { ok: false, response: conflict409 };

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const authResult = await authMiddleware(liffToken, refreshToken);
+    const authResult = await authMiddleware(liffToken, refreshToken, { allowEmailFallback: true });
 
     const conflict409 = nextJson409IfEmailLinkConflict(authResult);
     if (conflict409) return conflict409;

@@ -15,7 +15,7 @@ export const updateUserFullName = async (fullName: string): Promise<{ success: b
   try {
     const { accessToken: lineAccessToken, refreshToken } = await getLiffTokensFromCookies();
 
-    const authResult = await authMiddleware(lineAccessToken, refreshToken);
+    const authResult = await authMiddleware(lineAccessToken, refreshToken, { allowEmailFallback: true });
     const linkConflict = emailLinkConflictErrorPayload(authResult);
     if (linkConflict) return linkConflict;
     if (authResult.error) {

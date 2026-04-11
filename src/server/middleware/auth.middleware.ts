@@ -14,8 +14,7 @@ export interface EnsureAuthenticatedOptions {
   allowDevelopmentBypass?: boolean;
   /**
    * true のとき、LINE トークン失敗時に Supabase Email セッションへのフォールバックを許可する。
-   * LIFF SDK のキャッシュトークンが混入する可能性があるストリーミング API 専用。
-   * Server Actions で明示的に liffAccessToken を渡す場合は使用しないこと（ユーザー混同防止）。
+   * ストリーミング API に加え、`withAuth` / チャット系 Server Action でも使用（メール OTP 主体・残存 LINE トークン対策）。
    */
   allowEmailFallback?: boolean;
 }
@@ -72,6 +71,11 @@ async function tryEmailFallback(): Promise<AuthenticatedUser | null> {
   const result = await resolveEmailUserWithReason();
   if (result.ok) {
     const emailUser = result.user;
+    // LINE Cookie のクリーンアップはここでは行わない。
+    // この関数は RSC レンダリング（Cookie 変更不可）からも呼ばれるため、
+    // 副作用を持たせない設計にしている。
+    // LINE Cookie が確実に存在する文脈（needsReauth など）では、
+    // 呼び出し元（Route Handler / Server Action）が責任を持って削除する。
     return {
       lineUserId: '',
       userId: emailUser.id,
@@ -160,8 +164,6 @@ export async function ensureAuthenticated({
 
     if (!verificationResult.isValid || verificationResult.needsReauth) {
       // allowEmailFallback = true のときのみ Email セッションへのフォールバックを試みる。
-      // LIFF SDK キャッシュ由来のトークンが混入し得るストリーミング API 専用オプション。
-      // Server Actions などで明示的に liffAccessToken を渡す場合は false のままにすること。
       if (allowEmailFallback) {
         const emailResult = await tryEmailFallback();
         if (emailResult) return emailResult;

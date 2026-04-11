@@ -121,7 +121,7 @@ export async function resolveWordPressContext(
   const accessToken = getCookie('line_access_token');
   const refreshToken = getCookie('line_refresh_token');
   // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(accessToken, refreshToken);
+  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
 
   const conflictMessage = getEmailLinkConflictMessage(authResult);
   if (conflictMessage !== undefined) {

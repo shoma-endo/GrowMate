@@ -68,7 +68,17 @@ export async function GET(request: NextRequest) {
 
     // LINE token があれば検証（なくても state の userId で進める）
     if (liffAccessToken) {
-      const authResult = await authMiddleware(liffAccessToken, refreshToken);
+      const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+      if (authResult.emailLinkConflict) {
+        const response = NextResponse.redirect(
+          new URL(
+            `/setup/google-ads?error=${encodeURIComponent(ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT)}`,
+            baseUrl
+          )
+        );
+        response.cookies.delete(stateCookieName);
+        return response;
+      }
       if (!authResult.error && authResult.userId) {
         if (authResult.viewMode || authResult.ownerUserId) {
           const response = NextResponse.redirect(
