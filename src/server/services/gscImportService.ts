@@ -171,7 +171,7 @@ export class GscImportService {
       property_uri: string;
       search_type: string;
       date: string;
-      url: string | null;
+      url: string;
       clicks: number;
       impressions: number;
       ctr: number;
@@ -194,7 +194,7 @@ export class GscImportService {
         property_uri: metric.propertyUri,
         search_type: metric.searchType,
         date: metric.date,
-        url: metric.url ?? null,
+        url: metric.url,
         clicks: metric.clicks,
         impressions: metric.impressions,
         ctr: metric.ctr,
