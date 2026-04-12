@@ -164,6 +164,21 @@ export class GscImportService {
     let skipped = 0;
     let unmatched = 0;
 
+    const importedAt = new Date().toISOString();
+    const validPayloads: {
+      user_id: string;
+      content_annotation_id: string;
+      property_uri: string;
+      search_type: string;
+      date: string;
+      url: string | null;
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+      imported_at: string;
+    }[] = [];
+
     for (const metric of metrics) {
       const annotationId = resolveAnnotationId(metric.normalizedUrl ?? null);
       if (!annotationId) {
@@ -173,34 +188,38 @@ export class GscImportService {
         }
         continue;
       }
-
-      const upsertPayload = {
+      validPayloads.push({
         user_id: userId,
         content_annotation_id: annotationId,
         property_uri: metric.propertyUri,
         search_type: metric.searchType,
         date: metric.date,
-        url: metric.url,
+        url: metric.url ?? null,
         clicks: metric.clicks,
         impressions: metric.impressions,
         ctr: metric.ctr,
         position: metric.position,
-        imported_at: new Date().toISOString(),
-      };
+        imported_at: importedAt,
+      });
+    }
 
+    // 500件単位でバルクアップサート（逐次1件ずつではなく一括処理）
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < validPayloads.length; i += BATCH_SIZE) {
+      const batch = validPayloads.slice(i, i + BATCH_SIZE);
       const { error } = await this.supabaseService
         .getClient()
         .from('gsc_page_metrics')
-        .upsert(upsertPayload, {
+        .upsert(batch, {
           onConflict: 'user_id,property_uri,date,normalized_url,search_type',
         });
 
       if (error) {
-        skipped += 1;
+        skipped += batch.length;
         continue;
       }
 
-      upserted += 1;
+      upserted += batch.length;
     }
 
     return { upserted, skipped, unmatched };
