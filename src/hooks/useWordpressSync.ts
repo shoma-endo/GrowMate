@@ -9,13 +9,11 @@ import { BlogStepId } from '@/lib/constants';
 
 export function useWordpressSync({
   currentSessionId,
-  getAccessToken,
   loadSession,
   setFollowLatestByStep,
   setSelectedVersionByStep,
 }: {
   currentSessionId: string | undefined | null;
-  getAccessToken: () => Promise<string | null>;
   loadSession: (sessionId: string) => Promise<void>;
   setFollowLatestByStep: React.Dispatch<React.SetStateAction<Partial<Record<BlogStepId, boolean>>>>;
   setSelectedVersionByStep: React.Dispatch<
@@ -82,12 +80,10 @@ export function useWordpressSync({
         throw new Error('ブログ記事URLが登録されていません');
       }
 
-      const accessToken = await getAccessToken();
       const response = await fetch('/api/chat/canvas/load-wordpress', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({ sessionId: currentSessionId }),
         credentials: 'include',
@@ -127,7 +123,6 @@ export function useWordpressSync({
     }
   }, [
     currentSessionId,
-    getAccessToken,
     loadSession,
     setFollowLatestByStep,
     setSelectedVersionByStep,

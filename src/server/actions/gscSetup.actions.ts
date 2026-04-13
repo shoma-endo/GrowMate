@@ -7,14 +7,12 @@ import { GscService, formatGscPropertyDisplayName } from '@/server/services/gscS
 import { toGscConnectionStatus, propertyTypeFromUri } from '@/server/lib/gsc-status';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GscSiteEntry, GscCredential, GscConnectionStatus } from '@/types/gsc';
-import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
 
 const supabaseService = new SupabaseService();
 const gscService = new GscService();
-
-const OWNER_ONLY_ERROR_MESSAGE = ERROR_MESSAGES.AUTH.STAFF_OPERATION_NOT_ALLOWED;
 
 /** トークン期限切れ/取り消しエラーかどうかを判定 */
 const isTokenExpiredError = (error: unknown): boolean => {
@@ -41,7 +39,7 @@ const ensureAccessToken = async (userId: string, credential: GscCredential): Pro
 
 type GscSetupAuthIdResult =
   | { error: string; emailLinkConflict?: true }
-  | { userId: string; ownerUserId: string | null };
+  | { userId: string };
 
 /** getAuthUserId のエラー枝を Server Action の失敗形へ（競合フラグを落とさない） */
 function gscSetupReturnAuthError(authId: { error: string; emailLinkConflict?: true }) {
@@ -53,8 +51,7 @@ function gscSetupReturnAuthError(authId: { error: string; emailLinkConflict?: tr
 }
 
 const getAuthUserId = async (): Promise<GscSetupAuthIdResult> => {
-  const { accessToken, refreshToken } = await getLiffTokensFromCookies();
-  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
   const linkConflict = emailLinkConflictErrorPayload(authResult);
   if (linkConflict) {
     return { error: linkConflict.error, emailLinkConflict: true };
@@ -62,15 +59,8 @@ const getAuthUserId = async (): Promise<GscSetupAuthIdResult> => {
   if (authResult.error || !authResult.userId) {
     return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
-  // View Modeの場合でも、Setup画面の操作は本来のユーザー（オーナー）として実行する
-  const realUserId = authResult.actorUserId || authResult.userId;
-  // actorUserIdがある = View Modeでオーナーとして操作中
-  const isViewModeAsOwner = !!authResult.actorUserId;
-
   return {
-    userId: realUserId,
-    // スタッフユーザーの場合のみownerUserIdを返す（制限対象）
-    ownerUserId: isViewModeAsOwner ? null : (authResult.ownerUserId ?? null),
+    userId: authResult.userId,
   };
 };
 
@@ -79,10 +69,7 @@ export async function fetchGscStatus() {
   if ('error' in authId) {
     return gscSetupReturnAuthError(authId);
   }
-  const { userId, ownerUserId } = authId;
-  if (ownerUserId) {
-    return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
-  }
+  const { userId } = authId;
   const credential = await supabaseService.getGscCredentialByUserId(userId);
   const status = toGscConnectionStatus(credential);
   return { success: true, data: status };
@@ -94,10 +81,7 @@ export async function fetchGscProperties() {
     if ('error' in authId) {
       return gscSetupReturnAuthError(authId);
     }
-    const { userId, ownerUserId } = authId;
-    if (ownerUserId) {
-      return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
-    }
+    const { userId } = authId;
 
     const credential = await supabaseService.getGscCredentialByUserId(userId);
     if (!credential) {
@@ -135,10 +119,7 @@ export async function saveGscProperty(params: {
     if ('error' in authId) {
       return gscSetupReturnAuthError(authId);
     }
-    const { userId, ownerUserId } = authId;
-    if (ownerUserId) {
-      return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
-    }
+    const { userId } = authId;
     const propertyUri = params.propertyUri?.trim();
     if (!propertyUri) {
       return { success: false, error: ERROR_MESSAGES.GSC.PROPERTY_URI_REQUIRED };
@@ -184,10 +165,7 @@ export async function disconnectGsc() {
       console.error('[GSC Setup] disconnectGsc: ユーザー認証失敗', { error: authId.error });
       return gscSetupReturnAuthError(authId);
     }
-    const { userId, ownerUserId } = authId;
-    if (ownerUserId) {
-      return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
-    }
+    const { userId } = authId;
 
     await supabaseService.deleteGscCredential(userId);
 
@@ -215,15 +193,21 @@ export async function refetchGscStatusWithValidation(): Promise<
   try {
     // ステータスを取得（内部で認証チェックを実行）
     const statusResult = await fetchGscStatus();
-    if (!statusResult.success || !statusResult.data) {
+    if (!statusResult.success) {
       const base = {
         success: false as const,
-        error: statusResult.error || ERROR_MESSAGES.GSC.STATUS_FETCH_FAILED,
+        error:
+          ('error' in statusResult ? statusResult.error : undefined) ||
+          ERROR_MESSAGES.GSC.STATUS_FETCH_FAILED,
       };
       if ('emailLinkConflict' in statusResult && statusResult.emailLinkConflict) {
         return { ...base, emailLinkConflict: true as const };
       }
       return base;
+    }
+
+    if (!statusResult.data) {
+      return { success: false as const, error: ERROR_MESSAGES.GSC.STATUS_FETCH_FAILED };
     }
 
     const status = statusResult.data as GscConnectionStatus;

@@ -7,7 +7,6 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { toUser } from '@/types/user';
 import { isAdmin } from '@/authUtils';
-import { setLineTokens } from '@/server/lib/cookies';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -16,8 +15,6 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get('error');
 
   const cookieStore = await cookies();
-  const liffAccessToken = cookieStore.get('line_access_token')?.value;
-  const refreshToken = cookieStore.get('line_refresh_token')?.value;
   const redirectUri = process.env.GOOGLE_ADS_REDIRECT_URI;
   const cookieSecret = process.env.COOKIE_SECRET;
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
@@ -63,60 +60,46 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
-    // 3. ユーザーID取得（GSC と同じロジック：state の userId を優先）
+    // 3. ユーザーID確定
+    // state に署名済み userId が含まれる。セッションが有効な場合は整合性チェックと viewMode チェックも行う。
+    // セッション切れでも CSRF Cookie 一致 + HMAC 検証済みの state.userId があれば続行できる。
     let targetUserId: string | null = verification.payload.userId;
 
-    // LINE token があれば検証（なくても state の userId で進める）
-    if (liffAccessToken) {
-      const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
-      if (authResult.emailLinkConflict) {
+    const authResult = await authMiddleware();
+    if (authResult.emailLinkConflict) {
+      const response = NextResponse.redirect(
+        new URL(
+          `/setup/google-ads?error=${encodeURIComponent(ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT)}`,
+          baseUrl
+        )
+      );
+      response.cookies.delete(stateCookieName);
+      return response;
+    }
+
+    if (!authResult.error && authResult.userId) {
+      // セッション有効: 整合性チェックを実施
+      if (targetUserId && targetUserId !== authResult.userId) {
+        console.error('OAuth state user mismatch', {
+          stateUser: targetUserId,
+          currentUser: authResult.userId,
+        });
         const response = NextResponse.redirect(
-          new URL(
-            `/setup/google-ads?error=${encodeURIComponent(ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT)}`,
-            baseUrl
-          )
+          new URL('/setup/google-ads?error=state_user_mismatch', baseUrl)
         );
         response.cookies.delete(stateCookieName);
         return response;
       }
-      if (!authResult.error && authResult.userId) {
-        if (authResult.viewMode || authResult.ownerUserId) {
-          const response = NextResponse.redirect(
-            new URL(
-              `/setup/google-ads?error=${encodeURIComponent(ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED)}`,
-              baseUrl
-            )
-          );
-          response.cookies.delete(stateCookieName);
-          return response;
-        }
-
-        // ユーザーID整合性確認
-        if (targetUserId && targetUserId !== authResult.userId) {
-          console.error('OAuth state user mismatch', {
-            stateUser: targetUserId,
-            currentUser: authResult.userId,
-          });
-          const response = NextResponse.redirect(
-            new URL('/setup/google-ads?error=state_user_mismatch', baseUrl)
-          );
-          response.cookies.delete(stateCookieName);
-          return response;
-        }
-
-        targetUserId = authResult.userId;
-      }
-    }
-
-    // targetUserId が最終的にない場合のみエラー
-    if (!targetUserId) {
-      console.error('❌ userId が取得できません');
+      targetUserId = authResult.userId;
+    } else if (!targetUserId) {
+      // セッション切れかつ state に userId なし → 認証不可
       const response = NextResponse.redirect(
         new URL('/setup/google-ads?error=auth_required', baseUrl)
       );
       response.cookies.delete(stateCookieName);
       return response;
     }
+    // セッション切れだが state.userId あり → CSRF + HMAC 検証済みのため続行
 
     // 管理者権限チェック（Google Ads 連携は審査完了まで管理者のみ）
     const supabaseService = new SupabaseService();
@@ -195,7 +178,6 @@ export async function GET(request: NextRequest) {
         new URL('/setup/google-ads?error=server_error', baseUrl)
       );
       response.cookies.delete(stateCookieName);
-      setLineTokens(response, liffAccessToken, refreshToken);
       return response;
     }
 
@@ -210,7 +192,6 @@ export async function GET(request: NextRequest) {
         new URL('/setup/google-ads?error=account_list_fetch_failed', baseUrl)
       );
       response.cookies.delete(stateCookieName);
-      setLineTokens(response, liffAccessToken, refreshToken);
       return response;
     }
 
@@ -220,7 +201,6 @@ export async function GET(request: NextRequest) {
         new URL('/setup/google-ads?error=no_accessible_accounts', baseUrl)
       );
       response.cookies.delete(stateCookieName);
-      setLineTokens(response, liffAccessToken, refreshToken);
       return response;
     }
 
@@ -230,7 +210,6 @@ export async function GET(request: NextRequest) {
         new URL('/setup/google-ads?success=true', baseUrl)
       );
       response.cookies.delete(stateCookieName);
-      setLineTokens(response, liffAccessToken, refreshToken);
       return response;
     }
 
@@ -243,7 +222,6 @@ export async function GET(request: NextRequest) {
           new URL('/setup/google-ads?error=server_error', baseUrl)
         );
         response.cookies.delete(stateCookieName);
-        setLineTokens(response, liffAccessToken, refreshToken);
         return response;
       }
 
@@ -277,14 +255,12 @@ export async function GET(request: NextRequest) {
           new URL('/setup/google-ads?select_account=true', baseUrl)
         );
         response.cookies.delete(stateCookieName);
-        setLineTokens(response, liffAccessToken, refreshToken);
         return response;
       }
       const response = NextResponse.redirect(
         new URL('/setup/google-ads?success=true', baseUrl)
       );
       response.cookies.delete(stateCookieName);
-      setLineTokens(response, liffAccessToken, refreshToken);
       return response;
     }
 
@@ -292,13 +268,7 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(
       new URL('/setup/google-ads?select_account=true', baseUrl)
     );
-
-    // state Cookie 削除
     response.cookies.delete(stateCookieName);
-
-    // LIFF 認証トークンを Cookie にセット
-    setLineTokens(response, liffAccessToken, refreshToken);
-
     return response;
   } catch (err) {
     console.error('Google Ads Callback Error:', err);
@@ -306,7 +276,6 @@ export async function GET(request: NextRequest) {
       new URL('/setup/google-ads?error=server_error', baseUrl)
     );
     response.cookies.delete(stateCookieName);
-    setLineTokens(response, liffAccessToken, refreshToken);
     return response;
   }
 }

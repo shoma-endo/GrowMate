@@ -25,7 +25,6 @@ import { formatDate } from '@/lib/date-utils';
 import { useGa4Setup } from '@/hooks/useGa4Setup';
 import { handleAsyncAction } from '@/lib/async-handler';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
-import { useAuth } from '@/components/AuthProvider';
 import { toast } from 'sonner';
 
 interface Ga4SetupClientProps {
@@ -55,7 +54,6 @@ const getGa4EventLabel = (eventName: string): string => {
 };
 
 export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4SetupClientProps) {
-  const { user } = useAuth();
   const {
     status,
     properties,
@@ -69,9 +67,6 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
     refreshStatus,
     refetchKeyEvents,
   } = useGa4Setup(initialStatus);
-
-  const isStaffUser = Boolean(user?.ownerUserId);
-  const isReadOnly = isStaffUser;
   const [isSavingGa4, setIsSavingGa4] = useState(false);
   const [isGa4Syncing, setIsGa4Syncing] = useState(false);
   const [isCheckingGa4Status, setIsCheckingGa4Status] = useState(false);
@@ -281,7 +276,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
             variant="ghost"
             size="sm"
             onClick={handleRefreshGa4Status}
-            disabled={isSyncingStatus || isCheckingGa4Status || isReadOnly}
+            disabled={isSyncingStatus || isCheckingGa4Status}
             className="flex items-center gap-1"
           >
             <RefreshCw
@@ -302,13 +297,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
               </Badge>
             </div>
             {isOauthConfigured ? (
-              isReadOnly ? (
-                <Button disabled variant="outline">
-                  オーナーのみ操作できます
-                </Button>
-              ) : (
-                <GoogleSignInButton href={OAUTH_START_PATH}>Googleでログイン</GoogleSignInButton>
-              )
+              <GoogleSignInButton href={OAUTH_START_PATH}>Googleでログイン</GoogleSignInButton>
             ) : (
               <Button disabled variant="outline">
                 OAuth設定が無効です
@@ -365,7 +354,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                 <Select
                   value={selectedGa4PropertyId || ''}
                   onValueChange={handleGa4PropertyChange}
-                  disabled={isReadOnly || isLoadingProperties || properties.length === 0}
+                  disabled={isLoadingProperties || properties.length === 0}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="GA4プロパティを選択" />
@@ -408,7 +397,6 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                           onCheckedChange={checked =>
                             handleGa4EventToggle(event.eventName, Boolean(checked))
                           }
-                          disabled={isReadOnly}
                         />
                         <Label htmlFor={`ga4-event-${event.eventName}`} className="text-sm">
                           {getGa4EventLabel(event.eventName)}
@@ -431,7 +419,6 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                       isGa4DirtyRef.current = true;
                       setGa4EngagementThreshold(event.target.value);
                     }}
-                    disabled={isReadOnly}
                     placeholder="例: 60"
                   />
                 </div>
@@ -448,7 +435,6 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                       isGa4DirtyRef.current = true;
                       setGa4ReadRateThreshold(event.target.value);
                     }}
-                    disabled={isReadOnly}
                     placeholder="例: 0.4"
                   />
                 </div>
@@ -470,7 +456,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                   type="button"
                   variant="outline"
                   onClick={refreshStatus}
-                  disabled={isReadOnly || isSyncingStatus}
+                  disabled={isSyncingStatus}
                   className="flex items-center gap-2"
                 >
                   <RefreshCw className={`h-4 w-4 ${isSyncingStatus ? 'animate-spin' : ''}`} />
@@ -479,7 +465,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                 <Button
                   type="button"
                   onClick={handleSaveGa4Settings}
-                  disabled={isReadOnly || isSavingGa4 || !selectedGa4PropertyId}
+                  disabled={isSavingGa4 || !selectedGa4PropertyId}
                   className="flex items-center gap-2"
                 >
                   {isSavingGa4 && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -489,7 +475,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                   type="button"
                   variant="outline"
                   onClick={handleGa4ManualSync}
-                  disabled={isReadOnly || isGa4Syncing || !status.propertyId}
+                  disabled={isGa4Syncing || !status.propertyId}
                   className="flex items-center gap-2"
                 >
                   {isGa4Syncing ? (

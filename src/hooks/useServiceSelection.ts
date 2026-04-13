@@ -46,8 +46,6 @@ export interface ServiceSelectionHook {
  * useServiceSelection フックのオプション
  */
 interface UseServiceSelectionOptions {
-  /** アクセストークン取得関数 */
-  getAccessToken: () => Promise<string>;
   /** 現在のセッションID（null の場合は新規チャット） */
   currentSessionId: string | null;
 }
@@ -61,7 +59,6 @@ interface UseServiceSelectionOptions {
  * - サービス変更時にDBへの永続化を実行
  */
 export function useServiceSelection({
-  getAccessToken,
   currentSessionId,
 }: UseServiceSelectionOptions): ServiceSelectionHook {
   const [services, setServices] = useState<Service[]>([]);
@@ -78,8 +75,7 @@ export function useServiceSelection({
 
     const loadBrief = async () => {
       try {
-        const accessToken = await getAccessToken();
-        const res = await getBrief(accessToken);
+        const res = await getBrief();
         if (isActive && res.success && res.data) {
           setServices(res.data.services || []);
           setServicesError(null);
@@ -104,7 +100,7 @@ export function useServiceSelection({
     return () => {
       isActive = false;
     };
-  }, [getAccessToken]);
+  }, []);
 
   // セッション切替時にサービスIDを取得
   useEffect(() => {
@@ -129,8 +125,7 @@ export function useServiceSelection({
       }
 
       try {
-        const accessToken = await getAccessToken();
-        const result = await getSessionServiceIdSA(currentSessionId, accessToken);
+        const result = await getSessionServiceIdSA(currentSessionId);
         if (!isActive) {
           return;
         }
@@ -160,7 +155,7 @@ export function useServiceSelection({
     return () => {
       isActive = false;
     };
-  }, [currentSessionId, services, isServicesLoading, getAccessToken]);
+  }, [currentSessionId, services, isServicesLoading]);
 
   // サービス変更時の処理（既存セッションの場合はDBも更新）
   const changeService = useCallback(
@@ -170,14 +165,13 @@ export function useServiceSelection({
       // 既存セッションの場合はDBを更新
       if (currentSessionId) {
         try {
-          const accessToken = await getAccessToken();
-          await updateSessionServiceIdSA(currentSessionId, serviceId, accessToken);
+          await updateSessionServiceIdSA(currentSessionId, serviceId);
         } catch (error) {
           console.error('Failed to update session service ID:', error);
         }
       }
     },
-    [currentSessionId, getAccessToken]
+    [currentSessionId]
   );
 
   // エラーを閉じる

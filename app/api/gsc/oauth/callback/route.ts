@@ -6,7 +6,7 @@ import {
   GscService,
   formatGscPropertyDisplayName,
 } from '@/server/services/gscService';
-import { getLiffTokensFromRequest } from '@/server/lib/auth-helpers';
+
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 const supabaseService = new SupabaseService();
@@ -63,31 +63,21 @@ export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(`${appOrigin}${returnPath}?connected=1`);
   response.cookies.delete(stateCookieName);
 
-  const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(request);
-
   let targetUserId: string | null = stateVerification.payload.userId;
 
-  if (liffAccessToken) {
-    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
-    if (authResult.emailLinkConflict) {
-      return buildJsonResponse({ error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT }, { status: 409 });
+  const authResult = await authMiddleware();
+  if (authResult.emailLinkConflict) {
+    return buildJsonResponse({ error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT }, { status: 409 });
+  }
+  if (!authResult.error && authResult.userId) {
+    if (targetUserId && targetUserId !== authResult.userId) {
+      console.error('User mismatch between session and OAuth state', {
+        sessionUser: authResult.userId,
+        stateUser: targetUserId,
+      });
+      return buildJsonResponse({ error: 'ユーザー認証情報が一致しません' }, { status: 401 });
     }
-    if (!authResult.error && authResult.userId) {
-      if (authResult.viewMode || authResult.ownerUserId) {
-        return buildJsonResponse(
-          { error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED },
-          { status: 403 }
-        );
-      }
-      if (targetUserId && targetUserId !== authResult.userId) {
-        console.error('LINE user mismatch between cookie and OAuth state', {
-          cookieUser: authResult.userId,
-          stateUser: targetUserId,
-        });
-        return buildJsonResponse({ error: 'ユーザー認証情報が一致しません' }, { status: 401 });
-      }
-      targetUserId = authResult.userId;
-    }
+    targetUserId = authResult.userId;
   }
 
   if (!targetUserId) {
@@ -97,9 +87,6 @@ export async function GET(request: NextRequest) {
   const userResult = await supabaseService.getUserById(targetUserId);
   if (!userResult.success) {
     return buildJsonResponse({ error: userResult.error.userMessage }, { status: 500 });
-  }
-  if (userResult.data?.owner_user_id) {
-    return buildJsonResponse({ error: ERROR_MESSAGES.AUTH.STAFF_OPERATION_NOT_ALLOWED }, { status: 403 });
   }
 
   try {

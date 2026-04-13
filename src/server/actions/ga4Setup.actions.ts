@@ -8,7 +8,7 @@ import { GscService } from '@/server/services/gscService';
 import { Ga4Service } from '@/server/services/ga4Service';
 import { ga4SettingsSchema } from '@/server/schemas/ga4.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+
 import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
 import type { Ga4ConnectionStatus } from '@/types/ga4';
 import type { GscCredential } from '@/types/gsc';
@@ -23,7 +23,6 @@ const supabaseService = new SupabaseService();
 const gscService = new GscService();
 const ga4Service = new Ga4Service();
 
-const OWNER_ONLY_ERROR_MESSAGE = ERROR_MESSAGES.AUTH.STAFF_OPERATION_NOT_ALLOWED;
 const GA4_SETTINGS_FIELD_LABELS: Record<string, string> = {
   propertyId: 'GA4プロパティID',
   propertyName: 'GA4プロパティ名',
@@ -62,38 +61,26 @@ const ensureAccessToken = async (userId: string, refreshToken: string, credentia
 
 interface AuthSuccess {
   userId: string;
-  ownerUserId: string | null;
   role: import('@/types/user').UserRole | null;
-  viewMode: boolean;
   error?: undefined;
 }
 interface AuthFailure {
   error: string;
   userId?: undefined;
-  ownerUserId?: undefined;
   role?: undefined;
-  viewMode?: undefined;
 }
 type AuthResult = AuthSuccess | AuthFailure;
 
 const getAuthUserId = async (): Promise<AuthResult> => {
-  const { accessToken, refreshToken } = await getLiffTokensFromCookies();
-  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
   const linkConflict = emailLinkConflictErrorPayload(authResult);
   if (linkConflict) return linkConflict;
   if (authResult.error || !authResult.userId) {
     return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
-  // View Modeの場合でも、Setup画面の操作は本来のユーザー（オーナー）として実行する
-  const realUserId = authResult.actorUserId || authResult.userId;
-  // actorUserIdがある = View Modeでオーナーとして操作中
-  const isViewModeAsOwner = !!authResult.actorUserId;
-
   return {
-    userId: realUserId,
-    ownerUserId: isViewModeAsOwner ? null : (authResult.ownerUserId ?? null),
+    userId: authResult.userId,
     role: authResult.userDetails?.role ?? null,
-    viewMode: authResult.viewMode ?? false,
   };
 };
 
@@ -111,9 +98,9 @@ const resolveGa4ActionContext = async (): Promise<Ga4ActionContextResult> => {
   if ('error' in authResult) {
     return { success: false, error: authResult.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
-  const { userId, ownerUserId, role, viewMode } = authResult;
-  if (!canAccessGa4({ role, ownerUserId, viewMode })) {
-    return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
+  const { userId, role } = authResult;
+  if (!canAccessGa4({ role })) {
+    return { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED };
   }
 
   const credential = await supabaseService.getGscCredentialByUserId(userId);
@@ -135,9 +122,9 @@ export async function fetchGa4Status(): Promise<ServerActionResult<Ga4Connection
     if ('error' in authResult) {
       return { success: false, error: authResult.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
     }
-    const { userId, ownerUserId, role, viewMode } = authResult;
-    if (!canAccessGa4({ role, ownerUserId, viewMode })) {
-      return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
+    const { userId, role } = authResult;
+    if (!canAccessGa4({ role })) {
+      return { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED };
     }
 
     const credential = await supabaseService.getGscCredentialByUserId(userId);
@@ -221,9 +208,9 @@ export async function saveGa4Settings(input: unknown) {
     if ('error' in authResult) {
       return { success: false, error: authResult.error ?? ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
     }
-    const { userId, ownerUserId, role, viewMode } = authResult;
-    if (!canWriteGa4({ role, ownerUserId, viewMode })) {
-      return { success: false, error: OWNER_ONLY_ERROR_MESSAGE };
+    const { userId, role } = authResult;
+    if (!canWriteGa4({ role })) {
+      return { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED };
     }
 
     const parsed = ga4SettingsSchema.safeParse(input);

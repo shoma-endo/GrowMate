@@ -23,7 +23,6 @@ import AnnotationPanel from './AnnotationPanel';
 import { useAuth } from '@/components/AuthProvider';
 import { ChatLayoutCtx } from '@/types/chat-layout';
 import { DismissibleErrorAlert, DismissibleWarningAlert } from '@/components/DismissibleAlerts';
-import { ViewModeBanner } from '@/components/ViewModeBanner';
 
 export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => {
   const {
@@ -80,7 +79,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     combinedTiles,
     onOpenCombinedCanvas,
   } = ctx;
-  const { isOwnerViewMode } = useAuth();
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
 
   const currentStep: BlogStepId = BLOG_STEP_IDS[0] as BlogStepId;
@@ -225,8 +223,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
   const shouldShowStepActionBar =
     (blogFlowActive && !chatSession.state.isLoading) || isStep7HeadingPhaseForBar;
 
-  const isReadOnly = isOwnerViewMode;
-
   const handleResetHeadingConfiguration = useCallback(
     async (options?: { preserveStep7Lead?: boolean }): Promise<boolean> => {
       return await ctx.onResetHeadingConfiguration(options);
@@ -236,7 +232,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
   return (
     <>
-      {isReadOnly && <ViewModeBanner />}
       {/* デスクトップサイドバー */}
       {!isMobile && (
         <SessionSidebar
@@ -249,7 +244,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           searchResults={chatSession.state.searchResults}
           searchError={chatSession.state.searchError}
           isSearching={chatSession.state.isSearching}
-          disableActions={isReadOnly}
         />
       )}
 
@@ -287,7 +281,6 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
               searchResults={chatSession.state.searchResults}
               searchError={chatSession.state.searchError}
               isSearching={chatSession.state.isSearching}
-              disableActions={isReadOnly}
             />
           </SheetContent>
         </Sheet>
@@ -319,7 +312,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
         <InputArea
           onSendMessage={onSendMessage}
-          disabled={chatSession.state.isLoading || ui.annotation.loading || isReadOnly}
+          disabled={chatSession.state.isLoading || ui.annotation.loading}
           shouldShowStepActionBar={shouldShowStepActionBar}
           stepActionBarRef={stepActionBarRef}
           displayStep={displayStep}

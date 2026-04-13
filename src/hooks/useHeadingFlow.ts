@@ -15,7 +15,6 @@ import { STEP7_BASIC_STRUCTURE_SAVE_MESSAGE, type BlogStepId, STEP7_ID } from '@
 interface UseHeadingFlowParams {
   sessionId: string | null;
   isSessionLoading: boolean;
-  getAccessToken: () => Promise<string>;
   resolvedCanvasStep: BlogStepId | null;
 }
 
@@ -73,7 +72,6 @@ interface UseHeadingFlowReturn {
 export function useHeadingFlow({
   sessionId,
   isSessionLoading,
-  getAccessToken,
   resolvedCanvasStep,
 }: UseHeadingFlowParams): UseHeadingFlowReturn {
   const [headingSections, setHeadingSections] = useState<SessionHeadingSection[]>([]);
@@ -120,11 +118,8 @@ export function useHeadingFlow({
 
   const fetchHeadingSections = useCallback(
     async (sid: string): Promise<SessionHeadingSection[]> => {
-      // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
-      const liffAccessToken = await getAccessToken();
       const res = await headingActions.getHeadingSections({
         sessionId: sid,
-        liffAccessToken: liffAccessToken.trim(),
       });
       // セッション切り替え時の競合防止
       if (res.success && res.data && sid === currentSessionIdRef.current) {
@@ -133,37 +128,31 @@ export function useHeadingFlow({
       }
       return [];
     },
-    [getAccessToken]
+    []
   );
 
   const fetchLatestCombinedContent = useCallback(
     async (sid: string): Promise<void> => {
-      // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
-      const liffAccessToken = await getAccessToken();
       const res = await headingActions.getLatestCombinedContent({
         sessionId: sid,
-        liffAccessToken: liffAccessToken.trim(),
       });
       if (res.success && sid === currentSessionIdRef.current) {
         setLatestCombinedContent(res.data ?? null);
       }
     },
-    [getAccessToken]
+    []
   );
 
   const fetchCombinedContentVersions = useCallback(
     async (sid: string): Promise<void> => {
-      // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
-      const liffAccessToken = await getAccessToken();
       const res = await headingActions.getCombinedContentVersions({
         sessionId: sid,
-        liffAccessToken: liffAccessToken.trim(),
       });
       if (res.success && sid === currentSessionIdRef.current) {
         setCombinedContentVersions(res.data);
       }
     },
-    [getAccessToken]
+    []
   );
 
   // セッション切り替え時にステートをリセットして最新データを取得
@@ -254,12 +243,9 @@ export function useHeadingFlow({
           : [];
 
         if (headings.length > 0) {
-          // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
-          const liffAccessToken = await getAccessToken();
           const res = await headingActions.initializeHeadingSections({
             sessionId,
             step5Markdown: trimmedBasic,
-            liffAccessToken: liffAccessToken.trim(),
           });
           if (res.success) {
             const sections = await fetchHeadingSections(sessionId);
@@ -304,7 +290,6 @@ export function useHeadingFlow({
     isHeadingInitInFlight,
     isSessionLoading,
     fetchHeadingSections,
-    getAccessToken,
     hasAttemptedHeadingInit,
     headingInitError,
     hasFetchCompleted,
@@ -324,13 +309,10 @@ export function useHeadingFlow({
       setIsSavingHeading(true);
       setHeadingSaveError(null);
       try {
-        // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
-        const liffAccessToken = await getAccessToken();
         const res = await headingActions.saveHeadingSection({
           sessionId,
           headingKey,
           content,
-          liffAccessToken: liffAccessToken.trim(),
         });
 
         if (res.success) {
@@ -374,7 +356,6 @@ export function useHeadingFlow({
       activeHeading,
       resolvedCanvasStep,
       fetchHeadingSections,
-      getAccessToken,
       isHeadingFlowActive,
     ]
   );
@@ -420,12 +401,9 @@ export function useHeadingFlow({
         const headings = trimmedBasic ? extractHeadingsFromMarkdown(trimmedBasic) : [];
 
         if (headings.length > 0) {
-          // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
-          const liffAccessToken = await getAccessToken();
           const res = await headingActions.initializeHeadingSections({
             sessionId: sid,
             step5Markdown: trimmedBasic,
-            liffAccessToken: liffAccessToken.trim(),
           });
           if (res.success) {
             const sections = await fetchHeadingSections(sid);
@@ -456,7 +434,7 @@ export function useHeadingFlow({
         }
       }
     },
-    [fetchHeadingSections, getAccessToken]
+    [fetchHeadingSections]
   );
 
   const selectedCombinedContent = useMemo(() => {

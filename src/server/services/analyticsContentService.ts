@@ -3,7 +3,7 @@ import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflic
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+
 import { normalizeToPath } from '@/lib/ga4-utils';
 import type { AnnotationRecord } from '@/types/annotation';
 import type {
@@ -376,15 +376,13 @@ export class AnalyticsContentService {
   }
 
   private async resolveUser(): Promise<{ userId: string }> {
-    const { accessToken: liffAccessToken, refreshToken } = await getLiffTokensFromCookies();
-
-    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
 
     const conflictMessage = getEmailLinkConflictMessage(authResult);
     if (conflictMessage !== undefined) {
       throw new AuthEmailLinkConflictError(conflictMessage);
     }
-    if (authResult.needsReauth || authResult.error || !authResult.userId) {
+    if (authResult.error || !authResult.userId) {
       throw new Error(authResult.error || 'ユーザー認証に失敗しました');
     }
 

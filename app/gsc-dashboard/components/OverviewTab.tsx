@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { getQueryImportToastMessage } from '@/lib/gsc-import';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/components/AuthProvider';
 import {
   Dialog,
   DialogContent,
@@ -78,10 +77,8 @@ export function OverviewTab({
   onRunQueryImport,
   onRefreshDetail,
 }: OverviewTabProps) {
-  const { isOwnerViewMode } = useAuth();
   const [isQueryImporting, setIsQueryImporting] = useState(false);
   const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
-  const isReadOnly = isOwnerViewMode;
 
   if (detailLoading) {
     return (
@@ -106,7 +103,6 @@ export function OverviewTab({
   }
 
   const handleSync = async () => {
-    if (isReadOnly) return;
     if (!detail.annotation.canonical_url) {
       toast.error('記事URLが未登録です');
       return;
@@ -154,7 +150,7 @@ export function OverviewTab({
                     variant="outline"
                     size="sm"
                     className="h-8 border-blue-200 text-blue-600 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-300"
-                    disabled={isQueryImporting || !detail.annotation.canonical_url || isReadOnly}
+                    disabled={isQueryImporting || !detail.annotation.canonical_url}
                   >
                     <RefreshCw
                       className={cn('w-3.5 h-3.5 mr-1.5', isQueryImporting && 'animate-spin')}
@@ -175,7 +171,7 @@ export function OverviewTab({
                     <DialogClose asChild>
                       <Button variant="outline">キャンセル</Button>
                     </DialogClose>
-                    <Button onClick={handleSync} disabled={isQueryImporting || isReadOnly}>
+                    <Button onClick={handleSync} disabled={isQueryImporting}>
                       {isQueryImporting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       同期を実行
                     </Button>

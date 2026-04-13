@@ -3,12 +3,6 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { isAdmin as isAdminRole } from '@/authUtils';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
-import {
-  isViewModeEnabled,
-  resolveViewModeRole,
-  VIEW_MODE_ERROR_MESSAGE,
-} from '@/server/lib/view-mode';
-import { getLiffTokensFromRequest } from '@/server/lib/auth-helpers';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 
@@ -32,9 +26,6 @@ export async function POST(request: NextRequest) {
         : undefined;
     const contentTypes = normalizeContentTypes(parsedContentTypes);
 
-    // 認証情報はCookieから取得（セキュリティベストプラクティス）
-    const { accessToken: liffToken, refreshToken } = getLiffTokensFromRequest(request);
-
     if (!wpType) {
       return NextResponse.json(
         { success: false, error: ERROR_MESSAGES.AUTH.AUTHENTICATION_REQUIRED },
@@ -42,7 +33,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const authResult = await authMiddleware(liffToken, refreshToken, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
 
     const conflict409 = nextJson409IfEmailLinkConflict(authResult);
     if (conflict409) return conflict409;
@@ -52,22 +43,6 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
-    if (authResult.viewMode || authResult.ownerUserId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED,
-        },
-        { status: 403 }
-      );
-    }
-    if (await isViewModeEnabled(resolveViewModeRole(authResult))) {
-      return NextResponse.json(
-        { success: false, error: VIEW_MODE_ERROR_MESSAGE },
-        { status: 403 }
-      );
-    }
-
     const isAdmin = isAdminRole(authResult.userDetails.role);
 
     // 管理者以外はWordPress.comを禁止

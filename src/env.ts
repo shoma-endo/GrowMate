@@ -1,8 +1,6 @@
 import { z } from 'zod';
 
 const clientEnvSchema = z.object({
-  NEXT_PUBLIC_LIFF_ID: z.string().min(1),
-  NEXT_PUBLIC_LIFF_CHANNEL_ID: z.string().min(1),
   NEXT_PUBLIC_SUPABASE_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   NEXT_PUBLIC_SITE_URL: z.url(),
@@ -12,8 +10,6 @@ const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
-  LINE_CHANNEL_ID: z.string().min(1),
-  LINE_CHANNEL_SECRET: z.string().min(1),
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
   GOOGLE_SEARCH_CONSOLE_REDIRECT_URI: z.url().optional(),
@@ -30,8 +26,6 @@ export type Env = ClientEnv & ServerEnv;
 const isServer = typeof window === 'undefined';
 
 const clientRuntimeEnv = {
-  NEXT_PUBLIC_LIFF_ID: process.env.NEXT_PUBLIC_LIFF_ID,
-  NEXT_PUBLIC_LIFF_CHANNEL_ID: process.env.NEXT_PUBLIC_LIFF_CHANNEL_ID,
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
@@ -45,8 +39,6 @@ if (isServer) {
     SUPABASE_SERVICE_ROLE: process.env.SUPABASE_SERVICE_ROLE,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-    LINE_CHANNEL_ID: process.env.LINE_CHANNEL_ID,
-    LINE_CHANNEL_SECRET: process.env.LINE_CHANNEL_SECRET,
     GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
     GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
     GOOGLE_SEARCH_CONSOLE_REDIRECT_URI: process.env.GOOGLE_SEARCH_CONSOLE_REDIRECT_URI,
@@ -63,8 +55,6 @@ const serverOnlyKeys = new Set<keyof ServerEnv>([
   'SUPABASE_SERVICE_ROLE',
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',
-  'LINE_CHANNEL_ID',
-  'LINE_CHANNEL_SECRET',
   'GOOGLE_OAUTH_CLIENT_ID',
   'GOOGLE_OAUTH_CLIENT_SECRET',
   'GOOGLE_SEARCH_CONSOLE_REDIRECT_URI',
@@ -75,8 +65,6 @@ const serverOnlyKeys = new Set<keyof ServerEnv>([
 ]);
 
 const clientKeys = new Set<keyof ClientEnv>([
-  'NEXT_PUBLIC_LIFF_ID',
-  'NEXT_PUBLIC_LIFF_CHANNEL_ID',
   'NEXT_PUBLIC_SUPABASE_URL',
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'NEXT_PUBLIC_SITE_URL',

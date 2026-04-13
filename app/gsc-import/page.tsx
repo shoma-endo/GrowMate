@@ -23,7 +23,6 @@ import {
   isEmailLinkConflictResult,
   replaceToEmailLinkConflictLogin,
 } from '@/lib/auth/emailLinkConflictClient';
-import { canRunBulkImport } from '@/authUtils';
 
 type ImportResponse = {
   success: boolean;
@@ -77,7 +76,7 @@ const isOAuthTokenError = (errorMessage: string | undefined): boolean => {
 };
 
 export default function GscImportPage() {
-  const { user, isOwnerViewMode } = useAuth();
+  const { user } = useAuth();
   const [startDate, setStartDate] = useState(daysAgoISO(30));
   const [endDate, setEndDate] = useState(todayISO());
   const [searchType, setSearchType] = useState<'web' | 'image' | 'news'>('web');
@@ -89,12 +88,8 @@ export default function GscImportPage() {
   const querySummaryLabels = result?.data?.querySummary
     ? getQuerySummaryLabels(result.data.querySummary)
     : null;
-  const isStaffUser = Boolean(user?.ownerUserId);
-  const canImport = canRunBulkImport({
-    role: user?.role ?? null,
-    ownerUserId: user?.ownerUserId,
-    isOwnerViewMode,
-  });
+  const role = user?.role ?? null;
+  const canImport = Boolean(role && role !== 'unavailable');
   const isReadOnly = !canImport;
 
   // 期間（日数）を計算
@@ -178,9 +173,7 @@ export default function GscImportPage() {
         <div className="mx-auto max-w-3xl">
           <Alert>
             <AlertDescription>
-              {isStaffUser
-                ? 'この画面はオーナーのみ利用できます。オーナーでログインしてください。'
-                : '閲覧モードでは操作できません。通常モードに切り替えてください。'}
+              この画面を利用する権限がありません。
             </AlertDescription>
           </Alert>
         </div>

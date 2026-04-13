@@ -8,13 +8,8 @@ import { normalizeUrl } from '@/lib/normalize-url';
 import { buildGscDateRange } from '@/lib/date-utils';
 import type { GscEvaluationOutcome } from '@/types/gsc';
 import type { UserRole } from '@/types/user';
-import {
-  isViewModeEnabled,
-  resolveViewModeRole,
-  VIEW_MODE_ERROR_MESSAGE,
-} from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
 const supabaseService = new SupabaseService();
@@ -94,15 +89,13 @@ function gscAuthErrorPayload(authId: Extract<GscDashboardAuthIdResult, { error: 
 }
 
 const getAuthUserId = async (): Promise<GscDashboardAuthIdResult> => {
-  const { accessToken, refreshToken } = await getLiffTokensFromCookies();
-
-  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
   const linkConflict = emailLinkConflictErrorPayload(authResult);
   if (linkConflict) return { error: linkConflict.error, emailLinkConflict: true };
   if (authResult.error || !authResult.userId) {
       return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
   }
-  return { userId: authResult.userId, role: resolveViewModeRole(authResult) };
+  return { userId: authResult.userId, role: authResult.userDetails?.role ?? null };
 };
 
 interface AccessibleUserIdsResult {
@@ -163,14 +156,14 @@ export async function fetchGscDetail(
       return { success: false, error: ERROR_MESSAGES.GSC.TARGET_NOT_FOUND };
     }
 
-  const ownerUserId = annotation.user_id;
-  const credential = await supabaseService.getGscCredentialByUserId(ownerUserId);
+  const annotationUserId = annotation.user_id;
+  const credential = await supabaseService.getGscCredentialByUserId(annotationUserId);
 
   let metricsQuery = supabaseService
     .getClient()
     .from('gsc_page_metrics')
     .select('date, position, ctr, clicks, impressions')
-    .eq('user_id', ownerUserId)
+    .eq('user_id', annotationUserId)
     .eq('content_annotation_id', annotationId)
     .gte('date', startIso)
     .order('date', { ascending: true });
@@ -189,7 +182,7 @@ export async function fetchGscDetail(
     .getClient()
     .from('gsc_article_evaluation_history')
     .select('*')
-    .eq('user_id', ownerUserId)
+    .eq('user_id', annotationUserId)
     .eq('content_annotation_id', annotationId)
     .order('created_at', { ascending: false })
     .limit(100);
@@ -202,7 +195,7 @@ export async function fetchGscDetail(
     .getClient()
     .from('gsc_article_evaluations')
     .select('*')
-    .eq('user_id', ownerUserId)
+    .eq('user_id', annotationUserId)
     .eq('content_annotation_id', annotationId)
     .maybeSingle();
 
@@ -404,10 +397,7 @@ export async function registerEvaluation(params: {
     if ('error' in authId) {
       return gscAuthErrorPayload(authId);
     }
-    const { userId, role } = authId;
-    if (await isViewModeEnabled(role ?? null)) {
-      return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
-    }
+    const { userId } = authId;
 
     const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
     if (accessCheckError || !accessibleIds) {
@@ -457,13 +447,13 @@ export async function registerEvaluation(params: {
       return { success: false, error: ERROR_MESSAGES.GSC.ARTICLE_NOT_FOUND };
     }
 
-    const ownerUserId = annotation.user_id;
+    const annotationUserId = annotation.user_id;
 
     const { data: existing, error: duplicateError } = await supabaseService
       .getClient()
       .from('gsc_article_evaluations')
       .select('id')
-      .eq('user_id', ownerUserId)
+      .eq('user_id', annotationUserId)
       .eq('content_annotation_id', contentAnnotationId)
       .maybeSingle();
 
@@ -478,7 +468,7 @@ export async function registerEvaluation(params: {
       .getClient()
       .from('gsc_article_evaluations')
       .insert({
-        user_id: ownerUserId,
+        user_id: annotationUserId,
         content_annotation_id: contentAnnotationId,
         property_uri: propertyUri,
         base_evaluation_date: baseEvaluationDate,
@@ -513,10 +503,7 @@ export async function updateEvaluation(params: {
     if ('error' in authId) {
       return gscAuthErrorPayload(authId);
     }
-    const { userId, role } = authId;
-    if (await isViewModeEnabled(role ?? null)) {
-      return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
-    }
+    const { userId } = authId;
 
     const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
     if (accessCheckError || !accessibleIds) {
@@ -560,13 +547,13 @@ export async function updateEvaluation(params: {
       return { success: false, error: ERROR_MESSAGES.GSC.ARTICLE_NOT_FOUND };
     }
 
-    const ownerUserId = annotation.user_id;
+    const annotationUserId = annotation.user_id;
 
     const { data: evaluation, error: evaluationError } = await supabaseService
       .getClient()
       .from('gsc_article_evaluations')
       .select('id')
-      .eq('user_id', ownerUserId)
+      .eq('user_id', annotationUserId)
       .eq('content_annotation_id', contentAnnotationId)
       .maybeSingle();
 
@@ -599,7 +586,7 @@ export async function updateEvaluation(params: {
       .from('gsc_article_evaluations')
       .update(updateData)
       .eq('id', evaluation.id)
-      .eq('user_id', ownerUserId);
+      .eq('user_id', annotationUserId);
 
     if (updateError) {
       throw new Error(updateError.message || '評価基準日の更新に失敗しました');
@@ -698,10 +685,10 @@ export async function fetchQueryAnalysis(
       return { success: false, error: ERROR_MESSAGES.GSC.ARTICLE_NOT_FOUND_GENERIC };
     }
 
-    const ownerUserId = annotation.user_id;
+    const annotationUserId = annotation.user_id;
 
     // GSC Credential取得（既定のPropertyURI）
-    const credential = await supabaseService.getGscCredentialByUserId(ownerUserId);
+    const credential = await supabaseService.getGscCredentialByUserId(annotationUserId);
     if (!credential) {
       return { success: false, error: ERROR_MESSAGES.GSC.CREDENTIAL_NOT_FOUND };
     }
@@ -713,7 +700,7 @@ export async function fetchQueryAnalysis(
 
     if (preferredPropertyUri) {
       rpcData = await fetchQueryAnalysisRows({
-        userId: ownerUserId,
+        userId: annotationUserId,
         propertyUri: preferredPropertyUri,
         normalizedUrl,
         startIso,
@@ -725,7 +712,7 @@ export async function fetchQueryAnalysis(
 
     if (rpcData.length === 0) {
       const propertyResolution = await resolveBestQueryPropertyUri({
-        userId: ownerUserId,
+        userId: annotationUserId,
         normalizedUrl,
         startIso,
         endIso,
@@ -744,7 +731,7 @@ export async function fetchQueryAnalysis(
 
       if (shouldRetryWithResolvedProperty) {
         rpcData = await fetchQueryAnalysisRows({
-          userId: ownerUserId,
+          userId: annotationUserId,
           propertyUri: resolvedPropertyUri,
           normalizedUrl,
           startIso,
@@ -829,10 +816,7 @@ export async function runQueryImportForAnnotation(
     if ('error' in authId) {
       return gscAuthErrorPayload(authId);
     }
-    const { userId, role } = authId;
-    if (await isViewModeEnabled(role ?? null)) {
-      return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
-    }
+    const { userId } = authId;
 
     const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
     if (accessCheckError || !accessibleIds) {
@@ -858,8 +842,8 @@ export async function runQueryImportForAnnotation(
       return { success: false, error: ERROR_MESSAGES.GSC.ARTICLE_URL_NOT_FOUND };
     }
 
-    const ownerUserId = annotation.user_id;
-    const credential = await supabaseService.getGscCredentialByUserId(ownerUserId);
+    const annotationUserId = annotation.user_id;
+    const credential = await supabaseService.getGscCredentialByUserId(annotationUserId);
     if (!credential?.propertyUri) {
       return { success: false, error: ERROR_MESSAGES.GSC.CREDENTIAL_NOT_FOUND };
     }
@@ -889,7 +873,7 @@ export async function runQueryImportForAnnotation(
       await supabaseService.cleanupOldGscPageMetrics(annotationId, currentNormalizedUrl);
     }
 
-    const summary = await gscImportService.importPageAndQueryForUrlWithSplit(ownerUserId, {
+    const summary = await gscImportService.importPageAndQueryForUrlWithSplit(annotationUserId, {
       startDate: startIso,
       endDate: endIso,
       pageUrl: annotation.canonical_url,
@@ -919,10 +903,7 @@ export async function runEvaluationNow(contentAnnotationId: string) {
     if ('error' in authId) {
       return gscAuthErrorPayload(authId);
     }
-    const { userId, role } = authId;
-    if (await isViewModeEnabled(role ?? null)) {
-      return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
-    }
+    const { userId } = authId;
 
     const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
     if (accessCheckError || !accessibleIds) {
@@ -951,10 +932,10 @@ export async function runEvaluationNow(contentAnnotationId: string) {
     // 動的インポートで循環参照を回避
     const { gscEvaluationService } = await import('@/server/services/gscEvaluationService');
 
-    const ownerUserId = annotation.user_id;
+    const annotationUserId = annotation.user_id;
 
     // 手動実行なので force: true で評価期限をスキップ
-    const summary = await gscEvaluationService.runDueEvaluationsForUser(ownerUserId, {
+    const summary = await gscEvaluationService.runDueEvaluationsForUser(annotationUserId, {
       force: true,
       contentAnnotationId,
     });

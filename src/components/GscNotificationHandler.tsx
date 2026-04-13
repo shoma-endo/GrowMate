@@ -6,15 +6,12 @@ import { toast } from 'sonner';
 import { Bell, X } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { getUnreadSuggestionsCount } from '@/server/actions/gscNotification.actions';
-import { hasOwnerRole } from '@/authUtils';
 
 const TOAST_SESSION_KEY = 'gsc_notification_toast_shown';
 const UNREAD_EVENT = 'gsc-unread-updated';
 
 export function GscNotificationHandler() {
-  const { isLoggedIn, isLoading, user, isLineCookieAuth } = useAuth();
-  // LIFF 未初期化の LINE cookie ユーザー（サーバーサイド OAuth 経由）も LINE ユーザーとして扱う
-  const isLineAuthenticated = isLoggedIn || isLineCookieAuth;
+  const { isLoggedIn, isLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const toastShownRef = useRef(false);
@@ -93,12 +90,10 @@ export function GscNotificationHandler() {
     [router]
   );
 
-  const userRole = user?.role ?? null;
-
   const fetchUnread = useCallback(async () => {
-    if (!isLineAuthenticated || isLoading || isPublicPage || hasOwnerRole(userRole)) return;
+    if (!isLoggedIn || isLoading || isPublicPage) return;
 
-      try {
+    try {
       const result = await getUnreadSuggestionsCount();
       setUnreadCount(result.count);
       // セッション中に一度だけトースト表示
@@ -113,7 +108,7 @@ export function GscNotificationHandler() {
     } catch (error) {
       console.error('Failed to fetch unread suggestions', error);
     }
-  }, [isLineAuthenticated, isLoading, isPublicPage, showToast, userRole]);
+  }, [isLoggedIn, isLoading, isPublicPage, showToast]);
 
   // 初回マウント時と画面遷移時に再取得
   useEffect(() => {
@@ -122,13 +117,13 @@ export function GscNotificationHandler() {
 
   // ログアウト時またはパブリックページ遷移時にリセット
   useEffect(() => {
-    if ((!isLineAuthenticated && !isLoading) || isPublicPage || hasOwnerRole(userRole)) {
+    if ((!isLoggedIn && !isLoading) || isPublicPage) {
       toastShownRef.current = false;
       sessionStorage.removeItem(TOAST_SESSION_KEY);
       setUnreadCount(null);
       showToast(0);
     }
-  }, [isLineAuthenticated, isLoading, isPublicPage, showToast, userRole]);
+  }, [isLoggedIn, isLoading, isPublicPage, showToast]);
 
   // 履歴タブなどで既読にされた際の通知を受けてカウント更新
   useEffect(() => {

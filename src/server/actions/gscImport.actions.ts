@@ -6,9 +6,8 @@ import { gscImportService } from '@/server/services/gscImportService';
 import { gscEvaluationService } from '@/server/services/gscEvaluationService';
 import { splitRangeByDays, aggregateImportResults } from '@/server/lib/gsc-import-utils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
-import { canRunBulkImport } from '@/authUtils';
 
 export interface GscImportParams {
   startDate: string;
@@ -20,26 +19,16 @@ export interface GscImportParams {
 
 export async function runGscImport(params: GscImportParams) {
   try {
-    const { accessToken, refreshToken } = await getLiffTokensFromCookies();
-
-    const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
     const linkConflict = emailLinkConflictErrorPayload(authResult);
     if (linkConflict) return linkConflict;
     if (authResult.error || !authResult.userId) {
       return { success: false, error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
     }
-    const canImport = canRunBulkImport({
-      role: authResult.userDetails?.role ?? null,
-      ownerUserId: authResult.ownerUserId,
-      isOwnerViewMode: Boolean(authResult.viewMode),
-    });
-    if (!canImport) {
-      return {
-        success: false,
-        error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED,
-      };
+    const role = authResult.userDetails?.role ?? null;
+    if (!role || role === 'unavailable') {
+      return { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED };
     }
-    // canRunBulkImport に定義したロール別条件でインポート可否を判定
 
     const { startDate, endDate, searchType = 'web', maxRows = 1000, runEvaluation = true } = params;
 

@@ -1,4 +1,3 @@
-import { cookies } from 'next/headers';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
@@ -11,9 +10,6 @@ import { toUser } from '@/types/user';
 import { isAdmin } from '@/authUtils';
 
 export async function GET(request: NextRequest) {
-  const cookieStore = await cookies();
-  const liffAccessToken = cookieStore.get('line_access_token')?.value;
-  const refreshToken = cookieStore.get('line_refresh_token')?.value;
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID ?? '';
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? '';
   const redirectUri = process.env.GOOGLE_ADS_REDIRECT_URI ?? ''; // Google Ads用のリダイレクトURI
@@ -39,8 +35,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
   const conflictRedirect = nextResponseRedirectLoginIfEmailLinkConflict(authResult, request);
   if (conflictRedirect) return conflictRedirect;
   if (authResult.error || !authResult.userId) {
@@ -49,13 +44,6 @@ export async function GET(request: NextRequest) {
       { status: 401 }
     );
   }
-  if (authResult.viewMode || authResult.ownerUserId) {
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED },
-      { status: 403 }
-    );
-  }
-
   // 管理者権限チェック（Google Ads 連携は審査完了まで管理者のみ）
   try {
     const supabaseService = new SupabaseService();

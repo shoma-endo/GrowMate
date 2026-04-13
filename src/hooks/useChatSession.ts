@@ -60,7 +60,6 @@ const createStreamingMessagePair = (content: string, model: string) => {
 interface StreamingParams {
   content: string;
   model: string;
-  accessToken: string;
   currentSessionId: string;
   recentMessages: SerializableMessage[];
   systemPrompt?: string;
@@ -70,8 +69,7 @@ interface StreamingParams {
 }
 
 export const useChatSession = (
-  chatService: IChatService,
-  getAccessToken: () => Promise<string>
+  chatService: IChatService
 ): ChatSessionHook => {
   const [state, setState] = useState<ChatState>(initialChatState);
   // loadSession() の最新リクエストを追跡（古いレスポンスで state が上書きされるのを防ぐ）
@@ -125,7 +123,6 @@ export const useChatSession = (
     async ({
       content,
       model,
-      accessToken,
       currentSessionId,
       recentMessages,
       systemPrompt,
@@ -154,7 +151,6 @@ export const useChatSession = (
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             sessionId: currentSessionId || undefined,
@@ -367,7 +363,6 @@ export const useChatSession = (
       setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
 
       try {
-        const accessToken = await getAccessToken();
         const resolvedSessionId =
           options?.sessionIdOverride?.trim() || state.currentSessionId || '';
         const isDifferentSession =
@@ -376,7 +371,6 @@ export const useChatSession = (
         const streamingParams: StreamingParams = {
           content,
           model,
-          accessToken,
           currentSessionId: resolvedSessionId,
           recentMessages: options?.skipHistory || isDifferentSession
             ? []
@@ -420,7 +414,7 @@ export const useChatSession = (
         return false;
       }
     },
-    [state.currentSessionId, state.messages, getAccessToken, handleStreamingMessage]
+    [state.currentSessionId, state.messages, handleStreamingMessage]
   );
 
   const deleteSession = useCallback(

@@ -72,9 +72,9 @@ export class ModelHandlerService {
   }
 
   async handleStart(userId: string, data: StartChatInput): Promise<ChatResponse> {
-    const { userMessage, model, liffAccessToken, serviceId } = data;
+    const { userMessage, model, serviceId } = data;
     // キャッシュ戦略を活用した動的プロンプト取得
-    const systemPrompt = await getSystemPrompt(model, liffAccessToken, undefined, serviceId);
+    const systemPrompt = await getSystemPrompt(model, undefined, undefined, serviceId);
 
     switch (model) {
       case 'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2':
@@ -96,13 +96,12 @@ export class ModelHandlerService {
       messages,
       userMessage,
       model,
-      liffAccessToken,
       systemPrompt: customSystemPrompt,
       serviceId,
     } = data;
     // カスタムsystemPromptが渡されていればそれを使用、なければキャッシュ戦略を活用した動的プロンプト取得
     const systemPrompt =
-      customSystemPrompt ?? (await getSystemPrompt(model, liffAccessToken, sessionId, serviceId));
+      customSystemPrompt ?? (await getSystemPrompt(model, undefined, sessionId, serviceId));
 
     if (model === 'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2') {
       const config = MODEL_CONFIGS[model];

@@ -1,8 +1,7 @@
 import { cookies } from 'next/headers';
 import { authMiddleware } from './auth.middleware';
 import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
-import type { User, UserRole } from '@/types/user';
-import { resolveViewModeRole } from '@/server/lib/view-mode';
+import type { User } from '@/types/user';
 import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies';
 
 /**
@@ -12,9 +11,6 @@ export interface AuthContext {
   userId: string;
   cookieStore: ReadonlyRequestCookies;
   userDetails?: User | null;
-  viewModeRole?: UserRole | null;
-  ownerUserId?: string | null | undefined;
-  actorUserId?: string | undefined;
 }
 
 /**
@@ -39,18 +35,14 @@ export function isWithAuthEmailLinkConflict(
 
 /**
  * Server Actions / Route Handlers 用の認証ラッパー。
- * メール OTP が主で LINE Cookie が残存し得るため、LINE 検証失敗時は Email セッションへフォールバックする（authMiddleware と同趣旨）。
+ * Email セッションで認証を解決する。
  */
 export async function withAuth<T>(
   handler: (context: AuthContext) => Promise<T>
 ): Promise<T | WithAuthEmailLinkConflict> {
   const cookieStore = await cookies();
-  const liffAccessToken = cookieStore.get('line_access_token')?.value;
-  const refreshToken = cookieStore.get('line_refresh_token')?.value;
 
-  const authResult = await authMiddleware(liffAccessToken, refreshToken, {
-    allowEmailFallback: true,
-  });
+  const authResult = await authMiddleware();
 
   const conflictMessage = getEmailLinkConflictMessage(authResult);
   if (conflictMessage !== undefined) {
@@ -69,8 +61,5 @@ export async function withAuth<T>(
     userId: authResult.userId,
     cookieStore,
     userDetails: authResult.userDetails ?? null,
-    viewModeRole: resolveViewModeRole(authResult),
-    ownerUserId: authResult.ownerUserId,
-    actorUserId: authResult.actorUserId,
   });
 }

@@ -15,7 +15,6 @@ import { toast } from 'sonner';
 import { markSuggestionAsRead } from '@/server/actions/gscNotification.actions';
 import type { GscEvaluationHistoryItem } from '../types';
 import { formatDateTime } from '@/lib/date-utils';
-import { useAuth } from '@/components/AuthProvider';
 import { EvaluationResultAlert } from './evaluation-history/EvaluationResultAlert';
 import {
   getEvaluationHistoryState,
@@ -31,11 +30,9 @@ export function EvaluationHistoryTab({
   history: initialHistory,
   onHistoryRead,
 }: EvaluationHistoryTabProps) {
-  const { isOwnerViewMode } = useAuth();
   const [history, setHistory] = useState(initialHistory);
   const [selectedHistory, setSelectedHistory] = useState<GscEvaluationHistoryItem | null>(null);
   const [isPending, startTransition] = useTransition();
-  const isReadOnly = isOwnerViewMode;
 
   // 親からの最新履歴に同期（ローカルで既読にした状態を保持）
   useEffect(() => {
@@ -61,7 +58,6 @@ export function EvaluationHistoryTab({
   }, [initialHistory, selectedHistory]);
 
   const handleMarkAsRead = (historyId: string) => {
-    if (isReadOnly) return;
     startTransition(async () => {
       const result = await markSuggestionAsRead(historyId);
       if (result.success) {
@@ -234,7 +230,7 @@ export function EvaluationHistoryTab({
               !selectedHistory.is_read && (
                 <Button
                   onClick={() => handleMarkAsRead(selectedHistory.id)}
-                  disabled={isPending || isReadOnly}
+                  disabled={isPending}
                   className="gap-2"
                 >
                   {isPending ? (

@@ -9,7 +9,6 @@ import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import { runWordpressBulkImport } from '@/server/actions/wordpressImport.actions';
-import { canRunBulkImport } from '@/authUtils';
 
 // WordPress OAuth/認証エラーかどうかを判定
 const isWordPressAuthError = (errorMessage: string | undefined): boolean => {
@@ -60,13 +59,9 @@ export default function WordPressImportPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
-  const { getAccessToken, user, isOwnerViewMode } = useAuth();
-  const isStaffUser = Boolean(user?.ownerUserId);
-  const canImport = canRunBulkImport({
-    role: user?.role ?? null,
-    ownerUserId: user?.ownerUserId,
-    isOwnerViewMode,
-  });
+  const { user } = useAuth();
+  const role = user?.role ?? null;
+  const canImport = Boolean(role && role !== 'unavailable');
 
   if (!canImport) {
     return (
@@ -74,9 +69,7 @@ export default function WordPressImportPage() {
         <div className="mx-auto max-w-3xl">
           <Alert>
             <AlertDescription>
-              {isStaffUser
-                ? 'この画面はオーナーのみ利用できます。オーナーでログインしてください。'
-                : '閲覧モードでは操作できません。通常モードに切り替えてください。'}
+              この画面を利用する権限がありません。
             </AlertDescription>
           </Alert>
         </div>
@@ -148,8 +141,7 @@ export default function WordPressImportPage() {
     setResult(null);
 
     try {
-      const token = await getAccessToken();
-      const response = await runWordpressBulkImport(token);
+      const response = await runWordpressBulkImport();
 
       if (!response.success) {
         throw new Error(response.error || 'インポートに失敗しました');

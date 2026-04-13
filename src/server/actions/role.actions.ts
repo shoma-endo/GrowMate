@@ -1,74 +1,47 @@
 'use server';
 
-import { userService } from '@/server/services/userService';
 import { isUnavailable } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 /**
  * ユーザーの権限を確認するサーバーアクション
- * liffAccessToken が空の場合は Email セッション経由で解決する
+ * Email セッション経由で解決する
  */
-export const checkUserRole = async (liffAccessToken: string) => {
+export const checkUserRole = async (_liffAccessToken?: string) => {
   try {
-    if (!liffAccessToken) {
-      const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
-      const result = await resolveEmailUserWithReason();
-      if (!result.ok) {
-        if (result.reason === 'transient') {
-          return {
-            success: false,
-            error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
-            role: 'trial' as const,
-          };
-        }
-        if (result.reason === 'email_link_conflict') {
-          return {
-            success: false,
-            error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT,
-            role: 'trial' as const,
-          };
-        }
-        return {
-          success: false,
-          error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND,
-          role: 'trial' as const,
-        };
-      }
-      if (isUnavailable(result.user.role)) {
+    const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
+    const result = await resolveEmailUserWithReason();
+    if (!result.ok) {
+      if (result.reason === 'transient') {
         return {
           success: false,
           error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
-          role: result.user.role || ('trial' as const),
+          role: 'trial' as const,
         };
       }
-      return {
-        success: true,
-        role: result.user.role || ('trial' as const),
-      };
-    }
-
-    const user = await userService.getUserFromLiffToken(liffAccessToken);
-
-    if (!user) {
+      if (result.reason === 'email_link_conflict') {
+        return {
+          success: false,
+          error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT,
+          role: 'trial' as const,
+        };
+      }
       return {
         success: false,
         error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND,
         role: 'trial' as const,
       };
     }
-
-    // unavailableユーザーの場合は利用停止メッセージを返す
-    if (isUnavailable(user.role)) {
+    if (isUnavailable(result.user.role)) {
       return {
         success: false,
         error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
-        role: user.role || ('trial' as const),
+        role: result.user.role ?? ('trial' as const),
       };
     }
-
     return {
       success: true,
-      role: user.role || ('trial' as const),
+      role: result.user.role ?? ('trial' as const),
     };
   } catch (error) {
     console.error(

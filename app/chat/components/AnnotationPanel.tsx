@@ -11,7 +11,6 @@ import { usePersistedResizableWidth } from '@/hooks/usePersistedResizableWidth';
 import { AnnotationRecord } from '@/types/annotation';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
 import { useAnnotationForm } from '@/hooks/useAnnotationForm';
-import { useAuth } from '@/components/AuthProvider';
 
 interface Props {
   sessionId: string;
@@ -28,7 +27,6 @@ export default function AnnotationPanel({
   isVisible = true,
   onSaveSuccess,
 }: Props) {
-  const { isOwnerViewMode } = useAuth();
   const {
     form,
     updateField,
@@ -56,10 +54,8 @@ export default function AnnotationPanel({
     minWidth: 320,
     maxWidth: 1000,
   });
-  const isReadOnly = isOwnerViewMode;
 
   const handleSave = async () => {
-    if (isReadOnly) return;
     const result = await submit();
     if (!result.success) {
       return;
@@ -112,7 +108,7 @@ export default function AnnotationPanel({
       {/* コンテンツエリア - ヘッダーとの重なりを防ぐため上部パディングを調整 */}
       <div className="flex-1 overflow-auto p-4 ml-2" style={{ paddingTop: '80px' }}>
         <div className="space-y-5">
-          <fieldset disabled={isReadOnly}>
+          <fieldset>
             <AnnotationFormFields
               form={form}
               onFormChange={updateField}
@@ -139,7 +135,7 @@ export default function AnnotationPanel({
               <Button
                 size="sm"
                 onClick={handleSave}
-                disabled={isSaving || saveDone || isReadOnly}
+                disabled={isSaving || saveDone}
               >
                   {isSaving ? (
                     <>

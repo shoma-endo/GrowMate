@@ -21,12 +21,6 @@ import { ChatError, ChatErrorCode } from '../errors/ChatError';
 import type { ChatMessage as ServerChatMessage } from '@/types/chat';
 
 export class ChatService implements IChatService {
-  private accessTokenProvider: (() => Promise<string>) | null = null;
-
-  setAccessTokenProvider(provider: () => Promise<string>) {
-    this.accessTokenProvider = provider;
-  }
-
   async sendMessage(params: SendMessageParams): Promise<SendMessageResponse> {
     try {
       const response = params.isNewSession
@@ -46,8 +40,7 @@ export class ChatService implements IChatService {
 
   async deleteSession(sessionId: string): Promise<void> {
     try {
-      const accessToken = await this.getAccessToken();
-      const result = await deleteChatSessionSA(sessionId, accessToken);
+      const result = await deleteChatSessionSA(sessionId);
       if (!result.success) {
         if ('emailLinkConflict' in result && result.emailLinkConflict) {
           throw new AuthEmailLinkConflictError(result.error);
@@ -75,8 +68,7 @@ export class ChatService implements IChatService {
 
   async updateSessionTitle(sessionId: string, title: string): Promise<void> {
     try {
-      const accessToken = await this.getAccessToken();
-      const result = await updateChatSessionTitleSA(sessionId, title, accessToken);
+      const result = await updateChatSessionTitleSA(sessionId, title);
       if (!result.success) {
         throw new ChatError(
           result.error || 'チャットタイトルの更新に失敗しました',
@@ -98,8 +90,7 @@ export class ChatService implements IChatService {
 
   async updateSessionServiceId(sessionId: string, serviceId: string): Promise<void> {
     try {
-      const accessToken = await this.getAccessToken();
-      const result = await updateSessionServiceIdSA(sessionId, serviceId, accessToken);
+      const result = await updateSessionServiceIdSA(sessionId, serviceId);
       if (!result.success) {
         throw new ChatError(
           result.error || 'セッションのサービス更新に失敗しました',
@@ -121,8 +112,7 @@ export class ChatService implements IChatService {
 
   async loadSessions(): Promise<ChatSession[]> {
     try {
-      const accessToken = await this.getAccessToken();
-      const result = await getChatSessionsSA(accessToken);
+      const result = await getChatSessionsSA();
 
       if (result.error) {
         throw new ChatError(result.error, ChatErrorCode.SESSION_LOAD_FAILED);
@@ -155,8 +145,7 @@ export class ChatService implements IChatService {
 
   async loadSessionMessages(sessionId: string): Promise<ChatMessage[]> {
     try {
-      const accessToken = await this.getAccessToken();
-      const messagesResult = await getSessionMessagesSA(sessionId, accessToken);
+      const messagesResult = await getSessionMessagesSA(sessionId);
 
       if (messagesResult.error) {
         throw new ChatError(messagesResult.error, ChatErrorCode.MESSAGE_LOAD_FAILED, { sessionId });
@@ -190,11 +179,9 @@ export class ChatService implements IChatService {
 
   async searchSessions(query: string, options?: { limit?: number }): Promise<ChatSessionSearchResult[]> {
     try {
-      const accessToken = await this.getAccessToken();
       const result = await searchChatSessionsSA({
         query,
         limit: options?.limit,
-        liffAccessToken: accessToken,
       });
 
       if (result.error) {
@@ -233,7 +220,6 @@ export class ChatService implements IChatService {
     const response = await startChatSA({
       userMessage: params.content,
       model: params.model,
-      liffAccessToken: params.accessToken,
       systemPrompt: params.systemPrompt,
     });
 
@@ -254,7 +240,6 @@ export class ChatService implements IChatService {
       messages: params.messages,
       userMessage: params.content,
       model: params.model,
-      liffAccessToken: params.accessToken,
       systemPrompt: params.systemPrompt,
     });
 
@@ -263,27 +248,6 @@ export class ChatService implements IChatService {
       sessionId: (response.sessionId || params.sessionId) as string | undefined,
       error: response.error as string | undefined,
     };
-  }
-
-  private async getAccessToken(): Promise<string> {
-    try {
-      if (!this.accessTokenProvider) {
-        throw new ChatError(
-          'アクセストークンプロバイダーが設定されていません',
-          ChatErrorCode.AUTHENTICATION_FAILED
-        );
-      }
-      return await this.accessTokenProvider();
-    } catch (error) {
-      if (error instanceof ChatError) {
-        throw error;
-      }
-      throw new ChatError(
-        'アクセストークンの取得に失敗しました',
-        ChatErrorCode.AUTHENTICATION_FAILED,
-        { error }
-      );
-    }
   }
 
   private handleError(error: unknown): string {

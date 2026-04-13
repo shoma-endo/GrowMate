@@ -7,7 +7,6 @@ import { SessionHeadingSection } from '@/types/heading-flow';
 
 interface UseHeadingCanvasStateProps {
   sessionId: string;
-  getAccessToken: () => Promise<string>;
   /** 互換性のため残す。未使用（headingSections は useHeadingFlow から取得） */
   initialSections?: SessionHeadingSection[];
   /** 互換性のため残す。未使用（保存後のコールバックは ChatLayout で handleSaveHeadingSectionFromFlow に連携） */
@@ -18,7 +17,6 @@ interface UseHeadingCanvasStateProps {
 /** 見出し Canvas の表示インデックスとリセットのみを管理。保存処理は useHeadingFlow が担当。 */
 export function useHeadingCanvasState({
   sessionId,
-  getAccessToken,
   onResetComplete,
 }: UseHeadingCanvasStateProps) {
   const [viewingHeadingIndex, setViewingHeadingIndex] = useState<number | null>(null);
@@ -26,15 +24,13 @@ export function useHeadingCanvasState({
   const handleResetHeadingConfiguration = useCallback(
     async (options?: { preserveStep7Lead?: boolean }): Promise<boolean> => {
       try {
-        const token = await getAccessToken();
-        if (!sessionId || token == null) {
+        if (!sessionId) {
           toast.error(ERROR_MESSAGES.AUTH.REAUTHENTICATION_REQUIRED);
           return false;
         }
 
         const res = await resetHeadingSections({
           sessionId,
-          liffAccessToken: token,
           preserveStep7Lead: options?.preserveStep7Lead,
         });
 
@@ -57,7 +53,7 @@ export function useHeadingCanvasState({
         return false;
       }
     },
-    [sessionId, getAccessToken, onResetComplete]
+    [sessionId, onResetComplete]
   );
 
   return {

@@ -80,11 +80,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   isMobile = false,
   initialStep = null,
 }) => {
-  const { getAccessToken, isOwnerViewMode } = useAuth();
-
   // サービス選択ロジックをカスタムフックで管理
   const serviceSelection = useServiceSelection({
-    getAccessToken,
     currentSessionId: chatSession.state.currentSessionId,
   });
   const { services, selectedServiceId, servicesError } = serviceSelection.state;
@@ -269,7 +266,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   } = useHeadingFlow({
     sessionId: chatSession.state.currentSessionId ?? null,
     isSessionLoading: chatSession.state.isLoading,
-    getAccessToken,
     resolvedCanvasStep,
   });
 
@@ -286,7 +282,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     handleResetHeadingConfiguration,
   } = useHeadingCanvasState({
     sessionId: chatSession.state.currentSessionId || '',
-    getAccessToken,
     initialSections: headingSections as SessionHeadingSection[],
     onHeadingSaved: async () => {
       // 保存後、最新の状態（確定済みフラグや進捗）を同期するためにセッションをロード
@@ -362,7 +357,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     handleLoadBlogArticle,
   } = useWordpressSync({
     currentSessionId: chatSession.state.currentSessionId,
-    getAccessToken,
     loadSession: chatSession.actions.loadSession,
     setFollowLatestByStep,
     setSelectedVersionByStep,
@@ -951,11 +945,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         toast.error('セッションがありません。チャットを再度読み込んでください。');
         return;
       }
-      const token = await getAccessToken();
       // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
       const res = await getCombinedContentForStep7({
         sessionId: chatSession.state.currentSessionId,
-        liffAccessToken: token?.trim() ?? '',
       });
       if (!res.success || res.sections == null) {
         toast.error(
@@ -970,7 +962,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
       const saveRes = await saveCombinedContentForStep7({
         sessionId: chatSession.state.currentSessionId,
-        liffAccessToken: token,
       });
       if (!saveRes.success) {
         toast.error(saveRes.error ?? '完成形の保存に失敗しました。');
@@ -998,7 +989,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     }
   }, [
     chatSession.state.currentSessionId,
-    getAccessToken,
     resetCombinedVersionToLatest,
     refetchCombinedContentVersions,
     setSelectedVersionByStep,
@@ -1106,12 +1096,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         if (!chatSession.state.currentSessionId) {
           return { success: false, error: 'セッションが見つかりません' };
         }
-        const token = await getAccessToken();
         // '' は Email ユーザーの有効トークン。Server Action 側が Email セッションで解決する
         const res = await saveStep7UserLead({
           sessionId: chatSession.state.currentSessionId,
           userLead: userLead.trim(),
-          liffAccessToken: token?.trim() ?? '',
         });
         if (res.success) {
           await chatSession.actions.loadSession(chatSession.state.currentSessionId);
@@ -1125,7 +1113,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         };
       }
     },
-    [chatSession.state.currentSessionId, chatSession.actions, getAccessToken]
+    [chatSession.state.currentSessionId, chatSession.actions]
   );
 
   // ✅ 見出し単位生成: スタート/この見出しを生成ボタンでチャット送信の代わりに生成開始。
@@ -1440,9 +1428,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   const handleCanvasSelectionEdit = useCallback(
     async (payload: CanvasSelectionEditPayload): Promise<CanvasSelectionEditResult> => {
-      if (isOwnerViewMode) {
-        throw new Error('閲覧モードでは編集できません');
-      }
       if (canvasEditInFlightRef.current) {
         throw new Error('他のAI編集が進行中です。完了をお待ちください。');
       }
@@ -1493,9 +1478,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         if (!chatSession.state.currentSessionId) {
           throw new Error('セッションIDが見つかりません');
         }
-
-        // アクセストークン取得
-        const accessToken = await getAccessToken();
 
         // ストリーミングコンテンツをリセット
         setCanvasStreamingContent('');
@@ -1558,7 +1540,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             sessionId: chatSession.state.currentSessionId,
@@ -1746,10 +1727,8 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       annotationOpen,
       chatSession.actions,
       chatSession.state.currentSessionId,
-      getAccessToken,
       handleModelChange,
       headingSections,
-      isOwnerViewMode,
       isViewingCombinedContent,
       isViewingPastHeadingContent,
       latestBlogStep,
@@ -1854,7 +1833,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           }}
           content={canvasContent}
           isVisible={canvasPanelOpen}
-          {...(isOwnerViewMode ? {} : { onSelectionEdit: handleCanvasSelectionEdit })}
+          onSelectionEdit={handleCanvasSelectionEdit}
           versions={canvasVersionsWithMeta}
           activeVersionId={effectiveActiveVersionId}
           {...(effectiveOnVersionSelect !== undefined && {

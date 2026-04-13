@@ -6,7 +6,6 @@ import { buildWordPressServiceFromSettings } from '@/server/services/wordpressCo
 import { htmlToMarkdownForCanvas, sanitizeHtmlForCanvas } from '@/lib/canvas-content';
 import type { AnnotationRecord } from '@/types/annotation';
 import type { WordPressPostResponse } from '@/types/wordpress';
-import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { STEP7_ID, toBlogModel } from '@/lib/constants';
 
@@ -70,32 +69,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const authHeader = request.headers.get('authorization');
-    const liffAccessToken = authHeader?.replace('Bearer ', '') ?? undefined;
-
-    const authResult = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
     const linkConflict = emailLinkConflictErrorPayload(authResult);
     if (linkConflict) {
       return jsonResponse(409, linkConflict);
     }
-    if (authResult.needsReauth) {
-      return jsonResponse(401, {
-        success: false,
-        error: authResult.error || '再認証が必要です',
-      });
-    }
-
     if (authResult.error || !authResult.userId) {
       return jsonResponse(401, {
         success: false,
         error: authResult.error || 'ユーザー認証に失敗しました',
-      });
-    }
-
-    if (authResult.viewMode) {
-      return jsonResponse(403, {
-        success: false,
-        error: VIEW_MODE_ERROR_MESSAGE,
       });
     }
 

@@ -50,7 +50,6 @@ import { toast } from 'sonner';
 import { ANNOTATION_FIELD_KEYS, type AnnotationFieldKey } from '@/types/annotation';
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
 import { ChatService } from '@/domain/services/chatService';
-import { useAuth } from '@/components/AuthProvider';
 
 interface Props {
   items: AnalyticsContentItem[];
@@ -128,8 +127,6 @@ export default function AnalyticsTable({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { getAccessToken, isOwnerViewMode } = useAuth();
-  const isReadOnly = isOwnerViewMode;
   const [pendingRowKey, setPendingRowKey] = React.useState<string | null>(null);
   const [editingRowKey, setEditingRowKey] = React.useState<string | null>(null);
   const [form, setForm] = React.useState<Record<AnnotationFieldKey, string>>(createEmptyForm);
@@ -192,8 +189,7 @@ export default function AnalyticsTable({
     if (!chatServiceRef.current) {
       chatServiceRef.current = new ChatService();
     }
-    chatServiceRef.current.setAccessTokenProvider(getAccessToken);
-  }, [getAccessToken]);
+  }, []);
 
   // サーバーから渡された全件ベースのカテゴリ一覧を優先。空配列（取得失敗時）は items 由来にフォールバック
   const allCategories = React.useMemo(() => {
@@ -454,7 +450,6 @@ export default function AnalyticsTable({
 
   const handleDeleteClick = React.useCallback(
     (item: AnalyticsContentItem) => {
-      if (isReadOnly) return;
       const annotation = item.annotation;
       const sessionId = annotation?.session_id;
       const annotationId = annotation?.id;
@@ -472,7 +467,7 @@ export default function AnalyticsTable({
       setDeletingRowKey(item.rowKey);
       setDeleteDialogOpen(true);
     },
-    [isReadOnly]
+    []
   );
 
   const handleDeleteConfirm = React.useCallback(async () => {
@@ -828,9 +823,7 @@ export default function AnalyticsTable({
                                   size="sm"
                                   className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                                   onClick={() => handleDeleteClick(item)}
-                                  disabled={
-                                    isReadOnly || (isDeleting && deletingRowKey === item.rowKey)
-                                  }
+                                  disabled={isDeleting && deletingRowKey === item.rowKey}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                   削除
