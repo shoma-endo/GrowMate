@@ -165,19 +165,25 @@ export class GscImportService {
     let unmatched = 0;
 
     const importedAt = new Date().toISOString();
-    const validPayloads: {
-      user_id: string;
-      content_annotation_id: string;
-      property_uri: string;
-      search_type: string;
-      date: string;
-      url: string;
-      clicks: number;
-      impressions: number;
-      ctr: number;
-      position: number;
-      imported_at: string;
-    }[] = [];
+    // Map のキーを競合キー (property_uri|date|normalizedUrl|search_type) にすることで
+    // バッチ内の重複行を事前に排除する（normalized_url は DB 生成列のため同一バッチに
+    // 重複があると PostgreSQL がエラーを返す）
+    const payloadMap = new Map<
+      string,
+      {
+        user_id: string;
+        content_annotation_id: string;
+        property_uri: string;
+        search_type: string;
+        date: string;
+        url: string;
+        clicks: number;
+        impressions: number;
+        ctr: number;
+        position: number;
+        imported_at: string;
+      }
+    >();
 
     for (const metric of metrics) {
       const annotationId = resolveAnnotationId(metric.normalizedUrl ?? null);
@@ -188,7 +194,8 @@ export class GscImportService {
         }
         continue;
       }
-      validPayloads.push({
+      const conflictKey = `${metric.propertyUri}|${metric.date}|${metric.normalizedUrl ?? ''}|${metric.searchType}`;
+      payloadMap.set(conflictKey, {
         user_id: userId,
         content_annotation_id: annotationId,
         property_uri: metric.propertyUri,
@@ -202,6 +209,8 @@ export class GscImportService {
         imported_at: importedAt,
       });
     }
+
+    const validPayloads = Array.from(payloadMap.values());
 
     // 500件単位でバルクアップサート（逐次1件ずつではなく一括処理）
     const BATCH_SIZE = 500;
