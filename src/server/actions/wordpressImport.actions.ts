@@ -20,29 +20,20 @@ import {
   normalizeText,
   parseWpPostId,
 } from '@/lib/utils';
-import { canRunBulkImport } from '@/authUtils';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
-export async function runWordpressBulkImport(accessToken: string) {
+export async function runWordpressBulkImport() {
   try {
-    const authResult = await authMiddleware(accessToken, undefined, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
     const linkConflict = emailLinkConflictErrorPayload(authResult);
     if (linkConflict) return linkConflict;
     if (authResult.error || !authResult.userId) {
       return { success: false, error: authResult.error || ERROR_MESSAGES.AUTH.LIFF_AUTH_FAILED };
     }
-    const canImport = canRunBulkImport({
-      role: authResult.userDetails?.role ?? null,
-      ownerUserId: authResult.ownerUserId,
-      isOwnerViewMode: Boolean(authResult.viewMode),
-    });
-    if (!canImport) {
-      return {
-        success: false,
-        error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED,
-      };
+    const role = authResult.userDetails?.role ?? null;
+    if (!role || role === 'unavailable') {
+      return { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED };
     }
-    // canRunBulkImport に定義したロール別条件でインポート可否を判定
 
     const supabaseService = new SupabaseService();
     const supabaseClient = supabaseService.getClient();

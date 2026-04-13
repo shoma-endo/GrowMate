@@ -24,25 +24,13 @@ interface ChatClientProps {
 }
 
 const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }) => {
-  const { isLoggedIn, getAccessToken, isLoading: authLoading, user } = useAuth();
+  const { isLoggedIn, isLoading: authLoading, user } = useAuth();
   const { isMobile } = useMobile();
 
   const chatService = React.useMemo(() => new ChatService(), []);
 
-  // ✅ サービスにaccessTokenProviderを設定（getAccessTokenが変わっても再作成されない）
-  React.useEffect(() => {
-    // chatServiceにsetAccessTokenProviderメソッドがあるかチェック
-    if (
-      chatService &&
-      'setAccessTokenProvider' in chatService &&
-      typeof chatService.setAccessTokenProvider === 'function'
-    ) {
-      chatService.setAccessTokenProvider(getAccessToken);
-    }
-  }, [chatService, getAccessToken]);
-
   // 各機能のフックを初期化
-  const chatSession = useChatSession(chatService, getAccessToken);
+  const chatSession = useChatSession(chatService);
 
   // ✅ 初期マウント時（画面遷移時）のみ初期化（1回のみ実行保証）
   const sessionsLoadedRef = React.useRef(false);

@@ -33,8 +33,6 @@ jobs:
         run: npm run build
         env:
           # クライアント環境変数（ビルド時に必須）
-          NEXT_PUBLIC_LIFF_ID: dummy-liff-id
-          NEXT_PUBLIC_LIFF_CHANNEL_ID: dummy-channel-id
           NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key
           NEXT_PUBLIC_SITE_URL: http://localhost:3000
@@ -42,8 +40,6 @@ jobs:
           SUPABASE_SERVICE_ROLE: dummy-service-role
           OPENAI_API_KEY: sk-dummy
           ANTHROPIC_API_KEY: sk-ant-dummy
-          LINE_CHANNEL_ID: dummy-line-channel-id
-          LINE_CHANNEL_SECRET: dummy-line-channel-secret
 
       - name: Send webhook notification
         if: always()

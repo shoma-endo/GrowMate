@@ -21,14 +21,14 @@
 - 手動 Email 付与・整合性 SQL: Runbook **セクション 8**（SQL 本文は README には載せない）
 
 ### スタッフ管理 (legacy)
-- オーナー/スタッフ UI 導線は [app/page.tsx](app/page.tsx) から削除済み（カード非表示）
-- バックエンドの `/api/employee`（`GET` / `DELETE`）・`users.owner_user_id` / `owner_previous_role` カラム・`employee_invitations` テーブルは未削除のレガシー資産として残存
-- 招待リンク発行・受け付け機能（`InviteDialog`, `useEmployeeInvitation`）は削除済みで、アプリ側から `employee_invitations` への新規書き込みは行われない
+- オーナー/スタッフ UI 導線と閲覧専用 view mode はアプリ層から削除済み
+- `users.owner_user_id` / `owner_previous_role` カラム・`employee_invitations` テーブルは、過去データ互換のためレガシー資産として残存
+- 招待リンク発行・受け付け機能（`InviteDialog`, `useEmployeeInvitation`）は削除済みで、現行アプリから `employee_invitations` への新規書き込みは行われない
 
 ### AI コンテンツ支援ワークスペース
 - `app/chat` 配下の ChatLayout で、セッション管理・モデル選択・AI 応答ストリーミングを統合
 - 7 ステップのブログ作成フロー（ニーズ整理〜本文作成）と広告／LP テンプレートを提供
-- `search_chat_sessions` RPC（PostgreSQL の `websearch_to_tsquery` や ILIKE 等。拡張 `pg_trgm` はマイグレーションで有効化）でオーナー/スタッフ共有アクセスに対応
+- `search_chat_sessions` RPC（PostgreSQL の `websearch_to_tsquery` や ILIKE 等。拡張 `pg_trgm` はマイグレーションで有効化）でセッション検索を実装
 - ステップ毎のプロンプト変数へ `content_annotations` と `briefs` をマージし、文脈を再利用
 
 ### キャンバス編集と選択範囲リライト
@@ -64,9 +64,10 @@
 - キーワードプランナー / キャンペーン指標を `/google-ads-dashboard` で参照
 
 ### 権限と利用制御
-- `trial` / `paid` / `admin` / `unavailable` / `owner` のロールで機能制御
-- `canRunBulkImport`（実装は [`src/authUtils.ts`](src/authUtils.ts)）で WordPress / GSC の一括インポート可否を判定。**閲覧専用オーナー**（`role=owner` かつ `ownerUserId` なし）は常に可。**スタッフ**（`ownerUserId` あり）と **`unavailable`** は不可。それ以外のロールは **オーナー閲覧モード**（`isOwnerViewMode`）中は不可
-- **補足**: オーナー/スタッフ機能の UI 導線は廃止済みのため、通常運用では `owner` / staff ロールは発生しない。バックエンド仕様としてのみ残置
+- 現行ロールは `trial` / `paid` / `admin` / `unavailable`。アプリ層では `owner` / `staff` / view mode を前提にした UI・認可分岐は廃止済み
+- WordPress / GSC の一括インポート可否は、画面側で `role && role !== 'unavailable'` を基準に制御
+- GA4 の利用可否は [`src/server/lib/ga4-permissions.ts`](src/server/lib/ga4-permissions.ts) で `admin` / `paid` のみに限定
+- **補足**: `owner_user_id`・`owner_previous_role`・`get_accessible_user_ids` など、旧共有アクセス用の DB / RPC 資産はレガシーデータ互換のため残存している（新規データフローでは使用しない）。一部の Server Action / Service では過去データ参照の互換のため関連 RPC を利用しているが、新規実装は現行ロールシステムのみを前提とする
 
 ### 管理者ダッシュボード
 - `/admin/prompts` でテンプレート編集・バージョン保存
@@ -363,8 +364,8 @@ GSC 連携など各機能の詳細な検証手順は `testing-and-troubleshootin
 ## 🛡️ セキュリティと運用の注意点
 
 - Supabase では主要テーブルに RLS を適用済み（開発ポリシーが残る箇所は運用前に見直す）
-- `authMiddleware` がロールを検証し、管理者権限とオーナー/スタッフ関係に基づくアクセス制御を担保
-- `get_accessible_user_ids` と RLS により、オーナー/スタッフの共有アクセスとオーナー読み取り専用を担保
+- `authMiddleware` はメールセッションを解決し、認証済みユーザーを返す。権限判定は各画面・Route Handler・Server Action 側で担当
+- `get_accessible_user_ids` と関連 RLS / RPC は一部テーブルで残存しており、旧共有アクセス構成の互換レイヤーとして機能している
 - WordPress アプリケーションパスワードや OAuth トークンは HTTP-only Cookie に保存（本番では安全な KMS / Secrets 管理を推奨）
 - SSE は 20 秒ごとの ping と 5 分アイドルタイムアウトで接続維持を調整
 - `AnnotationPanel` の URL 正規化で内部／ローカルホストへの誤登録を防止

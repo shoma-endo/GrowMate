@@ -1,4 +1,3 @@
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { generateOAuthState } from '@/server/lib/oauth-state';
@@ -16,7 +15,6 @@ export async function GET(request: NextRequest) {
       ? requestedReturnTo
       : '/setup/wordpress';
 
-  const cookieStore = await cookies();
   const clientId = process.env.WORDPRESS_COM_CLIENT_ID;
   const clientSecret = process.env.WORDPRESS_COM_CLIENT_SECRET;
   const redirectUri = process.env.WORDPRESS_COM_REDIRECT_URI;
@@ -34,11 +32,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'OAuth 構成エラーです。' }, { status: 500 });
   }
 
-  const accessToken = cookieStore.get('line_access_token')?.value;
-  const refreshToken = cookieStore.get('line_refresh_token')?.value;
-
-  // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
   const conflictRedirect = nextResponseRedirectLoginIfEmailLinkConflict(authResult, request);
   if (conflictRedirect) return conflictRedirect;
   if (authResult.error || !authResult.userId) {
@@ -47,10 +41,6 @@ export async function GET(request: NextRequest) {
       { status: 401 }
     );
   }
-  if (authResult.viewMode || authResult.ownerUserId) {
-    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED }, { status: 403 });
-  }
-
   if (!isAdminRole(authResult.userDetails?.role ?? null)) {
     return NextResponse.json(
       { error: 'WordPress.com 連携は管理者のみ利用できます' },

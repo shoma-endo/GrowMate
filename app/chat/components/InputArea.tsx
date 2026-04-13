@@ -203,20 +203,18 @@ const InputArea: React.FC<InputAreaProps> = ({
   onStep6ToStep7Success,
   lastAssistantIsBasicStructure = false,
 }) => {
-  const { isOwnerViewMode } = useAuth();
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = propIsMobile ?? false;
   const titleErrorId = useId();
-  const isReadOnly = isOwnerViewMode;
-  const isTitleEditable = Boolean(currentSessionId) && !isReadOnly;
+  const isTitleEditable = Boolean(currentSessionId);
   const effectiveDraftTitle = draftSessionTitle ?? currentSessionTitle ?? '';
   const [isLoadingBlogArticle, setIsLoadingBlogArticle] = useState(false);
   const [blogArticleError, setBlogArticleError] = useState<string | null>(null);
 
   const isModelSelected = Boolean(selectedModel);
-  const isStepActionBarDisabled = Boolean(stepActionBarDisabled || isReadOnly);
+  const isStepActionBarDisabled = Boolean(stepActionBarDisabled);
 
   // 送信モデル: 通常チャットは nextStepForSend のみ。Canvas の AI 生成は CanvasPanel 経由で分離。
   const targetBlogStep =
@@ -231,8 +229,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     selectedModel === 'blog_creation' &&
     activeHeadingIndex !== undefined &&
     (totalHeadings ?? 0) > 0;
-  const isInputDisabled =
-    disabled || !isModelSelected || isReadOnly || isStep7HeadingPhase;
+  const isInputDisabled = disabled || !isModelSelected || isStep7HeadingPhase;
 
   // ブログ作成のプレースホルダーはUIヒント用ステップを表示
   const placeholderMessage = (() => {
@@ -477,7 +474,7 @@ const InputArea: React.FC<InputAreaProps> = ({
                         placeholder="チャットタイトルを入力"
                         autoFocus
                         maxLength={TITLE_MAX_LENGTH}
-                        disabled={isSavingSessionTitle || isReadOnly}
+                        disabled={isSavingSessionTitle}
                         aria-label="チャットタイトルを入力"
                         aria-invalid={sessionTitleError ? true : false}
                         aria-describedby={sessionTitleError ? titleErrorId : undefined}
@@ -498,7 +495,7 @@ const InputArea: React.FC<InputAreaProps> = ({
                           variant="ghost"
                           size="icon"
                           onClick={() => onSessionTitleEditConfirm?.()}
-                          disabled={isSavingSessionTitle || isReadOnly}
+                          disabled={isSavingSessionTitle}
                           aria-label="タイトルを保存"
                           className="h-8 w-8 text-[#06c755]"
                         >
@@ -571,13 +568,12 @@ const InputArea: React.FC<InputAreaProps> = ({
                 services={services}
                 selectedServiceId={selectedServiceId ?? null}
                 onServiceChange={onServiceChange}
-                disabled={disabled || isReadOnly}
+                disabled={disabled}
                 className="hidden md:flex"
               />
             )}
             <Select
               {...(isModelSelected ? { value: selectedModel } : {})}
-              disabled={isReadOnly}
               onValueChange={value => {
                 setSelectedModel(value);
                 if (value === 'blog_creation') {
@@ -624,7 +620,7 @@ const InputArea: React.FC<InputAreaProps> = ({
               services={services}
               selectedServiceId={selectedServiceId ?? null}
               onServiceChange={onServiceChange}
-              disabled={disabled || isReadOnly}
+              disabled={disabled}
             />
           </div>
         )}

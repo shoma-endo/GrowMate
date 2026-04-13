@@ -7,7 +7,6 @@ import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewar
 import { PromptService } from '@/server/services/promptService';
 import { isAdmin, isUnavailable } from '@/authUtils';
 import { UpdatePromptTemplateInput, PromptTemplate } from '@/types/prompt';
-import { isViewModeEnabled, VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { User } from '@/types/user';
 
@@ -46,8 +45,8 @@ type AdminPermissionResult = PromptActionFailure | { success: true; userId: stri
 /**
  * 管理者権限をチェックするヘルパー関数
  */
-async function checkAdminPermission(liffAccessToken: string): Promise<AdminPermissionResult> {
-  const auth = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
+async function checkAdminPermission(): Promise<AdminPermissionResult> {
+  const auth = await authMiddleware();
 
   const linkConflict = emailLinkConflictErrorPayload(auth);
   if (linkConflict) return linkConflict;
@@ -77,13 +76,12 @@ async function checkAdminPermission(liffAccessToken: string): Promise<AdminPermi
  * プロンプトテンプレートを更新
  */
 export async function updatePromptTemplate(
-  liffAccessToken: string,
   id: string,
   data: z.infer<typeof promptSchema>
 ): Promise<PromptActionResponse<PromptTemplate>> {
   try {
     // 管理者権限チェック
-    const adminCheck = await checkAdminPermission(liffAccessToken);
+    const adminCheck = await checkAdminPermission();
     if (!adminCheck.success) {
       return {
         success: false,
@@ -91,11 +89,6 @@ export async function updatePromptTemplate(
         ...(adminCheck.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
       };
     }
-    const adminUser = adminCheck.user;
-    if (await isViewModeEnabled(adminUser.role)) {
-      return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
-    }
-
     // データ検証
     const validatedData = promptSchema.parse(data);
 
@@ -116,7 +109,7 @@ export async function updatePromptTemplate(
     // テンプレート更新
     const updateInput: UpdatePromptTemplateInput = {
       ...validatedData,
-      updated_by: adminCheck.userId!,
+      updated_by: adminCheck.userId,
     };
 
     const result = await PromptService.updateTemplate(id, updateInput);
@@ -144,12 +137,10 @@ export async function updatePromptTemplate(
 /**
  * プロンプトテンプレート一覧を取得
  */
-export async function getPromptTemplates(
-  liffAccessToken: string
-): Promise<PromptActionResponse<PromptTemplate[]>> {
+export async function getPromptTemplates(): Promise<PromptActionResponse<PromptTemplate[]>> {
   try {
     // 管理者権限チェック
-    const adminCheck = await checkAdminPermission(liffAccessToken);
+    const adminCheck = await checkAdminPermission();
     if (!adminCheck.success) {
       return {
         success: false,
@@ -165,4 +156,3 @@ export async function getPromptTemplates(
     return { success: false, error: ERROR_MESSAGES.PROMPT.FETCH_FAILED };
   }
 }
-

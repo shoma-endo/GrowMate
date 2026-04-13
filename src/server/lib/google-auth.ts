@@ -1,4 +1,3 @@
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
@@ -40,12 +39,7 @@ export type GoogleAdsAuthResult =
  * 管理者権限チェックとGoogle Ads認証情報の取得を一括で行う
  */
 export async function ensureGoogleAdsAuth(): Promise<GoogleAdsAuthResult> {
-  const cookieStore = await cookies();
-  const liffAccessToken = cookieStore.get('line_access_token')?.value;
-  const refreshToken = cookieStore.get('line_refresh_token')?.value;
-
-  // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
   const conflict409 = nextJson409IfEmailLinkConflict(authResult, msg => ({ error: msg }));
   if (conflict409) {
     return { success: false, response: conflict409 };
@@ -130,14 +124,14 @@ export async function refreshGoogleAdsTokenIfNeeded(
 > {
   const googleAdsService = new GoogleAdsService();
   const supabaseService = new SupabaseService();
-  
+
   let accessToken = credential.accessToken;
   const expiresAt = credential.accessTokenExpiresAt
     ? new Date(credential.accessTokenExpiresAt)
     : null;
   const isExpiringSoon =
     !expiresAt || isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now() + 60 * 1000;
-  
+
   if (isExpiringSoon) {
     // 1分以内に期限切れ、または有効期限が不明な場合はリフレッシュ
     try {

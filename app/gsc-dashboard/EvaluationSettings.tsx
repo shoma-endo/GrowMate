@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { useAuth } from '@/components/AuthProvider';
 import type { EvaluationResultSummary } from '@/types/gsc';
 
 // 時間選択用の選択肢を生成
@@ -72,7 +71,6 @@ export function EvaluationSettings({
   onUpdate,
   onRunEvaluation,
 }: EvaluationSettingsProps) {
-  const { isOwnerViewMode } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   // date string format: YYYY-MM-DD
   const [dateStr, setDateStr] = useState<string>('');
@@ -81,7 +79,6 @@ export function EvaluationSettings({
   const [loading, setLoading] = useState(false);
   const [runningEvaluation, setRunningEvaluation] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isReadOnly = isOwnerViewMode;
 
   const isUpdateMode = !!currentEvaluation;
 
@@ -105,7 +102,6 @@ export function EvaluationSettings({
   }, [isOpen, currentEvaluation]);
 
   const handleSubmit = async () => {
-    if (isReadOnly) return;
     if (!dateStr) return;
 
     setLoading(true);
@@ -136,7 +132,6 @@ export function EvaluationSettings({
   };
 
   const handleRunEvaluation = async () => {
-    if (isReadOnly) return;
     setRunningEvaluation(true);
     try {
       const result = await onRunEvaluation();
@@ -222,7 +217,7 @@ export function EvaluationSettings({
         <div className="flex flex-wrap gap-2">
           <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
-              <Button variant="default" disabled={isReadOnly}>
+              <Button variant="default">
                 <Settings className="w-4 h-4" />
                 {isUpdateMode ? '設定を変更' : '評価を開始'}
               </Button>
@@ -266,7 +261,6 @@ export function EvaluationSettings({
                       value={dateStr}
                       onChange={e => setDateStr(e.target.value)}
                       className="pl-10 text-base" // スマホでの操作性を考慮してtext-baseにするのも一案
-                      disabled={isReadOnly}
                     />
                     <CalendarIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400 pointer-events-none" />
                   </div>
@@ -290,7 +284,6 @@ export function EvaluationSettings({
                         setCycleDays(Math.max(1, Math.min(365, Number(e.target.value))))
                       }
                       className="w-full text-base"
-                      disabled={isReadOnly}
                     />
                     <p className="text-xs text-muted-foreground">
                       1〜365日の範囲で指定できます（デフォルト: 30日）
@@ -308,7 +301,6 @@ export function EvaluationSettings({
                       <Select
                         value={evaluationHour.toString()}
                         onValueChange={v => setEvaluationHour(Number(v))}
-                        disabled={isReadOnly}
                       >
                         <SelectTrigger className="w-full pl-10 text-base">
                           <SelectValue placeholder="時間を選択" />
@@ -375,11 +367,11 @@ export function EvaluationSettings({
                 <Button
                   variant="ghost"
                   onClick={() => setIsOpen(false)}
-                  disabled={loading || isReadOnly}
+                  disabled={loading}
                 >
                   キャンセル
                 </Button>
-                <Button onClick={handleSubmit} disabled={loading || !dateStr || isReadOnly}>
+                <Button onClick={handleSubmit} disabled={loading || !dateStr}>
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
@@ -396,7 +388,7 @@ export function EvaluationSettings({
             <Button
               variant="outline"
               onClick={handleRunEvaluation}
-              disabled={runningEvaluation || isReadOnly}
+              disabled={runningEvaluation}
               className="gap-2"
             >
               {runningEvaluation ? (

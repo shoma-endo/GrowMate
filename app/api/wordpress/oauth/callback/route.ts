@@ -5,7 +5,7 @@ import { WPCOM_TOKEN_COOKIE_NAME } from '@/server/services/wordpressContext';
 import { verifyOAuthState } from '@/server/lib/oauth-state';
 import { isAdmin as isAdminRole } from '@/authUtils';
 import type { UserRole } from '@/types/user';
-import { getLiffTokensFromRequest } from '@/server/lib/auth-helpers';
+
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 const supabaseService = new SupabaseService();
@@ -100,28 +100,18 @@ export async function GET(request: NextRequest) {
 
     let targetUserId: string | null = null;
     let cookieUserId: string | null = null;
-    const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(request);
-
-    if (liffAccessToken) {
-      const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
-      if (authResult.emailLinkConflict) {
-        return NextResponse.json({ error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT }, { status: 409 });
-      }
-      if (!authResult.error && authResult.userId) {
-        cookieUserId = authResult.userId;
-        targetUserId = authResult.userId;
-        if (authResult.viewMode || authResult.ownerUserId) {
-          return NextResponse.json(
-            { error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED },
-            { status: 403 }
-          );
-        }
-        if (!isAdminRole(authResult.userDetails?.role ?? null)) {
-          return NextResponse.json(
-            { error: 'WordPress.com 連携は管理者のみ利用できます' },
-            { status: 403 }
-          );
-        }
+    const authResult = await authMiddleware();
+    if (authResult.emailLinkConflict) {
+      return NextResponse.json({ error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT }, { status: 409 });
+    }
+    if (!authResult.error && authResult.userId) {
+      cookieUserId = authResult.userId;
+      targetUserId = authResult.userId;
+      if (!isAdminRole(authResult.userDetails?.role ?? null)) {
+        return NextResponse.json(
+          { error: 'WordPress.com 連携は管理者のみ利用できます' },
+          { status: 403 }
+        );
       }
     }
 
@@ -148,9 +138,6 @@ export async function GET(request: NextRequest) {
           error: userResult.error,
         });
         return NextResponse.json({ error: 'ユーザー情報の取得に失敗しました' }, { status: 500 });
-      }
-      if (userResult.data?.owner_user_id) {
-        return NextResponse.json({ error: ERROR_MESSAGES.AUTH.STAFF_OPERATION_NOT_ALLOWED }, { status: 403 });
       }
       const userRole =
         typeof userResult.data?.role === 'string' ? (userResult.data.role as UserRole) : null;

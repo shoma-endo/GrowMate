@@ -5,51 +5,42 @@ import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewar
 import { headingFlowService } from '@/server/services/headingFlowService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { z } from 'zod';
-import { hasOwnerRole } from '@/authUtils';
 
 const initializeHeadingSchema = z.object({
   sessionId: z.string().min(1),
   step5Markdown: z.string().min(1),
-  liffAccessToken: z.string(),
 });
 
 const saveHeadingSectionSchema = z.object({
   sessionId: z.string().min(1),
   headingKey: z.string().min(1),
   content: z.string().refine(v => v.trim().length > 0, { message: '本文が空です' }),
-  liffAccessToken: z.string(),
 });
 
 const getHeadingSectionsSchema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string(),
 });
 
 const getLatestCombinedContentSchema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string(),
 });
 
 const getCombinedContentVersionsSchema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string(),
 });
 
 const resetHeadingSectionsSchema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string(),
   /** true のとき Step7 書き出し案を削除しない（完成形フェーズで書き出し入力→見出し1再開用） */
   preserveStep7Lead: z.boolean().optional(),
 });
 const getCombinedContentForStep7Schema = z.object({
   sessionId: z.string().min(1),
-  liffAccessToken: z.string(),
 });
 
 const saveStep7UserLeadSchema = z.object({
   sessionId: z.string().min(1),
   userLead: z.string().refine(v => v.trim().length > 0, { message: '書き出し案を入力してください' }),
-  liffAccessToken: z.string(),
 });
 
 /**
@@ -66,19 +57,14 @@ async function verifySessionReadAccess(sessionId: string, userId: string) {
 export async function initializeHeadingSections(data: z.infer<typeof initializeHeadingSchema>) {
   const parseResult = initializeHeadingSchema.safeParse(data);
   if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
-    const error = isTokenError
-      ? '認証に失敗しました。再ログインしてください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[initializeHeadingSections] Validation failed:', parseResult.error.issues);
     }
     return { success: false, error };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
+  const auth = await authMiddleware();
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return emailLinkConflict;
@@ -89,11 +75,6 @@ export async function initializeHeadingSections(data: z.infer<typeof initializeH
   // 認可チェック: 読み取り権限
   if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
     return { success: false, error: 'セッションへのアクセス権がありません' };
-  }
-
-  // 認可チェック: 書き込み権限（閲覧専用ロール・ビューモードは拒否）
-  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
-    return { success: false, error: '閲覧モードでは編集できません' };
   }
 
   const result = await headingFlowService.initializeHeadingSections(
@@ -113,19 +94,14 @@ export async function initializeHeadingSections(data: z.infer<typeof initializeH
 export async function getHeadingSections(data: z.infer<typeof getHeadingSectionsSchema>) {
   const parseResult = getHeadingSectionsSchema.safeParse(data);
   if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
-    const error = isTokenError
-      ? '認証に失敗しました。再ログインしてください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getHeadingSections] Validation failed:', parseResult.error.issues);
     }
     return { success: false, error, data: [] };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
+  const auth = await authMiddleware();
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return { ...emailLinkConflict, data: [] };
@@ -164,24 +140,19 @@ export async function getHeadingSections(data: z.infer<typeof getHeadingSections
 export async function saveHeadingSection(data: z.infer<typeof saveHeadingSectionSchema>) {
   const parseResult = saveHeadingSectionSchema.safeParse(data);
   if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
     const isContentError = parseResult.error.issues.some(
       i => i.path.includes('content') || (i.message && i.message.includes('本文'))
     );
-    const error = isTokenError
-      ? '認証に失敗しました。再ログインしてください。'
-      : isContentError
-        ? '本文が空です。内容を入力してから保存してください。'
-        : '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = isContentError
+      ? '本文が空です。内容を入力してから保存してください。'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[saveHeadingSection] Validation failed:', parseResult.error.issues);
     }
     return { success: false, error };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
+  const auth = await authMiddleware();
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return emailLinkConflict;
@@ -192,11 +163,6 @@ export async function saveHeadingSection(data: z.infer<typeof saveHeadingSection
   // 認可チェック: 読み取り権限
   if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
     return { success: false, error: 'セッションへのアクセス権がありません' };
-  }
-
-  // 認可チェック: 書き込み権限（閲覧専用ロール・ビューモードは拒否）
-  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
-    return { success: false, error: '閲覧モードでは編集できません' };
   }
 
   const result = await headingFlowService.saveHeadingSection(
@@ -219,19 +185,14 @@ export async function getLatestCombinedContent(
 ) {
   const parseResult = getLatestCombinedContentSchema.safeParse(data);
   if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
-    const error = isTokenError
-      ? '認証に失敗しました。再ログインしてください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getLatestCombinedContent] Validation failed:', parseResult.error.issues);
     }
     return { success: false, error, data: null };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
+  const auth = await authMiddleware();
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return { ...emailLinkConflict, data: null };
@@ -264,19 +225,14 @@ export async function getCombinedContentVersions(
 ) {
   const parseResult = getCombinedContentVersionsSchema.safeParse(data);
   if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
-    const error = isTokenError
-      ? '認証に失敗しました。再ログインしてください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getCombinedContentVersions] Validation failed:', parseResult.error.issues);
     }
     return { success: false, error, data: [] };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
+  const auth = await authMiddleware();
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return { ...emailLinkConflict, data: [] };
@@ -315,19 +271,14 @@ export async function getCombinedContentVersions(
 export async function resetHeadingSections(data: z.infer<typeof resetHeadingSectionsSchema>) {
   const parseResult = resetHeadingSectionsSchema.safeParse(data);
   if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
-    const error = isTokenError
-      ? '認証に失敗しました。再ログインしてください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[resetHeadingSections] Validation failed:', parseResult.error.issues);
     }
     return { success: false, error };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
+  const auth = await authMiddleware();
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return emailLinkConflict;
@@ -338,10 +289,6 @@ export async function resetHeadingSections(data: z.infer<typeof resetHeadingSect
   // 認カチェック
   if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
     return { success: false, error: 'セッションへのアクセス権がありません' };
-  }
-
-  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
-    return { success: false, error: '閲覧モードでは初期化できません' };
   }
 
   const result = await headingFlowService.resetHeadingSections(parsed.sessionId, 
@@ -360,24 +307,19 @@ export async function resetHeadingSections(data: z.infer<typeof resetHeadingSect
 export async function saveStep7UserLead(data: z.infer<typeof saveStep7UserLeadSchema>) {
   const parseResult = saveStep7UserLeadSchema.safeParse(data);
   if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
     const isLeadError = parseResult.error.issues.some(
       i => i.path.includes('userLead') || i.message?.includes('書き出し')
     );
-    const error = isTokenError
-      ? '認証に失敗しました。再ログインしてください。'
-      : isLeadError
-        ? '書き出し案を入力してください'
-        : '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = isLeadError
+      ? '書き出し案を入力してください'
+      : '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[saveStep7UserLead] Validation failed:', parseResult.error.issues);
     }
     return { success: false, error };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
+  const auth = await authMiddleware();
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return emailLinkConflict;
@@ -387,10 +329,6 @@ export async function saveStep7UserLead(data: z.infer<typeof saveStep7UserLeadSc
 
   if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
     return { success: false, error: 'セッションへのアクセス権がありません' };
-  }
-
-  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
-    return { success: false, error: '閲覧モードでは実行できません' };
   }
 
   const result = await headingFlowService.saveStep7UserLead(
@@ -414,19 +352,14 @@ export async function getCombinedContentForStep7(
 ) {
   const parseResult = getCombinedContentForStep7Schema.safeParse(data);
   if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
-    const error = isTokenError
-      ? '認証に失敗しました。再ログインしてください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getCombinedContentForStep7] Validation failed:', parseResult.error.issues);
     }
     return { success: false, error, lead: null, sections: null };
   }
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
+  const auth = await authMiddleware();
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict)
@@ -437,10 +370,6 @@ export async function getCombinedContentForStep7(
 
   if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
     return { success: false, error: 'セッションへのアクセス権がありません', lead: null, sections: null };
-  }
-
-  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
-    return { success: false, error: '閲覧モードでは実行できません', lead: null, sections: null };
   }
 
   const result = await headingFlowService.getCombinedContentForPrompt(parsed.sessionId);
@@ -460,12 +389,7 @@ export async function saveCombinedContentForStep7(
 ) {
   const parseResult = getCombinedContentForStep7Schema.safeParse(data);
   if (!parseResult.success) {
-    const isTokenError = parseResult.error.issues.some(
-      i => i.path.includes('liffAccessToken') || i.path.join('') === 'liffAccessToken'
-    );
-    const error = isTokenError
-      ? '認証トークンが無効です。LINEで再ログインしてください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してから再度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[saveCombinedContentForStep7] Validation failed:', parseResult.error.issues);
     }
@@ -473,7 +397,7 @@ export async function saveCombinedContentForStep7(
   }
 
   const parsed = parseResult.data;
-  const auth = await authMiddleware(parsed.liffAccessToken, undefined, { allowEmailFallback: true });
+  const auth = await authMiddleware();
 
   const emailLinkConflict = emailLinkConflictErrorPayload(auth);
   if (emailLinkConflict) return { ...emailLinkConflict, content: null };
@@ -487,10 +411,6 @@ export async function saveCombinedContentForStep7(
 
   if (!(await verifySessionReadAccess(parsed.sessionId, auth.userId))) {
     return { success: false, error: 'セッションへのアクセス権がありません', content: null };
-  }
-
-  if (auth.viewMode || hasOwnerRole(auth.userDetails?.role ?? null)) {
-    return { success: false, error: '閲覧モードでは実行できません', content: null };
   }
 
   const combinedResult = await headingFlowService.getCombinedContentForPrompt(parsed.sessionId);

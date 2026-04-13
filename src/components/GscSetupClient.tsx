@@ -29,7 +29,6 @@ import { GscStatusBadge } from '@/components/ui/GscStatusBadge';
 import { useGscSetup } from '@/hooks/useGscSetup';
 import { handleAsyncAction } from '@/lib/async-handler';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
-import { useAuth } from '@/components/AuthProvider';
 
 interface GscSetupClientProps {
   initialStatus: GscConnectionStatus;
@@ -53,7 +52,6 @@ export default function GscSetupClient({
   initialStatus,
   isOauthConfigured,
 }: GscSetupClientProps) {
-  const { user } = useAuth();
   const {
     status,
     properties,
@@ -66,11 +64,8 @@ export default function GscSetupClient({
     refreshStatus,
     refetchProperties,
   } = useGscSetup(initialStatus);
-  const isStaffUser = Boolean(user?.ownerUserId);
-  // Setup画面は閲覧モード対象外（オーナーは常に操作可能）
-  const isReadOnly = isStaffUser;
   const needsReauth = status.needsReauth ?? false;
-  const canImport = !isReadOnly && status.connected && Boolean(status.propertyUri) && !needsReauth;
+  const canImport = status.connected && Boolean(status.propertyUri) && !needsReauth;
 
   const [isUpdatingProperty, setIsUpdatingProperty] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -187,7 +182,7 @@ export default function GscSetupClient({
             variant="ghost"
             size="sm"
             onClick={refreshStatus}
-            disabled={isSyncingStatus || isReadOnly}
+            disabled={isSyncingStatus}
             className="flex items-center gap-1"
           >
             <RefreshCw className={`h-4 w-4 ${isSyncingStatus ? 'animate-spin' : ''}`} />
@@ -201,13 +196,7 @@ export default function GscSetupClient({
               <GscStatusBadge connected={status.connected} needsReauth={needsReauth} />
             </div>
             {isOauthConfigured ? (
-              isReadOnly ? (
-                <Button disabled variant="outline">
-                  オーナーのみ操作できます
-                </Button>
-              ) : (
-                <GoogleSignInButton href={OAUTH_START_PATH}>Googleでログイン</GoogleSignInButton>
-              )
+              <GoogleSignInButton href={OAUTH_START_PATH}>Googleでログイン</GoogleSignInButton>
             ) : (
               <Button disabled variant="outline">
                 OAuth設定が無効です
@@ -265,9 +254,7 @@ export default function GscSetupClient({
               <Select
                 {...selectValueProps}
                 onValueChange={handlePropertyChange}
-                disabled={
-                  isReadOnly || isLoadingProperties || isUpdatingProperty || properties.length === 0
-                }
+                disabled={isLoadingProperties || isUpdatingProperty || properties.length === 0}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="プロパティを選択" />
@@ -323,7 +310,7 @@ export default function GscSetupClient({
                 type="button"
                 variant="outline"
                 onClick={refetchProperties}
-                disabled={isReadOnly || isLoadingProperties}
+                disabled={isLoadingProperties}
                 className="flex items-center gap-2"
               >
                 <RefreshCw className={`h-4 w-4 ${isLoadingProperties ? 'animate-spin' : ''}`} />
@@ -360,14 +347,14 @@ export default function GscSetupClient({
                       ? 'GSC未接続のため、インポートは無効です。'
                       : !status.propertyUri
                         ? 'プロパティを選択して保存してください。'
-                        : '読み取り専用のため、インポートは無効です。'}
+                        : 'プロパティを選択して保存してください。'}
                 </p>
               )}
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleDisconnect}
-                disabled={isReadOnly || isDisconnecting}
+                disabled={isDisconnecting}
                 className="flex items-center gap-2 text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700"
               >
                 <Unplug className="h-4 w-4" />

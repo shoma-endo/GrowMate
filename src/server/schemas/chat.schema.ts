@@ -3,7 +3,6 @@ import { z } from 'zod';
 export const startChatSchema = z.object({
   userMessage: z.string(),
   model: z.string(),
-  liffAccessToken: z.string(),
   systemPrompt: z.string().optional(),
   serviceId: z.string().optional(),
 });
@@ -18,7 +17,6 @@ export const continueChatSchema = z.object({
   ),
   userMessage: z.string(),
   model: z.string(),
-  liffAccessToken: z.string(),
   systemPrompt: z.string().optional(),
   serviceId: z.string().optional(),
 });

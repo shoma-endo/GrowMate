@@ -8,7 +8,6 @@ import { ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import SessionListContent from '@/components/SessionListContent';
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
-import { useAuth } from '@/components/AuthProvider';
 
 interface SessionSidebarProps {
   sessions: ChatSession[];
@@ -35,14 +34,13 @@ const SessionSidebar: React.FC<SessionSidebarProps> = ({
   isSearching,
   disableActions,
 }) => {
-  const { isOwnerViewMode } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<ChatSession | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const sessionListRef = useRef<HTMLDivElement>(null);
-  const isReadOnly = Boolean(isOwnerViewMode || disableActions);
+  const isReadOnly = Boolean(disableActions);
 
   const handleSessionClick = async (sessionId: string) => {
     // ✅ 親コンポーネント（ChatLayout）が初期化を担当

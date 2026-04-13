@@ -4,7 +4,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { chatService } from '@/server/services/chatService';
 import { ChatResponse } from '@/types/chat';
 import { ModelHandlerService } from './chat/modelHandlers';
-import { isUnavailable, hasOwnerRole } from '@/authUtils';
+import { isUnavailable } from '@/authUtils';
 import type { UserRole } from '@/types/user';
 import { z } from 'zod';
 import { SupabaseService } from '@/server/services/supabaseService';
@@ -23,31 +23,25 @@ import { STEP7_ID, toBlogModel } from '@/lib/constants';
 const updateChatSessionTitleSchema = z.object({
   sessionId: z.string(),
   title: z.string().min(1).max(60),
-  liffAccessToken: z.string(),
 });
 
 const searchChatSessionsSchema = z.object({
   query: z.string().optional(),
   limit: z.number().int().min(1).max(50).optional(),
-  liffAccessToken: z.string(),
 });
 
 const modelHandler = new ModelHandlerService();
 
 // 認証チェックを共通化
-async function checkAuth(liffAccessToken: string): Promise<
+async function checkAuth(): Promise<
   | { isError: true; error: string; emailLinkConflict?: true }
   | {
       isError: false;
       userId: string;
       role: UserRole;
-      viewMode: boolean;
-      ownerUserId?: string | null | undefined;
     }
 > {
-  const authResult = await authMiddleware(liffAccessToken, undefined, {
-    allowEmailFallback: true,
-  });
+  const authResult = await authMiddleware();
   const conflictMessage = getEmailLinkConflictMessage(authResult);
   if (conflictMessage !== undefined) {
     return { isError: true as const, error: conflictMessage, emailLinkConflict: true as const };
@@ -69,14 +63,10 @@ async function checkAuth(liffAccessToken: string): Promise<
     return { isError: true as const, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
   }
 
-  const isViewMode = !!authResult.viewMode || hasOwnerRole(user?.role ?? null);
-
   return {
     isError: false as const,
     userId: authResult.userId,
     role: user?.role ?? 'trial',
-    viewMode: isViewMode,
-    ownerUserId: (user?.ownerUserId ?? authResult.ownerUserId) || null,
   };
 }
 
@@ -85,14 +75,9 @@ export async function startChat(data: StartChatInput): Promise<ChatResponse> {
     const validatedData = startChatSchema.parse(data);
 
     // 認証チェック
-    const auth = await checkAuth(validatedData.liffAccessToken);
+    const auth = await checkAuth();
     if (auth.isError) {
       return { message: '', error: auth.error };
-    }
-
-    // 閲覧専用モードでの書き込み制限（内部でservice_roleを使用しているため明示的なガードが必要）
-    if (auth.viewMode) {
-      return { message: '', error: ERROR_MESSAGES.USER.VIEW_MODE_OPERATION_NOT_ALLOWED };
     }
 
     // モデル処理に委譲
@@ -108,14 +93,9 @@ export async function continueChat(data: ContinueChatInput): Promise<ChatRespons
     const validatedData = continueChatSchema.parse(data);
 
     // 認証チェック
-    const auth = await checkAuth(validatedData.liffAccessToken);
+    const auth = await checkAuth();
     if (auth.isError) {
       return { message: '', error: auth.error };
-    }
-
-    // 閲覧専用モードでの書き込み制限（内部でservice_roleを使用しているため明示的なガードが必要）
-    if (auth.viewMode) {
-      return { message: '', error: ERROR_MESSAGES.USER.VIEW_MODE_OPERATION_NOT_ALLOWED };
     }
 
     // モデル処理に委譲
@@ -126,8 +106,8 @@ export async function continueChat(data: ContinueChatInput): Promise<ChatRespons
   }
 }
 
-export async function getChatSessions(liffAccessToken: string) {
-  const auth = await checkAuth(liffAccessToken);
+export async function getChatSessions() {
+  const auth = await checkAuth();
   if (auth.isError) {
     return { sessions: [], error: auth.error };
   }
@@ -148,19 +128,17 @@ export async function getChatSessions(liffAccessToken: string) {
   return { sessions, error: null };
 }
 
-export async function getSessionMessages(sessionId: string, liffAccessToken: string) {
-  const auth = await checkAuth(liffAccessToken);
+export async function getSessionMessages(sessionId: string) {
+  const auth = await checkAuth();
   if (auth.isError) {
     return { messages: [], error: auth.error };
   }
-  const targetUserId = auth.ownerUserId || auth.userId;
-  const messages = await chatService.getSessionMessages(sessionId, targetUserId);
+  const messages = await chatService.getSessionMessages(sessionId, auth.userId);
   return { messages, error: null };
 }
 
 export async function getLatestBlogStep7MessageBySession(
-  sessionId: string,
-  liffAccessToken: string
+  sessionId: string
 ): Promise<
   | { success: false; error: string }
   | { success: true; data: { content: string; createdAt: string } | null }
@@ -169,16 +147,15 @@ export async function getLatestBlogStep7MessageBySession(
     return { success: false as const, error: ERROR_MESSAGES.CHAT.SESSION_ID_REQUIRED };
   }
 
-  const auth = await checkAuth(liffAccessToken);
+  const auth = await checkAuth();
   if (auth.isError) {
     return { success: false as const, error: auth.error };
   }
 
   const supabase = new SupabaseService();
-  const targetUserId = auth.ownerUserId || auth.userId;
   const result = await supabase.getLatestChatMessageBySessionAndModel(
     sessionId,
-    targetUserId,
+    auth.userId,
     toBlogModel(STEP7_ID)
   );
 
@@ -211,15 +188,14 @@ export async function getLatestBlogStep7MessageBySession(
 export async function searchChatSessions(data: z.infer<typeof searchChatSessionsSchema>) {
   const parsed = searchChatSessionsSchema.parse(data);
 
-  const auth = await checkAuth(parsed.liffAccessToken);
+  const auth = await checkAuth();
   if (auth.isError) {
     return { results: [], error: auth.error };
   }
 
   try {
     const options = parsed.limit !== undefined ? { limit: parsed.limit } : undefined;
-    const targetUserId = auth.ownerUserId || auth.userId;
-    const matches = await chatService.searchChatSessions(targetUserId, parsed.query ?? '', options);
+    const matches = await chatService.searchChatSessions(auth.userId, parsed.query ?? '', options);
 
     return {
       results: matches.map(match => ({
@@ -241,19 +217,14 @@ export async function searchChatSessions(data: z.infer<typeof searchChatSessions
   }
 }
 
-export async function deleteChatSession(sessionId: string, liffAccessToken: string) {
-  const auth = await checkAuth(liffAccessToken);
+export async function deleteChatSession(sessionId: string) {
+  const auth = await checkAuth();
   if (auth.isError) {
     return {
       success: false,
       error: auth.error,
       ...(auth.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
     };
-  }
-
-  // 閲覧モード（オーナー含む）での書き込み制限
-  if (auth.viewMode) {
-    return { success: false, error: ERROR_MESSAGES.USER.VIEW_MODE_OPERATION_NOT_ALLOWED };
   }
 
   try {
@@ -270,23 +241,16 @@ export async function deleteChatSession(sessionId: string, liffAccessToken: stri
 
 export async function updateChatSessionTitle(
   sessionId: string,
-  title: string,
-  liffAccessToken: string
+  title: string
 ) {
   const parsed = updateChatSessionTitleSchema.parse({
     sessionId,
     title: title.trim(),
-    liffAccessToken,
   });
 
-  const auth = await checkAuth(parsed.liffAccessToken);
+  const auth = await checkAuth();
   if (auth.isError) {
     return { success: false, error: auth.error };
-  }
-
-  // 閲覧モード（オーナー含む）での書き込み制限
-  if (auth.viewMode) {
-    return { success: false, error: ERROR_MESSAGES.USER.VIEW_MODE_OPERATION_NOT_ALLOWED };
   }
 
   const supabase = new SupabaseService();
@@ -302,10 +266,9 @@ export async function updateChatSessionTitle(
 }
 
 export async function getSessionServiceId(
-  sessionId: string,
-  liffAccessToken: string
+  sessionId: string
 ): Promise<{ success: true; data: string | null } | { success: false; error: string }> {
-  const auth = await checkAuth(liffAccessToken);
+  const auth = await checkAuth();
   if (auth.isError) {
     return { success: false, error: auth.error ?? 'Auth failed' };
   }
@@ -323,28 +286,20 @@ export async function getSessionServiceId(
 const updateSessionServiceIdSchema = z.object({
   sessionId: z.string(),
   serviceId: z.string(),
-  liffAccessToken: z.string(),
 });
 
 export async function updateSessionServiceId(
   sessionId: string,
-  serviceId: string,
-  liffAccessToken: string
+  serviceId: string
 ) {
   const parsed = updateSessionServiceIdSchema.parse({
     sessionId,
     serviceId,
-    liffAccessToken,
   });
 
-  const auth = await checkAuth(parsed.liffAccessToken);
+  const auth = await checkAuth();
   if (auth.isError) {
     return { success: false, error: auth.error };
-  }
-
-  // 閲覧モード（オーナー含む）での書き込み制限
-  if (auth.viewMode) {
-    return { success: false, error: ERROR_MESSAGES.USER.VIEW_MODE_OPERATION_NOT_ALLOWED };
   }
 
   const supabase = new SupabaseService();

@@ -168,27 +168,6 @@ export class SupabaseService {
     return this.success(data ?? []);
   }
 
-  /**
-   * ユーザー情報をLINE IDで取得
-   */
-  async getUserByLineId(lineUserId: string): Promise<SupabaseResult<DbUser | null>> {
-    const { data, error } = await this.supabase
-      .from('users')
-      .select('*')
-      .eq('line_user_id', lineUserId)
-      .single();
-
-    if (error && error.code !== 'PGRST116') {
-      return this.failure('ユーザー情報の取得に失敗しました', {
-        error,
-        developerMessage: 'Error getting user by LINE ID',
-        context: { lineUserId },
-      });
-    }
-
-    return this.success(data ?? null);
-  }
-
   async getUserById(id: string): Promise<SupabaseResult<DbUser | null>> {
     const { data, error } = await this.supabase
       .from('users')

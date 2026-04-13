@@ -1,4 +1,3 @@
-import { LineAuthService, LineTokenExpiredError } from './lineAuthService';
 import { SupabaseService } from './supabaseService';
 import type { SupabaseResult } from './supabaseService';
 import { toIsoTimestamp } from '@/lib/timestamps';
@@ -25,11 +24,9 @@ export class EmailAuthLinkConflictError extends Error {
  * ユーザーサービス: ユーザー管理機能を提供
  */
 export class UserService {
-  private lineAuthService: LineAuthService;
   private supabaseService: SupabaseService;
 
   constructor() {
-    this.lineAuthService = new LineAuthService();
     this.supabaseService = new SupabaseService();
   }
 
@@ -68,158 +65,6 @@ export class UserService {
     }
 
     return dbUpdates;
-  }
-
-  /**
-   * LIFFアクセストークンからユーザー情報を取得または作成
-   */
-  async getUserFromLiffToken(liffAccessToken: string): Promise<User | null> {
-    try {
-      const lineProfile = await this.lineAuthService.getLineProfile(liffAccessToken);
-
-      const existingUserData = this.unwrapResult(
-        await this.supabaseService.getUserByLineId(lineProfile.userId)
-      );
-
-      let user = existingUserData ? toUser(existingUserData) : null;
-
-      if (!user) {
-        const now = toIsoTimestamp(new Date());
-        const newUser: User = {
-          id: crypto.randomUUID(),
-          createdAt: now,
-          updatedAt: now,
-          lastLoginAt: now,
-          lineUserId: lineProfile.userId,
-          lineDisplayName: lineProfile.displayName,
-          linePictureUrl: lineProfile.pictureUrl ?? undefined,
-          lineStatusMessage: lineProfile.statusMessage ?? undefined,
-          role: 'unavailable',
-        };
-
-        const createResult = await this.supabaseService.createUser(toDbUserInsert(newUser));
-
-        if (!createResult.success) {
-          if (
-            createResult.error.code === '23505' &&
-            typeof createResult.error.details === 'string' &&
-            createResult.error.details.includes('line_user_id')
-          ) {
-            const retryData = this.unwrapResult(
-              await this.supabaseService.getUserByLineId(lineProfile.userId)
-            );
-            user = retryData ? toUser(retryData) : null;
-          } else {
-            throw new Error(createResult.error.developerMessage ?? createResult.error.userMessage);
-          }
-        } else {
-          user = toUser(createResult.data);
-        }
-
-        if (!user) {
-          throw new Error('ユーザーの作成に失敗しました');
-        }
-      } else {
-        const updateTimestamp = toIsoTimestamp(new Date());
-        const updateResult = await this.supabaseService.updateUserById(
-          user.id,
-          this.buildDbUserUpdates(
-            {
-              lineDisplayName: lineProfile.displayName,
-              linePictureUrl: lineProfile.pictureUrl ?? undefined,
-              lineStatusMessage: lineProfile.statusMessage ?? undefined,
-              lastLoginAt: updateTimestamp,
-            },
-            updateTimestamp
-          )
-        );
-
-        if (!updateResult.success) {
-          console.error('Failed to update user profile after login:', updateResult.error);
-        } else if (updateResult.data) {
-          user = toUser(updateResult.data);
-        } else {
-          user = {
-            ...user,
-            lineDisplayName: lineProfile.displayName,
-            linePictureUrl: lineProfile.pictureUrl ?? undefined,
-            lineStatusMessage: lineProfile.statusMessage ?? undefined,
-            lastLoginAt: updateTimestamp,
-            updatedAt: updateTimestamp,
-          };
-        }
-      }
-
-      return user;
-    } catch (error) {
-      if (error instanceof LineTokenExpiredError) {
-        throw error;
-      }
-      console.error('Failed to get or create user in userService:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * LIFFアクセストークンからユーザー情報を取得（リフレッシュトークン対応）
-   */
-  async getUserFromLiffTokenWithRefresh(
-    liffAccessToken: string,
-    refreshToken?: string
-  ): Promise<{
-    user: User | null;
-    newAccessToken?: string;
-    newRefreshToken?: string;
-    expiresIn?: number;
-    needsReauth?: boolean;
-  }> {
-    try {
-      const user = await this.getUserFromLiffToken(liffAccessToken);
-      return { user };
-    } catch (error) {
-      if (error instanceof LineTokenExpiredError && refreshToken) {
-        try {
-          const refreshResult = await this.lineAuthService.verifyLineTokenWithRefresh(
-            liffAccessToken,
-            refreshToken
-          );
-
-          if (refreshResult.isValid && refreshResult.newAccessToken) {
-            const user = await this.getUserFromLiffToken(refreshResult.newAccessToken);
-            const returnValue: {
-              user: User | null;
-              newAccessToken?: string;
-              newRefreshToken?: string;
-              expiresIn?: number;
-              needsReauth?: boolean;
-            } = { user };
-
-            returnValue.newAccessToken = refreshResult.newAccessToken;
-
-            if (refreshResult.newRefreshToken) {
-              returnValue.newRefreshToken = refreshResult.newRefreshToken;
-            }
-
-            if (refreshResult.expiresIn !== undefined) {
-              returnValue.expiresIn = refreshResult.expiresIn;
-            }
-
-            return returnValue;
-          } else if (refreshResult.needsReauth) {
-            return { user: null, needsReauth: true };
-          }
-        } catch (refreshError) {
-          console.error('Token refresh failed in userService:', refreshError);
-          return { user: null, needsReauth: true };
-        }
-      }
-
-      if (error instanceof LineTokenExpiredError) {
-        return { user: null, needsReauth: true };
-      }
-
-      throw error;
-    }
   }
 
   /**

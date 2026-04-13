@@ -85,8 +85,7 @@ export function buildWordPressServiceFromSettings(
 }
 
 export type WordPressContextFailureReason =
-  | 'line_auth_invalid'
-  | 'requires_reauth'
+  | 'auth_invalid'
   | 'email_link_conflict'
   | 'settings_missing'
   | WordPressServiceBuildFailureReason;
@@ -118,10 +117,7 @@ export async function resolveWordPressContext(
   getCookie: CookieGetter,
   options: ResolveWordPressContextOptions = {}
 ): Promise<WordPressContextResult> {
-  const accessToken = getCookie('line_access_token');
-  const refreshToken = getCookie('line_refresh_token');
-  // accessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
 
   const conflictMessage = getEmailLinkConflictMessage(authResult);
   if (conflictMessage !== undefined) {
@@ -133,19 +129,10 @@ export async function resolveWordPressContext(
     };
   }
 
-  if (authResult.needsReauth) {
-    return {
-      success: false,
-      reason: 'requires_reauth',
-      message: authResult.error || '再認証が必要です',
-      status: 401,
-    };
-  }
-
   if (authResult.error || !authResult.userId) {
     return {
       success: false,
-      reason: 'line_auth_invalid',
+      reason: 'auth_invalid',
       message: authResult.error || 'ユーザー認証に失敗しました',
       status: 401,
     };

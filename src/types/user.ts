@@ -5,7 +5,7 @@ import type { Database } from '@/types/database.types';
 /**
  * ユーザーロールの型定義
  */
-export type UserRole = 'trial' | 'paid' | 'admin' | 'unavailable' | 'owner';
+export type UserRole = 'trial' | 'paid' | 'admin' | 'unavailable';
 
 /**
  * 有効なUserRole値の配列
@@ -15,7 +15,6 @@ export const VALID_USER_ROLES: readonly UserRole[] = [
   'paid',
   'admin',
   'unavailable',
-  'owner',
 ] as const;
 
 /**
@@ -59,9 +58,7 @@ export interface User {
   supabaseAuthId?: string | null | undefined; // Supabase Auth ユーザー ID
 
   // 権限管理
-  role: UserRole; // ユーザーロール（trial: お試し, paid: 有料契約, admin: 管理者, unavailable: サービス利用不可, owner: スタッフを持つあなた）
-  ownerUserId?: string | null | undefined; // スタッフが紐づくあなたのID（あなた自身はNULL）
-  ownerPreviousRole?: UserRole | null | undefined; // owner化前のロール（復帰用）
+  role: UserRole; // ユーザーロール（trial: お試し, paid: 有料契約, admin: 管理者, unavailable: サービス利用不可）
 }
 
 /**
@@ -93,8 +90,8 @@ export function toDbUserInsert(user: User): DbUserInsert {
     stripe_customer_id: null,
     stripe_subscription_id: null,
     role: user.role,
-    owner_user_id: user.ownerUserId ?? null,
-    owner_previous_role: user.ownerPreviousRole ?? null,
+    owner_user_id: null,
+    owner_previous_role: null,
   };
 }
 
@@ -103,11 +100,6 @@ export function toUser(dbUser: DbUser): User {
     throw new Error(`Invalid user role: ${dbUser.role}`);
   }
   const role = dbUser.role;
-
-  // ownerPreviousRoleのバリデーション（null/undefined以外の場合）
-  if (dbUser.owner_previous_role != null && !isValidUserRole(dbUser.owner_previous_role)) {
-    throw new Error(`Invalid owner previous role: ${dbUser.owner_previous_role}`);
-  }
 
   const createdAt = parseTimestamp(dbUser.created_at);
   const updatedAt = parseTimestamp(dbUser.updated_at);
@@ -125,7 +117,5 @@ export function toUser(dbUser: DbUser): User {
     email: dbUser.email,
     supabaseAuthId: dbUser.supabase_auth_id,
     role,
-    ownerUserId: dbUser.owner_user_id,
-    ownerPreviousRole: dbUser.owner_previous_role ?? null,
   };
 }

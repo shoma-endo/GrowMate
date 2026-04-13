@@ -283,17 +283,13 @@ import { headingFlowService } from '@/server/services/headingFlowService';
 
 const supabaseService = new SupabaseService();
 
-/** チャット API（ストリーム）と同じ認証方針。LINE トークン失効時は Email セッションへフォールバックする */
-const promptAuthMiddleware = (liffAccessToken: string) =>
-  authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
-
 /**
  * 事業者情報取得のキャッシュ化
  * 同一リクエスト内でのDB負荷を最大90%削減
  */
-const getCachedBrief = cache(async (liffAccessToken: string): Promise<BriefInput | null> => {
+const getCachedBrief = cache(async (): Promise<BriefInput | null> => {
   try {
-    const result = await getBrief(liffAccessToken);
+    const result = await getBrief();
     return result.success && result.data ? result.data : null;
   } catch (error) {
     console.error('事業者情報取得エラー:', error);
@@ -674,7 +670,7 @@ const LP_DRAFT_PROMPT = LP_DRAFT_PROMPT_TEMPLATE;
  * DBからprompt_templatesテーブルを取得するように変更
  */
 const generateAdCopyPrompt = cache(
-  async (liffAccessToken: string, serviceId?: string): Promise<string> => {
+  async (serviceId?: string): Promise<string> => {
     try {
       // DBからプロンプトテンプレートを取得
       const template = await PromptService.getTemplateByName('ad_copy_creation');
@@ -682,17 +678,17 @@ const generateAdCopyPrompt = cache(
         console.warn(
           'ad_copy_creation プロンプトテンプレートが見つかりません - 静的テンプレートを使用'
         );
-        const businessInfo = await getCachedBrief(liffAccessToken);
+        const businessInfo = await getCachedBrief();
         return replaceTemplateVariables(AD_COPY_PROMPT_TEMPLATE, businessInfo, serviceId);
       }
 
-      const businessInfo = await getCachedBrief(liffAccessToken);
+      const businessInfo = await getCachedBrief();
       return replaceTemplateVariables(template.content, businessInfo, serviceId);
     } catch (error) {
       console.error('広告コピープロンプト生成エラー:', error);
       // フォールバック: 静的テンプレートを返す
       try {
-        const businessInfo = await getCachedBrief(liffAccessToken);
+        const businessInfo = await getCachedBrief();
         return replaceTemplateVariables(AD_COPY_PROMPT_TEMPLATE, businessInfo, serviceId);
       } catch (fallbackError) {
         console.error('フォールバックプロンプト生成エラー:', fallbackError);
@@ -706,7 +702,7 @@ const generateAdCopyPrompt = cache(
  * 広告コピー仕上げ用プロンプト生成（キャッシュ付き）
  */
 const generateAdCopyFinishingPrompt = cache(
-  async (liffAccessToken: string, serviceId?: string): Promise<string> => {
+  async (serviceId?: string): Promise<string> => {
     try {
       // DBからプロンプトテンプレートを取得
       const template = await PromptService.getTemplateByName('ad_copy_finishing');
@@ -715,7 +711,7 @@ const generateAdCopyFinishingPrompt = cache(
         return AD_COPY_FINISHING_PROMPT_TEMPLATE;
       }
 
-      const businessInfo = await getCachedBrief(liffAccessToken);
+      const businessInfo = await getCachedBrief();
       return replaceTemplateVariables(template.content, businessInfo, serviceId);
     } catch (error) {
       console.error('広告コピー仕上げプロンプト生成エラー:', error);
@@ -730,7 +726,7 @@ const generateAdCopyFinishingPrompt = cache(
  * DBからprompt_templatesテーブルを取得するように変更
  */
 const generateLpDraftPrompt = cache(
-  async (liffAccessToken: string, serviceId?: string): Promise<string> => {
+  async (serviceId?: string): Promise<string> => {
     try {
       // DBからプロンプトテンプレートを取得
       const template = await PromptService.getTemplateByName('lp_draft_creation');
@@ -738,17 +734,17 @@ const generateLpDraftPrompt = cache(
         console.warn(
           'lp_draft_creation プロンプトテンプレートが見つかりません - 静的テンプレートを使用'
         );
-        const businessInfo = await getCachedBrief(liffAccessToken);
+        const businessInfo = await getCachedBrief();
         return replaceTemplateVariables(LP_DRAFT_PROMPT_TEMPLATE, businessInfo, serviceId);
       }
 
-      const businessInfo = await getCachedBrief(liffAccessToken);
+      const businessInfo = await getCachedBrief();
       return replaceTemplateVariables(template.content, businessInfo, serviceId);
     } catch (error) {
       console.error('LP下書きプロンプト生成エラー:', error);
       // フォールバック: 静的テンプレートを返す
       try {
-        const businessInfo = await getCachedBrief(liffAccessToken);
+        const businessInfo = await getCachedBrief();
         return replaceTemplateVariables(LP_DRAFT_PROMPT_TEMPLATE, businessInfo, serviceId);
       } catch (fallbackError) {
         console.error('フォールバックプロンプト生成エラー:', fallbackError);
@@ -763,12 +759,11 @@ const generateLpDraftPrompt = cache(
  * Step7 の DB テンプレートをベースにしつつ、1見出し分のみを出力する制約を後段で強制する。
  */
 async function generateHeadingUnitPrompt(
-  liffAccessToken: string,
   sessionId: string,
   activeSection: { heading_text: string; heading_level?: number }
 ): Promise<string> {
   try {
-    const basePrompt = await generateBlogCreationPromptByStep(liffAccessToken, 'step7', sessionId);
+    const basePrompt = await generateBlogCreationPromptByStep('step7', sessionId);
 
     const headingLevel = activeSection.heading_level ?? 3;
     const hashes = '#'.repeat(headingLevel);
@@ -791,7 +786,6 @@ async function generateHeadingUnitPrompt(
  * DBテンプレート + canonicalUrls 変数埋め込み
  */
 async function generateBlogCreationPromptByStep(
-  liffAccessToken: string,
   step: BlogStepId,
   sessionId?: string
 ): Promise<string> {
@@ -799,8 +793,8 @@ async function generateBlogCreationPromptByStep(
     const templateName = toTemplateName(step);
     const [template, auth, businessInfo] = await Promise.all([
       PromptService.getTemplateByName(templateName),
-      promptAuthMiddleware(liffAccessToken),
-      getCachedBrief(liffAccessToken),
+      authMiddleware(),
+      getCachedBrief(),
     ]);
 
     const userId = auth.error ? undefined : auth.userId;
@@ -867,15 +861,14 @@ async function generateBlogCreationPromptByStep(
 }
 
 async function generateTitleMetaPrompt(
-  liffAccessToken: string,
   serviceId: string | undefined,
   sessionId?: string
 ): Promise<string> {
   try {
     const [template, auth, businessInfo] = await Promise.all([
       PromptService.getTemplateByName('blog_title_meta_generation'),
-      promptAuthMiddleware(liffAccessToken),
-      getCachedBrief(liffAccessToken),
+      authMiddleware(),
+      getCachedBrief(),
     ]);
 
     const userId = auth.error ? undefined : auth.userId;
@@ -928,10 +921,9 @@ async function generateTitleMetaPrompt(
  */
 export async function getBlogCreationTemplatePrompt(
   step: BlogStepId,
-  liffAccessToken: string,
   sessionId?: string
 ): Promise<string> {
-  return generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
+  return generateBlogCreationPromptByStep(step, sessionId);
 }
 
 // =============================================================================
@@ -947,93 +939,88 @@ const STATIC_PROMPTS: Record<string, string> = {
 const BLOG_STEP_PATTERN = new RegExp(`^blog_creation_(${BLOG_STEP_IDS.join('|')})(?:_|$)`);
 
 /**
- * モデルに応じたシステムプロンプトを取得する（認証トークンまたは Email セッションがあれば動的生成、なければ静的）
- * liffAccessToken が空文字 '' の場合も Email 認証フォールバック経由で動的生成を行う。
+ * モデルに応じたシステムプロンプトを取得する（Email セッション経由で動的生成）
  */
 export async function getSystemPrompt(
   model: string,
-  liffAccessToken?: string,
+  _liffAccessToken?: string,
   sessionId?: string,
   serviceIdOverride?: string
 ): Promise<string> {
-  if (liffAccessToken != null) {
-    // セッションに紐づくサービスIDを解決（オーバーライドがなければ）
-    let serviceId = serviceIdOverride;
-    let authUserId: string | null = null;
-    if (sessionId) {
-      const authResult = await promptAuthMiddleware(liffAccessToken);
-      if (!authResult.error && authResult.userId) {
-        authUserId = authResult.userId;
-      }
-      if (!serviceId && authUserId) {
-        const result = await supabaseService.getSessionServiceId(sessionId, authUserId);
-        if (result.success && result.data) serviceId = result.data;
-      }
+  // セッションに紐づくサービスIDを解決（オーバーライドがなければ）
+  let serviceId = serviceIdOverride;
+  let authUserId: string | null = null;
+  if (sessionId) {
+    const authResult = await authMiddleware();
+    if (!authResult.error && authResult.userId) {
+      authUserId = authResult.userId;
     }
-
-    if (model.startsWith('blog_creation_')) {
-      const stepMatch = model.match(BLOG_STEP_PATTERN);
-      if (!stepMatch?.[1]) {
-        return STATIC_PROMPTS[model] ?? SYSTEM_PROMPT;
-      }
-      const step = stepMatch[1] as BlogStepId;
-
-      // Step7 見出し単位生成: model の hN を正として対象見出しを解決する。
-      // 未確定の先頭見出しに暗黙フォールバックすると、抽出済みでも別見出し/空見出しを拾い得るため禁止。
-      const step7HeadingIndex = isBlogStep7(step)
-        ? extractStep7HeadingIndexFromModel(model)
-        : null;
-      if (step7HeadingIndex !== null && sessionId && authUserId) {
-        console.warn('[getSystemPrompt] Resolving Step7 heading prompt', {
-          model,
-          sessionId,
-          step7HeadingIndex,
-        });
-        const sessionRes = await supabaseService.getChatSessionById(sessionId, authUserId);
-        if (sessionRes.success && sessionRes.data) {
-          const sectionsResult = await headingFlowService.getHeadingSections(sessionId);
-          if (sectionsResult.success && Array.isArray(sectionsResult.data)) {
-            const activeSection = sectionsResult.data[step7HeadingIndex];
-            if (activeSection?.heading_text?.trim()) {
-              console.warn('[getSystemPrompt] Step7 heading prompt resolved', {
-                model,
-                sessionId,
-                step7HeadingIndex,
-                headingText: activeSection.heading_text,
-              });
-              return generateHeadingUnitPrompt(liffAccessToken, sessionId, activeSection);
-            }
-            console.warn('[getSystemPrompt] Step7 heading section could not be resolved', {
-              model,
-              sessionId,
-              step7HeadingIndex,
-              sectionCount: sectionsResult.data.length,
-              resolvedHeadingText: activeSection?.heading_text ?? null,
-            });
-          }
-        }
-        console.warn('[getSystemPrompt] Falling back from Step7 heading prompt resolution', {
-          model,
-          sessionId,
-          step7HeadingIndex,
-        });
-      }
-
-      return await generateBlogCreationPromptByStep(liffAccessToken, step, sessionId);
-    }
-    switch (model) {
-      case 'ad_copy_creation':
-        return await generateAdCopyPrompt(liffAccessToken, serviceId);
-      case 'ad_copy_finishing':
-        return await generateAdCopyFinishingPrompt(liffAccessToken, serviceId);
-      case 'lp_draft_creation':
-        return await generateLpDraftPrompt(liffAccessToken, serviceId);
-      case 'blog_title_meta_generation':
-        return await generateTitleMetaPrompt(liffAccessToken, serviceId, sessionId);
-      default:
-        return STATIC_PROMPTS[model] ?? SYSTEM_PROMPT;
+    if (!serviceId && authUserId) {
+      const result = await supabaseService.getSessionServiceId(sessionId, authUserId);
+      if (result.success && result.data) serviceId = result.data;
     }
   }
 
-  return STATIC_PROMPTS[model] ?? SYSTEM_PROMPT;
+  if (model.startsWith('blog_creation_')) {
+    const stepMatch = model.match(BLOG_STEP_PATTERN);
+    if (!stepMatch?.[1]) {
+      return STATIC_PROMPTS[model] ?? SYSTEM_PROMPT;
+    }
+    const step = stepMatch[1] as BlogStepId;
+
+    // Step7 見出し単位生成: model の hN を正として対象見出しを解決する。
+    // 未確定の先頭見出しに暗黙フォールバックすると、抽出済みでも別見出し/空見出しを拾い得るため禁止。
+    const step7HeadingIndex = isBlogStep7(step)
+      ? extractStep7HeadingIndexFromModel(model)
+      : null;
+    if (step7HeadingIndex !== null && sessionId && authUserId) {
+      console.warn('[getSystemPrompt] Resolving Step7 heading prompt', {
+        model,
+        sessionId,
+        step7HeadingIndex,
+      });
+      const sessionRes = await supabaseService.getChatSessionById(sessionId, authUserId);
+      if (sessionRes.success && sessionRes.data) {
+        const sectionsResult = await headingFlowService.getHeadingSections(sessionId);
+        if (sectionsResult.success && Array.isArray(sectionsResult.data)) {
+          const activeSection = sectionsResult.data[step7HeadingIndex];
+          if (activeSection?.heading_text?.trim()) {
+            console.warn('[getSystemPrompt] Step7 heading prompt resolved', {
+              model,
+              sessionId,
+              step7HeadingIndex,
+              headingText: activeSection.heading_text,
+            });
+            return generateHeadingUnitPrompt(sessionId, activeSection);
+          }
+          console.warn('[getSystemPrompt] Step7 heading section could not be resolved', {
+            model,
+            sessionId,
+            step7HeadingIndex,
+            sectionCount: sectionsResult.data.length,
+            resolvedHeadingText: activeSection?.heading_text ?? null,
+          });
+        }
+      }
+      console.warn('[getSystemPrompt] Falling back from Step7 heading prompt resolution', {
+        model,
+        sessionId,
+        step7HeadingIndex,
+      });
+    }
+
+    return await generateBlogCreationPromptByStep(step, sessionId);
+  }
+  switch (model) {
+    case 'ad_copy_creation':
+      return await generateAdCopyPrompt(serviceId);
+    case 'ad_copy_finishing':
+      return await generateAdCopyFinishingPrompt(serviceId);
+    case 'lp_draft_creation':
+      return await generateLpDraftPrompt(serviceId);
+    case 'blog_title_meta_generation':
+      return await generateTitleMetaPrompt(serviceId, sessionId);
+    default:
+      return STATIC_PROMPTS[model] ?? SYSTEM_PROMPT;
+  }
 }

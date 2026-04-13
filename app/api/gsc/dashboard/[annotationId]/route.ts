@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { getLiffTokensFromRequest } from '@/server/lib/auth-helpers';
+
 
 const supabaseService = new SupabaseService();
 
@@ -11,10 +11,7 @@ export async function GET(
   context: { params: Promise<{ annotationId: string }> }
 ) {
   try {
-    const { accessToken: liffAccessToken, refreshToken } = getLiffTokensFromRequest(request);
-
-    // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
     const conflict409 = nextJson409IfEmailLinkConflict(authResult);
     if (conflict409) return conflict409;
     if (authResult.error || !authResult.userId) {

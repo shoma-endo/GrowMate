@@ -5,7 +5,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { normalizeToPath } from '@/lib/ga4-utils';
 import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
-import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { ServerActionResult } from '@/lib/async-handler';
@@ -113,23 +113,19 @@ const timeseriesParamsSchema = z.object({
 
 interface AuthResult {
   userId: string | null;
-  ownerUserId: string | null;
   role: import('@/types/user').UserRole | null;
-  actorUserId?: string;
   error?: string;
   /** メール紐付け競合（クライアントはログイン回復へ誘導） */
   emailLinkConflict?: true;
 }
 
 const getAuthUserId = async (): Promise<AuthResult> => {
-  const { accessToken, refreshToken } = await getLiffTokensFromCookies();
-  const authResult = await authMiddleware(accessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
 
   const linkConflict = emailLinkConflictErrorPayload(authResult);
   if (linkConflict) {
     return {
       userId: null,
-      ownerUserId: null,
       role: null,
       error: linkConflict.error,
       emailLinkConflict: true,
@@ -139,22 +135,14 @@ const getAuthUserId = async (): Promise<AuthResult> => {
   if (authResult.error || !authResult.userId) {
     return {
       userId: null,
-      ownerUserId: null,
       role: null,
       error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED,
     };
   }
 
-  // 実行ユーザーID（View Modeの場合はオーナーIDとして実行）
-  const actorUserId = authResult.userId;
-  const realUserId = authResult.actorUserId || authResult.userId;
-  const isViewModeAsOwner = !!authResult.actorUserId;
-
   return {
-    userId: realUserId,
-    ownerUserId: isViewModeAsOwner ? null : (authResult.ownerUserId ?? null),
+    userId: authResult.userId,
     role: authResult.userDetails?.role ?? null,
-    actorUserId,
   };
 };
 

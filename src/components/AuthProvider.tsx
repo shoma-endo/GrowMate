@@ -125,8 +125,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isLoading,
     profile: null,
     user,
-    isOwnerViewMode: false,
-    isLineCookieAuth: false,
     login: () => {
       router.push('/login');
     },
@@ -143,7 +141,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     },
     liffObject: null,
-    getAccessToken: async () => '',
     refreshUser,
   };
 

@@ -9,8 +9,7 @@ import type { Ga4ConnectionStatus } from './ga4';
 /**
  * 認証コンテキスト（クライアント側）。Email セッション中心。
  *
- * `profile` / `liffObject` / `isLineCookieAuth` / `getAccessToken` 等は
- * 旧 LINE LIFF 連携からの互換フィールドで、常に固定値（null / false / 空文字）を返す。
+ * `profile` / `liffObject` 等は旧 LINE LIFF 連携からの互換フィールドで、常に null を返す。
  */
 export interface AuthContextType {
   isLoggedIn: boolean;
@@ -18,16 +17,10 @@ export interface AuthContextType {
   /** legacy: 常に null */
   profile: null;
   user?: import('@/types/user').User | null;
-  /** legacy: 常に false */
-  isOwnerViewMode: boolean;
-  /** legacy: 常に false */
-  isLineCookieAuth: boolean;
   login: () => void;
   logout: () => void | Promise<void>;
   /** legacy: 常に null */
   liffObject: null;
-  /** legacy: 常に空文字を返す（Server Action 側で Email セッション解決にフォールバック） */
-  getAccessToken: () => Promise<string>;
   refreshUser: () => Promise<boolean>;
 }
 

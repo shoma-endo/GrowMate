@@ -3,7 +3,7 @@
 import { randomUUID } from 'crypto';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getLiffTokensFromCookies } from '@/server/lib/auth-helpers';
+
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import {
@@ -12,7 +12,7 @@ import {
   type WithAuthEmailLinkConflict,
 } from '@/server/middleware/withAuth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { isAdmin as isAdminRole, isActualOwner as isActualOwnerHelper } from '@/authUtils';
+import { isAdmin as isAdminRole } from '@/authUtils';
 import {
   WordPressSettings,
   WordPressRestTerm,
@@ -33,7 +33,6 @@ import type {
 } from '@/types/annotation';
 import type { DbChatSession } from '@/types/chat';
 import type { Database } from '@/types/database.types';
-import { isViewModeEnabled, VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 const supabaseService = new SupabaseService();
@@ -61,15 +60,8 @@ function isDuplicateCanonicalConstraint(error: {
  * WordPress設定を取得
  */
 export async function getWordPressSettings(): Promise<WordPressSettings | null> {
-  const result = await withAuth(async ({ userId, ownerUserId, actorUserId }) => {
-    // View Modeの場合は本来のユーザー（オーナー）を使用
-    const realUserId = actorUserId || userId;
-    const isRealOwner = !!actorUserId;
-
-    if (!isRealOwner && ownerUserId) {
-      return null;
-    }
-    return await supabaseService.getWordPressSettingsByUserId(realUserId);
+  const result = await withAuth(async ({ userId }) => {
+    return await supabaseService.getWordPressSettingsByUserId(userId);
   });
   if (isWithAuthEmailLinkConflict(result)) {
     redirect('/login?reason=email_link_conflict');
@@ -360,9 +352,6 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
       params;
     const contentTypes = normalizeContentTypes(wpContentTypes);
 
-    // 認証情報はCookieから取得（セキュリティベストプラクティス）
-    const { accessToken: liffToken, refreshToken } = await getLiffTokensFromCookies();
-
     if (!wpType) {
       return {
         success: false as const,
@@ -370,24 +359,14 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
       };
     }
 
-    const authResult = await authMiddleware(liffToken, refreshToken, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
     const saveWpConflict = emailLinkConflictErrorPayload(authResult);
     if (saveWpConflict) return saveWpConflict;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return { success: false as const, error: ERROR_MESSAGES.AUTH.AUTHENTICATION_FAILED };
     }
 
-    // View Modeの場合でも、本来のユーザー（オーナー）として実行する
-    const realUserId = authResult.actorUserId || authResult.userId;
-    const isRealOwner = !!authResult.actorUserId;
-    const effectiveOwnerId = isRealOwner ? null : (authResult.ownerUserId ?? null);
-
-    if (effectiveOwnerId) {
-      return {
-        success: false as const,
-        error: ERROR_MESSAGES.AUTH.STAFF_OPERATION_NOT_ALLOWED,
-      };
-    }
+    const realUserId = authResult.userId;
 
     const isAdmin = isAdminRole(authResult.userDetails.role);
 
@@ -443,22 +422,13 @@ export async function testWordPressConnectionAction(): Promise<
   | { success: false; error: string; needsWordPressAuth?: true }
 > {
   try {
-    const { accessToken: liffToken, refreshToken } = await getLiffTokensFromCookies();
-    const authResult = await authMiddleware(liffToken, refreshToken, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
 
     const testWpConflict = emailLinkConflictErrorPayload(authResult);
     if (testWpConflict) return testWpConflict;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return { success: false as const, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
     }
-    if (authResult.viewMode || authResult.ownerUserId) {
-      return {
-        success: false as const,
-        error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED,
-      };
-    }
-    // 本人のオーナーアカウントのみがテスト接続を実行可能（View Mode・スタッフアカウント禁止）
-
     const isAdmin = isAdminRole(authResult.userDetails.role);
     const wpSettings = await supabaseService.getWordPressSettingsByUserId(authResult.userId);
 
@@ -481,8 +451,7 @@ export async function testWordPressConnectionAction(): Promise<
 
     if (!context.success) {
       switch (context.reason) {
-        case 'line_auth_invalid':
-        case 'requires_reauth':
+        case 'auth_invalid':
           return {
             success: false as const,
             error: context.message || 'ユーザー認証に失敗しました',
@@ -582,24 +551,7 @@ export async function upsertContentAnnotationBySession(
       wp_post_title?: string | null;
     }
 > {
-  return withAuth(async ({ userId, cookieStore, viewModeRole, ownerUserId, userDetails }) => {
-    if (await isViewModeEnabled(viewModeRole ?? null)) {
-      return { success: false as const, error: VIEW_MODE_ERROR_MESSAGE };
-    }
-
-    // セッションベースのアノテーション編集の権限チェック
-    // - スタッフユーザー（ownerUserId が設定されている）→ 編集可能
-    // - 独立ユーザー（role!='owner' かつ ownerUserId=null）→ 編集可能
-    // - オーナー（role='owner' かつ ownerUserId=null）→ 編集不可（閲覧のみ）
-    const isStaffUser = Boolean(ownerUserId);
-    const isActualOwner = isActualOwnerHelper(userDetails?.role ?? null, ownerUserId);
-    if (!isStaffUser && isActualOwner) {
-      return {
-        success: false as const,
-        error: 'オーナーはコンテンツの編集ができません。従業員のみ編集可能です。',
-      };
-    }
-
+  return withAuth(async ({ userId, cookieStore, userDetails }) => {
     const supabaseServiceLocal = new SupabaseService();
     const client = supabaseServiceLocal.getClient();
 
@@ -795,11 +747,8 @@ export async function ensureAnnotationChatSession(
   | { success: true; sessionId: string }
   | { success: false; error: string }
 > {
-  return withAuth(async ({ userId, ownerUserId, viewModeRole }) => {
-    if (await isViewModeEnabled(viewModeRole ?? null)) {
-      return { success: false as const, error: VIEW_MODE_ERROR_MESSAGE };
-    }
-    const targetUserId = ownerUserId || userId;
+  return withAuth(async ({ userId }) => {
+    const targetUserId = userId;
     const service = new SupabaseService();
     const client = service.getClient();
 
@@ -1033,11 +982,8 @@ export async function updateContentAnnotationFields(
     return { success: false as const, error: ERROR_MESSAGES.WORDPRESS.INVALID_ANNOTATION_ID };
   }
 
-  return withAuth(async ({ userId, ownerUserId, cookieStore, viewModeRole }) => {
-    const targetUserId = ownerUserId || userId;
-    if (await isViewModeEnabled(viewModeRole ?? null)) {
-      return { success: false as const, error: VIEW_MODE_ERROR_MESSAGE };
-    }
+  return withAuth(async ({ userId, cookieStore }) => {
+    const targetUserId = userId;
     const supabaseServiceLocal = new SupabaseService();
     const client = supabaseServiceLocal.getClient();
 
@@ -1114,18 +1060,8 @@ export async function fetchWordPressStatusAction(): Promise<
   | { success: true; data: WordPressConnectionStatus }
   | { success: false; error: string }
 > {
-  return withAuth(async ({ userId, cookieStore, userDetails, ownerUserId, actorUserId }) => {
-    // View Modeの場合は本来のユーザー（オーナー）を使用
-    const realUserId = actorUserId || userId;
-    const isRealOwner = !!actorUserId;
-    const effectiveOwnerId = isRealOwner ? null : ownerUserId;
-
-    if (effectiveOwnerId) {
-      return {
-        success: false,
-        error: ERROR_MESSAGES.AUTH.STAFF_OPERATION_NOT_ALLOWED,
-      };
-    }
+  return withAuth(async ({ userId, cookieStore, userDetails }) => {
+    const realUserId = userId;
     const wpSettings = await supabaseService.getWordPressSettingsByUserId(realUserId);
     const isAdmin = isAdminRole(userDetails?.role ?? null);
 
@@ -1211,11 +1147,8 @@ export async function fetchWordPressStatusAction(): Promise<
 export async function deleteContentAnnotation(
   annotationId: string
 ): Promise<WithAuthEmailLinkConflict | { success: boolean; error?: string }> {
-  return withAuth(async ({ userId, ownerUserId, viewModeRole }) => {
-    if (await isViewModeEnabled(viewModeRole ?? null)) {
-      return { success: false, error: VIEW_MODE_ERROR_MESSAGE };
-    }
-    const targetUserId = ownerUserId || userId;
+  return withAuth(async ({ userId }) => {
+    const targetUserId = userId;
     const result = await supabaseService.deleteContentAnnotation(annotationId, targetUserId);
 
     if (!result.success) {

@@ -18,8 +18,6 @@ import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
-import { VIEW_MODE_ERROR_MESSAGE } from '@/server/lib/view-mode';
-import { hasOwnerRole } from '@/authUtils';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -73,10 +71,7 @@ export async function POST(req: NextRequest) {
     const isStep7Model = model === STEP7_BLOG_MODEL;
 
     // 認証チェック
-    const authHeader = req.headers.get('authorization');
-    const liffAccessToken = authHeader?.replace('Bearer ', '');
-
-    const authResult = await authMiddleware(liffAccessToken, undefined, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
     const sseConflict = sse409IfEmailLinkConflict(authResult, sendSSE);
     if (sseConflict) return sseConflict;
     if (authResult.error) {
@@ -89,44 +84,8 @@ export async function POST(req: NextRequest) {
         },
       });
     }
-    if (authResult.viewMode) {
-      return new Response(
-        sendSSE('error', { type: 'view_mode', message: VIEW_MODE_ERROR_MESSAGE }),
-        {
-          status: 403,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-store',
-            Connection: 'keep-alive',
-          },
-        }
-      );
-    }
-
     const { userId, userDetails } = authResult;
     const userRole = (userDetails?.role ?? 'trial') as UserRole;
-
-    // step7 本文生成: 閲覧専用オーナーは書き込み不可
-    if (
-      step7FullBodyGeneration &&
-      isStep7Model &&
-      hasOwnerRole(userDetails?.role ?? null)
-    ) {
-      return new Response(
-        sendSSE('error', {
-          type: 'forbidden',
-          message: '閲覧専用ユーザーは完成形の保存ができません',
-        }),
-        {
-          status: 403,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-store',
-            Connection: 'keep-alive',
-          },
-        }
-      );
-    }
 
     const limitError = await checkTrialDailyLimit(userRole, userId);
     if (limitError) {
@@ -244,7 +203,7 @@ export async function POST(req: NextRequest) {
             ? systemPromptOverride
             : await getSystemPrompt(
                 model,
-                liffAccessToken ?? '',
+                undefined,
                 sessionId,
                 serviceId
               );
@@ -371,13 +330,6 @@ export async function POST(req: NextRequest) {
                   effectiveSessionId &&
                   messageToSave.trim();
                 if (needsStep7CombinedSave) {
-                  if (hasOwnerRole(userDetails?.role ?? null)) {
-                    sendSaveErrorAndExit(
-                      'forbidden',
-                      '閲覧専用ユーザーは完成形の保存ができません'
-                    );
-                    return;
-                  }
                   const snapRes = await headingFlowService.saveCombinedContentSnapshot(
                     effectiveSessionId,
                     messageToSave,

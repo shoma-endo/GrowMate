@@ -6,12 +6,6 @@ import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { z } from 'zod';
-import {
-  isViewModeEnabled,
-  resolveViewModeRole,
-  VIEW_MODE_ERROR_MESSAGE,
-} from '@/server/lib/view-mode';
-import { getLiffTokensFromRequest } from '@/server/lib/auth-helpers';
 
 const promptVariableSchema = z.object({
   name: z.string(),
@@ -27,15 +21,7 @@ const promptSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    const bearer = authHeader?.startsWith('Bearer ')
-      ? authHeader.slice('Bearer '.length)
-      : undefined;
-    const { accessToken: cookieAccessToken, refreshToken } = getLiffTokensFromRequest(request);
-    const liffAccessToken = bearer || cookieAccessToken;
-
-    // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
     const conflict409get = nextJson409IfEmailLinkConflict(authResult);
     if (conflict409get) return conflict409get;
     if (authResult.error) {
@@ -75,15 +61,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    const bearer = authHeader?.startsWith('Bearer ')
-      ? authHeader.slice('Bearer '.length)
-      : undefined;
-    const { accessToken: cookieAccessToken, refreshToken } = getLiffTokensFromRequest(request);
-    const liffAccessToken = bearer || cookieAccessToken;
-
-    // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-    const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+    const authResult = await authMiddleware();
     const conflict409post = nextJson409IfEmailLinkConflict(authResult);
     if (conflict409post) return conflict409post;
     if (authResult.error || !authResult.userId) {
@@ -99,13 +77,6 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
-    if (await isViewModeEnabled(resolveViewModeRole(authResult))) {
-      return NextResponse.json(
-        { success: false, error: VIEW_MODE_ERROR_MESSAGE },
-        { status: 403 }
-      );
-    }
-
     const role = authResult.userDetails?.role ?? null;
     if (!isAdmin(role)) {
       return NextResponse.json({ success: false, error: '管理者権限がありません' }, { status: 403 });

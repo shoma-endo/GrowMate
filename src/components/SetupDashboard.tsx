@@ -26,7 +26,6 @@ import {
   type WordPressConnectionStatus,
 } from '@/server/actions/wordpress.actions';
 import { useServerAction } from '@/hooks/useServerAction';
-import { useAuth } from '@/components/AuthProvider';
 import { replaceToEmailLinkConflictLogin } from '@/lib/auth/emailLinkConflictClient';
 
 const GA4_STAGE_META: Record<Ga4ConnectionStage, { label: string; className: string }> = {
@@ -42,7 +41,6 @@ export default function SetupDashboard({
   googleAdsStatus,
   isAdmin,
 }: SetupDashboardProps) {
-  const { isOwnerViewMode, user } = useAuth();
   const [wpStatus, setWpStatus] = useState<WordPressConnectionStatus | null>(null);
   const [gscConnection, setGscConnection] = useState(gscStatus);
   const [gscNeedsReauth, setGscNeedsReauth] = useState(false);
@@ -50,8 +48,6 @@ export default function SetupDashboard({
   const [ga4Connection, setGa4Connection] = useState(ga4Status);
   const [ga4NeedsReauth, setGa4NeedsReauth] = useState(false);
   const [isLoadingGa4Status, setIsLoadingGa4Status] = useState(false);
-  const isStaffUser = Boolean(user?.ownerUserId);
-  const isReadOnly = isOwnerViewMode || isStaffUser;
   const ga4StageMeta = GA4_STAGE_META[ga4Connection.connectionStage];
   const isGa4Configured = ga4Connection.connectionStage === 'configured';
   const isGa4LinkedUnselected = ga4Connection.connectionStage === 'linked_unselected';
@@ -372,7 +368,7 @@ export default function SetupDashboard({
                   variant="ghost"
                   size="sm"
                   onClick={refetchGscStatus}
-                  disabled={isLoadingGscStatus || isReadOnly}
+                  disabled={isLoadingGscStatus}
                   className="flex items-center gap-1"
                 >
                   <RefreshCw className={`h-4 w-4 ${isLoadingGscStatus ? 'animate-spin' : ''}`} />
@@ -507,7 +503,7 @@ export default function SetupDashboard({
                   variant="ghost"
                   size="sm"
                   onClick={refetchGa4Status}
-                  disabled={isLoadingGa4Status || isReadOnly}
+                  disabled={isLoadingGa4Status}
                   className="flex items-center gap-1"
                 >
                   <RefreshCw className={`h-4 w-4 ${isLoadingGa4Status ? 'animate-spin' : ''}`} />

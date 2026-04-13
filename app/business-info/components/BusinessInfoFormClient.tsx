@@ -114,13 +114,12 @@ const createInitialState = (data?: Partial<BriefInput>): BriefInput => {
 };
 
 export default function BusinessInfoFormClient({ initialData }: BusinessInfoFormClientProps) {
-  const { getAccessToken, user, isOwnerViewMode } = useAuth();
+  const { user } = useAuth();
   const isAuthenticated = Boolean(user);
   const [form, setForm] = useState<BriefInput>(() => createInitialState(initialData || undefined));
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string>('');
-  const isReadOnly = isOwnerViewMode;
 
   // 初期データの読み込み（認証確定後に実行）
   // isAuthenticated が true になるまで待つことで、Email ユーザーも安全に処理できる
@@ -136,10 +135,7 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
           return;
         }
 
-        // getAccessToken() は LINE ユーザーなら有効なトークン、Email ユーザーなら '' を返す
-        // authMiddleware は '' を受け取ると Supabase セッション経由で Email 認証を行う
-        const token = await getAccessToken();
-        const { data, success, error: fetchError } = await getBrief(token);
+        const { data, success, error: fetchError } = await getBrief();
         if (!success) {
           setError(fetchError || '事業者情報の取得に失敗しました');
           return;
@@ -157,7 +153,7 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
     };
 
     loadData();
-  }, [getAccessToken, isAuthenticated, initialData]);
+  }, [isAuthenticated, initialData]);
 
   const handleUpdateProfile = useCallback(<K extends keyof Profile>(key: K, value: Profile[K]) => {
     setForm(prev => ({
@@ -225,11 +221,8 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
       setError('');
 
       try {
-        // getAccessToken() は LINE ユーザーなら有効なトークン、Email ユーザーなら '' を返す
-        const token = await getAccessToken();
         const { success, error: saveError } = await saveBrief({
           ...form,
-          liffAccessToken: token,
         });
 
         if (!success) {
@@ -252,7 +245,7 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
         setIsSaving(false);
       }
     },
-    [form, getAccessToken]
+    [form]
   );
 
   if (!isAuthenticated) {
@@ -293,7 +286,7 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        <fieldset disabled={isReadOnly} className="space-y-8">
+        <fieldset className="space-y-8">
           {/* プロフィール情報セクション */}
           <Card>
             <CardHeader>
@@ -459,22 +452,20 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
                     onUpdate={handleUpdateService}
                     onRemove={handleRemoveService}
                     isRemoveDisabled={form.services.length <= 1}
-                    isReadOnly={isReadOnly}
+                    isReadOnly={false}
                   />
                 ))}
               </div>
 
-              {!isReadOnly && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full border-dashed"
-                  onClick={handleAddService}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  サービスを追加する
-                </Button>
-              )}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full border-dashed"
+                onClick={handleAddService}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                サービスを追加する
+              </Button>
             </CardContent>
           </Card>
 
@@ -483,7 +474,7 @@ export default function BusinessInfoFormClient({ initialData }: BusinessInfoForm
             <Button
               type="submit"
               size="lg"
-              disabled={isSaving || isReadOnly}
+              disabled={isSaving}
               className="w-full max-w-md"
             >
               {isSaving ? (

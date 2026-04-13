@@ -1,4 +1,3 @@
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { generateOAuthState } from '@/server/lib/oauth-state';
@@ -16,9 +15,6 @@ export async function GET(request: NextRequest) {
       ? requestedReturnTo
       : '/setup/gsc';
 
-  const cookieStore = await cookies();
-  const liffAccessToken = cookieStore.get('line_access_token')?.value;
-  const refreshToken = cookieStore.get('line_refresh_token')?.value;
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID ?? '';
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? '';
   const redirectUri = process.env.GOOGLE_SEARCH_CONSOLE_REDIRECT_URI ?? '';
@@ -43,8 +39,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
   const conflictRedirect = nextResponseRedirectLoginIfEmailLinkConflict(authResult, request);
   if (conflictRedirect) return conflictRedirect;
   if (authResult.error || !authResult.userId) {
@@ -53,10 +48,6 @@ export async function GET(request: NextRequest) {
       { status: 401 }
     );
   }
-  if (authResult.viewMode || authResult.ownerUserId) {
-    return NextResponse.json({ error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED }, { status: 403 });
-  }
-
   const { state } = generateOAuthState(authResult.userId, cookieSecret, returnTo);
 
   const params = new URLSearchParams({

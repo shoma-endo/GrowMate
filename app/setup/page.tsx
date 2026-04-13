@@ -1,4 +1,3 @@
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getWordPressSettings } from '@/server/actions/wordpress.actions';
 import SetupDashboard from '@/components/SetupDashboard';
@@ -16,12 +15,7 @@ export const dynamic = 'force-dynamic';
 const supabaseService = new SupabaseService();
 
 export default async function SetupPage() {
-  const cookieStore = await cookies();
-  const liffAccessToken = cookieStore.get('line_access_token')?.value;
-  const refreshToken = cookieStore.get('line_refresh_token')?.value;
-
-  // liffAccessToken がない場合も authMiddleware が Supabase Email セッションで解決する
-  const authResult = await authMiddleware(liffAccessToken, refreshToken, { allowEmailFallback: true });
+  const authResult = await authMiddleware();
   redirectIfEmailLinkConflict(authResult);
   if (authResult.error || !authResult.userId) {
     redirect('/login');
