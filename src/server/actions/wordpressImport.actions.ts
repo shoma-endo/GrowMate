@@ -28,7 +28,7 @@ export async function runWordpressBulkImport() {
     const linkConflict = emailLinkConflictErrorPayload(authResult);
     if (linkConflict) return linkConflict;
     if (authResult.error || !authResult.userId) {
-      return { success: false, error: authResult.error || ERROR_MESSAGES.AUTH.LIFF_AUTH_FAILED };
+      return { success: false, error: authResult.error || ERROR_MESSAGES.AUTH.AUTH_FAILED };
     }
     const role = authResult.userDetails?.role ?? null;
     if (!role || role === 'unavailable') {

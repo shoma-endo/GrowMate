@@ -111,7 +111,7 @@ export const ERROR_MESSAGES = {
    */
   AUTH: {
     /** 認証に失敗した場合 */
-    LIFF_AUTH_FAILED: '認証に失敗しました。再度ログインしてください。',
+    AUTH_FAILED: '認証に失敗しました。再度ログインしてください。',
 
     /** ログインしていない場合 */
     NOT_LOGGED_IN: 'ログインしていません',

@@ -7,7 +7,7 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
  * ユーザーの権限を確認するサーバーアクション
  * Email セッション経由で解決する
  */
-export const checkUserRole = async (_liffAccessToken?: string) => {
+export const checkUserRole = async () => {
   try {
     const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
     const result = await resolveEmailUserWithReason();

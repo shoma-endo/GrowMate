@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getAllUsers, updateUserRole } from '@/server/actions/admin.actions';
+import { updateUserRole } from '@/server/actions/admin.actions';
 import { getRoleDisplayName } from '@/authUtils';
 import type { User, UserRole } from '@/types/user';
 import { clearAuthCache } from '@/server/actions/adminUsers.actions';
