@@ -224,6 +224,10 @@ export class GscImportService {
         });
 
       if (error) {
+        console.error(
+          `[gscImportService] Batch upsert failed for ${batch.length} rows:`,
+          error
+        );
         skipped += batch.length;
         continue;
       }
