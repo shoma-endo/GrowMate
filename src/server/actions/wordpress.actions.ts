@@ -21,6 +21,7 @@ import {
   ExistingAnnotationData,
   SaveWordPressSettingsParams,
 } from '@/types/wordpress';
+import type { TablesUpdate } from '@/types/database.types';
 import {
   buildWordPressServiceFromSettings,
   resolveWordPressContext,
@@ -819,13 +820,13 @@ export async function ensureAnnotationChatSession(
     }
 
     const hasValidWpId = typeof payload.wpPostId === 'number' && Number.isFinite(payload.wpPostId);
-    const annotationUpdate: Record<string, unknown> = {
+    const annotationUpdate: TablesUpdate<'content_annotations'> = {
       session_id: sessionId,
       updated_at: nowIso,
     };
 
     if (hasValidWpId) {
-      annotationUpdate.wp_post_id = payload.wpPostId;
+      annotationUpdate.wp_post_id = payload.wpPostId as number;
     }
     if (payload.wpPostTitle !== undefined) {
       annotationUpdate.wp_post_title = payload.wpPostTitle ?? null;
@@ -1007,7 +1008,7 @@ export async function updateContentAnnotationFields(
       resolvedWpTitle = resolution.wpPostTitle;
     }
 
-    const updateData: Record<string, unknown> = {
+    const updateData: TablesUpdate<'content_annotations'> = {
       updated_at: new Date().toISOString(),
     };
 
@@ -1033,8 +1034,8 @@ export async function updateContentAnnotationFields(
         fields.impressions === null || fields.impressions === undefined
           ? null
           : Number.isFinite(Number(fields.impressions))
-            ? Number(fields.impressions)
-            : fields.impressions;
+            ? String(Number(fields.impressions))
+            : String(fields.impressions);
     }
 
     const { error } = await client
