@@ -1030,12 +1030,14 @@ export async function updateContentAnnotationFields(
     }
 
     if (hasOwn(fields, 'impressions')) {
-      updateData.impressions =
-        fields.impressions === null || fields.impressions === undefined
-          ? null
-          : Number.isFinite(Number(fields.impressions))
-            ? String(Number(fields.impressions))
-            : String(fields.impressions);
+      if (fields.impressions === null || fields.impressions === undefined) {
+        updateData.impressions = null;
+      } else if (typeof fields.impressions === 'number') {
+        updateData.impressions = Number.isFinite(fields.impressions) ? String(fields.impressions) : null;
+      } else {
+        const normalized = fields.impressions.trim();
+        updateData.impressions = normalized.length > 0 ? normalized : null;
+      }
     }
 
     const { error } = await client
