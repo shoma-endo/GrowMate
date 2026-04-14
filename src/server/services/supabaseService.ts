@@ -2,7 +2,7 @@ import { SupabaseClient, type PostgrestError } from '@supabase/supabase-js';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { SupabaseClientManager } from '@/lib/client-manager';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
-import type { Database, Json } from '@/types/database.types';
+import type { Database, Json, TablesUpdate } from '@/types/database.types';
 import {
   DbChatMessage,
   DbChatSession,
@@ -1388,7 +1388,7 @@ export class SupabaseService {
       ga4LastSyncedAt: string | null;
     }>
   ): Promise<void> {
-    const record: Record<string, unknown> = {
+    const record: Partial<TablesUpdate<'gsc_credentials'>> = {
       updated_at: new Date().toISOString(),
     };
 
