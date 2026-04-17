@@ -351,7 +351,9 @@ GSC 連携など各機能の詳細な検証手順は `testing-and-troubleshootin
 | [`src/server/services/`](src/server/services/) | サーバー統合層（LLM / WordPress / GSC / GA4 / Google Ads 等） |
 | [`src/server/middleware/`](src/server/middleware/) | `authMiddleware` 等 |
 | [`supabase/migrations/`](supabase/migrations/) | DB マイグレーション |
-| [`docs/`](docs/) | Runbook・手順書 |
+| [`docs/specs/`](docs/specs/) | 実装完了済み仕様書 |
+| [`docs/plans/`](docs/plans/) | 実装予定・設計中の仕様書 |
+| [`docs/runbooks/`](docs/runbooks/) | 運用手順書 |
 
 ## 🔧 HTTP エントリポイントの探し方
 
