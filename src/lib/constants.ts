@@ -44,7 +44,7 @@ interface ModelConfig {
 const ANTHROPIC_BASE = {
   provider: 'anthropic' as const,
   temperature: 0.3,
-  actualModel: 'claude-sonnet-4-6',
+  actualModel: 'claude-opus-4-7',
   seed: 42,
 };
 

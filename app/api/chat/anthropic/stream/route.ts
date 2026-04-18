@@ -12,7 +12,7 @@ import {
   isStep7HeadingModel,
 } from '@/lib/constants';
 
-import { ChatError } from '@/domain/errors/ChatError';
+import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
@@ -190,14 +190,12 @@ export async function POST(req: NextRequest) {
                 ? STEP7_HEADING_CONFIG_KEY
                 : model;
           const cfg = MODEL_CONFIGS[configKey];
-          const resolvedModel =
-            cfg && cfg.provider === 'anthropic'
-              ? cfg.actualModel
-              : model.includes('claude')
-                ? model
-                : 'claude-sonnet-4-6';
-          const resolvedMaxTokens = cfg && cfg.provider === 'anthropic' ? cfg.maxTokens : 6000;
-          const resolvedTemperature = cfg && cfg.provider === 'anthropic' ? cfg.temperature : 0.3;
+          if (!cfg || cfg.provider !== 'anthropic') {
+            throw new ChatError(`Unknown model key: ${model}`, ChatErrorCode.MODEL_NOT_AVAILABLE);
+          }
+          const resolvedModel = cfg.actualModel;
+          const resolvedMaxTokens = cfg.maxTokens;
+          const resolvedTemperature = cfg.temperature;
 
           const systemPrompt = systemPromptOverride?.trim()
             ? systemPromptOverride
