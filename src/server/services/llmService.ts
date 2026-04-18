@@ -9,8 +9,8 @@ interface LLMMessage {
 }
 
 interface LLMOptions {
-  temperature?: number;
-  maxTokens?: number;
+  temperature?: number | undefined;
+  maxTokens?: number | undefined;
   // Note: seed/top_p are configured in MODEL_CONFIGS but not currently used
   // Future implementation: use provider(model).withSettings({ seed, topP }) if needed
   /**
@@ -110,7 +110,7 @@ export class LLMService {
         role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
         content: [{ type: 'text' as const, text: m.content }],
       })),
-      temperature: opts.temperature ?? 0.7,
+      ...(opts.temperature !== undefined && { temperature: opts.temperature }),
       max_tokens: opts.maxTokens ?? 3000,
     };
 

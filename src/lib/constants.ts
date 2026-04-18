@@ -33,7 +33,7 @@ export const GOOGLE_ADS_SCOPES = [
 interface ModelConfig {
   provider: 'openai' | 'anthropic';
   maxTokens: number;
-  temperature: number;
+  temperature?: number;
   actualModel: string;
   seed?: number;
   top_p?: number;
@@ -43,7 +43,6 @@ interface ModelConfig {
 // 共通設定（DRY原則に基づく定数化）
 const ANTHROPIC_BASE = {
   provider: 'anthropic' as const,
-  temperature: 0.3,
   actualModel: 'claude-opus-4-7',
   seed: 42,
 };

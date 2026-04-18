@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
           const streamParams = {
             model: resolvedModel,
             max_tokens: resolvedMaxTokens,
-            temperature: resolvedTemperature,
+            ...(resolvedTemperature !== undefined && { temperature: resolvedTemperature }),
             system: [
               {
                 type: 'text' as const,
