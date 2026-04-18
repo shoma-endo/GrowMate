@@ -5,8 +5,8 @@ language: "ja-JP"
 early_access: false
 
 reviews:
-  # まずはノイズを抑える設定から始める（必要なら "assertive" / "strict" に上げる）
-  profile: "chill"
+  # AIが実装したコードの品質ゲートとして機能させるため "assertive" に設定
+  profile: "assertive"
 
   # 「変更要求」をワークフローに組み込むか（チームの運用次第。最初はfalse推奨）
   request_changes_workflow: false
@@ -27,6 +27,10 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # base_branches 未指定だとデフォルト(main)のみ対象になるため明示する
+    # .*（正規表現）= すべてのベースブランチで有効
+    base_branches:
+      - ".*"
 
 chat:
   # PR上で @coderabbitai に質問した時に返す
