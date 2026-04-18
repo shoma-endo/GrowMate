@@ -56,10 +56,16 @@ git checkout -b feature/<spec-name>
 ### 3-1. 実装指針
 
 以下のスキルを読んで実装方針に反映する:
-- `implementation-guidelines` — TypeScript/Next.js/Supabase の実装ポリシー
-- `server-actions-and-routes` — Server Actions vs Route Handlers の使い分け
-- `supabase-rls` — RLS・セキュリティ関連の変更がある場合
-- `project-naming` — 新規ファイル・変数の命名規則
+
+| スキル | 参照タイミング |
+|--------|--------------|
+| `implementation-guidelines` | **必須**。TypeScript/Next.js/Supabase の実装ポリシー全般 |
+| `server-actions-and-routes` | **必須**。Server Actions vs Route Handlers の使い分け |
+| `project-naming` | **必須**。新規ファイル・変数の命名規則 |
+| `react19-patterns` | フロント実装がある場合。Context / use() / Suspense / 最適化パターン |
+| `zod-validation` | スキーマ定義・バリデーション・型導出を行う場合 |
+| `supabase-rls` | DB ポリシー・RLS・セキュリティ関連の変更がある場合 |
+| `supabase-service-usage` | Supabase クライアント生成・Service Role の利用がある場合 |
 
 ### 3-2. 実装ルール
 
