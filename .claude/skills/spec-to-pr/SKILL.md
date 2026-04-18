@@ -169,11 +169,26 @@ gh pr create \
 
 `docs/plans/<spec-file>.md`
 
-## 動作確認
+## 開発プロセス記録
 
-- [ ] `npm run lint` 通過
-- [ ] `npm run build` 通過
-- [ ] CodeRabbit CLI レビュー Actionable Comments: 0
+> レビュアーが実装の品質担保過程を確認できるよう、各ステップの結果を記載する。
+
+### Lint / Build
+
+- `npm run lint`: ✅ エラーなし
+- `npm run build`: ✅ エラーなし
+
+### CodeRabbit CLI レビュー
+
+- 実施回数: X 回
+- 最終結果: Actionable Comments: 0
+- 主な指摘と対応:
+  - <!-- 指摘内容と対応策を箇条書きで。なければ「指摘なし」 -->
+
+### セルフレビュー（2パス）
+
+- Pass 1（lint / build / 型安全 / 命名）: ✅ 完了
+- Pass 2（実装指針 / セキュリティ / エラー処理）: ✅ 完了
 
 ## スクリーンショット（UI変更がある場合）
 
