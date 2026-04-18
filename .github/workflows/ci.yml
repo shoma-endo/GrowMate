@@ -58,7 +58,9 @@ jobs:
           const branch = process.env.GITHUB_REF_NAME || '不明';
 
           // メッセージ本文を作成
-          const messageText = `【CI ビルド結果】\n${statusEmoji} ${statusText}\n実行: ${executionType}\nユーザー: ${actor}\nブランチ: ${branch}`;
+          const prUrl = process.env.PR_URL;
+          const prLine = prUrl ? `\nPR: ${prUrl}` : '';
+          const messageText = `【CI ビルド結果】\n${statusEmoji} ${statusText}\n実行: ${executionType}\nユーザー: ${actor}\nブランチ: ${branch}${prLine}`;
 
           const payload = {
             msg_type: 'text',
@@ -141,3 +143,4 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
