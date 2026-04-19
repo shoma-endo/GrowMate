@@ -296,11 +296,13 @@ export default function AnalyticsTable({
 
       const next = nextQuery.toString();
       const href = next.length > 0 ? `${currentPath}?${next}` : currentPath;
-      if (options?.replace) {
-        router.replace(href);
-        return;
-      }
-      router.push(href);
+      React.startTransition(() => {
+        if (options?.replace) {
+          router.replace(href);
+          return;
+        }
+        router.push(href);
+      });
     },
     [pathname, router, searchParams]
   );
