@@ -4,7 +4,7 @@
 
 ## 1. 目的
 
-- Google Ads のキーワード指標（通常KW + 除外KW）と事業者情報を Claude claude-sonnet-4-6 に分析させ、改善提案をメールで送信する。
+- Google Ads のキーワード指標（通常KW + 除外KW）と事業者情報を Claude claude-opus-4-7 に分析させ、改善提案をメールで送信する。
 - メールアカウント登録ユーザー限定の機能として提供する。
 - **フェーズ1では管理者限定ではなく、メールアカウント登録済みの全ユーザーが利用可能とする。** 段階ロールアウト（管理者のみ → 一般ユーザー）や Feature Flag による制限は行わない。
 - 評価プロンプトは admin/prompts 画面で運用者が編集可能とする。
@@ -41,7 +41,7 @@
 
 ### 4.1 分析方式
 
-- Claude claude-sonnet-4-6 にキーワードデータ + 事業者コンテキストを渡し、自然言語で分析・提案を生成する。
+- Claude claude-opus-4-7 にキーワードデータ + 事業者コンテキストを渡し、自然言語で分析・提案を生成する。
 - プロンプトテンプレートは `prompt_templates` テーブルで管理し、admin/prompts 画面で編集可能。
 - モデル設定: `MODEL_CONFIGS['google_ads_ai_evaluation']`（ANTHROPIC_BASE, maxTokens: 8000）
 
@@ -82,7 +82,7 @@ Google Ads API からキーワード指標取得
   ↓
 プロンプト変数構築 → テンプレート取得 → 変数置換
   ↓
-llmChat('anthropic', 'claude-sonnet-4-6', ...) で分析実行
+llmChat('anthropic', 'claude-opus-4-7', ...) で分析実行
   ↓
 分析結果（Markdown）→ HTML 変換 → メール送信
   ↓
@@ -266,7 +266,7 @@ export class GoogleAdsAiAnalysisService {
 5. **プロンプト変数構築**: `{{persona}}`, `{{strengths}}`, `{{keywordData}}`, `{{negativeKeywords}}`, `{{dateRange}}`, `{{customerName}}`
 6. **テンプレート取得**: `PromptService.getTemplateByName('google_ads_ai_evaluation')`
 7. **変数置換**: `PromptService.replaceVariables(template.content, variables)`
-8. **AI 分析実行**: `llmChat('anthropic', 'claude-sonnet-4-6', messages, modelConfig)`
+8. **AI 分析実行**: `llmChat('anthropic', 'claude-opus-4-7', messages, modelConfig)`
 9. **メール送信**: `EmailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent)`
 10. **設定更新**:
     - **成功時**: `last_evaluated_on` を当日（JST）に更新、`consecutive_error_count` を 0 にリセット
