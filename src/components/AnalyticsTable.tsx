@@ -411,7 +411,9 @@ export default function AnalyticsTable({
     setCategoryFilterNames([]);
     setIsIncludingUncategorized(false);
     setIsFilteringUnreadSuggestion(false);
-    saveCategoryFilterToStorage([], false);
+    if (categoryFilterNames.length > 0 || isIncludingUncategorized) {
+      saveCategoryFilterToStorage([], false);
+    }
     pushFilterQuery([], false, false);
   };
 
