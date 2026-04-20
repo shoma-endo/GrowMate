@@ -15,7 +15,7 @@ export class GscEvaluationService {
   private readonly supabaseService = new SupabaseService();
 
   // バッチ処理の制限定数
-  private static readonly BATCH_TIME_LIMIT_MS = 280 * 1000; // 280秒（maxDuration 300秒より20秒短く余裕を持たせる）
+  private static readonly BATCH_TIME_LIMIT_MS = 780 * 1000; // 780秒（maxDuration 800秒より20秒短く余裕を持たせる）
   private static readonly MAX_USERS_PER_BATCH = 10;
   private static readonly EVALUATION_CONCURRENCY = 3;
 
