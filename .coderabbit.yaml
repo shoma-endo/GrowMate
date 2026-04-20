@@ -5,11 +5,11 @@ language: "ja-JP"
 early_access: false
 
 reviews:
-  # まずはノイズを抑える設定から始める（必要なら "assertive" / "strict" に上げる）
-  profile: "chill"
+  # AIが実装したコードの品質ゲートとして機能させるため "assertive" に設定
+  profile: "assertive"
 
   # 「変更要求」をワークフローに組み込むか（チームの運用次第。最初はfalse推奨）
-  request_changes_workflow: false
+  request_changes_workflow: true
 
   # PR全体サマリ（日本語で出ます）
   high_level_summary: true
@@ -27,6 +27,52 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # base_branches 未指定だとデフォルト(main)のみ対象になるため明示する
+    # .*（正規表現）= すべてのベースブランチで有効
+    base_branches:
+      - ".*"
+
+  path_instructions:
+    - path: "src/server/actions/**"
+      instructions: |
+        - ファイル先頭に 'use server' ディレクティブがあること
+        - 戻り値は必ず { success: boolean, error?: string, data?: T } 形式か Result 型に統一すること
+        - 認証チェック（getCurrentUser / authMiddleware）が必ず行われていること
+        - @supabase/supabase-js の createClient を直接呼び出していないこと（SupabaseService 経由のみ許可）
+        - try/catch で生の Error をそのまま返していないこと（SupabaseService.failure() パターンに従うこと）
+
+    - path: "src/server/services/**"
+      instructions: |
+        - SupabaseService を継承したクラスとして実装し、ファイル末尾でインスタンスを named export すること
+        - @supabase/supabase-js の createClient を直接呼び出さないこと。特権操作には withServiceRoleClient() ユーティリティを使うこと
+        - Service Role（withServiceRoleClient）使用時は必ず .eq('user_id', userId) 等の明示的な ID チェックをクエリに含めること（RLS をバイパスするため）
+        - エラーハンドリングは SupabaseService.failure() を使い、ユーザー向けメッセージとエンジニア向けログを分離すること
+        - Service 内で認証・セッション取得を行わないこと（認証は Actions 層の責務）
+
+    - path: "src/server/schemas/**"
+      instructions: |
+        - z.infer<typeof xxxSchema> で型を導出し、型定義を重複させないこと
+        - optional フィールドには .optional() を明示し、必須フィールドにはバリデーションメッセージを付けること
+        - URL・メールアドレスには専用バリデーター（createOptionalUrlValidator 等）を使うこと
+
+    - path: "app/**/*.tsx"
+      instructions: |
+        - 'use client' は最小限にとどめ、追加する場合はコメントで理由を残すこと
+        - Context Provider は <Context.Provider value={...}> ではなく React 19 の短縮構文 <Context value={...}> を使うこと
+        - useContext() ではなく React 19 の use(Context) を使うこと
+        - useMemo / useCallback / memo() は使用禁止。React Compiler が自動最適化するため不要（外部ライブラリの安定した参照が必要な場合のみ例外）
+        - Suspense を伴う状態更新には startTransition を使うこと。ただし controlled input（<input value={state}>）には使わないこと
+        - any 型禁止。unknown + narrowing または Zod スキーマを使うこと
+        - Server Component から直接 DB アクセスしている場合、Server Actions 経由に変更すること
+
+    - path: "supabase/migrations/**"
+      instructions: |
+        - 新規テーブルに RLS（Row Level Security）ポリシーが設定されていること
+        - RLS ポリシーは get_accessible_user_ids() を使うパターンに従うこと
+        - auth.uid() は (SELECT auth.uid()) でラップして initPlan キャッシュを有効にすること（例: user_id = (SELECT auth.uid())）
+        - RLS フィルタで使用するカラム（user_id, org_id 等）には B-tree インデックスが作成されていること
+        - SECURITY DEFINER 関数には SET search_path = public を明示し、テーブル参照はスキーマ名で修飾（public.table_name）すること
+        - ロールバック方法（DROP POLICY / DROP TABLE 等のコメント）があること
 
 chat:
   # PR上で @coderabbitai に質問した時に返す

@@ -516,7 +516,6 @@ export async function POST(req: NextRequest) {
               const searchStream = await anthropic.messages.stream({
                 model: actualModel,
                 max_tokens: 2000,
-                temperature: 0.3,
                 system: [
                   {
                     type: 'text',
@@ -634,7 +633,7 @@ export async function POST(req: NextRequest) {
           const apiStream = await anthropic.messages.stream({
             model: actualModel,
             max_tokens: canvasMaxTokens,
-            temperature,
+            ...(temperature !== undefined && { temperature }),
             system: [
               {
                 type: 'text',
@@ -833,7 +832,6 @@ export async function POST(req: NextRequest) {
               const analysisStream = await anthropic.messages.stream({
                 model: actualModel,
                 max_tokens: 500, // 簡潔な出力のためトークン数を削減
-                temperature: 0.3,
                 system: [
                   {
                     type: 'text',
