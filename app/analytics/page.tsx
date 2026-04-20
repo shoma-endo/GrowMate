@@ -30,7 +30,10 @@ function isValidDate(dateStr: string): boolean {
 
 export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps) {
   const params = await searchParams;
-  const hasUnreadSuggestion = params?.unread_suggestion === '1';
+  const unreadSuggestionParam = Array.isArray(params?.unread_suggestion)
+    ? params.unread_suggestion[0]
+    : params?.unread_suggestion;
+  const hasUnreadSuggestion = unreadSuggestionParam === '1';
   // unread_suggestion はカテゴリフィルターと直交するため hasUrlFilterParams に含めない。
   // 含めると ?unread_suggestion=1 のみの URL でも localStorage のカテゴリ復元が
   // スキップされ、保存済みカテゴリフィルターが失われる回帰が発生する。
