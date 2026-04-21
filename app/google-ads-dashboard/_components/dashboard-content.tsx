@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { MetricsCards } from './metrics-cards';
 import { CampaignsTable } from './campaigns-table';
+import { EvaluationControls } from './evaluation-controls';
 import { calculateCampaignSummary } from '@/lib/google-ads-utils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import type { GoogleAdsEvaluationSettings } from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsCampaignMetrics,
   GoogleAdsKeywordMetric,
@@ -15,6 +17,8 @@ import type {
 interface DashboardContentProps {
   campaigns: GoogleAdsCampaignMetrics[];
   keywords: GoogleAdsKeywordMetric[];
+  hasEmailAddress: boolean;
+  initialSettings: GoogleAdsEvaluationSettings;
   errorMessage?: string;
   errorKind?: GoogleAdsErrorKind;
 }
@@ -22,6 +26,8 @@ interface DashboardContentProps {
 export function DashboardContent({
   campaigns,
   keywords,
+  hasEmailAddress,
+  initialSettings,
   errorMessage,
   errorKind = 'unknown',
 }: DashboardContentProps) {
@@ -54,6 +60,11 @@ export function DashboardContent({
           </Button>
         </div>
       </div>
+
+      <EvaluationControls
+        hasEmailAddress={hasEmailAddress}
+        initialSettings={initialSettings}
+      />
 
       {hasError && (
         <Alert variant="destructive">

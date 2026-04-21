@@ -379,7 +379,7 @@ export default function SetupDashboard({
           </CardContent>
         </Card>
 
-        {/* Google Ads 連携（管理者のみ） */}
+        {/* Google Ads 連携 */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
@@ -514,7 +514,7 @@ export default function SetupDashboard({
           </CardContent>
         </Card>
 
-        {isAdmin && googleAdsStatus && (
+        {googleAdsStatus && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-3">
@@ -594,9 +594,6 @@ export default function SetupDashboard({
                   <div className="text-sm text-gray-600 space-y-1">
                     <p>
                       Google Ads アカウントと連携し、広告パフォーマンスデータを取得・分析できます。
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      ※ 現在は管理者のみ利用可能です（審査完了まで）
                     </p>
                   </div>
                 )}

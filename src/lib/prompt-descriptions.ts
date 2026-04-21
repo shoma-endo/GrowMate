@@ -46,6 +46,11 @@ export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
     variables:
       'WordPress本文（wpContent）を使用します',
   },
+  google_ads_ai_evaluation: {
+    description: 'Google Adsのキーワード指標をAIで分析し、改善提案をメール送信するプロンプト',
+    variables:
+      'ペルソナ、事業の強み、キーワード指標、除外キーワード、分析期間、アカウント名が自動で置換されます',
+  },
 };
 
 /**
@@ -104,6 +109,10 @@ export const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   conversionGoal: 'CTA/コンバージョン目標（問い合わせ、購入、予約など）',
   emergingQueries: '新興・ロングテールクエリの一覧や指標',
   competingSnippets: '競合上位ページのスニペット傾向（タイトル/ディスクリプションの特徴）',
+  keywordData: 'Google Ads 全キーワードの指標データ（構造化テキスト）',
+  negativeKeywords: 'Google Ads 除外キーワード一覧',
+  dateRange: '分析対象期間（例: 2026-02-22 〜 2026-03-24）',
+  customerName: 'Google Ads アカウント名',
 };
 
 /**

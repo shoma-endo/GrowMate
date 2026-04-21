@@ -18,6 +18,8 @@ export interface GoogleAdsKeywordMetric {
   campaignName: string;
   /** 広告グループ名 */
   adGroupName: string;
+  /** キーワードのステータス */
+  status: 'ENABLED' | 'PAUSED' | 'REMOVED';
 
   // ===== 7つの主要指標 =====
   /** CTR（クリック率）: 0〜1 の割合 */
@@ -58,6 +60,8 @@ export interface GetKeywordMetricsInput {
   endDate: string;
   /** キャンペーン ID でフィルタ（任意） */
   campaignIds?: string[];
+  /** 全ステータスのキーワードを取得するか */
+  includeAllStatuses?: boolean;
   /** MCC（マネージャー）アカウントID（ハイフンなし 10桁）を login-customer-id ヘッダーに設定（任意） */
   loginCustomerId?: string;
 }
@@ -68,6 +72,20 @@ export interface GetKeywordMetricsInput {
 export interface GetKeywordMetricsResult {
   success: boolean;
   data?: GoogleAdsKeywordMetric[];
+  error?: string;
+}
+
+export interface GoogleAdsNegativeKeyword {
+  keywordText: string;
+  matchType: GoogleAdsMatchType;
+  level: 'campaign' | 'ad_group';
+  campaignName: string;
+  adGroupName?: string;
+}
+
+export interface GetNegativeKeywordsResult {
+  success: boolean;
+  data?: GoogleAdsNegativeKeyword[];
   error?: string;
 }
 
@@ -85,6 +103,7 @@ export interface DisconnectGoogleAdsResult {
 export interface GoogleAdsSearchStreamRow {
   adGroupCriterion?: {
     criterionId?: string;
+    status?: 'ENABLED' | 'PAUSED' | 'REMOVED';
     keyword?: {
       text?: string;
       matchType?: string;
@@ -100,6 +119,7 @@ export interface GoogleAdsSearchStreamRow {
   };
   adGroup?: {
     name?: string;
+    status?: string;
   };
   metrics?: {
     ctr?: number;

@@ -210,8 +210,8 @@ export default function Home() {
               </Card>
             )}
 
-            {/* 管理者向け Google Ads 分析導線 */}
-            {isAdmin && (
+            {/* Google Ads 分析導線 */}
+            {hasAuthenticatedUser && (
               <Card className="border-indigo-200 bg-indigo-50">
                 <CardHeader>
                   <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
