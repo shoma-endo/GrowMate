@@ -8,6 +8,18 @@ export interface PromptDescription {
   variables: string;
 }
 
+/**
+ * google_ads_ai_evaluation テンプレートに暗黙的に注入される変数名一覧
+ */
+export const IMPLICIT_GOOGLE_ADS_VARS = [
+  'persona',
+  'strengths',
+  'keywordData',
+  'negativeKeywords',
+  'dateRange',
+  'customerName',
+] as const;
+
 export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
   ad_copy_creation: {
     description: 'Google広告やFacebook広告に使用する広告コピーを生成するプロンプト',
@@ -48,8 +60,7 @@ export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
   },
   google_ads_ai_evaluation: {
     description: 'Google Adsのキーワード指標をAIで分析し、改善提案をメール送信するプロンプト',
-    variables:
-      'ペルソナ、事業の強み、キーワード指標、除外キーワード、分析期間、アカウント名が自動で置換されます',
+    variables: `${IMPLICIT_GOOGLE_ADS_VARS.join('、')} を使用します`,
   },
 };
 
@@ -80,6 +91,7 @@ export const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   qualification: '保有資格・認定',
   payments: '対応決済方法',
   strength: '事業の強み・特徴',
+  strengths: '全サービスの強み（改行区切り）',
   when: 'いつ（タイミング・期間）',
   where: 'どこで（場所・範囲）',
   who: '誰が（担当者・対象者）',

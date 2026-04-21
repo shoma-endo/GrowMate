@@ -1,7 +1,6 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { z } from 'zod';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -51,7 +50,9 @@ export async function runGoogleAdsAiAnalysis(): Promise<GoogleAdsAiAnalysisResul
     }
 
     const result = await googleAdsAiAnalysisService.analyzeAndSend(auth.userId);
-    revalidatePath('/google-ads-dashboard');
+    if (result.success) {
+      revalidatePath('/google-ads-dashboard');
+    }
     return result;
   } catch (error) {
     console.error('[runGoogleAdsAiAnalysis] Unexpected error:', error);
@@ -185,13 +186,6 @@ export async function updateEvaluationSettings(
     return { success: true };
   } catch (error) {
     console.error('[updateEvaluationSettings] Unexpected error:', error);
-    if (error instanceof z.ZodError) {
-      return {
-        success: false,
-        error: error.issues.map(issue => issue.message).join(', '),
-      };
-    }
-
     return {
       success: false,
       error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_UPDATE_FAILED,

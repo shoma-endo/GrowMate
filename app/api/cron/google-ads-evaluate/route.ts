@@ -41,26 +41,56 @@ export async function GET(request: NextRequest) {
       succeeded: 0,
       failed: 0,
       skipped: 0,
+      timedOut: false,
+      failedUserIds: [] as string[],
     };
 
     for (const user of dueUsersResult.data) {
       if (Date.now() - startedAt > TIMEOUT_GUARD_MS) {
+        summary.timedOut = true;
+        console.warn('[cron/google-ads-evaluate] Timeout reached, aborting loop', {
+          startedAt,
+          timeoutGuardMs: TIMEOUT_GUARD_MS,
+          now: Date.now(),
+        });
         break;
       }
 
-      const result = await googleAdsAiAnalysisService.analyzeAndSend(user.userId, {
-        dateRangeDays: user.dateRangeDays,
-      });
-
       summary.processed += 1;
-      if (result.success && result.skipped) {
-        summary.skipped += 1;
-      } else if (result.success) {
-        summary.succeeded += 1;
-      } else {
+      try {
+        const result = await googleAdsAiAnalysisService.analyzeAndSend(user.userId, {
+          dateRangeDays: user.dateRangeDays,
+        });
+
+        if (result.success && result.skipped) {
+          summary.skipped += 1;
+        } else if (result.success) {
+          summary.succeeded += 1;
+        } else {
+          summary.failed += 1;
+          summary.failedUserIds.push(user.userId);
+        }
+      } catch (error) {
+        console.error('[cron/google-ads-evaluate] User batch item failed:', {
+          userId: user.userId,
+          error,
+        });
         summary.failed += 1;
+        summary.failedUserIds.push(user.userId);
       }
     }
+
+    console.info('[cron/google-ads-evaluate] Batch completed', {
+      startedAt,
+      finishedAt: Date.now(),
+      todayJst,
+      processed: summary.processed,
+      succeeded: summary.succeeded,
+      failed: summary.failed,
+      skipped: summary.skipped,
+      timedOut: summary.timedOut,
+      failedUserIds: summary.failedUserIds,
+    });
 
     return NextResponse.json({
       success: true,
@@ -69,7 +99,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[cron/google-ads-evaluate] Batch failed:', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Batch failed' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

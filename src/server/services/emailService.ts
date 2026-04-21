@@ -1,14 +1,31 @@
 import { Resend } from 'resend';
 import { env } from '@/env';
 
+const DEFAULT_EMAIL_FROM = 'GrowMate <noreply@mail.growmate.tokyo>';
+
 export class EmailService {
+  private resendClient: Resend | null = null;
+
+  private getResendClient(): Resend | null {
+    if (!env.RESEND_API_KEY) {
+      return null;
+    }
+
+    if (!this.resendClient) {
+      this.resendClient = new Resend(env.RESEND_API_KEY);
+    }
+
+    return this.resendClient;
+  }
+
   async sendGoogleAdsAnalysis(
     to: string,
     subject: string,
     htmlContent: string
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      if (!env.RESEND_API_KEY) {
+      const resendClient = this.getResendClient();
+      if (!resendClient) {
         console.error('[EmailService] RESEND_API_KEY is not configured');
         return {
           success: false,
@@ -16,9 +33,9 @@ export class EmailService {
         };
       }
 
-      const resend = new Resend(env.RESEND_API_KEY);
-      const response = await resend.emails.send({
-        from: 'GrowMate <noreply@mail.growmate.tokyo>',
+      const emailFrom = process.env.EMAIL_FROM?.trim() || DEFAULT_EMAIL_FROM;
+      const response = await resendClient.emails.send({
+        from: emailFrom,
         to,
         subject,
         html: htmlContent,
@@ -45,3 +62,5 @@ export class EmailService {
     }
   }
 }
+
+export const emailService = new EmailService();

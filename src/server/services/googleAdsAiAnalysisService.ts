@@ -7,7 +7,7 @@ import { BriefService } from '@/server/services/briefService';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
-import { EmailService } from '@/server/services/emailService';
+import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
 import type { GoogleAdsAiAnalysisResult } from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsKeywordMetric,
@@ -15,6 +15,20 @@ import type {
 } from '@/types/googleAds.types';
 
 const DEFAULT_DATE_RANGE_DAYS = 30;
+
+function sanitizeEmailHtml(html: string): string {
+  if (!html) {
+    return '';
+  }
+
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\s+on[a-z]+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\s+(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, '')
+    .replace(/<\/?(iframe|object|embed|form|input|button)[^>]*>/gi, '');
+}
 
 export class GoogleAdsAiAnalysisService {
   private readonly supabaseService: SupabaseService;
@@ -28,7 +42,7 @@ export class GoogleAdsAiAnalysisService {
   ) {
     this.supabaseService = supabaseService ?? new SupabaseService();
     this.googleAdsService = googleAdsService ?? new GoogleAdsService();
-    this.emailService = emailService ?? new EmailService();
+    this.emailService = emailService ?? defaultEmailService;
   }
 
   async analyzeAndSend(
@@ -133,7 +147,8 @@ export class GoogleAdsAiAnalysisService {
         return {
           success: false,
           error:
-            negativeKeywordResult.error ?? ERROR_MESSAGES.GOOGLE_ADS.KEYWORD_METRICS_FETCH_FAILED,
+            negativeKeywordResult.error ??
+            ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_FETCH_FAILED,
         };
       }
 
@@ -145,12 +160,6 @@ export class GoogleAdsAiAnalysisService {
           error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_PROMPT_NOT_FOUND,
         };
       }
-
-      settings = await this.ensureEvaluationSettings(
-        userId,
-        credential.customerId,
-        settings.customerName
-      );
 
       const customerName = settings?.customerName ?? credential.customerId;
       const filledPrompt = PromptService.replaceVariables(promptTemplate.content, {
@@ -180,7 +189,7 @@ export class GoogleAdsAiAnalysisService {
         }
       );
 
-      const htmlContent = await marked.parse(analysisMarkdown);
+      const htmlContent = sanitizeEmailHtml(await marked.parse(analysisMarkdown));
       const subject = `【GrowMate】Google Ads AI分析レポート (${customerName})`;
       const emailResult = await this.emailService.sendGoogleAdsAnalysis(
         userEmail,
@@ -280,6 +289,7 @@ export class GoogleAdsAiAnalysisService {
 
       if (!saveResult.success) {
         console.error('[GoogleAdsAiAnalysisService] Failed to persist refreshed token:', saveResult.error);
+        return null;
       }
 
       return refreshed.accessToken;
@@ -290,14 +300,7 @@ export class GoogleAdsAiAnalysisService {
   }
 
   private async markFailure(userId: string): Promise<void> {
-    const settings = await this.supabaseService.getGoogleAdsEvaluationSettings(userId);
-    if (!settings.success || !settings.data) {
-      return;
-    }
-
-    const updateResult = await this.supabaseService.updateGoogleAdsEvaluationSettings(userId, {
-      consecutive_error_count: settings.data.consecutiveErrorCount + 1,
-    });
+    const updateResult = await this.supabaseService.incrementGoogleAdsEvaluationErrorCount(userId);
     if (!updateResult.success) {
       console.error('[GoogleAdsAiAnalysisService] Failed to increment consecutive error count:', updateResult.error);
     }

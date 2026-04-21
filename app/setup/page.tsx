@@ -60,7 +60,6 @@ export default async function SetupPage() {
       gscStatus={gscStatus}
       ga4Status={ga4Status}
       googleAdsStatus={googleAdsStatus}
-      isAdmin={false}
     />
   );
 }

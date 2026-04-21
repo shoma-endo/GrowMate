@@ -107,6 +107,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   google_ads_ai_evaluation: {
     ...ANTHROPIC_BASE,
     maxTokens: 8000,
+    label: 'Google Ads AI分析',
   },
 };
 

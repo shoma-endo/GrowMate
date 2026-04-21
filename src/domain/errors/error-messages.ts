@@ -629,6 +629,9 @@ export const ERROR_MESSAGES = {
     /** キーワード指標の取得に失敗した場合 */
     KEYWORD_METRICS_FETCH_FAILED: 'キーワード指標の取得に失敗しました',
 
+    /** 除外キーワードの取得に失敗した場合 */
+    NEGATIVE_KEYWORDS_FETCH_FAILED: '除外キーワードの取得に失敗しました',
+
     /** Google Ads開発者トークンが設定されていない場合 */
     DEVELOPER_TOKEN_MISSING: 'Google Ads開発者トークンが設定されていません',
 

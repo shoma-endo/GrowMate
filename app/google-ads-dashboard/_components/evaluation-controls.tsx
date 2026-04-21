@@ -19,11 +19,17 @@ interface EvaluationControlsProps {
   initialSettings: GoogleAdsEvaluationSettings;
 }
 
+function clampDateRangeDays(value: number): number {
+  return Math.min(365, Math.max(1, Math.trunc(value)));
+}
+
 export function EvaluationControls({
   hasEmailAddress,
   initialSettings,
 }: EvaluationControlsProps) {
   const [settings, setSettings] = useState(initialSettings);
+  const [dateRangeInput, setDateRangeInput] = useState(String(initialSettings.dateRangeDays));
+  const [dateRangeError, setDateRangeError] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<'default' | 'destructive'>('default');
   const [isRunning, startRunTransition] = useTransition();
@@ -31,9 +37,12 @@ export function EvaluationControls({
 
   useEffect(() => {
     setSettings(initialSettings);
+    setDateRangeInput(String(initialSettings.dateRangeDays));
+    setDateRangeError(false);
   }, [initialSettings]);
 
   const saveSettings = (nextSettings: GoogleAdsEvaluationSettings) => {
+    const prevSettings = settings;
     setSettings(nextSettings);
     startSaveTransition(async () => {
       const result = await updateEvaluationSettings({
@@ -44,7 +53,8 @@ export function EvaluationControls({
       if (!result.success) {
         setStatusTone('destructive');
         setStatusMessage(result.error ?? '設定の保存に失敗しました');
-        setSettings(settings);
+        setSettings(prevSettings);
+        setDateRangeInput(String(prevSettings.dateRangeDays));
         return;
       }
 
@@ -110,17 +120,35 @@ export function EvaluationControls({
             type="number"
             min={1}
             max={365}
-            value={settings.dateRangeDays}
+            value={dateRangeInput}
+            aria-invalid={dateRangeError}
             disabled={isSaving}
             onChange={event => {
-              const nextValue = Number(event.target.value);
-              if (!Number.isInteger(nextValue) || nextValue < 1 || nextValue > 365) {
-                setSettings(prev => ({ ...prev, dateRangeDays: nextValue || 1 }));
+              const nextRawValue = event.target.value;
+              const nextValue = Number(nextRawValue);
+              const fallbackValue = 1;
+              const normalizedValue = Number.isFinite(nextValue)
+                ? clampDateRangeDays(nextValue)
+                : fallbackValue;
+              const hasValidationError =
+                !Number.isInteger(nextValue) || normalizedValue !== nextValue;
+
+              setDateRangeInput(String(normalizedValue));
+              setDateRangeError(hasValidationError);
+              saveSettings({ ...settings, dateRangeDays: normalizedValue });
+            }}
+            onBlur={() => {
+              if (!dateRangeError) {
                 return;
               }
-              saveSettings({ ...settings, dateRangeDays: nextValue });
+
+              setDateRangeInput(String(settings.dateRangeDays));
+              setDateRangeError(false);
             }}
           />
+          {dateRangeError && (
+            <p className="text-xs text-red-600">1〜365 の整数を入力してください。</p>
+          )}
         </div>
 
         <div className="flex items-center gap-3 rounded-md border bg-white px-3 py-2">

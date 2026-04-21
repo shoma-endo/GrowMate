@@ -39,7 +39,6 @@ export default function SetupDashboard({
   gscStatus,
   ga4Status,
   googleAdsStatus,
-  isAdmin,
 }: SetupDashboardProps) {
   const [wpStatus, setWpStatus] = useState<WordPressConnectionStatus | null>(null);
   const [gscConnection, setGscConnection] = useState(gscStatus);

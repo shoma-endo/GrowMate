@@ -6,6 +6,7 @@ import {
 import type {
   GoogleAdsKeywordMetric,
   GoogleAdsMatchType,
+  GoogleAdsStatus,
   GetKeywordMetricsInput,
   GetKeywordMetricsResult,
   GetNegativeKeywordsResult,
@@ -42,6 +43,38 @@ function normalizeMatchType(matchType: string | undefined): GoogleAdsMatchType {
     case 'BROAD':
     default:
       return 'BROAD';
+  }
+}
+
+/**
+ * キーワード系 criterion 行からキーワード情報を抽出
+ */
+function extractKeywordFromCriterionRow(row: GoogleAdsSearchStreamRow) {
+  const keyword =
+    row.adGroupCriterion?.keyword ??
+    row.campaignCriterion?.keyword;
+
+  if (!keyword?.text || !keyword.matchType) {
+    return null;
+  }
+
+  return {
+    keywordText: keyword.text,
+    matchType: normalizeMatchType(keyword.matchType),
+  };
+}
+
+/**
+ * Google Ads ステータスを正規化
+ */
+function normalizeGoogleAdsStatus(status: string | undefined): GoogleAdsStatus {
+  switch (status) {
+    case 'ENABLED':
+    case 'PAUSED':
+    case 'REMOVED':
+      return status;
+    default:
+      return 'UNKNOWN';
   }
 }
 
@@ -668,7 +701,7 @@ export class GoogleAdsService {
       matchType: normalizeMatchType(row.adGroupCriterion?.keyword?.matchType),
       campaignName: row.campaign?.name ?? '',
       adGroupName: row.adGroup?.name ?? '',
-      status: row.adGroupCriterion?.status ?? 'ENABLED',
+      status: normalizeGoogleAdsStatus(row.adGroupCriterion?.status),
 
       // 主要指標
       ctr: m.ctr ?? 0,
@@ -692,12 +725,17 @@ export class GoogleAdsService {
     loginCustomerId?: string;
   }): Promise<GetNegativeKeywordsResult> {
     const { accessToken, customerId, loginCustomerId } = input;
+    const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+    if (!developerToken) {
+      throw new Error(ERROR_MESSAGES.GOOGLE_ADS.DEVELOPER_TOKEN_MISSING);
+    }
+
     const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${customerId}/googleAds:searchStream`;
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
-      'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '',
+      'developer-token': developerToken,
     };
 
     if (loginCustomerId) {
@@ -752,25 +790,16 @@ export class GoogleAdsService {
 
           const rows = this.parseSearchStreamResponse(await response.text());
           const keywords: GoogleAdsNegativeKeyword[] = rows.flatMap(row => {
-            const keywordText =
-              row.adGroupCriterion?.keyword?.text ??
-              (row as {
-                campaignCriterion?: { keyword?: { text?: string } };
-              }).campaignCriterion?.keyword?.text;
-            const matchType =
-              row.adGroupCriterion?.keyword?.matchType ??
-              (row as {
-                campaignCriterion?: { keyword?: { matchType?: string } };
-              }).campaignCriterion?.keyword?.matchType;
+            const keywordInfo = extractKeywordFromCriterionRow(row);
 
-            if (!keywordText || !matchType) {
+            if (!keywordInfo) {
               return [];
             }
 
             return [
               {
-                keywordText,
-                matchType: normalizeMatchType(matchType),
+                keywordText: keywordInfo.keywordText,
+                matchType: keywordInfo.matchType,
                 level: item.level,
                 campaignName: row.campaign?.name ?? '',
                 ...(item.level === 'ad_group' && row.adGroup?.name

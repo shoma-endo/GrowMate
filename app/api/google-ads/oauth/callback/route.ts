@@ -173,11 +173,23 @@ export async function GET(request: NextRequest) {
 
     // 既にアカウント選択済みで、かつそのアカウントが現在もアクセス可能な場合（再認証時）
     if (existingCredential?.customerId && customerIds.includes(existingCredential.customerId)) {
-      const existingCustomerInfo = await googleAdsService.getCustomerInfo(
-        existingCredential.customerId,
-        tokens.accessToken,
-        existingCredential.managerCustomerId ?? undefined
-      );
+      let existingCustomerInfo: Awaited<
+        ReturnType<typeof googleAdsService.getCustomerInfo>
+      > | null = null;
+      try {
+        existingCustomerInfo = await googleAdsService.getCustomerInfo(
+          existingCredential.customerId,
+          tokens.accessToken,
+          existingCredential.managerCustomerId ?? undefined
+        );
+      } catch (error) {
+        console.warn('Failed to fetch customer info for existing Google Ads credential:', {
+          userId: targetUserId,
+          customerId: existingCredential.customerId,
+          error,
+        });
+      }
+
       const syncResult = await supabaseService.upsertGoogleAdsEvaluationSettings({
         userId: targetUserId,
         customerId: existingCredential.customerId,

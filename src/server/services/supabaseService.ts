@@ -1413,10 +1413,63 @@ export class SupabaseService {
     return this.success(undefined);
   }
 
+  async incrementGoogleAdsEvaluationErrorCount(userId: string): Promise<SupabaseResult<void>> {
+    const client = this.getGoogleAdsEvaluationClient();
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const settingsResult = await this.getGoogleAdsEvaluationSettings(userId);
+      if (!settingsResult.success) {
+        return settingsResult;
+      }
+      if (!settingsResult.data) {
+        return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_NOT_FOUND, {
+          developerMessage: 'Google Ads evaluation settings row not found for increment',
+          context: { userId, attempt },
+        });
+      }
+
+      const nextCount = settingsResult.data.consecutiveErrorCount + 1;
+      const { data, error } = await client
+        .from('google_ads_evaluation_settings')
+        .update({
+          consecutive_error_count: nextCount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId)
+        .eq('consecutive_error_count', settingsResult.data.consecutiveErrorCount)
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_UPDATE_FAILED, {
+          error,
+          developerMessage: 'Error incrementing Google Ads evaluation error count',
+          context: { userId, attempt, nextCount },
+        });
+      }
+
+      if (data) {
+        return this.success(undefined);
+      }
+    }
+
+    return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_UPDATE_FAILED, {
+      developerMessage: 'Failed to increment Google Ads evaluation error count after retries',
+      context: { userId },
+    });
+  }
+
   async listDueGoogleAdsEvaluationUsers(
     todayJst: string,
     limit: number
   ): Promise<SupabaseResult<GoogleAdsEvaluationQueueItem[]>> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(todayJst)) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_FETCH_FAILED, {
+        developerMessage: 'todayJst must be in YYYY-MM-DD format',
+        context: { todayJst, limit },
+      });
+    }
+
     const client = this.getGoogleAdsEvaluationClient();
     const { data, error } = await client
       .from('google_ads_evaluation_settings')
