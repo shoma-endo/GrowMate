@@ -79,6 +79,7 @@
     "husky": "^9.1.7",
     "knip": "^5.77.1",
     "postcss": "^8.5.10",
+    "supabase": "^2.93.0",
     "tailwindcss": "^4.2.3",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"

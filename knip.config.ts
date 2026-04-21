@@ -4,9 +4,6 @@ const config: KnipConfig = {
   ignore: [
     'src/types/database.types.ts', // Supabase 自動生成ファイル
   ],
-  ignoreBinaries: [
-    'supabase', // Supabase CLI（npm パッケージではなくシステムインストール）
-  ],
   ignoreDependencies: [
     // eslint-config-next が内部で require する ESLint プラグイン群
     // 直接 import はしないが削除すると lint が壊れる
