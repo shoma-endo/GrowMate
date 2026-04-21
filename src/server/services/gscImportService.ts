@@ -164,6 +164,27 @@ export class GscImportService {
     let skipped = 0;
     let unmatched = 0;
 
+    const importedAt = new Date().toISOString();
+    // Map のキーを競合キー (property_uri|date|normalizedUrl|search_type) にすることで
+    // バッチ内の重複行を事前に排除する（normalized_url は DB 生成列のため同一バッチに
+    // 重複があると PostgreSQL がエラーを返す）
+    const payloadMap = new Map<
+      string,
+      {
+        user_id: string;
+        content_annotation_id: string;
+        property_uri: string;
+        search_type: string;
+        date: string;
+        url: string;
+        clicks: number;
+        impressions: number;
+        ctr: number;
+        position: number;
+        imported_at: string;
+      }
+    >();
+
     for (const metric of metrics) {
       const annotationId = resolveAnnotationId(metric.normalizedUrl ?? null);
       if (!annotationId) {
@@ -173,8 +194,8 @@ export class GscImportService {
         }
         continue;
       }
-
-      const upsertPayload = {
+      const conflictKey = `${metric.propertyUri}|${metric.date}|${metric.normalizedUrl ?? ''}|${metric.searchType}`;
+      payloadMap.set(conflictKey, {
         user_id: userId,
         content_annotation_id: annotationId,
         property_uri: metric.propertyUri,
@@ -185,22 +206,33 @@ export class GscImportService {
         impressions: metric.impressions,
         ctr: metric.ctr,
         position: metric.position,
-        imported_at: new Date().toISOString(),
-      };
+        imported_at: importedAt,
+      });
+    }
 
+    const validPayloads = Array.from(payloadMap.values());
+
+    // 500件単位でバルクアップサート（逐次1件ずつではなく一括処理）
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < validPayloads.length; i += BATCH_SIZE) {
+      const batch = validPayloads.slice(i, i + BATCH_SIZE);
       const { error } = await this.supabaseService
         .getClient()
         .from('gsc_page_metrics')
-        .upsert(upsertPayload, {
+        .upsert(batch, {
           onConflict: 'user_id,property_uri,date,normalized_url,search_type',
         });
 
       if (error) {
-        skipped += 1;
+        console.error(
+          `[gscImportService] Batch upsert failed for ${batch.length} rows:`,
+          error
+        );
+        skipped += batch.length;
         continue;
       }
 
-      upserted += 1;
+      upserted += batch.length;
     }
 
     return { upserted, skipped, unmatched };
