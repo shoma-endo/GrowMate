@@ -61,6 +61,7 @@ interface CanvasStreamRequest {
     allowedDomains?: string[];
     blockedDomains?: string[];
   };
+  canvasHistory?: { role: 'user' | 'assistant'; content: string }[];
 }
 
 const anthropic = new Anthropic({
@@ -247,6 +248,7 @@ export async function POST(req: NextRequest) {
       isHeadingUnit = false,
       step7HeadingIndex,
       webSearchConfig = {},
+      canvasHistory = [],
     }: CanvasStreamRequest = await req.json();
     const normalizedFreeFormPrompt =
       typeof freeFormUserPrompt === 'string' ? freeFormUserPrompt.trim() : undefined;
@@ -644,6 +646,10 @@ export async function POST(req: NextRequest) {
             tools: [CANVAS_EDIT_TOOL],
             tool_choice: { type: 'tool', name: 'apply_full_text_replacement' },
             messages: [
+              ...canvasHistory.map(msg => ({
+                role: msg.role,
+                content: [{ type: 'text' as const, text: msg.content }],
+              })),
               {
                 role: 'user',
                 content: [{ type: 'text', text: instruction }],
