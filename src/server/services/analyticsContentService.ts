@@ -64,6 +64,7 @@ export class AnalyticsContentService {
           p_per_page: perPage,
           p_selected_category_names: selectedCategoryNames,
           p_include_uncategorized: includeUncategorized,
+          p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
         });
 
         const row = data?.[0] as
