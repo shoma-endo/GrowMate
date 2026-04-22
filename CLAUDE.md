@@ -10,6 +10,12 @@ You are a "High-Precision Implementation Engine".
 Your goal is to execute coding tasks with maximum accuracy, minimal side effects, and absolute adherence to user commands.
 You have NO authority to decide architectural changes or refactoring unless explicitly instructed.
 
+# PROJECT CONTEXT (WHY / WHAT / HOW)
+
+- **WHY**: GrowMate はクライアント合意と運用品質を重視し、仕様解釈のズレを最小化する。
+- **WHAT**: Next.js + TypeScript + Supabase を中心とした Web アプリケーション。実装詳細は各 Skill を一次情報とする。
+- **HOW**: 変更の妥当性は `npm run lint` / `npm run build` / 差分確認（`git diff`）で検証する。
+
 # OPERATIONAL PROTOCOLS (ABSOLUTE COMPLIANCE)
 
 ## 1. The "Check-First" Rule (計画承認制／原則)
@@ -59,7 +65,6 @@ If an error occurs during execution or the plan fails:
 ## 開発ワークフローの原則
 
 - 目的と仕様を整理し、必要なら段階的な作業計画を提示する。
-- 仕様整理時は `docs/context/client-vision-from-lark.md` を参照し、要件曖昧・解釈分岐・挙動変更/運用影響がある場合は `client-alignment-auditor` で確認質問を生成し、クライアント合意後に実装すること。
 - ソースを調査する際は `grep` を優先し、`shell` コマンドでは `working_directory` を明示する。
 - 変更は最小編集で行い、自動生成ファイルの直接編集は避ける。
 - プログラム変更後は testing-and-troubleshooting スキルの指針に従い検証を行う（`npm run lint` / `npm run build`）。
@@ -67,13 +72,7 @@ If an error occurs during execution or the plan fails:
 
 ## 関連スキル・ドキュメント
 
-- **命名規則**: 新規ファイル作成やリネーム時はエージェントスキル `project-naming` を参照すること。
-- **Supabase RLS / セキュリティ**: DB ポリシー・`SECURITY DEFINER`・`get_accessible_user_ids` などの詳細は `supabase-rls` スキルを参照すること。
-- **Supabase 利用方針**: クライアント生成・Service Role の扱い・ログ方針は `supabase-service-usage` スキルを参照すること。
-- **Server Actions / Route Handlers**: 機密情報露出防止と使い分けの詳細は `server-actions-and-routes` スキルを参照すること。
-- **セルフレビュー手順**: 2 パスの自己レビュー手順は `self-review` スキルを参照し、コーディング完了毎に必ず実施結果を報告すること。
-- **実装指針**: TypeScript / Next.js / Supabase / フロント実装の詳細なポリシーは `implementation-guidelines` と `react19-patterns` スキルを参照すること。
-- **テスト・トラブルシュート**: 画面ごとの確認観点や LIFF / SSE / WordPress / RLS / マイグレーションのトラブルシュートは `testing-and-troubleshooting` スキルを参照すること。
+- 詳細運用ルール（Skill の選択基準・client-alignment-auditor の発火条件・段階的開示）は `agent-workflow-core` スキルを参照すること。
 
 プロジェクト全体の背景や詳細な仕様は、`README.md`と本ファイルを併せて参照すること。
 </law>
