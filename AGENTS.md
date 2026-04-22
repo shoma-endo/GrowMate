@@ -59,6 +59,7 @@ If an error occurs during execution or the plan fails:
 ## 開発ワークフローの原則
 
 - 目的と仕様を整理し、必要なら段階的な作業計画を提示する。
+- 仕様整理時は `docs/context/client-vision-from-lark.md` を参照し、要件曖昧・解釈分岐・挙動変更/運用影響がある場合は `client-alignment-auditor` で確認質問を生成し、クライアント合意後に実装すること。
 - ソースを調査する際は `grep` を優先し、`shell` コマンドでは `working_directory` を明示する。
 - 変更は最小編集で行い、自動生成ファイルの直接編集は避ける。
 - プログラム変更後は testing-and-troubleshooting スキルの指針に従い検証を行う（`npm run lint` / `npm run build`）。
