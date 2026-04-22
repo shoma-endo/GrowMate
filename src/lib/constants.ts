@@ -76,7 +76,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   blog_creation_step5: { ...ANTHROPIC_BASE, maxTokens: 6000 },
   blog_creation_step6: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step7: { ...ANTHROPIC_BASE, maxTokens: 64000 },
-  blog_creation_step7_heading: { ...ANTHROPIC_BASE, maxTokens: 7000 },
+  blog_creation_step7_heading: { ...ANTHROPIC_BASE, maxTokens: 16000 },
   blog_title_meta_generation: {
     ...ANTHROPIC_BASE,
     maxTokens: 10000,
