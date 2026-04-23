@@ -76,4 +76,11 @@ If an error occurs during execution or the plan fails:
 - 詳細運用ルール（Skill の選択基準・client-alignment-auditor の発火条件・段階的開示）は `agent-workflow-core` スキルを参照すること。
 
 プロジェクト全体の背景や詳細な仕様は、`README.md`と本ファイルを併せて参照すること。
+
+## セキュリティ最優先ルール（絶対遵守）
+- .envや機密ファイル（secrets, credentials, token等）を一切読まない・出力しない
+- 危険コマンド（rm -rf, curl 外部URL, cat .env など）は実行前に必ず確認を求める
+- 機密情報はユーザー自身に確認させる
+- ホームディレクトリ（~/）への直接アクセスは禁止
+
 </law>
