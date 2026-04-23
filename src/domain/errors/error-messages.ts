@@ -629,6 +629,9 @@ export const ERROR_MESSAGES = {
     /** キーワード指標の取得に失敗した場合 */
     KEYWORD_METRICS_FETCH_FAILED: 'キーワード指標の取得に失敗しました',
 
+    /** 除外キーワードの取得に失敗した場合 */
+    NEGATIVE_KEYWORDS_FETCH_FAILED: '除外キーワードの取得に失敗しました',
+
     /** Google Ads開発者トークンが設定されていない場合 */
     DEVELOPER_TOKEN_MISSING: 'Google Ads開発者トークンが設定されていません',
 
@@ -657,6 +660,35 @@ export const ERROR_MESSAGES = {
     /** Google Ads ダッシュボードのデータ取得ガイダンス（管理者権限が必要） */
     DASHBOARD_GUIDANCE_ADMIN_REQUIRED:
       'Google Ads 連携機能は現在、管理者ユーザーのみ利用可能です。管理者に問い合わせるか、権限設定を確認してください。',
+
+    /** AI分析の手動実行に失敗した場合 */
+    AI_EVALUATION_RUN_FAILED: 'Google Ads AI分析の実行に失敗しました',
+
+    /** AI分析設定の取得に失敗した場合 */
+    AI_EVALUATION_SETTINGS_FETCH_FAILED: 'Google Ads AI分析設定の取得に失敗しました',
+
+    /** AI分析設定の更新に失敗した場合 */
+    AI_EVALUATION_SETTINGS_UPDATE_FAILED: 'Google Ads AI分析設定の更新に失敗しました',
+
+    /** AI分析プロンプトが見つからない場合 */
+    AI_EVALUATION_PROMPT_NOT_FOUND:
+      'Google Ads AI分析プロンプトが見つかりません。管理画面でテンプレートを確認してください',
+
+    /** メールアドレスが未登録の場合 */
+    EMAIL_REQUIRED_FOR_AI_EVALUATION:
+      'メールアドレス未登録のため、Google Ads AI分析メールを送信できません',
+
+    /** 既に本日分のAI分析を実行済みの場合 */
+    AI_EVALUATION_ALREADY_COMPLETED:
+      '本日のGoogle Ads AI分析は既に実行済みです。明日以降に再実行してください',
+
+    /** AI分析レポートのメール送信が成功した場合 */
+    AI_EVALUATION_EMAIL_SENT:
+      'Google Ads AI分析レポートをメール送信しました',
+
+    /** 評価設定が見つからない場合 */
+    AI_EVALUATION_SETTINGS_NOT_FOUND:
+      'Google Ads AI分析設定が見つかりません。Google Adsのアカウント選択をやり直してください',
   },
 
   /**

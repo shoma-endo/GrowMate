@@ -1,5 +1,7 @@
 import { DashboardContent } from './_components/dashboard-content';
 import { fetchKeywordMetrics, fetchCampaignMetrics } from '@/server/actions/googleAds.actions';
+import { getEvaluationSettings } from '@/server/actions/googleAdsEvaluation.actions';
+import { authMiddleware } from '@/server/middleware/auth.middleware';
 import type { GoogleAdsErrorKind } from '@/types/googleAds.types';
 import { buildLocalDateRange } from '@/lib/date-utils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -26,6 +28,18 @@ function resolveErrorKind(errorMessage: string): GoogleAdsErrorKind {
 }
 
 export default async function GoogleAdsDashboardPage() {
+  const authResult = await authMiddleware();
+  const hasEmailAddress = Boolean(authResult.userDetails?.email);
+  const evaluationSettingsResult = await getEvaluationSettings();
+  const evaluationSettings =
+    evaluationSettingsResult.success && evaluationSettingsResult.data
+      ? evaluationSettingsResult.data
+      : {
+          dateRangeDays: 30,
+          cronEnabled: false,
+          lastEvaluatedOn: null,
+        };
+
   // 過去30日間の日付範囲を計算（JST基準、今日含む30日間）
   const { startDate, endDate } = buildLocalDateRange(30);
 
@@ -42,6 +56,8 @@ export default async function GoogleAdsDashboardPage() {
       <DashboardContent
         campaigns={[]}
         keywords={[]}
+        hasEmailAddress={hasEmailAddress}
+        initialSettings={evaluationSettings}
         errorMessage={errorMessage}
         errorKind={resolveErrorKind(errorMessage)}
       />
@@ -51,5 +67,12 @@ export default async function GoogleAdsDashboardPage() {
   const campaigns = campaignResult.data ?? [];
   const keywords = keywordResult.success ? (keywordResult.data ?? []) : [];
 
-  return <DashboardContent campaigns={campaigns} keywords={keywords} />;
+  return (
+    <DashboardContent
+      campaigns={campaigns}
+      keywords={keywords}
+      hasEmailAddress={hasEmailAddress}
+      initialSettings={evaluationSettings}
+    />
+  );
 }

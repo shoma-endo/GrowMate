@@ -130,6 +130,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateResult.error.userMessage }, { status: 500 });
     }
 
+    let customerInfo: Awaited<ReturnType<typeof googleAdsService.getCustomerInfo>> | null = null;
+    try {
+      customerInfo = await googleAdsService.getCustomerInfo(
+        customerId,
+        accessToken,
+        managerCustomerId ?? undefined
+      );
+    } catch (error) {
+      console.error('Failed to fetch customerInfo for customerId:', {
+        customerId,
+        managerCustomerId,
+        error,
+      });
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_SELECT_FAILED },
+        { status: 500 }
+      );
+    }
+
+    const syncResult = await supabaseService.upsertGoogleAdsEvaluationSettings({
+      userId,
+      customerId,
+      customerName: customerInfo?.name ?? null,
+    });
+    if (!syncResult.success) {
+      return NextResponse.json({ error: syncResult.error.userMessage }, { status: 500 });
+    }
+
     return NextResponse.json({
       success: true,
       customerId,

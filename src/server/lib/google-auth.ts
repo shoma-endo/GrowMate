@@ -4,8 +4,6 @@ import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
-import { toUser } from '@/types/user';
-import { isAdmin } from '@/authUtils';
 
 /**
  * Google OAuth 認証関連のヘルパー関数
@@ -35,8 +33,7 @@ export type GoogleAdsAuthResult =
     };
 
 /**
- * Google Ads API用の認証・権限チェックと認証情報取得
- * 管理者権限チェックとGoogle Ads認証情報の取得を一括で行う
+ * Google Ads API用の認証チェックと認証情報取得
  */
 export async function ensureGoogleAdsAuth(): Promise<GoogleAdsAuthResult> {
   const authResult = await authMiddleware();
@@ -54,30 +51,7 @@ export async function ensureGoogleAdsAuth(): Promise<GoogleAdsAuthResult> {
     };
   }
 
-  // 管理者権限チェック
   const supabaseService = new SupabaseService();
-  const userResult = await supabaseService.getUserById(authResult.userId);
-  if (!userResult.success || !userResult.data) {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND },
-        { status: 500 }
-      ),
-    };
-  }
-  const user = toUser(userResult.data);
-  if (!isAdmin(user.role)) {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: ERROR_MESSAGES.USER.ADMIN_REQUIRED },
-        { status: 403 }
-      ),
-    };
-  }
-
-  // 認証情報を取得
   const credential = await supabaseService.getGoogleAdsCredential(authResult.userId);
   if (!credential) {
     return {

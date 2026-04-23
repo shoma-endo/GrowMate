@@ -62,7 +62,6 @@ export interface SetupDashboardProps {
   gscStatus: GscConnectionStatus;
   ga4Status: Ga4ConnectionStatus;
   googleAdsStatus?: GoogleAdsConnectionStatus | undefined;
-  isAdmin?: boolean | undefined;
 }
 
 export interface WordPressSettingsState {

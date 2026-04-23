@@ -5,8 +5,6 @@ import { verifyOAuthState } from '@/server/lib/oauth-state';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { toUser } from '@/types/user';
-import { isAdmin } from '@/authUtils';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -101,38 +99,7 @@ export async function GET(request: NextRequest) {
     }
     // セッション切れだが state.userId あり → CSRF + HMAC 検証済みのため続行
 
-    // 管理者権限チェック（Google Ads 連携は審査完了まで管理者のみ）
     const supabaseService = new SupabaseService();
-    const userResult = await supabaseService.getUserById(targetUserId);
-    if (!userResult.success || !userResult.data) {
-      console.error(
-        '❌ ユーザー情報が取得できません:',
-        userResult.success ? 'データなし' : userResult.error
-      );
-      const response = NextResponse.redirect(
-        new URL('/setup/google-ads?error=server_error', baseUrl)
-      );
-      response.cookies.delete(stateCookieName);
-      return response;
-    }
-    let user;
-    try {
-      user = toUser(userResult.data);
-    } catch (error) {
-      console.error('❌ ユーザー情報の変換に失敗しました:', error);
-      const response = NextResponse.redirect(
-        new URL('/setup/google-ads?error=server_error', baseUrl)
-      );
-      response.cookies.delete(stateCookieName);
-      return response;
-    }
-
-    if (!isAdmin(user.role)) {
-      console.warn('⚠️ 非管理者ユーザーが Google Ads 連携を試行:', targetUserId);
-      const response = NextResponse.redirect(new URL('/unauthorized', baseUrl));
-      response.cookies.delete(stateCookieName);
-      return response;
-    }
 
     // トークン交換
     const googleAdsService = new GoogleAdsService();
@@ -206,6 +173,32 @@ export async function GET(request: NextRequest) {
 
     // 既にアカウント選択済みで、かつそのアカウントが現在もアクセス可能な場合（再認証時）
     if (existingCredential?.customerId && customerIds.includes(existingCredential.customerId)) {
+      let existingCustomerInfo: Awaited<
+        ReturnType<typeof googleAdsService.getCustomerInfo>
+      > | null = null;
+      try {
+        existingCustomerInfo = await googleAdsService.getCustomerInfo(
+          existingCredential.customerId,
+          tokens.accessToken,
+          existingCredential.managerCustomerId ?? undefined
+        );
+      } catch (error) {
+        console.warn('Failed to fetch customer info for existing Google Ads credential:', {
+          userId: targetUserId,
+          customerId: existingCredential.customerId,
+          error,
+        });
+      }
+
+      const syncResult = await supabaseService.upsertGoogleAdsEvaluationSettings({
+        userId: targetUserId,
+        customerId: existingCredential.customerId,
+        customerName: existingCustomerInfo?.name ?? null,
+      });
+      if (!syncResult.success) {
+        console.error('Failed to sync Google Ads evaluation settings:', syncResult.error);
+      }
+
       const response = NextResponse.redirect(
         new URL('/setup/google-ads?success=true', baseUrl)
       );
@@ -227,11 +220,13 @@ export async function GET(request: NextRequest) {
 
       // customer.manager フィールドで MCC かどうかを判定
       let managerCustomerId: string | undefined;
+      let customerName: string | null = null;
       try {
         const customerInfo = await googleAdsService.getCustomerInfo(
           customerId,
           tokens.accessToken
         );
+        customerName = customerInfo?.name ?? null;
         if (customerInfo?.isManager) {
           managerCustomerId = customerId;
         }
@@ -257,6 +252,16 @@ export async function GET(request: NextRequest) {
         response.cookies.delete(stateCookieName);
         return response;
       }
+
+      const syncResult = await supabaseService.upsertGoogleAdsEvaluationSettings({
+        userId: targetUserId,
+        customerId,
+        customerName,
+      });
+      if (!syncResult.success) {
+        console.error('Failed to sync Google Ads evaluation settings:', syncResult.error);
+      }
+
       const response = NextResponse.redirect(
         new URL('/setup/google-ads?success=true', baseUrl)
       );

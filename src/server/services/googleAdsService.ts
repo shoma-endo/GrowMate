@@ -6,10 +6,13 @@ import {
 import type {
   GoogleAdsKeywordMetric,
   GoogleAdsMatchType,
+  GoogleAdsStatus,
   GetKeywordMetricsInput,
   GetKeywordMetricsResult,
+  GetNegativeKeywordsResult,
   GetCampaignMetricsResult,
   GoogleAdsCampaignMetrics,
+  GoogleAdsNegativeKeyword,
   GoogleAdsSearchStreamRow,
 } from '@/types/googleAds.types';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -40,6 +43,38 @@ function normalizeMatchType(matchType: string | undefined): GoogleAdsMatchType {
     case 'BROAD':
     default:
       return 'BROAD';
+  }
+}
+
+/**
+ * キーワード系 criterion 行からキーワード情報を抽出
+ */
+function extractKeywordFromCriterionRow(row: GoogleAdsSearchStreamRow) {
+  const keyword =
+    row.adGroupCriterion?.keyword ??
+    row.campaignCriterion?.keyword;
+
+  if (!keyword?.text || !keyword.matchType) {
+    return null;
+  }
+
+  return {
+    keywordText: keyword.text,
+    matchType: normalizeMatchType(keyword.matchType),
+  };
+}
+
+/**
+ * Google Ads ステータスを正規化
+ */
+function normalizeGoogleAdsStatus(status: string | undefined): GoogleAdsStatus {
+  switch (status) {
+    case 'ENABLED':
+    case 'PAUSED':
+    case 'REMOVED':
+      return status;
+    default:
+      return 'UNKNOWN';
   }
 }
 
@@ -529,12 +564,21 @@ export class GoogleAdsService {
    * @returns キーワード指標の配列
    */
   async getKeywordMetrics(input: GetKeywordMetricsInput): Promise<GetKeywordMetricsResult> {
-    const { accessToken, customerId, startDate, endDate, campaignIds, loginCustomerId } = input;
+    const {
+      accessToken,
+      customerId,
+      startDate,
+      endDate,
+      campaignIds,
+      includeAllStatuses = false,
+      loginCustomerId,
+    } = input;
 
     // GAQL クエリを構築
     let query = `
       SELECT
         ad_group_criterion.criterion_id,
+        ad_group_criterion.status,
         ad_group_criterion.keyword.text,
         ad_group_criterion.keyword.match_type,
         campaign.name,
@@ -551,10 +595,15 @@ export class GoogleAdsService {
         metrics.cost_micros
       FROM keyword_view
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
+    `;
+
+    if (!includeAllStatuses) {
+      query += `
         AND ad_group_criterion.status = 'ENABLED'
         AND ad_group.status = 'ENABLED'
         AND campaign.status = 'ENABLED'
-    `;
+      `;
+    }
 
     // キャンペーン ID フィルタを追加（任意）
     // campaignIds は数値のみ（スキーマでバリデーション済み）のため、クオートなしで結合
@@ -652,6 +701,7 @@ export class GoogleAdsService {
       matchType: normalizeMatchType(row.adGroupCriterion?.keyword?.matchType),
       campaignName: row.campaign?.name ?? '',
       adGroupName: row.adGroup?.name ?? '',
+      status: normalizeGoogleAdsStatus(row.adGroupCriterion?.status),
 
       // 主要指標
       ctr: m.ctr ?? 0,
@@ -667,6 +717,110 @@ export class GoogleAdsService {
       clicks: Number(m.clicks ?? 0),
       cost: microsToYen(m.costMicros),
     };
+  }
+
+  async getNegativeKeywords(input: {
+    accessToken: string;
+    customerId: string;
+    loginCustomerId?: string;
+  }): Promise<GetNegativeKeywordsResult> {
+    const { accessToken, customerId, loginCustomerId } = input;
+    const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+    if (!developerToken) {
+      throw new Error(ERROR_MESSAGES.GOOGLE_ADS.DEVELOPER_TOKEN_MISSING);
+    }
+
+    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${customerId}/googleAds:searchStream`;
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'developer-token': developerToken,
+    };
+
+    if (loginCustomerId) {
+      headers['login-customer-id'] = loginCustomerId;
+    }
+
+    const queries = [
+      {
+        level: 'campaign' as const,
+        query: `
+          SELECT
+            campaign_criterion.keyword.text,
+            campaign_criterion.keyword.match_type,
+            campaign.name
+          FROM campaign_criterion
+          WHERE campaign_criterion.type = 'KEYWORD'
+            AND campaign_criterion.negative = true
+        `,
+      },
+      {
+        level: 'ad_group' as const,
+        query: `
+          SELECT
+            ad_group_criterion.keyword.text,
+            ad_group_criterion.keyword.match_type,
+            campaign.name,
+            ad_group.name
+          FROM ad_group_criterion
+          WHERE ad_group_criterion.negative = true
+            AND ad_group_criterion.type = 'KEYWORD'
+        `,
+      },
+    ];
+
+    try {
+      const responses = await Promise.all(
+        queries.map(async item => {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ query: item.query.trim() }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            const parsed = this.parseGoogleAdsError(
+              errorText,
+              `HTTP ${response.status}: ${response.statusText}`
+            );
+            throw new Error(parsed.message);
+          }
+
+          const rows = this.parseSearchStreamResponse(await response.text());
+          const keywords: GoogleAdsNegativeKeyword[] = rows.flatMap(row => {
+            const keywordInfo = extractKeywordFromCriterionRow(row);
+
+            if (!keywordInfo) {
+              return [];
+            }
+
+            return [
+              {
+                keywordText: keywordInfo.keywordText,
+                matchType: keywordInfo.matchType,
+                level: item.level,
+                campaignName: row.campaign?.name ?? '',
+                ...(item.level === 'ad_group' && row.adGroup?.name
+                  ? { adGroupName: row.adGroup.name }
+                  : {}),
+              },
+            ];
+          });
+
+          return keywords;
+        })
+      );
+
+      return { success: true, data: responses.flat() };
+    } catch (error) {
+      console.error('[GoogleAdsService] getNegativeKeywords error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '除外キーワードの取得に失敗しました',
+      };
+    }
   }
 
   /**

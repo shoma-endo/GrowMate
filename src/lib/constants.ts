@@ -101,6 +101,11 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokens: 5000,
     label: 'ペルソナから全て変更',
   },
+  google_ads_ai_evaluation: {
+    ...ANTHROPIC_BASE,
+    maxTokens: 8000,
+    label: 'Google Ads AI分析',
+  },
 };
 
 // =============================================================================

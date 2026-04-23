@@ -8,6 +8,18 @@ export interface PromptDescription {
   variables: string;
 }
 
+/**
+ * google_ads_ai_evaluation テンプレートに暗黙的に注入される変数名一覧
+ */
+export const IMPLICIT_GOOGLE_ADS_VARS = [
+  'persona',
+  'strengths',
+  'keywordData',
+  'negativeKeywords',
+  'dateRange',
+  'customerName',
+] as const;
+
 export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
   ad_copy_creation: {
     description: 'Google広告やFacebook広告に使用する広告コピーを生成するプロンプト',
@@ -46,6 +58,10 @@ export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
     variables:
       'WordPress本文（wpContent）を使用します',
   },
+  google_ads_ai_evaluation: {
+    description: 'Google Adsのキーワード指標をAIで分析し、改善提案をメール送信するプロンプト',
+    variables: `${IMPLICIT_GOOGLE_ADS_VARS.join('、')} を使用します`,
+  },
 };
 
 /**
@@ -75,6 +91,7 @@ export const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   qualification: '保有資格・認定',
   payments: '対応決済方法',
   strength: '事業の強み・特徴',
+  strengths: '全サービスの強み（改行区切り）',
   when: 'いつ（タイミング・期間）',
   where: 'どこで（場所・範囲）',
   who: '誰が（担当者・対象者）',
@@ -104,6 +121,10 @@ export const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   conversionGoal: 'CTA/コンバージョン目標（問い合わせ、購入、予約など）',
   emergingQueries: '新興・ロングテールクエリの一覧や指標',
   competingSnippets: '競合上位ページのスニペット傾向（タイトル/ディスクリプションの特徴）',
+  keywordData: 'Google Ads 全キーワードの指標データ（構造化テキスト）',
+  negativeKeywords: 'Google Ads 除外キーワード一覧',
+  dateRange: '分析対象期間（例: 2026-02-22 〜 2026-03-24）',
+  customerName: 'Google Ads アカウント名',
 };
 
 /**
