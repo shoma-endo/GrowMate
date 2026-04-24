@@ -331,6 +331,24 @@ class ChatService {
   }
 
   /**
+   * continuationMode: 途切れた最後の assistant メッセージを結合済みコンテンツで上書き保存する。
+   * "続けてください" は DB に残さない。
+   */
+  async updateLastAssistantMessage(
+    userId: string,
+    sessionId: string,
+    mergedContent: string,
+    model: string
+  ): Promise<{ sessionId: string }> {
+    this.unwrapSupabaseResult(
+      await this.supabaseService.updateLastAssistantMessage(sessionId, userId, mergedContent, model),
+      ChatErrorCode.MESSAGE_SEND_FAILED,
+      { userId, sessionId }
+    );
+    return { sessionId };
+  }
+
+  /**
    * セッションのサービスIDを更新
    */
   async updateSessionServiceId(userId: string, sessionId: string, serviceId: string): Promise<void> {

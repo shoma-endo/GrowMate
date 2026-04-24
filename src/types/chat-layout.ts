@@ -107,4 +107,6 @@ export interface ChatLayoutCtx {
   combinedTiles?: Array<{ id: string; title: string; excerpt: string; createdAt?: string }>;
   /** Step7 完成形タイルクリック時: Canvas で完成形を開く（versionId 指定でそのバージョンを選択表示） */
   onOpenCombinedCanvas?: (versionId?: string) => void;
+  /** 途切れた出力の続き生成: canvasStreamingContent をクリアしてライブ更新を有効化する */
+  onContinueFromTruncation?: () => void;
 }

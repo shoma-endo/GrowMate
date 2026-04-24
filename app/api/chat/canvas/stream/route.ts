@@ -674,6 +674,17 @@ export async function POST(req: NextRequest) {
             if (event.type === 'message_stop') {
               // Tool Useの結果を抽出
               const message = await apiStream.finalMessage();
+
+              if (message.stop_reason === 'max_tokens') {
+                controller.enqueue(sendSSE('error', {
+                  type: 'max_tokens',
+                  message: '出力が途中で途切れました。もう一度お試しください。',
+                }));
+                cleanup();
+                controller.close();
+                return;
+              }
+
               const toolUseBlock = message.content.find(
                 block => block.type === 'tool_use' && block.name === 'apply_full_text_replacement'
               );

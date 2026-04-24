@@ -1840,6 +1840,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           step6ToStep7LeadSaved,
           ...(combinedTiles.length > 0 && { combinedTiles }),
           onOpenCombinedCanvas: handleOpenCombinedCanvas,
+          onContinueFromTruncation: () => {
+            setCanvasStreamingContent('');
+            const lastMsg = chatSession.state.messages[chatSession.state.messages.length - 1];
+            if (lastMsg?.model) {
+              void chatSession.actions.sendMessage('続けてください', lastMsg.model, { continuationMode: true });
+            }
+          },
         }}
       />
       {canvasPanelOpen && (
