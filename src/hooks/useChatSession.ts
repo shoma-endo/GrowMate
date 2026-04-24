@@ -13,7 +13,6 @@ import { ChatError } from '@/domain/errors/ChatError';
 import type { ChatSessionActions, ChatSessionHook } from '@/types/hooks';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import {
-  ERROR_MESSAGES as CHAT_ERROR_MESSAGES,
   CHAT_HISTORY_LIMIT,
   STEP7_FULL_BODY_TRIGGER,
 } from '@/lib/constants';
@@ -643,14 +642,14 @@ export const useChatSession = (
 
 function extractWarningMessage(rawBody: string): string {
   if (!rawBody) {
-    return CHAT_ERROR_MESSAGES.daily_chat_limit;
+    return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
   }
 
   const dataMatch = rawBody.match(/data:\s*(\{.*\})/);
   if (dataMatch) {
     const payload = dataMatch[1];
     if (!payload) {
-      return CHAT_ERROR_MESSAGES.daily_chat_limit;
+      return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
     }
     try {
       const parsed = JSON.parse(payload) as { message?: unknown };
@@ -662,5 +661,5 @@ function extractWarningMessage(rawBody: string): string {
     }
   }
 
-  return CHAT_ERROR_MESSAGES.daily_chat_limit;
+  return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
 }
