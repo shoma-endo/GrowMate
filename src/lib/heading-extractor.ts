@@ -76,6 +76,8 @@ export interface ExtractedHeading {
 /**
  * Step 5の構成案テキストから、h3およびh4の見出しを抽出する。
  * その他のレベルの見出しは無視する。
+ * Step5/basic_structure は独自プレフィックス形式（`h3 …` / `H4 …`）のみを正とする
+ * （仕様 docs/specs/step7-heading-flow-spec.md §4）。markdown 形式（`### …`）は対象外。
  */
 export function extractHeadingsFromMarkdown(markdown: string): ExtractedHeading[] {
   if (!markdown) return [];
@@ -86,7 +88,7 @@ export function extractHeadingsFromMarkdown(markdown: string): ExtractedHeading[
 
   for (const line of lines) {
     const trimmed = line.trim();
-    const parsed = parseH3H4HeadingLine(trimmed) ?? parseMarkdownH3H4HeadingLine(trimmed);
+    const parsed = parseH3H4HeadingLine(trimmed);
     if (parsed) {
       headings.push({
         text: parsed.text,
