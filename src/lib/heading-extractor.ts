@@ -27,10 +27,44 @@ function parseH3H4HeadingLine(line: string): { text: string; level: 3 | 4 } | nu
 }
 
 /**
- * h3/h4 見出し行から見出しテキストを抽出する。
+ * markdown 形式の h3/h4 見出し行を解析する（正規表現を使用しない）。
+ * 例: "### 見出し" / "#### 見出し" / "###　見出し" / "### 見出し ###"
+ * '#' の直後には 1 文字以上の空白が必要（"#text" は見出しと見なさない）。
+ * CommonMark 準拠で終端 ATX マーカー（"### foo ###"）も剥がす。
+ */
+function parseMarkdownH3H4HeadingLine(line: string): { text: string; level: 3 | 4 } | null {
+  const t = line.trim();
+  if (t.length < 2 || t.charAt(0) !== '#') return null;
+
+  let level = 0;
+  while (level < t.length && t.charAt(level) === '#') level++;
+  if (level !== 3 && level !== 4) return null;
+  if (level >= t.length || !HEADING_WHITESPACE.has(t.charAt(level))) return null;
+
+  let i = level + 1;
+  while (i < t.length && HEADING_WHITESPACE.has(t.charAt(i))) i++;
+  let text = t.slice(i).trim();
+  if (!text) return null;
+
+  // 終端 ATX マーカーを除去する。終端 '#' 列は本文と空白で区切られている必要がある
+  // （"foo#" は本文の一部として残す。CommonMark 準拠）。
+  let j = text.length - 1;
+  while (j >= 0 && text.charAt(j) === '#') j--;
+  const hashStart = j + 1;
+  if (hashStart < text.length && j >= 0 && HEADING_WHITESPACE.has(text.charAt(j))) {
+    text = text.slice(0, j).trimEnd();
+  }
+
+  if (!text) return null;
+  return { text, level };
+}
+
+/**
+ * 見出し行から見出しテキストを抽出する。
+ * 独自形式 ("h3 見出し") と markdown 形式 ("### 見出し") の両方に対応。
  */
 export function extractHeadingTextFromLine(line: string): string | null {
-  return parseH3H4HeadingLine(line)?.text ?? null;
+  return parseH3H4HeadingLine(line)?.text ?? parseMarkdownH3H4HeadingLine(line)?.text ?? null;
 }
 
 export interface ExtractedHeading {
@@ -52,7 +86,7 @@ export function extractHeadingsFromMarkdown(markdown: string): ExtractedHeading[
 
   for (const line of lines) {
     const trimmed = line.trim();
-    const parsed = parseH3H4HeadingLine(trimmed);
+    const parsed = parseH3H4HeadingLine(trimmed) ?? parseMarkdownH3H4HeadingLine(trimmed);
     if (parsed) {
       headings.push({
         text: parsed.text,
@@ -85,7 +119,7 @@ export function generateHeadingKey(orderIndex: number, headingText: string): str
 }
 
 /** 句読点・記号（文末でよく付くもの） */
-const TRAILING_PUNCTUATION = /[。、．，．・!?！？\s]*$/;
+const TRAILING_PUNCTUATION = /[。、．，・!?！？\s]*$/;
 
 /**
  * 見出し比較用の正規化（余分な空白・全角半角揺れ・句読点に耐性を持たせる）
@@ -103,7 +137,7 @@ function headingsMatchAfterNormalization(lineNorm: string, expectedNorm: string)
   if (lineNorm === expectedNorm) return true;
   if (lineNorm.startsWith(expectedNorm)) {
     const suffix = lineNorm.slice(expectedNorm.length).trim();
-    return suffix.length === 0 || /^[。、．，．・!?！？：:-]+$/.test(suffix);
+    return suffix.length === 0 || /^[。、．，・!?！？：:-]+$/.test(suffix);
   }
   return false;
 }
