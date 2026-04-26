@@ -1,0 +1,49 @@
+name: API Changelog Monitor
+
+on:
+  schedule:
+    # 毎月1日と15日の10:00 JST (= UTC 01:00)に実行
+    - cron: '0 1 1,15 * *'
+  workflow_dispatch:
+
+# state ファイルをコミットするため write 権限が必要
+permissions:
+  contents: write
+
+jobs:
+  monitor:
+    name: Check API Changelogs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: API changelog チェック & Lark 通知
+        run: npx tsx scripts/check-api-changelogs.ts
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Lark Bot Webhook URL（変更が検出された時だけ通知）
+          LARK_WEBHOOK_URL: https://open.larksuite.com/open-apis/bot/v2/hook/02ce50f1-b4bf-4261-8f8a-34d8e1a2991e
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTIONS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: 状態ファイルをコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/api-changelog-state.json
+          # 変更がある場合のみコミット。[skip ci] を付けて CI を再トリガーしない
+          git diff --staged --quiet || git commit -m "API changelog 状態ファイルを更新 [skip ci]"
+          git push

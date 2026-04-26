@@ -96,6 +96,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const [canvasStreamingContent, setCanvasStreamingContent] = useState<string>('');
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
   const [isCanvasStreaming, setIsCanvasStreaming] = useState(false);
+  const [canvasEditHistory, setCanvasEditHistory] = useState<
+    { role: 'user' | 'assistant'; content: string }[]
+  >([]);
   const latestBlogStep = useMemo(
     () =>
       findLatestAssistantBlogStep([
@@ -1002,6 +1005,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     (targetStep: BlogStepId) => {
       setIsViewingPastHeadingContent(false);
       setCanvasStreamingContent('');
+      setCanvasEditHistory([]);
       setCanvasStep(targetStep);
       // Step7 へ遷移かつ未確定見出しあり → 完成形ではなく見出し1を表示
       // 完成形は全見出し確定時のみ存在。未確定があれば完成形は存在せず、取得中かどうかに依存しない。
@@ -1013,7 +1017,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         pendingViewingIndexRef.current = 0;
       }
     },
-    [setCanvasStreamingContent, headingSections, activeHeadingIndex]
+    [setCanvasStreamingContent, setCanvasEditHistory, headingSections, activeHeadingIndex]
   );
 
   // 履歴ベースのモデル自動検出は削除（InputArea 側でフロー状態から自動選択）
@@ -1047,6 +1051,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     setAnnotationLoading(false);
     setIsViewingPastHeadingContent(false);
     setCanvasStep(null);
+    setCanvasEditHistory([]);
     setSelectedVersionByStep({});
     setFollowLatestByStep({});
     setNextStepForPlaceholder(null);
@@ -1342,6 +1347,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       const latestId = versions.length ? (versions[versions.length - 1]?.id ?? null) : null;
 
       setCanvasStreamingContent('');
+      setCanvasEditHistory([]);
       setSelectedVersionByStep(prev => {
         const next = { ...prev };
         next[step] = versionId;
@@ -1356,6 +1362,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [
       blogCanvasVersionsByStep,
       resolvedCanvasStep,
+      setCanvasEditHistory,
       setCanvasStreamingContent,
       setFollowLatestByStep,
       setSelectedVersionByStep,
@@ -1373,6 +1380,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setIsViewingPastHeadingContent(false);
       setIsViewingCombinedContent(step === STEP7_ID && combinedContentVersions.length > 0);
       setCanvasStreamingContent('');
+      setCanvasEditHistory([]);
       if (step === STEP7_ID && combinedContentVersions.length > 0) {
         requestedCombinedViewRef.current = true;
         setViewingHeadingIndex(null);
@@ -1411,6 +1419,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       blogCanvasVersionsByStep,
       combinedContentVersions,
       latestCombinedContent,
+      setCanvasEditHistory,
       setCanvasStreamingContent,
       setFollowLatestByStep,
       setSelectedVersionByStep,
@@ -1555,6 +1564,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
               maxUses: 3,
             },
             ...(freeFormUserPrompt !== undefined && { freeFormUserPrompt }),
+            canvasHistory: canvasEditHistory.slice(-4),
           }),
         });
 
@@ -1687,6 +1697,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           buffer = '';
         }
 
+        setCanvasEditHistory(prev => [
+          ...prev,
+          { role: 'user' as const, content: instruction },
+          { role: 'assistant' as const, content: analysisResult || '編集を適用しました' },
+        ]);
+
         handleModelChange('blog_creation', targetStep);
 
         // セッションを再読み込みして最新メッセージを取得
@@ -1709,9 +1725,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return { replacementHtml: '' };
       } catch (error) {
         console.error('Canvas selection edit failed:', error);
-        // エラー時も楽観的更新をクリア
         setOptimisticMessages([]);
-        // ストリーミング内容のクリアは finally ブロックで実行
         throw error instanceof Error ? error : new Error('AI編集の処理に失敗しました');
       } finally {
         canvasEditInFlightRef.current = false;
@@ -1725,6 +1739,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     [
       activeHeadingIndex,
       annotationOpen,
+      canvasEditHistory,
       chatSession.actions,
       chatSession.state.currentSessionId,
       handleModelChange,
@@ -1738,6 +1753,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setAnnotationData,
       setAnnotationOpen,
       setCanvasPanelOpen,
+      setCanvasEditHistory,
       setCanvasStep,
       setFollowLatestByStep,
       setOptimisticMessages,
@@ -1824,6 +1840,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           step6ToStep7LeadSaved,
           ...(combinedTiles.length > 0 && { combinedTiles }),
           onOpenCombinedCanvas: handleOpenCombinedCanvas,
+          onContinueFromTruncation: () => {
+            setCanvasStreamingContent('');
+            const lastMsg = chatSession.state.messages[chatSession.state.messages.length - 1];
+            if (lastMsg?.model) {
+              void chatSession.actions.sendMessage('続けてください', lastMsg.model, { continuationMode: true });
+            }
+          },
         }}
       />
       {canvasPanelOpen && (
