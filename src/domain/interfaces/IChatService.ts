@@ -6,12 +6,16 @@ export interface SendMessageParams {
   isNewSession: boolean;
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   systemPrompt?: string | undefined;
+  serviceId?: string | undefined;
 }
 
 export interface SendMessageResponse {
   message: string;
   sessionId?: string | undefined;
   error?: string | undefined;
+  warning?: string | undefined;
+  success?: false | undefined;
+  emailLinkConflict?: true | undefined;
 }
 
 export interface ChatMessage {

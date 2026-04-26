@@ -14,10 +14,14 @@ import type { ChatSessionActions, ChatSessionHook } from '@/types/hooks';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import {
   CHAT_HISTORY_LIMIT,
+  MODEL_CONFIGS,
   STEP7_FULL_BODY_TRIGGER,
 } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { replaceToEmailLinkConflictLogin } from '@/lib/auth/emailLinkConflictClient';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 
 export type { ChatSessionActions, ChatSessionHook };
 
@@ -47,6 +51,9 @@ const createSessionPreview = (content: string, sessionId: string): ChatSession =
   messageCount: 1,
   lastMessage: content,
 });
+
+const isOpenAIModel = (model: string): boolean =>
+  MODEL_CONFIGS[model]?.provider === 'openai';
 
 const createStreamingMessagePair = (content: string, model: string) => {
   const responseModel = getResponseModelForBlogCreation(model);
@@ -372,6 +379,112 @@ export const useChatSession = (
     []
   );
 
+  const handleNonStreamingMessage = useCallback(
+    async ({
+      content,
+      model,
+      currentSessionId,
+      recentMessages,
+      systemPrompt,
+      serviceId,
+    }: StreamingParams): Promise<boolean> => {
+      const { userMessage, assistantMessage } = createStreamingMessagePair(content, model);
+      setState(prev => ({
+        ...prev,
+        messages: [...prev.messages, userMessage, assistantMessage],
+        error: null,
+        warning: null,
+      }));
+
+      try {
+        const response = await chatService.sendMessage({
+          content,
+          model,
+          accessToken: '',
+          isNewSession: !currentSessionId,
+          sessionId: currentSessionId || undefined,
+          messages: recentMessages,
+          systemPrompt,
+          serviceId,
+        });
+
+        if (response.warning) {
+          // 日次制限などの警告: assistant placeholder のみ除去し、user メッセージは保持
+          setState(prev => ({
+            ...prev,
+            messages:
+              prev.messages.length > 0 &&
+              prev.messages[prev.messages.length - 1]?.role === 'assistant'
+                ? prev.messages.slice(0, -1)
+                : prev.messages,
+            warning: response.warning ?? null,
+            error: null,
+            isLoading: false,
+          }));
+          return false;
+        }
+
+        if (response.error) {
+          if (isEmailLinkConflictResult(response)) {
+            setState(prev => ({
+              ...prev,
+              messages: prev.messages.slice(0, -2),
+              error: null,
+              warning: null,
+              isLoading: false,
+            }));
+            replaceToEmailLinkConflictLogin();
+            return false;
+          }
+
+          setState(prev => ({
+            ...prev,
+            messages: prev.messages.slice(0, -2),
+            error: response.error ?? '送信に失敗しました',
+            warning: null,
+            isLoading: false,
+          }));
+          return false;
+        }
+
+        const responseModel = getResponseModelForBlogCreation(model);
+        const isNewSession = !currentSessionId && !!response.sessionId;
+        setState(prev => ({
+          ...prev,
+          currentSessionId: response.sessionId || prev.currentSessionId,
+          messages: prev.messages.map((msg, idx) =>
+            idx === prev.messages.length - 1
+              ? { ...msg, content: response.message, model: responseModel }
+              : msg
+          ),
+          isLoading: false,
+          isTruncated: false,
+          ...(isNewSession && response.sessionId
+            ? { sessions: [createSessionPreview(content, response.sessionId), ...prev.sessions] }
+            : {}),
+        }));
+        return true;
+      } catch (error) {
+        console.error('Non-streaming send error:', error);
+        const errorMessage =
+          error instanceof ChatError
+            ? error.userMessage
+            : error instanceof Error
+              ? error.message
+              : '送信に失敗しました';
+        setState(prev => ({
+          ...prev,
+          messages: prev.messages.slice(0, -2),
+          error: errorMessage,
+          warning: null,
+          isLoading: false,
+        }));
+        return false;
+      }
+    },
+    [chatService]
+  );
+
   const sendMessage = useCallback(
     async (
       content: string,
@@ -443,6 +556,18 @@ export const useChatSession = (
           streamingParams.truncatedContent = lastMessage.content;
         }
 
+        if (isOpenAIModel(model)) {
+          if (options?.continuationMode) {
+            setState(prev => ({
+              ...prev,
+              isLoading: false,
+              error: 'OpenAI モデルでは続き生成に対応していません',
+            }));
+            return false;
+          }
+          return await handleNonStreamingMessage(streamingParams);
+        }
+
         const success = await handleStreamingMessage(streamingParams);
         return success;
       } catch (error) {
@@ -463,7 +588,7 @@ export const useChatSession = (
         return false;
       }
     },
-    [state.currentSessionId, state.messages, handleStreamingMessage]
+    [state.currentSessionId, state.messages, handleStreamingMessage, handleNonStreamingMessage]
   );
 
   const deleteSession = useCallback(

@@ -18,6 +18,7 @@ import {
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
 import { STEP7_ID, toBlogModel } from '@/lib/constants';
+import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 
 
 const updateChatSessionTitleSchema = z.object({
@@ -77,7 +78,17 @@ export async function startChat(data: StartChatInput): Promise<ChatResponse> {
     // 認証チェック
     const auth = await checkAuth();
     if (auth.isError) {
-      return { message: '', error: auth.error };
+      return {
+        message: '',
+        error: auth.error,
+        ...(auth.emailLinkConflict ? { success: false as const, emailLinkConflict: true as const } : {}),
+      };
+    }
+
+    // trial ユーザーの日次制限チェック
+    const limitError = await checkTrialDailyLimit(auth.role, auth.userId);
+    if (limitError) {
+      return { message: '', warning: limitError };
     }
 
     // モデル処理に委譲
@@ -95,7 +106,17 @@ export async function continueChat(data: ContinueChatInput): Promise<ChatRespons
     // 認証チェック
     const auth = await checkAuth();
     if (auth.isError) {
-      return { message: '', error: auth.error };
+      return {
+        message: '',
+        error: auth.error,
+        ...(auth.emailLinkConflict ? { success: false as const, emailLinkConflict: true as const } : {}),
+      };
+    }
+
+    // trial ユーザーの日次制限チェック
+    const limitError = await checkTrialDailyLimit(auth.role, auth.userId);
+    if (limitError) {
+      return { message: '', warning: limitError };
     }
 
     // モデル処理に委譲

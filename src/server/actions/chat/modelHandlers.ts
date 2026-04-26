@@ -81,8 +81,6 @@ export class ModelHandlerService {
         return this.handleFTModel(userId, systemPrompt, userMessage, model, serviceId);
       case 'ad_copy_creation':
         return this.handleAdCopyModel(userId, systemPrompt, userMessage, serviceId);
-      case 'gpt-4.1-nano':
-        return this.handleFinishingModel(userId, systemPrompt, userMessage, serviceId);
       case 'lp_draft_creation':
         return this.handleLPDraftModel(userId, systemPrompt, userMessage, serviceId);
       default:
@@ -272,21 +270,6 @@ export class ModelHandlerService {
       systemPrompt,
       userMessage.trim(),
       'ad_copy_creation',
-      serviceId
-    );
-  }
-
-  private async handleFinishingModel(
-    userId: string,
-    systemPrompt: string,
-    userMessage: string,
-    serviceId?: string
-  ): Promise<ChatResponse> {
-    return await chatService.startChat(
-      userId,
-      systemPrompt,
-      userMessage.trim(),
-      'gpt-4.1-nano',
       serviceId
     );
   }
