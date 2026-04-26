@@ -74,6 +74,23 @@ export async function POST(req: NextRequest) {
       webSearchConfig = {},
     }: StreamRequest = await req.json();
 
+    if (!Array.isArray(messages) || typeof userMessage !== 'string' || typeof model !== 'string') {
+      return new Response(
+        sendSSE('error', {
+          type: 'invalid_request',
+          message: 'チャット送信リクエストの形式が不正です',
+        }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-store',
+            Connection: 'keep-alive',
+          },
+        }
+      );
+    }
+
     const isStep7Model = model === STEP7_BLOG_MODEL;
 
     // 認証チェック

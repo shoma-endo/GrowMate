@@ -220,13 +220,17 @@ export class ChatService implements IChatService {
     const response = await startChatSA({
       userMessage: params.content,
       model: params.model,
-      systemPrompt: params.systemPrompt,
+      ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
+      ...(params.serviceId !== undefined ? { serviceId: params.serviceId } : {}),
     });
 
     return {
       message: response.message,
       sessionId: response.sessionId as string | undefined,
       error: response.error as string | undefined,
+      warning: response.warning as string | undefined,
+      success: response.success,
+      emailLinkConflict: response.emailLinkConflict,
     };
   }
 
@@ -240,13 +244,17 @@ export class ChatService implements IChatService {
       messages: params.messages,
       userMessage: params.content,
       model: params.model,
-      systemPrompt: params.systemPrompt,
+      ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
+      ...(params.serviceId !== undefined ? { serviceId: params.serviceId } : {}),
     });
 
     return {
       message: response.message,
       sessionId: (response.sessionId || params.sessionId) as string | undefined,
       error: response.error as string | undefined,
+      warning: response.warning as string | undefined,
+      success: response.success,
+      emailLinkConflict: response.emailLinkConflict,
     };
   }
 
