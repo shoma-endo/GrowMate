@@ -32,6 +32,8 @@ export interface ChatSessionActions {
        * await 後にセッションが切り替わった場合でも、検証済みのセッションで送るために使う。
        */
       sessionIdOverride?: string;
+      /** true のとき途切れた最後の assistant メッセージに続きを連結する（新規メッセージは追加しない） */
+      continuationMode?: boolean;
     }
   ) => Promise<boolean>;
   setError: (message: string | null) => void;

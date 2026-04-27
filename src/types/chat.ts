@@ -32,6 +32,9 @@ export interface ChatResponse {
   message: string;
   error?: string | undefined;
   sessionId?: string | undefined;
+  warning?: string | undefined;
+  success?: false | undefined;
+  emailLinkConflict?: true | undefined;
 }
 
 /**

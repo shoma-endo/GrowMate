@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { Bell } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import type { CategoryFilterConfig } from '@/types/category';
@@ -10,14 +11,20 @@ interface CategoryFilterProps {
   categories: string[];
   selectedCategoryNames: string[];
   includeUncategorized: boolean;
+  hasUnreadSuggestion: boolean;
   onFilterChange: (selectedCategoryNames: string[], includeUncategorized: boolean) => void;
+  onUnreadSuggestionChange: (value: boolean) => void;
+  onClearAll: () => void;
 }
 
 export default function CategoryFilter({
   categories,
   selectedCategoryNames,
   includeUncategorized,
+  hasUnreadSuggestion,
   onFilterChange,
+  onUnreadSuggestionChange,
+  onClearAll,
 }: CategoryFilterProps) {
   // フィルター変更時に永続化
   const syncToStorage = React.useCallback((names: string[], includeUncat: boolean) => {
@@ -45,11 +52,15 @@ export default function CategoryFilter({
   };
 
   const clearAll = () => {
-    onFilterChange([], false);
-    syncToStorage([], false);
+    onClearAll();
+    // カテゴリ選択がゼロ（unread のみアクティブな状態）では localStorage を消さない。
+    // 通知フィルターは永続化対象外のため、ここで保存済みカテゴリを破棄しない。
+    if (selectedCategoryNames.length > 0 || includeUncategorized) {
+      syncToStorage([], false);
+    }
   };
 
-  const hasAnySelection = selectedCategoryNames.length > 0 || includeUncategorized;
+  const hasAnySelection = selectedCategoryNames.length > 0 || includeUncategorized || hasUnreadSuggestion;
 
   return (
     <div className="space-y-3">
@@ -73,6 +84,18 @@ export default function CategoryFilter({
           フィルターが未選択のため、全件表示されます
         </p>
       )}
+
+      {/* 改善提案フィルター */}
+      <div className="border rounded-md px-2 py-2">
+        <label className="flex items-center gap-2 cursor-pointer hover:bg-amber-50 px-1 py-1 rounded">
+          <Checkbox
+            checked={hasUnreadSuggestion}
+            onCheckedChange={checked => onUnreadSuggestionChange(!!checked)}
+          />
+          <Bell className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
+          <span className="text-sm font-medium text-amber-800">改善提案あり</span>
+        </label>
+      </div>
 
       <div className="max-h-[200px] overflow-y-auto space-y-2">
         {categories.map(categoryName => (

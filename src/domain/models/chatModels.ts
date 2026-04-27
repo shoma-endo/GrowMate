@@ -12,6 +12,7 @@ export interface ChatState {
   readonly searchResults: ChatSessionSearchResult[];
   readonly isSearching: boolean;
   readonly searchError: string | null;
+  readonly isTruncated: boolean;
 }
 
 export const initialChatState: ChatState = {
@@ -25,6 +26,7 @@ export const initialChatState: ChatState = {
   searchResults: [],
   isSearching: false,
   searchError: null,
+  isTruncated: false,
 };
 
 export const createUserMessage = (content: string, model?: string): ChatMessage => ({

@@ -1,6 +1,6 @@
 import { SupabaseService } from '@/server/services/supabaseService';
 import type { UserRole } from '@/types/user';
-import { ERROR_MESSAGES } from '@/lib/constants';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 const DAILY_CHAT_LIMIT = 3;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -46,7 +46,7 @@ export async function checkTrialDailyLimit(role: UserRole, userId: string): Prom
   const sentCountToday = sentCountResult.data;
 
   if (sentCountToday >= DAILY_CHAT_LIMIT) {
-    return ERROR_MESSAGES.daily_chat_limit;
+    return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
   }
 
   return null;

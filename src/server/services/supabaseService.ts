@@ -731,6 +731,68 @@ export class SupabaseService {
     return this.success(data.id);
   }
 
+  async updateLastAssistantMessage(
+    sessionId: string,
+    userId: string,
+    content: string,
+    model: string | null
+  ): Promise<SupabaseResult<void>> {
+    const { data: msg, error: findError } = await this.supabase
+      .from('chat_messages')
+      .select('id')
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .eq('role', 'assistant')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (findError) {
+      return this.failure('アシスタントメッセージの取得に失敗しました', {
+        error: findError,
+        developerMessage: 'Failed to find last assistant message',
+        context: { sessionId, userId },
+      });
+    }
+
+    if (!msg) {
+      return this.failure('更新対象のアシスタントメッセージが見つかりません', {
+        developerMessage: 'No assistant message found for session',
+        context: { sessionId, userId },
+      });
+    }
+
+    const { error: updateError } = await this.supabase
+      .from('chat_messages')
+      .update({ content, model })
+      .eq('id', msg.id)
+      .eq('user_id', userId);
+
+    if (updateError) {
+      return this.failure('アシスタントメッセージの更新に失敗しました', {
+        error: updateError,
+        developerMessage: 'Failed to update last assistant message',
+        context: { messageId: msg.id, sessionId, userId },
+      });
+    }
+
+    const { error: sessionUpdateError } = await this.supabase
+      .from('chat_sessions')
+      .update({ last_message_at: new Date().toISOString() })
+      .eq('id', sessionId)
+      .eq('user_id', userId);
+
+    if (sessionUpdateError) {
+      return this.failure('セッション更新時刻の更新に失敗しました', {
+        error: sessionUpdateError,
+        developerMessage: 'Failed to update session last_message_at',
+        context: { sessionId, userId },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
   async getChatMessagesBySessionId(
     sessionId: string,
     userId: string

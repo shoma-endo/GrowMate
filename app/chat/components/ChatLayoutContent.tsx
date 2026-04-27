@@ -78,6 +78,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     step6ToStep7LeadSaved,
     combinedTiles,
     onOpenCombinedCanvas,
+    onContinueFromTruncation,
   } = ctx;
   const [manualBlogStep, setManualBlogStep] = useState<BlogStepId | null>(null);
 
@@ -309,6 +310,20 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           {...(combinedTiles && combinedTiles.length > 0 && { combinedTiles })}
           {...(onOpenCombinedCanvas && { onOpenCombinedCanvas })}
         />
+
+        {chatSession.state.isTruncated && !chatSession.state.isLoading && (
+          <div className="mx-3 mb-2 flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+            <span>⚠️ 出力が途中で途切れました</span>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onContinueFromTruncation?.()}
+              className="ml-4 flex items-center gap-1 bg-amber-500 text-white hover:bg-amber-600"
+            >
+              続きを生成する
+            </Button>
+          </div>
+        )}
 
         <InputArea
           onSendMessage={onSendMessage}
