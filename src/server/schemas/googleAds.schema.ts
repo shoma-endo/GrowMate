@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import {
   campaignIdSchema,
-  customerIdSchema,
   dateRangeRefinement,
   dateStringSchema,
 } from '@/lib/validators/common';
@@ -17,11 +16,6 @@ export const getKeywordMetricsSchema = z
     campaignIds: z.array(campaignIdSchema).optional(),
   })
   .refine(dateRangeRefinement.refine, { message: dateRangeRefinement.message });
-
-/**
- * カスタマー ID のバリデーション（DB から取得した値の検証用）
- */
-const _customerIdSchemaExport = customerIdSchema; // 内部利用参照保持
 
 type GetKeywordMetricsSchemaInput = z.infer<typeof getKeywordMetricsSchema>;
 
