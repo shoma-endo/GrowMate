@@ -17,8 +17,6 @@ export const getKeywordMetricsSchema = z
   })
   .refine(dateRangeRefinement.refine, { message: dateRangeRefinement.message });
 
-type GetKeywordMetricsSchemaInput = z.infer<typeof getKeywordMetricsSchema>;
-
 /**
  * API クエリパラメータ用のスキーマ（GET リクエスト向け）
  * customerId は DB から取得するため不要
@@ -27,5 +25,3 @@ export const keywordMetricsQuerySchema = z.object({
   startDate: dateStringSchema,
   endDate: dateStringSchema,
 }).refine(dateRangeRefinement.refine, { message: dateRangeRefinement.message });
-
-type KeywordMetricsQueryInput = z.infer<typeof keywordMetricsQuerySchema>;
