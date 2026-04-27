@@ -58,12 +58,9 @@ export async function updateSupabaseSession(
           if (cspHeader) {
             supabaseResponse.headers.set('Content-Security-Policy', cspHeader);
           }
-          // CDN キャッシュ防止ヘッダーをレスポンスに適用（Cache-Control / Pragma / Expires）
-          if (responseHeaders) {
-            Object.entries(responseHeaders).forEach(([key, value]) => {
-              supabaseResponse.headers.set(key, value);
-            });
-          }
+          Object.entries(responseHeaders).forEach(([key, value]) => {
+            supabaseResponse.headers.set(key, value);
+          });
           cookiesToSet.forEach(({ name, value, options }) => {
             supabaseResponse.cookies.set(name, value, options);
           });
