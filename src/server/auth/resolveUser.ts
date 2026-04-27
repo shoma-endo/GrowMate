@@ -6,7 +6,7 @@ import type { User } from '@/types/user';
  * Email 認証結果の統一型。
  * 一時障害（transient）を未認証と区別し、呼び出し元で 503/再試行を一貫して扱う。
  */
-export type EmailAuthResult =
+type EmailAuthResult =
   | { ok: true; user: User }
   | { ok: false; reason: 'unauthenticated' }
   | { ok: false; reason: 'transient' }

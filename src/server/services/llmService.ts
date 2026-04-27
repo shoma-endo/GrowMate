@@ -19,7 +19,7 @@ interface LLMOptions {
   timeoutMs?: number;
 }
 
-export class LLMService {
+class LLMService {
   private openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   private anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
@@ -126,5 +126,5 @@ export class LLMService {
   }
 }
 
-export const llmService = new LLMService();
+const llmService = new LLMService();
 export const llmChat = llmService.llmChat.bind(llmService);

@@ -21,7 +21,7 @@ const serverEnvSchema = z.object({
 
 type ClientEnv = z.infer<typeof clientEnvSchema>;
 type ServerEnv = z.infer<typeof serverEnvSchema>;
-export type Env = ClientEnv & ServerEnv;
+type Env = ClientEnv & ServerEnv;
 
 const isServer = typeof window === 'undefined';
 

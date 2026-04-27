@@ -26,7 +26,7 @@ interface GenerateParams {
   currentSuggestionStage: number; // 1-4
 }
 
-export class GscSuggestionService {
+class GscSuggestionService {
   private supabase = new SupabaseService();
 
   /**

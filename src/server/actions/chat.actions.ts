@@ -8,7 +8,6 @@ import { isUnavailable } from '@/authUtils';
 import type { UserRole } from '@/types/user';
 import { z } from 'zod';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { parseTimestampOrNull } from '@/lib/timestamps';
 import {
   continueChatSchema,
   startChatSchema,
@@ -17,7 +16,6 @@ import {
 } from '@/server/schemas/chat.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
-import { STEP7_ID, toBlogModel } from '@/lib/constants';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 
 
@@ -71,7 +69,7 @@ async function checkAuth(): Promise<
   };
 }
 
-export async function startChat(data: StartChatInput): Promise<ChatResponse> {
+async function startChat(data: StartChatInput): Promise<ChatResponse> {
   try {
     const validatedData = startChatSchema.parse(data);
 
@@ -99,7 +97,7 @@ export async function startChat(data: StartChatInput): Promise<ChatResponse> {
   }
 }
 
-export async function continueChat(data: ContinueChatInput): Promise<ChatResponse> {
+async function continueChat(data: ContinueChatInput): Promise<ChatResponse> {
   try {
     const validatedData = continueChatSchema.parse(data);
 
@@ -127,7 +125,7 @@ export async function continueChat(data: ContinueChatInput): Promise<ChatRespons
   }
 }
 
-export async function getChatSessions() {
+async function getChatSessions() {
   const auth = await checkAuth();
   if (auth.isError) {
     return { sessions: [], error: auth.error };
@@ -149,7 +147,7 @@ export async function getChatSessions() {
   return { sessions, error: null };
 }
 
-export async function getSessionMessages(sessionId: string) {
+async function getSessionMessages(sessionId: string) {
   const auth = await checkAuth();
   if (auth.isError) {
     return { messages: [], error: auth.error };
@@ -158,55 +156,7 @@ export async function getSessionMessages(sessionId: string) {
   return { messages, error: null };
 }
 
-export async function getLatestBlogStep7MessageBySession(
-  sessionId: string
-): Promise<
-  | { success: false; error: string }
-  | { success: true; data: { content: string; createdAt: string } | null }
-> {
-  if (!sessionId) {
-    return { success: false as const, error: ERROR_MESSAGES.CHAT.SESSION_ID_REQUIRED };
-  }
-
-  const auth = await checkAuth();
-  if (auth.isError) {
-    return { success: false as const, error: auth.error };
-  }
-
-  const supabase = new SupabaseService();
-  const result = await supabase.getLatestChatMessageBySessionAndModel(
-    sessionId,
-    auth.userId,
-    toBlogModel(STEP7_ID)
-  );
-
-  if (!result.success) {
-    return { success: false as const, error: result.error.userMessage };
-  }
-
-  if (!result.data) {
-    return { success: true as const, data: null };
-  }
-
-  const createdAt = parseTimestampOrNull(result.data.created_at);
-  if (createdAt === null) {
-    console.error('[getLatestBlogStep7MessageBySession] Invalid created_at', {
-      sessionId,
-      createdAt: result.data.created_at,
-    });
-    return { success: false as const, error: 'タイムスタンプの解析に失敗しました' };
-  }
-
-  return {
-    success: true as const,
-    data: {
-      content: result.data.content,
-      createdAt,
-    },
-  };
-}
-
-export async function searchChatSessions(data: z.infer<typeof searchChatSessionsSchema>) {
+async function searchChatSessions(data: z.infer<typeof searchChatSessionsSchema>) {
   const parsed = searchChatSessionsSchema.parse(data);
 
   const auth = await checkAuth();
@@ -238,7 +188,7 @@ export async function searchChatSessions(data: z.infer<typeof searchChatSessions
   }
 }
 
-export async function deleteChatSession(sessionId: string) {
+async function deleteChatSession(sessionId: string) {
   const auth = await checkAuth();
   if (auth.isError) {
     return {
@@ -260,7 +210,7 @@ export async function deleteChatSession(sessionId: string) {
   }
 }
 
-export async function updateChatSessionTitle(
+async function updateChatSessionTitle(
   sessionId: string,
   title: string
 ) {
@@ -286,7 +236,7 @@ export async function updateChatSessionTitle(
   return { success: true, error: null };
 }
 
-export async function getSessionServiceId(
+async function getSessionServiceId(
   sessionId: string
 ): Promise<{ success: true; data: string | null } | { success: false; error: string }> {
   const auth = await checkAuth();
@@ -309,7 +259,7 @@ const updateSessionServiceIdSchema = z.object({
   serviceId: z.string(),
 });
 
-export async function updateSessionServiceId(
+async function updateSessionServiceId(
   sessionId: string,
   serviceId: string
 ) {

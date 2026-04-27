@@ -14,7 +14,7 @@ import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewar
 
 const supabaseService = new SupabaseService();
 
-export type GscDetailResponse = {
+type GscDetailResponse = {
   success: boolean;
   data?: {
     annotation: {
@@ -617,7 +617,7 @@ export interface QueryAggregation {
   wordCount: number;
 }
 
-export interface QueryAnalysisResponse {
+interface QueryAnalysisResponse {
   success: boolean;
   data?: {
     queries: QueryAggregation[];
