@@ -5,7 +5,7 @@ import { MODEL_CONFIGS } from '@/lib/constants';
 import { getSystemPrompt as getSystemPromptShared } from '@/lib/prompts';
 import { ChatResponse } from '@/types/chat';
 import type { StartChatInput, ContinueChatInput } from '@/server/schemas/chat.schema';
-import { BriefService } from '@/server/services/briefService';
+import { briefService } from '@/server/services/briefService';
 import { PromptService } from '@/server/services/promptService';
 import type { Service } from '@/server/schemas/brief.schema';
 
@@ -56,7 +56,7 @@ export class ModelHandlerService {
     userId: string,
     serviceId?: string
   ): Promise<Record<string, string>> {
-    const briefData = await BriefService.getVariablesByUserId(userId).catch((error) => {
+    const briefData = await briefService.getVariablesByUserId(userId).catch((error) => {
       console.warn('[ModelHandler] Brief data fetch failed:', error);
       return null;
     });
