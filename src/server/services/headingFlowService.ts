@@ -9,7 +9,7 @@ import type { DbChatMessage } from '@/types/chat';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
 import { STEP7_LEAD_MODEL } from '@/lib/constants';
 
-export class HeadingFlowService extends SupabaseService {
+class HeadingFlowService extends SupabaseService {
   /**
    * Step 5のテキストから見出しを抽出し、session_heading_sections を初期化する。
    * 仕様: すでに存在する場合は何もしない。

@@ -36,7 +36,7 @@ export interface AnnotationRecord extends AnnotationFields {
   user_id?: string;
 }
 
-export interface ContentAnnotationPayload extends AnnotationFields {
+interface ContentAnnotationPayload extends AnnotationFields {
   wp_post_id: number;
   canonical_url?: string | null;
 }

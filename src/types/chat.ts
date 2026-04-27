@@ -40,7 +40,6 @@ export interface ChatResponse {
 export enum ChatRole {
   USER = 'user',
   ASSISTANT = 'assistant',
-  SYSTEM = 'system',
 }
 
 /**
@@ -115,7 +114,7 @@ export interface OpenAIMessage {
 /**
  * OpenAI API応答型
  */
-export interface OpenAIResponse {
+interface OpenAIResponse {
   message: string;
   error?: string;
 }

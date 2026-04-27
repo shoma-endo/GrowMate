@@ -44,7 +44,7 @@ export interface Ga4PageMetricSummary {
   isPartial: boolean;
 }
 
-export interface Ga4DailyMetricRow {
+interface Ga4DailyMetricRow {
   userId: string;
   propertyId: string;
   date: string;
@@ -114,7 +114,7 @@ export interface Ga4DashboardTimeseriesPoint {
   isPartial: boolean;
 }
 
-export interface Ga4DashboardChartData {
+interface Ga4DashboardChartData {
   summary: Ga4DashboardSummary;
   ranking: Ga4DashboardRankingItem[];
   timeseries: Ga4DashboardTimeseriesPoint[];
@@ -126,7 +126,7 @@ export type Ga4DashboardSortKey =
   | 'readRate'
   | 'avgEngagementTimeSec';
 
-export type Ga4DashboardTimeSeriesMetric =
+type Ga4DashboardTimeSeriesMetric =
   | 'sessions'
   | 'users'
   | 'readRate'

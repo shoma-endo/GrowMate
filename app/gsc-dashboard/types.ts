@@ -108,7 +108,7 @@ export interface GscChartDataPoint {
 /**
  * クエリ別集計データ（散布図 + テーブル用）
  */
-export interface GscQueryAggregation {
+interface GscQueryAggregation {
   query: string;
   queryNormalized: string;
   clicks: number;
@@ -126,7 +126,7 @@ export interface GscQueryAggregation {
 /**
  * クエリ分析タブのフィルタ状態
  */
-export interface GscQueryFilterState {
+interface GscQueryFilterState {
   searchText: string;
   sortBy: 'clicks' | 'impressions' | 'ctr' | 'position' | 'positionChange';
   sortOrder: 'asc' | 'desc';
@@ -138,7 +138,7 @@ export interface GscQueryFilterState {
 /**
  * 散布図のデータポイント
  */
-export interface GscScatterDataPoint {
+interface GscScatterDataPoint {
   query: string;
   position: number; // X軸
   ctr: number; // Y軸（パーセンテージ）
@@ -151,7 +151,7 @@ export interface GscScatterDataPoint {
 /**
  * クエリ分析APIレスポンス
  */
-export interface GscQueryAnalysisResponse {
+interface GscQueryAnalysisResponse {
   queries: GscQueryAggregation[];
   summary: {
     totalQueries: number;

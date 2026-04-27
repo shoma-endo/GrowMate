@@ -1,6 +1,6 @@
 export type IsoTimestamp = string & { readonly __brand: unique symbol };
 
-export const ISO_EPOCH = new Date(0).toISOString() as IsoTimestamp;
+const ISO_EPOCH = new Date(0).toISOString() as IsoTimestamp;
 
 export const toIsoTimestamp = (value: string | number | Date): IsoTimestamp => {
   if (typeof value === 'number') {

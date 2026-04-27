@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@/types/database.types';
 import type { User } from '@supabase/supabase-js';
 
-export interface SupabaseSessionResult {
+interface SupabaseSessionResult {
   /** 更新済み Cookie を含むレスポンス。必ず元の NextResponse の代わりに使うこと */
   supabaseResponse: NextResponse;
   /** 有効な Supabase Auth ユーザー。未ログイン時は null */

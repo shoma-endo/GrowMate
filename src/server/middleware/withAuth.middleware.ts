@@ -7,7 +7,7 @@ import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension
 /**
  * 認証コンテキスト
  */
-export interface AuthContext {
+interface AuthContext {
   userId: string;
   cookieStore: ReadonlyRequestCookies;
   userDetails?: User | null;

@@ -21,9 +21,9 @@ export const getKeywordMetricsSchema = z
 /**
  * カスタマー ID のバリデーション（DB から取得した値の検証用）
  */
-export { customerIdSchema };
+const _customerIdSchemaExport = customerIdSchema; // 内部利用参照保持
 
-export type GetKeywordMetricsSchemaInput = z.infer<typeof getKeywordMetricsSchema>;
+type GetKeywordMetricsSchemaInput = z.infer<typeof getKeywordMetricsSchema>;
 
 /**
  * API クエリパラメータ用のスキーマ（GET リクエスト向け）
@@ -34,4 +34,4 @@ export const keywordMetricsQuerySchema = z.object({
   endDate: dateStringSchema,
 }).refine(dateRangeRefinement.refine, { message: dateRangeRefinement.message });
 
-export type KeywordMetricsQueryInput = z.infer<typeof keywordMetricsQuerySchema>;
+type KeywordMetricsQueryInput = z.infer<typeof keywordMetricsQuerySchema>;

@@ -130,7 +130,7 @@ export interface GoogleAdsSearchStreamRow {
 /**
  * Google Ads API のエラーレスポンス
  */
-export interface GoogleAdsApiError {
+interface GoogleAdsApiError {
   error?: {
     code?: number;
     message?: string;

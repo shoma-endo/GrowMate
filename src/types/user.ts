@@ -29,7 +29,7 @@ export function isValidUserRole(role: unknown): role is UserRole {
  */
 export const PAID_FEATURE_ROLES = ['paid', 'admin'] as const;
 
-export type PaidFeatureRole = (typeof PAID_FEATURE_ROLES)[number];
+type PaidFeatureRole = (typeof PAID_FEATURE_ROLES)[number];
 
 export function hasPaidFeatureAccess(role: UserRole | null): role is PaidFeatureRole {
   return role === 'paid' || role === 'admin';

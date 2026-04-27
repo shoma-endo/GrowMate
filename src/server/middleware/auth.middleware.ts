@@ -55,7 +55,7 @@ async function tryEmailFallback(): Promise<AuthenticatedUser | null> {
   return null;
 }
 
-export async function ensureAuthenticated(): Promise<AuthenticatedUser> {
+async function ensureAuthenticated(): Promise<AuthenticatedUser> {
   const emailResult = await tryEmailFallback();
   if (emailResult) return emailResult;
   return {

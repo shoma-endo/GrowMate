@@ -224,8 +224,6 @@ export const isStep7 = (stepOrModel: string) =>
 /** Step7 本文生成: 楽観的表示・API送信・DB保存で使う短いトリガー（長文はシステムプロンプトのみに渡す） */
 export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してください。';
 
-// prompts.ts 用のテンプレ名解決（toBlogModel のエイリアス）
-export const toTemplateName = toBlogModel;
 
 
 export const ANALYTICS_COLUMNS = [

@@ -4,7 +4,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { briefInputSchema, paymentEnum } from '@/server/schemas/brief.schema';
 import type { BriefInput, Payment } from '@/server/schemas/brief.schema';
 
-export interface Brief {
+interface Brief {
   id: string;
   user_id: string;
   data: BriefInput;

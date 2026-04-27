@@ -81,7 +81,7 @@ export const dateRangeRefinement = {
 };
 
 /** 日付範囲スキーマ（startDate, endDate 必須 + 順序チェック） */
-export const dateRangeSchema = z
+const dateRangeSchema = z
   .object({
     startDate: dateStringSchema,
     endDate: dateStringSchema,
@@ -90,7 +90,7 @@ export const dateRangeSchema = z
 
 // --- タイトル（チャットセッション等） ---
 
-export const titleSchema = z
+const titleSchema = z
   .string()
   .trim()
   .min(1, { error: V.TITLE_REQUIRED })
