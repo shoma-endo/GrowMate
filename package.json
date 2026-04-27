@@ -12,6 +12,7 @@
     "db:stats": "tsx scripts/check-db-stats.ts",
     "vercel:stats": "tsx scripts/check-vercel-stats.ts",
     "active:users": "tsx scripts/check-active-users.ts",
+    "knip": "knip",
     "prepare": "husky"
   },
   "dependencies": {
