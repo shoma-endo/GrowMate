@@ -98,10 +98,6 @@ const titleSchema = z
 
 // --- Google Ads 用 ---
 
-export const customerIdSchema = z.string().regex(/^\d{10}$/, {
-  error: V.CUSTOMER_ID_FORMAT,
-});
-
 export const campaignIdSchema = z.string().regex(/^\d+$/, {
   error: V.CAMPAIGN_ID_FORMAT,
 });
