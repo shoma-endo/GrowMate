@@ -154,7 +154,18 @@ export function stripLeadingHeadingLine(content: string, headingText: string): s
   const trimmed = content.trim();
   if (!trimmed || !headingText) return content;
 
-  const firstLine = trimmed.split('\n')[0]?.trim() ?? '';
+  // インデントコードブロック検出のため、trim 前の先頭非空行を確認する。
+  // CommonMark: 半角スペース 4 個以上、または半角スペース 0〜3 個 + タブで始まる行は
+  // コードブロック扱い（タブは 4 桁タブストップに展開）とし、見出しと見なさず剥がさない。
+  const lines = content.split('\n');
+  let rawFirstIdx = 0;
+  while (rawFirstIdx < lines.length && lines[rawFirstIdx]!.trim() === '') rawFirstIdx++;
+  if (rawFirstIdx < lines.length) {
+    const rawFirstLine = lines[rawFirstIdx]!;
+    if (/^( {0,3}\t| {4})/.test(rawFirstLine)) return content;
+  }
+
+  const firstLine = lines[rawFirstIdx]?.trim() ?? '';
   const lineHeadingText = extractHeadingTextFromLine(firstLine);
   if (lineHeadingText === null) return content;
   const a = normalizeHeadingForComparison(lineHeadingText);
