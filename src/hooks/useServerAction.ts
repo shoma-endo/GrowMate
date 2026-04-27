@@ -5,7 +5,7 @@ import { getErrorMessage } from '@/lib/async-handler';
 /**
  * Server Action実行オプション
  */
-export interface UseServerActionOptions<T> {
+interface UseServerActionOptions<T> {
   /**
    * 成功時のコールバック
    */

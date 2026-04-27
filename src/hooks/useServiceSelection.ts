@@ -11,7 +11,7 @@ import type { Service } from '@/server/schemas/brief.schema';
 /**
  * サービス選択の状態
  */
-export interface ServiceSelectionState {
+interface ServiceSelectionState {
   /** サービス一覧 */
   services: Service[];
   /** 選択中のサービスID */
@@ -27,7 +27,7 @@ export interface ServiceSelectionState {
 /**
  * サービス選択のアクション
  */
-export interface ServiceSelectionActions {
+interface ServiceSelectionActions {
   /** サービスを変更（既存セッションの場合はDBも更新） */
   changeService: (serviceId: string) => Promise<void>;
   /** サービス取得エラーを閉じる */
@@ -37,7 +37,7 @@ export interface ServiceSelectionActions {
 /**
  * useServiceSelection フックの戻り値
  */
-export interface ServiceSelectionHook {
+interface ServiceSelectionHook {
   state: ServiceSelectionState;
   actions: ServiceSelectionActions;
 }

@@ -11,7 +11,7 @@ import { gscSuggestionService } from '@/server/services/gscSuggestionService';
 import { gscImportService } from '@/server/services/gscImportService';
 import { formatDateISO, addDaysISO } from '@/lib/date-utils';
 
-export class GscEvaluationService {
+class GscEvaluationService {
   private readonly supabaseService = new SupabaseService();
 
   // バッチ処理の制限定数

@@ -23,7 +23,7 @@ export class EmailAuthLinkConflictError extends Error {
 /**
  * ユーザーサービス: ユーザー管理機能を提供
  */
-export class UserService {
+class UserService {
   private supabaseService: SupabaseService;
 
   constructor() {

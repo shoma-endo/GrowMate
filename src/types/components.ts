@@ -38,7 +38,7 @@ export interface WordPressSettingsFormProps {
   role: UserRole;
 }
 
-export interface ExistingWordPressSettings {
+interface ExistingWordPressSettings {
   id?: string | undefined;
   wpType: WordPressType;
   wpSiteId?: string | undefined;
@@ -50,7 +50,7 @@ export interface ExistingWordPressSettings {
   updatedAt?: string | undefined;
 }
 
-export interface GoogleAdsConnectionStatus {
+interface GoogleAdsConnectionStatus {
   connected: boolean;
   needsReauth: boolean;
   googleAccountEmail: string | null;
@@ -65,7 +65,7 @@ export interface SetupDashboardProps {
   isAdmin?: boolean | undefined;
 }
 
-export interface WordPressSettingsState {
+interface WordPressSettingsState {
   hasSettings: boolean;
   type: 'wordpress_com' | 'self_hosted';
   siteId?: string;

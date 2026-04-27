@@ -13,7 +13,7 @@ export const ANNOTATION_FIELD_KEYS = [
 type AnnotationFieldTuple = typeof ANNOTATION_FIELD_KEYS;
 export type AnnotationFieldKey = AnnotationFieldTuple[number];
 
-export type AnnotationFieldValue = string | null;
+type AnnotationFieldValue = string | null;
 
 export type AnnotationFields = Partial<Record<AnnotationFieldKey, AnnotationFieldValue>>;
 
@@ -34,11 +34,6 @@ export interface AnnotationRecord extends AnnotationFields {
   updated_at?: string | null;
   created_at?: string | null;
   user_id?: string;
-}
-
-export interface ContentAnnotationPayload extends AnnotationFields {
-  wp_post_id: number;
-  canonical_url?: string | null;
 }
 
 export interface SessionAnnotationUpsertPayload extends AnnotationFields {

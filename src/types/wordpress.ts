@@ -102,7 +102,7 @@ export interface WordPressNormalizedPost {
   post_type?: string;
 }
 
-export interface ContentAnnotationInsert {
+interface ContentAnnotationInsert {
   user_id: string;
   wp_post_id: number | null;
   wp_post_title: string | null;
@@ -115,7 +115,7 @@ export interface ContentAnnotationInsert {
   updated_at: string;
 }
 
-export interface ContentAnnotationUpdate {
+interface ContentAnnotationUpdate {
   wp_post_id: number | null;
   wp_post_title: string | null;
   canonical_url: string | null;
@@ -129,7 +129,7 @@ export interface ContentAnnotationUpdate {
 /**
  * REST APIリクエスト設定
  */
-export interface RestRequestConfig {
+interface RestRequestConfig {
   headers: Record<string, string>;
   candidates: string[];
   siteUrlClean: string;
@@ -140,7 +140,7 @@ export interface RestRequestConfig {
 /**
  * フェッチ候補の結果
  */
-export interface FetchCandidatesResult {
+interface FetchCandidatesResult {
   resp: Response | null;
   lastStatus: number;
   lastErrorText: string;
@@ -149,7 +149,7 @@ export interface FetchCandidatesResult {
 /**
  * RSS正規化結果
  */
-export interface RssNormalizeResult {
+interface RssNormalizeResult {
   normalized: WordPressNormalizedPost[];
   total: number;
 }
@@ -157,7 +157,7 @@ export interface RssNormalizeResult {
 /**
  * RSSアイテム
  */
-export interface RssItem {
+interface RssItem {
   title?: string;
   link?: string;
   pubDate?: string;

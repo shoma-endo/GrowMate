@@ -31,7 +31,7 @@ interface ReportFetchResult {
   isPartial: boolean;
 }
 
-export interface Ga4SyncSummary {
+interface Ga4SyncSummary {
   userId: string;
   propertyId: string;
   startDate: string;
@@ -41,11 +41,11 @@ export interface Ga4SyncSummary {
   isPartial: boolean;
 }
 
-export type Ga4SyncResult =
+type Ga4SyncResult =
   | { ok: true; data: Ga4SyncSummary }
   | { ok: false; reason: 'not_connected' | 'already_synced' };
 
-export class Ga4ImportService {
+class Ga4ImportService {
   static readonly MAX_USERS_PER_BATCH = 10;
   static readonly MAX_DURATION_MS = 280_000;
   static readonly MAX_ROWS_PER_REQUEST = 10_000;

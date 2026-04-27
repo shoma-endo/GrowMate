@@ -165,7 +165,7 @@ export function getJstDateISOFromTimestamp(timestamp: string): string {
  * @param date - Date オブジェクト
  * @returns YYYY-MM-DD 形式の日付文字列（JST）
  */
-export function formatLocalDateYMD(date: Date): string {
+function formatLocalDateYMD(date: Date): string {
   return new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
