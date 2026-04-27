@@ -3,12 +3,12 @@
  * DBに保存せず、UI上で説明を表示するための定数
  */
 
-export interface PromptDescription {
+interface PromptDescription {
   description: string;
   variables: string;
 }
 
-export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
+const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
   ad_copy_creation: {
     description: 'Google広告やFacebook広告に使用する広告コピーを生成するプロンプト',
     variables: '事業者情報の基本項目（業種、サービス名、ターゲット、エリア）が自動で置換されます',
@@ -58,7 +58,7 @@ export function getPromptDescription(name: string): PromptDescription | null {
 /**
  * 変数の種類別説明
  */
-export const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
+const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   // 基本事業者情報
   business_type: '事業者の業種（例：美容院、税理士事務所、整体院）',
   service_name: '提供するサービス名（例：カット＆カラー、確定申告サポート）',
@@ -112,38 +112,3 @@ export const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
 export function getVariableDescription(variableName: string): string {
   return VARIABLE_TYPE_DESCRIPTIONS[variableName] || `変数: ${variableName}`;
 }
-
-/**
- * blog_creation_* テンプレートに暗黙的に注入される content_annotations 由来の変数名一覧
- */
-export const IMPLICIT_BLOG_CONTENT_VARS = [
-  'contentNeeds',
-  'contentPersona',
-  'contentGoal',
-  'contentPrep',
-  'contentBasicStructure',
-  'contentOpeningProposal',
-] as const;
-
-/**
- * blog_title_meta_generation テンプレートに暗黙的に注入される変数名一覧
- * （content_annotations 由来 + ビジネス情報由来）
- */
-export const IMPLICIT_BLOG_TITLE_META_VARS = [
-  'contentPersona',
-  'contentMainKw',
-  'contentKw',
-  'contentWpContentText',
-  'strength',
-] as const;
-
-/**
- * gsc_insight_ctr_boost テンプレートに暗黙的に注入される変数名一覧
- */
-export const IMPLICIT_GSC_CTR_BOOST_VARS = [
-  'adsHeadline',
-  'adsDescription',
-  'contentMainKw',
-  'contentKw',
-  'contentWpContentText',
-] as const;

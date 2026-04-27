@@ -10,7 +10,7 @@ export type UserRole = 'trial' | 'paid' | 'admin' | 'unavailable';
 /**
  * 有効なUserRole値の配列
  */
-export const VALID_USER_ROLES: readonly UserRole[] = [
+const VALID_USER_ROLES: readonly UserRole[] = [
   'trial',
   'paid',
   'admin',
@@ -20,16 +20,16 @@ export const VALID_USER_ROLES: readonly UserRole[] = [
 /**
  * 型ガード: 値が有効なUserRoleかどうかを実行時検証
  */
-export function isValidUserRole(role: unknown): role is UserRole {
+function isValidUserRole(role: unknown): role is UserRole {
   return typeof role === 'string' && (VALID_USER_ROLES as readonly string[]).includes(role);
 }
 
 /**
  * 管理機能（設定・コンテンツ一覧）へのアクセスを許可するロール
  */
-export const PAID_FEATURE_ROLES = ['paid', 'admin'] as const;
+const PAID_FEATURE_ROLES = ['paid', 'admin'] as const;
 
-export type PaidFeatureRole = (typeof PAID_FEATURE_ROLES)[number];
+type PaidFeatureRole = (typeof PAID_FEATURE_ROLES)[number];
 
 export function hasPaidFeatureAccess(role: UserRole | null): role is PaidFeatureRole {
   return role === 'paid' || role === 'admin';

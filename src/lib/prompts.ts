@@ -276,7 +276,7 @@ import { getBrief } from '@/server/actions/brief.actions';
 import type { BriefInput } from '@/server/schemas/brief.schema';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { BLOG_STEP_IDS, BlogStepId, isStep7 as isBlogStep7, toTemplateName } from '@/lib/constants';
+import { BLOG_STEP_IDS, BlogStepId, isStep7 as isBlogStep7, toBlogModel as toTemplateName } from '@/lib/constants';
 import { extractStep7HeadingIndexFromModel } from '@/lib/canvas-content';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { headingFlowService } from '@/server/services/headingFlowService';

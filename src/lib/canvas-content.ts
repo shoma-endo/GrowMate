@@ -8,7 +8,7 @@ import {
   type BlogStepId,
 } from '@/lib/constants';
 
-export interface CanvasStructuredContent {
+interface CanvasStructuredContent {
   markdown?: string;
   html?: string;
 }

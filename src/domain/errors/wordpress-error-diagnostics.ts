@@ -2,7 +2,7 @@
  * WordPressエラー診断ユーティリティ
  */
 
-export interface ErrorDiagnosis {
+interface ErrorDiagnosis {
   cause: string;
   hints: string[];
 }

@@ -128,24 +128,6 @@ export interface GoogleAdsSearchStreamRow {
 }
 
 /**
- * Google Ads API のエラーレスポンス
- */
-export interface GoogleAdsApiError {
-  error?: {
-    code?: number;
-    message?: string;
-    status?: string;
-    details?: Array<{
-      '@type'?: string;
-      errors?: Array<{
-        errorCode?: Record<string, string>;
-        message?: string;
-      }>;
-    }>;
-  };
-}
-
-/**
  * キャンペーン単位の集計指標
  * keyword_view から取得したデータをキャンペーン単位で集計した結果
  */

@@ -9,7 +9,7 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
-export interface GscImportParams {
+interface GscImportParams {
   startDate: string;
   endDate: string;
   searchType?: 'web' | 'image' | 'news';

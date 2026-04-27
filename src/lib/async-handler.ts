@@ -24,7 +24,7 @@ export interface ServerActionResult<T> {
 /**
  * 非同期アクション実行時のオプション
  */
-export interface AsyncHandlerOptions<T> {
+interface AsyncHandlerOptions<T> {
   /**
    * 成功時のコールバック
    */

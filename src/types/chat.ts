@@ -32,6 +32,9 @@ export interface ChatResponse {
   message: string;
   error?: string | undefined;
   sessionId?: string | undefined;
+  warning?: string | undefined;
+  success?: false | undefined;
+  emailLinkConflict?: true | undefined;
 }
 
 /**
@@ -112,13 +115,6 @@ export interface OpenAIMessage {
   content: string;
 }
 
-/**
- * OpenAI API応答型
- */
-export interface OpenAIResponse {
-  message: string;
-  error?: string;
-}
 
 /**
  * Server Component用の簡潔なChatMessage型

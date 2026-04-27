@@ -18,7 +18,7 @@ import {
 } from '@/server/actions/chat.actions';
 import { AuthEmailLinkConflictError } from '../errors/AuthEmailLinkConflictError';
 import { ChatError, ChatErrorCode } from '../errors/ChatError';
-import type { ChatMessage as ServerChatMessage } from '@/types/chat';
+import { ChatRole, type ChatMessage as ServerChatMessage } from '@/types/chat';
 
 export class ChatService implements IChatService {
   async sendMessage(params: SendMessageParams): Promise<SendMessageResponse> {
@@ -158,7 +158,7 @@ export class ChatService implements IChatService {
       const rawMessages = messagesResult.messages as ServerChatMessage[];
       const uiMessages: ChatMessage[] = rawMessages.map((msg, index) => ({
         id: `${msg.id || index}`,
-        role: msg.role === 'system' ? 'assistant' : (msg.role as 'user' | 'assistant'),
+        role: msg.role === ChatRole.SYSTEM ? 'assistant' : (msg.role as 'user' | 'assistant'),
         content: msg.content,
         timestamp: new Date(msg.createdAt),
         model: msg.model,
@@ -220,13 +220,17 @@ export class ChatService implements IChatService {
     const response = await startChatSA({
       userMessage: params.content,
       model: params.model,
-      systemPrompt: params.systemPrompt,
+      ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
+      ...(params.serviceId !== undefined ? { serviceId: params.serviceId } : {}),
     });
 
     return {
       message: response.message,
       sessionId: response.sessionId as string | undefined,
       error: response.error as string | undefined,
+      warning: response.warning as string | undefined,
+      success: response.success,
+      emailLinkConflict: response.emailLinkConflict,
     };
   }
 
@@ -240,13 +244,17 @@ export class ChatService implements IChatService {
       messages: params.messages,
       userMessage: params.content,
       model: params.model,
-      systemPrompt: params.systemPrompt,
+      ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
+      ...(params.serviceId !== undefined ? { serviceId: params.serviceId } : {}),
     });
 
     return {
       message: response.message,
       sessionId: (response.sessionId || params.sessionId) as string | undefined,
       error: response.error as string | undefined,
+      warning: response.warning as string | undefined,
+      success: response.success,
+      emailLinkConflict: response.emailLinkConflict,
     };
   }
 

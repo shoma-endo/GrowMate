@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 
-export interface OAuthStatePayload {
+interface OAuthStatePayload {
   nonce: string;
   userId: string;
   returnTo?: string;

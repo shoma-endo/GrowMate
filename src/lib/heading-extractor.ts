@@ -67,7 +67,7 @@ export function extractHeadingTextFromLine(line: string): string | null {
   return parseH3H4HeadingLine(line)?.text ?? parseMarkdownH3H4HeadingLine(line)?.text ?? null;
 }
 
-export interface ExtractedHeading {
+interface ExtractedHeading {
   text: string;
   level: 3 | 4;
   orderIndex: number;
