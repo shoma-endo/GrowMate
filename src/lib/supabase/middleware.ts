@@ -42,7 +42,7 @@ export async function updateSupabaseSession(
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, responseHeaders) {
           // request の Cookie を更新（後続のミドルウェア/ハンドラ向け）
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
@@ -57,6 +57,12 @@ export async function updateSupabaseSession(
           supabaseResponse = NextResponse.next({ request: { headers: forwardedHeaders } });
           if (cspHeader) {
             supabaseResponse.headers.set('Content-Security-Policy', cspHeader);
+          }
+          // CDN キャッシュ防止ヘッダーをレスポンスに適用（Cache-Control / Pragma / Expires）
+          if (responseHeaders) {
+            Object.entries(responseHeaders).forEach(([key, value]) => {
+              supabaseResponse.headers.set(key, value);
+            });
           }
           cookiesToSet.forEach(({ name, value, options }) => {
             supabaseResponse.cookies.set(name, value, options);
