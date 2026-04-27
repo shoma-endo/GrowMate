@@ -24,5 +24,3 @@ export const ga4SettingsSchema = z.object({
   thresholdEngagementSec: ga4ThresholdEngagementSchema,
   thresholdReadRate: ga4ThresholdReadRateSchema,
 });
-
-type Ga4SettingsInput = z.infer<typeof ga4SettingsSchema>;
