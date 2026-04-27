@@ -151,3 +151,23 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           ACTIONS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  knip:
+    name: Knip
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Knip
+        run: npm run knip
