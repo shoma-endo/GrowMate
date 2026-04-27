@@ -40,6 +40,7 @@ export interface ChatResponse {
 export enum ChatRole {
   USER = 'user',
   ASSISTANT = 'assistant',
+  SYSTEM = 'system',
 }
 
 /**
