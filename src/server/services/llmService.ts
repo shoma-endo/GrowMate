@@ -126,5 +126,5 @@ class LLMService {
   }
 }
 
-export const llmService = new LLMService();
+const llmService = new LLMService();
 export const llmChat = llmService.llmChat.bind(llmService);

@@ -27,7 +27,7 @@ export interface GscDashboardDetailResponse {
 /**
  * 日別メトリクス（時系列グラフ用）
  */
-export interface GscDailyMetric {
+interface GscDailyMetric {
   date: string;
   position: number | null;
   ctr: number | null;
@@ -55,7 +55,7 @@ export interface GscEvaluationHistoryItem {
 /**
  * 現在の評価設定
  */
-export interface GscCurrentEvaluation {
+interface GscCurrentEvaluation {
   id: string;
   user_id: string;
   content_annotation_id: string;

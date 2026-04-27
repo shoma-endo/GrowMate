@@ -13,7 +13,7 @@ export const ANNOTATION_FIELD_KEYS = [
 type AnnotationFieldTuple = typeof ANNOTATION_FIELD_KEYS;
 export type AnnotationFieldKey = AnnotationFieldTuple[number];
 
-export type AnnotationFieldValue = string | null;
+type AnnotationFieldValue = string | null;
 
 export type AnnotationFields = Partial<Record<AnnotationFieldKey, AnnotationFieldValue>>;
 
@@ -51,7 +51,7 @@ export interface SessionAnnotationUpsertPayload extends AnnotationFields {
  */
 export type AnnotationFormState = Record<AnnotationFieldKey, string>;
 
-export interface SubmissionHandlerResult {
+interface SubmissionHandlerResult {
   success?: boolean;
   error?: string;
   canonical_url?: string | null;
@@ -59,7 +59,7 @@ export interface SubmissionHandlerResult {
   [key: string]: unknown;
 }
 
-export interface SubmitPayload {
+interface SubmitPayload {
   fields: AnnotationFormState;
   canonicalUrl: string | null;
 }

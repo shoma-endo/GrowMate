@@ -16,7 +16,7 @@ import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc'
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
 
-export interface SupabaseErrorInfo {
+interface SupabaseErrorInfo {
   userMessage: string;
   developerMessage?: string | undefined;
   code?: string | undefined;

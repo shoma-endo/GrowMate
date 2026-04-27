@@ -25,4 +25,4 @@ export const ga4SettingsSchema = z.object({
   thresholdReadRate: ga4ThresholdReadRateSchema,
 });
 
-export type Ga4SettingsInput = z.infer<typeof ga4SettingsSchema>;
+type Ga4SettingsInput = z.infer<typeof ga4SettingsSchema>;

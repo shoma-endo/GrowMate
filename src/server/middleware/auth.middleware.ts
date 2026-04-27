@@ -3,7 +3,7 @@ import { cookies as nextCookies } from 'next/headers';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { User } from '@/types/user';
 
-export interface AuthenticatedUser {
+interface AuthenticatedUser {
   /** @deprecated 常に空文字。LINE認証廃止につき未使用 */
   lineUserId: string;
   userId: string;
