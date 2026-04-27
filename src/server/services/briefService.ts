@@ -131,7 +131,7 @@ export class BriefService extends SupabaseService {
       }
 
       // dataフィールドをJson型から新形式に変換（必要に応じてマイグレーション）
-      const briefData = this.migrateOldBriefToNew(data.data || {}, userId);
+      const briefData = BriefService.migrateOldBriefToNew(data.data || {}, userId);
 
       return {
         id: data.id,
