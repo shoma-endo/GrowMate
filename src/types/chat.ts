@@ -115,13 +115,6 @@ export interface OpenAIMessage {
   content: string;
 }
 
-/**
- * OpenAI API応答型
- */
-interface OpenAIResponse {
-  message: string;
-  error?: string;
-}
 
 /**
  * Server Component用の簡潔なChatMessage型
