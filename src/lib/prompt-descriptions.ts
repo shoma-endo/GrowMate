@@ -112,38 +112,3 @@ const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
 export function getVariableDescription(variableName: string): string {
   return VARIABLE_TYPE_DESCRIPTIONS[variableName] || `変数: ${variableName}`;
 }
-
-/**
- * blog_creation_* テンプレートに暗黙的に注入される content_annotations 由来の変数名一覧
- */
-const IMPLICIT_BLOG_CONTENT_VARS = [
-  'contentNeeds',
-  'contentPersona',
-  'contentGoal',
-  'contentPrep',
-  'contentBasicStructure',
-  'contentOpeningProposal',
-] as const;
-
-/**
- * blog_title_meta_generation テンプレートに暗黙的に注入される変数名一覧
- * （content_annotations 由来 + ビジネス情報由来）
- */
-const IMPLICIT_BLOG_TITLE_META_VARS = [
-  'contentPersona',
-  'contentMainKw',
-  'contentKw',
-  'contentWpContentText',
-  'strength',
-] as const;
-
-/**
- * gsc_insight_ctr_boost テンプレートに暗黙的に注入される変数名一覧
- */
-const IMPLICIT_GSC_CTR_BOOST_VARS = [
-  'adsHeadline',
-  'adsDescription',
-  'contentMainKw',
-  'contentKw',
-  'contentWpContentText',
-] as const;
