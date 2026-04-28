@@ -27,10 +27,44 @@ function parseH3H4HeadingLine(line: string): { text: string; level: 3 | 4 } | nu
 }
 
 /**
- * h3/h4 見出し行から見出しテキストを抽出する。
+ * markdown 形式の h3/h4 見出し行を解析する（正規表現を使用しない）。
+ * 例: "### 見出し" / "#### 見出し" / "###　見出し" / "### 見出し ###"
+ * '#' の直後には 1 文字以上の空白が必要（"#text" は見出しと見なさない）。
+ * CommonMark 準拠で終端 ATX マーカー（"### foo ###"）も剥がす。
+ */
+function parseMarkdownH3H4HeadingLine(line: string): { text: string; level: 3 | 4 } | null {
+  const t = line.trim();
+  if (t.length < 2 || t.charAt(0) !== '#') return null;
+
+  let level = 0;
+  while (level < t.length && t.charAt(level) === '#') level++;
+  if (level !== 3 && level !== 4) return null;
+  if (level >= t.length || !HEADING_WHITESPACE.has(t.charAt(level))) return null;
+
+  let i = level + 1;
+  while (i < t.length && HEADING_WHITESPACE.has(t.charAt(i))) i++;
+  let text = t.slice(i).trim();
+  if (!text) return null;
+
+  // 終端 ATX マーカーを除去する。終端 '#' 列は本文と空白で区切られている必要がある
+  // （"foo#" は本文の一部として残す。CommonMark 準拠）。
+  let j = text.length - 1;
+  while (j >= 0 && text.charAt(j) === '#') j--;
+  const hashStart = j + 1;
+  if (hashStart < text.length && j >= 0 && HEADING_WHITESPACE.has(text.charAt(j))) {
+    text = text.slice(0, j).trimEnd();
+  }
+
+  if (!text) return null;
+  return { text, level };
+}
+
+/**
+ * 見出し行から見出しテキストを抽出する。
+ * 独自形式 ("h3 見出し") と markdown 形式 ("### 見出し") の両方に対応。
  */
 export function extractHeadingTextFromLine(line: string): string | null {
-  return parseH3H4HeadingLine(line)?.text ?? null;
+  return parseH3H4HeadingLine(line)?.text ?? parseMarkdownH3H4HeadingLine(line)?.text ?? null;
 }
 
 interface ExtractedHeading {
@@ -42,6 +76,8 @@ interface ExtractedHeading {
 /**
  * Step 5の構成案テキストから、h3およびh4の見出しを抽出する。
  * その他のレベルの見出しは無視する。
+ * Step5/basic_structure は独自プレフィックス形式（`h3 …` / `H4 …`）のみを正とする
+ * （仕様 docs/specs/step7-heading-flow-spec.md §4）。markdown 形式（`### …`）は対象外。
  */
 export function extractHeadingsFromMarkdown(markdown: string): ExtractedHeading[] {
   if (!markdown) return [];
@@ -85,7 +121,7 @@ export function generateHeadingKey(orderIndex: number, headingText: string): str
 }
 
 /** 句読点・記号（文末でよく付くもの） */
-const TRAILING_PUNCTUATION = /[。、．，．・!?！？\s]*$/;
+const TRAILING_PUNCTUATION = /[。、．，・!?！？\s]*$/;
 
 /**
  * 見出し比較用の正規化（余分な空白・全角半角揺れ・句読点に耐性を持たせる）
@@ -103,9 +139,77 @@ function headingsMatchAfterNormalization(lineNorm: string, expectedNorm: string)
   if (lineNorm === expectedNorm) return true;
   if (lineNorm.startsWith(expectedNorm)) {
     const suffix = lineNorm.slice(expectedNorm.length).trim();
-    return suffix.length === 0 || /^[。、．，．・!?！？：:-]+$/.test(suffix);
+    return suffix.length === 0 || /^[。、．，・!?！？：:-]+$/.test(suffix);
   }
   return false;
+}
+
+/**
+ * 結合時の自己修復用: content の冒頭 lookahead 行内に headingText と実質一致する
+ * 見出し行（markdown ATX または 独自 h3/h4 形式）があれば、その行までを丸ごと削除した
+ * content を返す。前置き（"本文を以下に示します。"等）も併せて除去される。
+ *
+ * 一致しない場合は元の content をそのまま返す。
+ *
+ * 設計意図: 「本文側に紛れ込んだ見出し」は保存ミスとして除去対象とし、結合時には常に
+ * canonical な ${'#'.repeat(heading_level)} ${heading_text} を prepend する側で見出しを
+ * 出力する（呼び出し側の責務）。レベル不一致 (`#### 見出し` 等) も text 一致なら除去対象。
+ *
+ * fenced/indented code block 内のコード例として書かれた見出しは除外する（CommonMark 準拠）。
+ */
+export function stripLeadingMatchingHeadingFromBody(
+  content: string,
+  headingText: string,
+  lookahead = 5
+): string {
+  if (!content || !headingText) return content;
+  const expectedNorm = normalizeHeadingForComparison(headingText);
+  const lines = content.split('\n');
+  const limit = Math.min(lines.length, lookahead);
+
+  let inFence = false;
+  let fenceChar = '';
+  let fenceLen = 0;
+  for (let i = 0; i < limit; i++) {
+    const rawLine = lines[i]!;
+
+    if (inFence) {
+      const closeRe = fenceChar === '`' ? /^ {0,3}(`{3,})\s*$/ : /^ {0,3}(~{3,})\s*$/;
+      const closeMatch = closeRe.exec(rawLine);
+      if (closeMatch && closeMatch[1]!.length >= fenceLen) {
+        inFence = false;
+        fenceChar = '';
+        fenceLen = 0;
+      }
+      continue;
+    }
+
+    const openMatch = /^ {0,3}(`{3,}|~{3,})/.exec(rawLine);
+    if (openMatch) {
+      inFence = true;
+      fenceChar = openMatch[1]![0]!;
+      fenceLen = openMatch[1]!.length;
+      continue;
+    }
+
+    // indented code block（半角 4 個 or 0-3 + タブ）も同様に除外する。
+    if (/^( {0,3}\t| {4})/.test(rawLine)) continue;
+
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+
+    const lineHeadingText = extractHeadingTextFromLine(trimmed);
+    if (lineHeadingText === null) continue;
+
+    const lineNorm = normalizeHeadingForComparison(lineHeadingText);
+    if (!headingsMatchAfterNormalization(lineNorm, expectedNorm)) continue;
+
+    // 一致行を発見: lines[0..i] を削除し、続く空行も剥がす
+    let j = i + 1;
+    while (j < lines.length && lines[j]!.trim() === '') j++;
+    return lines.slice(j).join('\n');
+  }
+  return content;
 }
 
 /**
@@ -118,7 +222,18 @@ export function stripLeadingHeadingLine(content: string, headingText: string): s
   const trimmed = content.trim();
   if (!trimmed || !headingText) return content;
 
-  const firstLine = trimmed.split('\n')[0]?.trim() ?? '';
+  // インデントコードブロック検出のため、trim 前の先頭非空行を確認する。
+  // CommonMark: 半角スペース 4 個以上、または半角スペース 0〜3 個 + タブで始まる行は
+  // コードブロック扱い（タブは 4 桁タブストップに展開）とし、見出しと見なさず剥がさない。
+  const lines = content.split('\n');
+  let rawFirstIdx = 0;
+  while (rawFirstIdx < lines.length && lines[rawFirstIdx]!.trim() === '') rawFirstIdx++;
+  if (rawFirstIdx < lines.length) {
+    const rawFirstLine = lines[rawFirstIdx]!;
+    if (/^( {0,3}\t| {4})/.test(rawFirstLine)) return content;
+  }
+
+  const firstLine = lines[rawFirstIdx]?.trim() ?? '';
   const lineHeadingText = extractHeadingTextFromLine(firstLine);
   if (lineHeadingText === null) return content;
   const a = normalizeHeadingForComparison(lineHeadingText);
