@@ -18,6 +18,12 @@ import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
+import {
+  createEmptyTokenUsageTotals,
+  getTotalTokens,
+  logTokenUsage,
+  mergeTokenUsage,
+} from '@/server/lib/anthropic-token-usage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -190,6 +196,7 @@ export async function POST(req: NextRequest) {
         let abortController: AbortController | null = new AbortController();
         let idleTimeout: ReturnType<typeof setTimeout> | null = null;
         let pingInterval: ReturnType<typeof setInterval> | null = null;
+        let tokenUsage = createEmptyTokenUsageTotals();
 
         // 初回バイト送出（SSEタイムアウト回避）
         controller.enqueue(encoder.encode(`: open\n\n`));
@@ -293,7 +300,9 @@ export async function POST(req: NextRequest) {
 
             resetIdleTimeout();
 
-            if (chunk.type === 'content_block_delta') {
+            if (chunk.type === 'message_start') {
+              tokenUsage = mergeTokenUsage(tokenUsage, chunk.message.usage);
+            } else if (chunk.type === 'content_block_delta') {
               if (chunk.delta.type === 'text_delta') {
                 const textChunk = chunk.delta.text;
                 fullMessage += textChunk;
@@ -304,14 +313,17 @@ export async function POST(req: NextRequest) {
                 stopReason = chunk.delta.stop_reason;
               }
               if (chunk.usage) {
+                tokenUsage = mergeTokenUsage(tokenUsage, chunk.usage);
                 const usage = {
-                  inputTokens: chunk.usage.input_tokens || 0,
-                  outputTokens: chunk.usage.output_tokens || 0,
-                  totalTokens: (chunk.usage.input_tokens || 0) + (chunk.usage.output_tokens || 0),
+                  inputTokens: tokenUsage.inputTokens,
+                  outputTokens: tokenUsage.outputTokens,
+                  totalTokens: getTotalTokens(tokenUsage),
                 };
                 controller.enqueue(sendSSE('usage', usage));
               }
             } else if (chunk.type === 'message_stop') {
+              logTokenUsage(tokenUsage);
+
               // 完了時: 全ステップ共通の保存フロー。いずれか失敗したら error を返し、成功時のみ final → done を送る。
               const messageToSave = fullMessage;
               const saveModel = getResponseModelForBlogCreation(model);
