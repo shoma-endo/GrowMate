@@ -145,26 +145,28 @@ function headingsMatchAfterNormalization(lineNorm: string, expectedNorm: string)
 }
 
 /**
- * 結合時の二重 prepend 防止用: content の先頭付近に headingText と実質一致する
- * markdown 見出し行が既にあるかを判定する。
- * LLM が前置き（"...本文を以下に示します。"）の後に "### 見出し" を出力するケースに対応するため、
- * 先頭非空行だけでなく lookahead 行までスキャンする。
- * expectedLevel と一致しない level の見出しは「同じテキストでも別物」とみなし、
- * canonical な見出しの prepend を省略しない（誤った階層が完成形に流れることを防ぐ）。
+ * 結合時の自己修復用: content の冒頭 lookahead 行内に headingText と実質一致する
+ * 見出し行（markdown ATX または 独自 h3/h4 形式）があれば、その行までを丸ごと削除した
+ * content を返す。前置き（"本文を以下に示します。"等）も併せて除去される。
+ *
+ * 一致しない場合は元の content をそのまま返す。
+ *
+ * 設計意図: 「本文側に紛れ込んだ見出し」は保存ミスとして除去対象とし、結合時には常に
+ * canonical な ${'#'.repeat(heading_level)} ${heading_text} を prepend する側で見出しを
+ * 出力する（呼び出し側の責務）。レベル不一致 (`#### 見出し` 等) も text 一致なら除去対象。
+ *
+ * fenced/indented code block 内のコード例として書かれた見出しは除外する（CommonMark 準拠）。
  */
-export function hasLeadingMarkdownHeadingMatching(
+export function stripLeadingMatchingHeadingFromBody(
   content: string,
   headingText: string,
-  expectedLevel: number,
   lookahead = 5
-): boolean {
-  if (!content || !headingText) return false;
+): string {
+  if (!content || !headingText) return content;
   const expectedNorm = normalizeHeadingForComparison(headingText);
   const lines = content.split('\n');
   const limit = Math.min(lines.length, lookahead);
-  // fenced code block 内のコード例として書かれた "### …" を見出しと誤判定しないため、
-  // ``` または ~~~ の開始/終了をトラッキングする（CommonMark 準拠）。
-  // 閉じフェンスは「開きと同じ文字」「開き以上の長さ」「後続は空白のみ」の3条件をすべて満たす行のみ。
+
   let inFence = false;
   let fenceChar = '';
   let fenceLen = 0;
@@ -195,13 +197,19 @@ export function hasLeadingMarkdownHeadingMatching(
 
     const trimmed = rawLine.trim();
     if (!trimmed) continue;
-    const parsed = parseMarkdownH3H4HeadingLine(trimmed);
-    if (!parsed) continue;
-    if (parsed.level !== expectedLevel) continue;
-    const lineNorm = normalizeHeadingForComparison(parsed.text);
-    if (headingsMatchAfterNormalization(lineNorm, expectedNorm)) return true;
+
+    const lineHeadingText = extractHeadingTextFromLine(trimmed);
+    if (lineHeadingText === null) continue;
+
+    const lineNorm = normalizeHeadingForComparison(lineHeadingText);
+    if (!headingsMatchAfterNormalization(lineNorm, expectedNorm)) continue;
+
+    // 一致行を発見: lines[0..i] を削除し、続く空行も剥がす
+    let j = i + 1;
+    while (j < lines.length && lines[j]!.trim() === '') j++;
+    return lines.slice(j).join('\n');
   }
-  return false;
+  return content;
 }
 
 /**
