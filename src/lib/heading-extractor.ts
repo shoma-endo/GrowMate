@@ -163,25 +163,32 @@ export function hasLeadingMarkdownHeadingMatching(
   const lines = content.split('\n');
   const limit = Math.min(lines.length, lookahead);
   // fenced code block 内のコード例として書かれた "### …" を見出しと誤判定しないため、
-  // ``` または ~~~ の開始/終了をトラッキングする。
+  // ``` または ~~~ の開始/終了をトラッキングする（CommonMark 準拠）。
+  // 閉じフェンスは「開きと同じ文字」「開き以上の長さ」「後続は空白のみ」の3条件をすべて満たす行のみ。
   let inFence = false;
   let fenceChar = '';
+  let fenceLen = 0;
   for (let i = 0; i < limit; i++) {
     const rawLine = lines[i]!;
 
-    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(rawLine);
-    if (fenceMatch) {
-      const ch = fenceMatch[1]![0]!;
-      if (!inFence) {
-        inFence = true;
-        fenceChar = ch;
-      } else if (ch === fenceChar) {
+    if (inFence) {
+      const closeRe = fenceChar === '`' ? /^ {0,3}(`{3,})\s*$/ : /^ {0,3}(~{3,})\s*$/;
+      const closeMatch = closeRe.exec(rawLine);
+      if (closeMatch && closeMatch[1]!.length >= fenceLen) {
         inFence = false;
         fenceChar = '';
+        fenceLen = 0;
       }
       continue;
     }
-    if (inFence) continue;
+
+    const openMatch = /^ {0,3}(`{3,}|~{3,})/.exec(rawLine);
+    if (openMatch) {
+      inFence = true;
+      fenceChar = openMatch[1]![0]!;
+      fenceLen = openMatch[1]!.length;
+      continue;
+    }
 
     // indented code block（半角 4 個 or 0-3 + タブ）も同様に除外する。
     if (/^( {0,3}\t| {4})/.test(rawLine)) continue;
