@@ -18,6 +18,12 @@ import { STEP7_ID } from '@/lib/constants';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
 import { getBlogCreationTemplatePrompt } from '@/lib/prompts';
 import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
+import {
+  addTokenUsageTotals,
+  createEmptyTokenUsageTotals,
+  logTokenUsage,
+  mergeTokenUsage,
+} from '@/server/lib/anthropic-token-usage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -481,6 +487,7 @@ export async function POST(req: NextRequest) {
         let abortController: AbortController | null = new AbortController();
         let idleTimeout: ReturnType<typeof setTimeout> | null = null;
         let pingInterval: ReturnType<typeof setInterval> | null = null;
+        let requestTokenUsageTotal = createEmptyTokenUsageTotals();
 
         // 初回バイト送出（SSEタイムアウト回避）
         controller.enqueue(encoder.encode(`: open\n\n`));
@@ -515,6 +522,7 @@ export async function POST(req: NextRequest) {
           let extractedReferences: WebReference[] = [];
           if (shouldEnableWebSearch) {
             try {
+              let webSearchUsage = createEmptyTokenUsageTotals();
               const searchStream = await anthropic.messages.stream({
                 model: actualModel,
                 max_tokens: 2000,
@@ -552,8 +560,12 @@ export async function POST(req: NextRequest) {
                 if (abortController?.signal.aborted) break;
                 resetIdleTimeout();
 
-                if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+                if (event.type === 'message_start') {
+                  webSearchUsage = mergeTokenUsage(webSearchUsage, event.message.usage);
+                } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
                   searchResults += event.delta.text;
+                } else if (event.type === 'message_delta' && event.usage) {
+                  webSearchUsage = mergeTokenUsage(webSearchUsage, event.usage);
                 }
               }
 
@@ -561,6 +573,8 @@ export async function POST(req: NextRequest) {
                 console.warn('[Canvas Web Search] Failed to read final search message:', error);
                 return null;
               });
+              webSearchUsage = mergeTokenUsage(webSearchUsage, finalSearchMessage?.usage);
+              requestTokenUsageTotal = addTokenUsageTotals(requestTokenUsageTotal, webSearchUsage);
 
               const referencesFromStructuredResult =
                 extractWebReferencesFromSearchMessage(finalSearchMessage);
@@ -632,6 +646,7 @@ export async function POST(req: NextRequest) {
           // Anthropic Streaming API 呼び出し
           // Step7 の見出し単位編集時は上限を抑え、それ以外はモデル設定値を使う。
           const canvasMaxTokens = isHeadingUnitRequest ? Math.min(5000, maxTokens) : maxTokens;
+          let canvasEditUsage = createEmptyTokenUsageTotals();
           const apiStream = await anthropic.messages.stream({
             model: actualModel,
             max_tokens: canvasMaxTokens,
@@ -670,10 +685,17 @@ export async function POST(req: NextRequest) {
                 accumulatedJson += chunk;
               }
             }
+            if (event.type === 'message_start') {
+              canvasEditUsage = mergeTokenUsage(canvasEditUsage, event.message.usage);
+            } else if (event.type === 'message_delta' && event.usage) {
+              canvasEditUsage = mergeTokenUsage(canvasEditUsage, event.usage);
+            }
 
             if (event.type === 'message_stop') {
               // Tool Useの結果を抽出
               const message = await apiStream.finalMessage();
+              canvasEditUsage = mergeTokenUsage(canvasEditUsage, message.usage);
+              requestTokenUsageTotal = addTokenUsageTotals(requestTokenUsageTotal, canvasEditUsage);
 
               if (message.stop_reason === 'max_tokens') {
                 controller.enqueue(sendSSE('error', {
@@ -867,10 +889,16 @@ export async function POST(req: NextRequest) {
               });
 
               let analysisResult = '';
+              let analysisUsage = createEmptyTokenUsageTotals();
               for await (const analysisEvent of analysisStream) {
                 if (abortController?.signal.aborted) break;
                 resetIdleTimeout();
 
+                if (analysisEvent.type === 'message_start') {
+                  analysisUsage = mergeTokenUsage(analysisUsage, analysisEvent.message.usage);
+                } else if (analysisEvent.type === 'message_delta' && analysisEvent.usage) {
+                  analysisUsage = mergeTokenUsage(analysisUsage, analysisEvent.usage);
+                }
                 if (
                   analysisEvent.type === 'content_block_delta' &&
                   analysisEvent.delta.type === 'text_delta'
@@ -881,6 +909,12 @@ export async function POST(req: NextRequest) {
                   );
                 }
               }
+              const finalAnalysisMessage = await analysisStream.finalMessage().catch(error => {
+                console.warn('[Canvas Stream] Failed to read final analysis message:', error);
+                return null;
+              });
+              analysisUsage = mergeTokenUsage(analysisUsage, finalAnalysisMessage?.usage);
+              requestTokenUsageTotal = addTokenUsageTotals(requestTokenUsageTotal, analysisUsage);
 
               // ✅ チャット履歴に2つのアシスタントメッセージを別々に保存
               // continueChat は必ずユーザーメッセージとアシスタントメッセージのペアを保存するため、
@@ -992,6 +1026,8 @@ export async function POST(req: NextRequest) {
                 // Supabaseに直接保存
                 await supabaseService.createChatMessage(assistantAnalysisMessage);
               }
+
+              logTokenUsage(requestTokenUsageTotal);
 
               controller.enqueue(
                 sendSSE('done', { fullMarkdown: finalMarkdown, analysis: analysisResult })

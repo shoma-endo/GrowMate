@@ -14,8 +14,6 @@ const config: KnipConfig = {
     'eslint-plugin-jsx-a11y',
     'eslint-plugin-react',
     'eslint-plugin-react-hooks',
-    // supabase:types スクリプトで CLI バイナリとして使用
-    'supabase',
   ],
 };
 
