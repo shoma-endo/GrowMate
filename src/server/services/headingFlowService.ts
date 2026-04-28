@@ -2,6 +2,7 @@ import { SupabaseService, type SupabaseResult } from './supabaseService';
 import {
   extractHeadingsFromMarkdown,
   generateHeadingKey,
+  hasLeadingMarkdownHeadingMatching,
 } from '@/lib/heading-extractor';
 import { STEP7_BASIC_STRUCTURE_SAVE_MESSAGE } from '@/lib/constants';
 import type { DbHeadingSection, DbSessionHeadingSectionInsert } from '@/types/heading-flow';
@@ -124,8 +125,14 @@ class HeadingFlowService extends SupabaseService {
       );
     }
 
+    // 自己修復: s.content の先頭付近に既に一致する markdown 見出し行がある場合は
+    // prepend をスキップする。LLM が前置きや見出し行を本文側に出力したまま保存され、
+    // stripLeadingHeadingLine が剥がせなかったケースで二重化するのを防ぐ。
     const sectionContents = sections
       .map(s => {
+        if (hasLeadingMarkdownHeadingMatching(s.content, s.heading_text, s.heading_level)) {
+          return s.content;
+        }
         const hashes = '#'.repeat(s.heading_level);
         return `${hashes} ${s.heading_text}\n\n${s.content}`;
       })

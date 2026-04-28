@@ -145,6 +145,59 @@ function headingsMatchAfterNormalization(lineNorm: string, expectedNorm: string)
 }
 
 /**
+ * 結合時の二重 prepend 防止用: content の先頭付近に headingText と実質一致する
+ * markdown 見出し行が既にあるかを判定する。
+ * LLM が前置き（"...本文を以下に示します。"）の後に "### 見出し" を出力するケースに対応するため、
+ * 先頭非空行だけでなく lookahead 行までスキャンする。
+ * expectedLevel と一致しない level の見出しは「同じテキストでも別物」とみなし、
+ * canonical な見出しの prepend を省略しない（誤った階層が完成形に流れることを防ぐ）。
+ */
+export function hasLeadingMarkdownHeadingMatching(
+  content: string,
+  headingText: string,
+  expectedLevel: number,
+  lookahead = 5
+): boolean {
+  if (!content || !headingText) return false;
+  const expectedNorm = normalizeHeadingForComparison(headingText);
+  const lines = content.split('\n');
+  const limit = Math.min(lines.length, lookahead);
+  // fenced code block 内のコード例として書かれた "### …" を見出しと誤判定しないため、
+  // ``` または ~~~ の開始/終了をトラッキングする。
+  let inFence = false;
+  let fenceChar = '';
+  for (let i = 0; i < limit; i++) {
+    const rawLine = lines[i]!;
+
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(rawLine);
+    if (fenceMatch) {
+      const ch = fenceMatch[1]![0]!;
+      if (!inFence) {
+        inFence = true;
+        fenceChar = ch;
+      } else if (ch === fenceChar) {
+        inFence = false;
+        fenceChar = '';
+      }
+      continue;
+    }
+    if (inFence) continue;
+
+    // indented code block（半角 4 個 or 0-3 + タブ）も同様に除外する。
+    if (/^( {0,3}\t| {4})/.test(rawLine)) continue;
+
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+    const parsed = parseMarkdownH3H4HeadingLine(trimmed);
+    if (!parsed) continue;
+    if (parsed.level !== expectedLevel) continue;
+    const lineNorm = normalizeHeadingForComparison(parsed.text);
+    if (headingsMatchAfterNormalization(lineNorm, expectedNorm)) return true;
+  }
+  return false;
+}
+
+/**
  * Step6保存時用: 先頭の見出し行を除去する。
  * getCombinedContentForPrompt が heading_text を自動付与するため、content には本文のみを保存する。
  * 先頭行が h3/h4 見出し かつ headingText と実質一致する場合に除去。
