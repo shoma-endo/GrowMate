@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import { buildLocalDateRange, formatLocalDateYMD } from '@/lib/date-utils';
+import { buildLocalDateRange, formatJstDateISO } from '@/lib/date-utils';
 import { MODEL_CONFIGS } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { llmChat } from '@/server/services/llmService';
@@ -52,7 +52,7 @@ export class GoogleAdsAiAnalysisService {
       force?: boolean;
     }
   ): Promise<GoogleAdsAiAnalysisResult> {
-    const todayJst = formatLocalDateYMD(new Date());
+    const todayJst = formatJstDateISO(new Date());
 
     try {
       const userResult = await this.supabaseService.getUserById(userId);
