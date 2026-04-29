@@ -4,7 +4,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { WordPressService, WordPressAuth } from '@/server/services/wordpressService';
 import type { WordPressSettings, WordPressType } from '@/types/wordpress';
 
-export const WORDPRESS_COM_AUTH_REQUIRED_MESSAGE =
+const WORDPRESS_COM_AUTH_REQUIRED_MESSAGE =
   'WordPress認証に失敗しました。WordPress.comとの連携が必要です。';
 
 interface CookieGetter {
@@ -13,11 +13,11 @@ interface CookieGetter {
 
 export const WPCOM_TOKEN_COOKIE_NAME = 'wpcom_oauth_token';
 
-export type WordPressServiceBuildFailureReason =
+type WordPressServiceBuildFailureReason =
   | 'wordpress_auth_missing'
   | 'self_hosted_credentials_missing';
 
-export type WordPressServiceBuildResult =
+type WordPressServiceBuildResult =
   | {
       success: true;
       auth: WordPressAuth;
@@ -84,13 +84,13 @@ export function buildWordPressServiceFromSettings(
   };
 }
 
-export type WordPressContextFailureReason =
+type WordPressContextFailureReason =
   | 'auth_invalid'
   | 'email_link_conflict'
   | 'settings_missing'
   | WordPressServiceBuildFailureReason;
 
-export type WordPressContextResult =
+type WordPressContextResult =
   | {
       success: true;
       userId: string;

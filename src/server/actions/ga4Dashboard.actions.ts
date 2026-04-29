@@ -172,7 +172,7 @@ function ga4AuthFailureFrom(authResult: AuthResult): Ga4AuthFailure | null {
 /**
  * GA4ダッシュボード: 期間サマリーを取得
  */
-export async function fetchGa4DashboardSummary(input: unknown): Promise<
+async function fetchGa4DashboardSummary(input: unknown): Promise<
   ServerActionResult<Ga4DashboardSummary>
 > {
   try {

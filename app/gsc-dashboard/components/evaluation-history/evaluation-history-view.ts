@@ -20,13 +20,13 @@ const TEMPLATE_LABEL_MAP: Record<string, SuggestionTemplateName> = {
     'gsc_insight_persona_rebuild',
 };
 
-export interface ParsedSuggestionSection {
+interface ParsedSuggestionSection {
   templateName: SuggestionTemplateName;
   label: string;
   content: string;
 }
 
-export interface EvaluationHistoryViewState {
+interface EvaluationHistoryViewState {
   isNoMetrics: boolean;
   isError: boolean;
   showUnreadBadge: boolean;

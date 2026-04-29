@@ -15,13 +15,13 @@ import {
 } from '@/server/services/wordpressContentTypes';
 
 // WordPress.com認証情報
-export interface WordPressComAuth {
+interface WordPressComAuth {
   accessToken: string;
   siteId: string; // This can be the site domain or the numeric site ID
 }
 
 // セルフホストWordPress認証情報
-export interface SelfHostedAuth {
+interface SelfHostedAuth {
   siteUrl: string;
   username: string;
   applicationPassword: string;

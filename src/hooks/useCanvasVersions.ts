@@ -5,7 +5,7 @@ import { ChatMessage } from '@/domain/interfaces/IChatService';
 import { BlogCanvasVersion, StepVersionsMap } from '@/types/chat-layout';
 import type { CombinedContentVersion } from '@/hooks/useHeadingFlow';
 
-export interface UseCanvasVersionsParams {
+interface UseCanvasVersionsParams {
   /** Step7 完成形（session_combined_contents）を step7 のバージョンとして他ステップと同様に扱う */
   step7VersionsOverride?: CombinedContentVersion[];
 }

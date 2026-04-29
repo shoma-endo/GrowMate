@@ -1,6 +1,6 @@
 import { BlogStepId, STEP7_ID } from '@/lib/constants';
 
-export interface HeadingCanvasViewModeParams {
+interface HeadingCanvasViewModeParams {
   step: BlogStepId | null;
   headingCount: number;
   viewingHeadingIndex: number | null;
@@ -8,7 +8,7 @@ export interface HeadingCanvasViewModeParams {
   ignoreActiveHeadingIndex?: boolean;
 }
 
-export interface HeadingCanvasViewMode {
+interface HeadingCanvasViewMode {
   isViewingHeading: boolean;
   isCombinedView: boolean;
   isHeadingUnit: boolean;

@@ -4,16 +4,14 @@ import {
   ga4PropertyIdSchema,
 } from '@/lib/validators/common';
 
-export { ga4ConversionEventsSchema, ga4PropertyIdSchema };
-
-export const ga4ThresholdEngagementSchema = z
+const ga4ThresholdEngagementSchema = z
   .number()
   .int()
   .min(0)
   .max(86400)
   .optional();
 
-export const ga4ThresholdReadRateSchema = z
+const ga4ThresholdReadRateSchema = z
   .number()
   .min(0)
   .max(1)
@@ -26,5 +24,3 @@ export const ga4SettingsSchema = z.object({
   thresholdEngagementSec: ga4ThresholdEngagementSchema,
   thresholdReadRate: ga4ThresholdReadRateSchema,
 });
-
-export type Ga4SettingsInput = z.infer<typeof ga4SettingsSchema>;

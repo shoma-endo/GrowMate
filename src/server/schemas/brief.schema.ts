@@ -15,7 +15,7 @@ export const paymentEnum = z.enum([
   '分割払い',
 ]);
 
-export const serviceSchema = z.object({
+const serviceSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1, { message: validationMessages.SERVICE_NAME_REQUIRED }),
   strength: z.string().optional(),
@@ -28,7 +28,7 @@ export const serviceSchema = z.object({
   price: z.string().optional(),
 });
 
-export const profileSchema = z.object({
+const profileSchema = z.object({
   company: z.string().optional(),
   address: z.string().optional(),
   ceo: z.string().optional(),

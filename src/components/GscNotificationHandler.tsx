@@ -46,7 +46,7 @@ export function GscNotificationHandler() {
             className="relative flex items-center gap-4 w-auto max-w-lg p-4 bg-amber-50 border border-amber-200 rounded-lg shadow-lg shadow-amber-900/5 cursor-pointer hover:bg-amber-100 transition-all duration-200 overflow-hidden"
             onClick={() => {
               toast.dismiss(t);
-              router.push('/analytics');
+              router.push('/analytics?unread_suggestion=1');
             }}
           >
             {/* 左端のアクセントバー */}

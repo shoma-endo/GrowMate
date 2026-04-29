@@ -732,7 +732,7 @@ export async function upsertContentAnnotationBySession(
   });
 }
 
-export interface EnsureAnnotationChatSessionPayload {
+interface EnsureAnnotationChatSessionPayload {
   sessionId?: string | null;
   annotationId?: string | null;
   wpPostId?: number | null;

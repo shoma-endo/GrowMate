@@ -3,7 +3,7 @@ import { cookies as nextCookies } from 'next/headers';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { User } from '@/types/user';
 
-export interface AuthenticatedUser {
+export interface AuthMiddlewareResult {
   /** @deprecated 常に空文字。LINE認証廃止につき未使用 */
   lineUserId: string;
   userId: string;
@@ -16,13 +16,11 @@ export interface AuthenticatedUser {
   emailLinkConflict?: boolean;
 }
 
-export type AuthMiddlewareResult = AuthenticatedUser;
-
 /**
- * Email セッションを解決し、成功時は AuthenticatedUser、transient 障害時はエラー結果、
+ * Email セッションを解決し、成功時は AuthMiddlewareResult、transient 障害時はエラー結果、
  * unauthenticated 時は null を返す。
  */
-async function tryEmailFallback(): Promise<AuthenticatedUser | null> {
+async function tryEmailFallback(): Promise<AuthMiddlewareResult | null> {
   const { resolveEmailUserWithReason } = await import('@/server/auth/resolveUser');
   const result = await resolveEmailUserWithReason();
   if (result.ok) {
@@ -55,7 +53,7 @@ async function tryEmailFallback(): Promise<AuthenticatedUser | null> {
   return null;
 }
 
-export async function ensureAuthenticated(): Promise<AuthenticatedUser> {
+async function ensureAuthenticated(): Promise<AuthMiddlewareResult> {
   const emailResult = await tryEmailFallback();
   if (emailResult) return emailResult;
   return {

@@ -2,6 +2,7 @@ import { SupabaseService, type SupabaseResult } from './supabaseService';
 import {
   extractHeadingsFromMarkdown,
   generateHeadingKey,
+  stripLeadingMatchingHeadingFromBody,
 } from '@/lib/heading-extractor';
 import { STEP7_BASIC_STRUCTURE_SAVE_MESSAGE } from '@/lib/constants';
 import type { DbHeadingSection, DbSessionHeadingSectionInsert } from '@/types/heading-flow';
@@ -9,7 +10,7 @@ import type { DbChatMessage } from '@/types/chat';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
 import { STEP7_LEAD_MODEL } from '@/lib/constants';
 
-export class HeadingFlowService extends SupabaseService {
+class HeadingFlowService extends SupabaseService {
   /**
    * Step 5のテキストから見出しを抽出し、session_heading_sections を初期化する。
    * 仕様: すでに存在する場合は何もしない。
@@ -124,10 +125,14 @@ export class HeadingFlowService extends SupabaseService {
       );
     }
 
+    // 自己修復: s.content の冒頭付近に紛れ込んだ見出し（前置き含む）を除去してから、
+    // 必ず canonical 見出し（DB の heading_text × heading_level）を prepend する。
+    // stripLeadingHeadingLine が剥がせなかった LLM 出力（前置き + 見出し、レベル不一致 等）も救済する。
     const sectionContents = sections
       .map(s => {
+        const cleaned = stripLeadingMatchingHeadingFromBody(s.content, s.heading_text);
         const hashes = '#'.repeat(s.heading_level);
-        return `${hashes} ${s.heading_text}\n\n${s.content}`;
+        return `${hashes} ${s.heading_text}\n\n${cleaned}`;
       })
       .join('\n\n');
 

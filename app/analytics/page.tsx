@@ -30,7 +30,15 @@ function isValidDate(dateStr: string): boolean {
 
 export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps) {
   const params = await searchParams;
-  const hasUrlFilterParams = params?.category !== undefined || params?.uncategorized !== undefined;
+  const unreadSuggestionParam = Array.isArray(params?.unread_suggestion)
+    ? params.unread_suggestion[0]
+    : params?.unread_suggestion;
+  const hasUnreadSuggestion = unreadSuggestionParam === '1';
+  // unread_suggestion はカテゴリフィルターと直交するため hasUrlFilterParams に含めない。
+  // 含めると ?unread_suggestion=1 のみの URL でも localStorage のカテゴリ復元が
+  // スキップされ、保存済みカテゴリフィルターが失われる回帰が発生する。
+  const hasUrlFilterParams =
+    params?.category !== undefined || params?.uncategorized !== undefined;
   const pageParam = Array.isArray(params?.page) ? params.page[0] : params?.page;
   const pageParsed = Number.parseInt(pageParam ?? '1', 10);
   const page = Number.isFinite(pageParsed) && pageParsed > 0 ? pageParsed : 1;
@@ -72,6 +80,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         endDate,
         selectedCategoryNames,
         includeUncategorized,
+        hasUnreadSuggestion,
       }),
       getAnnotationIdsWithUnreadSuggestions(),
       analyticsContentService.getAvailableCategoryNames(),
@@ -98,6 +107,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     if (includeUncategorized) {
       query.set('uncategorized', '1');
     }
+    if (hasUnreadSuggestion) {
+      query.set('unread_suggestion', '1');
+    }
     return `/analytics?${query.toString()}`;
   };
   const prevHref = buildPageHref(Math.max(1, currentPage - 1));
@@ -122,6 +134,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       endDate={endDate}
       selectedCategoryNames={selectedCategoryNames}
       includeUncategorized={includeUncategorized}
+      hasUnreadSuggestion={hasUnreadSuggestion}
       hasUrlFilterParams={hasUrlFilterParams}
     />
   );

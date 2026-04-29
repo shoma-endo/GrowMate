@@ -13,12 +13,15 @@ import { ChatError } from '@/domain/errors/ChatError';
 import type { ChatSessionActions, ChatSessionHook } from '@/types/hooks';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import {
-  ERROR_MESSAGES as CHAT_ERROR_MESSAGES,
   CHAT_HISTORY_LIMIT,
+  MODEL_CONFIGS,
   STEP7_FULL_BODY_TRIGGER,
 } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { replaceToEmailLinkConflictLogin } from '@/lib/auth/emailLinkConflictClient';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 
 export type { ChatSessionActions, ChatSessionHook };
 
@@ -49,6 +52,9 @@ const createSessionPreview = (content: string, sessionId: string): ChatSession =
   lastMessage: content,
 });
 
+const isOpenAIModel = (model: string): boolean =>
+  MODEL_CONFIGS[model]?.provider === 'openai';
+
 const createStreamingMessagePair = (content: string, model: string) => {
   const responseModel = getResponseModelForBlogCreation(model);
   return {
@@ -66,6 +72,10 @@ interface StreamingParams {
   serviceId?: string;
   /** 本文生成ボタン用: blog_creation_step7 の応答を session_combined_contents に保存 */
   step7FullBodyGeneration?: boolean;
+  /** true のとき途切れた最後の assistant メッセージに続きを連結する（新規メッセージは追加しない） */
+  continuationMode?: boolean;
+  /** continuationMode 時の連結元テキスト（途切れた assistant メッセージの元の内容） */
+  truncatedContent?: string;
 }
 
 export const useChatSession = (
@@ -102,6 +112,7 @@ export const useChatSession = (
           messages,
           currentSessionId: sessionId,
           isLoading: false,
+          isTruncated: false,
         }));
       } catch (error) {
         if (requestId !== loadSessionRequestRef.current) return;
@@ -128,23 +139,26 @@ export const useChatSession = (
       systemPrompt,
       serviceId,
       step7FullBodyGeneration,
+      continuationMode,
+      truncatedContent,
     }: StreamingParams) => {
       // step7FullBodyGeneration: 楽観的表示は短いトリガーを使い、loadSession 後の表示と一致させる
       const displayContent =
         step7FullBodyGeneration && model === 'blog_creation_step7'
           ? STEP7_FULL_BODY_TRIGGER
           : content;
-      const { userMessage, assistantMessage } = createStreamingMessagePair(
-        displayContent,
-        model
-      );
-
-      setState(prev => ({
-        ...prev,
-        messages: [...prev.messages, userMessage, assistantMessage],
-        error: null,
-        warning: null,
-      }));
+      if (!continuationMode) {
+        const { userMessage, assistantMessage } = createStreamingMessagePair(
+          displayContent,
+          model
+        );
+        setState(prev => ({
+          ...prev,
+          messages: [...prev.messages, userMessage, assistantMessage],
+          error: null,
+          warning: null,
+        }));
+      }
 
       try {
         const response = await fetch('/api/chat/anthropic/stream', {
@@ -163,6 +177,7 @@ export const useChatSession = (
             ...(systemPrompt ? { systemPrompt } : {}),
             ...(serviceId ? { serviceId } : {}),
             ...(step7FullBodyGeneration ? { step7FullBodyGeneration: true } : {}),
+            ...(continuationMode ? { isContinuation: true, truncatedContent: truncatedContent ?? '' } : {}),
           }),
         });
 
@@ -171,11 +186,13 @@ export const useChatSession = (
           const warningMessage = extractWarningMessage(bodyText);
 
           setState(prev => {
-            const updatedMessages =
+            const shouldRemovePlaceholder =
+              !continuationMode &&
               prev.messages.length > 0 &&
-              prev.messages[prev.messages.length - 1]?.role === 'assistant'
-                ? prev.messages.slice(0, -1)
-                : prev.messages;
+              prev.messages[prev.messages.length - 1]?.role === 'assistant';
+            const updatedMessages = shouldRemovePlaceholder
+              ? prev.messages.slice(0, -1)
+              : prev.messages;
 
             return {
               ...prev,
@@ -195,6 +212,7 @@ export const useChatSession = (
             const last = msgs[msgs.length - 1];
             const second = msgs[msgs.length - 2];
             if (
+              !continuationMode &&
               msgs.length >= 2 &&
               second?.role === 'user' &&
               last?.role === 'assistant'
@@ -227,6 +245,17 @@ export const useChatSession = (
         let idleTimeout: ReturnType<typeof setTimeout> | null = null;
         let sseBuffer = '';
         let streamSucceeded = false;
+
+        const baseContent = continuationMode ? (truncatedContent ?? '') : '';
+        const updateLastAssistant = (
+          messages: ChatMessage[],
+          update: (msg: ChatMessage) => ChatMessage
+        ): ChatMessage[] =>
+          messages.map((msg, idx) =>
+            idx === messages.length - 1 && (!continuationMode || msg.role === 'assistant')
+              ? update(msg)
+              : msg
+          );
 
         const resetIdleTimeout = () => {
           if (idleTimeout) clearTimeout(idleTimeout);
@@ -273,26 +302,29 @@ export const useChatSession = (
                   accumulatedText += data; // サーバーはJSON文字列を送る
                   setState(prev => ({
                     ...prev,
-                    messages: prev.messages.map((msg, idx) =>
-                      idx === prev.messages.length - 1 ? { ...msg, content: accumulatedText } : msg
-                    ),
+                    messages: updateLastAssistant(prev.messages, msg => ({
+                      ...msg,
+                      content: baseContent + accumulatedText,
+                    })),
                   }));
                 } else if (eventType === 'final') {
                   streamSucceeded = true;
                   const data = JSON.parse(dataCombined);
                   const responseModel = getResponseModelForBlogCreation(model);
+                  const mergedContent = baseContent + data.message;
                   setState(prev => ({
                     ...prev,
                     currentSessionId: data.sessionId || prev.currentSessionId,
-                    messages: prev.messages.map((msg, idx) =>
-                      idx === prev.messages.length - 1
-                        ? { ...msg, content: data.message, model: responseModel }
-                        : msg
-                    ),
+                    messages: updateLastAssistant(prev.messages, msg => ({
+                      ...msg,
+                      content: mergedContent,
+                      model: responseModel,
+                    })),
                     isLoading: false,
+                    isTruncated: data.truncated === true,
                   }));
 
-                  if (!currentSessionId && data.sessionId) {
+                  if (!continuationMode && !currentSessionId && data.sessionId) {
                     const newSession = createSessionPreview(content, data.sessionId);
                     setState(prev => ({
                       ...prev,
@@ -347,6 +379,112 @@ export const useChatSession = (
     []
   );
 
+  const handleNonStreamingMessage = useCallback(
+    async ({
+      content,
+      model,
+      currentSessionId,
+      recentMessages,
+      systemPrompt,
+      serviceId,
+    }: StreamingParams): Promise<boolean> => {
+      const { userMessage, assistantMessage } = createStreamingMessagePair(content, model);
+      setState(prev => ({
+        ...prev,
+        messages: [...prev.messages, userMessage, assistantMessage],
+        error: null,
+        warning: null,
+      }));
+
+      try {
+        const response = await chatService.sendMessage({
+          content,
+          model,
+          accessToken: '',
+          isNewSession: !currentSessionId,
+          sessionId: currentSessionId || undefined,
+          messages: recentMessages,
+          systemPrompt,
+          serviceId,
+        });
+
+        if (response.warning) {
+          // 日次制限などの警告: assistant placeholder のみ除去し、user メッセージは保持
+          setState(prev => ({
+            ...prev,
+            messages:
+              prev.messages.length > 0 &&
+              prev.messages[prev.messages.length - 1]?.role === 'assistant'
+                ? prev.messages.slice(0, -1)
+                : prev.messages,
+            warning: response.warning ?? null,
+            error: null,
+            isLoading: false,
+          }));
+          return false;
+        }
+
+        if (response.error) {
+          if (isEmailLinkConflictResult(response)) {
+            setState(prev => ({
+              ...prev,
+              messages: prev.messages.slice(0, -2),
+              error: null,
+              warning: null,
+              isLoading: false,
+            }));
+            replaceToEmailLinkConflictLogin();
+            return false;
+          }
+
+          setState(prev => ({
+            ...prev,
+            messages: prev.messages.slice(0, -2),
+            error: response.error ?? '送信に失敗しました',
+            warning: null,
+            isLoading: false,
+          }));
+          return false;
+        }
+
+        const responseModel = getResponseModelForBlogCreation(model);
+        const isNewSession = !currentSessionId && !!response.sessionId;
+        setState(prev => ({
+          ...prev,
+          currentSessionId: response.sessionId || prev.currentSessionId,
+          messages: prev.messages.map((msg, idx) =>
+            idx === prev.messages.length - 1
+              ? { ...msg, content: response.message, model: responseModel }
+              : msg
+          ),
+          isLoading: false,
+          isTruncated: false,
+          ...(isNewSession && response.sessionId
+            ? { sessions: [createSessionPreview(content, response.sessionId), ...prev.sessions] }
+            : {}),
+        }));
+        return true;
+      } catch (error) {
+        console.error('Non-streaming send error:', error);
+        const errorMessage =
+          error instanceof ChatError
+            ? error.userMessage
+            : error instanceof Error
+              ? error.message
+              : '送信に失敗しました';
+        setState(prev => ({
+          ...prev,
+          messages: prev.messages.slice(0, -2),
+          error: errorMessage,
+          warning: null,
+          isLoading: false,
+        }));
+        return false;
+      }
+    },
+    [chatService]
+  );
+
   const sendMessage = useCallback(
     async (
       content: string,
@@ -358,9 +496,18 @@ export const useChatSession = (
         /** true のとき過去のチャット履歴を送信しない */
         skipHistory?: boolean;
         sessionIdOverride?: string;
+        /** true のとき途切れた最後の assistant メッセージに続きを連結する */
+        continuationMode?: boolean;
       }
     ) => {
-      setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
+      setState(prev => ({
+        ...prev,
+        isLoading: true,
+        error: null,
+        warning: null,
+        // continuationMode: 失敗時に再試行バナーが消えないよう isTruncated は維持する
+        ...(!options?.continuationMode && { isTruncated: false }),
+      }));
 
       try {
         const resolvedSessionId =
@@ -394,6 +541,33 @@ export const useChatSession = (
           streamingParams.step7FullBodyGeneration = true;
         }
 
+        if (options?.continuationMode) {
+          const lastMessage = state.messages[state.messages.length - 1];
+          if (!lastMessage || lastMessage.role !== 'assistant') {
+            console.warn('continuationMode requires last message to be an assistant message');
+            setState(prev => ({
+              ...prev,
+              isLoading: false,
+              error: '続きを生成するためのアシスタントメッセージがありません',
+            }));
+            return false;
+          }
+          streamingParams.continuationMode = true;
+          streamingParams.truncatedContent = lastMessage.content;
+        }
+
+        if (isOpenAIModel(model)) {
+          if (options?.continuationMode) {
+            setState(prev => ({
+              ...prev,
+              isLoading: false,
+              error: 'OpenAI モデルでは続き生成に対応していません',
+            }));
+            return false;
+          }
+          return await handleNonStreamingMessage(streamingParams);
+        }
+
         const success = await handleStreamingMessage(streamingParams);
         return success;
       } catch (error) {
@@ -414,7 +588,7 @@ export const useChatSession = (
         return false;
       }
     },
-    [state.currentSessionId, state.messages, handleStreamingMessage]
+    [state.currentSessionId, state.messages, handleStreamingMessage, handleNonStreamingMessage]
   );
 
   const deleteSession = useCallback(
@@ -551,6 +725,7 @@ export const useChatSession = (
       messages: [],
       error: null,
       warning: null,
+      isTruncated: false,
     }));
   }, []);
 
@@ -592,14 +767,14 @@ export const useChatSession = (
 
 function extractWarningMessage(rawBody: string): string {
   if (!rawBody) {
-    return CHAT_ERROR_MESSAGES.daily_chat_limit;
+    return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
   }
 
   const dataMatch = rawBody.match(/data:\s*(\{.*\})/);
   if (dataMatch) {
     const payload = dataMatch[1];
     if (!payload) {
-      return CHAT_ERROR_MESSAGES.daily_chat_limit;
+      return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
     }
     try {
       const parsed = JSON.parse(payload) as { message?: unknown };
@@ -611,5 +786,5 @@ function extractWarningMessage(rawBody: string): string {
     }
   }
 
-  return CHAT_ERROR_MESSAGES.daily_chat_limit;
+  return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
 }

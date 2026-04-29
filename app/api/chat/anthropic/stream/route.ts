@@ -18,6 +18,12 @@ import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
+import {
+  createEmptyTokenUsageTotals,
+  getTotalTokens,
+  logTokenUsage,
+  mergeTokenUsage,
+} from '@/server/lib/anthropic-token-usage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -31,6 +37,10 @@ interface StreamRequest {
   serviceId?: string;
   /** 本文生成ボタン用: blog_creation_step7 の応答を session_combined_contents に保存 */
   step7FullBodyGeneration?: boolean;
+  /** continuationMode: 途切れた assistant メッセージの続きを生成する */
+  isContinuation?: boolean;
+  /** isContinuation 時の結合元テキスト（途切れた assistant メッセージの元の内容） */
+  truncatedContent?: string;
   enableWebSearch?: boolean;
   webSearchConfig?: {
     maxUses?: number;
@@ -64,9 +74,28 @@ export async function POST(req: NextRequest) {
       systemPrompt: systemPromptOverride,
       serviceId,
       step7FullBodyGeneration = false,
+      isContinuation = false,
+      truncatedContent = '',
       enableWebSearch = false,
       webSearchConfig = {},
     }: StreamRequest = await req.json();
+
+    if (!Array.isArray(messages) || typeof userMessage !== 'string' || typeof model !== 'string') {
+      return new Response(
+        sendSSE('error', {
+          type: 'invalid_request',
+          message: 'チャット送信リクエストの形式が不正です',
+        }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-store',
+            Connection: 'keep-alive',
+          },
+        }
+      );
+    }
 
     const isStep7Model = model === STEP7_BLOG_MODEL;
 
@@ -99,7 +128,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 共有サービスのプロンプト取得を利用
+    if (isContinuation && !sessionId) {
+      return new Response(sendSSE('error', { type: 'invalid_request', message: 'continuation モードには sessionId が必要です' }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-store',
+          Connection: 'keep-alive',
+        },
+      });
+    }
 
     // 履歴の正規化: 最後のメッセージがuserの場合、今回の入力と結合する
     // Anthropic APIはuser/assistantの交互配置を要求するため、連続するuserメッセージを防ぐ
@@ -121,10 +159,12 @@ export async function POST(req: NextRequest) {
         : combinedUserMessage;
 
     // Anthropic用のメッセージ形式に変換（Prompt Caching対応）
+    // isContinuation: 途切れた箇所の「続きのみ」を出力するよう指示する user メッセージを末尾に追加
+    // 通常: 末尾に user メッセージを追加
+    const continuationInstruction =
+      '返答がmax_tokensにより途中で途切れました。途切れた箇所の続きのみを出力してください。冒頭から繰り返さないこと。';
     const anthropicMessages = [
       ...normalizedMessages.map((msg, index) => {
-        // 履歴の最後のメッセージにキャッシュを適用（現在のユーザー入力の直前）
-        // これにより、ここまでの会話履歴がキャッシュされる
         if (index === normalizedMessages.length - 1) {
           return {
             role: msg.role as 'user' | 'assistant',
@@ -142,16 +182,21 @@ export async function POST(req: NextRequest) {
           content: msg.content,
         };
       }),
-      { role: 'user' as const, content: effectiveUserMessage },
+      {
+        role: 'user' as const,
+        content: isContinuation ? continuationInstruction : effectiveUserMessage,
+      },
     ];
 
     // ReadableStreamを作成
     const stream = new ReadableStream({
       async start(controller) {
         let fullMessage = '';
+        let stopReason = '';
         let abortController: AbortController | null = new AbortController();
         let idleTimeout: ReturnType<typeof setTimeout> | null = null;
         let pingInterval: ReturnType<typeof setInterval> | null = null;
+        let tokenUsage = createEmptyTokenUsageTotals();
 
         // 初回バイト送出（SSEタイムアウト回避）
         controller.enqueue(encoder.encode(`: open\n\n`));
@@ -181,8 +226,6 @@ export async function POST(req: NextRequest) {
 
           resetIdleTimeout();
 
-          // step7 見出しモデル（step7_h0 等）は見出し単体生成用（maxTokens: 3000）。
-          // step7 本文生成（完成形）は blog_creation_step7（maxTokens: 25000）。
           const configKey =
             Object.prototype.hasOwnProperty.call(MODEL_CONFIGS, model)
               ? model
@@ -257,22 +300,30 @@ export async function POST(req: NextRequest) {
 
             resetIdleTimeout();
 
-            if (chunk.type === 'content_block_delta') {
+            if (chunk.type === 'message_start') {
+              tokenUsage = mergeTokenUsage(tokenUsage, chunk.message.usage);
+            } else if (chunk.type === 'content_block_delta') {
               if (chunk.delta.type === 'text_delta') {
                 const textChunk = chunk.delta.text;
                 fullMessage += textChunk;
                 controller.enqueue(sendSSE('chunk', textChunk));
               }
             } else if (chunk.type === 'message_delta') {
+              if (chunk.delta?.stop_reason) {
+                stopReason = chunk.delta.stop_reason;
+              }
               if (chunk.usage) {
+                tokenUsage = mergeTokenUsage(tokenUsage, chunk.usage);
                 const usage = {
-                  inputTokens: chunk.usage.input_tokens || 0,
-                  outputTokens: chunk.usage.output_tokens || 0,
-                  totalTokens: (chunk.usage.input_tokens || 0) + (chunk.usage.output_tokens || 0),
+                  inputTokens: tokenUsage.inputTokens,
+                  outputTokens: tokenUsage.outputTokens,
+                  totalTokens: getTotalTokens(tokenUsage),
                 };
                 controller.enqueue(sendSSE('usage', usage));
               }
             } else if (chunk.type === 'message_stop') {
+              logTokenUsage(tokenUsage);
+
               // 完了時: 全ステップ共通の保存フロー。いずれか失敗したら error を返し、成功時のみ final → done を送る。
               const messageToSave = fullMessage;
               const saveModel = getResponseModelForBlogCreation(model);
@@ -292,7 +343,16 @@ export async function POST(req: NextRequest) {
                 }
 
                 let result;
-                if (sessionId) {
+                if (isContinuation && sessionId) {
+                  // continuationMode: "続けてください" を保存せず、途切れた assistant メッセージを上書き
+                  const mergedContent = truncatedContent + messageToSave;
+                  result = await chatService.updateLastAssistantMessage(
+                    userId,
+                    sessionId,
+                    mergedContent,
+                    saveModel
+                  );
+                } else if (sessionId) {
                   if (serviceId) {
                     try {
                       await chatService.updateSessionServiceId(userId, sessionId, serviceId);
@@ -347,6 +407,7 @@ export async function POST(req: NextRequest) {
                   sendSSE('final', {
                     message: messageToSave,
                     sessionId: result.sessionId || sessionId,
+                    truncated: stopReason === 'max_tokens',
                   })
                 );
               } catch (saveError) {

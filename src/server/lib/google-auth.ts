@@ -13,7 +13,7 @@ import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewa
 /**
  * Google Ads API用の認証・権限チェック結果
  */
-export type GoogleAdsAuthResult =
+type GoogleAdsAuthResult =
   | {
       success: true;
       userId: string;

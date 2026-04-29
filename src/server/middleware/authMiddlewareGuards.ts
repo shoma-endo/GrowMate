@@ -19,7 +19,7 @@ export function getEmailLinkConflictMessage(authResult: AuthMiddlewareResult): s
  * authMiddleware 結果が「利用可能なログインユーザー」でなければ例外で打ち切る。
  * メール紐付け競合は {@link AuthEmailLinkConflictError}（再ログインでは解消しない）。
  */
-export function throwIfAuthMiddlewareRejectsAuth(
+function throwIfAuthMiddlewareRejectsAuth(
   authResult: AuthMiddlewareResult,
   fallbackMessage = '認証に失敗しました'
 ): asserts authResult is AuthMiddlewareResult & { userId: string } {
@@ -75,7 +75,7 @@ const LOGIN_EMAIL_LINK_CONFLICT_RELATIVE = '/login?reason=email_link_conflict';
  * JSON 409 だと生レスポンスになるため、ログインへリダイレクトする。
  * `request` がないハンドラでは `NEXT_PUBLIC_SITE_URL` / `VERCEL_URL` / localhost をフォールバックする。
  */
-export function nextResponseRedirectLoginEmailLinkConflict(request?: NextRequest): NextResponse {
+function nextResponseRedirectLoginEmailLinkConflict(request?: NextRequest): NextResponse {
   if (request) {
     return NextResponse.redirect(new URL(LOGIN_EMAIL_LINK_CONFLICT_RELATIVE, request.url));
   }

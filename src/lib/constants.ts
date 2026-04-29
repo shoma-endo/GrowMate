@@ -1,14 +1,5 @@
 import type { CategoryFilterConfig } from '@/types/category';
 
-export const ERROR_MESSAGES = {
-  ad_not_found: 'この検索キーワードでは広告情報が見つかりませんでした。',
-  daily_chat_limit:
-    '本日のチャット利用上限（3回）に達しました。上限は日本時間の00:00にリセットされます。',
-  // サービス選択関連
-  service_not_found: '指定されたサービスが見つかりません。事業者情報を確認してください。',
-  service_selection_required: 'サービスを選択してください。',
-};
-
 // Chat Configuration
 export const CHAT_HISTORY_LIMIT = 10; // 件数制限を緩和し、文字数制限(CHAR_LIMIT)を主とする
 export const CHAT_HISTORY_CHAR_LIMIT = 30000; // 約20k-30kトークン相当
@@ -67,19 +58,16 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   },
   ad_copy_creation: { ...ANTHROPIC_BASE, maxTokens: 4000 },
   ad_copy_finishing: { ...ANTHROPIC_BASE, maxTokens: 4000 },
-  lp_draft_creation: { ...ANTHROPIC_BASE, maxTokens: 14000 },
-  lp_improvement: { ...ANTHROPIC_BASE, maxTokens: 12000 },
-  // ブログ作成ステップ（共通設定を適用し、maxTokensのみ個別指定）
-  // step1-6: 元値+1000（Canvas全文編集の打ち切り軽減）。step7は25000、見出し単位はstep7_headingで3000
+  lp_draft_creation: { ...ANTHROPIC_BASE, maxTokens: 32000 },
+  lp_improvement: { ...ANTHROPIC_BASE, maxTokens: 32000 },
   blog_creation_step1: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step2: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step3: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step4: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step5: { ...ANTHROPIC_BASE, maxTokens: 6000 },
   blog_creation_step6: { ...ANTHROPIC_BASE, maxTokens: 5000 },
-  blog_creation_step7: { ...ANTHROPIC_BASE, maxTokens: 25000 },
-  /** Step7 見出し単体生成（blog_creation_step7_h0 等）用。Step7 テンプレート利用に合わせて上限を拡張 */
-  blog_creation_step7_heading: { ...ANTHROPIC_BASE, maxTokens: 4000 },
+  blog_creation_step7: { ...ANTHROPIC_BASE, maxTokens: 64000 },
+  blog_creation_step7_heading: { ...ANTHROPIC_BASE, maxTokens: 7000 },
   blog_title_meta_generation: {
     ...ANTHROPIC_BASE,
     maxTokens: 10000,
@@ -229,8 +217,6 @@ export const isStep7 = (stepOrModel: string) =>
 /** Step7 本文生成: 楽観的表示・API送信・DB保存で使う短いトリガー（長文はシステムプロンプトのみに渡す） */
 export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してください。';
 
-// prompts.ts 用のテンプレ名解決（toBlogModel のエイリアス）
-export const toTemplateName = toBlogModel;
 
 
 export const ANALYTICS_COLUMNS = [

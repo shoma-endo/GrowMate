@@ -4,7 +4,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { briefInputSchema, paymentEnum } from '@/server/schemas/brief.schema';
 import type { BriefInput, Payment } from '@/server/schemas/brief.schema';
 
-export interface Brief {
+interface Brief {
   id: string;
   user_id: string;
   data: BriefInput;
@@ -12,8 +12,7 @@ export interface Brief {
   updated_at: string | null;
 }
 
-export class BriefService {
-  private static readonly supabaseService = new SupabaseService();
+export class BriefService extends SupabaseService {
 
   /**
    * 型安全な文字列変換ヘルパー
@@ -113,9 +112,9 @@ export class BriefService {
   /**
    * ユーザーIDで事業者情報を取得
    */
-  static async getByUserId(userId: string): Promise<Brief | null> {
+  async getByUserId(userId: string): Promise<Brief | null> {
     try {
-      const client = this.supabaseService.getClient();
+      const client = this.getClient();
       const { data, error } = await client
         .from('briefs')
         .select('*')
@@ -132,7 +131,7 @@ export class BriefService {
       }
 
       // dataフィールドをJson型から新形式に変換（必要に応じてマイグレーション）
-      const briefData = this.migrateOldBriefToNew(data.data || {}, userId);
+      const briefData = BriefService.migrateOldBriefToNew(data.data || {}, userId);
 
       return {
         id: data.id,
@@ -151,7 +150,7 @@ export class BriefService {
    * React Cacheでキャッシュ化された取得関数
    * 同一リクエスト中は1回のみDB参照
    */
-  static getCachedByUserId = cache(async (userId: string): Promise<Brief | null> => {
+  getCachedByUserId = cache(async (userId: string): Promise<Brief | null> => {
     return this.getByUserId(userId);
   });
 
@@ -159,7 +158,7 @@ export class BriefService {
    * 事業者情報のデータ部分のみを取得
    * テンプレート変数置換用
    */
-  static async getVariablesByUserId(userId: string): Promise<BriefInput | null> {
+  async getVariablesByUserId(userId: string): Promise<BriefInput | null> {
     const brief = await this.getCachedByUserId(userId);
     return brief?.data ?? null;
   }
@@ -167,7 +166,7 @@ export class BriefService {
   /**
    * キャッシュクリア（更新時に呼び出し）
    */
-  static clearCache(): void {
+  clearCache(): void {
     // React CacheはAPIレベルでのclear機能が限定的なため
     // 実装上は次回リクエスト時に自然に更新される
   }
@@ -175,7 +174,9 @@ export class BriefService {
   /**
    * 全てのキャッシュをクリア
    */
-  static invalidateAllCaches(): void {
+  invalidateAllCaches(): void {
     // React Cacheの制限により、実際のクリアは次回リクエスト時
   }
 }
+
+export const briefService = new BriefService();

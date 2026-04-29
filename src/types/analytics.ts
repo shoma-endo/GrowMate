@@ -14,6 +14,7 @@ export interface AnalyticsContentQuery {
   endDate: string;
   selectedCategoryNames?: string[];
   includeUncategorized?: boolean;
+  hasUnreadSuggestion?: boolean;
 }
 
 export interface AnalyticsContentPage {

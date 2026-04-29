@@ -33,7 +33,7 @@ interface Ga4MetricAggregate {
   isPartial: boolean;
 }
 
-export class AnalyticsContentService {
+class AnalyticsContentService {
   async getPage(params: AnalyticsContentQuery): Promise<AnalyticsContentPage> {
     const page = Number.isFinite(params.page) ? Math.max(1, Math.floor(params.page)) : 1;
     const perPageRaw = Number.isFinite(params.perPage) ? Math.floor(params.perPage) : MAX_PER_PAGE;
@@ -64,6 +64,7 @@ export class AnalyticsContentService {
           p_per_page: perPage,
           p_selected_category_names: selectedCategoryNames,
           p_include_uncategorized: includeUncategorized,
+          p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
         });
 
         const row = data?.[0] as

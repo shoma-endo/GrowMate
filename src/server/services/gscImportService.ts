@@ -14,7 +14,7 @@ import type {
   GscImportResult,
 } from '@/types/gsc';
 
-export class GscImportService {
+class GscImportService {
   private readonly gscService = new GscService();
   private readonly supabaseService = new SupabaseService();
   private readonly queryRowLimit = getGscQueryRowLimit();

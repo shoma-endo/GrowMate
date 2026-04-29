@@ -64,7 +64,7 @@ export interface GscPageMetric {
   importedAt: string;
 }
 
-export interface GscQueryMetric {
+interface GscQueryMetric {
   id: string;
   userId: string;
   propertyUri: string;
@@ -83,11 +83,11 @@ export interface GscQueryMetric {
   importedAt: string;
 }
 
-export type GscEvaluationStage = 1 | 2 | 3 | 4;
-export type GscEvaluationStatus = 'active' | 'paused' | 'completed';
+type GscEvaluationStage = 1 | 2 | 3 | 4;
+type GscEvaluationStatus = 'active' | 'paused' | 'completed';
 export type GscEvaluationOutcome = 'improved' | 'no_change' | 'worse';
-export type GscEvaluationOutcomeType = 'success' | 'error';
-export type GscEvaluationErrorCode = 'import_failed' | 'no_metrics';
+type GscEvaluationOutcomeType = 'success' | 'error';
+type GscEvaluationErrorCode = 'import_failed' | 'no_metrics';
 
 export type GscImportResult = {
   totalFetched: number;
@@ -146,7 +146,7 @@ export interface GscQueryMetricInsert {
   importedAt: string;
 }
 
-export interface GscArticleEvaluation {
+interface GscArticleEvaluation {
   id: string;
   userId: string;
   contentAnnotationId: string;
@@ -162,7 +162,7 @@ export interface GscArticleEvaluation {
   updatedAt: string;
 }
 
-export interface GscArticleEvaluationHistory {
+interface GscArticleEvaluationHistory {
   id: string;
   userId: string;
   contentAnnotationId: string;

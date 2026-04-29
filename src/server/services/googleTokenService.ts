@@ -20,7 +20,7 @@ const DEFAULT_TIMEOUT = 10000; // 10 seconds
  * アクセストークンの有効期限マージン（1分）
  * トークンがこの時間以内に期限切れになる場合はリフレッシュする
  */
-export const ACCESS_TOKEN_SAFETY_MARGIN_MS = 60 * 1000;
+const ACCESS_TOKEN_SAFETY_MARGIN_MS = 60 * 1000;
 
 /**
  * アクセストークンがまだ再利用可能かどうかを判定する
@@ -35,7 +35,7 @@ export function hasReusableAccessToken(
   return expiresAtMs - Date.now() > ACCESS_TOKEN_SAFETY_MARGIN_MS;
 }
 
-export interface EnsureAccessTokenDeps {
+interface EnsureAccessTokenDeps {
   refreshAccessToken: (refreshToken: string) => Promise<GoogleOAuthTokens>;
   persistToken: (accessToken: string, expiresAt: string | null, scope: string[] | null) => Promise<void>;
 }

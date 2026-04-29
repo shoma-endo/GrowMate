@@ -35,6 +35,11 @@
 - TipTap ベースの `CanvasPanel` に Markdown レンダリング／見出しアウトライン／バージョン履歴を実装
 - `POST /api/chat/canvas/stream` で選択範囲と指示を送信し、Claude の Tool Use で全文差し替えを適用
 
+### コンテンツ分析統合ページ
+- `/analytics` で、`content_annotations`（注釈）を軸に GSC 指標・GA4 指標・未読の改善提案をひとつの一覧で参照
+- カテゴリ／未読フィルタ・期間指定（デフォルトは前日まで30日間）・ページネーションを URL クエリに同期
+- middleware で **paid 以上限定**（`PAID_FEATURE_REQUIRED_PATHS = ['/analytics']`）。実装は [`src/server/services/analyticsContentService.ts`](src/server/services/analyticsContentService.ts)
+
 ### 見出しフローと原稿バージョン管理
 - ブログ 7 ステップの Step5 で生成された見出し構成から `session_heading_sections` を初期化
 - **見出し行のフォーマット**: `h3 見出しテキスト` / `h4 小見出しテキスト` のリテラルプレフィックス形式（Markdown `###`/`####` は使用しない）
@@ -65,6 +70,12 @@
 
 ### 権限と利用制御
 - 現行ロールは `trial` / `paid` / `admin` / `unavailable`。アプリ層では `owner` / `staff` / view mode を前提にした UI・認可分岐は廃止済み
+- **middleware パス別ゲート**（[`middleware.ts`](middleware.ts)）:
+  - `/admin/*` → `admin` のみ
+  - `/analytics` → `paid` 以上（`hasPaidFeatureAccess`）
+  - `/setup/*` → `paid` 以上
+  - `/setup/google-ads`, `/google-ads-dashboard` → `admin` のみ（Google Ads API 審査完了までの暫定制限）
+  - `unavailable` ロールは `/unavailable` 以外すべてリダイレクト
 - WordPress / GSC の一括インポート可否は、画面側で `role && role !== 'unavailable'` を基準に制御
 - GA4 の利用可否は [`src/server/lib/ga4-permissions.ts`](src/server/lib/ga4-permissions.ts) で `admin` / `paid` のみに限定
 - **補足**: `owner_user_id`・`owner_previous_role`・`get_accessible_user_ids` など、旧共有アクセス用の DB / RPC 資産はレガシーデータ互換のため残存している（新規データフローでは使用しない）。一部の Server Action / Service では過去データ参照の互換のため関連 RPC を利用しているが、新規実装は現行ロールシステムのみを前提とする
@@ -106,13 +117,12 @@ graph TB
     GscCron["api/cron/*"]
     Ga4API["api/ga4/*"]
     GoogleAdsAPI["api/google-ads/*"]
-    EmployeeAPI["api/employee (legacy)"]
     ServerActions["server/actions/*"]
   end
 
   subgraph Data["Supabase PostgreSQL"]
     UsersTable["users"]
-    EmployeeInvitations["employee_invitations (legacy)"]
+    EmployeeInvitations["employee_invitations (legacy データのみ)"]
     SessionsTable["chat_sessions"]
     MessagesTable["chat_messages"]
     HeadingSections["session_heading_sections"]
@@ -146,7 +156,7 @@ graph TB
   Canvas --> ChatAPI
   HeadingFlow --> ServerActions
   Annotation --> ServerActions
-  Analytics --> WordPressAPI
+  Analytics --> ServerActions
   BusinessForm --> ServerActions
   AdminUI --> ServerActions
   GscSetup --> GscAPI
@@ -173,7 +183,6 @@ graph TB
   Ga4API --> GscCredentials
   Ga4API --> Ga4Metrics
   GoogleAdsAPI --> GoogleAdsCredentials
-  EmployeeAPI --> EmployeeInvitations
 
   AuthMiddleware --> LINE
   ChatAPI --> Anthropic

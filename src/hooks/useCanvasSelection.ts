@@ -12,16 +12,16 @@ const MENU_SIZE = {
 
 const SELECTION_MENU_DELAY_MS = 1000;
 
-export type SelectionMode = 'menu' | 'choice' | 'input' | null;
+type SelectionMode = 'menu' | 'choice' | 'input' | null;
 
-export interface UseCanvasSelectionOptions {
+interface UseCanvasSelectionOptions {
   /** 選択メニュー表示までの遅延（ms） */
   delayMs?: number;
   /** ストリーミング中は true。この間は content 変更による選択クリアを行わない */
   isStreaming?: boolean;
 }
 
-export interface UseCanvasSelectionReturn {
+interface UseCanvasSelectionReturn {
   selectionState: CanvasSelectionState | null;
   activeSelection: CanvasSelectionState | null;
   selectionPreview: string;

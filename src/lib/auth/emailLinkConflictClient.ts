@@ -1,7 +1,7 @@
 /**
  * メール紐付け競合時のクライアント導線（next/headers 等のサーバー専用モジュールを import しない）
  */
-export const EMAIL_LINK_CONFLICT_LOGIN_PATH = '/login?reason=email_link_conflict' as const;
+const EMAIL_LINK_CONFLICT_LOGIN_PATH = '/login?reason=email_link_conflict' as const;
 
 export function isEmailLinkConflictResult(value: unknown): value is {
   success: false;

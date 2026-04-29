@@ -1,6 +1,6 @@
 const FULL_MARKDOWN_PREFIX = '"full_markdown":"';
 
-export interface FullMarkdownDecoder {
+interface FullMarkdownDecoder {
   feed: (chunk: string) => string;
   reset: () => void;
 }

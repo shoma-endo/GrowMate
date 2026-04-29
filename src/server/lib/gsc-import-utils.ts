@@ -12,7 +12,7 @@ type QuerySummary = {
   hitLimit: boolean;
 };
 
-export type ImportSegmentResult = {
+type ImportSegmentResult = {
   totalFetched: number;
   upserted: number;
   skipped: number;
@@ -20,7 +20,7 @@ export type ImportSegmentResult = {
   querySummary?: QuerySummary;
 };
 
-export type ImportAggregate = {
+type ImportAggregate = {
   totalFetched: number;
   upserted: number;
   skipped: number;
@@ -30,7 +30,7 @@ export type ImportAggregate = {
   querySummary: QuerySummary;
 };
 
-export const createEmptyQuerySummary = (): QuerySummary => ({
+const createEmptyQuerySummary = (): QuerySummary => ({
   fetchedRows: 0,
   keptRows: 0,
   dedupedRows: 0,

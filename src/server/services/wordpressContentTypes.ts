@@ -1,4 +1,4 @@
-export type WordPressContentType = string;
+type WordPressContentType = string;
 
 export const BLOCKED_WORDPRESS_CONTENT_TYPES = new Set([
   'attachment',

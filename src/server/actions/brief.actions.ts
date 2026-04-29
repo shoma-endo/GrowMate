@@ -10,7 +10,7 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 const supabaseService = new SupabaseService();
 
-export type ActionResult<T> = {
+type ActionResult<T> = {
   success: boolean;
   data?: T;
   error?: string;

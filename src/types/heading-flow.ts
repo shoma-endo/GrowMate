@@ -10,7 +10,7 @@ export interface SessionHeadingSection {
   updatedAt?: string;
 }
 
-export interface SessionCombinedContent {
+interface SessionCombinedContent {
   id: string;
   versionNo: number;
   content: string;
@@ -33,7 +33,7 @@ export interface DbHeadingSection {
   updated_at: string;
 }
 
-export interface DbCombinedContent {
+interface DbCombinedContent {
   id: string;
   session_id: string;
   version_no: number;
@@ -52,7 +52,7 @@ export type DbSessionHeadingSectionInsert = Omit<
   updated_at?: string;
 };
 
-export type DbSessionCombinedContentInsert = Omit<
+type DbSessionCombinedContentInsert = Omit<
   DbCombinedContent,
   'id' | 'created_at' | 'updated_at'
 > & {
