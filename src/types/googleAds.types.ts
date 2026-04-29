@@ -102,8 +102,12 @@ export interface GoogleAdsNegativeKeyword {
   level: 'campaign' | 'ad_group';
   /** 対象キャンペーン名 */
   campaignName: string;
+  /** 対象キャンペーンのステータス。除外キーワード文脈では REMOVED / UNKNOWN も保持する。 */
+  campaignStatus: GoogleAdsStatus;
   /** 対象広告グループ名（広告グループレベル除外時のみ） */
   adGroupName?: string;
+  /** 対象広告グループのステータス（広告グループレベル除外時のみ） */
+  adGroupStatus?: GoogleAdsStatus;
 }
 
 /**

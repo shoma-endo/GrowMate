@@ -13,7 +13,6 @@ import {
 import type { DbUser, DbUserInsert, DbUserUpdate } from '@/types/user';
 import type { UserRole } from '@/types/user';
 import type {
-  GoogleAdsEvaluationQueueItem,
   GoogleAdsEvaluationSettingsRecord,
   UpsertGoogleAdsEvaluationSettingsInput,
 } from '@/types/google-ads-evaluation';
@@ -38,35 +37,20 @@ type GoogleAdsEvaluationSettingsTable = {
   Row: {
     id: string;
     user_id: string;
-    customer_id: string;
-    customer_name: string | null;
     date_range_days: number;
-    cron_enabled: boolean;
     last_evaluated_on: string | null;
-    consecutive_error_count: number;
-    status: 'active' | 'paused';
     created_at: string;
     updated_at: string;
   };
   Insert: {
     user_id: string;
-    customer_id: string;
-    customer_name?: string | null;
     date_range_days?: number;
-    cron_enabled?: boolean;
     last_evaluated_on?: string | null;
-    consecutive_error_count?: number;
-    status?: 'active' | 'paused';
     updated_at?: string;
   };
   Update: {
-    customer_id?: string;
-    customer_name?: string | null;
     date_range_days?: number;
-    cron_enabled?: boolean;
     last_evaluated_on?: string | null;
-    consecutive_error_count?: number;
-    status?: 'active' | 'paused';
     updated_at?: string;
   };
   Relationships: [];
@@ -1304,13 +1288,8 @@ export class SupabaseService {
   ): GoogleAdsEvaluationSettingsRecord {
     return {
       userId: row.user_id,
-      customerId: row.customer_id,
-      customerName: row.customer_name,
       dateRangeDays: row.date_range_days,
-      cronEnabled: row.cron_enabled,
       lastEvaluatedOn: row.last_evaluated_on,
-      consecutiveErrorCount: row.consecutive_error_count,
-      status: row.status,
     };
   }
 
@@ -1344,25 +1323,14 @@ export class SupabaseService {
     const now = new Date().toISOString();
     const payload: GoogleAdsEvaluationSettingsTable['Insert'] = {
       user_id: input.userId,
-      customer_id: input.customerId,
-      customer_name: input.customerName ?? null,
       updated_at: now,
     };
 
     if (input.dateRangeDays !== undefined) {
       payload.date_range_days = input.dateRangeDays;
     }
-    if (input.cronEnabled !== undefined) {
-      payload.cron_enabled = input.cronEnabled;
-    }
     if (input.lastEvaluatedOn !== undefined) {
       payload.last_evaluated_on = input.lastEvaluatedOn;
-    }
-    if (input.consecutiveErrorCount !== undefined) {
-      payload.consecutive_error_count = input.consecutiveErrorCount;
-    }
-    if (input.status !== undefined) {
-      payload.status = input.status;
     }
 
     const { error } = await client
@@ -1413,131 +1381,18 @@ export class SupabaseService {
     return this.success(undefined);
   }
 
-  async incrementGoogleAdsEvaluationErrorCount(userId: string): Promise<SupabaseResult<void>> {
-    const client = this.getGoogleAdsEvaluationClient();
-
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const settingsResult = await this.getGoogleAdsEvaluationSettings(userId);
-      if (!settingsResult.success) {
-        return settingsResult;
-      }
-      if (!settingsResult.data) {
-        return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_NOT_FOUND, {
-          developerMessage: 'Google Ads evaluation settings row not found for increment',
-          context: { userId, attempt },
-        });
-      }
-
-      const nextCount = settingsResult.data.consecutiveErrorCount + 1;
-      const { data, error } = await client
-        .from('google_ads_evaluation_settings')
-        .update({
-          consecutive_error_count: nextCount,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId)
-        .eq('consecutive_error_count', settingsResult.data.consecutiveErrorCount)
-        .select('id')
-        .maybeSingle();
-
-      if (error) {
-        return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_UPDATE_FAILED, {
-          error,
-          developerMessage: 'Error incrementing Google Ads evaluation error count',
-          context: { userId, attempt, nextCount },
-        });
-      }
-
-      if (data) {
-        return this.success(undefined);
-      }
-    }
-
-    return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_UPDATE_FAILED, {
-      developerMessage: 'Failed to increment Google Ads evaluation error count after retries',
-      context: { userId },
-    });
-  }
-
-  async listDueGoogleAdsEvaluationUsers(
-    todayJst: string,
-    limit: number
-  ): Promise<SupabaseResult<GoogleAdsEvaluationQueueItem[]>> {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(todayJst)) {
-      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_FETCH_FAILED, {
-        developerMessage: 'todayJst must be in YYYY-MM-DD format',
-        context: { todayJst, limit },
-      });
-    }
-
-    const client = this.getGoogleAdsEvaluationClient();
-    const { data, error } = await client
-      .from('google_ads_evaluation_settings')
-      .select('user_id, customer_id, date_range_days, users!inner(email)')
-      .eq('cron_enabled', true)
-      .lt('consecutive_error_count', 3)
-      .or(`last_evaluated_on.is.null,last_evaluated_on.lt.${todayJst}`)
-      .eq('status', 'active')
-      .not('users.email', 'is', null)
-      .order('last_evaluated_on', { ascending: true, nullsFirst: true })
-      .limit(limit);
-
-    if (error) {
-      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_FETCH_FAILED, {
-        error,
-        developerMessage: 'Error listing due Google Ads evaluation users',
-        context: { todayJst, limit },
-      });
-    }
-
-    const queue = (data ?? []).flatMap(row => {
-      const emailRow = row.users as { email?: string | null } | Array<{ email?: string | null }> | null;
-      const email =
-        Array.isArray(emailRow) ? emailRow[0]?.email ?? null : emailRow?.email ?? null;
-      if (!email) {
-        return [];
-      }
-
-      return [
-        {
-          userId: row.user_id,
-          customerId: row.customer_id,
-          dateRangeDays: row.date_range_days,
-          email,
-        },
-      ];
-    });
-
-    return this.success(queue);
-  }
-
-  /**
-   * Google Ads の customer_id を更新
-   * @param managerCustomerId - MCC（マネージャー）アカウントID（任意）
-   * @returns 更新が成功した場合true、該当する行が存在しない場合false
-   */
   async updateGoogleAdsCustomerId(
     userId: string,
     customerId: string,
     managerCustomerId?: string | null
   ): Promise<SupabaseResult<void>> {
-    const updateData: {
-      customer_id: string;
-      updated_at: string;
-      manager_customer_id?: string | null;
-    } = {
-      customer_id: customerId,
-      updated_at: new Date().toISOString(),
-    };
-
-    // managerCustomerId が指定された場合は更新に含める
-    if (managerCustomerId !== undefined) {
-      updateData.manager_customer_id = managerCustomerId;
-    }
-
     const { data, error } = await this.supabase
       .from('google_ads_credentials')
-      .update(updateData)
+      .update({
+        customer_id: customerId,
+        manager_customer_id: managerCustomerId ?? null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('user_id', userId)
       .select('id')
       .maybeSingle();
@@ -1551,9 +1406,9 @@ export class SupabaseService {
     }
 
     if (!data) {
-      return this.failure('Google Ads認証情報が見つかりません', {
-        developerMessage: 'No Google Ads credential found for user',
-        context: { userId },
+      return this.failure('Google AdsアカウントIDの更新に失敗しました', {
+        developerMessage: 'Google Ads credential not found for customer ID update',
+        context: { userId, customerId, managerCustomerId },
       });
     }
 

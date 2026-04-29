@@ -36,7 +36,6 @@ export default async function GoogleAdsDashboardPage() {
       ? evaluationSettingsResult.data
       : {
           dateRangeDays: 30,
-          cronEnabled: false,
           lastEvaluatedOn: null,
         };
 

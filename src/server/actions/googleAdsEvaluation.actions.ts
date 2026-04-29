@@ -15,7 +15,6 @@ import type {
 
 const DEFAULT_SETTINGS: GoogleAdsEvaluationSettings = {
   dateRangeDays: 30,
-  cronEnabled: false,
   lastEvaluatedOn: null,
 };
 
@@ -96,7 +95,6 @@ export async function getEvaluationSettings(): Promise<{
       success: true,
       data: {
         dateRangeDays: result.data.dateRangeDays,
-        cronEnabled: result.data.cronEnabled,
         lastEvaluatedOn: result.data.lastEvaluatedOn,
       },
     };
@@ -154,10 +152,7 @@ export async function updateEvaluationSettings(
     if (!settingsResult.data) {
       const upsertResult = await supabaseService.upsertGoogleAdsEvaluationSettings({
         userId: auth.userId,
-        customerId: credential.customerId,
-        customerName: null,
         dateRangeDays: parseResult.data.dateRangeDays ?? DEFAULT_SETTINGS.dateRangeDays,
-        cronEnabled: parseResult.data.cronEnabled ?? DEFAULT_SETTINGS.cronEnabled,
       });
       if (!upsertResult.success) {
         return {
@@ -169,9 +164,6 @@ export async function updateEvaluationSettings(
       const updateResult = await supabaseService.updateGoogleAdsEvaluationSettings(auth.userId, {
         ...(parseResult.data.dateRangeDays !== undefined && {
           date_range_days: parseResult.data.dateRangeDays,
-        }),
-        ...(parseResult.data.cronEnabled !== undefined && {
-          cron_enabled: parseResult.data.cronEnabled,
         }),
       });
       if (!updateResult.success) {

@@ -8,9 +8,8 @@ export const updateGoogleAdsEvaluationSettingsSchema = z
       .min(1, '日数は1日以上である必要があります')
       .max(365, '日数は365日以下である必要があります')
       .optional(),
-    cronEnabled: z.boolean().optional(),
   })
-  .refine(value => value.dateRangeDays !== undefined || value.cronEnabled !== undefined, {
+  .refine(value => value.dateRangeDays !== undefined, {
     message: '更新対象が指定されていません',
   });
 

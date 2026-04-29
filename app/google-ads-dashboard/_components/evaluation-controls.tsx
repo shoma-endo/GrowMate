@@ -4,7 +4,6 @@ import { useEffect, useState, useTransition } from 'react';
 import { Loader2, Mail, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -19,8 +18,13 @@ interface EvaluationControlsProps {
   initialSettings: GoogleAdsEvaluationSettings;
 }
 
-function clampDateRangeDays(value: number): number {
-  return Math.min(365, Math.max(1, Math.trunc(value)));
+function parseDateRangeDays(value: string): number | null {
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 365) {
+    return null;
+  }
+
+  return numericValue;
 }
 
 export function EvaluationControls({
@@ -47,7 +51,6 @@ export function EvaluationControls({
     startSaveTransition(async () => {
       const result = await updateEvaluationSettings({
         dateRangeDays: nextSettings.dateRangeDays,
-        cronEnabled: nextSettings.cronEnabled,
       });
 
       if (!result.success) {
@@ -112,7 +115,7 @@ export function EvaluationControls({
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_auto] md:items-end">
+      <div className="grid gap-4 md:grid-cols-[180px_auto] md:items-end">
         <div className="space-y-2">
           <Label htmlFor="date-range-days">分析期間（日数）</Label>
           <Input
@@ -124,50 +127,28 @@ export function EvaluationControls({
             aria-invalid={dateRangeError}
             disabled={isSaving}
             onChange={event => {
-              const nextRawValue = event.target.value;
-              const nextValue = Number(nextRawValue);
-              const fallbackValue = 1;
-              const normalizedValue = Number.isFinite(nextValue)
-                ? clampDateRangeDays(nextValue)
-                : fallbackValue;
-              const hasValidationError =
-                !Number.isInteger(nextValue) || normalizedValue !== nextValue;
-
-              setDateRangeInput(String(normalizedValue));
-              setDateRangeError(hasValidationError);
-              saveSettings({ ...settings, dateRangeDays: normalizedValue });
+              setDateRangeInput(event.target.value);
+              setDateRangeError(false);
             }}
             onBlur={() => {
-              if (!dateRangeError) {
+              const nextDateRangeDays = parseDateRangeDays(dateRangeInput);
+              if (nextDateRangeDays === null) {
+                setDateRangeError(true);
+                setDateRangeInput(String(settings.dateRangeDays));
                 return;
               }
 
-              setDateRangeInput(String(settings.dateRangeDays));
+              if (nextDateRangeDays !== settings.dateRangeDays) {
+                saveSettings({ ...settings, dateRangeDays: nextDateRangeDays });
+              }
+
+              setDateRangeInput(String(nextDateRangeDays));
               setDateRangeError(false);
             }}
           />
           {dateRangeError && (
             <p className="text-xs text-red-600">1〜365 の整数を入力してください。</p>
           )}
-        </div>
-
-        <div className="flex items-center gap-3 rounded-md border bg-white px-3 py-2">
-          <Checkbox
-            id="cron-enabled"
-            checked={settings.cronEnabled}
-            disabled={isSaving}
-            onCheckedChange={checked => {
-              saveSettings({ ...settings, cronEnabled: checked === true });
-            }}
-          />
-          <div className="space-y-1">
-            <Label htmlFor="cron-enabled" className="cursor-pointer">
-              定期自動送信を有効化
-            </Label>
-            <p className="text-xs text-slate-500">
-              連続エラーが3回に達すると cron 対象から自動的に外れます。
-            </p>
-          </div>
         </div>
 
         <Button variant="outline" onClick={refreshSettings} disabled={isSaving || isRunning}>

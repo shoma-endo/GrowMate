@@ -173,30 +173,22 @@ export async function GET(request: NextRequest) {
 
     // 既にアカウント選択済みで、かつそのアカウントが現在もアクセス可能な場合（再認証時）
     if (existingCredential?.customerId && customerIds.includes(existingCredential.customerId)) {
-      let existingCustomerInfo: Awaited<
-        ReturnType<typeof googleAdsService.getCustomerInfo>
-      > | null = null;
-      try {
-        existingCustomerInfo = await googleAdsService.getCustomerInfo(
-          existingCredential.customerId,
-          tokens.accessToken,
-          existingCredential.managerCustomerId ?? undefined
-        );
-      } catch (error) {
-        console.warn('Failed to fetch customer info for existing Google Ads credential:', {
-          userId: targetUserId,
-          customerId: existingCredential.customerId,
-          error,
+      const selectionResult = await supabaseService.updateGoogleAdsCustomerId(
+        targetUserId,
+        existingCredential.customerId,
+        existingCredential.managerCustomerId
+      );
+      if (!selectionResult.success) {
+        console.error('Failed to sync Google Ads customer selection:', {
+          userMessage: selectionResult.error.userMessage,
+          developerMessage: selectionResult.error.developerMessage,
+          context: selectionResult.error.context,
         });
-      }
-
-      const syncResult = await supabaseService.upsertGoogleAdsEvaluationSettings({
-        userId: targetUserId,
-        customerId: existingCredential.customerId,
-        customerName: existingCustomerInfo?.name ?? null,
-      });
-      if (!syncResult.success) {
-        console.error('Failed to sync Google Ads evaluation settings:', syncResult.error);
+        const response = NextResponse.redirect(
+          new URL('/setup/google-ads?error=server_error', baseUrl)
+        );
+        response.cookies.delete(stateCookieName);
+        return response;
       }
 
       const response = NextResponse.redirect(
@@ -220,13 +212,11 @@ export async function GET(request: NextRequest) {
 
       // customer.manager フィールドで MCC かどうかを判定
       let managerCustomerId: string | undefined;
-      let customerName: string | null = null;
       try {
         const customerInfo = await googleAdsService.getCustomerInfo(
           customerId,
           tokens.accessToken
         );
-        customerName = customerInfo?.name ?? null;
         if (customerInfo?.isManager) {
           managerCustomerId = customerId;
         }
@@ -251,15 +241,6 @@ export async function GET(request: NextRequest) {
         );
         response.cookies.delete(stateCookieName);
         return response;
-      }
-
-      const syncResult = await supabaseService.upsertGoogleAdsEvaluationSettings({
-        userId: targetUserId,
-        customerId,
-        customerName,
-      });
-      if (!syncResult.success) {
-        console.error('Failed to sync Google Ads evaluation settings:', syncResult.error);
       }
 
       const response = NextResponse.redirect(

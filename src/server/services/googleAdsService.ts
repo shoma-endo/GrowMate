@@ -749,7 +749,8 @@ export class GoogleAdsService {
           SELECT
             campaign_criterion.keyword.text,
             campaign_criterion.keyword.match_type,
-            campaign.name
+            campaign.name,
+            campaign.status
           FROM campaign_criterion
           WHERE campaign_criterion.type = 'KEYWORD'
             AND campaign_criterion.negative = true
@@ -762,6 +763,8 @@ export class GoogleAdsService {
             ad_group_criterion.keyword.text,
             ad_group_criterion.keyword.match_type,
             campaign.name,
+            campaign.status,
+            ad_group.status,
             ad_group.name
           FROM ad_group_criterion
           WHERE ad_group_criterion.negative = true
@@ -802,8 +805,12 @@ export class GoogleAdsService {
                 matchType: keywordInfo.matchType,
                 level: item.level,
                 campaignName: row.campaign?.name ?? '',
+                campaignStatus: normalizeGoogleAdsStatus(row.campaign?.status),
                 ...(item.level === 'ad_group' && row.adGroup?.name
-                  ? { adGroupName: row.adGroup.name }
+                  ? {
+                      adGroupName: row.adGroup.name,
+                      adGroupStatus: normalizeGoogleAdsStatus(row.adGroup.status),
+                    }
                   : {}),
               },
             ];

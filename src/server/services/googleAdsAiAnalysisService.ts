@@ -76,11 +76,7 @@ export class GoogleAdsAiAnalysisService {
         return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_NOT_SELECTED };
       }
 
-      let settings = await this.ensureEvaluationSettings(
-        userId,
-        credential.customerId,
-        null
-      );
+      const settings = await this.ensureEvaluationSettings(userId);
       if (!settings) {
         return {
           success: false,
@@ -101,7 +97,6 @@ export class GoogleAdsAiAnalysisService {
 
       const accessToken = await this.ensureAccessToken(userId, credential);
       if (!accessToken) {
-        await this.markFailure(userId);
         return {
           success: false,
           error: ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED,
@@ -131,7 +126,6 @@ export class GoogleAdsAiAnalysisService {
 
       if (!keywordResult.success) {
         console.error('[GoogleAdsAiAnalysisService] Failed to fetch keyword metrics:', keywordResult.error);
-        await this.markFailure(userId);
         return {
           success: false,
           error: keywordResult.error ?? ERROR_MESSAGES.GOOGLE_ADS.KEYWORD_METRICS_FETCH_FAILED,
@@ -143,7 +137,6 @@ export class GoogleAdsAiAnalysisService {
           '[GoogleAdsAiAnalysisService] Failed to fetch negative keywords:',
           negativeKeywordResult.error
         );
-        await this.markFailure(userId);
         return {
           success: false,
           error:
@@ -154,14 +147,17 @@ export class GoogleAdsAiAnalysisService {
 
       const promptTemplate = await PromptService.getTemplateByName('google_ads_ai_evaluation');
       if (!promptTemplate) {
-        await this.markFailure(userId);
         return {
           success: false,
           error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_PROMPT_NOT_FOUND,
         };
       }
 
-      const customerName = settings?.customerName ?? credential.customerId;
+      const customerName = await this.resolveCustomerName({
+        accessToken,
+        customerId: credential.customerId,
+        managerCustomerId: credential.managerCustomerId,
+      });
       const filledPrompt = PromptService.replaceVariables(promptTemplate.content, {
         persona: brief?.persona?.trim() || '（ペルソナ未設定）',
         strengths: this.formatStrengths(brief),
@@ -173,7 +169,6 @@ export class GoogleAdsAiAnalysisService {
 
       const modelConfig = MODEL_CONFIGS.google_ads_ai_evaluation;
       if (!modelConfig) {
-        await this.markFailure(userId);
         return {
           success: false,
           error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_RUN_FAILED,
@@ -199,7 +194,6 @@ export class GoogleAdsAiAnalysisService {
 
       if (!emailResult.success) {
         console.error('[GoogleAdsAiAnalysisService] Failed to send analysis email:', emailResult.error);
-        await this.markFailure(userId);
         return {
           success: false,
           error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_RUN_FAILED,
@@ -208,7 +202,6 @@ export class GoogleAdsAiAnalysisService {
 
       const markSuccessResult = await this.supabaseService.updateGoogleAdsEvaluationSettings(userId, {
         last_evaluated_on: todayJst,
-        consecutive_error_count: 0,
       });
       if (!markSuccessResult.success) {
         console.error('[GoogleAdsAiAnalysisService] Failed to mark evaluation success:', markSuccessResult.error);
@@ -220,7 +213,6 @@ export class GoogleAdsAiAnalysisService {
       };
     } catch (error) {
       console.error('[GoogleAdsAiAnalysisService] Unexpected analysis error:', error);
-      await this.markFailure(userId);
       return {
         success: false,
         error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_RUN_FAILED,
@@ -228,11 +220,7 @@ export class GoogleAdsAiAnalysisService {
     }
   }
 
-  private async ensureEvaluationSettings(
-    userId: string,
-    customerId: string,
-    customerName: string | null
-  ) {
+  private async ensureEvaluationSettings(userId: string) {
     const existing = await this.supabaseService.getGoogleAdsEvaluationSettings(userId);
     if (!existing.success) {
       console.error('[GoogleAdsAiAnalysisService] Failed to load evaluation settings:', existing.error);
@@ -245,10 +233,7 @@ export class GoogleAdsAiAnalysisService {
 
     const upsertResult = await this.supabaseService.upsertGoogleAdsEvaluationSettings({
       userId,
-      customerId,
-      customerName,
       dateRangeDays: DEFAULT_DATE_RANGE_DAYS,
-      cronEnabled: false,
     });
 
     if (!upsertResult.success) {
@@ -299,10 +284,24 @@ export class GoogleAdsAiAnalysisService {
     }
   }
 
-  private async markFailure(userId: string): Promise<void> {
-    const updateResult = await this.supabaseService.incrementGoogleAdsEvaluationErrorCount(userId);
-    if (!updateResult.success) {
-      console.error('[GoogleAdsAiAnalysisService] Failed to increment consecutive error count:', updateResult.error);
+  private async resolveCustomerName(input: {
+    accessToken: string;
+    customerId: string;
+    managerCustomerId: string | null;
+  }): Promise<string> {
+    try {
+      const customerInfo = await this.googleAdsService.getCustomerInfo(
+        input.customerId,
+        input.accessToken,
+        input.managerCustomerId ?? undefined
+      );
+      return customerInfo?.name || input.customerId;
+    } catch (error) {
+      console.warn('[GoogleAdsAiAnalysisService] Failed to fetch customer name:', {
+        customerId: input.customerId,
+        error,
+      });
+      return input.customerId;
     }
   }
 
@@ -354,11 +353,13 @@ export class GoogleAdsAiAnalysisService {
   }
 
   private formatNegativeKeywords(keywords: GoogleAdsNegativeKeyword[]): string {
-    const header = '除外キーワード | マッチタイプ | レベル | キャンペーン | 広告グループ';
-    const separator = '------------|------------|-------|------------|------------';
+    const header =
+      '除外キーワード | マッチタイプ | レベル | キャンペーン | キャンペーン状態 | 広告グループ | 広告グループ状態';
+    const separator =
+      '------------|------------|-------|------------|----------------|------------|----------------';
 
     if (keywords.length === 0) {
-      return `${header}\n${separator}\n（除外キーワードなし） | - | - | - | -`;
+      return `${header}\n${separator}\n（除外キーワードなし） | - | - | - | - | - | -`;
     }
 
     const rows = keywords.map(keyword =>
@@ -367,7 +368,9 @@ export class GoogleAdsAiAnalysisService {
         keyword.matchType,
         keyword.level,
         keyword.campaignName || '-',
+        keyword.campaignStatus || '-',
         keyword.adGroupName || '-',
+        keyword.adGroupStatus || '-',
       ].join(' | ')
     );
 
