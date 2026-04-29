@@ -3,11 +3,12 @@ import { buildLocalDateRange, formatJstDateISO } from '@/lib/date-utils';
 import { MODEL_CONFIGS } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { llmChat } from '@/server/services/llmService';
-import { BriefService } from '@/server/services/briefService';
+import { briefService } from '@/server/services/briefService';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
+import type { BriefInput } from '@/server/schemas/brief.schema';
 import type { GoogleAdsAiAnalysisResult } from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsKeywordMetric,
@@ -30,7 +31,7 @@ function sanitizeEmailHtml(html: string): string {
     .replace(/<\/?(iframe|object|embed|form|input|button)[^>]*>/gi, '');
 }
 
-export class GoogleAdsAiAnalysisService {
+class GoogleAdsAiAnalysisService {
   private readonly supabaseService: SupabaseService;
   private readonly googleAdsService: GoogleAdsService;
   private readonly emailService: EmailService;
@@ -121,7 +122,7 @@ export class GoogleAdsAiAnalysisService {
             loginCustomerId: credential.managerCustomerId,
           }),
         }),
-        BriefService.getVariablesByUserId(userId),
+        briefService.getVariablesByUserId(userId),
       ]);
 
       if (!keywordResult.success) {
@@ -305,9 +306,7 @@ export class GoogleAdsAiAnalysisService {
     }
   }
 
-  private formatStrengths(
-    brief: Awaited<ReturnType<typeof BriefService.getVariablesByUserId>>
-  ): string {
+  private formatStrengths(brief: BriefInput | null): string {
     const lines =
       brief?.services
         ?.filter(service => Boolean(service.strength?.trim()))

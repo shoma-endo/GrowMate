@@ -11,7 +11,7 @@ interface PromptDescription {
 /**
  * google_ads_ai_evaluation テンプレートに暗黙的に注入される変数名一覧
  */
-export const IMPLICIT_GOOGLE_ADS_VARS = [
+const IMPLICIT_GOOGLE_ADS_VARS = [
   'persona',
   'strengths',
   'keywordData',
@@ -20,7 +20,7 @@ export const IMPLICIT_GOOGLE_ADS_VARS = [
   'customerName',
 ] as const;
 
-export const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
+const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
   ad_copy_creation: {
     description: 'Google広告やFacebook広告に使用する広告コピーを生成するプロンプト',
     variables: '事業者情報の基本項目（業種、サービス名、ターゲット、エリア）が自動で置換されます',

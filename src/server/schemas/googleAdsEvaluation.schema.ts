@@ -12,7 +12,3 @@ export const updateGoogleAdsEvaluationSettingsSchema = z
   .refine(value => value.dateRangeDays !== undefined, {
     message: '更新対象が指定されていません',
   });
-
-export type UpdateGoogleAdsEvaluationSettingsSchemaInput = z.infer<
-  typeof updateGoogleAdsEvaluationSettingsSchema
->;
