@@ -2,8 +2,8 @@ name: API Changelog Monitor
 
 on:
   schedule:
-    # 毎月1日と15日の10:00 JST (= UTC 01:00)に実行
-    - cron: '0 1 1,15 * *'
+    # 毎月1日の10:00 JST (= UTC 01:00)に実行
+    - cron: '0 1 1 * *'
   workflow_dispatch:
 
 # state 更新PRを作成するため write 権限が必要
