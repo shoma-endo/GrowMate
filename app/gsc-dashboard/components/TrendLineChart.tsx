@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import type { GscChartDataPoint, GscVisibleMetrics } from '../types';
 
-interface TrendLineChartProps {
+export interface TrendLineChartProps {
   data: GscChartDataPoint[];
   visibleMetrics: GscVisibleMetrics;
 }

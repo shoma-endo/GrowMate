@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useServiceSelection } from '@/hooks/useServiceSelection';
 import { useAuth } from '@/components/AuthProvider';
@@ -13,7 +14,6 @@ import {
   normalizeCanvasContent,
   isBlogStepId,
 } from '@/lib/canvas-content';
-import CanvasPanel from './CanvasPanel';
 import type { CanvasSelectionEditPayload, CanvasSelectionEditResult } from '@/types/canvas';
 import type { StepActionBarRef } from './StepActionBar';
 import {
@@ -54,6 +54,8 @@ import { useWordpressSync } from '@/hooks/useWordpressSync';
 import { useSessionTitle } from '@/hooks/useSessionTitle';
 import { useBlogTitleMetaGeneration } from '@/hooks/useBlogTitleMetaGeneration';
 import { toast } from 'sonner';
+
+const CanvasPanel = dynamic(() => import('./CanvasPanel'), { ssr: false });
 
 /** Step7 完成形タイル: コンテンツからタイトルと抜粋を抽出 */
 const deriveTileFromContent = (content: string) => {

@@ -8,6 +8,7 @@ on:
   push:
     branches-ignore:
       - 'main'
+      - 'automation/api-changelog-state'
     tags-ignore:
       - '*'
 

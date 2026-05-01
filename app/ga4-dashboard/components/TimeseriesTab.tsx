@@ -22,7 +22,7 @@ interface TimeseriesMetric {
   cvr: boolean;
 }
 
-interface Props {
+export interface TimeseriesTabProps {
   data: Ga4DashboardTimeseriesPoint[];
   isLoading?: boolean;
   selectedNormalizedPath?: string;
@@ -36,7 +36,7 @@ export function TimeseriesTab({
   selectedNormalizedPath,
   visibleMetrics,
   onToggleMetric,
-}: Props) {
+}: TimeseriesTabProps) {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return `${date.getMonth() + 1}/${date.getDate()}`;
