@@ -7,7 +7,6 @@ const config: KnipConfig = {
   ignoreDependencies: [
     // eslint-config-next が内部で require する ESLint プラグイン群
     // 直接 import はしないが削除すると lint が壊れる
-    '@eslint/js',
     '@typescript-eslint/eslint-plugin',
     '@typescript-eslint/parser',
     'eslint-plugin-import',
