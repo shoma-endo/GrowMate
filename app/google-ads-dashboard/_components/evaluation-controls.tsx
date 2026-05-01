@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { Loader2, Mail, RefreshCw } from 'lucide-react';
+import { Loader2, Mail } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +37,6 @@ export function EvaluationControls({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<'default' | 'destructive'>('default');
   const [isRunning, startRunTransition] = useTransition();
-  const [isSaving, startSaveTransition] = useTransition();
 
   useEffect(() => {
     setSettings(initialSettings);
@@ -45,44 +44,31 @@ export function EvaluationControls({
     setDateRangeError(false);
   }, [initialSettings]);
 
-  const saveSettings = (nextSettings: GoogleAdsEvaluationSettings) => {
-    const prevSettings = settings;
-    setSettings(nextSettings);
-    startSaveTransition(async () => {
-      const result = await updateEvaluationSettings({
-        dateRangeDays: nextSettings.dateRangeDays,
-      });
-
-      if (!result.success) {
-        setStatusTone('destructive');
-        setStatusMessage(result.error ?? '設定の保存に失敗しました');
-        setSettings(prevSettings);
-        setDateRangeInput(String(prevSettings.dateRangeDays));
-        return;
-      }
-
-      setStatusTone('default');
-      setStatusMessage('AI分析設定を保存しました');
-    });
-  };
-
-  const refreshSettings = () => {
-    startSaveTransition(async () => {
-      const result = await getEvaluationSettings();
-      if (!result.success || !result.data) {
-        setStatusTone('destructive');
-        setStatusMessage(result.error ?? '設定の再取得に失敗しました');
-        return;
-      }
-
-      setSettings(result.data);
-      setStatusTone('default');
-      setStatusMessage(null);
-    });
-  };
-
   const handleRun = () => {
+    const nextDateRangeDays = parseDateRangeDays(dateRangeInput);
+    if (nextDateRangeDays === null) {
+      setDateRangeError(true);
+      setStatusTone('destructive');
+      setStatusMessage('1〜365 の整数を入力してください。');
+      return;
+    }
+
+    setDateRangeInput(String(nextDateRangeDays));
+    setDateRangeError(false);
     startRunTransition(async () => {
+      if (nextDateRangeDays !== settings.dateRangeDays) {
+        const saveResult = await updateEvaluationSettings({
+          dateRangeDays: nextDateRangeDays,
+        });
+        if (!saveResult.success) {
+          setStatusTone('destructive');
+          setStatusMessage(saveResult.error ?? '設定の保存に失敗しました');
+          return;
+        }
+
+        setSettings({ ...settings, dateRangeDays: nextDateRangeDays });
+      }
+
       const result = await runGoogleAdsAiAnalysis();
       if (!result.success) {
         setStatusTone('destructive');
@@ -92,7 +78,18 @@ export function EvaluationControls({
 
       setStatusTone('default');
       setStatusMessage(result.message ?? 'AI分析を開始しました');
-      refreshSettings();
+
+      const settingsResult = await getEvaluationSettings();
+      if (settingsResult.success && settingsResult.data) {
+        setSettings(settingsResult.data);
+        setDateRangeInput(String(settingsResult.data.dateRangeDays));
+        setDateRangeError(false);
+      } else {
+        console.warn(
+          '[EvaluationControls] Failed to refresh settings after analysis:',
+          settingsResult.error
+        );
+      }
     });
   };
 
@@ -105,7 +102,7 @@ export function EvaluationControls({
             Google Adsのキーワード指標をAIで分析し、登録メールアドレスにレポートを送信します。
           </p>
         </div>
-        <Button onClick={handleRun} disabled={!hasEmailAddress || isRunning || isSaving}>
+        <Button onClick={handleRun} disabled={!hasEmailAddress || isRunning}>
           {isRunning ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
@@ -115,50 +112,35 @@ export function EvaluationControls({
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[180px_auto] md:items-end">
-        <div className="space-y-2">
-          <Label htmlFor="date-range-days">分析期間（日数）</Label>
-          <Input
-            id="date-range-days"
-            type="number"
-            min={1}
-            max={365}
-            value={dateRangeInput}
-            aria-invalid={dateRangeError}
-            disabled={isSaving}
-            onChange={event => {
-              setDateRangeInput(event.target.value);
+      <div className="max-w-[180px] space-y-2">
+        <Label htmlFor="date-range-days">分析期間（日数）</Label>
+        <Input
+          id="date-range-days"
+          type="number"
+          min={1}
+          max={365}
+          value={dateRangeInput}
+          aria-invalid={dateRangeError}
+          disabled={isRunning}
+          onChange={event => {
+            setDateRangeInput(event.target.value);
+            setDateRangeError(false);
+          }}
+          onBlur={() => {
+            const nextDateRangeDays = parseDateRangeDays(dateRangeInput);
+            if (nextDateRangeDays === null) {
+              setDateRangeInput(String(settings.dateRangeDays));
               setDateRangeError(false);
-            }}
-            onBlur={() => {
-              const nextDateRangeDays = parseDateRangeDays(dateRangeInput);
-              if (nextDateRangeDays === null) {
-                setDateRangeError(true);
-                setDateRangeInput(String(settings.dateRangeDays));
-                return;
-              }
+              return;
+            }
 
-              if (nextDateRangeDays !== settings.dateRangeDays) {
-                saveSettings({ ...settings, dateRangeDays: nextDateRangeDays });
-              }
-
-              setDateRangeInput(String(nextDateRangeDays));
-              setDateRangeError(false);
-            }}
-          />
-          {dateRangeError && (
-            <p className="text-xs text-red-600">1〜365 の整数を入力してください。</p>
-          )}
-        </div>
-
-        <Button variant="outline" onClick={refreshSettings} disabled={isSaving || isRunning}>
-          {isSaving ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-2 h-4 w-4" />
-          )}
-          設定を再読込
-        </Button>
+            setDateRangeInput(String(nextDateRangeDays));
+            setDateRangeError(false);
+          }}
+        />
+        {dateRangeError && (
+          <p className="text-xs text-red-600">1〜365 の整数を入力してください。</p>
+        )}
       </div>
 
       {settings.lastEvaluatedOn && (

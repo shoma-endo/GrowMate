@@ -668,6 +668,9 @@ export const ERROR_MESSAGES = {
     /** AI分析の手動実行に失敗した場合 */
     AI_EVALUATION_RUN_FAILED: 'Google Ads AI分析の実行に失敗しました',
 
+    /** AI分析メールの送信に失敗した場合 */
+    AI_EVALUATION_EMAIL_SEND_FAILED: 'Google Ads AI分析メールの送信に失敗しました',
+
     /** AI分析設定の取得に失敗した場合 */
     AI_EVALUATION_SETTINGS_FETCH_FAILED: 'Google Ads AI分析設定の取得に失敗しました',
 

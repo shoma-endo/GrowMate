@@ -197,7 +197,7 @@ class GoogleAdsAiAnalysisService {
         console.error('[GoogleAdsAiAnalysisService] Failed to send analysis email:', emailResult.error);
         return {
           success: false,
-          error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_RUN_FAILED,
+          error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_EMAIL_SEND_FAILED,
         };
       }
 
