@@ -17,6 +17,15 @@ import type {
 
 const DEFAULT_DATE_RANGE_DAYS = 30;
 
+function formatJstTime(date: Date): string {
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
 function sanitizeEmailHtml(html: string): string {
   if (!html) {
     return '';
@@ -50,10 +59,10 @@ class GoogleAdsAiAnalysisService {
     userId: string,
     options?: {
       dateRangeDays?: number;
-      force?: boolean;
     }
   ): Promise<GoogleAdsAiAnalysisResult> {
-    const todayJst = formatJstDateISO(new Date());
+    const executedAt = new Date();
+    const todayJst = formatJstDateISO(executedAt);
 
     try {
       const userResult = await this.supabaseService.getUserById(userId);
@@ -82,14 +91,6 @@ class GoogleAdsAiAnalysisService {
         return {
           success: false,
           error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_NOT_FOUND,
-        };
-      }
-
-      if (!options?.force && settings.lastEvaluatedOn === todayJst) {
-        return {
-          success: true,
-          skipped: true,
-          message: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_ALREADY_COMPLETED,
         };
       }
 
@@ -186,7 +187,7 @@ class GoogleAdsAiAnalysisService {
       );
 
       const htmlContent = sanitizeEmailHtml(await marked.parse(analysisMarkdown));
-      const subject = `【GrowMate】Google Ads AI分析レポート (${customerName})`;
+      const subject = `【GrowMate】Google Ads AI分析レポート（${formatJstTime(executedAt)}実行 / ${customerName}）`;
       const emailResult = await this.emailService.sendGoogleAdsAnalysis(
         userEmail,
         subject,

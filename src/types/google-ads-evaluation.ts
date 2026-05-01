@@ -24,7 +24,6 @@ export interface UpsertGoogleAdsEvaluationSettingsInput {
 
 export interface GoogleAdsAiAnalysisResult {
   success: boolean;
-  skipped?: boolean;
   message?: string;
   error?: string;
 }

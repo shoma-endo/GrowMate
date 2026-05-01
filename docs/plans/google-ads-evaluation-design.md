@@ -29,9 +29,12 @@
 - **メールユーザーの場合**: 以下を表示（管理者・一般ユーザー問わず）
   - 「AI分析を実行してメール送信」ボタン
     - クリック → Server Action 呼び出し → ローディング表示 → 完了/エラーメッセージ
+    - クリック直後に実行中状態へ遷移し、Server Action の完了（成功/失敗）までボタンを無効化する
+    - 実行中はスピナー等のローディング表示を維持し、エラー時はメッセージ表示後に再実行できる状態へ戻す
   - 設定インライン UI（ボタン周辺に配置）
     - `date_range_days`: 数値入力（デフォルト30日）
     - 入力完了（blur）時に `updateEvaluationSettings` を呼び出して保存
+    - AI分析実行中は `date_range_days` 入力欄も無効化し、実行中の設定変更と再送信を防ぐ
 
 ### 3.2 不要な画面
 
@@ -74,8 +77,6 @@ AI 分析に渡す変数は以下の通り。`PromptService.replaceVariables()` 
   ↓
 メールユーザーチェック（user.email IS NOT NULL）
   ↓
-二重実行チェック（last_evaluated_on >= 今日（JST）→ スキップ。force 時は無視）
-  ↓
 Google Ads API からキーワード指標取得
   ├─ getKeywordMetrics({ includeAllStatuses: true }) — 全ステータスのKW
   └─ getNegativeKeywords() — 除外KW
@@ -109,7 +110,7 @@ llmChat('anthropic', 'claude-opus-4-7', ...) で分析実行
 | `id` | uuid | `gen_random_uuid()` | 主キー |
 | `user_id` | uuid | — | 所有ユーザー（`public.users(id)` FK） |
 | `date_range_days` | integer | `30` | 分析対象期間（日数） |
-| `last_evaluated_on` | date | `null` | 最終**成功**評価日（二重実行防止） |
+| `last_evaluated_on` | date | `null` | 最終**成功**評価日 |
 | `created_at` | timestamptz | `now()` | 作成日時 |
 | `updated_at` | timestamptz | `now()` | 更新日時 |
 
@@ -247,7 +248,6 @@ export class GoogleAdsAiAnalysisService {
     userId: string,
     options?: {
       dateRangeDays?: number;
-      force?: boolean;
     }
   ): Promise<AnalysisResult>
   // customer_id は内部で google_ads_credentials から取得する
@@ -257,23 +257,22 @@ export class GoogleAdsAiAnalysisService {
 ### 8.3 処理ステップ
 
 1. **メールユーザーチェック**: `user.email IS NOT NULL` を確認。メールなしは拒否。
-2. **二重実行チェック**: `last_evaluated_on >= 今日（JST）` → スキップ（`force: true` 時は無視）。
-3. **Google Ads API 呼び出し**:
+2. **Google Ads API 呼び出し**:
    - `getKeywordMetrics({ includeAllStatuses: true })` — 全ステータスのキーワード指標
    - `getNegativeKeywords()` — 除外キーワード一覧
-4. **事業者情報取得**: `BriefService.getVariablesByUserId(userId)` でペルソナ・強み等を取得
-5. **プロンプト変数構築**: `{{persona}}`, `{{strengths}}`, `{{keywordData}}`, `{{negativeKeywords}}`, `{{dateRange}}`, `{{customerName}}`
-6. **テンプレート取得**: `PromptService.getTemplateByName('google_ads_ai_evaluation')`
-7. **変数置換**: `PromptService.replaceVariables(template.content, variables)`
-8. **AI 分析実行**: `llmChat('anthropic', 'claude-opus-4-7', messages, modelConfig)`
-9. **メール送信**: `EmailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent)`
-10. **設定更新**:
+3. **事業者情報取得**: `BriefService.getVariablesByUserId(userId)` でペルソナ・強み等を取得
+4. **プロンプト変数構築**: `{{persona}}`, `{{strengths}}`, `{{keywordData}}`, `{{negativeKeywords}}`, `{{dateRange}}`, `{{customerName}}`
+5. **テンプレート取得**: `PromptService.getTemplateByName('google_ads_ai_evaluation')`
+6. **変数置換**: `PromptService.replaceVariables(template.content, variables)`
+7. **AI 分析実行**: `llmChat('anthropic', 'claude-opus-4-7', messages, modelConfig)`
+8. **メール送信**: `EmailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent)`。件名にはJSTの実行時刻を含める（例: `【GrowMate】Google Ads AI分析レポート（15:30実行 / アカウント名）`）
+9. **設定更新**:
     - **成功時**（メール送信まで完了）: `last_evaluated_on` を当日（JST）に更新
     - **エラー時**（API失敗・メール送信失敗いずれも）: `last_evaluated_on` は**更新しない**。エラー詳細はサーバーログに出力。メール失敗時もレポートは保存しないため同日中に手動再実行で再生成可能。
 
-#### 二重実行について
+#### 連打時の扱い
 
-手動実行の連打時、`last_evaluated_on` チェックはアプリケーションレベルのため複数リクエストが通過する可能性がある。その場合メールが複数届くが、コスト（数十秒・数円程度）は許容範囲と判断し、MVP ではロック機構を設けない。
+手動実行はユーザー操作のたびに分析・メール送信を行う。同日中に複数回実行した場合もメールが複数届くが、件名にJSTの実行時刻を含めて最新レポートを判別できるようにする。プレビュー・確認用途を優先し、MVP ではロック機構を設けない。
 
 ### 8.4 MODEL_CONFIGS エントリ
 
@@ -371,7 +370,7 @@ create table if not exists public.google_ads_evaluation_settings (
   date_range_days integer not null default 30,
 
   -- 実行管理
-  last_evaluated_on date,                    -- 最終成功評価日（二重実行防止、JST基準）
+  last_evaluated_on date,                    -- 最終成功評価日（JST基準）
 
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
@@ -407,23 +406,19 @@ create policy "google_ads_eval_settings_select"
 | 設定テーブル UPDATE（`last_evaluated_on` 更新、設定変更） | Service Role | 分析サービスが実行 |
 | 設定テーブル SELECT（設定参照） | User Role（RLS） | `get_accessible_user_ids` で絞り込み |
 
-### 10.5 二重実行防止
+### 10.5 連打時の扱い
 
-アプリケーションレベルで `last_evaluated_on >= 今日（JST）` をチェックする。DB ロック（`FOR UPDATE`）は使用しない。
+手動実行はユーザー操作のたびに分析・メール送信を行う。`last_evaluated_on` は最終成功日の表示・記録用途であり、実行可否の判定には使わない。DB ロック（`FOR UPDATE`）は使用しない。
 
-手動実行の連打時、複数リクエストがチェックを通過しメールが複数届く可能性があるが、コスト（数十秒・数円程度）は許容範囲と判断する。
-
-- **手動実行**: `last_evaluated_on >= 今日` → スキップ（`force: true` 時は無視）
+手動実行の連打時はメールが複数届く可能性があるが、確認用途を優先し、コスト（数十秒・数円程度）は許容範囲と判断する。
 
 ### 10.6 代表クエリ
 
 ```sql
--- 手動実行時の二重実行チェック + 設定取得（1ユーザー1レコードのため user_id のみで特定）
+-- 手動実行時の設定取得（1ユーザー1レコードのため user_id のみで特定）
 SELECT id, date_range_days
 FROM public.google_ads_evaluation_settings
-WHERE user_id = :user_id
-  AND (last_evaluated_on IS NULL
-       OR last_evaluated_on < (now() AT TIME ZONE 'Asia/Tokyo')::date);
+WHERE user_id = :user_id;
 
 -- 設定更新（成功時）
 UPDATE public.google_ads_evaluation_settings
@@ -653,7 +648,7 @@ values (
 
 | 結果 | `last_evaluated_on` | 次回手動実行 |
 |------|---------------------|--------------|
-| **成功**（メール送信まで完了） | **当日（JST）に更新** | 翌日まで通常実行はスキップ |
+| **成功**（メール送信まで完了） | **当日（JST）に更新** | 同日中でも再実行可能。メール件名の実行時刻で判別 |
 | **API エラー**（Google Ads / LLM） | **更新しない** | 同日中に再実行可能 |
 | **メール送信失敗** | **更新しない** | 同日中に再実行可能（LLM再生成） |
 
@@ -688,8 +683,9 @@ Phase 1〜3 は並行実施可能。
 - **Google Ads API**: 全キーワード（除外含む）が正しく取得されることを確認
 - **AI 分析**: プロンプト変数が正しく置換され、Claude から有意な分析が返ることを確認
 - **手動実行**: ダッシュボードのボタン → 分析実行 → メール受信の E2E フロー
+- **実行中UI**: クリック直後から完了/失敗までボタンと分析期間入力が無効化され、ローディング表示が維持されることを確認
 - **メールユーザー制限**: `email` が null のユーザーではボタン非表示・API 拒否を確認
-- **二重実行防止**: 同日に2回実行した場合にスキップされることを確認（`force: true` では実行される）
+- **同日再実行**: 同日に複数回実行した場合も、毎回分析・メール送信され、メール件名にJSTの実行時刻が含まれることを確認
 - **JST 日跨ぎ**: UTC 15:00 = JST 0:00 前後で正しく日付判定されるか
 - `npm run lint` / `npm run build` の通過確認
 
