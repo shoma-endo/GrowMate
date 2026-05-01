@@ -6,9 +6,10 @@ on:
     - cron: '0 1 1,15 * *'
   workflow_dispatch:
 
-# state ファイルをコミットするため write 権限が必要
+# state 更新PRを作成するため write 権限が必要
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   monitor:
@@ -19,6 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: develop
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
@@ -39,11 +41,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTIONS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-      - name: 状態ファイルをコミット
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add scripts/api-changelog-state.json
-          # 変更がある場合のみコミット。[skip ci] を付けて CI を再トリガーしない
-          git diff --staged --quiet || git commit -m "API changelog 状態ファイルを更新 [skip ci]"
-          git push
+      - name: 状態ファイル更新PRを作成
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: API changelog 状態ファイルを更新 [skip ci]
+          title: API changelog 状態ファイルを更新
+          body: |
+            API changelog monitor が検出状態ファイルを更新しました。
+
+            - 対象: `scripts/api-changelog-state.json`
+            - 実行ログ: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch: automation/api-changelog-state
+          base: develop
+          delete-branch: true
+          add-paths: scripts/api-changelog-state.json
