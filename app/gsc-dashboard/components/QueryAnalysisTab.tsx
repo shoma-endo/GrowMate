@@ -33,7 +33,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { fetchQueryAnalysis, type QueryAggregation } from '@/server/actions/gscDashboard.actions';
 
-interface QueryAnalysisTabProps {
+export interface QueryAnalysisTabProps {
   annotationId: string | null;
 }
 

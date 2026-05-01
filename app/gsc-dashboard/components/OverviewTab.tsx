@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,7 +20,6 @@ import {
 } from '@/components/ui/dialog';
 import { EvaluationSettings } from '../EvaluationSettings';
 import { MetricsSummaryCards } from './MetricsSummaryCards';
-import { TrendLineChart } from './TrendLineChart';
 import { SuggestionDataReadiness } from './SuggestionDataReadiness';
 import type {
   GscDashboardDetailResponse,
@@ -28,6 +28,12 @@ import type {
   GscChartDataPoint,
 } from '../types';
 import type { EvaluationResultSummary } from '@/types/gsc';
+import type { TrendLineChartProps } from './TrendLineChart';
+
+const TrendLineChart = dynamic<TrendLineChartProps>(
+  () => import('./TrendLineChart').then(mod => mod.TrendLineChart),
+  { ssr: false }
+);
 
 interface OverviewTabProps {
   detail: GscDashboardDetailResponse | null;

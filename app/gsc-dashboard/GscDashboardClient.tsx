@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, TrendingUp, Search, History, Bell } from 'lucide-react';
@@ -7,9 +8,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useGscDashboard } from './hooks/useGscDashboard';
 import { OverviewTab } from './components/OverviewTab';
-import { QueryAnalysisTab } from './components/QueryAnalysisTab';
 import { EvaluationHistoryTab } from './components/EvaluationHistoryTab';
 import type { GscDashboardDetailResponse } from './types';
+import type { QueryAnalysisTabProps } from './components/QueryAnalysisTab';
+
+const QueryAnalysisTab = dynamic<QueryAnalysisTabProps>(
+  () => import('./components/QueryAnalysisTab').then(mod => mod.QueryAnalysisTab),
+  { ssr: false }
+);
 
 interface Props {
   initialSelectedId?: string | null;

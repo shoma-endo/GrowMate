@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, TrendingUp, AlertTriangle, Settings } from 'lucide-react';
@@ -27,13 +28,18 @@ import type {
 } from '@/types/ga4';
 import { SummaryCards } from './components/SummaryCards';
 import { RankingTab } from './components/RankingTab';
-import { TimeseriesTab } from './components/TimeseriesTab';
+import type { TimeseriesTabProps } from './components/TimeseriesTab';
 import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
 import { validateDateRange } from '@/lib/validators/common';
 import {
   isEmailLinkConflictResult,
   replaceToEmailLinkConflictLogin,
 } from '@/lib/auth/emailLinkConflictClient';
+
+const TimeseriesTab = dynamic<TimeseriesTabProps>(
+  () => import('./components/TimeseriesTab').then(mod => mod.TimeseriesTab),
+  { ssr: false }
+);
 
 interface DateRange {
   start?: string | null;
