@@ -264,7 +264,7 @@ export function useHeadingFlow({
             }
           }
         } else {
-          // 基本構成が空、または h3/h4 見出しが抽出できない場合は導線を表示
+          // 基本構成が空、または h2/h3/h4 見出しが抽出できない場合は導線を表示
           if (sessionId === currentSessionIdRef.current) {
             setHeadingInitError(STEP7_BASIC_STRUCTURE_SAVE_MESSAGE);
             setHasAttemptedHeadingInit(true);

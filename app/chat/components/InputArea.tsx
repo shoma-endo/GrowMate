@@ -400,7 +400,7 @@ const InputArea: React.FC<InputAreaProps> = ({
       onSaveStep7UserLead &&
       onResetHeadingConfiguration
     ) {
-      // 見出しが見つかりません状態では、基本構成に h3/h4 を記載してから再試行するよう警告
+      // 見出しが見つかりません状態では、基本構成に h2/h3/h4 を記載してから再試行するよう警告
       const isHeadingNotFoundError =
         (totalHeadings ?? 0) === 0 &&
         (hasAttemptedHeadingInit ?? false) &&
