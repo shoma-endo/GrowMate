@@ -55,7 +55,7 @@ interface MessageAreaProps {
   onOpenCombinedCanvas?: (versionId: string) => void;
 }
 
-// メッセージ本文の先頭 ### 行から見出し文言を抽出（Canvas表示と同源）
+// メッセージ本文の先頭見出し行から見出し文言を抽出（Canvas表示と同源）
 const extractHeadingTextFromContent = (content: string): string | null => {
   const normalized = normalizeCanvasContent(content ?? '').trim();
   for (const line of normalized.split('\n')) {
@@ -76,7 +76,7 @@ const getStep7HeadingLabel = (
   const headingIndexFromModel = extractStep7HeadingIndexFromModel(message.model);
   const headingTextFromContent = extractHeadingTextFromContent(message.content ?? '');
 
-  // 文言: 本文の ### を優先、なければ sections から
+  // 文言: 本文の見出し行を優先、なければ sections から
   const effectiveSectionIndex =
     headingIndexFromModel !== null &&
     headingIndexFromModel >= 0 &&

@@ -243,7 +243,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                       }}
                       disabled={isHeadingInitInFlight}
                       className="h-6 px-2 text-[10px] border-amber-300 text-amber-800 hover:bg-amber-50"
-                      title="メモ・補足情報の「基本構成」を h3/h4 形式で保存した後、ここで再試行"
+                      title="メモ・補足情報の「基本構成」を h2/h3/h4 形式で保存した後、ここで再試行"
                     >
                       {isHeadingInitInFlight ? (
                         <Loader2 size={10} className="animate-spin" />

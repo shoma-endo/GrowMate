@@ -42,8 +42,8 @@
 
 ### 見出しフローと原稿バージョン管理
 - ブログ 7 ステップの Step5 で生成された見出し構成から `session_heading_sections` を初期化
-- **見出し行のフォーマット**: `h3 見出しテキスト` / `h4 小見出しテキスト` のリテラルプレフィックス形式（Markdown `###`/`####` は使用しない）
-- `heading_level` は数値 `3` または `4`、`heading_key` は `{orderIndex}:{normalized_text}:{SHA-256先頭8文字}` の複合キー（[`src/lib/heading-extractor.ts`](src/lib/heading-extractor.ts)）
+- **見出し行のフォーマット**: `h2 大見出しテキスト` / `h3 見出しテキスト` / `h4 小見出しテキスト` のリテラルプレフィックス形式（Markdown `##`/`###`/`####` は使用しない）
+- `heading_level` は数値 `2`, `3`, `4` のいずれか、`heading_key` は `{orderIndex}:{normalized_text}:{SHA-256先頭8文字}` の複合キー（[`src/lib/heading-extractor.ts`](src/lib/heading-extractor.ts)）
 - 各見出しセクションを個別に AI 生成・確定し、`session_combined_contents` に結合コンテンツをバージョン保存
 - `save_atomic_combined_content` RPC（`SECURITY DEFINER`）で同時書き込み競合をシリアライズ化
 - Step7（書き出し案）入力後に見出し1へ戻るフロー（`preserveStep7Lead` オプション）をサポート
