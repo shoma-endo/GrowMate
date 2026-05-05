@@ -35,7 +35,7 @@ export function EvaluationControls({
   const [dateRangeInput, setDateRangeInput] = useState(String(initialSettings.dateRangeDays));
   const [dateRangeError, setDateRangeError] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [statusTone, setStatusTone] = useState<'default' | 'destructive'>('default');
+  const [statusTone, setStatusTone] = useState<'success' | 'destructive'>('success');
   const [isRunning, startRunTransition] = useTransition();
 
   useEffect(() => {
@@ -76,7 +76,7 @@ export function EvaluationControls({
         return;
       }
 
-      setStatusTone('default');
+      setStatusTone('success');
       setStatusMessage(result.message ?? 'AI分析を開始しました');
 
       const settingsResult = await getEvaluationSettings();
@@ -157,8 +157,8 @@ export function EvaluationControls({
       )}
 
       {statusMessage && (
-        <Alert variant={statusTone === 'destructive' ? 'destructive' : 'default'}>
-          <AlertTitle>{statusTone === 'destructive' ? 'エラー' : 'ステータス'}</AlertTitle>
+        <Alert variant={statusTone}>
+          <AlertTitle>{statusTone === 'destructive' ? 'エラー' : '送信完了'}</AlertTitle>
           <AlertDescription>{statusMessage}</AlertDescription>
         </Alert>
       )}
