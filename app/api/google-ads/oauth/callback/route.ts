@@ -230,7 +230,8 @@ export async function GET(request: NextRequest) {
       try {
         const customerInfo = await googleAdsService.getCustomerInfo(
           customerId,
-          tokens.accessToken
+          tokens.accessToken,
+          existingCredential?.managerCustomerId ?? undefined
         );
         if (customerInfo?.isManager) {
           managerCustomerId = customerId;
