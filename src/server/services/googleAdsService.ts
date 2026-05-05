@@ -806,9 +806,9 @@ export class GoogleAdsService {
                 level: item.level,
                 campaignName: row.campaign?.name ?? '',
                 campaignStatus: normalizeGoogleAdsStatus(row.campaign?.status),
-                ...(item.level === 'ad_group' && row.adGroup?.name
+                ...(item.level === 'ad_group' && row.adGroup
                   ? {
-                      adGroupName: row.adGroup.name,
+                      adGroupName: row.adGroup.name ?? '',
                       adGroupStatus: normalizeGoogleAdsStatus(row.adGroup.status),
                     }
                   : {}),
