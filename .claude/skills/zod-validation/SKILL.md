@@ -29,7 +29,7 @@ export const userSchema = z.object({
   id: z.string(),
   email: z.email(), // Zod 4: トップレベル関数を使用
   name: z.string().min(1).max(100),
-  role: z.enum(['admin', 'paid', 'trial', 'owner']),
+  role: z.enum(['admin', 'paid', 'trial', 'unavailable']),
   createdAt: z.iso.datetime().optional(),
 });
 
