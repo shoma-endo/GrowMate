@@ -98,9 +98,9 @@ export function EvaluationControls({
     <div className="rounded-xl border bg-slate-50 p-4 space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-slate-900">AI分析メール送信</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Google Ads AI分析</h2>
           <p className="text-sm text-slate-600">
-            Google Adsのキーワード指標をAIで分析し、登録メールアドレスにレポートを送信します。
+            キーワード指標をもとに、コンテンツ戦略の改善提案をメールで送信します。
           </p>
         </div>
         <Button onClick={handleRun} disabled={!hasEmailAddress || isRunning}>
@@ -109,12 +109,12 @@ export function EvaluationControls({
           ) : (
             <Mail className="mr-2 h-4 w-4" />
           )}
-          AI分析を実行してメール送信
+          コンテンツ戦略提案を送信
         </Button>
       </div>
 
       <div className="max-w-[180px] space-y-2">
-        <Label htmlFor="date-range-days">分析期間（日数）</Label>
+        <Label htmlFor="date-range-days">AI分析期間（日数）</Label>
         <Input
           id="date-range-days"
           type="number"
