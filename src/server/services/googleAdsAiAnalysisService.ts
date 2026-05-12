@@ -8,7 +8,7 @@ import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
-import type { BriefInput } from '@/server/schemas/brief.schema';
+import type { BriefInput, Service } from '@/server/schemas/brief.schema';
 import type { GoogleAdsAiAnalysisResult } from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsKeywordMetric,
@@ -66,6 +66,7 @@ class GoogleAdsAiAnalysisService {
     userId: string,
     options?: {
       dateRangeDays?: number;
+      serviceId?: string;
     }
   ): Promise<GoogleAdsAiAnalysisResult> {
     const executedAt = new Date();
@@ -107,13 +108,21 @@ class GoogleAdsAiAnalysisService {
       // --- DEV ONLY: サンプルデータを使用してローカル確認 ---
       if (process.env.NODE_ENV === 'development') {
         const brief = await briefService.getVariablesByUserId(userId);
+        const targetService = this.resolveTargetService(brief, options?.serviceId);
+        if (!targetService) {
+          return {
+            success: false,
+            error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SERVICE_REQUIRED,
+          };
+        }
         const promptTemplate = await PromptService.getTemplateByName('google_ads_ai_evaluation');
         if (!promptTemplate) {
           return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_PROMPT_NOT_FOUND };
         }
         const filledPrompt = buildAnalysisPrompt(promptTemplate.content, {
           persona: brief?.persona?.trim() || '（ペルソナ未設定）',
-          strengths: this.formatStrengths(brief),
+          serviceName: targetService.name,
+          strength: this.formatStrength(targetService),
           keywordData: this.formatKeywordMetrics(DEV_SAMPLE_KEYWORDS),
           negativeKeywords: this.formatNegativeKeywords(DEV_SAMPLE_NEGATIVE_KEYWORDS),
           dateRange: `${startDate} 〜 ${endDate}`,
@@ -135,9 +144,12 @@ class GoogleAdsAiAnalysisService {
         if (!emailResult.success) {
           return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_EMAIL_SEND_FAILED };
         }
-        await this.supabaseService.updateGoogleAdsEvaluationSettings(userId, {
+        const markSuccessResult = await this.supabaseService.updateGoogleAdsEvaluationSettings(userId, {
           last_evaluated_on: todayJst,
         });
+        if (!markSuccessResult.success) {
+          console.error('[GoogleAdsAiAnalysisService] [DEV] Failed to mark evaluation success:', markSuccessResult.error);
+        }
         return { success: true, message: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_EMAIL_SENT };
       }
       // --- DEV ONLY ここまで ---
@@ -205,9 +217,17 @@ class GoogleAdsAiAnalysisService {
         customerId: credential.customerId,
         managerCustomerId: credential.managerCustomerId,
       });
+      const targetService = this.resolveTargetService(brief, options?.serviceId);
+      if (!targetService) {
+        return {
+          success: false,
+          error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SERVICE_REQUIRED,
+        };
+      }
       const filledPrompt = buildAnalysisPrompt(promptTemplate.content, {
         persona: brief?.persona?.trim() || '（ペルソナ未設定）',
-        strengths: this.formatStrengths(brief),
+        serviceName: targetService.name,
+        strength: this.formatStrength(targetService),
         keywordData: this.formatKeywordMetrics(keywordResult.data ?? []),
         negativeKeywords: this.formatNegativeKeywords(negativeKeywordResult.data ?? []),
         dateRange: `${startDate} 〜 ${endDate}`,
@@ -353,14 +373,27 @@ class GoogleAdsAiAnalysisService {
     }
   }
 
-  private formatStrengths(brief: BriefInput | null): string {
-    const lines =
-      brief?.services
-        ?.filter(service => Boolean(service.strength?.trim()))
-        .map(service => `${service.name}: ${service.strength?.trim()}`)
-        ?? [];
+  private resolveTargetService(brief: BriefInput | null, serviceId?: string): Service | null {
+    if (!brief?.services?.length) {
+      return null;
+    }
 
-    return lines.length > 0 ? lines.join('\n') : '（事業の強み未設定）';
+    if (serviceId) {
+      const matchedService = brief.services.find(service => service.id === serviceId);
+      if (matchedService) {
+        return matchedService;
+      }
+
+      console.warn('[GoogleAdsAiAnalysisService] Requested serviceId was not found in brief:', {
+        serviceId,
+      });
+    }
+
+    return brief.services[0] ?? null;
+  }
+
+  private formatStrength(service: Service | null): string {
+    return service?.strength?.trim() || '（事業の強み未設定）';
   }
 
   private formatKeywordMetrics(metrics: GoogleAdsKeywordMetric[]): string {

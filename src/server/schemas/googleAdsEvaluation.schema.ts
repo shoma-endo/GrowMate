@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+export const runGoogleAdsAiAnalysisSchema = z
+  .object({
+    serviceId: z.string().uuid('サービスIDの形式が正しくありません').optional(),
+  })
+  .optional();
+
+export type RunGoogleAdsAiAnalysisInput = z.infer<typeof runGoogleAdsAiAnalysisSchema>;
+
 export const updateGoogleAdsEvaluationSettingsSchema = z
   .object({
     dateRangeDays: z
@@ -12,3 +20,7 @@ export const updateGoogleAdsEvaluationSettingsSchema = z
   .refine(value => value.dateRangeDays !== undefined, {
     message: '更新対象が指定されていません',
   });
+
+export type UpdateGoogleAdsEvaluationSettingsSchemaInput = z.infer<
+  typeof updateGoogleAdsEvaluationSettingsSchema
+>;

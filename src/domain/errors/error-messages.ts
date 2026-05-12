@@ -666,24 +666,31 @@ export const ERROR_MESSAGES = {
       'Google Ads 連携機能は現在、管理者ユーザーのみ利用可能です。管理者に問い合わせるか、権限設定を確認してください。',
 
     /** AI分析の手動実行に失敗した場合 */
-    AI_EVALUATION_RUN_FAILED: 'Google Ads AI分析の実行に失敗しました',
+    AI_EVALUATION_RUN_FAILED: 'Google Ads コンテンツ戦略提案の実行に失敗しました',
 
     /** AI分析メールの送信に失敗した場合 */
-    AI_EVALUATION_EMAIL_SEND_FAILED: 'Google Ads AI分析メールの送信に失敗しました',
+    AI_EVALUATION_EMAIL_SEND_FAILED:
+      'Google Ads コンテンツ戦略提案レポートの送信に失敗しました',
 
     /** AI分析設定の取得に失敗した場合 */
-    AI_EVALUATION_SETTINGS_FETCH_FAILED: 'Google Ads AI分析設定の取得に失敗しました',
+    AI_EVALUATION_SETTINGS_FETCH_FAILED:
+      'Google Ads コンテンツ戦略提案設定の取得に失敗しました',
 
     /** AI分析設定の更新に失敗した場合 */
-    AI_EVALUATION_SETTINGS_UPDATE_FAILED: 'Google Ads AI分析設定の更新に失敗しました',
+    AI_EVALUATION_SETTINGS_UPDATE_FAILED:
+      'Google Ads コンテンツ戦略提案設定の更新に失敗しました',
 
     /** AI分析プロンプトが見つからない場合 */
     AI_EVALUATION_PROMPT_NOT_FOUND:
-      'Google Ads AI分析プロンプトが見つかりません。管理画面でテンプレートを確認してください',
+      'Google Ads コンテンツ戦略提案プロンプトが見つかりません。管理画面でテンプレートを確認してください',
 
     /** メールアドレスが未登録の場合 */
     EMAIL_REQUIRED_FOR_AI_EVALUATION:
-      'メールアドレス未登録のため、Google Ads AI分析メールを送信できません',
+      'メールアドレス未登録のため、Google Ads コンテンツ戦略提案レポートを送信できません',
+
+    /** AI分析対象サービスが未登録の場合 */
+    AI_EVALUATION_SERVICE_REQUIRED:
+      'サービス未登録のため、Google Ads コンテンツ戦略提案を実行できません。事業者情報でサービスを登録してください',
 
     /** AI分析レポートのメール送信が成功した場合 */
     AI_EVALUATION_EMAIL_SENT:
@@ -691,7 +698,7 @@ export const ERROR_MESSAGES = {
 
     /** 評価設定が見つからない場合 */
     AI_EVALUATION_SETTINGS_NOT_FOUND:
-      'Google Ads AI分析設定が見つかりません。Google Adsのアカウント選択をやり直してください',
+      'Google Ads コンテンツ戦略提案設定が見つかりません。Google Adsのアカウント選択をやり直してください',
   },
 
   /**

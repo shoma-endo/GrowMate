@@ -1,16 +1,21 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { Loader2, Mail } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ServiceSelector } from '@/components/ServiceSelector';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { getBrief } from '@/server/actions/brief.actions';
 import {
   getEvaluationSettings,
   runGoogleAdsAiAnalysis,
   updateEvaluationSettings,
 } from '@/server/actions/googleAdsEvaluation.actions';
+import type { Service } from '@/server/schemas/brief.schema';
 import type { GoogleAdsEvaluationSettings } from '@/types/google-ads-evaluation';
 
 interface EvaluationControlsProps {
@@ -36,6 +41,10 @@ export function EvaluationControls({
   const [dateRangeError, setDateRangeError] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<'success' | 'destructive'>('success');
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [servicesError, setServicesError] = useState<string | null>(null);
+  const [isServicesLoading, setIsServicesLoading] = useState(true);
   const [isRunning, startRunTransition] = useTransition();
   const [isSavingDateRange, startSaveDateRangeTransition] = useTransition();
 
@@ -45,7 +54,52 @@ export function EvaluationControls({
     setDateRangeError(false);
   }, [initialSettings]);
 
+  useEffect(() => {
+    let isActive = true;
+    setIsServicesLoading(true);
+
+    const loadServices = async () => {
+      const result = await getBrief();
+      if (!isActive) {
+        return;
+      }
+
+      if (!result.success) {
+        setServicesError(result.error ?? '事業者情報の取得に失敗しました。');
+        setServices([]);
+        setSelectedServiceId(null);
+        setIsServicesLoading(false);
+        return;
+      }
+
+      const nextServices = result.data?.services ?? [];
+      setServices(nextServices);
+      setServicesError(null);
+      setSelectedServiceId(prev =>
+        prev && nextServices.some(service => service.id === prev)
+          ? prev
+          : nextServices[0]?.id ?? null
+      );
+      setIsServicesLoading(false);
+    };
+
+    loadServices();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const isServiceMissing = !isServicesLoading && !servicesError && services.length === 0;
+  const cannotRunForServices = isServicesLoading || Boolean(servicesError) || isServiceMissing;
+
   const handleRun = () => {
+    if (isServiceMissing) {
+      setStatusTone('destructive');
+      setStatusMessage(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SERVICE_REQUIRED);
+      return;
+    }
+
     const nextDateRangeDays = parseDateRangeDays(dateRangeInput);
     if (nextDateRangeDays === null) {
       setDateRangeError(true);
@@ -70,7 +124,9 @@ export function EvaluationControls({
         setSettings({ ...settings, dateRangeDays: nextDateRangeDays });
       }
 
-      const result = await runGoogleAdsAiAnalysis();
+      const result = await runGoogleAdsAiAnalysis({
+        ...(selectedServiceId ? { serviceId: selectedServiceId } : {}),
+      });
       if (!result.success) {
         setStatusTone('destructive');
         setStatusMessage(result.error ?? 'AI分析の実行に失敗しました');
@@ -98,12 +154,17 @@ export function EvaluationControls({
     <div className="rounded-xl border bg-slate-50 p-4 space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-slate-900">Google Ads AI分析</h2>
+          <h2 className="text-lg font-semibold text-slate-900">
+            Google Ads コンテンツ戦略提案
+          </h2>
           <p className="text-sm text-slate-600">
             キーワード指標をもとに、コンテンツ戦略の改善提案をメールで送信します。
           </p>
         </div>
-        <Button onClick={handleRun} disabled={!hasEmailAddress || isRunning}>
+        <Button
+          onClick={handleRun}
+          disabled={!hasEmailAddress || isRunning || cannotRunForServices}
+        >
           {isRunning ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
@@ -113,55 +174,81 @@ export function EvaluationControls({
         </Button>
       </div>
 
-      <div className="max-w-[180px] space-y-2">
-        <Label htmlFor="date-range-days">AI分析期間（日数）</Label>
-        <Input
-          id="date-range-days"
-          type="number"
-          min={1}
-          max={365}
-          value={dateRangeInput}
-          aria-invalid={dateRangeError}
-          disabled={isRunning || isSavingDateRange}
-          onChange={event => {
-            setDateRangeInput(event.target.value);
-            setDateRangeError(false);
-          }}
-          onBlur={() => {
-            const nextDateRangeDays = parseDateRangeDays(dateRangeInput);
-            if (nextDateRangeDays === null) {
-              setDateRangeInput(String(settings.dateRangeDays));
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        {services.length > 1 && (
+          <div className="space-y-2">
+            <Label>分析対象サービス</Label>
+            <ServiceSelector
+              services={services}
+              selectedServiceId={selectedServiceId}
+              onServiceChange={setSelectedServiceId}
+              disabled={isRunning}
+            />
+          </div>
+        )}
+
+        <div className="max-w-[180px] space-y-2">
+          <Label htmlFor="date-range-days">AI分析期間（日数）</Label>
+          <Input
+            id="date-range-days"
+            type="number"
+            min={1}
+            max={365}
+            value={dateRangeInput}
+            aria-invalid={dateRangeError}
+            disabled={isRunning || isSavingDateRange}
+            onChange={event => {
+              setDateRangeInput(event.target.value);
               setDateRangeError(false);
-              return;
-            }
-
-            setDateRangeInput(String(nextDateRangeDays));
-            setDateRangeError(false);
-
-            const previousDays = settings.dateRangeDays;
-            if (nextDateRangeDays === previousDays) {
-              return;
-            }
-
-            startSaveDateRangeTransition(async () => {
-              const saveResult = await updateEvaluationSettings({
-                dateRangeDays: nextDateRangeDays,
-              });
-              if (!saveResult.success) {
-                setStatusTone('destructive');
-                setStatusMessage(saveResult.error ?? '設定の保存に失敗しました');
-                setDateRangeInput(String(previousDays));
+            }}
+            onBlur={() => {
+              const nextDateRangeDays = parseDateRangeDays(dateRangeInput);
+              if (nextDateRangeDays === null) {
+                setDateRangeInput(String(settings.dateRangeDays));
+                setDateRangeError(false);
                 return;
               }
 
-              setSettings(prev => ({ ...prev, dateRangeDays: nextDateRangeDays }));
-            });
-          }}
-        />
-        {dateRangeError && (
-          <p className="text-xs text-red-600">1〜365 の整数を入力してください。</p>
-        )}
+              setDateRangeInput(String(nextDateRangeDays));
+              setDateRangeError(false);
+
+              const previousDays = settings.dateRangeDays;
+              if (nextDateRangeDays === previousDays) {
+                return;
+              }
+
+              startSaveDateRangeTransition(async () => {
+                const saveResult = await updateEvaluationSettings({
+                  dateRangeDays: nextDateRangeDays,
+                });
+                if (!saveResult.success) {
+                  setStatusTone('destructive');
+                  setStatusMessage(saveResult.error ?? '設定の保存に失敗しました');
+                  setDateRangeInput(String(previousDays));
+                  return;
+                }
+
+                setSettings(prev => ({ ...prev, dateRangeDays: nextDateRangeDays }));
+              });
+            }}
+          />
+          {dateRangeError && (
+            <p className="text-xs text-red-600">1〜365 の整数を入力してください。</p>
+          )}
+        </div>
       </div>
+
+      {isServiceMissing && (
+        <Alert variant="destructive">
+          <AlertTitle>サービス未登録</AlertTitle>
+          <AlertDescription>
+            Google Ads コンテンツ戦略提案を実行するには、事業者情報でサービスを登録してください。
+            <Button variant="link" asChild className="h-auto px-1 py-0">
+              <Link href="/business-info">事業者情報を設定</Link>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {settings.lastEvaluatedOn && (
         <p className="text-xs text-slate-500">最終成功実行日: {settings.lastEvaluatedOn}</p>
@@ -171,8 +258,15 @@ export function EvaluationControls({
         <Alert variant="destructive">
           <AlertTitle>メールアドレス未登録</AlertTitle>
           <AlertDescription>
-            メールアドレスが未登録のため、Google Ads AI分析メールは送信できません。
+            メールアドレスが未登録のため、Google Ads コンテンツ戦略提案レポートは送信できません。
           </AlertDescription>
+        </Alert>
+      )}
+
+      {servicesError && (
+        <Alert variant="destructive">
+          <AlertTitle>事業者情報の取得エラー</AlertTitle>
+          <AlertDescription>{servicesError}</AlertDescription>
         </Alert>
       )}
 

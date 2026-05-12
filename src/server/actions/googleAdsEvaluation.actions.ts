@@ -6,7 +6,11 @@ import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewar
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { googleAdsAiAnalysisService } from '@/server/services/googleAdsAiAnalysisService';
-import { updateGoogleAdsEvaluationSettingsSchema } from '@/server/schemas/googleAdsEvaluation.schema';
+import {
+  runGoogleAdsAiAnalysisSchema,
+  updateGoogleAdsEvaluationSettingsSchema,
+  type RunGoogleAdsAiAnalysisInput,
+} from '@/server/schemas/googleAdsEvaluation.schema';
 import type {
   GoogleAdsAiAnalysisResult,
   GoogleAdsEvaluationSettings,
@@ -31,7 +35,9 @@ async function getAuthenticatedUserId() {
   return { success: true as const, userId: authResult.userId, userDetails: authResult.userDetails };
 }
 
-export async function runGoogleAdsAiAnalysis(): Promise<GoogleAdsAiAnalysisResult> {
+export async function runGoogleAdsAiAnalysis(
+  input?: RunGoogleAdsAiAnalysisInput
+): Promise<GoogleAdsAiAnalysisResult> {
   try {
     const auth = await getAuthenticatedUserId();
     if (!auth.success) {
@@ -48,7 +54,17 @@ export async function runGoogleAdsAiAnalysis(): Promise<GoogleAdsAiAnalysisResul
       };
     }
 
-    const result = await googleAdsAiAnalysisService.analyzeAndSend(auth.userId);
+    const parseResult = runGoogleAdsAiAnalysisSchema.safeParse(input);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: parseResult.error.issues.map(issue => issue.message).join(', '),
+      };
+    }
+
+    const result = await googleAdsAiAnalysisService.analyzeAndSend(auth.userId, {
+      ...(parseResult.data?.serviceId ? { serviceId: parseResult.data.serviceId } : {}),
+    });
     if (result.success) {
       revalidatePath('/google-ads-dashboard');
     }

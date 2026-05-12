@@ -13,7 +13,8 @@ interface PromptDescription {
  */
 const IMPLICIT_GOOGLE_ADS_VARS = [
   'persona',
-  'strengths',
+  'serviceName',
+  'strength',
   'keywordData',
   'negativeKeywords',
   'dateRange',
@@ -77,7 +78,7 @@ export function getPromptDescription(name: string): PromptDescription | null {
 const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   // 基本事業者情報
   business_type: '事業者の業種（例：美容院、税理士事務所、整体院）',
-  service_name: '提供するサービス名（例：カット＆カラー、確定申告サポート）',
+  serviceName: '選択中サービス名',
   target_audience: 'ターゲット顧客層（例：30代女性、中小企業経営者）',
   service_area: 'サービス提供エリア（例：東京都渋谷区、全国対応）',
   differentiation: '競合他社との差別化ポイント',
@@ -90,8 +91,7 @@ const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   tel: '電話番号',
   qualification: '保有資格・認定',
   payments: '対応決済方法',
-  strength: '事業の強み・特徴',
-  strengths: '全サービスの強み（改行区切り）',
+  strength: '選択中サービスの強み・特徴',
   when: 'いつ（タイミング・期間）',
   where: 'どこで（場所・範囲）',
   who: '誰が（担当者・対象者）',
