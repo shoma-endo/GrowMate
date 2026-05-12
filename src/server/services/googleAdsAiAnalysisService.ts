@@ -130,7 +130,7 @@ class GoogleAdsAiAnalysisService {
           { maxTokens: modelConfig.maxTokens, temperature: modelConfig.temperature }
         );
         const htmlContent = sanitizeEmailHtml(await marked.parse(analysisMarkdown));
-        const subject = `[DEV] Google Ads AI分析レポート（${formatJstTime(executedAt)}実行 / サンプル株式会社）`;
+        const subject = `[DEV] Google Ads コンテンツ戦略提案レポート（${formatJstTime(executedAt)}実行 / サンプル株式会社）`;
         const emailResult = await this.emailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent);
         if (!emailResult.success) {
           return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_EMAIL_SEND_FAILED };
@@ -211,7 +211,7 @@ class GoogleAdsAiAnalysisService {
         keywordData: this.formatKeywordMetrics(keywordResult.data ?? []),
         negativeKeywords: this.formatNegativeKeywords(negativeKeywordResult.data ?? []),
         dateRange: `${startDate} 〜 ${endDate}`,
-        customerName,
+        customerName: customerName ?? '',
       });
 
       const modelConfig = MODEL_CONFIGS.google_ads_ai_evaluation;
@@ -232,7 +232,8 @@ class GoogleAdsAiAnalysisService {
       );
 
       const htmlContent = sanitizeEmailHtml(await marked.parse(analysisMarkdown));
-      const subject = `【GrowMate】Google Ads AI分析レポート（${formatJstTime(executedAt)}実行 / ${customerName}）`;
+      const subjectAccountPart = customerName ? ` / ${customerName}` : '';
+      const subject = `【GrowMate】Google Ads コンテンツ戦略提案レポート（${formatJstTime(executedAt)}実行${subjectAccountPart}）`;
       const emailResult = await this.emailService.sendGoogleAdsAnalysis(
         userEmail,
         subject,
@@ -335,20 +336,20 @@ class GoogleAdsAiAnalysisService {
     accessToken: string;
     customerId: string;
     managerCustomerId: string | null;
-  }): Promise<string> {
+  }): Promise<string | null> {
     try {
       const customerInfo = await this.googleAdsService.getCustomerInfo(
         input.customerId,
         input.accessToken,
         input.managerCustomerId ?? undefined
       );
-      return customerInfo?.name || input.customerId;
+      return customerInfo?.name ?? null;
     } catch (error) {
       console.warn('[GoogleAdsAiAnalysisService] Failed to fetch customer name:', {
         customerId: input.customerId,
         error,
       });
-      return input.customerId;
+      return null;
     }
   }
 

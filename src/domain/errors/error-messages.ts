@@ -687,7 +687,7 @@ export const ERROR_MESSAGES = {
 
     /** AI分析レポートのメール送信が成功した場合 */
     AI_EVALUATION_EMAIL_SENT:
-      'Google Ads AI分析レポートをメール送信しました',
+      'Google Ads コンテンツ戦略提案レポートをメール送信しました',
 
     /** 評価設定が見つからない場合 */
     AI_EVALUATION_SETTINGS_NOT_FOUND:

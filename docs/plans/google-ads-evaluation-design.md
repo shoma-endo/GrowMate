@@ -265,7 +265,7 @@ export class GoogleAdsAiAnalysisService {
 5. **テンプレート取得**: `PromptService.getTemplateByName('google_ads_ai_evaluation')`
 6. **変数置換**: `PromptService.replaceVariables(template.content, variables)`
 7. **AI 分析実行**: `llmChat('anthropic', 'claude-opus-4-7', messages, modelConfig)`
-8. **メール送信**: `EmailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent)`。件名にはJSTの実行時刻を含める（例: `【GrowMate】Google Ads AI分析レポート（15:30実行 / アカウント名）`）
+8. **メール送信**: `EmailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent)`。件名にはJSTの実行時刻を含め、アカウント名が取得できた場合のみ併記する（例: `【GrowMate】Google Ads コンテンツ戦略提案レポート（15:30実行 / アカウント名）`、未取得時: `【GrowMate】Google Ads コンテンツ戦略提案レポート（15:30実行）`）
 9. **設定更新**:
     - **成功時**（メール送信まで完了）: `last_evaluated_on` を当日（JST）に更新
     - **エラー時**（API失敗・メール送信失敗いずれも）: `last_evaluated_on` は**更新しない**。エラー詳細はサーバーログに出力。メール失敗時もレポートは保存しないため同日中に手動再実行で再生成可能。
