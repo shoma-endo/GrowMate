@@ -37,6 +37,7 @@ export function EvaluationControls({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<'success' | 'destructive'>('success');
   const [isRunning, startRunTransition] = useTransition();
+  const [isSavingDateRange, startSaveDateRangeTransition] = useTransition();
 
   useEffect(() => {
     setSettings(initialSettings);
@@ -121,7 +122,7 @@ export function EvaluationControls({
           max={365}
           value={dateRangeInput}
           aria-invalid={dateRangeError}
-          disabled={isRunning}
+          disabled={isRunning || isSavingDateRange}
           onChange={event => {
             setDateRangeInput(event.target.value);
             setDateRangeError(false);
@@ -136,6 +137,25 @@ export function EvaluationControls({
 
             setDateRangeInput(String(nextDateRangeDays));
             setDateRangeError(false);
+
+            const previousDays = settings.dateRangeDays;
+            if (nextDateRangeDays === previousDays) {
+              return;
+            }
+
+            startSaveDateRangeTransition(async () => {
+              const saveResult = await updateEvaluationSettings({
+                dateRangeDays: nextDateRangeDays,
+              });
+              if (!saveResult.success) {
+                setStatusTone('destructive');
+                setStatusMessage(saveResult.error ?? '設定の保存に失敗しました');
+                setDateRangeInput(String(previousDays));
+                return;
+              }
+
+              setSettings(prev => ({ ...prev, dateRangeDays: nextDateRangeDays }));
+            });
           }}
         />
         {dateRangeError && (
