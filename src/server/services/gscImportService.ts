@@ -160,9 +160,29 @@ class GscImportService {
     resolveAnnotationId: (normalizedUrl: string | null) => string | null;
     countUnmatched: boolean;
   }): Promise<{ upserted: number; skipped: number; unmatched: number }> {
-    let upserted = 0;
     let skipped = 0;
     let unmatched = 0;
+
+    const importedAt = new Date().toISOString();
+
+    type PayloadEntry = {
+      user_id: string;
+      content_annotation_id: string;
+      property_uri: string;
+      search_type: string;
+      date: string;
+      url: string;
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+      imported_at: string;
+    };
+
+    // GSC は同一ページを末尾スラッシュ・クエリパラメータ違いなど複数の URL 表記で返す場合がある。
+    // normalized_url が同じ行が同一チャンクに含まれると ON CONFLICT DO UPDATE が同一行を
+    // 2 回更新しようとしてチャンク全体が失敗するため、投入前に集約する。
+    const dedupMap = new Map<string, { payload: PayloadEntry; weightedPositionSum: number }>();
 
     for (const metric of metrics) {
       const annotationId = resolveAnnotationId(metric.normalizedUrl ?? null);
@@ -174,33 +194,65 @@ class GscImportService {
         continue;
       }
 
-      const upsertPayload = {
-        user_id: userId,
-        content_annotation_id: annotationId,
-        property_uri: metric.propertyUri,
-        search_type: metric.searchType,
-        date: metric.date,
-        url: metric.url,
-        clicks: metric.clicks,
-        impressions: metric.impressions,
-        ctr: metric.ctr,
-        position: metric.position,
-        imported_at: new Date().toISOString(),
-      };
+      const conflictKey = JSON.stringify([userId, metric.propertyUri, metric.date, metric.normalizedUrl ?? '', metric.searchType]);
+      const existing = dedupMap.get(conflictKey);
 
+      if (existing) {
+        const clicks = existing.payload.clicks + metric.clicks;
+        const impressions = existing.payload.impressions + metric.impressions;
+        const weightedPositionSum = existing.weightedPositionSum + metric.position * metric.impressions;
+        dedupMap.set(conflictKey, {
+          payload: { ...existing.payload, clicks, impressions, ctr: impressions > 0 ? clicks / impressions : 0 },
+          weightedPositionSum,
+        });
+      } else {
+        dedupMap.set(conflictKey, {
+          payload: {
+            user_id: userId,
+            content_annotation_id: annotationId,
+            property_uri: metric.propertyUri,
+            search_type: metric.searchType,
+            date: metric.date,
+            url: metric.url,
+            clicks: metric.clicks,
+            impressions: metric.impressions,
+            ctr: metric.ctr,
+            position: metric.position,
+            imported_at: importedAt,
+          },
+          weightedPositionSum: metric.position * metric.impressions,
+        });
+      }
+    }
+
+    const payloads = Array.from(dedupMap.values()).map(({ payload, weightedPositionSum }) => ({
+      ...payload,
+      position: payload.impressions > 0 ? weightedPositionSum / payload.impressions : payload.position,
+    }));
+
+    const chunkSize = 500;
+    let upserted = 0;
+    for (let i = 0; i < payloads.length; i += chunkSize) {
+      const chunk = payloads.slice(i, i + chunkSize);
       const { error } = await this.supabaseService
         .getClient()
         .from('gsc_page_metrics')
-        .upsert(upsertPayload, {
+        .upsert(chunk, {
           onConflict: 'user_id,property_uri,date,normalized_url,search_type',
         });
 
       if (error) {
-        skipped += 1;
+        console.error('[gsc-import] upsertPageMetrics chunk failed:', {
+          userId,
+          chunkIndex: Math.floor(i / chunkSize),
+          chunkSize: chunk.length,
+          error: error.message,
+        });
+        skipped += chunk.length;
         continue;
       }
 
-      upserted += 1;
+      upserted += chunk.length;
     }
 
     return { upserted, skipped, unmatched };
