@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
       '返答がmax_tokensにより途中で途切れました。途切れた箇所の続きのみを出力してください。冒頭から繰り返さないこと。';
     const anthropicMessages = [
       ...normalizedMessages.map((msg, index) => {
-        if (index === normalizedMessages.length - 1) {
+        if (index === normalizedMessages.length - 1 && msg.content.trim().length > 0) {
           return {
             role: msg.role as 'user' | 'assistant',
             content: [
