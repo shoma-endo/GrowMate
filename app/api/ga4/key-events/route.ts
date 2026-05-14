@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchGa4KeyEvents } from '@/server/actions/ga4Setup.actions';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const propertyId = searchParams.get('propertyId');
-
+async function handleKeyEvents(propertyId: string | null) {
   if (!propertyId) {
     return NextResponse.json(
       { success: false, error: ERROR_MESSAGES.GA4.PROPERTY_ID_REQUIRED },
@@ -47,4 +44,14 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  return handleKeyEvents(searchParams.get('propertyId'));
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+  return handleKeyEvents(body?.propertyId ?? null);
 }
