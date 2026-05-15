@@ -788,7 +788,10 @@ export class GoogleAdsService {
       }
 
       console.info('[GoogleAdsService] getSearchTermMetrics metrics:', {
+        rawRowCount: rows.length,
         rowCount: metrics.length,
+        dateRange: { startDate, endDate },
+        hasLoginCustomerId: Boolean(loginCustomerId),
         sample: metrics.slice(0, 5).map(metric => ({
           impressions: metric.impressions,
           clicks: metric.clicks,
