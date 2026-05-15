@@ -13,7 +13,6 @@ import type { GoogleAdsAiAnalysisResult } from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsKeywordMetric,
   GoogleAdsNegativeKeyword,
-  KeywordHistoricalMetric,
 } from '@/types/googleAds.types';
 
 const DEFAULT_DATE_RANGE_DAYS = 30;
@@ -190,28 +189,6 @@ class GoogleAdsAiAnalysisService {
           success: false,
           error: keywordResult.error ?? ERROR_MESSAGES.GOOGLE_ADS.KEYWORD_METRICS_FETCH_FAILED,
         };
-      }
-
-      // 取得したキーワードの検索ボリュームを Keyword Plan API で補完する
-      const keywordTexts = [
-        ...new Set((keywordResult.data ?? []).map(k => k.keywordText)),
-      ];
-      const historicalMetricsResult = await this.googleAdsService.getKeywordHistoricalMetrics({
-        accessToken,
-        customerId: credential.customerId,
-        keywords: keywordTexts,
-        ...(credential.managerCustomerId && {
-          loginCustomerId: credential.managerCustomerId,
-        }),
-      });
-
-      if (historicalMetricsResult.success && historicalMetricsResult.data) {
-        this.mergeSearchVolume(keywordResult.data ?? [], historicalMetricsResult.data);
-      } else {
-        console.warn(
-          '[GoogleAdsAiAnalysisService] Search volume fetch failed (non-fatal):',
-          historicalMetricsResult.error
-        );
       }
 
       if (!negativeKeywordResult.success) {
@@ -419,29 +396,14 @@ class GoogleAdsAiAnalysisService {
     return service?.strength?.trim() || '（事業の強み未設定）';
   }
 
-  private mergeSearchVolume(
-    metrics: GoogleAdsKeywordMetric[],
-    historicalData: KeywordHistoricalMetric[]
-  ): void {
-    const volumeMap = new Map(
-      historicalData.map(h => [h.keywordText, h.avgMonthlySearches])
-    );
-    for (const metric of metrics) {
-      const volume = volumeMap.get(metric.keywordText);
-      if (volume !== undefined) {
-        metric.searchVolume = volume;
-      }
-    }
-  }
-
   private formatKeywordMetrics(metrics: GoogleAdsKeywordMetric[]): string {
     const header =
-      'キーワード | マッチタイプ | ステータス | キャンペーン | 広告グループ | 月間検索数 | IMP | Click | CTR | CPC(円) | CV | CVR | CPA(円) | 費用(円) | 品質スコア | 検索IMP Share';
+      'キーワード | マッチタイプ | ステータス | キャンペーン | 広告グループ | IMP | Click | CTR | CPC(円) | CV | CVR | CPA(円) | 費用(円) | 品質スコア | 検索IMP Share';
     const separator =
-      '----------|------------|----------|------------|------------|----------|-----|-------|-----|---------|-----|-----|---------|---------|----------|-------------';
+      '----------|------------|----------|------------|------------|-----|-------|-----|---------|-----|-----|---------|---------|----------|-------------';
 
     if (metrics.length === 0) {
-      return `${header}\n${separator}\nデータなし | - | - | - | - | - | 0 | 0 | 0.00% | 0 | 0 | 0.00% | - | 0 | - | -`;
+      return `${header}\n${separator}\nデータなし | - | - | - | - | 0 | 0 | 0.00% | 0 | 0 | 0.00% | - | 0 | - | -`;
     }
 
     const rows = [...metrics]
@@ -453,7 +415,6 @@ class GoogleAdsAiAnalysisService {
           metric.status,
           metric.campaignName || '-',
           metric.adGroupName || '-',
-          metric.searchVolume === null ? '-' : this.formatInteger(metric.searchVolume),
           this.formatInteger(metric.impressions),
           this.formatInteger(metric.clicks),
           this.formatPercent(metric.ctr),
@@ -518,16 +479,16 @@ export const googleAdsAiAnalysisService = new GoogleAdsAiAnalysisService();
 // DEV ONLY: ローカル確認用サンプルデータ（エアコンクリーニング）
 // ============================================================
 const DEV_SAMPLE_KEYWORDS: GoogleAdsKeywordMetric[] = [
-  { keywordId: '1001', keywordText: 'エアコンクリーニング', matchType: 'BROAD', campaignName: 'エアコン洗浄_一般', adGroupName: 'クリーニング全般', status: 'ENABLED', impressions: 12400, clicks: 620, ctr: 0.05, cpc: 320, cost: 198400, qualityScore: 7, conversions: 18, costPerConversion: 11022, searchImpressionShare: 0.42, conversionRate: 0.029, searchVolume: 33100 },
-  { keywordId: '1002', keywordText: 'エアコンクリーニング 料金', matchType: 'EXACT', campaignName: 'エアコン洗浄_一般', adGroupName: '料金・費用', status: 'ENABLED', impressions: 5800, clicks: 464, ctr: 0.08, cpc: 280, cost: 129920, qualityScore: 9, conversions: 22, costPerConversion: 5905, searchImpressionShare: 0.71, conversionRate: 0.047, searchVolume: 8100 },
-  { keywordId: '1003', keywordText: 'エアコン 掃除 業者', matchType: 'PHRASE', campaignName: 'エアコン洗浄_一般', adGroupName: 'クリーニング全般', status: 'ENABLED', impressions: 8200, clicks: 410, ctr: 0.05, cpc: 350, cost: 143500, qualityScore: 6, conversions: 12, costPerConversion: 11958, searchImpressionShare: 0.38, conversionRate: 0.029, searchVolume: 12100 },
-  { keywordId: '1004', keywordText: 'エアコン 分解洗浄', matchType: 'PHRASE', campaignName: 'エアコン洗浄_プレミアム', adGroupName: '分解・内部洗浄', status: 'ENABLED', impressions: 3100, clicks: 217, ctr: 0.07, cpc: 420, cost: 91140, qualityScore: 8, conversions: 9, costPerConversion: 10127, searchImpressionShare: 0.55, conversionRate: 0.041, searchVolume: 4400 },
-  { keywordId: '1005', keywordText: 'エアコン内部クリーニング', matchType: 'EXACT', campaignName: 'エアコン洗浄_プレミアム', adGroupName: '分解・内部洗浄', status: 'ENABLED', impressions: 2400, clicks: 192, ctr: 0.08, cpc: 390, cost: 74880, qualityScore: 9, conversions: 11, costPerConversion: 6807, searchImpressionShare: 0.68, conversionRate: 0.057, searchVolume: 2900 },
-  { keywordId: '1006', keywordText: 'エアコンクリーニング 業者 おすすめ', matchType: 'BROAD', campaignName: 'エアコン洗浄_一般', adGroupName: '業者選び', status: 'ENABLED', impressions: 6500, clicks: 260, ctr: 0.04, cpc: 310, cost: 80600, qualityScore: 5, conversions: 7, costPerConversion: 11514, searchImpressionShare: 0.29, conversionRate: 0.027, searchVolume: 5400 },
-  { keywordId: '1007', keywordText: '壁掛けエアコン クリーニング', matchType: 'PHRASE', campaignName: 'エアコン洗浄_一般', adGroupName: '機種別', status: 'ENABLED', impressions: 1800, clicks: 126, ctr: 0.07, cpc: 360, cost: 45360, qualityScore: 7, conversions: 5, costPerConversion: 9072, searchImpressionShare: 0.51, conversionRate: 0.04, searchVolume: 1600 },
-  { keywordId: '1008', keywordText: 'エアコン 丸洗い', matchType: 'BROAD', campaignName: 'エアコン洗浄_プレミアム', adGroupName: '分解・内部洗浄', status: 'PAUSED', impressions: 900, clicks: 27, ctr: 0.03, cpc: 400, cost: 10800, qualityScore: 4, conversions: 1, costPerConversion: 10800, searchImpressionShare: 0.18, conversionRate: 0.037, searchVolume: null },
-  { keywordId: '1009', keywordText: 'エアコンクリーニング 一台', matchType: 'EXACT', campaignName: 'エアコン洗浄_一般', adGroupName: '料金・費用', status: 'ENABLED', impressions: 4200, clicks: 378, ctr: 0.09, cpc: 295, cost: 111510, qualityScore: 8, conversions: 19, costPerConversion: 5869, searchImpressionShare: 0.74, conversionRate: 0.05, searchVolume: 3600 },
-  { keywordId: '1010', keywordText: 'エアコン 洗浄 プロ', matchType: 'PHRASE', campaignName: 'エアコン洗浄_プレミアム', adGroupName: 'プロ・専門業者', status: 'ENABLED', impressions: 2700, clicks: 162, ctr: 0.06, cpc: 375, cost: 60750, qualityScore: 6, conversions: 6, costPerConversion: 10125, searchImpressionShare: 0.44, conversionRate: 0.037, searchVolume: 1300 },
+  { keywordId: '1001', keywordText: 'エアコンクリーニング', matchType: 'BROAD', campaignName: 'エアコン洗浄_一般', adGroupName: 'クリーニング全般', status: 'ENABLED', impressions: 12400, clicks: 620, ctr: 0.05, cpc: 320, cost: 198400, qualityScore: 7, conversions: 18, costPerConversion: 11022, searchImpressionShare: 0.42, conversionRate: 0.029 },
+  { keywordId: '1002', keywordText: 'エアコンクリーニング 料金', matchType: 'EXACT', campaignName: 'エアコン洗浄_一般', adGroupName: '料金・費用', status: 'ENABLED', impressions: 5800, clicks: 464, ctr: 0.08, cpc: 280, cost: 129920, qualityScore: 9, conversions: 22, costPerConversion: 5905, searchImpressionShare: 0.71, conversionRate: 0.047 },
+  { keywordId: '1003', keywordText: 'エアコン 掃除 業者', matchType: 'PHRASE', campaignName: 'エアコン洗浄_一般', adGroupName: 'クリーニング全般', status: 'ENABLED', impressions: 8200, clicks: 410, ctr: 0.05, cpc: 350, cost: 143500, qualityScore: 6, conversions: 12, costPerConversion: 11958, searchImpressionShare: 0.38, conversionRate: 0.029 },
+  { keywordId: '1004', keywordText: 'エアコン 分解洗浄', matchType: 'PHRASE', campaignName: 'エアコン洗浄_プレミアム', adGroupName: '分解・内部洗浄', status: 'ENABLED', impressions: 3100, clicks: 217, ctr: 0.07, cpc: 420, cost: 91140, qualityScore: 8, conversions: 9, costPerConversion: 10127, searchImpressionShare: 0.55, conversionRate: 0.041 },
+  { keywordId: '1005', keywordText: 'エアコン内部クリーニング', matchType: 'EXACT', campaignName: 'エアコン洗浄_プレミアム', adGroupName: '分解・内部洗浄', status: 'ENABLED', impressions: 2400, clicks: 192, ctr: 0.08, cpc: 390, cost: 74880, qualityScore: 9, conversions: 11, costPerConversion: 6807, searchImpressionShare: 0.68, conversionRate: 0.057 },
+  { keywordId: '1006', keywordText: 'エアコンクリーニング 業者 おすすめ', matchType: 'BROAD', campaignName: 'エアコン洗浄_一般', adGroupName: '業者選び', status: 'ENABLED', impressions: 6500, clicks: 260, ctr: 0.04, cpc: 310, cost: 80600, qualityScore: 5, conversions: 7, costPerConversion: 11514, searchImpressionShare: 0.29, conversionRate: 0.027 },
+  { keywordId: '1007', keywordText: '壁掛けエアコン クリーニング', matchType: 'PHRASE', campaignName: 'エアコン洗浄_一般', adGroupName: '機種別', status: 'ENABLED', impressions: 1800, clicks: 126, ctr: 0.07, cpc: 360, cost: 45360, qualityScore: 7, conversions: 5, costPerConversion: 9072, searchImpressionShare: 0.51, conversionRate: 0.04 },
+  { keywordId: '1008', keywordText: 'エアコン 丸洗い', matchType: 'BROAD', campaignName: 'エアコン洗浄_プレミアム', adGroupName: '分解・内部洗浄', status: 'PAUSED', impressions: 900, clicks: 27, ctr: 0.03, cpc: 400, cost: 10800, qualityScore: 4, conversions: 1, costPerConversion: 10800, searchImpressionShare: 0.18, conversionRate: 0.037 },
+  { keywordId: '1009', keywordText: 'エアコンクリーニング 一台', matchType: 'EXACT', campaignName: 'エアコン洗浄_一般', adGroupName: '料金・費用', status: 'ENABLED', impressions: 4200, clicks: 378, ctr: 0.09, cpc: 295, cost: 111510, qualityScore: 8, conversions: 19, costPerConversion: 5869, searchImpressionShare: 0.74, conversionRate: 0.05 },
+  { keywordId: '1010', keywordText: 'エアコン 洗浄 プロ', matchType: 'PHRASE', campaignName: 'エアコン洗浄_プレミアム', adGroupName: 'プロ・専門業者', status: 'ENABLED', impressions: 2700, clicks: 162, ctr: 0.06, cpc: 375, cost: 60750, qualityScore: 6, conversions: 6, costPerConversion: 10125, searchImpressionShare: 0.44, conversionRate: 0.037 },
 ];
 
 const DEV_SAMPLE_NEGATIVE_KEYWORDS: GoogleAdsNegativeKeyword[] = [

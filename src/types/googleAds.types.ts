@@ -59,10 +59,6 @@ export interface GoogleAdsKeywordMetric {
   clicks: number;
   /** コスト（費用）: 円換算済み */
   cost: number;
-
-  // ===== Keyword Plan API 指標 =====
-  /** 月間平均検索数: Keyword Historical Metrics API から取得、未取得の場合は null */
-  searchVolume: number | null;
 }
 
 /**
@@ -244,37 +240,6 @@ export interface GoogleAdsCampaignSummary {
 export interface GetCampaignMetricsResult {
   success: boolean;
   data?: GoogleAdsCampaignMetrics[];
-  error?: string;
-}
-
-/**
- * Keyword Historical Metrics API の入力パラメータ
- */
-export interface GetKeywordHistoricalMetricsInput {
-  accessToken: string;
-  customerId: string;
-  loginCustomerId?: string;
-  keywords: string[];
-  /** 言語定数ID（例: 1017 = 日本語）。未指定時は日本語をデフォルト使用 */
-  languageId?: string;
-  /** 地域ターゲット定数ID（例: 2392 = 日本）。未指定時は日本をデフォルト使用 */
-  geoTargetId?: string;
-}
-
-/**
- * キーワード別の月間平均検索数
- */
-export interface KeywordHistoricalMetric {
-  keywordText: string;
-  avgMonthlySearches: number | null;
-}
-
-/**
- * Keyword Historical Metrics API の結果
- */
-export interface GetKeywordHistoricalMetricsResult {
-  success: boolean;
-  data?: KeywordHistoricalMetric[];
   error?: string;
 }
 

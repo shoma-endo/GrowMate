@@ -14,8 +14,6 @@ import type {
   GoogleAdsCampaignMetrics,
   GoogleAdsNegativeKeyword,
   GoogleAdsSearchStreamRow,
-  GetKeywordHistoricalMetricsInput,
-  GetKeywordHistoricalMetricsResult,
 } from '@/types/googleAds.types';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
@@ -718,98 +716,7 @@ export class GoogleAdsService {
       impressions: Number(m.impressions ?? 0),
       clicks: Number(m.clicks ?? 0),
       cost: microsToYen(m.costMicros),
-
-      // Keyword Plan API で後から付与する
-      searchVolume: null,
     };
-  }
-
-  async getKeywordHistoricalMetrics(
-    input: GetKeywordHistoricalMetricsInput
-  ): Promise<GetKeywordHistoricalMetricsResult> {
-    const {
-      accessToken,
-      customerId,
-      loginCustomerId,
-      keywords,
-      languageId = '1017',
-      geoTargetId = '2392',
-    } = input;
-
-    if (keywords.length === 0) {
-      return { success: true, data: [] };
-    }
-
-    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${customerId}:generateKeywordHistoricalMetrics`;
-
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '',
-    };
-    if (loginCustomerId) {
-      headers['login-customer-id'] = loginCustomerId;
-    }
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          keywords,
-          keywordPlanNetwork: 'GOOGLE_SEARCH',
-          language: `languageConstants/${languageId}`,
-          geoTargetConstants: [`geoTargetConstants/${geoTargetId}`],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        const parsed = this.parseGoogleAdsError(
-          errorText,
-          `HTTP ${response.status}: ${response.statusText}`
-        );
-        console.error('[GoogleAdsService] getKeywordHistoricalMetrics error:', {
-          status: response.status,
-          message: parsed.message,
-          customerId,
-        });
-        return { success: false, error: parsed.message };
-      }
-
-      const json = (await response.json()) as {
-        results?: {
-          text?: string;
-          closeVariants?: string[];
-          keywordMetrics?: { avgMonthlySearches?: string };
-        }[];
-      };
-
-      const seen = new Set<string>();
-      const data: import('@/types/googleAds.types').KeywordHistoricalMetric[] = [];
-      for (const r of json.results ?? []) {
-        const avgMonthlySearches = r.keywordMetrics?.avgMonthlySearches
-          ? Number(r.keywordMetrics.avgMonthlySearches)
-          : null;
-        for (const text of [r.text, ...(r.closeVariants ?? [])]) {
-          if (text && !seen.has(text)) {
-            seen.add(text);
-            data.push({ keywordText: text, avgMonthlySearches });
-          }
-        }
-      }
-
-      return { success: true, data };
-    } catch (error) {
-      console.error('[GoogleAdsService] getKeywordHistoricalMetrics error:', error);
-      return {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : '検索ボリュームの取得に失敗しました',
-      };
-    }
   }
 
   async getNegativeKeywords(input: {
