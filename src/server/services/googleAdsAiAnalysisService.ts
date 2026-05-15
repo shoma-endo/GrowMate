@@ -13,6 +13,7 @@ import type { GoogleAdsAiAnalysisResult } from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsKeywordMetric,
   GoogleAdsNegativeKeyword,
+  KeywordHistoricalMetric,
 } from '@/types/googleAds.types';
 
 const DEFAULT_DATE_RANGE_DAYS = 30;
@@ -189,6 +190,28 @@ class GoogleAdsAiAnalysisService {
           success: false,
           error: keywordResult.error ?? ERROR_MESSAGES.GOOGLE_ADS.KEYWORD_METRICS_FETCH_FAILED,
         };
+      }
+
+      // 取得したキーワードの検索ボリュームを Keyword Plan API で補完する
+      const keywordTexts = [
+        ...new Set((keywordResult.data ?? []).map(k => k.keywordText)),
+      ];
+      const historicalMetricsResult = await this.googleAdsService.getKeywordHistoricalMetrics({
+        accessToken,
+        customerId: credential.customerId,
+        keywords: keywordTexts,
+        ...(credential.managerCustomerId && {
+          loginCustomerId: credential.managerCustomerId,
+        }),
+      });
+
+      if (historicalMetricsResult.success && historicalMetricsResult.data) {
+        this.mergeSearchVolume(keywordResult.data ?? [], historicalMetricsResult.data);
+      } else {
+        console.warn(
+          '[GoogleAdsAiAnalysisService] Search volume fetch failed (non-fatal):',
+          historicalMetricsResult.error
+        );
       }
 
       if (!negativeKeywordResult.success) {
@@ -396,14 +419,29 @@ class GoogleAdsAiAnalysisService {
     return service?.strength?.trim() || '（事業の強み未設定）';
   }
 
+  private mergeSearchVolume(
+    metrics: GoogleAdsKeywordMetric[],
+    historicalData: KeywordHistoricalMetric[]
+  ): void {
+    const volumeMap = new Map(
+      historicalData.map(h => [h.keywordText, h.avgMonthlySearches])
+    );
+    for (const metric of metrics) {
+      const volume = volumeMap.get(metric.keywordText);
+      if (volume !== undefined) {
+        metric.searchVolume = volume;
+      }
+    }
+  }
+
   private formatKeywordMetrics(metrics: GoogleAdsKeywordMetric[]): string {
     const header =
-      'キーワード | マッチタイプ | ステータス | キャンペーン | 広告グループ | IMP | Click | CTR | CPC(円) | CV | CVR | CPA(円) | 費用(円) | 品質スコア | 検索IMP Share';
+      'キーワード | マッチタイプ | ステータス | キャンペーン | 広告グループ | 月間検索数 | IMP | Click | CTR | CPC(円) | CV | CVR | CPA(円) | 費用(円) | 品質スコア | 検索IMP Share';
     const separator =
-      '----------|------------|----------|------------|------------|-----|-------|-----|---------|-----|-----|---------|---------|----------|-------------';
+      '----------|------------|----------|------------|------------|----------|-----|-------|-----|---------|-----|-----|---------|---------|----------|-------------';
 
     if (metrics.length === 0) {
-      return `${header}\n${separator}\nデータなし | - | - | - | - | 0 | 0 | 0.00% | 0 | 0 | 0.00% | - | 0 | - | -`;
+      return `${header}\n${separator}\nデータなし | - | - | - | - | - | 0 | 0 | 0.00% | 0 | 0 | 0.00% | - | 0 | - | -`;
     }
 
     const rows = [...metrics]
@@ -415,6 +453,7 @@ class GoogleAdsAiAnalysisService {
           metric.status,
           metric.campaignName || '-',
           metric.adGroupName || '-',
+          metric.searchVolume === null ? '-' : this.formatInteger(metric.searchVolume),
           this.formatInteger(metric.impressions),
           this.formatInteger(metric.clicks),
           this.formatPercent(metric.ctr),
