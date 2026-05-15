@@ -771,16 +771,24 @@ export class GoogleAdsService {
       const json = (await response.json()) as {
         results?: {
           text?: string;
+          closeVariants?: string[];
           keywordMetrics?: { avgMonthlySearches?: string };
         }[];
       };
 
-      const data = (json.results ?? []).map(r => ({
-        keywordText: r.text ?? '',
-        avgMonthlySearches: r.keywordMetrics?.avgMonthlySearches
+      const seen = new Set<string>();
+      const data: import('@/types/googleAds.types').KeywordHistoricalMetric[] = [];
+      for (const r of json.results ?? []) {
+        const avgMonthlySearches = r.keywordMetrics?.avgMonthlySearches
           ? Number(r.keywordMetrics.avgMonthlySearches)
-          : null,
-      }));
+          : null;
+        for (const text of [r.text, ...(r.closeVariants ?? [])]) {
+          if (text && !seen.has(text)) {
+            seen.add(text);
+            data.push({ keywordText: text, avgMonthlySearches });
+          }
+        }
+      }
 
       return { success: true, data };
     } catch (error) {
