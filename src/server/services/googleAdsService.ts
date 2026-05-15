@@ -727,7 +727,14 @@ export class GoogleAdsService {
   async getKeywordHistoricalMetrics(
     input: GetKeywordHistoricalMetricsInput
   ): Promise<GetKeywordHistoricalMetricsResult> {
-    const { accessToken, customerId, loginCustomerId, keywords } = input;
+    const {
+      accessToken,
+      customerId,
+      loginCustomerId,
+      keywords,
+      languageId = '1017',
+      geoTargetId = '2392',
+    } = input;
 
     if (keywords.length === 0) {
       return { success: true, data: [] };
@@ -751,6 +758,8 @@ export class GoogleAdsService {
         body: JSON.stringify({
           keywords,
           keywordPlanNetwork: 'GOOGLE_SEARCH',
+          language: `languageConstants/${languageId}`,
+          geoTargetConstants: [`geoTargetConstants/${geoTargetId}`],
         }),
       });
 

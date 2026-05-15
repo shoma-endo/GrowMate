@@ -255,6 +255,10 @@ export interface GetKeywordHistoricalMetricsInput {
   customerId: string;
   loginCustomerId?: string;
   keywords: string[];
+  /** 言語定数ID（例: 1017 = 日本語）。未指定時は日本語をデフォルト使用 */
+  languageId?: string;
+  /** 地域ターゲット定数ID（例: 2392 = 日本）。未指定時は日本をデフォルト使用 */
+  geoTargetId?: string;
 }
 
 /**
