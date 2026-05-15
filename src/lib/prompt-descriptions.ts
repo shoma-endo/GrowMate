@@ -17,6 +17,7 @@ const IMPLICIT_GOOGLE_ADS_VARS = [
   'strength',
   'keywordData',
   'negativeKeywords',
+  'searchTermData',
   'dateRange',
   'customerName',
 ] as const;
@@ -123,6 +124,7 @@ const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   competingSnippets: '競合上位ページのスニペット傾向（タイトル/ディスクリプションの特徴）',
   keywordData: 'Google Ads 全キーワードの指標データ（構造化テキスト）',
   negativeKeywords: 'Google Ads 除外キーワード一覧',
+  searchTermData: 'Google Ads 実検索語句の表示回数・クリック数（構造化テキスト）',
   dateRange: '分析対象期間（例: 2026-02-22 〜 2026-03-24）',
   customerName: 'Google Ads アカウント名',
 };

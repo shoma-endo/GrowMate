@@ -14,6 +14,9 @@ import type {
   GoogleAdsCampaignMetrics,
   GoogleAdsNegativeKeyword,
   GoogleAdsSearchStreamRow,
+  GoogleAdsSearchTermMetric,
+  GetSearchTermMetricsInput,
+  GetSearchTermMetricsResult,
 } from '@/types/googleAds.types';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
@@ -717,6 +720,79 @@ export class GoogleAdsService {
       clicks: Number(m.clicks ?? 0),
       cost: microsToYen(m.costMicros),
     };
+  }
+
+  async getSearchTermMetrics(
+    input: GetSearchTermMetricsInput
+  ): Promise<GetSearchTermMetricsResult> {
+    const { accessToken, customerId, startDate, endDate, loginCustomerId } = input;
+
+    const query = `
+      SELECT
+        search_term_view.search_term,
+        metrics.impressions,
+        metrics.clicks
+      FROM search_term_view
+      WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
+        AND metrics.impressions > 0
+      ORDER BY metrics.impressions DESC
+      LIMIT 1000
+    `;
+
+    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${customerId}/googleAds:searchStream`;
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '',
+    };
+    if (loginCustomerId) {
+      headers['login-customer-id'] = loginCustomerId;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: query.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const parsed = this.parseGoogleAdsError(
+          errorText,
+          `HTTP ${response.status}: ${response.statusText}`
+        );
+        console.error('[GoogleAdsService] getSearchTermMetrics error:', {
+          status: response.status,
+          message: parsed.message,
+          customerId,
+        });
+        return { success: false, error: parsed.message };
+      }
+
+      const responseText = await response.text();
+      const rows = this.parseSearchStreamResponse(responseText);
+      const metrics: GoogleAdsSearchTermMetric[] = [];
+
+      for (const row of rows) {
+        const searchTerm = row.searchTermView?.searchTerm;
+        if (!searchTerm) continue;
+        metrics.push({
+          searchTerm,
+          impressions: Number(row.metrics?.impressions ?? 0),
+          clicks: Number(row.metrics?.clicks ?? 0),
+        });
+      }
+
+      return { success: true, data: metrics };
+    } catch (error) {
+      console.error('[GoogleAdsService] getSearchTermMetrics error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '検索語句指標の取得に失敗しました',
+      };
+    }
   }
 
   async getNegativeKeywords(input: {

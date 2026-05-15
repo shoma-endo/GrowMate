@@ -184,6 +184,42 @@ export interface GoogleAdsSearchStreamRow {
     currencyCode?: string;
     id?: number;
   };
+  searchTermView?: {
+    searchTerm?: string;
+  };
+}
+
+/**
+ * Google Ads 検索語句指標
+ * search_term_view から取得する実検索クエリ毎の実績
+ */
+export interface GoogleAdsSearchTermMetric {
+  /** 実際にユーザーが検索した語句 */
+  searchTerm: string;
+  /** 広告表示回数 */
+  impressions: number;
+  /** クリック数 */
+  clicks: number;
+}
+
+/**
+ * 検索語句指標取得の入力パラメータ
+ */
+export interface GetSearchTermMetricsInput {
+  accessToken: string;
+  customerId: string;
+  startDate: string;
+  endDate: string;
+  loginCustomerId?: string;
+}
+
+/**
+ * 検索語句指標取得の結果
+ */
+export interface GetSearchTermMetricsResult {
+  success: boolean;
+  data?: GoogleAdsSearchTermMetric[];
+  error?: string;
 }
 
 /**

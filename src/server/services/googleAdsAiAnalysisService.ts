@@ -13,6 +13,7 @@ import type { GoogleAdsAiAnalysisResult } from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsKeywordMetric,
   GoogleAdsNegativeKeyword,
+  GoogleAdsSearchTermMetric,
 } from '@/types/googleAds.types';
 
 const DEFAULT_DATE_RANGE_DAYS = 30;
@@ -125,6 +126,7 @@ class GoogleAdsAiAnalysisService {
           strength: this.formatStrength(targetService),
           keywordData: this.formatKeywordMetrics(DEV_SAMPLE_KEYWORDS),
           negativeKeywords: this.formatNegativeKeywords(DEV_SAMPLE_NEGATIVE_KEYWORDS),
+          searchTermData: this.formatSearchTermMetrics(DEV_SAMPLE_SEARCH_TERMS),
           dateRange: `${startDate} 〜 ${endDate}`,
           customerName: 'サンプル株式会社（開発用）',
         });
@@ -162,7 +164,7 @@ class GoogleAdsAiAnalysisService {
         };
       }
 
-      const [keywordResult, negativeKeywordResult, brief] = await Promise.all([
+      const [keywordResult, negativeKeywordResult, searchTermResult, brief] = await Promise.all([
         this.googleAdsService.getKeywordMetrics({
           accessToken,
           customerId: credential.customerId,
@@ -176,6 +178,15 @@ class GoogleAdsAiAnalysisService {
         this.googleAdsService.getNegativeKeywords({
           accessToken,
           customerId: credential.customerId,
+          ...(credential.managerCustomerId && {
+            loginCustomerId: credential.managerCustomerId,
+          }),
+        }),
+        this.googleAdsService.getSearchTermMetrics({
+          accessToken,
+          customerId: credential.customerId,
+          startDate,
+          endDate,
           ...(credential.managerCustomerId && {
             loginCustomerId: credential.managerCustomerId,
           }),
@@ -204,6 +215,13 @@ class GoogleAdsAiAnalysisService {
         };
       }
 
+      if (!searchTermResult.success) {
+        console.warn(
+          '[GoogleAdsAiAnalysisService] Failed to fetch search term metrics (non-fatal):',
+          searchTermResult.error
+        );
+      }
+
       const promptTemplate = await PromptService.getTemplateByName('google_ads_ai_evaluation');
       if (!promptTemplate) {
         return {
@@ -230,6 +248,7 @@ class GoogleAdsAiAnalysisService {
         strength: this.formatStrength(targetService),
         keywordData: this.formatKeywordMetrics(keywordResult.data ?? []),
         negativeKeywords: this.formatNegativeKeywords(negativeKeywordResult.data ?? []),
+        searchTermData: this.formatSearchTermMetrics(searchTermResult.data ?? []),
         dateRange: `${startDate} 〜 ${endDate}`,
         customerName: customerName ?? '',
       });
@@ -456,6 +475,21 @@ class GoogleAdsAiAnalysisService {
     return [header, separator, ...rows].join('\n');
   }
 
+  private formatSearchTermMetrics(metrics: GoogleAdsSearchTermMetric[]): string {
+    const header = '検索語句 | 表示回数 | クリック数';
+    const separator = '--------|--------|----------';
+
+    if (metrics.length === 0) {
+      return `${header}\n${separator}\n（データなし） | 0 | 0`;
+    }
+
+    const rows = [...metrics]
+      .sort((a, b) => b.impressions - a.impressions)
+      .map(m => [m.searchTerm, this.formatInteger(m.impressions), this.formatInteger(m.clicks)].join(' | '));
+
+    return [header, separator, ...rows].join('\n');
+  }
+
   private formatInteger(value: number): string {
     return Math.round(value).toLocaleString('ja-JP');
   }
@@ -497,4 +531,17 @@ const DEV_SAMPLE_NEGATIVE_KEYWORDS: GoogleAdsNegativeKeyword[] = [
   { keywordText: 'フィルター 掃除', matchType: 'PHRASE', level: 'ad_group', campaignName: 'エアコン洗浄_一般', campaignStatus: 'ENABLED', adGroupName: 'クリーニング全般', adGroupStatus: 'ENABLED' },
   { keywordText: '中古 エアコン', matchType: 'BROAD', level: 'campaign', campaignName: 'エアコン洗浄_プレミアム', campaignStatus: 'ENABLED' },
   { keywordText: '無料', matchType: 'EXACT', level: 'campaign', campaignName: 'エアコン洗浄_一般', campaignStatus: 'ENABLED' },
+];
+
+const DEV_SAMPLE_SEARCH_TERMS: GoogleAdsSearchTermMetric[] = [
+  { searchTerm: 'エアコンクリーニング', impressions: 3200, clicks: 128 },
+  { searchTerm: 'エアコン クリーニング 料金', impressions: 2100, clicks: 189 },
+  { searchTerm: 'エアコン 掃除 業者 おすすめ', impressions: 1850, clicks: 92 },
+  { searchTerm: 'エアコンクリーニング 一台 いくら', impressions: 1620, clicks: 145 },
+  { searchTerm: 'エアコン 分解洗浄 業者', impressions: 980, clicks: 78 },
+  { searchTerm: 'エアコン内部 カビ 掃除', impressions: 870, clicks: 43 },
+  { searchTerm: '壁掛けエアコン クリーニング 料金', impressions: 760, clicks: 68 },
+  { searchTerm: 'エアコン 臭い 洗浄', impressions: 640, clicks: 38 },
+  { searchTerm: 'エアコンクリーニング プロ 頼む', impressions: 520, clicks: 46 },
+  { searchTerm: 'エアコン 丸洗い 費用', impressions: 410, clicks: 20 },
 ];
