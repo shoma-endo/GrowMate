@@ -787,6 +787,15 @@ export class GoogleAdsService {
         });
       }
 
+      console.info('[GoogleAdsService] getSearchTermMetrics metrics:', {
+        rowCount: metrics.length,
+        sample: metrics.slice(0, 5).map(metric => ({
+          impressions: metric.impressions,
+          clicks: metric.clicks,
+          conversions: metric.conversions,
+        })),
+      });
+
       return { success: true, data: metrics };
     } catch (error) {
       console.error('[GoogleAdsService] getSearchTermMetrics error:', error);
