@@ -731,7 +731,8 @@ export class GoogleAdsService {
       SELECT
         search_term_view.search_term,
         metrics.impressions,
-        metrics.clicks
+        metrics.clicks,
+        metrics.conversions
       FROM search_term_view
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
         AND metrics.impressions > 0
@@ -782,6 +783,7 @@ export class GoogleAdsService {
           searchTerm,
           impressions: Number(row.metrics?.impressions ?? 0),
           clicks: Number(row.metrics?.clicks ?? 0),
+          conversions: row.metrics?.conversions ?? 0,
         });
       }
 
