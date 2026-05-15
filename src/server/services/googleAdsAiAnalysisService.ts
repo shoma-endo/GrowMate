@@ -476,16 +476,23 @@ class GoogleAdsAiAnalysisService {
   }
 
   private formatSearchTermMetrics(metrics: GoogleAdsSearchTermMetric[]): string {
-    const header = '検索語句 | 表示回数 | クリック数';
-    const separator = '--------|--------|----------';
+    const header = '検索語句 | 表示回数 | クリック数 | コンバージョン数';
+    const separator = '--------|--------|----------|----------------';
 
     if (metrics.length === 0) {
-      return `${header}\n${separator}\n（データなし） | 0 | 0`;
+      return `${header}\n${separator}\n（データなし） | 0 | 0 | 0`;
     }
 
     const rows = [...metrics]
       .sort((a, b) => b.impressions - a.impressions)
-      .map(m => [m.searchTerm, this.formatInteger(m.impressions), this.formatInteger(m.clicks)].join(' | '));
+      .map(m =>
+        [
+          m.searchTerm,
+          this.formatInteger(m.impressions),
+          this.formatInteger(m.clicks),
+          this.formatNumber(m.conversions),
+        ].join(' | ')
+      );
 
     return [header, separator, ...rows].join('\n');
   }
@@ -534,14 +541,14 @@ const DEV_SAMPLE_NEGATIVE_KEYWORDS: GoogleAdsNegativeKeyword[] = [
 ];
 
 const DEV_SAMPLE_SEARCH_TERMS: GoogleAdsSearchTermMetric[] = [
-  { searchTerm: 'エアコンクリーニング', impressions: 3200, clicks: 128 },
-  { searchTerm: 'エアコン クリーニング 料金', impressions: 2100, clicks: 189 },
-  { searchTerm: 'エアコン 掃除 業者 おすすめ', impressions: 1850, clicks: 92 },
-  { searchTerm: 'エアコンクリーニング 一台 いくら', impressions: 1620, clicks: 145 },
-  { searchTerm: 'エアコン 分解洗浄 業者', impressions: 980, clicks: 78 },
-  { searchTerm: 'エアコン内部 カビ 掃除', impressions: 870, clicks: 43 },
-  { searchTerm: '壁掛けエアコン クリーニング 料金', impressions: 760, clicks: 68 },
-  { searchTerm: 'エアコン 臭い 洗浄', impressions: 640, clicks: 38 },
-  { searchTerm: 'エアコンクリーニング プロ 頼む', impressions: 520, clicks: 46 },
-  { searchTerm: 'エアコン 丸洗い 費用', impressions: 410, clicks: 20 },
+  { searchTerm: 'エアコンクリーニング', impressions: 3200, clicks: 128, conversions: 6 },
+  { searchTerm: 'エアコン クリーニング 料金', impressions: 2100, clicks: 189, conversions: 9 },
+  { searchTerm: 'エアコン 掃除 業者 おすすめ', impressions: 1850, clicks: 92, conversions: 3 },
+  { searchTerm: 'エアコンクリーニング 一台 いくら', impressions: 1620, clicks: 145, conversions: 7 },
+  { searchTerm: 'エアコン 分解洗浄 業者', impressions: 980, clicks: 78, conversions: 4 },
+  { searchTerm: 'エアコン内部 カビ 掃除', impressions: 870, clicks: 43, conversions: 2 },
+  { searchTerm: '壁掛けエアコン クリーニング 料金', impressions: 760, clicks: 68, conversions: 3 },
+  { searchTerm: 'エアコン 臭い 洗浄', impressions: 640, clicks: 38, conversions: 1 },
+  { searchTerm: 'エアコンクリーニング プロ 頼む', impressions: 520, clicks: 46, conversions: 2 },
+  { searchTerm: 'エアコン 丸洗い 費用', impressions: 410, clicks: 20, conversions: 1 },
 ];

@@ -200,6 +200,8 @@ export interface GoogleAdsSearchTermMetric {
   impressions: number;
   /** クリック数 */
   clicks: number;
+  /** コンバージョン数 */
+  conversions: number;
 }
 
 /**
