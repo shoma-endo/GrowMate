@@ -628,7 +628,8 @@ export const ERROR_MESSAGES = {
       'アカウントが選択されていません。設定画面からアカウントを選択してください',
 
     /** Google Ads 認証が期限切れまたは取り消されている場合 */
-    AUTH_EXPIRED_OR_REVOKED: 'Google Adsの認証が期限切れまたは取り消されています',
+    AUTH_EXPIRED_OR_REVOKED:
+      'Google Adsの認証が期限切れまたは取り消されています。設定画面からGoogle Adsを再連携してください。',
 
     /** キーワード指標の取得に失敗した場合 */
     KEYWORD_METRICS_FETCH_FAILED: 'キーワード指標の取得に失敗しました',

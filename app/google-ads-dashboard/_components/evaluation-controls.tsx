@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ServiceSelector } from '@/components/ServiceSelector';
+import { LinkedMessage } from '@/components/LinkedMessage';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { GOOGLE_ADS_REAUTH_LINK_RULES } from '@/lib/constants';
 import { getBrief } from '@/server/actions/brief.actions';
 import {
   getEvaluationSettings,
@@ -273,7 +275,9 @@ export function EvaluationControls({
       {statusMessage && (
         <Alert variant={statusTone}>
           <AlertTitle>{statusTone === 'destructive' ? 'エラー' : '送信完了'}</AlertTitle>
-          <AlertDescription>{statusMessage}</AlertDescription>
+          <AlertDescription>
+            <LinkedMessage message={statusMessage} rules={GOOGLE_ADS_REAUTH_LINK_RULES} />
+          </AlertDescription>
         </Alert>
       )}
     </div>
