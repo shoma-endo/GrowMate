@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       const body = (await request.json()) as Record<string, unknown>;
       const value = body.customerId;
       if (typeof value === 'string') {
-        customerId = value;
+        customerId = value.replace(/\D/g, '');
       }
     } catch {
       // JSONパース失敗時も400エラーを返す（不正なリクエストボディ）
@@ -56,27 +56,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // リクエストされたcustomerIdがアクセス可能なアカウント一覧に含まれるか検証
-    if (!accessibleCustomerIds.includes(customerId)) {
-      return NextResponse.json(
-        { error: ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_ACCESS_DENIED },
-        { status: 403 }
-      );
-    }
+    // 直接アクセス可能かどうかを記録（MCC配下クライアントは直接リストに載らないため、後でマネージャー経由も検証する）
+    const isDirectlyAccessible = accessibleCustomerIds.includes(customerId);
 
     // MCC（マネージャー）アカウントIDを特定
-    // customer.manager フィールドでマネージャー候補を抽出
-    const managerCandidates = await Promise.all(
+    // 1パス目: login-customer-id なしで各アカウントの情報を取得しMCCを特定
+    const infoResults = await Promise.all(
       accessibleCustomerIds.map(async id => {
         try {
           const info = await googleAdsService.getCustomerInfo(id, accessToken);
-          return { id, isManager: info?.isManager ?? false };
+          return { id, isManager: info?.isManager ?? false, resolved: info !== null };
         } catch {
-          console.warn(`Failed to get customer info for ${id}, treating as non-manager`);
-          return { id, isManager: false };
+          return { id, isManager: false, resolved: false };
         }
       })
     );
+
+    // 1パス目でMCCが特定できた場合、2パス目で未解決アカウントを再試行
+    const detectedManagerId = infoResults.find(r => r.isManager)?.id ?? null;
+    if (detectedManagerId) {
+      await Promise.all(
+        infoResults.map(async r => {
+          if (!r.resolved && r.id !== detectedManagerId) {
+            try {
+              const info = await googleAdsService.getCustomerInfo(r.id, accessToken, detectedManagerId);
+              if (info) {
+                r.isManager = info.isManager;
+                r.resolved = true;
+              }
+            } catch {
+              // フォールバック: 非マネージャーとして扱う
+            }
+          }
+        })
+      );
+    }
+
+    const managerCandidates = infoResults.map(r => ({ id: r.id, isManager: r.isManager }));
 
     const managerCandidateIds = managerCandidates
       .filter(candidate => candidate.isManager)
@@ -87,33 +103,47 @@ export async function POST(request: NextRequest) {
     const managerIdsToCheck = managerCandidateIds.filter(id => id !== customerId);
     const managerLevels = await Promise.all(
       managerIdsToCheck.map(async managerId => {
-        const level = await googleAdsService.getClientLevelUnderManager(
+        const clientInfo = await googleAdsService.getCustomerClientInfoUnderManager(
           managerId,
           customerId,
           accessToken
         );
-        return { managerId, level };
+        return { managerId, clientInfo };
       })
     );
 
     const validManagers = managerLevels.filter(
-      manager => typeof manager.level === 'number'
-    ) as Array<{ managerId: string; level: number }>;
+      manager => manager.clientInfo !== null
+    ) as Array<{ managerId: string; clientInfo: { level: number; isManager: boolean } }>;
 
     // 最も近い（level が最小）マネージャーを採用
-    const sortedManagers = [...validManagers].sort((a, b) => a.level - b.level);
+    const sortedManagers = [...validManagers].sort(
+      (a, b) => a.clientInfo.level - b.clientInfo.level
+    );
     const isSelectedManager = managerCandidates.some(
       candidate => candidate.id === customerId && candidate.isManager
     );
+    const isSelectedManagerUnderManager = validManagers.some(
+      manager => manager.clientInfo.isManager
+    );
 
     // MCC（マネージャー）アカウント自体を単体で保存することは許可しない
-    if (isSelectedManager) {
+    if (isSelectedManager || isSelectedManagerUnderManager) {
       return NextResponse.json(
         {
           error:
             'マネージャーアカウントを直接選択することはできません。配下のクライアントアカウントを選択してください。',
         },
         { status: 400 }
+      );
+    }
+
+    // アクセス権検証: 直接アクセス可能 OR MCC経由でアクセス可能、のいずれかが必要
+    // （MCC配下のクライアントアカウントは listAccessibleCustomers に現れないため、マネージャー経由を許可する）
+    if (!isDirectlyAccessible && validManagers.length === 0) {
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_ACCESS_DENIED },
+        { status: 403 }
       );
     }
 

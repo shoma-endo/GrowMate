@@ -202,7 +202,9 @@ export class GoogleAdsService {
 
         // CUSTOMER_NOT_ENABLED エラー（審査中や無効化されたアカウント）の場合は静かにフォールバック
         try {
-          const errorData = JSON.parse(text) as {
+          const raw = JSON.parse(text);
+          // searchStream API は配列形式でエラーを返す場合がある
+          const errorData = (Array.isArray(raw) ? raw[0] : raw) as {
             error?: {
               details?: Array<{
                 errors?: Array<{
@@ -282,36 +284,64 @@ export class GoogleAdsService {
     clientCustomerId: string,
     accessToken: string
   ): Promise<number | null> {
+    const clientInfo = await this.getCustomerClientInfoUnderManager(
+      managerCustomerId,
+      clientCustomerId,
+      accessToken
+    );
+    return clientInfo?.level ?? null;
+  }
+
+  /**
+   * 指定したマネージャーアカウント配下にクライアントが存在するかを確認し、
+   * 階層レベルとマネージャー属性を返す
+   */
+  async getCustomerClientInfoUnderManager(
+    managerCustomerId: string,
+    clientCustomerId: string,
+    accessToken: string
+  ): Promise<{ level: number; isManager: boolean } | null> {
+    const normalizedManagerCustomerId = managerCustomerId.replace(/\D/g, '');
+    const normalizedClientCustomerId = clientCustomerId.replace(/\D/g, '');
+    if (!normalizedManagerCustomerId || !normalizedClientCustomerId) {
+      return null;
+    }
+
     const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
     if (!developerToken) {
       throw new Error(ERROR_MESSAGES.GOOGLE_ADS.DEVELOPER_TOKEN_MISSING);
     }
 
-    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${managerCustomerId}/googleAds:searchStream`;
+    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${normalizedManagerCustomerId}/googleAds:searchStream`;
 
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'developer-token': developerToken,
         Authorization: `Bearer ${accessToken}`,
-        'login-customer-id': managerCustomerId,
+        'login-customer-id': normalizedManagerCustomerId,
       };
 
       const response = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          query: `SELECT customer_client.level FROM customer_client WHERE customer_client.client_customer = 'customers/${clientCustomerId}'`,
+          query: `
+            SELECT customer_client.level, customer_client.manager
+            FROM customer_client
+            WHERE customer_client.id = ${normalizedClientCustomerId}
+              AND customer_client.status = 'ENABLED'
+          `,
         }),
       });
 
       if (!response.ok) {
         const text = await response.text();
-        console.warn('Google Ads API エラー (getClientLevelUnderManager):', {
+        console.warn('Google Ads API エラー (getCustomerClientInfoUnderManager):', {
           status: response.status,
           body: text,
-          managerCustomerId,
-          clientCustomerId,
+          managerCustomerId: normalizedManagerCustomerId,
+          clientCustomerId: normalizedClientCustomerId,
         });
         return null;
       }
@@ -321,6 +351,7 @@ export class GoogleAdsService {
         results?: Array<{
           customerClient?: {
             level?: number;
+            manager?: boolean;
           };
         }>;
       }> = [];
@@ -348,7 +379,10 @@ export class GoogleAdsService {
         const rawLevel = result?.customerClient?.level;
         const level = typeof rawLevel === 'string' ? Number(rawLevel) : rawLevel;
         if (typeof level === 'number' && Number.isFinite(level)) {
-          return level;
+          return {
+            level,
+            isManager: result?.customerClient?.manager === true,
+          };
         }
       }
 
@@ -373,24 +407,28 @@ export class GoogleAdsService {
     managerCustomerId: string,
     accessToken: string
   ): Promise<Array<{ customerId: string; name: string; isManager: boolean }>> {
+    const normalizedManagerCustomerId = managerCustomerId.replace(/\D/g, '');
+    if (!normalizedManagerCustomerId) {
+      return [];
+    }
+
     const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
     if (!developerToken) {
       throw new Error(ERROR_MESSAGES.GOOGLE_ADS.DEVELOPER_TOKEN_MISSING);
     }
 
-    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${managerCustomerId}/googleAds:searchStream`;
+    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${normalizedManagerCustomerId}/googleAds:searchStream`;
 
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'developer-token': developerToken,
         Authorization: `Bearer ${accessToken}`,
-        'login-customer-id': managerCustomerId,
+        'login-customer-id': normalizedManagerCustomerId,
       };
 
-      // client_customer が自分自身（マネージャー）でない、かつ ENABLED なアカウントを取得
-      // manager = false でクライアントアカウントのみに絞り込むことも可能だが、
-      // 階層構造がある場合はサブマネージャーも表示した方が良い場合があるため、ここでは manager 属性も取得して返す
+      // 直接の子のみ（level=1）。全子孫を返すと階層ナビで重複表示になる
+      // サブマネージャーは保存対象ではないが、配下クライアントへ辿るために表示する
       const query = `
         SELECT
           customer_client.client_customer,
@@ -399,7 +437,7 @@ export class GoogleAdsService {
           customer_client.id
         FROM customer_client
         WHERE customer_client.status = 'ENABLED'
-          AND customer_client.manager = false
+          AND customer_client.level = 1
       `;
 
       const response = await fetch(url, {
@@ -413,7 +451,7 @@ export class GoogleAdsService {
         console.warn('Google Ads API エラー (getClientAccounts):', {
           status: response.status,
           body: text,
-          managerCustomerId,
+          managerCustomerId: normalizedManagerCustomerId,
         });
         throw new Error(`Failed to fetch client accounts: ${response.statusText}`);
       }
@@ -427,9 +465,8 @@ export class GoogleAdsService {
         // customerClient がない場合はスキップ
         const client = row.customerClient;
         if (!client || !client.id) continue;
+        if (String(client.id) === normalizedManagerCustomerId) continue;
 
-        // 自分自身（マネージャー）は除外しても良いが、UI側で制御するために含めるか判断
-        // ここではAPIの挙動通りすべて返す
         accounts.push({
           customerId: String(client.id),
           name: client.descriptiveName ?? client.descriptive_name ?? `Account ${client.id}`,
@@ -990,7 +1027,9 @@ export class GoogleAdsService {
     defaultMessage: string
   ): { message: string; errorCode?: string } {
     try {
-      const errorData = JSON.parse(responseText) as {
+      const raw = JSON.parse(responseText);
+      // searchStream API は配列形式でエラーを返す場合がある
+      const errorData = (Array.isArray(raw) ? raw[0] : raw) as {
         error?: {
           message?: string;
           details?: Array<{
