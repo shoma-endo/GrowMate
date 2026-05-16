@@ -90,6 +90,7 @@ export async function getGoogleAdsConnectionStatus(): Promise<GoogleAdsConnectio
           expiresIn: newTokens.expiresIn,
           googleAccountEmail: credential.googleAccountEmail,
           managerCustomerId: credential.managerCustomerId,
+          scope: newTokens.scope || credential.scope || [],
         });
         if (!saveResult.success) {
           console.error('[getGoogleAdsConnectionStatus] Token save failed');
@@ -227,6 +228,7 @@ export async function fetchKeywordMetrics(
           expiresIn: newTokens.expiresIn,
           googleAccountEmail: credential.googleAccountEmail,
           managerCustomerId: credential.managerCustomerId,
+          scope: newTokens.scope || credential.scope || [],
         });
         if (!saveResult.success) {
           console.error('[fetchKeywordMetrics] Token save failed');

@@ -770,6 +770,9 @@ export class GoogleAdsService {
           errorText,
           `HTTP ${response.status}: ${response.statusText}`
         );
+        const disabledResult = this.handleCustomerNotEnabled(parsed.errorCode, 'getSearchTermMetrics', customerId);
+        if (disabledResult) return disabledResult;
+
         console.error('[GoogleAdsService] getSearchTermMetrics error:', {
           status: response.status,
           message: parsed.message,
