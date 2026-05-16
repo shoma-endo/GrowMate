@@ -1,4 +1,5 @@
 import type { CategoryFilterConfig } from '@/types/category';
+import type { LinkedMessageRule } from '@/components/LinkedMessage';
 
 // Chat Configuration
 export const CHAT_HISTORY_LIMIT = 10; // 件数制限を緩和し、文字数制限(CHAR_LIMIT)を主とする
@@ -17,6 +18,14 @@ export const GOOGLE_ADS_SCOPES = [
   'https://www.googleapis.com/auth/adwords',
   'https://www.googleapis.com/auth/userinfo.email',
   'openid',
+];
+
+export const GOOGLE_ADS_REAUTH_LINK_RULES: LinkedMessageRule[] = [
+  {
+    phrase: '設定画面からGoogle Adsを再連携',
+    href: '/setup/google-ads',
+    variant: 'button-link',
+  },
 ];
 
 // Feature Flags
@@ -91,6 +100,11 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     ...ANTHROPIC_HAIKU_BASE,
     maxTokens: 5000,
     label: 'ペルソナから全て変更',
+  },
+  google_ads_ai_evaluation: {
+    ...ANTHROPIC_BASE,
+    maxTokens: 8000,
+    label: 'Google Ads コンテンツ戦略提案',
   },
 };
 
