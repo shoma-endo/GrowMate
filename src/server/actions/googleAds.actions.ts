@@ -53,16 +53,6 @@ export async function getGoogleAdsConnectionStatus(): Promise<GoogleAdsConnectio
 
     const supabaseService = new SupabaseService();
 
-    // 管理者権限チェック（Google Ads 連携は審査完了まで管理者のみ）
-    const userResult = await supabaseService.getUserById(authResult.userId);
-    if (!userResult.success || !userResult.data) {
-      return { ...disconnected, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
-    }
-    const user = toUser(userResult.data);
-    if (!isAdmin(user.role)) {
-      return { ...disconnected, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
-    }
-
     const credential = await supabaseService.getGoogleAdsCredential(authResult.userId);
 
     if (!credential) {
@@ -198,16 +188,6 @@ export async function fetchKeywordMetrics(
 
     const supabaseService = new SupabaseService();
 
-    // 管理者権限チェック
-    const userResult = await supabaseService.getUserById(authResult.userId);
-    if (!userResult.success || !userResult.data) {
-      return { success: false, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
-    }
-    const user = toUser(userResult.data);
-    if (!isAdmin(user.role)) {
-      return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
-    }
-
     // Google Ads 認証情報を取得
     const credential = await supabaseService.getGoogleAdsCredential(authResult.userId);
     if (!credential) {
@@ -271,6 +251,7 @@ export async function fetchKeywordMetrics(
       startDate: parseResult.data.startDate,
       endDate: parseResult.data.endDate,
       ...(parseResult.data.campaignIds && { campaignIds: parseResult.data.campaignIds }),
+      includeAllStatuses: false,
       ...(credential.managerCustomerId && {
         loginCustomerId: credential.managerCustomerId,
       }),
@@ -329,14 +310,6 @@ export async function fetchCampaignMetrics(
     }
 
     const supabaseService = new SupabaseService();
-    const userResult = await supabaseService.getUserById(authResult.userId);
-    if (!userResult.success || !userResult.data) {
-      return { success: false, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
-    }
-    const user = toUser(userResult.data);
-    if (!isAdmin(user.role)) {
-      return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
-    }
 
     const credential = await supabaseService.getGoogleAdsCredential(authResult.userId);
     if (!credential) {

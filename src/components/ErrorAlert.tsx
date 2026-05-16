@@ -1,51 +1,29 @@
-import Link from 'next/link';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
+import { LinkedMessage, type LinkedMessageRule } from '@/components/LinkedMessage';
 
 interface ErrorAlertProps {
   error: string | null;
   variant?: 'destructive' | 'default';
+  linkRules?: LinkedMessageRule[];
 }
 
 /**
  * エラーメッセージを表示するAlertコンポーネント
- * - 「設定ダッシュボード」の文字列を /setup へのリンクに自動変換
- * - 他のキーワードも将来的に追加可能
+ * 必要に応じて呼び出し元から渡された linkRules で文言をリンクに変換する。
  */
-export function ErrorAlert({ error, variant = 'destructive' }: ErrorAlertProps) {
+export function ErrorAlert({ error, variant = 'destructive', linkRules = [] }: ErrorAlertProps) {
   // null または空文字の場合は何も表示しない
   if (!error) {
     return null;
   }
 
-  const renderErrorWithLinks = (errorText: string) => {
-    // 「設定ダッシュボード」をリンクに変換
-    if (errorText.includes('設定ダッシュボード')) {
-      const parts = errorText.split('設定ダッシュボード');
-      return (
-        <>
-          {parts.map((part, index) => (
-            <span key={index}>
-              {part}
-              {index < parts.length - 1 && (
-                <Link href="/setup" className="underline font-semibold hover:text-red-700">
-                  設定ダッシュボード
-                </Link>
-              )}
-            </span>
-          ))}
-        </>
-      );
-    }
-
-    // 通常のエラーメッセージ
-    return errorText;
-  };
-
   return (
     <Alert variant={variant}>
       <AlertCircle className="h-4 w-4" />
-      <AlertDescription>{renderErrorWithLinks(error)}</AlertDescription>
+      <AlertDescription>
+        <LinkedMessage message={error} rules={linkRules} />
+      </AlertDescription>
     </Alert>
   );
 }

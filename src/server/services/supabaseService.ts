@@ -12,6 +12,10 @@ import {
 } from '@/types/chat';
 import type { DbUser, DbUserInsert, DbUserUpdate } from '@/types/user';
 import type { UserRole } from '@/types/user';
+import type {
+  GoogleAdsEvaluationSettingsRecord,
+  UpsertGoogleAdsEvaluationSettingsInput,
+} from '@/types/google-ads-evaluation';
 import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
@@ -28,6 +32,37 @@ interface SupabaseErrorInfo {
 export type SupabaseResult<T> =
   | { success: true; data: T }
   | { success: false; error: SupabaseErrorInfo };
+
+type GoogleAdsEvaluationSettingsTable = {
+  Row: {
+    id: string;
+    user_id: string;
+    date_range_days: number;
+    last_evaluated_on: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    user_id: string;
+    date_range_days?: number;
+    last_evaluated_on?: string | null;
+    updated_at?: string;
+  };
+  Update: {
+    date_range_days?: number;
+    last_evaluated_on?: string | null;
+    updated_at?: string;
+  };
+  Relationships: [];
+};
+
+type ExtendedDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables'> & {
+    Tables: Database['public']['Tables'] & {
+      google_ads_evaluation_settings: GoogleAdsEvaluationSettingsTable;
+    };
+  };
+};
 
 /**
  * SupabaseServiceクラス: サーバーサイドでSupabaseを操作するためのサービス
@@ -1306,33 +1341,120 @@ export class SupabaseService {
     };
   }
 
-  /**
-   * Google Ads の customer_id を更新
-   * @param managerCustomerId - MCC（マネージャー）アカウントID（任意）
-   * @returns 更新が成功した場合true、該当する行が存在しない場合false
-   */
+  private getGoogleAdsEvaluationClient(): SupabaseClient<ExtendedDatabase> {
+    return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
+  }
+
+  private mapGoogleAdsEvaluationSettingsRow(
+    row: GoogleAdsEvaluationSettingsTable['Row']
+  ): GoogleAdsEvaluationSettingsRecord {
+    return {
+      userId: row.user_id,
+      dateRangeDays: row.date_range_days,
+      lastEvaluatedOn: row.last_evaluated_on,
+    };
+  }
+
+  async getGoogleAdsEvaluationSettings(
+    userId: string
+  ): Promise<SupabaseResult<GoogleAdsEvaluationSettingsRecord | null>> {
+    const client = this.getGoogleAdsEvaluationClient();
+    const { data, error } = await client
+      .from('google_ads_evaluation_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_FETCH_FAILED, {
+        error,
+        developerMessage: 'Error fetching Google Ads evaluation settings',
+        context: { userId },
+      });
+    }
+
+    return this.success(
+      data ? this.mapGoogleAdsEvaluationSettingsRow(data) : null
+    );
+  }
+
+  async upsertGoogleAdsEvaluationSettings(
+    input: UpsertGoogleAdsEvaluationSettingsInput
+  ): Promise<SupabaseResult<void>> {
+    const client = this.getGoogleAdsEvaluationClient();
+    const now = new Date().toISOString();
+    const payload: GoogleAdsEvaluationSettingsTable['Insert'] = {
+      user_id: input.userId,
+      updated_at: now,
+    };
+
+    if (input.dateRangeDays !== undefined) {
+      payload.date_range_days = input.dateRangeDays;
+    }
+    if (input.lastEvaluatedOn !== undefined) {
+      payload.last_evaluated_on = input.lastEvaluatedOn;
+    }
+
+    const { error } = await client
+      .from('google_ads_evaluation_settings')
+      .upsert(payload, { onConflict: 'user_id' });
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_UPDATE_FAILED, {
+        error,
+        developerMessage: 'Error upserting Google Ads evaluation settings',
+        context: { ...input },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  async updateGoogleAdsEvaluationSettings(
+    userId: string,
+    updates: GoogleAdsEvaluationSettingsTable['Update']
+  ): Promise<SupabaseResult<void>> {
+    const client = this.getGoogleAdsEvaluationClient();
+    const { data, error } = await client
+      .from('google_ads_evaluation_settings')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_UPDATE_FAILED, {
+        error,
+        developerMessage: 'Error updating Google Ads evaluation settings',
+        context: { userId, updates },
+      });
+    }
+
+    if (!data) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_NOT_FOUND, {
+        developerMessage: 'Google Ads evaluation settings row not found',
+        context: { userId, updates },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
   async updateGoogleAdsCustomerId(
     userId: string,
     customerId: string,
     managerCustomerId?: string | null
   ): Promise<SupabaseResult<void>> {
-    const updateData: {
-      customer_id: string;
-      updated_at: string;
-      manager_customer_id?: string | null;
-    } = {
-      customer_id: customerId,
-      updated_at: new Date().toISOString(),
-    };
-
-    // managerCustomerId が指定された場合は更新に含める
-    if (managerCustomerId !== undefined) {
-      updateData.manager_customer_id = managerCustomerId;
-    }
-
     const { data, error } = await this.supabase
       .from('google_ads_credentials')
-      .update(updateData)
+      .update({
+        customer_id: customerId,
+        manager_customer_id: managerCustomerId ?? null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('user_id', userId)
       .select('id')
       .maybeSingle();
@@ -1346,9 +1468,9 @@ export class SupabaseService {
     }
 
     if (!data) {
-      return this.failure('Google Ads認証情報が見つかりません', {
-        developerMessage: 'No Google Ads credential found for user',
-        context: { userId },
+      return this.failure('Google AdsアカウントIDの更新に失敗しました', {
+        developerMessage: 'Google Ads credential not found for customer ID update',
+        context: { userId, customerId, managerCustomerId },
       });
     }
 

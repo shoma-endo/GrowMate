@@ -4,8 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { MetricsCards } from './metrics-cards';
 import { CampaignsTable } from './campaigns-table';
+import { EvaluationControls } from './evaluation-controls';
+import { LinkedMessage } from '@/components/LinkedMessage';
 import { calculateCampaignSummary } from '@/lib/google-ads-utils';
+import { GOOGLE_ADS_REAUTH_LINK_RULES } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import type { GoogleAdsEvaluationSettings } from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsCampaignMetrics,
   GoogleAdsKeywordMetric,
@@ -15,6 +19,8 @@ import type {
 interface DashboardContentProps {
   campaigns: GoogleAdsCampaignMetrics[];
   keywords: GoogleAdsKeywordMetric[];
+  hasEmailAddress: boolean;
+  initialSettings: GoogleAdsEvaluationSettings;
   errorMessage?: string;
   errorKind?: GoogleAdsErrorKind;
 }
@@ -22,6 +28,8 @@ interface DashboardContentProps {
 export function DashboardContent({
   campaigns,
   keywords,
+  hasEmailAddress,
+  initialSettings,
   errorMessage,
   errorKind = 'unknown',
 }: DashboardContentProps) {
@@ -55,11 +63,18 @@ export function DashboardContent({
         </div>
       </div>
 
+      <EvaluationControls
+        hasEmailAddress={hasEmailAddress}
+        initialSettings={initialSettings}
+      />
+
       {hasError && (
         <Alert variant="destructive">
           <AlertTitle>データ取得に失敗しました</AlertTitle>
           <AlertDescription className="space-y-2">
-            <p>{errorMessage}</p>
+            <div>
+              <LinkedMessage message={errorMessage ?? ''} rules={GOOGLE_ADS_REAUTH_LINK_RULES} />
+            </div>
             <p className="text-sm">{errorGuidance[errorKind]}</p>
             <div className="pt-2">
               <Button asChild variant="outline">

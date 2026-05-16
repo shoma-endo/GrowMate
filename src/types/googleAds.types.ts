@@ -4,6 +4,21 @@
 export type GoogleAdsMatchType = 'EXACT' | 'PHRASE' | 'BROAD';
 
 /**
+ * Google Ads エンティティのステータス
+ */
+export type GoogleAdsStatus = 'ENABLED' | 'PAUSED' | 'REMOVED' | 'UNKNOWN';
+
+/**
+ * Google Ads キャンペーンのステータス
+ */
+export type GoogleAdsCampaignStatus = Extract<GoogleAdsStatus, 'ENABLED' | 'PAUSED'>;
+
+/**
+ * Google Ads キーワードのステータス
+ */
+export type GoogleAdsKeywordStatus = Extract<GoogleAdsStatus, 'ENABLED' | 'PAUSED' | 'REMOVED'>;
+
+/**
  * Google Ads キーワード指標
  * keyword_view から取得する広告パフォーマンス指標
  */
@@ -18,6 +33,8 @@ export interface GoogleAdsKeywordMetric {
   campaignName: string;
   /** 広告グループ名 */
   adGroupName: string;
+  /** キーワードのステータス */
+  status: GoogleAdsKeywordStatus | 'UNKNOWN';
 
   // ===== 7つの主要指標 =====
   /** CTR（クリック率）: 0〜1 の割合 */
@@ -58,6 +75,8 @@ export interface GetKeywordMetricsInput {
   endDate: string;
   /** キャンペーン ID でフィルタ（任意） */
   campaignIds?: string[];
+  /** 全ステータスのキーワードを取得するか */
+  includeAllStatuses?: boolean;
   /** MCC（マネージャー）アカウントID（ハイフンなし 10桁）を login-customer-id ヘッダーに設定（任意） */
   loginCustomerId?: string;
 }
@@ -68,6 +87,38 @@ export interface GetKeywordMetricsInput {
 export interface GetKeywordMetricsResult {
   success: boolean;
   data?: GoogleAdsKeywordMetric[];
+  error?: string;
+}
+
+/**
+ * Google Ads 除外キーワード
+ */
+export interface GoogleAdsNegativeKeyword {
+  /** 除外キーワードのテキスト */
+  keywordText: string;
+  /** 除外キーワードのマッチタイプ */
+  matchType: GoogleAdsMatchType;
+  /** 除外キーワードが設定されているレベル */
+  level: 'campaign' | 'ad_group';
+  /** 対象キャンペーン名 */
+  campaignName: string;
+  /** 対象キャンペーンのステータス。除外キーワード文脈では REMOVED / UNKNOWN も保持する。 */
+  campaignStatus: GoogleAdsStatus;
+  /** 対象広告グループ名（広告グループレベル除外時のみ） */
+  adGroupName?: string;
+  /** 対象広告グループのステータス（広告グループレベル除外時のみ） */
+  adGroupStatus?: GoogleAdsStatus;
+}
+
+/**
+ * 除外キーワード取得の結果
+ */
+export interface GetNegativeKeywordsResult {
+  /** 取得処理が成功したか */
+  success: boolean;
+  /** 取得した除外キーワード一覧 */
+  data?: GoogleAdsNegativeKeyword[];
+  /** 失敗時のエラーメッセージ */
   error?: string;
 }
 
@@ -85,12 +136,19 @@ export interface DisconnectGoogleAdsResult {
 export interface GoogleAdsSearchStreamRow {
   adGroupCriterion?: {
     criterionId?: string;
+    status?: GoogleAdsStatus;
     keyword?: {
       text?: string;
       matchType?: string;
     };
     qualityInfo?: {
       qualityScore?: number;
+    };
+  };
+  campaignCriterion?: {
+    keyword?: {
+      text?: string;
+      matchType?: string;
     };
   };
   campaign?: {
@@ -100,6 +158,7 @@ export interface GoogleAdsSearchStreamRow {
   };
   adGroup?: {
     name?: string;
+    status?: GoogleAdsStatus;
   };
   metrics?: {
     ctr?: number;
@@ -125,6 +184,44 @@ export interface GoogleAdsSearchStreamRow {
     currencyCode?: string;
     id?: number;
   };
+  searchTermView?: {
+    searchTerm?: string;
+  };
+}
+
+/**
+ * Google Ads 検索語句指標
+ * search_term_view から取得する実検索クエリ毎の実績
+ */
+export interface GoogleAdsSearchTermMetric {
+  /** 実際にユーザーが検索した語句 */
+  searchTerm: string;
+  /** 広告表示回数 */
+  impressions: number;
+  /** クリック数 */
+  clicks: number;
+  /** コンバージョン数 */
+  conversions: number;
+}
+
+/**
+ * 検索語句指標取得の入力パラメータ
+ */
+export interface GetSearchTermMetricsInput {
+  accessToken: string;
+  customerId: string;
+  startDate: string;
+  endDate: string;
+  loginCustomerId?: string;
+}
+
+/**
+ * 検索語句指標取得の結果
+ */
+export interface GetSearchTermMetricsResult {
+  success: boolean;
+  data?: GoogleAdsSearchTermMetric[];
+  error?: string;
 }
 
 /**
@@ -137,7 +234,7 @@ export interface GoogleAdsCampaignMetrics {
   /** キャンペーン名 */
   campaignName: string;
   /** ステータス */
-  status: 'ENABLED' | 'PAUSED';
+  status: GoogleAdsCampaignStatus;
   /** クリック数 */
   clicks: number;
   /** 表示回数 */
