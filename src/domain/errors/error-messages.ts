@@ -662,10 +662,6 @@ export const ERROR_MESSAGES = {
     /** Google Ads ダッシュボードのデータ取得ガイダンス（汎用） */
     DASHBOARD_GUIDANCE_UNKNOWN: '取得に失敗しました。時間をおいて再試行してください。',
 
-    /** Google Ads ダッシュボードのデータ取得ガイダンス（管理者権限が必要） */
-    DASHBOARD_GUIDANCE_ADMIN_REQUIRED:
-      'Google Ads 連携機能は現在、管理者ユーザーのみ利用可能です。管理者に問い合わせるか、権限設定を確認してください。',
-
     /** AI分析の手動実行に失敗した場合 */
     AI_EVALUATION_RUN_FAILED: 'Google Ads コンテンツ戦略提案の実行に失敗しました',
 

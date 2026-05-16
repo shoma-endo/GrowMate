@@ -288,5 +288,4 @@ export type GoogleAdsErrorKind =
   | 'not_connected'
   | 'not_selected'
   | 'auth_expired'
-  | 'admin_required'
   | 'unknown';

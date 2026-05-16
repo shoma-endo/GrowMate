@@ -7,8 +7,6 @@ import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { toUser } from '@/types/user';
-import { isAdmin } from '@/authUtils';
 import { getKeywordMetricsSchema } from '@/server/schemas/googleAds.schema';
 import type {
   DisconnectGoogleAdsResult,
@@ -386,16 +384,6 @@ export async function disconnectGoogleAds(): Promise<DisconnectGoogleAdsResult> 
     }
 
     const supabaseService = new SupabaseService();
-
-    // 管理者権限チェック（Google Ads 連携は審査完了まで管理者のみ）
-    const userResult = await supabaseService.getUserById(authResult.userId);
-    if (!userResult.success || !userResult.data) {
-      return { success: false, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
-    }
-    const user = toUser(userResult.data);
-    if (!isAdmin(user.role)) {
-      return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
-    }
 
     const deleteResult = await supabaseService.deleteGoogleAdsCredential(authResult.userId);
     if (!deleteResult.success) {
