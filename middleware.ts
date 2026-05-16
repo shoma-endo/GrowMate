@@ -10,7 +10,6 @@ const ADMIN_REQUIRED_PATHS = ['/admin'] as const;
 const PAID_FEATURE_REQUIRED_PATHS = ['/analytics'] as const;
 const SETUP_PATHS = ['/setup'] as const;
 
-// Google Ads 連携は審査完了まで管理者のみアクセス可能
 const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const;
 
 // 認証不要なパスの定義
@@ -134,10 +133,6 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
     if (requiresAdminAccess(pathname) && !isAdmin(emailRole)) {
       return redirect(new URL('/unauthorized', request.url));
     }
-    if (requiresGoogleAdsAccess(pathname) && !isAdmin(emailRole)) {
-      return redirect(new URL('/unauthorized', request.url));
-    }
-
     supabaseResponse.headers.set('x-user-role', emailRole);
 
     // nonce ヘッダーを転送して Next.js がインラインスクリプトに nonce を付与できるようにする
@@ -175,7 +170,7 @@ function requiresPaidFeatureAccess(pathname: string): boolean {
 }
 
 function requiresSetupAccess(pathname: string): boolean {
-  return SETUP_PATHS.some(path => pathname.startsWith(path));
+  return SETUP_PATHS.some(path => pathname.startsWith(path)) && !requiresGoogleAdsAccess(pathname);
 }
 
 function hasSetupAccess(role: UserRole | null): boolean {

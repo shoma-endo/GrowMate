@@ -119,7 +119,6 @@ export async function POST(request: NextRequest) {
 
     const managerCustomerId = sortedManagers[0]?.managerId ?? null;
 
-    // customer_id と manager_customer_id を更新
     const supabaseService = new SupabaseService();
     const updateResult = await supabaseService.updateGoogleAdsCustomerId(
       userId,
