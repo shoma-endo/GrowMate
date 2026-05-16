@@ -503,6 +503,9 @@ export class GoogleAdsService {
           `HTTP ${response.status}: ${response.statusText}`
         );
 
+        const disabledResult = this.handleCustomerNotEnabled(parsed.errorCode, 'getCampaignMetrics', customerId);
+        if (disabledResult) return disabledResult;
+
         console.error('[GoogleAdsService] getCampaignMetrics API error:', {
           status: response.status,
           message: parsed.message,
@@ -647,6 +650,9 @@ export class GoogleAdsService {
           errorText,
           `HTTP ${response.status}: ${response.statusText}`
         );
+
+        const disabledResult = this.handleCustomerNotEnabled(parsed.errorCode, 'getKeywordMetrics', customerId);
+        if (disabledResult) return disabledResult;
 
         console.error('[GoogleAdsService] API error:', {
           status: response.status,
@@ -957,6 +963,20 @@ export class GoogleAdsService {
     }
 
     return rows;
+  }
+
+  /**
+   * CUSTOMER_NOT_ENABLED エラーを検知し、警告ログを出して失敗結果を返す。
+   * 該当しない場合は null を返す。
+   */
+  private handleCustomerNotEnabled(
+    errorCode: string | undefined,
+    caller: string,
+    customerId: string
+  ): { success: false; error: string } | null {
+    if (errorCode !== 'CUSTOMER_NOT_ENABLED') return null;
+    console.warn(`[GoogleAdsService] ${caller}: account not enabled`, { customerId });
+    return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_DISABLED };
   }
 
   /**

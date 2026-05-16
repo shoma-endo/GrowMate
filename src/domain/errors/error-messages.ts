@@ -659,6 +659,10 @@ export const ERROR_MESSAGES = {
     /** Google Ads ダッシュボードのデータ取得ガイダンス（認証期限） */
     DASHBOARD_GUIDANCE_AUTH_EXPIRED: '認証が期限切れまたは取り消されています。再認証してください。',
 
+    /** Google Ads ダッシュボードのデータ取得ガイダンス（アカウント無効） */
+    ACCOUNT_DISABLED:
+      '連携しているGoogle Adsアカウントが無効化されています。設定画面から別のアカウントで再連携してください。',
+
     /** Google Ads ダッシュボードのデータ取得ガイダンス（汎用） */
     DASHBOARD_GUIDANCE_UNKNOWN: '取得に失敗しました。時間をおいて再試行してください。',
 
