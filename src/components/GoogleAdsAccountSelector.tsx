@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { RefreshCw, ArrowRight } from 'lucide-react';
+import { RefreshCw, ArrowRight, ChevronLeft } from 'lucide-react';
 import { handleAsyncAction, type ServerActionResult } from '@/lib/async-handler';
 
 interface GoogleAdsAccount {
@@ -40,6 +40,7 @@ export function GoogleAdsAccountSelector({
 
   // マネージャーアカウント選択時の配下クライアントアカウント
   const [clientAccounts, setClientAccounts] = useState<GoogleAdsClientAccount[]>([]);
+  const [managerPath, setManagerPath] = useState<GoogleAdsClientAccount[]>([]);
   const [selectedClientCustomerId, setSelectedClientCustomerId] = useState<string | null>(
     initialCustomerId
   );
@@ -81,8 +82,16 @@ export function GoogleAdsAccountSelector({
               setSelectedAccount(initialAccount);
               // マネージャーでない場合は、そのアカウント自体が選択されたとみなす
               if (!initialAccount.isManager) {
+                setManagerPath([]);
                 setSelectedClientCustomerId(initialCustomerId);
-              } else if (initialCustomerId) {
+              } else {
+                setManagerPath([
+                  {
+                    customerId: initialAccount.customerId,
+                    name: initialAccount.displayName,
+                    isManager: true,
+                  },
+                ]);
                 // マネージャーの場合は、クライアントリストを取得
                 void fetchClientAccounts(initialCustomerId);
               }
@@ -142,11 +151,19 @@ export function GoogleAdsAccountSelector({
     setSelectedClientCustomerId(null); // 上位アカウント変更時はクライアント選択を必ずリセット
 
     if (account.isManager) {
+      setManagerPath([
+        {
+          customerId: account.customerId,
+          name: account.displayName,
+          isManager: true,
+        },
+      ]);
       // マネージャーアカウントの場合、配下のクライアントを取得して表示
       // 自動保存は絶対にしない
       await fetchClientAccounts(customerId);
     } else {
       // 通常アカウントの場合、そのまま保存処理へ
+      setManagerPath([]);
       setClientAccounts([]);
       setSelectedClientCustomerId(customerId);
       await saveSelectedAccount(customerId);
@@ -154,8 +171,32 @@ export function GoogleAdsAccountSelector({
   };
 
   const handleClientAccountChange = async (clientCustomerId: string) => {
+    const clientAccount = clientAccounts.find(client => client.customerId === clientCustomerId);
+    if (!clientAccount) return;
+
+    if (clientAccount.isManager) {
+      setAlertMessage(null);
+      setSelectedClientCustomerId(null);
+      setManagerPath(currentPath => [...currentPath, clientAccount]);
+      await fetchClientAccounts(clientCustomerId);
+      return;
+    }
+
     setSelectedClientCustomerId(clientCustomerId);
     await saveSelectedAccount(clientCustomerId);
+  };
+
+  const handleManagerBack = async () => {
+    if (managerPath.length <= 1) return;
+
+    const nextPath = managerPath.slice(0, -1);
+    const parentManager = nextPath[nextPath.length - 1];
+    if (!parentManager) return;
+
+    setAlertMessage(null);
+    setSelectedClientCustomerId(null);
+    setManagerPath(nextPath);
+    await fetchClientAccounts(parentManager.customerId);
   };
 
   const saveSelectedAccount = async (customerId: string) => {
@@ -210,7 +251,12 @@ export function GoogleAdsAccountSelector({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700 block">Google Ads アカウント</label>
+        <label
+          htmlFor="google-ads-account-select"
+          className="text-sm font-medium text-gray-700 block"
+        >
+          Google Ads アカウント
+        </label>
         <p className="text-xs text-gray-500 mb-2">
           ログインしたGoogleアカウントに紐付く広告アカウントを選択してください。
         </p>
@@ -222,7 +268,7 @@ export function GoogleAdsAccountSelector({
           }}
           disabled={isLoading || isSaving}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger id="google-ads-account-select" className="w-full">
             <SelectValue placeholder="アカウントを選択してください" />
           </SelectTrigger>
           <SelectContent>
@@ -254,9 +300,32 @@ export function GoogleAdsAccountSelector({
       {selectedAccount?.isManager && (
         <div className="pl-4 border-l-2 border-blue-100 space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="flex items-center gap-2 text-blue-800 text-sm font-medium">
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className="size-4" />
             <span>分析対象のクライアントアカウントを選択</span>
           </div>
+
+          {managerPath.length > 0 && (
+            <div className="flex items-center gap-2 text-xs text-blue-700">
+              {managerPath.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    void handleManagerBack();
+                  }}
+                  disabled={isClientLoading || isSaving}
+                  className="h-7 px-2 text-blue-700"
+                >
+                  <ChevronLeft className="size-3.5" />
+                  戻る
+                </Button>
+              )}
+              <span className="truncate">
+                現在のMCC: {managerPath[managerPath.length - 1]?.name}
+              </span>
+            </div>
+          )}
 
           <Select
             value={selectedClientCustomerId || ''}
@@ -273,7 +342,10 @@ export function GoogleAdsAccountSelector({
                 <SelectItem key={client.customerId} value={client.customerId}>
                   <div className="flex flex-col text-left">
                     <span className="truncate">{client.name}</span>
-                    <span className="text-xs text-gray-400">ID: {client.customerId}</span>
+                    <span className="text-xs text-gray-400">
+                      ID: {client.customerId}
+                      {client.isManager && ' (MCC)'}
+                    </span>
                   </div>
                 </SelectItem>
               ))}
@@ -287,15 +359,12 @@ export function GoogleAdsAccountSelector({
             {!isClientLoading && clientAccounts.length === 0 && (
               <div className="p-3 bg-blue-50 border border-blue-100 rounded-md text-blue-800 animate-in fade-in duration-300">
                 <p className="font-semibold flex items-center gap-1.5">
-                  <span className="block w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  <span className="block size-1.5 rounded-full bg-blue-400" />
                   分析可能なクライアントアカウントが見つかりません
                 </p>
                 <div className="mt-1 text-xs space-y-1 text-blue-700 leading-relaxed">
                   <p>
-                    選択したマネージャーアカウント（MCC）の配下に、実際に広告を運用している「クライアントアカウント」が存在するかご確認ください。
-                  </p>
-                  <p className="opacity-80">
-                    ※サブマネージャーアカウント（子MCC）は選択対象外のため表示されません。
+                    選択したマネージャーアカウント（MCC）の配下に、有効なクライアントアカウントが存在するかご確認ください。
                   </p>
                 </div>
               </div>
@@ -306,7 +375,7 @@ export function GoogleAdsAccountSelector({
 
       {selectedClientCustomerId && !isSaving && !alertMessage && (
         <div className="rounded-md bg-green-50 p-3 text-sm text-green-800 border border-green-100 flex items-center gap-2 animate-in fade-in duration-300">
-          <div className="h-2 w-2 rounded-full bg-green-500" />
+          <div className="size-2 rounded-full bg-green-500" />
           <span>
             選択中のアカウントID:{' '}
             <span className="font-mono font-medium">{selectedClientCustomerId}</span>
@@ -359,6 +428,7 @@ export function GoogleAdsAccountSelector({
           onClick={() => {
             fetchAccounts();
             if (selectedAccount?.isManager) {
+              setManagerPath([]);
               setClientAccounts([]);
               setSelectedClientCustomerId(null);
             }
@@ -366,7 +436,7 @@ export function GoogleAdsAccountSelector({
           disabled={isLoading || isSaving}
           className="flex items-center gap-2 text-gray-600"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`size-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           アカウント一覧を更新
         </Button>
       </div>

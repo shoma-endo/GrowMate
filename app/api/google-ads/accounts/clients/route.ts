@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const managerCustomerId = searchParams.get('managerCustomerId');
+    const managerCustomerId = searchParams.get('managerCustomerId')?.replace(/\D/g, '') ?? null;
 
     if (!managerCustomerId) {
       return NextResponse.json(

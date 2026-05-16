@@ -407,24 +407,28 @@ export class GoogleAdsService {
     managerCustomerId: string,
     accessToken: string
   ): Promise<Array<{ customerId: string; name: string; isManager: boolean }>> {
+    const normalizedManagerCustomerId = managerCustomerId.replace(/\D/g, '');
+    if (!normalizedManagerCustomerId) {
+      return [];
+    }
+
     const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
     if (!developerToken) {
       throw new Error(ERROR_MESSAGES.GOOGLE_ADS.DEVELOPER_TOKEN_MISSING);
     }
 
-    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${managerCustomerId}/googleAds:searchStream`;
+    const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${normalizedManagerCustomerId}/googleAds:searchStream`;
 
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'developer-token': developerToken,
         Authorization: `Bearer ${accessToken}`,
-        'login-customer-id': managerCustomerId,
+        'login-customer-id': normalizedManagerCustomerId,
       };
 
-      // client_customer が自分自身（マネージャー）でない、かつ ENABLED なアカウントを取得
-      // manager = false でクライアントアカウントのみに絞り込むことも可能だが、
-      // 階層構造がある場合はサブマネージャーも表示した方が良い場合があるため、ここでは manager 属性も取得して返す
+      // 直接の子のみ（level=1）。全子孫を返すと階層ナビで重複表示になる
+      // サブマネージャーは保存対象ではないが、配下クライアントへ辿るために表示する
       const query = `
         SELECT
           customer_client.client_customer,
@@ -433,7 +437,7 @@ export class GoogleAdsService {
           customer_client.id
         FROM customer_client
         WHERE customer_client.status = 'ENABLED'
-          AND customer_client.manager = false
+          AND customer_client.level = 1
       `;
 
       const response = await fetch(url, {
@@ -447,7 +451,7 @@ export class GoogleAdsService {
         console.warn('Google Ads API エラー (getClientAccounts):', {
           status: response.status,
           body: text,
-          managerCustomerId,
+          managerCustomerId: normalizedManagerCustomerId,
         });
         throw new Error(`Failed to fetch client accounts: ${response.statusText}`);
       }
@@ -461,9 +465,8 @@ export class GoogleAdsService {
         // customerClient がない場合はスキップ
         const client = row.customerClient;
         if (!client || !client.id) continue;
+        if (String(client.id) === normalizedManagerCustomerId) continue;
 
-        // 自分自身（マネージャー）は除外しても良いが、UI側で制御するために含めるか判断
-        // ここではAPIの挙動通りすべて返す
         accounts.push({
           customerId: String(client.id),
           name: client.descriptiveName ?? client.descriptive_name ?? `Account ${client.id}`,
