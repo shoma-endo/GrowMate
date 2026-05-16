@@ -83,7 +83,7 @@ export function GoogleAdsAccountSelector({
               // マネージャーでない場合は、そのアカウント自体が選択されたとみなす
               if (!initialAccount.isManager) {
                 setManagerPath([]);
-                setSelectedClientCustomerId(initialCustomerId);
+                setSelectedClientCustomerId(initialAccount.customerId);
               } else {
                 setManagerPath([
                   {
@@ -93,7 +93,7 @@ export function GoogleAdsAccountSelector({
                   },
                 ]);
                 // マネージャーの場合は、クライアントリストを取得
-                void fetchClientAccounts(initialCustomerId);
+                void fetchClientAccounts(initialAccount.customerId);
               }
             } else if (initialCustomerId) {
               // initialCustomerId があるがトップレベルにない場合（＝マネージャー配下の子アカウントが選択されている場合）
