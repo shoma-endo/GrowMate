@@ -20,8 +20,8 @@ function resolveErrorKind(errorMessage: string): GoogleAdsErrorKind {
       return 'not_selected';
     case ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED:
       return 'auth_expired';
-    case ERROR_MESSAGES.USER.ADMIN_REQUIRED:
-      return 'admin_required';
+    case ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_DISABLED:
+      return 'account_disabled';
     default:
       return 'unknown';
   }

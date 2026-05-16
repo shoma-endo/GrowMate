@@ -41,7 +41,7 @@ export function DashboardContent({
     not_connected: ERROR_MESSAGES.GOOGLE_ADS.DASHBOARD_GUIDANCE_NOT_CONNECTED,
     not_selected: ERROR_MESSAGES.GOOGLE_ADS.DASHBOARD_GUIDANCE_NOT_SELECTED,
     auth_expired: ERROR_MESSAGES.GOOGLE_ADS.DASHBOARD_GUIDANCE_AUTH_EXPIRED,
-    admin_required: ERROR_MESSAGES.GOOGLE_ADS.DASHBOARD_GUIDANCE_ADMIN_REQUIRED,
+    account_disabled: ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_DISABLED,
     unknown: ERROR_MESSAGES.GOOGLE_ADS.DASHBOARD_GUIDANCE_UNKNOWN,
   };
 
@@ -81,8 +81,8 @@ export function DashboardContent({
                 <Link href="/setup/google-ads">
                   {errorKind === 'not_selected'
                     ? 'アカウント選択へ'
-                    : errorKind === 'admin_required'
-                      ? '権限設定を確認する'
+                    : errorKind === 'account_disabled'
+                      ? '連携設定へ'
                       : 'Google Ads 連携設定へ'}
                 </Link>
               </Button>
