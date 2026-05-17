@@ -101,14 +101,20 @@ export async function POST(request: NextRequest) {
     // 各マネージャー候補に対して、選択アカウントが配下に存在するかを確認
     // 自己参照を避けるため、customerId自身をマネージャー候補から除外
     const managerIdsToCheck = managerCandidateIds.filter(id => id !== customerId);
+    let verificationFailed = false;
     const managerLevels = await Promise.all(
       managerIdsToCheck.map(async managerId => {
-        const clientInfo = await googleAdsService.getCustomerClientInfoUnderManager(
-          managerId,
-          customerId,
-          accessToken
-        );
-        return { managerId, clientInfo };
+        try {
+          const clientInfo = await googleAdsService.getCustomerClientInfoUnderManager(
+            managerId,
+            customerId,
+            accessToken
+          );
+          return { managerId, clientInfo };
+        } catch {
+          verificationFailed = true;
+          return { managerId, clientInfo: null };
+        }
       })
     );
 
@@ -141,6 +147,12 @@ export async function POST(request: NextRequest) {
     // アクセス権検証: 直接アクセス可能 OR MCC経由でアクセス可能、のいずれかが必要
     // （MCC配下のクライアントアカウントは listAccessibleCustomers に現れないため、マネージャー経由を許可する）
     if (!isDirectlyAccessible && validManagers.length === 0) {
+      if (verificationFailed) {
+        return NextResponse.json(
+          { error: ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_VERIFICATION_FAILED },
+          { status: 500 }
+        );
+      }
       return NextResponse.json(
         { error: ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_ACCESS_DENIED },
         { status: 403 }
