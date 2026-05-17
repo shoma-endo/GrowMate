@@ -314,87 +314,84 @@ export class GoogleAdsService {
 
     const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${normalizedManagerCustomerId}/googleAds:searchStream`;
 
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'developer-token': developerToken,
-        Authorization: `Bearer ${accessToken}`,
-        'login-customer-id': normalizedManagerCustomerId,
-      };
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'developer-token': developerToken,
+      Authorization: `Bearer ${accessToken}`,
+      'login-customer-id': normalizedManagerCustomerId,
+    };
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          query: `
-            SELECT customer_client.level, customer_client.manager
-            FROM customer_client
-            WHERE customer_client.id = ${normalizedClientCustomerId}
-              AND customer_client.status = 'ENABLED'
-          `,
-        }),
-      });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        query: `
+          SELECT customer_client.level, customer_client.manager
+          FROM customer_client
+          WHERE customer_client.id = ${normalizedClientCustomerId}
+            AND customer_client.status = 'ENABLED'
+        `,
+      }),
+    });
 
-      if (!response.ok) {
-        const text = await response.text();
-        console.warn('Google Ads API エラー (getCustomerClientInfoUnderManager):', {
-          status: response.status,
-          body: text,
-          managerCustomerId: normalizedManagerCustomerId,
-          clientCustomerId: normalizedClientCustomerId,
-        });
-        return null;
-      }
-
+    if (!response.ok) {
       const text = await response.text();
-      let responses: Array<{
-        results?: Array<{
-          customerClient?: {
-            level?: number;
-            manager?: boolean;
-          };
-        }>;
-      }> = [];
-
-      try {
-        const parsed = JSON.parse(text) as unknown;
-        if (Array.isArray(parsed)) {
-          responses = parsed as typeof responses;
-        } else if (parsed && typeof parsed === 'object') {
-          responses = [parsed as (typeof responses)[number]];
-        }
-      } catch {
-        const lines = text.split('\n').filter(line => line.trim().length > 0);
-        for (const line of lines) {
-          try {
-            responses.push(JSON.parse(line) as (typeof responses)[number]);
-          } catch {
-            // 不正な行はスキップ
-          }
-        }
-      }
-
-      for (const responseChunk of responses) {
-        const result = responseChunk.results?.[0];
-        const rawLevel = result?.customerClient?.level;
-        const level = typeof rawLevel === 'string' ? Number(rawLevel) : rawLevel;
-        if (typeof level === 'number' && Number.isFinite(level)) {
-          return {
-            level,
-            isManager: result?.customerClient?.manager === true,
-          };
-        }
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Failed to fetch customer client level:', {
-        managerCustomerId,
-        clientCustomerId,
-        error,
+      const parsed = this.parseGoogleAdsError(
+        text,
+        `Google Ads API error: ${response.status}`
+      );
+      console.error('Google Ads API エラー (getCustomerClientInfoUnderManager):', {
+        status: response.status,
+        message: parsed.message,
+        errorCode: parsed.errorCode,
+        body: text,
+        managerCustomerId: normalizedManagerCustomerId,
+        clientCustomerId: normalizedClientCustomerId,
       });
-      return null;
+      throw new Error(parsed.message);
     }
+
+    const text = await response.text();
+    let responses: Array<{
+      results?: Array<{
+        customerClient?: {
+          level?: number;
+          manager?: boolean;
+        };
+      }>;
+    }> = [];
+
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      if (Array.isArray(parsed)) {
+        responses = parsed as typeof responses;
+      } else if (parsed && typeof parsed === 'object') {
+        responses = [parsed as (typeof responses)[number]];
+      }
+    } catch {
+      const lines = text.split('\n').filter(line => line.trim().length > 0);
+      for (const line of lines) {
+        try {
+          responses.push(JSON.parse(line) as (typeof responses)[number]);
+        } catch {
+          // 不正な行はスキップ
+        }
+      }
+    }
+
+    for (const responseChunk of responses) {
+      const result = responseChunk.results?.[0];
+      const rawLevel = result?.customerClient?.level;
+      const level = typeof rawLevel === 'string' ? Number(rawLevel) : rawLevel;
+      if (typeof level === 'number' && Number.isFinite(level)) {
+        return {
+          level,
+          isManager: result?.customerClient?.manager === true,
+        };
+      }
+    }
+
+    return null;
   }
 
   /**

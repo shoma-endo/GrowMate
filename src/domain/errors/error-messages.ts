@@ -614,6 +614,9 @@ export const ERROR_MESSAGES = {
     /** 指定されたアカウントIDにアクセス権限がない場合 */
     ACCOUNT_ACCESS_DENIED: '指定されたアカウントIDにアクセス権限がありません',
 
+    /** アカウントのアクセス権確認中にAPIエラーが発生した場合 */
+    ACCOUNT_VERIFICATION_FAILED: 'アカウントの確認中にエラーが発生しました。しばらくしてから再試行してください。',
+
     /** アカウント選択の保存に失敗した場合 */
     ACCOUNT_SELECT_FAILED: 'アカウント選択の保存に失敗しました',
 
