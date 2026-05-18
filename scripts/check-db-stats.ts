@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import ws from 'ws';
 
 // PostgreSQL接続用の型定義（pgライブラリがインストールされていない場合のフォールバック）
 interface TableSizeInfo {
@@ -131,8 +132,9 @@ async function checkDatabaseStats() {
     throw new Error('環境変数が設定されていません。.env.localファイルを確認してください。');
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = createClient(supabaseUrl, supabaseServiceRole, {
-    realtime: { transport: undefined },
+    realtime: { transport: ws as any },
   });
 
   console.log('=== Supabase データベース統計情報 ===\n');
