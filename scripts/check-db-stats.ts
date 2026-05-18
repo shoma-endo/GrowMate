@@ -131,7 +131,9 @@ async function checkDatabaseStats() {
     throw new Error('環境変数が設定されていません。.env.localファイルを確認してください。');
   }
 
-  const client = createClient(supabaseUrl, supabaseServiceRole);
+  const client = createClient(supabaseUrl, supabaseServiceRole, {
+    realtime: { transport: undefined },
+  });
 
   console.log('=== Supabase データベース統計情報 ===\n');
 
