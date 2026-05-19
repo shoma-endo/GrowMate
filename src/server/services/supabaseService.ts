@@ -174,35 +174,6 @@ export class SupabaseService {
     }
   }
 
-  /**
-   * ユーザープロフィールを保存または更新
-   */
-  async saveUserProfile(
-    userId: string,
-    lineProfile: { displayName: string; pictureUrl?: string; statusMessage?: string }
-  ): Promise<SupabaseResult<unknown[]>> {
-    const now = new Date().toISOString();
-    const { data, error } = await this.supabase
-      .rpc('upsert_user_profile', {
-        p_line_user_id: userId,
-        p_line_display_name: lineProfile.displayName,
-        p_line_picture_url: (lineProfile.pictureUrl ?? null) as string,
-        p_line_status_message: (lineProfile.statusMessage ?? null) as string,
-        p_now: now,
-      })
-      .returns<DbUser[]>();
-
-    if (error) {
-      return this.failure('ユーザープロフィールの保存に失敗しました', {
-        error,
-        developerMessage: 'Error saving user profile',
-        context: { lineUserId: userId },
-      });
-    }
-
-    return this.success(data ?? []);
-  }
-
   async getUserById(id: string): Promise<SupabaseResult<DbUser | null>> {
     const { data, error } = await this.supabase
       .from('users')
@@ -321,28 +292,6 @@ export class SupabaseService {
         error,
         developerMessage: 'Error updating user by ID',
         context: { id, updates },
-      });
-    }
-
-    return this.success(data ?? null);
-  }
-
-  async updateUserByLineUserId(
-    lineUserId: string,
-    updates: DbUserUpdate
-  ): Promise<SupabaseResult<DbUser | null>> {
-    const { data, error } = await this.supabase
-      .from('users')
-      .update(updates)
-      .eq('line_user_id', lineUserId)
-      .select('*')
-      .maybeSingle();
-
-    if (error) {
-      return this.failure('ユーザー情報の更新に失敗しました', {
-        error,
-        developerMessage: 'Error updating user by LINE user ID',
-        context: { lineUserId, updates },
       });
     }
 
