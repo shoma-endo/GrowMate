@@ -83,6 +83,10 @@ export default function PrivacyPolicyPage() {
                   メールOTP認証（Supabase Auth）でログインする際に取得するメールアドレス。
                 </li>
                 <li>
+                  <strong>LINEアカウント情報（既存ユーザー）:</strong>{' '}
+                  以前のLINEログイン利用時に取得したユーザーID、表示名、プロフィール画像URL等。新規のLINEログインによる取得は行いませんが、移行済みの既存ユーザーについては、アカウント表示・管理画面表示等のためデータベース上に保持し、利用する場合があります。プロフィール画像の表示時には、画像のホスト先サーバーへのアクセスが発生する場合があります。
+                </li>
+                <li>
                   <strong>Googleユーザーデータ:</strong> 以下のスコープで取得する情報。
                   <ul className="list-circle pl-5 mt-1">
                     <li>
