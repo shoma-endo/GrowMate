@@ -187,51 +187,6 @@ export type Database = {
         }
         Relationships: []
       }
-      employee_invitations: {
-        Row: {
-          created_at: string
-          expires_at: string
-          id: string
-          invitation_token: string
-          owner_user_id: string
-          used_at: string | null
-          used_by_user_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          expires_at: string
-          id?: string
-          invitation_token: string
-          owner_user_id: string
-          used_at?: string | null
-          used_by_user_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          expires_at?: string
-          id?: string
-          invitation_token?: string
-          owner_user_id?: string
-          used_at?: string | null
-          used_by_user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "employee_invitations_owner_user_id_fkey"
-            columns: ["owner_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "employee_invitations_used_by_user_id_fkey"
-            columns: ["used_by_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       ga4_page_metrics_daily: {
         Row: {
           bounce_rate: number
@@ -355,6 +310,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "google_ads_credentials_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_ads_evaluation_settings: {
+        Row: {
+          created_at: string
+          date_range_days: number
+          id: string
+          last_evaluated_on: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date_range_days?: number
+          id?: string
+          last_evaluated_on?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date_range_days?: number
+          id?: string
+          last_evaluated_on?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_ads_evaluation_settings_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: true
             referencedRelation: "users"
@@ -1025,13 +1015,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      accept_employee_invitation: {
-        Args: { p_token: string; p_user_id: string }
-        Returns: {
-          error: string
-          success: boolean
-        }[]
-      }
       delete_employee_and_restore_owner: {
         Args: { p_employee_id: string; p_owner_id: string }
         Returns: {
@@ -1065,6 +1048,7 @@ export type Database = {
       }
       get_filtered_content_annotations: {
         Args: {
+          p_has_unread_suggestion?: boolean
           p_include_uncategorized?: boolean
           p_page: number
           p_per_page: number
@@ -1144,16 +1128,8 @@ export type Database = {
           table_name: string
         }[]
       }
-      get_user_google_search_count: {
-        Args: { p_line_user_id: string }
-        Returns: number
-      }
       increment_google_search_count: {
         Args: { user_id: string }
-        Returns: undefined
-      }
-      increment_google_search_count_by_line_id: {
-        Args: { p_line_user_id: string }
         Returns: undefined
       }
       normalize_keyword: { Args: { input_text: string }; Returns: string }
@@ -1183,39 +1159,6 @@ export type Database = {
       upsert_brief: {
         Args: { p_data: Json; p_now: string; p_user_id: string }
         Returns: undefined
-      }
-      upsert_user_profile: {
-        Args: {
-          p_line_display_name: string
-          p_line_picture_url: string
-          p_line_status_message: string
-          p_line_user_id: string
-          p_now: string
-        }
-        Returns: {
-          created_at: string
-          email: string | null
-          full_name: string | null
-          id: string
-          last_login_at: string | null
-          line_display_name: string | null
-          line_picture_url: string | null
-          line_status_message: string | null
-          line_user_id: string | null
-          owner_previous_role: string | null
-          owner_user_id: string | null
-          role: string
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
-          supabase_auth_id: string | null
-          updated_at: string
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "users"
-          isOneToOne: false
-          isSetofReturn: true
-        }
       }
     }
     Enums: {
