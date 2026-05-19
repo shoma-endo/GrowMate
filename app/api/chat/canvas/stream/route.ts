@@ -24,6 +24,8 @@ import {
   logTokenUsage,
   mergeTokenUsage,
 } from '@/server/lib/anthropic-token-usage';
+import { ChatError } from '@/domain/errors/ChatError';
+import { withAnthropicRetry, type AnthropicRetryInfo } from '@/server/lib/anthropic-retry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 800;
@@ -228,6 +230,16 @@ const validateWebReferences = async (references: WebReference[]): Promise<WebRef
 };
 
 const MAX_VALIDATED_WEB_REFERENCES = 2;
+
+class CanvasStreamResponseError extends Error {
+  constructor(
+    readonly responseType: string,
+    readonly responseMessage: string
+  ) {
+    super(responseMessage);
+    this.name = 'CanvasStreamResponseError';
+  }
+}
 
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
@@ -517,97 +529,133 @@ export async function POST(req: NextRequest) {
 
           resetIdleTimeout();
 
+          const notifyAnthropicRetry = (info: AnthropicRetryInfo) => {
+            controller.enqueue(sendSSE('retry', info));
+          };
+
+          const anthropicRetryOptions = {
+            signal: abortController?.signal ?? undefined,
+            onRetry: notifyAnthropicRetry,
+          };
+
+          const webSearchRetryOptions = {
+            ...anthropicRetryOptions,
+            onRetry: (info: AnthropicRetryInfo) => {
+              notifyAnthropicRetry({
+                ...info,
+                message: `Web検索中: ${info.message}`,
+              });
+            },
+          };
+
           // ✅ 第1段階: Web検索の実行（shouldEnableWebSearchがtrueの場合のみ）
           let searchResults = '';
           let extractedReferences: WebReference[] = [];
           if (shouldEnableWebSearch) {
             try {
-              let webSearchUsage = createEmptyTokenUsageTotals();
-              const searchStream = await anthropic.messages.stream({
-                model: actualModel,
-                max_tokens: 2000,
-                system: [
-                  {
-                    type: 'text',
-                    text: 'あなたはWeb検索の専門家です。ユーザーの指示に基づいて、必要な最新情報をweb_searchツールで検索してください。検索結果を簡潔にまとめて返してください。',
-                    cache_control: { type: 'ephemeral' },
-                  },
-                ],
-                tools: [
-                  {
-                    type: 'web_search_20250305' as const,
-                    name: 'web_search' as const,
-                    max_uses: webSearchConfig.maxUses || 3,
-                    ...(webSearchConfig.allowedDomains && {
-                      allowed_domains: webSearchConfig.allowedDomains,
-                    }),
-                    ...(webSearchConfig.blockedDomains && {
-                      blocked_domains: webSearchConfig.blockedDomains,
-                    }),
-                  },
-                ],
-                tool_choice: { type: 'tool', name: 'web_search' },
-                messages: [
-                  {
-                    role: 'user',
-                    content: `以下の指示に必要な最新情報を検索してください：${instruction}`,
-                  },
-                ],
-              });
+            const webSearchOutcome = await withAnthropicRetry(async () => {
+                let localSearchResults = '';
+                let webSearchUsage = createEmptyTokenUsageTotals();
+                const searchStream = await anthropic.messages.stream({
+                  model: actualModel,
+                  max_tokens: 2000,
+                  system: [
+                    {
+                      type: 'text',
+                      text: 'あなたはWeb検索の専門家です。ユーザーの指示に基づいて、必要な最新情報をweb_searchツールで検索してください。検索結果を簡潔にまとめて返してください。',
+                      cache_control: { type: 'ephemeral' },
+                    },
+                  ],
+                  tools: [
+                    {
+                      type: 'web_search_20250305' as const,
+                      name: 'web_search' as const,
+                      max_uses: webSearchConfig.maxUses || 3,
+                      ...(webSearchConfig.allowedDomains && {
+                        allowed_domains: webSearchConfig.allowedDomains,
+                      }),
+                      ...(webSearchConfig.blockedDomains && {
+                        blocked_domains: webSearchConfig.blockedDomains,
+                      }),
+                    },
+                  ],
+                  tool_choice: { type: 'tool', name: 'web_search' },
+                  messages: [
+                    {
+                      role: 'user',
+                      content: `以下の指示に必要な最新情報を検索してください：${instruction}`,
+                    },
+                  ],
+                });
 
-              // 検索結果を収集
-              for await (const event of searchStream) {
-                if (abortController?.signal.aborted) break;
-                resetIdleTimeout();
+                for await (const event of searchStream) {
+                  if (abortController?.signal.aborted) break;
+                  resetIdleTimeout();
 
-                if (event.type === 'message_start') {
-                  webSearchUsage = mergeTokenUsage(webSearchUsage, event.message.usage);
-                } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-                  searchResults += event.delta.text;
-                } else if (event.type === 'message_delta' && event.usage) {
-                  webSearchUsage = mergeTokenUsage(webSearchUsage, event.usage);
+                  if (event.type === 'message_start') {
+                    webSearchUsage = mergeTokenUsage(webSearchUsage, event.message.usage);
+                  } else if (
+                    event.type === 'content_block_delta' &&
+                    event.delta.type === 'text_delta'
+                  ) {
+                    localSearchResults += event.delta.text;
+                  } else if (event.type === 'message_delta' && event.usage) {
+                    webSearchUsage = mergeTokenUsage(webSearchUsage, event.usage);
+                  }
                 }
-              }
 
-              const finalSearchMessage = await searchStream.finalMessage().catch(error => {
-                console.warn('[Canvas Web Search] Failed to read final search message:', error);
-                return null;
-              });
-              webSearchUsage = mergeTokenUsage(webSearchUsage, finalSearchMessage?.usage);
-              requestTokenUsageTotal = addTokenUsageTotals(requestTokenUsageTotal, webSearchUsage);
+                const finalSearchMessage = await searchStream.finalMessage();
+                webSearchUsage = mergeTokenUsage(webSearchUsage, finalSearchMessage?.usage);
 
-              const referencesFromStructuredResult =
-                extractWebReferencesFromSearchMessage(finalSearchMessage);
-              const structuredValidatedReferences = await validateWebReferences(
-                referencesFromStructuredResult.slice(0, MAX_VALIDATED_WEB_REFERENCES)
-              );
-
-              if (structuredValidatedReferences.length > 0) {
-                extractedReferences = structuredValidatedReferences;
-                console.info('[Canvas Web Search] Using validated structured references', {
-                  sessionId,
-                  source: 'tool_result_or_citation',
-                  candidateCount: referencesFromStructuredResult.length,
-                  validatedCount: structuredValidatedReferences.length,
-                });
-              } else {
-                const fallbackReferences = extractWebReferencesFromText(searchResults);
-                const validatedFallbackReferences = await validateWebReferences(
-                  fallbackReferences.slice(0, MAX_VALIDATED_WEB_REFERENCES)
+                const referencesFromStructuredResult =
+                  extractWebReferencesFromSearchMessage(finalSearchMessage);
+                const structuredValidatedReferences = await validateWebReferences(
+                  referencesFromStructuredResult.slice(0, MAX_VALIDATED_WEB_REFERENCES)
                 );
-                extractedReferences = validatedFallbackReferences;
-                console.info('[Canvas Web Search] Using validated fallback references', {
-                  sessionId,
-                  source: 'regex_fallback',
-                  candidateCount: fallbackReferences.length,
-                  validatedCount: validatedFallbackReferences.length,
-                });
-              }
+
+                let localExtractedReferences: WebReference[] = [];
+                if (structuredValidatedReferences.length > 0) {
+                  localExtractedReferences = structuredValidatedReferences;
+                  console.info('[Canvas Web Search] Using validated structured references', {
+                    sessionId,
+                    source: 'tool_result_or_citation',
+                    candidateCount: referencesFromStructuredResult.length,
+                    validatedCount: structuredValidatedReferences.length,
+                  });
+                } else {
+                  const fallbackReferences = extractWebReferencesFromText(localSearchResults);
+                  const validatedFallbackReferences = await validateWebReferences(
+                    fallbackReferences.slice(0, MAX_VALIDATED_WEB_REFERENCES)
+                  );
+                  localExtractedReferences = validatedFallbackReferences;
+                  console.info('[Canvas Web Search] Using validated fallback references', {
+                    sessionId,
+                    source: 'regex_fallback',
+                    candidateCount: fallbackReferences.length,
+                    validatedCount: validatedFallbackReferences.length,
+                  });
+                }
+
+                return {
+                  searchResults: localSearchResults,
+                  extractedReferences: localExtractedReferences,
+                  webSearchUsage,
+                };
+            }, webSearchRetryOptions);
+
+            searchResults = webSearchOutcome.searchResults;
+            extractedReferences = webSearchOutcome.extractedReferences;
+            requestTokenUsageTotal = addTokenUsageTotals(
+              requestTokenUsageTotal,
+              webSearchOutcome.webSearchUsage
+            );
             } catch (searchError) {
               console.error('[Canvas Web Search] Search failed:', searchError);
-              // 検索失敗時は空の結果で続行
-              searchResults = '';
-              extractedReferences = [];
+              const chatError = ChatError.fromApiError(searchError, { phase: 'web_search' });
+              throw new CanvasStreamResponseError(
+                chatError.code,
+                `Web検索を完了できませんでした。${chatError.userMessage}`
+              );
             }
           }
 
@@ -646,8 +694,11 @@ export async function POST(req: NextRequest) {
           // Anthropic Streaming API 呼び出し
           // Step7 の見出し単位編集時は上限を抑え、それ以外はモデル設定値を使う。
           const canvasMaxTokens = isHeadingUnitRequest ? Math.min(5000, maxTokens) : maxTokens;
-          let canvasEditUsage = createEmptyTokenUsageTotals();
-          const apiStream = await anthropic.messages.stream({
+
+          await withAnthropicRetry(async () => {
+            accumulatedJson = '';
+            let canvasEditUsage = createEmptyTokenUsageTotals();
+            const apiStream = await anthropic.messages.stream({
             model: actualModel,
             max_tokens: canvasMaxTokens,
             ...(temperature !== undefined && { temperature }),
@@ -698,13 +749,10 @@ export async function POST(req: NextRequest) {
               requestTokenUsageTotal = addTokenUsageTotals(requestTokenUsageTotal, canvasEditUsage);
 
               if (message.stop_reason === 'max_tokens') {
-                controller.enqueue(sendSSE('error', {
-                  type: 'max_tokens',
-                  message: '出力が途中で途切れました。もう一度お試しください。',
-                }));
-                cleanup();
-                controller.close();
-                return;
+                throw new CanvasStreamResponseError(
+                  'max_tokens',
+                  '出力が途中で途切れました。もう一度お試しください。'
+                );
               }
 
               const toolUseBlock = message.content.find(
@@ -788,8 +836,15 @@ export async function POST(req: NextRequest) {
                 throw new Error('Claude から編集後Markdownを受け取れませんでした');
               }
 
-              // ✅ 第3段階: 編集内容の分析（検証結果と修正内容）
-              const formatInstructions = shouldEnableWebSearch
+              return;
+            }
+          }
+
+          throw new Error('Claude から編集後Markdownを受け取れませんでした');
+          }, anthropicRetryOptions);
+
+          // ✅ 第3段階: 編集内容の分析（検証結果と修正内容）
+          const formatInstructions = shouldEnableWebSearch
                 ? [
                     '以下のフォーマットでプレーンテキスト（Markdownの太字・箇条書き・見出しは禁止）として出力してください。',
                     '',
@@ -868,55 +923,58 @@ export async function POST(req: NextRequest) {
                 .filter(Boolean)
                 .join('\n');
 
-              const analysisStream = await anthropic.messages.stream({
-                model: actualModel,
-                max_tokens: 500, // 簡潔な出力のためトークン数を削減
-                system: [
-                  {
-                    type: 'text',
-                    text: analysisSystemPrompt,
-                    cache_control: { type: 'ephemeral' },
-                  },
-                ],
-                messages: [
-                  {
-                    role: 'user',
-                    content: shouldEnableWebSearch
-                      ? '編集内容を分析して、指定したフォーマットで検証結果と主な修正内容をプレーンテキストで出力してください。1行目に【検証結果】、次の行に本文、その次の行で空行を1つ入れ、次の行に【主な修正内容】、以降の行で「削除/変更/追加 - ...」の形式で記載し、各行の末尾で改行してください。Markdownの装飾は禁止です。必要最小限の行数でまとめてください。'
-                      : '編集内容を分析して、指定したフォーマットで主な修正内容のみをプレーンテキストで出力してください。1行目に【主な修正内容】、以降の行で「削除/変更/追加 - ...」の形式で記載し、各行の末尾で改行してください。Markdownの装飾は禁止です。必要最小限の行数でまとめてください。',
-                  },
-                ],
-              });
+          let analysisResult = '';
+          await withAnthropicRetry(async () => {
+            analysisResult = '';
+            let analysisUsage = createEmptyTokenUsageTotals();
+            const analysisStream = await anthropic.messages.stream({
+              model: actualModel,
+              max_tokens: 500, // 簡潔な出力のためトークン数を削減
+              system: [
+                {
+                  type: 'text',
+                  text: analysisSystemPrompt,
+                  cache_control: { type: 'ephemeral' },
+                },
+              ],
+              messages: [
+                {
+                  role: 'user',
+                  content: shouldEnableWebSearch
+                    ? '編集内容を分析して、指定したフォーマットで検証結果と主な修正内容をプレーンテキストで出力してください。1行目に【検証結果】、次の行に本文、その次の行で空行を1つ入れ、次の行に【主な修正内容】、以降の行で「削除/変更/追加 - ...」の形式で記載し、各行の末尾で改行してください。Markdownの装飾は禁止です。必要最小限の行数でまとめてください。'
+                    : '編集内容を分析して、指定したフォーマットで主な修正内容のみをプレーンテキストで出力してください。1行目に【主な修正内容】、以降の行で「削除/変更/追加 - ...」の形式で記載し、各行の末尾で改行してください。Markdownの装飾は禁止です。必要最小限の行数でまとめてください。',
+                },
+              ],
+            });
 
-              let analysisResult = '';
-              let analysisUsage = createEmptyTokenUsageTotals();
-              for await (const analysisEvent of analysisStream) {
-                if (abortController?.signal.aborted) break;
-                resetIdleTimeout();
+            for await (const analysisEvent of analysisStream) {
+              if (abortController?.signal.aborted) break;
+              resetIdleTimeout();
 
-                if (analysisEvent.type === 'message_start') {
-                  analysisUsage = mergeTokenUsage(analysisUsage, analysisEvent.message.usage);
-                } else if (analysisEvent.type === 'message_delta' && analysisEvent.usage) {
-                  analysisUsage = mergeTokenUsage(analysisUsage, analysisEvent.usage);
-                }
-                if (
-                  analysisEvent.type === 'content_block_delta' &&
-                  analysisEvent.delta.type === 'text_delta'
-                ) {
-                  analysisResult += analysisEvent.delta.text;
-                  controller.enqueue(
-                    sendSSE('analysis_chunk', { content: analysisEvent.delta.text })
-                  );
-                }
+              if (analysisEvent.type === 'message_start') {
+                analysisUsage = mergeTokenUsage(analysisUsage, analysisEvent.message.usage);
+              } else if (analysisEvent.type === 'message_delta' && analysisEvent.usage) {
+                analysisUsage = mergeTokenUsage(analysisUsage, analysisEvent.usage);
               }
-              const finalAnalysisMessage = await analysisStream.finalMessage().catch(error => {
-                console.warn('[Canvas Stream] Failed to read final analysis message:', error);
-                return null;
-              });
-              analysisUsage = mergeTokenUsage(analysisUsage, finalAnalysisMessage?.usage);
-              requestTokenUsageTotal = addTokenUsageTotals(requestTokenUsageTotal, analysisUsage);
+              if (
+                analysisEvent.type === 'content_block_delta' &&
+                analysisEvent.delta.type === 'text_delta'
+              ) {
+                analysisResult += analysisEvent.delta.text;
+                controller.enqueue(
+                  sendSSE('analysis_chunk', { content: analysisEvent.delta.text })
+                );
+              }
+            }
+            const finalAnalysisMessage = await analysisStream.finalMessage().catch(error => {
+              console.warn('[Canvas Stream] Failed to read final analysis message:', error);
+              return null;
+            });
+            analysisUsage = mergeTokenUsage(analysisUsage, finalAnalysisMessage?.usage);
+            requestTokenUsageTotal = addTokenUsageTotals(requestTokenUsageTotal, analysisUsage);
+          }, anthropicRetryOptions);
 
-              // ✅ チャット履歴に2つのアシスタントメッセージを別々に保存
+          // ✅ チャット履歴に2つのアシスタントメッセージを別々に保存
               // continueChat は必ずユーザーメッセージとアシスタントメッセージのペアを保存するため、
               // 1回だけ呼び出してユーザーメッセージを保存し、2つのアシスタントメッセージは別々に保存する
 
@@ -1029,19 +1087,28 @@ export async function POST(req: NextRequest) {
 
               logTokenUsage(requestTokenUsageTotal);
 
-              controller.enqueue(
-                sendSSE('done', { fullMarkdown: finalMarkdown, analysis: analysisResult })
-              );
-            }
-          }
+          controller.enqueue(
+            sendSSE('done', { fullMarkdown: finalMarkdown, analysis: analysisResult })
+          );
 
           cleanup();
           controller.close();
         } catch (error) {
           cleanup();
           console.error('[Canvas Stream] Error:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Canvas編集に失敗しました';
-          controller.enqueue(sendSSE('error', { type: 'stream', message: errorMessage }));
+          if (error instanceof CanvasStreamResponseError) {
+            controller.enqueue(
+              sendSSE('error', {
+                type: error.responseType,
+                message: error.responseMessage,
+              })
+            );
+          } else {
+            const chatError = ChatError.fromApiError(error, { route: 'canvas_stream' });
+            controller.enqueue(
+              sendSSE('error', { type: chatError.code, message: chatError.userMessage })
+            );
+          }
           controller.close();
         }
       },
@@ -1057,8 +1124,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('[Canvas Stream] Setup error:', error);
-    const errorMessage = error instanceof Error ? error.message : '予期せぬエラーが発生しました';
-    return new Response(sendSSE('error', { type: 'setup', message: errorMessage }), {
+    const chatError = ChatError.fromApiError(error, { route: 'canvas_stream_setup' });
+    return new Response(
+      sendSSE('error', { type: chatError.code, message: chatError.userMessage }),
+      {
       status: 500,
       headers: {
         'Content-Type': 'text/event-stream',
