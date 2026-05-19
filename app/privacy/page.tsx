@@ -33,7 +33,7 @@ export default function PrivacyPolicyPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-6 border-b pb-4">
             プライバシーポリシー
           </h1>
-          <p className="text-sm text-gray-500 mb-8">最終更新日: 2026年3月13日</p>
+          <p className="text-sm text-gray-500 mb-8">最終更新日: 2026年5月19日</p>
 
           <div
             className="bg-gray-100 rounded-2xl p-6 sm:p-8 text-sm text-gray-700 mb-10"
@@ -80,11 +80,7 @@ export default function PrivacyPolicyPage() {
               <ul className="list-disc pl-5 space-y-2">
                 <li>
                   <strong>メールアドレス:</strong>{' '}
-                  メールOTP認証でログインする場合に取得するメールアドレス。
-                </li>
-                <li>
-                  <strong>LINE アカウント情報:</strong> LINE
-                  LIFF認証で取得する表示名・プロフィール画像・ユーザーID。
+                  メールOTP認証（Supabase Auth）でログインする際に取得するメールアドレス。
                 </li>
                 <li>
                   <strong>Googleユーザーデータ:</strong> 以下のスコープで取得する情報。
@@ -221,7 +217,6 @@ export default function PrivacyPolicyPage() {
                 <li>
                   Google LLC（Google Search Console API, Google Analytics API, Google Ads API）
                 </li>
-                <li>LINEヤフー株式会社（LIFF 認証）</li>
                 <li>Automattic Inc. / WordPress Foundation（WordPress API）</li>
                 <li>
                   Anthropic PBC / OpenAI, L.L.C.（AI応答生成。送信データはユーザー入力範囲に限定）
