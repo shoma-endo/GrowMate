@@ -87,11 +87,11 @@ export class ChatError extends DomainError {
       [ChatErrorCode.ANTHROPIC_REQUEST_TOO_LARGE]:
         'リクエストサイズが上限を超えています（413）。入力サイズを削減してください。',
       [ChatErrorCode.ANTHROPIC_RATE_LIMIT]:
-        'レート制限に達しました（429）。しばらく待ってから再試行してください。',
+        'AIの利用が集中しています。しばらく待ってから、もう一度お試しください。',
       [ChatErrorCode.ANTHROPIC_API_ERROR]:
-        'Anthropic側で予期せぬエラーが発生しました（500）。時間を置いて再試行してください。',
+        'AIサービスで一時的な障害が発生しました。時間を置いてから、もう一度お試しください。',
       [ChatErrorCode.ANTHROPIC_OVERLOADED]:
-        'Anthropicが高負荷状態です（529）。しばらく時間をおいてから再試行してください。',
+        'AIサーバーが混雑しています。1〜2分ほど待ってから、もう一度お試しください。',
       [ChatErrorCode.UNKNOWN_ERROR]:
         '予期せぬエラーが発生しました。サポートにお問い合わせください。',
     };
@@ -129,6 +129,71 @@ export class ChatError extends DomainError {
   /**
    * 例外オブジェクトからHTTPステータスっぽい値を推測
    */
+  /**
+   * Anthropic SDK / SSE エラーから error.type を抽出する
+   */
+  static extractAnthropicErrorType(error: unknown): string | undefined {
+    const e = error as
+      | {
+          error?: { type?: unknown };
+          type?: unknown;
+        }
+      | undefined;
+
+    const nestedType = e?.error?.type;
+    if (typeof nestedType === 'string' && nestedType.length > 0) {
+      return nestedType;
+    }
+
+    const topLevelType = e?.type;
+    if (typeof topLevelType === 'string' && topLevelType.length > 0) {
+      return topLevelType;
+    }
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : undefined;
+
+    if (!message) return undefined;
+
+    if (message.includes('overloaded_error')) return 'overloaded_error';
+    if (message.includes('rate_limit_error')) return 'rate_limit_error';
+    if (message.includes('api_error')) return 'api_error';
+    if (message.includes('invalid_request_error')) return 'invalid_request_error';
+    if (message.includes('authentication_error')) return 'authentication_error';
+    if (message.includes('permission_error')) return 'permission_error';
+    if (message.includes('not_found_error')) return 'not_found_error';
+    if (message.includes('request_too_large')) return 'request_too_large';
+
+    return undefined;
+  }
+
+  static anthropicErrorTypeToCode(type: string): ChatErrorCode | undefined {
+    switch (type) {
+      case 'overloaded_error':
+        return ChatErrorCode.ANTHROPIC_OVERLOADED;
+      case 'rate_limit_error':
+        return ChatErrorCode.ANTHROPIC_RATE_LIMIT;
+      case 'api_error':
+        return ChatErrorCode.ANTHROPIC_API_ERROR;
+      case 'invalid_request_error':
+        return ChatErrorCode.ANTHROPIC_INVALID_REQUEST;
+      case 'authentication_error':
+        return ChatErrorCode.ANTHROPIC_AUTHENTICATION_ERROR;
+      case 'permission_error':
+        return ChatErrorCode.ANTHROPIC_PERMISSION_ERROR;
+      case 'not_found_error':
+        return ChatErrorCode.ANTHROPIC_NOT_FOUND;
+      case 'request_too_large':
+        return ChatErrorCode.ANTHROPIC_REQUEST_TOO_LARGE;
+      default:
+        return undefined;
+    }
+  }
+
   static extractHttpStatus(error: unknown): number | undefined {
     const e = error as Record<string, unknown> | undefined;
     const candidates = [
@@ -155,6 +220,7 @@ export class ChatError extends DomainError {
       if (msg.includes('400')) return 400;
       if (msg.includes('500')) return 500;
       if (msg.includes('529')) return 529;
+      if (msg.includes('overloaded_error')) return 529;
     }
     return undefined;
   }
@@ -178,6 +244,18 @@ export class ChatError extends DomainError {
 
       if (message.includes('auth')) {
         return new ChatError(error.message, ChatErrorCode.AUTHENTICATION_FAILED, context);
+      }
+
+      const anthropicErrorType = ChatError.extractAnthropicErrorType(error);
+      if (anthropicErrorType) {
+        const code = ChatError.anthropicErrorTypeToCode(anthropicErrorType);
+        if (code) {
+          return new ChatError(error.message, code, {
+            anthropicErrorType,
+            ...context,
+          });
+        }
+        // 未知の error.type は HTTP ステータスマッピングへフォールバック
       }
 
       // HTTPステータスに応じたAnthropicエラーの推測

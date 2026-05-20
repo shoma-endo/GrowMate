@@ -55,6 +55,8 @@ import { useSessionTitle } from '@/hooks/useSessionTitle';
 import { useBlogTitleMetaGeneration } from '@/hooks/useBlogTitleMetaGeneration';
 import { toast } from 'sonner';
 
+const CANVAS_ANTHROPIC_RETRY_TOAST_ID = 'canvas-anthropic-retry';
+
 const CanvasPanel = dynamic(() => import('./CanvasPanel'), { ssr: false });
 
 /** Step7 完成形タイル: コンテンツからタイトルと抜粋を抽出 */
@@ -1541,7 +1543,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         setCanvasStreamingContent('');
         setCanvasPanelOpen(true);
 
-        const markdownDecoder = createFullMarkdownDecoder();
+        let markdownDecoder = createFullMarkdownDecoder();
 
         // ✅ ストリーミングAPI呼び出し（必要に応じてWeb検索を利用）
         // 見出し単位 = 未確定の見出し編集中 OR 確定済み見出しの再編集（戻るで遷移）。完成形表示時は false
@@ -1628,6 +1630,26 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             return;
           }
 
+          if (eventType === 'retry' && typeof eventData === 'object' && eventData !== null) {
+            const message =
+              (eventData as { message?: string }).message ??
+              'AIサーバーが混雑しています。自動で再試行しています…';
+            toast.loading(message, { id: CANVAS_ANTHROPIC_RETRY_TOAST_ID });
+            fullMarkdown = '';
+            analysisResult = '';
+            markdownDecoder = createFullMarkdownDecoder();
+            setCanvasStreamingContent('');
+            setOptimisticMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === tempAssistantCanvasId || msg.id === tempAssistantAnalysisId) {
+                  return { ...msg, content: '' };
+                }
+                return msg;
+              })
+            );
+            return;
+          }
+
           if (eventType === 'chunk' && typeof eventData === 'object' && eventData !== null) {
             const decodedMarkdown = markdownDecoder.feed(
               (eventData as { content?: string }).content ?? ''
@@ -1657,6 +1679,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           }
 
           if (eventType === 'done' && typeof eventData === 'object' && eventData !== null) {
+            toast.dismiss(CANVAS_ANTHROPIC_RETRY_TOAST_ID);
             fullMarkdown = (eventData as { fullMarkdown?: string }).fullMarkdown ?? fullMarkdown;
             analysisResult = (eventData as { analysis?: string }).analysis ?? analysisResult;
             setCanvasStreamingContent(fullMarkdown);
@@ -1675,6 +1698,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           }
 
           if (eventType === 'error' && typeof eventData === 'object' && eventData !== null) {
+            toast.dismiss(CANVAS_ANTHROPIC_RETRY_TOAST_ID);
             const message =
               (eventData as { message?: string }).message || 'ストリーミングエラーが発生しました';
             throw new Error(message);
@@ -1727,9 +1751,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         return { replacementHtml: '' };
       } catch (error) {
         console.error('Canvas selection edit failed:', error);
+        toast.dismiss(CANVAS_ANTHROPIC_RETRY_TOAST_ID);
         setOptimisticMessages([]);
         throw error instanceof Error ? error : new Error('AI編集の処理に失敗しました');
       } finally {
+        toast.dismiss(CANVAS_ANTHROPIC_RETRY_TOAST_ID);
         canvasEditInFlightRef.current = false;
         // 成功/失敗問わずクリア必須。残すと Step7 見出し切り替え時に旧ストリーミング本文が
         // 別見出しの「現在コンテンツ」として扱われ、誤保存を誘発する（P1）。
