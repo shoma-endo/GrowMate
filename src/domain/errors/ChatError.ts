@@ -166,6 +166,7 @@ export class ChatError extends DomainError {
     if (message.includes('authentication_error')) return 'authentication_error';
     if (message.includes('permission_error')) return 'permission_error';
     if (message.includes('not_found_error')) return 'not_found_error';
+    if (message.includes('request_too_large')) return 'request_too_large';
 
     return undefined;
   }
@@ -186,6 +187,8 @@ export class ChatError extends DomainError {
         return ChatErrorCode.ANTHROPIC_PERMISSION_ERROR;
       case 'not_found_error':
         return ChatErrorCode.ANTHROPIC_NOT_FOUND;
+      case 'request_too_large':
+        return ChatErrorCode.ANTHROPIC_REQUEST_TOO_LARGE;
       default:
         return undefined;
     }
@@ -245,12 +248,14 @@ export class ChatError extends DomainError {
 
       const anthropicErrorType = ChatError.extractAnthropicErrorType(error);
       if (anthropicErrorType) {
-        const code =
-          ChatError.anthropicErrorTypeToCode(anthropicErrorType) ?? ChatErrorCode.AI_SERVICE_ERROR;
-        return new ChatError(error.message, code, {
-          anthropicErrorType,
-          ...context,
-        });
+        const code = ChatError.anthropicErrorTypeToCode(anthropicErrorType);
+        if (code) {
+          return new ChatError(error.message, code, {
+            anthropicErrorType,
+            ...context,
+          });
+        }
+        // 未知の error.type は HTTP ステータスマッピングへフォールバック
       }
 
       // HTTPステータスに応じたAnthropicエラーの推測
