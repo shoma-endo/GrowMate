@@ -1,9 +1,9 @@
 import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 
-export const ANTHROPIC_RETRY_MAX_ATTEMPTS = 3;
-export const ANTHROPIC_RETRY_BASE_DELAY_MS = 2000;
+const ANTHROPIC_RETRY_MAX_ATTEMPTS = 3;
+const ANTHROPIC_RETRY_BASE_DELAY_MS = 2000;
 
-export const ANTHROPIC_RETRY_USER_MESSAGE =
+const ANTHROPIC_RETRY_USER_MESSAGE =
   'AIサーバーが混雑しています。自動で再試行しています…';
 
 export interface AnthropicRetryInfo {
@@ -13,13 +13,13 @@ export interface AnthropicRetryInfo {
   message: string;
 }
 
-export interface AnthropicRetryOptions {
+interface AnthropicRetryOptions {
   maxAttempts?: number;
   signal?: AbortSignal;
   onRetry?: (info: AnthropicRetryInfo) => void;
 }
 
-export function isRetryableAnthropicError(error: unknown): boolean {
+function isRetryableAnthropicError(error: unknown): boolean {
   const code = ChatError.fromApiError(error).code;
   return (
     code === ChatErrorCode.ANTHROPIC_OVERLOADED ||
@@ -28,7 +28,7 @@ export function isRetryableAnthropicError(error: unknown): boolean {
   );
 }
 
-export function getAnthropicRetryDelayMs(attempt: number): number {
+function getAnthropicRetryDelayMs(attempt: number): number {
   return ANTHROPIC_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
 }
 
