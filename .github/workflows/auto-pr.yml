@@ -31,6 +31,11 @@ jobs:
           BRANCH_NAME="${GITHUB_REF_NAME}"
           LABEL_NAME="automated-pr"
 
+          if echo "${BRANCH_NAME}" | grep -Eq '^(codex|claude)/'; then
+            echo "Skip auto PR for branch: ${BRANCH_NAME}"
+            exit 0
+          fi
+
           # ベースブランチの決定
           if [ "${BRANCH_NAME}" = "develop" ]; then
             BASE_BRANCH="main"
