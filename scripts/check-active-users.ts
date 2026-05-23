@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import ws from 'ws';
 
 interface ActiveUserData {
   氏名: string | null;
@@ -132,7 +133,10 @@ async function checkActiveUsers() {
     throw new Error('環境変数が設定されていません。.env.localファイルを確認してください。');
   }
 
-  const client = createClient(supabaseUrl, supabaseServiceRole);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = createClient(supabaseUrl, supabaseServiceRole, {
+    realtime: { transport: ws as any },
+  });
 
   console.log('=== アクティブユーザー情報（直近1週間） ===\n');
 
