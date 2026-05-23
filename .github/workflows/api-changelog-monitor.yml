@@ -35,7 +35,7 @@ jobs:
       - name: API changelog チェック & Lark 通知
         run: npx tsx scripts/check-api-changelogs.ts
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           # Lark Bot Webhook URL（変更が検出された時だけ通知）
           LARK_WEBHOOK_URL: https://open.larksuite.com/open-apis/bot/v2/hook/02ce50f1-b4bf-4261-8f8a-34d8e1a2991e
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -7,12 +7,12 @@ import type { RequestOptions, IncomingMessage } from 'http';
 /**
  * API Changelog Monitor
  *
- * 外部APIのリリースノート・changelogを週次チェックし、
- * 変更が検出された場合に Claude で要約して Lark へ通知する。
+ * 外部APIのリリースノート・changelogを月次チェックし、
+ * 変更が検出された場合に GLM-4.7 で要約して Lark へ通知する。
  *
  * 監視対象:
  *   - GitHub Releases API: OpenAI Node / Supabase JS
- *   - Claude web_search: Claude API / Google SC / GA4 / Google Ads / WordPress REST API
+ *   - GLM-4.7 web_search: Claude API / Google SC / GA4 / Google Ads / WordPress REST API
  */
 
 // ── 型定義 ───────────────────────────────────────────────────────────────────
@@ -78,9 +78,12 @@ interface HttpOptions {
 const STATE_FILE = path.join(__dirname, 'api-changelog-state.json');
 
 const LARK_WEBHOOK_URL = process.env['LARK_WEBHOOK_URL'];
-const ANTHROPIC_API_KEY = process.env['ANTHROPIC_API_KEY'];
+const ZAI_API_KEY = process.env['ZAI_API_KEY'];
 const GITHUB_TOKEN = process.env['GITHUB_TOKEN'];
 const ACTIONS_RUN_URL = process.env['ACTIONS_RUN_URL'];
+
+const ZAI_CHAT_COMPLETIONS_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
+const ZAI_MODEL = 'glm-4.7';
 
 const TARGETS: Target[] = [
   {
@@ -228,12 +231,106 @@ async function fetchGitHubReleases(repo: string): Promise<GitHubRelease[]> {
   }));
 }
 
+interface ZaiChatCompletionRequest {
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  max_tokens: number;
+  thinking?: { type: string };
+  response_format?: { type: string };
+  tools?: Array<{
+    type: string;
+    web_search: {
+      enable: boolean;
+      search_engine: string;
+      count: number;
+      search_recency_filter: string;
+      search_domain_filter?: string;
+    };
+  }>;
+}
+
+interface ZaiChatCompletionResponse {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+}
+
+function hostnameFromUrl(pageUrl: string): string | undefined {
+  try {
+    return new URL(pageUrl).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildWebSearchTool(pageUrl: string): ZaiChatCompletionRequest['tools'] {
+  const hostname = hostnameFromUrl(pageUrl);
+  const webSearch: NonNullable<ZaiChatCompletionRequest['tools']>[0]['web_search'] = {
+    enable: true,
+    search_engine: 'search_pro_jina',
+    count: 10,
+    search_recency_filter: 'oneMonth',
+  };
+  if (hostname) {
+    webSearch.search_domain_filter = hostname;
+  }
+  return [{ type: 'web_search', web_search: webSearch }];
+}
+
+interface AiCheckResult {
+  hasChanges?: boolean;
+  summary?: string;
+}
+
+function parseAiCheckJson(text: string): AiCheckResult {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed) as AiCheckResult;
+  } catch {
+    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error(`AI応答のJSONパースに失敗しました: ${trimmed.substring(0, 200)}`);
+    }
+    return JSON.parse(jsonMatch[0]) as AiCheckResult;
+  }
+}
+
+async function callZaiChatCompletion(request: ZaiChatCompletionRequest): Promise<string> {
+  if (!ZAI_API_KEY) {
+    throw new Error('ZAI_API_KEY が設定されていません');
+  }
+
+  const requestBody = JSON.stringify(request);
+  const { status, body } = await httpRequest(ZAI_CHAT_COMPLETIONS_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${ZAI_API_KEY}`,
+      'Content-Type': 'application/json',
+      'Content-Length': String(Buffer.byteLength(requestBody)),
+    },
+    body: requestBody,
+  });
+
+  if (status !== 200) {
+    throw new Error(`Z.AI API error ${status}: ${body.substring(0, 300)}`);
+  }
+
+  const res = JSON.parse(body) as ZaiChatCompletionResponse;
+  const content = res.choices?.[0]?.message?.content?.trim();
+  if (!content) {
+    throw new Error('Z.AI API 応答が空です');
+  }
+  return content;
+}
+
 async function checkWebpageWithAI(
   target: Target & { url: string },
   lastCheckedAt: string,
 ): Promise<WebpageAiCheckResult> {
-  if (!ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY が設定されていません');
+  if (!ZAI_API_KEY) {
+    throw new Error('ZAI_API_KEY が設定されていません');
   }
 
   const lastDate = new Date(lastCheckedAt).toLocaleDateString('ja-JP', {
@@ -263,54 +360,16 @@ hasChanges を false にする条件（無視する変化）：
 - 軽微なドキュメント誤字修正
 - ${lastDate}以前の変更`;
 
-  const requestBody = JSON.stringify({
-    model: 'claude-haiku-4-5',
-    max_tokens: 800,
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
+  const content = await callZaiChatCompletion({
+    model: ZAI_MODEL,
     messages: [{ role: 'user', content: prompt }],
+    thinking: { type: 'disabled' },
+    max_tokens: 800,
+    response_format: { type: 'json_object' },
+    tools: buildWebSearchTool(target.url),
   });
 
-  const { status, body } = await httpRequest('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-      'Content-Length': String(Buffer.byteLength(requestBody)),
-    },
-    body: requestBody,
-  });
-
-  if (status !== 200) {
-    throw new Error(`Claude web_search API error ${status}: ${body.substring(0, 300)}`);
-  }
-
-  interface ContentBlock {
-    type: string;
-    text?: string;
-  }
-  interface ClaudeSearchResponse {
-    content?: ContentBlock[];
-  }
-
-  const res = JSON.parse(body) as ClaudeSearchResponse;
-  const textBlocks = (res.content ?? []).filter(
-    (b): b is ContentBlock & { text: string } =>
-      b.type === 'text' && typeof b.text === 'string' && b.text.length > 0,
-  );
-  const lastText = textBlocks[textBlocks.length - 1]?.text ?? '';
-
-  const jsonMatch = lastText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error(`AI応答のJSONパースに失敗しました: ${lastText.substring(0, 200)}`);
-  }
-
-  interface AiCheckResult {
-    hasChanges?: boolean;
-    summary?: string;
-  }
-
-  const result = JSON.parse(jsonMatch[0]) as AiCheckResult;
+  const result = parseAiCheckJson(content);
   return {
     hasChanges: result.hasChanges ?? false,
     summary: result.summary ?? '',
@@ -319,7 +378,7 @@ hasChanges を false にする条件（無視する変化）：
 
 // ── AI 要約 ───────────────────────────────────────────────────────────────────
 
-async function summarizeWithClaude(changedItems: DetectedChange[]): Promise<string> {
+async function summarizeWithGlm(changedItems: DetectedChange[]): Promise<string> {
   const contextBlock = changedItems
     .map((c) => `### ${c.name}（影響度目安: ${c.risk}）\n${c.summary}`)
     .join('\n\n---\n\n');
@@ -392,33 +451,12 @@ ${contextBlock}
 
 全件が実装に影響しない場合は「全件軽微、対応不要」の1行のみ記載してください。`;
 
-  const payload = JSON.stringify({
-    model: 'claude-haiku-4-5',
-    max_tokens: 1000,
+  return callZaiChatCompletion({
+    model: ZAI_MODEL,
     messages: [{ role: 'user', content: prompt }],
+    thinking: { type: 'disabled' },
+    max_tokens: 1000,
   });
-
-  const { status, body } = await httpRequest('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_API_KEY ?? '',
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-      'Content-Length': String(Buffer.byteLength(payload)),
-    },
-    body: payload,
-  });
-
-  if (status !== 200) {
-    throw new Error(`Claude API error ${status}: ${body.substring(0, 300)}`);
-  }
-
-  interface ClaudeResponse {
-    content?: Array<{ text: string }>;
-  }
-
-  const res = JSON.parse(body) as ClaudeResponse;
-  return res.content?.[0]?.text ?? '（解析結果を取得できませんでした）';
 }
 
 // ── Lark 通知 ─────────────────────────────────────────────────────────────────
@@ -503,8 +541,8 @@ async function main(): Promise<void> {
           console.log(`  ✅ 変更なし (${latestTag})`);
         }
       } else if (target.type === 'webpage' && target.url) {
-        if (!ANTHROPIC_API_KEY) {
-          console.log('  ⏭️ ANTHROPIC_API_KEY 未設定のためスキップ');
+        if (!ZAI_API_KEY) {
+          console.log('  ⏭️ ZAI_API_KEY 未設定のためスキップ');
           continue;
         }
 
@@ -549,14 +587,14 @@ async function main(): Promise<void> {
   }
 
   let aiSummary = '';
-  if (detected.length > 0 && ANTHROPIC_API_KEY) {
-    console.log('\n🤖 Claude で変更内容を解析中...');
+  if (detected.length > 0 && ZAI_API_KEY) {
+    console.log('\n🤖 GLM-4.7 で変更内容を解析中...');
     try {
-      aiSummary = await summarizeWithClaude(detected);
+      aiSummary = await summarizeWithGlm(detected);
       console.log('  ✅ 解析完了');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`  ❌ Claude API エラー: ${message}`);
+      console.error(`  ❌ Z.AI API エラー: ${message}`);
       aiSummary = `（AI解析エラー: ${message}）`;
     }
   }
