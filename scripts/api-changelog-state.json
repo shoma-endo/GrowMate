@@ -1,5 +1,5 @@
 {
-  "_comment": "API changelog 監視の状態ファイル。GitHub Actions が週次で自動更新します。手動編集不要。",
+  "_comment": "API changelog 監視の状態ファイル。GitHub Actions が月次で自動更新します。手動編集不要。",
   "_targets": [
     "anthropic-platform",
     "openai-node",
