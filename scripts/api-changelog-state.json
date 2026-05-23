@@ -25,11 +25,11 @@
     "checkedAt": "2026-04-19T01:08:35.250Z"
   },
   "openai-node": {
-    "lastTag": "v6.34.0",
-    "checkedAt": "2026-04-19T01:08:09.472Z"
+    "lastTag": "v6.39.0",
+    "checkedAt": "2026-05-23T03:45:55.734Z"
   },
   "supabase-js": {
-    "lastTag": "v2.104.0-canary.2",
-    "checkedAt": "2026-04-19T01:08:09.874Z"
+    "lastTag": "v2.106.2-canary.1",
+    "checkedAt": "2026-05-23T03:45:56.004Z"
   }
 }
