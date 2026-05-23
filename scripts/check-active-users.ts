@@ -166,7 +166,7 @@ async function checkActiveUsers() {
     }
 
     // 除外するユーザー名のリスト
-    const excludedNames = ['遠藤 匠馬', '山下 遼太郎'];
+    const excludedNames = ['遠藤 匠馬'];
 
     // 特定のユーザーを除外
     const filteredUsers = users.filter(user => !excludedNames.includes(user.full_name || ''));
