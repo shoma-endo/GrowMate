@@ -231,22 +231,24 @@ async function fetchGitHubReleases(repo: string): Promise<GitHubRelease[]> {
   }));
 }
 
+type ZaiWebSearchTool = {
+  type: 'web_search';
+  web_search: {
+    enable: boolean;
+    search_engine: string;
+    count: number;
+    search_recency_filter: string;
+    search_domain_filter?: string;
+  };
+};
+
 interface ZaiChatCompletionRequest {
   model: string;
   messages: Array<{ role: string; content: string }>;
   max_tokens: number;
   thinking?: { type: string };
   response_format?: { type: string };
-  tools?: Array<{
-    type: string;
-    web_search: {
-      enable: boolean;
-      search_engine: string;
-      count: number;
-      search_recency_filter: string;
-      search_domain_filter?: string;
-    };
-  }>;
+  tools?: ZaiWebSearchTool[];
 }
 
 interface ZaiChatCompletionResponse {
@@ -265,9 +267,9 @@ function hostnameFromUrl(pageUrl: string): string | undefined {
   }
 }
 
-function buildWebSearchTool(pageUrl: string): ZaiChatCompletionRequest['tools'] {
+function buildWebSearchTool(pageUrl: string): ZaiWebSearchTool[] {
   const hostname = hostnameFromUrl(pageUrl);
-  const webSearch: NonNullable<ZaiChatCompletionRequest['tools']>[0]['web_search'] = {
+  const webSearch: ZaiWebSearchTool['web_search'] = {
     enable: true,
     search_engine: 'search_pro_jina',
     count: 10,
