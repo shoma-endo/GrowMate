@@ -61,6 +61,14 @@ export class EmailService {
       };
     }
   }
+
+  async sendGoogleAdsNegativeKeywords(
+    to: string,
+    subject: string,
+    htmlContent: string
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    return this.sendGoogleAdsAnalysis(to, subject, htmlContent);
+  }
 }
 
 export const emailService = new EmailService();

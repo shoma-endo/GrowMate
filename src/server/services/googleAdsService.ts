@@ -770,8 +770,13 @@ export class GoogleAdsService {
     const query = `
       SELECT
         search_term_view.search_term,
+        campaign.id,
+        campaign.name,
+        ad_group.id,
+        ad_group.name,
         metrics.impressions,
         metrics.clicks,
+        metrics.cost_micros,
         metrics.conversions
       FROM search_term_view
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
@@ -824,8 +829,13 @@ export class GoogleAdsService {
         if (!searchTerm) continue;
         metrics.push({
           searchTerm,
+          campaignId: row.campaign?.id ?? '',
+          campaignName: row.campaign?.name ?? '',
+          adGroupId: row.adGroup?.id ?? '',
+          adGroupName: row.adGroup?.name ?? '',
           impressions: Number(row.metrics?.impressions ?? 0),
           clicks: Number(row.metrics?.clicks ?? 0),
+          cost: microsToYen(row.metrics?.costMicros),
           conversions: Number(row.metrics?.conversions ?? 0),
         });
       }
@@ -838,7 +848,10 @@ export class GoogleAdsService {
         sample: metrics.slice(0, 5).map(metric => ({
           impressions: metric.impressions,
           clicks: metric.clicks,
+          cost: metric.cost,
           conversions: metric.conversions,
+          campaignName: metric.campaignName,
+          adGroupName: metric.adGroupName,
         })),
       });
 

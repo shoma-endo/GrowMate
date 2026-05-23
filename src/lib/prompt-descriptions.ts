@@ -22,6 +22,14 @@ const IMPLICIT_GOOGLE_ADS_VARS = [
   'customerName',
 ] as const;
 
+const IMPLICIT_GOOGLE_ADS_NEGATIVE_KEYWORDS_VARS = [
+  'persona',
+  'customerName',
+  'dateRange',
+  'searchTermData',
+  'existingNegativeKeywords',
+] as const;
+
 const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
   ad_copy_creation: {
     description: 'Google広告やFacebook広告に使用する広告コピーを生成するプロンプト',
@@ -63,6 +71,11 @@ const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
   google_ads_ai_evaluation: {
     description: 'Google Adsのキーワード指標をAIで分析し、改善提案をメール送信するプロンプト',
     variables: `${IMPLICIT_GOOGLE_ADS_VARS.join('、')} を使用します`,
+  },
+  google_ads_negative_keywords_suggestion: {
+    description:
+      'Google Adsの検索語句をAIで分析し、除外キーワード候補をメール送信するプロンプト',
+    variables: `${IMPLICIT_GOOGLE_ADS_NEGATIVE_KEYWORDS_VARS.join('、')} を使用します`,
   },
 };
 

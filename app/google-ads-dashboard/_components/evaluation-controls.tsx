@@ -156,7 +156,7 @@ export function EvaluationControls({
     <div className="rounded-xl border bg-slate-50 p-4 space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-slate-900">
+          <h2 className="text-xl font-semibold text-slate-900">
             Google Ads コンテンツ戦略提案
           </h2>
           <p className="text-sm text-slate-600">

@@ -56,6 +56,7 @@ export default async function GoogleAdsDashboardPage() {
         campaigns={[]}
         keywords={[]}
         hasEmailAddress={hasEmailAddress}
+        hasGoogleAdsReady={false}
         initialSettings={evaluationSettings}
         errorMessage={errorMessage}
         errorKind={resolveErrorKind(errorMessage)}
@@ -71,6 +72,7 @@ export default async function GoogleAdsDashboardPage() {
       campaigns={campaigns}
       keywords={keywords}
       hasEmailAddress={hasEmailAddress}
+      hasGoogleAdsReady={true}
       initialSettings={evaluationSettings}
     />
   );

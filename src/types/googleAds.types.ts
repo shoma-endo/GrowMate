@@ -157,6 +157,7 @@ export interface GoogleAdsSearchStreamRow {
     status?: string;
   };
   adGroup?: {
+    id?: string;
     name?: string;
     status?: GoogleAdsStatus;
   };
@@ -196,10 +197,20 @@ export interface GoogleAdsSearchStreamRow {
 export interface GoogleAdsSearchTermMetric {
   /** 実際にユーザーが検索した語句 */
   searchTerm: string;
+  /** キャンペーン ID */
+  campaignId: string;
+  /** キャンペーン名 */
+  campaignName: string;
+  /** 広告グループ ID */
+  adGroupId: string;
+  /** 広告グループ名 */
+  adGroupName: string;
   /** 広告表示回数 */
   impressions: number;
   /** クリック数 */
   clicks: number;
+  /** コスト（費用）: 円換算済み */
+  cost: number;
   /** コンバージョン数 */
   conversions: number;
 }
