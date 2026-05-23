@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -8,16 +9,17 @@ import type { RequestOptions, IncomingMessage } from 'http';
  * API Changelog Monitor
  *
  * 外部APIのリリースノート・changelogを月次チェックし、
- * 変更が検出された場合に GLM-4.7 で要約して Lark へ通知する。
+ * 変更が検出された場合に Lark へ通知する（任意で GLM-4.7 要約）。
  *
  * 監視対象:
  *   - GitHub Releases API: OpenAI Node / Supabase JS
- *   - GLM-4.7 web_search: Claude API / Google SC / GA4 / Google Ads / WordPress REST API
+ *   - ページ fetch + ハッシュ: Google SC / GA4 / Google Ads
+ *   - GLM-4.7 web_search（ZAI_API_KEY あり）: Claude API / WordPress REST API
  */
 
 // ── 型定義 ───────────────────────────────────────────────────────────────────
 
-type TargetType = 'github' | 'webpage';
+type TargetType = 'github' | 'webpage' | 'fetch';
 
 interface Target {
   id: string;
@@ -110,21 +112,21 @@ const TARGETS: Target[] = [
   {
     id: 'google-search-console-api',
     name: 'Google Search Console API',
-    type: 'webpage',
+    type: 'fetch',
     url: 'https://developers.google.com/search/updates',
     risk: '中',
   },
   {
     id: 'google-analytics-data-api',
     name: 'Google Analytics Data API (GA4)',
-    type: 'webpage',
+    type: 'fetch',
     url: 'https://developers.google.com/analytics/devguides/reporting/data/v1/changelog',
     risk: '中',
   },
   {
     id: 'google-ads-api',
     name: 'Google Ads API',
-    type: 'webpage',
+    type: 'fetch',
     url: 'https://developers.google.com/google-ads/api/docs/release-notes',
     risk: '中',
   },
@@ -229,6 +231,46 @@ async function fetchGitHubReleases(repo: string): Promise<GitHubRelease[]> {
     body: (r.body ?? '（リリースノートなし）').substring(0, 2000),
     url: r.html_url,
   }));
+}
+
+// ── ページ fetch + ハッシュ監視（Google 公式 changelog）────────────────────
+
+async function fetchPageContent(url: string): Promise<string> {
+  const { status, body } = await httpRequest(url);
+  if (status !== 200) {
+    throw new Error(`Fetch error ${status}: ${body.substring(0, 300)}`);
+  }
+  return body;
+}
+
+function hashPageContent(content: string): string {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  return crypto.createHash('sha256').update(normalized).digest('hex');
+}
+
+interface FetchCheckResult {
+  changed: boolean;
+  hash: string;
+  isBaseline: boolean;
+}
+
+async function checkWebpageByFetch(url: string, prevHash?: string): Promise<FetchCheckResult> {
+  const content = await fetchPageContent(url);
+  const hash = hashPageContent(content);
+  if (!prevHash) {
+    return { changed: false, hash, isBaseline: true };
+  }
+  return { changed: hash !== prevHash, hash, isBaseline: false };
+}
+
+function isZaiBalanceError(message: string): boolean {
+  return message.includes('Insufficient balance') || message.includes('"code":"1113"');
+}
+
+function buildDetectedChangesSummary(changedItems: DetectedChange[]): string {
+  return changedItems
+    .map((c) => `### ${c.name}（影響度目安: ${c.risk}）\n${c.summary}`)
+    .join('\n\n---\n\n');
 }
 
 type ZaiWebSearchTool = {
@@ -542,6 +584,29 @@ async function main(): Promise<void> {
           state[target.id] = { ...prev, checkedAt: new Date().toISOString() };
           console.log(`  ✅ 変更なし (${latestTag})`);
         }
+      } else if (target.type === 'fetch' && target.url) {
+        const { changed, hash, isBaseline } = await checkWebpageByFetch(target.url, prev.hash);
+
+        if (isBaseline) {
+          state[target.id] = { hash, checkedAt: new Date().toISOString() };
+          console.log('  ✅ 初回ベースライン記録（ページハッシュ）');
+          continue;
+        }
+
+        if (changed) {
+          detected.push({
+            name: target.name,
+            risk: target.risk,
+            url: target.url,
+            summary:
+              '公式 changelog ページの内容が前回チェック時から変更されました。詳細は URL を確認してください。',
+          });
+          state[target.id] = { hash, checkedAt: new Date().toISOString() };
+          console.log('  🔔 ページ変更検出（ハッシュ不一致）');
+        } else {
+          state[target.id] = { hash, checkedAt: new Date().toISOString() };
+          console.log('  ✅ 変更なし（ハッシュ一致）');
+        }
       } else if (target.type === 'webpage' && target.url) {
         if (!ZAI_API_KEY) {
           console.log('  ⏭️ ZAI_API_KEY 未設定のためスキップ');
@@ -577,6 +642,10 @@ async function main(): Promise<void> {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (target.type === 'webpage' && isZaiBalanceError(message)) {
+        console.log('  ⏭️ Z.AI 残高不足のためスキップ');
+        continue;
+      }
       console.error(`  ❌ エラー: ${message}`);
       errors.push({ name: target.name, message });
     }
@@ -589,15 +658,24 @@ async function main(): Promise<void> {
   }
 
   let aiSummary = '';
-  if (detected.length > 0 && ZAI_API_KEY) {
-    console.log('\n🤖 GLM-4.7 で変更内容を解析中...');
-    try {
-      aiSummary = await summarizeWithGlm(detected);
-      console.log('  ✅ 解析完了');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`  ❌ Z.AI API エラー: ${message}`);
-      aiSummary = `（AI解析エラー: ${message}）`;
+  if (detected.length > 0) {
+    if (ZAI_API_KEY) {
+      console.log('\n🤖 GLM-4.7 で変更内容を解析中...');
+      try {
+        aiSummary = await summarizeWithGlm(detected);
+        console.log('  ✅ 解析完了');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (isZaiBalanceError(message)) {
+          console.log('  ⏭️ Z.AI 残高不足のため要約をスキップ（検出内容のみ通知）');
+          aiSummary = buildDetectedChangesSummary(detected);
+        } else {
+          console.error(`  ❌ Z.AI API エラー: ${message}`);
+          aiSummary = buildDetectedChangesSummary(detected);
+        }
+      }
+    } else {
+      aiSummary = buildDetectedChangesSummary(detected);
     }
   }
 
