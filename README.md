@@ -192,7 +192,7 @@ npm run dev  # http://localhost:3000
 
 ## ✅ 動作確認
 
-`npm run lint` と `npm run build` で基本チェック。各機能の詳細な検証手順は `testing-and-troubleshooting` スキルを参照。
+`npm run lint` と `npm run build` で基本チェック。各機能の詳細な検証手順は `quality-gate` スキルを参照。
 
 ## 📁 プロジェクト構成（概要）
 

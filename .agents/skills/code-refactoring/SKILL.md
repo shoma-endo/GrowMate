@@ -505,8 +505,9 @@ codex-cli shell "npm test && npm run lint"
 
 ### Related Skills
 
-- [code-review](../code-review/SKILL.md)
-- [backend-testing](../../backend/testing/SKILL.md)
+- `quality-gate`（`self-review.md`）— リファクタ後の 2 パスセルフレビュー
+- `implementation-guidelines` — プロジェクト実装ポリシー
+- `project-naming` — 命名規則
 
 ### Tags
 
