@@ -1,9 +1,10 @@
 # 動作確認の基本方針
 
-- 自動テストは未整備のため、**手動検証と `npm run lint` / `npm run build`** を基本とする。
+- 自動テストは未整備のため、**手動検証と `npm run lint` / `npm run build` / `npm run knip`** を基本とする。
 - コード変更後は、可能な範囲で以下を行う:
   - `npm run lint` で静的チェック
   - `npm run build` でビルド確認
+  - `npm run knip` で未使用の export / ファイル / 依存を検出（CI のブロック対象）
   - 関連画面の手動操作で挙動を確認
 
 ## 画面・機能ごとのチェックポイント
