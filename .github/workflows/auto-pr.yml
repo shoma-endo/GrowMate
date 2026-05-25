@@ -27,6 +27,7 @@ jobs:
       - name: Create Pull Request if not exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUSH_COMMITS: ${{ toJSON(github.event.commits) }}
         run: |
           BRANCH_NAME="${GITHUB_REF_NAME}"
           LABEL_NAME="automated-pr"
@@ -56,6 +57,17 @@ jobs:
             exit 1
           fi
 
+          # 今回のpushに含まれるコミットメッセージのみ取得
+          COMMIT_MESSAGES=$(echo "${PUSH_COMMITS}" | jq -r '.[] | "- " + (.message | split("\n")[0])')
+          if [ -z "${COMMIT_MESSAGES}" ]; then
+            COMMIT_MESSAGES="- (コミットメッセージなし)"
+          fi
+
+          COMMENT_BODY="@codex
+${COMMIT_MESSAGES}
+上記実装しました。
+日本語でレビューしてください。"
+
           # ラベルの存在確認と作成
           if ! gh label list --json name -q '.[].name' | grep -q "^${LABEL_NAME}$"; then
             echo "Label '${LABEL_NAME}' does not exist. Attempting to create it..."
@@ -77,6 +89,8 @@ jobs:
               fi
               echo "Pull Request updated successfully (without label)."
             fi
+            gh pr comment "${PR_EXISTS}" --body "${COMMENT_BODY}"
+            echo "Comment added to Pull Request #${PR_EXISTS}."
           else
             echo "Creating Pull Request..."
             # PR作成（失敗時はラベルなしでリトライ）
@@ -86,7 +100,7 @@ jobs:
               --title "${PR_TITLE}" \
               --body "${PR_BODY}" \
               --label "${LABEL_NAME}"; then
-              
+
               echo "Failed to create Pull Request with label. Retrying without label..."
               if ! gh pr create \
                 --head "${BRANCH_NAME}" \
@@ -98,4 +112,7 @@ jobs:
               fi
             fi
             echo "Pull Request created successfully."
+            PR_NUMBER=$(gh pr list --head "${BRANCH_NAME}" --base "${BASE_BRANCH}" --state open --json number -q '.[0].number')
+            gh pr comment "${PR_NUMBER}" --body "${COMMENT_BODY}"
+            echo "Comment added to Pull Request #${PR_NUMBER}."
           fi
