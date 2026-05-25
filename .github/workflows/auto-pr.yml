@@ -63,10 +63,7 @@ jobs:
             COMMIT_MESSAGES="- (コミットメッセージなし)"
           fi
 
-          COMMENT_BODY="@codex
-${COMMIT_MESSAGES}
-上記実装しました。
-日本語でレビューしてください。"
+          COMMENT_BODY=$(printf '@codex\n%s\n上記実装しました。\n日本語でレビューしてください。' "${COMMIT_MESSAGES}")
 
           # ラベルの存在確認と作成
           if ! gh label list --json name -q '.[].name' | grep -q "^${LABEL_NAME}$"; then
