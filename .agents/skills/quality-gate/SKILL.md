@@ -17,7 +17,7 @@ description: GrowMate の品質ゲート。コーディング完了後の2パス
 
 ## 基本フロー（コード変更後）
 
-1. `npm run lint` / `npm run build`
+1. `npm run lint` / `npm run build` / `npm run knip`（CI で `knip` が独立ジョブとして実行され、失敗すると CI がブロックされるため）
 2. 変更機能の手動確認（`manual-testing.md`）
 3. 2 パスセルフレビュー（`self-review.md`）
 
