@@ -65,6 +65,6 @@ If an error occurs during execution or the plan fails:
 
 - ソースを調査する際は `grep` を優先し、`shell` コマンドでは `working_directory` を明示する。
 - **MVP（Minimum Viable Product）開発**を遵守して変更は最小編集で行い、自動生成ファイルの直接編集は避ける。
-- プログラム変更後は `quality-gate` スキルの指針に従い検証する（`npm run lint` / `npm run build`）。作業完了時は新規ファイルを含めて `git diff` を確認し、日本語の 1 行コミットメッセージ案を必ず提示する。
+- プログラム変更後は `quality-gate` スキルの指針に従い検証する（`npm run lint` / `npm run build` / `npm run knip`）。作業完了時は新規ファイルを含めて `git diff` を確認し、日本語の 1 行コミットメッセージ案を必ず提示する。
 
 </law>
