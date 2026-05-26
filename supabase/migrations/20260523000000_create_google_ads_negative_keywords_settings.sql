@@ -2,7 +2,6 @@
 --
 -- Rollback:
 --   drop policy if exists "google_ads_negative_keywords_settings_select" on public.google_ads_negative_keywords_settings;
---   drop index if exists idx_google_ads_negative_keywords_settings_due;
 --   drop table if exists public.google_ads_negative_keywords_settings cascade;
 --   delete from public.prompt_templates where name = 'google_ads_negative_keywords_suggestion';
 
@@ -18,10 +17,6 @@ create table if not exists public.google_ads_negative_keywords_settings (
   updated_at timestamptz not null default timezone('utc', now()),
   unique(user_id)
 );
-
-create index if not exists idx_google_ads_negative_keywords_settings_due
-  on public.google_ads_negative_keywords_settings (send_hour_jst)
-  where enabled = true;
 
 alter table public.google_ads_negative_keywords_settings enable row level security;
 

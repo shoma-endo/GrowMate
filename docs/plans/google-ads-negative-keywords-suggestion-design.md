@@ -339,11 +339,6 @@ create table if not exists public.google_ads_negative_keywords_settings (
   unique(user_id)
 );
 
--- enabled=true のユーザーのみ cron バッチ抽出を高速化
-create index if not exists idx_google_ads_negative_keywords_settings_due
-  on public.google_ads_negative_keywords_settings (send_hour_jst)
-  where enabled = true;
-
 alter table public.google_ads_negative_keywords_settings enable row level security;
 ```
 
