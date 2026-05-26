@@ -18,11 +18,6 @@ export interface UpsertGoogleAdsNegativeKeywordsSuggestionSettingsInput {
   lastSendError?: string | null;
 }
 
-export interface UpdateGoogleAdsNegativeKeywordsSuggestionSettingsInput {
-  enabled?: boolean;
-  sendHourJst?: number;
-}
-
 export interface GoogleAdsNegativeKeywordsSuggestionResult {
   success: boolean;
   message?: string;
