@@ -166,6 +166,7 @@ export interface GoogleAdsSearchStreamRow {
     averageCpc?: string; // micros (string)
     // historicalQualityScore?: number; // removed in favor of ad_group_criterion.quality_info.quality_score
     conversions?: number;
+    conversionsValue?: number;
     costPerConversion?: string; // micros (string)
     searchImpressionShare?: number;
     conversionsFromInteractionsRate?: number;
@@ -213,6 +214,8 @@ export interface GoogleAdsSearchTermMetric {
   cost: number;
   /** コンバージョン数 */
   conversions: number;
+  /** コンバージョン値（円換算済み） */
+  conversionValue: number;
 }
 
 /**

@@ -777,7 +777,8 @@ export class GoogleAdsService {
         metrics.impressions,
         metrics.clicks,
         metrics.cost_micros,
-        metrics.conversions
+        metrics.conversions,
+        metrics.conversions_value
       FROM search_term_view
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
         AND metrics.impressions > 0
@@ -837,6 +838,7 @@ export class GoogleAdsService {
           clicks: Number(row.metrics?.clicks ?? 0),
           cost: microsToYen(row.metrics?.costMicros),
           conversions: Number(row.metrics?.conversions ?? 0),
+          conversionValue: Number(row.metrics?.conversionsValue ?? 0),
         });
       }
 

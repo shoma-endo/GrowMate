@@ -28,6 +28,8 @@ const IMPLICIT_GOOGLE_ADS_NEGATIVE_KEYWORDS_VARS = [
   'dateRange',
   'searchTermData',
   'existingNegativeKeywords',
+  'previousSearchTermData',
+  'dayOverDayComparison',
 ] as const;
 
 const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {

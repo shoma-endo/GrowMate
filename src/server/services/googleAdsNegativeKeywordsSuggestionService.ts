@@ -170,10 +170,13 @@ class GoogleAdsNegativeKeywordsSuggestionService {
       const dateRangeDays = options?.dateRangeDays ?? 1;
       const startDate = dateRangeDays > 1 ? addDaysISO(yesterdayJst, -(dateRangeDays - 1)) : yesterdayJst;
       const endDate = yesterdayJst;
+      const previousEndDate = addDaysISO(startDate, -1);
+      const previousStartDate = addDaysISO(startDate, -dateRangeDays);
       const useMockGoogleAds =
         process.env.NODE_ENV === 'development' && process.env.MOCK_GOOGLE_ADS_API === 'true';
 
       let searchTerms: GoogleAdsSearchTermMetric[];
+      let previousSearchTerms: GoogleAdsSearchTermMetric[];
       let negativeKeywords: GoogleAdsNegativeKeyword[];
       let brief: Awaited<ReturnType<typeof briefService.getVariablesByUserId>>;
       let customerName: string | null;
@@ -181,6 +184,7 @@ class GoogleAdsNegativeKeywordsSuggestionService {
       if (useMockGoogleAds) {
         brief = await briefService.getVariablesByUserId(userId);
         searchTerms = DEV_SAMPLE_SEARCH_TERMS;
+        previousSearchTerms = DEV_SAMPLE_SEARCH_TERMS_PREV;
         negativeKeywords = DEV_SAMPLE_NEGATIVE_KEYWORDS;
         customerName = 'サンプル株式会社（開発用）';
       } else {
@@ -189,7 +193,7 @@ class GoogleAdsNegativeKeywordsSuggestionService {
           return fail(ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED);
         }
 
-        const [searchTermResult, negativeKeywordResult, briefResult, customerNameResult] =
+        const [searchTermResult, negativeKeywordResult, briefResult, customerNameResult, previousSearchTermResult] =
           await Promise.all([
             this.googleAdsService.getSearchTermMetrics({
               accessToken,
@@ -213,6 +217,15 @@ class GoogleAdsNegativeKeywordsSuggestionService {
               customerId: credential.customerId,
               managerCustomerId: credential.managerCustomerId,
             }),
+            this.googleAdsService.getSearchTermMetrics({
+              accessToken,
+              customerId: credential.customerId,
+              startDate: previousStartDate,
+              endDate: previousEndDate,
+              ...(credential.managerCustomerId && {
+                loginCustomerId: credential.managerCustomerId,
+              }),
+            }),
           ]);
 
         if (!searchTermResult.success) {
@@ -231,6 +244,9 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         negativeKeywords = negativeKeywordResult.data ?? [];
         brief = briefResult;
         customerName = customerNameResult;
+        previousSearchTerms = previousSearchTermResult.success
+          ? (previousSearchTermResult.data ?? [])
+          : [];
       }
 
       const totalImpressions = searchTerms.reduce((sum, item) => sum + item.impressions, 0);
@@ -258,6 +274,13 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         dateRange: `${startDate} 〜 ${endDate}`,
         searchTermData: this.formatSearchTermMetrics(searchTerms),
         existingNegativeKeywords: this.formatNegativeKeywords(negativeKeywords),
+        previousSearchTermData: this.formatSearchTermMetrics(previousSearchTerms),
+        dayOverDayComparison: this.formatDayOverDay(
+          previousSearchTerms,
+          searchTerms,
+          `${previousStartDate} 〜 ${previousEndDate}`,
+          `${startDate} 〜 ${endDate}`
+        ),
       });
 
       const modelConfig = MODEL_CONFIGS.google_ads_negative_keywords_suggestion;
@@ -461,10 +484,10 @@ class GoogleAdsNegativeKeywordsSuggestionService {
   }
 
   private formatSearchTermMetrics(metrics: GoogleAdsSearchTermMetric[]): string {
-    const header = '検索語句 | キャンペーン名 | 広告グループ名 | IMP | Click | Cost(円) | CV';
-    const separator = '--------|------------|------------|-----|-------|---------|-----';
+    const header = '検索語句 | キャンペーン名 | 広告グループ名 | IMP | Click | Cost(円) | CV | CV値(円)';
+    const separator = '--------|------------|------------|-----|-------|---------|-----|--------';
     if (metrics.length === 0) {
-      return `${header}\n${separator}\n（データなし） | - | - | 0 | 0 | 0 | 0`;
+      return `${header}\n${separator}\n（データなし） | - | - | 0 | 0 | 0 | 0 | 0`;
     }
 
     const rows = [...metrics]
@@ -478,10 +501,56 @@ class GoogleAdsNegativeKeywordsSuggestionService {
           this.formatInteger(metric.clicks),
           this.formatInteger(metric.cost),
           this.formatNumber(metric.conversions),
+          this.formatInteger(metric.conversionValue),
         ].join(' | ')
       );
 
     return [header, separator, ...rows].join('\n');
+  }
+
+  private aggregateMetrics(metrics: GoogleAdsSearchTermMetric[]): {
+    impressions: number;
+    clicks: number;
+    cost: number;
+    conversions: number;
+    conversionValue: number;
+  } {
+    return metrics.reduce(
+      (acc, metric) => ({
+        impressions: acc.impressions + metric.impressions,
+        clicks: acc.clicks + metric.clicks,
+        cost: acc.cost + metric.cost,
+        conversions: acc.conversions + metric.conversions,
+        conversionValue: acc.conversionValue + metric.conversionValue,
+      }),
+      { impressions: 0, clicks: 0, cost: 0, conversions: 0, conversionValue: 0 }
+    );
+  }
+
+  private formatDayOverDay(
+    previous: GoogleAdsSearchTermMetric[],
+    current: GoogleAdsSearchTermMetric[],
+    previousLabel: string,
+    currentLabel: string
+  ): string {
+    if (previous.length === 0) {
+      return `前期間（${previousLabel}）のデータを取得できなかったため、前日比は算出できません。`;
+    }
+    const prev = this.aggregateMetrics(previous);
+    const cur = this.aggregateMetrics(current);
+    const delta = (before: number, after: number): string => {
+      const diff = after - before;
+      const sign = diff > 0 ? '+' : '';
+      return `${sign}${this.formatNumber(diff)}`;
+    };
+    const lines = [
+      `前々日（${previousLabel}） → 前日（${currentLabel}）`,
+      `- 広告費: ¥${this.formatInteger(prev.cost)} → ¥${this.formatInteger(cur.cost)}（差分 ${delta(prev.cost, cur.cost)}）`,
+      `- クリック: ${this.formatInteger(prev.clicks)} → ${this.formatInteger(cur.clicks)}（差分 ${delta(prev.clicks, cur.clicks)}）`,
+      `- コンバージョン: ${this.formatNumber(prev.conversions)} → ${this.formatNumber(cur.conversions)}（差分 ${delta(prev.conversions, cur.conversions)}）`,
+      `- CV値: ¥${this.formatInteger(prev.conversionValue)} → ¥${this.formatInteger(cur.conversionValue)}（差分 ${delta(prev.conversionValue, cur.conversionValue)}）`,
+    ];
+    return lines.join('\n');
   }
 
   private formatNegativeKeywords(keywords: GoogleAdsNegativeKeyword[]): string {
@@ -526,11 +595,17 @@ export const googleAdsNegativeKeywordsSuggestionService =
   new GoogleAdsNegativeKeywordsSuggestionService();
 
 const DEV_SAMPLE_SEARCH_TERMS: GoogleAdsSearchTermMetric[] = [
-  { searchTerm: '家具 買取 アルバイト', campaignId: '2001', campaignName: '家具買取_一般', adGroupId: '3001', adGroupName: '家具買取', impressions: 1280, clicks: 32, cost: 12400, conversions: 0 },
-  { searchTerm: '古銭 価値 調べ方', campaignId: '2002', campaignName: '骨董品買取_一般', adGroupId: '3002', adGroupName: '古銭買取', impressions: 940, clicks: 0, cost: 0, conversions: 0 },
-  { searchTerm: '他社ブランド 買取 評判', campaignId: '2001', campaignName: '家具買取_一般', adGroupId: '3003', adGroupName: 'ブランド家具', impressions: 410, clicks: 8, cost: 3200, conversions: 0 },
-  { searchTerm: '出張 買取 家具', campaignId: '2001', campaignName: '家具買取_一般', adGroupId: '3001', adGroupName: '家具買取', impressions: 860, clicks: 74, cost: 26640, conversions: 5 },
-  { searchTerm: 'アンティーク 時計 買取', campaignId: '2002', campaignName: '骨董品買取_一般', adGroupId: '3004', adGroupName: '時計買取', impressions: 620, clicks: 49, cost: 19600, conversions: 3 },
+  { searchTerm: '家具 買取 アルバイト', campaignId: '2001', campaignName: '家具買取_一般', adGroupId: '3001', adGroupName: '家具買取', impressions: 1280, clicks: 32, cost: 12400, conversions: 0, conversionValue: 0 },
+  { searchTerm: '古銭 価値 調べ方', campaignId: '2002', campaignName: '骨董品買取_一般', adGroupId: '3002', adGroupName: '古銭買取', impressions: 940, clicks: 0, cost: 0, conversions: 0, conversionValue: 0 },
+  { searchTerm: '他社ブランド 買取 評判', campaignId: '2001', campaignName: '家具買取_一般', adGroupId: '3003', adGroupName: 'ブランド家具', impressions: 410, clicks: 8, cost: 3200, conversions: 0, conversionValue: 0 },
+  { searchTerm: '出張 買取 家具', campaignId: '2001', campaignName: '家具買取_一般', adGroupId: '3001', adGroupName: '家具買取', impressions: 860, clicks: 74, cost: 26640, conversions: 5, conversionValue: 25000 },
+  { searchTerm: 'アンティーク 時計 買取', campaignId: '2002', campaignName: '骨董品買取_一般', adGroupId: '3004', adGroupName: '時計買取', impressions: 620, clicks: 49, cost: 19600, conversions: 3, conversionValue: 15000 },
+];
+
+const DEV_SAMPLE_SEARCH_TERMS_PREV: GoogleAdsSearchTermMetric[] = [
+  { searchTerm: '家具 買取 アルバイト', campaignId: '2001', campaignName: '家具買取_一般', adGroupId: '3001', adGroupName: '家具買取', impressions: 1100, clicks: 20, cost: 8200, conversions: 0, conversionValue: 0 },
+  { searchTerm: '出張 買取 家具', campaignId: '2001', campaignName: '家具買取_一般', adGroupId: '3001', adGroupName: '家具買取', impressions: 790, clicks: 60, cost: 21800, conversions: 4, conversionValue: 20000 },
+  { searchTerm: 'アンティーク 時計 買取', campaignId: '2002', campaignName: '骨董品買取_一般', adGroupId: '3004', adGroupName: '時計買取', impressions: 540, clicks: 41, cost: 16400, conversions: 2, conversionValue: 10000 },
 ];
 
 const DEV_SAMPLE_NEGATIVE_KEYWORDS: GoogleAdsNegativeKeyword[] = [
