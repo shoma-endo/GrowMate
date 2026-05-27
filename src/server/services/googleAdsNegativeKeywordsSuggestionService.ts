@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { marked } from 'marked';
 import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
 import { MODEL_CONFIGS } from '@/lib/constants';
@@ -16,12 +15,10 @@ import type {
 import type {
   GoogleAdsNegativeKeywordsSuggestionBatchResult,
   GoogleAdsNegativeKeywordsSuggestionResult,
-  StructuredNegativeKeywordSuggestion,
 } from '@/types/google-ads-negative-keywords-suggestion';
 
 const DEFAULT_SEND_HOUR_JST = 7;
 const CRON_CONCURRENCY = 3;
-const STRUCTURED_JSON_BLOCK_REGEX = /```json\s*([\s\S]*?)```/i;
 
 function buildPrompt(template: string, variables: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] ?? '');
@@ -53,48 +50,6 @@ function getJstHour(date: Date): number {
 
 function getJstYesterdayDateISO(date: Date): string {
   return addDaysISO(formatJstDateISO(date), -1);
-}
-
-function createSuggestionId(): string {
-  return randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase();
-}
-
-function isSuggestionObject(value: unknown): value is Omit<StructuredNegativeKeywordSuggestion, 'suggestionId'> {
-  return Boolean(
-    value &&
-      typeof value === 'object' &&
-      'searchTerm' in value &&
-      typeof (value as { searchTerm?: unknown }).searchTerm === 'string'
-  );
-}
-
-function extractStructuredOutput(rawOutput: string): {
-  markdown: string;
-  suggestions: StructuredNegativeKeywordSuggestion[];
-} {
-  const match = rawOutput.match(STRUCTURED_JSON_BLOCK_REGEX);
-  if (!match?.[1]) {
-    return { markdown: rawOutput, suggestions: [] };
-  }
-
-  const markdown = rawOutput.replace(STRUCTURED_JSON_BLOCK_REGEX, '').trim();
-  try {
-    const parsed: unknown = JSON.parse(match[1]);
-    if (!Array.isArray(parsed)) {
-      return { markdown, suggestions: [] };
-    }
-
-    return {
-      markdown,
-      suggestions: parsed.filter(isSuggestionObject).map(item => ({
-        suggestionId: createSuggestionId(),
-        ...item,
-      })),
-    };
-  } catch (error) {
-    console.warn('[GoogleAdsNegativeKeywordsSuggestionService] Failed to parse structured JSON:', error);
-    return { markdown, suggestions: [] };
-  }
 }
 
 class GoogleAdsNegativeKeywordsSuggestionService {
@@ -298,14 +253,7 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         }
       );
 
-      const { markdown, suggestions } = extractStructuredOutput(rawOutput);
-      console.info('[GoogleAdsNegativeKeywordsSuggestionService] Structured suggestions:', {
-        userId,
-        count: suggestions.length,
-        sample: suggestions.slice(0, 3),
-      });
-
-      const htmlContent = sanitizeEmailHtml(await marked.parse(markdown || rawOutput));
+      const htmlContent = sanitizeEmailHtml(await marked.parse(rawOutput));
       const subjectAccountPart = customerName ? ` / ${customerName}` : '';
       const devPrefix = useMockGoogleAds ? '[DEV] ' : '';
       const subject = `${devPrefix}【GrowMate】Google Ads 除外キーワード提案レポート（${endDate}${subjectAccountPart}）`;

@@ -31,19 +31,3 @@ export interface GoogleAdsNegativeKeywordsSuggestionBatchResult {
   failed: number;
   skipped: number;
 }
-
-export interface StructuredNegativeKeywordSuggestion {
-  suggestionId: string;
-  searchTerm: string;
-  level: 'campaign' | 'ad_group';
-  category: 'company' | 'knowhow' | 'general_phrase';
-  urgency: 'click_occurred' | 'preventive' | 'review_needed';
-  campaignName?: string;
-  adGroupName?: string;
-  matchType?: string;
-  reason?: string;
-  impressions?: number;
-  clicks?: number;
-  cost?: number;
-  conversions?: number;
-}
