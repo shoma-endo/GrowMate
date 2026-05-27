@@ -93,14 +93,6 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         };
       }
 
-      const credential = await this.supabaseService.getGoogleAdsCredential(userId);
-      if (!credential) {
-        return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.NOT_CONNECTED };
-      }
-      if (!credential.customerId) {
-        return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_NOT_SELECTED };
-      }
-
       const settings = await this.ensureSettings(userId);
       if (!settings) {
         return {
@@ -127,8 +119,7 @@ class GoogleAdsNegativeKeywordsSuggestionService {
       const endDate = yesterdayJst;
       const previousEndDate = addDaysISO(startDate, -1);
       const previousStartDate = addDaysISO(startDate, -dateRangeDays);
-      const useMockGoogleAds =
-        process.env.NODE_ENV === 'development' && process.env.MOCK_GOOGLE_ADS_API === 'true';
+      const useMockGoogleAds = process.env.NODE_ENV === 'development';
 
       let searchTerms: GoogleAdsSearchTermMetric[];
       let previousSearchTerms: GoogleAdsSearchTermMetric[];
@@ -143,6 +134,14 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         negativeKeywords = DEV_SAMPLE_NEGATIVE_KEYWORDS;
         customerName = 'サンプル株式会社（開発用）';
       } else {
+        const credential = await this.supabaseService.getGoogleAdsCredential(userId);
+        if (!credential) {
+          return fail(ERROR_MESSAGES.GOOGLE_ADS.NOT_CONNECTED);
+        }
+        if (!credential.customerId) {
+          return fail(ERROR_MESSAGES.GOOGLE_ADS.ACCOUNT_NOT_SELECTED);
+        }
+
         const accessToken = await this.ensureAccessToken(userId, credential);
         if (!accessToken) {
           return fail(ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED);
