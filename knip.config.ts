@@ -4,16 +4,6 @@ const config: KnipConfig = {
   ignore: [
     'src/types/database.types.ts', // Supabase 自動生成ファイル
   ],
-  ignoreDependencies: [
-    // eslint-config-next が内部で require する ESLint プラグイン群
-    // 直接 import はしないが削除すると lint が壊れる
-    '@typescript-eslint/eslint-plugin',
-    '@typescript-eslint/parser',
-    'eslint-plugin-import',
-    'eslint-plugin-jsx-a11y',
-    'eslint-plugin-react',
-    'eslint-plugin-react-hooks',
-  ],
 };
 
 export default config;
