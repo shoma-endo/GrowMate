@@ -28,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
 import type { GoogleAdsNegativeKeywordsSuggestionSettings as Settings } from '@/types/google-ads-negative-keywords-suggestion';
 
 const DEFAULT_SETTINGS: Settings = {
@@ -42,30 +41,6 @@ const SEND_HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
   value: String(hour),
   label: `${String(hour).padStart(2, '0')}:00 JST`,
 }));
-
-const PREVIEW_ROWS = [
-  {
-    query: '家具 買取 アルバイト',
-    level: 'campaign',
-    category: '一般フレーズ',
-    urgency: 'クリック発生済み',
-    cost: '1,240円',
-  },
-  {
-    query: '古銭 価値 調べ方',
-    level: 'ad_group',
-    category: 'ノウハウ系',
-    urgency: '予防的除外',
-    cost: '表示のみ',
-  },
-  {
-    query: '他社ブランド 買取 評判',
-    level: 'campaign',
-    category: '企業系',
-    urgency: '要検討',
-    cost: '320円',
-  },
-];
 
 interface NegativeKeywordsSuggestionSettingsProps {
   hasEmailAddress: boolean;
@@ -155,8 +130,8 @@ export function NegativeKeywordsSuggestionSettings({
             </Badge>
           </div>
           <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            毎朝、前日の検索クエリから除外候補をカテゴリ、提案レベル、緊急度で整理し、
-            登録メール宛に送信します。
+            設定した時刻に、前日の検索クエリから除外候補をカテゴリ、提案レベル、緊急度で整理し、
+            登録メールアドレス宛に送信します。
           </p>
         </div>
 
@@ -237,7 +212,7 @@ export function NegativeKeywordsSuggestionSettings({
         <div className="mt-4 grid gap-3 rounded-lg border bg-white p-4 sm:grid-cols-3">
           <StatusItem
             icon={<Clock3 className="h-4 w-4" />}
-            label="現在の配信時刻"
+            label="設定中の配信時刻"
             value={`${String(settings.sendHourJst).padStart(2, '0')}:00 JST`}
           />
           <StatusItem
@@ -254,7 +229,7 @@ export function NegativeKeywordsSuggestionSettings({
 
         <div className="mt-6 flex flex-col gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-slate-600">
-            設定 OFF のままでも、テスト送信ボタンから 1 通だけ即時送信できます。
+            自動配信が OFF の場合でも、登録メールアドレス宛に 1 通だけ手動送信できます。
           </div>
           <Button
             type="button"
@@ -290,57 +265,14 @@ export function NegativeKeywordsSuggestionSettings({
       </section>
 
       <aside className="space-y-6">
-        <section className="rounded-xl border bg-slate-50 p-4">
-          <h3 className="text-base font-semibold text-slate-900">提案メールの分類</h3>
-          <div className="mt-4 space-y-3">
-            <ClassificationRow label="カテゴリ" values={['企業系', 'ノウハウ系', '一般フレーズ']} />
-            <ClassificationRow label="提案レベル" values={['キャンペーン', '広告グループ']} />
-            <ClassificationRow label="緊急度" values={['クリック発生済み', '予防的除外', '要検討']} />
-          </div>
-        </section>
-
-        <section className="rounded-xl border bg-slate-50 p-4">
-          <h3 className="text-base font-semibold text-slate-900">メール本文プレビュー</h3>
-          <div className="mt-4 overflow-hidden rounded-lg border">
-            <div className="bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
-              除外候補サンプル
-            </div>
-            <div className="divide-y text-sm">
-              {PREVIEW_ROWS.map(row => (
-                <div key={row.query} className="space-y-2 p-3">
-                  <div className="font-medium text-slate-900">{row.query}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge variant="secondary">{row.level}</Badge>
-                    <Badge variant="outline">{row.category}</Badge>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        row.urgency === 'クリック発生済み' &&
-                          'border-red-200 bg-red-50 text-red-700',
-                        row.urgency === '予防的除外' &&
-                          'border-amber-200 bg-amber-50 text-amber-700',
-                        row.urgency === '要検討' &&
-                          'border-sky-200 bg-sky-50 text-sky-700'
-                      )}
-                    >
-                      {row.urgency}
-                    </Badge>
-                  </div>
-                  <div className="text-xs text-slate-500">費用: {row.cost}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
         <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
             <div className="space-y-2 text-sm text-slate-600">
               <h3 className="font-semibold text-slate-900">停止／再開について</h3>
               <p>
-                Switch を OFF にすると翌日以降の自動配信を停止します。配信時刻は毎時実行の
-                cron に合わせて時間単位で反映されます。
+                自動配信を OFF にすると、次回以降の配信を停止します。配信時刻の変更は、
+                次回の配信から反映されます。
               </p>
             </div>
           </div>
@@ -365,21 +297,6 @@ function StatusItem({
       <div className="min-w-0">
         <div className="text-xs text-slate-500">{label}</div>
         <div className="truncate text-sm font-medium text-slate-900">{value}</div>
-      </div>
-    </div>
-  );
-}
-
-function ClassificationRow({ label, values }: { label: string; values: string[] }) {
-  return (
-    <div className="space-y-2">
-      <div className="text-xs font-medium text-slate-500">{label}</div>
-      <div className="flex flex-wrap gap-1.5">
-        {values.map(value => (
-          <Badge key={value} variant="outline" className="bg-white">
-            {value}
-          </Badge>
-        ))}
       </div>
     </div>
   );

@@ -190,7 +190,7 @@ export function EvaluationControls({
         )}
 
         <div className="max-w-[180px] space-y-2">
-          <Label htmlFor="date-range-days">AI分析期間（日数）</Label>
+          <Label htmlFor="date-range-days">分析対象期間（日数）</Label>
           <Input
             id="date-range-days"
             type="number"
