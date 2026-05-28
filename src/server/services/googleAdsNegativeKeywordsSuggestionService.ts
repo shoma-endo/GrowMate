@@ -431,10 +431,20 @@ class GoogleAdsNegativeKeywordsSuggestionService {
   }
 
   private formatSearchTermMetrics(metrics: GoogleAdsSearchTermMetric[]): string {
-    const header = '検索語句 | キャンペーン名 | 広告グループ名 | IMP | Click | Cost(円) | CV | CV値(円)';
-    const separator = '--------|------------|------------|-----|-------|---------|-----|--------';
+    const header = [
+      'search_term',
+      'campaign_id',
+      'campaign_name',
+      'ad_group_id',
+      'ad_group_name',
+      'impressions',
+      'clicks',
+      'cost_yen',
+      'conversions',
+      'conversion_value_yen',
+    ];
     if (metrics.length === 0) {
-      return `${header}\n${separator}\n（データなし） | - | - | 0 | 0 | 0 | 0 | 0`;
+      return `${header.join(',')}\n`;
     }
 
     const rows = [...metrics]
@@ -442,17 +452,21 @@ class GoogleAdsNegativeKeywordsSuggestionService {
       .map(metric =>
         [
           metric.searchTerm,
-          metric.campaignName || '-',
-          metric.adGroupName || '-',
-          this.formatInteger(metric.impressions),
-          this.formatInteger(metric.clicks),
-          this.formatInteger(metric.cost),
-          this.formatNumber(metric.conversions),
-          this.formatInteger(metric.conversionValue),
-        ].join(' | ')
+          metric.campaignId,
+          metric.campaignName,
+          metric.adGroupId,
+          metric.adGroupName,
+          metric.impressions,
+          metric.clicks,
+          Math.round(metric.cost),
+          metric.conversions,
+          Math.round(metric.conversionValue),
+        ]
+          .map(value => this.csvEscape(value))
+          .join(',')
       );
 
-    return [header, separator, ...rows].join('\n');
+    return [header.join(','), ...rows].join('\n');
   }
 
   private aggregateMetrics(metrics: GoogleAdsSearchTermMetric[]): {
@@ -501,28 +515,43 @@ class GoogleAdsNegativeKeywordsSuggestionService {
   }
 
   private formatNegativeKeywords(keywords: GoogleAdsNegativeKeyword[]): string {
-    const header =
-      '除外キーワード | マッチタイプ | レベル | キャンペーン | キャンペーン状態 | 広告グループ | 広告グループ状態';
-    const separator =
-      '------------|------------|-------|------------|----------------|------------|----------------';
+    const fields = [
+      'keyword_text',
+      'match_type',
+      'level',
+      'campaign_name',
+      'campaign_status',
+      'ad_group_name',
+      'ad_group_status',
+    ];
 
     if (keywords.length === 0) {
-      return `${header}\n${separator}\n（除外キーワードなし） | - | - | - | - | - | -`;
+      return `negative_keywords[0]{${fields.join(',')}}:`;
     }
 
     const rows = keywords.map(keyword =>
-      [
+      `  ${[
         keyword.keywordText,
         keyword.matchType,
         keyword.level,
-        keyword.campaignName || '-',
-        keyword.campaignStatus || '-',
-        keyword.adGroupName || '-',
-        keyword.adGroupStatus || '-',
-      ].join(' | ')
+        keyword.campaignName,
+        keyword.campaignStatus,
+        keyword.adGroupName ?? '',
+        keyword.adGroupStatus ?? '',
+      ]
+        .map(value => this.csvEscape(value))
+        .join(',')}`
     );
 
-    return [header, separator, ...rows].join('\n');
+    return [`negative_keywords[${keywords.length}]{${fields.join(',')}}:`, ...rows].join('\n');
+  }
+
+  private csvEscape(value: string | number): string {
+    const text = String(value);
+    if (!/[",\r\n]/.test(text)) {
+      return text;
+    }
+    return `"${text.replaceAll('"', '""')}"`;
   }
 
   private formatInteger(value: number): string {

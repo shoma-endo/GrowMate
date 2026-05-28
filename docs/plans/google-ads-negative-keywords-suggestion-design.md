@@ -198,6 +198,7 @@ Anthropic Claude Opus 4.7 の公開単価（2026 年時点想定: 入力 \$15 / 
 - LLM コスト圧縮の選択肢:
   - **Sonnet 4.6 検証**: Opus の約 1/5 価格。除外キーワード提案は分類タスク中心で Sonnet で品質が出る可能性が高い。
   - 入力削減: `searchTermData` を impressions 上位 500 件にトリム、`existingNegativeKeywords` をカテゴリ別に集約。
+  - **データ整形スキルの適用**: LLM に渡す構造化データは `formatting-llm-context` の方針で、flat table は CSV、階層・半構造データは TOON、機械処理前提の出力は JSON のまま扱い、入力トークンを抑えつつ campaign / ad_group / matchType などの意味を保持する。
 - **モデル選択は本フェーズ Step 4 検証で Opus / Sonnet 両方の実出力を比較し、クライアントに品質差を提示してから本番モデルを確定する**。コスト見積もりは Opus 想定で保持（上振れ防止）。
 
 ### 4.2 プロンプト変数
@@ -207,8 +208,8 @@ Anthropic Claude Opus 4.7 の公開単価（2026 年時点想定: 入力 \$15 / 
 | `persona` | `BriefService.getVariablesByUserId()` → **Brief 直下の `persona`**（Brief 未登録・取得失敗時はスキップ） | 任意の補助文脈。値が無い場合は `（ペルソナ未設定）`。送信可否には影響しない |
 | `customerName` | `GoogleAdsService.getCustomerInfo()` | アカウント名（失敗時は空文字） |
 | `dateRange` | 前日 1 日（JST 基準） | 例: `2026-05-19 〜 2026-05-19` |
-| `searchTermData` | **拡張版** `GoogleAdsService.getSearchTermMetrics({ startDate=前日, endDate=前日 })` | **キャンペーン名・広告グループ名・cost を含む** 構造化テキスト（§7 参照）。impressions DESC、最大 1000 件 |
-| `existingNegativeKeywords` | `GoogleAdsService.getNegativeKeywords()` | 既存除外（重複登録回避用） |
+| `searchTermData` | **拡張版** `GoogleAdsService.getSearchTermMetrics({ startDate=前日, endDate=前日 })` | **キャンペーン名・広告グループ名・cost・conversionValue を含む** LLM 入力用の構造化テキスト（§7 参照）。impressions DESC、最大 1000 件。flat table のため CSV 形式を基本とし、行数・列順を固定する |
+| `existingNegativeKeywords` | `GoogleAdsService.getNegativeKeywords()` | 既存除外（重複登録回避用）。単純一覧なら bullet / CSV、campaign / ad_group / matchType など階層情報がある場合は TOON 形式で渡す |
 
 > **注**: 旧設計では `campaignsInfo` をキャンペーン・広告グループ構成として別変数で渡す案だったが、**`searchTermData` 自体にキャンペーン名と広告グループ名を含める方が AI の判断精度が高い**（実検索クエリがどの広告グループに発生したかが直接見える）。`campaignsInfo` 変数は削除する。
 
@@ -236,7 +237,7 @@ Anthropic Claude Opus 4.7 の公開単価（2026 年時点想定: 入力 \$15 / 
 {{existingNegativeKeywords}}
 
 ### 期間内の検索クエリ実績
-（各行: 検索語句 | キャンペーン名 | 広告グループ名 | IMP | Click | Cost(円) | CV）
+CSV 形式（列: search_term,campaign_id,campaign_name,ad_group_id,ad_group_name,impressions,clicks,cost_yen,conversions,conversion_value_yen）
 {{searchTermData}}
 
 ## 分析と分類ルール
@@ -535,7 +536,10 @@ export class GoogleAdsNegativeKeywordsSuggestionService {
    - `briefService.getVariablesByUserId(userId)` を試行し、成功時のみ **Brief 直下の `persona`** を抽出。Brief 未登録・取得失敗・`persona` 空は `（ペルソナ未設定）` とし、**処理は継続**（致命エラーにしない）
    - `getCustomerInfo()`（失敗は致命にしない）
 6. **空データチェック**: 取得した `searchTermData` の `impressions` 合計が 0 件なら、**メール送信をスキップ + `last_sent_on` を当日(JST)で更新**（次日まで沈黙）。`last_send_error` は NULL。「前日 IMP 0 件のためスキップ」と info ログ。
-7. **データ整形**: `formatSearchTermMetrics` / `formatNegativeKeywords` で AI 入力テキストを生成（searchTermData は §4.3 のヘッダー形式に整える）。
+7. **データ整形**: `formatting-llm-context` の方針を適用し、`formatSearchTermMetrics` / `formatNegativeKeywords` で AI 入力テキストを生成する。
+   - `searchTermData`: flat table のため **CSV 形式**を基本とする。列順は `search_term,campaign_id,campaign_name,ad_group_id,ad_group_name,impressions,clicks,cost_yen,conversions,conversion_value_yen` で固定し、値にカンマ・改行・引用符が含まれる場合は RFC 4180 相当でエスケープする。Markdown table はトークン効率が悪いため LLM 入力には使わない。
+   - `existingNegativeKeywords`: 単純な keyword 一覧なら bullet または CSV。campaign / ad_group / matchType など階層・半構造データを持つ場合は **TOON 形式**で渡し、行数・フィールド名を明示する。
+   - AI 出力末尾の構造化データは後続の JSON パースが必要なため、TOON へ変換せず **JSON のまま**維持する。
 8. **プロンプト取得**: `PromptService.getTemplateByName('google_ads_negative_keywords_suggestion')` → `replaceVariables`。
 9. **AI 実行**: `llmChat('anthropic', 'claude-opus-4-7', messages, MODEL_CONFIGS.google_ads_negative_keywords_suggestion)`。
 10. **JSON 抽出**: `extractStructuredOutput(rawOutput)` → `{ markdown, suggestions }`。失敗時は `suggestions=[]` で続行、warn ログ。
@@ -728,6 +732,7 @@ on conflict (name) do update
 - **手動 cron トリガー**: `curl -H 'Authorization: Bearer $CRON_SECRET' http://localhost:3000/api/cron/google-ads-negative-keywords-suggestion` で DEV サンプルが届く。
 - **DEV サンプルデータ拡張**: `DEV_SAMPLE_SEARCH_TERMS` を **§7.1 拡張後の型**（`campaignId`, `campaignName`, `adGroupId`, `adGroupName`, `cost` 含む）で更新する。既存「コンテンツ戦略提案」の `DEV_SAMPLE_SEARCH_TERMS` 利用箇所も同型に追従する（後方互換確認）。
 - **GAQL 拡張**: `getSearchTermMetrics` の戻り値に `campaignId`, `campaignName`, `adGroupId`, `adGroupName`, `cost` が含まれる。既存「コンテンツ戦略提案」も引き続き正常動作する（後方互換確認）。
+- **LLM 入力データ整形**: `formatSearchTermMetrics` は §8.2 の固定列順 CSV を出力し、カンマ・改行・引用符を含む検索語句 / キャンペーン名 / 広告グループ名を正しくエスケープする。`formatNegativeKeywords` は階層情報の有無に応じて bullet / CSV / TOON を選択し、AI 出力 JSON は変換しない。既存の `conversionValue` は `conversion_value_yen` として保持する。
 - **JST 境界**: UTC 22:00 起動 = JST 翌日 7:00 として正しく `send_hour_jst=7` ユーザーに送信されるか。
 - **前日日付計算**: `getJstYesterdayDateISO()` が日跨ぎ前後で正しい日付を返す。
 - **設定 OFF 非送信**: `enabled=false` ユーザーは抽出されない。
