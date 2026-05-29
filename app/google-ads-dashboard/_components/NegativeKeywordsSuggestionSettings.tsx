@@ -106,8 +106,8 @@ export function NegativeKeywordsSuggestionSettings({
       const result = await runNegativeKeywordsSuggestionNow();
       if (result.success) {
         setNotice({
-          title: '送信完了',
-          description: result.message ?? 'テスト送信を開始しました',
+          title: result.skipped ? '送信対象なし' : '送信完了',
+          description: result.message ?? 'メールを送信しました',
         });
         return;
       }
