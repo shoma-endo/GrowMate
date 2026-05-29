@@ -49,7 +49,7 @@ export function NegativeKeywordsSuggestionSettings({
 }: NegativeKeywordsSuggestionSettingsProps) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ title: string; description: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSettingsPending, startSettingsTransition] = useTransition();
   const [isRunNowPending, startRunNowTransition] = useTransition();
@@ -82,7 +82,7 @@ export function NegativeKeywordsSuggestionSettings({
 
   const saveSettings = (nextSettings: Settings) => {
     setSettings(nextSettings);
-    setMessage(null);
+    setNotice(null);
     setError(null);
 
     startSettingsTransition(async () => {
@@ -91,7 +91,10 @@ export function NegativeKeywordsSuggestionSettings({
         sendHourJst: nextSettings.sendHourJst,
       });
       if (result.success) {
-        setMessage('設定を保存しました');
+        setNotice({
+          title: '設定を保存しました',
+          description: 'メールは送信していません。次回以降の自動配信に反映されます。',
+        });
         return;
       }
       setError(result.error ?? '設定の保存に失敗しました');
@@ -99,13 +102,16 @@ export function NegativeKeywordsSuggestionSettings({
   };
 
   const handleRunNow = () => {
-    setMessage(null);
+    setNotice(null);
     setError(null);
 
     startRunNowTransition(async () => {
       const result = await runNegativeKeywordsSuggestionNow();
       if (result.success) {
-        setMessage(result.message ?? 'テスト送信を開始しました');
+        setNotice({
+          title: '送信完了',
+          description: result.message ?? 'テスト送信を開始しました',
+        });
         return;
       }
       setError(result.error ?? 'テスト送信に失敗しました');
@@ -211,10 +217,10 @@ export function NegativeKeywordsSuggestionSettings({
         </Alert>
       )}
 
-      {message && (
+      {notice && (
         <Alert variant="success">
-          <AlertTitle>送信完了</AlertTitle>
-          <AlertDescription>{message}</AlertDescription>
+          <AlertTitle>{notice.title}</AlertTitle>
+          <AlertDescription>{notice.description}</AlertDescription>
         </Alert>
       )}
 
