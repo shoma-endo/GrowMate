@@ -49,7 +49,11 @@ export function NegativeKeywordsSuggestionSettings({
 }: NegativeKeywordsSuggestionSettingsProps) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
-  const [notice, setNotice] = useState<{ title: string; description?: string } | null>(null);
+  const [notice, setNotice] = useState<{
+    title: string;
+    description?: string;
+    variant?: 'default' | 'success';
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSettingsPending, startSettingsTransition] = useTransition();
   const [isRunNowPending, startRunNowTransition] = useTransition();
@@ -108,6 +112,7 @@ export function NegativeKeywordsSuggestionSettings({
         setNotice({
           title: result.skipped ? '送信対象なし' : '送信完了',
           description: result.message ?? 'メールを送信しました',
+          variant: result.skipped ? 'default' : 'success',
         });
         return;
       }
@@ -215,7 +220,7 @@ export function NegativeKeywordsSuggestionSettings({
       )}
 
       {notice && (
-        <Alert variant="success">
+        <Alert variant={notice.variant ?? 'success'}>
           <AlertTitle>{notice.title}</AlertTitle>
           {notice.description && (
             <AlertDescription>{notice.description}</AlertDescription>
