@@ -111,7 +111,9 @@ export function NegativeKeywordsSuggestionSettings({
       if (result.success) {
         setNotice({
           title: result.skipped ? '送信対象なし' : '送信完了',
-          description: result.message ?? 'メールを送信しました',
+          description:
+            result.message ??
+            (result.skipped ? '送信対象がありませんでした' : 'メールを送信しました'),
           variant: result.skipped ? 'default' : 'success',
         });
         return;
