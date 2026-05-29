@@ -142,7 +142,7 @@ export function NegativeKeywordsSuggestionSettings({
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           <Label>自動配信</Label>
           <Button
             type="button"
