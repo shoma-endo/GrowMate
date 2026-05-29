@@ -49,7 +49,7 @@ export function NegativeKeywordsSuggestionSettings({
 }: NegativeKeywordsSuggestionSettingsProps) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
-  const [notice, setNotice] = useState<{ title: string; description: string } | null>(null);
+  const [notice, setNotice] = useState<{ title: string; description?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSettingsPending, startSettingsTransition] = useTransition();
   const [isRunNowPending, startRunNowTransition] = useTransition();
@@ -91,10 +91,7 @@ export function NegativeKeywordsSuggestionSettings({
         sendHourJst: nextSettings.sendHourJst,
       });
       if (result.success) {
-        setNotice({
-          title: '設定を保存しました',
-          description: 'メールは送信していません。次回以降の自動配信に反映されます。',
-        });
+        setNotice({ title: '設定を保存しました' });
         return;
       }
       setError(result.error ?? '設定の保存に失敗しました');
@@ -220,7 +217,9 @@ export function NegativeKeywordsSuggestionSettings({
       {notice && (
         <Alert variant="success">
           <AlertTitle>{notice.title}</AlertTitle>
-          <AlertDescription>{notice.description}</AlertDescription>
+          {notice.description && (
+            <AlertDescription>{notice.description}</AlertDescription>
+          )}
         </Alert>
       )}
 
