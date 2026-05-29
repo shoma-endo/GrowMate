@@ -111,7 +111,7 @@ export function NegativeKeywordsSuggestionSettings({
         });
         return;
       }
-      setError(result.error ?? 'テスト送信に失敗しました');
+      setError(result.error ?? '手動送信に失敗しました');
     });
   };
 
@@ -139,7 +139,7 @@ export function NegativeKeywordsSuggestionSettings({
           ) : (
             <Mail className="mr-2 h-4 w-4" />
           )}
-          除外キーワード提案をテスト送信
+          除外キーワード提案を手動送信
         </Button>
       </div>
 
@@ -189,8 +189,8 @@ export function NegativeKeywordsSuggestionSettings({
 
       <p className="text-xs leading-5 text-slate-500">
         最終送信日: {settings.lastSentOn ?? '未送信'} / 最終エラー:{' '}
-        {settings.lastSendError ?? 'なし'} / 自動配信を OFF にすると、次回以降の配信を停止します。
-        手動送信は自動配信 OFF の場合でも 1 通だけ実行できます。
+        {settings.lastSendError ?? 'なし'} / 自動配信を OFF にすると、次回以降の自動配信を停止します。
+        自動配信 OFF でも、このボタンからいつでも手動送信できます。
       </p>
 
       {!hasGoogleAdsReady && (
