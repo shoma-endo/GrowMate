@@ -49,7 +49,11 @@ export function NegativeKeywordsSuggestionSettings({
 }: NegativeKeywordsSuggestionSettingsProps) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{
+    title: string;
+    description?: string;
+    variant?: 'default' | 'success';
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSettingsPending, startSettingsTransition] = useTransition();
   const [isRunNowPending, startRunNowTransition] = useTransition();
@@ -82,7 +86,7 @@ export function NegativeKeywordsSuggestionSettings({
 
   const saveSettings = (nextSettings: Settings) => {
     setSettings(nextSettings);
-    setMessage(null);
+    setNotice(null);
     setError(null);
 
     startSettingsTransition(async () => {
@@ -91,7 +95,7 @@ export function NegativeKeywordsSuggestionSettings({
         sendHourJst: nextSettings.sendHourJst,
       });
       if (result.success) {
-        setMessage('設定を保存しました');
+        setNotice({ title: '設定を保存しました' });
         return;
       }
       setError(result.error ?? '設定の保存に失敗しました');
@@ -99,16 +103,22 @@ export function NegativeKeywordsSuggestionSettings({
   };
 
   const handleRunNow = () => {
-    setMessage(null);
+    setNotice(null);
     setError(null);
 
     startRunNowTransition(async () => {
       const result = await runNegativeKeywordsSuggestionNow();
       if (result.success) {
-        setMessage(result.message ?? 'テスト送信を開始しました');
+        setNotice({
+          title: result.skipped ? '送信対象なし' : '送信完了',
+          description:
+            result.message ??
+            (result.skipped ? '送信対象がありませんでした' : 'メールを送信しました'),
+          variant: result.skipped ? 'default' : 'success',
+        });
         return;
       }
-      setError(result.error ?? 'テスト送信に失敗しました');
+      setError(result.error ?? '手動送信に失敗しました');
     });
   };
 
@@ -127,8 +137,7 @@ export function NegativeKeywordsSuggestionSettings({
             </h2>
           </div>
           <p className="max-w-2xl text-sm leading-6 text-slate-600">
-            毎日指定時刻に、前日の検索クエリから除外候補をカテゴリ、提案レベル、緊急度で整理し、
-            登録メールアドレス宛に自動配信します。
+            毎日指定時刻に、前日の検索クエリから除外候補をカテゴリ、提案レベル、緊急度で整理し、登録メールアドレス宛に自動配信します。
           </p>
         </div>
         <Button type="button" disabled={runNowDisabled} onClick={handleRunNow}>
@@ -137,12 +146,12 @@ export function NegativeKeywordsSuggestionSettings({
           ) : (
             <Mail className="mr-2 h-4 w-4" />
           )}
-          除外キーワード提案をテスト送信
+          除外キーワード提案を手動送信
         </Button>
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           <Label>自動配信</Label>
           <Button
             type="button"
@@ -187,8 +196,8 @@ export function NegativeKeywordsSuggestionSettings({
 
       <p className="text-xs leading-5 text-slate-500">
         最終送信日: {settings.lastSentOn ?? '未送信'} / 最終エラー:{' '}
-        {settings.lastSendError ?? 'なし'} / 自動配信を OFF にすると、次回以降の配信を停止します。
-        手動送信は自動配信 OFF の場合でも 1 通だけ実行できます。
+        {settings.lastSendError ?? 'なし'} / 自動配信を OFF にすると、次回以降の自動配信を停止します。
+        自動配信 OFF でも、このボタンからいつでも手動送信できます。
       </p>
 
       {!hasGoogleAdsReady && (
@@ -212,10 +221,12 @@ export function NegativeKeywordsSuggestionSettings({
         </Alert>
       )}
 
-      {message && (
-        <Alert variant="success">
-          <AlertTitle>送信完了</AlertTitle>
-          <AlertDescription>{message}</AlertDescription>
+      {notice && (
+        <Alert variant={notice.variant ?? 'success'}>
+          <AlertTitle>{notice.title}</AlertTitle>
+          {notice.description && (
+            <AlertDescription>{notice.description}</AlertDescription>
+          )}
         </Alert>
       )}
 

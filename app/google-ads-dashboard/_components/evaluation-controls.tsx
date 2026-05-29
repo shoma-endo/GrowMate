@@ -136,7 +136,7 @@ export function EvaluationControls({
       }
 
       setStatusTone('success');
-      setStatusMessage(result.message ?? 'AI分析を開始しました');
+      setStatusMessage(result.message ?? 'メールを送信しました');
 
       const settingsResult = await getEvaluationSettings();
       if (settingsResult.success && settingsResult.data) {
