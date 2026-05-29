@@ -35,7 +35,7 @@ Lark MTG (`objplfi8m89t5a22x2dvgd5c`) より:
 client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 
 - 「**事前許可なく挙動を変えない**」「**開発前に UI のたたき台を共有し合意してから実装**」 — 自動配信開始は **明示 opt-in** とし、UI モックは実装着手前に共有合意する。
-- 「**実装上の制約やトレードオフは事前共有が必須**」 — 配信時刻の粒度（時間単位）は Vercel Cron 仕様の制約として明記し、ユーザー（カオルさん）に事前共有する。
+- 「**実装上の制約やトレードオフは事前共有が必須**」 — 配信時刻の粒度（時間単位）は毎時 cron 仕様の制約として明記し、ユーザー（カオルさん）に事前共有する。
 
 ## 2. スコープ
 
@@ -50,7 +50,7 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 - **取得範囲**: 連携済みの Google Ads アカウント 1 件を対象に、前日の検索語句データを **アカウント一式でまとめて取得**する。キャンペーン・広告グループを UI で個別選択したり、広告グループごとに手動取得したりしない。取得データにはキャンペーン名・広告グループ名を含め、AI が分類判断に利用する。
 - **出力粒度**: 取得は一括で行うが、提案結果は **キャンペーン共通で除外すべき候補** と **広告グループ単位で除外すべき候補** の 2 階層で出力する。広告グループ単位の除外リストはメール本文に明示する。
 - **対象期間**: 前日 1 日（JST 基準）固定。将来 7 日/30 日に拡張可能な internal option として `dateRangeDays` を保持。
-- **配信タイミング**: ユーザーごとに `send_hour_jst` (0–23, JST) で設定。Vercel Cron が毎時 0 分に起動 → 該当時刻 + 当日未送信のユーザーのみ実行。
+- **配信タイミング**: ユーザーごとに `send_hour_jst` (0–23, JST) で設定。毎時 cron（GH Actions `hourly-cron.yml`）が毎時 0 分に起動 → 該当時刻 + 当日未送信のユーザーのみ実行。
 - **送信先**: `public.users.email`（既存「コンテンツ戦略提案」と同一）。
 - **メール本文**: AI 出力には末尾の **構造化 JSON ブロック**（将来「ダッシュボード上ワンクリック除外」用）を要求するが、**メール送信前に `extractStructuredOutput()` で本文から除去する**。送信されるのは Markdown 部分のみを HTML 化したもの。本フェーズではパース可否のログのみ取得し、DB 保存は行わない。
 - **手動実行**: ダッシュボードに「今すぐテスト送信」ボタンを設置。cron と同じサービスを呼ぶ。
@@ -638,12 +638,33 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 ```
 
-### 10.1 Vercel Cron 登録
+### 10.1 Cron 実行基盤（運用）
 
-- 既存 cron（`gsc-evaluate` / `google-ads-evaluate` / `ga4-sync`）は `vercel.json` 不在で Vercel Dashboard 経由で登録されている可能性が高い（リポジトリ内に `vercel.json` 無し）。
-- 新規 cron も **Vercel Dashboard 登録** を基本とする。`vercel.json` を新規作成する場合は **既存 cron 3 つも統合** し、ダブル登録（Dashboard 側と JSON 側の二重）を避けるため、PR レビューで Dashboard 側を解除する手順をドキュメント化する。
-- 実装では `vercel.json` を追加せず、Dashboard 側で `/api/cron/google-ads-negative-keywords-suggestion` を毎時実行として登録する。リクエストヘッダーは `Authorization: Bearer $CRON_SECRET`。
-- スケジュール式: `0 * * * *`（毎時 0 分）
+毎時 cron は **GitHub Actions の `.github/workflows/hourly-cron.yml` に一本化**する。各エンドポイントは **単一の実行基盤のみ**から呼ぶこと（Vercel Cron と GH Actions の二重発火はメール重複の原因になる）。新規の毎時 cron を追加する場合は `hourly-cron.yml` の `matrix.include` に `{ id, path, profile }` を 1 件追加し、必要なら `scripts/invoke-cron.sh` の validation profile を拡張する。
+
+| エンドポイント | 実行基盤 | profile | 備考 |
+|----------------|----------|---------|------|
+| `/api/cron/gsc-evaluate` | **GH Actions（hourly-cron.yml）** | `gsc-batch` | `stoppedReason / errors / totalSystemError` を FAIL 判定、`totalImportFailed / usersSkippedDueToLimit` を WARN 通知 |
+| `/api/cron/google-ads-negative-keywords-suggestion`（**本機能**） | **GH Actions（hourly-cron.yml）** | `count-batch` | `success / data.failed` を FAIL 判定、`data.skipped` を WARN 通知 |
+| `/api/cron/google-ads-evaluate` | Vercel Dashboard（既存・本機能の範囲外） | — | 必要時に hourly-cron.yml への移行を検討 |
+| `/api/cron/ga4-sync` | Vercel Dashboard（既存・本機能の範囲外） | — | 必要時に hourly-cron.yml への移行を検討 |
+
+`vercel.json` は追加しない。
+
+#### 共通仕様（`scripts/invoke-cron.sh`）
+
+- リトライ: `curl exit 28 / HTTP 503 / 504` で指数バックオフ最大 3 回
+- HTTP 2xx ＋ JSON 妥当性（`jq -e`）を共通でチェック
+- 二重起動防止: `concurrency: hourly-cron-${{ matrix.id }}` で job 単位ロック
+- 認証: `Authorization: Bearer $CRON_SECRET`
+
+#### PR マージ前チェックリスト
+
+1. Vercel Dashboard の Cron 一覧を確認する
+2. `/api/cron/gsc-evaluate` が **登録されていない** こと（GH Actions に移行済み）
+3. `/api/cron/google-ads-negative-keywords-suggestion` が **登録されていない** こと（GH Actions に統一）
+4. GH リポジトリ Secrets に `CRON_SECRET` / `NEXT_PUBLIC_SITE_URL` が設定されていること
+
 
 ## 11. ファイル変更一覧
 
@@ -723,7 +744,7 @@ on conflict (name) do update
 |------|------|------|
 | 0 | DDL + 型拡張（`GoogleAdsSearchTermMetric` に campaign/ad_group/cost 追加）+ **`getSearchTermMetrics` GAQL 拡張** + Zod + MODEL_CONFIGS + PROMPT_DESCRIPTIONS + エラーメッセージ | なし |
 | 1 | `SupabaseService` 拡張 + `EmailService` ラッパー + `googleAdsNegativeKeywordsSuggestionService` 本体（日付ユーティリティ、アカウント一式取得、空データスキップ含む） | Step 0 |
-| 2 | Server Actions + Cron Route + Vercel Cron 登録 | Step 1 |
+| 2 | Server Actions + Cron Route + GH Actions `hourly-cron.yml` 追加 | Step 1 |
 | 3 | `dashboard-content.tsx` タブ化 + 設定 UI（自動配信 ON/OFF、配信時刻のみ） | Step 2 |
 | 4 | DEV サンプル検証 + JST 境界テスト + 空データスキップ + 重複送信抑止 + **Opus / Sonnet モデル比較**（クライアント合意用）+ lint/build | Step 3 |
 
@@ -787,7 +808,7 @@ on conflict (name) do update
 | T3 | `SupabaseService` 拡張（CRUD + listDue）+ **`getSearchTermMetrics` GAQL 拡張**（campaign/ad_group/cost 追加） | 3.0h | 4.5h | 3日 |
 | T4 | `googleAdsNegativeKeywordsSuggestionService` 本体 + JSON 抽出 + DEV モード + 日付ユーティリティ + アカウント一式取得 + 空データスキップ | 7.0h | 10.5h | 6日 |
 | T5 | Server Actions（get / update / runNow） | 2.0h | 3.0h | 2日 |
-| T6 | Cron route + Vercel Cron 登録（既存 cron との整合確認含む） | 1.5h | 2.5h | 2日 |
+| T6 | Cron route + GH Actions `hourly-cron.yml` への matrix 追加（既存 cron との整合確認含む） | 1.5h | 2.5h | 2日 |
 | T7 | `NegativeKeywordsSuggestionSettings` UI コンポーネント（自動配信 ON/OFF、配信時刻） | 4.0h | 6.0h | 3日 |
 | T8 | `dashboard-content.tsx` タブ化 + `?tab=` URL 同期 + `useTransition` 中のタブ切替抑制 | 2.5h | 4.0h | 2日 |
 | T9 | プロンプト本文の作り込み + 実出力検証 + 微調整 + **Opus/Sonnet 比較レポート作成** | 4.0h | 6.0h | 3日 |
@@ -816,7 +837,7 @@ on conflict (name) do update
 ### 注意点
 
 - T9（プロンプト調整）は AI 出力品質に依存。1 回目の本番実行で JSON フォーマット遵守率や提案精度を見てから admin/prompts で再調整するため、見た目の素工数より長引きやすい。本見積もりでは 5h を確保（5日相当）。
-- T6 の Vercel Cron 登録は、既存 cron（`gsc-evaluate` / `google-ads-evaluate` / `ga4-sync`）が Dashboard 経由で登録されているかの確認に時間がかかる可能性あり。確認に半日確保。
+- T6 では §10.1 のチェックリスト（Vercel Dashboard 上で `gsc-evaluate` / `google-ads-negative-keywords-suggestion` が登録されていないこと、`google-ads-evaluate` / `ga4-sync` との一覧整合）の確認に時間がかかる可能性あり。確認に半日確保。
 - 実装着手前に UI モック（§3.1, §3.2）をクライアント（カオルさん）にレビュー依頼し合意を取ること（client-vision §1.8「開発前で UI のたたき台を共有」）。レビュー往復で **+3〜5 営業日**かかる可能性あり、本見積もりには含まれていない。
 - 既存「コンテンツ戦略提案」フェーズ 1 と同じパターン（DB + サービス + Server Action + UI + cron）の踏襲で、新規実装より既存資産流用が多い。慣れた領域では予定より早く終わる可能性もある。
 
