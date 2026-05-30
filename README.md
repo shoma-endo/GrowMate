@@ -21,7 +21,7 @@
 - **WordPress 連携**: OAuth・Application Password 両対応、`AnnotationPanel` でメモ・キーワード・ペルソナ等を再利用
 - **Google Search Console 連携**: OAuth 認証、日次指標保存（`gsc_page_metrics` / `gsc_query_metrics`）、記事評価・改善提案（`gsc_article_evaluations`）
 - **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`）、サマリー・ランキング・時系列ダッシュボード
-- **Google Ads 連携**: OAuth 認証、MCC アカウント選択、キーワードプランナー・キャンペーン指標、AI コンテンツ戦略提案・除外キーワード提案（自動配信メール対応）（admin のみ）
+- **Google Ads 連携**: OAuth 認証、MCC アカウント選択、キーワードプランナー・キャンペーン指標、AI コンテンツ戦略提案・除外キーワード提案（自動配信メール対応）
 - **管理者ダッシュボード** (`/admin`): プロンプトテンプレート編集・バージョン保存、ユーザーロール管理
 - **事業者情報ブリーフ** (`/business-info`): 5W2H を入力し広告文・LP のコンテキストを自動補完
 
