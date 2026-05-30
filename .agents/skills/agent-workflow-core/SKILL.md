@@ -1,6 +1,6 @@
 ---
 name: agent-workflow-core
-description: CLAUDE.md の最小コア運用を補完する共通ワークフロー。Skill選定、client-alignment-auditor発火条件、段階的開示ルールを定義する。
+description: CLAUDE.md の最小コア運用を補完する共通ワークフロー。Skill選定、client-alignment-auditor発火条件、段階的開示ルールを定義する。タスク着手時にどの Skill を読むか判断するとき、仕様整理でクライアント文脈の確認が必要なとき、CLAUDE.md やメモリなどコアファイルの記述方針に迷ったときに使う。
 ---
 
 # Agent Workflow Core
