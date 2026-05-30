@@ -133,7 +133,7 @@ export function NegativeKeywordsSuggestionSettings({
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
               <ShieldMinus className="h-5 w-5 text-emerald-600" />
-              Google Ads 除外キーワード提案メール
+              Google Ads 除外キーワード提案
             </h2>
           </div>
           <p className="max-w-2xl text-sm leading-6 text-slate-600">

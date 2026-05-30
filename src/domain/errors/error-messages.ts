@@ -706,27 +706,15 @@ export const ERROR_MESSAGES = {
 
     /** 除外キーワード提案の実行に失敗した場合 */
     NEGATIVE_KEYWORDS_SUGGESTION_RUN_FAILED:
-      'Google Ads 除外キーワード提案メールの実行に失敗しました',
+      'Google Ads 除外キーワード提案の実行に失敗しました',
 
-    /** 除外キーワード提案メールの送信に失敗した場合 */
+    /** 除外キーワード提案のメール送信に失敗した場合 */
     NEGATIVE_KEYWORDS_SUGGESTION_EMAIL_SEND_FAILED:
-      'Google Ads 除外キーワード提案メールの送信に失敗しました',
-
-    /** 除外キーワード提案設定の取得に失敗した場合 */
-    NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_FETCH_FAILED:
-      'Google Ads 除外キーワード提案メール設定の取得に失敗しました',
-
-    /** 除外キーワード提案設定の更新に失敗した場合 */
-    NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED:
-      'Google Ads 除外キーワード提案メール設定の更新に失敗しました',
-
-    /** 除外キーワード提案設定が見つからない場合 */
-    NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_NOT_FOUND:
-      'Google Ads 除外キーワード提案メール設定が見つかりません',
+      'Google Ads 除外キーワード提案のメール送信に失敗しました',
 
     /** 除外キーワード提案の自動配信がOFFの場合 */
     NEGATIVE_KEYWORDS_SUGGESTION_DISABLED:
-      'Google Ads 除外キーワード提案メールの自動配信がOFFです',
+      'Google Ads 除外キーワード提案の自動配信がOFFです',
 
     /** 除外キーワード提案プロンプトが見つからない場合 */
     NEGATIVE_KEYWORDS_SUGGESTION_PROMPT_NOT_FOUND:
@@ -734,15 +722,15 @@ export const ERROR_MESSAGES = {
 
     /** メールアドレスが未登録の場合 */
     EMAIL_REQUIRED_FOR_NEGATIVE_KEYWORDS_SUGGESTION:
-      'メールアドレス未登録のため、Google Ads 除外キーワード提案メールを送信できません',
+      'メールアドレス未登録のため、Google Ads 除外キーワード提案を送信できません',
 
-    /** 除外キーワード提案メール送信成功 */
+    /** 除外キーワード提案のメール送信成功 */
     NEGATIVE_KEYWORDS_SUGGESTION_EMAIL_SENT:
-      'Google Ads 除外キーワード提案レポートをメール送信しました',
+      'Google Ads 除外キーワード提案レポートを送信しました',
 
     /** 除外キーワード提案で対象データがない場合 */
     NEGATIVE_KEYWORDS_SUGGESTION_NO_DATA:
-      '前日の検索語句データがないため、Google Ads 除外キーワード提案メールは送信されませんでした',
+      '前日の検索語句データがないため、Google Ads 除外キーワード提案は送信されませんでした',
   },
 
   /**
