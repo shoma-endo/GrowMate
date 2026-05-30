@@ -1,0 +1,50 @@
+name: Hourly Cron
+
+# 毎時 0 分に各 cron エンドポイントを並列起動する統合 workflow。
+# 追加方法: matrix.include に { id, path, profile } を 1 件追加するだけ。
+#
+# profile:
+#   gsc-batch    : data.stoppedReason / errors / totalSystemError を検証（GSC 評価）
+#   count-batch  : success / data.failed を検証（件数集計型バッチ）
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  invoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: gsc-evaluate
+            path: /api/cron/gsc-evaluate
+            profile: gsc-batch
+          - id: google-ads-negative-keywords
+            path: /api/cron/google-ads-negative-keywords-suggestion
+            profile: count-batch
+    concurrency:
+      group: hourly-cron-${{ matrix.id }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Invoke ${{ matrix.id }}
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          TARGET_PATH: ${{ matrix.path }}
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "NEXT_PUBLIC_SITE_URL is not set" >&2
+            exit 1
+          fi
+          chmod +x scripts/invoke-cron.sh
+          scripts/invoke-cron.sh \
+            --url "${SITE_URL}${TARGET_PATH}" \
+            --profile "$PROFILE"

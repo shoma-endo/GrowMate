@@ -16,6 +16,10 @@ import type {
   GoogleAdsEvaluationSettingsRecord,
   UpsertGoogleAdsEvaluationSettingsInput,
 } from '@/types/google-ads-evaluation';
+import type {
+  GoogleAdsNegativeKeywordsSuggestionSettingsRecord,
+  UpsertGoogleAdsNegativeKeywordsSuggestionSettingsInput,
+} from '@/types/google-ads-negative-keywords-suggestion';
 import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
@@ -56,10 +60,40 @@ type GoogleAdsEvaluationSettingsTable = {
   Relationships: [];
 };
 
+type GoogleAdsNegativeKeywordsSettingsTable = {
+  Row: {
+    id: string;
+    user_id: string;
+    enabled: boolean;
+    send_hour_jst: number;
+    last_sent_on: string | null;
+    last_send_error: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    user_id: string;
+    enabled?: boolean;
+    send_hour_jst?: number;
+    last_sent_on?: string | null;
+    last_send_error?: string | null;
+    updated_at?: string;
+  };
+  Update: {
+    enabled?: boolean;
+    send_hour_jst?: number;
+    last_sent_on?: string | null;
+    last_send_error?: string | null;
+    updated_at?: string;
+  };
+  Relationships: [];
+};
+
 type ExtendedDatabase = Omit<Database, 'public'> & {
   public: Omit<Database['public'], 'Tables'> & {
     Tables: Database['public']['Tables'] & {
       google_ads_evaluation_settings: GoogleAdsEvaluationSettingsTable;
+      google_ads_negative_keywords_settings: GoogleAdsNegativeKeywordsSettingsTable;
     };
   };
 };
@@ -1294,6 +1328,10 @@ export class SupabaseService {
     return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
   }
 
+  private getGoogleAdsNegativeKeywordsSettingsClient(): SupabaseClient<ExtendedDatabase> {
+    return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
+  }
+
   private mapGoogleAdsEvaluationSettingsRow(
     row: GoogleAdsEvaluationSettingsTable['Row']
   ): GoogleAdsEvaluationSettingsRecord {
@@ -1390,6 +1428,135 @@ export class SupabaseService {
     }
 
     return this.success(undefined);
+  }
+
+  private mapGoogleAdsNegativeKeywordsSettingsRow(
+    row: GoogleAdsNegativeKeywordsSettingsTable['Row']
+  ): GoogleAdsNegativeKeywordsSuggestionSettingsRecord {
+    return {
+      userId: row.user_id,
+      enabled: row.enabled,
+      sendHourJst: row.send_hour_jst,
+      lastSentOn: row.last_sent_on,
+      lastSendError: row.last_send_error,
+    };
+  }
+
+  async getGoogleAdsNegativeKeywordsSettings(
+    userId: string
+  ): Promise<SupabaseResult<GoogleAdsNegativeKeywordsSuggestionSettingsRecord | null>> {
+    const client = this.getGoogleAdsNegativeKeywordsSettingsClient();
+    const { data, error } = await client
+      .from('google_ads_negative_keywords_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_FETCH_FAILED, {
+        error,
+        developerMessage: 'Error fetching Google Ads negative keywords settings',
+        context: { userId },
+      });
+    }
+
+    return this.success(data ? this.mapGoogleAdsNegativeKeywordsSettingsRow(data) : null);
+  }
+
+  async upsertGoogleAdsNegativeKeywordsSettings(
+    input: UpsertGoogleAdsNegativeKeywordsSuggestionSettingsInput
+  ): Promise<SupabaseResult<void>> {
+    const client = this.getGoogleAdsNegativeKeywordsSettingsClient();
+    const payload: GoogleAdsNegativeKeywordsSettingsTable['Insert'] = {
+      user_id: input.userId,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (input.enabled !== undefined) {
+      payload.enabled = input.enabled;
+    }
+    if (input.sendHourJst !== undefined) {
+      payload.send_hour_jst = input.sendHourJst;
+    }
+    if (input.lastSentOn !== undefined) {
+      payload.last_sent_on = input.lastSentOn;
+    }
+    if (input.lastSendError !== undefined) {
+      payload.last_send_error = input.lastSendError;
+    }
+
+    const { error } = await client
+      .from('google_ads_negative_keywords_settings')
+      .upsert(payload, { onConflict: 'user_id' });
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED, {
+        error,
+        developerMessage: 'Error upserting Google Ads negative keywords settings',
+        context: { ...input },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  async updateGoogleAdsNegativeKeywordsSettings(
+    userId: string,
+    updates: GoogleAdsNegativeKeywordsSettingsTable['Update']
+  ): Promise<SupabaseResult<void>> {
+    const client = this.getGoogleAdsNegativeKeywordsSettingsClient();
+    const { data, error } = await client
+      .from('google_ads_negative_keywords_settings')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED, {
+        error,
+        developerMessage: 'Error updating Google Ads negative keywords settings',
+        context: { userId, updates },
+      });
+    }
+
+    if (!data) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_NOT_FOUND, {
+        developerMessage: 'Google Ads negative keywords settings row not found',
+        context: { userId, updates },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  async listDueGoogleAdsNegativeKeywordsSettings(
+    sendHourJst: number,
+    todayJst: string
+  ): Promise<SupabaseResult<GoogleAdsNegativeKeywordsSuggestionSettingsRecord[]>> {
+    const client = this.getGoogleAdsNegativeKeywordsSettingsClient();
+    const { data, error } = await client
+      .from('google_ads_negative_keywords_settings')
+      .select('*')
+      .eq('enabled', true)
+      .eq('send_hour_jst', sendHourJst);
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_FETCH_FAILED, {
+        error,
+        developerMessage: 'Error listing due Google Ads negative keywords settings',
+        context: { sendHourJst, todayJst },
+      });
+    }
+
+    const rows = (data ?? [])
+      .filter(row => row.last_sent_on !== todayJst)
+      .map(row => this.mapGoogleAdsNegativeKeywordsSettingsRow(row));
+
+    return this.success(rows);
   }
 
   async updateGoogleAdsCustomerId(

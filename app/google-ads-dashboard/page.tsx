@@ -30,6 +30,7 @@ function resolveErrorKind(errorMessage: string): GoogleAdsErrorKind {
 export default async function GoogleAdsDashboardPage() {
   const authResult = await authMiddleware();
   const hasEmailAddress = Boolean(authResult.userDetails?.email);
+  const canUseDevGoogleAdsMock = process.env.NODE_ENV === 'development';
   const evaluationSettingsResult = await getEvaluationSettings();
   const evaluationSettings =
     evaluationSettingsResult.success && evaluationSettingsResult.data
@@ -56,6 +57,7 @@ export default async function GoogleAdsDashboardPage() {
         campaigns={[]}
         keywords={[]}
         hasEmailAddress={hasEmailAddress}
+        hasGoogleAdsReady={canUseDevGoogleAdsMock}
         initialSettings={evaluationSettings}
         errorMessage={errorMessage}
         errorKind={resolveErrorKind(errorMessage)}
@@ -71,6 +73,7 @@ export default async function GoogleAdsDashboardPage() {
       campaigns={campaigns}
       keywords={keywords}
       hasEmailAddress={hasEmailAddress}
+      hasGoogleAdsReady={true}
       initialSettings={evaluationSettings}
     />
   );

@@ -476,11 +476,11 @@ class GoogleAdsAiAnalysisService {
   }
 
   private formatSearchTermMetrics(metrics: GoogleAdsSearchTermMetric[]): string {
-    const header = '検索語句 | 表示回数 | クリック数 | コンバージョン数';
-    const separator = '--------|--------|----------|----------------';
+    const header = '検索語句 | キャンペーン名 | 広告グループ名 | 表示回数 | クリック数 | 費用 | コンバージョン数';
+    const separator = '--------|------------|------------|--------|----------|------|----------------';
 
     if (metrics.length === 0) {
-      return `${header}\n${separator}\n（データなし） | 0 | 0 | 0`;
+      return `${header}\n${separator}\n（データなし） | - | - | 0 | 0 | 0 | 0`;
     }
 
     const rows = [...metrics]
@@ -488,8 +488,11 @@ class GoogleAdsAiAnalysisService {
       .map(m =>
         [
           m.searchTerm,
+          m.campaignName || '-',
+          m.adGroupName || '-',
           this.formatInteger(m.impressions),
           this.formatInteger(m.clicks),
+          this.formatInteger(m.cost),
           this.formatNumber(m.conversions),
         ].join(' | ')
       );
@@ -541,14 +544,14 @@ const DEV_SAMPLE_NEGATIVE_KEYWORDS: GoogleAdsNegativeKeyword[] = [
 ];
 
 const DEV_SAMPLE_SEARCH_TERMS: GoogleAdsSearchTermMetric[] = [
-  { searchTerm: 'エアコンクリーニング', impressions: 3200, clicks: 128, conversions: 6 },
-  { searchTerm: 'エアコン クリーニング 料金', impressions: 2100, clicks: 189, conversions: 9 },
-  { searchTerm: 'エアコン 掃除 業者 おすすめ', impressions: 1850, clicks: 92, conversions: 3 },
-  { searchTerm: 'エアコンクリーニング 一台 いくら', impressions: 1620, clicks: 145, conversions: 7 },
-  { searchTerm: 'エアコン 分解洗浄 業者', impressions: 980, clicks: 78, conversions: 4 },
-  { searchTerm: 'エアコン内部 カビ 掃除', impressions: 870, clicks: 43, conversions: 2 },
-  { searchTerm: '壁掛けエアコン クリーニング 料金', impressions: 760, clicks: 68, conversions: 3 },
-  { searchTerm: 'エアコン 臭い 洗浄', impressions: 640, clicks: 38, conversions: 1 },
-  { searchTerm: 'エアコンクリーニング プロ 頼む', impressions: 520, clicks: 46, conversions: 2 },
-  { searchTerm: 'エアコン 丸洗い 費用', impressions: 410, clicks: 20, conversions: 1 },
+  { searchTerm: 'エアコンクリーニング', campaignId: '2001', campaignName: 'エアコン洗浄_一般', adGroupId: '3001', adGroupName: 'クリーニング全般', impressions: 3200, clicks: 128, cost: 40960, conversions: 6, conversionValue: 30000 },
+  { searchTerm: 'エアコン クリーニング 料金', campaignId: '2001', campaignName: 'エアコン洗浄_一般', adGroupId: '3002', adGroupName: '料金・費用', impressions: 2100, clicks: 189, cost: 52920, conversions: 9, conversionValue: 45000 },
+  { searchTerm: 'エアコン 掃除 業者 おすすめ', campaignId: '2001', campaignName: 'エアコン洗浄_一般', adGroupId: '3003', adGroupName: '業者選び', impressions: 1850, clicks: 92, cost: 28520, conversions: 3, conversionValue: 15000 },
+  { searchTerm: 'エアコンクリーニング 一台 いくら', campaignId: '2001', campaignName: 'エアコン洗浄_一般', adGroupId: '3002', adGroupName: '料金・費用', impressions: 1620, clicks: 145, cost: 42775, conversions: 7, conversionValue: 35000 },
+  { searchTerm: 'エアコン 分解洗浄 業者', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 980, clicks: 78, cost: 32760, conversions: 4, conversionValue: 20000 },
+  { searchTerm: 'エアコン内部 カビ 掃除', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 870, clicks: 43, cost: 16770, conversions: 2, conversionValue: 10000 },
+  { searchTerm: '壁掛けエアコン クリーニング 料金', campaignId: '2001', campaignName: 'エアコン洗浄_一般', adGroupId: '3005', adGroupName: '機種別', impressions: 760, clicks: 68, cost: 24480, conversions: 3, conversionValue: 15000 },
+  { searchTerm: 'エアコン 臭い 洗浄', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 640, clicks: 38, cost: 15960, conversions: 1, conversionValue: 5000 },
+  { searchTerm: 'エアコンクリーニング プロ 頼む', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3006', adGroupName: 'プロ・専門業者', impressions: 520, clicks: 46, cost: 17250, conversions: 2, conversionValue: 10000 },
+  { searchTerm: 'エアコン 丸洗い 費用', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 410, clicks: 20, cost: 8000, conversions: 1, conversionValue: 5000 },
 ];

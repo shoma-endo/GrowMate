@@ -4,19 +4,20 @@
 > - 2026-05-20: 初版作成。クライアント MTG (`objplfi8m89t5a22x2dvgd5c`) の要望 + client-alignment-auditor の論点 + 既存「コンテンツ戦略提案」(`docs/plans/google-ads-evaluation-design.md`) との整合を反映。
 > - 2026-05-21: Phase 1 / Phase 2 にフェーズ分割（Phase 2 = メール返信による自動 Google Ads 登録）。
 > - 2026-05-21 (改): **クライアント判断により Phase 2 を本設計書のスコープ外に変更**。本機能は **提案メール送信まで** とする。Phase 2 関連セクション（旧 §18）と関連工数を削除。実装が必要になった場合は別設計書で起こす。
+> - 2026-05-21 (改2): `service_id` / 分析対象サービス UI を削除。連携アカウント一式取得に統一。設定項目を自動配信 ON/OFF + 配信時刻の 2 つに縮小。**Brief 未登録でも送信可**（Google Ads 連携 + メール登録が前提。`persona` は任意）。
 
 ## 開発ステータス
 
 | フェーズ | 内容 | 工数（余裕込み） | 状態 |
 |----------|------|-------------------|------|
-| **本機能** | 除外キーワード提案を毎朝メールで自動配信（手動実行 + cron + opt-in 設定 + タブ化 UI） | **52.5h（約 6.6 人日）** | 仕様確定・未着手 |
+| **本機能** | 除外キーワード提案を毎朝メールで自動配信（手動実行 + cron + opt-in 設定 + タブ化 UI） | **49.5h（約 6.2 人日）** | 仕様確定・未着手 |
 
 - 提案メール受け取りまでで完結する単発機能。Google Ads への自動登録（mutate）は本設計書では対象外。
 - セクション構成: §1 〜 §17 + 工数見積もり + 確認待ち事項
 
 ## 1. 目的
 
-- Google Ads の **前日の検索クエリ実績** を AI（claude-opus-4-7）で分析し、ペルソナ・既存除外設定・キャンペーン構成に照らして「**除外すべき検索語句**」を構造化して **毎朝のメール**として配信する。
+- Google Ads の **前日の検索クエリ実績** を AI（claude-opus-4-7）で分析し、（登録済みなら）ペルソナ・既存除外設定・キャンペーン構成に照らして「**除外すべき検索語句**」を構造化して **毎朝のメール**として配信する。Brief 未登録でも **Google Ads 連携済みであれば送信する**。
 - 既存「コンテンツ戦略提案」が **ブログ記事の TOP5 提案（手動実行）** で成果を伸ばす機能であるのに対し、本機能は **広告運用の無駄打ちを減らす日次オペレーション**（自動配信）として独立させる。
 - **本機能のゴール**は「提案メールが毎朝届く」まで。Google Ads への自動除外登録は **本設計書のスコープ外**（実際の除外登録はクライアントが Google Ads 管理画面で手動実行する想定）。
 
@@ -27,25 +28,29 @@ Lark MTG (`objplfi8m89t5a22x2dvgd5c`) より:
 - 「2 種類できる。一つはオートメーション化、もう一つはメールで一度チェック。今は不安なのでメールで一度チェックしたい」 — 自動裏除外ではなく **人間のレビューを残す方針** を希望。
 - 「キャンペーンで除外するパターン」と「広告グループで除外するパターン」の **2 階層** で提案してほしい。例: 「家具買取」全体でアルバイト・アレルギー・アンケート等は共通除外、「古銭買取」広告グループでは「ミントセット買取」「刀剣買取」等の意味隣接語を除外。
 - 戦略シート（ペルソナ・商品意図）を読み込ませ、ペルソナ不適合のキーワードを除外候補として提案してほしい。
+  → **初期実装のトレードオフ**: Brief は送信の**必須条件にしない**。登録済みの場合のみ Brief 直下の `persona` をプロンプトに渡す。`services[]` の商品意図は渡さず、キャンペーン名・広告グループ名・検索語句実績から AI が判断する。
 - カテゴリは **企業系（競合名）／ノウハウ系（〇〇とは・方法）／一般フレーズ（その他）** で分けたい。
 - 「提案までは確実に欲しい。返信での実除外までは将来検討」。
 
 client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 
 - 「**事前許可なく挙動を変えない**」「**開発前に UI のたたき台を共有し合意してから実装**」 — 自動配信開始は **明示 opt-in** とし、UI モックは実装着手前に共有合意する。
-- 「**実装上の制約やトレードオフは事前共有が必須**」 — 配信時刻の粒度（時間単位）は Vercel Cron 仕様の制約として明記し、ユーザー（カオルさん）に事前共有する。
+- 「**実装上の制約やトレードオフは事前共有が必須**」 — 配信時刻の粒度（時間単位）は毎時 cron 仕様の制約として明記し、ユーザー（カオルさん）に事前共有する。
 
 ## 2. スコープ
 
 ### 2.1 機能スコープ
 
-- **対象ユーザー**: 以下 **全て** を満たすユーザー。
+- **対象ユーザー（cron 自動配信）**: 以下 **全て** を満たすユーザー。
   1. `public.users.email IS NOT NULL`（メール登録済）
   2. `google_ads_credentials` あり（Google Ads 連携済）
-  3. `BriefService.getVariablesByUserId().services[]` が 1 件以上ある（事業者情報あり）
-  4. `google_ads_negative_keywords_settings.enabled = true`（明示 opt-in）
+  3. `google_ads_negative_keywords_settings.enabled = true`（明示 opt-in）
+- **Brief（事業者情報）**: **必須ではない**。未登録・`persona` 空でもメール送信する（プロンプトには `（ペルソナ未設定）` を渡す）。品質向上のための任意入力とする。
+- **手動テスト送信**: 上記 1・2 のみ必須（`enabled=false` でも可）。Brief は不要。
+- **取得範囲**: 連携済みの Google Ads アカウント 1 件を対象に、前日の検索語句データを **アカウント一式でまとめて取得**する。キャンペーン・広告グループを UI で個別選択したり、広告グループごとに手動取得したりしない。取得データにはキャンペーン名・広告グループ名を含め、AI が分類判断に利用する。
+- **出力粒度**: 取得は一括で行うが、提案結果は **キャンペーン共通で除外すべき候補** と **広告グループ単位で除外すべき候補** の 2 階層で出力する。広告グループ単位の除外リストはメール本文に明示する。
 - **対象期間**: 前日 1 日（JST 基準）固定。将来 7 日/30 日に拡張可能な internal option として `dateRangeDays` を保持。
-- **配信タイミング**: ユーザーごとに `send_hour_jst` (0–23, JST) で設定。Vercel Cron が毎時 0 分に起動 → 該当時刻 + 当日未送信のユーザーのみ実行。
+- **配信タイミング**: ユーザーごとに `send_hour_jst` (0–23, JST) で設定。毎時 cron（GH Actions `hourly-cron.yml`）が毎時 0 分に起動 → 該当時刻 + 当日未送信のユーザーのみ実行。
 - **送信先**: `public.users.email`（既存「コンテンツ戦略提案」と同一）。
 - **メール本文**: AI 出力には末尾の **構造化 JSON ブロック**（将来「ダッシュボード上ワンクリック除外」用）を要求するが、**メール送信前に `extractStructuredOutput()` で本文から除去する**。送信されるのは Markdown 部分のみを HTML 化したもの。本フェーズではパース可否のログのみ取得し、DB 保存は行わない。
 - **手動実行**: ダッシュボードに「今すぐテスト送信」ボタンを設置。cron と同じサービスを呼ぶ。
@@ -64,7 +69,7 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 
 ### 3.1 ダッシュボードのタブ化
 
-`app/google-ads-dashboard/_components/dashboard-content.tsx` を **タブ構成**にリファクタする。既存コンテンツは「数値指標」タブに包む。
+`app/google-ads-dashboard/_components/dashboard-content.tsx` を **タブ構成**にリファクタする。既存の数値表示コンテンツは「数値指標」タブに包み、メール送信系の操作は「メール送信設定」タブへ集約する。
 
 ```
 +---------------------------------------------------------------+
@@ -73,18 +78,28 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 | [ 数値指標 ] [ メール送信設定 ]   <- @/components/ui/tabs    |
 +---------------------------------------------------------------+
 | 数値指標 タブ（既存維持）:                                    |
-|   EvaluationControls (既存=コンテンツ戦略提案ボタン)          |
 |   MetricsCards                                                |
 |   CampaignsTable                                              |
 |   上位キーワード                                              |
 +---------------------------------------------------------------+
 | メール送信設定 タブ（新規）:                                  |
-|   ┌─ Google Ads 除外キーワード提案メール ─────────────────┐  |
+|   ┌─ Google Ads コンテンツ戦略提案 ───────────────────────┐  |
+|   │  キーワード指標をもとに、コンテンツ戦略の改善提案を       │  |
+|   │  メールで送信します。                                    │  |
+|   │  [ Select: 分析対象サービス ] ※既存 UI                   │  |
+|   │  [ Input: AI分析期間（日数） ]                            │  |
+|   │  [ Button: コンテンツ戦略提案を送信 ]                     │  |
+|   └──────────────────────────────────────────────────────────┘ |
+|                                                                |
+|   ┌─ Google Ads 除外キーワード提案 ─────────────────┐  |
 |   │  毎朝、前日の検索クエリから「除外候補」を 3 カテゴリ      │  |
 |   │  ×2 レベル ×3 緊急度で整理し、登録メール宛に送信します。 │  |
 |   │                                                          │  |
+|   │  設定項目:                                                │  |
 |   │  [ Switch: 自動配信を有効化 (default OFF) ]              │  |
 |   │  [ Select: 配信時刻 (0時〜23時 JST) ] 現在: 07:00        │  |
+|   │                                                          │  |
+|   │  送信状況:                                                │  |
 |   │  最終送信日: 2026-05-19                                  │  |
 |   │  最終エラー: なし                                        │  |
 |   │                                                          │  |
@@ -103,17 +118,29 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 - タブ実装: `@/components/ui/tabs`（Radix Tabs / shadcn）。
 - URL 同期: `?tab=metrics|settings`（`useSearchParams` + `router.replace`、`scroll: false`）。デフォルト `metrics`。ディープリンク `/google-ads-dashboard?tab=settings` を許容。
 - タブ切替で各タブ内のフォーム入力状態は **保持しない**（再 mount でリセット）。Switch 即時 Server Action 中にタブ切替で unmount されるリスクは `useTransition` の `isPending` でタブ切替自体を抑制または disabled 表示する（実害が大きい場合は両タブ `forceMount` 検討）。
-- 既存「コンテンツ戦略提案」EvaluationControls は **そのまま** 数値指標タブの先頭に残置（既存設計書 §3.1 を変更しない）。
+- 既存「コンテンツ戦略提案」`EvaluationControls` は **メール送信設定タブ**へ移動し、`Google Ads コンテンツ戦略提案` カードとして表示する。数値指標タブには広告パフォーマンス表示のみを残す。
 
 ### 3.2 メール送信設定タブ UI
 
 新規コンポーネント `app/google-ads-dashboard/_components/negative-keywords-suggestion-settings.tsx`（client component）。
 
+メール送信設定タブでは、以下の 2 カードを縦に並べる。
+
+1. **Google Ads コンテンツ戦略提案**
+   - 既存 `EvaluationControls` を移動して利用する。
+   - 既存 UI のまま、分析対象サービス、AI分析期間（日数）、送信ボタン、最終成功実行日、未登録時の警告を表示する。
+   - 既存 Server Action / 設定保存ロジックは変更しない。
+2. **Google Ads 除外キーワード提案**
+   - 本機能の新規設定 UI。
+   - 設定項目は **自動配信 ON/OFF、配信時刻** の 2 つ。
+   - Google Ads データは連携済み広告アカウント一式からまとめて取得する。広告グループ単位の選択 UI は初期実装では設けない。
+   - UI で広告グループを選択しなくても、取得データに `campaignName` / `adGroupName` を含めるため、メール本文では `campaign` / `ad_group` の 2 階層で除外候補を分類して出力する。
+   - 最終送信日、最終エラー、今すぐテスト送信、分類・メール本文プレビュー、停止／再開説明は設定項目ではなく、確認・操作・説明要素として分離して表示する。
+
 構成要素:
 
 | 要素 | 実装 | 備考 |
 |------|------|------|
-| 分析対象サービス | `@/components/ServiceSelector`（既存） | `service_id` を更新。サービスが 1 件のみなら非表示。既存 evaluation と同じ動作 |
 | 配信 ON/OFF | `@/components/ui/switch` | `enabled` を更新。Switch トグルで即 Server Action 呼び出し。 |
 | 配信時刻 | `@/components/ui/select` (0〜23時) | `send_hour_jst` を更新。Select 確定で即 Server Action 呼び出し。 |
 | 最終送信日 | テキスト表示 | `last_sent_on` が null の場合「未送信」と表示。 |
@@ -122,17 +149,14 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 | 説明文 | 静的 | client-vision §1.6 を踏まえ、停止/再開の挙動・遅延を明示。 |
 
 - **初回 upsert タイミング**: 設定タブ初表示時はテーブルに行が無い場合がある。`getNegativeKeywordsSuggestionSettings()` は未存在時にデフォルト値を返すのみで row を作らず、最初の Switch / 配信時刻変更で **Service Role 経由の `upsert`** により row を作成する。
-- 未登録条件（Google Ads 未連携 / サービス未登録 / メール未登録）のいずれかが満たされない場合、Switch を **disabled** にし、各 CTA リンクを `<LinkedMessage>` 風に表示する。エラーメッセージは `src/domain/errors/error-messages.ts` の `GOOGLE_ADS_NEGATIVE_KEYWORDS` セクションに集約。
+- 未登録条件（Google Ads 未連携 / メール未登録）のいずれかが満たされない場合、Switch を **disabled** にし、各 CTA リンクを `<LinkedMessage>` 風に表示する。エラーメッセージは `src/domain/errors/error-messages.ts` の `GOOGLE_ADS_NEGATIVE_KEYWORDS` セクションに集約。
 
 ### 3.3 設定 UI の状態遷移
 
 ```
 [初期 mount]
   └─ getNegativeKeywordsSuggestionSettings()
-     → { enabled, sendHourJst, serviceId, lastSentOn, lastSendError }
-[サービス選択変更]
-  └─ updateNegativeKeywordsSuggestionSettings({ serviceId })
-     └─ 楽観更新 + 失敗時は元に戻す
+     → { enabled, sendHourJst, lastSentOn, lastSendError }
 [Switch トグル]
   └─ updateNegativeKeywordsSuggestionSettings({ enabled })
      └─ 楽観更新 + 失敗時は元に戻す + toast でエラー表示
@@ -140,7 +164,7 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
   └─ updateNegativeKeywordsSuggestionSettings({ sendHourJst })
      └─ 楽観更新 + 失敗時は元に戻す
 [今すぐテスト送信]
-  └─ runNegativeKeywordsSuggestionNow({ serviceId? })
+  └─ runNegativeKeywordsSuggestionNow()
      ├─ 成功: toast(送信完了) ※ last_sent_on は更新しない
      └─ 失敗: toast(エラー詳細)
 ```
@@ -174,18 +198,18 @@ Anthropic Claude Opus 4.7 の公開単価（2026 年時点想定: 入力 \$15 / 
 - LLM コスト圧縮の選択肢:
   - **Sonnet 4.6 検証**: Opus の約 1/5 価格。除外キーワード提案は分類タスク中心で Sonnet で品質が出る可能性が高い。
   - 入力削減: `searchTermData` を impressions 上位 500 件にトリム、`existingNegativeKeywords` をカテゴリ別に集約。
+  - **データ整形スキルの適用**: LLM に渡す構造化データは `formatting-llm-context` の方針で、flat table は CSV、階層・半構造データは TOON、機械処理前提の出力は JSON のまま扱い、入力トークンを抑えつつ campaign / ad_group / matchType などの意味を保持する。
 - **モデル選択は本フェーズ Step 4 検証で Opus / Sonnet 両方の実出力を比較し、クライアントに品質差を提示してから本番モデルを確定する**。コスト見積もりは Opus 想定で保持（上振れ防止）。
 
 ### 4.2 プロンプト変数
 
 | 変数名 | ソース | 内容 |
 |--------|--------|------|
-| `persona` | `BriefService.getVariablesByUserId()` → **Brief 直下の `persona`** | サービス選択に依存しない単一値（`BriefInput.persona`）。未設定時は `（ペルソナ未設定）` |
-| `serviceName` | 同上 → 設定の `service_id`（または `services[0]` フォールバック）に対応する `services[].name` | 選択中サービス名（プロンプト内で「対象サービス」明示用） |
+| `persona` | `BriefService.getVariablesByUserId()` → **Brief 直下の `persona`**（Brief 未登録・取得失敗時はスキップ） | 任意の補助文脈。値が無い場合は `（ペルソナ未設定）`。送信可否には影響しない |
 | `customerName` | `GoogleAdsService.getCustomerInfo()` | アカウント名（失敗時は空文字） |
 | `dateRange` | 前日 1 日（JST 基準） | 例: `2026-05-19 〜 2026-05-19` |
-| `searchTermData` | **拡張版** `GoogleAdsService.getSearchTermMetrics({ startDate=前日, endDate=前日 })` | **キャンペーン名・広告グループ名・cost を含む** 構造化テキスト（§7 参照）。impressions DESC、最大 1000 件 |
-| `existingNegativeKeywords` | `GoogleAdsService.getNegativeKeywords()` | 既存除外（重複登録回避用） |
+| `searchTermData` | **拡張版** `GoogleAdsService.getSearchTermMetrics({ startDate=前日, endDate=前日 })` | **キャンペーン名・広告グループ名・cost・conversionValue を含む** LLM 入力用の構造化テキスト（§7 参照）。impressions DESC、最大 1000 件。flat table のため CSV 形式を基本とし、行数・列順を固定する |
+| `existingNegativeKeywords` | `GoogleAdsService.getNegativeKeywords()` | 既存除外（重複登録回避用）。単純一覧なら bullet / CSV、campaign / ad_group / matchType など階層情報がある場合は TOON 形式で渡す |
 
 > **注**: 旧設計では `campaignsInfo` をキャンペーン・広告グループ構成として別変数で渡す案だったが、**`searchTermData` 自体にキャンペーン名と広告グループ名を含める方が AI の判断精度が高い**（実検索クエリがどの広告グループに発生したかが直接見える）。`campaignsInfo` 変数は削除する。
 
@@ -204,7 +228,7 @@ Anthropic Claude Opus 4.7 の公開単価（2026 年時点想定: 入力 \$15 / 
 ### アカウント
 - アカウント名: {{customerName}}
 - 集計期間: {{dateRange}}（前日 1 日）
-- 対象サービス: {{serviceName}}
+- 分析範囲: 連携済み Google Ads アカウント全体
 
 ### ターゲットペルソナ
 {{persona}}
@@ -213,7 +237,7 @@ Anthropic Claude Opus 4.7 の公開単価（2026 年時点想定: 入力 \$15 / 
 {{existingNegativeKeywords}}
 
 ### 期間内の検索クエリ実績
-（各行: 検索語句 | キャンペーン名 | 広告グループ名 | IMP | Click | Cost(円) | CV）
+CSV 形式（列: search_term,campaign_id,campaign_name,ad_group_id,ad_group_name,impressions,clicks,cost_yen,conversions,conversion_value_yen）
 {{searchTermData}}
 
 ## 分析と分類ルール
@@ -303,9 +327,6 @@ create table if not exists public.google_ads_negative_keywords_settings (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users(id) on delete cascade,
 
-  -- 分析対象サービス (Brief の services[] 中の一つ)。NULL なら実行時に services[0] にフォールバック
-  service_id uuid,
-
   enabled boolean not null default false,
   send_hour_jst smallint not null default 7
     check (send_hour_jst between 0 and 23),
@@ -318,11 +339,6 @@ create table if not exists public.google_ads_negative_keywords_settings (
 
   unique(user_id)
 );
-
--- enabled=true のユーザーのみ cron バッチ抽出を高速化
-create index if not exists idx_google_ads_negative_keywords_settings_due
-  on public.google_ads_negative_keywords_settings (send_hour_jst)
-  where enabled = true;
 
 alter table public.google_ads_negative_keywords_settings enable row level security;
 ```
@@ -485,8 +501,6 @@ export class GoogleAdsNegativeKeywordsSuggestionService {
       force?: boolean;
       // 手動実行時のみ override 可能。cron は常に 1 日固定（前日）
       dateRangeDays?: number;
-      // override serviceId。未指定なら DB の service_id、それも null なら services[0]
-      serviceId?: string;
     }
   ): Promise<SuggestionResult>;
 
@@ -505,13 +519,8 @@ export class GoogleAdsNegativeKeywordsSuggestionService {
 
 ### 8.2 処理ステップ（`sendNegativeKeywordsSuggestionForUser`）
 
-1. **対象ユーザー検証**: メールアドレス、Google Ads credential、サービス登録を確認。`force=false`（cron 経路）の場合のみ `enabled=true` を必須にする。`force=true`（手動テスト）の場合は `enabled` チェックをスキップ。
-2. **対象サービス解決**:
-   - `options.serviceId` 指定あり → `services[]` から該当を検索。**見つからない場合は warn ログを出し `services[0]` にフォールバック**（既存 `googleAdsAiAnalysisService` と挙動を揃える）
-   - 未指定 → DB の `service_id` を使用。**`services[]` 内に該当が無い場合は warn ログを出し `services[0]` にフォールバック**
-   - DB も null → `services[0]` を使用
-   - サービスが 1 件も無い → エラーで終了
-   - 解決結果は `serviceName` として AI プロンプトとメール件名で利用。`persona` は本解決とは独立に Brief 直下から取得
+1. **対象ユーザー検証**: メールアドレス、Google Ads credential を確認（**Brief 登録の有無は見ない**）。`force=false`（cron 経路）の場合のみ `enabled=true` を必須にする。`force=true`（手動テスト）の場合は `enabled` チェックをスキップ。
+2. **取得範囲の決定**: 初期実装では、連携済み Google Ads アカウント 1 件を対象にアカウント一式で検索語句データを取得する。キャンペーン・広告グループの選択 UI や個別取得処理は設けない。取得データ内の `campaignName` / `adGroupName` を AI 判断材料として使う。
 3. **対象日付の決定（JST）**:
    ```ts
    // 既存 `formatJstDateISO()` を内部利用する JST 専用ユーティリティを新設
@@ -524,10 +533,13 @@ export class GoogleAdsNegativeKeywordsSuggestionService {
 5. **データ取得（並列）**:
    - `getSearchTermMetrics({ startDate=yesterday, endDate=yesterday })` ※ §7.1 の拡張版
    - `getNegativeKeywords()`
-   - `briefService.getVariablesByUserId(userId)` から **Brief 直下の `persona`** と、`service_id`（または `services[0]` フォールバック）に対応する `services[].name`（= `serviceName`）を抽出
+   - `briefService.getVariablesByUserId(userId)` を試行し、成功時のみ **Brief 直下の `persona`** を抽出。Brief 未登録・取得失敗・`persona` 空は `（ペルソナ未設定）` とし、**処理は継続**（致命エラーにしない）
    - `getCustomerInfo()`（失敗は致命にしない）
 6. **空データチェック**: 取得した `searchTermData` の `impressions` 合計が 0 件なら、**メール送信をスキップ + `last_sent_on` を当日(JST)で更新**（次日まで沈黙）。`last_send_error` は NULL。「前日 IMP 0 件のためスキップ」と info ログ。
-7. **データ整形**: `formatSearchTermMetrics` / `formatNegativeKeywords` で AI 入力テキストを生成（searchTermData は §4.3 のヘッダー形式に整える）。
+7. **データ整形**: `formatting-llm-context` の方針を適用し、`formatSearchTermMetrics` / `formatNegativeKeywords` で AI 入力テキストを生成する。
+   - `searchTermData`: flat table のため **CSV 形式**を基本とする。列順は `search_term,campaign_id,campaign_name,ad_group_id,ad_group_name,impressions,clicks,cost_yen,conversions,conversion_value_yen` で固定し、値にカンマ・改行・引用符が含まれる場合は RFC 4180 相当でエスケープする。Markdown table はトークン効率が悪いため LLM 入力には使わない。
+   - `existingNegativeKeywords`: 単純な keyword 一覧なら bullet または CSV。campaign / ad_group / matchType など階層・半構造データを持つ場合は **TOON 形式**で渡し、行数・フィールド名を明示する。
+   - AI 出力末尾の構造化データは後続の JSON パースが必要なため、TOON へ変換せず **JSON のまま**維持する。
 8. **プロンプト取得**: `PromptService.getTemplateByName('google_ads_negative_keywords_suggestion')` → `replaceVariables`。
 9. **AI 実行**: `llmChat('anthropic', 'claude-opus-4-7', messages, MODEL_CONFIGS.google_ads_negative_keywords_suggestion)`。
 10. **JSON 抽出**: `extractStructuredOutput(rawOutput)` → `{ markdown, suggestions }`。失敗時は `suggestions=[]` で続行、warn ログ。
@@ -556,7 +568,7 @@ export class GoogleAdsNegativeKeywordsSuggestionService {
 ### 8.4 DEV モード分岐
 
 `process.env.NODE_ENV === 'development'` かつ `process.env.MOCK_GOOGLE_ADS_API === 'true'` のとき:
-- Google Ads API 呼び出しを `DEV_SAMPLE_SEARCH_TERMS` / `DEV_SAMPLE_NEGATIVE_KEYWORDS` / `DEV_SAMPLE_CAMPAIGNS` で代替。
+- Google Ads API 呼び出しを `DEV_SAMPLE_SEARCH_TERMS` / `DEV_SAMPLE_NEGATIVE_KEYWORDS` で代替。
 - Resend 送信は本番 API キーが設定されていればそのまま送る（開発者の自分宛に届く）。
 
 ## 9. Server Actions
@@ -571,7 +583,6 @@ export async function getNegativeKeywordsSuggestionSettings(): Promise<{
   data?: {
     enabled: boolean;
     sendHourJst: number;
-    serviceId: string | null;       // null は未設定（services[0] にフォールバック）
     lastSentOn: string | null;
     lastSendError: string | null;
   };
@@ -579,12 +590,10 @@ export async function getNegativeKeywordsSuggestionSettings(): Promise<{
 }>;
 
 export async function updateNegativeKeywordsSuggestionSettings(
-  input: { enabled?: boolean; sendHourJst?: number; serviceId?: string | null }
+  input: { enabled?: boolean; sendHourJst?: number }
 ): Promise<{ success: boolean; error?: string }>;
 
-export async function runNegativeKeywordsSuggestionNow(
-  input?: { serviceId?: string }   // 任意。未指定は DB の service_id → services[0]
-): Promise<{
+export async function runNegativeKeywordsSuggestionNow(): Promise<{
   success: boolean;
   message?: string;
   error?: string;
@@ -595,7 +604,6 @@ export async function runNegativeKeywordsSuggestionNow(
 - `update*` の Zod スキーマ: `src/server/schemas/googleAdsNegativeKeywordsSuggestion.schema.ts` に定義。
   - `enabled: z.boolean().optional()`
   - `sendHourJst: z.number().int().min(0).max(23).optional()`
-  - `serviceId: z.string().uuid().nullable().optional()`
 - `runNegativeKeywordsSuggestionNow` は `force: true` でサービスを呼び、`enabled=false` でも 1 通送る。`last_sent_on` は更新しない（§8.2 ステップ 13）。
 
 ## 10. Cron Route
@@ -630,11 +638,33 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 ```
 
-### 10.1 Vercel Cron 登録
+### 10.1 Cron 実行基盤（運用）
 
-- 既存 cron（`gsc-evaluate` / `google-ads-evaluate` / `ga4-sync`）は `vercel.json` 不在で Vercel Dashboard 経由で登録されている可能性が高い（リポジトリ内に `vercel.json` 無し）。
-- 新規 cron も **Vercel Dashboard 登録** を基本とする。`vercel.json` を新規作成する場合は **既存 cron 3 つも統合** し、ダブル登録（Dashboard 側と JSON 側の二重）を避けるため、PR レビューで Dashboard 側を解除する手順をドキュメント化する。
-- スケジュール式: `0 * * * *`（毎時 0 分）
+毎時 cron は **GitHub Actions の `.github/workflows/hourly-cron.yml` に一本化**する。各エンドポイントは **単一の実行基盤のみ**から呼ぶこと（Vercel Cron と GH Actions の二重発火はメール重複の原因になる）。新規の毎時 cron を追加する場合は `hourly-cron.yml` の `matrix.include` に `{ id, path, profile }` を 1 件追加し、必要なら `scripts/invoke-cron.sh` の validation profile を拡張する。
+
+| エンドポイント | 実行基盤 | profile | 備考 |
+|----------------|----------|---------|------|
+| `/api/cron/gsc-evaluate` | **GH Actions（hourly-cron.yml）** | `gsc-batch` | `stoppedReason / errors / totalSystemError` を FAIL 判定、`totalImportFailed / usersSkippedDueToLimit` を WARN 通知 |
+| `/api/cron/google-ads-negative-keywords-suggestion`（**本機能**） | **GH Actions（hourly-cron.yml）** | `count-batch` | `success / data.failed` を FAIL 判定、`data.skipped` を WARN 通知 |
+| `/api/cron/google-ads-evaluate` | Vercel Dashboard（既存・本機能の範囲外） | — | 必要時に hourly-cron.yml への移行を検討 |
+| `/api/cron/ga4-sync` | Vercel Dashboard（既存・本機能の範囲外） | — | 必要時に hourly-cron.yml への移行を検討 |
+
+`vercel.json` は追加しない。
+
+#### 共通仕様（`scripts/invoke-cron.sh`）
+
+- リトライ: `curl exit 28 / HTTP 503 / 504` で指数バックオフ最大 3 回
+- HTTP 2xx ＋ JSON 妥当性（`jq -e`）を共通でチェック
+- 二重起動防止: `concurrency: hourly-cron-${{ matrix.id }}` で job 単位ロック
+- 認証: `Authorization: Bearer $CRON_SECRET`
+
+#### PR マージ前チェックリスト
+
+1. Vercel Dashboard の Cron 一覧を確認する
+2. `/api/cron/gsc-evaluate` が **登録されていない** こと（GH Actions に移行済み）
+3. `/api/cron/google-ads-negative-keywords-suggestion` が **登録されていない** こと（GH Actions に統一）
+4. GH リポジトリ Secrets に `CRON_SECRET` / `NEXT_PUBLIC_SITE_URL` が設定されていること
+
 
 ## 11. ファイル変更一覧
 
@@ -678,7 +708,6 @@ values (
     {"name": "customerName", "description": "Google Ads アカウント名"},
     {"name": "dateRange", "description": "集計期間（前日 1 日）"},
     {"name": "searchTermData", "description": "前日の検索クエリ実績"},
-    {"name": "serviceName", "description": "対象サービス名"},
     {"name": "existingNegativeKeywords", "description": "既存除外キーワード"}
   ]'::jsonb
 )
@@ -713,17 +742,18 @@ on conflict (name) do update
 
 | Step | 内容 | 依存 |
 |------|------|------|
-| 0 | DDL（service_id 含む）+ 型拡張（`GoogleAdsSearchTermMetric` に campaign/ad_group/cost 追加）+ **`getSearchTermMetrics` GAQL 拡張** + Zod + MODEL_CONFIGS + PROMPT_DESCRIPTIONS + エラーメッセージ | なし |
-| 1 | `SupabaseService` 拡張（service_id 含む）+ `EmailService` ラッパー + `googleAdsNegativeKeywordsSuggestionService` 本体（日付ユーティリティ、サービス解決、空データスキップ含む） | Step 0 |
-| 2 | Server Actions + Cron Route + Vercel Cron 登録 | Step 1 |
-| 3 | `dashboard-content.tsx` タブ化 + 設定 UI（サービスセレクター含む） | Step 2 |
-| 4 | DEV サンプル検証 + JST 境界テスト + 空データスキップ + 重複送信抑止 + サービスフォールバック + **Opus / Sonnet モデル比較**（クライアント合意用）+ lint/build | Step 3 |
+| 0 | DDL + 型拡張（`GoogleAdsSearchTermMetric` に campaign/ad_group/cost 追加）+ **`getSearchTermMetrics` GAQL 拡張** + Zod + MODEL_CONFIGS + PROMPT_DESCRIPTIONS + エラーメッセージ | なし |
+| 1 | `SupabaseService` 拡張 + `EmailService` ラッパー + `googleAdsNegativeKeywordsSuggestionService` 本体（日付ユーティリティ、アカウント一式取得、空データスキップ含む） | Step 0 |
+| 2 | Server Actions + Cron Route + GH Actions `hourly-cron.yml` 追加 | Step 1 |
+| 3 | `dashboard-content.tsx` タブ化 + 設定 UI（自動配信 ON/OFF、配信時刻のみ） | Step 2 |
+| 4 | DEV サンプル検証 + JST 境界テスト + 空データスキップ + 重複送信抑止 + **Opus / Sonnet モデル比較**（クライアント合意用）+ lint/build | Step 3 |
 
 ## 15. テスト観点
 
 - **手動 cron トリガー**: `curl -H 'Authorization: Bearer $CRON_SECRET' http://localhost:3000/api/cron/google-ads-negative-keywords-suggestion` で DEV サンプルが届く。
 - **DEV サンプルデータ拡張**: `DEV_SAMPLE_SEARCH_TERMS` を **§7.1 拡張後の型**（`campaignId`, `campaignName`, `adGroupId`, `adGroupName`, `cost` 含む）で更新する。既存「コンテンツ戦略提案」の `DEV_SAMPLE_SEARCH_TERMS` 利用箇所も同型に追従する（後方互換確認）。
 - **GAQL 拡張**: `getSearchTermMetrics` の戻り値に `campaignId`, `campaignName`, `adGroupId`, `adGroupName`, `cost` が含まれる。既存「コンテンツ戦略提案」も引き続き正常動作する（後方互換確認）。
+- **LLM 入力データ整形**: `formatSearchTermMetrics` は §8.2 の固定列順 CSV を出力し、カンマ・改行・引用符を含む検索語句 / キャンペーン名 / 広告グループ名を正しくエスケープする。`formatNegativeKeywords` は階層情報の有無に応じて bullet / CSV / TOON を選択し、AI 出力 JSON は変換しない。既存の `conversionValue` は `conversion_value_yen` として保持する。
 - **JST 境界**: UTC 22:00 起動 = JST 翌日 7:00 として正しく `send_hour_jst=7` ユーザーに送信されるか。
 - **前日日付計算**: `getJstYesterdayDateISO()` が日跨ぎ前後で正しい日付を返す。
 - **設定 OFF 非送信**: `enabled=false` ユーザーは抽出されない。
@@ -731,7 +761,8 @@ on conflict (name) do update
 - **空データスキップ**: 前日 IMP 0 件のユーザーはメール送信されず、`last_sent_on` だけ更新される。
 - **配信時刻変更の即時反映**: 設定変更後、次の cron 起動から新しい時刻が適用される。
 - **手動テスト送信**: `enabled=false` でも 1 通送れる。**`last_sent_on` は更新されない**（本番 cron が翌日同時刻に動く）。
-- **サービス選択フォールバック**: `service_id=NULL` で `services[0]` が使われる。`services[]` 空の場合はエラーで終了する。
+- **アカウント一式取得**: 広告グループが複数あっても UI で個別選択せず、連携済みアカウント全体の検索語句データを取得できる。
+- **Brief 未登録でも送信**: Google Ads 連携 + メール登録済みで、Brief / `persona` なしでも 1 通送れる（プロンプトは `（ペルソナ未設定）`）。
 - **タブ切替**: `?tab=settings` ディープリンク、ブラウザ戻る/進むで URL 同期。
 - **エラー記録**: Google Ads 401 / Resend 400 などのケースで `last_send_error` が記録される（cron 経路のみ）。
 - **モデル比較（Step 4）**: 同じ入力で Opus 4.7 と Sonnet 4.6 の出力を 5 ユーザー分比較し、品質・コスト・速度を表に整理してクライアントレビュー用 PDF を作成。
@@ -757,6 +788,7 @@ on conflict (name) do update
 - **連続失敗自動 OFF**: N 回連続失敗で `enabled=false` に自動設定し、ユーザーに通知。
 - **配信曜日カスタム**: 平日のみ、特定曜日のみ等。
 - **複数アカウント対応**: 1 ユーザー複数 customer_id 運用。
+- **Brief `services[]` の商品意図をプロンプトに注入**: サービス別の戦略シート連携（現状は `persona` のみ任意）。
 - **他広告媒体**: Yahoo!広告等、同じ枠組みで対応。
 
 ## 工数見積もり（実装フェーズ）
@@ -771,18 +803,18 @@ on conflict (name) do update
 
 | # | タスク | 素工数 | 余裕込み | 日数(2h/日) |
 |---|---|---|---|---|
-| T1 | DDL（service_id 含む）+ RLS + プロンプト upsert マイグレーション | 2.0h | 3.0h | 2日 |
-| T2 | 型 / Zod（serviceId 含む）/ MODEL_CONFIGS / PROMPT_DESCRIPTIONS / エラーメッセージ + **`GoogleAdsSearchTermMetric` 型拡張** | 1.5h | 2.0h | 1日 |
-| T3 | `SupabaseService` 拡張（CRUD + listDue + service_id）+ **`getSearchTermMetrics` GAQL 拡張**（campaign/ad_group/cost 追加） | 3.0h | 4.5h | 3日 |
-| T4 | `googleAdsNegativeKeywordsSuggestionService` 本体 + JSON 抽出 + DEV モード + 日付ユーティリティ + サービス解決 + 空データスキップ | 7.0h | 10.5h | 6日 |
-| T5 | Server Actions（get / update / runNow、serviceId 対応） | 2.5h | 3.5h | 2日 |
-| T6 | Cron route + Vercel Cron 登録（既存 cron との整合確認含む） | 1.5h | 2.5h | 2日 |
-| T7 | `NegativeKeywordsSuggestionSettings` UI コンポーネント（**ServiceSelector 統合**含む） | 5.0h | 7.5h | 3日 |
+| T1 | DDL + RLS + プロンプト upsert マイグレーション | 2.0h | 3.0h | 2日 |
+| T2 | 型 / Zod / MODEL_CONFIGS / PROMPT_DESCRIPTIONS / エラーメッセージ + **`GoogleAdsSearchTermMetric` 型拡張** | 1.5h | 2.0h | 1日 |
+| T3 | `SupabaseService` 拡張（CRUD + listDue）+ **`getSearchTermMetrics` GAQL 拡張**（campaign/ad_group/cost 追加） | 3.0h | 4.5h | 3日 |
+| T4 | `googleAdsNegativeKeywordsSuggestionService` 本体 + JSON 抽出 + DEV モード + 日付ユーティリティ + アカウント一式取得 + 空データスキップ | 7.0h | 10.5h | 6日 |
+| T5 | Server Actions（get / update / runNow） | 2.0h | 3.0h | 2日 |
+| T6 | Cron route + GH Actions `hourly-cron.yml` への matrix 追加（既存 cron との整合確認含む） | 1.5h | 2.5h | 2日 |
+| T7 | `NegativeKeywordsSuggestionSettings` UI コンポーネント（自動配信 ON/OFF、配信時刻） | 4.0h | 6.0h | 3日 |
 | T8 | `dashboard-content.tsx` タブ化 + `?tab=` URL 同期 + `useTransition` 中のタブ切替抑制 | 2.5h | 4.0h | 2日 |
 | T9 | プロンプト本文の作り込み + 実出力検証 + 微調整 + **Opus/Sonnet 比較レポート作成** | 4.0h | 6.0h | 3日 |
-| T10 | DEV サンプル送信検証 + JST 境界テスト + 空データスキップ確認 + サービスフォールバック確認 + lint/build | 4.0h | 6.0h | 3日 |
+| T10 | DEV サンプル送信検証 + JST 境界テスト + 空データスキップ確認 + アカウント一式取得確認 + lint/build | 4.0h | 6.0h | 3日 |
 | T11 | 設計書整備・ドキュメント更新 | 2.0h | 3.0h | 2日 |
-| **合計** | | **35h** | **52.5h** | **約 29 営業日** |
+| **合計** | | **33.5h** | **49.5h** | **約 27 営業日** |
 
 ### ステップ単位のマイルストーン
 
@@ -791,21 +823,21 @@ on conflict (name) do update
 | 0 | 基盤定義（DDL / 型拡張 / GAQL 拡張準備 / 定数 / エラー） | T1, T2 | 3日 | 3日 |
 | 1 | サービス層（Supabase CRUD + GAQL 拡張 + コアサービス） | T3, T4 | 9日 | 12日 |
 | 2 | Server Action + Cron route + Vercel 登録 | T5, T6 | 4日 | 16日 |
-| 3 | UI（タブ化 + 設定タブ + ServiceSelector） | T7, T8 | 5日 | 21日 |
-| 4 | プロンプト調整 + Opus/Sonnet 比較 + 実機検証 + ドキュメント | T9, T10, T11 | 8日 | **29日** |
+| 3 | UI（タブ化 + 設定タブ） | T7, T8 | 5日 | 21日 |
+| 4 | プロンプト調整 + Opus/Sonnet 比較 + 実機検証 + ドキュメント | T9, T10, T11 | 8日 | **27日** |
 
 ### カレンダー目安
 
 | ペース | 営業日 | カレンダー |
 |--------|--------|------------|
-| 2h/日 | 約 29 営業日 | 約 6 週間 |
+| 2h/日 | 約 27 営業日 | 約 6 週間 |
 | 3h/日 | 約 18〜20 営業日 | 約 4 週間 |
 | クライアント確認往復含む | +3〜5 営業日 | +1 週間 |
 
 ### 注意点
 
 - T9（プロンプト調整）は AI 出力品質に依存。1 回目の本番実行で JSON フォーマット遵守率や提案精度を見てから admin/prompts で再調整するため、見た目の素工数より長引きやすい。本見積もりでは 5h を確保（5日相当）。
-- T6 の Vercel Cron 登録は、既存 cron（`gsc-evaluate` / `google-ads-evaluate` / `ga4-sync`）が Dashboard 経由で登録されているかの確認に時間がかかる可能性あり。確認に半日確保。
+- T6 では §10.1 のチェックリスト（Vercel Dashboard 上で `gsc-evaluate` / `google-ads-negative-keywords-suggestion` が登録されていないこと、`google-ads-evaluate` / `ga4-sync` との一覧整合）の確認に時間がかかる可能性あり。確認に半日確保。
 - 実装着手前に UI モック（§3.1, §3.2）をクライアント（カオルさん）にレビュー依頼し合意を取ること（client-vision §1.8「開発前で UI のたたき台を共有」）。レビュー往復で **+3〜5 営業日**かかる可能性あり、本見積もりには含まれていない。
 - 既存「コンテンツ戦略提案」フェーズ 1 と同じパターン（DB + サービス + Server Action + UI + cron）の踏襲で、新規実装より既存資産流用が多い。慣れた領域では予定より早く終わる可能性もある。
 
