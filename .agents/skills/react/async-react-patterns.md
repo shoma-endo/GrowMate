@@ -2,6 +2,15 @@
 
 > Reference: uhyo「React 19時代のコンポーネント設計ベストプラクティス」(2026-02-18)
 
+## 目次
+
+- Philosophy
+1. 非ブロッキング更新にはトランジションを優先する
+2. 汎用コンポーネントへの Transition 組み込み
+3. isPending による Loading UX
+4. Suspense バウンダリの戦略的配置
+- Summary Rules
+
 ## Philosophy
 
 Async React = 非同期処理を前提にアプリケーションを実装し、最適な UX を目指す考え方。

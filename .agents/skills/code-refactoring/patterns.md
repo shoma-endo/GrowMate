@@ -2,6 +2,16 @@
 
 ふるまいを保ったままコードを整理する代表的な手法。1つずつ小さく適用する。
 
+## 目次
+
+- Step 1: Extract Method（メソッド抽出）
+- Step 2: Remove Duplication（重複の除去）
+- Step 3: Replace Conditional with Polymorphism（条件分岐のポリモーフィズム化）
+- Step 4: Introduce Parameter Object（パラメータオブジェクトの導入）
+- Step 5: Apply SOLID Principles（SOLID 原則の適用）
+- リファクタリングチェックリスト
+- ベストプラクティス
+
 ## Step 1: Extract Method（メソッド抽出）
 
 **Before（長い関数）**:
