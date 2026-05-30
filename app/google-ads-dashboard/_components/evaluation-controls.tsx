@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Loader2, Mail } from 'lucide-react';
+import { Lightbulb, Loader2, Mail } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -136,7 +136,7 @@ export function EvaluationControls({
       }
 
       setStatusTone('success');
-      setStatusMessage(result.message ?? 'AI分析を開始しました');
+      setStatusMessage(result.message ?? 'メールを送信しました');
 
       const settingsResult = await getEvaluationSettings();
       if (settingsResult.success && settingsResult.data) {
@@ -156,11 +156,14 @@ export function EvaluationControls({
     <div className="rounded-xl border bg-slate-50 p-4 space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Google Ads コンテンツ戦略提案
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
+              <Lightbulb className="h-5 w-5 text-sky-600" />
+              Google Ads コンテンツ戦略提案
+            </h2>
+          </div>
           <p className="text-sm text-slate-600">
-            キーワード指標をもとに、コンテンツ戦略の改善提案をメールで送信します。
+            必要なタイミングで、キーワード指標をもとにコンテンツ戦略の改善提案をメールで送信します。
           </p>
         </div>
         <Button
@@ -190,7 +193,7 @@ export function EvaluationControls({
         )}
 
         <div className="max-w-[180px] space-y-2">
-          <Label htmlFor="date-range-days">AI分析期間（日数）</Label>
+          <Label htmlFor="date-range-days">分析対象期間（日数）</Label>
           <Input
             id="date-range-days"
             type="number"

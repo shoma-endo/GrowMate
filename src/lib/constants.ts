@@ -106,6 +106,11 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokens: 8000,
     label: 'Google Ads コンテンツ戦略提案',
   },
+  google_ads_negative_keywords_suggestion: {
+    ...ANTHROPIC_BASE,
+    maxTokens: 8000,
+    label: 'Google Ads 除外キーワード提案',
+  },
 };
 
 // =============================================================================

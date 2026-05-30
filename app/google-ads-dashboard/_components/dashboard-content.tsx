@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { MetricsCards } from './metrics-cards';
 import { CampaignsTable } from './campaigns-table';
-import { EvaluationControls } from './evaluation-controls';
+import { GoogleAdsDashboardTabs } from './GoogleAdsDashboardTabs';
+import { GoogleAdsMailSettingsPanel } from './GoogleAdsMailSettingsPanel';
 import { LinkedMessage } from '@/components/LinkedMessage';
 import { calculateCampaignSummary } from '@/lib/google-ads-utils';
 import { GOOGLE_ADS_REAUTH_LINK_RULES } from '@/lib/constants';
@@ -20,6 +21,7 @@ interface DashboardContentProps {
   campaigns: GoogleAdsCampaignMetrics[];
   keywords: GoogleAdsKeywordMetric[];
   hasEmailAddress: boolean;
+  hasGoogleAdsReady: boolean;
   initialSettings: GoogleAdsEvaluationSettings;
   errorMessage?: string;
   errorKind?: GoogleAdsErrorKind;
@@ -29,6 +31,7 @@ export function DashboardContent({
   campaigns,
   keywords,
   hasEmailAddress,
+  hasGoogleAdsReady,
   initialSettings,
   errorMessage,
   errorKind = 'unknown',
@@ -63,57 +66,65 @@ export function DashboardContent({
         </div>
       </div>
 
-      <EvaluationControls
-        hasEmailAddress={hasEmailAddress}
-        initialSettings={initialSettings}
+      <GoogleAdsDashboardTabs
+        metricsContent={
+          <>
+            {hasError && (
+              <Alert variant="destructive">
+                <AlertTitle>データ取得に失敗しました</AlertTitle>
+                <AlertDescription className="space-y-2">
+                  <div>
+                    <LinkedMessage message={errorMessage ?? ''} rules={GOOGLE_ADS_REAUTH_LINK_RULES} />
+                  </div>
+                  <p className="text-sm">{errorGuidance[errorKind]}</p>
+                  <div className="pt-2">
+                    <Button asChild variant="outline">
+                      <Link href="/setup/google-ads">
+                        {errorKind === 'not_selected'
+                          ? 'アカウント選択へ'
+                          : errorKind === 'account_disabled'
+                            ? '連携設定へ'
+                            : 'Google Ads 連携設定へ'}
+                      </Link>
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* データがない場合 */}
+            {!hasData && !hasError && (
+              <div className="text-center py-12 text-gray-500">
+                <p>表示できるデータがありません</p>
+              </div>
+            )}
+
+            {/* Metrics Cards */}
+            {hasData && <MetricsCards summary={summary} />}
+
+            {/* Campaigns Table */}
+            {hasData && <CampaignsTable campaigns={campaigns} />}
+
+            {/* Keywords Data (debug or info) */}
+            {keywords.length > 0 && (
+              <div className="pt-8">
+                <h2 className="text-xl font-semibold mb-4 text-gray-700">上位キーワードパフォーマンス</h2>
+                <div className="bg-white rounded-lg border p-4 text-sm text-gray-500">
+                  上位 {keywords.length} 件のキーワードを表示中。集計値はキャンペーン全件の合計です。
+                </div>
+                {/* Note: Keywords could be shown in a table as well if desired */}
+              </div>
+            )}
+          </>
+        }
+        settingsContent={
+          <GoogleAdsMailSettingsPanel
+            hasEmailAddress={hasEmailAddress}
+            hasGoogleAdsReady={hasGoogleAdsReady}
+            initialSettings={initialSettings}
+          />
+        }
       />
-
-      {hasError && (
-        <Alert variant="destructive">
-          <AlertTitle>データ取得に失敗しました</AlertTitle>
-          <AlertDescription className="space-y-2">
-            <div>
-              <LinkedMessage message={errorMessage ?? ''} rules={GOOGLE_ADS_REAUTH_LINK_RULES} />
-            </div>
-            <p className="text-sm">{errorGuidance[errorKind]}</p>
-            <div className="pt-2">
-              <Button asChild variant="outline">
-                <Link href="/setup/google-ads">
-                  {errorKind === 'not_selected'
-                    ? 'アカウント選択へ'
-                    : errorKind === 'account_disabled'
-                      ? '連携設定へ'
-                      : 'Google Ads 連携設定へ'}
-                </Link>
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* データがない場合 */}
-      {!hasData && !hasError && (
-        <div className="text-center py-12 text-gray-500">
-          <p>表示できるデータがありません</p>
-        </div>
-      )}
-
-      {/* Metrics Cards */}
-      {hasData && <MetricsCards summary={summary} />}
-
-      {/* Campaigns Table */}
-      {hasData && <CampaignsTable campaigns={campaigns} />}
-
-      {/* Keywords Data (debug or info) */}
-      {keywords.length > 0 && (
-        <div className="pt-8">
-          <h2 className="text-xl font-semibold mb-4 text-gray-700">上位キーワードパフォーマンス</h2>
-          <div className="bg-white rounded-lg border p-4 text-sm text-gray-500">
-            上位 {keywords.length} 件のキーワードを表示中。集計値はキャンペーン全件の合計です。
-          </div>
-          {/* Note: Keywords could be shown in a table as well if desired */}
-        </div>
-      )}
     </div>
   );
 }
