@@ -1,6 +1,6 @@
 ---
 name: implementation-guidelines
-description: GrowMate の実装ポリシーとフロント/サーバー実装時の注意点
+description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Supabase）とフロント・サーバー実装時の注意点。機能実装を開始するとき、コンポーネントやサーバー処理を追加・変更するとき、型・スキーマ設計やページ種別ごとの制約・機密情報の扱いを確認するときに使う。
 ---
 
 # 実装ポリシー（TypeScript / React / Next.js）
