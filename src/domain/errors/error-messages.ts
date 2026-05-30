@@ -712,6 +712,14 @@ export const ERROR_MESSAGES = {
     NEGATIVE_KEYWORDS_SUGGESTION_EMAIL_SEND_FAILED:
       'Google Ads 除外キーワード提案のメール送信に失敗しました',
 
+    /** 除外キーワード提案設定の取得に失敗した場合 */
+    NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_FETCH_FAILED:
+      'Google Ads 除外キーワード提案設定の取得に失敗しました',
+
+    /** 除外キーワード提案設定の更新に失敗した場合 */
+    NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED:
+      'Google Ads 除外キーワード提案設定の更新に失敗しました',
+
     /** 除外キーワード提案の自動配信がOFFの場合 */
     NEGATIVE_KEYWORDS_SUGGESTION_DISABLED:
       'Google Ads 除外キーワード提案の自動配信がOFFです',
@@ -727,6 +735,10 @@ export const ERROR_MESSAGES = {
     /** 除外キーワード提案のメール送信成功 */
     NEGATIVE_KEYWORDS_SUGGESTION_EMAIL_SENT:
       'Google Ads 除外キーワード提案レポートを送信しました',
+
+    /** 除外キーワード提案設定が見つからない場合 */
+    NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_NOT_FOUND:
+      'Google Ads 除外キーワード提案設定が見つかりません',
 
     /** 除外キーワード提案で対象データがない場合 */
     NEGATIVE_KEYWORDS_SUGGESTION_NO_DATA:
