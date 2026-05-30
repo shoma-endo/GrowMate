@@ -194,7 +194,11 @@ export function NegativeKeywordsSuggestionSettings({
         </div>
       </div>
 
-      <p className="text-xs leading-5 text-slate-500">
+      <p className="text-left text-xs leading-5 text-slate-500">
+        配信時刻の時間帯に毎日1回、前日分を自動送信します。時刻がまだ来ていなければ当日、過ぎていれば翌日から送信します。
+      </p>
+
+      <p className="text-left text-xs leading-5 text-slate-500">
         最終送信日: {settings.lastSentOn ?? '未送信'} / 最終エラー:{' '}
         {settings.lastSendError ?? 'なし'} / 自動配信を OFF にすると、次回以降の自動配信を停止します。
         自動配信 OFF でも、このボタンからいつでも手動送信できます。
