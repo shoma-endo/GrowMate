@@ -136,7 +136,7 @@ export function NegativeKeywordsSuggestionSettings({
               Google Ads 除外キーワード提案
             </h2>
           </div>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">
+          <p className="text-sm leading-6 text-slate-600">
             毎日指定時刻に、前日の検索クエリから除外候補をカテゴリ、提案レベル、緊急度で整理し、登録メールアドレス宛に自動配信します。
           </p>
         </div>
