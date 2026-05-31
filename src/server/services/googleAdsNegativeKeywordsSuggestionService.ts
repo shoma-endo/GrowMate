@@ -6,7 +6,7 @@ import { llmChat } from '@/server/services/llmService';
 import { briefService } from '@/server/services/briefService';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { GoogleAdsService } from '@/server/services/googleAdsService';
+import { dedupeNegativeKeywords, GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
 import type {
   GoogleAdsNegativeKeyword,
@@ -515,6 +515,7 @@ class GoogleAdsNegativeKeywordsSuggestionService {
   }
 
   private formatNegativeKeywords(keywords: GoogleAdsNegativeKeyword[]): string {
+    const deduped = dedupeNegativeKeywords(keywords);
     const fields = [
       'keyword_text',
       'match_type',
@@ -525,11 +526,11 @@ class GoogleAdsNegativeKeywordsSuggestionService {
       'ad_group_status',
     ];
 
-    if (keywords.length === 0) {
+    if (deduped.length === 0) {
       return `negative_keywords[0]{${fields.join(',')}}:`;
     }
 
-    const rows = keywords.map(keyword =>
+    const rows = deduped.map(keyword =>
       `  ${[
         keyword.keywordText,
         keyword.matchType,
@@ -543,7 +544,7 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         .join(',')}`
     );
 
-    return [`negative_keywords[${keywords.length}]{${fields.join(',')}}:`, ...rows].join('\n');
+    return [`negative_keywords[${deduped.length}]{${fields.join(',')}}:`, ...rows].join('\n');
   }
 
   private csvEscape(value: string | number): string {

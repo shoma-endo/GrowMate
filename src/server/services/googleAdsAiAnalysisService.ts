@@ -6,7 +6,7 @@ import { llmChat } from '@/server/services/llmService';
 import { briefService } from '@/server/services/briefService';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { GoogleAdsService } from '@/server/services/googleAdsService';
+import { dedupeNegativeKeywords, GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
 import type { BriefInput, Service } from '@/server/schemas/brief.schema';
 import type { GoogleAdsAiAnalysisResult } from '@/types/google-ads-evaluation';
@@ -451,16 +451,17 @@ class GoogleAdsAiAnalysisService {
   }
 
   private formatNegativeKeywords(keywords: GoogleAdsNegativeKeyword[]): string {
+    const deduped = dedupeNegativeKeywords(keywords);
     const header =
       '除外キーワード | マッチタイプ | レベル | キャンペーン | キャンペーン状態 | 広告グループ | 広告グループ状態';
     const separator =
       '------------|------------|-------|------------|----------------|------------|----------------';
 
-    if (keywords.length === 0) {
+    if (deduped.length === 0) {
       return `${header}\n${separator}\n（除外キーワードなし） | - | - | - | - | - | -`;
     }
 
-    const rows = keywords.map(keyword =>
+    const rows = deduped.map(keyword =>
       [
         keyword.keywordText,
         keyword.matchType,
