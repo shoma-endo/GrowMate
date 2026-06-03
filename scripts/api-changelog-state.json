@@ -13,23 +13,26 @@
     "checkedAt": "2026-04-19T01:08:08.694Z"
   },
   "google-search-console-api": {
-    "checkedAt": "2026-04-19T01:08:14.168Z"
+    "hash": "2ee5079aec7f1380967e4ef62f4848a215bce6a74c940f701d7286da20c3ef40",
+    "checkedAt": "2026-06-01T01:48:46.380Z"
   },
   "google-analytics-data-api": {
-    "checkedAt": "2026-04-19T01:08:27.027Z"
+    "hash": "7df3e194bd6959c525f6030e646984bc946bfe2154a1f52b5f8a1902bae18444",
+    "checkedAt": "2026-06-01T01:48:46.873Z"
   },
   "google-ads-api": {
-    "checkedAt": "2026-04-19T01:08:31.308Z"
+    "hash": "ad5ae9181261f3858bf86f2b2e4ad2871000c419a964fedc7306a6dd40477265",
+    "checkedAt": "2026-06-01T01:48:47.247Z"
   },
   "wordpress-rest-api": {
     "checkedAt": "2026-04-19T01:08:35.250Z"
   },
   "openai-node": {
-    "lastTag": "v6.39.0",
-    "checkedAt": "2026-05-23T03:45:55.734Z"
+    "lastTag": "v6.39.1",
+    "checkedAt": "2026-06-01T01:48:45.541Z"
   },
   "supabase-js": {
-    "lastTag": "v2.106.2-canary.1",
-    "checkedAt": "2026-05-23T03:45:56.004Z"
+    "lastTag": "v2.106.3-canary.2",
+    "checkedAt": "2026-06-01T01:48:45.899Z"
   }
 }
