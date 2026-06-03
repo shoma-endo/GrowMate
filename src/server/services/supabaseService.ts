@@ -13,7 +13,9 @@ import {
 import type { DbUser, DbUserInsert, DbUserUpdate } from '@/types/user';
 import type { UserRole } from '@/types/user';
 import type {
+  ContentInventoryItem,
   GoogleAdsEvaluationSettingsRecord,
+  RankingSnapshotItem,
   UpsertGoogleAdsEvaluationSettingsInput,
 } from '@/types/google-ads-evaluation';
 import type {
@@ -2008,6 +2010,154 @@ export class SupabaseService {
     }
 
     return (count ?? 0) > 0;
+  }
+
+  /**
+   * §17: 既存コンテンツ在庫（WordPress 由来の実在記事）を取得する。
+   * カニバリ判定（新規 vs 修正）の材料として LLM へ渡す。
+   * 本文はトークン肥大防止のため先頭抜粋のみ。直近更新の上位 limit 件に制限する。
+   */
+  async getContentInventoryByUserId(
+    userId: string,
+    limit = 50
+  ): Promise<SupabaseResult<ContentInventoryItem[]>> {
+    const { data, error } = await this.supabase
+      .from('content_annotations')
+      .select(
+        'id, wp_post_title, canonical_url, normalized_url, main_kw, kw, wp_category_names, wp_content_text'
+      )
+      .eq('user_id', userId)
+      .not('wp_post_id', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      return this.failure('既存コンテンツ在庫の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to fetch content inventory',
+        context: { userId },
+      });
+    }
+
+    const items: ContentInventoryItem[] = (data ?? []).map(row => ({
+      id: row.id,
+      title: row.wp_post_title ?? '',
+      url: row.canonical_url ?? row.normalized_url ?? '',
+      mainKw: row.main_kw,
+      kw: row.kw,
+      categoryNames: row.wp_category_names ?? [],
+      excerpt: (row.wp_content_text ?? '').slice(0, 200),
+    }));
+
+    return this.success(items);
+  }
+
+  /**
+   * §17: GSC 自社順位スナップショット（最新取得日分）を取得する。
+   * 日付混在を避けるため最新日のみを対象にし、position 昇順・impressions 降順で上位 limit 件に制限する。
+   * URL/タイトルは content_annotation_id（FK）経由で content_annotations に突合する（URL文字列マッチではない）。
+   */
+  async getRankingSnapshotByUserId(
+    userId: string,
+    limit = 100
+  ): Promise<SupabaseResult<RankingSnapshotItem[]>> {
+    // 1ユーザーが複数プロパティ・複数 search_type の指標を持ち得るため、
+    // 順位の信頼性確保のためユーザーの GSC プロパティ + web 検索に絞り込む。
+    const gscCredential = await this.getGscCredentialByUserId(userId);
+    const propertyUri = gscCredential?.propertyUri ?? null;
+    if (!propertyUri) {
+      return this.success([]);
+    }
+
+    const { data: latest, error: latestError } = await this.supabase
+      .from('gsc_query_metrics')
+      .select('date')
+      .eq('user_id', userId)
+      .eq('property_uri', propertyUri)
+      .eq('search_type', 'web')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestError) {
+      return this.failure('検索順位スナップショットの取得に失敗しました', {
+        error: latestError,
+        developerMessage: 'Failed to resolve latest gsc_query_metrics date',
+        context: { userId },
+      });
+    }
+
+    if (!latest) {
+      return this.success([]);
+    }
+
+    const { data, error } = await this.supabase
+      .from('gsc_query_metrics')
+      .select('query_normalized, position, impressions, clicks, normalized_url, content_annotation_id')
+      .eq('user_id', userId)
+      .eq('property_uri', propertyUri)
+      .eq('search_type', 'web')
+      .eq('date', latest.date)
+      .order('position', { ascending: true })
+      .order('impressions', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      return this.failure('検索順位スナップショットの取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to fetch gsc ranking snapshot',
+        context: { userId },
+      });
+    }
+
+    const rows = data ?? [];
+    const annotationIds = [
+      ...new Set(
+        rows
+          .map(row => row.content_annotation_id)
+          .filter((id): id is string => id !== null)
+      ),
+    ];
+
+    const annotationMap = new Map<
+      string,
+      { canonical_url: string | null; normalized_url: string | null; wp_post_title: string | null }
+    >();
+    if (annotationIds.length > 0) {
+      const { data: annotations, error: annotationError } = await this.supabase
+        .from('content_annotations')
+        .select('id, canonical_url, normalized_url, wp_post_title')
+        .in('id', annotationIds);
+
+      if (annotationError) {
+        return this.failure('検索順位スナップショットの取得に失敗しました', {
+          error: annotationError,
+          developerMessage: 'Failed to resolve content_annotations for ranking snapshot',
+          context: { userId },
+        });
+      }
+
+      for (const annotation of annotations ?? []) {
+        annotationMap.set(annotation.id, annotation);
+      }
+    }
+
+    const items: RankingSnapshotItem[] = rows.map(row => {
+      const annotation = row.content_annotation_id
+        ? annotationMap.get(row.content_annotation_id)
+        : undefined;
+      return {
+        queryNormalized: row.query_normalized,
+        position: row.position,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        url: annotation?.canonical_url ?? annotation?.normalized_url ?? row.normalized_url,
+        title: annotation?.wp_post_title ?? '',
+        contentAnnotationId: row.content_annotation_id,
+      };
+    });
+
+    return this.success(items);
   }
 
   /**

@@ -9,7 +9,11 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { dedupeNegativeKeywords, GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
 import type { BriefInput, Service } from '@/server/schemas/brief.schema';
-import type { GoogleAdsAiAnalysisResult } from '@/types/google-ads-evaluation';
+import type {
+  ContentInventoryItem,
+  GoogleAdsAiAnalysisResult,
+  RankingSnapshotItem,
+} from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsKeywordMetric,
   GoogleAdsNegativeKeyword,
@@ -127,6 +131,8 @@ class GoogleAdsAiAnalysisService {
           keywordData: this.formatKeywordMetrics(DEV_SAMPLE_KEYWORDS),
           negativeKeywords: this.formatNegativeKeywords(DEV_SAMPLE_NEGATIVE_KEYWORDS),
           searchTermData: this.formatSearchTermMetrics(DEV_SAMPLE_SEARCH_TERMS),
+          existingContent: this.formatContentInventory(DEV_SAMPLE_CONTENT_INVENTORY),
+          rankingData: this.formatRankingSnapshot(DEV_SAMPLE_RANKING_SNAPSHOT),
           dateRange: `${startDate} 〜 ${endDate}`,
           customerName: 'サンプル株式会社（開発用）',
         });
@@ -164,7 +170,14 @@ class GoogleAdsAiAnalysisService {
         };
       }
 
-      const [keywordResult, negativeKeywordResult, searchTermResult, brief] = await Promise.all([
+      const [
+        keywordResult,
+        negativeKeywordResult,
+        searchTermResult,
+        brief,
+        contentInventoryResult,
+        rankingSnapshotResult,
+      ] = await Promise.all([
         this.googleAdsService.getKeywordMetrics({
           accessToken,
           customerId: credential.customerId,
@@ -192,6 +205,8 @@ class GoogleAdsAiAnalysisService {
           }),
         }),
         briefService.getVariablesByUserId(userId),
+        this.supabaseService.getContentInventoryByUserId(userId),
+        this.supabaseService.getRankingSnapshotByUserId(userId),
       ]);
 
       if (!keywordResult.success) {
@@ -222,6 +237,20 @@ class GoogleAdsAiAnalysisService {
         );
       }
 
+      // §17: 既存コンテンツ在庫・GSC順位は取得失敗を非致命とし、空コンテキストで分析を続行する
+      if (!contentInventoryResult.success) {
+        console.warn(
+          '[GoogleAdsAiAnalysisService] Failed to fetch content inventory (non-fatal):',
+          contentInventoryResult.error
+        );
+      }
+      if (!rankingSnapshotResult.success) {
+        console.warn(
+          '[GoogleAdsAiAnalysisService] Failed to fetch ranking snapshot (non-fatal):',
+          rankingSnapshotResult.error
+        );
+      }
+
       const promptTemplate = await PromptService.getTemplateByName('google_ads_ai_evaluation');
       if (!promptTemplate) {
         return {
@@ -249,6 +278,12 @@ class GoogleAdsAiAnalysisService {
         keywordData: this.formatKeywordMetrics(keywordResult.data ?? []),
         negativeKeywords: this.formatNegativeKeywords(negativeKeywordResult.data ?? []),
         searchTermData: this.formatSearchTermMetrics(searchTermResult.data ?? []),
+        existingContent: this.formatContentInventory(
+          contentInventoryResult.success ? contentInventoryResult.data : []
+        ),
+        rankingData: this.formatRankingSnapshot(
+          rankingSnapshotResult.success ? rankingSnapshotResult.data : []
+        ),
         dateRange: `${startDate} 〜 ${endDate}`,
         customerName: customerName ?? '',
       });
@@ -501,6 +536,47 @@ class GoogleAdsAiAnalysisService {
     return [header, separator, ...rows].join('\n');
   }
 
+  private formatContentInventory(items: ContentInventoryItem[]): string {
+    // §17.7 指針: LLM 向けは区切り行（---｜---）を省略しトークンを節約する
+    const header = 'タイトル | URL | メインKW | サブKW | カテゴリ | 本文抜粋';
+    if (items.length === 0) {
+      return `${header}\n（既存コンテンツなし）`;
+    }
+
+    const rows = items.map(item =>
+      [
+        item.title || '-',
+        item.url || '-',
+        item.mainKw || '-',
+        item.kw || '-',
+        item.categoryNames.length > 0 ? item.categoryNames.join('・') : '-',
+        item.excerpt ? item.excerpt.replace(/\s+/g, ' ').trim() : '-',
+      ].join(' | ')
+    );
+
+    return [header, ...rows].join('\n');
+  }
+
+  private formatRankingSnapshot(items: RankingSnapshotItem[]): string {
+    const header = 'クエリ | 順位 | IMP | Click | タイトル | URL';
+    if (items.length === 0) {
+      return `${header}\n（順位データなし）`;
+    }
+
+    const rows = items.map(item =>
+      [
+        item.queryNormalized || '-',
+        this.formatNumber(item.position),
+        this.formatInteger(item.impressions),
+        this.formatInteger(item.clicks),
+        item.title || '-',
+        item.url || '-',
+      ].join(' | ')
+    );
+
+    return [header, ...rows].join('\n');
+  }
+
   private formatInteger(value: number): string {
     return Math.round(value).toLocaleString('ja-JP');
   }
@@ -555,4 +631,17 @@ const DEV_SAMPLE_SEARCH_TERMS: GoogleAdsSearchTermMetric[] = [
   { searchTerm: 'エアコン 臭い 洗浄', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 640, clicks: 38, cost: 15960, conversions: 1, conversionValue: 5000 },
   { searchTerm: 'エアコンクリーニング プロ 頼む', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3006', adGroupName: 'プロ・専門業者', impressions: 520, clicks: 46, cost: 17250, conversions: 2, conversionValue: 10000 },
   { searchTerm: 'エアコン 丸洗い 費用', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 410, clicks: 20, cost: 8000, conversions: 1, conversionValue: 5000 },
+];
+
+const DEV_SAMPLE_CONTENT_INVENTORY: ContentInventoryItem[] = [
+  { id: 'ci-1', title: 'エアコンクリーニングの料金相場と内訳を徹底解説', url: 'https://sample-clean.jp/price', mainKw: 'エアコンクリーニング 料金', kw: 'エアコン 掃除 費用', categoryNames: ['料金'], excerpt: 'エアコンクリーニングの料金は機種や台数で変わります。本記事では相場と内訳を…' },
+  { id: 'ci-2', title: '分解洗浄とは？通常クリーニングとの違い', url: 'https://sample-clean.jp/disassembly', mainKw: 'エアコン 分解洗浄', kw: '内部洗浄 違い', categoryNames: ['サービス'], excerpt: '分解洗浄は内部部品を取り外して洗う方法です。通常清掃との違いを…' },
+  { id: 'ci-3', title: 'エアコン掃除を自分でやる方法と業者依頼の判断基準', url: 'https://sample-clean.jp/diy-or-pro', mainKw: 'エアコン 掃除 自分で', kw: 'DIY 業者 比較', categoryNames: ['お役立ち'], excerpt: '自分で掃除できる範囲と業者に頼むべきケースを整理します…' },
+];
+
+const DEV_SAMPLE_RANKING_SNAPSHOT: RankingSnapshotItem[] = [
+  { queryNormalized: 'エアコンクリーニング 料金', position: 8, impressions: 1200, clicks: 96, url: 'https://sample-clean.jp/price', title: 'エアコンクリーニングの料金相場と内訳を徹底解説', contentAnnotationId: 'ci-1' },
+  { queryNormalized: 'エアコン 分解洗浄', position: 22, impressions: 540, clicks: 12, url: 'https://sample-clean.jp/disassembly', title: '分解洗浄とは？通常クリーニングとの違い', contentAnnotationId: 'ci-2' },
+  { queryNormalized: 'エアコン 掃除 自分で', position: 3, impressions: 2100, clicks: 210, url: 'https://sample-clean.jp/diy-or-pro', title: 'エアコン掃除を自分でやる方法と業者依頼の判断基準', contentAnnotationId: 'ci-3' },
+  { queryNormalized: 'エアコン 掃除 業者 おすすめ', position: 35, impressions: 320, clicks: 4, url: 'https://sample-clean.jp/diy-or-pro', title: 'エアコン掃除を自分でやる方法と業者依頼の判断基準', contentAnnotationId: 'ci-3' },
 ];

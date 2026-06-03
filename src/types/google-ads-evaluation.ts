@@ -27,3 +27,35 @@ export interface GoogleAdsAiAnalysisResult {
   message?: string;
   error?: string;
 }
+
+/**
+ * §17: 既存コンテンツ在庫（WordPress 由来の実在記事）の1件。
+ * カニバリ判定（新規 vs 修正）のために LLM へ渡す。
+ */
+export interface ContentInventoryItem {
+  id: string;
+  title: string;
+  /** canonical_url 優先・無ければ normalized_url */
+  url: string;
+  mainKw: string | null;
+  kw: string | null;
+  categoryNames: string[];
+  /** wp_content_text の先頭抜粋（フル本文は渡さない） */
+  excerpt: string;
+}
+
+/**
+ * §17: GSC（自社順位）スナップショットの1件。
+ * URL/タイトルは content_annotation_id（FK）経由で content_annotations に突合する。
+ */
+export interface RankingSnapshotItem {
+  queryNormalized: string;
+  position: number;
+  impressions: number;
+  clicks: number;
+  /** content_annotations 突合済み URL。未突合（WP未取込）は GSC の normalized_url にフォールバック */
+  url: string;
+  /** content_annotations.wp_post_title。未突合時は空文字 */
+  title: string;
+  contentAnnotationId: string | null;
+}

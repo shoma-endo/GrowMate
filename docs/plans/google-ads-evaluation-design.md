@@ -1502,8 +1502,10 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 > | 項目 | 状態 |
 > |------|------|
 > | **仕様の確定度** | 基本設計（2026-05-31）。確定版ではない |
-> | **開発着手** | **未着手** |
+> | **開発着手** | **実装中**。Increment 1（データ層＋LLMコンテキスト注入）完了（2026-05-31）。Increment 2（メール機械生成順位表）未着手 |
 > | **依存** | フェーズ1（Section 1〜15）完成済みを前提。GSC連携・WordPress取込が利用可能なユーザーが対象 |
+>
+> **Increment 1 実装済み（2026-05-31）**: `SupabaseService.getContentInventoryByUserId` / `getRankingSnapshotByUserId`（GSC は `property_uri` + `search_type='web'` で絞り込み）、`googleAdsAiAnalysisService` への結線（非致命）・フォーマッタ2種・プロンプト変数 `existingContent`/`rankingData`・DEVサンプル、`prompt-descriptions` 変数説明。**未実施**: メール機械生成順位表（§17.4・要 TOP5 紐付け方式決定）、admin/prompts 本文更新、maxTokens 実測。
 
 ### 17.1 目的
 
