@@ -45,6 +45,17 @@ export interface ContentInventoryItem {
 }
 
 /**
+ * §17 Increment2: AI 出力末尾に併出される TOP5 提案の最小 JSON。
+ * メール順位表をコード側で機械生成する（捏造防止）ための KW 抽出に使う。
+ * フェーズ2の構造化データ（DB保存）とは別物で、MVP では DB 保存しない。
+ */
+export interface TopProposalKeyword {
+  rank: number;
+  mainKw: string;
+  subKws: string[];
+}
+
+/**
  * §17: GSC（自社順位）スナップショットの1件。
  * URL/タイトルは content_annotation_id（FK）経由で content_annotations に突合する。
  */

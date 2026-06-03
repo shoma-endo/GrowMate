@@ -9,10 +9,12 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { dedupeNegativeKeywords, GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
 import type { BriefInput, Service } from '@/server/schemas/brief.schema';
+import { normalizeQuery } from '@/lib/normalize-query';
 import type {
   ContentInventoryItem,
   GoogleAdsAiAnalysisResult,
   RankingSnapshotItem,
+  TopProposalKeyword,
 } from '@/types/google-ads-evaluation';
 import type {
   GoogleAdsKeywordMetric,
@@ -22,11 +24,63 @@ import type {
 
 const DEFAULT_DATE_RANGE_DAYS = 30;
 
+// §17 Increment2: AI 出力末尾の ```json ... ``` ブロックを抽出する正規表現
+const JSON_BLOCK_REGEX = /```json\s*([\s\S]*?)\s*```/i;
+
 function buildAnalysisPrompt(
   template: string,
   variables: Record<string, string>
 ): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] ?? '');
+}
+
+/**
+ * §17 Increment2: AI 出力末尾の JSON ブロックから TOP5 提案 KW を抽出する。
+ * パース失敗・形式不一致は非致命とし null を返す（順位表なしでメール送信は継続する）。
+ */
+function extractTopProposals(markdown: string): TopProposalKeyword[] | null {
+  const match = markdown.match(JSON_BLOCK_REGEX);
+  if (!match || !match[1]) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(match[1]);
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+
+    const proposals: TopProposalKeyword[] = parsed.flatMap((item: unknown) => {
+      if (typeof item !== 'object' || item === null) {
+        return [];
+      }
+      const record = item as Record<string, unknown>;
+      const mainKw = typeof record.main_kw === 'string' ? record.main_kw.trim() : '';
+      if (!mainKw) {
+        return [];
+      }
+      const rank = typeof record.rank === 'number' ? record.rank : 0;
+      // kw は改行・読点区切りのサブKW群（設計書 16.3）。分割して正規化対象にする。
+      const kwRaw = typeof record.kw === 'string' ? record.kw : '';
+      const subKws = kwRaw
+        .split(/[\n,、]/)
+        .map(value => value.trim())
+        .filter(value => value.length > 0);
+      return [{ rank, mainKw, subKws }];
+    });
+
+    return proposals.length > 0 ? proposals : null;
+  } catch (error) {
+    console.warn('[GoogleAdsAiAnalysisService] Failed to parse TOP5 JSON block (non-fatal):', error);
+    return null;
+  }
+}
+
+/**
+ * §17 Increment2: メール本文から JSON ブロックを除去する（本文に JSON を残さない）。
+ */
+function stripJsonBlock(markdown: string): string {
+  return markdown.replace(JSON_BLOCK_REGEX, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function formatJstTime(date: Date): string {
@@ -146,7 +200,8 @@ class GoogleAdsAiAnalysisService {
           [{ role: 'user', content: filledPrompt }],
           { maxTokens: modelConfig.maxTokens, temperature: modelConfig.temperature }
         );
-        const htmlContent = sanitizeEmailHtml(await marked.parse(analysisMarkdown));
+        const emailMarkdown = this.composeEmailMarkdown(analysisMarkdown, DEV_SAMPLE_RANKING_SNAPSHOT);
+        const htmlContent = sanitizeEmailHtml(await marked.parse(emailMarkdown));
         const subject = `[DEV] Google Ads コンテンツ戦略提案レポート（${formatJstTime(executedAt)}実行 / サンプル株式会社）`;
         const emailResult = await this.emailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent);
         if (!emailResult.success) {
@@ -305,7 +360,11 @@ class GoogleAdsAiAnalysisService {
         }
       );
 
-      const htmlContent = sanitizeEmailHtml(await marked.parse(analysisMarkdown));
+      const emailMarkdown = this.composeEmailMarkdown(
+        analysisMarkdown,
+        rankingSnapshotResult.success ? rankingSnapshotResult.data : []
+      );
+      const htmlContent = sanitizeEmailHtml(await marked.parse(emailMarkdown));
       const subjectAccountPart = customerName ? ` / ${customerName}` : '';
       const subject = `【GrowMate】Google Ads コンテンツ戦略提案レポート（${formatJstTime(executedAt)}実行${subjectAccountPart}）`;
       const emailResult = await this.emailService.sendGoogleAdsAnalysis(
@@ -575,6 +634,74 @@ class GoogleAdsAiAnalysisService {
     );
 
     return [header, ...rows].join('\n');
+  }
+
+  /**
+   * §17.4 Increment2: AI 出力の TOP5 提案 KW を GSC 順位スナップショットに正規化一致で突合し、
+   * 検索順位・タイトル・URL を「コード側で機械生成」してメール用 Markdown を返す（捏造防止）。
+   * AI は新規/修正の判断文のみを担当し、順位・URL はここで決定的に組み立てる。
+   */
+  private buildRankingBlocks(
+    proposals: TopProposalKeyword[],
+    rankingSnapshot: RankingSnapshotItem[]
+  ): string {
+    const snapshotByQuery = new Map<string, RankingSnapshotItem>();
+    for (const item of rankingSnapshot) {
+      const key = normalizeQuery(item.queryNormalized);
+      // 同一正規化クエリは上位（position 昇順で取得済み）を優先
+      if (!snapshotByQuery.has(key)) {
+        snapshotByQuery.set(key, item);
+      }
+    }
+
+    const renderKw = (label: string, kw: string): string => {
+      const matched = snapshotByQuery.get(normalizeQuery(kw));
+      if (!matched) {
+        return `${label} ${kw}\n  既存コンテンツなし＝新規候補`;
+      }
+      const lines = [
+        `${label} ${kw}`,
+        `  検索順位：${this.formatNumber(matched.position)}位`,
+      ];
+      if (matched.title) {
+        lines.push(`  タイトル：${matched.title}`);
+      }
+      if (matched.url) {
+        lines.push(`  ${matched.url}`);
+      }
+      return lines.join('\n');
+    };
+
+    const blocks = [...proposals]
+      .sort((a, b) => a.rank - b.rank)
+      .map(proposal => {
+        const parts = [renderKw('▼ メインKW ▼', proposal.mainKw)];
+        if (proposal.subKws.length > 0) {
+          parts.push('▼ サブKW ▼');
+          parts.push(...proposal.subKws.map(kw => renderKw('・', kw)));
+        }
+        return parts.join('\n');
+      });
+
+    return ['## 現状成績（検索順位・タイトル・URL）', '', ...blocks].join('\n\n');
+  }
+
+  /**
+   * §17.4 Increment2: AI 出力（Markdown）から JSON ブロックを取り除き、
+   * コード機械生成の順位表ブロックを末尾に結合してメール本文 Markdown を組み立てる。
+   * JSON が無い／パース不能な場合は順位表を付けず本文のみを返す（非致命・従来挙動）。
+   */
+  private composeEmailMarkdown(
+    analysisMarkdown: string,
+    rankingSnapshot: RankingSnapshotItem[]
+  ): string {
+    const proposals = extractTopProposals(analysisMarkdown);
+    const body = stripJsonBlock(analysisMarkdown);
+    if (!proposals) {
+      return body;
+    }
+    const rankingBlocks = this.buildRankingBlocks(proposals, rankingSnapshot);
+    return `${body}\n\n${rankingBlocks}`;
   }
 
   private formatInteger(value: number): string {
