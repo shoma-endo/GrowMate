@@ -5,6 +5,8 @@
 生成・保持し、各生成リクエストに注入する「記憶レイヤー」を求めている（仕様2ファイル）。
 本ドキュメントは「実装可能か」の俯瞰判断と、実装する場合の段階的ロードマップを示す。
 
+**元仕様**: `docs/specs/growmate_philosophy_system_spec.md`（実装仕様書）／`docs/specs/growmate_philosophy_interview_v2.md`（質問・選択肢・重み）。
+
 ## 結論
 **実装可能。GrowMate の既存パターン（JSONB プロファイル保存・動的 system prompt 注入・LLM 共用エンジン・
 外部設定の管理画面）の拡張で実現でき、アーキテクチャ変更は不要。**
