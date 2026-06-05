@@ -661,6 +661,8 @@ class GoogleAdsAiAnalysisService {
       }
     }
 
+    // marked は breaks:false（既定）のため段落内の単一改行は HTML で空白に潰れる。
+    // 検索順位・タイトル・URL を行分割で見せるため Markdown のリスト項目として生成する。
     const renderKw = (label: string, kw: string): string => {
       const matched = snapshotByQuery.get(normalizeQuery(kw));
       if (!matched) {
@@ -669,19 +671,16 @@ class GoogleAdsAiAnalysisService {
         const note = hasSnapshot
           ? `順位データなし（上位${GoogleAdsAiAnalysisService.RANKING_SNAPSHOT_LIMIT}件に該当なし）`
           : '順位データなし';
-        return `${label} ${kw}\n  ${note}`;
+        return `**${label} ${kw}**\n\n- ${note}`;
       }
-      const lines = [
-        `${label} ${kw}`,
-        `  検索順位：${this.formatNumber(matched.position)}位`,
-      ];
+      const items = [`- 検索順位：${this.formatNumber(matched.position)}位`];
       if (matched.title) {
-        lines.push(`  タイトル：${matched.title}`);
+        items.push(`- タイトル：${matched.title}`);
       }
       if (matched.url) {
-        lines.push(`  ${matched.url}`);
+        items.push(`- ${matched.url}`);
       }
-      return lines.join('\n');
+      return [`**${label} ${kw}**`, '', ...items].join('\n');
     };
 
     const blocks = [...proposals]
@@ -689,10 +688,11 @@ class GoogleAdsAiAnalysisService {
       .map(proposal => {
         const parts = [renderKw('▼ メインKW ▼', proposal.mainKw)];
         if (proposal.subKws.length > 0) {
-          parts.push('▼ サブKW ▼');
+          parts.push('**▼ サブKW ▼**');
           parts.push(...proposal.subKws.map(kw => renderKw('・', kw)));
         }
-        return parts.join('\n');
+        // 各 KW ブロックは空行で区切り、Markdown のブロック境界を維持する。
+        return parts.join('\n\n');
       });
 
     const headerLines = ['## 現状成績（検索順位・タイトル・URL）'];
