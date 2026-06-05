@@ -697,7 +697,7 @@ class GoogleAdsAiAnalysisService {
 
     const headerLines = ['## 現状成績（検索順位・タイトル・URL）'];
     if (!hasSnapshot) {
-      headerLines.push('※ GSC未連携または順位データ取得失敗のため、検索順位は表示できません。');
+      headerLines.push('※ 検索順位データがありません。');
     }
     return [...headerLines, '', ...blocks].join('\n\n');
   }
