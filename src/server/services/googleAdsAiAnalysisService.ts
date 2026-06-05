@@ -107,6 +107,9 @@ function sanitizeEmailHtml(html: string): string {
 }
 
 class GoogleAdsAiAnalysisService {
+  // §17.4: GSC順位スナップショットの取得上限（DB参照のため GSC API クォータは消費しない）
+  private static readonly RANKING_SNAPSHOT_LIMIT = 500;
+
   private readonly supabaseService: SupabaseService;
   private readonly googleAdsService: GoogleAdsService;
   private readonly emailService: EmailService;
@@ -261,7 +264,10 @@ class GoogleAdsAiAnalysisService {
         }),
         briefService.getVariablesByUserId(userId),
         this.supabaseService.getContentInventoryByUserId(userId),
-        this.supabaseService.getRankingSnapshotByUserId(userId),
+        this.supabaseService.getRankingSnapshotByUserId(
+          userId,
+          GoogleAdsAiAnalysisService.RANKING_SNAPSHOT_LIMIT
+        ),
       ]);
 
       if (!keywordResult.success) {
@@ -645,6 +651,7 @@ class GoogleAdsAiAnalysisService {
     proposals: TopProposalKeyword[],
     rankingSnapshot: RankingSnapshotItem[]
   ): string {
+    const hasSnapshot = rankingSnapshot.length > 0;
     const snapshotByQuery = new Map<string, RankingSnapshotItem>();
     for (const item of rankingSnapshot) {
       const key = normalizeQuery(item.queryNormalized);
@@ -657,7 +664,12 @@ class GoogleAdsAiAnalysisService {
     const renderKw = (label: string, kw: string): string => {
       const matched = snapshotByQuery.get(normalizeQuery(kw));
       if (!matched) {
-        return `${label} ${kw}\n  既存コンテンツなし＝新規候補`;
+        // 順位が取れないことは「既存コンテンツなし＝新規候補」を意味しない
+        // （GSC未連携・取得失敗・圏外でも既存記事は存在し得る）ため断定しない。
+        const note = hasSnapshot
+          ? `順位データなし（上位${GoogleAdsAiAnalysisService.RANKING_SNAPSHOT_LIMIT}件に該当なし）`
+          : '順位データなし';
+        return `${label} ${kw}\n  ${note}`;
       }
       const lines = [
         `${label} ${kw}`,
@@ -683,7 +695,11 @@ class GoogleAdsAiAnalysisService {
         return parts.join('\n');
       });
 
-    return ['## 現状成績（検索順位・タイトル・URL）', '', ...blocks].join('\n\n');
+    const headerLines = ['## 現状成績（検索順位・タイトル・URL）'];
+    if (!hasSnapshot) {
+      headerLines.push('※ GSC未連携または順位データ取得失敗のため、検索順位は表示できません。');
+    }
+    return [...headerLines, '', ...blocks].join('\n\n');
   }
 
   /**
