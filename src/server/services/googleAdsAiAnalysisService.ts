@@ -203,7 +203,11 @@ class GoogleAdsAiAnalysisService {
           [{ role: 'user', content: filledPrompt }],
           { maxTokens: modelConfig.maxTokens, temperature: modelConfig.temperature }
         );
-        const emailMarkdown = this.composeEmailMarkdown(analysisMarkdown, DEV_SAMPLE_RANKING_SNAPSHOT);
+        const emailMarkdown = this.composeEmailMarkdown(
+          analysisMarkdown,
+          DEV_SAMPLE_RANKING_SNAPSHOT,
+          DEV_SAMPLE_CONTENT_INVENTORY
+        );
         const htmlContent = sanitizeEmailHtml(await marked.parse(emailMarkdown));
         const subject = `[DEV] Google Ads コンテンツ戦略提案レポート（${formatJstTime(executedAt)}実行 / サンプル株式会社）`;
         const emailResult = await this.emailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent);
@@ -235,6 +239,7 @@ class GoogleAdsAiAnalysisService {
         brief,
         contentInventoryResult,
         rankingSnapshotResult,
+        customerName,
       ] = await Promise.all([
         this.googleAdsService.getKeywordMetrics({
           accessToken,
@@ -268,6 +273,13 @@ class GoogleAdsAiAnalysisService {
           userId,
           GoogleAdsAiAnalysisService.RANKING_SNAPSHOT_LIMIT
         ),
+        // 顧客名解決（Google Ads API）も独立データのため並列化する。
+        // resolveCustomerName は内部で例外を握り潰し null を返すため Promise.all を巻き込まない。
+        this.resolveCustomerName({
+          accessToken,
+          customerId: credential.customerId,
+          managerCustomerId: credential.managerCustomerId,
+        }),
       ]);
 
       if (!keywordResult.success) {
@@ -312,6 +324,24 @@ class GoogleAdsAiAnalysisService {
         );
       }
 
+      // §17: 1実行ぶんの入力データ健全性スナップショット（機密は含めず件数と成否のみ）。
+      // ok=false は取得失敗、ok=true かつ count=0 は「連携済みだがデータ0件（GSC未連携・WP未取込）」を意味し、
+      // existingContent / rankingData が空でAIに渡ることを本番ログで切り分けられる。
+      console.info('[GoogleAdsAiAnalysisService] analysis input summary', {
+        keywordCount: keywordResult.data?.length ?? 0,
+        negativeKeywordCount: negativeKeywordResult.data?.length ?? 0,
+        searchTermOk: searchTermResult.success,
+        searchTermCount: searchTermResult.success ? (searchTermResult.data?.length ?? 0) : 0,
+        contentInventoryOk: contentInventoryResult.success,
+        contentInventoryCount: contentInventoryResult.success
+          ? (contentInventoryResult.data?.length ?? 0)
+          : 0,
+        rankingSnapshotOk: rankingSnapshotResult.success,
+        rankingSnapshotCount: rankingSnapshotResult.success
+          ? (rankingSnapshotResult.data?.length ?? 0)
+          : 0,
+      });
+
       const promptTemplate = await PromptService.getTemplateByName('google_ads_ai_evaluation');
       if (!promptTemplate) {
         return {
@@ -320,11 +350,6 @@ class GoogleAdsAiAnalysisService {
         };
       }
 
-      const customerName = await this.resolveCustomerName({
-        accessToken,
-        customerId: credential.customerId,
-        managerCustomerId: credential.managerCustomerId,
-      });
       const targetService = this.resolveTargetService(brief, options?.serviceId);
       if (!targetService) {
         return {
@@ -368,7 +393,8 @@ class GoogleAdsAiAnalysisService {
 
       const emailMarkdown = this.composeEmailMarkdown(
         analysisMarkdown,
-        rankingSnapshotResult.success ? rankingSnapshotResult.data : []
+        rankingSnapshotResult.success ? rankingSnapshotResult.data : [],
+        contentInventoryResult.success ? contentInventoryResult.data : []
       );
       const htmlContent = sanitizeEmailHtml(await marked.parse(emailMarkdown));
       const subjectAccountPart = customerName ? ` / ${customerName}` : '';
@@ -643,36 +669,54 @@ class GoogleAdsAiAnalysisService {
   }
 
   /**
-   * §17.4 Increment2: AI 出力の TOP5 提案 KW を GSC 順位スナップショットに正規化一致で突合し、
-   * 検索順位・タイトル・URL を「コード側で機械生成」してメール用 Markdown を返す（捏造防止）。
-   * AI は新規/修正の判断文のみを担当し、順位・URL はここで決定的に組み立てる。
+   * §17.4 Increment2: 正規化クエリ → 順位スナップショットの索引を作る。
+   * 同一正規化クエリは上位（position 昇順で取得済み）を代表とする。
    */
-  private buildRankingBlocks(
-    proposals: TopProposalKeyword[],
+  private buildSnapshotMap(
     rankingSnapshot: RankingSnapshotItem[]
-  ): string {
-    const hasSnapshot = rankingSnapshot.length > 0;
+  ): Map<string, RankingSnapshotItem> {
     const snapshotByQuery = new Map<string, RankingSnapshotItem>();
     for (const item of rankingSnapshot) {
       const key = normalizeQuery(item.queryNormalized);
-      // 同一正規化クエリは上位（position 昇順で取得済み）を優先
       if (!snapshotByQuery.has(key)) {
         snapshotByQuery.set(key, item);
       }
     }
+    return snapshotByQuery;
+  }
 
-    // marked は breaks:false（既定）のため段落内の単一改行は HTML で空白に潰れる。
-    // 検索順位・タイトル・URL を行分割で見せるため Markdown のリスト項目として生成する。
-    const renderKw = (label: string, kw: string): string => {
-      const matched = snapshotByQuery.get(normalizeQuery(kw));
-      if (!matched) {
-        // 順位が取れないことは「既存コンテンツなし＝新規候補」を意味しない
-        // （GSC未連携・取得失敗・圏外でも既存記事は存在し得る）ため断定しない。
-        const note = hasSnapshot
-          ? `順位データなし（上位${GoogleAdsAiAnalysisService.RANKING_SNAPSHOT_LIMIT}件に該当なし）`
-          : '順位データなし';
-        return `**${label} ${kw}**\n\n- ${note}`;
+  /**
+   * §17.4: 既存コンテンツ在庫を main_kw（正規化）で索引する。
+   * GSC に順位が無くても既存記事の有無・タイトル・URL を提示するための突合に使う。
+   */
+  private buildInventoryMap(
+    contentInventory: ContentInventoryItem[]
+  ): Map<string, ContentInventoryItem> {
+    const inventoryByMainKw = new Map<string, ContentInventoryItem>();
+    for (const item of contentInventory) {
+      const key = normalizeQuery(item.mainKw ?? '');
+      if (key && !inventoryByMainKw.has(key)) {
+        inventoryByMainKw.set(key, item);
       }
+    }
+    return inventoryByMainKw;
+  }
+
+  /**
+   * 1KWの順位ブロックを生成する。検索順位・タイトル・URL はコード側が事実から組み立てる（捏造防止）。
+   * marked は breaks:false（既定）のため段落内の単一改行は潰れる。行分割の Markdown リストで生成する。
+   */
+  private renderKwRanking(
+    label: string,
+    kw: string,
+    snapshotByQuery: Map<string, RankingSnapshotItem>,
+    inventoryByMainKw: Map<string, ContentInventoryItem>
+  ): string {
+    const normalized = normalizeQuery(kw);
+
+    // 1) GSC 順位あり → 検索順位・タイトル・URL
+    const matched = snapshotByQuery.get(normalized);
+    if (matched) {
       const items = [`- 検索順位：${this.formatNumber(matched.position)}位`];
       if (matched.title) {
         items.push(`- タイトル：${matched.title}`);
@@ -681,43 +725,166 @@ class GoogleAdsAiAnalysisService {
         items.push(`- ${matched.url}`);
       }
       return [`**${label} ${kw}**`, '', ...items].join('\n');
-    };
-
-    const blocks = [...proposals]
-      .sort((a, b) => a.rank - b.rank)
-      .map(proposal => {
-        const parts = [renderKw('▼ メインKW ▼', proposal.mainKw)];
-        if (proposal.subKws.length > 0) {
-          parts.push('**▼ サブKW ▼**');
-          parts.push(...proposal.subKws.map(kw => renderKw('・', kw)));
-        }
-        // 各 KW ブロックは空行で区切り、Markdown のブロック境界を維持する。
-        return parts.join('\n\n');
-      });
-
-    const headerLines = ['## 現状成績（検索順位・タイトル・URL）'];
-    if (!hasSnapshot) {
-      headerLines.push('※ 検索順位データがありません。');
     }
-    return [...headerLines, '', ...blocks].join('\n\n');
+
+    // 2) GSC 順位は無いが既存記事（WP在庫）あり → 記事のタイトル・URL を提示
+    const article = inventoryByMainKw.get(normalized);
+    if (article) {
+      const items = ['- 既存記事あり（検索順位データなし）'];
+      if (article.title) {
+        items.push(`- タイトル：${article.title}`);
+      }
+      if (article.url) {
+        items.push(`- ${article.url}`);
+      }
+      return [`**${label} ${kw}**`, '', ...items].join('\n');
+    }
+
+    // 3) どちらも無し（GSC未連携・圏外でも既存記事は存在し得るため「新規候補」とは断定しない）
+    return `**${label} ${kw}**\n\n- 順位データなし`;
+  }
+
+  /**
+   * §17.4 Increment2: 1提案ぶんの「既存コンテンツの順位」ブロックを生成する。
+   * 提案内の全KWが未マッチなら「順位データなし」を各KWに繰り返さず1行へ集約する。
+   */
+  private buildProposalRankingBlock(
+    proposal: TopProposalKeyword,
+    snapshotByQuery: Map<string, RankingSnapshotItem>,
+    inventoryByMainKw: Map<string, ContentInventoryItem>
+  ): string {
+    const heading = '**▼ 既存コンテンツの順位 ▼**';
+    const allKws = [proposal.mainKw, ...proposal.subKws];
+    // GSC順位・WP在庫のいずれかに一致するKWがあるか
+    const anyMatched = allKws.some(kw => {
+      const n = normalizeQuery(kw);
+      return snapshotByQuery.has(n) || inventoryByMainKw.has(n);
+    });
+    if (!anyMatched) {
+      return [heading, '', '- 全キーワードで順位データなし'].join('\n');
+    }
+
+    const parts = [
+      this.renderKwRanking('▼ メインKW ▼', proposal.mainKw, snapshotByQuery, inventoryByMainKw),
+    ];
+    if (proposal.subKws.length > 0) {
+      parts.push('**▼ サブKW ▼**');
+      parts.push(
+        ...proposal.subKws.map(kw =>
+          this.renderKwRanking('・', kw, snapshotByQuery, inventoryByMainKw)
+        )
+      );
+    }
+    return [heading, '', ...parts].join('\n\n');
   }
 
   /**
    * §17.4 Increment2: AI 出力（Markdown）から JSON ブロックを取り除き、
-   * コード機械生成の順位表ブロックを末尾に結合してメール本文 Markdown を組み立てる。
-   * JSON が無い／パース不能な場合は順位表を付けず本文のみを返す（非致命・従来挙動）。
+   * 各提案の「▼ 新規作成 / 既存修正の判定 ▼」見出しをアンカーに、その判定ブロック直後へ
+   * その提案の順位ブロックをコード側で差し込む（プロンプトに特殊記法は不要）。
+   * - 見出しが見つからない場合は末尾に「## 現状成績」セクションとしてまとめて付記する（フォールバック）。
+   * - JSON が無い／パース不能な場合は順位表を付けず本文のみを返す（非致命・従来挙動）。
    */
   private composeEmailMarkdown(
     analysisMarkdown: string,
-    rankingSnapshot: RankingSnapshotItem[]
+    rankingSnapshot: RankingSnapshotItem[],
+    contentInventory: ContentInventoryItem[]
   ): string {
     const proposals = extractTopProposals(analysisMarkdown);
     const body = stripJsonBlock(analysisMarkdown);
     if (!proposals) {
+      // 末尾JSONが無い／壊れている＝順位表を付けられない。出力切れ等を疑う検知ポイント。
+      console.warn(
+        '[GoogleAdsAiAnalysisService] ranking table skipped: TOP5 JSON not found/parseable',
+        { markdownLength: analysisMarkdown.length }
+      );
       return body;
     }
-    const rankingBlocks = this.buildRankingBlocks(proposals, rankingSnapshot);
-    return `${body}\n\n${rankingBlocks}`;
+
+    const snapshotByQuery = this.buildSnapshotMap(rankingSnapshot);
+    const inventoryByMainKw = this.buildInventoryMap(contentInventory);
+    const hasSnapshot = rankingSnapshot.length > 0;
+    const sorted = [...proposals].sort((a, b) => a.rank - b.rank);
+
+    // 判定見出しをアンカーに、判定ブロック直後（次の見出しの前）へ順位ブロックを差し込む。
+    const injected = this.injectRankingAfterJudgment(body, sorted, snapshotByQuery, inventoryByMainKw);
+    if (injected) {
+      return injected;
+    }
+
+    // フォールバック: 判定見出しが見つからなければ末尾にまとめて付記し、情報を失わない。
+    console.warn(
+      '[GoogleAdsAiAnalysisService] ranking placed at bottom (fallback): judgment heading not found for inline injection',
+      { proposalCount: sorted.length }
+    );
+    const blocks = sorted.map(
+      proposal =>
+        `### 優先順位${proposal.rank}位 ${proposal.mainKw}\n\n${this.buildProposalRankingBlock(
+          proposal,
+          snapshotByQuery,
+          inventoryByMainKw
+        )}`
+    );
+    const headerLines = ['## 現状成績（検索順位・タイトル・URL）'];
+    if (!hasSnapshot) {
+      headerLines.push('※ 検索順位データがありません。');
+    }
+    return `${body}\n\n${[...headerLines, '', ...blocks].join('\n\n')}`;
+  }
+
+  /**
+   * §17.4 Increment2: 本文中の各「▼ 新規作成 / 既存修正の判定 ▼」ブロックの直後
+   * （＝判定ブロックの次に現れる見出し行の手前）へ、提案の順位ブロックを挿入する。
+   * 判定見出しは出現順に sorted[i] と対応づける。1件も挿入できなければ null を返す（呼び出し側がフォールバック）。
+   */
+  private injectRankingAfterJudgment(
+    body: string,
+    sorted: TopProposalKeyword[],
+    snapshotByQuery: Map<string, RankingSnapshotItem>,
+    inventoryByMainKw: Map<string, ContentInventoryItem>
+  ): string | null {
+    // 判定見出し（太字・空白・スラッシュ有無のゆれを許容）
+    const judgmentHeadingRe = /▼[^\n]*新規作成[^\n]*既存修正[^\n]*判定[^\n]*▼/;
+    // 次セクションの見出し行（▼…▼ 見出し、または # 見出し）
+    const sectionHeadingRe = /^\s*(?:#{1,6}\s|\*{0,2}▼)/;
+
+    const lines = body.split('\n');
+    const out: string[] = [];
+    let index = 0;
+    let awaitingInsert = false;
+
+    const insertBlock = (): void => {
+      if (index < sorted.length) {
+        const proposal = sorted[index];
+        if (proposal) {
+          // 前後を空行で挟み、直後の見出し（▼顕在ニーズ等）と段落が結合しないようにする。
+          out.push(
+            '',
+            this.buildProposalRankingBlock(proposal, snapshotByQuery, inventoryByMainKw),
+            ''
+          );
+        }
+        index += 1;
+      }
+      awaitingInsert = false;
+    };
+
+    for (const line of lines) {
+      // 判定ブロックの後、最初に現れた見出しの手前で順位ブロックを差し込む。
+      if (awaitingInsert && sectionHeadingRe.test(line)) {
+        insertBlock();
+      }
+      out.push(line);
+      if (judgmentHeadingRe.test(line)) {
+        awaitingInsert = true;
+      }
+    }
+    // 判定ブロックが本文末尾だった場合の取りこぼし防止
+    if (awaitingInsert) {
+      insertBlock();
+    }
+
+    return index > 0 ? out.join('\n') : null;
   }
 
   private formatInteger(value: number): string {
@@ -749,7 +916,7 @@ const DEV_SAMPLE_KEYWORDS: GoogleAdsKeywordMetric[] = [
   { keywordId: '1004', keywordText: 'エアコン 分解洗浄', matchType: 'PHRASE', campaignName: 'エアコン洗浄_プレミアム', adGroupName: '分解・内部洗浄', status: 'ENABLED', impressions: 3100, clicks: 217, ctr: 0.07, cpc: 420, cost: 91140, qualityScore: 8, conversions: 9, costPerConversion: 10127, searchImpressionShare: 0.55, conversionRate: 0.041 },
   { keywordId: '1005', keywordText: 'エアコン内部クリーニング', matchType: 'EXACT', campaignName: 'エアコン洗浄_プレミアム', adGroupName: '分解・内部洗浄', status: 'ENABLED', impressions: 2400, clicks: 192, ctr: 0.08, cpc: 390, cost: 74880, qualityScore: 9, conversions: 11, costPerConversion: 6807, searchImpressionShare: 0.68, conversionRate: 0.057 },
   { keywordId: '1006', keywordText: 'エアコンクリーニング 業者 おすすめ', matchType: 'BROAD', campaignName: 'エアコン洗浄_一般', adGroupName: '業者選び', status: 'ENABLED', impressions: 6500, clicks: 260, ctr: 0.04, cpc: 310, cost: 80600, qualityScore: 5, conversions: 7, costPerConversion: 11514, searchImpressionShare: 0.29, conversionRate: 0.027 },
-  { keywordId: '1007', keywordText: '壁掛けエアコン クリーニング', matchType: 'PHRASE', campaignName: 'エアコン洗浄_一般', adGroupName: '機種別', status: 'ENABLED', impressions: 1800, clicks: 126, ctr: 0.07, cpc: 360, cost: 45360, qualityScore: 7, conversions: 5, costPerConversion: 9072, searchImpressionShare: 0.51, conversionRate: 0.04 },
+  { keywordId: '1007', keywordText: '壁掛けエアコン クリーニング', matchType: 'PHRASE', campaignName: 'エアコン洗浄_一般', adGroupName: '機種別', status: 'ENABLED', impressions: 8800, clicks: 700, ctr: 0.08, cpc: 360, cost: 252000, qualityScore: 8, conversions: 30, costPerConversion: 8400, searchImpressionShare: 0.62, conversionRate: 0.043 },
   { keywordId: '1008', keywordText: 'エアコン 丸洗い', matchType: 'BROAD', campaignName: 'エアコン洗浄_プレミアム', adGroupName: '分解・内部洗浄', status: 'PAUSED', impressions: 900, clicks: 27, ctr: 0.03, cpc: 400, cost: 10800, qualityScore: 4, conversions: 1, costPerConversion: 10800, searchImpressionShare: 0.18, conversionRate: 0.037 },
   { keywordId: '1009', keywordText: 'エアコンクリーニング 一台', matchType: 'EXACT', campaignName: 'エアコン洗浄_一般', adGroupName: '料金・費用', status: 'ENABLED', impressions: 4200, clicks: 378, ctr: 0.09, cpc: 295, cost: 111510, qualityScore: 8, conversions: 19, costPerConversion: 5869, searchImpressionShare: 0.74, conversionRate: 0.05 },
   { keywordId: '1010', keywordText: 'エアコン 洗浄 プロ', matchType: 'PHRASE', campaignName: 'エアコン洗浄_プレミアム', adGroupName: 'プロ・専門業者', status: 'ENABLED', impressions: 2700, clicks: 162, ctr: 0.06, cpc: 375, cost: 60750, qualityScore: 6, conversions: 6, costPerConversion: 10125, searchImpressionShare: 0.44, conversionRate: 0.037 },
@@ -770,21 +937,38 @@ const DEV_SAMPLE_SEARCH_TERMS: GoogleAdsSearchTermMetric[] = [
   { searchTerm: 'エアコンクリーニング 一台 いくら', campaignId: '2001', campaignName: 'エアコン洗浄_一般', adGroupId: '3002', adGroupName: '料金・費用', impressions: 1620, clicks: 145, cost: 42775, conversions: 7, conversionValue: 35000 },
   { searchTerm: 'エアコン 分解洗浄 業者', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 980, clicks: 78, cost: 32760, conversions: 4, conversionValue: 20000 },
   { searchTerm: 'エアコン内部 カビ 掃除', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 870, clicks: 43, cost: 16770, conversions: 2, conversionValue: 10000 },
-  { searchTerm: '壁掛けエアコン クリーニング 料金', campaignId: '2001', campaignName: 'エアコン洗浄_一般', adGroupId: '3005', adGroupName: '機種別', impressions: 760, clicks: 68, cost: 24480, conversions: 3, conversionValue: 15000 },
+  { searchTerm: '壁掛けエアコン クリーニング 料金', campaignId: '2001', campaignName: 'エアコン洗浄_一般', adGroupId: '3005', adGroupName: '機種別', impressions: 3200, clicks: 256, cost: 92160, conversions: 14, conversionValue: 70000 },
   { searchTerm: 'エアコン 臭い 洗浄', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 640, clicks: 38, cost: 15960, conversions: 1, conversionValue: 5000 },
   { searchTerm: 'エアコンクリーニング プロ 頼む', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3006', adGroupName: 'プロ・専門業者', impressions: 520, clicks: 46, cost: 17250, conversions: 2, conversionValue: 10000 },
   { searchTerm: 'エアコン 丸洗い 費用', campaignId: '2002', campaignName: 'エアコン洗浄_プレミアム', adGroupId: '3004', adGroupName: '分解・内部洗浄', impressions: 410, clicks: 20, cost: 8000, conversions: 1, conversionValue: 5000 },
 ];
 
+// §17 DEV 検証用サンプル。DEV_SAMPLE_KEYWORDS のエアコン系KWと正規化一致するよう設計し、
+// メール順位表の3分岐（上位安定=維持 / 中位帯=修正 / 未マッチ=順位データなし）と
+// content_annotation_id NULL の URL のみフォールバックを一通り確認できるようにしている。
+// 新規/修正の両パターンを必ず発火させるため:
+//   - 既存修正: エアコンクリーニング/料金/分解洗浄/業者おすすめ は在庫・順位ありで「修正」想定。
+//   - 新規作成: 「壁掛けエアコン クリーニング」(機種別) を高実績KWに設定しつつ在庫・順位に一切登録しない。
+//     検索意図が他トピックと重ならないため、AI は TOP5 に選びつつ「新規作成」＋「順位データなし」を出す。
 const DEV_SAMPLE_CONTENT_INVENTORY: ContentInventoryItem[] = [
-  { id: 'ci-1', title: 'エアコンクリーニングの料金相場と内訳を徹底解説', url: 'https://sample-clean.jp/price', mainKw: 'エアコンクリーニング 料金', kw: 'エアコン 掃除 費用', categoryNames: ['料金'], excerpt: 'エアコンクリーニングの料金は機種や台数で変わります。本記事では相場と内訳を…' },
-  { id: 'ci-2', title: '分解洗浄とは？通常クリーニングとの違い', url: 'https://sample-clean.jp/disassembly', mainKw: 'エアコン 分解洗浄', kw: '内部洗浄 違い', categoryNames: ['サービス'], excerpt: '分解洗浄は内部部品を取り外して洗う方法です。通常清掃との違いを…' },
-  { id: 'ci-3', title: 'エアコン掃除を自分でやる方法と業者依頼の判断基準', url: 'https://sample-clean.jp/diy-or-pro', mainKw: 'エアコン 掃除 自分で', kw: 'DIY 業者 比較', categoryNames: ['お役立ち'], excerpt: '自分で掃除できる範囲と業者に頼むべきケースを整理します…' },
+  { id: 'ci-top', title: 'エアコンクリーニングとは｜料金・作業の流れ・効果まとめ', url: 'https://sample-clean.jp/cleaning', mainKw: 'エアコンクリーニング', kw: 'エアコン 洗浄', categoryNames: ['サービス'], excerpt: 'エアコンクリーニングの基礎知識、料金、作業の流れ、効果をまとめて解説します…' },
+  { id: 'ci-price', title: 'エアコンクリーニングの料金相場と内訳を徹底解説', url: 'https://sample-clean.jp/price', mainKw: 'エアコンクリーニング 料金', kw: 'エアコン 掃除 費用', categoryNames: ['料金'], excerpt: 'エアコンクリーニングの料金は機種や台数で変わります。本記事では相場と内訳を…' },
+  { id: 'ci-disassembly', title: 'エアコンの分解洗浄とは？通常クリーニングとの違い', url: 'https://sample-clean.jp/disassembly', mainKw: 'エアコン 分解洗浄', kw: '内部洗浄 違い', categoryNames: ['サービス'], excerpt: '分解洗浄は内部部品を取り外して洗う方法です。通常清掃との違いを…' },
+  { id: 'ci-choose', title: '失敗しないエアコンクリーニング業者の選び方', url: 'https://sample-clean.jp/choose', mainKw: 'エアコンクリーニング 業者 おすすめ', kw: '業者 選び方 比較', categoryNames: ['業者選び'], excerpt: '業者選びで確認すべき料金体系・実績・保証のポイントを整理します…' },
+  { id: 'ci-diy', title: 'エアコン掃除を自分でやる方法と業者依頼の判断基準', url: 'https://sample-clean.jp/diy-or-pro', mainKw: 'エアコン 掃除 自分で', kw: 'DIY 業者 比較', categoryNames: ['お役立ち'], excerpt: '自分で掃除できる範囲と業者に頼むべきケースを整理します…' },
+  // GSC順位スナップショットには無いが在庫にある記事（在庫フォールバック確認用）。
+  // 提案1のサブKW「エアコンクリーニング 一台」に一致し、「既存記事あり（検索順位データなし）」を出す。
+  { id: 'ci-onesize', title: 'エアコンクリーニング1台あたりの料金と追加費用の目安', url: 'https://sample-clean.jp/one-unit-price', mainKw: 'エアコンクリーニング 一台', kw: '一台 いくら', categoryNames: ['料金'], excerpt: '1台あたりの基本料金と、台数・機種による追加費用の目安を解説します…' },
 ];
 
 const DEV_SAMPLE_RANKING_SNAPSHOT: RankingSnapshotItem[] = [
-  { queryNormalized: 'エアコンクリーニング 料金', position: 8, impressions: 1200, clicks: 96, url: 'https://sample-clean.jp/price', title: 'エアコンクリーニングの料金相場と内訳を徹底解説', contentAnnotationId: 'ci-1' },
-  { queryNormalized: 'エアコン 分解洗浄', position: 22, impressions: 540, clicks: 12, url: 'https://sample-clean.jp/disassembly', title: '分解洗浄とは？通常クリーニングとの違い', contentAnnotationId: 'ci-2' },
-  { queryNormalized: 'エアコン 掃除 自分で', position: 3, impressions: 2100, clicks: 210, url: 'https://sample-clean.jp/diy-or-pro', title: 'エアコン掃除を自分でやる方法と業者依頼の判断基準', contentAnnotationId: 'ci-3' },
-  { queryNormalized: 'エアコン 掃除 業者 おすすめ', position: 35, impressions: 320, clicks: 4, url: 'https://sample-clean.jp/diy-or-pro', title: 'エアコン掃除を自分でやる方法と業者依頼の判断基準', contentAnnotationId: 'ci-3' },
+  // 上位安定（1〜3位）→ AI は「現状維持寄り」を出す想定
+  { queryNormalized: 'エアコンクリーニング', position: 2, impressions: 5400, clicks: 540, url: 'https://sample-clean.jp/cleaning', title: 'エアコンクリーニングとは｜料金・作業の流れ・効果まとめ', contentAnnotationId: 'ci-top' },
+  // 中位帯（4〜30位）→ AI は「既存修正（上昇余地大）」を出す想定
+  { queryNormalized: 'エアコンクリーニング 料金', position: 8, impressions: 1200, clicks: 96, url: 'https://sample-clean.jp/price', title: 'エアコンクリーニングの料金相場と内訳を徹底解説', contentAnnotationId: 'ci-price' },
+  { queryNormalized: 'エアコン 分解洗浄', position: 18, impressions: 540, clicks: 12, url: 'https://sample-clean.jp/disassembly', title: 'エアコンの分解洗浄とは？通常クリーニングとの違い', contentAnnotationId: 'ci-disassembly' },
+  { queryNormalized: 'エアコンクリーニング 業者 おすすめ', position: 26, impressions: 420, clicks: 9, url: 'https://sample-clean.jp/choose', title: '失敗しないエアコンクリーニング業者の選び方', contentAnnotationId: 'ci-choose' },
+  // content_annotation_id NULL（WP未取込）→ タイトル空・URL のみのフォールバック確認
+  { queryNormalized: 'エアコン 掃除 業者', position: 42, impressions: 380, clicks: 6, url: 'https://sample-clean.jp/legacy-cleaning-guide', title: '', contentAnnotationId: null },
+  // ※「エアコン内部クリーニング」「エアコン 洗浄 プロ」等は意図的に未登録 → 順位データなし（新規候補）
 ];
