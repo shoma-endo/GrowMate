@@ -137,11 +137,11 @@ export function EvaluationControls({
     ? '検索順位データがありません'
     : '検索順位データが古い可能性があります';
   const gscNoticeMessage = gscNoData
-    ? 'Search Console 連携が未完了か、データがまだ取り込まれていません。提案に含まれる「検索順位」は表示されません。Search Console 連携設定を確認してください。'
+    ? 'Search Console の検索順位データがまだ取り込まれていません（未連携の場合は連携も必要です）。提案に含まれる「検索順位」は表示されません。Search Console データをインポートしてください。'
     : `最新の検索順位データは ${gscFreshness?.latestDate}（約${gscFreshness?.daysStale}日前）です。提案に表示される順位が現在の実態とずれている場合があります。最新化するには Search Console データをインポートしてください。`;
-  const gscNoticeRules: LinkedMessageRule[] = gscNoData
-    ? [{ phrase: 'Search Console 連携設定を確認', href: '/setup/gsc', variant: 'button-link' }]
-    : [{ phrase: 'Search Console データをインポート', href: '/gsc-import', variant: 'button-link' }];
+  const gscNoticeRules: LinkedMessageRule[] = [
+    { phrase: 'Search Console データをインポート', href: '/gsc-import', variant: 'button-link' },
+  ];
 
   // WordPress 記事在庫が無い時の注意喚起（新規/既存修正の判定材料が不足するため）。
   const wpNoInventory = hasContentInventory === false;
