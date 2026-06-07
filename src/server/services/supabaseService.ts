@@ -2128,6 +2128,16 @@ export class SupabaseService {
       contentAnnotationId: row.content_annotation_id,
     }));
 
+    // 期間集約が効いているか／カバレッジを本番ログで確認できるようにする（秘密情報は出さない）。
+    // saturated=true は集約後クエリ数が limit に張り付き、改善幅が頭打ちになっている可能性を示す。
+    console.info('[SupabaseService] ranking snapshot aggregated', {
+      dateRangeDays: windowDays,
+      startDate,
+      endDate: latest.date,
+      rowCount: items.length,
+      saturated: items.length >= limit,
+    });
+
     return this.success(items);
   }
 
