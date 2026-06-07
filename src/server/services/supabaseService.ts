@@ -15,6 +15,7 @@ import type { UserRole } from '@/types/user';
 import type {
   ContentInventoryItem,
   GoogleAdsEvaluationSettingsRecord,
+  GscDataFreshness,
   RankingSnapshotItem,
   UpsertGoogleAdsEvaluationSettingsInput,
 } from '@/types/google-ads-evaluation';
@@ -2050,6 +2051,47 @@ export class SupabaseService {
     }));
 
     return this.success(items);
+  }
+
+  /**
+   * §17 補助: GSC データの鮮度（最新取得日・経過日数・データ有無）を取得する。
+   * 「コンテンツ戦略提案」カードで、順位データが古い/無い場合の注意喚起に使う。
+   * 順位スナップショットと同じ propertyUri 解決を流用する軽量メソッド。
+   */
+  async getGscDataFreshness(userId: string): Promise<SupabaseResult<GscDataFreshness>> {
+    const gscCredential = await this.getGscCredentialByUserId(userId);
+    const propertyUri = gscCredential?.propertyUri ?? null;
+    if (!propertyUri) {
+      return this.success({ hasData: false, latestDate: null, daysStale: null });
+    }
+
+    const { data: latest, error } = await this.supabase
+      .from('gsc_query_metrics')
+      .select('date')
+      .eq('user_id', userId)
+      .eq('property_uri', propertyUri)
+      .eq('search_type', 'web')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      return this.failure('GSCデータ鮮度の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to resolve gsc data freshness',
+        context: { userId },
+      });
+    }
+
+    if (!latest) {
+      return this.success({ hasData: false, latestDate: null, daysStale: null });
+    }
+
+    const latestMs = Date.parse(`${latest.date}T00:00:00Z`);
+    const todayMs = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+    const daysStale = Math.max(0, Math.floor((todayMs - latestMs) / 86_400_000));
+
+    return this.success({ hasData: true, latestDate: latest.date, daysStale });
   }
 
   /**

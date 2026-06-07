@@ -14,6 +14,7 @@ import {
 import type {
   GoogleAdsAiAnalysisResult,
   GoogleAdsEvaluationSettings,
+  GscDataFreshness,
   UpdateGoogleAdsEvaluationSettingsInput,
 } from '@/types/google-ads-evaluation';
 
@@ -116,6 +117,41 @@ export async function getEvaluationSettings(): Promise<{
     };
   } catch (error) {
     console.error('[getEvaluationSettings] Unexpected error:', error);
+    return {
+      success: false,
+      error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_FETCH_FAILED,
+    };
+  }
+}
+
+export async function getGscDataFreshness(): Promise<{
+  success: boolean;
+  data?: GscDataFreshness;
+  error?: string;
+  emailLinkConflict?: true;
+}> {
+  try {
+    const auth = await getAuthenticatedUserId();
+    if (!auth.success) {
+      return {
+        success: false,
+        error: auth.error,
+        ...(auth.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+      };
+    }
+
+    const supabaseService = new SupabaseService();
+    const result = await supabaseService.getGscDataFreshness(auth.userId);
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error.userMessage,
+      };
+    }
+
+    return { success: true, data: result.data };
+  } catch (error) {
+    console.error('[getGscDataFreshness] Unexpected error:', error);
     return {
       success: false,
       error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_FETCH_FAILED,

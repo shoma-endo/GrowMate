@@ -56,6 +56,19 @@ export interface TopProposalKeyword {
 }
 
 /**
+ * §17 補助: GSC データの鮮度。
+ * 「コンテンツ戦略提案」カードで、順位データが古い/無い場合の注意喚起に使う。
+ */
+export interface GscDataFreshness {
+  /** 当該プロパティの web 検索データが1件以上あるか */
+  hasData: boolean;
+  /** 最新取得日（YYYY-MM-DD, JST/プロパティ基準のGSC日付）。データ無しは null */
+  latestDate: string | null;
+  /** 最新取得日から今日までの経過日数。データ無しは null */
+  daysStale: number | null;
+}
+
+/**
  * §17: GSC（自社順位）スナップショットの1件。
  * URL/タイトルは content_annotation_id（FK）経由で content_annotations に突合する。
  */

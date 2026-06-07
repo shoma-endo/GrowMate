@@ -2,28 +2,35 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Lightbulb, Loader2, Mail } from 'lucide-react';
+import { AlertCircle, Lightbulb, Loader2, Mail } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ServiceSelector } from '@/components/ServiceSelector';
-import { LinkedMessage } from '@/components/LinkedMessage';
+import { LinkedMessage, type LinkedMessageRule } from '@/components/LinkedMessage';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GOOGLE_ADS_REAUTH_LINK_RULES } from '@/lib/constants';
 import { getBrief } from '@/server/actions/brief.actions';
 import {
   getEvaluationSettings,
+  getGscDataFreshness,
   runGoogleAdsAiAnalysis,
   updateEvaluationSettings,
 } from '@/server/actions/googleAdsEvaluation.actions';
 import type { Service } from '@/server/schemas/brief.schema';
-import type { GoogleAdsEvaluationSettings } from '@/types/google-ads-evaluation';
+import type {
+  GoogleAdsEvaluationSettings,
+  GscDataFreshness,
+} from '@/types/google-ads-evaluation';
 
 interface EvaluationControlsProps {
   hasEmailAddress: boolean;
   initialSettings: GoogleAdsEvaluationSettings;
 }
+
+/** GSC 検索順位データを「古い」と判定して注意喚起するしきい値（日数）。GSC は通常 2〜3 日の遅延がある。 */
+const GSC_STALE_THRESHOLD_DAYS = 14;
 
 function parseDateRangeDays(value: string): number | null {
   const numericValue = Number(value);
@@ -39,6 +46,7 @@ export function EvaluationControls({
   initialSettings,
 }: EvaluationControlsProps) {
   const [settings, setSettings] = useState(initialSettings);
+  const [gscFreshness, setGscFreshness] = useState<GscDataFreshness | null>(null);
   const [dateRangeInput, setDateRangeInput] = useState(String(initialSettings.dateRangeDays));
   const [dateRangeError, setDateRangeError] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -92,8 +100,38 @@ export function EvaluationControls({
     };
   }, []);
 
+  // GSC データ鮮度を取得（古い/無い時だけ注意喚起する。失敗時は何も出さない）。
+  useEffect(() => {
+    let isActive = true;
+    getGscDataFreshness().then(result => {
+      if (isActive && result.success && result.data) {
+        setGscFreshness(result.data);
+      }
+    });
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   const isServiceMissing = !isServicesLoading && !servicesError && services.length === 0;
   const cannotRunForServices = isServicesLoading || Boolean(servicesError) || isServiceMissing;
+
+  // 検索順位データの鮮度に応じた注意喚起（古い/無い時だけ表示）。
+  const gscNoData = gscFreshness ? !gscFreshness.hasData : false;
+  const gscStale = Boolean(
+    gscFreshness?.hasData &&
+      gscFreshness.daysStale !== null &&
+      gscFreshness.daysStale >= GSC_STALE_THRESHOLD_DAYS
+  );
+  const gscNoticeTitle = gscNoData
+    ? '検索順位データがありません'
+    : '検索順位データが古い可能性があります';
+  const gscNoticeMessage = gscNoData
+    ? 'Search Console 連携が未完了か、データがまだ取り込まれていません。提案に含まれる「検索順位」は表示されません。Search Console 連携設定を確認してください。'
+    : `最新の検索順位データは ${gscFreshness?.latestDate}（約${gscFreshness?.daysStale}日前）です。提案に表示される順位が現在の実態とずれている場合があります。最新化するには Search Console データをインポートしてください。`;
+  const gscNoticeRules: LinkedMessageRule[] = gscNoData
+    ? [{ phrase: 'Search Console 連携設定を確認', href: '/setup/gsc', variant: 'button-link' }]
+    : [{ phrase: 'Search Console データをインポート', href: '/gsc-import', variant: 'button-link' }];
 
   const handleRun = () => {
     if (isServiceMissing) {
@@ -257,6 +295,18 @@ export function EvaluationControls({
 
       {settings.lastEvaluatedOn && (
         <p className="text-xs text-slate-500">最終成功実行日: {settings.lastEvaluatedOn}</p>
+      )}
+
+      {(gscNoData || gscStale) && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-600" aria-hidden />
+            <AlertTitle className="mb-0 text-amber-900">{gscNoticeTitle}</AlertTitle>
+          </div>
+          <AlertDescription className="mt-1 text-amber-800">
+            <LinkedMessage message={gscNoticeMessage} rules={gscNoticeRules} />
+          </AlertDescription>
+        </Alert>
       )}
 
       {!hasEmailAddress && (
