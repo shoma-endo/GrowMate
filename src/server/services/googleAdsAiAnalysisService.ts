@@ -27,6 +27,17 @@ const DEFAULT_DATE_RANGE_DAYS = 30;
 // §17 Increment2: AI 出力末尾の ```json ... ``` ブロックを抽出する正規表現
 const JSON_BLOCK_REGEX = /```json\s*([\s\S]*?)\s*```/i;
 
+/**
+ * §17.4: 既存コンテンツ在庫の突合インデックス。
+ * - byMainKw / byKw: 正規化キー → 記事。優先順（main_kw > kw）保証のため別Mapに分離する。
+ * - articles: タイトル全トークン包含フォールバック用に正規化タイトルを保持。
+ */
+interface InventoryIndex {
+  byMainKw: Map<string, ContentInventoryItem>;
+  byKw: Map<string, ContentInventoryItem>;
+  articles: { item: ContentInventoryItem; normalizedTitle: string }[];
+}
+
 function buildAnalysisPrompt(
   template: string,
   variables: Record<string, string>
@@ -687,20 +698,65 @@ class GoogleAdsAiAnalysisService {
   }
 
   /**
-   * §17.4: 既存コンテンツ在庫を main_kw（正規化）で索引する。
+   * §17.4: 既存コンテンツ在庫を突合用に索引する。
+   * main_kw だけでなく kw（参考KW群）も完全一致キーに含め、タイトルは部分一致用に保持する。
    * GSC に順位が無くても既存記事の有無・タイトル・URL を提示するための突合に使う。
    */
-  private buildInventoryMap(
-    contentInventory: ContentInventoryItem[]
-  ): Map<string, ContentInventoryItem> {
-    const inventoryByMainKw = new Map<string, ContentInventoryItem>();
+  private buildInventoryIndex(contentInventory: ContentInventoryItem[]): InventoryIndex {
+    const byMainKw = new Map<string, ContentInventoryItem>();
+    const byKw = new Map<string, ContentInventoryItem>();
+    const articles: InventoryIndex['articles'] = [];
     for (const item of contentInventory) {
-      const key = normalizeQuery(item.mainKw ?? '');
-      if (key && !inventoryByMainKw.has(key)) {
-        inventoryByMainKw.set(key, item);
+      const mainKey = normalizeQuery(item.mainKw ?? '');
+      if (mainKey && !byMainKw.has(mainKey)) {
+        byMainKw.set(mainKey, item);
       }
+      if (item.kw) {
+        for (const token of item.kw.split(/[\n,、/／・]/)) {
+          const key = normalizeQuery(token);
+          if (key && !byKw.has(key)) {
+            byKw.set(key, item);
+          }
+        }
+      }
+      articles.push({ item, normalizedTitle: normalizeQuery(item.title ?? '') });
     }
-    return inventoryByMainKw;
+    return { byMainKw, byKw, articles };
+  }
+
+  /**
+   * §17.4: 提案KWに対応する既存記事を解決する（先勝ち）。
+   * ① main_kw 完全一致 → ② kw 完全一致 → ③ タイトル全トークン包含（2トークン以上で誤マッチ抑制）。
+   * main_kw を kw より優先するため、両者は別Mapに分けて順に検索する。
+   * AI の「既存修正」判定（意味的）に、コード側の突合（完全一致のみ）が追従できるよう緩和したもの。
+   */
+  private resolveInventoryArticle(
+    kw: string,
+    index: InventoryIndex
+  ): ContentInventoryItem | undefined {
+    const normalizedKey = normalizeQuery(kw);
+    const exactMainKw = index.byMainKw.get(normalizedKey);
+    if (exactMainKw) {
+      return exactMainKw;
+    }
+    const exactKw = index.byKw.get(normalizedKey);
+    if (exactKw) {
+      return exactKw;
+    }
+
+    // タイトル全トークン包含フォールバック。1トークンの汎用語での誤マッチを避けるため2トークン以上に限定。
+    const tokens = kw
+      .split(/[\s　]+/)
+      .map(token => normalizeQuery(token))
+      .filter(token => token.length > 0);
+    if (tokens.length < 2) {
+      return undefined;
+    }
+    const found = index.articles.find(
+      ({ normalizedTitle }) =>
+        normalizedTitle.length > 0 && tokens.every(token => normalizedTitle.includes(token))
+    );
+    return found?.item;
   }
 
   /**
@@ -711,7 +767,7 @@ class GoogleAdsAiAnalysisService {
     label: string,
     kw: string,
     snapshotByQuery: Map<string, RankingSnapshotItem>,
-    inventoryByMainKw: Map<string, ContentInventoryItem>
+    inventoryIndex: InventoryIndex
   ): string {
     const normalized = normalizeQuery(kw);
 
@@ -729,7 +785,7 @@ class GoogleAdsAiAnalysisService {
     }
 
     // 2) GSC 順位は無いが既存記事（WP在庫）あり → 記事のタイトル・URL を提示
-    const article = inventoryByMainKw.get(normalized);
+    const article = this.resolveInventoryArticle(kw, inventoryIndex);
     if (article) {
       const items = ['- 既存記事あり（検索順位データなし）'];
       if (article.title) {
@@ -752,28 +808,27 @@ class GoogleAdsAiAnalysisService {
   private buildProposalRankingBlock(
     proposal: TopProposalKeyword,
     snapshotByQuery: Map<string, RankingSnapshotItem>,
-    inventoryByMainKw: Map<string, ContentInventoryItem>
+    inventoryIndex: InventoryIndex
   ): string {
     const heading = '**▼ 既存コンテンツの順位 ▼**';
     const allKws = [proposal.mainKw, ...proposal.subKws];
     // GSC順位・WP在庫のいずれかに一致するKWがあるか
-    const anyMatched = allKws.some(kw => {
-      const n = normalizeQuery(kw);
-      return snapshotByQuery.has(n) || inventoryByMainKw.has(n);
-    });
+    const anyMatched = allKws.some(
+      kw =>
+        snapshotByQuery.has(normalizeQuery(kw)) ||
+        this.resolveInventoryArticle(kw, inventoryIndex) !== undefined
+    );
     if (!anyMatched) {
       return [heading, '', '- 全キーワードで順位データなし'].join('\n');
     }
 
     const parts = [
-      this.renderKwRanking('▼ メインKW ▼', proposal.mainKw, snapshotByQuery, inventoryByMainKw),
+      this.renderKwRanking('▼ メインKW ▼', proposal.mainKw, snapshotByQuery, inventoryIndex),
     ];
     if (proposal.subKws.length > 0) {
       parts.push('**▼ サブKW ▼**');
       parts.push(
-        ...proposal.subKws.map(kw =>
-          this.renderKwRanking('・', kw, snapshotByQuery, inventoryByMainKw)
-        )
+        ...proposal.subKws.map(kw => this.renderKwRanking('・', kw, snapshotByQuery, inventoryIndex))
       );
     }
     return [heading, '', ...parts].join('\n\n');
@@ -803,12 +858,12 @@ class GoogleAdsAiAnalysisService {
     }
 
     const snapshotByQuery = this.buildSnapshotMap(rankingSnapshot);
-    const inventoryByMainKw = this.buildInventoryMap(contentInventory);
+    const inventoryIndex = this.buildInventoryIndex(contentInventory);
     const hasSnapshot = rankingSnapshot.length > 0;
     const sorted = [...proposals].sort((a, b) => a.rank - b.rank);
 
     // 判定見出しをアンカーに、判定ブロック直後（次の見出しの前）へ順位ブロックを差し込む。
-    const injected = this.injectRankingAfterJudgment(body, sorted, snapshotByQuery, inventoryByMainKw);
+    const injected = this.injectRankingAfterJudgment(body, sorted, snapshotByQuery, inventoryIndex);
     if (injected) {
       return injected;
     }
@@ -823,7 +878,7 @@ class GoogleAdsAiAnalysisService {
         `### 優先順位${proposal.rank}位 ${proposal.mainKw}\n\n${this.buildProposalRankingBlock(
           proposal,
           snapshotByQuery,
-          inventoryByMainKw
+          inventoryIndex
         )}`
     );
     const headerLines = ['## 現状成績（検索順位・タイトル・URL）'];
@@ -842,7 +897,7 @@ class GoogleAdsAiAnalysisService {
     body: string,
     sorted: TopProposalKeyword[],
     snapshotByQuery: Map<string, RankingSnapshotItem>,
-    inventoryByMainKw: Map<string, ContentInventoryItem>
+    inventoryIndex: InventoryIndex
   ): string | null {
     // 判定見出し（太字・空白・スラッシュ有無のゆれを許容）
     const judgmentHeadingRe = /▼[^\n]*新規作成[^\n]*既存修正[^\n]*判定[^\n]*▼/;
@@ -861,7 +916,7 @@ class GoogleAdsAiAnalysisService {
           // 前後を空行で挟み、直後の見出し（▼顕在ニーズ等）と段落が結合しないようにする。
           out.push(
             '',
-            this.buildProposalRankingBlock(proposal, snapshotByQuery, inventoryByMainKw),
+            this.buildProposalRankingBlock(proposal, snapshotByQuery, inventoryIndex),
             ''
           );
         }
