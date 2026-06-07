@@ -1,6 +1,7 @@
 import { SupabaseClient, type PostgrestError } from '@supabase/supabase-js';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { SupabaseClientManager } from '@/lib/client-manager';
+import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, TablesUpdate } from '@/types/database.types';
 import {
@@ -2076,13 +2077,40 @@ export class SupabaseService {
   }
 
   /**
+   * GSC プロパティURI を「取得失敗」と「未連携(null)」を区別して返す。
+   * getGscCredentialByUserId は DB エラー時も null を返すため、障害を未連携と誤認しないようにする用途。
+   * 鮮度判定・順位スナップショットの両経路で共用する。
+   */
+  private async resolveGscPropertyUri(userId: string): Promise<SupabaseResult<string | null>> {
+    const { data, error } = await this.supabase
+      .from('gsc_credentials')
+      .select('property_uri')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      return this.failure('GSC連携情報の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to resolve gsc property_uri',
+        context: { userId },
+      });
+    }
+
+    return this.success(data?.property_uri ?? null);
+  }
+
+  /**
    * §17 補助: GSC データの鮮度（最新取得日・経過日数・データ有無）を取得する。
    * 「コンテンツ戦略提案」カードで、順位データが古い/無い場合の注意喚起に使う。
    * 順位スナップショットと同じ propertyUri 解決を流用する軽量メソッド。
    */
   async getGscDataFreshness(userId: string): Promise<SupabaseResult<GscDataFreshness>> {
-    const gscCredential = await this.getGscCredentialByUserId(userId);
-    const propertyUri = gscCredential?.propertyUri ?? null;
+    // 取得失敗（DB障害等）を未連携と誤認しないよう、失敗はそのまま伝播する。
+    const propertyResult = await this.resolveGscPropertyUri(userId);
+    if (!propertyResult.success) {
+      return propertyResult;
+    }
+    const propertyUri = propertyResult.data;
     if (!propertyUri) {
       return this.success({ hasData: false, latestDate: null, daysStale: null });
     }
@@ -2109,8 +2137,9 @@ export class SupabaseService {
       return this.success({ hasData: false, latestDate: null, daysStale: null });
     }
 
+    // GSC の date は JST 基準のため、今日も JST で算出する（UTC だと JST 0〜9時に1日ずれる）。
     const latestMs = Date.parse(`${latest.date}T00:00:00Z`);
-    const todayMs = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+    const todayMs = Date.parse(`${formatJstDateISO(new Date())}T00:00:00Z`);
     const daysStale = Math.max(0, Math.floor((todayMs - latestMs) / 86_400_000));
 
     return this.success({ hasData: true, latestDate: latest.date, daysStale });
@@ -2132,8 +2161,12 @@ export class SupabaseService {
   ): Promise<SupabaseResult<RankingSnapshotItem[]>> {
     // 1ユーザーが複数プロパティ・複数 search_type の指標を持ち得るため、
     // 順位の信頼性確保のためユーザーの GSC プロパティ + web 検索に絞り込む。
-    const gscCredential = await this.getGscCredentialByUserId(userId);
-    const propertyUri = gscCredential?.propertyUri ?? null;
+    // 取得失敗（DB障害等）を未連携と誤認しないよう、失敗はそのまま伝播する。
+    const propertyResult = await this.resolveGscPropertyUri(userId);
+    if (!propertyResult.success) {
+      return propertyResult;
+    }
+    const propertyUri = propertyResult.data;
     if (!propertyUri) {
       return this.success([]);
     }
