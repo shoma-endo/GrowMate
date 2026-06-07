@@ -13,6 +13,7 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GOOGLE_ADS_REAUTH_LINK_RULES } from '@/lib/constants';
 import { getBrief } from '@/server/actions/brief.actions';
 import {
+  getContentInventoryStatus,
   getEvaluationSettings,
   getGscDataFreshness,
   runGoogleAdsAiAnalysis,
@@ -47,6 +48,7 @@ export function EvaluationControls({
 }: EvaluationControlsProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [gscFreshness, setGscFreshness] = useState<GscDataFreshness | null>(null);
+  const [hasContentInventory, setHasContentInventory] = useState<boolean | null>(null);
   const [dateRangeInput, setDateRangeInput] = useState(String(initialSettings.dateRangeDays));
   const [dateRangeError, setDateRangeError] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -100,14 +102,22 @@ export function EvaluationControls({
     };
   }, []);
 
-  // GSC データ鮮度を取得（古い/無い時だけ注意喚起する。失敗時は何も出さない）。
+  // 提案データの準備状況（GSC 鮮度・WP 在庫）を取得。古い/無い時だけ注意喚起する（失敗時は何も出さない）。
   useEffect(() => {
     let isActive = true;
-    getGscDataFreshness().then(result => {
-      if (isActive && result.success && result.data) {
-        setGscFreshness(result.data);
+    Promise.all([getGscDataFreshness(), getContentInventoryStatus()]).then(
+      ([freshness, inventory]) => {
+        if (!isActive) {
+          return;
+        }
+        if (freshness.success && freshness.data) {
+          setGscFreshness(freshness.data);
+        }
+        if (inventory.success && typeof inventory.hasContent === 'boolean') {
+          setHasContentInventory(inventory.hasContent);
+        }
       }
-    });
+    );
     return () => {
       isActive = false;
     };
@@ -132,6 +142,14 @@ export function EvaluationControls({
   const gscNoticeRules: LinkedMessageRule[] = gscNoData
     ? [{ phrase: 'Search Console 連携設定を確認', href: '/setup/gsc', variant: 'button-link' }]
     : [{ phrase: 'Search Console データをインポート', href: '/gsc-import', variant: 'button-link' }];
+
+  // WordPress 記事在庫が無い時の注意喚起（新規/既存修正の判定材料が不足するため）。
+  const wpNoInventory = hasContentInventory === false;
+  const wpNoticeMessage =
+    'WordPress 記事が未取込のため、提案の「新規作成 / 既存修正」の判定材料が不足します。WordPress 記事をインポートしてください。';
+  const wpNoticeRules: LinkedMessageRule[] = [
+    { phrase: 'WordPress 記事をインポート', href: '/wordpress-import', variant: 'button-link' },
+  ];
 
   const handleRun = () => {
     if (isServiceMissing) {
@@ -305,6 +323,18 @@ export function EvaluationControls({
           </div>
           <AlertDescription className="mt-1 text-amber-800">
             <LinkedMessage message={gscNoticeMessage} rules={gscNoticeRules} />
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {wpNoInventory && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-600" aria-hidden />
+            <AlertTitle className="mb-0 text-amber-900">既存コンテンツが取り込まれていません</AlertTitle>
+          </div>
+          <AlertDescription className="mt-1 text-amber-800">
+            <LinkedMessage message={wpNoticeMessage} rules={wpNoticeRules} />
           </AlertDescription>
         </Alert>
       )}

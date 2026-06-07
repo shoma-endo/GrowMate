@@ -2054,6 +2054,28 @@ export class SupabaseService {
   }
 
   /**
+   * §17 補助: 既存コンテンツ在庫（WP由来の実在記事）が1件以上あるかを判定する。
+   * 「コンテンツ戦略提案」カードの注意喚起用。本文等は転送せず count(head) のみで存在確認する。
+   */
+  async hasContentInventory(userId: string): Promise<SupabaseResult<boolean>> {
+    const { count, error } = await this.supabase
+      .from('content_annotations')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .not('wp_post_id', 'is', null);
+
+    if (error) {
+      return this.failure('既存コンテンツ在庫の確認に失敗しました', {
+        error,
+        developerMessage: 'Failed to check content inventory existence',
+        context: { userId },
+      });
+    }
+
+    return this.success((count ?? 0) > 0);
+  }
+
+  /**
    * §17 補助: GSC データの鮮度（最新取得日・経過日数・データ有無）を取得する。
    * 「コンテンツ戦略提案」カードで、順位データが古い/無い場合の注意喚起に使う。
    * 順位スナップショットと同じ propertyUri 解決を流用する軽量メソッド。

@@ -159,6 +159,42 @@ export async function getGscDataFreshness(): Promise<{
   }
 }
 
+export async function getContentInventoryStatus(): Promise<{
+  success: boolean;
+  hasContent?: boolean;
+  error?: string;
+  emailLinkConflict?: true;
+}> {
+  try {
+    const auth = await getAuthenticatedUserId();
+    if (!auth.success) {
+      return {
+        success: false,
+        error: auth.error,
+        ...(auth.emailLinkConflict ? { emailLinkConflict: true as const } : {}),
+      };
+    }
+
+    const supabaseService = new SupabaseService();
+    // 存在確認のみのため、本文等を転送しない軽量な count(head) クエリを使う。
+    const result = await supabaseService.hasContentInventory(auth.userId);
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error.userMessage,
+      };
+    }
+
+    return { success: true, hasContent: result.data };
+  } catch (error) {
+    console.error('[getContentInventoryStatus] Unexpected error:', error);
+    return {
+      success: false,
+      error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SETTINGS_FETCH_FAILED,
+    };
+  }
+}
+
 export async function updateEvaluationSettings(
   input: UpdateGoogleAdsEvaluationSettingsInput
 ): Promise<{
