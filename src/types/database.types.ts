@@ -1111,6 +1111,24 @@ export type Database = {
           total_queries: number
         }[]
       }
+      get_gsc_ranking_snapshot: {
+        Args: {
+          p_end_date: string
+          p_limit: number
+          p_property_uri: string
+          p_start_date: string
+          p_user_id: string
+        }
+        Returns: {
+          clicks: number
+          content_annotation_id: string | null
+          impressions: number
+          position: number
+          query_normalized: string
+          title: string
+          url: string
+        }[]
+      }
       get_sessions_with_messages: {
         Args: { p_limit?: number; p_user_id: string }
         Returns: {

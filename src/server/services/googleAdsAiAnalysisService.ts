@@ -271,7 +271,8 @@ class GoogleAdsAiAnalysisService {
         this.supabaseService.getContentInventoryByUserId(userId),
         this.supabaseService.getRankingSnapshotByUserId(
           userId,
-          GoogleAdsAiAnalysisService.RANKING_SNAPSHOT_LIMIT
+          GoogleAdsAiAnalysisService.RANKING_SNAPSHOT_LIMIT,
+          dateRangeDays
         ),
         // 顧客名解決（Google Ads API）も独立データのため並列化する。
         // resolveCustomerName は内部で例外を握り潰し null を返すため Promise.all を巻き込まない。

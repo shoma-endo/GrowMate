@@ -2053,13 +2053,18 @@ export class SupabaseService {
   }
 
   /**
-   * §17: GSC 自社順位スナップショット（最新取得日分）を取得する。
-   * 日付混在を避けるため最新日のみを対象にし、position 昇順・impressions 降順で上位 limit 件に制限する。
-   * URL/タイトルは content_annotation_id（FK）経由で content_annotations に突合する（URL文字列マッチではない）。
+   * §17: GSC 自社順位スナップショットを取得する。
+   * 広告データと同じ分析対象期間（dateRangeDays）に窓を揃え、最新日から遡って集約する。
+   * 最新日のみだと GSC のクエリ別データは日次でスパースなため、実際は上位でも順位行が欠落しやすい。
+   * 集約（同一 query_normalized のインプレッション加重平均 position・合計指標、代表ページ解決）は
+   * RPC get_gsc_ranking_snapshot に委譲し、DB側で窓内全行を対象に行う（事前の行キャップなし）。
+   * 代表ページは (query, url) 単位の合計インプレッション最大のページ、URL/タイトルはその
+   * content_annotation_id（FK）経由で解決する（URL文字列マッチではない）。
    */
   async getRankingSnapshotByUserId(
     userId: string,
-    limit = 100
+    limit = 100,
+    dateRangeDays = 1
   ): Promise<SupabaseResult<RankingSnapshotItem[]>> {
     // 1ユーザーが複数プロパティ・複数 search_type の指標を持ち得るため、
     // 順位の信頼性確保のためユーザーの GSC プロパティ + web 検索に絞り込む。
@@ -2091,71 +2096,37 @@ export class SupabaseService {
       return this.success([]);
     }
 
-    const { data, error } = await this.supabase
-      .from('gsc_query_metrics')
-      .select('query_normalized, position, impressions, clicks, normalized_url, content_annotation_id')
-      .eq('user_id', userId)
-      .eq('property_uri', propertyUri)
-      .eq('search_type', 'web')
-      .eq('date', latest.date)
-      .order('position', { ascending: true })
-      .order('impressions', { ascending: false })
-      .limit(limit);
+    // 広告データと同じ分析対象期間に窓を揃える（startDate = 最新日 − (dateRangeDays − 1)）。
+    const windowDays = Math.max(1, Math.floor(dateRangeDays));
+    const startDateObj = new Date(`${latest.date}T00:00:00Z`);
+    startDateObj.setUTCDate(startDateObj.getUTCDate() - (windowDays - 1));
+    const startDate = startDateObj.toISOString().slice(0, 10);
+
+    const { data, error } = await this.supabase.rpc('get_gsc_ranking_snapshot', {
+      p_user_id: userId,
+      p_property_uri: propertyUri,
+      p_start_date: startDate,
+      p_end_date: latest.date,
+      p_limit: limit,
+    });
 
     if (error) {
       return this.failure('検索順位スナップショットの取得に失敗しました', {
         error,
-        developerMessage: 'Failed to fetch gsc ranking snapshot',
+        developerMessage: 'Failed to fetch gsc ranking snapshot via RPC',
         context: { userId },
       });
     }
 
-    const rows = data ?? [];
-    const annotationIds = [
-      ...new Set(
-        rows
-          .map(row => row.content_annotation_id)
-          .filter((id): id is string => id !== null)
-      ),
-    ];
-
-    const annotationMap = new Map<
-      string,
-      { canonical_url: string | null; normalized_url: string | null; wp_post_title: string | null }
-    >();
-    if (annotationIds.length > 0) {
-      const { data: annotations, error: annotationError } = await this.supabase
-        .from('content_annotations')
-        .select('id, canonical_url, normalized_url, wp_post_title')
-        .in('id', annotationIds);
-
-      if (annotationError) {
-        return this.failure('検索順位スナップショットの取得に失敗しました', {
-          error: annotationError,
-          developerMessage: 'Failed to resolve content_annotations for ranking snapshot',
-          context: { userId },
-        });
-      }
-
-      for (const annotation of annotations ?? []) {
-        annotationMap.set(annotation.id, annotation);
-      }
-    }
-
-    const items: RankingSnapshotItem[] = rows.map(row => {
-      const annotation = row.content_annotation_id
-        ? annotationMap.get(row.content_annotation_id)
-        : undefined;
-      return {
-        queryNormalized: row.query_normalized,
-        position: row.position,
-        impressions: row.impressions,
-        clicks: row.clicks,
-        url: annotation?.canonical_url ?? annotation?.normalized_url ?? row.normalized_url,
-        title: annotation?.wp_post_title ?? '',
-        contentAnnotationId: row.content_annotation_id,
-      };
-    });
+    const items: RankingSnapshotItem[] = (data ?? []).map(row => ({
+      queryNormalized: row.query_normalized,
+      position: row.position,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      url: row.url ?? '',
+      title: row.title ?? '',
+      contentAnnotationId: row.content_annotation_id,
+    }));
 
     return this.success(items);
   }
