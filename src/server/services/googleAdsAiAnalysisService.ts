@@ -934,18 +934,25 @@ class GoogleAdsAiAnalysisService {
     const hasSnapshot = rankingSnapshot.length > 0;
     const sorted = [...proposals].sort((a, b) => a.rank - b.rank);
 
-    // 判定見出しをアンカーに、判定ブロック直後（次の見出しの前）へ順位ブロックを差し込む。
-    const injected = this.injectRankingAfterJudgment(body, sorted, snapshotByQuery, inventoryIndex);
-    if (injected) {
-      return injected;
-    }
-
-    // フォールバック: 判定見出しが見つからなければ末尾にまとめて付記し、情報を失わない。
-    console.warn(
-      '[GoogleAdsAiAnalysisService] ranking placed at bottom (fallback): judgment heading not found for inline injection',
-      { proposalCount: sorted.length }
+    // 「優先順位N位」アンカーで提案を明示対応づけ、判定ブロック直後へ順位ブロックを差し込む。
+    // 出現順では見出し欠落時に別提案の事実が混入し得るため、rank で対応づけて誤帰属を防ぐ。
+    const { body: injectedBody, injectedRanks } = this.injectRankingAfterJudgment(
+      body,
+      sorted,
+      snapshotByQuery,
+      inventoryIndex
     );
-    const blocks = sorted.map(
+
+    // インライン注入できなかった提案（見出し欠落・rank不一致）だけを末尾へ付記し、誤帰属なく情報を残す。
+    const remaining = sorted.filter(proposal => !injectedRanks.has(proposal.rank));
+    if (remaining.length === 0) {
+      return injectedBody;
+    }
+    console.warn(
+      '[GoogleAdsAiAnalysisService] ranking placed at bottom for unmatched proposals',
+      { injected: injectedRanks.size, remaining: remaining.length }
+    );
+    const blocks = remaining.map(
       proposal =>
         `### 優先順位${proposal.rank}位 ${proposal.mainKw}\n\n${this.buildProposalRankingBlock(
           proposal,
@@ -957,33 +964,45 @@ class GoogleAdsAiAnalysisService {
     if (!hasSnapshot) {
       headerLines.push('※ 検索順位データがありません。');
     }
-    return `${body}\n\n${[...headerLines, '', ...blocks].join('\n\n')}`;
+    return `${injectedBody}\n\n${[...headerLines, '', ...blocks].join('\n\n')}`;
   }
 
   /**
    * §17.4 Increment2: 本文中の各「▼ 新規作成 / 既存修正の判定 ▼」ブロックの直後
    * （＝判定ブロックの次に現れる見出し行の手前）へ、提案の順位ブロックを挿入する。
-   * 判定見出しは出現順に sorted[i] と対応づける。1件も挿入できなければ null を返す（呼び出し側がフォールバック）。
+   * 提案の対応づけは出現順ではなく「優先順位N位」アンカーで行い、見出し欠落時の誤帰属を防ぐ。
+   * rank が特定できない判定見出しには注入しない。注入できた rank の集合を返し、
+   * 未注入の提案は呼び出し側が末尾へ付記する（ラベル付きで誤帰属しない）。
    */
   private injectRankingAfterJudgment(
     body: string,
     sorted: TopProposalKeyword[],
     snapshotByQuery: Map<string, RankingSnapshotItem>,
     inventoryIndex: InventoryIndex
-  ): string | null {
+  ): { body: string; injectedRanks: Set<number> } {
     // 判定見出し（太字・空白・スラッシュ有無のゆれを許容）
     const judgmentHeadingRe = /▼[^\n]*新規作成[^\n]*既存修正[^\n]*判定[^\n]*▼/;
     // 次セクションの見出し行（▼…▼ 見出し、または # 見出し）
     const sectionHeadingRe = /^\s*(?:#{1,6}\s|\*{0,2}▼)/;
+    // 提案アンカー（例:「優先順位1位 …」）。この番号で提案を明示対応づける。
+    const rankAnchorRe = /優先順位\s*(\d+)\s*位/;
+
+    const byRank = new Map<number, TopProposalKeyword>();
+    for (const proposal of sorted) {
+      if (!byRank.has(proposal.rank)) {
+        byRank.set(proposal.rank, proposal);
+      }
+    }
 
     const lines = body.split('\n');
     const out: string[] = [];
-    let index = 0;
-    let awaitingInsert = false;
+    const injectedRanks = new Set<number>();
+    let currentRank: number | null = null;
+    let awaitingRank: number | null = null; // 判定見出し後、注入待ちの提案 rank（不明なら null）
 
     const insertBlock = (): void => {
-      if (index < sorted.length) {
-        const proposal = sorted[index];
+      if (awaitingRank !== null && !injectedRanks.has(awaitingRank)) {
+        const proposal = byRank.get(awaitingRank);
         if (proposal) {
           // 前後を空行で挟み、直後の見出し（▼顕在ニーズ等）と段落が結合しないようにする。
           out.push(
@@ -991,28 +1010,33 @@ class GoogleAdsAiAnalysisService {
             this.buildProposalRankingBlock(proposal, snapshotByQuery, inventoryIndex),
             ''
           );
+          injectedRanks.add(awaitingRank);
         }
-        index += 1;
       }
-      awaitingInsert = false;
+      awaitingRank = null;
     };
 
     for (const line of lines) {
       // 判定ブロックの後、最初に現れた見出しの手前で順位ブロックを差し込む。
-      if (awaitingInsert && sectionHeadingRe.test(line)) {
+      if (awaitingRank !== null && sectionHeadingRe.test(line)) {
         insertBlock();
+      }
+      const rankMatch = line.match(rankAnchorRe);
+      if (rankMatch?.[1]) {
+        currentRank = Number(rankMatch[1]);
       }
       out.push(line);
       if (judgmentHeadingRe.test(line)) {
-        awaitingInsert = true;
+        // 現在の提案 rank をアンカーに注入予約（不明なら予約せず＝末尾送り）。
+        awaitingRank = currentRank;
       }
     }
     // 判定ブロックが本文末尾だった場合の取りこぼし防止
-    if (awaitingInsert) {
+    if (awaitingRank !== null) {
       insertBlock();
     }
 
-    return index > 0 ? out.join('\n') : null;
+    return { body: out.join('\n'), injectedRanks };
   }
 
   private formatInteger(value: number): string {
