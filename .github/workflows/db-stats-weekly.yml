@@ -28,6 +28,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Cache db stats history
+        uses: actions/cache@v4
+        with:
+          path: scripts/db-stats-history.json
+          key: db-stats-history-v1
+
       - name: Create .env.local file
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
