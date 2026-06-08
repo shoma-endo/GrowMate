@@ -20,6 +20,7 @@ ok()   { echo -e "${GREEN}✓${NC} $1"; }
 EXPECTED_SKILLS=(
   agent-workflow-core
   code-refactoring
+  growmate-ui-ux
   implementation-guidelines
   nextjs-server
   project-naming

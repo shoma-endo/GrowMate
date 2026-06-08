@@ -17,6 +17,7 @@ description: CLAUDE.md の最小コア運用を補完する共通ワークフロ
 - 実装前に対象領域の Skill を特定し、未読なら先に読む。
 - 優先参照:
   - 実装全般: `implementation-guidelines`
+  - UI/UX 実装（着手前・コーディング中）: `growmate-ui-ux`
   - React: `react`（`patterns.md` / `doctor.md`）
   - Server Actions / Zod / エラー: `nextjs-server`
   - Supabase: `supabase`
