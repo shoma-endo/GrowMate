@@ -178,6 +178,52 @@ export class SupabaseService {
   }
 
   /**
+   * PostgREST の Max rows（db-max-rows, 既定1000）を超える件数を range ページングで全件取得する汎用ヘルパー。
+   *
+   * - `runPage(from, to)` は range を適用したクエリ結果（PromiseLike）を返すこと。
+   *   `.select(..., { count: 'exact' })` を付けると総件数で確実に停止できる（推奨）。
+   * - `pageSize` は **db-max-rows 以下**にすること（既定1000）。超えると各ページがクランプされ
+   *   `batch.length < pageSize` で早期終了し取りこぼす。
+   * - ページング安定化のため、呼び出し側の `order` は**決定的（タイブレーク付き）**にすること。
+   * - `maxRows` を渡すとその件数で打ち切り `truncated=true` を返す（暴走防止の任意上限）。
+   */
+  protected async fetchAllPaged<T>(
+    runPage: (
+      from: number,
+      to: number
+    ) => PromiseLike<{ data: T[] | null; error: PostgrestError | null; count: number | null }>,
+    options: { pageSize?: number; maxRows?: number } = {}
+  ): Promise<{ data: T[]; error: PostgrestError | null; truncated: boolean }> {
+    const pageSize = options.pageSize ?? 1000;
+    const maxRows = options.maxRows ?? Number.POSITIVE_INFINITY;
+    const all: T[] = [];
+    let total: number | null = null;
+
+    for (let from = 0; from < maxRows; from += pageSize) {
+      const to = Math.min(from + pageSize, maxRows) - 1;
+      const { data, error, count } = await runPage(from, to);
+      if (error) {
+        return { data: all, error, truncated: false };
+      }
+      if (count !== null && count !== undefined) {
+        total = count;
+      }
+      const batch = data ?? [];
+      all.push(...batch);
+      // 空ページ＝終端。短いページ＝（count未指定時の）終端判定。count があれば総件数で停止。
+      if (batch.length === 0 || batch.length < pageSize) {
+        break;
+      }
+      if (total !== null && all.length >= total) {
+        break;
+      }
+    }
+
+    const truncated = total !== null && all.length < total;
+    return { data: all, error: null, truncated };
+  }
+
+  /**
    * Supabaseクライアントを取得（サブクラスからのアクセス用）
    */
   getClient(): SupabaseClient<Database> {
@@ -2055,6 +2101,62 @@ export class SupabaseService {
   }
 
   /**
+   * §17.4: メール記事リンク突合（コード側）専用の軽量な在庫取得。
+   * プロンプトへは渡さずコードの突合インデックスにのみ使うため、本文抜粋・カテゴリは取得しない
+   * （トークン非依存なので件数上限を広く取り、突合カバレッジを最大化する）。
+   */
+  async getContentInventoryForMatching(
+    userId: string,
+    options: { maxRows?: number } = {}
+  ): Promise<SupabaseResult<ContentInventoryItem[]>> {
+    // db-max-rows(1000) を超える記事数でも全件取得するため range ページングする。
+    // count:'exact' で総件数を取得し確実に停止。並びは決定的（updated_at 同値は id でタイブレーク）。
+    const { data, error, truncated } = await this.fetchAllPaged(
+      (from, to) =>
+        this.supabase
+          .from('content_annotations')
+          .select('id, wp_post_title, canonical_url, normalized_url, main_kw, kw', {
+            count: 'exact',
+          })
+          .eq('user_id', userId)
+          .not('wp_post_id', 'is', null)
+          .order('updated_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to),
+      { pageSize: 1000, ...(options.maxRows !== undefined && { maxRows: options.maxRows }) }
+    );
+
+    if (error) {
+      return this.failure('既存コンテンツ在庫（突合用）の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to fetch content inventory for matching',
+        context: { userId },
+      });
+    }
+
+    const items: ContentInventoryItem[] = data.map(row => ({
+      id: row.id,
+      title: row.wp_post_title ?? '',
+      url: row.canonical_url ?? row.normalized_url ?? '',
+      mainKw: row.main_kw,
+      kw: row.kw,
+      categoryNames: [],
+      excerpt: '',
+    }));
+
+    // maxRows 上限を明示指定した場合のみ truncated が立つ（既定は全件取得＝漏れなし）。
+    if (truncated) {
+      console.warn('[SupabaseService] content inventory for matching truncated by maxRows ceiling', {
+        userId,
+        maxRows: options.maxRows,
+        returned: items.length,
+      });
+    }
+
+    return this.success(items);
+  }
+
+  /**
    * §17 補助: 既存コンテンツ在庫（WP由来の実在記事）が1件以上あるかを判定する。
    * 「コンテンツ戦略提案」カードの注意喚起用。本文等は転送せず count(head) のみで存在確認する。
    */
@@ -2234,6 +2336,87 @@ export class SupabaseService {
       rowCount: items.length,
       saturated: items.length >= limit,
     });
+
+    return this.success(items);
+  }
+
+  /**
+   * §17.4: メール記事リンクの「順位突合」を狙い撃ち取得する。
+   * 指定クエリ（正規化済み）だけを統合RPC get_gsc_ranking_snapshot（p_queries 指定）で集約取得するため、取得上限が不要。
+   * query_normalized はインポート時に normalizeQuery で生成され冪等のため、呼び出し側は
+   * normalizeQuery(KW) を渡せばよい。広告データと同じ分析対象期間で窓を揃える。
+   */
+  async getRankingForQueries(
+    userId: string,
+    dateRangeDays: number,
+    queries: string[]
+  ): Promise<SupabaseResult<RankingSnapshotItem[]>> {
+    if (queries.length === 0) {
+      return this.success([]);
+    }
+
+    const propertyResult = await this.resolveGscPropertyUri(userId);
+    if (!propertyResult.success) {
+      return propertyResult;
+    }
+    const propertyUri = propertyResult.data;
+    if (!propertyUri) {
+      return this.success([]);
+    }
+
+    const { data: latest, error: latestError } = await this.supabase
+      .from('gsc_query_metrics')
+      .select('date')
+      .eq('user_id', userId)
+      .eq('property_uri', propertyUri)
+      .eq('search_type', 'web')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestError) {
+      return this.failure('検索順位（狙い撃ち）の取得に失敗しました', {
+        error: latestError,
+        developerMessage: 'Failed to resolve latest gsc date for targeted ranking',
+        context: { userId },
+      });
+    }
+
+    if (!latest) {
+      return this.success([]);
+    }
+
+    const windowDays = Math.max(1, Math.floor(dateRangeDays));
+    const startDateObj = new Date(`${latest.date}T00:00:00Z`);
+    startDateObj.setUTCDate(startDateObj.getUTCDate() - (windowDays - 1));
+    const startDate = startDateObj.toISOString().slice(0, 10);
+
+    // 統合RPC get_gsc_ranking_snapshot を p_queries 指定で呼ぶ＝狙い撃ち（p_limit 省略＝上限なし）。
+    const { data, error } = await this.supabase.rpc('get_gsc_ranking_snapshot', {
+      p_user_id: userId,
+      p_property_uri: propertyUri,
+      p_start_date: startDate,
+      p_end_date: latest.date,
+      p_queries: queries,
+    });
+
+    if (error) {
+      return this.failure('検索順位（狙い撃ち）の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to fetch targeted gsc ranking via RPC',
+        context: { userId },
+      });
+    }
+
+    const items: RankingSnapshotItem[] = (data ?? []).map(row => ({
+      queryNormalized: row.query_normalized,
+      position: row.position,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      url: row.url ?? '',
+      title: row.title ?? '',
+      contentAnnotationId: row.content_annotation_id,
+    }));
 
     return this.success(items);
   }

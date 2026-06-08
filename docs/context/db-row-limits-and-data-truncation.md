@@ -52,7 +52,7 @@
 ### (a) 狙い撃ち取得（targeted lookup）— 突合の本命
 必要なキー（例: 提案キーワード約35個）だけをDBに問い合わせる。**取得上限が原理的に不要**（結果がキー数に有界）。
 
-- 実装: RPC `get_gsc_ranking_for_queries(..., p_queries text[])` が `query_normalized = ANY(p_queries)` で絞り集約。
+- 実装: 統合RPC `get_gsc_ranking_snapshot(..., p_queries text[])` を `p_queries` 指定で呼ぶと `query_normalized = ANY(p_queries)` で絞り集約（`p_limit` 省略＝上限なし・結果はKW数に有界）。プロンプト用は同RPCを `p_limit=500`（`p_queries` 省略）で呼ぶ。集約本体は1つに統合済み。
 - 前提: 突合キーの正規化が**両側で一致**していること。`gsc_query_metrics.query_normalized` はインポート時に `normalizeQuery`（`src/lib/normalize-query.ts`、NFKC+lowercase+空白圧縮、**冪等**）で生成されるため、呼び出し側も `normalizeQuery(KW)` を渡せば直接突合できる。
 
 ### (b) range ページング — 全件が要るが狙い撃ちできない場合
@@ -84,7 +84,7 @@
 | 在庫（プロンプト） | `getContentInventoryByUserId(userId, 50)` | 50（直近更新・抜粋付き） | 意図的（トークン制御） |
 | 在庫（突合） | `getContentInventoryForMatching(userId)` | **上限なし**（range ページング全件・軽量） | ― |
 | 順位（プロンプト） | `getRankingSnapshotByUserId(userId, 500, days)` → RPC `get_gsc_ranking_snapshot` | 500（上位サンプル） | 意図的（トークン制御） |
-| 順位（突合） | `getRankingForQueries(userId, days, kws)` → RPC `get_gsc_ranking_for_queries` | **上限なし**（提案KWに有界・狙い撃ち） | ― |
+| 順位（突合） | `getRankingForQueries(userId, days, kws)` → 統合RPC `get_gsc_ranking_snapshot`（`p_queries` 指定） | **上限なし**（提案KWに有界・狙い撃ち） | ― |
 | 検索語句 | `getSearchTermMetrics`（Google Ads API） | GAQL `LIMIT 1000` | API側・別系統 |
 
 突合ロジック（`composeEmailMarkdown` 配下）:
@@ -133,10 +133,10 @@
 - `src/server/services/supabaseService.ts`
   - `fetchAllPaged<T>`（汎用 range ページング）
   - `getContentInventoryByUserId`（プロンプト・抜粋付き上位）/ `getContentInventoryForMatching`（突合・全件ページング）
-  - `getRankingSnapshotByUserId`（プロンプト・RPC LIMIT）/ `getRankingForQueries`（突合・狙い撃ちRPC）
+  - `getRankingSnapshotByUserId`（プロンプト・統合RPC を `p_limit` 指定）/ `getRankingForQueries`（突合・統合RPC を `p_queries` 指定＝狙い撃ち）
   - `resolveGscPropertyUri`（取得失敗と未連携の区別）
-- `supabase/migrations/20260607000000_add_gsc_ranking_snapshot_rpc.sql`（集約スナップショットRPC）
-- `supabase/migrations/20260608000000_add_gsc_ranking_for_queries_rpc.sql`（狙い撃ちRPC）
+- `supabase/migrations/20260607000000_add_gsc_ranking_snapshot_rpc.sql`（集約スナップショットRPC・初版／5引数・本番適用済み）
+- `supabase/migrations/20260608000000_unify_gsc_ranking_snapshot_rpc.sql`（適用済み5引数を `DROP`→`p_queries`/`p_limit` 省略可の統合版を `CREATE`。狙い撃ちと上位N件を1関数で兼用）
 - `src/server/services/googleAdsAiAnalysisService.ts`（`composeEmailMarkdown` / `buildSnapshotMap` / `buildInventoryIndex` / `resolveInventoryArticle` / 定数 `*_PROMPT_LIMIT`）
 - `src/server/lib/gsc-config.ts`（インポート側の `GSC_QUERY_ROW_LIMIT` / `queryMaxPages`）
 - `src/lib/normalize-query.ts`（`normalizeQuery`・冪等）/ `gscImportService.ts`（`query_normalized` 生成）

@@ -118,8 +118,11 @@ function sanitizeEmailHtml(html: string): string {
 }
 
 class GoogleAdsAiAnalysisService {
-  // §17.4: GSC順位スナップショットの取得上限（DB参照のため GSC API クォータは消費しない）
-  private static readonly RANKING_SNAPSHOT_LIMIT = 500;
+  // §17.4: 「コード突合」と「プロンプト送付」を分離する。
+  // - 順位突合は AI 実行後に提案KWだけを狙い撃ち取得（getRankingForQueries）するため取得上限なし。
+  // - 在庫突合は軽量全件（タイトル包含のため）。プロンプトはトークン制御のため上位を抜粋する。
+  private static readonly RANKING_SNAPSHOT_PROMPT_LIMIT = 500; // プロンプト rankingData 用（上位抜粋）
+  private static readonly CONTENT_INVENTORY_PROMPT_LIMIT = 50; // プロンプト existingContent 用（抜粋付き上位）
 
   private readonly supabaseService: SupabaseService;
   private readonly googleAdsService: GoogleAdsService;
@@ -249,6 +252,7 @@ class GoogleAdsAiAnalysisService {
         searchTermResult,
         brief,
         contentInventoryResult,
+        contentInventoryMatchResult,
         rankingSnapshotResult,
         customerName,
       ] = await Promise.all([
@@ -279,10 +283,17 @@ class GoogleAdsAiAnalysisService {
           }),
         }),
         briefService.getVariablesByUserId(userId),
-        this.supabaseService.getContentInventoryByUserId(userId),
+        // プロンプト用（抜粋付き・上位N件）
+        this.supabaseService.getContentInventoryByUserId(
+          userId,
+          GoogleAdsAiAnalysisService.CONTENT_INVENTORY_PROMPT_LIMIT
+        ),
+        // 突合用（軽量・全件に近い母集団。プロンプトには渡さない）
+        this.supabaseService.getContentInventoryForMatching(userId),
+        // プロンプト rankingData 用の上位抜粋。順位の突合は後段で提案KWを狙い撃ちする。
         this.supabaseService.getRankingSnapshotByUserId(
           userId,
-          GoogleAdsAiAnalysisService.RANKING_SNAPSHOT_LIMIT,
+          GoogleAdsAiAnalysisService.RANKING_SNAPSHOT_PROMPT_LIMIT,
           dateRangeDays
         ),
         // 顧客名解決（Google Ads API）も独立データのため並列化する。
@@ -329,6 +340,12 @@ class GoogleAdsAiAnalysisService {
           contentInventoryResult.error
         );
       }
+      if (!contentInventoryMatchResult.success) {
+        console.warn(
+          '[GoogleAdsAiAnalysisService] Failed to fetch content inventory for matching (non-fatal):',
+          contentInventoryMatchResult.error
+        );
+      }
       if (!rankingSnapshotResult.success) {
         console.warn(
           '[GoogleAdsAiAnalysisService] Failed to fetch ranking snapshot (non-fatal):',
@@ -348,7 +365,12 @@ class GoogleAdsAiAnalysisService {
         contentInventoryCount: contentInventoryResult.success
           ? (contentInventoryResult.data?.length ?? 0)
           : 0,
+        // 突合用（コード側）の母集団件数。プロンプト件数とは別軸で観測する。
+        contentInventoryMatchCount: contentInventoryMatchResult.success
+          ? (contentInventoryMatchResult.data?.length ?? 0)
+          : 0,
         rankingSnapshotOk: rankingSnapshotResult.success,
+        // プロンプト rankingData 用の上位抜粋件数（順位の突合は AI 後の狙い撃ちで別途実施）。
         rankingSnapshotCount: rankingSnapshotResult.success
           ? (rankingSnapshotResult.data?.length ?? 0)
           : 0,
@@ -369,6 +391,18 @@ class GoogleAdsAiAnalysisService {
           error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_SERVICE_REQUIRED,
         };
       }
+
+      // 「突合とプロンプトの分離」:
+      // - 在庫突合は軽量全件（matchInventory）。取得失敗時は取得済みのプロンプト用在庫(上位50)へ
+      //   フォールバックし、従来より記事リンクが減る回帰を防ぐ。
+      // - 順位突合は AI 実行後に提案KWを狙い撃ち取得する（取得上限なし）。
+      // - プロンプトには上位抜粋のみ渡す＝トークン制御。
+      const matchInventory = contentInventoryMatchResult.success
+        ? contentInventoryMatchResult.data
+        : contentInventoryResult.success
+          ? contentInventoryResult.data
+          : [];
+
       const filledPrompt = buildAnalysisPrompt(promptTemplate.content, {
         persona: brief?.persona?.trim() || '（ペルソナ未設定）',
         serviceName: targetService.name,
@@ -403,10 +437,48 @@ class GoogleAdsAiAnalysisService {
         }
       );
 
+      // 順位突合は提案KWを狙い撃ち取得する（取得上限なし＝該当順位の取りこぼしを防ぐ）。
+      const proposalKws = [
+        ...new Set(
+          (extractTopProposals(analysisMarkdown) ?? [])
+            .flatMap(proposal => [proposal.mainKw, ...proposal.subKws])
+            .map(kw => normalizeQuery(kw))
+            .filter(kw => kw.length > 0)
+        ),
+      ];
+      const rankingForMatchResult = await this.supabaseService.getRankingForQueries(
+        userId,
+        dateRangeDays,
+        proposalKws
+      );
+      // 狙い撃ち取得が失敗（新RPC未適用・DB障害・デプロイ順序）でも、取得済みのプロンプト用上位500件へ
+      // フォールバックし、順位リンクが従来より消える回帰を防ぐ。
+      const rankingForMatch = rankingForMatchResult.success
+        ? rankingForMatchResult.data
+        : rankingSnapshotResult.success
+          ? rankingSnapshotResult.data
+          : [];
+      console.info('[GoogleAdsAiAnalysisService] targeted ranking lookup', {
+        requestedQueries: proposalKws.length,
+        // 狙い撃ちの実マッチ数（フォールバック後の件数を混ぜない）。
+        matchedQueries: rankingForMatchResult.success ? rankingForMatchResult.data.length : 0,
+        ok: rankingForMatchResult.success,
+        // 実際にプロンプト用500へフォールバックできたときのみ true（プロンプト用も失敗なら false）。
+        fallbackToPromptSnapshot:
+          !rankingForMatchResult.success && rankingSnapshotResult.success,
+        // 在庫突合の観測値（全件ページングが効いているかを本番で確認するため）。
+        inventoryForMatch: matchInventory.length,
+        inventoryMatchFetchOk: contentInventoryMatchResult.success,
+        // 全件取得に失敗しプロンプト用(上位50)へ退避したときのみ true。
+        inventoryFellBackToPrompt:
+          !contentInventoryMatchResult.success && contentInventoryResult.success,
+      });
+
+      // メール記事リンクの突合: 順位は狙い撃ち結果、在庫は軽量全件で行う。
       const emailMarkdown = this.composeEmailMarkdown(
         analysisMarkdown,
-        rankingSnapshotResult.success ? rankingSnapshotResult.data : [],
-        contentInventoryResult.success ? contentInventoryResult.data : []
+        rankingForMatch,
+        matchInventory
       );
       const htmlContent = sanitizeEmailHtml(await marked.parse(emailMarkdown));
       const subjectAccountPart = customerName ? ` / ${customerName}` : '';
