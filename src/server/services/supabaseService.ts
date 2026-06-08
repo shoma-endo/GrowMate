@@ -2069,29 +2069,62 @@ export class SupabaseService {
     userId: string,
     limit = 50
   ): Promise<SupabaseResult<ContentInventoryItem[]>> {
-    const { data, error } = await this.supabase
+    const selectColumns =
+      'id, wp_post_title, canonical_url, normalized_url, main_kw, kw, wp_category_names, wp_content_text';
+
+    // §17.4-C: KW狙いの記事（main_kw あり）を優先し、上限内でAIに見せる。
+    // PostgREST は `ORDER BY (main_kw IS NULL)` のような式ソートを書けないため、
+    // ①main_kw 非NULL を更新日降順で limit 件 → ②枠が余れば main_kw NULL を更新日降順で補充、
+    // の2クエリで「あり優先・各群で更新日降順」を正確に表現する（文字列順カットの事故を防ぐ）。
+    const keyed = await this.supabase
       .from('content_annotations')
-      .select(
-        'id, wp_post_title, canonical_url, normalized_url, main_kw, kw, wp_category_names, wp_content_text'
-      )
+      .select(selectColumns)
       .eq('user_id', userId)
       .not('wp_post_id', 'is', null)
-      // §17.4-C: KW狙いの記事（main_kw あり）を優先し、上限内でAIに見せる。
-      // お客様の声など main_kw 未設定の記事が直近更新で枠を埋め、KW記事が新規/既存判定に
-      // 使われない事故を防ぐ（main_kw 非NULL を先頭、その中で更新日降順）。
-      .order('main_kw', { ascending: true, nullsFirst: false })
+      .not('main_kw', 'is', null)
       .order('updated_at', { ascending: false })
       .limit(limit);
 
-    if (error) {
+    if (keyed.error) {
       return this.failure('既存コンテンツ在庫の取得に失敗しました', {
-        error,
-        developerMessage: 'Failed to fetch content inventory',
+        error: keyed.error,
+        developerMessage: 'Failed to fetch content inventory (keyed)',
         context: { userId },
       });
     }
 
-    const items: ContentInventoryItem[] = (data ?? []).map(row => ({
+    const rows: Array<{
+      id: string;
+      wp_post_title: string | null;
+      canonical_url: string | null;
+      normalized_url: string | null;
+      main_kw: string | null;
+      kw: string | null;
+      wp_category_names: string[] | null;
+      wp_content_text: string | null;
+    }> = keyed.data ?? [];
+    if (rows.length < limit) {
+      const fill = await this.supabase
+        .from('content_annotations')
+        .select(selectColumns)
+        .eq('user_id', userId)
+        .not('wp_post_id', 'is', null)
+        .is('main_kw', null)
+        .order('updated_at', { ascending: false })
+        .limit(limit - rows.length);
+
+      if (fill.error) {
+        return this.failure('既存コンテンツ在庫の取得に失敗しました', {
+          error: fill.error,
+          developerMessage: 'Failed to fetch content inventory (fill)',
+          context: { userId },
+        });
+      }
+
+      rows.push(...(fill.data ?? []));
+    }
+
+    const items: ContentInventoryItem[] = rows.map(row => ({
       id: row.id,
       title: row.wp_post_title ?? '',
       url: row.canonical_url ?? row.normalized_url ?? '',
