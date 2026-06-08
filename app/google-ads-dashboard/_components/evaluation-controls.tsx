@@ -221,6 +221,12 @@ export function EvaluationControls({
           <p className="text-sm text-slate-600">
             必要なタイミングで、キーワード指標をもとにコンテンツ戦略の改善提案をメールで送信します。
           </p>
+          <p className="text-xs text-slate-500">
+            <LinkedMessage
+              message="※「既存修正」の対象記事は WordPress に取り込み済みの記事から選定されます。トップページ等の未取込ページは対象に表示されない場合があります。未取込なら WordPress 記事をインポート してください。"
+              rules={wpNoticeRules}
+            />
+          </p>
         </div>
         <Button
           onClick={handleRun}

@@ -53,6 +53,11 @@ export interface TopProposalKeyword {
   rank: number;
   mainKw: string;
   subKws: string[];
+  /**
+   * §17.4-B: 「既存修正」と判定した場合に AI が名指しする対象既存記事のURL（任意）。
+   * コード側で在庫(content_annotations)のURLと突合して実在検証してから表示する（捏造防止）。
+   */
+  targetUrl?: string;
 }
 
 /**

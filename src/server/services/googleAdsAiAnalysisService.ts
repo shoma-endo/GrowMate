@@ -38,6 +38,8 @@ interface InventoryIndex {
   // 空白位置のゆれ（例「平飼い 卵 危険」↔「平飼い卵 危険」）を吸収する空白除去キー。
   byMainKwCompact: Map<string, ContentInventoryItem>;
   byKwCompact: Map<string, ContentInventoryItem>;
+  // §17.4-B: AI名指し target_url の実在検証用。正規化URL → 記事。
+  byUrl: Map<string, ContentInventoryItem>;
   articles: { item: ContentInventoryItem; normalizedTitle: string; compactTitle: string }[];
 }
 
@@ -48,6 +50,22 @@ interface InventoryIndex {
  */
 function compactKey(value: string): string {
   return normalizeQuery(value).replace(/[\s　]+/g, '');
+}
+
+/**
+ * §17.4-B: URL突合用の正規化キー。scheme/www/末尾スラッシュ/クエリ/フラグメントの揺れを吸収する。
+ * AIが名指しした target_url と在庫の canonical_url/normalized_url を緩く一致させるため。
+ */
+function normalizeUrlKey(value: string): string {
+  const trimmed = (value ?? '').trim().toLowerCase();
+  if (!trimmed) {
+    return '';
+  }
+  return trimmed
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '');
 }
 
 function buildAnalysisPrompt(
@@ -89,7 +107,12 @@ function extractTopProposals(markdown: string): TopProposalKeyword[] | null {
         .split(/[\n,、]/)
         .map(value => value.trim())
         .filter(value => value.length > 0);
-      return [{ rank, mainKw, subKws }];
+      // §17.4-B: 既存修正の対象記事URL（任意）。空文字や非文字列は未指定扱い。
+      const targetUrl =
+        typeof record.target_url === 'string' && record.target_url.trim().length > 0
+          ? record.target_url.trim()
+          : undefined;
+      return [{ rank, mainKw, subKws, ...(targetUrl ? { targetUrl } : {}) }];
     });
 
     return proposals.length > 0 ? proposals : null;
@@ -134,7 +157,7 @@ class GoogleAdsAiAnalysisService {
   // - 順位突合は AI 実行後に提案KWだけを狙い撃ち取得（getRankingForQueries）するため取得上限なし。
   // - 在庫突合は軽量全件（タイトル包含のため）。プロンプトはトークン制御のため上位を抜粋する。
   private static readonly RANKING_SNAPSHOT_PROMPT_LIMIT = 500; // プロンプト rankingData 用（上位抜粋）
-  private static readonly CONTENT_INVENTORY_PROMPT_LIMIT = 50; // プロンプト existingContent 用（抜粋付き上位）
+  private static readonly CONTENT_INVENTORY_PROMPT_LIMIT = 100; // プロンプト existingContent 用（§17.4-B: AIが対象記事を名指せるよう可視範囲を拡大）
 
   private readonly supabaseService: SupabaseService;
   private readonly googleAdsService: GoogleAdsService;
@@ -791,8 +814,13 @@ class GoogleAdsAiAnalysisService {
     const byKw = new Map<string, ContentInventoryItem>();
     const byMainKwCompact = new Map<string, ContentInventoryItem>();
     const byKwCompact = new Map<string, ContentInventoryItem>();
+    const byUrl = new Map<string, ContentInventoryItem>();
     const articles: InventoryIndex['articles'] = [];
     for (const item of contentInventory) {
+      const urlKey = normalizeUrlKey(item.url ?? '');
+      if (urlKey && !byUrl.has(urlKey)) {
+        byUrl.set(urlKey, item);
+      }
       const mainKey = normalizeQuery(item.mainKw ?? '');
       if (mainKey && !byMainKw.has(mainKey)) {
         byMainKw.set(mainKey, item);
@@ -819,7 +847,22 @@ class GoogleAdsAiAnalysisService {
         compactTitle: compactKey(item.title ?? ''),
       });
     }
-    return { byMainKw, byKw, byMainKwCompact, byKwCompact, articles };
+    return { byMainKw, byKw, byMainKwCompact, byKwCompact, byUrl, articles };
+  }
+
+  /**
+   * §17.4-B: AIが名指しした target_url を在庫(content_annotations)で実在検証して記事を返す。
+   * 在庫に無いURL（未取込ページ・AIの言い間違い）は undefined（表示しない＝捏造防止）。
+   */
+  private resolveArticleByUrl(
+    url: string | undefined,
+    index: InventoryIndex
+  ): ContentInventoryItem | undefined {
+    const key = normalizeUrlKey(url ?? '');
+    if (!key) {
+      return undefined;
+    }
+    return index.byUrl.get(key);
   }
 
   /**
@@ -925,6 +968,22 @@ class GoogleAdsAiAnalysisService {
     inventoryIndex: InventoryIndex
   ): string {
     const heading = '**▼ 既存コンテンツの順位 ▼**';
+
+    // §17.4-B: AIが名指しした「既存修正の対象記事」を在庫で実在検証して提示する（提案単位・1件）。
+    // 在庫に無いURL（未取込ページ・AIの言い間違い）は表示しない＝捏造防止。
+    const targetArticle = this.resolveArticleByUrl(proposal.targetUrl, inventoryIndex);
+    const targetBlock = targetArticle
+      ? [
+          '**▼ 対象既存記事（既存修正の対象）▼**',
+          [
+            targetArticle.title ? `- タイトル：${targetArticle.title}` : null,
+            targetArticle.url ? `- ${targetArticle.url}` : null,
+          ]
+            .filter((line): line is string => line !== null)
+            .join('\n'),
+        ].join('\n\n')
+      : null;
+
     const allKws = [proposal.mainKw, ...proposal.subKws];
     // GSC順位・WP在庫のいずれかに一致するKWがあるか
     const anyMatched = allKws.some(
@@ -933,7 +992,11 @@ class GoogleAdsAiAnalysisService {
         this.resolveInventoryArticle(kw, inventoryIndex) !== undefined
     );
     if (!anyMatched) {
-      return [heading, '', '- 全キーワードで順位データなし'].join('\n');
+      // KW別はマッチ無し。AI名指しの対象記事があれば「既存有無」として提示する。
+      const tail = targetBlock
+        ? [targetBlock, '- 各キーワードの検索順位データはなし']
+        : ['- 全キーワードで順位データなし'];
+      return [heading, '', ...tail].join('\n\n');
     }
 
     const parts = [
@@ -945,7 +1008,7 @@ class GoogleAdsAiAnalysisService {
         ...proposal.subKws.map(kw => this.renderKwRanking('・', kw, snapshotByQuery, inventoryIndex))
       );
     }
-    return [heading, '', ...parts].join('\n\n');
+    return [heading, '', ...(targetBlock ? [targetBlock] : []), ...parts].join('\n\n');
   }
 
   /**
@@ -975,6 +1038,18 @@ class GoogleAdsAiAnalysisService {
     const inventoryIndex = this.buildInventoryIndex(contentInventory);
     const hasSnapshot = rankingSnapshot.length > 0;
     const sorted = [...proposals].sort((a, b) => a.rank - b.rank);
+
+    // §17.4-B 可観測性: AIが名指しした対象記事URLを在庫で解決できたかを集計（本番検証用）。
+    const targetNamed = sorted.filter(p => (p.targetUrl ?? '').length > 0).length;
+    const targetResolved = sorted.filter(
+      p => this.resolveArticleByUrl(p.targetUrl, inventoryIndex) !== undefined
+    ).length;
+    console.info('[GoogleAdsAiAnalysisService] target article resolution', {
+      proposals: sorted.length,
+      named: targetNamed, // target_url を出した提案数（＝AIが既存修正対象を名指し）
+      resolved: targetResolved, // 在庫で実在解決できた数（＝メールに対象既存記事を表示）
+      unresolvedNamed: targetNamed - targetResolved, // 名指しされたが在庫に無い（未取込/言い間違い）
+    });
 
     // 「優先順位N位」アンカーで提案を明示対応づけ、判定ブロック直後へ順位ブロックを差し込む。
     // 出現順では見出し欠落時に別提案の事実が混入し得るため、rank で対応づけて誤帰属を防ぐ。
