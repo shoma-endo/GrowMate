@@ -36,6 +36,7 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
 # フロントエンド実装
 
 - **UI 実装方針**
+  - **画面・UI コンポーネントの新規追加・変更を始める前に**、`growmate-ui-ux` スキル（`.agents/skills/growmate-ui-ux/SKILL.md`）を **必ず Read する**。未読のまま UI コードを書かない。
   - レイアウト・スタイルは Tailwind CSS を基本とし、冗長なユーティリティクラスは必要に応じて `cva` 等で整理する。
   - コンポーネントは既存の shadcn ベースコンポーネント（`src/components/`）を優先して再利用する。
 

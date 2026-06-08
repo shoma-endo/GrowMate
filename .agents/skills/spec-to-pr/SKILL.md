@@ -1,6 +1,6 @@
 ---
 name: spec-to-pr
-description: docs/plans/ の仕様書を起点に、実装・CodeRabbitレビュー・修正・コミット・PR作成までを一気通貫で自動化する。「仕様を実装してPRにして」「spec-to-pr でこの機能を作って」「docs/plans/xxx.md を実装して」と言われたとき、または実装タスクを開始するときに必ず使う。
+description: docs/plans/ の仕様書を起点に、実装・CodeRabbitレビュー・修正・コミット・PR作成までを一気通貫で自動化する。「仕様を実装してPRにして」「spec-to-pr でこの機能を作って」「docs/plans/xxx.md を実装して」と言われたとき、または実装タスクを開始するときに必ず使う。実装レビューするだけの時は使わない。
 disable-model-invocation: true
 argument-hint: [spec-file-name-or-keyword]
 ---
