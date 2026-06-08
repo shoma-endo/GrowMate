@@ -35,7 +35,19 @@ const JSON_BLOCK_REGEX = /```json\s*([\s\S]*?)\s*```/i;
 interface InventoryIndex {
   byMainKw: Map<string, ContentInventoryItem>;
   byKw: Map<string, ContentInventoryItem>;
-  articles: { item: ContentInventoryItem; normalizedTitle: string }[];
+  // 空白位置のゆれ（例「平飼い 卵 危険」↔「平飼い卵 危険」）を吸収する空白除去キー。
+  byMainKwCompact: Map<string, ContentInventoryItem>;
+  byKwCompact: Map<string, ContentInventoryItem>;
+  articles: { item: ContentInventoryItem; normalizedTitle: string; compactTitle: string }[];
+}
+
+/**
+ * §17.4-A: 正規化（normalizeQuery）後に空白を全除去した突合キー。
+ * 日本語KWの空白位置ゆれ（「平飼い 卵 危険」↔「平飼い卵 危険」）を吸収するための補助キー。
+ * 突合（在庫）専用。GSC query_normalized 側は変更しない。
+ */
+function compactKey(value: string): string {
+  return normalizeQuery(value).replace(/[\s　]+/g, '');
 }
 
 function buildAnalysisPrompt(
@@ -777,11 +789,17 @@ class GoogleAdsAiAnalysisService {
   private buildInventoryIndex(contentInventory: ContentInventoryItem[]): InventoryIndex {
     const byMainKw = new Map<string, ContentInventoryItem>();
     const byKw = new Map<string, ContentInventoryItem>();
+    const byMainKwCompact = new Map<string, ContentInventoryItem>();
+    const byKwCompact = new Map<string, ContentInventoryItem>();
     const articles: InventoryIndex['articles'] = [];
     for (const item of contentInventory) {
       const mainKey = normalizeQuery(item.mainKw ?? '');
       if (mainKey && !byMainKw.has(mainKey)) {
         byMainKw.set(mainKey, item);
+      }
+      const mainCompact = compactKey(item.mainKw ?? '');
+      if (mainCompact && !byMainKwCompact.has(mainCompact)) {
+        byMainKwCompact.set(mainCompact, item);
       }
       if (item.kw) {
         for (const token of item.kw.split(/[\n,、/／・]/)) {
@@ -789,18 +807,28 @@ class GoogleAdsAiAnalysisService {
           if (key && !byKw.has(key)) {
             byKw.set(key, item);
           }
+          const compact = compactKey(token);
+          if (compact && !byKwCompact.has(compact)) {
+            byKwCompact.set(compact, item);
+          }
         }
       }
-      articles.push({ item, normalizedTitle: normalizeQuery(item.title ?? '') });
+      articles.push({
+        item,
+        normalizedTitle: normalizeQuery(item.title ?? ''),
+        compactTitle: compactKey(item.title ?? ''),
+      });
     }
-    return { byMainKw, byKw, articles };
+    return { byMainKw, byKw, byMainKwCompact, byKwCompact, articles };
   }
 
   /**
    * §17.4: 提案KWに対応する既存記事を解決する（先勝ち）。
-   * ① main_kw 完全一致 → ② kw 完全一致 → ③ タイトル全トークン包含（2トークン以上で誤マッチ抑制）。
+   * ① main_kw 完全一致 → ② kw 完全一致 → ③ 空白除去で main_kw/kw 一致（表記ゆれ吸収）
+   *   → ④ タイトル全トークン包含（2トークン以上で誤マッチ抑制・空白除去で比較）。
    * main_kw を kw より優先するため、両者は別Mapに分けて順に検索する。
-   * AI の「既存修正」判定（意味的）に、コード側の突合（完全一致のみ）が追従できるよう緩和したもの。
+   * AI の「既存修正」判定（意味的）に、コード側の突合が追従できるよう緩和したもの。
+   * ③④の空白除去は「平飼い 卵 危険」↔「平飼い卵 危険」型のゆれを救う（§17.4-A）。
    */
   private resolveInventoryArticle(
     kw: string,
@@ -816,17 +844,31 @@ class GoogleAdsAiAnalysisService {
       return exactKw;
     }
 
-    // タイトル全トークン包含フォールバック。1トークンの汎用語での誤マッチを避けるため2トークン以上に限定。
+    // ③ 空白位置のゆれを吸収（例: KW「平飼い卵 危険」↔ main_kw「平飼い 卵 危険」）。
+    const compactQuery = compactKey(kw);
+    if (compactQuery) {
+      const compactMain = index.byMainKwCompact.get(compactQuery);
+      if (compactMain) {
+        return compactMain;
+      }
+      const compactKwHit = index.byKwCompact.get(compactQuery);
+      if (compactKwHit) {
+        return compactKwHit;
+      }
+    }
+
+    // ④ タイトル全トークン包含フォールバック。1トークンの汎用語での誤マッチを避けるため2トークン以上に限定。
+    // 空白除去後のタイトル/トークンで比較し、表記ゆれ（平飼い卵↔平飼い 卵）を吸収する。
     const tokens = kw
       .split(/[\s　]+/)
-      .map(token => normalizeQuery(token))
+      .map(token => compactKey(token))
       .filter(token => token.length > 0);
     if (tokens.length < 2) {
       return undefined;
     }
     const found = index.articles.find(
-      ({ normalizedTitle }) =>
-        normalizedTitle.length > 0 && tokens.every(token => normalizedTitle.includes(token))
+      ({ compactTitle }) =>
+        compactTitle.length > 0 && tokens.every(token => compactTitle.includes(token))
     );
     return found?.item;
   }

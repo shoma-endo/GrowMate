@@ -2076,6 +2076,10 @@ export class SupabaseService {
       )
       .eq('user_id', userId)
       .not('wp_post_id', 'is', null)
+      // §17.4-C: KW狙いの記事（main_kw あり）を優先し、上限内でAIに見せる。
+      // お客様の声など main_kw 未設定の記事が直近更新で枠を埋め、KW記事が新規/既存判定に
+      // 使われない事故を防ぐ（main_kw 非NULL を先頭、その中で更新日降順）。
+      .order('main_kw', { ascending: true, nullsFirst: false })
       .order('updated_at', { ascending: false })
       .limit(limit);
 
