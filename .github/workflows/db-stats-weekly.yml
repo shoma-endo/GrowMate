@@ -32,7 +32,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: scripts/db-stats-history.json
-          key: db-stats-history-v1
+          key: db-stats-history-${{ github.run_id }}
+          restore-keys: |
+            db-stats-history-
 
       - name: Create .env.local file
         env:
