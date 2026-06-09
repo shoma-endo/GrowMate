@@ -74,6 +74,13 @@
 
 > ❌ `items.length >= limit` での検知は不可。`db-max-rows` でクランプされると `length < limit` になり検知できない。**必ず `count:'exact'` の総件数と比較する。**
 
+### (e) プロンプト投入を絞るときは「量」でなく「選別品質」
+トークン都合で投入数を絞る場合、**「impression 上位 N 件」のような単純カットは選別バイアスを生む**。出稿が1キャンペーンに偏ると上位がそのテーマで独占され、コンテンツ機会に効く多様な検索意図が締め出される（=「捨てていないのに役に立たない入力」）。
+
+- 原則: **取得は広めプール / 投入は選別**。取得上限（プール）と投入上限（プロンプト）を**別の値に分離**する。
+- 選別軸の例: **キー（例: キャンペーンID）横断のラウンドロビンで独占防止** + **関連度（情報系修飾の加点・純購買/ブランド語の減点）**。
+- 実装例: `curateSearchTermsForPrompt`（検索語句を pool 5000 → 投入 1500 に選別）。`campaignId` でグループ化（同名キャンペーン統合を回避）。
+
 ---
 
 ## 4. データソース別・上限の所在（2026-06-07 時点）
@@ -81,11 +88,11 @@
 ### コンテンツ戦略提案フロー（`googleAdsAiAnalysisService.ts`）
 | 取得 | メソッド | 上限 | 種別 |
 |---|---|---|---|
-| 在庫（プロンプト） | `getContentInventoryByUserId(userId, 50)` | 50（直近更新・抜粋付き） | 意図的（トークン制御） |
+| 在庫（プロンプト） | `getContentInventoryByUserId(userId, 100)` | 100（`main_kw` あり優先 → `updated_at` 降順 → `id` 副キー。§17.4-B で 50→100 に拡大・抜粋付き） | 意図的（トークン制御） |
 | 在庫（突合） | `getContentInventoryForMatching(userId)` | **上限なし**（range ページング全件・軽量） | ― |
 | 順位（プロンプト） | `getRankingSnapshotByUserId(userId, 500, days)` → RPC `get_gsc_ranking_snapshot` | 500（上位サンプル） | 意図的（トークン制御） |
 | 順位（突合） | `getRankingForQueries(userId, days, kws)` → 統合RPC `get_gsc_ranking_snapshot`（`p_queries` 指定） | **上限なし**（提案KWに有界・狙い撃ち） | ― |
-| 検索語句 | `getSearchTermMetrics`（Google Ads API） | GAQL `LIMIT 1000` | API側・別系統 |
+| 検索語句（プロンプト） | `getSearchTermMetrics`（pool）→ `curateSearchTermsForPrompt` | 取得5000プール → 投入1500に選別（impression偏重をやめキャンペーン横断＋情報寄り）。GAQL `LIMIT` は引数化（既定1000） | 意図的（トークン制御＋多様性） |
 
 突合ロジック（`composeEmailMarkdown` 配下）:
 - 順位: `buildSnapshotMap`（`normalizeQuery(query)` で索引）
@@ -137,6 +144,7 @@
   - `resolveGscPropertyUri`（取得失敗と未連携の区別）
 - `supabase/migrations/20260607000000_add_gsc_ranking_snapshot_rpc.sql`（集約スナップショットRPC・初版／5引数・本番適用済み）
 - `supabase/migrations/20260608000000_unify_gsc_ranking_snapshot_rpc.sql`（適用済み5引数を `DROP`→`p_queries`/`p_limit` 省略可の統合版を `CREATE`。狙い撃ちと上位N件を1関数で兼用）
-- `src/server/services/googleAdsAiAnalysisService.ts`（`composeEmailMarkdown` / `buildSnapshotMap` / `buildInventoryIndex` / `resolveInventoryArticle` / 定数 `*_PROMPT_LIMIT`）
+- `src/server/services/googleAdsAiAnalysisService.ts`（`composeEmailMarkdown` / `buildSnapshotMap` / `buildInventoryIndex` / `resolveInventoryArticle` / `curateSearchTermsForPrompt` / 定数 `*_PROMPT_LIMIT`・`SEARCH_TERM_FETCH_POOL`）
+- `src/server/services/googleAdsService.ts`（`getSearchTermMetrics` の `limit` 引数＝GAQL 取得プール上限。既定1000、AI分析は5000）
 - `src/server/lib/gsc-config.ts`（インポート側の `GSC_QUERY_ROW_LIMIT` / `queryMaxPages`）
 - `src/lib/normalize-query.ts`（`normalizeQuery`・冪等）/ `gscImportService.ts`（`query_normalized` 生成）
