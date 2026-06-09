@@ -161,6 +161,8 @@ class GoogleAdsAiAnalysisService {
   // 検索語句: 取得は広めプール（impression上位）を取り、プロンプトには多様性・情報寄りで絞った上位のみ渡す。
   private static readonly SEARCH_TERM_FETCH_POOL = 5000; // GAQL 取得上限（選別母集団）
   private static readonly SEARCH_TERM_PROMPT_LIMIT = 1500; // プロンプト投入上限（キュレーション後）
+  // 除外KW: 大規模口座（数万件）でプロンプトが溢れるため、CSV化に加え投入件数を上限で抑える。
+  private static readonly NEGATIVE_KEYWORD_PROMPT_LIMIT = 2000;
 
   private readonly supabaseService: SupabaseService;
   private readonly googleAdsService: GoogleAdsService;
@@ -447,9 +449,15 @@ class GoogleAdsAiAnalysisService {
       // raw（API取得）→ deduped（完全重複除去後＝実際にプロンプトへ入る行数）→ chars（整形後の文字数）。
       const negativeKeywordsRaw = negativeKeywordResult.data ?? [];
       const negativeKeywordsFormatted = this.formatNegativeKeywords(negativeKeywordsRaw);
+      const dedupedNegativeKwCount = dedupeNegativeKeywords(negativeKeywordsRaw).length;
       console.info('[GoogleAdsAiAnalysisService] negative keyword prompt load', {
         rawNegativeKw: negativeKeywordsRaw.length,
-        dedupedNegativeKw: dedupeNegativeKeywords(negativeKeywordsRaw).length,
+        dedupedNegativeKw: dedupedNegativeKwCount,
+        // 実際にプロンプトへ載せた件数（上限適用後）。
+        promptedNegativeKw: Math.min(
+          dedupedNegativeKwCount,
+          GoogleAdsAiAnalysisService.NEGATIVE_KEYWORD_PROMPT_LIMIT
+        ),
         negativeKwChars: negativeKeywordsFormatted.length,
       });
 
@@ -721,30 +729,57 @@ class GoogleAdsAiAnalysisService {
     return [header, separator, ...rows].join('\n');
   }
 
+  /** CSV セル化: 区切り文字・引用符・改行を含む値のみ二重引用符で囲み内部引用符をエスケープ。 */
+  private csvCell(value: string): string {
+    return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  }
+
+  /**
+   * 除外KWをプロンプト用に整形する。大規模口座（数万件）でトークンが溢れるため:
+   * - 件数: campaign（戦略的・広域）→ ad_group（戦術的・件数膨張源）の優先順で上位 N 件に制限。
+   * - 形式: CSV（パイプ表よりトークン節約。空欄は "-" でなく空文字）。
+   * - 省略分は無言で消さず件数を明記する（docs/context の原則(d)）。
+   */
   private formatNegativeKeywords(keywords: GoogleAdsNegativeKeyword[]): string {
     const deduped = dedupeNegativeKeywords(keywords);
     const header =
-      '除外キーワード | マッチタイプ | レベル | キャンペーン | キャンペーン状態 | 広告グループ | 広告グループ状態';
-    const separator =
-      '------------|------------|-------|------------|----------------|------------|----------------';
+      '除外キーワード,マッチタイプ,レベル,キャンペーン,キャンペーン状態,広告グループ,広告グループ状態';
 
     if (deduped.length === 0) {
-      return `${header}\n${separator}\n（除外キーワードなし） | - | - | - | - | - | -`;
+      return `${header}\n（除外キーワードなし）`;
     }
 
-    const rows = deduped.map(keyword =>
+    // campaign を ad_group より優先（安定ソートで同レベル内は dedupe 順を保持＝決定的）。
+    const levelRank: Record<GoogleAdsNegativeKeyword['level'], number> = {
+      campaign: 0,
+      ad_group: 1,
+    };
+    const ordered = [...deduped].sort((a, b) => levelRank[a.level] - levelRank[b.level]);
+    const limit = GoogleAdsAiAnalysisService.NEGATIVE_KEYWORD_PROMPT_LIMIT;
+    const capped = ordered.slice(0, limit);
+    const omitted = ordered.length - capped.length;
+
+    const rows = capped.map(keyword =>
       [
         keyword.keywordText,
         keyword.matchType,
         keyword.level,
-        keyword.campaignName || '-',
-        keyword.campaignStatus || '-',
-        keyword.adGroupName || '-',
-        keyword.adGroupStatus || '-',
-      ].join(' | ')
+        keyword.campaignName || '',
+        keyword.campaignStatus || '',
+        keyword.adGroupName || '',
+        keyword.adGroupStatus || '',
+      ]
+        .map(cell => this.csvCell(cell))
+        .join(',')
     );
 
-    return [header, separator, ...rows].join('\n');
+    const lines = [header, ...rows];
+    if (omitted > 0) {
+      lines.push(
+        `（ほか ${this.formatInteger(omitted)} 件は省略。campaign→ad_group の優先順で上位 ${this.formatInteger(limit)} 件を掲載）`
+      );
+    }
+    return lines.join('\n');
   }
 
   // 検索語句キュレーション用の語彙。コンテンツ機会に効く情報系を加点、純購買・ブランド系を減点する。
