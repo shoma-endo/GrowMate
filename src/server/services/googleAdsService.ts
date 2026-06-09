@@ -790,6 +790,8 @@ export class GoogleAdsService {
     input: GetSearchTermMetricsInput
   ): Promise<GetSearchTermMetricsResult> {
     const { accessToken, customerId, startDate, endDate, loginCustomerId } = input;
+    // 取得上限。選別母集団を広げたい呼び出し（AI分析のキュレーション用）では大きめを明示する。
+    const fetchLimit = Math.max(1, Math.floor(input.limit ?? 1000));
 
     const query = `
       SELECT
@@ -807,7 +809,7 @@ export class GoogleAdsService {
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
         AND metrics.impressions > 0
       ORDER BY metrics.impressions DESC
-      LIMIT 1000
+      LIMIT ${fetchLimit}
     `;
 
     const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${customerId}/googleAds:searchStream`;

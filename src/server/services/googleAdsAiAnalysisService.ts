@@ -158,6 +158,9 @@ class GoogleAdsAiAnalysisService {
   // - 在庫突合は軽量全件（タイトル包含のため）。プロンプトはトークン制御のため上位を抜粋する。
   private static readonly RANKING_SNAPSHOT_PROMPT_LIMIT = 500; // プロンプト rankingData 用（上位抜粋）
   private static readonly CONTENT_INVENTORY_PROMPT_LIMIT = 100; // プロンプト existingContent 用（§17.4-B: AIが対象記事を名指せるよう可視範囲を拡大）
+  // 検索語句: 取得は広めプール（impression上位）を取り、プロンプトには多様性・情報寄りで絞った上位のみ渡す。
+  private static readonly SEARCH_TERM_FETCH_POOL = 5000; // GAQL 取得上限（選別母集団）
+  private static readonly SEARCH_TERM_PROMPT_LIMIT = 1500; // プロンプト投入上限（キュレーション後）
 
   private readonly supabaseService: SupabaseService;
   private readonly googleAdsService: GoogleAdsService;
@@ -313,6 +316,8 @@ class GoogleAdsAiAnalysisService {
           customerId: credential.customerId,
           startDate,
           endDate,
+          // 選別母集団を広めに取得し、プロンプトには後段でキュレーションして絞る。
+          limit: GoogleAdsAiAnalysisService.SEARCH_TERM_FETCH_POOL,
           ...(credential.managerCustomerId && {
             loginCustomerId: credential.managerCustomerId,
           }),
@@ -438,13 +443,34 @@ class GoogleAdsAiAnalysisService {
           ? contentInventoryResult.data
           : [];
 
+      // §除外KW: プロンプトに入る除外KWテーブルの実負荷を可観測化する（トークン肥大の監視）。
+      // raw（API取得）→ deduped（完全重複除去後＝実際にプロンプトへ入る行数）→ chars（整形後の文字数）。
+      const negativeKeywordsRaw = negativeKeywordResult.data ?? [];
+      const negativeKeywordsFormatted = this.formatNegativeKeywords(negativeKeywordsRaw);
+      console.info('[GoogleAdsAiAnalysisService] negative keyword prompt load', {
+        rawNegativeKw: negativeKeywordsRaw.length,
+        dedupedNegativeKw: dedupeNegativeKeywords(negativeKeywordsRaw).length,
+        negativeKwChars: negativeKeywordsFormatted.length,
+      });
+
+      // 検索語句: impression上位プールから、多様性（キャンペーン横断）・情報寄りで投入数を絞る。
+      const searchTermPool = searchTermResult.data ?? [];
+      const curatedSearchTerms = this.curateSearchTermsForPrompt(
+        searchTermPool,
+        GoogleAdsAiAnalysisService.SEARCH_TERM_PROMPT_LIMIT
+      );
+      console.info('[GoogleAdsAiAnalysisService] search term prompt load', {
+        searchTermPool: searchTermPool.length,
+        searchTermCurated: curatedSearchTerms.length,
+      });
+
       const filledPrompt = buildAnalysisPrompt(promptTemplate.content, {
         persona: brief?.persona?.trim() || '（ペルソナ未設定）',
         serviceName: targetService.name,
         strength: this.formatStrength(targetService),
         keywordData: this.formatKeywordMetrics(keywordResult.data ?? []),
-        negativeKeywords: this.formatNegativeKeywords(negativeKeywordResult.data ?? []),
-        searchTermData: this.formatSearchTermMetrics(searchTermResult.data ?? []),
+        negativeKeywords: negativeKeywordsFormatted,
+        searchTermData: this.formatSearchTermMetrics(curatedSearchTerms),
         existingContent: this.formatContentInventory(
           contentInventoryResult.success ? contentInventoryResult.data : []
         ),
@@ -719,6 +745,75 @@ class GoogleAdsAiAnalysisService {
     );
 
     return [header, separator, ...rows].join('\n');
+  }
+
+  // 検索語句キュレーション用の語彙。コンテンツ機会に効く情報系を加点、純購買・ブランド系を減点する。
+  private static readonly SEARCH_TERM_INFO_MODIFIERS = [
+    'とは', '方法', 'やり方', '違い', '比較', '危険', 'デメリット', 'メリット', '効果',
+    '原因', '対処', '選び方', 'おすすめ', '自分で', '相場', '料金', '頻度', '時期',
+    '必要', 'なぜ', 'どう', '口コミ', '評判',
+  ];
+  private static readonly SEARCH_TERM_TRANSACTIONAL_TERMS = [
+    '通販', '購入', '注文', '店舗', 'クーポン', '送料', '定期便', 'お試し', '楽天', 'amazon',
+  ];
+
+  /**
+   * §検索語句: impression上位プールから、プロンプト投入ぶんを「多様性＋情報寄り」で選別する。
+   * - (a) キャンペーン横断のラウンドロビンで1キャンペーン独占を防ぐ。
+   * - (d) 情報系修飾を含む語をグループ内で優先（コンテンツ機会）。
+   * - (b) 純購買・ブランド系は後回し（除外でなく減点）。
+   * 同点は impression 降順。決定的（安定ソート前提）。
+   */
+  private curateSearchTermsForPrompt(
+    metrics: GoogleAdsSearchTermMetric[],
+    maxRows: number
+  ): GoogleAdsSearchTermMetric[] {
+    if (metrics.length <= maxRows) {
+      return metrics;
+    }
+
+    const isInfo = (term: string): boolean =>
+      GoogleAdsAiAnalysisService.SEARCH_TERM_INFO_MODIFIERS.some(m => term.includes(m));
+    const isTransactional = (term: string): boolean =>
+      GoogleAdsAiAnalysisService.SEARCH_TERM_TRANSACTIONAL_TERMS.some(t => term.includes(t));
+
+    // キャンペーン単位でグループ化し、各グループ内を「情報系→非購買→impression降順」で並べる。
+    // 同名キャンペーンの統合を避けるため一意の campaignId をキーにする（空なら名前にフォールバック）。
+    const groups = new Map<string, GoogleAdsSearchTermMetric[]>();
+    for (const metric of metrics) {
+      const key = metric.campaignId || metric.campaignName || '-';
+      const bucket = groups.get(key);
+      if (bucket) {
+        bucket.push(metric);
+      } else {
+        groups.set(key, [metric]);
+      }
+    }
+    for (const bucket of groups.values()) {
+      bucket.sort((a, b) => {
+        const infoDiff = Number(isInfo(b.searchTerm)) - Number(isInfo(a.searchTerm));
+        if (infoDiff !== 0) return infoDiff;
+        const txnDiff = Number(isTransactional(a.searchTerm)) - Number(isTransactional(b.searchTerm));
+        if (txnDiff !== 0) return txnDiff;
+        return b.impressions - a.impressions;
+      });
+    }
+
+    // ラウンドロビン: 各キャンペーンから1件ずつ巡回採用し、maxRows まで埋める。
+    const buckets = [...groups.values()];
+    const selected: GoogleAdsSearchTermMetric[] = [];
+    for (let i = 0; selected.length < maxRows; i++) {
+      let advanced = false;
+      for (const bucket of buckets) {
+        if (i < bucket.length) {
+          selected.push(bucket[i]!);
+          advanced = true;
+          if (selected.length >= maxRows) break;
+        }
+      }
+      if (!advanced) break; // 全グループ枯渇
+    }
+    return selected;
   }
 
   private formatSearchTermMetrics(metrics: GoogleAdsSearchTermMetric[]): string {
