@@ -252,7 +252,9 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         }
       );
 
-      const htmlContent = sanitizeEmailHtml(await marked.parse(rawOutput));
+      // AI 生出力をそのまま本文に使うため、段落内の単一改行が HTML で潰れないよう
+      // breaks:true を本呼び出しに限り付与する（リスト・見出し・表の描画には影響しない）。
+      const htmlContent = sanitizeEmailHtml(await marked.parse(rawOutput, { breaks: true }));
       const subjectAccountPart = customerName ? ` / ${customerName}` : '';
       const devPrefix = useMockGoogleAds ? '[DEV] ' : '';
       const subject = `${devPrefix}【GrowMate】Google Ads 除外キーワード提案レポート（${endDate}${subjectAccountPart}）`;
