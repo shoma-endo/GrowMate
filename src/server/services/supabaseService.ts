@@ -2082,7 +2082,10 @@ export class SupabaseService {
       .eq('user_id', userId)
       .not('wp_post_id', 'is', null)
       .not('main_kw', 'is', null)
+      // updated_at は同一インポートバッチで同値が多発するため id を副キーにし、
+      // 上限カットの境界がタイ内で非決定的にならない（落ちる記事が安定する）ようにする。
       .order('updated_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(limit);
 
     if (keyed.error) {
@@ -2111,6 +2114,7 @@ export class SupabaseService {
         .not('wp_post_id', 'is', null)
         .is('main_kw', null)
         .order('updated_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(limit - rows.length);
 
       if (fill.error) {
