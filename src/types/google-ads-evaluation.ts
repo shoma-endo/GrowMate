@@ -27,3 +27,64 @@ export interface GoogleAdsAiAnalysisResult {
   message?: string;
   error?: string;
 }
+
+/**
+ * §17: 既存コンテンツ在庫（WordPress 由来の実在記事）の1件。
+ * カニバリ判定（新規 vs 修正）のために LLM へ渡す。
+ */
+export interface ContentInventoryItem {
+  id: string;
+  title: string;
+  /** canonical_url 優先・無ければ normalized_url */
+  url: string;
+  mainKw: string | null;
+  kw: string | null;
+  categoryNames: string[];
+  /** wp_content_text の先頭抜粋（フル本文は渡さない） */
+  excerpt: string;
+}
+
+/**
+ * §17 Increment2: AI 出力末尾に併出される TOP5 提案の最小 JSON。
+ * メール順位表をコード側で機械生成する（捏造防止）ための KW 抽出に使う。
+ * フェーズ2の構造化データ（DB保存）とは別物で、MVP では DB 保存しない。
+ */
+export interface TopProposalKeyword {
+  rank: number;
+  mainKw: string;
+  subKws: string[];
+  /**
+   * §17.4-B: 「既存修正」と判定した場合に AI が名指しする対象既存記事のURL（任意）。
+   * コード側で在庫(content_annotations)のURLと突合して実在検証してから表示する（捏造防止）。
+   */
+  targetUrl?: string;
+}
+
+/**
+ * §17 補助: GSC データの鮮度。
+ * 「コンテンツ戦略提案」カードで、順位データが古い/無い場合の注意喚起に使う。
+ */
+export interface GscDataFreshness {
+  /** 当該プロパティの web 検索データが1件以上あるか */
+  hasData: boolean;
+  /** 最新取得日（YYYY-MM-DD, JST/プロパティ基準のGSC日付）。データ無しは null */
+  latestDate: string | null;
+  /** 最新取得日から今日までの経過日数。データ無しは null */
+  daysStale: number | null;
+}
+
+/**
+ * §17: GSC（自社順位）スナップショットの1件。
+ * URL/タイトルは content_annotation_id（FK）経由で content_annotations に突合する。
+ */
+export interface RankingSnapshotItem {
+  queryNormalized: string;
+  position: number;
+  impressions: number;
+  clicks: number;
+  /** content_annotations 突合済み URL。未突合（WP未取込）は GSC の normalized_url にフォールバック */
+  url: string;
+  /** content_annotations.wp_post_title。未突合時は空文字 */
+  title: string;
+  contentAnnotationId: string | null;
+}

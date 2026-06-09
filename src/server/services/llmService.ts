@@ -116,6 +116,17 @@ class LLMService {
 
     const resp = await this.anthropic.messages.create(params);
 
+    // 出力が max_tokens で打ち切られた場合は本番ログで検知できるようにする
+    // （末尾の JSON ブロック欠落など、サイレントな出力欠けの原因になるため）。
+    if (resp.stop_reason === 'max_tokens') {
+      console.warn('[LLMService] output truncated at max_tokens', {
+        model,
+        maxTokens: params.max_tokens,
+        outputTokens: resp.usage?.output_tokens,
+        inputTokens: resp.usage?.input_tokens,
+      });
+    }
+
     const text =
       resp.content
         ?.map(block => (block.type === 'text' ? block.text : ''))

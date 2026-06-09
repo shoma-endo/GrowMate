@@ -5,6 +5,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { gscImportService } from '@/server/services/gscImportService';
 import { gscEvaluationService } from '@/server/services/gscEvaluationService';
 import { splitRangeByDays, aggregateImportResults } from '@/server/lib/gsc-import-utils';
+import { getGscQueryRowLimit, getGscQueryMaxPages } from '@/server/lib/gsc-config';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
@@ -62,6 +63,24 @@ export async function runGscImport(params: GscImportParams) {
       });
 
     const summary = await importWithSplit(importOnce, startDate, endDate, 30);
+
+    // 監視: クエリ取得がフェッチ上限（行数×ページ＝クリック降順）に到達すると、
+    // 低クリックのロングテールが DB 保存前に欠落し得る。データ増加で顕在化するため、
+    // 上限到達・取得エラーをサーバーログで可視化する（突合側の修正では拾えない領域）。
+    const qs = summary.querySummary;
+    if (qs && (qs.hitLimit || qs.fetchErrorPages > 0)) {
+      console.warn('[gsc-import] query fetch reached row cap or had fetch errors', {
+        userId: authResult.userId,
+        dateRange: { startDate, endDate },
+        searchType,
+        hitLimit: qs.hitLimit,
+        fetchErrorPages: qs.fetchErrorPages,
+        fetchedRows: qs.fetchedRows,
+        keptRows: qs.keptRows,
+        // 1フェッチの実効上限（GSC_QUERY_ROW_LIMIT × queryMaxPages）。
+        perFetchRowCap: getGscQueryRowLimit() * getGscQueryMaxPages(),
+      });
+    }
 
     // 評価実行（オプション）
     if (runEvaluation) {

@@ -2,28 +2,36 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { Lightbulb, Loader2, Mail } from 'lucide-react';
+import { AlertCircle, Lightbulb, Loader2, Mail } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ServiceSelector } from '@/components/ServiceSelector';
-import { LinkedMessage } from '@/components/LinkedMessage';
+import { LinkedMessage, type LinkedMessageRule } from '@/components/LinkedMessage';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GOOGLE_ADS_REAUTH_LINK_RULES } from '@/lib/constants';
 import { getBrief } from '@/server/actions/brief.actions';
 import {
+  getContentInventoryStatus,
   getEvaluationSettings,
+  getGscDataFreshness,
   runGoogleAdsAiAnalysis,
   updateEvaluationSettings,
 } from '@/server/actions/googleAdsEvaluation.actions';
 import type { Service } from '@/server/schemas/brief.schema';
-import type { GoogleAdsEvaluationSettings } from '@/types/google-ads-evaluation';
+import type {
+  GoogleAdsEvaluationSettings,
+  GscDataFreshness,
+} from '@/types/google-ads-evaluation';
 
 interface EvaluationControlsProps {
   hasEmailAddress: boolean;
   initialSettings: GoogleAdsEvaluationSettings;
 }
+
+/** GSC 検索順位データを「古い」と判定して注意喚起するしきい値（日数）。GSC は通常 2〜3 日の遅延がある。 */
+const GSC_STALE_THRESHOLD_DAYS = 14;
 
 function parseDateRangeDays(value: string): number | null {
   const numericValue = Number(value);
@@ -39,6 +47,8 @@ export function EvaluationControls({
   initialSettings,
 }: EvaluationControlsProps) {
   const [settings, setSettings] = useState(initialSettings);
+  const [gscFreshness, setGscFreshness] = useState<GscDataFreshness | null>(null);
+  const [hasContentInventory, setHasContentInventory] = useState<boolean | null>(null);
   const [dateRangeInput, setDateRangeInput] = useState(String(initialSettings.dateRangeDays));
   const [dateRangeError, setDateRangeError] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -92,8 +102,54 @@ export function EvaluationControls({
     };
   }, []);
 
+  // 提案データの準備状況（GSC 鮮度・WP 在庫）を取得。古い/無い時だけ注意喚起する（失敗時は何も出さない）。
+  useEffect(() => {
+    let isActive = true;
+    Promise.all([getGscDataFreshness(), getContentInventoryStatus()]).then(
+      ([freshness, inventory]) => {
+        if (!isActive) {
+          return;
+        }
+        if (freshness.success && freshness.data) {
+          setGscFreshness(freshness.data);
+        }
+        if (inventory.success && typeof inventory.hasContent === 'boolean') {
+          setHasContentInventory(inventory.hasContent);
+        }
+      }
+    );
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   const isServiceMissing = !isServicesLoading && !servicesError && services.length === 0;
   const cannotRunForServices = isServicesLoading || Boolean(servicesError) || isServiceMissing;
+
+  // 検索順位データの鮮度に応じた注意喚起（古い/無い時だけ表示）。
+  const gscNoData = gscFreshness ? !gscFreshness.hasData : false;
+  const gscStale = Boolean(
+    gscFreshness?.hasData &&
+      gscFreshness.daysStale !== null &&
+      gscFreshness.daysStale >= GSC_STALE_THRESHOLD_DAYS
+  );
+  const gscNoticeTitle = gscNoData
+    ? '検索順位データがありません'
+    : '検索順位データが古い可能性があります';
+  const gscNoticeMessage = gscNoData
+    ? 'Search Console の検索順位データがまだ取り込まれていません（未連携の場合は連携も必要です）。提案に含まれる「検索順位」は表示されません。Search Console データをインポートしてください。'
+    : `最新の検索順位データは ${gscFreshness?.latestDate}（約${gscFreshness?.daysStale}日前）です。提案に表示される順位が現在の実態とずれている場合があります。最新化するには Search Console データをインポートしてください。`;
+  const gscNoticeRules: LinkedMessageRule[] = [
+    { phrase: 'Search Console データをインポート', href: '/gsc-import', variant: 'button-link' },
+  ];
+
+  // WordPress 記事在庫が無い時の注意喚起（新規/既存修正の判定材料が不足するため）。
+  const wpNoInventory = hasContentInventory === false;
+  const wpNoticeMessage =
+    'WordPress 記事が未取込のため、提案の「新規作成 / 既存修正」の判定材料が不足します。WordPress 記事をインポートしてください。';
+  const wpNoticeRules: LinkedMessageRule[] = [
+    { phrase: 'WordPress 記事をインポート', href: '/wordpress-import', variant: 'button-link' },
+  ];
 
   const handleRun = () => {
     if (isServiceMissing) {
@@ -164,6 +220,18 @@ export function EvaluationControls({
           </div>
           <p className="text-sm text-slate-600">
             必要なタイミングで、キーワード指標をもとにコンテンツ戦略の改善提案をメールで送信します。
+          </p>
+          <p className="text-xs text-slate-500">
+            <span className="block">
+              ※「既存修正」の対象記事は WordPress
+              に取り込み済みの記事から選定されます。トップページ等の未取込ページは対象に表示されない場合があります。
+            </span>
+            <span className="block">
+              <LinkedMessage
+                message="未取込なら WordPress 記事をインポート してください。"
+                rules={wpNoticeRules}
+              />
+            </span>
           </p>
         </div>
         <Button
@@ -257,6 +325,30 @@ export function EvaluationControls({
 
       {settings.lastEvaluatedOn && (
         <p className="text-xs text-slate-500">最終成功実行日: {settings.lastEvaluatedOn}</p>
+      )}
+
+      {(gscNoData || gscStale) && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-600" aria-hidden />
+            <AlertTitle className="mb-0 text-amber-900">{gscNoticeTitle}</AlertTitle>
+          </div>
+          <AlertDescription className="mt-1 text-amber-800">
+            <LinkedMessage message={gscNoticeMessage} rules={gscNoticeRules} />
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {wpNoInventory && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-600" aria-hidden />
+            <AlertTitle className="mb-0 text-amber-900">既存コンテンツが取り込まれていません</AlertTitle>
+          </div>
+          <AlertDescription className="mt-1 text-amber-800">
+            <LinkedMessage message={wpNoticeMessage} rules={wpNoticeRules} />
+          </AlertDescription>
+        </Alert>
       )}
 
       {!hasEmailAddress && (

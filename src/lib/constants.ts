@@ -103,7 +103,9 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   },
   google_ads_ai_evaluation: {
     ...ANTHROPIC_BASE,
-    maxTokens: 8000,
+    // 出力上限。5提案＋サマリー＋末尾JSONで実測〜1万トークン前後のため、約2倍の余裕を確保。
+    // 入力（WP在庫50件・GSC順位500件上限）は別途キャップ済みで、コンテキスト窓20万に収まる。
+    maxTokens: 20000,
     label: 'Google Ads コンテンツ戦略提案',
   },
   google_ads_negative_keywords_suggestion: {

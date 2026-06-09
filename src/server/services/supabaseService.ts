@@ -1,6 +1,7 @@
 import { SupabaseClient, type PostgrestError } from '@supabase/supabase-js';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { SupabaseClientManager } from '@/lib/client-manager';
+import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, TablesUpdate } from '@/types/database.types';
 import {
@@ -13,7 +14,10 @@ import {
 import type { DbUser, DbUserInsert, DbUserUpdate } from '@/types/user';
 import type { UserRole } from '@/types/user';
 import type {
+  ContentInventoryItem,
   GoogleAdsEvaluationSettingsRecord,
+  GscDataFreshness,
+  RankingSnapshotItem,
   UpsertGoogleAdsEvaluationSettingsInput,
 } from '@/types/google-ads-evaluation';
 import type {
@@ -171,6 +175,52 @@ export class SupabaseService {
     }
 
     return { success: false, error: info };
+  }
+
+  /**
+   * PostgREST の Max rows（db-max-rows, 既定1000）を超える件数を range ページングで全件取得する汎用ヘルパー。
+   *
+   * - `runPage(from, to)` は range を適用したクエリ結果（PromiseLike）を返すこと。
+   *   `.select(..., { count: 'exact' })` を付けると総件数で確実に停止できる（推奨）。
+   * - `pageSize` は **db-max-rows 以下**にすること（既定1000）。超えると各ページがクランプされ
+   *   `batch.length < pageSize` で早期終了し取りこぼす。
+   * - ページング安定化のため、呼び出し側の `order` は**決定的（タイブレーク付き）**にすること。
+   * - `maxRows` を渡すとその件数で打ち切り `truncated=true` を返す（暴走防止の任意上限）。
+   */
+  protected async fetchAllPaged<T>(
+    runPage: (
+      from: number,
+      to: number
+    ) => PromiseLike<{ data: T[] | null; error: PostgrestError | null; count: number | null }>,
+    options: { pageSize?: number; maxRows?: number } = {}
+  ): Promise<{ data: T[]; error: PostgrestError | null; truncated: boolean }> {
+    const pageSize = options.pageSize ?? 1000;
+    const maxRows = options.maxRows ?? Number.POSITIVE_INFINITY;
+    const all: T[] = [];
+    let total: number | null = null;
+
+    for (let from = 0; from < maxRows; from += pageSize) {
+      const to = Math.min(from + pageSize, maxRows) - 1;
+      const { data, error, count } = await runPage(from, to);
+      if (error) {
+        return { data: all, error, truncated: false };
+      }
+      if (count !== null && count !== undefined) {
+        total = count;
+      }
+      const batch = data ?? [];
+      all.push(...batch);
+      // 空ページ＝終端。短いページ＝（count未指定時の）終端判定。count があれば総件数で停止。
+      if (batch.length === 0 || batch.length < pageSize) {
+        break;
+      }
+      if (total !== null && all.length >= total) {
+        break;
+      }
+    }
+
+    const truncated = total !== null && all.length < total;
+    return { data: all, error: null, truncated };
   }
 
   /**
@@ -2008,6 +2058,408 @@ export class SupabaseService {
     }
 
     return (count ?? 0) > 0;
+  }
+
+  /**
+   * §17: 既存コンテンツ在庫（WordPress 由来の実在記事）を取得する。
+   * カニバリ判定（新規 vs 修正）の材料として LLM へ渡す。
+   * 本文はトークン肥大防止のため先頭抜粋のみ。直近更新の上位 limit 件に制限する。
+   */
+  async getContentInventoryByUserId(
+    userId: string,
+    limit = 50
+  ): Promise<SupabaseResult<ContentInventoryItem[]>> {
+    const selectColumns =
+      'id, wp_post_title, canonical_url, normalized_url, main_kw, kw, wp_category_names, wp_content_text';
+
+    // §17.4-C: KW狙いの記事（main_kw あり）を優先し、上限内でAIに見せる。
+    // PostgREST は `ORDER BY (main_kw IS NULL)` のような式ソートを書けないため、
+    // ①main_kw 非NULL を更新日降順で limit 件 → ②枠が余れば main_kw NULL を更新日降順で補充、
+    // の2クエリで「あり優先・各群で更新日降順」を正確に表現する（文字列順カットの事故を防ぐ）。
+    const keyed = await this.supabase
+      .from('content_annotations')
+      .select(selectColumns)
+      .eq('user_id', userId)
+      .not('wp_post_id', 'is', null)
+      .not('main_kw', 'is', null)
+      // updated_at は同一インポートバッチで同値が多発するため id を副キーにし、
+      // 上限カットの境界がタイ内で非決定的にならない（落ちる記事が安定する）ようにする。
+      .order('updated_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(limit);
+
+    if (keyed.error) {
+      return this.failure('既存コンテンツ在庫の取得に失敗しました', {
+        error: keyed.error,
+        developerMessage: 'Failed to fetch content inventory (keyed)',
+        context: { userId },
+      });
+    }
+
+    const rows: Array<{
+      id: string;
+      wp_post_title: string | null;
+      canonical_url: string | null;
+      normalized_url: string | null;
+      main_kw: string | null;
+      kw: string | null;
+      wp_category_names: string[] | null;
+      wp_content_text: string | null;
+    }> = keyed.data ?? [];
+    if (rows.length < limit) {
+      const fill = await this.supabase
+        .from('content_annotations')
+        .select(selectColumns)
+        .eq('user_id', userId)
+        .not('wp_post_id', 'is', null)
+        .is('main_kw', null)
+        .order('updated_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(limit - rows.length);
+
+      if (fill.error) {
+        return this.failure('既存コンテンツ在庫の取得に失敗しました', {
+          error: fill.error,
+          developerMessage: 'Failed to fetch content inventory (fill)',
+          context: { userId },
+        });
+      }
+
+      rows.push(...(fill.data ?? []));
+    }
+
+    const items: ContentInventoryItem[] = rows.map(row => ({
+      id: row.id,
+      title: row.wp_post_title ?? '',
+      url: row.canonical_url ?? row.normalized_url ?? '',
+      mainKw: row.main_kw,
+      kw: row.kw,
+      categoryNames: row.wp_category_names ?? [],
+      excerpt: (row.wp_content_text ?? '').slice(0, 200),
+    }));
+
+    return this.success(items);
+  }
+
+  /**
+   * §17.4: メール記事リンク突合（コード側）専用の軽量な在庫取得。
+   * プロンプトへは渡さずコードの突合インデックスにのみ使うため、本文抜粋・カテゴリは取得しない
+   * （トークン非依存なので件数上限を広く取り、突合カバレッジを最大化する）。
+   */
+  async getContentInventoryForMatching(
+    userId: string,
+    options: { maxRows?: number } = {}
+  ): Promise<SupabaseResult<ContentInventoryItem[]>> {
+    // db-max-rows(1000) を超える記事数でも全件取得するため range ページングする。
+    // count:'exact' で総件数を取得し確実に停止。並びは決定的（updated_at 同値は id でタイブレーク）。
+    const { data, error, truncated } = await this.fetchAllPaged(
+      (from, to) =>
+        this.supabase
+          .from('content_annotations')
+          .select('id, wp_post_title, canonical_url, normalized_url, main_kw, kw', {
+            count: 'exact',
+          })
+          .eq('user_id', userId)
+          .not('wp_post_id', 'is', null)
+          .order('updated_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to),
+      { pageSize: 1000, ...(options.maxRows !== undefined && { maxRows: options.maxRows }) }
+    );
+
+    if (error) {
+      return this.failure('既存コンテンツ在庫（突合用）の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to fetch content inventory for matching',
+        context: { userId },
+      });
+    }
+
+    const items: ContentInventoryItem[] = data.map(row => ({
+      id: row.id,
+      title: row.wp_post_title ?? '',
+      url: row.canonical_url ?? row.normalized_url ?? '',
+      mainKw: row.main_kw,
+      kw: row.kw,
+      categoryNames: [],
+      excerpt: '',
+    }));
+
+    // maxRows 上限を明示指定した場合のみ truncated が立つ（既定は全件取得＝漏れなし）。
+    if (truncated) {
+      console.warn('[SupabaseService] content inventory for matching truncated by maxRows ceiling', {
+        userId,
+        maxRows: options.maxRows,
+        returned: items.length,
+      });
+    }
+
+    return this.success(items);
+  }
+
+  /**
+   * §17 補助: 既存コンテンツ在庫（WP由来の実在記事）が1件以上あるかを判定する。
+   * 「コンテンツ戦略提案」カードの注意喚起用。本文等は転送せず count(head) のみで存在確認する。
+   */
+  async hasContentInventory(userId: string): Promise<SupabaseResult<boolean>> {
+    const { count, error } = await this.supabase
+      .from('content_annotations')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .not('wp_post_id', 'is', null);
+
+    if (error) {
+      return this.failure('既存コンテンツ在庫の確認に失敗しました', {
+        error,
+        developerMessage: 'Failed to check content inventory existence',
+        context: { userId },
+      });
+    }
+
+    return this.success((count ?? 0) > 0);
+  }
+
+  /**
+   * GSC プロパティURI を「取得失敗」と「未連携(null)」を区別して返す。
+   * getGscCredentialByUserId は DB エラー時も null を返すため、障害を未連携と誤認しないようにする用途。
+   * 鮮度判定・順位スナップショットの両経路で共用する。
+   */
+  private async resolveGscPropertyUri(userId: string): Promise<SupabaseResult<string | null>> {
+    const { data, error } = await this.supabase
+      .from('gsc_credentials')
+      .select('property_uri')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      return this.failure('GSC連携情報の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to resolve gsc property_uri',
+        context: { userId },
+      });
+    }
+
+    return this.success(data?.property_uri ?? null);
+  }
+
+  /**
+   * §17 補助: GSC データの鮮度（最新取得日・経過日数・データ有無）を取得する。
+   * 「コンテンツ戦略提案」カードで、順位データが古い/無い場合の注意喚起に使う。
+   * 順位スナップショットと同じ propertyUri 解決を流用する軽量メソッド。
+   */
+  async getGscDataFreshness(userId: string): Promise<SupabaseResult<GscDataFreshness>> {
+    // 取得失敗（DB障害等）を未連携と誤認しないよう、失敗はそのまま伝播する。
+    const propertyResult = await this.resolveGscPropertyUri(userId);
+    if (!propertyResult.success) {
+      return propertyResult;
+    }
+    const propertyUri = propertyResult.data;
+    if (!propertyUri) {
+      return this.success({ hasData: false, latestDate: null, daysStale: null });
+    }
+
+    const { data: latest, error } = await this.supabase
+      .from('gsc_query_metrics')
+      .select('date')
+      .eq('user_id', userId)
+      .eq('property_uri', propertyUri)
+      .eq('search_type', 'web')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      return this.failure('GSCデータ鮮度の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to resolve gsc data freshness',
+        context: { userId },
+      });
+    }
+
+    if (!latest) {
+      return this.success({ hasData: false, latestDate: null, daysStale: null });
+    }
+
+    // GSC の date は JST 基準のため、今日も JST で算出する（UTC だと JST 0〜9時に1日ずれる）。
+    const latestMs = Date.parse(`${latest.date}T00:00:00Z`);
+    const todayMs = Date.parse(`${formatJstDateISO(new Date())}T00:00:00Z`);
+    const daysStale = Math.max(0, Math.floor((todayMs - latestMs) / 86_400_000));
+
+    return this.success({ hasData: true, latestDate: latest.date, daysStale });
+  }
+
+  /**
+   * §17: GSC 自社順位スナップショットを取得する。
+   * 広告データと同じ分析対象期間（dateRangeDays）に窓を揃え、最新日から遡って集約する。
+   * 最新日のみだと GSC のクエリ別データは日次でスパースなため、実際は上位でも順位行が欠落しやすい。
+   * 集約（同一 query_normalized のインプレッション加重平均 position・合計指標、代表ページ解決）は
+   * RPC get_gsc_ranking_snapshot に委譲し、DB側で窓内全行を対象に行う（事前の行キャップなし）。
+   * 代表ページは (query, url) 単位の合計インプレッション最大のページ、URL/タイトルはその
+   * content_annotation_id（FK）経由で解決する（URL文字列マッチではない）。
+   */
+  async getRankingSnapshotByUserId(
+    userId: string,
+    limit = 100,
+    dateRangeDays = 1
+  ): Promise<SupabaseResult<RankingSnapshotItem[]>> {
+    // 1ユーザーが複数プロパティ・複数 search_type の指標を持ち得るため、
+    // 順位の信頼性確保のためユーザーの GSC プロパティ + web 検索に絞り込む。
+    // 取得失敗（DB障害等）を未連携と誤認しないよう、失敗はそのまま伝播する。
+    const propertyResult = await this.resolveGscPropertyUri(userId);
+    if (!propertyResult.success) {
+      return propertyResult;
+    }
+    const propertyUri = propertyResult.data;
+    if (!propertyUri) {
+      return this.success([]);
+    }
+
+    const { data: latest, error: latestError } = await this.supabase
+      .from('gsc_query_metrics')
+      .select('date')
+      .eq('user_id', userId)
+      .eq('property_uri', propertyUri)
+      .eq('search_type', 'web')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestError) {
+      return this.failure('検索順位スナップショットの取得に失敗しました', {
+        error: latestError,
+        developerMessage: 'Failed to resolve latest gsc_query_metrics date',
+        context: { userId },
+      });
+    }
+
+    if (!latest) {
+      return this.success([]);
+    }
+
+    // 広告データと同じ分析対象期間に窓を揃える（startDate = 最新日 − (dateRangeDays − 1)）。
+    const windowDays = Math.max(1, Math.floor(dateRangeDays));
+    const startDateObj = new Date(`${latest.date}T00:00:00Z`);
+    startDateObj.setUTCDate(startDateObj.getUTCDate() - (windowDays - 1));
+    const startDate = startDateObj.toISOString().slice(0, 10);
+
+    const { data, error } = await this.supabase.rpc('get_gsc_ranking_snapshot', {
+      p_user_id: userId,
+      p_property_uri: propertyUri,
+      p_start_date: startDate,
+      p_end_date: latest.date,
+      p_limit: limit,
+    });
+
+    if (error) {
+      return this.failure('検索順位スナップショットの取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to fetch gsc ranking snapshot via RPC',
+        context: { userId },
+      });
+    }
+
+    const items: RankingSnapshotItem[] = (data ?? []).map(row => ({
+      queryNormalized: row.query_normalized,
+      position: row.position,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      url: row.url ?? '',
+      title: row.title ?? '',
+      contentAnnotationId: row.content_annotation_id,
+    }));
+
+    // 期間集約が効いているか／カバレッジを本番ログで確認できるようにする（秘密情報は出さない）。
+    // saturated=true は集約後クエリ数が limit に張り付き、改善幅が頭打ちになっている可能性を示す。
+    console.info('[SupabaseService] ranking snapshot aggregated', {
+      dateRangeDays: windowDays,
+      startDate,
+      endDate: latest.date,
+      rowCount: items.length,
+      saturated: items.length >= limit,
+    });
+
+    return this.success(items);
+  }
+
+  /**
+   * §17.4: メール記事リンクの「順位突合」を狙い撃ち取得する。
+   * 指定クエリ（正規化済み）だけを統合RPC get_gsc_ranking_snapshot（p_queries 指定）で集約取得するため、取得上限が不要。
+   * query_normalized はインポート時に normalizeQuery で生成され冪等のため、呼び出し側は
+   * normalizeQuery(KW) を渡せばよい。広告データと同じ分析対象期間で窓を揃える。
+   */
+  async getRankingForQueries(
+    userId: string,
+    dateRangeDays: number,
+    queries: string[]
+  ): Promise<SupabaseResult<RankingSnapshotItem[]>> {
+    if (queries.length === 0) {
+      return this.success([]);
+    }
+
+    const propertyResult = await this.resolveGscPropertyUri(userId);
+    if (!propertyResult.success) {
+      return propertyResult;
+    }
+    const propertyUri = propertyResult.data;
+    if (!propertyUri) {
+      return this.success([]);
+    }
+
+    const { data: latest, error: latestError } = await this.supabase
+      .from('gsc_query_metrics')
+      .select('date')
+      .eq('user_id', userId)
+      .eq('property_uri', propertyUri)
+      .eq('search_type', 'web')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestError) {
+      return this.failure('検索順位（狙い撃ち）の取得に失敗しました', {
+        error: latestError,
+        developerMessage: 'Failed to resolve latest gsc date for targeted ranking',
+        context: { userId },
+      });
+    }
+
+    if (!latest) {
+      return this.success([]);
+    }
+
+    const windowDays = Math.max(1, Math.floor(dateRangeDays));
+    const startDateObj = new Date(`${latest.date}T00:00:00Z`);
+    startDateObj.setUTCDate(startDateObj.getUTCDate() - (windowDays - 1));
+    const startDate = startDateObj.toISOString().slice(0, 10);
+
+    // 統合RPC get_gsc_ranking_snapshot を p_queries 指定で呼ぶ＝狙い撃ち（p_limit 省略＝上限なし）。
+    const { data, error } = await this.supabase.rpc('get_gsc_ranking_snapshot', {
+      p_user_id: userId,
+      p_property_uri: propertyUri,
+      p_start_date: startDate,
+      p_end_date: latest.date,
+      p_queries: queries,
+    });
+
+    if (error) {
+      return this.failure('検索順位（狙い撃ち）の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to fetch targeted gsc ranking via RPC',
+        context: { userId },
+      });
+    }
+
+    const items: RankingSnapshotItem[] = (data ?? []).map(row => ({
+      queryNormalized: row.query_normalized,
+      position: row.position,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      url: row.url ?? '',
+      title: row.title ?? '',
+      contentAnnotationId: row.content_annotation_id,
+    }));
+
+    return this.success(items);
   }
 
   /**
