@@ -93,6 +93,7 @@
 | 順位（プロンプト） | `getRankingSnapshotByUserId(userId, 500, days)` → RPC `get_gsc_ranking_snapshot` | 500（上位サンプル） | 意図的（トークン制御） |
 | 順位（突合） | `getRankingForQueries(userId, days, kws)` → 統合RPC `get_gsc_ranking_snapshot`（`p_queries` 指定） | **上限なし**（提案KWに有界・狙い撃ち） | ― |
 | 検索語句（プロンプト） | `getSearchTermMetrics`（pool）→ `curateSearchTermsForPrompt` | 取得5000プール → 投入1500に選別（impression偏重をやめキャンペーン横断＋情報寄り）。GAQL `LIMIT` は引数化（既定1000） | 意図的（トークン制御＋多様性） |
+| 除外KW（プロンプト） | `formatNegativeKeywords`（`dedupeNegativeKeywords` 後） | campaign→ad_group 優先で **上限2000件**＋CSV化＋「ほかM件省略」注記 | 意図的（トークン制御）。**数万件でプロンプト溢れ（>1Mトークン）を起こすため必須** |
 
 突合ロジック（`composeEmailMarkdown` 配下）:
 - 順位: `buildSnapshotMap`（`normalizeQuery(query)` で索引）
