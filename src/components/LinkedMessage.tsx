@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -100,11 +101,24 @@ export function LinkedMessage({ message, rules }: LinkedMessageProps) {
             ? { target: '_blank', rel: 'noopener noreferrer' }
             : { target: '_self' };
 
+        // a11y: 別タブで開くリンクは、装飾アイコン（aria-hidden）＋ SR向けテキストで明示する（WCAG G201）。
+        const newTabIndicator =
+          segment.target === '_blank' ? (
+            <>
+              <ExternalLink
+                className="inline-block h-3 w-3 ml-0.5 align-text-bottom"
+                aria-hidden="true"
+              />
+              <span className="sr-only">（新しいタブで開く）</span>
+            </>
+          ) : null;
+
         if (segment.variant === 'button-link') {
           return (
             <Button key={key} variant="link" asChild className="h-auto px-1 py-0">
               <Link href={segment.href} {...targetProps}>
                 {segment.text}
+                {newTabIndicator}
               </Link>
             </Button>
           );
@@ -118,6 +132,7 @@ export function LinkedMessage({ message, rules }: LinkedMessageProps) {
             {...targetProps}
           >
             {segment.text}
+            {newTabIndicator}
           </Link>
         );
       })}
