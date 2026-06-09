@@ -924,32 +924,43 @@ class GoogleAdsAiAnalysisService {
     label: string,
     kw: string,
     snapshotByQuery: Map<string, RankingSnapshotItem>,
-    inventoryIndex: InventoryIndex
+    inventoryIndex: InventoryIndex,
+    targetArticle?: ContentInventoryItem
   ): string {
     const normalized = normalizeQuery(kw);
 
-    // 1) GSC 順位あり → 検索順位・タイトル・URL
+    // 上部の「対象既存記事」と同一記事なら、KW行ではタイトル/URLを再掲せず順位情報のみに絞る（重複表示の解消）。
+    const isTarget = (annotationId: string | null, articleId?: string): boolean =>
+      targetArticle !== undefined &&
+      ((annotationId !== null && annotationId === targetArticle.id) ||
+        (articleId !== undefined && articleId === targetArticle.id));
+
+    // 1) GSC 順位あり → 検索順位（＋対象記事と別ページのときのみタイトル・URL）
     const matched = snapshotByQuery.get(normalized);
     if (matched) {
       const items = [`- 検索順位：${this.formatNumber(matched.position)}位`];
-      if (matched.title) {
-        items.push(`- タイトル：${matched.title}`);
-      }
-      if (matched.url) {
-        items.push(`- ${matched.url}`);
+      if (!isTarget(matched.contentAnnotationId)) {
+        if (matched.title) {
+          items.push(`- タイトル：${matched.title}`);
+        }
+        if (matched.url) {
+          items.push(`- ${matched.url}`);
+        }
       }
       return [`**${label} ${kw}**`, '', ...items].join('\n');
     }
 
-    // 2) GSC 順位は無いが既存記事（WP在庫）あり → 記事のタイトル・URL を提示
+    // 2) GSC 順位は無いが既存記事（WP在庫）あり → 記事の有無を提示（対象記事と別記事のときのみタイトル・URL）
     const article = this.resolveInventoryArticle(kw, inventoryIndex);
     if (article) {
       const items = ['- 既存記事あり（検索順位データなし）'];
-      if (article.title) {
-        items.push(`- タイトル：${article.title}`);
-      }
-      if (article.url) {
-        items.push(`- ${article.url}`);
+      if (!isTarget(null, article.id)) {
+        if (article.title) {
+          items.push(`- タイトル：${article.title}`);
+        }
+        if (article.url) {
+          items.push(`- ${article.url}`);
+        }
       }
       return [`**${label} ${kw}**`, '', ...items].join('\n');
     }
@@ -1000,12 +1011,20 @@ class GoogleAdsAiAnalysisService {
     }
 
     const parts = [
-      this.renderKwRanking('▼ メインKW ▼', proposal.mainKw, snapshotByQuery, inventoryIndex),
+      this.renderKwRanking(
+        '▼ メインKW ▼',
+        proposal.mainKw,
+        snapshotByQuery,
+        inventoryIndex,
+        targetArticle
+      ),
     ];
     if (proposal.subKws.length > 0) {
       parts.push('**▼ サブKW ▼**');
       parts.push(
-        ...proposal.subKws.map(kw => this.renderKwRanking('・', kw, snapshotByQuery, inventoryIndex))
+        ...proposal.subKws.map(kw =>
+          this.renderKwRanking('・', kw, snapshotByQuery, inventoryIndex, targetArticle)
+        )
       );
     }
     return [heading, '', ...(targetBlock ? [targetBlock] : []), ...parts].join('\n\n');
