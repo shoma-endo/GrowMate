@@ -76,19 +76,13 @@ ls docs/plans/
 
 ---
 
-## Phase 5: CodeRabbit CLI レビュー
-
-→ [`.agents/skills/shared/pr-workflows/coderabbit-loop.md`](../shared/pr-workflows/coderabbit-loop.md)
-
----
-
-## Phase 6: セルフレビュー
+## Phase 5: セルフレビュー
 
 → [`.agents/skills/shared/pr-workflows/self-review-phase.md`](../shared/pr-workflows/self-review-phase.md)
 
 ---
 
-## Phase 7: コミット
+## Phase 6: コミット
 
 → [`.agents/skills/shared/pr-workflows/commit.md`](../shared/pr-workflows/commit.md)
 
@@ -96,7 +90,7 @@ ls docs/plans/
 
 ---
 
-## Phase 8: PR作成
+## Phase 7: PR作成
 
 → [`.agents/skills/shared/pr-workflows/pr-create.md`](../shared/pr-workflows/pr-create.md)
 
