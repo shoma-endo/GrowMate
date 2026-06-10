@@ -93,7 +93,7 @@
 | 順位（プロンプト） | `getRankingSnapshotByUserId(userId, 500, days)` → RPC `get_gsc_ranking_snapshot` | 500（上位サンプル） | 意図的（トークン制御） |
 | 順位（突合） | `getRankingForQueries(userId, days, kws)` → 統合RPC `get_gsc_ranking_snapshot`（`p_queries` 指定） | **上限なし**（提案KWに有界・狙い撃ち） | ― |
 | 検索語句（プロンプト） | `getSearchTermMetrics`（pool）→ `curateSearchTermsForPrompt` | 取得5000プール → 投入1500に選別（impression偏重をやめキャンペーン横断＋情報寄り）。GAQL `LIMIT` は引数化（既定1000） | 意図的（トークン制御＋多様性） |
-| 除外KW（プロンプト） | `formatNegativeKeywords`（`uniqueNegativeKeywordThemes`） | **有効(ENABLED)のみ採用**（PAUSED/REMOVEDは実際に除外していないため除外）＋ **(テキスト, マッチタイプ, 適用範囲) に集約**（名称は破棄・適用範囲=campaign/広告グループは保持）＋CSV(3列)。安全網で上限2000＋省略注記 | 意図的（トークン制御＋高シグナル化）。**数万件でプロンプト溢れ（>1Mトークン）を起こすため必須** |
+| 除外KW（プロンプト） | `src/server/lib/google-ads-negative-keywords-prompt.ts` | **有効(ENABLED)のみ**＋上限2000＋省略注記。**コンテンツ戦略提案**は `aggregation:'theme'`（(テキスト, マッチタイプ, レベル) 集約・CSV3列）。**除外KW提案**は `aggregation:'scoped'`（ad_group はキャンペーン名・広告グループ名を保持・CSV5列） | 意図的（トークン制御）。**数万件でプロンプト溢れ（>1Mトークン）を起こすため必須** |
 
 突合ロジック（`composeEmailMarkdown` 配下）:
 - 順位: `buildSnapshotMap`（`normalizeQuery(query)` で索引）
@@ -145,6 +145,7 @@
   - `resolveGscPropertyUri`（取得失敗と未連携の区別）
 - `supabase/migrations/20260607000000_add_gsc_ranking_snapshot_rpc.sql`（集約スナップショットRPC・初版／5引数・本番適用済み）
 - `supabase/migrations/20260608000000_unify_gsc_ranking_snapshot_rpc.sql`（適用済み5引数を `DROP`→`p_queries`/`p_limit` 省略可の統合版を `CREATE`。狙い撃ちと上位N件を1関数で兼用）
+- `src/server/lib/google-ads-negative-keywords-prompt.ts`（除外KWプロンプト整形・`NEGATIVE_KEYWORD_PROMPT_LIMIT`・監視メトリクス。コンテンツ戦略提案・除外KW提案で共通）
 - `src/server/services/googleAdsAiAnalysisService.ts`（`composeEmailMarkdown` / `buildSnapshotMap` / `buildInventoryIndex` / `resolveInventoryArticle` / `curateSearchTermsForPrompt` / 定数 `*_PROMPT_LIMIT`・`SEARCH_TERM_FETCH_POOL`）
 - `src/server/services/googleAdsService.ts`（`getSearchTermMetrics` の `limit` 引数＝GAQL 取得プール上限。既定1000、AI分析は5000）
 - `src/server/lib/gsc-config.ts`（インポート側の `GSC_QUERY_ROW_LIMIT` / `queryMaxPages`）
