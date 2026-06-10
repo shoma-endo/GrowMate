@@ -6,6 +6,10 @@ import { llmChat } from '@/server/services/llmService';
 import { briefService } from '@/server/services/briefService';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
+import {
+  formatNegativeKeywordsForPrompt,
+  prepareNegativeKeywordsForPrompt,
+} from '@/server/lib/google-ads-negative-keywords-prompt';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
 import type { BriefInput, Service } from '@/server/schemas/brief.schema';
@@ -161,9 +165,6 @@ class GoogleAdsAiAnalysisService {
   // 検索語句: 取得は広めプール（impression上位）を取り、プロンプトには多様性・情報寄りで絞った上位のみ渡す。
   private static readonly SEARCH_TERM_FETCH_POOL = 5000; // GAQL 取得上限（選別母集団）
   private static readonly SEARCH_TERM_PROMPT_LIMIT = 1500; // プロンプト投入上限（キュレーション後）
-  // 除外KW: 大規模口座（数万件）でプロンプトが溢れるため、CSV化に加え投入件数を上限で抑える。
-  private static readonly NEGATIVE_KEYWORD_PROMPT_LIMIT = 2000;
-
   private readonly supabaseService: SupabaseService;
   private readonly googleAdsService: GoogleAdsService;
   private readonly emailService: EmailService;
@@ -240,7 +241,7 @@ class GoogleAdsAiAnalysisService {
           serviceName: targetService.name,
           strength: this.formatStrength(targetService),
           keywordData: this.formatKeywordMetrics(DEV_SAMPLE_KEYWORDS),
-          negativeKeywords: this.formatNegativeKeywords(DEV_SAMPLE_NEGATIVE_KEYWORDS),
+          negativeKeywords: formatNegativeKeywordsForPrompt(DEV_SAMPLE_NEGATIVE_KEYWORDS),
           searchTermData: this.formatSearchTermMetrics(DEV_SAMPLE_SEARCH_TERMS),
           existingContent: this.formatContentInventory(DEV_SAMPLE_CONTENT_INVENTORY),
           rankingData: this.formatRankingSnapshot(DEV_SAMPLE_RANKING_SNAPSHOT),
@@ -448,18 +449,12 @@ class GoogleAdsAiAnalysisService {
       // §除外KW: プロンプトに入る除外KWテーブルの実負荷を可観測化する（トークン肥大の監視）。
       // raw（API取得）→ unique（除外テーマ集約後）→ prompted（上限適用後）→ chars（整形後の文字数）。
       const negativeKeywordsRaw = negativeKeywordResult.data ?? [];
-      const negativeKeywordsFormatted = this.formatNegativeKeywords(negativeKeywordsRaw);
-      const uniqueNegativeKwCount = this.uniqueNegativeKeywordThemes(negativeKeywordsRaw).length;
+      const negativeKeywordPrompt = prepareNegativeKeywordsForPrompt(negativeKeywordsRaw);
       console.info('[GoogleAdsAiAnalysisService] negative keyword prompt load', {
-        rawNegativeKw: negativeKeywordsRaw.length,
-        // (テキスト, マッチタイプ) でユニーク化した除外テーマ数。
-        uniqueNegativeKw: uniqueNegativeKwCount,
-        // 実際にプロンプトへ載せた件数（上限適用後）。
-        promptedNegativeKw: Math.min(
-          uniqueNegativeKwCount,
-          GoogleAdsAiAnalysisService.NEGATIVE_KEYWORD_PROMPT_LIMIT
-        ),
-        negativeKwChars: negativeKeywordsFormatted.length,
+        rawNegativeKw: negativeKeywordPrompt.rawNegativeKw,
+        uniqueNegativeKw: negativeKeywordPrompt.uniqueNegativeKw,
+        promptedNegativeKw: negativeKeywordPrompt.promptedNegativeKw,
+        negativeKwChars: negativeKeywordPrompt.negativeKwChars,
       });
 
       // 検索語句: impression上位プールから、多様性（キャンペーン横断）・情報寄りで投入数を絞る。
@@ -478,7 +473,7 @@ class GoogleAdsAiAnalysisService {
         serviceName: targetService.name,
         strength: this.formatStrength(targetService),
         keywordData: this.formatKeywordMetrics(keywordResult.data ?? []),
-        negativeKeywords: negativeKeywordsFormatted,
+        negativeKeywords: negativeKeywordPrompt.formatted,
         searchTermData: this.formatSearchTermMetrics(curatedSearchTerms),
         existingContent: this.formatContentInventory(
           contentInventoryResult.success ? contentInventoryResult.data : []
@@ -728,98 +723,6 @@ class GoogleAdsAiAnalysisService {
       );
 
     return [header, separator, ...rows].join('\n');
-  }
-
-  /** CSV セル化: 区切り文字・引用符・改行を含む値のみ二重引用符で囲み内部引用符をエスケープ。 */
-  private csvCell(value: string): string {
-    return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-  }
-
-  /**
-   * 除外KWが「現在有効に除外しているか」。getNegativeKeywords は状態で絞らず全階層を返すため、
-   * PAUSED/REMOVED キャンペーン（実際には除外していない）や停止中の広告グループの除外語を弾く。
-   */
-  private isActiveNegativeKeyword(kw: GoogleAdsNegativeKeyword): boolean {
-    if (kw.campaignStatus !== 'ENABLED') return false;
-    // 広告グループレベルは親キャンペーンに加え広告グループも ENABLED 必須。
-    // 状態不明（undefined・取得/パース異常）は有効と確認できないため除外する（誤適用防止）。
-    if (kw.level === 'ad_group' && kw.adGroupStatus !== 'ENABLED') return false;
-    return true;
-  }
-
-  /**
-   * 除外KWを「現在有効な除外テーマ」に集約する（コンテンツ戦略提案メール専用）。
-   * - 有効状態（ENABLED）のみ採用：PAUSED/REMOVED は実際に除外しておらずノイズのため除外。
-   * - 適用範囲（level）は保持：広告グループ限定の狭い除外をアカウント広域の除外と混同させない。
-   * - キャンペーン名/広告グループ名は本用途では低シグナルなので捨て、(テキスト, マッチタイプ, レベル) で集約。
-   * ※共有の dedupeNegativeKeywords（除外KW"提案"機能が scope 込みで使用）は変更しない。
-   */
-  private uniqueNegativeKeywordThemes(keywords: GoogleAdsNegativeKeyword[]): {
-    keywordText: string;
-    matchType: GoogleAdsNegativeKeyword['matchType'];
-    level: GoogleAdsNegativeKeyword['level'];
-  }[] {
-    const seen = new Map<
-      string,
-      {
-        keywordText: string;
-        matchType: GoogleAdsNegativeKeyword['matchType'];
-        level: GoogleAdsNegativeKeyword['level'];
-      }
-    >();
-    for (const kw of keywords) {
-      if (!this.isActiveNegativeKeyword(kw)) continue;
-      const key = `${kw.keywordText.toLowerCase()}␟${kw.matchType}␟${kw.level}`;
-      if (!seen.has(key)) {
-        seen.set(key, { keywordText: kw.keywordText, matchType: kw.matchType, level: kw.level });
-      }
-    }
-    return [...seen.values()];
-  }
-
-  /**
-   * 除外KWをプロンプト用に整形する。
-   * - 集約: 有効な除外テーマ (テキスト, マッチタイプ, 適用範囲) にユニーク化（運用名は破棄＝高シグナル化）。
-   * - 形式: CSV（3列）でトークン節約。
-   * - 安全網: 万一ユニークでも上限超なら制限し、省略件数を明記（docs/context の原則(d)）。
-   */
-  private formatNegativeKeywords(keywords: GoogleAdsNegativeKeyword[]): string {
-    const themes = this.uniqueNegativeKeywordThemes(keywords);
-    const header = '除外キーワード,マッチタイプ,適用範囲';
-
-    if (themes.length === 0) {
-      return `${header}\n（有効な除外キーワードなし）`;
-    }
-
-    // 上限到達時は広域な campaign 除外を優先（戦略的・影響大）。同レベル内はテキスト昇順で決定的に。
-    const levelRank: Record<GoogleAdsNegativeKeyword['level'], number> = {
-      campaign: 0,
-      ad_group: 1,
-    };
-    const ordered = [...themes].sort((a, b) => {
-      const levelDiff = levelRank[a.level] - levelRank[b.level];
-      if (levelDiff !== 0) return levelDiff;
-      const textDiff = a.keywordText.localeCompare(b.keywordText, 'ja');
-      // 同レベル・同テキストで EXACT/PHRASE/BROAD が並ぶ場合の境界不定を防ぐ最終タイブレーク。
-      return textDiff !== 0 ? textDiff : a.matchType.localeCompare(b.matchType);
-    });
-    const limit = GoogleAdsAiAnalysisService.NEGATIVE_KEYWORD_PROMPT_LIMIT;
-    const capped = ordered.slice(0, limit);
-    const omitted = ordered.length - capped.length;
-
-    const scopeLabel = (level: GoogleAdsNegativeKeyword['level']): string =>
-      level === 'ad_group' ? '広告グループ' : 'キャンペーン';
-    const rows = capped.map(
-      t => `${this.csvCell(t.keywordText)},${this.csvCell(t.matchType)},${scopeLabel(t.level)}`
-    );
-
-    const lines = [header, ...rows];
-    if (omitted > 0) {
-      lines.push(
-        `（ほか ${this.formatInteger(omitted)} 件は省略。campaign→ad_group 優先で有効な除外テーマ上位 ${this.formatInteger(limit)} 件を掲載）`
-      );
-    }
-    return lines.join('\n');
   }
 
   // 検索語句キュレーション用の語彙。コンテンツ機会に効く情報系を加点、純購買・ブランド系を減点する。
