@@ -366,6 +366,14 @@ export type Database = {
           outcome_type: string
           previous_position: number | null
           suggestion_applied: boolean
+          suggestion_attempt_count: number
+          suggestion_completed_at: string | null
+          suggestion_error: string | null
+          suggestion_job_token: string | null
+          suggestion_next_retry_at: string | null
+          suggestion_stage: number | null
+          suggestion_started_at: string | null
+          suggestion_status: string | null
           suggestion_summary: string | null
           user_id: string
         }
@@ -382,6 +390,14 @@ export type Database = {
           outcome_type?: string
           previous_position?: number | null
           suggestion_applied?: boolean
+          suggestion_attempt_count?: number
+          suggestion_completed_at?: string | null
+          suggestion_error?: string | null
+          suggestion_job_token?: string | null
+          suggestion_next_retry_at?: string | null
+          suggestion_stage?: number | null
+          suggestion_started_at?: string | null
+          suggestion_status?: string | null
           suggestion_summary?: string | null
           user_id: string
         }
@@ -398,6 +414,14 @@ export type Database = {
           outcome_type?: string
           previous_position?: number | null
           suggestion_applied?: boolean
+          suggestion_attempt_count?: number
+          suggestion_completed_at?: string | null
+          suggestion_error?: string | null
+          suggestion_job_token?: string | null
+          suggestion_next_retry_at?: string | null
+          suggestion_stage?: number | null
+          suggestion_started_at?: string | null
+          suggestion_status?: string | null
           suggestion_summary?: string | null
           user_id?: string
         }
@@ -1015,6 +1039,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_gsc_suggestion_jobs: {
+        Args: { p_limit?: number }
+        Returns: {
+          content_annotation_id: string
+          current_position: number | null
+          id: string
+          outcome: string
+          previous_position: number | null
+          suggestion_attempt_count: number
+          suggestion_job_token: string
+          suggestion_stage: number
+          user_id: string
+        }[]
+      }
       delete_employee_and_restore_owner: {
         Args: { p_employee_id: string; p_owner_id: string }
         Returns: {

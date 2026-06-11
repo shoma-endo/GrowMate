@@ -41,7 +41,8 @@ export async function getUnreadSuggestionsCount(): Promise<{ count: number }> {
     .eq('is_read', false)
     .neq('outcome_type', 'error')
     .not('outcome', 'is', null)
-    .neq('outcome', 'improved');
+    .neq('outcome', 'improved')
+    .not('suggestion_summary', 'is', null);
 
   if (queryError) {
     console.error('Error fetching unread suggestions count:', queryError);

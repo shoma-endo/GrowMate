@@ -14,7 +14,8 @@ class GscNotificationService {
       .eq('is_read', false)
       .neq('outcome_type', 'error')
       .not('outcome', 'is', null)
-      .neq('outcome', 'improved');
+      .neq('outcome', 'improved')
+      .not('suggestion_summary', 'is', null);
 
     if (error) {
       console.error('Error fetching annotation ids with unread suggestions:', error);
