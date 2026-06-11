@@ -1,7 +1,3 @@
-import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
-import { authMiddleware } from '@/server/middleware/auth.middleware';
-import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
 
 import { normalizeToPath } from '@/lib/ga4-utils';
@@ -34,7 +30,7 @@ interface Ga4MetricAggregate {
 }
 
 class AnalyticsContentService {
-  async getPage(params: AnalyticsContentQuery): Promise<AnalyticsContentPage> {
+  async getPage(userId: string, params: AnalyticsContentQuery): Promise<AnalyticsContentPage> {
     const page = Number.isFinite(params.page) ? Math.max(1, Math.floor(params.page)) : 1;
     const perPageRaw = Number.isFinite(params.perPage) ? Math.floor(params.perPage) : MAX_PER_PAGE;
     const perPage = Math.max(1, Math.min(MAX_PER_PAGE, perPageRaw));
@@ -53,8 +49,6 @@ class AnalyticsContentService {
     };
 
     try {
-      const { userId } = await this.resolveUser();
-
       const client = supabaseService.getClient();
 
       const fetchAnnotationsPage = async (targetPage: number) => {
@@ -169,9 +163,6 @@ class AnalyticsContentService {
         ga4Error,
       };
     } catch (error) {
-      if (error instanceof AuthEmailLinkConflictError) {
-        throw error;
-      }
       const message = error instanceof Error ? error.message : 'ページデータの取得に失敗しました';
       return {
         ...baseline,
@@ -207,9 +198,8 @@ class AnalyticsContentService {
    * 重複を除いてソートしたカテゴリ名の配列を返す。フィルターUIの選択肢に使用する。
    * DB側RPC関数で効率的に集約する（1回のラウンドトリップで完了）。
    */
-  async getAvailableCategoryNames(): Promise<string[]> {
+  async getAvailableCategoryNames(userId: string): Promise<string[]> {
     try {
-      const { userId } = await this.resolveUser();
       const client = supabaseService.getClient();
 
       // RPC関数でDB側で集約（1回のクエリで完了）
@@ -239,9 +229,6 @@ class AnalyticsContentService {
       }
       return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
     } catch (err) {
-      if (err instanceof AuthEmailLinkConflictError) {
-        throw err;
-      }
       console.error('[AnalyticsContentService] getAvailableCategoryNames error:', err);
       return [];
     }
@@ -374,20 +361,6 @@ class AnalyticsContentService {
     }
 
     return results;
-  }
-
-  private async resolveUser(): Promise<{ userId: string }> {
-    const authResult = await authMiddleware();
-
-    const conflictMessage = getEmailLinkConflictMessage(authResult);
-    if (conflictMessage !== undefined) {
-      throw new AuthEmailLinkConflictError(conflictMessage);
-    }
-    if (authResult.error || !authResult.userId) {
-      throw new Error(authResult.error || 'ユーザー認証に失敗しました');
-    }
-
-    return { userId: authResult.userId };
   }
 
   private hasValidCanonicalUrl(a: AnnotationRecord): boolean {

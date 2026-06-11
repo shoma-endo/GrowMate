@@ -6,7 +6,6 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
-import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 
 const supabaseService = new SupabaseService();
 
@@ -78,38 +77,4 @@ export async function markSuggestionAsRead(historyId: string): Promise<{ success
   revalidatePath('/analytics');
   revalidatePath('/gsc-dashboard');
   return { success: true };
-}
-
-/**
- * 指定したannotation_idに紐づく未読の改善提案IDリストを取得する
- * AnalyticsTableでの🔔バッジ表示用
- */
-export async function getAnnotationIdsWithUnreadSuggestions(): Promise<{ annotationIds: string[] }> {
-  const auth = await getAuthUserId();
-  if ('error' in auth) {
-    if (auth.emailLinkConflict) {
-      throw new AuthEmailLinkConflictError(auth.error);
-    }
-    return { annotationIds: [] };
-  }
-  const { userId } = auth;
-
-  const { data, error: queryError } = await supabaseService
-    .getClient()
-    .from('gsc_article_evaluation_history')
-    .select('content_annotation_id')
-    .eq('user_id', userId)
-    .eq('is_read', false)
-    .neq('outcome_type', 'error')
-    .not('outcome', 'is', null)
-    .neq('outcome', 'improved');
-
-  if (queryError) {
-    console.error('Error fetching annotation ids with unread suggestions:', queryError);
-    return { annotationIds: [] };
-  }
-
-  // 重複を除去してリストを返す
-  const uniqueIds = [...new Set(data?.map(d => d.content_annotation_id) ?? [])];
-  return { annotationIds: uniqueIds };
 }

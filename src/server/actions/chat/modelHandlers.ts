@@ -147,11 +147,7 @@ export class ModelHandlerService {
         [],
         model
       );
-    } else if (
-      model === 'ad_copy_creation' ||
-      model === 'ad_copy_finishing' ||
-      model === 'lp_improvement'
-    ) {
+    } else if (model === 'ad_copy_creation') {
       // ✅ Claudeモデルの履歴引き継ぎ対応
       const validMessages = messages.map(msg => ({
         role: msg.role as 'user' | 'assistant' | 'system',

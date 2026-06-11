@@ -44,10 +44,6 @@ const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
     variables:
       '事業者情報に基づいて構造化されたLP原稿を生成します（ヘッダー、問題提起、解決策、特徴、実績、料金、FAQ、CTA）',
   },
-  ad_copy_finishing: {
-    description: 'ユーザーから入力された広告コピーを修正・改善するプロンプト',
-    variables: '事業者情報の全17項目が利用可能です（基本情報、5W2H、ペルソナ、ベンチマーク）',
-  },
   blog_creation: {
     description: 'ブログ（記事）の下書きを作成するプロンプト',
     variables: 'canonicalLinkPairs（改行区切りの内部リンク候補「タイトル | URL」一覧）が利用可能です',

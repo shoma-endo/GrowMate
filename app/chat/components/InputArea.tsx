@@ -34,9 +34,7 @@ import { Service } from '@/server/schemas/brief.schema';
 const AVAILABLE_MODELS = {
   'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2': 'キーワード選定',
   ad_copy_creation: '広告文作成',
-  ad_copy_finishing: '広告文仕上げ',
   lp_draft_creation: 'LPドラフト作成',
-  lp_improvement: 'LP改善',
   blog_creation: 'ブログ作成',
 };
 
@@ -44,9 +42,7 @@ const AVAILABLE_MODELS = {
 const MODEL_PLACEHOLDERS: Record<string, string> = {
   'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2': 'SEOキーワードを改行区切りで入力してください',
   ad_copy_creation: '競合の広告文を入力してください',
-  ad_copy_finishing: '広告文の改善・修正指示などを入力してください',
   lp_draft_creation: '広告見出しと説明文を入力してください',
-  lp_improvement: 'LPの改善・修正指示などを入力してください',
   ...BLOG_PLACEHOLDERS,
 };
 

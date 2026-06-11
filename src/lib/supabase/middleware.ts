@@ -72,7 +72,17 @@ export async function updateSupabaseSession(
   // セッション更新を実行。getUser() は Auth サーバーで再検証するため getSession() より信頼性が高い
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  if (error?.code === 'refresh_token_not_found') {
+    for (const cookie of request.cookies.getAll()) {
+      if (cookie.name.startsWith('sb-')) {
+        supabaseResponse.cookies.delete(cookie.name);
+      }
+    }
+    return { supabaseResponse, supabaseUser: null };
+  }
 
   // /login?reason=email_link_conflict での signOut は行わない（クエリだけでセッションを失わせない）。
   // 競合の有無は /api/user/current 等で確認し、ログイン画面クライアントでメッセージ表示・必要なら signOut する。

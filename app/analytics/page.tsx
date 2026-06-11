@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 
 import AnalyticsClient from './AnalyticsClient';
-import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
-import { getAnnotationIdsWithUnreadSuggestions } from '@/server/actions/gscNotification.actions';
+import { gscNotificationService } from '@/server/services/gscNotificationService';
+import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 
@@ -67,13 +68,18 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     [startDate, endDate] = [endDate, startDate];
   }
 
+  const authResult = await authMiddleware();
+  redirectIfEmailLinkConflict(authResult);
+  if (authResult.error || !authResult.userId) {
+    redirect('/login');
+  }
+  const { userId } = authResult;
+
   // 並列でデータ取得（一覧・未読・カテゴリ一覧）
-  let analyticsPage: Awaited<ReturnType<typeof analyticsContentService.getPage>>;
-  let unreadResult: Awaited<ReturnType<typeof getAnnotationIdsWithUnreadSuggestions>>;
-  let allCategoryNames: Awaited<ReturnType<typeof analyticsContentService.getAvailableCategoryNames>>;
-  try {
-    [analyticsPage, unreadResult, allCategoryNames] = await Promise.all([
-      analyticsContentService.getPage({
+  const [analyticsPage, unreadResult, allCategoryNames] = await Promise.all([
+    analyticsContentService.getPage(
+      userId,
+      {
         page,
         perPage,
         startDate,
@@ -81,16 +87,11 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         selectedCategoryNames,
         includeUncategorized,
         hasUnreadSuggestion,
-      }),
-      getAnnotationIdsWithUnreadSuggestions(),
-      analyticsContentService.getAvailableCategoryNames(),
-    ]);
-  } catch (e) {
-    if (e instanceof AuthEmailLinkConflictError) {
-      redirect('/login?reason=email_link_conflict');
-    }
-    throw e;
-  }
+      }
+    ),
+    gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
+    analyticsContentService.getAvailableCategoryNames(userId),
+  ]);
   const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error } = analyticsPage;
   const currentPage = resolvedPage ?? page;
   const prevDisabled = currentPage <= 1;

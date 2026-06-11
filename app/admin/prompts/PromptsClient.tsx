@@ -24,6 +24,8 @@ import { fetchPrompts, savePrompt } from '@/server/actions/adminPrompts.actions'
 
 type PromptCategory = 'chat' | 'gsc' | 'google_ads';
 
+const RETIRED_PROMPT_NAMES = new Set(['ad_copy_finishing', 'lp_improvement']);
+
 const PROMPT_CATEGORIES: Array<{
   id: PromptCategory;
   label: string;
@@ -210,21 +212,26 @@ export default function PromptsClient({ initialTemplates, initialError }: Prompt
     }
   };
 
+  const visibleTemplates = useMemo(
+    () => templates.filter(template => !RETIRED_PROMPT_NAMES.has(template.name)),
+    [templates]
+  );
+
   const categoryCounts = useMemo(() => {
     return PROMPT_CATEGORIES.reduce<Record<PromptCategory, number>>(
       (acc, category) => {
-        acc[category.id] = templates.filter(category.filter).length;
+        acc[category.id] = visibleTemplates.filter(category.filter).length;
         return acc;
       },
       {} as Record<PromptCategory, number>
     );
-  }, [templates]);
+  }, [visibleTemplates]);
 
   const filteredTemplates = useMemo(() => {
     const category = PROMPT_CATEGORIES.find(c => c.id === activeCategory);
-    if (!category) return templates;
-    return templates.filter(category.filter);
-  }, [activeCategory, templates]);
+    if (!category) return visibleTemplates;
+    return visibleTemplates.filter(category.filter);
+  }, [activeCategory, visibleTemplates]);
 
   useEffect(() => {
     if (selectedTemplate && !filteredTemplates.some(t => t.id === selectedTemplate.id)) {

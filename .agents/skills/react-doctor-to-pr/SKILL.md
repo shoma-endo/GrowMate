@@ -94,19 +94,13 @@ npx -y react-doctor@latest . --verbose --diff
 
 ---
 
-## Phase 6: CodeRabbit CLI レビュー
-
-→ [`.agents/skills/shared/pr-workflows/coderabbit-loop.md`](../shared/pr-workflows/coderabbit-loop.md)
-
----
-
-## Phase 7: セルフレビュー
+## Phase 6: セルフレビュー
 
 → [`.agents/skills/shared/pr-workflows/self-review-phase.md`](../shared/pr-workflows/self-review-phase.md)
 
 ---
 
-## Phase 8: コミット
+## Phase 7: コミット
 
 → [`.agents/skills/shared/pr-workflows/commit.md`](../shared/pr-workflows/commit.md)
 
@@ -114,7 +108,7 @@ npx -y react-doctor@latest . --verbose --diff
 
 ---
 
-## Phase 9: PR作成
+## Phase 8: PR作成
 
 → [`.agents/skills/shared/pr-workflows/pr-create.md`](../shared/pr-workflows/pr-create.md)
 

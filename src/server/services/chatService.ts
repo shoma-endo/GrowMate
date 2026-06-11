@@ -68,7 +68,7 @@ class ChatService {
       if (typeof userMessage === 'string') {
         userMessageString = userMessage;
         const config =
-          MODEL_CONFIGS[model ?? 'ad_copy_finishing'] ?? MODEL_CONFIGS['ad_copy_finishing']!;
+          MODEL_CONFIGS[model ?? 'ad_copy_creation'] ?? MODEL_CONFIGS['ad_copy_creation']!;
         const providerKey = config.provider;
         const llmModel = config.actualModel;
 
@@ -189,7 +189,7 @@ class ChatService {
       if (typeof userMessage === 'string') {
         userMessageString = userMessage;
         const config =
-          MODEL_CONFIGS[model ?? 'ad_copy_finishing'] ?? MODEL_CONFIGS['ad_copy_finishing']!;
+          MODEL_CONFIGS[model ?? 'ad_copy_creation'] ?? MODEL_CONFIGS['ad_copy_creation']!;
         const providerKey = config.provider;
         const llmModel = config.actualModel;
 
