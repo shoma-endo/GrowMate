@@ -255,3 +255,22 @@ export interface RunEvaluationOptions {
   /** バッチ処理全体の開始時刻（タイムアウト判定用） */
   startTime?: number;
 }
+
+export interface GscSuggestionJobRow {
+  id: string;
+  user_id: string;
+  content_annotation_id: string;
+  outcome: GscEvaluationOutcome;
+  current_position: number | string | null;
+  previous_position: number | string | null;
+  suggestion_stage: number;
+  suggestion_attempt_count: number;
+  suggestion_job_token: string;
+}
+
+export interface GscSuggestionJobBatchResult {
+  total: number;
+  completed: number;
+  failed: number;
+  terminalFailed: number;
+}

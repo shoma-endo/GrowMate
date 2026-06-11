@@ -5,10 +5,11 @@
 # 使い方:
 #   CRON_SECRET=xxx scripts/invoke-cron.sh \
 #     --url https://example.com/api/cron/foo \
-#     --profile {gsc-batch|count-batch}
+#     --profile {gsc-batch|gsc-suggestions|count-batch}
 #
 # Validation Profile:
 #   gsc-batch    : GSC 評価バッチ向け（stoppedReason / errors / totalSystemError を確認）
+#   gsc-suggestions: GSC提案ジョブ向け（一時失敗は警告、最終失敗はエラー）
 #   count-batch  : 件数集計バッチ向け（success / data.failed を確認）
 #
 # Exit:
@@ -38,7 +39,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$URL" ] || [ -z "$PROFILE" ]; then
-  echo "Usage: invoke-cron.sh --url <URL> --profile <gsc-batch|count-batch>" >&2
+  echo "Usage: invoke-cron.sh --url <URL> --profile <gsc-batch|gsc-suggestions|count-batch>" >&2
   exit 1
 fi
 
@@ -108,6 +109,30 @@ validate_count_batch() {
   return 0
 }
 
+validate_gsc_suggestions() {
+  local file="$1"
+
+  SUCCESS=$(jq -r '.success // false' "$file")
+  if [ "$SUCCESS" != "true" ]; then
+    echo "GSC suggestions returned success=false:" >&2
+    cat "$file" >&2
+    return 1
+  fi
+
+  FAILED=$(jq -r '.data.failed // 0' "$file")
+  TERMINAL_FAILED=$(jq -r '.data.terminalFailed // 0' "$file")
+  if [ "$FAILED" -gt 0 ]; then
+    echo "::warning::GSC suggestion jobs will retry: failed=$FAILED"
+  fi
+  if [ "$TERMINAL_FAILED" -gt 0 ]; then
+    echo "GSC suggestion jobs reached retry limit: terminalFailed=$TERMINAL_FAILED" >&2
+    cat "$file" >&2
+    return 1
+  fi
+
+  return 0
+}
+
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
   HTTP_CODE=$(curl -X GET "$URL" \
     -H "Authorization: Bearer $CRON_SECRET" \
@@ -128,6 +153,11 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     case "$PROFILE" in
       gsc-batch)
         if ! validate_gsc_batch "$RESPONSE_FILE"; then
+          exit 1
+        fi
+        ;;
+      gsc-suggestions)
+        if ! validate_gsc_suggestions "$RESPONSE_FILE"; then
           exit 1
         fi
         ;;

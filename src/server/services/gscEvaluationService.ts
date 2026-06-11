@@ -7,7 +7,6 @@ import type {
   GscEvaluationRow,
   RunEvaluationOptions,
 } from '@/types/gsc';
-import { gscSuggestionService } from '@/server/services/gscSuggestionService';
 import { gscImportService } from '@/server/services/gscImportService';
 import { formatDateISO, addDaysISO } from '@/lib/date-utils';
 
@@ -356,7 +355,7 @@ class GscEvaluationService {
     }
 
     // 挿入: history
-    const { data: historyRow, error: historyError } = await this.supabaseService
+    const { error: historyError } = await this.supabaseService
       .getClient()
       .from('gsc_article_evaluation_history')
       .insert({
@@ -368,28 +367,14 @@ class GscEvaluationService {
         outcome,
         outcome_type: 'success',
         suggestion_applied: false,
+        suggestion_status: outcome === 'improved' ? null : 'pending',
+        suggestion_stage: outcome === 'improved' ? null : currentStage,
+        suggestion_next_retry_at: outcome === 'improved' ? null : new Date().toISOString(),
         created_at: new Date().toISOString(),
-      })
-      .select('id')
-      .maybeSingle();
+      });
 
     if (historyError) {
       throw new Error(historyError.message || '評価履歴の保存に失敗しました');
-    }
-
-    // 改善提案: 改善していない場合のみ実行（Claude API 呼び出し）
-    // 現在のステージで提案を生成（次回のステージではない）
-    if (outcome !== 'improved' && historyRow?.id) {
-      await gscSuggestionService.generate({
-        userId,
-        contentAnnotationId: evaluation.content_annotation_id,
-        evaluationId: evaluation.id,
-        evaluationHistoryId: historyRow.id,
-        outcome,
-        currentPosition: currentPos,
-        previousPosition: lastSeen,
-        currentSuggestionStage: currentStage, // 現在のステージを渡す
-      });
     }
 
     return { status: 'success', outcome };

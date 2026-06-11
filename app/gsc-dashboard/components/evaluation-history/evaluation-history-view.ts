@@ -35,13 +35,62 @@ interface EvaluationHistoryViewState {
   statusClassName: string;
 }
 
+export function getSuggestionStatusMessage(item: GscEvaluationHistoryItem): {
+  variant: 'default' | 'destructive';
+  title: string;
+  description: string;
+} | null {
+  if (item.suggestion_summary || item.outcome === 'improved' || item.outcomeType === 'error') {
+    return null;
+  }
+
+  if (item.suggestion_status === 'pending' || item.suggestion_status === 'processing') {
+    return {
+      variant: 'default',
+      title: 'AI改善提案を生成中です',
+      description: '生成には数分かかる場合があります。完了後、この画面に改善提案が表示されます。',
+    };
+  }
+
+  if (item.suggestion_status === 'failed' && item.suggestion_attempt_count < 3) {
+    return {
+      variant: 'default',
+      title: 'AI改善提案を再生成しています',
+      description: '一時的な問題が発生したため、自動で再試行します。',
+    };
+  }
+
+  if (item.suggestion_status === 'failed') {
+    return {
+      variant: 'destructive',
+      title: 'AI改善提案を生成できませんでした',
+      description:
+        item.suggestion_error?.trim() ||
+        '複数回試行しましたが生成できませんでした。時間をおいて再度評価を実行してください。',
+    };
+  }
+
+  if (item.suggestion_status === 'completed') {
+    return {
+      variant: 'destructive',
+      title: 'AI改善提案の保存状態を確認できません',
+      description: '提案生成は完了しましたが、内容を表示できません。時間をおいて再度評価を実行してください。',
+    };
+  }
+
+  return null;
+}
+
 export function getEvaluationHistoryState(
   item: GscEvaluationHistoryItem
 ): EvaluationHistoryViewState {
   const isNoMetrics = item.outcomeType === 'error' && item.errorCode === 'no_metrics';
   const isError = item.outcomeType === 'error' && !isNoMetrics;
   const canMarkAsRead =
-    item.outcomeType !== 'error' && item.outcome !== null && item.outcome !== 'improved';
+    item.outcomeType !== 'error' &&
+    item.outcome !== null &&
+    item.outcome !== 'improved' &&
+    Boolean(item.suggestion_summary);
 
   if (isError) {
     return {

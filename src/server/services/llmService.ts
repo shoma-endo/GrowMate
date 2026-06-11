@@ -17,6 +17,7 @@ interface LLMOptions {
    * LLM呼び出しのタイムアウト（ミリ秒）。未指定時は 300000ms。
    */
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 class LLMService {
@@ -40,18 +41,28 @@ class LLMService {
     }
 
     try {
+      const controller = new AbortController();
+      const abortFromCaller = () => controller.abort(opts.signal?.reason);
+      if (opts.signal?.aborted) {
+        abortFromCaller();
+      } else {
+        opts.signal?.addEventListener('abort', abortFromCaller, { once: true });
+      }
+      const timeoutId = setTimeout(
+        () => controller.abort(new Error('timeout')),
+        opts.timeoutMs ?? 300000
+      );
+
+      const requestOptions = { ...opts, signal: controller.signal };
       const llmPromise =
         providerKey === 'openai'
-          ? this.callOpenAI(model, systemPrompt, chatMessages, opts)
-          : this.callAnthropic(model, systemPrompt, chatMessages, opts);
+          ? this.callOpenAI(model, systemPrompt, chatMessages, requestOptions)
+          : this.callAnthropic(model, systemPrompt, chatMessages, requestOptions);
 
-      // タイムアウト（デフォルト300秒）
-      const text = await Promise.race([
-        llmPromise,
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), opts.timeoutMs ?? 300000)
-        ),
-      ]);
+      const text = await llmPromise.finally(() => {
+        clearTimeout(timeoutId);
+        opts.signal?.removeEventListener('abort', abortFromCaller);
+      });
 
       return text;
     } catch (error) {
@@ -72,15 +83,18 @@ class LLMService {
     messages: LLMMessage[],
     opts: LLMOptions
   ): Promise<string> {
-    const completion = await this.openai.chat.completions.create({
-      model,
-      messages: [
-        ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-        ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-      ],
-      temperature: opts.temperature ?? 0.7,
-      max_completion_tokens: opts.maxTokens ?? 3000,
-    });
+    const completion = await this.openai.chat.completions.create(
+      {
+        model,
+        messages: [
+          ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+          ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        ],
+        temperature: opts.temperature ?? 0.7,
+        max_completion_tokens: opts.maxTokens ?? 3000,
+      },
+      { signal: opts.signal }
+    );
 
     const text = completion.choices[0]?.message?.content?.trim() ?? '';
     if (!text) throw new Error('OpenAI: 応答が空でした');
@@ -114,7 +128,7 @@ class LLMService {
       max_tokens: opts.maxTokens ?? 3000,
     };
 
-    const resp = await this.anthropic.messages.create(params);
+    const resp = await this.anthropic.messages.create(params, { signal: opts.signal });
 
     // 出力が max_tokens で打ち切られた場合は本番ログで検知できるようにする
     // （末尾の JSON ブロック欠落など、サイレントな出力欠けの原因になるため）。
