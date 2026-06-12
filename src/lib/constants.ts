@@ -34,6 +34,7 @@ interface ModelConfig {
   provider: 'openai' | 'anthropic';
   maxTokens: number;
   temperature?: number;
+  stream?: boolean;
   actualModel: string;
   seed?: number;
   top_p?: number;
@@ -92,6 +93,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   gsc_insight_body_rewrite: {
     ...ANTHROPIC_HAIKU_BASE,
     maxTokens: 25000,
+    stream: true,
     label: '本文の提案',
   },
   gsc_insight_persona_rebuild: {

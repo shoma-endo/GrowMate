@@ -11,6 +11,7 @@ interface LLMMessage {
 interface LLMOptions {
   temperature?: number | undefined;
   maxTokens?: number | undefined;
+  stream?: boolean | undefined;
   // Note: seed/top_p are configured in MODEL_CONFIGS but not currently used
   // Future implementation: use provider(model).withSettings({ seed, topP }) if needed
   /**
@@ -128,7 +129,9 @@ class LLMService {
       max_tokens: opts.maxTokens ?? 3000,
     };
 
-    const resp = await this.anthropic.messages.create(params, { signal: opts.signal });
+    const resp = opts.stream
+      ? await this.anthropic.messages.stream(params, { signal: opts.signal }).finalMessage()
+      : await this.anthropic.messages.create(params, { signal: opts.signal });
 
     // 出力が max_tokens で打ち切られた場合は本番ログで検知できるようにする
     // （末尾の JSON ブロック欠落など、サイレントな出力欠けの原因になるため）。
