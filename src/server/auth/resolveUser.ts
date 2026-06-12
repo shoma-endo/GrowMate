@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { isUnauthenticatedAuthError } from '@/lib/supabase/auth-errors';
 import { EmailAuthLinkConflictError, userService } from '@/server/services/userService';
 import type { User } from '@/types/user';
 
@@ -21,8 +22,7 @@ export async function resolveEmailUserWithReason(): Promise<EmailAuthResult> {
   const { data: { user: authUser }, error } = await supabase.auth.getUser();
 
   if (error) {
-    // セッションなし（未ログイン）は AuthSessionMissingError。一時障害と区別して unauthenticated とする
-    if (error.name === 'AuthSessionMissingError') return { ok: false, reason: 'unauthenticated' };
+    if (isUnauthenticatedAuthError(error)) return { ok: false, reason: 'unauthenticated' };
     return { ok: false, reason: 'transient' };
   }
   if (!authUser?.email) return { ok: false, reason: 'unauthenticated' };

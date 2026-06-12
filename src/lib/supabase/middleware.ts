@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@/types/database.types';
 import type { User } from '@supabase/supabase-js';
+import { isUnauthenticatedAuthError } from '@/lib/supabase/auth-errors';
 
 interface SupabaseSessionResult {
   /** 更新済み Cookie を含むレスポンス。必ず元の NextResponse の代わりに使うこと */
@@ -75,12 +76,17 @@ export async function updateSupabaseSession(
     error,
   } = await supabase.auth.getUser();
 
-  if (error?.code === 'refresh_token_not_found') {
+  if (error && isUnauthenticatedAuthError(error)) {
     for (const cookie of request.cookies.getAll()) {
       if (cookie.name.startsWith('sb-')) {
+        request.cookies.delete(cookie.name);
         supabaseResponse.cookies.delete(cookie.name);
       }
     }
+    forwardedHeaders.set(
+      'cookie',
+      request.cookies.getAll().map(({ name, value }) => `${name}=${value}`).join('; ')
+    );
     return { supabaseResponse, supabaseUser: null };
   }
 
