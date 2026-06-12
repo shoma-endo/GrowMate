@@ -252,6 +252,7 @@ class GscSuggestionService {
     const fullText = await llmChat(provider, model, [{ role: 'user', content: filled }], {
       maxTokens: modelConfig.maxTokens,
       temperature: modelConfig.temperature,
+      stream: modelConfig.stream,
       timeoutMs: 180000,
       signal,
     });
