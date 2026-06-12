@@ -2,6 +2,7 @@
 
 import { headers } from 'next/headers';
 
+import { isUnauthenticatedAuthError } from '@/lib/supabase/auth-errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { clearAuthCookies } from '@/server/middleware/auth.middleware';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -102,7 +103,7 @@ export async function signOutEmail(): Promise<{ success: boolean; error?: string
   const supabase = await createSupabaseServerClient();
 
   const { error: signOutError } = await supabase.auth.signOut();
-  if (signOutError && signOutError.name !== 'AuthSessionMissingError') {
+  if (signOutError && !isUnauthenticatedAuthError(signOutError)) {
     console.error('[auth.actions] signOutEmail error:', signOutError.message);
     return { success: false, error: 'ログアウトに失敗しました。再度お試しください。' };
   }
@@ -121,7 +122,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient
  */
 async function signOutSupabaseSession(supabase: SupabaseServerClient): Promise<void> {
   const { error } = await supabase.auth.signOut();
-  if (error && error.name !== 'AuthSessionMissingError') {
+  if (error && !isUnauthenticatedAuthError(error)) {
     console.error('[auth.actions] signOutSupabaseSession error:', error.message);
   }
 }
