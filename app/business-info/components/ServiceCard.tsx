@@ -171,7 +171,7 @@ export function ServiceCard({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <ServiceField
-                label="強み"
+                label="強み＋毎回反映したい内容"
                 placeholder="徹底した分解洗浄、即日対応可"
                 value={service.strength ?? ''}
                 fieldKey="strength"
