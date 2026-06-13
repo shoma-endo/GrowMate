@@ -7,7 +7,9 @@ const HEADING_WHITESPACE =
 
 /**
  * h2/h3/h4 見出し行を解析する（正規表現を使用しない）。
- * 例: "h2 見出し" / "h3　見出し" / "h3見出し" / "H4見出し"
+ * 例: "h2 見出し" / "h3　見出し" / "h3見出し" / "H4見出し" / "h2: 見出し" / "h2： 見出し"
+ * レベル数字の直後にコロン（半角 `:` / 全角 `：`）・スペースの有無は不問。
+ * 連続コロン（"h2:: …"）もまとめてスキップする。
  */
 function parseH2H3H4HeadingLine(line: string): { text: string; level: 2 | 3 | 4 } | null {
   const t = line.trim();
@@ -20,6 +22,7 @@ function parseH2H3H4HeadingLine(line: string): { text: string; level: 2 | 3 | 4 
   const level = c1 === '2' ? 2 : c1 === '3' ? 3 : 4;
   let i = 2;
   if (i >= t.length) return null;
+  while (i < t.length && (t.charAt(i) === ':' || t.charAt(i) === '：')) i++;
   while (i < t.length && HEADING_WHITESPACE.has(t.charAt(i))) i++;
   const text = t.slice(i).trim();
   if (!text) return null;
