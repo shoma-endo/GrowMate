@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { ServerActionResult } from '@/lib/async-handler';
-import { getErrorMessage } from '@/lib/async-handler';
+import { getErrorMessage, isDeploymentMismatchError } from '@/lib/async-handler';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 /**
  * Server Action実行オプション
@@ -78,7 +79,9 @@ export function useServerAction<T>() {
           return { success: false, error: errorMessage };
         }
       } catch (err) {
-        const errorMessage = getErrorMessage(err, defaultErrorMessage);
+        const errorMessage = isDeploymentMismatchError(err)
+          ? ERROR_MESSAGES.ERROR_BOUNDARY.DEPLOYMENT_MISMATCH
+          : getErrorMessage(err, defaultErrorMessage);
         setError(errorMessage);
 
         if (logErrors) {

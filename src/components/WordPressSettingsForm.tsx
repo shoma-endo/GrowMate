@@ -23,6 +23,7 @@ import {
 } from '@/server/actions/wordpress.actions';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { diagnoseWordPressError } from '@/domain/errors/wordpress-error-diagnostics';
+import { isDeploymentMismatchError } from '@/lib/async-handler';
 
 interface StatusOutcome {
   success: boolean;
@@ -201,6 +202,13 @@ export default function WordPressSettingsForm({
         });
       }
     } catch (error) {
+      if (isDeploymentMismatchError(error)) {
+        setSaveStatus({
+          success: false,
+          primary: ERROR_MESSAGES.ERROR_BOUNDARY.DEPLOYMENT_MISMATCH,
+        });
+        return;
+      }
       const details = error instanceof Error ? error.message : ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR;
       const { cause, hints } = diagnoseWordPressError(details);
       setSaveStatus({
