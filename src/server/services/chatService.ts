@@ -373,6 +373,24 @@ class ChatService {
   }
 
   /**
+   * セッションが存在し、かつ現在のユーザーがアクセス可能かを判定
+   * 判定不能（取得エラー）時は true を返し、不要なセッション再作成を避ける
+   */
+  async sessionExists(userId: string, sessionId: string): Promise<boolean> {
+    try {
+      const session = this.unwrapSupabaseResult(
+        await this.supabaseService.getChatSessionById(sessionId, userId),
+        ChatErrorCode.SESSION_LOAD_FAILED,
+        { userId, sessionId }
+      );
+      return session !== null;
+    } catch (error) {
+      console.error('Failed to check session existence:', error);
+      return true;
+    }
+  }
+
+  /**
    * ユーザーのチャットセッション一覧を取得
    */
   async getUserSessions(userId: string): Promise<ChatSession[]> {
