@@ -164,14 +164,6 @@ export class BriefService extends SupabaseService {
   }
 
   /**
-   * キャッシュクリア（更新時に呼び出し）
-   */
-  clearCache(): void {
-    // React CacheはAPIレベルでのclear機能が限定的なため
-    // 実装上は次回リクエスト時に自然に更新される
-  }
-
-  /**
    * 全てのキャッシュをクリア
    */
   invalidateAllCaches(): void {

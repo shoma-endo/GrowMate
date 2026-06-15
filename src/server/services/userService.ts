@@ -1,5 +1,4 @@
 import { SupabaseService } from './supabaseService';
-import type { SupabaseResult } from './supabaseService';
 import { toIsoTimestamp } from '@/lib/timestamps';
 import type { User, UserRole } from '@/types/user';
 import { toDbUserInsert, toUser, type DbUser, type DbUserUpdate } from '@/types/user';
@@ -28,13 +27,6 @@ class UserService {
 
   constructor() {
     this.supabaseService = new SupabaseService();
-  }
-
-  private unwrapResult<T>(result: SupabaseResult<T>): T {
-    if (!result.success) {
-      throw new Error(result.error.developerMessage ?? result.error.userMessage);
-    }
-    return result.data;
   }
 
   private buildDbUserUpdates(

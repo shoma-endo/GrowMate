@@ -326,18 +326,6 @@ export class WordPressService {
     return this.baseUrl;
   }
 
-  public getAuthType(): WordPressType {
-    return this.type;
-  }
-
-  public getSelfHostedSiteUrl(): string | undefined {
-    return this.siteUrl;
-  }
-
-  public getWordPressComSiteId(): string | undefined {
-    return this.siteId;
-  }
-
   public async fetchAvailableContentTypes(): Promise<WordPressApiResult<string[]>> {
     const headers = this.getRestHeaders();
     const urls = new Set<string>();

@@ -31,14 +31,6 @@ const CreatePromptTemplateSchema = z.object({
  * React Cacheを活用した高速取得とバックグラウンド更新機能を提供
  */
 export class PromptService extends SupabaseService {
-  /**
-   * 指定ユーザーの canonical_url 一覧を取得（重複排除・更新日時降順）
-   */
-  static async getCanonicalUrlsByUserId(userId: string): Promise<string[]> {
-    const entries = await this.getCanonicalLinkEntriesByUserId(userId);
-    return entries.map(entry => entry.canonical_url).filter(url => url.length > 0);
-  }
-
   static async getCanonicalLinkEntriesByUserId(
     userId: string
   ): Promise<Array<{ canonical_url: string; wp_post_title: string }>> {
@@ -542,40 +534,5 @@ export class PromptService extends SupabaseService {
     }
 
     return result;
-  }
-
-  /**
-   * プロンプトテンプレートの検証
-   */
-  static validateTemplate(template: PromptTemplate): { isValid: boolean; errors: string[] } {
-    const errors: string[] = [];
-
-    if (!template.name || template.name.trim().length === 0) {
-      errors.push('プロンプト名は必須です');
-    }
-
-    if (!template.display_name || template.display_name.trim().length === 0) {
-      errors.push('表示名は必須です');
-    }
-
-    if (!template.content || template.content.trim().length === 0) {
-      errors.push('プロンプト内容は必須です');
-    }
-
-    // 変数の整合性チェック
-    if (template.variables && template.variables.length > 0) {
-      const contentVariables = template.content.match(/{{(\w+)}}/g) || [];
-      const definedVariables = template.variables.map(v => `{{${v.name}}}`);
-
-      const undefinedVariables = contentVariables.filter(v => !definedVariables.includes(v));
-      if (undefinedVariables.length > 0) {
-        errors.push(`未定義の変数があります: ${undefinedVariables.join(', ')}`);
-      }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-    };
   }
 }
