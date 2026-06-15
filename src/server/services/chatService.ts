@@ -1,13 +1,11 @@
 import { llmChat } from './llmService';
 import {
   ChatMessage,
-  ChatSession,
   ChatSessionSearchMatch,
   DbChatMessage,
   DbChatSession,
   ChatRole,
   toChatMessage,
-  toChatSession,
   OpenAIMessage,
   ServerChatSession,
 } from '@/types/chat';
@@ -387,27 +385,6 @@ class ChatService {
     } catch (error) {
       console.error('Failed to check session existence:', error);
       return true;
-    }
-  }
-
-  /**
-   * ユーザーのチャットセッション一覧を取得
-   */
-  async getUserSessions(userId: string): Promise<ChatSession[]> {
-    try {
-      const dbSessions = this.unwrapSupabaseResult(
-        await this.supabaseService.getUserChatSessions(userId),
-        ChatErrorCode.SESSION_LOAD_FAILED,
-        { userId }
-      );
-      return dbSessions.map(session => toChatSession(session));
-    } catch (error) {
-      console.error('Failed to get user sessions:', error);
-      throw new ChatError(
-        'チャットセッションの取得に失敗しました',
-        ChatErrorCode.SESSION_LOAD_FAILED,
-        { userId, error }
-      );
     }
   }
 

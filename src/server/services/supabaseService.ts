@@ -468,24 +468,6 @@ export class SupabaseService {
     return this.success(data ?? null);
   }
 
-  async getUserChatSessions(userId: string): Promise<SupabaseResult<DbChatSession[]>> {
-    const { data, error } = await this.supabase
-      .from('chat_sessions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('last_message_at', { ascending: false });
-
-    if (error) {
-      return this.failure('チャットセッションの取得に失敗しました', {
-        error,
-        developerMessage: 'Failed to get user chat sessions',
-        context: { userId },
-      });
-    }
-
-    return this.success(data ?? []);
-  }
-
   /**
    * チャットセッションに紐づくサービスIDを取得
    * オーナー/スタッフ間のアクセス制御に対応
