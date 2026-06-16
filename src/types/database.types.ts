@@ -366,6 +366,14 @@ export type Database = {
           outcome_type: string
           previous_position: number | null
           suggestion_applied: boolean
+          suggestion_attempt_count: number
+          suggestion_completed_at: string | null
+          suggestion_error: string | null
+          suggestion_job_token: string | null
+          suggestion_next_retry_at: string | null
+          suggestion_stage: number | null
+          suggestion_started_at: string | null
+          suggestion_status: string | null
           suggestion_summary: string | null
           user_id: string
         }
@@ -382,6 +390,14 @@ export type Database = {
           outcome_type?: string
           previous_position?: number | null
           suggestion_applied?: boolean
+          suggestion_attempt_count?: number
+          suggestion_completed_at?: string | null
+          suggestion_error?: string | null
+          suggestion_job_token?: string | null
+          suggestion_next_retry_at?: string | null
+          suggestion_stage?: number | null
+          suggestion_started_at?: string | null
+          suggestion_status?: string | null
           suggestion_summary?: string | null
           user_id: string
         }
@@ -398,6 +414,14 @@ export type Database = {
           outcome_type?: string
           previous_position?: number | null
           suggestion_applied?: boolean
+          suggestion_attempt_count?: number
+          suggestion_completed_at?: string | null
+          suggestion_error?: string | null
+          suggestion_job_token?: string | null
+          suggestion_next_retry_at?: string | null
+          suggestion_stage?: number | null
+          suggestion_started_at?: string | null
+          suggestion_status?: string | null
           suggestion_summary?: string | null
           user_id?: string
         }
@@ -1015,6 +1039,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_gsc_suggestion_jobs: {
+        Args: { p_limit?: number }
+        Returns: {
+          content_annotation_id: string
+          current_position: number | null
+          id: string
+          outcome: string
+          previous_position: number | null
+          suggestion_attempt_count: number
+          suggestion_job_token: string
+          suggestion_stage: number
+          user_id: string
+        }[]
+      }
       delete_employee_and_restore_owner: {
         Args: { p_employee_id: string; p_owner_id: string }
         Returns: {
@@ -1109,6 +1147,25 @@ export type Database = {
           total_clicks: number
           total_impressions: number
           total_queries: number
+        }[]
+      }
+      get_gsc_ranking_snapshot: {
+        Args: {
+          p_end_date: string
+          p_limit?: number
+          p_property_uri: string
+          p_queries?: string[]
+          p_start_date: string
+          p_user_id: string
+        }
+        Returns: {
+          clicks: number
+          content_annotation_id: string | null
+          impressions: number
+          position: number
+          query_normalized: string
+          title: string
+          url: string
         }[]
       }
       get_sessions_with_messages: {

@@ -18,6 +18,8 @@ const IMPLICIT_GOOGLE_ADS_VARS = [
   'keywordData',
   'negativeKeywords',
   'searchTermData',
+  'existingContent',
+  'rankingData',
   'dateRange',
   'customerName',
 ] as const;
@@ -41,10 +43,6 @@ const PROMPT_DESCRIPTIONS: Record<string, PromptDescription> = {
     description: 'ランディングページの構成と原稿を作成するプロンプト',
     variables:
       '事業者情報に基づいて構造化されたLP原稿を生成します（ヘッダー、問題提起、解決策、特徴、実績、料金、FAQ、CTA）',
-  },
-  ad_copy_finishing: {
-    description: 'ユーザーから入力された広告コピーを修正・改善するプロンプト',
-    variables: '事業者情報の全17項目が利用可能です（基本情報、5W2H、ペルソナ、ベンチマーク）',
   },
   blog_creation: {
     description: 'ブログ（記事）の下書きを作成するプロンプト',
@@ -140,6 +138,8 @@ const VARIABLE_TYPE_DESCRIPTIONS: Record<string, string> = {
   keywordData: 'Google Ads 全キーワードの指標データ（構造化テキスト）',
   negativeKeywords: 'Google Ads 除外キーワード一覧',
   searchTermData: 'Google Ads 実検索語句の表示回数・クリック数（構造化テキスト）',
+  existingContent: '既存コンテンツ在庫（WordPress 由来。新規作成 vs 既存修正の判定材料）',
+  rankingData: 'GSC 自社検索順位スナップショット（カニバリ判定・順位の判定材料）',
   dateRange: '分析対象期間（例: 2026-02-22 〜 2026-03-24）',
   customerName: 'Google Ads アカウント名',
 };

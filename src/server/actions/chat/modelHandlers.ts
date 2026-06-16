@@ -147,11 +147,7 @@ export class ModelHandlerService {
         [],
         model
       );
-    } else if (
-      model === 'ad_copy_creation' ||
-      model === 'ad_copy_finishing' ||
-      model === 'lp_improvement'
-    ) {
+    } else if (model === 'ad_copy_creation') {
       // ✅ Claudeモデルの履歴引き継ぎ対応
       const validMessages = messages.map(msg => ({
         role: msg.role as 'user' | 'assistant' | 'system',
@@ -311,30 +307,5 @@ export class ModelHandlerService {
     serviceId?: string
   ): Promise<ChatResponse> {
     return await chatService.startChat(userId, systemPrompt, userMessage.trim(), model, serviceId);
-  }
-
-  /**
-   * ユーザーメッセージからキーワードを抽出
-   */
-  private extractKeywordsFromUserMessage(userMessage: string): string[] {
-    // 複数の形式に対応したキーワード抽出
-    const patterns = [
-      /キーワード[:：]\s*(.+)/i,
-      /対象キーワード[:：]\s*(.+)/i,
-      /分類[:：]\s*(.+)/i,
-      /(.+)/, // フォールバック：全体をキーワードとして扱う
-    ];
-
-    for (const pattern of patterns) {
-      const match = userMessage.match(pattern);
-      if (match && match[1]) {
-        return match[1]
-          .split(/[,、\n]/)
-          .map(k => k.trim())
-          .filter(k => k.length > 0);
-      }
-    }
-
-    return [];
   }
 }

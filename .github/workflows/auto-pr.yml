@@ -12,6 +12,9 @@ on:
     tags-ignore:
       - '*'
 
+permissions:
+  contents: read
+
 jobs:
   create-pr:
     runs-on: ubuntu-latest

@@ -48,6 +48,9 @@ export interface GscEvaluationHistoryItem {
   errorCode?: 'import_failed' | 'no_metrics' | null;
   errorMessage?: string | null;
   suggestion_summary: string | null;
+  suggestion_status: 'pending' | 'processing' | 'completed' | 'failed' | null;
+  suggestion_attempt_count: number;
+  suggestion_error: string | null;
   is_read: boolean;
   created_at: string;
 }

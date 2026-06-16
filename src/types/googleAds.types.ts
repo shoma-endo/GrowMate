@@ -227,6 +227,8 @@ export interface GetSearchTermMetricsInput {
   startDate: string;
   endDate: string;
   loginCustomerId?: string;
+  /** 取得上限（GAQL LIMIT）。未指定時は 1000。選別母集団を広げたい呼び出しで明示する。 */
+  limit?: number;
 }
 
 /**

@@ -1,13 +1,11 @@
 import { llmChat } from './llmService';
 import {
   ChatMessage,
-  ChatSession,
   ChatSessionSearchMatch,
   DbChatMessage,
   DbChatSession,
   ChatRole,
   toChatMessage,
-  toChatSession,
   OpenAIMessage,
   ServerChatSession,
 } from '@/types/chat';
@@ -68,7 +66,7 @@ class ChatService {
       if (typeof userMessage === 'string') {
         userMessageString = userMessage;
         const config =
-          MODEL_CONFIGS[model ?? 'ad_copy_finishing'] ?? MODEL_CONFIGS['ad_copy_finishing']!;
+          MODEL_CONFIGS[model ?? 'ad_copy_creation'] ?? MODEL_CONFIGS['ad_copy_creation']!;
         const providerKey = config.provider;
         const llmModel = config.actualModel;
 
@@ -189,7 +187,7 @@ class ChatService {
       if (typeof userMessage === 'string') {
         userMessageString = userMessage;
         const config =
-          MODEL_CONFIGS[model ?? 'ad_copy_finishing'] ?? MODEL_CONFIGS['ad_copy_finishing']!;
+          MODEL_CONFIGS[model ?? 'ad_copy_creation'] ?? MODEL_CONFIGS['ad_copy_creation']!;
         const providerKey = config.provider;
         const llmModel = config.actualModel;
 
@@ -373,23 +371,20 @@ class ChatService {
   }
 
   /**
-   * ユーザーのチャットセッション一覧を取得
+   * セッションが存在し、かつ現在のユーザーがアクセス可能かを判定
+   * 判定不能（取得エラー）時は true を返し、不要なセッション再作成を避ける
    */
-  async getUserSessions(userId: string): Promise<ChatSession[]> {
+  async sessionExists(userId: string, sessionId: string): Promise<boolean> {
     try {
-      const dbSessions = this.unwrapSupabaseResult(
-        await this.supabaseService.getUserChatSessions(userId),
+      const session = this.unwrapSupabaseResult(
+        await this.supabaseService.getChatSessionById(sessionId, userId),
         ChatErrorCode.SESSION_LOAD_FAILED,
-        { userId }
+        { userId, sessionId }
       );
-      return dbSessions.map(session => toChatSession(session));
+      return session !== null;
     } catch (error) {
-      console.error('Failed to get user sessions:', error);
-      throw new ChatError(
-        'チャットセッションの取得に失敗しました',
-        ChatErrorCode.SESSION_LOAD_FAILED,
-        { userId, error }
-      );
+      console.error('Failed to check session existence:', error);
+      return true;
     }
   }
 

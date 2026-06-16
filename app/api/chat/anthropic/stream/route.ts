@@ -369,6 +369,25 @@ export async function POST(req: NextRequest) {
                     [],
                     saveModel
                   );
+
+                  // 継続先セッションが DB に存在しない場合のフォールバック。
+                  // クライアントが古い（削除済み等の）sessionId を保持していると継続保存が FK 違反で失敗し、
+                  // サイレントなデータロスと毎回の再失敗ループに陥る。LLM 応答はこの時点で生成済みなので、
+                  // セッション不在を確認できたら新規セッションとして保存し直す。
+                  // 注: ここで永続化されるのは現ターンのみ。過去履歴は DB 再ロード時に失われる（UI には残る）。
+                  if (result?.error && !(await chatService.sessionExists(userId, sessionId))) {
+                    console.warn('[Stream] Session not found on continue. Recreating as a new session:', {
+                      sessionId,
+                      error: result.error,
+                    });
+                    result = await chatService.startChat(
+                      userId,
+                      'あなたは優秀なAIアシスタントです。',
+                      [effectiveUserMessage, messageToSave],
+                      saveModel,
+                      serviceId
+                    );
+                  }
                 } else {
                   result = await chatService.startChat(
                     userId,
@@ -377,6 +396,15 @@ export async function POST(req: NextRequest) {
                     saveModel,
                     serviceId
                   );
+                }
+
+                // 保存に失敗した場合は誤った final を送らず save_failed を返す（データロスの隠蔽防止）
+                if (result && 'error' in result && result.error) {
+                  sendSaveErrorAndExit(
+                    'save_failed',
+                    'メッセージの保存に失敗しました。お手数ですが、もう一度お試しください。'
+                  );
+                  return;
                 }
 
                 const effectiveSessionId = result?.sessionId ?? sessionId ?? undefined;
@@ -414,7 +442,7 @@ export async function POST(req: NextRequest) {
                 console.error('Failed to save chat message:', saveError);
                 sendSaveErrorAndExit(
                   'save_failed',
-                  'メッセージの保存に失敗しましたが、応答は正常に生成されました'
+                  'メッセージの保存に失敗しました。お手数ですが、もう一度お試しください。'
                 );
                 return;
               }

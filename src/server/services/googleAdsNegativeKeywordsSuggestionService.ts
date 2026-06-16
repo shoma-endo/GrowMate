@@ -6,7 +6,8 @@ import { llmChat } from '@/server/services/llmService';
 import { briefService } from '@/server/services/briefService';
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { dedupeNegativeKeywords, GoogleAdsService } from '@/server/services/googleAdsService';
+import { prepareNegativeKeywordsForPrompt } from '@/server/lib/google-ads-negative-keywords-prompt';
+import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
 import type {
   GoogleAdsNegativeKeyword,
@@ -222,12 +223,22 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         return fail(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_PROMPT_NOT_FOUND);
       }
 
+      const negativeKeywordPrompt = prepareNegativeKeywordsForPrompt(negativeKeywords, {
+        aggregation: 'scoped',
+      });
+      console.info('[GoogleAdsNegativeKeywordsSuggestionService] negative keyword prompt load', {
+        rawNegativeKw: negativeKeywordPrompt.rawNegativeKw,
+        uniqueNegativeKw: negativeKeywordPrompt.uniqueNegativeKw,
+        promptedNegativeKw: negativeKeywordPrompt.promptedNegativeKw,
+        negativeKwChars: negativeKeywordPrompt.negativeKwChars,
+      });
+
       const filledPrompt = buildPrompt(promptTemplate.content, {
         persona: brief?.persona?.trim() || '（ペルソナ未設定）',
         customerName: customerName ?? '',
         dateRange: `${startDate} 〜 ${endDate}`,
         searchTermData: this.formatSearchTermMetrics(searchTerms),
-        existingNegativeKeywords: this.formatNegativeKeywords(negativeKeywords),
+        existingNegativeKeywords: negativeKeywordPrompt.formatted,
         previousSearchTermData: this.formatSearchTermMetrics(previousSearchTerms),
         dayOverDayComparison: this.formatDayOverDay(
           previousSearchTerms,
@@ -252,7 +263,9 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         }
       );
 
-      const htmlContent = sanitizeEmailHtml(await marked.parse(rawOutput));
+      // AI 生出力をそのまま本文に使うため、段落内の単一改行が HTML で潰れないよう
+      // breaks:true を本呼び出しに限り付与する（リスト・見出し・表の描画には影響しない）。
+      const htmlContent = sanitizeEmailHtml(await marked.parse(rawOutput, { breaks: true }));
       const subjectAccountPart = customerName ? ` / ${customerName}` : '';
       const devPrefix = useMockGoogleAds ? '[DEV] ' : '';
       const subject = `${devPrefix}【GrowMate】Google Ads 除外キーワード提案レポート（${endDate}${subjectAccountPart}）`;
@@ -512,39 +525,6 @@ class GoogleAdsNegativeKeywordsSuggestionService {
       `- CV値: ¥${this.formatInteger(prev.conversionValue)} → ¥${this.formatInteger(cur.conversionValue)}（差分 ${delta(prev.conversionValue, cur.conversionValue)}）`,
     ];
     return lines.join('\n');
-  }
-
-  private formatNegativeKeywords(keywords: GoogleAdsNegativeKeyword[]): string {
-    const deduped = dedupeNegativeKeywords(keywords);
-    const fields = [
-      'keyword_text',
-      'match_type',
-      'level',
-      'campaign_name',
-      'campaign_status',
-      'ad_group_name',
-      'ad_group_status',
-    ];
-
-    if (deduped.length === 0) {
-      return `negative_keywords[0]{${fields.join(',')}}:`;
-    }
-
-    const rows = deduped.map(keyword =>
-      `  ${[
-        keyword.keywordText,
-        keyword.matchType,
-        keyword.level,
-        keyword.campaignName,
-        keyword.campaignStatus,
-        keyword.adGroupName ?? '',
-        keyword.adGroupStatus ?? '',
-      ]
-        .map(value => this.csvEscape(value))
-        .join(',')}`
-    );
-
-    return [`negative_keywords[${deduped.length}]{${fields.join(',')}}:`, ...rows].join('\n');
   }
 
   private csvEscape(value: string | number): string {

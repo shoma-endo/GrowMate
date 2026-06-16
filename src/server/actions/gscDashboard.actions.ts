@@ -45,6 +45,9 @@ type GscDetailResponse = {
       errorCode?: 'import_failed' | 'no_metrics' | null;
       errorMessage?: string | null;
       suggestion_summary: string | null;
+      suggestion_status: 'pending' | 'processing' | 'completed' | 'failed' | null;
+      suggestion_attempt_count: number;
+      suggestion_error: string | null;
       is_read: boolean;
       created_at: string;
     }>;
@@ -226,6 +229,13 @@ export async function fetchGscDetail(
                 ? item.error_code
                 : null,
             errorMessage: item.error_message,
+            suggestion_status:
+              item.suggestion_status === 'pending' ||
+              item.suggestion_status === 'processing' ||
+              item.suggestion_status === 'completed' ||
+              item.suggestion_status === 'failed'
+                ? item.suggestion_status
+                : null,
           })) ?? [],
         evaluation: evaluation ?? null,
         next_evaluation_run_utc: evaluation ? computeNextRunAtJst(evaluation) : null,

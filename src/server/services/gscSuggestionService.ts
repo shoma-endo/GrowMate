@@ -18,12 +18,13 @@ type SuggestionTemplate =
 interface GenerateParams {
   userId: string;
   contentAnnotationId: string;
-  evaluationId: string;
   evaluationHistoryId: string;
   outcome: GscEvaluationOutcome;
   currentPosition: number | null;
   previousPosition: number | null;
   currentSuggestionStage: number; // 1-4
+  jobToken: string;
+  signal: AbortSignal;
 }
 
 class GscSuggestionService {
@@ -39,7 +40,9 @@ class GscSuggestionService {
   async generate(params: GenerateParams): Promise<void> {
     // outcome improved の場合は呼ばれない想定
     const annotation = await this.loadAnnotation(params.userId, params.contentAnnotationId);
-    if (!annotation) return;
+    if (!annotation) {
+      throw new Error('GSC改善提案の対象記事が見つかりません');
+    }
 
     // ステージに応じた提案を決定（1→[1], 2→[1,2], 3→[1,2,3], 4→[1,2,3,4]）
     const stagesToRun = this.getStagesToRun(params.currentSuggestionStage);
@@ -81,6 +84,7 @@ class GscSuggestionService {
               contentKw: annotation.kw || '',
               contentWpContentText: wpPost?.contentText || annotation.wp_content_text || '',
             },
+            signal: params.signal,
           }),
         });
       } else {
@@ -105,6 +109,7 @@ class GscSuggestionService {
             variables: {
               openingProposal: annotation.opening_proposal || '',
             },
+            signal: params.signal,
           }),
         });
       } else {
@@ -129,6 +134,7 @@ class GscSuggestionService {
             variables: {
               wpContent: wpPost!.contentText!, // hasContent チェック済みなので null ではない
             },
+            signal: params.signal,
           }),
         });
       } else {
@@ -155,6 +161,7 @@ class GscSuggestionService {
               persona: annotation.persona || '',
               contentNeeds: annotation.needs || '',
             },
+            signal: params.signal,
           }),
         });
       } else {
@@ -171,6 +178,10 @@ class GscSuggestionService {
     // タスクを並列実行
     const tasksToRun = orderedSuggestions.filter(s => s.task).map(s => s.task!);
     const results = await Promise.allSettled(tasksToRun);
+    const rejectedResult = results.find(result => result.status === 'rejected');
+    if (rejectedResult?.status === 'rejected') {
+      throw rejectedResult.reason;
+    }
 
     // 結果をマージ（順序を維持）
     const sections: string[] = [];
@@ -187,14 +198,26 @@ class GscSuggestionService {
       }
     }
 
-    if (sections.length > 0) {
-      const suggestionSummary = sections.join('\n\n---\n\n');
-      const client = this.supabase.getClient();
-      await client
-        .from('gsc_article_evaluation_history')
-        .update({ suggestion_summary: suggestionSummary })
-        .eq('id', params.evaluationHistoryId)
-        .eq('user_id', params.userId);
+    if (sections.length === 0) {
+      throw new Error('GSC改善提案を生成できませんでした');
+    }
+
+    const suggestionSummary = sections.join('\n\n---\n\n');
+    const client = this.supabase.getClient();
+    const { data, error } = await client
+      .from('gsc_article_evaluation_history')
+      .update({ suggestion_summary: suggestionSummary })
+      .eq('id', params.evaluationHistoryId)
+      .eq('user_id', params.userId)
+      .eq('suggestion_status', 'processing')
+      .eq('suggestion_job_token', params.jobToken)
+      .select('id')
+      .maybeSingle();
+    if (error) {
+      throw new Error(error.message || 'GSC改善提案の保存に失敗しました');
+    }
+    if (!data) {
+      throw new Error('GSC改善提案ジョブが更新されたため、古い生成結果を破棄しました');
     }
   }
 
@@ -210,9 +233,11 @@ class GscSuggestionService {
   private async runOne({
     templateName,
     variables,
+    signal,
   }: {
     templateName: SuggestionTemplate;
     variables: Record<string, string>;
+    signal: AbortSignal;
   }): Promise<{ templateName: SuggestionTemplate; text: string } | null> {
     const template = await PromptService.getTemplateByName(templateName);
     if (!template) return null;
@@ -227,6 +252,9 @@ class GscSuggestionService {
     const fullText = await llmChat(provider, model, [{ role: 'user', content: filled }], {
       maxTokens: modelConfig.maxTokens,
       temperature: modelConfig.temperature,
+      stream: modelConfig.stream,
+      timeoutMs: 180000,
+      signal,
     });
 
     return { templateName, text: fullText };

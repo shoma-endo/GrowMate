@@ -11,6 +11,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { markSuggestionAsRead } from '@/server/actions/gscNotification.actions';
 import type { GscEvaluationHistoryItem } from '../types';
@@ -18,6 +19,7 @@ import { formatDateTime } from '@/lib/date-utils';
 import { EvaluationResultAlert } from './evaluation-history/EvaluationResultAlert';
 import {
   getEvaluationHistoryState,
+  getSuggestionStatusMessage,
 } from './evaluation-history/evaluation-history-view';
 import { SuggestionSections } from './evaluation-history/SuggestionSections';
 
@@ -218,7 +220,17 @@ export function EvaluationHistoryTab({
                   {selectedHistory.suggestion_summary ? (
                     <SuggestionSections summary={selectedHistory.suggestion_summary} />
                   ) : (
-                    <p className="text-sm text-gray-500 italic">提案なし</p>
+                    (() => {
+                      const status = getSuggestionStatusMessage(selectedHistory);
+                      return status ? (
+                        <Alert variant={status.variant}>
+                          <AlertTitle>{status.title}</AlertTitle>
+                          <AlertDescription>{status.description}</AlertDescription>
+                        </Alert>
+                      ) : (
+                        <p className="text-sm text-gray-500 italic">提案なし</p>
+                      );
+                    })()
                   )}
                 </div>
               )}

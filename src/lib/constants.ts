@@ -34,6 +34,7 @@ interface ModelConfig {
   provider: 'openai' | 'anthropic';
   maxTokens: number;
   temperature?: number;
+  stream?: boolean;
   actualModel: string;
   seed?: number;
   top_p?: number;
@@ -66,9 +67,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     actualModel: 'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2',
   },
   ad_copy_creation: { ...ANTHROPIC_BASE, maxTokens: 4000 },
-  ad_copy_finishing: { ...ANTHROPIC_BASE, maxTokens: 4000 },
   lp_draft_creation: { ...ANTHROPIC_BASE, maxTokens: 32000 },
-  lp_improvement: { ...ANTHROPIC_BASE, maxTokens: 32000 },
   blog_creation_step1: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step2: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step3: { ...ANTHROPIC_BASE, maxTokens: 5000 },
@@ -93,7 +92,8 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   },
   gsc_insight_body_rewrite: {
     ...ANTHROPIC_HAIKU_BASE,
-    maxTokens: 10000,
+    maxTokens: 25000,
+    stream: true,
     label: '本文の提案',
   },
   gsc_insight_persona_rebuild: {
@@ -103,7 +103,9 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   },
   google_ads_ai_evaluation: {
     ...ANTHROPIC_BASE,
-    maxTokens: 8000,
+    // 出力上限。5提案＋サマリー＋末尾JSONで実測〜1万トークン前後のため、約2倍の余裕を確保。
+    // 入力（WP在庫50件・GSC順位500件上限）は別途キャップ済みで、コンテキスト窓20万に収まる。
+    maxTokens: 20000,
     label: 'Google Ads コンテンツ戦略提案',
   },
   google_ads_negative_keywords_suggestion: {

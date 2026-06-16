@@ -1,6 +1,6 @@
 ---
 name: spec-to-pr
-description: docs/plans/ の仕様書を起点に、実装・CodeRabbitレビュー・修正・コミット・PR作成までを一気通貫で自動化する。「仕様を実装してPRにして」「spec-to-pr でこの機能を作って」「docs/plans/xxx.md を実装して」と言われたとき、または実装タスクを開始するときに必ず使う。
+description: docs/plans/ の仕様書を起点に、実装・CodeRabbitレビュー・修正・コミット・PR作成までを一気通貫で自動化する。「仕様を実装してPRにして」「spec-to-pr でこの機能を作って」「docs/plans/xxx.md を実装して」と言われたとき、または実装タスクを開始するときに必ず使う。実装レビューするだけの時は使わない。
 disable-model-invocation: true
 argument-hint: [spec-file-name-or-keyword]
 ---
@@ -76,19 +76,13 @@ ls docs/plans/
 
 ---
 
-## Phase 5: CodeRabbit CLI レビュー
-
-→ [`.agents/skills/shared/pr-workflows/coderabbit-loop.md`](../shared/pr-workflows/coderabbit-loop.md)
-
----
-
-## Phase 6: セルフレビュー
+## Phase 5: セルフレビュー
 
 → [`.agents/skills/shared/pr-workflows/self-review-phase.md`](../shared/pr-workflows/self-review-phase.md)
 
 ---
 
-## Phase 7: コミット
+## Phase 6: コミット
 
 → [`.agents/skills/shared/pr-workflows/commit.md`](../shared/pr-workflows/commit.md)
 
@@ -96,7 +90,7 @@ ls docs/plans/
 
 ---
 
-## Phase 8: PR作成
+## Phase 7: PR作成
 
 → [`.agents/skills/shared/pr-workflows/pr-create.md`](../shared/pr-workflows/pr-create.md)
 

@@ -82,30 +82,6 @@ function normalizeGoogleAdsStatus(status: string | undefined): GoogleAdsStatus {
 }
 
 /**
- * 除外キーワードを集約して LLM プロンプトへ渡す前の入力トークン肥大化を防ぐ。
- * 爆発の主因である campaign レベルの重複（同一キーワード × 多数キャンペーン）は
- * (keywordText, matchType) 単位で畳む一方、ad_group レベルは広告グループ単位の
- * 除外情報を欠落させないよう (keywordText, matchType, campaignName, adGroupName) で区別する。
- * keywordText は大文字小文字を区別せず照合し、初出の行を代表として残す。
- */
-export function dedupeNegativeKeywords(
-  keywords: GoogleAdsNegativeKeyword[]
-): GoogleAdsNegativeKeyword[] {
-  const deduped = new Map<string, GoogleAdsNegativeKeyword>();
-  for (const keyword of keywords) {
-    const scope =
-      keyword.level === 'ad_group'
-        ? `${keyword.campaignName}␟${keyword.adGroupName ?? ''}`
-        : '';
-    const key = `${keyword.level}␟${keyword.keywordText.toLowerCase()}␟${keyword.matchType}␟${scope}`;
-    if (!deduped.has(key)) {
-      deduped.set(key, keyword);
-    }
-  }
-  return [...deduped.values()];
-}
-
-/**
  * Google Ads API との通信を行うサービス
  * 認証トークンの管理および、キャンペーン情報や指標データの取得を担当する
  */
@@ -297,23 +273,6 @@ export class GoogleAdsService {
       });
       return null;
     }
-  }
-
-  /**
-   * 指定したマネージャーアカウント配下にクライアントが存在するかを確認し、階層レベルを返す
-   * 見つからない場合は null を返す
-   */
-  async getClientLevelUnderManager(
-    managerCustomerId: string,
-    clientCustomerId: string,
-    accessToken: string
-  ): Promise<number | null> {
-    const clientInfo = await this.getCustomerClientInfoUnderManager(
-      managerCustomerId,
-      clientCustomerId,
-      accessToken
-    );
-    return clientInfo?.level ?? null;
   }
 
   /**
@@ -790,6 +749,8 @@ export class GoogleAdsService {
     input: GetSearchTermMetricsInput
   ): Promise<GetSearchTermMetricsResult> {
     const { accessToken, customerId, startDate, endDate, loginCustomerId } = input;
+    // 取得上限。選別母集団を広げたい呼び出し（AI分析のキュレーション用）では大きめを明示する。
+    const fetchLimit = Math.max(1, Math.floor(input.limit ?? 1000));
 
     const query = `
       SELECT
@@ -807,7 +768,7 @@ export class GoogleAdsService {
       WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'
         AND metrics.impressions > 0
       ORDER BY metrics.impressions DESC
-      LIMIT 1000
+      LIMIT ${fetchLimit}
     `;
 
     const url = `${GOOGLE_ADS_API_BASE_URL}/customers/${customerId}/googleAds:searchStream`;
