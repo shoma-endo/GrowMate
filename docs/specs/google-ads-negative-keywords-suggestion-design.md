@@ -17,7 +17,7 @@
 
 ## 1. 目的
 
-- Google Ads の **前日の検索クエリ実績** を AI（claude-opus-4-7）で分析し、（登録済みなら）ペルソナ・既存除外設定・キャンペーン構成に照らして「**除外すべき検索語句**」を構造化して **毎朝のメール**として配信する。Brief 未登録でも **Google Ads 連携済みであれば送信する**。
+- Google Ads の **前日の検索クエリ実績** を AI（claude-sonnet-4-6）で分析し、（登録済みなら）ペルソナ・既存除外設定・キャンペーン構成に照らして「**除外すべき検索語句**」を構造化して **毎朝のメール**として配信する。Brief 未登録でも **Google Ads 連携済みであれば送信する**。
 - 既存「コンテンツ戦略提案」が **ブログ記事の TOP5 提案（手動実行）** で成果を伸ばす機能であるのに対し、本機能は **広告運用の無駄打ちを減らす日次オペレーション**（自動配信）として独立させる。
 - **本機能のゴール**は「提案メールが毎朝届く」まで。Google Ads への自動除外登録は **本設計書のスコープ外**（実際の除外登録はクライアントが Google Ads 管理画面で手動実行する想定）。
 
@@ -176,7 +176,7 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 - `src/lib/constants.ts` の `MODEL_CONFIGS` に追加:
   ```ts
   google_ads_negative_keywords_suggestion: {
-    ...ANTHROPIC_BASE,            // provider: 'anthropic', actualModel: 'claude-opus-4-7'
+    ...ANTHROPIC_BASE,            // provider: 'anthropic', actualModel: 'claude-sonnet-4-6'
     maxTokens: 8000,
     label: 'Google Ads 除外キーワード提案',
   }
@@ -185,21 +185,20 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 
 #### コスト試算（概算）
 
-Anthropic Claude Opus 4.7 の公開単価（2026 年時点想定: 入力 \$15 / 100 万 tok、出力 \$75 / 100 万 tok）に基づく **1 ユーザー 1 日 1 通の概算**:
+Anthropic Claude Sonnet 4.6 の公開単価（2026 年時点想定: 入力 \$3 / 100 万 tok、出力 \$15 / 100 万 tok）に基づく **1 ユーザー 1 日 1 通の概算**:
 
 | 項目 | トークン数（想定） | 単価 | 金額 |
 |------|--------------------|------|------|
-| 入力（プロンプト本文 + persona + searchTermData 等） | 約 5,000 tok | \$15 / 1M | 約 \$0.075 |
-| 出力（Markdown + JSON） | 約 8,000 tok | \$75 / 1M | 約 \$0.60 |
-| **合計（1 通あたり）** | — | — | **約 \$0.68 / 通** |
-| **月 30 通 / ユーザー** | — | — | **約 \$20 / ユーザー / 月** |
+| 入力（プロンプト本文 + persona + searchTermData 等） | 約 5,000 tok | \$3 / 1M | 約 \$0.015 |
+| 出力（Markdown + JSON） | 約 8,000 tok | \$15 / 1M | 約 \$0.12 |
+| **合計（1 通あたり）** | — | — | **約 \$0.14 / 通** |
+| **月 30 通 / ユーザー** | — | — | **約 \$4.1 / ユーザー / 月** |
 
-- 50 ユーザー規模で月 **\$1,000** が固定費として発生。失敗リトライがあれば二重課金。
+- 50 ユーザー規模で月 **約 \$205** が固定費として発生。失敗リトライがあれば二重課金。
 - LLM コスト圧縮の選択肢:
-  - **Sonnet 4.6 検証**: Opus の約 1/5 価格。除外キーワード提案は分類タスク中心で Sonnet で品質が出る可能性が高い。
   - 入力削減: `searchTermData` を impressions 上位 500 件にトリム、`existingNegativeKeywords` をカテゴリ別に集約。
   - **データ整形スキルの適用**: LLM に渡す構造化データは `formatting-llm-context` の方針で、flat table は CSV、階層・半構造データは TOON、機械処理前提の出力は JSON のまま扱い、入力トークンを抑えつつ campaign / ad_group / matchType などの意味を保持する。
-- **モデル選択は本フェーズ Step 4 検証で Opus / Sonnet 両方の実出力を比較し、クライアントに品質差を提示してから本番モデルを確定する**。コスト見積もりは Opus 想定で保持（上振れ防止）。
+- **モデル選択は Sonnet 4.6 を本番想定とする**。Step 4 では同一入力で複数ユーザー分の実出力を確認し、除外候補の品質・速度・コストをクライアントレビュー用に整理する。
 
 ### 4.2 プロンプト変数
 
@@ -541,7 +540,7 @@ export class GoogleAdsNegativeKeywordsSuggestionService {
    - `existingNegativeKeywords`: 単純な keyword 一覧なら bullet または CSV。campaign / ad_group / matchType など階層・半構造データを持つ場合は **TOON 形式**で渡し、行数・フィールド名を明示する。
    - AI 出力末尾の構造化データは後続の JSON パースが必要なため、TOON へ変換せず **JSON のまま**維持する。
 8. **プロンプト取得**: `PromptService.getTemplateByName('google_ads_negative_keywords_suggestion')` → `replaceVariables`。
-9. **AI 実行**: `llmChat('anthropic', 'claude-opus-4-7', messages, MODEL_CONFIGS.google_ads_negative_keywords_suggestion)`。
+9. **AI 実行**: `llmChat('anthropic', 'claude-sonnet-4-6', messages, MODEL_CONFIGS.google_ads_negative_keywords_suggestion)`。
 10. **JSON 抽出**: `extractStructuredOutput(rawOutput)` → `{ markdown, suggestions }`。失敗時は `suggestions=[]` で続行、warn ログ。
 11. **HTML 化**: `await marked.parse(markdown)` → `sanitizeEmailHtml`。
 12. **メール送信**: `emailService.sendGoogleAdsNegativeKeywords(userEmail, subject, html)`。
@@ -563,7 +562,7 @@ export class GoogleAdsNegativeKeywordsSuggestionService {
 ```
 
 - 同時並列度 `N=3` は初期値。実測でレートリミットや関数並列度の問題が出れば調整。
-- 1 ユーザーの実処理時間目安: 30〜60 秒（Opus 4.7 / maxTokens 8000）。Vercel `maxDuration=300` を超えそうな場合は dueUsers を batch 化 + 続きを次の cron 起動に持ち越す（次フェーズ）。
+- 1 ユーザーの実処理時間目安: 20〜50 秒（Sonnet 4.6 / maxTokens 8000）。Vercel `maxDuration=300` を超えそうな場合は dueUsers を batch 化 + 続きを次の cron 起動に持ち越す（次フェーズ）。
 
 ### 8.4 DEV モード分岐
 
@@ -746,7 +745,7 @@ on conflict (name) do update
 | 1 | `SupabaseService` 拡張 + `EmailService` ラッパー + `googleAdsNegativeKeywordsSuggestionService` 本体（日付ユーティリティ、アカウント一式取得、空データスキップ含む） | Step 0 |
 | 2 | Server Actions + Cron Route + GH Actions `hourly-cron.yml` 追加 | Step 1 |
 | 3 | `dashboard-content.tsx` タブ化 + 設定 UI（自動配信 ON/OFF、配信時刻のみ） | Step 2 |
-| 4 | DEV サンプル検証 + JST 境界テスト + 空データスキップ + 重複送信抑止 + **Opus / Sonnet モデル比較**（クライアント合意用）+ lint/build | Step 3 |
+| 4 | DEV サンプル検証 + JST 境界テスト + 空データスキップ + 重複送信抑止 + **Sonnet 4.6 出力検証**（クライアント合意用）+ lint/build | Step 3 |
 
 ## 15. テスト観点
 
@@ -765,7 +764,7 @@ on conflict (name) do update
 - **Brief 未登録でも送信**: Google Ads 連携 + メール登録済みで、Brief / `persona` なしでも 1 通送れる（プロンプトは `（ペルソナ未設定）`）。
 - **タブ切替**: `?tab=settings` ディープリンク、ブラウザ戻る/進むで URL 同期。
 - **エラー記録**: Google Ads 401 / Resend 400 などのケースで `last_send_error` が記録される（cron 経路のみ）。
-- **モデル比較（Step 4）**: 同じ入力で Opus 4.7 と Sonnet 4.6 の出力を 5 ユーザー分比較し、品質・コスト・速度を表に整理してクライアントレビュー用 PDF を作成。
+- **モデル出力検証（Step 4）**: 同じ入力で Sonnet 4.6 の出力を 5 ユーザー分確認し、品質・コスト・速度を表に整理してクライアントレビュー用 PDF を作成。
 - `npm run lint` / `npm run build` 通過。
 
 ## 16. リスクと注意点

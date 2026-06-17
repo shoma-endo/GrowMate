@@ -24,12 +24,12 @@ interface TokenUsageTotals {
   webSearchRequests: number;
 }
 
-const OPUS_4_7_PRICE_PER_MILLION_TOKENS_USD = {
-  input: 5,
-  output: 25,
-  cacheWrite5m: 6.25,
-  cacheWrite1h: 10,
-  cacheRead: 0.5,
+const SONNET_4_6_PRICE_PER_MILLION_TOKENS_USD = {
+  input: 3,
+  output: 15,
+  cacheWrite5m: 3.75,
+  cacheWrite1h: 6,
+  cacheRead: 0.3,
 } as const;
 
 const WEB_SEARCH_PRICE_PER_REQUEST_USD = 0.01;
@@ -97,23 +97,23 @@ const getCacheCreationInputTokens = (usage: TokenUsageTotals) => {
   return cacheCreationByTtl > 0 ? cacheCreationByTtl : usage.cacheCreationInputTokens;
 };
 
-const calculateOpus47EquivalentCostUsd = (usage: TokenUsageTotals) => {
+const calculateSonnet46CostUsd = (usage: TokenUsageTotals) => {
   const hasCacheCreationByTtl =
     usage.cacheCreationEphemeral5mInputTokens + usage.cacheCreationEphemeral1hInputTokens > 0;
   const cacheWriteCost = hasCacheCreationByTtl
     ? (usage.cacheCreationEphemeral5mInputTokens / 1_000_000) *
-        OPUS_4_7_PRICE_PER_MILLION_TOKENS_USD.cacheWrite5m +
+        SONNET_4_6_PRICE_PER_MILLION_TOKENS_USD.cacheWrite5m +
       (usage.cacheCreationEphemeral1hInputTokens / 1_000_000) *
-        OPUS_4_7_PRICE_PER_MILLION_TOKENS_USD.cacheWrite1h
+        SONNET_4_6_PRICE_PER_MILLION_TOKENS_USD.cacheWrite1h
     : (usage.cacheCreationInputTokens / 1_000_000) *
-      OPUS_4_7_PRICE_PER_MILLION_TOKENS_USD.cacheWrite5m;
+      SONNET_4_6_PRICE_PER_MILLION_TOKENS_USD.cacheWrite5m;
   const inputCost =
-    (usage.inputTokens / 1_000_000) * OPUS_4_7_PRICE_PER_MILLION_TOKENS_USD.input;
+    (usage.inputTokens / 1_000_000) * SONNET_4_6_PRICE_PER_MILLION_TOKENS_USD.input;
   const outputCost =
-    (usage.outputTokens / 1_000_000) * OPUS_4_7_PRICE_PER_MILLION_TOKENS_USD.output;
+    (usage.outputTokens / 1_000_000) * SONNET_4_6_PRICE_PER_MILLION_TOKENS_USD.output;
   const cacheReadCost =
     (usage.cacheReadInputTokens / 1_000_000) *
-    OPUS_4_7_PRICE_PER_MILLION_TOKENS_USD.cacheRead;
+    SONNET_4_6_PRICE_PER_MILLION_TOKENS_USD.cacheRead;
   const webSearchCost = usage.webSearchRequests * WEB_SEARCH_PRICE_PER_REQUEST_USD;
 
   return {
@@ -144,6 +144,6 @@ export const logTokenUsage = (usage: TokenUsageTotals) => {
     cacheReadInputTokens: usage.cacheReadInputTokens,
     webSearchRequests: usage.webSearchRequests,
     totalTokens: getTotalTokens(usage),
-    opus47EquivalentCostUsd: calculateOpus47EquivalentCostUsd(usage),
+    sonnet46CostUsd: calculateSonnet46CostUsd(usage),
   });
 };

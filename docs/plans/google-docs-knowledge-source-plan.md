@@ -222,7 +222,7 @@ Doc 編集後: 管理者が「更新」で再フェッチ（生成 API は叩か
 
 | 要因 | 備考 |
 |------|------|
-| ベースモデル | `claude-opus-4-7`（入力約 200K） |
+| ベースモデル | `claude-sonnet-4-6`（コンテキスト 1M） |
 | カオル Doc | NotebookLM ソース並みに **長文化しやすい**（最大リスク） |
 | テンプレ | LP・ブログ step は既に大きい |
 | チャット履歴 | step7 で **青天井**（Doc 管理では解決しない） |
@@ -649,7 +649,7 @@ GrowMate は Anthropic API の Prompt Caching（**M④**）を **部分的に導
 **現状の限界（Doc 導入前でも該当）**
 
 1. **brief / 事業者変数が system 内に混在** — `{{company}}` 等が変わるたび system 全体の cache が無効化される。
-2. **最小トークンしきい値** — 現行 `claude-opus-4-7`（`constants.ts`）は cache **書き込み** に **2,048 token** 以上が必要（[Anthropic 公式](https://platform.claude.com/docs/ja/build-with-claude/prompt-caching)。Opus 4.6/4.5 は 4,096、Opus 4.8 / Sonnet 4.6 は 1,024）。L1 Doc ホット層は通常これを超える想定。
+2. **最小トークンしきい値** — 現行 `claude-sonnet-4-6`（`constants.ts`）は cache **書き込み** に **1,024 token** 以上が必要（[Anthropic 公式](https://platform.claude.com/docs/ja/build-with-claude/prompt-caching)）。L1 Doc ホット層は通常これを超える想定。
 3. **実効 cache の未検証** — 2 ブロック system 導入後、本番ログの `cacheReadInputTokens > 0` を確認（`logTokenUsage` 出力）。
 
 ### MVP で追加する設計（本文 §Anthropic cache 分離）
@@ -666,5 +666,5 @@ Block B: L2 テンプレ + brief 置換後 … cache なし（ユーザーごと
 | 項目 | 理由 |
 |------|------|
 | トップレベル自動キャッシング | 20 ブロック超の長会話で手動 BP のルックバック限界を補える。チャット SSE で併用検討 |
-| Sonnet 4.6 移行時 | cache 最小しきい値 **1,024 トークン**（`constants.ts` 変更時に再確認） |
+| モデル変更時の再確認 | cache 最小しきい値（現行 Sonnet 4.6 は **1,024 トークン**）と `constants.ts` の整合を確認 |
 | Anthropic Memory Tool | 本文 §本レイヤーのスコープ外 参照。MVP 不採用 |

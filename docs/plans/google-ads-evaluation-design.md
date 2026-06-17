@@ -22,7 +22,7 @@
 
 ## 1. 目的
 
-- Google Ads のキーワード指標（通常KW + 除外KW）と事業者情報を Claude claude-opus-4-7 に分析させ、改善提案をメールで送信する。
+- Google Ads のキーワード指標（通常KW + 除外KW）と事業者情報を Claude claude-sonnet-4-6 に分析させ、改善提案をメールで送信する。
 - **フェーズ1では管理者限定ではなく、メールアカウント登録済みの全ユーザーが利用可能とする。** 段階ロールアウト（管理者のみ → 一般ユーザー）や Feature Flag による制限は行わない。
 - 評価プロンプトは admin/prompts 画面で管理者ユーザーが編集可能とする。
 
@@ -71,7 +71,7 @@
 
 ### 4.1 分析方式
 
-- Claude claude-opus-4-7 にキーワードデータ + 事業者コンテキストを渡し、自然言語で分析・提案を生成する。
+- Claude claude-sonnet-4-6 にキーワードデータ + 事業者コンテキストを渡し、自然言語で分析・提案を生成する。
 - プロンプトテンプレートは `prompt_templates` テーブルで管理し、admin/prompts 画面で編集可能。
 - モデル設定: `MODEL_CONFIGS['google_ads_ai_evaluation']`（ANTHROPIC_BASE, maxTokens: **12000**。フェーズ2で JSON 併出するため Section 16.10 参照）
 
@@ -115,7 +115,7 @@ Google Ads API からキーワード指標取得
   ↓
 プロンプト変数構築 → テンプレート取得 → 変数置換
   ↓
-llmChat('anthropic', 'claude-opus-4-7', ...) で分析実行
+llmChat('anthropic', 'claude-sonnet-4-6', ...) で分析実行
   ↓
 分析結果（Markdown）→ HTML 変換 → メール送信
   ↓
@@ -294,7 +294,7 @@ export class GoogleAdsAiAnalysisService {
 4. **プロンプト変数構築**: `{{persona}}`, `{{keywordData}}`, `{{searchTermData}}`, `{{negativeKeywords}}`, `{{dateRange}}`, `{{customerName}}`
 5. **テンプレート取得**: `PromptService.getTemplateByName('google_ads_ai_evaluation')`
 6. **変数置換**: `PromptService.replaceVariables(template.content, variables)`
-7. **AI 分析実行**: `llmChat('anthropic', 'claude-opus-4-7', messages, modelConfig)`
+7. **AI 分析実行**: `llmChat('anthropic', 'claude-sonnet-4-6', messages, modelConfig)`
 8. **メール送信**: `EmailService.sendGoogleAdsAnalysis(userEmail, subject, htmlContent)`。件名にはJSTの実行時刻を含め、アカウント名が取得できた場合のみ併記する（例: `【GrowMate】Google Ads コンテンツ戦略提案レポート（15:30実行 / アカウント名）`、未取得時: `【GrowMate】Google Ads コンテンツ戦略提案レポート（15:30実行）`）
 9. **設定更新**:
     - **成功時**（メール送信まで完了）: `last_evaluated_on` を当日（JST）に更新
@@ -1272,7 +1272,7 @@ export async function createBlogSessionFromSuggestion(input) {
 | `upsertContentAnnotationBySession` | `src/server/actions/wordpress.actions.ts:541`（既存、そのまま流用） |
 | `getSystemPrompt` | `src/lib/prompts.ts:944`（既存 export。内部で `generateBlogCreationPromptByStep` を呼び、`content_annotations` 読み取り + `{{contentXxx}}` 変数置換を担う） |
 | `toBlogModel` | `src/lib/constants.ts:132`（`step5` → `blog_creation_step5` 等） |
-| `MODEL_CONFIGS.blog_creation_step5` / `step6` | `src/lib/constants.ts:76-77`（既存）。`claude-opus-4-7`、maxTokens 6000/5000。 |
+| `MODEL_CONFIGS.blog_creation_step5` / `step6` | `src/lib/constants.ts:76-77`（既存）。`claude-sonnet-4-6`、maxTokens 6000/5000。 |
 | `llmChat` | `src/server/services/llmService.ts:26-130`（既存） |
 | chat_sessions / chat_messages の作成 | `src/server/services/chatService.ts` のヘルパーを流用、または最小限の Supabase 直接呼び出し |
 
@@ -1341,7 +1341,7 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 8000, label: '...' }
 google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 ```
 
-実装時に実出力サイズを計測し、12000 でも切り詰めが発生するなら段階的に増やす（Claude Opus 4.7 の最大は 64000）。
+実装時に実出力サイズを計測し、12000 でも切り詰めが発生するなら段階的に増やす（Claude Sonnet 4.6 の最大出力は 64000）。
 
 ### 16.11 実装工数見積もり（フェーズ2）
 
@@ -1470,7 +1470,7 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 - メール送信側にはリンクを追加しない（操作はアプリ内に集約）。
 #### maxDuration 超過時のフォールバック
 
-`createBlogSessionFromSuggestion`（Section 16.9）の合計実行時間（Opus × 2回 = 推定 30〜80 秒）が **`maxDuration: 120` を超えるケースが頻発する場合**、以下のフォールバックを検討する:
+`createBlogSessionFromSuggestion`（Section 16.9）の合計実行時間（Sonnet 4.6 × 2回 = 推定 25〜70 秒）が **`maxDuration: 120` を超えるケースが頻発する場合**、以下のフォールバックを検討する:
 
 - **案1: Step 5 のみモーダル内同期実行、Step 6 はチャット到着後にクライアントから別 Server Action 追動**
   - モーダルは Step 5 完了で sessionId 返却（約 15〜40 秒で済む）
@@ -1481,7 +1481,7 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 - **案2: API Route 化 + クライアントポーリング**
   - 旧設計案。複雑度高いが、長時間処理に最も柔軟。
 
-実装時にスパイク計測した結果で判断。MVP 着手時は `maxDuration=120` で十分の見込み（Opus 4.7 / maxTokens 6000+5000 → 想定 30〜60 秒）。
+実装時にスパイク計測した結果で判断。MVP 着手時は `maxDuration=120` で十分の見込み（Sonnet 4.6 / maxTokens 6000+5000 → 想定 25〜60 秒）。
 
 #### 実装前スパイク（強く推奨）
 

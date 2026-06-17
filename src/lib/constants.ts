@@ -44,7 +44,7 @@ interface ModelConfig {
 // 共通設定（DRY原則に基づく定数化）
 const ANTHROPIC_BASE = {
   provider: 'anthropic' as const,
-  actualModel: 'claude-opus-4-7',
+  actualModel: 'claude-sonnet-4-6',
   seed: 42,
 };
 
