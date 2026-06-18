@@ -3,7 +3,7 @@ import { gscSuggestionService } from '@/server/services/gscSuggestionService';
 import type { GscSuggestionJobBatchResult, GscSuggestionJobRow } from '@/types/gsc';
 
 const RETRY_DELAY_MINUTES = 15;
-const JOBS_PER_INVOCATION = 2;
+const JOBS_PER_INVOCATION = 5;
 const JOB_TIMEOUT_MS = 240 * 1000;
 
 class GscSuggestionJobService {

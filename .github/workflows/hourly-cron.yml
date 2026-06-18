@@ -11,7 +11,6 @@ name: Hourly Cron
 on:
   schedule:
     - cron: '0 * * * *'
-    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -36,7 +35,7 @@ jobs:
           - id: gsc-suggestions
             path: /api/cron/gsc-suggestions
             profile: gsc-suggestions
-            interval: every-5-minutes
+            interval: hourly
     concurrency:
       group: hourly-cron-${{ matrix.id }}
       cancel-in-progress: false
@@ -44,15 +43,13 @@ jobs:
       - name: Checkout
         if: >-
           github.event_name == 'workflow_dispatch' ||
-          (matrix.interval == 'hourly' && github.event.schedule == '0 * * * *') ||
-          (matrix.interval == 'every-5-minutes' && github.event.schedule == '*/5 * * * *')
+          github.event.schedule == '0 * * * *'
         uses: actions/checkout@v4
 
       - name: Invoke ${{ matrix.id }}
         if: >-
           github.event_name == 'workflow_dispatch' ||
-          (matrix.interval == 'hourly' && github.event.schedule == '0 * * * *') ||
-          (matrix.interval == 'every-5-minutes' && github.event.schedule == '*/5 * * * *')
+          github.event.schedule == '0 * * * *'
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}

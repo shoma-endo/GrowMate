@@ -436,12 +436,14 @@ class GscEvaluationService {
     const todayJst = formatDateISO(nowJst);
     const currentHourJst = nowJst.getHours();
 
-    // 全てのアクティブな評価対象を取得
+    // next_evaluation_date <= today のレコードのみ取得（DB 側フィルタ）
+    // evaluation_hour のチェックは today が due date に一致するケースのみ TS 側で行う
     const { data: fetchedData, error: evalError } = await this.supabaseService
       .getClient()
       .from('gsc_article_evaluations')
       .select('*')
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .lte('next_evaluation_date', todayJst);
 
     if (evalError) {
       throw new Error(evalError.message || '評価対象の取得に失敗しました');

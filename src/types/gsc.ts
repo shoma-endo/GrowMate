@@ -241,6 +241,7 @@ export interface GscEvaluationRow {
   evaluation_hour: number;
   last_seen_position?: number | null;
   status: string;
+  next_evaluation_date?: string | null;
 }
 
 export interface RunEvaluationOptions {
