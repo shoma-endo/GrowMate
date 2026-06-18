@@ -352,6 +352,47 @@ export type Database = {
           },
         ]
       }
+      google_ads_negative_keywords_settings: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          last_send_error: string | null
+          last_sent_on: string | null
+          send_hour_jst: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_send_error?: string | null
+          last_sent_on?: string | null
+          send_hour_jst?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_send_error?: string | null
+          last_sent_on?: string | null
+          send_hour_jst?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_ads_negative_keywords_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gsc_article_evaluation_history: {
         Row: {
           content_annotation_id: string
@@ -453,6 +494,7 @@ export type Database = {
           id: string
           last_evaluated_on: string | null
           last_seen_position: number | null
+          next_evaluation_date: string | null
           property_uri: string
           status: string
           updated_at: string
@@ -468,6 +510,7 @@ export type Database = {
           id?: string
           last_evaluated_on?: string | null
           last_seen_position?: number | null
+          next_evaluation_date?: string | null
           property_uri: string
           status?: string
           updated_at?: string
@@ -483,6 +526,7 @@ export type Database = {
           id?: string
           last_evaluated_on?: string | null
           last_seen_position?: number | null
+          next_evaluation_date?: string | null
           property_uri?: string
           status?: string
           updated_at?: string
@@ -1043,10 +1087,10 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: {
           content_annotation_id: string
-          current_position: number | null
+          current_position: number
           id: string
           outcome: string
-          previous_position: number | null
+          previous_position: number
           suggestion_attempt_count: number
           suggestion_job_token: string
           suggestion_stage: number
@@ -1160,7 +1204,7 @@ export type Database = {
         }
         Returns: {
           clicks: number
-          content_annotation_id: string | null
+          content_annotation_id: string
           impressions: number
           position: number
           query_normalized: string
