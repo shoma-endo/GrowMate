@@ -276,23 +276,6 @@ export class GoogleAdsService {
   }
 
   /**
-   * 指定したマネージャーアカウント配下にクライアントが存在するかを確認し、階層レベルを返す
-   * 見つからない場合は null を返す
-   */
-  async getClientLevelUnderManager(
-    managerCustomerId: string,
-    clientCustomerId: string,
-    accessToken: string
-  ): Promise<number | null> {
-    const clientInfo = await this.getCustomerClientInfoUnderManager(
-      managerCustomerId,
-      clientCustomerId,
-      accessToken
-    );
-    return clientInfo?.level ?? null;
-  }
-
-  /**
    * 指定したマネージャーアカウント配下にクライアントが存在するかを確認し、
    * 階層レベルとマネージャー属性を返す
    */

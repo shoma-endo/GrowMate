@@ -434,7 +434,7 @@ GrowMateは Next.js + TypeScript + Supabase を使ったマーケティングSaa
 
 ### Anthropic Claude API
 - SDK: @anthropic-ai/sdk（anthropic.messages.stream / anthropic.messages.create）
-- 使用モデル: claude-sonnet-4-6, claude-haiku-4-5 など claude-* 系モデル
+- 使用モデル: claude-sonnet-4-6
 - 用途: チャット応答生成・ブログ記事生成・SEO改善提案生成（streaming）
 - 依存パラメータ: model / max_tokens / temperature / system / messages / stream
 - 注意点: extended-thinking（budgetTokens）を一部で使用

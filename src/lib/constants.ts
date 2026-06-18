@@ -44,13 +44,8 @@ interface ModelConfig {
 // 共通設定（DRY原則に基づく定数化）
 const ANTHROPIC_BASE = {
   provider: 'anthropic' as const,
-  actualModel: 'claude-opus-4-7',
+  actualModel: 'claude-sonnet-4-6',
   seed: 42,
-};
-
-const ANTHROPIC_HAIKU_BASE = {
-  ...ANTHROPIC_BASE,
-  actualModel: 'claude-haiku-4-5-20251001',
 };
 
 const OPENAI_BASE = {
@@ -81,23 +76,23 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokens: 10000,
   },
   gsc_insight_ctr_boost: {
-    ...ANTHROPIC_HAIKU_BASE,
+    ...ANTHROPIC_BASE,
     maxTokens: 4000,
     label: 'タイトル・説明文の提案',
   },
   gsc_insight_intro_refresh: {
-    ...ANTHROPIC_HAIKU_BASE,
+    ...ANTHROPIC_BASE,
     maxTokens: 5000,
     label: '書き出し案の提案',
   },
   gsc_insight_body_rewrite: {
-    ...ANTHROPIC_HAIKU_BASE,
+    ...ANTHROPIC_BASE,
     maxTokens: 25000,
     stream: true,
     label: '本文の提案',
   },
   gsc_insight_persona_rebuild: {
-    ...ANTHROPIC_HAIKU_BASE,
+    ...ANTHROPIC_BASE,
     maxTokens: 5000,
     label: 'ペルソナから全て変更',
   },

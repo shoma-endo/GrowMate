@@ -9,6 +9,21 @@ import {
   isEmailLinkConflictResult,
   replaceToEmailLinkConflictLogin,
 } from '@/lib/auth/emailLinkConflictClient';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+
+/**
+ * 新しいデプロイにより、ブラウザが保持する古いバンドルの Server Action ID が
+ * サーバー側に存在しなくなった場合に Next.js が投げるエラーかどうかを判定する。
+ *
+ * 例: `Failed to find Server Action "xxxx". This request might be from an older or newer deployment.`
+ *
+ * このエラーは `reset()` での再試行では解消されず、フルリロードで新しいバンドルを
+ * 取得する必要がある。
+ */
+export function isDeploymentMismatchError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /Failed to find Server Action|older or newer deployment/i.test(message);
+}
 
 /**
  * Server Actionの標準的な戻り値の型
@@ -113,7 +128,11 @@ export async function handleAsyncAction<T>(
       onError?.(error);
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : defaultErrorMessage;
+    const errorMessage = isDeploymentMismatchError(error)
+      ? ERROR_MESSAGES.ERROR_BOUNDARY.DEPLOYMENT_MISMATCH
+      : error instanceof Error
+        ? error.message
+        : defaultErrorMessage;
 
     if (logErrors) {
       console.error(error);

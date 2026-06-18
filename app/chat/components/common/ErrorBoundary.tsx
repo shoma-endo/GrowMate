@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { isDeploymentMismatchError } from '@/lib/async-handler';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -80,6 +81,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       return ERROR_MESSAGES.ERROR_BOUNDARY.CHUNK_LOAD;
     }
 
+    if (isDeploymentMismatchError(error)) {
+      return ERROR_MESSAGES.ERROR_BOUNDARY.DEPLOYMENT_MISMATCH;
+    }
+
     if (error.message.includes('Network')) {
       return ERROR_MESSAGES.ERROR_BOUNDARY.NETWORK;
     }
@@ -89,7 +94,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   private isCriticalError(error: Error | null): boolean {
     if (!error) return false;
-    return error.name === 'ChunkLoadError' || error.message.includes('Loading chunk');
+    return (
+      error.name === 'ChunkLoadError' ||
+      error.message.includes('Loading chunk') ||
+      isDeploymentMismatchError(error)
+    );
   }
 
   render() {

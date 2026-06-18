@@ -294,24 +294,6 @@ export class SupabaseService {
     return this.success(data ?? null);
   }
 
-  async getUserByEmail(email: string): Promise<SupabaseResult<DbUser | null>> {
-    const { data, error } = await this.supabase
-      .from('users')
-      .select('*')
-      .eq('email', email.toLowerCase())
-      .maybeSingle();
-
-    if (error) {
-      return this.failure('ユーザー情報の取得に失敗しました', {
-        error,
-        developerMessage: 'Error getting user by email',
-        context: { email },
-      });
-    }
-
-    return this.success(data ?? null);
-  }
-
   async createEmailUser(email: string, supabaseAuthId: string): Promise<SupabaseResult<DbUser>> {
     const now = new Date().toISOString();
     const insert: DbUserInsert = {
@@ -344,20 +326,6 @@ export class SupabaseService {
     }
 
     return this.success(data);
-  }
-
-  async createUser(user: DbUserInsert): Promise<SupabaseResult<DbUser>> {
-    const { data, error } = await this.supabase.from('users').insert(user).select('*').single();
-
-    if (error) {
-      return this.failure('ユーザーの作成に失敗しました', {
-        error,
-        developerMessage: 'Error creating user',
-        context: { userId: user.id, lineUserId: user.line_user_id },
-      });
-    }
-
-    return this.success(data ?? user);
   }
 
   async updateUserById(
@@ -468,24 +436,6 @@ export class SupabaseService {
     return this.success(data ?? null);
   }
 
-  async getUserChatSessions(userId: string): Promise<SupabaseResult<DbChatSession[]>> {
-    const { data, error } = await this.supabase
-      .from('chat_sessions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('last_message_at', { ascending: false });
-
-    if (error) {
-      return this.failure('チャットセッションの取得に失敗しました', {
-        error,
-        developerMessage: 'Failed to get user chat sessions',
-        context: { userId },
-      });
-    }
-
-    return this.success(data ?? []);
-  }
-
   /**
    * チャットセッションに紐づくサービスIDを取得
    * オーナー/スタッフ間のアクセス制御に対応
@@ -532,42 +482,6 @@ export class SupabaseService {
    * セッションの最新完成形（session_combined_contents.is_latest = true）を取得
    * オーナー/スタッフ間のアクセス制御に対応
    */
-  async getLatestCombinedContentBySession(
-    sessionId: string,
-    userId: string
-  ): Promise<SupabaseResult<string | null>> {
-    const sessionResult = await this.getChatSessionById(sessionId, userId);
-    if (!sessionResult.success) {
-      return this.failure('セッションのアクセス確認に失敗しました', {
-        developerMessage: 'Failed to verify session access before reading latest combined content',
-        context: { sessionId, userId },
-      });
-    }
-    if (!sessionResult.data) {
-      return this.failure('セッションへのアクセス権がありません', {
-        developerMessage: 'Unauthorized session access for latest combined content',
-        context: { sessionId, userId },
-      });
-    }
-
-    const { data, error } = await this.supabase
-      .from('session_combined_contents')
-      .select('content')
-      .eq('session_id', sessionId)
-      .eq('is_latest', true)
-      .maybeSingle();
-
-    if (error) {
-      return this.failure('最新完成形の取得に失敗しました', {
-        error,
-        developerMessage: 'Failed to get latest combined content by session',
-        context: { sessionId, userId },
-      });
-    }
-
-    return this.success(data?.content ?? null);
-  }
-
   /**
    * チャットセッションのサービスIDを更新
    * オーナー/スタッフ間のアクセス制御に対応
@@ -895,109 +809,6 @@ export class SupabaseService {
     }
 
     return this.success(data ?? []);
-  }
-
-  async getLatestChatMessageBySessionAndModel(
-    sessionId: string,
-    userId: string,
-    model: string
-  ): Promise<SupabaseResult<DbChatMessage | null>> {
-    const { data, error } = await this.supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('session_id', sessionId)
-      .eq('user_id', userId)
-      .eq('model', model)
-      .eq('role', 'assistant')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      return this.failure('チャットメッセージの取得に失敗しました', {
-        error,
-        developerMessage: 'Failed to get latest chat message by model',
-        context: { sessionId, userId, model },
-      });
-    }
-
-    return this.success(data ?? null);
-  }
-
-  /**
-   * 指定モデル（プレフィックス一致）の最新 assistant メッセージを取得する。
-   * blog_creation_step7 / blog_creation_step7_h0 等の両方にマッチさせたい場合に使用。
-   */
-  async getLatestChatMessageBySessionAndModelPrefix(
-    sessionId: string,
-    userId: string,
-    modelPrefix: string
-  ): Promise<SupabaseResult<DbChatMessage | null>> {
-    const pattern = `${modelPrefix}%`;
-    const { data, error } = await this.supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('session_id', sessionId)
-      .eq('user_id', userId)
-      .ilike('model', pattern)
-      .eq('role', 'assistant')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      return this.failure('チャットメッセージの取得に失敗しました', {
-        error,
-        developerMessage: 'Failed to get latest chat message by model prefix',
-        context: { sessionId, userId, modelPrefix },
-      });
-    }
-
-    return this.success(data ?? null);
-  }
-
-  /**
-   * セッション内でアクセス可能なユーザー範囲から、指定モデルの最新assistantメッセージを取得する。
-   * オーナー/スタッフ共有アクセスに対応。
-   */
-  async getLatestAccessibleAssistantMessageBySessionAndModel(
-    sessionId: string,
-    userId: string,
-    model: string
-  ): Promise<SupabaseResult<DbChatMessage | null>> {
-    const { data: accessibleIds, error: accessError } = await this.supabase.rpc(
-      'get_accessible_user_ids',
-      { p_user_id: userId }
-    );
-
-    if (accessError || !accessibleIds) {
-      return this.failure('アクセス権の確認に失敗しました', {
-        error: accessError,
-        developerMessage: 'Failed to get accessible user IDs',
-        context: { sessionId, userId, model },
-      });
-    }
-
-    const { data, error } = await this.supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('session_id', sessionId)
-      .in('user_id', accessibleIds)
-      .eq('model', model)
-      .eq('role', 'assistant')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      return this.failure('チャットメッセージの取得に失敗しました', {
-        error,
-        developerMessage: 'Failed to get latest accessible assistant message by model',
-        context: { sessionId, userId, model },
-      });
-    }
-
-    return this.success(data ?? null);
   }
 
   /**

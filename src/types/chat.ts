@@ -15,19 +15,6 @@ export interface ChatMessage {
   createdAt: IsoTimestamp; // 作成日時 (UTC ISO文字列)
 }
 
-/**
- * チャットセッションの型定義
- */
-export interface ChatSession {
-  id: string; // セッションID
-  userId: string; // セッションの所有者ID
-  title: string; // セッションのタイトル
-  systemPrompt?: string | undefined; // システムプロンプト
-  serviceId?: string | undefined; // サービスID
-  lastMessageAt: IsoTimestamp; // 最後のメッセージ日時 (UTC ISO文字列)
-  createdAt: IsoTimestamp; // 作成日時 (UTC ISO文字列)
-}
-
 export interface ChatResponse {
   message: string;
   error?: string | undefined;
@@ -92,18 +79,6 @@ export function toChatMessage(dbMessage: DbChatMessage): ChatMessage {
     content: dbMessage.content,
     model: dbMessage.model ?? undefined,
     createdAt: parseTimestampStrict(dbMessage.created_at),
-  };
-}
-
-export function toChatSession(dbSession: DbChatSession): ChatSession {
-  return {
-    id: dbSession.id,
-    userId: dbSession.user_id,
-    title: dbSession.title,
-    systemPrompt: dbSession.system_prompt ?? undefined,
-    serviceId: dbSession.service_id ?? undefined,
-    lastMessageAt: parseTimestampStrict(dbSession.last_message_at),
-    createdAt: parseTimestampStrict(dbSession.created_at),
   };
 }
 
