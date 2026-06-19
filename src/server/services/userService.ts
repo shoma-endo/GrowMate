@@ -126,7 +126,8 @@ class UserService {
    * Supabase Auth ユーザーを GrowMate ユーザーに解決または新規作成（idempotent）
    * Phase 1: `supabase_auth_id` の既存解決と新規 INSERT のみ。email 一致で既存 LINE 行へ自動リンクしない
    * （仕様: docs/plans/2026-03-01-email-auth-and-migration-spec.md §7）。既存メール併用は Phase 1.5 手動移行。
-   * OTP ログイン成功後は updateLastLoginAt() を別途呼び出すこと。
+   * OTP ログイン成功直後は updateLastLoginAt() を別途呼び出すこと。
+   * 既存ユーザー解決時は last_login_at が1日以上前なら touchLastLoginIfStale() で自動更新する。
    */
   async resolveOrCreateEmailUser(supabaseAuthId: string, email: string): Promise<User> {
     const normalizedEmail = email.trim().toLowerCase();
@@ -137,7 +138,9 @@ class UserService {
     }
 
     if (existingByAuth.data) {
-      return toUser(existingByAuth.data);
+      const user = toUser(existingByAuth.data);
+      this.touchLastLoginIfStale(user);
+      return user;
     }
 
     const createResult = await this.supabaseService.createEmailUser(normalizedEmail, supabaseAuthId);
@@ -156,8 +159,23 @@ class UserService {
   }
 
   /**
+   * セッション継続中は OTP 再入力が発生せず last_login_at が更新されないため、
+   * 1日以上更新がなければセッション解決時にも last_login_at を打ち直す（フロー非ブロッキング）。
+   */
+  private touchLastLoginIfStale(user: User): void {
+    const staleAfterMs = 24 * 60 * 60 * 1000;
+    const lastLoginMs = user.lastLoginAt ? new Date(user.lastLoginAt).getTime() : 0;
+    if (Date.now() - lastLoginMs < staleAfterMs) {
+      return;
+    }
+    this.updateLastLoginAt(user.id).catch(err => {
+      console.error('[UserService] touchLastLoginIfStale failed:', err);
+    });
+  }
+
+  /**
    * Email ユーザーの last_login_at を更新する
-   * OTP ログイン成功後（Server Action）でのみ呼び出すこと
+   * OTP ログイン成功後（Server Action）、または touchLastLoginIfStale() から呼び出す
    */
   async updateLastLoginAt(userId: string): Promise<void> {
     const now = toIsoTimestamp(new Date());
