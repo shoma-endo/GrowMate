@@ -137,15 +137,23 @@ jobs:
               `\`gs://${gcsBucket}/supabase-backups/${backupPrefix}/${backupPrefix}_data.sql.gz\`\n\n`
             : '';
           const messageText = `【Supabaseバックアップ】\n` +
-            `ステータス: ${statusEmoji} ${statusText}\n` +
-            `詳細: ${workflowUrl}\n\n` +
+            `ステータス: **${statusEmoji} ${statusText}**\n` +
+            `[詳細](${workflowUrl})\n\n` +
             dumpSection +
             `【GCS使用量（supabase-backups）】\n\`\`\`\n${usage}\n\`\`\``;
 
           const payload = {
-            msg_type: 'text',
-            content: {
-              text: messageText
+            msg_type: 'interactive',
+            card: {
+              elements: [
+                {
+                  tag: 'div',
+                  text: {
+                    tag: 'lark_md',
+                    content: messageText
+                  }
+                }
+              ]
             }
           };
 

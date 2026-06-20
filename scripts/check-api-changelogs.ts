@@ -509,7 +509,10 @@ async function sendLarkNotification(text: string): Promise<void> {
   if (!LARK_WEBHOOK_URL) {
     throw new Error('LARK_WEBHOOK_URL が設定されていません');
   }
-  const payload = JSON.stringify({ msg_type: 'text', content: { text } });
+  const payload = JSON.stringify({
+    msg_type: 'interactive',
+    card: { elements: [{ tag: 'div', text: { tag: 'lark_md', content: text } }] },
+  });
   const { status, body } = await httpRequest(LARK_WEBHOOK_URL, {
     method: 'POST',
     headers: {
@@ -693,8 +696,8 @@ async function main(): Promise<void> {
     lines.push('');
     lines.push('── 変更箇所 ──');
     for (const d of detected) {
-      lines.push(`🔔 [リスク:${d.risk}] ${d.name}`);
-      lines.push(`   ${d.url}`);
+      lines.push(`🔔 [リスク:${d.risk}] **${d.name}**`);
+      lines.push(`   [詳細](${d.url})`);
     }
   }
   if (errors.length > 0) {
@@ -710,7 +713,7 @@ async function main(): Promise<void> {
     }
   }
   if (ACTIONS_RUN_URL) {
-    lines.push('', `ログ: ${ACTIONS_RUN_URL}`);
+    lines.push('', `[実行ログ](${ACTIONS_RUN_URL})`);
   }
 
   console.log('\n📨 Lark に通知送信中...');
