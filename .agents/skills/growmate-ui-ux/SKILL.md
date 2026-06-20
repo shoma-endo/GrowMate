@@ -104,7 +104,7 @@ Priority 4 以降の **配色・フォント・スタイル刷新は採用しな
 |------------|-------|
 | 実装規約（本 Skill と併用） | `implementation-guidelines`, `react` |
 | 完了後の検証 | `quality-gate` |
-| 仕様→PR | `spec-to-pr` |
+| 仕様→PR | TAKT `.takt/workflows/spec-to-pr.yaml` |
 | 合意確認 | `agent-workflow-core` → `client-alignment-auditor` |
 | 命名 | `project-naming` |
 

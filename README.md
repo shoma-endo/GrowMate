@@ -220,6 +220,7 @@ npm run dev  # http://localhost:3000
 | [`docs/plans/`](docs/plans/) | 実装予定・設計中の仕様書 |
 | [`docs/runbooks/`](docs/runbooks/) | 運用手順書 |
 | [`scripts/`](scripts/) | DB・Vercel 統計、Cron、Skill 検証等の運用スクリプト |
+| [`.takt/`](.takt/) | 仕様書起点・React Doctor 起点の PR 自動化 workflow |
 
 ## 🛡️ セキュリティと運用の注意点
 
