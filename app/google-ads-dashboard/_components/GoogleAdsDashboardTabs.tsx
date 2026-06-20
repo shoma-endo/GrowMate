@@ -1,19 +1,18 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useOptimistic, useTransition, type ReactNode } from 'react';
 import { BarChart3, Mail } from 'lucide-react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-type GoogleAdsDashboardTab = 'metrics' | 'settings';
+import {
+  buildGoogleAdsDashboardTabSearchParams,
+  resolveGoogleAdsDashboardTab,
+  type GoogleAdsDashboardTab,
+} from './googleAdsDashboardTabs.utils';
 
 interface GoogleAdsDashboardTabsProps {
   metricsContent: ReactNode;
   settingsContent: ReactNode;
-}
-
-function resolveTab(value: string | null): GoogleAdsDashboardTab {
-  return value === 'settings' ? 'settings' : 'metrics';
 }
 
 export function GoogleAdsDashboardTabs({
@@ -21,27 +20,30 @@ export function GoogleAdsDashboardTabs({
   settingsContent,
 }: GoogleAdsDashboardTabsProps) {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<GoogleAdsDashboardTab>(() =>
-    resolveTab(searchParams?.get('tab') ?? null)
+  const urlTab = resolveGoogleAdsDashboardTab(searchParams?.get('tab') ?? null);
+  const [optimisticTab, setOptimisticTab] = useOptimistic<GoogleAdsDashboardTab, GoogleAdsDashboardTab>(
+    urlTab,
+    (_currentTab, nextTab) => nextTab
   );
-
-  useEffect(() => {
-    setActiveTab(resolveTab(searchParams?.get('tab') ?? null));
-  }, [searchParams]);
+  const [, startTabTransition] = useTransition();
 
   const handleTabChange = (value: string) => {
-    const nextTab = resolveTab(value);
-    const nextParams = new URLSearchParams(searchParams?.toString() ?? '');
-    nextParams.set('tab', nextTab);
+    const nextTab = resolveGoogleAdsDashboardTab(value);
+    const nextSearch = buildGoogleAdsDashboardTabSearchParams(
+      searchParams?.toString() ?? '',
+      nextTab
+    );
+    const nextUrl = `${window.location.pathname}?${nextSearch}`;
 
-    setActiveTab(nextTab);
-    router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
+    startTabTransition(() => {
+      setOptimisticTab(nextTab);
+      router.replace(nextUrl, { scroll: false });
+    });
   };
 
   return (
-    <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+    <Tabs value={optimisticTab} onValueChange={handleTabChange} className="w-full">
       <TabsList className="grid h-12 w-full grid-cols-2 sm:w-fit">
         <TabsTrigger value="metrics" className="gap-2 px-4">
           <BarChart3 className="h-4 w-4" />

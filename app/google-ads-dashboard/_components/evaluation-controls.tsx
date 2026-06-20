@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { AlertCircle, Lightbulb, Loader2, Mail } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -33,6 +33,21 @@ interface EvaluationControlsProps {
 /** GSC 検索順位データを「古い」と判定して注意喚起するしきい値（日数）。GSC は通常 2〜3 日の遅延がある。 */
 const GSC_STALE_THRESHOLD_DAYS = 14;
 
+const GSC_NOTICE_RULES: LinkedMessageRule[] = [
+  { phrase: 'Search Console データをインポート', href: '/gsc-import', variant: 'button-link' },
+];
+
+const WP_NOTICE_RULES: LinkedMessageRule[] = [
+  { phrase: 'WordPress 記事をインポート', href: '/wordpress-import', variant: 'button-link' },
+];
+
+function areInitialSettingsEqual(
+  a: Pick<GoogleAdsEvaluationSettings, 'dateRangeDays' | 'lastEvaluatedOn'>,
+  b: Pick<GoogleAdsEvaluationSettings, 'dateRangeDays' | 'lastEvaluatedOn'>
+): boolean {
+  return a.dateRangeDays === b.dateRangeDays && a.lastEvaluatedOn === b.lastEvaluatedOn;
+}
+
 function parseDateRangeDays(value: string): number | null {
   const numericValue = Number(value);
   if (!Number.isInteger(numericValue) || numericValue < 1 || numericValue > 365) {
@@ -59,16 +74,23 @@ export function EvaluationControls({
   const [isServicesLoading, setIsServicesLoading] = useState(true);
   const [isRunning, startRunTransition] = useTransition();
   const [isSavingDateRange, startSaveDateRangeTransition] = useTransition();
+  const prevInitialSettingsRef = useRef({
+    dateRangeDays: initialSettings.dateRangeDays,
+    lastEvaluatedOn: initialSettings.lastEvaluatedOn,
+  });
 
-  useEffect(() => {
+  if (!areInitialSettingsEqual(prevInitialSettingsRef.current, initialSettings)) {
+    prevInitialSettingsRef.current = {
+      dateRangeDays: initialSettings.dateRangeDays,
+      lastEvaluatedOn: initialSettings.lastEvaluatedOn,
+    };
     setSettings(initialSettings);
     setDateRangeInput(String(initialSettings.dateRangeDays));
     setDateRangeError(false);
-  }, [initialSettings]);
+  }
 
   useEffect(() => {
     let isActive = true;
-    setIsServicesLoading(true);
 
     const loadServices = async () => {
       const result = await getBrief();
@@ -139,17 +161,10 @@ export function EvaluationControls({
   const gscNoticeMessage = gscNoData
     ? 'Search Console の検索順位データがまだ取り込まれていません（未連携の場合は連携も必要です）。提案に含まれる「検索順位」は表示されません。Search Console データをインポートしてください。'
     : `最新の検索順位データは ${gscFreshness?.latestDate}（約${gscFreshness?.daysStale}日前）です。提案に表示される順位が現在の実態とずれている場合があります。最新化するには Search Console データをインポートしてください。`;
-  const gscNoticeRules: LinkedMessageRule[] = [
-    { phrase: 'Search Console データをインポート', href: '/gsc-import', variant: 'button-link' },
-  ];
-
   // WordPress 記事在庫が無い時の注意喚起（新規/既存修正の判定材料が不足するため）。
   const wpNoInventory = hasContentInventory === false;
   const wpNoticeMessage =
     'WordPress 記事が未取込のため、提案の「新規作成 / 既存修正」の判定材料が不足します。WordPress 記事をインポートしてください。';
-  const wpNoticeRules: LinkedMessageRule[] = [
-    { phrase: 'WordPress 記事をインポート', href: '/wordpress-import', variant: 'button-link' },
-  ];
 
   const handleRun = () => {
     if (isServiceMissing) {
@@ -229,7 +244,7 @@ export function EvaluationControls({
             <span className="block">
               <LinkedMessage
                 message="未取込なら WordPress 記事をインポート してください。"
-                rules={wpNoticeRules}
+                rules={WP_NOTICE_RULES}
               />
             </span>
           </p>
@@ -334,7 +349,7 @@ export function EvaluationControls({
             <AlertTitle className="mb-0 text-amber-900">{gscNoticeTitle}</AlertTitle>
           </div>
           <AlertDescription className="mt-1 text-amber-800">
-            <LinkedMessage message={gscNoticeMessage} rules={gscNoticeRules} />
+            <LinkedMessage message={gscNoticeMessage} rules={GSC_NOTICE_RULES} />
           </AlertDescription>
         </Alert>
       )}
@@ -346,7 +361,7 @@ export function EvaluationControls({
             <AlertTitle className="mb-0 text-amber-900">既存コンテンツが取り込まれていません</AlertTitle>
           </div>
           <AlertDescription className="mt-1 text-amber-800">
-            <LinkedMessage message={wpNoticeMessage} rules={wpNoticeRules} />
+            <LinkedMessage message={wpNoticeMessage} rules={WP_NOTICE_RULES} />
           </AlertDescription>
         </Alert>
       )}
