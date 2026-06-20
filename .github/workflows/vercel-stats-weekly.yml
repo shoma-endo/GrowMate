@@ -92,14 +92,22 @@ jobs:
 
           // メッセージ本文を作成
           const messageText = `【Vercel ダッシュボード統計レポート】\n` +
-            `ステータス: ${statusEmoji} ${statusText}\n` +
-            `詳細: ${workflowUrl}\n\n` +
+            `ステータス: **${statusEmoji} ${statusText}**\n` +
+            `[詳細](${workflowUrl})\n\n` +
             `【統計情報】\n\`\`\`\n${output}\n\`\`\``;
 
           const payload = {
-            msg_type: 'text',
-            content: {
-              text: messageText
+            msg_type: 'interactive',
+            card: {
+              elements: [
+                {
+                  tag: 'div',
+                  text: {
+                    tag: 'lark_md',
+                    content: messageText
+                  }
+                }
+              ]
             }
           };
 

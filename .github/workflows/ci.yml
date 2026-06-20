@@ -111,17 +111,25 @@ jobs:
 
           // メッセージ本文を作成
           const prUrl = process.env.PR_URL;
-          const prLine = prUrl ? `\nPR: ${prUrl}` : '';
+          const prLine = prUrl ? `\n[PR](${prUrl})` : '';
           const commitMsg = process.env.COMMIT_MSG || process.env.PR_TITLE || '';
           const commitLine = commitMsg ? `\nコミット: ${commitMsg.split('\n')[0]}` : '';
           const runUrl = process.env.ACTIONS_RUN_URL;
-          const runLine = runUrl ? `\nログ: ${runUrl}` : '';
-          const messageText = `【CI ビルド結果】\n${statusEmoji} ${statusText}\n実行: ${executionType}\nユーザー: ${actor}\nブランチ: ${branch}${commitLine}${prLine}${runLine}`;
+          const runLine = runUrl ? `\n[ログ](${runUrl})` : '';
+          const messageText = `【CI ビルド結果】\n**${statusEmoji} ${statusText}**\n実行: ${executionType}\nユーザー: ${actor}\nブランチ: ${branch}${commitLine}${prLine}${runLine}`;
 
           const payload = {
-            msg_type: 'text',
-            content: {
-              text: messageText
+            msg_type: 'interactive',
+            card: {
+              elements: [
+                {
+                  tag: 'div',
+                  text: {
+                    tag: 'lark_md',
+                    content: messageText
+                  }
+                }
+              ]
             }
           };
 
