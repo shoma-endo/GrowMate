@@ -85,6 +85,7 @@ steps:
       - UI 変更では `growmate-ui-ux` と `react` の規約に従う。
       - Server Actions / Route Handlers では `nextjs-server` のエラー処理・Zod規約に従う。
       - Supabase Service Role 使用時は user_id 等の明示的なスコープ条件を入れる。
+      - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
       - 実装後に `npm run lint`、`npm run build`、`npm run knip` を実行し、失敗した場合は修正して再実行する。
     rules:
       - condition: 実装と必須検証が完了した
@@ -145,6 +146,7 @@ steps:
       必須条件:
       - 指摘対象コードを直接修正する。
       - テストやドキュメント追加だけで指摘を回避しない。
+      - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
       - 同種の潜在箇所がある場合は同時に修正する。
       - 修正後に `npm run lint`、`npm run build`、`npm run knip` を再実行する。
       - ここでは commit / push / PR 作成を行わない。最終ステップでまとめて実施する。
@@ -184,7 +186,7 @@ steps:
       - PR本文に関連仕様書、検証結果、Codex architecture review 結果を含められること。
     rules:
       - condition: セルフレビュー合格
-        next: create_pr
+        next: prepare_pr_summary
       - condition: 修正が必要
         next: fix
       - condition: 検証不足または判断不能
@@ -193,6 +195,32 @@ steps:
       report:
         - name: self-review.md
           format: supervisor-validation
+
+  - name: prepare_pr_summary
+    tags:
+      - report
+    edit: false
+    persona: reporter
+    knowledge:
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      PR作成前に、Report Directory の `plan.md`、`coder-scope.md`、`coder-decisions.md`、`architecture-review.md`、`self-review.md` を読み、PR本文へ転記しやすい要約を作成してください。
+
+      必須条件:
+      - 実装やレビュー判断は行わない。確認済みの事実と未確認事項を分けて整理する。
+      - 変更内容、関連仕様書、検証結果、architecture-reviewer の結果、セルフレビュー結果を短くまとめる。
+      - PR作成者がそのまま使える Markdown 箇条書きにする。
+    rules:
+      - condition: PR用要約が完了した
+        next: create_pr
+      - condition: 必要なレポートが不足している
+        next: ABORT
+    output_contracts:
+      report:
+        - name: pr-summary.md
+          format: summary
 
   - name: create_pr
     tags:
@@ -218,7 +246,7 @@ steps:
       4. Why を中心とした日本語1行のコミットメッセージで `git commit` する。
       5. `git push -u origin HEAD` を実行する。
       6. `gh pr view` で既存PRを確認する。存在しなければ `gh pr create` で PR を作成する。
-      7. PR本文には 概要 / 変更内容 / 関連仕様書 / Lint・Build・Knip / Codex architecture review / セルフレビュー を含める。
+      7. `pr-summary.md` を参照し、PR本文には 概要 / 変更内容 / 関連仕様書 / Lint・Build・Knip / Codex architecture review / セルフレビュー を含める。
 
       やらないこと:
       - PR のマージ・クローズ。

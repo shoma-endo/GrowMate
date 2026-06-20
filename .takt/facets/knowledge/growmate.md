@@ -28,9 +28,12 @@ npm run knip
 
 For UI changes, perform manual browser verification appropriate to the changed screen.
 
+Do not add simplified, placeholder, or low-value unit tests just to satisfy a workflow or reviewer. Add tests only when the user request or a referenced specification explicitly requires them, and only if they verify real business behavior at the correct boundary.
+
 ## Implementation Boundaries
 
 - Keep changes minimal and aligned with existing code patterns.
+- Fix implementation issues in production code directly; do not use new tests as a substitute for the requested fix.
 - Do not edit generated files directly, including `src/types/database.types.ts`.
 - Do not read or print `.env*`, credentials, tokens, or other secret files.
 - If a task touches `app/**` or `src/components/**`, read `.agents/skills/growmate-ui-ux/SKILL.md` before planning or implementation.

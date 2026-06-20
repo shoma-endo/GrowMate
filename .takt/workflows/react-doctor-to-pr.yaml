@@ -71,7 +71,6 @@ steps:
     persona: coder
     policy:
       - coding
-      - testing
     knowledge:
       - architecture
       - react
@@ -89,6 +88,8 @@ steps:
       - 不要な `useMemo` / `useCallback` / `memo()` は削除する。
       - `any` を使わない。
       - UI変更を伴う場合は `.agents/skills/growmate-ui-ux/SKILL.md` を読む。
+      - 簡易・形式的・低価値なユニットテストは追加しない。React Doctor の指摘はプロダクションコードの最小修正で解消する。
+      - ユーザーまたは仕様書が明示した場合を除き、新規テストファイルを作成しない。
       - 実装後に `npm run lint`、`npm run build`、`npm run knip` を実行し、失敗した場合は修正して再実行する。
     rules:
       - condition: 実装と必須検証が完了した
@@ -106,7 +107,7 @@ steps:
     tags:
       - review
     edit: false
-    persona: supervisor
+    persona: reporter
     knowledge:
       - react
       - growmate
@@ -166,7 +167,6 @@ steps:
     persona: coder
     policy:
       - coding
-      - testing
     knowledge:
       - architecture
       - react
@@ -181,6 +181,8 @@ steps:
       必須条件:
       - 指摘対象コードを直接修正する。
       - React Doctor の修正範囲から大きく逸脱しない。
+      - 簡易・形式的・低価値なユニットテストは追加しない。レビュー指摘はプロダクションコードの修正で解消する。
+      - ユーザーまたは仕様書が明示した場合を除き、新規テストファイルを作成しない。
       - 修正後に `npm run lint`、`npm run build`、`npm run knip` を再実行する。
       - ここでは commit / push / PR 作成を行わない。最終ステップでまとめて実施する。
     rules:
