@@ -22,10 +22,10 @@ description: CLAUDE.md の最小コア運用を補完する共通ワークフロ
   - Server Actions / Zod / エラー: `nextjs-server`
   - Supabase: `supabase`
   - 品質ゲート（検証・セルフレビュー・障害対応）: `quality-gate`
-  - 仕様実装→PR: `spec-to-pr`
-  - React Doctor→PR: `react-doctor-to-pr`
+  - 仕様実装→PR: TAKT workflow `.takt/workflows/spec-to-pr.yaml`
+  - React Doctor→PR: TAKT workflow `.takt/workflows/react-doctor-to-pr.yaml`
 
-`spec-to-pr` / `react-doctor-to-pr` は `disable-model-invocation: true` を付与している。モデルの自動 Skill 発火を抑止し、ユーザーが明示的にワークフローを指示したときのみ起動する。
+一気通貫の PR 化は Skill ではなく TAKT workflow を正本とする。workflow の共通プロジェクト知識は `.takt/facets/knowledge/growmate.md` を参照する。
 
 ## Client Alignment Gate
 

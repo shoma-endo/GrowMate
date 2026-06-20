@@ -1,0 +1,258 @@
+name: spec-to-pr
+description: GrowMate docs/plans specification to implementation, quality gates, Codex architecture review loop, commit, and PR.
+workflow_config:
+  provider_options:
+    codex:
+      network_access: true
+max_steps: 10
+initial_step: plan
+loop_monitors:
+  - cycle:
+      - review
+      - fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      knowledge:
+        - growmate
+      instruction: |
+        review -> fix のループが {cycle_count} 回繰り返されました。
+        Report Directory の最新レビューと修正結果を確認し、収束しているか判断してください。
+      rules:
+        - condition: 健全（進捗あり）
+          next: review
+        - condition: 非生産的（同じ指摘の反復・修正未反映）
+          next: ABORT
+
+steps:
+  - name: plan
+    tags:
+      - plan
+    edit: false
+    persona: planner
+    knowledge:
+      - architecture
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      `docs/plans/` の仕様書を起点に、GrowMate の実装計画を作成してください。
+
+      必須手順:
+      1. ユーザー指示から対象仕様書を特定する。曖昧な場合は `docs/plans/` を列挙し、候補を示して ABORT する。
+      2. 対象仕様書、`AGENTS.md`、`.takt/facets/knowledge/growmate.md`、`.agents/skills/implementation-guidelines/SKILL.md` を読む。
+      3. Server Actions / Route Handlers / Zod / エラー処理が関わる場合は `.agents/skills/nextjs-server/SKILL.md` を読む。
+      4. UI 実装が関わる場合は `.agents/skills/growmate-ui-ux/SKILL.md` と `.agents/skills/react/SKILL.md` を読む。
+      5. Supabase / migration / RLS / Service Role が関わる場合は `.agents/skills/supabase/SKILL.md` を読む。
+      6. 仕様要件と現行コードの差分、変更対象、検証方法、PR本文に記載すべき関連仕様書を整理する。
+    rules:
+      - condition: 要件が明確で実装可能
+        next: implement
+      - condition: ユーザーが質問をしている（実装タスクではない）
+        next: COMPLETE
+      - condition: 要件が不明確、情報不足
+        next: ABORT
+        appendix: |
+          確認事項:
+          - {質問1}
+          - {質問2}
+    output_contracts:
+      report:
+        - name: plan.md
+          format: plan
+
+  - name: implement
+    tags:
+      - coding
+      - implementation
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+    knowledge:
+      - architecture
+      - growmate
+    provider_options:
+      extends: edit
+    required_permission_mode: edit
+    instruction: |
+      `plan.md` と対象仕様書に従い、GrowMate の既存パターンに合わせて最小差分で実装してください。
+
+      必須条件:
+      - `any` を使わない。`unknown` + narrowing または Zod schema を使う。
+      - 自動生成ファイルを直接編集しない。
+      - UI 変更では `growmate-ui-ux` と `react` の規約に従う。
+      - Server Actions / Route Handlers では `nextjs-server` のエラー処理・Zod規約に従う。
+      - Supabase Service Role 使用時は user_id 等の明示的なスコープ条件を入れる。
+      - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
+      - 実装後に `npm run lint`、`npm run build`、`npm run knip` を実行し、失敗した場合は修正して再実行する。
+    rules:
+      - condition: 実装と必須検証が完了した
+        next: review
+      - condition: 判断できない、情報不足
+        next: ABORT
+      - condition: ユーザー入力が必要
+        next: implement
+        requires_user_input: true
+        interactive_only: true
+    output_contracts:
+      report:
+        - name: coder-scope.md
+          format: coder-scope
+        - name: coder-decisions.md
+          format: coder-decisions
+
+  - name: review
+    tags:
+      - review
+    edit: false
+    persona: architecture-reviewer
+    policy:
+      - review
+    knowledge:
+      - architecture
+      - growmate
+    instruction: review-arch
+    rules:
+      - condition: approved
+        next: self_review
+      - condition: needs_fix
+        next: fix
+    output_contracts:
+      report:
+        - name: architecture-review.md
+          format: architecture-review
+
+  - name: fix
+    tags:
+      - coding
+      - implementation
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+    knowledge:
+      - architecture
+      - growmate
+    provider_options:
+      extends: edit
+    required_permission_mode: edit
+    pass_previous_response: false
+    instruction: |
+      Report Directory の `architecture-review.md` を一次情報として、architecture-reviewer の指摘を修正してください。
+
+      必須条件:
+      - 指摘対象コードを直接修正する。
+      - テストやドキュメント追加だけで指摘を回避しない。
+      - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
+      - 同種の潜在箇所がある場合は同時に修正する。
+      - 修正後に `npm run lint`、`npm run build`、`npm run knip` を再実行する。
+      - ここでは commit / push / PR 作成を行わない。最終ステップでまとめて実施する。
+    rules:
+      - condition: 修正と必須検証が完了した
+        next: review
+      - condition: レビュー指摘に対応するための情報が不足している
+        next: plan
+      - condition: 修正を進行できない
+        next: ABORT
+    output_contracts:
+      report:
+        - name: fix-result.md
+          format: coder-decisions
+
+  - name: self_review
+    tags:
+      - review
+    edit: false
+    persona: supervisor
+    policy:
+      - review
+      - testing
+    knowledge:
+      - architecture
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      `.agents/skills/quality-gate/SKILL.md` と `.agents/skills/quality-gate/self-review.md` に従い、2パスセルフレビューを実施してください。
+
+      確認対象:
+      - 仕様書の全要件が実装されていること。
+      - `npm run lint`、`npm run build`、`npm run knip` が成功していること。
+      - architecture-reviewer の open findings がないこと。
+      - 余計な差分や機密情報の露出がないこと。
+      - PR本文に関連仕様書、検証結果、Codex architecture review 結果を含められること。
+    rules:
+      - condition: セルフレビュー合格
+        next: prepare_pr_summary
+      - condition: 修正が必要
+        next: fix
+      - condition: 検証不足または判断不能
+        next: ABORT
+    output_contracts:
+      report:
+        - name: self-review.md
+          format: supervisor-validation
+
+  - name: prepare_pr_summary
+    tags:
+      - report
+    edit: false
+    persona: reporter
+    knowledge:
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      PR作成前に、Report Directory の `plan.md`、`coder-scope.md`、`coder-decisions.md`、`architecture-review.md`、`self-review.md` を読み、PR本文へ転記しやすい要約を作成してください。
+
+      必須条件:
+      - 実装やレビュー判断は行わない。確認済みの事実と未確認事項を分けて整理する。
+      - 変更内容、関連仕様書、検証結果、architecture-reviewer の結果、セルフレビュー結果を短くまとめる。
+      - PR作成者がそのまま使える Markdown 箇条書きにする。
+    rules:
+      - condition: PR用要約が完了した
+        next: create_pr
+      - condition: 必要なレポートが不足している
+        next: ABORT
+    output_contracts:
+      report:
+        - name: pr-summary.md
+          format: summary
+
+  - name: create_pr
+    tags:
+      - coding
+    edit: false
+    persona: coder
+    knowledge:
+      - growmate
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+    instruction: |
+      実装内容をコミットし、Pull Request を作成してください。プロダクションコードの編集は行わず、git / gh コマンドのみを実行してください。
+
+      手順:
+      1. `git status` / `git diff` で変更内容を確認する。
+      2. 現在のブランチが `develop` または `main` なら、仕様書名または機能名から `feature/...` または `fix/...` の英語ブランチ名を作成する。
+      3. `git add` で変更をステージし、`git diff --cached` で最終確認する。
+      4. Why を中心とした日本語1行のコミットメッセージで `git commit` する。
+      5. `git push -u origin HEAD` を実行する。
+      6. `gh pr view` で既存PRを確認する。存在しなければ `gh pr create` で PR を作成する。
+      7. `pr-summary.md` を参照し、PR本文には 概要 / 変更内容 / 関連仕様書 / Lint・Build・Knip / Codex architecture review / セルフレビュー を含める。
+
+      やらないこと:
+      - PR のマージ・クローズ。
+      - プロダクションコード編集。
+    rules:
+      - condition: PR作成（または既存PRへの反映）が完了した
+        next: COMPLETE
+      - condition: コミット・push・PR作成のいずれかに失敗した
+        next: ABORT

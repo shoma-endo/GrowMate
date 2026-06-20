@@ -1,0 +1,268 @@
+name: react-doctor-to-pr
+description: GrowMate React Doctor diagnosis, targeted fixes, quality gates, Codex architecture review loop, commit, and PR.
+workflow_config:
+  provider_options:
+    codex:
+      network_access: true
+max_steps: 10
+initial_step: react_doctor_baseline
+loop_monitors:
+  - cycle:
+      - review
+      - fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      knowledge:
+        - growmate
+      instruction: |
+        review -> fix のループが {cycle_count} 回繰り返されました。
+        最新レビューと修正内容を確認し、収束しているか判断してください。
+      rules:
+        - condition: 健全（進捗あり）
+          next: review
+        - condition: 非生産的（同じ指摘の反復・修正未反映）
+          next: ABORT
+
+steps:
+  - name: react_doctor_baseline
+    tags:
+      - plan
+      - review
+    edit: false
+    persona: planner
+    knowledge:
+      - architecture
+      - react
+      - growmate
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+    instruction: |
+      React Doctor の事前診断を実行し、修正計画を作成してください。
+
+      必須手順:
+      1. `AGENTS.md`、`.takt/facets/knowledge/growmate.md`、`.agents/skills/react/SKILL.md`、`.agents/skills/implementation-guidelines/SKILL.md` を読む。
+      2. `npx -y react-doctor@latest . --verbose --diff` を実行する。
+      3. スコア、Actionable Issues、優先度、修正対象ファイルを記録する。
+      4. Security / Correctness は必須、Performance は原則修正、Architecture は GrowMate 方針と照合して判断する。
+      5. 修正対象を React Doctor が指摘した箇所に限定し、スコープ外変更を避ける計画にする。
+    rules:
+      - condition: React Doctor 診断が完了し、修正可能
+        next: implement
+      - condition: React Doctor が実行できない
+        next: ABORT
+      - condition: 修正対象がない
+        next: COMPLETE
+    output_contracts:
+      report:
+        - name: react-doctor-baseline.md
+          format: plan
+
+  - name: implement
+    tags:
+      - coding
+      - implementation
+    edit: true
+    persona: coder
+    policy:
+      - coding
+    knowledge:
+      - architecture
+      - react
+      - growmate
+    provider_options:
+      extends: edit
+    required_permission_mode: edit
+    instruction: |
+      `react-doctor-baseline.md` に記録された Actionable Issues を最小差分で修正してください。
+
+      必須条件:
+      - React Doctor が指摘した箇所を中心に修正する。
+      - `useContext()` は `use(Context)` に置き換える。
+      - `<Context.Provider value={...}>` は `<Context value={...}>` に置き換える。
+      - 不要な `useMemo` / `useCallback` / `memo()` は削除する。
+      - `any` を使わない。
+      - UI変更を伴う場合は `.agents/skills/growmate-ui-ux/SKILL.md` を読む。
+      - 簡易・形式的・低価値なユニットテストは追加しない。React Doctor の指摘はプロダクションコードの最小修正で解消する。
+      - ユーザーまたは仕様書が明示した場合を除き、新規テストファイルを作成しない。
+      - 実装後に `npm run lint`、`npm run build`、`npm run knip` を実行し、失敗した場合は修正して再実行する。
+    rules:
+      - condition: 実装と必須検証が完了した
+        next: react_doctor_after
+      - condition: 判断できない、情報不足
+        next: ABORT
+    output_contracts:
+      report:
+        - name: coder-scope.md
+          format: coder-scope
+        - name: coder-decisions.md
+          format: coder-decisions
+
+  - name: react_doctor_after
+    tags:
+      - review
+    edit: false
+    persona: reporter
+    knowledge:
+      - react
+      - growmate
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+    instruction: |
+      修正後の React Doctor 再診断を実行してください。
+
+      手順:
+      1. `npx -y react-doctor@latest . --verbose --diff` を実行する。
+      2. 事前診断と比較してスコア、Actionable Issues、解消済み指摘を記録する。
+      3. スコアが下がった場合、または修正対象の Actionable Issues が残っている場合は修正へ戻す。
+    rules:
+      - condition: スコアが改善し、修正対象の Actionable Issues が解消された
+        next: review
+      - condition: スコアが下がった、または修正対象の Actionable Issues が残っている
+        next: implement
+      - condition: React Doctor 再診断に失敗した
+        next: ABORT
+    output_contracts:
+      report:
+        - name: react-doctor-after.md
+          format: validation
+
+  - name: review
+    tags:
+      - review
+    edit: false
+    persona: architecture-reviewer
+    policy:
+      - review
+    knowledge:
+      - architecture
+      - react
+      - growmate
+    instruction: review-arch
+    rules:
+      - condition: approved
+        next: self_review
+      - condition: needs_fix
+        next: fix
+    output_contracts:
+      report:
+        - name: architecture-review.md
+          format: architecture-review
+
+  - name: fix
+    tags:
+      - coding
+      - implementation
+    edit: true
+    persona: coder
+    policy:
+      - coding
+    knowledge:
+      - architecture
+      - react
+      - growmate
+    provider_options:
+      extends: edit
+    required_permission_mode: edit
+    pass_previous_response: false
+    instruction: |
+      Report Directory の `architecture-review.md` を一次情報として、architecture-reviewer の指摘を修正してください。
+
+      必須条件:
+      - 指摘対象コードを直接修正する。
+      - React Doctor の修正範囲から大きく逸脱しない。
+      - 簡易・形式的・低価値なユニットテストは追加しない。レビュー指摘はプロダクションコードの修正で解消する。
+      - ユーザーまたは仕様書が明示した場合を除き、新規テストファイルを作成しない。
+      - 修正後に `npm run lint`、`npm run build`、`npm run knip` を再実行する。
+      - ここでは commit / push / PR 作成を行わない。最終ステップでまとめて実施する。
+    rules:
+      - condition: 修正と必須検証が完了した
+        next: react_doctor_after
+      - condition: レビュー指摘に対応するための情報が不足している
+        next: react_doctor_baseline
+      - condition: 修正を進行できない
+        next: ABORT
+    output_contracts:
+      report:
+        - name: fix-result.md
+          format: coder-decisions
+
+  - name: self_review
+    tags:
+      - review
+    edit: false
+    persona: supervisor
+    policy:
+      - review
+      - testing
+    knowledge:
+      - architecture
+      - react
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      `.agents/skills/quality-gate/SKILL.md` と `.agents/skills/quality-gate/self-review.md` に従い、2パスセルフレビューを実施してください。
+
+      確認対象:
+      - React Doctor スコアが改善していること。
+      - 修正対象の Actionable Issues が解消されていること。
+      - `npm run lint`、`npm run build`、`npm run knip` が成功していること。
+      - architecture-reviewer の open findings がないこと。
+      - PR本文に React Doctor スコア変化、解消Issues、検証結果、Codex architecture review 結果を含められること。
+    rules:
+      - condition: セルフレビュー合格
+        next: create_pr
+      - condition: 修正が必要
+        next: fix
+      - condition: 検証不足または判断不能
+        next: ABORT
+    output_contracts:
+      report:
+        - name: self-review.md
+          format: supervisor-validation
+
+  - name: create_pr
+    tags:
+      - coding
+    edit: false
+    persona: coder
+    knowledge:
+      - growmate
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+    instruction: |
+      実装内容をコミットし、Pull Request を作成してください。プロダクションコードの編集は行わず、git / gh コマンドのみを実行してください。
+
+      手順:
+      1. `git status` / `git diff` で変更内容を確認する。
+      2. 現在のブランチが `develop` または `main` なら、`fix/react-doctor-improvements` などの英語ブランチ名を作成する。
+      3. `git add` で変更をステージし、`git diff --cached` で最終確認する。
+      4. Why を中心とした日本語1行のコミットメッセージで `git commit` する。
+      5. `git push -u origin HEAD` を実行する。
+      6. `gh pr view` で既存PRを確認する。存在しなければ `gh pr create` で PR を作成する。
+      7. PR本文には 概要 / 変更内容 / React Doctor スコア / Lint・Build・Knip / Codex architecture review / セルフレビュー を含める。
+
+      やらないこと:
+      - PR のマージ・クローズ。
+      - プロダクションコード編集。
+    rules:
+      - condition: PR作成（または既存PRへの反映）が完了した
+        next: COMPLETE
+      - condition: コミット・push・PR作成のいずれかに失敗した
+        next: ABORT

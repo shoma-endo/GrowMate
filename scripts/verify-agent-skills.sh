@@ -22,12 +22,11 @@ EXPECTED_SKILLS=(
   code-refactoring
   growmate-ui-ux
   implementation-guidelines
+  llm-context-memory
   nextjs-server
   project-naming
   quality-gate
   react
-  react-doctor-to-pr
-  spec-to-pr
   supabase
   update-docs
 )
@@ -132,18 +131,28 @@ while IFS='|' read -r name path; do
 done < "${names_file}.paths" 2>/dev/null || true
 echo
 
-echo "--- PR ワークフロー参照リンク ---"
-for wf in .agents/skills/spec-to-pr/SKILL.md .agents/skills/react-doctor-to-pr/SKILL.md; do
-  rg -o '\]\(\.\./shared/pr-workflows/[^)]+\)' "$wf" | while read -r match; do
-    rel="$(printf '%s' "$match" | sed -E 's/^\]\(([^)]+)\)$/\1/')"
-    abs="$(dirname "$wf")/$rel"
-    if [[ -f "$abs" ]]; then
-      ok "$(basename "$wf"): $rel"
-    else
-      fail "$(basename "$wf"): リンク先なし $rel -> $abs"
-    fi
-  done
+echo "--- TAKT PR ワークフロー ---"
+for workflow in .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml; do
+  if [[ -f "$workflow" ]]; then
+    ok "$workflow"
+  else
+    fail "TAKT workflow 不足: $workflow"
+  fi
 done
+
+for removed in .agents/skills/spec-to-pr .agents/skills/react-doctor-to-pr .agents/skills/shared/pr-workflows; do
+  if [[ -e "$removed" ]]; then
+    fail "削除済みであるべき旧PR Skillパスが残っています: $removed"
+  else
+    ok "旧PR Skillパス削除済み: $removed"
+  fi
+done
+
+if takt workflow doctor .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml >/dev/null; then
+  ok "TAKT workflow doctor"
+else
+  fail "TAKT workflow doctor failed"
+fi
 echo
 
 echo "--- Subagent 正本 ---"

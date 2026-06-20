@@ -49,3 +49,12 @@ supabase/.temp/
 
 # scripts runtime state (CI は Actions cache で保持)
 scripts/db-stats-history.json
+
+# TAKT project configuration
+.takt/*
+!.takt/.gitignore
+!.takt/config.yaml
+!.takt/workflows/
+!.takt/workflows/**
+!.takt/facets/
+!.takt/facets/**

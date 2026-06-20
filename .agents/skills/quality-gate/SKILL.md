@@ -24,4 +24,4 @@ description: GrowMate の品質ゲート。コーディング完了後の2パス
 ## 関連スキル
 
 - 実装ポリシー: `implementation-guidelines`
-- PR ワークフロー: `spec-to-pr` / `react-doctor-to-pr`（セルフレビュー Phase は `.agents/skills/shared/pr-workflows/self-review-phase.md`）
+- PR ワークフロー: TAKT `.takt/workflows/spec-to-pr.yaml` / `.takt/workflows/react-doctor-to-pr.yaml`

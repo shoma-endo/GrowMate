@@ -65,6 +65,7 @@ If an error occurs during execution or the plan fails:
 
 - ソースを調査する際は `grep` を優先し、`shell` コマンドでは `working_directory` を明示する。
 - **MVP（Minimum Viable Product）開発**を遵守して変更は最小編集で行い、自動生成ファイルの直接編集は避ける。
+- 仕様書起点の PR 化は `.takt/workflows/spec-to-pr.yaml`、React Doctor 起点の PR 化は `.takt/workflows/react-doctor-to-pr.yaml` を正本とする。
 - 画面・UI コンポーネント（`app/**`, `src/components/**`）の実装着手前は `growmate-ui-ux` スキル（`.agents/skills/growmate-ui-ux/SKILL.md`）を **必ず Read する**。
 - プログラム変更後は `quality-gate` スキルの指針に従い検証する（`npm run lint` / `npm run build` / `npm run knip`）。作業完了時は新規ファイルを含めて `git diff` を確認し、日本語の 1 行コミットメッセージ案を必ず提示する。
 
