@@ -18,7 +18,10 @@ loop_monitors:
       instruction: |
         review -> fix のループが {cycle_count} 回繰り返されました。
         最新レビューと修正内容を確認し、収束しているか判断してください。
+        残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として self_review に進めてください。
       rules:
+        - condition: 収束済み（残件が追加修正で解消不能な方針差分のみ）
+          next: self_review
         - condition: 健全（進捗あり）
           next: review
         - condition: 非生産的（同じ指摘の反復・修正未反映）
@@ -142,13 +145,18 @@ steps:
       - review
     edit: false
     persona: architecture-reviewer
-    policy:
-      - review
     knowledge:
       - architecture
       - react
       - growmate
-    instruction: review-arch
+    instruction: |
+      `review-arch` 相当の観点で、アーキテクチャ、責務分離、React 19 / React Compiler 方針、仕様充足、既存パターンとの整合性をレビューしてください。
+
+      GrowMate 固有条件:
+      - React Doctor 修正または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
+      - 簡易・形式的・低価値なユニットテストの追加を要求しない。
+      - 代替検証として React Doctor 再診断、`npm run lint`、`npm run build`、`npm run knip` が実行されているかを確認する。
+      - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
       - condition: approved
         next: self_review
@@ -202,9 +210,6 @@ steps:
       - review
     edit: false
     persona: supervisor
-    policy:
-      - review
-      - testing
     knowledge:
       - architecture
       - react

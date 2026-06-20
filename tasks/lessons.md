@@ -1,5 +1,6 @@
 # Lessons
 
+- TAKT の `review -> fix` ループで、ユーザーまたは仕様書がテスト追加不要を明示しているのにレビューがテスト不在だけを理由に差し戻す場合は、workflow 側で `review` / `testing` policy の競合を外し、loop monitor が self_review へ抜けられる条件を用意する。
 - React Doctor / TAKT の実装修正では、ユーザーまたは仕様書が明示しない限り簡易・形式的なユニットテストを追加しない。指摘はプロダクションコードの最小修正で解消し、検証は lint/build/knip/React Doctor/必要な手動確認で行う。
 - TAKT workflow のレビュー担当は、ユーザーがグローバル `architecture-reviewer` provider routing を指定している場合、workflow 側で別レビューCLIステップを新設せず、その persona の `review-arch` ステップを使う。
 - 仕様書へ実装方針を追記したときは、同名または対応する実装済み関数が存在しないか `rg` で確認し、存在する場合は設計だけで完了扱いにせず実装も同期する。

@@ -4,7 +4,7 @@ workflow_config:
   provider_options:
     codex:
       network_access: true
-max_steps: 10
+max_steps: 20
 initial_step: plan
 loop_monitors:
   - cycle:
@@ -18,7 +18,10 @@ loop_monitors:
       instruction: |
         review -> fix のループが {cycle_count} 回繰り返されました。
         Report Directory の最新レビューと修正結果を確認し、収束しているか判断してください。
+        残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として self_review に進めてください。
       rules:
+        - condition: 収束済み（残件が追加修正で解消不能な方針差分のみ）
+          next: self_review
         - condition: 健全（進捗あり）
           next: review
         - condition: 非生産的（同じ指摘の反復・修正未反映）
@@ -69,7 +72,6 @@ steps:
     persona: coder
     policy:
       - coding
-      - testing
     knowledge:
       - architecture
       - growmate
@@ -108,12 +110,17 @@ steps:
       - review
     edit: false
     persona: architecture-reviewer
-    policy:
-      - review
     knowledge:
       - architecture
       - growmate
-    instruction: review-arch
+    instruction: |
+      `review-arch` 相当の観点で、アーキテクチャ、責務分離、データ境界、セキュリティ、仕様充足、既存パターンとの整合性をレビューしてください。
+
+      GrowMate 固有条件:
+      - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
+      - 簡易・形式的・低価値なユニットテストの追加を要求しない。
+      - 代替検証として `npm run lint`、`npm run build`、`npm run knip`、必要な手動確認が実行されているかを確認する。
+      - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
       - condition: approved
         next: self_review
@@ -132,7 +139,6 @@ steps:
     persona: coder
     policy:
       - coding
-      - testing
     knowledge:
       - architecture
       - growmate
@@ -167,9 +173,6 @@ steps:
       - review
     edit: false
     persona: supervisor
-    policy:
-      - review
-      - testing
     knowledge:
       - architecture
       - growmate
