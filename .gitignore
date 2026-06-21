@@ -24,6 +24,7 @@
 .DS_Store
 *.pem
 .venv/
+.claude/settings.local.json
 
 # debug
 npm-debug.log*

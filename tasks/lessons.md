@@ -1,5 +1,7 @@
 # Lessons
 
+- TAKT の Requeue / resume では途中ステップから新しい run directory が作られ、`plan.md` や `coder-scope.md` が存在しないことがある。PR 要約ステップでは必須レポートを `architecture-review.md` と `self-review.md` に絞り、仕様書・fix-result・git status で補完できる場合は ABORT しない。
+- Claude のローカル権限設定 `.claude/settings.local.json` は、グローバル Git ignore だけでなくプロジェクト `.gitignore` にも明示して、TAKT self_review が未追跡ローカル設定として差し戻し続けないようにする。
 - TAKT の `review -> fix` ループで、ユーザーまたは仕様書がテスト追加不要を明示しているのにレビューがテスト不在だけを理由に差し戻す場合は、workflow 側で `review` / `testing` policy の競合を外し、loop monitor が self_review へ抜けられる条件を用意する。
 - React Doctor / TAKT の実装修正では、ユーザーまたは仕様書が明示しない限り簡易・形式的なユニットテストを追加しない。指摘はプロダクションコードの最小修正で解消し、検証は lint/build/knip/React Doctor/必要な手動確認で行う。
 - TAKT workflow のレビュー担当は、ユーザーがグローバル `architecture-reviewer` provider routing を指定している場合、workflow 側で別レビューCLIステップを新設せず、その persona の `review-arch` ステップを使う。

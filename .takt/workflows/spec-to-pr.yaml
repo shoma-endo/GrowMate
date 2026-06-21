@@ -215,10 +215,12 @@ steps:
       - 実装やレビュー判断は行わない。確認済みの事実と未確認事項を分けて整理する。
       - 変更内容、関連仕様書、検証結果、architecture-reviewer の結果、セルフレビュー結果を短くまとめる。
       - PR作成者がそのまま使える Markdown 箇条書きにする。
+      - Requeue / resume では `plan.md`、`coder-scope.md`、`coder-decisions.md` が存在しない場合がある。その場合は、対象仕様書、`fix-result.md`、`architecture-review.md`、`self-review.md`、`git status` の事実から要約を作成し、不足レポートを理由に ABORT しない。
+      - `architecture-review.md` または `self-review.md` が存在せず、レビュー結果を確認できない場合のみ不足レポートとして扱う。
     rules:
       - condition: PR用要約が完了した
         next: create_pr
-      - condition: 必要なレポートが不足している
+      - condition: architecture-review または self-review の結果を確認できない
         next: ABORT
     output_contracts:
       report:
