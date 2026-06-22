@@ -1,6 +1,7 @@
 # Lessons
 
 - TAKT の Requeue は source run の reports を新 run にコピーしないため、途中ステップだけ再投入すると新しい Report Directory が空になる。レポート参照が必要なステップでは `meta.json` の `source_run_slug` を再帰的に辿って親 run の reports を使う。
+- TAKT 復旧中にユーザーが `Requeue` の妥当性を確認している場合、`Retry` を勧めない。`Retry` は order.md ありの同一指示再実行、`Requeue` は workflow 修正後・途中再開・親 run 参照が必要な復旧に使う。
 - TAKT の失敗復旧で `Retry` と `Requeue` が並ぶ場合、`order.md` がない run では `/retry` が失敗する。途中再開・レポート欠損・workflow 修正後の再投入は原則 `Requeue` を選び、`Retry` は同じ指示書が残っている単純な一時失敗に限る。
 - TAKT の Requeue / resume では途中ステップから新しい run directory が作られ、`plan.md` や `coder-scope.md` が存在しないことがある。PR 要約ステップでは必須レポートを `architecture-review.md` と `self-review.md` に絞り、仕様書・fix-result・git status で補完できる場合は ABORT しない。
 - Claude のローカル権限設定 `.claude/settings.local.json` は、グローバル Git ignore だけでなくプロジェクト `.gitignore` にも明示して、TAKT self_review が未追跡ローカル設定として差し戻し続けないようにする。

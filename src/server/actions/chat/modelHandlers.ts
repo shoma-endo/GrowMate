@@ -8,6 +8,11 @@ import type { StartChatInput, ContinueChatInput } from '@/server/schemas/chat.sc
 import { briefService } from '@/server/services/briefService';
 import { PromptService } from '@/server/services/promptService';
 import type { Service } from '@/server/schemas/brief.schema';
+import type { UserRole } from '@/types/user';
+import {
+  resolveKnowledgeBlocksForRequest,
+  toSystemPromptDebugString,
+} from '@/lib/knowledgeInjection';
 
 /**
  * モデルに応じた動的プロンプト取得（React Cache活用）
@@ -71,7 +76,32 @@ export class ModelHandlerService {
     };
   }
 
-  async handleStart(userId: string, data: StartChatInput): Promise<ChatResponse> {
+  private async buildKnowledgeAwareSystemPrompt(
+    templateBlock: string,
+    modelKey: string,
+    userRole: UserRole,
+    inputEstimate?: {
+      recentMessages?: { content: string }[];
+      userMessage?: string;
+    }
+  ) {
+    const resolved = await resolveKnowledgeBlocksForRequest(templateBlock, {
+      modelKey,
+      userRole,
+      ...(inputEstimate ? { inputEstimate } : {}),
+    });
+
+    return {
+      debugSystemPrompt: toSystemPromptDebugString(resolved.blocks),
+      anthropicSystemBlocks: resolved.anthropicSystem,
+    };
+  }
+
+  async handleStart(
+    userId: string,
+    data: StartChatInput,
+    userRole: UserRole
+  ): Promise<ChatResponse> {
     const { userMessage, model, serviceId } = data;
     // キャッシュ戦略を活用した動的プロンプト取得
     const systemPrompt = await getSystemPrompt(model, undefined, undefined, serviceId);
@@ -80,15 +110,19 @@ export class ModelHandlerService {
       case 'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2':
         return this.handleFTModel(userId, systemPrompt, userMessage, model, serviceId);
       case 'ad_copy_creation':
-        return this.handleAdCopyModel(userId, systemPrompt, userMessage, serviceId);
+        return this.handleAdCopyModel(userId, systemPrompt, userMessage, serviceId, userRole);
       case 'lp_draft_creation':
-        return this.handleLPDraftModel(userId, systemPrompt, userMessage, serviceId);
+        return this.handleLPDraftModel(userId, systemPrompt, userMessage, serviceId, userRole);
       default:
         return this.handleDefaultModel(userId, systemPrompt, userMessage, model, serviceId);
     }
   }
 
-  async handleContinue(userId: string, data: ContinueChatInput): Promise<ChatResponse> {
+  async handleContinue(
+    userId: string,
+    data: ContinueChatInput,
+    userRole: UserRole
+  ): Promise<ChatResponse> {
     const {
       sessionId,
       messages,
@@ -148,49 +182,50 @@ export class ModelHandlerService {
         model
       );
     } else if (model === 'ad_copy_creation') {
-      // ✅ Claudeモデルの履歴引き継ぎ対応
       const validMessages = messages.map(msg => ({
         role: msg.role as 'user' | 'assistant' | 'system',
         content: msg.content,
       }));
+      const knowledge = await this.buildKnowledgeAwareSystemPrompt(systemPrompt, model, userRole, {
+        recentMessages: validMessages,
+        userMessage: userMessage.trim(),
+      });
 
       return await chatService.continueChat(
         userId,
         sessionId,
         userMessage,
-        systemPrompt,
-        validMessages, // 履歴を正しく渡す
-        model
+        knowledge.debugSystemPrompt,
+        validMessages,
+        model,
+        { anthropicSystemBlocks: knowledge.anthropicSystemBlocks }
       );
     } else if (model === 'lp_draft_creation') {
       const variables = await this.buildLPDraftVariables(userId, serviceId);
       const finalSystemPrompt = PromptService.replaceVariables(systemPrompt, variables);
-
       const validMessages = messages.map(msg => ({
         role: msg.role as 'user' | 'assistant' | 'system',
         content: msg.content,
       }));
+      const knowledge = await this.buildKnowledgeAwareSystemPrompt(
+        finalSystemPrompt,
+        'lp_draft_creation',
+        userRole,
+        {
+          recentMessages: validMessages,
+          userMessage: userMessage.trim(),
+        }
+      );
 
-      try {
-        return await chatService.continueChat(
-          userId,
-          sessionId,
-          userMessage,
-          finalSystemPrompt,
-          validMessages,
-          'lp_draft_creation'
-        );
-      } catch (error) {
-        console.error('LP継続生成エラー:', error);
-        return await chatService.continueChat(
-          userId,
-          sessionId,
-          userMessage,
-          systemPrompt,
-          validMessages,
-          'lp_draft_creation'
-        );
-      }
+      return await chatService.continueChat(
+        userId,
+        sessionId,
+        userMessage,
+        knowledge.debugSystemPrompt,
+        validMessages,
+        'lp_draft_creation',
+        { anthropicSystemBlocks: knowledge.anthropicSystemBlocks }
+      );
     }
 
     // デフォルト処理: 未対応モデルの場合
@@ -259,14 +294,23 @@ export class ModelHandlerService {
     userId: string,
     systemPrompt: string,
     userMessage: string,
-    serviceId?: string
+    serviceId: string | undefined,
+    userRole: UserRole
   ): Promise<ChatResponse> {
+    const knowledge = await this.buildKnowledgeAwareSystemPrompt(
+      systemPrompt,
+      'ad_copy_creation',
+      userRole,
+      { userMessage: userMessage.trim() }
+    );
+
     return await chatService.startChat(
       userId,
-      systemPrompt,
+      knowledge.debugSystemPrompt,
       userMessage.trim(),
       'ad_copy_creation',
-      serviceId
+      serviceId,
+      { anthropicSystemBlocks: knowledge.anthropicSystemBlocks }
     );
   }
 
@@ -274,29 +318,26 @@ export class ModelHandlerService {
     userId: string,
     systemPrompt: string,
     userMessage: string,
-    serviceId?: string
+    serviceId: string | undefined,
+    userRole: UserRole
   ): Promise<ChatResponse> {
     const variables = await this.buildLPDraftVariables(userId, serviceId);
     const finalSystemPrompt = PromptService.replaceVariables(systemPrompt, variables);
+    const knowledge = await this.buildKnowledgeAwareSystemPrompt(
+      finalSystemPrompt,
+      'lp_draft_creation',
+      userRole,
+      { userMessage: userMessage.trim() }
+    );
 
-    try {
-      return await chatService.startChat(
-        userId,
-        finalSystemPrompt,
-        userMessage.trim(),
-        'lp_draft_creation',
-        serviceId
-      );
-    } catch (error) {
-      console.error('LP生成エラー:', error);
-      return await chatService.startChat(
-        userId,
-        systemPrompt,
-        userMessage.trim(),
-        'lp_draft_creation',
-        serviceId
-      );
-    }
+    return await chatService.startChat(
+      userId,
+      knowledge.debugSystemPrompt,
+      userMessage.trim(),
+      'lp_draft_creation',
+      serviceId,
+      { anthropicSystemBlocks: knowledge.anthropicSystemBlocks }
+    );
   }
 
   private async handleDefaultModel(

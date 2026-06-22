@@ -17,6 +17,7 @@ import type { UserRole } from '@/types/user';
 import { STEP7_ID } from '@/lib/constants';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
 import { getBlogCreationTemplatePrompt } from '@/lib/prompts';
+import { resolveKnowledgeBlocksForRequest } from '@/lib/knowledgeInjection';
 import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import {
   addTokenUsageTotals,
@@ -660,7 +661,7 @@ export async function POST(req: NextRequest) {
           }
 
           // ✅ 第2段階: Canvas編集（検索結果を含める）
-          const finalSystemPrompt = [
+          const l2WithWebSearch = [
             systemPrompt,
             ...(shouldEnableWebSearch
               ? [
@@ -691,6 +692,16 @@ export async function POST(req: NextRequest) {
               : []),
           ].join('\n');
 
+          const { anthropicSystem } = await resolveKnowledgeBlocksForRequest(l2WithWebSearch, {
+            modelKey,
+            userRole,
+            inputEstimate: {
+              recentMessages: canvasHistory,
+              userMessage: instruction,
+              editorBody: canvasContent,
+            },
+          });
+
           // Anthropic Streaming API 呼び出し
           // Step7 の見出し単位編集時は上限を抑え、それ以外はモデル設定値を使う。
           const canvasMaxTokens = isHeadingUnitRequest ? Math.min(5000, maxTokens) : maxTokens;
@@ -702,13 +713,7 @@ export async function POST(req: NextRequest) {
             model: actualModel,
             max_tokens: canvasMaxTokens,
             ...(temperature !== undefined && { temperature }),
-            system: [
-              {
-                type: 'text',
-                text: finalSystemPrompt,
-                cache_control: { type: 'ephemeral' },
-              },
-            ],
+            system: anthropicSystem,
             tools: [CANVAS_EDIT_TOOL],
             tool_choice: { type: 'tool', name: 'apply_full_text_replacement' },
             messages: [
