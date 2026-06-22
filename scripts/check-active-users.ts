@@ -60,6 +60,16 @@ function formatDateJST(date: Date | string | null): string {
 }
 
 /**
+ * lark_md の Markdown特殊文字（*, _, ~, `, [, <）の直後にゼロ幅スペースを挿入し、
+ * ユーザー入力由来の値（氏名・事業者情報）がMarkdown/メンション記法として
+ * 解釈されないようにする。表示上の見た目は変化しない。
+ */
+function escapeLarkMd(value: string): string {
+  const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+  return value.replace(/[*_~`[<]/g, char => `${char}${ZERO_WIDTH_SPACE}`);
+}
+
+/**
  * 1ユーザー1ブロック形式でデータを整形
  *
  * 固定幅の等幅テーブル（padEnd揃え）は、Lark interactiveカード（lark_md）が
@@ -73,13 +83,14 @@ function formatTable(data: ActiveUserData[]): string {
 
   const truncate = (value: string | null, maxLength = 60): string => {
     if (!value) return '未設定';
-    return value.length > maxLength ? `${value.substring(0, maxLength - 3)}...` : value;
+    const truncated = value.length > maxLength ? `${value.substring(0, maxLength - 3)}...` : value;
+    return escapeLarkMd(truncated);
   };
 
   return data
     .map((row, i) => {
       return [
-        `${i + 1}. **${row.氏名 || '未設定'}**（最終ログイン: ${row.最終ログイン日時 || '未設定'}）`,
+        `${i + 1}. **${escapeLarkMd(row.氏名 || '未設定')}**（最終ログイン: ${row.最終ログイン日時 || '未設定'}）`,
         `   URL: ${truncate(row.WordPressサイトURL)}`,
         `   When: ${truncate(row.When)} / Where: ${truncate(row.Where)}`,
         `   Who: ${truncate(row.Who)}`,

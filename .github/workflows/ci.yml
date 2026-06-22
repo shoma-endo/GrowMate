@@ -123,6 +123,15 @@ jobs:
           const http = require('http');
           const { URL } = require('url');
 
+          // PRタイトル・コミットメッセージはユーザーが自由に書き込める値のため、
+          // lark_mdのMarkdown/メンション記法として解釈されないようエスケープする
+          function escapeLarkMd(value) {
+            var ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+            return String(value).replace(/[*_~`[<]/g, function (char) {
+              return char + ZERO_WIDTH_SPACE;
+            });
+          }
+
           // Lark（飛書）webhook形式に合わせる
           const statusEmoji = process.env.STATUS === 'success' ? '✅' : '❌';
           const statusText = process.env.STATUS === 'success' ? '成功' : '失敗';
@@ -133,7 +142,7 @@ jobs:
           // メッセージ本文を作成
           const prUrl = process.env.PR_URL;
           const prLine = prUrl ? `\n[PR](${prUrl})` : '';
-          const commitMsg = process.env.COMMIT_MSG || process.env.PR_TITLE || '';
+          const commitMsg = escapeLarkMd(process.env.COMMIT_MSG || process.env.PR_TITLE || '');
           const commitLine = commitMsg ? `\nコミット: ${commitMsg.split('\n')[0]}` : '';
           const runUrl = process.env.ACTIONS_RUN_URL;
           const runLine = runUrl ? `\n[ログ](${runUrl})` : '';
