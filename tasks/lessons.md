@@ -1,6 +1,9 @@
 # Lessons
 
-- TAKT の `create_pr` ステップは `git add` / `git commit` / `git push` / `gh pr create` を実行するため、`edit: false` や `create_pr: readonly` にしない。プロダクションコード編集は禁止文で制御し、ステップ権限は `edit: true` + `required_permission_mode: edit` にする。
+- TAKT の self_review 起因の差し戻しを fix へ戻す場合、fix は `architecture-review.md` だけでなく `self-review.md` も一次情報として読む。architecture-review が APPROVE のままなら review に戻さず self_review へ戻し、同じ no-op fix/review ループを繰り返さない。
+- TAKT の `prepare_pr_summary` は GitHub Actions auto-pr が PR body/comment を作る前提では詳細な PR 本文生成をしない。最新 review/self-review/fix-result と git status の事実に絞った短い最終ローカル要約に留める。
+- GrowMate は `.github/workflows/auto-pr.yml` が push 後の PR 作成・更新を担当するため、TAKT の終端ステップでは `gh pr create` / `gh pr edit` / `gh pr comment` を実行しない。TAKT は commit/push までで完了し、PR body/comment の詳細化は GitHub Actions 側で取得できる branch / commit / changed files 情報に限定する。
+- TAKT の `create_pr` ステップ名を互換性のため残す場合でも、GrowMate では実際の責務を `git add` / `git commit` / `git push` までに限定する。`edit: false` や `create_pr: readonly` では push できないため、プロダクションコード編集は禁止文で制御し、ステップ権限は `edit: true` + `required_permission_mode: edit` にする。
 - TAKT の Requeue は source run の reports を新 run にコピーしないため、途中ステップだけ再投入すると新しい Report Directory が空になる。レポート参照が必要なステップでは `meta.json` の `source_run_slug` を再帰的に辿って親 run の reports を使う。
 - TAKT 復旧中にユーザーが `Requeue` の妥当性を確認している場合、`Retry` を勧めない。`Retry` は order.md ありの同一指示再実行、`Requeue` は workflow 修正後・途中再開・親 run 参照が必要な復旧に使う。
 - TAKT の失敗復旧で `Retry` と `Requeue` が並ぶ場合、`order.md` がない run では `/retry` が失敗する。途中再開・レポート欠損・workflow 修正後の再投入は原則 `Requeue` を選び、`Retry` は同じ指示書が残っている単純な一時失敗に限る。

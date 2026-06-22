@@ -90,7 +90,7 @@ jobs:
           const messageText = `【アクティブユーザーレポート（直近1週間）】\n` +
             `ステータス: **${statusEmoji} ${statusText}**\n` +
             `[詳細](${workflowUrl})\n\n` +
-            `【アクティブユーザー情報】\n\`\`\`\n${output}\n\`\`\``;
+            `【アクティブユーザー情報】\n${output}`;
 
           const payload = {
             msg_type: 'interactive',
