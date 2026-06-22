@@ -216,9 +216,10 @@ steps:
       - 変更内容、関連仕様書、検証結果、architecture-reviewer の結果、セルフレビュー結果を短くまとめる。
       - PR作成者がそのまま使える Markdown 箇条書きにする。
       - Requeue / resume では `plan.md`、`coder-scope.md`、`coder-decisions.md` が存在しない場合がある。その場合は、対象仕様書、`fix-result.md`、`architecture-review.md`、`self-review.md`、`git status` の事実から要約を作成し、不足レポートを理由に ABORT しない。
-      - `architecture-review.md` または `self-review.md` が存在せず、レビュー結果を確認できない場合のみ不足レポートとして扱う。
+      - Requeue / resume で現在の Report Directory に `architecture-review.md` / `self-review.md` / `fix-result.md` が存在しない場合は、現在 run の `meta.json` にある `source_run_slug` を辿り、source run の `reports/` にある最新レポートを参照する。source run も Requeue の場合は、さらに `source_run_slug` を辿る。
+      - 現在 run または source run chain のどこにも `architecture-review.md` または `self-review.md` が存在せず、レビュー結果を確認できない場合のみ不足レポートとして扱う。
     rules:
-      - condition: PR用要約が完了した
+      - condition: PR用要約が完了した（source run のレポート参照を含む）
         next: create_pr
       - condition: architecture-review または self-review の結果を確認できない
         next: ABORT
