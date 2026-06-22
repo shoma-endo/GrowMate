@@ -1,5 +1,6 @@
 # Lessons
 
+- TAKT の `create_pr` ステップは `git add` / `git commit` / `git push` / `gh pr create` を実行するため、`edit: false` や `create_pr: readonly` にしない。プロダクションコード編集は禁止文で制御し、ステップ権限は `edit: true` + `required_permission_mode: edit` にする。
 - TAKT の Requeue は source run の reports を新 run にコピーしないため、途中ステップだけ再投入すると新しい Report Directory が空になる。レポート参照が必要なステップでは `meta.json` の `source_run_slug` を再帰的に辿って親 run の reports を使う。
 - TAKT 復旧中にユーザーが `Requeue` の妥当性を確認している場合、`Retry` を勧めない。`Retry` は order.md ありの同一指示再実行、`Requeue` は workflow 修正後・途中再開・親 run 参照が必要な復旧に使う。
 - TAKT の失敗復旧で `Retry` と `Requeue` が並ぶ場合、`order.md` がない run では `/retry` が失敗する。途中再開・レポート欠損・workflow 修正後の再投入は原則 `Requeue` を選び、`Retry` は同じ指示書が残っている単純な一時失敗に限る。

@@ -240,10 +240,13 @@ steps:
   - name: create_pr
     tags:
       - coding
-    edit: false
+    edit: true
     persona: coder
+    provider: claude
+    model: haiku
     knowledge:
       - growmate
+    required_permission_mode: edit
     provider_options:
       claude:
         allowed_tools:
