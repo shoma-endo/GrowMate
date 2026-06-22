@@ -1,10 +1,10 @@
 name: spec-to-pr
-description: GrowMate docs/plans specification to implementation, quality gates, Codex architecture review loop, commit, and PR.
+description: GrowMate docs/plans specification to implementation, quality gates, Codex architecture review loop, commit, and push for auto PR.
 workflow_config:
   provider_options:
     codex:
       network_access: true
-max_steps: 10
+max_steps: 20
 initial_step: plan
 loop_monitors:
   - cycle:
@@ -18,7 +18,10 @@ loop_monitors:
       instruction: |
         review -> fix のループが {cycle_count} 回繰り返されました。
         Report Directory の最新レビューと修正結果を確認し、収束しているか判断してください。
+        残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として self_review に進めてください。
       rules:
+        - condition: 収束済み（残件が追加修正で解消不能な方針差分のみ）
+          next: self_review
         - condition: 健全（進捗あり）
           next: review
         - condition: 非生産的（同じ指摘の反復・修正未反映）
@@ -69,7 +72,6 @@ steps:
     persona: coder
     policy:
       - coding
-      - testing
     knowledge:
       - architecture
       - growmate
@@ -108,12 +110,17 @@ steps:
       - review
     edit: false
     persona: architecture-reviewer
-    policy:
-      - review
     knowledge:
       - architecture
       - growmate
-    instruction: review-arch
+    instruction: |
+      `review-arch` 相当の観点で、アーキテクチャ、責務分離、データ境界、セキュリティ、仕様充足、既存パターンとの整合性をレビューしてください。
+
+      GrowMate 固有条件:
+      - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
+      - 簡易・形式的・低価値なユニットテストの追加を要求しない。
+      - 代替検証として `npm run lint`、`npm run build`、`npm run knip`、必要な手動確認が実行されているかを確認する。
+      - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
       - condition: approved
         next: self_review
@@ -132,7 +139,6 @@ steps:
     persona: coder
     policy:
       - coding
-      - testing
     knowledge:
       - architecture
       - growmate
@@ -141,18 +147,24 @@ steps:
     required_permission_mode: edit
     pass_previous_response: false
     instruction: |
-      Report Directory の `architecture-review.md` を一次情報として、architecture-reviewer の指摘を修正してください。
+      Report Directory の `architecture-review.md` と `self-review.md` を一次情報として、未解決の指摘だけを修正してください。
 
       必須条件:
-      - 指摘対象コードを直接修正する。
-      - テストやドキュメント追加だけで指摘を回避しない。
+      - architecture-reviewer の未解決指摘がある場合は、指摘対象コードを直接修正する。
+      - self_review の未解決指摘がある場合は、self-review.md の該当項目を優先して修正する。
+      - architecture-review.md が APPROVE で self_review 起因の差し戻しだけの場合、architecture review を再解決しようとして同じ確認を繰り返さない。
+      - 修正対象が git hygiene / 不要ファイル混入 / レポート不足 / 検証証跡不足だけの場合は、その対象だけを直す。
+      - テストやドキュメント追加だけで architecture-reviewer の指摘を回避しない。
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
       - 同種の潜在箇所がある場合は同時に修正する。
-      - 修正後に `npm run lint`、`npm run build`、`npm run knip` を再実行する。
-      - ここでは commit / push / PR 作成を行わない。最終ステップでまとめて実施する。
+      - プロダクションコードを変更した場合は `npm run lint`、`npm run build`、`npm run knip` を再実行する。
+      - プロダクションコードを変更しておらず、直前の品質ゲート成功証跡がある場合は、フル再実行せず必要な git / diff 確認に絞ってよい。
+      - ここでは commit / push を行わない。最終ステップでまとめて実施する。
     rules:
-      - condition: 修正と必須検証が完了した
+      - condition: architecture-reviewer の指摘を修正し、必須検証が完了した
         next: review
+      - condition: self_review 起因の指摘だけを修正し、architecture-reviewer の open findings がない
+        next: self_review
       - condition: レビュー指摘に対応するための情報が不足している
         next: plan
       - condition: 修正を進行できない
@@ -167,9 +179,6 @@ steps:
       - review
     edit: false
     persona: supervisor
-    policy:
-      - review
-      - testing
     knowledge:
       - architecture
       - growmate
@@ -183,7 +192,7 @@ steps:
       - `npm run lint`、`npm run build`、`npm run knip` が成功していること。
       - architecture-reviewer の open findings がないこと。
       - 余計な差分や機密情報の露出がないこと。
-      - PR本文に関連仕様書、検証結果、Codex architecture review 結果を含められること。
+      - PR確認用の要約に関連仕様書、検証結果、Codex architecture review 結果を含められること。
     rules:
       - condition: セルフレビュー合格
         next: prepare_pr_summary
@@ -206,16 +215,20 @@ steps:
     provider_options:
       extends: review-readonly
     instruction: |
-      PR作成前に、Report Directory の `plan.md`、`coder-scope.md`、`coder-decisions.md`、`architecture-review.md`、`self-review.md` を読み、PR本文へ転記しやすい要約を作成してください。
+      push 前に、Report Directory と source run chain の最新レポートから、最終ローカル要約を短く作成してください。
 
       必須条件:
       - 実装やレビュー判断は行わない。確認済みの事実と未確認事項を分けて整理する。
-      - 変更内容、関連仕様書、検証結果、architecture-reviewer の結果、セルフレビュー結果を短くまとめる。
-      - PR作成者がそのまま使える Markdown 箇条書きにする。
+      - 読むレポートは原則として最新の `architecture-review.md`、`self-review.md`、`fix-result.md`、必要に応じて `plan.md` までに絞る。
+      - `coder-scope.md` / `coder-decisions.md` は存在する場合だけ参照し、存在しなくても不足レポートとして扱わない。
+      - 要約は 概要 / 関連仕様書 / 検証結果 / review結果 / 未確認事項 / コミットメッセージ案 に絞る。
+      - 変更ファイルの詳細表は作らない。必要なら `git status --short` の件数と主要カテゴリだけにする。
+      - Requeue / resume で現在の Report Directory に必要レポートが存在しない場合は、現在 run の `meta.json` にある `source_run_slug` を辿り、source run の `reports/` にある最新レポートを参照する。source run も Requeue の場合は、さらに `source_run_slug` を辿る。
+      - 現在 run または source run chain のどこにも `architecture-review.md` または `self-review.md` が存在せず、レビュー結果を確認できない場合のみ不足レポートとして扱う。
     rules:
-      - condition: PR用要約が完了した
+      - condition: 最終ローカル要約が完了した（source run のレポート参照を含む）
         next: create_pr
-      - condition: 必要なレポートが不足している
+      - condition: architecture-review または self-review の結果を確認できない
         next: ABORT
     output_contracts:
       report:
@@ -225,10 +238,13 @@ steps:
   - name: create_pr
     tags:
       - coding
-    edit: false
+    edit: true
     persona: coder
+    provider: claude
+    model: haiku
     knowledge:
       - growmate
+    required_permission_mode: edit
     provider_options:
       claude:
         allowed_tools:
@@ -237,7 +253,7 @@ steps:
           - Grep
           - Bash
     instruction: |
-      実装内容をコミットし、Pull Request を作成してください。プロダクションコードの編集は行わず、git / gh コマンドのみを実行してください。
+      実装内容をコミットし、ブランチへ push してください。Pull Request 作成は `.github/workflows/auto-pr.yml` に委譲するため、ここでは `gh pr create` / `gh pr edit` / `gh pr comment` を実行しないでください。プロダクションコードの編集は行わず、git コマンドのみを実行してください。
 
       手順:
       1. `git status` / `git diff` で変更内容を確認する。
@@ -245,14 +261,15 @@ steps:
       3. `git add` で変更をステージし、`git diff --cached` で最終確認する。
       4. Why を中心とした日本語1行のコミットメッセージで `git commit` する。
       5. `git push -u origin HEAD` を実行する。
-      6. `gh pr view` で既存PRを確認する。存在しなければ `gh pr create` で PR を作成する。
-      7. `pr-summary.md` を参照し、PR本文には 概要 / 変更内容 / 関連仕様書 / Lint・Build・Knip / Codex architecture review / セルフレビュー を含める。
+      6. push 後、`.github/workflows/auto-pr.yml` が PR を作成・更新する前提で、ブランチ名とコミット SHA を報告する。
+      7. `pr-summary.md` はローカルの確認用レポートとして扱い、PR 本文の更新は行わない。
 
       やらないこと:
-      - PR のマージ・クローズ。
+      - `gh pr create` / `gh pr edit` / `gh pr comment`。
+      - PR の作成・更新・マージ・クローズ。
       - プロダクションコード編集。
     rules:
-      - condition: PR作成（または既存PRへの反映）が完了した
+      - condition: コミットと push が完了した
         next: COMPLETE
-      - condition: コミット・push・PR作成のいずれかに失敗した
+      - condition: コミットまたは push に失敗した
         next: ABORT

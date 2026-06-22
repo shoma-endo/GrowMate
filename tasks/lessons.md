@@ -1,5 +1,14 @@
 # Lessons
 
+- TAKT の self_review 起因の差し戻しを fix へ戻す場合、fix は `architecture-review.md` だけでなく `self-review.md` も一次情報として読む。architecture-review が APPROVE のままなら review に戻さず self_review へ戻し、同じ no-op fix/review ループを繰り返さない。
+- TAKT の `prepare_pr_summary` は GitHub Actions auto-pr が PR body/comment を作る前提では詳細な PR 本文生成をしない。最新 review/self-review/fix-result と git status の事実に絞った短い最終ローカル要約に留める。
+- GrowMate は `.github/workflows/auto-pr.yml` が push 後の PR 作成・更新を担当するため、TAKT の終端ステップでは `gh pr create` / `gh pr edit` / `gh pr comment` を実行しない。TAKT は commit/push までで完了し、PR body/comment の詳細化は GitHub Actions 側で取得できる branch / commit / changed files 情報に限定する。
+- TAKT の `create_pr` ステップ名を互換性のため残す場合でも、GrowMate では実際の責務を `git add` / `git commit` / `git push` までに限定する。`edit: false` や `create_pr: readonly` では push できないため、プロダクションコード編集は禁止文で制御し、ステップ権限は `edit: true` + `required_permission_mode: edit` にする。
+- TAKT の Requeue は source run の reports を新 run にコピーしないため、途中ステップだけ再投入すると新しい Report Directory が空になる。レポート参照が必要なステップでは `meta.json` の `source_run_slug` を再帰的に辿って親 run の reports を使う。
+- TAKT の失敗復旧で `Retry` と `Requeue` が並ぶ場合、`order.md` がない run では `/retry` が失敗する。途中再開・レポート欠損・workflow 修正後の再投入は原則 `Requeue` を選び、`Retry` は同じ指示書が残っている単純な一時失敗に限る。
+- TAKT の Requeue / resume では途中ステップから新しい run directory が作られ、`plan.md` や `coder-scope.md` が存在しないことがある。PR 要約ステップでは必須レポートを `architecture-review.md` と `self-review.md` に絞り、仕様書・fix-result・git status で補完できる場合は ABORT しない。
+- Claude のローカル権限設定 `.claude/settings.local.json` は、グローバル Git ignore だけでなくプロジェクト `.gitignore` にも明示して、TAKT self_review が未追跡ローカル設定として差し戻し続けないようにする。
+- TAKT の `review -> fix` ループで、ユーザーまたは仕様書がテスト追加不要を明示しているのにレビューがテスト不在だけを理由に差し戻す場合は、workflow 側で `review` / `testing` policy の競合を外し、loop monitor が self_review へ抜けられる条件を用意する。
 - React Doctor / TAKT の実装修正では、ユーザーまたは仕様書が明示しない限り簡易・形式的なユニットテストを追加しない。指摘はプロダクションコードの最小修正で解消し、検証は lint/build/knip/React Doctor/必要な手動確認で行う。
 - TAKT workflow のレビュー担当は、ユーザーがグローバル `architecture-reviewer` provider routing を指定している場合、workflow 側で別レビューCLIステップを新設せず、その persona の `review-arch` ステップを使う。
 - 仕様書へ実装方針を追記したときは、同名または対応する実装済み関数が存在しないか `rg` で確認し、存在する場合は設計だけで完了扱いにせず実装も同期する。

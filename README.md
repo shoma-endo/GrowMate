@@ -202,7 +202,7 @@ npm run dev  # http://localhost:3000
 
 ## ✅ 動作確認
 
-`npm run lint`、`npm run build`、`npm run knip` で基本チェック。CI では `npm audit --audit-level=high`、ビルド、Knip も実行する。各機能の詳細な検証手順は `quality-gate` スキルを参照。
+`npm run lint`、`npm run build`、`npm run knip` で基本チェック（3点まとめは `npm run verify`）。husky で **pre-commit に lint、pre-push に build + knip** を配置し、CI でも `npm audit --audit-level=high` / lint / build / knip を実行する。各機能の詳細な検証手順は `quality-gate` スキルを参照。
 
 ## 📁 プロジェクト構成（概要）
 
@@ -234,8 +234,9 @@ npm run dev  # http://localhost:3000
 ## 📱 デプロイと運用
 
 - Vercel を想定。一部の Route Handler は Node.js Runtime を明示し、その他は Next.js のデフォルト Runtime を使用
-- ローカル品質ゲート: `npm run lint` → `npm run build` → `npm run knip`
-- CI 品質ゲート: `npm audit --audit-level=high`、`npm run build`、`npm run knip`
+- ローカル品質ゲート: `npm run verify`（`lint` → `build` → `knip` を順次実行）
+- husky フック: **pre-commit = `lint`、pre-push = `build` + `knip`**（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
+- CI 品質ゲート: `npm audit --audit-level=high`、`npm run lint`、`npm run build`、`npm run knip`
 - 環境変数は Vercel Project Settings へ反映し、本番は WordPress 本番サイトなどの外部連携設定に切り替え
 - GitHub Actions から毎時 Cron、DB・Vercel 統計、Supabase バックアップ、外部 API 更新監視を実行。必要な値は GitHub Actions Secrets で管理
 - **Supabase スキーマ**: Vercel のデプロイだけでは DB は更新されない。変更は `supabase/migrations/` にコミットし、マイグレーション内にロールバック案をコメントで残す。**本番（共有プロジェクト）への適用タイミングと手順は「セットアップ手順」の Supabase 注意書きに従う。**

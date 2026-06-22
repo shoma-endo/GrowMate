@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Create Pull Request if not exists
         env:
@@ -44,11 +46,9 @@ jobs:
           if [ "${BRANCH_NAME}" = "develop" ]; then
             BASE_BRANCH="main"
             PR_TITLE="[Auto] Merge develop into main"
-            PR_BODY="Automated PR to merge changes from develop to main."
           else
             BASE_BRANCH="develop"
             PR_TITLE="[Auto] PR from ${BRANCH_NAME} to develop"
-            PR_BODY="Automated PR created from push to ${BRANCH_NAME}."
           fi
 
           echo "Target branch: ${BRANCH_NAME}"
@@ -60,13 +60,58 @@ jobs:
             exit 1
           fi
 
+          git fetch --no-tags origin "${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
+
           # 今回のpushに含まれるコミットメッセージのみ取得
           COMMIT_MESSAGES=$(echo "${PUSH_COMMITS}" | jq -r '.[] | "- " + (.message | split("\n")[0])')
           if [ -z "${COMMIT_MESSAGES}" ]; then
             COMMIT_MESSAGES="- (コミットメッセージなし)"
           fi
 
-          COMMENT_BODY=$(printf '@codex\n%s\n上記実装しました。\n日本語でレビューしてください。' "${COMMIT_MESSAGES}")
+          CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...HEAD" | sed 's/^/- /')
+          if [ -z "${CHANGED_FILES}" ]; then
+            CHANGED_FILES="- (変更ファイルを取得できませんでした)"
+          fi
+
+          HEAD_SHA=$(git rev-parse --short HEAD)
+          COMPARE_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${BASE_BRANCH}...${BRANCH_NAME}"
+
+          PR_BODY=$(cat <<EOF
+          ## 概要
+          ${BRANCH_NAME} から ${BASE_BRANCH} への自動作成 PR です。
+
+          ## ブランチ
+          - head: \`${BRANCH_NAME}\`
+          - base: \`${BASE_BRANCH}\`
+          - latest commit: \`${HEAD_SHA}\`
+
+          ## 今回の push に含まれるコミット
+          ${COMMIT_MESSAGES}
+
+          ## 変更ファイル
+          ${CHANGED_FILES}
+
+          ## 比較
+          ${COMPARE_URL}
+
+          ## 備考
+          この PR は \`.github/workflows/auto-pr.yml\` により作成・更新されています。TAKT 実行時の詳細レポートはローカルの \`.takt/runs/\` に保存されます。
+          EOF
+          )
+
+          COMMENT_BODY=$(cat <<EOF
+          @codex
+          以下の push 内容をレビューしてください。
+
+          ## コミット
+          ${COMMIT_MESSAGES}
+
+          ## 変更ファイル
+          ${CHANGED_FILES}
+
+          日本語でレビューしてください。
+          EOF
+          )
 
           # ラベルの存在確認と作成
           if ! gh label list --json name -q '.[].name' | grep -q "^${LABEL_NAME}$"; then

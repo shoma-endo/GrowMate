@@ -30,6 +30,8 @@ For UI changes, perform manual browser verification appropriate to the changed s
 
 Do not add simplified, placeholder, or low-value unit tests just to satisfy a workflow or reviewer. Add tests only when the user request or a referenced specification explicitly requires them, and only if they verify real business behavior at the correct boundary.
 
+Architecture review should not reject a change solely because new tests were not added when the user request or referenced specification says tests are unnecessary or out of scope. In that case, evaluate correctness through production-code review and the required verification commands instead.
+
 ## Implementation Boundaries
 
 - Keep changes minimal and aligned with existing code patterns.
@@ -47,3 +49,4 @@ Do not add simplified, placeholder, or low-value unit tests just to satisfy a wo
 - Commit messages must be a single Japanese line.
 - PR bodies should include summary, changes, verification results, Codex architecture review results, and related spec file when applicable.
 - Open architecture-reviewer findings must be resolved before the workflow completes.
+- If the only open finding is a test-addition request that conflicts with the user request or referenced specification, document it as a policy exception instead of looping on fix.

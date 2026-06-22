@@ -1,6 +1,11 @@
 import { marked } from 'marked';
 import { buildLocalDateRange, formatJstDateISO } from '@/lib/date-utils';
-import { MODEL_CONFIGS } from '@/lib/constants';
+import {
+  MODEL_CONFIGS,
+  GOOGLE_ADS_AI_EVALUATION_MAX_DURATION_SEC,
+  GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS,
+} from '@/lib/constants';
+import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { llmChat } from '@/server/services/llmService';
 import { briefService } from '@/server/services/briefService';
@@ -187,6 +192,8 @@ class GoogleAdsAiAnalysisService {
     }
   ): Promise<GoogleAdsAiAnalysisResult> {
     const executedAt = new Date();
+    // Vercel 関数の経過時間追跡用。LLM 呼び出し直前で残り時間を算出して timeoutMs を動的に決める。
+    const startMs = executedAt.getTime();
     const todayJst = formatJstDateISO(executedAt);
 
     try {
@@ -256,7 +263,12 @@ class GoogleAdsAiAnalysisService {
           modelConfig.provider,
           modelConfig.actualModel,
           [{ role: 'user', content: filledPrompt }],
-          { maxTokens: modelConfig.maxTokens, temperature: modelConfig.temperature }
+          {
+            maxTokens: modelConfig.maxTokens,
+            temperature: modelConfig.temperature,
+            ...(modelConfig.stream ? { stream: true } : {}),
+            timeoutMs: this.computeLlmTimeoutMs(startMs),
+          }
         );
         const emailMarkdown = this.composeEmailMarkdown(
           analysisMarkdown,
@@ -499,6 +511,10 @@ class GoogleAdsAiAnalysisService {
         {
           maxTokens: modelConfig.maxTokens,
           temperature: modelConfig.temperature,
+          ...(modelConfig.stream ? { stream: true } : {}),
+          // Vercel 関数 maxDuration から経過時間と後段処理予算を差し引いた残時間を渡し、
+          // Vercel のハードキルより手前で SDK が AbortError を出すようにする。
+          timeoutMs: this.computeLlmTimeoutMs(startMs),
         }
       );
 
@@ -575,11 +591,40 @@ class GoogleAdsAiAnalysisService {
       };
     } catch (error) {
       console.error('[GoogleAdsAiAnalysisService] Unexpected analysis error:', error);
+      if (error instanceof ChatError && error.code === ChatErrorCode.CONNECTION_TIMEOUT) {
+        return {
+          success: false,
+          error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_TIMEOUT,
+        };
+      }
       return {
         success: false,
         error: ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_RUN_FAILED,
       };
     }
+  }
+
+  /**
+   * Vercel 関数 maxDuration から経過時間と後段処理予算（順位突合・HTML 化・メール送信・DB 更新）を差し引いた
+   * LLM 呼び出しの残時間（ミリ秒）を返す。Vercel 側ハードキルより手前で SDK が AbortError を出させるためのもの。
+   * 残時間が 0 以下なら LLM を呼ばずに ChatError(CONNECTION_TIMEOUT) を投げる。
+   * 床を設けない理由: 床 > 残時間にすると AbortController が発火する前に Vercel がハードキルし、
+   *                  本来の AbortError 経由のタイムアウト UX が出なくなるため。
+   */
+  private computeLlmTimeoutMs(startMs: number): number {
+    const elapsedMs = Date.now() - startMs;
+    const remainingMs =
+      GOOGLE_ADS_AI_EVALUATION_MAX_DURATION_SEC * 1000 -
+      elapsedMs -
+      GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS;
+    if (remainingMs <= 0) {
+      throw new ChatError(
+        ERROR_MESSAGES.GOOGLE_ADS.AI_EVALUATION_INSUFFICIENT_BUDGET_LOG,
+        ChatErrorCode.CONNECTION_TIMEOUT,
+        { elapsedMs, remainingMs }
+      );
+    }
+    return remainingMs;
   }
 
   private async ensureEvaluationSettings(userId: string) {

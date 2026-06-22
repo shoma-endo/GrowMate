@@ -60,65 +60,46 @@ function formatDateJST(date: Date | string | null): string {
 }
 
 /**
- * テーブル形式でデータを整形
+ * lark_md の Markdown特殊文字（*, _, ~, `, [, <）の直後にゼロ幅スペースを挿入し、
+ * ユーザー入力由来の値（氏名・事業者情報）がMarkdown/メンション記法として
+ * 解釈されないようにする。表示上の見た目は変化しない。
+ */
+function escapeLarkMd(value: string): string {
+  const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+  return value.replace(/[*_~`[<]/g, char => `${char}${ZERO_WIDTH_SPACE}`);
+}
+
+/**
+ * 1ユーザー1ブロック形式でデータを整形
+ *
+ * 固定幅の等幅テーブル（padEnd揃え）は、Lark interactiveカード（lark_md）が
+ * フェンスコードブロック（```）を等幅表示しないため、プロポーショナルフォント上で
+ * 列がずれて読めなくなる。そのためキー:値形式の縦並びに変更している。
  */
 function formatTable(data: ActiveUserData[]): string {
   if (data.length === 0) {
     return 'アクティブユーザーが見つかりませんでした。';
   }
 
-  // カラム名
-  const columns = [
-    '氏名',
-    '最終ログイン日時',
-    'WordPressサイトURL',
-    'When',
-    'Where',
-    'Who',
-    'Why',
-    'What',
-    'How',
-    'Price',
-  ];
+  const truncate = (value: string | null, maxLength = 60): string => {
+    if (!value) return '未設定';
+    const truncated = value.length > maxLength ? `${value.substring(0, maxLength - 3)}...` : value;
+    return escapeLarkMd(truncated);
+  };
 
-  // 各カラムの最大幅を計算
-  const columnWidths: number[] = columns.map(col => {
-    const maxContentWidth = Math.max(
-      col.length,
-      ...data.map(row => {
-        const value = row[col as keyof ActiveUserData];
-        return value ? String(value).length : 0;
-      })
-    );
-    // WordPressサイトURLは長いURLを表示するため、制限を緩和（最大60文字）
-    if (col === 'WordPressサイトURL') {
-      return Math.min(maxContentWidth, 60);
-    }
-    return Math.min(maxContentWidth, 30); // その他のカラムは最大30文字に制限
-  });
-
-  // ヘッダー行を作成
-  const header = columns.map((col, i) => col.padEnd(columnWidths[i]!)).join(' | ');
-
-  // 区切り行を作成
-  const separator = columns.map((_, i) => '-'.repeat(columnWidths[i]!)).join('-|-');
-
-  // データ行を作成
-  const rows = data.map(row => {
-    return columns
-      .map((col, i) => {
-        const width = columnWidths[i]!;
-        const value = row[col as keyof ActiveUserData] || '未設定';
-        const strValue = String(value);
-        // 長すぎる場合は切り詰め
-        const truncated =
-          strValue.length > width ? strValue.substring(0, width - 3) + '...' : strValue;
-        return truncated.padEnd(width);
-      })
-      .join(' | ');
-  });
-
-  return [header, separator, ...rows].join('\n');
+  return data
+    .map((row, i) => {
+      return [
+        `${i + 1}. **${escapeLarkMd(row.氏名 || '未設定')}**（最終ログイン: ${row.最終ログイン日時 || '未設定'}）`,
+        `   URL: ${truncate(row.WordPressサイトURL)}`,
+        `   When: ${truncate(row.When)} / Where: ${truncate(row.Where)}`,
+        `   Who: ${truncate(row.Who)}`,
+        `   Why: ${truncate(row.Why)}`,
+        `   What: ${truncate(row.What)}`,
+        `   How: ${truncate(row.How)} / Price: ${truncate(row.Price)}`,
+      ].join('\n');
+    })
+    .join('\n\n');
 }
 
 /**

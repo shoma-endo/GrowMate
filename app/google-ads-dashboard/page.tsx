@@ -9,6 +9,11 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 // 動的レンダリングを強制（Server Action で cookies を使用するため）
 export const dynamic = 'force-dynamic';
 
+// AI 分析 Server Action（Anthropic 長文出力）は既定 300s を超えるため、Fluid Compute 上限まで引き上げる。
+// Next.js の route segment config は静的解析のため import 定数を使えず、ここはリテラル必須。
+// 値は src/lib/constants.ts の GOOGLE_ADS_AI_EVALUATION_MAX_DURATION_SEC と必ず一致させること。
+export const maxDuration = 800;
+
 /**
  * エラーメッセージからエラー種別を判定する
  */

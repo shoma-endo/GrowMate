@@ -101,6 +101,9 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     // 出力上限。5提案＋サマリー＋末尾JSONで実測〜1万トークン前後のため、約2倍の余裕を確保。
     // 入力（WP在庫50件・GSC順位500件上限）は別途キャップ済みで、コンテキスト窓20万に収まる。
     maxTokens: 20000,
+    // SDK のアイドル切断耐性（Anthropic / 中間プロキシ）を確保するためストリーミングで受信する。
+    // Vercel 関数自体のタイムアウトは GOOGLE_ADS_AI_EVALUATION_MAX_DURATION_SEC で延伸する。
+    stream: true,
     label: 'Google Ads コンテンツ戦略提案',
   },
   google_ads_negative_keywords_suggestion: {
@@ -109,6 +112,19 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     label: 'Google Ads 除外キーワード提案',
   },
 };
+
+/**
+ * Google Ads AI 分析 Server Action の Vercel 関数 maxDuration（秒）。
+ * Fluid Compute 上限（Pro プランで 800s）を上限にする。
+ * page.tsx の `export const maxDuration` と LLM 呼び出しの timeoutMs 算出に共有する単一情報源。
+ */
+export const GOOGLE_ADS_AI_EVALUATION_MAX_DURATION_SEC = 800;
+
+/**
+ * LLM 呼び出し後に必要な処理（順位突合・Markdown→HTML 変換・メール送信・DB 更新）の予算（ミリ秒）。
+ * 残り時間から差し引くことで、Vercel ハードキルより手前で AbortError を出させる。
+ */
+export const GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS = 30_000;
 
 // =============================================================================
 // Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)
