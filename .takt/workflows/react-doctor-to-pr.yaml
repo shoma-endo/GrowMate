@@ -1,5 +1,5 @@
 name: react-doctor-to-pr
-description: GrowMate React Doctor diagnosis, targeted fixes, quality gates, Codex architecture review loop, commit, and PR.
+description: GrowMate React Doctor diagnosis, targeted fixes, quality gates, Codex architecture review loop, commit, and push for auto PR.
 workflow_config:
   provider_options:
     codex:
@@ -192,7 +192,7 @@ steps:
       - 簡易・形式的・低価値なユニットテストは追加しない。レビュー指摘はプロダクションコードの修正で解消する。
       - ユーザーまたは仕様書が明示した場合を除き、新規テストファイルを作成しない。
       - 修正後に `npm run lint`、`npm run build`、`npm run knip` を再実行する。
-      - ここでは commit / push / PR 作成を行わない。最終ステップでまとめて実施する。
+      - ここでは commit / push を行わない。最終ステップでまとめて実施する。
     rules:
       - condition: 修正と必須検証が完了した
         next: react_doctor_after
@@ -224,7 +224,7 @@ steps:
       - 修正対象の Actionable Issues が解消されていること。
       - `npm run lint`、`npm run build`、`npm run knip` が成功していること。
       - architecture-reviewer の open findings がないこと。
-      - PR本文に React Doctor スコア変化、解消Issues、検証結果、Codex architecture review 結果を含められること。
+      - PR確認用の要約に React Doctor スコア変化、解消Issues、検証結果、Codex architecture review 結果を含められること。
     rules:
       - condition: セルフレビュー合格
         next: create_pr
@@ -255,7 +255,7 @@ steps:
           - Grep
           - Bash
     instruction: |
-      実装内容をコミットし、Pull Request を作成してください。プロダクションコードの編集は行わず、git / gh コマンドのみを実行してください。
+      実装内容をコミットし、ブランチへ push してください。Pull Request 作成は `.github/workflows/auto-pr.yml` に委譲するため、ここでは `gh pr create` / `gh pr edit` / `gh pr comment` を実行しないでください。プロダクションコードの編集は行わず、git コマンドのみを実行してください。
 
       手順:
       1. `git status` / `git diff` で変更内容を確認する。
@@ -263,14 +263,14 @@ steps:
       3. `git add` で変更をステージし、`git diff --cached` で最終確認する。
       4. Why を中心とした日本語1行のコミットメッセージで `git commit` する。
       5. `git push -u origin HEAD` を実行する。
-      6. `gh pr view` で既存PRを確認する。存在しなければ `gh pr create` で PR を作成する。
-      7. PR本文には 概要 / 変更内容 / React Doctor スコア / Lint・Build・Knip / Codex architecture review / セルフレビュー を含める。
+      6. push 後、`.github/workflows/auto-pr.yml` が PR を作成・更新する前提で、ブランチ名とコミット SHA を報告する。
 
       やらないこと:
-      - PR のマージ・クローズ。
+      - `gh pr create` / `gh pr edit` / `gh pr comment`。
+      - PR の作成・更新・マージ・クローズ。
       - プロダクションコード編集。
     rules:
-      - condition: PR作成（または既存PRへの反映）が完了した
+      - condition: コミットと push が完了した
         next: COMPLETE
-      - condition: コミット・push・PR作成のいずれかに失敗した
+      - condition: コミットまたは push に失敗した
         next: ABORT
