@@ -4,10 +4,15 @@ import { getEvaluationSettings } from '@/server/actions/googleAdsEvaluation.acti
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import type { GoogleAdsErrorKind } from '@/types/googleAds.types';
 import { buildLocalDateRange } from '@/lib/date-utils';
+import { GOOGLE_ADS_AI_EVALUATION_MAX_DURATION_SEC } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 // 動的レンダリングを強制（Server Action で cookies を使用するため）
 export const dynamic = 'force-dynamic';
+
+// AI 分析 Server Action（Anthropic 長文出力）は既定 300s を超えるため、
+// Fluid Compute 上限まで引き上げる。値は constants.ts で一元管理する。
+export const maxDuration = GOOGLE_ADS_AI_EVALUATION_MAX_DURATION_SEC;
 
 /**
  * エラーメッセージからエラー種別を判定する

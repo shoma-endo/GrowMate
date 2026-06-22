@@ -675,6 +675,14 @@ export const ERROR_MESSAGES = {
     /** AI分析の手動実行に失敗した場合 */
     AI_EVALUATION_RUN_FAILED: 'Google Ads コンテンツ戦略提案の実行に失敗しました',
 
+    /** AI分析がタイムアウトで打ち切られた場合 */
+    AI_EVALUATION_TIMEOUT:
+      'Google Ads コンテンツ戦略提案の生成がタイムアウトしました。時間をおいて再度お試しください。',
+
+    /** AI分析: 前段処理で時間を使い切り LLM 呼び出しに必要な残時間が確保できない場合（dev/ログ向け） */
+    AI_EVALUATION_INSUFFICIENT_BUDGET_LOG:
+      'LLM 呼び出しに必要な残り時間がありません',
+
     /** AI分析メールの送信に失敗した場合 */
     AI_EVALUATION_EMAIL_SEND_FAILED:
       'Google Ads コンテンツ戦略提案レポートの送信に失敗しました',
