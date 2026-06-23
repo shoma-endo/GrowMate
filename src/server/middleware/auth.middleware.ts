@@ -1,5 +1,6 @@
 import { cookies as nextCookies } from 'next/headers';
 
+import { isUnavailable } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { User } from '@/types/user';
 
@@ -25,6 +26,15 @@ async function tryEmailFallback(): Promise<AuthMiddlewareResult | null> {
   const result = await resolveEmailUserWithReason();
   if (result.ok) {
     const emailUser = result.user;
+    // unavailable ロールはここで一括ブロックする（authMiddleware を経由する全 Server Action / Route Handler に伝播）
+    if (isUnavailable(emailUser.role)) {
+      return {
+        lineUserId: '',
+        userId: '',
+        userDetails: null,
+        error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+      };
+    }
     return {
       lineUserId: '',
       userId: emailUser.id,
