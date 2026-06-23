@@ -4,7 +4,6 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { chatService } from '@/server/services/chatService';
 import { ChatResponse } from '@/types/chat';
 import { ModelHandlerService } from './chat/modelHandlers';
-import { isUnavailable } from '@/authUtils';
 import type { UserRole } from '@/types/user';
 import { z } from 'zod';
 import { SupabaseService } from '@/server/services/supabaseService';
@@ -57,10 +56,6 @@ async function checkAuth(): Promise<
   }
 
   const user = authResult.userDetails;
-
-  if (user && isUnavailable(user.role)) {
-    return { isError: true as const, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
-  }
 
   return {
     isError: false as const,

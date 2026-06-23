@@ -18,6 +18,9 @@ export async function GET() {
     if (result.reason === 'email_link_conflict') {
       return nextJson409EmailLinkConflict();
     }
+    if (result.reason === 'unavailable') {
+      return NextResponse.json({ role: result.user.role });
+    }
     return NextResponse.json(
       { error: ERROR_MESSAGES.AUTH.USER_ROLE_FETCH_FAILED },
       { status: 503 }

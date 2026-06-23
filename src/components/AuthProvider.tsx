@@ -26,7 +26,11 @@ function isPublicPath(pathname: string | null): boolean {
   return PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(path + '/'));
 }
 
-type FetchCurrentUserResult = { user: User | null; emailLinkConflict: boolean };
+type FetchCurrentUserResult = {
+  user: User | null;
+  emailLinkConflict: boolean;
+  roleUnavailable: boolean;
+};
 
 async function fetchCurrentUser(): Promise<FetchCurrentUserResult> {
   const res = await fetch('/api/user/current', {
@@ -35,13 +39,25 @@ async function fetchCurrentUser(): Promise<FetchCurrentUserResult> {
     cache: 'no-store',
   });
   if (res.status === 409) {
-    return { user: null, emailLinkConflict: true };
+    return { user: null, emailLinkConflict: true, roleUnavailable: false };
+  }
+  if (res.status === 403) {
+    const data = (await res.json()) as { roleUnavailable?: boolean };
+    if (data.roleUnavailable) {
+      return { user: null, emailLinkConflict: false, roleUnavailable: true };
+    }
   }
   if (!res.ok) {
-    return { user: null, emailLinkConflict: false };
+    return { user: null, emailLinkConflict: false, roleUnavailable: false };
   }
   const data = (await res.json()) as { user?: User | null };
-  return { user: data?.user ?? null, emailLinkConflict: false };
+  return { user: data?.user ?? null, emailLinkConflict: false, roleUnavailable: false };
+}
+
+function redirectIfRoleUnavailable(pathname: string | null, router: ReturnType<typeof useRouter>): boolean {
+  if (pathname === '/unavailable') return true;
+  router.replace('/unavailable');
+  return true;
 }
 
 /**
@@ -57,12 +73,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshUser = useCallback(async (): Promise<boolean> => {
     try {
-      const { user: nextUser, emailLinkConflict } = await fetchCurrentUser();
+      const { user: nextUser, emailLinkConflict, roleUnavailable } = await fetchCurrentUser();
       setUser(nextUser);
       if (emailLinkConflict) {
         if (!isPublicPath(pathname)) {
           router.replace('/login?reason=email_link_conflict');
         }
+        return false;
+      }
+      if (roleUnavailable) {
+        redirectIfRoleUnavailable(pathname, router);
         return false;
       }
       return nextUser !== null;
@@ -80,13 +100,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     let cancelled = false;
     setIsLoading(true);
     fetchCurrentUser()
-      .then(({ user: nextUser, emailLinkConflict }) => {
+      .then(({ user: nextUser, emailLinkConflict, roleUnavailable }) => {
         if (cancelled) return;
         setUser(nextUser);
         if (emailLinkConflict) {
           if (!publicPath) {
             router.replace('/login?reason=email_link_conflict');
           }
+          return;
+        }
+        if (roleUnavailable) {
+          redirectIfRoleUnavailable(pathname, router);
           return;
         }
         // 非公開パスで user が取れない場合のみ /login へ誘導（middleware の補助）

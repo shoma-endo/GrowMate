@@ -13,6 +13,17 @@ export async function GET() {
     if (result.reason === 'email_link_conflict') {
       return nextJson409EmailLinkConflict({ userId: null, user: null });
     }
+    if (result.reason === 'unavailable') {
+      return NextResponse.json(
+        {
+          userId: null,
+          user: null,
+          error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+          roleUnavailable: true,
+        },
+        { status: 403 }
+      );
+    }
     return NextResponse.json({ userId: null, user: null });
   }
 

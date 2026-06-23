@@ -1,6 +1,5 @@
 import { cookies as nextCookies } from 'next/headers';
 
-import { isUnavailable } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { User } from '@/types/user';
 
@@ -15,6 +14,8 @@ export interface AuthMiddlewareResult {
   transient?: boolean;
   /** メールと public.users の紐付け競合（再ログインでは解消しない）。409 用 */
   emailLinkConflict?: boolean;
+  /** unavailable ロール（利用停止）。403 用 */
+  roleUnavailable?: boolean;
 }
 
 /**
@@ -26,20 +27,20 @@ async function tryEmailFallback(): Promise<AuthMiddlewareResult | null> {
   const result = await resolveEmailUserWithReason();
   if (result.ok) {
     const emailUser = result.user;
-    // unavailable ロールはここで一括ブロックする（authMiddleware を経由する全 Server Action / Route Handler に伝播）
-    if (isUnavailable(emailUser.role)) {
-      return {
-        lineUserId: '',
-        userId: '',
-        userDetails: null,
-        error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
-      };
-    }
     return {
       lineUserId: '',
       userId: emailUser.id,
       user: { id: emailUser.id },
       userDetails: emailUser,
+    };
+  }
+  if (result.reason === 'unavailable') {
+    return {
+      lineUserId: '',
+      userId: '',
+      userDetails: null,
+      error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+      roleUnavailable: true,
     };
   }
   if (result.reason === 'transient') {
