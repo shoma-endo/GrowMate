@@ -14,6 +14,8 @@ export interface AuthMiddlewareResult {
   transient?: boolean;
   /** メールと public.users の紐付け競合（再ログインでは解消しない）。409 用 */
   emailLinkConflict?: boolean;
+  /** unavailable ロール（利用停止）。403 用 */
+  roleUnavailable?: boolean;
 }
 
 /**
@@ -30,6 +32,15 @@ async function tryEmailFallback(): Promise<AuthMiddlewareResult | null> {
       userId: emailUser.id,
       user: { id: emailUser.id },
       userDetails: emailUser,
+    };
+  }
+  if (result.reason === 'unavailable') {
+    return {
+      lineUserId: '',
+      userId: '',
+      userDetails: null,
+      error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
+      roleUnavailable: true,
     };
   }
   if (result.reason === 'transient') {

@@ -1,7 +1,7 @@
 'use server';
 
 import { userService } from '@/server/services/userService';
-import { isAdmin, isUnavailable } from '@/authUtils';
+import { isAdmin } from '@/authUtils';
 import type { User, UserRole } from '@/types/user';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
@@ -19,12 +19,12 @@ async function resolveAdminUser(): Promise<
     if (result.reason === 'email_link_conflict') {
       return { success: false, error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT };
     }
+    if (result.reason === 'unavailable') {
+      return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
+    }
     return { success: false, error: ERROR_MESSAGES.AUTH.NOT_LOGGED_IN };
   }
   const emailUser = result.user;
-  if (isUnavailable(emailUser.role)) {
-    return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
-  }
   if (!isAdmin(emailUser.role)) {
     return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
   }
