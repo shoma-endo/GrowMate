@@ -70,6 +70,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const publicPath = isPublicPath(pathname);
+  const showFooter = !publicPath && pathname !== '/unavailable';
 
   const refreshUser = useCallback(async (): Promise<boolean> => {
     try {
@@ -171,8 +172,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   return (
     <AuthContext value={contextValue}>
       <div className="flex flex-col min-h-screen">
-        <main className={`flex-1 ${publicPath ? '' : 'pb-20'}`}>{children}</main>
-        {!publicPath && <Footer />}
+        <main className={`flex-1 ${showFooter ? 'pb-20' : ''}`}>{children}</main>
+        {showFooter && <Footer />}
       </div>
     </AuthContext>
   );
