@@ -9,10 +9,7 @@ import { briefService } from '@/server/services/briefService';
 import { PromptService } from '@/server/services/promptService';
 import type { Service } from '@/server/schemas/brief.schema';
 import type { UserRole } from '@/types/user';
-import {
-  resolveKnowledgeBlocksForRequest,
-  toSystemPromptDebugString,
-} from '@/lib/knowledgeInjection';
+import { resolveKnowledgeBlocksForRequest } from '@/lib/knowledgeInjection';
 
 /**
  * モデルに応じた動的プロンプト取得（React Cache活用）
@@ -83,16 +80,18 @@ export class ModelHandlerService {
     inputEstimate?: {
       recentMessages?: { content: string }[];
       userMessage?: string;
-    }
+    },
+    knowledgeSourceOverrideText?: string
   ) {
     const resolved = await resolveKnowledgeBlocksForRequest(templateBlock, {
       modelKey,
       userRole,
       ...(inputEstimate ? { inputEstimate } : {}),
+      ...(knowledgeSourceOverrideText ? { knowledgeOverrideText: knowledgeSourceOverrideText } : {}),
     });
 
     return {
-      debugSystemPrompt: toSystemPromptDebugString(resolved.blocks),
+      storageSystemPrompt: resolved.blocks.templateBlock,
       anthropicSystemBlocks: resolved.anthropicSystem,
     };
   }
@@ -102,7 +101,7 @@ export class ModelHandlerService {
     data: StartChatInput,
     userRole: UserRole
   ): Promise<ChatResponse> {
-    const { userMessage, model, serviceId } = data;
+    const { userMessage, model, serviceId, knowledgeSourceOverrideText } = data;
     // キャッシュ戦略を活用した動的プロンプト取得
     const systemPrompt = await getSystemPrompt(model, undefined, undefined, serviceId);
 
@@ -110,9 +109,23 @@ export class ModelHandlerService {
       case 'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2':
         return this.handleFTModel(userId, systemPrompt, userMessage, model, serviceId);
       case 'ad_copy_creation':
-        return this.handleAdCopyModel(userId, systemPrompt, userMessage, serviceId, userRole);
+        return this.handleAdCopyModel(
+          userId,
+          systemPrompt,
+          userMessage,
+          serviceId,
+          userRole,
+          knowledgeSourceOverrideText
+        );
       case 'lp_draft_creation':
-        return this.handleLPDraftModel(userId, systemPrompt, userMessage, serviceId, userRole);
+        return this.handleLPDraftModel(
+          userId,
+          systemPrompt,
+          userMessage,
+          serviceId,
+          userRole,
+          knowledgeSourceOverrideText
+        );
       default:
         return this.handleDefaultModel(userId, systemPrompt, userMessage, model, serviceId);
     }
@@ -130,6 +143,7 @@ export class ModelHandlerService {
       model,
       systemPrompt: customSystemPrompt,
       serviceId,
+      knowledgeSourceOverrideText,
     } = data;
     // カスタムsystemPromptが渡されていればそれを使用、なければキャッシュ戦略を活用した動的プロンプト取得
     const systemPrompt =
@@ -189,13 +203,13 @@ export class ModelHandlerService {
       const knowledge = await this.buildKnowledgeAwareSystemPrompt(systemPrompt, model, userRole, {
         recentMessages: validMessages,
         userMessage: userMessage.trim(),
-      });
+      }, knowledgeSourceOverrideText);
 
       return await chatService.continueChat(
         userId,
         sessionId,
         userMessage,
-        knowledge.debugSystemPrompt,
+        knowledge.storageSystemPrompt,
         validMessages,
         model,
         { anthropicSystemBlocks: knowledge.anthropicSystemBlocks }
@@ -214,14 +228,15 @@ export class ModelHandlerService {
         {
           recentMessages: validMessages,
           userMessage: userMessage.trim(),
-        }
+        },
+        knowledgeSourceOverrideText
       );
 
       return await chatService.continueChat(
         userId,
         sessionId,
         userMessage,
-        knowledge.debugSystemPrompt,
+        knowledge.storageSystemPrompt,
         validMessages,
         'lp_draft_creation',
         { anthropicSystemBlocks: knowledge.anthropicSystemBlocks }
@@ -295,18 +310,20 @@ export class ModelHandlerService {
     systemPrompt: string,
     userMessage: string,
     serviceId: string | undefined,
-    userRole: UserRole
+    userRole: UserRole,
+    knowledgeSourceOverrideText?: string
   ): Promise<ChatResponse> {
     const knowledge = await this.buildKnowledgeAwareSystemPrompt(
       systemPrompt,
       'ad_copy_creation',
       userRole,
-      { userMessage: userMessage.trim() }
+      { userMessage: userMessage.trim() },
+      knowledgeSourceOverrideText
     );
 
     return await chatService.startChat(
       userId,
-      knowledge.debugSystemPrompt,
+      knowledge.storageSystemPrompt,
       userMessage.trim(),
       'ad_copy_creation',
       serviceId,
@@ -319,7 +336,8 @@ export class ModelHandlerService {
     systemPrompt: string,
     userMessage: string,
     serviceId: string | undefined,
-    userRole: UserRole
+    userRole: UserRole,
+    knowledgeSourceOverrideText?: string
   ): Promise<ChatResponse> {
     const variables = await this.buildLPDraftVariables(userId, serviceId);
     const finalSystemPrompt = PromptService.replaceVariables(systemPrompt, variables);
@@ -327,12 +345,13 @@ export class ModelHandlerService {
       finalSystemPrompt,
       'lp_draft_creation',
       userRole,
-      { userMessage: userMessage.trim() }
+      { userMessage: userMessage.trim() },
+      knowledgeSourceOverrideText
     );
 
     return await chatService.startChat(
       userId,
-      knowledge.debugSystemPrompt,
+      knowledge.storageSystemPrompt,
       userMessage.trim(),
       'lp_draft_creation',
       serviceId,

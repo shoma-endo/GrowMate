@@ -17,6 +17,10 @@ import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGua
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { resolveKnowledgeBlocksForRequest } from '@/lib/knowledgeInjection';
+import {
+  normalizeKnowledgeSourceOverrideText,
+  validateKnowledgeSourceOverrideText,
+} from '@/lib/knowledgeSourceOverride';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import {
@@ -48,6 +52,7 @@ interface StreamRequest {
     allowedDomains?: string[];
     blockedDomains?: string[];
   };
+  knowledgeSourceOverrideText?: string;
 }
 
 const anthropic = new Anthropic({
@@ -79,6 +84,7 @@ export async function POST(req: NextRequest) {
       truncatedContent = '',
       enableWebSearch = false,
       webSearchConfig = {},
+      knowledgeSourceOverrideText,
     }: StreamRequest = await req.json();
 
     if (!Array.isArray(messages) || typeof userMessage !== 'string' || typeof model !== 'string') {
@@ -86,6 +92,27 @@ export async function POST(req: NextRequest) {
         sendSSE('error', {
           type: 'invalid_request',
           message: 'チャット送信リクエストの形式が不正です',
+        }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-store',
+            Connection: 'keep-alive',
+          },
+        }
+      );
+    }
+    const normalizedKnowledgeSourceOverrideText =
+      normalizeKnowledgeSourceOverrideText(knowledgeSourceOverrideText);
+    const knowledgeOverrideValidationError = validateKnowledgeSourceOverrideText(
+      normalizedKnowledgeSourceOverrideText
+    );
+    if (knowledgeOverrideValidationError) {
+      return new Response(
+        sendSSE('error', {
+          type: 'invalid_request',
+          message: knowledgeOverrideValidationError,
         }),
         {
           status: 400,
@@ -253,6 +280,7 @@ export async function POST(req: NextRequest) {
           const { anthropicSystem } = await resolveKnowledgeBlocksForRequest(l2SystemPrompt, {
             modelKey: model,
             userRole,
+            knowledgeOverrideText: normalizedKnowledgeSourceOverrideText,
             inputEstimate: {
               recentMessages: normalizedMessages,
               userMessage: effectiveUserMessage,
