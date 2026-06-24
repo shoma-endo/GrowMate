@@ -232,7 +232,8 @@ async function getEmailUserRoleWithCache(
 
   const data = (await res.json()) as { role?: UserRole };
   const role = data.role ?? null;
-  if (role) {
+  // unavailable はキャッシュしない（role 復帰時に stale な停止状態が残るのを防ぐ）
+  if (role && role !== 'unavailable') {
     roleCache.set(cacheKey, { role, timestamp: Date.now() });
     pruneRoleCacheIfNeeded();
   }

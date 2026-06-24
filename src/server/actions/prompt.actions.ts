@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { PromptService } from '@/server/services/promptService';
-import { isAdmin, isUnavailable } from '@/authUtils';
+import { isAdmin } from '@/authUtils';
 import { UpdatePromptTemplateInput, PromptTemplate } from '@/types/prompt';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { User } from '@/types/user';
@@ -59,10 +59,6 @@ async function checkAdminPermission(): Promise<AdminPermissionResult> {
   const user = auth.userDetails;
   if (!user) {
     return { success: false, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
-  }
-
-  if (isUnavailable(user.role)) {
-    return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
   }
 
   if (!isAdmin(user.role)) {

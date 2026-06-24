@@ -1,3 +1,4 @@
+import { isUnavailable } from '@/authUtils';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isUnauthenticatedAuthError } from '@/lib/supabase/auth-errors';
 import { EmailAuthLinkConflictError, userService } from '@/server/services/userService';
@@ -11,7 +12,8 @@ type EmailAuthResult =
   | { ok: true; user: User }
   | { ok: false; reason: 'unauthenticated' }
   | { ok: false; reason: 'transient' }
-  | { ok: false; reason: 'email_link_conflict' };
+  | { ok: false; reason: 'email_link_conflict' }
+  | { ok: false; reason: 'unavailable'; user: User };
 
 /**
  * Supabase Auth セッションから Email ユーザーを解決する（結果を理由付きで返す）。
@@ -29,6 +31,9 @@ export async function resolveEmailUserWithReason(): Promise<EmailAuthResult> {
 
   try {
     const user = await userService.resolveOrCreateEmailUser(authUser.id, authUser.email);
+    if (isUnavailable(user.role)) {
+      return { ok: false, reason: 'unavailable', user };
+    }
     return { ok: true, user };
   } catch (err) {
     if (err instanceof EmailAuthLinkConflictError) {
