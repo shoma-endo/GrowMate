@@ -286,6 +286,17 @@ export async function POST(req: NextRequest) {
               userMessage: effectiveUserMessage,
             },
           });
+          console.info('[Anthropic Stream] knowledge system resolved', {
+            sessionId,
+            model,
+            userRole,
+            override: Boolean(normalizedKnowledgeSourceOverrideText),
+            injected: anthropicSystem.length > 1,
+            anthropicSystemBlockCount: anthropicSystem.length,
+            enableWebSearch,
+            step7FullBodyGeneration,
+            isContinuation,
+          });
 
           // Web検索ツールの設定
           const streamParams = {

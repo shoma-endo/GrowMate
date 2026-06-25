@@ -89,6 +89,15 @@ export class ModelHandlerService {
       ...(inputEstimate ? { inputEstimate } : {}),
       ...(knowledgeSourceOverrideText ? { knowledgeOverrideText: knowledgeSourceOverrideText } : {}),
     });
+    console.info('[ModelHandler] knowledge system resolved', {
+      modelKey,
+      userRole,
+      override: Boolean(knowledgeSourceOverrideText),
+      injected: resolved.blocks.knowledgeBlock.trim().length > 0,
+      anthropicSystemBlockCount: resolved.anthropicSystem.length,
+      knowledgeBlockChars: resolved.blocks.knowledgeBlock.length,
+      templateBlockChars: resolved.blocks.templateBlock.length,
+    });
 
     return {
       storageSystemPrompt: resolved.blocks.templateBlock,

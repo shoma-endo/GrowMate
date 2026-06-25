@@ -40,6 +40,10 @@ export type AnthropicSystemBlock = {
   cache_control?: { type: 'ephemeral' };
 };
 
+function getKnowledgeSourceLabel(hasOverride: boolean): 'override' | 'global' {
+  return hasOverride ? 'override' : 'global';
+}
+
 function isKnowledgeInjectionModel(modelKey: string): boolean {
   if (KNOWLEDGE_INJECTION_MODEL_KEYS.has(modelKey)) return true;
   if (/^blog_creation_step7_h\d+/.test(modelKey)) return true;
@@ -61,10 +65,16 @@ async function buildKnowledgeSystemBlocks(
   const defaultBudgetTokens = overrideText
     ? KNOWLEDGE_SOURCE_OVERRIDE_BUDGET_TOKENS
     : DEFAULT_KNOWLEDGE_INJECTION_BUDGET_TOKENS;
-  const hot = trimKnowledgeForGeneration(
-    raw,
-    options?.budgetTokens ?? defaultBudgetTokens
-  );
+  const budgetTokens = options?.budgetTokens ?? defaultBudgetTokens;
+  const hot = trimKnowledgeForGeneration(raw, budgetTokens);
+
+  console.info('[KnowledgeInjection] source content resolved', {
+    source: getKnowledgeSourceLabel(Boolean(overrideText)),
+    rawChars: raw.length,
+    trimmedChars: hot.length,
+    budgetTokens,
+    injected: hot.trim().length > 0,
+  });
 
   if (!hot.trim()) {
     return { knowledgeBlock: '', templateBlock };
@@ -135,6 +145,17 @@ export async function resolveKnowledgeBlocksForRequest(
   }
 ): Promise<{ blocks: KnowledgeSystemBlocks; anthropicSystem: AnthropicSystemBlock[] }> {
   const overrideText = normalizeKnowledgeSourceOverrideText(options.knowledgeOverrideText);
+  const eligibleByRole = hasPaidFeatureAccess(options.userRole);
+  const eligibleByModel = isKnowledgeInjectionModel(options.modelKey);
+
+  console.info('[KnowledgeInjection] request eligibility checked', {
+    modelKey: options.modelKey,
+    userRole: options.userRole,
+    eligibleByRole,
+    eligibleByModel,
+    override: Boolean(overrideText),
+  });
+
   const preliminaryBlocks = await buildKnowledgeSystemBlocksForRequest(templateBlock, {
     modelKey: options.modelKey,
     userRole: options.userRole,
@@ -145,10 +166,11 @@ export async function resolveKnowledgeBlocksForRequest(
     systemBlocks: preliminaryBlocks,
     ...options.inputEstimate,
   };
+  const estimatedInputTokens = estimateRequestInputTokens(estimateParams);
 
   const budgetTokens = overrideText
     ? KNOWLEDGE_SOURCE_OVERRIDE_BUDGET_TOKENS
-    : resolveKnowledgeBudgetTokens(estimateRequestInputTokens(estimateParams), options.modelKey);
+    : resolveKnowledgeBudgetTokens(estimatedInputTokens, options.modelKey);
 
   let blocks: KnowledgeSystemBlocks;
   if (budgetTokens === null) {
@@ -167,9 +189,23 @@ export async function resolveKnowledgeBlocksForRequest(
     });
   }
 
+  const anthropicSystem = toAnthropicSystemBlocks(blocks);
+
+  console.info('[KnowledgeInjection] request resolved', {
+    modelKey: options.modelKey,
+    userRole: options.userRole,
+    override: Boolean(overrideText),
+    estimatedInputTokens,
+    budgetTokens,
+    injected: blocks.knowledgeBlock.trim().length > 0,
+    knowledgeBlockChars: blocks.knowledgeBlock.length,
+    templateBlockChars: blocks.templateBlock.length,
+    anthropicSystemBlockCount: anthropicSystem.length,
+  });
+
   return {
     blocks,
-    anthropicSystem: toAnthropicSystemBlocks(blocks),
+    anthropicSystem,
   };
 }
 

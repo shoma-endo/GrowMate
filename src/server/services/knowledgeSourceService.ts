@@ -87,6 +87,8 @@ export class KnowledgeSourceService extends SupabaseService {
       throw new Error('Google Docs サービスアカウントが未設定です');
     }
 
+    console.info('[KnowledgeSourceService] fetch started', { sourceId: id });
+
     const source = await KnowledgeSourceService.withServiceRoleClient(async client => {
       const row = await getKnowledgeSourceById(client, id);
       if (!row) {
@@ -97,6 +99,7 @@ export class KnowledgeSourceService extends SupabaseService {
 
     const documentId = parseGoogleDocId(source.source_url);
     if (!documentId) {
+      console.warn('[KnowledgeSourceService] document id parse failed', { sourceId: id });
       return KnowledgeSourceService.recordFetchError(
         id,
         'Google ドキュメント URL から document ID を取得できませんでした'
@@ -105,6 +108,12 @@ export class KnowledgeSourceService extends SupabaseService {
 
     try {
       const fetchedText = await fetchGoogleDocPlainText(documentId);
+      console.info('[KnowledgeSourceService] Google Doc fetched', {
+        sourceId: id,
+        documentIdLength: documentId.length,
+        fetchedChars: fetchedText.length,
+      });
+
       const activeSources = await KnowledgeSourceService.listAll();
       const activeContents = activeSources
         .filter(item => item.is_active && item.id !== id)
@@ -112,11 +121,17 @@ export class KnowledgeSourceService extends SupabaseService {
 
       const rejectionReason = validateFetchedKnowledgeContent(fetchedText, activeContents);
       if (rejectionReason) {
+        console.warn('[KnowledgeSourceService] fetched content rejected', {
+          sourceId: id,
+          fetchedChars: fetchedText.length,
+          activeComparisonCount: activeContents.length,
+          reason: rejectionReason,
+        });
         return KnowledgeSourceService.recordFetchError(id, rejectionReason);
       }
 
       const now = new Date().toISOString();
-      return KnowledgeSourceService.withServiceRoleClient(async client =>
+      const updated = await KnowledgeSourceService.withServiceRoleClient(async client =>
         updateKnowledgeSourceById(client, id, {
           content: fetchedText,
           last_fetched_at: now,
@@ -124,9 +139,19 @@ export class KnowledgeSourceService extends SupabaseService {
           updated_at: now,
         })
       );
+      console.info('[KnowledgeSourceService] fetched content stored', {
+        sourceId: id,
+        fetchedChars: fetchedText.length,
+        lastFetchedAt: now,
+      });
+      return updated;
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Google ドキュメントの取得に失敗しました';
+      console.warn('[KnowledgeSourceService] fetch failed', {
+        sourceId: id,
+        message,
+      });
       return KnowledgeSourceService.recordFetchError(id, message);
     }
   }
@@ -137,11 +162,17 @@ export class KnowledgeSourceService extends SupabaseService {
   ): Promise<KnowledgeSourceListItem> {
     const now = new Date().toISOString();
 
-    return KnowledgeSourceService.withServiceRoleClient(async client =>
+    const updated = await KnowledgeSourceService.withServiceRoleClient(async client =>
       updateKnowledgeSourceById(client, id, {
         last_fetch_error: message,
         updated_at: now,
       })
     );
+    console.warn('[KnowledgeSourceService] fetch error recorded', {
+      sourceId: id,
+      message,
+      updatedAt: now,
+    });
+    return updated;
   }
 }

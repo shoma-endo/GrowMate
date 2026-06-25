@@ -729,6 +729,17 @@ export async function POST(req: NextRequest) {
               editorBody: canvasContent,
             },
           });
+          console.info('[Canvas Stream] knowledge system resolved', {
+            sessionId,
+            modelKey,
+            userRole,
+            override: Boolean(normalizedKnowledgeSourceOverrideText),
+            injected: anthropicSystem.length > 1,
+            anthropicSystemBlockCount: anthropicSystem.length,
+            shouldEnableWebSearch,
+            isHeadingUnitRequest,
+            canvasHistoryCount: canvasHistory.length,
+          });
 
           // Anthropic Streaming API 呼び出し
           // Step7 の見出し単位編集時は上限を抑え、それ以外はモデル設定値を使う。
