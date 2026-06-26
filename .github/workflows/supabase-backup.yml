@@ -33,31 +33,50 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      - name: Create database dumps
+      - name: Prepare database dumps
         run: |
           set -euo pipefail
           timestamp=$(date -u +"%Y%m%dT%H%M%SZ")
           mkdir -p backup
-          schema_file="backup/${timestamp}_schema.sql"
-          data_file="backup/${timestamp}_data.sql"
-          role_file="backup/${timestamp}_role.sql"
-          if ! pg_dump --schema-only --no-owner --no-privileges --dbname="$SUPABASE_DB_URL" > "$schema_file"; then
-            echo "Error: Schema dump failed" >&2
-            exit 1
-          fi
-          if ! pg_dump --data-only --no-owner --dbname="$SUPABASE_DB_URL" > "$data_file"; then
-            echo "Error: Data dump failed" >&2
-            exit 1
-          fi
-          # pg_dumpall --roles-only requires superuser privileges
-          # If the connection URL doesn't have sufficient privileges, this will fail
-          # We attempt the dump but allow it to fail gracefully with a warning
-          # stderr is discarded to prevent error messages from being written to the file
-          if ! pg_dumpall --roles-only --dbname="$SUPABASE_DB_URL" > "$role_file" 2>/dev/null; then
-            echo "Warning: Role dump failed (may require superuser privileges)" >&2
-            # Create empty file to prevent validation error
-            touch "$role_file"
-          fi
+          echo "BACKUP_PREFIX=${timestamp}" >> "$GITHUB_ENV"
+
+      - parallel:
+          - name: Dump schema
+            run: |
+              set -euo pipefail
+              schema_file="backup/${BACKUP_PREFIX}_schema.sql"
+              if ! pg_dump --schema-only --no-owner --no-privileges --dbname="$SUPABASE_DB_URL" > "$schema_file"; then
+                echo "Error: Schema dump failed" >&2
+                exit 1
+              fi
+
+          - name: Dump data
+            run: |
+              set -euo pipefail
+              data_file="backup/${BACKUP_PREFIX}_data.sql"
+              if ! pg_dump --data-only --no-owner --dbname="$SUPABASE_DB_URL" > "$data_file"; then
+                echo "Error: Data dump failed" >&2
+                exit 1
+              fi
+
+          - name: Dump roles
+            run: |
+              set -euo pipefail
+              role_file="backup/${BACKUP_PREFIX}_role.sql"
+              # pg_dumpall --roles-only requires superuser privileges.
+              # If the connection URL lacks sufficient privileges, keep the backup usable
+              # by creating an empty role dump and reporting a warning.
+              if ! pg_dumpall --roles-only --dbname="$SUPABASE_DB_URL" > "$role_file" 2>/dev/null; then
+                echo "Warning: Role dump failed (may require superuser privileges)" >&2
+                touch "$role_file"
+              fi
+
+      - name: Validate and compress dumps
+        run: |
+          set -euo pipefail
+          schema_file="backup/${BACKUP_PREFIX}_schema.sql"
+          data_file="backup/${BACKUP_PREFIX}_data.sql"
+          role_file="backup/${BACKUP_PREFIX}_role.sql"
           # Validate dump files (role_file may be empty if permissions are insufficient)
           for f in "$schema_file" "$data_file"; do
             if [ ! -s "$f" ]; then
@@ -69,7 +88,6 @@ jobs:
             echo "Warning: $role_file is empty (role dump may require superuser privileges)" >&2
           fi
           gzip "$schema_file" "$data_file" "$role_file"
-          echo "BACKUP_PREFIX=${timestamp}" >> "$GITHUB_ENV"
 
       - name: Upload to GCS
         run: |
