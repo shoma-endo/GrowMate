@@ -75,7 +75,7 @@
     "eslint": "^9",
     "eslint-config-next": "^16.2.6",
     "husky": "^9.1.7",
-    "knip": "^5.77.1",
+    "knip": "^6.19.0",
     "postcss": "^8.5.15",
     "supabase": "^2.105.0",
     "tailwindcss": "^4.3.0",
