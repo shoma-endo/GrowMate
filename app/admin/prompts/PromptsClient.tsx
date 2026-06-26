@@ -21,6 +21,7 @@ import {
   replaceToEmailLinkConflictLogin,
 } from '@/lib/auth/emailLinkConflictClient';
 import { fetchPrompts, savePrompt } from '@/server/actions/adminPrompts.actions';
+import KnowledgeSourcesSection from './KnowledgeSourcesSection';
 
 type PromptCategory = 'chat' | 'gsc' | 'google_ads';
 
@@ -54,7 +55,10 @@ type PromptsClientProps = {
   initialError?: string | null;
 };
 
-export default function PromptsClient({ initialTemplates, initialError }: PromptsClientProps) {
+export default function PromptsClient({
+  initialTemplates,
+  initialError,
+}: PromptsClientProps) {
   const [templates, setTemplates] = useState<PromptTemplate[]>(initialTemplates);
   const [activeCategory, setActiveCategory] = useState<PromptCategory>('chat');
   const [selectedTemplate, setSelectedTemplate] = useState<PromptTemplate | null>(null);
@@ -302,6 +306,8 @@ export default function PromptsClient({ initialTemplates, initialError }: Prompt
         <h1 className="text-3xl font-bold text-gray-900">プロンプト管理</h1>
         <p className="mt-2 text-gray-600">プロンプトテンプレートを選択して内容を編集します</p>
       </div>
+
+      <KnowledgeSourcesSection />
 
       {/* エラーメッセージ（保存失敗や再取得失敗時も表示） */}
       {error && (

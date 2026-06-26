@@ -6,20 +6,26 @@ import { PromptTemplate } from '@/types/prompt';
 export const dynamic = 'force-dynamic';
 
 export default async function PromptsPage() {
-  const res = await fetchPrompts();
+  const promptsRes = await fetchPrompts();
 
-  if (!res?.success || !res.data) {
-    if (res && !res.success && 'emailLinkConflict' in res && res.emailLinkConflict) {
-      redirect('/login?reason=email_link_conflict');
-    }
-    const error =
-      res && !res.success && 'error' in res && typeof res.error === 'string'
-        ? res.error
-        : 'プロンプトの取得に失敗しました';
-    return <PromptsClient initialTemplates={[]} initialError={error} />;
+  if (promptsRes && !promptsRes.success && 'emailLinkConflict' in promptsRes && promptsRes.emailLinkConflict) {
+    redirect('/login?reason=email_link_conflict');
   }
 
-  const templates = res.data as PromptTemplate[];
+  if (!promptsRes?.success || !promptsRes.data) {
+    const error =
+      promptsRes && !promptsRes.success && 'error' in promptsRes && typeof promptsRes.error === 'string'
+        ? promptsRes.error
+        : 'プロンプトの取得に失敗しました';
+    return (
+      <PromptsClient
+        initialTemplates={[]}
+        initialError={error}
+      />
+    );
+  }
+
+  const templates = promptsRes.data as PromptTemplate[];
 
   return <PromptsClient initialTemplates={templates} />;
 }
