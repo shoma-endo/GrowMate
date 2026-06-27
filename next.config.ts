@@ -28,7 +28,12 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
-    domains: ['profile.line-scdn.net'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'profile.line-scdn.net',
+      },
+    ],
   },
   typescript: {
     ignoreBuildErrors: false,
