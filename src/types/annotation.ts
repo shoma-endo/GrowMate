@@ -46,7 +46,7 @@ export interface SessionAnnotationUpsertPayload extends AnnotationFields {
  */
 export type AnnotationFormState = Record<AnnotationFieldKey, string>;
 
-export interface SubmissionHandlerResult {
+interface SubmissionHandlerResult {
   success?: boolean;
   error?: string;
   canonical_url?: string | null;
@@ -54,7 +54,7 @@ export interface SubmissionHandlerResult {
   [key: string]: unknown;
 }
 
-export interface SubmitPayload {
+interface SubmitPayload {
   fields: AnnotationFormState;
   canonicalUrl: string | null;
 }

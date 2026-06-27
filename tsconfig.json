@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true /* すべての厳格な型チェックオプションを有効化 */,
@@ -11,7 +15,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
       {
@@ -20,7 +24,9 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     },
     /* 型の厳格化設定オプション */
     "noImplicitAny": true /* 暗黙的なany型を許可しない */,
@@ -44,7 +50,11 @@
     "src/**/*",
     "types/**/*",
     ".next/types/**/*.ts",
-    "app/**/*"
+    "app/**/*",
+    ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next"]
+  "exclude": [
+    "node_modules",
+    ".next"
+  ]
 }
