@@ -31,7 +31,7 @@ function buildCspHeader(nonce: string): string {
   ].join('; ');
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
   const cspHeader = buildCspHeader(nonce);
   const response = await handleMiddleware(request, nonce, cspHeader);
