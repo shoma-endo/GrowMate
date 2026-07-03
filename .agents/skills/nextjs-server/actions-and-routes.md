@@ -30,7 +30,7 @@ Next.js のサーバーサイド通信において、一貫性・セキュリテ
 ## 4. 実装のアンチパターン
 
 - [ ] `app/api/` 内の `route.ts` に `'use server';` を記述する（不要かつ誤解を招く）。
-- [ ] クライアントから直接 `prisma` や `supabase` (Service Role) を呼び出すコードを Server Actions 外に書く。
+- [ ] クライアントから直接 `supabase` (Service Role) を呼び出すコードを Server Actions 外に書く。
 - [ ] 認証チェックなしで `Service Role` による DB 操作を行う（重大なセキュリティリスク）。
 
 ## セルフレビュー項目
