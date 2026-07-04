@@ -203,36 +203,7 @@ By wrapping all children in Suspense boundaries:
 
 Reusable components should embed `startTransition` internally and expose an `action` prop instead of `onClick`. This ensures synchronously scheduled state updates are transitions. Note: if the action contains `await`, state updates after the await boundary require an additional `startTransition` wrapper.
 
-**✅ Correct (transition built into component):**
-
-```tsx
-const MyButton: FC<{ action: (e: MouseEvent) => void; children: ReactNode }> = ({
-  action,
-  children,
-}) => {
-  const [isPending, startTransition] = useTransition();
-
-  return (
-    <button
-      disabled={isPending}
-      onClick={(e) => startTransition(() => action(e))}
-    >
-      {children}
-    </button>
-  );
-};
-
-// Caller doesn't need to think about transitions
-<MyButton action={() => setPage(2)}>Next</MyButton>
-```
-
-**❌ Incorrect (caller must remember to wrap in transition):**
-
-```tsx
-<Button onClick={() => startTransition(() => setPage(2))}>Next</Button>
-```
-
-> For detailed patterns including `isPending` UX and Suspense boundary strategy, see [async-react-patterns.md](async-react-patterns.md).
+> Code examples, `isPending` UX, and Suspense boundary strategy: see [async-react-patterns.md](async-react-patterns.md) §2–4.
 
 ## When Manual Optimization Might Be Needed
 

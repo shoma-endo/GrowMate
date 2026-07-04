@@ -1,28 +1,5 @@
 # Lessons
 
-- TAKT の self_review 起因の差し戻しを fix へ戻す場合、fix は `architecture-review.md` だけでなく `self-review.md` も一次情報として読む。architecture-review が APPROVE のままなら review に戻さず self_review へ戻し、同じ no-op fix/review ループを繰り返さない。
-- TAKT の `prepare_pr_summary` は GitHub Actions auto-pr が PR body/comment を作る前提では詳細な PR 本文生成をしない。最新 review/self-review/fix-result と git status の事実に絞った短い最終ローカル要約に留める。
-- GrowMate は `.github/workflows/auto-pr.yml` が push 後の PR 作成・更新を担当するため、TAKT の終端ステップでは `gh pr create` / `gh pr edit` / `gh pr comment` を実行しない。TAKT は commit/push までで完了し、PR body/comment の詳細化は GitHub Actions 側で取得できる branch / commit / changed files 情報に限定する。
-- TAKT の `create_pr` ステップ名を互換性のため残す場合でも、GrowMate では実際の責務を `git add` / `git commit` / `git push` までに限定する。`edit: false` や `create_pr: readonly` では push できないため、プロダクションコード編集は禁止文で制御し、ステップ権限は `edit: true` + `required_permission_mode: edit` にする。
-- TAKT の Requeue は source run の reports を新 run にコピーしないため、途中ステップだけ再投入すると新しい Report Directory が空になる。レポート参照が必要なステップでは `meta.json` の `source_run_slug` を再帰的に辿って親 run の reports を使う。
-- TAKT の失敗復旧で `Retry` と `Requeue` が並ぶ場合、`order.md` がない run では `/retry` が失敗する。途中再開・レポート欠損・workflow 修正後の再投入は原則 `Requeue` を選び、`Retry` は同じ指示書が残っている単純な一時失敗に限る。
-- TAKT の Requeue / resume では途中ステップから新しい run directory が作られ、`plan.md` や `coder-scope.md` が存在しないことがある。PR 要約ステップでは必須レポートを `architecture-review.md` と `self-review.md` に絞り、仕様書・fix-result・git status で補完できる場合は ABORT しない。
-- Claude のローカル権限設定 `.claude/settings.local.json` は、グローバル Git ignore だけでなくプロジェクト `.gitignore` にも明示して、TAKT self_review が未追跡ローカル設定として差し戻し続けないようにする。
-- TAKT の `review -> fix` ループで、ユーザーまたは仕様書がテスト追加不要を明示しているのにレビューがテスト不在だけを理由に差し戻す場合は、workflow 側で `review` / `testing` policy の競合を外し、loop monitor が self_review へ抜けられる条件を用意する。
-- React Doctor / TAKT の実装修正では、ユーザーまたは仕様書が明示しない限り簡易・形式的なユニットテストを追加しない。指摘はプロダクションコードの最小修正で解消し、検証は lint/build/knip/React Doctor/必要な手動確認で行う。
-- TAKT workflow のレビュー担当は、ユーザーがグローバル `architecture-reviewer` provider routing を指定している場合、workflow 側で別レビューCLIステップを新設せず、その persona の `review-arch` ステップを使う。
-- 仕様書へ実装方針を追記したときは、同名または対応する実装済み関数が存在しないか `rg` で確認し、存在する場合は設計だけで完了扱いにせず実装も同期する。
-- ユーザーが複数提案のうち一部だけを指定して反映依頼した場合は、指定された項目だけを最小編集し、隣接する提案をついでに追加しない。
-- 複数サービスを登録できる機能で分析・生成対象が単一サービスに紐づく場合は、全サービス情報を結合してプロンプトへ渡さず、ユーザーが選択したサービスIDから対象サービスを解決する。変数名も複数形ではなく、実態に合わせて `strength` のような単数形にする。
-- `prompt_templates` は管理画面で編集できる運用のため、プロンプト本文や変数メタデータの変更だけを目的に migration を追加しない。DBへの反映が必要な場合は、管理画面での更新か migration 管理かを事前確認する。
-- 既存 migration の変更をレビューする前に、その migration が対象環境へ適用済みかをユーザーまたは migration 履歴で確認する。未適用が明確な場合は、新規 migration 追加を必須扱いしない。
-- Zod スキーマを追加・変更した場合は、手書きの重複 interface を作らず、同じ schema ファイルで `z.infer<typeof schema>` の型を export して利用する。
-- 再 export だけのファイルには不要な `'use client'` を付けない。クライアント境界は実装元コンポーネント側に置く。
-- UI コンポーネントで `key` や select value に使う ID は、呼び出し元の型だけでなく元スキーマで必須・形式検証されていることを確認する。任意 ID の可能性がある型なら、描画前に除外またはエラー表示する。
-- DEV 専用分岐でも本番分岐と同じ副作用（DB更新など）を行う場合は、戻り値の success を確認してログ出力まで揃える。
-- 仕様書に「選択中の値」をプロンプト変数ソースとして追加した場合は、画面設計にも UI 配置・初期選択・未登録時の実行可否を明記し、実装側も同じ拒否条件を持たせる。
-- プロンプト変数説明を整理する前に、コード検索だけでなく `prompt_templates` の実データも確認する。未使用が確認できた古い変数説明は残さず削除する。
-- ユーザー向け機能名は成功・失敗メッセージ、画面見出し、設定ラベル、仕様書で統一する。内部キー名が旧称でも表示文言は混在させない。
-- UI が常に選択状態を持つ仕様でも、サーバー側に防御的フォールバックを置く場合は「通常経路」と「防御経路」が分かるよう仕様書に発生条件を明記する。
-- 仕様書に cron 並列数、未連携時の UI disabled、DEV モック分岐など運用リスクを下げる要件がある場合は、lint/build だけで完了扱いにせず、設計項目ごとの実装有無をセルフレビューで照合する。
-- Cron エンドポイントを追加するときは、個別 workflow を新設する前に `.github/workflows/hourly-cron.yml` の統合 matrix へ追加できるか確認する。実行間隔が異なる場合も、統合 workflow 内の interval 条件で管理する。
+> **移行済み（2026-07-02）**: lessons.md 規約は廃止し、Claude Code の auto-memory に一本化した。
+> 本ファイルの内容は `~/.claude/projects/-Users-shoma-endo-dev-GrowMate/memory/lessons-imported.md` に移植済み。
+> 新しい教訓は memory（type: feedback）に保存される。

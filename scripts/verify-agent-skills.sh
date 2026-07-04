@@ -19,7 +19,7 @@ ok()   { echo -e "${GREEN}✓${NC} $1"; }
 
 EXPECTED_SKILLS=(
   agent-workflow-core
-  code-refactoring
+  google-integrations
   growmate-ui-ux
   implementation-guidelines
   llm-context-memory
@@ -27,6 +27,7 @@ EXPECTED_SKILLS=(
   project-naming
   quality-gate
   react
+  spec-review
   supabase
   update-docs
 )
@@ -132,7 +133,7 @@ done < "${names_file}.paths" 2>/dev/null || true
 echo
 
 echo "--- TAKT PR ワークフロー ---"
-for workflow in .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml; do
+for workflow in .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml; do
   if [[ -f "$workflow" ]]; then
     ok "$workflow"
   else
@@ -148,7 +149,7 @@ for removed in .agents/skills/spec-to-pr .agents/skills/react-doctor-to-pr .agen
   fi
 done
 
-if takt workflow doctor .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml >/dev/null; then
+if takt workflow doctor .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml >/dev/null; then
   ok "TAKT workflow doctor"
 else
   fail "TAKT workflow doctor failed"
