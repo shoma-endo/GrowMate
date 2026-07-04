@@ -24,6 +24,7 @@ description: CLAUDE.md の最小コア運用を補完する共通ワークフロ
   - Supabase: `supabase`
   - Google 連携（GSC / GA4 / Google Ads・トークン・needsReauth）: `google-integrations`
   - 品質ゲート（検証・セルフレビュー・障害対応）: `quality-gate`
+  - 仕様書レビュー: `spec-review` / TAKT workflow `.takt/workflows/spec-review.yaml`
   - 仕様実装→PR: TAKT workflow `.takt/workflows/spec-to-pr.yaml`
   - React Doctor→PR: TAKT workflow `.takt/workflows/react-doctor-to-pr.yaml`
 
@@ -32,6 +33,7 @@ description: CLAUDE.md の最小コア運用を補完する共通ワークフロ
 ## Design Doc First（中〜大規模機能）
 
 - 中〜大規模の機能（3+ステップの実装、または設計判断を伴う変更）は、**実装前に `docs/plans/` へ設計書を作成しレビューを受ける**。合意前に実装を始めない。
+- 設計書レビューの観点は `spec-review` スキルを正本とし、一気通貫は TAKT `.takt/workflows/spec-review.yaml` を使う。合意（確認質問への回答・docs PR マージ）後に `spec-to-pr` で実装へ進む。
 - 実装中に設計と異なる判断をした場合は、設計書を同じ PR 内で同期更新する（`update-docs` 参照）。
 
 ## Client Alignment Gate
