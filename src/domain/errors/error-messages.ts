@@ -84,6 +84,23 @@ export const ERROR_MESSAGES = {
     /** WordPressコンテンツの取得中にエラーが発生 */
     CONTENT_FETCH_ERROR: 'WordPressコンテンツの取得中にエラーが発生しました',
 
+    /** WordPress未連携の記事でAI要約を実行しようとした場合 */
+    SUMMARY_SOURCE_NOT_LINKED: 'WordPress連携後に利用できます',
+
+    /** AI要約のWordPress本文取得に失敗した場合 */
+    SUMMARY_CONTENT_FETCH_FAILED:
+      'WordPress記事の本文取得に失敗しました。WordPress連携設定を確認してください。',
+
+    /** AI要約の本文サイズガード超過 */
+    SUMMARY_CONTENT_TOO_LARGE: '本文が大きすぎるため要約できません',
+
+    /** AI要約のClaude呼び出し失敗 */
+    SUMMARY_AI_FAILED: 'AI要約の生成に失敗しました。しばらくしてから再度お試しください。',
+
+    /** AI要約のJSON抽出・パース失敗 */
+    SUMMARY_PARSE_FAILED:
+      'AI要約結果の解析に失敗しました。もう一度要約ボタンを押してください。',
+
     /** インポート処理中にエラーが発生 */
     IMPORT_ERROR: 'インポート処理中にエラーが発生しました',
 

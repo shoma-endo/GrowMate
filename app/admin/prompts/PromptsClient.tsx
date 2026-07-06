@@ -22,7 +22,7 @@ import {
 } from '@/lib/auth/emailLinkConflictClient';
 import { fetchPrompts, savePrompt } from '@/server/actions/adminPrompts.actions';
 
-type PromptCategory = 'chat' | 'gsc' | 'google_ads';
+type PromptCategory = 'chat' | 'gsc' | 'google_ads' | 'content_annotation';
 
 const RETIRED_PROMPT_NAMES = new Set(['ad_copy_finishing', 'lp_improvement']);
 
@@ -35,7 +35,14 @@ const PROMPT_CATEGORIES: Array<{
     id: 'chat',
     label: 'AIチャット・生成',
     filter: template =>
-      !template.name.startsWith('gsc_') && !template.name.startsWith('google_ads_'),
+      !template.name.startsWith('gsc_') &&
+      !template.name.startsWith('google_ads_') &&
+      !template.name.startsWith('content_annotation_'),
+  },
+  {
+    id: 'content_annotation',
+    label: 'コンテンツ情報要約',
+    filter: template => template.name.startsWith('content_annotation_'),
   },
   {
     id: 'gsc',

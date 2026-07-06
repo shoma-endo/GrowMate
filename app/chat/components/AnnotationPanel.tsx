@@ -1,16 +1,22 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   upsertContentAnnotationBySession,
 } from '@/server/actions/wordpress.actions';
+import { summarizeContentAnnotation } from '@/server/actions/contentAnnotationSummary.actions';
 import { Button } from '@/components/ui/button';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePersistedResizableWidth } from '@/hooks/usePersistedResizableWidth';
 import { AnnotationRecord } from '@/types/annotation';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
 import { useAnnotationForm } from '@/hooks/useAnnotationForm';
+import { toast } from 'sonner';
+import {
+  isEmailLinkConflictResult,
+  replaceToEmailLinkConflictLogin,
+} from '@/lib/auth/emailLinkConflictClient';
 
 interface Props {
   sessionId: string;
@@ -18,6 +24,13 @@ interface Props {
   onClose: () => void;
   isVisible?: boolean;
   onSaveSuccess?: () => void;
+  onSummarizeSuccess?: (data: AnnotationRecord) => void;
+}
+
+function isWordPressLinked(data?: AnnotationRecord | null): boolean {
+  const hasPostId = typeof data?.wp_post_id === 'number' && data.wp_post_id > 0;
+  const hasCanonical = Boolean(data?.canonical_url?.trim());
+  return hasPostId || hasCanonical;
 }
 
 export default function AnnotationPanel({
@@ -26,7 +39,11 @@ export default function AnnotationPanel({
   onClose,
   isVisible = true,
   onSaveSuccess,
+  onSummarizeSuccess,
 }: Props) {
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const wpLinked = isWordPressLinked(initialData);
+
   const {
     form,
     updateField,
@@ -63,7 +80,37 @@ export default function AnnotationPanel({
 
     onSaveSuccess?.();
   };
+
+  const handleSummarize = async () => {
+    if (!wpLinked || isSummarizing || isSaving) {
+      return;
+    }
+
+    setIsSummarizing(true);
+    try {
+      const result = await summarizeContentAnnotation(sessionId);
+      if (!result.success) {
+        if (isEmailLinkConflictResult(result)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
+        toast.error(result.error);
+        return;
+      }
+
+      onSummarizeSuccess?.(result.data);
+      toast.success('AIによる要約でフィールドを更新しました');
+    } catch (error) {
+      console.error('[AnnotationPanel] summarize failed:', error);
+      toast.error('要約処理中にエラーが発生しました');
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
   if (!isVisible) return null;
+
+  const actionDisabled = isSaving || saveDone || isSummarizing;
 
   return (
     <div
@@ -121,33 +168,60 @@ export default function AnnotationPanel({
           </fieldset>
 
           {/* アクションボタン */}
-          <div className="pt-4 border-t border-gray-200">
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onClose}
-                disabled={isSaving || saveDone}
-              >
-                キャンセル
-              </Button>
-              <div className="relative">
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={isSaving || saveDone}
-              >
-                  {isSaving ? (
+          <div className="pt-4 border-t border-gray-200 space-y-3">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              WordPress本文から生成し直します。現在入力中の未保存内容も含めて上書きされます。
+            </p>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col items-start gap-1">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleSummarize}
+                  disabled={!wpLinked || actionDisabled}
+                  className="min-h-9"
+                >
+                  {isSummarizing ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      保存中...
+                      要約中…
                     </>
-                  ) : saveDone ? (
-                    '保存完了'
                   ) : (
-                    '保存'
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      要約
+                    </>
                   )}
                 </Button>
+                {!wpLinked && (
+                  <span className="text-xs text-muted-foreground">
+                    WordPress連携後に利用できます
+                  </span>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onClose}
+                  disabled={actionDisabled}
+                >
+                  キャンセル
+                </Button>
+                <div className="relative">
+                  <Button size="sm" onClick={handleSave} disabled={actionDisabled}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        保存中...
+                      </>
+                    ) : saveDone ? (
+                      '保存完了'
+                    ) : (
+                      '保存'
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

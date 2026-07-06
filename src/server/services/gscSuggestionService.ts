@@ -3,11 +3,7 @@ import { PromptService } from '@/server/services/promptService';
 import { llmChat } from '@/server/services/llmService';
 import { MODEL_CONFIGS } from '@/lib/constants';
 import type { GscEvaluationOutcome } from '@/types/gsc';
-import { stripHtml } from '@/lib/utils';
-import {
-  buildWordPressServiceFromSettings,
-  WPCOM_TOKEN_COOKIE_NAME,
-} from '@/server/services/wordpressContext';
+import { fetchWpPostContentWithCache } from '@/server/services/wordpressContentSync';
 
 type SuggestionTemplate =
   | 'gsc_insight_ctr_boost'
@@ -48,12 +44,12 @@ class GscSuggestionService {
     const stagesToRun = this.getStagesToRun(params.currentSuggestionStage);
 
     // 取得系（WordPress本文・タイトル・抜粋）
-    const wpPost = await this.fetchWpPostData(
-      annotation.wp_post_id,
-      annotation.wp_content_text,
-      annotation.wp_excerpt,
-      params.userId
-    );
+    const wpPost = await fetchWpPostContentWithCache({
+      wpPostId: annotation.wp_post_id,
+      cachedContent: annotation.wp_content_text,
+      cachedExcerpt: annotation.wp_excerpt,
+      userId: params.userId,
+    });
 
     // 提案とスキップメッセージを格納（順序を維持）
     const orderedSuggestions: Array<{
@@ -286,134 +282,6 @@ class GscSuggestionService {
       main_kw: string | null;
       kw: string | null;
     } | null;
-  }
-
-  private async fetchWpPostData(
-    wpPostId: number | null,
-    cachedContent: string | null,
-    cachedExcerpt: string | null,
-    userId: string
-  ): Promise<{ contentText: string | null; title: string | null; excerpt: string | null } | null> {
-    const needsFetch =
-      !cachedContent ||
-      cachedContent.trim().length === 0 ||
-      !cachedExcerpt ||
-      cachedExcerpt.trim().length === 0;
-
-    if (!wpPostId) return needsFetch ? null : { contentText: cachedContent, title: null, excerpt: cachedExcerpt };
-
-    // 既に本文キャッシュがあり、抜粋も埋まっているなら再取得不要
-    if (!needsFetch) {
-      return { contentText: cachedContent, title: null, excerpt: cachedExcerpt };
-    }
-
-    try {
-      const wpSettings = await this.supabase.getWordPressSettingsByUserId(userId);
-      if (!wpSettings) return null;
-
-      // self-hosted: アプリケーションパスワードで直接取得
-      if (wpSettings.wpType === 'self_hosted') {
-        const ctx = buildWordPressServiceFromSettings(wpSettings, () => undefined);
-        if (!ctx.success) return null;
-        const post = await ctx.service.resolveContentById(wpPostId);
-        if (!post.success || !post.data) return null;
-        const { contentText, title, excerpt } = this.extractPostFields(post.data);
-
-        if (contentText || excerpt || title) {
-          await this.supabase
-            .getClient()
-            .from('content_annotations')
-            .update({
-              wp_content_text: contentText,
-              wp_excerpt: excerpt ?? null,
-              ...(title ? { wp_post_title: title } : {}),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('user_id', userId)
-            .eq('wp_post_id', wpPostId);
-        }
-        return { contentText: contentText || null, title, excerpt };
-      }
-
-      // WordPress.com: アクセストークンを利用・期限切れならリフレッシュ
-      let accessToken = wpSettings.wpAccessToken ?? null;
-      // 期限切れならリフレッシュ（buffer 60秒）
-      const expiresAt = wpSettings.wpTokenExpiresAt
-        ? new Date(wpSettings.wpTokenExpiresAt).getTime()
-        : null;
-      if (accessToken && expiresAt && expiresAt - Date.now() < 60 * 1000) {
-        const refreshed = await this.supabase.refreshWpComToken(userId, wpSettings);
-        if (refreshed.success) {
-          accessToken = refreshed.accessToken;
-          wpSettings.wpAccessToken = refreshed.accessToken ?? null;
-          wpSettings.wpRefreshToken = refreshed.refreshToken ?? wpSettings.wpRefreshToken ?? null;
-          wpSettings.wpTokenExpiresAt = refreshed.expiresAt ?? wpSettings.wpTokenExpiresAt ?? null;
-        } else {
-          accessToken = null;
-        }
-      }
-
-      if (!accessToken) {
-        // WordPress.comだが有効なトークンがない
-        return null;
-      }
-
-      const ctx = buildWordPressServiceFromSettings(wpSettings, name =>
-        name === WPCOM_TOKEN_COOKIE_NAME ? accessToken : undefined
-      );
-      if (!ctx.success) return null;
-
-      const post = await ctx.service.resolveContentById(wpPostId);
-      if (!post.success || !post.data) return null;
-
-      const { contentText, title, excerpt } = this.extractPostFields(post.data);
-
-      if (contentText || excerpt || title) {
-        await this.supabase
-          .getClient()
-          .from('content_annotations')
-          .update({
-            wp_content_text: contentText,
-            wp_excerpt: excerpt ?? null,
-            ...(title ? { wp_post_title: title } : {}),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('user_id', userId)
-          .eq('wp_post_id', wpPostId);
-      }
-
-      return { contentText: contentText || null, title, excerpt };
-    } catch (error) {
-      console.error('[GscSuggestion] fetchWpContent error', error);
-      return null;
-    }
-  }
-
-  /**
-   * WordPress投稿から本文テキスト・タイトル・抜粋を抽出
-   */
-  private extractPostFields(post: {
-    title?: unknown;
-    content?: unknown;
-    excerpt?: unknown;
-  }): { contentText: string | null; title: string | null; excerpt: string | null } {
-    const resolveRendered = (raw: unknown): string | null => {
-      if (typeof raw === 'string') return raw;
-      if (raw && typeof raw === 'object' && typeof (raw as { rendered?: unknown }).rendered === 'string') {
-        return (raw as { rendered: string }).rendered;
-      }
-      return null;
-    };
-
-    const contentHtml = resolveRendered(post.content) ?? '';
-    const titleHtml = resolveRendered(post.title) ?? '';
-    const excerptHtml = resolveRendered(post.excerpt) ?? '';
-
-    return {
-      contentText: stripHtml(contentHtml).trim() || null,
-      title: stripHtml(titleHtml).trim() || null,
-      excerpt: stripHtml(excerptHtml).trim() || null,
-    };
   }
 }
 

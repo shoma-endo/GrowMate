@@ -1811,6 +1811,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
               data: annotationData,
               setOpen: setAnnotationOpen,
               openWith: handleOpenAnnotation,
+              setData: setAnnotationData,
             },
           },
           onSendMessage: handleSendMessage,
