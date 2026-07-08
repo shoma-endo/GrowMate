@@ -50,7 +50,7 @@ steps:
 
       必須手順:
       1. `AGENTS.md`、`.takt/facets/knowledge/growmate.md`、`.agents/skills/react/SKILL.md`、`.agents/skills/implementation-guidelines/SKILL.md` を読む。
-      2. `npx -y react-doctor@latest . --verbose --diff` を実行する。
+      2. `npx -y react-doctor@latest . --verbose` を実行する。
       3. スコア、Actionable Issues、優先度、修正対象ファイルを記録する。
       4. Security / Correctness は必須、Performance は原則修正、Architecture は GrowMate 方針と照合して判断する。
       5. 修正対象を React Doctor が指摘した箇所に限定し、スコープ外変更を避ける計画にする。
@@ -93,7 +93,7 @@ steps:
       - UI変更を伴う場合は `.agents/skills/growmate-ui-ux/SKILL.md` を読む。
       - 簡易・形式的・低価値なユニットテストは追加しない。React Doctor の指摘はプロダクションコードの最小修正で解消する。
       - ユーザーまたは仕様書が明示した場合を除き、新規テストファイルを作成しない。
-      - 実装後に `npm run lint`、`npm run build`、`npm run knip` を実行し、失敗した場合は修正して再実行する。
+      - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
     rules:
       - condition: 実装と必須検証が完了した
         next: react_doctor_after
@@ -125,7 +125,7 @@ steps:
       修正後の React Doctor 再診断を実行してください。
 
       手順:
-      1. `npx -y react-doctor@latest . --verbose --diff` を実行する。
+      1. `npx -y react-doctor@latest . --verbose` を実行する。
       2. 事前診断と比較してスコア、Actionable Issues、解消済み指摘を記録する。
       3. スコアが下がった場合、または修正対象の Actionable Issues が残っている場合は修正へ戻す。
     rules:
@@ -155,7 +155,7 @@ steps:
       GrowMate 固有条件:
       - React Doctor 修正または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
       - 簡易・形式的・低価値なユニットテストの追加を要求しない。
-      - 代替検証として React Doctor 再診断、`npm run lint`、`npm run build`、`npm run knip` が実行されているかを確認する。
+      - 代替検証として React Doctor 再診断、`npm run verify` が実行されているかを確認する。
       - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
       - condition: approved
@@ -194,7 +194,7 @@ steps:
       - React Doctor の修正範囲から大きく逸脱しない。
       - 簡易・形式的・低価値なユニットテストは追加しない。レビュー指摘はプロダクションコードの修正で解消する。
       - ユーザーまたは仕様書が明示した場合を除き、新規テストファイルを作成しない。
-      - プロダクションコードを変更した場合は `npm run lint`、`npm run build`、`npm run knip` を再実行する。
+      - プロダクションコードを変更した場合は `npm run verify` を再実行する。
       - プロダクションコードを変更しておらず、直前の品質ゲート成功証跡がある場合は、フル再実行せず必要な git / diff 確認に絞ってよい。
       - ここでは commit / push を行わない。最終ステップでまとめて実施する。
     rules:
@@ -228,7 +228,7 @@ steps:
       確認対象:
       - React Doctor スコアが改善していること。
       - 修正対象の Actionable Issues が解消されていること。
-      - `npm run lint`、`npm run build`、`npm run knip` が成功していること。
+      - `npm run verify` が成功していること。
       - architecture-reviewer の open findings がないこと。
       - PR確認用の要約に React Doctor スコア変化、解消Issues、検証結果、Codex architecture review 結果を含められること。
     rules:

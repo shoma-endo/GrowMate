@@ -89,7 +89,7 @@ steps:
       - Server Actions / Route Handlers では `nextjs-server` のエラー処理・Zod規約に従う。
       - Supabase Service Role 使用時は user_id 等の明示的なスコープ条件を入れる。
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
-      - 実装後に `npm run lint`、`npm run build`、`npm run knip` を実行し、失敗した場合は修正して再実行する。
+      - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
     rules:
       - condition: 実装と必須検証が完了した
         next: review
@@ -120,7 +120,7 @@ steps:
       GrowMate 固有条件:
       - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
       - 簡易・形式的・低価値なユニットテストの追加を要求しない。
-      - 代替検証として `npm run lint`、`npm run build`、`npm run knip`、必要な手動確認が実行されているかを確認する。
+      - 代替検証として `npm run verify`、必要な手動確認が実行されているかを確認する。
       - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
       - condition: approved
@@ -158,7 +158,7 @@ steps:
       - テストやドキュメント追加だけで architecture-reviewer の指摘を回避しない。
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
       - 同種の潜在箇所がある場合は同時に修正する。
-      - プロダクションコードを変更した場合は `npm run lint`、`npm run build`、`npm run knip` を再実行する。
+      - プロダクションコードを変更した場合は `npm run verify` を再実行する。
       - プロダクションコードを変更しておらず、直前の品質ゲート成功証跡がある場合は、フル再実行せず必要な git / diff 確認に絞ってよい。
       - ここでは commit / push を行わない。最終ステップでまとめて実施する。
     rules:
@@ -190,7 +190,7 @@ steps:
 
       確認対象:
       - 仕様書の全要件が実装されていること。
-      - `npm run lint`、`npm run build`、`npm run knip` が成功していること。
+      - `npm run verify` が成功していること。
       - architecture-reviewer の open findings がないこと。
       - 余計な差分や機密情報の露出がないこと。
       - PR確認用の要約に関連仕様書、検証結果、Codex architecture review 結果を含められること。
