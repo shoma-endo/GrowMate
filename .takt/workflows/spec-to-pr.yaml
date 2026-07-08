@@ -48,6 +48,7 @@ steps:
       4. UI 実装が関わる場合は `.agents/skills/growmate-ui-ux/SKILL.md` と `.agents/skills/react/SKILL.md` を読む。
       5. Supabase / migration / RLS / Service Role が関わる場合は `.agents/skills/supabase/SKILL.md` を読む。
       6. 仕様要件と現行コードの差分、変更対象、検証方法、PR本文に記載すべき関連仕様書を整理する。
+      7. 対象仕様書が spec-review 済みか確認する（`.takt/workflows/spec-review.yaml` のレビューレポートまたは docs PR）。未実施の場合はブロックしないが、計画レポートに「spec-review 未実施」と明記する。
     rules:
       - condition: 要件が明確で実装可能
         next: implement

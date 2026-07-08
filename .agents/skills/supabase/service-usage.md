@@ -26,7 +26,7 @@
 
 ## 4. エラーハンドリングとログ (Error Handling)
 
-- **統一フォーマット**: 実在する `SupabaseService.failure()` メソッドを必ず使用し、ユーザー向けメッセージとエンジニア向け詳細ログ（`PostgrestError`, `context`）を適切に分離・記録してください。
+- **統一フォーマット**: `SupabaseService` の `protected failure()` メソッド（インスタンスメソッド、`supabaseService.ts` 参照）を必ず使用し、ユーザー向けメッセージとエンジニア向け詳細ログ（`PostgrestError`, `context`）を適切に分離・記録してください。
 
 ## 5. 実装パターン (Recommended Pattern)
 
@@ -55,7 +55,9 @@ export class AnalyticsContentService extends SupabaseService {
 1. 新規テーブル追加時は、`supabaseService.ts` またはそのサブクラスに CRUD メソッドを追加することを基本としてください。
 2. 複雑な結合クエリやパフォーマンスが重要な操作は、可能な限り Supabase RPC (関数) として実装し、サービス層から呼び出してください。
    - 目安: 3 テーブル以上の結合、サブクエリ/CTE/ウィンドウ関数を含む集計、条件分岐が 3 つ以上のビジネスロジック、クライアント側での後処理が重いケース、レイテンシに敏感なバッチ処理。
+3. **取得上限とデータ打ち切りに注意**: PostgREST には `db-max-rows = 1000` のグローバル上限があり、`.limit(5000)` と書いても 1000 で切られます。大量行の取得、コード内での突合・集計、LLM プロンプト用データの用意を行う場合は、必ず `docs/context/db-row-limits-and-data-truncation.md`（2026-06 の実障害由来の知見）を先に読んでください。突合用とプロンプト用の取得は分離し、打ち切りが起きる場合は検知できる状態（ログ/フラグ）にします。
 
 ## 関連
 
 - RLS / マイグレーション: [`rls.md`](rls.md)
+- 取得上限・データ打ち切りの指針: `docs/context/db-row-limits-and-data-truncation.md`

@@ -11,12 +11,12 @@ export type GoogleAdsStatus = 'ENABLED' | 'PAUSED' | 'REMOVED' | 'UNKNOWN';
 /**
  * Google Ads キャンペーンのステータス
  */
-export type GoogleAdsCampaignStatus = Extract<GoogleAdsStatus, 'ENABLED' | 'PAUSED'>;
+type GoogleAdsCampaignStatus = Extract<GoogleAdsStatus, 'ENABLED' | 'PAUSED'>;
 
 /**
  * Google Ads キーワードのステータス
  */
-export type GoogleAdsKeywordStatus = Extract<GoogleAdsStatus, 'ENABLED' | 'PAUSED' | 'REMOVED'>;
+type GoogleAdsKeywordStatus = Extract<GoogleAdsStatus, 'ENABLED' | 'PAUSED' | 'REMOVED'>;
 
 /**
  * Google Ads キーワード指標

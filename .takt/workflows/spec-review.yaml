@@ -1,0 +1,160 @@
+name: spec-review
+description: GrowMate docs/plans specification review against spec-review skill checklist, spec revision loop, and docs branch push for auto PR. Run before spec-to-pr.
+max_steps: 12
+initial_step: identify
+loop_monitors:
+  - cycle:
+      - audit
+      - revise
+    threshold: 3
+    judge:
+      persona: supervisor
+      knowledge:
+        - growmate
+      instruction: |
+        audit -> revise のループが {cycle_count} 回繰り返されました。
+        Report Directory の最新 audit 結果と修正内容を確認し、収束しているか判断してください。
+        残件が「クライアント確認質問への回答待ち」のみの場合は、仕様書修正で解消不能な論点として finalize に進めてください。
+      rules:
+        - condition: 収束済み（残件がクライアント確認質問のみ）
+          next: finalize
+        - condition: 健全（進捗あり）
+          next: audit
+        - condition: 非生産的（同じ指摘の反復・修正未反映）
+          next: ABORT
+
+steps:
+  - name: identify
+    tags:
+      - plan
+    edit: false
+    persona: planner
+    knowledge:
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      レビュー対象の仕様書を特定し、適用する観点を決定してください。
+
+      必須手順:
+      1. ユーザー指示から対象仕様書（`docs/plans/` 配下）を特定する。曖昧な場合は `docs/plans/` を列挙し、候補を示して ABORT する。
+      2. `.agents/skills/spec-review/SKILL.md` を読む。
+      3. 対象仕様書と `docs/context/client-vision-from-lark.md` を読む。
+      4. spec-review skill のルーティング表に従い、対象仕様書に適用する条件付き観点（クライアント整合 / LLM / UI / データ / Google 連携）を判定し、対応する正本ファイルを列挙する。
+      5. 仕様書が対象とする機能の既存実装（`src/server/services/*`、`src/server/actions/*`、関連画面）を grep で把握する。
+    rules:
+      - condition: 対象仕様書と適用観点を確定した
+        next: audit
+      - condition: ユーザーが質問をしている（レビュータスクではない）
+        next: COMPLETE
+      - condition: 対象仕様書を特定できない
+        next: ABORT
+        appendix: |
+          候補仕様書:
+          - {候補1}
+          - {候補2}
+    output_contracts:
+      report:
+        - name: spec-review-scope.md
+          format: plan
+
+  - name: audit
+    tags:
+      - review
+    edit: false
+    persona: architecture-reviewer
+    knowledge:
+      - architecture
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      `.agents/skills/spec-review/SKILL.md` を正本として、対象仕様書をレビューしてください。
+
+      必須条件:
+      - 共通観点 A（完全性）/ B（既存コード整合）/ C（非機能）/ D（セキュリティ）を全項目確認する。
+      - `spec-review-scope.md` で判定された条件付き観点の正本ファイルを読み、該当チェックリストを適用する。
+      - B の確認では仕様書の記述を鵜呑みにせず、実コード（services / actions / components）を読んで再利用対象・乖離を検証する。
+      - 指摘は「問題箇所 / なぜ危険か / 修正案」の形式で、重大度（🔴/🟡/🟢）を付ける。
+      - クライアント確認が必要な論点は修正案を断定せず、確認質問（Pre-implementation Questions 形式）として隔離する。
+      - 判定基準: 🔴 がゼロ、かつ 🟡 が修正済みまたは理由付きで残置合意済みなら approved。エージェントが解消できる 🔴/🟡 があれば needs_fix。残件がクライアント確認質問のみなら approved_with_questions。
+    rules:
+      - condition: approved（自己解消可能な指摘なし・確認質問もなし）
+        next: finalize
+      - condition: approved_with_questions（残件がクライアント確認質問のみ）
+        next: finalize
+      - condition: needs_fix（仕様書修正で解消できる指摘がある）
+        next: revise
+    output_contracts:
+      report:
+        - name: spec-audit.md
+          format: architecture-review
+
+  - name: revise
+    tags:
+      - implementation
+    edit: true
+    persona: coder
+    knowledge:
+      - growmate
+    provider_options:
+      extends: edit
+    required_permission_mode: edit
+    pass_previous_response: false
+    instruction: |
+      Report Directory の `spec-audit.md` を一次情報として、対象仕様書の未解決指摘だけを修正してください。
+
+      必須条件:
+      - 編集対象は `docs/` 配下の対象仕様書（および付随する docs）に限定する。プロダクションコード・設定ファイルは一切編集しない。
+      - クライアント確認が必要な論点は本文を確定させず、仕様書内に「未確定事項（クライアント確認中）」セクションとして質問ごと明記する。
+      - 指摘への対応方針が複数あり判断できない場合は、勝手に選ばず ABORT する。
+      - 修正した指摘と、対応しなかった指摘（理由付き）を報告する。
+    rules:
+      - condition: 指摘を修正した
+        next: audit
+      - condition: 修正方針を判断できない、情報不足
+        next: ABORT
+    output_contracts:
+      report:
+        - name: spec-revise-result.md
+          format: coder-decisions
+
+  - name: finalize
+    tags:
+      - coding
+      - report
+    edit: true
+    persona: coder
+    provider: claude
+    model: haiku
+    knowledge:
+      - growmate
+    required_permission_mode: edit
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+    instruction: |
+      レビュー結果を確定し、仕様書に変更がある場合は docs ブランチへ push してください。Pull Request 作成は `.github/workflows/auto-pr.yml` に委譲するため、`gh pr create` / `gh pr edit` / `gh pr comment` は実行しないでください。
+
+      手順:
+      1. `git status` / `git diff` で変更内容を確認する。変更が `docs/` 配下のみであることを検証し、それ以外の変更が混入していれば ABORT する。
+      2. 仕様書に変更がある場合: 現在のブランチが `develop` または `main` なら `docs/spec-review-{仕様書名}` ブランチを作成し、日本語1行メッセージで commit、`git push -u origin HEAD` を実行する。
+      3. 仕様書に変更がない場合（指摘なし approved）: commit / push は行わない。
+      4. 最終レポートに以下を含める: 指摘サマリ（重大度別件数）、未解決のクライアント確認質問、次アクション（質問回答 → 仕様書PR マージ → `.takt/workflows/spec-to-pr.yaml` で実装）。
+
+      やらないこと:
+      - PR の作成・更新・マージ・クローズ。
+      - `docs/` 以外の編集・コミット。
+    rules:
+      - condition: レビュー確定（push 完了、または変更なしで完了）
+        next: COMPLETE
+      - condition: docs 以外の変更が混入している、または push に失敗した
+        next: ABORT
+    output_contracts:
+      report:
+        - name: spec-review-summary.md
+          format: summary

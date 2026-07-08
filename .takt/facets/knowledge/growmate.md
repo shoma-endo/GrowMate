@@ -13,7 +13,8 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 - `.agents/skills/growmate-ui-ux/SKILL.md` must be read before editing `app/**` or `src/components/**`.
 - `.agents/skills/supabase/SKILL.md` must be read for Supabase, RLS, Service Role, migrations, and generated type changes.
 - `.agents/skills/quality-gate/SKILL.md` defines verification and self-review.
-- `.takt/workflows/spec-to-pr.yaml` and `.takt/workflows/react-doctor-to-pr.yaml` are the source workflows for PR automation.
+- `.agents/skills/spec-review/SKILL.md` defines specification review checkpoints and routing.
+- `.takt/workflows/spec-to-pr.yaml` and `.takt/workflows/react-doctor-to-pr.yaml` are the source workflows for PR automation. `.takt/workflows/spec-review.yaml` reviews a specification before spec-to-pr.
 - `docs/plans/` contains implementation specifications.
 
 ## Required Verification
