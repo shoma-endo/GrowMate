@@ -89,10 +89,13 @@ steps:
       - Server Actions / Route Handlers では `nextjs-server` のエラー処理・Zod規約に従う。
       - Supabase Service Role 使用時は user_id 等の明示的なスコープ条件を入れる。
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
+      - 実装開始前に対象仕様書の現行版を再読し、`plan.md` 作成時点の内容と食い違いがないか確認する。食い違いがあれば実装を進めず plan への差し戻しを判断する。
       - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
     rules:
       - condition: 実装と必須検証が完了した
         next: review
+      - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
+        next: plan
       - condition: 判断できない、情報不足
         next: ABORT
       - condition: ユーザー入力が必要
@@ -151,6 +154,7 @@ steps:
       Report Directory の `architecture-review.md` と `self-review.md` を一次情報として、未解決の指摘だけを修正してください。
 
       必須条件:
+      - 修正着手前に対象仕様書の現行版を確認し、レビュー指摘の範囲を超える仕様変更がないか確認する。
       - architecture-reviewer の未解決指摘がある場合は、指摘対象コードを直接修正する。
       - self_review の未解決指摘がある場合は、self-review.md の該当項目を優先して修正する。
       - architecture-review.md が APPROVE で self_review 起因の差し戻しだけの場合、architecture review を再解決しようとして同じ確認を繰り返さない。
@@ -167,6 +171,8 @@ steps:
       - condition: self_review 起因の指摘だけを修正し、architecture-reviewer の open findings がない
         next: self_review
       - condition: レビュー指摘に対応するための情報が不足している
+        next: plan
+      - condition: 対象仕様書がレビュー後に変更されており、指摘の枠を超える実装方針の再検討が必要
         next: plan
       - condition: 修正を進行できない
         next: ABORT
