@@ -22,10 +22,6 @@ import {
   isEmailLinkConflictResult,
   replaceToEmailLinkConflictLogin,
 } from '@/lib/auth/emailLinkConflictClient';
-import {
-  normalizeKnowledgeSourceOverrideText,
-  readKnowledgeSourceOverrideText,
-} from '@/lib/knowledgeSourceOverride';
 
 export type { ChatSessionActions, ChatSessionHook };
 
@@ -80,7 +76,6 @@ interface StreamingParams {
   continuationMode?: boolean;
   /** continuationMode 時の連結元テキスト（途切れた assistant メッセージの元の内容） */
   truncatedContent?: string;
-  knowledgeSourceOverrideText?: string;
 }
 
 export const useChatSession = (
@@ -146,7 +141,6 @@ export const useChatSession = (
       step7FullBodyGeneration,
       continuationMode,
       truncatedContent,
-      knowledgeSourceOverrideText,
     }: StreamingParams) => {
       // step7FullBodyGeneration: 楽観的表示は短いトリガーを使い、loadSession 後の表示と一致させる
       const displayContent =
@@ -184,7 +178,6 @@ export const useChatSession = (
             ...(serviceId ? { serviceId } : {}),
             ...(step7FullBodyGeneration ? { step7FullBodyGeneration: true } : {}),
             ...(continuationMode ? { isContinuation: true, truncatedContent: truncatedContent ?? '' } : {}),
-            ...(knowledgeSourceOverrideText ? { knowledgeSourceOverrideText } : {}),
           }),
         });
 
@@ -394,7 +387,6 @@ export const useChatSession = (
       recentMessages,
       systemPrompt,
       serviceId,
-      knowledgeSourceOverrideText,
     }: StreamingParams): Promise<boolean> => {
       const { userMessage, assistantMessage } = createStreamingMessagePair(content, model);
       setState(prev => ({
@@ -414,7 +406,6 @@ export const useChatSession = (
           messages: recentMessages,
           systemPrompt,
           serviceId,
-          knowledgeSourceOverrideText,
         });
 
         if (response.warning) {
@@ -537,13 +528,6 @@ export const useChatSession = (
                     : MAX_MESSAGES,
               }),
         };
-        const knowledgeSourceOverrideText = normalizeKnowledgeSourceOverrideText(
-          readKnowledgeSourceOverrideText()
-        );
-
-        if (knowledgeSourceOverrideText) {
-          streamingParams.knowledgeSourceOverrideText = knowledgeSourceOverrideText;
-        }
 
         if (options?.systemPrompt) {
           streamingParams.systemPrompt = options.systemPrompt;

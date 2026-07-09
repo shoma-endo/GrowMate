@@ -18,10 +18,6 @@ import { STEP7_ID } from '@/lib/constants';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
 import { getBlogCreationTemplatePrompt } from '@/lib/prompts';
 import { resolveKnowledgeBlocksForRequest } from '@/lib/knowledgeInjection';
-import {
-  normalizeKnowledgeSourceOverrideText,
-  validateKnowledgeSourceOverrideText,
-} from '@/lib/knowledgeSourceOverride';
 import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import {
   addTokenUsageTotals,
@@ -75,7 +71,6 @@ interface CanvasStreamRequest {
     blockedDomains?: string[];
   };
   canvasHistory?: { role: 'user' | 'assistant'; content: string }[];
-  knowledgeSourceOverrideText?: string;
 }
 
 const anthropic = new Anthropic({
@@ -273,29 +268,7 @@ export async function POST(req: NextRequest) {
       step7HeadingIndex,
       webSearchConfig = {},
       canvasHistory = [],
-      knowledgeSourceOverrideText,
     }: CanvasStreamRequest = await req.json();
-    const normalizedKnowledgeSourceOverrideText =
-      normalizeKnowledgeSourceOverrideText(knowledgeSourceOverrideText);
-    const knowledgeOverrideValidationError = validateKnowledgeSourceOverrideText(
-      normalizedKnowledgeSourceOverrideText
-    );
-    if (knowledgeOverrideValidationError) {
-      return new Response(
-        sendSSE('error', {
-          type: 'invalid_request',
-          message: knowledgeOverrideValidationError,
-        }),
-        {
-          status: 400,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-store',
-            Connection: 'keep-alive',
-          },
-        }
-      );
-    }
     const normalizedFreeFormPrompt =
       typeof freeFormUserPrompt === 'string' ? freeFormUserPrompt.trim() : undefined;
     if (contentStep !== targetStep) {
@@ -722,7 +695,6 @@ export async function POST(req: NextRequest) {
           const { anthropicSystem } = await resolveKnowledgeBlocksForRequest(l2WithWebSearch, {
             modelKey,
             userRole,
-            knowledgeOverrideText: normalizedKnowledgeSourceOverrideText,
             inputEstimate: {
               recentMessages: canvasHistory,
               userMessage: instruction,
@@ -733,7 +705,6 @@ export async function POST(req: NextRequest) {
             sessionId,
             modelKey,
             userRole,
-            override: Boolean(normalizedKnowledgeSourceOverrideText),
             injected: anthropicSystem.length > 1,
             anthropicSystemBlockCount: anthropicSystem.length,
             shouldEnableWebSearch,

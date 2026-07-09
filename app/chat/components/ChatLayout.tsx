@@ -49,10 +49,6 @@ import { ChatLayoutContent } from './ChatLayoutContent';
 import { ChatLayoutProps } from '@/types/chat-layout';
 import { createFullMarkdownDecoder } from '@/lib/markdown-decoder';
 import { resolveHeadingCanvasViewMode } from '@/lib/canvas-mode';
-import {
-  normalizeKnowledgeSourceOverrideText,
-  readKnowledgeSourceOverrideText,
-} from '@/lib/knowledgeSourceOverride';
 import { useCanvasVersions } from '@/hooks/useCanvasVersions';
 import { useWordpressSync } from '@/hooks/useWordpressSync';
 import { useSessionTitle } from '@/hooks/useSessionTitle';
@@ -1552,10 +1548,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         // ✅ ストリーミングAPI呼び出し（必要に応じてWeb検索を利用）
         // 見出し単位 = 未確定の見出し編集中 OR 確定済み見出しの再編集（戻るで遷移）。完成形表示時は false
         const isHeadingUnit = step7ViewModeForRequest.isHeadingUnit;
-        const knowledgeSourceOverrideText = normalizeKnowledgeSourceOverrideText(
-          readKnowledgeSourceOverrideText()
-        );
-
         const response = await fetch('/api/chat/canvas/stream', {
           method: 'POST',
           headers: {
@@ -1576,7 +1568,6 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             },
             ...(freeFormUserPrompt !== undefined && { freeFormUserPrompt }),
             canvasHistory: canvasEditHistory.slice(-4),
-            ...(knowledgeSourceOverrideText ? { knowledgeSourceOverrideText } : {}),
           }),
         });
 

@@ -80,19 +80,16 @@ export class ModelHandlerService {
     inputEstimate?: {
       recentMessages?: { content: string }[];
       userMessage?: string;
-    },
-    knowledgeSourceOverrideText?: string
+    }
   ) {
     const resolved = await resolveKnowledgeBlocksForRequest(templateBlock, {
       modelKey,
       userRole,
       ...(inputEstimate ? { inputEstimate } : {}),
-      ...(knowledgeSourceOverrideText ? { knowledgeOverrideText: knowledgeSourceOverrideText } : {}),
     });
     console.info('[ModelHandler] knowledge system resolved', {
       modelKey,
       userRole,
-      override: Boolean(knowledgeSourceOverrideText),
       injected: resolved.blocks.knowledgeBlock.trim().length > 0,
       anthropicSystemBlockCount: resolved.anthropicSystem.length,
       knowledgeBlockChars: resolved.blocks.knowledgeBlock.length,
@@ -110,7 +107,7 @@ export class ModelHandlerService {
     data: StartChatInput,
     userRole: UserRole
   ): Promise<ChatResponse> {
-    const { userMessage, model, serviceId, knowledgeSourceOverrideText } = data;
+    const { userMessage, model, serviceId } = data;
     // キャッシュ戦略を活用した動的プロンプト取得
     const systemPrompt = await getSystemPrompt(model, undefined, undefined, serviceId);
 
@@ -118,23 +115,9 @@ export class ModelHandlerService {
       case 'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2':
         return this.handleFTModel(userId, systemPrompt, userMessage, model, serviceId);
       case 'ad_copy_creation':
-        return this.handleAdCopyModel(
-          userId,
-          systemPrompt,
-          userMessage,
-          serviceId,
-          userRole,
-          knowledgeSourceOverrideText
-        );
+        return this.handleAdCopyModel(userId, systemPrompt, userMessage, serviceId, userRole);
       case 'lp_draft_creation':
-        return this.handleLPDraftModel(
-          userId,
-          systemPrompt,
-          userMessage,
-          serviceId,
-          userRole,
-          knowledgeSourceOverrideText
-        );
+        return this.handleLPDraftModel(userId, systemPrompt, userMessage, serviceId, userRole);
       default:
         return this.handleDefaultModel(userId, systemPrompt, userMessage, model, serviceId);
     }
@@ -152,7 +135,6 @@ export class ModelHandlerService {
       model,
       systemPrompt: customSystemPrompt,
       serviceId,
-      knowledgeSourceOverrideText,
     } = data;
     // カスタムsystemPromptが渡されていればそれを使用、なければキャッシュ戦略を活用した動的プロンプト取得
     const systemPrompt =
@@ -212,7 +194,7 @@ export class ModelHandlerService {
       const knowledge = await this.buildKnowledgeAwareSystemPrompt(systemPrompt, model, userRole, {
         recentMessages: validMessages,
         userMessage: userMessage.trim(),
-      }, knowledgeSourceOverrideText);
+      });
 
       return await chatService.continueChat(
         userId,
@@ -237,8 +219,7 @@ export class ModelHandlerService {
         {
           recentMessages: validMessages,
           userMessage: userMessage.trim(),
-        },
-        knowledgeSourceOverrideText
+        }
       );
 
       return await chatService.continueChat(
@@ -319,15 +300,13 @@ export class ModelHandlerService {
     systemPrompt: string,
     userMessage: string,
     serviceId: string | undefined,
-    userRole: UserRole,
-    knowledgeSourceOverrideText?: string
+    userRole: UserRole
   ): Promise<ChatResponse> {
     const knowledge = await this.buildKnowledgeAwareSystemPrompt(
       systemPrompt,
       'ad_copy_creation',
       userRole,
-      { userMessage: userMessage.trim() },
-      knowledgeSourceOverrideText
+      { userMessage: userMessage.trim() }
     );
 
     return await chatService.startChat(
@@ -345,8 +324,7 @@ export class ModelHandlerService {
     systemPrompt: string,
     userMessage: string,
     serviceId: string | undefined,
-    userRole: UserRole,
-    knowledgeSourceOverrideText?: string
+    userRole: UserRole
   ): Promise<ChatResponse> {
     const variables = await this.buildLPDraftVariables(userId, serviceId);
     const finalSystemPrompt = PromptService.replaceVariables(systemPrompt, variables);
@@ -354,8 +332,7 @@ export class ModelHandlerService {
       finalSystemPrompt,
       'lp_draft_creation',
       userRole,
-      { userMessage: userMessage.trim() },
-      knowledgeSourceOverrideText
+      { userMessage: userMessage.trim() }
     );
 
     return await chatService.startChat(

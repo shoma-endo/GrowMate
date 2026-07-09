@@ -1,14 +1,22 @@
 import { redirect } from 'next/navigation';
 import PromptsClient from './PromptsClient';
 import { fetchPrompts } from '@/server/actions/adminPrompts.actions';
+import { fetchGlobalKnowledgeSource } from '@/server/actions/adminKnowledgeSources.actions';
 import { PromptTemplate } from '@/types/prompt';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PromptsPage() {
-  const promptsRes = await fetchPrompts();
+  const [promptsRes, globalKnowledgeRes] = await Promise.all([
+    fetchPrompts(),
+    fetchGlobalKnowledgeSource(),
+  ]);
 
   if (promptsRes && !promptsRes.success && 'emailLinkConflict' in promptsRes && promptsRes.emailLinkConflict) {
+    redirect('/login?reason=email_link_conflict');
+  }
+
+  if (globalKnowledgeRes && !globalKnowledgeRes.success && 'emailLinkConflict' in globalKnowledgeRes && globalKnowledgeRes.emailLinkConflict) {
     redirect('/login?reason=email_link_conflict');
   }
 
@@ -21,11 +29,25 @@ export default async function PromptsPage() {
       <PromptsClient
         initialTemplates={[]}
         initialError={error}
+        initialGlobalKnowledgeSource={null}
+        initialGlobalKnowledgeError={
+          globalKnowledgeRes && !globalKnowledgeRes.success ? globalKnowledgeRes.error : null
+        }
       />
     );
   }
 
   const templates = promptsRes.data as PromptTemplate[];
 
-  return <PromptsClient initialTemplates={templates} />;
+  return (
+    <PromptsClient
+      initialTemplates={templates}
+      initialGlobalKnowledgeSource={
+        globalKnowledgeRes.success ? globalKnowledgeRes.data : null
+      }
+      initialGlobalKnowledgeError={
+        globalKnowledgeRes && !globalKnowledgeRes.success ? globalKnowledgeRes.error : null
+      }
+    />
+  );
 }

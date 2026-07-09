@@ -7,12 +7,7 @@ import {
   trimKnowledgeForGeneration,
   type RequestInputTokenEstimateParams,
 } from '@/lib/knowledgeBudget';
-import {
-  KNOWLEDGE_SOURCE_OVERRIDE_BUDGET_TOKENS,
-  normalizeKnowledgeSourceOverrideText,
-  validateKnowledgeSourceOverrideText,
-} from '@/lib/knowledgeSourceOverride';
-import { KnowledgeSourceService } from '@/server/services/knowledgeSourceService';
+import { getGlobalKnowledgeContent } from '@/server/services/globalKnowledgeContent';
 import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
 
 const KNOWLEDGE_INJECTION_MODEL_KEYS = new Set([
@@ -40,10 +35,6 @@ export type AnthropicSystemBlock = {
   cache_control?: { type: 'ephemeral' };
 };
 
-function getKnowledgeSourceLabel(hasOverride: boolean): 'override' | 'global' {
-  return hasOverride ? 'override' : 'global';
-}
-
 function isKnowledgeInjectionModel(modelKey: string): boolean {
   if (KNOWLEDGE_INJECTION_MODEL_KEYS.has(modelKey)) return true;
   if (/^blog_creation_step7_h\d+/.test(modelKey)) return true;
@@ -53,23 +44,14 @@ function isKnowledgeInjectionModel(modelKey: string): boolean {
 
 async function buildKnowledgeSystemBlocks(
   templateBlock: string,
-  options?: { budgetTokens?: number; knowledgeOverrideText?: string }
+  options?: { budgetTokens?: number }
 ): Promise<KnowledgeSystemBlocks> {
-  const overrideText = normalizeKnowledgeSourceOverrideText(options?.knowledgeOverrideText);
-  const overrideError = overrideText ? validateKnowledgeSourceOverrideText(overrideText) : null;
-  if (overrideError) {
-    throw new Error(overrideError);
-  }
-
-  const raw = overrideText || (await KnowledgeSourceService.getGlobalKnowledgeContent());
-  const defaultBudgetTokens = overrideText
-    ? KNOWLEDGE_SOURCE_OVERRIDE_BUDGET_TOKENS
-    : DEFAULT_KNOWLEDGE_INJECTION_BUDGET_TOKENS;
-  const budgetTokens = options?.budgetTokens ?? defaultBudgetTokens;
+  const raw = await getGlobalKnowledgeContent();
+  const budgetTokens = options?.budgetTokens ?? DEFAULT_KNOWLEDGE_INJECTION_BUDGET_TOKENS;
   const hot = trimKnowledgeForGeneration(raw, budgetTokens);
 
   console.info('[KnowledgeInjection] source content resolved', {
-    source: getKnowledgeSourceLabel(Boolean(overrideText)),
+    source: 'global',
     rawChars: raw.length,
     trimmedChars: hot.length,
     budgetTokens,
@@ -81,7 +63,7 @@ async function buildKnowledgeSystemBlocks(
   }
 
   const knowledgeBlock = [
-    '## カオルさんの考え方・ノウハウ（有料 Pro ユーザー共通）',
+    '## 共通プロンプト（有料 Pro ユーザー共通）',
     '',
     hot.trim(),
   ].join('\n');
@@ -95,7 +77,6 @@ async function buildKnowledgeSystemBlocksForRequest(
     modelKey: string;
     userRole: UserRole;
     budgetTokens?: number;
-    knowledgeOverrideText?: string;
   }
 ): Promise<KnowledgeSystemBlocks> {
   if (!hasPaidFeatureAccess(options.userRole)) {
@@ -109,15 +90,10 @@ async function buildKnowledgeSystemBlocksForRequest(
   if (options.budgetTokens !== undefined) {
     return buildKnowledgeSystemBlocks(templateBlock, {
       budgetTokens: options.budgetTokens,
-      ...(options.knowledgeOverrideText
-        ? { knowledgeOverrideText: options.knowledgeOverrideText }
-        : {}),
     });
   }
 
-  return buildKnowledgeSystemBlocks(templateBlock, {
-    ...(options.knowledgeOverrideText ? { knowledgeOverrideText: options.knowledgeOverrideText } : {}),
-  });
+  return buildKnowledgeSystemBlocks(templateBlock);
 }
 
 function toAnthropicSystemBlocks(blocks: KnowledgeSystemBlocks): AnthropicSystemBlock[] {
@@ -141,10 +117,8 @@ export async function resolveKnowledgeBlocksForRequest(
     modelKey: string;
     userRole: UserRole;
     inputEstimate?: Omit<RequestInputTokenEstimateParams, 'systemBlocks'>;
-    knowledgeOverrideText?: string;
   }
 ): Promise<{ blocks: KnowledgeSystemBlocks; anthropicSystem: AnthropicSystemBlock[] }> {
-  const overrideText = normalizeKnowledgeSourceOverrideText(options.knowledgeOverrideText);
   const eligibleByRole = hasPaidFeatureAccess(options.userRole);
   const eligibleByModel = isKnowledgeInjectionModel(options.modelKey);
 
@@ -153,13 +127,11 @@ export async function resolveKnowledgeBlocksForRequest(
     userRole: options.userRole,
     eligibleByRole,
     eligibleByModel,
-    override: Boolean(overrideText),
   });
 
   const preliminaryBlocks = await buildKnowledgeSystemBlocksForRequest(templateBlock, {
     modelKey: options.modelKey,
     userRole: options.userRole,
-    ...(overrideText ? { knowledgeOverrideText: overrideText } : {}),
   });
 
   const estimateParams: RequestInputTokenEstimateParams = {
@@ -167,10 +139,7 @@ export async function resolveKnowledgeBlocksForRequest(
     ...options.inputEstimate,
   };
   const estimatedInputTokens = estimateRequestInputTokens(estimateParams);
-
-  const budgetTokens = overrideText
-    ? KNOWLEDGE_SOURCE_OVERRIDE_BUDGET_TOKENS
-    : resolveKnowledgeBudgetTokens(estimatedInputTokens, options.modelKey);
+  const budgetTokens = resolveKnowledgeBudgetTokens(estimatedInputTokens, options.modelKey);
 
   let blocks: KnowledgeSystemBlocks;
   if (budgetTokens === null) {
@@ -185,7 +154,6 @@ export async function resolveKnowledgeBlocksForRequest(
       modelKey: options.modelKey,
       userRole: options.userRole,
       budgetTokens,
-      ...(overrideText ? { knowledgeOverrideText: overrideText } : {}),
     });
   }
 
@@ -194,7 +162,6 @@ export async function resolveKnowledgeBlocksForRequest(
   console.info('[KnowledgeInjection] request resolved', {
     modelKey: options.modelKey,
     userRole: options.userRole,
-    override: Boolean(overrideText),
     estimatedInputTokens,
     budgetTokens,
     injected: blocks.knowledgeBlock.trim().length > 0,

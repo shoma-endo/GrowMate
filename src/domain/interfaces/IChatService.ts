@@ -7,7 +7,6 @@ export interface SendMessageParams {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   systemPrompt?: string | undefined;
   serviceId?: string | undefined;
-  knowledgeSourceOverrideText?: string | undefined;
 }
 
 export interface SendMessageResponse {

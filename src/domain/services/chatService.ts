@@ -222,9 +222,6 @@ export class ChatService implements IChatService {
       model: params.model,
       ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
       ...(params.serviceId !== undefined ? { serviceId: params.serviceId } : {}),
-      ...(params.knowledgeSourceOverrideText !== undefined
-        ? { knowledgeSourceOverrideText: params.knowledgeSourceOverrideText }
-        : {}),
     });
 
     return {
@@ -249,9 +246,6 @@ export class ChatService implements IChatService {
       model: params.model,
       ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
       ...(params.serviceId !== undefined ? { serviceId: params.serviceId } : {}),
-      ...(params.knowledgeSourceOverrideText !== undefined
-        ? { knowledgeSourceOverrideText: params.knowledgeSourceOverrideText }
-        : {}),
     });
 
     return {
