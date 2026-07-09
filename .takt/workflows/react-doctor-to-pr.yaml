@@ -4,9 +4,23 @@ workflow_config:
   provider_options:
     codex:
       network_access: true
-max_steps: 10
+max_steps: 16
 initial_step: react_doctor_baseline
 loop_monitors:
+  - cycle:
+      - ai_antipattern_review
+      - ai_antipattern_fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      knowledge:
+        - growmate
+      instruction: loop-monitor-ai-antipattern-fix
+      rules:
+        - condition: 健全（進捗あり）
+          next: ai_antipattern_review
+        - condition: 非生産的（改善なし）
+          next: react_doctor_after
   - cycle:
       - review
       - fix
@@ -96,7 +110,7 @@ steps:
       - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
     rules:
       - condition: 実装と必須検証が完了した
-        next: react_doctor_after
+        next: ai_antipattern_review
       - condition: 判断できない、情報不足
         next: ABORT
     output_contracts:
@@ -105,6 +119,54 @@ steps:
           format: coder-scope
         - name: coder-decisions.md
           format: coder-decisions
+
+  - name: ai_antipattern_review
+    tags:
+      - review
+    edit: false
+    persona: ai-antipattern-reviewer
+    policy:
+      - review
+      - ai-antipattern
+    knowledge:
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: ai-antipattern-review
+    rules:
+      - condition: AI特有の問題が見つからない
+        next: react_doctor_after
+      - condition: AI特有の問題が検出された
+        next: ai_antipattern_fix
+    output_contracts:
+      report:
+        - name: ai-antipattern-review.md
+          format: ai-antipattern-review
+
+  - name: ai_antipattern_fix
+    tags:
+      - coding
+      - implementation
+    edit: true
+    persona: coder
+    policy:
+      - coding
+    knowledge:
+      - architecture
+      - react
+      - growmate
+    provider_options:
+      extends: edit
+    required_permission_mode: edit
+    pass_previous_response: false
+    instruction: ai-antipattern-fix
+    rules:
+      - condition: AI Reviewerの指摘に対する修正が完了した
+        next: ai_antipattern_review
+      - condition: 修正不要（指摘対象ファイル/仕様の確認済み）
+        next: react_doctor_after
+      - condition: 修正を進行できない
+        next: react_doctor_after
 
   - name: react_doctor_after
     tags:
