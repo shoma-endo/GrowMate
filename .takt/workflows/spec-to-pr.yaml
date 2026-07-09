@@ -268,6 +268,7 @@ steps:
 
       確認対象:
       - 仕様書の全要件が実装されていること。
+      - 対象仕様書（`docs/plans/` 配下）が本PRのスコープで完全実装されたか（未実装フェーズ・TODO・スコープ外セクションが残っていないか）を判定し、`self-review.md` に明記する。
       - `npm run verify` が成功していること。
       - architecture-reviewer の open findings がないこと。
       - 余計な差分や機密情報の露出がないこと。
@@ -304,6 +305,7 @@ steps:
       - 実装やレビュー判断は行わない。確認済みの事実と意見（完了判断）を分けて整理する。
       - 読むレポートは原則として最新の `architecture-review.md`、`self-review.md`、`fix-result.md`、必要に応じて `plan.md` までに絞る。
       - `coder-scope.md` / `coder-decisions.md` は存在する場合だけ参照し、存在しなくても不足レポートとして扱わない。
+      - `self-review.md` の仕様書完全実装判定を読み取り、`## 関連仕様書` に転記する（実装やレビュー判断はしない、転記のみ）。
       - `pr-summary.md` は GitHub PR 本文としてそのまま使える Markdown にする。先頭に PR タイトル案を1行（`# ` 見出し）で書き、続けて本文セクションを書く。
       - PR タイトル形式（必須）:
         - 日本語・1行・50字以内（`# ` を除く本文）。
@@ -311,7 +313,7 @@ steps:
         - 禁止: `[Auto]` 接頭辞、ブランチ名だけのタイトル、`実装完了` / `対応完了` などの自己申告、英語のみ、conventional commits 接頭辞（`feat:` 等）。
       - 必須セクション（この順）:
         1. `## 概要` — 何を・なぜ変えたか（仕様起点、2〜4文）
-        2. `## 関連仕様書` — `docs/plans/` のパス
+        2. `## 関連仕様書` — `docs/plans/` のパス。`self-review.md` が完全実装と判定した場合は「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動」と明記する。部分実装の場合は「`docs/plans/` に残置（未実装: ○○）」と明記する
         3. `## 変更要点` — 主要変更のみ（ファイル一覧の羅列は禁止。カテゴリ単位で3〜7点）
         4. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
         5. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く
@@ -358,11 +360,12 @@ steps:
          - 既に `feature/*` または `fix/*` にいて、対象仕様の作業ブランチならそのまま使う。
          - `develop` / `main` にいる場合、対象仕様に対応する既存リモートブランチがあれば checkout して継続する。
          - 既存がなければ仕様書名または機能名から `feature/...` または `fix/...` の英語ブランチを新規作成する。
-      4. `git add` で変更をステージし、`git diff --cached` で最終確認する。無関係なローカル変更を混ぜない。
-      5. `pr-summary.md` のコミットメッセージ案（なければ Why 中心の日本語1行）で `git commit` する。変更がなければ新規コミットは作らず、既存 tip で PR 更新へ進む。
-      6. `git push -u origin HEAD` を実行する。
-      7. base は `develop`（ブランチが `develop` の場合のみ `main`）。
-      8. PR を冪等に作成または更新する（auto-pr とのレースに耐える。既存 PR への追記を含む）:
+      4. `pr-summary.md` の `## 関連仕様書` に `docs/plans/xxx.md` → `docs/specs/xxx.md` への移動指示がある場合、`git mv docs/plans/xxx.md docs/specs/xxx.md` を実行し実装差分と同一コミットに含める。移動指示がなければ何もしない。
+      5. `git add` で変更をステージし、`git diff --cached` で最終確認する。無関係なローカル変更を混ぜない。
+      6. `pr-summary.md` のコミットメッセージ案（なければ Why 中心の日本語1行）で `git commit` する。変更がなければ新規コミットは作らず、既存 tip で PR 更新へ進む。
+      7. `git push -u origin HEAD` を実行する。
+      8. base は `develop`（ブランチが `develop` の場合のみ `main`）。
+      9. PR を冪等に作成または更新する（auto-pr とのレースに耐える。既存 PR への追記を含む）:
          a. `pr-summary.md` からタイトル行を除いた本文を一時ファイルに書き出して `--body-file` に渡す（シェル展開で壊さない）。
          b. `gh pr list --head <branch> --base <base> --state open` で既存 PR を確認する。
          c. 既存があれば `gh pr edit <number> --title "..." --body-file ...` で更新する（TAKT が正本。追記コミット後も本文を最新化する）。
@@ -370,7 +373,7 @@ steps:
          e. `gh pr create` が「already exists」等で失敗した場合は ABORT せず、再度 `gh pr list` して番号を取得し、`gh pr edit` で本文・タイトルを更新する。edit 成功なら完了とする。
          f. auto-pr の完了は待たない。再 list → edit で吸収する。
          g. 再 list でも PR が見つからない、または edit も失敗した場合のみ失敗とする。
-      9. 作成/更新した PR の URL・番号・ブランチ・コミット SHA を報告する。CI 完了は待たない。
+      10. 作成/更新した PR の URL・番号・ブランチ・コミット SHA を報告する。CI 完了は待たない。
 
       やらないこと:
       - `@codex` レビュー依頼コメントの投稿。
