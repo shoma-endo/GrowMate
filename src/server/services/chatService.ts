@@ -1,5 +1,9 @@
 import { llmChat } from './llmService';
 import {
+  appendHistorySummaryToAnthropicSystem,
+  type AnthropicSystemBlock,
+} from '@/lib/knowledgeInjection';
+import {
   ChatMessage,
   ChatSessionSearchMatch,
   DbChatMessage,
@@ -17,6 +21,10 @@ import { generateOrderedTimestamps } from '@/lib/timestamps';
 interface ChatResponse {
   message: string;
   error?: string;
+}
+
+interface ChatLLMOptions {
+  anthropicSystemBlocks?: AnthropicSystemBlock[];
 }
 
 class ChatService {
@@ -53,7 +61,8 @@ class ChatService {
     systemPrompt: string,
     userMessage: string | string[],
     model?: string,
-    serviceId?: string
+    serviceId?: string,
+    llmOptions?: ChatLLMOptions
   ): Promise<{
     message: string;
     error?: string;
@@ -71,6 +80,18 @@ class ChatService {
         const llmModel = config.actualModel;
 
         try {
+          const llmCallOptions: {
+            temperature: number | undefined;
+            maxTokens: number;
+            anthropicSystemBlocks?: AnthropicSystemBlock[];
+          } = {
+            temperature: config.temperature,
+            maxTokens: config.maxTokens,
+          };
+          if (llmOptions?.anthropicSystemBlocks) {
+            llmCallOptions.anthropicSystemBlocks = llmOptions.anthropicSystemBlocks;
+          }
+
           const aiReply = await llmChat(
             providerKey,
             llmModel,
@@ -78,7 +99,7 @@ class ChatService {
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userMessage },
             ],
-            { temperature: config.temperature, maxTokens: config.maxTokens }
+            llmCallOptions
           );
 
           aiResponse = { message: aiReply };
@@ -174,7 +195,8 @@ class ChatService {
     userMessage: string | string[],
     systemPrompt: string,
     messages: OpenAIMessage[],
-    model?: string
+    model?: string,
+    llmOptions?: ChatLLMOptions
   ): Promise<{
     message: string;
     error?: string;
@@ -229,11 +251,19 @@ class ChatService {
           const charOverflowMessages = countLimitedMessages.slice(0, effectiveCutOffIndex);
           olderMessages = [...countOverflowMessages, ...charOverflowMessages];
 
+          let anthropicSystemBlocks = llmOptions?.anthropicSystemBlocks;
+
           if (olderMessages.length > 0) {
             try {
               const summary = await this.summarizeHistory(olderMessages);
               if (summary && summary.trim().length > 0) {
                 finalSystemPrompt = `${systemPrompt}\n\n【直前までの会話要約】\n${summary}`;
+                if (anthropicSystemBlocks && anthropicSystemBlocks.length > 0) {
+                  anthropicSystemBlocks = appendHistorySummaryToAnthropicSystem(
+                    anthropicSystemBlocks,
+                    summary
+                  );
+                }
               }
             } catch (error) {
               console.warn('[ChatService] History summarization failed:', error);
@@ -250,10 +280,19 @@ class ChatService {
             { role: 'user' as const, content: userMessage },
           ];
 
-          const aiReply = await llmChat(providerKey, llmModel, llmMessages, {
+          const continueLlmOptions: {
+            temperature: number | undefined;
+            maxTokens: number;
+            anthropicSystemBlocks?: AnthropicSystemBlock[];
+          } = {
             temperature: config.temperature,
             maxTokens: config.maxTokens,
-          });
+          };
+          if (anthropicSystemBlocks && anthropicSystemBlocks.length > 0) {
+            continueLlmOptions.anthropicSystemBlocks = anthropicSystemBlocks;
+          }
+
+          const aiReply = await llmChat(providerKey, llmModel, llmMessages, continueLlmOptions);
 
           aiResponse = { message: aiReply };
         } catch (error) {

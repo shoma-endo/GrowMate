@@ -85,7 +85,7 @@ async function startChat(data: StartChatInput): Promise<ChatResponse> {
     }
 
     // モデル処理に委譲
-    return await modelHandler.handleStart(auth.userId, validatedData);
+    return await modelHandler.handleStart(auth.userId, validatedData, auth.role);
   } catch (e: unknown) {
     console.error('startChat failed:', e);
     return { message: '', error: ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR };
@@ -113,7 +113,7 @@ async function continueChat(data: ContinueChatInput): Promise<ChatResponse> {
     }
 
     // モデル処理に委譲
-    return await modelHandler.handleContinue(auth.userId, validatedData);
+    return await modelHandler.handleContinue(auth.userId, validatedData, auth.role);
   } catch (e: unknown) {
     console.error('continueChat failed:', e);
     return { message: '', error: ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR };

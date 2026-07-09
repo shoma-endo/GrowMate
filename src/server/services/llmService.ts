@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { ChatError } from '@/domain/errors/ChatError';
 import { env } from '@/env';
+import type { AnthropicSystemBlock } from '@/lib/knowledgeInjection';
 
 interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
@@ -12,13 +13,12 @@ interface LLMOptions {
   temperature?: number | undefined;
   maxTokens?: number | undefined;
   stream?: boolean | undefined;
-  // Note: seed/top_p are configured in MODEL_CONFIGS but not currently used
-  // Future implementation: use provider(model).withSettings({ seed, topP }) if needed
   /**
    * LLM呼び出しのタイムアウト（ミリ秒）。未指定時は 300000ms。
    */
   timeoutMs?: number;
   signal?: AbortSignal;
+  anthropicSystemBlocks?: AnthropicSystemBlock[];
 }
 
 class LLMService {
@@ -58,7 +58,13 @@ class LLMService {
       const llmPromise =
         providerKey === 'openai'
           ? this.callOpenAI(model, systemPrompt, chatMessages, requestOptions)
-          : this.callAnthropic(model, systemPrompt, chatMessages, requestOptions);
+          : this.callAnthropic(
+              model,
+              systemPrompt,
+              chatMessages,
+              requestOptions,
+              opts.anthropicSystemBlocks
+            );
 
       const text = await llmPromise.finally(() => {
         clearTimeout(timeoutId);
@@ -106,21 +112,25 @@ class LLMService {
     model: string,
     systemPrompt: string | undefined,
     messages: LLMMessage[],
-    opts: LLMOptions
+    opts: LLMOptions,
+    anthropicSystemBlocks?: AnthropicSystemBlock[]
   ): Promise<string> {
-    const params = {
-      model,
-      ...(systemPrompt
-        ? {
-            system: [
+    const systemBlocks =
+      anthropicSystemBlocks && anthropicSystemBlocks.length > 0
+        ? anthropicSystemBlocks
+        : systemPrompt
+          ? [
               {
                 type: 'text' as const,
                 text: systemPrompt,
                 cache_control: { type: 'ephemeral' as const },
               },
-            ],
-          }
-        : {}),
+            ]
+          : undefined;
+
+    const params = {
+      model,
+      ...(systemBlocks ? { system: systemBlocks } : {}),
       messages: messages.map(m => ({
         role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
         content: [{ type: 'text' as const, text: m.content }],

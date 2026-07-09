@@ -32,9 +32,10 @@ description: CLAUDE.md の最小コア運用を補完する共通ワークフロ
 
 ## Design Doc First（中〜大規模機能）
 
-- 中〜大規模の機能（3+ステップの実装、または設計判断を伴う変更）は、**実装前に `docs/plans/` へ設計書を作成しレビューを受ける**。合意前に実装を始めない。
-- 設計書レビューの観点は `spec-review` スキルを正本とし、一気通貫は TAKT `.takt/workflows/spec-review.yaml` を使う。合意（確認質問への回答・docs PR マージ）後に `spec-to-pr` で実装へ進む。
-- 実装中に設計と異なる判断をした場合は、設計書を同じ PR 内で同期更新する（`update-docs` 参照）。
+- 中〜大規模の機能（3+ステップの実装、または設計判断を伴う変更）は、**実装前に `docs/plans/` へ設計書を作成する**。合意前に実装を始めない。
+- 人間の介在点は `docs/plans/` の仕様作成・修正のみ。仕様確定後の実装〜PR 作成は TAKT（`.takt/workflows/spec-to-pr.yaml`）に任せる。
+- 設計書レビューの観点は `spec-review` スキルを正本とし、必要なら TAKT `.takt/workflows/spec-review.yaml` を使う。仕様不足や確認質問が残る場合は人間が `docs/plans/` を直してから `spec-to-pr` を再実行する。
+- 実装中に設計と異なる判断が必要になった場合は、勝手に仕様を拡張せず ABORT するか、同じ PR 内で設計書を同期更新する（`update-docs` 参照）。仕様曖昧さで人間に途中質問しない。
 
 ## Client Alignment Gate
 
@@ -45,7 +46,7 @@ description: CLAUDE.md の最小コア運用を補完する共通ワークフロ
   - 挙動変更の可能性がある
   - ユーザー運用への影響がある
   - コスト・品質・納期のトレードオフが未合意
-- クライアント合意前に実装を確定しない。
+- クライアント合意前に実装を確定しない。確認質問への回答は人間が `docs/plans/` に反映する。
 
 ## Writing Policy For Core Memory Files
 

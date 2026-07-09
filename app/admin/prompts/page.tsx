@@ -1,25 +1,53 @@
 import { redirect } from 'next/navigation';
 import PromptsClient from './PromptsClient';
 import { fetchPrompts } from '@/server/actions/adminPrompts.actions';
+import { fetchGlobalKnowledgeSource } from '@/server/actions/adminKnowledgeSources.actions';
 import { PromptTemplate } from '@/types/prompt';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PromptsPage() {
-  const res = await fetchPrompts();
+  const [promptsRes, globalKnowledgeRes] = await Promise.all([
+    fetchPrompts(),
+    fetchGlobalKnowledgeSource(),
+  ]);
 
-  if (!res?.success || !res.data) {
-    if (res && !res.success && 'emailLinkConflict' in res && res.emailLinkConflict) {
-      redirect('/login?reason=email_link_conflict');
-    }
-    const error =
-      res && !res.success && 'error' in res && typeof res.error === 'string'
-        ? res.error
-        : 'プロンプトの取得に失敗しました';
-    return <PromptsClient initialTemplates={[]} initialError={error} />;
+  if (promptsRes && !promptsRes.success && 'emailLinkConflict' in promptsRes && promptsRes.emailLinkConflict) {
+    redirect('/login?reason=email_link_conflict');
   }
 
-  const templates = res.data as PromptTemplate[];
+  if (globalKnowledgeRes && !globalKnowledgeRes.success && 'emailLinkConflict' in globalKnowledgeRes && globalKnowledgeRes.emailLinkConflict) {
+    redirect('/login?reason=email_link_conflict');
+  }
 
-  return <PromptsClient initialTemplates={templates} />;
+  if (!promptsRes?.success || !promptsRes.data) {
+    const error =
+      promptsRes && !promptsRes.success && 'error' in promptsRes && typeof promptsRes.error === 'string'
+        ? promptsRes.error
+        : 'プロンプトの取得に失敗しました';
+    return (
+      <PromptsClient
+        initialTemplates={[]}
+        initialError={error}
+        initialGlobalKnowledgeSource={null}
+        initialGlobalKnowledgeError={
+          globalKnowledgeRes && !globalKnowledgeRes.success ? globalKnowledgeRes.error : null
+        }
+      />
+    );
+  }
+
+  const templates = promptsRes.data as PromptTemplate[];
+
+  return (
+    <PromptsClient
+      initialTemplates={templates}
+      initialGlobalKnowledgeSource={
+        globalKnowledgeRes.success ? globalKnowledgeRes.data : null
+      }
+      initialGlobalKnowledgeError={
+        globalKnowledgeRes && !globalKnowledgeRes.success ? globalKnowledgeRes.error : null
+      }
+    />
+  );
 }
