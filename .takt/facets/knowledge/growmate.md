@@ -2,6 +2,13 @@
 
 Use this project knowledge for GrowMate-specific TAKT workflows.
 
+## Operating Model
+
+- Human involvement stops at authoring/updating specs in `docs/plans/`.
+- After a spec is ready, `spec-to-pr` / `react-doctor-to-pr` run unattended through implementation, internal review, and PR create/update.
+- Do not ask humans for clarification mid-implementation. If the spec is insufficient, ABORT and leave concrete questions for the human to fix in `docs/plans/` before re-running.
+- Requeue / resume / existing WIP / existing PR must continue the same branch and update the same PR when possible. Do not restart from a clean slate by default.
+
 ## Primary Sources
 
 - `AGENTS.md` is the project-level operating rule.
@@ -27,7 +34,7 @@ npm run build
 npm run knip
 ```
 
-For UI changes, perform manual browser verification appropriate to the changed screen.
+In unattended TAKT runs, the completion gate is `npm run verify` plus internal reviews (ai-antipattern / architecture / self-review). Do not block completion solely because browser manual testing was not performed; record it under PR 未確認事項 when UI changed.
 
 Do not add simplified, placeholder, or low-value unit tests just to satisfy a workflow or reviewer. Add tests only when the user request or a referenced specification explicitly requires them, and only if they verify real business behavior at the correct boundary.
 
@@ -48,6 +55,10 @@ Architecture review should not reject a change solely because new tests were not
 ## PR Requirements
 
 - Commit messages must be a single Japanese line.
-- PR bodies should include summary, changes, verification results, Codex architecture review results, and related spec file when applicable.
+- For `spec-to-pr` and `react-doctor-to-pr`, the TAKT workflow owns PR creation and the PR body. `.github/workflows/auto-pr.yml` is only a fallback for non-TAKT pushes and must not overwrite an existing PR body.
+- Do not post `@codex` review requests from auto-pr; architecture / antipattern / self-review already run inside the TAKT workflow.
+- PR titles (from `pr-summary.md` leading `# ` line) must be Japanese, one line, ≤50 characters, and convey What/Why. Do not use `[Auto]`, branch-name-only titles, self-congratulatory phrases, English-only titles, or conventional-commit prefixes.
+- PR bodies (from `pr-summary.md`) should include: 概要, 関連仕様書（applicable）, 変更要点, レビュー結果, 完了判断（事実と意見を分離）, 検証結果, 未確認事項.
+- On re-run, prefer updating an existing open PR for the same head/base over creating a new one.
 - Open architecture-reviewer findings must be resolved before the workflow completes.
 - If the only open finding is a test-addition request that conflicts with the user request or referenced specification, document it as a policy exception instead of looping on fix.
