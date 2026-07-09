@@ -4,9 +4,23 @@ workflow_config:
   provider_options:
     codex:
       network_access: true
-max_steps: 20
+max_steps: 26
 initial_step: plan
 loop_monitors:
+  - cycle:
+      - ai_antipattern_review
+      - ai_antipattern_fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      knowledge:
+        - growmate
+      instruction: loop-monitor-ai-antipattern-fix
+      rules:
+        - condition: 健全（進捗あり）
+          next: ai_antipattern_review
+        - condition: 非生産的（改善なし）
+          next: review
   - cycle:
       - review
       - fix
@@ -89,10 +103,13 @@ steps:
       - Server Actions / Route Handlers では `nextjs-server` のエラー処理・Zod規約に従う。
       - Supabase Service Role 使用時は user_id 等の明示的なスコープ条件を入れる。
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
-      - 実装後に `npm run lint`、`npm run build`、`npm run knip` を実行し、失敗した場合は修正して再実行する。
+      - 実装開始前に対象仕様書の現行版を再読し、`plan.md` 作成時点の内容と食い違いがないか確認する。食い違いがあれば実装を進めず plan への差し戻しを判断する。
+      - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
     rules:
       - condition: 実装と必須検証が完了した
-        next: review
+        next: ai_antipattern_review
+      - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
+        next: plan
       - condition: 判断できない、情報不足
         next: ABORT
       - condition: ユーザー入力が必要
@@ -105,6 +122,53 @@ steps:
           format: coder-scope
         - name: coder-decisions.md
           format: coder-decisions
+
+  - name: ai_antipattern_review
+    tags:
+      - review
+    edit: false
+    persona: ai-antipattern-reviewer
+    policy:
+      - review
+      - ai-antipattern
+    knowledge:
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: ai-antipattern-review
+    rules:
+      - condition: AI特有の問題が見つからない
+        next: review
+      - condition: AI特有の問題が検出された
+        next: ai_antipattern_fix
+    output_contracts:
+      report:
+        - name: ai-antipattern-review.md
+          format: ai-antipattern-review
+
+  - name: ai_antipattern_fix
+    tags:
+      - coding
+      - implementation
+    edit: true
+    persona: coder
+    policy:
+      - coding
+    knowledge:
+      - architecture
+      - growmate
+    provider_options:
+      extends: edit
+    required_permission_mode: edit
+    pass_previous_response: false
+    instruction: ai-antipattern-fix
+    rules:
+      - condition: AI Reviewerの指摘に対する修正が完了した
+        next: ai_antipattern_review
+      - condition: 修正不要（指摘対象ファイル/仕様の確認済み）
+        next: review
+      - condition: 修正を進行できない
+        next: review
 
   - name: review
     tags:
@@ -120,7 +184,7 @@ steps:
       GrowMate 固有条件:
       - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
       - 簡易・形式的・低価値なユニットテストの追加を要求しない。
-      - 代替検証として `npm run lint`、`npm run build`、`npm run knip`、必要な手動確認が実行されているかを確認する。
+      - 代替検証として `npm run verify`、必要な手動確認が実行されているかを確認する。
       - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
       - condition: approved
@@ -151,6 +215,7 @@ steps:
       Report Directory の `architecture-review.md` と `self-review.md` を一次情報として、未解決の指摘だけを修正してください。
 
       必須条件:
+      - 修正着手前に対象仕様書の現行版を確認し、レビュー指摘の範囲を超える仕様変更がないか確認する。
       - architecture-reviewer の未解決指摘がある場合は、指摘対象コードを直接修正する。
       - self_review の未解決指摘がある場合は、self-review.md の該当項目を優先して修正する。
       - architecture-review.md が APPROVE で self_review 起因の差し戻しだけの場合、architecture review を再解決しようとして同じ確認を繰り返さない。
@@ -158,7 +223,7 @@ steps:
       - テストやドキュメント追加だけで architecture-reviewer の指摘を回避しない。
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
       - 同種の潜在箇所がある場合は同時に修正する。
-      - プロダクションコードを変更した場合は `npm run lint`、`npm run build`、`npm run knip` を再実行する。
+      - プロダクションコードを変更した場合は `npm run verify` を再実行する。
       - プロダクションコードを変更しておらず、直前の品質ゲート成功証跡がある場合は、フル再実行せず必要な git / diff 確認に絞ってよい。
       - ここでは commit / push を行わない。最終ステップでまとめて実施する。
     rules:
@@ -167,6 +232,8 @@ steps:
       - condition: self_review 起因の指摘だけを修正し、architecture-reviewer の open findings がない
         next: self_review
       - condition: レビュー指摘に対応するための情報が不足している
+        next: plan
+      - condition: 対象仕様書がレビュー後に変更されており、指摘の枠を超える実装方針の再検討が必要
         next: plan
       - condition: 修正を進行できない
         next: ABORT
@@ -190,7 +257,7 @@ steps:
 
       確認対象:
       - 仕様書の全要件が実装されていること。
-      - `npm run lint`、`npm run build`、`npm run knip` が成功していること。
+      - `npm run verify` が成功していること。
       - architecture-reviewer の open findings がないこと。
       - 余計な差分や機密情報の露出がないこと。
       - PR確認用の要約に関連仕様書、検証結果、Codex architecture review 結果を含められること。
