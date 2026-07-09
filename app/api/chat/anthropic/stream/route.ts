@@ -16,6 +16,7 @@ import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
+import { resolveKnowledgeBlocksForRequest } from '@/lib/knowledgeInjection';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import {
@@ -96,7 +97,6 @@ export async function POST(req: NextRequest) {
         }
       );
     }
-
     const isStep7Model = model === STEP7_BLOG_MODEL;
 
     // 認証チェック
@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
           const resolvedMaxTokens = cfg.maxTokens;
           const resolvedTemperature = cfg.temperature;
 
-          const systemPrompt = systemPromptOverride?.trim()
+          const l2SystemPrompt = systemPromptOverride?.trim()
             ? systemPromptOverride
             : await getSystemPrompt(
                 model,
@@ -249,18 +249,31 @@ export async function POST(req: NextRequest) {
                 serviceId
               );
 
+          const { anthropicSystem } = await resolveKnowledgeBlocksForRequest(l2SystemPrompt, {
+            modelKey: model,
+            userRole,
+            inputEstimate: {
+              recentMessages: normalizedMessages,
+              userMessage: effectiveUserMessage,
+            },
+          });
+          console.info('[Anthropic Stream] knowledge system resolved', {
+            sessionId,
+            model,
+            userRole,
+            injected: anthropicSystem.length > 1,
+            anthropicSystemBlockCount: anthropicSystem.length,
+            enableWebSearch,
+            step7FullBodyGeneration,
+            isContinuation,
+          });
+
           // Web検索ツールの設定
           const streamParams = {
             model: resolvedModel,
             max_tokens: resolvedMaxTokens,
             ...(resolvedTemperature !== undefined && { temperature: resolvedTemperature }),
-            system: [
-              {
-                type: 'text' as const,
-                text: systemPrompt,
-                cache_control: { type: 'ephemeral' as const },
-              },
-            ],
+            system: anthropicSystem,
             messages: anthropicMessages,
             ...(enableWebSearch && {
               tools: [
