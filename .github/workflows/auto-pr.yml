@@ -76,6 +76,9 @@ jobs:
           HEAD_SHA=$(git rev-parse --short HEAD)
           COMPARE_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${BASE_BRANCH}...${BRANCH_NAME}"
 
+          # フォールバック本文（手動 push / TAKT 未経由用）。
+          # TAKT workflow（spec-to-pr / react-doctor-to-pr）が PR 本文の正本を書く。
+          # 既存 PR の本文は上書きしない。
           PR_BODY=$(cat <<EOF
           ## 概要
           ${BRANCH_NAME} から ${BASE_BRANCH} への自動作成 PR です。
@@ -95,21 +98,8 @@ jobs:
           ${COMPARE_URL}
 
           ## 備考
-          この PR は \`.github/workflows/auto-pr.yml\` により作成・更新されています。TAKT 実行時の詳細レポートはローカルの \`.takt/runs/\` に保存されます。
-          EOF
-          )
-
-          COMMENT_BODY=$(cat <<EOF
-          @codex
-          以下の push 内容をレビューしてください。
-
-          ## コミット
-          ${COMMIT_MESSAGES}
-
-          ## 変更ファイル
-          ${CHANGED_FILES}
-
-          日本語でレビューしてください。
+          この PR は \`.github/workflows/auto-pr.yml\` により作成されました（フォールバック）。
+          TAKT 実行時は workflow 側が PR 本文を更新します。詳細レポートはローカルの \`.takt/runs/\` に保存されます。
           EOF
           )
 
@@ -123,41 +113,47 @@ jobs:
           PR_EXISTS=$(gh pr list --head "${BRANCH_NAME}" --base "${BASE_BRANCH}" --state open --json number -q '.[0].number // empty')
 
           if [ -n "${PR_EXISTS}" ]; then
-            echo "Pull Request already exists: #${PR_EXISTS}. Updating..."
-            if gh pr edit "${PR_EXISTS}" --title "${PR_TITLE}" --body "${PR_BODY}" --add-label "${LABEL_NAME}"; then
-              echo "Pull Request updated successfully."
+            echo "Pull Request already exists: #${PR_EXISTS}."
+            echo "Skipping body/title overwrite (TAKT or author owns the PR body)."
+            if gh pr edit "${PR_EXISTS}" --add-label "${LABEL_NAME}"; then
+              echo "Label ensured on Pull Request #${PR_EXISTS}."
             else
-              echo "Warning: Failed to update Pull Request with label. Attempting without label..."
-              if ! gh pr edit "${PR_EXISTS}" --title "${PR_TITLE}" --body "${PR_BODY}"; then
-                echo "Error: Failed to update Pull Request. Please check permissions and branch status."
-                exit 1
-              fi
-              echo "Pull Request updated successfully (without label)."
+              echo "Warning: Failed to add label to Pull Request #${PR_EXISTS}."
             fi
-            gh pr comment "${PR_EXISTS}" --body "${COMMENT_BODY}"
-            echo "Comment added to Pull Request #${PR_EXISTS}."
           else
-            echo "Creating Pull Request..."
+            echo "Creating Pull Request (fallback body)..."
             # PR作成（失敗時はラベルなしでリトライ）
-            if ! gh pr create \
+            if gh pr create \
               --head "${BRANCH_NAME}" \
               --base "${BASE_BRANCH}" \
               --title "${PR_TITLE}" \
               --body "${PR_BODY}" \
               --label "${LABEL_NAME}"; then
-
+              echo "Pull Request created successfully."
+            else
               echo "Failed to create Pull Request with label. Retrying without label..."
-              if ! gh pr create \
+              if gh pr create \
                 --head "${BRANCH_NAME}" \
                 --base "${BASE_BRANCH}" \
                 --title "${PR_TITLE}" \
                 --body "${PR_BODY}"; then
-                echo "Error: Failed to create Pull Request. Please check permissions and branch status."
-                exit 1
+                echo "Pull Request created successfully (without label)."
+              else
+                # TAKT が list〜create の間に先に PR を作った逆レースを吸収する
+                echo "Create failed (possible race with TAKT). Re-checking for existing PR..."
+                PR_EXISTS=$(gh pr list --head "${BRANCH_NAME}" --base "${BASE_BRANCH}" --state open --json number -q '.[0].number // empty')
+                if [ -n "${PR_EXISTS}" ]; then
+                  echo "Pull Request already exists: #${PR_EXISTS}. Treating as success."
+                  echo "Skipping body/title overwrite (TAKT or author owns the PR body)."
+                  if gh pr edit "${PR_EXISTS}" --add-label "${LABEL_NAME}"; then
+                    echo "Label ensured on Pull Request #${PR_EXISTS}."
+                  else
+                    echo "Warning: Failed to add label to Pull Request #${PR_EXISTS}."
+                  fi
+                else
+                  echo "Error: Failed to create Pull Request and no existing PR found."
+                  exit 1
+                fi
               fi
             fi
-            echo "Pull Request created successfully."
-            PR_NUMBER=$(gh pr list --head "${BRANCH_NAME}" --base "${BASE_BRANCH}" --state open --json number -q '.[0].number')
-            gh pr comment "${PR_NUMBER}" --body "${COMMENT_BODY}"
-            echo "Comment added to Pull Request #${PR_NUMBER}."
           fi

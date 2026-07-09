@@ -1,5 +1,5 @@
 name: spec-to-pr
-description: GrowMate docs/plans specification to implementation, quality gates, Codex architecture review loop, commit, and push for auto PR.
+description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, and PR creation with review summary body.
 workflow_config:
   provider_options:
     codex:
@@ -55,23 +55,33 @@ steps:
     instruction: |
       `docs/plans/` の仕様書を起点に、GrowMate の実装計画を作成してください。
 
+      運用前提（無人）:
+      - 人間の介在点は `docs/plans/` の仕様確定のみ。実装中に人間へ質問しない。
+      - 仕様不足・曖昧さがある場合は実装に進まず ABORT し、人間が仕様書を直して再実行する前提の確認事項を残す。
+
       必須手順:
       1. ユーザー指示から対象仕様書を特定する。曖昧な場合は `docs/plans/` を列挙し、候補を示して ABORT する。
       2. 対象仕様書、`AGENTS.md`、`.takt/facets/knowledge/growmate.md`、`.agents/skills/implementation-guidelines/SKILL.md` を読む。
       3. Server Actions / Route Handlers / Zod / エラー処理が関わる場合は `.agents/skills/nextjs-server/SKILL.md` を読む。
       4. UI 実装が関わる場合は `.agents/skills/growmate-ui-ux/SKILL.md` と `.agents/skills/react/SKILL.md` を読む。
       5. Supabase / migration / RLS / Service Role が関わる場合は `.agents/skills/supabase/SKILL.md` を読む。
-      6. 仕様要件と現行コードの差分、変更対象、検証方法、PR本文に記載すべき関連仕様書を整理する。
-      7. 対象仕様書が spec-review 済みか確認する（`.takt/workflows/spec-review.yaml` のレビューレポートまたは docs PR）。未実施の場合はブロックしないが、計画レポートに「spec-review 未実施」と明記する。
+      6. 再実行 / 途中再開の現状を確認する（新規一発前提で計画しない）:
+         - 現在ブランチ、`git status`、未コミット差分の有無。
+         - 対象仕様に対応しそうな既存リモートブランチ（`feature/*` / `fix/*`）と、その open PR（`gh pr list`）。
+         - Requeue / resume なら `meta.json` の `source_run_slug` を辿り、前回の `plan.md` / `coder-scope.md` / `architecture-review.md` 等を参照する。
+         - 既存 WIP / 既存 PR がある場合は「差分追記」計画にし、ゼロからの作り直しを避ける。
+      7. 仕様要件と現行コード（および既存 WIP）の差分、変更対象、検証方法、PR本文に記載すべき関連仕様書を整理する。
+      8. 対象仕様書が spec-review 済みか確認する（`.takt/workflows/spec-review.yaml` のレビューレポート）。未実施の場合はブロックしないが、計画レポートに「spec-review 未実施」と明記する。
+      9. 検証ゲートは `npm run verify` と TAKT 内レビューとする。ブラウザ手動確認は無人実行では実施しない（PR の未確認事項に記載する前提）。
     rules:
-      - condition: 要件が明確で実装可能
+      - condition: 要件が明確で実装可能（新規または既存 WIP/PR への差分追記を含む）
         next: implement
       - condition: ユーザーが質問をしている（実装タスクではない）
         next: COMPLETE
-      - condition: 要件が不明確、情報不足
+      - condition: 要件が不明確、情報不足（仕様書の修正が必要）
         next: ABORT
         appendix: |
-          確認事項:
+          人間が `docs/plans/` を修正して再実行してください:
           - {質問1}
           - {質問2}
     output_contracts:
@@ -96,6 +106,10 @@ steps:
     instruction: |
       `plan.md` と対象仕様書に従い、GrowMate の既存パターンに合わせて最小差分で実装してください。
 
+      運用前提（無人）:
+      - 実装中に人間へ質問しない。判断不能・仕様不足なら ABORT する（人間は仕様書を直して再実行する）。
+      - 既存 WIP / 既存ブランチがある場合はそれを継続し、無関係な作り直しをしない。
+
       必須条件:
       - `any` を使わない。`unknown` + narrowing または Zod schema を使う。
       - 自動生成ファイルを直接編集しない。
@@ -105,24 +119,20 @@ steps:
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
       - 実装開始前に対象仕様書の現行版を再読し、`plan.md` 作成時点の内容と食い違いがないか確認する。食い違いがあれば実装を進めず plan への差し戻しを判断する。
       - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
+      - ブラウザ手動確認は行わない（無人）。必要な画面確認は PR の未確認事項に回す。
     rules:
       - condition: 実装と必須検証が完了した
         next: ai_antipattern_review
       - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
         next: plan
-      - condition: 判断できない、情報不足
+      - condition: 判断できない、情報不足（仕様書の修正が必要）
         next: ABORT
-      - condition: ユーザー入力が必要
-        next: implement
-        requires_user_input: true
-        interactive_only: true
     output_contracts:
       report:
         - name: coder-scope.md
           format: coder-scope
         - name: coder-decisions.md
           format: coder-decisions
-
   - name: ai_antipattern_review
     tags:
       - review
@@ -184,7 +194,8 @@ steps:
       GrowMate 固有条件:
       - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
       - 簡易・形式的・低価値なユニットテストの追加を要求しない。
-      - 代替検証として `npm run verify`、必要な手動確認が実行されているかを確認する。
+      - 代替検証として `npm run verify` が実行されているかを確認する。
+      - ブラウザ手動確認は無人運用では実施しない。未実施のみを理由に `needs_fix` にせず、未確認事項へ回す前提とする。
       - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
       - condition: approved
@@ -260,7 +271,12 @@ steps:
       - `npm run verify` が成功していること。
       - architecture-reviewer の open findings がないこと。
       - 余計な差分や機密情報の露出がないこと。
-      - PR確認用の要約に関連仕様書、検証結果、Codex architecture review 結果を含められること。
+      - PR確認用の要約に関連仕様書、検証結果、architecture review / self-review 結果、完了判断理由を含められること。
+
+      無人運用の検証方針:
+      - 完了ゲートは `npm run verify` + TAKT 内レビュー（ai-antipattern / architecture / self-review）とする。
+      - ブラウザ手動確認は実施しない。UI 変更がある場合は「手動ブラウザ確認未実施」を未確認事項候補として記録する。
+      - 手動確認未実施だけを理由に不合格にしない。
     rules:
       - condition: セルフレビュー合格
         next: prepare_pr_summary
@@ -272,7 +288,6 @@ steps:
       report:
         - name: self-review.md
           format: supervisor-validation
-
   - name: prepare_pr_summary
     tags:
       - report
@@ -283,18 +298,31 @@ steps:
     provider_options:
       extends: review-readonly
     instruction: |
-      push 前に、Report Directory と source run chain の最新レポートから、最終ローカル要約を短く作成してください。
+      push 前に、Report Directory と source run chain の最新レポートから、PR 本文の正本となる `pr-summary.md` を作成してください。
 
       必須条件:
-      - 実装やレビュー判断は行わない。確認済みの事実と未確認事項を分けて整理する。
+      - 実装やレビュー判断は行わない。確認済みの事実と意見（完了判断）を分けて整理する。
       - 読むレポートは原則として最新の `architecture-review.md`、`self-review.md`、`fix-result.md`、必要に応じて `plan.md` までに絞る。
       - `coder-scope.md` / `coder-decisions.md` は存在する場合だけ参照し、存在しなくても不足レポートとして扱わない。
-      - 要約は 概要 / 関連仕様書 / 検証結果 / review結果 / 未確認事項 / コミットメッセージ案 に絞る。
-      - 変更ファイルの詳細表は作らない。必要なら `git status --short` の件数と主要カテゴリだけにする。
+      - `pr-summary.md` は GitHub PR 本文としてそのまま使える Markdown にする。先頭に PR タイトル案を1行（`# ` 見出し）で書き、続けて本文セクションを書く。
+      - PR タイトル形式（必須）:
+        - 日本語・1行・50字以内（`# ` を除く本文）。
+        - What/Why が一覧で分かる内容にする（例: `コンテンツ注釈の保存APIを仕様どおり実装する`）。
+        - 禁止: `[Auto]` 接頭辞、ブランチ名だけのタイトル、`実装完了` / `対応完了` などの自己申告、英語のみ、conventional commits 接頭辞（`feat:` 等）。
+      - 必須セクション（この順）:
+        1. `## 概要` — 何を・なぜ変えたか（仕様起点、2〜4文）
+        2. `## 関連仕様書` — `docs/plans/` のパス
+        3. `## 変更要点` — 主要変更のみ（ファイル一覧の羅列は禁止。カテゴリ単位で3〜7点）
+        4. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
+        5. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く
+        6. `## 検証` — `npm run verify` 等の結果（手動ブラウザ確認は無人のため未実施が既定）
+        7. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める。その他あれば列挙。なければ「なし」
+        8. `## コミットメッセージ案` — 日本語1行
+      - 変更ファイルの詳細表は作らない。
       - Requeue / resume で現在の Report Directory に必要レポートが存在しない場合は、現在 run の `meta.json` にある `source_run_slug` を辿り、source run の `reports/` にある最新レポートを参照する。source run も Requeue の場合は、さらに `source_run_slug` を辿る。
       - 現在 run または source run chain のどこにも `architecture-review.md` または `self-review.md` が存在せず、レビュー結果を確認できない場合のみ不足レポートとして扱う。
     rules:
-      - condition: 最終ローカル要約が完了した（source run のレポート参照を含む）
+      - condition: PR 本文正本（pr-summary.md）が完了した（source run のレポート参照を含む）
         next: create_pr
       - condition: architecture-review または self-review の結果を確認できない
         next: ABORT
@@ -321,23 +349,37 @@ steps:
           - Grep
           - Bash
     instruction: |
-      実装内容をコミットし、ブランチへ push してください。Pull Request 作成は `.github/workflows/auto-pr.yml` に委譲するため、ここでは `gh pr create` / `gh pr edit` / `gh pr comment` を実行しないでください。プロダクションコードの編集は行わず、git コマンドのみを実行してください。
+      実装内容をコミット・push し、`pr-summary.md` を正本として Pull Request を作成または更新してください。プロダクションコードの編集は行わず、git / gh コマンドのみを実行してください。
 
       手順:
-      1. `git status` / `git diff` で変更内容を確認する。
-      2. 現在のブランチが `develop` または `main` なら、仕様書名または機能名から `feature/...` または `fix/...` の英語ブランチ名を作成する。
-      3. `git add` で変更をステージし、`git diff --cached` で最終確認する。
-      4. Why を中心とした日本語1行のコミットメッセージで `git commit` する。
-      5. `git push -u origin HEAD` を実行する。
-      6. push 後、`.github/workflows/auto-pr.yml` が PR を作成・更新する前提で、ブランチ名とコミット SHA を報告する。
-      7. `pr-summary.md` はローカルの確認用レポートとして扱い、PR 本文の更新は行わない。
+      1. Report Directory の `pr-summary.md` を読む。先頭の `# ` 行を PR タイトル、それ以降を PR 本文とする。
+      2. `git status` / `git diff` で変更内容を確認する。
+      3. ブランチを決める（再実行・追記を優先）:
+         - 既に `feature/*` または `fix/*` にいて、対象仕様の作業ブランチならそのまま使う。
+         - `develop` / `main` にいる場合、対象仕様に対応する既存リモートブランチがあれば checkout して継続する。
+         - 既存がなければ仕様書名または機能名から `feature/...` または `fix/...` の英語ブランチを新規作成する。
+      4. `git add` で変更をステージし、`git diff --cached` で最終確認する。無関係なローカル変更を混ぜない。
+      5. `pr-summary.md` のコミットメッセージ案（なければ Why 中心の日本語1行）で `git commit` する。変更がなければ新規コミットは作らず、既存 tip で PR 更新へ進む。
+      6. `git push -u origin HEAD` を実行する。
+      7. base は `develop`（ブランチが `develop` の場合のみ `main`）。
+      8. PR を冪等に作成または更新する（auto-pr とのレースに耐える。既存 PR への追記を含む）:
+         a. `pr-summary.md` からタイトル行を除いた本文を一時ファイルに書き出して `--body-file` に渡す（シェル展開で壊さない）。
+         b. `gh pr list --head <branch> --base <base> --state open` で既存 PR を確認する。
+         c. 既存があれば `gh pr edit <number> --title "..." --body-file ...` で更新する（TAKT が正本。追記コミット後も本文を最新化する）。
+         d. 既存がなければ `gh pr create --base ... --head ... --title "..." --body-file ...` で作成する。
+         e. `gh pr create` が「already exists」等で失敗した場合は ABORT せず、再度 `gh pr list` して番号を取得し、`gh pr edit` で本文・タイトルを更新する。edit 成功なら完了とする。
+         f. auto-pr の完了は待たない。再 list → edit で吸収する。
+         g. 再 list でも PR が見つからない、または edit も失敗した場合のみ失敗とする。
+      9. 作成/更新した PR の URL・番号・ブランチ・コミット SHA を報告する。CI 完了は待たない。
 
       やらないこと:
-      - `gh pr create` / `gh pr edit` / `gh pr comment`。
-      - PR の作成・更新・マージ・クローズ。
+      - `@codex` レビュー依頼コメントの投稿。
+      - PR のマージ・クローズ。
       - プロダクションコード編集。
+      - `.takt/runs/` 配下のレポートを git にコミットすること。
+      - 人間への確認待ち。
     rules:
-      - condition: コミットと push が完了した
+      - condition: コミット・push・PR 作成または更新が完了した（create 失敗後の re-list → edit 成功、既存 PR 追記を含む）
         next: COMPLETE
-      - condition: コミットまたは push に失敗した
+      - condition: コミット、push、または PR 作成/更新に失敗した（re-list → edit でも回復できない場合）
         next: ABORT
