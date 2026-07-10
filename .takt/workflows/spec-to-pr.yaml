@@ -4,7 +4,7 @@ workflow_config:
   provider_options:
     codex:
       network_access: true
-max_steps: 26
+max_steps: 28
 initial_step: plan
 loop_monitors:
   - cycle:
@@ -32,10 +32,10 @@ loop_monitors:
       instruction: |
         review -> fix のループが {cycle_count} 回繰り返されました。
         Report Directory の最新レビューと修正結果を確認し、収束しているか判断してください。
-        残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として self_review に進めてください。
+        残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として readme_sync を経て self_review に進めてください。
       rules:
         - condition: 収束済み（残件が追加修正で解消不能な方針差分のみ）
-          next: self_review
+          next: readme_sync
         - condition: 健全（進捗あり）
           next: review
         - condition: 非生産的（同じ指摘の反復・修正未反映）
@@ -199,7 +199,7 @@ steps:
       - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
       - condition: approved
-        next: self_review
+        next: readme_sync
       - condition: needs_fix
         next: fix
     output_contracts:
@@ -241,7 +241,7 @@ steps:
       - condition: architecture-reviewer の指摘を修正し、必須検証が完了した
         next: review
       - condition: self_review 起因の指摘だけを修正し、architecture-reviewer の open findings がない
-        next: self_review
+        next: readme_sync
       - condition: レビュー指摘に対応するための情報が不足している
         next: plan
       - condition: 対象仕様書がレビュー後に変更されており、指摘の枠を超える実装方針の再検討が必要
@@ -251,6 +251,60 @@ steps:
     output_contracts:
       report:
         - name: fix-result.md
+          format: coder-decisions
+
+  - name: readme_sync
+    tags:
+      - coding
+      - documentation
+    edit: true
+    persona: coder
+    policy:
+      - coding
+    knowledge:
+      - architecture
+      - growmate
+    provider_options:
+      extends: edit
+    required_permission_mode: edit
+    instruction: |
+      実装・修正・architecture review が収束した時点の全差分を確認し、`README.md` の同期要否を判断してください。
+
+      運用前提（無人）:
+      - 本工程では人間への確認を行わない。`.agents/skills/update-docs/SKILL.md` の「更新方針を提案して合意」は、対象仕様書と本workflowへの事前合意で満たされているものとし、LLMが全差分からREADME更新要否を判断する。
+
+      必須手順:
+      1. `.agents/skills/update-docs/SKILL.md`、対象仕様書、`README.md`、`git status`、`git diff --stat`、`git diff` を読む。
+      2. 実装差分によって README の既存説明が古くなるか、利用者・開発者・運用者が新たに知るべき恒久的な情報が生じたかを判定する。
+      3. 更新が必要な場合だけ、既存構成と記述粒度に合わせて `README.md` を最小差分で同期する。更新不要の場合は `README.md` を編集しない。
+      4. `readme-sync.md` に「更新要 / 更新不要」「判断根拠」「確認した差分」「更新セクション（更新不要ならなし）」を記録する。
+
+      README 更新を必要とする代表条件:
+      - プロダクト概要、コア機能、主要画面、ユーザー向け導線、アーキテクチャの説明が変わる。
+      - DB migration / RLS / RPC の変更が、README に記載されたデータ構造、アクセスモデル、セットアップ、運用手順、重要な制約を変える。
+      - npm scripts、主要依存、環境変数、セットアップ手順、ディレクトリ構成、品質ゲートが変わる。
+      - 認証、ロール、外部連携、CI、デプロイ、Cron、セキュリティ運用が変わる。
+
+      README 更新を不要と判断できる代表条件:
+      - 内部実装だけの変更で、README の既存説明・コマンド・構成・運用が変わらない。
+      - migration が内部的な列・index・制約の調整に留まり、README が説明するデータモデルや運用へ影響しない。
+      - 一時的な修正内容、レビュー過程、個別ファイル一覧など、README に恒久情報として残す価値がない。
+
+      制約:
+      - README を変更すること自体を目的にしない。更新不要判断も正常な完了とする。
+      - 実装差分にない機能や将来構想を追記しない。
+      - `.env`、credential、token、秘密値を読まない・記載しない。
+      - 自動生成ファイルの内容をREADMEへ複製しない。正本ファイルへの参照を優先する。
+      - README 以外のプロダクションコードや設定ファイルを編集しない。
+      - README だけを変更した場合、直前の `npm run verify` 成功証跡があればフル検証を再実行せず、リンク先の実在と `git diff --check` を確認する。
+    rules:
+      - condition: README の更新要否を判定し、必要な同期と readme-sync.md の記録が完了した
+        next: self_review
+      - condition: 差分または対象仕様書を確認できず、README の更新要否を判断できない
+        next: ABORT
+    output_contracts:
+      report:
+        - name: readme-sync.md
           format: coder-decisions
 
   - name: self_review
@@ -271,6 +325,7 @@ steps:
       - 対象仕様書（`docs/plans/` 配下）が本PRのスコープで完全実装されたか（未実装フェーズ・TODO・スコープ外セクションが残っていないか）を判定し、`self-review.md` に明記する。
       - `npm run verify` が成功していること。
       - architecture-reviewer の open findings がないこと。
+      - `readme-sync.md` に README の更新要否と根拠が記録され、更新要の場合は実装差分と `README.md` が同期していること。
       - 余計な差分や機密情報の露出がないこと。
       - PR確認用の要約に関連仕様書、検証結果、architecture review / self-review 結果、完了判断理由を含められること。
 
@@ -303,7 +358,7 @@ steps:
 
       必須条件:
       - 実装やレビュー判断は行わない。確認済みの事実と意見（完了判断）を分けて整理する。
-      - 読むレポートは原則として最新の `architecture-review.md`、`self-review.md`、`fix-result.md`、必要に応じて `plan.md` までに絞る。
+      - 読むレポートは原則として最新の `architecture-review.md`、`readme-sync.md`、`self-review.md`、`fix-result.md`、必要に応じて `plan.md` までに絞る。
       - `coder-scope.md` / `coder-decisions.md` は存在する場合だけ参照し、存在しなくても不足レポートとして扱わない。
       - `self-review.md` の仕様書完全実装判定を読み取り、`## 関連仕様書` に転記する（実装やレビュー判断はしない、転記のみ）。
       - `pr-summary.md` は GitHub PR 本文としてそのまま使える Markdown にする。先頭に PR タイトル案を1行（`# ` 見出し）で書き、続けて本文セクションを書く。

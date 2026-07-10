@@ -47,6 +47,7 @@
     "next-env.d.ts",
     "scripts/**/*",
     "src/**/*",
+    "tests/**/*",
     "types/**/*",
     ".next/types/**/*.ts",
     "app/**/*",

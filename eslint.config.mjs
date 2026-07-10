@@ -2,7 +2,7 @@ import nextConfig from 'eslint-config-next';
 
 const config = [
   {
-    ignores: ['.next', 'next-env.d.ts', 'scripts', 'types'],
+    ignores: ['.next', 'next-env.d.ts', 'scripts', 'types', 'coverage'],
   },
   ...nextConfig,
   // eslint-config-next 16 で追加された React Compiler 関連の厳格ルール

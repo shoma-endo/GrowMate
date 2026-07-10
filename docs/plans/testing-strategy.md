@@ -1,163 +1,266 @@
-# テスト戦略 — GrowMate
+# コアロジックテスト戦略 — GrowMate
 
 ## 背景と目的
 
-AI エージェント（Claude Code など）によるコード生成が主流になる中、開発速度と品質を両立するためにテストの役割が変化している。
+AI エージェント（Claude Code など）によるコード生成が増える中、人間の画面確認だけでは、純ロジックや入力境界の回帰を継続的に検知することが難しい。
 
-従来のテストは「人間が書いたコードを検証する安全網」だったが、AI 開発時代においては次の 2 つの意味が加わる。
+本戦略では、GrowMate の品質保証を次のように分担する。
 
-1. **ガードレール**: AI が生成したコードが既存機能を壊していないかを自動検知する仕組み
-2. **文脈伝達**: 「テスト駆動で実装して」という指示が、AI に対して保守性・責務分離を含む開発アプローチを効果的に伝える
+1. **自動テスト**: 純粋関数、日付・正規化・集計ロジック、Zod バリデーションの回帰を検知する
+2. **静的・ビルド検証**: lint / build / knip で型・構成・未使用コード等を検知する
+3. **人間の目視確認**: UI の表示、操作感、導線、外部 API を含む実画面の挙動を確認する
 
-このプロジェクトは Next.js App Router + Supabase + 外部 API + Server Actions + Route Handlers で構成が広く、現状は手動確認 + lint / build に依存している。AI が関与する変更が増えるほど、人間の確認だけに頼るコストが高くなる。
+最初から広範な E2E やコンポーネントテストを導入せず、まず変更頻度と再利用性が高いコアロジックに限定して、**AI → 実装 → 自動テスト通過**のサイクルを確立する。
 
-この戦略が自動化するのは **「純ロジックと入力バリデーションの回帰テスト」** に限定する。外部 API（Google Ads / GA4 等）や E2E は引き続き手動確認の対象だが、これは「先送り」ではなく費用対効果の判断だ。モック維持・flaky テスト対策・CI 環境整備のコストが初期段階では効果を上回る。
-
-テストを最小セットから導入し、**AI → 実装 → テスト通過** のサイクルをまず純ロジック層で確立する。その後、手動確認コストが実際に問題になった箇所から順次自動化を拡張する。
+この文書は GrowMate 全体の品質を自動テストだけで保証するものではなく、**コアロジック回帰テストの導入計画**を定義する。
 
 参考: [AIエージェント時代のTDD（Uzabase Agile Journey）](https://agilejourney.uzabase.com/entry/2025/08/29/103000)
 
 ---
 
-## ツール選定
+## スコープ
 
-**Vitest** を採用する。理由：
+### 自動テストする
 
-- 設定が軽く、TypeScript / ESM との相性が良い
-- Jest 互換 API で学習コストが低い
-- ESM / TypeScript をネイティブサポート
+- 副作用のない純粋関数
+- 境界値・分岐が多く、誤りがデータや集計結果に波及するロジック
+- PostgreSQL 関数と同じ契約を維持する必要がある TypeScript 関数
+- Server Actions / Route Handlers から分離済みの Zod スキーマ
+- 過去に不具合が発生したコアロジックの回帰ケース
 
----
+### 今回は自動テストしない
 
-## テスト対象の原則
-
-### テストする
-
-- 副作用のない**純粋関数**（入力 → 出力が決定的）
-- **境界値・分岐**が多く、バグが出やすいロジック
-- **PostgreSQL 関数と同一挙動を保証する必要がある**コード（乖離するとDB整合性が壊れる）
-- Server Actions の **Zod バリデーション層**（壊れると UI 側で無言エラーになる）
-
-### テストしない
-
-| 対象 | 理由 |
+| 対象 | 今回の扱い |
 |---|---|
-| Supabase クライアント直結処理 | RLS の正しさはユニットテストでは検証不可。local dev + migration テストで担保する |
-| 外部 API（Google Ads / GA4 / GSC / WordPress） | モック維持コストが高い。E2E か手動確認で代替 |
-| React コンポーネント | 現段階では導入しない。UIの正しさはブラウザ確認で担保 |
-| E2E（Playwright） | Vitest が安定してから判断する |
+| React コンポーネント | 自動テスト対象外。表示・操作感・導線は人間がブラウザで確認する |
+| E2E（Playwright） | 今回は導入しない。主要フローの手動確認コストや回帰事故が増えた場合に判断する |
+| Supabase / RLS / RPC | 今回の Vitest 対象外。現時点で自動担保済みとは扱わず、変更時の手動検証対象とする |
+| 外部 API（Google Ads / GA4 / GSC / WordPress） | API 自体のモックテストは行わず、変更機能の手動確認対象とする |
+| LLM 出力品質 | ユニットテストでは保証しない。固定 fixture や eval の導入は別仕様で判断する |
+
+UI・外部 API・Supabase を含む変更は、`spec-to-pr` によるPR作成後、PR本文の「未確認事項」に必要な手動確認を記載する。**該当する手動確認が完了するまでマージしない**。
 
 ---
 
-## フェーズ計画
+## ツールと実行コマンド
 
-### Phase 1: セットアップ + 純関数テスト（目安: 1〜2日）
+テストランナーは **Vitest**、カバレッジプロバイダーは **`@vitest/coverage-v8`** を採用する。
 
-**目標**: Vitest を動かし、最もリスクの高い純関数を 15〜20 本カバーする。
+`package.json` に次のスクリプトを追加する。
 
-#### 優先ターゲット
+```json
+{
+  "scripts": {
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "verify": "npm run lint && npm run test && npm run build && npm run knip"
+  }
+}
+```
 
-| ファイル | 対象関数 | テスト観点 |
-|---|---|---|
-| `src/lib/normalize-url.ts` | `normalizeUrl` | PostgreSQL `normalize_url()` との同一挙動保証。`https://`, `www.`, 末尾スラッシュ, `null` 入力 |
-| `src/lib/normalize-query.ts` | `normalizeQuery` | NFKC 正規化、全角半角、空白の畳み込み、`null`/空文字 |
-| `src/lib/date-utils.ts` | `addDaysISO`, `formatJstDateISO`, `buildLocalDateRange`, `buildGscDateRange` | JST/UTC 境界（特に UTC+9 で日付が変わるケース）、ゼロ日・負値エラー |
-| `src/lib/ga4-utils.ts` | `normalizeToPath`, `ga4DateStringToIso` | `?`, `#`, `www.`, フルURL→パス変換の境界値 |
-| `src/lib/google-ads-utils.ts` | `calculateCampaignSummary` | ゼロ除算ガード、空配列、`searchImpressionShare` が null のキャンペーン混在 |
-| `src/lib/validators/common.ts` | `validateTitle`, `validateDateRange`, `dateStringSchema` | 空文字、最大長、不正日付フォーマット、開始日 > 終了日 |
+`npm run verify` をローカル・TAKT共通の品質ゲートとする。テストだけを実行する場合も、直接 `npx vitest` を呼ばず `npm run test` を使用する。
 
-#### セットアップ手順（実装時に参照）
+---
+
+## テスト記述の原則
+
+### 期待結果を実装から推測しない
+
+テストケースは、対象コードの現在の実装だけを見て期待値を決めない。仕様書、本書に定義した契約、DB関数などの一次情報から期待結果を決める。
+
+各テストには最低限、次を含める。
+
+- 入力
+- 期待する戻り値または `safeParse` の成否
+- 例外を期待する場合はその条件
+- 境界値を選んだ理由
+
+現行挙動を意図的に固定する characterization test の場合は、その旨をテスト名またはコメントで明示する。
+
+### 時刻依存を固定する
+
+現在時刻に依存する関数では `vi.useFakeTimers()` と `vi.setSystemTime()` を使用し、テスト終了時に `vi.useRealTimers()` へ戻す。CI 実行日時や実行環境のタイムゾーンに結果を依存させない。
+
+### プロダクションコードをテスト都合で変更しない
+
+Phase 1〜2では、テスト追加のためだけの責務分割・export追加・スキーマ抽出を行わない。現状の公開関数・公開スキーマを対象に最小差分でテストする。
+
+---
+
+## Phase 1: セットアップと純関数テスト
+
+**目安**: 1〜2日
+
+### セットアップ
 
 ```bash
-npm install -D vitest
+npm install -D vitest @vitest/coverage-v8
 ```
 
-`@vitejs/plugin-react` / `@testing-library/react` はコンポーネントテストを追加するタイミングまで入れない。
+- `vitest.config.ts` をリポジトリルートに配置する
+- `@/` パスエイリアスを解決できるよう設定する
+- テスト環境はNodeとし、DOM環境やReact Testing Libraryは導入しない
+- テストファイルは `tests/unit/lib/` に配置し、`<対象ファイル名>.test.ts` とする
+- `src/lib/validators/common.ts` のテストファイル名は、他の`common.ts`との混同を避けるため`validators-common.test.ts`とする
+- `tsconfig.json` の `include` へ `tests/**/*` を追加し、`vitest run` では行われないテストコードの型チェックを `npm run build` で担保する
+- カバレッジ出力先 `coverage/` は `.gitignore` と `eslint.config.mjs` の `ignores` の両方で除外する
+- `npm ci`、`npm run test`、`npm run build`を実行し、採用したVitestとNode 20、既存の`esbuild` overrideに互換性があることを確認する
 
-`vitest.config.ts` を root に配置し、`tsconfig.json` のパスエイリアス（`@/`）を解決する設定を入れる。
+### 優先ターゲットと期待する契約
 
-テストファイルの配置は **`src/lib/__tests__/`** に集約する（ファイル名: `<対象ファイル名>.test.ts`）。
-
----
-
-### Phase 2: 分離済みスキーマのバリデーションテスト（目安: 半日）
-
-**目標**: `src/server/schemas/` の分離済みスキーマが壊れたときに即検知できる状態にする。
-
-**対象ファイル（固定）**:
-
-| ファイル | テスト観点 |
+| 対象 | 必須ケースと期待結果 |
 |---|---|
-| `src/server/schemas/brief.schema.ts` | 必須フィールド、`optionalUrl` / `optionalEmail` の境界値、`paymentEnum` の不正値 |
-| `src/server/schemas/chat.schema.ts` | `role` の enum バリデーション、空メッセージ配列 |
-| `src/server/schemas/ga4.schema.ts` | 日付フォーマット、カスタム refine の境界値 |
-| `src/server/schemas/googleAds.schema.ts` | `customerIdSchema` / `campaignIdSchema` の形式チェック |
+| `normalizeUrl` | `null` / `undefined` /空文字は`null`。入力全体を小文字化した後、プロトコル・先頭`www.`・文字列末尾の連続スラッシュを除去する。クエリ・フラグメント自体は保持するが、その内部も小文字化され、文字列全体が`/`で終わる場合はクエリ値末尾の`/`も除去される |
+| `normalizeQuery` | `null` / `undefined` /空白のみは空文字。NFKC正規化、小文字化、連続空白の単一スペース化を行う |
+| `formatJstDateISO` | UTC 14:59と15:00、月末、年末でJST日付を返す |
+| `addDaysISO` | 月末・年末・うるう年を繰り上げる。負の整数は減算として受理する。不正形式・整数以外は例外にする |
+| `buildLocalDateRange` | 固定時刻に対して今日を含むN日間を返す。`days = 1`を受理し、0・負数・整数以外は例外にする |
+| `buildGscDateRange` | 固定時刻に対して2日前を終了日とし、指定日数分の範囲を返す。正の整数を正常系とする。非整数は内部の`addDaysISO`を通じて例外となり、0以下は開始日 > 終了日の逆転範囲を返す現行挙動をcharacterization testとして確認する |
+| `normalizeToPath` | 空入力、ドメインのみ、クエリ・フラグメントのみは`/`。フルURLはクエリ・フラグメント・末尾スラッシュを除いた小文字パスを返す |
+| `ga4DateStringToIso` | 8桁文字列は`YYYY-MM-DD`へ変換し、それ以外は入力をそのまま返す。実在日付の検証関数としては扱わない |
+| `calculateCampaignSummary` | 空配列、ゼロ除算、合計値、各平均、`ENABLED`かつshare非nullだけを使う平均を確認する |
+| `validateTitle` / `validateDateRange` / `dateStringSchema` | `validateTitle`はtrim後の空文字・空白のみを拒否し、trim後60文字を受理、61文字を拒否する。日付は実在しない日付、開始日 > 終了日、正常範囲の成否を確認する |
 
-**対象外（Phase 2 では触らない）**: `chat.actions.ts` / `heading-flow.actions.ts` / `ga4Dashboard.actions.ts` 等にインライン定義されたスキーマ。スキーマの抽出リファクタリングが必要になるため、半日見積もりに収まらない。必要なら Phase 4 以降で判断する。
+### PostgreSQL `normalize_url()`との契約
+
+`normalizeUrl` の期待値は `supabase/migrations/20251105090000_add_chat_session_search.sql` に定義された `public.normalize_url(text)` を根拠とする。
+
+VitestはPostgreSQL関数自体を実行しないため、「DBとの同一挙動を自動保証済み」とは扱わない。将来どちらかの実装を変更する場合は、上表の契約ケースを両方へ適用できるか確認する。DB実行を含む契約テストは別フェーズで判断する。
+
+`src/server/services/googleAdsAiAnalysisService.ts` には、クエリ・フラグメントも除去する非export関数`normalizeUrlKey`が存在する。`normalizeUrl`とは異なる契約であり、Phase 1のテスト対象には含めない。将来の統合・改名時に両者を同一ロジックとして扱わない。
+
+### Phase 1 完了条件
+
+- 上表の全対象に正常系・境界値・エラー系のテストが存在する
+- 時刻依存テストが固定時刻で再現可能である
+- `npm run test` が成功する
+- `npm run knip`がVitest関連ファイル・依存を未使用として誤検知せず成功する。誤検知時はテストディレクトリ全体を無条件にignoreせず、実際のエラーに対応する最小限のknip設定を追加する
+- テスト追加のみを目的としたプロダクションコード変更がない
 
 ---
 
-### Phase 3: CI 組み込み（目安: 1時間）
+## Phase 2: 分離済みZodスキーマのテスト
 
-現在の `.github/workflows/ci.yml` は `build` ステップのみ（lint は CI 未導入）。`build` ステップの**前**に `test` ステップを追加する。
+**目安**: 半日〜1日
+
+現行コードに実在する公開スキーマを対象とする。
+
+テストファイルは `tests/unit/server/schemas/` に配置し、`<対象ファイル名>.test.ts` とする。
+
+| 対象ファイル・スキーマ | 必須ケースと期待結果 |
+|---|---|
+| `brief.schema.ts` / `briefInputSchema`, `paymentEnum` | serviceが1件以上なら成功、0件なら失敗。不正UUID、不正URL、不正メール、不正支払方法は失敗する |
+| `chat.schema.ts` / `startChatSchema`, `continueChatSchema` | 必須フィールド欠落と不正roleは失敗する。`messages: []`は現行スキーマに`min`がないため受理するcharacterization testとする |
+| `ga4.schema.ts` / `ga4SettingsSchema` | `propertyId`必須、engagementは0〜86400の整数、read rateは0〜1、conversion eventsは最大50件という境界を確認する。各閾値とconversion eventsの`undefined`は正常系として受理する |
+| `googleAds.schema.ts` / `getKeywordMetricsSchema` | 実在日付、開始日 <= 終了日、数字のみのcampaign IDを受理し、不正日付・逆転範囲・非数字IDを拒否する |
+| `googleAds.schema.ts` / `keywordMetricsQuerySchema` | startDate / endDateだけを対象に、実在日付と開始日 <= 終了日を受理し、不正日付・逆転範囲を拒否する。campaign IDのテスト対象にはしない |
+
+インライン定義されたServer Action内スキーマは対象外とし、Phase 2で抽出リファクタリングを行わない。
+
+### Phase 2 完了条件
+
+- 上表4ファイルの公開スキーマに、正常系・境界値・拒否ケースが存在する
+- characterization test と仕様上の必須制約が区別されている
+- `npm run test` が成功する
+
+---
+
+## Phase 3: 品質ゲートとCIへの組み込み
+
+### ローカル・TAKT品質ゲート
+
+- `package.json` の `verify` に `npm run test` を組み込む
+- `.agents/skills/quality-gate/SKILL.md` の品質ゲート記述を、lint → test → build → knipへ同期する
+- `spec-to-pr` は既存どおり `npm run verify` を実行することでテストを必須通過する
+- `.agents/skills/spec-review/SKILL.md` の完全性チェックへ「純関数・正規化・集計・日付・分離済みZodスキーマを変更する場合、仕様書に追加・更新するテストケースと期待結果が明記されているか」を追加し、将来の仕様書に対する確認ルールの正本とする
+- Skill更新後に `npm run verify:agent-skills` を実行する
+- `.husky/pre-push` を `npm run test && npm run build && npm run knip` に更新し、push前にもコアロジックテストを実行する。pre-commitは既存どおりlintのみとする
+- TAKT `spec-to-pr` の `create_pr` は `git push --no-verify` でpre-pushフックを省略する。`npm run verify` の成功証跡をself_reviewで確認済みであり、CIが最終ゲートとなるため二重実行を避ける
+
+### CI
+
+現在の `.github/workflows/ci.yml` にはaudit・lint・build・knipジョブが存在する。これらと並列の独立した`test`ジョブを追加する。
 
 ```yaml
-- name: Run tests
-  run: npx vitest run
+test:
+  name: Test
+  runs-on: ubuntu-latest
+  if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    - name: Install dependencies
+      run: npm ci
+    - name: Run tests
+      run: npm run test
 ```
 
-lint の CI 追加は今回のスコープ外。vitest の green を確認してから別途判断する。
+通知ジョブでは次の両方を更新し、テスト失敗をLark通知でも失敗として扱う。
+
+- `needs`を`[audit, lint, test, build, knip]`へ変更する
+- `STATUS`判定式へ`needs.test.result == 'success'`を追加する
+
+### Phase 3 完了条件
+
+- `npm run verify` がlint・test・build・knipを実行して成功する
+- CIのaudit・lint・test・build・knipが成功する
+- testジョブ失敗時に、notifyジョブの`STATUS`が`failure`となり、Larkへ失敗状態を通知できる構成になっている
+- pre-pushでtest・build・knipが順番に実行される
+- `npm run verify:agent-skills`が成功する
 
 ---
 
-### Phase 4以降: 判断ベースで拡張
+## AI開発サイクルでの運用
 
-Phase 1〜3 が安定したら、以下を**そのとき判断する**（現時点では計画しない）：
+コアロジックを追加・変更する仕様書には、対象関数と期待結果を記載する。
 
-- `src/server/services/` の副作用なし処理の一部
-- `src/lib/heading-extractor.ts`（`extractHeadingsFromMarkdown`, `stripLeadingHeadingLine` は分岐が多い）
-- `src/lib/markdown-decoder.ts`（ストリーミングデコーダーは境界値が特殊）
-- E2E（ログイン / チャット開始 / 主要設定保存）
+1. 仕様書の期待結果からテストを書く
+2. 新規テストが意図した理由で失敗することを確認する。ただし既存挙動を固定するcharacterization testでは必須としない
+3. 最小差分で実装する
+4. `npm run test`で対象テストと既存回帰テストを確認する
+5. `npm run verify`で全品質ゲートを確認する
 
----
-
-## AI 開発サイクルでの使い方
-
-実装タスクを AI（Claude Code）に依頼する際は、以下のフローを基本とする：
-
-1. **テストを先に書く（または AI に書かせる）**: 「この関数のテストを境界値分析で書いて」と指示
-2. **テストを通す実装を依頼**: 「このテストが通るように実装して」
-3. **`npx vitest run` で確認**: CI に投げる前にローカルで通過を確認
-4. **リグレッションも自動検知**: 既存テストが通ることで副作用がないことを担保
-
-AI への指示例：
-```
-src/lib/date-utils.ts の addDaysISO 関数について、
-境界値分析を使ってテストケースを vitest 形式で書いてください。
-対象: YYYY-MM-DD バリデーション、月末日の繰り上がり、負値、うるう年
-```
+テストを通すために仕様を変更しない。仕様と現行実装が矛盾した場合は、実装者の判断で期待値を変えず、仕様確認のためABORTする。
 
 ---
 
-## カバレッジ目標
+## カバレッジの扱い
 
-カバレッジ率は「目標達成のための指標」ではなく、「テストが薄い箇所を発見するための手がかり」として使う（グッドハートの法則：指標が目標になると良い指標でなくなる）。
+導入初期はプロジェクト全体のカバレッジ率を完了条件にしない。Supabase、外部API、Reactコンポーネントを対象外とするため、全体率はコアロジックの品質を正しく表さない。
 
-| スコープ | 目標 | 備考 |
-|---|---|---|
-| `src/lib/` + `src/lib/validators/` | **75%+** | 純関数が集中するコアロジック層。高い目標を設定する価値がある |
-| プロジェクト全体 | **60%+** | Supabase・外部 API 直結コードは対象外のため、数値は参考程度 |
+`npm run test:coverage`は次の用途に限定する。
 
-**運用方針**:
-- カバレッジが目標を下回った場合は「テストを追加すべきか / 対象外とすべきか」を判断する。数値合わせのためだけのテストは書かない
-- `vitest --coverage` で定期確認する。CI での強制は Phase 3 以降に判断する
+- 対象に選んだ関数の未実行分岐を発見する
+- 重要な境界値のテスト漏れをレビューする
+- テスト対象の拡大判断に使う基準値を収集する
+
+数値合わせだけのテストは追加しない。将来カバレッジ閾値をCIで強制する場合は、実測値と保守コストを確認したうえで別仕様として合意する。
 
 ---
 
-## 完了基準
+## 将来の拡張判断
 
-| フェーズ | 完了条件 |
-|---|---|
-| Phase 1 | `npx vitest run` が green。対象 6 ファイル全てにテストが存在し、各ファイルの主要分岐（正常系・境界値・エラー系）がカバーされている |
-| Phase 2 | `src/server/schemas/` の 4 ファイル全てにテストが存在し、`npx vitest run` が green |
-| Phase 3 | CI の `build` + `vitest` が全て green で merge 可能 |
+Phase 1〜3の運用後、次の事象が発生した領域から追加自動化を検討する。
+
+- 同種の回帰不具合が複数回発生した
+- PRごとの手動確認負荷が継続的に大きい
+- 認証・RLS・主要RPCの変更頻度が上がった
+- ログイン、チャット開始、設定保存など主要フローの回帰が目視確認だけでは不安定になった
+- LLM出力の構造違反、途中切れ、大量入力時の品質低下を定量的に追跡する必要が生じた
+
+候補はSupabaseローカル環境でのRLS・RPC統合テスト、少数のPlaywrightスモークテスト、LLM evalとする。Reactコンポーネントの網羅的なユニットテストは、明確な費用対効果が確認できるまで優先しない。
+
+---
+
+## 仕様全体の完了基準
+
+- Phase 1〜3の完了条件をすべて満たす
+- `npm run verify`とCIの両方で自動テストが必須実行される
+- UI・外部API・Supabase変更に対する人間の手動確認責任がPR上で明示される
+- 自動テストで保証する範囲と保証しない範囲が混在していない
+- 本仕様の実装によって、既存UI・API・DBのプロダクション挙動を変更していない
