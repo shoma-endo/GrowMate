@@ -30,9 +30,12 @@ After code changes, run these checks unless the task explicitly scopes them out:
 
 ```bash
 npm run lint
+npm run test
 npm run build
 npm run knip
 ```
+
+Prefer `npm run verify`, which runs all four in this order.
 
 In unattended TAKT runs, the completion gate is `npm run verify` plus internal reviews (ai-antipattern / architecture / self-review). Do not block completion solely because browser manual testing was not performed; record it under PR 未確認事項 when UI changed.
 
