@@ -13,7 +13,9 @@
     "vercel:stats": "tsx scripts/check-vercel-stats.ts",
     "active:users": "tsx scripts/check-active-users.ts",
     "knip": "knip",
-    "verify": "npm run lint && npm run build && npm run knip",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "verify": "npm run lint && npm run test && npm run build && npm run knip",
     "verify:agent-skills": "bash scripts/verify-agent-skills.sh",
     "prepare": "husky"
   },
@@ -73,6 +75,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9",
     "eslint-config-next": "^16.2.9",
     "husky": "^9.1.7",
@@ -82,6 +85,7 @@
     "tailwindcss": "^4.3.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
+    "vitest": "^4.1.10",
     "ws": "^8.21.0"
   },
   "overrides": {

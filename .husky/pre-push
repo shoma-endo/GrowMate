@@ -1,3 +1,3 @@
 #!/usr/bin/env sh
-# pre-commit で lint 済み。ここでは push 前に build と knip を回す（CI 到達前の早期検知）。
-npm run build && npm run knip
+# pre-commit で lint 済み。ここでは push 前に test、build、knip を回す（CI 到達前の早期検知）。
+npm run test && npm run build && npm run knip
