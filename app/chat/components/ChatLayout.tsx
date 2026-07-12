@@ -29,7 +29,7 @@ import {
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
 import type { SessionHeadingSection } from '@/types/heading-flow';
-import { stripLeadingHeadingLine } from '@/lib/heading-extractor';
+import { formatMarkdownHeading, normalizeHeadingUnitContent } from '@/lib/heading-extractor';
 import {
   BlogStepId,
   BLOG_MODEL_PREFIX,
@@ -647,8 +647,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
         if (combinedContentVersions.length === 0 && headingSections.length > 0) {
           const sectionContents = headingSections
             .map(s => {
-              const hashes = '#'.repeat(s.headingLevel);
-              return `${hashes} ${s.headingText}\n\n${(s.content || '').trim()}`;
+              return `${formatMarkdownHeading(s.headingLevel, s.headingText)}\n\n${(s.content || '').trim()}`;
             })
             .join('\n\n')
             .trim();
@@ -677,15 +676,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       if (idx >= 0 && idx < headingSections.length) {
         const section = headingSections[idx];
         if (section?.isConfirmed && section.content) {
-          const hashes = '#'.repeat(section.headingLevel);
-          return `${hashes} ${section.headingText}\n\n${section.content}`;
+          return `${formatMarkdownHeading(section.headingLevel, section.headingText)}\n\n${section.content}`;
         }
         const allSectionsEmpty = headingSections.every(s => !s.content || s.content.trim() === '');
         // 未確定見出し: canvasStreamingContent または getLatestStep7HeadingContent を優先
         // （blog_creation_step7_hN はバージョン管理対象外のため activeCanvasVersion に含まれない）
         if (canvasStreamingContent?.trim()) {
-          const hashes = '#'.repeat(section?.headingLevel ?? 3);
-          return `${hashes} ${section?.headingText ?? ''}\n\n${canvasStreamingContent}`;
+          return `${formatMarkdownHeading(section?.headingLevel ?? 3, section?.headingText ?? '')}\n\n${canvasStreamingContent}`;
         }
         const fromChat = getLatestStep7HeadingContent(
           allMessagesForVersions,
@@ -693,8 +690,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           minTsForContentCheck
         );
         if (fromChat?.trim()) {
-          const hashes = '#'.repeat(section?.headingLevel ?? 3);
-          return `${hashes} ${section?.headingText ?? ''}\n\n${fromChat}`;
+          return `${formatMarkdownHeading(section?.headingLevel ?? 3, section?.headingText ?? '')}\n\n${fromChat}`;
         }
         if (allSectionsEmpty && activeCanvasVersion?.content?.trim()) {
           // 書き出し案送信直後の旧バージョンのみ非表示。今回の生成内容はCanvasに表示する
@@ -902,7 +898,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       return;
     }
     const contentToSave =
-      section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
+      section && rawContent
+        ? normalizeHeadingUnitContent(
+            rawContent,
+            section.headingText,
+            headingSections.slice(activeHeadingIndex + 1).map(s => s.headingText)
+          )
+        : rawContent;
 
     if (!contentToSave?.trim()) {
       saveHeadingInFlightRef.current = false;

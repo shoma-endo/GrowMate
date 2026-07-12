@@ -5,6 +5,9 @@
 const HEADING_WHITESPACE =
   new Set<string>([' ', '\t', '\u3000']);
 
+const WRAPPED_HEADING_MIN_LENGTH = 20;
+const WRAPPED_HEADING_CONTINUATION_MAX_LENGTH = 20;
+
 /**
  * h2/h3/h4 見出し行を解析する（正規表現を使用しない）。
  * 例: "h2 見出し" / "h3　見出し" / "h3見出し" / "H4見出し" / "h2: 見出し" / "h2： 見出し"
@@ -77,6 +80,36 @@ interface ExtractedHeading {
 }
 
 /**
+ * リッチテキスト経由の保存で長い見出しの末尾だけが次行へ折り返された場合に連結する。
+ * 通常本文の誤結合を避けるため、長い見出し・インデントされた短い次行・直後の空行を必須とする。
+ */
+function appendWrappedHeadingContinuation(
+  lines: string[],
+  lineIndex: number,
+  headingText: string
+): string {
+  if (headingText.length < WRAPPED_HEADING_MIN_LENGTH) return headingText;
+
+  const nextLine = lines[lineIndex + 1];
+  if (nextLine === undefined || nextLine === nextLine.trim()) return headingText;
+
+  const continuation = nextLine.trim();
+  if (
+    !continuation ||
+    continuation.length > WRAPPED_HEADING_CONTINUATION_MAX_LENGTH ||
+    continuation === '---' ||
+    parseH2H3H4HeadingLine(continuation)
+  ) {
+    return headingText;
+  }
+
+  const followingLine = lines[lineIndex + 2];
+  if (followingLine !== undefined && followingLine.trim() !== '') return headingText;
+
+  return `${headingText}${continuation}`;
+}
+
+/**
  * Step 5の構成案テキストから、h2/h3/h4の見出しを抽出する。
  * その他のレベルの見出しは無視する。
  * Step5/basic_structure は独自プレフィックス形式（`h2 …` / `H3 …` / `H4 …`）のみを正とする
@@ -89,12 +122,13 @@ export function extractHeadingsFromMarkdown(markdown: string): ExtractedHeading[
   const headings: ExtractedHeading[] = [];
   let orderIndex = 0;
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex]!;
     const trimmed = line.trim();
     const parsed = parseH2H3H4HeadingLine(trimmed);
     if (parsed) {
       headings.push({
-        text: parsed.text,
+        text: appendWrappedHeadingContinuation(lines, lineIndex, parsed.text),
         level: parsed.level,
         orderIndex: orderIndex++,
       });
@@ -160,7 +194,7 @@ function headingsMatchAfterNormalization(lineNorm: string, expectedNorm: string)
  *
  * fenced/indented code block 内のコード例として書かれた見出しは除外する（CommonMark 準拠）。
  */
-export function stripLeadingMatchingHeadingFromBody(
+function stripLeadingMatchingHeadingFromBody(
   content: string,
   headingText: string,
   lookahead = 5
@@ -173,6 +207,7 @@ export function stripLeadingMatchingHeadingFromBody(
   let inFence = false;
   let fenceChar = '';
   let fenceLen = 0;
+  let lastMatchingHeadingIndex = -1;
   for (let i = 0; i < limit; i++) {
     const rawLine = lines[i]!;
 
@@ -207,45 +242,85 @@ export function stripLeadingMatchingHeadingFromBody(
     const lineNorm = normalizeHeadingForComparison(lineHeadingText);
     if (!headingsMatchAfterNormalization(lineNorm, expectedNorm)) continue;
 
-    // 一致行を発見: lines[0..i] を削除し、続く空行も剥がす
-    let j = i + 1;
+    // Canvas 側の canonical 見出しと LLM 応答内の見出しが重なる場合があるため、
+    // 最初の一致で返さず、冒頭 lookahead 内の最後の一致までを除去対象にする。
+    lastMatchingHeadingIndex = i;
+  }
+
+  if (lastMatchingHeadingIndex >= 0) {
+    let j = lastMatchingHeadingIndex + 1;
     while (j < lines.length && lines[j]!.trim() === '') j++;
     return lines.slice(j).join('\n');
   }
+
   return content;
 }
 
 /**
- * Step7保存時用: 先頭の見出し行を除去する。
- * getCombinedContentForPrompt が heading_text を自動付与するため、content には本文のみを保存する。
- * 先頭行が h2/h3/h4 見出し かつ headingText と実質一致する場合に除去。
- * LLM の句読点追加・語尾変更・軽微な言い換えにも耐性を持つ。
+ * Step7 の見出し単位本文を、仕様上の「対象見出しから次の対象見出し直前まで」に正規化する。
+ *
+ * LLM が H2 の配下にある H3/H4 まで先取りして出力した場合、そのまま保存すると後続の
+ * 見出し単位生成と重複する。このため対象見出し行を除去した後、コードブロック外で最初に
+ * 現れる別の H2/H3/H4 以降を保存対象から除外する。
  */
-export function stripLeadingHeadingLine(content: string, headingText: string): string {
-  const trimmed = content.trim();
-  if (!trimmed || !headingText) return content;
+export function normalizeHeadingUnitContent(
+  content: string,
+  headingText: string,
+  subsequentHeadingTexts: string[] = []
+): string {
+  if (!content) return content;
 
-  // インデントコードブロック検出のため、trim 前の先頭非空行を確認する。
-  // CommonMark: 半角スペース 4 個以上、または半角スペース 0〜3 個 + タブで始まる行は
-  // コードブロック扱い（タブは 4 桁タブストップに展開）とし、見出しと見なさず剥がさない。
-  const lines = content.split('\n');
-  let rawFirstIdx = 0;
-  while (rawFirstIdx < lines.length && lines[rawFirstIdx]!.trim() === '') rawFirstIdx++;
-  if (rawFirstIdx < lines.length) {
-    const rawFirstLine = lines[rawFirstIdx]!;
-    if (/^( {0,3}\t| {4})/.test(rawFirstLine)) return content;
+  const body = stripLeadingMatchingHeadingFromBody(content, headingText);
+  const lines = body.split('\n');
+  let inFence = false;
+  let fenceChar = '';
+  let fenceLen = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i]!;
+
+    if (inFence) {
+      const closeRe = fenceChar === '`' ? /^ {0,3}(`{3,})\s*$/ : /^ {0,3}(~{3,})\s*$/;
+      const closeMatch = closeRe.exec(rawLine);
+      if (closeMatch && closeMatch[1]!.length >= fenceLen) {
+        inFence = false;
+        fenceChar = '';
+        fenceLen = 0;
+      }
+      continue;
+    }
+
+    const openMatch = /^ {0,3}(`{3,}|~{3,})/.exec(rawLine);
+    if (openMatch) {
+      inFence = true;
+      fenceChar = openMatch[1]![0]!;
+      fenceLen = openMatch[1]!.length;
+      continue;
+    }
+
+    if (/^( {0,3}\t| {4})/.test(rawLine)) continue;
+
+    const trimmed = rawLine.trim();
+    const extractedHeadingText = extractHeadingTextFromLine(trimmed);
+    if (extractedHeadingText === null) continue;
+
+    // `H2直下では…` / `H2 直下では…` / `H2: では…` のような通常本文を
+    // 見出しと誤認して欠落させないよう、表記にかかわらず後続の正本見出しとの一致を必須にする。
+    // Markdown 見出しは新規生成しないが、過去データの互換処理として同じ一致条件で扱う。
+    const matchesSubsequentHeading = subsequentHeadingTexts.some(
+      text => normalizeHeadingForComparison(text) === normalizeHeadingForComparison(extractedHeadingText)
+    );
+    if (!matchesSubsequentHeading) continue;
+
+    return lines.slice(0, i).join('\n').trimEnd();
   }
 
-  const firstLine = lines[rawFirstIdx]?.trim() ?? '';
-  const lineHeadingText = extractHeadingTextFromLine(firstLine);
-  if (lineHeadingText === null) return content;
-  const a = normalizeHeadingForComparison(lineHeadingText);
-  const b = normalizeHeadingForComparison(headingText);
-  if (!headingsMatchAfterNormalization(a, b)) return content;
+  return body.trimEnd();
+}
 
-  // 見出し直後の改行のみ除去。本文先頭のインデント（コードブロック・ネスト箇条書き等）は保持する
-  const rest = trimmed.slice(firstLine.length).replace(/^[\r\n]+/, '');
-  return rest;
+/** Step7 の見出しレベルを完成形用の Markdown 見出しへ変換する。 */
+export function formatMarkdownHeading(headingLevel: number, headingText: string): string {
+  return `${'#'.repeat(headingLevel)} ${headingText}`;
 }
 
 /**

@@ -196,6 +196,7 @@ import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { BLOG_STEP_IDS, BlogStepId, isStep7 as isBlogStep7, toBlogModel as toTemplateName } from '@/lib/constants';
 import { extractStep7HeadingIndexFromModel } from '@/lib/canvas-content';
+import { formatMarkdownHeading } from '@/lib/heading-extractor';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { headingFlowService } from '@/server/services/headingFlowService';
 
@@ -548,18 +549,27 @@ const generateLpDraftPrompt = cache(
  */
 async function generateHeadingUnitPrompt(
   sessionId: string,
-  activeSection: { heading_text: string; heading_level?: number }
+  activeSection: { heading_text: string; heading_level?: number },
+  nextSection?: { heading_text: string; heading_level?: number }
 ): Promise<string> {
   try {
     const basePrompt = await generateBlogCreationPromptByStep('step7', sessionId);
 
-    const headingLevel = activeSection.heading_level ?? 3;
-    const hashes = '#'.repeat(headingLevel);
+    const headingLine = formatMarkdownHeading(
+      activeSection.heading_level ?? 3,
+      activeSection.heading_text
+    );
 
     const headingConstraintBlock = [
       '',
+      '【このリクエストで最優先する出力範囲】',
       `このリクエストの対象見出しは「${activeSection.heading_text}」です。`,
-      `確認の質問はせず、${hashes} ${activeSection.heading_text} から始まる見出し行と本文のみを出力してください。`,
+      `確認の質問はせず、${headingLine} から始まる見出し行と本文のみを出力してください。`,
+      '対象見出し以外のH2/H3/H4見出しは、配下の見出しであっても絶対に出力しないでください。',
+      '対象がH2の場合も、配下のH3/H4の内容を先取りせず、H2直下の導入本文だけを出力してください。',
+      nextSection?.heading_text
+        ? `次の生成対象は「${nextSection.heading_text}」です。その見出しと本文は出力せず、直前で終了してください。`
+        : '別の見出しを追加せず、対象見出しの本文が終わった時点で終了してください。',
     ].join('\n');
 
     return [basePrompt, headingConstraintBlock].filter(Boolean).join('\n');
@@ -778,7 +788,11 @@ export async function getSystemPrompt(
               step7HeadingIndex,
               headingText: activeSection.heading_text,
             });
-            return generateHeadingUnitPrompt(sessionId, activeSection);
+            return generateHeadingUnitPrompt(
+              sessionId,
+              activeSection,
+              sectionsResult.data[step7HeadingIndex + 1]
+            );
           }
           console.warn('[getSystemPrompt] Step7 heading section could not be resolved', {
             model,
