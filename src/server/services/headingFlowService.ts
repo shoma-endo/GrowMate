@@ -1,6 +1,7 @@
 import { SupabaseService, type SupabaseResult } from './supabaseService';
 import {
   extractHeadingsFromMarkdown,
+  formatMarkdownHeading,
   generateHeadingKey,
   normalizeHeadingUnitContent,
 } from '@/lib/heading-extractor';
@@ -135,8 +136,7 @@ class HeadingFlowService extends SupabaseService {
           s.heading_text,
           sections.slice(index + 1).map(section => section.heading_text)
         );
-        const hashes = '#'.repeat(s.heading_level);
-        return `${hashes} ${s.heading_text}\n\n${cleaned}`;
+        return `${formatMarkdownHeading(s.heading_level, s.heading_text)}\n\n${cleaned}`;
       })
       .join('\n\n');
 

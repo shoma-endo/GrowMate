@@ -318,6 +318,11 @@ export function normalizeHeadingUnitContent(
   return body.trimEnd();
 }
 
+/** Step7 の見出しレベルを完成形用の Markdown 見出しへ変換する。 */
+export function formatMarkdownHeading(headingLevel: number, headingText: string): string {
+  return `${'#'.repeat(headingLevel)} ${headingText}`;
+}
+
 /**
  * SHA-256 を使用して見出しの短いハッシュを生成し、上位8文字（16進数）を返す。
  * ブラウザ/サーバー両方で動くよう、Node crypto への依存を排除した純粋な JavaScript 実装。

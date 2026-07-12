@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractHeadingsFromMarkdown,
+  formatMarkdownHeading,
   normalizeHeadingUnitContent,
 } from '@/lib/heading-extractor';
 
@@ -126,5 +127,27 @@ describe('normalizeHeadingUnitContent', () => {
 
   it('対象見出ししかない場合は空文字列を返す', () => {
     expect(normalizeHeadingUnitContent('## 対象見出し\n', '対象見出し')).toBe('');
+  });
+});
+
+describe('formatMarkdownHeading', () => {
+  it.each([
+    [2, '大見出し', '## 大見出し'],
+    [3, '中見出し', '### 中見出し'],
+    [4, '小見出し', '#### 小見出し'],
+  ])('H%sをMarkdown見出しへ変換する', (level, text, expected) => {
+    expect(formatMarkdownHeading(level, text)).toBe(expected);
+  });
+
+  it('H2→H3→H4を抽出順のままMarkdownへ変換する', () => {
+    const headings = extractHeadingsFromMarkdown(
+      ['H2: 大見出し', 'H3: 中見出し', 'H4: 小見出し'].join('\n')
+    );
+
+    expect(headings.map(heading => formatMarkdownHeading(heading.level, heading.text))).toEqual([
+      '## 大見出し',
+      '### 中見出し',
+      '#### 小見出し',
+    ]);
   });
 });
