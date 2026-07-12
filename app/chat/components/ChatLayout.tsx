@@ -29,7 +29,7 @@ import {
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useHeadingCanvasState } from '@/hooks/useHeadingCanvasState';
 import type { SessionHeadingSection } from '@/types/heading-flow';
-import { stripLeadingHeadingLine } from '@/lib/heading-extractor';
+import { normalizeHeadingUnitContent } from '@/lib/heading-extractor';
 import {
   BlogStepId,
   BLOG_MODEL_PREFIX,
@@ -902,7 +902,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       return;
     }
     const contentToSave =
-      section && rawContent ? stripLeadingHeadingLine(rawContent, section.headingText) : rawContent;
+      section && rawContent
+        ? normalizeHeadingUnitContent(
+            rawContent,
+            section.headingText,
+            headingSections.slice(activeHeadingIndex + 1).map(s => s.headingText)
+          )
+        : rawContent;
 
     if (!contentToSave?.trim()) {
       saveHeadingInFlightRef.current = false;
