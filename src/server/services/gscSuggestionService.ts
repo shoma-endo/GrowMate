@@ -9,6 +9,8 @@ import {
   WPCOM_TOKEN_COOKIE_NAME,
 } from '@/server/services/wordpressContext';
 
+const LLM_TIMEOUT_MS = 220 * 1000;
+
 type SuggestionTemplate =
   | 'gsc_insight_ctr_boost'
   | 'gsc_insight_intro_refresh'
@@ -75,6 +77,7 @@ class GscSuggestionService {
           templateName: 'gsc_insight_ctr_boost',
           label: MODEL_CONFIGS['gsc_insight_ctr_boost']?.label ?? 'gsc_insight_ctr_boost',
           task: this.runOne({
+            stage: 1,
             templateName: 'gsc_insight_ctr_boost',
             variables: {
               // テンプレートの変数名は広告用だが、実体はWordPressのタイトル/説明を渡す
@@ -105,6 +108,7 @@ class GscSuggestionService {
           templateName: 'gsc_insight_intro_refresh',
           label: MODEL_CONFIGS['gsc_insight_intro_refresh']?.label ?? 'gsc_insight_intro_refresh',
           task: this.runOne({
+            stage: 2,
             templateName: 'gsc_insight_intro_refresh',
             variables: {
               openingProposal: annotation.opening_proposal || '',
@@ -130,6 +134,7 @@ class GscSuggestionService {
           templateName: 'gsc_insight_body_rewrite',
           label: MODEL_CONFIGS['gsc_insight_body_rewrite']?.label ?? 'gsc_insight_body_rewrite',
           task: this.runOne({
+            stage: 3,
             templateName: 'gsc_insight_body_rewrite',
             variables: {
               wpContent: wpPost!.contentText!, // hasContent チェック済みなので null ではない
@@ -156,6 +161,7 @@ class GscSuggestionService {
           label:
             MODEL_CONFIGS['gsc_insight_persona_rebuild']?.label ?? 'gsc_insight_persona_rebuild',
           task: this.runOne({
+            stage: 4,
             templateName: 'gsc_insight_persona_rebuild',
             variables: {
               persona: annotation.persona || '',
@@ -231,10 +237,12 @@ class GscSuggestionService {
   }
 
   private async runOne({
+    stage,
     templateName,
     variables,
     signal,
   }: {
+    stage: number;
     templateName: SuggestionTemplate;
     variables: Record<string, string>;
     signal: AbortSignal;
@@ -248,16 +256,32 @@ class GscSuggestionService {
     const filled = PromptService.replaceVariables(template.content, variables);
     const provider = modelConfig.provider;
     const model = modelConfig.actualModel;
+    const startedAt = Date.now();
+    const logContext = { stage, templateName, provider, model };
+    console.info('[GscSuggestion] Template generation started', logContext);
 
-    const fullText = await llmChat(provider, model, [{ role: 'user', content: filled }], {
-      maxTokens: modelConfig.maxTokens,
-      temperature: modelConfig.temperature,
-      stream: modelConfig.stream,
-      timeoutMs: 180000,
-      signal,
-    });
+    try {
+      const fullText = await llmChat(provider, model, [{ role: 'user', content: filled }], {
+        maxTokens: modelConfig.maxTokens,
+        temperature: modelConfig.temperature,
+        stream: modelConfig.stream,
+        timeoutMs: LLM_TIMEOUT_MS,
+        signal,
+      });
 
-    return { templateName, text: fullText };
+      console.info('[GscSuggestion] Template generation completed', {
+        ...logContext,
+        latencyMs: Date.now() - startedAt,
+      });
+      return { templateName, text: fullText };
+    } catch (error) {
+      console.error('[GscSuggestion] Template generation failed', {
+        ...logContext,
+        latencyMs: Date.now() - startedAt,
+        error,
+      });
+      throw error;
+    }
   }
 
   private async loadAnnotation(userId: string, annotationId: string) {
