@@ -4,19 +4,14 @@ import React, { useState } from 'react';
 import {
   upsertContentAnnotationBySession,
 } from '@/server/actions/wordpress.actions';
-import { summarizeContentAnnotation } from '@/server/actions/contentAnnotationSummary.actions';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, X } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePersistedResizableWidth } from '@/hooks/usePersistedResizableWidth';
 import { AnnotationRecord } from '@/types/annotation';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
+import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 import { useAnnotationForm } from '@/hooks/useAnnotationForm';
-import { toast } from 'sonner';
-import {
-  isEmailLinkConflictResult,
-  replaceToEmailLinkConflictLogin,
-} from '@/lib/auth/emailLinkConflictClient';
 
 interface Props {
   sessionId: string;
@@ -81,33 +76,6 @@ export default function AnnotationPanel({
     onSaveSuccess?.();
   };
 
-  const handleSummarize = async () => {
-    if (!wpLinked || isSummarizing || isSaving) {
-      return;
-    }
-
-    setIsSummarizing(true);
-    try {
-      const result = await summarizeContentAnnotation(sessionId);
-      if (!result.success) {
-        if (isEmailLinkConflictResult(result)) {
-          replaceToEmailLinkConflictLogin();
-          return;
-        }
-        toast.error(result.error);
-        return;
-      }
-
-      onSummarizeSuccess?.(result.data);
-      toast.success('AIによる要約でフィールドを更新しました');
-    } catch (error) {
-      console.error('[AnnotationPanel] summarize failed:', error);
-      toast.error('要約処理中にエラーが発生しました');
-    } finally {
-      setIsSummarizing(false);
-    }
-  };
-
   if (!isVisible) return null;
 
   const actionDisabled = isSaving || saveDone || isSummarizing;
@@ -169,36 +137,14 @@ export default function AnnotationPanel({
 
           {/* アクションボタン */}
           <div className="pt-4 border-t border-gray-200 space-y-3">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              WordPress本文から生成し直します。現在入力中の未保存内容も含めて上書きされます。
-            </p>
             <div className="flex items-center justify-between gap-2">
-              <div className="flex flex-col items-start gap-1">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleSummarize}
-                  disabled={!wpLinked || actionDisabled}
-                  className="min-h-9"
-                >
-                  {isSummarizing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      要約中…
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      要約
-                    </>
-                  )}
-                </Button>
-                {!wpLinked && (
-                  <span className="text-xs text-muted-foreground">
-                    WordPress連携後に利用できます
-                  </span>
-                )}
-              </div>
+              <ContentAnnotationSummaryAction
+                sessionId={sessionId}
+                isWordPressLinked={wpLinked}
+                disabled={isSaving || saveDone}
+                onSuccess={data => onSummarizeSuccess?.(data)}
+                onPendingChange={setIsSummarizing}
+              />
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
