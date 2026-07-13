@@ -59,3 +59,7 @@ scripts/db-stats-history.json
 !.takt/workflows/**
 !.takt/facets/
 !.takt/facets/**
+
+# local-only docs
+docs/PROJECT_OVERVIEW.md
+docs/project-overview.html
