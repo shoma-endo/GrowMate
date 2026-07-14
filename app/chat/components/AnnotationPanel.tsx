@@ -42,6 +42,7 @@ export default function AnnotationPanel({
   const {
     form,
     updateField,
+    replaceFields,
     canonicalUrl,
     updateCanonicalUrl,
     canonicalUrlError,
@@ -155,7 +156,10 @@ export default function AnnotationPanel({
                 sessionId={sessionId}
                 isWordPressLinked={wpLinked}
                 disabled={isSaving || saveDone}
-                onSuccess={data => onSummarizeSuccess?.(data)}
+                onSuccess={data => {
+                  replaceFields(data);
+                  onSummarizeSuccess?.(data);
+                }}
                 onPendingChange={setIsSummarizing}
               />
               <div className="flex justify-end gap-2">

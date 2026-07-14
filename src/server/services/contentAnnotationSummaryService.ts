@@ -2,7 +2,10 @@ import {
   CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS,
   MODEL_CONFIGS,
 } from '@/lib/constants';
-import { extractBasicStructureFromHtml } from '@/lib/html-content-extractor';
+import {
+  extractBasicStructureFromHtml,
+  extractOpeningProposalFromHtml,
+} from '@/lib/html-content-extractor';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { PromptService } from '@/server/services/promptService';
 import { llmChat } from '@/server/services/llmService';
@@ -150,6 +153,9 @@ class ContentAnnotationSummaryService {
     const basicStructure = wpContent.contentHtml
       ? extractBasicStructureFromHtml(wpContent.contentHtml)
       : '';
+    const openingProposal = wpContent.contentHtml
+      ? extractOpeningProposalFromHtml(wpContent.contentHtml)
+      : '';
 
     const template = await PromptService.getTemplateByName('content_annotation_ai_summary');
     if (!template) {
@@ -204,7 +210,7 @@ class ContentAnnotationSummaryService {
         persona: parsedFields.persona.trim() || null,
         goal: parsedFields.goal.trim() || null,
         prep: parsedFields.prep.trim() || null,
-        opening_proposal: parsedFields.opening_proposal.trim() || null,
+        opening_proposal: openingProposal || null,
         basic_structure: basicStructure || null,
         impressions: typedAnnotation.impressions ?? null,
       },

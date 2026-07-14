@@ -51,8 +51,8 @@ describe('contentAnnotationSummaryService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.fetchWpPostContentLive.mockResolvedValue({
-      contentText: '記事本文',
-      contentHtml: '<h2>見出し</h2><p>記事本文</p>',
+      contentText: '元記事の書き出し 記事本文',
+      contentHtml: '<p>元記事の<strong>書き出し</strong></p><h2>見出し</h2><p>記事本文</p>',
       title: '記事タイトル',
       excerpt: null,
     });
@@ -90,6 +90,8 @@ describe('contentAnnotationSummaryService', () => {
     if (!generated.success) return;
     expect(generated.annotationId).toBe('annotation-id');
     expect(generated.userId).toBe('user-id');
+    expect(generated.fields.opening_proposal).toBe('元記事の書き出し');
+    expect(generated.fields.opening_proposal).not.toBe('書き出し');
     expect(mocks.eq).toHaveBeenCalledWith('user_id', 'user-id');
     expect(mocks.fetchWpPostContentLive).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-id', wpPostId: 42 })
