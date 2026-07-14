@@ -1,6 +1,7 @@
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
   WordPressPostResponse,
+  WordPressPostApiResponse,
   WordPressSiteInfo,
   WordPressApiResult,
   WordPressType,
@@ -94,6 +95,51 @@ export class WordPressService {
         Authorization: `Basic ${credentials}`,
       };
     }
+  }
+
+  /**
+   * セルフホスト環境で /wp-json/ が拒否される場合に、rest_route 形式へフォールバックする。
+   */
+  private async fetchRestResource(resource: string): Promise<Response> {
+    const primaryResponse = await fetch(`${this.baseUrl}/${resource}`, {
+      headers: this.getAuthHeaders(),
+    });
+    const isWordPressNotFound =
+      primaryResponse.status === 404 &&
+      primaryResponse.headers.get('content-type')?.includes('application/json');
+    if (
+      primaryResponse.ok ||
+      isWordPressNotFound ||
+      this.type !== 'self_hosted' ||
+      !this.siteUrl
+    ) {
+      return primaryResponse;
+    }
+
+    const [pathname, query = ''] = resource.split('?', 2);
+    const fallbackUrl = `${this.siteUrl.replace(/\/$/, '')}/index.php?rest_route=/wp/v2/${pathname}${query ? `&${query}` : ''}`;
+    console.warn('[WordPressService] REST API primary request failed; trying fallback', {
+      status: primaryResponse.status,
+      resource: pathname,
+    });
+    return fetch(fallbackUrl, { headers: this.getAuthHeaders() });
+  }
+
+  private async getRestErrorMessage(response: Response): Promise<string> {
+    if (response.status === 401 || response.status === 403) {
+      return ERROR_MESSAGES.WORDPRESS.REST_API_ACCESS_DENIED;
+    }
+
+    const errorBody: unknown = await response.json().catch(() => null);
+    if (
+      errorBody &&
+      typeof errorBody === 'object' &&
+      'message' in errorBody &&
+      typeof errorBody.message === 'string'
+    ) {
+      return errorBody.message;
+    }
+    return response.statusText;
   }
 
   /**
@@ -221,23 +267,24 @@ export class WordPressService {
     type: 'posts' | 'pages' = 'posts'
   ): Promise<WordPressApiResult<WordPressPostResponse | null>> {
     try {
-      const endpoint = `${this.baseUrl}/${type}?slug=${encodeURIComponent(slug)}`;
-      const response = await fetch(endpoint, {
-        headers: this.getAuthHeaders(),
-      });
+      const response = await this.fetchRestResource(`${type}?slug=${encodeURIComponent(slug)}`);
 
       if (!response.ok) {
         if (response.status === 404) {
           return { success: true, data: null }; // Not found is not an error here
         }
-        const errorBody = await response.json().catch(() => ({ message: response.statusText }));
         return {
           success: false,
-          error: `${type === 'pages' ? '固定ページ' : '投稿'}検索エラー (${slug}): ${errorBody.message || response.statusText}`,
+          error: `${type === 'pages' ? '固定ページ' : '投稿'}検索エラー (${slug}): ${await this.getRestErrorMessage(response)}`,
         };
       }
 
-      const items: WordPressPostResponse[] = await response.json();
+      const rawItems: unknown = await response.json();
+      const items = Array.isArray(rawItems)
+        ? rawItems
+            .map(item => normalizeWordPressPostResponse(item))
+            .filter((item): item is WordPressPostResponse => item !== null)
+        : [];
       let resultData: WordPressPostResponse | null = null;
 
       const exactMatch = items.find(item => item.slug === slug);
@@ -272,21 +319,22 @@ export class WordPressService {
       type: 'posts' | 'pages'
     ): Promise<WordPressApiResult<WordPressPostResponse | null>> => {
       try {
-        const endpoint = `${this.baseUrl}/${type}/${id}?_embed=true`;
-        const response = await fetch(endpoint, { headers: this.getAuthHeaders() });
+        const response = await this.fetchRestResource(`${type}/${id}?_embed=true`);
 
         if (!response.ok) {
           if (response.status === 404) {
             return { success: true, data: null };
           }
-          const errorBody = await response.json().catch(() => ({ message: response.statusText }));
           return {
             success: false,
-            error: `${type === 'pages' ? '固定ページ' : '投稿'}取得エラー (${id}): ${errorBody.message || response.statusText}`,
+            error: `${type === 'pages' ? '固定ページ' : '投稿'}取得エラー (${id}): ${await this.getRestErrorMessage(response)}`,
           };
         }
 
-        const item: WordPressPostResponse = await response.json();
+        const item = normalizeWordPressPostResponse(await response.json());
+        if (!item) {
+          return { success: false, error: ERROR_MESSAGES.WORDPRESS.POSTS_FETCH_FAILED };
+        }
         return { success: true, data: item };
       } catch (error) {
         console.error(`Error in getContentById for id ${id} (type: ${type}):`, error);
@@ -563,6 +611,23 @@ export class WordPressService {
 
     return { posts: aggregated, totalsByType, wasTruncated, maxItems };
   }
+}
+
+function normalizeWordPressPostResponse(data: unknown): WordPressPostResponse | null {
+  if (!data || typeof data !== 'object') return null;
+
+  const raw = data as WordPressPostApiResponse;
+  const postId = raw.id ?? raw.ID;
+  if (typeof postId !== 'number' || !Number.isSafeInteger(postId) || postId <= 0) {
+    return null;
+  }
+
+  const normalized: Record<string, unknown> = {
+    ...(raw as unknown as Record<string, unknown>),
+    id: postId,
+  };
+  delete normalized.ID;
+  return normalized as unknown as WordPressPostResponse;
 }
 
 const resolveRenderedField = (field: WordPressRenderedField): string | undefined => {

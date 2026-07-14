@@ -15,6 +15,7 @@ import type { AnnotationRecord } from '@/types/annotation';
 
 interface ContentAnnotationSummaryActionProps {
   sessionId?: string | null;
+  annotationId?: string | null;
   isWordPressLinked: boolean;
   disabled?: boolean;
   size?: 'sm' | 'default';
@@ -25,6 +26,7 @@ interface ContentAnnotationSummaryActionProps {
 
 export default function ContentAnnotationSummaryAction({
   sessionId,
+  annotationId,
   isWordPressLinked,
   disabled = false,
   size = 'sm',
@@ -33,10 +35,15 @@ export default function ContentAnnotationSummaryAction({
   onPendingChange,
 }: ContentAnnotationSummaryActionProps) {
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const canSummarize = Boolean(sessionId) && isWordPressLinked;
+  const summaryTarget = annotationId
+    ? ({ annotationId } as const)
+    : sessionId
+      ? ({ sessionId } as const)
+      : null;
+  const canSummarize = Boolean(summaryTarget) && isWordPressLinked;
 
   const handleSummarize = async () => {
-    if (!sessionId || !canSummarize || disabled || isSummarizing) {
+    if (!summaryTarget || !canSummarize || disabled || isSummarizing) {
       return;
     }
 
@@ -46,7 +53,7 @@ export default function ContentAnnotationSummaryAction({
     const toastId = toast.loading('WordPress本文を要約しています...');
 
     try {
-      const result = await summarizeContentAnnotation(sessionId);
+      const result = await summarizeContentAnnotation(summaryTarget);
       if (isEmailLinkConflictResult(result)) {
         toast.dismiss(toastId);
         replaceToEmailLinkConflictLogin();
@@ -116,7 +123,9 @@ export default function ContentAnnotationSummaryAction({
       </div>
       {!canSummarize && (
         <span className="text-xs text-muted-foreground">
-          WordPress連携済みのコンテンツで利用できます
+          {!isWordPressLinked
+            ? 'WordPress投稿URLを保存すると利用できます'
+            : 'コンテンツ情報を再読み込みしてからお試しください'}
         </span>
       )}
     </div>

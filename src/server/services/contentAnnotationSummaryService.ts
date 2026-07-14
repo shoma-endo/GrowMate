@@ -11,6 +11,7 @@ import { fetchWpPostContentLive } from '@/server/services/wordpressContentSync';
 import {
   contentAnnotationAiSummarySchema,
   type ContentAnnotationAiSummaryFields,
+  type SummarizeContentAnnotationTarget,
 } from '@/server/schemas/contentAnnotationSummary.schema';
 import type { AnnotationRecord } from '@/types/annotation';
 import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies';
@@ -35,12 +36,20 @@ type SummaryErrorCode =
   | 'SUMMARY_CONTENT_TOO_LARGE'
   | 'SUMMARY_AI_FAILED'
   | 'SUMMARY_PARSE_FAILED'
-  | 'ACCESS_DENIED'
   | 'ANNOTATION_NOT_FOUND';
 
 type GenerateSummaryResult =
-  | { success: true; fields: ContentAnnotationSummaryFields }
+  | {
+      success: true;
+      fields: ContentAnnotationSummaryFields;
+      annotationId: string;
+      userId: string;
+    }
   | { success: false; code: SummaryErrorCode };
+
+type SaveSummaryResult =
+  | { success: true; data: AnnotationRecord }
+  | { success: false };
 
 function mapSummaryError(code: SummaryErrorCode): string {
   switch (code) {
@@ -54,8 +63,6 @@ function mapSummaryError(code: SummaryErrorCode): string {
       return ERROR_MESSAGES.WORDPRESS.SUMMARY_AI_FAILED;
     case 'SUMMARY_PARSE_FAILED':
       return ERROR_MESSAGES.WORDPRESS.SUMMARY_PARSE_FAILED;
-    case 'ACCESS_DENIED':
-      return 'アクセス権の確認に失敗しました';
     case 'ANNOTATION_NOT_FOUND':
       return 'コンテンツ情報が見つかりません';
     default:
@@ -97,54 +104,36 @@ class ContentAnnotationSummaryService {
   private supabase = new SupabaseService();
 
   async generateSummary(params: {
-    sessionId: string;
+    target: SummarizeContentAnnotationTarget;
     executorUserId: string;
     cookieStore: ReadonlyRequestCookies;
   }): Promise<GenerateSummaryResult> {
     const client = this.supabase.getClient();
-    const { sessionId, executorUserId, cookieStore } = params;
+    const { target, executorUserId, cookieStore } = params;
 
-    const { data: accessibleIds, error: accessError } = await client.rpc('get_accessible_user_ids', {
-      p_user_id: executorUserId,
-    });
-
-    if (accessError || !accessibleIds) {
-      return { success: false, code: 'ACCESS_DENIED' };
-    }
-
-    const { data: sessionData, error: sessionError } = await client
-      .from('chat_sessions')
-      .select('user_id')
-      .eq('id', sessionId)
-      .maybeSingle();
-
-    if (sessionError || !sessionData?.user_id) {
-      return { success: false, code: 'ANNOTATION_NOT_FOUND' };
-    }
-
-    const sessionOwnerId = sessionData.user_id;
-    if (!accessibleIds.includes(sessionOwnerId)) {
-      return { success: false, code: 'ACCESS_DENIED' };
-    }
-
-    const { data: annotation, error: annotationError } = await client
+    const annotationQuery = client
       .from('content_annotations')
       .select('*')
-      .eq('session_id', sessionId)
-      .eq('user_id', sessionOwnerId)
-      .maybeSingle();
+      .eq('user_id', executorUserId);
+    const { data: annotation, error: annotationError } =
+      'annotationId' in target
+        ? await annotationQuery.eq('id', target.annotationId).maybeSingle()
+        : await annotationQuery.eq('session_id', target.sessionId).maybeSingle();
 
     if (annotationError || !annotation) {
       return { success: false, code: 'ANNOTATION_NOT_FOUND' };
     }
 
     const typedAnnotation = annotation as AnnotationRecord;
+    if (!typedAnnotation.id || typedAnnotation.user_id !== executorUserId) {
+      return { success: false, code: 'ANNOTATION_NOT_FOUND' };
+    }
     if (!isWordPressLinked(typedAnnotation)) {
       return { success: false, code: 'SUMMARY_SOURCE_NOT_LINKED' };
     }
 
     const wpContent = await fetchWpPostContentLive({
-      userId: sessionOwnerId,
+      userId: typedAnnotation.user_id,
       wpPostId: typedAnnotation.wp_post_id ?? null,
       canonicalUrl: typedAnnotation.canonical_url ?? null,
       getCookie: name => cookieStore.get(name)?.value,
@@ -219,7 +208,42 @@ class ContentAnnotationSummaryService {
         basic_structure: basicStructure || null,
         impressions: typedAnnotation.impressions ?? null,
       },
+      annotationId: typedAnnotation.id,
+      userId: typedAnnotation.user_id,
     };
+  }
+
+  async saveSummary(params: {
+    annotationId: string;
+    userId: string;
+    fields: ContentAnnotationSummaryFields;
+  }): Promise<SaveSummaryResult> {
+    const client = this.supabase.getClient();
+    const { annotationId, userId, fields } = params;
+    const { data, error } = await client
+      .from('content_annotations')
+      .update({
+        main_kw: fields.main_kw,
+        kw: fields.kw,
+        needs: fields.needs,
+        persona: fields.persona,
+        goal: fields.goal,
+        prep: fields.prep,
+        basic_structure: fields.basic_structure,
+        opening_proposal: fields.opening_proposal,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', annotationId)
+      .eq('user_id', userId)
+      .select('*')
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('[ContentAnnotationSummary] Failed to save summary:', error);
+      return { success: false };
+    }
+
+    return { success: true, data: data as AnnotationRecord };
   }
 }
 

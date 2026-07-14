@@ -900,6 +900,7 @@ export default function AnalyticsTable({
                                     <DialogFooter className="sm:justify-between">
                                       <ContentAnnotationSummaryAction
                                         sessionId={annotation.session_id ?? null}
+                                        annotationId={annotation.id ?? null}
                                         isWordPressLinked={isWordPressLinked}
                                         disabled={isPendingEdit}
                                         size="default"

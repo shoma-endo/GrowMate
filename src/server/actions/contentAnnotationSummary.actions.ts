@@ -6,22 +6,20 @@ import {
   contentAnnotationSummaryService,
 } from '@/server/services/contentAnnotationSummaryService';
 import {
-  getContentAnnotationBySession,
-  upsertContentAnnotationBySession,
-} from '@/server/actions/wordpress.actions';
-import { summarizeContentAnnotationSchema } from '@/server/schemas/contentAnnotationSummary.schema';
+  summarizeContentAnnotationSchema,
+  type SummarizeContentAnnotationTarget,
+} from '@/server/schemas/contentAnnotationSummary.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { AnnotationRecord } from '@/types/annotation';
-import { isEmailLinkConflictResult } from '@/lib/auth/emailLinkConflictClient';
 
 type SummarizeContentAnnotationResult =
   | { success: true; data: AnnotationRecord }
   | { success: false; error: string; emailLinkConflict?: true };
 
 export async function summarizeContentAnnotation(
-  sessionId: string
+  target: SummarizeContentAnnotationTarget
 ): Promise<SummarizeContentAnnotationResult> {
-  const parsed = summarizeContentAnnotationSchema.safeParse({ sessionId });
+  const parsed = summarizeContentAnnotationSchema.safeParse(target);
   if (!parsed.success) {
     return {
       success: false,
@@ -31,7 +29,7 @@ export async function summarizeContentAnnotation(
 
   const authResult = await withAuth(async ({ userId, cookieStore }) => {
     const summaryResult = await contentAnnotationSummaryService.generateSummary({
-      sessionId: parsed.data.sessionId,
+      target: parsed.data,
       executorUserId: userId,
       cookieStore,
     });
@@ -43,60 +41,22 @@ export async function summarizeContentAnnotation(
       };
     }
 
-    const upsertResult = await upsertContentAnnotationBySession({
-      session_id: parsed.data.sessionId,
-      main_kw: summaryResult.fields.main_kw,
-      kw: summaryResult.fields.kw,
-      needs: summaryResult.fields.needs,
-      persona: summaryResult.fields.persona,
-      goal: summaryResult.fields.goal,
-      prep: summaryResult.fields.prep,
-      basic_structure: summaryResult.fields.basic_structure,
-      opening_proposal: summaryResult.fields.opening_proposal,
-      impressions: summaryResult.fields.impressions,
+    const saveResult = await contentAnnotationSummaryService.saveSummary({
+      annotationId: summaryResult.annotationId,
+      userId: summaryResult.userId,
+      fields: summaryResult.fields,
     });
 
-    if (isEmailLinkConflictResult(upsertResult)) {
+    if (!saveResult.success) {
       return {
         success: false as const,
-        error: upsertResult.error,
-        emailLinkConflict: true as const,
-      };
-    }
-
-    if (!upsertResult.success) {
-      return {
-        success: false as const,
-        error: upsertResult.error ?? ERROR_MESSAGES.COMMON.SAVE_FAILED,
-      };
-    }
-
-    const refreshed = await getContentAnnotationBySession(parsed.data.sessionId);
-    if (isEmailLinkConflictResult(refreshed)) {
-      return {
-        success: false as const,
-        error: refreshed.error,
-        emailLinkConflict: true as const,
-      };
-    }
-
-    if (!refreshed.success) {
-      return {
-        success: false as const,
-        error: refreshed.error ?? ERROR_MESSAGES.COMMON.SERVER_ERROR,
-      };
-    }
-
-    if (!refreshed.data) {
-      return {
-        success: false as const,
-        error: ERROR_MESSAGES.COMMON.SERVER_ERROR,
+        error: ERROR_MESSAGES.COMMON.SAVE_FAILED,
       };
     }
 
     return {
       success: true as const,
-      data: refreshed.data,
+      data: saveResult.data,
     };
   });
 

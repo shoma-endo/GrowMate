@@ -35,6 +35,10 @@ export const ERROR_MESSAGES = {
     CONNECTION_FAILED:
       'WordPressへの接続に失敗しました。設定ダッシュボードで接続設定を確認してください。',
 
+    /** WordPress REST APIへのアクセスが拒否された場合 */
+    REST_API_ACCESS_DENIED:
+      'WordPress REST APIへのアクセスが拒否されました。接続設定またはWordPressのセキュリティ設定を確認してください。',
+
     /** WordPress投稿の取得に失敗した場合 */
     POSTS_FETCH_FAILED:
       'WordPress投稿の取得に失敗しました。設定ダッシュボードで接続設定を確認してください。',

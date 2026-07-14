@@ -110,8 +110,11 @@ async function resolveWpPostIdFromCanonical(
   for (const type of ['posts', 'pages'] as const) {
     for (const slug of slugCandidates) {
       const result = await wpService.findExistingContent(slug, type);
-      if (result.success && result.data && typeof result.data.ID === 'number') {
-        return result.data.ID;
+      if (result.success && result.data) {
+        const postId = result.data.id;
+        if (typeof postId === 'number' && Number.isSafeInteger(postId) && postId > 0) {
+          return postId;
+        }
       }
     }
   }
@@ -167,7 +170,9 @@ async function fetchPostById(
     return extractPostFields(post.data);
   }
 
-  const accessToken = await refreshWpComAccessToken(userId, supabase, wpSettings);
+  const cookieAccessToken = getCookie(WPCOM_TOKEN_COOKIE_NAME);
+  const accessToken =
+    cookieAccessToken || (await refreshWpComAccessToken(userId, supabase, wpSettings));
   if (!accessToken) {
     return null;
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   upsertContentAnnotationBySession,
 } from '@/server/actions/wordpress.actions';
@@ -12,6 +12,7 @@ import { AnnotationRecord } from '@/types/annotation';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
 import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 import { useAnnotationForm } from '@/hooks/useAnnotationForm';
+import { isWordPressLinked } from '@/lib/wordpress-link';
 
 interface Props {
   sessionId: string;
@@ -20,12 +21,6 @@ interface Props {
   isVisible?: boolean;
   onSaveSuccess?: () => void;
   onSummarizeSuccess?: (data: AnnotationRecord) => void;
-}
-
-function isWordPressLinked(data?: AnnotationRecord | null): boolean {
-  const hasPostId = typeof data?.wp_post_id === 'number' && data.wp_post_id > 0;
-  const hasCanonical = Boolean(data?.canonical_url?.trim());
-  return hasPostId || hasCanonical;
 }
 
 export default function AnnotationPanel({
@@ -37,7 +32,12 @@ export default function AnnotationPanel({
   onSummarizeSuccess,
 }: Props) {
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const wpLinked = isWordPressLinked(initialData);
+  const initialWpLinked = isWordPressLinked(initialData);
+  const [wpLinked, setWpLinked] = useState(initialWpLinked);
+
+  useEffect(() => {
+    setWpLinked(initialWpLinked);
+  }, [initialWpLinked]);
 
   const {
     form,
@@ -72,6 +72,19 @@ export default function AnnotationPanel({
     if (!result.success) {
       return;
     }
+
+    const savedCanonicalUrl =
+      result.response?.canonical_url !== undefined
+        ? result.response.canonical_url
+        : result.normalizedCanonicalUrl;
+    const savedWpPostId =
+      typeof result.response?.wp_post_id === 'number' ? result.response.wp_post_id : null;
+    setWpLinked(
+      isWordPressLinked({
+        canonical_url: savedCanonicalUrl,
+        wp_post_id: savedWpPostId,
+      })
+    );
 
     onSaveSuccess?.();
   };
