@@ -71,6 +71,10 @@ export function useAnnotationForm({
     setForm(prev => ({ ...prev, [field]: value }));
   }, []);
 
+  const replaceFields = useCallback((fields: AnnotationFields | AnnotationRecord | null) => {
+    setForm(toFormState(fields));
+  }, []);
+
   const updateCanonicalUrl = useCallback((value: string) => {
     setCanonicalUrl(value);
     if (canonicalUrlError) {
@@ -164,6 +168,7 @@ export function useAnnotationForm({
   return {
     form,
     updateField,
+    replaceFields,
     canonicalUrl,
     updateCanonicalUrl,
     canonicalUrlError,

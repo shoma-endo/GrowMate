@@ -75,6 +75,7 @@ export interface UseAnnotationFormOptions {
 export interface UseAnnotationFormResult {
   form: AnnotationFormState;
   updateField: (field: AnnotationFieldKey, value: string) => void;
+  replaceFields: (fields: AnnotationFields | AnnotationRecord | null) => void;
   canonicalUrl: string;
   updateCanonicalUrl: (value: string) => void;
   canonicalUrlError: string;

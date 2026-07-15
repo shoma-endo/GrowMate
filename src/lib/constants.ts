@@ -111,6 +111,11 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokens: 16000,
     label: 'Google Ads 除外キーワード提案',
   },
+  content_annotation_ai_summary: {
+    ...ANTHROPIC_BASE,
+    maxTokens: 8000,
+    label: 'コンテンツ情報のAI要約',
+  },
 };
 
 /**
@@ -125,6 +130,9 @@ export const GOOGLE_ADS_AI_EVALUATION_MAX_DURATION_SEC = 800;
  * 残り時間から差し引くことで、Vercel ハードキルより手前で AbortError を出させる。
  */
 export const GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS = 30_000;
+
+/** content_annotations AI要約: 本文サイズガード（文字数上限） */
+export const CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS = 80_000;
 
 // =============================================================================
 // Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)

@@ -415,6 +415,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
               onRetryHeadingInit();
             }
           }}
+          onSummarizeSuccess={ui.annotation.setData}
           isVisible={ui.annotation.open}
         />
       )}

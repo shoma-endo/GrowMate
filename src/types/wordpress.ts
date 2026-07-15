@@ -27,11 +27,7 @@ export interface WordPressSettings {
   updatedAt?: string | undefined;
 }
 
-/**
- * WordPress API レスポンス (WordPress.com API v2 向け)
- */
-export interface WordPressPostResponse {
-  ID: number;
+interface WordPressPostFields {
   link: string;
   status: string;
   title: { raw: string; rendered: string } | string;
@@ -42,6 +38,17 @@ export interface WordPressPostResponse {
   modified?: string;
   featured_image?: string;
   slug?: string;
+}
+
+/** WordPress API境界で受け取る未正規化レスポンス */
+export interface WordPressPostApiResponse extends WordPressPostFields {
+  id?: number;
+  ID?: number;
+}
+
+/** アプリ内部で扱う正規化済みWordPress投稿 */
+export interface WordPressPostResponse extends WordPressPostFields {
+  id: number;
 }
 
 /**
