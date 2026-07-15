@@ -110,10 +110,20 @@ const buildSlugCandidates = (url: URL): string[] => {
   return Array.from(candidates);
 };
 
+const normalizeCanonicalForComparison = (value: string | null | undefined): string => {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return '';
+  try {
+    return new URL(trimmed).toString();
+  } catch {
+    return trimmed;
+  }
+};
+
 const normalizePostResponse = (data: unknown): NormalizedPostResponse => {
   if (!data || typeof data !== 'object') return { id: null };
   const record = data as Record<string, unknown>;
-  const idValue = record.id ?? record.ID;
+  const idValue = record.id;
   const id =
     typeof idValue === 'number' && Number.isSafeInteger(idValue) ? (idValue as number) : null;
   const result: NormalizedPostResponse = { id };
@@ -984,9 +994,22 @@ export async function updateContentAnnotationFields(
   }
 
   return withAuth(async ({ userId, cookieStore }) => {
-    const targetUserId = userId;
     const supabaseServiceLocal = new SupabaseService();
     const client = supabaseServiceLocal.getClient();
+
+    const { data: existingAnnotation, error: existingError } = await client
+      .from('content_annotations')
+      .select('canonical_url, wp_post_id, wp_post_title')
+      .eq('id', annotationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (existingError) {
+      console.error('[updateContentAnnotationFields] Failed to fetch annotation:', existingError);
+      return { success: false as const, error: ERROR_MESSAGES.WORDPRESS.SERVER_ERROR };
+    }
+    if (!existingAnnotation) {
+      return { success: false as const, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
+    }
 
     let resolvedCanonicalUrl: string | null | undefined = undefined;
     let resolvedWpId: number | null | undefined = undefined;
@@ -994,18 +1017,30 @@ export async function updateContentAnnotationFields(
 
     // canonical_url が指定されている場合、WordPress投稿IDを解決
     if (hasOwn(fields, 'canonical_url')) {
-      const resolution = await resolveCanonicalAndWpPostId({
-        canonicalUrl: fields.canonical_url,
-        supabaseService: supabaseServiceLocal,
-        userId,
-        cookieStore,
-      });
-      if (!resolution.success) {
-        return { success: false as const, error: resolution.error };
+      const canonicalUnchanged =
+        normalizeCanonicalForComparison(fields.canonical_url) ===
+        normalizeCanonicalForComparison(existingAnnotation.canonical_url);
+      const hasResolvedPostId =
+        typeof existingAnnotation.wp_post_id === 'number' && existingAnnotation.wp_post_id > 0;
+
+      if (canonicalUnchanged && hasResolvedPostId) {
+        resolvedCanonicalUrl = existingAnnotation.canonical_url;
+        resolvedWpId = existingAnnotation.wp_post_id;
+        resolvedWpTitle = existingAnnotation.wp_post_title;
+      } else {
+        const resolution = await resolveCanonicalAndWpPostId({
+          canonicalUrl: fields.canonical_url,
+          supabaseService: supabaseServiceLocal,
+          userId,
+          cookieStore,
+        });
+        if (!resolution.success) {
+          return { success: false as const, error: resolution.error };
+        }
+        resolvedCanonicalUrl = resolution.canonicalUrl;
+        resolvedWpId = resolution.wpPostId;
+        resolvedWpTitle = resolution.wpPostTitle;
       }
-      resolvedCanonicalUrl = resolution.canonicalUrl;
-      resolvedWpId = resolution.wpPostId;
-      resolvedWpTitle = resolution.wpPostTitle;
     }
 
     const updateData: TablesUpdate<'content_annotations'> = {
@@ -1040,14 +1075,20 @@ export async function updateContentAnnotationFields(
       }
     }
 
-    const { error } = await client
+    const { data: updatedAnnotation, error } = await client
       .from('content_annotations')
       .update(updateData)
       .eq('id', annotationId)
-      .eq('user_id', targetUserId);
+      .eq('user_id', userId)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
-      return { success: false as const, error: error.message };
+      console.error('[updateContentAnnotationFields] Failed to update annotation:', error);
+      return { success: false as const, error: ERROR_MESSAGES.COMMON.SAVE_FAILED };
+    }
+    if (!updatedAnnotation) {
+      return { success: false as const, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
     }
 
     return {

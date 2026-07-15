@@ -47,9 +47,14 @@ import {
 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { ANNOTATION_FIELD_KEYS, type AnnotationFieldKey } from '@/types/annotation';
+import {
+  ANNOTATION_FIELD_KEYS,
+  type AnnotationFieldKey,
+  type AnnotationRecord,
+} from '@/types/annotation';
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
 import { ChatService } from '@/domain/services/chatService';
+import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 
 interface Props {
   items: AnalyticsContentItem[];
@@ -137,6 +142,7 @@ export default function AnalyticsTable({
   const [formError, setFormError] = React.useState('');
   const [wpPostTitle, setWpPostTitle] = React.useState('');
   const [isPendingEdit, startEditTransition] = React.useTransition();
+  const [summarizingRowKey, setSummarizingRowKey] = React.useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [deletingRowKey, setDeletingRowKey] = React.useState<string | null>(null);
   const [deleteTargetTitle, setDeleteTargetTitle] = React.useState('');
@@ -545,6 +551,19 @@ export default function AnalyticsTable({
     [canonicalUrl, closeEdit, form, router]
   );
 
+  const handleSummarySuccess = React.useCallback(
+    (data: AnnotationRecord) => {
+      const nextForm = Object.fromEntries(
+        ANNOTATION_FIELD_KEYS.map(key => [key, String(data[key] ?? '')])
+      ) as Record<AnnotationFieldKey, string>;
+      setForm(nextForm);
+      setCanonicalUrl(data.canonical_url ?? '');
+      setWpPostTitle(data.wp_post_title ?? '');
+      router.refresh();
+    },
+    [router]
+  );
+
   const handleDeleteClick = React.useCallback(
     (item: AnalyticsContentItem) => {
       const annotation = item.annotation;
@@ -786,6 +805,11 @@ export default function AnalyticsTable({
                       ga4Summary && ga4Summary.users > 0
                         ? ga4Summary.cvEventCount / ga4Summary.users
                         : 0;
+                    const isSummarizing = summarizingRowKey === item.rowKey;
+                    const isWordPressLinked =
+                      (typeof wpPostId === 'number' && wpPostId > 0) ||
+                      Boolean(rowCanonicalUrl?.trim());
+                    const isEditBusy = isPendingEdit || isSummarizing;
 
                     return (
                       <tr key={item.rowKey} className="analytics-row group">
@@ -873,27 +897,41 @@ export default function AnalyticsTable({
                                       wpPostTitle={wpPostTitle}
                                     />
 
-                                    <DialogFooter>
-                                      <Button
-                                        variant="ghost"
-                                        onClick={closeEdit}
+                                    <DialogFooter className="sm:justify-between">
+                                      <ContentAnnotationSummaryAction
+                                        sessionId={annotation.session_id ?? null}
+                                        annotationId={annotation.id ?? null}
+                                        isWordPressLinked={isWordPressLinked}
                                         disabled={isPendingEdit}
-                                      >
-                                        キャンセル
-                                      </Button>
-                                      <Button
-                                        onClick={() => handleSave(annotation?.id)}
-                                        disabled={isPendingEdit}
-                                      >
-                                        {isPendingEdit ? (
-                                          <>
-                                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                            保存中...
-                                          </>
-                                        ) : (
-                                          '保存'
-                                        )}
-                                      </Button>
+                                        size="default"
+                                        onSuccess={handleSummarySuccess}
+                                        onError={setFormError}
+                                        onPendingChange={isPending =>
+                                          setSummarizingRowKey(isPending ? item.rowKey : null)
+                                        }
+                                      />
+                                      <div className="flex justify-end gap-2">
+                                        <Button
+                                          variant="ghost"
+                                          onClick={closeEdit}
+                                          disabled={isEditBusy}
+                                        >
+                                          キャンセル
+                                        </Button>
+                                        <Button
+                                          onClick={() => handleSave(annotation?.id)}
+                                          disabled={isEditBusy}
+                                        >
+                                          {isPendingEdit ? (
+                                            <>
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                              保存中...
+                                            </>
+                                          ) : (
+                                            '保存'
+                                          )}
+                                        </Button>
+                                      </div>
                                     </DialogFooter>
                                   </DialogContent>
                                 </Dialog>

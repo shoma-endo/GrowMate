@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   upsertContentAnnotationBySession,
 } from '@/server/actions/wordpress.actions';
@@ -10,7 +10,9 @@ import { cn } from '@/lib/utils';
 import { usePersistedResizableWidth } from '@/hooks/usePersistedResizableWidth';
 import { AnnotationRecord } from '@/types/annotation';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
+import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 import { useAnnotationForm } from '@/hooks/useAnnotationForm';
+import { isWordPressLinked } from '@/lib/wordpress-link';
 
 interface Props {
   sessionId: string;
@@ -18,6 +20,7 @@ interface Props {
   onClose: () => void;
   isVisible?: boolean;
   onSaveSuccess?: () => void;
+  onSummarizeSuccess?: (data: AnnotationRecord) => void;
 }
 
 export default function AnnotationPanel({
@@ -26,10 +29,20 @@ export default function AnnotationPanel({
   onClose,
   isVisible = true,
   onSaveSuccess,
+  onSummarizeSuccess,
 }: Props) {
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const initialWpLinked = isWordPressLinked(initialData);
+  const [wpLinked, setWpLinked] = useState(initialWpLinked);
+
+  useEffect(() => {
+    setWpLinked(initialWpLinked);
+  }, [initialWpLinked]);
+
   const {
     form,
     updateField,
+    replaceFields,
     canonicalUrl,
     updateCanonicalUrl,
     canonicalUrlError,
@@ -61,9 +74,25 @@ export default function AnnotationPanel({
       return;
     }
 
+    const savedCanonicalUrl =
+      result.response?.canonical_url !== undefined
+        ? result.response.canonical_url
+        : result.normalizedCanonicalUrl;
+    const savedWpPostId =
+      typeof result.response?.wp_post_id === 'number' ? result.response.wp_post_id : null;
+    setWpLinked(
+      isWordPressLinked({
+        canonical_url: savedCanonicalUrl,
+        wp_post_id: savedWpPostId,
+      })
+    );
+
     onSaveSuccess?.();
   };
+
   if (!isVisible) return null;
+
+  const actionDisabled = isSaving || saveDone || isSummarizing;
 
   return (
     <div
@@ -121,33 +150,41 @@ export default function AnnotationPanel({
           </fieldset>
 
           {/* アクションボタン */}
-          <div className="pt-4 border-t border-gray-200">
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onClose}
+          <div className="pt-4 border-t border-gray-200 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <ContentAnnotationSummaryAction
+                sessionId={sessionId}
+                isWordPressLinked={wpLinked}
                 disabled={isSaving || saveDone}
-              >
-                キャンセル
-              </Button>
-              <div className="relative">
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={isSaving || saveDone}
-              >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      保存中...
-                    </>
-                  ) : saveDone ? (
-                    '保存完了'
-                  ) : (
-                    '保存'
-                  )}
+                onSuccess={data => {
+                  replaceFields(data);
+                  onSummarizeSuccess?.(data);
+                }}
+                onPendingChange={setIsSummarizing}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onClose}
+                  disabled={actionDisabled}
+                >
+                  キャンセル
                 </Button>
+                <div className="relative">
+                  <Button size="sm" onClick={handleSave} disabled={actionDisabled}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        保存中...
+                      </>
+                    ) : saveDone ? (
+                      '保存完了'
+                    ) : (
+                      '保存'
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

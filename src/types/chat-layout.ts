@@ -43,6 +43,7 @@ export interface ChatLayoutCtx {
       data: AnnotationRecord | null;
       openWith: () => void;
       setOpen: (open: boolean) => void;
+      setData: (data: AnnotationRecord | null) => void;
     };
   };
   onSendMessage: (content: string, model: string) => Promise<void>;
