@@ -1,9 +1,9 @@
-import { parse } from 'node-html-parser';
+import { parse, type HTMLElement } from 'node-html-parser';
 
 import { extractHeadingsFromMarkdown } from '@/lib/heading-extractor';
 
 const HEADING_SELECTOR = 'h2, h3, h4';
-const PARAGRAPH_SELECTOR = 'p';
+const OPENING_CONTENT_SELECTOR = 'p, ul, ol';
 
 function normalizeElementText(text: string): string {
   return text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -42,8 +42,8 @@ export function extractBasicStructureFromHtml(html: string): string {
 }
 
 /**
- * WordPress 生 HTML の本文冒頭から最初の h2 直前までにある p 要素を抽出し、
- * 原文の段落を空行で連結する。最初の h2 がない場合は抽出範囲を確定できないため空文字を返す。
+ * WordPress 生 HTML の本文冒頭から最初の h2 直前までにある p・リスト要素を抽出し、
+ * 原文のブロックを空行で連結する。最初の h2 がない場合は抽出範囲を確定できないため空文字を返す。
  */
 export function extractOpeningProposalFromHtml(html: string): string {
   if (!html.trim()) {
@@ -57,18 +57,44 @@ export function extractOpeningProposalFromHtml(html: string): string {
   }
 
   const firstH2Start = firstH2.range[0];
-  const paragraphs: string[] = [];
+  const blocks: string[] = [];
 
-  for (const element of root.querySelectorAll(PARAGRAPH_SELECTOR)) {
+  for (const element of root.querySelectorAll(OPENING_CONTENT_SELECTOR)) {
     if (element.range[0] >= firstH2Start) {
       continue;
     }
 
-    const text = normalizeElementText(element.text);
-    if (text) {
-      paragraphs.push(text);
+    const tagName = element.tagName.toLowerCase();
+    if (tagName === 'p') {
+      if (element.closest('li')) {
+        continue;
+      }
+
+      const text = normalizeElementText(element.text);
+      if (text) {
+        blocks.push(text);
+      }
+      continue;
+    }
+
+    const listItems = element.children.filter(child => child.tagName.toLowerCase() === 'li');
+    const lines = listItems.flatMap((item, index) => {
+      const itemWithoutNestedLists = item.clone() as HTMLElement;
+      for (const nestedList of itemWithoutNestedLists.querySelectorAll('ul, ol')) {
+        nestedList.remove();
+      }
+
+      const text = normalizeElementText(itemWithoutNestedLists.text);
+      if (!text) {
+        return [];
+      }
+
+      return [`${tagName === 'ol' ? `${index + 1}.` : '・'}${text}`];
+    });
+    if (lines.length > 0) {
+      blocks.push(lines.join('\n'));
     }
   }
 
-  return paragraphs.join('\n\n');
+  return blocks.join('\n\n');
 }

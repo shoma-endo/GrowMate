@@ -31,6 +31,26 @@ describe('html-content-extractor', () => {
       expect(extractOpeningProposalFromHtml(html)).toBe('エアコン & 室外機 の説明');
     });
 
+    it('最初のh2より前にあるリスト項目を装飾を除いて出現順に抽出する', () => {
+      const html = `
+        <p>導入文です。</p>
+        <div class="kj-highlight-box tip">
+          <p class="kj-highlight-box-title">先に結論</p>
+          <ul>
+            <li>上限<strong>50万円</strong>。</li>
+            <li><span>対象条件</span>を確認します。</li>
+          </ul>
+        </div>
+        <ol><li>問い合わせ</li><li>申請</li></ol>
+        <h2>最初の見出し</h2>
+        <ul><li>見出し後の項目</li></ul>
+      `;
+
+      expect(extractOpeningProposalFromHtml(html)).toBe(
+        '導入文です。\n\n先に結論\n\n・上限50万円。\n・対象条件を確認します。\n\n1.問い合わせ\n2.申請'
+      );
+    });
+
     it('h2がない場合は空文字を返す', () => {
       expect(extractOpeningProposalFromHtml('<p>冒頭文です。</p>')).toBe('');
     });

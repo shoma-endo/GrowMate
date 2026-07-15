@@ -30,7 +30,7 @@ generator: e2e-testcases
 | コンテンツD | `canonical_url`のみ保存済みで`wp_post_id`がない。セルフホストWordPressの記事を参照 |
 | WordPress.com用コンテンツ | WordPress.com記事と連携済み。Cookieフォールバック確認時のみ使用 |
 
-AI出力は非決定的なため完全一致では判定しない。ただし、本文に存在しないサービス・料金・地域・保証などを事実として追加していないことを確認する。`basic_structure`はAI出力ではなく、WordPress本文のH2・H3・H4と順序・階層が一致することを確認する。
+AI出力は非決定的なため完全一致では判定しない。ただし、本文に存在しないサービス・料金・地域・保証などを事実として追加していないことを確認する。`basic_structure`はAI出力ではなく、WordPress本文のH2・H3・H4と順序・階層が一致することを確認する。`opening_proposal`は最初のH2より前にあるp段落とul・olのリスト項目が出現順に含まれることを確認する。
 
 ## 機能テストケース
 
