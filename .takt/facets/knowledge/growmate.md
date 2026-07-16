@@ -48,6 +48,7 @@ Architecture review should not reject a change solely because new tests were not
 - Keep changes minimal and aligned with existing code patterns.
 - Fix implementation issues in production code directly; do not use new tests as a substitute for the requested fix.
 - Do not edit generated files directly, including `src/types/database.types.ts`.
+- If a spec requires a migration that is not yet applied to the shared remote DB (so the new table/column is absent from `database.types.ts`), this alone is NOT a reason to ABORT or stop mid-task. Apply the Pending Migration Types pattern in `.agents/skills/supabase/service-usage.md` §6 (`src/types/database.types.pending.ts` + `asPendingClient()`) and continue implementation to completion. Note the pending file(s) and required post-migration cleanup in the PR's 未確認事項. Remote migration apply (`supabase db push`) and `npm run supabase:types` remain manual admin steps performed after the PR merges; they do not block this workflow's completion.
 - Do not read or print `.env*`, credentials, tokens, or other secret files.
 - If a task touches `app/**` or `src/components/**`, read `.agents/skills/growmate-ui-ux/SKILL.md` before planning or implementation.
 - For server-side validation, prefer Zod schemas and export types with `z.infer`.
