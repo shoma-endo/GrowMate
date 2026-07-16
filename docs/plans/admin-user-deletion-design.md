@@ -21,6 +21,7 @@
 | 2026-07-16 | 6.4ワイヤーを既存`UsersClient.tsx`の実列（フルネーム・LINE表示名・メール/認証・最終ログイン・登録日・権限・アクションの7列）に合わせて修正。従来の4列簡略図は実装済みUIより古かった |
 | 2026-07-16 | 7.1に`Trash2`アイコンの扱いを明記。`ConfirmDeleteDialog`側に固定表示し、`title`propに含めない |
 | 2026-07-16 | TAKT spec-to-pr実行時のABORTを受けて修正: (1)`content_categories`は既にDROP済みと訂正、(2)`prompt_templates.updated_by`のFK（`ON DELETE SET NULL`欠落）を8.2に追加、(3)8.3にマイグレーション先行PR化の2段階適用手順を追記、(4)`DeleteChatDialog`のもう一方の呼び出し元`SessionSidebar.tsx`（`/chat`）を11・12.3の回帰確認対象に追加、(5)`delete_employee_and_restore_owner` RPCが`delete_user_fully`を内部利用する点を11に明記 |
+| 2026-07-16 | Stage1マイグレーションを本番適用済みに更新。型再生成に`SUPABASE_ACCESS_TOKEN`が必要でCI自動化も無いため、8.3を「Stage2a（型不要・DTO/UI/schema等）」「Stage2b（型必須・Server Action/Service/Auth削除/監査ログ）」に分割し、Stage2aは削除の実行を待たずに完了扱いにできると明記 |
 
 ## 2. 背景・目的
 
@@ -331,13 +332,21 @@ Auth APIとDBトランザクションは原子的にできない。Auth成功後
 - 更新版`delete_user_fully` RPC（`prompt_templates.updated_by`への`ON DELETE SET NULL`追加を含む）。
 - `database.types.ts`の再生成。
 
-**適用手順（2段階PR）**: `README.md`の運用ルールにより、リモートDBへのマイグレーション適用（`supabase db push`）は管理者が手動で行う。`npm run supabase:types`はリモートDBを読むため、未適用のテーブルは型に現れず、`.from('admin_action_logs')`を含むコードは`npm run build`で型エラーになる。したがって次の順で進める。
+**適用手順（段階分割）**: `README.md`の運用ルールにより、リモートDBへのマイグレーション適用（`supabase db push`）は管理者が手動で行う。`npm run supabase:types`はリモートDBを読むため、未適用のテーブルは型に現れず、`.from('admin_action_logs')`を含むコードは`npm run build`で型エラーになる。`database.types.ts`は生成ファイルのため直接編集しない（`CLAUDE.md`「自動生成ファイルの直接編集は避ける」）。CIにも型自動再生成の仕組みはなく、`npm run supabase:types`は`SUPABASE_ACCESS_TOKEN`を持つ人が手動で実行する必要がある。したがって実装を次の段階に分ける。
 
-1. 本PR（マイグレーションのみ）を先行して作成・マージし、管理者が`supabase/migrations/`を適用する。
-2. 管理者が`npm run supabase:types`を実行し、`database.types.ts`を再生成・コミットする。
-3. 型が反映されたことを確認してから、Server Action / Service層 / UIの実装PRに着手する。
+- **Stage1（完了）**: マイグレーションのみのPR（`admin_action_logs`作成＋`prompt_templates.updated_by`のFK修正）。2026-07-16、`supabase db push`で本番へ適用済み。
+- **Stage2a（型不要・着手可能）**: `admin_action_logs`を一切参照しない部分を先に実装する。
+  - 管理画面用DTO（`UserDeletionBlockedReason` / `AdminUserListItem`、7.2）
+  - `resolveAdminUser()`のuser ID返却拡張（7.3）
+  - 一覧UIの削除可否表示、`ConfirmDeleteDialog`抽出、ユーザー削除ダイアログ実装（6.1〜6.4、7.1）
+  - このStage2aの時点では`deleteUser` Server Actionは実装しない（呼び出し先が無いため）。ダイアログの「削除」ボタンはStage2bで配線するまで有効化しない。
+- **Stage2b（型必須・型反映後に着手）**: `npm run supabase:types`で`database.types.ts`に`admin_action_logs`が反映されたことを確認してから着手する。
+  - `deleteUserSchema`（Zod）、`deleteUser` Server Action（7.3）
+  - Service層の削除ユースケース（7.4）、Supabase Auth削除（7.5）
+  - 監査ログ書き込み、更新版`delete_user_fully` RPCの呼び出し配線
+  - Stage2aで実装済みのダイアログへ`deleteUser`を配線する
 
-`database.types.ts`は生成ファイルのため直接編集しない。
+Stage2a・Stage2bはそれぞれ独立したPRとして完了させてよい。Stage2aのPRは、Stage2bの機能（削除の実行）が未接続であることを理由に不完全とはしない。
 
 ロールバックは新規削除Actionの停止後に行う。
 
