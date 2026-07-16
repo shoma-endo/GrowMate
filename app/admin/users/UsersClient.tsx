@@ -277,7 +277,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                             </button>
                           </div>
                         ) : (
-                          <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-3">
                             <button
                               onClick={() => setEditingUserId(user.id)}
                               className="text-blue-600 hover:text-blue-800 text-left"
@@ -288,7 +288,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="text-destructive h-auto px-0 py-0 justify-start hover:text-destructive"
+                                className="text-destructive h-auto px-0 py-0 hover:text-destructive"
                                 onClick={() => handleDeleteClick(user)}
                               >
                                 削除
