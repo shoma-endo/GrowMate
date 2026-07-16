@@ -1,5 +1,6 @@
 import type { IsoTimestamp } from '@/lib/timestamps';
 import { parseTimestamp, parseTimestampOrNull, toIsoTimestamp } from '@/lib/timestamps';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { Database } from '@/types/database.types';
 
 /**
@@ -33,6 +34,47 @@ type PaidFeatureRole = (typeof PAID_FEATURE_ROLES)[number];
 
 export function hasPaidFeatureAccess(role: UserRole | null): role is PaidFeatureRole {
   return role === 'paid' || role === 'admin';
+}
+
+export type UserDeletionBlockedReason =
+  | 'admin'
+  | 'active_subscription'
+  | 'organization_linked';
+
+export interface AdminUserListItem extends User {
+  canDelete: boolean;
+  deletionBlockedReason: UserDeletionBlockedReason | null;
+}
+
+export function resolveUserDeletionBlockedReason(
+  target: DbUser,
+  allUsers: DbUser[]
+): UserDeletionBlockedReason | null {
+  if (target.role === 'admin') {
+    return 'admin';
+  }
+  if (target.stripe_subscription_id !== null) {
+    return 'active_subscription';
+  }
+  if (target.owner_user_id !== null) {
+    return 'organization_linked';
+  }
+  const hasChildStaff = allUsers.some(user => user.owner_user_id === target.id);
+  if (hasChildStaff) {
+    return 'organization_linked';
+  }
+  return null;
+}
+
+export function getUserDeletionBlockedMessage(reason: UserDeletionBlockedReason): string {
+  switch (reason) {
+    case 'admin':
+      return ERROR_MESSAGES.USER.DELETION_BLOCKED_ADMIN;
+    case 'active_subscription':
+      return ERROR_MESSAGES.USER.DELETION_BLOCKED_ACTIVE_SUBSCRIPTION;
+    case 'organization_linked':
+      return ERROR_MESSAGES.USER.DELETION_BLOCKED_ORGANIZATION_LINKED;
+  }
 }
 
 /**

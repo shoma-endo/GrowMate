@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -9,12 +10,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { updateUserRole } from '@/server/actions/admin.actions';
+import { getAllUsers, updateUserRole } from '@/server/actions/admin.actions';
 import { getRoleDisplayName } from '@/authUtils';
-import type { User, UserRole } from '@/types/user';
+import type { AdminUserListItem, UserRole } from '@/types/user';
+import { getUserDeletionBlockedMessage } from '@/types/user';
 import { clearAuthCache } from '@/server/actions/adminUsers.actions';
 import { toast } from 'sonner';
 import { formatDateTimeWithSeconds } from '@/lib/date-utils';
+import { DeleteUserDialog } from './DeleteUserDialog';
 
 const getRoleColor = (role: UserRole | null) => {
   switch (role) {
@@ -31,7 +34,7 @@ const getRoleColor = (role: UserRole | null) => {
   }
 };
 
-const buildRoleSummary = (targetUsers: User[]) => {
+const buildRoleSummary = (targetUsers: AdminUserListItem[]) => {
   type RoleCount = {
     key: UserRole | 'unknown';
     label: string;
@@ -74,13 +77,15 @@ const buildRoleSummary = (targetUsers: User[]) => {
 };
 
 type UsersClientProps = {
-  initialUsers: User[];
+  initialUsers: AdminUserListItem[];
 };
 
 export default function UsersClient({ initialUsers }: UsersClientProps) {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<AdminUserListItem[]>(initialUsers);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [deleteTargetUser, setDeleteTargetUser] = useState<AdminUserListItem | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     if (!userId || !newRole) return;
@@ -90,14 +95,16 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
     try {
       const result = await updateUserRole(userId, newRole);
       if (result.success) {
-        // ローカル状態を更新
-        setUsers(prevUsers =>
-          prevUsers.map(user => (user.id === userId ? { ...user, role: newRole } : user))
-        );
+        const refreshResult = await getAllUsers();
+        if (refreshResult.success && refreshResult.users) {
+          setUsers(refreshResult.users);
+          toast.success('ユーザー権限を更新しました');
+        } else {
+          toast.error('権限の更新後に一覧の再取得に失敗しました', {
+            description: refreshResult.error || 'ページを再読み込みしてください',
+          });
+        }
         setEditingUserId(null);
-
-        // 成功フィードバックを表示
-        toast.success('ユーザー権限を更新しました');
 
         // キャッシュクリア通知を送信（権限変更の即座反映のため）
         try {
@@ -126,6 +133,18 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
   const roleSummary = useMemo(() => {
     return buildRoleSummary(users);
   }, [users]);
+
+  const handleDeleteClick = (user: AdminUserListItem) => {
+    setDeleteTargetUser(user);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteDialogOpenChange = (open: boolean) => {
+    setIsDeleteDialogOpen(open);
+    if (!open) {
+      setDeleteTargetUser(null);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -258,12 +277,33 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                             </button>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => setEditingUserId(user.id)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            編集
-                          </button>
+                          <div className="flex flex-col gap-1">
+                            <button
+                              onClick={() => setEditingUserId(user.id)}
+                              className="text-blue-600 hover:text-blue-800 text-left"
+                            >
+                              編集
+                            </button>
+                            {user.canDelete ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive h-auto px-0 py-0 justify-start hover:text-destructive"
+                                onClick={() => handleDeleteClick(user)}
+                              >
+                                削除
+                              </Button>
+                            ) : (
+                              <div className="text-xs text-gray-500">
+                                <span>削除不可</span>
+                                {user.deletionBlockedReason && (
+                                  <p className="mt-0.5">
+                                    {getUserDeletionBlockedMessage(user.deletionBlockedReason)}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -274,6 +314,12 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
           )}
         </CardContent>
       </Card>
+
+      <DeleteUserDialog
+        user={deleteTargetUser}
+        open={isDeleteDialogOpen}
+        onOpenChange={handleDeleteDialogOpenChange}
+      />
     </div>
   );
 }

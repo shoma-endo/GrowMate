@@ -113,3 +113,15 @@ export interface DeleteChatDialogProps {
   mode?: 'chat' | 'content';
   hasOrphanContent?: boolean;
 }
+
+export interface ConfirmDeleteDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  title: string;
+  description: React.ReactNode;
+  isDeleting?: boolean;
+  confirmLabel?: string;
+  deletingLabel?: string;
+  confirmDisabled?: boolean;
+}

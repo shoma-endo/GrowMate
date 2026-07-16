@@ -429,6 +429,17 @@ export const ERROR_MESSAGES = {
 
     /** ユーザー一覧の取得中にエラーが発生した場合 */
     USER_LIST_FETCH_ERROR: 'ユーザー一覧の取得中にエラーが発生しました',
+
+    /** 管理者ユーザーは削除できない場合 */
+    DELETION_BLOCKED_ADMIN: '管理者は削除できません。先に権限を変更してください',
+
+    /** Stripe契約情報があるユーザーは削除できない場合 */
+    DELETION_BLOCKED_ACTIVE_SUBSCRIPTION:
+      '契約情報があるため削除できません。先に契約を解除してください',
+
+    /** 組織に紐づいているユーザーは削除できない場合 */
+    DELETION_BLOCKED_ORGANIZATION_LINKED:
+      '組織に紐づいているため削除できません。先に組織関係を解除してください',
   },
 
   /**

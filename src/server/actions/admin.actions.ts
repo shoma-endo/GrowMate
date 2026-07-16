@@ -2,13 +2,13 @@
 
 import { userService } from '@/server/services/userService';
 import { isAdmin } from '@/authUtils';
-import type { User, UserRole } from '@/types/user';
+import type { AdminUserListItem, UserRole } from '@/types/user';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
 
 /** Email セッションで管理者権限を解決する */
 async function resolveAdminUser(): Promise<
-  | { success: true; role: UserRole }
+  | { success: true; role: UserRole; userId: string }
   | { success: false; error: string }
 > {
   const result = await resolveEmailUserWithReason();
@@ -28,12 +28,12 @@ async function resolveAdminUser(): Promise<
   if (!isAdmin(emailUser.role)) {
     return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
   }
-  return { success: true, role: emailUser.role };
+  return { success: true, role: emailUser.role, userId: emailUser.id };
 }
 
 export const getAllUsers = async (): Promise<{
   success: boolean;
-  users?: User[];
+  users?: AdminUserListItem[];
   error?: string;
 }> => {
   try {
@@ -42,7 +42,7 @@ export const getAllUsers = async (): Promise<{
       return { success: false, error: authResult.error };
     }
 
-    const users = await userService.getAllUsers();
+    const users = await userService.getAllUsersForAdmin();
     return { success: true, users };
   } catch (error) {
     console.error('ユーザー一覧取得エラー:', error);

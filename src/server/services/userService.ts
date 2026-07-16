@@ -1,7 +1,13 @@
 import { SupabaseService } from './supabaseService';
 import { toIsoTimestamp } from '@/lib/timestamps';
-import type { User, UserRole } from '@/types/user';
-import { toDbUserInsert, toUser, type DbUser, type DbUserUpdate } from '@/types/user';
+import type { User, UserRole, AdminUserListItem } from '@/types/user';
+import {
+  toDbUserInsert,
+  toUser,
+  resolveUserDeletionBlockedReason,
+  type DbUser,
+  type DbUserUpdate,
+} from '@/types/user';
 
 /**
  * Phase 1: email 一致による自動リンクを行わず INSERT した結果、メールまたは auth の一意制約に触れた場合に投げる。
@@ -88,15 +94,23 @@ class UserService {
     return true;
   }
 
-  async getAllUsers(): Promise<User[]> {
+  async getAllUsersForAdmin(): Promise<AdminUserListItem[]> {
     const result = await this.supabaseService.getAllUsers();
 
     if (!result.success) {
-      console.error('Failed to fetch all users:', result.error);
-      return [];
+      console.error('Failed to fetch all users for admin:', result.error);
+      throw new Error(result.error.developerMessage ?? result.error.userMessage);
     }
 
-    return result.data.map(dbUser => toUser(dbUser));
+    const dbUsers = result.data;
+    return dbUsers.map(dbUser => {
+      const deletionBlockedReason = resolveUserDeletionBlockedReason(dbUser, dbUsers);
+      return {
+        ...toUser(dbUser),
+        canDelete: deletionBlockedReason === null,
+        deletionBlockedReason,
+      };
+    });
   }
 
   /**
