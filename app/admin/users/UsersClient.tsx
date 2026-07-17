@@ -142,9 +142,6 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
 
   const handleDeleteDialogOpenChange = (open: boolean) => {
     setIsDeleteDialogOpen(open);
-    if (!open) {
-      setDeleteTargetUser(null);
-    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -158,7 +155,6 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
       if (result.success) {
         setUsers(prev => prev.filter(user => user.id !== targetId));
         setIsDeleteDialogOpen(false);
-        setDeleteTargetUser(null);
         toast.success('ユーザーを削除しました');
       } else {
         toast.error('ユーザーの削除に失敗しました', {
