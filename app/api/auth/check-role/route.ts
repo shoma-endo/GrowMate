@@ -6,11 +6,18 @@ import { nextJson409EmailLinkConflict } from '@/server/middleware/authMiddleware
 // Node.jsランタイムを強制（Supabase Service Role クライアントが Edge Runtime 非対応のため）
 export const runtime = 'nodejs';
 
+function toRolePayload(user: { role: string; fullName?: string | undefined }) {
+  return {
+    role: user.role,
+    hasFullName: Boolean(user.fullName?.trim()),
+  };
+}
+
 export async function GET() {
   try {
     const result = await resolveEmailUserWithReason();
     if (result.ok) {
-      return NextResponse.json({ role: result.user.role });
+      return NextResponse.json(toRolePayload(result.user));
     }
     if (result.reason === 'unauthenticated') {
       return NextResponse.json({ error: ERROR_MESSAGES.AUTH.NOT_AUTHENTICATED }, { status: 401 });
@@ -19,7 +26,7 @@ export async function GET() {
       return nextJson409EmailLinkConflict();
     }
     if (result.reason === 'unavailable') {
-      return NextResponse.json({ role: result.user.role });
+      return NextResponse.json(toRolePayload(result.user));
     }
     return NextResponse.json(
       { error: ERROR_MESSAGES.AUTH.USER_ROLE_FETCH_FAILED },

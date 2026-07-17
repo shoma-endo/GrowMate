@@ -58,13 +58,35 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
 
     // 🔍 1. 公開パスかチェック（ただし、ログイン済みユーザーの場合はホーム画面でも権限チェックを実行）
     if (isPublicPath(pathname)) {
-      // /login: 認証済みユーザーはトップへリダイレクト
+      // /login: フルネーム登録済みの認証ユーザーのみトップへ。未登録はダイアログ表示のため留める
       if (pathname === '/login') {
         const emailLinkConflict =
           request.nextUrl.searchParams.get('reason') === 'email_link_conflict';
 
         if (supabaseUser && !emailLinkConflict) {
-          return redirect(new URL('/', request.url));
+          try {
+            const cookieMap = new Map(request.cookies.getAll().map(c => [c.name, c.value]));
+            for (const c of supabaseResponse.cookies.getAll()) {
+              cookieMap.set(c.name, c.value);
+            }
+            const mergedCookieHeader = [...cookieMap.entries()]
+              .map(([k, v]) => `${k}=${v}`)
+              .join('; ');
+            const emailUser = await getEmailUserRoleWithCache(
+              supabaseUser.id,
+              request,
+              mergedCookieHeader
+            );
+            if (emailUser?.hasFullName) {
+              return redirect(new URL('/', request.url));
+            }
+          } catch (err) {
+            if (err instanceof AuthEmailLinkConflictError) {
+              return redirect(new URL('/login?reason=email_link_conflict', request.url));
+            }
+            // 一時障害時はリダイレクトせず /login に留め、フルネーム登録機会を奪わない
+            console.error('[Middleware] Email role fetch error on /login (transient):', err);
+          }
         }
       }
       // ホーム画面は完全に公開扱いとし、ミドルウェア側で外部サービスを呼び出さない
@@ -78,7 +100,7 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
     }
 
     // 🔍 3. Email ユーザー認証済み: DB の role でアクセス制御
-    let emailRole: UserRole | null;
+    let emailUser: EmailUserAccess | null;
     try {
       // updateSupabaseSession() が更新した sb-* Cookie を request Cookie にマージして渡す
       const cookieMap = new Map(request.cookies.getAll().map(c => [c.name, c.value]));
@@ -86,7 +108,7 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
         cookieMap.set(c.name, c.value);
       }
       const mergedCookieHeader = [...cookieMap.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
-      emailRole = await getEmailUserRoleWithCache(supabaseUser.id, request, mergedCookieHeader);
+      emailUser = await getEmailUserRoleWithCache(supabaseUser.id, request, mergedCookieHeader);
     } catch (err) {
       if (err instanceof AuthEmailLinkConflictError) {
         return redirect(new URL('/login?reason=email_link_conflict', request.url));
@@ -108,7 +130,7 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
       return res503;
     }
 
-    if (!emailRole) {
+    if (!emailUser) {
       // public.users に未登録の異常状態（verifyOtp 未完了等）
       // Supabase Cookie を削除して /login へ送る。
       for (const cookie of request.cookies.getAll()) {
@@ -116,6 +138,13 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
           supabaseResponse.cookies.delete(cookie.name);
         }
       }
+      return redirect(new URL('/login', request.url));
+    }
+
+    const { role: emailRole, hasFullName } = emailUser;
+
+    // フルネーム未登録はサービス停止画面より先に登録を完了させる
+    if (!hasFullName) {
       return redirect(new URL('/login', request.url));
     }
 
@@ -181,8 +210,13 @@ function requiresGoogleAdsAccess(pathname: string): boolean {
   return GOOGLE_ADS_PATHS.some(path => pathname.startsWith(path));
 }
 
+type EmailUserAccess = {
+  role: UserRole;
+  hasFullName: boolean;
+};
+
 // 🚀 パフォーマンス最適化：メモリキャッシュ
-const roleCache = new Map<string, { role: UserRole; timestamp: number }>();
+const roleCache = new Map<string, EmailUserAccess & { timestamp: number }>();
 const CACHE_TTL = 30 * 1000; // 30秒キャッシュ（権限変更の反映を早くするため）
 
 function pruneRoleCacheIfNeeded() {
@@ -199,7 +233,7 @@ function pruneRoleCacheIfNeeded() {
   }
 }
 
-/** Email ユーザーの role を取得（キャッシュ付き）
+/** Email ユーザーの role / hasFullName を取得（キャッシュ付き）
  *
  * Service Role を必要とする DB クエリは Node runtime の Route Handler（/api/auth/check-role）
  * 側で実行する。Edge middleware に無制限キーを持ち込まないようにするため fetch で委譲する。
@@ -208,11 +242,11 @@ async function getEmailUserRoleWithCache(
   supabaseAuthId: string,
   request: NextRequest,
   cookieHeader: string
-): Promise<UserRole | null> {
+): Promise<EmailUserAccess | null> {
   const cacheKey = `em:${supabaseAuthId.substring(0, 18)}`; // 'em:' + 18 chars = 20 chars
   const cached = roleCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.role;
+    return { role: cached.role, hasFullName: cached.hasFullName };
   }
 
   const checkRoleUrl = new URL('/api/auth/check-role', request.url);
@@ -230,14 +264,19 @@ async function getEmailUserRoleWithCache(
   // その他の非 2xx（5xx 等）: 一時障害 → throw して呼び出し元で 503 ハンドリングさせる
   if (!res.ok) throw new Error(`[check-role] HTTP ${res.status}`);
 
-  const data = (await res.json()) as { role?: UserRole };
+  const data = (await res.json()) as { role?: UserRole; hasFullName?: boolean };
   const role = data.role ?? null;
-  // unavailable はキャッシュしない（role 復帰時に stale な停止状態が残るのを防ぐ）
-  if (role && role !== 'unavailable') {
-    roleCache.set(cacheKey, { role, timestamp: Date.now() });
+  if (!role) return null;
+  const access: EmailUserAccess = {
+    role,
+    hasFullName: Boolean(data.hasFullName),
+  };
+  // unavailable またはフルネーム未登録はキャッシュしない（登録完了直後の遷移を阻害しない）
+  if (role !== 'unavailable' && access.hasFullName) {
+    roleCache.set(cacheKey, { ...access, timestamp: Date.now() });
     pruneRoleCacheIfNeeded();
   }
-  return role;
+  return access;
 }
 
 export const config = {

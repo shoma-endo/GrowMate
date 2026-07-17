@@ -53,6 +53,40 @@ function LoginPageContent() {
     };
   }, [searchParams, router]);
 
+  // セッションはあるがフルネーム未登録（OTP 直後の再検証・再訪など）でもダイアログを出す
+  useEffect(() => {
+    if (searchParams?.get('reason') === 'email_link_conflict') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/user/current', { credentials: 'include', cache: 'no-store' });
+        if (cancelled) return;
+        if (res.status === 409) return;
+        if (res.status === 403) {
+          const data = (await res.json()) as {
+            roleUnavailable?: boolean;
+            hasFullName?: boolean;
+            user?: { fullName?: string | null };
+          };
+          if (data.roleUnavailable && !(data.hasFullName ?? data.user?.fullName?.trim())) {
+            setShowFullNameDialog(true);
+          }
+          return;
+        }
+        if (!res.ok) return;
+        const data = (await res.json()) as { user?: { fullName?: string | null } | null };
+        if (data.user && !data.user.fullName?.trim()) {
+          setShowFullNameDialog(true);
+        }
+      } catch {
+        /* ダイアログ表示の補助なので失敗は無視 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
+
   // 再送信カウントダウン
   useEffect(() => {
     if (resendCooldown <= 0) return;
