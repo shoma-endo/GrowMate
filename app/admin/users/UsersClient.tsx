@@ -209,7 +209,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full table-fixed divide-y divide-gray-200">
+              <table className="w-full min-w-[1100px] table-fixed divide-y divide-gray-200">
                 <colgroup>
                   <col className="w-[10%]" />
                   <col className="w-[8%]" />
