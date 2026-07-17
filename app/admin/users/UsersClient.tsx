@@ -209,16 +209,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-[1100px] table-fixed divide-y divide-gray-200">
-                <colgroup>
-                  <col className="w-[11%]" />
-                  <col className="w-[9%]" />
-                  <col className="w-[19%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[17%]" />
-                </colgroup>
+              <table className="table-auto divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
@@ -332,10 +323,10 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                                 削除
                               </Button>
                             ) : (
-                              <div className="text-xs text-gray-500">
+                              <div className="text-xs text-gray-500 max-w-[10rem]">
                                 <span>削除不可</span>
                                 {user.deletionBlockedReason && (
-                                  <p className="mt-0.5">
+                                  <p className="mt-0.5 break-words">
                                     {getUserDeletionBlockedMessage(user.deletionBlockedReason)}
                                   </p>
                                 )}
