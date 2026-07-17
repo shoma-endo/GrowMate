@@ -221,25 +221,25 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                 </colgroup>
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       フルネーム
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       LINE表示名
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       メールアドレス / 認証方式
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       最終ログイン
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       登録日
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       権限
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       アクション
                     </th>
                   </tr>
@@ -270,10 +270,10 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 break-words">
+                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                         {formatDateTimeWithSeconds(user.lastLoginAt, '未ログイン')}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 break-words">
+                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                         {formatDateTimeWithSeconds(user.createdAt, '登録日不明')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
