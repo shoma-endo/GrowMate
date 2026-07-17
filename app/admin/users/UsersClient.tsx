@@ -211,12 +211,12 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed divide-y divide-gray-200">
                 <colgroup>
-                  <col className="w-[11%]" />
-                  <col className="w-[9%]" />
-                  <col className="w-[21%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[13%]" />
                   <col className="w-[10%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[15%]" />
                   <col className="w-[20%]" />
                 </colgroup>
                 <thead className="bg-gray-50">
