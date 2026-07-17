@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getAllUsers, updateUserRole } from '@/server/actions/admin.actions';
+import { getAllUsers, updateUserRole, deleteUser } from '@/server/actions/admin.actions';
 import { getRoleDisplayName } from '@/authUtils';
 import type { AdminUserListItem, UserRole } from '@/types/user';
 import { getUserDeletionBlockedMessage } from '@/types/user';
@@ -86,6 +86,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [deleteTargetUser, setDeleteTargetUser] = useState<AdminUserListItem | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     if (!userId || !newRole) return;
@@ -143,6 +144,34 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
     setIsDeleteDialogOpen(open);
     if (!open) {
       setDeleteTargetUser(null);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTargetUser) return;
+
+    const targetId = deleteTargetUser.id;
+    setIsDeleting(true);
+
+    try {
+      const result = await deleteUser({ userId: targetId });
+      if (result.success) {
+        setUsers(prev => prev.filter(user => user.id !== targetId));
+        setIsDeleteDialogOpen(false);
+        setDeleteTargetUser(null);
+        toast.success('ユーザーを削除しました');
+      } else {
+        toast.error('ユーザーの削除に失敗しました', {
+          description: result.error || 'ユーザーの削除に失敗しました',
+        });
+      }
+    } catch (error) {
+      console.error('ユーザー削除エラー:', error);
+      toast.error('ユーザーの削除でエラーが発生しました', {
+        description: 'ユーザーの削除中にエラーが発生しました',
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -319,6 +348,8 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
         user={deleteTargetUser}
         open={isDeleteDialogOpen}
         onOpenChange={handleDeleteDialogOpenChange}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={isDeleting}
       />
     </div>
   );

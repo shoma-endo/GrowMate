@@ -1,10 +1,13 @@
 'use server';
 
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
 import { userService } from '@/server/services/userService';
 import { isAdmin } from '@/authUtils';
 import type { AdminUserListItem, UserRole } from '@/types/user';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
+import { deleteUserSchema, type DeleteUserInput } from '@/server/schemas/admin.schema';
 
 /** Email セッションで管理者権限を解決する */
 async function resolveAdminUser(): Promise<
@@ -82,5 +85,36 @@ export const updateUserRole = async (
   } catch (error) {
     console.error('ユーザー権限更新エラー:', error);
     return { success: false, error: ERROR_MESSAGES.USER.ROLE_UPDATE_ERROR };
+  }
+};
+
+/**
+ * 管理者によるユーザー完全削除サーバーアクション
+ */
+export const deleteUser = async (
+  input: DeleteUserInput
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const authResult = await resolveAdminUser();
+    if (!authResult.success) {
+      return { success: false, error: authResult.error };
+    }
+
+    const parsed = deleteUserSchema.safeParse(input);
+    if (!parsed.success) {
+      console.error('ユーザー削除の入力検証エラー:', z.prettifyError(parsed.error));
+      return { success: false, error: ERROR_MESSAGES.USER.DELETE_TARGET_INVALID };
+    }
+
+    const result = await userService.deleteUserFully(parsed.data.userId, authResult.userId);
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+
+    revalidatePath('/admin/users');
+    return { success: true };
+  } catch (error) {
+    console.error('ユーザー削除エラー:', error);
+    return { success: false, error: ERROR_MESSAGES.USER.DELETE_DB_FAILED };
   }
 };

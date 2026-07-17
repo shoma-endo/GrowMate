@@ -1,10 +1,12 @@
 import { SupabaseService } from './supabaseService';
 import { toIsoTimestamp } from '@/lib/timestamps';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { User, UserRole, AdminUserListItem } from '@/types/user';
 import {
   toDbUserInsert,
   toUser,
   resolveUserDeletionBlockedReason,
+  getUserDeletionBlockedMessage,
   type DbUser,
   type DbUserUpdate,
 } from '@/types/user';
@@ -134,6 +136,74 @@ class UserService {
       return null;
     }
     return result.data ? toUser(result.data) : null;
+  }
+
+  /**
+   * 管理者によるユーザー完全削除ユースケース（設計書 §7.4）。
+   * 1. 対象行を再取得 2. 削除可能条件を再検証 3. 監査ログ started 4. Auth削除 5. RPC削除 6/7. 監査ログ succeeded/failed
+   */
+  async deleteUserFully(
+    targetUserId: string,
+    actorUserId: string
+  ): Promise<{ success: true } | { success: false; error: string }> {
+    const targetResult = await this.supabaseService.getUserById(targetUserId);
+    if (!targetResult.success || !targetResult.data) {
+      return { success: false, error: ERROR_MESSAGES.USER.DELETE_TARGET_INVALID };
+    }
+    const target = targetResult.data;
+
+    const allUsersResult = await this.supabaseService.getAllUsers();
+    if (!allUsersResult.success) {
+      return { success: false, error: ERROR_MESSAGES.USER.DELETE_TARGET_INVALID };
+    }
+    const blockedReason = resolveUserDeletionBlockedReason(target, allUsersResult.data);
+    if (blockedReason !== null) {
+      return { success: false, error: getUserDeletionBlockedMessage(blockedReason) };
+    }
+
+    const auditStart = await this.supabaseService.createAdminActionLogStarted({
+      actorUserId,
+      targetUserId,
+      action: 'user_deletion',
+    });
+    if (!auditStart.success) {
+      console.error('[UserService] Failed to start admin_action_logs row:', auditStart.error);
+      return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_START_FAILED };
+    }
+    const logId = auditStart.data;
+
+    if (target.supabase_auth_id) {
+      const authResult = await this.supabaseService.deleteAuthUser(target.supabase_auth_id);
+      if (!authResult.success) {
+        console.error('[UserService] Failed to delete Supabase Auth user:', authResult.error);
+        await this.supabaseService.updateAdminActionLogStatus(
+          logId,
+          'failed',
+          'auth_delete_failed'
+        );
+        return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUTH_FAILED };
+      }
+    }
+
+    const rpcResult = await this.supabaseService.deleteUserFully(targetUserId);
+    if (!rpcResult.success) {
+      console.error('[UserService] Failed to delete user via RPC:', rpcResult.error);
+      await this.supabaseService.updateAdminActionLogStatus(logId, 'failed', 'db_delete_failed');
+      return { success: false, error: ERROR_MESSAGES.USER.DELETE_DB_FAILED };
+    }
+
+    const succeededUpdate = await this.supabaseService.updateAdminActionLogStatus(
+      logId,
+      'succeeded'
+    );
+    if (!succeededUpdate.success) {
+      console.error(
+        '[UserService] Failed to mark admin_action_logs as succeeded:',
+        succeededUpdate.error
+      );
+    }
+
+    return { success: true };
   }
 
   /**

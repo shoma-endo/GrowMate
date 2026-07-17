@@ -93,11 +93,43 @@ type GoogleAdsNegativeKeywordsSettingsTable = {
   Relationships: [];
 };
 
+type AdminActionLogStatus = 'started' | 'succeeded' | 'failed';
+
+type AdminActionLogTable = {
+  Row: {
+    id: string;
+    actor_user_id: string;
+    target_user_id: string;
+    action: string;
+    status: AdminActionLogStatus;
+    failure_code: string | null;
+    created_at: string;
+    completed_at: string | null;
+  };
+  Insert: {
+    id?: string;
+    actor_user_id: string;
+    target_user_id: string;
+    action: string;
+    status: AdminActionLogStatus;
+    failure_code?: string | null;
+    created_at?: string;
+    completed_at?: string | null;
+  };
+  Update: {
+    status?: AdminActionLogStatus;
+    failure_code?: string | null;
+    completed_at?: string | null;
+  };
+  Relationships: [];
+};
+
 type ExtendedDatabase = Omit<Database, 'public'> & {
   public: Omit<Database['public'], 'Tables'> & {
     Tables: Database['public']['Tables'] & {
       google_ads_evaluation_settings: GoogleAdsEvaluationSettingsTable;
       google_ads_negative_keywords_settings: GoogleAdsNegativeKeywordsSettingsTable;
+      admin_action_logs: AdminActionLogTable;
     };
   };
 };
@@ -1190,6 +1222,10 @@ export class SupabaseService {
   }
 
   private getGoogleAdsNegativeKeywordsSettingsClient(): SupabaseClient<ExtendedDatabase> {
+    return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
+  }
+
+  private getAdminActionLogsClient(): SupabaseClient<ExtendedDatabase> {
     return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
   }
 
@@ -2486,6 +2522,82 @@ export class SupabaseService {
       return this.failure(data?.error ?? 'ユーザーの完全削除に失敗しました', {
         error: new Error(data?.error ?? 'Failed to delete user fully'),
         context: { userId },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  async createAdminActionLogStarted(input: {
+    actorUserId: string;
+    targetUserId: string;
+    action: string;
+  }): Promise<SupabaseResult<string>> {
+    const client = this.getAdminActionLogsClient();
+    const { data, error } = await client
+      .from('admin_action_logs')
+      .insert({
+        actor_user_id: input.actorUserId,
+        target_user_id: input.targetUserId,
+        action: input.action,
+        status: 'started',
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      return this.failure('削除の監査ログ開始行の作成に失敗しました', {
+        ...(error ? { error } : {}),
+        developerMessage: 'Error creating admin_action_logs started row',
+        context: { ...input },
+      });
+    }
+
+    return this.success(data.id);
+  }
+
+  async updateAdminActionLogStatus(
+    logId: string,
+    status: Extract<AdminActionLogStatus, 'succeeded' | 'failed'>,
+    failureCode?: string
+  ): Promise<SupabaseResult<void>> {
+    const client = this.getAdminActionLogsClient();
+    const { error } = await client
+      .from('admin_action_logs')
+      .update({
+        status,
+        failure_code: failureCode ?? null,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', logId);
+
+    if (error) {
+      return this.failure('削除の監査ログ更新に失敗しました', {
+        error,
+        developerMessage: 'Error updating admin_action_logs status',
+        context: { logId, status },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  /**
+   * Supabase Authユーザーを削除する。
+   * Authユーザーが既に存在しない場合は、再試行を可能にするため成功扱いとする（設計書§7.5）。
+   */
+  async deleteAuthUser(supabaseAuthId: string): Promise<SupabaseResult<void>> {
+    const { error } = await this.supabase.auth.admin.deleteUser(supabaseAuthId);
+
+    if (error) {
+      const isNotFound = error.status === 404 || /not found/i.test(error.message);
+      if (isNotFound) {
+        return this.success(undefined);
+      }
+      return this.failure('認証情報の削除に失敗しました', {
+        error,
+        developerMessage: 'Error deleting Supabase Auth user',
+        context: { supabaseAuthId },
       });
     }
 

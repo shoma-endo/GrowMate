@@ -8,6 +8,7 @@ type DeleteUserDialogProps = {
   user: AdminUserListItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
   isDeleting?: boolean;
 };
 
@@ -29,6 +30,7 @@ export function DeleteUserDialog({
   user,
   open,
   onOpenChange,
+  onConfirm,
   isDeleting = false,
 }: DeleteUserDialogProps) {
   const handleOpenChange = (next: boolean) => {
@@ -44,9 +46,8 @@ export function DeleteUserDialog({
     <ConfirmDeleteDialog
       open={open}
       onOpenChange={handleOpenChange}
-      onConfirm={() => {}}
+      onConfirm={onConfirm}
       isDeleting={isDeleting}
-      confirmDisabled
       title="ユーザーを完全に削除しますか？"
       description={
         <>
