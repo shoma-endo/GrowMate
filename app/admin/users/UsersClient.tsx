@@ -209,7 +209,16 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="divide-y divide-gray-200">
+              <table className="w-full table-fixed divide-y divide-gray-200">
+                <colgroup>
+                  <col className="w-[11%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[21%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[20%]" />
+                </colgroup>
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -261,10 +270,10 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 text-sm text-gray-500 break-words">
                         {formatDateTimeWithSeconds(user.lastLoginAt, '未ログイン')}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 text-sm text-gray-500 break-words">
                         {formatDateTimeWithSeconds(user.createdAt, '登録日不明')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -294,7 +303,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="px-6 py-4 text-sm">
                         {editingUserId === user.id ? (
                           <div className="flex space-x-2">
                             <button
