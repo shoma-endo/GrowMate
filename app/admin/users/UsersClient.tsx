@@ -294,7 +294,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm">
+                      <td className="px-6 py-4 text-sm whitespace-nowrap">
                         {editingUserId === user.id ? (
                           <div className="flex space-x-2">
                             <button
@@ -323,7 +323,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                                 削除
                               </Button>
                             ) : (
-                              <div className="text-xs text-gray-500 max-w-[10rem]">
+                              <div className="text-xs text-gray-500 max-w-[10rem] whitespace-normal">
                                 <span>削除不可</span>
                                 {user.deletionBlockedReason && (
                                   <p className="mt-0.5 break-words">
