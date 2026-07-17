@@ -73,12 +73,13 @@ steps:
       7. 仕様要件と現行コード（および既存 WIP）の差分、変更対象、検証方法、PR本文に記載すべき関連仕様書を整理する。
       8. 対象仕様書が spec-review 済みか確認する（`.takt/workflows/spec-review.yaml` のレビューレポート）。未実施の場合はブロックしないが、計画レポートに「spec-review 未実施」と明記する。
       9. 検証ゲートは `npm run verify` と TAKT 内レビューとする。ブラウザ手動確認は無人実行では実施しない（PR の未確認事項に記載する前提）。
+      10. 仕様が新規マイグレーション（新規テーブル・新規列）を要求し、それがまだリモートDBに未適用（`database.types.ts` に反映されていない）場合、これ単体は ABORT 理由にしない。`.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターン（`src/types/database.types.pending.ts` + `asPendingClient()`）を計画に含め、最後まで実装する前提で進める。リモートへの適用と `npm run supabase:types` は管理者が本PRマージ後に行う運用とし、完了条件にしない。
     rules:
-      - condition: 要件が明確で実装可能（新規または既存 WIP/PR への差分追記を含む）
+      - condition: 要件が明確で実装可能（新規または既存 WIP/PR への差分追記を含む。未適用マイグレーションへの対応は Pending Migration Types パターンで実装可能なため「明確」に含む）
         next: implement
       - condition: ユーザーが質問をしている（実装タスクではない）
         next: COMPLETE
-      - condition: 要件が不明確、情報不足（仕様書の修正が必要）
+      - condition: 要件が不明確、情報不足（仕様書の修正が必要。マイグレーション未適用のみを理由にしない）
         next: ABORT
         appendix: |
           人間が `docs/plans/` を修正して再実行してください:
@@ -113,6 +114,7 @@ steps:
       必須条件:
       - `any` を使わない。`unknown` + narrowing または Zod schema を使う。
       - 自動生成ファイルを直接編集しない。
+      - 対象テーブル・列がマイグレーション未適用で `database.types.ts` に存在しない場合、`.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターンに従い `src/types/database.types.pending.ts` を追加して実装を継続する。型が無いことを理由に実装を止めたり ABORT したりしない。
       - UI 変更では `growmate-ui-ux` と `react` の規約に従う。
       - Server Actions / Route Handlers では `nextjs-server` のエラー処理・Zod規約に従う。
       - Supabase Service Role 使用時は user_id 等の明示的なスコープ条件を入れる。
@@ -196,6 +198,7 @@ steps:
       - 簡易・形式的・低価値なユニットテストの追加を要求しない。
       - 代替検証として `npm run verify` が実行されているかを確認する。
       - ブラウザ手動確認は無人運用では実施しない。未実施のみを理由に `needs_fix` にせず、未確認事項へ回す前提とする。
+      - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターン（`src/types/database.types.pending.ts` + `asPendingClient()` の `as unknown as` キャスト）は、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、このキャスト自体を理由に `needs_fix` にしない。
       - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
       - condition: approved
@@ -321,8 +324,8 @@ steps:
       `.agents/skills/quality-gate/SKILL.md` と `.agents/skills/quality-gate/self-review.md` に従い、2パスセルフレビューを実施してください。
 
       確認対象:
-      - 仕様書の全要件が実装されていること。
-      - 対象仕様書（`docs/plans/` 配下）が本PRのスコープで完全実装されたか（未実装フェーズ・TODO・スコープ外セクションが残っていないか）を判定し、`self-review.md` に明記する。
+      - 仕様書の全要件が実装されていること。マイグレーションがリモート未適用のため `Pending Migration Types`（`src/types/database.types.pending.ts`）を使っている場合、それ自体は未実装・スコープ外を意味しない。`npm run verify` が通っていれば実装完了として扱い、「型未反映」のみを理由に `needs_fix` にしない。
+      - 対象仕様書（`docs/plans/` 配下）が本PRのスコープで完全実装されたか（未実装フェーズ・TODO・スコープ外セクションが残っていないか）を判定し、`self-review.md` に明記する。Pending Migration Types を使っている場合は、その旨と「管理者によるマイグレーション適用・型再生成・pendingファイル削除」が残タスクである旨を明記する（実装未完了とは区別する）。
       - `npm run verify` が成功していること。
       - architecture-reviewer の open findings がないこと。
       - `readme-sync.md` に README の更新要否と根拠が記録され、更新要の場合は実装差分と `README.md` が同期していること。
@@ -373,7 +376,7 @@ steps:
         4. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
         5. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く
         6. `## 検証` — `npm run verify` 等の結果（手動ブラウザ確認は無人のため未実施が既定）
-        7. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める。その他あれば列挙。なければ「なし」
+        7. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める。`src/types/database.types.pending.ts` を追加している場合は「管理者によるマイグレーション適用・`npm run supabase:types` 実行・pendingファイル削除が必要」を含める。その他あれば列挙。なければ「なし」
         8. `## コミットメッセージ案` — 日本語1行
       - 変更ファイルの詳細表は作らない。
       - Requeue / resume で現在の Report Directory に必要レポートが存在しない場合は、現在 run の `meta.json` にある `source_run_slug` を辿り、source run の `reports/` にある最新レポートを参照する。source run も Requeue の場合は、さらに `source_run_slug` を辿る。
