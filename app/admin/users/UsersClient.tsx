@@ -211,13 +211,13 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
             <div className="overflow-x-auto">
               <table className="w-[1100px] table-fixed divide-y divide-gray-200">
                 <colgroup>
-                  <col className="w-[12%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[20%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[12%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[19%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[13%]" />
                   <col className="w-[18%]" />
+                  <col className="w-[17%]" />
                 </colgroup>
                 <thead className="bg-gray-50">
                   <tr>
@@ -285,7 +285,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                             }
                             disabled={updatingUserId === user.id}
                           >
-                            <SelectTrigger size="sm" className="w-40 text-xs">
+                            <SelectTrigger size="sm" className="w-32 text-xs">
                               <SelectValue placeholder="権限を選択" />
                             </SelectTrigger>
                             <SelectContent>
