@@ -64,13 +64,13 @@ export default function UnavailablePage() {
                 />
               </svg>
             </div>
-            <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+            <h2 className="mt-6 text-3xl font-extrabold text-gray-900 break-keep">
               サービス利用停止中
             </h2>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-gray-600 text-left break-keep leading-relaxed">
               申し訳ございませんが、現在あなたのアカウントではサービスをご利用いただけません。
             </p>
-            <div className="mt-6 bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="mt-6 bg-red-50 border border-red-200 rounded-md p-4 text-left">
               <div className="flex">
                 <div className="flex-shrink-0">
                   <svg
@@ -86,12 +86,12 @@ export default function UnavailablePage() {
                     />
                   </svg>
                 </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">
+                <div className="ml-3 min-w-0">
+                  <h3 className="text-sm font-medium text-red-800 break-keep">
                     アクセス制限について
                   </h3>
                   <div className="mt-2 text-sm text-red-700">
-                    <ul className="list-disc list-inside space-y-1">
+                    <ul className="list-disc list-inside space-y-1 break-keep">
                       <li>チャット機能のご利用</li>
                       <li>管理画面へのアクセス</li>
                       <li>その他すべてのサービス機能</li>
@@ -100,7 +100,7 @@ export default function UnavailablePage() {
                 </div>
               </div>
             </div>
-            <p className="mt-4 text-sm text-gray-500">
+            <p className="mt-4 text-sm text-gray-500 text-left break-keep leading-relaxed">
               サービスの利用再開については、管理者にお問い合わせください。
             </p>
           </div>
