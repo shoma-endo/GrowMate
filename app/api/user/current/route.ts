@@ -14,12 +14,22 @@ export async function GET() {
       return nextJson409EmailLinkConflict({ userId: null, user: null });
     }
     if (result.reason === 'unavailable') {
+      const emailUser = result.user;
       return NextResponse.json(
         {
-          userId: null,
-          user: null,
+          userId: emailUser.id,
+          user: {
+            id: emailUser.id,
+            fullName: emailUser.fullName ?? null,
+            email: emailUser.email ?? null,
+            role: emailUser.role,
+            lineUserId: emailUser.lineUserId ?? null,
+            lineDisplayName: emailUser.lineDisplayName ?? null,
+            linePictureUrl: emailUser.linePictureUrl ?? null,
+          },
           error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE,
           roleUnavailable: true,
+          hasFullName: Boolean(emailUser.fullName?.trim()),
         },
         { status: 403 }
       );

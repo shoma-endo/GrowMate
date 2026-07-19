@@ -84,6 +84,11 @@ class UserService {
       console.error('Failed to update full name:', result.error);
       return false;
     }
+    // maybeSingle: 対象行が無い場合も success になり得るため data を必須にする
+    if (!result.data) {
+      console.error('Failed to update full name: no row updated', { userId });
+      return false;
+    }
 
     return true;
   }

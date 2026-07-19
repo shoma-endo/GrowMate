@@ -64,44 +64,40 @@ export default function UnavailablePage() {
                 />
               </svg>
             </div>
-            <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+            <h2 className="mt-6 text-3xl font-extrabold text-gray-900 break-keep">
               サービス利用停止中
             </h2>
-            <p className="mt-2 text-sm text-gray-600">
-              申し訳ございませんが、現在あなたのアカウントではサービスをご利用いただけません。
+            <p className="mt-2 text-sm text-gray-600 text-center leading-relaxed">
+              申し訳ございませんが、現在あなたのアカウントでは
+              <br />
+              サービスをご利用いただけません。
             </p>
-            <div className="mt-6 bg-red-50 border border-red-200 rounded-md p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg
-                    className="h-5 w-5 text-red-400"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">
-                    アクセス制限について
-                  </h3>
-                  <div className="mt-2 text-sm text-red-700">
-                    <ul className="list-disc list-inside space-y-1">
-                      <li>チャット機能のご利用</li>
-                      <li>管理画面へのアクセス</li>
-                      <li>その他すべてのサービス機能</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
+            <div className="mt-6 bg-red-50 border border-red-200 rounded-md p-4 text-center">
+              <h3 className="inline-flex items-center justify-center gap-2 text-sm font-medium text-red-800 break-keep">
+                <svg
+                  className="h-5 w-5 text-red-400 shrink-0"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                アクセス制限について
+              </h3>
+              <ul className="mt-2 space-y-1 text-sm text-red-700 break-keep">
+                <li>チャット機能のご利用</li>
+                <li>管理画面へのアクセス</li>
+                <li>その他すべてのサービス機能</li>
+              </ul>
             </div>
-            <p className="mt-4 text-sm text-gray-500">
-              サービスの利用再開については、管理者にお問い合わせください。
+            <p className="mt-4 text-sm text-gray-500 text-center leading-relaxed">
+              サービスの利用再開については、
+              <br />
+              管理者にお問い合わせください。
             </p>
           </div>
         </div>

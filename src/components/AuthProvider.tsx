@@ -30,6 +30,7 @@ type FetchCurrentUserResult = {
   user: User | null;
   emailLinkConflict: boolean;
   roleUnavailable: boolean;
+  hasFullName: boolean;
 };
 
 async function fetchCurrentUser(): Promise<FetchCurrentUserResult> {
@@ -39,19 +40,45 @@ async function fetchCurrentUser(): Promise<FetchCurrentUserResult> {
     cache: 'no-store',
   });
   if (res.status === 409) {
-    return { user: null, emailLinkConflict: true, roleUnavailable: false };
+    return { user: null, emailLinkConflict: true, roleUnavailable: false, hasFullName: false };
   }
   if (res.status === 403) {
-    const data = (await res.json()) as { roleUnavailable?: boolean };
+    const data = (await res.json()) as {
+      roleUnavailable?: boolean;
+      hasFullName?: boolean;
+      user?: User | null;
+    };
     if (data.roleUnavailable) {
-      return { user: null, emailLinkConflict: false, roleUnavailable: true };
+      // 利用停止ユーザーを認証コンテキストへ載せない（isLoggedIn 副作用で通知API等が動くのを防ぐ）
+      // フルネーム要否の判定だけ API レスポンスから読み取る
+      return {
+        user: null,
+        emailLinkConflict: false,
+        roleUnavailable: true,
+        hasFullName: Boolean(data.hasFullName ?? data.user?.fullName?.trim()),
+      };
     }
   }
   if (!res.ok) {
-    return { user: null, emailLinkConflict: false, roleUnavailable: false };
+    return { user: null, emailLinkConflict: false, roleUnavailable: false, hasFullName: false };
   }
   const data = (await res.json()) as { user?: User | null };
-  return { user: data?.user ?? null, emailLinkConflict: false, roleUnavailable: false };
+  const user = data?.user ?? null;
+  return {
+    user,
+    emailLinkConflict: false,
+    roleUnavailable: false,
+    hasFullName: Boolean(user?.fullName?.trim()),
+  };
+}
+
+function redirectIfNeedsFullName(
+  pathname: string | null,
+  router: ReturnType<typeof useRouter>
+): boolean {
+  if (pathname === '/login') return true;
+  router.replace('/login');
+  return true;
 }
 
 function redirectIfRoleUnavailable(pathname: string | null, router: ReturnType<typeof useRouter>): boolean {
@@ -74,12 +101,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshUser = useCallback(async (): Promise<boolean> => {
     try {
-      const { user: nextUser, emailLinkConflict, roleUnavailable } = await fetchCurrentUser();
+      const { user: nextUser, emailLinkConflict, roleUnavailable, hasFullName } =
+        await fetchCurrentUser();
       setUser(nextUser);
       if (emailLinkConflict) {
         if (!isPublicPath(pathname)) {
           router.replace('/login?reason=email_link_conflict');
         }
+        return false;
+      }
+      // フルネーム未登録はサービス停止より優先して登録画面へ戻す
+      if (!hasFullName && (nextUser || roleUnavailable)) {
+        redirectIfNeedsFullName(pathname, router);
         return false;
       }
       if (roleUnavailable) {
@@ -101,13 +134,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
     let cancelled = false;
     setIsLoading(true);
     fetchCurrentUser()
-      .then(({ user: nextUser, emailLinkConflict, roleUnavailable }) => {
+      .then(({ user: nextUser, emailLinkConflict, roleUnavailable, hasFullName }) => {
         if (cancelled) return;
         setUser(nextUser);
         if (emailLinkConflict) {
           if (!publicPath) {
             router.replace('/login?reason=email_link_conflict');
           }
+          return;
+        }
+        // フルネーム未登録はサービス停止より優先して登録画面へ戻す
+        if (!hasFullName && (nextUser || roleUnavailable)) {
+          redirectIfNeedsFullName(pathname, router);
           return;
         }
         if (roleUnavailable) {
