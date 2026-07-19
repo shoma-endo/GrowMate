@@ -67,7 +67,7 @@ export default function UnavailablePage() {
             <h2 className="mt-6 text-3xl font-extrabold text-gray-900 break-keep">
               サービス利用停止中
             </h2>
-            <p className="mt-2 text-sm text-gray-600 text-left leading-relaxed">
+            <p className="mt-2 text-sm text-gray-600 text-center leading-relaxed">
               申し訳ございませんが、現在あなたのアカウントでは
               <br />
               サービスをご利用いただけません。
@@ -94,7 +94,7 @@ export default function UnavailablePage() {
                 <li>その他すべてのサービス機能</li>
               </ul>
             </div>
-            <p className="mt-4 text-sm text-gray-500 text-left leading-relaxed">
+            <p className="mt-4 text-sm text-gray-500 text-center leading-relaxed">
               サービスの利用再開については、
               <br />
               管理者にお問い合わせください。
