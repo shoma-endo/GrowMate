@@ -448,9 +448,16 @@ export const ERROR_MESSAGES = {
     /** 削除の監査ログ開始行の作成に失敗した場合 */
     DELETE_AUDIT_LOG_START_FAILED: '削除を開始できませんでした。時間をおいて再試行してください',
 
-    /** 削除後の監査ログ確定（succeeded）に失敗した場合 */
+    /** 削除後の監査ログ確定（succeeded）に失敗した場合（DB削除は完了済み） */
     DELETE_AUDIT_LOG_FINALIZE_FAILED:
       'ユーザー削除は完了しましたが、監査ログの確定に失敗しました。画面を更新して状態を確認してください',
+
+    /**
+     * DB削除前（またはRPC失敗後）の監査 failed 確定に失敗した場合。
+     * 「削除完了」と誤読させない文言にする。
+     */
+    DELETE_AUDIT_LOG_STATUS_FAILED:
+      '削除処理の記録に失敗しました。画面を更新して状態を確認してください',
 
     /** Supabase Authユーザーの削除に失敗した場合（DB削除前） */
     DELETE_AUTH_FAILED: '認証情報の削除に失敗しました。時間をおいて再試行してください',

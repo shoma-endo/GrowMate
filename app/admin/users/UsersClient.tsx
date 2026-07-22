@@ -152,9 +152,12 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
 
     try {
       const result = await deleteUser({ userId: targetId });
-      if (result.success) {
+      // DB削除済みの部分失敗でも行を除去する（幽霊行を残さない）
+      if (result.success || result.dbDeleted) {
         setUsers(prev => prev.filter(user => user.id !== targetId));
         setIsDeleteDialogOpen(false);
+      }
+      if (result.success) {
         toast.success('ユーザーを削除しました');
       } else {
         toast.error('ユーザーの削除に失敗しました', {

@@ -166,11 +166,15 @@ class UserService {
    * 管理者によるユーザー完全削除ユースケース（設計書 §7.4）。
    * 1. 対象再取得 2. アプリ層の早期検証 3. 監査 started
    * 4. RPC（行ロック＋保護再検証＋DB削除） 5. Auth削除 6/7. 監査 succeeded/failed
+   *
+   * RPC成功後の部分失敗では `dbDeleted: true` を返し、UIが一覧行を除去できるようにする。
    */
   async deleteUserFully(
     targetUserId: string,
     actorUserId: string
-  ): Promise<{ success: true } | { success: false; error: string }> {
+  ): Promise<
+    { success: true } | { success: false; error: string; dbDeleted?: boolean }
+  > {
     const targetResult = await this.supabaseService.getUserById(targetUserId);
     if (!targetResult.success || !targetResult.data) {
       return { success: false, error: ERROR_MESSAGES.USER.DELETE_TARGET_INVALID };
@@ -211,7 +215,7 @@ class UserService {
         'db_delete_failed'
       );
       if (!auditFinalized) {
-        return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED };
+        return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_STATUS_FAILED };
       }
       return {
         success: false,
@@ -223,17 +227,48 @@ class UserService {
       const authResult = await this.deleteAuthUserWithRetry(supabaseAuthId);
       if (!authResult.success) {
         console.error('[UserService] Failed to delete Supabase Auth user:', authResult.error);
-        // pending は RPC で作成済み（初期 lease 付き）。バックオフだけ更新する。
-        await this.supabaseService.schedulePendingAuthUserDeletionRetry(supabaseAuthId);
+        const scheduleResult =
+          await this.supabaseService.schedulePendingAuthUserDeletionRetry(supabaseAuthId);
+        if (!scheduleResult.success) {
+          console.error(
+            '[UserService] Failed to schedule pending_auth_user_deletions backoff:',
+            scheduleResult.error
+          );
+          const auditFinalized = await this.updateAdminActionLogStatusWithRetry(
+            logId,
+            'failed',
+            'auth_delete_failed_backoff_failed'
+          );
+          if (!auditFinalized) {
+            return {
+              success: false,
+              error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+              dbDeleted: true,
+            };
+          }
+          return {
+            success: false,
+            error: ERROR_MESSAGES.USER.DELETE_AUTH_FAILED_AFTER_DB,
+            dbDeleted: true,
+          };
+        }
         const auditFinalized = await this.updateAdminActionLogStatusWithRetry(
           logId,
           'failed',
           'auth_delete_failed'
         );
         if (!auditFinalized) {
-          return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED };
+          return {
+            success: false,
+            error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+            dbDeleted: true,
+          };
         }
-        return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUTH_FAILED_AFTER_DB };
+        return {
+          success: false,
+          error: ERROR_MESSAGES.USER.DELETE_AUTH_FAILED_AFTER_DB,
+          dbDeleted: true,
+        };
       }
       const pendingCleanup = await this.supabaseService.deletePendingAuthUserDeletion(supabaseAuthId);
       if (!pendingCleanup.success) {
@@ -247,15 +282,27 @@ class UserService {
           'pending_cleanup_failed'
         );
         if (!auditFinalized) {
-          return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED };
+          return {
+            success: false,
+            error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+            dbDeleted: true,
+          };
         }
-        return { success: false, error: ERROR_MESSAGES.USER.DELETE_PENDING_CLEANUP_FAILED };
+        return {
+          success: false,
+          error: ERROR_MESSAGES.USER.DELETE_PENDING_CLEANUP_FAILED,
+          dbDeleted: true,
+        };
       }
     }
 
     const finalized = await this.updateAdminActionLogStatusWithRetry(logId, 'succeeded');
     if (!finalized) {
-      return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED };
+      return {
+        success: false,
+        error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+        dbDeleted: true,
+      };
     }
 
     return { success: true };

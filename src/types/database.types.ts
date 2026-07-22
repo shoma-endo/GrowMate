@@ -1178,6 +1178,14 @@ export type Database = {
           target_user_id: string
         }[]
       }
+      schedule_pending_auth_user_deletion_retry: {
+        Args: { p_supabase_auth_id: string }
+        Returns: {
+          attempt_count: number
+          error: string
+          success: boolean
+        }[]
+      }
       get_accessible_user_ids: {
         Args: { p_user_id: string }
         Returns: string[]

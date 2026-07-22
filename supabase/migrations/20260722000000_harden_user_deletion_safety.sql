@@ -11,11 +11,13 @@
 --      （メール認証解決が DB エラーになる）。先に旧アプリへ戻す。
 --   手順:
 --     (1) 削除 Action 停止
---     (2) Auth Admin で残存ユーザーを手動削除し pending が空であることを確認
---     (3) 旧アプリ配備へ戻す
---     (4) delete_user_fully / delete_employee_and_restore_owner を
+--     (2) Auth Admin で残存ユーザーを手動削除
+--     (3) Auth 不存在確認後、pending 行を明示 DELETE（Auth削除だけでは自動消去されない）
+--     (4) pending が空であることを確認
+--     (5) 旧アプリ配備へ戻す
+--     (6) delete_user_fully / delete_employee_and_restore_owner を
 --         20251230140000 / 20260108000000 の定義へ復元
---     (5) pending_auth_user_deletions DROP、必要なら target_supabase_auth_id 列削除
+--     (7) pending_auth_user_deletions DROP、必要なら target_supabase_auth_id 列削除
 
 DROP FUNCTION IF EXISTS public.delete_employee_and_restore_owner(uuid, uuid);
 

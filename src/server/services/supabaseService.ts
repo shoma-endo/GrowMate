@@ -2571,57 +2571,32 @@ export class SupabaseService {
   }
 
   /**
-   * Auth削除失敗後のバックオフ更新（RPCで pending は既に存在する前提）。
+   * Auth削除失敗後のバックオフ更新（原子的 RPC）。
    * 管理画面パス専用。ログイン側の再試行は claim_pending_auth_user_deletion を使う。
    */
   async schedulePendingAuthUserDeletionRetry(
     supabaseAuthId: string
   ): Promise<SupabaseResult<void>> {
-    const { data: existing, error: readError } = await this.supabase
-      .from('pending_auth_user_deletions')
-      .select('attempt_count')
-      .eq('supabase_auth_id', supabaseAuthId)
-      .maybeSingle();
-
-    if (readError) {
-      return this.failure('Auth削除待ちの更新に失敗しました', {
-        error: readError,
-        developerMessage: 'Error reading pending_auth_user_deletions for schedule',
-        context: { supabaseAuthId },
-      });
-    }
-    if (!existing) {
-      return this.failure('Auth削除待ちの更新に失敗しました', {
-        error: new Error('pending_auth_user_deletions row missing'),
-        developerMessage: 'No pending row to schedule',
-        context: { supabaseAuthId },
-      });
-    }
-
-    const now = new Date().toISOString();
-    const attemptCount = existing.attempt_count + 1;
     const { data, error } = await this.supabase
-      .from('pending_auth_user_deletions')
-      .update({
-        last_attempt_at: now,
-        attempt_count: attemptCount,
-        next_attempt_at: computeNextAttemptAt(attemptCount, now),
+      .rpc('schedule_pending_auth_user_deletion_retry', {
+        p_supabase_auth_id: supabaseAuthId,
       })
-      .eq('supabase_auth_id', supabaseAuthId)
-      .select('supabase_auth_id');
+      .returns<Array<{ success: boolean; error: string | null; attempt_count: number | null }>>()
+      .single();
 
     if (error) {
       return this.failure('Auth削除待ちの更新に失敗しました', {
         error,
-        developerMessage: 'Error scheduling pending_auth_user_deletions',
+        developerMessage: 'Error scheduling pending_auth_user_deletions via RPC',
         context: { supabaseAuthId },
       });
     }
-    if (!data || data.length === 0) {
+
+    if (!data?.success) {
       return this.failure('Auth削除待ちの更新に失敗しました', {
-        error: new Error('pending_auth_user_deletions update matched 0 rows'),
-        developerMessage: 'No pending row updated for schedule',
-        context: { supabaseAuthId },
+        error: new Error(data?.error ?? 'pending schedule failed'),
+        developerMessage: 'schedule_pending_auth_user_deletion_retry returned failure',
+        context: { supabaseAuthId, rpcError: data?.error },
       });
     }
 
@@ -2724,10 +2699,4 @@ export class SupabaseService {
 
     return this.success(undefined);
   }
-}
-
-/** attempt_count（更新後）に基づく次回試行時刻。上限1時間。 */
-function computeNextAttemptAt(attemptCount: number, fromIso: string): string {
-  const delaySeconds = Math.min(3600, 30 * 2 ** Math.min(Math.max(attemptCount, 1), 7));
-  return new Date(new Date(fromIso).getTime() + delaySeconds * 1000).toISOString();
 }

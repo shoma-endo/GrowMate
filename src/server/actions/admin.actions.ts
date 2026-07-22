@@ -96,7 +96,7 @@ export const updateUserRole = async (
  */
 export const deleteUser = async (
   input: DeleteUserInput
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<{ success: boolean; error?: string; dbDeleted?: boolean }> => {
   try {
     const authResult = await resolveAdminUser();
     if (!authResult.success) {
@@ -111,7 +111,14 @@ export const deleteUser = async (
 
     const result = await userService.deleteUserFully(parsed.data.userId, authResult.userId);
     if (!result.success) {
-      return { success: false, error: result.error };
+      if (result.dbDeleted) {
+        revalidatePath('/admin/users');
+      }
+      return {
+        success: false,
+        error: result.error,
+        ...(result.dbDeleted ? { dbDeleted: true } : {}),
+      };
     }
 
     revalidatePath('/admin/users');

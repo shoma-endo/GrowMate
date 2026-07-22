@@ -109,7 +109,7 @@ describe('userService.deleteUserFully', () => {
     );
   });
 
-  it('RPC失敗後に監査 failed 更新が尽きると監査未確定を返す', async () => {
+  it('RPC失敗後に監査 failed 更新が尽きると削除未完了の監査エラーを返す', async () => {
     mocks.deleteUserFully.mockResolvedValue({
       success: false,
       error: { userMessage: 'blocked_admin' },
@@ -123,12 +123,12 @@ describe('userService.deleteUserFully', () => {
 
     expect(result).toEqual({
       success: false,
-      error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+      error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_STATUS_FAILED,
     });
     expect(mocks.updateAdminActionLogStatus).toHaveBeenCalledTimes(3);
   });
 
-  it('Auth削除失敗時は pending backoff を更新し専用エラーを返す', async () => {
+  it('Auth削除失敗時は pending backoff を更新し dbDeleted 付き専用エラーを返す', async () => {
     mocks.deleteAuthUser.mockResolvedValue({
       success: false,
       error: { userMessage: 'auth failed' },
@@ -139,6 +139,7 @@ describe('userService.deleteUserFully', () => {
     expect(result).toEqual({
       success: false,
       error: ERROR_MESSAGES.USER.DELETE_AUTH_FAILED_AFTER_DB,
+      dbDeleted: true,
     });
     expect(mocks.schedulePendingAuthUserDeletionRetry).toHaveBeenCalledWith('auth-1');
     expect(mocks.updateAdminActionLogStatus).toHaveBeenCalledWith(
@@ -148,7 +149,31 @@ describe('userService.deleteUserFully', () => {
     );
   });
 
-  it('Auth削除失敗後に監査 failed 更新が尽きると監査未確定を返す', async () => {
+  it('Auth削除失敗後に backoff 更新が失敗しても dbDeleted を返す', async () => {
+    mocks.deleteAuthUser.mockResolvedValue({
+      success: false,
+      error: { userMessage: 'auth failed' },
+    });
+    mocks.schedulePendingAuthUserDeletionRetry.mockResolvedValue({
+      success: false,
+      error: { userMessage: 'schedule failed' },
+    });
+
+    const result = await userService.deleteUserFully('user-1', 'admin-1');
+
+    expect(result).toEqual({
+      success: false,
+      error: ERROR_MESSAGES.USER.DELETE_AUTH_FAILED_AFTER_DB,
+      dbDeleted: true,
+    });
+    expect(mocks.updateAdminActionLogStatus).toHaveBeenCalledWith(
+      'log-1',
+      'failed',
+      'auth_delete_failed_backoff_failed'
+    );
+  });
+
+  it('Auth削除失敗後に監査 failed 更新が尽きると監査未確定を dbDeleted 付きで返す', async () => {
     mocks.deleteAuthUser.mockResolvedValue({
       success: false,
       error: { userMessage: 'auth failed' },
@@ -163,6 +188,7 @@ describe('userService.deleteUserFully', () => {
     expect(result).toEqual({
       success: false,
       error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+      dbDeleted: true,
     });
   });
 
@@ -177,6 +203,7 @@ describe('userService.deleteUserFully', () => {
     expect(result).toEqual({
       success: false,
       error: ERROR_MESSAGES.USER.DELETE_PENDING_CLEANUP_FAILED,
+      dbDeleted: true,
     });
     expect(mocks.updateAdminActionLogStatus).toHaveBeenCalledWith(
       'log-1',
@@ -196,6 +223,7 @@ describe('userService.deleteUserFully', () => {
     expect(result).toEqual({
       success: false,
       error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+      dbDeleted: true,
     });
     expect(mocks.updateAdminActionLogStatus).toHaveBeenCalledTimes(3);
   });
