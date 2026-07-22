@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_action_logs: {
+        Row: {
+          action: string
+          actor_user_id: string
+          completed_at: string | null
+          created_at: string
+          failure_code: string | null
+          id: string
+          status: string
+          target_user_id: string
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          completed_at?: string | null
+          created_at?: string
+          failure_code?: string | null
+          id?: string
+          status: string
+          target_user_id: string
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          completed_at?: string | null
+          created_at?: string
+          failure_code?: string | null
+          id?: string
+          status?: string
+          target_user_id?: string
+        }
+        Relationships: []
+      }
       briefs: {
         Row: {
           created_at: string

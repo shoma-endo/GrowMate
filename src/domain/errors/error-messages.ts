@@ -429,6 +429,29 @@ export const ERROR_MESSAGES = {
 
     /** ユーザー一覧の取得中にエラーが発生した場合 */
     USER_LIST_FETCH_ERROR: 'ユーザー一覧の取得中にエラーが発生しました',
+
+    /** 管理者ユーザーは削除できない場合 */
+    DELETION_BLOCKED_ADMIN: '管理者は削除できません。先に権限を変更してください',
+
+    /** Stripe契約情報があるユーザーは削除できない場合 */
+    DELETION_BLOCKED_ACTIVE_SUBSCRIPTION:
+      '契約情報があるため削除できません。先に契約を解除してください',
+
+    /** 組織に紐づいているユーザーは削除できない場合 */
+    DELETION_BLOCKED_ORGANIZATION_LINKED:
+      '組織に紐づいているため削除できません。先に組織関係を解除してください',
+
+    /** 削除対象の入力・再検証に失敗した場合（不正なID・対象不存在） */
+    DELETE_TARGET_INVALID: '削除対象を確認できませんでした。画面を更新してください',
+
+    /** 削除の監査ログ開始行の作成に失敗した場合 */
+    DELETE_AUDIT_LOG_START_FAILED: '削除を開始できませんでした。時間をおいて再試行してください',
+
+    /** Supabase Authユーザーの削除に失敗した場合 */
+    DELETE_AUTH_FAILED: '認証情報の削除に失敗しました。時間をおいて再試行してください',
+
+    /** DBの完全削除（RPC）に失敗した場合 */
+    DELETE_DB_FAILED: 'データの削除に失敗しました。時間をおいて再試行してください',
   },
 
   /**
