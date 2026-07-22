@@ -2,6 +2,7 @@
 
 import { headers } from 'next/headers';
 
+import { isUnavailable } from '@/authUtils';
 import { isUnauthenticatedAuthError } from '@/lib/supabase/auth-errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { clearAuthCookies } from '@/server/middleware/auth.middleware';
@@ -129,7 +130,7 @@ async function signOutSupabaseSession(supabase: SupabaseServerClient): Promise<v
 
 export async function registerFullName(
   fullName: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; nextPath?: string }> {
   if (typeof fullName !== 'string' || fullName.trim().length === 0) {
     return { success: false, error: 'フルネームを入力してください。' };
   }
@@ -158,7 +159,11 @@ export async function registerFullName(
     return { success: false, error: '登録に失敗しました。再度お試しください。' };
   }
 
-  return { success: true };
+  // 新規は unavailable のままなので停止画面へ。利用可能ロールはホームへ。
+  return {
+    success: true,
+    nextPath: isUnavailable(user.role) ? '/unavailable' : '/',
+  };
 }
 
 export async function verifyOtp(

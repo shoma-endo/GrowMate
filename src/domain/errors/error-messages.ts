@@ -391,12 +391,6 @@ export const ERROR_MESSAGES = {
     /** ユーザー情報の確認に失敗した場合 */
     USER_INFO_VERIFY_FAILED: 'ユーザー情報の確認に失敗しました',
 
-    /** フルネームの更新に失敗した場合 */
-    FULL_NAME_UPDATE_FAILED: 'フルネームの更新に失敗しました',
-
-    /** フルネームの更新中にエラーが発生した場合 */
-    FULL_NAME_UPDATE_ERROR: 'フルネームの更新中にエラーが発生しました',
-
     /** サービスの利用が停止されている場合 */
     SERVICE_UNAVAILABLE: 'サービスの利用が停止されています',
 
