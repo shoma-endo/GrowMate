@@ -23,6 +23,7 @@ export type Database = {
           failure_code: string | null
           id: string
           status: string
+          target_supabase_auth_id: string | null
           target_user_id: string
         }
         Insert: {
@@ -33,6 +34,7 @@ export type Database = {
           failure_code?: string | null
           id?: string
           status: string
+          target_supabase_auth_id?: string | null
           target_user_id: string
         }
         Update: {
@@ -43,6 +45,37 @@ export type Database = {
           failure_code?: string | null
           id?: string
           status?: string
+          target_supabase_auth_id?: string | null
+          target_user_id?: string
+        }
+        Relationships: []
+      }
+      pending_auth_user_deletions: {
+        Row: {
+          admin_action_log_id: string | null
+          attempt_count: number
+          created_at: string
+          last_attempt_at: string | null
+          next_attempt_at: string | null
+          supabase_auth_id: string
+          target_user_id: string
+        }
+        Insert: {
+          admin_action_log_id?: string | null
+          attempt_count?: number
+          created_at?: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          supabase_auth_id: string
+          target_user_id: string
+        }
+        Update: {
+          admin_action_log_id?: string | null
+          attempt_count?: number
+          created_at?: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          supabase_auth_id?: string
           target_user_id?: string
         }
         Relationships: []
@@ -1130,18 +1163,19 @@ export type Database = {
           user_id: string
         }[]
       }
-      delete_employee_and_restore_owner: {
-        Args: { p_employee_id: string; p_owner_id: string }
+      delete_user_fully: {
+        Args: { p_admin_action_log_id?: string; p_user_id: string }
         Returns: {
           error: string
           success: boolean
         }[]
       }
-      delete_user_fully: {
-        Args: { p_user_id: string }
+      claim_pending_auth_user_deletion: {
+        Args: { p_supabase_auth_id: string }
         Returns: {
-          error: string
-          success: boolean
+          attempt_count: number
+          outcome: string
+          target_user_id: string
         }[]
       }
       get_accessible_user_ids: {

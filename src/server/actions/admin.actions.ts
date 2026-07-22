@@ -22,6 +22,9 @@ async function resolveAdminUser(): Promise<
     if (result.reason === 'email_link_conflict') {
       return { success: false, error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT };
     }
+    if (result.reason === 'pending_auth_deletion') {
+      return { success: false, error: ERROR_MESSAGES.AUTH.PENDING_AUTH_DELETION };
+    }
     if (result.reason === 'unavailable') {
       return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
     }

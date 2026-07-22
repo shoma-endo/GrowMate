@@ -201,6 +201,13 @@ export const ERROR_MESSAGES = {
     EMAIL_LINK_CONFLICT:
       'このメールアドレスは別のログインと既に紐づいています。サポートへお問い合わせください。',
 
+    /**
+     * public.users 削除後に Auth が残っている（pending_auth_user_deletions）。
+     * 同一 Auth ID での public.users 再作成を拒否する。
+     */
+    PENDING_AUTH_DELETION:
+      'このアカウントは削除処理中です。時間をおいて再度ログインするか、管理者へお問い合わせください。',
+
     /** トークン期限切れで再ログインが必要な場合 */
     TOKEN_EXPIRED_REAUTH: 'トークンの有効期限が切れました。再度ログインしてください',
 
@@ -441,8 +448,23 @@ export const ERROR_MESSAGES = {
     /** 削除の監査ログ開始行の作成に失敗した場合 */
     DELETE_AUDIT_LOG_START_FAILED: '削除を開始できませんでした。時間をおいて再試行してください',
 
-    /** Supabase Authユーザーの削除に失敗した場合 */
+    /** 削除後の監査ログ確定（succeeded）に失敗した場合 */
+    DELETE_AUDIT_LOG_FINALIZE_FAILED:
+      'ユーザー削除は完了しましたが、監査ログの確定に失敗しました。画面を更新して状態を確認してください',
+
+    /** Supabase Authユーザーの削除に失敗した場合（DB削除前） */
     DELETE_AUTH_FAILED: '認証情報の削除に失敗しました。時間をおいて再試行してください',
+
+    /** DB削除後に Auth 削除が失敗した場合（再試行UIでは対象が消えている） */
+    DELETE_AUTH_FAILED_AFTER_DB:
+      'ユーザーデータは削除済みですが、認証情報の削除に失敗しました。管理者に連絡してください',
+
+    /**
+     * Auth 削除は成功したが pending_auth_user_deletions の清掃に失敗した場合。
+     * 監査を succeeded にしない。
+     */
+    DELETE_PENDING_CLEANUP_FAILED:
+      '認証情報の削除は完了しましたが、削除待ち記録の清掃に失敗しました。管理者に連絡してください',
 
     /** DBの完全削除（RPC）に失敗した場合 */
     DELETE_DB_FAILED: 'データの削除に失敗しました。時間をおいて再試行してください',

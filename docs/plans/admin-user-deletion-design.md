@@ -22,6 +22,11 @@
 | 2026-07-16 | 7.1に`Trash2`アイコンの扱いを明記。`ConfirmDeleteDialog`側に固定表示し、`title`propに含めない |
 | 2026-07-16 | TAKT spec-to-pr実行時のABORTを受けて修正: (1)`content_categories`は既にDROP済みと訂正、(2)`prompt_templates.updated_by`のFK（`ON DELETE SET NULL`欠落）を8.2に追加、(3)8.3にマイグレーション先行PR化の2段階適用手順を追記、(4)`DeleteChatDialog`のもう一方の呼び出し元`SessionSidebar.tsx`（`/chat`）を11・12.3の回帰確認対象に追加、(5)`delete_employee_and_restore_owner` RPCが`delete_user_fully`を内部利用する点を11に明記 |
 | 2026-07-16 | Stage1マイグレーションを本番適用済みに更新。型再生成に`SUPABASE_ACCESS_TOKEN`が必要でCI自動化も無いため、8.3を「Stage2a（型不要・DTO/UI/schema等）」「Stage2b（型必須・Server Action/Service/Auth削除/監査ログ）」に分割し、Stage2aは削除の実行を待たずに完了扱いにできると明記 |
+| 2026-07-22 | TOCTOU対策: `delete_user_fully` に `FOR UPDATE`＋削除保護の再検証を追加。Auth削除をDB削除成功後へ順変更。監査`succeeded`確定失敗はリトライ後も成功扱いにしない。未使用の `delete_employee_and_restore_owner`（旧スタッフ削除RPC）は廃止 |
+| 2026-07-22 | Auth削除失敗の復旧: 監査に`target_supabase_auth_id`保存、`pending_auth_user_deletions`で幽霊ユーザー再作成を防止。ログイン時は Auth 再試行のみ行い`public.users`を作らない。§9/§12をDB先行順序に同期 |
+| 2026-07-22 | P1再修正: RPC同一TXで`users`削除前にpending作成。ログイン時claim+`next_attempt_at`バックオフ。失敗監査の未確定を呼び出し元へ返す。§8.3にmigration→コード配備、§13.4の「一覧残して再試行」を現状化。rollbackはpending残存時DROP禁止 |
+| 2026-07-22 | claimを`claim_pending_auth_user_deletion` RPCで原子化。pending作成時に30秒初期lease。Auth成功後のpending清掃失敗を成功扱いにしない。切替中の削除Action停止と「旧アプリ配備後にテーブルDROP」を§8.3に明記 |
+| 2026-07-22 | Stage3 migrationを未pushのため1本（`20260722000000_harden_user_deletion_safety.sql`）に統合。部分適用リスクを排除 |
 
 ## 2. 背景・目的
 
@@ -56,7 +61,7 @@
 - `content_categories`は`20251223000000_drop_content_categories.sql`で既にDROP済みであり、`database.types.ts`にも存在しない。削除対象棚卸しの対象外とする。
 - UUID外部キーに`ON DELETE CASCADE`があるGSC、GA4、WordPress、Google Ads関連テーブルは`users`削除へ追随する。
 - `prompt_templates.updated_by`はUUID FKだが`ON DELETE`指定がない（NO ACTION）。兄弟列`created_by`は`20250803121157_add_on_delete_set_null_to_prompt_templates_created_by.sql`で`ON DELETE SET NULL`へ修正済みだが、`updated_by`は未修正のまま残っている。`updated_by`には管理者IDが入るため、対象ユーザーを降格後に削除する際、その元管理者がプロンプトを編集済みだとFK違反で削除が失敗し得る。
-- `delete_user_fully` RPCは`delete_employee_and_restore_owner` RPC（`20251230140000`）からも内部呼び出しされている。RPCの削除範囲を変更する場合はスタッフ削除フローへの波及を確認する必要がある。
+- `delete_user_fully` RPCは旧`delete_employee_and_restore_owner`からも内部呼び出しされていたが、スタッフ機能廃止に伴い当該RPCは DROP 済み（2026-07-22）。
 - Supabase Authユーザーは既存RPCの対象外である。
 - `public.users.id`と`public.users.supabase_auth_id`は別IDであり、Auth削除には後者を使う必要がある。
 
@@ -270,21 +275,31 @@ async function deleteUser(input: DeleteUserInput): Promise<ServerActionResult<vo
 `userService`へ削除ユースケースを集約し、次の順に処理する。
 
 1. 対象DB行を再取得する。
-2. 管理者、Stripe契約、親組織、子スタッフの有無を再検証する。
+2. 管理者、Stripe契約、親組織、子スタッフの有無をアプリ層で早期検証する（UX用。最終保証はRPC側）。
 3. `admin_action_logs`へ`action='user_deletion'`、`status='started'`の行を作成する。失敗した場合は削除を開始しない。
-4. `supabase_auth_id`がある場合だけSupabase Authを削除する。
-5. 更新版`delete_user_fully` RPCで関連データと`public.users`を削除する。
-6. 監査ログを`succeeded`へ更新する。
+4. `supabase_auth_id`を退避したうえで、更新版`delete_user_fully` RPCで行ロック・保護再検証・関連データと`public.users`削除を行う。
+5. RPC成功後、退避した`supabase_auth_id`がある場合だけSupabase Authを削除する。
+6. 監査ログを`succeeded`へ更新する（短時間リトライあり）。確定に失敗した場合は成功扱いにせず、監査未確定エラーを返す。
 7. 失敗時は安全な失敗コードで監査ログを`failed`へ更新し、表示用エラーを返す。
 
 インフラ詳細は`SupabaseService`内に閉じ、ActionからAuth Admin APIやRPCを直接呼ばない。
+
+**順序の根拠（2026-07-22）**: 以前は Auth→DB とし、DB失敗時に`public.users`を残して再試行可能にしていた。しかし保護条件をアプリ層だけで検証すると、検証〜削除の間に対象が`admin`等へ変わった場合に削除不可ユーザーを消せる TOCTOU がある。保護の最終保証をRPC（`FOR UPDATE`＋条件再検証）に置くため、**DB削除を先に確定してから Auth を消す**。保護違反時は Auth に触らない。DB成功後の Auth 失敗は管理画面からの同一ユーザー再試行はできない（行が消えている）ため、運用連絡用の専用エラーメッセージを返す。
 
 ### 7.5 Supabase Auth削除
 
 - Service Roleクライアントの`auth.admin.deleteUser(supabaseAuthId)`を使う。
 - `public.users.id`をAuth APIへ渡してはならない。
-- Authユーザーが既に存在しない場合は、再試行可能にするため成功扱いとしてDB削除へ進む。
-- その他のAuthエラーではDB削除を開始しない。
+- Authユーザーが既に存在しない場合は成功扱いとする（再実行時の冪等）。
+- Auth削除は **RPC（DB削除）成功後** に行う（管理画面パスは短時間リトライあり）。
+- **pending 先行（同一TX）**: `delete_user_fully` は保護通過後・`public.users`削除前に、`supabase_auth_id`がある場合だけ`pending_auth_user_deletions`へINSERTする。これにより Auth削除前のクラッシュや pending 書込み失敗でも再作成窓を開けない。作成時の`next_attempt_at`は**初期lease（30秒）**とし、管理画面の直後 Auth リトライ中にログイン claim が割り込まないようにする。
+- Auth削除成功時は pending 行を削除する。**清掃に失敗した場合は監査を`succeeded`にせず**専用エラーを返す（Auth自体は削除済みの可能性が高い）。
+- Auth削除失敗時は次を行う。
+  1. pending の`attempt_count` / `last_attempt_at` / `next_attempt_at`を更新する（行自体はRPCで作成済み）。
+  2. 監査を`failed`（`auth_delete_failed`）へ更新する（短時間リトライ。0件更新・リトライ尽きは成功扱いにせず監査未確定エラーを返す）。
+  3. DBは削除済みである旨の専用エラーを返す（管理画面の同一ID再試行は不可）。
+- 監査開始時に`target_supabase_auth_id`を保存し、失敗後の追跡・手動清掃に使う。
+- `resolveOrCreateEmailUser`は`claim_pending_auth_user_deletion` RPCで原子的に claim し、到達時のみ Auth 削除を1回試し、**同一 auth id の`public.users`再作成を常に拒否**する（`PendingAuthDeletionError`）。未到達（lease/backoff）時は Auth Admin API を呼ばない。
 
 ## 8. DB・監査設計
 
@@ -321,8 +336,15 @@ async function deleteUser(input: DeleteUserInput): Promise<ServerActionResult<vo
 - 監査ログは削除対象から除外する。
 - RPC内のDB削除は単一トランザクションとする。
 - 実行権限はService Roleだけに維持する。
+- **削除保護の最終保証（2026-07-22）**: RPC内で対象行を`SELECT … FOR UPDATE`し、同一トランザクションで次を再検証してから DELETE する。
+  - `role = 'admin'` → `blocked_admin`
+  - `stripe_subscription_id IS NOT NULL` → `blocked_active_subscription`
+  - `owner_user_id IS NOT NULL` または子参照（`owner_user_id = 対象`）が存在 → `blocked_organization`
+  - 旧スタッフ削除RPC（`delete_employee_and_restore_owner`）はアプリ未使用のため DROP。組織カラム自体の撤去は別タスク。
+- **pending 先行（2026-07-22）**: 保護通過後、関連データと`users`削除の前に、`supabase_auth_id IS NOT NULL`なら`pending_auth_user_deletions`へINSERTする。`p_admin_action_log_id`を受け取り紐付ける。`next_attempt_at`は初期lease（`now() + 30 seconds`）。
+- **原子的 claim**: `claim_pending_auth_user_deletion(p_supabase_auth_id)`が`UPDATE … WHERE next_attempt_at IS NULL OR next_attempt_at <= now() RETURNING`で試行権を付与する。
 
-Auth APIとDBトランザクションは原子的にできない。Auth成功後にDBが失敗した場合、`public.users`行を残して管理画面から再試行できる状態を正とする。
+Auth APIとDBトランザクションは原子的にできない。**現行順序は DB（条件付き削除＋pending先行）成功後に Auth**。Auth失敗時は`public.users`は既に無いため、管理画面の同一ID再試行はできず、pending＋Auth側の清掃（ログイン時のclaim再試行または手動）が必要になる。
 
 ### 8.3 マイグレーションとロールバック
 
@@ -345,30 +367,48 @@ Auth APIとDBトランザクションは原子的にできない。Auth成功後
   - Service層の削除ユースケース（7.4）、Supabase Auth削除（7.5）
   - 監査ログ書き込み、更新版`delete_user_fully` RPCの呼び出し配線
   - Stage2aで実装済みのダイアログへ`deleteUser`を配線する
+- **Stage3（2026-07-22・削除安全性硬化）**: コード配備の**前に**次の1本を`supabase db push`する。未適用のまま新コードだけ出すとRPC引数・pendingテーブル不一致で壊れる。
+  1. `20260722000000_harden_user_deletion_safety.sql`（旧スタッフRPC DROP、FOR UPDATE＋保護再検証、`target_supabase_auth_id`、`pending_auth_user_deletions`＋初期lease、`claim_pending_auth_user_deletion`、RPC内pending先行、`p_admin_action_log_id`）
+  - **切替手順**:
+    1. 管理画面のユーザー削除 Action を停止する（フラグオフまたは一時的に Action を無効化）。
+    2. `supabase db push`（上記1本）。
+    3. 新アプリコードを配備する。
+    4. 削除 Action を再開する。
+  - **切替窓の理由**: migration 先行後に旧コードで削除すると、RPCが作った pending を旧コードが清掃せず残る。切替中は削除を止める。
+  - **1本化した理由**: 未pushの分割は部分適用リスクだけ増やし、最終関数定義は1本目を上書きするだけだったため。
 
 Stage2a・Stage2bはそれぞれ独立したPRとして完了させてよい。Stage2aのPRは、Stage2bの機能（削除の実行）が未接続であることを理由に不完全とはしない。
 
 ロールバックは新規削除Actionの停止後に行う。
 
-1. 旧RPC定義を復元する。
-2. `admin_action_logs`をdropする。
+1. **先に削除 Action を停止**する。
+2. Auth Admin で`pending_auth_user_deletions`に残る auth id を手動削除し、pending が空であることを確認する。
+3. **pending に未削除 Auth が残る状態でテーブルを DROP してはならない**（再作成防止が解除される）。
+4. **現行（pending 依存）アプリを残したままテーブルを DROP してはならない**（メール認証解決が DB エラーになる）。先に旧アプリへ戻してから DROP する。
+5. 旧RPC定義を復元する。
+6. 空であること・旧アプリ配備を確認したうえで`pending_auth_user_deletions`をdropし、必要なら`target_supabase_auth_id`列を落とす。
+7. `admin_action_logs`のdropは監査保持方針に従い別判断とする。
 
 既に削除されたユーザーデータはロールバックで復元できない。バックアップからの個別復旧も本機能の保証対象外とする。
 
 ## 9. エラー・再試行
 
-| 事象 | DB削除 | 監査 | ユーザー表示・復帰 |
-|---|---|---|---|
-| 認証・認可失敗 | 未実行 | 作成しない | ログインまたは管理者権限を案内 |
-| 入力不正（UUID不正等） | 未実行 | 作成しない | 一覧更新を案内 |
-| 対象不存在 | 未実行 | 作成しない | 一覧更新を案内 |
-| 保護条件該当 | 未実行 | 作成しない | 降格、解約、組織解除を案内 |
-| 監査開始失敗 | 未実行 | 作成失敗 | 削除を開始せず再試行案内 |
-| Auth削除失敗 | 未実行 | `failed` | 一覧を維持し再試行可能 |
-| Auth削除成功、DB失敗 | 未実行またはRPC内rollback | `failed` | 一覧を維持。再試行時はAuth不存在を成功扱い |
-| DB削除成功 | 完了 | `succeeded` | 行除去と成功toast |
+| 事象 | DB削除 | Auth削除 | 監査 | ユーザー表示・復帰 |
+|---|---|---|---|---|
+| 認証・認可失敗 | 未実行 | 未実行 | 作成しない | ログインまたは管理者権限を案内 |
+| 入力不正（UUID不正等） | 未実行 | 未実行 | 作成しない | 一覧更新を案内 |
+| 対象不存在 | 未実行 | 未実行 | 作成しない | 一覧更新を案内 |
+| 保護条件該当（アプリ層） | 未実行 | 未実行 | 作成しない | 降格、解約、組織解除を案内 |
+| 監査開始失敗 | 未実行 | 未実行 | 作成失敗 | 削除を開始せず再試行案内 |
+| RPC保護違反（TOCTOU検知） | 未実行（rollback） | 未実行 | `failed`（`db_delete_failed`系） | 一覧を維持し再試行可能 |
+| RPC DB削除失敗 | 未実行またはrollback | 未実行 | `failed` | 一覧を維持し再試行可能 |
+| DB削除成功、Auth削除失敗 | 完了（pending同一TX作成済み） | 失敗（backoff更新） | `failed`（`auth_delete_failed`）。監査確定失敗時は未確定エラー | 行は消える。専用エラーで管理者連絡。同一IDの画面再試行は不可 |
+| DB削除成功、Auth削除成功、pending清掃失敗 | 完了 | 完了 | `failed`（`pending_cleanup_failed`）。成功扱いにしない | 行は消える。専用エラーで管理者連絡（pending手動清掃） |
+| DB削除成功、Auth削除成功、監査確定失敗 | 完了 | 完了（pending削除済） | `started`のまま（成功扱いにしない） | 削除自体は完了。監査未確定エラーで状態確認を案内 |
+| すべて成功 | 完了 | 完了（pending削除） | `succeeded` | 行除去と成功toast |
+| pending残存中の再ログイン | — | 原子的claim到達時のみ1回 | — | `public.users`再作成禁止。lease/backoff未到達時はAuth非呼び出し。OTPはエラー表示しセッション破棄 |
 
-内部エラー、Supabaseエラー本文、SQLエラーをクライアントへ返さない。`ERROR_MESSAGES.USER`へ削除失敗、保護条件等の固定文言を追加する。
+内部エラー、Supabaseエラー本文、SQLエラーをクライアントへ返さない。`ERROR_MESSAGES.USER` / `ERROR_MESSAGES.AUTH`へ削除失敗、保護条件、pending再作成拒否等の固定文言を追加する。
 
 二重送信はクライアントのdisabledとサーバーの対象再取得・冪等処理の両方で防ぐ。先行リクエストで削除済みの場合、後続リクエストは対象不存在として安全に終了する。
 
@@ -390,7 +430,7 @@ Stage2a・Stage2bはそれぞれ独立したPRとして完了させてよい。S
 - `ERROR_MESSAGES.USER`: 削除関連文言を追加する。
 - Supabase migration / generated database types: 監査テーブルとRPC更新を反映する。
 - `src/components/DeleteChatDialog.tsx`: `ConfirmDeleteDialog`を内部で呼び出す形へリファクタリングする。呼び出し元は`src/components/AnalyticsTable.tsx`（`/analytics`）と`app/chat/components/SessionSidebar.tsx`（`/chat`）の2箇所。Props・表示内容・両呼び出し元は変更しないが、内部実装変更のため既存チャット削除・コンテンツ削除の表示と挙動に回帰がないことを両画面で確認する（12.1・12.3参照）。
-- `delete_user_fully` RPC: `delete_employee_and_restore_owner`（スタッフ削除・オーナー復元RPC）から内部呼び出しされている。RPCの削除対象を変更した場合、スタッフ削除フローに回帰がないか確認する。
+- `delete_user_fully` RPC: 旧`delete_employee_and_restore_owner`依存は廃止済み。ユーザー削除の保護再検証は本RPC内で完結する。
 - 権限更新、トークン利用量画面への遷移、一般ユーザーのログイン動作は変更しない。
 
 ## 12. テスト計画
@@ -404,8 +444,12 @@ Stage2a・Stage2bはそれぞれ独立したPRとして完了させてよい。S
 - 親組織または子スタッフを持つ対象を拒否する。
 - Auth削除には`supabase_auth_id`を渡し、public user IDを渡さない。
 - LINE専用ユーザーではAuth Admin APIを呼ばない。
-- Auth削除失敗時はDB RPCを呼ばない。
-- Auth不存在は成功扱いとしてDB RPCへ進む。
+- **DB先行**: Auth削除は`delete_user_fully` RPC成功後にのみ呼ぶ。RPC失敗時はAuthを呼ばない。
+- Auth不存在は成功扱いとする。
+- Auth削除失敗時は（RPCで作成済みの）pending のbackoffを更新し、監査を`failed`にし、専用エラーを返す。
+- Auth成功後のpending清掃失敗は成功扱いにせず、監査`failed`（`pending_cleanup_failed`）と専用エラーを返す。
+- 監査`succeeded` / `failed`更新が0件または失敗の場合は成功扱いにしない（短時間リトライあり。失敗側も呼び出し元へ監査未確定を返す）。
+- `resolveOrCreateEmailUser`は`claim_pending_auth_user_deletion` RPCで原子的claimし、pendingがある場合に`createEmailUser`せず`PendingAuthDeletionError`を投げる。lease/backoff未到達ではAuthを呼ばない。claim時はAuthを最大1回。
 - DB失敗時はActionが安全なエラーを返し、対象DB行が残る。
 - 成功時だけ`revalidatePath('/admin/users')`を呼ぶ。
 - 監査開始失敗時は破壊処理を開始しない。
@@ -447,7 +491,7 @@ Stage2a・Stage2bはそれぞれ独立したPRとして完了させてよい。S
 1. 管理者が削除可能な一般ユーザーを一覧から選び、確認ダイアログのボタン押下で完全削除できる。
 2. 削除後、対象のSupabase Auth、`public.users`、関連利用データが残らない。
 3. 管理者、Stripe契約情報保持者、組織関係保持者は削除できず、理由と事前作業が表示される。
-4. AuthとDBの部分失敗時に対象を一覧から消さず、同じ画面から安全に再試行できる。
+4. Auth削除失敗時は`public.users`行は既に消えており、管理画面の同一ID再試行はできない。pendingと専用エラーで復旧し、ログイン時のclaimまたは手動Auth清掃で完了させる。RPC失敗（保護違反等）でDBが残っている場合のみ、一覧から安全に再試行できる。
 5. 成功・失敗を含む削除試行がPIIなしの監査ログへ記録される。
 6. 非管理者、クライアントからの改ざん、RPC直接実行で削除できない。
 7. UIが既存のshadcn/Radix、Sonner、セマンティックトークンを使用し、キーボード操作可能である。

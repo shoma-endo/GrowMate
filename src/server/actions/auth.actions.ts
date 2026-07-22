@@ -7,7 +7,7 @@ import { isUnauthenticatedAuthError } from '@/lib/supabase/auth-errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { clearAuthCookies } from '@/server/middleware/auth.middleware';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { EmailAuthLinkConflictError, userService } from '@/server/services/userService';
+import { EmailAuthLinkConflictError, PendingAuthDeletionError, userService } from '@/server/services/userService';
 
 // インメモリ レート制限
 // Note: Vercel/Edge 環境では複数インスタンスが存在するため、Supabase Auth 側の制限を主防衛線とし、
@@ -152,6 +152,10 @@ export async function registerFullName(
       await signOutSupabaseSession(supabase);
       return { success: false, error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT };
     }
+    if (e instanceof PendingAuthDeletionError) {
+      await signOutSupabaseSession(supabase);
+      return { success: false, error: ERROR_MESSAGES.AUTH.PENDING_AUTH_DELETION };
+    }
     throw e;
   }
   const ok = await userService.updateFullName(user.id, fullName.trim());
@@ -207,6 +211,10 @@ export async function verifyOtp(
     if (err instanceof EmailAuthLinkConflictError) {
       await signOutSupabaseSession(supabase);
       return { success: false, error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT };
+    }
+    if (err instanceof PendingAuthDeletionError) {
+      await signOutSupabaseSession(supabase);
+      return { success: false, error: ERROR_MESSAGES.AUTH.PENDING_AUTH_DELETION };
     }
     console.error('[auth.actions] verifyOtp: failed to resolve public user:', err);
     // auth.users は作成済みだが public.users 解決失敗 → セッション破棄して再試行可能な状態に
