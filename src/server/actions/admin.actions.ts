@@ -1,14 +1,17 @@
 'use server';
 
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
 import { userService } from '@/server/services/userService';
 import { isAdmin } from '@/authUtils';
-import type { User, UserRole } from '@/types/user';
+import type { AdminUserListItem, UserRole } from '@/types/user';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { resolveEmailUserWithReason } from '@/server/auth/resolveUser';
+import { deleteUserSchema, type DeleteUserInput } from '@/server/schemas/admin.schema';
 
 /** Email セッションで管理者権限を解決する */
 async function resolveAdminUser(): Promise<
-  | { success: true; role: UserRole }
+  | { success: true; role: UserRole; userId: string }
   | { success: false; error: string }
 > {
   const result = await resolveEmailUserWithReason();
@@ -19,6 +22,9 @@ async function resolveAdminUser(): Promise<
     if (result.reason === 'email_link_conflict') {
       return { success: false, error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT };
     }
+    if (result.reason === 'pending_auth_deletion') {
+      return { success: false, error: ERROR_MESSAGES.AUTH.PENDING_AUTH_DELETION };
+    }
     if (result.reason === 'unavailable') {
       return { success: false, error: ERROR_MESSAGES.USER.SERVICE_UNAVAILABLE };
     }
@@ -28,12 +34,12 @@ async function resolveAdminUser(): Promise<
   if (!isAdmin(emailUser.role)) {
     return { success: false, error: ERROR_MESSAGES.USER.ADMIN_REQUIRED };
   }
-  return { success: true, role: emailUser.role };
+  return { success: true, role: emailUser.role, userId: emailUser.id };
 }
 
 export const getAllUsers = async (): Promise<{
   success: boolean;
-  users?: User[];
+  users?: AdminUserListItem[];
   error?: string;
 }> => {
   try {
@@ -42,7 +48,7 @@ export const getAllUsers = async (): Promise<{
       return { success: false, error: authResult.error };
     }
 
-    const users = await userService.getAllUsers();
+    const users = await userService.getAllUsersForAdmin();
     return { success: true, users };
   } catch (error) {
     console.error('ユーザー一覧取得エラー:', error);
@@ -82,5 +88,43 @@ export const updateUserRole = async (
   } catch (error) {
     console.error('ユーザー権限更新エラー:', error);
     return { success: false, error: ERROR_MESSAGES.USER.ROLE_UPDATE_ERROR };
+  }
+};
+
+/**
+ * 管理者によるユーザー完全削除サーバーアクション
+ */
+export const deleteUser = async (
+  input: DeleteUserInput
+): Promise<{ success: boolean; error?: string; dbDeleted?: boolean }> => {
+  try {
+    const authResult = await resolveAdminUser();
+    if (!authResult.success) {
+      return { success: false, error: authResult.error };
+    }
+
+    const parsed = deleteUserSchema.safeParse(input);
+    if (!parsed.success) {
+      console.error('ユーザー削除の入力検証エラー:', z.prettifyError(parsed.error));
+      return { success: false, error: ERROR_MESSAGES.USER.DELETE_TARGET_INVALID };
+    }
+
+    const result = await userService.deleteUserFully(parsed.data.userId, authResult.userId);
+    if (!result.success) {
+      if (result.dbDeleted) {
+        revalidatePath('/admin/users');
+      }
+      return {
+        success: false,
+        error: result.error,
+        ...(result.dbDeleted ? { dbDeleted: true } : {}),
+      };
+    }
+
+    revalidatePath('/admin/users');
+    return { success: true };
+  } catch (error) {
+    console.error('ユーザー削除エラー:', error);
+    return { success: false, error: ERROR_MESSAGES.USER.DELETE_DB_FAILED };
   }
 };

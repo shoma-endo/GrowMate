@@ -77,7 +77,6 @@ const SessionSidebar: React.FC<SessionSidebarProps> = ({
       toast.error(message, { id: toastId });
     } finally {
       setIsDeletingSession(false);
-      setSessionToDelete(null);
       setDeleteDialogOpen(false);
     }
   };

@@ -1,7 +1,7 @@
 import { isUnavailable } from '@/authUtils';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isUnauthenticatedAuthError } from '@/lib/supabase/auth-errors';
-import { EmailAuthLinkConflictError, userService } from '@/server/services/userService';
+import { EmailAuthLinkConflictError, PendingAuthDeletionError, userService } from '@/server/services/userService';
 import type { User } from '@/types/user';
 
 /**
@@ -13,6 +13,7 @@ type EmailAuthResult =
   | { ok: false; reason: 'unauthenticated' }
   | { ok: false; reason: 'transient' }
   | { ok: false; reason: 'email_link_conflict' }
+  | { ok: false; reason: 'pending_auth_deletion' }
   | { ok: false; reason: 'unavailable'; user: User };
 
 /**
@@ -38,6 +39,9 @@ export async function resolveEmailUserWithReason(): Promise<EmailAuthResult> {
   } catch (err) {
     if (err instanceof EmailAuthLinkConflictError) {
       return { ok: false, reason: 'email_link_conflict' };
+    }
+    if (err instanceof PendingAuthDeletionError) {
+      return { ok: false, reason: 'pending_auth_deletion' };
     }
     const code = (err as Record<string, unknown>)?.code;
     console.error('[resolveEmailUserWithReason] transient failure:', code ?? (err instanceof Error ? err.message : 'unknown'));

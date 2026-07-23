@@ -614,10 +614,6 @@ export default function AnalyticsTable({
 
       toast.success('削除しました', { id: toastId });
       setDeleteDialogOpen(false);
-      setDeleteTargetSessionId(null);
-      setDeleteTargetAnnotationId(null);
-      setDeleteTargetTitle('');
-      setHasOrphanContent(false);
       setDeletingRowKey(null);
       router.refresh();
     } catch (error) {

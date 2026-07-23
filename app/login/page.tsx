@@ -130,7 +130,7 @@ function LoginPageContent() {
     if (!result.success) {
       throw new Error(result.error ?? 'フルネーム保存に失敗しました');
     }
-    window.location.href = '/';
+    window.location.href = result.nextPath ?? '/';
   };
 
   const handleResend = () => {

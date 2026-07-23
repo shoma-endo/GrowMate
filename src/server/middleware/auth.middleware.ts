@@ -61,6 +61,10 @@ async function tryEmailFallback(): Promise<AuthMiddlewareResult | null> {
       emailLinkConflict: true,
     };
   }
+  if (result.reason === 'pending_auth_deletion') {
+    // Auth 残存の削除待ち。セッション解決では未認証扱い（OTP 経路で明示エラー）。
+    return null;
+  }
   return null;
 }
 

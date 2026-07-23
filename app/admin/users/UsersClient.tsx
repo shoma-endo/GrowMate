@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -9,12 +10,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { updateUserRole } from '@/server/actions/admin.actions';
+import { getAllUsers, updateUserRole, deleteUser } from '@/server/actions/admin.actions';
 import { getRoleDisplayName } from '@/authUtils';
-import type { User, UserRole } from '@/types/user';
+import type { AdminUserListItem, UserRole } from '@/types/user';
+import { getUserDeletionBlockedMessage } from '@/types/user';
 import { clearAuthCache } from '@/server/actions/adminUsers.actions';
 import { toast } from 'sonner';
 import { formatDateTimeWithSeconds } from '@/lib/date-utils';
+import { DeleteUserDialog } from './DeleteUserDialog';
 
 const getRoleColor = (role: UserRole | null) => {
   switch (role) {
@@ -31,7 +34,7 @@ const getRoleColor = (role: UserRole | null) => {
   }
 };
 
-const buildRoleSummary = (targetUsers: User[]) => {
+const buildRoleSummary = (targetUsers: AdminUserListItem[]) => {
   type RoleCount = {
     key: UserRole | 'unknown';
     label: string;
@@ -74,13 +77,16 @@ const buildRoleSummary = (targetUsers: User[]) => {
 };
 
 type UsersClientProps = {
-  initialUsers: User[];
+  initialUsers: AdminUserListItem[];
 };
 
 export default function UsersClient({ initialUsers }: UsersClientProps) {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<AdminUserListItem[]>(initialUsers);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [deleteTargetUser, setDeleteTargetUser] = useState<AdminUserListItem | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     if (!userId || !newRole) return;
@@ -90,14 +96,16 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
     try {
       const result = await updateUserRole(userId, newRole);
       if (result.success) {
-        // ローカル状態を更新
-        setUsers(prevUsers =>
-          prevUsers.map(user => (user.id === userId ? { ...user, role: newRole } : user))
-        );
+        const refreshResult = await getAllUsers();
+        if (refreshResult.success && refreshResult.users) {
+          setUsers(refreshResult.users);
+          toast.success('ユーザー権限を更新しました');
+        } else {
+          toast.error('権限の更新後に一覧の再取得に失敗しました', {
+            description: refreshResult.error || 'ページを再読み込みしてください',
+          });
+        }
         setEditingUserId(null);
-
-        // 成功フィードバックを表示
-        toast.success('ユーザー権限を更新しました');
 
         // キャッシュクリア通知を送信（権限変更の即座反映のため）
         try {
@@ -126,6 +134,45 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
   const roleSummary = useMemo(() => {
     return buildRoleSummary(users);
   }, [users]);
+
+  const handleDeleteClick = (user: AdminUserListItem) => {
+    setDeleteTargetUser(user);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteDialogOpenChange = (open: boolean) => {
+    setIsDeleteDialogOpen(open);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTargetUser) return;
+
+    const targetId = deleteTargetUser.id;
+    setIsDeleting(true);
+
+    try {
+      const result = await deleteUser({ userId: targetId });
+      // DB削除済みの部分失敗でも行を除去する（幽霊行を残さない）
+      if (result.success || result.dbDeleted) {
+        setUsers(prev => prev.filter(user => user.id !== targetId));
+        setIsDeleteDialogOpen(false);
+      }
+      if (result.success) {
+        toast.success('ユーザーを削除しました');
+      } else {
+        toast.error('ユーザーの削除に失敗しました', {
+          description: result.error || 'ユーザーの削除に失敗しました',
+        });
+      }
+    } catch (error) {
+      console.error('ユーザー削除エラー:', error);
+      toast.error('ユーザーの削除でエラーが発生しました', {
+        description: 'ユーザーの削除中にエラーが発生しました',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -161,28 +208,28 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="table-auto divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       フルネーム
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       LINE表示名
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       メールアドレス / 認証方式
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       最終ログイン
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       登録日
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       権限
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       アクション
                     </th>
                   </tr>
@@ -213,10 +260,10 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                         {formatDateTimeWithSeconds(user.lastLoginAt, '未ログイン')}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                         {formatDateTimeWithSeconds(user.createdAt, '登録日不明')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -228,7 +275,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                             }
                             disabled={updatingUserId === user.id}
                           >
-                            <SelectTrigger size="sm" className="w-40 text-xs">
+                            <SelectTrigger size="sm" className="w-32 text-xs">
                               <SelectValue placeholder="権限を選択" />
                             </SelectTrigger>
                             <SelectContent>
@@ -246,7 +293,7 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="px-6 py-4 text-sm whitespace-nowrap">
                         {editingUserId === user.id ? (
                           <div className="flex space-x-2">
                             <button
@@ -258,12 +305,33 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                             </button>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => setEditingUserId(user.id)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            編集
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => setEditingUserId(user.id)}
+                              className="text-blue-600 hover:text-blue-800 text-left"
+                            >
+                              編集
+                            </button>
+                            {user.canDelete ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive h-auto px-0 py-0 hover:text-destructive"
+                                onClick={() => handleDeleteClick(user)}
+                              >
+                                削除
+                              </Button>
+                            ) : (
+                              <div className="text-xs text-gray-500 max-w-[10rem] whitespace-normal">
+                                <span>削除不可</span>
+                                {user.deletionBlockedReason && (
+                                  <p className="mt-0.5 break-words">
+                                    {getUserDeletionBlockedMessage(user.deletionBlockedReason)}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -274,6 +342,14 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
           )}
         </CardContent>
       </Card>
+
+      <DeleteUserDialog
+        user={deleteTargetUser}
+        open={isDeleteDialogOpen}
+        onOpenChange={handleDeleteDialogOpenChange}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }

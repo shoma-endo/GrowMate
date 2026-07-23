@@ -93,11 +93,46 @@ type GoogleAdsNegativeKeywordsSettingsTable = {
   Relationships: [];
 };
 
+type AdminActionLogStatus = 'started' | 'succeeded' | 'failed';
+
+type AdminActionLogTable = {
+  Row: {
+    id: string;
+    actor_user_id: string;
+    target_user_id: string;
+    target_supabase_auth_id: string | null;
+    action: string;
+    status: AdminActionLogStatus;
+    failure_code: string | null;
+    created_at: string;
+    completed_at: string | null;
+  };
+  Insert: {
+    id?: string;
+    actor_user_id: string;
+    target_user_id: string;
+    target_supabase_auth_id?: string | null;
+    action: string;
+    status: AdminActionLogStatus;
+    failure_code?: string | null;
+    created_at?: string;
+    completed_at?: string | null;
+  };
+  Update: {
+    status?: AdminActionLogStatus;
+    failure_code?: string | null;
+    completed_at?: string | null;
+    target_supabase_auth_id?: string | null;
+  };
+  Relationships: [];
+};
+
 type ExtendedDatabase = Omit<Database, 'public'> & {
   public: Omit<Database['public'], 'Tables'> & {
     Tables: Database['public']['Tables'] & {
       google_ads_evaluation_settings: GoogleAdsEvaluationSettingsTable;
       google_ads_negative_keywords_settings: GoogleAdsNegativeKeywordsSettingsTable;
+      admin_action_logs: AdminActionLogTable;
     };
   };
 };
@@ -1190,6 +1225,10 @@ export class SupabaseService {
   }
 
   private getGoogleAdsNegativeKeywordsSettingsClient(): SupabaseClient<ExtendedDatabase> {
+    return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
+  }
+
+  private getAdminActionLogsClient(): SupabaseClient<ExtendedDatabase> {
     return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
   }
 
@@ -2438,39 +2477,14 @@ export class SupabaseService {
     return this.success((data?.data as Record<string, unknown>) || null);
   }
 
-  async deleteEmployeeAndRestoreOwner(
-    employeeId: string,
-    ownerId: string
+  async deleteUserFully(
+    userId: string,
+    adminActionLogId: string
   ): Promise<SupabaseResult<void>> {
-    const { data, error } = await this.supabase
-      .rpc('delete_employee_and_restore_owner', {
-        p_employee_id: employeeId,
-        p_owner_id: ownerId,
-      })
-      .returns<Array<{ success: boolean; error: string | null }>>()
-      .single();
-
-    if (error) {
-      return this.failure('スタッフ削除とオーナー復帰に失敗しました', {
-        error,
-        context: { employeeId, ownerId },
-      });
-    }
-
-    if (!data?.success) {
-      return this.failure(data?.error ?? 'スタッフ削除とオーナー復帰に失敗しました', {
-        error: new Error(data?.error ?? 'Failed to delete employee and restore owner'),
-        context: { employeeId, ownerId },
-      });
-    }
-
-    return this.success(undefined);
-  }
-
-  async deleteUserFully(userId: string): Promise<SupabaseResult<void>> {
     const { data, error } = await this.supabase
       .rpc('delete_user_fully', {
         p_user_id: userId,
+        p_admin_action_log_id: adminActionLogId,
       })
       .returns<Array<{ success: boolean; error: string | null }>>()
       .single();
@@ -2478,30 +2492,211 @@ export class SupabaseService {
     if (error) {
       return this.failure('ユーザーの完全削除に失敗しました', {
         error,
-        context: { userId },
+        context: { userId, adminActionLogId },
       });
     }
 
     if (!data?.success) {
       return this.failure(data?.error ?? 'ユーザーの完全削除に失敗しました', {
         error: new Error(data?.error ?? 'Failed to delete user fully'),
-        context: { userId },
+        context: { userId, adminActionLogId },
       });
     }
 
     return this.success(undefined);
   }
 
-  async getEmployeeByOwnerId(ownerId: string): Promise<SupabaseResult<DbUser | null>> {
-    const { data, error } = await this.supabase
-      .from('users')
-      .select('*')
-      .eq('owner_user_id', ownerId)
-      .maybeSingle();
+  async createAdminActionLogStarted(input: {
+    actorUserId: string;
+    targetUserId: string;
+    action: string;
+    targetSupabaseAuthId?: string | null;
+  }): Promise<SupabaseResult<string>> {
+    const client = this.getAdminActionLogsClient();
+    const { data, error } = await client
+      .from('admin_action_logs')
+      .insert({
+        actor_user_id: input.actorUserId,
+        target_user_id: input.targetUserId,
+        action: input.action,
+        status: 'started',
+        target_supabase_auth_id: input.targetSupabaseAuthId ?? null,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      return this.failure('削除の監査ログ開始行の作成に失敗しました', {
+        ...(error ? { error } : {}),
+        developerMessage: 'Error creating admin_action_logs started row',
+        context: { ...input },
+      });
+    }
+
+    return this.success(data.id);
+  }
+
+  async updateAdminActionLogStatus(
+    logId: string,
+    status: Extract<AdminActionLogStatus, 'succeeded' | 'failed'>,
+    failureCode?: string
+  ): Promise<SupabaseResult<void>> {
+    const client = this.getAdminActionLogsClient();
+    const { data, error } = await client
+      .from('admin_action_logs')
+      .update({
+        status,
+        failure_code: failureCode ?? null,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', logId)
+      .select('id');
 
     if (error) {
-      return this.failure('スタッフの取得に失敗しました', { error });
+      return this.failure('削除の監査ログ更新に失敗しました', {
+        error,
+        developerMessage: 'Error updating admin_action_logs status',
+        context: { logId, status },
+      });
     }
-    return this.success(data ?? null);
+    if (!data || data.length === 0) {
+      return this.failure('削除の監査ログ更新に失敗しました', {
+        error: new Error('admin_action_logs update matched 0 rows'),
+        developerMessage: 'No admin_action_logs row updated',
+        context: { logId, status },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  /**
+   * Auth削除失敗後のバックオフ更新（原子的 RPC）。
+   * 管理画面パス専用。ログイン側の再試行は claim_pending_auth_user_deletion を使う。
+   */
+  async schedulePendingAuthUserDeletionRetry(
+    supabaseAuthId: string
+  ): Promise<SupabaseResult<void>> {
+    const { data, error } = await this.supabase
+      .rpc('schedule_pending_auth_user_deletion_retry', {
+        p_supabase_auth_id: supabaseAuthId,
+      })
+      .returns<Array<{ success: boolean; error: string | null; attempt_count: number | null }>>()
+      .single();
+
+    if (error) {
+      return this.failure('Auth削除待ちの更新に失敗しました', {
+        error,
+        developerMessage: 'Error scheduling pending_auth_user_deletions via RPC',
+        context: { supabaseAuthId },
+      });
+    }
+
+    if (!data?.success) {
+      return this.failure('Auth削除待ちの更新に失敗しました', {
+        error: new Error(data?.error ?? 'pending schedule failed'),
+        developerMessage: 'schedule_pending_auth_user_deletion_retry returned failure',
+        context: { supabaseAuthId, rpcError: data?.error },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  /**
+   * ログイン解決時の Auth 再試行 claim（DB RPC で原子的）。
+   * - absent: pending なし
+   * - not_due: pending あるが next_attempt_at 未到達（Auth API を呼ばない）
+   * - claimed: 試行権を取得（attempt_count / next_attempt_at 更新済み）
+   */
+  async claimPendingAuthUserDeletion(
+    supabaseAuthId: string
+  ): Promise<
+    SupabaseResult<'absent' | 'not_due' | { claimed: true; targetUserId: string; attemptCount: number }>
+  > {
+    const { data, error } = await this.supabase
+      .rpc('claim_pending_auth_user_deletion', {
+        p_supabase_auth_id: supabaseAuthId,
+      })
+      .returns<
+        Array<{
+          outcome: string;
+          target_user_id: string | null;
+          attempt_count: number | null;
+        }>
+      >()
+      .single();
+
+    if (error) {
+      return this.failure('Auth削除待ちの取得に失敗しました', {
+        error,
+        developerMessage: 'Error claiming pending_auth_user_deletions via RPC',
+        context: { supabaseAuthId },
+      });
+    }
+
+    if (!data || data.outcome === 'absent') {
+      return this.success('absent');
+    }
+    if (data.outcome === 'not_due') {
+      return this.success('not_due');
+    }
+    if (data.outcome === 'claimed' && data.target_user_id != null && data.attempt_count != null) {
+      return this.success({
+        claimed: true,
+        targetUserId: data.target_user_id,
+        attemptCount: data.attempt_count,
+      });
+    }
+
+    return this.failure('Auth削除待ちの取得に失敗しました', {
+      error: new Error(`Unexpected claim outcome: ${data?.outcome ?? 'null'}`),
+      developerMessage: 'Unexpected claim_pending_auth_user_deletion outcome',
+      context: { supabaseAuthId, outcome: data?.outcome },
+    });
+  }
+
+  /**
+   * pending 行を削除する。行が既に無い場合は成功（冪等）。
+   * DB エラー時のみ failure。
+   */
+  async deletePendingAuthUserDeletion(supabaseAuthId: string): Promise<SupabaseResult<void>> {
+    const { error } = await this.supabase
+      .from('pending_auth_user_deletions')
+      .delete()
+      .eq('supabase_auth_id', supabaseAuthId);
+
+    if (error) {
+      return this.failure('Auth削除待ちの削除に失敗しました', {
+        error,
+        developerMessage: 'Error deleting pending_auth_user_deletions',
+        context: { supabaseAuthId },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  /**
+   * Supabase Authユーザーを削除する。
+   * Authユーザーが既に存在しない場合は成功扱いとする（設計書§7.5）。
+   * 呼び出し側は DB（delete_user_fully RPC）成功後に本メソッドを実行すること。
+   */
+  async deleteAuthUser(supabaseAuthId: string): Promise<SupabaseResult<void>> {
+    const { error } = await this.supabase.auth.admin.deleteUser(supabaseAuthId);
+
+    if (error) {
+      const isNotFound = error.status === 404 || /not found/i.test(error.message);
+      if (isNotFound) {
+        return this.success(undefined);
+      }
+      return this.failure('認証情報の削除に失敗しました', {
+        error,
+        developerMessage: 'Error deleting Supabase Auth user',
+        context: { supabaseAuthId },
+      });
+    }
+
+    return this.success(undefined);
   }
 }

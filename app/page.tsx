@@ -3,15 +3,12 @@
 import { useAuth } from '@/components/AuthProvider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
-import { useState, useEffect } from 'react';
-import { updateUserFullName } from '@/server/actions/user.actions';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import Image from 'next/image';
 import { Settings, Shield, List, Plug } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FullNameDialog } from '@/components/FullNameDialog';
 import { hasPaidFeatureAccess } from '@/types/user';
 import { isAdmin as isAdminRole } from '@/authUtils';
 import { signOutEmail } from '@/server/actions/auth.actions';
@@ -120,38 +117,12 @@ export default function Home() {
   const hasAuthenticatedUser = Boolean(user);
   const userRole = user?.role ?? null;
 
-  // フルネーム関連ステート
-  const [showFullNameDialog, setShowFullNameDialog] = useState(false);
-
   const isAdmin = isAdminRole(userRole);
   const hasManagementAccess = hasPaidFeatureAccess(userRole);
-
-  // フルネーム未入力チェック
-  useEffect(() => {
-    if (user && !user.fullName && !isLoading) {
-      setShowFullNameDialog(true);
-    }
-  }, [user, isLoading]);
-
-  const handleSaveFullName = async (fullName: string) => {
-    try {
-      const result = await updateUserFullName(fullName);
-      if (result.success) {
-        setShowFullNameDialog(false);
-        window.location.reload();
-      } else {
-        throw new Error(result.error || 'フルネーム保存に失敗しました');
-      }
-    } catch (error) {
-      console.error('フルネーム保存エラー:', error);
-      throw error;
-    }
-  };
 
   return (
     <>
       <Toaster />
-      <FullNameDialog open={showFullNameDialog} onSave={handleSaveFullName} />
 
       {!isLoading && hasAuthenticatedUser && (
         <div className="flex flex-col items-center justify-center min-h-screen p-4 lg:p-8">

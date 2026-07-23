@@ -14,6 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_action_logs: {
+        Row: {
+          action: string
+          actor_user_id: string
+          completed_at: string | null
+          created_at: string
+          failure_code: string | null
+          id: string
+          status: string
+          target_supabase_auth_id: string | null
+          target_user_id: string
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          completed_at?: string | null
+          created_at?: string
+          failure_code?: string | null
+          id?: string
+          status: string
+          target_supabase_auth_id?: string | null
+          target_user_id: string
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          completed_at?: string | null
+          created_at?: string
+          failure_code?: string | null
+          id?: string
+          status?: string
+          target_supabase_auth_id?: string | null
+          target_user_id?: string
+        }
+        Relationships: []
+      }
+      pending_auth_user_deletions: {
+        Row: {
+          admin_action_log_id: string | null
+          attempt_count: number
+          created_at: string
+          last_attempt_at: string | null
+          next_attempt_at: string | null
+          supabase_auth_id: string
+          target_user_id: string
+        }
+        Insert: {
+          admin_action_log_id?: string | null
+          attempt_count?: number
+          created_at?: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          supabase_auth_id: string
+          target_user_id: string
+        }
+        Update: {
+          admin_action_log_id?: string | null
+          attempt_count?: number
+          created_at?: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          supabase_auth_id?: string
+          target_user_id?: string
+        }
+        Relationships: []
+      }
       briefs: {
         Row: {
           created_at: string
@@ -1097,16 +1163,25 @@ export type Database = {
           user_id: string
         }[]
       }
-      delete_employee_and_restore_owner: {
-        Args: { p_employee_id: string; p_owner_id: string }
+      delete_user_fully: {
+        Args: { p_admin_action_log_id?: string; p_user_id: string }
         Returns: {
           error: string
           success: boolean
         }[]
       }
-      delete_user_fully: {
-        Args: { p_user_id: string }
+      claim_pending_auth_user_deletion: {
+        Args: { p_supabase_auth_id: string }
         Returns: {
+          attempt_count: number
+          outcome: string
+          target_user_id: string
+        }[]
+      }
+      schedule_pending_auth_user_deletion_retry: {
+        Args: { p_supabase_auth_id: string }
+        Returns: {
+          attempt_count: number
           error: string
           success: boolean
         }[]

@@ -1,7 +1,15 @@
 import { SupabaseService } from './supabaseService';
 import { toIsoTimestamp } from '@/lib/timestamps';
-import type { User, UserRole } from '@/types/user';
-import { toDbUserInsert, toUser, type DbUser, type DbUserUpdate } from '@/types/user';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import type { User, UserRole, AdminUserListItem } from '@/types/user';
+import {
+  toDbUserInsert,
+  toUser,
+  resolveUserDeletionBlockedReason,
+  getUserDeletionBlockedMessage,
+  type DbUser,
+  type DbUserUpdate,
+} from '@/types/user';
 
 /**
  * Phase 1: email 一致による自動リンクを行わず INSERT した結果、メールまたは auth の一意制約に触れた場合に投げる。
@@ -17,6 +25,34 @@ export class EmailAuthLinkConflictError extends Error {
     this.name = 'EmailAuthLinkConflictError';
     Object.setPrototypeOf(this, new.target.prototype);
   }
+}
+
+/** public.users 削除後に Auth が残っており、再作成を拒否する状態 */
+export class PendingAuthDeletionError extends Error {
+  readonly code = 'PENDING_AUTH_DELETION' as const;
+
+  constructor() {
+    super(ERROR_MESSAGES.AUTH.PENDING_AUTH_DELETION);
+    this.name = 'PendingAuthDeletionError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+function mapDeleteUserFullyRpcError(rpcErrorMessage: string | undefined): string {
+  switch (rpcErrorMessage) {
+    case 'blocked_admin':
+      return getUserDeletionBlockedMessage('admin');
+    case 'blocked_active_subscription':
+      return getUserDeletionBlockedMessage('active_subscription');
+    case 'blocked_organization':
+      return getUserDeletionBlockedMessage('organization_linked');
+    default:
+      return ERROR_MESSAGES.USER.DELETE_DB_FAILED;
+  }
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -93,15 +129,23 @@ class UserService {
     return true;
   }
 
-  async getAllUsers(): Promise<User[]> {
+  async getAllUsersForAdmin(): Promise<AdminUserListItem[]> {
     const result = await this.supabaseService.getAllUsers();
 
     if (!result.success) {
-      console.error('Failed to fetch all users:', result.error);
-      return [];
+      console.error('Failed to fetch all users for admin:', result.error);
+      throw new Error(result.error.developerMessage ?? result.error.userMessage);
     }
 
-    return result.data.map(dbUser => toUser(dbUser));
+    const dbUsers = result.data;
+    return dbUsers.map(dbUser => {
+      const deletionBlockedReason = resolveUserDeletionBlockedReason(dbUser, dbUsers);
+      return {
+        ...toUser(dbUser),
+        canDelete: deletionBlockedReason === null,
+        deletionBlockedReason,
+      };
+    });
   }
 
   /**
@@ -118,13 +162,199 @@ class UserService {
     return true;
   }
 
-  async getEmployeeByOwnerId(ownerId: string): Promise<User | null> {
-    const result = await this.supabaseService.getEmployeeByOwnerId(ownerId);
-    if (!result.success) {
-      console.error('Failed to get employee by owner id:', result.error);
-      return null;
+  /**
+   * 管理者によるユーザー完全削除ユースケース（設計書 §7.4）。
+   * 1. 対象再取得 2. アプリ層の早期検証 3. 監査 started
+   * 4. RPC（行ロック＋保護再検証＋DB削除） 5. Auth削除 6/7. 監査 succeeded/failed
+   *
+   * RPC成功後の部分失敗では `dbDeleted: true` を返し、UIが一覧行を除去できるようにする。
+   */
+  async deleteUserFully(
+    targetUserId: string,
+    actorUserId: string
+  ): Promise<
+    { success: true } | { success: false; error: string; dbDeleted?: boolean }
+  > {
+    const targetResult = await this.supabaseService.getUserById(targetUserId);
+    if (!targetResult.success || !targetResult.data) {
+      return { success: false, error: ERROR_MESSAGES.USER.DELETE_TARGET_INVALID };
     }
-    return result.data ? toUser(result.data) : null;
+    const target = targetResult.data;
+    const supabaseAuthId = target.supabase_auth_id;
+
+    const allUsersResult = await this.supabaseService.getAllUsers();
+    if (!allUsersResult.success) {
+      return { success: false, error: ERROR_MESSAGES.USER.DELETE_TARGET_INVALID };
+    }
+    const blockedReason = resolveUserDeletionBlockedReason(target, allUsersResult.data);
+    if (blockedReason !== null) {
+      return { success: false, error: getUserDeletionBlockedMessage(blockedReason) };
+    }
+
+    const auditStart = await this.supabaseService.createAdminActionLogStarted({
+      actorUserId,
+      targetUserId,
+      action: 'user_deletion',
+      targetSupabaseAuthId: supabaseAuthId,
+    });
+    if (!auditStart.success) {
+      console.error('[UserService] Failed to start admin_action_logs row:', auditStart.error);
+      return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_START_FAILED };
+    }
+    const logId = auditStart.data;
+
+    // DB削除を先に行い、RPC内の FOR UPDATE + 保護再検証で TOCTOU を閉じる。
+    // Auth がある場合、RPC は users 削除前に pending を同一TXで作成する。
+    // Auth は DB 成功後に削除する（保護違反時に Auth を触らない）。
+    const rpcResult = await this.supabaseService.deleteUserFully(targetUserId, logId);
+    if (!rpcResult.success) {
+      console.error('[UserService] Failed to delete user via RPC:', rpcResult.error);
+      const auditFinalized = await this.updateAdminActionLogStatusWithRetry(
+        logId,
+        'failed',
+        'db_delete_failed'
+      );
+      if (!auditFinalized) {
+        return { success: false, error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_STATUS_FAILED };
+      }
+      return {
+        success: false,
+        error: mapDeleteUserFullyRpcError(rpcResult.error.userMessage),
+      };
+    }
+
+    if (supabaseAuthId) {
+      const authResult = await this.deleteAuthUserWithRetry(supabaseAuthId);
+      if (!authResult.success) {
+        console.error('[UserService] Failed to delete Supabase Auth user:', authResult.error);
+        const scheduleResult =
+          await this.supabaseService.schedulePendingAuthUserDeletionRetry(supabaseAuthId);
+        if (!scheduleResult.success) {
+          console.error(
+            '[UserService] Failed to schedule pending_auth_user_deletions backoff:',
+            scheduleResult.error
+          );
+          const auditFinalized = await this.updateAdminActionLogStatusWithRetry(
+            logId,
+            'failed',
+            'auth_delete_failed_backoff_failed'
+          );
+          if (!auditFinalized) {
+            return {
+              success: false,
+              error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+              dbDeleted: true,
+            };
+          }
+          return {
+            success: false,
+            error: ERROR_MESSAGES.USER.DELETE_AUTH_FAILED_AFTER_DB,
+            dbDeleted: true,
+          };
+        }
+        const auditFinalized = await this.updateAdminActionLogStatusWithRetry(
+          logId,
+          'failed',
+          'auth_delete_failed'
+        );
+        if (!auditFinalized) {
+          return {
+            success: false,
+            error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+            dbDeleted: true,
+          };
+        }
+        return {
+          success: false,
+          error: ERROR_MESSAGES.USER.DELETE_AUTH_FAILED_AFTER_DB,
+          dbDeleted: true,
+        };
+      }
+      const pendingCleanup = await this.supabaseService.deletePendingAuthUserDeletion(supabaseAuthId);
+      if (!pendingCleanup.success) {
+        console.error(
+          '[UserService] Failed to delete pending_auth_user_deletions after Auth delete:',
+          pendingCleanup.error
+        );
+        const auditFinalized = await this.updateAdminActionLogStatusWithRetry(
+          logId,
+          'failed',
+          'pending_cleanup_failed'
+        );
+        if (!auditFinalized) {
+          return {
+            success: false,
+            error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+            dbDeleted: true,
+          };
+        }
+        return {
+          success: false,
+          error: ERROR_MESSAGES.USER.DELETE_PENDING_CLEANUP_FAILED,
+          dbDeleted: true,
+        };
+      }
+    }
+
+    const finalized = await this.updateAdminActionLogStatusWithRetry(logId, 'succeeded');
+    if (!finalized) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.USER.DELETE_AUDIT_LOG_FINALIZE_FAILED,
+        dbDeleted: true,
+      };
+    }
+
+    return { success: true };
+  }
+
+  private async deleteAuthUserWithRetry(
+    supabaseAuthId: string
+  ): Promise<{ success: true } | { success: false; error: unknown }> {
+    const maxAttempts = 3;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const result = await this.supabaseService.deleteAuthUser(supabaseAuthId);
+      if (result.success) {
+        return { success: true };
+      }
+      lastError = result.error;
+      console.error(
+        `[UserService] deleteAuthUser failed (attempt ${attempt}/${maxAttempts}):`,
+        result.error
+      );
+      if (attempt < maxAttempts) {
+        await sleep(100 * attempt);
+      }
+    }
+    return { success: false, error: lastError };
+  }
+
+  /** 監査ログの確定更新を短時間リトライする。0件更新も失敗。 */
+  private async updateAdminActionLogStatusWithRetry(
+    logId: string,
+    status: 'succeeded' | 'failed',
+    failureCode?: string
+  ): Promise<boolean> {
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const updateResult = await this.supabaseService.updateAdminActionLogStatus(
+        logId,
+        status,
+        failureCode
+      );
+      if (updateResult.success) {
+        return true;
+      }
+      console.error(
+        `[UserService] Failed to mark admin_action_logs as ${status} (attempt ${attempt}/${maxAttempts}):`,
+        updateResult.error
+      );
+      if (attempt < maxAttempts) {
+        await sleep(100 * attempt);
+      }
+    }
+    return false;
   }
 
   /**
@@ -148,6 +378,9 @@ class UserService {
       return user;
     }
 
+    // public.users が無い場合: 削除途中の Auth 残存なら再作成せず Auth 削除を再試行する
+    await this.resolvePendingAuthDeletionOrThrow(supabaseAuthId);
+
     const createResult = await this.supabaseService.createEmailUser(normalizedEmail, supabaseAuthId);
     if (!createResult.success) {
       if (createResult.error.code === '23505') {
@@ -161,6 +394,39 @@ class UserService {
     }
 
     return toUser(createResult.data);
+  }
+
+  /**
+   * pending_auth_user_deletions がある場合、原子的 claim できたときだけ Auth 削除を1回試し、
+   * 必ず同一 auth id での public.users 再作成を拒否する。
+   * - absent: pending なし（通常の新規作成へ）
+   * - not_due: 初期 lease / バックオフ中（Auth API 非呼び出し）
+   * - claimed + Auth成功: pending 削除を確認。失敗しても再作成は禁止
+   * - claimed + Auth失敗: next_attempt_at は claim RPC 時に更新済み
+   */
+  private async resolvePendingAuthDeletionOrThrow(supabaseAuthId: string): Promise<void> {
+    const claimResult = await this.supabaseService.claimPendingAuthUserDeletion(supabaseAuthId);
+    if (!claimResult.success) {
+      throw new Error(claimResult.error.developerMessage ?? claimResult.error.userMessage);
+    }
+    if (claimResult.data === 'absent') {
+      return;
+    }
+    if (claimResult.data === 'not_due') {
+      throw new PendingAuthDeletionError();
+    }
+
+    const authResult = await this.supabaseService.deleteAuthUser(supabaseAuthId);
+    if (authResult.success) {
+      const pendingCleanup = await this.supabaseService.deletePendingAuthUserDeletion(supabaseAuthId);
+      if (!pendingCleanup.success) {
+        console.error(
+          '[UserService] Failed to delete pending_auth_user_deletions after Auth delete on login:',
+          pendingCleanup.error
+        );
+      }
+    }
+    throw new PendingAuthDeletionError();
   }
 
   /**

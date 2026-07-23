@@ -201,6 +201,13 @@ export const ERROR_MESSAGES = {
     EMAIL_LINK_CONFLICT:
       'このメールアドレスは別のログインと既に紐づいています。サポートへお問い合わせください。',
 
+    /**
+     * public.users 削除後に Auth が残っている（pending_auth_user_deletions）。
+     * 同一 Auth ID での public.users 再作成を拒否する。
+     */
+    PENDING_AUTH_DELETION:
+      'このアカウントは削除処理中です。時間をおいて再度ログインするか、管理者へお問い合わせください。',
+
     /** トークン期限切れで再ログインが必要な場合 */
     TOKEN_EXPIRED_REAUTH: 'トークンの有効期限が切れました。再度ログインしてください',
 
@@ -391,12 +398,6 @@ export const ERROR_MESSAGES = {
     /** ユーザー情報の確認に失敗した場合 */
     USER_INFO_VERIFY_FAILED: 'ユーザー情報の確認に失敗しました',
 
-    /** フルネームの更新に失敗した場合 */
-    FULL_NAME_UPDATE_FAILED: 'フルネームの更新に失敗しました',
-
-    /** フルネームの更新中にエラーが発生した場合 */
-    FULL_NAME_UPDATE_ERROR: 'フルネームの更新中にエラーが発生しました',
-
     /** サービスの利用が停止されている場合 */
     SERVICE_UNAVAILABLE: 'サービスの利用が停止されています',
 
@@ -429,6 +430,51 @@ export const ERROR_MESSAGES = {
 
     /** ユーザー一覧の取得中にエラーが発生した場合 */
     USER_LIST_FETCH_ERROR: 'ユーザー一覧の取得中にエラーが発生しました',
+
+    /** 管理者ユーザーは削除できない場合 */
+    DELETION_BLOCKED_ADMIN: '管理者は削除できません。先に権限を変更してください',
+
+    /** Stripe契約情報があるユーザーは削除できない場合 */
+    DELETION_BLOCKED_ACTIVE_SUBSCRIPTION:
+      '契約情報があるため削除できません。先に契約を解除してください',
+
+    /** 組織に紐づいているユーザーは削除できない場合 */
+    DELETION_BLOCKED_ORGANIZATION_LINKED:
+      '組織に紐づいているため削除できません。先に組織関係を解除してください',
+
+    /** 削除対象の入力・再検証に失敗した場合（不正なID・対象不存在） */
+    DELETE_TARGET_INVALID: '削除対象を確認できませんでした。画面を更新してください',
+
+    /** 削除の監査ログ開始行の作成に失敗した場合 */
+    DELETE_AUDIT_LOG_START_FAILED: '削除を開始できませんでした。時間をおいて再試行してください',
+
+    /** 削除後の監査ログ確定（succeeded）に失敗した場合（DB削除は完了済み） */
+    DELETE_AUDIT_LOG_FINALIZE_FAILED:
+      'ユーザー削除は完了しましたが、監査ログの確定に失敗しました。画面を更新して状態を確認してください',
+
+    /**
+     * DB削除前（またはRPC失敗後）の監査 failed 確定に失敗した場合。
+     * 「削除完了」と誤読させない文言にする。
+     */
+    DELETE_AUDIT_LOG_STATUS_FAILED:
+      '削除処理の記録に失敗しました。画面を更新して状態を確認してください',
+
+    /** Supabase Authユーザーの削除に失敗した場合（DB削除前） */
+    DELETE_AUTH_FAILED: '認証情報の削除に失敗しました。時間をおいて再試行してください',
+
+    /** DB削除後に Auth 削除が失敗した場合（再試行UIでは対象が消えている） */
+    DELETE_AUTH_FAILED_AFTER_DB:
+      'ユーザーデータは削除済みですが、認証情報の削除に失敗しました。管理者に連絡してください',
+
+    /**
+     * Auth 削除は成功したが pending_auth_user_deletions の清掃に失敗した場合。
+     * 監査を succeeded にしない。
+     */
+    DELETE_PENDING_CLEANUP_FAILED:
+      '認証情報の削除は完了しましたが、削除待ち記録の清掃に失敗しました。管理者に連絡してください',
+
+    /** DBの完全削除（RPC）に失敗した場合 */
+    DELETE_DB_FAILED: 'データの削除に失敗しました。時間をおいて再試行してください',
   },
 
   /**
