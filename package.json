@@ -15,7 +15,7 @@
     "knip": "knip",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "verify": "npm run lint && npm run test && npm run build && npm run knip",
+    "verify": "npm audit --audit-level=high && npm run lint && npm run test && npm run build && npm run knip",
     "verify:agent-skills": "bash scripts/verify-agent-skills.sh",
     "prepare": "husky"
   },

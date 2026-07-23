@@ -212,14 +212,14 @@ npm run dev  # http://localhost:3000
 | `npm run dev:types` | 型チェック watch |
 | `npm run test` | Vitestによるコアロジック・入力バリデーションのテスト |
 | `npm run test:coverage` | Vitestのカバレッジ計測（閾値によるCI強制なし） |
-| `npm run verify` | lint → test → build → knip |
+| `npm run verify` | audit → lint → test → build → knip |
 | `npm run supabase:types` | `database.types.ts` 再生成 |
 | `npm run verify:agent-skills` | Agent Skills 静的検証 |
 | `npm run db:stats` / `vercel:stats` / `active:users` | 運用統計（要 `.env.local`） |
 
 ## ✅ 動作確認
 
-`npm run lint`、`npm run test`、`npm run build`、`npm run knip` で基本チェック（4点まとめは `npm run verify`）。コアロジックと分離済みZodスキーマはVitest、UIの表示・操作感・導線と外部APIを含む実画面は人間の目視で確認する。Agent Skills を変更した場合は `npm run verify:agent-skills` も実行する。husky で **pre-commit に lint、pre-push に test + build + knip** を配置し、CIでも`npm audit --audit-level=high` / lint / test / build / knipを実行する。各機能の詳細な検証手順は [`quality-gate`](.agents/skills/quality-gate/SKILL.md) スキルを参照。
+`npm audit --audit-level=high`、`npm run lint`、`npm run test`、`npm run build`、`npm run knip` で基本チェック（5点まとめは `npm run verify`）。コアロジックと分離済みZodスキーマはVitest、UIの表示・操作感・導線と外部APIを含む実画面は人間の目視で確認する。Agent Skills を変更した場合は `npm run verify:agent-skills` も実行する。husky で **pre-commit に lint、pre-push に test + build + knip** を配置し、CIでも`npm audit --audit-level=high` / lint / test / build / knipを実行する。各機能の詳細な検証手順は [`quality-gate`](.agents/skills/quality-gate/SKILL.md) スキルを参照。
 
 ## 📁 プロジェクト構成（概要）
 
@@ -257,7 +257,7 @@ npm run dev  # http://localhost:3000
 ## 📱 デプロイと運用
 
 - Vercel を想定。一部の Route Handler は Node.js Runtime を明示し、その他は Next.js のデフォルト Runtime を使用
-- ローカル品質ゲート: `npm run verify`（`lint` → `test` → `build` → `knip` を順次実行）
+- ローカル品質ゲート: `npm run verify`（`audit` → `lint` → `test` → `build` → `knip` を順次実行）
 - husky フック: **pre-commit = `lint`、pre-push = `test` + `build` + `knip`**（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
 - CI 品質ゲート: `npm audit --audit-level=high`、`npm run lint`、`npm run test`、`npm run build`、`npm run knip`
 - 環境変数は Vercel Project Settings へ反映し、本番は WordPress 本番サイトなどの外部連携設定に切り替え

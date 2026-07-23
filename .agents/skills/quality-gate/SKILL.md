@@ -17,8 +17,8 @@ description: GrowMate の品質ゲート。コーディング完了後の2パス
 
 ## 基本フロー（コード変更後）
 
-1. `npm run verify`（`lint` → `test` → `build` → `knip` を順次実行する SSoT スクリプト）。
-   個別に走らせる場合は `npm run lint` / `npm run test` / `npm run build` / `npm run knip`。
+1. `npm run verify`（`audit` → `lint` → `test` → `build` → `knip` を順次実行する SSoT スクリプト）。
+   個別に走らせる場合は `npm audit --audit-level=high` / `npm run lint` / `npm run test` / `npm run build` / `npm run knip`。
    **`tsc --noEmit` は `build` の代わりにならない**（Next.js の route segment config 静的解析や page data 収集が走らないため、過去に `maxDuration` 漏れが本番直前まで気付けなかった実例あり）。
 2. 変更機能の手動確認（`manual-testing.md`）
 3. 2 パスセルフレビュー（`self-review.md`）
@@ -30,8 +30,8 @@ description: GrowMate の品質ゲート。コーディング完了後の2パス
 | `pre-commit` | `npm run lint` | commit 単位の高速チェック。エラー即時検知 |
 | `pre-push` | `npm run test && npm run build && npm run knip` | push 前のテストと重い検証。CI 到達前の早期検知 |
 
-`pre-push` には lint を入れていない（pre-commit と二重実行になるため）。
-**`--no-verify` でフックを回避した場合は CI 側 (`lint` / `test` / `build` / `knip` ジョブ) で必ず止まる**。逆に言えば、フックは早期検知の補助であって、CI が最終ゲート。
+`pre-push` には lint / audit を入れていない（pre-commit や `verify`・CI と役割分担するため）。
+**`--no-verify` でフックを回避した場合は CI 側 (`audit` / `lint` / `test` / `build` / `knip` ジョブ) で必ず止まる**。逆に言えば、フックは早期検知の補助であって、CI が最終ゲート。ローカル完了時は `npm run verify`（先頭で high audit）を回す。
 
 ## 関連スキル
 
