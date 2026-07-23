@@ -1,6 +1,6 @@
 # Instagram 連携（Business Login for Instagram）設計書
 
-作成日: 2026-07-23 / ステータス: レビュー待ち
+作成日: 2026-07-23 / ステータス: レビュー完了（2026-07-23）・実装着手可
 クライアント合意: 2026-07-22 定例MTG（Lark minutes `objpyf287e2otlex7a1m8n25`）で「まず連携（審査申請）から進める」ことを合意済み
 
 ## 1. 背景・目的
@@ -307,7 +307,175 @@ create table public.instagram_account_insights_daily (
 - R-1 実施時のみ: `src/server/lib/oauth-flow.ts`（新規）、Instagram OAuth start/callback から state 検証ヘルパーを利用
 - チャット本体（Phase 3 まで変更なし）
 
-## 11. 参考（調査済み既存実装）
+## 11. UI/UX イメージ（ワイヤーフレーム）
+
+`growmate-ui-ux` スキル準拠: shadcn/ui primitives のみ・セマンティックトークン・lucide-react アイコン・日本語ラベル・状態（未連携/連携済み/要再認証/エラー/空/ローディング）の明示。ビジュアル刷新はしない（既存 `/setup/ga4` 系の見た目を踏襲）。
+
+### 11.1 `/setup` ハブ — Instagram カード追加（Phase 1）
+
+既存 `SetupDashboard.tsx` のカード列に1枚追加。1カード1主アクション。
+
+```text
+┌─ Card ──────────────────────────────────────┐
+│ [Instagram icon] Instagram連携   [Badge]    │  Badge: 連携済み(default+green) /
+│ リール・フィード投稿の実績データを取得します │        要再認証(default+orange) /
+│                                              │        未連携(secondary+gray)
+│ 連携アカウント: @username（連携済み時のみ）  │
+│                          [設定へ →] Button   │  → /setup/instagram
+└──────────────────────────────────────────────┘
+```
+
+- Badge 色は `SetupDashboard.tsx:277-290` 準拠: 連携済み=`variant="default"` + `bg-green-100 text-green-800`、要再認証=`variant="default"` + `bg-orange-100 text-orange-800`（**destructive は使わない**）、未連携=`variant="secondary"` + gray。
+- ステータス取得中は他カード（GSC 等）と同型: `Loader2` スピナー + `Badge variant="secondary" className="text-xs"`「確認中」（`SetupDashboard.tsx:269-275` 準拠）。
+- `needsReauth` 時はカード内に注意文言（AlertTriangle アイコン +「Instagramの再認証が必要です」）。GSC/GA4 カードと同一パターン（`SetupDashboard.tsx:255,298` 準拠）。
+
+### 11.2 `/setup/instagram`（Phase 1、`InstagramSetupClient.tsx`）
+
+`Ga4SetupClient.tsx` と同一構成（戻るリンク → 成功/エラー Alert → ステータス Card → プレビュー Card）。成功 Alert は `app/setup/google-ads/page.tsx:70-97`（Google Ads 型）を踏襲。
+
+**OAuth 成功 / 解除成功（searchParams）**
+
+`?connected=1`（OAuth callback 成功時、`page.tsx` で解釈）:
+
+```text
+┌─ Alert (success/green) ────────────────────────┐
+│ ✓ 連携完了                                      │
+│   Instagram アカウントとの連携が完了しました。   │
+│   連携アカウント: @username                     │
+└──────────────────────────────────────────────┘
+```
+
+`?disconnected=1`（`disconnectInstagram` 成功時）:
+
+```text
+┌─ Alert (success/green) ────────────────────────┐
+│ ✓ 連携を解除しました                            │
+│   Instagram 連携を解除しました。再度連携する    │
+│   場合は「Instagramと連携する」から手続きして   │
+│   ください。                                    │
+└──────────────────────────────────────────────┘
+```
+
+**状態A: 未連携**
+
+```text
+[← セットアップに戻る]
+
+（?error= がある場合のみ）
+┌─ Alert (destructive) ────────────────────────┐
+│ ⚠ ERROR_MAP[error] の文言                    │
+│   例:「Instagramとの連携がキャンセルされま   │
+│   した。もう一度お試しください」             │
+└──────────────────────────────────────────────┘
+
+┌─ Card: 連携ステータス ───────────────────────┐
+│ 連携ステータス                [未連携 Badge] │
+│                                              │
+│ Instagramのプロアカウント（ビジネス/クリエ  │
+│ イター）と連携すると、投稿の実績データを    │
+│ 自動で取得できます。                         │
+│ ※個人アカウントは連携できません             │
+│                                              │
+│ [Instagramと連携する] Button（主アクション） │  → /api/instagram/oauth/start
+└──────────────────────────────────────────────┘
+```
+
+**状態B: 連携済み（正常）**
+
+```text
+┌─ Card: 連携ステータス ───────────────────────┐
+│ 連携ステータス   [連携済み Badge] [更新]     │  ← RefreshCw アイコン
+│                                              │
+│ (○) @username ・ アカウント種別: ビジネス   │  ← profile_picture_url。
+│ フォロワー 1,234 / フォロー 56 / 投稿 78     │    失効時は代替アイコン表示
+│                                              │  ← Phase1: last_synced_at は非表示
+│                                              │    （同期は Phase2。更新=プレビュー再取得）
+│ [連携を解除] Button (outline/destructive)    │  → 確認ダイアログ必須（破壊的操作）
+└──────────────────────────────────────────────┘
+
+┌─ Card: 最新の投稿プレビュー（最大3件） ─────┐
+│ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
+│ │ サムネ    │ │ サムネ    │ │ サムネ    │      │  ← 横並びカード（モバイルは縦積み）
+│ │ [リール]  │ │ [フィード]│ │ [リール]  │      │  ← 種別 Badge
+│ │ 7/20 投稿 │ │ 7/18 投稿 │ │ 7/15 投稿 │      │
+│ │ リーチ 5.2k│ │ リーチ 1.1k│ │ リーチ 890 │     │
+│ │ 視聴 12k  │ │ いいね 45  │ │ 視聴 2.3k │      │
+│ │ 保存 320  │ │ 保存 12   │ │ 保存 80   │      │
+│ │ [投稿を見る↗]│ ...       │ ...        │      │  ← permalink 外部リンク
+│ └──────────┘ └──────────┘ └──────────┘      │
+│ ※読み込み中は skeleton 3枚。               │
+│ ※投稿0件:「投稿がありません」プレースホルダ │
+│ ※部分失敗: 取得分のみ + Alert「一部の投稿   │
+│   データを取得できませんでした（N件）」      │
+└──────────────────────────────────────────────┘
+```
+
+**状態C: 要再認証** — 状態Bの Badge を「要再認証」(default+orange、`SetupDashboard` 同型) に差し替え、Card 冒頭に Alert:
+
+```text
+┌─ Alert (orange/warning) ─────────────────────┐
+│ ⚠ Instagramの認証が期限切れです。再連携して │
+│   ください。          [再連携する] Button    │  ← SetupDashboard / google-ads 要再認証 Alert 同型
+└──────────────────────────────────────────────┘
+```
+
+- 連携ボタン押下中は disabled + Loader2 スピナー（連打防止）。
+- 「更新」= `fetchInstagramPreviewData` 再実行（**プレビュー再取得**。Phase1 に同期 cron はない）。実行中は RefreshCw を回転表示。**`last_synced_at` の表示は Phase2 の `/analytics` Instagram タブのみ**（Phase1 セットアップ画面では出さない）。
+- 用語補足: 「リーチ」「保存数」等は初出でツールチップまたは括弧書き（例: リーチ＝投稿を見た人数）。
+
+### 11.3 `/analytics` タブ化（Phase 2）
+
+`Ga4DashboardClient.tsx:435` の Tabs パターン。既存ブログ一覧は `TabsContent value="blog"` に無変更で内包。
+
+```text
+ページヘッダ（既存のまま: タイトル + 操作ボタン群）
+
+┌─ TabsList (grid grid-cols-2 h-12) ───────────┐
+│ [FileText ブログ]    [Image Instagram]       │  ← lucide-react。tab= に同期
+└──────────────────────────────────────────────┘
+
+▼ TabsContent value="instagram"
+
+┌─ ツールバー ─────────────────────────────────┐
+│ 種別: [すべて|リール|フィード]  期間: [開始]〜[終了] │
+│ 並び順: [投稿日▼]      [RefreshCw データを更新]   │  ← 同期 Server Action。実行中 disabled
+└──────────────────────────────────────────────┘
+  （同期結果 UI は下記「同期結果」参照）
+
+┌─ Card: 投稿一覧 Table ───────────────────────┐
+│ サムネ│種別  │キャプション│投稿日│リーチ│視聴│…│
+│ ──────┼──────┼────────────┼──────┼──────┼────┼─│
+│ [img] │リール│養鶏を始めて…│7/20 │5,200 │12k │…│  ← 行末に [↗] permalink
+│ [img] │フィード│卵かけご飯…│7/18 │1,100 │ -  │…│  ← フィードは視聴時間系 "-"
+│ …                                            │
+│              [← 前へ]  1 / 5  [次へ →]       │  ← ig_page パラメータ + Link
+└──────────────────────────────────────────────┘
+```
+
+- **URL パラメータ契約**（ブログ既存キー `page` / `start` / `end` / `category` / `uncategorized` / `unread_suggestion` は Instagram タブでも**変更・上書きしない**）:
+  - `tab`: `blog` | `instagram`。**未指定時は `blog`**（既存 `/analytics?...` のリグレッション防止）
+  - タブ切替は `router.push` / `Link` で URL 更新必須（`Ga4DashboardClient.tsx:435` の `defaultValue` 非 URL 同期パターンは**踏襲しない**）
+  - タブ切替時の頁リセット: **切替先タブの頁パラメータのみ** 1 にリセット（`tab=instagram` へ切替時は `ig_page=1` をセットし `page` は保持、`tab=blog` へ切替時は `page=1` をセットし `ig_*` は保持）
+  - `ig_page`: Instagram タブのページ番号（1始まり）。未指定時 1
+  - `ig_type`: 種別フィルタ `all` | `reels` | `feed`。未指定時 `all`
+  - `ig_start` / `ig_end`: 期間フィルタ（ISO 日付 `YYYY-MM-DD`）。未指定時は直近30日（ブログの `start`/`end` とは**独立**）
+  - `ig_sort`: ソートキー `posted_at` | `reach` | `views`。未指定時 `posted_at` desc
+- 列構成（初期案。Q2 の管理表確認で最終確定）: サムネイル / 種別 Badge / キャプション冒頭（1行省略）/ 投稿日 / リーチ / 視聴数 / いいね / コメント / 保存 / シェア / 総インタラクション / 平均視聴時間（リールのみ）/ リンク。横スクロールは `overflow-x-auto` で許容しつつ、列の意味をヘッダツールチップで補足
+- **未連携時**: テーブルの代わりに空状態カード —「Instagramが未連携です。連携すると投稿の実績が表示されます」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレント空表示にしない
+- **連携済みだが同期0件**: 「まだデータがありません。［データを更新］を押すと取得します」
+- **同期結果 UI**（手動「データを更新」の Server Action 戻り値。§6 エラーパス準拠）:
+  - 成功（`failed=0`）: Sonner toast「N件を更新しました」。`last_synced_at` をツールバー横に表示（例: 「最終同期: 2026-07-23 10:00」）
+  - 部分失敗（`failed>0`）: Sonner toast warning「N件中M件の更新に失敗しました」+ ツールバー直下 Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（M件）」）。取得できた行はテーブルに残す
+  - `needsReauth`: Sonner toast error + Alert「Instagramの再認証が必要です」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレントに未連携へフォールバックしない
+  - `truncated`: Sonner toast info「直近50件まで取得しました」（cron は §4 Phase2-3 どおり成功扱い）
+- ブログタブ側のフィルタ・ページネーション UI は一切変更しない（受け入れ条件: リグレッションなし）
+
+### 11.4 Phase 3 導線（参考。詳細設計時に確定）
+
+- Instagram タブ各行に「台本作成」ボタン → `/chat?ig_media=<id>`
+- チャット側では通常のメッセージ UI に集約（キャンバス側に操作を増やさない。§1.6 準拠）
+
+## 12. 参考（調査済み既存実装）
 
 - OAuth **エラー UX 正本**: `app/api/google-ads/oauth/callback/route.ts`（失敗時 redirect）、`app/setup/google-ads/page.tsx`（ERROR_MAP）
 - OAuth state 検証: `src/server/lib/oauth-state.ts`
