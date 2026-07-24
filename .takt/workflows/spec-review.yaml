@@ -1,5 +1,5 @@
 name: spec-review
-description: GrowMate docs/plans specification review against spec-review skill checklist, spec revision loop, and docs branch push for auto PR. Run before spec-to-pr.
+description: GrowMate docs/plans specification review against spec-review skill checklist and spec revision loop. Commits docs changes on the current branch only (no new branch, no push). Run before spec-to-pr.
 max_steps: 12
 initial_step: identify
 loop_monitors:
@@ -138,21 +138,23 @@ steps:
           - Grep
           - Bash
     instruction: |
-      レビュー結果を確定し、仕様書に変更がある場合は docs ブランチへ push してください。Pull Request 作成は `.github/workflows/auto-pr.yml` に委譲するため、`gh pr create` / `gh pr edit` / `gh pr comment` は実行しないでください。
+      レビュー結果を確定し、仕様書に変更がある場合は現在のブランチに commit してください。新しいブランチの作成・push・PR 操作は行わないでください。
 
       手順:
       1. `git status` / `git diff` で変更内容を確認する。変更が `docs/` 配下のみであることを検証し、それ以外の変更が混入していれば ABORT する。
-      2. 仕様書に変更がある場合: 現在のブランチが `develop` または `main` なら `docs/spec-review-{仕様書名}` ブランチを作成し、日本語1行メッセージで commit、`git push -u origin HEAD` を実行する。
-      3. 仕様書に変更がない場合（指摘なし approved）: commit / push は行わない。
-      4. 最終レポートに以下を含める: 指摘サマリ（重大度別件数）、未解決のクライアント確認質問、次アクション（質問回答 → 仕様書PR マージ → `.takt/workflows/spec-to-pr.yaml` で実装）。
+      2. 仕様書に変更がある場合: 現在のブランチのまま、日本語1行メッセージで commit する。ブランチ作成（`git checkout -b` / `git switch -c` 等）と `git push` は行わない。
+      3. 仕様書に変更がない場合（指摘なし approved）: commit は行わない。
+      4. 最終レポートに以下を含める: 指摘サマリ（重大度別件数）、未解決のクライアント確認質問、次アクション（質問回答 → 必要なら人間が push/PR → `.takt/workflows/spec-to-pr.yaml` で実装）。
 
       やらないこと:
-      - PR の作成・更新・マージ・クローズ。
+      - 新しいブランチの作成・切り替え。
+      - `git push`（`-u` 含む）。
+      - PR の作成・更新・マージ・クローズ（`gh pr create` / `gh pr edit` / `gh pr comment` 含む）。
       - `docs/` 以外の編集・コミット。
     rules:
-      - condition: レビュー確定（push 完了、または変更なしで完了）
+      - condition: レビュー確定（commit 完了、または変更なしで完了）
         next: COMPLETE
-      - condition: docs 以外の変更が混入している、または push に失敗した
+      - condition: docs 以外の変更が混入している、または commit に失敗した
         next: ABORT
     output_contracts:
       report:
