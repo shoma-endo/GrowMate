@@ -47,6 +47,15 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 - **スクリーンキャストの要件（公式ガイドラインより。録画前に決めること）**:
   - **パーミッションごとに1本用意する**。公式は各リクエストに対し "Describe how your app uses that specific permission or feature" と "Upload a screencast showing the **end-to-end user experience** for that specific permission or feature" を要求する。`instagram_business_basic`（連携 → プロフィール・投稿一覧表示）と `instagram_business_manage_insights`（投稿ごとのリーチ・視聴・保存表示）で分ける
   - **言語**: 公式は "Use English as the app UI language – If possible, please set the app UI language to English before recording the screen recording." と指示する。**GrowMate は日本語専用 UI のため英語化はしない**。代わりに公式が代替として挙げる **英語キャプション・ツールチップで画面要素とボタンの意味を補う**（"Provide captions and tool-tips" / "Explain the meaning of buttons and other UI elements"）。日本語 UI のまま無注釈で提出しない
+  - **GrowMate 自身のログインも収録する**。[Screen Recordings](https://developers.facebook.com/docs/app-review/submission-guide/screen-recordings/) は "Capture the entire login flow, from logged-out to logged-in." を求める。Meta ログイン以外の手段で入れる場合もそのフローを収録せよと明記されているため、`/login` のメール OTP 入力から `/setup/instagram` までを1本に含める
+  - 解像度は "record in high-resolution, 1080 or better"。**録画が無いパーミッションは承認されない**（"Any requested permission or feature missing a screen recording will not be approved"）
+
+- **審査を行う環境（2026-07-25 決定）**: **本番（`https://growmate.tokyo`）で収録・提出する**。
+  - 公式に「URL やアドレスバーを映せ」という要求は無い（Instagram 審査ページ・Screen Recordings ページとも記載なし）。だが **レビュアーは動画を見るだけでなく自分でアプリを触る**（"Confirm that your app can be loaded and tested externally"、[提出ガイド](https://developers.facebook.com/docs/resp-plat-initiatives/individual-processes/app-review/submission-guide) の "We will test your app so be sure that we can access it"）ため、到達可能な公開 HTTPS URL が要る
+  - **Vercel の preview URL（`growmatetokyo-git-<branch>-...vercel.app`）でも技術的には通せる**（Deployment Protection 無しで外部から開けることを 2026-07-25 に実測確認済み）。ただし採らない。理由: ①承認後に redirect URI を本番へ付け替える手戻りが出る ②審査期間（数日〜数週間）中にそのブランチへ別変更をマージすると、レビュアーが開く画面と収録が食い違う ③一時環境と読める URL はアプリ設定の Website URL と不一致になり追加確認を招く
+  - preview で出す場合は必ず **コミット別 URL ではなくブランチエイリアス**を使い、審査提出用ブランチを切ってマージを凍結し、Preview スコープの `INSTAGRAM_REDIRECT_URI` を別値で登録すること
+- **レビュアーのアクセス手段**: 提出ガイドは Platform Settings 欄に "describe how we can access your app in order to test it" と記入することを求め、"We will test your app using our own test accounts. Do not include your **personal** Meta Technologies app account's credentials." と注意している。**アクセス手段の具体は提出フォーム記入時に決める**（Instagram 審査ページの "If needed, provide any required test credentials for Meta reviewers to log into your app or website." は条件付きの表現であり、無条件の要件ではない）
+- **ログインボタンのブランド準拠**: Instagram 審査ページのチェックリストに "Verify that the login button or link is visible in your app and screencast, and adheres to our brand guidelines" がある。§11.2 の連携ボタンが **Meta のブランドガイドラインに準拠しているか**、および**アプリ内と収録の両方でボタンが見えているか**を実装時に確認する
 
 ### 3.3 制約・注意点
 
@@ -76,6 +85,9 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 - 実サービス（`instagramService.ts` 等）・DB テーブル・OAuth ルートの実コードは **不要**（審査通過後の Phase 1-B で実装）
 - Meta 開発者アプリ作成（Instagram API with Instagram Login 製品追加、パーミッション申請フォーム記入）はダッシュボード上の設定作業のみで、1-A の UI 実装と並行して進める（審査提出そのものにアプリ登録が前提のため）
 - **既存の踏襲パターン**: `src/server/services/googleAdsNegativeKeywordsSuggestionService.ts` の `useMockGoogleAds = process.env.NODE_ENV === 'development'` + `DEV_SAMPLE_SEARCH_TERMS` 定数と同型。新方式（fixtureファイル分離・URL パラメータでの状態切替 UI 等）は導入しない
+- **限定公開ゲート（1-A 成果物。審査期間中のみ有効）**: `src/server/lib/instagram-permissions.ts` に `canAccessInstagram({ userId, role })` を新設し、環境変数 `INSTAGRAM_BETA_USER_IDS`（カンマ区切りの user_id）に列挙されたユーザーだけに Instagram 機能を見せる。**空文字なら §7 の通常ロール判定にフォールバック**するので、Phase 2 の解除は環境変数を空にするだけで済む（コード変更・再デプロイ不要）。参照箇所は `/setup` の Instagram カード表示と `/setup/instagram` のガードの2箇所のみ
+  - **`role: 'admin'` でゲートしてはいけない**。App Review のレビュアーに渡すアカウントはゲートが開いている必要があり、admin にすると `/admin/users`（`getAllUsers` → `AdminUserListItem extends User`）から**全ユーザーの氏名・メールアドレス・課金状態が閲覧可能になる**。未開示の第三者提供になるため、role とは別軸の allowlist にする
+  - レビュアー用アカウントは `role: 'trial'` のまま allowlist にのみ追加する（`isAdmin` で `/admin/*` は弾かれる）
 - 型定義: `src/types/instagram.ts` に `InstagramConnectionStatus` / `InstagramProfile` / `InstagramMediaPreview` を **Phase 1-B の実 API 戻り値と同じ形状**で先に定義する。以降 Phase 1-B はこの型を変更せず中身だけ実装する
 - `src/server/actions/instagramSetup.actions.ts` に `getInstagramConnectionStatus` / `fetchInstagramPreviewData` を **戻り値型は Phase 1-B と同一のまま** 先に実装し、`process.env.NODE_ENV === 'development'` の間は関数末尾に定義した `DEV_SAMPLE_INSTAGRAM_STATUS` / `DEV_SAMPLE_INSTAGRAM_PROFILE` / `DEV_SAMPLE_INSTAGRAM_MEDIA`（未連携・連携済み・要再認証・投稿0件・部分失敗の5パターン）を返す
 - 状態確認は `DEV_SAMPLE_*` の定数を一時的に差し替えて目視する（既存踏襲。トグル UI 等の専用切替導線は作らない＝本番導線を汚さない）
@@ -105,12 +117,21 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 5. Server Actions: `src/server/actions/instagramSetup.actions.ts` — `getInstagramConnectionStatus` / `disconnectInstagram` / `fetchInstagramPreviewData`（プロフィール+**最新 K 件（K=3）**の投稿+各投稿インサイトを疎通表示用に取得。§4 Phase1-11 参照）。戻り値は `ServerActionResult` + `needsReauth` 規約（google-integrations スキル準拠）
 6. UI: **Phase 1-A で実装済み。追加実装なし。** `getInstagramConnectionStatus` / `fetchInstagramPreviewData` の `DEV_SAMPLE_*` 分岐に対して else 側（実サービス呼び出し）を追加するのみ。`app/setup/instagram/page.tsx` の `ERROR_MAP`（`searchParams.error` → `ERROR_MESSAGES.INSTAGRAM.*`）・`SetupDashboard.tsx` の Instagram カードも Phase 1-A のものをそのまま使う
 7. `ERROR_MESSAGES.INSTAGRAM.*` を `src/domain/errors/error-messages.ts` に追加（AUTH_FAILED, MISSING_PARAMS, STATE_COOKIE_MISMATCH, STATE_USER_MISMATCH, INVALID_STATE, TOKEN_EXCHANGE_FAILED, AUTH_EXPIRED, CONNECTION_FAILED, API_ERROR, NOT_PROFESSIONAL_ACCOUNT, UNKNOWN_ERROR 等。日本語文言直書き禁止規約準拠）
-8. 環境変数: `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` / `INSTAGRAM_REDIRECT_URI`（`.env.example` 追記）。`COOKIE_SECRET` は既存を共用
+8. 環境変数: `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` / `INSTAGRAM_REDIRECT_URI` / `INSTAGRAM_BETA_USER_IDS`（`.env.example` 追記）。`COOKIE_SECRET` は既存を共用
+   - `INSTAGRAM_REDIRECT_URI` は Meta App Dashboard の登録値と**完全一致**が必要。**本番で審査に出す方針（§3.2）のため Production スコープに `https://growmate.tokyo/api/instagram/oauth/callback` を設定する**。preview 環境でも動作確認したい場合は Vercel の Preview スコープに別値を置き、その URL も Dashboard に追加登録する
+   - `INSTAGRAM_BETA_USER_IDS` は審査期間中のみ値を入れる（1-A で新設。§4 Phase 1-A の限定公開ゲート参照）
 9. **App Review 必須成果物（1-B で完了。`disconnectInstagram` 実装後に PP 追記）**:
    - `app/privacy/page.tsx` — 既存 §5「第三者サービスと共同利用」に **Meta Platforms, Inc.（Instagram Graph API）** を追加（Google LLC 等と並列）。§6「データ保持期間と削除方法」に Instagram 連携データの保持・削除を追記。§7「ユーザーの権利と手続き」に Instagram 連携解除手順（`/setup/instagram` の解除ボタン → `disconnectInstagram` で credential および同期済み Instagram データを削除）を既存 GSC 連携解除記載と並列で追記。metadata.description も Instagram を含める
    - **「第三者提供なし」とは書かない**（Meta API 利用は §5 の共同利用先追加で明示。既存 `app/privacy/page.tsx` §5 の Google 等と同型）
    - Meta Data Deletion Callback URL は Phase 1 では設けず、手順ページ方式とする（GrowMate は B2B SaaS でユーザー自身がアプリ内解除可能なため）。将来 Meta から必須化された場合は Phase 1.5 で `/api/instagram/data-deletion` を追加
 10. **App Review 提出**: 1-B item1〜9 が揃い、§3.2 提出ゲート（外部テスト可能 + 対象パーミッションで成功 API コール）を満たした時点で申請する。提出物は **§3.2「スクリーンキャストの要件」に従い、パーミッションごとに1本ずつ**（`instagram_business_basic` / `instagram_business_manage_insights`）+ 各パーミッションの利用目的の説明。**日本語 UI のため英語キャプション・注釈を付ける**（無注釈で出さない）。利用目的の説明は **1-B の実装画面で見せられる範囲に限定**する（Phase 2 のアカウントインサイト用途まで書くと、画面に無い機能への確認が発生する。同一パーミッション内のため Phase 2 実装後の追記に再審査は不要）
+    - **提出前チェック（§3.2 の決定を実行に落としたもの）**:
+      - 本番（`https://growmate.tokyo`）にデプロイ済みで、Instagram 機能が `INSTAGRAM_BETA_USER_IDS` により審査用アカウントにのみ見えている
+      - 審査用アカウントを作成し（`role: 'trial'`、allowlist に追加）、その Instagram プロアカウントを App Dashboard の Instagram Tester に追加済み
+      - 提出フォームの Platform Settings 欄にレビュアーのアクセス手段を記入済み（§3.2「レビュアーのアクセス手段」）
+      - 連携ボタンがブランドガイドラインに準拠し、アプリ内と収録の両方で見えている（§3.2「ログインボタンのブランド準拠」）
+      - 収録に `/login` のログアウト状態からの流れが含まれている（§3.2）
+      - 収録・レビュー作業中に他ユーザーの個人データが映る画面へ到達できないこと（allowlist 方式なら `/admin/*` は `isAdmin` で弾かれる）
 11. **プレビュー取得上限（Phase 1-5 詳細）**:
     - `fetchInstagramPreviewData` は `/me/media` から **最新 K=3 件**（`posted_at` 降順）のみ insights を取得する（1件1 API コール × 10s timeout のため全件取得は禁止）
     - 部分失敗時: 取得できた投稿のみカード表示し、失敗件数を Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（N件）」）で表示。プロフィール取得失敗時はプレビュー全体をエラー表示（空画面にしない）
@@ -124,6 +145,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 
 ※ タブ切替方式は 2026-07-22 定例で提案しクライアント同意済み（「どういう形がいいかは分からないが、まず連携から」との温度感のため、UI 詳細は Phase 2 着手時に管理表を見せてもらい再確認する）。
 
+0. **限定公開の解除**: 審査通過を確認したら `INSTAGRAM_BETA_USER_IDS` を空にする。`canAccessInstagram` が §7 の通常ロール判定にフォールバックし、Q4 の開放範囲（admin / paid / trial）に戻る。**コード変更は不要**。解除後に `/setup` の Instagram カードが対象ロール全員に出ることを確認する
 1. テーブル追加（§5）: `instagram_media` / `instagram_media_insights_daily` / `instagram_account_insights_daily`
 2. `src/server/services/instagramSyncService.ts` — 同期本体:
    - `/me/media` を cursor で辿り直近50件を upsert（打ち切り時は件数をログ）
@@ -282,7 +304,8 @@ create table public.instagram_account_insights_daily (
 
 ## 7. 認可・セキュリティ
 
-- 対象ロール: **admin / paid / trial に開放**（`unavailable` のみ `authMiddleware` の 403 で除外。2026-07-23 決定）。これは既存 Google 系連携（GSC / GA4 / Google Ads）と同一の扱い — 既存もロール制御を持たず `unavailable` 除外のみ。Instagram 独自のロールゲートは追加しない。Phase 3 の台本作成チャットは既存のトライアル日次制限（`checkTrialDailyLimit`）にそのまま乗せる
+- 対象ロール: **admin / paid / trial に開放**（`unavailable` のみ `authMiddleware` の 403 で除外。2026-07-23 決定）。これは既存 Google 系連携（GSC / GA4 / Google Ads）と同一の扱い — 既存もロール制御を持たず `unavailable` 除外のみ。**Instagram 独自の恒久的なロールゲートは追加しない**。Phase 3 の台本作成チャットは既存のトライアル日次制限（`checkTrialDailyLimit`）にそのまま乗せる
+- **限定公開ゲート（審査期間中の一時措置。2026-07-25 決定）**: 上記の開放範囲は **Phase 2 以降の最終形**であり、App Review 通過までは `canAccessInstagram`（`src/server/lib/instagram-permissions.ts`）が `INSTAGRAM_BETA_USER_IDS` の allowlist で対象を絞る。**環境変数が空なら上記のロール判定にフォールバック**するため、Phase 2 冒頭で変数を空にすれば最終形に戻る（§4 Phase 1-A / Phase 2 item0）。**`role: 'admin'` をゲートに使わない** — レビュアーに admin を渡すと `/admin/users` から全ユーザーの個人データが見えてしまうため（§4 Phase 1-A 参照）
 - Service Role 使用箇所: **OAuth callback（credential upsert）・トークン refresh 更新・連携解除（credential + Phase2 media purge）・cron 同期・手動同期**。いずれも明示的 `user_id` スコープ必須。認証ユーザー JWT からの write 経路は設けない
 - `INSTAGRAM_APP_SECRET` はサーバーのみ。クライアント・LLM 入力に credential/token を一切出さない
 - OAuth state は HMAC 署名 + httpOnly Cookie + セッション整合チェック（既存3系統と同一水準）
@@ -294,6 +317,8 @@ create table public.instagram_account_insights_daily (
 - [ ] `/setup` ハブに Instagram カードが出て connected / needsReauth / unlinked が区別表示される（Badge 文言は §11.1 準拠: 接続OK / 未設定 / 要再認証）
 - [ ] ERROR_MAP 経由でエラー Alert が表示される（state 改ざん等のエラー種別ごとの文言差し替えを確認）
 - [ ] `NODE_ENV==='production'` ビルド（`npm run build && npm run start` 相当）で `DEV_SAMPLE_*` 分岐に到達しないことを確認済み
+- [ ] `INSTAGRAM_BETA_USER_IDS` に自分の user_id だけを入れた状態で、allowlist 外のユーザーには `/setup` の Instagram カードが出ず `/setup/instagram` も開けない
+- [ ] `INSTAGRAM_BETA_USER_IDS` を空にすると §7 のロール判定に戻り、対象ロールに開放される（Phase 2 item0 の解除手順の先行検証）
 - [ ] クライアント（カオルさん）へ画面共有し、§11 ワイヤーフレームとの差分（Q2 の列構成含む）を確認済み
 
 ### Phase 1-B（実データ連携 + App Review 提出）
@@ -301,7 +326,11 @@ create table public.instagram_account_insights_daily (
 - [ ] 認可拒否・state 改ざん時に ERROR_MAP 経由でエラー Alert が表示され、credential が壊れない
 - [ ] 連携解除で credential が削除され unlinked に戻る
 - [ ] **`/privacy` に Instagram API 利用・Meta 共同利用・取得データ・削除手順（連携解除）が追記されている**（`disconnectInstagram` 実装後。App Review 提出物）
-- [ ] 実 OAuth 連携画面のスクリーンキャストを Meta App Review に提出済み（§3.2 提出ゲート充足）
+- [ ] 本番（`https://growmate.tokyo`）にデプロイされ、Instagram 機能が allowlist で審査用アカウントにのみ見えている（§3.2 審査環境）
+- [ ] 審査用アカウント（`role: 'trial'` + allowlist）でログイン〜連携〜プレビュー表示まで通しで動作する。`/admin/*` には到達できない
+- [ ] 提出フォームの Platform Settings 欄にレビュアーのアクセス手段を記入済み
+- [ ] 連携ボタンが Meta ブランドガイドラインに準拠し、アプリ内と収録の両方で見えている
+- [ ] 実 OAuth 連携画面のスクリーンキャストを Meta App Review に提出済み（§3.2 提出ゲート充足）。**パーミッションごとに1本**・ログアウト状態からのログインフロー込み・英語キャプション付き
 
 ### Phase 2
 - [ ] `/analytics` にブログ / Instagram タブが出て、既存ブログ一覧の挙動（フィルタ・ページネーション・URL パラメータ）が不変
@@ -321,15 +350,16 @@ create table public.instagram_account_insights_daily (
 - ~~Q1. 複数アカウント~~: **回答済み（2026-07-23）** — 1ユーザー=1 Instagram アカウント。§5.1 の `unique(user_id)` 設計を確定とする
 - **Q2. 現行管理表の項目**: 2026-07-22 定例で管理表の画面共有あり（テーマストック → 台本/キャプション/サムネコピー → 結果記録の構成）。一覧に出すべき列・並び順の正は Phase 2 着手時に管理表を共有してもらい確定する
 - **Q3. 日次推移の要否**（Phase 2 着手前までに確認で可）: 投稿ごとの指標の日別推移（5.3）は必要か。現在値だけなら Phase 2 が軽くなる。未確定の間、Phase 1 には影響しない
-- ~~Q4. 対象ロール~~: **回答済み（2026-07-23）** — admin / paid / trial に開放（`unavailable` のみ除外）。§7 参照
+- ~~Q4. 対象ロール~~: **回答済み（2026-07-23）** — admin / paid / trial に開放（`unavailable` のみ除外）。§7 参照。**ただしこれは Phase 2 以降の最終形**で、App Review 通過までは `INSTAGRAM_BETA_USER_IDS` の allowlist で限定公開する（2026-07-25 決定。§7 / §4 Phase 1-A / Phase 2 item0）
 - ~~Q5. 台本作成の形~~: **回答済み（2026-07-22 定例）** — ステップ制にせず自由壁打ち（相談役）型。詳細は Phase 3 冒頭参照
 
 なお 2026-07-22 定例のクライアント要望として「チケットに書かれた手段を鵜呑みにせず、目的を確認した上でより軽い代替案があれば先に提案してほしい」がある。上記 Q1〜Q4 の確認時も、選択肢と推奨案をセットで提示する。
 
 ## 10. 影響する既存画面・機能
 
-- `app/setup/page.tsx` / `src/components/SetupDashboard.tsx`（Instagram カード追加）
-- `app/setup/instagram/page.tsx` / `src/components/InstagramSetupClient.tsx`（新規）
+- `app/setup/page.tsx` / `src/components/SetupDashboard.tsx`（Instagram カード追加。**表示は `canAccessInstagram` でガード** — 審査期間中は allowlist 外に出さない）
+- `app/setup/instagram/page.tsx` / `src/components/InstagramSetupClient.tsx`（新規。同じくガード）
+- `src/server/lib/instagram-permissions.ts`（新規。限定公開ゲート。§7 / §4 Phase 1-A）
 - `app/analytics/page.tsx` / `AnalyticsClient.tsx`（タブ化。既存ブログ一覧はリグレッションなしが条件）
 - **`app/privacy/page.tsx`（Instagram API セクション追記 — Phase 1-B / App Review 必須）**
 - `src/server/services/supabaseService.ts`（Instagram credential CRUD 追加）
