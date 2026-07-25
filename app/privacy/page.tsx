@@ -9,7 +9,7 @@ import { ArrowLeft } from 'lucide-react';
 export const metadata: Metadata = {
   title: 'プライバシーポリシー - GrowMate',
   description:
-    'GrowMateのプライバシーポリシー。Google Search Console、Google Analytics、Google Ads APIの利用目的とデータ保護方針について説明します。',
+    'GrowMateのプライバシーポリシー。Google Search Console、Google Analytics、Google Ads、Instagram Graph APIの利用目的とデータ保護方針について説明します。',
 };
 
 export default function PrivacyPolicyPage() {
@@ -33,7 +33,7 @@ export default function PrivacyPolicyPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-6 border-b pb-4">
             プライバシーポリシー
           </h1>
-          <p className="text-sm text-gray-500 mb-8">最終更新日: 2026年5月19日</p>
+          <p className="text-sm text-gray-500 mb-8">最終更新日: 2026年7月26日</p>
 
           <div
             className="bg-gray-100 rounded-2xl p-6 sm:p-8 text-sm text-gray-700 mb-10"
@@ -113,6 +113,14 @@ export default function PrivacyPolicyPage() {
                       <br />
                       広告キャンペーン情報、広告グループ、クリック数、コンバージョン数等のパフォーマンス指標。
                     </li>
+                    <li>
+                      Instagram:{' '}
+                      <code className="bg-gray-100 px-2 py-1 rounded text-xs">
+                        instagram_business_basic, instagram_business_manage_insights
+                      </code>
+                      <br />
+                      アカウント情報、投稿一覧、投稿インサイト（リーチ、視聴数、いいね、保存数等）。
+                    </li>
                   </ul>
                 </li>
                 <li>
@@ -144,6 +152,10 @@ export default function PrivacyPolicyPage() {
                 <li>
                   Google Ads
                   の広告パフォーマンスを分析し、より効果的な広告コピーやキーワード設定の改善案を生成するため。
+                </li>
+                <li>
+                  Instagram
+                  の投稿実績（リーチ、視聴数、保存数等）を可視化し、コンテンツ改善の意思決定に活用するため。
                 </li>
                 <li>指標に基づき、AIが改善提案・コンテンツ案を生成するため。</li>
                 <li>
@@ -221,6 +233,7 @@ export default function PrivacyPolicyPage() {
                 <li>
                   Google LLC（Google Search Console API, Google Analytics API, Google Ads API）
                 </li>
+                <li>Meta Platforms, Inc.（Instagram Graph API）</li>
                 <li>Automattic Inc. / WordPress Foundation（WordPress API）</li>
                 <li>
                   Anthropic PBC / OpenAI, L.L.C.（AI応答生成。送信データはユーザー入力範囲に限定）
@@ -234,8 +247,9 @@ export default function PrivacyPolicyPage() {
             <section id="retention">
               <h2 className="text-xl font-bold text-gray-900 mb-3">6. データ保持期間と削除方法</h2>
               <p>
-                アカウント削除や GSC
-                連携解除の指示を受領後、関連データは原則30日以内に削除します。ログや監査記録は法令上必要な期間のみ保持し、その後安全な方法で廃棄します。
+                アカウント削除や GSC / Instagram
+                連携解除の指示を受領後、関連データは原則30日以内に削除します。Instagram
+                連携データ（認証情報・同期済み投稿データ）は、連携解除操作によりアプリ内から削除できます。ログや監査記録は法令上必要な期間のみ保持し、その後安全な方法で廃棄します。
               </p>
             </section>
 
@@ -247,7 +261,7 @@ export default function PrivacyPolicyPage() {
                   サポート窓口に連絡するか、アプリ内のアカウント情報ページから登録情報を変更できます。
                 </li>
                 <li>
-                  <strong>連携解除:</strong>{' '}
+                  <strong>Google 連携解除:</strong>{' '}
                   <Link
                     href="https://myaccount.google.com/permissions"
                     className="text-blue-600 underline"
@@ -257,6 +271,14 @@ export default function PrivacyPolicyPage() {
                     Google アカウントのアクセス権管理
                   </Link>
                   から「GrowMate」のアクセスを取り消せます。
+                </li>
+                <li>
+                  <strong>Instagram 連携解除:</strong> GrowMate の
+                  <Link href="/setup/instagram" className="text-blue-600 underline">
+                    Instagram 連携設定画面
+                  </Link>
+                  の「連携を解除」ボタンから、Instagram 認証情報および同期済み Instagram
+                  データを削除できます。
                 </li>
                 <li>
                   <strong>削除請求:</strong> support@dreamplanner.co.jp

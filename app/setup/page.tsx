@@ -7,6 +7,8 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { toGscConnectionStatus } from '@/server/lib/gsc-status';
 import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
+import { canAccessInstagram } from '@/server/lib/instagram-permissions';
+import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +51,19 @@ export default async function SetupPage() {
     customerId: result.customerId,
   };
 
+  let instagramStatus;
+  if (
+    canAccessInstagram({
+      userId: authResult.userId,
+      role: authResult.userDetails?.role ?? null,
+    })
+  ) {
+    const instagramResult = await getInstagramConnectionStatus();
+    if (instagramResult.success && instagramResult.data) {
+      instagramStatus = instagramResult.data;
+    }
+  }
+
   return (
     <SetupDashboard
       wordpressSettings={{
@@ -60,6 +75,7 @@ export default async function SetupPage() {
       gscStatus={gscStatus}
       ga4Status={ga4Status}
       googleAdsStatus={googleAdsStatus}
+      instagramStatus={instagramStatus}
     />
   );
 }

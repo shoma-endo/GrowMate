@@ -15,6 +15,7 @@ import {
   ShieldOff,
   RefreshCw,
   ArrowLeft,
+  Image as ImageIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { SetupDashboardProps } from '@/types/components';
@@ -39,6 +40,7 @@ export default function SetupDashboard({
   gscStatus,
   ga4Status,
   googleAdsStatus,
+  instagramStatus,
 }: SetupDashboardProps) {
   const [wpStatus, setWpStatus] = useState<WordPressConnectionStatus | null>(null);
   const [gscConnection, setGscConnection] = useState(gscStatus);
@@ -615,6 +617,118 @@ export default function SetupDashboard({
                         <Link href="/setup/google-ads">
                           <Settings size={16} className="mr-2" />
                           {googleAdsStatus.connected ? '連携を管理' : '連携を開始'}
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {instagramStatus && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <ImageIcon className="text-pink-500" size={24} />
+                Instagram連携
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {instagramStatus.needsReauth ? (
+                      <>
+                        <AlertTriangle className="text-orange-500" size={20} />
+                        <span className="text-orange-700 font-medium">要再認証</span>
+                      </>
+                    ) : instagramStatus.connected ? (
+                      <>
+                        <CheckCircle className="text-green-500" size={20} />
+                        <span className="text-green-700 font-medium">接続済み</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="text-orange-500" size={20} />
+                        <span className="text-orange-700 font-medium">未設定</span>
+                      </>
+                    )}
+                  </div>
+                  <Badge
+                    variant={
+                      instagramStatus.needsReauth
+                        ? 'default'
+                        : instagramStatus.connected
+                          ? 'default'
+                          : 'secondary'
+                    }
+                    className={`text-xs ${
+                      instagramStatus.needsReauth
+                        ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                        : instagramStatus.connected
+                          ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                          : 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
+                    {instagramStatus.needsReauth
+                      ? '要再認証'
+                      : instagramStatus.connected
+                        ? '接続OK'
+                        : '未設定'}
+                  </Badge>
+                </div>
+
+                {instagramStatus.needsReauth ? (
+                  <div className="text-sm space-y-2">
+                    <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
+                      <p className="text-orange-800 font-medium flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        Instagramの再認証が必要です
+                      </p>
+                      <p className="text-orange-700 text-xs mt-1">
+                        認証トークンが期限切れまたは取り消されています。再認証してください。
+                      </p>
+                    </div>
+                    {instagramStatus.username ? (
+                      <p className="text-gray-600">連携アカウント: @{instagramStatus.username}</p>
+                    ) : null}
+                  </div>
+                ) : instagramStatus.connected ? (
+                  <div className="text-sm text-gray-600 space-y-1">
+                    <p>リール・フィード投稿の実績データを取得します。</p>
+                    {instagramStatus.username ? (
+                      <p>連携アカウント: @{instagramStatus.username}</p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-600 space-y-1">
+                    <p>リール・フィード投稿の実績データを取得します。</p>
+                    <p className="text-xs text-gray-500">
+                      Instagramのプロアカウント（ビジネス/クリエイター）が必要です。
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    {instagramStatus.needsReauth ? (
+                      <Button asChild className="w-full bg-orange-600 hover:bg-orange-700">
+                        <Link href="/setup/instagram">
+                          <AlertTriangle size={16} className="mr-2" />
+                          再認証する
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button
+                        asChild
+                        variant={instagramStatus.connected ? 'outline' : 'default'}
+                        className={`w-full ${instagramStatus.connected ? 'border-2 border-gray-400 hover:border-gray-500' : ''}`}
+                      >
+                        <Link href="/setup/instagram">
+                          <Settings size={16} className="mr-2" />
+                          {instagramStatus.connected ? '設定へ' : '設定へ'}
                         </Link>
                       </Button>
                     )}
