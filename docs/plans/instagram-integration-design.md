@@ -509,6 +509,7 @@ create table public.instagram_account_insights_daily (
   - 部分失敗（`failed>0`）: `toast.warning('N件中M件の更新に失敗しました', { id: toastId })` + ツールバー直下 Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（M件）」）。取得できた行はテーブルに残す
   - `needsReauth`: `toast.error(..., { id: toastId })` + Alert「Instagramの再認証が必要です」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレントに未連携へフォールバックしない
   - `truncated`: `toast.info('直近50件まで取得しました', { id: toastId })`（cron は §4 Phase2-3 どおり成功扱い）
+  - **文言の置き場所**: トースト文言は `getInstagramSyncToastMessage` を置く `src/lib/instagram-sync.ts` に直書きする（`getQueryImportToastMessage` が `src/lib/gsc-import.ts` に直書きしている先例に倣う）。**`ERROR_MESSAGES` へは入れない** — 役割分担は「`ERROR_MESSAGES` = エラー種別の正本（種別ごとに1文言、エラーパスから参照される）」「トースト = 実行結果サマリの整形（件数を埋め込む可変文、結果オブジェクトからしか作れない）」。`needsReauth` / 部分失敗の **Alert 側は `ERROR_MESSAGES.INSTAGRAM.*` を参照する**ので、同じ画面で両方が併存する。日本語文言直書き禁止規約の対象は前者であり、後者は対象外
 - ブログタブ側のフィルタ・ページネーション UI は一切変更しない（受け入れ条件: リグレッションなし）
 
 ### 11.4 Phase 3 導線（参考。詳細設計時に確定）
