@@ -7,7 +7,7 @@
 
 - 現在 [Adzviser](https://adzviser.com/) + スプレッドシートで行っている Instagram のリール・フィード投稿の実績管理を GrowMate に内製化する。
 - 取得したインサイトデータを土台に、`/chat` で AI と壁打ちしながらリール台本を作成できる状態を最終ゴールとする。
-- Meta の App Review（Advanced Access）提出に向け、**Phase 1-A でクライアント合意用の UI モック（ハードコーディング）を先に作り、Phase 1-B で OAuth 連携・実 Graph API（`/me`・`/media`・`/insights`）・プライバシーポリシー追記・連携解除を実装したうえで審査提出する**（Meta 公式要件: 外部テスト可能＋各パーミッションで最低1回の成功 API コール。詳細は §4 参照）。Phase 2 以降は審査通過後に着手する。
+- Meta の App Review（Advanced Access）提出に向け、**Phase 1-A でクライアント合意用の UI モック（ハードコーディング）を先に作り、Phase 1-B で OAuth 連携・実 Graph API（`/me`・`/media`・`/insights`）・プライバシーポリシー追記・連携解除を実装したうえで審査提出する**（Meta 公式要件: 外部テスト可能＋対象パーミッションで最低1回の成功 API コール＋パーミッション別スクリーンキャスト。詳細は §3.2 / §4 参照）。Phase 2 以降は審査通過後に着手する。
 
 ## 2. スコープ / 非スコープ
 
@@ -42,8 +42,11 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 - 必要スコープは `instagram_business_basic` + `instagram_business_manage_insights` の2つのみ。
 - Advanced Access には App Review が必要。**審査前でも App Dashboard でアプリロール（Instagram Tester 等）に追加したプロアカウントなら全機能が動く**（Phase 1-B の実 API 動作確認・審査提出前テストで利用）。
 - 対象アカウントは Instagram Business / Creator（プロアカウント）必須。Facebook ページ紐付けは不要。
-- **App Review 提出ゲート（Phase 1-B 最小）**: [App Review ガイドライン](https://developers.facebook.com/documentation/instagram-platform/app-review#permission--feature-requests) に基づき、レビュアーが外部からアプリをロード・テストでき、**各パーミッション（`instagram_business_basic` / `instagram_business_manage_insights`）で最低1回の成功 API コール**が確認できる状態で提出する。具体的には OAuth 連携 → `/me` + `/me/media` + insights 取得 → 画面表示の一連の流れを実装したうえでスクリーンキャストを添付する。
+- **App Review 提出ゲート（Phase 1-B 最小）**: [App Review ガイドライン](https://developers.facebook.com/documentation/instagram-platform/app-review#permission--feature-requests) に基づき、レビュアーが外部からアプリをロード・テストでき（"Confirm that your app can be loaded and tested externally"）、**対象パーミッションで最低1回の成功 API コール**が確認できる状態で提出する。公式は "To request Advanced Access to **certain** permissions, you need to make at least 1 successful API call" と限定表現のため、`instagram_business_basic` / `instagram_business_manage_insights` が該当するかは**実装時に Advanced Access 要件表で確認**する（該当する前提で作れば過不足はない）。具体的には OAuth 連携 → `/me` + `/me/media` + insights 取得 → 画面表示の一連の流れを実装したうえでスクリーンキャストを添付する。
 - 審査提出物: **Phase 1-B 実装画面のスクリーンキャスト**（実 OAuth 連携 → 実データ表示）、利用目的の説明、**プライバシーポリシー URL（`/privacy` に Instagram 追記 — §4 Phase1-B item9）**、**データ削除手順（連携解除 — §4 Phase1-B / §5.5。`disconnectInstagram` 実装後に PP へ明記）**
+- **スクリーンキャストの要件（公式ガイドラインより。録画前に決めること）**:
+  - **パーミッションごとに1本用意する**。公式は各リクエストに対し "Describe how your app uses that specific permission or feature" と "Upload a screencast showing the **end-to-end user experience** for that specific permission or feature" を要求する。`instagram_business_basic`（連携 → プロフィール・投稿一覧表示）と `instagram_business_manage_insights`（投稿ごとのリーチ・視聴・保存表示）で分ける
+  - **言語**: 公式は "Use English as the app UI language – If possible, please set the app UI language to English before recording the screen recording." と指示する。**GrowMate は日本語専用 UI のため英語化はしない**。代わりに公式が代替として挙げる **英語キャプション・ツールチップで画面要素とボタンの意味を補う**（"Provide captions and tool-tips" / "Explain the meaning of buttons and other UI elements"）。日本語 UI のまま無注釈で提出しない
 
 ### 3.3 制約・注意点
 
@@ -107,7 +110,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - `app/privacy/page.tsx` — 既存 §5「第三者サービスと共同利用」に **Meta Platforms, Inc.（Instagram Graph API）** を追加（Google LLC 等と並列）。§6「データ保持期間と削除方法」に Instagram 連携データの保持・削除を追記。§7「ユーザーの権利と手続き」に Instagram 連携解除手順（`/setup/instagram` の解除ボタン → `disconnectInstagram` で credential および同期済み Instagram データを削除）を既存 GSC 連携解除記載と並列で追記。metadata.description も Instagram を含める
    - **「第三者提供なし」とは書かない**（Meta API 利用は §5 の共同利用先追加で明示。既存 `app/privacy/page.tsx` §5 の Google 等と同型）
    - Meta Data Deletion Callback URL は Phase 1 では設けず、手順ページ方式とする（GrowMate は B2B SaaS でユーザー自身がアプリ内解除可能なため）。将来 Meta から必須化された場合は Phase 1.5 で `/api/instagram/data-deletion` を追加
-10. **App Review 提出**: 1-B item1〜9 が揃い、§3.2 提出ゲート（外部テスト可能 + 各パーミッションで成功 API コール）を満たした時点で、実画面のスクリーンキャスト + 利用目的の説明を添えて申請する
+10. **App Review 提出**: 1-B item1〜9 が揃い、§3.2 提出ゲート（外部テスト可能 + 対象パーミッションで成功 API コール）を満たした時点で申請する。提出物は **§3.2「スクリーンキャストの要件」に従い、パーミッションごとに1本ずつ**（`instagram_business_basic` / `instagram_business_manage_insights`）+ 各パーミッションの利用目的の説明。**日本語 UI のため英語キャプション・注釈を付ける**（無注釈で出さない）。利用目的の説明は **1-B の実装画面で見せられる範囲に限定**する（Phase 2 のアカウントインサイト用途まで書くと、画面に無い機能への確認が発生する。同一パーミッション内のため Phase 2 実装後の追記に再審査は不要）
 11. **プレビュー取得上限（Phase 1-5 詳細）**:
     - `fetchInstagramPreviewData` は `/me/media` から **最新 K=3 件**（`posted_at` 降順）のみ insights を取得する（1件1 API コール × 10s timeout のため全件取得は禁止）
     - 部分失敗時: 取得できた投稿のみカード表示し、失敗件数を Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（N件）」）で表示。プロフィール取得失敗時はプレビュー全体をエラー表示（空画面にしない）
