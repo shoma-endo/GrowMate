@@ -72,7 +72,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 調査の結果、**大規模な事前リファクタは不要**。OAuth 基盤（`src/server/lib/oauth-state.ts` の HMAC 署名 state 生成・検証）は Google 非依存の汎用実装であり、そのまま4系統目として再利用できる。実施するのは以下のみ:
 
 - **R-1（推奨・成功パスの state 検証のみ）**: `generateOAuthState` / `verifyOAuthState`（`src/server/lib/oauth-state.ts`）は既に汎用化済み。追加共通化対象は **state Cookie の set/検証 + セッション userId 整合チェック** のみを `src/server/lib/oauth-flow.ts` に抽出する。**エラー応答形式・baseUrl 取得・Cookie 名は GSC（JSON）と Google Ads（`?error=` リダイレクト）で既に異なるため、callback 全体の共通化は行わない**。Instagram OAuth は **Google Ads 型（失敗時 `NextResponse.redirect('/setup/instagram?error=...')` + セットアップ画面の ERROR_MAP）** で新規実装し、R-1 で抽出した state 検証ヘルパーのみ再利用する。GSC/Ads 既存 callback の置き換えは本 PR の必須スコープ外（別 PR 可）。
-- **R-2（Phase 2 に内包）**: `app/analytics/AnalyticsClient.tsx` のタブ化。既存のブログ一覧を `TabsContent value="blog"` に包む構造変更。`app/ga4-dashboard/Ga4DashboardClient.tsx:435` の Tabs 実装（`grid grid-cols-2` の TabsList）を踏襲。
+- **R-2（Phase 2 に内包）**: `app/analytics/AnalyticsClient.tsx` のタブ化。既存のブログ一覧を `TabsContent value="blog"` に包む構造変更。`app/ga4-dashboard/Ga4DashboardClient.tsx:435` の Tabs 実装（`grid grid-cols-2` の TabsList）を踏襲。**ただしタブ UI 自体を Instagram 連携済みユーザーだけに出す**ため、未連携時は既存のまま（`Tabs` で包まず現行のレイアウトを返す）分岐を入れる（§4 Phase 2 item4）。
 
 ### Phase 1: OAuth 連携 + 疎通表示（審査前 MVP）
 
@@ -164,12 +164,16 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
      ```
      **トークン延長もこの cron 内で実施**（期限7日前を切った credential を refresh）
    - **`truncated` の扱い**: 50件上限で打ち切った場合 `truncated: true` をレスポンスに含め **`console.warn` で記録するが cron ジョブ自体は成功扱い**（意図した上限動作のため `count-batch` profile の失敗条件に含めない）。`failed > 0` のみ workflow 警告対象
-4. UI: `app/analytics/AnalyticsClient.tsx` をタブ化（R-2）。Instagram タブ:
-   - 投稿一覧テーブル: サムネイル、種別（リール/フィード/カルーセル）、キャプション冒頭、投稿日、リーチ、視聴数(views)、いいね、コメント、保存、シェア、総インタラクション、リールは平均視聴時間。permalink への外部リンク
-   - 種別フィルタ（リール/フィード）、期間フィルタ（`posted_at` 範囲指定。開始日～終了日）、ソート（投稿日 / リーチ / views）
-   - ページネーションは既存ブログ一覧と同じ URL パラメータ + `Link` 方式（`ig_page` など名前空間を分けてブログ側の `page` と衝突させない）
-   - 未連携時は `/setup/instagram` への導線を表示（サイレントに空表示しない）
-5. データ取得: Server Component（`app/analytics/page.tsx`）でタブに応じて `instagramMediaService.getPage(userId, ...)` を並列取得に追加。PostgREST `db-max-rows = 1000` 制限があるため一覧はページング取得（10件/頁）とし、全件突合は行わない
+4. UI: `app/analytics/AnalyticsClient.tsx` をタブ化（R-2）。**タブ UI は Instagram 連携済みユーザーにだけ出す（2026-07-25 決定）**:
+   - **未連携ユーザーの `/analytics` は現行のまま**（タブバーを出さない）。`/analytics` は作業画面であり、使わない機能のタブを常設しない。発見導線は `/setup` の Instagram カード（§11.1）が既に担っているので二重に持たない
+   - この方式なら **限定公開ゲート（§4 Phase 1-A）の参照箇所を増やさずに済む** — allowlist 外のユーザーは連携できない → 連携済みにならない → タブも出ない、が推移的に成立する
+   - 未連携ユーザーが `?tab=instagram` を直接開いた場合は `blog` にフォールバックする（§11.3 の「未指定時は `blog`」と同じ扱い）
+   - 連携解除するとタブは消え、現行レイアウトに戻る
+   - Instagram タブ（連携済みユーザーのみ）:
+     - 投稿一覧テーブル: サムネイル、種別（リール/フィード/カルーセル）、キャプション冒頭、投稿日、リーチ、視聴数(views)、いいね、コメント、保存、シェア、総インタラクション、リールは平均視聴時間。permalink への外部リンク
+     - 種別フィルタ（リール/フィード）、期間フィルタ（`posted_at` 範囲指定。開始日～終了日）、ソート（投稿日 / リーチ / views）
+     - ページネーションは既存ブログ一覧と同じ URL パラメータ + `Link` 方式（`ig_page` など名前空間を分けてブログ側の `page` と衝突させない）
+5. データ取得: Server Component（`app/analytics/page.tsx`）の既存 `Promise.all` に **`getInstagramConnectionStatus`** を追加し、その結果でタブ表示を分岐する。連携済みかつ `tab=instagram` のときだけ `instagramMediaService.getPage(userId, ...)` も取得する（未連携ユーザーに Instagram の DB クエリを走らせない）。PostgREST `db-max-rows = 1000` 制限があるため一覧はページング取得（10件/頁）とし、全件突合は行わない
 
 ### Phase 3: AI チャット連携（台本作成）
 
@@ -333,7 +337,10 @@ create table public.instagram_account_insights_daily (
 - [ ] 実 OAuth 連携画面のスクリーンキャストを Meta App Review に提出済み（§3.2 提出ゲート充足）。**パーミッションごとに1本**・ログアウト状態からのログインフロー込み・英語キャプション付き
 
 ### Phase 2
-- [ ] `/analytics` にブログ / Instagram タブが出て、既存ブログ一覧の挙動（フィルタ・ページネーション・URL パラメータ）が不変
+- [ ] **未連携ユーザーの `/analytics` が現行のまま**（タブバーが出ない）。既存ブログ一覧の挙動もレイアウトも不変
+- [ ] 連携済みユーザーの `/analytics` にブログ / Instagram タブが出て、ブログ側の挙動（フィルタ・ページネーション・URL パラメータ）が不変
+- [ ] 未連携ユーザーが `?tab=instagram` を直接開くと `blog` にフォールバックする
+- [ ] 連携解除するとタブが消え、現行レイアウトに戻る
 - [ ] Instagram タブに投稿一覧＋指標が表示され、種別フィルタ・ソートが機能する
 - [ ] 手動更新・hourly cron（`profile: count-batch`）の両方で同期され、`last_synced_at` が進む
 - [ ] 初回同期でアカウント insights が直近30日分取り込まれる
@@ -341,7 +348,7 @@ create table public.instagram_account_insights_daily (
 - [ ] 50件打ち切り時 `truncated: true` がログに残り cron は成功扱い
 - [ ] 連携解除で credential + media/insights が purge される
 - [ ] トークンが cron で自動延長される（期限7日前）
-- [ ] 未連携ユーザーには連携導線が表示される
+- [ ] 未連携ユーザーへの連携導線は `/setup` の Instagram カード（§11.1）のみで、`/analytics` には出さない
 
 検証は `quality-gate` に従い `npm run verify`（audit → lint → test → build → knip）+ 上記画面の手動確認。純関数（インサイト整形・期限判定 `ensureValidInstagramToken` の分岐・cursor ページング処理）には vitest を追加する。
 
@@ -360,7 +367,7 @@ create table public.instagram_account_insights_daily (
 - `app/setup/page.tsx` / `src/components/SetupDashboard.tsx`（Instagram カード追加。**表示は `canAccessInstagram` でガード** — 審査期間中は allowlist 外に出さない）
 - `app/setup/instagram/page.tsx` / `src/components/InstagramSetupClient.tsx`（新規。同じくガード）
 - `src/server/lib/instagram-permissions.ts`（新規。限定公開ゲート。§7 / §4 Phase 1-A）
-- `app/analytics/page.tsx` / `AnalyticsClient.tsx`（タブ化。既存ブログ一覧はリグレッションなしが条件）
+- `app/analytics/page.tsx` / `AnalyticsClient.tsx`（**連携済みユーザーのみタブ化**。未連携ユーザーの画面は現行のまま変えない — §4 Phase 2 item4 / §11.3）
 - **`app/privacy/page.tsx`（Instagram API セクション追記 — Phase 1-B / App Review 必須）**
 - `src/server/services/supabaseService.ts`（Instagram credential CRUD 追加）
 - `.github/workflows/hourly-cron.yml`（matrix に `instagram-sync` / `profile: count-batch` 追加）
@@ -488,7 +495,16 @@ create table public.instagram_account_insights_daily (
 
 `Ga4DashboardClient.tsx:435` の Tabs パターン。既存ブログ一覧は `TabsContent value="blog"` に無変更で内包。
 
+**タブ UI は Instagram 連携済みユーザーにだけ出す**（§4 Phase 2 item4）。未連携時は `Tabs` で包まず、下記「未連携時」の現行レイアウトをそのまま返す。
+
 ```text
+【未連携（既存ユーザーの大半）】— 現行のまま。タブバーを出さない
+ページヘッダ（h1「コンテンツ一覧」 + 操作ボタン群）
+┌─ Card: ブログ一覧（フィルタ + テーブル + ページネーション）─┐
+└──────────────────────────────────────────────┘
+  ※ /analytics には Instagram の連携導線を置かない（導線は §11.1 の /setup カード）
+
+【連携済み】
 ページヘッダ（既存のまま: タイトル + 操作ボタン群）
 
 ┌─ TabsList (grid grid-cols-2 h-12) ───────────┐
@@ -524,7 +540,7 @@ create table public.instagram_account_insights_daily (
 ```
 
 - **URL パラメータ契約**（ブログ既存キー `page` / `start` / `end` / `category` / `uncategorized` / `unread_suggestion` は Instagram タブでも**変更・上書きしない**）:
-  - `tab`: `blog` | `instagram`。**未指定時は `blog`**（既存 `/analytics?...` のリグレッション防止）
+  - `tab`: `blog` | `instagram`。**未指定時は `blog`**（既存 `/analytics?...` のリグレッション防止）。**未連携ユーザーが `tab=instagram` を指定した場合も `blog` にフォールバック**する（タブ UI 自体が無いため）
   - タブ切替は `router.push` / `Link` で URL 更新必須（`Ga4DashboardClient.tsx:435` の `defaultValue` 非 URL 同期パターンは**踏襲しない**）
   - タブ切替時の頁リセット: **切替先タブの頁パラメータのみ** 1 にリセット（`tab=instagram` へ切替時は `ig_page=1` をセットし `page` は保持、`tab=blog` へ切替時は `page=1` をセットし `ig_*` は保持）
   - `ig_page`: Instagram タブのページ番号（1始まり）。未指定時 1
