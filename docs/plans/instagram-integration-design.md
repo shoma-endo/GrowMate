@@ -1,13 +1,13 @@
 # Instagram 連携（Business Login for Instagram）設計書
 
-作成日: 2026-07-23 / ステータス: レビュー完了（2026-07-23）・実装着手可
+作成日: 2026-07-23 / ステータス: レビュー修正中（2026-07-25）
 クライアント合意: 2026-07-22 定例MTG（Lark minutes `objpyf287e2otlex7a1m8n25`）で「まず連携（審査申請）から進める」ことを合意済み
 
 ## 1. 背景・目的
 
 - 現在 [Adzviser](https://adzviser.com/) + スプレッドシートで行っている Instagram のリール・フィード投稿の実績管理を GrowMate に内製化する。
 - 取得したインサイトデータを土台に、`/chat` で AI と壁打ちしながらリール台本を作成できる状態を最終ゴールとする。
-- Meta の App Review（Advanced Access）に先立ち、**開発者・テスターアカウントで OAuth 連携 → `/me`・`/media`・`/insights` の取得・表示が動く状態**（審査用スクリーンキャストが撮れる状態）を最初のマイルストーンとする。
+- Meta の App Review（Advanced Access）提出に向け、**Phase 1-A でクライアント合意用の UI モック（ハードコーディング）を先に作り、Phase 1-B で OAuth 連携・実 Graph API（`/me`・`/media`・`/insights`）・プライバシーポリシー追記・連携解除を実装したうえで審査提出する**（Meta 公式要件: 外部テスト可能＋各パーミッションで最低1回の成功 API コール。詳細は §4 参照）。Phase 2 以降は審査通過後に着手する。
 
 ## 2. スコープ / 非スコープ
 
@@ -40,9 +40,10 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 ### 3.2 スコープと審査
 
 - 必要スコープは `instagram_business_basic` + `instagram_business_manage_insights` の2つのみ。
-- Advanced Access には App Review が必要。**審査前でも App Dashboard でアプリロール（Instagram Tester 等）に追加したプロアカウントなら全機能が動く** → Phase 1 の動作実証はこれで行う。
+- Advanced Access には App Review が必要。**審査前でも App Dashboard でアプリロール（Instagram Tester 等）に追加したプロアカウントなら全機能が動く**（Phase 1-B の実 API 動作確認・審査提出前テストで利用）。
 - 対象アカウントは Instagram Business / Creator（プロアカウント）必須。Facebook ページ紐付けは不要。
-- 審査提出物: スクリーンキャスト（連携 → データ表示の一連の流れ）、利用目的の説明、**プライバシーポリシー URL（`/privacy` に Instagram 追記 — §4 Phase1-9）**、**データ削除手順（連携解除 — §4 Phase1-9 / §5.5）**
+- **App Review 提出ゲート（Phase 1-B 最小）**: [App Review ガイドライン](https://developers.facebook.com/documentation/instagram-platform/app-review#permission--feature-requests) に基づき、レビュアーが外部からアプリをロード・テストでき、**各パーミッション（`instagram_business_basic` / `instagram_business_manage_insights`）で最低1回の成功 API コール**が確認できる状態で提出する。具体的には OAuth 連携 → `/me` + `/me/media` + insights 取得 → 画面表示の一連の流れを実装したうえでスクリーンキャストを添付する。
+- 審査提出物: **Phase 1-B 実装画面のスクリーンキャスト**（実 OAuth 連携 → 実データ表示）、利用目的の説明、**プライバシーポリシー URL（`/privacy` に Instagram 追記 — §4 Phase1-B item9）**、**データ削除手順（連携解除 — §4 Phase1-B / §5.5。`disconnectInstagram` 実装後に PP へ明記）**
 
 ### 3.3 制約・注意点
 
@@ -63,9 +64,28 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 
 ### Phase 1: OAuth 連携 + 疎通表示（審査前 MVP）
 
-**ゴール: テスターアカウントで 連携 → `/setup/instagram` にプロフィール・投稿・インサイトが表示される。審査スクリーンキャストが撮れる。**
+**時系列（クライアント指示・2026-07-25）**: 1-A（UI モック・ハードコーディング）を先に作りクライアント（カオルさん）と画面合意を取る。**Meta App Review 提出は 1-B 最小（OAuth + 実成功 API コール + 外部検証可能）が揃ってから行う**。Phase 2 以降は審査通過後に着手する。
 
-1. Meta 開発者アプリ作成（Instagram API with Instagram Login 製品追加、リダイレクト URI 登録、Instagram Tester 追加）— 手動作業
+#### Phase 1-A: UI モック（ハードコーディング。クライアント合意用）
+
+**ゴール: `/setup` の Instagram カードと `/setup/instagram` が §11.1/11.2 の全状態（未設定・接続OK・要再認証・エラー・空・部分失敗）を実画面として表示する。データは固定値（ハードコーディング）。クライアントレビュー・画面合意が目的であり、App Review 提出物ではない。**
+
+- 実サービス（`instagramService.ts` 等）・DB テーブル・OAuth ルートの実コードは **不要**（審査通過後の Phase 1-B で実装）
+- Meta 開発者アプリ作成（Instagram API with Instagram Login 製品追加、パーミッション申請フォーム記入）はダッシュボード上の設定作業のみで、1-A の UI 実装と並行して進める（審査提出そのものにアプリ登録が前提のため）
+- **既存の踏襲パターン**: `src/server/services/googleAdsNegativeKeywordsSuggestionService.ts` の `useMockGoogleAds = process.env.NODE_ENV === 'development'` + `DEV_SAMPLE_SEARCH_TERMS` 定数と同型。新方式（fixtureファイル分離・URL パラメータでの状態切替 UI 等）は導入しない
+- 型定義: `src/types/instagram.ts` に `InstagramConnectionStatus` / `InstagramProfile` / `InstagramMediaPreview` を **Phase 1-B の実 API 戻り値と同じ形状**で先に定義する。以降 Phase 1-B はこの型を変更せず中身だけ実装する
+- `src/server/actions/instagramSetup.actions.ts` に `getInstagramConnectionStatus` / `fetchInstagramPreviewData` を **戻り値型は Phase 1-B と同一のまま** 先に実装し、`process.env.NODE_ENV === 'development'` の間は関数末尾に定義した `DEV_SAMPLE_INSTAGRAM_STATUS` / `DEV_SAMPLE_INSTAGRAM_PROFILE` / `DEV_SAMPLE_INSTAGRAM_MEDIA`（未連携・連携済み・要再認証・投稿0件・部分失敗の5パターン）を返す
+- 状態確認は `DEV_SAMPLE_*` の定数を一時的に差し替えて目視する（既存踏襲。トグル UI 等の専用切替導線は作らない＝本番導線を汚さない）
+- 「連携を解除」ボタンは §11.2 の見た目のみ実装（`disconnectInstagram` の実処理は Phase 1-B。1-A では確認ダイアログの表示までで良い）
+- UI 実装: §11.1（`SetupDashboard.tsx` Instagram カード）・§11.2（`InstagramSetupClient.tsx`, `app/setup/instagram/page.tsx`）をここで完成させる。**Phase 1-B ではこのコンポーネント群は無変更** — データソースを `DEV_SAMPLE_*` から実サービス呼び出しへ差し替えるのみ
+- クライアントレビュー: カオルさんに §11 ワイヤーフレームとの差分（特に Q2 の一覧列構成の温度感）を確認してもらい、1-B 着手前に画面合意を取る
+- **1-A では `app/privacy/page.tsx` の追記・App Review 提出は行わない**（PP 追記と削除手順の明記は `disconnectInstagram` 実装後の 1-B で行う。§4 Phase1-B item9 参照）
+
+#### Phase 1-B: 実データ連携 + App Review 提出（審査申請の最小実装）
+
+**ゴール: テスターアカウントで実際に OAuth 連携し `/setup/instagram` にプロフィール・投稿・インサイトが実 API 経由で表示される。この実装を Meta App Review に提出する（§3.2 提出ゲート参照）。**
+
+1. Meta 開発者アプリ作成（Instagram API with Instagram Login 製品追加、リダイレクト URI 登録、Instagram Tester 追加）— **1-A 時点で完了済みの前提**（申請作業は 1-A 参照）
 2. `instagram_credentials` テーブル（§5）+ RLS
 3. OAuth ルート（**エラー UX 正本: Google Ads 型**。`app/api/google-ads/oauth/callback/route.ts` + `app/setup/google-ads/page.tsx` の ERROR_MAP パターン。state 検証のみ `oauth-state.ts` / R-1 の `oauth-flow.ts` を参照。GSC callback は JSON 応答のため OAuth エラー UX の参照に使わない）:
    - `app/api/instagram/oauth/start/route.ts` — `generateOAuthState(userId, cookieSecret)` で state 生成、Cookie `ig_oauth_state`（httpOnly, sameSite=lax, 15分）、`www.instagram.com/oauth/authorize` へ 302
@@ -74,26 +94,26 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - `src/server/services/instagramService.ts` — Graph API クライアント（exchangeCodeForTokens / exchangeForLongLivedToken / refreshLongLivedToken / fetchProfile / fetchMedia / fetchMediaInsights / fetchAccountInsights）。AbortController 10秒 timeout、`!response.ok` 時は status+body を `console.error`（プレフィックス `[Instagram]`）してから throw
    - `src/server/services/instagramTokenService.ts` — `ensureValidInstagramToken(credential)`: 期限まで**7日以上**なら再利用、7日未満かつ発行24時間超なら refresh + `updateInstagramCredential` で永続化、期限切れなら `needsReauth` 扱い
    - `src/server/lib/instagram-status.ts` — `toInstagramConnectionStatus(credential)`: 戻り値型は `{ connected: boolean, needsReauth?: boolean }` で、`gsc-status.ts` と同型。未連携は `{ connected: false }`、要再認証は `{ connected: true, needsReauth: true }`、正常は `{ connected: true, needsReauth: false }`（または omit）。UI は3状態を区別表示する
-   - **credential 永続化 API（Google Ads 同型、`SupabaseService` 直付け）**: `src/server/services/supabaseService.ts` に以下を追加（Phase 1 必須成果物）
-     - `saveInstagramCredential(userId, payload)` — OAuth callback / 初回連携時の upsert（`onConflict: user_id`）
+   - **credential 永続化 API（`SupabaseService` 直付け）**: `src/server/services/supabaseService.ts` に以下を追加（Phase 1 必須成果物）
+     - `saveInstagramCredential(userId, payload)` — OAuth callback / 初回連携時の upsert（`onConflict: user_id`）。**`saveGoogleAdsCredential` と同型**
      - `getInstagramCredential(userId)` — ステータス・プレビュー・トークン延長用取得
-     - `updateInstagramCredential(userId, payload)` — refresh 後の token 更新
+     - `updateInstagramCredential(userId, payload)` — refresh 後の token 部分更新。**`updateGscCredential` 寄せ**（`access_token` / `access_token_expires_at` / `access_token_issued_at` 等のみ更新）
      - `deleteInstagramCredential(userId)` — 連携解除。Phase 2 以降は §5.5 の purge もここから呼ぶ
-5. Server Actions: `src/server/actions/instagramSetup.actions.ts` — `getInstagramConnectionStatus` / `disconnectInstagram` / `fetchInstagramPreviewData`（プロフィール+**最新 K 件（K=3）**の投稿+各投稿インサイトを疎通表示用に取得。§4 Phase1-10 参照）。戻り値は `ServerActionResult` + `needsReauth` 規約（google-integrations スキル準拠）
-6. UI:
-   - `app/setup/instagram/page.tsx` + `src/components/InstagramSetupClient.tsx` — 連携ボタン、連携ステータス、連携済み時はプロフィール＋最新投稿（最大3件）＋主要インサイトのプレビュー表示（審査スクリーンキャスト用を兼ねる）、解除ボタン、`needsReauth` 時の再連携導線。**`app/setup/google-ads/page.tsx` と同型の `ERROR_MAP`**（`searchParams.error` → `ERROR_MESSAGES.INSTAGRAM.*`）を `page.tsx` に実装
-   - `src/components/SetupDashboard.tsx` に Instagram カード追加、`app/setup/page.tsx` でステータス取得
+5. Server Actions: `src/server/actions/instagramSetup.actions.ts` — `getInstagramConnectionStatus` / `disconnectInstagram` / `fetchInstagramPreviewData`（プロフィール+**最新 K 件（K=3）**の投稿+各投稿インサイトを疎通表示用に取得。§4 Phase1-11 参照）。戻り値は `ServerActionResult` + `needsReauth` 規約（google-integrations スキル準拠）
+6. UI: **Phase 1-A で実装済み。追加実装なし。** `getInstagramConnectionStatus` / `fetchInstagramPreviewData` の `DEV_SAMPLE_*` 分岐に対して else 側（実サービス呼び出し）を追加するのみ。`app/setup/instagram/page.tsx` の `ERROR_MAP`（`searchParams.error` → `ERROR_MESSAGES.INSTAGRAM.*`）・`SetupDashboard.tsx` の Instagram カードも Phase 1-A のものをそのまま使う
 7. `ERROR_MESSAGES.INSTAGRAM.*` を `src/domain/errors/error-messages.ts` に追加（AUTH_FAILED, MISSING_PARAMS, STATE_COOKIE_MISMATCH, STATE_USER_MISMATCH, INVALID_STATE, TOKEN_EXCHANGE_FAILED, AUTH_EXPIRED, CONNECTION_FAILED, API_ERROR, NOT_PROFESSIONAL_ACCOUNT, UNKNOWN_ERROR 等。日本語文言直書き禁止規約準拠）
 8. 環境変数: `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` / `INSTAGRAM_REDIRECT_URI`（`.env.example` 追記）。`COOKIE_SECRET` は既存を共用
-9. **App Review 必須成果物（Meta 審査提出前に完了）**:
-   - `app/privacy/page.tsx` — Instagram API 利用目的・取得データ種別・保管期間・第三者提供なし・ユーザーによる削除方法（§5.5 連携解除手順への言及）を追記。metadata.description も Instagram を含める
-   - データ削除手順: **連携解除（`/setup/instagram` の解除ボタン → `disconnectInstagram`）で credential および同期済み Instagram データを削除**する旨をプライバシーポリシーに明記。Meta Data Deletion Callback URL は Phase 1 では設けず、手順ページ方式とする（GrowMate は B2B SaaS でユーザー自身がアプリ内解除可能なため。将来 Meta から Callback 必須化された場合は Phase 1.5 で `/api/instagram/data-deletion` を追加）
-10. **プレビュー取得上限（Phase 1-5 詳細）**:
+9. **App Review 必須成果物（1-B で完了。`disconnectInstagram` 実装後に PP 追記）**:
+   - `app/privacy/page.tsx` — 既存 §5「第三者サービスと共同利用」に **Meta Platforms, Inc.（Instagram Graph API）** を追加（Google LLC 等と並列）。§6「データ保持期間と削除方法」に Instagram 連携データの保持・削除を追記。§7「ユーザーの権利と手続き」に Instagram 連携解除手順（`/setup/instagram` の解除ボタン → `disconnectInstagram` で credential および同期済み Instagram データを削除）を既存 GSC 連携解除記載と並列で追記。metadata.description も Instagram を含める
+   - **「第三者提供なし」とは書かない**（Meta API 利用は §5 の共同利用先追加で明示。既存 `app/privacy/page.tsx` §5 の Google 等と同型）
+   - Meta Data Deletion Callback URL は Phase 1 では設けず、手順ページ方式とする（GrowMate は B2B SaaS でユーザー自身がアプリ内解除可能なため）。将来 Meta から必須化された場合は Phase 1.5 で `/api/instagram/data-deletion` を追加
+10. **App Review 提出**: 1-B item1〜9 が揃い、§3.2 提出ゲート（外部テスト可能 + 各パーミッションで成功 API コール）を満たした時点で、実画面のスクリーンキャスト + 利用目的の説明を添えて申請する
+11. **プレビュー取得上限（Phase 1-5 詳細）**:
     - `fetchInstagramPreviewData` は `/me/media` から **最新 K=3 件**（`posted_at` 降順）のみ insights を取得する（1件1 API コール × 10s timeout のため全件取得は禁止）
     - 部分失敗時: 取得できた投稿のみカード表示し、失敗件数を Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（N件）」）で表示。プロフィール取得失敗時はプレビュー全体をエラー表示（空画面にしない）
     - 投稿0件の場合は「投稿がありません」プレースホルダーを表示（審査画面が真っ白にならないこと）
 
-**このフェーズで App Review を提出**（instagram_business_basic + instagram_business_manage_insights）。審査待ちの間に Phase 2 を進められる（テスターアカウントで開発継続可能）。
+**App Review は Phase 1-B 完了時点で提出する**（instagram_business_basic + instagram_business_manage_insights、実 OAuth 連携画面のスクリーンキャストを添付）。**Phase 2 は審査通過後に着手する**。審査待機中に進められるのは UI/デザイン調整など Meta 非依存の作業のみ。
 
 ### Phase 2: データ同期 + analytics 一覧（タブ化）
 
@@ -108,8 +128,8 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - 各メディア（FEED/REELS のみ）の insights を取得し、`instagram_media` に最新値を反映＋当日分を `instagram_media_insights_daily` にスナップショット（日次推移用）
    - アカウント insights: **`last_synced_at` が null の初回同期は直近 D=30 日分**（昨日まで）を取得。2回目以降は `last_synced_at` の日付〜昨日までを upsert（欠損日は API 応答に従い補完）
    - 部分失敗は投稿単位で continue し、**必ず `console.error` でログ**（skipped カウントのみのサイレント処理禁止）。結果に `{ synced, failed, skipped, truncated }` を含める
-3. 同期トリガー:
-   - 手動: Instagram タブの「データを更新」ボタン（Server Action）
+3. 同期トリガー（**専用インポート画面は設けない**。既存3系統の実装調査の結果、GA4は`/setup/ga4`内ボタンのみ・GSCは`/gsc-import`と`gsc-dashboard`inline最新化を併存と、実装は都度判断されておりパターンは一様でない。Instagramは同期パラメータが固定（直近50件・直近30日）でGSC importのような期間フォームが不要な点、既にhourly cronで自動同期がある点から、GSC dashboard の `OverviewTab.tsx` inline「最新化」と同じ**確認ダイアログ + 単一トースト**方式を採用する）:
+   - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ 確認 `Dialog`（`OverviewTab.tsx:153-186` と同型）→ Server Action。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再認証/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**ダイアログ文言・トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
    - 自動: `app/api/cron/instagram-sync/route.ts`（`CRON_SECRET` Bearer 検証、`maxDuration = 300`、`gsc-evaluate` と同型のユーザーバッチ処理）を `.github/workflows/hourly-cron.yml` の matrix に追加:
      ```yaml
      - id: instagram-sync
@@ -127,6 +147,8 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 5. データ取得: Server Component（`app/analytics/page.tsx`）でタブに応じて `instagramMediaService.getPage(userId, ...)` を並列取得に追加。PostgREST `db-max-rows = 1000` 制限があるため一覧はページング取得（10件/頁）とし、全件突合は行わない
 
 ### Phase 3: AI チャット連携（台本作成）
+
+**本仕様は方針のみ。別仕様で `llm-context-memory` Review Checklist（Context Assembly Contract・token budget 等）を充足するまで実装着手禁止。**
 
 **ゴール: Instagram の実績データを文脈として持った状態で `/chat` でリール台本の壁打ちができる。**
 
@@ -164,7 +186,7 @@ create table public.instagram_credentials (
 );
 ```
 
-- RLS: **`SELECT` のみ** `get_accessible_user_ids(auth.uid())` ベース（`20260127090000` の google_ads_credentials 現行世代と同型。オーナー/スタッフ共有モデルを崩さない）。**`INSERT` / `UPDATE` / `DELETE` ポリシーは設けない** — OAuth callback・トークン refresh・連携解除はすべて **Service Role + 明示的 `.eq('user_id', userId)`**（`supabaseService.saveInstagramCredential` 等）経由のみ。認証ユーザー JWT からの credential 書き込み経路は存在しない
+- RLS: **`SELECT` のみ** `get_accessible_user_ids(auth.uid())` ベース（オーナー/スタッフ共有モデルを崩さない）。**`INSERT` / `UPDATE` / `DELETE` ポリシーは意図的に設けない** — `google_ads_credentials`（`20260127090000`）は SELECT/INSERT/UPDATE/DELETE の4ポリシーを持つが、Instagram credential は access_token を含むため **JWT 経由の write 経路を完全に遮断**し、OAuth callback・トークン refresh・連携解除はすべて **Service Role + 明示的 `.eq('user_id', userId)`**（`supabaseService.saveInstagramCredential` 等）経由のみとする
 - `user_id` に B-tree インデックス（unique 制約で兼用）
 - `updated_at` 自動更新トリガー（既存トリガー関数を再利用）
 - トークンは既存3系統と同じく**平文 text + RLS 保護**（暗号化は現行方針踏襲。変える場合は全系統一括の別課題とする）
@@ -264,13 +286,19 @@ create table public.instagram_account_insights_daily (
 
 ## 8. 受け入れ条件・検証
 
-### Phase 1
-- [ ] テスターアカウントで `/setup/instagram` から連携でき、プロフィール（username, フォロワー数等）・**最新3件**の投稿・インサイトが画面に表示される（部分失敗時は取得分のみ表示 + Alert）
-- [ ] `/setup` ハブに Instagram カードが出て connected / needsReauth / unlinked が区別表示される
+### Phase 1-A（ハードコーディング UI モック・クライアント合意用）
+- [ ] `DEV_SAMPLE_*` を切り替えることで `/setup/instagram` が未設定・接続OK・要再認証・投稿0件・部分失敗の5状態を画面表示できる
+- [ ] `/setup` ハブに Instagram カードが出て connected / needsReauth / unlinked が区別表示される（Badge 文言は §11.1 準拠: 接続OK / 未設定 / 要再認証）
+- [ ] ERROR_MAP 経由でエラー Alert が表示される（state 改ざん等のエラー種別ごとの文言差し替えを確認）
+- [ ] `NODE_ENV==='production'` ビルド（`npm run build && npm run start` 相当）で `DEV_SAMPLE_*` 分岐に到達しないことを確認済み
+- [ ] クライアント（カオルさん）へ画面共有し、§11 ワイヤーフレームとの差分（Q2 の列構成含む）を確認済み
+
+### Phase 1-B（実データ連携 + App Review 提出）
+- [ ] テスターアカウントで `/setup/instagram` から実際に連携でき、プロフィール（username, フォロワー数等）・**最新3件**の投稿・インサイトが実 API 経由で画面に表示される（部分失敗時は取得分のみ表示 + Alert）
 - [ ] 認可拒否・state 改ざん時に ERROR_MAP 経由でエラー Alert が表示され、credential が壊れない
 - [ ] 連携解除で credential が削除され unlinked に戻る
-- [ ] **`/privacy` に Instagram API 利用・取得データ・削除手順（連携解除）が追記されている**
-- [ ] 審査用スクリーンキャストが撮影できる（プレビュー空画面にならない）
+- [ ] **`/privacy` に Instagram API 利用・Meta 共同利用・取得データ・削除手順（連携解除）が追記されている**（`disconnectInstagram` 実装後。App Review 提出物）
+- [ ] 実 OAuth 連携画面のスクリーンキャストを Meta App Review に提出済み（§3.2 提出ゲート充足）
 
 ### Phase 2
 - [ ] `/analytics` にブログ / Instagram タブが出て、既存ブログ一覧の挙動（フィルタ・ページネーション・URL パラメータ）が不変
@@ -300,7 +328,7 @@ create table public.instagram_account_insights_daily (
 - `app/setup/page.tsx` / `src/components/SetupDashboard.tsx`（Instagram カード追加）
 - `app/setup/instagram/page.tsx` / `src/components/InstagramSetupClient.tsx`（新規）
 - `app/analytics/page.tsx` / `AnalyticsClient.tsx`（タブ化。既存ブログ一覧はリグレッションなしが条件）
-- **`app/privacy/page.tsx`（Instagram API セクション追記 — App Review 必須）**
+- **`app/privacy/page.tsx`（Instagram API セクション追記 — Phase 1-B / App Review 必須）**
 - `src/server/services/supabaseService.ts`（Instagram credential CRUD 追加）
 - `.github/workflows/hourly-cron.yml`（matrix に `instagram-sync` / `profile: count-batch` 追加）
 - `src/domain/errors/error-messages.ts`（INSTAGRAM 追加）
@@ -317,15 +345,15 @@ create table public.instagram_account_insights_daily (
 
 ```text
 ┌─ Card ──────────────────────────────────────┐
-│ [Instagram icon] Instagram連携   [Badge]    │  Badge: 連携済み(default+green) /
+│ [Instagram icon] Instagram連携   [Badge]    │  Badge: 接続OK(default+green) /
 │ リール・フィード投稿の実績データを取得します │        要再認証(default+orange) /
-│                                              │        未連携(secondary+gray)
-│ 連携アカウント: @username（連携済み時のみ）  │
+│                                              │        未設定(secondary+gray)
+│ 連携アカウント: @username（接続OK時のみ）    │
 │                          [設定へ →] Button   │  → /setup/instagram
 └──────────────────────────────────────────────┘
 ```
 
-- Badge 色は `SetupDashboard.tsx:277-290` 準拠: 連携済み=`variant="default"` + `bg-green-100 text-green-800`、要再認証=`variant="default"` + `bg-orange-100 text-orange-800`（**destructive は使わない**）、未連携=`variant="secondary"` + gray。
+- Badge 文言・色は `SetupDashboard.tsx:277-290`（GSC カード）準拠: 接続OK=`variant="default"` + `bg-green-100 text-green-800`、要再認証=`variant="default"` + `bg-orange-100 text-orange-800`（**destructive は使わない**）、未設定=`variant="secondary"` + gray。GA4 カード（`SetupDashboard.tsx:561-565`）と同一文言
 - ステータス取得中は他カード（GSC 等）と同型: `Loader2` スピナー + `Badge variant="secondary" className="text-xs"`「確認中」（`SetupDashboard.tsx:269-275` 準拠）。
 - `needsReauth` 時はカード内に注意文言（AlertTriangle アイコン +「Instagramの再認証が必要です」）。GSC/GA4 カードと同一パターン（`SetupDashboard.tsx:255,298` 準拠）。
 
@@ -438,9 +466,19 @@ create table public.instagram_account_insights_daily (
 
 ┌─ ツールバー ─────────────────────────────────┐
 │ 種別: [すべて|リール|フィード]  期間: [開始]〜[終了] │
-│ 並び順: [投稿日▼]      [RefreshCw データを更新]   │  ← 同期 Server Action。実行中 disabled
+│ 並び順: [投稿日▼]      [RefreshCw 最新化]        │  ← クリックで確認 Dialog（下記）
+│ 最終同期: 2026-07-23 10:00                    │  ← last_synced_at。未同期時は非表示
 └──────────────────────────────────────────────┘
-  （同期結果 UI は下記「同期結果」参照）
+
+「最新化」クリック時（`OverviewTab.tsx:153-186` 同型の確認 Dialog）:
+┌─ Dialog ──────────────────────────────────────┐
+│ Instagramデータの同期                          │
+│ Instagramから最新の投稿・指標を取得し、一覧を  │
+│ 更新します。直近50件の投稿が対象です。         │
+│                     [キャンセル] [同期を実行]  │
+└──────────────────────────────────────────────┘
+  → 確認後ダイアログを閉じ `toast.loading('Instagramデータを取得中...')`
+  → 完了時に同一トーストを更新（結果は下記「同期結果」参照）
 
 ┌─ Card: 投稿一覧 Table ───────────────────────┐
 │ サムネ│種別  │キャプション│投稿日│リーチ│視聴│…│
@@ -462,12 +500,12 @@ create table public.instagram_account_insights_daily (
   - `ig_sort`: ソートキー `posted_at` | `reach` | `views`。未指定時 `posted_at` desc
 - 列構成（初期案。Q2 の管理表確認で最終確定）: サムネイル / 種別 Badge / キャプション冒頭（1行省略）/ 投稿日 / リーチ / 視聴数 / いいね / コメント / 保存 / シェア / 総インタラクション / 平均視聴時間（リールのみ）/ リンク。横スクロールは `overflow-x-auto` で許容しつつ、列の意味をヘッダツールチップで補足
 - **未連携時**: テーブルの代わりに空状態カード —「Instagramが未連携です。連携すると投稿の実績が表示されます」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレント空表示にしない
-- **連携済みだが同期0件**: 「まだデータがありません。［データを更新］を押すと取得します」
-- **同期結果 UI**（手動「データを更新」の Server Action 戻り値。§6 エラーパス準拠）:
-  - 成功（`failed=0`）: Sonner toast「N件を更新しました」。`last_synced_at` をツールバー横に表示（例: 「最終同期: 2026-07-23 10:00」）
-  - 部分失敗（`failed>0`）: Sonner toast warning「N件中M件の更新に失敗しました」+ ツールバー直下 Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（M件）」）。取得できた行はテーブルに残す
-  - `needsReauth`: Sonner toast error + Alert「Instagramの再認証が必要です」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレントに未連携へフォールバックしない
-  - `truncated`: Sonner toast info「直近50件まで取得しました」（cron は §4 Phase2-3 どおり成功扱い）
+- **連携済みだが同期0件**: 「まだデータがありません。［最新化］を押すと取得します」
+- **同期結果 UI**（`getInstagramSyncToastMessage(result)` に集約。`OverviewTab.tsx` の `getQueryImportToastMessage` と同型。§6 エラーパス準拠。**単一の toast を `id` で更新し続ける**方式で、成功時も失敗時も新規 toast を積み増さない）:
+  - 成功（`failed=0`）: `toast.success('N件を更新しました', { id: toastId })`。`last_synced_at` をツールバー右に反映
+  - 部分失敗（`failed>0`）: `toast.warning('N件中M件の更新に失敗しました', { id: toastId })` + ツールバー直下 Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（M件）」）。取得できた行はテーブルに残す
+  - `needsReauth`: `toast.error(..., { id: toastId })` + Alert「Instagramの再認証が必要です」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレントに未連携へフォールバックしない
+  - `truncated`: `toast.info('直近50件まで取得しました', { id: toastId })`（cron は §4 Phase2-3 どおり成功扱い）
 - ブログタブ側のフィルタ・ページネーション UI は一切変更しない（受け入れ条件: リグレッションなし）
 
 ### 11.4 Phase 3 導線（参考。詳細設計時に確定）
@@ -480,9 +518,10 @@ create table public.instagram_account_insights_daily (
 - OAuth **エラー UX 正本**: `app/api/google-ads/oauth/callback/route.ts`（失敗時 redirect）、`app/setup/google-ads/page.tsx`（ERROR_MAP）
 - OAuth state 検証: `src/server/lib/oauth-state.ts`
 - GSC callback（**JSON 応答。Instagram には非参照**）: `app/api/gsc/oauth/{start,callback}/route.ts`
-- credential CRUD 同型: `SupabaseService.saveGoogleAdsCredential` / `getGoogleAdsCredential` / `deleteGoogleAdsCredential`
+- credential CRUD 参照: `SupabaseService.saveGoogleAdsCredential`（初回 upsert）/ `updateGscCredential`（token 部分更新）/ `getGoogleAdsCredential` / `deleteGoogleAdsCredential`
 - ステータス判定: `src/server/lib/gsc-status.ts`, `ga4-status.ts`
 - 同期バッチ: `src/server/services/gscEvaluationService.ts`, `app/api/cron/gsc-evaluate/route.ts`
 - cron matrix + profile: `.github/workflows/hourly-cron.yml`（`count-batch` プロファイル）
 - タブ UI: `app/ga4-dashboard/Ga4DashboardClient.tsx:435`
+- **inline 同期の確認 Dialog + 単一トースト正本**: `app/gsc-dashboard/components/OverviewTab.tsx:111-186`（`handleSync`, `isSyncDialogOpen`, `getQueryImportToastMessage` 相当）
 - LLM 変数注入: `src/server/services/gscSuggestionService.ts` + `prompt_templates`
