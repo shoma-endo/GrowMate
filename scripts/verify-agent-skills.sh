@@ -28,6 +28,7 @@ EXPECTED_SKILLS=(
   quality-gate
   react
   spec-review
+  spec-to-html
   supabase
   update-docs
 )
