@@ -1285,7 +1285,10 @@ def render_er(d: dict, dg_id: str) -> str:
     max_h = 0
     for i, t in enumerate(tables):
         x = 20 + i * (tw + gap)
-        name = _wrap(t["name"], tw - pad * 2, fs)
+        # 丸数字バッジは右上（半径13）に描くので、テーブル名の折り返し幅から避ける。
+        # 引かないとテーブル数が増えて幅が狭まったときに名前がバッジの下に潜る。
+        badge_w = 36 if t.get("order") else 0
+        name = _wrap(t["name"], tw - pad * 2 - badge_w, fs)
         body: list[str] = []
         for ln in t.get("lines", []):
             body += _wrap(ln, tw - pad * 2, fs)
