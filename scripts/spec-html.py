@@ -2,7 +2,7 @@
 """docs/plans の仕様書ビュー HTML を、単一の自己完結 HTML に束ねる。
 
 `.agents/skills/spec-to-html/SKILL.md` が正本。本スクリプトは「結合」「全文ビューの生成」
-「安全検査」を担い、意味を再構成するビュー（01〜03）の内容は生成側の責務とする。
+「安全検査」「整合性チェック」を担い、意味を再構成するビュー（01〜03）の内容は生成側の責務とする。
 
 使い方:
     # 全文ビューの生成（原本 Markdown からの決定論的変換。LLM を介さない）
@@ -23,6 +23,13 @@
     # 安全検査のみ
     python3 scripts/spec-html.py check docs/plans/_html/<slug>.html
 
+整合性チェック（`build` に `--source` を渡したときだけ動く）:
+    `core.yaml` の source_refs（行番号）と原本を毎回突合し、行番号のズレ・参照先の改訂・
+    未参照の章を fail / warn / info として成果物の先頭バーとコンソールに自己申告する。
+    基準は `<出力先と同名のディレクトリ>/.snapshot.json`（毎回更新）。前回生成からの
+    章の追加・削除・変更も同じバーに出る。**fail が出てもビルドは落とさない**
+    （レビューの commit を妨げないため）。落ちるのは下記の安全検査だけ。
+
 設計上の制約（安全検査で強制）:
     生成物はオフラインで自己完結していること。外部スクリプト・外部CSS・ネットワーク通信・
     ブラウザストレージ・cookie・親フレームへのアクセスを含めない。iframe を使わないため
@@ -33,10 +40,17 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
+
+try:
+    import yaml
+except ImportError:  # core.yaml を読めないだけで、結合と全文変換は成立する
+    yaml = None  # type: ignore[assignment]
 
 # ── 安全検査 ────────────────────────────────────────────────────────────────
 # 文書全体に対する検査。マークアップとして書かれた時点で外部依存が発生するもの。
@@ -176,6 +190,34 @@ body{padding:0}
 .tabbar .theme{border:1px solid var(--border);background:var(--bg);border-radius:999px;
   padding:6px 13px;font-size:12.5px;cursor:pointer;color:var(--muted);font-family:inherit}
 .scorebar{top:53px !important;z-index:10 !important}
+
+/* ===== 整合性チェック（例外ファースト: fail があるときだけ開く） ===== */
+.ig{background:var(--card);border-bottom:1px solid var(--border)}
+.ig>summary{cursor:pointer;list-style:none;padding:7px 18px;font-size:12px;color:var(--muted);
+  display:flex;gap:11px;align-items:center;flex-wrap:wrap}
+.ig>summary::-webkit-details-marker{display:none}
+.ig>summary::before{content:"\\25B8";color:var(--muted)}
+.ig[open]>summary::before{content:"\\25BE"}
+.ig>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ig-badge{border:1px solid var(--border);border-radius:999px;padding:2px 11px;font-weight:600}
+.ig-badge.ok{color:var(--grn,#1a7f4b)}
+.ig-badge.warn{color:var(--amber,#a86a00)}
+.ig-badge.fail{color:var(--red,#c0392b)}
+.ig-diff{color:var(--muted)}
+.ig-hint{color:var(--muted)}
+.ig-more{color:var(--muted);font-size:11.5px;margin-left:4px}
+.ig-body{padding:0 18px 12px;font-size:12.5px}
+.ig-row{display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--border)}
+.ig-row>span:nth-child(2){flex:1;min-width:0}
+.ig-lv{flex:0 0 5.4em;font-weight:700;font-size:11px;letter-spacing:.05em}
+.ig-lv.fail{color:var(--red,#c0392b)}
+.ig-lv.warn{color:var(--amber,#a86a00)}
+.ig-lv.info{color:var(--muted)}
+.ig-lv.ig-cat{flex:0 0 auto;white-space:nowrap}
+/* タブをまたぐジャンプボタン（再構成ビュー → 全文の該当章） */
+.jump{border:1px solid var(--border);background:var(--bg);border-radius:999px;padding:1px 10px;
+  font-size:11.5px;cursor:pointer;color:var(--accent);font-family:inherit;white-space:nowrap;margin:2px 4px 2px 0}
+.jump:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 """
 
 SHELL_JS = """
@@ -202,15 +244,31 @@ SHELL_JS = """
 
   /* タブ切り替え */
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.tabbar .tab'));
+  function activate(panelId){
+    tabs.forEach(function(o){
+      var on = (o.dataset.panel === panelId);
+      o.setAttribute('aria-selected', String(on));
+      document.getElementById(o.dataset.panel).hidden = !on;
+    });
+  }
   tabs.forEach(function(t){
     t.addEventListener('click', function(){
-      tabs.forEach(function(o){
-        var on = (o === t);
-        o.setAttribute('aria-selected', String(on));
-        document.getElementById(o.dataset.panel).hidden = !on;
-      });
+      activate(t.dataset.panel);
       window.scrollTo(0,0);
     });
+  });
+
+  /* タブをまたぐジャンプ。data-goto は全文ビューの章 id（見出し由来で安定）を指す */
+  document.addEventListener('click', function(ev){
+    var el = ev.target;
+    var btn = (el && el.closest) ? el.closest('[data-goto]') : null;
+    if(!btn){ return; }
+    var target = document.getElementById(btn.getAttribute('data-goto'));
+    if(!target){ return; }
+    var panel = target.closest('.panel');
+    if(panel){ activate(panel.id); }
+    if(target.tagName === 'DETAILS'){ target.open = true; }
+    target.scrollIntoView({block:'start'});
   });
 })();
 """
@@ -218,6 +276,301 @@ SHELL_JS = """
 
 def _escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+# ── 整合性チェックと前回比 diff ──────────────────────────────────────────────
+# 再構成ビュー（01〜03）は LLM が「そのときの原本」から書く。原本が改訂されても
+# ビューは黙って古いままになり、`core.yaml` の source_refs（行番号）は静かにズレる。
+# そこで生成のたびに宣言（core.yaml）と実体（原本 Markdown）を突合し、
+# 乖離を fail / warn / info として生成物自身とコンソールに自己申告する。
+# 検査は自己申告に留め、ビルドは落とさない（レビューの commit を妨げないため）。
+
+SNAPSHOT_NAME = ".snapshot.json"
+
+_SEC_NUM_RE = re.compile(r"^(\d+(?:\.\d+)*)[.．]?\s")
+
+
+def _hash(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _sec_id(title: str) -> str:
+    """見出しから安定した ID を作る。
+
+    連番（ft-sec-1, 2, …）にすると章を1つ挿入しただけで以降の ID がすべてずれ、
+    他ビューから張ったジャンプが静かに壊れる。ID は見出しの内容だけから決める。
+    """
+    m = _SEC_NUM_RE.match(title)
+    if m:
+        return "ft-s" + m.group(1).replace(".", "-")
+    return "ft-h" + hashlib.sha1(title.encode("utf-8")).hexdigest()[:8]
+
+
+def _assign_sec_ids(titles: list[str]) -> list[str]:
+    """見出し一覧に一意な ID を割り当てる。全文ビューと整合性チェックで同じ結果を使う。"""
+    out: list[str] = []
+    seen: dict[str, int] = {}
+    for t in titles:
+        sid = _sec_id(t)
+        seen[sid] = seen.get(sid, 0) + 1
+        out.append(sid if seen[sid] == 1 else f"{sid}-{seen[sid]}")
+    return out
+
+
+def _spec_outline(md: str) -> list[tuple[str, int, int]]:
+    """原本の `##` 見出しを (見出し, 開始行, 終了行) で返す。行番号は1始まりで原本と一致する。"""
+    lines = md.splitlines()
+    fence: str | None = None
+    cuts: list[tuple[int, str]] = []
+    for i, line in enumerate(lines):
+        m = _FENCE_RE.match(line)
+        if m:
+            if fence is None:
+                fence = m.group(1)
+            elif len(m.group(1)) >= len(fence) and not m.group(2).strip():
+                fence = None
+            continue
+        if fence is None and line.startswith("## "):
+            cuts.append((i, line[3:].strip()))
+
+    out: list[tuple[str, int, int]] = []
+    for k, (start, title) in enumerate(cuts):
+        end = cuts[k + 1][0] if k + 1 < len(cuts) else len(lines)
+        out.append((title, start + 1, end))
+    return out
+
+
+def _collect_refs(node: object, out: list[dict]) -> None:
+    """core.yaml の任意の深さにある source_refs を集める。"""
+    if isinstance(node, dict):
+        refs = node.get("source_refs")
+        if isinstance(refs, list):
+            for r in refs:
+                if isinstance(r, dict):
+                    out.append(r)
+        for v in node.values():
+            _collect_refs(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            _collect_refs(v, out)
+
+
+def _load_snapshot(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def integrity(spec_path: Path, bundle: Path) -> tuple[list[dict], dict, dict]:
+    """原本と core.yaml・前回スナップショットを突合する。
+
+    戻り値は (findings, diff, snapshot)。findings は level / message / hint / goto を持つ。
+    """
+    md = spec_path.read_text(encoding="utf-8")
+    lines = md.splitlines()
+    total = len(lines)
+    outline = _spec_outline(md)
+    sec_ids = _assign_sec_ids([t for t, _, _ in outline])
+
+    sections = {
+        sid: {"title": title, "hash": _hash("\n".join(lines[start - 1:end]))}
+        for sid, (title, start, end) in zip(sec_ids, outline)
+    }
+
+    prev = _load_snapshot(bundle / SNAPSHOT_NAME)
+    prev_secs: dict = prev.get("sections") or {}
+    prev_refs: dict = prev.get("refs") or {}
+    has_prev = bool(prev.get("at"))
+
+    findings: list[dict] = []
+
+    def add(level: str, message: str, hint: str = "", goto: str = "") -> None:
+        findings.append({"level": level, "message": message, "hint": hint, "goto": goto})
+
+    # ── 前回比 diff（章単位） ──
+    diff: dict = {"prevAt": prev.get("at") if has_prev else None,
+                  "added": [], "removed": [], "changed": []}
+    if has_prev:
+        for sid, cur in sections.items():
+            old = prev_secs.get(sid)
+            if old is None:
+                diff["added"].append({"id": sid, "title": cur["title"]})
+            elif old.get("hash") != cur["hash"]:
+                diff["changed"].append({"id": sid, "title": cur["title"]})
+        for sid, old in prev_secs.items():
+            if sid not in sections:
+                diff["removed"].append({"id": sid, "title": old.get("title", sid)})
+
+    # ── core.yaml の source_refs（行番号）の突合 ──
+    core_path = bundle / "core.yaml"
+    refs: list[dict] = []
+    snap_refs: dict = {}
+
+    if not core_path.is_file():
+        add("info", f"{core_path} が無いため参照突合をスキップした")
+    elif yaml is None:
+        add("info", "PyYAML が無いため core.yaml の参照突合をスキップした", "pip install pyyaml")
+    else:
+        try:
+            _collect_refs(yaml.safe_load(core_path.read_text(encoding="utf-8")), refs)
+        except yaml.YAMLError as exc:  # type: ignore[union-attr]
+            add("fail", f"core.yaml をパースできない: {exc}")
+
+    # 行番号が全体的にズレると参照は一斉に壊れる。1件ずつ並べると本当に見るべき
+    # 「指す章が変わった」が埋もれるので、同じ診断はまとめて1行にする。
+    changed_sids = {d["id"] for d in diff["changed"]}
+    covered_sids: set[str] = set()
+    moved: list[str] = []    # 指す章そのものが変わった（決定的なズレ）
+    shifted: list[str] = []  # 章は改訂されていないのに参照先本文が変わった（行番号ズレ）
+    revised: list[str] = []  # 章自体が改訂された（ビューの記述が古い可能性）
+
+    for ref in refs:
+        rid = str(ref.get("id") or "?")
+        loc = ref.get("lines")
+        if not isinstance(loc, dict):
+            continue
+        start, end = loc.get("start"), loc.get("end")
+        if not isinstance(start, int) or not isinstance(end, int):
+            add("warn", f"参照 {rid} の lines が数値でない")
+            continue
+
+        if start < 1 or end < start or end > total:
+            add("fail",
+                f"参照 {rid} の行範囲 {start}–{end} が原本の範囲外（原本は {total} 行）",
+                "仕様書の改訂に core.yaml の source_refs が追従していない")
+            continue
+
+        hit = [(sid, title) for sid, (title, s, e) in zip(sec_ids, outline)
+               if not (end < s or start > e)]
+        for sid, _ in hit:
+            covered_sids.add(sid)
+        heading = hit[0][1] if hit else None
+        goto = hit[0][0] if hit else ""
+
+        cur_hash = _hash("\n".join(lines[start - 1:end]))
+        old = prev_refs.get(rid)
+        if old:
+            if old.get("heading") != heading:
+                add("fail",
+                    f"参照 {rid} の指す章が変わった: 「{old.get('heading')}」→「{heading}」",
+                    "core.yaml の source_refs を貼り直す", goto)
+                moved.append(rid)
+            elif old.get("hash") != cur_hash:
+                (revised if goto in changed_sids else shifted).append(rid)
+        elif len(hit) > 1:
+            # 前回比が取れない初回のみ、範囲が章をまたぐこと自体を疑う
+            add("warn",
+                f"参照 {rid}（{start}–{end}）が {len(hit)} 章にまたがる: "
+                + " / ".join(t for _, t in hit),
+                "行番号がズレて隣の章まで含んでいる可能性がある", goto)
+        snap_refs[rid] = {"heading": heading, "hash": cur_hash, "lines": [start, end]}
+
+    def _ids(items: list[str]) -> str:
+        return " / ".join(items[:8]) + (f" …他 {len(items) - 8} 件" if len(items) > 8 else "")
+
+    if shifted:
+        add("fail",
+            f"章の内容は変わっていないのに参照先本文が変わった参照が {len(shifted)} 件: {_ids(shifted)}",
+            "行番号がズレている。core.yaml の source_refs を貼り直す")
+    if revised:
+        add("warn",
+            f"参照先の章が改訂された参照が {len(revised)} 件: {_ids(revised)}",
+            "これらを根拠にした再構成ビューの記述が古い可能性がある")
+
+    # ── どの参照にも触れられていない章 ──
+    if refs:
+        untouched = [(sid, sections[sid]["title"]) for sid in sec_ids if sid not in covered_sids]
+        if untouched:
+            add("info",
+                f"core.yaml がどの source_ref でも触れていない章が {len(untouched)} 件: "
+                + " / ".join(t for _, t in untouched[:6])
+                + (" …" if len(untouched) > 6 else ""),
+                "再構成ビューから抜けている可能性がある（全文タブには収録済み）",
+                untouched[0][0])
+
+    snapshot = {
+        "at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "spec": str(spec_path),
+        "sections": sections,
+        "refs": snap_refs,
+    }
+    return findings, diff, snapshot
+
+
+_LEVEL_LABEL = {"fail": "FAIL", "warn": "WARN", "info": "INFO"}
+
+
+def _diff_chips(items: list[dict], label: str) -> str:
+    if not items:
+        return ""
+    chips = "".join(
+        f'<button type="button" class="jump" data-goto="{_escape(i["id"])}">'
+        f'{_escape(i["title"])}</button>'
+        for i in items[:8]
+    )
+    more = f'<span class="ig-more">他 {len(items) - 8} 件</span>' if len(items) > 8 else ""
+    return (f'<div class="ig-row"><span class="ig-lv info ig-cat">{label} {len(items)}</span>'
+            f"<span>{chips}{more}</span></div>")
+
+
+def _render_integrity(findings: list[dict], diff: dict) -> str:
+    """整合性チェックの結果を、タブの外に置く折りたたみパネルとして描く。
+
+    例外ファースト: fail があるときだけ開いた状態で出し、正常なら畳んで置く。
+    """
+    n_fail = sum(1 for f in findings if f["level"] == "fail")
+    n_warn = sum(1 for f in findings if f["level"] == "warn")
+    n_info = sum(1 for f in findings if f["level"] == "info")
+
+    if n_fail:
+        badge_cls, badge = "fail", f"整合性 fail {n_fail} / warn {n_warn}"
+    elif n_warn:
+        badge_cls, badge = "warn", f"整合性 warn {n_warn}"
+    else:
+        badge_cls, badge = "ok", "整合性 OK"
+    if n_info:
+        badge += f" / info {n_info}"
+
+    if diff.get("prevAt"):
+        n_ch = len(diff["changed"]) + len(diff["added"]) + len(diff["removed"])
+        summary_diff = (
+            f'<span class="ig-diff">前回生成 {_escape(diff["prevAt"])} から '
+            + (f'変更 {len(diff["changed"])} / 追加 {len(diff["added"])} / 削除 {len(diff["removed"])} 章'
+               if n_ch else "章の変更なし")
+            + "</span>"
+        )
+    else:
+        summary_diff = '<span class="ig-diff">前回スナップショットなし（今回が基準）</span>'
+
+    order = {"fail": 0, "warn": 1, "info": 2}
+    rows = "".join(
+        f'<div class="ig-row"><span class="ig-lv {f["level"]}">{_LEVEL_LABEL[f["level"]]}</span>'
+        f'<span>{_escape(f["message"])}'
+        + (f'<span class="ig-hint"> — {_escape(f["hint"])}</span>' if f["hint"] else "")
+        + "</span>"
+        + (f'<button type="button" class="jump" data-goto="{_escape(f["goto"])}">→ 全文</button>'
+           if f["goto"] else "")
+        + "</div>"
+        for f in sorted(findings, key=lambda x: order[x["level"]])
+    )
+    if not rows:
+        rows = '<div class="ig-row"><span class="ig-lv info">OK</span>' \
+               '<span>core.yaml の参照と原本の間に乖離はない</span></div>'
+
+    body = (
+        _diff_chips(diff.get("changed", []), "変更された章")
+        + _diff_chips(diff.get("added", []), "追加された章")
+        + _diff_chips(diff.get("removed", []), "削除された章")
+        + rows
+    )
+    return (
+        f'<details class="ig" id="ig-panel"{" open" if n_fail else ""}>'
+        f'<summary><span class="ig-badge {badge_cls}">{_escape(badge)}</span>{summary_diff}'
+        '<span class="ig-hint">生成のたびに core.yaml の参照行と原本を突合している</span></summary>'
+        f'<div class="ig-body">{body}</div></details>'
+    )
 
 
 def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | None) -> None:
@@ -251,6 +604,22 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
     brand = f'<span class="brand">{_escape(source)}</span>\n' if source else ""
     nl = "\n"
 
+    # 整合性チェック（原本があるときだけ）。自己申告に留め、ビルドは落とさない
+    ig_html = ""
+    if source and Path(source).is_file():
+        bundle = out.parent / out.stem
+        findings, diff, snapshot = integrity(Path(source), bundle)
+        ig_html = "\n" + _render_integrity(findings, diff) + "\n"
+        bundle.mkdir(parents=True, exist_ok=True)
+        (bundle / SNAPSHOT_NAME).write_text(
+            json.dumps(snapshot, ensure_ascii=False), encoding="utf-8"
+        )
+        for f in findings:
+            print(f"  [{f['level']}] {f['message']}" + (f" — {f['hint']}" if f["hint"] else ""))
+        n_changed = len(diff["changed"]) + len(diff["added"]) + len(diff["removed"])
+        if diff.get("prevAt"):
+            print(f"  前回生成 {diff['prevAt']} から章の増減・変更: {n_changed} 件")
+
     html = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -270,7 +639,7 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
   {brand}{nl.join(tabs)}
   <button type="button" class="theme" id="theme-toggle" aria-pressed="false">\U0001F319 ダーク</button>
 </nav>
-
+{ig_html}
 {nl.join(panels)}
 
 <script>
@@ -635,9 +1004,11 @@ def fulltext(spec_path: Path, out_path: Path) -> None:
 
     preamble_md, sections = _split_sections(md)
 
+    # ID は見出しの内容から決める（連番だと章の挿入で他ビューからのジャンプが壊れる）
+    sec_ids = _assign_sec_ids([h for h, _ in sections])
+
     toc, blocks = [], []
-    for idx, (heading, body) in enumerate(sections, 1):
-        sec_id = f"ft-sec-{idx}"
+    for sec_id, (heading, body) in zip(sec_ids, sections):
         toc.append(f'    <li><button type="button" data-target="{sec_id}">{_md_inline(heading)}</button></li>')
         blocks.append(
             f'<details class="ft-sec" id="{sec_id}">'
@@ -1000,7 +1371,8 @@ def main() -> None:
     p_build = sub.add_parser("build", help="ビュー HTML を単一 HTML に結合する")
     p_build.add_argument("--out", required=True, type=Path, help="出力先 HTML")
     p_build.add_argument("--title", required=True, help="<title> に入れるページ名")
-    p_build.add_argument("--source", default=None, help="タブバーに表示する出典（例: docs/plans/foo.md）")
+    p_build.add_argument("--source", default=None,
+                         help="原本の仕様書（例: docs/plans/foo.md）。タブバーの出典表示と整合性チェックに使う")
     p_build.add_argument("--view", action="append", required=True, metavar="ラベル=パス",
                          help="束ねるビュー。指定順にタブが並ぶ。繰り返し指定可")
 
