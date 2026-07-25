@@ -127,12 +127,36 @@ JSON を `docs/plans/_html/<slug>/diagrams/<name>.json` に置き、ビューに
 - 前回生成からの **章の追加 / 削除 / 変更** も同じバーに出る。各章名はジャンプボタンになっていて、クリックすると全文タブの該当章が開く。
 - **fail を放置しない。** 参照が壊れた状態で更新モードを続けると、LLM が「ズレた行」を根拠に書き足していく。
 
+## 自動追従（`refresh`）
+
+仕様書が改訂されたら、**機械生成できる部分だけ**が自動で追いつく。手で回す必要はない。
+
+```bash
+python3 scripts/spec-html.py refresh --spec docs/plans/<slug>.md   # 1本
+npm run spec-html:refresh                                          # docs/plans/*.md 全部
+python3 scripts/spec-html.py refresh --all --check                 # 書かずに古いものを列挙（古ければ exit 1）
+```
+
+- 対象は `docs/plans/_html/<slug>/` が **既にある**仕様書だけ。バンドルが無ければ無言でスキップする（新規作成は下の「手順」でやること）。
+- `.snapshot.json` の `spec_hash` と現物を突合し、**変わっていなければ何も出力せず終わる**（no-op）。
+- 変わっていれば `views/*fulltext*.html` を再生成し、`.snapshot.json` の `manifest`（タイトル・出力先・ビューのラベルと並び）どおりに `build` を再実行する。
+- **再構成ビュー（01〜03）には触らない。** `core.yaml` を LLM が解釈して書くものなので機械では直せない。代わりに整合性チェックが `fail`/`warn` を出したら「01〜03 が陳腐化している可能性がある」と明示的に警告する。**この警告が出たら更新モードで `core.yaml` を貼り直すこと。**
+
+発火経路は2つ:
+
+| 経路 | 定義 | 拾えるもの |
+|---|---|---|
+| Claude Code の `PostToolUse` フック | `.claude/settings.json` → `scripts/spec-html-hook.sh` | エージェントによる `Edit` / `Write`。更新があったときだけ結果をエージェントに差し戻す |
+| husky `pre-commit` | `.husky/pre-commit` | エディタでの手編集など、フックが拾えない経路の取りこぼし |
+
+どちらも失敗しても編集・commit を止めない。
+
 ## 出力先の規約
 
 ```
 docs/plans/<slug>.md                        ← 入力（正本）
 docs/plans/_html/<slug>/core.yaml           ← 意味の正本（reader 非依存）
-docs/plans/_html/<slug>/.snapshot.json      ← 整合性チェックの基準（build が自動更新）
+docs/plans/_html/<slug>/.snapshot.json      ← 整合性チェックの基準 ＋ refresh 用の manifest（build が自動更新）
 docs/plans/_html/<slug>/view.yaml           ← 見せ方の方針（reader 依存）
 docs/plans/_html/<slug>/quiz.yaml           ← 理解度チェック
 docs/plans/_html/<slug>/views/01-status.html      ← ステータスと次の一手

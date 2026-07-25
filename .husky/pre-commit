@@ -1,1 +1,10 @@
 npm run lint
+
+# 仕様書が staged なら図解 HTML を追従させる（エディタでの手編集など、Claude Code の
+# フックが拾えない経路の取りこぼしを塞ぐ）。docs/plans/_html/ は .gitignore 済みなので
+# commit 内容は変わらない。図解生成の失敗で commit を止めない。
+if command -v python3 >/dev/null 2>&1; then
+  git diff --cached --name-only --diff-filter=ACM -- 'docs/plans/*.md' | while read -r spec; do
+    [ -n "$spec" ] && python3 scripts/spec-html.py refresh --spec "$spec" || true
+  done
+fi

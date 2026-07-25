@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 from datetime import datetime
@@ -493,6 +494,7 @@ def integrity(spec_path: Path, bundle: Path) -> tuple[list[dict], dict, dict]:
     snapshot = {
         "at": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "spec": str(spec_path),
+        "spec_hash": _hash(md),
         "sections": sections,
         "refs": snap_refs,
     }
@@ -573,7 +575,8 @@ def _render_integrity(findings: list[dict], diff: dict) -> str:
     )
 
 
-def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | None) -> None:
+def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | None) -> list[dict]:
+    """ビューを単一 HTML に結合する。戻り値は整合性チェックの findings（原本が無いときは空）。"""
     styles: list[str] = []
     panels: list[str] = []
     scripts: list[str] = []
@@ -606,10 +609,18 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
 
     # 整合性チェック（原本があるときだけ）。自己申告に留め、ビルドは落とさない
     ig_html = ""
+    findings: list[dict] = []
     if source and Path(source).is_file():
         bundle = out.parent / out.stem
         findings, diff, snapshot = integrity(Path(source), bundle)
         ig_html = "\n" + _render_integrity(findings, diff) + "\n"
+        # refresh が同じ引数で build を再実行できるよう、呼び出しをそのまま記録する。
+        # これが無いと refresh はビューのラベルを命名規約から推測するしかない。
+        snapshot["manifest"] = {
+            "title": title,
+            "out": str(out),
+            "views": [[label, str(path)] for label, path in views],
+        }
         bundle.mkdir(parents=True, exist_ok=True)
         (bundle / SNAPSHOT_NAME).write_text(
             json.dumps(snapshot, ensure_ascii=False), encoding="utf-8"
@@ -653,6 +664,7 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
     out.write_text(html, encoding="utf-8")
     size_kb = len(html.encode("utf-8")) / 1024
     print(f"spec-html.py: wrote {out} ({size_kb:.0f} KB, {len(views)} view(s))")
+    return findings
 
 
 # ── 全文ビュー: Markdown → HTML の決定論的変換 ──────────────────────────────
@@ -1357,6 +1369,109 @@ def _expand_diagrams(body: str, base: Path) -> str:
     return _PLACEHOLDER_RE.sub(sub, body)
 
 
+# ── refresh: 仕様書の改訂に、機械生成できる部分だけ即座に追従させる ──────────
+# 01〜03 の再構成ビューは core.yaml を LLM が解釈して書くので機械では直せない。
+# ここで触るのは全文ビューと結合 HTML だけにして、意味側の陳腐化は「黙って直す」
+# のではなく整合性チェックの結果として声に出す。
+
+ROOT = Path(__file__).resolve().parent.parent
+PLANS_DIR = ROOT / "docs" / "plans"
+HTML_DIR = PLANS_DIR / "_html"
+
+# SKILL.md が定めるビューの命名規約。manifest を持たない古いバンドル用のフォールバック。
+_FALLBACK_LABELS = {
+    "status": "ステータスと次の一手",
+    "decisions": "設計判断",
+    "quiz": "クイズ",
+    "fulltext": "全文",
+}
+
+
+def _abs(raw: str) -> Path:
+    p = Path(raw)
+    return p if p.is_absolute() else ROOT / p
+
+
+def _spec_h1(spec: Path) -> str:
+    for line in spec.read_text(encoding="utf-8").splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
+
+
+def _bundle_plan(spec: Path) -> dict | None:
+    """バンドルがある仕様書について、build を再実行するための引数一式を復元する。"""
+    bundle = HTML_DIR / spec.stem
+    if not bundle.is_dir():
+        return None
+
+    snap = _load_snapshot(bundle / SNAPSHOT_NAME)
+    manifest = snap.get("manifest") or {}
+    views = [(label, _abs(path)) for label, path in manifest.get("views") or []]
+    if not views:
+        for path in sorted((bundle / "views").glob("*.html")):
+            key = path.stem.split("-", 1)[-1]
+            views.append((_FALLBACK_LABELS.get(key, key), path))
+    views = [(label, path) for label, path in views if path.is_file()]
+    if not views:
+        return None
+
+    return {
+        "views": views,
+        "out": _abs(manifest["out"]) if manifest.get("out") else HTML_DIR / f"{spec.stem}.html",
+        # manifest が無い旧バンドルでは原本の H1 から起こす（slug より人間が読める）
+        "title": manifest.get("title") or f"{_spec_h1(spec) or spec.stem} — 図解",
+        "spec_hash": snap.get("spec_hash"),
+    }
+
+
+def refresh(specs: list[Path], check_only: bool) -> int:
+    """仕様書の改訂を検出し、全文ビューと結合 HTML を再生成する。
+
+    バンドルが無い仕様書は対象外（無言でスキップ）。更新不要なら何も出力しない。
+    """
+    # フックや husky から任意の cwd で呼ばれる。build に渡す原本パスは
+    # HTML のタブバーに出るので相対のまま保ちたく、cwd 側をリポジトリ root に寄せる。
+    os.chdir(ROOT)
+    stale = 0
+    failed = 0
+
+    for spec in specs:
+        plan = _bundle_plan(spec)
+        if plan is None:
+            continue
+        if _hash(spec.read_text(encoding="utf-8")) == plan["spec_hash"] and plan["out"].is_file():
+            continue
+
+        stale += 1
+        rel = spec.relative_to(ROOT) if spec.is_relative_to(ROOT) else spec
+        if check_only:
+            print(f"spec-html.py: 図解が古い: {plan['out'].name}（{rel} が改訂されている）")
+            continue
+
+        print(f"spec-html.py: {rel} の改訂を検出。図解を再生成する")
+        for _, path in plan["views"]:
+            if "fulltext" in path.stem:
+                fulltext(spec, path)
+        findings = build(plan["views"], plan["out"], plan["title"], str(rel))
+
+        if check(plan["out"]):
+            print(f"spec-html.py: 安全検査に失敗した: {plan['out']}")
+            failed += 1
+            continue
+
+        # 参照のズレ ＝ core.yaml が仕様書に追いついていない ＝ 01〜03 の記述も古い可能性。
+        drift = [f for f in findings if f["level"] in ("fail", "warn")]
+        if drift:
+            print(f"spec-html.py: 再構成ビュー（01〜03）が陳腐化している可能性がある。"
+                  f"整合性チェックが {len(drift)} 件の fail/warn を出した（上記）。"
+                  f"`.agents/skills/spec-to-html/SKILL.md` に従って core.yaml の source_refs を貼り直すこと")
+
+    if failed:
+        return 1
+    return 1 if (check_only and stale) else 0
+
+
 def _parse_view(spec: str) -> tuple[str, Path]:
     if "=" not in spec:
         sys.exit(f'--view は "ラベル=パス" 形式で指定する: {spec}')
@@ -1386,6 +1501,14 @@ def main() -> None:
     p_check = sub.add_parser("check", help="生成物の安全検査のみ実行する")
     p_check.add_argument("paths", nargs="+", type=Path)
 
+    p_refresh = sub.add_parser(
+        "refresh", help="改訂された仕様書の全文ビューと結合 HTML を再生成する（バンドルがあるものだけ）")
+    p_refresh.add_argument("--spec", action="append", type=Path, default=[],
+                           help="対象の仕様書。繰り返し指定可。省略時は --all が必要")
+    p_refresh.add_argument("--all", action="store_true", help="docs/plans/*.md をすべて対象にする")
+    p_refresh.add_argument("--check", action="store_true",
+                           help="再生成せず、古いものがあれば列挙して exit 1")
+
     args = parser.parse_args()
 
     if args.command == "build":
@@ -1397,6 +1520,17 @@ def main() -> None:
             sys.exit(f"仕様書が見つからない: {args.spec}")
         fulltext(args.spec, args.out)
         sys.exit(1 if check(args.out) else 0)
+
+    if args.command == "refresh":
+        if args.all:
+            specs = sorted(PLANS_DIR.glob("*.md"))
+        else:
+            # フックから素性の分からないパスが来るので、docs/plans 直下の .md 以外は黙って捨てる
+            specs = [p for p in (q.resolve() for q in args.spec)
+                     if p.is_file() and p.suffix == ".md" and p.parent == PLANS_DIR]
+        if not specs and not args.all and not args.spec:
+            sys.exit("refresh には --spec か --all が要る")
+        sys.exit(refresh(specs, args.check))
 
     total = sum(check(p) for p in args.paths)
     sys.exit(1 if total else 0)
