@@ -1,3 +1,4 @@
+import 'server-only';
 import { SupabaseClient, type PostgrestError } from '@supabase/supabase-js';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { SupabaseClientManager } from '@/lib/client-manager';
