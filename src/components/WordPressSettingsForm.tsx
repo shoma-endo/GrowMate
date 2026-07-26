@@ -12,8 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Plug, CheckCircle, AlertCircle, Download } from 'lucide-react';
+import { Plug, CheckCircle, AlertCircle, Download } from 'lucide-react';
 import Link from 'next/link';
+import { BackLink } from '@/components/BackLink';
 import { WordPressType } from '@/types/wordpress';
 import type { WordPressSettingsFormProps } from '@/types/components';
 import { isAdmin as isAdminRole } from '@/authUtils';
@@ -329,13 +330,7 @@ export default function WordPressSettingsForm({
     <div className="container mx-auto px-4 py-8 max-w-3xl space-y-6">
       {/* ヘッダー */}
       <div className="mb-8">
-        <Link
-          href="/setup"
-          className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4"
-        >
-          <ArrowLeft size={20} className="mr-2" />
-          設定ダッシュボードに戻る
-        </Link>
+        <BackLink href="/setup" label="設定に戻る" className="mb-4" />
         <div className="flex items-center gap-3 mb-4">
           <Plug className="text-purple-500" size={32} />
           <h1 className="text-3xl font-bold">WordPress 設定</h1>

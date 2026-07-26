@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   ExternalLink,
   Image as ImageIcon,
@@ -14,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { BackLink } from '@/components/BackLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -218,13 +218,7 @@ export default function InstagramSetupClient({
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-2">
-        <Link
-          href="/setup"
-          className="text-sm text-gray-500 hover:text-gray-900 flex items-center gap-1"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          セットアップに戻る
-        </Link>
+        <BackLink href="/setup" label="設定に戻る" />
       </div>
 
       <div className="space-y-2">
@@ -300,7 +294,7 @@ export default function InstagramSetupClient({
           <AlertDescription className="text-orange-700">
             Instagramの認証が期限切れです。再連携してください。
             <div className="mt-3">
-              <Button asChild className="bg-orange-600 hover:bg-orange-700">
+              <Button asChild className="bg-orange-700 hover:bg-orange-800">
                 <Link href={OAUTH_START_PATH} onClick={() => setIsConnecting(true)}>
                   {isConnecting ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

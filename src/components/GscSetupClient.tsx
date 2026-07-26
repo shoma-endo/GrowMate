@@ -13,8 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { GscConnectionStatus } from '@/types/gsc';
+import { BackLink } from '@/components/BackLink';
 import {
-  ArrowLeft,
   Plug,
   RefreshCw,
   ShieldCheck,
@@ -116,13 +116,7 @@ export default function GscSetupClient({
     <div className="container mx-auto max-w-3xl px-4 py-8 space-y-6">
       {/* ヘッダー */}
       <div className="mb-8">
-        <Link
-          href="/setup"
-          className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4"
-        >
-          <ArrowLeft size={20} className="mr-2" />
-          設定ダッシュボードに戻る
-        </Link>
+        <BackLink href="/setup" label="設定に戻る" className="mb-4" />
         <div className="flex items-center gap-3 mb-4">
           <Plug className="text-red-500" size={32} />
           <h1 className="text-3xl font-bold">Google Search Console 連携</h1>

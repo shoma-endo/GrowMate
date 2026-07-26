@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +15,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Ga4ConnectionStage, Ga4ConnectionStatus } from '@/types/ga4';
-import { ArrowLeft, Plug, RefreshCw, AlertTriangle, BarChart3, Loader2 } from 'lucide-react';
+import { Plug, RefreshCw, AlertTriangle, BarChart3, Loader2 } from 'lucide-react';
+import { BackLink } from '@/components/BackLink';
 import {
   saveGa4Settings,
   refetchGa4StatusWithValidation,
@@ -223,10 +223,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
   return (
     <div className="container mx-auto max-w-3xl px-4 py-8 space-y-6">
       <div className="mb-8">
-        <Link href="/setup" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
-          <ArrowLeft size={20} className="mr-2" />
-          設定ダッシュボードに戻る
-        </Link>
+        <BackLink href="/setup" label="設定に戻る" className="mb-4" />
         <div className="flex items-center gap-3 mb-4">
           <Plug className="text-emerald-500" size={32} />
           <h1 className="text-3xl font-bold">Google Analytics 4 連携</h1>

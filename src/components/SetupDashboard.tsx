@@ -14,10 +14,10 @@ import {
   ShieldCheck,
   ShieldOff,
   RefreshCw,
-  ArrowLeft,
   Image as ImageIcon,
 } from 'lucide-react';
 import Link from 'next/link';
+import { BackLink } from '@/components/BackLink';
 import { SetupDashboardProps } from '@/types/components';
 import type { Ga4ConnectionStage } from '@/types/ga4';
 import { refetchGscStatusWithValidation } from '@/server/actions/gscSetup.actions';
@@ -121,12 +121,9 @@ export default function SetupDashboard({
   }, [refetchGa4Status]);
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="container mx-auto px-4 py-8 max-w-6xl">
       <div className="mb-8">
-        <Link href="/" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
-          <ArrowLeft size={20} className="mr-2" />
-          ホームに戻る
-        </Link>
+        <BackLink href="/" label="ホームに戻る" className="mb-4" />
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-4">設定</h1>
           <p className="text-gray-600">各種サービス連携に必要な設定を管理します</p>
@@ -134,8 +131,7 @@ export default function SetupDashboard({
       </div>
 
       {/* サービス連携 */}
-      <h2 className="text-xl font-semibold mb-3">サービス連携</h2>
-      <div className="grid gap-6 md:grid-cols-1">
+      <div className="grid gap-6 lg:grid-cols-2 auto-rows-fr">
         {/* WordPress 設定 */}
         <Card>
           <CardHeader>
@@ -144,19 +140,19 @@ export default function SetupDashboard({
               WordPress 設定
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
+          <CardContent className="flex-1">
+            <div className="flex h-full flex-col space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {wordpressSettings.hasSettings ? (
                     <>
-                      <CheckCircle className="text-green-500" size={20} />
-                      <span className="text-green-700 font-medium">接続済み</span>
+                      <CheckCircle className="text-green-600" size={16} />
+                      <span className="text-sm font-medium text-green-700">接続済み</span>
                     </>
                   ) : (
                     <>
-                      <AlertCircle className="text-orange-500" size={20} />
-                      <span className="text-orange-700 font-medium">未設定</span>
+                      <AlertCircle className="text-orange-600" size={16} />
+                      <span className="text-sm font-medium text-orange-700">未設定</span>
                     </>
                   )}
                 </div>
@@ -207,7 +203,7 @@ export default function SetupDashboard({
                   {/* 接続状態の詳細メッセージ */}
                   {wpStatus && wpStatus.status !== 'not_configured' && (
                     <div
-                      className={`p-2 rounded text-xs ${
+                      className={`rounded-lg p-3 text-xs ${
                         wpStatus.connected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                       }`}
                     >
@@ -221,7 +217,7 @@ export default function SetupDashboard({
                 WordPressサイトと連携して、コンテンツの公開・更新を効率化します。
               </p>
 
-              <div className="flex gap-2">
+              <div className="mt-auto flex gap-2">
                 <div className="flex-1">
                   <Button
                     asChild
@@ -230,7 +226,7 @@ export default function SetupDashboard({
                   >
                     <Link href="/setup/wordpress">
                       <Settings size={16} className="mr-2" />
-                      {wordpressSettings.hasSettings ? '設定を編集' : '設定を開始'}
+                      {wordpressSettings.hasSettings ? '連携を管理' : '連携を開始'}
                     </Link>
                   </Button>
                 </div>
@@ -247,24 +243,24 @@ export default function SetupDashboard({
               Google Search Console 連携
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
+          <CardContent className="flex-1">
+            <div className="flex h-full flex-col space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {gscNeedsReauth ? (
                     <>
-                      <AlertTriangle className="text-orange-500" size={20} />
-                      <span className="text-orange-700 font-medium">要再認証</span>
+                      <AlertTriangle className="text-orange-600" size={16} />
+                      <span className="text-sm font-medium text-orange-700">要再認証</span>
                     </>
                   ) : gscConnection.connected ? (
                     <>
-                      <CheckCircle className="text-green-500" size={20} />
-                      <span className="text-green-700 font-medium">接続済み</span>
+                      <CheckCircle className="text-green-600" size={16} />
+                      <span className="text-sm font-medium text-green-700">接続済み</span>
                     </>
                   ) : (
                     <>
-                      <AlertCircle className="text-orange-500" size={20} />
-                      <span className="text-orange-700 font-medium">未設定</span>
+                      <AlertCircle className="text-orange-600" size={16} />
+                      <span className="text-sm font-medium text-orange-700">未設定</span>
                     </>
                   )}
                 </div>
@@ -296,7 +292,7 @@ export default function SetupDashboard({
               {gscNeedsReauth ? (
                 <div className="text-sm space-y-2">
                   <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                    <p className="text-orange-800 font-medium">
+                    <p className="text-sm font-medium text-orange-800">
                       Googleアカウントの再認証が必要です
                     </p>
                     <p className="text-orange-700 text-xs mt-1">
@@ -343,10 +339,10 @@ export default function SetupDashboard({
                 </div>
               )}
 
-              <div className="flex gap-2">
+              <div className="mt-auto flex gap-2">
                 <div className="flex-1">
                   {gscNeedsReauth ? (
-                    <Button asChild className="w-full bg-orange-600 hover:bg-orange-700">
+                    <Button asChild className="w-full bg-orange-700 hover:bg-orange-800">
                       <Link href="/setup/gsc">
                         <AlertTriangle size={16} className="mr-2" />
                         再認証する
@@ -388,29 +384,29 @@ export default function SetupDashboard({
               Google Analytics 4 連携
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
+          <CardContent className="flex-1">
+            <div className="flex h-full flex-col space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {ga4NeedsReauth ? (
                     <>
-                      <AlertTriangle className="text-orange-500" size={20} />
-                      <span className="text-orange-700 font-medium">要再認証</span>
+                      <AlertTriangle className="text-orange-600" size={16} />
+                      <span className="text-sm font-medium text-orange-700">要再認証</span>
                     </>
                   ) : isGa4Configured ? (
                     <>
-                      <CheckCircle className="text-green-500" size={20} />
-                      <span className="text-green-700 font-medium">設定完了</span>
+                      <CheckCircle className="text-green-600" size={16} />
+                      <span className="text-sm font-medium text-green-700">設定完了</span>
                     </>
                   ) : isGa4LinkedUnselected ? (
                     <>
-                      <AlertCircle className="text-amber-500" size={20} />
-                      <span className="text-amber-700 font-medium">連携済み未選択</span>
+                      <AlertCircle className="text-amber-600" size={16} />
+                      <span className="text-sm font-medium text-amber-700">連携済み未選択</span>
                     </>
                   ) : (
                     <>
-                      <AlertCircle className="text-orange-500" size={20} />
-                      <span className="text-orange-700 font-medium">未連携</span>
+                      <AlertCircle className="text-orange-600" size={16} />
+                      <span className="text-sm font-medium text-orange-700">未連携</span>
                     </>
                   )}
                 </div>
@@ -438,7 +434,9 @@ export default function SetupDashboard({
               {ga4NeedsReauth ? (
                 <div className="text-sm space-y-2">
                   <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                    <p className="text-orange-800 font-medium">Googleアカウントの再認証が必要です</p>
+                    <p className="text-sm font-medium text-orange-800">
+                      Googleアカウントの再認証が必要です
+                    </p>
                     <p className="text-orange-700 text-xs mt-1">
                       認証トークンが期限切れまたは必要な権限が不足しています。再認証してください。
                     </p>
@@ -454,9 +452,7 @@ export default function SetupDashboard({
                     プロパティ: {ga4Connection.propertyName ?? ga4Connection.propertyId ?? '未選択'}
                   </p>
                   {ga4Connection.conversionEvents && (
-                    <p className="text-xs text-gray-500">
-                      前段CVイベント数: {ga4Connection.conversionEvents.length}件
-                    </p>
+                    <p>前段CVイベント数: {ga4Connection.conversionEvents.length}件</p>
                   )}
                 </div>
               ) : isGa4LinkedUnselected ? (
@@ -478,10 +474,10 @@ export default function SetupDashboard({
                 </div>
               )}
 
-              <div className="flex gap-2">
+              <div className="mt-auto flex gap-2">
                 <div className="flex-1">
                   {ga4NeedsReauth ? (
-                    <Button asChild className="w-full bg-orange-600 hover:bg-orange-700">
+                    <Button asChild className="w-full bg-orange-700 hover:bg-orange-800">
                       <Link href="/setup/ga4">
                         <AlertTriangle size={16} className="mr-2" />
                         再認証する
@@ -495,7 +491,11 @@ export default function SetupDashboard({
                     >
                       <Link href="/setup/ga4">
                         <Settings size={16} className="mr-2" />
-                        {isGa4Configured ? '連携を管理' : '設定を続ける'}
+                        {isGa4Configured
+                          ? '連携を管理'
+                          : isGa4LinkedUnselected
+                            ? '設定を続ける'
+                            : '連携を開始'}
                       </Link>
                     </Button>
                   )}
@@ -523,24 +523,24 @@ export default function SetupDashboard({
                 Google Ads 連携
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="flex-1">
+              <div className="flex h-full flex-col space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {googleAdsStatus.needsReauth ? (
                       <>
-                        <AlertTriangle className="text-orange-500" size={20} />
-                        <span className="text-orange-700 font-medium">要再認証</span>
+                        <AlertTriangle className="text-orange-600" size={16} />
+                        <span className="text-sm font-medium text-orange-700">要再認証</span>
                       </>
                     ) : googleAdsStatus.connected ? (
                       <>
-                        <CheckCircle className="text-green-500" size={20} />
-                        <span className="text-green-700 font-medium">接続済み</span>
+                        <CheckCircle className="text-green-600" size={16} />
+                        <span className="text-sm font-medium text-green-700">接続済み</span>
                       </>
                     ) : (
                       <>
-                        <AlertCircle className="text-orange-500" size={20} />
-                        <span className="text-orange-700 font-medium">未設定</span>
+                        <AlertCircle className="text-orange-600" size={16} />
+                        <span className="text-sm font-medium text-orange-700">未設定</span>
                       </>
                     )}
                   </div>
@@ -571,7 +571,7 @@ export default function SetupDashboard({
                 {googleAdsStatus.needsReauth ? (
                   <div className="text-sm space-y-2">
                     <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                      <p className="text-orange-800 font-medium">
+                      <p className="text-sm font-medium text-orange-800">
                         Googleアカウントの再認証が必要です
                       </p>
                       <p className="text-orange-700 text-xs mt-1">
@@ -586,9 +586,7 @@ export default function SetupDashboard({
                   <div className="text-sm text-gray-600 space-y-1">
                     <p>アカウント: {googleAdsStatus.googleAccountEmail ?? '取得中'}</p>
                     {googleAdsStatus.customerId && (
-                      <p className="text-xs text-gray-500">
-                        選択アカウントID: {googleAdsStatus.customerId}
-                      </p>
+                      <p>選択アカウントID: {googleAdsStatus.customerId}</p>
                     )}
                   </div>
                 ) : (
@@ -599,10 +597,10 @@ export default function SetupDashboard({
                   </div>
                 )}
 
-                <div className="flex gap-2">
+                <div className="mt-auto flex gap-2">
                   <div className="flex-1">
                     {googleAdsStatus.needsReauth ? (
-                      <Button asChild className="w-full bg-orange-600 hover:bg-orange-700">
+                      <Button asChild className="w-full bg-orange-700 hover:bg-orange-800">
                         <Link href="/setup/google-ads">
                           <AlertTriangle size={16} className="mr-2" />
                           再認証する
@@ -635,24 +633,24 @@ export default function SetupDashboard({
                 Instagram連携
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="flex-1">
+              <div className="flex h-full flex-col space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {instagramStatus.needsReauth ? (
                       <>
-                        <AlertTriangle className="text-orange-500" size={20} />
-                        <span className="text-orange-700 font-medium">要再認証</span>
+                        <AlertTriangle className="text-orange-600" size={16} />
+                        <span className="text-sm font-medium text-orange-700">要再認証</span>
                       </>
                     ) : instagramStatus.connected ? (
                       <>
-                        <CheckCircle className="text-green-500" size={20} />
-                        <span className="text-green-700 font-medium">接続済み</span>
+                        <CheckCircle className="text-green-600" size={16} />
+                        <span className="text-sm font-medium text-green-700">接続済み</span>
                       </>
                     ) : (
                       <>
-                        <AlertCircle className="text-orange-500" size={20} />
-                        <span className="text-orange-700 font-medium">未設定</span>
+                        <AlertCircle className="text-orange-600" size={16} />
+                        <span className="text-sm font-medium text-orange-700">未設定</span>
                       </>
                     )}
                   </div>
@@ -683,8 +681,7 @@ export default function SetupDashboard({
                 {instagramStatus.needsReauth ? (
                   <div className="text-sm space-y-2">
                     <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
-                      <p className="text-orange-800 font-medium flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4" />
+                      <p className="text-sm font-medium text-orange-800">
                         Instagramの再認証が必要です
                       </p>
                       <p className="text-orange-700 text-xs mt-1">
@@ -711,10 +708,10 @@ export default function SetupDashboard({
                   </div>
                 )}
 
-                <div className="flex gap-2">
+                <div className="mt-auto flex gap-2">
                   <div className="flex-1">
                     {instagramStatus.needsReauth ? (
-                      <Button asChild className="w-full bg-orange-600 hover:bg-orange-700">
+                      <Button asChild className="w-full bg-orange-700 hover:bg-orange-800">
                         <Link href="/setup/instagram">
                           <AlertTriangle size={16} className="mr-2" />
                           再認証する
@@ -728,7 +725,7 @@ export default function SetupDashboard({
                       >
                         <Link href="/setup/instagram">
                           <Settings size={16} className="mr-2" />
-                          {instagramStatus.connected ? '設定へ' : '設定へ'}
+                          {instagramStatus.connected ? '連携を管理' : '連携を開始'}
                         </Link>
                       </Button>
                     )}
