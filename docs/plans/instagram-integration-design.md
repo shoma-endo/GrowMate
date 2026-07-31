@@ -56,7 +56,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 - **スクリーンキャストの要件（公式ガイドラインより。録画前に決めること）**:
   - **パーミッションごとに1本用意する**。公式は各リクエストに対し "Describe how your app uses that specific permission or feature" と "Upload a screencast showing the **end-to-end user experience** for that specific permission or feature" を要求する。`instagram_business_basic`（連携 → プロフィール・投稿一覧表示）と `instagram_business_manage_insights`（投稿ごとのリーチ・視聴・保存表示）で分ける
   - **言語**: 公式は "Use English as the app UI language – If possible, please set the app UI language to English before recording the screen recording." と指示する。**GrowMate は日本語専用 UI のため英語化はしない**。代わりに公式が代替として挙げる **英語キャプション・ツールチップで画面要素とボタンの意味を補う**（"Provide captions and tool-tips" / "Explain the meaning of buttons and other UI elements"）。日本語 UI のまま無注釈で提出しない
-  - **GrowMate 自身のログインも収録する**。[Screen Recordings](https://developers.facebook.com/docs/app-review/submission-guide/screen-recordings/) は "Capture the entire login flow, from logged-out to logged-in." を求める。Meta ログイン以外の手段で入れる場合もそのフローを収録せよと明記されているため、`/login` から **§9 Q6 で確定したログイン手段**で `/setup/instagram` までを1本に含める
+  - **GrowMate 自身のログインも収録する**。[Screen Recordings](https://developers.facebook.com/docs/app-review/submission-guide/screen-recordings/) は "Capture the entire login flow, from logged-out to logged-in." を求める。Meta ログイン以外の手段で入れる場合もそのフローを収録せよと明記されているため、`/login` で審査用アドレスを入力 → 受信箱で OTP を受け取って入力 → `/setup/instagram` までを1本に含める（§9 Q6 で確定した案2 の手順そのもの）
   - 解像度は "record in high-resolution, 1080 or better"。**録画が無いパーミッションは承認されない**（"Any requested permission or feature missing a screen recording will not be approved"）
 
 - **審査を行う環境（2026-07-25 決定）**: **本番（`https://growmate.tokyo`）で収録・提出する**。
@@ -68,9 +68,9 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - 同ガイドの "We will test your app using our own test accounts." が使えるのは Meta 認証を使うアプリのみ。GrowMate は提出フォームの「このプラットフォームには Facebook ログインが統合されていますか？」に**いいえ**と答える構成なので、Meta 側の test account では入れない
   - [Common Mistakes](https://developers.facebook.com/docs/app-review/submission-guide/common-mistakes) の "Your app is inaccessible" に "**If we can't access your app for any reason, your entire submission will be rejected**" とある。パーミッション単位ではなく提出全体の却下
 - **レビュアーのログイン手段（制約。2026-07-31 追記）**: GrowMate の認証は**メール OTP のみ**（`app/login/page.tsx` → `src/server/actions/auth.actions.ts` の `supabase.auth.signInWithOtp`。パスワード認証も他プロバイダも無い。`signInWithPassword` は src/app に 0 件）。**提出フォームの認証情報欄に書ける固定値が存在しない**ため、審査用アカウントを作るだけでは前項を満たせない。[Supabase CLI config](https://supabase.com/docs/guides/local-development/cli/config) に `auth.sms.test_otp`（"Use pre-defined map of phone number to OTP for testing."）はあるが、**email 向けの test_otp は存在しない**（同ページ内の `test_otp` の出現は `auth.sms.test_otp` のみ。2026-07-31 に原文で確認）ため、設定だけで回避する道も無い。
-  - **候補（未確定。§9「クライアント確認中」Q6 参照）**: 案1 — Supabase Email プロバイダでパスワード認証を有効化し、**審査用アカウント1件にだけ** `signInWithPassword` を許す（`/login` UI・anon 経路のセキュリティ影響は実装前レビュー必須）。`docs/context/client-vision-from-lark.md` §1.5（メール・LINE ログイン優先）・§1.6（事前許可なく認証基盤を変えない）と干渉するため、**クライアント合意前に Phase 1-B の必須実装として断定しない**
-  - **却下した案（仕様上）**: レビュアーが参照できる受信箱を用意して認証情報欄に書く方式。海外の未知端末からのログインでメールサービス側の追加確認が発生し得るが、これは GrowMate の外にある変数で事前に潰せない。失敗すると "Your app is inaccessible" で提出全体が却下される
-  - **審査後の後始末（案1 を採用した場合の想定）**: アカウントは**削除せずパスワードのみ無効化**する。Meta はプラットフォーム上のアプリを定期的に再審査する旨をダッシュボードに明記しており（`設定 > ベーシック` のウェブサイトプラットフォーム内「テストの手順に関する情報」）、§3.2 のデータ使用状況の確認も年1回あるため、アカウントごと消すと再審査のたびに作り直しになる。露出は `INSTAGRAM_BETA_USER_IDS` から外すことで閉じる
+  - **採用（2026-08-01 決定。§9 Q6 回答済み）— 案2「審査専用の受信箱を渡す」**: 審査専用の Gmail を新規作成し、そのアドレスで GrowMate に OTP ログインして審査用アカウントを作る。提出フォームの Credentials 欄にそのアドレスとパスワードを記入し、レビュアーは受信箱で OTP を受け取って入る。**GrowMate のコード・Supabase 設定を一切変更しない**ため `client-vision-from-lark.md` §1.6（事前許可なく認証基盤を変えない）に抵触せず、クライアントの事前許可も不要（報告事項）。**受信箱には2段階認証を設定しない**（設定するとレビュアーが受信箱に入れず "Your app is inaccessible" になる）。既存の業務用アドレスは使わない（受信箱ごと渡すことになるため）
+  - **却下（案1）— Supabase `signInWithPassword` を審査用1アカウントに限定**: `/login` 改修と Supabase Email プロバイダのパスワード有効化が必要で、`client-vision-from-lark.md` §1.5（メール・LINE ログイン優先）・§1.6 と干渉しクライアント合意と別途セキュリティレビューを要する。案2 が同じ目的をコード変更ゼロで達成するため採らない。将来ログイン手段を拡張する場合に再検討する
+  - **審査後の後始末**: GrowMate アカウントは**削除せず** `INSTAGRAM_BETA_USER_IDS` から user_id を外して露出を閉じる。Meta はプラットフォーム上のアプリを定期的に再審査する旨をダッシュボードに明記しており（`設定 > ベーシック` のウェブサイトプラットフォーム内「テストの手順に関する情報」）、§3.2 のデータ使用状況の確認も年1回あるため、消すと再審査のたびに作り直しになる。受信箱も同じ理由で残す
 - **成功 API コールの有効期限（2026-07-31 追記）**: 提出ガイドに "Make at least 1 successful API call using each permission for which you are requesting advanced access. **Calls must be made within 30 days of submitting for App Review.**" とある。**実 OAuth 疎通で API コールを立てた時点から 30 日以内に提出する**必要があるため、収録・実装・クライアント側の承認とビジネス認証の見通しが立ってから疎通確認を行う。ダッシュボードのアクセス許可一覧に「API呼び出し」件数が出るのでそこで確認する
 - **アプリアイコンは 1024x1024 が確定要件（2026-07-31 追記）**: 提出ガイドの必須項目に "Upload a **1024x1024** compliant app icon image to **Settings** > **Basic** > **App Icon**." とある。Instagram 審査ページの Complete App Settings も "App icon (1024x1024)" と明記。リポジトリの `app/icon.png` は 120x120 でベクター元データも無いため、別途 1024 の素材を用意する（アップロードはダッシュボードのネイティブファイル選択が必要で、ブラウザ自動化からは実行できない）
 - **ログインボタンのブランド準拠**: Instagram 審査ページのチェックリストに "Verify that the login button or link is visible in your app and screencast, and adheres to our brand guidelines" がある。§11.2 の連携ボタンが **Meta のブランドガイドラインに準拠しているか**、および**アプリ内と収録の両方でボタンが見えているか**を実装時に確認する
@@ -124,7 +124,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 **実装状態（2026-07-31）**: コード上の 1-B 本体（§4 item2〜9 の OAuth・サービス・Actions・環境変数・UI 実データ分岐・**`app/privacy/page.tsx` の Instagram/Meta 追記**）は **実装済み**。未完了は **運用・合意・提出**（item0 の順序制約、§9 Q6/Q7、本番疎通、収録、1024 App Icon、Meta 提出）および §8 Phase 1-B の未チェック項目。
 
 0. **提出前の順序制約（§3.2「30日ルール」・レビュアーアクセス）** — **実 OAuth で Advanced Access 用の成功 API コールを立てる前に**、以下を揃える（30 日タイマーは API コール起点で始まるため、早すぎる疎通は避ける）:
-   - §9 Q6（レビュアーログイン手段）・Q7（審査用アカウントの `/setup` 到達）がクライアント合意済み
+   - §9 Q6（レビュアーログイン手段＝案2）・Q7（審査用アカウントの role＝`paid`）が確定済み（2026-08-01 回答済み。合意待ちは解消）
    - 審査用 GrowMate アカウントが **`full_name` 登録済み**（`proxy.ts:147-148` — 未登録は `/login` へ戻され `/setup` に到達不可）
    - 当該アカウントの Instagram プロアカウントが App Dashboard の Instagram Tester で **承認済み**
    - クライアント側ビジネス認証の見通しと収録スケジュールが確定（並行は可だが、30 日以内に提出できるタイミングで疎通する）
@@ -156,12 +156,12 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 10. **App Review 提出**: 1-B item0〜9 が揃い、§3.2 提出ゲート（外部テスト可能 + 対象パーミッションで成功 API コール）を満たした時点で申請する。提出物は **§3.2「スクリーンキャストの要件」に従い、パーミッションごとに1本ずつ**（`instagram_business_basic` / `instagram_business_manage_insights`）+ 各パーミッションの利用目的の説明。**日本語 UI のため英語キャプション・注釈を付ける**（無注釈で出さない）。利用目的の説明は **1-B の実装画面で見せられる範囲に限定**する（Phase 2 のアカウントインサイト用途まで書くと、画面に無い機能への確認が発生する。同一パーミッション内のため Phase 2 実装後の追記に再審査は不要）
     - **提出前チェック（§3.2 の決定を実行に落としたもの）**:
       - 本番（`https://growmate.tokyo`）にデプロイ済みで、Instagram 機能が `INSTAGRAM_BETA_USER_IDS` により審査用アカウントにのみ見えている（allowlist 非空時は role 無関係）
-      - 審査用 GrowMate アカウントを作成し（**§9 Q7 で合意した role**、`full_name` 登録済み、allowlist に user_id 追加）、その Instagram プロアカウントを App Dashboard の Instagram Tester に追加済み
-      - **§9 Q6 合意後**、レビュアーが再現できるログイン手段を実装済み（案1 の場合は `/login` UI・`signInWithPassword` 経路・Supabase 設定。OTP のみの場合は提出不可のまま — 合意必須）
+      - 審査用 GrowMate アカウントを作成し（**`role: 'paid'`** — §9 Q7、`full_name` 登録済み、allowlist に user_id 追加）、その Instagram プロアカウントを App Dashboard の Instagram Tester に追加済み
+      - 審査専用の受信箱（2段階認証なし）を用意し、そのアドレスとパスワードを提出フォームの Credentials 欄に記入済み（§9 Q6 の案2。GrowMate 側のコード変更は不要）
       - Meta App Dashboard **Settings > Basic > App Icon** に **1024×1024** 画像をアップロード済み（§3.2。リポジトリ `app/icon.png` は 120×120 のため別素材）
       - 提出フォームの Platform Settings 欄にレビュアーのアクセス手段を記入済み（§3.2「レビュアーのアクセス手段」。合意したログイン手順・URL・テストアカウント識別子。パスワード等の機密は提出フォームのみに記載し、本仕様書には書かない）
       - 連携ボタンがブランドガイドラインに準拠し、アプリ内と収録の両方で見えている（§3.2「ログインボタンのブランド準拠」）
-      - 収録に **`/login` からのログインフロー**（§9 Q6 で確定した手段）が含まれている（§3.2）
+      - 収録に **`/login` からのログインフロー**（審査用アドレス入力 → 受信箱で OTP 取得 → ログイン）が含まれている（§3.2）
       - 成功 API コールが **提出日から 30 日以内**であること（§3.2）
       - 収録・レビュー作業中に他ユーザーの個人データが映る画面へ到達できないこと（allowlist 方式なら `/admin/*` は `isAdmin` で弾かれる）
 11. **プレビュー取得上限（Phase 1-5 詳細）**:
@@ -360,14 +360,14 @@ create table public.instagram_account_insights_daily (
 - [ ] クライアント（カオルさん）へ画面共有し、§11 ワイヤーフレームとの差分（Q2 の列構成含む）を確認済み
 
 ### Phase 1-B（実データ連携 + App Review 提出）
-- [ ] **§9 Q6・Q7 がクライアント合意済み**（未合意のまま OAuth 疎通・提出に進まない）
+- [ ] **§9 Q6・Q7 が確定済み**（2026-08-01 回答済み。案2 + `role: 'paid'`）
 - [ ] item0 の順序制約を満たしたうえで、テスターアカウントで `/setup/instagram` から実際に連携でき、プロフィール（username, フォロワー数等）・**最新3件**の投稿・インサイトが実 API 経由で画面に表示される（部分失敗時は取得分のみ表示 + Alert）
 - [ ] 認可拒否・state 改ざん時に ERROR_MAP 経由でエラー Alert が表示され、credential が壊れない
 - [ ] 連携解除で credential が削除され unlinked に戻る
 - [x] **`/privacy` に Instagram API 利用・Meta 共同利用・取得データ・削除手順（連携解除）が追記されている**（`app/privacy/page.tsx` 実装済み。App Review 提出前に本番 URL で目視確認）
 - [ ] 本番（`https://growmate.tokyo`）にデプロイされ、Instagram 機能が allowlist で審査用アカウントにのみ見えている（§3.2 審査環境）
-- [ ] 審査用アカウント（**§9 Q7 で合意した role**、`full_name` 登録済み、allowlist 上の user_id）で **`/setup/instagram` まで到達**し、ログイン〜連携〜プレビュー表示まで通しで動作する。`/admin/*` には到達できない
-- [ ] **§9 Q6 合意後**、レビュアー向けログイン手段が実装・検証済み（案1 の場合 `/login` 変更含む）
+- [ ] 審査用アカウント（**`role: 'paid'`**、`full_name` 登録済み、allowlist 上の user_id）で **`/setup/instagram` まで到達**し、ログイン〜連携〜プレビュー表示まで通しで動作する。`/admin/*` には到達できない
+- [ ] 審査専用の受信箱でレビュアーが OTP ログインを再現できることを、こちらで一度通しで検証済み
 - [ ] Meta Dashboard に **1024×1024** App Icon をアップロード済み
 - [ ] 成功 API コールが提出 **30 日以内**（§3.2）
 - [ ] 提出フォームの Platform Settings 欄にレビュアーのアクセス手段を記入済み
@@ -392,10 +392,9 @@ create table public.instagram_account_insights_daily (
 
 ## 9. 未確定事項（実装前に要確認）
 
-### 未確定事項（クライアント確認中）
-
-- **Q6. Meta レビュアーの GrowMate ログイン手段**: 現状はメール OTP のみで提出フォームに固定認証情報を書けない（§3.2）。**案1**（Supabase `signInWithPassword` を審査用1アカウントに限定）は `docs/context/client-vision-from-lark.md` §1.5（メール・LINE ログイン優先）・§1.6（事前許可なく認証基盤を変えない）と衝突し得る。**合意前に `/login` 改修・Supabase Email パスワード有効化を Phase 1-B 必須としない**。合意後に影響範囲（`app/login/page.tsx`、`auth.actions.ts`、anon 経路のサインアップ可否）を別途セキュリティレビューする
-- **Q7. 審査用 GrowMate アカウントの `/setup/instagram` 到達**: `proxy.ts` は `/setup/*` を **paid / admin のみ**許可（`hasSetupAccess` = `hasPaidFeatureAccess`）。`canAccessInstagram` の allowlist は **Instagram UI ガード用**で proxy を bypass しない。**選択肢（未決定）**: (A) 審査用アカウントを `role: 'paid'` にする（trial 想定とズレる） (B) `/setup/instagram` 等を proxy 上 trial も通すよう変更する（既存 Google 系 setup との一貫性要確認） (C) 審査期間のみ別経路（要設計）。**`role: 'trial'` + allowlist のみでは `/setup/instagram` に到達できない**（2026-07-31 コード照合）
+### 未確定事項（クライアント確認中）— **2026-08-01 時点で残件なし**
+- ~~Q6. Meta レビュアーの GrowMate ログイン手段~~: **回答済み（2026-08-01）** — **案2「審査専用の受信箱を渡す」で確定**。審査専用の Gmail（2段階認証なし）を新規作成し、そのアドレスで OTP ログインして審査用アカウントを作る。アドレスとパスワードは提出フォームの Credentials 欄にのみ記入し、本仕様書には書かない。**GrowMate のコード・Supabase 設定は変更しない**ため `client-vision-from-lark.md` §1.6 に抵触せず、クライアント合意はブロッカーではない（報告事項）。案1（`signInWithPassword`）は同じ目的をコード変更ゼロで達成できるため不採用。詳細は §3.2「レビュアーのログイン手段」
+- ~~Q7. 審査用 GrowMate アカウントの `/setup/instagram` 到達~~: **回答済み（2026-08-01）** — **`role: 'paid'` で確定**。`proxy.ts:156-158` の `hasSetupAccess` = `hasPaidFeatureAccess`（`src/types/user.ts:31` の `PAID_FEATURE_ROLES = ['paid','admin']`）を `paid` は通過し、`isAdmin`（`src/authUtils.ts:6-8`）は `role === 'admin'` のみのため `proxy.ts:162` の `/admin/*` は弾かれる。`PAID_FEATURE_REQUIRED_PATHS`（`proxy.ts:10` = `['/analytics']`）・`ADMIN_REQUIRED_PATHS`（同 `:9` = `['/admin']`）は `/setup/instagram` に適用されない。**proxy もアプリコードも変更しない**（選択肢 B・C は不要）。**`role: 'trial'` では `/setup/*` に到達できない**ため trial は採らない（2026-07-31 コード照合）
 
 ### その他（Phase 2 以降で可のもの）
 
