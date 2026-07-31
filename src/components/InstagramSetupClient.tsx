@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { BackLink } from '@/components/BackLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { InstagramGlyph } from '@/components/InstagramGlyph';
 import {
   Dialog,
   DialogClose,
@@ -222,8 +223,8 @@ export default function InstagramSetupClient({
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <ImageIcon className="text-pink-500" size={28} />
+        <div className="flex items-center gap-4">
+          <InstagramGlyph className="text-gray-900" />
           <h1 className="text-3xl font-bold text-gray-900">Instagram 連携</h1>
         </div>
         <p className="text-gray-600">
@@ -294,12 +295,17 @@ export default function InstagramSetupClient({
           <AlertDescription className="text-orange-700">
             Instagramの認証が期限切れです。再連携してください。
             <div className="mt-3">
-              <Button asChild className="bg-orange-700 hover:bg-orange-800">
+              <Button
+                asChild
+                className="h-12 gap-4 px-4 has-[>svg]:px-4 bg-orange-700 hover:bg-orange-800"
+              >
                 <Link href={OAUTH_START_PATH} onClick={() => setIsConnecting(true)}>
                   {isConnecting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
-                  再連携する
+                    <Loader2 className="size-8 animate-spin" />
+                  ) : (
+                    <InstagramGlyph className="text-white" />
+                  )}
+                  Instagramと再連携する
                 </Link>
               </Button>
             </div>
@@ -344,11 +350,17 @@ export default function InstagramSetupClient({
           {!isConnected ? (
             <>
               <p className="text-sm text-gray-600">※個人アカウントは連携できません</p>
-              <Button asChild disabled={!isOauthConfigured || isConnecting}>
+              <Button
+                asChild
+                disabled={!isOauthConfigured || isConnecting}
+                className="h-12 gap-4 px-4 has-[>svg]:px-4"
+              >
                 <Link href={OAUTH_START_PATH} onClick={() => setIsConnecting(true)}>
                   {isConnecting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : null}
+                    <Loader2 className="size-8 animate-spin" />
+                  ) : (
+                    <InstagramGlyph className="text-primary-foreground" />
+                  )}
                   Instagramと連携する
                 </Link>
               </Button>

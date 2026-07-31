@@ -14,10 +14,10 @@ import {
   ShieldCheck,
   ShieldOff,
   RefreshCw,
-  Image as ImageIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { BackLink } from '@/components/BackLink';
+import { InstagramGlyph } from '@/components/InstagramGlyph';
 import { SetupDashboardProps } from '@/types/components';
 import type { Ga4ConnectionStage } from '@/types/ga4';
 import { refetchGscStatusWithValidation } from '@/server/actions/gscSetup.actions';
@@ -628,8 +628,8 @@ export default function SetupDashboard({
         {instagramStatus && (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-3">
-                <ImageIcon className="text-pink-500" size={24} />
+              <CardTitle className="flex items-center gap-4">
+                <InstagramGlyph className="text-gray-900" />
                 Instagram連携
               </CardTitle>
             </CardHeader>
