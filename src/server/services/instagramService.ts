@@ -26,8 +26,6 @@ const PROFILE_FIELDS = [
   'name',
   'account_type',
   'profile_picture_url',
-  'biography',
-  'website',
   'followers_count',
   'follows_count',
   'media_count',
@@ -59,7 +57,6 @@ const MEDIA_FIELDS = [
 export interface InstagramTokenExchangeResult {
   accessToken: string;
   igUserId: string;
-  expiresIn: number;
 }
 
 export interface InstagramLongLivedTokenResult {
@@ -158,6 +155,16 @@ function parseNumber(value: unknown): number | null {
   return null;
 }
 
+// 一部の Instagram エンドポイントは本体を { data: [ ... ] } でラップして返す。
+// ラップが無い形も許容してフォールバックする。
+function unwrapDataEnvelope(json: Record<string, unknown>): Record<string, unknown> {
+  const data = json.data;
+  if (Array.isArray(data) && typeof data[0] === 'object' && data[0] !== null) {
+    return data[0] as Record<string, unknown>;
+  }
+  return json;
+}
+
 function parseRequiredExpiresIn(value: unknown, context: string): number {
   const parsed = parseNumber(value);
   if (parsed == null || parsed <= 0) {
@@ -217,21 +224,24 @@ export class InstagramService {
       body: body.toString(),
     });
 
+    // Business Login for Instagram のレスポンスは { data: [{ access_token, user_id, permissions }] }
+    // 形式で、expires_in を含まない（短命トークンの有効期限は 1 時間固定）。
+    // expires_in を返すのは長命トークン交換（ig_exchange_token）のみ。
     const json = await parseJsonResponse(response);
-    const accessToken = typeof json.access_token === 'string' ? json.access_token : '';
+    const payload = unwrapDataEnvelope(json);
+    const accessToken = typeof payload.access_token === 'string' ? payload.access_token : '';
     const igUserId =
-      typeof json.user_id === 'string'
-        ? json.user_id
-        : typeof json.user_id === 'number'
-          ? String(json.user_id)
+      typeof payload.user_id === 'string'
+        ? payload.user_id
+        : typeof payload.user_id === 'number'
+          ? String(payload.user_id)
           : '';
-    const expiresIn = parseRequiredExpiresIn(json.expires_in, 'token exchange');
 
     if (!accessToken || !igUserId) {
       throw new Error('Instagram token exchange response missing access_token or user_id');
     }
 
-    return { accessToken, igUserId, expiresIn };
+    return { accessToken, igUserId };
   }
 
   async exchangeForLongLivedToken(shortLivedToken: string): Promise<InstagramLongLivedTokenResult> {
@@ -307,8 +317,6 @@ export class InstagramService {
       accountType: typeof json.account_type === 'string' ? json.account_type : null,
       profilePictureUrl:
         typeof json.profile_picture_url === 'string' ? json.profile_picture_url : null,
-      biography: typeof json.biography === 'string' ? json.biography : null,
-      website: typeof json.website === 'string' ? json.website : null,
       followersCount: parseNumber(json.followers_count),
       followsCount: parseNumber(json.follows_count),
       mediaCount: parseNumber(json.media_count),

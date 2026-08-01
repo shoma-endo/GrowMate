@@ -265,8 +265,6 @@ const DEV_SAMPLE_INSTAGRAM_PROFILE: InstagramProfile = {
   name: 'GrowMate Demo',
   accountType: 'BUSINESS',
   profilePictureUrl: null,
-  biography: 'GrowMate デモ用アカウント',
-  website: 'https://growmate.tokyo',
   followersCount: 1234,
   followsCount: 56,
   mediaCount: 78,
