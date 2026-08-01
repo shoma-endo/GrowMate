@@ -26,6 +26,14 @@ import type {
   UpsertGoogleAdsNegativeKeywordsSuggestionSettingsInput,
 } from '@/types/google-ads-negative-keywords-suggestion';
 import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
+import type { InstagramCredential } from '@/types/instagram';
+import type {
+  InstagramCredentialInsertRow,
+  InstagramCredentialRow,
+  InstagramCredentialUpdateRow,
+  InstagramOnlyDatabase,
+} from '@/types/database.types.pending';
+import { asPendingClient } from '@/types/database.types.pending';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
 
@@ -1231,6 +1239,10 @@ export class SupabaseService {
 
   private getAdminActionLogsClient(): SupabaseClient<ExtendedDatabase> {
     return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
+  }
+
+  private getInstagramCredentialsClient(): SupabaseClient<InstagramOnlyDatabase> {
+    return asPendingClient<InstagramOnlyDatabase>(this.supabase);
   }
 
   private mapGoogleAdsEvaluationSettingsRow(
@@ -2695,6 +2707,155 @@ export class SupabaseService {
         error,
         developerMessage: 'Error deleting Supabase Auth user',
         context: { supabaseAuthId },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  private mapInstagramCredentialRow(row: InstagramCredentialRow): InstagramCredential {
+    return {
+      igUserId: row.ig_user_id,
+      username: row.username,
+      accountType: row.account_type,
+      profilePictureUrl: row.profile_picture_url,
+      accessToken: row.access_token,
+      accessTokenExpiresAt: row.access_token_expires_at,
+      accessTokenIssuedAt: row.access_token_issued_at,
+      scope: row.scope ?? [],
+      lastSyncedAt: row.last_synced_at,
+    };
+  }
+
+  async saveInstagramCredential(
+    userId: string,
+    payload: {
+      igUserId: string;
+      username?: string | null;
+      accountType?: string | null;
+      profilePictureUrl?: string | null;
+      accessToken: string;
+      accessTokenExpiresAt: string;
+      accessTokenIssuedAt: string;
+      scope?: string[];
+    }
+  ): Promise<SupabaseResult<void>> {
+    const record: InstagramCredentialInsertRow = {
+      user_id: userId,
+      ig_user_id: payload.igUserId,
+      username: payload.username ?? null,
+      account_type: payload.accountType ?? null,
+      profile_picture_url: payload.profilePictureUrl ?? null,
+      access_token: payload.accessToken,
+      access_token_expires_at: payload.accessTokenExpiresAt,
+      access_token_issued_at: payload.accessTokenIssuedAt,
+      scope: payload.scope ?? [],
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await this.getInstagramCredentialsClient()
+      .from('instagram_credentials')
+      .upsert(record, { onConflict: 'user_id' });
+
+    if (error) {
+      return this.failure('Instagram認証情報の保存に失敗しました', {
+        error,
+        developerMessage: 'Error upserting Instagram credential',
+        context: { userId },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  async getInstagramCredential(userId: string): Promise<InstagramCredential | null> {
+    const { data, error } = await this.getInstagramCredentialsClient()
+      .from('instagram_credentials')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching Instagram credential:', error);
+      return null;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return this.mapInstagramCredentialRow(data);
+  }
+
+  async updateInstagramCredential(
+    userId: string,
+    updates: Partial<{
+      username: string | null;
+      accountType: string | null;
+      profilePictureUrl: string | null;
+      accessToken: string;
+      accessTokenExpiresAt: string;
+      accessTokenIssuedAt: string;
+      scope: string[] | null;
+      lastSyncedAt: string | null;
+    }>
+  ): Promise<SupabaseResult<void>> {
+    const record: InstagramCredentialUpdateRow = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if ('username' in updates) {
+      record.username = updates.username ?? null;
+    }
+    if ('accountType' in updates) {
+      record.account_type = updates.accountType ?? null;
+    }
+    if ('profilePictureUrl' in updates) {
+      record.profile_picture_url = updates.profilePictureUrl ?? null;
+    }
+    if ('accessToken' in updates) {
+      record.access_token = updates.accessToken;
+    }
+    if ('accessTokenExpiresAt' in updates) {
+      record.access_token_expires_at = updates.accessTokenExpiresAt;
+    }
+    if ('accessTokenIssuedAt' in updates) {
+      record.access_token_issued_at = updates.accessTokenIssuedAt;
+    }
+    if ('scope' in updates) {
+      record.scope = updates.scope ?? [];
+    }
+    if ('lastSyncedAt' in updates) {
+      record.last_synced_at = updates.lastSyncedAt ?? null;
+    }
+
+    const { error } = await this.getInstagramCredentialsClient()
+      .from('instagram_credentials')
+      .update(record)
+      .eq('user_id', userId);
+
+    if (error) {
+      return this.failure('Instagram認証情報の更新に失敗しました', {
+        error,
+        developerMessage: 'Error updating Instagram credential',
+        context: { userId },
+      });
+    }
+
+    return this.success(undefined);
+  }
+
+  async deleteInstagramCredential(userId: string): Promise<SupabaseResult<void>> {
+    const { error } = await this.getInstagramCredentialsClient()
+      .from('instagram_credentials')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) {
+      return this.failure('Instagram認証情報の削除に失敗しました', {
+        error,
+        developerMessage: 'Error deleting Instagram credential',
+        context: { userId },
       });
     }
 

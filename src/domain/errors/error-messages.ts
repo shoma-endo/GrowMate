@@ -824,6 +824,70 @@ export const ERROR_MESSAGES = {
   },
 
   /**
+   * Instagram連携関連のエラーメッセージ
+   */
+  INSTAGRAM: {
+    /** Instagram連携機能へのアクセス権がない場合 */
+    ACCESS_DENIED: 'Instagram連携機能へのアクセス権がありません',
+
+    /** Instagram認証に失敗した場合 */
+    AUTH_FAILED: 'Instagramとの連携がキャンセルされました。もう一度お試しください',
+
+    /** 認証パラメータが不足している場合 */
+    MISSING_PARAMS: '認証パラメータが不足しています。もう一度お試しください',
+
+    /** 不正なリクエストの場合 */
+    INVALID_STATE: '不正なリクエストです。もう一度お試しください',
+
+    /** セッションが無効（Cookie不一致）の場合 */
+    STATE_COOKIE_MISMATCH: 'セッションが無効です（Cookie不一致）。もう一度お試しください',
+
+    /** ユーザー情報が一致しない場合 */
+    STATE_USER_MISMATCH: 'ユーザー情報が一致しません。再度ログインしてください',
+
+    /** 認証セッションの有効期限が切れた場合 */
+    STATE_EXPIRED: '認証セッションの有効期限が切れました。もう一度お試しください',
+
+    /** 認証情報の形式が不正な場合 */
+    INVALID_CREDENTIALS: '認証情報の形式が不正です。もう一度お試しください',
+
+    /** トークン交換に失敗した場合 */
+    TOKEN_EXCHANGE_FAILED: 'Instagramとの連携に失敗しました。もう一度お試しください',
+
+    /** Instagram認証が期限切れまたは無効な場合 */
+    AUTH_EXPIRED: 'Instagramの認証が期限切れです。再連携してください',
+
+    /** 連携処理に失敗した場合 */
+    CONNECTION_FAILED: 'Instagram連携に失敗しました。時間をおいて再度お試しください',
+
+    /** Instagram API呼び出しに失敗した場合 */
+    API_ERROR: 'Instagramデータの取得に失敗しました。時間をおいて再度お試しください',
+
+    /** プロアカウント以外のアカウントで連携しようとした場合 */
+    NOT_PROFESSIONAL_ACCOUNT:
+      'Instagramのプロアカウント（ビジネス/クリエイター）のみ連携できます。個人アカウントは対象外です',
+
+    /** サーバーエラー */
+    SERVER_ERROR: 'サーバーエラーが発生しました。時間をおいて再度お試しください',
+
+    /** 連携解除に失敗した場合 */
+    DISCONNECT_FAILED: 'Instagram連携の解除に失敗しました',
+
+    /** ステータス取得に失敗した場合 */
+    STATUS_FETCH_FAILED: 'Instagram連携ステータスの取得に失敗しました',
+
+    /** プレビューデータ取得に失敗した場合 */
+    PREVIEW_FETCH_FAILED: 'Instagramプレビューデータの取得に失敗しました',
+
+    /** 一部の投稿データ取得に失敗した場合 */
+    PARTIAL_MEDIA_FAILURE: (failedCount: number): string =>
+      `一部の投稿データを取得できませんでした（${failedCount}件）`,
+
+    /** 不明なエラー */
+    UNKNOWN_ERROR: '不明なエラーが発生しました。もう一度お試しください',
+  },
+
+  /**
    * プロンプト関連のエラーメッセージ
    */
   PROMPT: {
