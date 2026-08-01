@@ -208,7 +208,7 @@ export const ERROR_MESSAGES = {
     PENDING_AUTH_DELETION:
       'このアカウントは削除処理中です。時間をおいて再度ログインするか、管理者へお問い合わせください。',
 
-    /** 審査用ログイン経路が無効（REVIEW_LOGIN_ENABLED 未設定）の場合 */
+    /** 審査用ログイン経路が無効（REVIEW_LOGIN_EMAIL 未設定）の場合 */
     REVIEW_LOGIN_DISABLED: 'この画面は現在利用できません。',
 
     /** 審査用ログインの入力が不正な場合（列挙耐性のため認証失敗と同一文言にする） */

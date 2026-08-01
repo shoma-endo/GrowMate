@@ -14,7 +14,7 @@ const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const
 
 // 認証不要なパスの定義
 // '/review-login' は Meta App Review のレビュアー専用ログイン経路。
-// REVIEW_LOGIN_ENABLED が無ければページ側で 404 になるため、審査期間外は到達できない。
+// REVIEW_LOGIN_EMAIL が無ければページ側で 404 になるため、審査期間外は到達できない。
 const PUBLIC_PATHS = [
   '/login',
   '/review-login',
