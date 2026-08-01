@@ -447,7 +447,9 @@ export default function InstagramSetupClient({
         <Card>
           <CardHeader>
             <CardTitle>最新の投稿プレビュー（最大3件）</CardTitle>
-            <CardDescription>連携中アカウントの最新投稿と主要指標を表示します。</CardDescription>
+            <CardDescription>
+              連携中アカウントの最新投稿と主要指標を表示します。指標はInstagram側の集計により、最大48時間ほど遅れて反映される場合があります。
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {partialFailureMessage ? (

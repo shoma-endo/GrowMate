@@ -194,6 +194,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - 各メディア（FEED/REELS のみ）の insights を取得し、`instagram_media` に最新値を反映＋当日分を `instagram_media_insights_daily` にスナップショット（日次推移用）
    - アカウント insights: **`last_synced_at` が null の初回同期は直近 D=30 日分**（昨日まで）を取得。2回目以降は `last_synced_at` の日付〜昨日までを upsert（欠損日は API 応答に従い補完）
    - 部分失敗は投稿単位で continue し、**必ず `console.error` でログ**（skipped カウントのみのサイレント処理禁止）。結果に `{ synced, failed, skipped, truncated }` を含める
+   - **`error_subcode 2108006`（プロ転換前の投稿）は恒久失敗として他の部分失敗と区別する**（§3.3）。直近50件が対象のため転換前の投稿が数十件該当し得る。再試行しても永久に直らないので「取得できませんでした」で一括表示するとユーザーが再試行を繰り返す。判別ヘルパーは `instagramService` 側に置き、**Phase 1 の `/setup/instagram` プレビューの部分失敗表示（§4 Phase1-11）にも同じものを使う**（Phase 1 では未実装。件数が3件で影響が小さいため Phase 2 に集約した）
 3. 同期トリガー（**専用インポート画面は設けない**。既存3系統の実装調査の結果、GA4は`/setup/ga4`内ボタンのみ・GSCは`/gsc-import`と`gsc-dashboard`inline最新化を併存と、実装は都度判断されておりパターンは一様でない。Instagramは同期パラメータが固定（直近50件・直近30日）でGSC importのような期間フォームが不要な点、既にhourly cronで自動同期がある点から、GSC dashboard の `OverviewTab.tsx` inline「最新化」と同じ**確認ダイアログ + 単一トースト**方式を採用する）:
    - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ 確認 `Dialog`（`OverviewTab.tsx:153-186` と同型）→ Server Action。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再認証/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**ダイアログ文言・トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
    - 自動: `app/api/cron/instagram-sync/route.ts`（`CRON_SECRET` Bearer 検証、`maxDuration = 300`、`gsc-evaluate` と同型のユーザーバッチ処理）を `.github/workflows/hourly-cron.yml` の matrix に追加:
