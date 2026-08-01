@@ -1,8 +1,8 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CheckCircle2, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { BackLink } from '@/components/BackLink';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -51,13 +51,7 @@ async function GoogleAdsSetupContent({
   return (
     <div className="w-full max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-6">
-        <Link
-          href="/setup"
-          className="text-sm text-gray-500 hover:text-gray-900 flex items-center gap-1"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          設定に戻る
-        </Link>
+        <BackLink href="/setup" label="設定に戻る" />
       </div>
 
       <div className="space-y-2">

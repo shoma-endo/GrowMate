@@ -7,6 +7,7 @@ import { Footer } from '@/components/Footer';
 import type { AuthContextType, AuthProviderProps } from '@/types/components';
 import type { User } from '@/types/user';
 import { signOutEmail } from '@/server/actions/auth.actions';
+import { isClientPublicPath as isPublicPath } from '@/lib/public-paths';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -16,14 +17,6 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
-
-// 公開パス（認証不要）
-const PUBLIC_PATHS = ['/home', '/privacy', '/login'] as const;
-
-function isPublicPath(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(path + '/'));
 }
 
 type FetchCurrentUserResult = {
@@ -72,11 +65,15 @@ async function fetchCurrentUser(): Promise<FetchCurrentUserResult> {
   };
 }
 
+// 氏名登録ダイアログを自前で出す画面。ここから追い出すと登録の途中で導線が切れる。
+// '/review-login' は審査員が OTP を受け取れないため、/login へ戻すと復帰できない。
+const FULL_NAME_DIALOG_PATHS = ['/login', '/review-login'];
+
 function redirectIfNeedsFullName(
   pathname: string | null,
   router: ReturnType<typeof useRouter>
 ): boolean {
-  if (pathname === '/login') return true;
+  if (pathname && FULL_NAME_DIALOG_PATHS.includes(pathname)) return true;
   router.replace('/login');
   return true;
 }

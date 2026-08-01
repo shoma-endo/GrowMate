@@ -13,7 +13,22 @@ const SETUP_PATHS = ['/setup'] as const;
 const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const;
 
 // 認証不要なパスの定義
-const PUBLIC_PATHS = ['/login', '/unauthorized', '/', '/home', '/privacy'] as const;
+// '/review-login' は Meta App Review のレビュアー専用ログイン経路。
+// REVIEW_LOGIN_EMAIL が無ければページ側で 404 になるため、審査期間外は到達できない。
+// '/privacy' と '/terms' は審査側が匿名で開くため、認証を挟むと審査が通らない。
+//
+// クライアント側にも src/lib/public-paths.ts に別のリストがある。ここだけに追加すると、
+// サーバは通すのに AuthProvider がマウント直後に /login へ戻すため画面に到達できない。
+// 逆に '/' と '/unauthorized' はクライアント側では認証必須のままにする必要がある（同ファイル参照）。
+const PUBLIC_PATHS = [
+  '/login',
+  '/review-login',
+  '/unauthorized',
+  '/',
+  '/home',
+  '/privacy',
+  '/terms',
+] as const;
 
 function buildCspHeader(nonce: string): string {
   const isDev = process.env.NODE_ENV === 'development';
@@ -22,7 +37,9 @@ function buildCspHeader(nonce: string): string {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: https://profile.line-scdn.net",
+    // cdninstagram.com / fbcdn.net は Instagram のプロフィール画像・メディアの配信元。
+    // 許可しないと /setup/instagram の画像がすべてブラウザ側でブロックされる。
+    "img-src 'self' data: https://profile.line-scdn.net https://*.cdninstagram.com https://*.fbcdn.net",
     `connect-src 'self'${isDev ? ' ws://localhost:* wss://localhost:*' : ''} https://oauth2.googleapis.com https://openidconnect.googleapis.com https://www.googleapis.com https://accounts.google.com https://public-api.wordpress.com https://*.supabase.co wss://*.supabase.co`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
