@@ -15,6 +15,11 @@ const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const
 // 認証不要なパスの定義
 // '/review-login' は Meta App Review のレビュアー専用ログイン経路。
 // REVIEW_LOGIN_EMAIL が無ければページ側で 404 になるため、審査期間外は到達できない。
+// '/privacy' と '/terms' は審査側が匿名で開くため、認証を挟むと審査が通らない。
+//
+// クライアント側にも src/lib/public-paths.ts に別のリストがある。ここだけに追加すると、
+// サーバは通すのに AuthProvider がマウント直後に /login へ戻すため画面に到達できない。
+// 逆に '/' と '/unauthorized' はクライアント側では認証必須のままにする必要がある（同ファイル参照）。
 const PUBLIC_PATHS = [
   '/login',
   '/review-login',
@@ -22,6 +27,7 @@ const PUBLIC_PATHS = [
   '/',
   '/home',
   '/privacy',
+  '/terms',
 ] as const;
 
 function buildCspHeader(nonce: string): string {
