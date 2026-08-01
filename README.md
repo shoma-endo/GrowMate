@@ -23,9 +23,10 @@
 - **Google Search Console 連携**: OAuth 認証、日次指標保存（`gsc_page_metrics` / `gsc_query_metrics`）、記事評価・改善提案（`gsc_article_evaluations`）、改善提案ジョブの Cron 実行（`/api/cron/gsc-suggestions`）
 - **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`）、サマリー・ランキング・時系列ダッシュボード
 - **Google Ads 連携**: OAuth 認証、MCC アカウント選択、キーワード・キャンペーン指標、GSC 順位と WordPress 記事在庫を考慮した AI コンテンツ戦略提案、除外キーワード提案（自動配信メール対応）
+- **Instagram 連携**: Business Login for Instagram による OAuth 認証、プロアカウント（ビジネス/クリエイター）連携、投稿プレビュー（`/setup/instagram`）。認証情報は `instagram_credentials` に保存
 - **管理者ダッシュボード** (`/admin`): プロンプトテンプレート編集・バージョン保存、ユーザーロール管理
 - **事業者情報ブリーフ** (`/business-info`): 複数サービスの 5W2H を登録し、チャットセッションごとに選択したサービスのコンテキストを自動補完
-- **外部連携セットアップ** (`/setup`): WordPress・GSC・GA4・Google Ads の接続状態と設定画面を集約
+- **外部連携セットアップ** (`/setup`): WordPress・GSC・GA4・Google Ads・Instagram の接続状態と設定画面を集約
 
 ## 🏗️ システムアーキテクチャ
 
@@ -44,6 +45,7 @@ graph TB
     GscDashboard["GSC Dashboard"]
     Ga4Dashboard["GA4 Dashboard"]
     GoogleAdsDashboard["Google Ads Dashboard"]
+    InstagramSetup["Instagram Setup"]
   end
 
   subgraph Server["サーバー（app/api/*・src/server/actions/*・proxy.ts）"]
@@ -57,13 +59,14 @@ graph TB
     GscCron["api/cron/*"]
     Ga4API["api/ga4/*"]
     GoogleAdsAPI["api/google-ads/*"]
+    InstagramAPI["api/instagram/*"]
     ServerActions["server/actions/*"]
   end
 
-  subgraph Data["Supabase PostgreSQL（テーブル詳細は database.types.ts）"]
+  subgraph Data["Supabase PostgreSQL（テーブル詳細は database.types.ts。未適用マイグレーションは database.types.pending.ts）"]
     UserData["users / chat_sessions / chat_messages"]
     ContentData["briefs / content_annotations / session_heading_sections / session_combined_contents"]
-    IntegrationData["gsc_* / ga4_* / google_ads_* / wordpress_settings"]
+    IntegrationData["gsc_* / ga4_* / google_ads_* / instagram_credentials / wordpress_settings"]
     AdminData["prompt_templates / prompt_versions"]
   end
 
@@ -74,6 +77,7 @@ graph TB
     GSC["GSC API"]
     GA4["GA4 API"]
     GoogleAds["Google Ads API"]
+    Instagram["Instagram Graph API"]
   end
 
   AuthShell --> ProxyGate
@@ -89,6 +93,7 @@ graph TB
   GscDashboard --> GscAPI
   Ga4Dashboard --> Ga4API
   GoogleAdsDashboard --> GoogleAdsAPI
+  InstagramSetup --> InstagramAPI
   GscDashboard --> ServerActions
   Ga4Dashboard --> ServerActions
   GoogleAdsDashboard --> ServerActions
@@ -102,6 +107,7 @@ graph TB
   GscCron --> IntegrationData
   Ga4API --> IntegrationData
   GoogleAdsAPI --> IntegrationData
+  InstagramAPI --> IntegrationData
 
   ChatAPI --> Anthropic
   ChatAPI --> OpenAI
@@ -110,9 +116,12 @@ graph TB
   GscCron --> GSC
   Ga4API --> GA4
   GoogleAdsAPI --> GoogleAds
+  InstagramAPI --> Instagram
 ```
 
 GSC の連携状態・プロパティ・インポート等は **[`src/server/actions/`](src/server/actions/)** の `gsc*.actions.ts` が中心。OAuth の HTTP 開始/コールバックは [`app/api/gsc/`](app/api/gsc) を参照。
+
+Instagram 連携のセットアップ・プレビューは **`instagramSetup.actions.ts`** が中心。OAuth の HTTP 開始/コールバックは [`app/api/instagram/`](app/api/instagram) を参照。
 
 ## 🛠️ 技術スタック
 
@@ -144,7 +153,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 - **Supabase Auth + @supabase/ssr**: メール OTP・セッション（主系）
 - **Resend**: SMTP（送信元は運用で固定。例: `noreply@mail.growmate.tokyo`）
-- **OAuth / API**: WordPress.com、Google（GSC / GA4 / Ads）、WordPress REST、各種 Google API（用途はコード参照）
+- **OAuth / API**: WordPress.com、Google（GSC / GA4 / Ads）、Instagram Graph、WordPress REST、各種 Google API（用途はコード参照）
 
 ### 開発ツール
 
@@ -164,7 +173,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 ## 📊 データベーススキーマ
 
-**列・型・外部キー**は Supabase から生成した **[`src/types/database.types.ts`](src/types/database.types.ts)** の `Database['public']['Tables']` を正とする（マイグレーション後は [`package.json`](package.json) の `npm run supabase:types` で再生成）。**ビジュアルなテーブル関係**は Supabase Dashboard の Database / Table Editor を参照。
+**列・型・外部キー**は Supabase から生成した **[`src/types/database.types.ts`](src/types/database.types.ts)** の `Database['public']['Tables']` を正とする（マイグレーション後は [`package.json`](package.json) の `npm run supabase:types` で再生成）。**リモート未適用のマイグレーション**がある場合は **[`src/types/database.types.pending.ts`](src/types/database.types.pending.ts)** に暫定型を定義し、適用・型再生成後に削除する（詳細は [`.agents/skills/supabase/service-usage.md`](.agents/skills/supabase/service-usage.md) §6）。**ビジュアルなテーブル関係**は Supabase Dashboard の Database / Table Editor を参照。
 
 ## 📋 環境変数
 
@@ -186,6 +195,10 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | 任意（Google Ads API 利用時は必須） | [`src/server/services/googleAdsService.ts`](src/server/services/googleAdsService.ts) |
 | `EMAIL_FROM` | 任意（未設定時は既定の送信元にフォールバック） | [`src/server/services/emailService.ts`](src/server/services/emailService.ts) の送信元アドレス |
 | `GSC_QUERY_ROW_LIMIT` | 任意（未設定時は既定値） | [`src/server/lib/gsc-config.ts`](src/server/lib/gsc-config.ts) のクエリ取得行数上限 |
+| `INSTAGRAM_APP_ID` | 任意（Instagram OAuth 利用時は必須） | [`app/api/instagram/oauth/`](app/api/instagram/oauth) |
+| `INSTAGRAM_APP_SECRET` | 任意（Instagram OAuth 利用時は必須） | 同上 |
+| `INSTAGRAM_REDIRECT_URI` | 任意（Instagram OAuth 利用時は必須） | 同上 |
+| `INSTAGRAM_BETA_USER_IDS` | 任意（App Review 期間の allowlist。空なら admin/paid/trial に開放） | [`src/server/lib/instagram-permissions.ts`](src/server/lib/instagram-permissions.ts) |
 | `NEXT_PUBLIC_APP_URL` | 任意（内部 API 呼び出しのベース URL） | [`src/server/actions/adminUsers.actions.ts`](src/server/actions/adminUsers.actions.ts) |
 | `VERCEL_URL` | Vercel が自動設定 | [`src/server/middleware/authMiddlewareGuards.ts`](src/server/middleware/authMiddlewareGuards.ts) の許可オリジン判定 |
 
@@ -202,7 +215,7 @@ npm run dev  # http://localhost:3000
 
 > **Supabase 注意**: 本番と開発で同一プロジェクトを共有しています。`npx supabase db push` をリモートに対して実行しないこと。スキーマ変更は `supabase/migrations/` にコミットし、適用は管理者が行います。
 
-初回セットアップ後は Supabase の `users` テーブルで自分のロールを `admin` に変更し、`/business-info` で事業者情報を登録してください。外部サービス（Google OAuth / WordPress / Google Ads）の詳細手順は [`docs/specs/`](docs/specs/) を参照。
+初回セットアップ後は Supabase の `users` テーブルで自分のロールを `admin` に変更し、`/business-info` で事業者情報を登録してください。Google / WordPress / Google Ads の詳細手順は [`docs/specs/`](docs/specs/) を参照。Instagram 連携の設計・OAuth 要件は [`docs/plans/instagram-integration-design.md`](docs/plans/instagram-integration-design.md) を参照。
 
 ### よく使う npm scripts
 
@@ -232,7 +245,7 @@ npm run dev  # http://localhost:3000
 | [`src/domain/`](src/domain/) | ドメインモデル・エラー・クライアント向けサービス IF |
 | [`src/lib/`](src/lib/) | 定数・Supabase クライアント補助・バリデータ等 |
 | [`src/server/actions/`](src/server/actions/) | Server Actions（`*.actions.ts` がドメインごとに並ぶ） |
-| [`src/server/services/`](src/server/services/) | サーバー統合層（LLM / WordPress / GSC / GA4 / Google Ads 等） |
+| [`src/server/services/`](src/server/services/) | サーバー統合層（LLM / WordPress / GSC / GA4 / Google Ads / Instagram 等） |
 | [`src/server/middleware/`](src/server/middleware/) | `authMiddleware` 等 |
 | [`tests/unit/`](tests/unit/) | Vitestユニットテスト（`lib/`・`server/schemas/`） |
 | [`supabase/migrations/`](supabase/migrations/) | DB マイグレーション |
