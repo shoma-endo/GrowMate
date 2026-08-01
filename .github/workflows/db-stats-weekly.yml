@@ -71,9 +71,7 @@ jobs:
           # Node.jsでJSONペイロードを作成して送信
           node << 'EOF'
           const fs = require('fs');
-          const https = require('https');
-          const http = require('http');
-          const { URL } = require('url');
+          const { escapeLarkMd, sendLarkCard, div, hr, note } = require('./scripts/lark-notify.cjs');
 
           console.log('Starting webhook notification...');
           console.log('STATUS:', process.env.STATUS);
@@ -89,98 +87,30 @@ jobs:
             output = 'Output file not available';
           }
 
-          // Lark（飛書）webhook形式に合わせる
-          const statusEmoji = process.env.STATUS === 'success' ? '✅' : '❌';
-          const statusText = process.env.STATUS === 'success' ? '成功' : '失敗';
+          const isSuccess = process.env.STATUS === 'success';
+          const statusEmoji = isSuccess ? '✅' : '❌';
+          const statusText = isSuccess ? '成功' : '失敗';
           const workflowUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
-          // メッセージ本文を作成
-          const messageText = `【データベース統計レポート】\n` +
-            `ステータス: **${statusEmoji} ${statusText}**\n` +
-            `[詳細](${workflowUrl})\n\n` +
-            `【統計情報】\n\`\`\`\n${output}\n\`\`\``;
+          const elements = [
+            div(`**${statusEmoji} ${statusText}**`),
+            hr(),
+            div(`**📊 統計情報**\n\`\`\`\n${escapeLarkMd(output)}\n\`\`\``),
+            hr(),
+            note(`[実行ログを見る](${workflowUrl})`),
+          ];
 
-          const payload = {
-            msg_type: 'interactive',
-            card: {
-              elements: [
-                {
-                  tag: 'div',
-                  text: {
-                    tag: 'lark_md',
-                    content: messageText
-                  }
-                }
-              ]
-            }
-          };
-
-          const webhookUrl = process.env.DB_STATS_WEBHOOK_URL;
-          if (!webhookUrl) {
-            console.error('ERROR: DB_STATS_WEBHOOK_URL is not set');
-            process.exit(1);
-          }
-
-          console.log('Webhook URL:', webhookUrl.replace(/\/\/.*@/, '//***@')); // URLをマスク
-
-          let url;
-          try {
-            url = new URL(webhookUrl);
-          } catch (error) {
-            console.error('ERROR: Invalid webhook URL:', error.message);
-            process.exit(1);
-          }
-
-          const client = url.protocol === 'https:' ? https : http;
-          const postData = JSON.stringify(payload);
-
-          console.log('Payload size:', postData.length, 'bytes');
-
-          const options = {
-            hostname: url.hostname,
-            port: url.port || (url.protocol === 'https:' ? 443 : 80),
-            path: url.pathname + url.search,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(postData)
-            },
-            timeout: 30000 // 30秒のタイムアウト
-          };
-
-          const req = client.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
-              console.log('Response status:', res.statusCode);
-              console.log('Response headers:', JSON.stringify(res.headers));
-              if (res.statusCode >= 200 && res.statusCode < 300) {
-                console.log('✅ Webhook notification sent successfully');
-                console.log('Response body:', data.substring(0, 500)); // 最初の500文字のみ
-                process.exit(0);
-              } else {
-                console.error(`❌ Webhook notification failed with status ${res.statusCode}`);
-                console.error('Response body:', data);
-                process.exit(1);
-              }
+          sendLarkCard({
+            webhookUrl: process.env.DB_STATS_WEBHOOK_URL,
+            title: `📊 データベース統計レポート：${statusText}`,
+            template: isSuccess ? 'green' : 'red',
+            elements,
+          })
+            .then(() => process.exit(0))
+            .catch((error) => {
+              console.error('ERROR:', error.message);
+              process.exit(1);
             });
-          });
-
-          req.on('error', (error) => {
-            console.error('❌ Webhook notification error:', error.message);
-            console.error('Error code:', error.code);
-            process.exit(1);
-          });
-
-          req.on('timeout', () => {
-            console.error('❌ Webhook request timeout');
-            req.destroy();
-            process.exit(1);
-          });
-
-          console.log('Sending webhook request...');
-          req.write(postData);
-          req.end();
           EOF
 
         env:
