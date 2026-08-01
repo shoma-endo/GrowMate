@@ -199,7 +199,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 | `INSTAGRAM_APP_SECRET` | 任意（Instagram OAuth 利用時は必須） | 同上 |
 | `INSTAGRAM_REDIRECT_URI` | 任意（Instagram OAuth 利用時は必須） | 同上 |
 | `INSTAGRAM_BETA_USER_IDS` | 任意（App Review 期間の allowlist。空なら admin/paid/trial に開放） | [`src/server/lib/instagram-permissions.ts`](src/server/lib/instagram-permissions.ts) |
-| `REVIEW_LOGIN_EMAIL` | 任意（App Review 期間のみ設定。審査終了後は削除して経路を塞ぐ） | [`app/review-login/page.tsx`](app/review-login/page.tsx), [`src/server/actions/auth.actions.ts`](src/server/actions/auth.actions.ts) の `signInWithReviewPassword` |
+| `REVIEW_LOGIN_EMAIL` | 任意（App Review 期間のみ設定。審査終了後は削除して経路を塞ぐ） | [`app/review-login/page.tsx`](app/review-login/page.tsx), [`src/server/actions/auth.actions.ts`](src/server/actions/auth.actions.ts) の `signInWithReviewPassword`。**撤去時はこの行と併せて以下も削除する**: [`src/components/ReviewLoginForm.tsx`](src/components/ReviewLoginForm.tsx) / [`proxy.ts`](proxy.ts) と [`src/lib/public-paths.ts`](src/lib/public-paths.ts) の `/review-login` / [`src/domain/errors/error-messages.ts`](src/domain/errors/error-messages.ts) の `REVIEW_LOGIN_*` / `tests/unit/server/actions/reviewLogin.actions.test.ts` / `tests/unit/lib/public-paths.test.ts` の `/review-login` ケース / [`src/components/AuthProvider.tsx`](src/components/AuthProvider.tsx) の `FULL_NAME_DIALOG_PATHS` |
 | `NEXT_PUBLIC_APP_URL` | 任意（内部 API 呼び出しのベース URL） | [`src/server/actions/adminUsers.actions.ts`](src/server/actions/adminUsers.actions.ts) |
 | `VERCEL_URL` | Vercel が自動設定 | [`src/server/middleware/authMiddlewareGuards.ts`](src/server/middleware/authMiddlewareGuards.ts) の許可オリジン判定 |
 

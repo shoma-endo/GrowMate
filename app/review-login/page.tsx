@@ -18,8 +18,9 @@ export default function ReviewLoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
+    // AuthProvider が既に <main> を出しているため、ここは <div> にする（入れ子の <main> は不正）
+    <div className="flex min-h-screen items-center justify-center p-4">
       <ReviewLoginForm />
-    </main>
+    </div>
   );
 }
