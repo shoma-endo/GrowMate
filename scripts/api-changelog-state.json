@@ -13,26 +13,26 @@
     "checkedAt": "2026-04-19T01:08:08.694Z"
   },
   "google-search-console-api": {
-    "hash": "2ee5079aec7f1380967e4ef62f4848a215bce6a74c940f701d7286da20c3ef40",
-    "checkedAt": "2026-06-01T01:48:46.380Z"
+    "hash": "851c6a700ac9067189d83c327004d23c0e94742799e7f4f39da14a9d87006e2a",
+    "checkedAt": "2026-08-01T02:46:13.863Z"
   },
   "google-analytics-data-api": {
-    "hash": "7df3e194bd6959c525f6030e646984bc946bfe2154a1f52b5f8a1902bae18444",
-    "checkedAt": "2026-06-01T01:48:46.873Z"
+    "hash": "4e4cc86cb36eea67ca9efcc7e22aacda0540019bda731a6a1fa3b8af51b8a743",
+    "checkedAt": "2026-08-01T02:46:14.277Z"
   },
   "google-ads-api": {
-    "hash": "ad5ae9181261f3858bf86f2b2e4ad2871000c419a964fedc7306a6dd40477265",
-    "checkedAt": "2026-06-01T01:48:47.247Z"
+    "hash": "5a2b872e0fc47d9631eb3f4cbacb2b7f8351e7ce0f5c048112d127e0ca45c84c",
+    "checkedAt": "2026-08-01T02:46:15.011Z"
   },
   "wordpress-rest-api": {
     "checkedAt": "2026-04-19T01:08:35.250Z"
   },
   "openai-node": {
-    "lastTag": "v6.39.1",
-    "checkedAt": "2026-06-01T01:48:45.541Z"
+    "lastTag": "v7.3.0",
+    "checkedAt": "2026-08-01T02:46:12.545Z"
   },
   "supabase-js": {
-    "lastTag": "v2.106.3-canary.2",
-    "checkedAt": "2026-06-01T01:48:45.899Z"
+    "lastTag": "v2.112.0-canary.1",
+    "checkedAt": "2026-08-01T02:46:12.840Z"
   }
 }
