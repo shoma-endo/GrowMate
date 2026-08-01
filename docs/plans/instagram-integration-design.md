@@ -45,8 +45,14 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 - **アクセスレベルとビジネス認証（2026-07-27 調査）**: 出典は [アクセスレベル](https://developers.facebook.com/docs/graph-api/overview/access-levels) と [Business Verification](https://developers.facebook.com/documentation/development/release/business-verification)。
   - **スタンダードアクセス**は全ビジネスアプリに自動承認される。ただし「スタンダードアクセスでのアクセス許可は、リクエストするアプリで**役割を付与されているアプリユーザーのみ**がリクエストできます」。→ Instagram Tester に追加した審査用アカウントでの疎通確認・スクリーンキャスト収録は**ビジネス認証なしで実施できる**（前項「審査前でも…全機能が動く」の根拠）
   - **アドバンスアクセスにはビジネス認証が必須**（「アドバンスアクセスを取得するには、ビジネス認証が必要です」）。本番では役割を持たないユーザーが使うため回避不可。未認証のまま公開すると "app users from other Businesses will be unable to grant these apps permissions and **all features will be inactive**" となり、連携ボタンを押しても機能が丸ごと無効になる
-  - **実施主体はクライアント側**。[Meta Business Suite でビジネスを認証する](https://www.facebook.com/business/help/2058515294227817) より、ビジネスポートフォリオの**全権限**保持者のみが開始でき、正式なビジネス名・住所・電話番号・ウェブサイトを法人としての詳細情報と完全一致で入力する（ウェブサイトは HTTPS 必須）。公的記録と一致しない場合は「営業許可証や会社定款など、公的な書類」の提出を求められる。**決定に最大14営業日**
-  - **進行順序**: ビジネス認証はアプリ作成・疎通確認・収録の**前提ではない**。①アプリ作成 → Tester 追加 → 開発側の実装・収録と、②クライアント側の認証申請を**並行**で進め、両方揃った時点で App Review を提出する（14営業日のリードタイムを吸収するため）
+  - **実施主体はクライアント側**。Business Verification ページの原文は "only someone with an Admin role in the Business will be able to complete the verification process."（2026-08-01 再確認）。**「全権限」は公式の表現ではない**ので、クライアントへ伝える際は「ビジネスの管理者（Admin）権限」と言うこと
+  - **必要情報・書類・所要日数は未検証**。正式なビジネス名・住所・電話番号・ウェブサイト（HTTPS 必須）、公的記録と不一致なら「営業許可証や会社定款など、公的な書類」、**決定に最大14営業日** — これらは 2026-07-27 時点の調査結果だが、出典の [Meta Business Suite でビジネスを認証する](https://www.facebook.com/business/help/2058515294227817) は 2026-08-01 に再取得を試みてタイトルしか返らず、**裏を取り直せていない**。Business Verification ページ自身も "Refer to our Business Manager Help Center's About Business Verification topic for ... a list of documents you will need." と書いており、書類一覧はこの取得できないページにしか無い。クライアントには断定せず「申請画面の Meta の案内に従う」と伝える
+  - **進行順序**: ビジネス認証はアプリ作成・疎通確認・収録の**前提ではない**。①アプリ作成 → Tester 追加 → 開発側の実装・収録と、②クライアント側の認証申請を**並行**で進め、両方揃った時点で App Review を提出する（14営業日のリードタイムを吸収するため）。**2026-08-01 時点でクライアント側のビジネス認証は完了済み**
+- **アクセス認証（Access Verification）はビジネス認証とは別制度（2026-08-01 調査）**: 出典は [Access Verification](https://developers.facebook.com/docs/development/release/access-verification/)。Tech Provider に該当するかを判定する手続きで、対象パーミッション一覧に `instagram_business_basic` が含まれるため GrowMate でも発生する。
+  - **App Review をブロックしない**。"Access verification is independent of App Review and permission access levels." と明記されている。ビジネス認証が前提条件である点だけが両者の関係
+  - **こちらが先回りして着手することはできない**。"Business admins ... will receive an email notification about the access verification requirement **whenever an app administrator requests Advanced Access** for any of the permissions listed above." → **起点は開発側の Advanced Access 申請**であり、クライアントから先に始める手続きではない
+  - 通知後 "business admins will have **60 days** to complete the verification process"、完了後の判断は "within approximately **5 days**"
+  - **クリティカルパスではない**。当初これを最長リードタイムと見なして「先に着手を」とクライアントへ依頼しかけたが、順序が逆だった
 - **開発者をクライアントのポートフォリオに招待するときの権限（2026-07-29 の詰まりから）**: アプリをクライアントのビジネスポートフォリオ配下に置く構成では、開発者を招待する際に **「部分的なアクセス許可 > アプリと統合」**（旧「開発者」ロール）を選ぶ。公式は「アプリと統合のアクセス許可(以前の開発者の役割)を所有するメンバーは、コンバージョンAPIの設定、イベントのモニタリング、**アプリの編集、アクセストークンの作成**ができます」と定義しており（[アクセス許可について](https://www.facebook.com/business/help/442345745885606)）、Facebook ページ・広告アカウント・Instagram アカウントへのアクセスを伴わない。フルアクセス（全権限）は不要。
   - **実際に踏んだ罠**: 初回招待フローの「アセットを割り当てる」でアプリのチェックボックスが有効にならず、"Developer account needed" の注意書きが出る。原因は開発者登録の不備でもアプリ側の設定不備でもなく、**ポートフォリオ権限の選択**にあった。この事象で丸1日を消費している
   - アプリの役割は App Dashboard ではなく Business Manager 側で管理される（「If your app is connected to a business portfolio, you must use the Business Manager to manage roles for your app.」— [App Roles](https://developers.facebook.com/documentation/development/build-and-test/app-roles)）
@@ -84,10 +90,15 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 ### 3.3 制約・注意点
 
 - `impressions` は 2024-07-02 以降作成のメディアで廃止 → `views` を使う。
-- アカウントレベル insights の正確な metric 名・period・metric_type は実装時に最新リファレンスを再確認する（ドキュメントが JS レンダリングのため今回未取得。上表は既知情報）。
+- **アカウントレベル insights は `metric_type=total_value` が必要な指標と、付けると空になる指標が混在する（2026-08-01 実測）**。`instagramService.fetchAccountInsights` は `period=day` のみで7指標を1回で取りに行くが、実際に値が返るのは `reach` と `follower_count` の2つだけで、残り5つはエラーではなく**空のデータ**で返る。`manbou536` の実測値は下記。
+  - `metric_type=total_value` を付けると取れる: `views`=33 / `profile_views`=3 / `website_clicks`=0 / `accounts_engaged`=2 / `total_interactions`=2 / `reach`=12
+  - `metric_type=total_value` を付けると**逆に空になる**: `follower_count`
+  - よって7指標を1回では取れず、**2コールに分ける必要がある**（`total_value` 群 + `follower_count` 単独）。`fetchAccountInsights` は現在**呼び出し元が無く** Phase 1 では未使用のため、修正は Phase 2 の実装時に行う
+  - この `metric_type` の要否は**実測で特定したもので、Meta 公式の指標リファレンスでは裏を取っていない**。Phase 2 実装時に公式リファレンスも確認すること
 - **media_url / profile_picture_url は有効期限付き CDN URL**。DB に保存した URL は失効し得るため、一覧表示のサムネイルは同期のたびに更新し、失効時は permalink リンクで代替する（画像の自前ストレージ保存は非スコープ）。
 - **CDN ホストを CSP の `img-src` に許可する必要がある**（`proxy.ts` の `buildCspHeader`）。`https://*.cdninstagram.com` と `https://*.fbcdn.net` が無いと、DB に URL が正しく保存されていてもブラウザ側で画像が全てブロックされ、プレースホルダーだけが並ぶ。2026-08-01 の初回疎通で実際に発生。
-- **プロアカウント転換より前の投稿はインサイトを取得できない**。`GET /{media-id}/insights` が `code 100 / error_subcode 2108006`（"このメディアは、ユーザーのアカウントが個人アカウントからビジネスアカウントに最後に変換された時点より前に投稿されました"）を返す（2026-08-01 に `manbou536` の最新3投稿すべてで発生）。**この subcode は Meta のエラーコード一覧3ページのいずれにも記載が無く**、回避策や部分取得できるメトリクスのサブセットがあるかは**未確認**。確実に裏が取れる打ち手は転換後の新規投稿のみ。**審査用スクリーンキャストには転換後の投稿が最低1本必要**。
+- **プロアカウント転換より前の投稿はインサイトを取得できない**。`GET /{media-id}/insights` が `code 100 / error_subcode 2108006`（"このメディアは、ユーザーのアカウントが個人アカウントからビジネスアカウントに最後に変換された時点より前に投稿されました"）を返す（2026-08-01 に `manbou536` の**既存25投稿すべて**で発生。最新の既存投稿が 2019-03-10 で、転換後の投稿が1件も無かった）。**この subcode は Meta のエラーコード一覧3ページのいずれにも記載が無く**、回避策や部分取得できるメトリクスのサブセットがあるかは**未確認**。確実に裏が取れる打ち手は転換後の新規投稿のみ。**審査用スクリーンキャストには転換後の投稿が最低1本必要**。
+- **制約は転換タイミングのみで、メディア形式は問わない（2026-08-01 実測）**。転換後に投稿した `CAROUSEL_ALBUM/FEED` で9指標すべて取得できた。公式の "Insights data is not available for any media within an Instagram Media album" はアルバム**内の子メディア**の話であり、アルバム本体は取得できる。GrowMate は `MEDIA_FIELDS` に `children` を含めないため、この制約に当たらない。動画（`VIDEO/REELS`）も同様に取得可能で、`ig_reels_avg_watch_time` / `ig_reels_video_view_total_time` を含む9指標が返ることを `aozorayoukei`（全25投稿が REELS）で確認済み。
 - **インサイトのデータは最大48時間遅延する**。公式 Limitations に "Data used to calculate metrics may be delayed up to 48 hours." とあるため、転換後の投稿を作ってすぐ収録すると数値が空のままになり得る。**収録スケジュール上、投稿作成が最長のリードタイム**。逆算して着手する。
 - レート制限あり（app-user 単位）。投稿インサイトはメディア1件につき1コール必要なため、同期対象は**直近 N 件（初期値 50 件）に制限**し、打ち切り時はログに件数を出す（サイレント truncation 禁止）。
 - API バージョンはパスに明示（例: `graph.instagram.com/v23.0/...`。実装時に最新安定版を確認）。
@@ -370,17 +381,21 @@ create table public.instagram_account_insights_daily (
 - [ ] クライアント（カオルさん）へ画面共有し、§11 ワイヤーフレームとの差分（Q2 の列構成含む）を確認済み
 
 ### Phase 1-B（実データ連携 + App Review 提出）
-- [ ] **§9 Q6・Q7 が確定済み**（2026-08-01 回答済み。案2 + `role: 'paid'`）
+- [x] **§9 Q6・Q7 が確定済み**（2026-08-01 回答済み。**案1**（`/review-login` 固定メール＋パスワード）+ `role: 'paid'`。案2＝審査専用受信箱は、Gmail のリスクベース認証で復旧経路が確保できず却下）
 - [ ] item0 の順序制約を満たしたうえで、テスターアカウントで `/setup/instagram` から実際に連携でき、プロフィール（username, フォロワー数等）・**最新3件**の投稿・インサイトが実 API 経由で画面に表示される（部分失敗時は取得分のみ表示 + Alert）
 - [ ] 認可拒否・state 改ざん時に ERROR_MAP 経由でエラー Alert が表示され、credential が壊れない
 - [ ] 連携解除で credential が削除され unlinked に戻る
 - [x] **`/privacy` に Instagram API 利用・Meta 共同利用・取得データ・削除手順（連携解除）が追記されている**（`app/privacy/page.tsx` 実装済み。App Review 提出前に本番 URL で目視確認）
-- [ ] 本番（`https://growmate.tokyo`）にデプロイされ、Instagram 機能が allowlist で審査用アカウントにのみ見えている（§3.2 審査環境）
+- [x] 本番（`https://growmate.tokyo`）にデプロイされ、Instagram 機能が allowlist で審査用アカウントにのみ見えている（§3.2 審査環境）。`INSTAGRAM_BETA_USER_IDS` は Production / Preview とも遠藤・薫・審査用の3件（2026-08-02）。**この変数は Vercel の Sensitive 設定で読み戻せない**ため、追記ではなく全件上書きになる。変更時は既存 ID を落とさないよう `instagram_credentials` の実績から再構成すること
 - [ ] 審査用アカウント（**`role: 'paid'`**、`full_name` 登録済み、allowlist 上の user_id）で **`/setup/instagram` まで到達**し、ログイン〜連携〜プレビュー表示まで通しで動作する。`/admin/*` には到達できない
-- [ ] 審査専用の受信箱でレビュアーが OTP ログインを再現できることを、こちらで一度通しで検証済み
-- [ ] Meta Dashboard に **1024×1024** App Icon をアップロード済み
-- [ ] 成功 API コールが提出 **30 日以内**（§3.2）
+  - 到達までは 2026-08-02 に確認済み（`role` は `trial` では不可。`hasPaidFeatureAccess` が `paid` / `admin` のみを通すため、`trial` だとホーム画面に「設定」カードが出ず `/setup` へ辿り着けない）
+  - **連携〜プレビュー表示は未実施**。スクリーンキャスト収録と同時に行う
+- [x] **`/review-login` がセッションを持たない状態で 200 で開ける**（案1 の前提。`proxy.ts` と `src/lib/public-paths.ts` の**両方**に `/review-login` が入っていること。片方だけだと `AuthProvider` がマウント直後に `/login` へ戻し、レビュアーは OTP を受け取れず詰む。2026-08-02 にシークレットウィンドウで確認）
+- [x] **`/terms` がセッションを持たない状態で 200 で開ける**（App Dashboard の利用規約 URL。同じ公開パス漏れが `/terms` にもあった。2026-08-02 に修正・確認）
+- [x] Meta Dashboard に **1024×1024** App Icon をアップロード済み
+- [x] 成功 API コールが提出 **30 日以内**（§3.2）。2026-08-02 時点で `instagram_business_basic` 29 件 / `instagram_business_manage_insights` 3 件、ダッシュボード上のステータスは両方「テスト準備完了」
 - [ ] 提出フォームの Platform Settings 欄にレビュアーのアクセス手段を記入済み
+  - **Instagram アカウントは事前に連携済みにしておき、その旨も書く**。スタンダードアクセスでは「役割を付与されているアプリユーザーのみ」がパーミッションをリクエストできる（§3.2）ため、レビュアーが自分の Instagram アカウントでその場で連携することは期待できない
 - [ ] 連携ボタンが Meta ブランドガイドラインに準拠し、アプリ内と収録の両方で見えている
 - [ ] 実 OAuth 連携画面のスクリーンキャストを Meta App Review に提出済み（§3.2 提出ゲート充足）。**パーミッションごとに1本**・**§9 Q6 で確定したログインフロー**込み・英語キャプション付き
 
