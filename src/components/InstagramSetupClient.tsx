@@ -68,8 +68,11 @@ function formatCount(value: number | null): string {
 }
 
 function formatAccountType(accountType: string | null): string {
-  if (accountType === 'BUSINESS') return 'ビジネス';
-  if (accountType === 'MEDIA_CREATOR') return 'クリエイター';
+  // isInstagramProfessionalAccount と同じ正規化。公式表記（Media_Creator）と
+  // 実 API の値（MEDIA_CREATOR）が食い違うため、生文字列が画面に出ないようにする。
+  const normalized = accountType?.toUpperCase();
+  if (normalized === 'BUSINESS') return 'ビジネス';
+  if (normalized === 'MEDIA_CREATOR') return 'クリエイター';
   return accountType ?? '不明';
 }
 
