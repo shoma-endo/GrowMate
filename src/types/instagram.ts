@@ -71,8 +71,9 @@ export interface InstagramPreviewData {
 
 const INSTAGRAM_PROFESSIONAL_ACCOUNT_TYPES = ['BUSINESS', 'MEDIA_CREATOR'] as const;
 
-// 公式ドキュメントの /me フィールド表は account_type を `Business` / `Media_Creator` と記載し、
-// 旧 Basic Display API は全大文字を返していた。どちらでも通るよう大小文字を無視して比較する。
+// 公式の /me フィールド表は account_type を `Business` / `Media_Creator` と記載しているが、
+// 2026-08-01 の本番疎通で実 API が返したのは `MEDIA_CREATOR`（全大文字）だった。
+// ドキュメントと実挙動が食い違っているため、どちらでも通るよう大小文字を無視して比較する。
 export function isInstagramProfessionalAccount(accountType: string | null | undefined): boolean {
   if (!accountType) {
     return false;
