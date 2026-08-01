@@ -208,6 +208,18 @@ export const ERROR_MESSAGES = {
     PENDING_AUTH_DELETION:
       'このアカウントは削除処理中です。時間をおいて再度ログインするか、管理者へお問い合わせください。',
 
+    /** 審査用ログイン経路が無効（REVIEW_LOGIN_ENABLED 未設定）の場合 */
+    REVIEW_LOGIN_DISABLED: 'この画面は現在利用できません。',
+
+    /** 審査用ログインの入力が不正な場合（列挙耐性のため認証失敗と同一文言にする） */
+    REVIEW_LOGIN_INVALID: 'メールアドレスまたはパスワードが正しくありません。',
+
+    /** 審査用ログインの試行が多すぎる場合 */
+    REVIEW_LOGIN_RATE_LIMITED: '試行回数が上限に達しました。しばらく待ってから再度お試しください。',
+
+    /** 審査用ログインで public.users の解決に失敗した場合 */
+    REVIEW_LOGIN_FAILED: 'ログイン処理に失敗しました。再度お試しください。',
+
     /** トークン期限切れで再ログインが必要な場合 */
     TOKEN_EXPIRED_REAUTH: 'トークンの有効期限が切れました。再度ログインしてください',
 

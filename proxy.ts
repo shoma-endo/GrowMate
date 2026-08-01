@@ -13,7 +13,16 @@ const SETUP_PATHS = ['/setup'] as const;
 const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const;
 
 // 認証不要なパスの定義
-const PUBLIC_PATHS = ['/login', '/unauthorized', '/', '/home', '/privacy'] as const;
+// '/review-login' は Meta App Review のレビュアー専用ログイン経路。
+// REVIEW_LOGIN_ENABLED が無ければページ側で 404 になるため、審査期間外は到達できない。
+const PUBLIC_PATHS = [
+  '/login',
+  '/review-login',
+  '/unauthorized',
+  '/',
+  '/home',
+  '/privacy',
+] as const;
 
 function buildCspHeader(nonce: string): string {
   const isDev = process.env.NODE_ENV === 'development';

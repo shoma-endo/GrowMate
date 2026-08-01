@@ -225,3 +225,90 @@ export async function verifyOtp(
     };
   }
 }
+
+/**
+ * Meta App Review のレビュアー専用ログイン。
+ *
+ * GrowMate の通常ログインはメール OTP のみで、レビュアーは受信箱に到達できない
+ * （審査用 Gmail で Google のリスクベース認証が発動し、確認コードが当方の電話にしか
+ * 届かない状態を 2026-08-01 に実測）。提出ガイドは "If we can't access your app for
+ * any reason, your entire submission will be rejected" と定めているため、審査用の
+ * 固定アカウント1件に限りパスワードで入れる経路を用意する。
+ *
+ * - `REVIEW_LOGIN_EMAIL` に一致するアドレス以外は受け付けない。未設定なら経路ごと無効。
+ *   審査終了後はこの環境変数を消すだけで塞げる（ページ側も同じ変数で 404 になる）
+ * - `signInWithPassword` はユーザーを作成しないため、Supabase の新規登録設定は変更不要
+ * - public.users の解決以降は verifyOtp と同一の処理・同一の失敗時挙動にする
+ */
+export async function signInWithReviewPassword(
+  email: string,
+  password: string
+): Promise<{ success: boolean; isNewUser?: boolean; error?: string }> {
+  maybePurgeMaps();
+
+  const allowedEmail = process.env.REVIEW_LOGIN_EMAIL?.trim().toLowerCase();
+  if (!allowedEmail) {
+    return { success: false, error: ERROR_MESSAGES.AUTH.REVIEW_LOGIN_DISABLED };
+  }
+
+  if (typeof email !== 'string' || !EMAIL_REGEX.test(email.trim()) || email.length > 254) {
+    return { success: false, error: ERROR_MESSAGES.AUTH.REVIEW_LOGIN_INVALID };
+  }
+  if (typeof password !== 'string' || password.length === 0 || password.length > 128) {
+    return { success: false, error: ERROR_MESSAGES.AUTH.REVIEW_LOGIN_INVALID };
+  }
+  // 審査用の1アカウント以外はこの経路を通さない（パスワードを持つ別アカウントの流用を防ぐ）
+  if (email.trim().toLowerCase() !== allowedEmail) {
+    return { success: false, error: ERROR_MESSAGES.AUTH.REVIEW_LOGIN_INVALID };
+  }
+
+  // IP 単位レート制限（sendOtpEmail と同じ枠を共有する）
+  const headerStore = await headers();
+  const ip = headerStore.get('x-forwarded-for')?.split(',')[0]?.trim();
+  if (ip) {
+    const now = Date.now();
+    const windowData = ipWindowData.get(ip);
+    if (windowData && now - windowData.windowStart < IP_WINDOW_MS) {
+      if (windowData.count >= IP_MAX_COUNT) {
+        return { success: false, error: ERROR_MESSAGES.AUTH.REVIEW_LOGIN_RATE_LIMITED };
+      }
+      windowData.count += 1;
+    } else {
+      ipWindowData.set(ip, { count: 1, windowStart: now });
+    }
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password,
+  });
+
+  if (error || !data.user) {
+    // 列挙耐性のため、存在しないアカウントとパスワード誤りを区別しない
+    return { success: false, error: ERROR_MESSAGES.AUTH.REVIEW_LOGIN_INVALID };
+  }
+
+  try {
+    const user = await userService.resolveOrCreateEmailUser(data.user.id, data.user.email!);
+    await userService.updateLastLoginAt(user.id);
+    await clearAuthCookies();
+    // full_name 未登録のまま '/' へ送ると proxy.ts:157-160 が /login（OTP 画面）へ戻し、
+    // レビュアーは OTP を受け取れないため詰む。verifyOtp と同じく isNewUser を返して
+    // 呼び出し側で FullNameDialog を出させる。
+    const isNewUser = !user.fullName;
+    return { success: true, isNewUser };
+  } catch (err) {
+    if (err instanceof EmailAuthLinkConflictError) {
+      await signOutSupabaseSession(supabase);
+      return { success: false, error: ERROR_MESSAGES.AUTH.EMAIL_LINK_CONFLICT };
+    }
+    if (err instanceof PendingAuthDeletionError) {
+      await signOutSupabaseSession(supabase);
+      return { success: false, error: ERROR_MESSAGES.AUTH.PENDING_AUTH_DELETION };
+    }
+    console.error('[auth.actions] signInWithReviewPassword: failed to resolve public user:', err);
+    await signOutSupabaseSession(supabase);
+    return { success: false, error: ERROR_MESSAGES.AUTH.REVIEW_LOGIN_FAILED };
+  }
+}
