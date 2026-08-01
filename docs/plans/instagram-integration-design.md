@@ -231,7 +231,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 
 ## 5. DB 設計
 
-マイグレーションは `supabase/migrations/` に SQL で追加。適用は管理者手動（`supabase db push`）のため、実装時は `database.types.pending.ts` の暫定型パターン（supabase スキル §6）を使う。各ファイルにロールバック手順（`DROP TABLE` / `DROP POLICY`）をコメントで残す。
+マイグレーションは `supabase/migrations/` に SQL で追加。**本番と開発は同一 Supabase プロジェクトを共有するため `npx supabase db push` をリモートに実行してはならない**（README「セットアップ手順」）。**Vercel のデプロイでは DB は更新されない**ので、適用は管理者が別途手動で行う（未適用のままコードだけ本番に出すと `42P01 relation does not exist` になる。2026-08-01 に実際に発生）。適用されるまでは `database.types.pending.ts` の暫定型パターン（supabase スキル §6）を使い、適用後に型再生成して撤去する。各ファイルにロールバック手順（`DROP TABLE` / `DROP POLICY`）をコメントで残す。
 
 ### 5.1 `instagram_credentials`（Phase 1）
 
@@ -241,7 +241,7 @@ create table public.instagram_credentials (
   user_id uuid not null unique references public.users(id) on delete cascade,
   ig_user_id text not null,
   username text,
-  account_type text,               -- BUSINESS / MEDIA_CREATOR
+  account_type text,               -- Business / Media_Creator（API 実値。判定は大小文字を正規化して行う）
   profile_picture_url text,
   access_token text not null,      -- 長期トークン（60日）。refresh_token は存在しない
   access_token_expires_at timestamptz not null,

@@ -22,8 +22,6 @@ export interface InstagramProfile {
   name: string | null;
   accountType: string | null;
   profilePictureUrl: string | null;
-  biography: string | null;
-  website: string | null;
   followersCount: number | null;
   followsCount: number | null;
   mediaCount: number | null;
@@ -73,13 +71,12 @@ export interface InstagramPreviewData {
 
 const INSTAGRAM_PROFESSIONAL_ACCOUNT_TYPES = ['BUSINESS', 'MEDIA_CREATOR'] as const;
 
-type InstagramProfessionalAccountType = (typeof INSTAGRAM_PROFESSIONAL_ACCOUNT_TYPES)[number];
-
-export function isInstagramProfessionalAccount(
-  accountType: string | null | undefined
-): accountType is InstagramProfessionalAccountType {
+// 公式ドキュメントの /me フィールド表は account_type を `Business` / `Media_Creator` と記載し、
+// 旧 Basic Display API は全大文字を返していた。どちらでも通るよう大小文字を無視して比較する。
+export function isInstagramProfessionalAccount(accountType: string | null | undefined): boolean {
   if (!accountType) {
     return false;
   }
-  return (INSTAGRAM_PROFESSIONAL_ACCOUNT_TYPES as readonly string[]).includes(accountType);
+  const normalized = accountType.toUpperCase();
+  return (INSTAGRAM_PROFESSIONAL_ACCOUNT_TYPES as readonly string[]).includes(normalized);
 }
