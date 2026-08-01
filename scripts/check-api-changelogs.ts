@@ -51,11 +51,14 @@ interface TargetState {
 
 type StateMap = Record<string, TargetState>;
 
+type DetectedChangeSource = 'github' | 'other';
+
 interface DetectedChange {
   name: string;
   risk: string;
   url: string;
   summary: string;
+  source: DetectedChangeSource;
 }
 
 interface TargetError {
@@ -269,7 +272,15 @@ function isZaiBalanceError(message: string): boolean {
 
 function buildDetectedChangesSummary(changedItems: DetectedChange[]): string {
   return changedItems
-    .map((c) => `### ${c.name}（影響度目安: ${c.risk}）\n${c.summary}`)
+    .map((c) => {
+      // GitHub リリース本文は英語の生テキストのため、要約不能時はリンク案内（固定文言・信頼済みURL）に差し替える。
+      // それ以外（webpage/fetch）は取得元ですでに日本語要約済みだが、AI生成テキストなのでエスケープして埋め込む。
+      const body =
+        c.source === 'github'
+          ? `AI要約は現在利用できません。詳細は [変更内容を確認](${c.url}) からご確認ください。`
+          : escapeLarkMd(c.summary);
+      return `### ${c.name}（影響度目安: ${c.risk}）\n${body}`;
+    })
     .join('\n\n---\n\n');
 }
 
@@ -389,7 +400,7 @@ async function checkWebpageWithAI(
 以下のJSON形式のみで回答してください（前後に説明文は不要）：
 {
   "hasChanges": true または false,
-  "summary": "変更内容の要約（hasChanges が true の場合のみ記載）"
+  "summary": "変更内容の要約（hasChanges が true の場合のみ記載、必ず日本語で記述し、英語原文をそのまま転記しないこと）"
 }
 
 hasChanges を true にする条件（実際のAPI仕様変更のみ）：
@@ -493,7 +504,9 @@ ${contextBlock}
 🟢 非推奨化（将来対応が必要）: 具体的に / なければ「なし」
 ⚡ 対応優先度: 即座に対応 / 今週中 / 次回リリース時 / 対応不要
 
-全件が実装に影響しない場合は「全件軽微、対応不要」の1行のみ記載してください。`;
+全件が実装に影響しない場合は「全件軽微、対応不要」の1行のみ記載してください。
+
+回答は必ず日本語で記述し、変更検出内容に含まれる英語原文（リリースノート本文など）をそのまま転記しないでください。`;
 
   return callZaiChatCompletion({
     model: ZAI_MODEL,
@@ -505,13 +518,41 @@ ${contextBlock}
 
 // ── Lark 通知 ─────────────────────────────────────────────────────────────────
 
-async function sendLarkNotification(text: string): Promise<void> {
+type LarkCardTemplate = 'red' | 'orange' | 'blue' | 'green';
+
+interface LarkMdText {
+  tag: 'lark_md';
+  content: string;
+}
+
+type LarkCardElement =
+  | { tag: 'div'; text: LarkMdText }
+  | { tag: 'hr' }
+  | { tag: 'note'; elements: LarkMdText[] };
+
+// Lark Markdown の記法文字を無効化し、外部由来のテキストが意図せず強調・リンク化されるのを防ぐ
+function escapeLarkMd(value: string): string {
+  const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+  return value.replace(/[*_~`[<]/g, (char) => `${char}${ZERO_WIDTH_SPACE}`);
+}
+
+async function sendLarkNotification(
+  titleText: string,
+  template: LarkCardTemplate,
+  elements: LarkCardElement[],
+): Promise<void> {
   if (!LARK_WEBHOOK_URL) {
     throw new Error('LARK_WEBHOOK_URL が設定されていません');
   }
   const payload = JSON.stringify({
     msg_type: 'interactive',
-    card: { elements: [{ tag: 'div', text: { tag: 'lark_md', content: text } }] },
+    card: {
+      header: {
+        title: { tag: 'plain_text', content: titleText },
+        template,
+      },
+      elements,
+    },
   });
   const { status, body } = await httpRequest(LARK_WEBHOOK_URL, {
     method: 'POST',
@@ -579,6 +620,7 @@ async function main(): Promise<void> {
               `バージョン: ${prevTag} → ${latestTag}`,
               ...newReleases.map((r) => `\n**${r.tag}** (${r.published})\n${r.body}\n${r.url}`),
             ].join('\n'),
+            source: 'github',
           });
 
           state[target.id] = { lastTag: latestTag, checkedAt: new Date().toISOString() };
@@ -603,6 +645,7 @@ async function main(): Promise<void> {
             url: target.url,
             summary:
               '公式 changelog ページの内容が前回チェック時から変更されました。詳細は URL を確認してください。',
+            source: 'other',
           });
           state[target.id] = { hash, checkedAt: new Date().toISOString() };
           console.log('  🔔 ページ変更検出（ハッシュ不一致）');
@@ -635,6 +678,7 @@ async function main(): Promise<void> {
             risk: target.risk,
             url: target.url,
             summary: summary || `変更を検出しました (${target.url})`,
+            source: 'other',
           });
           state[target.id] = { checkedAt: new Date().toISOString() };
           console.log('  🔔 変更検出');
@@ -665,7 +709,8 @@ async function main(): Promise<void> {
     if (ZAI_API_KEY) {
       console.log('\n🤖 GLM-4.7 で変更内容を解析中...');
       try {
-        aiSummary = await summarizeWithGlm(detected);
+        // summarizeWithGlm の出力はAI生成テキストのため、Markdown記法の誤爆を防ぐためエスケープする
+        aiSummary = escapeLarkMd(await summarizeWithGlm(detected));
         console.log('  ✅ 解析完了');
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -689,35 +734,69 @@ async function main(): Promise<void> {
     day: '2-digit',
   });
 
-  const lines: string[] = [`【API Changelog 定期チェック】`, `実施日: ${dateJst}`];
+  // ここに到達する時点で detected.length > 0 || errors.length > 0 が保証される
+  // （両方 0 件の場合は上の早期 return で通知自体を送らない）
+  const hasHighRisk = detected.some((d) => d.risk === '高');
+  const template: LarkCardTemplate = errors.length > 0 ? 'red' : hasHighRisk ? 'orange' : 'blue';
+
+  const titleText =
+    detected.length > 0
+      ? `📡 API Changelog チェック：変更 ${detected.length}件を検出`
+      : '📡 API Changelog チェック：エラーあり';
+
+  const elements: LarkCardElement[] = [
+    { tag: 'div', text: { tag: 'lark_md', content: `**実施日**: ${dateJst}` } },
+  ];
 
   if (detected.length > 0) {
-    lines.push(`変更検出: ${detected.length}件`);
-    lines.push('');
-    lines.push('── 変更箇所 ──');
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'div',
+      text: { tag: 'lark_md', content: `**🔔 変更検出（${detected.length}件）**` },
+    });
     for (const d of detected) {
-      lines.push(`🔔 [リスク:${d.risk}] **${d.name}**`);
-      lines.push(`   [詳細](${d.url})`);
+      elements.push({
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: `[リスク:${d.risk}] **${d.name}**\n[詳細を見る](${d.url})`,
+        },
+      });
     }
   }
-  if (errors.length > 0) {
-    lines.push(`チェックエラー: ${errors.length}件 (${errors.map((e) => e.name).join('、')})`);
-  }
+
   if (aiSummary) {
-    lines.push('', '── AI解析結果 ──', aiSummary);
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'div',
+      text: { tag: 'lark_md', content: `**🤖 AI解析結果**\n${aiSummary}` },
+    });
   }
+
   if (errors.length > 0) {
-    lines.push('', '── エラー詳細 ──');
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'div',
+      text: { tag: 'lark_md', content: `**⚠️ チェックエラー（${errors.length}件）**` },
+    });
     for (const e of errors) {
-      lines.push(`❌ ${e.name}: ${e.message}`);
+      elements.push({
+        tag: 'div',
+        text: { tag: 'lark_md', content: `❌ **${e.name}**\n${escapeLarkMd(e.message)}` },
+      });
     }
   }
+
   if (ACTIONS_RUN_URL) {
-    lines.push('', `[実行ログ](${ACTIONS_RUN_URL})`);
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'note',
+      elements: [{ tag: 'lark_md', content: `[実行ログを見る](${ACTIONS_RUN_URL})` }],
+    });
   }
 
   console.log('\n📨 Lark に通知送信中...');
-  await sendLarkNotification(lines.join('\n'));
+  await sendLarkNotification(titleText, template, elements);
   saveState(state);
   console.log('✅ 完了');
 }

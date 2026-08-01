@@ -136,120 +136,49 @@ jobs:
     if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Send webhook notification
         run: |
           # Node.jsでJSONペイロードを作成して送信
           node << 'EOF'
-          const https = require('https');
-          const http = require('http');
-          const { URL } = require('url');
+          const { escapeLarkMd, sendLarkCard, div, hr, note } = require('./scripts/lark-notify.cjs');
 
-          // PRタイトル・コミットメッセージはユーザーが自由に書き込める値のため、
-          // lark_mdのMarkdown/メンション記法として解釈されないようエスケープする
-          function escapeLarkMd(value) {
-            var ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
-            return String(value).replace(/[*_~`[<]/g, function (char) {
-              return char + ZERO_WIDTH_SPACE;
-            });
-          }
-
-          // Lark（飛書）webhook形式に合わせる
-          const statusEmoji = process.env.STATUS === 'success' ? '✅' : '❌';
-          const statusText = process.env.STATUS === 'success' ? '成功' : '失敗';
+          const isSuccess = process.env.STATUS === 'success';
+          const statusEmoji = isSuccess ? '✅' : '❌';
+          const statusText = isSuccess ? '成功' : '失敗';
           const executionType = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' ? '手動' : '自動';
           const actor = process.env.GITHUB_ACTOR || '不明';
           const branch = process.env.GITHUB_REF_NAME || '不明';
 
-          // メッセージ本文を作成
-          const prUrl = process.env.PR_URL;
-          const prLine = prUrl ? `\n[PR](${prUrl})` : '';
+          // PRタイトル・コミットメッセージはユーザーが自由に書き込める値のため、
+          // lark_mdのMarkdown/メンション記法として解釈されないようエスケープする
           const commitMsg = escapeLarkMd(process.env.COMMIT_MSG || process.env.PR_TITLE || '');
           const commitLine = commitMsg ? `\nコミット: ${commitMsg.split('\n')[0]}` : '';
+          const prUrl = process.env.PR_URL;
+          const prLine = prUrl ? `\n[PR](${prUrl})` : '';
+
+          const elements = [
+            div(`**${statusEmoji} ${statusText}**\n実行: ${executionType}\nユーザー: ${actor}\nブランチ: ${branch}${commitLine}${prLine}`),
+          ];
+
           const runUrl = process.env.ACTIONS_RUN_URL;
-          const runLine = runUrl ? `\n[ログ](${runUrl})` : '';
-          const messageText = `【CI ビルド結果】\n**${statusEmoji} ${statusText}**\n実行: ${executionType}\nユーザー: ${actor}\nブランチ: ${branch}${commitLine}${prLine}${runLine}`;
-
-          const payload = {
-            msg_type: 'interactive',
-            card: {
-              elements: [
-                {
-                  tag: 'div',
-                  text: {
-                    tag: 'lark_md',
-                    content: messageText
-                  }
-                }
-              ]
-            }
-          };
-
-          const webhookUrl = process.env.CI_WEBHOOK_URL;
-          if (!webhookUrl) {
-            console.error('ERROR: CI_WEBHOOK_URL is not set');
-            process.exit(1);
+          if (runUrl) {
+            elements.push(hr(), note(`[ログを見る](${runUrl})`));
           }
 
-          console.log('Webhook URL:', webhookUrl.replace(/\/\/.*@/, '//***@')); // URLをマスク
-
-          let url;
-          try {
-            url = new URL(webhookUrl);
-          } catch (error) {
-            console.error('ERROR: Invalid webhook URL:', error.message);
-            process.exit(1);
-          }
-
-          const client = url.protocol === 'https:' ? https : http;
-          const postData = JSON.stringify(payload);
-
-          console.log('Payload size:', postData.length, 'bytes');
-
-          const options = {
-            hostname: url.hostname,
-            port: url.port || (url.protocol === 'https:' ? 443 : 80),
-            path: url.pathname + url.search,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(postData)
-            },
-            timeout: 30000 // 30秒のタイムアウト
-          };
-
-          const req = client.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
-              console.log('Response status:', res.statusCode);
-              console.log('Response headers:', JSON.stringify(res.headers));
-              if (res.statusCode >= 200 && res.statusCode < 300) {
-                console.log('✅ Webhook notification sent successfully');
-                console.log('Response body:', data.substring(0, 500)); // 最初の500文字のみ
-                process.exit(0);
-              } else {
-                console.error(`❌ Webhook notification failed with status ${res.statusCode}`);
-                console.error('Response body:', data);
-                process.exit(1);
-              }
+          sendLarkCard({
+            webhookUrl: process.env.CI_WEBHOOK_URL,
+            title: `🔧 CI ビルド結果：${statusText}`,
+            template: isSuccess ? 'green' : 'red',
+            elements,
+          })
+            .then(() => process.exit(0))
+            .catch((error) => {
+              console.error('ERROR:', error.message);
+              process.exit(1);
             });
-          });
-
-          req.on('error', (error) => {
-            console.error('❌ Webhook notification error:', error.message);
-            console.error('Error code:', error.code);
-            process.exit(1);
-          });
-
-          req.on('timeout', () => {
-            console.error('❌ Webhook request timeout');
-            req.destroy();
-            process.exit(1);
-          });
-
-          console.log('Sending webhook request...');
-          req.write(postData);
-          req.end();
           EOF
 
         env:
