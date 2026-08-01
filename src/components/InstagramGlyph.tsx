@@ -5,11 +5,16 @@ import { cn } from '@/lib/utils';
  *
  * - Meta App Review の項目 "Verify that the login button or link is visible in your app
  *   and screencast, and adheres to our brand guidelines" に対応するブランド表示。
- * - 単色（currentColor）は BRC が認めるバリエーション。色は呼び出し側が className で指定する。
+ * - 色は呼び出し側が className（currentColor）で指定する。
  * - path の改変（回転・変形・エフェクト付与・比率変更）は禁止。
- * - サイズは 32px を既定とする（グリフ単体の最小サイズ規定を確実に上回るため）。
- *   className に `size-*` を含めているのは、shadcn Button の `[&_svg]:size-4` に
- *   上書きされないようにするため。
+ * - サイズ既定は 32px。className に `size-*` を含めているのは、shadcn Button の
+ *   `[&_svg]:size-4` に上書きされないようにするため。
+ * - **未確認**: 許容カラーバリエーション・最小サイズ・クリアスペースの具体値は
+ *   Brand Resource Center（meta.com/brand/resources/instagram/icons）にあるが、
+ *   2026-08-01 時点で本文を取得できず裏取りできていない。Business Login for Instagram の
+ *   公式ドキュメントにボタン仕様（配色・サイズ・フォント）の指定は無い。
+ * - 用途は「連携ボタンでのブランド表示」に限定する。要再認証ボタンは他連携と揃えて
+ *   lucide の AlertTriangle を使う。
  * - growmate-ui-ux の「アイコンは lucide-react」規約に対する、ブランドアセットとしての例外。
  */
 export function InstagramGlyph({ className }: { className?: string }) {

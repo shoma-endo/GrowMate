@@ -84,19 +84,20 @@ function formatPostedAt(timestamp: string): string {
 function MediaPreviewCard({ media }: { media: InstagramMediaPreview }) {
   const thumbnail = media.thumbnailUrl ?? media.mediaUrl;
   const productLabel = media.mediaProductType === 'REELS' ? 'リール' : 'フィード';
+  // media_url / thumbnail_url は有効期限付き CDN URL のため、失効時は読み込みに失敗する。
+  // 画像を消すだけだと空箱が残るので、URL 未設定時と同じプレースホルダーに切り替える。
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
 
   return (
     <div className="rounded-lg border bg-white p-3 space-y-3">
       <div className="aspect-square rounded-md bg-gray-100 flex items-center justify-center overflow-hidden">
-        {thumbnail ? (
+        {thumbnail && !thumbnailFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumbnail}
             alt=""
             className="h-full w-full object-cover"
-            onError={event => {
-              event.currentTarget.style.display = 'none';
-            }}
+            onError={() => setThumbnailFailed(true)}
           />
         ) : (
           <ImageIcon className="h-10 w-10 text-gray-400" />
@@ -158,6 +159,8 @@ export default function InstagramSetupClient({
   const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
   const [needsReauth, setNeedsReauth] = useState(initialStatus.needsReauth ?? false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  // プロフィール画像も有効期限付き CDN URL。失効時にプレースホルダーへ切り替える。
+  const [profilePictureFailed, setProfilePictureFailed] = useState(false);
 
   const isConnected = status.connected;
   const showConnectedSuccess = connectedSuccess && isConnected && !needsReauth;
@@ -166,6 +169,7 @@ export default function InstagramSetupClient({
     setIsLoadingPreview(true);
     setPreviewError(null);
     setPartialFailureMessage(null);
+    setProfilePictureFailed(false);
     try {
       const result = await fetchInstagramPreviewData();
       if (result.success && result.data) {
@@ -295,17 +299,14 @@ export default function InstagramSetupClient({
           <AlertDescription className="text-orange-700">
             Instagramの認証が期限切れです。再連携してください。
             <div className="mt-3">
-              <Button
-                asChild
-                className="h-12 gap-4 px-4 has-[>svg]:px-4 bg-orange-700 hover:bg-orange-800"
-              >
+              <Button asChild className="bg-orange-700 hover:bg-orange-800">
                 <Link href={OAUTH_START_PATH} onClick={() => setIsConnecting(true)}>
                   {isConnecting ? (
-                    <Loader2 className="size-8 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
-                    <InstagramGlyph className="text-white" />
+                    <AlertTriangle size={16} className="mr-2" />
                   )}
-                  Instagramと再連携する
+                  再認証する
                 </Link>
               </Button>
             </div>
@@ -370,15 +371,13 @@ export default function InstagramSetupClient({
               {preview && !needsReauth ? (
                 <div className="flex items-start gap-3 text-sm text-gray-700">
                   <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
-                    {preview.profile.profilePictureUrl ? (
+                    {preview.profile.profilePictureUrl && !profilePictureFailed ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={preview.profile.profilePictureUrl}
                         alt=""
                         className="h-full w-full object-cover"
-                        onError={event => {
-                          event.currentTarget.style.display = 'none';
-                        }}
+                        onError={() => setProfilePictureFailed(true)}
                       />
                     ) : (
                       <ImageIcon className="h-5 w-5 text-gray-400" />
