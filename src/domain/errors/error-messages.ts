@@ -867,7 +867,7 @@ export const ERROR_MESSAGES = {
     TOKEN_EXCHANGE_FAILED: 'Instagramとの連携に失敗しました。もう一度お試しください',
 
     /** Instagram認証が期限切れまたは無効な場合 */
-    AUTH_EXPIRED: 'Instagramの認証が期限切れです。再連携してください',
+    AUTH_EXPIRED: 'Instagramの認証が期限切れまたは取り消されています。再連携してください',
 
     /** 連携処理に失敗した場合 */
     CONNECTION_FAILED: 'Instagram連携に失敗しました。時間をおいて再度お試しください',
