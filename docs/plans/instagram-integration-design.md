@@ -49,12 +49,17 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - **必要情報・書類・所要日数は未検証**。正式なビジネス名・住所・電話番号・ウェブサイト（HTTPS 必須）、公的記録と不一致なら「営業許可証や会社定款など、公的な書類」、**決定に最大14営業日** — これらは 2026-07-27 時点の調査結果だが、出典の [Meta Business Suite でビジネスを認証する](https://www.facebook.com/business/help/2058515294227817) は 2026-08-01 に再取得を試みてタイトルしか返らず、**裏を取り直せていない**。Business Verification ページ自身も "Refer to our Business Manager Help Center's About Business Verification topic for ... a list of documents you will need." と書いており、書類一覧はこの取得できないページにしか無い。クライアントには断定せず「申請画面の Meta の案内に従う」と伝える
   - **進行順序**: ビジネス認証はアプリ作成・疎通確認・収録の**前提ではない**。①アプリ作成 → Tester 追加 → 開発側の実装・収録と、②クライアント側の認証申請を**並行**で進め、両方揃った時点で App Review を提出する（14営業日のリードタイムを吸収するため）。**2026-08-01 時点でクライアント側のビジネス認証は完了済み**
 - **アクセス認証（Access Verification）はビジネス認証とは別制度（2026-08-01 調査）**: 出典は [Access Verification](https://developers.facebook.com/docs/development/release/access-verification/)。Tech Provider に該当するかを判定する手続きで、対象パーミッション一覧に `instagram_business_basic` が含まれるため GrowMate でも発生する。
-  - **App Review をブロックしない**。"Access verification is independent of App Review and permission access levels." と明記されている。ビジネス認証が前提条件である点だけが両者の関係
+  - 制度上は "Access verification is independent of App Review and permission access levels." と明記されている。**ただし後述のとおり、UI 上は審査追加の手前に技術提供者の宣言が挟まる**
   - **こちらが先回りして着手することはできない**。"Business admins ... will receive an email notification about the access verification requirement **whenever an app administrator requests Advanced Access** for any of the permissions listed above." → **起点は開発側の Advanced Access 申請**であり、クライアントから先に始める手続きではない
   - 通知後 "business admins will have **60 days** to complete the verification process"、完了後の判断は "within approximately **5 days**"
-  - **クリティカルパスではない**。当初これを最長リードタイムと見なして「先に着手を」とクライアントへ依頼しかけたが、順序が逆だった
-  - **ダッシュボードの表記と食い違って見えるが、実機確認で解消済み（2026-08-02）**。App Dashboard のトップに「技術提供者になる／技術提供者になって**アプリレビューを申請し**…できます。**アクセス認証を完了する必要があります**」というパネルが出るため前提条件のように読めるが、実際には**案内であって前提条件ではない**。「アクセス許可と機能」の `instagram_business_basic` 行の「アクション」を開くと **「+ アプリレビューに追加」が有効なまま表示され**、技術提供者を求める注意書きもグレーアウトも無かった
-  - **ただし確認できたのは「追加」までで、追加後の最終提出ボタンで技術提供者チェックが入る可能性は残る**。提出時に判明する
+  - 認証を得られないと、**アプリに役割を持たないユーザー**（＝本番の顧客）の呼び出しが `error code 100` で落ちる。「アクセス許可を付与した人がアプリそのものに対して権限を持っているかどうかをチェックします」→ 持たない場合に技術提供者かどうかが問われる。開発中に動いているのは開発者がアプリの役割を持っているからにすぎない
+  - **審査追加の手前に技術提供者の宣言モーダルが挟まる（2026-08-02 実測）**。「アクセス許可と機能」→ `instagram_business_basic` 行の「アクション」→ 「+ アプリレビューに追加」（項目自体は有効でグレーアウトしない）を押すと、次のモーダルが出て先へ進めない。
+    > To add a permission or feature to App Review, become a Tech Provider
+    > To qualify as a Tech Provider, you must complete access verification.
+    > **This decision cannot be reversed after you've been identified as a Tech Provider.**
+
+    ボタンは `Go back` / `Continue`。**未検証**: `Continue` 押下後に、アクセス認証の判定（約5日）を待たずに App Review を提出できるのか。ドキュメントの "independent" はこの意味で今も成立している可能性がある。不可逆なため未確認のまま止めている
+  - **メニュー項目が有効に見えることを「前提条件ではない」の根拠にしないこと**。2026-08-02 以前の本節はその推論で「案内であって前提条件ではない」と結論していたが、押した先にゲートがあった。Meta の手続き順序は**実際にボタンを押して**確認する
 - **開発者をクライアントのポートフォリオに招待するときの権限（2026-07-29 の詰まりから）**: アプリをクライアントのビジネスポートフォリオ配下に置く構成では、開発者を招待する際に **「部分的なアクセス許可 > アプリと統合」**（旧「開発者」ロール）を選ぶ。公式は「アプリと統合のアクセス許可(以前の開発者の役割)を所有するメンバーは、コンバージョンAPIの設定、イベントのモニタリング、**アプリの編集、アクセストークンの作成**ができます」と定義しており（[アクセス許可について](https://www.facebook.com/business/help/442345745885606)）、Facebook ページ・広告アカウント・Instagram アカウントへのアクセスを伴わない。フルアクセス（全権限）は不要。
   - **実際に踏んだ罠**: 初回招待フローの「アセットを割り当てる」でアプリのチェックボックスが有効にならず、"Developer account needed" の注意書きが出る。原因は開発者登録の不備でもアプリ側の設定不備でもなく、**ポートフォリオ権限の選択**にあった。この事象で丸1日を消費している
   - アプリの役割は App Dashboard ではなく Business Manager 側で管理される（「If your app is connected to a business portfolio, you must use the Business Manager to manage roles for your app.」— [App Roles](https://developers.facebook.com/documentation/development/build-and-test/app-roles)）
