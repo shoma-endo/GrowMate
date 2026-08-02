@@ -34,7 +34,9 @@ describe('toInstagramConnectionStatus', () => {
       accessTokenExpiresAt: '2020-01-01T00:00:00.000Z',
     };
 
-    expect(toInstagramConnectionStatus(expiredCredential, new Date('2026-01-01T00:00:00.000Z'))).toEqual({
+    // toInstagramConnectionStatus は now を引数に取らない（実時刻を見る）。
+    // このケースは期限が 2020 年なので、いつ実行しても期限切れになる。
+    expect(toInstagramConnectionStatus(expiredCredential)).toEqual({
       connected: true,
       needsReauth: true,
       username: 'growmate_demo',

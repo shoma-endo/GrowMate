@@ -19,19 +19,50 @@ export function isInstagramPreConversionMediaError(error: unknown): boolean {
   return message.includes('error_subcode":2108006') || message.includes('error_subcode: 2108006');
 }
 
-export function isInstagramReauthError(error: unknown): boolean {
+/**
+ * トークンが失効・取り消しされたと断定できるシグナル。
+ * Meta のエラーコード 190 系と、その本文表現のみを見る。
+ */
+const REVOKED_TOKEN_SIGNALS = [
+  'error code 190',
+  'code":190',
+  'invalid oauth access token',
+  'session has expired',
+  'token is invalid',
+  'token has expired',
+] as const;
+
+/**
+ * 「トークンがもう使えない」と断定できるエラーか判定する。
+ *
+ * isInstagramReauthError との違いは `oauthexception` の一語に一致しないこと。
+ * Meta はレート制限（code 4 / 17 / 32 / 613）や権限エラーにも
+ * `"type":"OAuthException"` を付けて返すため、その一語だけで失効と断定すると
+ * 一時的な制限を恒久的な失効として扱ってしまう。
+ *
+ * **credential を書き換える処理はこちらを使うこと。** 表示だけを切り替える用途は
+ * 広めの isInstagramReauthError でよい（一時的な誤判定でも次回読み込みで直る）が、
+ * 保存済みの期限を過去へ倒す処理は取り返しがつかない
+ * （期限が過去だと resolveInstagramTokenAction がリフレッシュを試みなくなる）。
+ */
+export function isInstagramRevokedTokenError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
 
   const message = error.message.toLowerCase();
-  return (
-    message.includes('oauthexception') ||
-    message.includes('error code 190') ||
-    message.includes('code":190') ||
-    message.includes('invalid oauth access token') ||
-    message.includes('session has expired') ||
-    message.includes('token is invalid') ||
-    message.includes('token has expired')
-  );
+  return REVOKED_TOKEN_SIGNALS.some(signal => message.includes(signal));
+}
+
+/**
+ * 再認証を促す表示に切り替えるべきエラーか判定する。
+ * 失効の確証がない OAuthException も含む広めの判定。
+ */
+export function isInstagramReauthError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.toLowerCase().includes('oauthexception') ||
+    isInstagramRevokedTokenError(error);
 }
