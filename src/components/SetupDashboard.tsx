@@ -688,8 +688,13 @@ export default function SetupDashboard({
                         認証トークンが期限切れまたは取り消されています。再認証してください。
                       </p>
                     </div>
+                    {/* 連携済みブランチと同じ「連携アカウント」だと、今つながっていると
+                        読めてしまう。アカウント名自体は、どれを再認証すればよいか
+                        分かるように残す。 */}
                     {instagramStatus.username ? (
-                      <p className="text-gray-600">連携アカウント: @{instagramStatus.username}</p>
+                      <p className="text-gray-600">
+                        再認証が必要なアカウント: @{instagramStatus.username}
+                      </p>
                     ) : null}
                   </div>
                 ) : instagramStatus.connected ? (

@@ -35,6 +35,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { handleAsyncAction } from '@/lib/async-handler';
+import { formatCount, formatPostedAt } from '@/lib/instagram-format';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
   disconnectInstagram,
@@ -56,17 +57,6 @@ interface InstagramSetupClientProps {
   isOauthConfigured: boolean;
 }
 
-function formatCount(value: number | null): string {
-  if (value == null) {
-    return '-';
-  }
-  if (value >= 1000) {
-    const rounded = value / 1000;
-    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}k`;
-  }
-  return String(value);
-}
-
 function formatAccountType(accountType: string | null): string {
   // isInstagramProfessionalAccount と同じ正規化。公式表記（Media_Creator）と
   // 実 API の値（MEDIA_CREATOR）が食い違うため、生文字列が画面に出ないようにする。
@@ -74,14 +64,6 @@ function formatAccountType(accountType: string | null): string {
   if (normalized === 'BUSINESS') return 'ビジネス';
   if (normalized === 'MEDIA_CREATOR') return 'クリエイター';
   return accountType ?? '不明';
-}
-
-function formatPostedAt(timestamp: string): string {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return timestamp;
-  }
-  return `${date.getMonth() + 1}/${date.getDate()} 投稿`;
 }
 
 function MediaPreviewCard({ media }: { media: InstagramMediaPreview }) {
@@ -121,9 +103,23 @@ function MediaPreviewCard({ media }: { media: InstagramMediaPreview }) {
             </Tooltip>
           </TooltipProvider>
           {media.mediaProductType === 'REELS' ? (
-            <span>視聴 {formatCount(media.insights.views)}</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>視聴 {formatCount(media.insights.views)}</span>
+                </TooltipTrigger>
+                <TooltipContent>視聴＝動画が再生された回数</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : (
-            <span>いいね {formatCount(media.insights.likes ?? media.likeCount)}</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>いいね {formatCount(media.insights.likes ?? media.likeCount)}</span>
+                </TooltipTrigger>
+                <TooltipContent>いいね＝投稿にいいねした人数</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
           <TooltipProvider>
             <Tooltip>
@@ -428,6 +424,11 @@ export default function InstagramSetupClient({
                       <DialogTitle>Instagram連携を解除しますか？</DialogTitle>
                       <DialogDescription>
                         連携を解除すると、保存されているInstagram認証情報が削除されます。再度連携する場合は「Instagramと連携する」から手続きしてください。
+                        <span className="block mt-2">
+                          この操作で削除されるのは GrowMate
+                          に保存された情報だけです。Instagram側に残る連携の許可は取り消されません。完全に取り消すには、Instagramの「設定 →
+                          アプリとウェブサイト」からも削除してください。
+                        </span>
                       </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
