@@ -168,6 +168,7 @@ docs/plans/_html/<slug>.html                ← 成果物（単一ファイル�
 
 - `<slug>` は仕様書のファイル名から `.md` を除いたもの。
 - `docs/plans/_html/` は `.gitignore` 済み。**成果物も中間ファイルも commit しない**。意味の正本は常に `docs/plans/<slug>.md` 側にある。
+- **対象は `docs/plans/` 直下の仕様書だけ**。`refresh` は `docs/plans/` 直下以外のパスを黙って捨てる（`scripts/spec-html.py` の `refresh` 分岐）ため、実装完了時に `docs/specs/` へ移動した仕様書はバンドルの更新対象外になる。移動時は古いバンドル（`docs/plans/_html/<slug>/` と `docs/plans/_html/<slug>.html`）を消す。残すと**中身が更新されないまま開ける状態**になり、古い仕様を最新と誤読する。
 - 単一ファイルなのでダブルクリックで開ける（`file://` で動く）。サーバ不要。
 
 ## 手順

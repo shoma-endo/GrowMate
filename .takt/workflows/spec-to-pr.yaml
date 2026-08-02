@@ -286,6 +286,8 @@ steps:
       必須手順:
       1. `.agents/skills/update-docs/SKILL.md`、対象仕様書、`README.md`、`git status`、`git diff --stat`、`git diff` を読む。
       2. 実装差分によって README の既存説明が古くなるか、利用者・開発者・運用者が新たに知るべき恒久的な情報が生じたかを判定する。
+         - 対象仕様書に README 更新の予告（該当しそうなセクション）が書かれている場合は **候補として扱う**。ただし予告は仕様書段階の見込みであり、**最終判断は実装差分に基づく**。予告があっても差分が README の記述を変えないなら更新不要とし、予告になくても差分が影響するなら更新する。
+         - 判断が予告と食い違った場合は、その理由を `readme-sync.md` に書く。
       3. 更新が必要な場合だけ、既存構成と記述粒度に合わせて `README.md` を最小差分で同期する。更新不要の場合は `README.md` を編集しない。
       4. `readme-sync.md` に「更新要 / 更新不要」「判断根拠」「確認した差分」「更新セクション（更新不要ならなし）」を記録する。
 
@@ -426,6 +428,7 @@ steps:
          - `develop` / `main` にいる場合、対象仕様に対応する既存リモートブランチがあれば checkout して継続する。
          - 既存がなければ仕様書名または機能名から `feature/...` または `fix/...` の英語ブランチを新規作成する。
       4. `pr-summary.md` の `## 関連仕様書` に `docs/plans/xxx.md` → `docs/specs/xxx.md` への移動指示がある場合、`git mv docs/plans/xxx.md docs/specs/xxx.md` を実行し実装差分と同一コミットに含める。移動指示がなければ何もしない。
+         - 移動した場合、図解バンドル `docs/plans/_html/<slug>/` と `docs/plans/_html/<slug>.html` を削除する（`<slug>` は移動した仕様書のファイル名から `.md` を除いたもの。削除対象はこの2つだけで、`docs/plans/_html/` 配下の他の仕様書のバンドルには触らない）。`scripts/spec-html.py` の `refresh` は `docs/plans/` 直下の仕様書しか受け付けないため、残すと二度と更新されないバンドルが開ける状態で残り、古い仕様を最新と誤読する。`.gitignore` 済みのため commit には影響しない。削除した旨を報告に含める。
       5. `git add` で変更をステージし、`git diff --cached` で最終確認する。無関係なローカル変更を混ぜない。
       6. `pr-summary.md` のコミットメッセージ案（なければ Why 中心の日本語1行）で `git commit` する。変更がなければ新規コミットは作らず、既存 tip で PR 更新へ進む。
       7. `git push -u origin HEAD` を実行する。
