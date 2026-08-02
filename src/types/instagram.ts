@@ -66,7 +66,10 @@ export interface InstagramMediaPreview {
 export interface InstagramPreviewData {
   profile: InstagramProfile;
   media: InstagramMediaPreview[];
+  /** 再試行で回復しうる取得失敗の件数 */
   failedCount?: number;
+  /** プロアカウント転換前の投稿で、恒久的に指標を取得できない件数（失敗ではない） */
+  preConversionCount?: number;
 }
 
 const INSTAGRAM_PROFESSIONAL_ACCOUNT_TYPES = ['BUSINESS', 'MEDIA_CREATOR'] as const;
