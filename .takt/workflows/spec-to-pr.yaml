@@ -71,7 +71,10 @@ steps:
          - Requeue / resume なら `meta.json` の `source_run_slug` を辿り、前回の `plan.md` / `coder-scope.md` / `architecture-review.md` 等を参照する。
          - 既存 WIP / 既存 PR がある場合は「差分追記」計画にし、ゼロからの作り直しを避ける。
       7. 仕様要件と現行コード（および既存 WIP）の差分、変更対象、検証方法、PR本文に記載すべき関連仕様書を整理する。
-      8. 対象仕様書が spec-review 済みか確認する（`.takt/workflows/spec-review.yaml` のレビューレポート）。未実施の場合はブロックしないが、計画レポートに「spec-review 未実施」と明記する。
+      8. 対象仕様書の spec-review 結果を取り込む（`.takt/runs/*/reports/` の `spec-review-summary.md` / `spec-audit.md` のうち対象仕様書に対応する最新のもの）:
+         - 未実施の場合はブロックしないが、計画レポートに「spec-review 未実施」と明記する。
+         - 実施済みの場合、**理由付きで残置合意された指摘（🟡 残置・approved_with_questions の論点）を `plan.md` に転記する**。後段の `review` が同じ論点を再指摘して review -> fix ループを空回りさせないため。
+         - 外部サービス連携の仕様書で「公式ドキュメント照合: 未実施」と記録されている場合、その旨を `plan.md` に明記する（実装時に前提が未検証であることを PR の未確認事項へ回すため）。
       9. 検証ゲートは `npm run verify` と TAKT 内レビューとする。ブラウザ手動確認は無人実行では実施しない（PR の未確認事項に記載する前提）。
       10. 仕様が新規マイグレーション（新規テーブル・新規列）を要求し、それがまだリモートDBに未適用（`database.types.ts` に反映されていない）場合、これ単体は ABORT 理由にしない。`.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターン（`src/types/database.types.pending.ts` + `asPendingClient()`）を計画に含め、最後まで実装する前提で進める。リモートへの適用と `npm run supabase:types` は管理者が本PRマージ後に行う運用とし、完了条件にしない。
     rules:
@@ -82,7 +85,10 @@ steps:
       - condition: 要件が不明確、情報不足（仕様書の修正が必要。マイグレーション未適用のみを理由にしない）
         next: ABORT
         appendix: |
-          人間が `docs/plans/` を修正して再実行してください:
+          仕様書の修正が必要です。`.takt/workflows/spec-review.yaml` を対象仕様書に対して実行すると、
+          audit -> revise ループで以下の論点を仕様書へ反映できます（クライアント確認が要る論点は
+          「未確定事項（クライアント確認中）」として質問のまま残ります）。
+          その後この workflow を再実行してください。
           - {質問1}
           - {質問2}
     output_contracts:
@@ -194,6 +200,7 @@ steps:
       `review-arch` 相当の観点で、アーキテクチャ、責務分離、データ境界、セキュリティ、仕様充足、既存パターンとの整合性をレビューしてください。
 
       GrowMate 固有条件:
+      - `plan.md` に spec-review で残置合意された指摘が転記されている場合、**その論点を再指摘して `needs_fix` にしない**（仕様書レビュー段階で理由付きの残置が合意済みのため）。実装が仕様書の記述どおりかだけを見る。
       - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
       - 簡易・形式的・低価値なユニットテストの追加を要求しない。
       - 代替検証として `npm run verify` が実行されているかを確認する。

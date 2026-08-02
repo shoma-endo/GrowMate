@@ -1,5 +1,9 @@
 name: spec-review
 description: GrowMate docs/plans specification review against spec-review skill checklist and spec revision loop. Regenerates the spec's HTML visualization when the spec changed. Commits docs changes on the current branch only (no new branch, no push). Run before spec-to-pr.
+workflow_config:
+  provider_options:
+    codex:
+      network_access: true
 max_steps: 14
 initial_step: identify
 loop_monitors:
@@ -78,6 +82,7 @@ steps:
       - B の確認では仕様書の記述を鵜呑みにせず、実コード（services / actions / components）を読んで再利用対象・乖離を検証する。
       - 外部サービス連携が対象の場合、`spec-review-scope.md` で列挙した公式ドキュメント URL を **WebFetch で実際に取得し**、SKILL.md「外部サービス連携 > 一次情報検証 > 検証必須項目」（エンドポイント / 必須パラメータ・フィールド名 / 権限スコープ / レート制限 / 非推奨告知 / 前提条件 / データ反映遅延）を照合する。記憶・過去の実装・ブログ記事・要約を根拠にしない。あわせて「外部サービス連携 > 連携ライフサイクル（失効・剥奪・切断）」のチェックリストを適用する。
       - 公式ドキュメントを根拠にした指摘には、参照 URL・確認日（YYYY-MM-DD）・**公式ページ本文の verbatim 引用**を必ず添える。要約を経由した引用は禁止。公式に記述が見つからない挙動は断定せず確認質問に隔離する。
+      - 外部サービス連携が対象の場合、`spec-audit.md` の冒頭に **「公式ドキュメント照合: 実施 / 未実施」** を必ず書く。実行中の provider に web 取得手段（WebFetch 等）が無く照合できない場合は「未実施（provider に web 取得手段なし）」と明記し、記憶や既存実装で代替して照合したことにしない。
       - WebFetch が失敗した URL は「未確認」として `spec-audit.md` に残し、レビュー自体は止めずに他の観点を続行する。
       - 指摘は「問題箇所 / なぜ危険か / 修正案」の形式で、重大度（🔴/🟡/🟢）を付ける。
       - クライアント確認が必要な論点は修正案を断定せず、確認質問（Pre-implementation Questions 形式）として隔離する。
@@ -188,7 +193,7 @@ steps:
       1. `git status` / `git diff` で変更内容を確認する。変更が `docs/` 配下のみであることを検証し、それ以外の変更が混入していれば ABORT する。
       2. 仕様書に変更がある場合: 現在のブランチのまま、日本語1行メッセージで commit する。ブランチ作成（`git checkout -b` / `git switch -c` 等）と `git push` は行わない。
       3. 仕様書に変更がない場合（指摘なし approved）: commit は行わない。
-      4. 最終レポートに以下を含める: 指摘サマリ（重大度別件数）、未解決のクライアント確認質問、照合した外部サービス公式ドキュメントの URL と確認日（取得に失敗して未確認のまま残った URL があれば明記）、図解 HTML の更新有無とパス（`docs/plans/_html/<slug>.html`。commit 対象外）、次アクション（質問回答 → 必要なら人間が push/PR → `.takt/workflows/spec-to-pr.yaml` で実装）。
+      4. 最終レポートに以下を含める: 指摘サマリ（重大度別件数）、未解決のクライアント確認質問、公式ドキュメント照合の実施可否（`spec-audit.md` 冒頭の記載を転記。未実施ならその理由）と照合した URL・確認日（未確認のまま残った URL があれば明記）、図解 HTML の更新有無とパス（`docs/plans/_html/<slug>.html`。commit 対象外）、次アクション（質問回答 → 必要なら人間が push/PR → `.takt/workflows/spec-to-pr.yaml` で実装）。
 
       やらないこと:
       - 新しいブランチの作成・切り替え。
