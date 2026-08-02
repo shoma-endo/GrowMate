@@ -53,9 +53,8 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - **こちらが先回りして着手することはできない**。"Business admins ... will receive an email notification about the access verification requirement **whenever an app administrator requests Advanced Access** for any of the permissions listed above." → **起点は開発側の Advanced Access 申請**であり、クライアントから先に始める手続きではない
   - 通知後 "business admins will have **60 days** to complete the verification process"、完了後の判断は "within approximately **5 days**"
   - **クリティカルパスではない**。当初これを最長リードタイムと見なして「先に着手を」とクライアントへ依頼しかけたが、順序が逆だった
-  - **ただしダッシュボードの表示は上記と食い違う（2026-08-02、未解決）**。App Dashboard のトップに「技術提供者になる／技術提供者になって**アプリレビューを申請し**、ユーザーのデータや他のビジネスのデータへのアクセスをリクエストできます。**アクセス認証を完了する必要があります**」というパネルが出ており、提出の前提条件のように読める。公式ドキュメントの "independent of App Review" と、この UI の「〜して申請できます」のどちらが実態かは**確定できていない**
-  - 判別には「アクセス許可と機能」の各行の**「アクション」からアドバンスアクセス申請が今押せるか**を見るのが早いが、2026-08-02 の確認ではドロップダウンが開かず未確認。パネルの「技術提供者になる」リンクも遷移しなかった（アプリの Administrator 権限はあるがビジネスの Admin ではないため、という仮説はあるが**未検証**）
-  - **提出前にここを確定させること。** 前提条件だった場合、クライアント側の Business Admin による手続き（約5日）が提出前に必要になり、スケジュールが変わる
+  - **ダッシュボードの表記と食い違って見えるが、実機確認で解消済み（2026-08-02）**。App Dashboard のトップに「技術提供者になる／技術提供者になって**アプリレビューを申請し**…できます。**アクセス認証を完了する必要があります**」というパネルが出るため前提条件のように読めるが、実際には**案内であって前提条件ではない**。「アクセス許可と機能」の `instagram_business_basic` 行の「アクション」を開くと **「+ アプリレビューに追加」が有効なまま表示され**、技術提供者を求める注意書きもグレーアウトも無かった
+  - **ただし確認できたのは「追加」までで、追加後の最終提出ボタンで技術提供者チェックが入る可能性は残る**。提出時に判明する
 - **開発者をクライアントのポートフォリオに招待するときの権限（2026-07-29 の詰まりから）**: アプリをクライアントのビジネスポートフォリオ配下に置く構成では、開発者を招待する際に **「部分的なアクセス許可 > アプリと統合」**（旧「開発者」ロール）を選ぶ。公式は「アプリと統合のアクセス許可(以前の開発者の役割)を所有するメンバーは、コンバージョンAPIの設定、イベントのモニタリング、**アプリの編集、アクセストークンの作成**ができます」と定義しており（[アクセス許可について](https://www.facebook.com/business/help/442345745885606)）、Facebook ページ・広告アカウント・Instagram アカウントへのアクセスを伴わない。フルアクセス（全権限）は不要。
   - **実際に踏んだ罠**: 初回招待フローの「アセットを割り当てる」でアプリのチェックボックスが有効にならず、"Developer account needed" の注意書きが出る。原因は開発者登録の不備でもアプリ側の設定不備でもなく、**ポートフォリオ権限の選択**にあった。この事象で丸1日を消費している
   - アプリの役割は App Dashboard ではなく Business Manager 側で管理される（「If your app is connected to a business portfolio, you must use the Business Manager to manage roles for your app.」— [App Roles](https://developers.facebook.com/documentation/development/build-and-test/app-roles)）
