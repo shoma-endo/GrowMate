@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isInstagramPreConversionMediaError,
   isInstagramReauthError,
+  isInstagramRevokedTokenError,
 } from '@/domain/errors/instagram-error-handlers';
 
 // parseJsonResponse が実際に投げる形。レスポンス本文をメッセージに含めて throw する。
@@ -49,5 +50,43 @@ describe('isInstagramPreConversionMediaError', () => {
     expect(isInstagramPreConversionMediaError('error_subcode":2108006')).toBe(false);
     expect(isInstagramPreConversionMediaError(null)).toBe(false);
     expect(isInstagramPreConversionMediaError(undefined)).toBe(false);
+  });
+});
+
+describe('isInstagramRevokedTokenError', () => {
+  // Meta はレート制限や権限エラーにも "type":"OAuthException" を付ける。
+  // 失効と断定できるのは code 190 系だけ。
+  const RATE_LIMIT = graphError(
+    '{"error":{"message":"Application request limit reached","type":"OAuthException","code":4}}'
+  );
+  const USER_RATE_LIMIT = graphError(
+    '{"error":{"message":"User request limit reached","type":"OAuthException","code":17}}'
+  );
+  const REVOKED = graphError(
+    '{"error":{"message":"Error validating access token: The user has not authorized application.","type":"OAuthException","code":190,"error_subcode":458}}'
+  );
+
+  it('code 190 の失効エラーを検出する', () => {
+    expect(isInstagramRevokedTokenError(REVOKED)).toBe(true);
+  });
+
+  it.each([
+    ['アプリ単位のレート制限 (code 4)', RATE_LIMIT],
+    ['ユーザー単位のレート制限 (code 17)', USER_RATE_LIMIT],
+  ])('%s を失効として扱わない', (_label, error) => {
+    // ここが true になると、有効なトークンの期限を過去へ倒してしまい、
+    // resolveInstagramTokenAction がリフレッシュを試みなくなって恒久的に死ぬ。
+    expect(isInstagramRevokedTokenError(error)).toBe(false);
+    // 一方、表示を再認証へ倒す広い判定には引っかかる（次回読み込みで自然に回復する）
+    expect(isInstagramReauthError(error)).toBe(true);
+  });
+
+  it('転換前エラーを失効として扱わない', () => {
+    expect(isInstagramRevokedTokenError(graphError(PRE_CONVERSION_BODY))).toBe(false);
+  });
+
+  it('Error 以外は false を返す', () => {
+    expect(isInstagramRevokedTokenError('code":190')).toBe(false);
+    expect(isInstagramRevokedTokenError(null)).toBe(false);
   });
 });

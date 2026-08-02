@@ -7,6 +7,7 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
   isInstagramPreConversionMediaError,
   isInstagramReauthError,
+  isInstagramRevokedTokenError,
 } from '@/domain/errors/instagram-error-handlers';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { toInstagramConnectionStatus } from '@/server/lib/instagram-status';
@@ -129,15 +130,50 @@ export async function disconnectInstagram(): Promise<ServerActionResult<void>> {
   }
 }
 
+/**
+ * Instagram 側でアプリの認可を解除されると保存済みトークンは即座に無効になるが、
+ * `access_token_expires_at` は未来のままなので `/setup` は「連携済み」と表示し続け、
+ * 実 API を叩く `/setup/instagram` だけが「要再認証」を出す（表示が食い違う）。
+ *
+ * このコードベースでは **「期限が過去 = 要再認証」が正規の表現** であり
+ * （`isInstagramTokenExpired` / `resolveInstagramTokenAction` の両方がそう解釈する）、
+ * 検知した時点で期限を現在時刻へ落とせば両画面とトークンサービスの判断が揃う。
+ * 再連携すれば OAuth コールバックが本来の期限で上書きするため自己修復する。
+ *
+ * **呼び出しは `isInstagramRevokedTokenError` で守ること。** 期限を過去へ倒すと
+ * `resolveInstagramTokenAction` がリフレッシュを試みなくなるため、レート制限のような
+ * 一時的な OAuthException でここへ来ると、有効なトークンを恒久的に殺してしまう。
+ */
+async function markInstagramCredentialExpired(userId: string): Promise<void> {
+  const result = await supabaseService.updateInstagramCredential(userId, {
+    accessTokenExpiresAt: new Date().toISOString(),
+  });
+  if (!result.success) {
+    // 表示の是正が目的なので、失敗しても呼び出し元のレスポンスは変えない。
+    // 原因の切り分けができるよう error はそのまま残す。
+    console.error('[Instagram Setup] failed to mark credential expired', {
+      userId,
+      error: result.error,
+    });
+    return;
+  }
+  // disconnectInstagram と同じく、両画面のキャッシュを落として表示を揃える
+  revalidatePath('/setup');
+  revalidatePath('/setup/instagram');
+}
+
 export async function fetchInstagramPreviewData(): Promise<
   ServerActionResult<InstagramPreviewData> & { needsReauth?: boolean }
 > {
+  // 外側の catch でも認可解除を記録できるよう、try の外に持つ
+  let resolvedUserId: string | null = null;
   try {
     const accessResult = await ensureInstagramAccess();
     if ('error' in accessResult && !('userId' in accessResult)) {
       return { success: false, error: accessResult.error };
     }
     const { userId } = accessResult as AuthSuccess;
+    resolvedUserId = userId;
 
     const useMockInstagram = process.env.NODE_ENV === 'development';
     let preview: InstagramPreviewData;
@@ -170,6 +206,9 @@ export async function fetchInstagramPreviewData(): Promise<
         })
       );
 
+      // ここへ来るのは保存済みの期限が既に過去のときだけ（refreshLongLivedToken の
+      // 失敗は throw して外側 catch に落ちる）。/setup も同じ期限を見ているので
+      // 既に表示は揃っており、書き込む必要はない。
       if (tokenResult.needsReauth) {
         return {
           success: false,
@@ -184,6 +223,9 @@ export async function fetchInstagramPreviewData(): Promise<
       } catch (error) {
         console.error('[Instagram Setup] fetchProfile failed', error);
         if (isInstagramReauthError(error)) {
+          if (isInstagramRevokedTokenError(error)) {
+            await markInstagramCredentialExpired(userId);
+          }
           return {
             success: false,
             error: ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED,
@@ -227,6 +269,9 @@ export async function fetchInstagramPreviewData(): Promise<
               mediaId: item.id,
             });
           } else if (isInstagramReauthError(error)) {
+            if (isInstagramRevokedTokenError(error)) {
+              await markInstagramCredentialExpired(userId);
+            }
             return {
               success: false,
               error: ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED,
@@ -261,6 +306,9 @@ export async function fetchInstagramPreviewData(): Promise<
   } catch (error) {
     console.error('[Instagram Setup] fetchInstagramPreviewData failed', error);
     if (isInstagramReauthError(error)) {
+      if (resolvedUserId && isInstagramRevokedTokenError(error)) {
+        await markInstagramCredentialExpired(resolvedUserId);
+      }
       return {
         success: false,
         error: ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED,

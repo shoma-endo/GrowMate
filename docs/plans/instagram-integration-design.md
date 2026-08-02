@@ -53,6 +53,8 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - **こちらが先回りして着手することはできない**。"Business admins ... will receive an email notification about the access verification requirement **whenever an app administrator requests Advanced Access** for any of the permissions listed above." → **起点は開発側の Advanced Access 申請**であり、クライアントから先に始める手続きではない
   - 通知後 "business admins will have **60 days** to complete the verification process"、完了後の判断は "within approximately **5 days**"
   - **クリティカルパスではない**。当初これを最長リードタイムと見なして「先に着手を」とクライアントへ依頼しかけたが、順序が逆だった
+  - **ダッシュボードの表記と食い違って見えるが、実機確認で解消済み（2026-08-02）**。App Dashboard のトップに「技術提供者になる／技術提供者になって**アプリレビューを申請し**…できます。**アクセス認証を完了する必要があります**」というパネルが出るため前提条件のように読めるが、実際には**案内であって前提条件ではない**。「アクセス許可と機能」の `instagram_business_basic` 行の「アクション」を開くと **「+ アプリレビューに追加」が有効なまま表示され**、技術提供者を求める注意書きもグレーアウトも無かった
+  - **ただし確認できたのは「追加」までで、追加後の最終提出ボタンで技術提供者チェックが入る可能性は残る**。提出時に判明する
 - **開発者をクライアントのポートフォリオに招待するときの権限（2026-07-29 の詰まりから）**: アプリをクライアントのビジネスポートフォリオ配下に置く構成では、開発者を招待する際に **「部分的なアクセス許可 > アプリと統合」**（旧「開発者」ロール）を選ぶ。公式は「アプリと統合のアクセス許可(以前の開発者の役割)を所有するメンバーは、コンバージョンAPIの設定、イベントのモニタリング、**アプリの編集、アクセストークンの作成**ができます」と定義しており（[アクセス許可について](https://www.facebook.com/business/help/442345745885606)）、Facebook ページ・広告アカウント・Instagram アカウントへのアクセスを伴わない。フルアクセス（全権限）は不要。
   - **実際に踏んだ罠**: 初回招待フローの「アセットを割り当てる」でアプリのチェックボックスが有効にならず、"Developer account needed" の注意書きが出る。原因は開発者登録の不備でもアプリ側の設定不備でもなく、**ポートフォリオ権限の選択**にあった。この事象で丸1日を消費している
   - アプリの役割は App Dashboard ではなく Business Manager 側で管理される（「If your app is connected to a business portfolio, you must use the Business Manager to manage roles for your app.」— [App Roles](https://developers.facebook.com/documentation/development/build-and-test/app-roles)）
@@ -100,6 +102,10 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 - **プロアカウント転換より前の投稿はインサイトを取得できない**。`GET /{media-id}/insights` が `code 100 / error_subcode 2108006`（"このメディアは、ユーザーのアカウントが個人アカウントからビジネスアカウントに最後に変換された時点より前に投稿されました"）を返す（2026-08-01 に `manbou536` の**既存25投稿すべて**で発生。最新の既存投稿が 2019-03-10 で、転換後の投稿が1件も無かった）。**この subcode は Meta のエラーコード一覧3ページのいずれにも記載が無く**、回避策や部分取得できるメトリクスのサブセットがあるかは**未確認**。確実に裏が取れる打ち手は転換後の新規投稿のみ。**審査用スクリーンキャストには転換後の投稿が最低1本必要**。
 - **制約は転換タイミングのみで、メディア形式は問わない（2026-08-01 実測）**。転換後に投稿した `CAROUSEL_ALBUM/FEED` で9指標すべて取得できた。公式の "Insights data is not available for any media within an Instagram Media album" はアルバム**内の子メディア**の話であり、アルバム本体は取得できる。GrowMate は `MEDIA_FIELDS` に `children` を含めないため、この制約に当たらない。動画（`VIDEO/REELS`）も同様に取得可能で、`ig_reels_avg_watch_time` / `ig_reels_video_view_total_time` を含む9指標が返ることを `aozorayoukei`（全25投稿が REELS）で確認済み。
 - **インサイトのデータは最大48時間遅延する**。公式 Limitations に "Data used to calculate metrics may be delayed up to 48 hours." とあるため、転換後の投稿を作ってすぐ収録すると数値が空のままになり得る。**収録スケジュール上、投稿作成が最長のリードタイム**。逆算して着手する。
+  - **実測（2026-08-02、`manbou536`）では48時間も要らなかった**。48時間は上限であって必要な待ち時間ではない。`views` と `likes` は投稿直後から入り、**`reach` だけが約1時間遅れて入り始める**。同一アカウントの3投稿で計測した値: 投稿0.2時間後 `reach=0 views=25`／0.8時間後 `reach=14 views=35`／12.9時間後 `reach=86 views=246`。収録前に空けるべき時間は**1〜2時間**が目安
+  - `saved` と `shares` は実際に保存・シェアされなければ待っても 0 のまま。取得失敗の `-` とは別物で、`0` は実データが返っている証拠になる
+- **`error_subcode 2108006` は取得失敗と区別して表示する（2026-08-02 実装済み。Phase 2 送りにしていたが前倒し）**。恒久的な状態を「取得できませんでした」と出すと不具合に見えるうえ、個人→プロ転換した利用者は転換前の投稿を必ず持つため**既定の体験として起こる**。`isInstagramPreConversionMediaError`（`src/domain/errors/instagram-error-handlers.ts`）で判定し、`InstagramPreviewData.preConversionCount` として `failedCount` と分けて数え、UI は警告色ではなく情報色の Alert で理由を説明する。
+  - **実 API の `type` は `IGApiException` であって `OAuthException` ではない**（2026-08-02 実測。HTTP 400）。そのため `isInstagramReauthError` の `oauthexception` 判定とは衝突しないが、同関数は本文の部分一致が広いため、catch 内では**転換前判定を先に置く**。順序を誤ると「再連携してください」に倒れ、何度再連携しても直らない導線になる
 - レート制限あり（app-user 単位）。投稿インサイトはメディア1件につき1コール必要なため、同期対象は**直近 N 件（初期値 50 件）に制限**し、打ち切り時はログに件数を出す（サイレント truncation 禁止）。
 - API バージョンはパスに明示（例: `graph.instagram.com/v23.0/...`。実装時に最新安定版を確認）。
 
