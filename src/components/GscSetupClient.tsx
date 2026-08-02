@@ -234,7 +234,7 @@ export default function GscSetupClient({
         </CardContent>
       </Card>
 
-      {status.connected ? (
+      {status.connected && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg font-semibold">プロパティ選択</CardTitle>
@@ -355,23 +355,6 @@ export default function GscSetupClient({
                 連携解除
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">接続手順</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm text-gray-700">
-            <ol className="list-decimal list-inside space-y-2">
-              <li>Search Consoleで対象サイトを登録し、所有者ステータスを確認します。</li>
-              <li>上部の「Googleでログイン」ボタンを押してOAuth認可を完了します。</li>
-              <li>権限が確認でき次第、利用可能なプロパティが自動的に表示されます。</li>
-            </ol>
-            <p className="text-xs text-gray-500">
-              Search
-              Consoleで権限を付与する際は、サイト全体の「所有者」または「フルユーザー」権限が必要です。
-            </p>
           </CardContent>
         </Card>
       )}

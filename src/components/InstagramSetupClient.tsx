@@ -304,7 +304,7 @@ export default function InstagramSetupClient({
             要再認証
           </AlertTitle>
           <AlertDescription className="text-orange-700">
-            Instagramの認証が期限切れです。再連携してください。
+            {ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED}
             <div className="mt-3">
               <Button asChild className="bg-orange-700 hover:bg-orange-800">
                 <Link href={OAUTH_START_PATH} onClick={() => setIsConnecting(true)}>

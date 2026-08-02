@@ -741,27 +741,6 @@ export default function SetupDashboard({
           </Card>
         )}
       </div>
-
-      {/* 初回セットアップガイド */}
-      {!wordpressSettings.hasSettings && (
-        <Card className="mt-8">
-          <CardHeader>
-            <CardTitle>初回セットアップガイド</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <p className="text-gray-600">
-                初めてご利用の場合は、以下の順序で設定を進めることをお勧めします
-              </p>
-              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
-                <li className={wordpressSettings.hasSettings ? 'line-through text-gray-400' : ''}>
-                  <strong>WordPress設定</strong> - 公開先サイトの設定
-                </li>
-              </ol>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
