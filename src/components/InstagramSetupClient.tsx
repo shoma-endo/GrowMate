@@ -155,6 +155,8 @@ export default function InstagramSetupClient({
   const [status, setStatus] = useState(initialStatus);
   const [preview, setPreview] = useState<InstagramPreviewData | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // 転換前投稿の注記は失敗ではないため partialFailureMessage とは別に持つ
+  const [preConversionMessage, setPreConversionMessage] = useState<string | null>(null);
   const [partialFailureMessage, setPartialFailureMessage] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -172,6 +174,7 @@ export default function InstagramSetupClient({
     setIsLoadingPreview(true);
     setPreviewError(null);
     setPartialFailureMessage(null);
+    setPreConversionMessage(null);
     setProfilePictureFailed(false);
     try {
       const result = await fetchInstagramPreviewData();
@@ -180,6 +183,11 @@ export default function InstagramSetupClient({
         if (result.data.failedCount && result.data.failedCount > 0) {
           setPartialFailureMessage(
             ERROR_MESSAGES.INSTAGRAM.PARTIAL_MEDIA_FAILURE(result.data.failedCount)
+          );
+        }
+        if (result.data.preConversionCount && result.data.preConversionCount > 0) {
+          setPreConversionMessage(
+            ERROR_MESSAGES.INSTAGRAM.MEDIA_PRE_CONVERSION(result.data.preConversionCount)
           );
         }
         setNeedsReauth(false);
@@ -455,6 +463,13 @@ export default function InstagramSetupClient({
             {partialFailureMessage ? (
               <Alert className="bg-orange-50 border-orange-200">
                 <AlertDescription className="text-orange-800">{partialFailureMessage}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            {/* 転換前の投稿は再試行しても取得できないため、警告色ではなく情報として出す */}
+            {preConversionMessage ? (
+              <Alert className="bg-blue-50 border-blue-200">
+                <AlertDescription className="text-blue-900">{preConversionMessage}</AlertDescription>
               </Alert>
             ) : null}
 

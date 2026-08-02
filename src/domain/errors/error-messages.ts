@@ -895,6 +895,13 @@ export const ERROR_MESSAGES = {
     PARTIAL_MEDIA_FAILURE: (failedCount: number): string =>
       `一部の投稿データを取得できませんでした（${failedCount}件）`,
 
+    /**
+     * プロアカウント転換前の投稿で指標を取得できない場合。
+     * 失敗ではなく Instagram の仕様なので、再試行を促さず理由だけ伝える。
+     */
+    MEDIA_PRE_CONVERSION: (count: number): string =>
+      `プロアカウントに切り替える前の投稿（${count}件）は、Instagramの仕様により指標を取得できません`,
+
     /** 不明なエラー */
     UNKNOWN_ERROR: '不明なエラーが発生しました。もう一度お試しください',
   },

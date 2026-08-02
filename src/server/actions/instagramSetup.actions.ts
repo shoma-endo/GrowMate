@@ -4,7 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { isInstagramReauthError } from '@/domain/errors/instagram-error-handlers';
+import {
+  isInstagramPreConversionMediaError,
+  isInstagramReauthError,
+} from '@/domain/errors/instagram-error-handlers';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { toInstagramConnectionStatus } from '@/server/lib/instagram-status';
 import { SupabaseService } from '@/server/services/supabaseService';
@@ -203,6 +206,8 @@ export async function fetchInstagramPreviewData(): Promise<
 
       const media: InstagramMediaPreview[] = [];
       let failedCount = 0;
+      // 転換前の投稿は恒久的に取得できないため、再試行を促す failedCount とは分けて数える
+      let preConversionCount = 0;
 
       for (const item of targetMedia) {
         try {
@@ -213,15 +218,27 @@ export async function fetchInstagramPreviewData(): Promise<
           );
           media.push(instagramService.toMediaPreview(item, insights));
         } catch (error) {
-          if (isInstagramReauthError(error)) {
+          // 転換前判定を先に置く。isInstagramReauthError は本文の部分一致が広く、
+          // 将来 Meta が文言を変えて両方に掛かった場合に「再連携してください」へ倒れると、
+          // 何度再連携しても直らない導線になるため。
+          if (isInstagramPreConversionMediaError(error)) {
+            preConversionCount += 1;
+            console.info('[Instagram Setup] media predates professional conversion', {
+              mediaId: item.id,
+            });
+          } else if (isInstagramReauthError(error)) {
             return {
               success: false,
               error: ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED,
               needsReauth: true,
             };
+          } else {
+            failedCount += 1;
+            console.error('[Instagram Setup] fetchMediaInsights failed', {
+              mediaId: item.id,
+              error,
+            });
           }
-          failedCount += 1;
-          console.error('[Instagram Setup] fetchMediaInsights failed', { mediaId: item.id, error });
           media.push(instagramService.toMediaPreview(item, EMPTY_MEDIA_INSIGHTS));
         }
       }
@@ -236,6 +253,7 @@ export async function fetchInstagramPreviewData(): Promise<
         profile,
         media,
         ...(failedCount > 0 ? { failedCount } : {}),
+        ...(preConversionCount > 0 ? { preConversionCount } : {}),
       };
     }
 
