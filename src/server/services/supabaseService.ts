@@ -73,6 +73,9 @@ type GoogleAdsEvaluationSettingsTable = {
   Relationships: [];
 };
 
+// PROVISIONAL: last_attempted_on は
+// supabase/migrations/20260803000000_add_last_attempted_on_to_negative_keywords_settings.sql で追加。
+// 管理者がマイグレーションを適用し `npm run supabase:types` を実行するまで、生成型には存在しない。
 type GoogleAdsNegativeKeywordsSettingsTable = {
   Row: {
     id: string;
@@ -80,6 +83,7 @@ type GoogleAdsNegativeKeywordsSettingsTable = {
     enabled: boolean;
     send_hour_jst: number;
     last_sent_on: string | null;
+    last_attempted_on: string | null;
     last_send_error: string | null;
     created_at: string;
     updated_at: string;
@@ -89,6 +93,7 @@ type GoogleAdsNegativeKeywordsSettingsTable = {
     enabled?: boolean;
     send_hour_jst?: number;
     last_sent_on?: string | null;
+    last_attempted_on?: string | null;
     last_send_error?: string | null;
     updated_at?: string;
   };
@@ -96,6 +101,7 @@ type GoogleAdsNegativeKeywordsSettingsTable = {
     enabled?: boolean;
     send_hour_jst?: number;
     last_sent_on?: string | null;
+    last_attempted_on?: string | null;
     last_send_error?: string | null;
     updated_at?: string;
   };
@@ -1351,6 +1357,7 @@ export class SupabaseService {
       enabled: row.enabled,
       sendHourJst: row.send_hour_jst,
       lastSentOn: row.last_sent_on,
+      lastAttemptedOn: row.last_attempted_on,
       lastSendError: row.last_send_error,
     };
   }
@@ -1455,7 +1462,13 @@ export class SupabaseService {
       .from('google_ads_negative_keywords_settings')
       .select('*')
       .eq('enabled', true)
-      .eq('send_hour_jst', sendHourJst);
+      // 送信時刻ちょうどの実行が時間予算で取りこぼした分を、同日中の後続毎時 cron で回収するため
+      // `<=` で抽出する（当日送信済み・当日試行済みは下の filter で除外）。
+      .lte('send_hour_jst', sendHourJst)
+      // 打ち切りが起きたときに毎回同じユーザーが切り捨てられないよう、
+      // 送信時刻の早い順で決定的に並べる。
+      .order('send_hour_jst', { ascending: true })
+      .order('user_id', { ascending: true });
 
     if (error) {
       return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_FETCH_FAILED, {
@@ -1466,7 +1479,9 @@ export class SupabaseService {
     }
 
     const rows = (data ?? [])
-      .filter(row => row.last_sent_on !== todayJst)
+      // 当日送信済み、および当日試行済み（失敗を含む）は除外する。
+      // 時間予算で未着手のまま残ったユーザーのみが後続の毎時 cron で回収対象になる。
+      .filter(row => row.last_sent_on !== todayJst && row.last_attempted_on !== todayJst)
       .map(row => this.mapGoogleAdsNegativeKeywordsSettingsRow(row));
 
     return this.success(rows);

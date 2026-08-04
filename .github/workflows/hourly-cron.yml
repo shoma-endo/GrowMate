@@ -1,12 +1,17 @@
 name: Hourly Cron
 
 # 各 cron エンドポイントを並列起動する統合 workflow。
-# 追加方法: matrix.include に { id, path, profile, interval } を 1 件追加するだけ。
+# 追加方法: matrix.include に { id, path, profile, interval, maxTime, maxRetries, timeoutMinutes } を 1 件追加するだけ。
+#
+# maxTime       : 1回の curl の最大待ち時間（秒）。route の maxDuration より長くすること。
+# maxRetries    : curl の試行回数上限。1 はリトライなし。再実行でメールが重複しうるバッチは 1 にすること。
+# timeoutMinutes: job 全体のタイムアウト（分）。maxTime × maxRetries を収められる値にすること。
 #
 # profile:
 #   gsc-batch    : data.stoppedReason / errors / totalSystemError を検証（GSC 評価）
 #   gsc-suggestions: GSC提案ジョブ向け（一時失敗は警告、最終失敗はエラー）
-#   count-batch  : success / data.failed を検証（件数集計型バッチ）
+#   count-batch  : success / data.failed を FAIL 判定、data.skipped / data.skippedDueToLimit /
+#                  data.stoppedReason を WARN 通知（件数集計型バッチ）
 
 on:
   schedule:
@@ -19,7 +24,8 @@ permissions:
 jobs:
   invoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # matrix に値が無い場合は従来の既定値にフォールバックする（記入漏れで job が起動しないのを防ぐ）
+    timeout-minutes: ${{ matrix.timeoutMinutes || 20 }}
     strategy:
       fail-fast: false
       matrix:
@@ -28,14 +34,27 @@ jobs:
             path: /api/cron/gsc-evaluate
             profile: gsc-batch
             interval: hourly
+            maxTime: 310
+            maxRetries: 3
+            timeoutMinutes: 20
           - id: google-ads-negative-keywords
             path: /api/cron/google-ads-negative-keywords-suggestion
             profile: count-batch
             interval: hourly
+            # route の maxDuration 800秒より長く待つ。
+            # 310秒のままだと curl が先に切れ、まだ走っている関数と並行して2本目が起動する。
+            maxTime: 820
+            # メール送信バッチのため再実行しない。maxDuration 超過は 504 で返るので、
+            # リトライすると同じバッチがもう一度走って重複配信のリスクが出る。
+            maxRetries: 1
+            timeoutMinutes: 20
           - id: gsc-suggestions
             path: /api/cron/gsc-suggestions
             profile: gsc-suggestions
             interval: hourly
+            maxTime: 310
+            maxRetries: 3
+            timeoutMinutes: 20
     concurrency:
       group: hourly-cron-${{ matrix.id }}
       cancel-in-progress: false
@@ -55,6 +74,8 @@ jobs:
           SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
           TARGET_PATH: ${{ matrix.path }}
           PROFILE: ${{ matrix.profile }}
+          MAX_TIME: ${{ matrix.maxTime || 310 }}
+          MAX_RETRIES: ${{ matrix.maxRetries || 3 }}
         run: |
           if [ -z "$SITE_URL" ]; then
             echo "NEXT_PUBLIC_SITE_URL is not set" >&2
@@ -63,4 +84,6 @@ jobs:
           chmod +x scripts/invoke-cron.sh
           scripts/invoke-cron.sh \
             --url "${SITE_URL}${TARGET_PATH}" \
-            --profile "$PROFILE"
+            --profile "$PROFILE" \
+            --max-time "$MAX_TIME" \
+            --max-retries "$MAX_RETRIES"

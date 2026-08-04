@@ -50,7 +50,11 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 - **取得範囲**: 連携済みの Google Ads アカウント 1 件を対象に、前日の検索語句データを **アカウント一式でまとめて取得**する。キャンペーン・広告グループを UI で個別選択したり、広告グループごとに手動取得したりしない。取得データにはキャンペーン名・広告グループ名を含め、AI が分類判断に利用する。
 - **出力粒度**: 取得は一括で行うが、提案結果は **キャンペーン共通で除外すべき候補** と **広告グループ単位で除外すべき候補** の 2 階層で出力する。広告グループ単位の除外リストはメール本文に明示する。
 - **対象期間**: 前日 1 日（JST 基準）固定。将来 7 日/30 日に拡張可能な internal option として `dateRangeDays` を保持。
-- **配信タイミング**: ユーザーごとに `send_hour_jst` (0–23, JST) で設定。毎時 cron（GH Actions `hourly-cron.yml`）が毎時 0 分に起動 → 該当時刻 + 当日未送信のユーザーのみ実行。
+- **配信タイミング**: ユーザーごとに `send_hour_jst` (0–23, JST) で設定。毎時 cron（GH Actions `hourly-cron.yml`）が毎時 0 分に起動 → **`send_hour_jst <= 現在時刻(JST)` かつ当日未送信（`last_sent_on`）かつ当日未試行（`last_attempted_on`）**のユーザーを実行。
+  - `<=` にしているのは、設定時刻ちょうどの実行が時間予算で取りこぼした分を同日中の後続 cron で回収するため。副作用として、設定時刻を過ぎてから機能を有効化したユーザーには翌日ではなく当日中に初回が届く。
+  - `last_attempted_on` は成否によらず試行時点で立てるため、**同日中のリトライは発生しない**。回収対象は「時間予算で一度も着手されなかったユーザー」のみ。これがないと、恒久的に失敗するユーザー（Google Ads 未接続・メールバウンス等）が毎時 LLM を再実行し、GH Actions も毎時 fail する。
+  - `send_hour_jst = 23` のユーザーは後続 cron が存在しないため**回収窓がゼロ**（22 時は 1 回）。深夜帯に設定が集中した場合は打ち切りがそのまま当日の欠落になる。
+  - **受け入れたトレードオフ**: `last_attempted_on` を処理の先頭で立てるため、送信前に関数がハードキルされたユーザーは同日中に再試行されない（`last_send_error` も未設定なので UI 上は「未送信・エラーなし」に見える）。同日中の重複メールを防ぐことを優先した判断。`skippedDueToLimit` の WARN と Vercel のタイムアウトログで検知する。
 - **送信先**: `public.users.email`（既存「コンテンツ戦略提案」と同一）。
 - **メール本文**: AI 出力には末尾の **構造化 JSON ブロック**（将来「ダッシュボード上ワンクリック除外」用）を要求するが、**メール送信前に `extractStructuredOutput()` で本文から除去する**。送信されるのは Markdown 部分のみを HTML 化したもの。本フェーズではパース可否のログのみ取得し、DB 保存は行わない。
 - **手動実行**: ダッシュボードに「今すぐテスト送信」ボタンを設置。cron と同じサービスを呼ぶ。
@@ -331,6 +335,7 @@ create table if not exists public.google_ads_negative_keywords_settings (
     check (send_hour_jst between 0 and 23),
 
   last_sent_on date,                  -- 最終成功送信日（JST 基準、自動配信のみ更新）
+  last_attempted_on date,             -- 直近の試行日（成否問わず更新。同日リトライを1回に制限する）
   last_send_error text,               -- 直近失敗のエラーメッセージ（成功で nullify）
 
   created_at timestamptz not null default timezone('utc', now()),
@@ -545,8 +550,9 @@ export class GoogleAdsNegativeKeywordsSuggestionService {
 11. **HTML 化**: `await marked.parse(markdown)` → `sanitizeEmailHtml`。
 12. **メール送信**: `emailService.sendGoogleAdsNegativeKeywords(userEmail, subject, html)`。
 13. **記録更新**（`force=false` の cron 経路のみ）:
-    - 成功: `last_sent_on = 当日(JST)` + `last_send_error = NULL`
-    - 失敗: `last_send_error = メッセージ`, `last_sent_on` 更新しない
+    - 試行開始時（設定読み込み直後）: `last_attempted_on = 当日(JST)`
+    - 成功: `last_sent_on = 当日(JST)` + `last_send_error = NULL`。**この更新に失敗した場合は結果を `failed` として返す**（送信済みなのに未記録という状態を成功報告しない）
+    - 失敗: `last_send_error = メッセージ`, `last_sent_on` 更新しない。例外経路では英語の生メッセージではなく `ERROR_MESSAGES` の定義済み文言を保存する（設定画面にそのまま表示されるため）
     - **`force=true`（手動テスト）の場合は `last_sent_on` を更新しない**（本番 cron のスキップを防ぐ）。エラー時の `last_send_error` 更新も任意（ユーザーに toast でエラーが返るため運用上不要、ノイズ防止で更新しないことを推奨）。
 
 ### 8.3 `runAllDueSuggestions` 処理
@@ -557,12 +563,18 @@ export class GoogleAdsNegativeKeywordsSuggestionService {
 3. todayJst = nowJst.dateISO
 4. dueUsers = SupabaseService.listDueNegativeKeywordsSuggestionUsers(hourJst, todayJst)
 5. for chunk of chunk(dueUsers, 3):
+     if 経過時間 > BATCH_TIME_LIMIT_MS: 残件を skippedDueToLimit に計上して break
      await Promise.allSettled(chunk.map(u => sendNegativeKeywordsSuggestionForUser(u.userId)))
-6. return aggregate counts
+6. return aggregate counts (+ stoppedReason / skippedDueToLimit)
 ```
 
 - 同時並列度 `N=3` は初期値。実測でレートリミットや関数並列度の問題が出れば調整。
-- 1 ユーザーの実処理時間目安: 20〜50 秒（Sonnet 4.6 / maxTokens 8000）。Vercel `maxDuration=300` を超えそうな場合は dueUsers を batch 化 + 続きを次の cron 起動に持ち越す（次フェーズ）。
+- 1 ユーザーの実処理時間目安: **実測で約 120〜150 秒**（Sonnet 4.6 / maxTokens 16000、除外KW 最大2000件で 74k〜101k 文字のプロンプト）。3 並列 1 チャンクが約 150 秒。
+- **時間予算**: `BATCH_TIME_LIMIT_MS = maxDuration(800秒) − USER_TIME_LIMIT_MS(300秒) − 集計・レスポンス用の余白(20秒) = 480 秒`。時間チェックはチャンク開始「前」の 1 回だけなので、**実測平均（約150秒）ではなく上界で逆算する**こと。実測値で引くと、予算ギリギリで開始したチャンクが粘った場合に maxDuration を突破する。
+- **1ユーザーの上限**: `USER_TIME_LIMIT_MS = LLM_TIMEOUT_MS(240秒) + I/O 余裕(60秒) = 300 秒`。`Promise.race` で実際に打ち切り、超過したユーザーは失敗として次へ進む。Google Ads API とメール送信には個別タイムアウトが無く（undici 既定で 300 秒待ちうる）、見積もりを置くだけでは上界にならないため、ここで強制的に上界を作っている。打ち切られた処理自体は中断できずバックグラウンドで走り続けるが、関数全体の所要は maxDuration 内に収まる。
+- **LLM タイムアウト**: `llmChat` の既定 300 秒は関数上限と同等でガードにならないため、`timeoutMs = 240 秒` を明示指定する。
+- **maxDuration の二重管理**: Next.js の segment config はリテラルしか受け付けないため、route は定数を import できない。サービス側の `NEGATIVE_KEYWORDS_CRON_MAX_DURATION_SEC` と一致することをユニットテストで担保する。
+- **打ち切られたユーザー**: `last_sent_on` / `last_attempted_on` とも未更新のまま残るため、同日の次の毎時 cron が回収する。
 
 ### 8.4 DEV モード分岐
 
@@ -634,17 +646,17 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 800; // Vercel Pro（Fluid Compute）上限。サービス側の時間予算（480秒）で安全に打ち切る
 ```
 
 ### 10.1 Cron 実行基盤（運用）
 
-毎時 cron は **GitHub Actions の `.github/workflows/hourly-cron.yml` に一本化**する。各エンドポイントは **単一の実行基盤のみ**から呼ぶこと（Vercel Cron と GH Actions の二重発火はメール重複の原因になる）。新規の毎時 cron を追加する場合は `hourly-cron.yml` の `matrix.include` に `{ id, path, profile }` を 1 件追加し、必要なら `scripts/invoke-cron.sh` の validation profile を拡張する。
+毎時 cron は **GitHub Actions の `.github/workflows/hourly-cron.yml` に一本化**する。各エンドポイントは **単一の実行基盤のみ**から呼ぶこと（Vercel Cron と GH Actions の二重発火はメール重複の原因になる）。新規の毎時 cron を追加する場合は `hourly-cron.yml` の `matrix.include` に `{ id, path, profile, interval, maxTime, maxRetries, timeoutMinutes }` を 1 件追加し、必要なら `scripts/invoke-cron.sh` の validation profile を拡張する。`maxTime` は呼び出し先 route の `maxDuration` より長く、`timeoutMinutes` は `maxTime × maxRetries` を収められる値にする（未指定時は 310 / 3 / 20 にフォールバック）。
 
 | エンドポイント | 実行基盤 | profile | 備考 |
 |----------------|----------|---------|------|
 | `/api/cron/gsc-evaluate` | **GH Actions（hourly-cron.yml）** | `gsc-batch` | `stoppedReason / errors / totalSystemError` を FAIL 判定、`totalImportFailed / usersSkippedDueToLimit` を WARN 通知 |
-| `/api/cron/google-ads-negative-keywords-suggestion`（**本機能**） | **GH Actions（hourly-cron.yml）** | `count-batch` | `success / data.failed` を FAIL 判定、`data.skipped` を WARN 通知 |
+| `/api/cron/google-ads-negative-keywords-suggestion`（**本機能**） | **GH Actions（hourly-cron.yml）** | `count-batch` | `success / data.failed` を FAIL 判定、`data.skipped` / `data.skippedDueToLimit` を WARN 通知 |
 | `/api/cron/google-ads-evaluate` | Vercel Dashboard（既存・本機能の範囲外） | — | 必要時に hourly-cron.yml への移行を検討 |
 | `/api/cron/ga4-sync` | Vercel Dashboard（既存・本機能の範囲外） | — | 必要時に hourly-cron.yml への移行を検討 |
 
@@ -652,7 +664,12 @@ export const maxDuration = 300;
 
 #### 共通仕様（`scripts/invoke-cron.sh`）
 
-- リトライ: `curl exit 28 / HTTP 503 / 504` で指数バックオフ最大 3 回
+- リトライ: `curl exit 28 / HTTP 503 / 504` で指数バックオフ（既定 3 回。`--max-retries` で変更可能で、本機能は 1＝リトライなし）
+- 引数の数値検証: `--max-retries` / `--max-time` が不正値なら**エンドポイントを叩かずに exit 1**（叩いていないのに成功扱いになる fail-open を防ぐ）
+- `--http2`: 800 秒間無出力のレスポンスが HTTP/1.1 の中間経路に切断されるのを避ける（Vercel は HTTP/2 では PING frame を送る）
+- `--max-time`: 1 回の curl の最大待ち時間（既定 310 秒）。本機能は `maxDuration=800` に合わせて **820 秒**を指定する（310 秒のままだと curl が先に切れ、まだ走っている関数と並行して 2 本目が起動する）
+- `--max-retries`: curl の試行回数上限（既定 3）。本機能は **1**（リトライなし）。`maxDuration` 超過は Vercel から **504** で返り、`curl exit 28 / 503 / 504` はリトライ対象のため、放置するとメール配信バッチが再走する
+- **二重起動防止の実体**: `concurrency: hourly-cron-<id>` は GH job 単位のロックであって Vercel 関数のロックではない（job が kill されても関数は走り続ける）。実質的な担保は `last_sent_on` / `last_attempted_on` と `--max-retries 1`
 - HTTP 2xx ＋ JSON 妥当性（`jq -e`）を共通でチェック
 - 二重起動防止: `concurrency: hourly-cron-${{ matrix.id }}` で job 単位ロック
 - 認証: `Authorization: Bearer $CRON_SECRET`
@@ -770,7 +787,7 @@ on conflict (name) do update
 ## 16. リスクと注意点
 
 - **vercel.json と Dashboard 二重登録**: 既存 cron が Dashboard 経由の場合、`vercel.json` を新規作成すると Dashboard 側を解除しないと cron が重複する可能性。実装時に Vercel プロジェクト管理者に確認。
-- **Resend 配信制限**: 同時並列 N=3 で 1 ユーザーあたり 30〜60s。配信時刻が集中する時間帯（7時など）はユーザー増加に伴い `maxDuration=300` を超える可能性。次フェーズで「次の cron 起動に持ち越す」設計に拡張可能。
+- **バッチ実行時間**（2026-08-03 実測・対応済み）: `maxDuration=300` では 6 ユーザー（3 並列 × 2 チャンク）で枯渇し、`Vercel Runtime Timeout Error` で残りが当日配信されない事象が発生。`maxDuration=800` + 時間予算 500 秒での安全停止 + `send_hour_jst <= 現在時刻` × `last_attempted_on` による同日回収で対応済み。800 秒でも捌けない規模（目安 1 時間あたり 9〜12 ユーザー超）になったら、ユーザー単位のファンアウト起動へ移行する。慢性化の検知は `skippedDueToLimit` の WARN で行う。
 - **JSON 抽出失敗**: AI が JSON フォーマットを守らない可能性あり。本フェーズではメール送信を阻害しないが、本番投入後 1〜2 週は失敗率をログで観測。
 - **`forceMount` の検討**: タブ切替で設定タブの編集中状態がリセットされる。実害が出る場合は両タブ `forceMount` で再 mount を防ぐ（Step 3 で判断）。
 - **既存「コンテンツ戦略提案」のユーザー混乱**: 同じダッシュボードに 2 つのメール機能（戦略提案ボタン + 除外提案配信設定）が並ぶため、説明文で違いを明確にする（戦略提案 = 手動オンデマンド、除外提案 = 日次自動）。
