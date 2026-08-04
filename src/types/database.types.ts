@@ -50,36 +50,6 @@ export type Database = {
         }
         Relationships: []
       }
-      pending_auth_user_deletions: {
-        Row: {
-          admin_action_log_id: string | null
-          attempt_count: number
-          created_at: string
-          last_attempt_at: string | null
-          next_attempt_at: string | null
-          supabase_auth_id: string
-          target_user_id: string
-        }
-        Insert: {
-          admin_action_log_id?: string | null
-          attempt_count?: number
-          created_at?: string
-          last_attempt_at?: string | null
-          next_attempt_at?: string | null
-          supabase_auth_id: string
-          target_user_id: string
-        }
-        Update: {
-          admin_action_log_id?: string | null
-          attempt_count?: number
-          created_at?: string
-          last_attempt_at?: string | null
-          next_attempt_at?: string | null
-          supabase_auth_id?: string
-          target_user_id?: string
-        }
-        Relationships: []
-      }
       briefs: {
         Row: {
           created_at: string
@@ -423,6 +393,7 @@ export type Database = {
           created_at: string
           enabled: boolean
           id: string
+          last_attempted_on: string | null
           last_send_error: string | null
           last_sent_on: string | null
           send_hour_jst: number
@@ -433,6 +404,7 @@ export type Database = {
           created_at?: string
           enabled?: boolean
           id?: string
+          last_attempted_on?: string | null
           last_send_error?: string | null
           last_sent_on?: string | null
           send_hour_jst?: number
@@ -443,6 +415,7 @@ export type Database = {
           created_at?: string
           enabled?: boolean
           id?: string
+          last_attempted_on?: string | null
           last_send_error?: string | null
           last_sent_on?: string | null
           send_hour_jst?: number
@@ -836,6 +809,92 @@ export type Database = {
           },
         ]
       }
+      instagram_credentials: {
+        Row: {
+          access_token: string
+          access_token_expires_at: string
+          access_token_issued_at: string
+          account_type: string | null
+          created_at: string
+          id: string
+          ig_user_id: string
+          last_synced_at: string | null
+          profile_picture_url: string | null
+          scope: string[]
+          updated_at: string
+          user_id: string
+          username: string | null
+        }
+        Insert: {
+          access_token: string
+          access_token_expires_at: string
+          access_token_issued_at?: string
+          account_type?: string | null
+          created_at?: string
+          id?: string
+          ig_user_id: string
+          last_synced_at?: string | null
+          profile_picture_url?: string | null
+          scope?: string[]
+          updated_at?: string
+          user_id: string
+          username?: string | null
+        }
+        Update: {
+          access_token?: string
+          access_token_expires_at?: string
+          access_token_issued_at?: string
+          account_type?: string | null
+          created_at?: string
+          id?: string
+          ig_user_id?: string
+          last_synced_at?: string | null
+          profile_picture_url?: string | null
+          scope?: string[]
+          updated_at?: string
+          user_id?: string
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_credentials_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pending_auth_user_deletions: {
+        Row: {
+          admin_action_log_id: string | null
+          attempt_count: number
+          created_at: string
+          last_attempt_at: string | null
+          next_attempt_at: string | null
+          supabase_auth_id: string
+          target_user_id: string
+        }
+        Insert: {
+          admin_action_log_id?: string | null
+          attempt_count?: number
+          created_at?: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          supabase_auth_id: string
+          target_user_id: string
+        }
+        Update: {
+          admin_action_log_id?: string | null
+          attempt_count?: number
+          created_at?: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          supabase_auth_id?: string
+          target_user_id?: string
+        }
+        Relationships: []
+      }
       prompt_templates: {
         Row: {
           content: string
@@ -1163,13 +1222,6 @@ export type Database = {
           user_id: string
         }[]
       }
-      delete_user_fully: {
-        Args: { p_admin_action_log_id?: string; p_user_id: string }
-        Returns: {
-          error: string
-          success: boolean
-        }[]
-      }
       claim_pending_auth_user_deletion: {
         Args: { p_supabase_auth_id: string }
         Returns: {
@@ -1178,10 +1230,9 @@ export type Database = {
           target_user_id: string
         }[]
       }
-      schedule_pending_auth_user_deletion_retry: {
-        Args: { p_supabase_auth_id: string }
+      delete_user_fully: {
+        Args: { p_admin_action_log_id?: string; p_user_id: string }
         Returns: {
-          attempt_count: number
           error: string
           success: boolean
         }[]
@@ -1318,6 +1369,14 @@ export type Database = {
           p_session_id: string
         }
         Returns: undefined
+      }
+      schedule_pending_auth_user_deletion_retry: {
+        Args: { p_supabase_auth_id: string }
+        Returns: {
+          attempt_count: number
+          error: string
+          success: boolean
+        }[]
       }
       search_chat_sessions: {
         Args: { p_limit?: number; p_query: string; p_user_id: string }

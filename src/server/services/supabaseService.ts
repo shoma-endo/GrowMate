@@ -73,9 +73,6 @@ type GoogleAdsEvaluationSettingsTable = {
   Relationships: [];
 };
 
-// PROVISIONAL: last_attempted_on は
-// supabase/migrations/20260803000000_add_last_attempted_on_to_negative_keywords_settings.sql で追加。
-// 管理者がマイグレーションを適用し `npm run supabase:types` を実行するまで、生成型には存在しない。
 type GoogleAdsNegativeKeywordsSettingsTable = {
   Row: {
     id: string;
