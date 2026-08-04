@@ -2,11 +2,11 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "apply_patch",
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$CLAUDE_PROJECT_DIR/scripts/spec-html-hook.sh\"",
+            "command": "sh scripts/spec-html-hook.sh --all",
             "timeout": 30
           }
         ]

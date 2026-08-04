@@ -149,6 +149,27 @@ describe('googleAdsNegativeKeywordsSuggestionService.sendNegativeKeywordsSuggest
     expect(mocks.sendEmail).not.toHaveBeenCalled();
   });
 
+  it('抽出後にメール未登録が判明しても当日試行済みとエラーを記録する', async () => {
+    mocks.getUserById.mockResolvedValue({ success: true, data: { email: null } });
+
+    await expect(
+      googleAdsNegativeKeywordsSuggestionService.sendNegativeKeywordsSuggestionForUser(USER_ID)
+    ).resolves.toStrictEqual({
+      success: false,
+      error: ERROR_MESSAGES.GOOGLE_ADS.EMAIL_REQUIRED_FOR_NEGATIVE_KEYWORDS_SUGGESTION,
+    });
+
+    expect(mocks.updateSettings.mock.calls.map(call => call[1])).toStrictEqual([
+      { last_attempted_on: expect.any(String) },
+      {
+        last_send_error:
+          ERROR_MESSAGES.GOOGLE_ADS.EMAIL_REQUIRED_FOR_NEGATIVE_KEYWORDS_SUGGESTION,
+      },
+    ]);
+    expect(mocks.llmChat).not.toHaveBeenCalled();
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+
   it('送信日の記録に失敗したら成功と報告しない', async () => {
     mocks.updateSettings
       .mockResolvedValueOnce({ success: true, data: undefined })

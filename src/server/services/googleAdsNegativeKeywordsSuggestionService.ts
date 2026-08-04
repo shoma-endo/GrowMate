@@ -125,14 +125,6 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         return { success: false, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
       }
 
-      const userEmail = userResult.data.email;
-      if (!userEmail) {
-        return {
-          success: false,
-          error: ERROR_MESSAGES.GOOGLE_ADS.EMAIL_REQUIRED_FOR_NEGATIVE_KEYWORDS_SUGGESTION,
-        };
-      }
-
       const settings = await this.ensureSettings(userId);
       if (!settings) {
         return {
@@ -167,6 +159,11 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         }
         return { success: false, error };
       };
+
+      const userEmail = userResult.data.email;
+      if (!userEmail) {
+        return fail(ERROR_MESSAGES.GOOGLE_ADS.EMAIL_REQUIRED_FOR_NEGATIVE_KEYWORDS_SUGGESTION);
+      }
 
       const dateRangeDays = options?.dateRangeDays ?? 1;
       const startDate = dateRangeDays > 1 ? addDaysISO(yesterdayJst, -(dateRangeDays - 1)) : yesterdayJst;
