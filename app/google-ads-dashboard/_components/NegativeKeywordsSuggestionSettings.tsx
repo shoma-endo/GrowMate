@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS: Settings = {
   enabled: false,
   sendHourJst: 7,
   lastSentOn: null,
+  lastAttemptedOn: null,
   lastSendError: null,
 };
 

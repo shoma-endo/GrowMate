@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: GoogleAdsNegativeKeywordsSuggestionSettings = {
   enabled: false,
   sendHourJst: 7,
   lastSentOn: null,
+  lastAttemptedOn: null,
   lastSendError: null,
 };
 
@@ -70,6 +71,7 @@ export async function getNegativeKeywordsSuggestionSettings(): Promise<{
         enabled: result.data.enabled,
         sendHourJst: result.data.sendHourJst,
         lastSentOn: result.data.lastSentOn,
+        lastAttemptedOn: result.data.lastAttemptedOn,
         lastSendError: result.data.lastSendError,
       },
     };

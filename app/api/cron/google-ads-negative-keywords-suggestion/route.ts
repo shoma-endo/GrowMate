@@ -33,4 +33,8 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+// 1ユーザーあたり LLM 呼び出しに約2分かかるため、300秒では数ユーザーで枯渇する。
+// 800秒（Vercel Pro の Fluid Compute 上限）まで広げ、サービス側の時間予算で安全に打ち切る。
+// Next.js の segment config はリテラルしか受け付けないため定数を import できない。
+// サービス側の NEGATIVE_KEYWORDS_CRON_MAX_DURATION_SEC と一致していることをテストで担保する。
+export const maxDuration = 800;

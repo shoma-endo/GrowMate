@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh scripts/spec-html-hook.sh --all",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

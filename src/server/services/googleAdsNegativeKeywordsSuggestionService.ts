@@ -20,6 +20,45 @@ import type {
 
 const DEFAULT_SEND_HOUR_JST = 7;
 const CRON_CONCURRENCY = 3;
+/**
+ * cron route の Vercel 関数 maxDuration（秒）。Fluid Compute 上限（Pro プランで 800s）。
+ * app/api/cron/google-ads-negative-keywords-suggestion/route.ts の `export const maxDuration` と
+ * 時間予算の算出で共有する単一情報源。
+ */
+export const NEGATIVE_KEYWORDS_CRON_MAX_DURATION_SEC = 800;
+const CRON_MAX_DURATION_MS = NEGATIVE_KEYWORDS_CRON_MAX_DURATION_SEC * 1000;
+/**
+ * 1ユーザーあたりの LLM 呼び出しタイムアウト（ミリ秒）。
+ * llmChat の既定値 300000ms は関数上限と同等でガードとして機能しないため明示する。
+ */
+const LLM_TIMEOUT_MS = 240 * 1000;
+/**
+ * LLM 呼び出し以外（Google Ads API 取得・メール送信・DB 更新）の想定所要（ミリ秒）。
+ * これらの呼び出しには個別タイムアウトがなく、undici の既定（300秒）まで待ちうるため、
+ * 見積もりを置くだけでは上界にならない。USER_TIME_LIMIT_MS で実際に打ち切る。
+ */
+const CHUNK_IO_MARGIN_MS = 60 * 1000;
+/**
+ * 1ユーザーの処理全体の上限（ミリ秒）。これを超えたら結果を待たずに失敗として次へ進む。
+ * Google Ads API / メール送信にタイムアウトが無いため、ここで上界を作らないと
+ * 「予算 + 1チャンク < maxDuration」という時間予算の前提が成立しない。
+ */
+const USER_TIME_LIMIT_MS = LLM_TIMEOUT_MS + CHUNK_IO_MARGIN_MS;
+/**
+ * 集計とレスポンス生成のための余白（ミリ秒）。
+ * これがないと予算ちょうどで開始したユーザーが上限まで粘ったとき maxDuration と同時刻になり、
+ * レスポンスを返す前にハードキルされる（＝ cron 側は 504 を受け取り検証にすら到達しない）。
+ */
+const SAFETY_MARGIN_MS = 20 * 1000;
+/**
+ * バッチ処理の時間予算（ミリ秒）。
+ * 時間チェックはチャンク開始「前」の 1 回だけなので、予算ギリギリで開始したチャンクが
+ * 消費しうる最大時間（= USER_TIME_LIMIT_MS）を maxDuration から引いて求める。
+ * 実測平均（1チャンク約150秒）ではなく上界で計算しないと Vercel のハードキルを踏む。
+ * 打ち切った分は last_sent_on / last_attempted_on とも未更新で残るので、
+ * 次の毎時 cron が同日中に回収する。
+ */
+const BATCH_TIME_LIMIT_MS = CRON_MAX_DURATION_MS - USER_TIME_LIMIT_MS - SAFETY_MARGIN_MS;
 
 function buildPrompt(template: string, variables: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] ?? '');
@@ -86,14 +125,6 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         return { success: false, error: ERROR_MESSAGES.USER.USER_INFO_NOT_FOUND };
       }
 
-      const userEmail = userResult.data.email;
-      if (!userEmail) {
-        return {
-          success: false,
-          error: ERROR_MESSAGES.GOOGLE_ADS.EMAIL_REQUIRED_FOR_NEGATIVE_KEYWORDS_SUGGESTION,
-        };
-      }
-
       const settings = await this.ensureSettings(userId);
       if (!settings) {
         return {
@@ -108,12 +139,31 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         };
       }
 
+      // 成否によらずこの時点で「当日試行済み」を立てる。
+      // 抽出条件を send_hour_jst <= 現在時刻 に緩めているため、これがないと
+      // 恒久的に失敗するユーザー（未接続・メールバウンス等）が同日中ずっと再実行される。
+      // 立てられなかった場合は同日中の重複送信を防げないため、処理自体を行わない。
+      if (!force) {
+        const claimed = await this.markAttempt(userId, todayJst);
+        if (!claimed) {
+          return {
+            success: false,
+            error: ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED,
+          };
+        }
+      }
+
       const fail = async (error: string): Promise<GoogleAdsNegativeKeywordsSuggestionResult> => {
         if (!force) {
           await this.markFailure(userId, error);
         }
         return { success: false, error };
       };
+
+      const userEmail = userResult.data.email;
+      if (!userEmail) {
+        return fail(ERROR_MESSAGES.GOOGLE_ADS.EMAIL_REQUIRED_FOR_NEGATIVE_KEYWORDS_SUGGESTION);
+      }
 
       const dateRangeDays = options?.dateRangeDays ?? 1;
       const startDate = dateRangeDays > 1 ? addDaysISO(yesterdayJst, -(dateRangeDays - 1)) : yesterdayJst;
@@ -183,16 +233,21 @@ class GoogleAdsNegativeKeywordsSuggestionService {
             }),
           ]);
 
+        // Google Ads API 由来のエラーは英語の生メッセージを含むことがあり、
+        // last_send_error は設定画面にそのまま表示されるため定義済み文言を保存する。
         if (!searchTermResult.success) {
-          return fail(
-            searchTermResult.error ?? ERROR_MESSAGES.GOOGLE_ADS.KEYWORD_METRICS_FETCH_FAILED
+          console.error(
+            '[GoogleAdsNegativeKeywordsSuggestionService] Failed to fetch search terms:',
+            searchTermResult.error
           );
+          return fail(ERROR_MESSAGES.GOOGLE_ADS.KEYWORD_METRICS_FETCH_FAILED);
         }
         if (!negativeKeywordResult.success) {
-          return fail(
-            negativeKeywordResult.error ??
-              ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_FETCH_FAILED
+          console.error(
+            '[GoogleAdsNegativeKeywordsSuggestionService] Failed to fetch negative keywords:',
+            negativeKeywordResult.error
           );
+          return fail(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_FETCH_FAILED);
         }
 
         searchTerms = searchTermResult.data ?? [];
@@ -206,8 +261,11 @@ class GoogleAdsNegativeKeywordsSuggestionService {
 
       const totalImpressions = searchTerms.reduce((sum, item) => sum + item.impressions, 0);
       if (totalImpressions === 0) {
-        if (!force) {
-          await this.markSuccess(userId, todayJst);
+        if (!force && !(await this.markSuccess(userId, todayJst))) {
+          return {
+            success: false,
+            error: ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED,
+          };
         }
         return {
           success: true,
@@ -260,6 +318,7 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         {
           maxTokens: modelConfig.maxTokens,
           temperature: modelConfig.temperature,
+          timeoutMs: LLM_TIMEOUT_MS,
         }
       );
 
@@ -280,7 +339,15 @@ class GoogleAdsNegativeKeywordsSuggestionService {
       }
 
       if (!force) {
-        await this.markSuccess(userId, todayJst);
+        // 送信済みフラグの更新に失敗したら失敗として扱う（サイレントに成功と報告しない）。
+        // 当日試行済みは既に立っているため、同日中に再送されることはない。
+        const recorded = await this.markSuccess(userId, todayJst);
+        if (!recorded) {
+          return {
+            success: false,
+            error: ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED,
+          };
+        }
       }
 
       return {
@@ -290,9 +357,11 @@ class GoogleAdsNegativeKeywordsSuggestionService {
     } catch (error) {
       console.error('[GoogleAdsNegativeKeywordsSuggestionService] Unexpected error:', error);
       if (!force) {
+        // 例外メッセージ（Anthropic SDK の "Request was aborted." 等）は英語のまま
+        // 設定画面に表示されるため、ユーザー向けには定義済み文言を保存する（生の内容は上で console.error 済み）。
         await this.markFailure(
           userId,
-          error instanceof Error ? error.message : ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_RUN_FAILED
+          ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_RUN_FAILED
         );
       }
       return {
@@ -303,6 +372,8 @@ class GoogleAdsNegativeKeywordsSuggestionService {
   }
 
   async runAllDueSuggestions(): Promise<GoogleAdsNegativeKeywordsSuggestionBatchResult> {
+    // 対象一覧の取得も関数の実行時間に含まれるため、DB 往復の前に起点を取る
+    const startedAt = Date.now();
     const now = new Date();
     const todayJst = formatJstDateISO(now);
     const sendHourJst = getJstHour(now);
@@ -316,15 +387,27 @@ class GoogleAdsNegativeKeywordsSuggestionService {
     }
 
     const settled: PromiseSettledResult<GoogleAdsNegativeKeywordsSuggestionResult>[] = [];
+    let skippedDueToLimit = 0;
+
     for (let index = 0; index < dueResult.data.length; index += CRON_CONCURRENCY) {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed > BATCH_TIME_LIMIT_MS) {
+        skippedDueToLimit = dueResult.data.length - index;
+        console.warn(
+          `[GoogleAdsNegativeKeywordsSuggestionService] Time limit reached (${elapsed}ms). ` +
+            `Stopping batch. Remaining: ${skippedDueToLimit} users (will be retried by the next hourly cron).`
+        );
+        break;
+      }
+
       const chunk = dueResult.data.slice(index, index + CRON_CONCURRENCY);
       const chunkSettled = await Promise.allSettled(
-        chunk.map(setting => this.sendNegativeKeywordsSuggestionForUser(setting.userId))
+        chunk.map(setting => this.runWithUserTimeLimit(setting.userId))
       );
       settled.push(...chunkSettled);
     }
 
-    return settled.reduce<GoogleAdsNegativeKeywordsSuggestionBatchResult>(
+    const summary = settled.reduce<GoogleAdsNegativeKeywordsSuggestionBatchResult>(
       (summary, result) => {
         summary.total += 1;
         if (result.status === 'rejected') {
@@ -344,6 +427,12 @@ class GoogleAdsNegativeKeywordsSuggestionService {
       },
       { total: 0, succeeded: 0, failed: 0, skipped: 0 }
     );
+
+    if (skippedDueToLimit > 0) {
+      return { ...summary, stoppedReason: 'time_limit', skippedDueToLimit };
+    }
+
+    return summary;
   }
 
   private async ensureSettings(userId: string) {
@@ -368,14 +457,62 @@ class GoogleAdsNegativeKeywordsSuggestionService {
     return created.success ? created.data : null;
   }
 
-  private async markSuccess(userId: string, todayJst: string): Promise<void> {
+  /**
+   * 1ユーザーの処理に上限時間を設ける。超過したら結果を待たずに失敗として扱い、次のユーザーへ進む。
+   * 進行中の処理自体は中断できない（Google Ads API / メール送信に signal を渡す口がない）ため、
+   * バックグラウンドで走り続ける点は許容する。目的は関数全体が maxDuration を超えないこと。
+   * last_attempted_on は既に立っているので、打ち切られたユーザーが同日中に再送されることはない。
+   */
+  private async runWithUserTimeLimit(
+    userId: string
+  ): Promise<GoogleAdsNegativeKeywordsSuggestionResult> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      return await Promise.race([
+        this.sendNegativeKeywordsSuggestionForUser(userId),
+        new Promise<GoogleAdsNegativeKeywordsSuggestionResult>(resolve => {
+          timer = setTimeout(() => {
+            console.warn(
+              `[GoogleAdsNegativeKeywordsSuggestionService] User time limit reached (${USER_TIME_LIMIT_MS}ms). Abandoning user ${userId}.`
+            );
+            resolve({
+              success: false,
+              error: ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_RUN_FAILED,
+            });
+          }, USER_TIME_LIMIT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  /** @returns 更新に成功したか */
+  private async markAttempt(userId: string, todayJst: string): Promise<boolean> {
+    const result = await this.supabaseService.updateGoogleAdsNegativeKeywordsSettings(userId, {
+      last_attempted_on: todayJst,
+    });
+    if (!result.success) {
+      console.error('[GoogleAdsNegativeKeywordsSuggestionService] Failed to mark attempt:', result.error);
+      return false;
+    }
+    return true;
+  }
+
+  /** @returns 更新に成功したか */
+  private async markSuccess(userId: string, todayJst: string): Promise<boolean> {
     const result = await this.supabaseService.updateGoogleAdsNegativeKeywordsSettings(userId, {
       last_sent_on: todayJst,
       last_send_error: null,
     });
     if (!result.success) {
       console.error('[GoogleAdsNegativeKeywordsSuggestionService] Failed to mark success:', result.error);
+      return false;
     }
+    return true;
   }
 
   private async markFailure(userId: string, errorMessage: string): Promise<void> {

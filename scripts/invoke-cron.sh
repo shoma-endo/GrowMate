@@ -5,7 +5,14 @@
 # 使い方:
 #   CRON_SECRET=xxx scripts/invoke-cron.sh \
 #     --url https://example.com/api/cron/foo \
-#     --profile {gsc-batch|gsc-suggestions|count-batch}
+#     --profile {gsc-batch|gsc-suggestions|count-batch} \
+#     [--max-time 310] [--max-retries 3]
+#
+# --max-time   : 1回の curl の最大待ち時間（秒、既定 310）。
+#                呼び出し先 route の maxDuration より長い値を指定すること。
+# --max-retries: curl の試行回数の上限（既定 3）。1 を指定するとリトライしない。
+#                冪等でない（＝再実行するとメールが重複しうる）バッチでは 1 にすること。
+#                関数側の maxDuration 超過は 504 で返るため、リトライすると再度バッチが起動する。
 #
 # Validation Profile:
 #   gsc-batch    : GSC 評価バッチ向け（stoppedReason / errors / totalSystemError を確認）
@@ -20,6 +27,8 @@ set -u
 
 URL=""
 PROFILE=""
+MAX_TIME=310
+MAX_RETRIES_ARG=3
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -31,6 +40,14 @@ while [ $# -gt 0 ]; do
       PROFILE="$2"
       shift 2
       ;;
+    --max-time)
+      MAX_TIME="$2"
+      shift 2
+      ;;
+    --max-retries)
+      MAX_RETRIES_ARG="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown argument: $1" >&2
       exit 1
@@ -39,7 +56,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$URL" ] || [ -z "$PROFILE" ]; then
-  echo "Usage: invoke-cron.sh --url <URL> --profile <gsc-batch|gsc-suggestions|count-batch>" >&2
+  echo "Usage: invoke-cron.sh --url <URL> --profile <gsc-batch|gsc-suggestions|count-batch> [--max-time <seconds>] [--max-retries <count>]" >&2
   exit 1
 fi
 
@@ -48,10 +65,29 @@ if [ -z "${CRON_SECRET:-}" ]; then
   exit 1
 fi
 
+# 不正値でループが 1 度も回らず「叩いていないのに成功」になるのを防ぐ（fail-closed にする）
+case "$MAX_RETRIES_ARG" in
+  ''|*[!0-9]*)
+    echo "--max-retries must be a positive integer: '$MAX_RETRIES_ARG'" >&2
+    exit 1
+    ;;
+esac
+if [ "$MAX_RETRIES_ARG" -lt 1 ]; then
+  echo "--max-retries must be >= 1 (1 means no retry): '$MAX_RETRIES_ARG'" >&2
+  exit 1
+fi
+
+case "$MAX_TIME" in
+  ''|*[!0-9]*)
+    echo "--max-time must be a positive integer: '$MAX_TIME'" >&2
+    exit 1
+    ;;
+esac
+
 RESPONSE_FILE="$(mktemp)"
 trap 'rm -f "$RESPONSE_FILE"' EXIT
 
-MAX_RETRIES=3
+MAX_RETRIES="$MAX_RETRIES_ARG"
 RETRY_COUNT=0
 
 validate_gsc_batch() {
@@ -90,6 +126,18 @@ validate_count_batch() {
   SKIPPED=$(jq -r '.data.skipped // 0' "$file")
   if [ "$SKIPPED" -gt 0 ]; then
     echo "::warning::Batch skipped items: skipped=$SKIPPED"
+  fi
+
+  # 時間予算での打ち切り。次の毎時 cron が同日中に回収するため fail にはしないが、
+  # 慢性化している場合はスケール限界のサインなので警告として可視化する。
+  SKIPPED_LIMIT=$(jq -r '.data.skippedDueToLimit // 0' "$file")
+  if [ "$SKIPPED_LIMIT" -gt 0 ]; then
+    echo "::warning::Batch stopped by time limit: skippedDueToLimit=$SKIPPED_LIMIT"
+  fi
+
+  STOPPED_REASON=$(jq -r '.data.stoppedReason // ""' "$file")
+  if [ -n "$STOPPED_REASON" ]; then
+    echo "::warning::Batch stopped early: stoppedReason=$STOPPED_REASON"
   fi
 
   SUCCESS=$(jq -r '.success // false' "$file")
@@ -137,7 +185,8 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
   HTTP_CODE=$(curl -X GET "$URL" \
     -H "Authorization: Bearer $CRON_SECRET" \
     -H "Accept: application/json" \
-    --max-time 310 \
+    --http2 \
+    --max-time "$MAX_TIME" \
     --output "$RESPONSE_FILE" \
     --write-out "%{http_code}" \
     --silent)
@@ -196,3 +245,8 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     exit 1
   fi
 done
+
+# ここに到達するのはループ本体が 1 度も実行されなかった場合のみ。
+# エンドポイントを叩いていないので、成功として扱わない。
+echo "Loop exited without invoking the endpoint (MAX_RETRIES=$MAX_RETRIES)." >&2
+exit 1

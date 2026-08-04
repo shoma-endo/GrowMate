@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Claude Code の PostToolUse フック。docs/plans/*.md が編集されたら図解 HTML を追従させる。
+# Claude Code / Codex の PostToolUse フック。docs/plans/*.md が編集されたら図解 HTML を追従させる。
 #
 # 機械生成できるのは全文ビュー（04）と結合 HTML だけ。再構成ビュー（01〜03）は
 # core.yaml を LLM が解釈して書くので触らない。代わりに整合性チェックが参照ズレを
@@ -14,14 +14,19 @@ root="${CLAUDE_PROJECT_DIR:-$(dirname "$0")/..}"
 script="$root/scripts/spec-html.py"
 [ -f "$script" ] || exit 0
 
-payload=$(cat)
-file=$(printf '%s' "$payload" | python3 -c \
-  'import json,sys; print((json.load(sys.stdin).get("tool_input") or {}).get("file_path") or "")' \
-  2>/dev/null) || exit 0
-[ -n "$file" ] || exit 0
+if [ "${1:-}" = "--all" ]; then
+  set -- --all
+else
+  payload=$(cat)
+  file=$(printf '%s' "$payload" | python3 -c \
+    'import json,sys; print((json.load(sys.stdin).get("tool_input") or {}).get("file_path") or "")' \
+    2>/dev/null) || exit 0
+  [ -n "$file" ] || exit 0
+  set -- --spec "$file"
+fi
 
 # 対象外パス・バンドル無しは refresh 側が黙って捨てるので、ここでは絞り込まない
-out=$(python3 "$script" refresh --spec "$file" 2>&1) || true
+out=$(python3 "$script" refresh "$@" 2>&1) || true
 [ -n "$out" ] || exit 0
 
 OUT="$out" python3 <<'PY'
