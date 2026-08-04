@@ -35,6 +35,15 @@ jobs:
       - name: Run npm audit
         run: npm audit --omit=dev --audit-level=high
 
+      # dev 依存の脆弱性は本番バンドルに載らないため CI をブロックしない。
+      # ただしサプライチェーン攻撃の検知は残したいので、警告として可視化する。
+      - name: Run npm audit (dev dependencies, non-blocking)
+        continue-on-error: true
+        run: |
+          if ! npm audit --audit-level=high; then
+            echo "::warning::dev 依存に high 以上の脆弱性があります（本番バンドル対象外のためブロックしません）"
+          fi
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
