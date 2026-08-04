@@ -126,7 +126,7 @@ client-vision-from-lark.md (`docs/context/client-vision-from-lark.md`) より:
 
 ### 3.2 メール送信設定タブ UI
 
-新規コンポーネント `app/google-ads-dashboard/_components/negative-keywords-suggestion-settings.tsx`（client component）。
+新規コンポーネント `app/google-ads-dashboard/_components/NegativeKeywordsSuggestionSettings.tsx`（client component）。
 
 メール送信設定タブでは、以下の 2 カードを縦に並べる。
 
@@ -689,12 +689,12 @@ export const maxDuration = 800; // Vercel Pro（Fluid Compute）上限。サー�
 | ファイル | 役割 |
 |---------|------|
 | `supabase/migrations/YYYYMMDD_create_google_ads_negative_keywords_settings.sql` | テーブル + RLS + プロンプト upsert |
-| `src/types/google-ads-negative-keywords.ts` | 設定型 / Suggestion JSON 型 / Result 型 |
+| `src/types/google-ads-negative-keywords-suggestion.ts` | 設定型 / Suggestion JSON 型 / Result 型 |
 | `src/server/schemas/googleAdsNegativeKeywordsSuggestion.schema.ts` | Zod スキーマ |
 | `src/server/services/googleAdsNegativeKeywordsSuggestionService.ts` | コアサービス |
 | `src/server/actions/googleAdsNegativeKeywordsSuggestion.actions.ts` | Server Actions |
 | `app/api/cron/google-ads-negative-keywords-suggestion/route.ts` | Cron route |
-| `app/google-ads-dashboard/_components/negative-keywords-suggestion-settings.tsx` | 設定タブ UI |
+| `app/google-ads-dashboard/_components/NegativeKeywordsSuggestionSettings.tsx` | 設定タブ UI |
 
 ### 既存ファイル修正
 

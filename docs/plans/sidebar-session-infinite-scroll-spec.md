@@ -47,7 +47,7 @@ flowchart TD
 | ファイル | 役割 |
 | -------- | ---- |
 | `app/chat/components/SessionSidebar.tsx` | セッション一覧表示、検索結果表示の切り替え |
-| `app/chat/components/SessionListContent.tsx` | セッションリストの描画 |
+| `app/chat/components/SessionListContent.tsx` | **新規**。セッションリストの描画（現状は `SessionSidebar.tsx` 内に直書き。本仕様で切り出す） |
 | `src/hooks/useChatSession.ts` L69-80 | `loadSessions` コールバック |
 | `src/domain/services/chatService.ts` L115-118 | `loadSessions` → `getChatSessionsSA` 呼び出し |
 | `src/server/actions/chat.actions.ts` L203-224 | `getChatSessions`、limit を渡していない |
