@@ -6,10 +6,18 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AnalyticsTable from '@/components/AnalyticsTable';
-import { Download, Settings, BarChart3, Loader2, TrendingUp } from 'lucide-react';
+import InstagramTab from './components/InstagramTab';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Download, Settings, BarChart3, Loader2, TrendingUp, FileText, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import type { AnalyticsContentItem } from '@/types/analytics';
+import type {
+  InstagramAccountInsightsDailyRow,
+  InstagramMediaListItem,
+  InstagramMediaSortKey,
+  InstagramMediaTypeFilter,
+} from '@/types/instagram';
 import { useRouter } from 'next/navigation';
 
 interface AnalyticsClientProps {
@@ -32,6 +40,35 @@ interface AnalyticsClientProps {
   nextDisabled: boolean;
   startDate: string;
   endDate: string;
+  instagramConnected: boolean;
+  activeTab: 'blog' | 'instagram';
+  instagramItems: InstagramMediaListItem[];
+  instagramTotal: number;
+  instagramTotalPages: number;
+  igPage: number;
+  igType: InstagramMediaTypeFilter;
+  igStart: string;
+  igEnd: string;
+  igSort: InstagramMediaSortKey;
+  instagramAccountLatestDay: InstagramAccountInsightsDailyRow | null;
+  instagramLastSyncedAt: string | null;
+  instagramSyncEnabled: boolean;
+  buildTabHref: (patch: {
+    tab?: 'blog' | 'instagram';
+    igPage?: number;
+    igType?: InstagramMediaTypeFilter;
+    igStart?: string;
+    igEnd?: string;
+    igSort?: InstagramMediaSortKey;
+  }) => string;
+  buildIgPageHref: (targetPage: number) => string;
+  buildIgFilterHref: (patch: {
+    igType?: InstagramMediaTypeFilter;
+    igStart?: string;
+    igEnd?: string;
+    igSort?: InstagramMediaSortKey;
+    igPage?: number;
+  }) => string;
 }
 
 export default function AnalyticsClient({
@@ -54,6 +91,22 @@ export default function AnalyticsClient({
   nextDisabled,
   startDate,
   endDate,
+  instagramConnected,
+  activeTab,
+  instagramItems,
+  instagramTotal,
+  instagramTotalPages,
+  igPage,
+  igType,
+  igStart,
+  igEnd,
+  igSort,
+  instagramAccountLatestDay,
+  instagramLastSyncedAt,
+  instagramSyncEnabled,
+  buildTabHref,
+  buildIgPageHref,
+  buildIgFilterHref,
 }: AnalyticsClientProps) {
   const router = useRouter();
   const unreadAnnotationSet = React.useMemo(
@@ -90,144 +143,190 @@ export default function AnalyticsClient({
   const startItemNumber = total > 0 ? (currentPage - 1) * perPage + 1 : 0;
   const endItemNumber = total > 0 ? Math.min(currentPage * perPage, total) : 0;
 
+  const blogContent = (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle>投稿一覧</CardTitle>
+          <button
+            id="analytics-field-config-trigger"
+            className={cn(
+              buttonVariants({ variant: 'outline' }),
+              'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
+            )}
+          >
+            <Settings className="w-4 h-4" aria-hidden />
+            フィールド構成
+          </button>
+          <Link
+            href="/wordpress-import"
+            className={cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')}
+          >
+            <Download className="w-4 h-4" aria-hidden />
+            <span>WordPress記事一括インポート</span>
+          </Link>
+          <Link
+            href="/gsc-import"
+            className={cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')}
+          >
+            <BarChart3 className="w-4 h-4" aria-hidden />
+            <span>Google Search Console 日次指標インポート</span>
+          </Link>
+          <Link
+            href="/ga4-dashboard"
+            className={cn(
+              buttonVariants(),
+              'h-9 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700'
+            )}
+          >
+            <TrendingUp className="w-4 h-4" aria-hidden />
+            <span>GA4ダッシュボード</span>
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {error ? (
+          <div className="mb-4">
+            <ErrorAlert error={error} variant="default" />
+          </div>
+        ) : null}
+        {ga4Error ? (
+          <div className="mb-4 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+            {ga4Error}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">GA4集計開始日</span>
+            <Input
+              type="date"
+              value={rangeStart}
+              onChange={event => setRangeStart(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">GA4集計終了日</span>
+            <Input
+              type="date"
+              value={rangeEnd}
+              onChange={event => setRangeEnd(event.target.value)}
+            />
+          </div>
+          <button
+            type="button"
+            className={cn(
+              buttonVariants({ variant: 'outline' }),
+              'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
+            )}
+            onClick={applyDateRange}
+            disabled={!isDateRangeChanged || isApplyingDateRange}
+          >
+            {isApplyingDateRange && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isApplyingDateRange ? '適用中...' : '期間を適用'}
+          </button>
+        </div>
+        <p className="mb-4 text-xs text-gray-500">
+          指定期間でGA4指標（滞在時間・読了率・直帰率・CV数・CVR）を集計して表示します。
+        </p>
+        {shouldRenderTable && !error ? (
+          <AnalyticsTable
+            items={items}
+            allCategoryNames={allCategoryNames}
+            unreadAnnotationIds={unreadAnnotationSet}
+            selectedCategoryNames={selectedCategoryNames}
+            includeUncategorized={includeUncategorized}
+            hasUnreadSuggestion={hasUnreadSuggestion}
+            hasUrlFilterParams={hasUrlFilterParams}
+          />
+        ) : null}
+
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-sm text-gray-600">
+            {total > 0
+              ? `全${total}件中 ${startItemNumber}-${endItemNumber}件を表示（${currentPage}/${totalPages}ページ）`
+              : ''}
+          </div>
+          <div className="flex gap-2">
+            <Link
+              href={prevHref}
+              prefetch={false}
+              aria-disabled={prevDisabled}
+              tabIndex={prevDisabled ? -1 : undefined}
+              className={cn(
+                buttonVariants({ variant: 'outline' }),
+                'px-3',
+                prevDisabled && 'pointer-events-none opacity-50'
+              )}
+            >
+              前へ
+            </Link>
+            <Link
+              href={nextHref}
+              prefetch={false}
+              aria-disabled={nextDisabled}
+              tabIndex={nextDisabled ? -1 : undefined}
+              className={cn(
+                buttonVariants({ variant: 'outline' }),
+                'px-3',
+                nextDisabled && 'pointer-events-none opacity-50'
+              )}
+            >
+              次へ
+            </Link>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="w-full px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">コンテンツ一覧</h1>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center gap-2">
-            <CardTitle>投稿一覧</CardTitle>
-            <button
-              id="analytics-field-config-trigger"
-              className={cn(
-                buttonVariants({ variant: 'outline' }),
-                'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
-              )}
-            >
-              <Settings className="w-4 h-4" aria-hidden />
-              フィールド構成
-            </button>
-            <Link
-              href="/wordpress-import"
-              className={cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')}
-            >
-              <Download className="w-4 h-4" aria-hidden />
-              <span>WordPress記事一括インポート</span>
-            </Link>
-            <Link
-              href="/gsc-import"
-              className={cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')}
-            >
-              <BarChart3 className="w-4 h-4" aria-hidden />
-              <span>Google Search Console 日次指標インポート</span>
-            </Link>
-            <Link
-              href="/ga4-dashboard"
-              className={cn(
-                buttonVariants(),
-                'h-9 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700'
-              )}
-            >
-              <TrendingUp className="w-4 h-4" aria-hidden />
-              <span>GA4ダッシュボード</span>
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {error ? (
-            <div className="mb-4">
-              <ErrorAlert error={error} variant="default" />
-            </div>
-          ) : null}
-          {ga4Error ? (
-            <div className="mb-4 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
-              {ga4Error}
-            </div>
-          ) : null}
-          <div className="flex flex-wrap items-end gap-3 mb-4">
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-gray-500">GA4集計開始日</span>
-              <Input
-                type="date"
-                value={rangeStart}
-                onChange={event => setRangeStart(event.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-gray-500">GA4集計終了日</span>
-              <Input
-                type="date"
-                value={rangeEnd}
-                onChange={event => setRangeEnd(event.target.value)}
-              />
-            </div>
-            <button
-              type="button"
-              className={cn(
-                buttonVariants({ variant: 'outline' }),
-                'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
-              )}
-              onClick={applyDateRange}
-              disabled={!isDateRangeChanged || isApplyingDateRange}
-            >
-              {isApplyingDateRange && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isApplyingDateRange ? '適用中...' : '期間を適用'}
-            </button>
-          </div>
-          <p className="mb-4 text-xs text-gray-500">
-            指定期間でGA4指標（滞在時間・読了率・直帰率・CV数・CVR）を集計して表示します。
-          </p>
-          {shouldRenderTable && !error ? (
-            <AnalyticsTable
-              items={items}
-              allCategoryNames={allCategoryNames}
-              unreadAnnotationIds={unreadAnnotationSet}
-              selectedCategoryNames={selectedCategoryNames}
-              includeUncategorized={includeUncategorized}
-              hasUnreadSuggestion={hasUnreadSuggestion}
-              hasUrlFilterParams={hasUrlFilterParams}
+      {!instagramConnected ? (
+        blogContent
+      ) : (
+        <Tabs
+          value={activeTab}
+          onValueChange={value => {
+            router.push(
+              buildTabHref({
+                tab: value === 'instagram' ? 'instagram' : 'blog',
+              })
+            );
+          }}
+          className="w-full"
+        >
+          <TabsList className="grid w-full grid-cols-2 h-12">
+            <TabsTrigger value="blog" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              <span>ブログ</span>
+            </TabsTrigger>
+            <TabsTrigger value="instagram" className="flex items-center gap-2">
+              <ImageIcon className="w-4 h-4" />
+              <span>Instagram</span>
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="blog">{blogContent}</TabsContent>
+          <TabsContent value="instagram">
+            <InstagramTab
+              items={instagramItems}
+              total={instagramTotal}
+              totalPages={instagramTotalPages}
+              igPage={igPage}
+              igType={igType}
+              igStart={igStart}
+              igEnd={igEnd}
+              igSort={igSort}
+              accountLatestDay={instagramAccountLatestDay}
+              lastSyncedAt={instagramLastSyncedAt}
+              syncEnabled={instagramSyncEnabled}
+              buildIgPageHref={buildIgPageHref}
+              buildFilterHref={buildIgFilterHref}
             />
-          ) : null}
-
-          {/* ページネーション */}
-          <div className="flex items-center justify-between mt-4">
-            <div className="text-sm text-gray-600">
-              {total > 0
-                ? `全${total}件中 ${startItemNumber}-${endItemNumber}件を表示（${currentPage}/${totalPages}ページ）`
-                : ''}
-            </div>
-            <div className="flex gap-2">
-              <Link
-                href={prevHref}
-                prefetch={false}
-                aria-disabled={prevDisabled}
-                tabIndex={prevDisabled ? -1 : undefined}
-                className={cn(
-                  buttonVariants({ variant: 'outline' }),
-                  'px-3',
-                  prevDisabled && 'pointer-events-none opacity-50'
-                )}
-              >
-                前へ
-              </Link>
-              <Link
-                href={nextHref}
-                prefetch={false}
-                aria-disabled={nextDisabled}
-                tabIndex={nextDisabled ? -1 : undefined}
-                className={cn(
-                  buttonVariants({ variant: 'outline' }),
-                  'px-3',
-                  nextDisabled && 'pointer-events-none opacity-50'
-                )}
-              >
-                次へ
-              </Link>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }

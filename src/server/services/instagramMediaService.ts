@@ -1,0 +1,463 @@
+import 'server-only';
+import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
+import {
+  asPendingClient,
+  updateScopedPendingRow,
+  upsertPendingRow,
+  type InstagramAccountInsightsDailyInsertRow,
+  type InstagramAccountInsightsDailyRow as InstagramAccountInsightsDailyDbRow,
+  type InstagramMediaInsertRow,
+  type InstagramMediaRow,
+  type InstagramPhase2Database,
+} from '@/types/database.types.pending';
+import type {
+  InstagramAccountInsightsDailyRow,
+  InstagramMediaListItem,
+  InstagramMediaPageResult,
+  InstagramMediaSortKey,
+  InstagramMediaTypeFilter,
+} from '@/types/instagram';
+
+export type InstagramMediaListingFields = {
+  igMediaId: string;
+  mediaType: InstagramMediaInsertRow['media_type'];
+  mediaProductType: InstagramMediaInsertRow['media_product_type'];
+  caption: string | null;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  permalink: string;
+  postedAt: string;
+  likeCount: number | null;
+  commentsCount: number | null;
+};
+
+function assertScopedUserId(userId: string, rowUserId: string): void {
+  if (rowUserId !== userId) {
+    throw new Error('Instagram upsert user_id mismatch');
+  }
+}
+
+function listingFieldsToInsertRow(
+  userId: string,
+  fields: InstagramMediaListingFields,
+  insightState: {
+    insightsUnavailable: boolean;
+    insightsUnavailableReason: InstagramMediaInsertRow['insights_unavailable_reason'];
+    insightsSyncedAt: string | null;
+  }
+): InstagramMediaInsertRow {
+  // INSERT 経路は DB 上インサイト列がすべて必須（NOT NULL 制約はないが Insert 型が Partial ではない）。
+  // 新規行は未取得状態として null で埋め、既存行の値は UPDATE 経路（呼び出し元の update 分岐）でのみ変更する。
+  return {
+    user_id: userId,
+    ig_media_id: fields.igMediaId,
+    media_type: fields.mediaType,
+    media_product_type: fields.mediaProductType,
+    caption: fields.caption,
+    media_url: fields.mediaUrl,
+    thumbnail_url: fields.thumbnailUrl,
+    permalink: fields.permalink,
+    posted_at: fields.postedAt,
+    like_count: fields.likeCount,
+    comments_count: fields.commentsCount,
+    insights_unavailable: insightState.insightsUnavailable,
+    insights_unavailable_reason: insightState.insightsUnavailableReason,
+    insights_synced_at: insightState.insightsSyncedAt,
+    reach: null,
+    views: null,
+    saved: null,
+    shares: null,
+    total_interactions: null,
+    reposts: null,
+    reels_skip_rate: null,
+    avg_watch_time_ms: null,
+    total_watch_time_ms: null,
+  };
+}
+
+interface InstagramMediaQuery {
+  page: number;
+  perPage: number;
+  type: InstagramMediaTypeFilter;
+  startDate: string;
+  endDate: string;
+  sort: InstagramMediaSortKey;
+}
+
+function mapMediaRow(row: InstagramMediaRow): InstagramMediaListItem {
+  const reason = row.insights_unavailable_reason;
+  const unavailableReason: InstagramMediaListItem['insightsUnavailableReason'] =
+    reason === 'pre_conversion' || reason === 'retention_expired' ? reason : null;
+
+  return {
+    id: row.id,
+    igMediaId: row.ig_media_id,
+    mediaType: row.media_type as InstagramMediaListItem['mediaType'],
+    mediaProductType: row.media_product_type as InstagramMediaListItem['mediaProductType'],
+    caption: row.caption,
+    mediaUrl: row.media_url,
+    thumbnailUrl: row.thumbnail_url,
+    permalink: row.permalink,
+    postedAt: row.posted_at,
+    likeCount: row.like_count,
+    commentsCount: row.comments_count,
+    reach: row.reach,
+    views: row.views,
+    saved: row.saved,
+    shares: row.shares,
+    totalInteractions: row.total_interactions,
+    reposts: row.reposts,
+    reelsSkipRate: row.reels_skip_rate,
+    avgWatchTimeMs: row.avg_watch_time_ms,
+    totalWatchTimeMs: row.total_watch_time_ms,
+    insightsSyncedAt: row.insights_synced_at,
+    insightsUnavailable: row.insights_unavailable,
+    insightsUnavailableReason: unavailableReason,
+  };
+}
+
+class InstagramMediaService extends SupabaseService {
+  private getPhase2Client() {
+    return asPendingClient<InstagramPhase2Database>(this.getClient());
+  }
+
+  async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
+    const client = this.getPhase2Client();
+    const offset = (query.page - 1) * query.perPage;
+
+    let dbQuery = client
+      .from('instagram_media')
+      .select('*', { count: 'exact' })
+      .eq('user_id', userId)
+      .gte('posted_at', `${query.startDate}T00:00:00.000Z`)
+      .lte('posted_at', `${query.endDate}T23:59:59.999Z`);
+
+    if (query.type === 'reels') {
+      dbQuery = dbQuery.eq('media_product_type', 'REELS');
+    } else if (query.type === 'feed') {
+      dbQuery = dbQuery.eq('media_product_type', 'FEED');
+    }
+
+    const ascending = false;
+    if (query.sort === 'reach') {
+      dbQuery = dbQuery.order('reach', { ascending, nullsFirst: false });
+    } else if (query.sort === 'views') {
+      dbQuery = dbQuery.order('views', { ascending, nullsFirst: false });
+    } else {
+      dbQuery = dbQuery.order('posted_at', { ascending });
+    }
+
+    dbQuery = dbQuery.order('id', { ascending: true }).range(offset, offset + query.perPage - 1);
+
+    const { data, error, count } = await dbQuery;
+    if (error) {
+      console.error('[Instagram Media] getPage failed', { userId, error });
+      throw new Error('Instagram media fetch failed');
+    }
+
+    const total = count ?? 0;
+    const totalPages = total > 0 ? Math.ceil(total / query.perPage) : 1;
+
+    return {
+      items: (data ?? []).map(mapMediaRow),
+      total,
+      totalPages,
+      page: query.page,
+      perPage: query.perPage,
+    };
+  }
+
+  async getAccountInsightsLatestDay(
+    userId: string
+  ): Promise<InstagramAccountInsightsDailyRow | null> {
+    const client = this.getPhase2Client();
+    // order()+limit()+maybeSingle() を挟むと Pending Migration Types の GetResult 型推論が
+    // never に落ちるため、select() の第2ジェネリック（結果型）を明示して迂回する。
+    const { data, error } = await client
+      .from('instagram_account_insights_daily')
+      .select<'*', InstagramAccountInsightsDailyDbRow>('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[Instagram Media] getAccountInsightsLatestDay failed', { userId, error });
+      throw new Error('Instagram account insights fetch failed');
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return {
+      date: data.date,
+      reach: data.reach,
+      followerCount: data.follower_count,
+    };
+  }
+
+  async getInsightsUnavailableMediaIds(
+    userId: string,
+    igMediaIds: string[]
+  ): Promise<Set<string>> {
+    if (igMediaIds.length === 0) {
+      return new Set();
+    }
+    const client = this.getPhase2Client();
+    // 列名指定の select 文字列は Pending Migration Types の型推論で never になるため、結果型を明示する。
+    const { data, error } = await client
+      .from('instagram_media')
+      .select<'ig_media_id', Pick<InstagramMediaRow, 'ig_media_id'>>('ig_media_id')
+      .eq('user_id', userId)
+      .eq('insights_unavailable', true)
+      .in('ig_media_id', igMediaIds);
+
+    if (error) {
+      console.error('[Instagram Media] getInsightsUnavailableMediaIds failed', { userId, error });
+      throw new Error('Instagram unavailable media lookup failed');
+    }
+
+    return new Set((data ?? []).map(row => row.ig_media_id));
+  }
+
+  async upsertMedia(userId: string, row: InstagramMediaInsertRow): Promise<void> {
+    assertScopedUserId(userId, row.user_id);
+    const scopedRow: InstagramMediaInsertRow = { ...row, user_id: userId };
+    await SupabaseService.withServiceRoleClient(async client => {
+      const pending = asPendingClient<InstagramPhase2Database>(client);
+      const { error } = await upsertPendingRow(pending, 'instagram_media', scopedRow, {
+        onConflict: 'user_id,ig_media_id',
+      });
+      if (error) {
+        console.error('[Instagram Media] upsertMedia failed', { userId, error });
+        throw new Error('Instagram media upsert failed');
+      }
+    });
+  }
+
+  /** insights 恒久不可行は指標・フラグを触らず、一覧メタデータ（CDN URL 等）のみ更新する */
+  async updateMediaListingFields(
+    userId: string,
+    fields: InstagramMediaListingFields
+  ): Promise<void> {
+    await SupabaseService.withServiceRoleClient(async client => {
+      const pending = asPendingClient<InstagramPhase2Database>(client);
+      const { error } = await updateScopedPendingRow(
+        pending,
+        'instagram_media',
+        {
+          media_type: fields.mediaType,
+          media_product_type: fields.mediaProductType,
+          caption: fields.caption,
+          media_url: fields.mediaUrl,
+          thumbnail_url: fields.thumbnailUrl,
+          permalink: fields.permalink,
+          posted_at: fields.postedAt,
+          like_count: fields.likeCount,
+          comments_count: fields.commentsCount,
+        },
+        { userId, igMediaId: fields.igMediaId }
+      );
+      if (error) {
+        console.error('[Instagram Media] updateMediaListingFields failed', { userId, error });
+        throw new Error('Instagram media listing update failed');
+      }
+    });
+  }
+
+  async upsertMediaInsightsUnavailable(
+    userId: string,
+    fields: InstagramMediaListingFields,
+    reason: 'pre_conversion' | 'retention_expired'
+  ): Promise<void> {
+    await SupabaseService.withServiceRoleClient(async client => {
+      const pending = asPendingClient<InstagramPhase2Database>(client);
+      const { data: existing, error: lookupError } = await pending
+        .from('instagram_media')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('ig_media_id', fields.igMediaId)
+        .maybeSingle();
+
+      if (lookupError) {
+        console.error('[Instagram Media] upsertMediaInsightsUnavailable lookup failed', {
+          userId,
+          error: lookupError,
+        });
+        throw new Error('Instagram media unavailable lookup failed');
+      }
+
+      if (existing) {
+        const { error } = await updateScopedPendingRow(
+          pending,
+          'instagram_media',
+          {
+            media_type: fields.mediaType,
+            media_product_type: fields.mediaProductType,
+            caption: fields.caption,
+            media_url: fields.mediaUrl,
+            thumbnail_url: fields.thumbnailUrl,
+            permalink: fields.permalink,
+            posted_at: fields.postedAt,
+            like_count: fields.likeCount,
+            comments_count: fields.commentsCount,
+            insights_unavailable: true,
+            insights_unavailable_reason: reason,
+          },
+          { userId, igMediaId: fields.igMediaId }
+        );
+        if (error) {
+          console.error('[Instagram Media] upsertMediaInsightsUnavailable update failed', {
+            userId,
+            error,
+          });
+          throw new Error('Instagram media unavailable update failed');
+        }
+        return;
+      }
+
+      const row = listingFieldsToInsertRow(userId, fields, {
+        insightsUnavailable: true,
+        insightsUnavailableReason: reason,
+        insightsSyncedAt: null,
+      });
+      const { error } = await upsertPendingRow(pending, 'instagram_media', row, {
+        onConflict: 'user_id,ig_media_id',
+      });
+      if (error) {
+        console.error('[Instagram Media] upsertMediaInsightsUnavailable insert failed', {
+          userId,
+          error,
+        });
+        throw new Error('Instagram media unavailable insert failed');
+      }
+    });
+  }
+
+  /** insights 一時失敗時は既存指標を残し、一覧メタデータのみ反映する */
+  async upsertMediaListingPreservingInsights(
+    userId: string,
+    fields: InstagramMediaListingFields
+  ): Promise<void> {
+    await SupabaseService.withServiceRoleClient(async client => {
+      const pending = asPendingClient<InstagramPhase2Database>(client);
+      const { data: existing, error: lookupError } = await pending
+        .from('instagram_media')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('ig_media_id', fields.igMediaId)
+        .maybeSingle();
+
+      if (lookupError) {
+        console.error('[Instagram Media] upsertMediaListingPreservingInsights lookup failed', {
+          userId,
+          error: lookupError,
+        });
+        throw new Error('Instagram media listing lookup failed');
+      }
+
+      if (existing) {
+        const { error } = await updateScopedPendingRow(
+          pending,
+          'instagram_media',
+          {
+            media_type: fields.mediaType,
+            media_product_type: fields.mediaProductType,
+            caption: fields.caption,
+            media_url: fields.mediaUrl,
+            thumbnail_url: fields.thumbnailUrl,
+            permalink: fields.permalink,
+            posted_at: fields.postedAt,
+            like_count: fields.likeCount,
+            comments_count: fields.commentsCount,
+          },
+          { userId, igMediaId: fields.igMediaId }
+        );
+        if (error) {
+          console.error('[Instagram Media] upsertMediaListingPreservingInsights update failed', {
+            userId,
+            error,
+          });
+          throw new Error('Instagram media listing update failed');
+        }
+        return;
+      }
+
+      const row = listingFieldsToInsertRow(userId, fields, {
+        insightsUnavailable: false,
+        insightsUnavailableReason: null,
+        insightsSyncedAt: null,
+      });
+      const { error } = await upsertPendingRow(pending, 'instagram_media', row, {
+        onConflict: 'user_id,ig_media_id',
+      });
+      if (error) {
+        console.error('[Instagram Media] upsertMediaListingPreservingInsights insert failed', {
+          userId,
+          error,
+        });
+        throw new Error('Instagram media listing insert failed');
+      }
+    });
+  }
+
+  async upsertAccountInsightsDaily(
+    userId: string,
+    rows: InstagramAccountInsightsDailyInsertRow[]
+  ): Promise<void> {
+    if (rows.length === 0) {
+      return;
+    }
+    for (const row of rows) {
+      assertScopedUserId(userId, row.user_id);
+    }
+    const scopedRows = rows.map(row => ({ ...row, user_id: userId }));
+    await SupabaseService.withServiceRoleClient(async client => {
+      const pending = asPendingClient<InstagramPhase2Database>(client);
+      const { error } = await upsertPendingRow(
+        pending,
+        'instagram_account_insights_daily',
+        scopedRows,
+        { onConflict: 'user_id,date' }
+      );
+      if (error) {
+        console.error('[Instagram Media] upsertAccountInsightsDaily failed', { userId, error });
+        throw new Error('Instagram account insights upsert failed');
+      }
+    });
+  }
+
+  async purgeInstagramData(userId: string): Promise<SupabaseResult<void>> {
+    return SupabaseService.withServiceRoleClient(
+      async client => {
+        const pending = asPendingClient<InstagramPhase2Database>(client);
+
+        const { error: mediaError } = await pending
+          .from('instagram_media')
+          .delete()
+          .eq('user_id', userId);
+        if (mediaError) {
+          return this.failure('Instagramメディアデータの削除に失敗しました', {
+            developerMessage: mediaError.message,
+          });
+        }
+
+        const { error: insightsError } = await pending
+          .from('instagram_account_insights_daily')
+          .delete()
+          .eq('user_id', userId);
+        if (insightsError) {
+          return this.failure('Instagramアカウント指標の削除に失敗しました', {
+            developerMessage: insightsError.message,
+          });
+        }
+
+        return this.success(undefined);
+      },
+      { logMessage: '[Instagram Media] purgeInstagramData failed' }
+    );
+  }
+}
+
+export const instagramMediaService = new InstagramMediaService();

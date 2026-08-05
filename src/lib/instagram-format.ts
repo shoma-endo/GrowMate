@@ -32,3 +32,42 @@ export function formatPostedAt(timestamp: string): string {
   }
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} 投稿`;
 }
+
+/** 率 = (実数 ÷ reach) × 100、小数第1位で四捨五入（§11.3） */
+export function calculateInstagramRate(numerator: number | null, reach: number | null): number | null {
+  if (numerator == null || reach == null || reach <= 0) {
+    return null;
+  }
+  const rate = (numerator / reach) * 100;
+  return Math.round(rate * 10) / 10;
+}
+
+export function formatInstagramRate(value: number | null): string {
+  if (value == null) {
+    return '-';
+  }
+  return `${value.toFixed(1)}%`;
+}
+
+export function formatSkipRate(value: number | null): string {
+  if (value == null) {
+    return '-';
+  }
+  return `${value.toFixed(1)}%`;
+}
+
+export function formatDurationMs(ms: number | null): string {
+  if (ms == null) {
+    return '-';
+  }
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}秒`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainSec = Math.round(seconds % 60);
+  return `${minutes}分${remainSec}秒`;
+}

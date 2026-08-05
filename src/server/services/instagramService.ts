@@ -1,10 +1,16 @@
 import 'server-only';
 import {
+  extractInsightDailySeries,
   extractInsightMetric,
-  extractLatestInsightMetric,
 } from '@/server/lib/instagram-insights';
+import {
+  mergeInstagramRateUsage,
+  parseInstagramRateUsage,
+  type InstagramRateUsage,
+} from '@/server/lib/instagram-rate-limit';
+import type { InstagramMediaPageResponse } from '@/server/lib/instagram-media-pagination';
 import type {
-  InstagramAccountInsights,
+  InstagramAccountInsightsDailyRow,
   InstagramMediaInsights,
   InstagramMediaPreview,
   InstagramProfile,
@@ -31,16 +37,6 @@ const PROFILE_FIELDS = [
   'media_count',
 ].join(',');
 
-const ACCOUNT_INSIGHT_METRICS = [
-  'reach',
-  'views',
-  'profile_views',
-  'website_clicks',
-  'accounts_engaged',
-  'total_interactions',
-  'follower_count',
-].join(',');
-
 const MEDIA_FIELDS = [
   'id',
   'media_type',
@@ -62,6 +58,11 @@ export interface InstagramTokenExchangeResult {
 export interface InstagramLongLivedTokenResult {
   accessToken: string;
   expiresIn: number;
+}
+
+export interface InstagramApiResult<T> {
+  data: T;
+  usage: InstagramRateUsage;
 }
 
 interface GraphMediaItem {
@@ -120,9 +121,13 @@ function redactSensitiveUrl(url: string): string {
   }
 }
 
-async function parseJsonResponse(response: Response): Promise<Record<string, unknown>> {
+async function parseJsonResponse(response: Response): Promise<{
+  json: Record<string, unknown>;
+  usage: InstagramRateUsage;
+}> {
   const body = await readResponseBody(response);
   const safeUrl = redactSensitiveUrl(response.url);
+  const usage = parseInstagramRateUsage(response.headers);
   if (!response.ok) {
     console.error('[Instagram]', {
       status: response.status,
@@ -135,7 +140,7 @@ async function parseJsonResponse(response: Response): Promise<Record<string, unk
   try {
     const parsed: unknown = JSON.parse(body);
     if (typeof parsed === 'object' && parsed !== null) {
-      return parsed as Record<string, unknown>;
+      return { json: parsed as Record<string, unknown>, usage };
     }
     throw new Error('Instagram API response is not an object');
   } catch (error) {
@@ -155,8 +160,6 @@ function parseNumber(value: unknown): number | null {
   return null;
 }
 
-// 一部の Instagram エンドポイントは本体を { data: [ ... ] } でラップして返す。
-// ラップが無い形も許容してフォールバックする。
 function unwrapDataEnvelope(json: Record<string, unknown>): Record<string, unknown> {
   const data = json.data;
   if (Array.isArray(data) && typeof data[0] === 'object' && data[0] !== null) {
@@ -187,6 +190,50 @@ function parseSupportedMediaProductType(
     return value;
   }
   return null;
+}
+
+export function parseInstagramMediaItems(
+  rawItems: unknown[],
+  options?: { logUnsupported?: boolean }
+): GraphMediaItem[] {
+  const logUnsupported = options?.logUnsupported !== false;
+  return rawItems
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .flatMap(item => {
+      const id = typeof item.id === 'string' ? item.id : '';
+      const productType = parseSupportedMediaProductType(item.media_product_type);
+      if (!productType) {
+        const rawType = item.media_product_type;
+        if (logUnsupported && typeof rawType === 'string' && rawType.length > 0) {
+          console.warn('[Instagram] Skipping unsupported media_product_type', {
+            mediaId: id,
+            mediaProductType: rawType,
+          });
+        }
+        return [];
+      }
+
+      const mapped: GraphMediaItem = {
+        id,
+        media_product_type: productType,
+      };
+      if (typeof item.media_type === 'string') mapped.media_type = item.media_type;
+      if (typeof item.media_url === 'string') mapped.media_url = item.media_url;
+      if (typeof item.thumbnail_url === 'string') mapped.thumbnail_url = item.thumbnail_url;
+      if (typeof item.caption === 'string') mapped.caption = item.caption;
+      if (typeof item.timestamp === 'string') mapped.timestamp = item.timestamp;
+      if (typeof item.permalink === 'string') mapped.permalink = item.permalink;
+      const likeCount = parseNumber(item.like_count);
+      if (likeCount != null) mapped.like_count = likeCount;
+      const commentsCount = parseNumber(item.comments_count);
+      if (commentsCount != null) mapped.comments_count = commentsCount;
+
+      if (mapped.id.length > 0 && mapped.permalink && mapped.timestamp) {
+        return [mapped];
+      }
+
+      return [];
+    });
 }
 
 export class InstagramService {
@@ -224,10 +271,7 @@ export class InstagramService {
       body: body.toString(),
     });
 
-    // Business Login for Instagram のレスポンスは { data: [{ access_token, user_id, permissions }] }
-    // 形式で、expires_in を含まない（短命トークンの有効期限は 1 時間固定）。
-    // expires_in を返すのは長命トークン交換（ig_exchange_token）のみ。
-    const json = await parseJsonResponse(response);
+    const { json } = await parseJsonResponse(response);
     const payload = unwrapDataEnvelope(json);
     const accessToken = typeof payload.access_token === 'string' ? payload.access_token : '';
     const igUserId =
@@ -255,7 +299,7 @@ export class InstagramService {
     const response = await fetchWithTimeout(`${GRAPH_BASE_URL}/access_token?${params.toString()}`, {
       method: 'GET',
     });
-    const json = await parseJsonResponse(response);
+    const { json } = await parseJsonResponse(response);
     const accessToken = typeof json.access_token === 'string' ? json.access_token : '';
     const expiresIn = parseRequiredExpiresIn(json.expires_in, 'long-lived token exchange');
 
@@ -275,7 +319,7 @@ export class InstagramService {
     const response = await fetchWithTimeout(`${GRAPH_BASE_URL}/refresh_access_token?${params.toString()}`, {
       method: 'GET',
     });
-    const json = await parseJsonResponse(response);
+    const { json } = await parseJsonResponse(response);
     const accessToken = typeof json.access_token === 'string' ? json.access_token : '';
     const expiresIn = parseRequiredExpiresIn(json.expires_in, 'token refresh');
 
@@ -286,7 +330,7 @@ export class InstagramService {
     return { accessToken, expiresIn };
   }
 
-  async fetchProfile(accessToken: string): Promise<InstagramProfile> {
+  async fetchProfile(accessToken: string): Promise<InstagramApiResult<InstagramProfile>> {
     const params = new URLSearchParams({
       fields: PROFILE_FIELDS,
       access_token: accessToken,
@@ -295,7 +339,7 @@ export class InstagramService {
       `${GRAPH_BASE_URL}/${INSTAGRAM_GRAPH_VERSION}/me?${params.toString()}`,
       { method: 'GET' }
     );
-    const json = await parseJsonResponse(response);
+    const { json, usage } = await parseJsonResponse(response);
 
     const igUserId =
       typeof json.user_id === 'string'
@@ -311,101 +355,125 @@ export class InstagramService {
     }
 
     return {
-      igUserId,
-      username: typeof json.username === 'string' ? json.username : null,
-      name: typeof json.name === 'string' ? json.name : null,
-      accountType: typeof json.account_type === 'string' ? json.account_type : null,
-      profilePictureUrl:
-        typeof json.profile_picture_url === 'string' ? json.profile_picture_url : null,
-      followersCount: parseNumber(json.followers_count),
-      followsCount: parseNumber(json.follows_count),
-      mediaCount: parseNumber(json.media_count),
+      usage,
+      data: {
+        igUserId,
+        username: typeof json.username === 'string' ? json.username : null,
+        name: typeof json.name === 'string' ? json.name : null,
+        accountType: typeof json.account_type === 'string' ? json.account_type : null,
+        profilePictureUrl:
+          typeof json.profile_picture_url === 'string' ? json.profile_picture_url : null,
+        followersCount: parseNumber(json.followers_count),
+        followsCount: parseNumber(json.follows_count),
+        mediaCount: parseNumber(json.media_count),
+      },
     };
   }
 
-  async fetchMedia(accessToken: string, limit: number): Promise<GraphMediaItem[]> {
+  async fetchMediaPage(
+    accessToken: string,
+    options: { limit: number; after?: string | null }
+  ): Promise<InstagramApiResult<InstagramMediaPageResponse>> {
     const params = new URLSearchParams({
       fields: MEDIA_FIELDS,
-      limit: String(limit),
+      limit: String(options.limit),
       access_token: accessToken,
     });
+    if (options.after) {
+      params.set('after', options.after);
+    }
 
     const response = await fetchWithTimeout(
       `${GRAPH_BASE_URL}/${INSTAGRAM_GRAPH_VERSION}/me/media?${params.toString()}`,
       { method: 'GET' }
     );
-    const json = await parseJsonResponse(response);
-    const data = Array.isArray(json.data) ? json.data : [];
-
-    return data
-      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-      .flatMap(item => {
-        const id = typeof item.id === 'string' ? item.id : '';
-        const productType = parseSupportedMediaProductType(item.media_product_type);
-        if (!productType) {
-          const rawType = item.media_product_type;
-          if (typeof rawType === 'string' && rawType.length > 0) {
-            console.warn('[Instagram] Skipping unsupported media_product_type', {
-              mediaId: id,
-              mediaProductType: rawType,
-            });
-          }
-          return [];
-        }
-
-        const mapped: GraphMediaItem = {
-          id,
-          media_product_type: productType,
-        };
-        if (typeof item.media_type === 'string') mapped.media_type = item.media_type;
-        if (typeof item.media_url === 'string') mapped.media_url = item.media_url;
-        if (typeof item.thumbnail_url === 'string') mapped.thumbnail_url = item.thumbnail_url;
-        if (typeof item.caption === 'string') mapped.caption = item.caption;
-        if (typeof item.timestamp === 'string') mapped.timestamp = item.timestamp;
-        if (typeof item.permalink === 'string') mapped.permalink = item.permalink;
-        const likeCount = parseNumber(item.like_count);
-        if (likeCount != null) mapped.like_count = likeCount;
-        const commentsCount = parseNumber(item.comments_count);
-        if (commentsCount != null) mapped.comments_count = commentsCount;
-
-        if (mapped.id.length > 0 && mapped.permalink && mapped.timestamp) {
-          return [mapped];
-        }
-
-        return [];
-      });
+    const { json, usage } = await parseJsonResponse(response);
+    return {
+      usage,
+      data: {
+        data: json.data,
+        paging: json.paging,
+      },
+    };
   }
 
-  async fetchAccountInsights(accessToken: string): Promise<InstagramAccountInsights> {
-    const params = new URLSearchParams({
-      metric: ACCOUNT_INSIGHT_METRICS,
+  async fetchMedia(accessToken: string, limit: number): Promise<GraphMediaItem[]> {
+    const pageResult = await this.fetchMediaPage(accessToken, { limit });
+    const data = Array.isArray(pageResult.data.data) ? pageResult.data.data : [];
+    return parseInstagramMediaItems(data);
+  }
+
+  async fetchAccountInsightsDaily(
+    accessToken: string,
+    range: { since: string; until: string }
+  ): Promise<InstagramApiResult<InstagramAccountInsightsDailyRow[]>> {
+    const reachParams = new URLSearchParams({
+      metric: 'reach',
+      metric_type: 'time_series',
       period: 'day',
+      since: range.since,
+      until: range.until,
       access_token: accessToken,
     });
-
-    const response = await fetchWithTimeout(
-      `${GRAPH_BASE_URL}/${INSTAGRAM_GRAPH_VERSION}/me/insights?${params.toString()}`,
+    const reachResponse = await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${INSTAGRAM_GRAPH_VERSION}/me/insights?${reachParams.toString()}`,
       { method: 'GET' }
     );
-    const json = await parseJsonResponse(response);
-    const values = Array.isArray(json.data) ? json.data : [];
+    const reachParsed = await parseJsonResponse(reachResponse);
+    const reachValues = Array.isArray(reachParsed.json.data) ? reachParsed.json.data : [];
+    const reachSeries = extractInsightDailySeries(reachValues, 'reach');
 
-    return {
-      reach: extractLatestInsightMetric(values, 'reach'),
-      views: extractLatestInsightMetric(values, 'views'),
-      profileViews: extractLatestInsightMetric(values, 'profile_views'),
-      websiteClicks: extractLatestInsightMetric(values, 'website_clicks'),
-      accountsEngaged: extractLatestInsightMetric(values, 'accounts_engaged'),
-      totalInteractions: extractLatestInsightMetric(values, 'total_interactions'),
-      followerCount: extractLatestInsightMetric(values, 'follower_count'),
-    };
+    const followerParams = new URLSearchParams({
+      metric: 'follower_count',
+      period: 'day',
+      since: range.since,
+      until: range.until,
+      access_token: accessToken,
+    });
+    const followerResponse = await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${INSTAGRAM_GRAPH_VERSION}/me/insights?${followerParams.toString()}`,
+      { method: 'GET' }
+    );
+    const followerParsed = await parseJsonResponse(followerResponse);
+    const followerValues = Array.isArray(followerParsed.json.data) ? followerParsed.json.data : [];
+    const followerSeries = extractInsightDailySeries(followerValues, 'follower_count');
+
+    const byDate = new Map<string, InstagramAccountInsightsDailyRow>();
+
+    for (const row of reachSeries) {
+      const existing = byDate.get(row.date) ?? {
+        date: row.date,
+        reach: null,
+        followerCount: null,
+      };
+      existing.reach = row.value;
+      byDate.set(row.date, existing);
+    }
+
+    for (const row of followerSeries) {
+      const existing = byDate.get(row.date) ?? {
+        date: row.date,
+        reach: null,
+        followerCount: null,
+      };
+      existing.followerCount = row.value;
+      byDate.set(row.date, existing);
+    }
+
+    const rows = [...byDate.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, value]) => value);
+
+    const usage = mergeInstagramRateUsage(reachParsed.usage, followerParsed.usage);
+
+    return { data: rows, usage };
   }
 
   async fetchMediaInsights(
     accessToken: string,
     mediaId: string,
     mediaProductType: InstagramMediaPreview['mediaProductType']
-  ): Promise<InstagramMediaInsights> {
+  ): Promise<InstagramApiResult<InstagramMediaInsights>> {
     const baseMetrics = [
       'reach',
       'views',
@@ -414,10 +482,11 @@ export class InstagramService {
       'saved',
       'shares',
       'total_interactions',
+      'reposts',
     ];
     const reelMetrics =
       mediaProductType === 'REELS'
-        ? ['ig_reels_avg_watch_time', 'ig_reels_video_view_total_time']
+        ? ['ig_reels_avg_watch_time', 'ig_reels_video_view_total_time', 'reels_skip_rate']
         : [];
     const metrics = [...baseMetrics, ...reelMetrics].join(',');
 
@@ -430,19 +499,24 @@ export class InstagramService {
       `${GRAPH_BASE_URL}/${INSTAGRAM_GRAPH_VERSION}/${mediaId}/insights?${params.toString()}`,
       { method: 'GET' }
     );
-    const json = await parseJsonResponse(response);
+    const { json, usage } = await parseJsonResponse(response);
     const values = Array.isArray(json.data) ? json.data : [];
 
     return {
-      reach: extractInsightMetric(values, 'reach'),
-      views: extractInsightMetric(values, 'views'),
-      likes: extractInsightMetric(values, 'likes'),
-      comments: extractInsightMetric(values, 'comments'),
-      saved: extractInsightMetric(values, 'saved'),
-      shares: extractInsightMetric(values, 'shares'),
-      totalInteractions: extractInsightMetric(values, 'total_interactions'),
-      avgWatchTimeMs: extractInsightMetric(values, 'ig_reels_avg_watch_time'),
-      totalWatchTimeMs: extractInsightMetric(values, 'ig_reels_video_view_total_time'),
+      usage,
+      data: {
+        reach: extractInsightMetric(values, 'reach'),
+        views: extractInsightMetric(values, 'views'),
+        likes: extractInsightMetric(values, 'likes'),
+        comments: extractInsightMetric(values, 'comments'),
+        saved: extractInsightMetric(values, 'saved'),
+        shares: extractInsightMetric(values, 'shares'),
+        totalInteractions: extractInsightMetric(values, 'total_interactions'),
+        reposts: extractInsightMetric(values, 'reposts'),
+        reelsSkipRate: extractInsightMetric(values, 'reels_skip_rate'),
+        avgWatchTimeMs: extractInsightMetric(values, 'ig_reels_avg_watch_time'),
+        totalWatchTimeMs: extractInsightMetric(values, 'ig_reels_video_view_total_time'),
+      },
     };
   }
 

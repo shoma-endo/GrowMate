@@ -18,12 +18,12 @@
 - **AI コンテンツ支援**: 7 ステップのブログ作成フロー（ニーズ整理〜本文作成）、広告／LP テンプレート、AI 応答ストリーミング
 - **キャンバス編集**: TipTap ベースの `CanvasPanel`、Markdown レンダリング／見出しアウトライン／バージョン履歴、選択範囲リライト
 - **見出しフロー・バージョン管理**: Step5 生成見出しからの `session_heading_sections` 初期化、個別 AI 生成・`session_combined_contents` への結合保存、`save_atomic_combined_content` RPC で競合シリアライズ
-- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）
+- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・手動「最新化」同期）を表示
 - **WordPress 連携**: OAuth・Application Password 両対応、投稿の一括インポート、`AnnotationPanel` でメモ・キーワード・ペルソナ等を再利用
 - **Google Search Console 連携**: OAuth 認証、日次指標保存（`gsc_page_metrics` / `gsc_query_metrics`）、記事評価・改善提案（`gsc_article_evaluations`）、改善提案ジョブの Cron 実行（`/api/cron/gsc-suggestions`）
 - **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`）、サマリー・ランキング・時系列ダッシュボード
 - **Google Ads 連携**: OAuth 認証、MCC アカウント選択、キーワード・キャンペーン指標、GSC 順位と WordPress 記事在庫を考慮した AI コンテンツ戦略提案、除外キーワード提案（自動配信メール対応）
-- **Instagram 連携**: Business Login for Instagram による OAuth 認証、プロアカウント（ビジネス/クリエイター）連携、投稿プレビュー（`/setup/instagram`）。認証情報は `instagram_credentials` に保存
+- **Instagram 連携**: Business Login for Instagram による OAuth 認証、プロアカウント（ビジネス/クリエイター）連携、投稿プレビュー（`/setup/instagram`）。Phase 2 では手動同期で `instagram_media` / `instagram_account_insights_daily` に指標を保存し、`/analytics` の Instagram タブで閲覧（cron なし）。認証情報は `instagram_credentials` に保存
 - **管理者ダッシュボード** (`/admin`): プロンプトテンプレート編集・バージョン保存、ユーザーロール管理
 - **事業者情報ブリーフ** (`/business-info`): 複数サービスの 5W2H を登録し、チャットセッションごとに選択したサービスのコンテキストを自動補完
 - **外部連携セットアップ** (`/setup`): WordPress・GSC・GA4・Google Ads・Instagram の接続状態と設定画面を集約
@@ -66,7 +66,7 @@ graph TB
   subgraph Data["Supabase PostgreSQL（テーブル詳細は database.types.ts。未適用マイグレーションは database.types.pending.ts）"]
     UserData["users / chat_sessions / chat_messages"]
     ContentData["briefs / content_annotations / session_heading_sections / session_combined_contents"]
-    IntegrationData["gsc_* / ga4_* / google_ads_* / instagram_credentials / wordpress_settings"]
+    IntegrationData["gsc_* / ga4_* / google_ads_* / instagram_credentials / instagram_media / instagram_account_insights_daily / wordpress_settings"]
     AdminData["prompt_templates / prompt_versions"]
   end
 
@@ -121,7 +121,7 @@ graph TB
 
 GSC の連携状態・プロパティ・インポート等は **[`src/server/actions/`](src/server/actions/)** の `gsc*.actions.ts` が中心。OAuth の HTTP 開始/コールバックは [`app/api/gsc/`](app/api/gsc) を参照。
 
-Instagram 連携のセットアップ・プレビューは **`instagramSetup.actions.ts`** が中心。OAuth の HTTP 開始/コールバックは [`app/api/instagram/`](app/api/instagram) を参照。
+Instagram 連携のセットアップ・プレビューは **`instagramSetup.actions.ts`**、手動データ同期は **`instagramSync.actions.ts`**（[`instagramSyncService.ts`](src/server/services/instagramSyncService.ts) / [`instagramMediaService.ts`](src/server/services/instagramMediaService.ts)）。OAuth の HTTP 開始/コールバックは [`app/api/instagram/`](app/api/instagram) を参照。
 
 ## 🛠️ 技術スタック
 
@@ -199,6 +199,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 | `INSTAGRAM_APP_SECRET` | 任意（Instagram OAuth 利用時は必須） | 同上 |
 | `INSTAGRAM_REDIRECT_URI` | 任意（Instagram OAuth 利用時は必須） | 同上 |
 | `INSTAGRAM_BETA_USER_IDS` | 任意（App Review 期間の allowlist。空なら admin/paid/trial に開放） | [`src/server/lib/instagram-permissions.ts`](src/server/lib/instagram-permissions.ts) |
+| `INSTAGRAM_SYNC_ENABLED` | 任意（未設定または `true` で有効。`false` で手動同期を停止し UI に告知。一覧は既存 DB データを表示） | [`src/server/lib/instagram-sync-config.ts`](src/server/lib/instagram-sync-config.ts) |
 | `REVIEW_LOGIN_EMAIL` | 任意（App Review 期間のみ設定。審査終了後は削除して経路を塞ぐ） | [`app/review-login/page.tsx`](app/review-login/page.tsx), [`src/server/actions/auth.actions.ts`](src/server/actions/auth.actions.ts) の `signInWithReviewPassword`。**撤去時はこの行と併せて以下も削除する**: [`src/components/ReviewLoginForm.tsx`](src/components/ReviewLoginForm.tsx) / [`proxy.ts`](proxy.ts) と [`src/lib/public-paths.ts`](src/lib/public-paths.ts) の `/review-login` / [`src/domain/errors/error-messages.ts`](src/domain/errors/error-messages.ts) の `REVIEW_LOGIN_*` / `tests/unit/server/actions/reviewLogin.actions.test.ts` / `tests/unit/lib/public-paths.test.ts` の `/review-login` ケース / [`src/components/AuthProvider.tsx`](src/components/AuthProvider.tsx) の `FULL_NAME_DIALOG_PATHS` |
 | `NEXT_PUBLIC_APP_URL` | 任意（内部 API 呼び出しのベース URL） | [`src/server/actions/adminUsers.actions.ts`](src/server/actions/adminUsers.actions.ts) |
 | `VERCEL_URL` | Vercel が自動設定 | [`src/server/middleware/authMiddlewareGuards.ts`](src/server/middleware/authMiddlewareGuards.ts) の許可オリジン判定 |
@@ -246,7 +247,7 @@ npm run dev  # http://localhost:3000
 | [`src/domain/`](src/domain/) | ドメインモデル・エラー・クライアント向けサービス IF |
 | [`src/lib/`](src/lib/) | 定数・Supabase クライアント補助・バリデータ等 |
 | [`src/server/actions/`](src/server/actions/) | Server Actions（`*.actions.ts` がドメインごとに並ぶ） |
-| [`src/server/services/`](src/server/services/) | サーバー統合層（LLM / WordPress / GSC / GA4 / Google Ads / Instagram 等） |
+| [`src/server/services/`](src/server/services/) | サーバー統合層（LLM / WordPress / GSC / GA4 / Google Ads / Instagram（setup・sync・media 等）） |
 | [`src/server/middleware/`](src/server/middleware/) | `authMiddleware` 等 |
 | [`tests/unit/`](tests/unit/) | Vitestユニットテスト（`lib/`・`server/schemas/`） |
 | [`supabase/migrations/`](supabase/migrations/) | DB マイグレーション |

@@ -35,18 +35,66 @@ export interface InstagramMediaInsights {
   saved: number | null;
   shares: number | null;
   totalInteractions: number | null;
+  reposts: number | null;
+  reelsSkipRate: number | null;
   avgWatchTimeMs: number | null;
   totalWatchTimeMs: number | null;
 }
 
-export interface InstagramAccountInsights {
+export interface InstagramAccountInsightsDailyRow {
+  date: string;
+  reach: number | null;
+  followerCount: number | null;
+}
+
+type InstagramInsightsUnavailableReason = 'pre_conversion' | 'retention_expired';
+
+export type InstagramMediaSortKey = 'posted_at' | 'reach' | 'views';
+export type InstagramMediaTypeFilter = 'all' | 'reels' | 'feed';
+
+export interface InstagramMediaListItem {
+  id: string;
+  igMediaId: string;
+  mediaType: 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM';
+  mediaProductType: 'FEED' | 'REELS';
+  caption: string | null;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  permalink: string;
+  postedAt: string;
+  likeCount: number | null;
+  commentsCount: number | null;
   reach: number | null;
   views: number | null;
-  profileViews: number | null;
-  websiteClicks: number | null;
-  accountsEngaged: number | null;
+  saved: number | null;
+  shares: number | null;
   totalInteractions: number | null;
-  followerCount: number | null;
+  reposts: number | null;
+  reelsSkipRate: number | null;
+  avgWatchTimeMs: number | null;
+  totalWatchTimeMs: number | null;
+  insightsSyncedAt: string | null;
+  insightsUnavailable: boolean;
+  insightsUnavailableReason: InstagramInsightsUnavailableReason | null;
+}
+
+export interface InstagramMediaPageResult {
+  items: InstagramMediaListItem[];
+  total: number;
+  totalPages: number;
+  page: number;
+  perPage: number;
+}
+
+export type InstagramSyncStoppedReason = 'time_budget' | 'consecutive_failures' | 'rate_limit';
+
+export interface InstagramSyncResult {
+  synced: number;
+  failed: number;
+  skipped: number;
+  truncated: boolean;
+  preConversionCount: number;
+  stoppedReason?: InstagramSyncStoppedReason;
 }
 
 export interface InstagramMediaPreview {
