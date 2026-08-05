@@ -119,15 +119,20 @@ export default function InstagramTab({
       // needsReauth は success:false と必ずセットで返るため（instagramSync.actions.ts）、
       // ここに到達した時点では常に undefined。渡す必要はない。
       const toastMessage = getInstagramSyncToastMessage(result.data);
-      if (toastMessage.type === 'warning') {
-        toast.warning(toastMessage.message, { id: toastId });
-        setSyncAlert(ERROR_MESSAGES.INSTAGRAM.API_ERROR);
-      } else if (toastMessage.type === 'info') {
-        toast.info(toastMessage.message, { id: toastId });
-      } else if (toastMessage.type === 'error') {
-        toast.error(toastMessage.message, { id: toastId });
-      } else {
-        toast.success(toastMessage.message, { id: toastId });
+      switch (toastMessage.type) {
+        case 'warning':
+          toast.warning(toastMessage.message, { id: toastId });
+          setSyncAlert(ERROR_MESSAGES.INSTAGRAM.API_ERROR);
+          break;
+        case 'info':
+          toast.info(toastMessage.message, { id: toastId });
+          break;
+        case 'error':
+          toast.error(toastMessage.message, { id: toastId });
+          break;
+        case 'success':
+          toast.success(toastMessage.message, { id: toastId });
+          break;
       }
       if (result.data.failed > 0) {
         setSyncAlert(ERROR_MESSAGES.INSTAGRAM.PARTIAL_MEDIA_FAILURE(result.data.failed));
