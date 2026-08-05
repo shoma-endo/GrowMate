@@ -20,7 +20,7 @@
 | アカウント情報 | ig_user_id, username, name, account_type, profile_picture_url, biography, website, followers_count, follows_count, media_count | `GET /me?fields=...` |
 | 投稿一覧 | id, media_type (IMAGE/VIDEO/CAROUSEL_ALBUM), media_product_type (FEED/REELS), media_url, thumbnail_url, caption, timestamp, permalink, like_count, comments_count | `GET /me/media?fields=...`（cursor ページネーション） |
 | 投稿インサイト | reach, views, likes, comments, saved, shares, total_interactions, **reposts**, **reels_skip_rate**（リールは加えて ig_reels_avg_watch_time, ig_reels_video_view_total_time）。**`reposts` / `reels_skip_rate` は 2026-08-05 追加**（クライアントが実際に見ている画面に出ているため — §3.3「Instagram アプリ画面との突き合わせ」） | `GET /{media-id}/insights?metric=...` |
-| アカウントインサイト | reach, views, profile_views, website_clicks, accounts_engaged, total_interactions, follower_count（日次）。**指標名は Phase 2 着手時に公式リファレンスと突き合わせて確定する（§3.3「アカウント指標名の公式照合」）** | `GET /me/insights?metric=...&period=day` |
+| アカウントインサイト | reach, views, accounts_engaged, total_interactions, follower_count（日次）。**`profile_views` / `website_clicks` は 2025-01-08 に全バージョンで廃止済みのため採用しない**（§3.3）。後継候補 `profile_links_taps` の採否は実測後に決める | `GET /me/insights?metric=...&period=day` |
 
 ### 非スコープ
 
@@ -118,6 +118,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - `metric_type=total_value` を付けると**逆に空になる**: `follower_count`
   - よって7指標を1回では取れず、**2コールに分ける必要がある**（`total_value` 群 + `follower_count` 単独）。`fetchAccountInsights` は現在**呼び出し元が無く** Phase 1 では未使用のため、修正は Phase 2 の実装時に行う
   - **`metric_type` 付与の要否（どの metric を同じ HTTP コールに載せられるか）は 2026-08-01 実測**。metrics 表の **Type 列（time_series / total_value）は 2026-08-05 に公式照合済み**（下記「アカウント指標名の公式照合」L128–132）
+  - **⚠「User Insights は `metric_type` が必須」は誤り（2026-08-05 に外部レビュー指摘を検証して否定）**。公式リファレンス上の**必須パラメータは `metric` / `period` / `access_token` の3つのみ**（`timeframe` は demographics 系のみ必須）。**一律に `metric_type` を付ける実装にすると `follower_count` が空になる**（上記実測）。「必須」ではなく「**指標ごとに付ける/付けないを出し分ける**」が正しい
 - **アカウント指標名の公式照合（未決着 — Phase 2 の最初のタスク）**
   - **出典 URL**: [Instagram User Insights](https://developers.facebook.com/docs/instagram-platform/api-reference/instagram-user/insights)（mirror: [documentation/instagram-platform/api-reference/instagram-user/insights](https://developers.facebook.com/documentation/instagram-platform/api-reference/instagram-user/insights)）
   - **確認日**: 2026-08-05（spec-review audit iteration 2 で mirror URL `documentation/.../api-reference/instagram-user/insights` を WebFetch 再取得し、Interaction Metrics 表・Type 列を照合）
@@ -131,11 +132,42 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
     >
     > `views`, `accounts_engaged`, `total_interactions`, `profile_links_taps` 等 — 表上 **total_value** のみ（**time_series 非対応**）
   - **解釈**: 日次30日 upsert（§4 Phase 2 item2 / §8）は **列ごとに API 呼び出しパターンが異なる**。`total_value` のみの指標を `period=day` で取ったときに **日別 `values[]` が返るか**は API 仕様上未確定のため、§5.4 の対応表どおり実装前にブラウザ目視 + テスターアカウント実測で確定する。**total_value だけでは日次行に割れないと判明した列は DB に載せない**（期間合計1行を日次テーブルに無理やり入れない）
-  - ただし **2026-08-01 の実測では `profile_views`=3 / `website_clicks`=0 が実際に返っている**（§3.3「metric_type 実測」）。ドキュメント未記載でも動く旧指標である可能性が高い。**実測を公式未記載を理由に否定しない**が、未記載の指標に DB 列を作るのは失効リスクを抱え込む
-  - **決着のさせ方**: ①ブラウザで metrics 表を目視（上記 verbatim の再確認）②`profile_links_taps` と `profile_views` / `website_clicks` を実アカウントで叩いて採用 metric 名を決める — **両方完了後にのみ** §5.4 の SQL を書く
+  - **【決着 2026-08-05】`profile_views` / `website_clicks` は「未記載」ではなく「公式に廃止済み」だった。** 出典は metrics 表ではなく [Instagram Platform Changelog](https://developers.facebook.com/docs/instagram-platform/changelog)（2026-08-05 確認）。**2024-10-02 のエントリ**で以下が deprecate された:
+    > `email_contacts`, `get_direction_clicks`, `profile_views`, `text_message_clicks`, `website_clicks`, `phone_call_clicks`
+
+    v21.0+ に先行適用され、**全バージョンへの適用は 2025-01-08**。
+    - **リファレンスの metrics 表だけを見ていると気づけない**（表には deprecation 注記が `impressions` の分しか無く、廃止済み指標はそもそも行ごと消えている）。**廃止の一次情報は Changelog 側にある**。以後、指標の採否を判断するときは metrics 表と Changelog の両方を見る
+  - **未解決の矛盾（実装前に必ず読むこと）**: 全バージョン廃止から約19か月後の **2026-08-01 実測で `profile_views`=3 / `website_clicks`=0 が実際に返っている**（§3.3「metric_type 実測」）。**廃止告知後も当面は値が返る状態**と見られる。
+    - **「まだ返るから使える」と判断しない。** いつ停止されても抗議できない。**廃止済み指標に DB 列を作らない**
+    - 現行コード `src/server/services/instagramService.ts:37-38` は `'profile_views'` / `'website_clicks'` を要求している（`fetchAccountInsights` は Phase 1 では呼び出し元が無いため実害なし）。**Phase 2 で除去する**（§10）
+  - **`profile_links_taps` は `website_clicks` の 1:1 後継ではない可能性が高い（要実測）**: リファレンス上は `period=day` / **`breakdown=contact_button_type`** / `metric_type=total_value`。出典 [Instagram User Insights](https://developers.facebook.com/docs/instagram-platform/api-reference/instagram-user/insights)（mirror: [documentation/.../instagram-user/insights](https://developers.facebook.com/documentation/instagram-platform/api-reference/instagram-user/insights)）。**確認日: 2026-08-05**（revise ステップで mirror URL を WebFetch 再取得）
+  - **公式 metrics 表 Description からの verbatim（`profile_links_taps` 行）**:
+    > The number of taps on your business address, call button, email button and text button.
+  - **解釈**: 公式は **business address / call / email / text** の4種タップのみを述べており、**廃止済み `website_clicks` や「ウェブサイト」への言及はない**
+  - **`breakdown=contact_button_type` の応答値（Breakdown 節からの verbatim）**: `BOOK_NOW`, `CALL`, `DIRECTION`, `EMAIL`, `INSTANT_EXPERIENCE`, `TEXT`, `UNDEFINED` — **`WEBSITE` 等は列挙されていない**
+  - **解釈**: 廃止指標（`email_contacts` / `phone_call_clicks` / `get_direction_clicks` / `text_message_clicks` / `website_clicks`）との**1:1 対応や「ウェブサイト相当」の抽出は公式根拠がない**。**単純置換すると意味が変わる**ため、実測で `contact_button_type` の内訳を確認し、GrowMate が欲しい「ウェブサイトクリック相当」が取り出せるかを確かめる（取り出せなければ §5.4 どおり列不採用）
+  - **`profile_views`（プロフィール閲覧数）には後継が見当たらない（要確認）**: `profile_links_taps` は「プロフィール上のリンクがタップされた回数」であり「プロフィールが閲覧された回数」ではない。**後継が無いなら「プロフィール閲覧数」は取得不能**であり、§2 スコープの縮小になる。実測時に併せて確認する
+  - **決着のさせ方（更新 2026-08-05）**: ①~~metrics 表の目視~~ → **廃止が確定したため不要**。②`profile_links_taps` を実アカウントで叩き、`contact_button_type` の内訳（§3.3 公式列挙）から GrowMate が欲しい指標（旧 `website_clicks` 相当等）が取り出せるかを確認する ③`profile_views` の後継有無を確認する — **②③完了後にのみ** §5.4 の SQL を書く
   - **公式 deprecation verbatim（audit 転記）**:
     > `impressions` **Deprecated for v22.0+ and all versions April 21, 2025.**
   - **解釈**: 本仕様書は既に `views` を採用済みで矛盾なし
+- **Graph API のバージョン（2026-08-05 調査）**: 現行コードは `INSTAGRAM_GRAPH_VERSION = 'v23.0'`（`src/server/services/instagramService.ts:13`）で固定。出典 [Graph API Changelog](https://developers.facebook.com/docs/graph-api/changelog)。
+  - **最新は v26.0（2026-07-29）**。以下 v25.0（2026-02-18）/ v24.0（2025-10-08）/ **v23.0（2025-05-29）**
+  - **v23.0 の有効期限は 2027-10-08**。**Phase 2 の期間中に切れることはない**ため、本 Phase でのバージョン引き上げは**必須ではない**（引き上げると他エンドポイントの挙動差を再検証する必要が出るため、MVP では固定のままとする）
+  - **ただし新指標が使えるかはバージョンと別軸で確認する**。[Instagram Platform Changelog](https://developers.facebook.com/docs/instagram-platform/changelog)（mirror: [documentation/instagram-platform/changelog](https://developers.facebook.com/documentation/instagram-platform/changelog)）の **2025-12-03**「Insights Metrics」エントリ。**確認日: 2026-08-05**（revise ステップで mirror URL を WebFetch 再取得）。**公式からの verbatim**:
+    > Applies to all versions.
+    >
+    > Introducing the following metrics fields for media insights:
+    >
+    > `reels_skip_rate`
+    >
+    > `reposts`
+    >
+    > Introducing the following metrics fields for user insights:
+    >
+    > - `reposts`
+  - **解釈**: **`reels_skip_rate` は media insights のみ**（user insights には出てこない）。user insights に追加されたのは **`reposts` のみ**。`"Applies to all versions."` は当該エントリ（Insights Metrics）に付くため **v23.0 でも利用できる**（同エントリで `crossposted_views` / `facebook_views` も追加）。「v24 以降でないと使えない」ではない
+  - **Phase 2 着手時に Changelog を必ず確認する**。廃止（`profile_views` の例）も追加（`reels_skip_rate` の例）も、**バージョンではなく Changelog に出る**
 - **`follower_count` は 100 フォロワー未満のアカウントでは取得できない（2026-08-04 調査。要目視確認）**: 同ページに "**follower_count and online_followers metrics are not available on Instagram business or creator accounts with fewer than 100 followers.**" とある。§5.4 は `follower_count` を通常の列として持つが、**テスターアカウントを含む小規模アカウントでは常に空で返る**。同ページは "the API will return an empty data set instead of 0 for individual metrics"（データが存在しない場合）とも書いており、**「取得失敗」と「対象外（フォロワー100未満）」を区別して扱う必要がある**（`error_subcode 2108006` と同じ構図）。Phase 2 の UI は `0` と `-` と「対象外」を混同しないこと
 - **レート制限の具体値（2026-08-04 調査。要目視確認）**: 出典 [Graph API Rate Limiting](https://developers.facebook.com/docs/graph-api/overview/rate-limiting)。式は "**Calls within 24 hours = 4800 \* Number of Impressions**" で、Number of Impressions は "the number of times any content from the app user's Instagram professional account has entered a person's screen within the last 24 hours."。
   - **インプレッションが小さいアカウントほど枠が小さい**。GrowMate の対象は「これから伸ばす」アカウントなので、枠が潤沢である前提を置いてはいけない
@@ -147,6 +179,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - **REELS 非対応（FEED / STORY のみ）**: `follows`（投稿経由のフォロー）/ `profile_visits`（投稿経由のプロフィール訪問）/ `profile_activity` / `impressions`（廃止済み）
   - **Adzviser は `Post Follows` / `Post Profile Visits` を持っており、GrowMate は持っていない**（[Adzviser フィールド一覧](https://docs.adzviser.com/connect/instagram-insights/supported-fields)、2026-08-05）。逆に Adzviser には `Post Views` が無く、GrowMate の `views` 採用の方が新しい
   - **採否は保留**。`follows` / `profile_visits` はクライアントの狙い（リールから自社サービスへ間接誘導）に直結する指標だが、**主戦場のリールで取れない**ため価値が限定される。**REELS 非対応であることを実測で確定してから判断する**（下記）
+  - **実装方針（採用が決まった場合）**: **`media_product_type` で出し分け、REELS には最初から要求しない**。「REELS にも投げてエラーを握りつぶす」方式は採らない — 本プロジェクトは「エラーは必ず `console.error` でログ記録。サイレント処理禁止」の規約があり、握りつぶすと本物の失敗も一緒に隠れる（2026-08-05、外部レビューの提案を検討したうえで不採用）
   - **実測手順（未実施）**: `GET https://graph.instagram.com/v23.0/{REELS の media id}/insights?metric=follows,profile_visits` を `aozorayoukei` の投稿に対して実行し、空データか `error_subcode` かを確認する。本仕様書の外部ドキュメント照合は WebFetch（本文を要約して返すツール）経由で逐語性が担保できておらず、かつ本件は過去2回ドキュメントと実挙動が食い違っている（`account_type` の大小文字、アカウント insights の `metric_type`）ため、**表の記載だけで確定させない**
 - **Instagram アプリ画面との突き合わせ（2026-08-05。クライアント提供のリールインサイト画面6枚と照合）**: 「クライアントが実際に見ている画面」を基準に、API で再現できる／できないを確定させた。**画面に出ている＝API で取れる、ではない**（アプリは内部 API を使う）。
   - **そのまま取れる**: 閲覧数=`views` / リーチしたアカウント=`reach` / 平均再生時間=`ig_reels_avg_watch_time` / いいね=`likes` / コメント=`comments` / 保存=`saved` / 再生時間=`ig_reels_video_view_total_time`
@@ -330,7 +363,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
      - **表示する列はユーザーが選べる**（2026-08-05 Q2 回答）。既存の `FieldConfigurator` を再利用し、`INSTAGRAM_COLUMNS` と専用 `storageKey` を足すだけで実装する。**詳細は §11.3 が正本**
      - 種別フィルタ（リール/フィード）、期間フィルタ（`posted_at` 範囲指定。開始日～終了日）、ソート（投稿日 / リーチ / views）
      - ページネーションは既存ブログ一覧と同じ URL パラメータ + `Link` 方式（`ig_page` など名前空間を分けてブログ側の `page` と衝突させない）
-5. データ取得: Server Component（`app/analytics/page.tsx`）の既存 `Promise.all` に **`getInstagramConnectionStatus`** を追加し、その結果でタブ表示を分岐する。連携済みかつ `tab=instagram` のときだけ `instagramMediaService.getPage(userId, ...)` も取得する（未連携ユーザーに Instagram の DB クエリを走らせない）。PostgREST `db-max-rows = 1000` 制限があるため一覧はページング取得（10件/頁）とし、全件突合は行わない
+5. データ取得: Server Component（`app/analytics/page.tsx`）の既存 `Promise.all` に **`getInstagramConnectionStatus`** を追加し、その結果でタブ表示を分岐する。連携済みかつ `tab=instagram` のときだけ **`instagramMediaService.getPage(userId, ...)`**（投稿一覧・10件/頁）と **`instagramMediaService.getAccountInsightsLatestDay(userId)`**（アカウント指標サマリー用・**最新日1行のみ** — §5.4 / §11.3）を取得する（未連携ユーザーに Instagram の DB クエリを走らせない）。PostgREST `db-max-rows = 1000` 制限があるため投稿一覧はページング取得とし、**サマリーは30日分を丸ごと返さない**（クライアント集計を避ける）
 6. **限定公開の解除（本 Phase の最終タスク。審査通過後に実施 — 2026-08-04 に item0 から末尾へ移動）**: Phase 2 の本番反映と同時に行う。手順と条件は以下。
    - **前提条件（すべて満たすまで実施しない）**: ①App Review 通過（Advanced Access 付与）②アクセス認証（Tech Provider）完了 — §3.2。未完だと役割を持たないユーザーの呼び出しが `error code 100` で落ちる ③クライアント側ビジネス認証完了（2026-08-01 時点で完了済み）
    - `INSTAGRAM_BETA_USER_IDS` を空にする。`canAccessInstagram` が §7 の通常ロール判定にフォールバックし、Q4 の開放範囲（admin / paid / trial）に戻る。**コード変更は不要**
@@ -480,14 +513,16 @@ create table public.instagram_account_insights_daily (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users(id) on delete cascade,
   date date not null,
-  reach int, views int, profile_views int, website_clicks int,
+  reach int, views int,
+  -- profile_views / website_clicks は廃止済みのため列を作らない（§3.3）
+  -- profile_links_taps の採否は実測後に決定（1:1 後継ではない可能性）
   accounts_engaged int, total_interactions int, follower_count int,
   imported_at timestamptz not null default now(),
   unique (user_id, date)
 );
 ```
 
-- **列名は暫定。マイグレーションを書く前に §3.3「アカウント指標名の公式照合」を決着させる**（2026-08-04 追記）。`profile_views` / `website_clicks` は 2026-08-01 の実測では値が返っているが、2026-08-04 に取得した公式リファレンスの metrics 表には見当たらず `profile_links_taps` が載る。**列を作ってから「その指標は無い」と分かるのが最悪の手戻り**なので、①表の目視 ②`profile_links_taps` の実測 の両方を先に済ませる
+- **列名は暫定。マイグレーションを書く前に §3.3「アカウント指標名の公式照合」を決着させる**（2026-08-04 追記 → 2026-08-05 更新）。**`profile_views` / `website_clicks` は Changelog 2024-10-02 で deprecate、2025-01-08 に全バージョン適用済み**と判明したため**列を作らない**（2026-08-01 の実測では今も値が返るが、廃止済み指標に列を作らない）。残る未確定は **`profile_links_taps` を後継として採るか**（`breakdown=contact_button_type` の合算指標であり `website_clicks` の 1:1 後継ではない可能性）と、**`profile_views` の後継が存在するか**の2点。**列を作ってから「その指標は無い」と分かるのが最悪の手戻り**
 - **列ごとに取得方式を確定してから実装する**（§4 Phase 2 item2 / §3.3 公式照合）。**マイグレーション前の固定対応表（2026-08-05。metric 名の採否は §3.3 決着後に更新）**:
 
 | DB列（暫定） | API metric（暫定） | metric_type | period | 日次行の埋め方 | 根拠 |
@@ -495,11 +530,20 @@ create table public.instagram_account_insights_daily (
 | `reach` | `reach` | `time_series` | `day` | 応答 `values[]` を `date` キーで upsert | §3.3 公式表: `reach` は time_series 対応（2026-08-05 audit） |
 | `follower_count` | `follower_count` | （付けない） | `day` | **`fetchAccountInsights` を follower_count 単独コールに分離**（§3.3 実測）。100未満は NULL + UI「対象外」 | 公式 Limitations verbatim（§3.3） |
 | `views` | `views` | `total_value` | `day` | **未確定** — `time_series` 非対応のため、日別 `values[]` が返るか実測で確認。**返らなければ列不採用** | §3.3 公式表（2026-08-05 audit） |
-| `profile_views` / `website_clicks` / `profile_links_taps` | **§3.3 決着後に1つに確定** | 決着後 | `day` | 同上。**決着前は SQL を書かない** | 公式 Interaction Metrics 一覧に `profile_links_taps` のみ（§3.3 verbatim） |
+| ~~`profile_views` / `website_clicks`~~ | **採用しない** | — | — | **列を作らない**（2025-01-08 に全バージョンで廃止済み） | Instagram Platform Changelog 2024-10-02（§3.3 verbatim） |
+| `profile_links_taps`（採否未定） | `profile_links_taps` | `total_value` | `day` | **実測後に決定**。`breakdown=contact_button_type` の内訳（`BOOK_NOW` / `CALL` / `DIRECTION` / `EMAIL` / `INSTANT_EXPERIENCE` / `TEXT` / `UNDEFINED` — §3.3 verbatim）を確認し、GrowMate が欲しい指標（旧 `website_clicks` 相当等）が取り出せるかを見る。取り出せない／意味が変わるなら**列不採用** | 公式 Description・Breakdown（§3.3）。`website_clicks` の 1:1 後継ではない |
 | `accounts_engaged`, `total_interactions` | 同名 | `total_value` | `day` | **未確定**（`views` と同様。日次分割不可なら列不採用） | §3.3 公式表 |
 
 - **`metric_type=total_value` だけの指標を日次テーブルに入れる判断は、実測で日別配列が取れることを確認してから行う**。確認できない指標は §2 スコープ表から外すか、アカウントサマリー（単一値）として別 UI に退避する（Phase 2 では**日次テーブルに無理に載せない**）
 - **`follower_count` は 100 フォロワー未満のアカウントでは常に NULL**（§3.3）。**NULL の意味が「取得失敗」と「対象外」で二重化する**ため、区別が必要なら `follower_count_unavailable boolean` 等を足す。区別しない場合も、UI が「取得失敗」と読める表示をしないこと
+- **サマリー Card 用の表示集約（§11.3 が正本。DB から最新1日分だけ返す — クライアントで30行を集計しない）**:
+
+| DB列 | サマリー Card の表示値 | 禁止 |
+|------|------------------------|------|
+| `reach` | **`date` が最大の行**の `reach` のみ | **日次行の SUM 禁止**（ユニークリーチの意味が壊れる） |
+| `follower_count` | **`date` が最大の行**の `follower_count` | SUM 禁止（点指標） |
+| `views` / `accounts_engaged` / `total_interactions` / `profile_links_taps`（採用時） | **`date` が最大の行**の当該列 | **30行を Client Component で合算しない**（`docs/context/db-row-limits-and-data-truncation.md` の「全件取得してコード側で集計」禁止と同趣旨）。期間合計が欲しくても Phase 2 サマリーでは**最新日スナップショットのみ** |
+| 読込 | `instagramMediaService.getAccountInsightsLatestDay(userId)` — **1行 SELECT**（下記 §4 item5 / §10） | 30行を `page.tsx` に載せて React 側で `reduce` しない |
 
 - 5.2〜5.4 の RLS も **上記と同様: 認証ユーザーは `SELECT` のみ**（`get_accessible_user_ids`）。**書き込み（INSERT/UPDATE/DELETE）は Service Role 経由の手動同期 Server Action のみ**。所有者向け write ポリシーは設けない
 - DB アクセス:
@@ -580,6 +624,7 @@ create table public.instagram_account_insights_daily (
 - [ ] 未連携ユーザーが `?tab=instagram` を直接開くと `blog` にフォールバックする
 - [ ] 連携解除するとタブが消え、現行レイアウトに戻る
 - [ ] Instagram タブに投稿一覧＋指標が表示され、種別フィルタ・ソートが機能する
+- [ ] **§5.4 で確定したアカウント指標**が Instagram タブのサマリー Card に表示される（§11.3「アカウント指標 UI」）。**最新日1行のみ**（`getAccountInsightsLatestDay`）。ラベルは「（最新日）」、`reach` の日次 SUM をしていないこと。`follower_count` の対象外表示を含む
 - [ ] **フィールド構成ダイアログで表示列を変更でき、リロード後も保持される**（`FieldConfigurator` 再利用）。**ブログタブの列設定が影響を受けない**（`storageKey` が別であること）
 - [ ] **率の列（いいね率 / 保存率 / シェア率 / コメント率 / 再投稿率）が `(実数 ÷ reach) × 100` で算出され、小数第1位で表示される**。既定は非表示。DB に保存されていない（表示時計算）
 - [ ] 率の表示: 分母 `reach` が `null` / `0`、または分子（いいね / 保存 / シェア / コメント / 再投稿の実数）が `null` のときは `-`（`0%` にしない）。分子が `0` かつ分母 `reach > 0` のときのみ `0.0%`
@@ -599,7 +644,9 @@ create table public.instagram_account_insights_daily (
 **Phase 2 追加（2026-08-04 レビュー反映。ローカル・テスターアカウントで検証する）**
 
 - [ ] **着手前**: テスターアカウントの「転換後・指標が取れる投稿」の件数と FEED/REELS 内訳を数え、一覧2頁目・種別フィルタを検証できる量があることを確認（不足なら投稿を作り1〜2時間空ける — §3.3）
-- [ ] **着手前**: §3.3「アカウント指標名の公式照合」を決着（metrics 表の目視 + `profile_links_taps` / 旧名 metric の実測）してから §5.4 のマイグレーションを書く
+- [ ] **着手前**: §3.3「アカウント指標名の公式照合」の残り2点を決着してから §5.4 のマイグレーションを書く — ①`profile_links_taps` を実測し `contact_button_type` の内訳（§3.3 の公式列挙）から GrowMate が欲しい指標（旧 `website_clicks` 相当等）が取り出せるか ②`profile_views` の後継が存在するか（無ければ「プロフィール閲覧数」は §2 スコープから落とす）
+- [ ] `ACCOUNT_INSIGHT_METRICS` から **`profile_views` / `website_clicks` が除去されている**（2025-01-08 に全バージョンで廃止済み — §3.3 / §10）。あわせて **`fetchAccountInsights` のマッピング**と **`InstagramAccountInsights` 型**からも同フィールドが除去されていること
+- [ ] **着手前**: Instagram Platform Changelog を確認し、Phase 2 で使う指標に新たな廃止・追加が無いか見る（廃止も追加も metrics 表ではなく Changelog に出る — §3.3）
 - [ ] Graph API 採用バージョン（`v23.0` 等）が `instagramService` のパスと一致し、changelog 確認済み（§3.3）
 - [ ] **着手前**: `follows` / `profile_visits` が REELS で本当に取れないかを `aozorayoukei` の REELS 投稿で実測し、採否を決める（§3.3「メディア別の指標対応」）。**アプリのリール画面には「フォロー数」が出ている**ため、公式表の記載と食い違っている
 - [ ] `reposts` と `reels_skip_rate` が実 API で取得でき、`reels_skip_rate` が**率（%）のまま**保存・表示される（§3.3「Instagram アプリ画面との突き合わせ」）
@@ -699,14 +746,18 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 **Phase 2 で追加・変更するもの（2026-08-04 追記）**
 
 - `src/server/services/instagramSyncService.ts`（新規。同期本体）
-- `src/server/services/instagramMediaService.ts`（新規。`SupabaseService` 継承の media/insights DB アクセス — §5）
+- `src/server/services/instagramMediaService.ts`（新規。`SupabaseService` 継承の media/insights DB アクセス — §5）。**メソッド**: `getPage`（投稿一覧）、**`getAccountInsightsLatestDay(userId)`** — `instagram_account_insights_daily` から `.eq('user_id', userId).order('date', { ascending: false }).limit(1).maybeSingle()` 相当で**最新日1行のみ**返す（§5.4 サマリー集約表）。30行 fetch + クライアント集計は禁止
 - `src/lib/instagram-sync.ts`（新規。`getInstagramSyncToastMessage` — §11.3）
 - `src/lib/constants.ts`（**変更**: `INSTAGRAM_COLUMNS` 追加（率の列は `defaultVisible: false`）、`ANALYTICS_STORAGE_KEYS` に `IG_VISIBLE_COLUMNS` 追加 — §11.3）
 - `src/lib/instagram-format.ts`（**変更**。率算出の純関数を追加。既存の `formatCount` と同居可 — `tests/unit/lib/instagram-format.test.ts` にミラー。**返り値は百分率の数値または表示用文字列**（例: `12.3` → 表示 `"12.3%"`）。`AnalyticsTable.tsx` の `formatPercent`（比率 0〜1 入力 → 内部で ×100）は**使わない** — 二重換算で表示が破綻するため）
 - `src/types/instagram.ts`（**変更**: `InstagramMediaInsights` に `reposts: number | null` と `reelsSkipRate: number | null` を追加 — §2 スコープ / §3.3。Phase 1-A で UI モック用に型を固定した場合でも **Phase 2 の API 取得・DB マッピング前に本型へ揃える**）
 - `src/components/FieldConfigurator.tsx`（**変更なし・再利用**。列選択ダイアログは新規実装しない — §11.3）
 - ~~`app/api/cron/instagram-sync/route.ts`~~ → **Phase 2 スコープ外**（2026-08-05。cron を落としたため `.github/workflows/hourly-cron.yml` も変更しない — §4 Phase 2 item3）
-- `src/server/services/instagramService.ts`（**変更**: `fetchMedia` に cursor 引数、`fetchAccountInsights` の日別取得対応、レート消費ヘッダの読み取り）
+- `src/server/services/instagramService.ts`（**変更** — §3.3 廃止指標の除去は次の3点をセットで行う）:
+  1. **`ACCOUNT_INSIGHT_METRICS`（`:37-38`）から `'profile_views'` / `'website_clicks'` を除去**
+  2. **`fetchAccountInsights`（`:396-397` 付近）の return マッピングから `extractLatestInsightMetric(..., 'profile_views')` / `(..., 'website_clicks')` および対応プロパティ代入を除去**
+  3. 加えて: `fetchMedia` に cursor 引数、`fetchAccountInsights` の日別取得対応、レート消費ヘッダの読み取り
+- `src/types/instagram.ts`（**変更** — §3.3 とセット）: **`InstagramAccountInsights` から `profileViews` / `websiteClicks` フィールド（`:45-46` 付近）を除去**
 - 環境変数: `INSTAGRAM_SYNC_ENABLED`（新規。キルスイッチ。`.env.example` 追記）
 - **README 更新の予告**: 「🚀主な機能」（Instagram 実績一覧・同期）、「📋環境変数」（`INSTAGRAM_SYNC_ENABLED`）、「📁プロジェクト構成」（新規サービス）が対象になりそう。**最終判断は実装時の `spec-to-pr` の `readme_sync` が差分を見て行う**
 
@@ -864,6 +915,15 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
   → 確認後ダイアログを閉じ `toast.loading('Instagramデータを取得中...')`
   → 完了時に同一トーストを更新（結果は下記「同期結果」参照）
 
+┌─ Card: アカウント指標（サマリー）────────────────┐
+│ データ: 最新日 YYYY-MM-DD（DB 直近30日分のうち最新1行）│
+│ リーチ（最新日）│ 視聴数（最新日）│ フォロワー数（最新日）│ …│
+│       12        │       33        │    対象外          │   ← 例。単回 API 実測と同値になりうる。30日 SUM ではない │
+└──────────────────────────────────────────────┘
+  ※ **列は §5.4 で「日次行の埋め方」が確定したものだけ**出す。未確定列（`profile_links_taps` 等）は実測決着まで非表示
+  ※ **`reach` を日次行 SUM して表示しない**（§5.4 サマリー集約表）
+  ※ 同期0件・日次行0件のときは Card ごと非表示（投稿一覧の空状態のみ）
+
 ┌─ Card: 投稿一覧 Table ───────────────────────┐
 │ サムネ│種別  │キャプション│投稿日│リーチ│視聴│…│
 │ ──────┼──────┼────────────┼──────┼──────┼────┼─│
@@ -873,6 +933,11 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 │              [← 前へ]  1 / 5  [次へ →]       │  ← ig_page パラメータ + Link
 └──────────────────────────────────────────────┘
 ```
+
+- **アカウント指標 UI（`instagram_account_insights_daily` — §5.4 / §8）**: 投稿一覧 Card の**直上**にサマリー Card を置く（上記ワイヤーフレーム）。**表示する指標名・列数は §5.4 の対応表で「日次行の埋め方」が確定した列に限定**（`profile_links_taps` 等、採否未定の列は出さない）。**データ源は §4 item5 の `getAccountInsightsLatestDay` が返す最新日1行のみ**。ヘッダに **「最新日: {date}」** を出す（「直近30日合計」と誤読させない）。**列ごとの表示規則（§5.4 サマリー集約表）**:
+  - **`reach` / `follower_count` / その他採用列**: いずれも**最新日の行のセル値**をそのまま表示。**日次行を Client で SUM しない**（特に `reach` — ユニークリーチの SUM は意味が壊れる）
+  - **ラベル**: 各指標名に **「（最新日）」** を付ける（例: リーチ（最新日）、フォロワー数（最新日））。ツールチップで「DB には直近30日分を保持。表示は最新同期日の値です」と補足可
+  - 各セルは `formatCount` 相当で数値表示。**`follower_count` が NULL で 100 フォロワー未満と判断できる場合**（§3.3 / §5.4）は `-` ではなく **「対象外」ラベル + ツールチップ**（例:「フォロワー100人未満のアカウントではこの指標は提供されません」）。取得失敗（再試行で回復しうる）と混同しない（§8 `follower_count` 受け入れ条件）。**日次行が1件も無い**（未同期・§5.4 未確定で取込列ゼロ）ときはサマリー Card を出さない
 
 - **URL パラメータ契約**（ブログ既存キー `page` / `start` / `end` / `category` / `uncategorized` / `unread_suggestion` は Instagram タブでも**変更・上書きしない**）:
   - `tab`: `blog` | `instagram`。**未指定時は `blog`**（既存 `/analytics?...` のリグレッション防止）。**未連携ユーザーが `tab=instagram` を指定した場合も `blog` にフォールバック**する（タブ UI 自体が無いため）
@@ -902,7 +967,7 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
   - **ソート対象にしない**（`ig_sort` は `posted_at` / `reach` / `views` のまま）。DB に持たない以上、ページング前の全体ソートができないため。**ページ内だけ並び替わる中途半端な挙動を作らない**
 - **未連携ユーザー向けの Instagram タブ空状態は定義しない（到達不能）**: §4 Phase 2 item4 / §8 により、未連携ユーザーは Instagram タブ UI 自体が出ず `?tab=instagram` も `blog` にフォールバックする。**連携導線は §11.1 の `/setup` カードのみ**
 - **連携済みだが同期0件**: 「まだデータがありません。［最新化］を押すと取得します」。Phase 1 から連携済みのユーザーは初回同期が走っていないため**必ずこの状態から始まる**（§4 Phase 2 item3「初回同期の起動導線」）
-- **指標セルの3状態を見分けられるようにする**（2026-08-04 追記）: ①実データの `0`（保存・シェアが実際に0件。§3.3）②取得失敗（再試行で回復しうる。`-` + 再取得導線）③**対象外**（`insights_unavailable` + `insights_unavailable_reason`、フォロワー100未満の `follower_count`）。③は再試行しても直らないので、`-` と同じ見た目にせず **`reason` に応じたツールチップ**（§5.2）を出す
+- **指標セルの3状態を見分けられるようにする**（2026-08-04 追記）: ①実データの `0`（保存・シェアが実際に0件。§3.3）②取得失敗（再試行で回復しうる。`-` + 再取得導線）③**対象外**（`insights_unavailable` + `insights_unavailable_reason`、**アカウントサマリーの `follower_count` 100未満** — 上記「アカウント指標 UI」）。③は再試行しても直らないので、`-` と同じ見た目にせず **`reason` に応じたツールチップ**（§5.2 / §3.3）を出す
 - **同期停止中**（`INSTAGRAM_SYNC_ENABLED=false`）: 「最新化」ボタンを disabled にし、ツールバー直下に情報色 Alert「Instagramの同期を一時停止しています」。テーブルは既存データをそのまま表示する（§4 Phase 2 item3）
 - **同期結果 UI**（`getInstagramSyncToastMessage(result)` に集約。`OverviewTab.tsx` の `getQueryImportToastMessage` と同型。§6 エラーパス準拠。**単一の toast を `id` で更新し続ける**方式で、成功時も失敗時も新規 toast を積み増さない）:
   - 成功（`failed=0`）: `toast.success('N件を更新しました', { id: toastId })`。`last_synced_at` をツールバー右に反映
