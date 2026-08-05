@@ -1,5 +1,14 @@
 npm run lint
 
+# staged な docs の .md について、参照先コードパスの陳腐化を検出する。
+# 意図的な未作成／削除は行内の 新規 / 削除 / 不要 / 廃止 / 未実装 で除外される。
+# staged 分のみを対象にするので、既存の未修正分で commit が止まることはない。
+staged_docs="$(git diff --cached --name-only --diff-filter=ACM -- docs | grep '\.md$' || true)"
+if [ -n "$staged_docs" ]; then
+  # shellcheck disable=SC2086
+  echo "$staged_docs" | xargs bash scripts/check-doc-paths.sh
+fi
+
 # 仕様書が staged なら図解 HTML を追従させる（エディタでの手編集など、Claude Code の
 # フックが拾えない経路の取りこぼしを塞ぐ）。docs/plans/_html/ は .gitignore 済みなので
 # commit 内容は変わらない。図解生成の失敗で commit を止めない。
