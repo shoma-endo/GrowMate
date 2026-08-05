@@ -20,7 +20,7 @@
 | アカウント情報 | ig_user_id, username, name, account_type, profile_picture_url, biography, website, followers_count, follows_count, media_count | `GET /me?fields=...` |
 | 投稿一覧 | id, media_type (IMAGE/VIDEO/CAROUSEL_ALBUM), media_product_type (FEED/REELS), media_url, thumbnail_url, caption, timestamp, permalink, like_count, comments_count | `GET /me/media?fields=...`（cursor ページネーション） |
 | 投稿インサイト | reach, views, likes, comments, saved, shares, total_interactions, **reposts**, **reels_skip_rate**（リールは加えて ig_reels_avg_watch_time, ig_reels_video_view_total_time）。**`reposts` / `reels_skip_rate` は 2026-08-05 追加**（クライアントが実際に見ている画面に出ているため — §3.3「Instagram アプリ画面との突き合わせ」） | `GET /{media-id}/insights?metric=...` |
-| アカウントインサイト | reach, views, accounts_engaged, total_interactions, follower_count（日次）。**`profile_views` / `website_clicks` は 2025-01-08 に全バージョンで廃止済みのため採用しない**（§3.3）。後継候補 `profile_links_taps` の採否は実測後に決める | `GET /me/insights?metric=...&period=day` |
+| アカウントインサイト | reach, views, accounts_engaged, total_interactions, follower_count（日次）。**`profile_views` / `website_clicks` は 2025-01-08 に全バージョンで廃止済みのため採用しない**（§3.3）。**後継候補だった `profile_links_taps` も採用しない**（`contact_button_type` に `WEBSITE` が無い）。**「プロフィール閲覧数」は後継指標が存在せず取得不能のためスコープ外** | `GET /me/insights?metric=...&period=day` |
 
 ### 非スコープ
 
@@ -145,9 +145,9 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
     > The number of taps on your business address, call button, email button and text button.
   - **解釈**: 公式は **business address / call / email / text** の4種タップのみを述べており、**廃止済み `website_clicks` や「ウェブサイト」への言及はない**
   - **`breakdown=contact_button_type` の応答値（Breakdown 節からの verbatim）**: `BOOK_NOW`, `CALL`, `DIRECTION`, `EMAIL`, `INSTANT_EXPERIENCE`, `TEXT`, `UNDEFINED` — **`WEBSITE` 等は列挙されていない**
-  - **解釈**: 廃止指標（`email_contacts` / `phone_call_clicks` / `get_direction_clicks` / `text_message_clicks` / `website_clicks`）との**1:1 対応や「ウェブサイト相当」の抽出は公式根拠がない**。**単純置換すると意味が変わる**ため、実測で `contact_button_type` の内訳を確認し、GrowMate が欲しい「ウェブサイトクリック相当」が取り出せるかを確かめる（取り出せなければ §5.4 どおり列不採用）
-  - **`profile_views`（プロフィール閲覧数）には後継が見当たらない（要確認）**: `profile_links_taps` は「プロフィール上のリンクがタップされた回数」であり「プロフィールが閲覧された回数」ではない。**後継が無いなら「プロフィール閲覧数」は取得不能**であり、§2 スコープの縮小になる。実測時に併せて確認する
-  - **決着のさせ方（更新 2026-08-05）**: ①~~metrics 表の目視~~ → **廃止が確定したため不要**。②`profile_links_taps` を実アカウントで叩き、`contact_button_type` の内訳（§3.3 公式列挙）から GrowMate が欲しい指標（旧 `website_clicks` 相当等）が取り出せるかを確認する ③`profile_views` の後継有無を確認する — **②③完了後にのみ** §5.4 の SQL を書く
+  - **【決着 2026-08-05】`profile_links_taps` は採用しない（実測不要）。** Description が列挙するのは **business address / call / email / text** の4種で、`contact_button_type` の取りうる値にも **`WEBSITE` が存在しない**（上記 verbatim。2026-08-05 に独立して2回照合）。したがって **「ウェブサイトクリック相当」を取り出す方法は無い**。実測しても結論は変わらないため、**着手前の実測項目から外す**
+  - **【決着 2026-08-05】`profile_views`（プロフィール閲覧数）に後継は無い。取得不能。** 公式 Interaction Metrics 一覧（上記 verbatim）に「プロフィールが閲覧された回数」に相当する指標が存在しない（`profile_links_taps` は**タップ数**、`views` は**コンテンツの視聴数**で、いずれも別物）。**「プロフィール閲覧数」は §2 スコープから落とす**（Meta が指標ごと廃止したため、GrowMate 側でどうにもできない）
+  - **【アカウント指標名の照合は 2026-08-05 に完全決着。実測項目なし】** ①metrics 表の目視 → 廃止確定により不要 ②`profile_links_taps` の実測 → `WEBSITE` が存在しないため不要（不採用確定）③`profile_views` の後継 → 存在しないことを一覧で確認済み。**§5.4 の SQL は `reach` / `views` / `accounts_engaged` / `total_interactions` / `follower_count` の5列で確定して書いてよい**（各列の日次取得方式は §5.4 対応表の実測が別途必要）
   - **公式 deprecation verbatim（audit 転記）**:
     > `impressions` **Deprecated for v22.0+ and all versions April 21, 2025.**
   - **解釈**: 本仕様書は既に `views` を採用済みで矛盾なし
@@ -514,8 +514,10 @@ create table public.instagram_account_insights_daily (
   user_id uuid not null references public.users(id) on delete cascade,
   date date not null,
   reach int, views int,
-  -- profile_views / website_clicks は廃止済みのため列を作らない（§3.3）
-  -- profile_links_taps の採否は実測後に決定（1:1 後継ではない可能性）
+  -- 採用列はこの5つで確定（2026-08-05 決着 — §3.3）
+  -- profile_views / website_clicks: 2025-01-08 に全バージョンで廃止済み
+  -- profile_links_taps: contact_button_type に WEBSITE が無く不採用
+  -- 「プロフィール閲覧数」は後継指標が存在せず取得不能
   accounts_engaged int, total_interactions int, follower_count int,
   imported_at timestamptz not null default now(),
   unique (user_id, date)
@@ -531,7 +533,7 @@ create table public.instagram_account_insights_daily (
 | `follower_count` | `follower_count` | （付けない） | `day` | **`fetchAccountInsights` を follower_count 単独コールに分離**（§3.3 実測）。100未満は NULL + UI「対象外」 | 公式 Limitations verbatim（§3.3） |
 | `views` | `views` | `total_value` | `day` | **未確定** — `time_series` 非対応のため、日別 `values[]` が返るか実測で確認。**返らなければ列不採用** | §3.3 公式表（2026-08-05 audit） |
 | ~~`profile_views` / `website_clicks`~~ | **採用しない** | — | — | **列を作らない**（2025-01-08 に全バージョンで廃止済み） | Instagram Platform Changelog 2024-10-02（§3.3 verbatim） |
-| `profile_links_taps`（採否未定） | `profile_links_taps` | `total_value` | `day` | **実測後に決定**。`breakdown=contact_button_type` の内訳（`BOOK_NOW` / `CALL` / `DIRECTION` / `EMAIL` / `INSTANT_EXPERIENCE` / `TEXT` / `UNDEFINED` — §3.3 verbatim）を確認し、GrowMate が欲しい指標（旧 `website_clicks` 相当等）が取り出せるかを見る。取り出せない／意味が変わるなら**列不採用** | 公式 Description・Breakdown（§3.3）。`website_clicks` の 1:1 後継ではない |
+| ~~`profile_links_taps`~~ | **採用しない（2026-08-05 決着）** | — | — | **列を作らない**。`contact_button_type` に `WEBSITE` が無く、ウェブサイトクリック相当を取り出せない | 公式 Description・Breakdown verbatim（§3.3） |
 | `accounts_engaged`, `total_interactions` | 同名 | `total_value` | `day` | **未確定**（`views` と同様。日次分割不可なら列不採用） | §3.3 公式表 |
 
 - **`metric_type=total_value` だけの指標を日次テーブルに入れる判断は、実測で日別配列が取れることを確認してから行う**。確認できない指標は §2 スコープ表から外すか、アカウントサマリー（単一値）として別 UI に退避する（Phase 2 では**日次テーブルに無理に載せない**）
@@ -644,7 +646,7 @@ create table public.instagram_account_insights_daily (
 **Phase 2 追加（2026-08-04 レビュー反映。ローカル・テスターアカウントで検証する）**
 
 - [ ] **着手前**: テスターアカウントの「転換後・指標が取れる投稿」の件数と FEED/REELS 内訳を数え、一覧2頁目・種別フィルタを検証できる量があることを確認（不足なら投稿を作り1〜2時間空ける — §3.3）
-- [ ] **着手前**: §3.3「アカウント指標名の公式照合」の残り2点を決着してから §5.4 のマイグレーションを書く — ①`profile_links_taps` を実測し `contact_button_type` の内訳（§3.3 の公式列挙）から GrowMate が欲しい指標（旧 `website_clicks` 相当等）が取り出せるか ②`profile_views` の後継が存在するか（無ければ「プロフィール閲覧数」は §2 スコープから落とす）
+- [x] ~~**着手前**: §3.3「アカウント指標名の公式照合」を決着~~ → **2026-08-05 完全決着（実測不要）**。採用列は `reach` / `views` / `accounts_engaged` / `total_interactions` / `follower_count` の5列。`profile_links_taps` は不採用、「プロフィール閲覧数」はスコープ外（§3.3）
 - [ ] `ACCOUNT_INSIGHT_METRICS` から **`profile_views` / `website_clicks` が除去されている**（2025-01-08 に全バージョンで廃止済み — §3.3 / §10）。あわせて **`fetchAccountInsights` のマッピング**と **`InstagramAccountInsights` 型**からも同フィールドが除去されていること
 - [ ] **着手前**: Instagram Platform Changelog を確認し、Phase 2 で使う指標に新たな廃止・追加が無いか見る（廃止も追加も metrics 表ではなく Changelog に出る — §3.3）
 - [ ] Graph API 採用バージョン（`v23.0` 等）が `instagramService` のパスと一致し、changelog 確認済み（§3.3）
