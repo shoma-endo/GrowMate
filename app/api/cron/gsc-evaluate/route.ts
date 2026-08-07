@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { gscEvaluationService } from '@/server/services/gscEvaluationService';
+import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 
 /**
  * GSC 評価バッチ Cron エンドポイント
@@ -10,6 +11,7 @@ import { gscEvaluationService } from '@/server/services/gscEvaluationService';
  * 認証: CRON_SECRET による Bearer トークン認証
  */
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   try {
     // Vercel Cron からのリクエストを認証
     const authHeader = request.headers.get('authorization');
@@ -36,6 +38,7 @@ export async function GET(request: NextRequest) {
       data: result,
     });
   } catch (error) {
+    CRON_DEFINITIONS.gscEvaluate.logRouteFailure(error, startedAt);
     console.error('[cron/gsc-evaluate] Batch failed:', error);
     const message = error instanceof Error ? error.message : 'バッチ処理に失敗しました';
     return NextResponse.json({ success: false, error: message }, { status: 500 });

@@ -9,6 +9,7 @@ import type {
 } from '@/types/gsc';
 import { gscImportService } from '@/server/services/gscImportService';
 import { formatDateISO, addDaysISO } from '@/lib/date-utils';
+import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 
 class GscEvaluationService {
   private readonly supabaseService = new SupabaseService();
@@ -105,6 +106,12 @@ class GscEvaluationService {
           console.warn(
             `[gscEvaluationService] Time limit reached during user ${userId} articles (${elapsed}ms). Interrupting at chunk ${i / CONCURRENCY}.`
           );
+          CRON_DEFINITIONS.gscEvaluate.log('warn', 'job_time_budget_exceeded', {
+            operation: 'article_evaluation',
+            timeoutType: 'CRON_TIME_BUDGET_EXCEEDED',
+            durationMs: elapsed,
+            remaining: evaluationRows.length - i,
+          });
           break;
         }
       }
@@ -430,6 +437,7 @@ class GscEvaluationService {
     };
 
     const startTime = Date.now();
+    CRON_DEFINITIONS.gscEvaluate.log('info', 'batch_started');
 
     // 現在の日本時間を取得
     const nowJst = this.getNowJst();
@@ -457,6 +465,7 @@ class GscEvaluationService {
     });
 
     if (dueEvaluations.length === 0) {
+      this.logBatchCompleted(startTime, summary);
       return summary;
     }
 
@@ -488,6 +497,11 @@ class GscEvaluationService {
         );
         summary.stoppedReason = 'time_limit';
         summary.usersSkippedDueToLimit = remaining;
+        CRON_DEFINITIONS.gscEvaluate.log('warn', 'batch_time_budget_exceeded', {
+          timeoutType: 'CRON_TIME_BUDGET_EXCEEDED',
+          durationMs: elapsed,
+          remaining,
+        });
         break;
       }
 
@@ -527,7 +541,18 @@ class GscEvaluationService {
       }
     }
 
+    this.logBatchCompleted(startTime, summary);
     return summary;
+  }
+
+  private logBatchCompleted(startTime: number, summary: BatchResultSummary): void {
+    CRON_DEFINITIONS.gscEvaluate.log('info', 'batch_completed', {
+      durationMs: Date.now() - startTime,
+      total: summary.usersAttempted,
+      succeeded: summary.usersProcessed,
+      failed: summary.errors.length + summary.totalSystemError,
+      skipped: summary.usersSkippedDueToLimit,
+    });
   }
 
   /**

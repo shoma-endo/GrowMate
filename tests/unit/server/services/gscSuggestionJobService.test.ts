@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -69,6 +70,40 @@ describe('gscSuggestionJobService', () => {
       completed: 0,
       failed: 1,
       terminalFailed: 1,
+    });
+  });
+
+  it('LLMのChatErrorをLLM_TIMEOUTとして構造化ログへ記録する', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [
+        {
+          id: 'history-id',
+          user_id: 'user-id',
+          content_annotation_id: 'annotation-id',
+          outcome: 'no_change',
+          current_position: 10,
+          previous_position: 10,
+          suggestion_stage: 3,
+          suggestion_attempt_count: 1,
+          suggestion_job_token: 'job-token',
+        },
+      ],
+      error: null,
+    });
+    mocks.generate.mockRejectedValue(
+      new ChatError('request timeout', ChatErrorCode.CONNECTION_TIMEOUT)
+    );
+    mocks.maybeSingle.mockResolvedValue({ data: { id: 'history-id' }, error: null });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await gscSuggestionJobService.runNextJobs();
+
+    expect(JSON.parse(String(warn.mock.calls[0]?.[0]))).toMatchObject({
+      source: 'cron',
+      cron: 'gsc_suggestions',
+      event: 'job_timed_out',
+      timeoutType: 'LLM_TIMEOUT',
     });
   });
 });

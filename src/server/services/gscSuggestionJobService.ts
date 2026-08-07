@@ -1,5 +1,8 @@
 import { SupabaseService } from '@/server/services/supabaseService';
 import { gscSuggestionService } from '@/server/services/gscSuggestionService';
+import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
+import { classifyCronTimeout, CronTimeoutError } from '@/server/lib/cron-observability';
+import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import type { GscSuggestionJobBatchResult, GscSuggestionJobRow } from '@/types/gsc';
 
 const RETRY_DELAY_MINUTES = 15;
@@ -10,6 +13,8 @@ class GscSuggestionJobService {
   private readonly supabaseService = new SupabaseService();
 
   async runNextJobs(): Promise<GscSuggestionJobBatchResult> {
+    const startedAt = Date.now();
+    CRON_DEFINITIONS.gscSuggestions.log('info', 'batch_started');
     const { data, error } = await this.supabaseService
       .getClient()
       .rpc('claim_gsc_suggestion_jobs', { p_limit: JOBS_PER_INVOCATION });
@@ -20,22 +25,36 @@ class GscSuggestionJobService {
 
     const jobs = (data ?? []) as GscSuggestionJobRow[];
     if (jobs.length === 0) {
+      CRON_DEFINITIONS.gscSuggestions.log('info', 'batch_completed', {
+        durationMs: Date.now() - startedAt,
+        total: 0,
+        succeeded: 0,
+        failed: 0,
+      });
       return { total: 0, completed: 0, failed: 0, terminalFailed: 0 };
     }
 
     const results = await Promise.all(jobs.map(job => this.processJob(job)));
     const completed = results.filter(result => result === 'completed').length;
-    return {
+    const result = {
       total: jobs.length,
       completed,
       failed: results.filter(result => result === 'retrying' || result === 'terminal_failed').length,
       terminalFailed: results.filter(result => result === 'terminal_failed').length,
     };
+    CRON_DEFINITIONS.gscSuggestions.log('info', 'batch_completed', {
+      durationMs: Date.now() - startedAt,
+      total: result.total,
+      succeeded: result.completed,
+      failed: result.failed,
+    });
+    return result;
   }
 
   private async processJob(
     job: GscSuggestionJobRow
   ): Promise<'completed' | 'retrying' | 'terminal_failed' | 'discarded'> {
+    const startedAt = Date.now();
     const controller = new AbortController();
     try {
       await this.withTimeout(
@@ -80,6 +99,21 @@ class GscSuggestionJobService {
 
       return 'completed';
     } catch (error) {
+      const observableError =
+        error instanceof ChatError && error.code === ChatErrorCode.CONNECTION_TIMEOUT
+          ? new CronTimeoutError('LLM_TIMEOUT', error.message)
+          : error;
+      const timeoutType = classifyCronTimeout(observableError);
+      CRON_DEFINITIONS.gscSuggestions.log(
+        timeoutType ? 'warn' : 'error',
+        timeoutType ? 'job_timed_out' : 'job_failed',
+        {
+          operation: 'suggestion_generation',
+          durationMs: Date.now() - startedAt,
+          ...(timeoutType ? { timeoutType } : {}),
+          attempt: job.suggestion_attempt_count,
+        }
+      );
       const message = error instanceof Error ? error.message : 'GSC改善提案の生成に失敗しました';
       const nextRetryAt = new Date(Date.now() + RETRY_DELAY_MINUTES * 60 * 1000).toISOString();
       const { data, error: updateError } = await this.supabaseService
@@ -123,7 +157,10 @@ class GscSuggestionJobService {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
-        const error = new Error('GSC改善提案の生成がタイムアウトしました');
+        const error = new CronTimeoutError(
+          'JOB_TIMEOUT',
+          'GSC改善提案の生成がタイムアウトしました'
+        );
         controller.abort(error);
         reject(error);
       }, JOB_TIMEOUT_MS);
