@@ -9,6 +9,7 @@ import type {
 } from '@/types/gsc';
 import { gscImportService } from '@/server/services/gscImportService';
 import { formatDateISO, addDaysISO } from '@/lib/date-utils';
+import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 
 class GscEvaluationService {
   private readonly supabaseService = new SupabaseService();
@@ -105,6 +106,12 @@ class GscEvaluationService {
           console.warn(
             `[gscEvaluationService] Time limit reached during user ${userId} articles (${elapsed}ms). Interrupting at chunk ${i / CONCURRENCY}.`
           );
+          CRON_DEFINITIONS.gscEvaluate.log('warn', 'job_time_budget_exceeded', {
+            operation: 'article_evaluation',
+            timeoutType: 'CRON_TIME_BUDGET_EXCEEDED',
+            durationMs: elapsed,
+            remaining: evaluationRows.length - i,
+          });
           break;
         }
       }
@@ -414,6 +421,12 @@ class GscEvaluationService {
    *       + evaluation_hour の時間 <= 現在日時(JST)
    */
   async runAllDueEvaluations(): Promise<BatchResultSummary> {
+    return CRON_DEFINITIONS.gscEvaluate.runBatch(startTime =>
+      this.runAllDueEvaluationsWithStartTime(startTime)
+    );
+  }
+
+  private async runAllDueEvaluationsWithStartTime(startTime: number): Promise<BatchResultSummary> {
     const summary: BatchResultSummary = {
       usersProcessed: 0,
       usersAttempted: 0,
@@ -428,8 +441,6 @@ class GscEvaluationService {
       totalSystemError: 0,
       errors: [],
     };
-
-    const startTime = Date.now();
 
     // 現在の日本時間を取得
     const nowJst = this.getNowJst();
@@ -457,6 +468,7 @@ class GscEvaluationService {
     });
 
     if (dueEvaluations.length === 0) {
+      this.logBatchCompleted(startTime, summary, 0);
       return summary;
     }
 
@@ -488,6 +500,11 @@ class GscEvaluationService {
         );
         summary.stoppedReason = 'time_limit';
         summary.usersSkippedDueToLimit = remaining;
+        CRON_DEFINITIONS.gscEvaluate.log('warn', 'batch_time_budget_exceeded', {
+          timeoutType: 'CRON_TIME_BUDGET_EXCEEDED',
+          durationMs: elapsed,
+          remaining,
+        });
         break;
       }
 
@@ -527,7 +544,22 @@ class GscEvaluationService {
       }
     }
 
+    this.logBatchCompleted(startTime, summary, userIds.length);
     return summary;
+  }
+
+  private logBatchCompleted(
+    startTime: number,
+    summary: BatchResultSummary,
+    totalUsers: number
+  ): void {
+    CRON_DEFINITIONS.gscEvaluate.log('info', 'batch_completed', {
+      durationMs: Date.now() - startTime,
+      total: totalUsers,
+      succeeded: summary.usersProcessed,
+      failed: summary.errors.length,
+      skipped: summary.usersSkippedDueToLimit,
+    });
   }
 
   /**
