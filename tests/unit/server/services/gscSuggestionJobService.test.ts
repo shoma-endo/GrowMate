@@ -140,7 +140,7 @@ describe('gscSuggestionJobService', () => {
     mocks.generate.mockResolvedValue(undefined);
     mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     await expect(gscSuggestionJobService.runNextJobs()).resolves.toEqual({
@@ -159,5 +159,11 @@ describe('gscSuggestionJobService', () => {
       failed: 0,
       skipped: 1,
     });
+    expect(
+      info.mock.calls
+        .map(call => JSON.parse(String(call[0])) as Record<string, unknown>)
+        .map(log => log.event)
+    ).toContain('job_discarded');
+    expect(error).not.toHaveBeenCalled();
   });
 });

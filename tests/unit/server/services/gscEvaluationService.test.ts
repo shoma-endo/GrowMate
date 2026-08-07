@@ -98,4 +98,49 @@ describe('gscEvaluationService.runAllDueEvaluations', () => {
     expect(events.map(event => event.event)).toContain('batch_failed');
     expect(events.map(event => event.event)).not.toContain('batch_completed');
   });
+
+  it('未試行ユーザーを含む候補総数を完了ログのtotalへ記録する', async () => {
+    mocks.lte.mockResolvedValue({
+      data: Array.from({ length: 11 }, (_, index) => ({
+        id: `evaluation-${index}`,
+        user_id: `user-${index}`,
+        content_annotation_id: `annotation-${index}`,
+        property_uri: 'sc-domain:example.com',
+        base_evaluation_date: '2020-01-01',
+        cycle_days: 1,
+        evaluation_hour: 0,
+        status: 'active',
+        next_evaluation_date: '2020-01-02',
+      })),
+      error: null,
+    });
+    vi.spyOn(gscEvaluationService, 'runDueEvaluationsForUser').mockResolvedValue({
+      processed: 1,
+      improved: 0,
+      advanced: 0,
+      baselineInitialized: 0,
+      skippedNoMetrics: 0,
+      skippedImportFailed: 0,
+      skippedSystemError: 0,
+    });
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    const result = await gscEvaluationService.runAllDueEvaluations();
+    const completedLog = info.mock.calls
+      .map(call => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find(log => log.event === 'batch_completed');
+
+    expect(result).toMatchObject({
+      usersAttempted: 10,
+      usersProcessed: 10,
+      usersSkippedDueToLimit: 1,
+      stoppedReason: 'max_users',
+    });
+    expect(completedLog).toMatchObject({
+      total: 11,
+      succeeded: 10,
+      failed: 0,
+      skipped: 1,
+    });
+  });
 });

@@ -112,16 +112,18 @@ class GscSuggestionJobService {
           ? new CronTimeoutError('LLM_TIMEOUT', error.message)
           : error;
       const timeoutType = classifyCronTimeout(observableError);
-      CRON_DEFINITIONS.gscSuggestions.log(
-        timeoutType ? 'warn' : 'error',
-        timeoutType ? 'job_timed_out' : 'job_failed',
-        {
-          operation: 'suggestion_generation',
-          durationMs: Date.now() - startedAt,
-          ...(timeoutType ? { timeoutType } : {}),
-          attempt: job.suggestion_attempt_count,
-        }
-      );
+      const logFailure = () => {
+        CRON_DEFINITIONS.gscSuggestions.log(
+          timeoutType ? 'warn' : 'error',
+          timeoutType ? 'job_timed_out' : 'job_failed',
+          {
+            operation: 'suggestion_generation',
+            durationMs: Date.now() - startedAt,
+            ...(timeoutType ? { timeoutType } : {}),
+            attempt: job.suggestion_attempt_count,
+          }
+        );
+      };
       const message = error instanceof Error ? error.message : 'GSC改善提案の生成に失敗しました';
       const nextRetryAt = new Date(Date.now() + RETRY_DELAY_MINUTES * 60 * 1000).toISOString();
       const { data, error: updateError } = await this.supabaseService
@@ -140,14 +142,21 @@ class GscSuggestionJobService {
         .maybeSingle();
 
       if (updateError) {
+        logFailure();
         console.error('[GscSuggestionJobService] Failed to mark job failure:', updateError);
         return 'retrying';
       }
       if (!data) {
+        CRON_DEFINITIONS.gscSuggestions.log('info', 'job_discarded', {
+          operation: 'suggestion_generation',
+          durationMs: Date.now() - startedAt,
+          attempt: job.suggestion_attempt_count,
+        });
         console.warn(`[GscSuggestionJobService] Discarded stale job result: ${job.id}`);
         return 'discarded';
       }
 
+      logFailure();
       console.error(`[GscSuggestionJobService] Job ${job.id} failed:`, error);
       return job.suggestion_attempt_count >= 3 ? 'terminal_failed' : 'retrying';
     }

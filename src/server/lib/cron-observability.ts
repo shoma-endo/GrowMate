@@ -13,6 +13,7 @@ type CronEvent =
   | 'batch_failed'
   | 'batch_time_budget_exceeded'
   | 'job_failed'
+  | 'job_discarded'
   | 'job_timed_out'
   | 'job_time_budget_exceeded'
   | 'route_failed'

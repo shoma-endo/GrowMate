@@ -468,7 +468,7 @@ class GscEvaluationService {
     });
 
     if (dueEvaluations.length === 0) {
-      this.logBatchCompleted(startTime, summary);
+      this.logBatchCompleted(startTime, summary, 0);
       return summary;
     }
 
@@ -544,14 +544,18 @@ class GscEvaluationService {
       }
     }
 
-    this.logBatchCompleted(startTime, summary);
+    this.logBatchCompleted(startTime, summary, userIds.length);
     return summary;
   }
 
-  private logBatchCompleted(startTime: number, summary: BatchResultSummary): void {
+  private logBatchCompleted(
+    startTime: number,
+    summary: BatchResultSummary,
+    totalUsers: number
+  ): void {
     CRON_DEFINITIONS.gscEvaluate.log('info', 'batch_completed', {
       durationMs: Date.now() - startTime,
-      total: summary.usersAttempted,
+      total: totalUsers,
       succeeded: summary.usersProcessed,
       failed: summary.errors.length,
       skipped: summary.usersSkippedDueToLimit,

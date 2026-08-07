@@ -443,11 +443,11 @@ class GoogleAdsNegativeKeywordsSuggestionService {
 
     if (skippedDueToLimit > 0) {
       const stoppedSummary = { ...summary, stoppedReason: 'time_limit' as const, skippedDueToLimit };
-      this.logBatchCompleted(startedAt, stoppedSummary);
+      this.logBatchCompleted(startedAt, stoppedSummary, dueResult.data.length);
       return stoppedSummary;
     }
 
-    this.logBatchCompleted(startedAt, summary);
+    this.logBatchCompleted(startedAt, summary, dueResult.data.length);
     return summary;
   }
 
@@ -513,14 +513,15 @@ class GoogleAdsNegativeKeywordsSuggestionService {
 
   private logBatchCompleted(
     startedAt: number,
-    summary: GoogleAdsNegativeKeywordsSuggestionBatchResult
+    summary: GoogleAdsNegativeKeywordsSuggestionBatchResult,
+    totalUsers: number
   ): void {
     CRON_DEFINITIONS.googleAdsNegativeKeywords.log('info', 'batch_completed', {
       durationMs: Date.now() - startedAt,
-      total: summary.total,
+      total: totalUsers,
       succeeded: summary.succeeded,
       failed: summary.failed,
-      skipped: summary.skipped,
+      skipped: summary.skipped + (summary.skippedDueToLimit ?? 0),
     });
   }
 
