@@ -19,6 +19,15 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
 - **Server Actions と Route Handlers の使い分け**
   - 機密情報（API キー、Service Role キーなど）を扱う処理はサーバー側に限定し、クライアントに露出させない。
   - どちらを使うかは `nextjs-server` スキル（`actions-and-routes.md`）の方針に従う（セッションや認可チェックが絡む処理は特に注意）。
+- **Server Actions の呼び出し位置**
+  - ユーザー操作に起因する Server Action は、`useEffect` ではなくイベントハンドラー、または `<form action>` から直接呼び出す。
+  - `useEffect` からの Server Action 呼び出しは、再レンダーや React Strict Mode による重複実行を招きやすいため、原則避ける。
+  - `useEffect` は外部システムとの同期など、ライフサイクル起因の処理に限定する。
+- **Server Component と Client Component の責務**
+  - Server Component は、初期データ取得・認証/認可・画面構成を担当する。
+  - Client Component は、ユーザー操作・UI 状態・イベント発火を担当する。
+  - Server Component から Client Component へ渡す props は、必要最小限かつ機密情報を除いたシリアライズ可能な表示用モデルにする。
+  - 更新後は Server Action で変更し、必要に応じて `revalidatePath`、`revalidateTag`、`router.refresh()` などで表示を更新する。
 
 - **機密情報の取り扱い**
   - `.env.local` の値をクライアントバンドルに含めないようにする。どうしても必要な場合は public prefix など Next.js のガイドラインに従う。
@@ -56,4 +65,3 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
   - 型エラーが出ないか（`npm run lint` / `npm run build` の結果）。
   - 既存の命名規則・ディレクトリ構造・責務分割に沿っているか。
   - Supabase / 認証まわりでセキュリティ上の抜けがないか。
-
