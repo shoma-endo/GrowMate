@@ -9,6 +9,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { prepareNegativeKeywordsForPrompt } from '@/server/lib/google-ads-negative-keywords-prompt';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
+import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 import type {
   GoogleAdsNegativeKeyword,
   GoogleAdsSearchTermMetric,
@@ -372,8 +373,15 @@ class GoogleAdsNegativeKeywordsSuggestionService {
   }
 
   async runAllDueSuggestions(): Promise<GoogleAdsNegativeKeywordsSuggestionBatchResult> {
+    return CRON_DEFINITIONS.googleAdsNegativeKeywords.runBatch(startedAt =>
+      this.runAllDueSuggestionsWithStartTime(startedAt)
+    );
+  }
+
+  private async runAllDueSuggestionsWithStartTime(
+    startedAt: number
+  ): Promise<GoogleAdsNegativeKeywordsSuggestionBatchResult> {
     // 対象一覧の取得も関数の実行時間に含まれるため、DB 往復の前に起点を取る
-    const startedAt = Date.now();
     const now = new Date();
     const todayJst = formatJstDateISO(now);
     const sendHourJst = getJstHour(now);
@@ -397,6 +405,11 @@ class GoogleAdsNegativeKeywordsSuggestionService {
           `[GoogleAdsNegativeKeywordsSuggestionService] Time limit reached (${elapsed}ms). ` +
             `Stopping batch. Remaining: ${skippedDueToLimit} users (will be retried by the next hourly cron).`
         );
+        CRON_DEFINITIONS.googleAdsNegativeKeywords.log('warn', 'batch_time_budget_exceeded', {
+          timeoutType: 'CRON_TIME_BUDGET_EXCEEDED',
+          durationMs: elapsed,
+          remaining: skippedDueToLimit,
+        });
         break;
       }
 
@@ -429,9 +442,12 @@ class GoogleAdsNegativeKeywordsSuggestionService {
     );
 
     if (skippedDueToLimit > 0) {
-      return { ...summary, stoppedReason: 'time_limit', skippedDueToLimit };
+      const stoppedSummary = { ...summary, stoppedReason: 'time_limit' as const, skippedDueToLimit };
+      this.logBatchCompleted(startedAt, stoppedSummary, dueResult.data.length);
+      return stoppedSummary;
     }
 
+    this.logBatchCompleted(startedAt, summary, dueResult.data.length);
     return summary;
   }
 
@@ -476,6 +492,11 @@ class GoogleAdsNegativeKeywordsSuggestionService {
             console.warn(
               `[GoogleAdsNegativeKeywordsSuggestionService] User time limit reached (${USER_TIME_LIMIT_MS}ms). Abandoning user ${userId}.`
             );
+            CRON_DEFINITIONS.googleAdsNegativeKeywords.log('warn', 'job_timed_out', {
+              operation: 'user_suggestion',
+              timeoutType: 'JOB_TIMEOUT',
+              durationMs: USER_TIME_LIMIT_MS,
+            });
             resolve({
               success: false,
               error: ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_RUN_FAILED,
@@ -488,6 +509,20 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         clearTimeout(timer);
       }
     }
+  }
+
+  private logBatchCompleted(
+    startedAt: number,
+    summary: GoogleAdsNegativeKeywordsSuggestionBatchResult,
+    totalUsers: number
+  ): void {
+    CRON_DEFINITIONS.googleAdsNegativeKeywords.log('info', 'batch_completed', {
+      durationMs: Date.now() - startedAt,
+      total: totalUsers,
+      succeeded: summary.succeeded,
+      failed: summary.failed,
+      skipped: summary.skipped + (summary.skippedDueToLimit ?? 0),
+    });
   }
 
   /** @returns 更新に成功したか */

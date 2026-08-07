@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { googleAdsNegativeKeywordsSuggestionService } from '@/server/services/googleAdsNegativeKeywordsSuggestionService';
+import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   try {
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
@@ -26,6 +28,7 @@ export async function GET(request: NextRequest) {
       data: result,
     });
   } catch (error) {
+    CRON_DEFINITIONS.googleAdsNegativeKeywords.logRouteFailure(error, startedAt);
     console.error('[cron/google-ads-negative-keywords-suggestion] Batch failed:', error);
     const message = error instanceof Error ? error.message : 'バッチ処理に失敗しました';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
