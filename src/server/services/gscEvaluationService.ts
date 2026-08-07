@@ -421,6 +421,12 @@ class GscEvaluationService {
    *       + evaluation_hour の時間 <= 現在日時(JST)
    */
   async runAllDueEvaluations(): Promise<BatchResultSummary> {
+    return CRON_DEFINITIONS.gscEvaluate.runBatch(startTime =>
+      this.runAllDueEvaluationsWithStartTime(startTime)
+    );
+  }
+
+  private async runAllDueEvaluationsWithStartTime(startTime: number): Promise<BatchResultSummary> {
     const summary: BatchResultSummary = {
       usersProcessed: 0,
       usersAttempted: 0,
@@ -435,9 +441,6 @@ class GscEvaluationService {
       totalSystemError: 0,
       errors: [],
     };
-
-    const startTime = Date.now();
-    CRON_DEFINITIONS.gscEvaluate.log('info', 'batch_started');
 
     // 現在の日本時間を取得
     const nowJst = this.getNowJst();

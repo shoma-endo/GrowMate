@@ -44,6 +44,19 @@ describe('gscSuggestionJobService', () => {
     expect(mocks.rpc).toHaveBeenCalledWith('claim_gsc_suggestion_jobs', { p_limit: 3 });
   });
 
+  it('claim失敗をbatch_failedとして記録して再throwする', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { message: 'claim failed' } });
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await expect(gscSuggestionJobService.runNextJobs()).rejects.toThrow('claim failed');
+    expect(
+      error.mock.calls
+        .map(call => JSON.parse(String(call[0])) as Record<string, unknown>)
+        .map(log => log.event)
+    ).toContain('batch_failed');
+  });
+
   it('3回目の失敗をterminalFailedとして集計する', async () => {
     mocks.rpc.mockResolvedValue({
       data: [

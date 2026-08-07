@@ -13,8 +13,14 @@ class GscSuggestionJobService {
   private readonly supabaseService = new SupabaseService();
 
   async runNextJobs(): Promise<GscSuggestionJobBatchResult> {
-    const startedAt = Date.now();
-    CRON_DEFINITIONS.gscSuggestions.log('info', 'batch_started');
+    return CRON_DEFINITIONS.gscSuggestions.runBatch(startedAt =>
+      this.runNextJobsWithStartTime(startedAt)
+    );
+  }
+
+  private async runNextJobsWithStartTime(
+    startedAt: number
+  ): Promise<GscSuggestionJobBatchResult> {
     const { data, error } = await this.supabaseService
       .getClient()
       .rpc('claim_gsc_suggestion_jobs', { p_limit: JOBS_PER_INVOCATION });

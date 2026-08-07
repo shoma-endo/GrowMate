@@ -373,9 +373,15 @@ class GoogleAdsNegativeKeywordsSuggestionService {
   }
 
   async runAllDueSuggestions(): Promise<GoogleAdsNegativeKeywordsSuggestionBatchResult> {
+    return CRON_DEFINITIONS.googleAdsNegativeKeywords.runBatch(startedAt =>
+      this.runAllDueSuggestionsWithStartTime(startedAt)
+    );
+  }
+
+  private async runAllDueSuggestionsWithStartTime(
+    startedAt: number
+  ): Promise<GoogleAdsNegativeKeywordsSuggestionBatchResult> {
     // 対象一覧の取得も関数の実行時間に含まれるため、DB 往復の前に起点を取る
-    const startedAt = Date.now();
-    CRON_DEFINITIONS.googleAdsNegativeKeywords.log('info', 'batch_started');
     const now = new Date();
     const todayJst = formatJstDateISO(now);
     const sendHourJst = getJstHour(now);

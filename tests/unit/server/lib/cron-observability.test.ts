@@ -83,6 +83,42 @@ describe('cron-observability', () => {
     });
   });
 
+  it('batch処理を開始して結果をそのまま返す', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(100);
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const cron = defineCronObservability({ name: 'test_cron' });
+
+    await expect(cron.runBatch(async startedAt => ({ startedAt }))).resolves.toEqual({
+      startedAt: 100,
+    });
+    expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toStrictEqual({
+      source: 'cron',
+      cron: 'test_cron',
+      event: 'batch_started',
+    });
+  });
+
+  it('batch例外を記録して同じ例外を再throwする', async () => {
+    vi.spyOn(Date, 'now').mockReturnValueOnce(100).mockReturnValueOnce(250);
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const cron = defineCronObservability({ name: 'test_cron' });
+    const originalError = new CronTimeoutError('UPSTREAM_HTTP_TIMEOUT', 'failed');
+
+    await expect(
+      cron.runBatch(async () => {
+        throw originalError;
+      })
+    ).rejects.toBe(originalError);
+    expect(JSON.parse(String(errorLog.mock.calls[0]?.[0]))).toStrictEqual({
+      source: 'cron',
+      cron: 'test_cron',
+      event: 'batch_failed',
+      durationMs: 150,
+      timeoutType: 'UPSTREAM_HTTP_TIMEOUT',
+    });
+  });
+
   it('Route失敗を共通処理でタイムアウトとして記録する', () => {
     vi.spyOn(Date, 'now').mockReturnValue(250);
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);

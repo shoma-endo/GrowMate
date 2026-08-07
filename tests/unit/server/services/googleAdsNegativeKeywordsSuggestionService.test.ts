@@ -171,8 +171,16 @@ describe('googleAdsNegativeKeywordsSuggestionService.runAllDueSuggestions', () =
       error: { userMessage: '設定の取得に失敗しました' },
     });
 
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
     await expect(
       googleAdsNegativeKeywordsSuggestionService.runAllDueSuggestions()
     ).rejects.toThrow('設定の取得に失敗しました');
+    expect(
+      error.mock.calls
+        .map(call => JSON.parse(String(call[0])) as Record<string, unknown>)
+        .map(log => log.event)
+    ).toContain('batch_failed');
   });
 });

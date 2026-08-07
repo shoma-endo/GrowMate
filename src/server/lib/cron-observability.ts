@@ -10,6 +10,7 @@ type CronLogLevel = 'info' | 'warn' | 'error';
 type CronEvent =
   | 'batch_started'
   | 'batch_completed'
+  | 'batch_failed'
   | 'batch_time_budget_exceeded'
   | 'job_failed'
   | 'job_timed_out'
@@ -36,6 +37,7 @@ interface CronDefinition<Name extends string> {
 interface CronObserver<Name extends string> {
   readonly name: Name;
   log(level: CronLogLevel, event: CronEvent, details?: CronLogDetails): void;
+  runBatch<Result>(task: (startedAt: number) => Promise<Result>): Promise<Result>;
   logRouteFailure(error: unknown, startedAt: number): void;
 }
 
@@ -103,6 +105,20 @@ export function defineCronObservability<const Name extends string>(
   return {
     name: definition.name,
     log,
+    async runBatch<Result>(task: (startedAt: number) => Promise<Result>): Promise<Result> {
+      const startedAt = Date.now();
+      log('info', 'batch_started');
+      try {
+        return await task(startedAt);
+      } catch (error) {
+        const timeoutType = classifyCronTimeout(error);
+        log('error', 'batch_failed', {
+          durationMs: Date.now() - startedAt,
+          ...(timeoutType ? { timeoutType } : {}),
+        });
+        throw error;
+      }
+    },
     logRouteFailure(error: unknown, startedAt: number): void {
       const timeoutType = classifyCronTimeout(error);
       log('error', timeoutType ? 'route_timed_out' : 'route_failed', {

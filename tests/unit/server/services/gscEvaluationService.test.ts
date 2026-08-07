@@ -77,4 +77,25 @@ describe('gscEvaluationService.runAllDueEvaluations', () => {
       skipped: 0,
     });
   });
+
+  it('DB取得失敗をbatch_failedとして記録して再throwする', async () => {
+    mocks.lte.mockResolvedValue({
+      data: null,
+      error: { message: '評価対象の取得に失敗しました' },
+    });
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await expect(gscEvaluationService.runAllDueEvaluations()).rejects.toThrow(
+      '評価対象の取得に失敗しました'
+    );
+    const events = [
+      ...info.mock.calls.map(call => JSON.parse(String(call[0])) as Record<string, unknown>),
+      ...error.mock.calls.map(call => JSON.parse(String(call[0])) as Record<string, unknown>),
+    ];
+
+    expect(events.map(event => event.event)).toContain('batch_started');
+    expect(events.map(event => event.event)).toContain('batch_failed');
+    expect(events.map(event => event.event)).not.toContain('batch_completed');
+  });
 });
