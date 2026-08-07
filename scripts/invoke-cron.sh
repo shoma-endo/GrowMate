@@ -225,6 +225,13 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     cat "$RESPONSE_FILE"
     exit 0
   elif [ $CURL_EXIT_CODE -eq 28 ] || [ "$HTTP_CODE" -eq 503 ] || [ "$HTTP_CODE" -eq 504 ]; then
+    if [ $CURL_EXIT_CODE -eq 28 ]; then
+      echo "::warning::cron_timeout_type=FUNCTION_OR_INVOKER_TIMEOUT curl_exit_code=$CURL_EXIT_CODE http_code=$HTTP_CODE" >&2
+    elif [ "$HTTP_CODE" -eq 503 ]; then
+      echo "::warning::cron_timeout_type=PLATFORM_OR_SERVICE_UNAVAILABLE curl_exit_code=$CURL_EXIT_CODE http_code=$HTTP_CODE" >&2
+    else
+      echo "::warning::cron_timeout_type=GATEWAY_OR_FUNCTION_TIMEOUT_INFERRED curl_exit_code=$CURL_EXIT_CODE http_code=$HTTP_CODE" >&2
+    fi
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
       WAIT_TIME=$((2 ** RETRY_COUNT * 2))

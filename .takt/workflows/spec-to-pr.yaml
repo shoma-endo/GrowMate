@@ -15,7 +15,7 @@ loop_monitors:
       persona: supervisor
       knowledge:
         - growmate
-      instruction: loop-monitor-ai-antipattern-fix
+      instruction: loop-monitor-reviewers-fix
       rules:
         - condition: 健全（進捗あり）
           next: ai_antipattern_review

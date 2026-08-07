@@ -81,6 +81,7 @@ describe('googleAdsNegativeKeywordsSuggestionService.runAllDueSuggestions', () =
   it('時間予算を超えたら次チャンクに入らず残りを skippedDueToLimit に計上する', async () => {
     mocks.listDue.mockResolvedValue({ success: true, data: dueSettings(9) });
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     // 1 チャンク（3 ユーザー）で 600 秒経過 → 2 チャンク目は予算 480 秒を超えて開始されない
     const send = stubSendWithElapsed(200 * 1000);
 
@@ -96,6 +97,15 @@ describe('googleAdsNegativeKeywordsSuggestionService.runAllDueSuggestions', () =
     });
     // 抽出順の先頭から処理し、途中のユーザーを飛ばさない
     expect(send.mock.calls.map(call => call[0])).toStrictEqual(['user-0', 'user-1', 'user-2']);
+    const completedLog = info.mock.calls
+      .map(call => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find(log => log.event === 'batch_completed');
+    expect(completedLog).toMatchObject({
+      total: 9,
+      succeeded: 3,
+      failed: 0,
+      skipped: 6,
+    });
   });
 
   it('経過時間が予算ちょうどなら次チャンクを開始する（境界は超過時のみ打ち切り）', async () => {
@@ -171,8 +181,16 @@ describe('googleAdsNegativeKeywordsSuggestionService.runAllDueSuggestions', () =
       error: { userMessage: '設定の取得に失敗しました' },
     });
 
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
     await expect(
       googleAdsNegativeKeywordsSuggestionService.runAllDueSuggestions()
     ).rejects.toThrow('設定の取得に失敗しました');
+    expect(
+      error.mock.calls
+        .map(call => JSON.parse(String(call[0])) as Record<string, unknown>)
+        .map(log => log.event)
+    ).toContain('batch_failed');
   });
 });

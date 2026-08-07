@@ -159,6 +159,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 - **型チェック**: TypeScript strict mode
 - **リンター**: ESLint, eslint-config-next
+- **AI開発workflow**: Takt `0.55.1`（Node.js `>=24.15.0`。workflow変更後は `takt workflow doctor` で検証）
 - **コード整形**: `.prettierrc`（エディタ向け。Prettier は npm 依存に未登録）
 - **ビルド**: Turbopack（開発）/ Next.js build
 - **テスト**: Vitest、`@vitest/coverage-v8`（コアロジック・入力バリデーション）
@@ -209,7 +210,8 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 ## 🚀 セットアップ手順
 
 ```bash
-# Node.js 20
+# GrowMateアプリ: Node.js 20以上
+# Takt 0.55.1: Node.js 24.15.0以上
 npm ci
 # .env.local を作成し、src/env.ts の clientEnvSchema / serverEnvSchema を参照してキーを埋める
 npm run dev  # http://localhost:3000
