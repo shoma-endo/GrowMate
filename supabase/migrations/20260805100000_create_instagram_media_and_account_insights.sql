@@ -40,11 +40,11 @@ create index if not exists idx_instagram_media_user_posted_at
 
 alter table public.instagram_media enable row level security;
 
-create policy "instagram_media_select_own_or_owner"
+create policy "instagram_media_select_own"
   on public.instagram_media
   for select
-  using (user_id = any(public.get_accessible_user_ids((select auth.uid()))::uuid[]));
--- Rollback: drop policy if exists "instagram_media_select_own_or_owner" on public.instagram_media;
+  using (user_id = (select auth.uid()));
+-- Rollback: drop policy if exists "instagram_media_select_own" on public.instagram_media;
 
 drop trigger if exists update_instagram_media_updated_at on public.instagram_media;
 create trigger update_instagram_media_updated_at
@@ -65,10 +65,10 @@ create table public.instagram_account_insights_daily (
 
 alter table public.instagram_account_insights_daily enable row level security;
 
-create policy "instagram_account_insights_daily_select_own_or_owner"
+create policy "instagram_account_insights_daily_select_own"
   on public.instagram_account_insights_daily
   for select
-  using (user_id = any(public.get_accessible_user_ids((select auth.uid()))::uuid[]));
--- Rollback: drop policy if exists "instagram_account_insights_daily_select_own_or_owner" on public.instagram_account_insights_daily;
+  using (user_id = (select auth.uid()));
+-- Rollback: drop policy if exists "instagram_account_insights_daily_select_own" on public.instagram_account_insights_daily;
 
 -- Service Role専用のため、明示的な書き込みポリシーは作成しない

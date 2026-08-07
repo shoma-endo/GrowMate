@@ -433,7 +433,7 @@ create table public.instagram_credentials (
 );
 ```
 
-- RLS: **`SELECT` のみ** `get_accessible_user_ids(auth.uid())` ベース（オーナー/スタッフ共有モデルを崩さない）。**`INSERT` / `UPDATE` / `DELETE` ポリシーは意図的に設けない** — `google_ads_credentials`（`20260127090000`）は SELECT/INSERT/UPDATE/DELETE の4ポリシーを持つが、Instagram credential は access_token を含むため **JWT 経由の write 経路を完全に遮断**し、OAuth callback・トークン refresh・連携解除はすべて **Service Role + 明示的 `.eq('user_id', userId)`**（`supabaseService.saveInstagramCredential` 等）経由のみとする
+- RLS: **`SELECT` のみ** `user_id = auth.uid()` ベース（**2026-08-08 決定**: 既存スタッフレコードが実在しないため、他連携（GSC/GA4/Google Ads 等）が使う `get_accessible_user_ids` のオーナー/スタッフ共有パターンは採用せず単純化。将来スタッフモデルが復活する場合は Instagram 系3テーブル [`instagram_credentials`/`instagram_media`/`instagram_account_insights_daily`] のみ個別に RLS 変更が必要になる点に留意）。**`instagram_credentials` は Phase 1 で既にマイグレーション適用済みのため、本変更は `20260726000000` の直接書き換えではなく別マイグレーション `20260808000000_simplify_instagram_credentials_select_policy.sql`（`DROP POLICY` + `CREATE POLICY`）で反映し、管理者の適用待ち**（`instagram_media`/`instagram_account_insights_daily` は `20260805100000` が未適用のため直接書き換え済み）。**`INSERT` / `UPDATE` / `DELETE` ポリシーは意図的に設けない** — `google_ads_credentials`（`20260127090000`）は SELECT/INSERT/UPDATE/DELETE の4ポリシーを持つが、Instagram credential は access_token を含むため **JWT 経由の write 経路を完全に遮断**し、OAuth callback・トークン refresh・連携解除はすべて **Service Role + 明示的 `.eq('user_id', userId)`**（`supabaseService.saveInstagramCredential` 等）経由のみとする
 - `user_id` に B-tree インデックス（unique 制約で兼用）
 - `updated_at` 自動更新トリガー（既存トリガー関数を再利用）
 - トークンは既存3系統と同じく**平文 text + RLS 保護**（暗号化は現行方針踏襲。変える場合は全系統一括の別課題とする）
@@ -547,7 +547,7 @@ create table public.instagram_account_insights_daily (
 | `views` / `accounts_engaged` / `total_interactions` / `profile_links_taps`（採用時） | **`date` が最大の行**の当該列 | **30行を Client Component で合算しない**（`docs/context/db-row-limits-and-data-truncation.md` の「全件取得してコード側で集計」禁止と同趣旨）。期間合計が欲しくても Phase 2 サマリーでは**最新日スナップショットのみ** |
 | 読込 | `instagramMediaService.getAccountInsightsLatestDay(userId)` — **1行 SELECT**（下記 §4 item5 / §10） | 30行を `page.tsx` に載せて React 側で `reduce` しない |
 
-- 5.2〜5.4 の RLS も **上記と同様: 認証ユーザーは `SELECT` のみ**（`get_accessible_user_ids`）。**書き込み（INSERT/UPDATE/DELETE）は Service Role 経由の手動同期 Server Action のみ**。所有者向け write ポリシーは設けない
+- 5.2〜5.4 の RLS も **上記と同様: 認証ユーザーは `SELECT` のみ**（`user_id = auth.uid()`。5.1 と同じ理由で単純化）。**書き込み（INSERT/UPDATE/DELETE）は Service Role 経由の手動同期 Server Action のみ**。所有者向け write ポリシーは設けない
 - DB アクセス:
   - Phase 1 credential: `SupabaseService` の `save/get/update/deleteInstagramCredential`（§4 Phase1-4）
   - Phase 2 media/insights: `SupabaseService` 継承の `instagramMediaService`（`src/server/services/instagramMediaService.ts`）に集約。`withServiceRoleClient` + 明示的 `.eq('user_id', userId)` 必須
