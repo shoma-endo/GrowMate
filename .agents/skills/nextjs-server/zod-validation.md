@@ -126,7 +126,8 @@ export async function myAction(data: z.infer<typeof mySchema>) {
       console.error('Validation failed:', formatted);
       return { success: false, error: ERROR_MESSAGES.COMMON.VALIDATION_FAILED };
     }
-    throw e;
+    console.error('Unexpected action failure:', e);
+    return { success: false, error: ERROR_MESSAGES.COMMON.UNEXPECTED_ERROR };
   }
 }
 ```

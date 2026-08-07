@@ -11,7 +11,8 @@ Supabase の Row Level Security (RLS) を安全かつ高効率に実装するた
 
 ### 2. セキュリティ境界の定義
 
-- **重要**: コード上（`SupabaseService` 等）での `.eq()` フィルタは「パフォーマンス最適化とクエリの意図明示」のためであり、**セキュリティ境界は常に RLS 側で担保**されなければなりません。
+- **現行のサーバー経路**: `SupabaseService` 経由の Server Action / Route Handler は Service Role Client を使用するため、RLS は適用されません。認証・認可と、対象リソースの所有者/アクセス可能ユーザー ID の明示的な検証をアプリケーション層で行い、`.eq()` / `.in()` はアクセス範囲をクエリに反映するために必ず付けてください。
+- **RLS が有効な経路**: Anon/session Client を使用する経路では、RLS をセキュリティ境界として担保します。コード上のフィルタはクエリの意図明示・性能最適化に加え、RLS と組み合わせて利用してください。Service Role 経路の詳細は [`service-usage.md`](service-usage.md) を参照してください。
 
 ### 3. SECURITY DEFINER の安全策
 
