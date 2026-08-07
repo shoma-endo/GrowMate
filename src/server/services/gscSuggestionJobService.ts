@@ -36,6 +36,7 @@ class GscSuggestionJobService {
 
     const results = await Promise.all(jobs.map(job => this.processJob(job)));
     const completed = results.filter(result => result === 'completed').length;
+    const discarded = results.filter(result => result === 'discarded').length;
     const result = {
       total: jobs.length,
       completed,
@@ -47,6 +48,7 @@ class GscSuggestionJobService {
       total: result.total,
       succeeded: result.completed,
       failed: result.failed,
+      skipped: discarded,
     });
     return result;
   }

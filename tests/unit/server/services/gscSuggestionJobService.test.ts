@@ -106,4 +106,45 @@ describe('gscSuggestionJobService', () => {
       timeoutType: 'LLM_TIMEOUT',
     });
   });
+
+  it('discardedジョブを完了ログのskippedへ計上する', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [
+        {
+          id: 'history-id',
+          user_id: 'user-id',
+          content_annotation_id: 'annotation-id',
+          outcome: 'no_change',
+          current_position: 10,
+          previous_position: 10,
+          suggestion_stage: 3,
+          suggestion_attempt_count: 1,
+          suggestion_job_token: 'stale-job-token',
+        },
+      ],
+      error: null,
+    });
+    mocks.generate.mockResolvedValue(undefined);
+    mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(gscSuggestionJobService.runNextJobs()).resolves.toEqual({
+      total: 1,
+      completed: 0,
+      failed: 0,
+      terminalFailed: 0,
+    });
+    const completedLog = info.mock.calls
+      .map(call => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find(log => log.event === 'batch_completed');
+
+    expect(completedLog).toMatchObject({
+      total: 1,
+      succeeded: 0,
+      failed: 0,
+      skipped: 1,
+    });
+  });
 });

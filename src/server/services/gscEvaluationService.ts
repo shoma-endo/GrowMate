@@ -550,7 +550,7 @@ class GscEvaluationService {
       durationMs: Date.now() - startTime,
       total: summary.usersAttempted,
       succeeded: summary.usersProcessed,
-      failed: summary.errors.length + summary.totalSystemError,
+      failed: summary.errors.length,
       skipped: summary.usersSkippedDueToLimit,
     });
   }
