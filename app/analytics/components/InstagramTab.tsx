@@ -81,10 +81,13 @@ export default function InstagramTab({
   const [syncAlert, setSyncAlert] = React.useState<string | null>(null);
   const [rangeStart, setRangeStart] = React.useState(igStart);
   const [rangeEnd, setRangeEnd] = React.useState(igEnd);
+  const [isApplyingDateRange, setIsApplyingDateRange] = React.useState(false);
+  const isDateRangeChanged = rangeStart !== igStart || rangeEnd !== igEnd;
 
   React.useEffect(() => {
     setRangeStart(igStart);
     setRangeEnd(igEnd);
+    setIsApplyingDateRange(false);
   }, [igStart, igEnd]);
 
   const lastSyncedLabel = formatLastSyncedAt(lastSyncedAt);
@@ -135,6 +138,8 @@ export default function InstagramTab({
   };
 
   const applyDateRange = () => {
+    if (!isDateRangeChanged || isApplyingDateRange) return;
+    setIsApplyingDateRange(true);
     router.push(
       buildFilterHref({ igStart: rangeStart, igEnd: rangeEnd, igPage: 1 })
     );
@@ -153,81 +158,79 @@ export default function InstagramTab({
 
   return (
     <div className="space-y-4 mt-6">
-      <div className="flex flex-wrap items-end gap-3 border rounded-lg p-4 bg-gray-50/50">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">種別</span>
-          <Select
-            value={igType}
-            onValueChange={value =>
-              router.push(
-                buildFilterHref({ igType: value as InstagramMediaTypeFilter, igPage: 1 })
-              )
-            }
+      <div className="border rounded-lg p-4 bg-gray-50/50">
+        {accountLatestDay ? <InstagramAccountSummaryCard latestDay={accountLatestDay} /> : null}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">種別</span>
+            <Select
+              value={igType}
+              onValueChange={value =>
+                router.push(
+                  buildFilterHref({ igType: value as InstagramMediaTypeFilter, igPage: 1 })
+                )
+              }
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">すべて</SelectItem>
+                <SelectItem value="reels">リール</SelectItem>
+                <SelectItem value="feed">フィード</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">開始日</span>
+            <Input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">終了日</span>
+            <Input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={applyDateRange}
+            disabled={!isDateRangeChanged || isApplyingDateRange}
           >
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべて</SelectItem>
-              <SelectItem value="reels">リール</SelectItem>
-              <SelectItem value="feed">フィード</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">開始日</span>
-          <Input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">終了日</span>
-          <Input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
-        </div>
-        <Button type="button" variant="outline" onClick={applyDateRange}>
-          期間を適用
-        </Button>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">並び順</span>
-          <Select
-            value={igSort}
-            onValueChange={value =>
-              router.push(
-                buildFilterHref({ igSort: value as InstagramMediaSortKey, igPage: 1 })
-              )
-            }
+            {isApplyingDateRange && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {isApplyingDateRange ? '適用中...' : '期間を適用'}
+          </Button>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500">並び順</span>
+            <Select
+              value={igSort}
+              onValueChange={value =>
+                router.push(
+                  buildFilterHref({ igSort: value as InstagramMediaSortKey, igPage: 1 })
+                )
+              }
+            >
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="posted_at">投稿日</SelectItem>
+                <SelectItem value="reach">リーチ</SelectItem>
+                <SelectItem value="views">視聴数</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!syncEnabled || isSyncing}
+            onClick={handleSync}
           >
-            <SelectTrigger className="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="posted_at">投稿日</SelectItem>
-              <SelectItem value="reach">リーチ</SelectItem>
-              <SelectItem value="views">視聴数</SelectItem>
-            </SelectContent>
-          </Select>
+            <RefreshCw className={cn('w-4 h-4 mr-2', isSyncing && 'animate-spin')} />
+            最新化
+          </Button>
+          {lastSyncedLabel ? (
+            <p className="text-xs text-gray-500 ml-auto">最終同期: {lastSyncedLabel}</p>
+          ) : null}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!syncEnabled || isSyncing}
-          onClick={handleSync}
-        >
-          <RefreshCw className={cn('w-4 h-4 mr-2', isSyncing && 'animate-spin')} />
-          最新化
-        </Button>
-        <button
-          type="button"
-          className={cn(
-            buttonVariants({ variant: 'outline' }),
-            'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
-          )}
-          id="instagram-field-config-trigger"
-        >
-          <Settings className="w-4 h-4" aria-hidden />
-          フィールド構成
-        </button>
-        {lastSyncedLabel ? (
-          <p className="text-xs text-gray-500 ml-auto">最終同期: {lastSyncedLabel}</p>
-        ) : null}
       </div>
 
       {!syncEnabled ? (
@@ -247,11 +250,22 @@ export default function InstagramTab({
         </div>
       ) : null}
 
-      {accountLatestDay ? <InstagramAccountSummaryCard latestDay={accountLatestDay} /> : null}
-
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">投稿一覧</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle>投稿一覧</CardTitle>
+            <button
+              type="button"
+              className={cn(
+                buttonVariants({ variant: 'outline' }),
+                'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
+              )}
+              id="instagram-field-config-trigger"
+            >
+              <Settings className="w-4 h-4" aria-hidden />
+              フィールド構成
+            </button>
+          </div>
         </CardHeader>
         <CardContent>
           {items.length === 0 ? (
@@ -278,6 +292,7 @@ export default function InstagramTab({
                     href={prevHref}
                     prefetch={false}
                     aria-disabled={prevDisabled}
+                    tabIndex={prevDisabled ? -1 : undefined}
                     className={cn(
                       buttonVariants({ variant: 'outline' }),
                       'px-3',
@@ -290,6 +305,7 @@ export default function InstagramTab({
                     href={nextHref}
                     prefetch={false}
                     aria-disabled={nextDisabled}
+                    tabIndex={nextDisabled ? -1 : undefined}
                     className={cn(
                       buttonVariants({ variant: 'outline' }),
                       'px-3',

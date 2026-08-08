@@ -1,6 +1,5 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Tooltip,
   TooltipContent,
@@ -14,6 +13,7 @@ interface InstagramAccountSummaryCardProps {
   latestDay: InstagramAccountInsightsDailyRow;
 }
 
+/** ツールバーカード内に統合表示するアカウント指標（リーチ・フォロワー数）の1行サマリー */
 export default function InstagramAccountSummaryCard({
   latestDay,
 }: InstagramAccountSummaryCardProps) {
@@ -22,7 +22,7 @@ export default function InstagramAccountSummaryCard({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="text-gray-500">対象外</span>
+            <span className="text-gray-500 underline decoration-dotted">対象外</span>
           </TooltipTrigger>
           <TooltipContent>
             フォロワー100人未満のアカウントではこの指標は提供されません
@@ -34,27 +34,14 @@ export default function InstagramAccountSummaryCard({
     );
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-semibold">
-          アカウント指標（最新日: {latestDay.date}）
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-          <div>
-            <p className="text-gray-500">リーチ（最新日）</p>
-            <p className="text-lg font-semibold">{formatCount(latestDay.reach)}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">フォロワー数（最新日）</p>
-            <p className="text-lg font-semibold">{followerLabel}</p>
-          </div>
-        </div>
-        <p className="mt-3 text-xs text-gray-500">
-          DB には直近30日分を保持しています。表示は最新同期日の値です。
-        </p>
-      </CardContent>
-    </Card>
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mb-3 pb-3 border-b text-sm">
+      <span className="text-gray-500">アカウント指標（最新日: {latestDay.date}）</span>
+      <span>
+        リーチ <strong className="font-semibold">{formatCount(latestDay.reach)}</strong>
+      </span>
+      <span>
+        フォロワー数 <strong className="font-semibold">{followerLabel}</strong>
+      </span>
+    </div>
   );
 }
