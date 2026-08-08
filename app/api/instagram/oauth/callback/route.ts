@@ -104,12 +104,15 @@ export async function GET(request: NextRequest) {
         return redirectWithError(baseUrl, 'server_error');
       }
 
-      // 旧アカウントの backfill 進捗（cursor / completed）は新アカウントには無関係。
-      // 残したままだと、旧アカウントで backfill 完了済みの場合に新アカウントの
-      // 過去投稿取り込みが（投稿が0件なのに）即完了扱いになり永久に取得できない。
+      // 旧アカウントの backfill 進捗（cursor / completed）と最終同期日時は
+      // 新アカウントには無関係。残したままだと、旧アカウントで backfill 完了
+      // 済みの場合に新アカウントの過去投稿取り込みが（投稿が0件なのに）即完了
+      // 扱いになり永久に取得できない。lastSyncedAt も残ると、接続直後なのに
+      // 画面上は同期済みに見えてしまう。
       const resetResult = await supabaseService.updateInstagramCredential(targetUserId, {
         backfillCursor: null,
         backfillCompletedAt: null,
+        lastSyncedAt: null,
       });
       if (!resetResult.success) {
         console.error(
