@@ -93,13 +93,13 @@ export default function FieldConfigurator({
       if (raw) {
         const parsed = JSON.parse(raw) as StoredConfig;
 
-        // 旧フォーマット（string配列）との互換性維持
+        // 旧フォーマット（string配列）との互換性維持。
+        // 空配列（全解除して保存した状態）も正当な値のため、length チェックで
+        // デフォルトにフォールバックさせない（フォールバックすると全解除が復元されない）。
         if (Array.isArray(parsed)) {
           const normalizedVisible = parsed.filter(id => columns.some(c => c.id === id));
-          if (normalizedVisible.length > 0) {
-            const mergedVisible = mergeNewDefaultVisibleColumns(normalizedVisible, defaultOrder);
-            return { visible: mergedVisible, order: defaultOrder };
-          }
+          const mergedVisible = mergeNewDefaultVisibleColumns(normalizedVisible, defaultOrder);
+          return { visible: mergedVisible, order: defaultOrder };
         }
 
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {

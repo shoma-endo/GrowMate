@@ -113,7 +113,6 @@ export default function AnalyticsClient({
     () => new Set(unreadAnnotationIds),
     [unreadAnnotationIds]
   );
-  const shouldRenderTable = items.length > 0 || hasUnreadSuggestion || hasUrlFilterParams;
   const [rangeStart, setRangeStart] = React.useState(startDate);
   const [rangeEnd, setRangeEnd] = React.useState(endDate);
   const [isApplyingDateRange, setIsApplyingDateRange] = React.useState(false);
@@ -228,7 +227,7 @@ export default function AnalyticsClient({
         <p className="mb-4 text-xs text-gray-500">
           指定期間でGA4指標（滞在時間・読了率・直帰率・CV数・CVR）を集計して表示します。
         </p>
-        {shouldRenderTable && !error ? (
+        {!error ? (
           <AnalyticsTable
             items={items}
             allCategoryNames={allCategoryNames}

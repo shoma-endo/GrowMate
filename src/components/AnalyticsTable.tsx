@@ -713,6 +713,13 @@ export default function AnalyticsTable({
             </div>
 
             <div className="overflow-x-auto">
+              {items.length === 0 ? (
+                <p className="text-sm text-gray-500 py-8 text-center">
+                  {hasUrlFilterParams || hasUnreadSuggestion
+                    ? '表示条件に一致するコンテンツがありません。フィルタを変更してください。'
+                    : 'まだコンテンツがありません。チャットでブログを作成するか、WordPress記事を一括インポートしてください。'}
+                </p>
+              ) : (
               <table className="min-w-[2200px] divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50 analytics-head">
                   <tr className="text-gray-600">
@@ -1202,6 +1209,7 @@ export default function AnalyticsTable({
                   })}
                 </tbody>
               </table>
+              )}
             </div>
           </div>
         )}
