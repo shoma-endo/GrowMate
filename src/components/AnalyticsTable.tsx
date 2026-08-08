@@ -716,7 +716,7 @@ export default function AnalyticsTable({
                 <thead className="bg-gray-50 analytics-head">
                   <tr>
                     <th
-                      className="analytics-ops-cell px-2 py-3 text-center text-xs font-medium text-gray-500 tracking-wider whitespace-nowrap relative group/th"
+                      className="analytics-ops-cell px-2 py-3 text-center text-xs font-medium text-gray-600 tracking-wider whitespace-nowrap relative group/th"
                       style={{
                         width: `${opsWidth}px`,
                         minWidth: `${opsWidth}px`,
@@ -746,7 +746,7 @@ export default function AnalyticsTable({
                       .map(id => (
                         <th
                           key={id}
-                          className={`px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wider whitespace-nowrap ${
+                          className={`px-6 py-3 text-left text-xs font-medium text-gray-600 tracking-wider whitespace-nowrap ${
                             id === 'impressions' ? 'text-right min-w-[120px]' : ''
                           } ${id === 'categories' ? 'min-w-[200px]' : ''} ${
                             id === 'wp_post_title' || id === 'wp_excerpt' ? 'min-w-[360px]' : ''
