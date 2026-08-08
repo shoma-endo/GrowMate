@@ -251,15 +251,20 @@ describe('InstagramSyncService.syncUserData backfill', () => {
     );
   });
 
-  it('time_budget で中断した場合、続きのカーソルを保存し backfillCompleted は false のまま', async () => {
+  it('time_budget で中断した場合、バッチ開始時点のカーソルへ巻き戻して保存する（データロス防止）', async () => {
     vi.useFakeTimers();
     const startTime = new Date('2026-08-08T00:00:00.000Z');
     vi.setSystemTime(startTime);
 
-    getInstagramCredentialMock.mockResolvedValue({ backfillCompletedAt: null, backfillCursor: null });
+    // バッチ開始時点で 'cursor-initial' から再開する状態。
+    getInstagramCredentialMock.mockResolvedValue({
+      backfillCompletedAt: null,
+      backfillCursor: 'cursor-initial',
+    });
     getExistingMediaIdsMock.mockResolvedValue(new Set());
     fetchMediaPageMock.mockImplementationOnce(async () => {
-      // 予算(760秒)を超過させ、次の checkBudget() で time_budget 中断させる
+      // ページング取得は成功させ、直後の checkBudget() で time_budget 中断させる
+      // （＝アイテム処理ループが1件も実行されないまま中断するケース）。
       vi.setSystemTime(new Date(startTime.getTime() + 800_000));
       return mediaPage([rawItem('1', '2026-08-01T00:00:00+0000')], 'cursor-continue');
     });
@@ -268,9 +273,57 @@ describe('InstagramSyncService.syncUserData backfill', () => {
 
     expect(result.stoppedReason).toBe('time_budget');
     expect(result.backfillCompleted).toBe(false);
+    // ページングだけ進んで id:1 は取得できているが、インサイト取得（sync）には
+    // 一件も到達していない。ここで cursor をページング後の 'cursor-continue' の
+    // まま保存すると、次回 id:1 が二度と取得されなくなる（旧実装のデータロス）。
+    expect(result.synced).toBe(0);
     expect(updateInstagramCredentialMock).toHaveBeenCalledWith(
       'user-1',
-      expect.objectContaining({ backfillCursor: 'cursor-continue' })
+      expect.objectContaining({ backfillCursor: 'cursor-initial' })
+    );
+  });
+
+  it('ページングはアカウント末端に到達したがインサイト取得が中断した場合、完了扱いにしない', async () => {
+    vi.useFakeTimers();
+    const startTime = new Date('2026-08-08T00:00:00.000Z');
+    vi.setSystemTime(startTime);
+
+    getInstagramCredentialMock.mockResolvedValue({
+      backfillCompletedAt: null,
+      backfillCursor: 'cursor-initial',
+    });
+    getExistingMediaIdsMock.mockResolvedValue(new Set());
+    // ページングはこの1ページで完結し nextCursor=null（アカウント末端）。
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage(
+        [rawItem('1', '2026-08-02T00:00:00+0000'), rawItem('2', '2026-08-01T00:00:00+0000')],
+        null
+      )
+    );
+    let insightCallCount = 0;
+    fetchMediaInsightsMock.mockImplementation(async () => {
+      insightCallCount += 1;
+      if (insightCallCount === 1) {
+        // 1件目の処理中に時間予算を超過させ、2件目の処理直前で time_budget 中断させる
+        vi.setSystemTime(new Date(startTime.getTime() + 800_000));
+      }
+      return { usage: emptyUsage, data: insights };
+    });
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'backfill');
+
+    expect(result.stoppedReason).toBe('time_budget');
+    expect(result.synced).toBe(1); // 1件目のみ処理、2件目は未処理のまま中断
+    // reachedEnd（ページング的には末端）だけで完了扱いにすると、2件目の投稿が
+    // backfillCompletedAt により次回以降 API を叩かず永久にスキップされてしまう。
+    expect(result.backfillCompleted).toBe(false);
+    expect(updateInstagramCredentialMock).not.toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ backfillCompletedAt: expect.any(String) })
+    );
+    expect(updateInstagramCredentialMock).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ backfillCursor: 'cursor-initial' })
     );
   });
 });

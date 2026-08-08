@@ -240,6 +240,11 @@ class InstagramSyncService {
 
     while (batchCount < maxBatches) {
       batchCount += 1;
+      // このバッチの処理（インサイト取得）が完了しなかった場合に巻き戻す位置。
+      // ページング取得だけ進めてインサイト取得が未完了のまま cursor を進めてしまうと、
+      // 未処理分が次回 backfill で二度と取得されなくなる（バッチ内で fetch 済み・未 sync の
+      // 投稿が永久にスキップされるデータロス）。中断時は必ずこの値まで戻す。
+      const batchStartCursor = cursor;
 
       // --- 1バッチ分のページング取得フェーズ（最大 INSTAGRAM_SYNC_MEDIA_LIMIT 件） ---
       const pages: InstagramMediaPageResponse[] = [];
@@ -251,7 +256,18 @@ class InstagramSyncService {
           break;
         }
 
-        const pageLimit = Math.min(25, INSTAGRAM_SYNC_MEDIA_LIMIT);
+        // 既にバッチ内に集まっている件数を踏まえ、残り枠ちょうどを要求する。
+        // 固定 25 件のまま要求すると、Graph API が返すページが残り枠をまたいで
+        // 「ページ内で打ち切り」になり得る（collectInstagramMediaPages の
+        // mid-page truncation 分岐）。その場合カーソルはページ全体の後を指し、
+        // 実際に採用しなかった分の投稿が永久にスキップされる。残り枠以下しか
+        // 要求しなければこの分岐自体に到達しない。
+        const alreadyCollected = collectInstagramMediaPages(pages, INSTAGRAM_SYNC_MEDIA_LIMIT);
+        const remaining = INSTAGRAM_SYNC_MEDIA_LIMIT - alreadyCollected.items.length;
+        if (remaining <= 0) {
+          break;
+        }
+        const pageLimit = Math.min(25, remaining);
         const pageResult = await this.instagramService.fetchMediaPage(accessToken, {
           limit: pageLimit,
           after: cursor,
@@ -287,6 +303,13 @@ class InstagramSyncService {
           break;
         }
         cursor = collected.nextCursor;
+
+        if (collected.items.length >= INSTAGRAM_SYNC_MEDIA_LIMIT) {
+          // ちょうど上限に達した。次ページを取りに行くと丸ごと破棄される
+          // だけの無駄な API コールになる（レート/時間予算を浪費し、結果的に
+          // 中断が起きやすくなる）ため、ここで打ち切る。
+          break;
+        }
       }
 
       const collected = collectInstagramMediaPages(pages, INSTAGRAM_SYNC_MEDIA_LIMIT);
@@ -405,6 +428,16 @@ class InstagramSyncService {
         }
       }
 
+      if (mode === 'backfill' && result.stoppedReason) {
+        // ページング取得は完了・進行していても、このバッチのインサイト取得
+        // （アイテム処理ループ）が中断された場合は cursor をバッチ開始位置へ
+        // 巻き戻す。次回はこのバッチを丸ごと再取得するが、getExistingMediaIds
+        // により既に sync 済みの投稿はスキップされるため、未処理分だけが
+        // 再試行される（cursor を進めたまま保存すると、未処理分が永久に
+        // スキップされてしまう）。
+        cursor = batchStartCursor;
+      }
+
       // incremental は常に1バッチで終了。backfill は末端到達 or 中断まで次バッチへ進む。
       if (mode === 'incremental') {
         break;
@@ -418,7 +451,12 @@ class InstagramSyncService {
     // incremental の意味に紐づく処理のため、backfill 実行時は行わない
     // （ユーザー向け「まだデータがありません」判定に backfill の裏側実行を混ぜない）。
     if (mode === 'backfill') {
-      if (reachedEnd) {
+      // reachedEnd は「ページング取得がアカウント末端に達したか」のみを示す。
+      // 末端に達していても、そのバッチのインサイト取得が stoppedReason で中断していれば
+      // 未処理の投稿が残っている状態なので、完了扱いにしてはいけない
+      // （backfillCompletedAt をセットすると次回以降 API を叩かず即終了してしまい、
+      // 未処理分が永久にスキップされる）。
+      if (reachedEnd && !result.stoppedReason) {
         await this.supabaseService.updateInstagramCredential(userId, {
           backfillCompletedAt: new Date().toISOString(),
           backfillCursor: null,
