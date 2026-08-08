@@ -1087,8 +1087,6 @@ export type Database = {
           line_picture_url: string | null
           line_status_message: string | null
           line_user_id: string | null
-          owner_previous_role: string | null
-          owner_user_id: string | null
           role: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -1105,8 +1103,6 @@ export type Database = {
           line_picture_url?: string | null
           line_status_message?: string | null
           line_user_id?: string | null
-          owner_previous_role?: string | null
-          owner_user_id?: string | null
           role?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -1123,23 +1119,13 @@ export type Database = {
           line_picture_url?: string | null
           line_status_message?: string | null
           line_user_id?: string | null
-          owner_previous_role?: string | null
-          owner_user_id?: string | null
           role?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           supabase_auth_id?: string | null
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "users_owner_user_id_fkey"
-            columns: ["owner_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       wordpress_settings: {
         Row: {
@@ -1236,10 +1222,6 @@ export type Database = {
           error: string
           success: boolean
         }[]
-      }
-      get_accessible_user_ids: {
-        Args: { p_user_id: string }
-        Returns: string[]
       }
       get_available_category_names: {
         Args: { p_user_id: string }

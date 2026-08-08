@@ -46,8 +46,6 @@ function createDbUser(overrides: Partial<DbUser> & Pick<DbUser, 'id' | 'role'>):
     line_picture_url: null,
     line_status_message: null,
     line_user_id: null,
-    owner_previous_role: null,
-    owner_user_id: null,
     stripe_customer_id: null,
     stripe_subscription_id: null,
     supabase_auth_id: 'auth-1',

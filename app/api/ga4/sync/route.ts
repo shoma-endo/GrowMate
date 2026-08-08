@@ -23,7 +23,7 @@ export async function POST() {
     })
   ) {
     return NextResponse.json(
-      { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED },
+      { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED },
       { status: 403 }
     );
   }

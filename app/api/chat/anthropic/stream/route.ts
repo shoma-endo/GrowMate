@@ -422,7 +422,7 @@ export async function POST(req: NextRequest) {
 
                 const effectiveSessionId = result?.sessionId ?? sessionId ?? undefined;
 
-                // step7 本文生成のみ: session_combined_contents に追加保存。閲覧専用オーナーは拒否
+                // step7 本文生成のみ: session_combined_contents に追加保存
                 const needsStep7CombinedSave =
                   step7FullBodyGeneration &&
                   isStep7Model &&

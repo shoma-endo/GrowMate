@@ -101,25 +101,7 @@ const getAuthUserId = async (): Promise<GscDashboardAuthIdResult> => {
   return { userId: authResult.userId, role: authResult.userDetails?.role ?? null };
 };
 
-interface AccessibleUserIdsResult {
-  accessibleIds: string[] | null;
-  error: string | null;
-}
-
-const getAccessibleUserIds = async (userId: string): Promise<AccessibleUserIdsResult> => {
-  const { data: accessibleIds, error: accessError } = await supabaseService
-    .getClient()
-    .rpc('get_accessible_user_ids', { p_user_id: userId });
-
-  if (accessError || !accessibleIds) {
-    return {
-      accessibleIds: null,
-      error: ERROR_MESSAGES.AUTH.ACCESS_CHECK_FAILED,
-    };
-  }
-
-  return { accessibleIds, error: null };
-};
+const getUserScope = (userId: string): string[] => [userId];
 
 export async function fetchGscDetail(
   annotationId: string,
@@ -132,10 +114,7 @@ export async function fetchGscDetail(
   }
   const { userId } = authId;
 
-  const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
-  if (accessCheckError || !accessibleIds) {
-    return { success: false, error: accessCheckError || ERROR_MESSAGES.AUTH.ACCESS_CHECK_FAILED };
-  }
+  const userIds = getUserScope(userId);
 
   const days = Math.min(180, Math.max(7, options?.days ?? 90));
   const startDate = new Date();
@@ -148,7 +127,7 @@ export async function fetchGscDetail(
     .select(
       'id, user_id, wp_post_id, wp_post_title, canonical_url, opening_proposal, wp_content_text, wp_excerpt, persona, needs'
     )
-    .in('user_id', accessibleIds)
+    .in('user_id', userIds)
     .eq('id', annotationId)
     .maybeSingle();
 
@@ -409,10 +388,7 @@ export async function registerEvaluation(params: {
     }
     const { userId } = authId;
 
-    const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
-    if (accessCheckError || !accessibleIds) {
-      return { success: false, error: accessCheckError || ERROR_MESSAGES.AUTH.ACCESS_CHECK_FAILED };
-    }
+    const userIds = getUserScope(userId);
 
     const { contentAnnotationId, propertyUri, baseEvaluationDate, cycleDays, evaluationHour } =
       params;
@@ -447,7 +423,7 @@ export async function registerEvaluation(params: {
       .from('content_annotations')
       .select('id, user_id')
       .eq('id', contentAnnotationId)
-      .in('user_id', accessibleIds)
+      .in('user_id', userIds)
       .maybeSingle();
 
     if (annotationError) {
@@ -515,10 +491,7 @@ export async function updateEvaluation(params: {
     }
     const { userId } = authId;
 
-    const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
-    if (accessCheckError || !accessibleIds) {
-      return { success: false, error: accessCheckError || ERROR_MESSAGES.AUTH.ACCESS_CHECK_FAILED };
-    }
+    const userIds = getUserScope(userId);
 
     const { contentAnnotationId, baseEvaluationDate, cycleDays, evaluationHour } = params;
     if (!contentAnnotationId || !baseEvaluationDate) {
@@ -547,7 +520,7 @@ export async function updateEvaluation(params: {
       .from('content_annotations')
       .select('user_id')
       .eq('id', contentAnnotationId)
-      .in('user_id', accessibleIds)
+      .in('user_id', userIds)
       .maybeSingle();
 
     if (annotationError) {
@@ -663,10 +636,7 @@ export async function fetchQueryAnalysis(
     }
     const { userId } = authId;
 
-    const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
-    if (accessCheckError || !accessibleIds) {
-      return { success: false, error: accessCheckError || ERROR_MESSAGES.AUTH.ACCESS_CHECK_FAILED };
-    }
+    const userIds = getUserScope(userId);
 
     // 期間計算
     const days = dateRange === '7d' ? 7 : dateRange === '28d' ? 28 : 90;
@@ -688,7 +658,7 @@ export async function fetchQueryAnalysis(
       .from('content_annotations')
       .select('user_id, normalized_url')
       .eq('id', annotationId)
-      .in('user_id', accessibleIds)
+      .in('user_id', userIds)
       .maybeSingle();
 
     if (annotationError || !annotation?.normalized_url) {
@@ -828,10 +798,7 @@ export async function runQueryImportForAnnotation(
     }
     const { userId } = authId;
 
-    const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
-    if (accessCheckError || !accessibleIds) {
-      return { success: false, error: accessCheckError || ERROR_MESSAGES.AUTH.ACCESS_CHECK_FAILED };
-    }
+    const userIds = getUserScope(userId);
 
     if (!annotationId) {
       return { success: false, error: ERROR_MESSAGES.GSC.ANNOTATION_ID_REQUIRED };
@@ -842,7 +809,7 @@ export async function runQueryImportForAnnotation(
       .from('content_annotations')
       .select('id, user_id, canonical_url')
       .eq('id', annotationId)
-      .in('user_id', accessibleIds)
+      .in('user_id', userIds)
       .maybeSingle();
 
     if (annotationError) {
@@ -915,10 +882,7 @@ export async function runEvaluationNow(contentAnnotationId: string) {
     }
     const { userId } = authId;
 
-    const { accessibleIds, error: accessCheckError } = await getAccessibleUserIds(userId);
-    if (accessCheckError || !accessibleIds) {
-      return { success: false, error: accessCheckError || ERROR_MESSAGES.AUTH.ACCESS_CHECK_FAILED };
-    }
+    const userIds = getUserScope(userId);
 
     if (!contentAnnotationId) {
       return { success: false, error: ERROR_MESSAGES.GSC.ANNOTATION_ID_REQUIRED };
@@ -929,7 +893,7 @@ export async function runEvaluationNow(contentAnnotationId: string) {
       .from('content_annotations')
       .select('user_id')
       .eq('id', contentAnnotationId)
-      .in('user_id', accessibleIds)
+      .in('user_id', userIds)
       .maybeSingle();
 
     if (annotationError) {

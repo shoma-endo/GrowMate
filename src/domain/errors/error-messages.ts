@@ -167,15 +167,6 @@ export const ERROR_MESSAGES = {
     /** アクセス権の確認に失敗した場合 */
     ACCESS_CHECK_FAILED: 'アクセス権の確認に失敗しました',
 
-    /** オーナー権限が必要な場合 */
-    OWNER_REQUIRED: 'この操作はオーナー権限が必要です',
-
-    /** スタッフユーザーが操作できない場合 */
-    STAFF_OPERATION_NOT_ALLOWED: 'スタッフユーザーはこの操作を実行できません',
-
-    /** View Mode中のオーナーとスタッフが操作できない場合（本人のオーナーアカウントのみ許可） */
-    OWNER_ACCOUNT_REQUIRED: 'この操作は本人のオーナーアカウントでのみ実行できます',
-
     /** LINEのアクセストークンが必要な場合 */
     LINE_ACCESS_TOKEN_REQUIRED: 'LINEのアクセストークンが必要です',
 
@@ -449,10 +440,6 @@ export const ERROR_MESSAGES = {
     /** Stripe契約情報があるユーザーは削除できない場合 */
     DELETION_BLOCKED_ACTIVE_SUBSCRIPTION:
       '契約情報があるため削除できません。先に契約を解除してください',
-
-    /** 組織に紐づいているユーザーは削除できない場合 */
-    DELETION_BLOCKED_ORGANIZATION_LINKED:
-      '組織に紐づいているため削除できません。先に組織関係を解除してください',
 
     /** 削除対象の入力・再検証に失敗した場合（不正なID・対象不存在） */
     DELETE_TARGET_INVALID: '削除対象を確認できませんでした。画面を更新してください',

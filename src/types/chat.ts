@@ -101,9 +101,7 @@ export interface ServerChatMessage {
   created_at: IsoTimestamp;
 }
 
-/**
- * Server Component用のChatSession型（RPCでメッセージを含む）
- */
+/** Server Component用のChatSession型（メッセージを含む） */
 export interface ServerChatSession {
   id: string;
   title: string;

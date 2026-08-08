@@ -194,7 +194,7 @@ class AnalyticsContentService {
   }
 
   /**
-   * アクセス可能な全アノテーションから wp_category_names を集約し、
+   * 自分のアノテーションから wp_category_names を集約し、
    * 重複を除いてソートしたカテゴリ名の配列を返す。フィルターUIの選択肢に使用する。
    * DB側RPC関数で効率的に集約する（1回のラウンドトリップで完了）。
    */
@@ -235,7 +235,7 @@ class AnalyticsContentService {
   }
 
   private async fetchGa4Summaries(
-    accessibleIds: string[],
+    userIds: string[],
     annotations: AnnotationRecord[],
     startDate: string,
     endDate: string
@@ -261,7 +261,7 @@ class AnalyticsContentService {
     const { data: credentials } = await client
       .from('gsc_credentials')
       .select('user_id, ga4_property_id')
-      .in('user_id', accessibleIds)
+      .in('user_id', userIds)
       .not('ga4_property_id', 'is', null);
 
     const userPropertyPairs = (credentials ?? []).filter(

@@ -28,7 +28,7 @@ export async function runGscImport(params: GscImportParams) {
     }
     const role = authResult.userDetails?.role ?? null;
     if (!role || role === 'unavailable') {
-      return { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED };
+      return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
     }
 
     const { startDate, endDate, searchType = 'web', maxRows = 1000, runEvaluation = true } = params;

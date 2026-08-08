@@ -525,20 +525,10 @@ export async function getContentAnnotationBySession(
   return withAuth(async ({ userId }) => {
     const client = new SupabaseService().getClient();
 
-    // アクセス可能なユーザーIDを取得（オーナー/従業員の相互閲覧対応）
-    const { data: accessibleIds, error: accessError } = await client.rpc(
-      'get_accessible_user_ids',
-      { p_user_id: userId }
-    );
-
-    if (accessError || !accessibleIds) {
-      return { success: false as const, error: 'アクセス権の確認に失敗しました' };
-    }
-
     const { data, error } = await client
       .from('content_annotations')
       .select('*')
-      .in('user_id', accessibleIds)
+      .eq('user_id', userId)
       .eq('session_id', session_id)
       .maybeSingle();
 
@@ -566,16 +556,6 @@ export async function upsertContentAnnotationBySession(
     const supabaseServiceLocal = new SupabaseService();
     const client = supabaseServiceLocal.getClient();
 
-    // アクセス可能なユーザーIDを取得（従業員: 自分＋オーナー）
-    const { data: accessibleIds, error: accessError } = await client.rpc(
-      'get_accessible_user_ids',
-      { p_user_id: userId }
-    );
-
-    if (accessError || !accessibleIds) {
-      return { success: false as const, error: 'アクセス権の確認に失敗しました' };
-    }
-
     // セッションの所有者を確認
     const { data: sessionData, error: sessionError } = await client
       .from('chat_sessions')
@@ -589,8 +569,8 @@ export async function upsertContentAnnotationBySession(
 
     const sessionOwnerId = sessionData.user_id;
 
-    // セッション所有者がアクセス可能かチェック
-    if (!accessibleIds.includes(sessionOwnerId)) {
+    // セッション所有者が自分か確認
+    if (sessionOwnerId !== userId) {
       return { success: false as const, error: 'このセッションを編集する権限がありません' };
     }
 
