@@ -151,7 +151,7 @@ export default function InstagramTab({
   const handleBackfill = async () => {
     setIsBackfilling(true);
     setBackfillAlert(null);
-    const toastId = toast.loading('過去の投稿を取得中...');
+    const toastId = toast.loading('過去の投稿をインポート中...');
     try {
       const result = await syncInstagramData('backfill');
       if (!result.success || !result.data) {
@@ -315,7 +315,7 @@ export default function InstagramTab({
                 onClick={handleBackfill}
               >
                 <History className={cn('w-4 h-4 mr-2', isBackfilling && 'animate-spin')} />
-                {backfillStatus === 'completed' ? '過去の投稿を取り込む（完了）' : '過去の投稿を取り込む'}
+                {backfillStatus === 'completed' ? '過去の投稿をインポート（完了）' : '過去の投稿をインポート'}
               </Button>
               {backfillStatus === 'in_progress' ? (
                 <span className="text-xs text-gray-500">前回の続きがあります</span>

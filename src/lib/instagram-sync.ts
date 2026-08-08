@@ -22,7 +22,7 @@ export function getInstagramSyncToastMessage(
 
   const retryHint =
     result.mode === 'backfill'
-      ? '「過去の投稿を取り込む」をもう一度押すと続きを取得できます。'
+      ? '「過去の投稿をインポート」をもう一度押すと続きを取得できます。'
       : '再度「最新化」で続きを取得できます。';
 
   if (result.stoppedReason === 'time_budget') {
@@ -50,7 +50,7 @@ export function getInstagramSyncToastMessage(
     if (result.backfillCompleted) {
       return {
         type: 'success',
-        message: `過去の投稿の取り込みが完了しました（今回${result.synced}件）`,
+        message: `過去の投稿のインポートが完了しました（今回${result.synced}件）`,
       };
     }
     // 中断理由（stoppedReason）は既に上でハンドリング済み。ここに到達するのは
@@ -58,14 +58,14 @@ export function getInstagramSyncToastMessage(
     // truncated の有無に関わらず「まだ続きがある」ことを意味する。
     return {
       type: 'info',
-      message: `過去の投稿を${result.synced}件取り込みました。続きがあります。「過去の投稿を取り込む」からさらに取得できます。`,
+      message: `過去の投稿を${result.synced}件インポートしました。続きがあります。「過去の投稿をインポート」からさらに取得できます。`,
     };
   }
 
   if (result.truncated) {
     return {
       type: 'info',
-      message: `直近${INSTAGRAM_SYNC_MEDIA_LIMIT}件まで取得しました。さらに新しい投稿がある可能性があります。「過去の投稿を取り込む」からも取得できます。`,
+      message: `直近${INSTAGRAM_SYNC_MEDIA_LIMIT}件まで取得しました。さらに新しい投稿がある可能性があります。「過去の投稿をインポート」からも取得できます。`,
     };
   }
 

@@ -35,7 +35,7 @@ describe('getInstagramSyncToastMessage', () => {
       baseResult({ synced: 50, truncated: true })
     );
     expect(message.type).toBe('info');
-    expect(message.message).toContain('過去の投稿を取り込む');
+    expect(message.message).toContain('過去の投稿をインポート');
   });
 
   it('incremental の time_budget 中断時は「最新化」への再試行文言を含む', () => {
@@ -46,12 +46,12 @@ describe('getInstagramSyncToastMessage', () => {
     expect(message.message).toContain('最新化');
   });
 
-  it('backfill の time_budget 中断時は「過去の投稿を取り込む」への再試行文言を含む', () => {
+  it('backfill の time_budget 中断時は「過去の投稿をインポート」への再試行文言を含む', () => {
     const message = getInstagramSyncToastMessage(
       baseResult({ mode: 'backfill', synced: 10, stoppedReason: 'time_budget' })
     );
     expect(message.type).toBe('warning');
-    expect(message.message).toContain('過去の投稿を取り込む');
+    expect(message.message).toContain('過去の投稿をインポート');
   });
 
   it('backfill 完了時は success を返す', () => {

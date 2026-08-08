@@ -94,7 +94,7 @@ export type InstagramSyncStoppedReason = 'time_budget' | 'consecutive_failures' 
 
 /**
  * incremental: 「最新化」ボタン。DB内最新投稿日時（ウォーターマーク）より新しい投稿のみ取得。
- * backfill: 「過去の投稿を取り込む」ボタン。永続化したカーソルから続きを取得し、
+ * backfill: 「過去の投稿をインポート」ボタン。永続化したカーソルから続きを取得し、
  *           既存投稿はインサイト取得をスキップしてページングのみ進める。
  */
 export type InstagramSyncMode = 'incremental' | 'backfill';
