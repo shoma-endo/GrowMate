@@ -35,7 +35,7 @@ export default function InstagramAccountSummaryCard({
 
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mb-3 pb-3 border-b text-sm">
-      <span className="text-gray-500">アカウント指標（最新日: {latestDay.date}）</span>
+      <span className="text-gray-600">アカウント指標（最新日: {latestDay.date}）</span>
       <span>
         リーチ <strong className="font-semibold">{formatCount(latestDay.reach)}</strong>
       </span>
