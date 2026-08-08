@@ -1,6 +1,6 @@
 ---
 name: spec-to-html
-description: docs/plans 仕様書を「読む地図」から「見る地図」に変換する正本。意味の再構成（core.yaml → ステータス / 設計判断 / クイズの3ビュー）とスクリプト生成の全文ビューを、単一ファイル HTML に束ねる手順・更新モード・出力先規約を定義する。TAKT spec-review ワークフローの visualize ステップ、および仕様書の図解を手動で作り直すときに使う。不負責：仕様書本文の修正（spec-review）、リポジトリ全体のキャッチアップ資料（project-catchup）。
+description: docs/plansの仕様書を単一HTMLの「見る地図」に変換・更新するときだけ使う正本。core.yamlからステータス・設計判断・クイズの再構成ビューを作り、原本Markdownから全文ビューを生成する。TAKT spec-reviewのvisualize、仕様書の図解HTML生成・再生成・陳腐化確認で使う。仕様書本文のレビュー・修正（spec-review）やリポジトリ全体のキャッチアップには使わない。
 ---
 
 # 仕様書の図解化（SSoT）

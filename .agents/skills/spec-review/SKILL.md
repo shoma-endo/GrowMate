@@ -1,6 +1,6 @@
 ---
 name: spec-review
-description: docs/plans 仕様書（設計書）のレビュー観点チェックリストと適用ルーティングの正本。仕様書のレビュー・監査、spec-to-pr 実行前の品質確認、TAKT spec-review ワークフローで使う。完全性・既存コード整合・非機能・セキュリティの共通観点と、クライアント整合 / LLM / UI / データ / Google 連携 / 外部サービス連携の条件付き観点の振り分けを定義する。外部サービス（Google・WordPress・Instagram 等）連携時は公式ドキュメントを一次情報として WebFetch で照合する規約もここに含む。
+description: docs/plansの仕様書・設計書を作成前、レビュー・監査するときに必ず使う品質チェックと適用ルーティングの正本。要件、Non-goals、既存コード整合、非機能、セキュリティ、クライアント整合、LLM、UI、データ、Google連携、外部サービス連携を確認する。spec-to-pr実行前やTAKT spec-reviewで使い、Google・WordPress・Instagram等の外部APIは公式ドキュメントを一次情報として照合する。
 ---
 # 仕様書レビュー観点（SSoT）
 

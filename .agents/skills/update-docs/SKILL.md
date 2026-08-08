@@ -1,6 +1,6 @@
 ---
 name: update-docs
-description: ドキュメント（docs/plans・docs/specs・docs/context・docs/runbooks・README）の更新・レビューを、コード変更との同期手順に沿ってガイドする。ドキュメント更新の依頼を受けたとき、コード変更を設計書へ反映するとき、PR に合わせて docs を直すときに使う。
+description: コード・仕様・PRとドキュメントを同期するときに必ず使う更新ガイド。docs/plans、docs/specs、docs/context、docs/runbooks、READMEの追加・修正、コード変更後の設計書反映、参照パス確認、PRに合わせたdocs更新で使う。仕様書の妥当性レビューはspec-review、図解HTML生成はspec-to-htmlを使う。
 ---
 
 # Documentation Update Workflow
@@ -30,7 +30,7 @@ GrowMate の docs は公開サイトではなく **内部設計書体系**。分
 
 ## 設計書先行運用との同期（必須）
 
-- 中〜大規模機能は **実装前に `docs/plans/` へ設計書を作成しレビューを受ける**（`agent-workflow-core` 参照）。
+- 中〜大規模機能は **実装前に `docs/plans/` へ設計書を作成しレビューを受ける**。
 - 実装中に設計と異なる判断をした場合、コードだけ直して設計書を放置しない。**同じ PR 内で設計書を実態に合わせる**か、乖離をユーザーへ明示して更新の要否を確認する。
 - 旧仕様の記述を残す場合は「変更履歴」または「旧仕様との違い」として明示し、現行仕様と混在させない。
 

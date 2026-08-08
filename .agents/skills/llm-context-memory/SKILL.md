@@ -1,6 +1,6 @@
 ---
 name: llm-context-memory
-description: GrowMate の LLM 機能におけるコンテキスト設計・メモリ設計・token budget・RAG/外部ドキュメント注入・会話履歴要約・長期記憶の保存方針を確認する。チャット、Canvas、Google Ads/GSC 分析、RAG、Google Docs 連携、エージェント型機能、prompt_templates、LLM 呼び出し経路の仕様レビューや実装前設計では必ず使う。
+description: GrowMateのClaude（Anthropic）/LLM機能で必ず使うコンテキスト・メモリ設計の正本。token budget、RAG、外部ドキュメント注入、会話履歴要約、長期記憶、prompt_templates、入力・出力の保存方針を扱う。チャット、Canvas、Google Ads/GSC分析、Google Docs連携、エージェント型機能、Claude API/LLM呼び出し経路の仕様レビューや実装前設計で使う。
 ---
 
 # LLM Context / Memory

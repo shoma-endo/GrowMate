@@ -1,6 +1,6 @@
 ---
 name: react
-description: React 19 + React Compiler の実装規約（Context / use() / Suspense / 最適化）と React Doctor による診断。React コンポーネント実装、Context、useMemo/useCallback 禁止、React 19 パターン、React Doctor 診断・品質改善のときに使う。
+description: React 19 + React Compilerのコンポーネント実装・診断で必ず使う規約。Context、use()、Suspense、hooks、最適化、useMemo/useCallback、React Doctorを扱う。Reactコンポーネント、hooks、Context、Suspense、React Compiler対応、React Doctor診断・品質改善を追加・変更するときに使う。UIの文言・レイアウト・デザイン判断はgrowmate-ui-uxも併用する。
 ---
 
 # React 技術規約
