@@ -338,10 +338,10 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    **決定**: 自動同期（cron）を Phase 2 のスコープから外し、**Instagram タブの「最新化」ボタンだけ**にする。理由は「最初はシンプルな作り（MVP）優先」（CLAUDE.md の MVP 原則にも沿う）。
    - **落としたもの**: ~~`app/api/cron/instagram-sync/route.ts`~~（廃止）、~~`.github/workflows/hourly-cron.yml` の matrix 追加~~（廃止）、`count-batch` profile 連携、`INSTAGRAM_SYNC_ENABLED` キルスイッチの cron 側分岐、**§9 Q9（同期頻度の確認）そのもの**
    - **副次的な利点**: §3.3 のレート枠の懸念（毎時×50件＝1ユーザー約1,200コール/日）が消える。ユーザーが押した回数しか消費しない。審査提出前にレート枠を使い切る事故（着手条件）も起こらなくなる
-   - **専用インポート画面は設けない**（従来どおり）。GSC dashboard の `OverviewTab.tsx` inline「最新化」と同じ**確認ダイアログ + 単一トースト**方式を採用する
+   - **専用インポート画面は設けない**（従来どおり）。GSC dashboard の `OverviewTab.tsx` inline「最新化」とは異なり、**確認ダイアログは設けずボタン押下で即実行**する（**2026-08-08 決定**: データ取得・upsert による表示更新のみで、削除や連携解除のような不可逆な操作ではないため。連打・APIコスト保護はダイアログではなく `disabled={!syncEnabled || isSyncing}` で担保する）
 
    実装:
-   - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ 確認 `Dialog`（`OverviewTab.tsx:153-186` と同型）→ Server Action。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再認証/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**ダイアログ文言・トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
+   - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ クリックで即 Server Action 実行（確認ダイアログなし）。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再認証/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
    - **⚠ トークン延長の契機がユーザー操作だけになる（重要）**: 当初は「トークン延長も cron 内で実施」する設計だった。cron を落としたことで、**長期トークン（60日）を延長する経路は `/setup/instagram` のプレビュー取得（`instagramSetup.actions.ts:195` の `ensureValidInstagramToken`）と、この「最新化」だけ**になる。
      - **リスクは限定的**: 延長条件は「期限まで7日未満かつ発行から24時間超」（`src/server/lib/instagram-token.ts`）なので、**60日のうち最後の7日間に一度でも画面を開けば延長される**。失効するのは「60日間まったく Instagram 機能を使わなかったユーザー」だけ
      - **失効しても壊れない**: `needsReauth` として「要再認証」バッジ + 再連携導線が出る（§6・§11.2）。**サイレントに未連携へ落ちない**ことが担保されていれば MVP として許容する
@@ -903,18 +903,12 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 
 ┌─ ツールバー ─────────────────────────────────┐
 │ 種別: [すべて|リール|フィード]  期間: [開始]〜[終了] │
-│ 並び順: [投稿日▼]      [RefreshCw 最新化]        │  ← クリックで確認 Dialog（下記）
+│ 並び順: [投稿日▼]      [RefreshCw 最新化]        │  ← クリックで即実行（確認ダイアログなし）
 │ 最終同期: 2026-07-23 10:00                    │  ← last_synced_at。未同期時は非表示
 └──────────────────────────────────────────────┘
 
-「最新化」クリック時（`OverviewTab.tsx:153-186` 同型の確認 Dialog）:
-┌─ Dialog ──────────────────────────────────────┐
-│ Instagramデータの同期                          │
-│ Instagramから最新の投稿・指標を取得し、一覧を  │
-│ 更新します。直近50件の投稿が対象です。         │
-│                     [キャンセル] [同期を実行]  │
-└──────────────────────────────────────────────┘
-  → 確認後ダイアログを閉じ `toast.loading('Instagramデータを取得中...')`
+「最新化」クリック時（**確認ダイアログなし。2026-08-08 決定**）:
+  → クリックで即 `toast.loading('Instagramデータを取得中...')` を表示し Server Action を実行
   → 完了時に同一トーストを更新（結果は下記「同期結果」参照）
 
 ┌─ Card: アカウント指標（サマリー）────────────────┐
@@ -996,5 +990,5 @@ Phase 3 が保留になったため、**Phase 2 の一覧に「台本作成」�
 - 同期バッチ: `src/server/services/gscEvaluationService.ts`, `app/api/cron/gsc-evaluate/route.ts`
 - cron matrix + profile: `.github/workflows/hourly-cron.yml`（`count-batch` プロファイル）
 - タブ UI: `app/ga4-dashboard/Ga4DashboardClient.tsx:435`
-- **inline 同期の確認 Dialog + 単一トースト正本**: `app/gsc-dashboard/components/OverviewTab.tsx:111-186`（`handleSync`, `isSyncDialogOpen`, `getQueryImportToastMessage` 相当）
+- **inline 同期の単一トースト正本**: `app/gsc-dashboard/components/OverviewTab.tsx:111-186`（`handleSync`, `getQueryImportToastMessage` 相当。**Instagram は確認 Dialog は踏襲しない** — 2026-08-08 決定、§4 Phase 2 item3）
 - LLM 変数注入: `src/server/services/gscSuggestionService.ts` + `prompt_templates`

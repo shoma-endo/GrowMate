@@ -9,16 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -87,7 +77,6 @@ export default function InstagramTab({
   buildFilterHref,
 }: InstagramTabProps) {
   const router = useRouter();
-  const [isSyncDialogOpen, setIsSyncDialogOpen] = React.useState(false);
   const [isSyncing, setIsSyncing] = React.useState(false);
   const [syncAlert, setSyncAlert] = React.useState<string | null>(null);
   const [rangeStart, setRangeStart] = React.useState(igStart);
@@ -101,7 +90,6 @@ export default function InstagramTab({
   const lastSyncedLabel = formatLastSyncedAt(lastSyncedAt);
 
   const handleSync = async () => {
-    setIsSyncDialogOpen(false);
     setIsSyncing(true);
     setSyncAlert(null);
     const toastId = toast.loading('Instagramデータを取得中...');
@@ -217,28 +205,15 @@ export default function InstagramTab({
             </SelectContent>
           </Select>
         </div>
-        <Dialog open={isSyncDialogOpen} onOpenChange={setIsSyncDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" disabled={!syncEnabled || isSyncing}>
-              <RefreshCw className={cn('w-4 h-4 mr-2', isSyncing && 'animate-spin')} />
-              最新化
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Instagramデータの同期</DialogTitle>
-              <DialogDescription>
-                Instagramから最新の投稿・指標を取得し、一覧を更新します。直近50件の投稿が対象です。
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">キャンセル</Button>
-              </DialogClose>
-              <Button onClick={handleSync}>同期を実行</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!syncEnabled || isSyncing}
+          onClick={handleSync}
+        >
+          <RefreshCw className={cn('w-4 h-4 mr-2', isSyncing && 'animate-spin')} />
+          最新化
+        </Button>
         <button
           type="button"
           className={cn(
