@@ -28,7 +28,8 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
 
 - **RLS / セキュリティ**
   - RLS ポリシーや `SECURITY DEFINER` 関数の設計は `supabase` スキル（`rls.md`）に従う。
-  - `get_accessible_user_ids` を前提としたオーナー/スタッフ共有アクセスのモデルを崩さない。
+  - owner/staff共有モデルは廃止済み。`get_accessible_user_ids`、`owner_user_id`、`owner_previous_role` を新規コード・RLS・RPCで参照しない。
+  - ユーザー処理は自分のIDに限定し、管理者・バッチ処理だけが明示的な認可のもとで別ユーザーのIDを扱う。
 
 - **クライアント生成 / Service Role**
   - Supabase クライアントの生成・Service Role の利用パターンは `supabase` スキル（`service-usage.md`）に従い、重複実装を避ける。
@@ -56,4 +57,3 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
   - 型エラーが出ないか（`npm run lint` / `npm run build` の結果）。
   - 既存の命名規則・ディレクトリ構造・責務分割に沿っているか。
   - Supabase / 認証まわりでセキュリティ上の抜けがないか。
-

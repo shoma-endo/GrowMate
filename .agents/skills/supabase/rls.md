@@ -25,7 +25,14 @@ Supabase の Row Level Security (RLS) を安全かつ高効率に実装するた
 ### 4. マイグレーションフロー
 
 - RLS の変更は必ず `supabase/migrations/` 配下に SQL ファイルとして隔離し、ロールバック（`DROP POLICY ...`）の手順をコメントで残してください。
-- `get_accessible_user_ids` を前提としたオーナー/スタッフ共有アクセスのモデルを崩さない。
+- 通常はマイグレーションで適用します。ただし、既存本番DBへの緊急修正など、ユーザーが直接SQL適用を明示した場合は、実行SQL・検証結果を記録し、マイグレーションファイルは追加しません。
+- owner/staff共有モデルは廃止済みです。`get_accessible_user_ids`、`owner_user_id`、`owner_previous_role` を新規コード・RLS・RPCで参照しないでください。
+
+### 5. RPC の権限境界
+
+- Service Role クライアント専用のRPCは、`PUBLIC` / `anon` / `authenticated` への `EXECUTE` を revoke し、`service_role` のみに grant してください。PostgreSQL関数のデフォルト権限を前提にしてはいけません。
+- `SECURITY DEFINER` RPCで `p_user_id` 等を受け取る場合、Service Role専用なら `auth.role() = 'service_role'` を検証し、authenticated経路を許可するなら `auth.uid() = p_user_id` を検証してください。`auth.uid()` はService Role経路ではNULLになり得ます。
+- RPCの認証方式を変更したら、実際の呼び出しクライアント（Service Role / authenticated / anon）ごとに成功・拒否を確認し、`information_schema.routine_privileges` と `pg_get_functiondef()` を検査してください。
 
 ## 安全な実装例
 

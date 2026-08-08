@@ -21,7 +21,8 @@
   - **バックグラウンド処理 (Batch/Cron)**: GSC データインポート、定期的なデータ評価など。
   - **特権が必要な内部 API**: 認証ユーザーの紐付け更新、システム整合性チェックなど。
 - [WARNING] RLS が効かないため、**アプリケーション層での明示的な ID チェックを省略してはなりません**。
-  - クエリに `.eq('user_id', userId)` 等を含め、操作対象がそのユーザーの所有物であることを必ず保証してください。
+  - ユーザー自身のデータを扱う処理では、クエリに `.eq('user_id', userId)` 等を含め、操作対象がそのユーザーの所有物であることを必ず保証してください。
+  - 管理者・バッチ処理が別ユーザーのデータを扱う場合は、対象IDとの所有者一致を要求するのではなく、呼び出し元が管理者またはシステム処理であることを別途検証してください。
 - **推奨パターン**: 静的な特権操作が必要な場合は、`SupabaseService` を継承し、実在する `protected static withServiceRoleClient()` ユーティリティを活用してください（自動的に詳細なログが付与されます）。
 
 ## 4. エラーハンドリングとログ (Error Handling)
@@ -127,6 +128,23 @@ const { data, error } = await asPendingClient(client)
 - `database.types.pending.ts`のエクスポート・コメントに、参照元マイグレーションファイル名を必ず記載する。
 - PRの未確認事項に「マイグレーション適用・`npm run supabase:types`実行後、`database.types.pending.ts`の該当ブロックを削除し呼び出し側を生成型へ切り替える」旨を明記する。
 - マイグレーション未適用であること自体は、実装不能・仕様不足の理由にしない。
+
+## 7. RPC の認証・実行権限
+
+- **RPCの呼び出し元を必ず確認する**: `.rpc()` はServer Action、Route Handler、Service層などサーバー側からのみ呼び出し、ブラウザのanon/authenticatedクライアントから直接呼び出さないでください。
+- **Service Role RPCは明示的に閉じる**: Service Roleクライアント専用の関数は、DB側でデフォルトの公開実行権限を残さないでください。
+
+```sql
+REVOKE EXECUTE ON FUNCTION public.example_rpc(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.example_rpc(text) TO service_role;
+```
+
+- **RPCの認証要件を処理種別で分ける**:
+  - ユーザー向けRPCは、`p_user_id` と `auth.uid()` の一致、またはアプリ層で検証済みの所有者IDを必ず確認する。
+  - 管理者・バッチRPCは、別ユーザーのIDを扱うことを許可できるが、Service Role、管理者認可、またはシステム実行経路を明示的に検証する。所有者一致を一律に要求して正規の管理処理を壊さない。
+- **`auth.uid()` とService Roleを混同しない**: Service Role経路では `auth.uid()` がNULLになり得ます。Service Role専用関数は `auth.role() = 'service_role'` と、処理種別に応じた認可検証を組み合わせてください。authenticated経路を許可する場合は、`auth.uid() = p_user_id` を関数内で検証してください。
+- **引数のuser IDを信頼しない**: `p_user_id` を受け取るRPCで、PUBLIC/anon/authenticated実行を許可したまま任意IDを検索・更新・削除させないでください。公開が必要なRPCは、関数内で認証主体と対象IDの一致を検証します。
+- **変更後の検証を必須にする**: RPC追加・権限変更後は、`information_schema.routine_privileges` で `PUBLIC` / `anon` / `authenticated` の権限がないこと、実際のService Roleまたはauthenticatedクライアントから成功すること、認証コンテキスト不一致時に拒否されることを確認してください。`pg_get_functiondef()` に加えて、`pg_policies`、`pg_views`、`pg_trigger`、`pg_depend` と `pg_get_viewdef()` / `pg_get_triggerdef()` で旧helper・旧owner参照と依存関係を検索します。
 
 ## 関連
 
