@@ -281,10 +281,11 @@ export default function AnalyticsClient({
 
   return (
     <div className="w-full px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">コンテンツ一覧</h1>
-
       {!instagramConnected ? (
-        blogContent
+        <>
+          <h1 className="text-3xl font-bold mb-6">コンテンツ一覧</h1>
+          {blogContent}
+        </>
       ) : (
         <Tabs
           value={activeTab}
@@ -297,16 +298,19 @@ export default function AnalyticsClient({
           }}
           className="w-full"
         >
-          <TabsList className="grid w-full grid-cols-2 h-12">
-            <TabsTrigger value="blog" className="flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              <span>ブログ</span>
-            </TabsTrigger>
-            <TabsTrigger value="instagram" className="flex items-center gap-2">
-              <ImageIcon className="w-4 h-4" />
-              <span>Instagram</span>
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex flex-wrap items-center gap-4 mb-6">
+            <h1 className="text-3xl font-bold">コンテンツ一覧</h1>
+            <TabsList>
+              <TabsTrigger value="blog" className="flex items-center gap-1.5">
+                <FileText className="w-4 h-4" />
+                <span>ブログ</span>
+              </TabsTrigger>
+              <TabsTrigger value="instagram" className="flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4" />
+                <span>Instagram</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="blog">{blogContent}</TabsContent>
           <TabsContent value="instagram">
             <InstagramTab
