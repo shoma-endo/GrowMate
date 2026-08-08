@@ -19,6 +19,12 @@ import type {
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
 import { useRouter } from 'next/navigation';
+import {
+  buildIgFilterHref,
+  buildIgPageHref,
+  buildInstagramHref,
+  type AnalyticsHrefState,
+} from './build-href';
 
 interface AnalyticsClientProps {
   items: AnalyticsContentItem[];
@@ -53,22 +59,6 @@ interface AnalyticsClientProps {
   instagramAccountLatestDay: InstagramAccountInsightsDailyRow | null;
   instagramLastSyncedAt: string | null;
   instagramSyncEnabled: boolean;
-  buildTabHref: (patch: {
-    tab?: 'blog' | 'instagram';
-    igPage?: number;
-    igType?: InstagramMediaTypeFilter;
-    igStart?: string;
-    igEnd?: string;
-    igSort?: InstagramMediaSortKey;
-  }) => string;
-  buildIgPageHref: (targetPage: number) => string;
-  buildIgFilterHref: (patch: {
-    igType?: InstagramMediaTypeFilter;
-    igStart?: string;
-    igEnd?: string;
-    igSort?: InstagramMediaSortKey;
-    igPage?: number;
-  }) => string;
 }
 
 export default function AnalyticsClient({
@@ -104,11 +94,21 @@ export default function AnalyticsClient({
   instagramAccountLatestDay,
   instagramLastSyncedAt,
   instagramSyncEnabled,
-  buildTabHref,
-  buildIgPageHref,
-  buildIgFilterHref,
 }: AnalyticsClientProps) {
   const router = useRouter();
+  const hrefState: AnalyticsHrefState = {
+    currentPage,
+    selectedCategoryNames,
+    includeUncategorized,
+    hasUnreadSuggestion,
+    instagramConnected,
+    activeTab,
+    igPage,
+    igType,
+    igStart,
+    igEnd,
+    igSort,
+  };
   const unreadAnnotationSet = React.useMemo(
     () => new Set(unreadAnnotationIds),
     [unreadAnnotationIds]
@@ -290,7 +290,7 @@ export default function AnalyticsClient({
           value={activeTab}
           onValueChange={value => {
             router.push(
-              buildTabHref({
+              buildInstagramHref(hrefState, {
                 tab: value === 'instagram' ? 'instagram' : 'blog',
               })
             );
@@ -321,8 +321,8 @@ export default function AnalyticsClient({
               accountLatestDay={instagramAccountLatestDay}
               lastSyncedAt={instagramLastSyncedAt}
               syncEnabled={instagramSyncEnabled}
-              buildIgPageHref={buildIgPageHref}
-              buildFilterHref={buildIgFilterHref}
+              buildIgPageHref={targetPage => buildIgPageHref(hrefState, targetPage)}
+              buildFilterHref={patch => buildIgFilterHref(hrefState, patch)}
             />
           </TabsContent>
         </Tabs>

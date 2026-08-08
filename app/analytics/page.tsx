@@ -199,63 +199,6 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     return `/analytics?${query.toString()}`;
   };
 
-  const buildInstagramHref = (patch: {
-    tab?: 'blog' | 'instagram';
-    igPage?: number;
-    igType?: InstagramMediaTypeFilter;
-    igStart?: string;
-    igEnd?: string;
-    igSort?: InstagramMediaSortKey;
-  }) => {
-    const query = new URLSearchParams();
-    query.set('page', String(currentPage));
-    for (const categoryName of selectedCategoryNames) {
-      const trimmed = categoryName.trim();
-      if (trimmed.length > 0) {
-        query.append('category', trimmed);
-      }
-    }
-    if (includeUncategorized) {
-      query.set('uncategorized', '1');
-    }
-    if (hasUnreadSuggestion) {
-      query.set('unread_suggestion', '1');
-    }
-
-    const nextTab = patch.tab ?? activeTab;
-    if (instagramConnected && nextTab === 'instagram') {
-      query.set('tab', 'instagram');
-      query.set('ig_page', String(patch.igPage ?? igPage));
-      query.set('ig_type', patch.igType ?? igType);
-      query.set('ig_start', patch.igStart ?? igStartDate);
-      query.set('ig_end', patch.igEnd ?? igEndDate);
-      query.set('ig_sort', patch.igSort ?? igSort);
-    }
-    if (patch.tab === 'instagram') {
-      query.set('ig_page', '1');
-    }
-    if (patch.tab === 'blog') {
-      query.set('page', '1');
-      query.set('ig_page', String(igPage));
-      query.set('ig_type', igType);
-      query.set('ig_start', igStartDate);
-      query.set('ig_end', igEndDate);
-      query.set('ig_sort', igSort);
-    }
-
-    return `/analytics?${query.toString()}`;
-  };
-
-  const buildIgPageHref = (targetIgPage: number) =>
-    buildInstagramHref({ igPage: targetIgPage });
-
-  const buildIgFilterHref = (patch: {
-    igType?: InstagramMediaTypeFilter;
-    igStart?: string;
-    igEnd?: string;
-    igSort?: InstagramMediaSortKey;
-    igPage?: number;
-  }) => buildInstagramHref({ tab: 'instagram', ...patch });
   const prevHref = buildPageHref(Math.max(1, currentPage - 1));
   const nextHref = buildPageHref(Math.min(totalPages, currentPage + 1));
 
@@ -293,9 +236,6 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       instagramAccountLatestDay={instagramAccountLatestDay}
       instagramLastSyncedAt={instagramLastSyncedAt}
       instagramSyncEnabled={isInstagramSyncEnabled()}
-      buildTabHref={buildInstagramHref}
-      buildIgPageHref={buildIgPageHref}
-      buildIgFilterHref={buildIgFilterHref}
     />
   );
 }
