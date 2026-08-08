@@ -167,7 +167,7 @@ export default function InstagramTab({
   const endItemNumber = total > 0 ? Math.min(igPage * 10, total) : 0;
 
   return (
-    <Card className="mt-6">
+    <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle>投稿一覧</CardTitle>
@@ -291,43 +291,41 @@ export default function InstagramTab({
               : '表示条件に一致する投稿がありません。期間や種別フィルタを変更してください。'
           }
         />
-        {items.length > 0 ? (
-          <div className="flex items-center justify-between mt-4">
-            <div className="text-sm text-gray-600">
-              {total > 0
-                ? `全${total}件中 ${startItemNumber}-${endItemNumber}件を表示（${igPage}/${totalPages}ページ）`
-                : ''}
-            </div>
-            <div className="flex gap-2">
-              <Link
-                href={prevHref}
-                prefetch={false}
-                aria-disabled={prevDisabled}
-                tabIndex={prevDisabled ? -1 : undefined}
-                className={cn(
-                  buttonVariants({ variant: 'outline' }),
-                  'px-3',
-                  prevDisabled && 'pointer-events-none opacity-50'
-                )}
-              >
-                前へ
-              </Link>
-              <Link
-                href={nextHref}
-                prefetch={false}
-                aria-disabled={nextDisabled}
-                tabIndex={nextDisabled ? -1 : undefined}
-                className={cn(
-                  buttonVariants({ variant: 'outline' }),
-                  'px-3',
-                  nextDisabled && 'pointer-events-none opacity-50'
-                )}
-              >
-                次へ
-              </Link>
-            </div>
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-sm text-gray-600">
+            {total > 0
+              ? `全${total}件中 ${startItemNumber}-${endItemNumber}件を表示（${igPage}/${totalPages}ページ）`
+              : ''}
           </div>
-        ) : null}
+          <div className="flex gap-2">
+            <Link
+              href={prevHref}
+              prefetch={false}
+              aria-disabled={prevDisabled}
+              tabIndex={prevDisabled ? -1 : undefined}
+              className={cn(
+                buttonVariants({ variant: 'outline' }),
+                'px-3',
+                prevDisabled && 'pointer-events-none opacity-50'
+              )}
+            >
+              前へ
+            </Link>
+            <Link
+              href={nextHref}
+              prefetch={false}
+              aria-disabled={nextDisabled}
+              tabIndex={nextDisabled ? -1 : undefined}
+              className={cn(
+                buttonVariants({ variant: 'outline' }),
+                'px-3',
+                nextDisabled && 'pointer-events-none opacity-50'
+              )}
+            >
+              次へ
+            </Link>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

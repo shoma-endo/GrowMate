@@ -228,9 +228,9 @@ export default function InstagramMediaTable({
         const visibleOrdered = orderedIds.filter(id => visibleSet.has(id));
         return (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-gray-600">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50">
+                <tr className="text-left text-gray-600">
                   <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
@@ -243,9 +243,9 @@ export default function InstagramMediaTable({
                   <th className="px-6 py-3 whitespace-nowrap">リンク</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200">
                 {items.map(item => (
-                  <tr key={item.id} className="border-b align-top">
+                  <tr key={item.id} className="align-top">
                     <td className="px-6 py-4">
                       {item.thumbnailUrl || item.mediaUrl ? (
                         <Image
