@@ -713,11 +713,11 @@ export default function AnalyticsTable({
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-[2200px] divide-y divide-gray-200">
+              <table className="min-w-[2200px] divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50 analytics-head">
                   <tr className="text-gray-600">
                     <th
-                      className="analytics-ops-cell px-2 py-3 text-center text-xs font-medium tracking-wider whitespace-nowrap relative group/th"
+                      className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap relative group/th"
                       style={{
                         width: `${opsWidth}px`,
                         minWidth: `${opsWidth}px`,
@@ -748,7 +748,7 @@ export default function AnalyticsTable({
                         <th
                           key={id}
                           className={cn(
-                            'px-6 py-3 text-left text-xs font-medium tracking-wider whitespace-nowrap',
+                            'px-6 py-3 text-left whitespace-nowrap',
                             id === 'impressions' && 'text-right min-w-[120px]',
                             id === 'categories' && 'min-w-[200px]',
                             (id === 'wp_post_title' || id === 'wp_excerpt') && 'min-w-[360px]',
