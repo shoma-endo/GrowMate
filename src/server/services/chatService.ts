@@ -502,10 +502,7 @@ class ChatService {
     }
   }
 
-  /**
-   * Server Component用: セッションとメッセージを一括取得（RPC関数を使用）
-   * N+1問題を解消し、パフォーマンスを向上
-   */
+  /** Server Component用: セッション一覧とメッセージを取得 */
   async getSessionsWithMessages(
     userId: string,
     options?: { limit?: number }

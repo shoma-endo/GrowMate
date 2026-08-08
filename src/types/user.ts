@@ -38,8 +38,7 @@ export function hasPaidFeatureAccess(role: UserRole | null): role is PaidFeature
 
 export type UserDeletionBlockedReason =
   | 'admin'
-  | 'active_subscription'
-  | 'organization_linked';
+  | 'active_subscription';
 
 export interface AdminUserListItem extends User {
   canDelete: boolean;
@@ -47,21 +46,13 @@ export interface AdminUserListItem extends User {
 }
 
 export function resolveUserDeletionBlockedReason(
-  target: DbUser,
-  allUsers: DbUser[]
+  target: DbUser
 ): UserDeletionBlockedReason | null {
   if (target.role === 'admin') {
     return 'admin';
   }
   if (target.stripe_subscription_id !== null) {
     return 'active_subscription';
-  }
-  if (target.owner_user_id !== null) {
-    return 'organization_linked';
-  }
-  const hasChildStaff = allUsers.some(user => user.owner_user_id === target.id);
-  if (hasChildStaff) {
-    return 'organization_linked';
   }
   return null;
 }
@@ -72,8 +63,6 @@ export function getUserDeletionBlockedMessage(reason: UserDeletionBlockedReason)
       return ERROR_MESSAGES.USER.DELETION_BLOCKED_ADMIN;
     case 'active_subscription':
       return ERROR_MESSAGES.USER.DELETION_BLOCKED_ACTIVE_SUBSCRIPTION;
-    case 'organization_linked':
-      return ERROR_MESSAGES.USER.DELETION_BLOCKED_ORGANIZATION_LINKED;
   }
 }
 
@@ -132,8 +121,6 @@ export function toDbUserInsert(user: User): DbUserInsert {
     stripe_customer_id: null,
     stripe_subscription_id: null,
     role: user.role,
-    owner_user_id: null,
-    owner_previous_role: null,
   };
 }
 

@@ -29,8 +29,6 @@ async function handleKeyEvents(propertyId: string | null) {
     }
 
     if (
-      result.error === ERROR_MESSAGES.AUTH.STAFF_OPERATION_NOT_ALLOWED ||
-      result.error === ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED ||
       result.error === ERROR_MESSAGES.AUTH.UNAUTHORIZED
     ) {
       return NextResponse.json(result, { status: 403 });
