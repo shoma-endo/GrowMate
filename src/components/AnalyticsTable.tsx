@@ -5,6 +5,7 @@ import FieldConfigurator from '@/components/FieldConfigurator';
 import TruncatedText from '@/components/TruncatedText';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
 import CategoryFilter from '@/components/CategoryFilter';
+import { cn } from '@/lib/utils';
 import {
   ANALYTICS_COLUMNS,
   BLOG_STEP_IDS,
@@ -746,13 +747,13 @@ export default function AnalyticsTable({
                       .map(id => (
                         <th
                           key={id}
-                          className={`px-6 py-3 text-left text-xs font-medium tracking-wider whitespace-nowrap ${
-                            id === 'impressions' ? 'text-right min-w-[120px]' : ''
-                          } ${id === 'categories' ? 'min-w-[200px]' : ''} ${
-                            id === 'wp_post_title' || id === 'wp_excerpt' ? 'min-w-[360px]' : ''
-                          } ${id === 'url' ? 'min-w-[300px]' : ''} ${
-                            ['main_kw', 'kw'].includes(id) ? 'min-w-[180px]' : ''
-                          } ${
+                          className={cn(
+                            'px-6 py-3 text-left text-xs font-medium tracking-wider whitespace-nowrap',
+                            id === 'impressions' && 'text-right min-w-[120px]',
+                            id === 'categories' && 'min-w-[200px]',
+                            (id === 'wp_post_title' || id === 'wp_excerpt') && 'min-w-[360px]',
+                            id === 'url' && 'min-w-[300px]',
+                            ['main_kw', 'kw'].includes(id) && 'min-w-[180px]',
                             [
                               'ga4_avg_engagement_time',
                               'ga4_read_rate',
@@ -760,12 +761,12 @@ export default function AnalyticsTable({
                               'ga4_cv_count',
                               'ga4_cvr',
                               'ga4_flags',
-                            ].includes(id)
-                              ? 'min-w-[140px]'
-                              : ''
-                          } ${['needs', 'persona', 'goal', 'prep', 'basic_structure', 'opening_proposal'].includes(id) ? 'min-w-[220px]' : ''} ${
-                            id === 'date' ? 'min-w-[120px]' : ''
-                          }`}
+                            ].includes(id) && 'min-w-[140px]',
+                            ['needs', 'persona', 'goal', 'prep', 'basic_structure', 'opening_proposal'].includes(
+                              id
+                            ) && 'min-w-[220px]',
+                            id === 'date' && 'min-w-[120px]'
+                          )}
                         >
                           {columnLabelMap[id]}
                         </th>
