@@ -1,13 +1,11 @@
 import 'server-only';
 import { isInstagramPreConversionMediaError } from '@/domain/errors/instagram-error-handlers';
-import { addDaysISO } from '@/lib/date-utils';
 import {
   INSTAGRAM_RATE_CALL_COUNT_THRESHOLD,
   INSTAGRAM_SYNC_CONSECUTIVE_FAILURE_LIMIT,
   INSTAGRAM_SYNC_MEDIA_LIMIT,
   INSTAGRAM_SYNC_TIME_BUDGET_MS,
 } from '@/lib/constants';
-import { formatJstDateISO } from '@/lib/ga4-utils';
 import { collectInstagramMediaPages } from '@/server/lib/instagram-media-pagination';
 import type { InstagramMediaPageResponse } from '@/server/lib/instagram-media-pagination';
 import {
@@ -29,26 +27,6 @@ import type { TablesInsert } from '@/types/database.types';
 type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
 
 const MEDIA_RETENTION_MS = 2 * 365 * 24 * 60 * 60 * 1000;
-const ACCOUNT_INSIGHTS_LOOKBACK_DAYS = 30;
-
-function unixTimestamp(dateIso: string): string {
-  const ms = new Date(`${dateIso}T00:00:00.000Z`).getTime();
-  return String(Math.floor(ms / 1000));
-}
-
-function resolveAccountInsightsRange(lastSyncedAt: string | null): { since: string; until: string } {
-  const todayJst = formatJstDateISO(new Date());
-  const until = addDaysISO(todayJst, -1);
-
-  if (!lastSyncedAt) {
-    const since = addDaysISO(until, -(ACCOUNT_INSIGHTS_LOOKBACK_DAYS - 1));
-    return { since, until };
-  }
-
-  const lastDate = lastSyncedAt.slice(0, 10);
-  const since = lastDate <= until ? lastDate : until;
-  return { since, until };
-}
 
 function isRetentionExpired(postedAt: string, nowMs: number): boolean {
   const postedMs = new Date(postedAt).getTime();
@@ -466,34 +444,6 @@ class InstagramSyncService {
         await this.supabaseService.updateInstagramCredential(userId, {
           backfillCursor: cursor,
         });
-      }
-    }
-
-    if (mode === 'incremental' && result.stoppedReason !== 'rate_limit') {
-      try {
-        const credential = await this.supabaseService.getInstagramCredential(userId);
-        const range = resolveAccountInsightsRange(credential?.lastSyncedAt ?? null);
-        const rangeUnix = {
-          since: unixTimestamp(range.since),
-          until: unixTimestamp(range.until),
-        };
-        const accountResult = await this.instagramService.fetchAccountInsightsDaily(
-          accessToken,
-          rangeUnix
-        );
-        usage = mergeInstagramRateUsage(usage, accountResult.usage);
-
-        await instagramMediaService.upsertAccountInsightsDaily(
-          userId,
-          accountResult.data.map(row => ({
-            user_id: userId,
-            date: row.date,
-            reach: row.reach,
-            follower_count: row.followerCount,
-          }))
-        );
-      } catch (error) {
-        console.error('[Instagram Sync] account insights sync failed', { userId, error });
       }
     }
 

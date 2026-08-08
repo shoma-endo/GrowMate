@@ -2,7 +2,6 @@ import 'server-only';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
 import type { Tables, TablesInsert } from '@/types/database.types';
 import type {
-  InstagramAccountInsightsDailyRow,
   InstagramMediaListItem,
   InstagramMediaPageResult,
   InstagramMediaSortKey,
@@ -11,7 +10,6 @@ import type {
 
 type InstagramMediaRow = Tables<'instagram_media'>;
 type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
-type InstagramAccountInsightsDailyInsertRow = TablesInsert<'instagram_account_insights_daily'>;
 
 export type InstagramMediaListingFields = {
   igMediaId: string;
@@ -179,33 +177,6 @@ class InstagramMediaService extends SupabaseService {
     };
   }
 
-  async getAccountInsightsLatestDay(
-    userId: string
-  ): Promise<InstagramAccountInsightsDailyRow | null> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from('instagram_account_insights_daily')
-      .select('*')
-      .eq('user_id', userId)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      console.error('[Instagram Media] getAccountInsightsLatestDay failed', { userId, error });
-      throw new Error('Instagram account insights fetch failed');
-    }
-
-    if (!data) {
-      return null;
-    }
-
-    return {
-      date: data.date,
-      reach: data.reach,
-      followerCount: data.follower_count,
-    };
-  }
 
   async getInsightsUnavailableMediaIds(
     userId: string,
@@ -443,27 +414,6 @@ class InstagramMediaService extends SupabaseService {
     });
   }
 
-  async upsertAccountInsightsDaily(
-    userId: string,
-    rows: InstagramAccountInsightsDailyInsertRow[]
-  ): Promise<void> {
-    if (rows.length === 0) {
-      return;
-    }
-    for (const row of rows) {
-      assertScopedUserId(userId, row.user_id);
-    }
-    const scopedRows = rows.map(row => ({ ...row, user_id: userId }));
-    await SupabaseService.withServiceRoleClient(async client => {
-      const { error } = await client
-        .from('instagram_account_insights_daily')
-        .upsert(scopedRows, { onConflict: 'user_id,date' });
-      if (error) {
-        console.error('[Instagram Media] upsertAccountInsightsDaily failed', { userId, error });
-        throw new Error('Instagram account insights upsert failed');
-      }
-    });
-  }
 
   async purgeInstagramData(userId: string): Promise<SupabaseResult<void>> {
     return SupabaseService.withServiceRoleClient(

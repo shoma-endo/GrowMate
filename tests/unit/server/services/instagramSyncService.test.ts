@@ -14,7 +14,6 @@ vi.mock('@/lib/constants', async importOriginal => {
 
 const fetchMediaPageMock = vi.fn();
 const fetchMediaInsightsMock = vi.fn();
-const fetchAccountInsightsDailyMock = vi.fn();
 
 vi.mock('@/server/services/instagramService', async importOriginal => {
   const actual = await importOriginal<typeof import('@/server/services/instagramService')>();
@@ -24,7 +23,6 @@ vi.mock('@/server/services/instagramService', async importOriginal => {
       return {
         fetchMediaPage: fetchMediaPageMock,
         fetchMediaInsights: fetchMediaInsightsMock,
-        fetchAccountInsightsDaily: fetchAccountInsightsDailyMock,
       };
     }),
   };
@@ -49,7 +47,6 @@ const updateMediaListingFieldsMock = vi.fn();
 const upsertMediaMock = vi.fn();
 const upsertMediaInsightsUnavailableMock = vi.fn();
 const upsertMediaListingPreservingInsightsMock = vi.fn();
-const upsertAccountInsightsDailyMock = vi.fn();
 
 vi.mock('@/server/services/instagramMediaService', () => ({
   instagramMediaService: {
@@ -60,7 +57,6 @@ vi.mock('@/server/services/instagramMediaService', () => ({
     upsertMedia: upsertMediaMock,
     upsertMediaInsightsUnavailable: upsertMediaInsightsUnavailableMock,
     upsertMediaListingPreservingInsights: upsertMediaListingPreservingInsightsMock,
-    upsertAccountInsightsDaily: upsertAccountInsightsDailyMock,
   },
 }));
 
@@ -117,8 +113,6 @@ beforeEach(() => {
   fetchMediaInsightsMock.mockResolvedValue({ usage: emptyUsage, data: insights });
   updateInstagramCredentialMock.mockResolvedValue({ success: true });
   upsertMediaMock.mockResolvedValue(undefined);
-  fetchAccountInsightsDailyMock.mockResolvedValue({ usage: emptyUsage, data: [] });
-  upsertAccountInsightsDailyMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {

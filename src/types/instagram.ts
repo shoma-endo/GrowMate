@@ -45,12 +45,6 @@ export interface InstagramMediaInsights {
   totalWatchTimeMs: number | null;
 }
 
-export interface InstagramAccountInsightsDailyRow {
-  date: string;
-  reach: number | null;
-  followerCount: number | null;
-}
-
 type InstagramInsightsUnavailableReason = 'pre_conversion' | 'retention_expired';
 
 export type InstagramMediaSortKey = 'posted_at' | 'reach' | 'views';

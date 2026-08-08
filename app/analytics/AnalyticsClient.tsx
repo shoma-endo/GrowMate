@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import type { AnalyticsContentItem } from '@/types/analytics';
 import type {
-  InstagramAccountInsightsDailyRow,
   InstagramMediaListItem,
   InstagramMediaSortKey,
   InstagramMediaTypeFilter,
@@ -56,7 +55,6 @@ interface AnalyticsClientProps {
   igStart: string;
   igEnd: string;
   igSort: InstagramMediaSortKey;
-  instagramAccountLatestDay: InstagramAccountInsightsDailyRow | null;
   instagramLastSyncedAt: string | null;
   instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed';
   instagramSyncEnabled: boolean;
@@ -92,7 +90,6 @@ export default function AnalyticsClient({
   igStart,
   igEnd,
   igSort,
-  instagramAccountLatestDay,
   instagramLastSyncedAt,
   instagramBackfillStatus,
   instagramSyncEnabled,
@@ -323,7 +320,6 @@ export default function AnalyticsClient({
               igStart={igStart}
               igEnd={igEnd}
               igSort={igSort}
-              accountLatestDay={instagramAccountLatestDay}
               lastSyncedAt={instagramLastSyncedAt}
               backfillStatus={instagramBackfillStatus}
               syncEnabled={instagramSyncEnabled}

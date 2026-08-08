@@ -1,8 +1,5 @@
 import 'server-only';
-import {
-  extractInsightDailySeries,
-  extractInsightMetric,
-} from '@/server/lib/instagram-insights';
+import { extractInsightMetric } from '@/server/lib/instagram-insights';
 import {
   mergeInstagramRateUsage,
   parseInstagramRateUsage,
@@ -10,7 +7,6 @@ import {
 } from '@/server/lib/instagram-rate-limit';
 import type { InstagramMediaPageResponse } from '@/server/lib/instagram-media-pagination';
 import type {
-  InstagramAccountInsightsDailyRow,
   InstagramMediaInsights,
   InstagramMediaPreview,
   InstagramProfile,
@@ -401,72 +397,6 @@ export class InstagramService {
     const pageResult = await this.fetchMediaPage(accessToken, { limit });
     const data = Array.isArray(pageResult.data.data) ? pageResult.data.data : [];
     return parseInstagramMediaItems(data);
-  }
-
-  async fetchAccountInsightsDaily(
-    accessToken: string,
-    range: { since: string; until: string }
-  ): Promise<InstagramApiResult<InstagramAccountInsightsDailyRow[]>> {
-    const reachParams = new URLSearchParams({
-      metric: 'reach',
-      metric_type: 'time_series',
-      period: 'day',
-      since: range.since,
-      until: range.until,
-      access_token: accessToken,
-    });
-    const reachResponse = await fetchWithTimeout(
-      `${GRAPH_BASE_URL}/${INSTAGRAM_GRAPH_VERSION}/me/insights?${reachParams.toString()}`,
-      { method: 'GET' }
-    );
-    const reachParsed = await parseJsonResponse(reachResponse);
-    const reachValues = Array.isArray(reachParsed.json.data) ? reachParsed.json.data : [];
-    const reachSeries = extractInsightDailySeries(reachValues, 'reach');
-
-    const followerParams = new URLSearchParams({
-      metric: 'follower_count',
-      period: 'day',
-      since: range.since,
-      until: range.until,
-      access_token: accessToken,
-    });
-    const followerResponse = await fetchWithTimeout(
-      `${GRAPH_BASE_URL}/${INSTAGRAM_GRAPH_VERSION}/me/insights?${followerParams.toString()}`,
-      { method: 'GET' }
-    );
-    const followerParsed = await parseJsonResponse(followerResponse);
-    const followerValues = Array.isArray(followerParsed.json.data) ? followerParsed.json.data : [];
-    const followerSeries = extractInsightDailySeries(followerValues, 'follower_count');
-
-    const byDate = new Map<string, InstagramAccountInsightsDailyRow>();
-
-    for (const row of reachSeries) {
-      const existing = byDate.get(row.date) ?? {
-        date: row.date,
-        reach: null,
-        followerCount: null,
-      };
-      existing.reach = row.value;
-      byDate.set(row.date, existing);
-    }
-
-    for (const row of followerSeries) {
-      const existing = byDate.get(row.date) ?? {
-        date: row.date,
-        reach: null,
-        followerCount: null,
-      };
-      existing.followerCount = row.value;
-      byDate.set(row.date, existing);
-    }
-
-    const rows = [...byDate.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, value]) => value);
-
-    const usage = mergeInstagramRateUsage(reachParsed.usage, followerParsed.usage);
-
-    return { data: rows, usage };
   }
 
   async fetchMediaInsights(

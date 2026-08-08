@@ -20,12 +20,10 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getInstagramSyncToastMessage } from '@/lib/instagram-sync';
 import { syncInstagramData } from '@/server/actions/instagramSync.actions';
 import type {
-  InstagramAccountInsightsDailyRow,
   InstagramMediaListItem,
   InstagramMediaSortKey,
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
-import InstagramAccountSummaryCard from './InstagramAccountSummaryCard';
 import InstagramMediaTable from './InstagramMediaTable';
 
 interface InstagramTabProps {
@@ -37,7 +35,6 @@ interface InstagramTabProps {
   igStart: string;
   igEnd: string;
   igSort: InstagramMediaSortKey;
-  accountLatestDay: InstagramAccountInsightsDailyRow | null;
   lastSyncedAt: string | null;
   backfillStatus: 'not_started' | 'in_progress' | 'completed';
   syncEnabled: boolean;
@@ -71,7 +68,6 @@ export default function InstagramTab({
   igStart,
   igEnd,
   igSort,
-  accountLatestDay,
   lastSyncedAt,
   backfillStatus,
   syncEnabled,
@@ -233,7 +229,6 @@ export default function InstagramTab({
       </CardHeader>
       <CardContent>
         <div className="border rounded-lg p-4 bg-gray-50/50 mb-4">
-          {accountLatestDay ? <InstagramAccountSummaryCard latestDay={accountLatestDay} /> : null}
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
               <span className="text-xs text-gray-500">種別</span>
