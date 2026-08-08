@@ -81,15 +81,17 @@ export default function FieldConfigurator({
     [defaultVisibleIds]
   );
 
-  // localStorage からの読み込みは「マウント時の同期的な状態計算」であり副作用ではないため、
-  // useEffect ではなく useState の遅延初期化で行う（初回レンダー時に1回だけ評価される）。
-  // 前提: columns / storageKey は呼び出し元でマウント後不変であること
-  // （InstagramMediaTable は useMemo(() => ..., []) で固定、AnalyticsTable はモジュール定数）。
-  // 変わりうる値を渡す呼び出し元が今後増える場合は key prop で再マウントさせるか、
-  // このコンポーネント自体の再設計が必要。
-  const [initialConfig] = useState(() => {
+  // 初期state は SSR と一致させるため常にデフォルト値で始める。localStorage の読み込みは
+  // window が存在しないサーバーでは行えず、ここで分岐すると SSR の描画結果とクライアント
+  // hydrate 時の描画結果が食い違い hydration mismatch を起こす。保存済み設定の反映は
+  // マウント後の useEffect（下方）に委ねる。
+  const [open, setOpen] = useState(false);
+  const [visibleIds, setVisibleIds] = useState<string[]>(defaultVisibleIds);
+  const [orderedIds, setOrderedIds] = useState<string[]>(defaultOrder);
+
+  const loadStoredConfig = useCallback((): { visible: string[]; order: string[] } => {
     try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
+      const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw) as StoredConfig;
 
@@ -113,11 +115,7 @@ export default function FieldConfigurator({
       // フォールスルーしてデフォルトを返す
     }
     return { visible: defaultVisibleIds, order: defaultOrder };
-  });
-
-  const [open, setOpen] = useState(false);
-  const [visibleIds, setVisibleIds] = useState<string[]>(initialConfig.visible);
-  const [orderedIds, setOrderedIds] = useState<string[]>(initialConfig.order);
+  }, [columns, storageKey, defaultVisibleIds, defaultOrder, mergeNewDefaultVisibleColumns, normalizeOrder]);
 
   const persistConfig = useCallback(
     (nextVisible: string[], nextOrder: string[]) => {
@@ -126,9 +124,9 @@ export default function FieldConfigurator({
     [storageKey]
   );
 
-  // 初期化結果の localStorage 書き戻し（旧フォーマット移行・新規デフォルト列マージの反映）と
-  // 親への初回通知は、真に外部（localStorage・親コンポーネント）との同期が必要な副作用のため
-  // useEffect で行う。ただし依存配列は空にしてマウント時の1回だけ実行する。
+  // localStorage の読み込み・書き戻し（旧フォーマット移行・新規デフォルト列マージの反映）と
+  // 親への初回通知は、hydration 後にのみ許される副作用のため useEffect で行う。
+  // 依存配列は空にしてマウント時の1回だけ実行する。
   // onChange は毎レンダリングで参照が変わりうるため ref 経由で読み、依存配列に含めない
   // （含めると useEffect が毎レンダリング後に再実行され、意図しない無限ループの原因になる）。
   const onChangeRef = useRef(onChange);
@@ -136,8 +134,11 @@ export default function FieldConfigurator({
     onChangeRef.current = onChange;
   });
   useEffect(() => {
-    persistConfig(initialConfig.visible, initialConfig.order);
-    onChangeRef.current?.(initialConfig.visible, initialConfig.order);
+    const stored = loadStoredConfig();
+    setVisibleIds(stored.visible);
+    setOrderedIds(stored.order);
+    persistConfig(stored.visible, stored.order);
+    onChangeRef.current?.(stored.visible, stored.order);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

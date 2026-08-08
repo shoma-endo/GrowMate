@@ -103,6 +103,21 @@ export async function GET(request: NextRequest) {
         console.error('[Instagram] Failed to purge data on account switch:', purgeResult.error);
         return redirectWithError(baseUrl, 'server_error');
       }
+
+      // 旧アカウントの backfill 進捗（cursor / completed）は新アカウントには無関係。
+      // 残したままだと、旧アカウントで backfill 完了済みの場合に新アカウントの
+      // 過去投稿取り込みが（投稿が0件なのに）即完了扱いになり永久に取得できない。
+      const resetResult = await supabaseService.updateInstagramCredential(targetUserId, {
+        backfillCursor: null,
+        backfillCompletedAt: null,
+      });
+      if (!resetResult.success) {
+        console.error(
+          '[Instagram] Failed to reset backfill state on account switch:',
+          resetResult.error
+        );
+        return redirectWithError(baseUrl, 'server_error');
+      }
     }
 
     const now = new Date();

@@ -114,33 +114,36 @@ function mapMediaRow(row: InstagramMediaRow): InstagramMediaListItem {
 class InstagramMediaService extends SupabaseService {
   async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
     const client = this.getClient();
-    const offset = (query.page - 1) * query.perPage;
 
-    let dbQuery = client
-      .from('instagram_media')
-      .select('*', { count: 'exact' })
-      .eq('user_id', userId)
-      .gte('posted_at', `${query.startDate}T00:00:00.000Z`)
-      .lte('posted_at', `${query.endDate}T23:59:59.999Z`);
+    const runQuery = async (page: number) => {
+      const offset = (page - 1) * query.perPage;
+      let dbQuery = client
+        .from('instagram_media')
+        .select('*', { count: 'exact' })
+        .eq('user_id', userId)
+        .gte('posted_at', `${query.startDate}T00:00:00.000Z`)
+        .lte('posted_at', `${query.endDate}T23:59:59.999Z`);
 
-    if (query.type === 'reels') {
-      dbQuery = dbQuery.eq('media_product_type', 'REELS');
-    } else if (query.type === 'feed') {
-      dbQuery = dbQuery.eq('media_product_type', 'FEED');
-    }
+      if (query.type === 'reels') {
+        dbQuery = dbQuery.eq('media_product_type', 'REELS');
+      } else if (query.type === 'feed') {
+        dbQuery = dbQuery.eq('media_product_type', 'FEED');
+      }
 
-    const ascending = false;
-    if (query.sort === 'reach') {
-      dbQuery = dbQuery.order('reach', { ascending, nullsFirst: false });
-    } else if (query.sort === 'views') {
-      dbQuery = dbQuery.order('views', { ascending, nullsFirst: false });
-    } else {
-      dbQuery = dbQuery.order('posted_at', { ascending });
-    }
+      const ascending = false;
+      if (query.sort === 'reach') {
+        dbQuery = dbQuery.order('reach', { ascending, nullsFirst: false });
+      } else if (query.sort === 'views') {
+        dbQuery = dbQuery.order('views', { ascending, nullsFirst: false });
+      } else {
+        dbQuery = dbQuery.order('posted_at', { ascending });
+      }
 
-    dbQuery = dbQuery.order('id', { ascending: true }).range(offset, offset + query.perPage - 1);
+      dbQuery = dbQuery.order('id', { ascending: true }).range(offset, offset + query.perPage - 1);
+      return dbQuery;
+    };
 
-    const { data, error, count } = await dbQuery;
+    const { data, error, count } = await runQuery(query.page);
     if (error) {
       console.error('[Instagram Media] getPage failed', { userId, error });
       throw new Error('Instagram media fetch failed');
@@ -148,6 +151,24 @@ class InstagramMediaService extends SupabaseService {
 
     const total = count ?? 0;
     const totalPages = total > 0 ? Math.ceil(total / query.perPage) : 1;
+
+    // URL 直接編集や絞り込み変更・削除後の古いページ番号など、要求ページが
+    // 総ページ数を超えることがある。超過時は総ページ数へ丸めて取り直し、
+    // 投稿があるのに空表示になったり「999/1ページ」のような壊れた表示を防ぐ。
+    if (query.page > totalPages) {
+      const { data: clampedData, error: clampedError } = await runQuery(totalPages);
+      if (clampedError) {
+        console.error('[Instagram Media] getPage clamped fetch failed', { userId, clampedError });
+        throw new Error('Instagram media fetch failed');
+      }
+      return {
+        items: (clampedData ?? []).map(mapMediaRow),
+        total,
+        totalPages,
+        page: totalPages,
+        perPage: query.perPage,
+      };
+    }
 
     return {
       items: (data ?? []).map(mapMediaRow),
