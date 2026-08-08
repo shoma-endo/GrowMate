@@ -798,6 +798,7 @@ export class SupabaseService {
       .from('chat_messages')
       .select('*')
       .eq('session_id', sessionId)
+      .eq('user_id', userId)
       .order('created_at', { ascending: true });
 
     if (error) {
