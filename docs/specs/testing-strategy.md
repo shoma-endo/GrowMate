@@ -104,7 +104,7 @@ npm install -D vitest @vitest/coverage-v8
 - `src/lib/validators/common.ts` のテストファイル名は、他の`common.ts`との混同を避けるため`validators-common.test.ts`とする
 - `tsconfig.json` の `include` へ `tests/**/*` を追加し、`vitest run` では行われないテストコードの型チェックを `npm run build` で担保する
 - カバレッジ出力先 `coverage/` は `.gitignore` と `eslint.config.mjs` の `ignores` の両方で除外する
-- `npm ci`、`npm run test`、`npm run build`を実行し、採用したVitestとNode 20、既存の`esbuild` overrideに互換性があることを確認する
+- `npm ci`、`npm run test`、`npm run build`を実行し、採用したVitestとNode 24、既存の`esbuild` overrideに互換性があることを確認する
 
 ### 優先ターゲットと期待する契約
 
@@ -188,11 +188,11 @@ test:
   if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
   steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
-        node-version: '20'
+        node-version: '24'
         cache: 'npm'
     - name: Install dependencies
       run: npm ci
