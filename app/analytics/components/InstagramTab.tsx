@@ -167,166 +167,168 @@ export default function InstagramTab({
   const endItemNumber = total > 0 ? Math.min(igPage * 10, total) : 0;
 
   return (
-    <div className="space-y-4 mt-6">
-      <div className="border rounded-lg p-4 bg-gray-50/50">
-        {accountLatestDay ? <InstagramAccountSummaryCard latestDay={accountLatestDay} /> : null}
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">種別</span>
-            <Select
-              value={igType}
-              onValueChange={value =>
-                router.push(
-                  buildFilterHref({ igType: value as InstagramMediaTypeFilter, igPage: 1 })
-                )
-              }
-            >
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">すべて</SelectItem>
-                <SelectItem value="reels">リール</SelectItem>
-                <SelectItem value="feed">フィード</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">開始日</span>
-            <Input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">終了日</span>
-            <Input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
-          </div>
-          <Button
+    <Card className="mt-6">
+      <CardHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle>投稿一覧</CardTitle>
+          <button
             type="button"
-            variant="outline"
-            onClick={applyDateRange}
-            disabled={!isDateRangeChanged || isApplyingDateRange}
+            className={cn(
+              buttonVariants({ variant: 'outline' }),
+              'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
+            )}
+            id="instagram-field-config-trigger"
           >
-            {isApplyingDateRange && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {isApplyingDateRange ? '適用中...' : '期間を適用'}
-          </Button>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs text-gray-500">並び順</span>
-            <Select
-              value={igSort}
-              onValueChange={value =>
-                router.push(
-                  buildFilterHref({ igSort: value as InstagramMediaSortKey, igPage: 1 })
-                )
-              }
-            >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="posted_at">投稿日</SelectItem>
-                <SelectItem value="reach">リーチ</SelectItem>
-                <SelectItem value="views">視聴数</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!syncEnabled || isSyncing}
-            onClick={handleSync}
-          >
-            <RefreshCw className={cn('w-4 h-4 mr-2', isSyncing && 'animate-spin')} />
-            最新化
-          </Button>
-          {lastSyncedLabel ? (
-            <p className="text-xs text-gray-500 ml-auto">最終同期: {lastSyncedLabel}</p>
-          ) : null}
+            <Settings className="w-4 h-4" aria-hidden />
+            フィールド構成
+          </button>
         </div>
-      </div>
-
-      {!syncEnabled ? (
-        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          Instagramの同期を一時停止しています
-        </div>
-      ) : null}
-
-      {syncAlert ? (
-        <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
-          {syncAlert}
-          {syncAlert === ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED ? (
-            <Link href="/setup/instagram" className="ml-2 underline font-medium">
-              連携設定へ
-            </Link>
-          ) : null}
-        </div>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center gap-2">
-            <CardTitle>投稿一覧</CardTitle>
-            <button
-              type="button"
-              className={cn(
-                buttonVariants({ variant: 'outline' }),
-                'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
-              )}
-              id="instagram-field-config-trigger"
-            >
-              <Settings className="w-4 h-4" aria-hidden />
-              フィールド構成
-            </button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <InstagramMediaTable
-            items={items}
-            igSort={igSort}
-            onSortColumnHidden={resetSortIfHidden}
-            emptyMessage={
-              lastSyncedAt == null
-                ? 'まだデータがありません。「最新化」を押すと取得します。'
-                : '表示条件に一致する投稿がありません。期間や種別フィルタを変更してください。'
-            }
-          />
-          {items.length > 0 ? (
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-sm text-gray-600">
-                {total > 0
-                  ? `全${total}件中 ${startItemNumber}-${endItemNumber}件を表示（${igPage}/${totalPages}ページ）`
-                  : ''}
-              </div>
-              <div className="flex gap-2">
-                <Link
-                  href={prevHref}
-                  prefetch={false}
-                  aria-disabled={prevDisabled}
-                  tabIndex={prevDisabled ? -1 : undefined}
-                  className={cn(
-                    buttonVariants({ variant: 'outline' }),
-                    'px-3',
-                    prevDisabled && 'pointer-events-none opacity-50'
-                  )}
-                >
-                  前へ
-                </Link>
-                <Link
-                  href={nextHref}
-                  prefetch={false}
-                  aria-disabled={nextDisabled}
-                  tabIndex={nextDisabled ? -1 : undefined}
-                  className={cn(
-                    buttonVariants({ variant: 'outline' }),
-                    'px-3',
-                    nextDisabled && 'pointer-events-none opacity-50'
-                  )}
-                >
-                  次へ
-                </Link>
-              </div>
+      </CardHeader>
+      <CardContent>
+        <div className="border rounded-lg p-4 bg-gray-50/50 mb-4">
+          {accountLatestDay ? <InstagramAccountSummaryCard latestDay={accountLatestDay} /> : null}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-500">種別</span>
+              <Select
+                value={igType}
+                onValueChange={value =>
+                  router.push(
+                    buildFilterHref({ igType: value as InstagramMediaTypeFilter, igPage: 1 })
+                  )
+                }
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">すべて</SelectItem>
+                  <SelectItem value="reels">リール</SelectItem>
+                  <SelectItem value="feed">フィード</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          ) : null}
-        </CardContent>
-      </Card>
-    </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-500">開始日</span>
+              <Input
+                type="date"
+                value={rangeStart}
+                onChange={e => setRangeStart(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-500">終了日</span>
+              <Input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={applyDateRange}
+              disabled={!isDateRangeChanged || isApplyingDateRange}
+            >
+              {isApplyingDateRange && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {isApplyingDateRange ? '適用中...' : '期間を適用'}
+            </Button>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-500">並び順</span>
+              <Select
+                value={igSort}
+                onValueChange={value =>
+                  router.push(
+                    buildFilterHref({ igSort: value as InstagramMediaSortKey, igPage: 1 })
+                  )
+                }
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="posted_at">投稿日</SelectItem>
+                  <SelectItem value="reach">リーチ</SelectItem>
+                  <SelectItem value="views">視聴数</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!syncEnabled || isSyncing}
+              onClick={handleSync}
+            >
+              <RefreshCw className={cn('w-4 h-4 mr-2', isSyncing && 'animate-spin')} />
+              最新化
+            </Button>
+            {lastSyncedLabel ? (
+              <p className="text-xs text-gray-500 ml-auto">最終同期: {lastSyncedLabel}</p>
+            ) : null}
+          </div>
+        </div>
+
+        {!syncEnabled ? (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 mb-4">
+            Instagramの同期を一時停止しています
+          </div>
+        ) : null}
+
+        {syncAlert ? (
+          <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 mb-4">
+            {syncAlert}
+            {syncAlert === ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED ? (
+              <Link href="/setup/instagram" className="ml-2 underline font-medium">
+                連携設定へ
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+
+        <InstagramMediaTable
+          items={items}
+          igSort={igSort}
+          onSortColumnHidden={resetSortIfHidden}
+          emptyMessage={
+            lastSyncedAt == null
+              ? 'まだデータがありません。「最新化」を押すと取得します。'
+              : '表示条件に一致する投稿がありません。期間や種別フィルタを変更してください。'
+          }
+        />
+        {items.length > 0 ? (
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-gray-600">
+              {total > 0
+                ? `全${total}件中 ${startItemNumber}-${endItemNumber}件を表示（${igPage}/${totalPages}ページ）`
+                : ''}
+            </div>
+            <div className="flex gap-2">
+              <Link
+                href={prevHref}
+                prefetch={false}
+                aria-disabled={prevDisabled}
+                tabIndex={prevDisabled ? -1 : undefined}
+                className={cn(
+                  buttonVariants({ variant: 'outline' }),
+                  'px-3',
+                  prevDisabled && 'pointer-events-none opacity-50'
+                )}
+              >
+                前へ
+              </Link>
+              <Link
+                href={nextHref}
+                prefetch={false}
+                aria-disabled={nextDisabled}
+                tabIndex={nextDisabled ? -1 : undefined}
+                className={cn(
+                  buttonVariants({ variant: 'outline' }),
+                  'px-3',
+                  nextDisabled && 'pointer-events-none opacity-50'
+                )}
+              >
+                次へ
+              </Link>
+            </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
