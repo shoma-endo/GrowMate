@@ -8,6 +8,10 @@ export interface InstagramCredential {
   accessTokenIssuedAt: string;
   scope: string[];
   lastSyncedAt: string | null;
+  /** 過去投稿取り込み（backfill）の再開カーソル。null は未着手または直近リセット済み */
+  backfillCursor: string | null;
+  /** 過去投稿取り込みが完了した日時。null は未完了（進行中 or 未着手） */
+  backfillCompletedAt: string | null;
 }
 
 export interface InstagramConnectionStatus {
@@ -35,18 +39,70 @@ export interface InstagramMediaInsights {
   saved: number | null;
   shares: number | null;
   totalInteractions: number | null;
+  reposts: number | null;
+  reelsSkipRate: number | null;
   avgWatchTimeMs: number | null;
   totalWatchTimeMs: number | null;
 }
 
-export interface InstagramAccountInsights {
+type InstagramInsightsUnavailableReason = 'pre_conversion' | 'retention_expired';
+
+export type InstagramMediaSortKey = 'posted_at' | 'reach' | 'views';
+export type InstagramMediaTypeFilter = 'all' | 'reels' | 'feed';
+
+export interface InstagramMediaListItem {
+  id: string;
+  igMediaId: string;
+  mediaType: 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM';
+  mediaProductType: 'FEED' | 'REELS';
+  caption: string | null;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  permalink: string;
+  postedAt: string;
+  likeCount: number | null;
+  commentsCount: number | null;
   reach: number | null;
   views: number | null;
-  profileViews: number | null;
-  websiteClicks: number | null;
-  accountsEngaged: number | null;
+  saved: number | null;
+  shares: number | null;
   totalInteractions: number | null;
-  followerCount: number | null;
+  reposts: number | null;
+  reelsSkipRate: number | null;
+  avgWatchTimeMs: number | null;
+  totalWatchTimeMs: number | null;
+  insightsSyncedAt: string | null;
+  insightsUnavailable: boolean;
+  insightsUnavailableReason: InstagramInsightsUnavailableReason | null;
+}
+
+export interface InstagramMediaPageResult {
+  items: InstagramMediaListItem[];
+  total: number;
+  totalPages: number;
+  page: number;
+  perPage: number;
+}
+
+export type InstagramSyncStoppedReason = 'time_budget' | 'consecutive_failures' | 'rate_limit';
+
+/**
+ * incremental: 「最新化」ボタン。DB内最新投稿日時（ウォーターマーク）より新しい投稿のみ取得。
+ * backfill: 「過去の投稿をインポート」ボタン。永続化したカーソルから続きを取得し、
+ *           既存投稿はインサイト取得をスキップしてページングのみ進める。
+ */
+export type InstagramSyncMode = 'incremental' | 'backfill';
+
+export interface InstagramSyncResult {
+  mode: InstagramSyncMode;
+  synced: number;
+  failed: number;
+  skipped: number;
+  truncated: boolean;
+  preConversionCount: number;
+  stoppedReason?: InstagramSyncStoppedReason;
+  /** backfill モード時のみ意味を持つ。true = アカウントの投稿履歴を末端まで取り込み終えた */
+  backfillCompleted: boolean;
 }
 
 export interface InstagramMediaPreview {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useCallback, useEffect, ReactNode } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Settings, GripVertical } from 'lucide-react';
@@ -56,10 +56,6 @@ export default function FieldConfigurator({
   );
   const defaultOrder = useMemo(() => columns.map(c => c.id), [columns]);
 
-  const [open, setOpen] = useState(false);
-  const [visibleIds, setVisibleIds] = useState<string[]>(defaultVisibleIds);
-  const [orderedIds, setOrderedIds] = useState<string[]>(defaultOrder);
-
   const normalizeOrder = useCallback(
     (order: string[]) => {
       const knownIds = columns.map(c => c.id);
@@ -68,27 +64,6 @@ export default function FieldConfigurator({
       return [...filtered, ...missing];
     },
     [columns]
-  );
-
-  const persistConfig = useCallback(
-    (nextVisible: string[], nextOrder: string[]) => {
-      localStorage.setItem(storageKey, JSON.stringify({ visible: nextVisible, order: nextOrder }));
-    },
-    [storageKey]
-  );
-
-  const applyConfig = useCallback(
-    (nextVisible: string[], nextOrder: string[], shouldPersist = false) => {
-      const normalizedVisible = nextVisible.filter(id => columns.some(c => c.id === id));
-      const normalizedOrder = normalizeOrder(nextOrder);
-      setVisibleIds(normalizedVisible);
-      setOrderedIds(normalizedOrder);
-      onChange?.(normalizedVisible, normalizedOrder);
-      if (shouldPersist) {
-        persistConfig(normalizedVisible, normalizedOrder);
-      }
-    },
-    [columns, normalizeOrder, onChange, persistConfig]
   );
 
   const mergeNewDefaultVisibleColumns = useCallback(
@@ -106,42 +81,66 @@ export default function FieldConfigurator({
     [defaultVisibleIds]
   );
 
-  useEffect(() => {
+  // 初期state は SSR と一致させるため常にデフォルト値で始める。localStorage の読み込みは
+  // window が存在しないサーバーでは行えず、ここで分岐すると SSR の描画結果とクライアント
+  // hydrate 時の描画結果が食い違い hydration mismatch を起こす。保存済み設定の反映は
+  // マウント後の useEffect（下方）に委ねる。
+  const [open, setOpen] = useState(false);
+  const [visibleIds, setVisibleIds] = useState<string[]>(defaultVisibleIds);
+  const [orderedIds, setOrderedIds] = useState<string[]>(defaultOrder);
+
+  const loadStoredConfig = useCallback((): { visible: string[]; order: string[] } => {
     try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
+      const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw) as StoredConfig;
 
-        // 旧フォーマット（string配列）との互換性維持
+        // 旧フォーマット（string配列）との互換性維持。
+        // 空配列（全解除して保存した状態）も正当な値のため、length チェックで
+        // デフォルトにフォールバックさせない（フォールバックすると全解除が復元されない）。
         if (Array.isArray(parsed)) {
           const normalizedVisible = parsed.filter(id => columns.some(c => c.id === id));
-          if (normalizedVisible.length > 0) {
-            const mergedVisible = mergeNewDefaultVisibleColumns(normalizedVisible, defaultOrder);
-            applyConfig(mergedVisible, defaultOrder, true);
-            return;
-          }
+          const mergedVisible = mergeNewDefaultVisibleColumns(normalizedVisible, defaultOrder);
+          return { visible: mergedVisible, order: defaultOrder };
         }
 
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           const visible = Array.isArray(parsed.visible) ? parsed.visible : defaultVisibleIds;
           const order = Array.isArray(parsed.order) ? parsed.order : defaultOrder;
           const mergedVisible = mergeNewDefaultVisibleColumns(visible, order);
-          applyConfig(mergedVisible, order, true);
-          return;
+          return { visible: mergedVisible, order: normalizeOrder(order) };
         }
       }
-      applyConfig(defaultVisibleIds, defaultOrder, true);
     } catch {
-      applyConfig(defaultVisibleIds, defaultOrder, true);
+      // フォールスルーしてデフォルトを返す
     }
-  }, [
-    applyConfig,
-    columns,
-    defaultOrder,
-    defaultVisibleIds,
-    mergeNewDefaultVisibleColumns,
-    storageKey,
-  ]);
+    return { visible: defaultVisibleIds, order: defaultOrder };
+  }, [columns, storageKey, defaultVisibleIds, defaultOrder, mergeNewDefaultVisibleColumns, normalizeOrder]);
+
+  const persistConfig = useCallback(
+    (nextVisible: string[], nextOrder: string[]) => {
+      localStorage.setItem(storageKey, JSON.stringify({ visible: nextVisible, order: nextOrder }));
+    },
+    [storageKey]
+  );
+
+  // localStorage の読み込み・書き戻し（旧フォーマット移行・新規デフォルト列マージの反映）と
+  // 親への初回通知は、hydration 後にのみ許される副作用のため useEffect で行う。
+  // 依存配列は空にしてマウント時の1回だけ実行する。
+  // onChange は毎レンダリングで参照が変わりうるため ref 経由で読み、依存配列に含めない
+  // （含めると useEffect が毎レンダリング後に再実行され、意図しない無限ループの原因になる）。
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  useEffect(() => {
+    const stored = loadStoredConfig();
+    setVisibleIds(stored.visible);
+    setOrderedIds(stored.order);
+    persistConfig(stored.visible, stored.order);
+    onChangeRef.current?.(stored.visible, stored.order);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const visibleSet = useMemo(() => new Set(visibleIds), [visibleIds]);
 
@@ -187,7 +186,10 @@ export default function FieldConfigurator({
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button
-              id={triggerId || 'field-configurator-trigger'}
+              // hideTrigger 時はこのボタンは sr-only で隠され、開閉は外部の triggerId 要素の
+              // クリックリスナー（下の useEffect）が担う。ここにも同じ id を付けると
+              // 外部ボタンと DOM 上で id が重複するため、hideTrigger 時は id を持たせない。
+              id={hideTrigger ? undefined : triggerId || 'field-configurator-trigger'}
               variant="outline"
               className="bg-black text-white hover:bg-black/90 border-transparent flex items-center gap-2"
             >
@@ -214,9 +216,10 @@ export default function FieldConfigurator({
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        persistConfig(defaultVisibleIds, orderedIds);
-                        setVisibleIds(defaultVisibleIds);
-                        onChange?.(defaultVisibleIds, orderedIds);
+                        const allIds = columns.map(c => c.id);
+                        persistConfig(allIds, orderedIds);
+                        setVisibleIds(allIds);
+                        onChange?.(allIds, orderedIds);
                       }}
                       className="h-7 px-3 text-xs"
                     >

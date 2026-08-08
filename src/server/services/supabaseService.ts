@@ -4,7 +4,7 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
-import type { Database, Json, TablesUpdate } from '@/types/database.types';
+import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
 import {
   DbChatMessage,
   DbChatSession,
@@ -27,15 +27,12 @@ import type {
 } from '@/types/google-ads-negative-keywords-suggestion';
 import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
 import type { InstagramCredential } from '@/types/instagram';
-import type {
-  InstagramCredentialInsertRow,
-  InstagramCredentialRow,
-  InstagramCredentialUpdateRow,
-  InstagramOnlyDatabase,
-} from '@/types/database.types.pending';
-import { asPendingClient } from '@/types/database.types.pending';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
+
+type InstagramCredentialRow = Tables<'instagram_credentials'>;
+type InstagramCredentialInsertRow = TablesInsert<'instagram_credentials'>;
+type InstagramCredentialUpdateRow = TablesUpdate<'instagram_credentials'>;
 
 interface SupabaseErrorInfo {
   userMessage: string;
@@ -1199,10 +1196,6 @@ export class SupabaseService {
 
   private getAdminActionLogsClient(): SupabaseClient<ExtendedDatabase> {
     return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
-  }
-
-  private getInstagramCredentialsClient(): SupabaseClient<InstagramOnlyDatabase> {
-    return asPendingClient<InstagramOnlyDatabase>(this.supabase);
   }
 
   private mapGoogleAdsEvaluationSettingsRow(
@@ -2680,6 +2673,8 @@ export class SupabaseService {
       accessTokenIssuedAt: row.access_token_issued_at,
       scope: row.scope ?? [],
       lastSyncedAt: row.last_synced_at,
+      backfillCursor: row.backfill_cursor,
+      backfillCompletedAt: row.backfill_completed_at,
     };
   }
 
@@ -2709,7 +2704,7 @@ export class SupabaseService {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await this.getInstagramCredentialsClient()
+    const { error } = await this.supabase
       .from('instagram_credentials')
       .upsert(record, { onConflict: 'user_id' });
 
@@ -2725,7 +2720,7 @@ export class SupabaseService {
   }
 
   async getInstagramCredential(userId: string): Promise<InstagramCredential | null> {
-    const { data, error } = await this.getInstagramCredentialsClient()
+    const { data, error } = await this.supabase
       .from('instagram_credentials')
       .select('*')
       .eq('user_id', userId)
@@ -2754,6 +2749,8 @@ export class SupabaseService {
       accessTokenIssuedAt: string;
       scope: string[] | null;
       lastSyncedAt: string | null;
+      backfillCursor: string | null;
+      backfillCompletedAt: string | null;
     }>
   ): Promise<SupabaseResult<void>> {
     const record: InstagramCredentialUpdateRow = {
@@ -2784,8 +2781,14 @@ export class SupabaseService {
     if ('lastSyncedAt' in updates) {
       record.last_synced_at = updates.lastSyncedAt ?? null;
     }
+    if ('backfillCursor' in updates) {
+      record.backfill_cursor = updates.backfillCursor ?? null;
+    }
+    if ('backfillCompletedAt' in updates) {
+      record.backfill_completed_at = updates.backfillCompletedAt ?? null;
+    }
 
-    const { error } = await this.getInstagramCredentialsClient()
+    const { error } = await this.supabase
       .from('instagram_credentials')
       .update(record)
       .eq('user_id', userId);
@@ -2802,7 +2805,7 @@ export class SupabaseService {
   }
 
   async deleteInstagramCredential(userId: string): Promise<SupabaseResult<void>> {
-    const { error } = await this.getInstagramCredentialsClient()
+    const { error } = await this.supabase
       .from('instagram_credentials')
       .delete()
       .eq('user_id', userId);

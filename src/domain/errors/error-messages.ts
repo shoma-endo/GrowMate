@@ -878,9 +878,15 @@ export const ERROR_MESSAGES = {
     /** プレビューデータ取得に失敗した場合 */
     PREVIEW_FETCH_FAILED: 'Instagramプレビューデータの取得に失敗しました',
 
-    /** 一部の投稿データ取得に失敗した場合 */
+    /** 手動同期が無効化されている場合 */
+    SYNC_DISABLED: 'Instagramの同期は現在停止されています',
+
+    /** 手動同期に失敗した場合 */
+    SYNC_FAILED: 'Instagramデータの同期に失敗しました。時間をおいて再度お試しください',
+
+    /** 一部の投稿で指標（リーチ・視聴数等）の取得に失敗した場合。投稿自体（サムネ・キャプション等）は取得済み */
     PARTIAL_MEDIA_FAILURE: (failedCount: number): string =>
-      `一部の投稿データを取得できませんでした（${failedCount}件）`,
+      `一部の投稿の指標データを取得できませんでした（${failedCount}件）`,
 
     /**
      * プロアカウント転換前の投稿で指標を取得できない場合。

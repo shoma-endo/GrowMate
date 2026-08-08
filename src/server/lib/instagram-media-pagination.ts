@@ -7,6 +7,8 @@ export interface InstagramMediaPaginationResult {
   items: unknown[];
   truncated: boolean;
   pagesFetched: number;
+  /** 次回このカーソルで再開すると続きから取得できる。null はこれ以上ページがない（アカウント末端） */
+  nextCursor: string | null;
 }
 
 export function extractInstagramMediaAfterCursor(paging: unknown): string | null {
@@ -27,6 +29,7 @@ export function collectInstagramMediaPages(
   let items: unknown[] = [];
   let truncated = false;
   let pagesFetched = 0;
+  let nextCursor: string | null = null;
 
   for (const page of pages) {
     pagesFetched += 1;
@@ -41,20 +44,25 @@ export function collectInstagramMediaPages(
     if (pageData.length > remaining) {
       items = [...items, ...pageData.slice(0, remaining)];
       truncated = true;
+      // ページサイズ（呼び出し元で 25 指定）が maxItems（既定 50）の約数である限り、
+      // 通常運用ではこの分岐に到達しない想定。到達した場合でも Graph API のカーソルは
+      // 「このページの後続」を指すため、remaining 件に間引いても次回再開位置として有効。
+      nextCursor = extractInstagramMediaAfterCursor(page.paging);
       break;
     }
 
     items = [...items, ...pageData];
 
     if (pageData.length === 0) {
+      nextCursor = null;
       break;
     }
 
-    const afterCursor = extractInstagramMediaAfterCursor(page.paging);
-    if (!afterCursor) {
+    nextCursor = extractInstagramMediaAfterCursor(page.paging);
+    if (!nextCursor) {
       break;
     }
   }
 
-  return { items, truncated, pagesFetched };
+  return { items, truncated, pagesFetched, nextCursor };
 }
