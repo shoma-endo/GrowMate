@@ -53,7 +53,7 @@ UI・外部 API・Supabase を含む変更は、`spec-to-pr` によるPR作成�
   "scripts": {
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "verify": "npm run lint && npm run test && npm run build && npm run knip"
+    "verify": "npm audit --omit=dev --audit-level=high && npm run lint && npm run test && npm run build && npm run knip"
   }
 }
 ```
@@ -170,12 +170,12 @@ VitestはPostgreSQL関数自体を実行しないため、「DBとの同一挙�
 ### ローカル・TAKT品質ゲート
 
 - `package.json` の `verify` に `npm run test` を組み込む
-- `.agents/skills/quality-gate/SKILL.md` の品質ゲート記述を、lint → test → build → knipへ同期する
+- `.agents/skills/quality-gate/SKILL.md` の品質ゲート記述を、audit → lint → test → build → knipへ同期する
 - `spec-to-pr` は既存どおり `npm run verify` を実行することでテストを必須通過する
 - `.agents/skills/spec-review/SKILL.md` の完全性チェックへ「純関数・正規化・集計・日付・分離済みZodスキーマを変更する場合、仕様書に追加・更新するテストケースと期待結果が明記されているか」を追加し、将来の仕様書に対する確認ルールの正本とする
 - Skill更新後に `npm run verify:agent-skills` を実行する
 - `.husky/pre-push` を `npm run test && npm run build && npm run knip` に更新し、push前にもコアロジックテストを実行する。pre-commitは既存どおりlintのみとする
-- TAKT `spec-to-pr` の `create_pr` は `git push --no-verify` でpre-pushフックを省略する。`npm run verify` の成功証跡をself_reviewで確認済みであり、CIが最終ゲートとなるため二重実行を避ける
+- TAKT `spec-to-pr` の `create_pr` は通常の `git push` を実行し、pre-pushフックも実行する。TAKTの `npm run verify` とフックの検証が重複するが、ローカルとTAKT双方の完了ゲートとして維持する
 
 ### CI
 
@@ -207,7 +207,7 @@ test:
 
 ### Phase 3 完了条件
 
-- `npm run verify` がlint・test・build・knipを実行して成功する
+- `npm run verify` がaudit・lint・test・build・knipを実行して成功する
 - CIのaudit・lint・test・build・knipが成功する
 - testジョブ失敗時に、notifyジョブの`STATUS`が`failure`となり、Larkへ失敗状態を通知できる構成になっている
 - pre-pushでtest・build・knipが順番に実行される
@@ -260,7 +260,7 @@ Phase 1〜3の運用後、次の事象が発生した領域から追加自動化
 ## 仕様全体の完了基準
 
 - Phase 1〜3の完了条件をすべて満たす
-- `npm run verify`とCIの両方で自動テストが必須実行される
+- `npm run verify`とCIの両方で自動テストが必須実行される（verifyはaudit・lint・test・build・knipの順）
 - UI・外部API・Supabase変更に対する人間の手動確認責任がPR上で明示される
 - 自動テストで保証する範囲と保証しない範囲が混在していない
 - 本仕様の実装によって、既存UI・API・DBのプロダクション挙動を変更していない

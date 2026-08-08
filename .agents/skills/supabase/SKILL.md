@@ -1,6 +1,6 @@
 ---
 name: supabase
-description: Supabase のサービス層（SupabaseService / Service Role）利用規約、RLS ポリシー設計、マイグレーション、SECURITY DEFINER 関数の実装規約。Supabase クエリ追加、Service Role 利用、RLS 変更、DB マイグレーションのときに使う。
+description: Supabaseを使う実装・DB変更で必ず使う規約。SupabaseService、Service Role、クエリ、テーブル、RLS、RPC、SECURITY DEFINER、SQLマイグレーション、database.types.ts / pending typesを扱う。Supabaseデータアクセス、認可、RLS/RPC、Service Role、スキーマ、マイグレーション、生成型を追加・変更するときに使う。
 ---
 
 # Supabase 技術規約

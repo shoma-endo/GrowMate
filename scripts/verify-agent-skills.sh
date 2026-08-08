@@ -18,7 +18,6 @@ warn() { echo -e "${YELLOW}!${NC} $1"; warnings=$((warnings + 1)); }
 ok()   { echo -e "${GREEN}✓${NC} $1"; }
 
 EXPECTED_SKILLS=(
-  agent-workflow-core
   google-integrations
   growmate-ui-ux
   implementation-guidelines
@@ -219,14 +218,13 @@ echo "=== 実行時テスト（手動）==="
 echo "Codex CLI:"
 echo "  cd $ROOT && codex"
 echo "  > /skills"
-echo "  > /use agent-workflow-core"
 echo "  > 「このリポジトリの Skill 正本パスは？」"
 echo
 echo "Claude Code:"
 echo "  cd $ROOT && claude"
 echo "  > /skills"
-echo "  > /agent-workflow-core"
+echo "  > 「このリポジトリの Skill 正本パスは？」"
 echo
 echo "Cursor:"
-echo "  Agent チャットで「agent-workflow-core スキルを読んで Skill 正本を答えて」"
+echo "  Agent チャットで「このリポジトリの Skill 正本パスは？」"
 exit 0

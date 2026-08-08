@@ -20,7 +20,7 @@ loop_monitors:
         - condition: 健全（進捗あり）
           next: ai_antipattern_review
         - condition: 非生産的（改善なし）
-          next: review
+          next: ABORT
   - cycle:
       - review
       - fix
@@ -133,6 +133,12 @@ steps:
       - 変更差分が対象仕様書と `plan.md` の対象範囲内に収まっていることを確認する。対象外の差分が必要になった場合は実装を進めず ABORT する。
       - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
       - ブラウザ手動確認は行わない（無人）。必要な画面確認は PR の未確認事項に回す。
+    quality_gates:
+      - type: command
+        name: npm-verify
+        command: npm run verify
+        cwd: .
+        timeout_ms: 900000
     rules:
       - condition: 実装と必須検証が完了した
         next: ai_antipattern_review
@@ -185,13 +191,19 @@ steps:
     required_permission_mode: edit
     pass_previous_response: false
     instruction: ai-antipattern-fix
+    quality_gates:
+      - type: command
+        name: npm-verify
+        command: npm run verify
+        cwd: .
+        timeout_ms: 900000
     rules:
       - condition: AI Reviewerの指摘に対する修正が完了した
         next: ai_antipattern_review
       - condition: 修正不要（指摘対象ファイル/仕様の確認済み）
         next: review
       - condition: 修正を進行できない
-        next: review
+        next: ABORT
 
   - name: review
     tags:
@@ -212,6 +224,7 @@ steps:
       - 簡易・形式的・低価値なユニットテストの追加を要求しない。
       - 代替検証として `npm run verify` が実行されているかを確認する。
       - ブラウザ手動確認は無人運用では実施しない。未実施のみを理由に `needs_fix` にせず、未確認事項へ回す前提とする。
+      - UI変更がある場合は、対象差分と既存の同種画面・コンポーネント・`src/components/ui/`・`app/globals.css`を照合し、文言、色、タイポグラフィ、余白、状態表示、既存primitiveの再利用が既存UIから逸脱していないことを確認する。要件にないUI刷新や新しいデザインパターンの追加は `needs_fix` とする。
       - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターン（`src/types/database.types.pending.ts` + `asPendingClient()` の `as unknown as` キャスト）は、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、このキャスト自体を理由に `needs_fix` にしない。
       - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
     rules:
@@ -252,8 +265,13 @@ steps:
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
       - 同種の潜在箇所がある場合は同時に修正する。
       - プロダクションコードを変更した場合は `npm run verify` を再実行する。
-      - プロダクションコードを変更しておらず、直前の品質ゲート成功証跡がある場合は、フル再実行せず必要な git / diff 確認に絞ってよい。
       - ここでは commit / push を行わない。最終ステップでまとめて実施する。
+    quality_gates:
+      - type: command
+        name: npm-verify
+        command: npm run verify
+        cwd: .
+        timeout_ms: 900000
     rules:
       - condition: architecture-reviewer の指摘を修正し、必須検証が完了した
         next: review

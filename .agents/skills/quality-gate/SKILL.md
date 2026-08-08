@@ -1,6 +1,6 @@
 ---
 name: quality-gate
-description: GrowMate の品質ゲート。コード変更後の自動検証、手動検証、2パスセルフレビューに使う。
+description: GrowMateのコード変更後・commit前・push前・PR前に必ず使う品質ゲート。npm run verify（audit、lint、test、build、knip）、UI手動確認、非機能チェック、2パスセルフレビュー、残存リスク整理を扱う。テスト失敗、lint/build/knip失敗、レビュー観点の確認、完了判定を行うときにも使う。
 ---
 
 # 品質ゲート
