@@ -9,7 +9,7 @@ import {
 } from '@/lib/constants';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 import { collectInstagramMediaPages } from '@/server/lib/instagram-media-pagination';
-import { extractInstagramMediaAfterCursor } from '@/server/lib/instagram-media-pagination';
+import type { InstagramMediaPageResponse } from '@/server/lib/instagram-media-pagination';
 import {
   emptyInstagramRateUsage,
   hasExceededInstagramRateThreshold,
@@ -23,7 +23,7 @@ import {
   parseInstagramMediaItems,
 } from '@/server/services/instagramService';
 import { SupabaseService } from '@/server/services/supabaseService';
-import type { InstagramSyncResult, InstagramSyncStoppedReason } from '@/types/instagram';
+import type { InstagramSyncMode, InstagramSyncResult, InstagramSyncStoppedReason } from '@/types/instagram';
 import type { TablesInsert } from '@/types/database.types';
 
 type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
@@ -103,6 +103,39 @@ function countUnsupportedMediaFromRaw(rawItems: unknown[]): number {
   return count;
 }
 
+/**
+ * 差分同期（incremental）用。rawItems（新しい順）のうち、posted_at がウォーターマーク
+ * （DB内の既存最新投稿日時）以下になる最初の index を返す。そこから先は同期済みとみなして
+ * 打ち切る。該当する要素が無ければ -1（このページは全件がウォーターマークより新しい）。
+ */
+function findWatermarkCutIndex(rawItems: unknown[], watermarkPostedAt: string | null): number {
+  if (!watermarkPostedAt) {
+    return -1;
+  }
+  const watermarkMs = new Date(watermarkPostedAt).getTime();
+  if (Number.isNaN(watermarkMs)) {
+    return -1;
+  }
+  for (let i = 0; i < rawItems.length; i += 1) {
+    const item = rawItems[i];
+    if (typeof item !== 'object' || item === null) {
+      continue;
+    }
+    const timestamp = (item as Record<string, unknown>).timestamp;
+    if (typeof timestamp !== 'string') {
+      continue;
+    }
+    const itemMs = new Date(timestamp).getTime();
+    if (Number.isNaN(itemMs)) {
+      continue;
+    }
+    if (itemMs <= watermarkMs) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 function buildMediaRowWithInsights(
   userId: string,
   listing: InstagramMediaListingFields,
@@ -149,16 +182,22 @@ class InstagramSyncService {
   private readonly instagramService = new InstagramService();
   private readonly supabaseService = new SupabaseService();
 
-  async syncUserData(userId: string, accessToken: string): Promise<InstagramSyncResult> {
+  async syncUserData(
+    userId: string,
+    accessToken: string,
+    mode: InstagramSyncMode
+  ): Promise<InstagramSyncResult> {
     const startedAt = Date.now();
     let usage: InstagramRateUsage = emptyInstagramRateUsage;
 
     const result: InstagramSyncResult = {
+      mode,
       synced: 0,
       failed: 0,
       skipped: 0,
       truncated: false,
       preConversionCount: 0,
+      backfillCompleted: false,
     };
 
     const checkBudget = (): InstagramSyncStoppedReason | null => {
@@ -173,8 +212,23 @@ class InstagramSyncService {
 
     let consecutiveFailures = 0;
 
-    const pages = [];
-    let after: string | null = null;
+    // backfill は永続化したカーソルから再開する。既に末端まで取り込み済みなら API を叩かず即返す。
+    // incremental は常に after=null（最新から）で、DB内最新 posted_at をウォーターマークに使う。
+    let cursor: string | null = null;
+    let watermarkPostedAt: string | null = null;
+
+    if (mode === 'backfill') {
+      const credential = await this.supabaseService.getInstagramCredential(userId);
+      if (credential?.backfillCompletedAt) {
+        result.backfillCompleted = true;
+        return result;
+      }
+      cursor = credential?.backfillCursor ?? null;
+    } else {
+      watermarkPostedAt = await instagramMediaService.getLatestPostedAt(userId);
+    }
+
+    const pages: InstagramMediaPageResponse[] = [];
 
     while (pages.length < 20) {
       const budgetStop = checkBudget();
@@ -186,9 +240,19 @@ class InstagramSyncService {
       const pageLimit = Math.min(25, INSTAGRAM_SYNC_MEDIA_LIMIT);
       const pageResult = await this.instagramService.fetchMediaPage(accessToken, {
         limit: pageLimit,
-        after,
+        after: cursor,
       });
       usage = mergeInstagramRateUsage(usage, pageResult.usage);
+
+      if (mode === 'incremental' && watermarkPostedAt) {
+        const rawItems = Array.isArray(pageResult.data.data) ? pageResult.data.data : [];
+        const cutIndex = findWatermarkCutIndex(rawItems, watermarkPostedAt);
+        if (cutIndex !== -1) {
+          pages.push({ data: rawItems.slice(0, cutIndex), paging: pageResult.data.paging });
+          break;
+        }
+      }
+
       pages.push(pageResult.data);
 
       const collected = collectInstagramMediaPages(pages, INSTAGRAM_SYNC_MEDIA_LIMIT);
@@ -197,20 +261,37 @@ class InstagramSyncService {
         console.warn('[Instagram Sync]', {
           truncated: true,
           limit: INSTAGRAM_SYNC_MEDIA_LIMIT,
+          mode,
         });
         break;
       }
 
-      after = extractInstagramMediaAfterCursor(pageResult.data.paging);
-      if (!after || collected.items.length >= INSTAGRAM_SYNC_MEDIA_LIMIT) {
+      if (!collected.nextCursor) {
         break;
       }
+      cursor = collected.nextCursor;
     }
 
     const collected = collectInstagramMediaPages(pages, INSTAGRAM_SYNC_MEDIA_LIMIT);
     result.truncated = result.truncated || collected.truncated;
+    const reachedEnd =
+      mode === 'backfill' &&
+      !result.truncated &&
+      !result.stoppedReason &&
+      collected.nextCursor === null;
+
     result.skipped += countUnsupportedMediaFromRaw(collected.items);
-    const parsedItems = parseInstagramMediaItems(collected.items, { logUnsupported: false });
+    let parsedItems = parseInstagramMediaItems(collected.items, { logUnsupported: false });
+
+    // backfill は既存投稿のインサイトを再取得しない（レート消費を新規分に温存する）。
+    // skipped（非対応 media_product_type 用の既存カウンタ）には加算しない。
+    if (mode === 'backfill') {
+      const existingIds = await instagramMediaService.getExistingMediaIds(
+        userId,
+        parsedItems.map(item => item.id)
+      );
+      parsedItems = parsedItems.filter(item => !existingIds.has(item.id));
+    }
 
     const igMediaIds = parsedItems.map(item => item.id);
     const unavailableIds = await instagramMediaService.getInsightsUnavailableMediaIds(
@@ -312,7 +393,24 @@ class InstagramSyncService {
       }
     }
 
-    if (result.stoppedReason !== 'rate_limit') {
+    // backfill の進捗永続化。lastSyncedAt / account insights daily の更新は「新着を拾う」
+    // incremental の意味に紐づく処理のため、backfill 実行時は行わない
+    // （ユーザー向け「まだデータがありません」判定に backfill の裏側実行を混ぜない）。
+    if (mode === 'backfill') {
+      if (reachedEnd) {
+        await this.supabaseService.updateInstagramCredential(userId, {
+          backfillCompletedAt: new Date().toISOString(),
+          backfillCursor: null,
+        });
+        result.backfillCompleted = true;
+      } else {
+        await this.supabaseService.updateInstagramCredential(userId, {
+          backfillCursor: collected.nextCursor ?? cursor,
+        });
+      }
+    }
+
+    if (mode === 'incremental' && result.stoppedReason !== 'rate_limit') {
       try {
         const credential = await this.supabaseService.getInstagramCredential(userId);
         const range = resolveAccountInsightsRange(credential?.lastSyncedAt ?? null);
@@ -341,15 +439,18 @@ class InstagramSyncService {
     }
 
     console.warn('[Instagram Sync]', {
+      mode,
       appUsage: usage.appUsage,
       bucUsage: usage.bucUsage,
       synced: result.synced,
       failed: result.failed,
     });
 
-    await this.supabaseService.updateInstagramCredential(userId, {
-      lastSyncedAt: new Date().toISOString(),
-    });
+    if (mode === 'incremental') {
+      await this.supabaseService.updateInstagramCredential(userId, {
+        lastSyncedAt: new Date().toISOString(),
+      });
+    }
 
     return result;
   }

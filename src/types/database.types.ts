@@ -850,6 +850,8 @@ export type Database = {
           access_token_expires_at: string
           access_token_issued_at: string
           account_type: string | null
+          backfill_completed_at: string | null
+          backfill_cursor: string | null
           created_at: string
           id: string
           ig_user_id: string
@@ -865,6 +867,8 @@ export type Database = {
           access_token_expires_at: string
           access_token_issued_at?: string
           account_type?: string | null
+          backfill_completed_at?: string | null
+          backfill_cursor?: string | null
           created_at?: string
           id?: string
           ig_user_id: string
@@ -880,6 +884,8 @@ export type Database = {
           access_token_expires_at?: string
           access_token_issued_at?: string
           account_type?: string | null
+          backfill_completed_at?: string | null
+          backfill_cursor?: string | null
           created_at?: string
           id?: string
           ig_user_id?: string

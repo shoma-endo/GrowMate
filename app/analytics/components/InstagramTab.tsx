@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { RefreshCw, Settings, Loader2 } from 'lucide-react';
+import { RefreshCw, Settings, Loader2, History } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -39,6 +39,7 @@ interface InstagramTabProps {
   igSort: InstagramMediaSortKey;
   accountLatestDay: InstagramAccountInsightsDailyRow | null;
   lastSyncedAt: string | null;
+  backfillStatus: 'not_started' | 'in_progress' | 'completed';
   syncEnabled: boolean;
   buildIgPageHref: (targetPage: number) => string;
   buildFilterHref: (patch: {
@@ -72,6 +73,7 @@ export default function InstagramTab({
   igSort,
   accountLatestDay,
   lastSyncedAt,
+  backfillStatus,
   syncEnabled,
   buildIgPageHref,
   buildFilterHref,
@@ -79,6 +81,8 @@ export default function InstagramTab({
   const router = useRouter();
   const [isSyncing, setIsSyncing] = React.useState(false);
   const [syncAlert, setSyncAlert] = React.useState<string | null>(null);
+  const [isBackfilling, setIsBackfilling] = React.useState(false);
+  const [backfillAlert, setBackfillAlert] = React.useState<string | null>(null);
   const [rangeStart, setRangeStart] = React.useState(igStart);
   const [rangeEnd, setRangeEnd] = React.useState(igEnd);
   const [isApplyingDateRange, setIsApplyingDateRange] = React.useState(false);
@@ -104,7 +108,7 @@ export default function InstagramTab({
     setSyncAlert(null);
     const toastId = toast.loading('Instagramデータを取得中...');
     try {
-      const result = await syncInstagramData();
+      const result = await syncInstagramData('incremental');
       if (!result.success || !result.data) {
         if (result.needsReauth) {
           toast.error(result.error, { id: toastId });
@@ -141,6 +145,49 @@ export default function InstagramTab({
       toast.error(ERROR_MESSAGES.INSTAGRAM.SYNC_FAILED, { id: toastId });
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleBackfill = async () => {
+    setIsBackfilling(true);
+    setBackfillAlert(null);
+    const toastId = toast.loading('過去の投稿を取得中...');
+    try {
+      const result = await syncInstagramData('backfill');
+      if (!result.success || !result.data) {
+        if (result.needsReauth) {
+          toast.error(result.error, { id: toastId });
+          setBackfillAlert(ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED);
+        } else {
+          toast.error(result.error, { id: toastId });
+        }
+        return;
+      }
+      const toastMessage = getInstagramSyncToastMessage(result.data);
+      switch (toastMessage.type) {
+        case 'warning':
+          toast.warning(toastMessage.message, { id: toastId });
+          setBackfillAlert(ERROR_MESSAGES.INSTAGRAM.API_ERROR);
+          break;
+        case 'info':
+          toast.info(toastMessage.message, { id: toastId });
+          break;
+        case 'error':
+          toast.error(toastMessage.message, { id: toastId });
+          break;
+        case 'success':
+          toast.success(toastMessage.message, { id: toastId });
+          break;
+      }
+      if (result.data.failed > 0) {
+        setBackfillAlert(ERROR_MESSAGES.INSTAGRAM.PARTIAL_MEDIA_FAILURE(result.data.failed));
+      }
+      router.refresh();
+    } catch (error) {
+      console.error('[Instagram Tab] backfill failed', error);
+      toast.error(ERROR_MESSAGES.INSTAGRAM.SYNC_FAILED, { id: toastId });
+    } finally {
+      setIsBackfilling(false);
     }
   };
 
@@ -252,12 +299,28 @@ export default function InstagramTab({
             <Button
               type="button"
               variant="outline"
-              disabled={!syncEnabled || isSyncing}
+              disabled={!syncEnabled || isSyncing || isBackfilling}
               onClick={handleSync}
             >
               <RefreshCw className={cn('w-4 h-4 mr-2', isSyncing && 'animate-spin')} />
               最新化
             </Button>
+            <div className="flex flex-col gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={
+                  !syncEnabled || isSyncing || isBackfilling || backfillStatus === 'completed'
+                }
+                onClick={handleBackfill}
+              >
+                <History className={cn('w-4 h-4 mr-2', isBackfilling && 'animate-spin')} />
+                {backfillStatus === 'completed' ? '過去の投稿を取り込む（完了）' : '過去の投稿を取り込む'}
+              </Button>
+              {backfillStatus === 'in_progress' ? (
+                <span className="text-xs text-gray-500">前回の続きがあります</span>
+              ) : null}
+            </div>
             {lastSyncedLabel ? (
               <p className="text-xs text-gray-500 ml-auto">最終同期: {lastSyncedLabel}</p>
             ) : null}
@@ -274,6 +337,17 @@ export default function InstagramTab({
           <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 mb-4">
             {syncAlert}
             {syncAlert === ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED ? (
+              <Link href="/setup/instagram" className="ml-2 underline font-medium">
+                連携設定へ
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+
+        {backfillAlert ? (
+          <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 mb-4">
+            {backfillAlert}
+            {backfillAlert === ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED ? (
               <Link href="/setup/instagram" className="ml-2 underline font-medium">
                 連携設定へ
               </Link>

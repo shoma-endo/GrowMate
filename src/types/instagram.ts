@@ -8,6 +8,10 @@ export interface InstagramCredential {
   accessTokenIssuedAt: string;
   scope: string[];
   lastSyncedAt: string | null;
+  /** 過去投稿取り込み（backfill）の再開カーソル。null は未着手または直近リセット済み */
+  backfillCursor: string | null;
+  /** 過去投稿取り込みが完了した日時。null は未完了（進行中 or 未着手） */
+  backfillCompletedAt: string | null;
 }
 
 export interface InstagramConnectionStatus {
@@ -88,13 +92,23 @@ export interface InstagramMediaPageResult {
 
 export type InstagramSyncStoppedReason = 'time_budget' | 'consecutive_failures' | 'rate_limit';
 
+/**
+ * incremental: 「最新化」ボタン。DB内最新投稿日時（ウォーターマーク）より新しい投稿のみ取得。
+ * backfill: 「過去の投稿を取り込む」ボタン。永続化したカーソルから続きを取得し、
+ *           既存投稿はインサイト取得をスキップしてページングのみ進める。
+ */
+export type InstagramSyncMode = 'incremental' | 'backfill';
+
 export interface InstagramSyncResult {
+  mode: InstagramSyncMode;
   synced: number;
   failed: number;
   skipped: number;
   truncated: boolean;
   preConversionCount: number;
   stoppedReason?: InstagramSyncStoppedReason;
+  /** backfill モード時のみ意味を持つ。true = アカウントの投稿履歴を末端まで取り込み終えた */
+  backfillCompleted: boolean;
 }
 
 export interface InstagramMediaPreview {

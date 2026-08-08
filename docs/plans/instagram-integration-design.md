@@ -343,6 +343,12 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 
    実装:
    - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ クリックで即 Server Action 実行（確認ダイアログなし）。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再認証/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
+   - **同期モードの分離（2026-08-08 追加）**: `syncInstagramData` / `instagramSyncService.syncUserData` に `mode: 'incremental' | 'backfill'` を追加。「最新化」は毎回 `after=null` から直近50件を再取得するだけで、51件目以降（それより古い投稿）が永遠に同期対象へ入らない対応漏れがあったため（下記「50件上限の扱い」を参照）。
+     - `incremental`（既存「最新化」。挙動はほぼ維持）: 同期開始時に DB 内最新 `posted_at`（ウォーターマーク）を1回取得し、Graph API を新しい順にページングして「ウォーターマーク以下の投稿に到達したら打ち切る」。カーソルは保存しない（毎回 `after=null` から開始）
+     - `backfill`（新規「過去の投稿を取り込む」ボタン。`History`アイコン）: `instagram_credentials.backfill_cursor`（§5.1）を起点にページングし、**既に DB にある投稿はインサイト取得をスキップしつつページングだけ継続**して、未取得の古い投稿に到達したら通常どおり処理する。打ち切った位置を `backfill_cursor` に永続化し次回クリックで再開。アカウント末端（`nextCursor=null`）に到達したら `backfill_completed_at` を立てて完了（ボタンは「過去の投稿を取り込む（完了）」表示で disabled）
+     - **新着51件超のエッジケース**: `incremental` が前回同期以降51件以上の新着を取りこぼした場合（`truncated:true`）、次回の `incremental` は自力で再取得できない（ウォーターマークが最新の1件まで進んでしまうため）。この回収は `backfill` に委ねる（`backfill` はカーソル起点で既存投稿をスキップしつつ進むため、この取りこぼし領域に自然に到達する）。トースト文言で `backfill` への誘導を明示する
+     - `lastSyncedAt` 更新・アカウント日次インサイト（`instagram_account_insights_daily`）取得は **`incremental` 実行時のみ**（`backfill` は過去メディア取り込みが目的でアカウント日次指標とは無関係。その分の API コールを新規分に温存する）
+     - **新規/既存ユーザーへの影響**: 移行スクリプト不要。新規ユーザー（51件以下）は `backfill` を押しても既に同期済みなので即完了（全件スキップ）。既存ユーザー（51件超、旧仕様で直近50件のみ同期済み）は `backfill` 初回実行で上位50件をスキップし51件目以降から自然に開始する
    - **⚠ トークン延長の契機がユーザー操作だけになる（重要）**: 当初は「トークン延長も cron 内で実施」する設計だった。cron を落としたことで、**長期トークン（60日）を延長する経路は `/setup/instagram` のプレビュー取得（`instagramSetup.actions.ts:195` の `ensureValidInstagramToken`）と、この「最新化」だけ**になる。
      - **リスクは限定的**: 延長条件は「期限まで7日未満かつ発行から24時間超」（`src/server/lib/instagram-token.ts`）なので、**60日のうち最後の7日間に一度でも画面を開けば延長される**。失効するのは「60日間まったく Instagram 機能を使わなかったユーザー」だけ
      - **失効しても壊れない**: `needsReauth` として「要再認証」バッジ + 再連携導線が出る（§6・§11.2）。**サイレントに未連携へ落ちない**ことが担保されていれば MVP として許容する
@@ -352,7 +358,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
      - 一覧表示: DB の既存データはそのまま出す（`last_synced_at` も従来値のまま）。空にしない
    - **初回同期の起動導線**: Phase 1 で既に連携済みのユーザーは `last_synced_at` が null。**OAuth callback 成功時に同期を自動起動しない**（callback を重くしない。10秒 timeout × 50件は callback 内で完了しない）。`/analytics` の Instagram タブ初回表示時に「まだデータがありません。［最新化］を押すと取得します」（§11.3）を出してユーザー操作を起点にする。**cron が無いので、押さなければ永久に空**である点が従来案との違い。空状態の文言はこの前提で書く
    - **1リクエストで実行時間を使い切る経路がある**: 投稿インサイトは1件1コールで各 10 秒 timeout のため、**全件がタイムアウトすると 500 秒**かかる。Server Action は **`app/analytics/page.tsx` に `export const maxDuration = 800` を設定**する（`app/google-ads-dashboard/page.tsx:15` と同型。Vercel Pro / Fluid Compute 上限）。同期本体の**時間予算は 760 秒**（maxDuration より 40 秒短く、レスポンス返却の余裕 — `gscEvaluationService` の 280/300 秒比を踏襲）。**連続失敗 K 件（初期値 5）** は時間上限に達する**前**の早期中断条件（各失敗最大 10 秒 × 5 = 50 秒程度で打ち切りうる）。時間予算到達時は `{ stoppedReason: 'time_budget' }`、連続失敗時は `{ stoppedReason: 'consecutive_failures' }` を結果に含めトーストで伝える（再度「最新化」で続き）
-   - **`truncated` の扱い**: 50件上限で打ち切った場合 `truncated: true` を結果に含め `console.warn` で記録する。**エラー扱いにしない**（意図した上限動作）。UI は §11.3 のトースト（`toast.info('直近50件まで取得しました')`）で伝える
+   - **`truncated` の扱い**: 50件上限で打ち切った場合 `truncated: true` を結果に含め `console.warn` で記録する。**エラー扱いにしない**（意図した上限動作）。UI は §11.3 のトースト（incremental/backfill でモード別に文言を出し分け。詳細は §11.3「同期結果 UI」）で伝える。**2026-08-08 追加**: 50件上限自体はレート制限対策として維持するが、「51件目以降（それより古い投稿）が永遠に同期対象へ入らない」対応漏れがあったため、上記「同期モードの分離」で `incremental`（差分同期）と `backfill`（過去投稿の段階的取り込み）に分離して解消した
    - **将来 cron を足す場合**（本 Phase では実装しない）: `.github/workflows/hourly-cron.yml` は `on.schedule` が `'0 * * * *'` の1本のみで、各 step も `github.event.schedule == '0 * * * *'` で守られている（`hourly-cron.yml:65,71`）。matrix の `interval` フィールドはどこからも参照されていない注記にすぎず、**日次の枠は存在しない**。日1回にしたい場合は ①workflow に日次 cron を足して `interval` で分岐させる ②毎時呼び出しのまま route 側で `last_synced_at` を見てスキップする（`gsc-evaluate` の「次回評価予定日時 <= 現在日時」と同型）のいずれか。**②の方が既存前例があり、ユーザーごとに実行が分散する分レート枠にも優しい**
 4. UI: `app/analytics/AnalyticsClient.tsx` をタブ化（R-2）。**タブ UI は Instagram 連携済みユーザーにだけ出す（2026-07-25 決定）**:
    - **未連携ユーザーの `/analytics` は現行のまま**（タブバーを出さない）。`/analytics` は作業画面であり、使わない機能のタブを常設しない。発見導線は `/setup` の Instagram カード（§11.1）が既に担っているので二重に持たない
@@ -429,6 +435,10 @@ create table public.instagram_credentials (
   access_token_issued_at timestamptz not null default now(),  -- 24h ルール判定用
   scope text[] not null default '{}',
   last_synced_at timestamptz,
+  -- 2026-08-08 追加（マイグレーション 20260808010000）。過去投稿取り込み（backfill）の状態。
+  -- §4 Phase2 item2「51件目以降が同期されない」対応漏れの解消に伴う追加。
+  backfill_cursor text,             -- Graph API /me/media のページングカーソル。NULL は未着手/直近リセット済み
+  backfill_completed_at timestamptz, -- 投稿履歴を末端まで取り込み終えた日時。NULL は未完了
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -438,6 +448,7 @@ create table public.instagram_credentials (
 - `user_id` に B-tree インデックス（unique 制約で兼用）
 - `updated_at` 自動更新トリガー（既存トリガー関数を再利用）
 - トークンは既存3系統と同じく**平文 text + RLS 保護**（暗号化は現行方針踏襲。変える場合は全系統一括の別課題とする）
+- `backfill_cursor` / `backfill_completed_at` は新規マイグレーション `20260808010000_add_instagram_backfill_state_to_credentials.sql` で追加（適用済み・型再生成済み）。既存の `SELECT` のみ RLS ポリシーの対象内で追加カラム分の RLS 変更は不要（列追加のみでポリシー自体は不変）
 
 ### 5.2 `instagram_media`（Phase 2）
 
@@ -640,6 +651,9 @@ create table public.instagram_account_insights_daily (
 - [ ] 初回同期で、**§5.4 で日次取得可と確定した列**について `instagram_account_insights_daily` に直近30日分が取り込まれる（日次不可列は行・列とも作らない）
 - [ ] STORIES 等非スコープ `media_product_type` が来ても同期全体が失敗せず skipped ログが出る
 - [ ] 50件打ち切り時 `truncated: true` がログに残り、エラー扱いにならない
+- [x] **（2026-08-08 追加）「過去の投稿を取り込む」（backfill）で51件目以降の投稿が取得できる**。投稿51件超のアカウントで「過去の投稿を取り込む」を複数回押すと `instagram_media` の行数が単調増加し最終的に全件を取り込む。実機確認済み（投稿3件のテストアカウントでは即完了、`backfill_completed_at` セット・ボタンが「（完了）」disabled 表示になることを確認）
+- [x] **（2026-08-08 追加）「最新化」（incremental）は DB 内最新 `posted_at` より新しい投稿のみ取得し、`backfill` は既存投稿のインサイト再取得をスキップする**（レート消費を新規/未取得分に温存）。単体テスト（`instagramSyncService.test.ts`）で確認
+- [x] **（2026-08-08 追加）backfill は `lastSyncedAt` とアカウント日次インサイトを更新しない**（incremental 専用の更新経路と分離。§4 Phase 2 item3）
 - [ ] 連携解除で credential + media/insights が purge される
 - [ ] **トークンが「最新化」実行時にも延長される**（期限7日前）。プレビュー表示だけでなく同期 Server Action でも `ensureValidInstagramToken` を通ること（§4 Phase 2 item3 の ⚠）
 - [ ] 未連携ユーザーへの連携導線は `/setup` の Instagram カード（§11.1）のみで、`/analytics` には出さない
@@ -904,13 +918,18 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 
 ┌─ ツールバー ─────────────────────────────────┐
 │ 種別: [すべて|リール|フィード]  期間: [開始]〜[終了] │
-│ 並び順: [投稿日▼]      [RefreshCw 最新化]        │  ← クリックで即実行（確認ダイアログなし）
-│ 最終同期: 2026-07-23 10:00                    │  ← last_synced_at。未同期時は非表示
+│ 並び順: [投稿日▼]  [RefreshCw 最新化]  [History 過去の投稿を取り込む] │  ← どちらもクリックで即実行（確認ダイアログなし）
+│ 最終同期: 2026-07-23 10:00                    │  ← last_synced_at（incremental のみ更新）。未同期時は非表示
 └──────────────────────────────────────────────┘
 
-「最新化」クリック時（**確認ダイアログなし。2026-08-08 決定**）:
-  → クリックで即 `toast.loading('Instagramデータを取得中...')` を表示し Server Action を実行
+「最新化」（incremental）クリック時（**確認ダイアログなし。2026-08-08 決定**）:
+  → クリックで即 `toast.loading('Instagramデータを取得中...')` を表示し Server Action（`mode:'incremental'`）を実行
   → 完了時に同一トーストを更新（結果は下記「同期結果」参照）
+
+「過去の投稿を取り込む」（backfill。2026-08-08 追加）クリック時:
+  → クリックで即 `toast.loading('過去の投稿を取得中...')` を表示し Server Action（`mode:'backfill'`）を実行
+  → `backfill_completed_at` が既にある場合はボタンが「過去の投稿を取り込む（完了）」表示で disabled になり押せない
+  → 「最新化」と相互に排他制御（どちらか実行中はもう片方も disabled）。詳細は §4 Phase 2 item3「同期モードの分離」
 
 ┌─ Card: アカウント指標（サマリー）────────────────┐
 │ データ: 最新日 YYYY-MM-DD（DB 直近30日分のうち最新1行）│
@@ -966,11 +985,14 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 - **連携済みだが同期0件**: 「まだデータがありません。［最新化］を押すと取得します」。Phase 1 から連携済みのユーザーは初回同期が走っていないため**必ずこの状態から始まる**（§4 Phase 2 item3「初回同期の起動導線」）
 - **指標セルの3状態を見分けられるようにする**（2026-08-04 追記）: ①実データの `0`（保存・シェアが実際に0件。§3.3）②取得失敗（再試行で回復しうる。`-` + 再取得導線）③**対象外**（`insights_unavailable` + `insights_unavailable_reason`、**アカウントサマリーの `follower_count` 100未満** — 上記「アカウント指標 UI」）。③は再試行しても直らないので、`-` と同じ見た目にせず **`reason` に応じたツールチップ**（§5.2 / §3.3）を出す
 - **同期停止中**（`INSTAGRAM_SYNC_ENABLED=false`）: 「最新化」ボタンを disabled にし、ツールバー直下に情報色 Alert「Instagramの同期を一時停止しています」。テーブルは既存データをそのまま表示する（§4 Phase 2 item3）
-- **同期結果 UI**（`getInstagramSyncToastMessage(result)` に集約。`OverviewTab.tsx` の `getQueryImportToastMessage` と同型。§6 エラーパス準拠。**単一の toast を `id` で更新し続ける**方式で、成功時も失敗時も新規 toast を積み増さない）:
-  - 成功（`failed=0`）: `toast.success('N件を更新しました', { id: toastId })`。`last_synced_at` をツールバー右に反映
-  - 部分失敗（`failed>0`）: `toast.warning('N件中M件の更新に失敗しました', { id: toastId })` + ツールバー直下 Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（M件）」）。取得できた行はテーブルに残す
+- **同期結果 UI**（`getInstagramSyncToastMessage(result)` に集約。`OverviewTab.tsx` の `getQueryImportToastMessage` と同型。§6 エラーパス準拠。**単一の toast を `id` で更新し続ける**方式で、成功時も失敗時も新規 toast を積み増さない。**2026-08-08 追加**: `result.mode`（`incremental`/`backfill`）で文言を出し分ける）:
+  - 成功（`failed=0`、incremental）: `toast.success('N件を更新しました', { id: toastId })`。`last_synced_at` をツールバー右に反映
+  - backfill 完了（`backfillCompleted=true`）: `toast.success('過去の投稿の取り込みが完了しました（今回N件）', { id: toastId })`
+  - 部分失敗（`failed>0`）: `toast.warning('N件中M件の更新に失敗しました', { id: toastId })` + ツールバー直下 Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（M件）」）。取得できた行はテーブルに残す。incremental/backfill 共通（`syncAlert`/`backfillAlert` は state を分離）
   - `needsReauth`: `toast.error(..., { id: toastId })` + Alert「Instagramの再認証が必要です」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレントに未連携へフォールバックしない
-  - `truncated`: `toast.info('直近50件まで取得しました', { id: toastId })`（エラー扱いにしない）
+  - `truncated`（incremental）: `toast.info('直近${INSTAGRAM_SYNC_MEDIA_LIMIT}件まで取得しました。さらに新しい投稿がある可能性があります。「過去の投稿を取り込む」からも取得できます。', { id: toastId })`（エラー扱いにしない。件数はハードコードでなく定数参照。§4 Phase2 item3「新着51件超のエッジケース」への誘導を兼ねる）
+  - `truncated`（backfill、末端未到達）: `toast.info('過去の投稿をN件取り込みました。続きがあります。「過去の投稿を取り込む」からさらに取得できます。', { id: toastId })`
+  - `stoppedReason==='time_budget'|'consecutive_failures'`: 再試行の案内文言をモード別に出し分け（incremental→「再度「最新化」で続きを取得できます。」、backfill→「「過去の投稿を取り込む」をもう一度押すと続きを取得できます。」）
   - **文言の置き場所**: トースト文言は `getInstagramSyncToastMessage` を置く `src/lib/instagram-sync.ts` に直書きする（`getQueryImportToastMessage` が `src/lib/gsc-import.ts` に直書きしている先例に倣う）。**`ERROR_MESSAGES` へは入れない** — 役割分担は「`ERROR_MESSAGES` = エラー種別の正本（種別ごとに1文言、エラーパスから参照される）」「トースト = 実行結果サマリの整形（件数を埋め込む可変文、結果オブジェクトからしか作れない）」。`needsReauth` / 部分失敗の **Alert 側は `ERROR_MESSAGES.INSTAGRAM.*` を参照する**ので、同じ画面で両方が併存する。日本語文言直書き禁止規約の対象は前者であり、後者は対象外
 - ブログタブ側のフィルタ・ページネーション UI は一切変更しない（受け入れ条件: リグレッションなし）
 

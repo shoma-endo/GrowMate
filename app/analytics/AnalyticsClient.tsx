@@ -58,6 +58,7 @@ interface AnalyticsClientProps {
   igSort: InstagramMediaSortKey;
   instagramAccountLatestDay: InstagramAccountInsightsDailyRow | null;
   instagramLastSyncedAt: string | null;
+  instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed';
   instagramSyncEnabled: boolean;
 }
 
@@ -93,6 +94,7 @@ export default function AnalyticsClient({
   igSort,
   instagramAccountLatestDay,
   instagramLastSyncedAt,
+  instagramBackfillStatus,
   instagramSyncEnabled,
 }: AnalyticsClientProps) {
   const router = useRouter();
@@ -323,6 +325,7 @@ export default function AnalyticsClient({
               igSort={igSort}
               accountLatestDay={instagramAccountLatestDay}
               lastSyncedAt={instagramLastSyncedAt}
+              backfillStatus={instagramBackfillStatus}
               syncEnabled={instagramSyncEnabled}
               buildIgPageHref={targetPage => buildIgPageHref(hrefState, targetPage)}
               buildFilterHref={patch => buildIgFilterHref(hrefState, patch)}

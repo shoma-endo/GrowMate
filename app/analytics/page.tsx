@@ -150,6 +150,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     ReturnType<typeof instagramMediaService.getAccountInsightsLatestDay>
   >;
   let instagramLastSyncedAt: string | null = null;
+  let instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed' = 'not_started';
 
   if (instagramConnected && activeTab === 'instagram') {
     const supabaseService = new SupabaseService();
@@ -168,6 +169,12 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     instagramMediaPage = mediaPage;
     instagramAccountLatestDay = accountDay;
     instagramLastSyncedAt = credential?.lastSyncedAt ?? null;
+    instagramBackfillStatus =
+      credential?.backfillCompletedAt != null
+        ? 'completed'
+        : credential?.backfillCursor != null
+          ? 'in_progress'
+          : 'not_started';
   }
 
   const currentPage = resolvedPage ?? page;
@@ -235,6 +242,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       igSort={igSort}
       instagramAccountLatestDay={instagramAccountLatestDay}
       instagramLastSyncedAt={instagramLastSyncedAt}
+      instagramBackfillStatus={instagramBackfillStatus}
       instagramSyncEnabled={isInstagramSyncEnabled()}
     />
   );

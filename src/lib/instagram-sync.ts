@@ -1,3 +1,4 @@
+import { INSTAGRAM_SYNC_MEDIA_LIMIT } from '@/lib/constants';
 import type { InstagramSyncResult } from '@/types/instagram';
 
 type SyncToastType = 'success' | 'warning' | 'error' | 'info';
@@ -19,17 +20,22 @@ export function getInstagramSyncToastMessage(
     };
   }
 
+  const retryHint =
+    result.mode === 'backfill'
+      ? '「過去の投稿を取り込む」をもう一度押すと続きを取得できます。'
+      : '再度「最新化」で続きを取得できます。';
+
   if (result.stoppedReason === 'time_budget') {
     return {
       type: 'warning',
-      message: `${result.synced}件まで更新しました。時間上限のため中断しました。再度「最新化」で続きを取得できます。`,
+      message: `${result.synced}件まで更新しました。時間上限のため中断しました。${retryHint}`,
     };
   }
 
   if (result.stoppedReason === 'consecutive_failures') {
     return {
       type: 'warning',
-      message: `${result.synced}件まで更新しました。連続で取得に失敗したため中断しました。`,
+      message: `${result.synced}件まで更新しました。連続で取得に失敗したため中断しました。${retryHint}`,
     };
   }
 
@@ -40,10 +46,25 @@ export function getInstagramSyncToastMessage(
     };
   }
 
+  if (result.mode === 'backfill') {
+    if (result.backfillCompleted) {
+      return {
+        type: 'success',
+        message: `過去の投稿の取り込みが完了しました（今回${result.synced}件）`,
+      };
+    }
+    if (result.truncated) {
+      return {
+        type: 'info',
+        message: `過去の投稿を${result.synced}件取り込みました。続きがあります。「過去の投稿を取り込む」からさらに取得できます。`,
+      };
+    }
+  }
+
   if (result.truncated) {
     return {
       type: 'info',
-      message: '直近50件まで取得しました',
+      message: `直近${INSTAGRAM_SYNC_MEDIA_LIMIT}件まで取得しました。さらに新しい投稿がある可能性があります。「過去の投稿を取り込む」からも取得できます。`,
     };
   }
 

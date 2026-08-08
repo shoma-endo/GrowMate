@@ -209,6 +209,45 @@ class InstagramMediaService extends SupabaseService {
     return new Set((data ?? []).map(row => row.ig_media_id));
   }
 
+  /** 差分同期（incremental）のウォーターマーク。DB内で最も新しい posted_at（無ければ null＝初回同期） */
+  async getLatestPostedAt(userId: string): Promise<string | null> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('instagram_media')
+      .select('posted_at')
+      .eq('user_id', userId)
+      .order('posted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[Instagram Media] getLatestPostedAt failed', { userId, error });
+      throw new Error('Instagram media latest posted_at fetch failed');
+    }
+
+    return data?.posted_at ?? null;
+  }
+
+  /** 過去投稿取り込み（backfill）用。指定 ig_media_id のうち既に DB にある ID 集合（インサイト再取得をスキップする対象） */
+  async getExistingMediaIds(userId: string, igMediaIds: string[]): Promise<Set<string>> {
+    if (igMediaIds.length === 0) {
+      return new Set();
+    }
+    const client = this.getClient();
+    const { data, error } = await client
+      .from('instagram_media')
+      .select('ig_media_id')
+      .eq('user_id', userId)
+      .in('ig_media_id', igMediaIds);
+
+    if (error) {
+      console.error('[Instagram Media] getExistingMediaIds failed', { userId, error });
+      throw new Error('Instagram existing media lookup failed');
+    }
+
+    return new Set((data ?? []).map(row => row.ig_media_id));
+  }
+
   async upsertMedia(userId: string, row: InstagramMediaInsertRow): Promise<void> {
     assertScopedUserId(userId, row.user_id);
     const scopedRow: InstagramMediaInsertRow = { ...row, user_id: userId };

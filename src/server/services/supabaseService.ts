@@ -2673,6 +2673,8 @@ export class SupabaseService {
       accessTokenIssuedAt: row.access_token_issued_at,
       scope: row.scope ?? [],
       lastSyncedAt: row.last_synced_at,
+      backfillCursor: row.backfill_cursor,
+      backfillCompletedAt: row.backfill_completed_at,
     };
   }
 
@@ -2747,6 +2749,8 @@ export class SupabaseService {
       accessTokenIssuedAt: string;
       scope: string[] | null;
       lastSyncedAt: string | null;
+      backfillCursor: string | null;
+      backfillCompletedAt: string | null;
     }>
   ): Promise<SupabaseResult<void>> {
     const record: InstagramCredentialUpdateRow = {
@@ -2776,6 +2780,12 @@ export class SupabaseService {
     }
     if ('lastSyncedAt' in updates) {
       record.last_synced_at = updates.lastSyncedAt ?? null;
+    }
+    if ('backfillCursor' in updates) {
+      record.backfill_cursor = updates.backfillCursor ?? null;
+    }
+    if ('backfillCompletedAt' in updates) {
+      record.backfill_completed_at = updates.backfillCompletedAt ?? null;
     }
 
     const { error } = await this.supabase

@@ -31,6 +31,8 @@ const revokedCredential: InstagramCredential = {
   accessTokenIssuedAt: '2026-08-01T01:31:39.000Z',
   scope: ['instagram_business_basic', 'instagram_business_manage_insights'],
   lastSyncedAt: null,
+  backfillCursor: null,
+  backfillCompletedAt: null,
 };
 
 describe('認可解除を検知して期限を現在時刻へ落とした credential', () => {

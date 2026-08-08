@@ -17,14 +17,14 @@ import {
   ensureValidInstagramToken,
 } from '@/server/services/instagramTokenService';
 import type { ServerActionResult } from '@/lib/async-handler';
-import type { InstagramSyncResult } from '@/types/instagram';
+import type { InstagramSyncMode, InstagramSyncResult } from '@/types/instagram';
 import type { UserRole } from '@/types/user';
 
 const supabaseService = new SupabaseService();
 
-export async function syncInstagramData(): Promise<
-  ServerActionResult<InstagramSyncResult> & { needsReauth?: boolean }
-> {
+export async function syncInstagramData(
+  mode: InstagramSyncMode
+): Promise<ServerActionResult<InstagramSyncResult> & { needsReauth?: boolean }> {
   if (!isInstagramSyncEnabled()) {
     return { success: false, error: ERROR_MESSAGES.INSTAGRAM.SYNC_DISABLED };
   }
@@ -73,7 +73,11 @@ export async function syncInstagramData(): Promise<
       };
     }
 
-    const syncResult = await instagramSyncService.syncUserData(userId, tokenResult.accessToken);
+    const syncResult = await instagramSyncService.syncUserData(
+      userId,
+      tokenResult.accessToken,
+      mode
+    );
 
     revalidatePath('/analytics');
     revalidatePath('/setup/instagram');
