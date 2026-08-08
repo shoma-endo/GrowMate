@@ -11,7 +11,7 @@ description: プロジェクト全域の命名規則。ディレクトリ、フ�
 
 ### 1. ディレクトリ命名
 
-- **原則**: すべて `kebab-case` (例: `business-info/`, `api/line-oauth/`, `src/server/actions/`)
+- **原則**: すべて `kebab-case` (例: `business-info/`, `api/google-oauth/`, `src/server/actions/`)
 
 ### 2. ファイル命名 (接尾辞・ケースの徹底)
 

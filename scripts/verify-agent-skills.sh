@@ -75,6 +75,41 @@ for agents_link in .codex/agents .claude/agents; do
 done
 echo
 
+echo "--- Core files ---"
+if [[ -f CLAUDE.md && ! -L CLAUDE.md ]]; then
+  ok "CLAUDE.md が正本ファイル"
+else
+  fail "CLAUDE.md が正本ファイルではない"
+fi
+
+if [[ -L AGENTS.md && "$(readlink AGENTS.md)" == "CLAUDE.md" ]]; then
+  ok "AGENTS.md -> CLAUDE.md"
+else
+  fail "AGENTS.md が CLAUDE.md への symlink ではない"
+fi
+
+if cmp -s AGENTS.md CLAUDE.md; then
+  ok "AGENTS.md と CLAUDE.md の内容が一致"
+else
+  fail "AGENTS.md と CLAUDE.md の内容が不一致"
+fi
+echo
+
+echo "--- Agent hooks ---"
+for hook_config in .claude/settings.json .codex/hooks.json; do
+  if [[ -f "$hook_config" ]] && grep -Fq "scripts/spec-html-hook.sh" "$hook_config"; then
+    ok "$hook_config が共通HTMLフックを参照"
+  else
+    fail "$hook_config が scripts/spec-html-hook.sh を参照していない"
+  fi
+done
+if [[ -x scripts/spec-html-hook.sh ]]; then
+  ok "scripts/spec-html-hook.sh が実行可能"
+else
+  fail "scripts/spec-html-hook.sh が存在しないか実行不可"
+fi
+echo
+
 echo "--- SKILL.md 走査 ---"
 skill_files=()
 while IFS= read -r line; do
@@ -134,7 +169,7 @@ done < "${names_file}.paths" 2>/dev/null || true
 echo
 
 echo "--- TAKT PR ワークフロー ---"
-for workflow in .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml; do
+for workflow in .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml; do
   if [[ -f "$workflow" ]]; then
     ok "$workflow"
   else
@@ -150,7 +185,7 @@ for removed in .agents/skills/spec-to-pr .agents/skills/react-doctor-to-pr .agen
   fi
 done
 
-if takt workflow doctor .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml >/dev/null; then
+if takt workflow doctor .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml >/dev/null; then
   ok "TAKT workflow doctor"
 else
   fail "TAKT workflow doctor failed"

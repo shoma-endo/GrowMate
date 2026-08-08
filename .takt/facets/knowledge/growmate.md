@@ -5,7 +5,7 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 ## Operating Model
 
 - Human involvement stops at authoring/updating specs in `docs/plans/`.
-- After a spec is ready, `spec-to-pr` / `react-doctor-to-pr` run unattended through implementation, internal review, and PR create/update.
+- After a spec is ready, `spec-to-pr` runs unattended through implementation, internal review, and PR create/update.
 - Do not ask humans for clarification mid-implementation. If the spec is insufficient, ABORT and leave concrete questions for the human to fix in `docs/plans/` before re-running.
 - Requeue / resume / existing WIP / existing PR must continue the same branch and update the same PR when possible. Do not restart from a clean slate by default.
 
@@ -21,7 +21,7 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 - `.agents/skills/supabase/SKILL.md` must be read for Supabase, RLS, Service Role, migrations, and generated type changes.
 - `.agents/skills/quality-gate/SKILL.md` defines verification and self-review.
 - `.agents/skills/spec-review/SKILL.md` defines specification review checkpoints and routing.
-- `.takt/workflows/spec-to-pr.yaml` and `.takt/workflows/react-doctor-to-pr.yaml` are the source workflows for PR automation. `.takt/workflows/spec-review.yaml` reviews a specification before spec-to-pr.
+- `.takt/workflows/spec-to-pr.yaml` is the source workflow for PR automation. `.takt/workflows/spec-review.yaml` reviews a specification before spec-to-pr.
 - `docs/plans/` contains implementation specifications.
 
 ## Required Verification
@@ -35,7 +35,7 @@ npm run build
 npm run knip
 ```
 
-Prefer `npm run verify`, which runs all four in this order.
+Prefer `npm run verify`, which runs all five in this order: audit → lint → test → build → knip.
 
 In unattended TAKT runs, the completion gate is `npm run verify` plus internal reviews (ai-antipattern / architecture / self-review). Do not block completion solely because browser manual testing was not performed; record it under PR 未確認事項 when UI changed.
 
@@ -59,7 +59,7 @@ Architecture review should not reject a change solely because new tests were not
 ## PR Requirements
 
 - Commit messages must be a single Japanese line.
-- For `spec-to-pr` and `react-doctor-to-pr`, the TAKT workflow owns PR creation and the PR body. `.github/workflows/auto-pr.yml` is only a fallback for non-TAKT pushes and must not overwrite an existing PR body.
+- For `spec-to-pr`, the TAKT workflow owns PR creation and the PR body. `.github/workflows/auto-pr.yml` is only a fallback for non-TAKT pushes and must not overwrite an existing PR body.
 - Do not post `@codex` review requests from auto-pr; architecture / antipattern / self-review already run inside the TAKT workflow.
 - PR titles (from `pr-summary.md` leading `# ` line) must be Japanese, one line, ≤50 characters, and convey What/Why. Do not use `[Auto]`, branch-name-only titles, self-congratulatory phrases, English-only titles, or conventional-commit prefixes.
 - PR bodies (from `pr-summary.md`) should include: 概要, 関連仕様書（applicable）, 変更要点, レビュー結果, 完了判断（事実と意見を分離）, 検証結果, 未確認事項.

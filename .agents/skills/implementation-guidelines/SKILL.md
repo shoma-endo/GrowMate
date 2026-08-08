@@ -19,6 +19,15 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
 - **Server Actions と Route Handlers の使い分け**
   - 機密情報（API キー、Service Role キーなど）を扱う処理はサーバー側に限定し、クライアントに露出させない。
   - どちらを使うかは `nextjs-server` スキル（`actions-and-routes.md`）の方針に従う（セッションや認可チェックが絡む処理は特に注意）。
+- **Server Actions の呼び出し位置**
+  - ユーザー操作に起因する Server Action は、`useEffect` ではなくイベントハンドラー、または `<form action>` から直接呼び出す。
+  - `useEffect` からの Server Action 呼び出しは、再レンダーや React Strict Mode による重複実行を招きやすいため、原則避ける。
+  - `useEffect` は外部システムとの同期など、ライフサイクル起因の処理に限定する。
+- **Server Component と Client Component の責務**
+  - Server Component は、初期データ取得・認証/認可・画面構成を担当する。
+  - Client Component は、ユーザー操作・UI 状態・イベント発火を担当する。
+  - Server Component から Client Component へ渡す props は、必要最小限かつ機密情報を除いたシリアライズ可能な表示用モデルにする。
+  - 更新後は Server Action で変更し、必要に応じて `revalidatePath`、`revalidateTag`、`router.refresh()` などで表示を更新する。
 
 - **機密情報の取り扱い**
   - `.env.local` の値をクライアントバンドルに含めないようにする。どうしても必要な場合は public prefix など Next.js のガイドラインに従う。
@@ -34,12 +43,7 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
 - **クライアント生成 / Service Role**
   - Supabase クライアントの生成・Service Role の利用パターンは `supabase` スキル（`service-usage.md`）に従い、重複実装を避ける。
 
-# フロントエンド実装
-
-- **UI 実装方針**
-  - **画面・UI コンポーネントの新規追加・変更を始める前に**、`growmate-ui-ux` スキル（`.agents/skills/growmate-ui-ux/SKILL.md`）を **必ず Read する**。未読のまま UI コードを書かない。
-  - レイアウト・スタイルは Tailwind CSS を基本とし、冗長なユーティリティクラスは必要に応じて `cva` 等で整理する。
-  - コンポーネントは既存の shadcn ベースコンポーネント（`src/components/`）を優先して再利用する。
+# フロントエンド設計
 
 - **状態管理とサービス層**
   - 画面ロジックと API 呼び出しは `src/domain/` のサービス層（例: `ChatService`, `SubscriptionService`）を通すことを優先し、同種のロジックを画面側に直書きしない。
@@ -49,11 +53,3 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
 - **一般ユーザー向けパブリックページ**
   - `/home`, `/privacy` などのパブリックページでは、ログインユーザー情報（通知トースト、ユーザー名、認証状態など）を一切表示しない。
   - 非認証ユーザーがアクセスしても破綻しないよう、認証前提の UI コンポーネントは埋め込まない。
-
-# セルフレビューとの連携
-
-- コーディング完了後は、`quality-gate` スキル（`self-review.md`）で定義された **2 パスの自己レビュー手順**に必ず従う。
-- 自己レビューでは以下を特に確認する:
-  - 型エラーが出ないか（`npm run lint` / `npm run build` の結果）。
-  - 既存の命名規則・ディレクトリ構造・責務分割に沿っているか。
-  - Supabase / 認証まわりでセキュリティ上の抜けがないか。

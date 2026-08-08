@@ -334,7 +334,7 @@ Step5 の構成案テキストから、以下のルールで見出しを認識�
 
 RLS（方針）:
 - `chat_sessions` と同じアクセス境界に従う
-- `session_id` 経由でオーナー/スタッフ共有アクセスを適用
+- `session_id` 経由で認証済みユーザー本人のアクセス境界を適用
 
 テーブル名: `session_combined_contents`
 
@@ -368,7 +368,7 @@ RLS（方針）:
 
 RLS（方針）:
 - `chat_sessions` と同じアクセス境界に従う
-- `session_id` 経由でオーナー/スタッフ共有アクセスを適用
+- `session_id` 経由で認証済みユーザー本人のアクセス境界を適用
 
 ### 9.2 テーブル関係（ER）
 
@@ -467,7 +467,7 @@ RLS（方針）:
 
 #### 実装
 
-- **`getCombinedContentForStep7`**（`src/server/actions/heading-flow.actions.ts`）: パラメータ `{ sessionId, liffAccessToken }`。`headingFlowService.getCombinedContentForPrompt` で `{ lead, sections }` を取得し返す（DB 保存なし）。
+- **`getCombinedContentForStep7`**（`src/server/actions/heading-flow.actions.ts`）: パラメータ `{ sessionId }`。`headingFlowService.getCombinedContentForPrompt` で `{ lead, sections }` を取得し返す（DB 保存なし）。
 - **書き出し案・構成案の区別**: `src/lib/constants.ts` の `MIN_LEAD_CONTENT_LENGTH`（20文字）、`STRUCTURE_PATTERN_CHECK_LENGTH`（150文字）、`src/lib/canvas-content.ts` の `BASIC_STRUCTURE_PATTERN` を使用。20文字未満は無効、先頭150文字が構成案パターンにマッチする場合は構成案として扱う。
 - Supabase 実装時は `supabase/migrations/` に SQL を追加し、ロールバック案をコメントで併記する。
 - `heading_key` の short_hash: `src/lib/heading-extractor.ts` で SHA-256 先頭8文字（16進）を使用（実装済み）。`initializeHeadingSections` は upsert（onConflict で既存行を更新）を使用。衝突検知・エラー返却は将来の拡張として検討。

@@ -258,8 +258,8 @@ npm run dev  # http://localhost:3000
 | [`docs/runbooks/`](docs/runbooks/) | 運用手順書 |
 | [`scripts/`](scripts/) | DB・Vercel 統計、Cron、Skill 検証等の運用スクリプト |
 | [`.agents/skills/`](.agents/skills/) | AI エージェント向け Skill 正本（Codex / Claude Code / Cursor 共通） |
-| [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | エージェント運用ルール（Skill 選択・品質ゲートの入口） |
-| [`.takt/`](.takt/) | 仕様書レビュー（`spec-review.yaml`）・仕様書起点 PR（`spec-to-pr.yaml`）・React Doctor 起点 PR（`react-doctor-to-pr.yaml`） |
+| [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | エージェント共通運用ルール（`AGENTS.md`は`CLAUDE.md`のsymlink） |
+| [`.takt/`](.takt/) | 仕様書レビュー（`spec-review.yaml`）・仕様書起点 PR（`spec-to-pr.yaml`） |
 
 ## 🛡️ セキュリティと運用の注意点
 

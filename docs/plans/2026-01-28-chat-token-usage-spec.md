@@ -21,7 +21,7 @@ AIチャット利用のトークン使用量を「1リクエスト単位」で�
 | カラム名 | 型 | Null | 説明 |
 | --- | --- | --- | --- |
 | id | uuid | NO | PK |
-| user_id | text | NO | オーナー基準のユーザーID（スタッフは ownerUserId を使用） |
+| user_id | text | NO | 本人のユーザーID |
 | session_id | text | YES | chat_sessions.id |
 | message_id | text | YES | chat_messages.id（該当があれば） |
 | service_id | text | YES | chat_sessions.service_id と同義 |
@@ -48,9 +48,8 @@ AIチャット利用のトークン使用量を「1リクエスト単位」で�
    - OpenAI/Anthropic の非ストリーミング呼び出し完了時点で記録
 
 ## 権限・RLS方針
-- 既存の `get_accessible_user_ids` を利用し、スタッフはオーナーのデータに集約。
 - RLS:
-  - select: `user_id = any (get_accessible_user_ids(auth.uid()))`
+  - select: `user_id = auth.uid()`
   - insert: サービスロールのみ許可（サーバー側で一元記録）
 
 ## 集計クエリ（例）

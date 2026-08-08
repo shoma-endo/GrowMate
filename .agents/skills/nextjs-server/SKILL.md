@@ -14,9 +14,3 @@ Server Actions / Route Handlers / Zod / エラーハンドリングの統合規�
 | Server Actions / Route Handlers の追加・変更 | [`actions-and-routes.md`](actions-and-routes.md) |
 | Zod スキーマ定義・バリデーション | [`zod-validation.md`](zod-validation.md) |
 | エラー返却・`ERROR_MESSAGES`・`handleAsyncAction` | [`error-handling.md`](error-handling.md) |
-
-## 関連スキル
-
-- 実装ポリシー全般: `implementation-guidelines`
-- Supabase 操作: `supabase`
-- 命名規則: `project-naming`

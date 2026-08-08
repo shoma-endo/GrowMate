@@ -70,7 +70,9 @@ steps:
          - 対象仕様に対応しそうな既存リモートブランチ（`feature/*` / `fix/*`）と、その open PR（`gh pr list`）。
          - Requeue / resume なら `meta.json` の `source_run_slug` を辿り、前回の `plan.md` / `coder-scope.md` / `architecture-review.md` 等を参照する。
          - 既存 WIP / 既存 PR がある場合は「差分追記」計画にし、ゼロからの作り直しを避ける。
-      7. 仕様要件と現行コード（および既存 WIP）の差分、変更対象、検証方法、PR本文に記載すべき関連仕様書を整理する。
+      7. 仕様要件と現行コード（および既存 WIP）の差分、変更対象、検証方法、PR本文に記載すべき関連仕様書を整理する。仕様書の対象範囲と Non-goals から実装許可範囲を定義し、対象外の画面・UI・機能・改善を `plan.md` に含めない。
+         - 純粋関数、境界値・分岐の多いロジック、正規化・集計・日付処理、分離済みZodスキーマ、既知バグの回帰に関わる場合は `docs/specs/testing-strategy.md` を読み、追加・更新するVitestケースと期待結果を計画に含める。
+         - UIコンポーネント、外部API、Supabase / RLS / RPC、LLM出力そのものは同戦略の自動テスト対象外として扱い、仕様書または手動確認へ振り分ける。
       8. 対象仕様書の spec-review 結果を取り込む（`.takt/runs/*/reports/` の `spec-review-summary.md` / `spec-audit.md` のうち対象仕様書に対応する最新のもの）:
          - 未実施の場合はブロックしないが、計画レポートに「spec-review 未実施」と明記する。
          - 実施済みの場合、**理由付きで残置合意された指摘（🟡 残置・approved_with_questions の論点）を `plan.md` に転記する**。後段の `review` が同じ論点を再指摘して review -> fix ループを空回りさせないため。
@@ -111,7 +113,7 @@ steps:
       extends: edit
     required_permission_mode: edit
     instruction: |
-      `plan.md` と対象仕様書に従い、GrowMate の既存パターンに合わせて最小差分で実装してください。
+      `plan.md` と対象仕様書に従い、GrowMate の既存パターンに合わせて最小差分で実装してください。要件にない画面・UI・機能・改善を追加せず、ついで修正や将来対応は別タスクへ切り出してください。
 
       運用前提（無人）:
       - 実装中に人間へ質問しない。判断不能・仕様不足なら ABORT する（人間は仕様書を直して再実行する）。
@@ -125,7 +127,10 @@ steps:
       - Server Actions / Route Handlers では `nextjs-server` のエラー処理・Zod規約に従う。
       - Supabase Service Role 使用時は user_id 等の明示的なスコープ条件を入れる。
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
+      - `docs/specs/testing-strategy.md` の自動テスト対象に該当する変更では、仕様書の期待結果に基づくVitestテストを追加・更新する。テスト実行は `npm run test` を使い、`npx vitest` を直接実行しない。
+      - UIコンポーネント、外部API、Supabase / RLS / RPC、LLM出力そのものなど自動テスト対象外の変更には、Vitest追加だけを目的とした実装変更を行わない。
       - 実装開始前に対象仕様書の現行版を再読し、`plan.md` 作成時点の内容と食い違いがないか確認する。食い違いがあれば実装を進めず plan への差し戻しを判断する。
+      - 変更差分が対象仕様書と `plan.md` の対象範囲内に収まっていることを確認する。対象外の差分が必要になった場合は実装を進めず ABORT する。
       - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
       - ブラウザ手動確認は行わない（無人）。必要な画面確認は PR の未確認事項に回す。
     rules:
@@ -200,6 +205,8 @@ steps:
       `review-arch` 相当の観点で、アーキテクチャ、責務分離、データ境界、セキュリティ、仕様充足、既存パターンとの整合性をレビューしてください。
 
       GrowMate 固有条件:
+      - 変更差分が対象仕様書と `plan.md` の対象範囲内か確認する。要件にない画面・UI・機能・改善、ついで修正、将来対応が混入している場合は `needs_fix` とする。
+      - 自動テスト対象の変更では、仕様書または `plan.md` に定義したVitestケースが追加・更新され、`npm run test` が成功していることを確認する。対象外の変更にテスト不在を理由として `needs_fix` にしない。
       - `plan.md` に spec-review で残置合意された指摘が転記されている場合、**その論点を再指摘して `needs_fix` にしない**（仕様書レビュー段階で理由付きの残置が合意済みのため）。実装が仕様書の記述どおりかだけを見る。
       - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
       - 簡易・形式的・低価値なユニットテストの追加を要求しない。
@@ -338,7 +345,7 @@ steps:
       - `npm run verify` が成功していること。
       - architecture-reviewer の open findings がないこと。
       - `readme-sync.md` に README の更新要否と根拠が記録され、更新要の場合は実装差分と `README.md` が同期していること。
-      - 余計な差分や機密情報の露出がないこと。
+      - 変更差分が対象仕様書と `plan.md` の対象範囲内であり、余計な差分や機密情報の露出がないこと。
       - PR確認用の要約に関連仕様書、検証結果、architecture review / self-review 結果、完了判断理由を含められること。
 
       無人運用の検証方針:

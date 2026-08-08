@@ -45,9 +45,3 @@ return { success: false, error: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED, need
 | Setup actions | `src/server/actions/gscSetup.actions.ts`, `ga4Setup.actions.ts`, `googleAds.actions.ts` |
 | ステータス判定 | `src/server/lib/gsc-status.ts`, `src/server/lib/ga4-status.ts` |
 | ドメインサービス | `gscService.ts`, `gscImportService.ts`, `ga4Service.ts`, `ga4ImportService.ts`, `googleAdsService.ts`, `googleAdsAiAnalysisService.ts` ほか（`src/server/services/`） |
-
-## 関連スキル
-
-- エラー返却形式・`ERROR_MESSAGES`: `nextjs-server`（`error-handling.md`）
-- credential の保存先・Service Role: `supabase`
-- 連携変更後の画面確認（/gsc-dashboard, /gsc-import 等）: `quality-gate`（`manual-testing.md`）

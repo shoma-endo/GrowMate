@@ -77,7 +77,7 @@ jobs:
           COMPARE_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${BASE_BRANCH}...${BRANCH_NAME}"
 
           # フォールバック本文（手動 push / TAKT 未経由用）。
-          # TAKT workflow（spec-to-pr / react-doctor-to-pr）が PR 本文の正本を書く。
+          # TAKT workflow（spec-to-pr）が PR 本文の正本を書く。
           # 既存 PR の本文は上書きしない。
           PR_BODY=$(cat <<EOF
           ## 概要

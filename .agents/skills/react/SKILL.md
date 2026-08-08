@@ -14,8 +14,3 @@ React 19 パターンと React Doctor 診断の統合規約。**該当するサ�
 | Context / use() / Compiler / Suspense / 最適化パターン | [`patterns.md`](patterns.md) |
 | Async React（transition / action prop / isPending） | [`async-react-patterns.md`](async-react-patterns.md) |
 | React Doctor 診断（スコア・Issues 確認） | [`doctor.md`](doctor.md) |
-
-## 関連スキル
-
-- 実装ポリシー: `implementation-guidelines`
-- React Doctor から PR: TAKT `.takt/workflows/react-doctor-to-pr.yaml`

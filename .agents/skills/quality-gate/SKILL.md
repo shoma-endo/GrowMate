@@ -1,19 +1,18 @@
 ---
 name: quality-gate
-description: GrowMate の品質ゲート。コーディング完了後の2パスセルフレビュー、手動検証（lint/build・画面別チェック）、障害トラブルシューティング。コード変更後の検証、セルフレビュー、動作確認、障害調査のときに使う。
+description: GrowMate の品質ゲート。コード変更後の自動検証、手動検証、2パスセルフレビューに使う。
 ---
 
 # 品質ゲート
 
-検証・セルフレビュー・障害対応の統合規約。**該当するサブファイルのみ**読む（段階的開示）。
+検証・セルフレビューの統合規約。**該当するサブファイルのみ**読む（段階的開示）。
 
 ## 読む順序
 
 | 作業内容 | 参照ファイル |
 |----------|-------------|
 | コーディング完了後の 2 パスセルフレビュー | [`self-review.md`](self-review.md) |
-| 手動検証・画面別チェック・マイグレーション確認 | [`manual-testing.md`](manual-testing.md) |
-| 障害調査・トラブルシューティング | [`troubleshooting.md`](troubleshooting.md) |
+| 手動検証・画面別チェック | [`manual-testing.md`](manual-testing.md) |
 
 ## 基本フロー（コード変更後）
 
@@ -22,18 +21,3 @@ description: GrowMate の品質ゲート。コーディング完了後の2パス
    **`tsc --noEmit` は `build` の代わりにならない**（Next.js の route segment config 静的解析や page data 収集が走らないため、過去に `maxDuration` 漏れが本番直前まで気付けなかった実例あり）。
 2. 変更機能の手動確認（`manual-testing.md`）
 3. 2 パスセルフレビュー（`self-review.md`）
-
-## husky フック構成
-
-| Hook | 実行内容 | 役割 |
-|------|---------|------|
-| `pre-commit` | `npm run lint` | commit 単位の高速チェック。エラー即時検知 |
-| `pre-push` | `npm run test && npm run build && npm run knip` | push 前のテストと重い検証。CI 到達前の早期検知 |
-
-`pre-push` には lint / audit を入れていない（pre-commit や `verify`・CI と役割分担するため）。
-**`--no-verify` でフックを回避した場合は CI 側 (`audit` / `lint` / `test` / `build` / `knip` ジョブ) で必ず止まる**。逆に言えば、フックは早期検知の補助であって、CI が最終ゲート。ローカル完了時は `npm run verify`（先頭で high audit）を回す。
-
-## 関連スキル
-
-- 実装ポリシー: `implementation-guidelines`
-- PR ワークフロー: TAKT `.takt/workflows/spec-to-pr.yaml` / `.takt/workflows/react-doctor-to-pr.yaml`
