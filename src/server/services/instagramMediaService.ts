@@ -1,15 +1,6 @@
 import 'server-only';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
-import {
-  asPendingClient,
-  updateScopedPendingRow,
-  upsertPendingRow,
-  type InstagramAccountInsightsDailyInsertRow,
-  type InstagramAccountInsightsDailyRow as InstagramAccountInsightsDailyDbRow,
-  type InstagramMediaInsertRow,
-  type InstagramMediaRow,
-  type InstagramPhase2Database,
-} from '@/types/database.types.pending';
+import type { Tables, TablesInsert } from '@/types/database.types';
 import type {
   InstagramAccountInsightsDailyRow,
   InstagramMediaListItem,
@@ -17,6 +8,10 @@ import type {
   InstagramMediaSortKey,
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
+
+type InstagramMediaRow = Tables<'instagram_media'>;
+type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
+type InstagramAccountInsightsDailyInsertRow = TablesInsert<'instagram_account_insights_daily'>;
 
 export type InstagramMediaListingFields = {
   igMediaId: string;
@@ -42,7 +37,7 @@ function listingFieldsToInsertRow(
   fields: InstagramMediaListingFields,
   insightState: {
     insightsUnavailable: boolean;
-    insightsUnavailableReason: InstagramMediaInsertRow['insights_unavailable_reason'];
+    insightsUnavailableReason: 'pre_conversion' | 'retention_expired' | null;
     insightsSyncedAt: string | null;
   }
 ): InstagramMediaInsertRow {
@@ -117,12 +112,8 @@ function mapMediaRow(row: InstagramMediaRow): InstagramMediaListItem {
 }
 
 class InstagramMediaService extends SupabaseService {
-  private getPhase2Client() {
-    return asPendingClient<InstagramPhase2Database>(this.getClient());
-  }
-
   async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
-    const client = this.getPhase2Client();
+    const client = this.getClient();
     const offset = (query.page - 1) * query.perPage;
 
     let dbQuery = client
@@ -170,12 +161,10 @@ class InstagramMediaService extends SupabaseService {
   async getAccountInsightsLatestDay(
     userId: string
   ): Promise<InstagramAccountInsightsDailyRow | null> {
-    const client = this.getPhase2Client();
-    // order()+limit()+maybeSingle() を挟むと Pending Migration Types の GetResult 型推論が
-    // never に落ちるため、select() の第2ジェネリック（結果型）を明示して迂回する。
+    const client = this.getClient();
     const { data, error } = await client
       .from('instagram_account_insights_daily')
-      .select<'*', InstagramAccountInsightsDailyDbRow>('*')
+      .select('*')
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .limit(1)
@@ -204,11 +193,10 @@ class InstagramMediaService extends SupabaseService {
     if (igMediaIds.length === 0) {
       return new Set();
     }
-    const client = this.getPhase2Client();
-    // 列名指定の select 文字列は Pending Migration Types の型推論で never になるため、結果型を明示する。
+    const client = this.getClient();
     const { data, error } = await client
       .from('instagram_media')
-      .select<'ig_media_id', Pick<InstagramMediaRow, 'ig_media_id'>>('ig_media_id')
+      .select('ig_media_id')
       .eq('user_id', userId)
       .eq('insights_unavailable', true)
       .in('ig_media_id', igMediaIds);
@@ -225,10 +213,9 @@ class InstagramMediaService extends SupabaseService {
     assertScopedUserId(userId, row.user_id);
     const scopedRow: InstagramMediaInsertRow = { ...row, user_id: userId };
     await SupabaseService.withServiceRoleClient(async client => {
-      const pending = asPendingClient<InstagramPhase2Database>(client);
-      const { error } = await upsertPendingRow(pending, 'instagram_media', scopedRow, {
-        onConflict: 'user_id,ig_media_id',
-      });
+      const { error } = await client
+        .from('instagram_media')
+        .upsert(scopedRow, { onConflict: 'user_id,ig_media_id' });
       if (error) {
         console.error('[Instagram Media] upsertMedia failed', { userId, error });
         throw new Error('Instagram media upsert failed');
@@ -242,11 +229,9 @@ class InstagramMediaService extends SupabaseService {
     fields: InstagramMediaListingFields
   ): Promise<void> {
     await SupabaseService.withServiceRoleClient(async client => {
-      const pending = asPendingClient<InstagramPhase2Database>(client);
-      const { error } = await updateScopedPendingRow(
-        pending,
-        'instagram_media',
-        {
+      const { error } = await client
+        .from('instagram_media')
+        .update({
           media_type: fields.mediaType,
           media_product_type: fields.mediaProductType,
           caption: fields.caption,
@@ -256,9 +241,9 @@ class InstagramMediaService extends SupabaseService {
           posted_at: fields.postedAt,
           like_count: fields.likeCount,
           comments_count: fields.commentsCount,
-        },
-        { userId, igMediaId: fields.igMediaId }
-      );
+        })
+        .eq('user_id', userId)
+        .eq('ig_media_id', fields.igMediaId);
       if (error) {
         console.error('[Instagram Media] updateMediaListingFields failed', { userId, error });
         throw new Error('Instagram media listing update failed');
@@ -272,8 +257,7 @@ class InstagramMediaService extends SupabaseService {
     reason: 'pre_conversion' | 'retention_expired'
   ): Promise<void> {
     await SupabaseService.withServiceRoleClient(async client => {
-      const pending = asPendingClient<InstagramPhase2Database>(client);
-      const { data: existing, error: lookupError } = await pending
+      const { data: existing, error: lookupError } = await client
         .from('instagram_media')
         .select('id')
         .eq('user_id', userId)
@@ -289,10 +273,9 @@ class InstagramMediaService extends SupabaseService {
       }
 
       if (existing) {
-        const { error } = await updateScopedPendingRow(
-          pending,
-          'instagram_media',
-          {
+        const { error } = await client
+          .from('instagram_media')
+          .update({
             media_type: fields.mediaType,
             media_product_type: fields.mediaProductType,
             caption: fields.caption,
@@ -304,9 +287,9 @@ class InstagramMediaService extends SupabaseService {
             comments_count: fields.commentsCount,
             insights_unavailable: true,
             insights_unavailable_reason: reason,
-          },
-          { userId, igMediaId: fields.igMediaId }
-        );
+          })
+          .eq('user_id', userId)
+          .eq('ig_media_id', fields.igMediaId);
         if (error) {
           console.error('[Instagram Media] upsertMediaInsightsUnavailable update failed', {
             userId,
@@ -322,9 +305,9 @@ class InstagramMediaService extends SupabaseService {
         insightsUnavailableReason: reason,
         insightsSyncedAt: null,
       });
-      const { error } = await upsertPendingRow(pending, 'instagram_media', row, {
-        onConflict: 'user_id,ig_media_id',
-      });
+      const { error } = await client
+        .from('instagram_media')
+        .upsert(row, { onConflict: 'user_id,ig_media_id' });
       if (error) {
         console.error('[Instagram Media] upsertMediaInsightsUnavailable insert failed', {
           userId,
@@ -341,8 +324,7 @@ class InstagramMediaService extends SupabaseService {
     fields: InstagramMediaListingFields
   ): Promise<void> {
     await SupabaseService.withServiceRoleClient(async client => {
-      const pending = asPendingClient<InstagramPhase2Database>(client);
-      const { data: existing, error: lookupError } = await pending
+      const { data: existing, error: lookupError } = await client
         .from('instagram_media')
         .select('id')
         .eq('user_id', userId)
@@ -358,10 +340,9 @@ class InstagramMediaService extends SupabaseService {
       }
 
       if (existing) {
-        const { error } = await updateScopedPendingRow(
-          pending,
-          'instagram_media',
-          {
+        const { error } = await client
+          .from('instagram_media')
+          .update({
             media_type: fields.mediaType,
             media_product_type: fields.mediaProductType,
             caption: fields.caption,
@@ -371,9 +352,9 @@ class InstagramMediaService extends SupabaseService {
             posted_at: fields.postedAt,
             like_count: fields.likeCount,
             comments_count: fields.commentsCount,
-          },
-          { userId, igMediaId: fields.igMediaId }
-        );
+          })
+          .eq('user_id', userId)
+          .eq('ig_media_id', fields.igMediaId);
         if (error) {
           console.error('[Instagram Media] upsertMediaListingPreservingInsights update failed', {
             userId,
@@ -389,9 +370,9 @@ class InstagramMediaService extends SupabaseService {
         insightsUnavailableReason: null,
         insightsSyncedAt: null,
       });
-      const { error } = await upsertPendingRow(pending, 'instagram_media', row, {
-        onConflict: 'user_id,ig_media_id',
-      });
+      const { error } = await client
+        .from('instagram_media')
+        .upsert(row, { onConflict: 'user_id,ig_media_id' });
       if (error) {
         console.error('[Instagram Media] upsertMediaListingPreservingInsights insert failed', {
           userId,
@@ -414,13 +395,9 @@ class InstagramMediaService extends SupabaseService {
     }
     const scopedRows = rows.map(row => ({ ...row, user_id: userId }));
     await SupabaseService.withServiceRoleClient(async client => {
-      const pending = asPendingClient<InstagramPhase2Database>(client);
-      const { error } = await upsertPendingRow(
-        pending,
-        'instagram_account_insights_daily',
-        scopedRows,
-        { onConflict: 'user_id,date' }
-      );
+      const { error } = await client
+        .from('instagram_account_insights_daily')
+        .upsert(scopedRows, { onConflict: 'user_id,date' });
       if (error) {
         console.error('[Instagram Media] upsertAccountInsightsDaily failed', { userId, error });
         throw new Error('Instagram account insights upsert failed');
@@ -431,9 +408,7 @@ class InstagramMediaService extends SupabaseService {
   async purgeInstagramData(userId: string): Promise<SupabaseResult<void>> {
     return SupabaseService.withServiceRoleClient(
       async client => {
-        const pending = asPendingClient<InstagramPhase2Database>(client);
-
-        const { error: mediaError } = await pending
+        const { error: mediaError } = await client
           .from('instagram_media')
           .delete()
           .eq('user_id', userId);
@@ -443,7 +418,7 @@ class InstagramMediaService extends SupabaseService {
           });
         }
 
-        const { error: insightsError } = await pending
+        const { error: insightsError } = await client
           .from('instagram_account_insights_daily')
           .delete()
           .eq('user_id', userId);

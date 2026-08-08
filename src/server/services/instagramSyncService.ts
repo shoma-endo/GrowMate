@@ -24,7 +24,9 @@ import {
 } from '@/server/services/instagramService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import type { InstagramSyncResult, InstagramSyncStoppedReason } from '@/types/instagram';
-import type { InstagramMediaInsertRow } from '@/types/database.types.pending';
+import type { TablesInsert } from '@/types/database.types';
+
+type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
 
 const MEDIA_RETENTION_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 const ACCOUNT_INSIGHTS_LOOKBACK_DAYS = 30;
