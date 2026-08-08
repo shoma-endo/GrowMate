@@ -29,6 +29,14 @@ interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
   igSort: InstagramMediaSortKey;
   onSortColumnHidden: () => void;
+  /**
+   * items が空のときに表示するメッセージ。
+   * items が空でもこのコンポーネント（＝内包する FieldConfigurator）は必ずマウントする必要がある。
+   * 呼び出し元で items===0 のときにこのコンポーネント自体を描画しないと、
+   * FieldConfigurator の外部トリガー（id="instagram-field-config-trigger"）用の
+   * クリックリスナーが登録されず、投稿0件時に「フィールド構成」ボタンが無反応になる。
+   */
+  emptyMessage: string;
 }
 
 function captionPreview(caption: string | null): string {
@@ -106,6 +114,7 @@ export default function InstagramMediaTable({
   items,
   igSort,
   onSortColumnHidden,
+  emptyMessage,
 }: InstagramMediaTableProps) {
   const columns = React.useMemo(() => INSTAGRAM_COLUMNS.map(col => ({ ...col })), []);
 
@@ -213,6 +222,9 @@ export default function InstagramMediaTable({
       hideTrigger
     >
       {({ visibleSet, orderedIds }) => {
+        if (items.length === 0) {
+          return <p className="text-sm text-gray-500 py-8 text-center">{emptyMessage}</p>;
+        }
         const visibleOrdered = orderedIds.filter(id => visibleSet.has(id));
         return (
           <div className="overflow-x-auto">

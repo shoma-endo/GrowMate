@@ -88,7 +88,14 @@ export default function InstagramTab({
     setRangeStart(igStart);
     setRangeEnd(igEnd);
     setIsApplyingDateRange(false);
+    setSyncAlert(null);
   }, [igStart, igEnd]);
+
+  // 種別・並び順・ページが変わった場合も前回同期の警告表示をクリアする
+  // （そのまま残すと別の絞り込み条件を見ていても古い警告が出続ける）。
+  React.useEffect(() => {
+    setSyncAlert(null);
+  }, [igType, igSort, igPage]);
 
   const lastSyncedLabel = formatLastSyncedAt(lastSyncedAt);
 
@@ -271,56 +278,53 @@ export default function InstagramTab({
           </div>
         </CardHeader>
         <CardContent>
-          {items.length === 0 ? (
-            <p className="text-sm text-gray-500 py-8 text-center">
-              {lastSyncedAt == null
+          <InstagramMediaTable
+            items={items}
+            igSort={igSort}
+            onSortColumnHidden={resetSortIfHidden}
+            emptyMessage={
+              lastSyncedAt == null
                 ? 'まだデータがありません。「最新化」を押すと取得します。'
-                : '表示条件に一致する投稿がありません。期間や種別フィルタを変更してください。'}
-            </p>
-          ) : (
-            <>
-              <InstagramMediaTable
-                items={items}
-                igSort={igSort}
-                onSortColumnHidden={resetSortIfHidden}
-              />
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-gray-600">
-                  {total > 0
-                    ? `全${total}件中 ${startItemNumber}-${endItemNumber}件を表示（${igPage}/${totalPages}ページ）`
-                    : ''}
-                </div>
-                <div className="flex gap-2">
-                  <Link
-                    href={prevHref}
-                    prefetch={false}
-                    aria-disabled={prevDisabled}
-                    tabIndex={prevDisabled ? -1 : undefined}
-                    className={cn(
-                      buttonVariants({ variant: 'outline' }),
-                      'px-3',
-                      prevDisabled && 'pointer-events-none opacity-50'
-                    )}
-                  >
-                    前へ
-                  </Link>
-                  <Link
-                    href={nextHref}
-                    prefetch={false}
-                    aria-disabled={nextDisabled}
-                    tabIndex={nextDisabled ? -1 : undefined}
-                    className={cn(
-                      buttonVariants({ variant: 'outline' }),
-                      'px-3',
-                      nextDisabled && 'pointer-events-none opacity-50'
-                    )}
-                  >
-                    次へ
-                  </Link>
-                </div>
+                : '表示条件に一致する投稿がありません。期間や種別フィルタを変更してください。'
+            }
+          />
+          {items.length > 0 ? (
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-gray-600">
+                {total > 0
+                  ? `全${total}件中 ${startItemNumber}-${endItemNumber}件を表示（${igPage}/${totalPages}ページ）`
+                  : ''}
               </div>
-            </>
-          )}
+              <div className="flex gap-2">
+                <Link
+                  href={prevHref}
+                  prefetch={false}
+                  aria-disabled={prevDisabled}
+                  tabIndex={prevDisabled ? -1 : undefined}
+                  className={cn(
+                    buttonVariants({ variant: 'outline' }),
+                    'px-3',
+                    prevDisabled && 'pointer-events-none opacity-50'
+                  )}
+                >
+                  前へ
+                </Link>
+                <Link
+                  href={nextHref}
+                  prefetch={false}
+                  aria-disabled={nextDisabled}
+                  tabIndex={nextDisabled ? -1 : undefined}
+                  className={cn(
+                    buttonVariants({ variant: 'outline' }),
+                    'px-3',
+                    nextDisabled && 'pointer-events-none opacity-50'
+                  )}
+                >
+                  次へ
+                </Link>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>

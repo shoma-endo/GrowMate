@@ -185,7 +185,10 @@ export default function FieldConfigurator({
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button
-              id={triggerId || 'field-configurator-trigger'}
+              // hideTrigger 時はこのボタンは sr-only で隠され、開閉は外部の triggerId 要素の
+              // クリックリスナー（下の useEffect）が担う。ここにも同じ id を付けると
+              // 外部ボタンと DOM 上で id が重複するため、hideTrigger 時は id を持たせない。
+              id={hideTrigger ? undefined : triggerId || 'field-configurator-trigger'}
               variant="outline"
               className="bg-black text-white hover:bg-black/90 border-transparent flex items-center gap-2"
             >
