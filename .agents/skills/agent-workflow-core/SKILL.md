@@ -23,7 +23,7 @@ description: CLAUDE.md の最小コア運用を補完する共通ワークフロ
   - Server Actions / Zod / エラー: `nextjs-server`
   - Supabase: `supabase`
   - Google 連携（GSC / GA4 / Google Ads・トークン・needsReauth）: `google-integrations`
-  - 品質ゲート（検証・セルフレビュー・障害対応）: `quality-gate`
+  - 品質ゲート（自動検証・手動検証・セルフレビュー）: `quality-gate`
   - 仕様書レビュー: `spec-review` / TAKT workflow `.takt/workflows/spec-review.yaml`
   - 仕様書の図解化（単一 HTML）: `spec-to-html`（spec-review の visualize ステップが自動実行）
   - 仕様実装→PR: TAKT workflow `.takt/workflows/spec-to-pr.yaml`
