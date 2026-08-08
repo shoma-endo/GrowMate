@@ -228,168 +228,189 @@ class InstagramSyncService {
       watermarkPostedAt = await instagramMediaService.getLatestPostedAt(userId);
     }
 
-    const pages: InstagramMediaPageResponse[] = [];
+    let reachedEnd = false;
+    let batchCount = 0;
+    // incremental はウォーターマークで自然に1バッチ内に収まる設計のため複数バッチ化しない
+    // （新着が INSTAGRAM_SYNC_MEDIA_LIMIT 件を超えて取りこぼした分は backfill に委ねる。
+    // §4 Phase2 item3「新着51件超のエッジケース」）。
+    // backfill は時間予算いっぱいまでバッチを繰り返し、wordpress-import / gsc-import と同様
+    // 「1回のボタン操作でサーバー側が可能な限り処理して結果を返す」設計にする（クライアント側で
+    // 複数回 Server Action を呼び直さなくてよい）。上限はランナウェイ防止の安全弁。
+    const maxBatches = mode === 'backfill' ? 100 : 1;
 
-    while (pages.length < 20) {
-      const budgetStop = checkBudget();
-      if (budgetStop) {
-        result.stoppedReason = budgetStop;
-        break;
-      }
+    while (batchCount < maxBatches) {
+      batchCount += 1;
 
-      const pageLimit = Math.min(25, INSTAGRAM_SYNC_MEDIA_LIMIT);
-      const pageResult = await this.instagramService.fetchMediaPage(accessToken, {
-        limit: pageLimit,
-        after: cursor,
-      });
-      usage = mergeInstagramRateUsage(usage, pageResult.usage);
+      // --- 1バッチ分のページング取得フェーズ（最大 INSTAGRAM_SYNC_MEDIA_LIMIT 件） ---
+      const pages: InstagramMediaPageResponse[] = [];
 
-      if (mode === 'incremental' && watermarkPostedAt) {
-        const rawItems = Array.isArray(pageResult.data.data) ? pageResult.data.data : [];
-        const cutIndex = findWatermarkCutIndex(rawItems, watermarkPostedAt);
-        if (cutIndex !== -1) {
-          pages.push({ data: rawItems.slice(0, cutIndex), paging: pageResult.data.paging });
+      while (pages.length < 20) {
+        const budgetStop = checkBudget();
+        if (budgetStop) {
+          result.stoppedReason = budgetStop;
           break;
         }
-      }
 
-      pages.push(pageResult.data);
+        const pageLimit = Math.min(25, INSTAGRAM_SYNC_MEDIA_LIMIT);
+        const pageResult = await this.instagramService.fetchMediaPage(accessToken, {
+          limit: pageLimit,
+          after: cursor,
+        });
+        usage = mergeInstagramRateUsage(usage, pageResult.usage);
+
+        if (mode === 'incremental' && watermarkPostedAt) {
+          const rawItems = Array.isArray(pageResult.data.data) ? pageResult.data.data : [];
+          const cutIndex = findWatermarkCutIndex(rawItems, watermarkPostedAt);
+          if (cutIndex !== -1) {
+            pages.push({ data: rawItems.slice(0, cutIndex), paging: pageResult.data.paging });
+            break;
+          }
+        }
+
+        pages.push(pageResult.data);
+
+        const collected = collectInstagramMediaPages(pages, INSTAGRAM_SYNC_MEDIA_LIMIT);
+        if (collected.truncated) {
+          // このバッチは件数上限で区切られただけ（backfill は次バッチに続く）。
+          result.truncated = true;
+          console.warn('[Instagram Sync]', {
+            truncated: true,
+            limit: INSTAGRAM_SYNC_MEDIA_LIMIT,
+            mode,
+            batchCount,
+          });
+          break;
+        }
+
+        if (!collected.nextCursor) {
+          reachedEnd = true;
+          break;
+        }
+        cursor = collected.nextCursor;
+      }
 
       const collected = collectInstagramMediaPages(pages, INSTAGRAM_SYNC_MEDIA_LIMIT);
-      if (collected.truncated) {
-        result.truncated = true;
-        console.warn('[Instagram Sync]', {
-          truncated: true,
-          limit: INSTAGRAM_SYNC_MEDIA_LIMIT,
-          mode,
-        });
-        break;
-      }
+      result.skipped += countUnsupportedMediaFromRaw(collected.items);
+      let parsedItems = parseInstagramMediaItems(collected.items, { logUnsupported: false });
 
-      if (!collected.nextCursor) {
-        break;
-      }
-      cursor = collected.nextCursor;
-    }
-
-    const collected = collectInstagramMediaPages(pages, INSTAGRAM_SYNC_MEDIA_LIMIT);
-    result.truncated = result.truncated || collected.truncated;
-    const reachedEnd =
-      mode === 'backfill' &&
-      !result.truncated &&
-      !result.stoppedReason &&
-      collected.nextCursor === null;
-
-    result.skipped += countUnsupportedMediaFromRaw(collected.items);
-    let parsedItems = parseInstagramMediaItems(collected.items, { logUnsupported: false });
-
-    // backfill は既存投稿のインサイトを再取得しない（レート消費を新規分に温存する）。
-    // skipped（非対応 media_product_type 用の既存カウンタ）には加算しない。
-    if (mode === 'backfill') {
-      const existingIds = await instagramMediaService.getExistingMediaIds(
-        userId,
-        parsedItems.map(item => item.id)
-      );
-      parsedItems = parsedItems.filter(item => !existingIds.has(item.id));
-    }
-
-    const igMediaIds = parsedItems.map(item => item.id);
-    const unavailableIds = await instagramMediaService.getInsightsUnavailableMediaIds(
-      userId,
-      igMediaIds
-    );
-
-    const nowMs = Date.now();
-
-    for (const item of parsedItems) {
-      const budgetStop = checkBudget();
-      if (budgetStop) {
-        result.stoppedReason = budgetStop;
-        break;
-      }
-
-      if (consecutiveFailures >= INSTAGRAM_SYNC_CONSECUTIVE_FAILURE_LIMIT) {
-        result.stoppedReason = 'consecutive_failures';
-        break;
-      }
-
-      const listing = buildMediaListingFields(item);
-
-      if (unavailableIds.has(item.id)) {
-        try {
-          await instagramMediaService.updateMediaListingFields(userId, listing);
-        } catch (error) {
-          result.failed += 1;
-          consecutiveFailures += 1;
-          console.error('[Instagram Sync] unavailable media listing update failed', {
-            mediaId: item.id,
-            error,
-          });
-        }
-        continue;
-      }
-
-      try {
-        const insightsResult = await this.instagramService.fetchMediaInsights(
-          accessToken,
-          item.id,
-          item.media_product_type
-        );
-        usage = mergeInstagramRateUsage(usage, insightsResult.usage);
-        const insights = insightsResult.data;
-        const insightsSyncedAt = new Date().toISOString();
-
-        await instagramMediaService.upsertMedia(
+      // backfill は既存投稿のインサイトを再取得しない（レート消費を新規分に温存する）。
+      // skipped（非対応 media_product_type 用の既存カウンタ）には加算しない。
+      if (mode === 'backfill') {
+        const existingIds = await instagramMediaService.getExistingMediaIds(
           userId,
-          buildMediaRowWithInsights(userId, listing, insights, insightsSyncedAt)
+          parsedItems.map(item => item.id)
+        );
+        parsedItems = parsedItems.filter(item => !existingIds.has(item.id));
+      }
+
+      if (parsedItems.length > 0) {
+        const igMediaIds = parsedItems.map(item => item.id);
+        const unavailableIds = await instagramMediaService.getInsightsUnavailableMediaIds(
+          userId,
+          igMediaIds
         );
 
-        result.synced += 1;
-        consecutiveFailures = 0;
-      } catch (error) {
-        if (isInstagramPreConversionMediaError(error)) {
-          result.preConversionCount += 1;
-          await instagramMediaService.upsertMediaInsightsUnavailable(
-            userId,
-            listing,
-            'pre_conversion'
-          );
-          consecutiveFailures = 0;
-          continue;
-        }
+        const nowMs = Date.now();
 
-        if (isRetentionExpired(item.timestamp!, nowMs)) {
-          await instagramMediaService.upsertMediaInsightsUnavailable(
-            userId,
-            listing,
-            'retention_expired'
-          );
-          consecutiveFailures = 0;
-          continue;
-        }
+        for (const item of parsedItems) {
+          const budgetStop = checkBudget();
+          if (budgetStop) {
+            result.stoppedReason = budgetStop;
+            break;
+          }
 
-        try {
-          await instagramMediaService.upsertMediaListingPreservingInsights(userId, listing);
-        } catch (listingError) {
-          console.error('[Instagram Sync] listing preserve failed after insights error', {
-            mediaId: item.id,
-            listingError,
-          });
-        }
+          if (consecutiveFailures >= INSTAGRAM_SYNC_CONSECUTIVE_FAILURE_LIMIT) {
+            result.stoppedReason = 'consecutive_failures';
+            break;
+          }
 
-        result.failed += 1;
-        consecutiveFailures += 1;
-        console.error('[Instagram Sync] fetchMediaInsights failed', {
-          mediaId: item.id,
-          error,
-        });
+          const listing = buildMediaListingFields(item);
+
+          if (unavailableIds.has(item.id)) {
+            try {
+              await instagramMediaService.updateMediaListingFields(userId, listing);
+            } catch (error) {
+              result.failed += 1;
+              consecutiveFailures += 1;
+              console.error('[Instagram Sync] unavailable media listing update failed', {
+                mediaId: item.id,
+                error,
+              });
+            }
+            continue;
+          }
+
+          try {
+            const insightsResult = await this.instagramService.fetchMediaInsights(
+              accessToken,
+              item.id,
+              item.media_product_type
+            );
+            usage = mergeInstagramRateUsage(usage, insightsResult.usage);
+            const insights = insightsResult.data;
+            const insightsSyncedAt = new Date().toISOString();
+
+            await instagramMediaService.upsertMedia(
+              userId,
+              buildMediaRowWithInsights(userId, listing, insights, insightsSyncedAt)
+            );
+
+            result.synced += 1;
+            consecutiveFailures = 0;
+          } catch (error) {
+            if (isInstagramPreConversionMediaError(error)) {
+              result.preConversionCount += 1;
+              await instagramMediaService.upsertMediaInsightsUnavailable(
+                userId,
+                listing,
+                'pre_conversion'
+              );
+              consecutiveFailures = 0;
+              continue;
+            }
+
+            if (isRetentionExpired(item.timestamp!, nowMs)) {
+              await instagramMediaService.upsertMediaInsightsUnavailable(
+                userId,
+                listing,
+                'retention_expired'
+              );
+              consecutiveFailures = 0;
+              continue;
+            }
+
+            try {
+              await instagramMediaService.upsertMediaListingPreservingInsights(userId, listing);
+            } catch (listingError) {
+              console.error('[Instagram Sync] listing preserve failed after insights error', {
+                mediaId: item.id,
+                listingError,
+              });
+            }
+
+            result.failed += 1;
+            consecutiveFailures += 1;
+            console.error('[Instagram Sync] fetchMediaInsights failed', {
+              mediaId: item.id,
+              error,
+            });
+          }
+        }
       }
-    }
 
-    if (!result.stoppedReason) {
-      const budgetStop = checkBudget();
-      if (budgetStop) {
-        result.stoppedReason = budgetStop;
+      if (!result.stoppedReason) {
+        const budgetStop = checkBudget();
+        if (budgetStop) {
+          result.stoppedReason = budgetStop;
+        }
+      }
+
+      // incremental は常に1バッチで終了。backfill は末端到達 or 中断まで次バッチへ進む。
+      if (mode === 'incremental') {
+        break;
+      }
+      if (reachedEnd || result.stoppedReason) {
+        break;
       }
     }
 
@@ -405,7 +426,7 @@ class InstagramSyncService {
         result.backfillCompleted = true;
       } else {
         await this.supabaseService.updateInstagramCredential(userId, {
-          backfillCursor: collected.nextCursor ?? cursor,
+          backfillCursor: cursor,
         });
       }
     }
@@ -440,6 +461,7 @@ class InstagramSyncService {
 
     console.warn('[Instagram Sync]', {
       mode,
+      batchCount,
       appUsage: usage.appUsage,
       bucUsage: usage.bucUsage,
       synced: result.synced,

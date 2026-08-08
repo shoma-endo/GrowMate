@@ -53,12 +53,13 @@ export function getInstagramSyncToastMessage(
         message: `過去の投稿の取り込みが完了しました（今回${result.synced}件）`,
       };
     }
-    if (result.truncated) {
-      return {
-        type: 'info',
-        message: `過去の投稿を${result.synced}件取り込みました。続きがあります。「過去の投稿を取り込む」からさらに取得できます。`,
-      };
-    }
+    // 中断理由（stoppedReason）は既に上でハンドリング済み。ここに到達するのは
+    // 時間予算いっぱいまで複数バッチ処理してもなお末端に到達しなかったケースで、
+    // truncated の有無に関わらず「まだ続きがある」ことを意味する。
+    return {
+      type: 'info',
+      message: `過去の投稿を${result.synced}件取り込みました。続きがあります。「過去の投稿を取り込む」からさらに取得できます。`,
+    };
   }
 
   if (result.truncated) {

@@ -345,7 +345,8 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ クリックで即 Server Action 実行（確認ダイアログなし）。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再認証/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
    - **同期モードの分離（2026-08-08 追加）**: `syncInstagramData` / `instagramSyncService.syncUserData` に `mode: 'incremental' | 'backfill'` を追加。「最新化」は毎回 `after=null` から直近50件を再取得するだけで、51件目以降（それより古い投稿）が永遠に同期対象へ入らない対応漏れがあったため（下記「50件上限の扱い」を参照）。
      - `incremental`（既存「最新化」。挙動はほぼ維持）: 同期開始時に DB 内最新 `posted_at`（ウォーターマーク）を1回取得し、Graph API を新しい順にページングして「ウォーターマーク以下の投稿に到達したら打ち切る」。カーソルは保存しない（毎回 `after=null` から開始）
-     - `backfill`（新規「過去の投稿を取り込む」ボタン。`History`アイコン）: `instagram_credentials.backfill_cursor`（§5.1）を起点にページングし、**既に DB にある投稿はインサイト取得をスキップしつつページングだけ継続**して、未取得の古い投稿に到達したら通常どおり処理する。打ち切った位置を `backfill_cursor` に永続化し次回クリックで再開。アカウント末端（`nextCursor=null`）に到達したら `backfill_completed_at` を立てて完了（ボタンは「過去の投稿を取り込む（完了）」表示で disabled）
+     - `backfill`（新規「過去の投稿を取り込む」ボタン。`History`アイコン）: `instagram_credentials.backfill_cursor`（§5.1）を起点にページングし、**既に DB にある投稿はインサイト取得をスキップしつつページングだけ継続**して、未取得の古い投稿に到達したら通常どおり処理する。アカウント末端（`nextCursor=null`）に到達したら `backfill_completed_at` を立てて完了（ボタンは「過去の投稿を取り込む（完了）」表示で disabled）
+       - **サーバー側バッチループ（2026-08-08 追加）**: 1回のクリックで**時間予算（760秒）いっぱいまで、1バッチ最大 `INSTAGRAM_SYNC_MEDIA_LIMIT` 件のバッチをサーバー側（`syncUserData`内）で自動的に繰り返す**（`wordpress-import`/`gsc-import` の「Server Action 内でセグメント分割し `for` ループで回してから結果をまとめて返す」設計 — `gscImport.actions.ts` の `importWithSplit` と同じ思想。クライアント側で複数回 Server Action を呼び直す設計は採らない）。バッチが件数上限で区切られても、末端到達・時間予算超過・連続失敗上限のいずれかに達するまで次のバッチへ自動的に進む。時間予算に達した場合のみ、その時点のカーソルを `backfill_cursor` に保存して中断し、次回クリックで続きから再開する（`incremental` は従来通りウォーターマークで自然に1バッチ内に収まるため複数バッチ化しない）
      - **新着51件超のエッジケース**: `incremental` が前回同期以降51件以上の新着を取りこぼした場合（`truncated:true`）、次回の `incremental` は自力で再取得できない（ウォーターマークが最新の1件まで進んでしまうため）。この回収は `backfill` に委ねる（`backfill` はカーソル起点で既存投稿をスキップしつつ進むため、この取りこぼし領域に自然に到達する）。トースト文言で `backfill` への誘導を明示する
      - `lastSyncedAt` 更新・アカウント日次インサイト（`instagram_account_insights_daily`）取得は **`incremental` 実行時のみ**（`backfill` は過去メディア取り込みが目的でアカウント日次指標とは無関係。その分の API コールを新規分に温存する）
      - **新規/既存ユーザーへの影響**: 移行スクリプト不要。新規ユーザー（51件以下）は `backfill` を押しても既に同期済みなので即完了（全件スキップ）。既存ユーザー（51件超、旧仕様で直近50件のみ同期済み）は `backfill` 初回実行で上位50件をスキップし51件目以降から自然に開始する
@@ -651,7 +652,7 @@ create table public.instagram_account_insights_daily (
 - [ ] 初回同期で、**§5.4 で日次取得可と確定した列**について `instagram_account_insights_daily` に直近30日分が取り込まれる（日次不可列は行・列とも作らない）
 - [ ] STORIES 等非スコープ `media_product_type` が来ても同期全体が失敗せず skipped ログが出る
 - [ ] 50件打ち切り時 `truncated: true` がログに残り、エラー扱いにならない
-- [x] **（2026-08-08 追加）「過去の投稿を取り込む」（backfill）で51件目以降の投稿が取得できる**。投稿51件超のアカウントで「過去の投稿を取り込む」を複数回押すと `instagram_media` の行数が単調増加し最終的に全件を取り込む。実機確認済み（投稿3件のテストアカウントでは即完了、`backfill_completed_at` セット・ボタンが「（完了）」disabled 表示になることを確認）
+- [x] **（2026-08-08 追加）「過去の投稿を取り込む」（backfill）で51件目以降の投稿が取得できる**。サーバー側バッチループ化（同日追加）により、1回のクリックで時間予算いっぱいまで自動的に複数バッチを処理する。時間予算内で末端に到達しなければ `backfill_cursor` を保存して中断し、もう一度押すと続きから再開する。実機確認済み（投稿3件のテストアカウントでは即完了、`backfill_completed_at` セット・ボタンが「（完了）」disabled 表示になることを確認）。単体テスト（`instagramSyncService.test.ts`）で複数バッチにまたがる処理・末端到達・時間予算中断を確認
 - [x] **（2026-08-08 追加）「最新化」（incremental）は DB 内最新 `posted_at` より新しい投稿のみ取得し、`backfill` は既存投稿のインサイト再取得をスキップする**（レート消費を新規/未取得分に温存）。単体テスト（`instagramSyncService.test.ts`）で確認
 - [x] **（2026-08-08 追加）backfill は `lastSyncedAt` とアカウント日次インサイトを更新しない**（incremental 専用の更新経路と分離。§4 Phase 2 item3）
 - [ ] 連携解除で credential + media/insights が purge される
