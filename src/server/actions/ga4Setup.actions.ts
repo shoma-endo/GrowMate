@@ -100,7 +100,7 @@ const resolveGa4ActionContext = async (): Promise<Ga4ActionContextResult> => {
   }
   const { userId, role } = authResult;
   if (!canAccessGa4({ role })) {
-    return { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED };
+    return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
   }
 
   const credential = await supabaseService.getGscCredentialByUserId(userId);
@@ -124,7 +124,7 @@ export async function fetchGa4Status(): Promise<ServerActionResult<Ga4Connection
     }
     const { userId, role } = authResult;
     if (!canAccessGa4({ role })) {
-      return { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED };
+      return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
     }
 
     const credential = await supabaseService.getGscCredentialByUserId(userId);
@@ -210,7 +210,7 @@ export async function saveGa4Settings(input: unknown) {
     }
     const { userId, role } = authResult;
     if (!canWriteGa4({ role })) {
-      return { success: false, error: ERROR_MESSAGES.AUTH.OWNER_ACCOUNT_REQUIRED };
+      return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
     }
 
     const parsed = ga4SettingsSchema.safeParse(input);

@@ -126,9 +126,7 @@ async function getChatSessions() {
     return { sessions: [], error: auth.error };
   }
 
-  // RPC関数を使用してオーナー/従業員の相互閲覧に対応
-  const targetUserId = auth.userId; // 自分のIDを渡す（RPC内でget_accessible_user_idsを使用）
-  const serverSessions = await chatService.getSessionsWithMessages(targetUserId);
+  const serverSessions = await chatService.getSessionsWithMessages(auth.userId);
   // ServerChatSession → ChatSession形式に変換
   const sessions = serverSessions.map(s => ({
     id: s.id,

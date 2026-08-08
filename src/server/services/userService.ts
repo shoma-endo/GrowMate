@@ -44,8 +44,6 @@ function mapDeleteUserFullyRpcError(rpcErrorMessage: string | undefined): string
       return getUserDeletionBlockedMessage('admin');
     case 'blocked_active_subscription':
       return getUserDeletionBlockedMessage('active_subscription');
-    case 'blocked_organization':
-      return getUserDeletionBlockedMessage('organization_linked');
     default:
       return ERROR_MESSAGES.USER.DELETE_DB_FAILED;
   }
@@ -139,7 +137,7 @@ class UserService {
 
     const dbUsers = result.data;
     return dbUsers.map(dbUser => {
-      const deletionBlockedReason = resolveUserDeletionBlockedReason(dbUser, dbUsers);
+      const deletionBlockedReason = resolveUserDeletionBlockedReason(dbUser);
       return {
         ...toUser(dbUser),
         canDelete: deletionBlockedReason === null,
@@ -186,7 +184,7 @@ class UserService {
     if (!allUsersResult.success) {
       return { success: false, error: ERROR_MESSAGES.USER.DELETE_TARGET_INVALID };
     }
-    const blockedReason = resolveUserDeletionBlockedReason(target, allUsersResult.data);
+    const blockedReason = resolveUserDeletionBlockedReason(target);
     if (blockedReason !== null) {
       return { success: false, error: getUserDeletionBlockedMessage(blockedReason) };
     }

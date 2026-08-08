@@ -186,15 +186,7 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
     }
     const client = supabaseService.getClient();
 
-    // アクセス可能なユーザーIDを取得
-    const { data: accessibleIds, error: accessError } = await client.rpc(
-      'get_accessible_user_ids',
-      { p_user_id: userId }
-    );
-
-    if (accessError || !accessibleIds) {
-      return { success: false, error: 'アクセス権の確認に失敗しました' };
-    }
+    const userIds = [userId];
 
     // 日付範囲を解析
     const parsed = dateRangeSchema.safeParse(input);
@@ -209,7 +201,7 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
     const { data: credentials } = await client
       .from('gsc_credentials')
       .select('user_id, ga4_property_id')
-      .in('user_id', accessibleIds)
+      .in('user_id', userIds)
       .not('ga4_property_id', 'is', null);
 
     if (!credentials || credentials.length === 0) {
@@ -349,15 +341,7 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
     }
     const client = supabaseService.getClient();
 
-    // アクセス可能なユーザーIDを取得
-    const { data: accessibleIds, error: accessError } = await client.rpc(
-      'get_accessible_user_ids',
-      { p_user_id: userId }
-    );
-
-    if (accessError || !accessibleIds) {
-      return { success: false, error: 'アクセス権の確認に失敗しました' };
-    }
+    const userIds = [userId];
 
     // パラメータを解析
     const parsed = rankingParamsSchema.safeParse(input);
@@ -376,7 +360,7 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
     const { data: credentials } = await client
       .from('gsc_credentials')
       .select('user_id, ga4_property_id')
-      .in('user_id', accessibleIds)
+      .in('user_id', userIds)
       .not('ga4_property_id', 'is', null);
 
     if (!credentials || credentials.length === 0) {
@@ -526,7 +510,7 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
       const { data: annotations } = await client
         .from('content_annotations')
         .select('id,canonical_url,wp_post_title')
-        .in('user_id', accessibleIds)
+        .in('user_id', userIds)
         .not('canonical_url', 'is', null);
 
       if (annotations) {
@@ -575,15 +559,7 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
     }
     const client = supabaseService.getClient();
 
-    // アクセス可能なユーザーIDを取得
-    const { data: accessibleIds, error: accessError } = await client.rpc(
-      'get_accessible_user_ids',
-      { p_user_id: userId }
-    );
-
-    if (accessError || !accessibleIds) {
-      return { success: false, error: 'アクセス権の確認に失敗しました' };
-    }
+    const userIds = [userId];
 
     // パラメータを解析
     const parsed = timeseriesParamsSchema.safeParse(input);
@@ -602,7 +578,7 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
     const { data: credentials } = await client
       .from('gsc_credentials')
       .select('user_id, ga4_property_id')
-      .in('user_id', accessibleIds)
+      .in('user_id', userIds)
       .not('ga4_property_id', 'is', null);
 
     if (!credentials || credentials.length === 0) {
