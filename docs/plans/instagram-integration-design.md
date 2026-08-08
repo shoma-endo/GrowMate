@@ -19,7 +19,7 @@
 |------|------|-----|
 | アカウント情報 | ig_user_id, username, name, account_type, profile_picture_url, biography, website, followers_count, follows_count, media_count | `GET /me?fields=...` |
 | 投稿一覧 | id, media_type (IMAGE/VIDEO/CAROUSEL_ALBUM), media_product_type (FEED/REELS), media_url, thumbnail_url, caption, timestamp, permalink, like_count, comments_count | `GET /me/media?fields=...`（cursor ページネーション） |
-| 投稿インサイト | reach, views, likes, comments, saved, shares, total_interactions, **reposts**, **reels_skip_rate**（リールは加えて ig_reels_avg_watch_time, ig_reels_video_view_total_time）。**`reposts` / `reels_skip_rate` は 2026-08-05 追加**（クライアントが実際に見ている画面に出ているため — §3.3「Instagram アプリ画面との突き合わせ」） | `GET /{media-id}/insights?metric=...` |
+| 投稿インサイト | reach, views, likes, comments, saved, shares, total_interactions, **reels_skip_rate**（リールは加えて ig_reels_avg_watch_time, ig_reels_video_view_total_time）。~~**reposts**~~ **2026-08-08 実測で取得不能と判明、スコープから除外**（下記）。**`reels_skip_rate` は 2026-08-05 追加**（クライアントが実際に見ている画面に出ているため — §3.3「Instagram アプリ画面との突き合わせ」） | `GET /{media-id}/insights?metric=...` |
 | アカウントインサイト | reach, views, accounts_engaged, total_interactions, follower_count（日次）。**`profile_views` / `website_clicks` は 2025-01-08 に全バージョンで廃止済みのため採用しない**（§3.3）。**後継候補だった `profile_links_taps` も採用しない**（`contact_button_type` に `WEBSITE` が無い）。**「プロフィール閲覧数」は後継指標が存在せず取得不能のためスコープ外** | `GET /me/insights?metric=...&period=day` |
 
 ### 非スコープ
@@ -167,7 +167,8 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
     >
     > - `reposts`
   - **解釈**: **`reels_skip_rate` は media insights のみ**（user insights には出てこない）。user insights に追加されたのは **`reposts` のみ**。`"Applies to all versions."` は当該エントリ（Insights Metrics）に付くため **v23.0 でも利用できる**（同エントリで `crossposted_views` / `facebook_views` も追加）。「v24 以降でないと使えない」ではない
-  - **Phase 2 着手時に Changelog を必ず確認する**。廃止（`profile_views` の例）も追加（`reels_skip_rate` の例）も、**バージョンではなく Changelog に出る**
+  - **⚠ 上記解釈は実測で否定された（2026-08-08）**: 本番同期で `reposts` を含む `GET /{media-id}/insights` が**全件 HTTP 400** で失敗。レスポンス: `{"error":{"message":"Instagram Insights Media API endpoint does not support the metrics: reposts...","type":"IGApiException","code":100}}`。**Changelog の "Applies to all versions" は実際の API 提供状況と一致しない**（本仕様書で3件目の「ドキュメントと実挙動の乖離」— `account_type` の大小文字、アカウント insights の `metric_type` に続く）。`metric` はカンマ区切り一括指定のため `reposts` を含めると**他の指標（reach 等）まで巻き添えで全滅する**。**対応**: `reposts` を取得メトリクスから除外（§2 スコープから削除。`instagram_media.reposts` 列は将来の API 追従に備えて残すが当面は常に null）
+  - **Phase 2 着手時に Changelog を必ず確認する**。廃止（`profile_views` の例）も追加（`reels_skip_rate` の例）も、**バージョンではなく Changelog に出る**。ただし**追加の記載があっても実際に叩けるとは限らない**（上記 `reposts` の教訓）
 - **`follower_count` は 100 フォロワー未満のアカウントでは取得できない（2026-08-04 調査。要目視確認）**: 同ページに "**follower_count and online_followers metrics are not available on Instagram business or creator accounts with fewer than 100 followers.**" とある。§5.4 は `follower_count` を通常の列として持つが、**テスターアカウントを含む小規模アカウントでは常に空で返る**。同ページは "the API will return an empty data set instead of 0 for individual metrics"（データが存在しない場合）とも書いており、**「取得失敗」と「対象外（フォロワー100未満）」を区別して扱う必要がある**（`error_subcode 2108006` と同じ構図）。Phase 2 の UI は `0` と `-` と「対象外」を混同しないこと
 - **レート制限の具体値（2026-08-04 調査。要目視確認）**: 出典 [Graph API Rate Limiting](https://developers.facebook.com/docs/graph-api/overview/rate-limiting)。式は "**Calls within 24 hours = 4800 \* Number of Impressions**" で、Number of Impressions は "the number of times any content from the app user's Instagram professional account has entered a person's screen within the last 24 hours."。
   - **インプレッションが小さいアカウントほど枠が小さい**。GrowMate の対象は「これから伸ばす」アカウントなので、枠が潤沢である前提を置いてはいけない
@@ -183,7 +184,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - **実測手順（未実施）**: `GET https://graph.instagram.com/v23.0/{REELS の media id}/insights?metric=follows,profile_visits` を `aozorayoukei` の投稿に対して実行し、空データか `error_subcode` かを確認する。本仕様書の外部ドキュメント照合は WebFetch（本文を要約して返すツール）経由で逐語性が担保できておらず、かつ本件は過去2回ドキュメントと実挙動が食い違っている（`account_type` の大小文字、アカウント insights の `metric_type`）ため、**表の記載だけで確定させない**
 - **Instagram アプリ画面との突き合わせ（2026-08-05。クライアント提供のリールインサイト画面6枚と照合）**: 「クライアントが実際に見ている画面」を基準に、API で再現できる／できないを確定させた。**画面に出ている＝API で取れる、ではない**（アプリは内部 API を使う）。
   - **そのまま取れる**: 閲覧数=`views` / リーチしたアカウント=`reach` / 平均再生時間=`ig_reels_avg_watch_time` / いいね=`likes` / コメント=`comments` / 保存=`saved` / 再生時間=`ig_reels_video_view_total_time`
-  - **追加すれば取れる（→ §2 スコープに追加済み）**: 再投稿=`reposts`（公式定義「再投稿数から削除された再投稿を引いた数」）/ スキップ率=`reels_skip_rate`（**アプリと同じ「率」で返るため加工不要**。ただし下記の但し書き2点が重要）
+  - スキップ率=`reels_skip_rate`（**アプリと同じ「率」で返るため加工不要**。ただし下記の但し書き2点が重要）。再投稿=`reposts` は**当初「追加すれば取れる」としていたが、2026-08-08 実測で HTTP 400 のため取得不能と判明**（§3.3 上記「⚠ 上記解釈は実測で否定された」参照。§2 スコープから除外）
 - **`reels_skip_rate` の正確な定義と注意点（2026-08-05 に原文で再取得）**: 出典 [Instagram Media Insights](https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights/)。原文（タイポも含めて verbatim）:
   > "The percentage of views from people who skipped during the first 3 seconds of the reel. This is calculcated as the number of views that skipped the reel during the first 3 seconds divided by the number of intial views. An intial view is when the reel starts to play for the first time in a reel session."
 
@@ -321,7 +322,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - `/me/media` を cursor で辿り直近50件を upsert（打ち切り時は件数をログ）。**`instagramService.fetchMedia(accessToken, limit)` は現状 `after` 引数を持たないため署名変更が必要**。ページ連結ヘルパー `collectInstagramMediaPages` / `extractInstagramMediaAfterCursor`（`src/server/lib/instagram-media-pagination.ts`）は Phase 1 で実装済みだが**呼び出し元が無い**状態なので、ここで初めて使う
    - **メディアフィルタ**: `media_product_type` が `FEED` / `REELS` **以外**（STORIES 等、§2 非スコープ）は **DB upsert せずスキップ**し、`console.warn('[Instagram Sync]', { skipped, reason: 'unsupported_product_type', media_product_type })` を出力。CHECK 制約違反で同期全体が失敗しないこと
    - 各メディア（FEED/REELS のみ）の insights を取得し、**`instagram_media` に最新値を反映する（それだけ）**。日次スナップショットは取らない（2026-08-05、Q3 回答済み — §5.3）
-     - **取得する metric に `reposts` と `reels_skip_rate` を含める**（2026-08-05 追加 — §2 / §3.3）。`reels_skip_rate` は **REELS のみ**なので、`ig_reels_*` と同じく `mediaProductType === 'REELS'` の分岐に入れる。**率（%）で返るため実数へ変換しない**
+     - **取得する metric に `reels_skip_rate` を含める**（2026-08-05 追加 — §2 / §3.3）。`reels_skip_rate` は **REELS のみ**なので、`ig_reels_*` と同じく `mediaProductType === 'REELS'` の分岐に入れる。**率（%）で返るため実数へ変換しない**。**`reposts` は含めない**（2026-08-08 実測で HTTP 400 と判明、§3.3。カンマ区切り一括指定のため含めると他指標まで巻き添えで全滅する）
      - 現行の `instagramService.fetchMediaInsights` は 7指標 + リール2指標の構成なので、**metric リストの変更が必要**
    - アカウント insights: **`last_synced_at` が null の初回同期は、§5.4 で「日次行の埋め方」が確定した列のみ**直近 D=30 日分（昨日まで）を upsert。2回目以降も**同じ列集合**について `last_synced_at` の日付〜昨日までを upsert（欠損日は API 応答に従い補完）。**日次取得不可と確定した列（`views` 等の total_value のみで日別配列が取れないもの）は upsert 対象外** — §5.4 / §3.3
      - **取得方式が指標ごとに違う点を実装前に確定する**（§3.3「アカウント指標名の公式照合」）。公式表では `reach` は time_series / total_value の両対応、`views` 等は total_value 系と分かれており、**`metric_type=total_value` は期間合計を返すため日別に割れない**可能性が高い。§5.4 の列ごとに「time_series で日別取得」「total_value で当日分のみ」を表にしてから実装する。ここが未定のままだと実装者が暗黙に決めてしまう
@@ -455,7 +456,7 @@ create table public.instagram_media (
   -- インサイト（Phase 2 での唯一の保存先。日次スナップショットは不採用 — §5.3）
   like_count int, comments_count int,
   reach int, views int, saved int, shares int, total_interactions int,
-  reposts int,                     -- 2026-08-05 追加（アプリ画面の「再投稿」）
+  reposts int,                     -- 2026-08-05 追加（アプリ画面の「再投稿」）。2026-08-08 実測で API 取得不能と判明、当面は常に null（列は将来の API 追従に備え残す）
   reels_skip_rate numeric,         -- 2026-08-05 追加。API が率（%）で返すので実数化しない。リールのみ
   avg_watch_time_ms int, total_watch_time_ms bigint,   -- リールのみ
   insights_synced_at timestamptz,
@@ -651,7 +652,7 @@ create table public.instagram_account_insights_daily (
 - [ ] **着手前**: Instagram Platform Changelog を確認し、Phase 2 で使う指標に新たな廃止・追加が無いか見る（廃止も追加も metrics 表ではなく Changelog に出る — §3.3）
 - [ ] Graph API 採用バージョン（`v23.0` 等）が `instagramService` のパスと一致し、changelog 確認済み（§3.3）
 - [ ] **着手前**: `follows` / `profile_visits` が REELS で本当に取れないかを `aozorayoukei` の REELS 投稿で実測し、採否を決める（§3.3「メディア別の指標対応」）。**アプリのリール画面には「フォロー数」が出ている**ため、公式表の記載と食い違っている
-- [ ] `reposts` と `reels_skip_rate` が実 API で取得でき、`reels_skip_rate` が**率（%）のまま**保存・表示される（§3.3「Instagram アプリ画面との突き合わせ」）
+- [x] `reels_skip_rate` が実 API で取得でき、**率（%）のまま**保存・表示される（§3.3「Instagram アプリ画面との突き合わせ」）。`reposts` は 2026-08-08 実測で取得不能と判明したため本条件から除外（§2 / §3.3）
 - [ ] §2 非スコープに挙げた「アプリでは見えるが API に無い項目」を、UI 上で**取得失敗と誤解させない**（そもそも列・グラフとして置かない。「準備中」等の表示もしない）
 - [ ] `instagram_media_insights_daily` を**作っていない**こと（Q3 = 不要。マイグレーションは2本のみ）
 - [ ] 2年より古い投稿が直近50件に含まれる場合、「取得失敗」ではなく **`insights_unavailable_reason = 'retention_expired'`** の対象外ツールチップで表示される（§3.3 / §5.2。API 判定方法は実測で確認）
@@ -752,7 +753,7 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 - `src/lib/instagram-sync.ts`（新規。`getInstagramSyncToastMessage` — §11.3）
 - `src/lib/constants.ts`（**変更**: `INSTAGRAM_COLUMNS` 追加（率の列は `defaultVisible: false`）、`ANALYTICS_STORAGE_KEYS` に `IG_VISIBLE_COLUMNS` 追加 — §11.3）
 - `src/lib/instagram-format.ts`（**変更**。率算出の純関数を追加。既存の `formatCount` と同居可 — `tests/unit/lib/instagram-format.test.ts` にミラー。**返り値は百分率の数値または表示用文字列**（例: `12.3` → 表示 `"12.3%"`）。`AnalyticsTable.tsx` の `formatPercent`（比率 0〜1 入力 → 内部で ×100）は**使わない** — 二重換算で表示が破綻するため）
-- `src/types/instagram.ts`（**変更**: `InstagramMediaInsights` に `reposts: number | null` と `reelsSkipRate: number | null` を追加 — §2 スコープ / §3.3。Phase 1-A で UI モック用に型を固定した場合でも **Phase 2 の API 取得・DB マッピング前に本型へ揃える**）
+- `src/types/instagram.ts`（**変更**: `InstagramMediaInsights` に `reposts: number | null` と `reelsSkipRate: number | null` を追加 — §2 スコープ / §3.3。Phase 1-A で UI モック用に型を固定した場合でも **Phase 2 の API 取得・DB マッピング前に本型へ揃える**。`reposts` は 2026-08-08 実測で API 取得不能と判明したため、型・DB 列は残すが**常に null**になる）
 - `src/components/FieldConfigurator.tsx`（**変更なし・再利用**。列選択ダイアログは新規実装しない — §11.3）
 - ~~`app/api/cron/instagram-sync/route.ts`~~ → **Phase 2 スコープ外**（2026-08-05。cron を落としたため `.github/workflows/hourly-cron.yml` も変更しない — §4 Phase 2 item3）
 - `src/server/services/instagramService.ts`（**変更** — §3.3 廃止指標の除去は次の3点をセットで行う）:

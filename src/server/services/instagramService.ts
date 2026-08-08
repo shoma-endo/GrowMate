@@ -474,6 +474,12 @@ export class InstagramService {
     mediaId: string,
     mediaProductType: InstagramMediaPreview['mediaProductType']
   ): Promise<InstagramApiResult<InstagramMediaInsights>> {
+    // reposts は Instagram Platform Changelog（2025-12-03、"Applies to all versions"）上は
+    // 取得可能とされているが、実測（2026-08-08、v23.0）では
+    // 「Instagram Insights Media API endpoint does not support the metrics: reposts」で
+    // HTTP 400 になり、metric はカンマ区切り一括指定のため他の指標まで巻き添えで全滅する。
+    // ドキュメント記載より実挙動を優先し取得対象から外す（instagram_media.reposts 列は将来の
+    // API 追従に備えて残すが、当面は常に null）。
     const baseMetrics = [
       'reach',
       'views',
@@ -482,7 +488,6 @@ export class InstagramService {
       'saved',
       'shares',
       'total_interactions',
-      'reposts',
     ];
     const reelMetrics =
       mediaProductType === 'REELS'
