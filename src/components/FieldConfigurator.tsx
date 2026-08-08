@@ -215,9 +215,10 @@ export default function FieldConfigurator({
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        persistConfig(defaultVisibleIds, orderedIds);
-                        setVisibleIds(defaultVisibleIds);
-                        onChange?.(defaultVisibleIds, orderedIds);
+                        const allIds = columns.map(c => c.id);
+                        persistConfig(allIds, orderedIds);
+                        setVisibleIds(allIds);
+                        onChange?.(allIds, orderedIds);
                       }}
                       className="h-7 px-3 text-xs"
                     >
