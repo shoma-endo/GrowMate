@@ -145,6 +145,9 @@ export default function InstagramTab({
     );
   };
 
+  // buildFilterHref は AnalyticsClient.tsx から毎レンダリング新規生成される関数のため
+  // useCallback で包んでも参照は安定しない。FieldConfigurator 側が onChangeRef で
+  // 参照不安定性を吸収する設計になっているため、ここは素の関数でよい。
   const resetSortIfHidden = () => {
     router.push(buildFilterHref({ igSort: 'posted_at', igPage: 1 }));
   };

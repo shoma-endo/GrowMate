@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useCallback, useEffect, ReactNode } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Settings, GripVertical } from 'lucide-react';
@@ -56,10 +56,6 @@ export default function FieldConfigurator({
   );
   const defaultOrder = useMemo(() => columns.map(c => c.id), [columns]);
 
-  const [open, setOpen] = useState(false);
-  const [visibleIds, setVisibleIds] = useState<string[]>(defaultVisibleIds);
-  const [orderedIds, setOrderedIds] = useState<string[]>(defaultOrder);
-
   const normalizeOrder = useCallback(
     (order: string[]) => {
       const knownIds = columns.map(c => c.id);
@@ -68,27 +64,6 @@ export default function FieldConfigurator({
       return [...filtered, ...missing];
     },
     [columns]
-  );
-
-  const persistConfig = useCallback(
-    (nextVisible: string[], nextOrder: string[]) => {
-      localStorage.setItem(storageKey, JSON.stringify({ visible: nextVisible, order: nextOrder }));
-    },
-    [storageKey]
-  );
-
-  const applyConfig = useCallback(
-    (nextVisible: string[], nextOrder: string[], shouldPersist = false) => {
-      const normalizedVisible = nextVisible.filter(id => columns.some(c => c.id === id));
-      const normalizedOrder = normalizeOrder(nextOrder);
-      setVisibleIds(normalizedVisible);
-      setOrderedIds(normalizedOrder);
-      onChange?.(normalizedVisible, normalizedOrder);
-      if (shouldPersist) {
-        persistConfig(normalizedVisible, normalizedOrder);
-      }
-    },
-    [columns, normalizeOrder, onChange, persistConfig]
   );
 
   const mergeNewDefaultVisibleColumns = useCallback(
@@ -106,7 +81,13 @@ export default function FieldConfigurator({
     [defaultVisibleIds]
   );
 
-  useEffect(() => {
+  // localStorage からの読み込みは「マウント時の同期的な状態計算」であり副作用ではないため、
+  // useEffect ではなく useState の遅延初期化で行う（初回レンダー時に1回だけ評価される）。
+  // 前提: columns / storageKey は呼び出し元でマウント後不変であること
+  // （InstagramMediaTable は useMemo(() => ..., []) で固定、AnalyticsTable はモジュール定数）。
+  // 変わりうる値を渡す呼び出し元が今後増える場合は key prop で再マウントさせるか、
+  // このコンポーネント自体の再設計が必要。
+  const [initialConfig] = useState(() => {
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
       if (raw) {
@@ -117,8 +98,7 @@ export default function FieldConfigurator({
           const normalizedVisible = parsed.filter(id => columns.some(c => c.id === id));
           if (normalizedVisible.length > 0) {
             const mergedVisible = mergeNewDefaultVisibleColumns(normalizedVisible, defaultOrder);
-            applyConfig(mergedVisible, defaultOrder, true);
-            return;
+            return { visible: mergedVisible, order: defaultOrder };
           }
         }
 
@@ -126,22 +106,40 @@ export default function FieldConfigurator({
           const visible = Array.isArray(parsed.visible) ? parsed.visible : defaultVisibleIds;
           const order = Array.isArray(parsed.order) ? parsed.order : defaultOrder;
           const mergedVisible = mergeNewDefaultVisibleColumns(visible, order);
-          applyConfig(mergedVisible, order, true);
-          return;
+          return { visible: mergedVisible, order: normalizeOrder(order) };
         }
       }
-      applyConfig(defaultVisibleIds, defaultOrder, true);
     } catch {
-      applyConfig(defaultVisibleIds, defaultOrder, true);
+      // フォールスルーしてデフォルトを返す
     }
-  }, [
-    applyConfig,
-    columns,
-    defaultOrder,
-    defaultVisibleIds,
-    mergeNewDefaultVisibleColumns,
-    storageKey,
-  ]);
+    return { visible: defaultVisibleIds, order: defaultOrder };
+  });
+
+  const [open, setOpen] = useState(false);
+  const [visibleIds, setVisibleIds] = useState<string[]>(initialConfig.visible);
+  const [orderedIds, setOrderedIds] = useState<string[]>(initialConfig.order);
+
+  const persistConfig = useCallback(
+    (nextVisible: string[], nextOrder: string[]) => {
+      localStorage.setItem(storageKey, JSON.stringify({ visible: nextVisible, order: nextOrder }));
+    },
+    [storageKey]
+  );
+
+  // 初期化結果の localStorage 書き戻し（旧フォーマット移行・新規デフォルト列マージの反映）と
+  // 親への初回通知は、真に外部（localStorage・親コンポーネント）との同期が必要な副作用のため
+  // useEffect で行う。ただし依存配列は空にしてマウント時の1回だけ実行する。
+  // onChange は毎レンダリングで参照が変わりうるため ref 経由で読み、依存配列に含めない
+  // （含めると useEffect が毎レンダリング後に再実行され、意図しない無限ループの原因になる）。
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  useEffect(() => {
+    persistConfig(initialConfig.visible, initialConfig.order);
+    onChangeRef.current?.(initialConfig.visible, initialConfig.order);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const visibleSet = useMemo(() => new Set(visibleIds), [visibleIds]);
 
