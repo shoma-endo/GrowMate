@@ -226,8 +226,13 @@ export default function InstagramMediaTable({
           return <p className="text-sm text-gray-500 py-8 text-center">{emptyMessage}</p>;
         }
         const visibleOrdered = orderedIds.filter(id => visibleSet.has(id));
+        // contain-layout: table 要素の auto レイアウト計算（列幅の内容依存計算）は、
+        // overflow-x-auto や min-w-0 だけでは祖先への伝播を防ぎきれず、documentElement
+        // のスクロール幅にまで影響してページ全体が横スクロールしてしまう
+        // （Chromium の既知の挙動）。contain: layout でこの要素を独立したレイアウト
+        // コンテキストにし、内部の table サイズ計算が外へ影響しないようにする。
         return (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto contain-layout">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
                 <tr className="text-left text-gray-600">
