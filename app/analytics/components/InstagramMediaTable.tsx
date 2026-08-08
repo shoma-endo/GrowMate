@@ -231,22 +231,22 @@ export default function InstagramMediaTable({
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-gray-600">
-                  <th className="py-2 pr-3 whitespace-nowrap">サムネ</th>
+                  <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
                     return (
-                      <th key={columnId} className="py-2 pr-3 whitespace-nowrap">
+                      <th key={columnId} className="px-6 py-3 whitespace-nowrap">
                         {col?.label ?? columnId}
                       </th>
                     );
                   })}
-                  <th className="py-2 pr-3 whitespace-nowrap">リンク</th>
+                  <th className="px-6 py-3 whitespace-nowrap">リンク</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map(item => (
                   <tr key={item.id} className="border-b align-top">
-                    <td className="py-2 pr-3">
+                    <td className="px-6 py-4">
                       {item.thumbnailUrl || item.mediaUrl ? (
                         <Image
                           src={item.thumbnailUrl ?? item.mediaUrl ?? ''}
@@ -261,11 +261,11 @@ export default function InstagramMediaTable({
                       )}
                     </td>
                     {visibleOrdered.map(columnId => (
-                      <td key={columnId} className="py-2 pr-3 whitespace-nowrap">
+                      <td key={columnId} className="px-6 py-4 whitespace-nowrap">
                         {renderCell(columnId, item)}
                       </td>
                     ))}
-                    <td className="py-2 pr-3">
+                    <td className="px-6 py-4">
                       <a
                         href={item.permalink}
                         target="_blank"

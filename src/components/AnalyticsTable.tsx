@@ -986,7 +986,7 @@ export default function AnalyticsTable({
                             switch (id) {
                               case 'main_kw':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.main_kw ? (
                                       <TruncatedText text={annotation.main_kw} lines={2} />
                                     ) : (
@@ -996,7 +996,7 @@ export default function AnalyticsTable({
                                 );
                               case 'kw':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.kw ? (
                                       <TruncatedText text={annotation.kw} lines={2} />
                                     ) : (
@@ -1008,44 +1008,44 @@ export default function AnalyticsTable({
                                 return (
                                   <td
                                     key={id}
-                                    className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    className="px-6 py-4 whitespace-nowrap text-sm text-right"
                                   >
                                     {annotation?.impressions ?? '—'}
                                   </td>
                                 );
                               case 'ga4_avg_engagement_time':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? formatSeconds(avgEngagementSeconds) : '—'}
                                   </td>
                                 );
                               case 'ga4_read_rate':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? formatPercent(readRate) : '—'}
                                   </td>
                                 );
                               case 'ga4_bounce_rate':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? formatPercent(ga4Summary.bounceRate) : '—'}
                                   </td>
                                 );
                               case 'ga4_cv_count':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? ga4Summary.cvEventCount : '—'}
                                   </td>
                                 );
                               case 'ga4_cvr':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? formatPercent(cvr) : '—'}
                                   </td>
                                 );
                               case 'ga4_flags':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? (
                                       <div className="flex flex-wrap gap-2">
                                         {ga4Summary.isSampled && (
@@ -1065,7 +1065,7 @@ export default function AnalyticsTable({
                                 );
                               case 'needs':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.needs ? (
                                       <TruncatedText text={annotation.needs} lines={3} />
                                     ) : (
@@ -1075,7 +1075,7 @@ export default function AnalyticsTable({
                                 );
                               case 'persona':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.persona ? (
                                       <TruncatedText text={annotation.persona} lines={3} />
                                     ) : (
@@ -1085,7 +1085,7 @@ export default function AnalyticsTable({
                                 );
                               case 'goal':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.goal ? (
                                       <TruncatedText text={annotation.goal} lines={3} />
                                     ) : (
@@ -1095,7 +1095,7 @@ export default function AnalyticsTable({
                                 );
                               case 'prep':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.prep ? (
                                       <TruncatedText text={annotation.prep} lines={3} />
                                     ) : (
@@ -1105,7 +1105,7 @@ export default function AnalyticsTable({
                                 );
                               case 'basic_structure':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.basic_structure ? (
                                       <TruncatedText text={annotation.basic_structure} lines={3} />
                                     ) : (
@@ -1115,7 +1115,7 @@ export default function AnalyticsTable({
                                 );
                               case 'opening_proposal':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.opening_proposal ? (
                                       <TruncatedText text={annotation.opening_proposal} lines={3} />
                                     ) : (
@@ -1148,7 +1148,7 @@ export default function AnalyticsTable({
                                 return (
                                   <td
                                     key={id}
-                                    className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    className="px-6 py-4 whitespace-nowrap text-sm"
                                   >
                                     {updatedAt ?? '—'}
                                   </td>
@@ -1157,14 +1157,14 @@ export default function AnalyticsTable({
                                 return (
                                   <td
                                     key={id}
-                                    className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    className="px-6 py-4 whitespace-nowrap text-sm"
                                   >
                                     {annotation?.wp_post_title || '—'}
                                   </td>
                                 );
                               case 'wp_excerpt':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.wp_excerpt ? (
                                       <TruncatedText text={annotation.wp_excerpt} lines={3} />
                                     ) : (
