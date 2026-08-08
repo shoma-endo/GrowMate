@@ -27,7 +27,6 @@ description: CLAUDE.md の最小コア運用を補完する共通ワークフロ
   - 仕様書レビュー: `spec-review` / TAKT workflow `.takt/workflows/spec-review.yaml`
   - 仕様書の図解化（単一 HTML）: `spec-to-html`（spec-review の visualize ステップが自動実行）
   - 仕様実装→PR: TAKT workflow `.takt/workflows/spec-to-pr.yaml`
-  - React Doctor→PR: TAKT workflow `.takt/workflows/react-doctor-to-pr.yaml`
 
 一気通貫の PR 化は Skill ではなく TAKT workflow を正本とする。workflow の共通プロジェクト知識は `.takt/facets/knowledge/growmate.md` を参照する。
 

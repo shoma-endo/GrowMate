@@ -241,18 +241,6 @@ export const ERROR_MESSAGES = {
     /** アクセストークンの取得に失敗した場合 */
     ACCESS_TOKEN_FETCH_FAILED: 'アクセストークンの取得に失敗しました',
 
-    /** 閲覧モードの利用権限がない場合 */
-    VIEW_MODE_UNAUTHORIZED: '閲覧モードの利用権限がありません',
-
-    /** 閲覧対象のユーザーが見つからない場合 */
-    VIEW_MODE_USER_NOT_FOUND: '閲覧対象のユーザーが見つかりません',
-
-    /** ユーザー閲覧権限がない場合 */
-    VIEW_USER_UNAUTHORIZED: 'このユーザーを閲覧する権限がありません',
-
-    /** 閲覧モードのユーザー情報の取得に失敗した場合 */
-    VIEW_MODE_FETCH_FAILED: '閲覧モードのユーザー情報の取得に失敗しました',
-
     /** リフレッシュトークンが見つからない場合 */
     NO_REFRESH_TOKEN: 'リフレッシュトークンが見つかりません',
 
@@ -403,12 +391,6 @@ export const ERROR_MESSAGES = {
 
     /** サービスの利用が停止されている場合 */
     SERVICE_UNAVAILABLE: 'サービスの利用が停止されています',
-
-    /** 閲覧権限では利用できない場合 */
-    VIEW_MODE_NOT_ALLOWED: '閲覧権限では利用できません',
-
-    /** 閲覧モードでは操作できない場合 */
-    VIEW_MODE_OPERATION_NOT_ALLOWED: '閲覧モードでは操作できません',
 
     /** 権限が不足している場合 */
     INSUFFICIENT_PERMISSIONS: '権限がありません',

@@ -13,8 +13,3 @@ Supabase 操作（アプリ層）と RLS（DB 層）の統合規約。**該当�
 |----------|-------------|
 | SupabaseService / Service Role / クライアント生成 | [`service-usage.md`](service-usage.md) |
 | RLS ポリシー / マイグレーション / SECURITY DEFINER | [`rls.md`](rls.md) |
-
-## 関連スキル
-
-- 実装ポリシー全般: `implementation-guidelines`
-- Server Actions からの呼び出し: `nextjs-server`

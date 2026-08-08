@@ -21,9 +21,8 @@ Next.js のサーバーサイド通信において、一貫性・セキュリテ
 ## 3. セキュリティ & 認証
 
 - **認証の必須化**: 認証が必要な全てのアクション/ルートにおいて、処理の先頭で認証チェックを実施します。
-  - **Server Actions**: 引数の `liffAccessToken` を `authMiddleware` に渡して検証。
+  - **Server Actions**: Cookie ベースのセッションを共通認証ロジックで検証。
   - **Route Handlers**: ヘッダー（Bearer）または Cookie からトークンを取得し、`ensureAuthenticated` 等の共通ロジックで検証。
-- **特権操作の制限**: `viewMode` (閲覧モード) が有効な場合、データの「書き込み」や「管理者操作」を拒否し、`VIEW_MODE_ERROR_MESSAGE` を返却する必要があります。
 - **エラーハンドリング**: Server Actions / Route Handlers それぞれの返却形式は `error-handling.md` に従う。
 - **情報のカプセル化**: 内部 ID や不必要な機密情報（API キー等）をクライアントに返さないよう、専用のレスポンス型（例: `ChatResponse`）を定義して返却データをフィルタリングします。
 
@@ -37,5 +36,4 @@ Next.js のサーバーサイド通信において、一貫性・セキュリテ
 
 - [ ] その機能は Server Action で実装可能か？（SSE 等が必要ないなら Action を選択）
 - [ ] 経路に応じた適切な共通認証ロジックで検証を行っているか？
-- [ ] `viewMode` の際に破壊的操作が制限されているか？
 - [ ] `zod` で入力値を検証しているか？

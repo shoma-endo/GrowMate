@@ -2,7 +2,7 @@
 
 > 改訂履歴
 > - 2026-07-02: 初版。ヒアリングの結果を反映（LLM要約方式を採用、basic_structureのみ機械抽出に分離）。
-> - 2026-07-02: サブエージェントレビューを反映。(1) 生HTML取得経路が既存共有関数には無かったため追加、(2) 書き込み先を`updateContentAnnotationFields`から`upsertContentAnnotationBySession`方式に変更、(3) `liffAccessToken`引数を削除、(4) HTMLエンティティのデコード方針を追加、(5) `maxTokens`を4000→8000に見直し、(6) フォーム表示への反映導線を未確定事項に追加。
+> - 2026-07-02: サブエージェントレビューを反映。(1) 生HTML取得経路が既存共有関数には無かったため追加、(2) 書き込み先を`updateContentAnnotationFields`から`upsertContentAnnotationBySession`方式に変更、(3) HTMLエンティティのデコード方針を追加、(4) `maxTokens`を4000→8000に見直し、(5) フォーム表示への反映導線を未確定事項に追加。
 > - 2026-07-02: レビュー指摘（P2）を反映。`upsertContentAnnotationBySession`は`impressions`を渡さないと`null`で上書きする実装のため、対象外のはずの既存`impressions`値が消える問題を修正（既存値を明示的に引き継ぐよう8.2手順3・12を修正）。あわせて8.2で使っていた宙に浮いた「10-A」等の節参照を実在する参照先に修正。
 > - 2026-07-02: 要約ボタンの配置を`AnnotationFormFields`上部から`AnnotationPanel`のアクション行（キャンセル/保存と同じ行、視覚的に差別化）へ変更。この変更でボタンが保存操作と誤認されやすくなるリスクに対応するため、§2.3が参照していた「3.2の警告文言」（未記載だった）を追加し、受け入れ条件にも常時表示の上書き警告を追加。
 > - 2026-07-02: `admin/prompts`の表示先を確認。既存の「AIチャット・生成」タブはチャット作成フロー専用プロンプト群のためのものであり本機能とは用途が異なるため、`PromptsClient.tsx`に新カテゴリを追加する方針に変更（7.2、工数表#4、受け入れ条件12を更新）。タブラベルは他カテゴリ（GSC改善提案／Google Ads分析）の命名（対象＋機能）に揃え、機能表示名（`content_annotation_ai_summary`のdisplay_name「コンテンツ情報のAI要約」）とも一貫するよう「コンテンツ情報要約」に確定。
@@ -304,7 +304,6 @@ INSERT INTO prompt_templates (name, display_name, content, variables) VALUES
 - **対象識別子**: チャット右パネルは`sessionId`、コンテンツ一覧は`annotationId`を使用する。どちらも認証ユーザー本人の`user_id`で対象アノテーションを制限する。
 - **書き込み経路**: 解決済みの`annotationId`と認証ユーザーの`user_id`を条件に、要約対象8項目のみを部分更新する。`impressions`は更新ペイロードに含めないため、既存値を構造的に維持できる。
 - **手動保存経路**: `updateContentAnnotationFields`も認証ユーザー本人のレコードのみを対象にする。入力URLが保存済みURLと同一で、既存`wp_post_id`が解決済みならWordPress APIを再検索しない。URLが新規・変更された場合のみ本人のWordPress設定で再解決する。
-- **`liffAccessToken` 引数を削除**: 現行の認証は `withAuth`（cookieベース）のみで完結しており、`updateContentAnnotationFields`（`annotationId, fields` の2引数）を含む既存の同種Server Actionは `liffAccessToken` を取らない。LINE LIFF時代の名残であり本機能では不要。
 
 ```ts
 export async function summarizeContentAnnotation(
