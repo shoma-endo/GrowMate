@@ -19,6 +19,7 @@ interface AnalyticsClientProps {
   selectedCategoryNames: string[];
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
+  hasUnstartedGscEvaluation: boolean;
   hasUrlFilterParams: boolean;
   error?: string | null;
   ga4Error?: string | null;
@@ -41,6 +42,7 @@ export default function AnalyticsClient({
   selectedCategoryNames,
   includeUncategorized,
   hasUnreadSuggestion,
+  hasUnstartedGscEvaluation,
   hasUrlFilterParams,
   error,
   ga4Error,
@@ -60,7 +62,8 @@ export default function AnalyticsClient({
     () => new Set(unreadAnnotationIds),
     [unreadAnnotationIds]
   );
-  const shouldRenderTable = items.length > 0 || hasUnreadSuggestion || hasUrlFilterParams;
+  const shouldRenderTable =
+    items.length > 0 || hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUrlFilterParams;
   const [rangeStart, setRangeStart] = React.useState(startDate);
   const [rangeEnd, setRangeEnd] = React.useState(endDate);
   const [isApplyingDateRange, setIsApplyingDateRange] = React.useState(false);
@@ -85,6 +88,7 @@ export default function AnalyticsClient({
     }
     if (includeUncategorized) params.set('uncategorized', '1');
     if (hasUnreadSuggestion) params.set('unread_suggestion', '1');
+    if (hasUnstartedGscEvaluation) params.set('gsc_evaluation', 'not_started');
     router.push(`/analytics?${params.toString()}`);
   };
   const startItemNumber = total > 0 ? (currentPage - 1) * perPage + 1 : 0;
@@ -186,6 +190,7 @@ export default function AnalyticsClient({
               selectedCategoryNames={selectedCategoryNames}
               includeUncategorized={includeUncategorized}
               hasUnreadSuggestion={hasUnreadSuggestion}
+              hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
               hasUrlFilterParams={hasUrlFilterParams}
             />
           ) : null}

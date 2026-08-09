@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Bell } from 'lucide-react';
+import { Bell, PlayCircle } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import type { CategoryFilterConfig } from '@/types/category';
@@ -12,8 +12,10 @@ interface CategoryFilterProps {
   selectedCategoryNames: string[];
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
+  hasUnstartedGscEvaluation: boolean;
   onFilterChange: (selectedCategoryNames: string[], includeUncategorized: boolean) => void;
   onUnreadSuggestionChange: (value: boolean) => void;
+  onUnstartedGscEvaluationChange: (value: boolean) => void;
   onClearAll: () => void;
 }
 
@@ -22,8 +24,10 @@ export default function CategoryFilter({
   selectedCategoryNames,
   includeUncategorized,
   hasUnreadSuggestion,
+  hasUnstartedGscEvaluation,
   onFilterChange,
   onUnreadSuggestionChange,
+  onUnstartedGscEvaluationChange,
   onClearAll,
 }: CategoryFilterProps) {
   // フィルター変更時に永続化
@@ -53,14 +57,18 @@ export default function CategoryFilter({
 
   const clearAll = () => {
     onClearAll();
-    // カテゴリ選択がゼロ（unread のみアクティブな状態）では localStorage を消さない。
+    // カテゴリ選択がゼロ（独立フィルターのみアクティブな状態）では localStorage を消さない。
     // 通知フィルターは永続化対象外のため、ここで保存済みカテゴリを破棄しない。
     if (selectedCategoryNames.length > 0 || includeUncategorized) {
       syncToStorage([], false);
     }
   };
 
-  const hasAnySelection = selectedCategoryNames.length > 0 || includeUncategorized || hasUnreadSuggestion;
+  const hasAnySelection =
+    selectedCategoryNames.length > 0 ||
+    includeUncategorized ||
+    hasUnreadSuggestion ||
+    hasUnstartedGscEvaluation;
 
   return (
     <div className="space-y-3">
@@ -84,6 +92,18 @@ export default function CategoryFilter({
           フィルターが未選択のため、全件表示されます
         </p>
       )}
+
+      {/* GSC評価未開始フィルター */}
+      <div className="border rounded-md px-2 py-2">
+        <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded">
+          <Checkbox
+            checked={hasUnstartedGscEvaluation}
+            onCheckedChange={checked => onUnstartedGscEvaluationChange(!!checked)}
+          />
+          <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
+          <span className="text-sm font-medium text-blue-800">GSC評価未開始</span>
+        </label>
+      </div>
 
       {/* 改善提案フィルター */}
       <div className="border rounded-md px-2 py-2">
