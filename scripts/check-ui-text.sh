@@ -33,14 +33,11 @@ EXCLUDES=(
 # ルール定義: <正規表現>@@<指摘文>
 # 「誤」の表記だけにマッチさせ、正しい表記にはマッチさせないこと。
 # 正規表現に | を含められるよう、区切りは @@ を使う。
+#
+# 用語（Google Ads / WordPress 等）のルールはここに書かない。
+# 正本 ui-text.md の「用語辞書」テーブルから load_dictionary_rules() が生成する。
+# ここに置くのは、語の対応表では表せない表記ルールだけ。
 RULES=(
-  'Google ?広告@@「Google広告」→「Google Ads」（製品名は英字表記に統一）'
-  'グーグル広告@@「グーグル広告」→「Google Ads」'
-  'サーチコンソール@@「サーチコンソール」→「Google Search Console」'
-  '(^|[^A-Za-z])Wordpress@@「Wordpress」→「WordPress」（P は大文字）'
-  'ワードプレス@@「ワードプレス」→「WordPress」'
-  'サインイン@@「サインイン」→「ログイン」'
-  'サインアウト@@「サインアウト」→「ログアウト」'
   'サーバ[^ー]@@「サーバ」→「サーバー」（語尾の長音符を省略しない）'
   'ユーザ[^ーz]@@「ユーザ」→「ユーザー」（語尾の長音符を省略しない）'
   '下さい@@「下さい」→「ください」（補助動詞はひらく）'
@@ -54,6 +51,70 @@ RULES=(
   '[ぁ-んァ-ヶ一-龥]！@@感嘆符は使わない（成功通知も事実を述べる）'
   '[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}]@@絵文字を UI に使わない（アイコンは lucide-react）'
 )
+
+DICTIONARY='.agents/skills/growmate-ui-ux/ui-text.md'
+
+# 正本の「用語辞書」テーブルから <正><TAB><誤> の組を取り出す。
+# 「機械チェック」列が ✅ の行だけが対象（目視の行は誤検出が出るため検査しない）。
+dictionary_pairs() {
+  awk -F'|' '
+    /^## 用語辞書/ { in_table = 1; next }
+    in_table && /^#/ { in_table = 0 }
+    !in_table { next }
+    $0 !~ /^\|/ { next }
+    {
+      correct = $2; wrong = $3; machine = $4
+      gsub(/^[ \t]+|[ \t]+$/, "", correct)
+      gsub(/^[ \t]+|[ \t]+$/, "", wrong)
+      gsub(/^[ \t]+|[ \t]+$/, "", machine)
+      if (correct == "" || correct == "正") next   # ヘッダ行
+      if (correct ~ /^[-: ]+$/) next               # 区切り行
+      if (machine !~ /✅/) next                    # 目視の行
+      # mawk はマルチバイト非対応のため [、/] のような文字クラスは使えない
+      # （バイト単位で分割され「グーグル広告」が壊れる）。区切りごとに 2 段で split する。
+      n = split(wrong, parts, "、")
+      for (i = 1; i <= n; i++) {
+        m = split(parts[i], subs, "/")
+        for (j = 1; j <= m; j++) {
+          term = subs[j]
+          gsub(/^[ \t]+|[ \t]+$/, "", term)
+          if (term != "") print correct "\t" term
+        }
+      }
+    }
+  ' "$DICTIONARY"
+}
+
+# 用語辞書からルールを生成して RULES に足す。
+load_dictionary_rules() {
+  if [[ ! -f "$DICTIONARY" ]]; then
+    echo -e "${RED}✗${NC} 用語辞書が見つかりません: $DICTIONARY" >&2
+    exit 1
+  fi
+
+  local count=0 correct term escaped pattern
+  while IFS=$'\t' read -r correct term; do
+    [[ -z "${term:-}" ]] && continue
+    # 辞書の語をそのまま正規表現に入れるため、メタ文字をエスケープする
+    escaped="$(printf '%s' "$term" | sed -E 's#([].[$()*+?^{}\\|])#\\\1#g')"
+    # 英数字で始まる／終わる語は、識別子の一部（useWordpressSync、GoogleAdsSetupClient 等）に
+    # 当たらないよう前後に境界を付ける。日本語の語には境界を付けない（助詞が直後に来るため）。
+    pattern="$escaped"
+    [[ "$term" =~ ^[A-Za-z0-9] ]] && pattern="(^|[^A-Za-z0-9])${pattern}"
+    [[ "$term" =~ [A-Za-z0-9]$ ]] && pattern="${pattern}([^A-Za-z0-9]|$)"
+    RULES+=("${pattern}@@「${term}」→「${correct}」（ui-text.md の用語辞書）")
+    count=$((count + 1))
+  done < <(dictionary_pairs)
+
+  if [[ "$count" -eq 0 ]]; then
+    echo -e "${RED}✗${NC} 用語辞書から 1 件もルールを生成できませんでした（$DICTIONARY のテーブル形式を確認）" >&2
+    exit 1
+  fi
+  dictionary_rule_count="$count"
+}
+
+dictionary_rule_count=0
+load_dictionary_rules
 
 targets=()
 if [[ $# -gt 0 ]]; then
@@ -72,7 +133,7 @@ else
   targets=(app src)
 fi
 
-echo "=== UI 文言 表記統一チェック ==="
+echo "=== UI 文言 表記統一チェック（用語辞書 ${dictionary_rule_count} 語 + 表記ルール $(( ${#RULES[@]} - dictionary_rule_count )) 件）==="
 
 # 開発者向けの記述（コメント）を落とす。ここを残すと `// ✅ 対応済み` のような
 # コメントが UI 文言として誤検出される。
