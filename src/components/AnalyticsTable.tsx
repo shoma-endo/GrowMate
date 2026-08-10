@@ -565,7 +565,7 @@ export default function AnalyticsTable({
         }
       } catch (error) {
         console.error('Failed to launch chat session:', error);
-        alert('チャット画面への遷移に失敗しました。再度お試しください。');
+        alert('チャット画面への遷移に失敗しました。もう一度お試しください。');
       } finally {
         setPendingRowKey(null);
       }
@@ -617,7 +617,7 @@ export default function AnalyticsTable({
 
       startEditTransition(async () => {
         setFormError('');
-        const toastId = toast.loading('保存中です...');
+        const toastId = toast.loading('保存中...');
         try {
           // コンテンツフィールドを保存
           const result = await updateContentAnnotationFields(annotationId, {
@@ -687,7 +687,7 @@ export default function AnalyticsTable({
 
   const handleDeleteConfirm = React.useCallback(async () => {
     setIsDeleting(true);
-    const toastId = toast.loading('削除中です...');
+    const toastId = toast.loading('削除中...');
 
     try {
       if (deleteTargetSessionId) {

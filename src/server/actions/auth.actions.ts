@@ -106,7 +106,7 @@ export async function signOutEmail(): Promise<{ success: boolean; error?: string
   const { error: signOutError } = await supabase.auth.signOut();
   if (signOutError && !isUnauthenticatedAuthError(signOutError)) {
     console.error('[auth.actions] signOutEmail error:', signOutError.message);
-    return { success: false, error: 'ログアウトに失敗しました。再度お試しください。' };
+    return { success: false, error: 'ログアウトに失敗しました。もう一度お試しください。' };
   }
 
   // LINE cookie が残っていると middleware が /login → / へリダイレクトするため削除する
@@ -160,7 +160,7 @@ export async function registerFullName(
   }
   const ok = await userService.updateFullName(user.id, fullName.trim());
   if (!ok) {
-    return { success: false, error: '登録に失敗しました。再度お試しください。' };
+    return { success: false, error: '登録に失敗しました。もう一度お試しください。' };
   }
 
   // 新規は unavailable のままなので停止画面へ。利用可能ロールはホームへ。
@@ -196,7 +196,7 @@ export async function verifyOtp(
     // 列挙耐性のある汎用メッセージ
     return {
       success: false,
-      error: '認証コードが無効または期限切れです。再度お試しください。',
+      error: '認証コードが無効または期限切れです。もう一度お試しください。',
     };
   }
 
@@ -221,7 +221,7 @@ export async function verifyOtp(
     await signOutSupabaseSession(supabase);
     return {
       success: false,
-      error: 'ログイン処理に失敗しました。再度お試しください。',
+      error: 'ログイン処理に失敗しました。もう一度お試しください。',
     };
   }
 }

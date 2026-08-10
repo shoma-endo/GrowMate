@@ -270,7 +270,7 @@ export default function GscSetupClient({
                 </SelectContent>
               </Select>
               <div className="text-xs text-gray-500">
-                {isLoadingProperties && 'プロパティ一覧を取得中です...'}
+                {isLoadingProperties && 'プロパティ一覧を取得中...'}
                 {!isLoadingProperties && properties.length === 0 && (
                   <span>
                     権限のあるプロパティが見つかりません。Google Search

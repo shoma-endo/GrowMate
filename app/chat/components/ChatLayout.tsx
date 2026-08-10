@@ -960,12 +960,12 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       });
       if (!res.success || res.sections == null) {
         toast.error(
-          res.error ?? '完成形の構築に失敗しました。書き出し案の入力を再度お試しください。'
+          res.error ?? '完成形の構築に失敗しました。書き出し案の入力をもう一度お試しください。'
         );
         return;
       }
       if (!res.sections.trim()) {
-        toast.error('結合する見出し本文がありません。各見出しを保存してから再度お試しください。');
+        toast.error('結合する見出し本文がありません。各見出しを保存してからもう一度お試しください。');
         return;
       }
 
@@ -990,7 +990,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     } catch (error) {
       console.error('Failed to build combined content:', error);
       toast.error(
-        error instanceof Error ? error.message : '完成形の構築に失敗しました。しばらく経ってから再度お試しください。'
+        error instanceof Error ? error.message : '完成形の構築に失敗しました。しばらく経ってからもう一度お試しください。'
       );
     } finally {
       buildCombinedInFlightRef.current = false;
@@ -1634,7 +1634,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           if (eventType === 'retry' && typeof eventData === 'object' && eventData !== null) {
             const message =
               (eventData as { message?: string }).message ??
-              'AIサーバーが混雑しています。自動で再試行しています…';
+              'AIサーバーが混雑しています。自動で再試行しています...';
             toast.loading(message, { id: CANVAS_ANTHROPIC_RETRY_TOAST_ID });
             fullMarkdown = '';
             analysisResult = '';

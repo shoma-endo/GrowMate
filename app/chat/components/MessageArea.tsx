@@ -136,7 +136,7 @@ const ActivityIndicator: React.FC<{ variant: 'full' | 'inline'; label?: string }
         <div className="bg-white text-foreground p-3 rounded-2xl border border-gray-100">
           <div className="flex gap-2 items-center">
             <Dots size="sm" />
-            <span className="text-sm text-gray-500">{label ?? 'メッセージを取得中です...'}</span>
+            <span className="text-sm text-gray-500">{label ?? 'メッセージを取得中...'}</span>
           </div>
         </div>
       </div>
@@ -149,7 +149,7 @@ const ActivityIndicator: React.FC<{ variant: 'full' | 'inline'; label?: string }
         <div className="w-10 h-10 rounded-full bg-[#06c755] flex items-center justify-center mb-4">
           <Bot size={24} className="text-white" />
         </div>
-        <h3 className="text-lg font-medium mb-3">{label ?? 'メッセージを取得中です'}</h3>
+        <h3 className="text-lg font-medium mb-3">{label ?? 'メッセージを取得中...'}</h3>
         <Dots size="md" />
       </div>
     </div>
@@ -163,7 +163,7 @@ const EmptyState = () => {
       <Bot size={48} className="text-gray-300 mb-3" />
       <h3 className="text-lg font-medium mb-1">AIアシスタントへようこそ</h3>
       <p className="text-sm text-gray-500 max-w-xs whitespace-nowrap">
-        Google広告の効果を最大化するお手伝いをします。
+        Google Ads の効果を最大化するお手伝いをします。
       </p>
     </div>
   );
@@ -590,7 +590,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
   return (
     <div className="flex-1 overflow-y-auto p-3 bg-slate-100" ref={scrollContainerRef}>
       {isLoading && messages.length === 0 ? (
-        <ActivityIndicator variant="full" label="メッセージを取得中です" />
+        <ActivityIndicator variant="full" label="メッセージを取得中..." />
       ) : !hasContent ? (
         <EmptyState />
       ) : (
@@ -612,7 +612,7 @@ const MessageArea: React.FC<MessageAreaProps> = ({
 
           <div ref={messagesEndRef} />
 
-          {isLoading && <ActivityIndicator variant="inline" label="メッセージを取得中です..." />}
+          {isLoading && <ActivityIndicator variant="inline" label="メッセージを取得中..." />}
         </>
       )}
     </div>

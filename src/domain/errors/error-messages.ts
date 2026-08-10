@@ -99,7 +99,7 @@ export const ERROR_MESSAGES = {
     SUMMARY_CONTENT_TOO_LARGE: '本文が大きすぎるため要約できません',
 
     /** AI要約のClaude呼び出し失敗 */
-    SUMMARY_AI_FAILED: 'AI要約の生成に失敗しました。しばらくしてから再度お試しください。',
+    SUMMARY_AI_FAILED: 'AI要約の生成に失敗しました。しばらくしてからもう一度お試しください。',
 
     /** AI要約のJSON抽出・パース失敗 */
     SUMMARY_PARSE_FAILED:
@@ -206,10 +206,10 @@ export const ERROR_MESSAGES = {
     REVIEW_LOGIN_INVALID: 'メールアドレスまたはパスワードが正しくありません。',
 
     /** 審査用ログインの試行が多すぎる場合 */
-    REVIEW_LOGIN_RATE_LIMITED: '試行回数が上限に達しました。しばらく待ってから再度お試しください。',
+    REVIEW_LOGIN_RATE_LIMITED: '試行回数が上限に達しました。しばらく待ってからもう一度お試しください。',
 
     /** 審査用ログインで public.users の解決に失敗した場合 */
-    REVIEW_LOGIN_FAILED: 'ログイン処理に失敗しました。再度お試しください。',
+    REVIEW_LOGIN_FAILED: 'ログイン処理に失敗しました。もう一度お試しください。',
 
     /** トークン期限切れで再ログインが必要な場合 */
     TOKEN_EXPIRED_REAUTH: 'トークンの有効期限が切れました。再度ログインしてください',
@@ -227,7 +227,7 @@ export const ERROR_MESSAGES = {
     OAUTH_CALLBACK_SERVER_ERROR: 'OAuth処理中にサーバーエラーが発生しました',
 
     /** セッションが無効な場合（CSRF対策） */
-    INVALID_STATE: 'セッションが無効です。再度お試しください',
+    INVALID_STATE: 'セッションが無効です。もう一度お試しください',
 
     /** セッション情報が無効な場合 */
     INVALID_STATE_PAYLOAD: 'セッション情報が無効です',
@@ -630,7 +630,7 @@ export const ERROR_MESSAGES = {
     INVALID_CREDENTIALS: '認証情報の形式が不正です。もう一度お試しください',
 
     /** サーバーエラー */
-    SERVER_ERROR: 'サーバーエラーが発生しました。時間をおいて再度お試しください',
+    SERVER_ERROR: 'サーバーエラーが発生しました。時間をおいてもう一度お試しください',
 
     /** アカウント一覧の取得に失敗した場合 */
     ACCOUNT_LIST_FETCH_FAILED: 'アカウント一覧の取得に失敗しました。再認証してください',
@@ -725,7 +725,7 @@ export const ERROR_MESSAGES = {
 
     /** AI分析がタイムアウトで打ち切られた場合 */
     AI_EVALUATION_TIMEOUT:
-      'Google Ads コンテンツ戦略提案の生成がタイムアウトしました。時間をおいて再度お試しください。',
+      'Google Ads コンテンツ戦略提案の生成がタイムアウトしました。時間をおいてもう一度お試しください。',
 
     /** AI分析: 前段処理で時間を使い切り LLM 呼び出しに必要な残時間が確保できない場合（dev/ログ向け） */
     AI_EVALUATION_INSUFFICIENT_BUDGET_LOG:
@@ -839,17 +839,17 @@ export const ERROR_MESSAGES = {
     AUTH_EXPIRED: 'Instagramの認証が期限切れまたは取り消されています。再連携してください',
 
     /** 連携処理に失敗した場合 */
-    CONNECTION_FAILED: 'Instagram連携に失敗しました。時間をおいて再度お試しください',
+    CONNECTION_FAILED: 'Instagram連携に失敗しました。時間をおいてもう一度お試しください',
 
     /** Instagram API呼び出しに失敗した場合 */
-    API_ERROR: 'Instagramデータの取得に失敗しました。時間をおいて再度お試しください',
+    API_ERROR: 'Instagramデータの取得に失敗しました。時間をおいてもう一度お試しください',
 
     /** プロアカウント以外のアカウントで連携しようとした場合 */
     NOT_PROFESSIONAL_ACCOUNT:
       'Instagramのプロアカウント（ビジネス/クリエイター）のみ連携できます。個人アカウントは対象外です',
 
     /** サーバーエラー */
-    SERVER_ERROR: 'サーバーエラーが発生しました。時間をおいて再度お試しください',
+    SERVER_ERROR: 'サーバーエラーが発生しました。時間をおいてもう一度お試しください',
 
     /** 連携解除に失敗した場合 */
     DISCONNECT_FAILED: 'Instagram連携の解除に失敗しました',

@@ -38,7 +38,7 @@ export function useHeadingCanvasState({
           toast.info(
             options?.preserveStep7Lead
               ? '見出し構成をリセットしました。見出し生成ボタンで1つ目の見出しを生成してください。'
-              : '見出し構成をリセットしました。見出しを再抽出しています…'
+              : '見出し構成をリセットしました。見出しを再抽出しています...'
           );
           setViewingHeadingIndex(null);
           await onResetComplete();

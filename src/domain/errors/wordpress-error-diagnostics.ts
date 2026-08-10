@@ -65,6 +65,6 @@ export function diagnoseWordPressError(errorMessage: string): ErrorDiagnosis {
 
   return {
     cause: 'エラーが発生しました',
-    hints: ['入力内容を確認し、再度お試しください'],
+    hints: ['入力内容を確認し、もう一度お試しください'],
   };
 }
