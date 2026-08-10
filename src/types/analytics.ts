@@ -15,6 +15,7 @@ export interface AnalyticsContentQuery {
   selectedCategoryNames?: string[];
   includeUncategorized?: boolean;
   hasUnreadSuggestion?: boolean;
+  hasUnstartedGscEvaluation?: boolean;
 }
 
 export interface AnalyticsContentPage {

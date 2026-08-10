@@ -19,5 +19,7 @@ description: GrowMateのコード変更後・commit前・push前・PR前に必�
 1. `npm run verify`（`audit` → `lint` → `test` → `build` → `knip` を順次実行する SSoT スクリプト）。
    個別に走らせる場合は `npm audit --audit-level=high` / `npm run lint` / `npm run test` / `npm run build` / `npm run knip`。
    **`tsc --noEmit` は `build` の代わりにならない**（Next.js の route segment config 静的解析や page data 収集が走らないため、過去に `maxDuration` 漏れが本番直前まで気付けなかった実例あり）。
-2. 変更機能の手動確認（`manual-testing.md`）
-3. 2 パスセルフレビュー（`self-review.md`）
+2. **UI 表示文言を追加・変更した場合**は `npm run verify:ui-text`（表記揺れ検出）。
+   正本は [`growmate-ui-ux/ui-text.md`](../growmate-ui-ux/ui-text.md)。pre-commit で staged 分は自動実行されるが、既存分を含めて確認する場合は手動で全走査する。
+3. 変更機能の手動確認（`manual-testing.md`）
+4. 2 パスセルフレビュー（`self-review.md`）

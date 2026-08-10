@@ -9,6 +9,7 @@
 - [ ] **自動検証**: [`SKILL.md`](SKILL.md) の `npm run verify` が成功していることを確認。
 - [ ] **型安全**: TS ファイルの場合、`any` の乱用や型不一致がないか確認。`unknown` + narrowing または `zod` スキーマの使用を優先。
 - [ ] **命名規則**: `project-naming` スキルを読み直し、新規ファイルや変数が規約通りか確認。
+- [ ] **UI 文言の表記統一**（表示文言を追加・変更した場合）: `npm run verify:ui-text` が成功していることを確認。機械判定外の用語一貫性・略語の初出・句点・英日間スペースは [`manual-testing.md`](manual-testing.md) で確認。正本は [`growmate-ui-ux/ui-text.md`](../growmate-ui-ux/ui-text.md)。
 - [ ] **既存破壊の防止**: 既存の `interface` や共有定数を変更した場合、その影響範囲（`rg` で検索）を調査したか。
 
 ## Pass 2: 品質とコンテキスト (Quality & Context)

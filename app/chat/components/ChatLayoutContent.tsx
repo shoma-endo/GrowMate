@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Menu } from 'lucide-react';
+import { AlertTriangle, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   BLOG_STEP_IDS,
@@ -313,7 +313,10 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
         {chatSession.state.isTruncated && !chatSession.state.isLoading && (
           <div className="mx-3 mb-2 flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-            <span>⚠️ 出力が途中で途切れました</span>
+            <span className="flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              出力が途中で途切れました
+            </span>
             <Button
               type="button"
               size="sm"

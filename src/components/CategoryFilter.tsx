@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Bell } from 'lucide-react';
+import { Bell, PlayCircle } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import type { CategoryFilterConfig } from '@/types/category';
@@ -12,8 +12,10 @@ interface CategoryFilterProps {
   selectedCategoryNames: string[];
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
+  hasUnstartedGscEvaluation: boolean;
   onFilterChange: (selectedCategoryNames: string[], includeUncategorized: boolean) => void;
   onUnreadSuggestionChange: (value: boolean) => void;
+  onUnstartedGscEvaluationChange: (value: boolean) => void;
   onClearAll: () => void;
 }
 
@@ -22,8 +24,10 @@ export default function CategoryFilter({
   selectedCategoryNames,
   includeUncategorized,
   hasUnreadSuggestion,
+  hasUnstartedGscEvaluation,
   onFilterChange,
   onUnreadSuggestionChange,
+  onUnstartedGscEvaluationChange,
   onClearAll,
 }: CategoryFilterProps) {
   // フィルター変更時に永続化
@@ -53,17 +57,54 @@ export default function CategoryFilter({
 
   const clearAll = () => {
     onClearAll();
-    // カテゴリ選択がゼロ（unread のみアクティブな状態）では localStorage を消さない。
+    // カテゴリ選択がゼロ（独立フィルターのみアクティブな状態）では localStorage を消さない。
     // 通知フィルターは永続化対象外のため、ここで保存済みカテゴリを破棄しない。
     if (selectedCategoryNames.length > 0 || includeUncategorized) {
       syncToStorage([], false);
     }
   };
 
-  const hasAnySelection = selectedCategoryNames.length > 0 || includeUncategorized || hasUnreadSuggestion;
+  const hasAnySelection =
+    selectedCategoryNames.length > 0 ||
+    includeUncategorized ||
+    hasUnreadSuggestion ||
+    hasUnstartedGscEvaluation;
 
   return (
     <div className="space-y-3">
+      {!hasAnySelection && (
+        <p className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+          フィルターが未選択のため、全件表示されます
+        </p>
+      )}
+
+      {/* 状態フィルター（カテゴリではないので見出しを分ける） */}
+      <div className="space-y-2">
+        <span className="text-sm font-medium text-gray-700">Google Search Console の状態</span>
+
+        <div className="border rounded-md px-2 py-2">
+          <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded">
+            <Checkbox
+              checked={hasUnstartedGscEvaluation}
+              onCheckedChange={checked => onUnstartedGscEvaluationChange(!!checked)}
+            />
+            <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
+            <span className="text-sm font-medium text-blue-800">評価未開始</span>
+          </label>
+        </div>
+
+        <div className="border rounded-md px-2 py-2">
+          <label className="flex items-center gap-2 cursor-pointer hover:bg-amber-50 px-1 py-1 rounded">
+            <Checkbox
+              checked={hasUnreadSuggestion}
+              onCheckedChange={checked => onUnreadSuggestionChange(!!checked)}
+            />
+            <Bell className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
+            <span className="text-sm font-medium text-amber-800">改善提案あり</span>
+          </label>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <span className="text-sm font-medium text-gray-700">カテゴリでフィルター</span>
@@ -77,24 +118,6 @@ export default function CategoryFilter({
             全解除
           </Button>
         </div>
-      </div>
-
-      {!hasAnySelection && (
-        <p className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
-          フィルターが未選択のため、全件表示されます
-        </p>
-      )}
-
-      {/* 改善提案フィルター */}
-      <div className="border rounded-md px-2 py-2">
-        <label className="flex items-center gap-2 cursor-pointer hover:bg-amber-50 px-1 py-1 rounded">
-          <Checkbox
-            checked={hasUnreadSuggestion}
-            onCheckedChange={checked => onUnreadSuggestionChange(!!checked)}
-          />
-          <Bell className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
-          <span className="text-sm font-medium text-amber-800">改善提案あり</span>
-        </label>
       </div>
 
       <div className="max-h-[200px] overflow-y-auto space-y-2">

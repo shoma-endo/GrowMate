@@ -23,7 +23,7 @@ export async function summarizeContentAnnotation(
   if (!parsed.success) {
     return {
       success: false,
-      error: '入力データが不正です。ページを更新してから再度お試しください。',
+      error: '入力データが不正です。ページを更新してからもう一度お試しください。',
     };
   }
 
