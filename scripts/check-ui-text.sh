@@ -7,9 +7,12 @@
 # 検査するのは「機械判定しても誤検出がほぼ出ない」項目に限る。
 # スペースの有無・句点・略語の初出・文体は人が見る（quality-gate の手動確認）。
 #
+# 必要なコマンド: ripgrep (rg)。日本語の文字クラスと \x{...} を正しく扱うため使用する。
+#
 # 使い方:
-#   bash scripts/check-ui-text.sh              # app/ src/ を全走査
-#   bash scripts/check-ui-text.sh a.tsx b.ts   # 指定ファイルのみ（pre-commit 用）
+#   bash scripts/check-ui-text.sh                     # app/ src/ を全走査（ワークツリー）
+#   bash scripts/check-ui-text.sh a.tsx b.ts          # 指定ファイルのみ（ワークツリー）
+#   bash scripts/check-ui-text.sh --staged a.tsx ...  # 指定ファイルのステージ済み内容（pre-commit 用）
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,14 +24,39 @@ NC='\033[0m'
 
 errors=0
 
+# rg が無い環境では全ての検索が空振りし、違反ゼロ＝成功として終了してしまう。
+# 「検査できなかった」を「問題なし」と報告しないよう、ここで落とす。
+if ! command -v rg >/dev/null 2>&1; then
+  echo -e "${RED}✗${NC} ripgrep (rg) が見つかりません。UI 文言チェックを実行できません。" >&2
+  echo "    インストール: brew install ripgrep / apt-get install -y ripgrep" >&2
+  exit 1
+fi
+
 # 走査対象から外すファイル。
 #   prompts.ts / prompt-descriptions.ts は LLM への指示文であり画面表示ではない。
-EXCLUDES=(
-  '!src/lib/prompts.ts'
-  '!src/lib/prompt-descriptions.ts'
-  '!**/*.test.ts'
-  '!**/*.test.tsx'
+# パターンは rg の --glob と bash の case の両方で使うため、`**/` を付けず
+# 「区切りを含まないパターンはベース名に一致する」形で書く。
+EXCLUDE_PATHS=(
+  'src/lib/prompts.ts'
+  'src/lib/prompt-descriptions.ts'
+  '*.test.ts'
+  '*.test.tsx'
 )
+
+# ディレクトリ走査時の除外（rg にファイルを明示的に渡した場合、rg は --glob を
+# 適用しないため、これだけでは per-file モードで効かない。is_excluded と併用する）
+EXCLUDES=("${EXCLUDE_PATHS[@]/#/!}")
+
+is_excluded() {
+  local path="$1" pattern
+  for pattern in "${EXCLUDE_PATHS[@]}"; do
+    # shellcheck disable=SC2254
+    case "$path" in
+      $pattern) return 0 ;;
+    esac
+  done
+  return 1
+}
 
 # ルール定義: <正規表現>@@<指摘文>
 # 「誤」の表記だけにマッチさせ、正しい表記にはマッチさせないこと。
@@ -116,21 +144,65 @@ load_dictionary_rules() {
 dictionary_rule_count=0
 load_dictionary_rules
 
+staged_mode=false
+if [[ "${1:-}" == "--staged" ]]; then
+  staged_mode=true
+  shift
+fi
+
 targets=()
 if [[ $# -gt 0 ]]; then
   for f in "$@"; do
-    [[ -f "$f" ]] || continue
     case "$f" in
       app/*|src/*) ;;
       *) continue ;;
     esac
     case "$f" in
-      *.ts|*.tsx) targets+=("$f") ;;
+      *.ts|*.tsx) ;;
+      *) continue ;;
     esac
+    # rg は明示指定されたファイルに --glob を適用しないので、ここで除外する
+    is_excluded "$f" && continue
+    # ワークツリー検査時のみ実在を確認する。--staged ではインデックス側を見るため、
+    # ステージ後にワークツリーから消したファイルも検査対象に残す必要がある。
+    if [[ "$staged_mode" == false && ! -f "$f" ]]; then
+      continue
+    fi
+    targets+=("$f")
   done
   [[ ${#targets[@]} -eq 0 ]] && exit 0
+elif [[ "$staged_mode" == true ]]; then
+  echo -e "${RED}✗${NC} --staged にはファイルの指定が必要です" >&2
+  exit 1
 else
   targets=(app src)
+fi
+
+# --staged: コミットされるのはワークツリーではなくインデックスの内容。
+# ファイル名だけ受け取ってワークツリーを検査すると、`git add -p` などで一部だけ
+# ステージした場合に、禁止表記をステージ済みなのに検査を通す（逆に、直したのに
+# 落とす）ことが起きる。インデックスの内容を取り出してそちらを検査する。
+if [[ "$staged_mode" == true ]]; then
+  staged_dir="$(mktemp -d)"
+  trap 'rm -rf "$staged_dir"' EXIT
+
+  materialized=()
+  for f in "${targets[@]}"; do
+    mkdir -p "$staged_dir/$(dirname "$f")"
+    if git show ":$f" > "$staged_dir/$f" 2>/dev/null; then
+      materialized+=("$f")
+    else
+      # インデックスに存在しない（ステージされていない）ものは対象外
+      rm -f "$staged_dir/$f"
+    fi
+  done
+  [[ ${#materialized[@]} -eq 0 ]] && exit 0
+  targets=("${materialized[@]}")
+
+  # 相対パスのまま検査できるよう作業ディレクトリごと移す。
+  # これで --glob と出力パスがワークツリー検査時と同じ形になる。
+  # 用語辞書は読み込み済みなので、ここで cd しても影響しない。
+  cd "$staged_dir"
 fi
 
 echo "=== UI 文言 表記統一チェック（用語辞書 ${dictionary_rule_count} 語 + 表記ルール $(( ${#RULES[@]} - dictionary_rule_count )) 件）==="

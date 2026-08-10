@@ -12,10 +12,12 @@ fi
 # staged な app/ src/ の TS について、UI 表示文言の表記揺れを検出する。
 # 正本は .agents/skills/growmate-ui-ux/ui-text.md。
 # staged 分のみを対象にするので、既存の未修正分で commit が止まることはない。
+# --staged: ワークツリーではなくインデックスの内容を検査する（git add -p で一部だけ
+# ステージした場合に、実際にコミットされる内容と検査対象がズレるのを防ぐ）。
 staged_ui="$(git diff --cached --name-only --diff-filter=ACM -- app src | grep -E '\.tsx?$' || true)"
 if [ -n "$staged_ui" ]; then
   # shellcheck disable=SC2086
-  echo "$staged_ui" | xargs bash scripts/check-ui-text.sh
+  echo "$staged_ui" | xargs bash scripts/check-ui-text.sh --staged
 fi
 
 # 仕様書が staged なら図解 HTML を追従させる（エディタでの手編集など、Claude Code の
