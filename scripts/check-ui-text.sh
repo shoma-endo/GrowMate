@@ -207,15 +207,20 @@ fi
 
 echo "=== UI 文言 表記統一チェック（用語辞書 ${dictionary_rule_count} 語 + 表記ルール $(( ${#RULES[@]} - dictionary_rule_count )) 件）==="
 
-# 開発者向けの記述（コメント）を落とす。ここを残すと `// ✅ 対応済み` のような
-# コメントが UI 文言として誤検出される。
-strip_comments() {
+# 表示文言ではない部分を落とす。
+#   - コメント: 残すと `// ✅ 対応済み` のような開発者向け記述が誤検出される
+#   - 文字クラスを含む正規表現リテラル: `/^[✅✓☑️]\s/` のような記号の列挙が誤検出される
+#     リテラルが現れる文脈（行頭、`(`、`=`、`||` の直後など）に限定する。これが無いと
+#     `'手順 1/3 [必須] 保存中です/次へ'` のような文言まで剥がして見逃す。
+# 行全体を捨てるのではなく該当部分だけを落とすので、同じ行に表示文言があれば検査される。
+strip_non_ui() {
   # s コマンドの区切りは # を使う（正規表現側で | を素のまま書くため）
   printf '%s' "$1" | sed -E \
     -e 's#\{/\*.*\*/\}##g' \
     -e 's#/\*.*\*/##g' \
     -e 's#^[[:space:]]*(//|\*).*$##' \
-    -e 's#([^:])//.*$#\1#'
+    -e 's#([^:])//.*$#\1#' \
+    -e 's#(^|[[:space:]=(,:|&!?+])/[^/]*\[[^]]*\][^/]*/[gimsuy]*#\1#g'
 }
 
 for rule in "${RULES[@]}"; do
@@ -230,12 +235,9 @@ for rule in "${RULES[@]}"; do
     content="${rest#*:}"
     # console.* は開発者向け出力なので対象外
     [[ "$content" == *console.* ]] && continue
-    # 正規表現リテラルの文字クラス（例: /^[✅✓]\s/）は表示文言ではない
-    if [[ "$content" =~ \.(test|match|exec|split|replace)\(|RegExp\( ]]; then
-      continue
-    fi
-    # コメントを除いた後もマッチするものだけを違反とみなす
-    printf '%s' "$(strip_comments "$content")" | rg -q -e "$pattern" || continue
+    # 表示文言でない部分（コメント・正規表現リテラル）を除いてもなお
+    # マッチするものだけを違反とみなす
+    printf '%s' "$(strip_non_ui "$content")" | rg -q -e "$pattern" || continue
     matched+=("$hit")
   done < <(
     rg --line-number --with-filename --no-heading --color=never \
