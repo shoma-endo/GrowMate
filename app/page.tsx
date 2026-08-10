@@ -14,7 +14,7 @@ import { isAdmin as isAdminRole } from '@/authUtils';
 import { signOutEmail } from '@/server/actions/auth.actions';
 import { toast } from 'sonner';
 
-const LOGOUT_ERROR_MSG = 'ログアウトに失敗しました。再度お試しください。';
+const LOGOUT_ERROR_MSG = 'ログアウトに失敗しました。もう一度お試しください。';
 
 const ProfileDisplay = () => {
   const { isLoading, user } = useAuth();

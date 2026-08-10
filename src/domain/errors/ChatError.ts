@@ -54,14 +54,14 @@ export class ChatError extends DomainError {
   private static getUserMessage(code: ChatErrorCode): string {
     const messages: Record<ChatErrorCode, string> = {
       [ChatErrorCode.NETWORK_ERROR]: 'ネットワークエラーが発生しました。接続環境をご確認ください。',
-      [ChatErrorCode.CONNECTION_TIMEOUT]: 'AI通信でタイムアウトしました。再度お試しください。',
+      [ChatErrorCode.CONNECTION_TIMEOUT]: 'AI通信でタイムアウトしました。もう一度お試しください。',
       [ChatErrorCode.AUTHENTICATION_FAILED]: 'ログインが必要です。再度ログインしてください。',
       [ChatErrorCode.TOKEN_EXPIRED]: 'セッションが期限切れです。再ログインしてください。',
       [ChatErrorCode.VALIDATION_ERROR]: 'メッセージの検証に失敗しました。',
       [ChatErrorCode.INVALID_MESSAGE]: 'メッセージの形式が正しくありません。',
       [ChatErrorCode.MESSAGE_TOO_LONG]: 'メッセージが長すぎます。4000文字以内で入力してください。',
       [ChatErrorCode.RATE_LIMIT_EXCEEDED]:
-        '送信回数が制限を超えています。しばらくしてから再度お試しください。',
+        '送信回数が制限を超えています。しばらくしてからもう一度お試しください。',
       [ChatErrorCode.SESSION_NOT_FOUND]: 'チャットセッションが見つかりません。',
       [ChatErrorCode.SESSION_EXPIRED]:
         'チャットセッションが期限切れです。新しいチャットを開始してください。',
@@ -72,7 +72,7 @@ export class ChatError extends DomainError {
       [ChatErrorCode.MESSAGE_SEND_FAILED]: 'メッセージの送信に失敗しました。',
       [ChatErrorCode.MESSAGE_LOAD_FAILED]: 'メッセージの読み込みに失敗しました。',
       [ChatErrorCode.AI_SERVICE_ERROR]:
-        'AIサービスに問題が発生しています。しばらくしてから再度お試しください。',
+        'AIサービスに問題が発生しています。しばらくしてからもう一度お試しください。',
       [ChatErrorCode.MODEL_NOT_AVAILABLE]:
         '選択されたAIモデルが利用できません。他のモデルをお試しください。',
       // Anthropic HTTPエラー詳細

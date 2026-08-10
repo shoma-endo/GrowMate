@@ -428,7 +428,7 @@ export default function AnalyticsTable({
     );
   };
 
-  // GSC評価未開始フィルターの変更ハンドラ
+  // 評価未開始フィルターの変更ハンドラ
   const handleUnstartedGscEvaluationChange = (next: boolean) => {
     setIsFilteringUnstartedGscEvaluation(next);
     if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
@@ -498,7 +498,7 @@ export default function AnalyticsTable({
     );
   };
 
-  // GSC評価未開始フィルターの削除ハンドラ
+  // 評価未開始フィルターの削除ハンドラ
   const removeUnstartedGscEvaluationFilter = () => {
     setIsFilteringUnstartedGscEvaluation(false);
     if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
@@ -565,7 +565,7 @@ export default function AnalyticsTable({
         }
       } catch (error) {
         console.error('Failed to launch chat session:', error);
-        alert('チャット画面への遷移に失敗しました。再度お試しください。');
+        alert('チャット画面への遷移に失敗しました。もう一度お試しください。');
       } finally {
         setPendingRowKey(null);
       }
@@ -617,7 +617,7 @@ export default function AnalyticsTable({
 
       startEditTransition(async () => {
         setFormError('');
-        const toastId = toast.loading('保存中です...');
+        const toastId = toast.loading('保存中...');
         try {
           // コンテンツフィールドを保存
           const result = await updateContentAnnotationFields(annotationId, {
@@ -687,7 +687,7 @@ export default function AnalyticsTable({
 
   const handleDeleteConfirm = React.useCallback(async () => {
     setIsDeleting(true);
-    const toastId = toast.loading('削除中です...');
+    const toastId = toast.loading('削除中...');
 
     try {
       if (deleteTargetSessionId) {
@@ -802,12 +802,12 @@ export default function AnalyticsTable({
                     )}
                     {isFilteringUnstartedGscEvaluation && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-blue-800 bg-blue-100">
-                        GSC評価未開始
+                        評価未開始
                         <button
                           type="button"
                           onClick={removeUnstartedGscEvaluationFilter}
                           className="hover:bg-blue-200 rounded-full p-0.5"
-                          title="GSC評価未開始フィルターを解除"
+                          title="評価未開始フィルターを解除"
                         >
                           <X className="h-3 w-3" />
                         </button>

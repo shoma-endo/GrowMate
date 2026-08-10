@@ -72,6 +72,39 @@ export default function CategoryFilter({
 
   return (
     <div className="space-y-3">
+      {!hasAnySelection && (
+        <p className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+          フィルターが未選択のため、全件表示されます
+        </p>
+      )}
+
+      {/* 状態フィルター（カテゴリではないので見出しを分ける） */}
+      <div className="space-y-2">
+        <span className="text-sm font-medium text-gray-700">Google Search Console の状態</span>
+
+        <div className="border rounded-md px-2 py-2">
+          <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded">
+            <Checkbox
+              checked={hasUnstartedGscEvaluation}
+              onCheckedChange={checked => onUnstartedGscEvaluationChange(!!checked)}
+            />
+            <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
+            <span className="text-sm font-medium text-blue-800">評価未開始</span>
+          </label>
+        </div>
+
+        <div className="border rounded-md px-2 py-2">
+          <label className="flex items-center gap-2 cursor-pointer hover:bg-amber-50 px-1 py-1 rounded">
+            <Checkbox
+              checked={hasUnreadSuggestion}
+              onCheckedChange={checked => onUnreadSuggestionChange(!!checked)}
+            />
+            <Bell className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
+            <span className="text-sm font-medium text-amber-800">改善提案あり</span>
+          </label>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <span className="text-sm font-medium text-gray-700">カテゴリでフィルター</span>
@@ -85,36 +118,6 @@ export default function CategoryFilter({
             全解除
           </Button>
         </div>
-      </div>
-
-      {!hasAnySelection && (
-        <p className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
-          フィルターが未選択のため、全件表示されます
-        </p>
-      )}
-
-      {/* GSC評価未開始フィルター */}
-      <div className="border rounded-md px-2 py-2">
-        <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded">
-          <Checkbox
-            checked={hasUnstartedGscEvaluation}
-            onCheckedChange={checked => onUnstartedGscEvaluationChange(!!checked)}
-          />
-          <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-          <span className="text-sm font-medium text-blue-800">GSC評価未開始</span>
-        </label>
-      </div>
-
-      {/* 改善提案フィルター */}
-      <div className="border rounded-md px-2 py-2">
-        <label className="flex items-center gap-2 cursor-pointer hover:bg-amber-50 px-1 py-1 rounded">
-          <Checkbox
-            checked={hasUnreadSuggestion}
-            onCheckedChange={checked => onUnreadSuggestionChange(!!checked)}
-          />
-          <Bell className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
-          <span className="text-sm font-medium text-amber-800">改善提案あり</span>
-        </label>
       </div>
 
       <div className="max-h-[200px] overflow-y-auto space-y-2">

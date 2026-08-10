@@ -93,7 +93,7 @@ export default function ContentAnnotationSummaryAction({
           {isSummarizing ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              要約中…
+              要約中...
             </>
           ) : (
             <>

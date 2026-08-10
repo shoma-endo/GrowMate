@@ -30,7 +30,7 @@ export const FullNameDialog = ({ open, onSave }: FullNameDialogProps) => {
       setFullName('');
     } catch (err) {
       console.error('フルネーム保存エラー:', err);
-      setError(err instanceof Error ? err.message : 'フルネームの保存に失敗しました。再度お試しください。');
+      setError(err instanceof Error ? err.message : 'フルネームの保存に失敗しました。もう一度お試しください。');
     } finally {
       setIsLoading(false);
     }
@@ -43,13 +43,13 @@ export const FullNameDialog = ({ open, onSave }: FullNameDialogProps) => {
     try {
       const result = await signOutEmail();
       if (!result.success) {
-        setError(result.error ?? 'ログアウトに失敗しました。再度お試しください。');
+        setError(result.error ?? 'ログアウトに失敗しました。もう一度お試しください。');
         return;
       }
       window.location.href = '/login';
     } catch (err) {
       console.error('再ログインのためのサインアウトエラー:', err);
-      setError(err instanceof Error ? err.message : 'ログアウトに失敗しました。再度お試しください。');
+      setError(err instanceof Error ? err.message : 'ログアウトに失敗しました。もう一度お試しください。');
     } finally {
       setIsSigningOut(false);
     }

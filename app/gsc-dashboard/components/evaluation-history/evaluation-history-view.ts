@@ -47,7 +47,7 @@ export function getSuggestionStatusMessage(item: GscEvaluationHistoryItem): {
   if (item.suggestion_status === 'pending' || item.suggestion_status === 'processing') {
     return {
       variant: 'default',
-      title: 'AI改善提案を生成中です',
+      title: 'AI改善提案を生成中...',
       description: '生成には数分かかる場合があります。完了後、この画面に改善提案が表示されます。',
     };
   }
