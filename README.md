@@ -159,7 +159,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 - **型チェック**: TypeScript strict mode
 - **リンター**: ESLint, eslint-config-next
-- **AI開発workflow**: Takt `0.55.1`（Node.js `>=24.15.0`。workflow変更後は `takt workflow doctor` で検証）
+- **AI開発workflow**: Takt `0.56.0`（Node.js `>=24.15.0`。workflow変更後は `takt workflow doctor` で検証）
 - **コード整形**: `.prettierrc`（エディタ向け。Prettier は npm 依存に未登録）
 - **ビルド**: Turbopack（開発）/ Next.js build
 - **テスト**: Vitest、`@vitest/coverage-v8`（コアロジック・入力バリデーション）
@@ -210,10 +210,28 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 ```bash
 # GrowMateアプリ: Node.js 20以上
-# Takt 0.55.1: Node.js 24.15.0以上
+# Takt 0.56.0: Node.js 24.15.0以上
 npm ci
 # .env.local を作成し、src/env.ts の clientEnvSchema / serverEnvSchema を参照してキーを埋める
 npm run dev  # http://localhost:3000
+```
+
+### 仕様確認フロー
+
+実装前に要件の思い違いを減らす場合は、TAKT の対話型 `grill-to-gherkin` workflow を使う。対象仕様書のパスを決め、Grill で確認質問に回答し、Gherkin の受け入れ条件を承認する。workflow は仕様書やコードを自動編集せず、`04-handoff.md` の手順で Gherkin を対象仕様書へ反映してから、`spec-review` → `spec-to-pr` へ進む。
+
+```bash
+takt -w grill-to-gherkin -t "実装したい機能の概要"
+```
+
+workflow は質問・Gherkin・承認結果を `.takt/runs/<run>/reports/` に記録する。承認後の仕様書レビューと実装は既存の workflow を使う。
+
+新規開発の詳細な手順は [`docs/development-workflow.md`](docs/development-workflow.md) を参照する。
+
+```bash
+# <slug> は 04-handoff.md に記録された対象仕様書の slug に置き換える
+takt -w spec-review -t "docs/plans/<slug>.md をレビューしてください"
+takt -w spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してください"
 ```
 
 > **Supabase 注意**: 本番と開発で同一プロジェクトを共有しています。`npx supabase db push` をリモートに対して実行しないこと。スキーマ変更は `supabase/migrations/` にコミットし、適用は管理者が行います。
@@ -259,7 +277,7 @@ npm run dev  # http://localhost:3000
 | [`scripts/`](scripts/) | DB・Vercel 統計、Cron、Skill 検証等の運用スクリプト |
 | [`.agents/skills/`](.agents/skills/) | AI エージェント向け Skill 正本（Codex / Claude Code / Cursor 共通） |
 | [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | エージェント共通運用ルール（`AGENTS.md`は`CLAUDE.md`のsymlink） |
-| [`.takt/`](.takt/) | 仕様書レビュー（`spec-review.yaml`）・仕様書起点 PR（`spec-to-pr.yaml`） |
+| [`.takt/`](.takt/) | 要件確認（`grill-to-gherkin.yaml`）・仕様書レビュー（`spec-review.yaml`）・仕様書起点 PR（`spec-to-pr.yaml`） |
 
 ## 🛡️ セキュリティと運用の注意点
 
