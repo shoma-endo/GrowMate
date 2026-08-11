@@ -9,12 +9,12 @@ import type { RequestOptions, IncomingMessage } from 'http';
  * API Changelog Monitor
  *
  * 外部APIのリリースノート・changelogを月次チェックし、
- * 変更が検出された場合に Lark へ通知する（任意で GLM-4.7 要約）。
+ * 変更が検出された場合に Lark へ通知する（任意で GLM-5.2 要約）。
  *
  * 監視対象:
  *   - GitHub Releases API: OpenAI Node / Supabase JS
  *   - ページ fetch + ハッシュ: Google SC / GA4 / Google Ads
- *   - GLM-4.7 web_search（ZAI_API_KEY あり）: Claude API / WordPress REST API
+ *   - GLM-5.2 web_search（ZAI_API_KEY あり）: Claude API / WordPress REST API
  */
 
 // ── 型定義 ───────────────────────────────────────────────────────────────────
@@ -87,8 +87,10 @@ const ZAI_API_KEY = process.env['ZAI_API_KEY'];
 const GITHUB_TOKEN = process.env['GITHUB_TOKEN'];
 const ACTIONS_RUN_URL = process.env['ACTIONS_RUN_URL'];
 
-const ZAI_CHAT_COMPLETIONS_URL = 'https://api.z.ai/api/paas/v4/chat/completions';
-const ZAI_MODEL = 'glm-4.7';
+// 一般APIエンドポイント（/api/paas/v4）は本キーの残高が常に $0 のため使用不可。
+// このキーは GLM Coding Plan 発行キーで、専用エンドポイント経由でのみ動作する（実機確認済み）。
+const ZAI_CHAT_COMPLETIONS_URL = 'https://api.z.ai/api/coding/paas/v4/chat/completions';
+const ZAI_MODEL = 'glm-5.2';
 
 const TARGETS: Target[] = [
   {
@@ -707,7 +709,7 @@ async function main(): Promise<void> {
   let aiSummary = '';
   if (detected.length > 0) {
     if (ZAI_API_KEY) {
-      console.log('\n🤖 GLM-4.7 で変更内容を解析中...');
+      console.log('\n🤖 GLM-5.2 で変更内容を解析中...');
       try {
         // summarizeWithGlm の出力はAI生成テキストのため、Markdown記法の誤爆を防ぐためエスケープする
         aiSummary = escapeLarkMd(await summarizeWithGlm(detected));
