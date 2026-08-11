@@ -253,7 +253,14 @@ class GscSuggestionService {
     const provider = modelConfig.provider;
     const model = modelConfig.actualModel;
     const startedAt = Date.now();
-    const logContext = { stage, templateName, provider, model };
+    const logContext = {
+      stage,
+      templateName,
+      provider,
+      model,
+      inputChars: filled.length,
+      maxTokens: modelConfig.maxTokens,
+    };
     console.info('[GscSuggestion] Template generation started', logContext);
 
     try {
