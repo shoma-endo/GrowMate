@@ -41,7 +41,7 @@ describe('gscSuggestionJobService', () => {
       failed: 0,
       terminalFailed: 0,
     });
-    expect(mocks.rpc).toHaveBeenCalledWith('claim_gsc_suggestion_jobs', { p_limit: 3 });
+    expect(mocks.rpc).toHaveBeenCalledWith('claim_gsc_suggestion_jobs', { p_limit: 1 });
   });
 
   it('claim失敗をbatch_failedとして記録して再throwする', async () => {

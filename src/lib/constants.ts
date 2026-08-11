@@ -41,6 +41,9 @@ interface ModelConfig {
   label?: string; // 人間向けラベル（GSC改善提案で利用）
 }
 
+/** GSC本文リライトの出力上限。長時間生成を抑え、個別タイムアウトを守る */
+const GSC_SUGGESTION_BODY_MAX_OUTPUT_TOKENS = 16_000;
+
 // 共通設定（DRY原則に基づく定数化）
 const ANTHROPIC_BASE = {
   provider: 'anthropic' as const,
@@ -87,7 +90,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   },
   gsc_insight_body_rewrite: {
     ...ANTHROPIC_BASE,
-    maxTokens: 25000,
+    maxTokens: GSC_SUGGESTION_BODY_MAX_OUTPUT_TOKENS,
     stream: true,
     label: '本文の提案',
   },
