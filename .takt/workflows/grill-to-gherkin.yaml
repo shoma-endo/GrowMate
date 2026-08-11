@@ -1,0 +1,244 @@
+name: grill-to-gherkin
+description: 要件を対話で明確化し、合意済みの振る舞いを Gherkin に変換して人間承認で止める前段 workflow
+workflow_config:
+  provider_options:
+    codex:
+      network_access: true
+max_steps: 20
+initial_step: grill
+
+steps:
+  - name: grill
+    tags:
+      - plan
+    edit: false
+    persona: planner
+    knowledge:
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      依頼内容と既存コード・関連仕様を読み、実装前に解消すべき曖昧さだけを確認してください。
+
+      目的:
+      - 人間の認知負荷を下げるため、質問は重要度の高いものから一度にまとめる。
+      - コードを変更しない。推測で要件を補完しない。
+      - 既にコード・仕様・既存ルールから確定できることは質問しない。
+      - 実装方針ではなく、利用者から見える振る舞い・入力・結果・失敗時の挙動を確認する。
+
+      手順:
+      1. 依頼内容、関連する docs/plans、既存実装、AGENTS.md、GrowMate knowledge を読む。
+      2. 曖昧な要件、複数解釈できる挙動、正常系・失敗系・境界条件の不足を列挙する。
+      3. 回答が必要な質問だけを最大7件に絞り、各質問に「なぜ必要か」を添える。
+      4. 回答済みの質問は決定事項として固定し、同じ質問を繰り返さない。
+      5. Gherkinを反映する対象仕様書のパス（既存または新規の `docs/plans/<slug>.md`）が不明な場合は質問する。
+      6. 未解決の質問がある場合は、最後に `ユーザー入力が必要` と明記する。
+      7. 対象仕様書パスと要件が確定し、Gherkin化できる場合は、最後に `要件が明確になり、Gherkin化可能` と明記する。
+
+      出力では、質問、回答、決定事項、未確定事項、Non-goals を分けてください。
+      ユーザーが回答した内容と既存資料から確認できた内容を混同しないでください。
+    output_contracts:
+      report:
+        - name: 01-grill.md
+          format: |
+            # Grill結果
+
+            ## 決定事項
+            - {確定した要件}
+
+            ## 対象仕様書
+            - {既存または新規の docs/plans/<slug>.md}
+
+            ## 確認質問
+            - {質問と、必要な理由}
+
+            ## 未確定事項
+            - {未回答または根拠不足の事項}
+
+            ## Non-goals
+            - {今回扱わない事項}
+
+            ## 判定
+            `ユーザー入力が必要` または `要件が明確になり、Gherkin化可能`
+          use_judge: false
+    rules:
+      - condition: ユーザー入力が必要
+        next: grill
+        requires_user_input: true
+        interactive_only: true
+        appendix: |
+          この workflow は対話的な要件確認が必要です。`takt` の対話モードで回答してください。
+      - condition: ユーザー入力が必要
+        next: ABORT
+        appendix: |
+          この workflow は対話的な要件確認が必要です。`takt` の対話モードで回答してください。
+      - condition: 要件が明確になり、Gherkin化可能
+        next: gherkin
+      - condition: 要件を確定できない
+        next: ABORT
+        appendix: |
+          要件を確定できませんでした。`01-grill.md` の未確定事項を確認し、依頼内容または仕様書を更新してください。
+
+  - name: gherkin
+    tags:
+      - plan
+    edit: false
+    persona: planner
+    knowledge:
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      `01-grill.md` と元の依頼、既存仕様・コードを根拠に、合意済みの振る舞いだけを Gherkin に変換してください。
+
+      必須条件:
+      - 実装やファイル編集は行わない。
+      - 新しい要件を発明しない。根拠のない仕様は `未確定事項` に戻す。
+      - `Feature`、必要な `Rule`、`Scenario`、`Given`、`When`、`Then` を使う。
+      - 正常系だけでなく、Grillで確認された失敗系・境界条件も含める。
+      - 1シナリオに複数の目的を混ぜない。
+      - 仕様として検証可能な具体性を持たせる。実装クラス名・DB内部名への依存は避ける。
+      - どの決定事項から導いたかを、Gherkinの後に対応表として記録する。
+
+      未解決の論点があり、シナリオを安全に確定できない場合は、最後に `追加確認が必要` と明記し、質問を列挙してください。
+      すべて確定できた場合は、最後に `Gherkin化が完了` と明記してください。
+    output_contracts:
+      report:
+        - name: 02-gherkin.md
+          format: |
+            # Gherkin受け入れ条件
+
+            ```gherkin
+            Feature: {機能名}
+
+            Rule: {業務ルール。不要なら省略}
+
+            Scenario: {振る舞い}
+              Given {前提}
+              When {操作}
+              Then {期待結果}
+            ```
+
+            ## 決定事項との対応
+            - {Gherkinのシナリオ} ← {Grillで確定した決定事項}
+
+            ## 未確定事項
+            - {あれば記載}
+
+            ## 判定
+            `追加確認が必要` または `Gherkin化が完了`
+          use_judge: false
+    rules:
+      - condition: 追加確認が必要
+        next: grill
+      - condition: Gherkin化が完了
+        next: confirm
+      - condition: Gherkin化できない
+        next: ABORT
+        appendix: |
+          Gherkinを安全に確定できませんでした。`02-gherkin.md` の未確定事項を確認してください。
+
+  - name: confirm
+    tags:
+      - review
+    edit: false
+    persona: supervisor
+    knowledge:
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      `01-grill.md` と `02-gherkin.md` を読み、実装前の人間承認を取得してください。
+
+      確認観点:
+      - 各シナリオが Grill の決定事項から追跡できる。
+      - 未合意の要件・推測・実装詳細が混入していない。
+      - Given / When / Then の因果関係が自然で、期待結果が検証可能。
+      - 正常系、失敗系、境界条件の不足がない。
+      - Non-goals が誤ってシナリオ化されていない。
+
+      初回は確認事項を簡潔に示し、ユーザーに「承認」または修正指示を求めてください。
+      ユーザーが修正を指示した場合は、最後に `修正が必要` と明記してください。
+      ユーザーが承認した場合だけ、最後に `ユーザー承認済み` と明記してください。
+    output_contracts:
+      report:
+        - name: 03-confirmation.md
+          format: |
+            # Gherkin承認結果
+
+            ## 判定
+            `ユーザー承認済み` または `修正が必要` または `ユーザー確認が必要`
+
+            ## 確認内容
+            - {確認した内容}
+          use_judge: false
+    rules:
+      - condition: ユーザー承認済み
+        next: handoff
+      - condition: 修正が必要
+        next: gherkin
+      - condition: ユーザー確認が必要
+        next: confirm
+        requires_user_input: true
+        interactive_only: true
+        appendix: |
+          Gherkinの人間承認が必要です。`takt` の対話モードで承認または修正指示を入力してください。
+      - condition: ユーザー確認が必要
+        next: ABORT
+        appendix: |
+          Gherkinの人間承認が必要です。`takt` の対話モードで承認または修正指示を入力してください。
+      - condition: 承認判定を完了できない
+        next: ABORT
+        appendix: |
+          Gherkinの承認判定を完了できませんでした。`03-confirmation.md` を確認してください。
+
+  - name: handoff
+    tags:
+      - report
+    edit: false
+    persona: planner
+    knowledge:
+      - growmate
+    provider_options:
+      extends: review-readonly
+    instruction: |
+      `01-grill.md`、`02-gherkin.md`、`03-confirmation.md` を読み、仕様書レビューへ渡す引き継ぎレポートを作成してください。
+
+      必須条件:
+      - 対象仕様書のパスを明記する。パスは `docs/plans/<slug>.md` であること。
+      - 承認済み Gherkin の反映先が分かるようにする。
+      - 次の手順を明記する。
+        1. `02-gherkin.md` の Gherkin を対象仕様書の受け入れ条件へ反映する。
+        2. `takt -w spec-review -t "docs/plans/<slug>.md をレビューしてください"` を実行する。
+        3. spec-review 完了後、`takt -w spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してください"` を実行する。
+      - この step では仕様書・プロダクションコードを編集せず、後続 workflow を自動実行しない。
+      - 対象仕様書パス、承認済み Gherkin、次アクションが揃った場合は、最後に `引き継ぎ情報を作成` と明記する。
+    output_contracts:
+      report:
+        - name: 04-handoff.md
+          format: |
+            # 仕様レビュー引き継ぎ
+
+            ## 対象仕様書
+            - `docs/plans/{slug}.md`
+
+            ## 承認済み Gherkin
+            - {反映対象の Gherkin}
+
+            ## 次アクション
+            1. Gherkinを対象仕様書へ反映する。
+            2. `spec-review` を実行する。
+            3. `spec-to-pr` を実行する。
+
+            ## 判定
+            `引き継ぎ情報を作成` または `引き継ぎ先を確定できない` または `引き継ぎ情報を作成できない`
+          use_judge: false
+    rules:
+      - condition: 引き継ぎ情報を作成
+        next: COMPLETE
+      - condition: 引き継ぎ先を確定できない
+        next: grill
+      - condition: 引き継ぎ情報を作成できない
+        next: ABORT
+        appendix: |
+          対象仕様書パスまたは承認済み Gherkin が不足しています。`01-grill.md` から確認してください。

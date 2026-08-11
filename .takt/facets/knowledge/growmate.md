@@ -12,7 +12,9 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 ## Workflow Sources
 
 - `AGENTS.md` is the project-level operating rule.
+- `.takt/workflows/grill-to-gherkin.yaml` clarifies requirements interactively, produces Gherkin acceptance criteria, and stops at human approval before any spec or code edit.
 - `.takt/workflows/spec-review.yaml` reviews specifications before implementation.
 - `.takt/workflows/spec-to-pr.yaml` is the source workflow for unattended implementation, review, and PR creation/update.
+- The approved Gherkin is not automatically copied into a spec. Follow `04-handoff.md`, reflect it into the target `docs/plans/<slug>.md`, then run `spec-review` and `spec-to-pr` explicitly.
 - `.agents/skills/` contains implementation-specific rules; the workflow loads relevant Skills when needed.
 - `docs/plans/` contains implementation specifications.
