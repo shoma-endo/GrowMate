@@ -17,8 +17,14 @@ loop_monitors:
         - growmate
       instruction: |
         audit -> revise のループが {cycle_count} 回繰り返されました。
-        Report Directory の最新 audit 結果と修正内容を確認し、収束しているか判断してください。
+        下記に全文添付された最新の audit 結果と修正内容を確認し、収束しているか判断してください。run ディレクトリやレポートパスの探索はしないでください。
         残件が「クライアント確認質問への回答待ち」のみの場合は、仕様書修正で解消不能な論点として visualize に進めてください。
+
+        ## spec-audit.md（最新・全文）
+        {report:spec-audit.md}
+
+        ## spec-revise-result.md（最新・全文）
+        {report:spec-revise-result.md}
       rules:
         - condition: 収束済み（残件がクライアント確認質問のみ）
           next: visualize
@@ -35,18 +41,18 @@ steps:
     persona: planner
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       レビュー対象の仕様書を特定し、適用する観点を決定してください。
 
       必須手順:
       1. ユーザー指示から対象仕様書（`docs/plans/` 配下）を特定する。曖昧な場合は `docs/plans/` を列挙し、候補を示して ABORT する。
       2. `.agents/skills/spec-review/SKILL.md` を読む。
-      3. 対象仕様書を読む。クライアント整合性・曖昧な要件・複数解釈・挙動変更・運用影響・未合意のトレードオフがある場合だけ `docs/context/client-vision-from-lark.md` を読む。純粋な技術仕様、DB・内部実装、または既存の正本で判断できるUI変更では読まない。
-      4. spec-review skill のルーティング表に従い、対象仕様書に適用する条件付き観点（クライアント整合 / LLM / UI / データ / Google 連携 / 外部サービス連携）を判定し、対応する正本ファイルを列挙する。対象範囲（画面・機能・データ・API）と Non-goals（要件にない画面・UI・機能追加、ついで修正、将来対応）も確定する。
-      5. 仕様書が対象とする機能の既存実装（`src/server/services/*`、`src/server/actions/*`、関連画面）を grep で把握する。
-      6. 仕様書が外部サービス（Google / WordPress / Instagram(Meta) / Supabase 等）の API・挙動を前提にしている場合、SKILL.md の「外部サービス連携 > 一次情報検証 > 公式ドキュメントの起点」の URL 表をもとに、audit で **実際に WebFetch して照合すべき公式ドキュメントの URL** を列挙する。仕様書のどの記述をどの URL で検証するかを対応付けて書く。外部サービス連携がない場合は「対象外」と明記する。
+      3. `docs/templates/requirement-definition.md` を要件定義チェックリストとして読む。
+      4. 対象仕様書を読む。クライアント整合性・曖昧な要件・複数解釈・挙動変更・運用影響・未合意のトレードオフがある場合だけ `docs/context/client-vision-from-lark.md` を読む。純粋な技術仕様、DB・内部実装、または既存の正本で判断できるUI変更では読まない。
+      5. spec-review skill のルーティング表に従い、対象仕様書に適用する条件付き観点（クライアント整合 / LLM / UI / データ / Google 連携 / 外部サービス連携）を判定し、対応する正本ファイルを列挙する。対象範囲（画面・機能・データ・API）と Non-goals（要件にない画面・UI・機能追加、ついで修正、将来対応）も確定する。
+      6. 仕様書が対象とする機能の既存実装（`src/server/services/*`、`src/server/actions/*`、関連画面）を grep で把握する。
+      7. 仕様書が外部サービス（Google / WordPress / Instagram(Meta) / Supabase 等）の API・挙動を前提にしている場合、SKILL.md の「外部サービス連携 > 一次情報検証 > 公式ドキュメントの起点」の URL 表をもとに、audit で **実際に WebFetch して照合すべき公式ドキュメントの URL** を列挙する。仕様書のどの記述をどの URL で検証するかを対応付けて書く。外部サービス連携がない場合は「対象外」と明記する。
     rules:
       - condition: 対象仕様書と適用観点を確定した
         next: audit
@@ -71,23 +77,27 @@ steps:
     knowledge:
       - architecture
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       `.agents/skills/spec-review/SKILL.md` を正本として、対象仕様書をレビューしてください。
 
       必須条件:
       - 共通観点 A（完全性）/ B（既存コード整合）/ C（非機能）/ D（セキュリティ）を全項目確認する。
+      - `docs/templates/requirement-definition.md` の項目を使い、目的・成功指標、業務要件、対象範囲・Non-goals、機能要件、Gherkin受け入れ条件、非機能要件、データ・外部連携、制約・前提・依存関係、トレードオフ、リスク・未確定事項、テスト・リリース・ロールバック、承認状態の不足を確認する。
+      - テンプレート項目が対象外の場合は、仕様書に対象外の理由があることを確認する。理由のない空欄は `needs_fix` とする。
       - 対象範囲と Non-goals を照合し、要件達成に直接必要でない画面・UI・機能・改善を仕様書へ混入させない。混入している場合は `needs_fix` とする。
-      - `spec-review-scope.md` で判定された条件付き観点の正本ファイルを読み、該当チェックリストを適用する。
+      - 下記添付の `spec-review-scope.md` で判定された条件付き観点の正本ファイルを読み、該当チェックリストを適用する。
       - B の確認では仕様書の記述を鵜呑みにせず、実コード（services / actions / components）を読んで再利用対象・乖離を検証する。
-      - 外部サービス連携が対象の場合、`spec-review-scope.md` で列挙した公式ドキュメント URL を **WebFetch で実際に取得し**、SKILL.md「外部サービス連携 > 一次情報検証 > 検証必須項目」（エンドポイント / 必須パラメータ・フィールド名 / 権限スコープ / レート制限 / 非推奨告知 / 前提条件 / データ反映遅延）を照合する。記憶・過去の実装・ブログ記事・要約を根拠にしない。あわせて「外部サービス連携 > 連携ライフサイクル（失効・剥奪・切断）」のチェックリストを適用する。
+      - 外部サービス連携が対象の場合、下記添付の `spec-review-scope.md` で列挙した公式ドキュメント URL を **WebFetch で実際に取得し**、SKILL.md「外部サービス連携 > 一次情報検証 > 検証必須項目」（エンドポイント / 必須パラメータ・フィールド名 / 権限スコープ / レート制限 / 非推奨告知 / 前提条件 / データ反映遅延）を照合する。記憶・過去の実装・ブログ記事・要約を根拠にしない。あわせて「外部サービス連携 > 連携ライフサイクル（失効・剥奪・切断）」のチェックリストを適用する。
       - 公式ドキュメントを根拠にした指摘には、参照 URL・確認日（YYYY-MM-DD）・**公式ページ本文の verbatim 引用**を必ず添える。要約を経由した引用は禁止。公式に記述が見つからない挙動は断定せず確認質問に隔離する。
       - 外部サービス連携が対象の場合、`spec-audit.md` の冒頭に **「公式ドキュメント照合: 実施 / 未実施」** を必ず書く。実行中の provider に web 取得手段（WebFetch 等）が無く照合できない場合は「未実施（provider に web 取得手段なし）」と明記し、記憶や既存実装で代替して照合したことにしない。
       - WebFetch が失敗した URL は「未確認」として `spec-audit.md` に残し、レビュー自体は止めずに他の観点を続行する。
       - 指摘は「問題箇所 / なぜ危険か / 修正案」の形式で、重大度（🔴/🟡/🟢）を付ける。
       - クライアント確認が必要な論点は修正案を断定せず、確認質問（Pre-implementation Questions 形式）として隔離する。
-      - 判定基準: 🔴 がゼロ、かつ 🟡 が修正済みまたは理由付きで残置合意済みなら approved。エージェントが解消できる 🔴/🟡 があれば needs_fix。残件がクライアント確認質問のみなら approved_with_questions。
+      - 判定基準: 🔴 がゼロ、かつ 🟡 が修正済みまたは理由付きで残置合意済み（仕様書の「レビュー記録」セクションに理由が記録されている）なら approved。エージェントが解消できる 🔴/🟡 があれば needs_fix。残件がクライアント確認質問のみなら approved_with_questions。
+
+      ## spec-review-scope.md（全文）
+      {report:spec-review-scope.md}
     rules:
       - condition: approved（自己解消可能な指摘なし・確認質問もなし）
         next: visualize
@@ -112,11 +122,12 @@ steps:
     required_permission_mode: edit
     pass_previous_response: false
     instruction: |
-      Report Directory の `spec-audit.md` を一次情報として、対象仕様書の未解決指摘だけを修正してください。
+      下記に全文添付された `spec-audit.md` を一次情報として、対象仕様書の未解決指摘だけを修正してください。
 
       必須条件:
       - 編集対象は `docs/` 配下の対象仕様書（および付随する docs）に限定する。プロダクションコード・設定ファイルは一切編集しない。
       - クライアント確認が必要な論点は本文を確定させず、仕様書内に「未確定事項（クライアント確認中）」セクションとして質問ごと明記する。
+      - 理由付きで残置合意とする 🟡 論点は、仕様書内の「レビュー記録」セクションに理由付きで記録する。`spec-audit.md` 冒頭に「公式ドキュメント照合: 未実施」とある場合はその旨も同セクションに記録する（audit の再実行と後続の spec-to-pr workflow はこのセクションを正本として参照する）。
       - 外部サービスの公式ドキュメントを根拠に本文を直す場合、仕様書に参照 URL・確認日（YYYY-MM-DD）・公式ページ本文の verbatim 引用を残す。引用と、そこから導いた解釈は分けて書く。裏取りが必要なのに `spec-audit.md` に URL・引用がない指摘は、自分で WebFetch して確認してから直す。
       - 指摘への対応方針が複数あり判断できない場合は、勝手に選ばず ABORT する。
       - 修正した指摘と、対応しなかった指摘（理由付き）を報告する。
@@ -175,11 +186,12 @@ steps:
       - report
     edit: true
     persona: coder
-    provider: claude
+    provider: claude-sdk
     model: haiku
     knowledge:
       - growmate
     required_permission_mode: edit
+    allow_git_commit: true
     provider_options:
       claude:
         allowed_tools:
@@ -194,13 +206,16 @@ steps:
       1. `git status` / `git diff` で変更内容を確認する。変更が `docs/` 配下のみであることを検証し、それ以外の変更が混入していれば ABORT する。
       2. 仕様書に変更がある場合: 現在のブランチのまま、日本語1行メッセージで commit する。ブランチ作成（`git checkout -b` / `git switch -c` 等）と `git push` は行わない。
       3. 仕様書に変更がない場合（指摘なし approved）: commit は行わない。
-      4. 最終レポートに以下を含める: 指摘サマリ（重大度別件数）、未解決のクライアント確認質問、公式ドキュメント照合の実施可否（`spec-audit.md` 冒頭の記載を転記。未実施ならその理由）と照合した URL・確認日（未確認のまま残った URL があれば明記）、図解 HTML の更新有無とパス（`docs/plans/_html/<slug>.html`。commit 対象外）、次アクション（質問回答 → 必要なら人間が push/PR → `.takt/workflows/spec-to-pr.yaml` で実装）。
+      4. 最終レポートに以下を含める: 指摘サマリ（重大度別件数）、未解決のクライアント確認質問、公式ドキュメント照合の実施可否（下記添付の `spec-audit.md` 冒頭の記載を転記。未実施ならその理由）と照合した URL・確認日（未確認のまま残った URL があれば明記）、図解 HTML の更新有無とパス（`docs/plans/_html/<slug>.html`。commit 対象外）、次アクション（質問回答 → 必要なら人間が push/PR → `.takt/workflows/spec-to-pr.yaml` で実装）。
 
       やらないこと:
       - 新しいブランチの作成・切り替え。
       - `git push`（`-u` 含む）。
       - PR の作成・更新・マージ・クローズ（`gh pr create` / `gh pr edit` / `gh pr comment` 含む）。
       - `docs/` 以外の編集・コミット。
+
+      ## spec-audit.md（最新・全文）
+      {report:spec-audit.md}
     rules:
       - condition: レビュー確定（commit 完了、または変更なしで完了）
         next: COMPLETE
