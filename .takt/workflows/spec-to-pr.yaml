@@ -53,6 +53,7 @@ steps:
       - plan
     edit: false
     persona: planner
+    provider: claude-sdk
     knowledge:
       - architecture
       - growmate
@@ -108,6 +109,7 @@ steps:
       - implementation
     edit: true
     persona: coder
+    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -164,6 +166,7 @@ steps:
       - review
     edit: false
     persona: ai-antipattern-reviewer
+    provider: claude-sdk
     policy:
       - review
       - ai-antipattern
@@ -187,6 +190,7 @@ steps:
       - implementation
     edit: true
     persona: coder
+    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -216,6 +220,7 @@ steps:
       - review
     edit: false
     persona: architecture-reviewer
+    provider: claude-sdk
     knowledge:
       - architecture
       - growmate
@@ -252,6 +257,7 @@ steps:
       - implementation
     edit: true
     persona: coder
+    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -302,6 +308,7 @@ steps:
       - implementation
     edit: true
     persona: coder
+    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -354,6 +361,7 @@ steps:
       - documentation
     edit: true
     persona: coder
+    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -409,6 +417,7 @@ steps:
       - review
     edit: false
     persona: supervisor
+    provider: claude-sdk
     knowledge:
       - architecture
       - growmate
@@ -448,6 +457,7 @@ steps:
       - report
     edit: false
     persona: reporter
+    provider: claude-sdk
     knowledge:
       - growmate
     capabilities: readonly

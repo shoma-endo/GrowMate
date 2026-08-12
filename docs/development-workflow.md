@@ -36,7 +36,7 @@ spec-to-pr
 依頼がまだ粗い場合は、対話型 workflow を実行する。`grill-to-gherkin` は TAKT 標準の Grill Me を既定モードにしている。
 
 ```bash
-scripts/takt-safe -w grill-to-gherkin -t "実装したい機能の概要"
+takt -w grill-to-gherkin -t "実装したい機能の概要"
 ```
 
 Grill Me は重要な判断を推奨案付きで一問ずつ確認する。`/go` を入力すると、`assistant.gherkin: true` により Markdown + Gherkin の実行指示書が生成される。
@@ -55,7 +55,7 @@ workflow の最初の `grill` step は追加質問をせず、その指示書を
 
 成果物は `.takt/runs/<run>/reports/` に保存される。
 
-TAKTはレポート保存先をClaudeへ自動表示するため、実行時は必ず `scripts/takt-safe` を使う。GrowMateのTAKT providerは `claude-sdk` に統一し、このラッパーはClaudeへ渡すプロンプトから自動注入されたrun/reportパスだけを除去する。レポート保存自体はTAKTに任せる。step 間のレポート受け渡しは `{report:X}` プレースホルダ（本文をプロンプトへ全文注入。resume 時は TAKT の snapshot が引き継ぐ）で行い、エージェントは run ディレクトリのパスを一切必要としない。
+GrowMateのTAKT providerは全workflowの全stepに `provider: claude-sdk` を明示して統一している（headless CLI providerはtmux必須でハングするため。呼び出し方に依存させず、workflow yaml自体で固定する）。step間のレポート受け渡しは `{report:X}` プレースホルダ（本文をプロンプトへ全文注入。resume時はTAKTのsnapshotが引き継ぐ）で行い、エージェントはrunディレクトリのパスを一切必要としない。レポート保存はTAKTが行う。
 
 - `01-grill.md`: Grill Me の決定事項・未確定事項・Non-goals の記録
 - `02-gherkin.md`: Gherkin 形式の受け入れ条件
@@ -123,7 +123,7 @@ Gherkin は受け入れ条件であり、仕様書全体ではない。仕様書
 仕様書がまとまったら、`spec-review` を実行する。
 
 ```bash
-scripts/takt-safe -w spec-review -t "docs/plans/<slug>.md をレビューしてください"
+takt -w spec-review -t "docs/plans/<slug>.md をレビューしてください"
 ```
 
 この workflow は次を行う。
@@ -142,7 +142,7 @@ scripts/takt-safe -w spec-review -t "docs/plans/<slug>.md をレビューして�
 `spec-review` 完了後、`spec-to-pr` を実行する。
 
 ```bash
-scripts/takt-safe -w spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してください"
+takt -w spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してください"
 ```
 
 この workflow は次を行う。

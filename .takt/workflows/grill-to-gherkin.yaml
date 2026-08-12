@@ -152,7 +152,7 @@ steps:
       - condition: 追加確認が必要
         next: ABORT
         appendix: |
-          Gherkinの追加確認が必要です。`scripts/takt-safe -w grill-to-gherkin -t "不足している要件を確認してください"` を再実行し、標準 `grill-me` で判断事項を確定してください。
+          Gherkinの追加確認が必要です。`takt -w grill-to-gherkin -t "不足している要件を確認してください"` を再実行し、標準 `grill-me` で判断事項を確定してください。
       - condition: Gherkin化が完了
         next: confirm
       - condition: Gherkin化できない
@@ -380,7 +380,7 @@ steps:
       - condition: 要件再確認が必要
         next: ABORT
         appendix: |
-          要件または概算前提の再確認が必要です。`scripts/takt-safe -w grill-to-gherkin -t "要件または概算前提を再確認してください"` を再実行し、標準 `grill-me` で見直してください。
+          要件または概算前提の再確認が必要です。`takt -w grill-to-gherkin -t "要件または概算前提を再確認してください"` を再実行し、標準 `grill-me` で見直してください。
       - condition: 見送り
         next: COMPLETE
       - condition: ユーザー確認が必要
@@ -422,8 +422,8 @@ steps:
         2. `02-gherkin.md` の Gherkin を対象仕様書の受け入れ条件へ反映する。
         3. `05-rough-estimate.md` の概算工数・前提・不確実性を確認する。
         4. `06-estimate-confirmation.md` の着手承認を確認する。
-        5. `scripts/takt-safe -w spec-review -t "docs/plans/<slug>.md をレビューしてください"` を実行する。
-        6. spec-review 完了後、`scripts/takt-safe -w spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してください"` を実行する。
+        5. `takt -w spec-review -t "docs/plans/<slug>.md をレビューしてください"` を実行する。
+        6. spec-review 完了後、`takt -w spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してください"` を実行する。
       - この step では仕様書・プロダクションコードを編集せず、後続 workflow を自動実行しない。
       - 対象仕様書パス、承認済み Gherkin、次アクションが揃った場合は、最後に `引き継ぎ情報を作成` と明記する。
 
