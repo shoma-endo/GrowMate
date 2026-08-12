@@ -12,6 +12,7 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 ## Workflow Sources
 
 - `AGENTS.md` is the project-level operating rule.
+- `docs/templates/requirement-definition.md` is the checklist for implementation-ready requirements: purpose, scope, functional and non-functional requirements, constraints, trade-offs, risks, and release verification.
 - `.takt/workflows/grill-to-gherkin.yaml` clarifies requirements interactively, produces Gherkin acceptance criteria, and stops at human approval before any spec or code edit.
 - `.takt/workflows/spec-review.yaml` reviews specifications before implementation.
 - `.takt/workflows/spec-to-pr.yaml` is the source workflow for unattended implementation, review, and PR creation/update.

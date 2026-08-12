@@ -9,6 +9,7 @@
 ## Workflow Source of Truth
 
 - 要件確認: `.takt/workflows/grill-to-gherkin.yaml`
+- 要件定義項目: `docs/templates/requirement-definition.md`
 - 仕様レビュー: `.takt/workflows/spec-review.yaml`
 - 仕様実装からPR: `.takt/workflows/spec-to-pr.yaml`
 - 人間向け開発手順: `docs/development-workflow.md`
