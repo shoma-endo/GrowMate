@@ -218,7 +218,7 @@ npm run dev  # http://localhost:3000
 
 ### 仕様確認フロー
 
-新規機能は、要件確認・要件定義・仕様レビュー・実装の順に進めます。詳細は [`docs/development-workflow.md`](docs/development-workflow.md) を参照してください。
+新規機能は、要件確認・Gherkin承認・概算工数と着手判断・要件定義・仕様レビュー・実装の順に進めます。詳細は [`docs/development-workflow.md`](docs/development-workflow.md) を参照してください。
 
 ```bash
 takt -w grill-to-gherkin -t "実装したい機能の概要"
