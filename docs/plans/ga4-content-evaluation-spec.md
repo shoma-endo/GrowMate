@@ -40,14 +40,14 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 |---|---|---|---|---|
 | 評価結果の保存成功率 | 機能なし（0%） | 評価実行リクエストのうち、スキーマ適合結果が `evaluated` で保存される割合 ≥ 95%（プロンプト確定後に再設定可） | DB 集計 + E2E | ステージング実データ検証 |
 | 欠損値の誤評価 | 未計測 | 0 件（欠損を 0 として LLM 投入しない） | AC-03 + 単体テスト | CI |
-| 評価停止の即時性 | 未計測 | Kill Switch 変更後、次リクエストから評価 API が停止 | AC-06 + 手動検証 | リリース前 |
+| 評価停止の即時性 | 未計測 | DB Kill Switch 変更後、次リクエストから評価 API が停止 | AC-06 + 手動検証 | リリース前 |
 | 二重実行 | 未計測 | 同一 `(user_id, content_annotation_id)` の同時評価 0 件 | AC-07 + DB 制約テスト | CI |
 
 ### 2.5 利用者・関係者
 
 | 区分 | 対象 | 期待すること・責任 |
 |---|---|---|
-| 利用者 | GrowMate `paid` / `admin` ユーザー | `/analytics` で評価実行・結果確認・再実行 |
+| 利用者 | GrowMate `paid` / `admin` ユーザー | `/analytics` で対象記事を探し、記事詳細で評価実行・結果確認・再実行 |
 | プロンプト提供者 | 繁田さん | 評価軸・システムプロンプト・出力 JSON 契約の提供（§15 繁田確認 #1–5） |
 | 開発・運用 | GrowMate 開発チーム | 実装、Kill Switch 運用、Cron 監視 |
 | 外部連携 | Google（GA4 Data API / GSC Search Analytics API） | 指標データの提供（読み取り専用 scope） |
@@ -67,10 +67,11 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 
 ```text
 /analytics 一覧（get_filtered_content_annotations）
-  -> 未評価フィルタ / 手動評価実行
-  -> GA4/GSC 指標 + 記事情報を LLM へ構造化投入
+  -> 未評価フィルタ / 評価状態・点数・パターン確認
+  -> /analytics/[annotationId] の記事詳細へ遷移
+  -> GA4/GSC 指標・検索クエリ・記事情報を LLM へ構造化投入
   -> 点数・診断・提案を DB 保存（最新 + 履歴）
-  -> 一覧・ドロワーで結果確認 -> 改善アクション
+  -> 記事詳細で結果確認・再実行 -> 改善アクション
 ```
 
 定期一括評価（Cron）は Q8 確定まで As-Is 相当の手動運用を維持する。
@@ -79,11 +80,13 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 
 ### 3.1 MVPで対象とするもの
 
+- フェーズ0（事前リファクタリング）完了後の手動評価MVP。フェーズ0は利用者向け挙動を変更しない。
 - GA4日次ページ指標の評価用取得。
 - GSCページ指標の評価用取得・GA4との組み合わせ。
 - 記事単位の評価実行、結果保存、履歴保存。
 - 評価状態（未評価、評価可能、評価済み、データ不足、取得失敗、再認証必要）の表示。
 - 評価点数・評価パターン・診断・根拠・改善提案の表示。
+- `/analytics` の一覧と `/analytics/[annotationId]` の記事詳細を分離し、GA4/GSC統合評価は記事詳細で表示する。
 - 繁田さんのシステムプロンプトをDBのプロンプトテンプレートから読み込み、`system`ロールでLLMへ渡す処理。
 - 評価結果の再実行。
 
@@ -94,21 +97,44 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 - 改善提案の自動メール送信（クライアント文脈 §1.9.4 との整合は Q4 で確認。確定までは Non-goal）。
 - ヒートマップの導入・独自イベント設計。データが既存の入力に含まれる場合だけ、将来拡張できる入力項目として扱う。
 - 固定ルールによる評価点数・パターン・提案文の算出。
-- `app/ga4-dashboard/` の改修（GA4ダッシュボードは取込済み指標の可視化専用。GA4コンテンツ評価の一覧・実行・結果表示は `/analytics` に集約する）。
+- `app/ga4-dashboard/` の改修。`/ga4-dashboard` はサイト全体のGA4可視化画面（集計・ランキング・時系列）であり、記事単位のGA4/GSC統合評価・履歴・改善提案を持たせる画面ではないため、評価機能の対象外とする。
 - `ga4ImportService` への `engagementRate` / `screenPageViews` 追加取得（MVP必須かは Q7 で確定。確定までは取込パイプライン改修対象外）。
+- フェーズ2（定期Cron・非同期ジョブ）とフェーズ3（追加GA4指標）は、Q8/Q7の回答確定までMVPの受入条件に含めない。
 
 ### 3.3 認可とアクセス制御
 
-既存実装 `canAccessGa4`（`src/server/lib/ga4-permissions.ts`）を正とする。許可ロールは `admin` と `paid` のみ。`/analytics` は `proxy.ts` の有料機能パスに含まれる。
+既存実装 `canAccessGa4`（`src/server/lib/ga4-permissions.ts`）を正とする。許可ロールは `admin` と `paid` のみ。`/analytics` と `/analytics/[annotationId]` は `proxy.ts` の有料機能パスに含める。
 
 | 操作 | admin | paid | その他（trial 等） | 実装根拠 |
 |---|---|---|---|---|
-| 評価一覧・結果の閲覧 | 可 | 可 | 不可 | `canAccessGa4` + `/analytics` ガード |
-| 評価の手動実行 | 可 | 可 | 不可 | 同上 |
-| 評価の再実行 | 可 | 可 | 不可 | 同上 |
-| Cron による一括評価 | 可（対象ユーザー） | 可（対象ユーザー） | 不可 | Service Role 経由。アプリ層で `user_id` を検証 |
+| 評価一覧・結果の閲覧 | 可 | 可 | 不可 | `canAccessGa4` + 一覧/詳細ルートのガード |
+| 評価の手動実行 | 可 | 可 | 不可 | 詳細ルート/API入口で同上 |
+| 評価の再実行 | 可 | 可 | 不可 | 詳細ルート/API入口で同上 |
+| Cron による一括評価（フェーズ2、Q8確定後） | 可（対象ユーザー） | 可（対象ユーザー） | 不可 | Service Role 経由。アプリ層で `user_id` を検証 |
 
 共有ユーザー（スタッフ等）がオーナーの評価結果を閲覧できるかは Q6 で確定する。確定までは、新規テーブルの RLS は owner-only とし、共有閲覧が必要な場合は `get_filtered_content_annotations` 等の RPC 経由に限定する（§7.4）。
+
+### 3.4 実装フェーズと概算工数
+
+実装は、利用者向け機能を追加する前に、評価機能に必要な境界だけを整理する。概算は8時間を1人日とした開発工数であり、仕様確定・レビュー待ち時間は別途である。
+
+| フェーズ | 目的 | 主な成果物 | 工数 | MVPとの関係 |
+|---|---|---|---:|---|
+| 0. 事前リファクタリング | 既存挙動を維持したまま、評価実装の境界を整理する | データ集約境界、LLM構造化出力アダプター、状態/エラー型、回帰テスト | 30〜45h | 必須前提 |
+| 1. 手動評価MVP | 1記事単位の評価・保存・表示を提供する | DB/RLS、評価サービス、手動API、DB Kill Switch、stale回復、一覧/記事詳細UI、実データ検証 | 90〜120h | MVP対象 |
+| 1a. 既存GSC詳細画面の移設 | 記事詳細の責務を統合し、既存URLと導線を維持する | `/gsc-dashboard` → `/analytics/[annotationId]` 移設、旧URL redirect、戻りクエリ引き継ぎ、既存GSC詳細の回帰確認 | +8〜16h | フェーズ1の追加作業 |
+| 2. 定期評価 | Cron・非同期ジョブで一括評価する | claim RPC、ジョブ処理、時間予算、再試行、監視 | +25〜35h | Q8確定後 |
+| 3. 追加GA4指標 | PV・エンゲージメント率等を評価入力へ追加する | GA4取込拡張、`ga4_page_metrics_daily` migration、Compatibility確認、評価入力契約・プロンプト再確認、既存データ検証 | +12〜20h | Q7確定後 |
+
+フェーズ0〜1の合計は **120〜165時間（15〜21人日）**、既存GSC詳細画面の移設まで含むMVPは **128〜181時間（16〜23人日）**、フェーズ2まで含める場合は **153〜216時間（19〜27人日）**を目安とする。フェーズ0では、GSC・GA4の全体的な共通化、無関係な既存サービスの再設計、画面仕様の変更を行わない。1aはフェーズ0の挙動不変工数に含めない。
+
+#### フェーズ0の完了条件
+
+- `/analytics` の既存レスポンス、ページング、GA4集計値、既存フィルタの挙動が変更されていない。
+- データ取得・期間集計・評価入力組立の責務が分離され、フェーズ1から評価専用の入力境界を利用できる。
+- LLM呼び出し、JSON抽出、Zod検証、再試行、機密情報のログ出力制御を共通アダプターとして利用できる。
+- 評価状態・エラーコードの型と状態遷移テストが追加されている。
+- 既存テスト、型チェック、Lint、ビルドが通る。
 
 ## 4. 指標とデータソース
 
@@ -162,6 +188,7 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 | GA4 日次取込 | `src/server/services/ga4ImportService.ts` | 評価前のデータ鮮度確認・再取込。軸は `landingPage` 固定 |
 | GA4 一覧集計 | `src/server/services/analyticsContentService.ts` → `fetchGa4Summaries` | 記事 URL と `ga4_page_metrics_daily` の突合。評価入力の GA4 部分はこの集計ロジックを流用 |
 | GSC 取込 | `src/server/services/gscImportService.ts` | 評価期間の GSC 指標取得 |
+| 既存GSC記事詳細 | `app/gsc-dashboard/` + `gscDashboard.actions.ts` | 概要・検索クエリ・評価履歴のUI/取得ロジックを記事詳細へ移設。旧 `/gsc-dashboard?annotationId=...` はredirect専用の互換入口として残し、旧画面UIは残さない |
 | コンテンツ一覧 RPC | `get_filtered_content_annotations` | 未評価フィルタ追加: `p_has_unstarted_ga4_evaluation`（命名は実装時調整）。**DROP FUNCTION → 再作成 → REVOKE/GRANT** の手順を踏む |
 | 未評価フィルタ UI | `AnalyticsTable.tsx` / `CategoryFilter.tsx` | 既存 GSC 未評価フィルタ（`p_has_unstarted_gsc_evaluation`）と同パターンで GA4 版を追加 |
 | URL 正規化（GA4） | `normalizeToPath`（`src/lib/ga4-utils.ts`） | `ga4_page_metrics_daily.normalized_path` との突合 |
@@ -169,8 +196,8 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 | Google トークン | `googleTokenService.ensureValidAccessToken` | 再認証検知 |
 | プロンプト管理 | `PromptService` + `prompt_templates` | GA4 評価用テンプレートを追加 |
 | LLM 呼び出し | `llmChat`（`src/server/services/llmService.ts`） | 構造化出力の JSON 抽出・Zod 検証は `contentAnnotationSummaryService` パターンを踏襲 |
-| GSC 評価ジョブ | `gscEvaluationService` + `CRON_DEFINITIONS.gscEvaluate` | 時間予算（`BATCH_TIME_LIMIT_MS`）、並列数、Cron `maxDuration: 300` の設計を GA4 評価 Cron に流用 |
-| GSC 提案ジョブ claim | `claim_gsc_suggestion_jobs` RPC + `gscSuggestionJobService` | GA4 評価の非同期ジョブが必要な場合、**claim パターン**（`FOR UPDATE SKIP LOCKED`）を流用。新規 RPC 名は `claim_ga4_content_evaluation_jobs` 等 |
+| GSC 評価ジョブ（フェーズ2、Q8確定後） | `gscEvaluationService` + `CRON_DEFINITIONS.gscEvaluate` | 時間予算（`BATCH_TIME_LIMIT_MS`）、並列数、Cron `maxDuration: 300` の設計を GA4 評価 Cron に流用 |
+| GSC 提案ジョブ claim（フェーズ2、Q8確定後） | `claim_gsc_suggestion_jobs` RPC + `gscSuggestionJobService` | GA4 評価の非同期ジョブが必要な場合、**claim パターン**（`FOR UPDATE SKIP LOCKED`）を流用。新規 RPC 名は `claim_ga4_content_evaluation_jobs` 等 |
 | 権限チェック | `canAccessGa4` | Server Action / Route Handler の入口で検証 |
 
 ### 5.2 再利用しないもの
@@ -183,6 +210,20 @@ GSCの`gsc_article_evaluations`と`gsc_article_evaluation_history`は掲載順�
 
 差分は、GSC評価が順位変化の機械的な結果判定に近いのに対し、GA4評価はGA4・GSC・記事情報をLLMが総合解釈し、記事ごとに改善提案を生成する点である。GA4評価では、評価点数やパターンを固定条件分岐で決めない。
 
+### 5.4 フェーズ0で行う事前リファクタリング
+
+フェーズ0は既存機能の挙動を変えず、フェーズ1の実装に必要な境界だけを整理する。既存GSC評価のドメインロジックや、GA4/GSCのURL正規化仕様を無理に統合しない。
+
+| 対象 | 方針 | 完了条件 |
+|---|---|---|
+| `analyticsContentService` | コンテンツ一覧ページングとGA4期間集計を責務分離する。既存の公開メソッドの入出力は維持する | 既存一覧、ページング、フィルタ、GA4表示値の回帰テストが通る |
+| 評価入力 | GA4/GSC/記事情報を評価用Contextへ組み立てる境界を新設する。GA4は`normalizeToPath`、GSCは`normalizeUrl`を引き続き使い分ける | 欠損、期間、鮮度、データ品質がContextに明示される |
+| LLM呼び出し | `contentAnnotationSummaryService`等の実装を参考に、**既存サービスを変更せず**、GA4評価用の構造化LLMアダプターを新設する。JSON抽出、Zod検証、タイムアウト、再試行、ログ秘匿を呼出し境界に集約する | ドメイン固有の出力スキーマと評価結果保存は共通化せず、新規アダプターをフェーズ1から利用できる |
+| 評価状態・エラー | `unassessed`等の状態、外部API/LLMエラーコード、既存結果保持の状態遷移を共通型・純関数として整理する | 状態遷移と異常系の単体テストがある |
+| テスト基盤 | GA4/GSC入力、欠損値、ユーザー分離、LLM不正出力、既存結果保持のfixtureを追加する | フェーズ1で同じfixtureを再利用できる |
+
+フェーズ0では、GSC評価テーブルの流用、GSC評価ロジックの全面共通化、既存APIの変更、既存LLMサービスの変更、データベーススキーマ変更、UI変更を行わない。フェーズ0のfixtureは型・純関数レベルに限定し、評価テーブルを使うDB fixtureはフェーズ1で追加する。
+
 ## 6. 機能仕様
 
 ### 6.1 評価対象の決定
@@ -194,6 +235,8 @@ GSCの`gsc_article_evaluations`と`gsc_article_evaluation_history`は掲載順�
 3. GA4 または GSC のデータがない場合は、欠損理由を保持する。GA4 の `search_clicks` / `impressions` / `ctr` 列は欠損ではなく **使用禁止（死データ）** として扱う。
 4. 評価対象の全件取得と、LLM へ送る記事情報の取得を分離する。PostgREST の最大返却行数（1000 行）によって、評価対象を暗黙に切り捨てない。一覧は RPC ページング（最大 100 件/ページ）、指標は `fetchGa4Summaries` 相当の **IN 句による狙い撃ち取得** または DB 側集約を使う。
 5. データ期間、最終取込日時、最小データ条件を確認し、評価可能な記事だけを LLM 評価へ進める。
+
+フェーズ1では、フェーズ0で分離した評価用Context組立境界を利用する。`analyticsContentService`の内部実装や具体的な新規ファイル名を評価サービスから直接参照しない。
 
 ### 6.2 LLM評価
 
@@ -275,16 +318,18 @@ LLM へアクセストークン、個人情報、不要な生ログ、全記事�
 
 | 状態 | 意味 |
 |---|---|
-| `unassessed` | 評価履歴がない |
-| `eligible` | 必要データが揃い評価可能 |
+| `unassessed` | 評価履歴がなく、評価可否をまだ判定していない表示上の状態。DBには永続化しない |
+| `eligible` | 評価履歴がないが、表示時のデータ品質判定で必要データが揃っている表示上の状態。DBには永続化しない |
 | `evaluated` | 最新評価が利用可能 |
 | `insufficient_data` | データ期間・件数・指標が不足 |
 | `import_failed` | 外部API取込に失敗 |
 | `needs_reauth` | Google再認証が必要 |
 | `evaluation_failed` | LLMまたは出力検証に失敗 |
-| `evaluating` | 評価実行中（非同期ジョブ claim 済み） |
+| `evaluating` | 評価処理中（フェーズ1の手動実行中、またはフェーズ2の非同期ジョブ claim 済み） |
 
 欠損値を`0`に変換して評価を続行しない。新しい評価に失敗した場合、既存の正常な評価結果と履歴を上書きしない。
+
+`unassessed` / `eligible` は一覧表示時に評価履歴の有無とデータ品質から導出する。`evaluated`、`insufficient_data`、`import_failed`、`needs_reauth`、`evaluation_failed`、`evaluating` は `ga4_content_evaluations.status` に永続化する。手動評価の開始・完了・失敗更新は同じ `evaluation_run_id` を条件に行い、TTL回復後に古い実行が新しい評価を上書きできないようにする。
 
 ## 7. データ設計（案）
 
@@ -294,6 +339,7 @@ LLM へアクセストークン、個人情報、不要な生ログ、全記事�
 
 - `ga4_content_evaluations`: 記事ごとの最新評価。
 - `ga4_content_evaluation_history`: 評価実行ごとのスナップショット。
+- `ga4_content_evaluation_settings`: Kill Switchを管理する単一行設定。`id`（固定値1）、`enabled`（boolean、デフォルトfalse）、`updated_at`、`updated_by`を持つ。MVPでは設定画面を追加せず、許可された運用手順から更新する。
 
 ### 7.2 最新評価テーブルの主な項目
 
@@ -312,6 +358,7 @@ LLM へアクセストークン、個人情報、不要な生ログ、全記事�
 - `prompt_template_id` (`uuid`, FK → `prompt_templates(id)`), `prompt_version` (`integer`), `prompt_updated_at` (`timestamptz`)
 - `source_data_fetched_at`
 - `evaluated_at`
+- `evaluation_run_id` (`uuid`, 評価開始ごとの実行識別子。古い実行結果による上書きを防ぐ)
 - `last_error_code`, `last_error_message`
 - `created_at`, `updated_at`
 
@@ -322,17 +369,20 @@ LLM へアクセストークン、個人情報、不要な生ログ、全記事�
 - `user_id`を必須とし、すべてのサービス層クエリで対象ユーザーを明示する。
 - `(user_id, content_annotation_id)`に一意制約を設ける。
 - `(user_id, status, score)`、`(user_id, updated_at)`を検索用途に検討する。
-- 履歴には評価時点の出力と入力データの識別情報を保存し、後から同じ評価結果を追跡できるようにする。
+- `ga4_content_evaluation_settings` は `id=1` の単一行制約を持ち、migration適用時に `enabled=false` の行を作成する。
+- 履歴には評価時点の出力、`evaluation_run_id`、入力データの識別情報を保存し、後から同じ評価結果を追跡できるようにする。
 - JSONは表示用に保存し、検索・並び替えに使う値は通常列として保持する。
 
 ### 7.4 RLS・アクセス制御
 
-- 新規テーブルは **`user_id = (SELECT auth.uid())` の owner-only RLS** とする。`.agents/skills/supabase/rls.md` に従い、新規 RLS/RPC で **`get_accessible_user_ids` を参照しない**。
+- 評価結果・履歴テーブルは **`user_id = (SELECT auth.uid())` の owner-only RLS** とする。`.agents/skills/supabase/rls.md` に従い、新規 RLS/RPC で **`get_accessible_user_ids` を参照しない**。
+- `ga4_content_evaluation_settings` は `anon`、`authenticated`、`PUBLIC` の直接更新・参照を許可せず、Service Role経由のサーバー処理と許可された運用手順だけが読み書きできる。設定が存在しない、またはDB読取に失敗した場合は安全側で停止する。
 - 共有ユーザーがオーナーの評価結果を閲覧する必要がある場合（Q6）、直接 SELECT ではなく **`get_filtered_content_annotations` 等の Service Role RPC** で評価状態・点数を JOIN して返す。RPC 内の共有判定は既存 RPC の `get_accessible_user_ids` 利用に限定する。
 - `auth.uid()` は `(SELECT auth.uid())` でラップする。
 - バッチ・Cron・Google 取込はサーバー側の `SupabaseService` 経由で実行し、Service Role 利用時もアプリケーション層でユーザー ID と対象記事を検証する。
 - RPC を追加する場合は、用途に応じて `PUBLIC`、`anon`、`authenticated` の実行権限を明示的に取り消し、許可対象だけに grant する。claim 系 RPC は `service_role` のみ（`claim_gsc_suggestion_jobs` と同型）。
 - マイグレーションにはロールバック用の `DROP POLICY`、テーブル・インデックス削除手順をコメントで残す。
+- `ga4_content_evaluation_settings` のmigrationには、単一行作成、Service Role以外の権限取り消し、`DROP TABLE` を含むロールバック手順を残す。
 
 ## 8. 評価実行フロー
 
@@ -349,6 +399,16 @@ LLM へアクセストークン、個人情報、不要な生ログ、全記事�
 
 ### 8.1 ジョブ・Cron 設計
 
+#### フェーズ1：手動評価
+
+フェーズ1では、Server ActionまたはRoute Handlerから単記事評価を実行する。評価対象の決定、データ品質確認、LLM呼び出し、最新評価・履歴保存を1記事単位で行う。実行開始時は、`(user_id, content_annotation_id)` を条件に `status='evaluating'` へ原子的に更新し、更新行数で開始可否を判定する。評価行がない場合は、`INSERT ... ON CONFLICT DO NOTHING` と条件付き更新を同一DBトランザクション内で行い、一意制約競合時も開始できるのは1実行だけにする。
+
+`evaluating` の `updated_at` が **15分**を超えて更新されていれば stale とみなし、`evaluation_failed`・`last_error_code='evaluation_stale'` に更新してから新しい `evaluation_run_id` で再実行できる。実行完了・失敗の保存は開始時の `evaluation_run_id` が一致する場合だけ許可する。これにより、プロセス異常終了後の固着と、古い実行による結果上書きを防ぐ。
+
+手動評価の実行経路は `maxDuration=180秒`、LLM 1回あたりのタイムアウトは45秒、試行回数は初回を含めて最大3回、試行間隔は2秒とする。定期Cron、claim RPC、ジョブキューはフェーズ1の実装対象に含めない。
+
+#### フェーズ2：定期評価・非同期ジョブ（Q8確定後）
+
 | 項目 | 方針 | 既存正本 |
 |---|---|---|
 | Cron 定義 | `CRON_CONFIGS` に `ga4ContentEvaluate` を追加 | `src/server/lib/cron-definitions.ts` |
@@ -358,19 +418,19 @@ LLM へアクセストークン、個人情報、不要な生ログ、全記事�
 | 二重実行防止 | (1) `(user_id, content_annotation_id)` ユニーク制約 (2) claim RPC の `FOR UPDATE SKIP LOCKED` (3) `evaluating` 状態 | `claim_gsc_suggestion_jobs` |
 | 手動実行 | Server Action から単記事評価。Cron とは別経路 | GSC 手動評価と同型 |
 
-定期評価を MVP に含めるかは **Q8** で確定。確定までは **手動実行のみ** を実装対象とする。
+Q8で定期評価をMVPに含めると確定した場合のみ、フェーズ2をフェーズ1に続けて実装する。Q8未確定の間は、フェーズ1の手動評価を受入対象とし、claim処理（claim RPC・ジョブキュー）を先行実装しない。
 
 ### 8.2 Kill Switch（外部依存停止）
 
-既存の feature flag 基盤は存在しない（`src/lib/constants.ts` の「Feature Flags」は AI モデル設定用）。MVP では **環境変数** で停止する。
+既存の feature flag 基盤は存在しない（`src/lib/constants.ts` の「Feature Flags」は AI モデル設定用）。MVPでは専用の `ga4_content_evaluation_settings` テーブルを使用し、DBの`enabled`をKill Switchとする。環境変数は使わない。
 
-| 設定値 | 意味 | 停止時 UI |
+| DB設定 | 意味 | 停止時 UI |
 |---|---|---|
-| 未設定 | **停止**（安全側。未設定 = 未有効化） | `/analytics` に「GA4コンテンツ評価は現在停止中です」を表示。評価実行ボタン非活性 |
-| `false` | **停止** | 同上 |
-| `true`（明示のみ） | 評価実行を許可（ロール `admin`/`paid` は別途必須） | 通常表示 |
+| 行なし / DB読取失敗 | **停止**（安全側。未設定 = 未有効化） | `/analytics/[annotationId]` に「GA4コンテンツ評価は現在停止中です」を表示し、評価実行ボタンを非活性にする。`/analytics` 一覧は評価状態を停止中として表示する（一覧に評価実行ボタンは置かない） |
+| `enabled=false` | **停止** | 同上 |
+| `enabled=true` | 評価実行を許可（ロール `admin`/`paid` は別途必須） | 通常表示 |
 
-**判定ロジック:** `process.env.GA4_CONTENT_EVALUATION_ENABLED === 'true'` のときのみ許可。未設定・空文字・`false` その他はすべて停止。
+**判定ロジック:** 各評価リクエストで `ga4_content_evaluation_settings.enabled IS TRUE` を確認した場合のみ許可する。設定変更は次のリクエストから反映し、アプリの再デプロイを必要としない。DB読取失敗時も評価APIは実行しない。
 
 GA4/GSC **取込 Cron は停止しない**。評価処理だけを切り離す（§14 ロールバックと整合）。
 
@@ -451,29 +511,61 @@ GA4/GSC **取込 Cron は停止しない**。評価処理だけを切り離す�
 
 ## 10. 画面仕様
 
-対象画面: **`/analytics`**（`app/analytics/`）。`app/ga4-dashboard/` は §3.2 Non-goal。
+### 10.1 画面責務
 
-- 既存のコンテンツ分析・評価一覧（`AnalyticsTable.tsx`）に、GA4 評価状態、評価点数、パターン、最終評価日時を追加する。
-- `unassessed` / GA4 未評価をフィルタできるようにする（GSC 未評価フィルタ `p_has_unstarted_gsc_evaluation` と同型）。
-- 評価済み記事では、診断、根拠、改善提案、対象期間、データ品質を表示する。詳細 UI は **`/analytics` 内ドロワー** を第一案とする（GSC の `EvaluationHistoryTab` パターンを参考。最終配置は Q5 の UI たたき台合意後）。
-- 評価実行中（`evaluating`）、データ不足、再認証必要、評価失敗、Kill Switch 停止中を区別して表示する。
-- 70点等の閾値はフィルタ・並び替え用途に限定し、提案内容を画面側で固定分岐しない（Must かは Q2）。
+| 画面 | 責務 | 対象 |
+|---|---|---|
+| `/analytics` | コンテンツ一覧、カテゴリ/未評価フィルタ、評価状態・点数・パターン・最終評価日時の表示。記事詳細への導線 | `app/analytics/`、`AnalyticsTable.tsx` |
+| `/analytics/[annotationId]` | 1記事の統合詳細。GA4指標、GSC指標、検索クエリ、GA4/GSC統合評価、評価履歴、手動評価・再実行 | 既存 `app/gsc-dashboard/` の記事詳細機能を移設・再構成 |
+| `/ga4-dashboard` | サイト全体のGA4集計、ランキング、時系列の可視化 | 既存画面を維持。GA4コンテンツ評価は追加しない |
+| `/gsc-dashboard?annotationId=...` | 既存ブックマーク・開きっぱなしの別タブ向けredirect専用の互換入口。`/analytics/[annotationId]`へredirect | 旧画面UI・新規機能は追加しない |
+
+### 10.2 一覧画面 `/analytics`
+
+- 既存のコンテンツ分析一覧（`AnalyticsTable.tsx`）に、GA4評価状態、評価点数、パターン、最終評価日時を追加する。
+- `unassessed` / GA4未評価をフィルタできるようにする（GSC未評価フィルタ `p_has_unstarted_gsc_evaluation` と同型）。
+- 一覧には診断・根拠・改善提案などの長文要約列を追加しない。既存テーブルの横幅とレイアウトを維持する。
+- 各記事から `/analytics/[annotationId]` へ遷移する。遷移元の一覧URL（`page`、`category`、`uncategorized`、`start`、`end`、`unread_suggestion`、`gsc_evaluation`）を`returnTo`として引き継ぐ。
 - 文言は `.agents/skills/growmate-ui-ux/ui-text.md` に準拠する。
 
-**リリース前ゲート:** クライアント文脈 §1.8 に従い、**UI たたき台の事前合意**を `spec-to-pr` 前の必須条件とする（Q5）。合意前はワイヤーフレームレベルの配置・文言を本書で固定しない。
+### 10.3 記事詳細画面 `/analytics/[annotationId]`
+
+- 既存 `/gsc-dashboard?annotationId=...` の概要、検索クエリ分析、評価履歴を移設する。
+- GA4指標とGSC指標を同じ記事単位で表示し、GA4/GSC統合評価の診断、根拠、改善提案、対象期間、データ品質、プロンプトバージョンを確認できるようにする。
+- タブ構成は「概要（GA4/GSC統合）」「検索クエリ」「評価履歴」を基本とし、UIたたき台合意（Q5）で最終確定する。
+- 評価実行中（`evaluating`）、データ不足、再認証必要、評価失敗、Kill Switch停止中を区別して表示する。
+- `returnTo`が検証済みの同一サイト内パスであれば「コンテンツ一覧に戻る」に使用し、未指定・不正値の場合は`/analytics`へ戻す。外部URLへ遷移させない。
+- 旧URL `/gsc-dashboard?annotationId=...` は、記事IDを維持して本画面へredirectする。旧URLの利用者がいる前提でredirectは削除しないが、旧画面UIは残さない。
+- 70点等の閾値はフィルタ・並び替え用途に限定し、提案内容を画面側で固定分岐しない（MustかはQ2）。
+
+### 10.4 UI合意ゲート
+
+クライアント文脈 §1.8 に従い、UIたたき台の事前合意をフェーズ1のUI実装前、かつ `spec-to-pr` 前の必須条件とする（Q5）。合意前はタブ配置・詳細文言を固定しない。
 
 ## 11. 非機能要件
 
-- 同一ユーザー・同一記事の評価が同時に二重実行されない（§8.1: ユニーク制約 + claim RPC + `evaluating`）。
+- フェーズ1では状態と `(user_id, content_annotation_id)` の一意制約により、同一ユーザー・同一記事の手動評価が同時に二重実行されない。フェーズ2ではこれにclaim RPCを加える。
 - 外部 API または LLM の一時障害で、既存の正常結果が失われない。
 - 評価結果に対象期間、データ取得日時、プロンプトバージョンを表示または追跡できる。
 - LLM 入力は §6.3.2 の上限を持ち、上限到達時に `data_quality=partial` または `evaluation_failed` で検知できる。
 - Google 認証情報・Service Role キー・個人情報を LLM 入力や通常ログへ出さない。
 - DB 取得は PostgREST の 1000 行上限を前提に、狙い撃ち、ページング、DB 側集約のいずれかを使用する。
-- Cron `maxDuration` 300 秒・バッチ時間予算 280 秒を超える評価は中断し、残件は次回 Cron へ委譲する。
-- Kill Switch（§8.2）によりデプロイなしで LLM 評価を停止できる。
+- フェーズ2でCronを対象化する場合、`maxDuration` 300 秒・バッチ時間予算 280 秒を超える評価は中断し、残件は次回 Cron へ委譲する。
+- Kill Switch（§8.2）により、DB設定変更だけでデプロイなしに LLM 評価を停止できる。
 
 ## 12. 受入条件（Gherkin）
+
+### AC-00 フェーズ0のリファクタリングで既存挙動を維持する
+
+```gherkin
+Feature: GA4コンテンツ評価の実装基盤
+
+  Scenario: 事前リファクタリング後も既存の分析一覧が同じ結果を返す
+    Given リファクタリング前の既存GA4/GSCデータと同じ入力がある
+    When フェーズ0のリファクタリング後に /analytics 一覧を表示する
+    Then ページング、既存フィルタ、GA4集計値、既存エラー表示の挙動が変わらない
+    And 既存テスト、型チェック、Lint、ビルドが成功する
+```
 
 ### AC-01 評価可能な記事を評価できる
 
@@ -534,11 +626,12 @@ Feature: GA4コンテンツ評価
 
 ```gherkin
   Scenario: 評価機能が Kill Switch で停止されている
-    Given 環境変数 GA4_CONTENT_EVALUATION_ENABLED が未設定または false である
+    Given `ga4_content_evaluation_settings.enabled` が false、行なし、またはDB読取失敗である
     When 記事の評価を実行しようとする
     Then 評価 API は実行されない
-    And /analytics に停止中の表示が出る
-    And 評価実行ボタンは非活性である
+    And /analytics/[annotationId] に停止中の表示が出る
+    And 記事詳細の評価実行ボタンは非活性である
+    And /analytics 一覧の評価状態が停止中として表示される
 ```
 
 ### AC-07 同一記事の二重実行を防ぐ
@@ -548,10 +641,21 @@ Feature: GA4コンテンツ評価
     Given 記事 A の評価が evaluating 状態である
     When 同じ記事 A に対して別の評価を開始しようとする
     Then 2 件目の評価は開始されない
-    And 既存の evaluating 状態または claim が保持される
+    And 既存の `evaluating` 状態が保持される
 ```
 
-### AC-08 評価実行中状態を表示する
+フェーズ1は評価状態と一意制約で防止し、フェーズ2はこれにclaim RPCの`FOR UPDATE SKIP LOCKED`を加える。
+
+```gherkin
+  Scenario: 異常終了した評価をTTL経過後に再実行する
+    Given 記事 A の評価が `evaluating` 状態で、`updated_at` が15分より古い
+    When 記事 A の評価を再実行する
+    Then staleな実行は `evaluation_failed` と `evaluation_stale` として記録される
+    And 新しい `evaluation_run_id` で評価が開始される
+    And staleな実行が新しい評価結果を上書きできない
+```
+
+### AC-08 評価実行中状態を表示する（フェーズ2）
 
 ```gherkin
   Scenario: 評価実行中の記事を一覧で確認する
@@ -561,31 +665,56 @@ Feature: GA4コンテンツ評価
     And 評価完了まで evaluated 結果は上書き表示されない
 ```
 
+### AC-09 記事詳細画面へ移設し、旧URLを維持する
+
+```gherkin
+  Scenario: 一覧からGA4/GSC統合記事詳細へ遷移する
+    Given `/analytics` の一覧に記事 A が表示されている
+    And 一覧URLにページ、カテゴリ、期間などのフィルタが指定されている
+    When 記事 A の詳細を開く
+    Then `/analytics/[annotationId]` でGA4指標、GSC指標、検索クエリ、統合評価履歴を確認できる
+    And 「コンテンツ一覧に戻る」で元の一覧フィルタが復元される
+
+  Scenario: 旧GSC詳細URLを開く
+    Given `/gsc-dashboard?annotationId=記事A` を開く
+    When redirect が実行される
+    Then `/analytics/記事A` に遷移する
+    And 記事Aの既存GSC詳細情報と評価履歴を確認できる
+```
+
 ## 13. テスト計画
 
+- フェーズ0回帰テスト: `/analytics` の既存一覧、ページング、フィルタ、GA4集計値、GSC表示、既存エラー表示をリファクタリング前後で比較する。
+- フェーズ0単体テスト: 評価Context組立、欠損判定、状態遷移、エラーコード変換、構造化LLMアダプターのJSON抽出・再試行・ログ秘匿を検証する。DB fixtureは作成しない。
 - 単体テスト: URL正規化、期間集計、欠損判定、状態遷移、LLM出力スキーマ検証。
 - サービステスト: GA4/GSCデータのユーザーID分離、プロンプトのsystem/user分離、履歴保存、失敗時の既存結果保持。
 - APIテスト: GA4互換性エラー、GSC未連携、Google再認証、429/5xx、LLMタイムアウト。
-- DBテスト: RLS、インデックス、ユニーク制約、ロールバック、ユーザー間の参照遮断。
-- E2E: 未評価フィルタ、評価実行、評価結果表示、データ不足・失敗・再認証表示。
+- DBテスト: RLS、インデックス、ユニーク制約、`evaluation_run_id` 条件付き更新、stale回復、Kill Switch設定のデフォルトfalse・権限、ロールバック、ユーザー間の参照遮断。評価テーブルのDB fixtureはフェーズ1で追加する。
+- E2E: 未評価フィルタ、一覧から記事詳細への遷移、GA4/GSC統合評価表示、評価実行、評価結果表示、データ不足・失敗・再認証表示、旧GSC詳細URL redirect、戻りクエリ復元。
 - 実データ検証: 少なくとも1ユーザーの実GA4/GSCデータを使い、画面値・保存値・API応答を突合する。モックの結果だけで完了判定しない。
+- フェーズ2テスト（実施時のみ）: claim RPCの同時実行、Cron時間予算超過、残ジョブの次回委譲、非同期再試行、重複評価防止を検証する。
+- フェーズ3テスト（実施時のみ）: Compatibility API確認、追加指標の取込値、既存指標との期間集計整合を実データで検証する。
 
 ## 14. リリース・ロールバック
 
 ### リリース順序
 
-1. DB マイグレーションを適用する。
-2. 生成型を更新する。未適用環境では pending 型を使用し、適用後に削除する。
-3. 評価サービス・API・ジョブをデプロイする（`GA4_CONTENT_EVALUATION_ENABLED=false` でデプロイ）。
-4. 環境変数 `GA4_CONTENT_EVALUATION_ENABLED=true` をステージングで有効化し、実データで評価結果とエラー状態を検証する。
-5. UI たたき台合意（Q5）後、本番 UI を確定デプロイする。
-6. 一般ユーザーへ段階展開する。
+1. フェーズ0のリファクタリングを適用する。利用者向け挙動を変えず、回帰テスト・型チェック・Lint・ビルドを通す。
+2. Q5のUIたたき台合意を完了し、`spec-to-pr` とフェーズ1のUI実装着手条件を満たす。
+3. フェーズ1のDB マイグレーションを適用する。Kill Switch設定行は `enabled=false` で作成する。
+4. 生成型を更新する。未適用環境では pending 型を使用し、適用後に削除する。
+5. フェーズ1の評価サービス・手動API・UIをKill Switch無効状態でデプロイする。
+6. `/gsc-dashboard?annotationId=...` の互換redirectと、一覧・GA4ランキングから記事詳細への導線をデプロイする。旧URL、別タブ、ブックマーク、一覧フィルタ付きの戻り遷移を検証する。
+7. 許可された運用手順でステージングのDB設定を `enabled=true` に変更し、実データで評価結果とエラー状態を検証する。
+8. Q8で定期評価を含めると確定した場合のみ、フェーズ2のCron・非同期ジョブを追加する。
+9. 一般ユーザーへ段階展開する。
 
 ### ロールバック
 
-- `GA4_CONTENT_EVALUATION_ENABLED=false` で LLM 評価実行を即時停止する（§8.2）。
+- `ga4_content_evaluation_settings.enabled=false` に変更して LLM 評価実行を次リクエストから停止する（§8.2）。DB設定の変更手段が利用できない場合は、評価APIを安全側で停止する。
+- 画面移設で問題が発生した場合は、旧 `/gsc-dashboard?annotationId=...` redirectと旧導線を一時的に維持し、評価データ・履歴を削除せずに新詳細画面への導線だけを戻せるようにする。
 - 既存の GA4/GSC 取込 Cron は停止せず、評価処理だけを停止できる構成にする。
-- DB ロールバックが必要な場合は、評価専用テーブル・インデックス・ポリシーを対象に限定する。既存 GA4/GSC テーブルは削除しない。
+- DB ロールバックが必要な場合は、評価専用テーブル・インデックス・ポリシー・`ga4_content_evaluation_settings` を対象に限定する。既存 GA4/GSC テーブルは削除しない。
 - 評価履歴は削除せず、再デプロイ後の再評価に利用できるよう保持する。
 
 ## 15. 未確定事項（クライアント確認中）
@@ -598,7 +727,7 @@ Feature: GA4コンテンツ評価
 | Q2 | 「70点以下の一覧化」は Must の UI フィルタか、任意か | §1.9.2 vs §6.4 | UI 仕様確定 |
 | Q3 | ROI は今回スコープか。費用・売上データの所在はどこか | §1.9.2 vs §3.2 Non-goal | 指標セット確定 |
 | Q4 | 改善提案のメール配信を Non-goal にしてよいか（§1.9.4 との縮小合意） | メール連携言及 | スコープ確定 |
-| Q5 | UI たたき台合意を `spec-to-pr` 前の必須ゲートにするか。別作業で先行共有するか | §1.8 開発前 UI 合意 | **Yes**（画面配置・文言） |
+| Q5 | UI たたき台合意をフェーズ1のUI実装前、かつ `spec-to-pr` 前の必須ゲートとする方針でよいか | §1.8 開発前 UI 合意。現行仮置きは「必須」 | **Yes**（画面配置・文言） |
 | Q6 | GA4 評価結果を共有ユーザー（スタッフ等）が閲覧できるべきか | 既存 RPC の共有モデル vs 新規 RLS owner-only | RLS/RPC 設計 |
 | Q7 | `engagementRate`・PV（`screenPageViews`）の GA4 API 追加取得は MVP 必須か | 既存取込に未取得 | 取込パイプライン範囲 |
 | Q8 | 評価実行は手動のみか、定期 Cron も含むか。1 回あたり記事数・コスト上限は | §8.1 暫定は手動のみ | Cron/コスト設計 |
@@ -699,11 +828,15 @@ Feature: GA4コンテンツ評価
 
 ## 17. 変更影響とドキュメント
 
-- 変更対象候補: `src/server/services/`、`src/server/actions/` または Route Handler、`src/types/`、`supabase/migrations/`、`app/analytics/`（`AnalyticsTable.tsx` 等）。
-- 変更対象外: `app/ga4-dashboard/`（§3.2 Non-goal）、`ga4ImportService`（Q7 確定まで追加指標改修なし）。
-- 新規環境変数: `GA4_CONTENT_EVALUATION_ENABLED`（boolean, デフォルト false）。secret 管理・再起動条件を README に追記する。
-- `README.md`: 上記 env 追加時に更新する。
-- 実装前に本書をレビューし、§15 の未確定事項を確定したうえで、テーブル項目・API 契約・画面文言を固定する。
+- フェーズ0の変更対象候補: `src/server/services/analyticsContentService.ts` の内部分離、新規の評価Context・状態・エラー型、新規の構造化LLMアダプター、単体/回帰テスト。`contentAnnotationSummaryService.ts` と `llmService.ts` は既存挙動不変のため変更しない。
+- フェーズ1の変更対象候補: `src/server/services/`、`src/server/actions/` または Route Handler、`src/types/`、`supabase/migrations/`、`app/analytics/`（`AnalyticsTable.tsx` 等）、`app/analytics/[annotationId]/`、`ga4_content_evaluation_settings` の参照処理。
+- 既存GSC詳細画面の移設対象: `app/gsc-dashboard/` のページ/コンポーネント、`src/server/actions/gscDashboard.actions.ts` の `revalidatePath('/gsc-dashboard')`、`src/server/actions/gscNotification.actions.ts` の同パス、`src/components/GlobalToastBridge.tsx` の `/gsc-dashboard` 判定、`src/components/AnalyticsTable.tsx` の別タブ導線。
+- 移設時の導線修正対象: `app/ga4-dashboard/components/RankingTab.tsx` の `/analytics?annotationId=...` 死リンクを `/analytics/[annotationId]` と`returnTo`付き導線へ修正する。`app/ga4-dashboard/page.tsx` の未使用 `annotationId` / `path` searchParams 型も、移設方針に合わせて削除または実装確認する。
+- フェーズ2の変更対象候補: `src/server/lib/cron-definitions.ts`、`app/api/cron/`、claim RPC、非同期ジョブサービス、監視定義。
+- フェーズ3の変更対象候補: `ga4ImportService`、`ga4_page_metrics_daily` の追加指標migration、Compatibility確認、Context Assembly Contract、プロンプト入力契約、実データ検証。
+- 変更対象外: `app/ga4-dashboard/` の画面構成・集計ロジック（§3.2 Non-goal）。ただし、記事詳細へのリンク修正は移設互換対応としてフェーズ1で行う。`ga4ImportService` はフェーズ3を対象化するまで改修しない。
+- `README.md`: Kill SwitchのDB設定変更手順、フェーズ1の手動評価経路、設定変更時の安全側挙動を追記する。READMEの更新要否・対象セクションは実装時の `readme_sync` で最終確認する。
+- 実装前に本書をレビューし、§15 の未確定事項を確定したうえで、フェーズ1のテーブル項目・API契約・画面文言を固定する。フェーズ2/3は対象化した時点で追加レビューする。
 
 ## 18. 変更履歴
 
@@ -712,6 +845,9 @@ Feature: GA4コンテンツ評価
 | 2026-08-12 | 会議内容、既存実装、Google公式仕様をもとに初版作成 | ドラフト |
 | 2026-08-12 | spec-review audit 指摘（SPEC-AUTHZ-001 〜 SPEC-CLIENT-001）を反映 | ドラフト・レビュー待ち |
 | 2026-08-12 | spec-review audit 第2回（SPEC-OPS-002 〜 SPEC-AC-001）を反映 | ドラフト・レビュー待ち |
+| 2026-08-12 | 事前リファクタリング（フェーズ0）と手動MVP・Cron・追加指標の段階実装、概算工数を追加 | ドラフト・レビュー待ち |
+| 2026-08-12 | サブエージェントレビュー指摘（挙動不変範囲、評価固着、UIゲート、Kill Switch、手動時間予算、状態定義、フェーズ3契約）を反映 | ドラフト・レビュー待ち |
+| 2026-08-12 | `/analytics`一覧・`/analytics/[annotationId]`統合詳細・`/ga4-dashboard`集計の3層構成、GSC詳細移設、旧URL redirect、戻りクエリ復元を追加 | ドラフト・レビュー待ち |
 
 ## 19. レビュー記録
 
@@ -734,6 +870,7 @@ Feature: GA4コンテンツ評価
 | SPEC-LLM-003 | 修正 | §9.4.1 再試行回数 3・間隔固定 |
 | SPEC-TMPL-001 | 修正 | §2.4 KPI 表、§2.5 関係者、§2.6 As-Is/To-Be |
 | SPEC-AC-001 | 修正 | §12 AC-06〜08 追加 |
+| SPEC-UI-001 | 修正 | `/analytics`一覧・`/analytics/[annotationId]`統合詳細・`/ga4-dashboard`集計の責務分離、GSC詳細移設と旧URL互換を追加 |
 
 ### 公式ドキュメント照合
 
