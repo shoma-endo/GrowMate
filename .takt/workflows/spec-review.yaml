@@ -35,8 +35,7 @@ steps:
     persona: planner
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       レビュー対象の仕様書を特定し、適用する観点を決定してください。
 
@@ -72,8 +71,7 @@ steps:
     knowledge:
       - architecture
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       `.agents/skills/spec-review/SKILL.md` を正本として、対象仕様書をレビューしてください。
 
