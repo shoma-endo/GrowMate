@@ -159,7 +159,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 - **型チェック**: TypeScript strict mode
 - **リンター**: ESLint, eslint-config-next
-- **AI開発workflow**: Takt `0.56.0`（Node.js `>=24.15.0`。workflow変更後は `takt workflow doctor` で検証）
+- **AI開発workflow**: Takt `0.58.0`（Node.js `>=24.15.0`。workflow変更後は `takt workflow doctor` で検証）
 - **コード整形**: `.prettierrc`（エディタ向け。Prettier は npm 依存に未登録）
 - **ビルド**: Turbopack（開発）/ Next.js build
 - **テスト**: Vitest、`@vitest/coverage-v8`（コアロジック・入力バリデーション）
@@ -210,7 +210,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 ```bash
 # GrowMateアプリ: Node.js 20以上
-# Takt 0.56.0: Node.js 24.15.0以上
+# Takt 0.58.0: Node.js 24.15.0以上
 npm ci
 # .env.local を作成し、src/env.ts の clientEnvSchema / serverEnvSchema を参照してキーを埋める
 npm run dev  # http://localhost:3000
@@ -218,7 +218,7 @@ npm run dev  # http://localhost:3000
 
 ### 仕様確認フロー
 
-新規機能は、要件確認・Gherkin承認・概算工数と着手判断・要件定義・仕様レビュー・実装の順に進めます。詳細は [`docs/development-workflow.md`](docs/development-workflow.md) を参照してください。
+新規機能は、標準 Grill Me による要件確認・Gherkin承認・概算工数と着手判断・要件定義・仕様レビュー・実装の順に進めます。詳細は [`docs/development-workflow.md`](docs/development-workflow.md) を参照してください。
 
 ```bash
 takt -w grill-to-gherkin -t "実装したい機能の概要"

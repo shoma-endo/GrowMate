@@ -50,8 +50,7 @@ steps:
     knowledge:
       - architecture
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       `docs/plans/` の仕様書を起点に、GrowMate の実装計画を作成してください。
 
@@ -162,8 +161,7 @@ steps:
       - ai-antipattern
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: ai-antipattern-review
     rules:
       - condition: AI特有の問題が見つからない
@@ -352,8 +350,7 @@ steps:
     knowledge:
       - architecture
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       `.agents/skills/quality-gate/SKILL.md` と `.agents/skills/quality-gate/self-review.md` に従い、2パスセルフレビューを実施してください。
 
@@ -388,8 +385,7 @@ steps:
     persona: reporter
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       push 前に、Report Directory と source run chain の最新レポートから、PR 本文の正本となる `pr-summary.md` を作成してください。
 

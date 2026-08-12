@@ -6,6 +6,7 @@ workflow_config:
       network_access: true
 max_steps: 20
 initial_step: grill
+interactive_mode: grill-me
 
 steps:
   - name: grill
@@ -15,29 +16,26 @@ steps:
     persona: planner
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
-      依頼内容と既存コード・関連仕様を読み、実装前に解消すべき曖昧さだけを確認してください。
+      TAKT標準の Grill Me 対話と `/go` によって生成された Markdown + Gherkin の指示書を、workflow の要件記録へ正規化してください。
 
       目的:
-      - 人間の認知負荷を下げるため、質問は重要度の高いものから一度にまとめる。
+      - 標準 Grill Me が一問ずつ確認した決定事項を、後続ステップが追跡できる形で記録する。
       - コードを変更しない。推測で要件を補完しない。
-      - 既にコード・仕様・既存ルールから確定できることは質問しない。
-      - 実装方針ではなく、利用者から見える振る舞い・入力・結果・失敗時の挙動を確認する。
+      - この step では追加質問をしない。重要情報が不足している場合は `要件を確定できない` として停止し、標準 Grill Me を再実行する。
+      - `assistant.gherkin: true` により生成された Gherkin を、後続の Gherkin 検証の入力として保持する。
 
       手順:
-      1. 依頼内容、関連する docs/plans、既存実装、AGENTS.md、GrowMate knowledge を読む。
+      1. 標準 Grill Me が作成した最終指示書、関連する docs/plans、既存実装、AGENTS.md、GrowMate knowledge を読む。
       2. `docs/templates/requirement-definition.md` をチェックリストとして読み、目的、業務、機能、非機能、制約、トレードオフ、リスク、テスト・リリースの不足を確認する。
-      3. 曖昧な要件、複数解釈できる挙動、正常系・失敗系・境界条件の不足を列挙する。
-      4. 回答が必要な質問だけを最大7件に絞り、各質問に「なぜ必要か」を添える。質問は要件定義の不足項目ごとに分類する。
-      5. 回答済みの質問は決定事項として固定し、同じ質問を繰り返さない。
-      6. Gherkinを反映する対象仕様書のパス（既存または新規の `docs/plans/<slug>.md`）が不明な場合は質問する。
-      7. 未解決の質問がある場合は、最後に `ユーザー入力が必要` と明記する。
-      8. 対象仕様書パスと要件が確定し、Gherkin化できる場合は、最後に `要件が明確になり、Gherkin化可能` と明記する。
+      3. 指示書に明示された決定事項、未確定事項、対象仕様書パス、Non-goals、利用者から見える振る舞いを抽出する。
+      4. 正常系・失敗系・境界条件が指示書に含まれているか確認する。根拠のないケースは追加しない。
+      5. 対象仕様書パスと要件が確定し、Gherkinを検証できる場合は、最後に `要件が明確になり、Gherkin化可能` と明記する。
+      6. 必須情報が不足している場合は、最後に `要件を確定できない` と明記する。
 
       出力では、質問、回答、決定事項、未確定事項、Non-goals を分けてください。
-      ユーザーが回答した内容と既存資料から確認できた内容を混同しないでください。
+      標準 Grill Me でユーザーが回答した内容、既存資料から確認できた内容、推測を混同しないでください。
     output_contracts:
       report:
         - name: 01-grill.md
@@ -51,7 +49,7 @@ steps:
             - {既存または新規の docs/plans/<slug>.md}
 
             ## 確認質問
-            - {質問と、必要な理由}
+            - {標準 Grill Me で確認済みの質問と回答。なければ「なし」}
 
             ## 未確定事項
             - {未回答または根拠不足の事項}
@@ -69,25 +67,15 @@ steps:
             - {今回扱わない事項}
 
             ## 判定
-            `ユーザー入力が必要` または `要件が明確になり、Gherkin化可能`
+            `要件が明確になり、Gherkin化可能` または `要件を確定できない`
           use_judge: false
     rules:
-      - condition: ユーザー入力が必要
-        next: grill
-        requires_user_input: true
-        interactive_only: true
-        appendix: |
-          この workflow は対話的な要件確認が必要です。`takt` の対話モードで回答してください。
-      - condition: ユーザー入力が必要
-        next: ABORT
-        appendix: |
-          この workflow は対話的な要件確認が必要です。`takt` の対話モードで回答してください。
       - condition: 要件が明確になり、Gherkin化可能
         next: gherkin
       - condition: 要件を確定できない
         next: ABORT
         appendix: |
-          要件を確定できませんでした。`01-grill.md` の未確定事項を確認し、依頼内容または仕様書を更新してください。
+          要件を確定できませんでした。標準 `grill-me` で不足する判断事項を確認してから再実行してください。
 
   - name: gherkin
     tags:
@@ -96,8 +84,7 @@ steps:
     persona: planner
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       `01-grill.md` と元の依頼、既存仕様・コードを根拠に、合意済みの振る舞いだけを Gherkin に変換してください。
 
@@ -105,7 +92,7 @@ steps:
       - 実装やファイル編集は行わない。
       - 新しい要件を発明しない。根拠のない仕様は `未確定事項` に戻す。
       - `Feature`、必要な `Rule`、`Scenario`、`Given`、`When`、`Then` を使う。
-      - 正常系だけでなく、Grillで確認された失敗系・境界条件も含める。
+      - 正常系だけでなく、Grill Meで確認された失敗系・境界条件も含める。
       - 1シナリオに複数の目的を混ぜない。
       - 仕様として検証可能な具体性を持たせる。実装クラス名・DB内部名への依存は避ける。
       - どの決定事項から導いたかを、Gherkinの後に対応表として記録する。
@@ -130,7 +117,7 @@ steps:
             ```
 
             ## 決定事項との対応
-            - {Gherkinのシナリオ} ← {Grillで確定した決定事項}
+            - {Gherkinのシナリオ} ← {Grill Meで確定した決定事項}
 
             ## 未確定事項
             - {あれば記載}
@@ -140,7 +127,9 @@ steps:
           use_judge: false
     rules:
       - condition: 追加確認が必要
-        next: grill
+        next: ABORT
+        appendix: |
+          Gherkinの追加確認が必要です。`takt -w grill-to-gherkin -t "不足している要件を確認してください"` を再実行し、標準 `grill-me` で判断事項を確定してください。
       - condition: Gherkin化が完了
         next: confirm
       - condition: Gherkin化できない
@@ -155,8 +144,7 @@ steps:
     persona: supervisor
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       `01-grill.md` と `02-gherkin.md` を読み、実装前の人間承認を取得してください。
 
@@ -210,8 +198,7 @@ steps:
     persona: planner
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`docs/templates/requirement-definition.md` を読み、実装着手判断のための概算工数を作成してください。
 
@@ -274,8 +261,7 @@ steps:
     persona: supervisor
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`05-rough-estimate.md` を読み、概算工数と前提・不確実性を人間に確認してください。
 
@@ -284,7 +270,7 @@ steps:
       - 概算合計、想定スケジュール、信頼度、主要な不確実性、対象外を簡潔に示す。
       - ユーザーに次のいずれかを選んでもらう。
         - `着手承認`: 概算を前提として仕様書作成へ進む。
-        - `要件再確認が必要`: Grillへ戻り、要件または前提を見直す。
+        - `要件再確認が必要`: workflowを終了し、標準 `grill-me` を再実行して要件または前提を見直す。
         - `見送り`: 今回は開発を進めない。
       - ユーザーの明示的な判断なしに handoff へ進めない。
       - ユーザーが判断を保留した場合は、最後に `ユーザー確認が必要` と明記する。
@@ -312,11 +298,9 @@ steps:
       - condition: 着手承認
         next: handoff
       - condition: 要件再確認が必要
-        next: grill
-        requires_user_input: true
-        interactive_only: true
+        next: ABORT
         appendix: |
-          要件または概算前提の再確認が必要です。`takt` の対話モードで見直す内容を入力してください。
+          要件または概算前提の再確認が必要です。`takt -w grill-to-gherkin -t "要件または概算前提を再確認してください"` を再実行し、標準 `grill-me` で見直してください。
       - condition: 見送り
         next: COMPLETE
       - condition: ユーザー確認が必要
@@ -333,8 +317,7 @@ steps:
     persona: planner
     knowledge:
       - growmate
-    provider_options:
-      extends: review-readonly
+    capabilities: readonly
     instruction: |
       `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`05-rough-estimate.md`、`06-estimate-confirmation.md` を読み、仕様書レビューへ渡す引き継ぎレポートを作成してください。
 

@@ -1,6 +1,6 @@
 # GrowMate 新規開発フロー
 
-GrowMate の新規機能は、要件を確認してから仕様書をレビューし、仕様書を起点に実装する。
+GrowMate の新規機能は、TAKT標準の Grill Me で要件を確認してから仕様書をレビューし、仕様書を起点に実装する。
 
 ## 正本と役割
 
@@ -15,9 +15,9 @@ GrowMate の新規機能は、要件を確認してから仕様書をレビュ�
 
 ```text
 依頼・アイデア
-    ↓
-grill-to-gherkin
-    ↓  Grill の回答と Gherkin を承認
+    ↓  TAKT標準 Grill Me + Markdown/Gherkin 指示書
+    grill-to-gherkin
+    ↓  要件記録と Gherkin を検証・承認
 05-rough-estimate.md
     ↓
 06-estimate-confirmation.md
@@ -33,13 +33,17 @@ spec-to-pr
 
 ## 1. 要件を Grill する
 
-依頼がまだ粗い場合は、対話型 workflow を実行する。
+依頼がまだ粗い場合は、対話型 workflow を実行する。`grill-to-gherkin` は TAKT 標準の Grill Me を既定モードにしている。
 
 ```bash
 takt -w grill-to-gherkin -t "実装したい機能の概要"
 ```
 
-Grill は次を確認する。
+Grill Me は重要な判断を推奨案付きで一問ずつ確認する。`/go` を入力すると、`assistant.gherkin: true` により Markdown + Gherkin の実行指示書が生成される。
+
+workflow の最初の `grill` step は追加質問をせず、その指示書を `01-grill.md` の決定事項・未確定事項・Non-goals へ正規化する。
+
+確認対象は次のとおり。
 
 - 対象仕様書のパス（既存または新規の `docs/plans/<slug>.md`）
 - 利用者から見える振る舞い
@@ -47,11 +51,11 @@ Grill は次を確認する。
 - 複数解釈できる業務ルール
 - Non-goals
 
-この workflow は仕様書・プロダクションコードを自動編集しない。人間が質問に回答し、生成された Gherkin を承認する。
+この workflow は仕様書・プロダクションコードを自動編集しない。Grill Me の対話で人間が回答し、生成された Gherkin を承認する。
 
 成果物は `.takt/runs/<run>/reports/` に保存される。
 
-- `01-grill.md`: 質問・決定事項・未確定事項
+- `01-grill.md`: Grill Me の決定事項・未確定事項・Non-goals の記録
 - `02-gherkin.md`: Gherkin 形式の受け入れ条件
 - `03-confirmation.md`: 人間承認の結果
 - `05-rough-estimate.md`: 概算工数・前提・不確実性
@@ -78,7 +82,7 @@ Gherkinを承認したら、workflowが概算工数を作成する。
 概算作成後、workflow は自動で仕様書作成へ進まない。人間が概算・前提・不確実性を確認し、次のいずれかを判断する。
 
 - `着手承認`: 仕様書作成へ進む
-- `要件再確認が必要`: Grill に戻り、要件または前提を見直す
+- `要件再確認が必要`: workflow を終了し、標準 Grill Me を再実行して要件または前提を見直す
 - `見送り`: workflow を終了する
 
 判断結果は `06-estimate-confirmation.md` に記録する。`着手承認` がない限り、`spec-review` と実装へ進めない。
@@ -167,7 +171,7 @@ TAKT は merge を完了条件にしない。merge と本番反映は人間が�
 
 ## 開発上の原則
 
-- 曖昧な依頼は `grill-to-gherkin` で止める。
+- 曖昧な依頼は標準 `grill-me` で一問ずつ解消する。
 - Gherkin の承認後、必ず `docs/plans/` の仕様書へ反映する。
 - `spec-review` 前に実装を始めない。
 - 要件定義テンプレートの未記入項目を、理由なしで残さない。
