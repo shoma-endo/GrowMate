@@ -159,7 +159,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 - **型チェック**: TypeScript strict mode
 - **リンター**: ESLint, eslint-config-next
-- **AI開発workflow**: Takt `0.55.1`（Node.js `>=24.15.0`。workflow変更後は `takt workflow doctor` で検証）
+- **AI開発workflow**: Takt `0.56.0`（Node.js `>=24.15.0`。workflow変更後は `takt workflow doctor` で検証）
 - **コード整形**: `.prettierrc`（エディタ向け。Prettier は npm 依存に未登録）
 - **ビルド**: Turbopack（開発）/ Next.js build
 - **テスト**: Vitest、`@vitest/coverage-v8`（コアロジック・入力バリデーション）
@@ -210,10 +210,18 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 ```bash
 # GrowMateアプリ: Node.js 20以上
-# Takt 0.55.1: Node.js 24.15.0以上
+# Takt 0.56.0: Node.js 24.15.0以上
 npm ci
 # .env.local を作成し、src/env.ts の clientEnvSchema / serverEnvSchema を参照してキーを埋める
 npm run dev  # http://localhost:3000
+```
+
+### 仕様確認フロー
+
+新規機能は、要件確認・Gherkin承認・概算工数と着手判断・要件定義・仕様レビュー・実装の順に進めます。詳細は [`docs/development-workflow.md`](docs/development-workflow.md) を参照してください。
+
+```bash
+takt -w grill-to-gherkin -t "実装したい機能の概要"
 ```
 
 > **Supabase 注意**: 本番と開発で同一プロジェクトを共有しています。`npx supabase db push` をリモートに対して実行しないこと。スキーマ変更は `supabase/migrations/` にコミットし、適用は管理者が行います。
@@ -255,11 +263,12 @@ npm run dev  # http://localhost:3000
 | [`docs/context/`](docs/context/) | クライアント文脈・開発上の判断基準・調査知見 |
 | [`docs/specs/`](docs/specs/) | 機能仕様書・要件定義（実装状況は各文書を参照） |
 | [`docs/plans/`](docs/plans/) | 実装予定・設計中の仕様書 |
+| [`docs/templates/`](docs/templates/) | 要件定義などの仕様書テンプレート |
 | [`docs/runbooks/`](docs/runbooks/) | 運用手順書 |
 | [`scripts/`](scripts/) | DB・Vercel 統計、Cron、Skill 検証等の運用スクリプト |
 | [`.agents/skills/`](.agents/skills/) | AI エージェント向け Skill 正本（Codex / Claude Code / Cursor 共通） |
 | [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | エージェント共通運用ルール（`AGENTS.md`は`CLAUDE.md`のsymlink） |
-| [`.takt/`](.takt/) | 仕様書レビュー（`spec-review.yaml`）・仕様書起点 PR（`spec-to-pr.yaml`） |
+| [`.takt/`](.takt/) | 要件確認（`grill-to-gherkin.yaml`）・仕様書レビュー（`spec-review.yaml`）・仕様書起点 PR（`spec-to-pr.yaml`） |
 
 ## 🛡️ セキュリティと運用の注意点
 
