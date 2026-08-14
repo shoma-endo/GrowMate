@@ -3,12 +3,21 @@ import { redirect } from 'next/navigation';
 import AnalyticsClient from './AnalyticsClient';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
 import { gscNotificationService } from '@/server/services/gscNotificationService';
+import { instagramMediaService } from '@/server/services/instagramMediaService';
+import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
+import { isInstagramSyncEnabled } from '@/server/lib/instagram-sync-config';
+import { SupabaseService } from '@/server/services/supabaseService';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
+import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
 
 export const dynamic = 'force-dynamic';
+// Instagram 手動同期 Server Action が既定 300s を超えるため Fluid Compute 上限まで引き上げる。
+// Next.js の route segment config は静的解析のため import 定数を使えず、ここはリテラル必須。
+// 値は src/lib/constants.ts の INSTAGRAM_SYNC_MAX_DURATION_SEC と必ず一致させること。
+export const maxDuration = 800;
 
 interface AnalyticsPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -79,6 +88,42 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   }
   const { userId } = authResult;
 
+  const tabParam = Array.isArray(params?.tab) ? params.tab[0] : params?.tab;
+  const igPageParam = Array.isArray(params?.ig_page) ? params.ig_page[0] : params?.ig_page;
+  const igTypeParam = Array.isArray(params?.ig_type) ? params.ig_type[0] : params?.ig_type;
+  const igStartParam = Array.isArray(params?.ig_start) ? params.ig_start[0] : params?.ig_start;
+  const igEndParam = Array.isArray(params?.ig_end) ? params.ig_end[0] : params?.ig_end;
+  const igSortParam = Array.isArray(params?.ig_sort) ? params.ig_sort[0] : params?.ig_sort;
+
+  const connectionStatusResult = await getInstagramConnectionStatus();
+  const instagramConnected =
+    connectionStatusResult.success && (connectionStatusResult.data?.connected ?? false);
+
+  let activeTab: 'blog' | 'instagram' = tabParam === 'instagram' ? 'instagram' : 'blog';
+  if (!instagramConnected && activeTab === 'instagram') {
+    activeTab = 'blog';
+  }
+
+  const igPageParsed = Number.parseInt(igPageParam ?? '1', 10);
+  const igPage = Number.isFinite(igPageParsed) && igPageParsed > 0 ? igPageParsed : 1;
+  const igPerPage = 10;
+
+  const igType: InstagramMediaTypeFilter =
+    igTypeParam === 'reels' || igTypeParam === 'feed' ? igTypeParam : 'all';
+
+  const igDefaultEnd = addDaysISO(formatJstDateISO(new Date()), -1);
+  const igDefaultStart = addDaysISO(igDefaultEnd, -29);
+  const igStartValid = typeof igStartParam === 'string' && isValidDate(igStartParam);
+  const igEndValid = typeof igEndParam === 'string' && isValidDate(igEndParam);
+  let igStartDate = igStartValid ? igStartParam : igDefaultStart;
+  let igEndDate = igEndValid ? igEndParam : igDefaultEnd;
+  if (igStartDate > igEndDate) {
+    [igStartDate, igEndDate] = [igEndDate, igStartDate];
+  }
+
+  const igSort: InstagramMediaSortKey =
+    igSortParam === 'reach' || igSortParam === 'views' ? igSortParam : 'posted_at';
+
   // 並列でデータ取得（一覧・未読・カテゴリ一覧）
   const [analyticsPage, unreadResult, allCategoryNames] = await Promise.all([
     analyticsContentService.getPage(
@@ -98,6 +143,40 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     analyticsContentService.getAvailableCategoryNames(userId),
   ]);
   const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error } = analyticsPage;
+
+  let instagramMediaPage = {
+    items: [] as Awaited<ReturnType<typeof instagramMediaService.getPage>>['items'],
+    total: 0,
+    totalPages: 1,
+    page: igPage,
+    perPage: igPerPage,
+  };
+  let instagramLastSyncedAt: string | null = null;
+  let instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed' = 'not_started';
+
+  if (instagramConnected && activeTab === 'instagram') {
+    const supabaseService = new SupabaseService();
+    const [mediaPage, credential] = await Promise.all([
+      instagramMediaService.getPage(userId, {
+        page: igPage,
+        perPage: igPerPage,
+        type: igType,
+        startDate: igStartDate,
+        endDate: igEndDate,
+        sort: igSort,
+      }),
+      supabaseService.getInstagramCredential(userId),
+    ]);
+    instagramMediaPage = mediaPage;
+    instagramLastSyncedAt = credential?.lastSyncedAt ?? null;
+    instagramBackfillStatus =
+      credential?.backfillCompletedAt != null
+        ? 'completed'
+        : credential?.backfillCursor != null
+          ? 'in_progress'
+          : 'not_started';
+  }
+
   const currentPage = resolvedPage ?? page;
   const prevDisabled = currentPage <= 1;
   const nextDisabled = currentPage >= totalPages;
@@ -119,8 +198,17 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     if (hasUnstartedGscEvaluation) {
       query.set('gsc_evaluation', 'not_started');
     }
+    if (instagramConnected && activeTab === 'instagram') {
+      query.set('tab', 'instagram');
+      query.set('ig_page', String(igPage));
+      query.set('ig_type', igType);
+      query.set('ig_start', igStartDate);
+      query.set('ig_end', igEndDate);
+      query.set('ig_sort', igSort);
+    }
     return `/analytics?${query.toString()}`;
   };
+
   const prevHref = buildPageHref(Math.max(1, currentPage - 1));
   const nextHref = buildPageHref(Math.min(totalPages, currentPage + 1));
 
@@ -146,6 +234,19 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       hasUnreadSuggestion={hasUnreadSuggestion}
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
       hasUrlFilterParams={hasUrlFilterParams}
+      instagramConnected={instagramConnected}
+      activeTab={activeTab}
+      instagramItems={instagramMediaPage.items}
+      instagramTotal={instagramMediaPage.total}
+      instagramTotalPages={instagramMediaPage.totalPages}
+      igPage={instagramMediaPage.page}
+      igType={igType}
+      igStart={igStartDate}
+      igEnd={igEndDate}
+      igSort={igSort}
+      instagramLastSyncedAt={instagramLastSyncedAt}
+      instagramBackfillStatus={instagramBackfillStatus}
+      instagramSyncEnabled={isInstagramSyncEnabled()}
     />
   );
 }

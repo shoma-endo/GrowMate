@@ -19,7 +19,7 @@
 |------|------|-----|
 | アカウント情報 | ig_user_id, username, name, account_type, profile_picture_url, biography, website, followers_count, follows_count, media_count | `GET /me?fields=...` |
 | 投稿一覧 | id, media_type (IMAGE/VIDEO/CAROUSEL_ALBUM), media_product_type (FEED/REELS), media_url, thumbnail_url, caption, timestamp, permalink, like_count, comments_count | `GET /me/media?fields=...`（cursor ページネーション） |
-| 投稿インサイト | reach, views, likes, comments, saved, shares, total_interactions, **reposts**, **reels_skip_rate**（リールは加えて ig_reels_avg_watch_time, ig_reels_video_view_total_time）。**`reposts` / `reels_skip_rate` は 2026-08-05 追加**（クライアントが実際に見ている画面に出ているため — §3.3「Instagram アプリ画面との突き合わせ」） | `GET /{media-id}/insights?metric=...` |
+| 投稿インサイト | reach, views, likes, comments, saved, shares, total_interactions, **reels_skip_rate**（リールは加えて ig_reels_avg_watch_time, ig_reels_video_view_total_time）。~~**reposts**~~ **2026-08-08 実測で取得不能と判明、スコープから除外**（下記）。**`reels_skip_rate` は 2026-08-05 追加**（クライアントが実際に見ている画面に出ているため — §3.3「Instagram アプリ画面との突き合わせ」） | `GET /{media-id}/insights?metric=...` |
 | アカウントインサイト | reach, views, accounts_engaged, total_interactions, follower_count（日次）。**`profile_views` / `website_clicks` は 2025-01-08 に全バージョンで廃止済みのため採用しない**（§3.3）。**後継候補だった `profile_links_taps` も採用しない**（`contact_button_type` に `WEBSITE` が無い）。**「プロフィール閲覧数」は後継指標が存在せず取得不能のためスコープ外** | `GET /me/insights?metric=...&period=day` |
 
 ### 非スコープ
@@ -167,7 +167,8 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
     >
     > - `reposts`
   - **解釈**: **`reels_skip_rate` は media insights のみ**（user insights には出てこない）。user insights に追加されたのは **`reposts` のみ**。`"Applies to all versions."` は当該エントリ（Insights Metrics）に付くため **v23.0 でも利用できる**（同エントリで `crossposted_views` / `facebook_views` も追加）。「v24 以降でないと使えない」ではない
-  - **Phase 2 着手時に Changelog を必ず確認する**。廃止（`profile_views` の例）も追加（`reels_skip_rate` の例）も、**バージョンではなく Changelog に出る**
+  - **⚠ 上記解釈は実測で否定された（2026-08-08）**: 本番同期で `reposts` を含む `GET /{media-id}/insights` が**全件 HTTP 400** で失敗。レスポンス: `{"error":{"message":"Instagram Insights Media API endpoint does not support the metrics: reposts...","type":"IGApiException","code":100}}`。**Changelog の "Applies to all versions" は実際の API 提供状況と一致しない**（本仕様書で3件目の「ドキュメントと実挙動の乖離」— `account_type` の大小文字、アカウント insights の `metric_type` に続く）。`metric` はカンマ区切り一括指定のため `reposts` を含めると**他の指標（reach 等）まで巻き添えで全滅する**。**対応**: `reposts` を取得メトリクスから除外（§2 スコープから削除。`instagram_media.reposts` 列は将来の API 追従に備えて残すが当面は常に null）
+  - **Phase 2 着手時に Changelog を必ず確認する**。廃止（`profile_views` の例）も追加（`reels_skip_rate` の例）も、**バージョンではなく Changelog に出る**。ただし**追加の記載があっても実際に叩けるとは限らない**（上記 `reposts` の教訓）
 - **`follower_count` は 100 フォロワー未満のアカウントでは取得できない（2026-08-04 調査。要目視確認）**: 同ページに "**follower_count and online_followers metrics are not available on Instagram business or creator accounts with fewer than 100 followers.**" とある。§5.4 は `follower_count` を通常の列として持つが、**テスターアカウントを含む小規模アカウントでは常に空で返る**。同ページは "the API will return an empty data set instead of 0 for individual metrics"（データが存在しない場合）とも書いており、**「取得失敗」と「対象外（フォロワー100未満）」を区別して扱う必要がある**（`error_subcode 2108006` と同じ構図）。Phase 2 の UI は `0` と `-` と「対象外」を混同しないこと
 - **レート制限の具体値（2026-08-04 調査。要目視確認）**: 出典 [Graph API Rate Limiting](https://developers.facebook.com/docs/graph-api/overview/rate-limiting)。式は "**Calls within 24 hours = 4800 \* Number of Impressions**" で、Number of Impressions は "the number of times any content from the app user's Instagram professional account has entered a person's screen within the last 24 hours."。
   - **インプレッションが小さいアカウントほど枠が小さい**。GrowMate の対象は「これから伸ばす」アカウントなので、枠が潤沢である前提を置いてはいけない
@@ -183,7 +184,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - **実測手順（未実施）**: `GET https://graph.instagram.com/v23.0/{REELS の media id}/insights?metric=follows,profile_visits` を `aozorayoukei` の投稿に対して実行し、空データか `error_subcode` かを確認する。本仕様書の外部ドキュメント照合は WebFetch（本文を要約して返すツール）経由で逐語性が担保できておらず、かつ本件は過去2回ドキュメントと実挙動が食い違っている（`account_type` の大小文字、アカウント insights の `metric_type`）ため、**表の記載だけで確定させない**
 - **Instagram アプリ画面との突き合わせ（2026-08-05。クライアント提供のリールインサイト画面6枚と照合）**: 「クライアントが実際に見ている画面」を基準に、API で再現できる／できないを確定させた。**画面に出ている＝API で取れる、ではない**（アプリは内部 API を使う）。
   - **そのまま取れる**: 閲覧数=`views` / リーチしたアカウント=`reach` / 平均再生時間=`ig_reels_avg_watch_time` / いいね=`likes` / コメント=`comments` / 保存=`saved` / 再生時間=`ig_reels_video_view_total_time`
-  - **追加すれば取れる（→ §2 スコープに追加済み）**: 再投稿=`reposts`（公式定義「再投稿数から削除された再投稿を引いた数」）/ スキップ率=`reels_skip_rate`（**アプリと同じ「率」で返るため加工不要**。ただし下記の但し書き2点が重要）
+  - スキップ率=`reels_skip_rate`（**アプリと同じ「率」で返るため加工不要**。ただし下記の但し書き2点が重要）。再投稿=`reposts` は**当初「追加すれば取れる」としていたが、2026-08-08 実測で HTTP 400 のため取得不能と判明**（§3.3 上記「⚠ 上記解釈は実測で否定された」参照。§2 スコープから除外）
 - **`reels_skip_rate` の正確な定義と注意点（2026-08-05 に原文で再取得）**: 出典 [Instagram Media Insights](https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights/)。原文（タイポも含めて verbatim）:
   > "The percentage of views from people who skipped during the first 3 seconds of the reel. This is calculcated as the number of views that skipped the reel during the first 3 seconds divided by the number of intial views. An intial view is when the reel starts to play for the first time in a reel session."
 
@@ -321,7 +322,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - `/me/media` を cursor で辿り直近50件を upsert（打ち切り時は件数をログ）。**`instagramService.fetchMedia(accessToken, limit)` は現状 `after` 引数を持たないため署名変更が必要**。ページ連結ヘルパー `collectInstagramMediaPages` / `extractInstagramMediaAfterCursor`（`src/server/lib/instagram-media-pagination.ts`）は Phase 1 で実装済みだが**呼び出し元が無い**状態なので、ここで初めて使う
    - **メディアフィルタ**: `media_product_type` が `FEED` / `REELS` **以外**（STORIES 等、§2 非スコープ）は **DB upsert せずスキップ**し、`console.warn('[Instagram Sync]', { skipped, reason: 'unsupported_product_type', media_product_type })` を出力。CHECK 制約違反で同期全体が失敗しないこと
    - 各メディア（FEED/REELS のみ）の insights を取得し、**`instagram_media` に最新値を反映する（それだけ）**。日次スナップショットは取らない（2026-08-05、Q3 回答済み — §5.3）
-     - **取得する metric に `reposts` と `reels_skip_rate` を含める**（2026-08-05 追加 — §2 / §3.3）。`reels_skip_rate` は **REELS のみ**なので、`ig_reels_*` と同じく `mediaProductType === 'REELS'` の分岐に入れる。**率（%）で返るため実数へ変換しない**
+     - **取得する metric に `reels_skip_rate` を含める**（2026-08-05 追加 — §2 / §3.3）。`reels_skip_rate` は **REELS のみ**なので、`ig_reels_*` と同じく `mediaProductType === 'REELS'` の分岐に入れる。**率（%）で返るため実数へ変換しない**。**`reposts` は含めない**（2026-08-08 実測で HTTP 400 と判明、§3.3。カンマ区切り一括指定のため含めると他指標まで巻き添えで全滅する）
      - 現行の `instagramService.fetchMediaInsights` は 7指標 + リール2指標の構成なので、**metric リストの変更が必要**
    - アカウント insights: **`last_synced_at` が null の初回同期は、§5.4 で「日次行の埋め方」が確定した列のみ**直近 D=30 日分（昨日まで）を upsert。2回目以降も**同じ列集合**について `last_synced_at` の日付〜昨日までを upsert（欠損日は API 応答に従い補完）。**日次取得不可と確定した列（`views` 等の total_value のみで日別配列が取れないもの）は upsert 対象外** — §5.4 / §3.3
      - **取得方式が指標ごとに違う点を実装前に確定する**（§3.3「アカウント指標名の公式照合」）。公式表では `reach` は time_series / total_value の両対応、`views` 等は total_value 系と分かれており、**`metric_type=total_value` は期間合計を返すため日別に割れない**可能性が高い。§5.4 の列ごとに「time_series で日別取得」「total_value で当日分のみ」を表にしてから実装する。ここが未定のままだと実装者が暗黙に決めてしまう
@@ -338,10 +339,19 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    **決定**: 自動同期（cron）を Phase 2 のスコープから外し、**Instagram タブの「最新化」ボタンだけ**にする。理由は「最初はシンプルな作り（MVP）優先」（CLAUDE.md の MVP 原則にも沿う）。
    - **落としたもの**: ~~`app/api/cron/instagram-sync/route.ts`~~（廃止）、~~`.github/workflows/hourly-cron.yml` の matrix 追加~~（廃止）、`count-batch` profile 連携、`INSTAGRAM_SYNC_ENABLED` キルスイッチの cron 側分岐、**§9 Q9（同期頻度の確認）そのもの**
    - **副次的な利点**: §3.3 のレート枠の懸念（毎時×50件＝1ユーザー約1,200コール/日）が消える。ユーザーが押した回数しか消費しない。審査提出前にレート枠を使い切る事故（着手条件）も起こらなくなる
-   - **専用インポート画面は設けない**（従来どおり）。GSC dashboard の `OverviewTab.tsx` inline「最新化」と同じ**確認ダイアログ + 単一トースト**方式を採用する
+   - **専用インポート画面は設けない**（従来どおり）。GSC dashboard の `OverviewTab.tsx` inline「最新化」とは異なり、**確認ダイアログは設けずボタン押下で即実行**する（**2026-08-08 決定**: データ取得・upsert による表示更新のみで、削除や連携解除のような不可逆な操作ではないため。連打・APIコスト保護はダイアログではなく `disabled={!syncEnabled || isSyncing}` で担保する）
 
    実装:
-   - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ 確認 `Dialog`（`OverviewTab.tsx:153-186` と同型）→ Server Action。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再認証/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**ダイアログ文言・トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
+   - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ クリックで即 Server Action 実行（確認ダイアログなし）。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再認証/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
+   - **同期モードの分離（2026-08-08 追加）**: `syncInstagramData` / `instagramSyncService.syncUserData` に `mode: 'incremental' | 'backfill'` を追加。「最新化」は毎回 `after=null` から直近50件を再取得するだけで、51件目以降（それより古い投稿）が永遠に同期対象へ入らない対応漏れがあったため（下記「50件上限の扱い」を参照）。
+     - `incremental`（既存「最新化」。挙動はほぼ維持）: 同期開始時に DB 内最新 `posted_at`（ウォーターマーク）を1回取得し、Graph API を新しい順にページングして「ウォーターマーク以下の投稿に到達したら打ち切る」。カーソルは保存しない（毎回 `after=null` から開始）
+     - `backfill`（新規「過去の投稿をインポート」ボタン。`History`アイコン）: `instagram_credentials.backfill_cursor`（§5.1）を起点にページングし、**既に DB にある投稿はインサイト取得をスキップしつつページングだけ継続**して、未取得の古い投稿に到達したら通常どおり処理する。アカウント末端（`nextCursor=null`）に到達したら `backfill_completed_at` を立てて完了（ボタンは「過去の投稿をインポート（完了）」表示で disabled）
+       - **サーバー側バッチループ（2026-08-08 追加）**: 1回のクリックで**時間予算（760秒）いっぱいまで、1バッチ最大 `INSTAGRAM_SYNC_MEDIA_LIMIT` 件のバッチをサーバー側（`syncUserData`内）で自動的に繰り返す**（`wordpress-import`/`gsc-import` の「Server Action 内でセグメント分割し `for` ループで回してから結果をまとめて返す」設計 — `gscImport.actions.ts` の `importWithSplit` と同じ思想。クライアント側で複数回 Server Action を呼び直す設計は採らない）。バッチが件数上限で区切られても、末端到達・時間予算超過・連続失敗上限のいずれかに達するまで次のバッチへ自動的に進む。時間予算に達した場合のみ、その時点のカーソルを `backfill_cursor` に保存して中断し、次回クリックで続きから再開する（`incremental` は従来通りウォーターマークで自然に1バッチ内に収まるため複数バッチ化しない）
+       - **バッチ内カーソル巻き戻し（2026-08-08 追加。code-review で検出）**: ページング取得フェーズはバッチ全体（最大 `INSTAGRAM_SYNC_MEDIA_LIMIT` 件）を先に確定させ、その後にインサイト取得ループが走る。もしインサイト取得ループの途中で `stoppedReason`（`rate_limit`/`time_budget`/`consecutive_failures`）が発生した場合、**ページング側で進んだカーソルをそのまま保存すると、fetch 済みだが sync できなかった投稿が次回二度と取得されなくなる**（カーソルが既にそれらを通り過ぎた位置を指すため）。これを防ぐため、バッチ開始時点のカーソル（`batchStartCursor`）を保持し、当該バッチでインサイト取得が中断した場合は `backfill_cursor` をその開始位置へ巻き戻して保存する。次回は同じバッチを再取得するが `getExistingMediaIds` で既に sync 済みの投稿は自動的にスキップされるため、未処理分だけが再試行される。同じ理由で、**ページング上はアカウント末端（`nextCursor=null`）に到達していても、インサイト取得が `stoppedReason` で中断していれば `backfillCompleted` にしない**（`reachedEnd && !stoppedReason` の両方が真の場合のみ完了扱い。`reachedEnd` 単独判定だと、末端到達直前のバッチで中断したときに未処理分を残したまま `backfill_completed_at` が立ってしまい、以後 API を叩かず即終了するため永久にロストする）
+       - **ページ内打ち切りの回避（2026-08-08 追加。同上 code-review）**: Graph API へのページ取得 `limit` は、バッチ内で既に集まった件数を差し引いた残り枠（`remaining`）以下に動的に制限する（固定 `25` のまま要求すると、返ってきたページが残り枠をまたいでしまい `collectInstagramMediaPages` の「ページ内打ち切り」分岐に入り得る。その場合 `nextCursor` は返ってきたページ全体の後を指すため、残り枠を超えて切り捨てた投稿が永久にスキップされる — `INSTAGRAM_SYNC_MEDIA_LIMIT` が25の倍数でなくなると顕在化する潜在バグとして `instagram-media-pagination.ts` 側にコメントで明記）。あわせて、ちょうど上限件数に達した時点でページング取得を打ち切る早期終了も復元した（無いと上限ぴったりで区切られたバッチが無駄にもう1ページ取得し、丸ごと破棄する）
+     - **新着51件超のエッジケース**: `incremental` が前回同期以降51件以上の新着を取りこぼした場合（`truncated:true`）、次回の `incremental` は自力で再取得できない（ウォーターマークが最新の1件まで進んでしまうため）。この回収は `backfill` に委ねる（`backfill` はカーソル起点で既存投稿をスキップしつつ進むため、この取りこぼし領域に自然に到達する）。トースト文言で `backfill` への誘導を明示する
+     - `lastSyncedAt` 更新は **`incremental` 実行時のみ**（`backfill` は投稿一覧が目的で `lastSyncedAt` とは無関係）。~~アカウント日次インサイト（`instagram_account_insights_daily`）取得も同様に incremental 専用だった~~ → **2026-08-08、アカウント日次インサイトの取得自体を廃止**（理由・詳細は本 item 末尾「アカウント指標サマリー Card の廃止」参照）
+     - **新規/既存ユーザーへの影響**: 移行スクリプト不要。新規ユーザー（51件以下）は `backfill` を押しても既に同期済みなので即完了（全件スキップ）。既存ユーザー（51件超、旧仕様で直近50件のみ同期済み）は `backfill` 初回実行で上位50件をスキップし51件目以降から自然に開始する
    - **⚠ トークン延長の契機がユーザー操作だけになる（重要）**: 当初は「トークン延長も cron 内で実施」する設計だった。cron を落としたことで、**長期トークン（60日）を延長する経路は `/setup/instagram` のプレビュー取得（`instagramSetup.actions.ts:195` の `ensureValidInstagramToken`）と、この「最新化」だけ**になる。
      - **リスクは限定的**: 延長条件は「期限まで7日未満かつ発行から24時間超」（`src/server/lib/instagram-token.ts`）なので、**60日のうち最後の7日間に一度でも画面を開けば延長される**。失効するのは「60日間まったく Instagram 機能を使わなかったユーザー」だけ
      - **失効しても壊れない**: `needsReauth` として「要再認証」バッジ + 再連携導線が出る（§6・§11.2）。**サイレントに未連携へ落ちない**ことが担保されていれば MVP として許容する
@@ -351,8 +361,11 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
      - 一覧表示: DB の既存データはそのまま出す（`last_synced_at` も従来値のまま）。空にしない
    - **初回同期の起動導線**: Phase 1 で既に連携済みのユーザーは `last_synced_at` が null。**OAuth callback 成功時に同期を自動起動しない**（callback を重くしない。10秒 timeout × 50件は callback 内で完了しない）。`/analytics` の Instagram タブ初回表示時に「まだデータがありません。［最新化］を押すと取得します」（§11.3）を出してユーザー操作を起点にする。**cron が無いので、押さなければ永久に空**である点が従来案との違い。空状態の文言はこの前提で書く
    - **1リクエストで実行時間を使い切る経路がある**: 投稿インサイトは1件1コールで各 10 秒 timeout のため、**全件がタイムアウトすると 500 秒**かかる。Server Action は **`app/analytics/page.tsx` に `export const maxDuration = 800` を設定**する（`app/google-ads-dashboard/page.tsx:15` と同型。Vercel Pro / Fluid Compute 上限）。同期本体の**時間予算は 760 秒**（maxDuration より 40 秒短く、レスポンス返却の余裕 — `gscEvaluationService` の 280/300 秒比を踏襲）。**連続失敗 K 件（初期値 5）** は時間上限に達する**前**の早期中断条件（各失敗最大 10 秒 × 5 = 50 秒程度で打ち切りうる）。時間予算到達時は `{ stoppedReason: 'time_budget' }`、連続失敗時は `{ stoppedReason: 'consecutive_failures' }` を結果に含めトーストで伝える（再度「最新化」で続き）
-   - **`truncated` の扱い**: 50件上限で打ち切った場合 `truncated: true` を結果に含め `console.warn` で記録する。**エラー扱いにしない**（意図した上限動作）。UI は §11.3 のトースト（`toast.info('直近50件まで取得しました')`）で伝える
+   - **`truncated` の扱い**: 50件上限で打ち切った場合 `truncated: true` を結果に含め `console.warn` で記録する。**エラー扱いにしない**（意図した上限動作）。UI は §11.3 のトースト（incremental/backfill でモード別に文言を出し分け。詳細は §11.3「同期結果 UI」）で伝える。**2026-08-08 追加**: 50件上限自体はレート制限対策として維持するが、「51件目以降（それより古い投稿）が永遠に同期対象へ入らない」対応漏れがあったため、上記「同期モードの分離」で `incremental`（差分同期）と `backfill`（過去投稿の段階的取り込み）に分離して解消した
    - **将来 cron を足す場合**（本 Phase では実装しない）: `.github/workflows/hourly-cron.yml` は `on.schedule` が `'0 * * * *'` の1本のみで、各 step も `github.event.schedule == '0 * * * *'` で守られている（`hourly-cron.yml:65,71`）。matrix の `interval` フィールドはどこからも参照されていない注記にすぎず、**日次の枠は存在しない**。日1回にしたい場合は ①workflow に日次 cron を足して `interval` で分岐させる ②毎時呼び出しのまま route 側で `last_synced_at` を見てスキップする（`gsc-evaluate` の「次回評価予定日時 <= 現在日時」と同型）のいずれか。**②の方が既存前例があり、ユーザーごとに実行が分散する分レート枠にも優しい**
+   - **アカウント指標サマリー Card の廃止（2026-08-08）**: Instagram タブの投稿一覧直上に置いていた「アカウント指標（最新日）」Card（リーチ・フォロワー数）を削除した。実装（`InstagramAccountSummaryCard.tsx`、`instagramMediaService.getAccountInsightsLatestDay` / `upsertAccountInsightsDaily`、`instagramService.fetchAccountInsightsDaily`、`instagramSyncService` 内のアカウント日次インサイト同期処理）を全て削除し、`instagram_account_insights_daily` テーブルへの書き込みを止めた（テーブル自体は削除しない。§5.4 のスキーマ定義は履歴として残す）。
+     - **廃止理由（実機調査で判明した2つの不具合）**: ①`follower_count` が実際のフォロワー数（実測: 1,200人程度、100フォロワー未満の対象外制約には該当しない）に対して常に空データ（`{"data":[]}`）で返り、UI には「0」と誤表示されていた。`metric_type=total_value` を追加で試しても同じく空。公式ドキュメント側にも `follower_count` の詳細な値定義（総数かデルタか）を記載したページが見つからず、一次情報での原因特定に至らなかった。②同日中に「最新化」を複数回押すと `resolveAccountInsightsRange` が `since=until`（同一日）を計算し、この状態で Graph API に投げると `reach` を含め新しいデータが一切返らなくなる副次バグも判明（画面の「最新日」が数日前のまま更新されなくなる）。**フォロワー数はいずれにせよ `/setup/instagram` 画面がプロフィール API（`followers_count`）経由で正確な値を表示済み**であり、Insights API 経由の重複表示に技術的価値が薄いと判断し、機能ごと削除した。
+     - **今後再実装する場合**: 少なくとも ①`follower_count` の値の意味を実機ログ（レスポンス生データ）で確定させる、②`since=until` の同日リクエストで空になる挙動を回避する（例: 常に複数日分の範囲でリクエストする）、の2点を先に解消してから着手すること。
 4. UI: `app/analytics/AnalyticsClient.tsx` をタブ化（R-2）。**タブ UI は Instagram 連携済みユーザーにだけ出す（2026-07-25 決定）**:
    - **未連携ユーザーの `/analytics` は現行のまま**（タブバーを出さない）。`/analytics` は作業画面であり、使わない機能のタブを常設しない。発見導線は `/setup` の Instagram カード（§11.1）が既に担っているので二重に持たない
    - この方式なら **限定公開ゲート（§4 Phase 1-A）の参照箇所を増やさずに済む** — allowlist 外のユーザーは連携できない → 連携済みにならない → タブも出ない、が推移的に成立する
@@ -363,7 +376,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
      - **表示する列はユーザーが選べる**（2026-08-05 Q2 回答）。既存の `FieldConfigurator` を再利用し、`INSTAGRAM_COLUMNS` と専用 `storageKey` を足すだけで実装する。**詳細は §11.3 が正本**
      - 種別フィルタ（リール/フィード）、期間フィルタ（`posted_at` 範囲指定。開始日～終了日）、ソート（投稿日 / リーチ / views）
      - ページネーションは既存ブログ一覧と同じ URL パラメータ + `Link` 方式（`ig_page` など名前空間を分けてブログ側の `page` と衝突させない）
-5. データ取得: Server Component（`app/analytics/page.tsx`）の既存 `Promise.all` に **`getInstagramConnectionStatus`** を追加し、その結果でタブ表示を分岐する。連携済みかつ `tab=instagram` のときだけ **`instagramMediaService.getPage(userId, ...)`**（投稿一覧・10件/頁）と **`instagramMediaService.getAccountInsightsLatestDay(userId)`**（アカウント指標サマリー用・**最新日1行のみ** — §5.4 / §11.3）を取得する（未連携ユーザーに Instagram の DB クエリを走らせない）。PostgREST `db-max-rows = 1000` 制限があるため投稿一覧はページング取得とし、**サマリーは30日分を丸ごと返さない**（クライアント集計を避ける）
+5. データ取得: Server Component（`app/analytics/page.tsx`）の既存 `Promise.all` に **`getInstagramConnectionStatus`** を追加し、その結果でタブ表示を分岐する。連携済みかつ `tab=instagram` のときだけ **`instagramMediaService.getPage(userId, ...)`**（投稿一覧・10件/頁）を取得する（未連携ユーザーに Instagram の DB クエリを走らせない）。PostgREST `db-max-rows = 1000` 制限があるため投稿一覧はページング取得とする。~~アカウント指標サマリー用に `getAccountInsightsLatestDay(userId)` も取得する~~ → **2026-08-08 廃止**（§4 Phase2 item3 末尾「アカウント指標サマリー Card の廃止」参照）
 6. **限定公開の解除（本 Phase の最終タスク。審査通過後に実施 — 2026-08-04 に item0 から末尾へ移動）**: Phase 2 の本番反映と同時に行う。手順と条件は以下。
    - **前提条件（すべて満たすまで実施しない）**: ①App Review 通過（Advanced Access 付与）②アクセス認証（Tech Provider）完了 — §3.2。未完だと役割を持たないユーザーの呼び出しが `error code 100` で落ちる ③クライアント側ビジネス認証完了（2026-08-01 時点で完了済み）
    - `INSTAGRAM_BETA_USER_IDS` を空にする。`canAccessInstagram` が §7 の通常ロール判定にフォールバックし、Q4 の開放範囲（admin / paid / trial）に戻る。**コード変更は不要**
@@ -428,15 +441,20 @@ create table public.instagram_credentials (
   access_token_issued_at timestamptz not null default now(),  -- 24h ルール判定用
   scope text[] not null default '{}',
   last_synced_at timestamptz,
+  -- 2026-08-08 追加（マイグレーション 20260808010000）。過去投稿取り込み（backfill）の状態。
+  -- §4 Phase2 item2「51件目以降が同期されない」対応漏れの解消に伴う追加。
+  backfill_cursor text,             -- Graph API /me/media のページングカーソル。NULL は未着手/直近リセット済み
+  backfill_completed_at timestamptz, -- 投稿履歴を末端まで取り込み終えた日時。NULL は未完了
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 ```
 
-- RLS: **`SELECT` のみ** `get_accessible_user_ids(auth.uid())` ベース（オーナー/スタッフ共有モデルを崩さない）。**`INSERT` / `UPDATE` / `DELETE` ポリシーは意図的に設けない** — `google_ads_credentials`（`20260127090000`）は SELECT/INSERT/UPDATE/DELETE の4ポリシーを持つが、Instagram credential は access_token を含むため **JWT 経由の write 経路を完全に遮断**し、OAuth callback・トークン refresh・連携解除はすべて **Service Role + 明示的 `.eq('user_id', userId)`**（`supabaseService.saveInstagramCredential` 等）経由のみとする
+- RLS: **`SELECT` のみ** `user_id = auth.uid()` ベース（**2026-08-08 決定**: 既存スタッフレコードが実在しないため、他連携（GSC/GA4/Google Ads 等）が使う `get_accessible_user_ids` のオーナー/スタッフ共有パターンは採用せず単純化。将来スタッフモデルが復活する場合は Instagram 系3テーブル [`instagram_credentials`/`instagram_media`/`instagram_account_insights_daily`] のみ個別に RLS 変更が必要になる点に留意）。**`instagram_credentials` は Phase 1 で既にマイグレーション適用済みのため、本変更は `20260726000000` の直接書き換えではなく別マイグレーション `20260808000000_simplify_instagram_credentials_select_policy.sql`（`DROP POLICY` + `CREATE POLICY`）で反映し、管理者の適用待ち**（`instagram_media`/`instagram_account_insights_daily` は `20260805100000` が未適用のため直接書き換え済み）。**`INSERT` / `UPDATE` / `DELETE` ポリシーは意図的に設けない** — `google_ads_credentials`（`20260127090000`）は SELECT/INSERT/UPDATE/DELETE の4ポリシーを持つが、Instagram credential は access_token を含むため **JWT 経由の write 経路を完全に遮断**し、OAuth callback・トークン refresh・連携解除はすべて **Service Role + 明示的 `.eq('user_id', userId)`**（`supabaseService.saveInstagramCredential` 等）経由のみとする
 - `user_id` に B-tree インデックス（unique 制約で兼用）
 - `updated_at` 自動更新トリガー（既存トリガー関数を再利用）
 - トークンは既存3系統と同じく**平文 text + RLS 保護**（暗号化は現行方針踏襲。変える場合は全系統一括の別課題とする）
+- `backfill_cursor` / `backfill_completed_at` は新規マイグレーション `20260808010000_add_instagram_backfill_state_to_credentials.sql` で追加（適用済み・型再生成済み）。既存の `SELECT` のみ RLS ポリシーの対象内で追加カラム分の RLS 変更は不要（列追加のみでポリシー自体は不変）
 
 ### 5.2 `instagram_media`（Phase 2）
 
@@ -455,7 +473,7 @@ create table public.instagram_media (
   -- インサイト（Phase 2 での唯一の保存先。日次スナップショットは不採用 — §5.3）
   like_count int, comments_count int,
   reach int, views int, saved int, shares int, total_interactions int,
-  reposts int,                     -- 2026-08-05 追加（アプリ画面の「再投稿」）
+  reposts int,                     -- 2026-08-05 追加（アプリ画面の「再投稿」）。2026-08-08 実測で API 取得不能と判明、当面は常に null（列は将来の API 追従に備え残す）
   reels_skip_rate numeric,         -- 2026-08-05 追加。API が率（%）で返すので実数化しない。リールのみ
   avg_watch_time_ms int, total_watch_time_ms bigint,   -- リールのみ
   insights_synced_at timestamptz,
@@ -540,14 +558,16 @@ create table public.instagram_account_insights_daily (
 - **`follower_count` は 100 フォロワー未満のアカウントでは常に NULL**（§3.3）。**NULL の意味が「取得失敗」と「対象外」で二重化する**ため、区別が必要なら `follower_count_unavailable boolean` 等を足す。区別しない場合も、UI が「取得失敗」と読める表示をしないこと
 - **サマリー Card 用の表示集約（§11.3 が正本。DB から最新1日分だけ返す — クライアントで30行を集計しない）**:
 
+**（下表は 2026-08-08 にサマリー Card 自体を廃止したため参照用の履歴。§4 Phase2 item3 末尾「アカウント指標サマリー Card の廃止」参照）**
+
 | DB列 | サマリー Card の表示値 | 禁止 |
 |------|------------------------|------|
 | `reach` | **`date` が最大の行**の `reach` のみ | **日次行の SUM 禁止**（ユニークリーチの意味が壊れる） |
 | `follower_count` | **`date` が最大の行**の `follower_count` | SUM 禁止（点指標） |
 | `views` / `accounts_engaged` / `total_interactions` / `profile_links_taps`（採用時） | **`date` が最大の行**の当該列 | **30行を Client Component で合算しない**（`docs/context/db-row-limits-and-data-truncation.md` の「全件取得してコード側で集計」禁止と同趣旨）。期間合計が欲しくても Phase 2 サマリーでは**最新日スナップショットのみ** |
-| 読込 | `instagramMediaService.getAccountInsightsLatestDay(userId)` — **1行 SELECT**（下記 §4 item5 / §10） | 30行を `page.tsx` に載せて React 側で `reduce` しない |
+| 読込 | ~~`instagramMediaService.getAccountInsightsLatestDay(userId)` — **1行 SELECT**~~（メソッド自体を削除済み） | 30行を `page.tsx` に載せて React 側で `reduce` しない |
 
-- 5.2〜5.4 の RLS も **上記と同様: 認証ユーザーは `SELECT` のみ**（`get_accessible_user_ids`）。**書き込み（INSERT/UPDATE/DELETE）は Service Role 経由の手動同期 Server Action のみ**。所有者向け write ポリシーは設けない
+- 5.2〜5.4 の RLS も **上記と同様: 認証ユーザーは `SELECT` のみ**（`user_id = auth.uid()`。5.1 と同じ理由で単純化）。**書き込み（INSERT/UPDATE/DELETE）は Service Role 経由の手動同期 Server Action のみ**。所有者向け write ポリシーは設けない
 - DB アクセス:
   - Phase 1 credential: `SupabaseService` の `save/get/update/deleteInstagramCredential`（§4 Phase1-4）
   - Phase 2 media/insights: `SupabaseService` 継承の `instagramMediaService`（`src/server/services/instagramMediaService.ts`）に集約。`withServiceRoleClient` + 明示的 `.eq('user_id', userId)` 必須
@@ -626,7 +646,7 @@ create table public.instagram_account_insights_daily (
 - [ ] 未連携ユーザーが `?tab=instagram` を直接開くと `blog` にフォールバックする
 - [ ] 連携解除するとタブが消え、現行レイアウトに戻る
 - [ ] Instagram タブに投稿一覧＋指標が表示され、種別フィルタ・ソートが機能する
-- [ ] **§5.4 で確定したアカウント指標**が Instagram タブのサマリー Card に表示される（§11.3「アカウント指標 UI」）。**最新日1行のみ**（`getAccountInsightsLatestDay`）。ラベルは「（最新日）」、`reach` の日次 SUM をしていないこと。`follower_count` の対象外表示を含む
+- [x] ~~**§5.4 で確定したアカウント指標**が Instagram タブのサマリー Card に表示される~~ → **2026-08-08 廃止**。理由は §4 Phase2 item3 末尾「アカウント指標サマリー Card の廃止」を参照
 - [ ] **フィールド構成ダイアログで表示列を変更でき、リロード後も保持される**（`FieldConfigurator` 再利用）。**ブログタブの列設定が影響を受けない**（`storageKey` が別であること）
 - [ ] **率の列（いいね率 / 保存率 / シェア率 / コメント率 / 再投稿率）が `(実数 ÷ reach) × 100` で算出され、小数第1位で表示される**。既定は非表示。DB に保存されていない（表示時計算）
 - [ ] 率の表示: 分母 `reach` が `null` / `0`、または分子（いいね / 保存 / シェア / コメント / 再投稿の実数）が `null` のときは `-`（`0%` にしない）。分子が `0` かつ分母 `reach > 0` のときのみ `0.0%`
@@ -636,9 +656,12 @@ create table public.instagram_account_insights_daily (
 - [ ] 率の算出が純関数として切り出され、vitest がある（分母 `reach` が null / 0 / 通常値、分子 null、分子 0 かつ分母 > 0 のケースを含む）
 - [ ] 非表示にした列でソート中になる状態が起きない — **列を非表示にした時点で `ig_sort` を `posted_at` desc に戻す**（§11.3 採用方式）
 - [ ] **手動「最新化」で同期され、`last_synced_at` が進む**（cron は Phase 2 スコープ外 — §4 Phase 2 item3）
-- [ ] 初回同期で、**§5.4 で日次取得可と確定した列**について `instagram_account_insights_daily` に直近30日分が取り込まれる（日次不可列は行・列とも作らない）
+- [x] ~~初回同期で、**§5.4 で日次取得可と確定した列**について `instagram_account_insights_daily` に直近30日分が取り込まれる~~ → **2026-08-08 廃止**（§4 Phase2 item3 末尾参照）
 - [ ] STORIES 等非スコープ `media_product_type` が来ても同期全体が失敗せず skipped ログが出る
 - [ ] 50件打ち切り時 `truncated: true` がログに残り、エラー扱いにならない
+- [x] **（2026-08-08 追加）「過去の投稿をインポート」（backfill）で51件目以降の投稿が取得できる**。サーバー側バッチループ化（同日追加）により、1回のクリックで時間予算いっぱいまで自動的に複数バッチを処理する。時間予算内で末端に到達しなければ `backfill_cursor` を保存して中断し、もう一度押すと続きから再開する。実機確認済み（投稿3件のテストアカウントでは即完了、`backfill_completed_at` セット・ボタンが「（完了）」disabled 表示になることを確認）。単体テスト（`instagramSyncService.test.ts`）で複数バッチにまたがる処理・末端到達・時間予算中断を確認
+- [x] **（2026-08-08 追加）「最新化」（incremental）は DB 内最新 `posted_at` より新しい投稿のみ取得し、`backfill` は既存投稿のインサイト再取得をスキップする**（レート消費を新規/未取得分に温存）。単体テスト（`instagramSyncService.test.ts`）で確認
+- [x] **（2026-08-08 追加）backfill は `lastSyncedAt` とアカウント日次インサイトを更新しない**（incremental 専用の更新経路と分離。§4 Phase 2 item3）
 - [ ] 連携解除で credential + media/insights が purge される
 - [ ] **トークンが「最新化」実行時にも延長される**（期限7日前）。プレビュー表示だけでなく同期 Server Action でも `ensureValidInstagramToken` を通ること（§4 Phase 2 item3 の ⚠）
 - [ ] 未連携ユーザーへの連携導線は `/setup` の Instagram カード（§11.1）のみで、`/analytics` には出さない
@@ -651,13 +674,13 @@ create table public.instagram_account_insights_daily (
 - [ ] **着手前**: Instagram Platform Changelog を確認し、Phase 2 で使う指標に新たな廃止・追加が無いか見る（廃止も追加も metrics 表ではなく Changelog に出る — §3.3）
 - [ ] Graph API 採用バージョン（`v23.0` 等）が `instagramService` のパスと一致し、changelog 確認済み（§3.3）
 - [ ] **着手前**: `follows` / `profile_visits` が REELS で本当に取れないかを `aozorayoukei` の REELS 投稿で実測し、採否を決める（§3.3「メディア別の指標対応」）。**アプリのリール画面には「フォロー数」が出ている**ため、公式表の記載と食い違っている
-- [ ] `reposts` と `reels_skip_rate` が実 API で取得でき、`reels_skip_rate` が**率（%）のまま**保存・表示される（§3.3「Instagram アプリ画面との突き合わせ」）
+- [x] `reels_skip_rate` が実 API で取得でき、**率（%）のまま**保存・表示される（§3.3「Instagram アプリ画面との突き合わせ」）。`reposts` は 2026-08-08 実測で取得不能と判明したため本条件から除外（§2 / §3.3）
 - [ ] §2 非スコープに挙げた「アプリでは見えるが API に無い項目」を、UI 上で**取得失敗と誤解させない**（そもそも列・グラフとして置かない。「準備中」等の表示もしない）
 - [ ] `instagram_media_insights_daily` を**作っていない**こと（Q3 = 不要。マイグレーションは2本のみ）
 - [ ] 2年より古い投稿が直近50件に含まれる場合、「取得失敗」ではなく **`insights_unavailable_reason = 'retention_expired'`** の対象外ツールチップで表示される（§3.3 / §5.2。API 判定方法は実測で確認）
 - [ ] `insights_unavailable = true` の投稿に対し、2回目以降の同期が insights コールを**投げない**（ログまたはコール数で確認）
 - [ ] 一覧で「取得失敗」「対象外（転換前）」「実データの 0」が**見分けられる**
-- [ ] `follower_count` が空で返るアカウントでも、画面が「取得失敗」と読める表示にならない
+- [x] ~~`follower_count` が空で返るアカウントでも、画面が「取得失敗」と読める表示にならない~~ → **2026-08-08 廃止**（follower_count 自体を表示しなくなった。§4 Phase2 item3 末尾参照）
 - [ ] レート消費ヘッダ（`X-App-Usage` / `X-Business-Use-Case-Usage`）が同期ログに出る
 - [ ] `INSTAGRAM_SYNC_ENABLED=false` で手動ボタンが disabled + Alert 表示になり、一覧は既存データを保つ
 - [ ] レート制限エラー（code 4 等）で **credential が書き換わらない**（`isInstagramRevokedTokenError` 側でのみ期限を倒す）。擬似エラーを注入して確認する
@@ -748,11 +771,11 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 **Phase 2 で追加・変更するもの（2026-08-04 追記）**
 
 - `src/server/services/instagramSyncService.ts`（新規。同期本体）
-- `src/server/services/instagramMediaService.ts`（新規。`SupabaseService` 継承の media/insights DB アクセス — §5）。**メソッド**: `getPage`（投稿一覧）、**`getAccountInsightsLatestDay(userId)`** — `instagram_account_insights_daily` から `.eq('user_id', userId).order('date', { ascending: false }).limit(1).maybeSingle()` 相当で**最新日1行のみ**返す（§5.4 サマリー集約表）。30行 fetch + クライアント集計は禁止
+- `src/server/services/instagramMediaService.ts`（新規。`SupabaseService` 継承の media/insights DB アクセス — §5）。**メソッド**: `getPage`（投稿一覧）。~~`getAccountInsightsLatestDay(userId)`~~ → **2026-08-08 廃止**（§4 Phase2 item3 末尾「アカウント指標サマリー Card の廃止」参照）
 - `src/lib/instagram-sync.ts`（新規。`getInstagramSyncToastMessage` — §11.3）
 - `src/lib/constants.ts`（**変更**: `INSTAGRAM_COLUMNS` 追加（率の列は `defaultVisible: false`）、`ANALYTICS_STORAGE_KEYS` に `IG_VISIBLE_COLUMNS` 追加 — §11.3）
 - `src/lib/instagram-format.ts`（**変更**。率算出の純関数を追加。既存の `formatCount` と同居可 — `tests/unit/lib/instagram-format.test.ts` にミラー。**返り値は百分率の数値または表示用文字列**（例: `12.3` → 表示 `"12.3%"`）。`AnalyticsTable.tsx` の `formatPercent`（比率 0〜1 入力 → 内部で ×100）は**使わない** — 二重換算で表示が破綻するため）
-- `src/types/instagram.ts`（**変更**: `InstagramMediaInsights` に `reposts: number | null` と `reelsSkipRate: number | null` を追加 — §2 スコープ / §3.3。Phase 1-A で UI モック用に型を固定した場合でも **Phase 2 の API 取得・DB マッピング前に本型へ揃える**）
+- `src/types/instagram.ts`（**変更**: `InstagramMediaInsights` に `reposts: number | null` と `reelsSkipRate: number | null` を追加 — §2 スコープ / §3.3。Phase 1-A で UI モック用に型を固定した場合でも **Phase 2 の API 取得・DB マッピング前に本型へ揃える**。`reposts` は 2026-08-08 実測で API 取得不能と判明したため、型・DB 列は残すが**常に null**になる）
 - `src/components/FieldConfigurator.tsx`（**変更なし・再利用**。列選択ダイアログは新規実装しない — §11.3）
 - ~~`app/api/cron/instagram-sync/route.ts`~~ → **Phase 2 スコープ外**（2026-08-05。cron を落としたため `.github/workflows/hourly-cron.yml` も変更しない — §4 Phase 2 item3）
 - `src/server/services/instagramService.ts`（**変更** — §3.3 廃止指標の除去は次の3点をセットで行う）:
@@ -903,28 +926,20 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 
 ┌─ ツールバー ─────────────────────────────────┐
 │ 種別: [すべて|リール|フィード]  期間: [開始]〜[終了] │
-│ 並び順: [投稿日▼]      [RefreshCw 最新化]        │  ← クリックで確認 Dialog（下記）
-│ 最終同期: 2026-07-23 10:00                    │  ← last_synced_at。未同期時は非表示
+│ 並び順: [投稿日▼]  [RefreshCw 最新化]  [History 過去の投稿をインポート] │  ← どちらもクリックで即実行（確認ダイアログなし）
+│ 最終同期: 2026-07-23 10:00                    │  ← last_synced_at（incremental のみ更新）。未同期時は非表示
 └──────────────────────────────────────────────┘
 
-「最新化」クリック時（`OverviewTab.tsx:153-186` 同型の確認 Dialog）:
-┌─ Dialog ──────────────────────────────────────┐
-│ Instagramデータの同期                          │
-│ Instagramから最新の投稿・指標を取得し、一覧を  │
-│ 更新します。直近50件の投稿が対象です。         │
-│                     [キャンセル] [同期を実行]  │
-└──────────────────────────────────────────────┘
-  → 確認後ダイアログを閉じ `toast.loading('Instagramデータを取得中...')`
+「最新化」（incremental）クリック時（**確認ダイアログなし。2026-08-08 決定**）:
+  → クリックで即 `toast.loading('Instagramデータを取得中...')` を表示し Server Action（`mode:'incremental'`）を実行
   → 完了時に同一トーストを更新（結果は下記「同期結果」参照）
 
-┌─ Card: アカウント指標（サマリー）────────────────┐
-│ データ: 最新日 YYYY-MM-DD（DB 直近30日分のうち最新1行）│
-│ リーチ（最新日）│ 視聴数（最新日）│ フォロワー数（最新日）│ …│
-│       12        │       33        │    対象外          │   ← 例。単回 API 実測と同値になりうる。30日 SUM ではない │
-└──────────────────────────────────────────────┘
-  ※ **列は §5.4 で「日次行の埋め方」が確定したものだけ**出す。未確定列（`profile_links_taps` 等）は実測決着まで非表示
-  ※ **`reach` を日次行 SUM して表示しない**（§5.4 サマリー集約表）
-  ※ 同期0件・日次行0件のときは Card ごと非表示（投稿一覧の空状態のみ）
+「過去の投稿をインポート」（backfill。2026-08-08 追加）クリック時:
+  → クリックで即 `toast.loading('過去の投稿をインポート中...')` を表示し Server Action（`mode:'backfill'`）を実行
+  → `backfill_completed_at` が既にある場合はボタンが「過去の投稿をインポート（完了）」表示で disabled になり押せない
+  → 「最新化」と相互に排他制御（どちらか実行中はもう片方も disabled）。詳細は §4 Phase 2 item3「同期モードの分離」
+
+（~~アカウント指標（サマリー）Card~~ は 2026-08-08 廃止。§4 Phase2 item3 末尾「アカウント指標サマリー Card の廃止」参照）
 
 ┌─ Card: 投稿一覧 Table ───────────────────────┐
 │ サムネ│種別  │キャプション│投稿日│リーチ│視聴│…│
@@ -936,10 +951,7 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 └──────────────────────────────────────────────┘
 ```
 
-- **アカウント指標 UI（`instagram_account_insights_daily` — §5.4 / §8）**: 投稿一覧 Card の**直上**にサマリー Card を置く（上記ワイヤーフレーム）。**表示する指標名・列数は §5.4 の対応表で「日次行の埋め方」が確定した列に限定**（`profile_links_taps` 等、採否未定の列は出さない）。**データ源は §4 item5 の `getAccountInsightsLatestDay` が返す最新日1行のみ**。ヘッダに **「最新日: {date}」** を出す（「直近30日合計」と誤読させない）。**列ごとの表示規則（§5.4 サマリー集約表）**:
-  - **`reach` / `follower_count` / その他採用列**: いずれも**最新日の行のセル値**をそのまま表示。**日次行を Client で SUM しない**（特に `reach` — ユニークリーチの SUM は意味が壊れる）
-  - **ラベル**: 各指標名に **「（最新日）」** を付ける（例: リーチ（最新日）、フォロワー数（最新日））。ツールチップで「DB には直近30日分を保持。表示は最新同期日の値です」と補足可
-  - 各セルは `formatCount` 相当で数値表示。**`follower_count` が NULL で 100 フォロワー未満と判断できる場合**（§3.3 / §5.4）は `-` ではなく **「対象外」ラベル + ツールチップ**（例:「フォロワー100人未満のアカウントではこの指標は提供されません」）。取得失敗（再試行で回復しうる）と混同しない（§8 `follower_count` 受け入れ条件）。**日次行が1件も無い**（未同期・§5.4 未確定で取込列ゼロ）ときはサマリー Card を出さない
+- **アカウント指標 UI**: ~~投稿一覧 Card の直上にアカウント指標サマリー Card を置く~~ → **2026-08-08 廃止**。理由・詳細は §4 Phase2 item3 末尾「アカウント指標サマリー Card の廃止」を参照（フォロワー数は `follower_count` が実際のフォロワー数に対して常に空データで返る不具合があり、`/setup/instagram` 画面が別 API で既に正確な値を表示していたため機能ごと削除した）
 
 - **URL パラメータ契約**（ブログ既存キー `page` / `start` / `end` / `category` / `uncategorized` / `unread_suggestion` は Instagram タブでも**変更・上書きしない**）:
   - `tab`: `blog` | `instagram`。**未指定時は `blog`**（既存 `/analytics?...` のリグレッション防止）。**未連携ユーザーが `tab=instagram` を指定した場合も `blog` にフォールバック**する（タブ UI 自体が無いため）
@@ -969,13 +981,16 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
   - **ソート対象にしない**（`ig_sort` は `posted_at` / `reach` / `views` のまま）。DB に持たない以上、ページング前の全体ソートができないため。**ページ内だけ並び替わる中途半端な挙動を作らない**
 - **未連携ユーザー向けの Instagram タブ空状態は定義しない（到達不能）**: §4 Phase 2 item4 / §8 により、未連携ユーザーは Instagram タブ UI 自体が出ず `?tab=instagram` も `blog` にフォールバックする。**連携導線は §11.1 の `/setup` カードのみ**
 - **連携済みだが同期0件**: 「まだデータがありません。［最新化］を押すと取得します」。Phase 1 から連携済みのユーザーは初回同期が走っていないため**必ずこの状態から始まる**（§4 Phase 2 item3「初回同期の起動導線」）
-- **指標セルの3状態を見分けられるようにする**（2026-08-04 追記）: ①実データの `0`（保存・シェアが実際に0件。§3.3）②取得失敗（再試行で回復しうる。`-` + 再取得導線）③**対象外**（`insights_unavailable` + `insights_unavailable_reason`、**アカウントサマリーの `follower_count` 100未満** — 上記「アカウント指標 UI」）。③は再試行しても直らないので、`-` と同じ見た目にせず **`reason` に応じたツールチップ**（§5.2 / §3.3）を出す
+- **指標セルの3状態を見分けられるようにする**（2026-08-04 追記）: ①実データの `0`（保存・シェアが実際に0件。§3.3）②取得失敗（再試行で回復しうる。`-` + 再取得導線）③**対象外**（`insights_unavailable` + `insights_unavailable_reason`）。③は再試行しても直らないので、`-` と同じ見た目にせず **`reason` に応じたツールチップ**（§5.2 / §3.3）を出す
 - **同期停止中**（`INSTAGRAM_SYNC_ENABLED=false`）: 「最新化」ボタンを disabled にし、ツールバー直下に情報色 Alert「Instagramの同期を一時停止しています」。テーブルは既存データをそのまま表示する（§4 Phase 2 item3）
-- **同期結果 UI**（`getInstagramSyncToastMessage(result)` に集約。`OverviewTab.tsx` の `getQueryImportToastMessage` と同型。§6 エラーパス準拠。**単一の toast を `id` で更新し続ける**方式で、成功時も失敗時も新規 toast を積み増さない）:
-  - 成功（`failed=0`）: `toast.success('N件を更新しました', { id: toastId })`。`last_synced_at` をツールバー右に反映
-  - 部分失敗（`failed>0`）: `toast.warning('N件中M件の更新に失敗しました', { id: toastId })` + ツールバー直下 Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（M件）」）。取得できた行はテーブルに残す
+- **同期結果 UI**（`getInstagramSyncToastMessage(result)` に集約。`OverviewTab.tsx` の `getQueryImportToastMessage` と同型。§6 エラーパス準拠。**単一の toast を `id` で更新し続ける**方式で、成功時も失敗時も新規 toast を積み増さない。**2026-08-08 追加**: `result.mode`（`incremental`/`backfill`）で文言を出し分ける）:
+  - 成功（`failed=0`、incremental）: `toast.success('N件を更新しました', { id: toastId })`。`last_synced_at` をツールバー右に反映
+  - backfill 完了（`backfillCompleted=true`）: `toast.success('過去の投稿のインポートが完了しました（今回N件）', { id: toastId })`
+  - 部分失敗（`failed>0`）: `toast.warning('N件中M件の更新に失敗しました', { id: toastId })` + ツールバー直下 Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（M件）」）。取得できた行はテーブルに残す。incremental/backfill 共通（`syncAlert`/`backfillAlert` は state を分離）
   - `needsReauth`: `toast.error(..., { id: toastId })` + Alert「Instagramの再認証が必要です」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレントに未連携へフォールバックしない
-  - `truncated`: `toast.info('直近50件まで取得しました', { id: toastId })`（エラー扱いにしない）
+  - `truncated`（incremental）: `toast.info('直近${INSTAGRAM_SYNC_MEDIA_LIMIT}件まで取得しました。さらに新しい投稿がある可能性があります。「過去の投稿をインポート」からも取得できます。', { id: toastId })`（エラー扱いにしない。件数はハードコードでなく定数参照。§4 Phase2 item3「新着51件超のエッジケース」への誘導を兼ねる）
+  - `truncated`（backfill、末端未到達）: `toast.info('過去の投稿をN件インポートしました。続きがあります。「過去の投稿をインポート」からさらに取得できます。', { id: toastId })`
+  - `stoppedReason==='time_budget'|'consecutive_failures'`: 再試行の案内文言をモード別に出し分け（incremental→「再度「最新化」で続きを取得できます。」、backfill→「「過去の投稿をインポート」をもう一度押すと続きを取得できます。」）
   - **文言の置き場所**: トースト文言は `getInstagramSyncToastMessage` を置く `src/lib/instagram-sync.ts` に直書きする（`getQueryImportToastMessage` が `src/lib/gsc-import.ts` に直書きしている先例に倣う）。**`ERROR_MESSAGES` へは入れない** — 役割分担は「`ERROR_MESSAGES` = エラー種別の正本（種別ごとに1文言、エラーパスから参照される）」「トースト = 実行結果サマリの整形（件数を埋め込む可変文、結果オブジェクトからしか作れない）」。`needsReauth` / 部分失敗の **Alert 側は `ERROR_MESSAGES.INSTAGRAM.*` を参照する**ので、同じ画面で両方が併存する。日本語文言直書き禁止規約の対象は前者であり、後者は対象外
 - ブログタブ側のフィルタ・ページネーション UI は一切変更しない（受け入れ条件: リグレッションなし）
 
@@ -996,5 +1011,5 @@ Phase 3 が保留になったため、**Phase 2 の一覧に「台本作成」�
 - 同期バッチ: `src/server/services/gscEvaluationService.ts`, `app/api/cron/gsc-evaluate/route.ts`
 - cron matrix + profile: `.github/workflows/hourly-cron.yml`（`count-batch` プロファイル）
 - タブ UI: `app/ga4-dashboard/Ga4DashboardClient.tsx:435`
-- **inline 同期の確認 Dialog + 単一トースト正本**: `app/gsc-dashboard/components/OverviewTab.tsx:111-186`（`handleSync`, `isSyncDialogOpen`, `getQueryImportToastMessage` 相当）
+- **inline 同期の単一トースト正本**: `app/gsc-dashboard/components/OverviewTab.tsx:111-186`（`handleSync`, `getQueryImportToastMessage` 相当。**Instagram は確認 Dialog は踏襲しない** — 2026-08-08 決定、§4 Phase 2 item3）
 - LLM 変数注入: `src/server/services/gscSuggestionService.ts` + `prompt_templates`
