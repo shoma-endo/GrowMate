@@ -377,7 +377,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
      - 種別フィルタ（リール/フィード）、期間フィルタ（`posted_at` 範囲指定。開始日～終了日）、ソート（投稿日 / リーチ / views）
      - ページネーションは既存ブログ一覧と同じ URL パラメータ + `Link` 方式（`ig_page` など名前空間を分けてブログ側の `page` と衝突させない）
 5. データ取得: Server Component（`app/analytics/page.tsx`）の既存 `Promise.all` に **`getInstagramConnectionStatus`** を追加し、その結果でタブ表示を分岐する。連携済みかつ `tab=instagram` のときだけ **`instagramMediaService.getPage(userId, ...)`**（投稿一覧・10件/頁）を取得する（未連携ユーザーに Instagram の DB クエリを走らせない）。PostgREST `db-max-rows = 1000` 制限があるため投稿一覧はページング取得とする。~~アカウント指標サマリー用に `getAccountInsightsLatestDay(userId)` も取得する~~ → **2026-08-08 廃止**（§4 Phase2 item3 末尾「アカウント指標サマリー Card の廃止」参照）
-6. **限定公開の解除（本 Phase の最終タスク。審査通過後に実施 — 2026-08-04 に item0 から末尾へ移動）**: Phase 2 の本番反映と同時に行う。手順と条件は以下。
+6. **限定公開の解除（本 Phase の最終タスク。審査通過後に実施 — 2026-08-04 に item0 から末尾へ移動）**: Phase 2 の本番反映と同時に行う。**本番作業の手順書は [`docs/runbooks/instagram-advanced-access-release-2026-08-14.md`](../runbooks/instagram-advanced-access-release-2026-08-14.md)**（Vercel 操作・実測アカウントの条件・ロールバック）。条件と設計判断は以下。
    - **前提条件（すべて満たすまで実施しない）**: ①App Review 通過（Advanced Access 付与）②アクセス認証（Tech Provider）完了 — §3.2。未完だと役割を持たないユーザーの呼び出しが `error code 100` で落ちる ③クライアント側ビジネス認証完了（2026-08-01 時点で完了済み）
    - `INSTAGRAM_BETA_USER_IDS` を空にする。`canAccessInstagram` が §7 の通常ロール判定にフォールバックし、Q4 の開放範囲（admin / paid / trial）に戻る。**この変数は Vercel 側の操作であり、リポジトリからは変更できない**（Production / Preview の両スコープで空にする）
    - **⚠ 「コード変更は不要」は admin / paid までの話だった（2026-08-14 訂正）**。当初この項は「コード変更は不要」と書いていたが、**trial は環境変数を空にしても Instagram に到達できない**。`proxy.ts` が `/setup/*`（`hasSetupAccess` = paid / admin）と `/analytics`（`PAID_FEATURE_REQUIRED_PATHS`）で手前から弾いており、`app/page.tsx` の導線カードも paid / admin にしか出ないためである（§7 / §9 Q7 で既知の宿題として残っていた）。**Q4 の開放範囲を実質的に満たすには下記のコード変更が要る**
