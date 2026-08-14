@@ -65,6 +65,7 @@ interface Props {
   selectedCategoryNames: string[];
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
+  hasUnstartedGscEvaluation: boolean;
   hasUrlFilterParams: boolean;
 }
 
@@ -130,6 +131,7 @@ export default function AnalyticsTable({
   selectedCategoryNames,
   includeUncategorized,
   hasUnreadSuggestion,
+  hasUnstartedGscEvaluation,
   hasUrlFilterParams,
 }: Props) {
   const router = useRouter();
@@ -156,18 +158,20 @@ export default function AnalyticsTable({
   const chatServiceRef = React.useRef<ChatService | null>(null);
   const didInitialFilterSyncRef = React.useRef(false);
   const prevHasUrlFilterParamsRef = React.useRef(hasUrlFilterParams);
-  const prevHasUnreadSuggestionRef = React.useRef(hasUnreadSuggestion);
+  const prevHasIndependentFilterRef = React.useRef(
+    hasUnreadSuggestion || hasUnstartedGscEvaluation
+  );
 
   const storedFilter = React.useMemo(() => loadCategoryFilterFromStorage(), []);
 
   // URL明示時はURL優先。未指定時のみlocalStorageを初期値として復元。
-  // ただし unread_suggestion=1 は明示的な deep link（通知/共有URL）なので
+  // ただし独立フィルターが指定されている場合は明示的な deep link なので
   // localStorage のカテゴリを自動適用しない。適用するとユーザーごとに結果が変わる。
   const [categoryFilterNames, setCategoryFilterNames] = React.useState<string[]>(() => {
     if (hasUrlFilterParams) {
       return selectedCategoryNames;
     }
-    if (hasUnreadSuggestion) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation) {
       return [];
     }
     return storedFilter.selectedCategoryNames;
@@ -176,7 +180,7 @@ export default function AnalyticsTable({
     if (hasUrlFilterParams) {
       return includeUncategorized;
     }
-    if (hasUnreadSuggestion) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation) {
       return false;
     }
     return storedFilter.includeUncategorized;
@@ -184,6 +188,8 @@ export default function AnalyticsTable({
 
   const [isFilteringUnreadSuggestion, setIsFilteringUnreadSuggestion] =
     React.useState<boolean>(hasUnreadSuggestion);
+  const [isFilteringUnstartedGscEvaluation, setIsFilteringUnstartedGscEvaluation] =
+    React.useState<boolean>(hasUnstartedGscEvaluation);
 
   // 操作列の展開状態（初期値は true: 展開）
   const [isOpsExpanded, setIsOpsExpanded] = React.useState<boolean>(() => {
@@ -270,11 +276,16 @@ export default function AnalyticsTable({
     setIsFilteringUnreadSuggestion(hasUnreadSuggestion);
   }, [hasUnreadSuggestion]);
 
+  React.useEffect(() => {
+    setIsFilteringUnstartedGscEvaluation(hasUnstartedGscEvaluation);
+  }, [hasUnstartedGscEvaluation]);
+
   const pushFilterQuery = React.useCallback(
     (
       selectedNames: string[],
       includeUncat: boolean,
       includeUnreadSuggestion: boolean,
+      includeUnstartedGscEvaluation: boolean,
       options?: { replace?: boolean }
     ) => {
       const nextQuery = new URLSearchParams(searchParams?.toString() ?? '');
@@ -301,6 +312,12 @@ export default function AnalyticsTable({
         nextQuery.delete('unread_suggestion');
       }
 
+      if (includeUnstartedGscEvaluation) {
+        nextQuery.set('gsc_evaluation', 'not_started');
+      } else {
+        nextQuery.delete('gsc_evaluation');
+      }
+
       const next = nextQuery.toString();
       const href = next.length > 0 ? `${currentPath}?${next}` : currentPath;
       React.startTransition(() => {
@@ -325,31 +342,36 @@ export default function AnalyticsTable({
     if (hasUrlFilterParams) {
       return;
     }
-    if (hasUnreadSuggestion) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation) {
       return;
     }
     if (storedFilter.selectedCategoryNames.length === 0 && !storedFilter.includeUncategorized) {
       return;
     }
-    pushFilterQuery(storedFilter.selectedCategoryNames, storedFilter.includeUncategorized, false, {
-      replace: true,
-    });
-  }, [hasUrlFilterParams, hasUnreadSuggestion, pushFilterQuery, storedFilter]);
+    pushFilterQuery(
+      storedFilter.selectedCategoryNames,
+      storedFilter.includeUncategorized,
+      false,
+      false,
+      { replace: true }
+    );
+  }, [hasUrlFilterParams, hasUnreadSuggestion, hasUnstartedGscEvaluation, pushFilterQuery, storedFilter]);
 
-  // unread-only から通常一覧へ戻ったとき、保存済みカテゴリがあれば URL へ復元する。
+  // 独立フィルターのみの一覧から通常一覧へ戻ったとき、保存済みカテゴリがあれば URL へ復元する。
   // didInitialFilterSyncRef は初回マウント時しか動かないため、ここで明示的に処理する。
   React.useEffect(() => {
-    const prev = prevHasUnreadSuggestionRef.current;
-    prevHasUnreadSuggestionRef.current = hasUnreadSuggestion;
-    if (prev && !hasUnreadSuggestion && !hasUrlFilterParams) {
+    const hasIndependentFilter = hasUnreadSuggestion || hasUnstartedGscEvaluation;
+    const prev = prevHasIndependentFilterRef.current;
+    prevHasIndependentFilterRef.current = hasIndependentFilter;
+    if (prev && !hasIndependentFilter && !hasUrlFilterParams) {
       const latest = loadCategoryFilterFromStorage();
       if (latest.selectedCategoryNames.length > 0 || latest.includeUncategorized) {
-        pushFilterQuery(latest.selectedCategoryNames, latest.includeUncategorized, false, {
+        pushFilterQuery(latest.selectedCategoryNames, latest.includeUncategorized, false, false, {
           replace: true,
         });
       }
     }
-  }, [hasUnreadSuggestion, hasUrlFilterParams, pushFilterQuery]);
+  }, [hasUnreadSuggestion, hasUnstartedGscEvaluation, hasUrlFilterParams, pushFilterQuery]);
 
   // カテゴリフィルターの変更ハンドラ
   const handleCategoryFilterChange = React.useCallback(
@@ -357,19 +379,37 @@ export default function AnalyticsTable({
       setCategoryFilterNames(selectedNames);
       setIsIncludingUncategorized(includeUncat);
       saveCategoryFilterToStorage(selectedNames, includeUncat);
-      pushFilterQuery(selectedNames, includeUncat, isFilteringUnreadSuggestion);
+      pushFilterQuery(
+        selectedNames,
+        includeUncat,
+        isFilteringUnreadSuggestion,
+        isFilteringUnstartedGscEvaluation
+      );
     },
-    [pushFilterQuery, saveCategoryFilterToStorage, isFilteringUnreadSuggestion]
+    [
+      pushFilterQuery,
+      saveCategoryFilterToStorage,
+      isFilteringUnreadSuggestion,
+      isFilteringUnstartedGscEvaluation,
+    ]
   );
 
   // localStorage からカテゴリフィルターを復元し URL へ反映する。復元した場合 true を返す。
   // SSR ガードは loadCategoryFilterFromStorage 内で処理済み。イベントハンドラ専用。
-  const restoreCategoryFiltersFromStorage = () => {
+  const restoreCategoryFiltersFromStorage = (overrides?: {
+    includeUnreadSuggestion?: boolean;
+    includeUnstartedGscEvaluation?: boolean;
+  }) => {
     const stored = loadCategoryFilterFromStorage();
     if (stored.selectedCategoryNames.length > 0 || stored.includeUncategorized) {
       setCategoryFilterNames(stored.selectedCategoryNames);
       setIsIncludingUncategorized(stored.includeUncategorized);
-      pushFilterQuery(stored.selectedCategoryNames, stored.includeUncategorized, false);
+      pushFilterQuery(
+        stored.selectedCategoryNames,
+        stored.includeUncategorized,
+        overrides?.includeUnreadSuggestion ?? isFilteringUnreadSuggestion,
+        overrides?.includeUnstartedGscEvaluation ?? isFilteringUnstartedGscEvaluation
+      );
       return true;
     }
     return false;
@@ -379,9 +419,28 @@ export default function AnalyticsTable({
   const handleUnreadSuggestionChange = (next: boolean) => {
     setIsFilteringUnreadSuggestion(next);
     if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
-      if (restoreCategoryFiltersFromStorage()) return;
+      if (restoreCategoryFiltersFromStorage({ includeUnreadSuggestion: false })) return;
     }
-    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, next);
+    pushFilterQuery(
+      categoryFilterNames,
+      isIncludingUncategorized,
+      next,
+      isFilteringUnstartedGscEvaluation
+    );
+  };
+
+  // 評価未開始フィルターの変更ハンドラ
+  const handleUnstartedGscEvaluationChange = (next: boolean) => {
+    setIsFilteringUnstartedGscEvaluation(next);
+    if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
+      if (restoreCategoryFiltersFromStorage({ includeUnstartedGscEvaluation: false })) return;
+    }
+    pushFilterQuery(
+      categoryFilterNames,
+      isIncludingUncategorized,
+      isFilteringUnreadSuggestion,
+      next
+    );
   };
 
   // フィルタータグの削除ハンドラ
@@ -390,27 +449,63 @@ export default function AnalyticsTable({
       setCategoryFilterNames(prev => {
         const next = prev.filter(name => name !== categoryName);
         saveCategoryFilterToStorage(next, isIncludingUncategorized);
-        pushFilterQuery(next, isIncludingUncategorized, isFilteringUnreadSuggestion);
+        pushFilterQuery(
+          next,
+          isIncludingUncategorized,
+          isFilteringUnreadSuggestion,
+          isFilteringUnstartedGscEvaluation
+        );
         return next;
       });
     },
-    [isIncludingUncategorized, isFilteringUnreadSuggestion, pushFilterQuery, saveCategoryFilterToStorage]
+    [
+      isIncludingUncategorized,
+      isFilteringUnreadSuggestion,
+      isFilteringUnstartedGscEvaluation,
+      pushFilterQuery,
+      saveCategoryFilterToStorage,
+    ]
   );
 
   // 未分類フィルターの削除ハンドラ
   const removeUncategorizedFilter = React.useCallback(() => {
     setIsIncludingUncategorized(false);
     saveCategoryFilterToStorage(categoryFilterNames, false);
-    pushFilterQuery(categoryFilterNames, false, isFilteringUnreadSuggestion);
-  }, [categoryFilterNames, isFilteringUnreadSuggestion, pushFilterQuery, saveCategoryFilterToStorage]);
+    pushFilterQuery(
+      categoryFilterNames,
+      false,
+      isFilteringUnreadSuggestion,
+      isFilteringUnstartedGscEvaluation
+    );
+  }, [
+    categoryFilterNames,
+    isFilteringUnreadSuggestion,
+    isFilteringUnstartedGscEvaluation,
+    pushFilterQuery,
+    saveCategoryFilterToStorage,
+  ]);
 
   // 改善提案フィルターの削除ハンドラ
   const removeUnreadSuggestionFilter = () => {
     setIsFilteringUnreadSuggestion(false);
     if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
-      if (restoreCategoryFiltersFromStorage()) return;
+      if (restoreCategoryFiltersFromStorage({ includeUnreadSuggestion: false })) return;
     }
-    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, false);
+    pushFilterQuery(
+      categoryFilterNames,
+      isIncludingUncategorized,
+      false,
+      isFilteringUnstartedGscEvaluation
+    );
+  };
+
+  // 評価未開始フィルターの削除ハンドラ
+  const removeUnstartedGscEvaluationFilter = () => {
+    setIsFilteringUnstartedGscEvaluation(false);
+    if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
+      if (restoreCategoryFiltersFromStorage({ includeUnstartedGscEvaluation: false })) return;
+    }
+    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, isFilteringUnreadSuggestion, false);
   };
 
   // 全フィルターをクリア
@@ -418,15 +513,19 @@ export default function AnalyticsTable({
     setCategoryFilterNames([]);
     setIsIncludingUncategorized(false);
     setIsFilteringUnreadSuggestion(false);
+    setIsFilteringUnstartedGscEvaluation(false);
     if (categoryFilterNames.length > 0 || isIncludingUncategorized) {
       saveCategoryFilterToStorage([], false);
     }
-    pushFilterQuery([], false, false);
+    pushFilterQuery([], false, false, false);
   };
 
   // フィルターが適用中かどうか
   const hasActiveFilters =
-    categoryFilterNames.length > 0 || isIncludingUncategorized || isFilteringUnreadSuggestion;
+    categoryFilterNames.length > 0 ||
+    isIncludingUncategorized ||
+    isFilteringUnreadSuggestion ||
+    isFilteringUnstartedGscEvaluation;
 
   const handleLaunch = React.useCallback(
     async (payload: LaunchPayload) => {
@@ -467,7 +566,7 @@ export default function AnalyticsTable({
         }
       } catch (error) {
         console.error('Failed to launch chat session:', error);
-        alert('チャット画面への遷移に失敗しました。再度お試しください。');
+        alert('チャット画面への遷移に失敗しました。もう一度お試しください。');
       } finally {
         setPendingRowKey(null);
       }
@@ -519,7 +618,7 @@ export default function AnalyticsTable({
 
       startEditTransition(async () => {
         setFormError('');
-        const toastId = toast.loading('保存中です...');
+        const toastId = toast.loading('保存中...');
         try {
           // コンテンツフィールドを保存
           const result = await updateContentAnnotationFields(annotationId, {
@@ -589,7 +688,7 @@ export default function AnalyticsTable({
 
   const handleDeleteConfirm = React.useCallback(async () => {
     setIsDeleting(true);
-    const toastId = toast.loading('削除中です...');
+    const toastId = toast.loading('削除中...');
 
     try {
       if (deleteTargetSessionId) {
@@ -643,8 +742,10 @@ export default function AnalyticsTable({
               selectedCategoryNames={categoryFilterNames}
               includeUncategorized={isIncludingUncategorized}
               hasUnreadSuggestion={isFilteringUnreadSuggestion}
+              hasUnstartedGscEvaluation={isFilteringUnstartedGscEvaluation}
               onFilterChange={handleCategoryFilterChange}
               onUnreadSuggestionChange={handleUnreadSuggestionChange}
+              onUnstartedGscEvaluationChange={handleUnstartedGscEvaluationChange}
               onClearAll={clearAllFilters}
             />
         }
@@ -695,6 +796,19 @@ export default function AnalyticsTable({
                           onClick={removeUnreadSuggestionFilter}
                           className="hover:bg-amber-200 rounded-full p-0.5"
                           title="改善提案フィルターを解除"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    )}
+                    {isFilteringUnstartedGscEvaluation && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-blue-800 bg-blue-100">
+                        評価未開始
+                        <button
+                          type="button"
+                          onClick={removeUnstartedGscEvaluationFilter}
+                          className="hover:bg-blue-200 rounded-full p-0.5"
+                          title="評価未開始フィルターを解除"
                         >
                           <X className="h-3 w-3" />
                         </button>

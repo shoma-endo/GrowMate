@@ -1,1 +1,5 @@
 base_branch: develop
+workflow_command_gates:
+  custom_scripts: true
+assistant:
+  gherkin: true

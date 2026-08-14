@@ -1,6 +1,6 @@
 ---
 name: project-naming
-description: プロジェクト全域の命名規則。ディレクトリ、ファイル、コード内の全ルールを網羅した唯一の正解（SSoT）。ディレクトリ・ファイル・変数・関数・型・定数を新規作成またはリネームするとき、命名に迷ったときに使う。
+description: GrowMate全域の命名規則を確認する唯一の正本（SSoT）。ディレクトリ、ファイル、パス、変数、関数、型、定数、DB項目、API項目の名前を新規作成・変更・リネームするとき、または命名に迷ったときに必ず使う。実装内容だけを変更し命名判断が不要な作業では使わない。
 ---
 
 # プロジェクト命名規則
@@ -11,7 +11,7 @@ description: プロジェクト全域の命名規則。ディレクトリ、フ�
 
 ### 1. ディレクトリ命名
 
-- **原則**: すべて `kebab-case` (例: `business-info/`, `api/line-oauth/`, `src/server/actions/`)
+- **原則**: すべて `kebab-case` (例: `business-info/`, `api/google-oauth/`, `src/server/actions/`)
 
 ### 2. ファイル命名 (接尾辞・ケースの徹底)
 

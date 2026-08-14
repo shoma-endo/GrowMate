@@ -1,8 +1,7 @@
 ---
 name: spec-review
-description: docs/plans 仕様書（設計書）のレビュー観点チェックリストと適用ルーティングの正本。仕様書のレビュー・監査、spec-to-pr 実行前の品質確認、TAKT spec-review ワークフローで使う。完全性・既存コード整合・非機能・セキュリティの共通観点と、クライアント整合 / LLM / UI / データ / Google 連携 / 外部サービス連携の条件付き観点の振り分けを定義する。外部サービス（Google・WordPress・Instagram 等）連携時は公式ドキュメントを一次情報として WebFetch で照合する規約もここに含む。
+description: docs/plansの仕様書・設計書を作成前、レビュー・監査するときに必ず使う品質チェックと適用ルーティングの正本。要件、Non-goals、既存コード整合、非機能、セキュリティ、クライアント整合、LLM、UI、データ、Google連携、外部サービス連携を確認する。spec-to-pr実行前やTAKT spec-reviewで使い、Google・WordPress・Instagram等の外部APIは公式ドキュメントを一次情報として照合する。
 ---
-
 # 仕様書レビュー観点（SSoT）
 
 `docs/plans/` の仕様書（設計書）を **実装前に** レビューするための観点チェックリスト。実装後の architecture review より修正コストが低い段階で欠陥を検出する。指摘の出力形式・重大度もここを正本とする。
@@ -12,12 +11,13 @@ description: docs/plans 仕様書（設計書）のレビュー観点チェッ�
 ### A. 完全性
 
 - [ ] 受け入れ条件（何ができたら完成か）が検証可能な形で書かれているか
-- [ ] **やらないこと（Non-goals）** が明記されているか。仕様書は `spec-to-pr` で実装エージェントに渡る前提のため、境界がないとスコープが勝手に広がる
+- [ ] **やらないこと（Non-goals）** が明記されているか。特に要件にない画面・UI・機能追加や将来対応を対象外として列挙する。仕様書は `spec-to-pr` で実装エージェントに渡る前提のため、境界がないとスコープが勝手に広がる
 - [ ] エラーパスが設計されているか（失敗・途中切れ・再試行・タイムアウト。正常系のみの仕様書は差し戻し）
 - [ ] 検証方法（手動確認の画面・観点、`quality-gate` との対応）があるか
 - [ ] 純関数・正規化・集計・日付・分離済み Zod スキーマを変更する場合、追加・更新するテストケースと期待結果が明記されているか
 - [ ] DB / データ変更を伴う場合、マイグレーションとロールバック手順があるか
 - [ ] 影響する既存画面・機能が列挙されているか
+- [ ] 対象範囲（画面・機能・データ・API）と、要件達成に直接必要な既存UI変更が明記されているか。ついで修正・将来対応を今回のスコープに混ぜていないか
 - [ ] README.md の更新が発生しそうかを **予告** しているか（`update-docs` の README 行が対象: 🚀主な機能・🏗️アーキテクチャ図・📋環境変数・📁プロジェクト構成・🛠️技術スタック等。該当しそうなセクション名を挙げるに留め、更新要否を断定しない。該当なしなら記載不要）。**最終判断は実装時の `spec-to-pr` の `readme_sync` が全差分を見て行う**（仕様書段階では差分が存在せず判断材料が足りないため）
 
 #### 既存データ・既存ユーザーへの後方互換
@@ -47,7 +47,7 @@ description: docs/plans 仕様書（設計書）のレビュー観点チェッ�
 
 ### D. セキュリティ
 
-- [ ] 認可条件（role: `admin` / `paid` / `trial` / `unavailable`、`viewMode`）が明記されているか
+- [ ] 認可条件（role: `admin` / `paid` / `trial` / `unavailable`）が明記されているか
 - [ ] RLS / Service Role の使い分けと、Service Role 使用時の明示的な user_id スコープが設計されているか
 - [ ] 機密情報（credential、token、`.env`）がクライアントや LLM 入力に露出しない設計か
 - [ ] パブリックページ（`/home`, `/privacy` 等）に認証済み情報を出していないか
@@ -56,14 +56,17 @@ description: docs/plans 仕様書（設計書）のレビュー観点チェッ�
 
 仕様書の内容に応じて、以下の正本を **追加で** 適用する。
 
-| 仕様書が含む内容 | 適用する観点の正本 |
-|------|------|
-| ユーザー向け挙動・UX・運用の変更 | `.agents/agents/client-alignment-auditor.md` の5条件（曖昧・複数解釈・挙動変更・運用影響・トレードオフ未合意）。該当時は確認質問を生成する |
-| LLM 呼び出し・RAG・会話履歴・prompt template・エージェント型機能 | `llm-context-memory` SKILL.md の Review Checklist（Context Assembly Contract、token budget、Memory Taxonomy 等12項目） |
-| 画面・UI コンポーネント | `growmate-ui-ux`（正本優先順位、画面種別指針、AI 連携 UI の鉄則） |
-| DB スキーマ変更・RLS・大量データ取得 | `supabase`（`rls.md` / `service-usage.md` 運用ルール3） |
-| GSC / GA4 / Google Ads 連携 | `google-integrations`（トークン管理、needsReauth、再認証導線） |
-| 外部サービス連携（Google / WordPress / Instagram(Meta) / LINE / Stripe / Supabase 等）| 下記「外部サービス連携」。**Google 系はこの行と上の `google-integrations` 行の両方を適用する**（`google-integrations` はトークン運用の実装規約、本行は公式ドキュメント照合と連携ライフサイクル。守備範囲が違う） |
+
+| 仕様書が含む内容                                                                    | 適用する観点の正本                                                                                                                            |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| ユーザー向け挙動・UX・運用の変更                                                           | `.agents/agents/client-alignment-auditor.md` の5条件（曖昧・複数解釈・挙動変更・運用影響・トレードオフ未合意）。該当時は確認質問を生成する                                         |
+| LLM 呼び出し・RAG・会話履歴・prompt template・エージェント型機能                                 | `llm-context-memory` SKILL.md の Review Checklist（Context Assembly Contract、token budget、Memory Taxonomy 等12項目）                       |
+| 画面・UI コンポーネント                                                               | `growmate-ui-ux`（正本優先順位、AI 連携 UI の鉄則）                                                                                         |
+| DB スキーマ変更・RLS・大量データ取得                                                       | `supabase`（`rls.md` / `service-usage.md` 運用ルール3）                                                                                     |
+| GSC / GA4 / Google Ads 連携                                                   | `google-integrations`（トークン管理、needsReauth、再認証導線）                                                                                      |
+| 外部サービス連携（Google / WordPress / Instagram(Meta) / Supabase 等） | 下記「外部サービス連携」。**Google 系はこの行と上の `google-integrations` 行の両方を適用する**（`google-integrations` はトークン運用の実装規約、本行は公式ドキュメント照合と連携ライフサイクル。守備範囲が違う） |
+|                                                                             |                                                                                                                                      |
+
 
 ## 外部サービス連携
 
@@ -75,17 +78,17 @@ description: docs/plans 仕様書（設計書）のレビュー観点チェッ�
 
 #### 公式ドキュメントの起点
 
-| サービス | 起点 URL |
-|------|------|
-| Google Search Console API | https://developers.google.com/webmaster-tools |
-| Google Analytics Data API (GA4) | https://developers.google.com/analytics/devguides/reporting/data/v1 |
-| Google Ads API | https://developers.google.com/google-ads/api/docs/start |
-| Google OAuth 2.0 | https://developers.google.com/identity/protocols/oauth2 |
-| WordPress REST API | https://developer.wordpress.org/rest-api/ |
-| Instagram Platform (Meta Graph API) | https://developers.facebook.com/docs/instagram-platform |
-| LINE Developers (Messaging API / LIFF) | https://developers.line.biz/ja/docs/ |
-| Stripe API | https://docs.stripe.com/api |
-| Supabase | https://supabase.com/docs |
+
+| サービス                                   | 起点 URL                                                                                                                                     |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Google Search Console API              | [https://developers.google.com/webmaster-tools](https://developers.google.com/webmaster-tools)                                             |
+| Google Analytics Data API (GA4)        | [https://developers.google.com/analytics/devguides/reporting/data/v1](https://developers.google.com/analytics/devguides/reporting/data/v1) |
+| Google Ads API                         | [https://developers.google.com/google-ads/api/docs/start](https://developers.google.com/google-ads/api/docs/start)                         |
+| Google OAuth 2.0                       | [https://developers.google.com/identity/protocols/oauth2](https://developers.google.com/identity/protocols/oauth2)                         |
+| WordPress REST API                     | [https://developer.wordpress.org/rest-api/](https://developer.wordpress.org/rest-api/)                                                     |
+| Instagram Platform (Meta Graph API)    | [https://developers.facebook.com/docs/instagram-platform](https://developers.facebook.com/docs/instagram-platform)                         |
+| Supabase                               | [https://supabase.com/docs](https://supabase.com/docs)                                                                                     |
+
 
 起点 URL が 404・リダイレクトになっている場合は各サービスの公式トップから辿り直す。表にないサービスは公式ドメインのドキュメントを探す。**この表自体が古い / 足りない場合は、SKILL.md の更新を別途提案する**（仕様書への指摘ではないため重大度は付けない）。
 
@@ -112,7 +115,7 @@ description: docs/plans 仕様書（設計書）のレビュー観点チェッ�
 
 ### 連携ライフサイクル（失効・剥奪・切断）
 
-外部連携は「つながった瞬間」だけでなく **切れたとき** の設計が必要。`google-integrations` の needsReauth は Google 専用のため、Google 以外（Instagram / WordPress / LINE / Stripe）でも同等の設計があるかを横断で確認する。
+外部連携は「つながった瞬間」だけでなく **切れたとき** の設計が必要。`google-integrations` の needsReauth は Google 専用のため、Google 以外（Instagram / WordPress）でも同等の設計があるかを横断で確認する。
 
 - [ ] アクセストークン / リフレッシュトークンの失効時に、保存済みの認証情報をどう扱うか（期限を落とす・削除する）と、画面表示をどう揃えるかが定義されているか
 - [ ] **ユーザーが外部サービス側で連携を解除した場合**（Meta のアプリ連携解除、Google のアクセス権削除、WordPress の application password 失効等）の検知方法と、検知後の挙動が定義されているか
@@ -126,14 +129,16 @@ description: docs/plans 仕様書（設計書）のレビュー観点チェッ�
 
 重大度の定義そのものは後述の「重大度」表が正本。ここは外部サービス連携で頻出する状況の当てはめを示す。
 
-| 状況 | 扱い |
-|------|------|
-| 公式ドキュメントの記述と仕様書が矛盾する | 🔴。公式を正とし、仕様書を修正する |
-| 公式に非推奨・提供終了が告知されている API に依存している | 🔴 |
-| 権限スコープ・レート制限・前提条件が公式にあるのに仕様書が未記載 | 🟡 |
-| トークン失効・ユーザーによる連携解除時の挙動が未定義 | 🔴。外部連携が機能の前提なら、切れた状態が必ず本番で発生する |
-| 公式ドキュメントに記述が見つからない挙動を仕様書が前提にしている | 断定せず「公式未記載・実機確認が必要」として確認質問に隔離する。推測で仕様を確定しない |
-| WebFetch が失敗し公式ページを取得できない | レビューを止めず、「未確認（取得失敗した URL）」として明記したうえで残りの観点を続行する |
+
+| 状況                               | 扱い                                             |
+| -------------------------------- | ---------------------------------------------- |
+| 公式ドキュメントの記述と仕様書が矛盾する             | 🔴。公式を正とし、仕様書を修正する                             |
+| 公式に非推奨・提供終了が告知されている API に依存している  | 🔴                                             |
+| 権限スコープ・レート制限・前提条件が公式にあるのに仕様書が未記載 | 🟡                                             |
+| トークン失効・ユーザーによる連携解除時の挙動が未定義       | 🔴。外部連携が機能の前提なら、切れた状態が必ず本番で発生する                |
+| 公式ドキュメントに記述が見つからない挙動を仕様書が前提にしている | 断定せず「公式未記載・実機確認が必要」として確認質問に隔離する。推測で仕様を確定しない    |
+| WebFetch が失敗し公式ページを取得できない        | レビューを止めず、「未確認（取得失敗した URL）」として明記したうえで残りの観点を続行する |
+
 
 ## 指摘の出力規約
 
@@ -147,20 +152,16 @@ description: docs/plans 仕様書（設計書）のレビュー観点チェッ�
 
 ### 重大度
 
-| レベル | 基準 | 扱い |
-|--------|------|------|
-| 🔴 Critical | このまま実装すると手戻り必至（エラーパス欠落、データ上限矛盾、認可未定義、クライアント合意未取得） | 修正または確認質問の回答まで spec-to-pr に進まない |
-| 🟡 Important | 実装中に判断を迫られ、実装者の裁量で仕様が決まってしまう箇所 | 原則修正。残す場合は理由を明記 |
-| 🟢 Nice-to-have | 記述の明確化・構成改善 | 任意 |
+
+| レベル             | 基準                                                | 扱い                              |
+| --------------- | ------------------------------------------------- | ------------------------------- |
+| 🔴 Critical     | このまま実装すると手戻り必至（エラーパス欠落、データ上限矛盾、認可未定義、クライアント合意未取得） | 修正または確認質問の回答まで spec-to-pr に進まない |
+| 🟡 Important    | 実装中に判断を迫られ、実装者の裁量で仕様が決まってしまう箇所                    | 原則修正。残す場合は理由を明記                 |
+| 🟢 Nice-to-have | 記述の明確化・構成改善                                       | 任意                              |
+
 
 共通化candidate（B観点）は原則 🟢。実装しないと後続タスクでのコスト差が明白な場合のみ 🟡 に格上げする。
 
 ## ワークフロー
 
 一気通貫のレビューは TAKT `.takt/workflows/spec-review.yaml` を使う（レビュー → 仕様書修正 → 再レビュー → 現在ブランチへ commit。新規ブランチ作成・push・PR はしない）。レビュー済み仕様書の合意後に `.takt/workflows/spec-to-pr.yaml` で実装へ進む。
-
-## 関連スキル
-
-- 設計書先行ルール・クライアント整合ゲート: `agent-workflow-core`
-- docs 分類と同期更新: `update-docs`
-- 実装後のコードレビュー観点: `quality-gate`（`self-review.md`）

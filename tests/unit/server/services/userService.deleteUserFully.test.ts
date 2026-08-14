@@ -84,7 +84,7 @@ describe('userService.deleteUserFully', () => {
     expect(mocks.deleteUserFully).toHaveBeenCalledWith('user-1', 'log-1');
     expect(mocks.deleteAuthUser).toHaveBeenCalledWith('auth-1');
     expect(mocks.deleteAuthUser.mock.invocationCallOrder[0]).toBeGreaterThan(
-      mocks.deleteUserFully.mock.invocationCallOrder[0]
+      mocks.deleteUserFully.mock.invocationCallOrder[0]!
     );
     expect(mocks.deletePendingAuthUserDeletion).toHaveBeenCalledWith('auth-1');
     expect(mocks.updateAdminActionLogStatus).toHaveBeenCalledWith('log-1', 'succeeded', undefined);

@@ -13,6 +13,7 @@ export interface AnalyticsHrefState {
   selectedCategoryNames: string[];
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
+  hasUnstartedGscEvaluation: boolean;
   instagramConnected: boolean;
   activeTab: 'blog' | 'instagram';
   igPage: number;
@@ -45,6 +46,9 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
   }
   if (state.hasUnreadSuggestion) {
     query.set('unread_suggestion', '1');
+  }
+  if (state.hasUnstartedGscEvaluation) {
+    query.set('gsc_evaluation', 'not_started');
   }
 
   const nextTab = patch.tab ?? state.activeTab;

@@ -6,6 +6,9 @@
 # 検出したら、その出力を additionalContext としてエージェントに差し戻す。
 #
 # 更新不要なら何も出力せず exit 0（無言）。失敗しても編集をブロックしない。
+# Claude Code は Edit / Write のイベントから対象ファイルを絞り込む。
+# Codex は apply_patch 1回で複数ファイルを変更できるため、.codex/hooks.json から
+# --all を渡して全仕様書を更新する。両方ともこの共通スクリプトを正本とする。
 set -eu
 
 command -v python3 >/dev/null 2>&1 || exit 0

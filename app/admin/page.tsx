@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Target, Users } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -13,7 +14,7 @@ export default function AdminDashboard() {
         <Card className="hover:shadow-lg transition-shadow flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <span className="text-blue-600">🎯</span>
+              <Target className="h-5 w-5 text-blue-600" aria-hidden="true" />
               <span>プロンプト管理</span>
             </CardTitle>
           </CardHeader>
@@ -30,7 +31,7 @@ export default function AdminDashboard() {
         <Card className="hover:shadow-lg transition-shadow flex flex-col">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <span className="text-green-600">👥</span>
+              <Users className="h-5 w-5 text-green-600" aria-hidden="true" />
               <span>ユーザー管理</span>
             </CardTitle>
           </CardHeader>

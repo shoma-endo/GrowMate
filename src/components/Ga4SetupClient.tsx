@@ -368,7 +368,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                   </SelectContent>
                 </Select>
                 <div className="text-xs text-gray-500">
-                  {isLoadingProperties && 'GA4プロパティ一覧を取得中です...'}
+                  {isLoadingProperties && 'GA4プロパティ一覧を取得中...'}
                   {!isLoadingProperties && properties.length === 0 && (
                     <span>権限のあるGA4プロパティが見つかりません。</span>
                   )}
@@ -382,7 +382,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                 </p>
                 <div className="rounded-md border border-gray-200 p-3 space-y-2">
                   {isLoadingKeyEvents ? (
-                    <p className="text-xs text-gray-500">キーイベントを取得中です...</p>
+                    <p className="text-xs text-gray-500">キーイベントを取得中...</p>
                   ) : keyEvents.length === 0 ? (
                     <p className="text-xs text-gray-500">選択可能なキーイベントがありません。</p>
                   ) : (

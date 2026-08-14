@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import { ChatError } from '@/domain/errors/ChatError';
+import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { env } from '@/env';
 import type { AnthropicSystemBlock } from '@/lib/knowledgeInjection';
 
@@ -41,6 +41,7 @@ class LLMService {
       chatMessages = messages.slice(1) as Exclude<LLMMessage, { role: 'system' }>[];
     }
 
+    let timeoutTriggered = false;
     try {
       const controller = new AbortController();
       const abortFromCaller = () => controller.abort(opts.signal?.reason);
@@ -50,7 +51,10 @@ class LLMService {
         opts.signal?.addEventListener('abort', abortFromCaller, { once: true });
       }
       const timeoutId = setTimeout(
-        () => controller.abort(new Error('timeout')),
+        () => {
+          timeoutTriggered = true;
+          controller.abort(new Error('timeout'));
+        },
         opts.timeoutMs ?? 300000
       );
 
@@ -78,6 +82,14 @@ class LLMService {
         `LLM Chat Error - Provider: ${providerKey}, Model: ${model}, Latency: ${latency}ms, Error:`,
         error
       );
+
+      if (timeoutTriggered) {
+        throw new ChatError(
+          `LLM request timed out after ${opts.timeoutMs ?? 300000}ms`,
+          ChatErrorCode.CONNECTION_TIMEOUT,
+          { provider: providerKey, model, timeoutMs: opts.timeoutMs ?? 300000 }
+        );
+      }
 
       // すべてのプロバイダでフォールバックは行わず、発生したエラーをそのままユーザー向けにマッピング
       throw ChatError.fromApiError(error, { provider: providerKey, model });

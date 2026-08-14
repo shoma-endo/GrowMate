@@ -6,7 +6,7 @@ import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import type { GscSuggestionJobBatchResult, GscSuggestionJobRow } from '@/types/gsc';
 
 const RETRY_DELAY_MINUTES = 15;
-const JOBS_PER_INVOCATION = 3;
+const JOBS_PER_INVOCATION = 1;
 const JOB_TIMEOUT_MS = 240 * 1000;
 
 class GscSuggestionJobService {

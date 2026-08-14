@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. ユーザーID確定
-    // state に署名済み userId が含まれる。セッションが有効な場合は整合性チェックと viewMode チェックも行う。
+    // state に署名済み userId が含まれる。セッションが有効な場合は整合性チェックを行う。
     // セッション切れでも CSRF Cookie 一致 + HMAC 検証済みの state.userId があれば続行できる。
     let targetUserId: string | null = verification.payload.userId;
 

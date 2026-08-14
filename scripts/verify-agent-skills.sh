@@ -18,7 +18,6 @@ warn() { echo -e "${YELLOW}!${NC} $1"; warnings=$((warnings + 1)); }
 ok()   { echo -e "${GREEN}✓${NC} $1"; }
 
 EXPECTED_SKILLS=(
-  agent-workflow-core
   google-integrations
   growmate-ui-ux
   implementation-guidelines
@@ -73,6 +72,41 @@ for agents_link in .codex/agents .claude/agents; do
     fail "$agents_link の参照先が ../.agents/agents ではない"
   fi
 done
+echo
+
+echo "--- Core files ---"
+if [[ -f CLAUDE.md && ! -L CLAUDE.md ]]; then
+  ok "CLAUDE.md が正本ファイル"
+else
+  fail "CLAUDE.md が正本ファイルではない"
+fi
+
+if [[ -L AGENTS.md && "$(readlink AGENTS.md)" == "CLAUDE.md" ]]; then
+  ok "AGENTS.md -> CLAUDE.md"
+else
+  fail "AGENTS.md が CLAUDE.md への symlink ではない"
+fi
+
+if cmp -s AGENTS.md CLAUDE.md; then
+  ok "AGENTS.md と CLAUDE.md の内容が一致"
+else
+  fail "AGENTS.md と CLAUDE.md の内容が不一致"
+fi
+echo
+
+echo "--- Agent hooks ---"
+for hook_config in .claude/settings.json .codex/hooks.json; do
+  if [[ -f "$hook_config" ]] && grep -Fq "scripts/spec-html-hook.sh" "$hook_config"; then
+    ok "$hook_config が共通HTMLフックを参照"
+  else
+    fail "$hook_config が scripts/spec-html-hook.sh を参照していない"
+  fi
+done
+if [[ -x scripts/spec-html-hook.sh ]]; then
+  ok "scripts/spec-html-hook.sh が実行可能"
+else
+  fail "scripts/spec-html-hook.sh が存在しないか実行不可"
+fi
 echo
 
 echo "--- SKILL.md 走査 ---"
@@ -133,8 +167,8 @@ while IFS='|' read -r name path; do
 done < "${names_file}.paths" 2>/dev/null || true
 echo
 
-echo "--- TAKT PR ワークフロー ---"
-for workflow in .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml; do
+echo "--- TAKT ワークフロー ---"
+for workflow in .takt/workflows/grill-to-gherkin.yaml .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml; do
   if [[ -f "$workflow" ]]; then
     ok "$workflow"
   else
@@ -150,7 +184,7 @@ for removed in .agents/skills/spec-to-pr .agents/skills/react-doctor-to-pr .agen
   fi
 done
 
-if takt workflow doctor .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml .takt/workflows/react-doctor-to-pr.yaml >/dev/null; then
+if takt workflow doctor .takt/workflows/grill-to-gherkin.yaml .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml >/dev/null; then
   ok "TAKT workflow doctor"
 else
   fail "TAKT workflow doctor failed"
@@ -184,14 +218,13 @@ echo "=== 実行時テスト（手動）==="
 echo "Codex CLI:"
 echo "  cd $ROOT && codex"
 echo "  > /skills"
-echo "  > /use agent-workflow-core"
 echo "  > 「このリポジトリの Skill 正本パスは？」"
 echo
 echo "Claude Code:"
 echo "  cd $ROOT && claude"
 echo "  > /skills"
-echo "  > /agent-workflow-core"
+echo "  > 「このリポジトリの Skill 正本パスは？」"
 echo
 echo "Cursor:"
-echo "  Agent チャットで「agent-workflow-core スキルを読んで Skill 正本を答えて」"
+echo "  Agent チャットで「このリポジトリの Skill 正本パスは？」"
 exit 0

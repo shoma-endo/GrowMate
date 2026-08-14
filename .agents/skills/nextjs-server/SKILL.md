@@ -1,6 +1,6 @@
 ---
 name: nextjs-server
-description: Next.js App Router の Server Actions / Route Handlers、Zod 4 バリデーション、ServerActionResult / ERROR_MESSAGES によるエラーハンドリングの実装規約。Server Action 追加、Route Handler 追加、zod スキーマ定義、入力検証、エラー表示メッセージ追加のときに使う。
+description: Next.js App Routerのサーバー実装で必ず使う規約。Server Actions、Route Handlers / API endpoints、Zod 4スキーマ、入力検証、ServerActionResult、ERROR_MESSAGES、エラーハンドリングを扱う。Server Action・Route Handler・API endpoint・zod schema・認証入力・エラー表示メッセージを追加・変更するときに使う。純粋なUIレイアウト変更では使わない。
 ---
 
 # Next.js サーバー層 技術規約
@@ -14,9 +14,3 @@ Server Actions / Route Handlers / Zod / エラーハンドリングの統合規�
 | Server Actions / Route Handlers の追加・変更 | [`actions-and-routes.md`](actions-and-routes.md) |
 | Zod スキーマ定義・バリデーション | [`zod-validation.md`](zod-validation.md) |
 | エラー返却・`ERROR_MESSAGES`・`handleAsyncAction` | [`error-handling.md`](error-handling.md) |
-
-## 関連スキル
-
-- 実装ポリシー全般: `implementation-guidelines`
-- Supabase 操作: `supabase`
-- 命名規則: `project-naming`

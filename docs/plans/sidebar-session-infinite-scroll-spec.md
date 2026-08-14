@@ -125,7 +125,6 @@ flowchart TD
 
 ```typescript
 export async function getChatSessions(
-  liffAccessToken: string,
   options?: { limit?: number; offset?: number }
 ) {
   // ...

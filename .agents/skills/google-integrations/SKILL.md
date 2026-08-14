@@ -1,6 +1,6 @@
 ---
 name: google-integrations
-description: GSC / GA4 / Google Ads 連携の共通規約。Google OAuth トークンの refresh・永続化、needsReauth 返却規約、再認証導線、API エラー分類。Google 系 API 呼び出しの追加・変更、トークン期限切れ対応、setup 画面の連携ステータス実装のときに使う。
+description: Google連携（GSC / GA4 / Google Ads）の実装・レビューで必ず使う共通規約。Google OAuth、access token / refresh token、トークン永続化、needsReauth、再認証導線、APIエラー分類を扱う。Google API呼び出し、OAuth callback / start、トークン期限切れ、setup画面の連携ステータスを追加・変更するときに使う。
 ---
 
 # Google 連携（GSC / GA4 / Google Ads）共通規約
@@ -45,9 +45,3 @@ return { success: false, error: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED, need
 | Setup actions | `src/server/actions/gscSetup.actions.ts`, `ga4Setup.actions.ts`, `googleAds.actions.ts` |
 | ステータス判定 | `src/server/lib/gsc-status.ts`, `src/server/lib/ga4-status.ts` |
 | ドメインサービス | `gscService.ts`, `gscImportService.ts`, `ga4Service.ts`, `ga4ImportService.ts`, `googleAdsService.ts`, `googleAdsAiAnalysisService.ts` ほか（`src/server/services/`） |
-
-## 関連スキル
-
-- エラー返却形式・`ERROR_MESSAGES`: `nextjs-server`（`error-handling.md`）
-- credential の保存先・Service Role: `supabase`
-- 連携変更後の画面確認（/gsc-dashboard, /gsc-import 等）: `quality-gate`（`manual-testing.md`）

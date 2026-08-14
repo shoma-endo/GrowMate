@@ -4,7 +4,7 @@ const ANTHROPIC_RETRY_MAX_ATTEMPTS = 3;
 const ANTHROPIC_RETRY_BASE_DELAY_MS = 2000;
 
 const ANTHROPIC_RETRY_USER_MESSAGE =
-  'AIサーバーが混雑しています。自動で再試行しています…';
+  'AIサーバーが混雑しています。自動で再試行しています...';
 
 export interface AnthropicRetryInfo {
   attempt: number;

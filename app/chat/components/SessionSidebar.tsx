@@ -68,7 +68,7 @@ const SessionSidebar: React.FC<SessionSidebarProps> = ({
     if (!sessionToDelete) return;
 
     setIsDeletingSession(true);
-    const toastId = toast.loading('削除中です...');
+    const toastId = toast.loading('削除中...');
     try {
       await actions.deleteSession(sessionToDelete.id);
       toast.success('削除しました', { id: toastId });
@@ -149,7 +149,7 @@ const SessionSidebar: React.FC<SessionSidebarProps> = ({
       return (
         <CenteredStatus>
           <Loader2 className="h-4 w-4 animate-spin text-[#06c755]" />
-          <span>検索中です...</span>
+          <span>検索中...</span>
         </CenteredStatus>
       );
     }

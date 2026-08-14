@@ -1,6 +1,6 @@
 ---
 name: implementation-guidelines
-description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Supabase）とフロント・サーバー実装時の注意点。機能実装を開始するとき、コンポーネントやサーバー処理を追加・変更するとき、型・スキーマ設計やページ種別ごとの制約・機密情報の扱いを確認するときに使う。
+description: GrowMateの機能実装全般で最初に使う基盤ポリシー。TypeScript、React、Next.js、Supabaseのフロント・サーバー実装、型・スキーマ設計、ページ種別の制約、機密情報の扱いを確認する。機能開発を開始するとき、コンポーネント、Server Action、Route Handler、サービス、データアクセスを追加・変更するときに必ず使い、UI・React・Next.js・Supabaseの専門Skillと併用する。
 ---
 
 # 実装ポリシー（TypeScript / React / Next.js）
@@ -43,12 +43,7 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
 - **クライアント生成 / Service Role**
   - Supabase クライアントの生成・Service Role の利用パターンは `supabase` スキル（`service-usage.md`）に従い、重複実装を避ける。
 
-# フロントエンド実装
-
-- **UI 実装方針**
-  - **画面・UI コンポーネントの新規追加・変更を始める前に**、`growmate-ui-ux` スキル（`.agents/skills/growmate-ui-ux/SKILL.md`）を **必ず Read する**。未読のまま UI コードを書かない。
-  - レイアウト・スタイルは Tailwind CSS を基本とし、冗長なユーティリティクラスは必要に応じて `cva` 等で整理する。
-  - コンポーネントは既存の shadcn ベースコンポーネント（`src/components/`）を優先して再利用する。
+# フロントエンド設計
 
 - **状態管理とサービス層**
   - 画面ロジックと API 呼び出しは `src/domain/` のサービス層（例: `ChatService`, `SubscriptionService`）を通すことを優先し、同種のロジックを画面側に直書きしない。
@@ -58,11 +53,3 @@ description: GrowMate の実装ポリシー（TypeScript / React / Next.js / Sup
 - **一般ユーザー向けパブリックページ**
   - `/home`, `/privacy` などのパブリックページでは、ログインユーザー情報（通知トースト、ユーザー名、認証状態など）を一切表示しない。
   - 非認証ユーザーがアクセスしても破綻しないよう、認証前提の UI コンポーネントは埋め込まない。
-
-# セルフレビューとの連携
-
-- コーディング完了後は、`quality-gate` スキル（`self-review.md`）で定義された **2 パスの自己レビュー手順**に必ず従う。
-- 自己レビューでは以下を特に確認する:
-  - 型エラーが出ないか（`npm run lint` / `npm run build` の結果）。
-  - 既存の命名規則・ディレクトリ構造・責務分割に沿っているか。
-  - Supabase / 認証まわりでセキュリティ上の抜けがないか。

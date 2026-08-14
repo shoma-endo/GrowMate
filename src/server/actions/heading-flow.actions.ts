@@ -57,7 +57,7 @@ async function verifySessionReadAccess(sessionId: string, userId: string) {
 export async function initializeHeadingSections(data: z.infer<typeof initializeHeadingSchema>) {
   const parseResult = initializeHeadingSchema.safeParse(data);
   if (!parseResult.success) {
-    const error = '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してからもう一度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[initializeHeadingSections] Validation failed:', parseResult.error.issues);
     }
@@ -94,7 +94,7 @@ export async function initializeHeadingSections(data: z.infer<typeof initializeH
 export async function getHeadingSections(data: z.infer<typeof getHeadingSectionsSchema>) {
   const parseResult = getHeadingSectionsSchema.safeParse(data);
   if (!parseResult.success) {
-    const error = '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してからもう一度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getHeadingSections] Validation failed:', parseResult.error.issues);
     }
@@ -145,7 +145,7 @@ export async function saveHeadingSection(data: z.infer<typeof saveHeadingSection
     );
     const error = isContentError
       ? '本文が空です。内容を入力してから保存してください。'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+      : '入力データが不正です。ページを更新してからもう一度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[saveHeadingSection] Validation failed:', parseResult.error.issues);
     }
@@ -185,7 +185,7 @@ export async function getLatestCombinedContent(
 ) {
   const parseResult = getLatestCombinedContentSchema.safeParse(data);
   if (!parseResult.success) {
-    const error = '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してからもう一度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getLatestCombinedContent] Validation failed:', parseResult.error.issues);
     }
@@ -225,7 +225,7 @@ export async function getCombinedContentVersions(
 ) {
   const parseResult = getCombinedContentVersionsSchema.safeParse(data);
   if (!parseResult.success) {
-    const error = '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してからもう一度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getCombinedContentVersions] Validation failed:', parseResult.error.issues);
     }
@@ -271,7 +271,7 @@ export async function getCombinedContentVersions(
 export async function resetHeadingSections(data: z.infer<typeof resetHeadingSectionsSchema>) {
   const parseResult = resetHeadingSectionsSchema.safeParse(data);
   if (!parseResult.success) {
-    const error = '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してからもう一度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[resetHeadingSections] Validation failed:', parseResult.error.issues);
     }
@@ -312,7 +312,7 @@ export async function saveStep7UserLead(data: z.infer<typeof saveStep7UserLeadSc
     );
     const error = isLeadError
       ? '書き出し案を入力してください'
-      : '入力データが不正です。ページを更新してから再度お試しください。';
+      : '入力データが不正です。ページを更新してからもう一度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[saveStep7UserLead] Validation failed:', parseResult.error.issues);
     }
@@ -352,7 +352,7 @@ export async function getCombinedContentForStep7(
 ) {
   const parseResult = getCombinedContentForStep7Schema.safeParse(data);
   if (!parseResult.success) {
-    const error = '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してからもう一度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[getCombinedContentForStep7] Validation failed:', parseResult.error.issues);
     }
@@ -389,7 +389,7 @@ export async function saveCombinedContentForStep7(
 ) {
   const parseResult = getCombinedContentForStep7Schema.safeParse(data);
   if (!parseResult.success) {
-    const error = '入力データが不正です。ページを更新してから再度お試しください。';
+    const error = '入力データが不正です。ページを更新してからもう一度お試しください。';
     if (process.env.NODE_ENV === 'development') {
       console.warn('[saveCombinedContentForStep7] Validation failed:', parseResult.error.issues);
     }

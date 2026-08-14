@@ -395,7 +395,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                     <FilePenLine size={14} />
                   )}
                   <span>
-                    {isGenerateTitleMetaLoading ? '生成中…' : 'タイトル・説明文生成'}
+                    {isGenerateTitleMetaLoading ? '生成中...' : 'タイトル・説明文生成'}
                   </span>
                 </DropdownMenuItem>
               )}
@@ -413,7 +413,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                   ) : (
                     <BookOpen size={14} />
                   )}
-                  <span>{isLoadBlogArticleLoading ? '取得中…' : 'ブログ記事取得'}</span>
+                  <span>{isLoadBlogArticleLoading ? '取得中...' : 'ブログ記事取得'}</span>
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

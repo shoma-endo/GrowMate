@@ -9,6 +9,7 @@ import type {
 } from '@/types/analytics';
 import type { Ga4PageMetricSummary } from '@/types/ga4';
 import type { Json } from '@/types/database.types';
+import { asPendingClient, type AnalyticsDatabase } from '@/types/database.types.pending';
 
 const MAX_PER_PAGE = 100;
 
@@ -49,7 +50,7 @@ class AnalyticsContentService {
     };
 
     try {
-      const client = supabaseService.getClient();
+      const client = asPendingClient<AnalyticsDatabase>(supabaseService.getClient());
 
       const fetchAnnotationsPage = async (targetPage: number) => {
         const { data, error } = await client.rpc('get_filtered_content_annotations', {
@@ -59,6 +60,7 @@ class AnalyticsContentService {
           p_selected_category_names: selectedCategoryNames,
           p_include_uncategorized: includeUncategorized,
           p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
+          p_has_unstarted_gsc_evaluation: params.hasUnstartedGscEvaluation ?? false,
         });
 
         const row = data?.[0] as

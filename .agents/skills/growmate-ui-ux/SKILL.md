@@ -1,6 +1,6 @@
 ---
 name: growmate-ui-ux
-description: GrowMate 専用 UI/UX 開発ガイド。広告運用・コンテンツマーケ初心者向けの画面設計・コンポーネント実装を始める前とコーディング中に使う。shadcn/ui トークン遵守、段階的開示、用語平易化、AI 挙動の透明化を正本とする。新規ページ、フォーム、モーダル、セットアップ、ダッシュボードの UI 実装時に参照する。事後レビュー専用ではない。オンボーディング UI は対象外（docs/plans/* を正本とする）。
+description: GrowMateのUI/UX実装で必ず使う開発ガイド。新規・既存の画面やUIコンポーネント（app/**、src/components/**）を追加・変更するとき、文言、レイアウト、色、タイポグラフィ、フォーム、モーダル、セットアップ、ダッシュボード、状態表示、アクセシビリティを含め、着手前と実装中に使う。shadcn/uiトークン、段階的開示、用語平易化、AI挙動の透明化を扱う。事後レビュー単独では使わず、オンボーディングUIはdocs/plans/*を正本とする。
 ---
 
 # GrowMate UI/UX
@@ -16,20 +16,13 @@ GrowMate は **広告運用・コンテンツマーケティング初心者** �
 | 優先 | 正本 | 用途 |
 |------|------|------|
 | 1 | `docs/specs/*`, `docs/plans/*` | 機能別の合意済み UX（モーダル禁止、カード形式等） |
-| 2 | `docs/context/client-vision-from-lark.md` | クライアント合意・運用思想（§1.6〜1.8） |
-| 3 | 本 Skill + [`beginner-principles.md`](beginner-principles.md) | プロダクト横断の UX 原則 |
-| 4 | `app/globals.css`, `components.json` | デザイントークン・shadcn 設定 |
-| 5 | `implementation-guidelines` | コンポーネント再利用・実装ポリシー |
+| 2 | 本 Skill | プロダクト横断の UX 原則 |
+
+重要なクライアント合意は `client-alignment-auditor` で確認し、合意内容を対象機能の `docs/plans/*` / `docs/specs/*` に反映する。
+
+`implementation-guidelines` と `react` は実装時に併用する技術規約であり、UI/UX 判断の優先順位には含めない。
 
 **禁止**: 新カラーパレット・フォントペア・glassmorphism 等のスタイル刷新を、外部スキルや一般的なデザイントレンドを根拠に持ち込むこと。ビジュアル刷新はクライアント合意と UI たたき台合意後のみ。
-
-## プロダクト文脈（要約）
-
-- **ユーザー像**: 自社メディア・広告運用を始めたばかり、または外注前の事業者。GSC / GA4 / Google Ads 等の用語に不慣れな人が多い。
-- **提供価値**: 7 ステップのブログ作成、広告/LP 生成、各種ダッシュボード、WordPress 連携 — いずれも **ガイド付きの作業** として提示する。
-- **トーン**: 実用 B2B SaaS。派手な装飾より、読みやすさと操作の予測可能性。
-
-詳細な初心者向け原則は [`beginner-principles.md`](beginner-principles.md) を読む。
 
 ## 本 Skill の対象外
 
@@ -45,34 +38,25 @@ GrowMate は **広告運用・コンテンツマーケティング初心者** �
 | アイコン | lucide-react | emoji を UI アイコンに使わない |
 | 通知 | Sonner（`src/components/ui/sonner.tsx`） | 成功/失敗/進行中を一貫して toast で伝える |
 | グラフ | Recharts + `--chart-*` トークン | 色だけに依存しない（凡例・ラベル必須） |
-| 日本語 UI | 全画面 | マーケ用語は初出で補足。英語ラベルはユーザー向けに使わない |
+| 日本語 UI | [`ui-text.md`](ui-text.md) | 用語辞書・表記ルールの正本。マーケ用語は初出で補足。英語ラベルはユーザー向けに使わない |
 
 ## いつ本 Skill を使うか
 
 **Must（開発時）**: UI 実装タスクの **着手前** と **コーディング中**。新規ページ、主要コンポーネント、セットアップウィザード、モーダル/フォーム、ダッシュボード。
 
-**Skip**: 純バックエンド、DB のみ、文言 1 行、ロジックのみリファクタ、**オンボーディング UI**（→ `docs/plans/*`）、**完了後の PR レビュー単独**（→ `quality-gate`）。
+**Skip**: 純バックエンド、DB のみ、ロジックのみリファクタ、**オンボーディング UI**（→ `docs/plans/*`）、**完了後の PR レビュー単独**（→ `quality-gate`）。
+
+文言 1 行の修正では本 Skill 全体は不要だが、[`ui-text.md`](ui-text.md) は必ず参照する（表記揺れは 1 行から入る）。
 
 ## 開発ワークフロー
 
 UI 実装タスクでは、以下の順で本 Skill を使う。
 
-1. **着手前 — 読む**: 本 Skill + `beginner-principles.md`。対象の `docs/plans/*` / `docs/specs/*` と `client-vision-from-lark.md` を読む。
+1. **着手前 — 読む**: 本 Skill。対象の `docs/plans/*` / `docs/specs/*` を読む。ユーザー向け文言を書くなら [`ui-text.md`](ui-text.md) も読む。
 2. **着手前 — 調査**: 同種画面（`/setup/*`, ダッシュボード等）の既存パターンを grep で確認し、踏襲する。
 3. **着手前 — たたき台**（中〜大規模のみ）: ワイヤーまたは主要状態を提示し合意（§1.8）。合意前にコードを書かない。
-4. **コーディング中 — 判断**: デザインシステム・画面種別指針・AI 連携 UI の鉄則に沿って実装。迷ったら [`implementation-checklist.md`](implementation-checklist.md) を参照。
-5. **完了後 — 検証**: `quality-gate`（lint/build・セルフレビュー）。本 Skill はここでは再読しない。
-
-## 画面種別の指針
-
-| 種別 | 例 | UX の要点 |
-|------|-----|-----------|
-| ホーム / ハブ | `/`, `/setup` | カードで「次にやること」を 1 画面に整理。1 カード 1 主アクション |
-| セットアップ | `/setup/gsc`, `/setup/google-ads` | ステップ表示、完了/未完了の明示、OAuth 失敗時の復帰導線 |
-| チャット + キャンバス | `/chat` | **メッセージ UI に操作を集約**、キャンバスは文章編集に集中（§1.6）。ステップ感を維持 |
-| ダッシュボード | `/ga4-dashboard`, `/gsc-dashboard` | 指標は平易な日本語ラベル。空状態・未取得・エラーを区別して表示 |
-| 分析 | `/analytics` | 表は横スクロール最小化。列の意味をヘッダまたはツールチップで補足 |
-| 管理 | `/admin` | 一般ユーザー向けより情報密度高くてよいが、破壊的操作は確認ダイアログ必須 |
+4. **コーディング中 — 判断**: デザインシステム・AI 連携 UI の鉄則に沿って実装。文言は `ui-text.md` の用語辞書に無い語を新造しない。
+5. **完了後 — 検証**: `quality-gate`（lint/build・`npm run verify:ui-text`・セルフレビュー）。本 Skill はここでは再読しない。
 
 ## AI 連携 UI の鉄則
 
@@ -86,8 +70,6 @@ GrowMate は AI 出力が中心のため、**実装時に最初から** 以下�
 
 ## a11y・操作の観点（開発時に組み込む）
 
-コーディング中に迷った場合は [`implementation-checklist.md`](implementation-checklist.md) §C を参照する。
-
 | 観点 | 開発時に組み込む内容 |
 |------|---------------------|
 | Accessibility | コントラスト、focus-visible、aria-label、フォーム label |
@@ -96,20 +78,3 @@ GrowMate は AI 出力が中心のため、**実装時に最初から** 以下�
 | Forms & Feedback | フィールド横エラー、空状態、確認ダイアログ |
 
 **配色・フォント・スタイル刷新は採用しない**（合意後のみ）。
-
-## 関連 Skill
-
-| タイミング | Skill |
-|------------|-------|
-| 実装規約（本 Skill と併用） | `implementation-guidelines`, `react` |
-| 完了後の検証 | `quality-gate` |
-| 仕様→PR | TAKT `.takt/workflows/spec-to-pr.yaml` |
-| 合意確認 | `agent-workflow-core` → `client-alignment-auditor` |
-| 命名 | `project-naming` |
-
-## 参照ドキュメント
-
-- プロダクト概要: `README.md`
-- クライアント思想: `docs/context/client-vision-from-lark.md`
-- UX 設計判断の例: `docs/plans/google-ads-evaluation-design.md` Section 16.12
-- 機能別 UI（オンボーディング含む）: `docs/plans/*`, `docs/specs/*`
