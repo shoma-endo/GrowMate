@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
+import { hasPaidFeatureAccess } from '@/types/user';
 import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import InstagramSetupClient from '@/components/InstagramSetupClient';
@@ -28,8 +29,10 @@ const ERROR_MAP: Record<string, string> = {
 
 async function InstagramSetupContent({
   searchParams,
+  canReturnToSetup,
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
+  canReturnToSetup: boolean;
 }) {
   const connected = searchParams.connected === '1';
   const disconnected = searchParams.disconnected === '1';
@@ -59,6 +62,7 @@ async function InstagramSetupContent({
       disconnectedSuccess={disconnected}
       errorMessage={errorMessage}
       isOauthConfigured={isOauthConfigured}
+      canReturnToSetup={canReturnToSetup}
     />
   );
 }
@@ -74,20 +78,21 @@ export default async function InstagramSetupPage({
     redirect('/login');
   }
 
-  if (
-    !canAccessInstagram({
-      userId: authResult.userId,
-      role: authResult.userDetails?.role ?? null,
-    })
-  ) {
-    redirect('/setup');
+  const role = authResult.userDetails?.role ?? null;
+  // '/setup' ハブは paid / admin のみ（proxy.ts）。Instagram は trial にも開放されているため、
+  // 戻り先とリダイレクト先はロールで分ける。trial を '/setup' へ送っても proxy が
+  // '/unauthorized' へ弾くだけで、利用者からは行き止まりに見える。
+  const canReturnToSetup = hasPaidFeatureAccess(role);
+
+  if (!canAccessInstagram({ userId: authResult.userId, role })) {
+    redirect(canReturnToSetup ? '/setup' : '/unauthorized');
   }
 
   const resolvedParams = searchParams ? await searchParams : {};
 
   return (
     <div className="container mx-auto py-10 px-4">
-      <InstagramSetupContent searchParams={resolvedParams} />
+      <InstagramSetupContent searchParams={resolvedParams} canReturnToSetup={canReturnToSetup} />
     </div>
   );
 }

@@ -11,6 +11,8 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
+import { hasPaidFeatureAccess } from '@/types/user';
+import type { AnalyticsContentPage } from '@/types/analytics';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
 
 export const dynamic = 'force-dynamic';
@@ -88,6 +90,11 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   }
   const { userId } = authResult;
 
+  // ブログ一覧は有料機能（paid / admin）のまま。trial は Instagram タブのみ利用できる。
+  // proxy.ts は '/analytics' でロールを弾かないため、有料機能の出し分けはここが唯一のゲート。
+  // 詳細は docs/plans/instagram-integration-design.md §4 Phase 2 item6 / §7。
+  const canViewBlogAnalytics = hasPaidFeatureAccess(authResult.userDetails?.role ?? null);
+
   const tabParam = Array.isArray(params?.tab) ? params.tab[0] : params?.tab;
   const igPageParam = Array.isArray(params?.ig_page) ? params.ig_page[0] : params?.ig_page;
   const igTypeParam = Array.isArray(params?.ig_type) ? params.ig_type[0] : params?.ig_type;
@@ -99,9 +106,17 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const instagramConnected =
     connectionStatusResult.success && (connectionStatusResult.data?.connected ?? false);
 
+  // ブログ一覧も Instagram も見られないロール（Instagram 未連携の trial）はページ自体を開かせない
+  if (!canViewBlogAnalytics && !instagramConnected) {
+    redirect('/unauthorized');
+  }
+
   let activeTab: 'blog' | 'instagram' = tabParam === 'instagram' ? 'instagram' : 'blog';
   if (!instagramConnected && activeTab === 'instagram') {
     activeTab = 'blog';
+  }
+  if (!canViewBlogAnalytics) {
+    activeTab = 'instagram';
   }
 
   const igPageParsed = Number.parseInt(igPageParam ?? '1', 10);
@@ -124,24 +139,38 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const igSort: InstagramMediaSortKey =
     igSortParam === 'reach' || igSortParam === 'views' ? igSortParam : 'posted_at';
 
-  // 並列でデータ取得（一覧・未読・カテゴリ一覧）
-  const [analyticsPage, unreadResult, allCategoryNames] = await Promise.all([
-    analyticsContentService.getPage(
-      userId,
-      {
-        page,
-        perPage,
-        startDate,
-        endDate,
-        selectedCategoryNames,
-        includeUncategorized,
-        hasUnreadSuggestion,
-        hasUnstartedGscEvaluation,
-      }
-    ),
-    gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
-    analyticsContentService.getAvailableCategoryNames(userId),
-  ]);
+  // 並列でデータ取得（一覧・未読・カテゴリ一覧）。
+  // ブログ一覧を見られないロールには 1 クエリも投げない（空の表示用モデルで置き換える）。
+  const emptyBlogPage: AnalyticsContentPage = {
+    items: [],
+    total: 0,
+    totalPages: 1,
+    page,
+    perPage,
+  };
+  const [analyticsPage, unreadResult, allCategoryNames]: [
+    AnalyticsContentPage,
+    { annotationIds: string[] },
+    string[],
+  ] = canViewBlogAnalytics
+    ? await Promise.all([
+        analyticsContentService.getPage(
+          userId,
+          {
+            page,
+            perPage,
+            startDate,
+            endDate,
+            selectedCategoryNames,
+            includeUncategorized,
+            hasUnreadSuggestion,
+            hasUnstartedGscEvaluation,
+          }
+        ),
+        gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
+        analyticsContentService.getAvailableCategoryNames(userId),
+      ])
+    : [emptyBlogPage, { annotationIds: [] }, []];
   const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error } = analyticsPage;
 
   let instagramMediaPage = {
@@ -234,6 +263,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       hasUnreadSuggestion={hasUnreadSuggestion}
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
       hasUrlFilterParams={hasUrlFilterParams}
+      canViewBlogAnalytics={canViewBlogAnalytics}
       instagramConnected={instagramConnected}
       activeTab={activeTab}
       instagramItems={instagramMediaPage.items}

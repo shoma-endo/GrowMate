@@ -9,6 +9,7 @@ import Image from 'next/image';
 import { Settings, Shield, List, Plug } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { InstagramGlyph } from '@/components/InstagramGlyph';
 import { hasPaidFeatureAccess } from '@/types/user';
 import { isAdmin as isAdminRole } from '@/authUtils';
 import { signOutEmail } from '@/server/actions/auth.actions';
@@ -205,6 +206,30 @@ export default function Home() {
                     <Link href="/google-ads-dashboard">
                       ダッシュボードを開く
                     </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Instagram連携導線。開放範囲は admin / paid / trial のため全ロールに出す
+                （docs/plans/instagram-integration-design.md §7）。
+                trial は「設定」カードが出ないため、ここが Instagram への唯一の入口になる。 */}
+            {hasAuthenticatedUser && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
+                    <InstagramGlyph className="size-5 text-gray-900" />
+                    Instagram連携
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 text-center mb-4">
+                    リール・フィード投稿の
+                    <br />
+                    実績データを取得します
+                  </p>
+                  <Button asChild className="w-full" aria-label="Instagram連携設定へ移動" tabIndex={0}>
+                    <Link href="/setup/instagram">連携設定を開く</Link>
                   </Button>
                 </CardContent>
               </Card>

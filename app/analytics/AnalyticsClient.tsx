@@ -46,6 +46,8 @@ interface AnalyticsClientProps {
   nextDisabled: boolean;
   startDate: string;
   endDate: string;
+  /** ブログ一覧（有料機能）を表示してよいか。false のときは Instagram のみ表示する */
+  canViewBlogAnalytics: boolean;
   instagramConnected: boolean;
   activeTab: 'blog' | 'instagram';
   instagramItems: InstagramMediaListItem[];
@@ -82,6 +84,7 @@ export default function AnalyticsClient({
   nextDisabled,
   startDate,
   endDate,
+  canViewBlogAnalytics,
   instagramConnected,
   activeTab,
   instagramItems,
@@ -282,6 +285,35 @@ export default function AnalyticsClient({
     </Card>
   );
 
+  const instagramContent = (
+    <InstagramTab
+      items={instagramItems}
+      total={instagramTotal}
+      totalPages={instagramTotalPages}
+      igPage={igPage}
+      igType={igType}
+      igStart={igStart}
+      igEnd={igEnd}
+      igSort={igSort}
+      lastSyncedAt={instagramLastSyncedAt}
+      backfillStatus={instagramBackfillStatus}
+      syncEnabled={instagramSyncEnabled}
+      buildIgPageHref={targetPage => buildIgPageHref(hrefState, targetPage)}
+      buildFilterHref={patch => buildIgFilterHref(hrefState, patch)}
+    />
+  );
+
+  // ブログ一覧を見られないロール（trial）は Instagram だけを見る。
+  // このとき Instagram 未連携ならページに到達しない（app/analytics/page.tsx でリダイレクト）。
+  if (!canViewBlogAnalytics) {
+    return (
+      <div className="w-full px-4 py-8">
+        <h1 className="text-3xl font-bold mb-6">コンテンツ一覧</h1>
+        {instagramContent}
+      </div>
+    );
+  }
+
   return (
     <div className="w-full px-4 py-8">
       {!instagramConnected ? (
@@ -315,23 +347,7 @@ export default function AnalyticsClient({
             </TabsList>
           </div>
           <TabsContent value="blog">{blogContent}</TabsContent>
-          <TabsContent value="instagram">
-            <InstagramTab
-              items={instagramItems}
-              total={instagramTotal}
-              totalPages={instagramTotalPages}
-              igPage={igPage}
-              igType={igType}
-              igStart={igStart}
-              igEnd={igEnd}
-              igSort={igSort}
-              lastSyncedAt={instagramLastSyncedAt}
-              backfillStatus={instagramBackfillStatus}
-              syncEnabled={instagramSyncEnabled}
-              buildIgPageHref={targetPage => buildIgPageHref(hrefState, targetPage)}
-              buildFilterHref={patch => buildIgFilterHref(hrefState, patch)}
-            />
-          </TabsContent>
+          <TabsContent value="instagram">{instagramContent}</TabsContent>
         </Tabs>
       )}
     </div>

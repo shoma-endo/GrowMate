@@ -1,6 +1,6 @@
 # Instagram 連携（Business Login for Instagram）設計書
 
-作成日: 2026-07-23 / ステータス: Phase 1 実装済み・審査提出前 / Phase 2 ローカル開発着手可 / **Phase 3 は保留（2026-08-05 クライアント MTG）**
+作成日: 2026-07-23 / ステータス: **App Review 通過（2026-08-14）** / Phase 1 実装済み / Phase 2 実装済み・限定公開の解除（item6）に着手 / **Phase 3 は保留（2026-08-05 クライアント MTG）**
 **本仕様書の完了定義: Phase 2 まで。** Phase 3（AI チャット連携・台本作成）はクライアント判断で保留となり、評価機能の実装を優先する（§4 Phase 3）。
 クライアント合意: 2026-07-22 定例MTG（Lark minutes `objpyf287e2otlex7a1m8n25`）で「まず連携（審査申請）から進める」ことを合意済み
 
@@ -379,9 +379,17 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 5. データ取得: Server Component（`app/analytics/page.tsx`）の既存 `Promise.all` に **`getInstagramConnectionStatus`** を追加し、その結果でタブ表示を分岐する。連携済みかつ `tab=instagram` のときだけ **`instagramMediaService.getPage(userId, ...)`**（投稿一覧・10件/頁）を取得する（未連携ユーザーに Instagram の DB クエリを走らせない）。PostgREST `db-max-rows = 1000` 制限があるため投稿一覧はページング取得とする。~~アカウント指標サマリー用に `getAccountInsightsLatestDay(userId)` も取得する~~ → **2026-08-08 廃止**（§4 Phase2 item3 末尾「アカウント指標サマリー Card の廃止」参照）
 6. **限定公開の解除（本 Phase の最終タスク。審査通過後に実施 — 2026-08-04 に item0 から末尾へ移動）**: Phase 2 の本番反映と同時に行う。手順と条件は以下。
    - **前提条件（すべて満たすまで実施しない）**: ①App Review 通過（Advanced Access 付与）②アクセス認証（Tech Provider）完了 — §3.2。未完だと役割を持たないユーザーの呼び出しが `error code 100` で落ちる ③クライアント側ビジネス認証完了（2026-08-01 時点で完了済み）
-   - `INSTAGRAM_BETA_USER_IDS` を空にする。`canAccessInstagram` が §7 の通常ロール判定にフォールバックし、Q4 の開放範囲（admin / paid / trial）に戻る。**コード変更は不要**
+   - `INSTAGRAM_BETA_USER_IDS` を空にする。`canAccessInstagram` が §7 の通常ロール判定にフォールバックし、Q4 の開放範囲（admin / paid / trial）に戻る。**この変数は Vercel 側の操作であり、リポジトリからは変更できない**（Production / Preview の両スコープで空にする）
+   - **⚠ 「コード変更は不要」は admin / paid までの話だった（2026-08-14 訂正）**。当初この項は「コード変更は不要」と書いていたが、**trial は環境変数を空にしても Instagram に到達できない**。`proxy.ts` が `/setup/*`（`hasSetupAccess` = paid / admin）と `/analytics`（`PAID_FEATURE_REQUIRED_PATHS`）で手前から弾いており、`app/page.tsx` の導線カードも paid / admin にしか出ないためである（§7 / §9 Q7 で既知の宿題として残っていた）。**Q4 の開放範囲を実質的に満たすには下記のコード変更が要る**
+   - **trial 開放のコード変更（2026-08-14 実施）**: Instagram 経路だけを開け、他の有料機能（WordPress / GSC / GA4 の設定画面・ブログ一覧）は paid / admin のまま据え置く。
+     - `src/lib/access-paths.ts`（**新規**）: `proxy.ts` のパス判定を純関数として切り出し、単体テストを付けた（`tests/unit/lib/access-paths.test.ts`）。`/setup/instagram` を Google Ads と同じ「設定ゲートの対象外」に加える
+     - `proxy.ts`: `PAID_FEATURE_REQUIRED_PATHS`（`/analytics`）と `requiresPaidFeatureAccess` を**廃止**。`/analytics` は Instagram タブが有料機能のブログ一覧と同居するため、パス自体は trial にも通す
+     - `app/analytics/page.tsx`: 上記で proxy から外れた有料ゲートを**ページ側で持つ**。`hasPaidFeatureAccess` が false のとき ①ブログ側の DB クエリを1本も投げない ②タブを `instagram` に固定 ③Instagram 未連携なら `/unauthorized` へリダイレクト
+     - `app/analytics/AnalyticsClient.tsx`: `canViewBlogAnalytics` が false のときはタブバーを出さず Instagram のみ描画
+     - `app/page.tsx`: 「Instagram連携」カードを追加（全ロールに表示）。trial には「設定」カードが出ないため、ここが唯一の入口になる
+     - `app/setup/instagram/page.tsx` / `src/components/InstagramSetupClient.tsx`: 戻り先を `canReturnToSetup`（= paid / admin）で出し分ける（trial は `/setup` へ送っても proxy が `/unauthorized` へ弾くだけで行き止まりに見える）。連携済み時に「投稿一覧を見る」（`/analytics?tab=instagram`）を追加し、trial が一覧へ到達できるようにした
    - **解除直後に、allowlist に載っていなかったアカウントで実際に OAuth 連携が通ることを実測する**（メニューが出ることを根拠にしない — §3.2 の教訓）。落ちる場合はアクセス認証が未完了なので変数を戻す
-   - `/setup` の Instagram カードが対象ロール全員に出ることを確認する（**ただし `/setup/*` 自体は引き続き `proxy.ts` の `hasSetupAccess` = paid / admin のみ**。trial が `/setup/instagram` に来るには proxy 側の別変更が必要 — §9 Q7）
+   - `/setup` の Instagram カードが paid / admin に出ることを確認する。**trial は `/setup` ハブ自体に到達できない**ため、ホームの「Instagram連携」カード →`/setup/instagram` → 「投稿一覧を見る」 → `/analytics` の経路で確認する
    - **継続義務の引き継ぎを同時に行う**: データ使用状況の確認（DUC。年1回）とデータ保護アセスメント（DPA。通知から60日）は解除後に全ユーザーへ影響する（§3.2）。担当者とアプリ連絡先メールの生存を運用側に明示する
 
 ### Phase 3: AI チャット連携（台本作成）— **保留（2026-08-05 クライアント MTG）**
@@ -602,8 +610,12 @@ create table public.instagram_account_insights_daily (
 
 ## 7. 認可・セキュリティ
 
-- **Instagram 機能のロール（`canAccessInstagram`・allowlist 解除後）**: **admin / paid / trial に開放**（`unavailable` のみ `authMiddleware` の 403 で除外。2026-07-23 決定）。`src/server/lib/instagram-permissions.ts` の `INSTAGRAM_ALLOWED_ROLES` がこれに対応。**Instagram 独自の恒久的なロールゲートは追加しない**。Phase 3 の台本作成チャットは既存のトライアル日次制限（`checkTrialDailyLimit`）にそのまま乗せる
-- **`proxy.ts` による経路ゲート（Instagram 仕様とは独立した既存実装）**: `/setup/*`（Google Ads 系パス除く）は `hasSetupAccess` = **`hasPaidFeatureAccess`（paid / admin のみ）**（`proxy.ts:156-158,205-207`）。`/analytics` も同様（`PAID_FEATURE_REQUIRED_PATHS`）。よって **`role: 'trial'` のユーザーは allowlist に載っていても `/setup/instagram` および `/analytics` の Instagram タブ経路に到達できない**。§7 の trial 開放は **allowlist 解除後かつ proxy が trial を `/setup` に通す場合**にのみ成立する（現状コードでは trial は `/setup` 不可 — §9 Q7）
+- **Instagram 機能のロール（`canAccessInstagram`・allowlist 解除後）**: **admin / paid / trial に開放**（`unavailable` のみ `authMiddleware` の 403 で除外。2026-07-23 決定。**2026-08-14 に経路側も trial へ開放して実効化**）。`src/server/lib/instagram-permissions.ts` の `INSTAGRAM_ALLOWED_ROLES` がこれに対応。**Instagram 独自の恒久的なロールゲートは追加しない**。Phase 3 の台本作成チャットは既存のトライアル日次制限（`checkTrialDailyLimit`）にそのまま乗せる
+- **`proxy.ts` による経路ゲート（2026-08-14 に Instagram 経路を trial へ開放）**: パス判定は `src/lib/access-paths.ts` に集約した。
+  - `/setup/*` は `hasSetupAccess` = **`hasPaidFeatureAccess`（paid / admin のみ）**。ただし **Google Ads 系パスと `/setup/instagram` は対象外**（trial も到達可）
+  - `/analytics` は **proxy でロールを弾かない**。Instagram タブが有料機能のブログ一覧と同一ページに同居するため、パス自体は trial に通し、**有料機能の出し分けは `app/analytics/page.tsx` の `hasPaidFeatureAccess` が唯一のゲートとして担う**（trial にはブログ側のクエリを1本も投げず、Instagram 未連携なら `/unauthorized` へ送る）。ここを変えるときは必ずページ側とセットで見ること
+  - `/setup` ハブと `/analytics` のブログ一覧は **paid / admin のまま**。trial に開いたのは Instagram 経路だけで、WordPress / GSC / GA4 の設定画面やブログ一覧の有料境界は動かしていない
+  - **旧記述（〜2026-08-13）**: 「trial は allowlist に載っていても `/setup/instagram` および `/analytics` に到達できない」。App Review 通過に伴う item6 の実施でこの制約を解消した（§4 Phase 2 item6 / §9 Q7）
 - 全 Email ユーザー共通: **`full_name` 未登録は `/login` へリダイレクト**（`proxy.ts:147-148`）。審査用アカウントも例外なし
 - **限定公開ゲート（審査期間中の一時措置。2026-07-25 決定）**: App Review 通過までは `canAccessInstagram` が `INSTAGRAM_BETA_USER_IDS` の allowlist で対象を絞る。**環境変数が非空の間は allowlist の user_id のみが Instagram UI（Setup カード・`/setup/instagram` ガード）に到達可** — この間 `role` は `canAccessInstagram` では参照されない（§4 Phase 1-A）。**環境変数が空なら上記ロール判定にフォールバック**するため、Phase 2 の**最終タスク item6**（審査通過後）で変数を空にすれば最終形に戻る（§4 Phase 1-A / Phase 2 item6。2026-08-04 に Phase 2 冒頭 item0 から移動）。**`role: 'admin'` を Instagram 露出の理由に使わない** — レビュアーに admin を渡すと `/admin/users` から全ユーザーの個人データが見えてしまうため（§4 Phase 1-A 参照）
 - Service Role 使用箇所: **OAuth callback（credential upsert）・トークン refresh 更新・連携解除（credential + Phase2 media purge）・手動同期**。いずれも明示的 `user_id` スコープ必須。認証ユーザー JWT からの write 経路は設けない
@@ -618,7 +630,7 @@ create table public.instagram_account_insights_daily (
 - [ ] ERROR_MAP 経由でエラー Alert が表示される（state 改ざん等のエラー種別ごとの文言差し替えを確認）
 - [ ] `NODE_ENV==='production'` ビルド（`npm run build && npm run start` 相当）で `DEV_SAMPLE_*` 分岐に到達しないことを確認済み
 - [ ] `INSTAGRAM_BETA_USER_IDS` に自分の user_id だけを入れた状態で、allowlist 外のユーザーには `/setup` の Instagram カードが出ず `/setup/instagram` も開けない
-- [ ] `INSTAGRAM_BETA_USER_IDS` を空にすると §7 のロール判定に戻り、**allowlist 解除後の** `canAccessInstagram` 対象ロール（admin / paid / trial）に Instagram UI が開放される（Phase 2 item6 の解除手順の先行検証。**`/setup` 経路は proxy の paid/admin 制約が別途残る** — §9 Q7）
+- [ ] `INSTAGRAM_BETA_USER_IDS` を空にすると §7 のロール判定に戻り、**allowlist 解除後の** `canAccessInstagram` 対象ロール（admin / paid / trial）に Instagram UI が開放される（Phase 2 item6 の解除手順の先行検証。**`/setup` ハブ自体は引き続き paid / admin のみ**で、trial はホームの Instagram カードから `/setup/instagram` に入る — §7 / §9 Q7）
 - [ ] クライアント（カオルさん）へ画面共有し、§11 ワイヤーフレームとの差分（Q2 の列構成含む）を確認済み
 
 ### Phase 1-B（実データ連携 + App Review 提出）
@@ -685,8 +697,20 @@ create table public.instagram_account_insights_daily (
 - [ ] `INSTAGRAM_SYNC_ENABLED=false` で手動ボタンが disabled + Alert 表示になり、一覧は既存データを保つ
 - [ ] レート制限エラー（code 4 等）で **credential が書き換わらない**（`isInstagramRevokedTokenError` 側でのみ期限を倒す）。擬似エラーを注入して確認する
 - [ ] insights が連続失敗したとき、**1ユーザーで `maxDuration`（800 秒）を使い切らずに中断**する（連続 K=5 件で `stoppedReason: 'consecutive_failures'`、または時間予算 760 秒で `stoppedReason: 'time_budget'` — §4 Phase 2 item3）
-- [ ] **本番反映していない**こと（審査提出前は develop / feature ブランチ止まり）
-- [ ] `INSTAGRAM_BETA_USER_IDS` が非空のままであること（item6 は審査通過後）
+- [x] ~~**本番反映していない**こと（審査提出前は develop / feature ブランチ止まり）~~ → **2026-08-14 に App Review 通過。本番反映の制約は解除**
+- [x] ~~`INSTAGRAM_BETA_USER_IDS` が非空のままであること（item6 は審査通過後）~~ → **2026-08-14 に item6 へ移行**
+
+**Phase 2 item6（限定公開の解除。2026-08-14）**
+
+- [x] Instagram 経路（`/setup/instagram`・`/analytics`）が trial にも通る（`src/lib/access-paths.ts` + `tests/unit/lib/access-paths.test.ts`）
+- [x] `/setup` ハブ・WordPress / GSC / GA4 の設定画面・ブログ一覧は **paid / admin のまま**（有料境界を Instagram 以外に広げていない）
+- [x] trial が `/analytics` を開いてもブログ側の DB クエリが1本も走らず、タブバーも出ない
+- [x] Instagram 未連携の trial が `/analytics` を直接開くと `/unauthorized` へ送られる（従来の proxy と同じ結果）
+- [x] trial の戻り先が `/setup`（到達不可）ではなくホームになっている
+- [ ] **要 Vercel 操作**: `INSTAGRAM_BETA_USER_IDS` を Production / Preview の両方で空にする（リポジトリからは変更できない）
+- [ ] 解除直後に allowlist 外のアカウントで実際に OAuth 連携が通る（§4 Phase 2 item6）
+- [ ] trial アカウントで ホーム →`/setup/instagram` → 連携 → 「投稿一覧を見る」 →`/analytics` が通しで動く
+- [ ] 継続義務（DUC 年1回 / DPA 通知から60日）の引き継ぎを運用側へ明示（§3.2）
 
 ### 本仕様書の完了定義（2026-08-05 追加）
 
@@ -706,6 +730,7 @@ create table public.instagram_account_insights_daily (
 （Phase 2 の未決は次節。「残件なし」は審査提出まわり = Q6/Q7 についての記述であり、Phase 2 の Q2/Q3/Q8/Q9 は未回答）
 - ~~Q6. Meta レビュアーの GrowMate ログイン手段~~: **回答済み（2026-08-01、同日中に案2 → 案1 へ変更）** — **案1「審査用1アカウントに限定したパスワードログイン」で確定**。`/review-login` を新設し、`REVIEW_LOGIN_EMAIL` に一致するアドレスのみ `signInWithPassword` を通す。アドレスとパスワードは提出フォームの Credentials 欄にのみ記入し、本仕様書には書かない。**既存の `/login`・`verifyOtp`・Supabase の新規登録設定は変更しない**。`client-vision-from-lark.md` §1.6 は認証変更の**禁止ではなく事前許可の要求**であり、2026-08-01 にクライアント承認取得済み。当初採用した案2（審査専用 Gmail に OTP を届ける）は、Google のリスクベース認証が発動して確認コードが登録電話番号にしか届かず、代替手段も提示されないことを実測したため撤回。詳細は §3.2「レビュアーのログイン手段」
 - ~~Q7. 審査用 GrowMate アカウントの `/setup/instagram` 到達~~: **回答済み（2026-08-01）** — **`role: 'paid'` で確定**。`proxy.ts:156-158` の `hasSetupAccess` = `hasPaidFeatureAccess`（`src/types/user.ts:31` の `PAID_FEATURE_ROLES = ['paid','admin']`）を `paid` は通過し、`isAdmin`（`src/authUtils.ts:6-8`）は `role === 'admin'` のみのため `proxy.ts:162` の `/admin/*` は弾かれる。`PAID_FEATURE_REQUIRED_PATHS`（`proxy.ts:10` = `['/analytics']`）・`ADMIN_REQUIRED_PATHS`（同 `:9` = `['/admin']`）は `/setup/instagram` に適用されない。**proxy もアプリコードも変更しない**（選択肢 B・C は不要）。**`role: 'trial'` では `/setup/*` に到達できない**ため trial は採らない（2026-07-31 コード照合）
+  - **後日談（2026-08-14）**: ここで先送りした「trial は `/setup/*` に到達できない」が、そのまま Phase 2 item6（Q4 の開放範囲 = admin / paid / trial）のブロッカーになった。審査用アカウントの話としては `paid` で正しかったが、**allowlist 解除時に proxy 側の変更が必要**という宿題が残っていた。item6 で `/setup/instagram` と `/analytics` を trial に開放して解消済み（§4 Phase 2 item6 / §7）
 
 ### Phase 2 着手前に確認が必要（2026-08-04 時点の未決。クライアント確認）
 
@@ -750,7 +775,7 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 - ~~Q1. 複数アカウント~~: **回答済み（2026-07-23）** — 1ユーザー=1 Instagram アカウント。§5.1 の `unique(user_id)` 設計を確定とする
 - **Q2. 現行管理表の項目** → **前節「Phase 2 着手前に確認が必要」へ移動**（Phase 2 をローカル先行開発する方針に変えたため、後回しにできる論点からブロッカーへ昇格した）。2026-07-22 定例で管理表の画面共有あり（テーマストック → 台本/キャプション/サムネコピー → 結果記録の構成）
 - ~~Q3. 日次推移の要否~~: **回答済み（2026-08-05）— 不要**。詳細は前節。`instagram_media_insights_daily` は Phase 2 では作らない
-- ~~Q4. 対象ロール~~: **回答済み（2026-07-23）** — `canAccessInstagram` 解除後は admin / paid / trial（`unavailable` のみ除外）。§7 参照。**App Review 通過までは allowlist**（2026-07-25）。**trial が `/setup` に来るかは proxy 側の別論点（Q7）**
+- ~~Q4. 対象ロール~~: **回答済み（2026-07-23）** — `canAccessInstagram` 解除後は admin / paid / trial（`unavailable` のみ除外）。§7 参照。**App Review 通過までは allowlist**（2026-07-25）。**2026-08-14 に審査通過。proxy 側（Q7 の別論点）も同日に対応し、trial が `/setup/instagram` と `/analytics` の Instagram タブへ到達できるようになった**（§4 Phase 2 item6 / §7）
 - ~~Q5. 台本作成の形~~: **回答済み（2026-07-22 定例）** — ステップ制にせず自由壁打ち（相談役）型。**ただし Phase 3 自体が 2026-08-05 に保留となったため、この回答も凍結**（再開時に前提の再確認が必要 — §4 Phase 3）
 
 なお 2026-07-22 定例のクライアント要望として「チケットに書かれた手段を鵜呑みにせず、目的を確認した上でより軽い代替案があれば先に提案してほしい」がある。上記 Q1〜Q4 の確認時も、選択肢と推奨案をセットで提示する。
@@ -760,6 +785,7 @@ Phase 2 をローカル先行開発する方針に変えたことで、**下記4
 - `app/setup/page.tsx` / `src/components/SetupDashboard.tsx`（Instagram カード追加。**表示は `canAccessInstagram` でガード** — 審査期間中は allowlist 外に出さない）
 - `app/setup/instagram/page.tsx` / `src/components/InstagramSetupClient.tsx`（新規。同じくガード）
 - `src/server/lib/instagram-permissions.ts`（新規。限定公開ゲート。§7 / §4 Phase 1-A）
+- **item6（2026-08-14。trial 開放）**: `src/lib/access-paths.ts`（新規。proxy のパス判定を純関数化）/ `proxy.ts`（`PAID_FEATURE_REQUIRED_PATHS` 廃止・`/setup/instagram` を設定ゲート対象外に）/ `app/page.tsx`（Instagram連携カード追加）/ `app/analytics/page.tsx`・`AnalyticsClient.tsx`（有料ゲートをページ側で保持）/ `app/setup/instagram/page.tsx`・`src/components/InstagramSetupClient.tsx`（戻り先の出し分け・投稿一覧導線）
 - `app/analytics/page.tsx` / `AnalyticsClient.tsx`（**連携済みユーザーのみタブ化**。未連携ユーザーの画面は現行のまま変えない — §4 Phase 2 item4 / §11.3）。**Phase 2**: `app/analytics/page.tsx` に `export const maxDuration = 800`（Instagram 手動同期 Server Action — §4 Phase 2 item3）
 - **`app/privacy/page.tsx`（Instagram / Meta 追記 — Phase 1-B item9。**実装済み**）**
 - `src/server/services/supabaseService.ts`（Instagram credential CRUD 追加）
