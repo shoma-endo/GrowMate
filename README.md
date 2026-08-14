@@ -18,7 +18,7 @@
 - **AI コンテンツ支援**: 7 ステップのブログ作成フロー（ニーズ整理〜本文作成）、広告／LP テンプレート、AI 応答ストリーミング
 - **キャンバス編集**: TipTap ベースの `CanvasPanel`、Markdown レンダリング／見出しアウトライン／バージョン履歴、選択範囲リライト
 - **見出しフロー・バージョン管理**: Step5 生成見出しからの `session_heading_sections` 初期化、個別 AI 生成・`session_combined_contents` への結合保存、`save_atomic_combined_content` RPC で競合シリアライズ
-- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（**ブログ一覧は paid 以上**）。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・手動「最新化」同期）を表示（**Instagram タブは trial も可**。trial にはブログタブを出さない）
+- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・手動「最新化」同期）を表示
 - **WordPress 連携**: OAuth・Application Password 両対応、投稿の一括インポート、`AnnotationPanel` でメモ・キーワード・ペルソナ等を再利用
 - **Google Search Console 連携**: OAuth 認証、日次指標保存（`gsc_page_metrics` / `gsc_query_metrics`）、記事評価・改善提案（`gsc_article_evaluations`）、改善提案ジョブの Cron 実行（`/api/cron/gsc-suggestions`）
 - **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`）、サマリー・ランキング・時系列ダッシュボード
@@ -273,7 +273,7 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 ## 🛡️ セキュリティと運用の注意点
 
 - Supabase では主要テーブルに RLS を適用済み（開発ポリシーが残る箇所は運用前に見直す）
-- [`proxy.ts`](proxy.ts) が Supabase セッション更新・CSP ヘッダ付与・ロール別リダイレクト（`/admin`・`/setup` 等。パス判定は [`src/lib/access-paths.ts`](src/lib/access-paths.ts)）を担当。**`/analytics` は proxy でロールを弾かず**、有料機能（ブログ一覧）の判定は [`app/analytics/page.tsx`](app/analytics/page.tsx) が持つ（Instagram タブが同居し trial にも開放されているため）。`authMiddleware` は Server Actions / Route Handlers 側でメールセッションを解決する
+- [`proxy.ts`](proxy.ts) が Supabase セッション更新・CSP ヘッダ付与・ロール別リダイレクト（`/admin`・`/analytics`・`/setup` 等）を担当。`authMiddleware` は Server Actions / Route Handlers 側でメールセッションを解決する
 - `get_accessible_user_ids` と関連 RLS / RPC は一部テーブルで残存しており、旧共有アクセス構成の互換レイヤーとして機能している
 - WordPress.com の OAuth アクセストークンは HTTP-only Cookie と `wordpress_settings` に保存し、Application Password 等の設定値も `wordpress_settings` に保存する（現状は平文のため、本番では KMS / Secrets 管理への移行を推奨）
 - SSE は 20 秒ごとの ping と 5 分アイドルタイムアウトで接続維持を調整

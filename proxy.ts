@@ -4,8 +4,13 @@ import { isAdmin, isUnavailable } from '@/authUtils';
 import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
-import { requiresAdminAccess, requiresSetupAccess } from '@/lib/access-paths';
 import { updateSupabaseSession } from '@/lib/supabase/middleware';
+
+const ADMIN_REQUIRED_PATHS = ['/admin'] as const;
+const PAID_FEATURE_REQUIRED_PATHS = ['/analytics'] as const;
+const SETUP_PATHS = ['/setup'] as const;
+
+const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const;
 
 // 認証不要なパスの定義
 // '/review-login' は Meta App Review のレビュアー専用ログイン経路。
@@ -168,8 +173,9 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
     if (requiresSetupAccess(pathname) && !hasSetupAccess(emailRole)) {
       return redirect(new URL('/unauthorized', request.url));
     }
-    // '/analytics' はブログ一覧（有料機能）と Instagram タブ（admin / paid / trial に開放）が
-    // 同居するため、ここでロールを弾かない。有料機能の出し分けは app/analytics/page.tsx が行う。
+    if (requiresPaidFeatureAccess(pathname) && !hasPaidFeatureAccess(emailRole)) {
+      return redirect(new URL('/unauthorized', request.url));
+    }
     if (requiresAdminAccess(pathname) && !isAdmin(emailRole)) {
       return redirect(new URL('/unauthorized', request.url));
     }
@@ -201,8 +207,24 @@ function isPublicPath(pathname: string): boolean {
   });
 }
 
+function requiresAdminAccess(pathname: string): boolean {
+  return ADMIN_REQUIRED_PATHS.some(path => pathname.startsWith(path));
+}
+
+function requiresPaidFeatureAccess(pathname: string): boolean {
+  return PAID_FEATURE_REQUIRED_PATHS.some(path => pathname.startsWith(path));
+}
+
+function requiresSetupAccess(pathname: string): boolean {
+  return SETUP_PATHS.some(path => pathname.startsWith(path)) && !requiresGoogleAdsAccess(pathname);
+}
+
 function hasSetupAccess(role: UserRole | null): boolean {
   return hasPaidFeatureAccess(role);
+}
+
+function requiresGoogleAdsAccess(pathname: string): boolean {
+  return GOOGLE_ADS_PATHS.some(path => pathname.startsWith(path));
 }
 
 type EmailUserAccess = {

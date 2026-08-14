@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ExternalLink,
   Image as ImageIcon,
-  List,
   Loader2,
   RefreshCw,
   Unplug,
@@ -56,8 +55,6 @@ interface InstagramSetupClientProps {
   disconnectedSuccess: boolean;
   errorMessage: string | null;
   isOauthConfigured: boolean;
-  /** '/setup' ハブ（paid / admin のみ）へ戻れるか。trial はホームへ戻す */
-  canReturnToSetup: boolean;
 }
 
 function formatAccountType(accountType: string | null): string {
@@ -150,7 +147,6 @@ export default function InstagramSetupClient({
   disconnectedSuccess,
   errorMessage,
   isOauthConfigured,
-  canReturnToSetup,
 }: InstagramSetupClientProps) {
   const [status, setStatus] = useState(initialStatus);
   const [preview, setPreview] = useState<InstagramPreviewData | null>(null);
@@ -234,11 +230,7 @@ export default function InstagramSetupClient({
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-2">
-        {canReturnToSetup ? (
-          <BackLink href="/setup" label="設定に戻る" />
-        ) : (
-          <BackLink href="/" label="ホームに戻る" />
-        )}
+        <BackLink href="/setup" label="設定に戻る" />
       </div>
 
       <div className="space-y-2">
@@ -411,63 +403,49 @@ export default function InstagramSetupClient({
               ) : null}
 
               {!needsReauth ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  {/* コンテンツ一覧（Instagram タブ）への導線。'/setup' ハブを開けない trial に
-                      とっては、ここが投稿一覧への唯一の入口になる。 */}
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="border-primary text-primary hover:bg-primary/10"
-                  >
-                    <Link href="/analytics?tab=instagram">
-                      <List className="mr-2 h-4 w-4" />
-                      投稿一覧を見る
-                    </Link>
-                  </Button>
-                  <Dialog open={isDisconnectDialogOpen} onOpenChange={setIsDisconnectDialogOpen}>
-                    <DialogTrigger asChild>
+                <Dialog open={isDisconnectDialogOpen} onOpenChange={setIsDisconnectDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700"
+                      disabled={isDisconnecting}
+                    >
+                      {isDisconnecting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Unplug className="mr-2 h-4 w-4" />
+                      )}
+                      連携を解除
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Instagram連携を解除しますか？</DialogTitle>
+                      <DialogDescription>
+                        連携を解除すると、保存されているInstagram認証情報が削除されます。再度連携する場合は「Instagramと連携する」から手続きしてください。
+                        <span className="block mt-2">
+                          この操作で削除されるのは GrowMate
+                          に保存された情報だけです。Instagram側に残る連携の許可は取り消されません。完全に取り消すには、Instagramの「設定 →
+                          アプリとウェブサイト」からも削除してください。
+                        </span>
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                      <DialogClose asChild>
+                        <Button variant="outline">キャンセル</Button>
+                      </DialogClose>
                       <Button
-                        type="button"
-                        variant="outline"
-                        className="text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700"
+                        variant="destructive"
+                        onClick={() => void handleDisconnect()}
                         disabled={isDisconnecting}
                       >
-                        {isDisconnecting ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Unplug className="mr-2 h-4 w-4" />
-                        )}
+                        {isDisconnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         連携を解除
                       </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Instagram連携を解除しますか？</DialogTitle>
-                        <DialogDescription>
-                          連携を解除すると、保存されているInstagram認証情報が削除されます。再度連携する場合は「Instagramと連携する」から手続きしてください。
-                          <span className="block mt-2">
-                            この操作で削除されるのは GrowMate
-                            に保存された情報だけです。Instagram側に残る連携の許可は取り消されません。完全に取り消すには、Instagramの「設定 →
-                            アプリとウェブサイト」からも削除してください。
-                          </span>
-                        </DialogDescription>
-                      </DialogHeader>
-                      <DialogFooter>
-                        <DialogClose asChild>
-                          <Button variant="outline">キャンセル</Button>
-                        </DialogClose>
-                        <Button
-                          variant="destructive"
-                          onClick={() => void handleDisconnect()}
-                          disabled={isDisconnecting}
-                        >
-                          {isDisconnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          連携を解除
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               ) : null}
             </>
           )}
