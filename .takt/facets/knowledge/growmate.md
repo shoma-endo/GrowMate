@@ -9,6 +9,12 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 - Do not ask humans for clarification mid-implementation. If the spec is insufficient, ABORT and leave concrete questions for the human to fix in `docs/plans/` before re-running.
 - Requeue / resume / existing WIP / existing PR must continue the same branch and update the same PR when possible. Do not restart from a clean slate by default.
 
+## Default Access Policy
+
+- New features are available to `admin` and `paid` users by default.
+- `trial` and `unavailable` users are excluded unless the target specification explicitly approves an exception.
+- Authorization must be enforced server-side in addition to any UI gating. Every feature specification must document the role matrix and unauthorized behavior.
+
 ## Workflow Sources
 
 - `AGENTS.md` is the project-level operating rule.
