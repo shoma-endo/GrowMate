@@ -14,6 +14,16 @@ describe('requiresAdminAccess', () => {
     expect(requiresAdminAccess('/administration')).toBe(false);
     expect(requiresAdminAccess('/setup')).toBe(false);
   });
+
+  // 前方一致だけの別パスを弾くのは意図した挙動。将来 '/admin-console' のような
+  // トップレベルルートを足すときは、ここが false であることを踏まえてゲートを設計する。
+  it('ハイフン続きの別ルートは対象外', () => {
+    expect(requiresAdminAccess('/admin-console')).toBe(false);
+  });
+
+  it('末尾スラッシュでもゲートが効く', () => {
+    expect(requiresAdminAccess('/admin/')).toBe(true);
+  });
 });
 
 describe('requiresSetupAccess', () => {
@@ -39,6 +49,19 @@ describe('requiresSetupAccess', () => {
     expect(requiresSetupAccess('/setup-guide')).toBe(false);
   });
 
+  // proxy は Next.js の trailingSlash 正規化より前に走るため、'/setup/' が
+  // ノーガードにならないことを固定する。
+  it('末尾スラッシュでもゲートが効く', () => {
+    expect(requiresSetupAccess('/setup/')).toBe(true);
+    expect(requiresSetupAccess('/setup/instagram/')).toBe(false);
+  });
+
+  it('Instagram のサブルートを足しても対象外のまま', () => {
+    expect(requiresSetupAccess('/setup/instagram/callback')).toBe(false);
+  });
+
+  // '/analytics' の有料ゲートは proxy に無く app/analytics/page.tsx が唯一の判定者。
+  // ここが true に変わると二重ゲートになり trial が到達できなくなる。
   it('/analytics は設定パスではない', () => {
     expect(requiresSetupAccess('/analytics')).toBe(false);
   });
@@ -53,14 +76,15 @@ describe('isGoogleAdsPath', () => {
 });
 
 describe('isInstagramPath', () => {
-  it('連携画面と /analytics を含む', () => {
+  it('連携画面とその配下のみ true', () => {
     expect(isInstagramPath('/setup/instagram')).toBe(true);
-    expect(isInstagramPath('/analytics')).toBe(true);
+    expect(isInstagramPath('/setup/instagram/callback')).toBe(true);
   });
 
-  it('別パスは含まない', () => {
+  // '/analytics' は proxy に判定を持たない（page 側が唯一のゲート）ため、ここでは false。
+  it('/analytics と別パスは含まない', () => {
+    expect(isInstagramPath('/analytics')).toBe(false);
     expect(isInstagramPath('/setup/instagram-old')).toBe(false);
-    expect(isInstagramPath('/analytics-export')).toBe(false);
     expect(isInstagramPath('/setup')).toBe(false);
   });
 });

@@ -51,7 +51,7 @@ SELECT user_id, username, created_at
 - [ ] **GrowMate**: これまで allowlist に載っていなかったユーザー（変数を空にすれば全員が該当）。role は admin / paid / trial のいずれか
 - [ ] **Instagram**: **Instagram Tester に追加していない**プロアカウント（ビジネス or クリエイター）
 
-> `manbou536` / `aozorayoukei` は Tester 登録済みのため**実測に使えない**。スタンダードアクセスの特権で通ってしまい、本番の顧客の状況を再現できない。
+> `manbou536` / `aozorayoukei` は Tester 登録済みのため**実測に使えない**。**アプリに役割を持つユーザー**として通ってしまい、本番の顧客（役割を持たないユーザー）の状況を再現できない。
 >
 > テスト用に個人アカウントをプロへ転換するのが早い。ただし**プロ転換より前の投稿はインサイトが取れない**（`error_subcode 2108006` — 設計書 §3.3）ので、「連携が通ること」と「指標が入ること」は分けて見る。
 
@@ -63,7 +63,7 @@ SELECT user_id, username, created_at
 - [ ] Vercel の **Preview** スコープでも同様に空にする
 - [ ] 再デプロイして反映（環境変数の変更だけではランタイムに載らない）
 
-`canAccessInstagram` が §7 のロール判定（admin / paid / trial）にフォールバックする。コード変更は不要。
+`canAccessInstagram` が設計書 §7 のロール判定（admin / paid / trial）にフォールバックする。trial 経路のコードは §0 でデプロイ済みなので、**本手順自体はコード変更を伴わない**。
 
 ---
 
@@ -93,8 +93,8 @@ trial は `/setup` ハブに到達できないため、専用の導線を通る�
 
 - [ ] trial で `/setup` を直接開くと `/unauthorized`
 - [ ] trial で `/setup/wordpress`・`/setup/gsc`・`/setup/ga4` を直接開くと `/unauthorized`
-- [ ] paid / admin の `/analytics` は従来どおりブログ / Instagram の 2 タブ
-- [ ] Instagram 未連携の trial が `/analytics` を直接開くと `/unauthorized`
+- [ ] paid / admin の `/analytics` は従来どおり（**Instagram 連携済みなら**ブログ / Instagram の 2 タブ、未連携ならタブバー無しのブログ一覧のみ）
+- [ ] Instagram 未連携の trial が `/analytics` を直接開くと `/setup/instagram`（連携画面）へ送られる。**`/unauthorized` にはしない** — 権限が無いのではなく未設定なだけで、必要なのは連携導線だから
 
 ---
 
@@ -102,7 +102,7 @@ trial は `/setup` ハブに到達できないため、専用の導線を通る�
 
 4 がすべて通ってから実施する。
 
-- [ ] `INSTAGRAM_BETA_USER_IDS` をコードごと削除する（`src/server/lib/instagram-permissions.ts` の allowlist 分岐・テスト・`.env.example`・README・設計書・Vercel の変数）
+- [ ] **判断が要る**: `INSTAGRAM_BETA_USER_IDS` をコードごと削除するか、ロールバック用に残すか。削除すると §6 のロールバック手段が無くなる（以後は絞り直しにデプロイが必要）。削除する場合の対象は `src/server/lib/instagram-permissions.ts` の allowlist 分岐・`tests/unit/server/lib/instagram-permissions.test.ts`・`.env.example`・README 環境変数表・設計書 §4 Phase 1-A / §7・Vercel の変数
 - [ ] `REVIEW_LOGIN_EMAIL` を削除する（これだけで `/review-login` が 404 になる。撤去範囲は README の環境変数表の該当行に列挙済み）。**審査用 GrowMate アカウント自体は削除しない** — Meta の定期再審査とデータ使用状況の確認（年 1 回）で再利用する（設計書 §3.2）
 - [ ] 継続義務を運用側へ引き継ぐ:
   - **データ使用状況の確認（DUC）**: 年 1 回。放置するとアドバンスアクセスが失効し**全ユーザーの Instagram 連携が停止する**
@@ -119,4 +119,11 @@ trial は `/setup` ハブに到達できないため、専用の導線を通る�
 - [ ] allowlist 外のユーザーに `/setup` の Instagram カードが出ないことを確認
 - [ ] 原因（多くはアクセス認証未完了）を解消してから §3 からやり直す
 
-コードのロールバックは不要。allowlist が非空の間は `canAccessInstagram` が user_id のみを見るため、trial 開放のコードが入っていても露出は閉じる。
+コードのロールバックは不要。allowlist が非空の間は `canAccessInstagram` が user_id のみを見るため、trial 開放のコードが入っていても**サーバー側の認可は閉じる**（連携も同期もできない）。
+
+**ただし UI は完全には閉じない**（既知の割り切り。設計書 §4 Phase 1-A / §7）:
+
+- **ホームの Instagram カードは全ロールに出たまま**になる。`app/page.tsx` は Client Component でサーバー環境変数を読めず、`canAccessInstagram` でガードしていないため。押すと `/setup/instagram` のページガードで弾かれる（trial は `/unauthorized`、paid / admin は `/setup`）＝**行き止まりに見える**
+- 既に連携済みだった trial は、`/analytics` の Instagram タブに到達したまま**古いデータを見続ける**（新規の同期・連携はサーバー側で弾かれる）
+
+情報が漏れるわけではないが、ロールバックを長く続けるなら**ホームカードを一時的に外すデプロイ**を併せて検討する。

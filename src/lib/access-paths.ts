@@ -19,15 +19,15 @@ const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const
 /**
  * Instagram の開放範囲は admin / paid / trial（`docs/plans/instagram-integration-design.md` §7）。
  * App Review 通過に伴う限定公開の解除（同 §4 Phase 2 item6）で trial まで広げるため、
- * 以下のパスは有料ロールのゲート対象から外す。
+ * `/setup/instagram` は設定ゲートの対象から外す。
  *
- * - `/setup/instagram`: 連携画面そのもの
- * - `/analytics`: Instagram タブが有料機能のブログ一覧と同一ページに同居しているため、
- *   パス自体は trial にも通す。**ブログ一覧を trial に見せない出し分けは
- *   `app/analytics/page.tsx` が `hasPaidFeatureAccess` で行う**（Instagram 未連携の trial は
- *   同ページで `/unauthorized` へ送る）。ここを変えるときは必ずページ側とセットで見ること。
+ * **`/analytics` はここに入れない。** 同ページは Instagram タブが有料機能のブログ一覧と
+ * 同居するため、proxy にロール判定を一切持たせず、`app/analytics/page.tsx` の
+ * `hasPaidFeatureAccess` を唯一のゲートにしている。`/analytics` は `/setup` 配下ではないので
+ * この配列に入れても `requiresSetupAccess` の分岐に到達せず、読み手に
+ * 「ここで開放されている」と誤解させるだけになる。
  */
-const INSTAGRAM_PATHS = ['/setup/instagram', '/analytics'] as const;
+const INSTAGRAM_PATHS = ['/setup/instagram'] as const;
 
 /**
  * 完全一致、またはスラッシュ区切りの前方一致で判定する。

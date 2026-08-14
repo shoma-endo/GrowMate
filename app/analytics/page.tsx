@@ -106,9 +106,15 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const instagramConnected =
     connectionStatusResult.success && (connectionStatusResult.data?.connected ?? false);
 
-  // ブログ一覧も Instagram も見られないロール（Instagram 未連携の trial）はページ自体を開かせない
+  // ブログ一覧を見られないロール（trial）で Instagram も出せない場合は連携画面へ送る。
+  // ここを '/unauthorized'（赤い「アクセス権限なし」画面）にしない理由:
+  //   - 未連携は「権限が無い」のではなく「まだ設定していない」だけで、必要なのは連携導線
+  //   - getInstagramConnectionStatus は一時障害でも success:false を返すため、
+  //     未連携・権限なし・一時障害を区別できない（この分岐で断定してはいけない）
+  // '/setup/instagram' は canAccessInstagram を自前で再判定し、権限が無ければ
+  // '/unauthorized' へ送る。判定を二重に持たず、その所有者に委ねる。
   if (!canViewBlogAnalytics && !instagramConnected) {
-    redirect('/unauthorized');
+    redirect('/setup/instagram');
   }
 
   let activeTab: 'blog' | 'instagram' = tabParam === 'instagram' ? 'instagram' : 'blog';
