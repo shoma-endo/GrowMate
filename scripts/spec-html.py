@@ -664,6 +664,38 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
     out.write_text(html, encoding="utf-8")
     size_kb = len(html.encode("utf-8")) / 1024
     print(f"spec-html.py: wrote {out} ({size_kb:.0f} KB, {len(views)} view(s))")
+
+    # Artifact 版: claude.ai の Artifact は publish 時に
+    # <!doctype html>…<head></head><body> を被せるため、完結HTMLを渡すと文書が二重になる。
+    # doctype / html / head / body を持たない本文だけの派生を同じ内容から書き出す。
+    artifact = f"""<title>{_escape(title)}</title>
+<style>
+{nl.join(styles)}
+{SHELL_CSS}
+</style>
+
+{SHARED_DEFS}
+
+<nav class="tabbar" role="tablist" aria-label="ビュー切り替え">
+  {brand}{nl.join(tabs)}
+  <button type="button" class="theme" id="theme-toggle" aria-pressed="false">\U0001F319 ダーク</button>
+</nav>
+{ig_html}
+{nl.join(panels)}
+
+<script>
+{SHELL_JS}
+{nl.join(scripts)}
+</script>
+"""
+    for tag in ("<!doctype", "<html", "</html>", "<head>", "</head>", "<body", "</body>"):
+        if tag in artifact.lower():
+            raise SystemExit(f"spec-html.py: Artifact 版に {tag} が残っている（変換ロジックの不整合）")
+    art_out = out.with_suffix(".artifact.html")
+    art_out.write_text(artifact, encoding="utf-8")
+    art_kb = len(artifact.encode("utf-8")) / 1024
+    print(f"spec-html.py: wrote {art_out} ({art_kb:.0f} KB, Artifact 版)")
+
     return findings
 
 
@@ -1440,7 +1472,9 @@ def refresh(specs: list[Path], check_only: bool) -> int:
         plan = _bundle_plan(spec)
         if plan is None:
             continue
-        if _hash(spec.read_text(encoding="utf-8")) == plan["spec_hash"] and plan["out"].is_file():
+        # 原本が未改訂でも、成果物（結合 HTML / Artifact 版）が欠けていれば作り直す
+        outputs_ok = plan["out"].is_file() and plan["out"].with_suffix(".artifact.html").is_file()
+        if _hash(spec.read_text(encoding="utf-8")) == plan["spec_hash"] and outputs_ok:
             continue
 
         stale += 1
@@ -1455,7 +1489,7 @@ def refresh(specs: list[Path], check_only: bool) -> int:
                 fulltext(spec, path)
         findings = build(plan["views"], plan["out"], plan["title"], str(rel))
 
-        if check(plan["out"]):
+        if check(plan["out"]) or check(plan["out"].with_suffix(".artifact.html")):
             print(f"spec-html.py: 安全検査に失敗した: {plan['out']}")
             failed += 1
             continue
@@ -1513,7 +1547,8 @@ def main() -> None:
 
     if args.command == "build":
         build([_parse_view(v) for v in args.view], args.out, args.title, args.source)
-        sys.exit(1 if check(args.out) else 0)
+        ng = check(args.out) + check(args.out.with_suffix(".artifact.html"))
+        sys.exit(1 if ng else 0)
 
     if args.command == "fulltext":
         if not args.spec.is_file():
