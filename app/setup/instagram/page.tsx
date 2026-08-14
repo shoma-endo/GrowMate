@@ -84,7 +84,7 @@ export default async function InstagramSetupPage({
   // '/unauthorized' へ弾くだけで、利用者からは行き止まりに見える。
   const canReturnToSetup = hasPaidFeatureAccess(role);
 
-  if (!canAccessInstagram({ userId: authResult.userId, role })) {
+  if (!canAccessInstagram(role)) {
     redirect(canReturnToSetup ? '/setup' : '/unauthorized');
   }
 

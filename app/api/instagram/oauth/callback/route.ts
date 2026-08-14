@@ -2,6 +2,8 @@ import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { isInstagramProfessionalAccount } from '@/types/instagram';
+import { isValidUserRole } from '@/types/user';
+import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import {
   resolveOAuthTargetUserId,
   verifyOAuthStateCookie,
@@ -81,6 +83,22 @@ export async function GET(request: NextRequest) {
     const targetUserId = userResolution.userId;
     const instagramService = new InstagramService();
     const supabaseService = new SupabaseService();
+
+    // 認可の再確認。/start の時点で許可されていても、そこから戻ってくるまでの間に
+    // ロールが変わっている可能性があるため、credential を保存する前にもう一度見る。
+    // 判定にセッションの role を使わないのは、resolveOAuthTargetUserId が
+    // セッション不在時に state の user_id へフォールバックする経路を持つため
+    // （その経路では authResult.userDetails が無く、素通りしてしまう）。
+    const targetUserResult = await supabaseService.getUserById(targetUserId);
+    if (!targetUserResult.success) {
+      console.error('[Instagram] Failed to load user for access check:', targetUserResult.error);
+      return redirectWithError(baseUrl, 'server_error');
+    }
+    const targetRole = targetUserResult.data?.role;
+    if (!isValidUserRole(targetRole) || !canAccessInstagram(targetRole)) {
+      console.error('[Instagram] Access denied on callback:', { targetUserId, targetRole });
+      return redirectWithError(baseUrl, 'access_denied');
+    }
 
     const existingCredential = await supabaseService.getInstagramCredential(targetUserId);
 

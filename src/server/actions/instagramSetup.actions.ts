@@ -78,7 +78,7 @@ const ensureInstagramAccess = async (): Promise<AuthResult | { error: string }> 
   if ('error' in authResult) {
     return authResult;
   }
-  if (!canAccessInstagram({ userId: authResult.userId, role: authResult.role })) {
+  if (!canAccessInstagram(authResult.role)) {
     return { error: ERROR_MESSAGES.INSTAGRAM.ACCESS_DENIED };
   }
   return authResult;

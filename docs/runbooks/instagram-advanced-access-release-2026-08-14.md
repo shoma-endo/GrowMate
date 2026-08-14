@@ -3,7 +3,9 @@
 App Review 通過に伴い、Instagram 機能を **admin / paid / trial** へ開放する本番作業の手順書。
 設計書の正本は [`docs/plans/instagram-integration-design.md`](../plans/instagram-integration-design.md) §4 Phase 2 item6 / §7 / §9 Q4。
 
-**コード側（trial 経路の開放）は実装・マージ済み**。本 Runbook が扱うのは **Vercel の環境変数操作と本番実測**のみ。
+**コード側（trial 経路の開放 + 限定公開ゲートの撤去）は実装・マージ済み**。本 Runbook が扱うのは **本番デプロイ・Vercel の変数削除・本番実測**。
+
+> ⚠ **解除は「環境変数を空にするだけ」ではなくなった（2026-08-14 変更）**。当初設計では `INSTAGRAM_BETA_USER_IDS` を空にする無停止の切り替えだったが、審査通過に伴い **allowlist をコードごと撤去**したため、解除＝デプロイ、ロールバック＝revert デプロイになる（§6）。
 
 ---
 
@@ -12,26 +14,25 @@ App Review 通過に伴い、Instagram 機能を **admin / paid / trial** へ開
 - [ ] App Review 通過（Advanced Access 付与）
 - [ ] アクセス認証（Tech Provider）完了 — 未完だと**アプリに役割を持たないユーザー**の呼び出しが `error code 100` で落ちる（設計書 §3.2）
 - [ ] クライアント側のビジネス認証完了（2026-08-01 時点で完了済み）
-- [ ] trial 開放のコードが本番にデプロイ済み
 
 ---
 
-## 1. 事前準備: 現在の allowlist を控える（**最重要**）
+## 1. 事前準備: ロールバック手段を確認する
 
-`INSTAGRAM_BETA_USER_IDS` は Vercel の **Sensitive 設定で値を読み戻せない**。空にする前に現在の 3 件（遠藤・薫・審査用、2026-08-02 時点）を控えておかないと、ロールバック時に再構成が必要になる。
+allowlist を撤去したため、**露出を絞り直す唯一の手段は revert デプロイ**である。着手前に以下を押さえる。
 
-控え忘れた場合は連携実績から再構成する:
+- [ ] revert 対象のコミット範囲を把握した（限定公開ゲートの撤去 + trial 開放）
+- [ ] Vercel の Instant Rollback で直前のデプロイへ戻せることを確認した（どちらか片方が使えれば足りる）
 
-```sql
-SELECT user_id, username, created_at
-  FROM public.instagram_credentials
- ORDER BY created_at;
-```
-
-> ⚠ この SQL が返すのは「連携済みユーザー」であって「allowlist に載っていたユーザー」ではない。
-> 連携しないまま allowlist に載っていた ID があると取りこぼす。**控えるのが正**、SQL は最後の手段。
-
-- [ ] 現在の 3 件を安全な場所に控えた
+> `INSTAGRAM_BETA_USER_IDS` は Vercel の Sensitive 設定で値を読み戻せない。**撤去後に「元の3件」を復元する必要は無い**（コードが変数を見なくなるため）が、revert して allowlist を復活させる場合は変数を再登録することになる。その際の 3 件（遠藤・薫・審査用、2026-08-02 時点）は連携実績から再構成できる:
+>
+> ```sql
+> SELECT user_id, username, created_at
+>   FROM public.instagram_credentials
+>  ORDER BY created_at;
+> ```
+>
+> ただしこれが返すのは「連携済みユーザー」であって「allowlist に載っていたユーザー」ではない。連携しないまま載っていた ID は取りこぼす。
 
 ---
 
@@ -39,16 +40,16 @@ SELECT user_id, username, created_at
 
 ここが本 Runbook の肝。**軸が 2 つあり、混同すると「通った」が偽陰性になる**。
 
-| 軸 | 何のリスト | 何を決めるか |
-|----|-----------|-------------|
-| GrowMate の `user_id` | `INSTAGRAM_BETA_USER_IDS` | 画面に到達できるか |
+| 軸 | 何で決まるか | 何を決めるか |
+|----|-------------|-------------|
+| GrowMate のユーザー | `role`（admin / paid / trial） | 画面に到達できるか |
 | **Instagram プロアカウント** | **Meta App Dashboard の Instagram Tester** | **API が通るか** |
 
-`error code 100` で落ちるかを決めているのは Meta 側の「アプリに役割を持つか」であって、GrowMate の allowlist ではない（設計書 §3.2「開発中に動いているのは開発者がアプリの役割を持っているからにすぎない」）。
+`error code 100` で落ちるかを決めているのは Meta 側の「アプリに役割を持つか」であって、GrowMate のロールではない（設計書 §3.2「開発中に動いているのは開発者がアプリの役割を持っているからにすぎない」）。
 
 用意するもの:
 
-- [ ] **GrowMate**: これまで allowlist に載っていなかったユーザー（変数を空にすれば全員が該当）。role は admin / paid / trial のいずれか
+- [ ] **GrowMate**: role が admin / paid / trial のいずれかのユーザー（**trial での確認を必ず1回は含める** — 今回開放した経路のため）
 - [ ] **Instagram**: **Instagram Tester に追加していない**プロアカウント（ビジネス or クリエイター）
 
 > `manbou536` / `aozorayoukei` は Tester 登録済みのため**実測に使えない**。**アプリに役割を持つユーザー**として通ってしまい、本番の顧客（役割を持たないユーザー）の状況を再現できない。
@@ -57,13 +58,14 @@ SELECT user_id, username, created_at
 
 ---
 
-## 3. allowlist を空にする
+## 3. 本番へデプロイする（＝解除）
 
-- [ ] Vercel の **Production** スコープで `INSTAGRAM_BETA_USER_IDS` を空にする
-- [ ] Vercel の **Preview** スコープでも同様に空にする
-- [ ] 再デプロイして反映（環境変数の変更だけではランタイムに載らない）
+限定公開ゲートを撤去したコードを本番に載せた時点で解除が成立する。`canAccessInstagram` は設計書 §7 のロール判定（admin / paid / trial）だけを見る。
 
-`canAccessInstagram` が設計書 §7 のロール判定（admin / paid / trial）にフォールバックする。trial 経路のコードは §0 でデプロイ済みなので、**本手順自体はコード変更を伴わない**。
+- [ ] trial 開放 + 限定公開ゲート撤去のコードを本番にデプロイした
+- [ ] デプロイ後、Vercel の **Production** / **Preview** の両スコープから `INSTAGRAM_BETA_USER_IDS` を削除した（コードが参照しなくなるため、残っていても無害だが紛らわしい）
+
+> 変数を先に消してもコードを先に出しても結果は同じ（撤去後のコードは変数を読まない）。**デプロイが解除のトリガー**である点だけ間違えないこと。
 
 ---
 
@@ -102,7 +104,7 @@ trial は `/setup` ハブに到達できないため、専用の導線を通る�
 
 4 がすべて通ってから実施する。
 
-- [ ] **判断が要る**: `INSTAGRAM_BETA_USER_IDS` をコードごと削除するか、ロールバック用に残すか。削除すると §6 のロールバック手段が無くなる（以後は絞り直しにデプロイが必要）。削除する場合の対象は `src/server/lib/instagram-permissions.ts` の allowlist 分岐・`tests/unit/server/lib/instagram-permissions.test.ts`・`.env.example`・README 環境変数表・設計書 §4 Phase 1-A / §7・Vercel の変数
+- [x] ~~`INSTAGRAM_BETA_USER_IDS` の撤去~~ → **§3 に前倒し済み**（コード側は撤去済み。Vercel の変数削除も §3 に含む）
 - [ ] `REVIEW_LOGIN_EMAIL` を削除する（これだけで `/review-login` が 404 になる。撤去範囲は README の環境変数表の該当行に列挙済み）。**審査用 GrowMate アカウント自体は削除しない** — Meta の定期再審査とデータ使用状況の確認（年 1 回）で再利用する（設計書 §3.2）
 - [ ] 継続義務を運用側へ引き継ぐ:
   - **データ使用状況の確認（DUC）**: 年 1 回。放置するとアドバンスアクセスが失効し**全ユーザーの Instagram 連携が停止する**
@@ -114,16 +116,12 @@ trial は `/setup` ハブに到達できないため、専用の導線を通る�
 
 4-1 で `error code 100` が出た場合、または想定外の露出が起きた場合。
 
-- [ ] `INSTAGRAM_BETA_USER_IDS` に §1 で控えた 3 件を Production / Preview とも復元する（**追記ではなく全件上書き**になる点に注意）
-- [ ] 再デプロイして反映
-- [ ] allowlist 外のユーザーに `/setup` の Instagram カードが出ないことを確認
+**allowlist を撤去したため、環境変数で戻す手段は無い。ロールバックはデプロイである。**
+
+- [ ] Vercel の Instant Rollback で直前のデプロイへ戻す、または §1 で把握した範囲を `git revert` してデプロイする
+- [ ] 戻した後、対象外のユーザーに `/setup` / ホームの Instagram カードが出ないことを確認する
 - [ ] 原因（多くはアクセス認証未完了）を解消してから §3 からやり直す
 
-コードのロールバックは不要。allowlist が非空の間は `canAccessInstagram` が user_id のみを見るため、trial 開放のコードが入っていても**サーバー側の認可は閉じる**（連携も同期もできない）。
+**部分的に閉じたい場合**（例: trial だけ止めて paid / admin は残す）は、`src/server/lib/instagram-permissions.ts` の `INSTAGRAM_ALLOWED_ROLES` から `'trial'` を外してデプロイするのが最小の変更。ホームの Instagram カード（`app/page.tsx`）はロールを見ずに全員へ出しているので、押すと `/setup/instagram` のページガードで弾かれる（trial は `/unauthorized`）。行き止まりを避けたいならカードの表示条件も併せて調整する。
 
-**ただし UI は完全には閉じない**（既知の割り切り。設計書 §4 Phase 1-A / §7）:
-
-- **ホームの Instagram カードは全ロールに出たまま**になる。`app/page.tsx` は Client Component でサーバー環境変数を読めず、`canAccessInstagram` でガードしていないため。押すと `/setup/instagram` のページガードで弾かれる（trial は `/unauthorized`、paid / admin は `/setup`）＝**行き止まりに見える**
-- 既に連携済みだった trial は、`/analytics` の Instagram タブに到達したまま**古いデータを見続ける**（新規の同期・連携はサーバー側で弾かれる）
-
-情報が漏れるわけではないが、ロールバックを長く続けるなら**ホームカードを一時的に外すデプロイ**を併せて検討する。
+なお **OAuth callback は認可を再確認する**（`app/api/instagram/oauth/callback/route.ts`）ので、ロールバック中に `/start` を通過済みのユーザーが戻ってきても credential は保存されない。

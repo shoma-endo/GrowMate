@@ -20,8 +20,11 @@ const VALID_USER_ROLES: readonly UserRole[] = [
 
 /**
  * 型ガード: 値が有効なUserRoleかどうかを実行時検証
+ *
+ * DB の `users.role` は生成型上 `string` なので、`toUser` を通さずロールだけを
+ * 見たい箇所（OAuth callback の認可再確認など）ではこのガードで絞る。
  */
-function isValidUserRole(role: unknown): role is UserRole {
+export function isValidUserRole(role: unknown): role is UserRole {
   return typeof role === 'string' && (VALID_USER_ROLES as readonly string[]).includes(role);
 }
 

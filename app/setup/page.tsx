@@ -53,10 +53,7 @@ export default async function SetupPage() {
 
   let instagramStatus;
   if (
-    canAccessInstagram({
-      userId: authResult.userId,
-      role: authResult.userDetails?.role ?? null,
-    })
+    canAccessInstagram(authResult.userDetails?.role ?? null)
   ) {
     const instagramResult = await getInstagramConnectionStatus();
     if (instagramResult.success && instagramResult.data) {
