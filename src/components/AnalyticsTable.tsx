@@ -5,6 +5,7 @@ import FieldConfigurator from '@/components/FieldConfigurator';
 import TruncatedText from '@/components/TruncatedText';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
 import CategoryFilter from '@/components/CategoryFilter';
+import { cn } from '@/lib/utils';
 import {
   ANALYTICS_COLUMNS,
   BLOG_STEP_IDS,
@@ -825,12 +826,26 @@ export default function AnalyticsTable({
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-[2200px] divide-y divide-gray-200">
+            {/*
+              contain-layout: table 要素の auto レイアウト計算（列幅の内容依存計算）は、
+              overflow-x-auto や min-w-0 だけでは祖先への伝播を防ぎきれず、documentElement
+              のスクロール幅にまで影響してページ全体が横スクロールしてしまう
+              （Chromium の既知の挙動）。contain: layout でこの要素を独立したレイアウト
+              コンテキストにし、内部の table サイズ計算が外へ影響しないようにする。
+            */}
+            <div className="overflow-x-auto contain-layout">
+              {items.length === 0 ? (
+                <p className="text-sm text-gray-500 py-8 text-center">
+                  {hasUrlFilterParams || hasUnreadSuggestion
+                    ? '表示条件に一致するコンテンツがありません。フィルタを変更してください。'
+                    : 'まだコンテンツがありません。チャットでブログを作成するか、WordPress記事を一括インポートしてください。'}
+                </p>
+              ) : (
+              <table className="min-w-[2200px] divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50 analytics-head">
-                  <tr>
+                  <tr className="text-gray-600">
                     <th
-                      className="analytics-ops-cell px-2 py-3 text-center text-xs font-medium text-gray-500 tracking-wider whitespace-nowrap relative group/th"
+                      className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap relative group/th"
                       style={{
                         width: `${opsWidth}px`,
                         minWidth: `${opsWidth}px`,
@@ -860,13 +875,13 @@ export default function AnalyticsTable({
                       .map(id => (
                         <th
                           key={id}
-                          className={`px-6 py-3 text-left text-xs font-medium text-gray-500 tracking-wider whitespace-nowrap ${
-                            id === 'impressions' ? 'text-right min-w-[120px]' : ''
-                          } ${id === 'categories' ? 'min-w-[200px]' : ''} ${
-                            id === 'wp_post_title' || id === 'wp_excerpt' ? 'min-w-[360px]' : ''
-                          } ${id === 'url' ? 'min-w-[300px]' : ''} ${
-                            ['main_kw', 'kw'].includes(id) ? 'min-w-[180px]' : ''
-                          } ${
+                          className={cn(
+                            'px-6 py-3 text-left whitespace-nowrap',
+                            id === 'impressions' && 'text-right min-w-[120px]',
+                            id === 'categories' && 'min-w-[200px]',
+                            (id === 'wp_post_title' || id === 'wp_excerpt') && 'min-w-[360px]',
+                            id === 'url' && 'min-w-[300px]',
+                            ['main_kw', 'kw'].includes(id) && 'min-w-[180px]',
                             [
                               'ga4_avg_engagement_time',
                               'ga4_read_rate',
@@ -874,12 +889,12 @@ export default function AnalyticsTable({
                               'ga4_cv_count',
                               'ga4_cvr',
                               'ga4_flags',
-                            ].includes(id)
-                              ? 'min-w-[140px]'
-                              : ''
-                          } ${['needs', 'persona', 'goal', 'prep', 'basic_structure', 'opening_proposal'].includes(id) ? 'min-w-[220px]' : ''} ${
-                            id === 'date' ? 'min-w-[120px]' : ''
-                          }`}
+                            ].includes(id) && 'min-w-[140px]',
+                            ['needs', 'persona', 'goal', 'prep', 'basic_structure', 'opening_proposal'].includes(
+                              id
+                            ) && 'min-w-[220px]',
+                            id === 'date' && 'min-w-[120px]'
+                          )}
                         >
                           {columnLabelMap[id]}
                         </th>
@@ -1100,7 +1115,7 @@ export default function AnalyticsTable({
                             switch (id) {
                               case 'main_kw':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.main_kw ? (
                                       <TruncatedText text={annotation.main_kw} lines={2} />
                                     ) : (
@@ -1110,7 +1125,7 @@ export default function AnalyticsTable({
                                 );
                               case 'kw':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.kw ? (
                                       <TruncatedText text={annotation.kw} lines={2} />
                                     ) : (
@@ -1122,44 +1137,44 @@ export default function AnalyticsTable({
                                 return (
                                   <td
                                     key={id}
-                                    className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    className="px-6 py-4 whitespace-nowrap text-sm text-right"
                                   >
                                     {annotation?.impressions ?? '—'}
                                   </td>
                                 );
                               case 'ga4_avg_engagement_time':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? formatSeconds(avgEngagementSeconds) : '—'}
                                   </td>
                                 );
                               case 'ga4_read_rate':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? formatPercent(readRate) : '—'}
                                   </td>
                                 );
                               case 'ga4_bounce_rate':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? formatPercent(ga4Summary.bounceRate) : '—'}
                                   </td>
                                 );
                               case 'ga4_cv_count':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? ga4Summary.cvEventCount : '—'}
                                   </td>
                                 );
                               case 'ga4_cvr':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? formatPercent(cvr) : '—'}
                                   </td>
                                 );
                               case 'ga4_flags':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {ga4Summary ? (
                                       <div className="flex flex-wrap gap-2">
                                         {ga4Summary.isSampled && (
@@ -1179,7 +1194,7 @@ export default function AnalyticsTable({
                                 );
                               case 'needs':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.needs ? (
                                       <TruncatedText text={annotation.needs} lines={3} />
                                     ) : (
@@ -1189,7 +1204,7 @@ export default function AnalyticsTable({
                                 );
                               case 'persona':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.persona ? (
                                       <TruncatedText text={annotation.persona} lines={3} />
                                     ) : (
@@ -1199,7 +1214,7 @@ export default function AnalyticsTable({
                                 );
                               case 'goal':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.goal ? (
                                       <TruncatedText text={annotation.goal} lines={3} />
                                     ) : (
@@ -1209,7 +1224,7 @@ export default function AnalyticsTable({
                                 );
                               case 'prep':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.prep ? (
                                       <TruncatedText text={annotation.prep} lines={3} />
                                     ) : (
@@ -1219,7 +1234,7 @@ export default function AnalyticsTable({
                                 );
                               case 'basic_structure':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.basic_structure ? (
                                       <TruncatedText text={annotation.basic_structure} lines={3} />
                                     ) : (
@@ -1229,7 +1244,7 @@ export default function AnalyticsTable({
                                 );
                               case 'opening_proposal':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.opening_proposal ? (
                                       <TruncatedText text={annotation.opening_proposal} lines={3} />
                                     ) : (
@@ -1262,7 +1277,7 @@ export default function AnalyticsTable({
                                 return (
                                   <td
                                     key={id}
-                                    className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    className="px-6 py-4 whitespace-nowrap text-sm"
                                   >
                                     {updatedAt ?? '—'}
                                   </td>
@@ -1271,14 +1286,14 @@ export default function AnalyticsTable({
                                 return (
                                   <td
                                     key={id}
-                                    className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    className="px-6 py-4 whitespace-nowrap text-sm"
                                   >
                                     {annotation?.wp_post_title || '—'}
                                   </td>
                                 );
                               case 'wp_excerpt':
                                 return (
-                                  <td key={id} className="px-6 py-4 text-sm text-gray-900">
+                                  <td key={id} className="px-6 py-4 text-sm">
                                     {annotation?.wp_excerpt ? (
                                       <TruncatedText text={annotation.wp_excerpt} lines={3} />
                                     ) : (
@@ -1315,6 +1330,7 @@ export default function AnalyticsTable({
                   })}
                 </tbody>
               </table>
+              )}
             </div>
           </div>
         )}

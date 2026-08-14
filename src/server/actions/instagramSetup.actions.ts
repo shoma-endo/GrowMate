@@ -12,6 +12,7 @@ import {
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { toInstagramConnectionStatus } from '@/server/lib/instagram-status';
 import { SupabaseService } from '@/server/services/supabaseService';
+import { instagramMediaService } from '@/server/services/instagramMediaService';
 import { InstagramService } from '@/server/services/instagramService';
 import {
   createInstagramTokenDeps,
@@ -39,6 +40,8 @@ const EMPTY_MEDIA_INSIGHTS: InstagramMediaInsights = {
   saved: null,
   shares: null,
   totalInteractions: null,
+  reposts: null,
+  reelsSkipRate: null,
   avgWatchTimeMs: null,
   totalWatchTimeMs: null,
 };
@@ -75,7 +78,7 @@ const ensureInstagramAccess = async (): Promise<AuthResult | { error: string }> 
   if ('error' in authResult) {
     return authResult;
   }
-  if (!canAccessInstagram({ userId: authResult.userId, role: authResult.role })) {
+  if (!canAccessInstagram(authResult.role)) {
     return { error: ERROR_MESSAGES.INSTAGRAM.ACCESS_DENIED };
   }
   return authResult;
@@ -116,6 +119,11 @@ export async function disconnectInstagram(): Promise<ServerActionResult<void>> {
     }
     const { userId } = accessResult as AuthSuccess;
 
+    const purgeResult = await instagramMediaService.purgeInstagramData(userId);
+    if (!purgeResult.success) {
+      return { success: false, error: ERROR_MESSAGES.INSTAGRAM.DISCONNECT_FAILED };
+    }
+
     const deleteResult = await supabaseService.deleteInstagramCredential(userId);
     if (!deleteResult.success) {
       return { success: false, error: ERROR_MESSAGES.INSTAGRAM.DISCONNECT_FAILED };
@@ -123,6 +131,7 @@ export async function disconnectInstagram(): Promise<ServerActionResult<void>> {
 
     revalidatePath('/setup');
     revalidatePath('/setup/instagram');
+    revalidatePath('/analytics');
     return { success: true, data: undefined };
   } catch (error) {
     console.error('[Instagram Setup] disconnectInstagram failed', error);
@@ -219,7 +228,8 @@ export async function fetchInstagramPreviewData(): Promise<
 
       let profile: InstagramProfile;
       try {
-        profile = await instagramService.fetchProfile(tokenResult.accessToken);
+        const profileResult = await instagramService.fetchProfile(tokenResult.accessToken);
+        profile = profileResult.data;
       } catch (error) {
         console.error('[Instagram Setup] fetchProfile failed', error);
         if (isInstagramReauthError(error)) {
@@ -253,12 +263,12 @@ export async function fetchInstagramPreviewData(): Promise<
 
       for (const item of targetMedia) {
         try {
-          const insights = await instagramService.fetchMediaInsights(
+          const insightsResult = await instagramService.fetchMediaInsights(
             tokenResult.accessToken,
             item.id,
             item.media_product_type === 'REELS' ? 'REELS' : 'FEED'
           );
-          media.push(instagramService.toMediaPreview(item, insights));
+          media.push(instagramService.toMediaPreview(item, insightsResult.data));
         } catch (error) {
           // 転換前判定を先に置く。isInstagramReauthError は本文の部分一致が広く、
           // 将来 Meta が文言を変えて両方に掛かった場合に「再連携してください」へ倒れると、
@@ -356,6 +366,8 @@ const DEV_SAMPLE_INSTAGRAM_MEDIA: InstagramMediaPreview[] = [
       saved: 320,
       shares: 45,
       totalInteractions: 493,
+      reposts: 2,
+      reelsSkipRate: 12.5,
       avgWatchTimeMs: 8500,
       totalWatchTimeMs: 102000000,
     },
@@ -379,6 +391,8 @@ const DEV_SAMPLE_INSTAGRAM_MEDIA: InstagramMediaPreview[] = [
       saved: 12,
       shares: 2,
       totalInteractions: 62,
+      reposts: null,
+      reelsSkipRate: null,
       avgWatchTimeMs: null,
       totalWatchTimeMs: null,
     },
@@ -402,6 +416,8 @@ const DEV_SAMPLE_INSTAGRAM_MEDIA: InstagramMediaPreview[] = [
       saved: 80,
       shares: 10,
       totalInteractions: 184,
+      reposts: 1,
+      reelsSkipRate: 8.2,
       avgWatchTimeMs: 6200,
       totalWatchTimeMs: 14260000,
     },

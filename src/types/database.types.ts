@@ -809,12 +809,49 @@ export type Database = {
           },
         ]
       }
+      instagram_account_insights_daily: {
+        Row: {
+          date: string
+          follower_count: number | null
+          id: string
+          imported_at: string
+          reach: number | null
+          user_id: string
+        }
+        Insert: {
+          date: string
+          follower_count?: number | null
+          id?: string
+          imported_at?: string
+          reach?: number | null
+          user_id: string
+        }
+        Update: {
+          date?: string
+          follower_count?: number | null
+          id?: string
+          imported_at?: string
+          reach?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_account_insights_daily_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       instagram_credentials: {
         Row: {
           access_token: string
           access_token_expires_at: string
           access_token_issued_at: string
           account_type: string | null
+          backfill_completed_at: string | null
+          backfill_cursor: string | null
           created_at: string
           id: string
           ig_user_id: string
@@ -830,6 +867,8 @@ export type Database = {
           access_token_expires_at: string
           access_token_issued_at?: string
           account_type?: string | null
+          backfill_completed_at?: string | null
+          backfill_cursor?: string | null
           created_at?: string
           id?: string
           ig_user_id: string
@@ -845,6 +884,8 @@ export type Database = {
           access_token_expires_at?: string
           access_token_issued_at?: string
           account_type?: string | null
+          backfill_completed_at?: string | null
+          backfill_cursor?: string | null
           created_at?: string
           id?: string
           ig_user_id?: string
@@ -860,6 +901,101 @@ export type Database = {
             foreignKeyName: "instagram_credentials_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      instagram_media: {
+        Row: {
+          avg_watch_time_ms: number | null
+          caption: string | null
+          comments_count: number | null
+          created_at: string
+          id: string
+          ig_media_id: string
+          insights_synced_at: string | null
+          insights_unavailable: boolean
+          insights_unavailable_reason: string | null
+          like_count: number | null
+          media_product_type: string
+          media_type: string
+          media_url: string | null
+          permalink: string
+          posted_at: string
+          reach: number | null
+          reels_skip_rate: number | null
+          reposts: number | null
+          saved: number | null
+          shares: number | null
+          thumbnail_url: string | null
+          total_interactions: number | null
+          total_watch_time_ms: number | null
+          updated_at: string
+          user_id: string
+          views: number | null
+        }
+        Insert: {
+          avg_watch_time_ms?: number | null
+          caption?: string | null
+          comments_count?: number | null
+          created_at?: string
+          id?: string
+          ig_media_id: string
+          insights_synced_at?: string | null
+          insights_unavailable?: boolean
+          insights_unavailable_reason?: string | null
+          like_count?: number | null
+          media_product_type: string
+          media_type: string
+          media_url?: string | null
+          permalink: string
+          posted_at: string
+          reach?: number | null
+          reels_skip_rate?: number | null
+          reposts?: number | null
+          saved?: number | null
+          shares?: number | null
+          thumbnail_url?: string | null
+          total_interactions?: number | null
+          total_watch_time_ms?: number | null
+          updated_at?: string
+          user_id: string
+          views?: number | null
+        }
+        Update: {
+          avg_watch_time_ms?: number | null
+          caption?: string | null
+          comments_count?: number | null
+          created_at?: string
+          id?: string
+          ig_media_id?: string
+          insights_synced_at?: string | null
+          insights_unavailable?: boolean
+          insights_unavailable_reason?: string | null
+          like_count?: number | null
+          media_product_type?: string
+          media_type?: string
+          media_url?: string | null
+          permalink?: string
+          posted_at?: string
+          reach?: number | null
+          reels_skip_rate?: number | null
+          reposts?: number | null
+          saved?: number | null
+          shares?: number | null
+          thumbnail_url?: string | null
+          total_interactions?: number | null
+          total_watch_time_ms?: number | null
+          updated_at?: string
+          user_id?: string
+          views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_media_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
