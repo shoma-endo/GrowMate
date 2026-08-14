@@ -101,11 +101,14 @@ steps:
       ## spec-review-scope.md（全文）
       {report:spec-review-scope.md}
     rules:
-      - condition: approved（自己解消可能な指摘なし・確認質問もなし）
+      # architecture-review 形式の `spec-audit.md` は冒頭を「## 結果: APPROVE / REJECT」と書く。
+      # SKILL.md の判定語彙（approved / approved_with_questions / needs_fix）と表記が異なり、
+      # judge が no rule matched で落ちる実測があるため両方の語彙を条件に含める。
+      - condition: approved / APPROVE（自己解消可能な指摘なし・確認質問もなし）
         next: visualize
-      - condition: approved_with_questions（残件がクライアント確認質問のみ）
+      - condition: approved_with_questions / APPROVE（残件がクライアント確認質問のみ。修正可能な指摘は残っていない）
         next: visualize
-      - condition: needs_fix（仕様書修正で解消できる指摘がある）
+      - condition: "needs_fix / REJECT（仕様書修正で解消できる指摘がある。spec-audit.md の見出しが REJECT なら原則これ）"
         next: revise
     output_contracts:
       report:
