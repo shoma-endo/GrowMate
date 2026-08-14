@@ -46,10 +46,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (
-    !canAccessInstagram({
-      userId: authResult.userId,
-      role: authResult.userDetails?.role ?? null,
-    })
+    !canAccessInstagram(authResult.userDetails?.role ?? null)
   ) {
     return NextResponse.json({ error: ERROR_MESSAGES.INSTAGRAM.ACCESS_DENIED }, { status: 403 });
   }

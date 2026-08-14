@@ -42,7 +42,7 @@ export async function syncInstagramData(
     const userId = authResult.userId;
     const role: UserRole | null = authResult.userDetails?.role ?? null;
 
-    if (!canAccessInstagram({ userId, role })) {
+    if (!canAccessInstagram(role)) {
       return { success: false, error: ERROR_MESSAGES.INSTAGRAM.ACCESS_DENIED };
     }
 

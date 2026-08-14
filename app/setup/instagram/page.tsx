@@ -74,12 +74,7 @@ export default async function InstagramSetupPage({
     redirect('/login');
   }
 
-  if (
-    !canAccessInstagram({
-      userId: authResult.userId,
-      role: authResult.userDetails?.role ?? null,
-    })
-  ) {
+  if (!canAccessInstagram(authResult.userDetails?.role ?? null)) {
     redirect('/setup');
   }
 
