@@ -296,6 +296,18 @@ export const INSTAGRAM_SYNC_MEDIA_LIMIT = 50;
 export const INSTAGRAM_SYNC_CONSECUTIVE_FAILURE_LIMIT = 5;
 export const INSTAGRAM_RATE_CALL_COUNT_THRESHOLD = 80;
 
+// docs/plans/instagram-media-url-refresh-design.md §4.3。
+// 非公開バケット。Service Role（Route Handler 経由）以外からのアクセスは行わない。
+export const INSTAGRAM_MEDIA_THUMBNAIL_BUCKET = 'instagram-media-thumbnails';
+
+// Instagram のメディア・サムネイル配信元となる CDN ホスト（ベースドメインのみ）。
+// 参照元（各自ワイルドカード記法が異なるため、この配列から個別に組み立てる）:
+//   - proxy.ts の buildCspHeader（img-src。`https://*.<host>` 形式）
+//   - app/api/instagram/media/[igMediaId]/thumbnail/route.ts の ALLOWED_IMAGE_HOSTS（SSRF 対策の許可ホスト正規表現）
+//   - next.config.ts の images.remotePatterns（`**.<host>` 形式。next.config.ts は Next 起動時に
+//     alias 解決前に読まれるため `@/` import を使わず、この配列とのコメントによる手動同期のみ）
+export const INSTAGRAM_CDN_HOSTS = ['cdninstagram.com', 'fbcdn.net'] as const;
+
 export const INSTAGRAM_COLUMNS = [
   { id: 'media_product_type', label: '種別', defaultVisible: true },
   { id: 'caption', label: 'キャプション', defaultVisible: true },

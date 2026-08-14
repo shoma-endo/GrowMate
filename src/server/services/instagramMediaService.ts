@@ -1,6 +1,9 @@
 import 'server-only';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
-import type { Tables, TablesInsert } from '@/types/database.types';
+import { asPendingClient, type InstagramMediaDatabase } from '@/types/database.types.pending';
+import type { Database, Tables, TablesInsert } from '@/types/database.types';
+import { INSTAGRAM_MEDIA_THUMBNAIL_BUCKET } from '@/lib/constants';
 import type {
   InstagramMediaListItem,
   InstagramMediaPageResult,
@@ -415,23 +418,152 @@ class InstagramMediaService extends SupabaseService {
   }
 
 
+  /**
+   * サムネイルキャッシュの表示に必要な最小フィールドを1件取得する。
+   * docs/plans/instagram-media-url-refresh-design.md §4 の Route Handler から呼ばれる。
+   */
+  async getMediaForThumbnail(
+    userId: string,
+    igMediaId: string
+  ): Promise<{
+    mediaProductType: string;
+    mediaUrl: string | null;
+    thumbnailUrl: string | null;
+    cachedThumbnailPath: string | null;
+  } | null> {
+    return SupabaseService.withServiceRoleClient(async client => {
+      const { data, error } = await asPendingClient<InstagramMediaDatabase>(client)
+        .from('instagram_media')
+        .select('media_product_type, media_url, thumbnail_url, cached_thumbnail_path')
+        .eq('user_id', userId)
+        .eq('ig_media_id', igMediaId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('[Instagram Media] getMediaForThumbnail failed', { userId, igMediaId, error });
+        throw new Error('Instagram media thumbnail lookup failed');
+      }
+      if (!data) {
+        return null;
+      }
+
+      return {
+        mediaProductType: data.media_product_type,
+        mediaUrl: data.media_url,
+        thumbnailUrl: data.thumbnail_url,
+        cachedThumbnailPath: data.cached_thumbnail_path,
+      };
+    });
+  }
+
+  /** Storage からキャッシュ済みサムネイル画像を取得する。無ければ null。 */
+  async downloadCachedThumbnail(path: string): Promise<Blob | null> {
+    return SupabaseService.withServiceRoleClient(async client => {
+      const { data, error } = await client.storage
+        .from(INSTAGRAM_MEDIA_THUMBNAIL_BUCKET)
+        .download(path);
+      if (error) {
+        console.error('[Instagram Media] downloadCachedThumbnail failed', { path, error });
+        return null;
+      }
+      return data;
+    });
+  }
+
+  /**
+   * 画像バイトを Storage へ保存し、instagram_media.cached_thumbnail_path を更新する。
+   * 保存したパスを返す。失敗時は null（呼び出し元はキャッシュ無しとして扱い、次回アクセス時に再試行する）。
+   */
+  async cacheThumbnail(
+    userId: string,
+    igMediaId: string,
+    bytes: Blob,
+    contentType: string
+  ): Promise<string | null> {
+    const path = `${userId}/${igMediaId}.jpg`;
+    return SupabaseService.withServiceRoleClient(
+      async client => {
+        const { error: uploadError } = await client.storage
+          .from(INSTAGRAM_MEDIA_THUMBNAIL_BUCKET)
+          .upload(path, bytes, { contentType, upsert: true });
+        if (uploadError) {
+          console.error('[Instagram Media] cacheThumbnail upload failed', {
+            userId,
+            igMediaId,
+            uploadError,
+          });
+          return null;
+        }
+
+        const { error: updateError } = await asPendingClient<InstagramMediaDatabase>(client)
+          .from('instagram_media')
+          .update({ cached_thumbnail_path: path })
+          .eq('user_id', userId)
+          .eq('ig_media_id', igMediaId);
+        if (updateError) {
+          console.error('[Instagram Media] cacheThumbnail DB update failed', {
+            userId,
+            igMediaId,
+            updateError,
+          });
+          return null;
+        }
+
+        return path;
+      },
+      { logMessage: null }
+    );
+  }
+
+  /**
+   * instagram_media 行を消す前に、対応する Storage オブジェクトを削除する
+   * （行だけ消すとキャッシュ画像が孤児として残り続ける）。失敗は非致命的（ログのみ）。
+   */
+  private async purgeCachedThumbnails(
+    client: SupabaseClient<Database>,
+    userId: string
+  ): Promise<void> {
+    const { data: cachedObjects, error: listError } = await client.storage
+      .from(INSTAGRAM_MEDIA_THUMBNAIL_BUCKET)
+      .list(userId);
+    if (listError) {
+      console.error('[Instagram Media] purgeInstagramData storage list failed', {
+        userId,
+        listError,
+      });
+      return;
+    }
+    if (cachedObjects.length === 0) {
+      return;
+    }
+    const paths = cachedObjects.map(object => `${userId}/${object.name}`);
+    const { error: removeError } = await client.storage
+      .from(INSTAGRAM_MEDIA_THUMBNAIL_BUCKET)
+      .remove(paths);
+    if (removeError) {
+      console.error('[Instagram Media] purgeInstagramData storage remove failed', {
+        userId,
+        removeError,
+      });
+    }
+  }
+
   async purgeInstagramData(userId: string): Promise<SupabaseResult<void>> {
     return SupabaseService.withServiceRoleClient(
       async client => {
-        const { error: mediaError } = await client
-          .from('instagram_media')
-          .delete()
-          .eq('user_id', userId);
+        // Storage 削除と2つの DELETE は互いに独立しているため並列実行する。
+        const [, { error: mediaError }, { error: insightsError }] = await Promise.all([
+          this.purgeCachedThumbnails(client, userId),
+          client.from('instagram_media').delete().eq('user_id', userId),
+          client.from('instagram_account_insights_daily').delete().eq('user_id', userId),
+        ]);
+
         if (mediaError) {
           return this.failure('Instagramメディアデータの削除に失敗しました', {
             developerMessage: mediaError.message,
           });
         }
 
-        const { error: insightsError } = await client
-          .from('instagram_account_insights_daily')
-          .delete()
-          .eq('user_id', userId);
         if (insightsError) {
           return this.failure('Instagramアカウント指標の削除に失敗しました', {
             developerMessage: insightsError.message,

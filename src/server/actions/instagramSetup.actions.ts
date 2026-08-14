@@ -94,15 +94,8 @@ export async function getInstagramConnectionStatus(): Promise<
     }
     const { userId } = accessResult as AuthSuccess;
 
-    const useMockInstagram = process.env.NODE_ENV === 'development';
-    let status: InstagramConnectionStatus;
-
-    if (useMockInstagram) {
-      status = DEV_SAMPLE_INSTAGRAM_STATUS;
-    } else {
-      const credential = await supabaseService.getInstagramCredential(userId);
-      status = toInstagramConnectionStatus(credential);
-    }
+    const credential = await supabaseService.getInstagramCredential(userId);
+    const status: InstagramConnectionStatus = toInstagramConnectionStatus(credential);
 
     return { success: true, data: status };
   } catch (error) {
@@ -184,55 +177,89 @@ export async function fetchInstagramPreviewData(): Promise<
     const { userId } = accessResult as AuthSuccess;
     resolvedUserId = userId;
 
-    const useMockInstagram = process.env.NODE_ENV === 'development';
-    let preview: InstagramPreviewData;
+    const credential = await supabaseService.getInstagramCredential(userId);
+    if (!credential) {
+      return { success: false, error: ERROR_MESSAGES.INSTAGRAM.CONNECTION_FAILED };
+    }
 
-    if (useMockInstagram) {
-      preview = {
-        profile: DEV_SAMPLE_INSTAGRAM_PROFILE,
-        media: DEV_SAMPLE_INSTAGRAM_MEDIA,
-        ...(DEV_SAMPLE_INSTAGRAM_FAILED_COUNT > 0
-          ? { failedCount: DEV_SAMPLE_INSTAGRAM_FAILED_COUNT }
-          : {}),
+    const tokenResult = await ensureValidInstagramToken(
+      credential,
+      createInstagramTokenDeps(userId, async payload => {
+        const updateResult = await supabaseService.updateInstagramCredential(userId, {
+          accessToken: payload.accessToken,
+          accessTokenExpiresAt: payload.accessTokenExpiresAt,
+          accessTokenIssuedAt: payload.accessTokenIssuedAt,
+        });
+        if (!updateResult.success) {
+          throw new Error(updateResult.error.developerMessage ?? 'Token persist failed');
+        }
+      })
+    );
+
+    // ここへ来るのは保存済みの期限が既に過去のときだけ（refreshLongLivedToken の
+    // 失敗は throw して外側 catch に落ちる）。/setup も同じ期限を見ているので
+    // 既に表示は揃っており、書き込む必要はない。
+    if (tokenResult.needsReauth) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED,
+        needsReauth: true,
       };
-    } else {
-      const credential = await supabaseService.getInstagramCredential(userId);
-      if (!credential) {
-        return { success: false, error: ERROR_MESSAGES.INSTAGRAM.CONNECTION_FAILED };
-      }
+    }
 
-      const tokenResult = await ensureValidInstagramToken(
-        credential,
-        createInstagramTokenDeps(userId, async payload => {
-          const updateResult = await supabaseService.updateInstagramCredential(userId, {
-            accessToken: payload.accessToken,
-            accessTokenExpiresAt: payload.accessTokenExpiresAt,
-            accessTokenIssuedAt: payload.accessTokenIssuedAt,
-          });
-          if (!updateResult.success) {
-            throw new Error(updateResult.error.developerMessage ?? 'Token persist failed');
-          }
-        })
-      );
-
-      // ここへ来るのは保存済みの期限が既に過去のときだけ（refreshLongLivedToken の
-      // 失敗は throw して外側 catch に落ちる）。/setup も同じ期限を見ているので
-      // 既に表示は揃っており、書き込む必要はない。
-      if (tokenResult.needsReauth) {
+    let profile: InstagramProfile;
+    try {
+      const profileResult = await instagramService.fetchProfile(tokenResult.accessToken);
+      profile = profileResult.data;
+    } catch (error) {
+      console.error('[Instagram Setup] fetchProfile failed', error);
+      if (isInstagramReauthError(error)) {
+        if (isInstagramRevokedTokenError(error)) {
+          await markInstagramCredentialExpired(userId);
+        }
         return {
           success: false,
           error: ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED,
           needsReauth: true,
         };
       }
+      return { success: false, error: ERROR_MESSAGES.INSTAGRAM.PREVIEW_FETCH_FAILED };
+    }
 
-      let profile: InstagramProfile;
+    const mediaItems = await instagramService.fetchMedia(
+      tokenResult.accessToken,
+      PREVIEW_MEDIA_LIMIT
+    );
+    const sortedMedia = [...mediaItems].sort((a, b) => {
+      const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return bTime - aTime;
+    });
+    const targetMedia = sortedMedia.slice(0, PREVIEW_MEDIA_LIMIT);
+
+    const media: InstagramMediaPreview[] = [];
+    let failedCount = 0;
+    // 転換前の投稿は恒久的に取得できないため、再試行を促す failedCount とは分けて数える
+    let preConversionCount = 0;
+
+    for (const item of targetMedia) {
       try {
-        const profileResult = await instagramService.fetchProfile(tokenResult.accessToken);
-        profile = profileResult.data;
+        const insightsResult = await instagramService.fetchMediaInsights(
+          tokenResult.accessToken,
+          item.id,
+          item.media_product_type === 'REELS' ? 'REELS' : 'FEED'
+        );
+        media.push(instagramService.toMediaPreview(item, insightsResult.data));
       } catch (error) {
-        console.error('[Instagram Setup] fetchProfile failed', error);
-        if (isInstagramReauthError(error)) {
+        // 転換前判定を先に置く。isInstagramReauthError は本文の部分一致が広く、
+        // 将来 Meta が文言を変えて両方に掛かった場合に「再連携してください」へ倒れると、
+        // 何度再連携しても直らない導線になるため。
+        if (isInstagramPreConversionMediaError(error)) {
+          preConversionCount += 1;
+          console.info('[Instagram Setup] media predates professional conversion', {
+            mediaId: item.id,
+          });
+        } else if (isInstagramReauthError(error)) {
           if (isInstagramRevokedTokenError(error)) {
             await markInstagramCredentialExpired(userId);
           }
@@ -241,76 +268,29 @@ export async function fetchInstagramPreviewData(): Promise<
             error: ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED,
             needsReauth: true,
           };
+        } else {
+          failedCount += 1;
+          console.error('[Instagram Setup] fetchMediaInsights failed', {
+            mediaId: item.id,
+            error,
+          });
         }
-        return { success: false, error: ERROR_MESSAGES.INSTAGRAM.PREVIEW_FETCH_FAILED };
+        media.push(instagramService.toMediaPreview(item, EMPTY_MEDIA_INSIGHTS));
       }
-
-      const mediaItems = await instagramService.fetchMedia(
-        tokenResult.accessToken,
-        PREVIEW_MEDIA_LIMIT
-      );
-      const sortedMedia = [...mediaItems].sort((a, b) => {
-        const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return bTime - aTime;
-      });
-      const targetMedia = sortedMedia.slice(0, PREVIEW_MEDIA_LIMIT);
-
-      const media: InstagramMediaPreview[] = [];
-      let failedCount = 0;
-      // 転換前の投稿は恒久的に取得できないため、再試行を促す failedCount とは分けて数える
-      let preConversionCount = 0;
-
-      for (const item of targetMedia) {
-        try {
-          const insightsResult = await instagramService.fetchMediaInsights(
-            tokenResult.accessToken,
-            item.id,
-            item.media_product_type === 'REELS' ? 'REELS' : 'FEED'
-          );
-          media.push(instagramService.toMediaPreview(item, insightsResult.data));
-        } catch (error) {
-          // 転換前判定を先に置く。isInstagramReauthError は本文の部分一致が広く、
-          // 将来 Meta が文言を変えて両方に掛かった場合に「再連携してください」へ倒れると、
-          // 何度再連携しても直らない導線になるため。
-          if (isInstagramPreConversionMediaError(error)) {
-            preConversionCount += 1;
-            console.info('[Instagram Setup] media predates professional conversion', {
-              mediaId: item.id,
-            });
-          } else if (isInstagramReauthError(error)) {
-            if (isInstagramRevokedTokenError(error)) {
-              await markInstagramCredentialExpired(userId);
-            }
-            return {
-              success: false,
-              error: ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED,
-              needsReauth: true,
-            };
-          } else {
-            failedCount += 1;
-            console.error('[Instagram Setup] fetchMediaInsights failed', {
-              mediaId: item.id,
-              error,
-            });
-          }
-          media.push(instagramService.toMediaPreview(item, EMPTY_MEDIA_INSIGHTS));
-        }
-      }
-
-      await supabaseService.updateInstagramCredential(userId, {
-        username: profile.username,
-        accountType: profile.accountType,
-        profilePictureUrl: profile.profilePictureUrl,
-      });
-
-      preview = {
-        profile,
-        media,
-        ...(failedCount > 0 ? { failedCount } : {}),
-        ...(preConversionCount > 0 ? { preConversionCount } : {}),
-      };
     }
+
+    await supabaseService.updateInstagramCredential(userId, {
+      username: profile.username,
+      accountType: profile.accountType,
+      profilePictureUrl: profile.profilePictureUrl,
+    });
+
+    const preview: InstagramPreviewData = {
+      profile,
+      media,
+      ...(failedCount > 0 ? { failedCount } : {}),
+      ...(preConversionCount > 0 ? { preConversionCount } : {}),
+    };
 
     return { success: true, data: preview };
   } catch (error) {
@@ -328,100 +308,3 @@ export async function fetchInstagramPreviewData(): Promise<
     return { success: false, error: ERROR_MESSAGES.INSTAGRAM.PREVIEW_FETCH_FAILED };
   }
 }
-
-const DEV_SAMPLE_INSTAGRAM_STATUS: InstagramConnectionStatus = {
-  connected: true,
-  needsReauth: false,
-  username: 'growmate_demo',
-};
-
-const DEV_SAMPLE_INSTAGRAM_PROFILE: InstagramProfile = {
-  igUserId: '17841400000000000',
-  username: 'growmate_demo',
-  name: 'GrowMate Demo',
-  accountType: 'BUSINESS',
-  profilePictureUrl: null,
-  followersCount: 1234,
-  followsCount: 56,
-  mediaCount: 78,
-};
-
-const DEV_SAMPLE_INSTAGRAM_MEDIA: InstagramMediaPreview[] = [
-  {
-    id: 'media-1',
-    mediaType: 'VIDEO',
-    mediaProductType: 'REELS',
-    mediaUrl: null,
-    thumbnailUrl: null,
-    caption: '養鶏を始めて3ヶ月。毎朝の収穫が楽しみです。',
-    timestamp: '2026-07-20T09:00:00+0000',
-    permalink: 'https://www.instagram.com/reel/demo1/',
-    likeCount: 120,
-    commentsCount: 8,
-    insights: {
-      reach: 5200,
-      views: 12000,
-      likes: 120,
-      comments: 8,
-      saved: 320,
-      shares: 45,
-      totalInteractions: 493,
-      reposts: 2,
-      reelsSkipRate: 12.5,
-      avgWatchTimeMs: 8500,
-      totalWatchTimeMs: 102000000,
-    },
-  },
-  {
-    id: 'media-2',
-    mediaType: 'IMAGE',
-    mediaProductType: 'FEED',
-    mediaUrl: null,
-    thumbnailUrl: null,
-    caption: '卵かけご飯の朝ごはん。',
-    timestamp: '2026-07-18T12:00:00+0000',
-    permalink: 'https://www.instagram.com/p/demo2/',
-    likeCount: 45,
-    commentsCount: 3,
-    insights: {
-      reach: 1100,
-      views: null,
-      likes: 45,
-      comments: 3,
-      saved: 12,
-      shares: 2,
-      totalInteractions: 62,
-      reposts: null,
-      reelsSkipRate: null,
-      avgWatchTimeMs: null,
-      totalWatchTimeMs: null,
-    },
-  },
-  {
-    id: 'media-3',
-    mediaType: 'VIDEO',
-    mediaProductType: 'REELS',
-    mediaUrl: null,
-    thumbnailUrl: null,
-    caption: '鶏舎の日常。',
-    timestamp: '2026-07-15T08:30:00+0000',
-    permalink: 'https://www.instagram.com/reel/demo3/',
-    likeCount: 89,
-    commentsCount: 5,
-    insights: {
-      reach: 890,
-      views: 2300,
-      likes: 89,
-      comments: 5,
-      saved: 80,
-      shares: 10,
-      totalInteractions: 184,
-      reposts: 1,
-      reelsSkipRate: 8.2,
-      avgWatchTimeMs: 6200,
-      totalWatchTimeMs: 14260000,
-    },
-  },
-];
-
-const DEV_SAMPLE_INSTAGRAM_FAILED_COUNT = 0;

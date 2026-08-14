@@ -1,8 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import Image from 'next/image';
 import FieldConfigurator from '@/components/FieldConfigurator';
+import { InstagramMediaThumbnail } from '@/components/InstagramMediaThumbnail';
 import {
   Tooltip,
   TooltipContent,
@@ -58,6 +58,18 @@ function unavailableTooltip(reason: InstagramMediaListItem['insightsUnavailableR
     return '投稿から2年以上経過しているため取得できません';
   }
   return '指標を取得できません';
+}
+
+function ThumbnailCell({ item }: { item: InstagramMediaListItem }) {
+  return (
+    <div className="relative w-12 h-12 rounded overflow-hidden">
+      <InstagramMediaThumbnail
+        igMediaId={item.igMediaId}
+        className="object-cover"
+        fallback={<div className="w-12 h-12 rounded bg-gray-100" />}
+      />
+    </div>
+  );
 }
 
 function MetricCell({
@@ -252,18 +264,7 @@ export default function InstagramMediaTable({
                 {items.map(item => (
                   <tr key={item.id} className="align-top">
                     <td className="px-6 py-4">
-                      {item.thumbnailUrl || item.mediaUrl ? (
-                        <Image
-                          src={item.thumbnailUrl ?? item.mediaUrl ?? ''}
-                          alt=""
-                          width={48}
-                          height={48}
-                          className="rounded object-cover w-12 h-12"
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded bg-gray-100" />
-                      )}
+                      <ThumbnailCell item={item} />
                     </td>
                     {visibleOrdered.map(columnId => (
                       <td key={columnId} className="px-6 py-4 whitespace-nowrap">

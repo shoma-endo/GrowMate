@@ -195,7 +195,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - **`follows` はアプリのリール画面に「フォロー数 0」として表示されている**。公式 metrics 表の「REELS 非対応」と食い違うため、**上記の実測で決着させる優先度が上がった**
   - **率系（シェア率・いいね率・保存率・再投稿率・コメント率）は API に無い**。実数から自前計算することになる。**分母はリーチと見られる**（提供画面の実数で検算: いいね率 4.1% ← 21 ÷ 523(reach) = 4.02%、21 ÷ 618(views) = 3.40%。保存率 0.4% ← 2 ÷ 523 = 0.38%、2 ÷ 618 = 0.32%。**いずれもリーチ側でのみ一致**）。ただし **Instagram は算出定義を公開していないため一致保証はない**。出す場合の扱いは §9 Q10 で確認する
 - **Instagram Login に「認可解除の Webhook」は無い（2026-08-04 調査。要目視確認）**: [Webhooks](https://developers.facebook.com/docs/instagram-platform/webhooks) に載るフィールドは `comments` / `live_comments` / `messages` 系のみで、deauthorize・permission revocation に相当するものが見当たらない。**ユーザーが Meta 側で連携を解除したことは API エラー起点でしか検知できない**（実装済みの `isInstagramRevokedTokenError` がその経路）。Phase 2 の同期処理も同じ前提で設計する（§6。cron は Phase 2 に無い）
-- **media_url / profile_picture_url は有効期限付き CDN URL**。DB に保存した URL は失効し得るため、一覧表示のサムネイルは同期のたびに更新し、失効時は permalink リンクで代替する（画像の自前ストレージ保存は非スコープ）。
+- **media_url / profile_picture_url は有効期限付き CDN URL**。DB に保存した URL は失効し得る。~~一覧表示のサムネイルは同期のたびに更新し~~ **（2026-08-14 訂正）実際には incremental/backfill 同期は既存投稿の URL を更新しない**ため恒久的に壊れる不具合があった。対策として**自前ストレージへのキャッシュを採用**（当初「非スコープ」としていた判断を覆した）。詳細は [`instagram-media-url-refresh-design.md`](./instagram-media-url-refresh-design.md)。
 - **CDN ホストを CSP の `img-src` に許可する必要がある**（`proxy.ts` の `buildCspHeader`）。`https://*.cdninstagram.com` と `https://*.fbcdn.net` が無いと、DB に URL が正しく保存されていてもブラウザ側で画像が全てブロックされ、プレースホルダーだけが並ぶ。2026-08-01 の初回疎通で実際に発生。
 - **プロアカウント転換より前の投稿はインサイトを取得できない**。`GET /{media-id}/insights` が `code 100 / error_subcode 2108006`（"このメディアは、ユーザーのアカウントが個人アカウントからビジネスアカウントに最後に変換された時点より前に投稿されました"）を返す（2026-08-01 に `manbou536` の**既存25投稿すべて**で発生。最新の既存投稿が 2019-03-10 で、転換後の投稿が1件も無かった）。**この subcode は Meta のエラーコード一覧3ページのいずれにも記載が無く**、回避策や部分取得できるメトリクスのサブセットがあるかは**未確認**。確実に裏が取れる打ち手は転換後の新規投稿のみ。**審査用スクリーンキャストには転換後の投稿が最低1本必要**。
 - **制約は転換タイミングのみで、メディア形式は問わない（2026-08-01 実測）**。転換後に投稿した `CAROUSEL_ALBUM/FEED` で9指標すべて取得できた。公式の "Insights data is not available for any media within an Instagram Media album" はアルバム**内の子メディア**の話であり、アルバム本体は取得できる。GrowMate は `MEDIA_FIELDS` に `children` を含めないため、この制約に当たらない。動画（`VIDEO/REELS`）も同様に取得可能で、`ig_reels_avg_watch_time` / `ig_reels_video_view_total_time` を含む9指標が返ることを `aozorayoukei`（全25投稿が REELS）で確認済み。
@@ -224,7 +224,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 
 **実装状態（2026-07-31）**: 当初「1-A のみ先に実装し 1-B は後」としていたが、**UI・型・`DEV_SAMPLE_*`・`canAccessInstagram`・Setup 画面は実装済み**。1-B 相当（OAuth ルート・`instagramService` / `instagramTokenService`・credential CRUD・production 向け実データ分岐）も **同一ブランチで実装済み**。残作業は **App Review 提出ゲート**（§3.2 の順序制約・§9 Q6/Q7 の解消・本番疎通・収録・1024 icon・提出）に集約される。
 
-**ゴール（当初）: `/setup` の Instagram カードと `/setup/instagram` が §11.1/11.2 の全状態を実画面表示。開発時は `DEV_SAMPLE_*`、本番は実 API。**
+**ゴール（当初）: `/setup` の Instagram カードと `/setup/instagram` が §11.1/11.2 の全状態を実画面表示。~~開発時は `DEV_SAMPLE_*`、本番は実 API。~~ → 2026-08-14 に `DEV_SAMPLE_*` 分岐をコードごと撤去。App Review 通過後、開発時も含め常に実 API を使う（`getInstagramConnectionStatus` / `fetchInstagramPreviewData` は `NODE_ENV` 分岐なし）。**
 
 - ~~実サービス・OAuth は 1-B で実装~~ → **実装済み**（以下チェックリストは完了確認用に残す）
 - Meta 開発者アプリ作成（Instagram API with Instagram Login 製品追加、パーミッション申請フォーム記入）はダッシュボード上の設定作業のみで、1-A の UI 実装と並行して進める（審査提出そのものにアプリ登録が前提のため）
@@ -234,8 +234,8 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - **allowlist 非空時は `canAccessInstagram` は user_id のみを見る**（`src/server/lib/instagram-permissions.ts:28-30`）。`INSTAGRAM_ALLOWED_ROLES` に `trial` が含まれていても、allowlist 外ユーザーは Instagram UI に到達できない。**role は allowlist 解除後（Phase 2 item6）の §7 最終形および `proxy.ts` の経路ゲート用**であり、審査期間中の Instagram 露出理由として「trial だから」とは書かない
   - レビュアー用アカウントは **`role: 'admin'` にしない**（上記）。`/admin/*` は `isAdmin` で弾かれる。**`/setup/*` へは `proxy.ts` の `hasSetupAccess`（= `hasPaidFeatureAccess` → paid / admin のみ）が別途必要**（§9 Q7）。allowlist に載せただけでは `/setup/instagram` に到達できない
 - 型定義: `src/types/instagram.ts` に `InstagramConnectionStatus` / `InstagramProfile` / `InstagramMediaPreview` を **Phase 1-B の実 API 戻り値と同じ形状**で先に定義する。以降 Phase 1-B はこの型を変更せず中身だけ実装する
-- `src/server/actions/instagramSetup.actions.ts` に `getInstagramConnectionStatus` / `fetchInstagramPreviewData` を **戻り値型は Phase 1-B と同一のまま** 先に実装し、`process.env.NODE_ENV === 'development'` の間は関数末尾に定義した `DEV_SAMPLE_INSTAGRAM_STATUS` / `DEV_SAMPLE_INSTAGRAM_PROFILE` / `DEV_SAMPLE_INSTAGRAM_MEDIA`（未連携・連携済み・要再認証・投稿0件・部分失敗の5パターン）を返す
-- 状態確認は `DEV_SAMPLE_*` の定数を一時的に差し替えて目視する（既存踏襲。トグル UI 等の専用切替導線は作らない＝本番導線を汚さない）
+- ~~`src/server/actions/instagramSetup.actions.ts` に `getInstagramConnectionStatus` / `fetchInstagramPreviewData` を **戻り値型は Phase 1-B と同一のまま** 先に実装し、`process.env.NODE_ENV === 'development'` の間は関数末尾に定義した `DEV_SAMPLE_INSTAGRAM_STATUS` / `DEV_SAMPLE_INSTAGRAM_PROFILE` / `DEV_SAMPLE_INSTAGRAM_MEDIA`（未連携・連携済み・要再認証・投稿0件・部分失敗の5パターン）を返す~~ → **2026-08-14 に撤去**。App Review 通過に伴い mock を残す理由がなくなったため、`NODE_ENV` 分岐・`DEV_SAMPLE_INSTAGRAM_*` 定数一式をコードごと削除し、開発時も常に実 API（credential 未保存なら「未連携」を正しく返す）を使うよう変更した
+- ~~状態確認は `DEV_SAMPLE_*` の定数を一時的に差し替えて目視する（既存踏襲。トグル UI 等の専用切替導線は作らない＝本番導線を汚さない）~~ → **2026-08-14 に撤去**（Google Ads 側の同型パターン `useMockGoogleAds` はスコープ外・維持）
 - 「連携を解除」ボタンは §11.2 の見た目のみ実装（`disconnectInstagram` の実処理は Phase 1-B。1-A では確認ダイアログの表示までで良い）
 - UI 実装: §11.1（`SetupDashboard.tsx` Instagram カード）・§11.2（`InstagramSetupClient.tsx`, `app/setup/instagram/page.tsx`）をここで完成させる。**Phase 1-B ではこのコンポーネント群は無変更** — データソースを `DEV_SAMPLE_*` から実サービス呼び出しへ差し替えるのみ
 - クライアントレビュー: カオルさんに §11 ワイヤーフレームとの差分（特に Q2 の一覧列構成の温度感）を確認してもらい、1-B 着手前に画面合意を取る
@@ -468,8 +468,9 @@ create table public.instagram_media (
   media_type text not null check (media_type in ('IMAGE','VIDEO','CAROUSEL_ALBUM')),
   media_product_type text not null check (media_product_type in ('FEED','REELS')),
   caption text,
-  media_url text,                  -- 失効し得る CDN URL。同期毎に更新
+  media_url text,                  -- 失効し得る CDN URL。同期では更新しない（instagram-media-url-refresh-design.md 参照）
   thumbnail_url text,
+  cached_thumbnail_path text,       -- 自前キャッシュ済みサムネイルの Storage パス。詳細は instagram-media-url-refresh-design.md
   permalink text not null,
   posted_at timestamptz not null,
   -- インサイト（Phase 2 での唯一の保存先。日次スナップショットは不採用 — §5.3）
@@ -615,10 +616,10 @@ create table public.instagram_account_insights_daily (
 ## 8. 受け入れ条件・検証
 
 ### Phase 1-A（ハードコーディング UI モック・クライアント合意用）
-- [ ] `DEV_SAMPLE_*` を切り替えることで `/setup/instagram` が未設定・接続OK・要再認証・投稿0件・部分失敗の5状態を画面表示できる
+- [x] ~~`DEV_SAMPLE_*` を切り替えることで `/setup/instagram` が未設定・接続OK・要再認証・投稿0件・部分失敗の5状態を画面表示できる~~ → **2026-08-14 に `DEV_SAMPLE_*` 分岐をコードごと撤去したため失効**（以後は実アカウントの実際の状態遷移で確認する）
 - [ ] `/setup` ハブに Instagram カードが出て connected / needsReauth / unlinked が区別表示される（Badge 文言は §11.1 準拠: 接続OK / 未設定 / 要再認証）
 - [ ] ERROR_MAP 経由でエラー Alert が表示される（state 改ざん等のエラー種別ごとの文言差し替えを確認）
-- [ ] `NODE_ENV==='production'` ビルド（`npm run build && npm run start` 相当）で `DEV_SAMPLE_*` 分岐に到達しないことを確認済み
+- [x] ~~`NODE_ENV==='production'` ビルド（`npm run build && npm run start` 相当）で `DEV_SAMPLE_*` 分岐に到達しないことを確認済み~~ → **2026-08-14 に `DEV_SAMPLE_*` 分岐自体を撤去したため失効**（開発・本番とも同一の実 API パス）
 - [x] ~~`INSTAGRAM_BETA_USER_IDS` に自分の user_id だけを入れた状態で、allowlist 外のユーザーには `/setup` の Instagram カードが出ず `/setup/instagram` も開けない~~ → **2026-08-14 に allowlist を撤去したため失効**
 - [x] ~~`INSTAGRAM_BETA_USER_IDS` を空にすると §7 のロール判定に戻り、**allowlist 解除後の** `canAccessInstagram` 対象ロール（admin / paid / trial）に Instagram UI が開放される（Phase 2 item6 の解除手順の先行検証。**`/setup` 経路は proxy の paid/admin 制約が別途残る** — §9 Q7）~~ → **2026-08-14 に allowlist を撤去し、対象ロールも admin / paid へ変更したため失効**
 - [ ] クライアント（カオルさん）へ画面共有し、§11 ワイヤーフレームとの差分（Q2 の列構成含む）を確認済み

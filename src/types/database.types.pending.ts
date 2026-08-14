@@ -25,3 +25,22 @@ export function asPendingClient<TDatabase>(
 ): SupabaseClient<TDatabase> {
   return client as unknown as SupabaseClient<TDatabase>;
 }
+
+// PROVISIONAL: supabase/migrations/20260814000000_add_cached_thumbnail_path_to_instagram_media.sql
+// マイグレーション適用後に `npm run supabase:types` を実行し、instagram_media の生成型に
+// cached_thumbnail_path が含まれるようになったら、本ブロックと
+// asPendingClient<InstagramMediaDatabase>(...) の呼び出しを削除して通常の client に戻す。
+type InstagramMediaTable = Database['public']['Tables']['instagram_media'];
+
+export type InstagramMediaDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables'> & {
+    Tables: Omit<Database['public']['Tables'], 'instagram_media'> & {
+      instagram_media: {
+        Row: InstagramMediaTable['Row'] & { cached_thumbnail_path: string | null };
+        Insert: InstagramMediaTable['Insert'] & { cached_thumbnail_path?: string | null };
+        Update: InstagramMediaTable['Update'] & { cached_thumbnail_path?: string | null };
+        Relationships: InstagramMediaTable['Relationships'];
+      };
+    };
+  };
+};

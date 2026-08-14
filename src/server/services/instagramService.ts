@@ -1,4 +1,5 @@
 import 'server-only';
+import { fetchWithTimeout } from '@/server/lib/fetch-with-timeout';
 import { extractInsightMetric } from '@/server/lib/instagram-insights';
 import {
   mergeInstagramRateUsage,
@@ -18,7 +19,6 @@ export const INSTAGRAM_OAUTH_SCOPES = [
   'instagram_business_manage_insights',
 ] as const;
 
-const DEFAULT_TIMEOUT_MS = 10_000;
 const TOKEN_EXCHANGE_URL = 'https://api.instagram.com/oauth/access_token';
 const GRAPH_BASE_URL = 'https://graph.instagram.com';
 
@@ -72,21 +72,6 @@ interface GraphMediaItem {
   permalink?: string | undefined;
   like_count?: number | undefined;
   comments_count?: number | undefined;
-}
-
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
-  }
 }
 
 async function readResponseBody(response: Response): Promise<string> {
@@ -451,6 +436,37 @@ export class InstagramService {
         reelsSkipRate: extractInsightMetric(values, 'reels_skip_rate'),
         avgWatchTimeMs: extractInsightMetric(values, 'ig_reels_avg_watch_time'),
         totalWatchTimeMs: extractInsightMetric(values, 'ig_reels_video_view_total_time'),
+      },
+    };
+  }
+
+  /**
+   * 単一 media の media_url/thumbnail_url だけを軽量に再取得する。
+   * `instagram-media-thumbnails` の自前キャッシュが無い投稿を表示する際、
+   * app/api/instagram/media/[igMediaId]/thumbnail から呼ばれる。
+   * 一次情報: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/
+   * （確認日 2026-08-14。GET /<IG_MEDIA_ID>?fields=... が公式にサポートされている）
+   */
+  async fetchMediaUrl(
+    accessToken: string,
+    mediaId: string
+  ): Promise<InstagramApiResult<{ mediaUrl: string | null; thumbnailUrl: string | null }>> {
+    const params = new URLSearchParams({
+      fields: 'media_url,thumbnail_url',
+      access_token: accessToken,
+    });
+
+    const response = await fetchWithTimeout(
+      `${GRAPH_BASE_URL}/${INSTAGRAM_GRAPH_VERSION}/${mediaId}?${params.toString()}`,
+      { method: 'GET' }
+    );
+    const { json, usage } = await parseJsonResponse(response);
+
+    return {
+      usage,
+      data: {
+        mediaUrl: typeof json.media_url === 'string' ? json.media_url : null,
+        thumbnailUrl: typeof json.thumbnail_url === 'string' ? json.thumbnail_url : null,
       },
     };
   }
