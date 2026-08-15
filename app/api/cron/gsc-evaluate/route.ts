@@ -5,7 +5,7 @@ import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 /**
  * GSC 評価バッチ Cron エンドポイント
  *
- * Vercel Cron により毎時0分に呼び出される。
+ * GitHub Actions（`.github/workflows/hourly-cron.yml`）が毎時0分に GET で呼び出す。
  * 「次回評価予定日時 <= 現在日時」のユーザーのみ評価を実行する。
  *
  * 認証: CRON_SECRET による Bearer トークン認証
@@ -13,7 +13,7 @@ import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 export async function GET(request: NextRequest) {
   const startedAt = Date.now();
   try {
-    // Vercel Cron からのリクエストを認証
+    // GitHub Actions からのリクエストを認証
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
 
@@ -45,6 +45,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Vercel Cron は GET リクエストを使用
+// GitHub Actions の invoke-cron.sh は GET で呼び出す
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // 300秒（Vercel Pro は最大800秒まで対応）
+export const maxDuration = 300;
