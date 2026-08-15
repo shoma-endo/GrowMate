@@ -4,7 +4,7 @@ workflow_config:
   provider_options:
     codex:
       network_access: true
-max_steps: 14
+max_steps: 10
 initial_step: identify
 loop_monitors:
   - cycle:
