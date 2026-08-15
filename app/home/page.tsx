@@ -5,12 +5,31 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, BarChart2, CheckCircle2, Lock, Zap } from 'lucide-react';
+import { InstagramGlyph } from '@/components/InstagramGlyph';
 
 export const metadata: Metadata = {
   title: 'GrowMate - AIでマーケティングを自動化',
   description:
     'Google Search ConsoleやGoogle Analytics 4と連携し、データを分析。業界特化の知識を持つAIが、SEOに強いブログ記事や広告コピーを自動生成します。',
 };
+
+function SupportContactCard({ borderColorClass }: { borderColorClass: string }) {
+  return (
+    <div className={`p-8 bg-white rounded-2xl shadow-md border ${borderColorClass}`}>
+      <h3 className="text-xl font-semibold text-gray-900 mb-3">サポート窓口</h3>
+      <p className="text-gray-600 text-sm leading-relaxed">
+        連携解除・データ削除・審査用アクセス情報は、以下までご連絡ください。
+      </p>
+      <ul className="mt-4 text-sm text-gray-700 space-y-2">
+        <li>株式会社ドリームプランナー</li>
+        <li>〒716-1551 岡山県加賀郡吉備中央町北702</li>
+        <li>電話: 090-9922-6467</li>
+        <li>メール: support@dreamplanner.co.jp</li>
+      </ul>
+      <p className="text-xs text-gray-500 mt-4">受付時間: 平日 10:00-17:00（祝日除く）</p>
+    </div>
+  );
+}
 
 export default function LandingPage() {
   return (
@@ -42,6 +61,12 @@ export default function LandingPage() {
               className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
             >
               Google連携
+            </Link>
+            <Link
+              href="#instagram-compliance"
+              className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
+            >
+              Instagram連携
             </Link>
             <Link
               href="/privacy"
@@ -115,7 +140,7 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
               {/* Feature 1 */}
               <div className="p-8 rounded-2xl border border-gray-100 bg-white shadow-lg shadow-gray-100/50 hover:shadow-xl transition-shadow">
                 <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-6">
@@ -142,7 +167,18 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              {/* Feature 3 */}
+              {/* Feature 3: Instagram Integration */}
+              <div className="p-8 rounded-2xl border border-pink-100 bg-pink-50/50 shadow-lg shadow-pink-100/50 hover:shadow-xl transition-shadow">
+                <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-pink-500 rounded-xl flex items-center justify-center mb-6">
+                  <InstagramGlyph className="size-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">Instagram投稿実績分析</h3>
+                <p className="text-gray-600 leading-relaxed">
+                  お客様のInstagramビジネスアカウントと連携し、投稿ごとのリーチ・いいね・保存などの実績データを取得。管理画面で一覧確認でき、次の投稿づくりに活かせます。
+                </p>
+              </div>
+
+              {/* Feature 4 */}
               <div className="p-8 rounded-2xl border border-gray-100 bg-white shadow-lg shadow-gray-100/50 hover:shadow-xl transition-shadow">
                 <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-6">
                   <Lock className="w-6 h-6 text-green-600" />
@@ -199,19 +235,43 @@ export default function LandingPage() {
                   </li>
                 </ul>
               </div>
-              <div className="p-8 bg-white rounded-2xl shadow-md border border-blue-100">
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">サポート窓口</h3>
-                <p className="text-gray-600 text-sm leading-relaxed">
-                  連携解除・データ削除・審査用アクセス情報は、以下までご連絡ください。
-                </p>
-                <ul className="mt-4 text-sm text-gray-700 space-y-2">
-                  <li>株式会社ドリームプランナー</li>
-                  <li>〒716-1551 岡山県加賀郡吉備中央町北702</li>
-                  <li>電話: 090-9922-6467</li>
-                  <li>メール: support@dreamplanner.co.jp</li>
+              <SupportContactCard borderColorClass="border-blue-100" />
+            </div>
+          </div>
+        </section>
+
+        {/* Instagram Compliance Section */}
+        <section id="instagram-compliance" className="py-24 bg-pink-50/50">
+          <div className="mx-auto w-full max-w-7xl px-4">
+            <div className="text-center mb-16">
+              <p className="text-sm uppercase tracking-wider text-pink-500 font-semibold mb-2">
+                Instagram Platform Data
+              </p>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Instagram連携とデータ取り扱い</h2>
+              <p className="text-gray-600 max-w-3xl mx-auto leading-relaxed">
+                GrowMateは、中小事業者向けのマーケティング支援ツールです。お客様がご自身のInstagramビジネス／クリエイターアカウントを連携すると、投稿の実績データ（リーチ数・いいね数・保存数など）を取得し、管理画面にわかりやすく一覧表示します。取得したデータはお客様ご自身の投稿の振り返り・改善に役立てるためにのみ使用し、第三者への提供や広告目的での利用は一切行いません。
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-8">
+              <div className="p-8 bg-white rounded-2xl shadow-md border border-pink-100">
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">連携フロー概要</h3>
+                <ul className="space-y-3 text-gray-600 text-sm">
+                  <li>1. メール認証で本人確認後、Instagram に遷移</li>
+                  <li>2. 要求された権限の許諾内容を確認</li>
+                  <li>3. 許可後、管理画面で投稿実績を参照</li>
+                  <li>4. 実績データをもとに次の投稿づくりに活用</li>
                 </ul>
-                <p className="text-xs text-gray-500 mt-4">受付時間: 平日 10:00-17:00（祝日除く）</p>
               </div>
+              <div className="p-8 bg-white rounded-2xl shadow-md border border-pink-100">
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">データ使用と保護</h3>
+                <ul className="space-y-3 text-gray-600 text-sm">
+                  <li>Instagramのデータは投稿実績の表示・分析のみに使用します。</li>
+                  <li>Vercel 東京リージョン + Cloudflare で TLS 経由の通信を強制。</li>
+                  <li>いつでも管理画面から連携を解除でき、解除時に取得済みデータを削除します。</li>
+                </ul>
+              </div>
+              <SupportContactCard borderColorClass="border-pink-100" />
             </div>
           </div>
         </section>
