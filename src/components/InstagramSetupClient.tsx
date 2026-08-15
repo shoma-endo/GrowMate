@@ -17,6 +17,7 @@ import { BackLink } from '@/components/BackLink';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { InstagramGlyph } from '@/components/InstagramGlyph';
+import { InstagramMediaThumbnail } from '@/components/InstagramMediaThumbnail';
 import {
   Dialog,
   DialogClose,
@@ -69,24 +70,15 @@ function formatAccountType(accountType: string | null): string {
 function MediaPreviewCard({ media }: { media: InstagramMediaPreview }) {
   const thumbnail = media.thumbnailUrl ?? media.mediaUrl;
   const productLabel = media.mediaProductType === 'REELS' ? 'リール' : 'フィード';
-  // media_url / thumbnail_url は有効期限付き CDN URL のため、失効時は読み込みに失敗する。
-  // 画像を消すだけだと空箱が残るので、URL 未設定時と同じプレースホルダーに切り替える。
-  const [thumbnailFailed, setThumbnailFailed] = useState(false);
 
   return (
     <div className="rounded-lg border bg-white p-3 space-y-3">
-      <div className="aspect-square rounded-md bg-gray-100 flex items-center justify-center overflow-hidden">
-        {thumbnail && !thumbnailFailed ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={thumbnail}
-            alt=""
-            className="h-full w-full object-cover"
-            onError={() => setThumbnailFailed(true)}
-          />
-        ) : (
-          <ImageIcon className="h-10 w-10 text-gray-400" />
-        )}
+      <div className="relative aspect-square rounded-md bg-gray-100 flex items-center justify-center overflow-hidden">
+        <InstagramMediaThumbnail
+          src={thumbnail}
+          className="object-cover"
+          fallback={<ImageIcon className="h-10 w-10 text-gray-400" />}
+        />
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
@@ -160,8 +152,6 @@ export default function InstagramSetupClient({
   const [isDisconnectDialogOpen, setIsDisconnectDialogOpen] = useState(false);
   const [needsReauth, setNeedsReauth] = useState(initialStatus.needsReauth ?? false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  // プロフィール画像も有効期限付き CDN URL。失効時にプレースホルダーへ切り替える。
-  const [profilePictureFailed, setProfilePictureFailed] = useState(false);
 
   const isConnected = status.connected;
   const showConnectedSuccess = connectedSuccess && isConnected && !needsReauth;
@@ -171,7 +161,6 @@ export default function InstagramSetupClient({
     setPreviewError(null);
     setPartialFailureMessage(null);
     setPreConversionMessage(null);
-    setProfilePictureFailed(false);
     try {
       const result = await fetchInstagramPreviewData();
       if (result.success && result.data) {
@@ -377,18 +366,12 @@ export default function InstagramSetupClient({
             <>
               {preview && !needsReauth ? (
                 <div className="flex items-start gap-3 text-sm text-gray-700">
-                  <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
-                    {preview.profile.profilePictureUrl && !profilePictureFailed ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={preview.profile.profilePictureUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        onError={() => setProfilePictureFailed(true)}
-                      />
-                    ) : (
-                      <ImageIcon className="h-5 w-5 text-gray-400" />
-                    )}
+                  <div className="relative h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
+                    <InstagramMediaThumbnail
+                      src={preview.profile.profilePictureUrl}
+                      className="object-cover"
+                      fallback={<ImageIcon className="h-5 w-5 text-gray-400" />}
+                    />
                   </div>
                   <div className="space-y-1">
                     <p className="font-medium">@{preview.profile.username ?? status.username}</p>

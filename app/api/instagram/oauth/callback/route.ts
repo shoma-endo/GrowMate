@@ -2,12 +2,15 @@ import { cookies } from 'next/headers';
 import { type NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { isInstagramProfessionalAccount } from '@/types/instagram';
+import { isValidUserRole } from '@/types/user';
+import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import {
   resolveOAuthTargetUserId,
   verifyOAuthStateCookie,
   verifySignedOAuthState,
 } from '@/server/lib/oauth-flow';
 import { InstagramService, INSTAGRAM_OAUTH_SCOPES } from '@/server/services/instagramService';
+import { instagramMediaService } from '@/server/services/instagramMediaService';
 import { SupabaseService } from '@/server/services/supabaseService';
 
 const STATE_COOKIE_NAME = 'ig_oauth_state';
@@ -81,13 +84,61 @@ export async function GET(request: NextRequest) {
     const instagramService = new InstagramService();
     const supabaseService = new SupabaseService();
 
+    // 認可の再確認。/start の時点で許可されていても、そこから戻ってくるまでの間に
+    // ロールが変わっている可能性があるため、credential を保存する前にもう一度見る。
+    // 判定にセッションの role を使わないのは、resolveOAuthTargetUserId が
+    // セッション不在時に state の user_id へフォールバックする経路を持つため
+    // （その経路では authResult.userDetails が無く、素通りしてしまう）。
+    const targetUserResult = await supabaseService.getUserById(targetUserId);
+    if (!targetUserResult.success) {
+      console.error('[Instagram] Failed to load user for access check:', targetUserResult.error);
+      return redirectWithError(baseUrl, 'server_error');
+    }
+    const targetRole = targetUserResult.data?.role;
+    if (!isValidUserRole(targetRole) || !canAccessInstagram(targetRole)) {
+      console.error('[Instagram] Access denied on callback:', { targetUserId, targetRole });
+      return redirectWithError(baseUrl, 'access_denied');
+    }
+
+    const existingCredential = await supabaseService.getInstagramCredential(targetUserId);
+
     const shortLived = await instagramService.exchangeCodeForTokens(code);
     const longLived = await instagramService.exchangeForLongLivedToken(shortLived.accessToken);
-    const profile = await instagramService.fetchProfile(longLived.accessToken);
+    const profileResult = await instagramService.fetchProfile(longLived.accessToken);
+    const profile = profileResult.data;
 
     if (!isInstagramProfessionalAccount(profile.accountType)) {
       console.error('[Instagram] Non-professional account type:', profile.accountType);
       return redirectWithError(baseUrl, 'not_professional_account');
+    }
+
+    if (
+      existingCredential &&
+      existingCredential.igUserId !== profile.igUserId
+    ) {
+      const purgeResult = await instagramMediaService.purgeInstagramData(targetUserId);
+      if (!purgeResult.success) {
+        console.error('[Instagram] Failed to purge data on account switch:', purgeResult.error);
+        return redirectWithError(baseUrl, 'server_error');
+      }
+
+      // 旧アカウントの backfill 進捗（cursor / completed）と最終同期日時は
+      // 新アカウントには無関係。残したままだと、旧アカウントで backfill 完了
+      // 済みの場合に新アカウントの過去投稿取り込みが（投稿が0件なのに）即完了
+      // 扱いになり永久に取得できない。lastSyncedAt も残ると、接続直後なのに
+      // 画面上は同期済みに見えてしまう。
+      const resetResult = await supabaseService.updateInstagramCredential(targetUserId, {
+        backfillCursor: null,
+        backfillCompletedAt: null,
+        lastSyncedAt: null,
+      });
+      if (!resetResult.success) {
+        console.error(
+          '[Instagram] Failed to reset backfill state on account switch:',
+          resetResult.error
+        );
+        return redirectWithError(baseUrl, 'server_error');
+      }
     }
 
     const now = new Date();

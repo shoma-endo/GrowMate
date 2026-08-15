@@ -207,7 +207,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   return (
     <AuthContext value={contextValue}>
       <div className="flex flex-col min-h-screen">
-        <main className={`flex-1 ${showFooter ? 'pb-20' : ''}`}>{children}</main>
+        {/*
+          min-w-0: flex アイテムの min-width デフォルト値（auto = 中身の最小コンテンツ幅）を
+          解除する。無いと、横に長いテーブル（overflow-x-auto でラップ済みでも）の最小幅が
+          main 自身に伝播しページ全体が横に広がってしまい、テーブル右側に余白が生まれる。
+        */}
+        <main className={`flex-1 min-w-0 ${showFooter ? 'pb-20' : ''}`}>{children}</main>
         {showFooter && <Footer />}
       </div>
     </AuthContext>

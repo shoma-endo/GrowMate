@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCount, formatPostedAt } from '@/lib/instagram-format';
+import { formatCount, formatPostedAt, calculateInstagramRate } from '@/lib/instagram-format';
 
 describe('formatPostedAt', () => {
   it('年を必ず含める', () => {
@@ -37,5 +37,24 @@ describe('formatCount', () => {
     expect(formatCount(1000)).toBe('1k');
     expect(formatCount(1500)).toBe('1.5k');
     expect(formatCount(12345)).toBe('12.3k');
+  });
+});
+
+describe('calculateInstagramRate', () => {
+  it('reach が null / 0 のとき null', () => {
+    expect(calculateInstagramRate(10, null)).toBeNull();
+    expect(calculateInstagramRate(10, 0)).toBeNull();
+  });
+
+  it('分子が null のとき null', () => {
+    expect(calculateInstagramRate(null, 100)).toBeNull();
+  });
+
+  it('分子 0 かつ分母 > 0 のとき 0.0%', () => {
+    expect(calculateInstagramRate(0, 523)).toBe(0);
+  });
+
+  it('reach を分母に小数第1位で四捨五入', () => {
+    expect(calculateInstagramRate(21, 523)).toBe(4);
   });
 });

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  extractInsightDailySeries,
   extractInsightMetric,
-  extractLatestInsightMetric,
+  insightEndTimeToDateKey,
   parseInsightRawValue,
   type GraphInsightValue,
 } from '@/server/lib/instagram-insights';
@@ -38,37 +39,28 @@ describe('extractInsightMetric', () => {
   it('data が空のとき null を返す', () => {
     expect(extractInsightMetric([], 'reach')).toBeNull();
   });
+});
 
-  it('metric が欠落しているとき null を返す', () => {
-    const values: GraphInsightValue[] = [{ name: 'views', values: [{ value: 10 }] }];
-    expect(extractInsightMetric(values, 'reach')).toBeNull();
-  });
-
-  it('values が空のとき null を返す', () => {
-    const values: GraphInsightValue[] = [{ name: 'reach', values: [] }];
-    expect(extractInsightMetric(values, 'reach')).toBeNull();
+describe('insightEndTimeToDateKey', () => {
+  it('end_time の前日を YYYY-MM-DD で返す', () => {
+    expect(insightEndTimeToDateKey('2026-07-21T07:00:00+0000')).toBe('2026-07-20');
   });
 });
 
-describe('extractLatestInsightMetric', () => {
-  it('最新日の metric を返す', () => {
+describe('extractInsightDailySeries', () => {
+  it('日次系列を date と value に展開する', () => {
     const values: GraphInsightValue[] = [
-      { name: 'reach', values: [{ value: 100 }, { value: 250 }] },
+      {
+        name: 'reach',
+        values: [
+          { value: 10, end_time: '2026-07-21T07:00:00+0000' },
+          { value: 20, end_time: '2026-07-22T07:00:00+0000' },
+        ],
+      },
     ];
-    expect(extractLatestInsightMetric(values, 'reach')).toBe(250);
-  });
-
-  it('data が空のとき null を返す', () => {
-    expect(extractLatestInsightMetric([], 'reach')).toBeNull();
-  });
-
-  it('metric が欠落しているとき null を返す', () => {
-    const values: GraphInsightValue[] = [{ name: 'views', values: [{ value: 10 }] }];
-    expect(extractLatestInsightMetric(values, 'reach')).toBeNull();
-  });
-
-  it('values が空のとき null を返す', () => {
-    const values: GraphInsightValue[] = [{ name: 'reach', values: [] }];
-    expect(extractLatestInsightMetric(values, 'reach')).toBeNull();
+    expect(extractInsightDailySeries(values, 'reach')).toEqual([
+      { date: '2026-07-20', value: 10 },
+      { date: '2026-07-21', value: 20 },
+    ]);
   });
 });

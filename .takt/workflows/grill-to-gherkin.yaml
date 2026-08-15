@@ -14,9 +14,19 @@ steps:
       - plan
     edit: false
     persona: planner
+    policy:
+      - grill-to-gherkin-exploration-boundary
+    provider: claude-sdk
+    model: opus
     knowledge:
       - growmate
     capabilities: readonly
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
     instruction: |
       TAKT標準の Grill Me 対話と `/go` によって生成された Markdown + Gherkin の指示書を、workflow の要件記録へ正規化してください。
 
@@ -82,11 +92,21 @@ steps:
       - plan
     edit: false
     persona: planner
+    policy:
+      - grill-to-gherkin-exploration-boundary
+    provider: claude-sdk
+    model: opus
     knowledge:
       - growmate
     capabilities: readonly
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
     instruction: |
-      `01-grill.md` と元の依頼、既存仕様・コードを根拠に、合意済みの振る舞いだけを Gherkin に変換してください。
+      下記に全文添付された `01-grill.md` と元の依頼、既存仕様・コードを根拠に、合意済みの振る舞いだけを Gherkin に変換してください。
 
       必須条件:
       - 実装やファイル編集は行わない。
@@ -99,6 +119,9 @@ steps:
 
       未解決の論点があり、シナリオを安全に確定できない場合は、最後に `追加確認が必要` と明記し、質問を列挙してください。
       すべて確定できた場合は、最後に `Gherkin化が完了` と明記してください。
+
+      ## 01-grill.md（全文）
+      {report:01-grill.md}
     output_contracts:
       report:
         - name: 02-gherkin.md
@@ -142,11 +165,21 @@ steps:
       - review
     edit: false
     persona: supervisor
+    policy:
+      - grill-to-gherkin-exploration-boundary
+    provider: claude-sdk
+    model: opus
     knowledge:
       - growmate
     capabilities: readonly
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
     instruction: |
-      `01-grill.md` と `02-gherkin.md` を読み、実装前の人間承認を取得してください。
+      下記に全文添付された `01-grill.md` と `02-gherkin.md` をもとに、実装前の人間承認を取得してください。
 
       確認観点:
       - 各シナリオが Grill の決定事項から追跡できる。
@@ -158,6 +191,12 @@ steps:
       初回は確認事項を簡潔に示し、ユーザーに「承認」または修正指示を求めてください。
       ユーザーが修正を指示した場合は、最後に `修正が必要` と明記してください。
       ユーザーが承認した場合だけ、最後に `ユーザー承認済み` と明記してください。
+
+      ## 01-grill.md（全文）
+      {report:01-grill.md}
+
+      ## 02-gherkin.md（全文）
+      {report:02-gherkin.md}
     output_contracts:
       report:
         - name: 03-confirmation.md
@@ -196,11 +235,21 @@ steps:
       - report
     edit: false
     persona: planner
+    policy:
+      - grill-to-gherkin-exploration-boundary
+    provider: claude-sdk
+    model: opus
     knowledge:
       - growmate
     capabilities: readonly
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
     instruction: |
-      `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`docs/templates/requirement-definition.md` を読み、実装着手判断のための概算工数を作成してください。
+      下記に全文添付された `01-grill.md`、`02-gherkin.md`、`03-confirmation.md` と、`docs/templates/requirement-definition.md` を読み、実装着手判断のための概算工数を作成してください。
 
       目的:
       - 正式見積もりではなく、機能の規模感・優先順位・着手可否を判断できる概算を出す。
@@ -215,6 +264,15 @@ steps:
       - DB変更、外部API、権限、移行、AI評価、UI確認など、工数を大きく変えうる要素を不確実性として列挙する。
       - 概算できない場合も推測で埋めず、`概算工数は算出不能` と理由を記録して着手判断へ進める。
       - 概算できた場合は最後に `概算工数を作成` と明記する。
+
+      ## 01-grill.md（全文）
+      {report:01-grill.md}
+
+      ## 02-gherkin.md（全文）
+      {report:02-gherkin.md}
+
+      ## 03-confirmation.md（全文）
+      {report:03-confirmation.md}
     output_contracts:
       report:
         - name: 05-rough-estimate.md
@@ -259,11 +317,21 @@ steps:
       - review
     edit: false
     persona: supervisor
+    policy:
+      - grill-to-gherkin-exploration-boundary
+    provider: claude-sdk
+    model: opus
     knowledge:
       - growmate
     capabilities: readonly
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
     instruction: |
-      `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`05-rough-estimate.md` を読み、概算工数と前提・不確実性を人間に確認してください。
+      下記に全文添付された `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`05-rough-estimate.md` をもとに、概算工数と前提・不確実性を人間に確認してください。
 
       必須条件:
       - 概算は正式見積もりではなく、着手判断・優先順位付けのための情報であることを明示する。
@@ -277,6 +345,18 @@ steps:
       - ユーザーが着手を承認した場合は、最後に `着手承認` と明記する。
       - ユーザーが要件の再確認を求めた場合は、最後に `要件再確認が必要` と明記する。
       - ユーザーが見送りを決めた場合は、最後に `見送り` と明記する。
+
+      ## 01-grill.md（全文）
+      {report:01-grill.md}
+
+      ## 02-gherkin.md（全文）
+      {report:02-gherkin.md}
+
+      ## 03-confirmation.md（全文）
+      {report:03-confirmation.md}
+
+      ## 05-rough-estimate.md（全文）
+      {report:05-rough-estimate.md}
     output_contracts:
       report:
         - name: 06-estimate-confirmation.md
@@ -315,11 +395,21 @@ steps:
       - report
     edit: false
     persona: planner
+    policy:
+      - grill-to-gherkin-exploration-boundary
+    provider: claude-sdk
+    model: opus
     knowledge:
       - growmate
     capabilities: readonly
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
     instruction: |
-      `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`05-rough-estimate.md`、`06-estimate-confirmation.md` を読み、仕様書レビューへ渡す引き継ぎレポートを作成してください。
+      下記に全文添付された `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`05-rough-estimate.md`、`06-estimate-confirmation.md` をもとに、仕様書レビューへ渡す引き継ぎレポートを作成してください。
 
       必須条件:
       - 対象仕様書のパスを明記する。パスは `docs/plans/<slug>.md` であること。
@@ -336,6 +426,21 @@ steps:
         6. spec-review 完了後、`takt -w spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してください"` を実行する。
       - この step では仕様書・プロダクションコードを編集せず、後続 workflow を自動実行しない。
       - 対象仕様書パス、承認済み Gherkin、次アクションが揃った場合は、最後に `引き継ぎ情報を作成` と明記する。
+
+      ## 01-grill.md（全文）
+      {report:01-grill.md}
+
+      ## 02-gherkin.md（全文）
+      {report:02-gherkin.md}
+
+      ## 03-confirmation.md（全文）
+      {report:03-confirmation.md}
+
+      ## 05-rough-estimate.md（全文）
+      {report:05-rough-estimate.md}
+
+      ## 06-estimate-confirmation.md（全文）
+      {report:06-estimate-confirmation.md}
     output_contracts:
       report:
         - name: 04-handoff.md

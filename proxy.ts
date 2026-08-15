@@ -5,6 +5,7 @@ import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflic
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
 import { updateSupabaseSession } from '@/lib/supabase/middleware';
+import { INSTAGRAM_CDN_HOSTS } from '@/lib/constants';
 
 const ADMIN_REQUIRED_PATHS = ['/admin'] as const;
 const PAID_FEATURE_REQUIRED_PATHS = ['/analytics'] as const;
@@ -37,9 +38,9 @@ function buildCspHeader(nonce: string): string {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
-    // cdninstagram.com / fbcdn.net は Instagram のプロフィール画像・メディアの配信元。
+    // INSTAGRAM_CDN_HOSTS は Instagram のプロフィール画像・メディアの配信元。
     // 許可しないと /setup/instagram の画像がすべてブラウザ側でブロックされる。
-    "img-src 'self' data: https://profile.line-scdn.net https://*.cdninstagram.com https://*.fbcdn.net",
+    `img-src 'self' data: https://profile.line-scdn.net ${INSTAGRAM_CDN_HOSTS.map(host => `https://*.${host}`).join(' ')}`,
     `connect-src 'self'${isDev ? ' ws://localhost:* wss://localhost:*' : ''} https://oauth2.googleapis.com https://openidconnect.googleapis.com https://www.googleapis.com https://accounts.google.com https://public-api.wordpress.com https://*.supabase.co wss://*.supabase.co`,
     "frame-ancestors 'none'",
     "base-uri 'self'",

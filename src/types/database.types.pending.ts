@@ -1,86 +1,5 @@
-// PROVISIONAL: supabase/migrations/20260726000000_create_instagram_credentials_table.sql
-// 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
-// この定義を削除し、呼び出し側を `Database['public']['Tables']['instagram_credentials']` へ切り替える。
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
-
-export interface InstagramCredentialRow {
-  id: string;
-  user_id: string;
-  ig_user_id: string;
-  username: string | null;
-  account_type: string | null;
-  profile_picture_url: string | null;
-  access_token: string;
-  access_token_expires_at: string;
-  access_token_issued_at: string;
-  scope: string[];
-  last_synced_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export type InstagramOnlyDatabase = {
-  __InternalSupabase: Database['__InternalSupabase'];
-  public: {
-    Tables: {
-      instagram_credentials: {
-        Row: {
-          id: string;
-          user_id: string;
-          ig_user_id: string;
-          username: string | null;
-          account_type: string | null;
-          profile_picture_url: string | null;
-          access_token: string;
-          access_token_expires_at: string;
-          access_token_issued_at: string;
-          scope: string[];
-          last_synced_at: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          user_id: string;
-          ig_user_id: string;
-          access_token: string;
-          access_token_expires_at: string;
-          access_token_issued_at?: string;
-          username?: string | null;
-          account_type?: string | null;
-          profile_picture_url?: string | null;
-          scope?: string[];
-          last_synced_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-          id?: string;
-        };
-        Update: {
-          ig_user_id?: string;
-          username?: string | null;
-          account_type?: string | null;
-          profile_picture_url?: string | null;
-          access_token?: string;
-          access_token_expires_at?: string;
-          access_token_issued_at?: string;
-          scope?: string[];
-          last_synced_at?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-    };
-    Views: Record<string, never>;
-    Functions: Record<string, never>;
-    Enums: Record<string, never>;
-    CompositeTypes: Record<string, never>;
-  };
-};
-
-export type InstagramCredentialInsertRow =
-  InstagramOnlyDatabase['public']['Tables']['instagram_credentials']['Insert'];
-export type InstagramCredentialUpdateRow =
-  InstagramOnlyDatabase['public']['Tables']['instagram_credentials']['Update'];
 
 // PROVISIONAL: supabase/migrations/20260809100000_add_gsc_unstarted_evaluation_filter.sql
 // マイグレーション適用後に `npm run supabase:types` を実行し、
@@ -106,3 +25,22 @@ export function asPendingClient<TDatabase>(
 ): SupabaseClient<TDatabase> {
   return client as unknown as SupabaseClient<TDatabase>;
 }
+
+// PROVISIONAL: supabase/migrations/20260814000000_add_cached_thumbnail_path_to_instagram_media.sql
+// マイグレーション適用後に `npm run supabase:types` を実行し、instagram_media の生成型に
+// cached_thumbnail_path が含まれるようになったら、本ブロックと
+// asPendingClient<InstagramMediaDatabase>(...) の呼び出しを削除して通常の client に戻す。
+type InstagramMediaTable = Database['public']['Tables']['instagram_media'];
+
+export type InstagramMediaDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables'> & {
+    Tables: Omit<Database['public']['Tables'], 'instagram_media'> & {
+      instagram_media: {
+        Row: InstagramMediaTable['Row'] & { cached_thumbnail_path: string | null };
+        Insert: InstagramMediaTable['Insert'] & { cached_thumbnail_path?: string | null };
+        Update: InstagramMediaTable['Update'] & { cached_thumbnail_path?: string | null };
+        Relationships: InstagramMediaTable['Relationships'];
+      };
+    };
+  };
+};

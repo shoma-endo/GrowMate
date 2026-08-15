@@ -284,7 +284,51 @@ export const ANALYTICS_STORAGE_KEYS = {
   CATEGORY_FILTER: 'analytics.categoryFilter',
   OPS_EXPANDED: 'analytics.opsExpanded',
   VISIBLE_COLUMNS: 'analytics.visibleColumns',
+  IG_VISIBLE_COLUMNS: 'analytics.instagramVisibleColumns',
 } as const;
+
+// Next.js の route segment config は静的解析のため import 定数を使えず、
+// app/analytics/page.tsx の maxDuration はリテラル必須。値はここと必ず一致させること（他ファイルから import しない）。
+const INSTAGRAM_SYNC_MAX_DURATION_SEC = 800;
+// maxDuration より 40 秒短く（レスポンス返却の余裕。gscEvaluationService の 280/300 秒比を踏襲）。
+export const INSTAGRAM_SYNC_TIME_BUDGET_MS = (INSTAGRAM_SYNC_MAX_DURATION_SEC - 40) * 1000;
+export const INSTAGRAM_SYNC_MEDIA_LIMIT = 50;
+export const INSTAGRAM_SYNC_CONSECUTIVE_FAILURE_LIMIT = 5;
+export const INSTAGRAM_RATE_CALL_COUNT_THRESHOLD = 80;
+
+// docs/plans/instagram-media-url-refresh-design.md §4.3。
+// 非公開バケット。Service Role（Route Handler 経由）以外からのアクセスは行わない。
+export const INSTAGRAM_MEDIA_THUMBNAIL_BUCKET = 'instagram-media-thumbnails';
+
+// Instagram のメディア・サムネイル配信元となる CDN ホスト（ベースドメインのみ）。
+// 参照元（各自ワイルドカード記法が異なるため、この配列から個別に組み立てる）:
+//   - proxy.ts の buildCspHeader（img-src。`https://*.<host>` 形式）
+//   - app/api/instagram/media/[igMediaId]/thumbnail/route.ts の ALLOWED_IMAGE_HOSTS（SSRF 対策の許可ホスト正規表現）
+//   - next.config.ts の images.remotePatterns（`**.<host>` 形式。next.config.ts は Next 起動時に
+//     alias 解決前に読まれるため `@/` import を使わず、この配列とのコメントによる手動同期のみ）
+export const INSTAGRAM_CDN_HOSTS = ['cdninstagram.com', 'fbcdn.net'] as const;
+
+export const INSTAGRAM_COLUMNS = [
+  { id: 'media_product_type', label: '種別', defaultVisible: true },
+  { id: 'caption', label: 'キャプション', defaultVisible: true },
+  { id: 'posted_at', label: '投稿日', defaultVisible: true },
+  { id: 'reach', label: 'リーチ', defaultVisible: true },
+  { id: 'views', label: '視聴数', defaultVisible: true },
+  { id: 'like_count', label: 'いいね', defaultVisible: true },
+  { id: 'comments_count', label: 'コメント', defaultVisible: true },
+  { id: 'saved', label: '保存', defaultVisible: true },
+  { id: 'shares', label: 'シェア', defaultVisible: false },
+  { id: 'reposts', label: '再投稿', defaultVisible: false },
+  { id: 'total_interactions', label: '総インタラクション', defaultVisible: false },
+  { id: 'avg_watch_time_ms', label: '平均視聴時間', defaultVisible: false },
+  { id: 'total_watch_time_ms', label: '総再生時間', defaultVisible: false },
+  { id: 'reels_skip_rate', label: 'スキップ率', defaultVisible: false },
+  { id: 'like_rate', label: 'いいね率', defaultVisible: false },
+  { id: 'saved_rate', label: '保存率', defaultVisible: false },
+  { id: 'share_rate', label: 'シェア率', defaultVisible: false },
+  { id: 'comment_rate', label: 'コメント率', defaultVisible: false },
+  { id: 'repost_rate', label: '再投稿率', defaultVisible: false },
+] as const;
 
 // カテゴリフィルターのデフォルト値
 const DEFAULT_CATEGORY_FILTER: CategoryFilterConfig = {

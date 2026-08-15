@@ -16,6 +16,8 @@ const baseCredential: InstagramCredential = {
   accessTokenIssuedAt: '2026-07-01T00:00:00.000Z',
   scope: ['instagram_business_basic'],
   lastSyncedAt: null,
+  backfillCursor: null,
+  backfillCompletedAt: null,
 };
 
 afterEach(() => {

@@ -52,7 +52,12 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-content"
-      className={cn("px-6", className)}
+      // min-w-0: Card 自体が flex flex-col のため、子である CardContent は
+      // flex アイテムになる。min-width の既定値 auto（中身の最小コンテンツ幅）の
+      // ままだと、横に長いテーブル等（overflow-x-auto でラップ済みでも）の
+      // 最小幅が CardContent 自身、ひいては Card 全体に伝播し、テーブルの外側
+      // まで横に広がってしまう。
+      className={cn("px-6 min-w-0", className)}
       {...props}
     />
   )

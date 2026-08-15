@@ -118,7 +118,18 @@ describe('fetchInstagramPreviewData の認可解除検知', () => {
   });
 
   it('投稿インサイトの失効エラーでも期限を落とす', async () => {
-    mocks.fetchProfile.mockResolvedValue({ username: 'manbou536' });
+    mocks.fetchProfile.mockResolvedValue({
+      data: {
+        igUserId: '1',
+        username: 'manbou536',
+        name: null,
+        accountType: 'BUSINESS',
+        profilePictureUrl: null,
+        followersCount: null,
+        followsCount: null,
+        mediaCount: null,
+      },
+    });
     mocks.fetchMedia.mockResolvedValue([
       { id: '1', media_product_type: 'FEED', timestamp: '2026-08-02T00:00:00+0000' },
     ]);

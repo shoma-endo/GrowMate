@@ -164,12 +164,15 @@ docs/plans/_html/<slug>/views/02-decisions.html   ← 設計判断
 docs/plans/_html/<slug>/views/03-quiz.html        ← クイズ
 docs/plans/_html/<slug>/views/04-fulltext.html    ← 全文（スクリプト生成・手で書かない）
 docs/plans/_html/<slug>.html                ← 成果物（単一ファイル・これを開く）
+docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時生成・スマホ/クラウド閲覧用）
 ```
 
 - `<slug>` は仕様書のファイル名から `.md` を除いたもの。
 - `docs/plans/_html/` は `.gitignore` 済み。**成果物も中間ファイルも commit しない**。意味の正本は常に `docs/plans/<slug>.md` 側にある。
-- **対象は `docs/plans/` 直下の仕様書だけ**。`refresh` は `docs/plans/` 直下以外のパスを黙って捨てる（`scripts/spec-html.py` の `refresh` 分岐）ため、実装完了時に `docs/specs/` へ移動した仕様書はバンドルの更新対象外になる。移動時は古いバンドル（`docs/plans/_html/<slug>/` と `docs/plans/_html/<slug>.html`）を消す。残すと**中身が更新されないまま開ける状態**になり、古い仕様を最新と誤読する。
+- **対象は `docs/plans/` 直下の仕様書だけ**。`refresh` は `docs/plans/` 直下以外のパスを黙って捨てる（`scripts/spec-html.py` の `refresh` 分岐）ため、実装完了時に `docs/specs/` へ移動した仕様書はバンドルの更新対象外になる。移動時は古いバンドル（`docs/plans/_html/<slug>/`、`docs/plans/_html/<slug>.html`、`docs/plans/_html/<slug>.artifact.html`）を消す。残すと**中身が更新されないまま開ける状態**になり、古い仕様を最新と誤読する。
 - 単一ファイルなのでダブルクリックで開ける（`file://` で動く）。サーバ不要。
+- `build` は同じ内容から `<slug>.artifact.html` も書き出す。claude.ai の Artifact は publish 時に `<!doctype html>…<head></head><body>` を被せるため、完結 HTML を渡すと文書が二重になる。Artifact 版は doctype / html / head / body を持たず、`<title>` + `<style>` + 本文 + `<script>` だけを持つ。安全検査は両方に対して実行される。
+- **メインPC以外から仕様書を見るとき**は `<slug>.artifact.html` を Artifact として publish する。デフォルト非公開で、スマホのブラウザから URL を開ける。仕様書を更新したら `refresh` 後に**同じファイルパスで再 publish すれば同じ URL が更新される**（新しい URL にはならない）。
 
 ## 手順
 
