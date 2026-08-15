@@ -4,7 +4,7 @@ workflow_config:
   provider_options:
     codex:
       network_access: true
-max_steps: 28
+max_steps: 24
 initial_step: plan
 loop_monitors:
   - cycle:
@@ -17,9 +17,11 @@ loop_monitors:
         - growmate
       instruction: loop-monitor-reviewers-fix
       rules:
+        - condition: 収束済み（残件が AI 特有問題ではない、または architecture review に委譲可能）
+          next: review
         - condition: 健全（進捗あり）
           next: ai_antipattern_review
-        - condition: 非生産的（改善なし）
+        - condition: 非生産的（同じ指摘の反復・修正未反映）
           next: ABORT
   - cycle:
       - review
@@ -44,6 +46,35 @@ loop_monitors:
           next: readme_sync
         - condition: 健全（進捗あり）
           next: review
+        - condition: 非生産的（同じ指摘の反復・修正未反映）
+          next: ABORT
+  - cycle:
+      - self_review
+      - self_review_fix
+      - readme_sync
+    threshold: 3
+    judge:
+      persona: supervisor
+      knowledge:
+        - growmate
+      instruction: |
+        self_review -> self_review_fix -> readme_sync のループが {cycle_count} 回繰り返されました。
+        下記に全文添付された最新の self-review と修正結果を確認し、収束しているか判断してください。run ディレクトリやレポートパスの探索はしないでください。
+        残件が「手動ブラウザ確認未実施」または管理者作業（マイグレーション適用・型再生成・pendingファイル削除）のみの場合は、追加修正で解消不能な残件として prepare_pr_summary に進めてください。
+
+        ## self-review.md（最新・全文）
+        {report:self-review.md}
+
+        ## fix-result.md（最新・全文）
+        {report:fix-result.md}
+
+        ## readme-sync.md（最新・全文）
+        {report:readme-sync.md}
+      rules:
+        - condition: 収束済み（残件が手動確認・管理者作業のみ、または指摘なし）
+          next: prepare_pr_summary
+        - condition: 健全（進捗あり）
+          next: self_review
         - condition: 非生産的（同じ指摘の反復・修正未反映）
           next: ABORT
 

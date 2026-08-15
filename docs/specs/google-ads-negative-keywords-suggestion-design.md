@@ -5,6 +5,7 @@
 > - 2026-05-21: Phase 1 / Phase 2 にフェーズ分割（Phase 2 = メール返信による自動 Google Ads 登録）。
 > - 2026-05-21 (改): **クライアント判断により Phase 2 を本設計書のスコープ外に変更**。本機能は **提案メール送信まで** とする。Phase 2 関連セクション（旧 §18）と関連工数を削除。実装が必要になった場合は別設計書で起こす。
 > - 2026-05-21 (改2): `service_id` / 分析対象サービス UI を削除。連携アカウント一式取得に統一。設定項目を自動配信 ON/OFF + 配信時刻の 2 つに縮小。**Brief 未登録でも送信可**（Google Ads 連携 + メール登録が前提。`persona` は任意）。
+> - 2026-08-15: §10.1 の Cron 一覧を実装実態に合わせて訂正。存在しない `/api/cron/google-ads-evaluate` / `/api/cron/ga4-sync`（Vercel Dashboard 既存と誤記）を削除し、実在する `/api/cron/gsc-suggestions` を追加。
 
 ## 開発ステータス
 
@@ -656,9 +657,10 @@ export const maxDuration = 800; // Vercel Pro（Fluid Compute）上限。サー�
 | エンドポイント | 実行基盤 | profile | 備考 |
 |----------------|----------|---------|------|
 | `/api/cron/gsc-evaluate` | **GH Actions（hourly-cron.yml）** | `gsc-batch` | `stoppedReason / errors / totalSystemError` を FAIL 判定、`totalImportFailed / usersSkippedDueToLimit` を WARN 通知 |
+| `/api/cron/gsc-suggestions` | **GH Actions（hourly-cron.yml）** | `gsc-suggestions` | 一時失敗（`data.failed`）は WARN、最終失敗（`data.terminalFailed`）は FAIL |
 | `/api/cron/google-ads-negative-keywords-suggestion`（**本機能**） | **GH Actions（hourly-cron.yml）** | `count-batch` | `success / data.failed` を FAIL 判定、`data.skipped` / `data.skippedDueToLimit` を WARN 通知 |
-| `/api/cron/google-ads-evaluate` | Vercel Dashboard（既存・本機能の範囲外） | — | 必要時に hourly-cron.yml への移行を検討 |
-| `/api/cron/ga4-sync` | Vercel Dashboard（既存・本機能の範囲外） | — | 必要時に hourly-cron.yml への移行を検討 |
+
+`app/api/cron/` に存在するのは上表の 3 本のみ。`/api/cron/google-ads-evaluate` と `/api/cron/ga4-sync` はルート自体が無い。GA4 取込は `/api/ga4/sync` のユーザー起動 POST。Vercel Dashboard Cron に残す対象も無い。
 
 `vercel.json` は追加しない。
 
