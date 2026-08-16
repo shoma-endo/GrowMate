@@ -1,6 +1,10 @@
 {
   "type": "object",
   "properties": {
+    "reason_1_to_3_lines": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    },
     "verdict": {
       "type": "string",
       "enum": [
@@ -9,15 +13,11 @@
         "needs_fix"
       ],
       "description": "approved=🔴ゼロ・対象スコープの未解決質問/意思決定/外部入力/承認ゲートがゼロ・🟡は修正済みか理由付き残置合意済み / approved_with_questions=自己解消可能な指摘は無いが対象スコープに未解決事項が残る（レビュー未完了として ABORT） / needs_fix=エージェントが仕様書修正で解消できる🔴/🟡の指摘がある"
-    },
-    "reason": {
-      "type": "string",
-      "description": "判定理由の要約（1〜3行）"
     }
   },
   "required": [
-    "verdict",
-    "reason"
+    "reason_1_to_3_lines",
+    "verdict"
   ],
   "additionalProperties": false
 }
