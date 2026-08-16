@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "reason_1_to_3_lines": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "no_fix_needed",
+        "stuck"
+      ],
+      "description": "fixed=AI Reviewerの指摘に対する修正が完了した / no_fix_needed=修正不要（指摘対象ファイル/仕様の確認済み） / stuck=修正を進行できない"
+    }
+  },
+  "required": [
+    "reason_1_to_3_lines",
+    "verdict"
+  ],
+  "additionalProperties": false
+}

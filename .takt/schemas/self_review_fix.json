@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "reason_1_to_3_lines": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "arch_impact",
+        "info_missing",
+        "stuck"
+      ],
+      "description": "fixed=self_review の指摘を修正し、必須検証が完了した / arch_impact=修正内容がアーキテクチャ判断に影響し、architecture review の再実施が必要 / info_missing=レビュー指摘に対応するための情報が不足している / stuck=修正を進行できない"
+    }
+  },
+  "required": [
+    "reason_1_to_3_lines",
+    "verdict"
+  ],
+  "additionalProperties": false
+}

@@ -21,3 +21,7 @@
 !facets/instructions/**
 !facets/output-contracts/
 !facets/output-contracts/**
+
+# Structured output schemas (version-controlled)
+!schemas/
+!schemas/**

@@ -139,7 +139,6 @@ steps:
       - implementation
     edit: true
     persona: coder
-    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -191,12 +190,13 @@ steps:
           format: coder-scope
         - name: coder-decisions.md
           format: coder-decisions
+        - name: implement-report.md
+          format: implementation-report
   - name: ai_antipattern_review
     tags:
       - review
     edit: false
     persona: ai-antipattern-reviewer
-    provider: claude-sdk
     policy:
       - review
       - ai-antipattern
@@ -204,10 +204,12 @@ steps:
       - growmate
     capabilities: readonly
     instruction: ai-antipattern-review
+    structured_output:
+      schema_ref: ai_antipattern_review
     rules:
-      - condition: AI特有の問題が見つからない
+      - condition: when(structured.ai_antipattern_review.verdict == "clean")
         next: review
-      - condition: AI特有の問題が検出された
+      - condition: when(structured.ai_antipattern_review.verdict == "findings_detected")
         next: ai_antipattern_fix
     output_contracts:
       report:
@@ -220,7 +222,6 @@ steps:
       - implementation
     edit: true
     persona: coder
-    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -237,20 +238,25 @@ steps:
         command: npm run verify
         cwd: .
         timeout_ms: 900000
+    structured_output:
+      schema_ref: ai_antipattern_fix
     rules:
-      - condition: AI Reviewerの指摘に対する修正が完了した
+      - condition: when(structured.ai_antipattern_fix.verdict == "fixed")
         next: ai_antipattern_review
-      - condition: 修正不要（指摘対象ファイル/仕様の確認済み）
+      - condition: when(structured.ai_antipattern_fix.verdict == "no_fix_needed")
         next: review
-      - condition: 修正を進行できない
+      - condition: when(structured.ai_antipattern_fix.verdict == "stuck")
         next: ABORT
+    output_contracts:
+      report:
+        - name: ai-antipattern-fix-report.md
+          format: implementation-report
 
   - name: review
     tags:
       - review
     edit: false
     persona: architecture-reviewer
-    provider: claude-sdk
     knowledge:
       - architecture
       - growmate
@@ -271,10 +277,12 @@ steps:
 
       ## plan.md（全文）
       {report:plan.md}
+    structured_output:
+      schema_ref: review
     rules:
-      - condition: approved
+      - condition: when(structured.review.verdict == "approved")
         next: readme_sync
-      - condition: needs_fix
+      - condition: when(structured.review.verdict == "needs_fix")
         next: fix
     output_contracts:
       report:
@@ -287,7 +295,6 @@ steps:
       - implementation
     edit: true
     persona: coder
-    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -318,19 +325,23 @@ steps:
         command: npm run verify
         cwd: .
         timeout_ms: 900000
+    structured_output:
+      schema_ref: fix
     rules:
-      - condition: architecture-reviewer の指摘を修正し、必須検証が完了した
+      - condition: when(structured.fix.verdict == "fixed")
         next: review
-      - condition: レビュー指摘に対応するための情報が不足している
+      - condition: when(structured.fix.verdict == "info_missing")
         next: plan
-      - condition: 対象仕様書がレビュー後に変更されており、指摘の枠を超える実装方針の再検討が必要
+      - condition: when(structured.fix.verdict == "spec_changed")
         next: plan
-      - condition: 修正を進行できない
+      - condition: when(structured.fix.verdict == "stuck")
         next: ABORT
     output_contracts:
       report:
         - name: fix-result.md
           format: coder-decisions
+        - name: fix-report.md
+          format: implementation-report
 
   - name: self_review_fix
     tags:
@@ -338,7 +349,6 @@ steps:
       - implementation
     edit: true
     persona: coder
-    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -371,19 +381,23 @@ steps:
         command: npm run verify
         cwd: .
         timeout_ms: 900000
+    structured_output:
+      schema_ref: self_review_fix
     rules:
-      - condition: self_review の指摘を修正し、必須検証が完了した
+      - condition: when(structured.self_review_fix.verdict == "fixed")
         next: readme_sync
-      - condition: 修正内容がアーキテクチャ判断に影響し、architecture review の再実施が必要
+      - condition: when(structured.self_review_fix.verdict == "arch_impact")
         next: review
-      - condition: レビュー指摘に対応するための情報が不足している
+      - condition: when(structured.self_review_fix.verdict == "info_missing")
         next: plan
-      - condition: 修正を進行できない
+      - condition: when(structured.self_review_fix.verdict == "stuck")
         next: ABORT
     output_contracts:
       report:
         - name: fix-result.md
           format: coder-decisions
+        - name: self-review-fix-report.md
+          format: implementation-report
 
   - name: readme_sync
     tags:
@@ -391,7 +405,6 @@ steps:
       - documentation
     edit: true
     persona: coder
-    provider: claude-sdk
     policy:
       - coding
     knowledge:
@@ -432,10 +445,12 @@ steps:
       - 自動生成ファイルの内容をREADMEへ複製しない。正本ファイルへの参照を優先する。
       - README 以外のプロダクションコードや設定ファイルを編集しない。
       - README だけを変更した場合、直前の `npm run verify` 成功証跡があればフル検証を再実行せず、リンク先の実在と `git diff --check` を確認する。
+    structured_output:
+      schema_ref: readme_sync
     rules:
-      - condition: README の更新要否を判定し、必要な同期と readme-sync.md の記録が完了した
+      - condition: when(structured.readme_sync.verdict == "done")
         next: self_review
-      - condition: 差分または対象仕様書を確認できず、README の更新要否を判断できない
+      - condition: when(structured.readme_sync.verdict == "cannot_judge")
         next: ABORT
     output_contracts:
       report:
@@ -447,7 +462,6 @@ steps:
       - review
     edit: false
     persona: supervisor
-    provider: claude-sdk
     knowledge:
       - architecture
       - growmate
@@ -471,12 +485,14 @@ steps:
 
       ## plan.md（全文）
       {report:plan.md}
+    structured_output:
+      schema_ref: self_review
     rules:
-      - condition: セルフレビュー合格
+      - condition: when(structured.self_review.verdict == "pass")
         next: prepare_pr_summary
-      - condition: 修正が必要
+      - condition: when(structured.self_review.verdict == "needs_fix")
         next: self_review_fix
-      - condition: 検証不足または判断不能
+      - condition: when(structured.self_review.verdict == "cannot_verify")
         next: ABORT
     output_contracts:
       report:
@@ -487,7 +503,6 @@ steps:
       - report
     edit: false
     persona: reporter
-    provider: claude-sdk
     knowledge:
       - growmate
     capabilities: readonly
@@ -543,19 +558,12 @@ steps:
       - coding
     edit: true
     persona: coder
-    provider: claude-sdk
-    model: haiku
+    provider: cursor
+    model: gpt-5.6-luna-high
     knowledge:
       - growmate
     required_permission_mode: edit
     allow_git_commit: true
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - Bash
     instruction: |
       実装内容をコミット・push し、`pr-summary.md` を正本として Pull Request を作成または更新してください。プロダクションコードの編集は行わず、git / gh コマンドのみを実行してください。
 
