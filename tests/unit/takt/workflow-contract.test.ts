@@ -106,7 +106,7 @@ describe.each(workflowFiles)('%s structured references', (file) => {
   const references = [
     ...raw.matchAll(/when\(structured\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)/g),
     ...raw.matchAll(/\{structured:([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\}/g),
-  ].map(([, stepName, field]) => ({ stepName, field }));
+  ].map((m) => ({ stepName: m[1] as string, field: m[2] as string }));
 
   it('resolves every structured reference to a declared schema field (typo = runtime abort)', () => {
     for (const { stepName, field } of references) {
@@ -125,14 +125,14 @@ describe.each(workflowFiles)('%s structured references', (file) => {
       const schemaRef = step.structured_output?.schema_ref;
       if (!schemaRef) continue;
       const schema = loadSchema(schemaRef);
-      const enumValues = schema.properties.verdict.enum ?? [];
+      const enumValues = schema.properties.verdict?.enum ?? [];
       const routed: string[] = [];
       for (const rule of step.rules ?? []) {
         const match = rule.condition.match(
           new RegExp(`^when\\(structured\\.${step.name}\\.verdict == "([A-Za-z0-9_]+)"\\)$`),
         );
         expect(match, `step "${step.name}" has a non-deterministic rule: ${rule.condition}`).toBeTruthy();
-        routed.push(match![1]);
+        routed.push(match![1] as string);
       }
       expect(new Set(routed), `step "${step.name}" does not cover the verdict enum`).toEqual(
         new Set(enumValues),
