@@ -1,5 +1,5 @@
 name: spec-review
-description: GrowMate docs/plans specification review against spec-review skill checklist and spec revision loop. Regenerates the spec's HTML visualization when the spec changed. Commits docs changes on the current branch only (no new branch, no push). Run before spec-to-pr.
+description: GrowMate docs/plans specification review against spec-review skill checklist and spec revision loop. A review cannot complete while in-scope client questions, implementation decisions, external inputs, or approval gates remain unresolved. Regenerates the spec's HTML visualization when the spec changed. Commits docs changes on the current branch only (no new branch, no push). Run before spec-to-pr.
 workflow_config:
   provider_options:
     codex:
@@ -18,7 +18,8 @@ loop_monitors:
       instruction: |
         audit -> revise のループが {cycle_count} 回繰り返されました。
         下記に全文添付された最新の audit 結果と修正内容を確認し、収束しているか判断してください。run ディレクトリやレポートパスの探索はしないでください。
-        残件が「クライアント確認質問への回答待ち」のみの場合は、仕様書修正で解消不能な論点として visualize に進めてください。
+        残件が「クライアント確認質問・実装判断・外部入力・承認ゲートへの回答待ち」のみの場合も、
+        レビュー完了とはみなしません。`ABORT` し、確定内容を仕様書へ反映してから spec-review を再実行してください。
 
         ## spec-audit.md（最新・全文）
         {report:spec-audit.md}
@@ -26,8 +27,11 @@ loop_monitors:
         ## spec-revise-result.md（最新・全文）
         {report:spec-revise-result.md}
       rules:
-        - condition: 収束済み（残件がクライアント確認質問のみ）
-          next: visualize
+        - condition: 収束済み（残件が対象スコープの質問・実装判断・外部入力・承認ゲート待ちのみ）
+          next: ABORT
+          appendix: |
+            対象スコープの未解決事項が残っています。回答・確定内容を対象仕様書へ反映し、
+            `spec-review` を再実行してください。未確定のまま `spec-to-pr` は実行しないでください。
         - condition: 健全（進捗あり）
           next: audit
         - condition: 非生産的（同じ指摘の反復・修正未反映）
@@ -98,7 +102,8 @@ steps:
       - WebFetch が失敗した URL は「未確認」として `spec-audit.md` に残し、レビュー自体は止めずに他の観点を続行する。
       - 指摘は「問題箇所 / なぜ危険か / 修正案」の形式で、重大度（🔴/🟡/🟢）を付ける。
       - クライアント確認が必要な論点は修正案を断定せず、確認質問（Pre-implementation Questions 形式）として隔離する。
-      - 判定基準: 🔴 がゼロ、かつ 🟡 が修正済みまたは理由付きで残置合意済み（仕様書の「レビュー記録」セクションに理由が記録されている）なら approved。エージェントが解消できる 🔴/🟡 があれば needs_fix。残件がクライアント確認質問のみなら approved_with_questions。
+      - ステータス、ゲート表、未確定事項、確認質問、レビュー記録を突合し、対象スコープに関係する「未回答 / 未確定 / 合意待ち / 受領待ち / 見積待ち」の項目を抽出する。過去に解消済みの項目、対象外フェーズの項目、単なるリスク記録は未解決として数えない。
+      - 判定基準: 🔴 がゼロ、対象スコープの未解決質問・意思決定・外部入力・承認ゲートがゼロ、かつ 🟡 が修正済みまたは理由付きで残置合意済み（仕様書の「レビュー記録」セクションに理由が記録されている）なら approved。エージェントが解消できる 🔴/🟡 があれば needs_fix。対象スコープの未解決事項が1件でも残る場合は `approved_with_questions` と記録してよいが、レビュー完了にはせず ABORT する。
 
       ## spec-review-scope.md（全文）
       {report:spec-review-scope.md}
@@ -108,8 +113,11 @@ steps:
       # judge が no rule matched で落ちる実測があるため両方の語彙を条件に含める。
       - condition: approved / APPROVE（自己解消可能な指摘なし・確認質問もなし）
         next: visualize
-      - condition: approved_with_questions / APPROVE（残件がクライアント確認質問のみ。修正可能な指摘は残っていない）
-        next: visualize
+      - condition: approved_with_questions / APPROVE（対象スコープに未回答質問・未確定の実装判断・外部入力・承認ゲートが残っている。レビュー未完了）
+        next: ABORT
+        appendix: |
+          対象スコープの未解決事項が残っています。回答・確定内容を対象仕様書へ反映し、
+          `spec-review` を再実行してください。未確定のまま `spec-to-pr` は実行しないでください。
       - condition: "needs_fix / REJECT（仕様書修正で解消できる指摘がある。spec-audit.md の見出しが REJECT なら原則これ）"
         next: revise
     output_contracts:
@@ -134,7 +142,7 @@ steps:
 
       必須条件:
       - 編集対象は `docs/` 配下の対象仕様書（および付随する docs）に限定する。プロダクションコード・設定ファイルは一切編集しない。
-      - クライアント確認が必要な論点は本文を確定させず、仕様書内に「未確定事項（クライアント確認中）」セクションとして質問ごと明記する。
+      - クライアント確認が必要な論点は本文を勝手に確定させず、仕様書内に「未確定事項（クライアント確認中）」セクションとして質問ごと明記する。未解決の実装判断・外部入力・承認ゲートも同様に確定前の状態を明記する。対象スコープに未解決事項が残る場合、audit は `approved_with_questions` を出してもレビュー完了にはせず ABORT する。
       - 理由付きで残置合意とする 🟡 論点は、仕様書内の「レビュー記録」セクションに理由付きで記録する。`spec-audit.md` 冒頭に「公式ドキュメント照合: 未実施」とある場合はその旨も同セクションに記録する（audit の再実行と後続の spec-to-pr workflow はこのセクションを正本として参照する）。
       - 外部サービスの公式ドキュメントを根拠に本文を直す場合、仕様書に参照 URL・確認日（YYYY-MM-DD）・公式ページ本文の verbatim 引用を残す。引用と、そこから導いた解釈は分けて書く。裏取りが必要なのに `spec-audit.md` に URL・引用がない指摘は、自分で WebFetch して確認してから直す。
       - 指摘への対応方針が複数あり判断できない場合は、勝手に選ばず ABORT する。
