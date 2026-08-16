@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "done",
+        "cannot_judge"
+      ],
+      "description": "done=README の更新要否を判定し、必要な同期と readme-sync.md の記録が完了した / cannot_judge=差分または対象仕様書を確認できず、README の更新要否を判断できない"
+    },
+    "reason": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    }
+  },
+  "required": [
+    "verdict",
+    "reason"
+  ],
+  "additionalProperties": false
+}

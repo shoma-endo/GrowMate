@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "clean",
+        "findings_detected"
+      ],
+      "description": "clean=AI特有の問題が見つからない / findings_detected=AI特有の問題が検出された"
+    },
+    "reason": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    }
+  },
+  "required": [
+    "verdict",
+    "reason"
+  ],
+  "additionalProperties": false
+}

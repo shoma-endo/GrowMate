@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "needs_fix"
+      ],
+      "description": "approved=レビュー承認（needs_fix に該当する指摘なし） / needs_fix=修正が必要な指摘がある"
+    },
+    "reason": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    }
+  },
+  "required": [
+    "verdict",
+    "reason"
+  ],
+  "additionalProperties": false
+}

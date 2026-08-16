@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "info_missing",
+        "spec_changed",
+        "stuck"
+      ],
+      "description": "fixed=architecture-reviewer の指摘を修正し、必須検証が完了した / info_missing=レビュー指摘に対応するための情報が不足している / spec_changed=対象仕様書がレビュー後に変更されており、指摘の枠を超える実装方針の再検討が必要 / stuck=修正を進行できない"
+    },
+    "reason": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    }
+  },
+  "required": [
+    "verdict",
+    "reason"
+  ],
+  "additionalProperties": false
+}

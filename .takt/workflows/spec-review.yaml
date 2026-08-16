@@ -57,7 +57,7 @@ steps:
       4. 対象仕様書を読む。クライアント整合性・曖昧な要件・複数解釈・挙動変更・運用影響・未合意のトレードオフがある場合だけ `docs/context/client-vision-from-lark.md` を読む。純粋な技術仕様、DB・内部実装、または既存の正本で判断できるUI変更では読まない。
       5. spec-review skill のルーティング表に従い、対象仕様書に適用する条件付き観点（クライアント整合 / LLM / UI / データ / Google 連携 / 外部サービス連携）を判定し、対応する正本ファイルを列挙する。対象範囲（画面・機能・データ・API）と Non-goals（要件にない画面・UI・機能追加、ついで修正、将来対応）も確定する。
       6. 仕様書が対象とする機能の既存実装（`src/server/services/*`、`src/server/actions/*`、関連画面）を grep で把握する。
-      7. 仕様書が外部サービス（Google / WordPress / Instagram(Meta) / Supabase 等）の API・挙動を前提にしている場合、SKILL.md の「外部サービス連携 > 一次情報検証 > 公式ドキュメントの起点」の URL 表をもとに、audit で **実際に WebFetch して照合すべき公式ドキュメントの URL** を列挙する。仕様書のどの記述をどの URL で検証するかを対応付けて書く。外部サービス連携がない場合は「対象外」と明記する。
+      7. 仕様書が外部サービス（Google / WordPress / Instagram(Meta) / Supabase 等）の API・挙動を前提にしている場合、`.agents/skills/spec-review/external-services.md` の「一次情報検証 > 公式ドキュメントの起点」の URL 表をもとに、audit で **実際に WebFetch して照合すべき公式ドキュメントの URL** を列挙する。仕様書のどの記述をどの URL で検証するかを対応付けて書く。外部サービス連携がない場合は「対象外」と明記する。
     rules:
       - condition: 対象仕様書と適用観点を確定した
         next: audit
@@ -96,29 +96,30 @@ steps:
       - 認可条件、未認可時の利用者向け挙動、Server Action・Route Handler・APIなどサーバー側での認可強制が仕様書に明記されていることを確認する。
       - 下記添付の `spec-review-scope.md` で判定された条件付き観点の正本ファイルを読み、該当チェックリストを適用する。
       - B の確認では仕様書の記述を鵜呑みにせず、実コード（services / actions / components）を読んで再利用対象・乖離を検証する。
-      - 外部サービス連携が対象の場合、下記添付の `spec-review-scope.md` で列挙した公式ドキュメント URL を **WebFetch で実際に取得し**、SKILL.md「外部サービス連携 > 一次情報検証 > 検証必須項目」（エンドポイント / 必須パラメータ・フィールド名 / 権限スコープ / レート制限 / 非推奨告知 / 前提条件 / データ反映遅延）を照合する。記憶・過去の実装・ブログ記事・要約を根拠にしない。あわせて「外部サービス連携 > 連携ライフサイクル（失効・剥奪・切断）」のチェックリストを適用する。
+      - 外部サービス連携が対象の場合、下記添付の `spec-review-scope.md` で列挙した公式ドキュメント URL を **WebFetch で実際に取得し**、`.agents/skills/spec-review/external-services.md`「一次情報検証 > 検証必須項目」（エンドポイント / 必須パラメータ・フィールド名 / 権限スコープ / レート制限 / 非推奨告知 / 前提条件 / データ反映遅延）を照合する。記憶・過去の実装・ブログ記事・要約を根拠にしない。あわせて同ファイル「連携ライフサイクル（失効・剥奪・切断）」のチェックリストを適用する。
       - 公式ドキュメントを根拠にした指摘には、参照 URL・確認日（YYYY-MM-DD）・**公式ページ本文の verbatim 引用**を必ず添える。要約を経由した引用は禁止。公式に記述が見つからない挙動は断定せず確認質問に隔離する。
       - 外部サービス連携が対象の場合、`spec-audit.md` の冒頭に **「公式ドキュメント照合: 実施 / 未実施」** を必ず書く。実行中の provider に web 取得手段（WebFetch 等）が無く照合できない場合は「未実施（provider に web 取得手段なし）」と明記し、記憶や既存実装で代替して照合したことにしない。
       - WebFetch が失敗した URL は「未確認」として `spec-audit.md` に残し、レビュー自体は止めずに他の観点を続行する。
       - 指摘は「問題箇所 / なぜ危険か / 修正案」の形式で、重大度（🔴/🟡/🟢）を付ける。
       - クライアント確認が必要な論点は修正案を断定せず、確認質問（Pre-implementation Questions 形式）として隔離する。
       - ステータス、ゲート表、未確定事項、確認質問、レビュー記録を突合し、対象スコープに関係する「未回答 / 未確定 / 合意待ち / 受領待ち / 見積待ち」の項目を抽出する。過去に解消済みの項目、対象外フェーズの項目、単なるリスク記録は未解決として数えない。
-      - 判定基準: 🔴 がゼロ、対象スコープの未解決質問・意思決定・外部入力・承認ゲートがゼロ、かつ 🟡 が修正済みまたは理由付きで残置合意済み（仕様書の「レビュー記録」セクションに理由が記録されている）なら approved。エージェントが解消できる 🔴/🟡 があれば needs_fix。対象スコープの未解決事項が1件でも残る場合は `approved_with_questions` と記録してよいが、レビュー完了にはせず ABORT する。
+      - 判定基準（structured output の verdict）: 🔴 がゼロ、対象スコープの未解決質問・意思決定・外部入力・承認ゲートがゼロ、かつ 🟡 が修正済みまたは理由付きで残置合意済み（仕様書の「レビュー記録」セクションに理由が記録されている）なら `approved`。エージェントが解消できる 🔴/🟡 があれば `needs_fix`。対象スコープの未解決事項が1件でも残る場合は `approved_with_questions`（レビュー完了にはならず ABORT する）。verdict と併せて reason に判定理由を1〜3行で書く。
 
       ## spec-review-scope.md（全文）
       {report:spec-review-scope.md}
+    structured_output:
+      schema_ref: audit
     rules:
-      # architecture-review 形式の `spec-audit.md` は冒頭を「## 結果: APPROVE / REJECT」と書く。
-      # SKILL.md の判定語彙（approved / approved_with_questions / needs_fix）と表記が異なり、
-      # judge が no rule matched で落ちる実測があるため両方の語彙を条件に含める。
-      - condition: approved / APPROVE（自己解消可能な指摘なし・確認質問もなし）
+      # spec-audit.md の見出し語彙（APPROVE/REJECT）と structured verdict は独立。
+      # ルーティングは verdict の enum のみで判定する（自由記述の語彙ズレを判定に持ち込まない）。
+      - condition: when(structured.audit.verdict == "approved")
         next: visualize
-      - condition: approved_with_questions / APPROVE（対象スコープに未回答質問・未確定の実装判断・外部入力・承認ゲートが残っている。レビュー未完了）
+      - condition: when(structured.audit.verdict == "approved_with_questions")
         next: ABORT
         appendix: |
           対象スコープの未解決事項が残っています。回答・確定内容を対象仕様書へ反映し、
           `spec-review` を再実行してください。未確定のまま `spec-to-pr` は実行しないでください。
-      - condition: "needs_fix / REJECT（仕様書修正で解消できる指摘がある。spec-audit.md の見出しが REJECT なら原則これ）"
+      - condition: when(structured.audit.verdict == "needs_fix")
         next: revise
     output_contracts:
       report:
@@ -162,7 +163,6 @@ steps:
       - implementation
     edit: true
     persona: coder
-    provider: claude-sdk
     knowledge:
       - growmate
     provider_options:
@@ -180,7 +180,7 @@ steps:
       - 再構成ビュー（01 ステータス / 02 設計判断 / 03 クイズ）: `core.yaml` が既にあるなら **更新モード**。仕様書の差分に対応する `concepts` / `relations` / `risks` / `questions` だけを直し、id は安定させる。全書き直しはしない。`core.yaml` が無いなら **新規モード**で SKILL.md の手順に従って起案する。
       - 全文ビュー（04）: **手で書かず** `python3 scripts/spec-html.py fulltext --spec <対象仕様書> --out docs/plans/_html/<slug>/views/04-fulltext.html` で機械変換する。仕様書が変わっていれば必ず再生成する。
       - 結合は必ず `python3 scripts/spec-html.py build` に4ビューすべてと `--source <対象仕様書>` を渡して行う。安全検査で落ちた場合は違反箇所を直して再実行する。
-      - **`build` の整合性チェック出力を必ず読む。** `[fail]` が出た場合は `core.yaml` の `source_refs` の行番号が仕様書の改訂に追従できていない。SKILL.md の「更新モードで fail が出たときの手順」に従って該当参照を貼り直し、その参照を根拠にした concept の記述を見直したうえで `build` を再実行し、fail が消えるまで繰り返す（最大3回まで。消えなければ残る fail を報告して次に進む）。
+      - **`build` の整合性チェック出力を必ず読む。** `[fail]` が出た場合は `core.yaml` の `source_refs` の行番号が仕様書の改訂に追従できていない。`.agents/skills/spec-to-html/maintenance.md` の「更新モードで fail が出たときの手順」に従って該当参照を貼り直し、その参照を根拠にした concept の記述を見直したうえで `build` を再実行し、fail が消えるまで繰り返す（最大3回まで。消えなければ残る fail を報告して次に進む）。
       - 生成結果を headless Chrome の `--dump-dom` で確認し、パネル数が 4、`hidden` が 3 であることを検証する。
 
       必須条件:
@@ -203,19 +203,12 @@ steps:
       - report
     edit: true
     persona: coder
-    provider: claude-sdk
-    model: haiku
+    provider: cursor
+    model: gpt-5.6-luna-high
     knowledge:
       - growmate
     required_permission_mode: edit
     allow_git_commit: true
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - Bash
     instruction: |
       レビュー結果を確定し、仕様書に変更がある場合は現在のブランチに commit してください。新しいブランチの作成・push・PR 操作は行わないでください。
 
