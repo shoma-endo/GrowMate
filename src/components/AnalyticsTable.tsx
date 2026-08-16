@@ -1067,10 +1067,8 @@ export default function AnalyticsTable({
                                     size="sm"
                                     className="flex items-center gap-2"
                                     onClick={() => {
-                                      const target = new URLSearchParams();
-                                      target.set('annotationId', annotation.id ?? '');
                                       window.open(
-                                        `/gsc-dashboard?${target.toString()}`,
+                                        `/analytics/${encodeURIComponent(annotation.id ?? '')}`,
                                         '_blank',
                                         'noopener,noreferrer'
                                       );

@@ -137,6 +137,9 @@ export const GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS = 30_000;
 /** content_annotations AI要約: 本文サイズガード（文字数上限） */
 export const CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS = 80_000;
 
+/** 評価入力の本文削減を開始する予算。要約処理の拒否閾値とは異なる。 */
+export const GA4_EVALUATION_CONTENT_REDUCTION_BUDGET = 80_000;
+
 // =============================================================================
 // Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)
 // =============================================================================

@@ -9,6 +9,7 @@ import { buildGscDateRange } from '@/lib/date-utils';
 import type { GscEvaluationOutcome } from '@/types/gsc';
 import type { UserRole } from '@/types/user';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { canAccessGa4, canWriteGa4 } from '@/server/lib/ga4-permissions';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
@@ -111,6 +112,9 @@ export async function fetchGscDetail(
   const authId = await getAuthUserId();
   if ('error' in authId) {
     return gscAuthErrorPayload(authId);
+  }
+  if (!canAccessGa4({ role: authId.role })) {
+    return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
   }
   const { userId } = authId;
 
@@ -386,6 +390,9 @@ export async function registerEvaluation(params: {
     if ('error' in authId) {
       return gscAuthErrorPayload(authId);
     }
+    if (!canWriteGa4({ role: authId.role })) {
+      return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
+    }
     const { userId } = authId;
 
     const userIds = getUserScope(userId);
@@ -469,7 +476,7 @@ export async function registerEvaluation(params: {
       throw new Error(insertError.message || '評価対象の登録に失敗しました');
     }
 
-    revalidatePath('/gsc-dashboard');
+    revalidatePath('/analytics/[annotationId]', 'page');
     return { success: true, data: { contentAnnotationId, baseEvaluationDate } };
   } catch (error) {
     console.error('[gsc-dashboard] register evaluation failed', error);
@@ -488,6 +495,9 @@ export async function updateEvaluation(params: {
     const authId = await getAuthUserId();
     if ('error' in authId) {
       return gscAuthErrorPayload(authId);
+    }
+    if (!canWriteGa4({ role: authId.role })) {
+      return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
     }
     const { userId } = authId;
 
@@ -575,7 +585,7 @@ export async function updateEvaluation(params: {
       throw new Error(updateError.message || '評価基準日の更新に失敗しました');
     }
 
-    revalidatePath('/gsc-dashboard');
+    revalidatePath('/analytics/[annotationId]', 'page');
     return { success: true, data: { contentAnnotationId, baseEvaluationDate } };
   } catch (error) {
     console.error('[gsc-dashboard] update evaluation failed', error);
@@ -633,6 +643,9 @@ export async function fetchQueryAnalysis(
     const authId = await getAuthUserId();
     if ('error' in authId) {
       return gscAuthErrorPayload(authId);
+    }
+    if (!canAccessGa4({ role: authId.role })) {
+      return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
     }
     const { userId } = authId;
 
@@ -796,6 +809,9 @@ export async function runQueryImportForAnnotation(
     if ('error' in authId) {
       return gscAuthErrorPayload(authId);
     }
+    if (!canWriteGa4({ role: authId.role })) {
+      return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
+    }
     const { userId } = authId;
 
     const userIds = getUserScope(userId);
@@ -858,7 +874,7 @@ export async function runQueryImportForAnnotation(
       segmentDays: 30,
     });
 
-    revalidatePath('/gsc-dashboard');
+    revalidatePath('/analytics/[annotationId]', 'page');
     return { success: true, data: summary };
   } catch (error) {
     console.error('[gsc-dashboard] run query import failed', error);
@@ -879,6 +895,9 @@ export async function runEvaluationNow(contentAnnotationId: string) {
     const authId = await getAuthUserId();
     if ('error' in authId) {
       return gscAuthErrorPayload(authId);
+    }
+    if (!canWriteGa4({ role: authId.role })) {
+      return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
     }
     const { userId } = authId;
 
@@ -914,7 +933,7 @@ export async function runEvaluationNow(contentAnnotationId: string) {
       contentAnnotationId,
     });
 
-    revalidatePath('/gsc-dashboard');
+    revalidatePath('/analytics/[annotationId]', 'page');
     revalidatePath('/analytics');
 
     return {

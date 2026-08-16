@@ -602,6 +602,9 @@ export const ERROR_MESSAGES = {
 
     /** GA4同期に失敗した場合 */
     SYNC_FAILED: 'GA4同期に失敗しました',
+
+    /** GA4機能へのアクセス権がない場合 */
+    FEATURE_ACCESS_DENIED: 'この機能を利用する権限がありません',
   },
 
   /**
@@ -864,7 +867,7 @@ export const ERROR_MESSAGES = {
     SYNC_DISABLED: 'Instagramの同期は現在停止されています',
 
     /** 手動同期に失敗した場合 */
-    SYNC_FAILED: 'Instagramデータの同期に失敗しました。時間をおいて再度お試しください',
+    SYNC_FAILED: 'Instagramデータの同期に失敗しました。時間をおいてもう一度お試しください',
 
     /** 一部の投稿で指標（リーチ・視聴数等）の取得に失敗した場合。投稿自体（サムネ・キャプション等）は取得済み */
     PARTIAL_MEDIA_FAILURE: (failedCount: number): string =>

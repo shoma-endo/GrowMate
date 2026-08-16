@@ -1,6 +1,11 @@
 import { SupabaseService } from '@/server/services/supabaseService';
 
 import { normalizeToPath } from '@/lib/ga4-utils';
+import {
+  aggregateGa4PageMetrics,
+  toDisplayedGa4PageMetricSummary,
+  type Ga4DailyMetricInput,
+} from '@/server/lib/ga4-metrics-aggregation';
 import type { AnnotationRecord } from '@/types/annotation';
 import type {
   AnalyticsContentItem,
@@ -14,21 +19,6 @@ import { asPendingClient, type AnalyticsDatabase } from '@/types/database.types.
 const MAX_PER_PAGE = 100;
 
 const supabaseService = new SupabaseService();
-
-// GA4集計用の一時的な型定義
-interface Ga4MetricAggregate {
-  sessions: number;
-  users: number;
-  engagementTimeSec: number;
-  bounceRateWeighted: number;
-  bounceRateSessions: number;
-  cvEventCount: number;
-  scroll90EventCount: number;
-  searchClicks: number;
-  impressions: number;
-  isSampled: boolean;
-  isPartial: boolean;
-}
 
 class AnalyticsContentService {
   async getPage(userId: string, params: AnalyticsContentQuery): Promise<AnalyticsContentPage> {
@@ -297,72 +287,34 @@ class AnalyticsContentService {
       throw new Error(`GA4データの取得に失敗しました: ${error.message}`);
     }
 
-    const summaryMap = new Map<string, Ga4MetricAggregate>();
-
+    const dailyMetrics: Ga4DailyMetricInput[] = [];
     for (const row of data ?? []) {
-      const key = row.normalized_path as string;
-      const current = summaryMap.get(key) ?? {
-        sessions: 0,
-        users: 0,
-        engagementTimeSec: 0,
-        bounceRateWeighted: 0,
-        bounceRateSessions: 0,
-        cvEventCount: 0,
-        scroll90EventCount: 0,
-        searchClicks: 0,
-        impressions: 0,
-        isSampled: false,
-        isPartial: false,
-      };
+      if (typeof row.normalized_path !== 'string' || row.normalized_path.length === 0) {
+        continue;
+      }
 
-      const sessions = Number(row.sessions ?? 0);
-      const users = Number(row.users ?? 0);
-      const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
-      const bounceRate = Number(row.bounce_rate ?? 0);
-      const cvEventCount = Number(row.cv_event_count ?? 0);
-      const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
-      const searchClicks = Number(row.search_clicks ?? 0);
-      const impressions = Number(row.impressions ?? 0);
-
-      current.sessions += sessions;
-      current.users += users;
-      current.engagementTimeSec += engagementTimeSec;
-      current.cvEventCount += cvEventCount;
-      current.scroll90EventCount += scroll90EventCount;
-      current.searchClicks += searchClicks;
-      current.impressions += impressions;
-      current.bounceRateWeighted += bounceRate * sessions;
-      current.bounceRateSessions += sessions;
-      current.isSampled ||= Boolean(row.is_sampled);
-      current.isPartial ||= Boolean(row.is_partial);
-
-      summaryMap.set(key, current);
-    }
-
-    const results = new Map<string, Ga4PageMetricSummary>();
-    for (const [key, agg] of summaryMap.entries()) {
-      const bounceRate =
-        agg.bounceRateSessions > 0 ? agg.bounceRateWeighted / agg.bounceRateSessions : 0;
-      const ctr = agg.impressions > 0 ? agg.searchClicks / agg.impressions : null;
-      results.set(key, {
-        normalizedPath: key,
-        dateFrom: startDate,
-        dateTo: endDate,
-        sessions: agg.sessions,
-        users: agg.users,
-        engagementTimeSec: agg.engagementTimeSec,
-        bounceRate,
-        cvEventCount: agg.cvEventCount,
-        scroll90EventCount: agg.scroll90EventCount,
-        searchClicks: agg.searchClicks,
-        impressions: agg.impressions,
-        ctr,
-        isSampled: agg.isSampled,
-        isPartial: agg.isPartial,
+      dailyMetrics.push({
+        normalizedPath: row.normalized_path,
+        sessions: Number(row.sessions ?? 0),
+        users: Number(row.users ?? 0),
+        engagementTimeSec: Number(row.engagement_time_sec ?? 0),
+        bounceRate: Number(row.bounce_rate ?? 0),
+        cvEventCount: Number(row.cv_event_count ?? 0),
+        scroll90EventCount: Number(row.scroll_90_event_count ?? 0),
+        searchClicks: Number(row.search_clicks ?? 0),
+        impressions: Number(row.impressions ?? 0),
+        isSampled: Boolean(row.is_sampled),
+        isPartial: Boolean(row.is_partial),
       });
     }
 
-    return results;
+    const aggregatedMetrics = aggregateGa4PageMetrics(dailyMetrics, startDate, endDate);
+    return new Map(
+      Array.from(aggregatedMetrics, ([key, summary]) => [
+        key,
+        toDisplayedGa4PageMetricSummary(summary),
+      ])
+    );
   }
 
   private hasValidCanonicalUrl(a: AnnotationRecord): boolean {

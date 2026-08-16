@@ -142,7 +142,7 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 **経路ごとのガードの実測（2026-08-15）:**
 
 - `/analytics` は `proxy.ts:11` の `PAID_FEATURE_REQUIRED_PATHS = ['/analytics']` に含まれ、`proxy.ts:177-179` の `requiresPaidFeatureAccess` 判定で `/unauthorized` へリダイレクトされる。判定は `proxy.ts:215-217` の `pathname.startsWith(path)`（プレフィックスマッチ）であるため、**`/analytics/[annotationId]` は `proxy.ts` を変更せず自動的に保護対象になる**。
-- 現行の `/gsc-dashboard` は `PAID_FEATURE_REQUIRED_PATHS` に含まれず、`app/gsc-dashboard/page.tsx` にロール判定はなく、`src/server/actions/gscDashboard.actions.ts` は `getAuthUserId` で `role` を取得するものの `canAccessGa4` を呼んでいない（同ファイルに 0 ヒット。2026-08-15 再確認）。つまり現状は `trial` 等のロールでも直URLで記事詳細に到達できる。
+- 現行の `/gsc-dashboard` は `PAID_FEATURE_REQUIRED_PATHS` に含まれず、`app/gsc-dashboard/page.tsx`（フェーズ1で廃止）にロール判定はなく、`src/server/actions/gscDashboard.actions.ts` は `getAuthUserId` で `role` を取得するものの `canAccessGa4` を呼んでいない（同ファイルに 0 ヒット。2026-08-15 再確認）。つまり現状は `trial` 等のロールでも直URLで記事詳細に到達できる。
 - proxy の matcher は `api/` 配下を除外しているため、`app/api/gsc/dashboard/*` は proxy で保護されない（`authMiddleware` による認証のみで、ロール判定はない）。
 
 **フェーズ1で行う変更:** 記事詳細を `/analytics/[annotationId]` へ移設することで、画面は proxy の自動保護下に入る（`proxy.ts` 自体は変更しない）。加えて上記ポリシーに従い、`gscDashboard.actions.ts` の全公開関数（6本）と `app/api/gsc/dashboard/*`（2本）の入口で認可を必須検証する。proxy のパス判定のみを認可の根拠にしない（BR-07。Next.js 公式も「Always verify authentication and authorization inside each Server Function rather than relying on Proxy alone.」と明記する。§16「Next.js — redirects と Proxy」）。採用理由・却下案は §15.4、変更対象ファイルは §17、受入条件は AC-12 とする。
@@ -439,7 +439,7 @@ GSCの`gsc_article_evaluations`と`gsc_article_evaluation_history`は掲載順�
 
 - `permanent: true` は 308 を返し、クライアント・検索エンジンに恒久キャッシュされる（§16「Next.js — redirects と Proxy」）。したがって**旧URLへ戻すロールバックは行わない**（§14）。
 - `has` の `value` の named capture（`(?<annotationId>[^&]+)`）で destination の `:annotationId` に展開する（§16 同節）。
-- **リクエストのクエリはすべて redirect 先へ引き継がれる。**同梱公式は "When a redirect is applied, any query values provided in the request will be passed through to the redirect destination."（`redirects.md:43`。§16 同節）と述べ、**`has` の named capture で消費したキーを除外する記述は置いていない**。したがって `annotationId` が destination のクエリにも残るかどうかは**公式に記載がなく未確認**である。`permanent: true`（308）はクライアント・検索エンジンに恒久キャッシュされ（§14 でロールバック不可）、この挙動を後から変えられないため、**フェーズ1の実装時に 308 応答の `Location` ヘッダを実測して確定し、本節に結果を追記する**（AC-15）。
+- **リクエストのクエリはすべて redirect 先へ引き継がれる。**同梱公式は "When a redirect is applied, any query values provided in the request will be passed through to the redirect destination."（`redirects.md:43`。§16 同節）と述べ、**`has` の named capture で消費したキーを除外する記述は置いていない**。したがって `annotationId` が destination のクエリにも残るかどうかは**公式に記載がなく未確認**である。`permanent: true`（308）はクライアント・検索エンジンに恒久キャッシュされ（§14 でロールバック不可）、この挙動を後から変えられないため、**2026-08-16 にビルド済みサーバーの 308 応答を実測した**。`/gsc-dashboard?annotationId=X&days=90` の `Location` は `/analytics/X?annotationId=X&days=90`、`/gsc-dashboard` の `Location` は `/analytics` だった（AC-15）。
 - **新ルートは route param を正とし、残留クエリを読まない。**`useGscDashboard.ts` の `useSearchParams()` による annotationId 読み取りは廃止するため（上記「新配置と annotationId の受け渡し」）、`annotationId` がクエリに残っていても描画には影響しない。実測結果がどちらであっても設計を変えないよう、この点を先に固定する。
 - `next.config.js` の redirects は Proxy（`proxy.ts`）より**先に**評価される（§16 同節の実行順序）。したがって trial が旧URLへアクセスした場合も、redirect → proxy の paid 判定 → `/unauthorized` の順に処理され、§3.3 の認可表と整合する。
 
@@ -1621,11 +1621,11 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 
 | ファイル | 現状の記述 | 対応 |
 |---|---|---|
-| `docs/plans/instagram-integration-design.md:1033` | `app/gsc-dashboard/components/OverviewTab.tsx:111-186` を単一トースト実装の正本として参照 | 移設後パス（`app/analytics/[annotationId]/components/OverviewTab.tsx`）へ更新 |
+| `docs/plans/instagram-integration-design.md:1033` | `app/analytics/[annotationId]/components/OverviewTab.tsx:111-186` を単一トースト実装の正本として参照 | 移設後パスへ更新 |
 | `docs/specs/ga4-data-api-daily-cache-mvp.md:369` | 見出し「GA4 設定（/app/gsc-dashboard に統合）」 | 移設後の配置へ更新 |
 | `.agents/skills/growmate-ui-ux/ui-text.md:35` | 「評価」行が「`/gsc-dashboard` の「評価を開始」「評価基準日」に合わせる」と規定 | 移設後パスへ更新。修飾ルールの一般化（§10.3）と同時に行う |
 | `.agents/skills/quality-gate/manual-testing.md:52` | 「- `/gsc-dashboard` で Search Console から取得したデータが表示されるか確認する。」 | **リリース前の必須ゲート手順が旧URLを指したままになる。**移設後パスへ更新する。2026-08-15 追加（従来の同期一覧から漏れていた） |
-| `docs/plans/content-annotation-ai-summary-design.md:48,349` | `app/gsc-dashboard/components/SuggestionDataReadiness.tsx` をスコープ外／影響なしの対象として参照（2箇所） | 移設後パスへ更新。2026-08-15 追加（従来の同期一覧から漏れていた） |
+| `docs/plans/content-annotation-ai-summary-design.md:48,349` | `app/analytics/[annotationId]/components/SuggestionDataReadiness.tsx` をスコープ外／影響なしの対象として参照（2箇所） | 移設後パスへ更新。2026-08-15 追加（従来の同期一覧から漏れていた） |
 
 - 仕様書HTML束: `docs/plans/_html/ga4-content-evaluation-spec/` は **2026-08-16 の回答一括反映＋D1 提示準備（見積精査）を反映済み**である（`core.yaml` の 4分類・pagePath 軸・197〜297h・ゲート再定義）。**本文をさらに改訂した場合は、`core.yaml` の `source_label` / 行数参照と `source_refs` のアンカー行番号がずれるため、spec-to-html の手順で貼り直して `npm run spec-html:refresh` で再生成する。**なお `docs/plans/_html/` は `.gitignore:69` で除外されており、リポジトリの成果物には含まれない。
 - `README.md`: Kill SwitchのDB設定変更手順、手動評価経路、設定変更時の安全側挙動、GA4取込に追加した指標の追記に加え、移設に伴う `/gsc-dashboard` 記載の更新が発生しそうなセクションとして 🚀主な機能・📁プロジェクト構成が候補。READMEの更新要否・対象セクションは実装時の `readme_sync` で最終確認する。
@@ -1659,6 +1659,7 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 | 2026-08-16 | **D1 見積合意（クライアント承認）。** MVP 197〜297h（25〜38人日）を提示条件2点（Compatibility 未実測前提・利用者不可視の先行作業 54〜85h）込みで合意。`spec-to-pr` ゲート解除（フェーズ0・フェーズ1実行可）。フェーズ2は D4 / Q-D / プロンプト出力契約の確定待ちを維持 | D1 合意済み。フェーズ0/1 実装可 |
 | 2026-08-16 | **D1 提示準備（開発側見積の精査）。** 統合レイアウト再設計を 20〜36h で見積（たたき台3タブ基本形。タブ再編 2〜3 / 概要統合 6〜10 / 履歴統合 4〜8 / 再配置 2〜4 / テスト 4〜7 / 突合 2〜4）、取込拡張を `pagePath` 軸前提で 14〜24h に積み直し（Compatibility 新設 2〜3 / 実測 2〜4 / 第2クエリ 4〜6 / migration 1〜2 / 後方互換 2〜4 / テスト 3〜5）。MVP合計 **197〜297h（25〜38人日）**。§10.1 / §10.3 にたたき台の3タブ基本形（評価は概要へ統合表示）と「コンテンツ評価タブ＝評価UI領域の略記」の注記を追加し、AC-12 の表示条件をレイアウト非依存に修正。D1 の提示条件2点（Compatibility 未実測前提・先行作業 54〜85h の明示）を §15.3 に記録 | 承認済み。D1（見積合意）待ち。フェーズ2は D4 / Q-D / プロンプト出力契約待ち |
 | 2026-08-15 | spec-review audit 第6回（🟡1 / 🟢1）を反映。第5回の修正で過大化していた §3.4 フェーズ1完了条件の 0ヒット判定を、**判定対象（先頭スラッシュ付き `/gsc-dashboard` と `app/gsc-dashboard/`＝旧ルートを指すパス参照）・探索範囲・除外（redirect 定義／本仕様書自身／ログ接頭辞 `[gsc-dashboard]` 7箇所）**の3要素に分けて定義し直し、実測で満たせる条件へ是正。あわせて改称対象外（ファイル名・識別子）も明記。§17 の「この範囲で行う」を判定範囲と更新対象の分離へ書き換え、R-09 の対策欄も同期。§18 変更履歴の表を分断していた空行を削除 | 確認質問（Q-A〜Q-F・Q1〜Q4・Q7・Q8）と D1 / D3 / D4 / D5 の確定待ち |
+| 2026-08-16 | フェーズ1の 308 redirect をビルド済みサーバーで実測。`/gsc-dashboard?annotationId=X&days=90` は `Location: /analytics/X?annotationId=X&days=90`、`/gsc-dashboard` は `Location: /analytics` となることを確認し、§5.5 へ反映 | 実測済み |
 
 ## 19. レビュー記録
 
@@ -1740,7 +1741,7 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 | finding_id | 対応 | 備考 |
 |---|---|---|
 | ARCH-NEW-spec-L539 | 修正 | §9.1 の「`needs_reauth` として保存し」を、§6.5 の非永続状態として表示時に導出する記述へ置換。§9.1.1 の列を「表示（非永続）／永続・既存結果の扱い」に分離 |
-| ARCH-NEW-spec-L112 | 修正 | §3.3 に `proxy.ts:10`・`app/gsc-dashboard/page.tsx`・`gscDashboard.actions.ts` の実測を明記。評価タブ側で `canAccessGa4` を検証する方針を §15.4 の判断として記録し、AC-12・§11「認証・認可」・§13 認可テスト・§17 変更対象を追加 |
+| ARCH-NEW-spec-L112 | 修正 | §3.3 に `proxy.ts:10`・`app/gsc-dashboard/page.tsx`（フェーズ1で廃止）・`gscDashboard.actions.ts` の実測を明記。評価タブ側で `canAccessGa4` を検証する方針を §15.4 の判断として記録し、AC-12・§11「認証・認可」・§13 認可テスト・§17 変更対象を追加 |
 | ARCH-NEW-spec-L1077 | 修正 | 引用元 URL に存在しないレポート構成の引用2ブロックを §16 から削除。`landingPage` の定義引用を公式実文（"first page view"）へ差し替え、レポート構成は「公式未確認」表へ移動。§4.1.1 の断定を削り、Q-A の根拠を「公式未記載であること自体」に置換 |
 | ARCH-NEW-spec-L241 | 修正 | §5.1 の「MVPで取得を追加する」を Q-A 回答後の対象化へ、§14 ロールバックの該当文を条件節付きへ変更 |
 | ARCH-NEW-spec-L771 | 修正 | §9.1.1 に「永続は `evaluation_failed` + `error_code='needs_reauth'`」を定義。AC-05 を表示・永続・再連携後の自動解消の3観点へ分割 |

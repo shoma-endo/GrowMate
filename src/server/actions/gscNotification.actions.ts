@@ -76,6 +76,6 @@ export async function markSuggestionAsRead(historyId: string): Promise<{ success
 
   revalidatePath('/');
   revalidatePath('/analytics');
-  revalidatePath('/gsc-dashboard');
+  revalidatePath('/analytics/[annotationId]', 'page');
   return { success: true };
 }

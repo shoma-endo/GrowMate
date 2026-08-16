@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
 import {
   fetchGscDetail,
   registerEvaluation,
@@ -41,7 +40,6 @@ interface UseGscDashboardReturn {
   metricsSummary: GscMetricsSummary | null;
 
   // Actions
-  setSelectedId: (id: string | null) => void;
   setSelectedHistory: (history: GscEvaluationHistoryItem | null) => void;
   toggleMetric: (key: keyof GscVisibleMetrics) => void;
   handleRegisterEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
@@ -72,10 +70,8 @@ export function useGscDashboard({
   initialSelectedId = null,
   initialDetail = null,
 }: UseGscDashboardOptions): UseGscDashboardReturn {
-  const searchParams = useSearchParams();
-
   // State
-  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
+  const [selectedId] = useState<string | null>(initialSelectedId);
   const [detail, setDetail] = useState<GscDashboardDetailResponse | null>(initialDetail);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,15 +82,6 @@ export function useGscDashboard({
     position: true,
   });
   const [selectedHistory, setSelectedHistory] = useState<GscEvaluationHistoryItem | null>(null);
-
-  const selectedFromUrl = searchParams?.get('annotationId') ?? null;
-
-  // URLのクエリから選択を同期
-  useEffect(() => {
-    if (selectedFromUrl) {
-      setSelectedId(selectedFromUrl);
-    }
-  }, [selectedFromUrl]);
 
   // 詳細取得
   useEffect(() => {
@@ -306,7 +293,6 @@ export function useGscDashboard({
     metricsSummary,
 
     // Actions
-    setSelectedId,
     setSelectedHistory,
     toggleMetric,
     handleRegisterEvaluation,

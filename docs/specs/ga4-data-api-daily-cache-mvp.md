@@ -366,7 +366,7 @@ async function resolveOwnerUserId(userId: string): Promise<string> {
 
 ## UI 仕様（MVP）
 
-### GA4 設定（/app/gsc-dashboard に統合）
+### GA4 設定（/app/analytics/[annotationId] に統合）
 
 - 接続状態
 - プロパティ選択

@@ -45,7 +45,7 @@ WordPress連携済みの記事（`content_annotations`）について、記事�
 
 両画面は`src/components/ContentAnnotationSummaryAction.tsx`の共通コンポーネントを使用し、各画面には成功後のフォーム反映処理のみを持たせる。
 
-`app/gsc-dashboard/components/SuggestionDataReadiness.tsx` は対象外（今回のスコープでは変更しない）。
+`app/analytics/[annotationId]/components/SuggestionDataReadiness.tsx` は対象外（今回のスコープでは変更しない）。
 
 ### 2.3 トリガー・上書き方針
 
@@ -346,7 +346,7 @@ export async function summarizeContentAnnotation(
   - 本設計は**既存記事の実内容を要約**する。フェーズ2は**未執筆記事のための新規提案**を生成する。
   - 本設計は確認ダイアログなしで直接`content_annotations`を上書きする。フェーズ2は`google_ads_blog_suggestions`に一旦保持し、確認モーダル経由でのみ確定する2段階方式（Section 16.12に設計根拠あり）。
   - フェーズ2再開時、`prompt_templates`・`MODEL_CONFIGS`のキー命名が衝突しないよう本設計のキー（`content_annotation_ai_summary`）と明確に区別すること。
-- `app/gsc-dashboard/components/SuggestionDataReadiness.tsx` の「改善提案に必要なデータ」判定ロジックには影響しない（読み取り専用の依存関係のみで、本設計はこの判定ロジック自体を変更しない）。
+- `app/analytics/[annotationId]/components/SuggestionDataReadiness.tsx` の「改善提案に必要なデータ」判定ロジックには影響しない（読み取り専用の依存関係のみで、本設計はこの判定ロジック自体を変更しない）。
 
 ## 11. 受け入れ条件
 
