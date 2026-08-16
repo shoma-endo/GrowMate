@@ -11,13 +11,7 @@ description: docs/plansの仕様書を単一HTMLの「見る地図」に変換�
 
 **変換ではなく再構成である。** Markdown を HTML に整形しても認知負荷は下がらない。下がるのは、仕様書を「意味の単位」に圧縮し、実装ステータス軸で並べ替えたときだけ。したがって本スキルの中核は `core.yaml` の執筆であり、HTML 生成はその副産物として自動化する。
 
-- **形が先、文字が後**: 状態・依存・比較はステータスボード / バッジ / 色で先に掴ませ、文章は判断点に絞る。**構造化されたテキストは図解ではない。** カードや箇条書きだけで済ませると、原本 Markdown に対する優位が「折りたたみと絞り込み」しか残らない。`authoring-views.md` の図版を必ず入れること。
-- **例外ファースト**: 読者が今日見るべきなのは「正常なもの」ではなく **未決事項・リスク・着手前ゲート**。それらをビュー先頭の1ブロックに集約し、決着済み・実装済みのパネルは **畳んで**出す。開いているものが多いビューは、何も強調していないのと同じ。
-- **色は意味にのみ使う**: 緑=実装済み ／ amber=実装中・要確認 ／ 灰=凍結・未着手 ／ 赤=リスク ／ 青=次の一手。装飾目的の色は使わない。**構造を示す色と異常を示す色を混ぜない** — フェーズやレイヤの区別に赤や amber を使うと、本物のリスクが埋もれる。構造は枠線の種類・塗り分け・番号で示す。
-- **1ビューのブロックは 7 個まで**（ワーキングメモリ 7±2）。超えるなら `① 構造 / ② 数値 / ③ 判断材料` のような**群見出しで 3〜5 チャンクに束ねる**。並べる数を減らすのではなく、階層を1つ増やして数える単位を減らす。
-- **再構成ビュー（01〜03）は原本を丸写ししない**: DDL 全文・プロンプト本文・長大な表は入れない。行番号で原本に辿れれば足りる。
-- **全文は別タブに隔離する（04）**: 原文が必要な場面（実装時）は必ずあるので捨てない。ただし再構成ビューに混ぜると圧縮の意味が消えるため、独立したタブに置く。**再構成ビューから全文の該当章へはジャンプボタンで飛ばす**（後述の `data-goto`）。
-- **削る勇気**: ステータスは 1 画面に収める。強調が増えすぎたらそれも情報過多の再発。
+ビュー執筆の設計原則（形が先・例外ファースト・色の規律・7ブロック上限・丸写し禁止・全文隔離・削る勇気）は `authoring-views.md` の「設計原則」が正本。ビューを書く手順5で読む。
 
 ## 二層構造
 
@@ -128,69 +122,17 @@ docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時�
 | `02-decisions.html` | 設計判断ごとに **狙い / ✕不採用案 / ✓採用理由 / △受け入れたトレードオフ** の4点セット。ブロック別の絞り込み付き |
 | `03-quiz.html` | `quiz.yaml` を出題。即時採点 → 正誤表示（色だけに頼らずアイコンと文字も）→ 解説・関連概念・出典を開示 → 採点後は入力をロック。末尾にスコア集計と「もう一度」 |
 
-`04-fulltext.html` は **手で書かない**。次項のコマンドで生成する。
+`04-fulltext.html` は **手で書かない**。手順6（[`build-and-verify.md`](build-and-verify.md)）のコマンドで生成する。
 
 **書く前に `authoring-views.md` を必ず読む**（図版の必須数と型、テーマ変数・hash 連動・IIFE・外部依存の禁止リストを含む必須実装約束の正本）。
 
-### 6. 全文ビューを生成する
+### 6〜8. 全文生成 → 結合・安全検査 → 動作確認
 
-```bash
-python3 scripts/spec-html.py fulltext \
-  --spec docs/plans/<slug>.md \
-  --out docs/plans/_html/<slug>/views/04-fulltext.html
-```
+**[`build-and-verify.md`](build-and-verify.md) を Read してから実行する**（fulltext 生成コマンド・`build` の引数と安全検査の仕組み・ヘッドレス Chrome での確認・`data-goto` の実在検証・更新モードで fail が出たときの導線の正本）。要点のみ:
 
-原本 Markdown を機械変換する。目次（クリックで該当セクションを展開してスクロール）、セクション単位の折りたたみ、「すべて開く / 閉じる」が付く。DDL・プロンプト本文・表・入れ子フェンス（```` で ``` を包む形）はすべて逐語で保持される。
-
-- **原本は一切変更しない。** 正本は常に `docs/plans/<slug>.md`。
-- 目次のジャンプは `href="#..."` ではなくスクロールで行う。`location.hash` はテーマ状態（`#theme=dark`）に使っているため。
-- 原本に含まれる URL は **スキームを除いた平文**になる（オフライン自己完結の制約）。この旨はビュー冒頭に明記される。
-
-### 7. 結合して安全検査する
-
-```bash
-python3 scripts/spec-html.py build \
-  --out docs/plans/_html/<slug>.html \
-  --title "<仕様書名> — 図解" \
-  --source docs/plans/<slug>.md \
-  --view "ステータスと次の一手=docs/plans/_html/<slug>/views/01-status.html" \
-  --view "設計判断=docs/plans/_html/<slug>/views/02-decisions.html" \
-  --view "クイズ=docs/plans/_html/<slug>/views/03-quiz.html" \
-  --view "全文=docs/plans/_html/<slug>/views/04-fulltext.html"
-```
-
-`build` は結合後に安全検査を自動実行し、違反があれば **exit 1** で落ちる。検査だけしたいときは `python3 scripts/spec-html.py check <path>`。
-
-`--source` を渡すと前節の**整合性チェックと前回比 diff** も走る（省略すると `core.yaml` の参照突合が行われず、ズレを検知できない。必ず渡すこと）。こちらは fail が出ても exit 1 にはならないので、**コンソール出力を必ず読む**。
-
-スクリプトがやること: 各ビューの `<style>` を連結、`<body>` を `.panel` として並べ、`<script>` の `document.querySelector` 系を自パネルのルートに差し替える（ビュー間で DOM 探索が衝突しないようにするため）。タブバーとテーマトグルはスクリプトが付与する。**ビューの中身は書き換えない。**
-
-安全検査は2段構え。マークアップとして書かれた時点で外部依存になるもの（外部スクリプト / 外部CSS / iframe / `http(s)://` 等）は**文書全体**、JS API（`localStorage` / `fetch` 等）は **`<script>` 本文と `on*` 属性だけ**を見る。全文ビューは仕様書の地の文に「localStorage に保持する」のような記述をそのまま含むが、テキストノードは何も実行しないため検査対象外。
-
-### 8. 動作を確認する
-
-```bash
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
-  --virtual-time-budget=3000 --dump-dom "file://$PWD/docs/plans/_html/<slug>.html" | \
-  grep -c 'class="panel"'
-```
-
-`<html data-theme=...>` が付いていれば JS が動いている。パネル数がビュー数と一致し、`hidden` が (ビュー数 - 1) 個あればタブ制御も動いている。
-
-`data-goto` を書いたら、**参照先 ID が実在するか**も確認する（存在しなくてもエラーは出ない）:
-
-```bash
-python3 - <<'PY'
-import re; from pathlib import Path
-t = Path("docs/plans/_html/<slug>.html").read_text()
-ids = set(re.findall(r'id="(ft-[\w-]+)"', t))
-print("dangling:", sorted({g for g in re.findall(r'data-goto="([^"]+)"', t) if g not in ids}))
-PY
-```
-
-### 更新モードで fail が出たとき
-
-`maintenance.md` の「更新モードで fail が出たときの手順」に従って `source_refs` を貼り直し、fail が消えるまで `build` を再実行する。
+- `04-fulltext.html` は `spec-html.py fulltext` で機械生成する。原本は一切変更しない
+- `build` には必ず `--source` を渡す（省略すると整合性チェックが走らずズレを検知できない）。fail は exit 1 にならないので**コンソール出力を必ず読む**
+- 結合後はヘッドレス Chrome でパネル数とタブ制御を確認し、`data-goto` の参照先 ID の実在を検証する
 
 ## やらないこと
 
