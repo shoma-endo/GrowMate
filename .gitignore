@@ -62,6 +62,8 @@ __pycache__/
 !.takt/workflows/**
 !.takt/facets/
 !.takt/facets/**
+!.takt/schemas/
+!.takt/schemas/**
 
 # local-only docs
 docs/PROJECT_OVERVIEW.md

@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "needs_fix",
+        "cannot_verify"
+      ],
+      "description": "pass=セルフレビュー合格 / needs_fix=修正が必要 / cannot_verify=検証不足または判断不能"
+    },
+    "reason": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    }
+  },
+  "required": [
+    "verdict",
+    "reason"
+  ],
+  "additionalProperties": false
+}

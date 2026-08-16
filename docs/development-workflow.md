@@ -55,7 +55,7 @@ workflow の最初の `grill` step は追加質問をせず、その指示書を
 
 成果物は `.takt/runs/<run>/reports/` に保存される。
 
-GrowMateのTAKT providerは全workflowの全stepに `provider: claude-sdk` を明示して統一している（headless CLI providerはtmux必須でハングするため。呼び出し方に依存させず、workflow yaml自体で固定する）。step間のレポート受け渡しは `{report:X}` プレースホルダ（本文をプロンプトへ全文注入。resume時はTAKTのsnapshotが引き継ぐ）で行い、エージェントはrunディレクトリのパスを一切必要としない。レポート保存はTAKTが行う。
+GrowMateのTAKT workflowは原則 `provider: claude-sdk` を使う。ただし、git commit / push / PR 操作を担当する `spec-review.finalize` と `spec-to-pr.create_pr` は `provider: cursor`、`model: gpt-5.6-luna-high` を使う。step間のレポート受け渡しは `{report:X}` プレースホルダ（本文をプロンプトへ全文注入。resume時はTAKTのsnapshotが引き継ぐ）で行い、エージェントはrunディレクトリのパスを一切必要としない。レポート保存はTAKTが行う。
 
 - `01-grill.md`: Grill Me の決定事項・未確定事項・Non-goals の記録
 - `02-gherkin.md`: Gherkin 形式の受け入れ条件
