@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Gauge, Target, Users } from 'lucide-react';
+import { Target, Users } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -45,22 +45,6 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-shadow flex flex-col">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Gauge className="h-5 w-5 text-amber-600" aria-hidden="true" />
-              <span>GA4コンテンツ評価の設定</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col">
-            <p className="text-gray-600 mb-4 flex-1">
-              コンテンツ力スコアの算出とAI講評の生成を停止・再開します
-            </p>
-            <Button asChild className="w-full">
-              <Link href="/admin/ga4-evaluation">GA4コンテンツ評価の設定へ</Link>
-            </Button>
-          </CardContent>
-        </Card>
 
       </div>
     </div>
