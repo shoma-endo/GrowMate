@@ -131,7 +131,7 @@ export default function GscDashboardClient({
           <ArrowLeft className="w-4 h-4 mr-1.5" />
           検索順位・コンテンツ評価に戻る
         </Link>
-        <h1 className="text-3xl font-bold">検索順位評価・コンテンツ評価</h1>
+        <h1 className="text-3xl font-bold">検索順位・コンテンツ評価</h1>
       </div>
 
       {/* エラー表示 */}
