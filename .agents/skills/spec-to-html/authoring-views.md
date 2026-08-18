@@ -57,6 +57,8 @@ JSON を `docs/plans/_html/<slug>/diagrams/<name>.json` に置き、ビューに
 
 `style` は `plain` / `key` / `warn` / `ok` / `okbg` / `ng` / `later` / `done`。共通キーは `title`（図の名前）/ `desc`（読み上げ用の説明）/ `caption`（読み取り）。
 
+**この4型が出力する CSS クラス（`n-box` / `n-t` / `n-s` / `n-m` / `e` / `e-t` / `hd-ok` / `hd-ng` / `ord` / `ord-bg` / `ah-*`）はビュー側で定義しない。** `build()` が `DIAGRAM_CSS`（`scripts/spec-html.py` 内）として毎回自動注入する。ビュー側で書く／書き忘れる／値がずれると、SVG が既定値（黒地に黒文字）で描画され、ダーク・ライト両方で文字が読めなくなる事故が過去に複数の仕様書バンドルで発生した。
+
 **各型が表せないもの**（ここに当たったら手書きに逃がす。無理に寄せると意味が壊れる）:
 
 | type | 表せないもの |

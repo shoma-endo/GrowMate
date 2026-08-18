@@ -639,6 +639,7 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
 <title>{_escape(title)}</title>
 <style>
 {nl.join(styles)}
+{DIAGRAM_CSS}
 {SHELL_CSS}
 </style>
 </head>
@@ -671,6 +672,7 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
     artifact = f"""<title>{_escape(title)}</title>
 <style>
 {nl.join(styles)}
+{DIAGRAM_CSS}
 {SHELL_CSS}
 </style>
 
@@ -1142,6 +1144,45 @@ _ACCENT = {"plain": "var(--muted)", "key": "var(--accent)", "warn": "var(--amber
            "later": "var(--grey)", "done": "var(--green)"}
 _EDGE_CLASS = {"plain": "e", "key": "e acc", "ok": "e grn", "okbg": "e grn",
                "ng": "e red", "warn": "e", "done": "e grn", "later": "e"}
+
+# CSS 契約: 上の3辞書が出力するクラス名の集合（n-box[.key/.warn/.ok/.ng/.okbg/.later/.done] /
+# n-t / n-s(.mut) / n-m(.mut) / e(.acc/.grn/.red) / e-t(.grn/.red/.acc) / hd-ok / hd-ng /
+# ord-bg / ord / ah-mut / ah-red / ah-grn / ah-acc）に対応するスタイルを必ずここで定義する。
+# 各ビューの <style> には書かせない（build() が結合するたびに毎回注入するので、
+# ビュー側で書き忘れる／書式がずれると、色指定が一切効かず SVG が既定値（黒地に黒文字）で
+# 描画され、テーマに関わらず文字が読めなくなる — 過去に複数の仕様書バンドルで実際に発生した）。
+DIAGRAM_CSS = """
+/* ===== 図版ジェネレータ（flow/compare/causemap/er）の CSS 契約 ===== */
+.n-box{fill:var(--card);stroke:var(--border);stroke-width:1.5}
+.n-box.key{fill:var(--blue-bg);stroke:var(--accent);stroke-width:2}
+.n-box.warn{stroke:var(--amber);stroke-width:2}
+.n-box.ok{stroke:var(--green);stroke-width:2}
+.n-box.okbg{fill:var(--green-bg);stroke:var(--green-bd);stroke-width:1.5}
+.n-box.ng{fill:var(--red-bg);stroke:var(--red-bd);stroke-width:1.5}
+.n-box.later{stroke:var(--grey);stroke-dasharray:5 4}
+.n-box.done{stroke:var(--green);stroke-width:2}
+.n-t{fill:var(--text);font-size:13px;font-weight:600}
+.n-s{fill:var(--muted);font-size:11.5px}
+.n-m{fill:var(--text);font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.n-m.mut{fill:var(--muted);font-size:11px}
+.e{stroke:var(--muted);stroke-width:1.6;fill:none;marker-end:url(#ah)}
+.e.red{stroke:var(--red);marker-end:url(#ah-red)}
+.e.grn{stroke:var(--green);marker-end:url(#ah-grn)}
+.e.acc{stroke:var(--accent);marker-end:url(#ah-acc)}
+.e-t{fill:var(--muted);font-size:11px}
+.e-t.red{fill:var(--red);font-weight:600}
+.e-t.grn{fill:var(--green)}
+.e-t.acc{fill:var(--accent);font-weight:600}
+.hd-ok{fill:var(--green);font-size:13px;font-weight:700}
+.hd-ng{fill:var(--red);font-size:13px;font-weight:700}
+.ord-bg{fill:var(--red-bg);stroke:var(--red-bd)}
+.ord{fill:var(--red);font-size:12px;font-weight:700}
+/* 矢じりは marker 内で currentColor が効かないため、CSS 変数で直接塗る */
+.ah-mut{fill:var(--muted)}
+.ah-red{fill:var(--red)}
+.ah-grn{fill:var(--green)}
+.ah-acc{fill:var(--accent)}
+"""
 
 
 def _svg(width: int, height: int, dg_id: str, title: str, desc: str, body: str) -> str:
