@@ -4,12 +4,13 @@ workflow_config:
   provider_options:
     codex:
       network_access: true
-  # run 開始前に Cursor CLI の認証を fail-fast 検査する（review / create_pr が
-  # provider: cursor のため）。global の prepare（pip/uv キャッシュ設定）を
-  # 置換するが、本リポジトリは pip を使わないので影響なし。
+  # run 開始前に Cursor / Codex CLI の認証を fail-fast 検査する（review /
+  # create_pr が cursor、coder 系・supervisor・内部エージェントが codex のため）。
+  # global の prepare（pip/uv キャッシュ設定）を置換するが、本リポジトリは
+  # pip を使わないので影響なし。
   runtime:
     prepare:
-      - .takt/scripts/check-cursor-auth.sh
+      - .takt/scripts/check-provider-auth.sh
 max_steps: 24
 initial_step: plan
 loop_monitors:
