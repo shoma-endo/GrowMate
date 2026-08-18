@@ -249,7 +249,7 @@ $$;
 revoke execute on function public.start_ga4_content_evaluation(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.start_ga4_content_evaluation(uuid, uuid) to service_role;
 revoke execute on function public.finish_ga4_content_evaluation(uuid, uuid, uuid, text, text, text, integer, numeric, numeric, numeric, integer, integer, integer, text, integer, integer, integer, integer, integer, integer, numeric, jsonb, jsonb, date, date, text, text, text, timestamptz, integer, text, uuid, uuid, integer, timestamptz, text) from public, anon, authenticated;
-grant execute on function public.finish_ga4_content_evaluation(uuid, uuid, uuid, text, text, text, integer, numeric, numeric, numeric, integer, integer, integer, text, integer, integer, integer, integer, integer, numeric, jsonb, jsonb, date, date, text, text, text, timestamptz, integer, text, uuid, uuid, integer, timestamptz, text) to service_role;
+grant execute on function public.finish_ga4_content_evaluation(uuid, uuid, uuid, text, text, text, integer, numeric, numeric, numeric, integer, integer, integer, text, integer, integer, integer, integer, integer, integer, numeric, jsonb, jsonb, date, date, text, text, text, timestamptz, integer, text, uuid, uuid, integer, timestamptz, text) to service_role;
 revoke execute on function public.update_ga4_content_evaluation_attempt(uuid, uuid, uuid, integer) from public, anon, authenticated;
 grant execute on function public.update_ga4_content_evaluation_attempt(uuid, uuid, uuid, integer) to service_role;
 revoke execute on function public.cancel_ga4_content_evaluation(uuid, uuid, uuid) from public, anon, authenticated;
