@@ -178,11 +178,11 @@ steps:
         cwd: .
         timeout_ms: 900000
     rules:
-      - condition: 実装と必須検証が完了した
+      - condition: 実装と必須検証が完了した（必須検証＝quality_gates の `npm run verify` 成功。マイグレーションのリモート適用・実DB/RLS実環境・外部API/LLM実通信・ブラウザ表示確認は無人運用の検証対象外であり、未実施はこの条件の選択を妨げない。レポートの未確認範囲に記載して先へ進む）
         next: ai_antipattern_review
       - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
         next: plan
-      - condition: 判断できない、情報不足（仕様書の修正が必要）
+      - condition: 判断できない、情報不足（仕様書の修正が必要。無人運用で実施不能な検証〔実DB・実API・ブラウザ・マイグレーション適用〕の未実施だけを理由にこの条件を選ばない）
         next: ABORT
     output_contracts:
       report:
@@ -257,6 +257,10 @@ steps:
       - review
     edit: false
     persona: architecture-reviewer
+    # 一時ピン（2026-08-18）: Cursor が resource_exhausted で連続死したため claude-sdk へ退避。
+    # クォータ回復後にこの2行を削除して runtime routing（cursor-grok）へ戻す。
+    provider: claude-sdk
+    model: claude-sonnet-4-6
     knowledge:
       - architecture
       - growmate
