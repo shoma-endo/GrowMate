@@ -205,7 +205,9 @@ async function updateContentCache(
     return;
   }
   const client = supabase.getClient();
-  await client
+  // 本文キャッシュの書き込みは best-effort。失敗しても取得済みの本文は返すが、
+  // Supabase の error は reject されないため明示的に拾ってログする。
+  const { error } = await client
     .from('content_annotations')
     .update({
       wp_content_text: fields.contentText,
@@ -216,6 +218,15 @@ async function updateContentCache(
     })
     .eq('user_id', userId)
     .eq('wp_post_id', wpPostId);
+
+  if (error) {
+    console.error('[WordPressContentSync] updateContentCache failed', {
+      userId,
+      wpPostId,
+      code: error.code,
+      message: error.message,
+    });
+  }
 }
 
 export async function fetchWpPostContentWithCache(params: {

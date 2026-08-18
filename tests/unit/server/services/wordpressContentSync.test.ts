@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   update: vi.fn(),
   eq: vi.fn(),
+  updateError: vi.fn(() => null as unknown),
 }));
 
 vi.mock('@/server/services/supabaseService', () => ({
@@ -17,9 +18,12 @@ vi.mock('@/server/services/supabaseService', () => ({
     refreshWpComToken = mocks.refreshWpComToken;
 
     getClient() {
+      // 終端の eq() は PostgREST と同じく { data, error } に解決する thenable を返す。
       const query = {
         update: mocks.update,
         eq: mocks.eq,
+        then: (resolve: (value: { data: null; error: unknown }) => unknown) =>
+          Promise.resolve({ data: null, error: mocks.updateError() }).then(resolve),
       };
       mocks.update.mockReturnValue(query);
       mocks.eq.mockReturnValue(query);
@@ -39,6 +43,7 @@ import { fetchWpPostContentLive } from '@/server/services/wordpressContentSync';
 describe('fetchWpPostContentLive', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.updateError.mockReturnValue(null);
     mocks.getWordPressSettingsByUserId.mockResolvedValue({
       wpType: 'self_hosted',
       wpSiteUrl: 'https://example.com',
@@ -134,5 +139,28 @@ describe('fetchWpPostContentLive', () => {
     });
 
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('キャッシュ更新が失敗してもログを残したうえで取得済み本文を返す', async () => {
+    mocks.updateError.mockReturnValue({
+      code: '42703',
+      message: 'column "wp_image_count" does not exist',
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const result = await fetchWpPostContentLive({
+      userId: 'user-id',
+      wpPostId: 42,
+      canonicalUrl: 'https://example.com/sample-post/',
+      getCookie: () => undefined,
+    });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      '[WordPressContentSync] updateContentCache failed',
+      expect.objectContaining({ userId: 'user-id', wpPostId: 42, code: '42703' })
+    );
+    expect(result?.contentText).toBe('見出し  記事本文');
+
+    consoleError.mockRestore();
   });
 });
