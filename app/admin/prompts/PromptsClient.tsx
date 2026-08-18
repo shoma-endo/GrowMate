@@ -59,7 +59,7 @@ const PROMPT_CATEGORIES: Array<{
   },
   {
     id: 'ga4',
-    label: 'コンテンツ評価',
+    label: 'GA4コンテンツ評価',
     filter: template => template.name.startsWith('ga4_'),
   },
   {

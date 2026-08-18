@@ -33,14 +33,14 @@ export default function Ga4EvaluationSettingsClient({
       }
       setEnabled(next);
       setUpdatedAt(new Date().toISOString());
-      toast.success(next ? 'コンテンツ評価を有効にしました' : 'コンテンツ評価を無効にしました');
+      toast.success(next ? 'GA4コンテンツ評価を有効にしました' : 'GA4コンテンツ評価を無効にしました');
     });
   };
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">コンテンツ評価の設定</h1>
+        <h1 className="text-3xl font-bold text-gray-900">GA4コンテンツ評価の設定</h1>
       </div>
 
       {initialError ? (
@@ -52,7 +52,7 @@ export default function Ga4EvaluationSettingsClient({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-3">
-            <span>コンテンツ評価</span>
+            <span>GA4コンテンツ評価</span>
             <span
               className={`rounded-full px-3 py-1 text-sm font-medium ${
                 enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -82,7 +82,7 @@ export default function Ga4EvaluationSettingsClient({
             onClick={handleToggle}
             disabled={isPending}
             variant={enabled ? 'destructive' : 'default'}
-            aria-label={enabled ? 'コンテンツ評価を無効にする' : 'コンテンツ評価を有効にする'}
+            aria-label={enabled ? 'GA4コンテンツ評価を無効にする' : 'GA4コンテンツ評価を有効にする'}
           >
             {isPending ? '更新中...' : enabled ? '無効にする' : '有効にする'}
           </Button>
