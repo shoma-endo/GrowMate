@@ -6,11 +6,13 @@ workflow_config:
       network_access: true
   # run 開始前に Cursor / Codex CLI の認証を fail-fast 検査する（review /
   # create_pr が cursor、coder 系・supervisor・内部エージェントが codex のため）。
+  # スクリプトは ai-os（~/.takt/scripts/）で共通管理。絶対パスなのは
+  # resolvePrepareScript が ~ 非展開・相対パスは cwd 基準のため。
   # global の prepare（pip/uv キャッシュ設定）を置換するが、本リポジトリは
   # pip を使わないので影響なし。
   runtime:
     prepare:
-      - .takt/scripts/check-provider-auth.sh
+      - /Users/shoma.endo/.takt/scripts/check-provider-auth.sh
 max_steps: 24
 initial_step: plan
 loop_monitors:

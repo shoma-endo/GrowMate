@@ -27,7 +27,3 @@
 # Structured output schemas (version-controlled)
 !schemas/
 !schemas/**
-
-# Runtime prepare scripts (version-controlled)
-!scripts/
-!scripts/**
