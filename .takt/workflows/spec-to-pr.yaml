@@ -8,23 +8,7 @@ max_steps: 24
 initial_step: plan
 loop_monitors:
   - cycle:
-      - ai_antipattern_review
-      - ai_antipattern_fix
-    threshold: 3
-    judge:
-      persona: supervisor
-      knowledge:
-        - growmate
-      instruction: loop-monitor-reviewers-fix
-      rules:
-        - condition: 収束済み（残件が AI 特有問題ではない、または architecture review に委譲可能）
-          next: review
-        - condition: 健全（進捗あり）
-          next: ai_antipattern_review
-        - condition: 非生産的（同じ指摘の反復・修正未反映）
-          next: ABORT
-  - cycle:
-      - review
+      - reviewers
       - fix
     threshold: 3
     judge:
@@ -32,9 +16,12 @@ loop_monitors:
       knowledge:
         - growmate
       instruction: |
-        review -> fix のループが {cycle_count} 回繰り返されました。
-        下記に全文添付された最新のレビューと修正結果を確認し、収束しているか判断してください。run ディレクトリやレポートパスの探索はしないでください。
+        reviewers（AIアンチパターン＋アーキテクチャの並列レビュー） -> fix のループが {cycle_count} 回繰り返されました。
+        下記に全文添付された最新のレビュー2本と修正結果を確認し、収束しているか判断してください。run ディレクトリやレポートパスの探索はしないでください。
         残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として readme_sync を経て self_review に進めてください。
+
+        ## ai-antipattern-review.md（最新・全文）
+        {report:ai-antipattern-review.md}
 
         ## architecture-review.md（最新・全文）
         {report:architecture-review.md}
@@ -45,7 +32,7 @@ loop_monitors:
         - condition: 収束済み（残件が追加修正で解消不能な方針差分のみ）
           next: readme_sync
         - condition: 健全（進捗あり）
-          next: review
+          next: reviewers
         - condition: 非生産的（同じ指摘の反復・修正未反映）
           next: ABORT
   - cycle:
@@ -175,7 +162,7 @@ steps:
         timeout_ms: 900000
     rules:
       - condition: 実装と必須検証が完了した（必須検証＝quality_gates の `npm run verify` 成功。マイグレーションのリモート適用・実DB/RLS実環境・外部API/LLM実通信・ブラウザ表示確認は無人運用の検証対象外であり、未実施はこの条件の選択を妨げない。レポートの未確認範囲に記載して先へ進む）
-        next: ai_antipattern_review
+        next: reviewers
       - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
         next: plan
       - condition: 判断できない、情報不足（仕様書の修正が必要。無人運用で実施不能な検証〔実DB・実API・ブラウザ・マイグレーション適用〕の未実施だけを理由にこの条件を選ばない）
@@ -188,105 +175,73 @@ steps:
           format: coder-decisions
         - name: implement-report.md
           format: implementation-report
-  - name: ai_antipattern_review
-    tags:
-      - review
-    edit: false
-    persona: ai-antipattern-reviewer
-    policy:
-      - review
-      - ai-antipattern
-    knowledge:
-      - growmate
-    capabilities: readonly
-    instruction: ai-antipattern-review
-    structured_output:
-      schema_ref: ai_antipattern_review
+  # レビュー2系統（AIアンチパターン / アーキテクチャ）を並列実行する。
+  # どちらも read-only で作業ツリーを変更しないため同時実行できる。指摘の修正は fix 1本に統合。
+  - name: reviewers
+    parallel:
+      - name: ai_antipattern_review
+        session_key: ai-antipattern-review
+        tags:
+          - review
+        edit: false
+        persona: ai-antipattern-reviewer
+        policy:
+          - review
+          - ai-antipattern
+        knowledge:
+          - growmate
+        capabilities: readonly
+        instruction: ai-antipattern-review
+        rules:
+          - condition: approved
+          - condition: needs_fix
+        output_contracts:
+          report:
+            - name: ai-antipattern-review.md
+              format: ai-antipattern-review
+      - name: review
+        session_key: architecture-review
+        tags:
+          - review
+        edit: false
+        persona: architecture-reviewer
+        # 一時ピン（2026-08-18）: Cursor が resource_exhausted で連続死したため claude-sdk へ退避。
+        # クォータ回復後にこの2行を削除して runtime routing（cursor-grok）へ戻す。
+        provider: claude-sdk
+        model: claude-sonnet-4-6
+        knowledge:
+          - architecture
+          - growmate
+        capabilities: readonly
+        rules:
+          - condition: approved
+          - condition: needs_fix
+        output_contracts:
+          report:
+            - name: architecture-review.md
+              format: architecture-review
+        instruction: |
+          `review-arch` 相当の観点で、アーキテクチャ、責務分離、データ境界、セキュリティ、仕様充足、既存パターンとの整合性をレビューしてください。
+
+          GrowMate 固有条件:
+          - 変更差分が対象仕様書と `plan.md` の対象範囲内か確認する。要件にない画面・UI・機能・改善、ついで修正、将来対応が混入している場合は `needs_fix` とする。
+          - 自動テスト対象の変更では、仕様書または `plan.md` に定義したVitestケースが追加・更新され、`npm run test` が成功していることを確認する。対象外の変更にテスト不在を理由として `needs_fix` にしない。
+          - `plan.md` に spec-review で残置合意された指摘が転記されている場合、**その論点を再指摘して `needs_fix` にしない**（仕様書レビュー段階で理由付きの残置が合意済みのため）。実装が仕様書の記述どおりかだけを見る。
+          - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
+          - 簡易・形式的・低価値なユニットテストの追加を要求しない。
+          - 代替検証として `npm run verify` が実行されているかを確認する。
+          - ブラウザ手動確認は無人運用では実施しない。未実施のみを理由に `needs_fix` にせず、未確認事項へ回す前提とする。
+          - UI変更がある場合は `.agents/skills/growmate-ui-ux/SKILL.md` を正本として、対象差分が既存の同種画面・`src/components/ui/`・`app/globals.css` から逸脱していないことを確認する。要件にないUI刷新や新しいデザインパターンの追加は `needs_fix` とする。
+          - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターンは、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、キャスト自体を理由に `needs_fix` にしない。
+          - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
+
+          ## plan.md（全文）
+          {report:plan.md}
     rules:
-      - condition: when(structured.ai_antipattern_review.verdict == "clean")
-        next: review
-      - condition: when(structured.ai_antipattern_review.verdict == "findings_detected")
-        next: ai_antipattern_fix
-    output_contracts:
-      report:
-        - name: ai-antipattern-review.md
-          format: ai-antipattern-review
-
-  - name: ai_antipattern_fix
-    tags:
-      - coding
-      - implementation
-    edit: true
-    persona: coder
-    policy:
-      - coding
-    knowledge:
-      - growmate
-    provider_options:
-      extends: edit
-    required_permission_mode: edit
-    pass_previous_response: false
-    instruction: ai-antipattern-fix
-    quality_gates:
-      - type: command
-        name: npm-verify
-        command: npm run verify
-        cwd: .
-        timeout_ms: 900000
-    structured_output:
-      schema_ref: ai_antipattern_fix
-    rules:
-      - condition: when(structured.ai_antipattern_fix.verdict == "fixed")
-        next: ai_antipattern_review
-      - condition: when(structured.ai_antipattern_fix.verdict == "no_fix_needed")
-        next: review
-      - condition: when(structured.ai_antipattern_fix.verdict == "stuck")
-        next: ABORT
-    output_contracts:
-      report:
-        - name: ai-antipattern-fix-report.md
-          format: implementation-report
-
-  - name: review
-    tags:
-      - review
-    edit: false
-    persona: architecture-reviewer
-    # 一時ピン（2026-08-18）: Cursor が resource_exhausted で連続死したため claude-sdk へ退避。
-    # クォータ回復後にこの2行を削除して runtime routing（cursor-grok）へ戻す。
-    provider: claude-sdk
-    model: claude-sonnet-4-6
-    knowledge:
-      - architecture
-      - growmate
-    instruction: |
-      `review-arch` 相当の観点で、アーキテクチャ、責務分離、データ境界、セキュリティ、仕様充足、既存パターンとの整合性をレビューしてください。
-
-      GrowMate 固有条件:
-      - 変更差分が対象仕様書と `plan.md` の対象範囲内か確認する。要件にない画面・UI・機能・改善、ついで修正、将来対応が混入している場合は `needs_fix` とする。
-      - 自動テスト対象の変更では、仕様書または `plan.md` に定義したVitestケースが追加・更新され、`npm run test` が成功していることを確認する。対象外の変更にテスト不在を理由として `needs_fix` にしない。
-      - `plan.md` に spec-review で残置合意された指摘が転記されている場合、**その論点を再指摘して `needs_fix` にしない**（仕様書レビュー段階で理由付きの残置が合意済みのため）。実装が仕様書の記述どおりかだけを見る。
-      - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
-      - 簡易・形式的・低価値なユニットテストの追加を要求しない。
-      - 代替検証として `npm run verify` が実行されているかを確認する。
-      - ブラウザ手動確認は無人運用では実施しない。未実施のみを理由に `needs_fix` にせず、未確認事項へ回す前提とする。
-      - UI変更がある場合は `.agents/skills/growmate-ui-ux/SKILL.md` を正本として、対象差分が既存の同種画面・`src/components/ui/`・`app/globals.css` から逸脱していないことを確認する。要件にないUI刷新や新しいデザインパターンの追加は `needs_fix` とする。
-      - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターンは、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、キャスト自体を理由に `needs_fix` にしない。
-      - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
-
-      ## plan.md（全文）
-      {report:plan.md}
-    structured_output:
-      schema_ref: review
-    rules:
-      - condition: when(structured.review.verdict == "approved")
+      - condition: all("approved")
         next: readme_sync
-      - condition: when(structured.review.verdict == "needs_fix")
+      - condition: any("needs_fix")
         next: fix
-    output_contracts:
-      report:
-        - name: architecture-review.md
-          format: architecture-review
 
   - name: fix
     tags:
@@ -303,17 +258,20 @@ steps:
     required_permission_mode: edit
     pass_previous_response: false
     instruction: |
-      下記に全文添付された `architecture-review.md` を一次情報として、未解決の指摘だけを修正してください。実装規約の正本は implement ステップと同じ `.agents/skills/`（`implementation-guidelines` / `nextjs-server` / `growmate-ui-ux` / `react` / `supabase`）。
+      下記に全文添付されたレビュー2本（`ai-antipattern-review.md` / `architecture-review.md`）を一次情報として、未解決の指摘だけをまとめて修正してください。実装規約の正本は implement ステップと同じ `.agents/skills/`（`implementation-guidelines` / `nextjs-server` / `growmate-ui-ux` / `react` / `supabase`）。
 
       必須条件:
       - 修正着手前に対象仕様書の現行版を確認し、レビュー指摘の範囲を超える仕様変更がないか確認する。
-      - architecture-reviewer の未解決指摘は、指摘対象コードを直接修正する。
+      - 両レビュアーの未解決指摘は、指摘対象コードを直接修正する。approved 側のレポートに指摘が無ければそのレビュー系統の修正は不要。
       - 修正対象が git hygiene / 不要ファイル混入 / レポート不足 / 検証証跡不足だけの場合は、その対象だけを直す。
-      - テストやドキュメント追加だけで architecture-reviewer の指摘を回避しない。
+      - テストやドキュメント追加だけでレビュー指摘を回避しない。
       - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
       - 同種の潜在箇所がある場合は同時に修正する。
       - プロダクションコードを変更した場合は `npm run verify` を再実行する。
       - ここでは commit / push を行わない。最終ステップでまとめて実施する。
+
+      ## ai-antipattern-review.md（全文）
+      {report:ai-antipattern-review.md}
 
       ## architecture-review.md（全文）
       {report:architecture-review.md}
@@ -327,7 +285,7 @@ steps:
       schema_ref: fix
     rules:
       - condition: when(structured.fix.verdict == "fixed")
-        next: review
+        next: reviewers
       - condition: when(structured.fix.verdict == "info_missing")
         next: plan
       - condition: when(structured.fix.verdict == "spec_changed")
@@ -384,7 +342,7 @@ steps:
       - condition: when(structured.self_review_fix.verdict == "fixed")
         next: readme_sync
       - condition: when(structured.self_review_fix.verdict == "arch_impact")
-        next: review
+        next: reviewers
       - condition: when(structured.self_review_fix.verdict == "info_missing")
         next: plan
       - condition: when(structured.self_review_fix.verdict == "stuck")
