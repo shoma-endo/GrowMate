@@ -525,7 +525,7 @@ steps:
         4. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
         5. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く
         6. `## 検証` — `npm run verify` 等の結果（手動ブラウザ確認は無人のため未実施が既定）
-        7. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める。`src/types/database.types.pending.ts` を追加している場合は「管理者によるマイグレーション適用・`npm run supabase:types` 実行・pendingファイル削除が必要」を含める。その他あれば列挙。なければ「なし」
+        7. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める。`src/types/database.types.pending.ts` を追加している場合は「管理者によるマイグレーション適用・`npm run supabase:types` 実行・pendingファイル削除が必要」を含める。添付レポート間に食い違いがある場合は、その内容を含める（新規セクションは作らない）。その他あれば列挙。なければ「なし」
         8. `## コミットメッセージ案` — 日本語1行
       - 変更ファイルの詳細表は作らない。
 
