@@ -47,7 +47,7 @@ steps:
     knowledge:
       - growmate
     capabilities: readonly
-    instruction: spec-review-identify
+    instruction: spec-review/identify
     rules:
       - condition: 対象仕様書と適用観点を確定した
         next: audit
@@ -73,7 +73,7 @@ steps:
     knowledge:
       - growmate
     capabilities: readonly
-    instruction: spec-review-audit
+    instruction: spec-review/audit
     structured_output:
       schema_ref: audit
     rules:
@@ -105,7 +105,7 @@ steps:
       extends: edit
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: spec-review-revise
+    instruction: spec-review/revise
     rules:
       - condition: 指摘を修正した
         next: audit
@@ -126,7 +126,7 @@ steps:
     provider_options:
       extends: edit
     required_permission_mode: edit
-    instruction: spec-review-visualize
+    instruction: spec-review/visualize
     rules:
       - condition: 図解を更新した、または対象外としてスキップした
         next: finalize
@@ -149,7 +149,7 @@ steps:
       - growmate
     required_permission_mode: edit
     allow_git_commit: true
-    instruction: spec-review-finalize
+    instruction: spec-review/finalize
     rules:
       - condition: レビュー確定（commit 完了、または変更なしで完了）
         next: COMPLETE

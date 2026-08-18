@@ -76,7 +76,7 @@ steps:
       - architecture
       - growmate
     capabilities: readonly
-    instruction: spec-to-pr-plan
+    instruction: spec-to-pr/plan
     rules:
       - condition: 要件が明確で実装可能、かつ spec-review が対象スコープの未解決事項なしで approved（新規または既存 WIP/PR への差分追記を含む。未適用マイグレーションへの対応は Pending Migration Types パターンで実装可能なため「明確」に含む）
         next: implement
@@ -108,7 +108,7 @@ steps:
     provider_options:
       extends: edit
     required_permission_mode: edit
-    instruction: spec-to-pr-implement
+    instruction: spec-to-pr/implement
     quality_gates:
       - type: command
         name: npm-verify
@@ -175,7 +175,7 @@ steps:
           report:
             - name: architecture-review.md
               format: architecture-review
-        instruction: spec-to-pr-architecture-review
+        instruction: spec-to-pr/architecture-review
     rules:
       - condition: all("approved")
         next: readme_sync
@@ -196,7 +196,7 @@ steps:
       extends: edit
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: spec-to-pr-fix
+    instruction: spec-to-pr/fix
     quality_gates:
       - type: command
         name: npm-verify
@@ -235,7 +235,7 @@ steps:
       extends: edit
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: spec-to-pr-self-review-fix
+    instruction: spec-to-pr/self-review-fix
     quality_gates:
       - type: command
         name: npm-verify
@@ -273,7 +273,7 @@ steps:
     provider_options:
       extends: edit
     required_permission_mode: edit
-    instruction: spec-to-pr-readme-sync
+    instruction: spec-to-pr/readme-sync
     structured_output:
       schema_ref: readme_sync
     rules:
@@ -294,7 +294,7 @@ steps:
     knowledge:
       - growmate
     capabilities: readonly
-    instruction: spec-to-pr-self-review
+    instruction: spec-to-pr/self-review
     structured_output:
       schema_ref: self_review
     rules:
@@ -316,7 +316,7 @@ steps:
     knowledge:
       - growmate
     capabilities: readonly
-    instruction: spec-to-pr-pr-summary
+    instruction: spec-to-pr/pr-summary
     rules:
       - condition: PR 本文正本（pr-summary.md）が完了した
         next: create_pr
@@ -338,7 +338,7 @@ steps:
       - growmate
     required_permission_mode: edit
     allow_git_commit: true
-    instruction: spec-to-pr-create-pr
+    instruction: spec-to-pr/create-pr
     rules:
       - condition: コミット・push・PR 作成または更新が完了した（create 失敗後の re-list → edit 成功、既存 PR 追記を含む）
         next: COMPLETE

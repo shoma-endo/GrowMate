@@ -27,11 +27,11 @@ steps:
           - Read
           - Glob
           - Grep
-    instruction: grill-to-gherkin-grill
+    instruction: grill-to-gherkin/grill
     output_contracts:
       report:
         - name: 01-grill.md
-          format: grill-result
+          format: grill-to-gherkin/result
           use_judge: false
     rules:
       - condition: 要件が明確になり、Gherkin化可能
@@ -59,11 +59,11 @@ steps:
           - Read
           - Glob
           - Grep
-    instruction: grill-to-gherkin-gherkin
+    instruction: grill-to-gherkin/gherkin
     output_contracts:
       report:
         - name: 02-gherkin.md
-          format: grill-gherkin
+          format: grill-to-gherkin/gherkin
           use_judge: false
     rules:
       - condition: 追加確認が必要
@@ -95,11 +95,11 @@ steps:
           - Read
           - Glob
           - Grep
-    instruction: grill-to-gherkin-confirm
+    instruction: grill-to-gherkin/confirm
     output_contracts:
       report:
         - name: 03-confirmation.md
-          format: grill-confirmation
+          format: grill-to-gherkin/confirmation
           use_judge: false
     rules:
       - condition: ユーザー承認済み
@@ -140,11 +140,11 @@ steps:
           - Read
           - Glob
           - Grep
-    instruction: grill-to-gherkin-rough-estimate
+    instruction: grill-to-gherkin/rough-estimate
     output_contracts:
       report:
         - name: 05-rough-estimate.md
-          format: grill-rough-estimate
+          format: grill-to-gherkin/rough-estimate
           use_judge: false
     rules:
       - condition: 概算工数を作成
@@ -170,11 +170,11 @@ steps:
           - Read
           - Glob
           - Grep
-    instruction: grill-to-gherkin-estimate-confirm
+    instruction: grill-to-gherkin/estimate-confirm
     output_contracts:
       report:
         - name: 06-estimate-confirmation.md
-          format: grill-estimate-confirmation
+          format: grill-to-gherkin/estimate-confirmation
           use_judge: false
     rules:
       - condition: 着手承認
@@ -210,11 +210,11 @@ steps:
           - Read
           - Glob
           - Grep
-    instruction: grill-to-gherkin-handoff
+    instruction: grill-to-gherkin/handoff
     output_contracts:
       report:
         - name: 04-handoff.md
-          format: grill-handoff
+          format: grill-to-gherkin/handoff
           use_judge: false
     rules:
       - condition: 引き継ぎ情報を作成
