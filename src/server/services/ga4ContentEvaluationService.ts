@@ -219,6 +219,45 @@ class Ga4ContentEvaluationService extends SupabaseService {
     }
   }
 
+  /** 管理画面向け。Kill Switch の現在値と最終更新情報を返す。 */
+  async getEvaluationSettings(): Promise<{
+    enabled: boolean;
+    updatedAt: string | null;
+    updatedBy: string | null;
+  }> {
+    return this.withEvaluationClient(async client => {
+      const { data, error } = await client
+        .from('ga4_content_evaluation_settings')
+        .select('enabled, updated_at, updated_by')
+        .eq('id', 1)
+        .maybeSingle();
+      if (error) throw error;
+      return {
+        enabled: data?.enabled === true,
+        updatedAt: data?.updated_at ?? null,
+        updatedBy: data?.updated_by ?? null,
+      };
+    });
+  }
+
+  /** 管理画面向け。Kill Switch を切り替える。行が無ければ作成する。 */
+  async setEvaluationEnabled(enabled: boolean, updatedBy: string): Promise<void> {
+    await this.withEvaluationClient(async client => {
+      const { error } = await client
+        .from('ga4_content_evaluation_settings')
+        .upsert(
+          {
+            id: 1,
+            enabled,
+            updated_by: updatedBy,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+      if (error) throw error;
+    });
+  }
+
   private async resolveInitialDisplayStatus(
     userId: string,
     annotationId: string,

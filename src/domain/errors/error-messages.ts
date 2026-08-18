@@ -611,6 +611,12 @@ export const ERROR_MESSAGES = {
     EVALUATION_FETCH_FAILED: 'GA4コンテンツ評価の取得に失敗しました',
     EVALUATION_RUN_FAILED: 'GA4コンテンツ評価の実行に失敗しました',
     MEDIA_SCORE_FETCH_FAILED: 'GA4メディア全体スコアの取得に失敗しました',
+
+    /** コンテンツ評価の有効/無効設定の取得に失敗した場合 */
+    EVALUATION_SETTINGS_FETCH_FAILED: 'コンテンツ評価の設定取得に失敗しました',
+
+    /** コンテンツ評価の有効/無効設定の保存に失敗した場合 */
+    EVALUATION_SETTINGS_SAVE_FAILED: 'コンテンツ評価の設定保存に失敗しました',
   },
 
   /**
