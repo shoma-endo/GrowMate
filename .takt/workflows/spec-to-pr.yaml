@@ -4,27 +4,20 @@ workflow_config:
   provider_options:
     codex:
       network_access: true
+  # run 開始前に Cursor / Codex CLI の認証を fail-fast 検査する（review /
+  # create_pr が cursor、coder 系・supervisor・内部エージェントが codex のため）。
+  # スクリプトは ai-os（~/.takt/scripts/）で共通管理。絶対パスなのは
+  # resolvePrepareScript が ~ 非展開・相対パスは cwd 基準のため。
+  # global の prepare（pip/uv キャッシュ設定）を置換するが、本リポジトリは
+  # pip を使わないので影響なし。
+  runtime:
+    prepare:
+      - /Users/shoma.endo/.takt/scripts/check-provider-auth.sh
 max_steps: 24
 initial_step: plan
 loop_monitors:
   - cycle:
-      - ai_antipattern_review
-      - ai_antipattern_fix
-    threshold: 3
-    judge:
-      persona: supervisor
-      knowledge:
-        - growmate
-      instruction: loop-monitor-reviewers-fix
-      rules:
-        - condition: 収束済み（残件が AI 特有問題ではない、または architecture review に委譲可能）
-          next: review
-        - condition: 健全（進捗あり）
-          next: ai_antipattern_review
-        - condition: 非生産的（同じ指摘の反復・修正未反映）
-          next: ABORT
-  - cycle:
-      - review
+      - reviewers
       - fix
     threshold: 3
     judge:
@@ -32,9 +25,12 @@ loop_monitors:
       knowledge:
         - growmate
       instruction: |
-        review -> fix のループが {cycle_count} 回繰り返されました。
-        下記に全文添付された最新のレビューと修正結果を確認し、収束しているか判断してください。run ディレクトリやレポートパスの探索はしないでください。
+        reviewers（AIアンチパターン＋アーキテクチャの並列レビュー） -> fix のループが {cycle_count} 回繰り返されました。
+        下記に全文添付された最新のレビュー2本と修正結果を確認し、収束しているか判断してください。run ディレクトリやレポートパスの探索はしないでください。
         残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として readme_sync を経て self_review に進めてください。
+
+        ## ai-antipattern-review.md（最新・全文）
+        {report:ai-antipattern-review.md}
 
         ## architecture-review.md（最新・全文）
         {report:architecture-review.md}
@@ -45,7 +41,7 @@ loop_monitors:
         - condition: 収束済み（残件が追加修正で解消不能な方針差分のみ）
           next: readme_sync
         - condition: 健全（進捗あり）
-          next: review
+          next: reviewers
         - condition: 非生産的（同じ指摘の反復・修正未反映）
           next: ABORT
   - cycle:
@@ -89,32 +85,7 @@ steps:
       - architecture
       - growmate
     capabilities: readonly
-    instruction: |
-      `docs/plans/` の仕様書を起点に、GrowMate の実装計画を作成してください。
-
-      運用前提（無人）:
-      - 人間の介在点は `docs/plans/` の仕様確定のみ。実装中に人間へ質問しない。
-      - `spec-review` が対象スコープの未解決質問・実装判断・外部入力・承認ゲートなしで approved 完了していることが実装開始の前提。仕様不足・曖昧さ・未回答事項がある場合は実装に進まず ABORT し、人間が仕様書を直して `spec-review` から再実行する前提の確認事項を残す。
-
-      必須手順:
-      1. ユーザー指示から対象仕様書を特定する。曖昧な場合は `docs/plans/` を列挙し、候補を示して ABORT する。
-      2. 対象仕様書、`AGENTS.md`、`.takt/facets/knowledge/growmate.md`、`.agents/skills/implementation-guidelines/SKILL.md` を読む。
-      3. Server Actions / Route Handlers / Zod / エラー処理が関わる場合は `.agents/skills/nextjs-server/SKILL.md` を読む。
-      4. UI 実装が関わる場合は `.agents/skills/growmate-ui-ux/SKILL.md` と `.agents/skills/react/SKILL.md` を読む。
-      5. Supabase / migration / RLS / Service Role が関わる場合は `.agents/skills/supabase/SKILL.md` を読む。
-      6. 再実行 / 途中再開の現状を確認する（新規一発前提で計画しない）:
-         - 現在ブランチ、`git status`、未コミット差分の有無。
-         - 対象仕様に対応しそうな既存リモートブランチ（`feature/*` / `fix/*`）と、その open PR（`gh pr list`）。
-         - 既存 WIP / 既存 PR がある場合は「差分追記」計画にし、ゼロからの作り直しを避ける。前回までの経緯は既存ブランチの差分・PR 本文・対象仕様書から把握する（`.takt/runs/` 配下は探索しない）。
-      7. 仕様要件と現行コード（および既存 WIP）の差分、変更対象、検証方法、PR本文に記載すべき関連仕様書を整理する。仕様書の対象範囲と Non-goals から実装許可範囲を定義し、対象外の画面・UI・機能・改善を `plan.md` に含めない。
-         - 純粋関数、境界値・分岐の多いロジック、正規化・集計・日付処理、分離済みZodスキーマ、既知バグの回帰に関わる場合は `docs/specs/testing-strategy.md` を読み、追加・更新するVitestケースと期待結果を計画に含める。
-         - UIコンポーネント、外部API、Supabase / RLS / RPC、LLM出力そのものは同戦略の自動テスト対象外として扱い、仕様書または手動確認へ振り分ける。
-      8. 対象仕様書内の spec-review 反映内容を取り込む（spec-review workflow はレビュー結果を仕様書本体の「レビュー記録」「未確定事項（クライアント確認中）」セクションに記録する。`.takt/runs/` 配下は探索しない）:
-         - これらのセクションが無い場合はブロックしないが、計画レポートに「spec-review 記録なし」と明記する。
-         - 記録がある場合、**理由付きで残置合意された指摘（approved の 🟡 残置）を `plan.md` に転記する**。後段の `review` が同じ論点を再指摘して review -> fix ループを空回りさせないため。`approved_with_questions` はレビュー未完了なので、対象スコープの未解決質問・実装判断・外部入力・承認ゲートがあれば ABORT する。
-         - 仕様書に「公式ドキュメント照合: 未実施」と記録されている場合、その旨を `plan.md` に明記する（実装時に前提が未検証であることを PR の未確認事項へ回すため）。
-      9. 検証ゲートは `npm run verify` と TAKT 内レビューとする。ブラウザ手動確認は無人実行では実施しない（PR の未確認事項に記載する前提）。
-      10. 仕様が新規マイグレーション（新規テーブル・新規列）を要求し、それがまだリモートDBに未適用（`database.types.ts` に反映されていない）場合、これ単体は ABORT 理由にしない。`.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターン（`src/types/database.types.pending.ts` + `asPendingClient()`）を計画に含め、最後まで実装する前提で進める。リモートへの適用と `npm run supabase:types` は管理者が本PRマージ後に行う運用とし、完了条件にしない。
+    instruction: spec-to-pr/plan
     rules:
       - condition: 要件が明確で実装可能、かつ spec-review が対象スコープの未解決事項なしで approved（新規または既存 WIP/PR への差分追記を含む。未適用マイグレーションへの対応は Pending Migration Types パターンで実装可能なため「明確」に含む）
         next: implement
@@ -142,35 +113,11 @@ steps:
     policy:
       - coding
     knowledge:
-      - architecture
       - growmate
     provider_options:
       extends: edit
     required_permission_mode: edit
-    instruction: |
-      下記に全文添付された `plan.md` と対象仕様書に従い、GrowMate の既存パターンに合わせて最小差分で実装してください。要件にない画面・UI・機能・改善を追加せず、ついで修正や将来対応は別タスクへ切り出してください。
-
-      運用前提（無人）:
-      - 実装中に人間へ質問しない。判断不能・仕様不足なら ABORT する（人間は仕様書を直して再実行する）。
-      - 既存 WIP / 既存ブランチがある場合はそれを継続し、無関係な作り直しをしない。
-
-      必須条件:
-      - `any` を使わない。`unknown` + narrowing または Zod schema を使う。
-      - 自動生成ファイルを直接編集しない。
-      - 対象テーブル・列がマイグレーション未適用で `database.types.ts` に存在しない場合、`.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターンに従い `src/types/database.types.pending.ts` を追加して実装を継続する。型が無いことを理由に実装を止めたり ABORT したりしない。
-      - UI 変更では `growmate-ui-ux` と `react` の規約に従う。
-      - Server Actions / Route Handlers では `nextjs-server` のエラー処理・Zod規約に従う。
-      - Supabase Service Role 使用時は user_id 等の明示的なスコープ条件を入れる。
-      - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
-      - `docs/specs/testing-strategy.md` の自動テスト対象に該当する変更では、仕様書の期待結果に基づくVitestテストを追加・更新する。テスト実行は `npm run test` を使い、`npx vitest` を直接実行しない。
-      - UIコンポーネント、外部API、Supabase / RLS / RPC、LLM出力そのものなど自動テスト対象外の変更には、Vitest追加だけを目的とした実装変更を行わない。
-      - 実装開始前に対象仕様書の現行版を再読し、`plan.md` 作成時点の内容と食い違いがないか確認する。食い違いがあれば実装を進めず plan への差し戻しを判断する。
-      - 変更差分が対象仕様書と `plan.md` の対象範囲内に収まっていることを確認する。対象外の差分が必要になった場合は実装を進めず ABORT する。
-      - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
-      - ブラウザ手動確認は行わない（無人）。必要な画面確認は PR の未確認事項に回す。
-
-      ## plan.md（全文）
-      {report:plan.md}
+    instruction: spec-to-pr/implement
     quality_gates:
       - type: command
         name: npm-verify
@@ -179,7 +126,7 @@ steps:
         timeout_ms: 900000
     rules:
       - condition: 実装と必須検証が完了した（必須検証＝quality_gates の `npm run verify` 成功。マイグレーションのリモート適用・実DB/RLS実環境・外部API/LLM実通信・ブラウザ表示確認は無人運用の検証対象外であり、未実施はこの条件の選択を妨げない。レポートの未確認範囲に記載して先へ進む）
-        next: ai_antipattern_review
+        next: reviewers
       - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
         next: plan
       - condition: 判断できない、情報不足（仕様書の修正が必要。無人運用で実施不能な検証〔実DB・実API・ブラウザ・マイグレーション適用〕の未実施だけを理由にこの条件を選ばない）
@@ -192,106 +139,53 @@ steps:
           format: coder-decisions
         - name: implement-report.md
           format: implementation-report
-  - name: ai_antipattern_review
-    tags:
-      - review
-    edit: false
-    persona: ai-antipattern-reviewer
-    policy:
-      - review
-      - ai-antipattern
-    knowledge:
-      - growmate
-    capabilities: readonly
-    instruction: ai-antipattern-review
-    structured_output:
-      schema_ref: ai_antipattern_review
+  # レビュー2系統（AIアンチパターン / アーキテクチャ）を並列実行する。
+  # どちらも read-only で作業ツリーを変更しないため同時実行できる。指摘の修正は fix 1本に統合。
+  - name: reviewers
+    parallel:
+      - name: ai_antipattern_review
+        session_key: ai-antipattern-review
+        tags:
+          - review
+        edit: false
+        persona: ai-antipattern-reviewer
+        policy:
+          - review
+          - ai-antipattern
+        knowledge:
+          - growmate
+        capabilities: readonly
+        instruction: ai-antipattern-review
+        rules:
+          - condition: approved
+          - condition: needs_fix
+        output_contracts:
+          report:
+            - name: ai-antipattern-review.md
+              format: ai-antipattern-review
+      - name: review
+        session_key: architecture-review
+        tags:
+          - review
+        edit: false
+        persona: architecture-reviewer
+        knowledge:
+          - architecture
+          - growmate
+        capabilities: readonly
+        rules:
+          - condition: approved
+          - condition: needs_fix
+        output_contracts:
+          report:
+            - name: architecture-review.md
+              format: architecture-review
+        instruction: spec-to-pr/architecture-review
     rules:
-      - condition: when(structured.ai_antipattern_review.verdict == "clean")
-        next: review
-      - condition: when(structured.ai_antipattern_review.verdict == "findings_detected")
-        next: ai_antipattern_fix
-    output_contracts:
-      report:
-        - name: ai-antipattern-review.md
-          format: ai-antipattern-review
-
-  - name: ai_antipattern_fix
-    tags:
-      - coding
-      - implementation
-    edit: true
-    persona: coder
-    policy:
-      - coding
-    knowledge:
-      - architecture
-      - growmate
-    provider_options:
-      extends: edit
-    required_permission_mode: edit
-    pass_previous_response: false
-    instruction: ai-antipattern-fix
-    quality_gates:
-      - type: command
-        name: npm-verify
-        command: npm run verify
-        cwd: .
-        timeout_ms: 900000
-    structured_output:
-      schema_ref: ai_antipattern_fix
-    rules:
-      - condition: when(structured.ai_antipattern_fix.verdict == "fixed")
-        next: ai_antipattern_review
-      - condition: when(structured.ai_antipattern_fix.verdict == "no_fix_needed")
-        next: review
-      - condition: when(structured.ai_antipattern_fix.verdict == "stuck")
-        next: ABORT
-    output_contracts:
-      report:
-        - name: ai-antipattern-fix-report.md
-          format: implementation-report
-
-  - name: review
-    tags:
-      - review
-    edit: false
-    persona: architecture-reviewer
-    # 一時ピン（2026-08-18）: Cursor が resource_exhausted で連続死したため claude-sdk へ退避。
-    # クォータ回復後にこの2行を削除して runtime routing（cursor-grok）へ戻す。
-    provider: claude-sdk
-    model: claude-sonnet-4-6
-    knowledge:
-      - architecture
-      - growmate
-    instruction: |
-      `review-arch` 相当の観点で、アーキテクチャ、責務分離、データ境界、セキュリティ、仕様充足、既存パターンとの整合性をレビューしてください。
-
-      GrowMate 固有条件:
-      - 変更差分が対象仕様書と `plan.md` の対象範囲内か確認する。要件にない画面・UI・機能・改善、ついで修正、将来対応が混入している場合は `needs_fix` とする。
-      - 自動テスト対象の変更では、仕様書または `plan.md` に定義したVitestケースが追加・更新され、`npm run test` が成功していることを確認する。対象外の変更にテスト不在を理由として `needs_fix` にしない。
-      - `plan.md` に spec-review で残置合意された指摘が転記されている場合、**その論点を再指摘して `needs_fix` にしない**（仕様書レビュー段階で理由付きの残置が合意済みのため）。実装が仕様書の記述どおりかだけを見る。
-      - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
-      - 簡易・形式的・低価値なユニットテストの追加を要求しない。
-      - 代替検証として `npm run verify` が実行されているかを確認する。
-      - ブラウザ手動確認は無人運用では実施しない。未実施のみを理由に `needs_fix` にせず、未確認事項へ回す前提とする。
-      - UI変更がある場合は、対象差分と既存の同種画面・コンポーネント・`src/components/ui/`・`app/globals.css`を照合し、文言、色、タイポグラフィ、余白、状態表示、既存primitiveの再利用が既存UIから逸脱していないことを確認する。要件にないUI刷新や新しいデザインパターンの追加は `needs_fix` とする。
-      - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターン（`src/types/database.types.pending.ts` + `asPendingClient()` の `as unknown as` キャスト）は、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、このキャスト自体を理由に `needs_fix` にしない。
-      - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
-
-      ## plan.md（全文）
-      {report:plan.md}
-    structured_output:
-      schema_ref: review
-    rules:
-      - condition: when(structured.review.verdict == "approved")
+      - condition: all("approved")
         next: readme_sync
-      - condition: when(structured.review.verdict == "needs_fix")
+      - condition: any("needs_fix")
         next: fix
-    output_contracts:
-      report:
-        - name: architecture-review.md
-          format: architecture-review
 
   - name: fix
     tags:
@@ -302,27 +196,12 @@ steps:
     policy:
       - coding
     knowledge:
-      - architecture
       - growmate
     provider_options:
       extends: edit
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: |
-      下記に全文添付された `architecture-review.md` を一次情報として、未解決の指摘だけを修正してください。
-
-      必須条件:
-      - 修正着手前に対象仕様書の現行版を確認し、レビュー指摘の範囲を超える仕様変更がないか確認する。
-      - architecture-reviewer の未解決指摘は、指摘対象コードを直接修正する。
-      - 修正対象が git hygiene / 不要ファイル混入 / レポート不足 / 検証証跡不足だけの場合は、その対象だけを直す。
-      - テストやドキュメント追加だけで architecture-reviewer の指摘を回避しない。
-      - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
-      - 同種の潜在箇所がある場合は同時に修正する。
-      - プロダクションコードを変更した場合は `npm run verify` を再実行する。
-      - ここでは commit / push を行わない。最終ステップでまとめて実施する。
-
-      ## architecture-review.md（全文）
-      {report:architecture-review.md}
+    instruction: spec-to-pr/fix
     quality_gates:
       - type: command
         name: npm-verify
@@ -333,7 +212,7 @@ steps:
       schema_ref: fix
     rules:
       - condition: when(structured.fix.verdict == "fixed")
-        next: review
+        next: reviewers
       - condition: when(structured.fix.verdict == "info_missing")
         next: plan
       - condition: when(structured.fix.verdict == "spec_changed")
@@ -356,29 +235,12 @@ steps:
     policy:
       - coding
     knowledge:
-      - architecture
       - growmate
     provider_options:
       extends: edit
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: |
-      下記に全文添付された `self-review.md` の未解決指摘を一次情報として修正してください。architecture review は収束済みのため、同じ確認を繰り返さないでください。
-
-      必須条件:
-      - 修正着手前に対象仕様書の現行版を確認し、指摘の範囲を超える仕様変更がないか確認する。
-      - self-review.md の該当項目を優先して修正する。
-      - 修正対象が git hygiene / 不要ファイル混入 / レポート不足 / 検証証跡不足だけの場合は、その対象だけを直す。
-      - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
-      - 同種の潜在箇所がある場合は同時に修正する。
-      - プロダクションコードを変更した場合は `npm run verify` を再実行する。
-      - ここでは commit / push を行わない。最終ステップでまとめて実施する。
-
-      ## self-review.md（全文）
-      {report:self-review.md}
-
-      ## architecture-review.md（全文・参考。APPROVE 済みの前提を崩さない）
-      {report:architecture-review.md}
+    instruction: spec-to-pr/self-review-fix
     quality_gates:
       - type: command
         name: npm-verify
@@ -391,7 +253,7 @@ steps:
       - condition: when(structured.self_review_fix.verdict == "fixed")
         next: readme_sync
       - condition: when(structured.self_review_fix.verdict == "arch_impact")
-        next: review
+        next: reviewers
       - condition: when(structured.self_review_fix.verdict == "info_missing")
         next: plan
       - condition: when(structured.self_review_fix.verdict == "stuck")
@@ -412,43 +274,11 @@ steps:
     policy:
       - coding
     knowledge:
-      - architecture
       - growmate
     provider_options:
       extends: edit
     required_permission_mode: edit
-    instruction: |
-      実装・修正・architecture review が収束した時点の全差分を確認し、`README.md` の同期要否を判断してください。
-
-      運用前提（無人）:
-      - 本工程では人間への確認を行わない。`.agents/skills/update-docs/SKILL.md` の「更新方針を提案して合意」は、対象仕様書と本workflowへの事前合意で満たされているものとし、LLMが全差分からREADME更新要否を判断する。
-
-      必須手順:
-      1. `.agents/skills/update-docs/SKILL.md`、対象仕様書、`README.md`、`git status`、`git diff --stat`、`git diff` を読む。
-      2. 実装差分によって README の既存説明が古くなるか、利用者・開発者・運用者が新たに知るべき恒久的な情報が生じたかを判定する。
-         - 対象仕様書に README 更新の予告（該当しそうなセクション）が書かれている場合は **候補として扱う**。ただし予告は仕様書段階の見込みであり、**最終判断は実装差分に基づく**。予告があっても差分が README の記述を変えないなら更新不要とし、予告になくても差分が影響するなら更新する。
-         - 判断が予告と食い違った場合は、その理由を `readme-sync.md` に書く。
-      3. 更新が必要な場合だけ、既存構成と記述粒度に合わせて `README.md` を最小差分で同期する。更新不要の場合は `README.md` を編集しない。
-      4. `readme-sync.md` に「更新要 / 更新不要」「判断根拠」「確認した差分」「更新セクション（更新不要ならなし）」を記録する。
-
-      README 更新を必要とする代表条件:
-      - プロダクト概要、コア機能、主要画面、ユーザー向け導線、アーキテクチャの説明が変わる。
-      - DB migration / RLS / RPC の変更が、README に記載されたデータ構造、アクセスモデル、セットアップ、運用手順、重要な制約を変える。
-      - npm scripts、主要依存、環境変数、セットアップ手順、ディレクトリ構成、品質ゲートが変わる。
-      - 認証、ロール、外部連携、CI、デプロイ、Cron、セキュリティ運用が変わる。
-
-      README 更新を不要と判断できる代表条件:
-      - 内部実装だけの変更で、README の既存説明・コマンド・構成・運用が変わらない。
-      - migration が内部的な列・index・制約の調整に留まり、README が説明するデータモデルや運用へ影響しない。
-      - 一時的な修正内容、レビュー過程、個別ファイル一覧など、README に恒久情報として残す価値がない。
-
-      制約:
-      - README を変更すること自体を目的にしない。更新不要判断も正常な完了とする。
-      - 実装差分にない機能や将来構想を追記しない。
-      - `.env`、credential、token、秘密値を読まない・記載しない。
-      - 自動生成ファイルの内容をREADMEへ複製しない。正本ファイルへの参照を優先する。
-      - README 以外のプロダクションコードや設定ファイルを編集しない。
-      - README だけを変更した場合、直前の `npm run verify` 成功証跡があればフル検証を再実行せず、リンク先の実在と `git diff --check` を確認する。
+    instruction: spec-to-pr/readme-sync
     structured_output:
       schema_ref: readme_sync
     rules:
@@ -467,28 +297,9 @@ steps:
     edit: false
     persona: supervisor
     knowledge:
-      - architecture
       - growmate
     capabilities: readonly
-    instruction: |
-      `.agents/skills/quality-gate/SKILL.md` と `.agents/skills/quality-gate/self-review.md` に従い、2パスセルフレビューを実施してください。
-
-      確認対象:
-      - 仕様書の全要件が実装されていること。マイグレーションがリモート未適用のため `Pending Migration Types`（`src/types/database.types.pending.ts`）を使っている場合、それ自体は未実装・スコープ外を意味しない。`npm run verify` が通っていれば実装完了として扱い、「型未反映」のみを理由に `needs_fix` にしない。
-      - 対象仕様書（`docs/plans/` 配下）が本PRのスコープで完全実装されたか（未実装フェーズ・TODO・スコープ外セクションが残っていないか）を判定し、`self-review.md` に明記する。Pending Migration Types を使っている場合は、その旨と「管理者によるマイグレーション適用・型再生成・pendingファイル削除」が残タスクである旨を明記する（実装未完了とは区別する）。
-      - `npm run verify` が成功していること。
-      - architecture-reviewer の open findings がないこと。
-      - `readme-sync.md` に README の更新要否と根拠が記録され、更新要の場合は実装差分と `README.md` が同期していること。
-      - 変更差分が対象仕様書と `plan.md` の対象範囲内であり、余計な差分や機密情報の露出がないこと。
-      - PR確認用の要約に関連仕様書、検証結果、architecture review / self-review 結果、完了判断理由を含められること。
-
-      無人運用の検証方針:
-      - 完了ゲートは `npm run verify` + TAKT 内レビュー（ai-antipattern / architecture / self-review）とする。
-      - ブラウザ手動確認は実施しない。UI 変更がある場合は「手動ブラウザ確認未実施」を未確認事項候補として記録する。
-      - 手動確認未実施だけを理由に不合格にしない。
-
-      ## plan.md（全文）
-      {report:plan.md}
+    instruction: spec-to-pr/self-review
     structured_output:
       schema_ref: self_review
     rules:
@@ -510,43 +321,7 @@ steps:
     knowledge:
       - growmate
     capabilities: readonly
-    instruction: |
-      push 前に、下記に全文添付された最新レポート群から、PR 本文の正本となる `pr-summary.md` を作成してください。
-
-      必須条件:
-      - 実装やレビュー判断は行わない。確認済みの事実と意見（完了判断）を分けて整理する。
-      - 一次情報は下記添付の `plan.md` / `ai-antipattern-review.md` / `architecture-review.md` / `readme-sync.md` / `self-review.md` の5つに限る。run ディレクトリやレポートパスを探索しない。
-      - `self-review.md` の仕様書完全実装判定を読み取り、`## 関連仕様書` に転記する（実装やレビュー判断はしない、転記のみ）。
-      - `pr-summary.md` は GitHub PR 本文としてそのまま使える Markdown にする。先頭に PR タイトル案を1行（`# ` 見出し）で書き、続けて本文セクションを書く。
-      - PR タイトル形式（必須）:
-        - 日本語・1行・50字以内（`# ` を除く本文）。
-        - What/Why が一覧で分かる内容にする（例: `コンテンツ注釈の保存APIを仕様どおり実装する`）。
-        - 禁止: `[Auto]` 接頭辞、ブランチ名だけのタイトル、`実装完了` / `対応完了` などの自己申告、英語のみ、conventional commits 接頭辞（`feat:` 等）。
-      - 必須セクション（この順）:
-        1. `## 概要` — 何を・なぜ変えたか（仕様起点、2〜4文）
-        2. `## 関連仕様書` — `docs/plans/` のパス。`self-review.md` が完全実装と判定した場合は「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動」と明記する。部分実装の場合は「`docs/plans/` に残置（未実装: ○○）」と明記する
-        3. `## 変更要点` — 主要変更のみ（ファイル一覧の羅列は禁止。カテゴリ単位で3〜7点）
-        4. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
-        5. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く
-        6. `## 検証` — `npm run verify` 等の結果（手動ブラウザ確認は無人のため未実施が既定）
-        7. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める。`src/types/database.types.pending.ts` を追加している場合は「管理者によるマイグレーション適用・`npm run supabase:types` 実行・pendingファイル削除が必要」を含める。添付レポート間に食い違いがある場合は、その内容を含める（新規セクションは作らない）。その他あれば列挙。なければ「なし」
-        8. `## コミットメッセージ案` — 日本語1行
-      - 変更ファイルの詳細表は作らない。
-
-      ## plan.md（全文）
-      {report:plan.md}
-
-      ## ai-antipattern-review.md（全文）
-      {report:ai-antipattern-review.md}
-
-      ## architecture-review.md（全文）
-      {report:architecture-review.md}
-
-      ## readme-sync.md（全文）
-      {report:readme-sync.md}
-
-      ## self-review.md（全文）
-      {report:self-review.md}
+    instruction: spec-to-pr/pr-summary
     rules:
       - condition: PR 本文正本（pr-summary.md）が完了した
         next: create_pr
@@ -568,41 +343,7 @@ steps:
       - growmate
     required_permission_mode: edit
     allow_git_commit: true
-    instruction: |
-      実装内容をコミット・push し、`pr-summary.md` を正本として Pull Request を作成または更新してください。プロダクションコードの編集は行わず、git / gh コマンドのみを実行してください。
-
-      手順:
-      1. 下記に全文添付された pr-summary を正本とする。先頭の `# ` 行を PR タイトル、それ以降を PR 本文とする。
-      2. `git status` / `git diff` で変更内容を確認する。
-      3. ブランチを決める（再実行・追記を優先）:
-         - 既に `feature/*` または `fix/*` にいて、対象仕様の作業ブランチならそのまま使う。
-         - `develop` / `main` にいる場合、対象仕様に対応する既存リモートブランチがあれば checkout して継続する。
-         - 既存がなければ仕様書名または機能名から `feature/...` または `fix/...` の英語ブランチを新規作成する。
-      4. `pr-summary.md` の `## 関連仕様書` に `docs/plans/xxx.md` → `docs/specs/xxx.md` への移動指示がある場合、`git mv docs/plans/xxx.md docs/specs/xxx.md` を実行し実装差分と同一コミットに含める。移動指示がなければ何もしない。
-         - 移動した場合、図解バンドル `docs/plans/_html/<slug>/` と `docs/plans/_html/<slug>.html` を削除する（`<slug>` は移動した仕様書のファイル名から `.md` を除いたもの。削除対象はこの2つだけで、`docs/plans/_html/` 配下の他の仕様書のバンドルには触らない）。`scripts/spec-html.py` の `refresh` は `docs/plans/` 直下の仕様書しか受け付けないため、残すと二度と更新されないバンドルが開ける状態で残り、古い仕様を最新と誤読する。`.gitignore` 済みのため commit には影響しない。削除した旨を報告に含める。
-      5. `git add` で変更をステージし、`git diff --cached` で最終確認する。無関係なローカル変更を混ぜない。
-      6. `pr-summary.md` のコミットメッセージ案（なければ Why 中心の日本語1行）で `git commit` する。変更がなければ新規コミットは作らず、既存 tip で PR 更新へ進む。
-      7. `git push -u origin HEAD` を実行する。
-      8. base は `develop`（ブランチが `develop` の場合のみ `main`）。
-      9. PR を冪等に作成または更新する（auto-pr とのレースに耐える。既存 PR への追記を含む）:
-         a. 下記添付の pr-summary からタイトル行を除いた本文を一時ファイルに書き出して `--body-file` に渡す（シェル展開で壊さない）。
-         b. `gh pr list --head <branch> --base <base> --state open` で既存 PR を確認する。
-         c. 既存があれば `gh pr edit <number> --title "..." --body-file ...` で更新する（TAKT が正本。追記コミット後も本文を最新化する）。
-         d. 既存がなければ `gh pr create --base ... --head ... --title "..." --body-file ...` で作成する。
-         e. `gh pr create` が「already exists」等で失敗した場合は ABORT せず、再度 `gh pr list` して番号を取得し、`gh pr edit` で本文・タイトルを更新する。edit 成功なら完了とする。
-         f. auto-pr の完了は待たない。再 list → edit で吸収する。
-         g. 再 list でも PR が見つからない、または edit も失敗した場合のみ失敗とする。
-      10. 作成/更新した PR の URL・番号・ブランチ・コミット SHA を報告する。CI 完了は待たない。
-
-      やらないこと:
-      - `@codex` レビュー依頼コメントの投稿。
-      - PR のマージ・クローズ。
-      - プロダクションコード編集。
-      - `.takt/runs/` 配下のレポートを git にコミットすること。
-      - 人間への確認待ち。
-
-      ## pr-summary.md（全文）
-      {report:pr-summary.md}
+    instruction: spec-to-pr/create-pr
     rules:
       - condition: コミット・push・PR 作成または更新が完了した（create 失敗後の re-list → edit 成功、既存 PR 追記を含む）
         next: COMPLETE

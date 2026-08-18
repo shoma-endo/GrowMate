@@ -23,6 +23,7 @@ interface WorkflowStep {
   structured_output?: { schema_ref: string };
   rules?: WorkflowRule[];
   output_contracts?: { report?: { name: string }[] };
+  parallel?: WorkflowStep[];
 }
 
 interface Workflow {
@@ -141,8 +142,10 @@ describe.each(workflowFiles)('%s structured references', (file) => {
   });
 
   it('resolves every {report:X} injection to an output contract in the same workflow', () => {
+    // parallel 親ステップの output_contracts は子ステップ側にある
+    const allSteps = workflow.steps.flatMap((step) => [step, ...(step.parallel ?? [])]);
     const producedReports = new Set(
-      workflow.steps.flatMap((step) => (step.output_contracts?.report ?? []).map((entry) => entry.name)),
+      allSteps.flatMap((step) => (step.output_contracts?.report ?? []).map((entry) => entry.name)),
     );
     const reportReferences = [...raw.matchAll(/\{report:([^}]+)\}/g)].map(([, name]) => name);
     for (const name of reportReferences) {

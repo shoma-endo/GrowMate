@@ -3,3 +3,6 @@ workflow_command_gates:
   custom_scripts: true
 assistant:
   gherkin: true
+observability:
+  enabled: true
+  usage_events_phase: true
