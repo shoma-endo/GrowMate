@@ -6,7 +6,6 @@ import {
 } from '@/server/services/wordpressContext';
 import { WordPressService } from '@/server/services/wordpressService';
 import { countImageTags } from '@/lib/content-text';
-import { asPendingClient, type Ga4PendingDatabase } from '@/types/database.types.pending';
 
 export interface WpPostContentFields {
   contentText: string | null;
@@ -205,7 +204,7 @@ async function updateContentCache(
   if (!fields.contentText?.trim() && !fields.excerpt?.trim() && !fields.title?.trim()) {
     return;
   }
-  const client = asPendingClient<Ga4PendingDatabase>(supabase.getClient());
+  const client = supabase.getClient();
   await client
     .from('content_annotations')
     .update({

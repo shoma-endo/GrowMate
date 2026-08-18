@@ -12,6 +12,16 @@ const GA4_PERSISTENT_EVALUATION_STATUSES = [
 export type Ga4PersistentEvaluationStatus =
   (typeof GA4_PERSISTENT_EVALUATION_STATUSES)[number];
 
+/**
+ * DB の status 列は text + CHECK 制約なので生成型では `string` になる。
+ * 読み取り境界でこの union へ絞り込む。想定外の値は呼び出し側でログして null 扱いにする。
+ */
+export function isGa4PersistentEvaluationStatus(
+  value: string
+): value is Ga4PersistentEvaluationStatus {
+  return (GA4_PERSISTENT_EVALUATION_STATUSES as readonly string[]).includes(value);
+}
+
 const GA4_EVALUATION_DISPLAY_STATUSES = [
   'evaluation_disabled',
   'unassessed',

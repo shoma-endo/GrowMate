@@ -310,8 +310,9 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     expect(finishCall?.[1]).toMatchObject({
       p_status: 'import_failed',
       p_error_code: 'ga4_query_failed',
-      p_content_score: null,
     });
+    // スコア未算出はキー省略で表す（SQL 側が default null のため NULL 保存と等価）
+    expect(finishCall?.[1]?.p_content_score ?? null).toBeNull();
   });
 
   it('評価対象期間の終端から48時間を超えたデータはスコア・LLMを実行せず insufficient_data にする', async () => {
@@ -336,11 +337,11 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     expect(finishCall?.[1]).toMatchObject({
       p_status: 'insufficient_data',
       p_error_code: 'evaluation_stale',
-      p_content_score: null,
       p_data_quality_json: expect.objectContaining({
         reasons: expect.arrayContaining(['ga4_data_stale']),
       }),
     });
+    expect(finishCall?.[1]?.p_content_score ?? null).toBeNull();
     expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
   });
 

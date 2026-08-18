@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { asPendingClient, type Ga4EvaluationDatabase, type Ga4PendingDatabase } from '@/types/database.types.pending';
-import type { Json } from '@/types/database.types';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import type { Database, Json } from '@/types/database.types';
 import type { AnnotationRecord } from '@/types/annotation';
 import type { GscCredential } from '@/types/gsc';
 import { normalizeToPath } from '@/lib/ga4-utils';
@@ -35,7 +36,11 @@ import { MODEL_CONFIGS } from '@/lib/constants';
 import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
 import { countContentChars } from '@/lib/content-text';
 import { getGa4EvaluationDateRange } from '@/lib/ga4-evaluation-period';
-import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
+import {
+  isGa4PersistentEvaluationStatus,
+  type Ga4ContentEvaluationView,
+  type Ga4PersistentEvaluationStatus,
+} from '@/types/ga4-evaluation';
 
 const SYSTEM_TEMPLATE_NAME = 'ga4_content_evaluation_system';
 const USER_TEMPLATE_NAME = 'ga4_content_evaluation_user';
@@ -136,6 +141,24 @@ function toJson(value: unknown): Json {
   return null;
 }
 
+function toPersistentStatus(
+  value: string | null,
+  annotationId: string
+): Ga4PersistentEvaluationStatus | null {
+  if (value === null) return null;
+  if (isGa4PersistentEvaluationStatus(value)) return value;
+  console.error('[Ga4ContentEvaluationService] unknown persisted status', { annotationId, value });
+  return null;
+}
+
+// 生成型の RPC 引数は `p_x?: T` で null を受け付けないが、対象パラメータは SQL 側が
+// すべて `default null` なので、キーを省略することが NULL 指定と等価になる。
+function omitNullArgs<T extends Record<string, unknown>>(args: T): { [K in keyof T]?: NonNullable<T[K]> } {
+  return Object.fromEntries(
+    Object.entries(args).filter(([, value]) => value !== null && value !== undefined)
+  ) as { [K in keyof T]?: NonNullable<T[K]> };
+}
+
 function getLatestImportedAt(rows: readonly { imported_at?: string | null }[]): string | null {
   const importedAt = rows
     .map(row => row.imported_at)
@@ -171,8 +194,8 @@ function getStoredScrollUsers(dataQuality: Json): number | null {
 }
 
 class Ga4ContentEvaluationService extends SupabaseService {
-  private async withEvaluationClient<T>(handler: (client: ReturnType<typeof asPendingClient<Ga4EvaluationDatabase>>) => Promise<T>): Promise<T> {
-    return Ga4ContentEvaluationService.withServiceRoleClient(async client => handler(asPendingClient<Ga4EvaluationDatabase>(client)), {
+  private async withEvaluationClient<T>(handler: (client: SupabaseClient<Database>) => Promise<T>): Promise<T> {
+    return Ga4ContentEvaluationService.withServiceRoleClient(async client => handler(client), {
       logMessage: '[Ga4ContentEvaluationService] service role operation failed',
     });
   }
@@ -206,7 +229,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
     if (!propertyId) return { status: 'unassessed', missingMetrics: ['ga4_property'] };
 
     return Ga4ContentEvaluationService.withServiceRoleClient(async rawClient => {
-      const client = asPendingClient<Ga4PendingDatabase>(rawClient);
+      const client = rawClient;
       const { data: annotation, error: annotationError } = await client
         .from('content_annotations')
         .select('id,canonical_url,wp_content_text')
@@ -286,9 +309,12 @@ class Ga4ContentEvaluationService extends SupabaseService {
         if (lastSuccessError) throw lastSuccessError;
         if (lastSuccess) historyRows.push(lastSuccess);
       }
-      const viewHistory = historyRows.map(row => ({
+      const viewHistory = historyRows.flatMap(row => {
+        const rowStatus = toPersistentStatus(row.status, annotationId);
+        if (!rowStatus) return [];
+        return [{
         id: row.id,
-        status: row.status,
+        status: rowStatus,
         startedAt: row.started_at,
         completedAt: row.completed_at,
         attemptCount: row.attempt_count,
@@ -321,11 +347,12 @@ class Ga4ContentEvaluationService extends SupabaseService {
         inputFingerprint: row.input_fingerprint,
         scoringConfigVersion: row.scoring_config_version,
         errorCode: row.error_code,
-      })).sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
+        }];
+      }).sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
       const initialDisplay = !projection && viewHistory.length === 0 && settingsEnabled
         ? await this.resolveInitialDisplayStatus(userId, annotationId, displayPeriod, credential)
         : null;
-      const persistedStatus = projection?.status ?? null;
+      const persistedStatus = toPersistentStatus(projection?.status ?? null, annotationId);
       return {
         settingsEnabled,
         needsReauth,
@@ -336,8 +363,8 @@ class Ga4ContentEvaluationService extends SupabaseService {
           persistedStatus,
           ...(initialDisplay ? { derivedStatus: initialDisplay.status } : {}),
         }),
-        projection: projection ? {
-          status: projection.status,
+        projection: projection && persistedStatus ? {
+          status: persistedStatus,
           lastSuccessHistoryId: projection.last_success_history_id,
           lastSuccessEvaluatedAt: projection.last_success_evaluated_at,
           lastErrorCode: projection.last_error_code,
@@ -375,7 +402,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
       promptCapturedAt: null, promptContentSha256: null,
     };
     try {
-      const client = asPendingClient<Ga4PendingDatabase>(this.getClient());
+      const client = this.getClient();
       const { data: annotation, error: annotationError } = await client
         .from('content_annotations')
         .select('*')
@@ -545,20 +572,24 @@ class Ga4ContentEvaluationService extends SupabaseService {
     await this.withEvaluationClient(async client => {
       const { error } = await client.rpc('finish_ga4_content_evaluation', {
         p_user_id: input.userId, p_content_annotation_id: input.annotationId, p_evaluation_run_id: runId,
-        p_status: values.status, p_error_code: values.errorCode, p_error_message: values.errorMessage,
-        p_attempt_count: values.attemptCount, p_read_rate: values.readRate, p_engage_rate: values.engageRate,
-        p_scroll_rate: values.scrollRate, p_read_score: values.readScore, p_engage_score: values.engageScore,
-        p_content_score: values.contentScore, p_diagnosis_code: values.diagnosisCode, p_site_rank: values.siteRank,
-        p_total_articles: values.totalArticles, p_sessions: values.sessions, p_char_count: values.charCount,
-        p_image_count: values.imageCount, p_expected_read_seconds: values.expectedReadSeconds,
-        p_avg_engagement_seconds: values.avgEngagementSeconds, p_narrative_json: values.narrativeJson,
-        p_data_quality_json: values.dataQualityJson, p_period_start: values.periodStart, p_period_end: values.periodEnd,
-        p_canonical_url_snapshot: values.canonicalUrl, p_title_snapshot: values.title,
-        p_ga4_property_id: values.ga4PropertyId, p_ga4_data_fetched_at: values.ga4DataFetchedAt,
-        p_scoring_config_version: SCORING_CONFIG_VERSION, p_input_fingerprint: values.inputFingerprint,
-        p_prompt_template_id: values.promptTemplateId,
-        p_prompt_version_id: values.promptVersionId, p_prompt_version: values.promptVersion,
-        p_prompt_captured_at: values.promptCapturedAt, p_prompt_content_sha256: values.promptContentSha256,
+        p_status: values.status,
+        p_attempt_count: values.attemptCount, p_scoring_config_version: SCORING_CONFIG_VERSION,
+        ...omitNullArgs({
+          p_error_code: values.errorCode, p_error_message: values.errorMessage,
+          p_read_rate: values.readRate, p_engage_rate: values.engageRate,
+          p_scroll_rate: values.scrollRate, p_read_score: values.readScore, p_engage_score: values.engageScore,
+          p_content_score: values.contentScore, p_diagnosis_code: values.diagnosisCode, p_site_rank: values.siteRank,
+          p_total_articles: values.totalArticles, p_sessions: values.sessions, p_char_count: values.charCount,
+          p_image_count: values.imageCount, p_expected_read_seconds: values.expectedReadSeconds,
+          p_avg_engagement_seconds: values.avgEngagementSeconds, p_narrative_json: values.narrativeJson,
+          p_data_quality_json: values.dataQualityJson, p_period_start: values.periodStart, p_period_end: values.periodEnd,
+          p_canonical_url_snapshot: values.canonicalUrl, p_title_snapshot: values.title,
+          p_ga4_property_id: values.ga4PropertyId, p_ga4_data_fetched_at: values.ga4DataFetchedAt,
+          p_input_fingerprint: values.inputFingerprint,
+          p_prompt_template_id: values.promptTemplateId,
+          p_prompt_version_id: values.promptVersionId, p_prompt_version: values.promptVersion,
+          p_prompt_captured_at: values.promptCapturedAt, p_prompt_content_sha256: values.promptContentSha256,
+        }),
       });
       if (error) throw error;
     });

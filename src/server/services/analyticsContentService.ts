@@ -14,8 +14,6 @@ import type {
 } from '@/types/analytics';
 import type { Ga4PageMetricSummary } from '@/types/ga4';
 import type { Json } from '@/types/database.types';
-import { asPendingClient, type AnalyticsDatabase } from '@/types/database.types.pending';
-import type { Ga4PendingDatabase } from '@/types/database.types.pending';
 
 const MAX_PER_PAGE = 100;
 
@@ -41,7 +39,7 @@ class AnalyticsContentService {
     };
 
     try {
-      const client = asPendingClient<AnalyticsDatabase>(supabaseService.getClient());
+      const client = supabaseService.getClient();
 
       const fetchAnnotationsPage = async (targetPage: number) => {
         const { data, error } = await client.rpc('get_filtered_content_annotations', {
@@ -259,7 +257,7 @@ class AnalyticsContentService {
       return { summaries: new Map(), truncated: false };
     }
 
-    const client = asPendingClient<Ga4PendingDatabase>(supabaseService.getClient());
+    const client = supabaseService.getClient();
 
     const { data: credentials } = await client
       .from('gsc_credentials')

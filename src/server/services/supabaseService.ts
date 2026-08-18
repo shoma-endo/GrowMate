@@ -29,7 +29,6 @@ import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc'
 import type { InstagramCredential } from '@/types/instagram';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
-import { asPendingClient, type Ga4PendingDatabase } from '@/types/database.types.pending';
 
 type InstagramCredentialRow = Tables<'instagram_credentials'>;
 type InstagramCredentialInsertRow = TablesInsert<'instagram_credentials'>;
@@ -1699,7 +1698,7 @@ export class SupabaseService {
         updated_at: nowIso,
       }));
 
-      const pendingClient = asPendingClient<Ga4PendingDatabase>(this.supabase);
+      const pendingClient = this.supabase;
       const { error } = await pendingClient.from('ga4_page_metrics_daily').upsert(payload, {
         onConflict: 'user_id,property_id,date,normalized_path',
       });
