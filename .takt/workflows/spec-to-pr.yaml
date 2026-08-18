@@ -160,10 +160,6 @@ steps:
           - review
         edit: false
         persona: architecture-reviewer
-        # 一時ピン（2026-08-18）: Cursor が resource_exhausted で連続死したため claude-sdk へ退避。
-        # クォータ回復後にこの2行を削除して runtime routing（cursor-grok）へ戻す。
-        provider: claude-sdk
-        model: claude-sonnet-4-6
         knowledge:
           - architecture
           - growmate
