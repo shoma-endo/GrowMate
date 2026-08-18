@@ -63,7 +63,7 @@ export function GscNotificationHandler() {
                 {count}件の改善提案があります
               </p>
               <p className="text-xs text-amber-700 mt-1 opacity-90 whitespace-nowrap">
-                クリックしてコンテンツ一覧で確認
+                クリックして検索順位・コンテンツ評価で確認
               </p>
             </div>
 

@@ -310,7 +310,7 @@ export default function Ga4DashboardClient({
               className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors"
             >
               <ArrowLeft className="w-4 h-4 mr-1.5" />
-              コンテンツ一覧に戻る
+              検索順位・コンテンツ評価に戻る
             </Link>
             <h1 className="text-3xl font-bold">Google Analytics 4 ダッシュボード</h1>
           </div>
@@ -344,7 +344,7 @@ export default function Ga4DashboardClient({
           className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 mr-1.5" />
-          コンテンツ一覧に戻る
+          検索順位・コンテンツ評価に戻る
         </Link>
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Google Analytics 4 ダッシュボード</h1>

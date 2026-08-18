@@ -300,7 +300,7 @@ export default function AnalyticsClient({
     <div className="w-full px-4 py-8">
       {!instagramConnected ? (
         <>
-          <h1 className="text-3xl font-bold mb-6">コンテンツ一覧</h1>
+          <h1 className="text-3xl font-bold mb-6">検索順位・コンテンツ評価</h1>
           {blogContent}
         </>
       ) : (
@@ -316,7 +316,7 @@ export default function AnalyticsClient({
           className="w-full"
         >
           <div className="flex flex-wrap items-center gap-4 mb-6">
-            <h1 className="text-3xl font-bold">コンテンツ一覧</h1>
+            <h1 className="text-3xl font-bold">検索順位・コンテンツ評価</h1>
             <TabsList>
               <TabsTrigger value="blog" className="flex items-center gap-1.5">
                 <FileText className="w-4 h-4" />

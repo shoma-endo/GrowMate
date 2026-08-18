@@ -24,7 +24,7 @@ interface InstagramMediaThumbnailProps {
 /**
  * thumbnail_url / media_url は有効期限付き CDN URL のため、失効時は読み込みに失敗する。
  * 空箱のまま残すと壊れて見えるので、失敗時はプレースホルダーに切り替える。
- * セットアップ画面（InstagramSetupClient）・コンテンツ一覧（InstagramMediaTable）で共通利用。
+ * セットアップ画面（InstagramSetupClient）・検索順位・コンテンツ評価（InstagramMediaTable）で共通利用。
  *
  * fill レイアウトのため、呼び出し側は `relative` かつサイズ確定済みのコンテナで囲むこと。
  */

@@ -159,13 +159,13 @@ export default function Home() {
               </Card>
             )}
 
-            {/* 有料/管理者向け コンテンツ一覧導線 */}
+            {/* 有料/管理者向け 検索順位・コンテンツ評価導線 */}
             {hasAuthenticatedUser && hasManagementAccess && (
               <Card className="">
                 <CardHeader>
                   <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
                     <List className="h-5 w-5" />
-                    コンテンツ一覧
+                    検索順位・コンテンツ評価
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -174,7 +174,7 @@ export default function Home() {
                     <br />
                     メタ情報を一覧表示します
                   </p>
-                  <Button asChild className="w-full" aria-label="コンテンツ一覧へ移動" tabIndex={0}>
+                  <Button asChild className="w-full" aria-label="検索順位・コンテンツ評価へ移動" tabIndex={0}>
                     <Link href="/analytics">一覧を開く</Link>
                   </Button>
                 </CardContent>
