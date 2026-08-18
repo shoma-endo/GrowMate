@@ -22,6 +22,8 @@ description: docs/plansの仕様書を単一HTMLの「見る地図」に変換�
 
 全文ビューは原本と1文字も乖離してはいけないので **LLM に書かせない**。機械変換にすることで、生成のたびに解釈が入る余地を消し、トークンも消費せず常に同期する。
 
+**画面仕様を含む仕様書には `05-screens.html` を追加する。** 仕様書に画面一覧・画面遷移・状態別UI・UI用語・画面のGherkin受入条件のいずれかを含む章（`## 画面仕様` / `## 画面設計` 相当）が実在すれば、01〜03と同じ再構成ビューとして `views/05-screens.html` を作る。無ければ作らない（トリガーは「UI開発を伴うか」ではなく「原本に画面仕様の章が実在するか」）。ファイル名の連番と `build --view` のタブ表示順は無関係（指定順にタブが並ぶだけで、`build()` はファイル名を解釈しない）なので、既存ファイルのリネームは不要。タブ順は「ステータス→設計判断→画面仕様→クイズ→全文」を既定とする（クイズが画面仕様の理解度も問えるように、クイズの直前に置く）。
+
 ## 図版とビュー実装（正本: `authoring-views.md`）
 
 **再構成ビュー（01 / 02）には各3点以上の図版が必須。** 型カタログ、ジェネレータ4型（`flow` / `compare` / `causemap` / `er`。座標を手で書かない）、手書き SVG の約束、タブ間ジャンプ（`data-goto`）、ビュー HTML の必須実装約束（テーマ変数・IIFE・外部依存の禁止リスト）はすべて同ディレクトリの `authoring-views.md` が正本。**ビューを書く・直す前に必ず読む。** 禁止リスト違反は `build` の安全検査が exit 1 で落とす。
@@ -61,6 +63,7 @@ docs/plans/_html/<slug>/views/01-status.html      ← ステータスと次の�
 docs/plans/_html/<slug>/views/02-decisions.html   ← 設計判断
 docs/plans/_html/<slug>/views/03-quiz.html        ← クイズ
 docs/plans/_html/<slug>/views/04-fulltext.html    ← 全文（スクリプト生成・手で書かない）
+docs/plans/_html/<slug>/views/05-screens.html     ← 画面仕様（画面仕様の章がある仕様書のみ・任意）
 docs/plans/_html/<slug>.html                ← 成果物（単一ファイル・これを開く）
 docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時生成・スマホ/クラウド閲覧用）
 ```
@@ -112,7 +115,7 @@ docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時�
 
 正解は **必ず `core.yaml` の事実に紐づける**。誤答選択肢は「斜め読みで実際に起きる誤読」から作る。`confidence` が低い事実は出題しない。エンジニア向けなので `relation` / `ordering` / 難易度高から並べ、易しい ○× は末尾に畳む。
 
-### 5. 再構成ビュー3種を書く
+### 5. 再構成ビュー3〜4種を書く
 
 各ファイルは `<!DOCTYPE html>` から始まる完結した HTML document。inline CSS / inline JS のみ。
 
@@ -120,6 +123,7 @@ docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時�
 |---|---|
 | `01-status.html` | **要注意（未決事項・リスク・着手前ゲートを冒頭に集約）** → ステータスボード → 次の一手 → 重要概念（絞り込み付き）→ 依存関係 → 読む順 → 次の質問 → 出典 |
 | `02-decisions.html` | 設計判断ごとに **狙い / ✕不採用案 / ✓採用理由 / △受け入れたトレードオフ** の4点セット。ブロック別の絞り込み付き |
+| `05-screens.html` | （画面仕様の章がある場合のみ）画面一覧 → 画面遷移図 → 記事詳細等の要素配置 → 状態別UI → UI用語 → 関連ACの順。**再構成ビューと同じ設計原則（例外ファースト・7ブロック上限・図版3点以上）に従う** |
 | `03-quiz.html` | `quiz.yaml` を出題。即時採点 → 正誤表示（色だけに頼らずアイコンと文字も）→ 解説・関連概念・出典を開示 → 採点後は入力をロック。末尾にスコア集計と「もう一度」 |
 
 `04-fulltext.html` は **手で書かない**。手順6（[`build-and-verify.md`](build-and-verify.md)）のコマンドで生成する。
