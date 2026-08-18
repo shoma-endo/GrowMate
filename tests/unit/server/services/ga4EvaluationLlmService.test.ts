@@ -13,7 +13,8 @@ const schema = z.object({ score: z.number() });
 const request = {
   provider: 'anthropic' as const,
   model: 'model-name',
-  prompt: 'prompt-secret',
+  systemPrompt: 'system-secret',
+  userPrompt: 'article-secret',
   schema,
   maxTokens: 1234,
 };
@@ -37,7 +38,10 @@ describe('ga4EvaluationLlmService', () => {
     expect(mocks.llmChat).toHaveBeenCalledWith(
       'anthropic',
       'model-name',
-      [{ role: 'user', content: 'prompt-secret' }],
+      [
+        { role: 'system', content: 'system-secret' },
+        { role: 'user', content: 'article-secret' },
+      ],
       { timeoutMs: 45_000, maxTokens: 1234 }
     );
   });
@@ -111,7 +115,7 @@ describe('ga4EvaluationLlmService', () => {
   it('3回失敗すると失敗コードを返し、通常ログへ機密値や応答全文を出さない', async () => {
     vi.useFakeTimers();
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    mocks.llmChat.mockResolvedValue('prompt-secret response');
+    mocks.llmChat.mockResolvedValue('article-secret response');
 
     const resultPromise = generateGa4EvaluationLlmOutput(request);
     await vi.advanceTimersByTimeAsync(4_000);
@@ -122,7 +126,8 @@ describe('ga4EvaluationLlmService', () => {
       code: 'llm_output_invalid',
       attemptCount: 3,
     });
-    expect(errorSpy.mock.calls.flat().join(' ')).not.toContain('prompt-secret');
+    expect(errorSpy.mock.calls.flat().join(' ')).not.toContain('article-secret');
     expect(errorSpy.mock.calls.flat().join(' ')).not.toContain('response');
+    expect(errorSpy.mock.calls.flat().join(' ')).not.toContain('system-secret');
   });
 });

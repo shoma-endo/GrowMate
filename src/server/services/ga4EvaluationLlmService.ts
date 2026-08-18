@@ -12,7 +12,8 @@ const JSON_BLOCK_REGEX = /```json\s*([\s\S]*?)\s*```/i;
 export interface Ga4EvaluationLlmRequest<T> {
   provider: 'openai' | 'anthropic';
   model: string;
-  prompt: string;
+  systemPrompt: string;
+  userPrompt: string;
   schema: z.ZodType<T>;
   maxTokens: number;
   onAttempt?: (attemptCount: number) => Promise<void>;
@@ -129,7 +130,10 @@ export async function generateGa4EvaluationLlmOutput<T>(
       const response = await llmChat(
         request.provider,
         request.model,
-        [{ role: 'user', content: request.prompt }],
+        [
+          { role: 'system', content: request.systemPrompt },
+          { role: 'user', content: request.userPrompt },
+        ],
         { timeoutMs: LLM_TIMEOUT_MS, maxTokens: request.maxTokens }
       );
       const parsed = parseStructuredResponse(response, request.schema);

@@ -28,7 +28,7 @@ import { buildGa4EvaluationContext } from '@/server/lib/ga4-evaluation-context';
 import { resolveGa4EvaluationDisplayStatus } from '@/server/lib/ga4-evaluation-status';
 import {
   buildGa4EvaluationPromptVariables,
-  renderGa4EvaluationPrompt,
+  renderGa4EvaluationUserPrompt,
 } from '@/server/lib/ga4-content-evaluation-prompt';
 import { generateGa4EvaluationLlmOutput } from '@/server/services/ga4EvaluationLlmService';
 import { ga4EvaluationLlmOutputSchema, type Ga4EvaluationNarrative } from '@/server/schemas/ga4ContentEvaluation.schema';
@@ -42,7 +42,8 @@ import {
   type Ga4PersistentEvaluationStatus,
 } from '@/types/ga4-evaluation';
 
-const EVALUATION_TEMPLATE_NAME = 'ga4_content_evaluation';
+const SYSTEM_TEMPLATE_NAME = 'ga4_content_evaluation_system';
+const USER_TEMPLATE_NAME = 'ga4_content_evaluation_user';
 
 interface RunGa4ContentEvaluationInput {
   userId: string;
@@ -909,19 +910,31 @@ class Ga4ContentEvaluationService extends SupabaseService {
   ): Promise<Ga4EvaluationLlmResult> {
     const config = MODEL_CONFIGS.ga4_content_evaluation;
     if (!config) throw new Error('GA4 evaluation model config missing');
-    const template = await PromptService.getTemplateByName(EVALUATION_TEMPLATE_NAME);
-    if (!template || !template.content.trim()) {
+    const [systemTemplate, userTemplate] = await Promise.all([
+      PromptService.getTemplateByName(SYSTEM_TEMPLATE_NAME),
+      PromptService.getTemplateByName(USER_TEMPLATE_NAME),
+    ]);
+    if (!systemTemplate || !userTemplate || !systemTemplate.content.trim() || !userTemplate.content.trim()) {
       return { success: false, code: 'llm_output_invalid', attemptCount: 0 };
     }
     const promptCapturedAt = new Date().toISOString();
-    const promptContentSha256 = createHash('sha256').update(template.content, 'utf8').digest('hex');
+    // 履歴のプロンプト追跡列は単数形だが、実際に送る本文はシステム／ユーザーの2本ある。
+    // 片方だけを hash すると、もう片方の改版が履歴に残らず再現できなくなるため、
+    // 2本を固定の順序・固定の区切りで連結した文字列を hash 対象にする。
+    // `prompt_template_id` / `prompt_version` はシステム側を指す（§6.3.1）。
+    const promptContentSha256 = createHash('sha256')
+      .update(systemTemplate.content, 'utf8')
+      // NUL は PostgreSQL の text に格納できないため、本文と衝突しない区切りになる。
+      .update('\u0000', 'utf8')
+      .update(userTemplate.content, 'utf8')
+      .digest('hex');
     let promptVersionId: string | null = null;
     await this.withEvaluationClient(async client => {
       const { data, error } = await client
         .from('prompt_versions')
         .select('id')
-        .eq('template_id', template.id)
-        .eq('version', template.version)
+        .eq('template_id', systemTemplate.id)
+        .eq('version', systemTemplate.version)
         .maybeSingle();
       if (error) throw error;
       promptVersionId = data?.id ?? null;
@@ -949,18 +962,16 @@ class Ga4ContentEvaluationService extends SupabaseService {
     const result = await generateGa4EvaluationLlmOutput({
       provider: config.provider,
       model: config.actualModel,
-      prompt: renderGa4EvaluationPrompt(template.content, variables, {
-        scrollUsers: values.scrollUsers,
-        scrollRate: values.scrollRate,
-      }),
+      systemPrompt: PromptService.replaceVariables(systemTemplate.content, variables),
+      userPrompt: renderGa4EvaluationUserPrompt(userTemplate.content, variables, { scrollUsers: values.scrollUsers, scrollRate: values.scrollRate }),
       schema: ga4EvaluationLlmOutputSchema,
       maxTokens: config.maxTokens,
       onAttempt: attemptCount => this.updateAttemptCount(runInput, runId, attemptCount),
     });
     const provenance = {
-      templateId: template.id,
+      templateId: systemTemplate.id,
       versionId: promptVersionId,
-      version: template.version,
+      version: systemTemplate.version,
       capturedAt: promptCapturedAt,
       contentSha256: promptContentSha256,
     };
