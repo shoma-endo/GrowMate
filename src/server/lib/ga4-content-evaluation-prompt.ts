@@ -94,7 +94,7 @@ export function buildGa4EvaluationPromptVariables(
   };
 }
 
-export function renderGa4EvaluationUserPrompt(
+export function renderGa4EvaluationPrompt(
   template: string,
   variables: Record<string, string>,
   scroll: Ga4PromptScrollFallbackValues

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildGa4EvaluationPromptVariables,
-  renderGa4EvaluationUserPrompt,
+  renderGa4EvaluationPrompt,
 } from '@/server/lib/ga4-content-evaluation-prompt';
 import type { Ga4EvaluationContext } from '@/types/ga4-evaluation';
 
@@ -81,7 +81,7 @@ describe('ga4-content-evaluation-prompt', () => {
       scrollRate: null,
     });
 
-    const prompt = renderGa4EvaluationUserPrompt(
+    const prompt = renderGa4EvaluationPrompt(
       '最後までスクロールした人数: {{scroll_users}}人（全体の{{scroll_rate}}%）',
       variables,
       { scrollRate: null, scrollUsers: null }
@@ -103,7 +103,7 @@ describe('ga4-content-evaluation-prompt', () => {
       scrollRate: 0.2,
     });
 
-    const prompt = renderGa4EvaluationUserPrompt(
+    const prompt = renderGa4EvaluationPrompt(
       '最後までスクロールした人数: {{scroll_users}}人（全体の{{scroll_rate}}%）',
       variables,
       { scrollRate: 0.2, scrollUsers: null }
@@ -123,7 +123,7 @@ describe('ga4-content-evaluation-prompt', () => {
       scrollRate: 0.2,
     });
 
-    const prompt = renderGa4EvaluationUserPrompt(
+    const prompt = renderGa4EvaluationPrompt(
       '最後までスクロールした人数: {{scroll_users}}人（全体の{{scroll_rate}}%）',
       variables,
       { scrollRate: 0.2, scrollUsers: 20 }

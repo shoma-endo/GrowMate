@@ -28,7 +28,7 @@ import { buildGa4EvaluationContext } from '@/server/lib/ga4-evaluation-context';
 import { resolveGa4EvaluationDisplayStatus } from '@/server/lib/ga4-evaluation-status';
 import {
   buildGa4EvaluationPromptVariables,
-  renderGa4EvaluationUserPrompt,
+  renderGa4EvaluationPrompt,
 } from '@/server/lib/ga4-content-evaluation-prompt';
 import { generateGa4EvaluationLlmOutput } from '@/server/services/ga4EvaluationLlmService';
 import { ga4EvaluationLlmOutputSchema, type Ga4EvaluationNarrative } from '@/server/schemas/ga4ContentEvaluation.schema';
@@ -42,8 +42,7 @@ import {
   type Ga4PersistentEvaluationStatus,
 } from '@/types/ga4-evaluation';
 
-const SYSTEM_TEMPLATE_NAME = 'ga4_content_evaluation_system';
-const USER_TEMPLATE_NAME = 'ga4_content_evaluation_user';
+const EVALUATION_TEMPLATE_NAME = 'ga4_content_evaluation';
 
 interface RunGa4ContentEvaluationInput {
   userId: string;
@@ -910,22 +909,19 @@ class Ga4ContentEvaluationService extends SupabaseService {
   ): Promise<Ga4EvaluationLlmResult> {
     const config = MODEL_CONFIGS.ga4_content_evaluation;
     if (!config) throw new Error('GA4 evaluation model config missing');
-    const [systemTemplate, userTemplate] = await Promise.all([
-      PromptService.getTemplateByName(SYSTEM_TEMPLATE_NAME),
-      PromptService.getTemplateByName(USER_TEMPLATE_NAME),
-    ]);
-    if (!systemTemplate || !userTemplate || !systemTemplate.content.trim() || !userTemplate.content.trim()) {
+    const template = await PromptService.getTemplateByName(EVALUATION_TEMPLATE_NAME);
+    if (!template || !template.content.trim()) {
       return { success: false, code: 'llm_output_invalid', attemptCount: 0 };
     }
     const promptCapturedAt = new Date().toISOString();
-    const promptContentSha256 = createHash('sha256').update(systemTemplate.content, 'utf8').digest('hex');
+    const promptContentSha256 = createHash('sha256').update(template.content, 'utf8').digest('hex');
     let promptVersionId: string | null = null;
     await this.withEvaluationClient(async client => {
       const { data, error } = await client
         .from('prompt_versions')
         .select('id')
-        .eq('template_id', systemTemplate.id)
-        .eq('version', systemTemplate.version)
+        .eq('template_id', template.id)
+        .eq('version', template.version)
         .maybeSingle();
       if (error) throw error;
       promptVersionId = data?.id ?? null;
@@ -953,16 +949,18 @@ class Ga4ContentEvaluationService extends SupabaseService {
     const result = await generateGa4EvaluationLlmOutput({
       provider: config.provider,
       model: config.actualModel,
-      systemPrompt: PromptService.replaceVariables(systemTemplate.content, variables),
-      userPrompt: renderGa4EvaluationUserPrompt(userTemplate.content, variables, { scrollUsers: values.scrollUsers, scrollRate: values.scrollRate }),
+      prompt: renderGa4EvaluationPrompt(template.content, variables, {
+        scrollUsers: values.scrollUsers,
+        scrollRate: values.scrollRate,
+      }),
       schema: ga4EvaluationLlmOutputSchema,
       maxTokens: config.maxTokens,
       onAttempt: attemptCount => this.updateAttemptCount(runInput, runId, attemptCount),
     });
     const provenance = {
-      templateId: systemTemplate.id,
+      templateId: template.id,
       versionId: promptVersionId,
-      version: systemTemplate.version,
+      version: template.version,
       capturedAt: promptCapturedAt,
       contentSha256: promptContentSha256,
     };
