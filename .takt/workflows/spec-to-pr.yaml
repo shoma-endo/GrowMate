@@ -115,6 +115,7 @@ steps:
          - 仕様書に「公式ドキュメント照合: 未実施」と記録されている場合、その旨を `plan.md` に明記する（実装時に前提が未検証であることを PR の未確認事項へ回すため）。
       9. 検証ゲートは `npm run verify` と TAKT 内レビューとする。ブラウザ手動確認は無人実行では実施しない（PR の未確認事項に記載する前提）。
       10. 仕様が新規マイグレーション（新規テーブル・新規列）を要求し、それがまだリモートDBに未適用（`database.types.ts` に反映されていない）場合、これ単体は ABORT 理由にしない。`.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターン（`src/types/database.types.pending.ts` + `asPendingClient()`）を計画に含め、最後まで実装する前提で進める。リモートへの適用と `npm run supabase:types` は管理者が本PRマージ後に行う運用とし、完了条件にしない。
+      11. `plan.md` は要点のみに絞る（上限目安 15KB）。仕様書・レビュー記録・既存コードは本文を転記せず、章番号・行番号・パスで参照する。`plan.md` は後段の implement / review / self_review / prepare_pr_summary へ全文添付されるため、肥大がそのまま全ステップの入力コストになる。
     rules:
       - condition: 要件が明確で実装可能、かつ spec-review が対象スコープの未解決事項なしで approved（新規または既存 WIP/PR への差分追記を含む。未適用マイグレーションへの対応は Pending Migration Types パターンで実装可能なため「明確」に含む）
         next: implement
@@ -142,7 +143,6 @@ steps:
     policy:
       - coding
     knowledge:
-      - architecture
       - growmate
     provider_options:
       extends: edit
@@ -150,20 +150,16 @@ steps:
     instruction: |
       下記に全文添付された `plan.md` と対象仕様書に従い、GrowMate の既存パターンに合わせて最小差分で実装してください。要件にない画面・UI・機能・改善を追加せず、ついで修正や将来対応は別タスクへ切り出してください。
 
+      規約の正本は `.agents/skills/` にある。着手前に該当する SKILL.md を読み、そこに従う（本 instruction には再掲しない）:
+      - 全実装（TypeScript / any禁止 / Zod / 機密情報 / 自動生成ファイル / ページ種別制約）: `implementation-guidelines`
+      - Server Actions / Route Handlers / エラー処理: `nextjs-server`
+      - UI 変更: `growmate-ui-ux` と `react`
+      - Supabase / migration / RLS / Service Role のスコープ条件: `supabase`。未適用マイグレーションは `service-usage.md` §6 の Pending Migration Types パターンで実装を継続する（型が無いことを理由に停止・ABORT しない）
+      - テスト方針: `docs/specs/testing-strategy.md`（自動テスト対象のみ Vitest を追加・更新。簡易・形式的・低価値なテストは追加しない。実行は `npm run test`、`npx vitest` 直接実行は不可）
+
       運用前提（無人）:
       - 実装中に人間へ質問しない。判断不能・仕様不足なら ABORT する（人間は仕様書を直して再実行する）。
       - 既存 WIP / 既存ブランチがある場合はそれを継続し、無関係な作り直しをしない。
-
-      必須条件:
-      - `any` を使わない。`unknown` + narrowing または Zod schema を使う。
-      - 自動生成ファイルを直接編集しない。
-      - 対象テーブル・列がマイグレーション未適用で `database.types.ts` に存在しない場合、`.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターンに従い `src/types/database.types.pending.ts` を追加して実装を継続する。型が無いことを理由に実装を止めたり ABORT したりしない。
-      - UI 変更では `growmate-ui-ux` と `react` の規約に従う。
-      - Server Actions / Route Handlers では `nextjs-server` のエラー処理・Zod規約に従う。
-      - Supabase Service Role 使用時は user_id 等の明示的なスコープ条件を入れる。
-      - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
-      - `docs/specs/testing-strategy.md` の自動テスト対象に該当する変更では、仕様書の期待結果に基づくVitestテストを追加・更新する。テスト実行は `npm run test` を使い、`npx vitest` を直接実行しない。
-      - UIコンポーネント、外部API、Supabase / RLS / RPC、LLM出力そのものなど自動テスト対象外の変更には、Vitest追加だけを目的とした実装変更を行わない。
       - 実装開始前に対象仕様書の現行版を再読し、`plan.md` 作成時点の内容と食い違いがないか確認する。食い違いがあれば実装を進めず plan への差し戻しを判断する。
       - 変更差分が対象仕様書と `plan.md` の対象範囲内に収まっていることを確認する。対象外の差分が必要になった場合は実装を進めず ABORT する。
       - 実装後に `npm run verify` を実行し、失敗した場合は修正して再実行する。
@@ -225,7 +221,6 @@ steps:
     policy:
       - coding
     knowledge:
-      - architecture
       - growmate
     provider_options:
       extends: edit
@@ -275,8 +270,8 @@ steps:
       - 簡易・形式的・低価値なユニットテストの追加を要求しない。
       - 代替検証として `npm run verify` が実行されているかを確認する。
       - ブラウザ手動確認は無人運用では実施しない。未実施のみを理由に `needs_fix` にせず、未確認事項へ回す前提とする。
-      - UI変更がある場合は、対象差分と既存の同種画面・コンポーネント・`src/components/ui/`・`app/globals.css`を照合し、文言、色、タイポグラフィ、余白、状態表示、既存primitiveの再利用が既存UIから逸脱していないことを確認する。要件にないUI刷新や新しいデザインパターンの追加は `needs_fix` とする。
-      - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターン（`src/types/database.types.pending.ts` + `asPendingClient()` の `as unknown as` キャスト）は、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、このキャスト自体を理由に `needs_fix` にしない。
+      - UI変更がある場合は `.agents/skills/growmate-ui-ux/SKILL.md` を正本として、対象差分が既存の同種画面・`src/components/ui/`・`app/globals.css` から逸脱していないことを確認する。要件にないUI刷新や新しいデザインパターンの追加は `needs_fix` とする。
+      - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターンは、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、キャスト自体を理由に `needs_fix` にしない。
       - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
 
       ## plan.md（全文）
@@ -302,14 +297,13 @@ steps:
     policy:
       - coding
     knowledge:
-      - architecture
       - growmate
     provider_options:
       extends: edit
     required_permission_mode: edit
     pass_previous_response: false
     instruction: |
-      下記に全文添付された `architecture-review.md` を一次情報として、未解決の指摘だけを修正してください。
+      下記に全文添付された `architecture-review.md` を一次情報として、未解決の指摘だけを修正してください。実装規約の正本は implement ステップと同じ `.agents/skills/`（`implementation-guidelines` / `nextjs-server` / `growmate-ui-ux` / `react` / `supabase`）。
 
       必須条件:
       - 修正着手前に対象仕様書の現行版を確認し、レビュー指摘の範囲を超える仕様変更がないか確認する。
@@ -356,7 +350,6 @@ steps:
     policy:
       - coding
     knowledge:
-      - architecture
       - growmate
     provider_options:
       extends: edit
@@ -412,7 +405,6 @@ steps:
     policy:
       - coding
     knowledge:
-      - architecture
       - growmate
     provider_options:
       extends: edit
@@ -424,31 +416,12 @@ steps:
       - 本工程では人間への確認を行わない。`.agents/skills/update-docs/SKILL.md` の「更新方針を提案して合意」は、対象仕様書と本workflowへの事前合意で満たされているものとし、LLMが全差分からREADME更新要否を判断する。
 
       必須手順:
-      1. `.agents/skills/update-docs/SKILL.md`、対象仕様書、`README.md`、`git status`、`git diff --stat`、`git diff` を読む。
-      2. 実装差分によって README の既存説明が古くなるか、利用者・開発者・運用者が新たに知るべき恒久的な情報が生じたかを判定する。
-         - 対象仕様書に README 更新の予告（該当しそうなセクション）が書かれている場合は **候補として扱う**。ただし予告は仕様書段階の見込みであり、**最終判断は実装差分に基づく**。予告があっても差分が README の記述を変えないなら更新不要とし、予告になくても差分が影響するなら更新する。
-         - 判断が予告と食い違った場合は、その理由を `readme-sync.md` に書く。
-      3. 更新が必要な場合だけ、既存構成と記述粒度に合わせて `README.md` を最小差分で同期する。更新不要の場合は `README.md` を編集しない。
+      1. `.agents/skills/update-docs/SKILL.md`（docs 分類と README の役割・手順の正本）、対象仕様書、`README.md`、`git status`、`git diff --stat`、`git diff` を読む。
+      2. 実装差分によって README の既存説明（概要・コア機能・主要画面・データ構造・セットアップ・npm scripts・環境変数・認証/ロール/外部連携等）が古くなるか、利用者・開発者・運用者が新たに知るべき恒久的な情報が生じたかを判定する。内部実装だけの変更・一時的な修正内容・レビュー過程は更新不要。
+         - 対象仕様書の README 更新予告は候補として扱い、**最終判断は実装差分に基づく**。判断が予告と食い違った場合は理由を `readme-sync.md` に書く。
+      3. 更新が必要な場合だけ、既存構成と記述粒度に合わせて `README.md` を最小差分で同期する。README を変更すること自体を目的にしない（更新不要判断も正常な完了）。README 以外は編集せず、実装差分にない機能や将来構想・秘密値・自動生成ファイルの複製を書かない。
       4. `readme-sync.md` に「更新要 / 更新不要」「判断根拠」「確認した差分」「更新セクション（更新不要ならなし）」を記録する。
-
-      README 更新を必要とする代表条件:
-      - プロダクト概要、コア機能、主要画面、ユーザー向け導線、アーキテクチャの説明が変わる。
-      - DB migration / RLS / RPC の変更が、README に記載されたデータ構造、アクセスモデル、セットアップ、運用手順、重要な制約を変える。
-      - npm scripts、主要依存、環境変数、セットアップ手順、ディレクトリ構成、品質ゲートが変わる。
-      - 認証、ロール、外部連携、CI、デプロイ、Cron、セキュリティ運用が変わる。
-
-      README 更新を不要と判断できる代表条件:
-      - 内部実装だけの変更で、README の既存説明・コマンド・構成・運用が変わらない。
-      - migration が内部的な列・index・制約の調整に留まり、README が説明するデータモデルや運用へ影響しない。
-      - 一時的な修正内容、レビュー過程、個別ファイル一覧など、README に恒久情報として残す価値がない。
-
-      制約:
-      - README を変更すること自体を目的にしない。更新不要判断も正常な完了とする。
-      - 実装差分にない機能や将来構想を追記しない。
-      - `.env`、credential、token、秘密値を読まない・記載しない。
-      - 自動生成ファイルの内容をREADMEへ複製しない。正本ファイルへの参照を優先する。
-      - README 以外のプロダクションコードや設定ファイルを編集しない。
-      - README だけを変更した場合、直前の `npm run verify` 成功証跡があればフル検証を再実行せず、リンク先の実在と `git diff --check` を確認する。
+      5. README だけを変更した場合、直前の `npm run verify` 成功証跡があればフル検証を再実行せず、リンク先の実在と `git diff --check` を確認する。
     structured_output:
       schema_ref: readme_sync
     rules:
@@ -467,7 +440,6 @@ steps:
     edit: false
     persona: supervisor
     knowledge:
-      - architecture
       - growmate
     capabilities: readonly
     instruction: |
