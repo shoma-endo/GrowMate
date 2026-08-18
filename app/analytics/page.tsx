@@ -11,7 +11,9 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
+import { clampAnalyticsPeriod } from '@/lib/analytics-period';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
+import { ga4ContentEvaluationService } from '@/server/services/ga4ContentEvaluationService';
 
 export const dynamic = 'force-dynamic';
 // Instagram 手動同期 Server Action が既定 300s を超えるため Fluid Compute 上限まで引き上げる。
@@ -48,6 +50,10 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     ? params.gsc_evaluation[0]
     : params?.gsc_evaluation;
   const hasUnstartedGscEvaluation = gscEvaluationParam === 'not_started';
+  const ga4EvaluationParam = Array.isArray(params?.ga4_evaluation)
+    ? params.ga4_evaluation[0]
+    : params?.ga4_evaluation;
+  const hasUnstartedGa4Evaluation = ga4EvaluationParam === 'not_started';
   // unread_suggestion はカテゴリフィルターと直交するため hasUrlFilterParams に含めない。
   // 含めると ?unread_suggestion=1 のみの URL でも localStorage のカテゴリ復元が
   // スキップされ、保存済みカテゴリフィルターが失われる回帰が発生する。
@@ -80,6 +86,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   if (startDate > endDate) {
     [startDate, endDate] = [endDate, startDate];
   }
+  const clampedPeriod = clampAnalyticsPeriod(startDate, endDate);
+  startDate = clampedPeriod.startDate;
+  endDate = clampedPeriod.endDate;
 
   const authResult = await authMiddleware();
   redirectIfEmailLinkConflict(authResult);
@@ -87,6 +96,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     redirect('/login');
   }
   const { userId } = authResult;
+  const ga4EvaluationEnabled = await ga4ContentEvaluationService.isEvaluationEnabled();
 
   const tabParam = Array.isArray(params?.tab) ? params.tab[0] : params?.tab;
   const igPageParam = Array.isArray(params?.ig_page) ? params.ig_page[0] : params?.ig_page;
@@ -137,12 +147,13 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         includeUncategorized,
         hasUnreadSuggestion,
         hasUnstartedGscEvaluation,
+        hasUnstartedGa4Evaluation,
       }
     ),
     gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
     analyticsContentService.getAvailableCategoryNames(userId),
   ]);
-  const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error } = analyticsPage;
+  const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error, ga4Truncated } = analyticsPage;
 
   let instagramMediaPage = {
     items: [] as Awaited<ReturnType<typeof instagramMediaService.getPage>>['items'],
@@ -198,6 +209,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     if (hasUnstartedGscEvaluation) {
       query.set('gsc_evaluation', 'not_started');
     }
+    if (hasUnstartedGa4Evaluation) {
+      query.set('ga4_evaluation', 'not_started');
+    }
     if (instagramConnected && activeTab === 'instagram') {
       query.set('tab', 'instagram');
       query.set('ig_page', String(igPage));
@@ -233,6 +247,10 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       includeUncategorized={includeUncategorized}
       hasUnreadSuggestion={hasUnreadSuggestion}
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
+      hasUnstartedGa4Evaluation={hasUnstartedGa4Evaluation}
+      ga4Truncated={ga4Truncated ?? false}
+      ga4EvaluationEnabled={ga4EvaluationEnabled}
+      periodClamped={clampedPeriod.clamped}
       hasUrlFilterParams={hasUrlFilterParams}
       instagramConnected={instagramConnected}
       activeTab={activeTab}

@@ -29,6 +29,9 @@ import type {
 } from '../types';
 import type { EvaluationResultSummary } from '@/types/gsc';
 import type { TrendLineChartProps } from './TrendLineChart';
+import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
+import { ContentEvaluationCard } from './content-evaluation/ContentEvaluationCard';
+import { Ga4EvaluationHistoryPanel } from './content-evaluation/Ga4EvaluationHistoryPanel';
 
 const TrendLineChart = dynamic<TrendLineChartProps>(
   () => import('./TrendLineChart').then(mod => mod.TrendLineChart),
@@ -68,6 +71,10 @@ interface OverviewTabProps {
     | undefined
   >;
   onRefreshDetail?: (annotationId: string) => Promise<void>;
+  ga4Evaluation?: Ga4ContentEvaluationView | null;
+  onRunGa4Evaluation?: () => Promise<void>;
+  onRetryGa4Narrative?: () => Promise<void>;
+  ga4EvaluationError?: string | null;
 }
 
 export function OverviewTab({
@@ -82,6 +89,10 @@ export function OverviewTab({
   onRunEvaluation,
   onRunQueryImport,
   onRefreshDetail,
+  ga4Evaluation = null,
+  onRunGa4Evaluation,
+  onRetryGa4Narrative,
+  ga4EvaluationError = null,
 }: OverviewTabProps) {
   const [isQueryImporting, setIsQueryImporting] = useState(false);
   const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
@@ -217,6 +228,17 @@ export function OverviewTab({
             onUpdate={onUpdateEvaluation}
             onRunEvaluation={onRunEvaluation}
           />
+        )}
+        {onRunGa4Evaluation && (
+          <>
+            <ContentEvaluationCard
+              evaluation={ga4Evaluation}
+              error={ga4EvaluationError}
+              onRun={onRunGa4Evaluation}
+              {...(onRetryGa4Narrative ? { onRetryNarrative: onRetryGa4Narrative } : {})}
+            />
+            <Ga4EvaluationHistoryPanel evaluation={ga4Evaluation} />
+          </>
         )}
       </CardContent>
     </Card>

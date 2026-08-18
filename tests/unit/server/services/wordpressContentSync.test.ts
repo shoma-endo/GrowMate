@@ -80,6 +80,7 @@ describe('fetchWpPostContentLive', () => {
       contentHtml: '<h2>見出し</h2><p>記事本文</p>',
       title: '記事タイトル',
       excerpt: '抜粋',
+      imageCount: 0,
     });
   });
 
@@ -112,5 +113,26 @@ describe('fetchWpPostContentLive', () => {
     expect(mocks.refreshWpComToken).not.toHaveBeenCalled();
     expect(mocks.resolveContentById).toHaveBeenCalledWith(42);
     expect(result?.contentText).toBe('見出し  記事本文');
+  });
+
+  it('本文・抜粋・タイトルがすべて空の取得結果では既存キャッシュを更新しない', async () => {
+    mocks.resolveContentById.mockResolvedValue({
+      success: true,
+      data: {
+        id: 42,
+        title: { rendered: '' },
+        content: { rendered: '' },
+        excerpt: { rendered: '' },
+      },
+    });
+
+    await fetchWpPostContentLive({
+      userId: 'user-id',
+      wpPostId: 42,
+      canonicalUrl: 'https://example.com/sample-post/',
+      getCookie: () => undefined,
+    });
+
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });

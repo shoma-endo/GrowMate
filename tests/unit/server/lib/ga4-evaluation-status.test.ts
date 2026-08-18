@@ -50,4 +50,11 @@ describe('ga4-evaluation-status', () => {
       lastErrorCode: 'llm_output_invalid',
     });
   });
+
+  it('永続状態がない記事ではlow_data、eligible、unassessedを導出する', () => {
+    expect(resolveGa4EvaluationDisplayStatus({ killSwitchEnabled: true, needsReauth: false, persistedStatus: null, derivedStatus: 'low_data' })).toBe('low_data');
+    expect(resolveGa4EvaluationDisplayStatus({ killSwitchEnabled: true, needsReauth: false, persistedStatus: null, derivedStatus: 'eligible' })).toBe('eligible');
+    expect(resolveGa4EvaluationDisplayStatus({ killSwitchEnabled: true, needsReauth: false, persistedStatus: null })).toBe('unassessed');
+    expect(resolveGa4EvaluationDisplayStatus({ killSwitchEnabled: true, needsReauth: false, persistedStatus: 'narrative_failed' })).toBe('narrative_failed');
+  });
 });

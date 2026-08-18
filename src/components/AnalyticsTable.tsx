@@ -56,6 +56,7 @@ import {
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
 import { ChatService } from '@/domain/services/chatService';
 import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
+import { getGa4DiagnosisLabel, getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
 
 interface Props {
   items: AnalyticsContentItem[];
@@ -66,7 +67,9 @@ interface Props {
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
+  hasUnstartedGa4Evaluation: boolean;
   hasUrlFilterParams: boolean;
+  ga4EvaluationEnabled: boolean;
 }
 
 interface LaunchPayload {
@@ -132,7 +135,9 @@ export default function AnalyticsTable({
   includeUncategorized,
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
+  hasUnstartedGa4Evaluation,
   hasUrlFilterParams,
+  ga4EvaluationEnabled,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -159,7 +164,7 @@ export default function AnalyticsTable({
   const didInitialFilterSyncRef = React.useRef(false);
   const prevHasUrlFilterParamsRef = React.useRef(hasUrlFilterParams);
   const prevHasIndependentFilterRef = React.useRef(
-    hasUnreadSuggestion || hasUnstartedGscEvaluation
+    hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnstartedGa4Evaluation
   );
 
   const storedFilter = React.useMemo(() => loadCategoryFilterFromStorage(), []);
@@ -171,7 +176,7 @@ export default function AnalyticsTable({
     if (hasUrlFilterParams) {
       return selectedCategoryNames;
     }
-    if (hasUnreadSuggestion || hasUnstartedGscEvaluation) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnstartedGa4Evaluation) {
       return [];
     }
     return storedFilter.selectedCategoryNames;
@@ -180,7 +185,7 @@ export default function AnalyticsTable({
     if (hasUrlFilterParams) {
       return includeUncategorized;
     }
-    if (hasUnreadSuggestion || hasUnstartedGscEvaluation) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnstartedGa4Evaluation) {
       return false;
     }
     return storedFilter.includeUncategorized;
@@ -190,6 +195,8 @@ export default function AnalyticsTable({
     React.useState<boolean>(hasUnreadSuggestion);
   const [isFilteringUnstartedGscEvaluation, setIsFilteringUnstartedGscEvaluation] =
     React.useState<boolean>(hasUnstartedGscEvaluation);
+  const [isFilteringUnstartedGa4Evaluation, setIsFilteringUnstartedGa4Evaluation] =
+    React.useState<boolean>(hasUnstartedGa4Evaluation);
 
   // 操作列の展開状態（初期値は true: 展開）
   const [isOpsExpanded, setIsOpsExpanded] = React.useState<boolean>(() => {
@@ -279,6 +286,9 @@ export default function AnalyticsTable({
   React.useEffect(() => {
     setIsFilteringUnstartedGscEvaluation(hasUnstartedGscEvaluation);
   }, [hasUnstartedGscEvaluation]);
+  React.useEffect(() => {
+    setIsFilteringUnstartedGa4Evaluation(hasUnstartedGa4Evaluation);
+  }, [hasUnstartedGa4Evaluation]);
 
   const pushFilterQuery = React.useCallback(
     (
@@ -286,7 +296,7 @@ export default function AnalyticsTable({
       includeUncat: boolean,
       includeUnreadSuggestion: boolean,
       includeUnstartedGscEvaluation: boolean,
-      options?: { replace?: boolean }
+      options?: { replace?: boolean; ga4Evaluation?: boolean }
     ) => {
       const nextQuery = new URLSearchParams(searchParams?.toString() ?? '');
       const currentPath = pathname ?? '/analytics';
@@ -318,6 +328,13 @@ export default function AnalyticsTable({
         nextQuery.delete('gsc_evaluation');
       }
 
+      const includeUnstartedGa4Evaluation = options?.ga4Evaluation ?? isFilteringUnstartedGa4Evaluation;
+      if (includeUnstartedGa4Evaluation) {
+        nextQuery.set('ga4_evaluation', 'not_started');
+      } else {
+        nextQuery.delete('ga4_evaluation');
+      }
+
       const next = nextQuery.toString();
       const href = next.length > 0 ? `${currentPath}?${next}` : currentPath;
       React.startTransition(() => {
@@ -328,7 +345,7 @@ export default function AnalyticsTable({
         router.push(href);
       });
     },
-    [pathname, router, searchParams]
+    [isFilteringUnstartedGa4Evaluation, pathname, router, searchParams]
   );
 
   // URL未指定かつlocalStorageに復元対象がある場合は、初回にURLへ同期してサーバー再取得。
@@ -399,6 +416,7 @@ export default function AnalyticsTable({
   const restoreCategoryFiltersFromStorage = (overrides?: {
     includeUnreadSuggestion?: boolean;
     includeUnstartedGscEvaluation?: boolean;
+    includeUnstartedGa4Evaluation?: boolean;
   }) => {
     const stored = loadCategoryFilterFromStorage();
     if (stored.selectedCategoryNames.length > 0 || stored.includeUncategorized) {
@@ -409,6 +427,7 @@ export default function AnalyticsTable({
         stored.includeUncategorized,
         overrides?.includeUnreadSuggestion ?? isFilteringUnreadSuggestion,
         overrides?.includeUnstartedGscEvaluation ?? isFilteringUnstartedGscEvaluation
+        , { ga4Evaluation: overrides?.includeUnstartedGa4Evaluation ?? isFilteringUnstartedGa4Evaluation }
       );
       return true;
     }
@@ -440,6 +459,21 @@ export default function AnalyticsTable({
       isIncludingUncategorized,
       isFilteringUnreadSuggestion,
       next
+      , { ga4Evaluation: isFilteringUnstartedGa4Evaluation }
+    );
+  };
+
+  const handleUnstartedGa4EvaluationChange = (next: boolean) => {
+    setIsFilteringUnstartedGa4Evaluation(next);
+    if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
+      if (restoreCategoryFiltersFromStorage({ includeUnstartedGa4Evaluation: false })) return;
+    }
+    pushFilterQuery(
+      categoryFilterNames,
+      isIncludingUncategorized,
+      isFilteringUnreadSuggestion,
+      isFilteringUnstartedGscEvaluation,
+      { ga4Evaluation: next }
     );
   };
 
@@ -508,16 +542,25 @@ export default function AnalyticsTable({
     pushFilterQuery(categoryFilterNames, isIncludingUncategorized, isFilteringUnreadSuggestion, false);
   };
 
+  const removeUnstartedGa4EvaluationFilter = () => {
+    setIsFilteringUnstartedGa4Evaluation(false);
+    if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
+      if (restoreCategoryFiltersFromStorage({ includeUnstartedGa4Evaluation: false })) return;
+    }
+    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, isFilteringUnreadSuggestion, isFilteringUnstartedGscEvaluation, { ga4Evaluation: false });
+  };
+
   // 全フィルターをクリア
   const clearAllFilters = () => {
     setCategoryFilterNames([]);
     setIsIncludingUncategorized(false);
     setIsFilteringUnreadSuggestion(false);
     setIsFilteringUnstartedGscEvaluation(false);
+    setIsFilteringUnstartedGa4Evaluation(false);
     if (categoryFilterNames.length > 0 || isIncludingUncategorized) {
       saveCategoryFilterToStorage([], false);
     }
-    pushFilterQuery([], false, false, false);
+    pushFilterQuery([], false, false, false, { ga4Evaluation: false });
   };
 
   // フィルターが適用中かどうか
@@ -525,7 +568,8 @@ export default function AnalyticsTable({
     categoryFilterNames.length > 0 ||
     isIncludingUncategorized ||
     isFilteringUnreadSuggestion ||
-    isFilteringUnstartedGscEvaluation;
+    isFilteringUnstartedGscEvaluation ||
+    isFilteringUnstartedGa4Evaluation;
 
   const handleLaunch = React.useCallback(
     async (payload: LaunchPayload) => {
@@ -743,9 +787,11 @@ export default function AnalyticsTable({
               includeUncategorized={isIncludingUncategorized}
               hasUnreadSuggestion={isFilteringUnreadSuggestion}
               hasUnstartedGscEvaluation={isFilteringUnstartedGscEvaluation}
+              hasUnstartedGa4Evaluation={isFilteringUnstartedGa4Evaluation}
               onFilterChange={handleCategoryFilterChange}
               onUnreadSuggestionChange={handleUnreadSuggestionChange}
               onUnstartedGscEvaluationChange={handleUnstartedGscEvaluationChange}
+              onUnstartedGa4EvaluationChange={handleUnstartedGa4EvaluationChange}
               onClearAll={clearAllFilters}
             />
         }
@@ -814,6 +860,14 @@ export default function AnalyticsTable({
                         </button>
                       </span>
                     )}
+                    {isFilteringUnstartedGa4Evaluation && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-indigo-800 bg-indigo-100">
+                        コンテンツ評価未開始
+                        <button type="button" onClick={removeUnstartedGa4EvaluationFilter} className="hover:bg-indigo-200 rounded-full p-0.5" title="コンテンツ評価未開始フィルターを解除">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={clearAllFilters}
@@ -836,7 +890,7 @@ export default function AnalyticsTable({
             <div className="overflow-x-auto contain-layout">
               {items.length === 0 ? (
                 <p className="text-sm text-gray-500 py-8 text-center">
-                  {hasUrlFilterParams || hasUnreadSuggestion
+                  {hasUrlFilterParams || hasUnreadSuggestion || hasUnstartedGa4Evaluation
                     ? '表示条件に一致するコンテンツがありません。フィルタを変更してください。'
                     : 'まだコンテンツがありません。チャットでブログを作成するか、WordPress記事を一括インポートしてください。'}
                 </p>
@@ -885,7 +939,11 @@ export default function AnalyticsTable({
                             [
                               'ga4_avg_engagement_time',
                               'ga4_read_rate',
-                              'ga4_bounce_rate',
+                              'ga4_engagement_rate',
+                              'ga4_evaluation_status',
+                              'ga4_content_score',
+                              'ga4_diagnosis',
+                              'ga4_last_evaluated_at',
                               'ga4_cv_count',
                               'ga4_cvr',
                               'ga4_flags',
@@ -1152,12 +1210,20 @@ export default function AnalyticsTable({
                                     {ga4Summary ? formatPercent(readRate) : '—'}
                                   </td>
                                 );
-                              case 'ga4_bounce_rate':
+                              case 'ga4_engagement_rate':
                                 return (
                                   <td key={id} className="px-6 py-4 text-sm">
-                                    {ga4Summary ? formatPercent(ga4Summary.bounceRate) : '—'}
+                                    {ga4Summary?.engagementRate !== null && ga4Summary?.engagementRate !== undefined ? formatPercent(ga4Summary.engagementRate) : '—'}
                                   </td>
                                 );
+                              case 'ga4_evaluation_status':
+                                return <td key={id} className="px-6 py-4 text-sm">{getGa4EvaluationStatusLabel(ga4EvaluationEnabled ? item.ga4Evaluation?.status ?? null : 'evaluation_disabled')}</td>;
+                              case 'ga4_content_score':
+                                return <td key={id} className="px-6 py-4 text-sm">{item.ga4Evaluation?.contentScore ?? '—'}</td>;
+                              case 'ga4_diagnosis':
+                                return <td key={id} className="px-6 py-4 text-sm">{getGa4DiagnosisLabel(item.ga4Evaluation?.diagnosisCode ?? null)}</td>;
+                              case 'ga4_last_evaluated_at':
+                                return <td key={id} className="px-6 py-4 text-sm">{item.ga4Evaluation?.lastEvaluatedAt ? new Date(item.ga4Evaluation.lastEvaluatedAt).toLocaleDateString('ja-JP') : '—'}</td>;
                               case 'ga4_cv_count':
                                 return (
                                   <td key={id} className="px-6 py-4 text-sm">

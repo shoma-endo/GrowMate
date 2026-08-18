@@ -9,6 +9,7 @@ export interface Ga4EvaluationDisplayInput {
   killSwitchEnabled: boolean;
   needsReauth: boolean;
   persistedStatus: Ga4PersistentEvaluationStatus | null;
+  derivedStatus?: 'low_data' | 'eligible' | 'unassessed';
 }
 
 export function resolveGa4EvaluationDisplayStatus(
@@ -23,6 +24,7 @@ export function resolveGa4EvaluationDisplayStatus(
   if (input.persistedStatus) {
     return input.persistedStatus;
   }
+  if (input.derivedStatus) return input.derivedStatus;
   return 'unassessed';
 }
 

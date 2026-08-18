@@ -18,13 +18,13 @@
 - **AI コンテンツ支援**: 7 ステップのブログ作成フロー（ニーズ整理〜本文作成）、広告／LP テンプレート、AI 応答ストリーミング
 - **キャンバス編集**: TipTap ベースの `CanvasPanel`、Markdown レンダリング／見出しアウトライン／バージョン履歴、選択範囲リライト
 - **見出しフロー・バージョン管理**: Step5 生成見出しからの `session_heading_sections` 初期化、個別 AI 生成・`session_combined_contents` への結合保存、`save_atomic_combined_content` RPC で競合シリアライズ
-- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・手動「最新化」同期）を表示
+- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。未評価フィルタとコンテンツ評価状態・スコア・診断を一覧で確認し、`/analytics/[annotationId]` の記事詳細で手動評価と履歴を表示する。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・手動「最新化」同期）を表示
 - **WordPress 連携**: OAuth・Application Password 両対応、投稿の一括インポート、`AnnotationPanel` でメモ・キーワード・ペルソナ等を再利用
 - **Google Search Console 連携**: OAuth 認証、日次指標保存（`gsc_page_metrics` / `gsc_query_metrics`）、記事評価・改善提案（`gsc_article_evaluations`）、改善提案ジョブの Cron 実行（`/api/cron/gsc-suggestions`）
-- **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`）、サマリー・ランキング・時系列ダッシュボード
+- **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`）、サマリー・ランキング・時系列ダッシュボード、記事ごとのコンテンツ評価、メディア全体の資産価値・実効スコアと散布図
 - **Google Ads 連携**: OAuth 認証、MCC アカウント選択、キーワード・キャンペーン指標、GSC 順位と WordPress 記事在庫を考慮した AI コンテンツ戦略提案、除外キーワード提案（自動配信メール対応）
 - **Instagram 連携**: Business Login for Instagram による OAuth 認証、プロアカウント（ビジネス/クリエイター）連携、投稿プレビュー（`/setup/instagram`）。Phase 2 では手動同期で `instagram_media` / `instagram_account_insights_daily` に指標を保存し、`/analytics` の Instagram タブで閲覧（cron なし）。認証情報は `instagram_credentials` に保存
-- **管理者ダッシュボード** (`/admin`): プロンプトテンプレート編集・バージョン保存、ユーザーロール管理
+- **管理者ダッシュボード** (`/admin`): プロンプトテンプレート編集・バージョン保存、ユーザーロール管理。GA4コンテンツ評価の文章化テンプレートも `/admin/prompts` から登録する
 - **事業者情報ブリーフ** (`/business-info`): 複数サービスの 5W2H を登録し、チャットセッションごとに選択したサービスのコンテキストを自動補完
 - **外部連携セットアップ** (`/setup`): WordPress・GSC・GA4・Google Ads・Instagram の接続状態と設定画面を集約
 
@@ -42,7 +42,7 @@ graph TB
     BusinessForm["Business Info"]
     AdminUI["Admin"]
     GscSetup["GSC Setup"]
-    GscDashboard["GSC Dashboard"]
+    AnalyticsDetail["Analytics Article Detail (/analytics/[annotationId])"]
     Ga4Dashboard["GA4 Dashboard"]
     GoogleAdsDashboard["Google Ads Dashboard"]
     InstagramSetup["Instagram Setup"]
@@ -90,11 +90,11 @@ graph TB
   BusinessForm --> ServerActions
   AdminUI --> ServerActions
   GscSetup --> GscAPI
-  GscDashboard --> GscAPI
+  AnalyticsDetail --> GscAPI
   Ga4Dashboard --> Ga4API
   GoogleAdsDashboard --> GoogleAdsAPI
   InstagramSetup --> InstagramAPI
-  GscDashboard --> ServerActions
+  AnalyticsDetail --> ServerActions
   Ga4Dashboard --> ServerActions
   GoogleAdsDashboard --> ServerActions
 
@@ -225,6 +225,8 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 ```
 
 > **Supabase 注意**: 本番と開発で同一プロジェクトを共有しています。`npx supabase db push` をリモートに対して実行しないこと。スキーマ変更は `supabase/migrations/` にコミットし、適用は管理者が行います。
+
+> **GA4コンテンツ評価の運用**: 評価機能はマイグレーション適用後も Kill Switch（`ga4_content_evaluation_settings.enabled`）が `false` の停止状態で出荷します。管理者が `/admin/prompts` で文章化テンプレートを登録し、実データ検証後に設定を `true` へ変更してください。設定未有効・DB読取失敗時は評価APIを実行しない安全側の挙動です。
 
 初回セットアップ後は Supabase の `users` テーブルで自分のロールを `admin` に変更し、`/business-info` で事業者情報を登録してください。Google / WordPress / Google Ads の詳細手順は [`docs/specs/`](docs/specs/) を参照。Instagram 連携の設計・OAuth 要件は [`docs/plans/instagram-integration-design.md`](docs/plans/instagram-integration-design.md) を参照。
 

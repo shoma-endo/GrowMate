@@ -1,0 +1,235 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { AlertCircle, Loader2, Play, RefreshCw } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  formatGa4Duration,
+  formatGa4ScoreDiff,
+  getGa4DataQualityLabel,
+  getGa4MissingMetricLabel,
+  getGa4DiagnosisLabel,
+  getGa4EvaluationStatusLabel,
+  getGa4ScoreBand,
+} from '@/lib/ga4-evaluation-display';
+import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
+
+interface Props {
+  evaluation: Ga4ContentEvaluationView | null;
+  onRun: () => Promise<void>;
+  onRetryNarrative?: () => Promise<void>;
+  error?: string | null;
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ja-JP');
+}
+
+function getMeasuredScrollUsers(dataQuality: unknown): number | null {
+  if (typeof dataQuality !== 'object' || dataQuality === null || Array.isArray(dataQuality)) return null;
+  const scrollUsers = (dataQuality as { scrollUsers?: unknown }).scrollUsers;
+  return typeof scrollUsers === 'number' && Number.isFinite(scrollUsers) ? scrollUsers : null;
+}
+
+function getMissingMetricsFromDataQuality(dataQuality: unknown): string[] {
+  if (typeof dataQuality !== 'object' || dataQuality === null || Array.isArray(dataQuality)) return [];
+  const missingMetrics = (dataQuality as { missingMetrics?: unknown }).missingMetrics;
+  return Array.isArray(missingMetrics)
+    ? missingMetrics.filter((metric): metric is string => typeof metric === 'string')
+    : [];
+}
+
+export function ContentEvaluationCard({ evaluation, onRun, onRetryNarrative, error = null }: Props) {
+  const [isRunning, setIsRunning] = useState(false);
+  const latest = evaluation?.history.find(item => item.id === evaluation.projection?.lastSuccessHistoryId)
+    ?? evaluation?.history.find(item => item.status === 'evaluated' || item.status === 'narrative_failed')
+    ?? null;
+  const latestRun = evaluation?.history[0] ?? null;
+  const displayStatus = evaluation?.displayStatus ?? 'unassessed';
+  const canRun = ['eligible', 'evaluated', 'narrative_failed', 'evaluation_failed'].includes(displayStatus);
+  const canShowAction = !['unassessed', 'low_data', 'evaluating', 'needs_reauth', 'import_failed', 'insufficient_data', 'evaluation_disabled'].includes(displayStatus);
+  const dataQualitySource = displayStatus === 'insufficient_data' ? latestRun : latest;
+  const missingMetrics = displayStatus === 'unassessed'
+    ? evaluation?.missingMetrics ?? []
+    : getMissingMetricsFromDataQuality(dataQualitySource?.dataQuality);
+
+  const handleRun = async () => {
+    if (!canRun || isRunning) return;
+    setIsRunning(true);
+    try {
+      await (displayStatus === 'narrative_failed' && onRetryNarrative ? onRetryNarrative() : onRun());
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const engagedUsers = latest?.sessions !== null && latest?.sessions !== undefined && latest.engageRate !== null
+    ? Math.round(latest.engageRate * latest.sessions)
+    : null;
+  const measuredScrollUsers = latest ? getMeasuredScrollUsers(latest.dataQuality) : null;
+  const previous = latest
+    ? evaluation?.history.find(item =>
+        item.id !== latest.id &&
+        (item.status === 'evaluated' || item.status === 'narrative_failed') &&
+        item.contentScore !== null && item.engageScore !== null && item.readScore !== null
+      ) ?? null
+    : null;
+  const actionLabel = isRunning
+    ? '評価中です'
+    : displayStatus === 'eligible'
+      ? '評価を実行'
+      : displayStatus === 'narrative_failed'
+          ? '診断コメントを再作成'
+          : latest
+            ? '再評価'
+            : '評価を実行';
+  const scoreDiff = (current: number | null, previousScore: number | null): string =>
+    current === null || previousScore === null ? formatGa4ScoreDiff(null) : formatGa4ScoreDiff(current - previousScore);
+  const formatPercent = (value: number | null): string =>
+    value === null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(1)}%`;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-lg">コンテンツ評価</CardTitle>
+        <span className="rounded-full border px-3 py-1 text-sm" aria-live="polite">
+          {displayStatus === 'unassessed' ? '未評価（データが不足）' : getGa4EvaluationStatusLabel(displayStatus)}
+        </span>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {(error || displayStatus === 'evaluation_failed' || displayStatus === 'import_failed') && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error ?? (displayStatus === 'import_failed' ? 'データを再取得してから評価を実行してください。' : '評価に失敗しました。時間をおいて再評価してください。')}</AlertDescription>
+          </Alert>
+        )}
+        {displayStatus === 'needs_reauth' && (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-muted-foreground">Google連携を確認してから評価を実行してください。</p>
+            <Button asChild type="button" variant="outline">
+              <Link href="/setup/ga4">Googleを再連携</Link>
+            </Button>
+          </div>
+        )}
+        {displayStatus === 'import_failed' && (
+          <Button asChild type="button" variant="outline">
+            <Link href="/setup/ga4">データを再取得</Link>
+          </Button>
+        )}
+        {displayStatus === 'low_data' && <p className="text-sm text-muted-foreground">訪問した人が30人に達すると評価できます。</p>}
+        {(displayStatus === 'unassessed' || displayStatus === 'insufficient_data') && (
+          <details className="rounded-md border p-3 text-sm">
+            <summary className="cursor-pointer font-medium">不足項目を確認</summary>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+              {missingMetrics.map(metric => (
+                <li key={metric}>{getGa4MissingMetricLabel(metric)}</li>
+              ))}
+              {missingMetrics.length === 0 && <li>{getGa4DataQualityLabel(dataQualitySource?.dataQuality)}</li>}
+            </ul>
+          </details>
+        )}
+        {displayStatus === 'insufficient_data' && <p className="text-sm text-muted-foreground">評価に必要なデータが不足しています。</p>}
+        {displayStatus === 'evaluating' && (
+          <p className="text-sm text-muted-foreground">
+            {(() => {
+              const evaluating = evaluation?.history.find(item => item.status === 'evaluating');
+              return evaluating && evaluating.attemptCount > 1
+                ? `再試行中（${Math.min(evaluating.attemptCount, 3)}/3）`
+                : '評価中です。完了まで最大3分かかる場合があります。完了後に再読み込みしてください。';
+            })()}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">評価対象期間は表示期間とは別に管理されます。</p>
+          {canShowAction && (
+            <Button type="button" onClick={handleRun} disabled={isRunning || !canRun}>
+              {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : latest ? <RefreshCw className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
+              {actionLabel}
+            </Button>
+          )}
+        </div>
+
+        {latest?.contentScore !== null && latest?.contentScore !== undefined ? (
+          <div className="space-y-4">
+            {(displayStatus === 'evaluating' || displayStatus === 'evaluation_failed') && (
+              <p className="rounded-md border p-3 text-sm font-medium">
+                {displayStatus === 'evaluating' ? '前回の評価結果' : '前回の成功結果'}
+              </p>
+            )}
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-sm text-muted-foreground">コンテンツ力スコア</p>
+                <p className="text-2xl font-bold">{latest.contentScore}点 <span className="text-base font-normal">／ {getGa4ScoreBand(latest.contentScore)}</span></p>
+              </div>
+              <p className="text-sm text-muted-foreground">サイト内順位 {latest.siteRank ?? '—'}位 / {latest.totalArticles ?? '—'}記事中</p>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={latest.contentScore}>
+              <div className="h-full rounded-full bg-primary" style={{ width: `${latest.contentScore}%` }} />
+            </div>
+            <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2">
+              <div>
+                <div className="flex justify-between"><span>読み始めスコア</span><span>{latest.engageScore ?? '—'}</span></div>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={latest.engageScore ?? undefined}>
+                  <div className="h-full rounded-full bg-blue-500" style={{ width: `${latest.engageScore ?? 0}%` }} />
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between"><span>読了スコア</span><span>{latest.readScore ?? '—'}</span></div>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={latest.readScore ?? undefined}>
+                  <div className="h-full rounded-full bg-emerald-500" style={{ width: `${latest.readScore ?? 0}%` }} />
+                </div>
+              </div>
+              <span>診断：{getGa4DiagnosisLabel(latest.diagnosisCode)}</span>
+            </div>
+            {measuredScrollUsers !== null && latest.scrollRate !== null && latest.readScore !== null && latest.scrollRate >= 0.4 && latest.readScore < 40 && (
+              <p className="rounded-md bg-muted p-3 text-sm">補助ラベル：流し読み型</p>
+            )}
+            <div className="rounded-md border p-3 text-sm">
+              <p className="font-medium">人数の内訳</p>
+              <p>
+                {latest.sessions ?? '—'}訪問
+                {' ▶ '}{engagedUsers ?? '—'}読み始め
+                {' ▶ '}{measuredScrollUsers === null
+                  ? latest.scrollRate === null
+                    ? '実測なし'
+                    : `1人あたり平均で全体の${formatPercent(latest.scrollRate)}まで読まれています`
+                  : `${measuredScrollUsers}最後まで`}
+              </p>
+              {measuredScrollUsers === null && latest.scrollRate === null && <p className="text-xs text-muted-foreground">最後までの人数と率は実測できないため表示していません。</p>}
+            </div>
+            {latest.narrative ? (
+              <div className="space-y-2 rounded-md bg-muted p-3 text-sm">
+                <p className="font-semibold">{latest.narrative.headline}</p>
+                <p>{latest.narrative.situation}</p>
+                <p>{latest.narrative.cause}</p>
+                <p className="mt-2 font-semibold">NEXT ACTION</p>
+                <p>{latest.narrative.next_action}</p>
+                <p><span className="font-semibold">狙い：</span>{latest.narrative.target}</p>
+              </div>
+            ) : (
+              <p className="rounded-md bg-muted p-3 text-sm">スコアは保存されています。診断コメントは作成できませんでした。</p>
+            )}
+            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              <span>評価対象期間：{latest.periodStart ?? '—'} から {latest.periodEnd ?? '—'}</span>
+              <span>最終評価日時：{formatDate(latest.completedAt)}</span>
+              <span>データ取得日時：{formatDate(latest.ga4DataFetchedAt)}</span>
+              <span>データ品質：{getGa4DataQualityLabel(latest.dataQuality)}</span>
+              <span>実際に読まれた時間：{formatGa4Duration(latest.avgEngagementSeconds)}</span>
+              <span>読み始め率：{formatPercent(latest.engageRate)}</span>
+              <span>前回差分：コンテンツ力 {scoreDiff(latest.contentScore, previous?.contentScore ?? null)} / 読み始め {scoreDiff(latest.engageScore, previous?.engageScore ?? null)} / 読了 {scoreDiff(latest.readScore, previous?.readScore ?? null)}</span>
+              <span>評価設定：v{latest.scoringConfigVersion} / 文章 v{latest.promptVersion ?? '—'}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">評価結果はまだありません。</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  aggregateGa4EvaluationPageMetrics,
   aggregateGa4PageMetrics,
   toDisplayedGa4PageMetricSummary,
   type Ga4DailyMetricInput,
@@ -12,6 +13,8 @@ const baseMetric: Ga4DailyMetricInput = {
   users: 3,
   engagementTimeSec: 20,
   bounceRate: 0.25,
+  engagementRate: 0.4,
+  activeUsers: 4,
   cvEventCount: 1,
   scroll90EventCount: 2,
   searchClicks: 3,
@@ -51,8 +54,11 @@ describe('ga4-metrics-aggregation', () => {
       users: 10,
       engagementTimeSec: 100,
       bounceRate: 0.65,
+      engagementRate: 0.4,
+      activeUsers: 8,
       cvEventCount: 5,
       scroll90EventCount: 10,
+      scrollMetricsAvailable: true,
       searchClicks: 5,
       impressions: 20,
       ctr: 0.25,
@@ -72,5 +78,16 @@ describe('ga4-metrics-aggregation', () => {
     expect(summary?.ctr).toBeNull();
     expect(summary).toBeDefined();
     expect(toDisplayedGa4PageMetricSummary(summary!)).toMatchObject({ bounceRate: 0, ctr: null });
+  });
+
+  it('評価入力では期間内の必須指標欠損をnullと部分取得として伝播する', () => {
+    const summary = aggregateGa4EvaluationPageMetrics([
+      { ...baseMetric, sessions: 10, engagementRate: 0.2, activeUsers: 5 },
+      { ...baseMetric, sessions: 10, engagementRate: null, activeUsers: null },
+      { ...baseMetric, sessions: 20, engagementRate: 0.8, activeUsers: 7 },
+    ], '2026-08-01', '2026-08-03').get('/articles/one');
+    expect(summary?.engagementRate).toBeNull();
+    expect(summary?.activeUsers).toBeNull();
+    expect(summary?.isPartial).toBe(true);
   });
 });

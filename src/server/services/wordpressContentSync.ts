@@ -5,12 +5,15 @@ import {
   WPCOM_TOKEN_COOKIE_NAME,
 } from '@/server/services/wordpressContext';
 import { WordPressService } from '@/server/services/wordpressService';
+import { countImageTags } from '@/lib/content-text';
+import { asPendingClient, type Ga4PendingDatabase } from '@/types/database.types.pending';
 
 export interface WpPostContentFields {
   contentText: string | null;
   contentHtml: string | null;
   title: string | null;
   excerpt: string | null;
+  imageCount: number | null;
 }
 
 type CookieGetter = (name: string) => string | undefined;
@@ -41,6 +44,7 @@ function extractPostFields(post: WpPostSource): WpPostContentFields {
     contentText: stripHtml(contentHtml).trim() || null,
     title: stripHtml(titleHtml).trim() || null,
     excerpt: stripHtml(excerptHtml).trim() || null,
+    imageCount: countImageTags(contentHtml),
   };
 }
 
@@ -198,16 +202,16 @@ async function updateContentCache(
   wpPostId: number,
   fields: WpPostContentFields
 ): Promise<void> {
-  if (!fields.contentText && !fields.excerpt && !fields.title) {
+  if (!fields.contentText?.trim() && !fields.excerpt?.trim() && !fields.title?.trim()) {
     return;
   }
-
-  await supabase
-    .getClient()
+  const client = asPendingClient<Ga4PendingDatabase>(supabase.getClient());
+  await client
     .from('content_annotations')
     .update({
       wp_content_text: fields.contentText,
       wp_excerpt: fields.excerpt ?? null,
+      wp_image_count: fields.imageCount,
       ...(fields.title ? { wp_post_title: fields.title } : {}),
       updated_at: new Date().toISOString(),
     })
@@ -229,11 +233,11 @@ export async function fetchWpPostContentWithCache(params: {
     cachedExcerpt.trim().length === 0;
 
   if (!wpPostId) {
-    return needsFetch ? null : { contentText: cachedContent, title: null, excerpt: cachedExcerpt };
+    return needsFetch ? null : { contentText: cachedContent, title: null, excerpt: cachedExcerpt, imageCount: null };
   }
 
   if (!needsFetch) {
-    return { contentText: cachedContent, title: null, excerpt: cachedExcerpt };
+    return { contentText: cachedContent, title: null, excerpt: cachedExcerpt, imageCount: null };
   }
 
   try {
@@ -247,6 +251,7 @@ export async function fetchWpPostContentWithCache(params: {
       contentText: fields.contentText,
       title: fields.title,
       excerpt: fields.excerpt,
+      imageCount: fields.imageCount,
     };
   } catch (error) {
     console.error('[WordPressContentSync] fetchWpPostContentWithCache error', error);

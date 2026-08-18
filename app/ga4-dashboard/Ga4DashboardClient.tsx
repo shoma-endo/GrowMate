@@ -25,8 +25,10 @@ import type {
   Ga4DashboardRankingItem,
   Ga4DashboardTimeseriesPoint,
   Ga4DashboardSortKey,
+  Ga4MediaContentScores,
 } from '@/types/ga4';
 import { SummaryCards } from './components/SummaryCards';
+import { MediaContentScorePanel } from './components/MediaContentScorePanel';
 import { RankingTab } from './components/RankingTab';
 import type { TimeseriesTabProps } from './components/TimeseriesTab';
 import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
@@ -81,16 +83,20 @@ interface Props {
   };
   initialError?: string;
   initialDateRange: DateRange;
+  initialMediaContentScores?: Ga4MediaContentScores | null | undefined;
 }
 
 export default function Ga4DashboardClient({
   initialData,
   initialError,
   initialDateRange,
+  initialMediaContentScores = null,
 }: Props) {
   const [data, setData] = useState(initialData);
   const [error, setError] = useState<string | undefined>(initialError);
   const [isLoading, setIsLoading] = useState(false);
+  const mediaContentScores = initialMediaContentScores;
+
 
   // 現在の期間
   const [dateRange, setDateRange] = useState<DateRange>(() => {
@@ -116,7 +122,6 @@ export default function Ga4DashboardClient({
   // タイムシリーズ表示メトリック
   const [visibleTimeseriesMetrics, setVisibleTimeseriesMetrics] = useState({
     readRate: true,
-    bounceRate: true,
     cvr: true,
   });
 
@@ -280,7 +285,7 @@ export default function Ga4DashboardClient({
 
   // タイムシリーズメトリック切替
   const handleToggleMetric = useCallback(
-    (metric: 'readRate' | 'bounceRate' | 'cvr') => {
+    (metric: 'readRate' | 'cvr') => {
       setVisibleTimeseriesMetrics((prev) => ({
         ...prev,
         [metric]: !prev[metric],
@@ -430,6 +435,7 @@ export default function Ga4DashboardClient({
       {data?.summary && (
         <SummaryCards summary={data.summary} isLoading={isLoading} />
       )}
+      <MediaContentScorePanel scores={mediaContentScores} />
 
       {/* タブ */}
       <Tabs defaultValue="ranking" className="w-full">
@@ -457,11 +463,11 @@ export default function Ga4DashboardClient({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="sessions">セッション数</SelectItem>
-                <SelectItem value="cvr">CVR</SelectItem>
+                <SelectItem value="sessions">訪問数</SelectItem>
+                <SelectItem value="cvr">問い合わせ率</SelectItem>
                 <SelectItem value="readRate">読了率</SelectItem>
                 <SelectItem value="avgEngagementTimeSec">
-                  平均滞在時間
+                  実際に読まれた時間
                 </SelectItem>
               </SelectContent>
             </Select>

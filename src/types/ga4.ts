@@ -35,8 +35,11 @@ export interface Ga4PageMetricSummary {
   users: number;
   engagementTimeSec: number;
   bounceRate: number; // 0-1
+  engagementRate: number | null; // 0-1
+  activeUsers: number | null;
   cvEventCount: number;
   scroll90EventCount: number;
+  scrollMetricsAvailable?: boolean;
   searchClicks: number; // organicGoogleSearchClicks（検索クリック数、CTR分子）
   impressions: number; // organicGoogleSearchImpressions（検索インプレッション数、CTR分母）
   ctr: number | null; // searchClicks / impressions (0-1の比率、表示時に×100)
@@ -69,7 +72,6 @@ export interface Ga4DashboardSummary {
   totalSessions: number;
   totalUsers: number;
   avgEngagementTimeSec: number;
-  avgBounceRate: number; // 0-1
   totalCvEventCount: number;
   cvr: number; // 0-100
   avgReadRate: number; // 0-100
@@ -87,7 +89,6 @@ export interface Ga4DashboardRankingItem {
   sessions: number;
   users: number;
   avgEngagementTimeSec: number;
-  bounceRate: number; // 0-1
   cvEventCount: number;
   cvr: number; // 0-100
   readRate: number; // 0-100
@@ -103,7 +104,6 @@ export interface Ga4DashboardTimeseriesPoint {
   sessions: number;
   users: number;
   avgEngagementTimeSec: number;
-  bounceRate: number; // 0-1
   cvEventCount: number;
   cvr: number; // 0-100
   readRate: number; // 0-100
@@ -112,6 +112,24 @@ export interface Ga4DashboardTimeseriesPoint {
   ctr: number | null; // クリック率（0-1の比率、表示時に×100）
   isSampled: boolean;
   isPartial: boolean;
+}
+
+interface Ga4MediaContentScorePoint {
+  annotationId: string;
+  title: string | null;
+  normalizedPath: string | null;
+  contentScore: number;
+  readScore: number;
+  engageScore: number;
+  sessions: number;
+}
+
+export interface Ga4MediaContentScores {
+  assetValueScore: number | null;
+  effectiveScore: number | null;
+  evaluatedCount: number;
+  totalCount: number;
+  points: Ga4MediaContentScorePoint[];
 }
 
 interface Ga4DashboardChartData {
@@ -130,5 +148,4 @@ type Ga4DashboardTimeSeriesMetric =
   | 'sessions'
   | 'users'
   | 'readRate'
-  | 'bounceRate'
   | 'cvr';

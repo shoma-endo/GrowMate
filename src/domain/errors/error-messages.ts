@@ -324,6 +324,9 @@ export const ERROR_MESSAGES = {
     /** 一般的なサーバーエラー */
     SERVER_ERROR: 'サーバーエラーが発生しました',
 
+    /** 入力値の検証失敗 */
+    VALIDATION_FAILED: '入力値の検証に失敗しました',
+
     /** 予期しないエラー */
     UNEXPECTED_ERROR: '予期しないエラーが発生しました',
 
@@ -605,6 +608,9 @@ export const ERROR_MESSAGES = {
 
     /** GA4機能へのアクセス権がない場合 */
     FEATURE_ACCESS_DENIED: 'この機能を利用する権限がありません',
+    EVALUATION_FETCH_FAILED: 'GA4コンテンツ評価の取得に失敗しました',
+    EVALUATION_RUN_FAILED: 'GA4コンテンツ評価の実行に失敗しました',
+    MEDIA_SCORE_FETCH_FAILED: 'GA4メディア全体スコアの取得に失敗しました',
   },
 
   /**

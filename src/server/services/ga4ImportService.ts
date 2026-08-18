@@ -9,8 +9,8 @@ import {
   getJstDateISOFromTimestamp,
   normalizeToPath,
 } from '@/lib/ga4-utils';
-import { addDaysISO } from '@/lib/date-utils';
 import { GA4_SCOPE } from '@/lib/constants';
+import { resolveGa4SyncRange } from '@/server/lib/ga4-sync-range';
 
 interface Ga4ReportRow {
   date: string;
@@ -20,6 +20,8 @@ interface Ga4ReportRow {
   users?: number;
   engagementTimeSec?: number;
   bounceRate?: number;
+  engagementRate?: number | null;
+  activeUsers?: number | null;
   eventCount?: number;
   searchClicks?: number; // organicGoogleSearchClicks（検索クリック数、CTR分子）
   impressions?: number; // organicGoogleSearchImpressions（検索インプレッション数、CTR分母）
@@ -44,6 +46,10 @@ interface Ga4SyncSummary {
 type Ga4SyncResult =
   | { ok: true; data: Ga4SyncSummary }
   | { ok: false; reason: 'not_connected' | 'already_synced' };
+
+interface Ga4SyncOptions {
+  backfillDays?: number | undefined;
+}
 
 class Ga4ImportService {
   static readonly MAX_USERS_PER_BATCH = 10;
@@ -108,7 +114,7 @@ class Ga4ImportService {
     return { processed, attempted, stoppedReason };
   }
 
-  async syncUser(userId: string): Promise<Ga4SyncResult> {
+  async syncUser(userId: string, options?: Ga4SyncOptions): Promise<Ga4SyncResult> {
     const credential = await this.supabaseService.getGscCredentialByUserId(userId);
     if (!credential?.ga4PropertyId) {
       return { ok: false, reason: 'not_connected' };
@@ -122,20 +128,21 @@ class Ga4ImportService {
     const accessToken = await this.ensureAccessToken(userId, credential);
 
     const todayJst = formatJstDateISO(new Date());
-    const yesterdayJst = addDaysISO(todayJst, -1);
 
     const lastSyncedAt = credential.ga4LastSyncedAt;
     const lastSyncedDate = lastSyncedAt ? getJstDateISOFromTimestamp(lastSyncedAt) : null;
+    const syncRange = resolveGa4SyncRange({
+      todayJst,
+      lastSyncedDate,
+      initialSyncDays: Ga4ImportService.INITIAL_SYNC_DAYS,
+      backfillDays: options?.backfillDays,
+    });
 
-    const startDate = lastSyncedDate
-      ? addDaysISO(lastSyncedDate, 1)
-      : addDaysISO(yesterdayJst, -(Ga4ImportService.INITIAL_SYNC_DAYS - 1));
-    const endDate = yesterdayJst;
-
-    if (startDate > endDate) {
+    if (!syncRange.ok) {
       // データ未取得時に同期カーソルを進めると欠損の原因になるため、更新しない
       return { ok: false, reason: 'already_synced' };
     }
+    const { startDate, endDate } = syncRange.range;
 
     const conversionEvents = Array.isArray(credential.ga4ConversionEvents)
       ? credential.ga4ConversionEvents
@@ -195,6 +202,8 @@ class Ga4ImportService {
         users: row.users,
         engagementTimeSec: row.engagementTimeSec,
         bounceRate: row.bounceRate,
+        engagementRate: row.engagementRate,
+        activeUsers: row.activeUsers,
         cvEventCount: row.cvEventCount,
         scroll90EventCount: row.scroll90EventCount,
         searchClicks: row.searchClicks,
@@ -263,6 +272,8 @@ class Ga4ImportService {
         { name: 'sessions' },
         { name: 'userEngagementDuration' },
         { name: 'bounceRate' },
+        { name: 'engagementRate' },
+        { name: 'activeUsers' },
       ],
       dateRanges: [{ startDate: range.startDate, endDate: range.endDate }],
     });
@@ -345,6 +356,8 @@ class Ga4ImportService {
           const users = sessions;
           const engagementTimeSec = Number(metrics[1]?.value ?? 0);
           const bounceRate = Number(metrics[2]?.value ?? 0);
+          const engagementRate = metrics[3]?.value === undefined ? null : Number(metrics[3].value);
+          const activeUsers = metrics[4]?.value === undefined ? null : Number(metrics[4].value);
           rows.push({
             date,
             pagePath: landingPage,
@@ -352,6 +365,8 @@ class Ga4ImportService {
             users,
             engagementTimeSec,
             bounceRate,
+            engagementRate,
+            activeUsers,
             // organicGoogleSearchClicks/Impressions は landingPage と非互換のため取得不可
             searchClicks: 0,
             impressions: 0,
@@ -393,6 +408,9 @@ class Ga4ImportService {
         users: number;
         engagementTimeSec: number;
         bounceRate: number;
+        engagementRate: number | null;
+        engagementRateSessions: number;
+        activeUsers: number | null;
         cvEventCount: number;
         scroll90EventCount: number;
         searchClicks: number;
@@ -407,6 +425,8 @@ class Ga4ImportService {
       const users = row.users ?? 0;
       const engagementTimeSec = row.engagementTimeSec ?? 0;
       const bounceRate = row.bounceRate ?? 0;
+      const engagementRate = row.engagementRate ?? null;
+      const activeUsers = row.activeUsers ?? null;
       const searchClicks = row.searchClicks ?? 0;
       const impressions = row.impressions ?? 0;
 
@@ -420,6 +440,17 @@ class Ga4ImportService {
         existing.sessions = totalSessions;
         existing.users += users;
         existing.engagementTimeSec += engagementTimeSec;
+        existing.activeUsers = existing.activeUsers === null || activeUsers === null
+          ? null
+          : existing.activeUsers + activeUsers;
+        if (existing.engagementRate === null || engagementRate === null) {
+          existing.engagementRate = null;
+          existing.engagementRateSessions = 0;
+        } else if (sessions > 0) {
+          const weightedEngagement = (existing.engagementRate ?? 0) * existing.engagementRateSessions + engagementRate * sessions;
+          existing.engagementRateSessions += sessions;
+          existing.engagementRate = weightedEngagement / existing.engagementRateSessions;
+        }
         existing.searchClicks += searchClicks;
         existing.impressions += impressions;
       } else {
@@ -431,6 +462,9 @@ class Ga4ImportService {
           users,
           engagementTimeSec,
           bounceRate,
+          engagementRate,
+          engagementRateSessions: engagementRate === null ? 0 : sessions,
+          activeUsers,
           cvEventCount: 0,
           scroll90EventCount: 0,
           searchClicks,

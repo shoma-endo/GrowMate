@@ -117,7 +117,7 @@ interface GscQueryAggregation {
   clicks: number;
   impressions: number;
   ctr: number; // 0-1 の小数
-  position: number; // 平均掲載順位
+  position: number; // 平均検索順位
   // 前期間比較
   positionChange?: number | null; // 正: 悪化, 負: 改善
   clicksChange?: number | null;

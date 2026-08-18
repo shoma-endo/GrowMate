@@ -16,6 +16,7 @@ export interface Ga4EvaluationLlmRequest<T> {
   userPrompt: string;
   schema: z.ZodType<T>;
   maxTokens: number;
+  onAttempt?: (attemptCount: number) => Promise<void>;
 }
 
 export type Ga4EvaluationLlmResult<T> =
@@ -58,6 +59,9 @@ function classifyLlmError(error: unknown): {
 } {
   const status = getHttpStatus(error);
   const chatErrorCode = error instanceof ChatError ? error.code : null;
+  if (chatErrorCode === ChatErrorCode.CONNECTION_TIMEOUT) {
+    return { code: 'llm_timeout', retryable: true };
+  }
   if (
     status === 429 ||
     chatErrorCode === ChatErrorCode.ANTHROPIC_RATE_LIMIT ||
@@ -78,14 +82,36 @@ function classifyLlmError(error: unknown): {
   return { code: 'unknown', retryable: false };
 }
 
+function findFirstJsonObject(response: string): string | null {
+  const start = response.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index < response.length; index += 1) {
+    const character = response[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') quoted = true;
+    else if (character === '{') depth += 1;
+    else if (character === '}') {
+      depth -= 1;
+      if (depth === 0) return response.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
 function parseStructuredResponse<T>(response: string, schema: z.ZodType<T>): T | null {
   const match = response.match(JSON_BLOCK_REGEX);
-  if (!match?.[1]) {
-    return null;
-  }
-
+  const jsonText = match?.[1]?.trim() || findFirstJsonObject(response);
+  if (!jsonText) return null;
   try {
-    const parsed: unknown = JSON.parse(match[1]);
+    const parsed: unknown = JSON.parse(jsonText);
     const result = schema.safeParse(parsed);
     return result.success ? result.data : null;
   } catch {
@@ -99,6 +125,7 @@ export async function generateGa4EvaluationLlmOutput<T>(
   let lastCode: Ga4EvaluationErrorCode = 'unknown';
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    await request.onAttempt?.(attempt);
     try {
       const response = await llmChat(
         request.provider,

@@ -217,13 +217,13 @@ export function QueryAnalysisTab({ annotationId }: QueryAnalysisTabProps) {
       return { zRange: [50, 400] as [number, number], yMax: 30 };
     }
 
-    // Z軸（バブルサイズ）: 表示回数の最小〜最大から動的に計算
+    // Z軸（バブルサイズ）: 検索結果に出た回数の最小〜最大から動的に計算
     const impressions = scatterData.map(d => d.impressions);
     const minImpressions = Math.min(...impressions);
     const maxImpressions = Math.max(...impressions);
 
     // 対数スケールで見やすくする（最小50px、最大400px）
-    // 表示回数が均一な場合は固定サイズ
+    // 検索結果に出た回数が均一な場合は固定サイズ
     const zRange: [number, number] = maxImpressions === minImpressions ? [150, 150] : [50, 400];
 
     // Y軸（CTR）: 異常値をキャップ（最大50%、または95パーセンタイル+5）
@@ -322,7 +322,7 @@ export function QueryAnalysisTab({ annotationId }: QueryAnalysisTabProps) {
         <CardHeader>
           <CardTitle className="text-lg">順位×CTR分析</CardTitle>
           <p className="text-sm text-gray-500">
-            X軸: 掲載順位（左が高順位） | Y軸: CTR | バブルサイズ: 表示回数
+            X軸: 検索順位（左が高順位） | Y軸: CTR | バブルサイズ: 検索結果に出た回数
           </p>
         </CardHeader>
         <CardContent>
@@ -332,11 +332,11 @@ export function QueryAnalysisTab({ annotationId }: QueryAnalysisTabProps) {
                 <XAxis
                   type="number"
                   dataKey="position"
-                  name="掲載順位"
+                  name="検索順位"
                   domain={[1, 'dataMax']}
                   reversed
                   tick={{ fontSize: 12 }}
-                  label={{ value: '掲載順位', position: 'bottom', fontSize: 12 }}
+                  label={{ value: '検索順位', position: 'bottom', fontSize: 12 }}
                 />
                 <YAxis
                   type="number"
@@ -350,7 +350,7 @@ export function QueryAnalysisTab({ annotationId }: QueryAnalysisTabProps) {
                   type="number"
                   dataKey="impressions"
                   range={chartDomains.zRange}
-                  name="表示回数"
+                  name="検索結果に出た回数"
                 />
                 {/* 象限の境界線（閾値） */}
                 <ReferenceLine x={THRESHOLD_POSITION} stroke="#e5e7eb" strokeDasharray="3 3" />

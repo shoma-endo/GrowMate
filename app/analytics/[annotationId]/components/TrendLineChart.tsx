@@ -58,7 +58,7 @@ export function TrendLineChart({ data, visibleMetrics }: TrendLineChartProps) {
               stroke="#a855f7"
               strokeWidth={2}
               dot={false}
-              name="表示回数"
+              name="検索結果に出た回数"
             />
           )}
           {visibleMetrics.ctr && (
@@ -78,7 +78,7 @@ export function TrendLineChart({ data, visibleMetrics }: TrendLineChartProps) {
               stroke="#3b82f6"
               strokeWidth={2}
               dot={false}
-              name="掲載順位"
+              name="検索順位"
             />
           )}
         </LineChart>
@@ -86,4 +86,3 @@ export function TrendLineChart({ data, visibleMetrics }: TrendLineChartProps) {
     </div>
   );
 }
-

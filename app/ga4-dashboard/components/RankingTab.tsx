@@ -39,13 +39,12 @@ export function RankingTab({
   return (
     <div className={cn('space-y-4', isLoading && 'opacity-50 pointer-events-none')}>
       {/* テーブルヘッダー・デスクトップのみ */}
-      <div className="hidden md:grid grid-cols-7 gap-4 px-4 py-2 bg-gray-50 rounded-t-lg text-sm font-medium text-gray-700">
+      <div className="hidden md:grid grid-cols-6 gap-4 px-4 py-2 bg-gray-50 rounded-t-lg text-sm font-medium text-gray-700">
         <div>ページ</div>
-        <div className="text-right">セッション</div>
-        <div className="text-right">CVR</div>
+        <div className="text-right">訪問数</div>
+        <div className="text-right">問い合わせ率</div>
         <div className="text-right">読了率</div>
         <div className="text-right">滞在時間</div>
-        <div className="text-right">直帰率</div>
         <div className="text-center">品質</div>
       </div>
 
@@ -59,7 +58,7 @@ export function RankingTab({
               key={item.normalizedPath}
               onClick={() => onRowClick(item)}
               className={cn(
-                'grid grid-cols-1 md:grid-cols-7 gap-2 md:gap-4 px-4 py-3 border rounded-lg cursor-pointer transition-all hover:bg-gray-50',
+                'grid grid-cols-1 md:grid-cols-6 gap-2 md:gap-4 px-4 py-3 border rounded-lg cursor-pointer transition-all hover:bg-gray-50',
                 isSelected && 'bg-blue-50 border-blue-500 ring-1 ring-blue-500'
               )}
             >
@@ -88,22 +87,22 @@ export function RankingTab({
                   </div>
                 </div>
                 <div className="text-xs text-gray-500 mt-1 md:hidden">
-                  セッション: {formatNumber(item.sessions)}
+                  訪問数: {formatNumber(item.sessions)}
                 </div>
               </div>
 
-              {/* セッション数 */}
+              {/* 訪問数 */}
               <div className="hidden md:block text-right">
                 <div className="font-medium text-gray-900">
                   {formatNumber(item.sessions)}
                 </div>
               </div>
 
-              {/* CVR */}
+              {/* 問い合わせ率 */}
               <div className="hidden md:block text-right">
                 <div className="text-gray-700">{formatPercent(item.cvr)}</div>
                 <div className="text-xs text-gray-500">
-                  CV: {formatNumber(item.cvEventCount)}
+                  問い合わせ: {formatNumber(item.cvEventCount)}
                 </div>
               </div>
 
@@ -116,13 +115,6 @@ export function RankingTab({
               <div className="hidden md:block text-right">
                 <div className="text-gray-700">
                   {formatDuration(item.avgEngagementTimeSec)}
-                </div>
-              </div>
-
-              {/* 直帰率 */}
-              <div className="hidden md:block text-right">
-                <div className="text-gray-700">
-                  {formatPercent(item.bounceRate * 100)}
                 </div>
               </div>
 

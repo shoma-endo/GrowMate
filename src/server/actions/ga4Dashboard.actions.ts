@@ -13,7 +13,11 @@ import type {
   Ga4DashboardSummary,
   Ga4DashboardRankingItem,
   Ga4DashboardTimeseriesPoint,
+  Ga4MediaContentScores,
 } from '@/types/ga4';
+import { canAccessGa4 } from '@/server/lib/ga4-permissions';
+import { calculateMediaScores } from '@/server/lib/ga4-content-score-aggregation';
+import { ga4ContentEvaluationService } from '@/server/services/ga4ContentEvaluationService';
 
 const supabaseService = new SupabaseService();
 
@@ -169,6 +173,15 @@ function ga4AuthFailureFrom(authResult: AuthResult): Ga4AuthFailure | null {
   return null;
 }
 
+function ga4AccessFailureFrom(authResult: AuthResult): Ga4AuthFailure | null {
+  const authFailure = ga4AuthFailureFrom(authResult);
+  if (authFailure) return authFailure;
+  if (!canAccessGa4({ role: authResult.role })) {
+    return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
+  }
+  return null;
+}
+
 /**
  * GA4ダッシュボード: 期間サマリーを取得
  */
@@ -177,7 +190,7 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
 > {
   try {
     const authResult = await getAuthUserId();
-    const authFail = ga4AuthFailureFrom(authResult);
+    const authFail = ga4AccessFailureFrom(authResult);
     if (authFail) return authFail;
 
     const userId = authResult.userId;
@@ -223,7 +236,7 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
     const { data: metrics, error: metricsError } = await client
       .from('ga4_page_metrics_daily')
       .select(
-        'sessions,users,engagement_time_sec,bounce_rate,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
+        'sessions,users,engagement_time_sec,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
       )
       .or(orFilter)
       .gte('date', start)
@@ -241,7 +254,6 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
           totalSessions: 0,
           totalUsers: 0,
           avgEngagementTimeSec: 0,
-          avgBounceRate: 0,
           totalCvEventCount: 0,
           cvr: 0,
           avgReadRate: 0,
@@ -258,8 +270,6 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
     let totalSessions = 0;
     let totalUsers = 0;
     let totalEngagementTimeSec = 0;
-    let bounceRateWeighted = 0;
-    let bounceRateSessions = 0;
     let totalCvEventCount = 0;
     let totalScroll90EventCount = 0;
     let totalSearchClicks = 0;
@@ -271,7 +281,6 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
       const sessions = Number(row.sessions ?? 0);
       const users = Number(row.users ?? 0);
       const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
-      const bounceRate = Number(row.bounce_rate ?? 0);
       const cvEventCount = Number(row.cv_event_count ?? 0);
       const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
       const searchClicks = Number(row.search_clicks ?? 0);
@@ -285,15 +294,11 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
       totalSearchClicks += searchClicks;
       totalImpressions += impressions;
 
-      bounceRateWeighted += bounceRate * sessions;
-      bounceRateSessions += sessions;
 
       hasSampledData = hasSampledData || Boolean(row.is_sampled);
       hasPartialData = hasPartialData || Boolean(row.is_partial);
     }
 
-    const avgBounceRate =
-      bounceRateSessions > 0 ? bounceRateWeighted / bounceRateSessions : 0;
     const avgEngagementTimeSec =
       totalSessions > 0 ? totalEngagementTimeSec / totalSessions : 0;
     const cvr = totalUsers > 0 ? (totalCvEventCount / totalUsers) * 100 : 0;
@@ -307,7 +312,6 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
         totalSessions,
         totalUsers,
         avgEngagementTimeSec,
-        avgBounceRate,
         totalCvEventCount,
         cvr,
         avgReadRate,
@@ -332,7 +336,7 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
 > {
   try {
     const authResult = await getAuthUserId();
-    const authFail = ga4AuthFailureFrom(authResult);
+    const authFail = ga4AccessFailureFrom(authResult);
     if (authFail) return authFail;
 
     const userId = authResult.userId;
@@ -379,7 +383,7 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
     const { data: metrics, error: metricsError } = await client
       .from('ga4_page_metrics_daily')
       .select(
-        'normalized_path,sessions,users,engagement_time_sec,bounce_rate,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
+        'normalized_path,sessions,users,engagement_time_sec,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
       )
       .or(orFilter)
       .gte('date', dateRange.start)
@@ -401,8 +405,6 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
         sessions: number;
         users: number;
         engagementTimeSec: number;
-        bounceRateWeighted: number;
-        bounceRateSessions: number;
         cvEventCount: number;
         scroll90EventCount: number;
         searchClicks: number;
@@ -418,8 +420,6 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
         sessions: 0,
         users: 0,
         engagementTimeSec: 0,
-        bounceRateWeighted: 0,
-        bounceRateSessions: 0,
         cvEventCount: 0,
         scroll90EventCount: 0,
         searchClicks: 0,
@@ -431,7 +431,6 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
       const sessions = Number(row.sessions ?? 0);
       const users = Number(row.users ?? 0);
       const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
-      const bounceRate = Number(row.bounce_rate ?? 0);
       const cvEventCount = Number(row.cv_event_count ?? 0);
       const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
       const searchClicks = Number(row.search_clicks ?? 0);
@@ -444,8 +443,6 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
       current.scroll90EventCount += scroll90EventCount;
       current.searchClicks += searchClicks;
       current.impressions += impressions;
-      current.bounceRateWeighted += bounceRate * sessions;
-      current.bounceRateSessions += sessions;
       current.isSampled = current.isSampled || Boolean(row.is_sampled);
       current.isPartial = current.isPartial || Boolean(row.is_partial);
 
@@ -456,10 +453,6 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
     const ranking: Ga4DashboardRankingItem[] = [];
 
     for (const [normalizedPath, agg] of aggMap.entries()) {
-      const avgBounceRate =
-        agg.bounceRateSessions > 0
-          ? agg.bounceRateWeighted / agg.bounceRateSessions
-          : 0;
       const cvr = agg.users > 0 ? (agg.cvEventCount / agg.users) * 100 : 0;
       const readRate =
         agg.users > 0 ? (agg.scroll90EventCount / agg.users) * 100 : 0;
@@ -474,7 +467,6 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
         sessions: agg.sessions,
         users: agg.users,
         avgEngagementTimeSec,
-        bounceRate: avgBounceRate,
         cvEventCount: agg.cvEventCount,
         cvr,
         readRate,
@@ -550,7 +542,7 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
 > {
   try {
     const authResult = await getAuthUserId();
-    const authFail = ga4AuthFailureFrom(authResult);
+    const authFail = ga4AccessFailureFrom(authResult);
     if (authFail) return authFail;
 
     const userId = authResult.userId;
@@ -636,7 +628,7 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
     const { data: metrics, error: metricsError } = await client
       .from('ga4_page_metrics_daily')
       .select(
-        'date,sessions,users,engagement_time_sec,bounce_rate,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
+        'date,sessions,users,engagement_time_sec,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
       )
       .or(orFilter)
       .eq('normalized_path', targetNormalizedPath)
@@ -660,8 +652,6 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
         sessions: number;
         users: number;
         engagementTimeSec: number;
-        bounceRateWeighted: number;
-        bounceRateSessions: number;
         cvEventCount: number;
         scroll90EventCount: number;
         searchClicks: number;
@@ -677,8 +667,6 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
         sessions: 0,
         users: 0,
         engagementTimeSec: 0,
-        bounceRateWeighted: 0,
-        bounceRateSessions: 0,
         cvEventCount: 0,
         scroll90EventCount: 0,
         searchClicks: 0,
@@ -690,7 +678,6 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
       const sessions = Number(row.sessions ?? 0);
       const users = Number(row.users ?? 0);
       const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
-      const bounceRate = Number(row.bounce_rate ?? 0);
       const cvEventCount = Number(row.cv_event_count ?? 0);
       const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
       const searchClicks = Number(row.search_clicks ?? 0);
@@ -703,8 +690,6 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
       current.scroll90EventCount += scroll90EventCount;
       current.searchClicks += searchClicks;
       current.impressions += impressions;
-      current.bounceRateWeighted += bounceRate * sessions;
-      current.bounceRateSessions += sessions;
       current.isSampled = current.isSampled || Boolean(row.is_sampled);
       current.isPartial = current.isPartial || Boolean(row.is_partial);
 
@@ -716,10 +701,6 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
       .map(([date, agg]) => {
         const avgEngagementTimeSec =
           agg.sessions > 0 ? agg.engagementTimeSec / agg.sessions : 0;
-        const bounceRate =
-          agg.bounceRateSessions > 0
-            ? agg.bounceRateWeighted / agg.bounceRateSessions
-            : 0;
         const cvr = agg.users > 0 ? (agg.cvEventCount / agg.users) * 100 : 0;
         const readRate =
           agg.users > 0 ? (agg.scroll90EventCount / agg.users) * 100 : 0;
@@ -730,7 +711,6 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
           sessions: agg.sessions,
           users: agg.users,
           avgEngagementTimeSec,
-          bounceRate,
           cvEventCount: agg.cvEventCount,
           cvr,
           readRate,
@@ -762,7 +742,7 @@ export async function fetchGa4DashboardData(input: unknown): Promise<
 > {
   try {
     const authResult = await getAuthUserId();
-    const authFail = ga4AuthFailureFrom(authResult);
+    const authFail = ga4AccessFailureFrom(authResult);
     if (authFail) return authFail;
 
     // パラメータを解析
@@ -832,5 +812,26 @@ export async function fetchGa4DashboardData(input: unknown): Promise<
   } catch (error) {
     console.error('[GA4 Dashboard] Data fetch error:', error);
     return { success: false, error: 'データの取得に失敗しました' };
+  }
+}
+
+export async function fetchGa4MediaContentScores(): Promise<ServerActionResult<Ga4MediaContentScores>> {
+  try {
+    const authResult = await getAuthUserId();
+    const authFail = ga4AccessFailureFrom(authResult);
+    if (authFail) return authFail;
+    if (!authResult.userId) return { success: false, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const client = supabaseService.getClient();
+    const [latestItems, { count: totalCount, error: totalCountError }] = await Promise.all([
+      ga4ContentEvaluationService.fetchLatestSuccessfulContentScores(authResult.userId),
+      client.from('content_annotations').select('id', { count: 'exact', head: true }).eq('user_id', authResult.userId),
+    ]);
+    if (totalCountError) throw totalCountError;
+    const points = latestItems;
+    const media = calculateMediaScores(points, totalCount ?? 0);
+    return { success: true, data: { ...media, points } };
+  } catch (error) {
+    logSupabaseError('[GA4 Dashboard] Media content scores error', error);
+    return { success: false, error: ERROR_MESSAGES.GA4.MEDIA_SCORE_FETCH_FAILED };
   }
 }

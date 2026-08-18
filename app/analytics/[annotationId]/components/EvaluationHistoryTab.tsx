@@ -79,14 +79,7 @@ export function EvaluationHistoryTab({
   };
 
   if (!history || history.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-20 text-center text-gray-500">
-          <p>まだ評価履歴がありません</p>
-          <p className="text-sm mt-2">概要タブから評価サイクルを開始してください</p>
-        </CardContent>
-      </Card>
-    );
+    return <Card><CardContent className="py-20 text-center text-gray-500"><p>まだ検索順位評価履歴がありません</p><p className="text-sm mt-2">概要タブから検索順位評価サイクルを開始してください</p></CardContent></Card>;
   }
 
   return (

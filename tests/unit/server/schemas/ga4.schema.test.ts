@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { ga4SettingsSchema } from '@/server/schemas/ga4.schema';
+import { ga4SettingsSchema, ga4SyncRequestSchema } from '@/server/schemas/ga4.schema';
+
+describe('ga4SyncRequestSchema', () => {
+  it.each([undefined, {}])('backfillDays未指定のリクエスト %s を受理する', value => {
+    expect(ga4SyncRequestSchema.safeParse(value).success).toBe(true);
+  });
+
+  it.each([1, 90])('backfillDays=%sを受理する', backfillDays => {
+    expect(ga4SyncRequestSchema.safeParse({ backfillDays }).success).toBe(true);
+  });
+
+  it.each([0, 91, 1.5, '90'])('不正なbackfillDays=%sを拒否する', backfillDays => {
+    expect(ga4SyncRequestSchema.safeParse({ backfillDays }).success).toBe(false);
+  });
+});
 
 describe('ga4SettingsSchema', () => {
   it('propertyIdのみを受理し、optional項目のundefinedを許可する', () => {

@@ -46,8 +46,18 @@ describe('ga4EvaluationLlmService', () => {
     );
   });
 
+  it('フェンスなしの前置き文から最初のJSONオブジェクトを抽出する', async () => {
+    mocks.llmChat.mockResolvedValue('結果はこちらです。{"score": 82}');
+    await expect(generateGa4EvaluationLlmOutput(request)).resolves.toEqual({
+      success: true,
+      data: { score: 82 },
+      attemptCount: 1,
+    });
+  });
+
   it('ChatErrorの429とZod検証失敗を固定2秒間隔で最大3回再試行する', async () => {
     vi.useFakeTimers();
+    const attempts: number[] = [];
     mocks.llmChat
       .mockRejectedValueOnce(
         new ChatError('rate limited', ChatErrorCode.ANTHROPIC_RATE_LIMIT, { httpStatus: 429 })
@@ -55,13 +65,19 @@ describe('ga4EvaluationLlmService', () => {
       .mockResolvedValueOnce('```json\n{"score":"invalid"}\n```')
       .mockResolvedValueOnce('```json\n{"score": 82}\n```');
 
-    const resultPromise = generateGa4EvaluationLlmOutput(request);
+    const resultPromise = generateGa4EvaluationLlmOutput({
+      ...request,
+      onAttempt: async attemptCount => {
+        attempts.push(attemptCount);
+      },
+    });
     await vi.advanceTimersByTimeAsync(2_000);
     await vi.advanceTimersByTimeAsync(2_000);
     const result = await resultPromise;
 
     expect(result).toEqual({ success: true, data: { score: 82 }, attemptCount: 3 });
     expect(mocks.llmChat).toHaveBeenCalledTimes(3);
+    expect(attempts).toEqual([1, 2, 3]);
   });
 
   it('ChatError.context.httpStatusの5xxを最大3回再試行する', async () => {
@@ -80,6 +96,20 @@ describe('ga4EvaluationLlmService', () => {
 
     expect(result).toEqual({ success: true, data: { score: 82 }, attemptCount: 2 });
     expect(mocks.llmChat).toHaveBeenCalledTimes(2);
+  });
+
+  it('CONNECTION_TIMEOUTをllm_timeoutとして最大3回再試行する', async () => {
+    vi.useFakeTimers();
+    mocks.llmChat.mockRejectedValue(
+      new ChatError('request timed out', ChatErrorCode.CONNECTION_TIMEOUT)
+    );
+
+    const resultPromise = generateGa4EvaluationLlmOutput(request);
+    await vi.advanceTimersByTimeAsync(4_000);
+    const result = await resultPromise;
+
+    expect(result).toEqual({ success: false, code: 'llm_timeout', attemptCount: 3 });
+    expect(mocks.llmChat).toHaveBeenCalledTimes(3);
   });
 
   it('3回失敗すると失敗コードを返し、通常ログへ機密値や応答全文を出さない', async () => {

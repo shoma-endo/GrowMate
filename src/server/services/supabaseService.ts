@@ -29,6 +29,7 @@ import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc'
 import type { InstagramCredential } from '@/types/instagram';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
+import { asPendingClient, type Ga4PendingDatabase } from '@/types/database.types.pending';
 
 type InstagramCredentialRow = Tables<'instagram_credentials'>;
 type InstagramCredentialInsertRow = TablesInsert<'instagram_credentials'>;
@@ -1657,6 +1658,8 @@ export class SupabaseService {
       users: number;
       engagementTimeSec: number;
       bounceRate: number;
+      engagementRate: number | null;
+      activeUsers: number | null;
       cvEventCount: number;
       scroll90EventCount: number;
       searchClicks: number;
@@ -1682,6 +1685,8 @@ export class SupabaseService {
         users: row.users,
         engagement_time_sec: row.engagementTimeSec,
         bounce_rate: row.bounceRate,
+        engagement_rate: row.engagementRate,
+        active_users: row.activeUsers,
         cv_event_count: row.cvEventCount,
         scroll_90_event_count: row.scroll90EventCount,
         search_clicks: row.searchClicks,
@@ -1694,7 +1699,8 @@ export class SupabaseService {
         updated_at: nowIso,
       }));
 
-      const { error } = await this.supabase.from('ga4_page_metrics_daily').upsert(payload, {
+      const pendingClient = asPendingClient<Ga4PendingDatabase>(this.supabase);
+      const { error } = await pendingClient.from('ga4_page_metrics_daily').upsert(payload, {
         onConflict: 'user_id,property_id,date,normalized_path',
       });
 

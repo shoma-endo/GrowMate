@@ -119,6 +119,11 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokens: 8000,
     label: 'コンテンツ情報のAI要約',
   },
+  ga4_content_evaluation: {
+    ...ANTHROPIC_BASE,
+    maxTokens: 700,
+    label: 'コンテンツ評価',
+  },
 };
 
 /**
@@ -138,7 +143,6 @@ export const GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS = 30_000;
 export const CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS = 80_000;
 
 /** 評価入力の本文削減を開始する予算。要約処理の拒否閾値とは異なる。 */
-export const GA4_EVALUATION_CONTENT_REDUCTION_BUDGET = 80_000;
 
 // =============================================================================
 // Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)
@@ -263,12 +267,16 @@ export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してく�
 export const ANALYTICS_COLUMNS = [
   { id: 'main_kw', label: '主軸kw' },
   { id: 'kw', label: 'kw（参考）' },
-  { id: 'impressions', label: '表示回数' },
+  { id: 'impressions', label: '検索結果に出た回数' },
   { id: 'ga4_avg_engagement_time', label: '滞在時間(平均)' },
   { id: 'ga4_read_rate', label: '読了率' },
-  { id: 'ga4_bounce_rate', label: '直帰率' },
-  { id: 'ga4_cv_count', label: 'CV数' },
-  { id: 'ga4_cvr', label: 'CVR' },
+  { id: 'ga4_engagement_rate', label: '読み始め率' },
+  { id: 'ga4_evaluation_status', label: 'コンテンツ評価状態' },
+  { id: 'ga4_content_score', label: 'コンテンツ力スコア' },
+  { id: 'ga4_diagnosis', label: '診断' },
+  { id: 'ga4_last_evaluated_at', label: '最終評価日時' },
+  { id: 'ga4_cv_count', label: '問い合わせ数' },
+  { id: 'ga4_cvr', label: '問い合わせ率' },
   { id: 'ga4_flags', label: 'GA4状態' },
   { id: 'needs', label: 'ニーズ' },
   { id: 'persona', label: 'デモグラ・ペルソナ' },

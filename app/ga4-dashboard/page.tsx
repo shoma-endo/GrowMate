@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { fetchGa4DashboardData } from '@/server/actions/ga4Dashboard.actions';
+import { fetchGa4DashboardData, fetchGa4MediaContentScores } from '@/server/actions/ga4Dashboard.actions';
 import Ga4DashboardClient from './Ga4DashboardClient';
 
 type SearchParams = {
@@ -67,10 +67,13 @@ export default async function Ga4DashboardPage({
     );
   }
 
+  const mediaResult = await fetchGa4MediaContentScores();
+
   return (
     <Ga4DashboardClient
       initialData={initialResult.data}
       initialDateRange={initialDateRange}
+      initialMediaContentScores={mediaResult.success ? mediaResult.data : null}
     />
   );
 }

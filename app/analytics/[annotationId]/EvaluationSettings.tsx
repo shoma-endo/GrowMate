@@ -115,7 +115,7 @@ export function EvaluationSettings({
       loading: '設定を保存中...',
       success: () => {
         setIsOpen(false);
-        return isUpdateMode ? '評価基準日を更新しました' : '評価を開始しました';
+        return isUpdateMode ? '検索順位評価基準日を更新しました' : '検索順位評価を開始しました';
       },
       error: err => {
         return err instanceof Error ? err.message : 'エラーが発生しました';
@@ -191,7 +191,7 @@ export function EvaluationSettings({
       <div className="space-y-4">
         <div>
           <h3 className="text-lg font-semibold flex items-center gap-2">
-            評価サイクル設定
+            検索順位評価サイクル設定
             {currentEvaluation?.status === 'active' && (
               <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
                 稼働中
@@ -219,13 +219,13 @@ export function EvaluationSettings({
             <DialogTrigger asChild>
               <Button variant="default">
                 <Settings className="w-4 h-4" />
-                {isUpdateMode ? '設定を変更' : '評価を開始'}
+                {isUpdateMode ? '設定を変更' : '検索順位評価を開始'}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[670px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
-                  {isUpdateMode ? '評価基準日の変更' : '評価サイクルの開始'}
+                  {isUpdateMode ? '検索順位評価基準日の変更' : '検索順位評価サイクルの開始'}
                 </DialogTitle>
                 <DialogDescription />
               </DialogHeader>
@@ -242,7 +242,7 @@ export function EvaluationSettings({
                 <div className="inline-flex items-start gap-2 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800 ring-1 ring-blue-200">
                   <Info className="h-4 w-4 mt-[1px] flex-shrink-0" />
                   <span>
-                    対象ページが未インデックス、または検索実績（表示回数）がない場合は「データ未取得」になることがあります。
+                    対象ページが未インデックス、または検索実績（検索結果に出た回数）がない場合は「データ未取得」になることがあります。
                     Search
                     Consoleの反映には通常2〜3日の遅延があるため、しばらく待ってから再確認してください。
                   </span>
@@ -252,7 +252,7 @@ export function EvaluationSettings({
                     htmlFor="evaluation-date"
                     className="text-sm font-medium text-gray-700 block"
                   >
-                    評価基準日
+                    検索順位評価基準日
                   </label>
                   <div className="relative">
                     <Input
@@ -410,7 +410,7 @@ export function EvaluationSettings({
           }`}
         >
           <div className="rounded-lg border border-blue-200 bg-blue-50 shadow-sm p-4">
-            <div className="text-sm text-blue-600 mb-1">現在の評価基準日</div>
+            <div className="text-sm text-blue-600 mb-1">現在の検索順位評価基準日</div>
             <div className="text-2xl font-bold text-blue-900">
               {formatDateJP(currentEvaluation.base_evaluation_date)}
             </div>
@@ -449,7 +449,7 @@ export function EvaluationSettings({
         <div className="rounded-lg border-2 border-dashed p-8 text-center bg-gray-50/50 mt-4">
           <p className="text-muted-foreground font-medium mb-1">未設定</p>
           <p className="text-sm text-gray-500">
-            まだ評価サイクルが設定されていません。「評価を開始」ボタンから設定してください。
+            まだ検索順位評価サイクルが設定されていません。「検索順位評価を開始」ボタンから設定してください。
           </p>
         </div>
       )}

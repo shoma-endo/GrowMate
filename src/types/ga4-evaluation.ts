@@ -1,5 +1,8 @@
+import type { Json } from './database.types';
+
 const GA4_PERSISTENT_EVALUATION_STATUSES = [
   'evaluated',
+  'narrative_failed',
   'insufficient_data',
   'import_failed',
   'evaluation_failed',
@@ -14,6 +17,7 @@ const GA4_EVALUATION_DISPLAY_STATUSES = [
   'unassessed',
   'eligible',
   'needs_reauth',
+  'low_data',
   ...GA4_PERSISTENT_EVALUATION_STATUSES,
 ] as const;
 
@@ -29,6 +33,61 @@ export type Ga4EvaluationErrorCode =
   | 'llm_timeout'
   | 'llm_output_invalid'
   | 'unknown';
+
+interface Ga4EvaluationNarrativeView {
+  headline: string;
+  situation: string;
+  cause: string;
+  next_action: string;
+  target: string;
+}
+
+export interface Ga4ContentEvaluationView {
+  settingsEnabled: boolean;
+  displayStatus: Ga4EvaluationDisplayStatus;
+  needsReauth: boolean;
+  missingMetrics: string[];
+  projection: {
+    status: Ga4PersistentEvaluationStatus;
+    lastSuccessHistoryId: string | null;
+    lastSuccessEvaluatedAt: string | null;
+    lastErrorCode: string | null;
+  } | null;
+  history: Array<{
+    id: string;
+    status: Ga4PersistentEvaluationStatus;
+    startedAt: string;
+    completedAt: string | null;
+    attemptCount: number;
+    readRate: number | null;
+    engageRate: number | null;
+    scrollRate: number | null;
+    readScore: number | null;
+    engageScore: number | null;
+    contentScore: number | null;
+    diagnosisCode: string | null;
+    siteRank: number | null;
+    totalArticles: number | null;
+    sessions: number | null;
+    charCount: number | null;
+    imageCount: number | null;
+    expectedReadSeconds: number | null;
+    avgEngagementSeconds: number | null;
+    narrative: Ga4EvaluationNarrativeView | null;
+    dataQuality: Json;
+    periodStart: string | null;
+    periodEnd: string | null;
+    ga4DataFetchedAt: string | null;
+    promptVersion: number | null;
+    promptTemplateId: string | null;
+    promptVersionId: string | null;
+    promptCapturedAt: string | null;
+    promptContentSha256: string | null;
+    inputFingerprint: string | null;
+    scoringConfigVersion: number;
+    errorCode: string | null;
+  }>;
+}
 
 interface Ga4EvaluationSuccessSnapshot {
   historyId: string;
@@ -46,7 +105,10 @@ export interface Ga4EvaluationMetricSnapshot {
   users: number;
   engagementTimeSec: number;
   bounceRate: number | null;
+  engagementRate: number | null;
+  activeUsers: number | null;
   cvEventCount: number;
+  scroll90EventCount: number | null;
 }
 
 export interface Ga4EvaluationDailyMetric {
@@ -55,7 +117,10 @@ export interface Ga4EvaluationDailyMetric {
   users: number;
   engagementTimeSec: number;
   bounceRate: number | null;
+  engagementRate: number | null;
+  activeUsers: number | null;
   cvEventCount: number;
+  scroll90EventCount: number | null;
 }
 
 export interface Ga4EvaluationGscMetricSnapshot {
@@ -76,8 +141,11 @@ export interface Ga4EvaluationContext {
     id: string;
     url: string;
     title: string | null;
-    excerpt: string | null;
-    contentText: string | null;
+    charCount: number;
+    imageCount: number | null;
+    headings: readonly string[];
+    publishedAt: string | null;
+    updatedAt: string | null;
   };
   period: {
     startDate: string;

@@ -13,9 +13,11 @@ interface CategoryFilterProps {
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
+  hasUnstartedGa4Evaluation: boolean;
   onFilterChange: (selectedCategoryNames: string[], includeUncategorized: boolean) => void;
   onUnreadSuggestionChange: (value: boolean) => void;
   onUnstartedGscEvaluationChange: (value: boolean) => void;
+  onUnstartedGa4EvaluationChange: (value: boolean) => void;
   onClearAll: () => void;
 }
 
@@ -25,9 +27,11 @@ export default function CategoryFilter({
   includeUncategorized,
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
+  hasUnstartedGa4Evaluation,
   onFilterChange,
   onUnreadSuggestionChange,
   onUnstartedGscEvaluationChange,
+  onUnstartedGa4EvaluationChange,
   onClearAll,
 }: CategoryFilterProps) {
   // フィルター変更時に永続化
@@ -68,7 +72,8 @@ export default function CategoryFilter({
     selectedCategoryNames.length > 0 ||
     includeUncategorized ||
     hasUnreadSuggestion ||
-    hasUnstartedGscEvaluation;
+    hasUnstartedGscEvaluation ||
+    hasUnstartedGa4Evaluation;
 
   return (
     <div className="space-y-3">
@@ -90,6 +95,13 @@ export default function CategoryFilter({
             />
             <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
             <span className="text-sm font-medium text-blue-800">評価未開始</span>
+          </label>
+        </div>
+        <div className="border rounded-md px-2 py-2">
+          <label className="flex items-center gap-2 cursor-pointer hover:bg-indigo-50 px-1 py-1 rounded">
+            <Checkbox checked={hasUnstartedGa4Evaluation} onCheckedChange={checked => onUnstartedGa4EvaluationChange(!!checked)} />
+            <PlayCircle className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" />
+            <span className="text-sm font-medium text-indigo-800">コンテンツ評価未開始</span>
           </label>
         </div>
 

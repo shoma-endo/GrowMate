@@ -15,6 +15,7 @@ import type {
 import type { Ga4PageMetricSummary } from '@/types/ga4';
 import type { Json } from '@/types/database.types';
 import { asPendingClient, type AnalyticsDatabase } from '@/types/database.types.pending';
+import type { Ga4PendingDatabase } from '@/types/database.types.pending';
 
 const MAX_PER_PAGE = 100;
 
@@ -51,6 +52,7 @@ class AnalyticsContentService {
           p_include_uncategorized: includeUncategorized,
           p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
           p_has_unstarted_gsc_evaluation: params.hasUnstartedGscEvaluation ?? false,
+          p_has_unstarted_ga4_evaluation: params.hasUnstartedGa4Evaluation ?? false,
         });
 
         const row = data?.[0] as
@@ -124,18 +126,20 @@ class AnalyticsContentService {
       const from = (resolvedPage - 1) * perPage;
 
       let ga4Error: string | undefined;
-      let ga4Summaries: Map<string, Ga4PageMetricSummary>;
+      let ga4Summaries = new Map<string, Ga4PageMetricSummary>();
+      let ga4Truncated = false;
       try {
-        ga4Summaries = await this.fetchGa4Summaries(
+        const fetched = await this.fetchGa4Summaries(
           [userId],
           annotations,
           startDate,
           endDate
         );
+        ga4Summaries = fetched.summaries;
+        ga4Truncated = fetched.truncated;
       } catch (ga4Err) {
         console.error('[AnalyticsContentService] GA4 summary fetch failed:', ga4Err);
         ga4Error = 'GA4データの取得に失敗しました。GSCデータのみ表示されます。';
-        ga4Summaries = new Map();
       }
 
       const items: AnalyticsContentItem[] = annotations.map((annotation, index) => ({
@@ -144,6 +148,12 @@ class AnalyticsContentService {
         ga4Summary: this.hasValidCanonicalUrl(annotation)
           ? (ga4Summaries.get(normalizeToPath(annotation.canonical_url!)) ?? null)
           : null,
+        ga4Evaluation: {
+          status: this.readStringField(annotation, 'ga4_evaluation_status'),
+          contentScore: this.readNumberField(annotation, 'ga4_content_score'),
+          diagnosisCode: this.readStringField(annotation, 'ga4_diagnosis_code'),
+          lastEvaluatedAt: this.readStringField(annotation, 'ga4_last_evaluated_at'),
+        },
       }));
 
       return {
@@ -153,6 +163,7 @@ class AnalyticsContentService {
         page: resolvedPage,
         perPage,
         ga4Error,
+        ga4Truncated,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'ページデータの取得に失敗しました';
@@ -231,9 +242,9 @@ class AnalyticsContentService {
     annotations: AnnotationRecord[],
     startDate: string,
     endDate: string
-  ): Promise<Map<string, Ga4PageMetricSummary>> {
+  ): Promise<{ summaries: Map<string, Ga4PageMetricSummary>; truncated: boolean }> {
     if (!startDate || !endDate || startDate > endDate) {
-      return new Map();
+      return { summaries: new Map(), truncated: false };
     }
 
     const normalizedPaths = Array.from(
@@ -245,10 +256,10 @@ class AnalyticsContentService {
     );
 
     if (normalizedPaths.length === 0) {
-      return new Map();
+      return { summaries: new Map(), truncated: false };
     }
 
-    const client = supabaseService.getClient();
+    const client = asPendingClient<Ga4PendingDatabase>(supabaseService.getClient());
 
     const { data: credentials } = await client
       .from('gsc_credentials')
@@ -262,7 +273,7 @@ class AnalyticsContentService {
     );
 
     if (userPropertyPairs.length === 0) {
-      return new Map();
+      return { summaries: new Map(), truncated: false };
     }
 
     const orFilter = userPropertyPairs
@@ -272,10 +283,11 @@ class AnalyticsContentService {
       )
       .join(',');
 
-    const { data, error } = await client
+    const { data, error, count } = await client
       .from('ga4_page_metrics_daily')
       .select(
-        'normalized_path,sessions,users,engagement_time_sec,bounce_rate,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
+        'normalized_path,sessions,users,engagement_time_sec,bounce_rate,engagement_rate,active_users,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial',
+        { count: 'exact' }
       )
       .or(orFilter)
       .in('normalized_path', normalizedPaths)
@@ -299,6 +311,8 @@ class AnalyticsContentService {
         users: Number(row.users ?? 0),
         engagementTimeSec: Number(row.engagement_time_sec ?? 0),
         bounceRate: Number(row.bounce_rate ?? 0),
+        engagementRate: row.engagement_rate === null ? null : Number(row.engagement_rate),
+        activeUsers: row.active_users === null ? null : Number(row.active_users),
         cvEventCount: Number(row.cv_event_count ?? 0),
         scroll90EventCount: Number(row.scroll_90_event_count ?? 0),
         searchClicks: Number(row.search_clicks ?? 0),
@@ -309,16 +323,26 @@ class AnalyticsContentService {
     }
 
     const aggregatedMetrics = aggregateGa4PageMetrics(dailyMetrics, startDate, endDate);
-    return new Map(
+    return { summaries: new Map(
       Array.from(aggregatedMetrics, ([key, summary]) => [
         key,
         toDisplayedGa4PageMetricSummary(summary),
       ])
-    );
+    ), truncated: count !== null && count !== undefined && (data?.length ?? 0) < count };
   }
 
   private hasValidCanonicalUrl(a: AnnotationRecord): boolean {
     return a?.canonical_url != null && String(a.canonical_url).trim() !== '';
+  }
+
+  private readStringField(annotation: AnnotationRecord, key: string): string | null {
+    const value = (annotation as AnnotationRecord & Record<string, unknown>)[key];
+    return typeof value === 'string' ? value : null;
+  }
+
+  private readNumberField(annotation: AnnotationRecord, key: string): number | null {
+    const value = (annotation as AnnotationRecord & Record<string, unknown>)[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
   }
 
   private buildAnnotationRowKey(annotation: AnnotationRecord, fallbackIndex: number): string {
