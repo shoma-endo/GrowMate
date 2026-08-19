@@ -309,7 +309,7 @@ MVP合計は **235〜360時間（30〜45人日）**。**2026-08-17 受領の評�
 - **`engagementRate`**: セッションスコープ指標で、`landingPage`（セッションスコープ）と同軸。評価エンジン仕様 §02 が「必ず landingPage 次元で取得する（pagePath だとセッション指標が歪む）」と明記する。公式定義（Engaged sessions ÷ Sessions）は §16 の verbatim 引用を参照。
 - **`activeUsers`**: 読了率の分母。ユーザースコープ指標だが、**`landingPage` との互換は 2026-08-17 に GA4 Query Explorer の `runReport` 実測で確認済み**（Q-G 決着＝§15.2。既存コードの `totalUsers` 非互換とは別物と判明）。分母は ÷activeUsers で確定し、÷sessions フォールバックは不要になった。残る確認は**数値レベルの画面突合**（Q-H。「ページとスクリーン」＝÷activeUsers と一致するのが有力仮説だが、landingPage 軸と pagePath 軸の母集団差によるズレの有無をデータのあるプロパティで確認する）。
 - **本文文字数**: `wp_content_text` を正規化（タグ置換で入った連続空白の圧縮、`&nbsp;` 等のエンティティのデコード）してから `length` を取る。正規化関数は純関数として新設しテストで固定する。
-- **画像点数**: `wordpressContentSync.ts` は同期時に `content.rendered`（HTML）をメモリ上に持つ（`:34-45`）。ここで `<img` タグ数を数え、`content_annotations.wp_image_count`（新設列）へ `wp_content_text` と同時に保存する。既存記事は次回の同期で埋まる（未同期の間は補正 0 として期待読了時間を算出し、`data_quality_json` に未取得を記録する）。
+- **画像点数**: `wordpressContentSync.ts` は同期時に `content.rendered`（HTML）をメモリ上に持つ（`:34-45`）。ここで `<img` タグ数を数え、`content_annotations.wp_image_count`（新設列）へ `wp_content_text` と同時に保存する。未取得の間は補正 0 として期待読了時間を算出し、`data_quality_json` に未取得を記録する。**既存記事を埋める導線は2つあり、どちらも本仕様のスコープに含む（2026-08-19 追加。当初「次回の同期で埋まる」と書いていたが、対応する導線が存在しなかった。§18）**: (a) `/wordpress-import` の一括インポートが WP REST 一覧の `content.rendered` から `wp_content_text` / `wp_image_count` を書く（`_fields` で絞っていないため追加の WP API 呼び出しは発生しない。差分判定にも `wp_image_count` を含め、NULL 行が「無変更」でスキップされないようにする）。(b) 記事単位の `fetchWpPostContentWithCache` は再取得条件に `wp_image_count IS NULL` を含める（本文・抜粋だけを条件にすると、本文キャッシュ済みの記事が永久に NULL のまま残る）。
 
 **migration 前の必須実測:** ~~組み合わせ可否の実測~~ → **完了（2026-08-17、Query Explorer）**。`landingPage × activeUsers / engagementRate / sessions / userEngagementDuration` の4指標同時取得が受理されることを確認済み（Q-G）。`checkCompatibility` 経路の新設（§9.2）は、将来の取得指標変更時の再検証手段として取込拡張のスコープに残す。
 
@@ -319,9 +319,9 @@ MVP合計は **235〜360時間（30〜45人日）**。**2026-08-17 受領の評�
 
 | 論点 | 現状 | 決定 |
 |---|---|---|
-| 既存レコードの値 | `engagement_rate` / `active_users` は新設列で、migration 後の既存行は NULL（**NULL 可で新設**し、欠損を 0 と区別できる形にする。BR-02） | **過去分を再取込する。** migration 適用後・Kill Switch 有効化前に、既存 GA4 同期経路（`/api/ga4/sync`）で**過去90日**（評価入力の期間上限と同じ）を再取込し、既存行の新列を upsert で埋める（§14 リリース手順）。GA4 Data API は過去日付の `engagementRate` / `activeUsers` を返せるため取得可能。クォータは §9.2.1 の Core Tokens Per Property Per Day 200,000 に対し 90 日分の再取込で十分収まる。再取込前の 90 日超の過去日は NULL のまま（評価入力の上限が90日のため実害なし） |
+| 既存レコードの値 | `engagement_rate` / `active_users` は新設列で、migration 後の既存行は NULL（**NULL 可で新設**し、欠損を 0 と区別できる形にする。BR-02） | **過去分を再取込する。** migration 適用後・Kill Switch 有効化前に、`/setup/ga4` の「**過去90日を再取込**」ボタン（`/api/ga4/sync` に `backfillDays` を送り、同期カーソルを無視して既定90日＝評価入力の期間上限を取り直す）で既存行の新列を upsert で埋める（§14 リリース手順）。**既存の「GA4日次同期を実行」は前回取込日以降しか取得しないため過去分は埋まらない。専用の導線を持つこと自体が要件である**（2026-08-19 追加。§18）。再取込は行数打ち切り（`MAX_TOTAL_ROWS`）を避けるため 30 日以下の窓に分割して実行し、打ち切り・サンプリングが起きた場合は成功トーストに加えて警告を出す（黙って欠損させない）。GA4 Data API は過去日付の `engagementRate` / `activeUsers` を返せるため取得可能。クォータは §9.2.1 の Core Tokens Per Property Per Day 200,000 に対し 90 日分の再取込で十分収まる。再取込前の 90 日超の過去日は NULL のまま（評価入力の上限が90日のため実害なし） |
 | リリース直後の評価可否 | §9.2.1 が「レポート0回（DBキャッシュ利用）」のため、取込開始日以前は `engagement_rate` が欠損し読み始めスコアが算出できない。AC-03 により `insufficient_data` となり**ほぼ全記事が評価不能**になる（読了率側は既存の `engagement_time_sec` で過去分も算出可能） | **再取込により解消**（リリース初日から既定90日の評価が可能）。評価期間の下限クランプや欠損日除外の集計変更は**行わない**（BR-02・AC-03 の欠損セマンティクスを変えない）。再取込が未実施・失敗の間は仕様どおり `insufficient_data`（表示は §10.4）となる |
-| `wp_image_count` の未取得期間 | 新設列。既存記事は次回の WordPress 同期まで NULL | NULL の間は補正 0 で期待読了時間を算出し `data_quality_json` に記録する（§4.1.1 で決定済み）。**全記事の再同期を初回リリース手順に含める**（§14。初日から画像補正が効く状態にする） |
+| `wp_image_count` の未取得期間 | 新設列。migration 後の既存行は NULL | NULL の間は補正 0 で期待読了時間を算出し `data_quality_json` に記録する（§4.1.1 で決定済み）。**`/wordpress-import` の一括インポートを1回実行して埋める**（§14。初日から画像補正が効く状態にする）。一括インポートが `wp_content_text` / `wp_image_count` を書くようにする改修と、差分判定に `wp_image_count` を含める改修が前提（§4.1.1。2026-08-19 追加。当初「次回の同期で埋まる」と書いたが、既存の一括インポートはこの2列を書かず、記事単位の再取得条件も本文・抜粋しか見ていなかったため成立していなかった。§18）。一括インポートは1回あたり**最大1000件**（`wordpressImport.actions.ts` の `maxItems`）で、これを超える記事数のサイトでは1回で埋まりきらない（既存の制限であり本仕様では変更しない） |
 | `page_views` 列のドリフト | **決着（Q-D 照会 2026-08-17）**: リモートに `page_views integer NOT NULL DEFAULT 0` が実在し、生成型 `src/types/database.types.ts:241` と一致。migration にのみ定義がない。**2026-08-17 の評価エンジン仕様で PV 自体が不使用になったため、取込対象にもしない** | 列には触れない（migration 対象外。`ADD COLUMN IF NOT EXISTS` の保険も不要と確定） |
 
 **生成型からリモートDBの実在を推論しない（2026-08-14 実測）。** 生成型と `supabase/migrations/` は双方向にずれている。逆方向のドリフトの実例として、`prompt_versions.change_summary` は migration（`20250701000000_create_prompt_templates.sql:22`）に存在するが `src/types/database.types.ts` の `prompt_versions` Row には**存在しない**。したがって「生成型にある＝リモートに実在する」は根拠にならない。Q-D は**リモートDB（本番／ステージング）の実スキーマ照会**で確認する。
@@ -913,6 +913,8 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 | `/analytics/[annotationId]` | 1記事の詳細。フェーズ1で `/gsc-dashboard?annotationId=...` から移設（既存は概要・検索クエリ分析・評価履歴の3タブ） | フェーズ1: 既存3タブを挙動保存で移設（§5.5 / AC-14）。フェーズ2: 評価UIを実装し、**情報階層を 2026-08-13 合意たたき台の統合レイアウトへ再設計する**（Q-C 回答 2026-08-16。§10.5）。たたき台のタブ構成は「概要（GA4/GSC統合）」「検索クエリ」「評価履歴」の3タブ基本形で、評価の結果・操作は概要へ統合表示する。既存3タブの機能・データは維持し、配置・情報階層はたたき台に従う |
 | `/gsc-dashboard`（旧URL） | — | フェーズ1で恒久 redirect のみ（§5.5）。ページ実体は削除する |
 | `/ga4-dashboard` | サイト全体のGA4集計、ランキング、時系列 | **メディア全体スコア（資産価値・実効）と散布図を追加する（§10.6。2026-08-17 に対象へ変更）**。記事単位の評価UI・履歴は置かない（§3.2） |
+| `/setup/ga4` | GA4 連携設定・日次同期の実行 | **「過去90日を再取込」ボタンを追加する（2026-08-19。AC-18）**。日次同期は前回取込日以降しか取得しないため、取込項目を追加した後の既存行はこの導線でしか埋まらない。打ち切り・サンプリングの警告表示も同ボタンの一部（§4.1.2） |
+| `/wordpress-import` | WordPress 記事の一括インポート | **`wp_content_text` / `wp_image_count` も書くようにする（2026-08-19。AC-18）**。画面と操作手順は変えない（同じボタンの保存対象が増えるだけ）。§4.1.1 |
 | `/admin/prompts` | プロンプトテンプレートの管理（admin 専用） | **カテゴリ追加のみ**。画面はテンプレートをプレフィックスで分類して表示する作り（`PromptsClient.tsx` の `PROMPT_CATEGORIES`）で、`ga4_` を拾う分類が無く受け皿の「AIチャット・生成」に紛れていたため、「GA4コンテンツ評価」カテゴリを追加した（2026-08-19）。編集・バージョン管理は既存機能をそのまま使う。登録の経路とタイミングは §6.3.1 / §14 手順 |
 
 記事詳細の情報階層の再設計（統合レイアウト化）は、Q-C 回答（2026-08-16「まとめで全てやる」）により**フェーズ2で実施する**（§3.1 / §10.5）。フェーズ1の移設時点では挙動保存を維持し（AC-14）、再設計はフェーズ2の評価タブ実装と同時に行う。
@@ -1390,6 +1392,32 @@ Feature: GA4コンテンツ評価
     And コード検索（リポジトリ全体の表示文言）で GA4 用語の残存が0件である
 ```
 
+### AC-18 既存レコードの追加指標を埋める導線が UI に存在する（フェーズ2。2026-08-19 追加）
+
+§4.1.2 の後方互換方針は「過去分の再取込」と「一括インポート」という**運用手順**として書かれていたため、対応する導線の実装が AC で担保されておらず、リリース手順が実行不能な状態のまま実装完了と判定された（§18）。運用手順が依存する導線は AC 化する。
+
+```gherkin
+  Scenario: GA4 の過去分を再取込する
+    Given /setup/ga4 に GA4 プロパティが設定済みで、engagement_rate / active_users が NULL の既存行がある
+    When 「過去90日を再取込」を実行する
+    Then /api/ga4/sync へ backfillDays=90 が送られ、同期カーソルを無視して前日から90日分が取得される
+    And 取得は30日以下の窓に分割され、1レポートあたりの行数が日数で有界化される
+    And 既存行の engagement_rate / active_users が upsert で埋まる
+    And 打ち切り（isPartial）またはサンプリング（isSampled）が起きた場合は成功表示に加えて警告が出る
+
+  Scenario: 画像点数を既存記事に埋める
+    Given content_annotations.wp_image_count が NULL の既存記事がある
+    When /wordpress-import の一括インポートを実行する
+    Then WP REST 一覧の content.rendered から wp_content_text と wp_image_count が保存される
+    And 他の列に差分がない記事も wp_image_count が NULL であれば更新対象になる
+
+  Scenario: 本文キャッシュ済みの記事でも画像点数を取り直す
+    Given wp_content_text と wp_excerpt は保存済みだが wp_image_count が NULL の記事がある
+    When 記事単位の本文取得（fetchWpPostContentWithCache）が走る
+    Then キャッシュ済みでも WordPress から取得し直し、wp_image_count が保存される
+    And wp_image_count が 0 で保存済みの記事は「未取得」と区別され、再取得されない
+```
+
 ### AC と成功条件・要求出典の対応
 
 `docs/templates/requirement-definition.md` §5「機能要件」の FR-ID 表と §6「シナリオ対応表」は導入していない（理由は §19 の残置記録）。代替として、各 AC が本書のどの成功条件・どの要求出典に対応するかを次に示す。
@@ -1414,6 +1442,7 @@ Feature: GA4コンテンツ評価
 | AC-15（フェーズ1） | （同上。旧URL導線の救済） | §15.4 の 2026-08-15 決定 |
 | AC-16（フェーズ2） | メディア全体の資産価値・実効スコアと散布図で改善が追える | 評価エンジン仕様 §06 |
 | AC-17（フェーズ2） | UI に GA4 用語を出さない | 評価エンジン仕様 §08 |
+| AC-18（フェーズ2。2026-08-19 追加） | （成功条件の前提となるデータ充足。既存レコードの追加指標を埋める導線） | §4.1.2 後方互換方針（2026-08-18 決定）／§14 リリース手順 |
 | （AC なし） | 評価に使用した期間・データ取得日時・プロンプトバージョン・スコアリング設定バージョンを追跡できる | §7.3 の列定義と §13 サービステストで担保。UI からの追跡は §10.3-5 |
 
 ## 13. テスト計画
@@ -1453,7 +1482,7 @@ Feature: GA4コンテンツ評価
 10. 許可された運用手順でステージングのDB設定を `enabled=true` に変更し、実データでスコア・診断・文章・エラー状態を検証する（**生値が GA4 画面と一致することの突合を含む**。§10.3 / §15.2）。
 11. 一般ユーザーへ段階展開する。
 
-手順5（事前確認）の前に次を実施する: 既存 `landingPage` 軸クエリへ `engagementRate` / `activeUsers` を追加する（評価エンジン仕様 §09。2026-08-17 に pagePath 軸方針から転換）。Compatibility を実測し（§4.1.1。`activeUsers` 不可なら ÷sessions フォールバックを確定）、`ga4_page_metrics_daily` へ `engagement_rate` / `active_users` を新設する migration（`page_views` は実在確認済み・不使用。Q-D 決着 2026-08-17）と `content_annotations.wp_image_count` の migration を適用し、§4.1.2 の決定（2026-08-18）に従って**過去90日の再取込**（既存 `/api/ga4/sync` 経路。Kill Switch 有効化前に実施）で既存行の新列を埋めてから取込を有効化する。あわせて WordPress 同期の `wp_image_count` 算出を有効化し、**全記事の再同期を1回実行**して画像点数を埋める（§4.1.2）。
+手順5（事前確認）の前に次を実施する: 既存 `landingPage` 軸クエリへ `engagementRate` / `activeUsers` を追加する（評価エンジン仕様 §09。2026-08-17 に pagePath 軸方針から転換）。Compatibility を実測し（§4.1.1。`activeUsers` 不可なら ÷sessions フォールバックを確定）、`ga4_page_metrics_daily` へ `engagement_rate` / `active_users` を新設する migration（`page_views` は実在確認済み・不使用。Q-D 決着 2026-08-17）と `content_annotations.wp_image_count` の migration を適用し、§4.1.2 の決定（2026-08-18）に従って**過去90日の再取込**で既存行の新列を埋めてから取込を有効化する。再取込は `/setup/ga4` の「**過去90日を再取込**」ボタンから実行する（Kill Switch 有効化前に実施。**「GA4日次同期を実行」では過去分は埋まらない**）。あわせて WordPress 同期の `wp_image_count` 算出を有効化し、**`/wordpress-import` の一括インポートを1回実行**して本文と画像点数を埋める（§4.1.2）。両方とも**実行後に埋まったことを確認する**: `ga4_page_metrics_daily` の `engagement_rate` / `active_users` が NULL でない行が存在すること、`content_annotations.wp_image_count` が NULL でない行が存在すること。0件のままなら導線が機能していないので、Kill Switch を有効化しない（この確認を省くと、評価が全件「データ蓄積中」で止まる原因が切り分けられない）。
 
 ### ロールバック
 
@@ -1800,6 +1829,7 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 - フェーズ1（ルート移設）の変更対象: `app/analytics/[annotationId]/` の新設一式（`app/gsc-dashboard/` からの移設。§5.5）、`app/gsc-dashboard/` の削除、`next.config.ts`（redirects 新設）、`src/components/AnalyticsTable.tsx`（詳細ボタンの遷移先URL）、`src/components/GlobalToastBridge.tsx`（**D5 の確定後に対象化。(a) を選ぶ場合は変更対象から外れる**。§5.5）、`src/server/actions/gscDashboard.actions.ts`（`revalidatePath` 4箇所＋公開6関数への認可追加。読み取り2本＝`canAccessGa4` / 書き込み4本＝`canWriteGa4`）、`src/server/actions/gscNotification.actions.ts`（`revalidatePath` 1箇所）、`app/api/gsc/dashboard/route.ts`・`app/api/gsc/dashboard/[annotationId]/route.ts`（`canAccessGa4` 追加・403 応答）、`src/domain/errors/error-messages.ts`（**GA4 群へ機能アクセス拒否の文言定数を新設。§3.3 未認可時の応答契約**）、`tests/unit/server/lib/`（`ga4-permissions` テスト新設。`canAccessGa4` / `canWriteGa4` 両方）、移設テスト・E2E。
 - フェーズ2の変更対象候補（2026-08-17 更新）: **スコア算出エンジン（新設純関数群: 文字数正規化・期待読了時間・アンカー補間・幾何平均・診断マトリクス・足切り。§6.2）**、`src/server/services/`（評価サービス・順位/差分算出・メディア全体集計）、`src/server/actions/` または Route Handler、`src/types/`、`supabase/migrations/`（評価テーブル・settings・trigger・開始/完了RPC・`wp_image_count`）、`src/components/AnalyticsTable.tsx`（評価状態列・未評価フィルタ。並び替えは実装しない＝Q-B）、`app/analytics/[annotationId]/`（記事カード評価UI＋**情報階層のたたき台統合レイアウトへの再設計**＝Q-C。既存3タブの機能・データは維持する）、`app/ga4-dashboard/`＋`ga4Dashboard.actions.ts`（メディア全体スコア・散布図。§10.6）、`src/server/services/wordpressContentSync.ts`（img タグ数算出）、評価用・全体集計用入口での認可検証（§3.3 / BR-07 / AC-12）、`get_filtered_content_annotations` の再作成（未評価フィルタ・評価テーブルJOIN・返却フィールド追加。並び替えパラメータは追加しない）、`.agents/skills/growmate-ui-ux/ui-text.md`（「評価」行の修飾ルール更新・`/gsc-dashboard` 表記の差し替え・**§10.7 用語言い換え表の転記**）、既存画面の表示文言（用語言い換えの UI 全体適用＝§10.7。GSC タブ・既存 GA4 ダッシュボード等の GA4 用語置換）。
 - GA4取込拡張の変更対象（2026-08-17 に対象変更）: `src/server/services/ga4ImportService.ts`（既存 `landingPage` 軸クエリへの `engagementRate` / `activeUsers` 追加。取り出しインデックス・`mergeReports` 集計・`rowsToSave` の連鎖改修）、`src/server/lib/ga4-metrics-aggregation.ts`（型・集計）、`src/server/services/supabaseService.ts`（upsert）、select 文字列3箇所（`analyticsContentService.ts:278`・`ga4Dashboard.actions.ts:226,382,639`）、`src/server/services/ga4Service.ts`（`checkCompatibility` 経路の新設。§4.2.2 / §9.2）、`ga4_page_metrics_daily` の追加列 migration（`engagement_rate` / `active_users`）、§4.1.2 の後方互換対応。いずれも取込拡張（8〜14h）に含む。
+- §4.1.2 後方互換の導線（2026-08-19 追加。AC-18）: `src/components/Ga4SetupClient.tsx`（「過去90日を再取込」ボタン・`backfillDays` 送信・打ち切り/サンプリング警告）、`src/server/lib/ga4-sync-range.ts`（`splitGa4SyncRange`）、`src/server/services/ga4ImportService.ts`（窓ごとの取込＝`importWindow` 抽出）、`src/server/services/wordpressService.ts`（REST 一覧 normalizer で `content_text` / `image_count` を抽出）、`src/types/wordpress.ts`、`src/server/actions/wordpressImport.actions.ts`（2列の保存と差分判定）、`src/server/services/wordpressContentSync.ts`（再取得条件へ `wp_image_count IS NULL` を追加）、`src/server/services/gscSuggestionService.ts`（`cachedImageCount` の受け渡し）。
 - 変更しないもの: 既存3タブの**内容と操作**（移設後も挙動保存。AC-14）、`proxy.ts`（プレフィックスマッチにより新ルートが自動的に保護対象になるため変更不要。§3.3）、`app/ga4-dashboard/` の**既存**集計ロジック・SummaryCards・ranking・timeseries（追加はメディア全体スコア＋散布図のみ。§10.6）。
 - 別チケットへ送るもの: 一覧への戻り先クエリ引き継ぎ（§3.2）、存在しない annotationId の `notFound()` 導入（§15.4）、レスポンシブ・アクセシビリティの新規要件、定期Cron・非同期ジョブ、GSC `dataState` の明示指定と記録、インポート直後の自動評価、`src/server/lib/gsc-status.ts` への `webmasters.readonly` 欠落判定の追加（§9.1.1 / §15.4）。**情報階層の再設計（統合レイアウト化）は 2026-08-16 の Q-C 回答によりフェーズ2のスコープへ移動した。**
 - 既知の別課題: `app/ga4-dashboard/components/RankingTab.tsx` の `/analytics?annotationId=...` は `/analytics` 側が `annotationId` を読まないため現状無効。フェーズ1後は `/analytics/[annotationId]` 形式へ更新すれば有効化できる（フェーズ1のスコープに含めるかは実装時に判断し、含めない場合は別チケット）。`app/ga4-dashboard/page.tsx` の `annotationId` / `path` searchParams 型も未使用。
@@ -1856,6 +1886,7 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 | 2026-08-18 | **§4.1.2 後方互換方針を決定（開発側決定。spec-to-pr の plan ステップが「実装前に決める」未決3件を検出して ABORT したため）。** (1) `engagement_rate` / `active_users` の既存行は **過去90日の再取込**（既存 `/api/ga4/sync` 経路。migration 適用後・Kill Switch 有効化前）で埋め、リリース初日から既定90日の評価を可能にする。評価期間の下限クランプ・欠損日除外の集計変更は行わない（BR-02 / AC-03 のセマンティクス維持）。(2) `wp_image_count` は **全記事再同期を初回リリース手順に含める**。§1 / §4.1.2 / §7.6 / §14 / §15.5 R-03 を同期（R-03 解消） | 実装中の残件は Q-H / Q-I のみ |
 | 2026-08-19 | **文章化プロンプトを1本へ統合し、同日中に2本構成へ差し戻した（開発側決定）。** 統合の動機は (1) 既存の `gsc_insight_*` が1テンプレート＝1メッセージで構成が不揃いだったこと、(2) 評価履歴のプロンプト追跡がシステム側しか記録せずユーザー側の改版を追えなかったこと。**差し戻しの理由**: `llmService` は先頭の `role='system'` を messages から分離し Anthropic の top-level `system` パラメータとして送る（`llmService.ts:36-41`, `:145`）。1本へ統合すると `system` が消え、出力契約（前置きなしの5フィールドJSON）の指示位置と `cache_control: ephemeral` の経路を失う。受領仕様 §07 の2本立てにも反する。**(2) の追跡の穴は分割のまま解消**し、`prompt_content_sha256` を2本の原文を NUL 区切りで連結した hash に変更した（§7.3）。migration は `20260819000000`（統合）→ `20260819000100`（差し戻し）の2本で、いずれも本文未登録のもののみ入れ替える。あわせて §10.1 の「`/admin/prompts` は改修不要」を、カテゴリ追加が必要だった実態へ訂正 | プロンプト構成は2本のまま。追跡の穴は解消済み |
 | 2026-08-19 | **Kill Switch の管理画面 `/admin/ga4-evaluation` を追加し、同日撤回（開発側決定）。** 追加の動機は「`ga4_content_evaluation_settings` に書き込む経路がコード上に無く、有効化に本番DBへの直接SQLが必要」だったこと。**撤回の理由**: 既存リポジトリの全体キルスイッチは `INSTAGRAM_SYNC_ENABLED` のような env 方式で（`instagram-integration-design.md:359` が明示的に「キルスイッチ」と呼ぶ）、`/admin` 配下は `prompts` / `users` ともマスタデータ編集に統一されており、「機能のON/OFF画面」は既存に前例が無い。既存設計と揃わない新概念を持ち込まない判断で削除し、§7.2 の当初方針（運用手順または管理者専用経路から更新）へ戻した。運用手順は README「GA4コンテンツ評価の運用」と §14 に記載済み | BR-05 / AC-06 の要件は不変。操作は運用手順で行う |
+| 2026-08-19 | **§4.1.2 の後方互換方針が実装されていなかったことを検出し、導線を実装して AC-18 を新設（開発側決定）。** 本番DBの実測で `ga4_page_metrics_daily.engagement_rate` / `active_users` が 27,085 行すべて NULL、`content_annotations.wp_image_count` が 5,038 行すべて NULL であることを確認した。原因は**方針を「§14 リリース手順」＝運用手順としてのみ書き、実装スコープにも AC にも入れなかった**こと。AC が無いためテストも self-review も判定基準を持たず、実装完了と判定された。実態は (1) GA4 側＝`backfillDays` はスキーマ・ルート・範囲決定まで実装済みだが、`/setup/ga4` の同期ボタンが body を送らないため画面から過去分を取り直せない（`Ga4SetupClient.tsx:143`）。(2) WordPress 側＝`wp_image_count` を書くのは `wordpressContentSync.ts:215` の1箇所のみで、`/wordpress-import` の一括インポートはこの列を書かず、記事単位の再取得条件（`:239-243`）も本文・抜粋しか見ないため本文キャッシュ済みの記事は永久に NULL のまま。仕様書の「既存記事は次回の同期で埋まる」は**実在しない導線を前提にしていた**。**対応**: `/setup/ga4` に「過去90日を再取込」を追加（`backfillDays` 送信・30日窓分割・打ち切り/サンプリングの警告表示）、一括インポートが `wp_content_text` / `wp_image_count` を書くよう normalizer と差分判定を拡張、`fetchWpPostContentWithCache` の再取得条件に `wp_image_count IS NULL` を追加。§4.1.1 / §4.1.2 / §14 を実導線名で書き直し、AC-18 を新設 | 運用手順が依存する導線は AC 化する（同じ抜けを繰り返さないため） |
 
 ## 19. レビュー記録
 

@@ -233,21 +233,34 @@ export async function fetchWpPostContentWithCache(params: {
   wpPostId: number | null;
   cachedContent: string | null;
   cachedExcerpt: string | null;
+  /**
+   * `content_annotations.wp_image_count`。NULL は「画像点数を一度も取得していない」を意味するため
+   * 再取得の条件に含める。含めないと本文キャッシュ済みの記事が永久に NULL のまま残る。
+   */
+  cachedImageCount: number | null;
   userId: string;
 }): Promise<Omit<WpPostContentFields, 'contentHtml'> | null> {
-  const { wpPostId, cachedContent, cachedExcerpt, userId } = params;
+  const { wpPostId, cachedContent, cachedExcerpt, cachedImageCount, userId } = params;
   const needsFetch =
     !cachedContent ||
     cachedContent.trim().length === 0 ||
     !cachedExcerpt ||
-    cachedExcerpt.trim().length === 0;
+    cachedExcerpt.trim().length === 0 ||
+    cachedImageCount === null;
 
   if (!wpPostId) {
-    return needsFetch ? null : { contentText: cachedContent, title: null, excerpt: cachedExcerpt, imageCount: null };
+    return needsFetch
+      ? null
+      : { contentText: cachedContent, title: null, excerpt: cachedExcerpt, imageCount: cachedImageCount };
   }
 
   if (!needsFetch) {
-    return { contentText: cachedContent, title: null, excerpt: cachedExcerpt, imageCount: null };
+    return {
+      contentText: cachedContent,
+      title: null,
+      excerpt: cachedExcerpt,
+      imageCount: cachedImageCount,
+    };
   }
 
   try {

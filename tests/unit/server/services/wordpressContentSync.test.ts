@@ -38,7 +38,10 @@ vi.mock('@/server/services/wordpressContext', () => ({
   buildWordPressServiceFromSettings: mocks.buildWordPressServiceFromSettings,
 }));
 
-import { fetchWpPostContentLive } from '@/server/services/wordpressContentSync';
+import {
+  fetchWpPostContentLive,
+  fetchWpPostContentWithCache,
+} from '@/server/services/wordpressContentSync';
 
 describe('fetchWpPostContentLive', () => {
   beforeEach(() => {
@@ -162,5 +165,80 @@ describe('fetchWpPostContentLive', () => {
     expect(result?.contentText).toBe('見出し  記事本文');
 
     consoleError.mockRestore();
+  });
+});
+
+describe('fetchWpPostContentWithCache の再取得条件', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.updateError.mockReturnValue(null);
+    mocks.getWordPressSettingsByUserId.mockResolvedValue({
+      wpType: 'self_hosted',
+      wpSiteUrl: 'https://example.com',
+    });
+    mocks.buildWordPressServiceFromSettings.mockReturnValue({
+      success: true,
+      service: {
+        findExistingContent: mocks.findExistingContent,
+        resolveContentById: mocks.resolveContentById,
+      },
+    });
+    mocks.resolveContentById.mockResolvedValue({
+      success: true,
+      data: {
+        id: 42,
+        title: { rendered: '記事タイトル' },
+        content: { rendered: '<p>本文</p><img src="a.jpg">' },
+        excerpt: { rendered: '抜粋' },
+      },
+    });
+  });
+
+  it('本文・抜粋が揃っていても画像点数が未取得なら取得し直して保存する', async () => {
+    const result = await fetchWpPostContentWithCache({
+      wpPostId: 42,
+      cachedContent: 'キャッシュ済み本文',
+      cachedExcerpt: 'キャッシュ済み抜粋',
+      cachedImageCount: null,
+      userId: 'user-id',
+    });
+
+    expect(mocks.resolveContentById).toHaveBeenCalledWith(42);
+    expect(result?.imageCount).toBe(1);
+    expect(mocks.update).toHaveBeenCalledWith(
+      expect.objectContaining({ wp_image_count: 1 })
+    );
+  });
+
+  it('本文・抜粋・画像点数がすべて揃っていれば WordPress を叩かない', async () => {
+    const result = await fetchWpPostContentWithCache({
+      wpPostId: 42,
+      cachedContent: 'キャッシュ済み本文',
+      cachedExcerpt: 'キャッシュ済み抜粋',
+      cachedImageCount: 3,
+      userId: 'user-id',
+    });
+
+    expect(mocks.resolveContentById).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      contentText: 'キャッシュ済み本文',
+      title: null,
+      excerpt: 'キャッシュ済み抜粋',
+      imageCount: 3,
+    });
+  });
+
+  it('画像点数が0で保存済みなら「未取得」と区別して再取得しない', async () => {
+    const result = await fetchWpPostContentWithCache({
+      wpPostId: 42,
+      cachedContent: 'キャッシュ済み本文',
+      cachedExcerpt: 'キャッシュ済み抜粋',
+      cachedImageCount: 0,
+      userId: 'user-id',
+    });
+
+    expect(mocks.resolveContentById).not.toHaveBeenCalled();
+    expect(result?.imageCount).toBe(0);
   });
 });

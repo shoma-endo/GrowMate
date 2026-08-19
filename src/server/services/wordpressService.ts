@@ -1,4 +1,6 @@
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { countImageTags } from '@/lib/content-text';
+import { stripHtml } from '@/lib/utils';
 import {
   WordPressPostResponse,
   WordPressPostApiResponse,
@@ -695,6 +697,18 @@ export function normalizeWordPressRestPosts(
     const excerpt = resolveRenderedField(post.excerpt);
     if (excerpt !== undefined) {
       normalized.excerpt = excerpt;
+    }
+
+    // 一覧レスポンスには content.rendered が含まれる（_fields で絞っていない）。
+    // ここで平文と img タグ数まで落としておくことで、記事本文HTMLを配列に保持せずに
+    // wp_content_text / wp_image_count を一括インポートで埋められる。
+    const contentHtml = resolveRenderedField(post.content);
+    if (contentHtml !== undefined) {
+      const contentText = stripHtml(contentHtml).trim();
+      if (contentText) {
+        normalized.content_text = contentText;
+      }
+      normalized.image_count = countImageTags(contentHtml);
     }
 
     const postType = post.type ?? defaultType;

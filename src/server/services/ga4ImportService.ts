@@ -10,7 +10,7 @@ import {
   normalizeToPath,
 } from '@/lib/ga4-utils';
 import { GA4_SCOPE } from '@/lib/constants';
-import { resolveGa4SyncRange } from '@/server/lib/ga4-sync-range';
+import { resolveGa4SyncRange, splitGa4SyncRange } from '@/server/lib/ga4-sync-range';
 
 interface Ga4ReportRow {
   date: string;
@@ -58,6 +58,8 @@ class Ga4ImportService {
   static readonly MAX_TOTAL_ROWS = 50_000;
   /** 初回同期時に遡る日数（当日含まず） */
   static readonly INITIAL_SYNC_DAYS = 30;
+  /** 1レポートで取得する最大日数。長期間の再取込を分割して行数打ち切りを避ける */
+  static readonly MAX_DAYS_PER_WINDOW = 30;
 
   private readonly supabaseService = new SupabaseService();
   private readonly gscService = new GscService();
@@ -149,6 +151,63 @@ class Ga4ImportService {
       : [];
     const eventNames = Array.from(new Set([GA4_EVENT_SCROLL_90, ...conversionEvents]));
 
+    // 長期間の再取込でも1レポートの行数を日数で有界化する（打ち切りの静かな欠損を防ぐ）
+    const windows = splitGa4SyncRange(syncRange.range, Ga4ImportService.MAX_DAYS_PER_WINDOW);
+
+    let totalUpserted = 0;
+    let isSampled = false;
+    let isPartial = false;
+
+    for (const window of windows) {
+      const result = await this.importWindow({
+        userId,
+        propertyId,
+        accessToken,
+        conversionEvents,
+        eventNames,
+        range: window,
+      });
+      totalUpserted += result.upserted;
+      isSampled = isSampled || result.isSampled;
+      isPartial = isPartial || result.isPartial;
+    }
+
+    // 0件時はカーソルを進めず、次回同一範囲を再取得して取りこぼしを防ぐ
+    if (totalUpserted > 0) {
+      await this.supabaseService.updateGscCredential(userId, {
+        // 次回の startDate を正しく進めるため、同期実行時刻ではなく取り込み済み最終日を保持する
+        ga4LastSyncedAt: Ga4ImportService.toUtcMidnightIso(endDate),
+      });
+    }
+
+    return {
+      ok: true,
+      data: {
+        userId,
+        propertyId,
+        startDate,
+        endDate,
+        upserted: totalUpserted,
+        isSampled,
+        isPartial,
+      },
+    };
+  }
+
+  /**
+   * 1つの日付窓ぶんの GA4 レポートを取得して upsert する。同期カーソルは更新しない。
+   */
+  private async importWindow(params: {
+    userId: string;
+    propertyId: string;
+    accessToken: string;
+    conversionEvents: string[];
+    eventNames: string[];
+    range: { startDate: string; endDate: string };
+  }): Promise<{ upserted: number; isSampled: boolean; isPartial: boolean }> {
+    const { userId, propertyId, accessToken, conversionEvents, eventNames } = params;
+    const { startDate, endDate } = params.range;
+
     let baseReport: ReportFetchResult;
     try {
       baseReport = await this.fetchBaseReport(accessToken, propertyId, {
@@ -156,7 +215,7 @@ class Ga4ImportService {
         endDate,
       });
     } catch (error) {
-      console.error('[ga4ImportService.syncUser] baseReport fetch failed', {
+      console.error('[ga4ImportService.importWindow] baseReport fetch failed', {
         userId,
         propertyId,
         startDate,
@@ -174,7 +233,7 @@ class Ga4ImportService {
         eventNames,
       });
     } catch (error) {
-      console.error('[ga4ImportService.syncUser] eventReport fetch failed', {
+      console.error('[ga4ImportService.importWindow] eventReport fetch failed', {
         userId,
         propertyId,
         startDate,
@@ -215,26 +274,14 @@ class Ga4ImportService {
       };
     });
 
-    // 0件時はカーソルを進めず、次回同一範囲を再取得して取りこぼしを防ぐ
     if (rowsToSave.length > 0) {
       await this.supabaseService.upsertGa4PageMetricsDaily(rowsToSave);
-      await this.supabaseService.updateGscCredential(userId, {
-        // 次回の startDate を正しく進めるため、同期実行時刻ではなく取り込み済み最終日を保持する
-        ga4LastSyncedAt: Ga4ImportService.toUtcMidnightIso(endDate),
-      });
     }
 
     return {
-      ok: true,
-      data: {
-        userId,
-        propertyId,
-        startDate,
-        endDate,
-        upserted: rowsToSave.length,
-        isSampled: baseReport.isSampled || eventReport.isSampled,
-        isPartial: baseReport.isPartial || eventReport.isPartial,
-      },
+      upserted: rowsToSave.length,
+      isSampled: baseReport.isSampled || eventReport.isSampled,
+      isPartial: baseReport.isPartial || eventReport.isPartial,
     };
   }
 
