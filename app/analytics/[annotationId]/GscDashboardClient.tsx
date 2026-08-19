@@ -149,10 +149,6 @@ export default function GscDashboardClient({
             <TrendingUp className="w-4 h-4" />
             <span className="hidden sm:inline">概要</span>
           </TabsTrigger>
-          <TabsTrigger value="content-evaluation" className="flex items-center gap-2">
-            <Gauge className="w-4 h-4" />
-            <span className="hidden sm:inline">コンテンツ評価</span>
-          </TabsTrigger>
           <TabsTrigger value="queries" className="flex items-center gap-2">
             <Search className="w-4 h-4" />
             <span className="hidden sm:inline">検索クエリ</span>
@@ -166,6 +162,10 @@ export default function GscDashboardClient({
               <History className="w-4 h-4" />
             )}
             <span className="hidden sm:inline">検索順位評価</span>
+          </TabsTrigger>
+          <TabsTrigger value="content-evaluation" className="flex items-center gap-2">
+            <Gauge className="w-4 h-4" />
+            <span className="hidden sm:inline">コンテンツ評価</span>
           </TabsTrigger>
         </TabsList>
 
