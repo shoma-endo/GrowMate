@@ -27,6 +27,7 @@ import type {
   Ga4DashboardSortKey,
   Ga4MediaContentScores,
 } from '@/types/ga4';
+import { Ga4BackfillButton } from '@/components/Ga4BackfillButton';
 import { SummaryCards } from './components/SummaryCards';
 import { MediaContentScorePanel } from './components/MediaContentScorePanel';
 import { RankingTab } from './components/RankingTab';
@@ -178,6 +179,30 @@ export default function Ga4DashboardClient({
     },
     [dateRange.end, dateRange.start]
   );
+
+  // 再取込のあと、表示中の期間のまま集計を取り直す（期間選択やソートの状態は変えない）
+  const reloadCurrentRange = useCallback(async () => {
+    setIsLoading(true);
+    setError(undefined);
+    try {
+      const result = await fetchGa4DashboardData(dateRange);
+      if (!result.success || !result.data) {
+        if (isEmailLinkConflictResult(result)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
+        setError(result.error ?? 'データの取得に失敗しました');
+        return;
+      }
+      setData(result.data);
+      setSelectedNormalizedPath(result.data.initialNormalizedPath);
+    } catch (err) {
+      console.error('[GA4 Dashboard] Reload after backfill failed:', err);
+      setError('データの取得に失敗しました');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [dateRange]);
 
   const handleApplyCustomRange = useCallback(async () => {
     const dateError = validateDateRange(customStart, customEnd);
@@ -346,14 +371,17 @@ export default function Ga4DashboardClient({
           <ArrowLeft className="w-4 h-4 mr-1.5" />
           検索順位・コンテンツ評価に戻る
         </Link>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="text-3xl font-bold">Google Analytics 4 ダッシュボード</h1>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/setup/ga4">
-              <Settings className="w-4 h-4 mr-2" />
-              設定
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Ga4BackfillButton disabled={isLoading} onCompleted={reloadCurrentRange} />
+            <Button asChild variant="outline" size="sm">
+              <Link href="/setup/ga4">
+                <Settings className="w-4 h-4 mr-2" />
+                設定
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 

@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Ga4ConnectionStage, Ga4ConnectionStatus } from '@/types/ga4';
-import { Plug, RefreshCw, AlertTriangle, BarChart3, History, Loader2 } from 'lucide-react';
+import { Plug, RefreshCw, AlertTriangle, BarChart3, Loader2 } from 'lucide-react';
 import { BackLink } from '@/components/BackLink';
 import {
   saveGa4Settings,
@@ -76,7 +76,6 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
   } = useGa4Setup(initialStatus);
   const [isSavingGa4, setIsSavingGa4] = useState(false);
   const [isGa4Syncing, setIsGa4Syncing] = useState(false);
-  const [isGa4Backfilling, setIsGa4Backfilling] = useState(false);
   const [isCheckingGa4Status, setIsCheckingGa4Status] = useState(false);
 
   const [selectedGa4PropertyId, setSelectedGa4PropertyId] = useState(status.propertyId ?? '');
@@ -145,18 +144,11 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
     );
   };
 
-  const runGa4Sync = async (options: {
-    backfillDays?: number;
-    setLoading: (loading: boolean) => void;
-  }) => {
-    const { backfillDays } = options;
+  const handleGa4ManualSync = async () => {
     await handleAsyncAction<Ga4ManualSyncData>(
       async () => {
-        const response = await fetch('/api/ga4/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(backfillDays !== undefined ? { backfillDays } : {}),
-        });
+        // body なし＝増分同期。過去分の取り直しは GA4ダッシュボードの再取込導線が担う
+        const response = await fetch('/api/ga4/sync', { method: 'POST' });
         if (!response.ok) {
           const text = await response.text().catch(() => '');
           throw new Error(text || `GA4同期に失敗しました (HTTP ${response.status})`);
@@ -190,26 +182,11 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
             toast.warning('GA4がサンプリングされたデータを返しました。数値は概算値です');
           }
         },
-        setLoading: options.setLoading,
+        setLoading: setIsGa4Syncing,
         setMessage: setAlertMessage,
         defaultErrorMessage: 'GA4同期に失敗しました',
       }
     );
-  };
-
-  const handleGa4ManualSync = async () => {
-    await runGa4Sync({ setLoading: setIsGa4Syncing });
-  };
-
-  /**
-   * 評価入力の期間上限（90日）ぶんを取り込み直す。
-   * 増分同期は前回取込日以降しか取得しないため、指標を追加した後の既存行はこの導線でしか埋まらない。
-   */
-  const handleGa4Backfill = async () => {
-    await runGa4Sync({
-      backfillDays: GA4_EVALUATION_DEFAULT_DAYS,
-      setLoading: setIsGa4Backfilling,
-    });
   };
 
   const handleRefreshGa4Status = useCallback(async () => {
@@ -522,26 +499,10 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                   )}
                   {isGa4Syncing ? '同期中...' : 'GA4日次同期を実行'}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleGa4Backfill}
-                  disabled={isGa4Backfilling || isGa4Syncing || !status.propertyId}
-                  className="flex items-center gap-2"
-                >
-                  {isGa4Backfilling ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <History className="h-4 w-4" />
-                  )}
-                  {isGa4Backfilling
-                    ? `再取込中...`
-                    : `過去${GA4_EVALUATION_DEFAULT_DAYS}日を再取込`}
-                </Button>
               </div>
               <p className="text-xs text-gray-500">
-                日次同期は前回の取込日以降だけを取得します。取込項目を追加した直後など、過去分の数値が欠けている場合は「過去
-                {GA4_EVALUATION_DEFAULT_DAYS}日を再取込」で取り直してください（コンテンツ評価の対象期間と同じ日数です）。
+                日次同期は前回の取込日以降だけを取得します。過去分の数値が欠けている場合は、GA4ダッシュボードの「過去
+                {GA4_EVALUATION_DEFAULT_DAYS}日を再取込」で取り直してください。
               </p>
             </>
           )}
