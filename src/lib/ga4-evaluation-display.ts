@@ -16,7 +16,6 @@ const GA4_DIAGNOSIS_LABELS: Record<Ga4DiagnosisCode, string> = {
 };
 
 const GA4_STATUS_LABELS: Record<string, string> = {
-  evaluation_disabled: '評価機能は現在停止中です',
   unassessed: '未評価',
   eligible: '評価可能',
   needs_reauth: 'Google連携を確認してください',
@@ -49,7 +48,6 @@ const GA4_ERROR_LABELS: Record<string, string> = {
   llm_server_error: '診断コメントの生成に失敗しました',
   llm_timeout: '診断コメントの生成が時間内に完了しませんでした',
   llm_output_invalid: '診断コメントの形式を確認できませんでした',
-  evaluation_disabled: '評価機能は現在停止中です',
   evaluation_already_running: '評価中...',
   insufficient_data: '評価に必要なデータが不足しています',
   evaluation_failed: '評価に失敗しました',

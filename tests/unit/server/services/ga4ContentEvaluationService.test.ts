@@ -279,14 +279,7 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     })).resolves.toEqual({ rank: 1, totalArticles: 2 });
   });
 
-  it('Kill Switch 無効時は評価開始RPCを呼び出さない', async () => {
-    vi.spyOn(ga4ContentEvaluationService, 'isEvaluationEnabled').mockResolvedValue(false);
 
-    await expect(ga4ContentEvaluationService.run(RUN_INPUT)).rejects.toThrow('evaluation disabled');
-
-    expect(mocks.client.rpc).not.toHaveBeenCalled();
-    expect(mocks.client.from).not.toHaveBeenCalled();
-  });
 
   it('GA4取得失敗を import_failed として完了RPCへ渡す', async () => {
     mocks.credential = {
@@ -296,7 +289,6 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
       accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
       scope: ['https://www.googleapis.com/auth/analytics.readonly'],
     };
-    vi.spyOn(ga4ContentEvaluationService, 'isEvaluationEnabled').mockResolvedValue(true);
     const serviceInternals = ga4ContentEvaluationService as unknown as {
       resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
     };
@@ -323,7 +315,6 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
       accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
       scope: ['https://www.googleapis.com/auth/analytics.readonly'],
     };
-    vi.spyOn(ga4ContentEvaluationService, 'isEvaluationEnabled').mockResolvedValue(true);
     const serviceInternals = ga4ContentEvaluationService as unknown as {
       resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
     };
@@ -358,7 +349,6 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
       await request.onAttempt?.(1);
       return { success: false, code: 'llm_timeout', attemptCount: 3 };
     });
-    vi.spyOn(ga4ContentEvaluationService, 'isEvaluationEnabled').mockResolvedValue(true);
     const serviceInternals = ga4ContentEvaluationService as unknown as {
       resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
     };
@@ -397,7 +387,6 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     };
     mocks.getTemplateByName.mockResolvedValue({ id: 'template-1', version: 1, content: 'prompt {{title}}' });
     mocks.generateGa4EvaluationLlmOutput.mockResolvedValue({ success: false, code: 'llm_timeout', attemptCount: 3 });
-    vi.spyOn(ga4ContentEvaluationService, 'isEvaluationEnabled').mockResolvedValue(true);
     const serviceInternals = ga4ContentEvaluationService as unknown as {
       resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
     };
@@ -431,7 +420,6 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
       accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
       scope: ['https://www.googleapis.com/auth/analytics.readonly'],
     };
-    vi.spyOn(ga4ContentEvaluationService, 'isEvaluationEnabled').mockResolvedValue(true);
     const serviceInternals = ga4ContentEvaluationService as unknown as {
       resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
     };

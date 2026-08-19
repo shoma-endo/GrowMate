@@ -69,7 +69,6 @@ interface Props {
   hasUnstartedGscEvaluation: boolean;
   hasUnstartedGa4Evaluation: boolean;
   hasUrlFilterParams: boolean;
-  ga4EvaluationEnabled: boolean;
 }
 
 interface LaunchPayload {
@@ -137,7 +136,6 @@ export default function AnalyticsTable({
   hasUnstartedGscEvaluation,
   hasUnstartedGa4Evaluation,
   hasUrlFilterParams,
-  ga4EvaluationEnabled,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -1217,7 +1215,7 @@ export default function AnalyticsTable({
                                   </td>
                                 );
                               case 'ga4_evaluation_status':
-                                return <td key={id} className="px-6 py-4 text-sm">{getGa4EvaluationStatusLabel(ga4EvaluationEnabled ? item.ga4Evaluation?.status ?? null : 'evaluation_disabled')}</td>;
+                                return <td key={id} className="px-6 py-4 text-sm">{getGa4EvaluationStatusLabel(item.ga4Evaluation?.status ?? null)}</td>;
                               case 'ga4_content_score':
                                 return <td key={id} className="px-6 py-4 text-sm">{item.ga4Evaluation?.contentScore ?? '—'}</td>;
                               case 'ga4_diagnosis':

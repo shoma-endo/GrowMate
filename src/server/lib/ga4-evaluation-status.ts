@@ -6,7 +6,6 @@ import type {
 } from '@/types/ga4-evaluation';
 
 export interface Ga4EvaluationDisplayInput {
-  killSwitchEnabled: boolean;
   needsReauth: boolean;
   persistedStatus: Ga4PersistentEvaluationStatus | null;
   derivedStatus?: 'low_data' | 'eligible' | 'unassessed';
@@ -15,9 +14,6 @@ export interface Ga4EvaluationDisplayInput {
 export function resolveGa4EvaluationDisplayStatus(
   input: Ga4EvaluationDisplayInput
 ): Ga4EvaluationDisplayStatus {
-  if (!input.killSwitchEnabled) {
-    return 'evaluation_disabled';
-  }
   if (input.needsReauth) {
     return 'needs_reauth';
   }

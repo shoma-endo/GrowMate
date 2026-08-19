@@ -23,7 +23,6 @@ export function isGa4PersistentEvaluationStatus(
 }
 
 const GA4_EVALUATION_DISPLAY_STATUSES = [
-  'evaluation_disabled',
   'unassessed',
   'eligible',
   'needs_reauth',

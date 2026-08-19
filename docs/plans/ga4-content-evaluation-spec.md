@@ -8,7 +8,8 @@
 | 作成日 | 2026-08-12 |
 | 対象 | GA4評価機能の初期実装 |
 | 承認者 | **承認済み（ユーザー、2026-08-16）**。本文（2026-08-15 の新ルート移設方針・認可再設計・RLS自己参照のみを含む）を承認。個別合意の記録: Q6 合意済み（2026-08-13）、Q-E / Q-F / D5 決着済み（2026-08-15）、Q1〜Q4 / Q7 / Q8 / Q-A / Q-B / Q-C / D3 決着済み（2026-08-16）。**D1（見積合意）は本承認とは別に確定待ち**（§15.3） |
-| 最終更新 | 2026-08-17 |
+| 最終更新 | 2026-08-19 |
+| フェーズ3（2026-08-19 追加） | **コンテンツ評価サイクル設定＋定期評価バッチ＋メール通知**を追加する（§3.4 / §6.6 / §7.7 / §8.3 / §9.5 / §10.8 / §10.9）。**評価設定は既存の「検索順位評価サイクル設定」（GSC）と同型に揃え、意図した差分は通知先だけとする**（GSC＝アプリ内 / コンテンツ評価＝Resend メール。§6.6）。**本フェーズは 2026-08-16 のクライアント合意2件（Q4＝メール配信 Non-goal、定期Cron の対象外）を反転させる**ため、§15.1 Q4 行・§3.2 の該当 Non-goal を更新し、反転の共有と見積合意を **D6** として §15.3 に起票した。**D6 は 2026-08-19 に共有済み（ユーザー報告）。Q-J / Q-K も同日確定。設計上の着手ゲートは解消済みだが、`spec-to-pr` の実行は保留**（同日ユーザー決定: **フェーズ2の手動評価を先に本番出荷する**。§14 手順11 までフェーズ3を回さない。§17）。audit 第7回（🔴2 / 🟡18 / 🟢4）は反映済み（§19）。spec-review の再実行はユーザー判断で不要。開発側判断 D8（手動評価とサイクルの関係）は未決だがリリースはブロックしない |
 | 作成者 | GrowMate 開発チーム |
 | 対象リリース | 未定（D1 合意後に確定） |
 | 関連 Issue / PR | 未起票 |
@@ -38,6 +39,12 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 - 未評価のコンテンツを一覧から発見できる（未評価フィルタによる絞り込み。並び替えは実装しない。Q-B 回答 2026-08-16）。`docs/context/client-vision-from-lark.md` §1.9.5 の第1優先要求に対応する。
 - メディア全体の資産価値スコア・実効スコアと散布図で、サイト全体の改善が月次で追える（評価エンジン仕様 §06）。
 
+**フェーズ3（コンテンツ評価サイクル。2026-08-19 追加）:**
+
+- 記事ごとに評価サイクル（基準日・サイクル日数・実行時刻）を登録でき、次回評価予定日時を画面で確認できる。
+- 登録した記事が、手動操作なしに設定した周期で評価される（未登録の記事は評価されない。BR-10）。
+- 評価が成立した記事について、結果の要約と記事詳細URLがメールで1通だけ届く（BR-12）。
+
 ### 2.4 成功指標（KPI）
 
 `docs/templates/requirement-definition.md` §1 成功指標表に相当。点数の意味と算出はコード側で確定済み（評価エンジン仕様 §03〜§05）のため、KPI は「スコア算出の決定性」と「文章化の成功率」に分けて置く。
@@ -49,6 +56,9 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 | 欠損値の誤評価 | 未計測 | 0 件（欠損を 0 として LLM 投入しない） | AC-03 + 単体テスト | CI |
 | 評価停止の即時性 | 未計測 | DB Kill Switch 変更後、次リクエストから評価 API が停止 | AC-06 + 手動検証 | リリース前 |
 | 二重実行 | 未計測 | 同一 `(user_id, content_annotation_id)` の同時評価 0 件 | AC-07 + DB 制約テスト | CI |
+| **サイクル評価の成立率**（フェーズ3） | 機能なし | バッチが評価を試みた記事のうち、結末が `evaluated` または `narrative_failed` になった割合 ≥ 80%（残りは `insufficient_data` / `low_data` を想定） | Cron ログ（§8.3 の `articlesEvaluated` / `articlesFailed` 等）＋ `ga4_content_evaluation_history` の集計 | リリース後の数サイクル（§14 手順18） |
+| **通知の送信成功率**（フェーズ3） | 機能なし | 送信対象（§9.5）のうち `last_notification_status='sent'` の割合 ≥ 95%（`skipped_no_email` は母数から除く） | `ga4_content_evaluation_cycles` の集計 + Cron ログ（`emailsSent` / `emailsFailed`） | 同上 |
+| **バッチ完走率**（フェーズ3） | 機能なし | 1バッチが `stoppedReason='completed'` で終わる割合 ≥ 90%（`time_limit` の慢性化は件数上限の再設計サイン。§8.3） | Cron ログ（`stoppedReason`） | 同上 |
 
 ### 2.5 利用者・関係者
 
@@ -86,7 +96,21 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
   -> メディア全体の資産価値スコア・実効スコア・散布図（全記事の月次推移）
 ```
 
-定期一括評価（Cron）はMVP対象外とし、手動の単記事評価のみを提供する（§3.2）。
+#### To-Be（フェーズ3。2026-08-19 追加）
+
+```text
+記事詳細 /analytics/[annotationId] の「概要」タブ
+  -> 「コンテンツ評価サイクル設定」で 基準日 / サイクル日数 / 実行時刻 を登録
+     （既存の「検索順位評価サイクル設定」と横並び）
+  -> [毎時Cron] 次回評価予定日時に達した記事を抽出
+  -> [バッチ] ユーザー単位で GA4 を同期 -> 記事ごとに既存の評価処理を実行
+  -> [メール] 評価が成立した記事について Resend で結果と記事詳細URLを送信
+  -> ユーザーはメールから /analytics/[annotationId] を開いて詳細を確認
+```
+
+**GSC との揃え方（2026-08-19 ユーザー決定）: 評価設定は検索順位評価サイクルと同型に揃え、意図した差分は通知先だけとする。** GSC は評価完了をアプリ内で確認する（メールを送らない）。コンテンツ評価サイクルは同じ設定・同じ操作で、完了通知だけ Resend メールにする（§9.5 / Q-K）。通知先がメールだからといって、停止・削除・配信停止などの設定操作を GSC より増やさない（Q-J）。詳細の対比は §6.6 冒頭。
+
+フェーズ2までは定期一括評価（Cron）を対象外とし、手動の単記事評価のみを提供する（§3.2）。**フェーズ3（2026-08-19 追加）で、ユーザーが明示的にサイクルを登録した記事に限り定期評価を行う**（登録していない記事は従来どおり手動のみ。「GA4取込時に全記事を自動評価する」は引き続き Non-goal。§3.2）。
 
 ### 2.7 業務ルール
 
@@ -98,11 +122,15 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 | BR-02 | 欠損値を `0` に変換して評価を続行しない。欠損は欠損として明示する | **一覧の表示値としては** 0 フォールバックを維持する（`fetchGa4Summaries` は `analyticsContentService.ts:344-345` で `sessions = 0` のとき直帰率を `0` として返す。フェーズ0の特性テストで現状のまま固定する。§3.4）。**評価入力へ流用する際は 0 フォールバックを適用せず、欠損（例: `engagement_rate` 未取込期間、`active_users` 未取込期間）は欠損として扱う**（§5.1 / §5.4 / §6.3.2） | §6.5 / §5.1 | AC-03／§13 単体テスト（未取込期間の指標が評価入力で欠損になる） |
 | BR-03 | 新しい評価に失敗しても、既存の正常な評価結果と履歴を上書きしない | なし | §6.5 / §11 AI観点 | AC-04 / AC-09／§13 サービステスト |
 | BR-04 | 同一 `(user_id, content_annotation_id)` で実行中の評価は同時に1件までとする | `lease_expires_at`（開始から15分TTL）を過ぎた実行は stale とみなし、旧 run を失敗として確定したうえで新しい `evaluation_run_id` を発行する | §8.1 / §7.4 | AC-07／§13 DBテスト（同時実行・stale回復） |
-| BR-05 | Kill Switch が明示的に有効（`enabled IS TRUE`）でない限り、評価 API を実行しない。行なし・DB読取失敗も停止として扱う | 実行中の run は強制キャンセルせず、完了結果の保存だけを許可する（§8.1） | §8.2 | AC-06／§13 DBテスト（デフォルトfalse・権限） |
-| BR-06 | Service Role 経路のクエリで `.eq('user_id', userId)` と対象記事IDの明示指定を省略しない | なし（RLS は当該経路で評価されないため代替にならない） | §7.2 / §7.5 | §13 DBテスト（ユーザー間の参照遮断）／R-04 |
+| BR-05 | ~~Kill Switch~~ **削除（2026-08-19 ユーザー決定）**。評価 API の実行可否はロール（`admin` / `paid`）とデータ充足・再認証状態で決める。`ga4_content_evaluation_settings` テーブルは廃止 | 緊急停止が必要な場合はデプロイ停止または評価 UI / Server Action の一時無効化で対応する | （旧 §8.2） | AC-06 は廃止 |
+| BR-06 | Service Role 経路のクエリで `.eq('user_id', userId)` と対象記事IDの明示指定を省略しない | **フェーズ3の due 抽出のみ例外**（§8.3 手順2）。`ga4_content_evaluation_cycles` に対する全ユーザー横断 SELECT（`status='active' AND next_evaluation_date <= today_jst`、`users` を JOIN してロールで絞る）は構造上 `user_id` を1件に固定できないため、`user_id` の等値指定を省略する。**抽出後の全処理（ロール判定・`run()` 呼び出し・`users.email` 取得・`last_evaluated_on` と通知記録の更新）は、抽出行の `user_id` と `content_annotation_id` を明示指定する。**この例外は読み取り専用かつ結果をユーザーへ返さない経路に限る（RLS は当該経路で評価されないため代替にならない） | §7.2 / §7.5 / §8.3 | §13 DBテスト（ユーザー間の参照遮断）／R-04 |
 | BR-07 | `/analytics` 配下の記事詳細・評価機能に対するサーバー側入口（ページのデータ取得・Server Action・Route Handler）で認可を必ず検証する。**読み取り入口は `canAccessGa4`、書き込み入口は `canWriteGa4`** を使う（対象関数の一覧は §3.3「認可関数の使い分け」）。proxy のパス判定のみを認可の根拠にしない。未認可時の応答は §3.3「未認可時の応答契約」に従う | なし | §3.3 | AC-12／§13 認可テスト |
 | BR-08 | 評価期間の合計 `sessions` が **30 未満**の記事は、スコア・診断を算出せず「データ蓄積中」（`R_LOWDATA`）と表示する（少数セッションによる優良記事の誤判定を防ぐ。評価エンジン仕様 §02）。**BR-02（欠損≠0）とは別ルール**: BR-02 は「データが無い」、BR-08 は「データはあるが統計的に足りない」。混同しない | なし | §6.2 / §6.5 | AC-03（データ蓄積中シナリオ）／§13 単体テスト（境界値 29/30） |
 | BR-09 | スコア・診断コードは LLM の出力から取り込まない。LLM 出力はプロンプトで確定済みの点数・判定を**覆せない**（文章5フィールドのみを保存する） | なし | §6.2 / §6.3.4 | AC-01／§13 スキーマ検証テスト |
+| BR-10 | 定期評価の対象は、**ユーザーが明示的にコンテンツ評価サイクルを登録した記事だけ**とする。取込・インポートを契機に全記事を自動評価しない | なし | §3.2 / §6.6 | AC-19／§13 サービステスト |
+| BR-11 | 定期評価は、**成否にかかわらず終端に達したら `last_evaluated_on` を当日へ進める**（クールダウン）。失敗した記事を毎時再実行しない | 実行前に中断した場合（ロール不許可・時間予算切れ・件数上限切れ・他経路が実行中）と、**当日の `syncUser` が失敗した実行**は進めない。これらは「評価を試みていない／取込済みデータが揃っていない」ため次回の毎時実行で再び対象になる。例外の全列挙と判定条件は §6.6.4 を正本とする | §6.6 / §8.3 | AC-20／§13 サービステスト |
+| BR-12 | 通知メールは **1つの評価履歴につき1通まで**とする。送信済みの履歴IDを記録し、同じ履歴に対して二度送らない。**冪等キーは「今回の run が生成した評価履歴行の `id`」**であり、取得方法は §8.3「結末の判定契約」で定義する（履歴行が作られない結末は送信対象でもない） | なし（Cron のリトライ・手動再実行を含む） | §7.7 / §8.3 / §9.5 | AC-21／§13 サービステスト |
+| BR-13 | 通知メールの本文にも §10.7 の用語言い換えを適用し、GA4 用語を出さない。欠損値を 0 として書かない（BR-02 と同じ） | なし | §9.5 / §10.9 | AC-21 / AC-17／§13 UI用語検査 |
 
 ## 3. 対象範囲
 
@@ -123,6 +151,7 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 - 記事詳細の情報階層の再設計（2026-08-13 合意たたき台の統合レイアウト化）。**Q-C 回答（2026-08-16「まとめで全てやる」）によりフェーズ2に含める**（§10.1 / §10.5）。
 - 文章化システムプロンプト（評価エンジン仕様 §07 verbatim）をDBのプロンプトテンプレートから読み込み、`system`ロールでLLMへ渡す処理。
 - 評価結果の再実行（文章化のみの再試行を含む）。
+- フェーズ3（2026-08-19 追加）: **コンテンツ評価サイクル設定**（記事単位。基準日・サイクル日数・実行時刻）、**定期評価バッチ**（毎時 Cron。次回評価予定日時に達した記事のみ）、**評価完了の Resend メール通知**（結果と記事詳細URLを本文に含める）。**評価設定は既存の「検索順位評価サイクル設定」（GSC。`EvaluationSettings.tsx`）と同型に揃え、意図した差分は通知先（GSC＝アプリ内 / コンテンツ評価＝メール）だけとする（§6.6）。**記事詳細の「概要」タブで横並びに配置する（§10.8）。
 
 ### 3.2 MVPで対象外とするもの
 
@@ -130,15 +159,30 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 - **一覧の並び替え（評価状態・点数・最終評価日時）。** Q-B 回答（2026-08-16）「未評価コンテンツはフィルタだけで足りる」により実装しない。§1.9.5 の「ソート」は未評価コンテンツの発見が目的であり、未評価フィルタ（新設。GSC未評価フィルタと同型）で満たす。
 - **点数閾値による一覧化・フィルタUI（「70点以下の一覧化」）。** Q2 回答（2026-08-16）「なくていい」により実装しない（§6.4）。
 - LLMによる記事本文の自動編集・公開。
-- 改善提案の自動メール送信（**確定 Non-goal。Q4 回答 2026-08-16**）。
+- ~~改善提案の自動メール送信（**確定 Non-goal。Q4 回答 2026-08-16**）~~ → **フェーズ3（2026-08-19）で反転。**定期評価の完了通知として Resend でメールを送る（§9.5 / §10.9）。ただし反転したのは「**評価が終わったことと結果の要約を知らせる通知メール**」であり、**改善提案そのものをメールで配信する**（Google Ads 分析メールのように提案本文をメールへ載せる）ことは引き続き Non-goal である。メール本文に載せるのはコンテンツ力スコア・点数帯・診断見出し・次の一手1件と記事詳細URLまでとし、詳細はアプリで見る（§10.9）。**この反転は 2026-08-16 のクライアント合意の変更にあたるため、共有と再見積の合意を D6 とした（§15.3）。D6 は 2026-08-19 に共有済み。**
 - ヒートマップの導入・独自イベント設計。データが既存の入力に含まれる場合だけ、将来拡張できる入力項目として扱う。
 - **LLM による点数・診断の算出。** 点数・診断コードはコードで決定的に算出する（評価エンジン仕様 §01。2026-08-17 反転: 旧 Non-goal「固定ルールによる評価点数・パターン・提案文の算出」は、判定のコード化こそ要件となったため削除。LLM の役割は文章化のみで、文章の画一化禁止は BR-09・AC-02 で担保する）。
 - `/ga4-dashboard` の**記事単位**評価UI化。同画面へはメディア全体スコア・散布図のみを追加し（§10.6。2026-08-17 に対象へ変更）、記事単位の評価・履歴・診断文は記事詳細に置く。
-- 定期Cron・非同期ジョブによる一括評価。claim RPC、ジョブキュー、バッチ時間予算はMVPに含めない。MVPは手動の単記事評価のみとする。
+- ~~定期Cron・非同期ジョブによる一括評価。claim RPC、ジョブキュー、バッチ時間予算はMVPに含めない。MVPは手動の単記事評価のみとする。~~ → **フェーズ3（2026-08-19）で一部反転。**毎時 Cron による定期評価バッチを追加する（§8.3）。ただし反転の範囲は限定的である: (1) 対象は**ユーザーがサイクルを登録した記事だけ**（BR-10。全記事一括評価は Non-goal のまま）、(2) 実行は既存の単記事評価 `run()` の逐次呼び出しであり、**claim RPC・ジョブキューは導入しない**（`start_ga4_content_evaluation` の行ロックと 15分 TTL で BR-04 が既に成立しているため。§8.3）、(3) **バッチ時間予算は導入する**（GSC バッチと同型。§8.3）。フェーズ0〜2 の MVP は引き続き手動の単記事評価のみで、本反転はフェーズ3のスコープである。
 - 一覧への戻り先クエリ（期間・フィルタ・ページ等）の引き継ぎ。現行導線は `AnalyticsTable.tsx` の詳細ボタンが `window.open(..., '_blank', 'noopener,noreferrer')` で別タブを開き、クエリを引き継いでいない（2026-08-15 実測）。一覧へ戻る導線もクエリなしの固定 `/analytics` リンクのみのため、挙動保存の対象に含めない。
 - レスポンシブ・アクセシビリティの新規要件定義。**情報階層の再設計（統合レイアウト化）は 2026-08-16 の Q-C 回答によりスコープへ移動した（§3.1）。**フェーズ1の移設自体は引き続き挙動保存とし（AC-14）、統合レイアウトはフェーズ2で実装する。
 - 費用・売上データの新規連携（Q3 回答 2026-08-16 のとおりデータ入力は追加しない）。なお 2026-08-17 受領の確定プロンプト（§6.3.1）に ROI の評価観点は含まれておらず、「プロンプト側で吸収」の実体は現時点では無い。クライアントが将来プロンプトを改版する場合も、出力契約（§6.3.4 の5フィールド）の範囲内で行う。
 - 存在しない `annotationId` の 404 化（`notFound()` の導入）。現行の null detail 描画を踏襲する（§5.5 / §15.4）。
+
+#### フェーズ3（コンテンツ評価サイクル）で対象外とするもの
+
+**評価設定は検索順位評価サイクルと同型に揃え、GSC 側に無い設定操作は作らない。** GSC との意図した差分は**通知先だけ**である（GSC＝アプリ内で結果を見る / コンテンツ評価＝Resend メール。§6.6 / Q-J / Q-K）。
+
+- **全記事への一括サイクル登録・自動登録。**登録は記事単位の手動操作のみとする（BR-10。GSC の `EvaluationSettings` と同じ）。一覧からの一括登録UIは作らない。
+- **サイクルの一時停止・完了操作のUI。**`status`（`active` / `paused` / `completed`）列は GSC と同型で持つが、UI から変更する導線は作らない（GSC 側も現状バッジ表示のみで操作導線がない。`EvaluationSettings.tsx:195-209` 実測。props も `onRegister` / `onUpdate` / `onRunEvaluation` の3本のみで停止・削除のハンドラを持たない。`:42-44` 実測）。<br>**帰結: 一度登録したサイクルは UI から停止も削除もできない。**回避策は `cycle_days` を最大値（365）へ変更して次回評価を先送りすることのみ。通知先がメールでも、この設定操作は GSC から増やさない（Q-J）。メールを止められないことは**通知チャネルの制約**であり、停止 UI を足す根拠にしない。D6 の提示条件(d) としてクライアントへ共有する（§15.3）。
+- **評価対象期間をサイクル日数と連動させること。**評価対象期間は手動評価と同じ既定90日（`getGa4EvaluationDateRange`）で固定する。サイクル日数は「次に評価するまでの間隔」であって評価ウィンドウではない（§6.6。混同すると同じ入力に対して点数が変わり、決定性＝§2.3 が壊れる）。
+- **失敗・データ不足時のメール通知。**通知は評価が成立した場合（`evaluated` / `narrative_failed`）のみ送る（§9.5）。失敗はアプリの画面（§10.4）とログで確認する。将来の拡張候補として D7（§15.3）に記録する。
+- **通知先の追加・変更UI、複数宛先、配信停止設定。**宛先は `users.email` の1件のみとする。メールアドレス未登録のユーザーには送らない（§9.5）。
+- **Slack / LINE / アプリ内通知。**通知チャネルは Resend のメールのみとする。
+- **メール文面のユーザー編集・テンプレート管理画面。**文面はコードで組み立てる（§10.9）。LLM に文面を生成させることもしない（診断文は評価時に生成済みのものを流用する）。
+- **通知のダイジェスト化（複数記事を1通へ束ねること）。**通知は **1評価＝1通**とし、同一ユーザー宛でも記事ごとに独立したメールを送る（§9.5）。束ねると「どの記事の結果か」を件名で示せず、`narrative_failed` の混在時の文面分岐も増えるため、ミニマム版では作らない。**帰結（明示）: 1ユーザーが同一バッチで受け取りうるメールは最大 `MAX_ARTICLES_PER_BATCH`＝20通**である（§8.3。同じ基準日・同じ `cycle_days` で複数記事を登録した場合に発生する）。上記「一時停止・完了操作のUI」を作らないため、ユーザー側からこれを止める手段はない。D6 の提示条件(d) に受信通数の想定を含める（§15.3）。
+- **通知の開封・クリック計測。**
+- **サイクル評価の実行履歴を独立して持つこと。**実行結果は既存の `ga4_content_evaluation_history`（§7.3）に手動評価と同じ形で残す。手動かサイクルかの区別は列として持たない（§7.7 の判断記録を参照）。
 
 ### 3.3 認可とアクセス制御
 
@@ -169,6 +213,9 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 | フェーズ2で新設する評価の実行・再実行の入口 | 書き込み | `canWriteGa4` |
 | フェーズ2で新設する評価結果・履歴の取得入口 | 読み取り | `canAccessGa4` |
 | フェーズ2で新設するメディア全体スコア・散布図データの取得入口（`/ga4-dashboard` 向け。§10.6） | 読み取り | `canAccessGa4` |
+| フェーズ3で新設するサイクル設定の登録・更新 Server Action（`ga4ContentEvaluationCycle.actions.ts`。§17） | 書き込み | `canWriteGa4` |
+| フェーズ3で新設するサイクル設定の取得入口（記事詳細の「概要」タブ・「コンテンツ評価」タブの次回予定表示。§10.8） | 読み取り | `canAccessGa4` |
+| フェーズ3で新設する `app/api/cron/ga4-content-evaluate/route.ts`（GET） | **どちらも使わない（セッションが存在しない）** | `CRON_SECRET` の Bearer 認証のみ（未設定 500 / 不一致 401）。ロールの検証は §8.3 手順2 の due 抽出 SQL で `users.role IN ('admin','paid')` として行い、手順3 で多層防御として再確認する。参照実装 `app/api/cron/gsc-evaluate/route.ts:17-31` も同型で、route 自体はロール検査を持たない（2026-08-19 実測） |
 
 `ga4-permissions.ts` のユニットテストは現状0件のため（2026-08-15 実測）、フェーズ1で `canAccessGa4` と `canWriteGa4` の両方を対象に新設する（`instagram-permissions.test.ts` と同型。§3.4 / §13）。
 
@@ -178,6 +225,7 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 |---|---|
 | Server Action（`gscDashboard.actions.ts` 公開6関数、およびフェーズ2で新設する評価用 Server Action） | 当該ファイルの既存の返り値形に合わせ `{ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED }` を返す（参照実装: `instagramSync.actions.ts:46` の `{ success: false, error: ERROR_MESSAGES.INSTAGRAM.ACCESS_DENIED }`）。`data` を含めない |
 | Route Handler（`app/api/gsc/dashboard/*` 2本、およびフェーズ2で新設する評価用 Route Handler） | HTTP 403 と `{ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED }` を返す（既存の 401 応答と同じ JSON 形。参照実装の 403 は `app/api/instagram/oauth/start/route.ts:51`）。本文に記事詳細・評価結果・履歴のデータを含めない |
+| **Cron Route Handler の例外**（`app/api/cron/ga4-content-evaluate`。フェーズ3） | **403 + `FEATURE_ACCESS_DENIED` は返さない。**セッションが無くロール判定の対象がないため、`CRON_SECRET` 未設定は 500 `{ success:false, error:'Cron secret not configured' }`、不一致は 401 `{ success:false, error:'Unauthorized' }` を返す（`gsc-evaluate/route.ts:20-30` と同形）。成功時の本文は §8.3「可観測性」の集計値のみとし、**記事タイトル・URL・評価結果・メールアドレス等のユーザーデータを一切含めない** |
 
 `FEATURE_ACCESS_DENIED` は `src/domain/errors/error-messages.ts` の `GA4` 群（`:575-605`）へ**新設**する。同ファイル `:666` の `GOOGLE_ADS.ACCOUNT_ACCESS_DENIED`（「指定されたアカウントIDにアクセス権限がありません」）は Google Ads のアカウントIDに対するアクセス権を指し、ロールによる機能提供範囲とは意味が異なるため流用しない。定数名・文言の最終形は実装時に `error-messages.ts` の既存命名へ合わせる（変更対象ファイルは §17）。
 
@@ -192,12 +240,16 @@ GrowMateには、GA4とGSCのデータを使ってコンテンツの改善余地
 | 評価の手動実行 | 可 | 可 | 不可 | 評価用 Server Action / Route Handler の入口で `canWriteGa4`（書き込み入口。フェーズ2） |
 | 評価の再実行 | 可 | 可 | 不可 | 同上 |
 | 評価結果・履歴の削除 | 不可 | 不可 | 不可 | MVPでは利用者・管理者とも削除操作を提供しない。ユーザー削除時の `ON DELETE CASCADE` による追随のみ。terminal履歴の直接UPDATEも許可しない（§7.4） |
+| コンテンツ評価サイクルの登録・変更（フェーズ3） | 可 | 可 | 不可 | サイクル設定 Server Action の入口で `canWriteGa4`（§17 の `ga4ContentEvaluationCycle.actions.ts`） |
+| コンテンツ評価サイクルの参照（次回評価予定の表示。フェーズ3） | 可 | 可 | 不可 | 同 Server Action の取得関数で `canAccessGa4`。画面は proxy のプレフィックスマッチでも保護される |
+| コンテンツ評価サイクルの停止・削除（フェーズ3） | 不可 | 不可 | 不可 | **UI・Server Action とも提供しない**（§3.2 フェーズ3 Non-goal。制約の帰結は同節に明記。Q-J 確定: GSC 同型） |
+| 定期評価バッチによる評価実行（フェーズ3） | 対象 | 対象 | **対象外** | `/api/cron/ga4-content-evaluate` は `CRON_SECRET` 認証。ロールは §8.3 手順2 の due 抽出 SQL（`users.role IN ('admin','paid')`）で絞り、手順3 で再確認する。降格したユーザーのサイクル行は SQL 側で除外されるため due 候補枠を占有しない |
 
 評価データは実行者本人のデータに限定する（RLSは自己参照のみ。§7.5）。**かつて存在したオーナー/スタッフ共有モデルは廃止済みである**（2026-08-15 実測: スタッフレコード（`users.owner_user_id` が非 null な行）は実在せず、`supabase/migrations/20260808000000_simplify_instagram_credentials_select_policy.sql` が「オーナー/スタッフ共有パターンは不要」と判断して Instagram 系テーブルを `user_id = (select auth.uid())` の自己参照へ単純化している。`gscDashboard.actions.ts:104` の `getUserScope` も `[userId]` を返すだけの残骸である）。したがって「共有閲覧を将来別仕様で設計する」という前提は置かない。共有要件が新たに発生した場合は本仕様の枠外で新規に要件定義する。
 
 ### 3.4 実装フェーズと概算工数
 
-MVPはフェーズ0〜フェーズ2の3フェーズとする。概算は8時間を1人日とした開発工数であり、仕様確定・レビュー待ち時間は別途である。
+MVPはフェーズ0〜フェーズ2の3フェーズとする。**フェーズ3（コンテンツ評価サイクル。2026-08-19 追加）は MVP の外側の追加スコープ**であり、MVP 合計には含めない（見積の合意は D6。§15.3）。概算は8時間を1人日とした開発工数であり、仕様確定・レビュー待ち時間は別途である。
 
 > **改番の対応（2026-08-15）:** 本改訂でルート移設をフェーズ1として挿入し、旧フェーズ1（手動評価MVP）をフェーズ2へ改番した。§18 の 2026-08-14 以前の記録にある「フェーズ1」は現フェーズ2を指す。
 
@@ -206,8 +258,9 @@ MVPはフェーズ0〜フェーズ2の3フェーズとする。概算は8時間�
 | 0. 事前リファクタリング | 既存挙動を維持したまま、評価実装の境界を整理する | データ集約境界、LLM構造化出力アダプター、状態/エラー型、回帰テスト | 30〜45h |
 | 1. 記事詳細のルート移設 | 記事詳細を `/analytics/[annotationId]` へ挙動保存で移設し、認可を 2026-08-15 ポリシー（§3.3）へ揃える | `app/gsc-dashboard/` 一式の移設・route param 化、旧URLの恒久 redirect、参照箇所修正、サーバー側認可の多層化、`ga4-permissions` テスト、挙動保存テスト（§5.5） | 24〜40h |
 | 2. 手動評価MVP（評価エンジン） | 1記事単位のスコア算出・診断・文章化・保存・表示と、メディア全体スコアを提供する | スコア算出エンジン（アンカー線形補間・幾何平均・診断マトリクス・足切り・完読率併用）、GA4取込拡張（`landingPage` 軸へ `engagementRate` / `activeUsers` 追加。§4.1.1）、本文文字数・画像点数の整備、現在状態projection・履歴・settingsのmigration/RLS、所有者検証trigger、`start_`/`finish_ga4_content_evaluation` RPCとDBテスト、一覧RPCへの成功履歴JOINと未評価フィルタ、サイト内順位・前回差分、文章化LLM（5フィールド契約）、手動API、DB Kill Switch、stale回復、打ち切り検知＋一覧の期間上限（D4: (b)＋(d)）、認可ガード、一覧の評価状態列、記事カードUI、情報階層の統合レイアウト再設計（Q-C）、メディア全体スコア＋散布図（/ga4-dashboard）、UI用語言い換え（UI全体）、実データ検証 | 181〜275h |
+| 3. コンテンツ評価サイクル（2026-08-19 追加。MVP外） | 記事単位の定期評価と、完了のメール通知を提供する | サイクル設定テーブル・設定UI（GSC と横並び）・Server Action・毎時Cron ルートとバッチサービス・バッチからの GA4 同期・Resend メール通知・冪等な送信記録・テスト | 58〜90h |
 
-MVP合計は **235〜360時間（30〜45人日）**。**2026-08-17 受領の評価エンジン仕様の反映により、D1 合意値 197〜297h（D4 反映後 198〜299h）から +37〜61h 増**（うち +4〜6h は D1' 合意後の「原文正本の原則」決定＝用語言い換えの UI 全体適用によるもの。D1' 合意値 231〜354h からの増分としてクライアントへ共有する）。増分の主因はスコア算出エンジン、本文文字数・画像点数の整備、サイト内順位・前回差分、メディア全体スコア＋散布図、UI用語言い換え（いずれもクライアント仕様由来の新規要素）で、pagePath 軸取込の失効（−6〜10h）と LLM 簡素化（文章化のみ）で一部相殺している。**この再見積のクライアント合意が D1'（§15.3）であり、フェーズ2着手のゲートである。**取込拡張の見積は `landingPage × activeUsers / engagementRate` の Compatibility 未実測（§4.1.1）を前提に置いた概算で、実測で不可と判明した指標は代替設計で増減する（D1' 提示時に明示する）。フェーズ0では、GSC・GA4の全体的な共通化、無関係な既存サービスの再設計、画面仕様の変更を行わない。
+MVP合計は **235〜360時間（30〜45人日）**（フェーズ3を含めると 293〜450時間。フェーズ3の合意は D6）。**2026-08-17 受領の評価エンジン仕様の反映により、D1 合意値 197〜297h（D4 反映後 198〜299h）から +37〜61h 増**（うち +4〜6h は D1' 合意後の「原文正本の原則」決定＝用語言い換えの UI 全体適用によるもの。D1' 合意値 231〜354h からの増分としてクライアントへ共有する）。増分の主因はスコア算出エンジン、本文文字数・画像点数の整備、サイト内順位・前回差分、メディア全体スコア＋散布図、UI用語言い換え（いずれもクライアント仕様由来の新規要素）で、pagePath 軸取込の失効（−6〜10h）と LLM 簡素化（文章化のみ）で一部相殺している。**この再見積のクライアント合意が D1'（§15.3）であり、フェーズ2着手のゲートである。**取込拡張の見積は `landingPage × activeUsers / engagementRate` の Compatibility 未実測（§4.1.1）を前提に置いた概算で、実測で不可と判明した指標は代替設計で増減する（D1' 提示時に明示する）。フェーズ0では、GSC・GA4の全体的な共通化、無関係な既存サービスの再設計、画面仕様の変更を行わない。
 
 #### フェーズ1（ルート移設）の内訳
 
@@ -253,6 +306,31 @@ MVP合計は **235〜360時間（30〜45人日）**。**2026-08-17 受領の評�
 | 実データ検証 | 実GA4/GSCデータで画面値・保存値・API応答を突合 | 16〜20h |
 
 取込拡張の対象は 2026-08-17 の評価エンジン仕様で **`landingPage` 軸の `engagementRate` / `activeUsers`** に確定した（旧方針＝Q-A 由来の `pagePath` 軸 `screenPageViews` は失効。PV はスコアリングに使わない。§4.1.1 / §18）。フェーズ2 内訳の合計は 181〜275h（各行の下限・上限の和）。
+
+#### フェーズ3（コンテンツ評価サイクル）の内訳
+
+設計の正本は §6.6（サイクル判定）・§7.7（テーブル）・§8.3（バッチ）・§9.5（メール）・§10.8 / §10.9（UI・文面）。**前提はフェーズ2の完了**（評価が単記事で成立していること）。
+
+| 区分 | 内容 | 工数 |
+|---|---|---:|
+| DB | `ga4_content_evaluation_cycles` の migration（列・`next_evaluation_date` 生成列・due インデックス・RLS 自己参照・所有者検証 trigger の再利用・`updated_at` trigger）、生成型更新、DBテスト（RLS・一意制約・生成列・所有者境界） | 6〜10h |
+| 設定UI | `ContentEvaluationCycleSettings.tsx` 新設（GSC の `EvaluationSettings.tsx` と同型のダイアログ・スケジュールプレビュー・状態カード）、`OverviewTab` の2カラム化（GSC と横並び）。**既存 GSC 側（`EvaluationSettings.tsx`）の見出し・文言・props は変更しない**（変更対象ゼロの根拠は §10.8「既存 GSC 側で変更する箇所」） | 10〜16h |
+| Server Action | 登録・更新の Server Action（`canWriteGa4`）と取得（`canAccessGa4`）、Zod スキーマ（基準日・1〜365日・0〜23時）、`ERROR_MESSAGES` への文言追加（§3.3 / BR-07） | 4〜6h |
+| バッチ | `ga4ContentEvaluationCycleService`（due 抽出＋ロール絞り込み＋ページング、ユーザー単位の GA4 同期、記事ごとの `run()` 呼び出し、時間予算・件数上限、クールダウン更新＝BR-11）、`/api/cron/ga4-content-evaluate` ルート、`cron-definitions.ts` への定義追加、`hourly-cron.yml` の matrix 追加（`maxRetries: 1`）、Kill Switch 判定（§8.3） | 16〜24h |
+| メール通知 | `emailService.sendGa4ContentEvaluation` 追加、`sanitizeEmailHtml` の共通化（現在 2ファイルに重複。§17）、本文組み立て（用語言い換え適用・欠損の非0表示・記事詳細URL）、冪等な送信記録（BR-12）、失敗時の `console.error` とログ記録（§9.5 / §10.9） | 8〜12h |
+| テスト | due 判定の単体テスト（境界: 前日・当日×時刻前後・翌日）、クールダウン更新の分岐、送信対象ステータスの分岐、冪等性（同一履歴IDで再送しない）、メール本文の用語検査、認可テスト、E2E（設定登録→次回予定表示） | 10〜16h |
+| 実データ検証 | ステージングで1サイクル分を実際に回し、Cron 起動・GA4 同期・評価・メール受信・記事詳細URLの到達までを通しで確認する（モックだけで完了判定しない） | 4〜6h |
+
+フェーズ3 内訳の合計は 58〜90h（各行の下限・上限の和）。
+
+#### フェーズ3の完了条件
+
+- 記事詳細の「概要」タブで「コンテンツ評価サイクル設定」を登録・更新でき、次回評価予定日時が表示される（AC-19）。
+- 毎時 Cron が、次回評価予定日時に達した記事だけを評価する（AC-20）。達していない記事・サイクル未登録の記事は評価されない（BR-10）。
+- 評価が成立した記事について、コンテンツ力スコア・点数帯・診断見出し・次の一手・記事詳細URLを含むメールが1通だけ届く（AC-21 / BR-12）。
+- Kill Switch が無効のとき、バッチは評価もメール送信も行わない（BR-05 / AC-06）。
+- 許可されないロール（`trial` / `unavailable`）のユーザーは、設定の Server Action が拒否され、バッチの対象にもならない（AC-12 / BR-07）。
+- 既存テスト、型チェック、Lint、ビルドが通る（`npm run verify`）。
 
 #### フェーズ0の代替案（採否の記録）
 
@@ -643,9 +721,8 @@ LLM へアクセストークン、個人情報、不要な生ログ、記事本�
 | 永続（`ga4_content_evaluations.status`） | `evaluated` / `narrative_failed` / `insufficient_data` / `import_failed` / `evaluation_failed` / `evaluating` | 評価実行の結果 |
 | 非永続（表示時に導出） | `unassessed` / `eligible` / `low_data` | 評価履歴の有無とデータ品質判定（`low_data` は期間合計 sessions の判定。BR-08） |
 | 非永続（表示時に導出） | `needs_reauth` | Google連携状態（`ga4-status.ts` / `gsc-status.ts`） |
-| 非永続（表示時に被せる） | Kill Switch停止中 | `ga4_content_evaluation_settings.enabled` |
 
-表示優先順位は 上から Kill Switch停止中 → `needs_reauth` → `evaluating` → 永続状態 →（履歴なしの場合）`low_data` → `eligible` / `unassessed` とする。再連携が成功すれば `needs_reauth` は次の描画で自動的に解消し、直前の永続状態（`evaluated` 等）が表示される。
+表示優先順位は 上から `needs_reauth` → `evaluating` → 永続状態 →（履歴なしの場合）`low_data` → `eligible` / `unassessed` とする。再連携が成功すれば `needs_reauth` は次の描画で自動的に解消し、直前の永続状態（`evaluated` 等）が表示される。
 
 `unassessed` / `eligible` の導出責任は次のとおり分ける。大量一覧で記事ごとの追加クエリを発生させない。
 
@@ -660,6 +737,87 @@ LLM へアクセストークン、個人情報、不要な生ログ、記事本�
 | 記事詳細タブ | 評価履歴がなく、必要データも不足 | 未評価（データが不足） |
 
 評価開始・stale回復・完了・失敗はDB RPCで原子的に行い、同じ `evaluation_run_id` を条件に古い実行が新しい評価を上書きできないようにする。
+
+### 6.6 評価サイクル（フェーズ3。2026-08-19 追加）
+
+既存の「検索順位評価サイクル」（GSC。`gsc_article_evaluations` + `gscEvaluationService`）と**同じ判定式**を採る。GSC 側の実装を正本として写し、独自の判定を作らない。
+
+**揃え方の正本（2026-08-19 ユーザー決定）:**
+
+| 区分 | GSC（検索順位評価サイクル） | コンテンツ評価サイクル | 扱い |
+|---|---|---|---|
+| **評価設定** | 基準日・サイクル日数・実行時刻。開始／設定変更のみ。停止・削除 UI なし。記事単位の手動登録 | **同型** | **揃える。** GSC に無い設定操作・設定項目を足さない |
+| **due 判定** | `isDue`（`:568-587`） | 同一式 | **揃える**（§6.6.2） |
+| **通知先** | アプリ内（メールを送らない） | Resend メール（§9.5 / Q-K） | **意図した唯一の差分。** 通知先が違うから設定を変えない |
+| 評価種別由来（設定操作ではない） | 初回計測あり（プレビュー3枠）。サイクル日数を取込期間に使う | 初回計測なし（プレビュー2枠）。評価期間は90日固定（§6.6.2 / §6.6.3） | 評価の意味が違うための例外。設定 UI の操作セットは変えない |
+| バッチ内部 | LLM なし・3並列 | LLM あり・逐次 | 実装都合。設定画面には出さない |
+
+通知チャネル差分の画面上の扱い（メール失敗・アドレス未登録・停止できない告知）は §10.8。これは設定項目の追加ではなく、通知先がメールであることの開示である。
+
+#### 6.6.1 設定項目
+
+記事単位で次の3つを持つ（GSC の `EvaluationSettings` と同じ）。
+
+| 項目 | 型・範囲 | 既定 | 意味 |
+|---|---|---|---|
+| 基準日（`base_evaluation_date`） | date | 登録日 | サイクルの起点 |
+| サイクル日数（`cycle_days`） | integer 1〜365 | 30 | **次に評価するまでの間隔**。評価対象期間ではない（下記） |
+| 評価実行時刻（`evaluation_hour`） | smallint 0〜23 | 12 | 日本時間。この時刻以降の毎時実行で対象になる |
+
+#### 6.6.2 due（評価予定に達したか）の判定
+
+GSC の `gscEvaluationService.isDue`（`:568-587`）と同一の式とする。
+
+```text
+next_evaluation_date = (last_evaluated_on ?? base_evaluation_date) + cycle_days   -- DB 生成列
+due(now_jst) =
+  next_evaluation_date  < today_jst                      -> true   （過去に達している）
+  next_evaluation_date == today_jst                      -> hour_jst >= evaluation_hour
+  next_evaluation_date  > today_jst                      -> false
+```
+
+- `next_evaluation_date` は DB の生成列として持ち、due 抽出を DB 側で絞る（GSC が `20260618000000` migration で同じ最適化を入れている。全件 SELECT → メモリフィルタにしない）。日付の比較で絞り、**時刻の比較だけをアプリ側で行う**（生成列に時刻を含めないため）。
+- 現在時刻は JST で扱う（`gscEvaluationService.getNowJst` と同じ）。
+- **GSC との違いは「初回計測」の概念を持たないこと。**GSC は初回に順位のベースラインを取ってから次のサイクルで初めて比較評価するため、基準日から2サイクル後が初回評価になる（`EvaluationSettings.tsx:166-180`）。コンテンツ評価は**単発で完結する**（前回との比較は §6.4 の前回差分として任意に付くだけで、前回が無くても評価は成立する）ため、**基準日から1サイクル後が初回評価**である。画面のスケジュールプレビューもこれに合わせる（§10.8。GSC の3枠「基準日／初回計測日／初回評価日」ではなく2枠「基準日／初回評価日」）。
+
+#### 6.6.3 サイクル日数と評価対象期間は別物
+
+**`cycle_days` は評価対象期間ではない。**評価対象期間は手動評価と同じく `getGa4EvaluationDateRange()`（前日から遡る `GA4_EVALUATION_DEFAULT_DAYS = 90` 日）で固定する（§3.2 フェーズ3 Non-goal）。
+
+理由: サイクル日数に期間を連動させると、同じ記事・同じ取込データでもサイクル設定を変えただけで点数が変わる。これは §2.3 の成功条件「同一の取込データと同一のスコアリング設定に対して、スコア・診断コードが毎回同一である」に反する。GSC 側がサイクル日数を取込期間に使っている（`gscEvaluationService.ts:78-79`）のは、順位が「その時点の値」であって期間集計ではないためで、コンテンツ評価には当てはまらない。
+
+画面では「評価対象期間（直近90日）」と「評価サイクル（N日ごと）」を別の項目として並べ、混同させない（§10.8）。
+
+#### 6.6.4 クールダウン（BR-11）
+
+評価を試みて終端に達したら、結果の成否にかかわらず `last_evaluated_on` を実行日（JST）へ進める。これにより `next_evaluation_date` が1サイクル先へ移動する。
+
+**結末の語彙は §8.3「結末の判定契約」で定義する11値を正本とする。**下表はその11値と、バッチ側の中断事由すべてを網羅する（`run()` の戻り値の `displayStatus` は Kill Switch・`needs_reauth` を被せた**表示用**の値であり、結末そのものではない。§8.3 を参照）。
+
+| バッチ内での結末 | `last_evaluated_on` | 理由 |
+|---|---|---|
+| `evaluated` / `narrative_failed` | 進める | 正常完了 |
+| `insufficient_data` / `low_data`（データ蓄積中） | 進める | データが貯まるのは時間の問題であり、毎時試しても結果は変わらない |
+| `evaluation_failed` / `unknown_error` / `needs_reauth` | 進める | 原因は外部要因で、毎時再試行しても解消しない。復旧後はユーザーが手動評価できる（§10.4） |
+| `import_failed`（評価中の GA4 データ取得失敗） | 進める | 同上 |
+| **当日の `syncUser` が失敗した実行**（結末の判定より前。下記「取込失敗の扱い」） | **進めない（ただし当日限り）** | 取込済みデータが揃っていないため、この実行の結果は記事の実力を表さない。次の毎時実行で取込から再試行する |
+| `evaluating` / `already_running`（他経路が実行中。BR-04 で弾かれた） | **進めない** | この実行は評価していない。実行中の run が終端に達したときに別途クールダウンされる |
+| `unassessed` / `eligible` が返った場合（想定外） | **進めない** | `run()` が履歴行を作らずに戻った異常系。`console.error` で構造化ログへ出し、`articlesFailed` に計上する |
+| ロール不許可・バッチの時間予算切れ・件数上限切れ | **進めない** | 評価を試みていない。次の毎時実行で再び対象にする |
+
+**この表を落とすと、失敗した記事が毎時 GA4 同期と LLM 呼び出しを起こし続ける**（コストと GA4 クォータの消費が止まらない。R-16）。
+
+**GSC 正本との対応（2026-08-19 実測。正確な差分）:** GSC は `no_metrics`（順位データが取得できなかった実行）で `updateCooldown` を無条件に呼ぶ（`gscEvaluationService.ts:306`）一方、**ユーザー単位の一括インポートが失敗した実行では呼ばない**（`:272-274` の `if (!bulkImportFailed) { await this.updateCooldown(...) }`）。つまり「取込失敗はクールダウンしない／評価は試みたが結果が出なかった場合はクールダウンする」という分岐であり、上表の「当日の `syncUser` が失敗した実行」行はこの GSC 正本を写したものである。**2026-08-19 の改訂前は「GSC 側も `no_metrics` で `updateCooldown` を呼んで同じ扱い」とだけ書いており、取込失敗の側の分岐が抜けていた**（§6.6「GSC 側の実装を正本として写す」に対する未記載の乖離だった）。
+
+#### 取込失敗の扱いと再試行の上限
+
+- 判定条件: §8.3 手順5a の `ga4ImportService.syncUser(userId)` が例外を投げた、または失敗を返した場合、そのユーザーのこのバッチ内の**全記事**を「取込失敗の実行」として扱う。
+- クールダウンは進めず、メールも送らない（§9.5）。評価そのものは実行してよい（取込済みデータで成立しうるため）が、成立した場合も `last_evaluated_on` は進めない。
+- **無制限リトライを避けるため、見送りは `next_evaluation_date` が当日である間に限る。**`next_evaluation_date < today_jst` になってもなお取込が失敗する場合は、通常どおりクールダウンを進める（結末は `import_failed` として記録し、§10.4 の画面で確認する）。毎時実行のため、見送りは最大でも24回に有界化される。**この上限を置かないと、GA4 側の障害が続く間ずっと同じ記事集合が毎時 due として抽出され、R-17 の 1,000 行枠を占有し続ける。**
+
+#### 手動評価とサイクルの関係（未確定。D8）
+
+`last_evaluated_on` を更新するのはバッチだけであり（§7.7）、手動評価経路（記事詳細の「評価を実行」）はサイクル行を知らない。このため、手動評価の直後にバッチが同じ記事を再評価すると**新しい履歴 ID が生まれ、BR-12 の冪等判定（`last_notified_history_id` との比較）に掛からずメールが送られる**。この挙動をどう扱うかは **D8（§15.3）** として未確定であり、本節では確定させない。D8 が決まるまで、§9.5 の冪等性は「同一の評価履歴に対して二度送らない」ことのみを保証する（手動再評価直後のバッチ実行による重複通知は防げない）。
 
 ## 7. データ設計（案）
 
@@ -760,6 +918,48 @@ migration前に既存 `content_annotations.user_id` がUUID文字列表現であ
 | 既存データとの互換性 | 評価テーブルは新規のみ。追加指標の取込（確定済み）は `ga4_page_metrics_daily` への列追加を伴い、既存行は §4.1.2 の決定（2026-08-18）どおり過去90日の再取込で埋める |
 | ユーザー境界 | §7.2 のアプリ層明示スコープと DB trigger が一次、RLS が補助（§7.5） |
 
+フェーズ3で `ga4_content_evaluation_cycles` が加わる（§7.7）。所有者・削除条件は上記と同じ（`ON DELETE CASCADE`）。保持期間の上限も設けない。
+
+### 7.7 サイクル設定テーブル `ga4_content_evaluation_cycles`（フェーズ3。2026-08-19 追加）
+
+#### なぜ既存テーブルに列を足さないか
+
+`ga4_content_evaluations`（§7.2）への列追加ではなく**新規テーブル**とする。理由は2つある。
+
+1. **`status` の CHECK が settings 専用行を許さない。**`ga4_content_evaluations.status` は `('evaluated','narrative_failed','insufficient_data','import_failed','evaluation_failed','evaluating')` の NOT NULL であり（`20260818000100` migration 実測）、「まだ一度も評価していないがサイクルだけ登録済み」を表す値がない。サイクル登録のためだけにダミーの status を入れると、§6.5 の状態定義と §10.4 の表示分岐が壊れる。
+2. **行の作成主体が違う。**`ga4_content_evaluations` の行は、**権限で禁止されているわけではないが**、§8.1 の設計上 `start_ga4_content_evaluation` RPC が唯一の作成主体である。サイクル登録はユーザー操作で先に行われるため、同じ行を2つの経路が作ることになり、RPC の原子性（BR-04）に別の書き込み経路が割り込む。<br>（**根拠の限界を明示**: `20260818000100` migration の書き込み剥奪 `revoke insert, update, delete ... from service_role` は `ga4_content_evaluation_history` にのみ適用され、`ga4_content_evaluations` には `grant all ... to service_role` が付く（`:188-190` 実測）。また GSC 正本では対応表 `gsc_article_evaluations` の行を Server Action が直接 INSERT しており作成用 RPC は存在しない。したがって「RPC だけが作る」は DB 権限による強制ではなく本仕様の設計上の取り決めである。専用テーブル新設という結論自体はこの限界の下でも 1. により成立する。）
+
+これは §15.4 の「GSC 評価テーブルを流用せず専用テーブルを新設」と同じ判断（列の意味が混在するテーブルを作らない）を、GA4 の内側にも適用したものである。
+
+#### 列
+
+| 列 | 型 | 制約 | 用途 |
+|---|---|---|---|
+| `id` | uuid | PK, default `gen_random_uuid()` | — |
+| `user_id` | uuid | NOT NULL, FK `users(id)` ON DELETE CASCADE | 所有者 |
+| `content_annotation_id` | uuid | NOT NULL, FK `content_annotations(id)` ON DELETE CASCADE | 対象記事 |
+| `base_evaluation_date` | date | NOT NULL | 基準日（§6.6.1） |
+| `cycle_days` | integer | NOT NULL default 30, CHECK 1〜365 | サイクル日数 |
+| `evaluation_hour` | smallint | NOT NULL default 12, CHECK 0〜23 | 実行時刻（JST） |
+| `status` | text | NOT NULL default `'active'`, CHECK (`active`/`paused`/`completed`) | GSC と同型。MVP では `active` のみ使う（§3.2 フェーズ3 Non-goal） |
+| `last_evaluated_on` | date | NULL 可 | クールダウン（BR-11） |
+| `next_evaluation_date` | date | **GENERATED ALWAYS AS** `COALESCE(last_evaluated_on, base_evaluation_date) + COALESCE(cycle_days, 30)` STORED | due 抽出を DB 側で行うため（§6.6.2） |
+| `last_notified_history_id` | uuid | NULL 可, FK `ga4_content_evaluation_history(id)` ON DELETE SET NULL | **送信済みの履歴ID。BR-12 の冪等キー** |
+| `last_notification_status` | text | NULL 可, CHECK (`sent`/`skipped_no_email`/`failed`) | 直近の通知結果 |
+| `last_notification_error` | text | NULL 可 | sanitized なエラー内容（§11 セキュリティ行と同じ扱い） |
+| `last_notified_at` | timestamptz | NULL 可 | 直近の送信時刻 |
+| `created_at` / `updated_at` | timestamptz | NOT NULL default `timezone('utc', now())` | `update_ga4_content_evaluation_updated_at` trigger を再利用 |
+
+- 一意制約: `unique (user_id, content_annotation_id)`（GSC の `gsc_article_evaluations` と同型）。
+- インデックス: `(status, next_evaluation_date) WHERE status = 'active'`（GSC の `idx_gsc_article_evaluations_due` と同型）、`(content_annotation_id)`。
+- RLS: 自己参照のみ（`user_id = (select auth.uid())` の `for all`。§7.5）。
+- 所有者検証: 既存の `validate_ga4_content_evaluation_owner()` trigger を本テーブルにも張る（記事の所有者と `user_id` の一致を DB 側で担保）。関数は `content_annotations.user_id = new.user_id::text` を見る汎用実装のため、そのまま再利用できる。
+- Service Role には `all` を付与する（バッチが `last_evaluated_on` と通知記録を更新するため）。履歴テーブルのような書き込み剥奪（`revoke insert, update, delete`）は行わない。
+
+#### 手動評価とサイクル評価を履歴で区別しない
+
+実行結果は `ga4_content_evaluation_history` に手動評価と同じ形で入れ、「どちらの経路で実行されたか」の列は持たない（§3.2 フェーズ3 Non-goal）。区別が必要になる場面が現時点で無く、列を足すと `finish_ga4_content_evaluation` RPC の引数と CHECK 制約の変更を伴うためである。運用上の追跡はバッチ側の構造化ログ（§8.3）で行う。
+
 ## 8. 評価実行フロー
 
 ```text
@@ -780,34 +980,156 @@ Server ActionまたはRoute Handlerから単記事評価を実行する。評価
 
 `lease_expires_at` が現在時刻を過ぎている実行は stale とみなし、`start_ga4_content_evaluation` RPCが旧runを`evaluation_failed`・`error_code='evaluation_stale'`として履歴に確定してから、新しい`evaluation_run_id`を発行する。TTLは開始時刻から15分とする。`finish_ga4_content_evaluation` RPCは開始時の`evaluation_run_id`が現在の`active_run_id`と一致する場合だけ完了・失敗を保存する。これにより、プロセス異常終了後の固着と、古い実行による結果上書きを防ぐ。
 
-手動評価の実行経路は `maxDuration=180秒`、LLM 1回あたりのタイムアウトは45秒、試行回数は初回を含めて最大3回、試行間隔は2秒とする（スコア算出はコードのみで完了するため、LLM 予算は文章化1回分。入力は §6.3.3 の変数のみで小さく、`maxTokens` は5フィールド200字強＋JSON構造分で足りる）。`llmChat` の既定は `timeoutMs ?? 300000`（5分）・`maxTokens ?? 3000` でいずれも呼出し側が上書き可能なため、**`timeoutMs: 45000` と `maxTokens` を明示的に渡す**。既定のままでは45秒制約が効かず `maxDuration` を超える。実装するRPCは単記事用の開始・完了2本のみで、定期Cron、複数記事用の`FOR UPDATE SKIP LOCKED` claim RPC、ジョブキューは対象外とする（§3.2）。Kill Switchを実行開始時に確認し、実行中のrunは強制キャンセルせず、完了結果の保存だけを許可する。
+手動評価の実行経路は `maxDuration=180秒`、LLM 1回あたりのタイムアウトは45秒、試行回数は初回を含めて最大3回、試行間隔は2秒とする（スコア算出はコードのみで完了するため、LLM 予算は文章化1回分。入力は §6.3.3 の変数のみで小さく、`maxTokens` は5フィールド200字強＋JSON構造分で足りる）。`llmChat` の既定は `timeoutMs ?? 300000`（5分）・`maxTokens ?? 3000` でいずれも呼出し側が上書き可能なため、**`timeoutMs: 45000` と `maxTokens` を明示的に渡す**。既定のままでは45秒制約が効かず `maxDuration` を超える。**フェーズ2までは**実装するRPCは単記事用の開始・完了2本のみで、定期Cron、複数記事用の`FOR UPDATE SKIP LOCKED` claim RPC、ジョブキューは対象外とする（§3.2）。**フェーズ3で定期Cron（`/api/cron/ga4-content-evaluate`）を追加するが、claim RPC とジョブキューは引き続き導入しない**（理由は §8.3「実行の排他と二重実行」。`start_ga4_content_evaluation` の行ロックと 15分 TTL で BR-04 が既に成立しているため）。RPC の本数はフェーズ3でも2本のまま増やさない。Kill Switchを実行開始時に確認し、実行中のrunは強制キャンセルせず、完了結果の保存だけを許可する。
 
 **部分成功の遷移:** スコア・診断の保存後に文章化が3回失敗した場合、`finish_ga4_content_evaluation` は `status='narrative_failed'` で確定する（スコアは成功履歴として `last_success_history_id` の対象になる）。文章のみの再試行は同一記事への通常の再評価として扱う（スコアは再算出されるが決定的なので同一入力なら同値になる）。
 
 コスト上限は設けない（Q8 回答 2026-08-16「開発側既定」。文章化のみのため1評価あたりの消費は旧設計より小さい。§11）。
 
-### 8.2 Kill Switch（外部依存停止）
+### 8.2 Kill Switch（削除済み）
 
-既存の feature flag 基盤は存在しない（`src/lib/constants.ts` の「Feature Flags」は AI モデル設定用）。MVPでは専用の `ga4_content_evaluation_settings` テーブルを使用し、DBの`enabled`をKill Switchとする。環境変数は使わない。
+**2026-08-19 ユーザー決定により削除。** `ga4_content_evaluation_settings` テーブル・`enabled` 判定・「評価機能は現在停止中です」表示・AC-06 は廃止する。評価の実行可否はロール（`admin` / `paid`）とデータ充足・再認証状態のみで決める。緊急停止はデプロイ停止または評価経路の一時無効化で行う。
 
-| DB設定 | 意味 | 停止時 UI |
+### 8.3 定期評価バッチの実行設計（フェーズ3。2026-08-19 追加）
+
+既存の GSC 評価バッチ（`app/api/cron/gsc-evaluate` + `gscEvaluationService.runAllDueEvaluations`）を正本として同型に作る。
+
+#### 起動経路
+
+| 項目 | 値 | 根拠・注意 |
 |---|---|---|
-| 行なし / DB読取失敗 | **停止**（安全側。未設定 = 未有効化） | 記事詳細の「コンテンツ評価」タブに「評価機能は現在停止中です」を表示し、評価・再評価を無効化する。`/analytics` 一覧は評価状態を停止中として表示する（一覧に評価実行ボタンは置かない）。文言と操作制限は §10.4 を正本とする |
-| `enabled=false` | **停止** | 同上 |
-| `enabled=true` | 評価実行を許可（ロール `admin`/`paid` は別途必須） | 通常表示 |
+| ルート | `app/api/cron/ga4-content-evaluate/route.ts`（GET） | `gsc-evaluate` と同型。`scripts/invoke-cron.sh` は GET で呼ぶ |
+| 認証 | `Authorization: Bearer ${CRON_SECRET}`。未設定は 500、不一致は 401 | `gsc-evaluate/route.ts:17-31` と同一 |
+| スケジューラ | `.github/workflows/hourly-cron.yml` の matrix に1件追加（毎時0分） | `vercel.json` は存在しない |
+| `maxDuration` / `maxTime` | 300 / 310 | `cron-definitions.ts` の `CRON_CONFIGS` へ `ga4ContentEvaluate` を追加する |
+| `maxRetries` | **1（リトライしない）** | 同 workflow のコメントが「再実行でメールが重複しうるバッチは 1 にすること」と定める（`hourly-cron.yml:7`。`google-ads-negative-keywords` が同じ理由で 1）。**本バッチはメールを送るため 1 にする。**加えて BR-12 の冪等記録を二重の防御に置く |
+| profile | `count-batch` | 件数集計型。`scripts/invoke-cron.sh` の `validate_count_batch`（`:123-158` 実測）が **`.success` と `.data.failed` を FAIL 判定**、`.data.skipped` / `.data.skippedDueToLimit` / `.data.stoppedReason` を WARN 通知する。**バッチ結果の JSON はこのキー名に合わせる**（下記「可観測性」の予約キー表） |
 
-**判定ロジック:** 各評価リクエストで `ga4_content_evaluation_settings.enabled IS TRUE` を確認した場合のみ許可する。設定変更は次のリクエストから反映し、アプリの再デプロイを必要としない。DB読取失敗時も評価APIは実行しない。
+#### 処理順序
 
-**表示の合成規則:** Kill Switch の判定はページ側のデータ取得で1回だけ読み、画面表示に被せる。**一覧RPCは `ga4_content_evaluation_settings` を参照しない。** 停止中は評価状態列のみ「停止中」に上書きし、スコア・診断・最終評価日時は保存値をそのまま表示する。`evaluating` と停止中が同時に成立する場合は §6.5 の優先順位に従い停止中を優先する。
+```text
+1. due な cycle 行を DB から抽出する（BR-06 の唯一の例外＝全ユーザー横断 SELECT。Kill Switch 確認は削除済み）
+   - ga4_content_evaluation_cycles c JOIN users u ON u.id = c.user_id
+   - c.status = 'active'
+     AND c.next_evaluation_date <= today_jst（生成列。§6.6.2）
+     AND u.role IN ('admin','paid')            ← ロール絞り込みは SQL 側で行う（下記「ロール絞り込みを SQL 側へ置く理由」）
+   - next_evaluation_date = today_jst の行だけ evaluation_hour をアプリ側で判定
+   - ORDER BY c.next_evaluation_date ASC, c.id ASC（決定的なタイブレーク）で並べ、
+     SupabaseService.fetchAllPaged で回収する（下記「行数上限」）
+2. 取得した行のロールを再確認し、admin / paid 以外を除外する（多層防御。手順1 の SQL が唯一の防御にならないようにする）
+3. ユーザー単位にグルーピングし、ユーザー順をシャッフルする（特定ユーザーが常に先頭になるのを防ぐ。
+   GSC と同じ＝gscEvaluationService.ts:487 の Fisher-Yates。なお処理順の保証は下記「取得順と処理順」を参照）
+4. ユーザーごとに:
+   a. ga4ImportService.syncUser(userId) を1回だけ呼ぶ（記事ごとに呼ばない）
+      失敗しても打ち切らず、記事評価へ進む（取込済みデータで評価は成立しうる）
+      ただし失敗したことを syncFailed フラグとして保持し、4c・4d へ渡す（§6.6.4「取込失敗の扱い」）
+      同期の所要は SYNC_TIME_BUDGET_MS で有界化する（下記「時間予算と件数上限」）
+   b. 記事ごとに ga4ContentEvaluationService.run({ userId, annotationId, ...getGa4EvaluationDateRange() }) を逐次実行
+   c. 下記「結末の判定契約」で結末を1値に確定し、§6.6.4 の表に従って last_evaluated_on を更新（BR-11）
+      syncFailed かつ next_evaluation_date == today_jst のときは、結末にかかわらず進めない
+   d. 結末が evaluated / narrative_failed で、かつ syncFailed でない記事についてメールを送る（§9.5）
+      冪等キーは 4c で確定した「今回の履歴行の id」
+5. 時間予算・件数上限に達したら中断する（中断した記事は last_evaluated_on を進めない＝次の毎時実行で再び対象）
+```
 
-**Kill Switch は評価処理だけを止め、既存の取込経路は止めない**（§14 ロールバックと整合）。既存取込の実態は次のとおり（2026-08-14 実測）。
+#### 結末の判定契約（バッチが `run()` の結果を1値に確定する方法）
 
-| 取込 | 起動経路 | Kill Switch の影響 |
+**この契約が無いと実装者裁量になる箇所が3つある**ため、実測（2026-08-19）に基づいて固定する。
+
+- `run()` は**例外**でも結末を返す: 再認証必要時は `Object.assign(error, { code: 'needs_reauth' })` を付けた Error を throw する（評価履歴行が作られる前）。Kill Switch 由来の `evaluation disabled` は削除済み。
+- `run()` は **`low_data` のとき履歴行を作らずに `fetchEvaluation()` の結果をそのまま返す**（`:398-399` の早期 return、および `:497-499` の `cancelRun` 後の return）。戻り値の `displayStatus` は `resolveGa4EvaluationDisplayStatus`（`src/server/lib/ga4-evaluation-status.ts:18-28`）が **永続状態を優先**するため、**前回の評価が成功していれば `evaluated` が返り、`projection` と `history` も前回の値のままになる**。`displayStatus` だけを見ると「今回 `evaluated` になった」と誤読する。
+- 戻り値の `displayStatus` は **10値**（`unassessed` / `eligible` / `needs_reauth` / `low_data` ＋ 永続6値）であり、表示用に `needs_reauth` を被せた値である（`evaluation_disabled` は削除済み）。
+
+したがって次の手順で判定する。**`displayStatus` を結末の判定に使わない。**
+
+1. **例外を捕捉した場合**（`try` の外へ出さない）:
+   - `(err as { code?: string }).code === 'needs_reauth'` → 結末 `needs_reauth`
+   - `err instanceof Error && err.message.includes('already running')` → 結末 `already_running`
+   - それ以外 → 結末 `unknown_error`。`console.error` で構造化ログへ出す
+2. **正常に戻った場合**: 戻り値の `history[0]`（`created_at` 降順・最大20件。`ga4ContentEvaluationService.ts:304`）を見る。
+   - `history` が空、または `history[0].startedAt` が**この記事の `run()` 呼び出し開始時刻より前** → **今回の実行は履歴行を作っていない** → 結末 `low_data`（BR-08 の足切りによる早期 return）。`projection` / `history` の内容は前回の値なので参照しない
+   - そうでなければ `history[0]` が今回の実行の履歴行である。**結末はその行の `status`（永続6値）とする**。`evaluating` が返った場合は異常系として扱う（§6.6.4）
+   - `displayStatus` が `unassessed` / `eligible` で、かつ今回の履歴行が無い場合も想定外として扱う（§6.6.4。`console.error` ＋ `articlesFailed` 計上）
+3. **BR-12 の冪等キー**は、2. で特定した「今回の履歴行」の `id` とする。1. の経路と `low_data` は履歴行を持たないため冪等キーが存在せず、§9.5 の送信対象にも該当しない。
+
+結末の語彙は次の10値に固定する: `evaluated` / `narrative_failed` / `insufficient_data` / `import_failed` / `evaluation_failed` / `evaluating` / `low_data` / `needs_reauth` / `already_running` / `unknown_error`（`evaluation_disabled` は削除済み）。§6.6.4（クールダウン）・§9.5（送信対象）・§13（テスト）はこの語彙で書く。
+
+#### ロール絞り込みを SQL 側へ置く理由
+
+手順3 のアプリ側フィルタだけにすると、**`trial` / `unavailable` へ降格したユーザーのサイクル行は毎時 due として抽出され続ける**。§6.6.4 により除外行は `last_evaluated_on` を進めないため、`next_evaluation_date` が過去のまま昇順の先頭に居座り、下記「行数上限」の 1,000 行枠を恒久的に占有する（R-17）。したがって**絞り込みは手順2 の SQL（`users` の JOIN）で行い、手順3 は多層防御の再確認に格下げする**。手順2 で絞れない事情が実装時に判明した場合は、除外行を `status='paused'` へ退避する経路を設けて due 候補から外す（`status` 列は §7.7 で既に持っている）。
+
+#### なぜバッチから GA4 を同期するのか（設計上の必須事項）
+
+`ga4ContentEvaluationService.run()` は **GA4 API を呼ばない**。`ga4_page_metrics_daily` の取込済み行だけを読む（§9.2.1）。さらに `context.freshness.periodEndWithin48HoursOfGa4Fetch === false` のとき `insufficient_data` + `evaluation_stale` で打ち切る実装になっている（`ga4ContentEvaluationService.ts` の run 内）。
+
+一方でフェーズ2までの GA4 取込は**ユーザーが手で実行する経路しかない**（§8.2）。したがって**バッチが同期を伴わなければ、定期評価は「ユーザーが最近手動同期したとき」しか成立せず、多くの記事が `insufficient_data` で終わる**。GSC バッチが同じ理由でユーザー単位の一括インポート（`gscEvaluationService.ts:81-87`）を先に走らせているのと同じ構造である。
+
+同期はユーザー単位で1回だけ呼ぶ（`syncUser` は増分同期で、同一ユーザー内の記事ごとに呼ぶと2回目以降は `already_synced` で無駄になる）。
+
+**既存の同等物（`ga4ImportService.runBatch()`）を使わない理由（2026-08-19 実測）:** `ga4ImportService.ts:82` に `runBatch()` が既に存在し、`stoppedReason`（`completed` / `time_limit` / `max_users`）まで実装済みで、doc コメント（`:76-81`）も「**注意**: MVPでは未使用。本番投入後のCron実装時に使用予定。」と述べている。しかし同メソッドは `listGa4SyncTargets(MAX_USERS_PER_BATCH)` が返す**同期対象ユーザー全体**を回すもので、本バッチが必要とする「due なサイクル行を持つユーザーだけ」という絞り込みができない。全ユーザーを同期すると評価しない分の GA4 クォータを消費し、時間予算も食い潰す。したがって本バッチは `syncUser(userId)` をユーザー単位に呼ぶ。**`runBatch()` は削除せず現状のまま残す**（呼び出し元は `src/`・`app/` に0件。`CRON_DEFINITIONS.*.runBatch` は `cron-observability.ts:41,109` の別オブジェクトで無関係）。将来 GA4 取込の独立した Cron を持つ場合の入口として doc の記述どおり温存し、フェーズ3では触らない（§17）。
+
+#### 実行の排他と二重実行
+
+**claim RPC もジョブキューも新設しない。**`run()` の入口が `start_ga4_content_evaluation` RPC を通り、`(user_id, content_annotation_id)` の行ロックと 15分 TTL の `lease_expires_at` で BR-04 が既に成立している（§8.1）。したがって、
+
+- バッチ実行中にユーザーが同じ記事を手動評価しても、後から来たほうが弾かれる（または stale 回復で引き継がれる）。
+- Cron が二重起動しても、同じ記事が同時に2回評価されることはない。
+
+GitHub Actions 側でも `concurrency.group` を `hourly-cron-ga4-content-evaluate` として重複起動を抑える（既存 matrix と同じ書き方）。
+
+#### 時間予算と件数上限
+
+1記事の評価は LLM 呼び出しを含み、最悪 45秒 × 3回（§8.1）＋ GA4/DB の往復がかかる。GSC バッチより1件あたりが重いため、上限を明示する。
+
+| 定数 | 値 | 根拠 |
 |---|---|---|
-| GSC 取込 | `app/api/cron/gsc-evaluate`（`gscEvaluationService.ts:81` 経由で間接実行）。スケジューラは `.github/workflows/hourly-cron.yml`（`vercel.json` は存在しない） | 停止しない |
-| GA4 取込 | **Cron は存在しない。** `ga4ImportService` の呼出は `app/api/ga4/sync/route.ts` のユーザー起動 POST のみ | 停止しない |
+| `BATCH_TIME_LIMIT_MS` | 280秒 | `maxDuration=300` より 20秒 短く取る（GSC と同じ） |
+| `MAX_USERS_PER_BATCH` | 10 | GSC と同じ |
+| `MAX_ARTICLES_PER_BATCH` | 20 | 1記事あたり最悪 135秒 の LLM 予算に対し、280秒 の枠では実際には数件しか回らない。上限は「暴走を止める安全弁」であって処理目標ではない。**GSC には存在しない新規定数である**（2026-08-19 実測: `gscEvaluationService.ts:17-20` の定数は `BATCH_TIME_LIMIT_MS` / `MAX_USERS_PER_BATCH` / `EVALUATION_CONCURRENCY` の3本のみ）。「GSC と同じ」ではないので、GSC 側を探しても対応物は見つからない |
+| **`SYNC_TIME_BUDGET_MS`** | **120秒**（`BATCH_TIME_LIMIT_MS` の約4割） | 手順5a の `syncUser` の**合計**所要に対する上限。**この行が無いと同期だけで 280秒 を使い切りうる**（実測: `ga4ImportService.ts:55-62` は同期**単独**の予算として `MAX_DURATION_MS = 280_000` / `MAX_USERS_PER_BATCH = 10` を持つ）。累計がこの予算を超えたら**以降のユーザーの `syncUser` を呼ばず**、取込済みデータのまま手順5b へ進む（同期を飛ばしたユーザーは §6.6.4 の「取込失敗の実行」とは区別し、通常どおり結末に従ってクールダウンする） |
+| 記事評価の並列度 | **1（逐次）** | GSC は3並列だが、GSC の1件は LLM を伴わない順位比較である。コンテンツ評価は1件ごとに LLM を呼ぶため、並列化すると LLM のレート制限と Vercel の実行時間の両方を同時に圧迫する。ミニマム版では逐次とし、必要になったら実測で上げる |
 
-`app/api/cron/` に存在するのは `gsc-evaluate` / `gsc-suggestions` / `google-ads-negative-keywords-suggestion` の3本で、GA4 取込 Cron は含まれない。したがって「GA4 取込 Cron を止めない」という表現は使わない。
+チャンク境界ごとに経過時間を確認し、超過したら `stoppedReason: 'time_limit'` で中断する（GSC と同じ）。中断分は `last_evaluated_on` を進めないため次の毎時実行で拾われる。**「毎時実行なので取りこぼしても1時間後に回復する」ことが設計の前提**であり、1回のバッチで全件を捌く必要はない。
+
+**ライブロック回避条件（必須）:** 同期に時間を使い切って**1記事も評価されない**と、誰の `last_evaluated_on` も進まないため、次の毎時実行も同じ候補集合に対して同じ同期を行い、以後ずっと前進しない。`stoppedReason: 'time_limit'` は `count-batch` profile では WARN 止まりで FAIL にならないため、この状態は放置されうる。したがって次を守る。
+
+- 同期の合計所要は `SYNC_TIME_BUDGET_MS` で打ち切る（上表）。
+- **1バッチで最低1記事は評価してから中断する。**`articlesEvaluated + articlesFailed === 0` かつ `usersAttempted > 0` の状態で `time_limit` に達した場合は、先頭ユーザーの先頭記事1件だけは評価を試みる（`maxDuration=300` を超えない範囲で）。
+- それでも0件で終わった実行は `stoppedReason: 'no_progress'` として返し、**WARN ではなく `failed` に1を計上して FAIL 扱いにする**（下記「可観測性」）。ライブロックは検知されなければ止まらないため、CI で気づける形にする。
+
+#### 行数上限（`db-max-rows`）
+
+due 抽出は `ga4_content_evaluation_cycles` に対する複数行 SELECT であり、PostgREST の `db-max-rows = 1000` の対象になる（`docs/context/db-row-limits-and-data-truncation.md`）。サイクル登録が 1,000 件を超えると**黙って切り捨てられ、切り捨てられた記事は永久に評価されない**（`next_evaluation_date` が進まないので毎回同じ先頭1,000件だけが対象になり続ける）。
+
+**対策: 独自のページング実装を書かず、既存の `SupabaseService.fetchAllPaged` を使う**（2026-08-19 実測。`supabaseService.ts:234-267`。同じ GA4 評価サービスが既に使用しており、`docs/context/db-row-limits-and-data-truncation.md` の対処もこのヘルパーへ集約されている）。実装契約は次のとおり。
+
+- `ga4ContentEvaluationCycleService` は **`SupabaseService` のサブクラスとして実装する**。`fetchAllPaged` は `protected` であり（`supabaseService.ts:234`）、コンポジションでは呼べないためである（§17 にクラス構成として明記）。
+- `runPage(from, to)` のクエリに **`count: 'exact'` を必ず渡す**。渡さないと `fetchAllPaged` の `truncated` 判定（`total !== null && all.length < total`）で `total` が `null` のままになり、**`truncated` が常に `false` になってサイレント切り捨てになる**（同ヘルパーの doc も「`count:'exact'` を付けると総件数で確実に停止できる（推奨）」と述べる）。
+- `order` は `next_evaluation_date ASC, id ASC` の**決定的なタイブレーク付き**にする（ページング安定化。同ヘルパーの doc 要件）。
+- `truncated === true` のとき、回収できなかった件数を `truncatedCandidates` として結果 JSON に出す（下記「可観測性」。「no silent caps」）。
+
+**取得順と処理順（別物として書き分ける）:** `next_evaluation_date` 昇順が保証するのは**取得（回収）順**であり、**処理順ではない**。手順4 でユーザー単位にシャッフルするため、実際に評価される順序はユーザー単位でランダムになる。昇順にする目的は次の2点である。
+
+1. 1,000 行上限で切り捨てが起きても、**最も長く待たされている記事が取得側に残る**（あふれるのは最も新しい `next_evaluation_date` の側）。
+2. 件数上限（`MAX_ARTICLES_PER_BATCH`）で未処理になった候補が、次回の抽出でも先頭側に来る（`last_evaluated_on` が進まないため `next_evaluation_date` が古いまま）。
+
+したがって「最も長く待たされている記事から**処理される**」とは書かない。R-17 の対策と AC-20 のシナリオもこの区別に合わせる。
+
+#### 可観測性
+
+`cron-observability` の `defineCronDefinitions` を通し、GSC バッチと同じ形でログを出す。応答は `{ success: boolean, data: {...} }` 形とし（`gsc-evaluate/route.ts:36-39` と同型）、`data` 直下に次の**予約キー**を置く。`scripts/invoke-cron.sh` の `validate_count_batch`（`:123-158`）はこのキー名だけを見るため、**キー名を変えると失敗が CI で検知されなくなる**。
+
+| キー | 判定 | 中身 |
+|---|---|---|
+| `success` | **FAIL**（`true` 以外） | ルートが例外を捕捉した場合のみ `false` |
+| `data.failed` | **FAIL**（`> 0`） | `articlesFailed + emailsFailed`（＋ライブロック検知時の1。上記「ライブロック回避条件」）。**記事評価の失敗もメール送信の失敗も、必ずここへ合算する** |
+| `data.skippedDueToLimit` | WARN | 件数上限（`MAX_ARTICLES_PER_BATCH` / `MAX_USERS_PER_BATCH`）で未処理になった件数 ＋ `truncatedCandidates` |
+| `data.stoppedReason` | WARN | `completed` / `time_limit` / `max_users` / `max_articles` / `no_progress` |
+| `data.skipped` | WARN | **使わない**（キー自体を出さない）。クールダウンによるスキップをここへ入れると正常時に毎回 WARN が出て、警告が意味を失う |
+
+固有の内訳は `data` 直下に併置する（profile の判定対象外だが、実データ検証と §14 手順18 で読む）: `usersAttempted` / `usersProcessed` / `articlesEvaluated` / `articlesFailed` / `articlesSkippedCooldown` / `articlesSkippedSyncFailed` / `emailsSent` / `emailsSkipped` / `emailsFailed` / `truncatedCandidates` / `syncFailedUsers`。
+
+メール送信の失敗は握りつぶさず `console.error` でログへ出す（`feedback_error_handling_logging`。カウンタだけのサイレント処理にしない）。
 
 ## 9. 外部API・エラー仕様
 
@@ -861,6 +1183,8 @@ Server ActionまたはRoute Handlerから単記事評価を実行する。評価
 | Core Tokens Per Project Per Property Per Hour | 14,000 |
 | Core Concurrent Requests Per Property | 10 |
 
+**フェーズ3の注記（2026-08-19）:** 定期評価バッチは評価の前にユーザー単位で `ga4ImportService.syncUser` を呼ぶ（§8.3）。これは**取込経路の呼び出し**であって評価経路ではなく、既存の手動同期（`/api/ga4/sync`）と同じレポート発行になる。増分同期のため通常は1ユーザーあたり数日分で、1時間に同じユーザーが複数回対象になることはない（`last_evaluated_on` のクールダウンで最短でも1サイクル空く。BR-11）。それでも下表のプロパティ単位クォータを共有するため、実データ検証（§14）で `returnPropertyQuota: true` の消費を記録する。
+
 MVPでは**評価実行時に GA4 レポート API を呼ばない**。既存の取込済みデータのみを使用し、鮮度が閾値を超える場合は `insufficient_data` として扱う。再取得はユーザーが既存の取込導線から明示的に行う。したがって1評価あたりの GA4 API 呼び出しは **レポート 0 回・Compatibility 0 回**（合計0回）となる。Compatibility は評価実行経路ではなく、取込拡張（確定済み）の取込指標変更時に実施する（§9.2）。
 
 この方針により §5.1 の「評価前のデータ鮮度確認・再取込」は**鮮度の確認のみ**を指し、評価経路からの再取込は行わない。§10.4 の `import_failed` 時の主操作「データを再取得」も、評価経路ではなく既存の取込導線への誘導とする。大量評価時は `returnPropertyQuota: true` で消費をログ記録する。
@@ -901,6 +1225,76 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 
 - ログにはプロンプト本文、トークン、記事本文、認証情報を無制限に出力しない。
 
+### 9.5 メール送信（Resend。フェーズ3。2026-08-19 追加）
+
+#### 既存実装の再利用
+
+`src/server/services/emailService.ts` を再利用する。同ファイルは Resend クライアントを遅延生成し、`RESEND_API_KEY` 未設定なら `console.error` を出して `{ success:false }` を返す（`:29-33`）。送信元は `EMAIL_FROM` があればそれ、無ければ `GrowMate <noreply@mail.growmate.tokyo>`（`:4,:36`）。
+
+| 項目 | 内容 |
+|---|---|
+| 追加するメソッド | `emailService.sendGa4ContentEvaluation(to, subject, htmlContent, idempotencyKey)` |
+| 実装 | 既存の `sendGoogleAdsAnalysis` と同じ送信処理を共有する（`sendGoogleAdsNegativeKeywords` が `:65-71` で同じことをしている）。**差分は `Idempotency-Key` を渡す点のみ**（下記「冪等性」の3段目。既存2メソッドの挙動は変えない） |
+| 環境変数 | 新規追加なし（`RESEND_API_KEY` は `src/env.ts` に既存、`EMAIL_FROM` は任意）。`NEXT_PUBLIC_SITE_URL` は必須（`env.ts:6` で `z.url()`）で、記事詳細URLの組み立てに使う |
+| HTML の無害化 | `sanitizeEmailHtml` を通す。**現在この関数は `googleAdsAiAnalysisService.ts:150` と `googleAdsNegativeKeywordsSuggestionService.ts:68` に同じ実装が2つある。**3つ目を書かず、共通モジュールへ切り出して3箇所から使う（§17 の共通化candidate） |
+
+#### 送信対象
+
+結末は §8.3「結末の判定契約」の11値で判定する（`run()` の戻り値の `displayStatus` では判定しない）。
+
+| 評価の結末 | 送信 | 理由 |
+|---|---|---|
+| `evaluated` | **送る** | 点数・診断・次の一手が揃っている |
+| `narrative_failed` | **送る** | 点数・診断コードは確定している（部分成功。§6.5）。診断文の欄は「診断コメントを作成できませんでした」と書き、点数と次回の再評価を案内する |
+| `insufficient_data` / `low_data` / `import_failed` / `evaluation_failed` / `needs_reauth` | 送らない | §3.2 フェーズ3 Non-goal。アプリの画面（§10.4）とログで確認する。将来の拡張候補は D7（§15.3） |
+| `evaluating` / `already_running` / `unknown_error` | 送らない | 結末が確定していない、または異常系。`evaluating` / `unknown_error` は `console.error` で記録する（§6.6.4） |
+| ロール不許可・時間予算切れ・件数上限切れ | 送らない（そもそも評価していない） | — |
+| 当日の `syncUser` が失敗したユーザーの記事（結末を問わない） | 送らない | 取込済みデータが揃っていない状態の結果を通知しない（§6.6.4「取込失敗の扱い」）。次の毎時実行で取込から再試行する |
+
+**束ねない（1評価＝1通）:** 送信は評価1件につき1通で、同一ユーザー宛の複数記事を1通へダイジェスト化しない（§3.2 フェーズ3 Non-goal）。**1ユーザーが同一バッチで受け取りうる最大通数は `MAX_ARTICLES_PER_BATCH` と同じ 20通**である（§8.3。同じ基準日・同じ `cycle_days` で複数記事を登録した場合）。この上限はバッチ全体の上限であってユーザー単位の上限ではないため、1ユーザーがすべてを受け取る場合がありうる。§3.2 の「一時停止・完了操作のUI」を作らない以上ユーザー側に止める手段がないため、**D6 の提示条件(d) として受信通数の想定をクライアントへ明示する**（§15.3）。
+
+#### レート制限とクォータ（Resend 公式。確認日 2026-08-19）
+
+公式記載は §16「Resend — レート制限・クォータ・冪等キー」に verbatim で置く。ここでは本機能への当てはめだけを書く。
+
+- **レート制限は 10 requests/sec per team。**本バッチは記事評価を逐次実行し（§8.3）1記事あたり最悪135秒かかるため、送信も逐次で毎秒1通を超えない。したがって通常運用でレート制限には触れない。**ただし API キーはチーム単位であり、既存の Google Ads 分析メール（`sendGoogleAdsAnalysis` / `sendGoogleAdsNegativeKeywords`）と同一チームの枠を共有する**。同時刻の毎時 Cron（`hourly-cron.yml` の matrix は毎時0分に並列起動する）と重なるため、429 を「起こらない前提」にしない。
+- **日次・月次クォータも同じチームで共有する。**枯渇時は 429 と `daily_quota_exceeded` / `monthly_quota_exceeded` が返る。この場合も §9.5「失敗時」に従い `last_notification_status='failed'` になり、**再送しないため次のサイクルまで通知が欠落する**（`cycle_days` 既定30日なら最長1か月）。
+- したがって **429 は他の送信失敗と区別して記録する**: `last_notification_error` に Resend の `name`（例 `daily_quota_exceeded`）を sanitized で保存し、構造化ログにも `emailsFailed` の内訳として出す。クォータ枯渇は運用で対処すべき事象（プラン変更・送信量の抑制）であり、実装バグと混ぜると原因切り分けができない。
+- レスポンスヘッダ `ratelimit-limit` / `ratelimit-remaining` / `ratelimit-reset` / `retry-after` は取得できるが、**ミニマム版では待機・再試行を行わない**（再送しない方針＝下記「失敗時」と整合）。値はログにのみ残す。
+
+#### 宛先とアドレス未登録
+
+宛先は `users.email` の1件のみ。`email` 列は `20260311000000_add_email_auth_columns_to_users.sql` で追加された **NULL 許容**の列であり、LINE 認証のみのユーザーは NULL でありうる。
+
+- NULL・空文字の場合は**送信をスキップし**、`last_notification_status = 'skipped_no_email'` を記録して `console.warn` を出す。評価そのものは成功として扱い、`last_evaluated_on` は進める（BR-11）。
+- 既存の Google Ads 分析は同じ状況を `ERROR_MESSAGES.GOOGLE_ADS.EMAIL_REQUIRED_FOR_AI_EVALUATION` で**機能全体の失敗**にしている（`googleAdsAiAnalysisService.ts:205-211`）が、本機能では**評価は成立させ通知だけを落とす**。評価結果はアプリで見られるため、通知できないことを理由に評価を失敗にする必要がない。
+
+#### 冪等性（BR-12）
+
+**冪等キーの定義:** 「今回の run が生成した評価履歴行の `id`」とする。取得方法は §8.3「結末の判定契約」の 2.（戻り値の `history[0]` が今回の実行の行であることを `startedAt` で確認する）に従う。履歴行が作られない結末（`low_data` / `needs_reauth` / `already_running`）には冪等キーが存在せず、送信対象にも該当しない。
+
+防御は3段とする。
+
+1. **`hourly-cron.yml` の `maxRetries: 1`**（§8.3）。同 workflow のコメント（`:7`）が「再実行でメールが重複しうるバッチは 1 にすること」と定める。
+2. **`last_notified_history_id` による記録**。送信前に `ga4_content_evaluation_cycles.last_notified_history_id` と今回の冪等キーを比較し、同一なら送らない。
+3. **Resend の `Idempotency-Key` ヘッダ**（公式。§16。確認日 2026-08-19）。`emails.send` に**今回の冪等キー（評価履歴行の `id`。UUID なので一意かつ 256 文字以内）をそのまま渡す**。2. だけでは**送信成功後・DB 記録前にプロセスが落ちた窓**を塞げず（実測: `emailService.ts:37-41` の `resendClient.emails.send({from,to,subject,html})` は単一呼び出しで、再試行も冪等キーも持たない）、次の毎時実行で同じ履歴に対して再送されうる。公式のキーは 24 時間有効なので、毎時実行のこの窓は完全にカバーできる。
+
+**送信と記録の順序:** 「送信 → 成功したら `last_notified_history_id` / `last_notified_at` / `last_notification_status='sent'` を記録」の順で行う（記録を先にすると、送信失敗時に「送ったことになっている」状態が残り、以後永久に再送されない）。3. の `Idempotency-Key` がこの順序のクラッシュ窓を埋める。
+
+これにより、Cron のリトライ・GitHub Actions の再実行・バッチの多重起動のいずれでも二重送信しない（R-15）。
+
+**この冪等性が防げないもの（明示）:** `last_evaluated_on` を更新するのはバッチだけであり手動評価経路はサイクル行を知らないため（§7.7）、**手動再評価の直後にバッチが同じ記事を再評価すると新しい履歴 ID が生まれ、上記2. の比較に掛からずメールが送られる。**この扱いは **D8（§15.3）** として未確定であり、本節では「同一の評価履歴に対して二度送らない」ことのみを保証する。
+
+#### 失敗時
+
+Resend が失敗を返した場合は `console.error` で記録し（`feedback_error_handling_logging`）、`last_notification_status='failed'` と sanitized なエラーを保存する。**送信の再試行は行わない**（次のサイクルで新しい評価とともに新しい通知が出る）。評価結果は DB に残っているため、通知の欠落がデータの欠落にはならない。
+
+#### プライバシー
+
+- メール本文に記事タイトル・URL・点数・診断文を含める。これらはすべて当該ユーザー自身のデータである。
+- 認証情報・トークン・Service Role キー・プロンプト本文を含めない（§11 セキュリティ行）。
+- 記事詳細URLは `${NEXT_PUBLIC_SITE_URL}/analytics/${annotationId}` のパスのみとし、**クエリ文字列に個人情報・トークンを載せない**。URL を開くにはログインが必要で（`proxy.ts` のプレフィックスマッチ保護。§3.3）、メールの転送だけでは閲覧できない。
+
 ## 10. 画面仕様
 
 ### 10.1 画面責務
@@ -910,14 +1304,14 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 | 画面 | 責務 | MVPでの変更 |
 |---|---|---|
 | `/analytics` | コンテンツ一覧、カテゴリ/未評価フィルタ | GA4評価状態・コンテンツ力スコア・診断ラベル・最終評価日時の列と未評価フィルタを追加（フェーズ2）。並び替えは実装しない（Q-B） |
-| `/analytics/[annotationId]` | 1記事の詳細。フェーズ1で `/gsc-dashboard?annotationId=...` から移設（既存は概要・検索クエリ分析・評価履歴の3タブ） | フェーズ1: 既存3タブを挙動保存で移設（§5.5 / AC-14）。フェーズ2: 評価UIを実装し、**情報階層を 2026-08-13 合意たたき台の統合レイアウトへ再設計する**（Q-C 回答 2026-08-16。§10.5）。**2026-08-19 に「コンテンツ評価」を独立タブへ切り出し、4タブ構成（概要／検索クエリ／検索順位評価／コンテンツ評価）とした（暫定・クライアント確認待ち。§10.3 / §18）。**既存3タブの機能・データは維持する |
+| `/analytics/[annotationId]` | 1記事の詳細。フェーズ1で `/gsc-dashboard?annotationId=...` から移設（既存は概要・検索クエリ分析・評価履歴の3タブ） | フェーズ1: 既存3タブを挙動保存で移設（§5.5 / AC-14）。フェーズ2: 評価UIを実装する。**出荷時のタブ構成は4本（概要／検索クエリ／検索順位評価／コンテンツ評価）。「コンテンツ評価」は独立タブ**（2026-08-19 ユーザー決定。§10.3 / §10.5）。既存3タブの機能・データは維持する。**フェーズ3: 「概要」タブに「コンテンツ評価サイクル設定」を追加し、既存の「検索順位評価サイクル設定」と横並びに配置する（§10.8）。評価結果・操作は独立タブのまま** |
 | `/gsc-dashboard`（旧URL） | — | フェーズ1で恒久 redirect のみ（§5.5）。ページ実体は削除する |
 | `/ga4-dashboard` | サイト全体のGA4集計、ランキング、時系列 | **メディア全体スコア（資産価値・実効）と散布図を追加する（§10.6。2026-08-17 に対象へ変更）**。あわせてヘッダーに**「過去90日を再取込」ボタンを置く**（2026-08-19。AC-18。取込後は表示中の期間のまま集計を取り直す）。記事単位の評価UI・履歴は置かない（§3.2） |
 | `/setup/ga4` | GA4 連携設定・日次同期の実行 | **文言のみ**。日次同期が増分であることと、過去分は `/ga4-dashboard` の再取込導線で取り直す旨を注記する（§4.1.2） |
 | `/wordpress-import` | WordPress 記事の一括インポート | **`wp_content_text` / `wp_image_count` も書くようにする（2026-08-19。AC-18）**。画面と操作手順は変えない（同じボタンの保存対象が増えるだけ）。§4.1.1 |
 | `/admin/prompts` | プロンプトテンプレートの管理（admin 専用） | **カテゴリ追加のみ**。画面はテンプレートをプレフィックスで分類して表示する作り（`PromptsClient.tsx` の `PROMPT_CATEGORIES`）で、`ga4_` を拾う分類が無く受け皿の「AIチャット・生成」に紛れていたため、「GA4コンテンツ評価」カテゴリを追加した（2026-08-19）。編集・バージョン管理は既存機能をそのまま使う。登録の経路とタイミングは §6.3.1 / §14 手順 |
 
-記事詳細の情報階層の再設計（統合レイアウト化）は、Q-C 回答（2026-08-16「まとめで全てやる」）により**フェーズ2で実施する**（§3.1 / §10.5）。フェーズ1の移設時点では挙動保存を維持し（AC-14）、再設計はフェーズ2の評価タブ実装と同時に行う。
+記事詳細の情報階層は、Q-C 回答（2026-08-16「まとめで全てやる」）により**フェーズ2で実施する**（別チケットへ送らない。§3.1 / §10.5）。フェーズ1の移設時点では挙動保存を維持し（AC-14）、再設計はフェーズ2の評価UI実装と同時に行う。**再設計の出荷形はたたき台の3タブ・概要統合ではなく、独立タブの4タブ構成である**（2026-08-19 ユーザー決定。§10.3）。
 
 ### 10.2 一覧画面 `/analytics`
 
@@ -932,9 +1326,9 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 
 ### 10.3 記事詳細の「コンテンツ評価」タブ
 
-フェーズ1で移設した記事詳細 `/analytics/[annotationId]` に評価UIを実装する。タブ構成は 2026-08-13 合意たたき台（「概要（GA4/GSC統合）」「検索クエリ」「評価履歴」の3タブ基本形。評価の結果・操作は概要へ統合表示）だったが、**2026-08-19 に「コンテンツ評価」を独立タブへ切り出した（暫定。D3 / Q-C の見直しにあたるためクライアント確認待ち。§18）**。理由は、統合表示の実装では評価カードが概要タブの最下部（メトリクスカード・時系列グラフ・データ準備状況・検索順位評価サイクル設定の後ろ）に置かれ、到達に大きなスクロールを要して主役として機能していなかったこと。現在のタブは「概要」「検索クエリ」「検索順位評価」「コンテンツ評価」の4本（既存3タブの並びは変えず、右端に追加）。**クライアントが統合表示を望む場合は概要へ戻す**（`ContentEvaluationTab` を概要の上部へ差し込むだけで戻せる形にしてある）。既存機能・GSC固有の操作（`OverviewTab` の「最新化」、`SuggestionDataReadiness`、`EvaluationSettings` の評価周期・評価時刻設定と評価開始導線）は統合レイアウト内でも維持する。
+フェーズ1で移設した記事詳細 `/analytics/[annotationId]` に評価UIを実装する。2026-08-13 合意たたき台は「概要（GA4/GSC統合）」「検索クエリ」「評価履歴」の3タブ基本形で、評価の結果・操作は概要へ統合表示する想定だった。**出荷時のタブ構成は「概要」「検索クエリ」「検索順位評価」「コンテンツ評価」の4本とし、「コンテンツ評価」は独立タブとする（2026-08-19 ユーザー決定）。** 既存3タブの並びは変えず、右端に追加する。理由は、統合表示の実装では評価カードが概要タブの最下部（メトリクスカード・時系列グラフ・データ準備状況・検索順位評価サイクル設定の後ろ）に置かれ、到達に大きなスクロールを要して主役として機能しなかったこと。Q-C（2026-08-16「まとめで全てやる」）は情報階層を別チケットへ送らない意味で維持する。概要への統合表示へ戻す作業はフェーズ2のスコープ外である。既存機能・GSC固有の操作（`OverviewTab` の「最新化」、`SuggestionDataReadiness`、`EvaluationSettings` の評価周期・評価時刻設定と評価開始導線）は概要タブに残す。
 
-> **表記の注記（2026-08-16、2026-08-19 追記）:** 本書の「「コンテンツ評価」タブ」という表記は、もともとこの評価UI領域を指す略記であり、独立タブの実装を拘束しないものだった。2026-08-19 の暫定変更により**実際に独立タブとして実装されている**が、クライアント確認の結果しだいで概要への統合表示へ戻す。
+> **表記の注記（2026-08-16、2026-08-19 確定）:** 本書の「「コンテンツ評価」タブ」は、出荷時には独立タブを指す（2026-08-19 ユーザー決定）。評価UIの中身（記事カードの表示項目）は配置先がタブでも概要内セクションでも同じである。
 
 評価UI（配置先がタブでも概要内セクションでも同じ）は**記事カード**（評価エンジン仕様 §08）を基本形とし、上から次の順に表示する。**率ではなく人数と点数で語り、GA4 用語を使わない**（§10.7）。
 
@@ -956,7 +1350,7 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
   - 引用（`ui-text.md`「評価」行の補足、verbatim）: 「Google Search Console 由来の評価。修飾を付けず「評価」と呼び、文脈は見出しで示す（`/gsc-dashboard` の「評価を開始」「評価基準日」に合わせる）。Google Ads 側の評価を UI に出す場合は両方に修飾を付けて揃える」。
   - 事実: 現行の辞書は **GSC × Google Ads の併存のみ**を規定しており、GA4 由来の評価は規定していない。既定は「修飾を付けず「評価」と呼び」であるため、既存側を「検索順位評価」へ改称する本仕様の方針は**現行の辞書のままでは根拠がない**。
   - 本仕様の方針: 併存時に両方へ修飾を付けるという辞書の趣旨を GA4 由来の評価へ広げ、既存側を「検索順位評価」、新規側を「コンテンツ評価」とする。あわせて `ui-text.md`「評価」行を「複数系統の評価を UI に出す場合は両方に修飾を付けて揃える」へ一般化する（§17 の変更対象）。既存タブ・ボタン文言の変更も対象範囲に含める。なお辞書の実文（上記引用）にある `/gsc-dashboard` はフェーズ1の移設（§5.5）で陳腐化するため、辞書更新時に URL 表記も `/analytics/[annotationId]` へ改める。
-- 評価実行中（`evaluating`）、データ不足、Google連携の再確認、評価失敗、Kill Switch停止中を区別して表示する。評価中に進捗率を推測表示しない。
+- 評価実行中（`evaluating`）、データ不足、Google連携の再確認、評価失敗を区別して表示する。評価中に進捗率を推測表示しない。
 - 「評価対象期間」と、グラフを確認する「表示期間」は別物として表示する。表示期間を変更しても保存済みの評価点・診断は変わらず、再評価時にだけ評価対象期間が更新される。
 - 点数の閾値による画面側のフィルタ・固定分岐は実装しない（Q2 回答 2026-08-16。§6.4）。点数は表示のみとする。
 - 履歴詳細は画面内の展開領域または単一のダイアログで表示する。ダイアログ上に別のダイアログを重ねない。
@@ -972,21 +1366,20 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 | `low_data`（非永続・導出） | データ蓄積中（訪問した人が30人に達すると評価できます） | なし | ある場合は保持して表示 | 評価開始を無効化（BR-08。データが貯まれば自動解消） |
 | `eligible` | 評価可能 | 評価を実行 | なし | 実行中はボタンを無効化 |
 | `evaluating` | 評価中です。完了まで最大3分かかる場合があります。 | なし。再読み込み可能 | ある場合は「前回の評価結果」として表示 | 評価を実行・再評価するボタンを無効化 |
-| `evaluated` | 評価済み | 再評価 | 最新の成功結果 | なし |
+| `evaluated` | 評価済み（**記事詳細の「コンテンツ評価」タブでは状態バッジを出さない**。コンテンツ力スコア・点数帯ピル・診断見出しが同じカードに出ており「評価済み」の一言が情報を足さないため。他の状態は状態バッジでしか伝わらないので引き続き表示する。一覧 `/analytics` の評価状態列と評価履歴の状態表示は従来どおり「評価済み」を出す） | 再評価 | 最新の成功結果 | なし |
 | `insufficient_data` | データが不足しています | 不足項目を確認 | ある場合は保持して表示 | 点数・提案を新規表示しない |
 | `import_failed` | データを取得できませんでした | データを再取得 | ある場合は保持して表示 | 評価開始を無効化 |
 | `needs_reauth`（非永続・導出） | Google連携を確認してください | Googleを再連携 | ある場合は保持して表示 | 評価開始を無効化。**再連携が成功すれば次の描画で自動解消する**（DBに残らない） |
 | `narrative_failed` | 診断コメントを作成できませんでした（点数は算出済み） | 再評価（文章の再生成） | **今回のスコア・診断は表示する**（部分成功。§6.5） | 診断文の領域のみ失敗表示 |
 | `evaluation_failed` | 評価に失敗しました | 再評価 | 前回の成功結果を明示して表示 | 失敗理由をsanitized値で表示 |
-| Kill Switch停止 | 評価機能は現在停止中です | なし | 既存結果は閲覧可能 | 評価・再評価を無効化 |
 
 状態行の文言は仮置きであり、確定は §10.7 の用語言い換えと `ui-text.md` 正本に従う。
 
-画面を離れて再訪した場合も、DBの状態を正本として同じ表示を出す。Kill Switch停止は永続化状態ではなく、評価APIと画面での表示制御に使う。
+画面を離れて再訪した場合も、DBの状態を正本として同じ表示を出す。
 
 ### 10.5 UI合意ゲート
 
-**合意ゲートは通過済み（D3 決着 2026-08-16）で、再オープンしない。**2026-08-13 にたたき台（新ルートの統合詳細画面）を合意済みで、Q-C 回答（2026-08-16「まとめで全てやる」）で統合レイアウトの再設計までフェーズ2に含めることが確定した。2026-08-17 に加わった記事カード・人数ファネル・散布図・用語言い換えは**クライアント自身の評価エンジン仕様 §08 由来**であり、たたき台の情報階層（3タブ基本形）と合成して実装する（評価UI領域の中身が記事カード形式になる）。フェーズ2のUI実装は、たたき台の情報階層＋評価エンジン仕様 §08＋§10.2〜§10.7 を正とする。文言・細部の調整は実装時に `growmate-ui-ux` 正本に従って行う。
+**「情報階層をフェーズ2でやるか後回しにするか」の合意ゲートは通過済み（D3 / Q-C 決着 2026-08-16）で、再オープンしない。** standing 方針（段階分割の確認を今後しない）は有効なまま。**配置の形は 2026-08-19 ユーザー決定で改訂した**: たたき台の3タブ基本形（評価を概要へ統合）ではなく、**独立タブの4タブ構成でフェーズ2を出荷する**（§10.3）。これはクライアント 2026-08-13 たたき台との差分であり、フェーズ2出荷のブロッカーにはしない。2026-08-17 に加わった記事カード・人数ファネル・散布図・用語言い換えは**クライアント自身の評価エンジン仕様 §08 由来**であり、独立タブの中身として実装する。フェーズ2のUI実装は、4タブ構成＋評価エンジン仕様 §08＋§10.2〜§10.7 を正とする。文言・細部の調整は実装時に `growmate-ui-ux` 正本に従って行う。
 
 ### 10.6 メディア全体スコアと散布図（`/ga4-dashboard`。評価エンジン仕様 §06）
 
@@ -1013,7 +1406,84 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 | 表示回数（impressions） | 検索結果に出た回数 |
 | 掲載順位 | 検索順位 |
 
-適用範囲は**ツール内の UI 全体**とする（原文正本の原則で 2026-08-17 改訂。評価エンジン仕様 §08「ツール内でGA4用語を全面禁止」・§09-13「用語言い換え表をUI全体に適用（GA4用語をコード検索して残存ゼロを確認）」に従う）。フェーズ2で新設・変更する評価UI・一覧の評価列・`/ga4-dashboard` の追加要素に加え、**既存画面（GSC タブ・既存 GA4 ダッシュボード等）の表示文言も残存ゼロ検査と置換の対象に含める**（旧「既存画面は別チケット」方針は失効）。増分は §3.4「UI用語言い換え」の見積へ算入済み（+4〜6h）。
+適用範囲は**ツール内の UI 全体**とする（原文正本の原則で 2026-08-17 改訂。評価エンジン仕様 §08「ツール内でGA4用語を全面禁止」・§09-13「用語言い換え表をUI全体に適用（GA4用語をコード検索して残存ゼロを確認）」に従う）。フェーズ2で新設・変更する評価UI・一覧の評価列・`/ga4-dashboard` の追加要素に加え、**既存画面（GSC タブ・既存 GA4 ダッシュボード等）の表示文言も残存ゼロ検査と置換の対象に含める**（旧「既存画面は別チケット」方針は失効）。増分は §3.4「UI用語言い換え」の見積へ算入済み（+4〜6h）。**フェーズ3の通知メール本文も適用対象とする**（BR-13。画面外だがユーザーが読むテキストである）。
+
+### 10.8 コンテンツ評価サイクル設定（フェーズ3。2026-08-19 追加）
+
+#### 配置
+
+記事詳細 `/analytics/[annotationId]` の**「概要」タブ**に、既存の「検索順位評価サイクル設定」（`EvaluationSettings.tsx`。現在 `OverviewTab.tsx:214` に配置）と**横並び**で置く（2026-08-19 ユーザー指示）。
+
+- `lg` 以上で2カラム（左＝検索順位評価サイクル設定、右＝コンテンツ評価サイクル設定）、`lg` 未満は縦積みへフォールバックする（記事カードと同じ方針。§18 2026-08-19 行）。
+- 「概要」タブに置く理由: 2つのサイクル設定は**同じ性質の設定**（この記事を定期的に評価するか）であり、並べて比べられることに意味がある。コンテンツ評価タブへ置くと GSC 側と離れ、どちらを設定したのか分からなくなる。
+- 「コンテンツ評価」タブ側には**サイクル設定を置かない**。同じ設定を2箇所から変更できると、どちらが正かの判断が要る（§18 2026-08-19「履歴の重複」と同じ理由で重複を作らない）。代わりに、コンテンツ評価タブの記事カードに**次回評価予定日時のみを読み取り専用で表示**し、「設定は概要タブ」と示す。
+
+#### 構成（GSC 側と同型）
+
+操作セット（開始／設定変更。停止・削除なし）と入力3項目は GSC と揃える。表の「GSC との差」は**評価種別由来**（初回計測の有無・評価期間の意味）と**通知チャネル由来**（メール失敗表示）であり、設定操作の追加ではない（§6.6）。
+
+| 要素 | 内容 | GSC との差 |
+|---|---|---|
+| 見出し | 「コンテンツ評価サイクル設定」＋稼働中バッジ | 同型 |
+| 説明文 | 「N日ごとに読み始め率・読了率を自動的に評価します」 | 用語言い換え適用（§10.7） |
+| 主ボタン | 未登録＝「コンテンツ評価を開始」／登録済み＝「設定を変更」 | 同型 |
+| ダイアログ | 基準日（date input）／評価サイクル日数（1〜365、既定30）／評価実行時間（0〜23時のセレクト） | 同型 |
+| スケジュールプレビュー | **「基準日」「初回評価日」の2枠** | GSC は「基準日／初回計測日／初回評価日」の3枠。コンテンツ評価は初回計測の概念を持たない（§6.6.2） |
+| 状態カード | 現在の基準日／次回評価予定 | GSC は初回計測前だけ3枚出す分岐がある（`EvaluationSettings.tsx:406-447`）。コンテンツ評価は常に2枚 |
+| 「今すぐ評価を実行」ボタン | **置かない** | 既に「コンテンツ評価」タブに「評価を実行」がある（§10.4）。同じ操作を2箇所に置かない |
+| 補足 | 「評価対象期間は直近90日で固定です。評価サイクルは、次に評価するまでの間隔です。」 | GSC には無い注記。§6.6.3 の混同を画面で防ぐ |
+
+#### 既存 GSC 側で変更する箇所
+
+**なし。**`EvaluationSettings.tsx`（見出し「検索順位評価サイクル設定」・説明文・ダイアログ・状態カード・バッジ・props）は**一切変更しない**。フェーズ3で触れるのは `OverviewTab.tsx` のレイアウト（同コンポーネントを2カラムの左側へ置く）だけであり、`EvaluationSettings.tsx` 自体は §17 のフェーズ3変更対象にも含めない。
+
+- 理由: 上の構成表は「コンテンツ評価サイクル設定」側の作りを GSC と**同型に揃える**ためのものであって、GSC 側を書き換える指示ではない。GSC 側の文言を変えると AC-14（既存3タブの内容・操作の挙動保存）と衝突する。
+- GSC 側の表示文言に GA4 用語が残っている場合の置換は、**フェーズ2 の「UI用語言い換え（UI 全体適用）」のスコープ**であり（§10.7 / AC-17）、フェーズ3では扱わない。
+- この節を「なし」と明記するのは、§3.4 の内訳行が実装エージェントに対して既存 GSC UI への無制限の変更許可として読まれるのを防ぐためである（2026-08-19 audit 指摘）。
+
+#### 状態表示
+
+| 状態 | 表示 |
+|---|---|
+| 未登録 | 破線ボックスで「未設定。『コンテンツ評価を開始』から設定してください」 |
+| 登録済み（`active`） | 「稼働中」バッジ＋基準日＋次回評価予定（日本時間の時刻付き） |
+| Google連携の再確認が必要 | 「Google連携を確認してください」を併記する（サイクルは残す。再連携すれば次回から動く） |
+| 直近の通知が失敗 | 「前回の通知メールを送信できませんでした」を状態カードに小さく出す（`last_notification_status='failed'`） |
+| メールアドレス未登録 | 「メールアドレスが未登録のため通知は送られません。評価結果はこの画面で確認できます」（`skipped_no_email`） |
+
+**停止できないことをユーザーへ伝えるか（判断と記載）:** 伝える。ただしこれは**設定操作の追加ではない。** 操作セットは GSC と同型（開始／設定変更のみ。停止・削除ボタンは置かない。Q-J）。登録済み（`active`）の状態カードに、**「設定を変更すると次回以降の評価予定が変わります。評価の停止・削除は現在お使いいただけません。」を常時併記する**のは、通知先がメールであることの開示である（GSC はアプリ内通知のため同文を持たない）。文言はメール本文側の通知理由（§10.9 ブロック6）と揃える。
+
+文言は仮置きであり、確定は §10.7 と `ui-text.md` 正本に従う。状態は色だけで表現せず、ラベル・文言を併用する（§10.3 末尾と同じ）。
+
+### 10.9 通知メールの文面（フェーズ3。2026-08-19 追加）
+
+「文面は評価した結果とシステムの遷移先URLを入れる」（2026-08-19 ユーザー指示）を満たす最小構成とする。**文面はコードで組み立てる**（LLM に書かせない。テンプレート管理画面も作らない。§3.2 フェーズ3 Non-goal）。診断文は評価時に生成済みの `narrative_json` を流用する。
+
+#### 件名
+
+`【GrowMate】コンテンツ評価が完了しました：{記事タイトル}`
+
+- 記事タイトルが長い場合は末尾を省略する。タイトルが未取得の場合は記事URLのパスを使う。
+
+#### 本文（HTML）
+
+| ブロック | 内容 | 出典 |
+|---|---|---|
+| 1. 見出し | 「コンテンツ評価が完了しました」＋記事タイトル | — |
+| 2. 結果サマリ | **コンテンツ力スコア（N点）＋点数帯ラベル**（例「43点 ／ 改善の余地あり」）、読み始めスコア・読了スコア、サイト内順位「N位 / M記事中」 | §6.2 / §6.4 |
+| 3. 診断 | `headline` と `situation`（1〜2文） | §6.3.4 |
+| 4. 次の一手 | `next_action` と `target` | §6.3.4 |
+| 5. **遷移先URL** | 「GrowMate で詳細を見る」ボタン兼リンク → `${NEXT_PUBLIC_SITE_URL}/analytics/${annotationId}` | §9.5 |
+| 6. フッタ | 評価対象期間（`YYYY/MM/DD〜YYYY/MM/DD`）、次回評価予定日、通知の理由（「この記事にコンテンツ評価サイクルを設定しているため送信しています」）と設定変更の導線（同じ記事詳細URL） | §6.6 |
+
+#### 文面の規則
+
+- **用語言い換えを適用する**（BR-13）。「セッション」「エンゲージメント率」等の GA4 用語を本文に出さない（§10.7）。
+- **欠損を 0 と書かない**（BR-02）。サイト内順位や完読率が取れていない場合は、その行ごと出さない。「0位」「0%」と書かない。
+- **人数を率から換算しない**（§10.3 の3と同じ禁則）。人数ファネルはメールには載せない（実測の有無で出し分けが要り、文面が複雑になるため。詳細はアプリで見る）。
+- `narrative_failed` の場合はブロック3・4を「診断コメントを作成できませんでした。点数は算出済みです。」に置き換え、ブロック2と5は通常どおり出す。
+- 点数帯は**色だけでなく必ず文言を併記する**（メールクライアントによって色が落ちるため。§10.3 末尾と同じ理由）。
+- HTML は `sanitizeEmailHtml` を通す（§9.5）。外部画像・外部CSS・スクリプトを含めない。
 
 ## 11. 非機能要件
 
@@ -1022,7 +1492,7 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 | 分類 | 要件・目標値 | 検証方法 | 状態・根拠 |
 |---|---|---|---|
 | 性能・レイテンシ | 手動評価の実行経路は `maxDuration=180秒`。LLM 1回45秒・最大3回・間隔2秒（§8.1）。**一覧のページサイズは現状 `app/analytics/page.tsx:59` の `const perPage = 10;`（1ページ10件固定）であり、本仕様では変更しない。**`analyticsContentService.ts:14` の `MAX_PER_PAGE = 100` と一覧RPCの `GREATEST(1, LEAST(100, …))`（`20260809100000_...sql:36`）はサーバ側のクランプ上限であってページサイズではない | §13 APIテスト（LLMタイムアウト）、AC-00（既存ページングの挙動不変）、実データ検証 | 確定。ページサイズを10から変更すると §3.2・§3.4 フェーズ0完了条件・AC-00 の「既存レスポンス・ページングの挙動が変更されていない」に反する |
-| 可用性・信頼性 | 外部 API または LLM の一時障害で、既存の正常結果が失われない。評価機能の停止が既存の一覧・記事詳細（`/analytics/[annotationId]` の既存3タブ）・既存の取込経路（GSC は `gsc-evaluate` Cron、GA4 は `/api/ga4/sync` のユーザー起動）へ波及しない | AC-04、AC-06、§13 サービステスト | 確定。SLA 目標値は設定しない（MVPは手動実行のみで可用性が業務停止に直結しない）。取込経路の実態は §8.2 |
+| 可用性・信頼性 | 外部 API または LLM の一時障害で、既存の正常結果が失われない。評価機能の停止が既存の一覧・記事詳細（`/analytics/[annotationId]` の既存3タブ）・既存の取込経路（GSC は `gsc-evaluate` Cron、GA4 は `/api/ga4/sync` のユーザー起動）へ波及しない | AC-04、AC-06、§13 サービステスト | 確定。SLA 目標値は設定しない（フェーズ2までは手動実行のみで可用性が業務停止に直結しない）。**フェーズ3の毎時バッチは、1回の失敗を次の毎時実行で回復する設計とする**（中断・失敗した記事は `last_evaluated_on` を進めない、または次サイクルで再評価される。§8.3 / §6.6.4）ため、単発の失敗に対する SLA も設定しない。取込経路の実態は §8.2 |
 | セキュリティ・プライバシー | Google 認証情報・Service Role キー・個人情報を LLM 入力や通常ログへ出さない。所有者境界は §7.2 のアプリ層明示スコープと DB trigger。`error_message` は sanitized 値のみ。保持期間・削除条件は §7.6 | §13 サービステスト（ユーザーID分離・ログ秘匿）、DBテスト（ユーザー間の参照遮断） | 確定。§7.2 / §7.5 / §7.6 |
 | 認証・認可 | 許可ロールは `admin` / `paid`（`ga4-permissions.ts:7`）。`/analytics` 配下は `proxy.ts:11,177-179,215-217` のプレフィックスマッチで保護され、記事詳細 `/analytics/[annotationId]` も自動対象（2026-08-15 実測）。**加えて CLAUDE.md ポリシー（2026-08-15）に従い、ページのデータ取得・Server Action・Route Handler の入口で認可を必須検証する（読み取り＝`canAccessGa4` / 書き込み＝`canWriteGa4`。§3.3 認可関数の使い分け）**（§3.3 / BR-07）。未認可時の応答形は §3.3「未認可時の応答契約」で固定する。RLS は §7.5 のとおり Service Role 経路ではバイパスされるため多層防御として扱う | AC-12、§13 E2E（`trial` ロールが `/unauthorized` へ誘導される）、§13 認可テスト（応答形・403）、DBテスト（RLS） | 確定。§3.3 に実測（2026-08-15）を記載 |
 | 整合性・排他 | `start_ga4_content_evaluation` RPC の行ロックと `(user_id, content_annotation_id)` の一意制約により、同一ユーザー・同一記事の手動評価が同時に二重実行されない。`lease_expires_at` 15分TTLで固着を回復する | AC-07、§13 DBテスト（同時実行・stale回復） | 確定。§8.1 |
@@ -1030,10 +1500,12 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 | 監査・ログ | 評価履歴に実行日時・状態・試行回数・エラーコード・プロンプトバージョン・入力データ識別情報を保存する（§7.3）。ログのマスキングは §9.4.2 | §13 サービステスト（履歴保存） | 確定。誰が実行したかの操作ログは別途持たない（RLSが自己参照のみで実行者＝所有者に限られるため） |
 | 障害対応 | Kill Switch（§8.2）でDB設定変更のみ・デプロイなしに評価を停止できる。stale 実行は次回開始時に自動回復する | AC-06、AC-07（stale）、§13 DBテスト | 確定。RTO/RPO は設定しない（自動フェイルオーバー・多重化は行わず既存アプリの構成に従う） |
 | バックアップ・復旧 | 評価履歴はロールバック時も削除しない（§14） | §13 DBテスト（ロールバック） | 確定。評価専用のバックアップ設計は持たない（Supabase 既存のバックアップ方針に従う） |
-| 運用・監視 | 評価失敗率・stale 回復件数はDBから集計可能な形で履歴に残す | §7.3 の列定義、実データ検証 | 確定。専用の監視ダッシュボード・アラートはMVP対象外（定期Cronを持たないため常時監視の必要性が低い） |
+| 運用・監視 | 評価失敗率・stale 回復件数はDBから集計可能な形で履歴に残す。**フェーズ3の毎時バッチの監視手段は `.github/workflows/hourly-cron.yml` ＋ `scripts/invoke-cron.sh` の `count-batch` profile 判定とする**（`data.failed > 0` で job が FAIL。§8.3 の予約キー表） | §7.3 の列定義、実データ検証、§14 手順18（数サイクル分の実行ログ確認） | 確定。専用の監視ダッシュボード・アラートは引き続きMVP対象外。**フェーズ2までの「定期Cronを持たないため常時監視の必要性が低い」という根拠はフェーズ3では成立しない**ため、根拠を「Cron の profile 判定が失敗を GitHub Actions の job 失敗として表面化させるため、専用ダッシュボードを別途持たない」へ置き換える（2026-08-19） |
 | 拡張性・互換性 | スコアリング定数の改版（`scoring_config_version`）・定期Cronは本書の構造を壊さず後から足せるよう、状態は §6.5 の永続/非永続の区分で分離し、履歴を正本とする | §13 単体テスト（状態遷移） | 確定。対応ブラウザ・端末は既存画面の前提に従う |
-| アクセシビリティ | 状態は色だけで表現せずラベル・文言を併用する。それ以外は既存画面の作りに従う（並び替えは実装しないため `aria-sort` は対象外。Q-B） | AC-09、AC-10 | 確定。記事詳細の情報階層はフェーズ2で統合レイアウトへ再設計する（Q-C。§10.1）。レスポンシブの新規要件定義は §3.2 で対象外 |
-| コスト | LLM 呼び出しは1評価あたり最大3回（文章化のみ。判定はコードでコストゼロ＝評価エンジン仕様 §01）。GA4 レポート API は評価実行時に呼ばない（§9.2.1）。**コスト上限は設けない（Q8 決着 2026-08-16。開発側既定）**: 手動トリガーのみで暴走経路がなく、入力は §6.3.3 の算出済み変数のみ・出力は200字強で、1評価あたりのコストは旧設計（本文80,000字予算）より大幅に小さい。月間件数は運用実測とし、上限が必要になれば Kill Switch（§8.2）で停止したうえで後付けする | 履歴テーブルの実行記録から運用実測 | 確定（クライアントは回答不能と回答。開発側既定で確定） |
+| アクセシビリティ | 状態は色だけで表現せずラベル・文言を併用する。それ以外は既存画面の作りに従う（並び替えは実装しないため `aria-sort` は対象外。Q-B） | AC-09、AC-10 | 確定。記事詳細の情報階層はフェーズ2で4タブ（独立タブ）へ再設計する（Q-C 改訂 2026-08-19。§10.1 / §10.3）。レスポンシブの新規要件定義は §3.2 で対象外 |
+| 定期実行（フェーズ3） | 毎時 Cron。`maxDuration=300` / `maxTime=310` / **`maxRetries=1`**（メール重複防止。§8.3）。1バッチの上限は 10ユーザー・20記事、時間予算 280秒（うち GA4 同期は `SYNC_TIME_BUDGET_MS`＝120秒で有界化）、記事評価は逐次。取りこぼしは次の毎時実行で回復する前提とし、1回で全件を捌かない。**ただし1バッチで最低1記事は評価してから中断する**（同期だけで枠を使い切るライブロックを避ける。0件で終わった実行は `stoppedReason='no_progress'` として FAIL 扱い。§8.3）。due 抽出は `db-max-rows = 1000` の対象のため**既存の `SupabaseService.fetchAllPaged` に `count:'exact'` を渡して**全件回収し、回収しきれない件数を `truncatedCandidates` として結果 JSON とログへ出す | AC-20、§13 単体テスト（due 判定・クールダウン）、実データ検証（1サイクル通し） | フェーズ3で確定（2026-08-19）。GSC バッチ（`gscEvaluationService`）の定数を写し、LLM を伴う分だけ並列度と件数上限を絞った |
+| 通知（フェーズ3） | 1つの評価履歴につきメール1通まで（BR-12）。宛先は `users.email` の1件。未登録・送信失敗は評価の成否に影響させず、記録とログに残す。再送は行わない。**1評価＝1通で束ねないため、1ユーザーが同一バッチで受け取りうる最大通数は20通**（§9.5 / §3.2）。**Resend のレート制限 10 req/s per team・日次/月次クォータは既存の Google Ads メールと同一チームで共有する**（公式引用は §16）。429（`daily_quota_exceeded` / `monthly_quota_exceeded`）は他の失敗と区別して記録する。二重送信対策は `maxRetries:1` ＋ `last_notified_history_id` ＋ Resend の `Idempotency-Key` の3段（§9.5） | AC-21、§13 サービステスト（冪等性・未登録・失敗） | フェーズ3で確定（2026-08-19）。§9.5 / §16 |
+| コスト | LLM 呼び出しは1評価あたり最大3回（文章化のみ。判定はコードでコストゼロ＝評価エンジン仕様 §01）。**フェーズ3で定期実行が加わり、手動トリガーのみという Q8 の前提（暴走経路がない）が変わる。**上限は「サイクル登録した記事数 × 1/サイクル日数」で有界であり、1バッチ 20記事・毎時の上限が効くため、月あたりの最大 LLM 呼び出し回数は概算できる（20記事 × 24時間 × 30日 = 14,400回が理論上限だが、実際はサイクル日数のクールダウン＝BR-11 で1記事あたり月に高々 30/`cycle_days` 回）。それでも Q8 の「上限は設けず運用実測」は維持し、必要になれば Kill Switch で停止する（§8.2）。GA4 レポート API は評価実行時に呼ばない（§9.2.1）。**コスト上限は設けない（Q8 決着 2026-08-16。開発側既定）**: 手動トリガーのみで暴走経路がなく、入力は §6.3.3 の算出済み変数のみ・出力は200字強で、1評価あたりのコストは旧設計（本文80,000字予算）より大幅に小さい。月間件数は運用実測とし、上限が必要になれば Kill Switch（§8.2）で停止したうえで後付けする | 履歴テーブルの実行記録から運用実測 | 確定（クライアントは回答不能と回答。開発側既定で確定） |
 
 ### AI 機能の観点
 
@@ -1161,17 +1633,9 @@ Feature: GA4コンテンツ評価
     And 評価を実行する操作が可能になる
 ```
 
-### AC-06 Kill Switch で評価を停止できる
+### AC-06 ~~Kill Switch で評価を停止できる~~（廃止）
 
-```gherkin
-  Scenario: 評価機能が Kill Switch で停止されている
-    Given `ga4_content_evaluation_settings.enabled` が false、行なし、またはDB読取失敗である
-    When 記事の評価を実行しようとする
-    Then 評価 API は実行されない
-    And 記事詳細の「コンテンツ評価」タブに停止中の表示が出る
-    And 評価実行ボタンは非活性である
-    And /analytics 一覧の評価状態が停止中として表示される
-```
+**2026-08-19 ユーザー決定により廃止。** Kill Switch は削除済み（§8.2）。
 
 ### AC-07 同一記事の二重実行を防ぐ
 
@@ -1419,6 +1883,163 @@ Feature: GA4コンテンツ評価
     And wp_image_count が 0 で保存済みの記事は「未取得」と区別され、再取得されない
 ```
 
+### AC-19 コンテンツ評価サイクルを記事単位で設定できる（フェーズ3。2026-08-19 追加）
+
+```gherkin
+  Scenario: サイクルを新規登録する
+    Given paid ロールで記事詳細 /analytics/[annotationId] の「概要」タブを開いている
+    And この記事にコンテンツ評価サイクルが未登録である
+    Then 「コンテンツ評価サイクル設定」が「検索順位評価サイクル設定」と横並びで表示される
+    And 未設定である旨が表示される
+    When 「コンテンツ評価を開始」から 基準日・評価サイクル日数・評価実行時間 を指定して保存する
+    Then ga4_content_evaluation_cycles に status='active' の行が1件作成される
+    And 状態カードに現在の基準日と次回評価予定（基準日 + サイクル日数、指定時刻、日本時間）が表示される
+    And スケジュールプレビューは「基準日」「初回評価日」の2枠であり、GSC のような「初回計測日」は出ない
+
+  Scenario: 評価対象期間とサイクル日数を混同させない
+    Given サイクル設定のダイアログを開いている
+    Then 「評価対象期間は直近90日で固定」「評価サイクルは次に評価するまでの間隔」である旨が表示される
+    When 評価サイクル日数を 30 から 7 へ変更して保存する
+    Then 保存済みの評価結果の点数・診断は変わらない
+    And 次回評価予定だけが再計算される
+
+  Scenario: 入力値の範囲を検証する
+    When 評価サイクル日数に 0 または 366 を、評価実行時間に -1 または 24 を送る
+    Then Server Action がバリデーションエラーを返し、DB に保存されない
+
+  Scenario: 許可されないロールは設定できない
+    Given trial ロールでサイクル設定の Server Action を直接呼び出す
+    Then { success:false, error: <GA4 群の拒否文言> } が返る
+    And ga4_content_evaluation_cycles に行が作成されない
+
+  Scenario: 他ユーザーの記事にサイクルを設定できない
+    When 自分の user_id と他ユーザーの content_annotation_id の組で保存を試みる
+    Then 所有者検証 trigger が拒否し、行が作成されない
+```
+
+### AC-20 定期評価バッチが予定日時に達した記事だけを評価する（フェーズ3。2026-08-19 追加）
+
+```gherkin
+  Scenario: 予定日時に達した記事を評価する
+    Given ある記事の next_evaluation_date が今日で、evaluation_hour が 12 である
+    And 現在が日本時間 12:00 以降である
+    And Kill Switch が有効である
+    When /api/cron/ga4-content-evaluate が CRON_SECRET 付きで呼ばれる
+    Then その記事のユーザーについて ga4ImportService.syncUser が1回だけ呼ばれる
+    And その記事の評価が既定90日の期間で実行される
+    And last_evaluated_on が実行日へ進む
+
+  Scenario: 予定日時に達していない記事は評価しない
+    Given next_evaluation_date が今日で、evaluation_hour が 12 である
+    And 現在が日本時間 11:59 である
+    When バッチが実行される
+    Then その記事は評価されず、last_evaluated_on も変わらない
+
+  Scenario: サイクル未登録の記事は定期評価の対象にならない
+    Given ga4_content_evaluation_cycles に行がない記事が存在する
+    When バッチが実行される
+    Then その記事は評価されない
+
+  Scenario: 失敗した記事を毎時再実行しない
+    Given ある記事の評価が import_failed で終わった
+    Then last_evaluated_on が実行日へ進む
+    And 次の毎時実行では対象にならない
+
+  Scenario: 中断した記事は次回に持ち越す
+    Given バッチが時間予算（280秒）に達して中断した
+    Then 未処理の記事の last_evaluated_on は進まない
+    And stoppedReason='time_limit' と残件数がログに出る
+    And 次の毎時実行でその記事が対象になる
+
+  Scenario: Kill Switch が無効なら何もしない
+    Given ga4_content_evaluation_settings.enabled が false である
+    When バッチが実行される
+    Then due 抽出も GA4 同期も評価もメール送信も行われない
+
+  Scenario: 許可されないロールはバッチの対象外
+    Given trial ロールのユーザーにサイクル行が残っている
+    When バッチが実行される
+    Then その行は評価対象から除外される
+
+  Scenario: due 候補の切り捨てを検知する
+    Given due な候補が PostgREST の 1000 行上限を超える
+    When バッチが実行される
+    Then count:'exact' の総件数と取得件数の差が検知される
+    And 未処理として残った件数が truncatedCandidates として結果 JSON に出る
+    And 候補は next_evaluation_date の昇順で「取得」される（処理順はユーザー単位のシャッフルで決まる。§8.3）
+    And 回収しきれなかった候補は next_evaluation_date が最も新しい側である
+
+  Scenario: 取込に失敗した実行はクールダウンしない
+    Given あるユーザーの syncUser が失敗した
+    And そのユーザーの記事の next_evaluation_date が当日である
+    When その記事の評価が実行される
+    Then last_evaluated_on は進まない
+    And メールは送信されない
+    And 次の毎時実行でその記事が再び対象になる
+
+  Scenario: 取込失敗が続いても無限には見送らない
+    Given syncUser が失敗し続けている
+    And ある記事の next_evaluation_date が当日より前になった
+    When その記事の評価が実行される
+    Then last_evaluated_on が実行日へ進む
+    And 結末は import_failed として記録される
+
+  Scenario: 同期だけで時間を使い切ってもバッチは前進する
+    Given syncUser の合計所要が SYNC_TIME_BUDGET_MS を超えた
+    When バッチが継続する
+    Then 以降のユーザーの syncUser は呼ばれない
+    And 少なくとも1記事は評価される
+    And 1記事も評価できなかった場合は stoppedReason='no_progress' となり data.failed が 1 以上になる
+```
+
+### AC-21 評価完了をメールで通知する（フェーズ3。2026-08-19 追加）
+
+```gherkin
+  Scenario: 評価が成立したらメールが届く
+    Given バッチである記事の評価が evaluated で完了した
+    And そのユーザーの users.email が登録されている
+    Then Resend で1通のメールが送信される
+    And 件名に記事タイトルが含まれる
+    And 本文にコンテンツ力スコア・点数帯ラベル・診断見出し・次の一手が含まれる
+    And 本文に ${NEXT_PUBLIC_SITE_URL}/analytics/${annotationId} へのリンクが含まれる
+    And last_notified_history_id に今回の評価履歴 ID が記録される
+
+  Scenario: 同じ評価結果で二度送らない
+    Given ある評価履歴について既にメールを送信済みである
+    When Cron が再実行される、または同じ履歴に対して送信処理が再度走る
+    Then メールは送信されない
+
+  Scenario: 診断文の生成に失敗しても点数は通知する
+    Given 評価が narrative_failed で完了した
+    Then メールは送信される
+    And 本文の診断・次の一手の欄は「診断コメントを作成できませんでした。点数は算出済みです。」になる
+    And コンテンツ力スコアと記事詳細URLは通常どおり含まれる
+
+  Scenario: 評価が成立しない場合は送らない
+    Given 評価が insufficient_data / import_failed / evaluation_failed のいずれかで終わった
+    Then メールは送信されない
+    And 評価結果はアプリの記事詳細で確認できる
+
+  Scenario: メールアドレス未登録なら通知だけを落とす
+    Given users.email が NULL である
+    When 評価が evaluated で完了する
+    Then メールは送信されない
+    And last_notification_status が 'skipped_no_email' になる
+    And 評価そのものは成功として保存され、last_evaluated_on は進む
+    And 設定画面に「メールアドレスが未登録のため通知は送られません」が表示される
+
+  Scenario: 送信失敗を握りつぶさない
+    Given Resend がエラーを返す
+    Then console.error にエラーが記録される
+    And last_notification_status が 'failed' になり、sanitized なエラーが保存される
+    And 送信の再試行は行われない
+    And 評価結果は保存されたままである
+
+  Scenario: メール本文に GA4 用語を出さない
+    Then 本文に「セッション」「エンゲージメント率」「平均エンゲージメント時間」「ランディングページ」等の GA4 用語が含まれない
+    And 欠損している指標の行は出力されず、0 として表示されない
+```
+
 ### AC と成功条件・要求出典の対応
 
 `docs/templates/requirement-definition.md` §5「機能要件」の FR-ID 表と §6「シナリオ対応表」は導入していない（理由は §19 の残置記録）。代替として、各 AC が本書のどの成功条件・どの要求出典に対応するかを次に示す。
@@ -1444,6 +2065,9 @@ Feature: GA4コンテンツ評価
 | AC-16（フェーズ2） | メディア全体の資産価値・実効スコアと散布図で改善が追える | 評価エンジン仕様 §06 |
 | AC-17（フェーズ2） | UI に GA4 用語を出さない | 評価エンジン仕様 §08 |
 | AC-18（フェーズ2。2026-08-19 追加） | （成功条件の前提となるデータ充足。既存レコードの追加指標を埋める導線） | §4.1.2 後方互換方針（2026-08-18 決定）／§14 リリース手順 |
+| AC-19（フェーズ3。2026-08-19 追加） | §2.3 フェーズ3「記事ごとに評価サイクル（基準日・サイクル日数・実行時刻）を登録でき、次回評価予定日時を画面で確認できる」 | 2026-08-19 ユーザー指示「GSC評価と同様に評価サイクル設定できるように。『検索順位評価サイクル設定』と横並びで」／既存 `EvaluationSettings.tsx` |
+| AC-20（フェーズ3。2026-08-19 追加） | §2.3 フェーズ3「登録した記事が、手動操作なしに設定した周期で評価される」／§2.4 KPI「サイクル評価の成立率」「バッチ完走率」 | 同上「ひとまず『検索順位評価サイクルの開始』と同じ仕様でミニマム開発」 |
+| AC-21（フェーズ3。2026-08-19 追加） | §2.3 フェーズ3「評価が成立した記事について、結果の要約と記事詳細URLがメールで1通だけ届く」／§2.4 KPI「通知の送信成功率」 | 同上「評価後はシステム内ではなく resend メール送信。文面は評価した結果とシステムの遷移先URL」 |
 | （AC なし） | 評価に使用した期間・データ取得日時・プロンプトバージョン・スコアリング設定バージョンを追跡できる | §7.3 の列定義と §13 サービステストで担保。UI からの追跡は §10.3-5 |
 
 ## 13. テスト計画
@@ -1465,7 +2089,15 @@ Feature: GA4コンテンツ評価
 - E2E: 未評価フィルタ、記事詳細の「コンテンツ評価」タブ表示、評価実行、評価中表示、評価結果と根拠表示、前回結果保持、データ不足・失敗・Google連携確認表示、Kill Switch停止表示、移設後の `/analytics/[annotationId]` で既存3タブが変わらないことの確認（AC-14）。
 - 実データ検証: 少なくとも1ユーザーの実GA4/GSCデータを使い、画面値・保存値・API応答を突合する。モックの結果だけで完了判定しない。
 - GA4取込拡張テスト（2026-08-17 に対象変更）: `landingPage` 軸への `engagementRate`・`activeUsers` 追加の Compatibility API 確認（migration 前の必須実測。§4.1.1）、metrics 追加後の取り出しインデックス・集計（engagementRate のセッション加重平均）・保存の整合、既存レコードNULLのままの期間の扱い、`wp_image_count` の同期時算出を検証する。
-- UI用語検査: ツール内 UI 全体（新設・変更ファイルおよび既存画面）の表示文言に GA4 用語が残存しないこと（AC-17。§10.7 の対応表をコード検索で機械確認。原文正本の原則で既存画面も対象）。
+- UI用語検査: ツール内 UI 全体（新設・変更ファイルおよび既存画面）の表示文言に GA4 用語が残存しないこと（AC-17。§10.7 の対応表をコード検索で機械確認。原文正本の原則で既存画面も対象）。**フェーズ3では通知メールの本文組み立て関数も検査対象に含める**（BR-13 / AC-21）。
+- **サイクル判定の単体テスト（フェーズ3。純関数として切り出して網羅する）**: `next_evaluation_date` が過去／当日／未来のそれぞれ、当日 × `evaluation_hour` の前後（`hour-1` / `hour` / `hour+1`）、`last_evaluated_on` が NULL のとき基準日が使われること、`cycle_days` の境界（1 / 365）、JST 変換（UTC 15:00 = JST 翌日 00:00 の日跨ぎ）。判定式は GSC の `isDue`（`gscEvaluationService.ts:568-587`）と同値であることを対照して固定する。
+- **結末の判定契約テスト（フェーズ3。§8.3）**: `run()` が (1) `new Error('evaluation disabled')` を throw → `evaluation_disabled` かつバッチ全体が打ち切られること、(2) `code:'needs_reauth'` 付き Error を throw → `needs_reauth`、(3) `'... already running ...'` を throw → `already_running`、(4) その他の throw → `unknown_error` かつ `console.error` が出ること、(5) **`low_data` の早期 return で「前回の成功結果（`displayStatus='evaluated'`・前回の `history`）」が返ってきても `evaluated` と誤判定せず `low_data` と判定すること**（`history[0].startedAt` が呼び出し開始時刻より前）、(6) 履歴行が今回のものであるとき結末はその行の `status` になること、を固定する。**(5) はこの契約の中核であり、落とすと前回の評価結果でメールを送る回帰が入る。**
+- クールダウンの分岐テスト（フェーズ3。BR-11）: §6.6.4 の表の全行（結末11値 ＋ 取込失敗 ＋ ロール不許可・時間予算切れ・件数上限切れ）で `last_evaluated_on` が進む／進まないことを固定する。とくに `evaluated` / `narrative_failed` / `insufficient_data` / `low_data` / `import_failed` / `evaluation_failed` / `unknown_error` / `needs_reauth` は進み、`evaluating` / `already_running` / `evaluation_disabled` / `unassessed` / `eligible` と中断事由では進まないこと。**取込失敗の分岐**（当日は進めない／`next_evaluation_date` が当日より前なら進める）も含める。**この分岐を落とすと失敗記事が毎時 LLM を呼び続けるため、回帰テストとして必ず置く。**
+- バッチのテスト（フェーズ3）: due 抽出が **SQL 側で**ロール絞り込みされること（`trial` / `unavailable` の行が SELECT の結果に含まれない）、アプリ側の再確認でも除外されること、ユーザー単位で `syncUser` が1回だけ呼ばれること（記事数ぶん呼ばれない）、`SYNC_TIME_BUDGET_MS` 超過で以降の `syncUser` を呼ばないこと、**1記事も評価できずに `time_limit` に達した場合に `stoppedReason='no_progress'` と `data.failed >= 1` を返すこと（ライブロック検知）**、件数上限で打ち切ること、`fetchAllPaged` に `count:'exact'` が渡されること・`truncated===true` のとき `truncatedCandidates` が出ること（AC-20）。**結果 JSON が `{success, data}` 形で、`data.failed` に `articlesFailed + emailsFailed` が合算され、`data.skipped` キーを出さないこと**（`scripts/invoke-cron.sh` の `validate_count_batch` と同じ判定を CI で再現する）。`CRON_SECRET` 不一致で 401、未設定で 500。
+- メール通知のテスト（フェーズ3。`emailService` はモックする。既存 `googleAdsNegativeKeywordsSuggestionService.sendForUser.test.ts` と同型）: 送信対象の結末分岐（§9.5 の表の全行）、`last_notified_history_id` が一致するとき送らないこと（BR-12）、**`Idempotency-Key` に今回の評価履歴 ID が渡されること**、送信成功後に記録する順序であること、`users.email` が NULL のとき `skipped_no_email` になり評価は成功のままであること、Resend 失敗時に `console.error` と `failed` 記録が行われ再送しないこと、**429 の `daily_quota_exceeded` / `monthly_quota_exceeded` が他の失敗と区別して `last_notification_error` に残ること**、本文に記事詳細URL（`${NEXT_PUBLIC_SITE_URL}/analytics/${annotationId}`）が含まれること、欠損指標の行が出力されないこと（AC-21）。
+- DBテスト（フェーズ3）: `ga4_content_evaluation_cycles` の RLS（自己参照のみ）、`unique (user_id, content_annotation_id)`、`next_evaluation_date` 生成列の値、CHECK（`cycle_days` 1〜365・`evaluation_hour` 0〜23・`status` 3値・`last_notification_status` 3値）、所有者検証 trigger（他ユーザーの記事を拒否）、`ON DELETE CASCADE`、Service Role からの更新が可能なこと。
+- E2E（フェーズ3）: 「概要」タブでサイクルを登録すると次回評価予定が表示されること、「検索順位評価サイクル設定」と横並びに並ぶこと、コンテンツ評価タブ側には設定導線が無く次回予定のみ読み取り表示されること、Kill Switch 停止中は停止中の注記が併記されること。
+- 実データ検証（フェーズ3）: ステージングでサイクルを1件登録し、実際に Cron が回って評価が走り、**メールが届き、そのリンクから記事詳細へ到達できる**ところまでを通しで確認する。モックの結果だけで完了判定しない（§14 手順）。
 
 ## 14. リリース・ロールバック
 
@@ -1483,6 +2115,18 @@ Feature: GA4コンテンツ評価
 10. 許可された運用手順でステージングのDB設定を `enabled=true` に変更し、実データでスコア・診断・文章・エラー状態を検証する（**生値が GA4 画面と一致することの突合を含む**。§10.3 / §15.2）。
 11. 一般ユーザーへ段階展開する。
 
+#### フェーズ3（コンテンツ評価サイクル）のリリース順序
+
+**前提: フェーズ2が本番で稼働し、手動評価が成立していること。**評価が成立しない状態で定期実行を入れると、毎時のバッチが失敗し続けメールも出ない。
+
+12. `ga4_content_evaluation_cycles` の migration を適用する（生成列・インデックス・RLS・trigger を含む。§7.7）。生成型を更新する。**migration 未適用の環境で実装を進める間は pending 型（`src/types/database.types.pending.ts`）を使用し、適用後に生成型を再取得して pending 型を削除する**（手順7 と同じ運用。`.agents/skills/supabase/service-usage.md` §6 のパターン。`spec-to-pr` は migration 適用前に実装するため、この但し書きが無いと型が無くて実装が止まる）。
+13. サイクル設定UI・Server Action をデプロイする。この時点では Cron を登録していないため、設定できるが定期実行はされない（次回評価予定の表示だけが動く）。
+14. バッチサービスと `/api/cron/ga4-content-evaluate` をデプロイする。**まだ `hourly-cron.yml` へは追加しない。**
+15. `CRON_SECRET` 付きの手動 GET（`workflow_dispatch` 相当）で1回だけ実行し、次を確認する: due 抽出がロールで絞られること、GA4 同期が走ること、評価が保存されること、`last_evaluated_on` が進むこと。**この時点ではメール送信を無効にする手段は「§9.5 の送信対象の判定を落とす」ことに限る**（ロールバック `(2)` と同じ手段）。**`RESEND_API_KEY` 未設定の環境で代用しない**: 実測（`emailService.ts:28-33`）では未設定時も `console.error` を出して `{success:false}` を返すため、§9.5 に従って `last_notification_status='failed'` が保存され、§10.8 の状態表示が「前回の通知メールを送信できませんでした」を出し続ける（ステージング限定とはいえ、検証手順が誤った永続状態を残す）。
+16. メール送信を有効にし、ステージングで**実際に1通受信する**。件名・本文の用語・記事詳細URLからの到達を目視で確認する（§10.9 / AC-21）。
+17. `.github/workflows/hourly-cron.yml` の matrix へ `ga4-content-evaluate` を追加する（`profile: count-batch` / `maxTime: 310` / **`maxRetries: 1`** / `timeoutMinutes: 20`）。**`maxRetries` を 3 にしない**（メール重複の原因になる。§8.3）。
+18. 数サイクル分の実行ログを確認し、**profile が判定するキー（`success` / `data.failed`）が正常であること**を最初に見る（`data.failed > 0` なら job が FAIL しているはずなので、FAIL していないのに `articlesFailed` / `emailsFailed` が立っている場合は合算漏れ＝§8.3 の予約キー表に反する実装バグ）。あわせて内訳 `emailsSent` / `emailsFailed` / `stoppedReason` / `truncatedCandidates` / `articlesSkippedSyncFailed` に異常がないことを見てから一般ユーザーへ案内する。§2.4 のフェーズ3 KPI（成立率・送信成功率・完走率）はこの数サイクル分のログと DB 集計で測る。
+
 手順5（事前確認）の前に次を実施する: 既存 `landingPage` 軸クエリへ `engagementRate` / `activeUsers` を追加する（評価エンジン仕様 §09。2026-08-17 に pagePath 軸方針から転換）。Compatibility を実測し（§4.1.1。`activeUsers` 不可なら ÷sessions フォールバックを確定）、`ga4_page_metrics_daily` へ `engagement_rate` / `active_users` を新設する migration（`page_views` は実在確認済み・不使用。Q-D 決着 2026-08-17）と `content_annotations.wp_image_count` の migration を適用し、§4.1.2 の決定（2026-08-18）に従って**過去90日の再取込**で既存行の新列を埋めてから取込を有効化する。再取込は `/ga4-dashboard` ヘッダーの「**過去90日を再取込**」ボタンから実行する（Kill Switch 有効化前に実施。**`/setup/ga4` の「GA4日次同期を実行」では過去分は埋まらない**）。あわせて WordPress 同期の `wp_image_count` 算出を有効化し、**`/wordpress-import` の一括インポートを1回実行**して本文と画像点数を埋める（§4.1.2）。両方とも**実行後に埋まったことを確認する**: `ga4_page_metrics_daily` の `engagement_rate` / `active_users` が NULL でない行が存在すること、`content_annotations.wp_image_count` が NULL でない行が存在すること。0件のままなら導線が機能していないので、Kill Switch を有効化しない（この確認を省くと、評価が全件「データ蓄積中」で止まる原因が切り分けられない）。
 
 ### ロールバック
@@ -1493,6 +2137,7 @@ Feature: GA4コンテンツ評価
 - 既存の取込経路（GSC は `gsc-evaluate` Cron 経由、GA4 は `/api/ga4/sync` のユーザー起動。§8.2）は停止せず、評価処理だけを停止できる構成にする。GA4取込へ追加した `engagementRate` / `activeUsers`（landingPage 軸）は、問題時に取得対象から外しても既存指標の取込が継続できるようにする。
 - DB ロールバックが必要な場合は、評価専用テーブル・インデックス・ポリシー・`ga4_content_evaluation_settings` を対象に限定する。既存 GA4/GSC テーブルは削除しない。
 - 評価履歴は削除せず、再デプロイ後の再評価に利用できるよう保持する（保持期間は §7.6）。
+- **フェーズ3のロールバック（段階的に止められる）**: (1) 最も軽い手段は `hourly-cron.yml` の matrix から `ga4-content-evaluate` を外すこと。定期実行だけが止まり、設定・手動評価・既存結果は残る。(2) メールだけを止めたい場合は送信対象の判定を落とす（評価は続く）。(3) 評価そのものを止める必要がある場合は Kill Switch（§8.2）で、手動評価も含めて停止する。(4) DB のロールバックは `ga4_content_evaluation_cycles` の削除に限定し、`ga4_content_evaluations` / `ga4_content_evaluation_history` には触れない（サイクル設定を消しても評価結果と履歴は残る）。
 - **ロールバック判断者: 開発チーム。** Kill Switch の無効化はDB設定の変更手順を持つ運用担当が実施する。DB ロールバック（テーブル・ポリシー・RPC の削除）は開発チームの判断とし、実施前に §7.6 の保持方針に反しないことを確認する。
 
 ## 15. クライアント確認事項
@@ -1510,12 +2155,12 @@ Feature: GA4コンテンツ評価
 | Q1 | 評価パターンの分類数・条件を確定してよいか | ~~4分類で確定~~ → **失効（2026-08-17）**: クライアント自身の評価エンジン仕様により、読み始め×読了マトリクスの**6診断コード**（`R_TOP_EXIT` / `R_MISMATCH` / `R_MID_EXIT` / `R_SKIM` / `R_GOOD` / `R_LOWDATA`）へ置換。旧4分類の GSC・PV・CV 条件はスコアリングに使わない。旧回答の改善方向の思想（タイトル/説明文・書き出し・CTA・横展開）は診断コードの既存アラート対応として引き継がれている（§6.2.4） | 2026-08-16 → 2026-08-17 置換 | §6.2 / §6.3.4 / §7.3 / §18 |
 | Q2 | 「70点以下の一覧化」は Must の UI フィルタか、任意か | **「なくていい」。点数閾値のフィルタ・一覧化 UI は実装しない** | 2026-08-16 | §3.2 / §6.4 / §10.3 |
 | Q3 | ROI は今回スコープか。費用・売上データの所在はどこか | **スコープに含めるが、データ連携は追加せずシステムプロンプト側の評価観点で吸収する** | 2026-08-16 | §3.2 / §4.1 |
-| Q4 | 改善提案のメール配信を Non-goal にしてよいか | **合意（Non-goal 確定）**。あわせて「この類型（スコープ縮小の確認）は今後質問しない」という standing 方針が示された | 2026-08-16 | §3.2 |
+| Q4 | 改善提案のメール配信を Non-goal にしてよいか | ~~**合意（Non-goal 確定）**~~ → **部分的に反転（2026-08-19、ユーザー指示）**。フェーズ3で**評価完了の通知メール**（Resend）を追加する。ただし反転したのは通知であって配信ではない: メールに載せるのはスコア・点数帯・診断見出し・次の一手1件・記事詳細URLまでで、**改善提案そのものをメールで配る**（Google Ads 分析メールのような提案本文の配信）は引き続き Non-goal（§3.2 / §10.9）。なお「この類型（スコープ縮小の確認）は今後質問しない」という standing 方針は有効なまま。**クライアント合意の変更にあたるため、共有と再見積を D6 とする（§15.3）**。<br>**出典の補記（2026-08-19）**: メール経路はクライアント自身の発案でもある。`docs/context/client-vision-from-lark.md:116` に verbatim で「提案の配信経路として **メール連携の活用**（既存の日次メールに、GA4 データを根拠にした修正提案を載せる）が挙げられた。」とある。**本反転は「開発側が合意を覆す」一方向の話ではない**が、同記録が想定する内容（提案本文）と経路（既存の日次メールへの相乗り）は、本仕様の設計（通知のみ・評価ごとの独立メール）と2点で異なる。**Q-K（2026-08-19 ユーザー決定）: この差分で進めてよい（現行 §9.5 / §10.9）。** D6 共有時に出典との差分を説明する | 2026-08-16 →<br>2026-08-19 部分反転 | §3.2 / §9.5 / §10.9 / §15.2 Q-K / §15.3 D6 |
 | Q7 | 追加指標の取込（12〜20h）を MVP に含めてよいか | **MVP に含める**（有効）。取得軸は 2026-08-17 の評価エンジン仕様で `landingPage` に確定（対象は `engagementRate` / `activeUsers`。旧 pagePath 軸は失効。§4.1.1） | 2026-08-16（軸は 2026-08-17 更新） | §3.1 / §3.4 / §4.1 / AC-11 |
 | Q8 | 1評価あたりのコスト上限と月あたりの想定評価件数 | **クライアントは回答不能（「わからない」）。開発側既定で確定: 上限は設けず運用実測**。手動トリガーのみ・入力有界のため暴走経路がない。必要になれば Kill Switch で停止して後付けする | 2026-08-16 | §11 コスト行 |
 | Q-A | パターン条件の「PV」は記事自体のPVか、着地セッション基準でよいか | ~~記事自体のPV → pagePath 軸の追加取得~~ → **失効（2026-08-17）**: 評価エンジン仕様に PV は登場せず、スコアリングに使わない。engagementRate は `landingPage` 軸必須（pagePath 禁止）と明記されたため、pagePath 軸の追加取得は丸ごと不要になった（§4.1 / §4.1.1 / §18） | 2026-08-16 → 2026-08-17 失効 | §4.1.1 / §4.2 / AC-11 / §18 |
 | Q-B | 未評価コンテンツはフィルタだけで足りるか、並び替えも必要か | **フィルタだけで足りる**。並び替え（評価状態・点数・最終評価日時）は実装しない | 2026-08-16 | §3.2 / §10.2 / AC-10 |
-| Q-C | 段階的な進め方（移設 → 評価タブ → 情報階層再設計は別チケット）でよいか | **「まとめで全てやる」**。情報階層再設計（統合レイアウト化）をフェーズ2に含める。あわせて「この類型（段階分割 vs まとめて実装の確認）は今後質問しない」という standing 方針が示された | 2026-08-16 | §3.1 / §10.1 / §10.5 / D3 |
+| Q-C | 段階的な進め方（移設 → 評価タブ → 情報階層再設計は別チケット）でよいか | **「まとめで全てやる」**。情報階層再設計をフェーズ2に含める。あわせて「この類型（段階分割 vs まとめて実装の確認）は今後質問しない」という standing 方針が示された。<br>**2026-08-19 改訂（ユーザー決定）: 出荷時のタブ構成は独立タブ（4本）。** 「まとめてやる」は情報階層を別チケットに送らない意味で維持する。たたき台の概要統合は採用しない。差分の根拠は評価カードが概要末尾に沈み到達しない実測。クライアントの 2026-08-13 たたき台との差分はフェーズ2出荷のブロッカーにしない | 2026-08-16 →<br>2026-08-19 配置改訂 | §3.1 / §10.1 / §10.3 / §10.5 / D3 |
 
 ### 15.2 未確定事項（クライアント確認中）
 
@@ -1523,11 +2168,15 @@ Feature: GA4コンテンツ評価
 
 **2026-08-17 更新（評価エンジン仕様の受領後）:** Q-D は決着済み。評価エンジン仕様の反映に伴い、**実測・確認が必要な事項が新たに3件**開いた（Q-G〜Q-I）。いずれも「回答が実装契約を変える」たぐいのもので、フェーズ2の取込 migration・UI 突合の着手前に閉じる。
 
+**2026-08-19 追加（フェーズ3の audit 対応）:** フェーズ3の設計からクライアント確認が必要な論点が2件開いた（Q-J / Q-K）。**同日ユーザー決定で両方閉じた**（下表）。**D6 も同日共有済み（ユーザー報告）。設計上の着手ゲートは解消。実行は保留**（同日ユーザー決定: フェーズ2の手動評価を先に本番出荷する。§17）。
+
 | ID | 質問 | 背景 | ブロッカー | 回答者 | 期限 | 状態 |
 |---|---|---|---|---|---|---|
 | Q-D | 本番／ステージングの `ga4_page_metrics_daily` に **`page_views` 列は実在するか**。実在する場合の型・NULL可否・既存値 | 生成型 `src/types/database.types.ts:241` に non-nullable `number` として存在する一方、`supabase/migrations/` に定義が0件。生成型と migration は双方向にドリフトしており（§4.1.2 の反例）、生成型から実在を推論できない。**リモートDBの実スキーマ照会で確認する** | migration 安全性 | 開発チーム（DB管理者） | 取込拡張の migration 着手前 | **回答済み（2026-08-17）**: `page_views integer NOT NULL DEFAULT 0` が実在。全21列が生成型と一致し、`engagement_rate` は不在（新設が必要）。照会結果の全文は §4.1.2。なお同日の評価エンジン仕様により PV 自体が不使用となった |
 | Q-G | `landingPage × activeUsers` は GA4 Data API で取得可能か（Compatibility 実測） | 既存コードは `totalUsers` 非互換を理由に `users`=sessions で代替している（`ga4ImportService.ts:343-345`）。`activeUsers` の互換は未確認。不可の場合は平均エンゲージメント時間を `÷ sessions` で算出する（§4.1.1） | 読了率の分母の確定、取込 migration | 開発チーム（Compatibility API 実測） | 取込拡張の migration 着手前 | **回答済み（2026-08-17、GA4 Query Explorer 実測）: 互換**。`dimensions=[landingPage]` × `metrics=[activeUsers, engagementRate, sessions, userEngagementDuration]` の `runReport` がエラーなく受理され、`metricHeaders` に4指標が返った（非互換なら 400 INVALID_ARGUMENT になる）。読了率の分母は **÷activeUsers で確定**（÷sessions フォールバックは不要）。なお実測プロパティは対象期間の `rows` が0件だったため、**数値レベルの突合（Q-H）はデータのあるプロパティ・期間で別途行う** |
 | Q-H | 「GA4 画面と一字一句一致」の突合先はどの画面か（「ページとスクリーン」＝÷activeUsers か「ランディングページ」レポート＝÷sessions か） | GA4 公式 predefined-reports（2026-08-17 取得。§16）では、Pages and screens が `userEngagementDuration/activeUsers`、Landing page レポートが `userEngagementDuration/sessions` と**画面によって定義が異なる**。landingPage 軸で取得する本実装の生値がどちらの画面と一致すべきかを数値で確定する必要がある。**Q-G は互換で決着（÷activeUsers）したため、有力仮説は「ページとスクリーン」一致だが、数値での確認が未了**（2026-08-17 の実測プロパティはデータ0行で突合不能だった） | §10.3 の突合要件（評価エンジン仕様 §08「GA4の画面と一字一句一致させる」）の検証方法 | 開発チーム実測（データのあるプロパティ・期間で） → クライアント確認 | フェーズ2の実データ検証前 | 未確認（数値突合待ち） |
+| **Q-J**（フェーズ3。2026-08-19 起票） | **一度登録したコンテンツ評価サイクルは、ミニマム版では UI から停止も削除もできず、届く通知メールも止められない**（`cycle_days` を最大値365へ変更して次回評価を先送りする以外に手段がない）。この制約のまま進めてよいか、それとも停止操作を今回のスコープへ含めるか | GSC 側に停止導線が無い。**ユーザー決定は「評価設定は GSC に揃え、意図した差分は通知先だけ」**（§6.6）。通知先がメールでも設定操作は増やさない | 停止操作の要否（要なら `status` 遷移・Server Action・UI・テストの追加） | ユーザー | フェーズ3着手前 | **確定（2026-08-19、ユーザー決定）: 評価設定は GSC 同型。停止・削除 UI は作らない。** GSC との差分は通知先（アプリ内 vs メール）のみ。Non-goal と §10.8 の告知（通知チャネルの開示）は現行どおり。D6 提示条件(d) で制約を説明する |
+| **Q-K**（フェーズ3。2026-08-19 起票） | **評価完了メールに載せる内容は「コンテンツ力スコア・点数帯・診断見出し・次の一手1件・記事詳細URL」までとし、改善提案の本文はアプリで見る形でよいか。**また送信経路は**評価ごとの独立したメール**でよいか（既存の日次メールへ相乗りする形ではなく） | `docs/context/client-vision-from-lark.md:116` に verbatim で「提案の配信経路として **メール連携の活用**（既存の日次メールに、GA4 データを根拠にした修正提案を載せる）が挙げられた。」とあり、**メール経路はクライアント自身の発案**である。一方、本仕様は内容（提案本文の配信は Non-goal のまま。§3.2）と経路（評価ごとの独立メール。§9.5）の2点でこの記録と異なる。**Q4 / D6 を「開発側が合意を覆す」一方向の反転としてのみ整理すると、この期待とのズレが検出されないまま実装へ進む** | メール本文の設計範囲（§10.9）と送信経路 | ユーザー | フェーズ3着手前 | **確定（2026-08-19、ユーザー決定）: 現行 §9.5 / §10.9 でよい。** 内容は通知のみ（スコア・点数帯・診断見出し・次の一手1件・記事詳細URL）。改善提案の本文はアプリで見る。送信経路は評価ごとの独立メール。日次メールへの相乗り・提案本文の配信は今回スコープ外。D6 共有時に `client-vision-from-lark.md:116` との差分を説明する |
 | Q-I | クライアントサイトの scroll 90% イベントの実名は何か（拡張計測の標準 `scroll` か、カスタム `scroll_90` か） | 既存取込はカスタムイベント名 `scroll_90` をハードコードしている（`src/lib/ga4-utils.ts:1`）。評価エンジン仕様 §02 は拡張計測の標準 `scroll` イベント（90%到達で発火・追加設定不要）を前提にしており、**両者は別のイベント**。実プロパティにどちらが存在するかで完読率の取得可否が決まる | 完読率（任意指標）の取得。取れない場合は完読率なしで評価が成立する設計のため致命ではない | クライアント（GA4 プロパティの設定確認）または実データ実測 | フェーズ2の実データ検証前 | 未確認 |
 
 ### 15.3 開発側で確定が必要な事項
@@ -1538,8 +2187,11 @@ Feature: GA4コンテンツ評価
 |---|---|---|---|---|---|---|
 | D1 | MVP見積（フェーズ0 30〜45h + フェーズ1 24〜40h + フェーズ2 143〜212h = **197〜297h（25〜38人日）**）を着手前に合意する | §3.4 の各フェーズ内訳（2026-08-16 に精査済み: 取込拡張 14〜24h・統合レイアウト 20〜36h を算入、並び替え 4〜6h を削除）。**提示時に明示する条件が2つ**: (1) 取込拡張の見積は Compatibility API 未実測が前提で、`pagePath × engagementRate` が取得不可なら代替設計で再見積（§4.1.1）。(2) **フェーズ0＋1 の 54〜85h（MVP の2〜3割）は利用者に見える変化を伴わない先行作業**（挙動保存移設・redirect・認可多層化・リファクタ）であり、クライアント第1優先要求（`client-vision-from-lark.md` §1.9.5「**優先**: ①未評価コンテンツのソート ②評価機能の追加。」）の価値提供より前に置かれる。この配分を隠さず合意する | 着手判断 | 開発チーム → クライアント | — | **合意済み（2026-08-16）**。197〜297h（25〜38人日）と提示条件2点（Compatibility 未実測前提・先行作業 54〜85h）を含めて合意。`着手承認` 取得済み。**その後 D4 決着（2026-08-17。(d) 期間上限の追加 +1〜2h）により 198〜299h となり、さらに同日の評価エンジン仕様の反映で 231〜354h へ増加した（下記 D1'）** |
 | D1' | **評価エンジン仕様（2026-08-17 受領）反映後の再見積 **231〜354h（29〜44人日）**をクライアントへ再提示し合意を得る** | D1 合意（198〜299h）後にクライアント自身の評価エンジン仕様でスコープが実質拡大した（スコアエンジン・文字数/画像整備・順位/差分・メディア全体スコア＋散布図・用語言い換えの追加。pagePath 取込の失効と LLM 簡素化で一部相殺。差分 +33〜55h。§3.4）。**提示時に明示する条件**: (1) ~~Compatibility 未実測~~ → **Q-G は実測済み・互換（÷activeUsers 確定）**、(2) GA4 画面突合先の数値確認（Q-H。実データ検証で実施）、(3) scroll イベント名（Q-I。取れなくても完読率なしで成立） | フェーズ2の着手判断 | 開発チーム → クライアント | フェーズ2着手前 | **合意済み（2026-08-17）**。231〜354h（29〜44人日）と提示条件（Q-G 実測済み・Q-H/Q-I は実データ検証で消化）を含めて合意。フェーズ2の着手承認取得済み。**合意後の同日、「原文正本の原則」決定（§18）で用語言い換えを UI 全体へ拡大し 235〜360h（+4〜6h）となった。この増分は合意済みレンジ外のためクライアントへ共有する（合意の再取得を要するほどの規模ではないが、黙って超えない）** |
-| D3 | 新ルート `/analytics/[annotationId]` 上の評価タブUI（§10.2〜§10.4）と情報階層の扱いを合意する | 2026-08-15 の新ルート回帰で 2026-08-13 合意たたき台の前提（新ルート）と再整合し、Q-C 回答で残差分（情報階層）も解消した | フェーズ2のUI実装 | 開発チーム → クライアント | — | **確定（2026-08-16）: Q-C 回答「まとめで全てやる」により、たたき台の統合レイアウトまでフェーズ2に含める形で合意（§10.5）** |
+| D3 | 新ルート `/analytics/[annotationId]` 上の評価タブUI（§10.2〜§10.4）と情報階層の扱いを合意する | 2026-08-15 の新ルート回帰で 2026-08-13 合意たたき台の前提（新ルート）と再整合し、Q-C 回答で残差分（情報階層をフェーズ2に含めるか）も解消した | フェーズ2のUI実装 | 開発チーム → クライアント | — | **確定（2026-08-16）: Q-C 回答「まとめで全てやる」により、情報階層をフェーズ2に含める形で合意（§10.5）。2026-08-19 ユーザー決定で出荷形を4タブ（独立タブ）に改訂。** 含めること自体は満了のまま。概要統合へ戻す作業はフェーズ2スコープ外 |
 | D5 | `GlobalToastBridge.tsx` の `/gsc-dashboard` 参照（`:20` パス判定・`:25` 遷移先）のフェーズ1での扱いを **(a) 変更せず別チケットへ送る** / **(b) パス判定のみ新ルートへ変え else 側の遷移分岐を削除する** から決める | 当該分岐は現状**到達不能**である（`gsc-dummy-open` 購読0件・`gsc-dummy-update` dispatch 0件・`:28` が payload を同期削除。実測根拠は §5.5「GlobalToastBridge の扱い」）。**2026-08-15 改訂が「挙動保存の唯一の意図的な逸脱」としていた前提は成立しないため撤回した。**利用者から見える挙動はどちらを選んでも変わらない。判断が分かれるのは「到達不能な既存コードをこの移設のスコープで削除してよいか」であり、挙動保存の原則の外側にある | §3.4 フェーズ1完了条件の grep 0件に例外を設けるか否か（(a) なら必要）、§13 フェーズ1移設テストの対象 | 開発チーム | フェーズ1着手前 | **確定（2026-08-15、ユーザー決定）: (b) を採用。死んだ配線も削除する。完了条件の例外は不要（§5.5）** |
+| D6 | **フェーズ3（コンテンツ評価サイクル）のスコープ反転をクライアントへ共有し、見積 58〜90h を合意する** | 2026-08-19 のユーザー指示（「GSC評価と同様に評価サイクル設定できるように」「評価後は resend メール送信」）により、2026-08-16 の合意2件が変わる: (1) **Q4＝改善提案のメール配信は Non-goal** → 評価完了の通知メールを追加（配信ではなく通知。§15.1 Q4 行）、(2) **定期Cron・非同期ジョブによる一括評価は MVP 対象外** → サイクル登録した記事に限り定期評価を追加（§3.2）。いずれも「開発側の裁量で縮小した Non-goal」ではなく**クライアントが合意した Non-goal** であるため、黙って戻さず共有する。<br>**なお反転の一方向性は正確ではない**: メール経路自体は `docs/context/client-vision-from-lark.md:116`（verbatim: 「提案の配信経路として **メール連携の活用**（既存の日次メールに、GA4 データを根拠にした修正提案を載せる）が挙げられた。」）としてクライアント自身が挙げたものである。共有時にはこの出典を併せて提示し、内容・経路の差分（Q-K 確定: 通知のみ・独立メール）を説明する。<br>**提示時に明示する条件**: (a) 全記事の自動評価は引き続き Non-goal（登録した記事だけ）、(b) 通知は評価成立時のみ（失敗通知は D7）、(c) メールアドレス未登録のユーザーには届かない（`users.email` は NULL 許容）、**(d) 登録したサイクルは UI から停止・削除できず通知メールも止められない（回避策は `cycle_days` を365へ変更することのみ。Q-J 確定: GSC 同型）。かつ1評価＝1通で束ねないため、同一バッチで最大20通が同一ユーザーへ届きうる**（§3.2 / §9.5） | フェーズ3の着手判断 | 開発チーム → クライアント | フェーズ3着手前 | **共有済み（2026-08-19、ユーザー報告）。着手ゲート解除。** 見積 58〜90h と提示条件(a)–(d) を含む |
+| **D8** | **手動評価とサイクルの `last_evaluated_on` の関係を確定する。** (a) 手動評価も、サイクル登録済み記事の `last_evaluated_on` を進める（§7.7 の更新主体へ追記し、手動評価経路がサイクル行を更新する）／(b) 手動評価はサイクルに影響させない（現状の記述どおり）。**(b) を採る場合は §9.5 から「手動再評価直後のバッチ実行でも二重送信しない」旨を落とし、重複評価・重複通知が起こりうる既知挙動として明記する（2026-08-19 の改訂で既に落とした）** | `last_evaluated_on` を更新するのはバッチだけで（§7.7）、手動評価経路（記事詳細の「評価を実行」）はサイクル行を知らない。手動評価の直後にバッチが同じ記事を再評価すると**新しい履歴 ID が生まれるため BR-12 の冪等判定に掛からずメールが送られる**。(a) は重複通知を根本から断てるが、手動評価経路がサイクル行を書く新しい経路になり、ミニマム版の範囲を超える。(b) は追加実装ゼロだが、「手で評価した直後に同じ内容のメールが来る」体験が残る。**両案とも本書・実コード・適用ポリシーから一意に導けないため、revise では選ばず隔離した**（D5 と同じ扱い） | §6.6.4 / §9.5 の冪等性の保証範囲。**ミニマム版のリリースはブロックしない**（(b) が現状の記述であり、既知挙動として明記済み） | 開発チーム | フェーズ3の実装着手前 | **未決（2026-08-19 起票）** |
+| D7 | 評価が成立しなかったとき（`insufficient_data` / `import_failed` / `needs_reauth` 等）に通知メールを送るか | フェーズ3のミニマム版では送らない（§9.5）。送らない場合、サイクルを設定した記事がデータ不足で評価されない状態が続いても、ユーザーはアプリを開くまで気づけない。とくに `needs_reauth` は**ユーザーが再連携しない限り永久に解消しない**ため、通知の価値が高い。一方で、失敗通知は「何もしていないのにエラーメールが来る」体験になりやすく、頻度制御（同じ理由で連続して送らない等）の設計が要る | 通知の設計範囲。ミニマム版のリリースはブロックしない | 開発チーム（運用実績を見て判断） | フェーズ3リリース後 | 未決（ミニマム版は「送らない」で確定。運用で必要性を測る） |
 | D4 | `fetchGa4Summaries` の打ち切りへの対処方式を次から決める。**(a) 現状維持（検知を入れない）** / **(b) 現状維持＋安全弁として `count:'exact'` 検知のみ実装** / **(c) `range` ページングで全行回収** / **(d) 期間上限を設ける** | 現行のページサイズは10件固定（`app/analytics/page.tsx:59`）で、**100日までは `db-max-rows = 1000` に到達しない**（10記事 × 100日 = 1,000行）。ただし `app/analytics/page.tsx` の期間検証は書式のみで上限がないため（§6.1-4）、**101日以上の指定では到達しうる**。ページサイズを100（クランプ上限）へ広げると 10日で到達する。実データの記事件数と実際に使われる期間は未確認 | **対処方式の選択（(a)〜(d)）**と、それに応じた工数・**AC-13 の対象化**（AC-13 は本決定に従属する。逆方向の依存はない） | 開発チーム | フェーズ2のDB着手前 | **確定（2026-08-17、ユーザー決定）: (b)＋(d) 併用。**(d)＝一覧の表示期間に上限100日を追加（通常経路の打ち切りを封じる。+1〜2h）、(b)＝`count:'exact'` 突合の検知＋原因・対処を含む注記文言（すり抜け経路への安全弁。2〜4h 計上済み）。AC-13 は受入対象化。決定の経緯: 「一部取得できていません」だけの注記は利用者に原因・対処が伝わらないという指摘を受け、文言改善に加えて打ち切り状態自体を発生させない (d) を併用する判断 |
 
 `/gsc-dashboard` からの移設・redirect（旧D2）は 2026-08-15 に決定済みである（`?annotationId=X` → `/analytics/X`、素URLは `/analytics`、恒久 redirect。§5.5 / §15.4）。開いた論点としては復活させない。
@@ -1560,12 +2212,16 @@ Feature: GA4コンテンツ評価
 | Q-G（activeUsers 互換） | `landingPage × activeUsers` の互換が確定していること | **満了（2026-08-17）**: Query Explorer 実測で互換を確認。分母は ÷activeUsers で確定（§15.2 / §4.1.1） | —（解消済み） |
 | Q-H / Q-I（実データ確認） | GA4 画面突合先の数値確認・scroll イベント名が確定していること | §15.2 の各行に確認結果を記録し、§10.3 へ反映 | 実データ検証（§14 手順10）の突合が確定しない（着手ブロッカーではない） |
 | Q-D（リモートDBの実スキーマ照会） | `ga4_page_metrics_daily.page_views` の実在・型・NULL可否が判明していること | **満了（2026-08-17）**: `page_views integer NOT NULL DEFAULT 0` 実在・生成型と全21列一致・`engagement_rate` 不在を §4.1.2 に反映 | —（解消済み。migration は `engagement_rate` 新設のみ） |
-| D3（UIたたき台の合意。Q-C と同時） | §10.2〜§10.4 の案と情報階層の扱いに合意していること | **満了（2026-08-16）**: Q-C 回答により統合レイアウト込みで合意（§10.5） | —（解消済み） |
+| D3（UIたたき台の合意。Q-C と同時） | §10.2〜§10.4 の案と情報階層の扱いに合意していること | **満了（2026-08-16）**: Q-C 回答により情報階層をフェーズ2に含めて合意。**出荷形は 2026-08-19 に4タブ（独立タブ）へ改訂**（§10.3 / §10.5） | —（解消済み） |
 | D5（`GlobalToastBridge` の扱い） | (a) / (b) のいずれかが選択されていること | §5.5「GlobalToastBridge の扱い」に選択結果を反映し、§3.4 完了条件・§13 の対象を確定する | フェーズ1完了条件の grep 0件に例外を設けるか決まらず、移設テストの対象も定まらない |
 | Q-E / Q-F（trial の到達遮断の事前合意） | `trial` の記事詳細到達を遮断してよいこと、経過措置の要否が確定していること | **満了（2026-08-15）**: Q-E 合意済み（事前告知のみで実施可・経過措置不要）、Q-F はクローズ（§15.1）。フェーズ1のリリース判断のブロッカーは解消 | —（解消済み） |
 | フェーズ1（ルート移設）の完了 | `/analytics/[annotationId]` が §3.4 フェーズ1の完了条件を満たしていること | AC-12 / AC-14 / AC-15 のテスト通過 | フェーズ2の「コンテンツ評価」タブを実装する画面が存在しない |
 | D4（打ち切りへの対処方式） | (a)〜(d) のいずれかが選択されていること | **満了（2026-08-17）**: (b)＋(d) 併用で確定し、§11 データ量行・§10.2・AC-13・§3.4（+1〜2h）へ反映済み | —（解消済み） |
 | フェーズ0の特性テスト | リファクタリング前の挙動が固定されていること | §3.4 フェーズ0の完了条件を満たす | フェーズ2で既存 `/analytics` の回帰を検知できない |
+| **フェーズ2の本番稼働（フェーズ3の前提）** | 手動の単記事評価が本番で成立していること（§14 手順11 まで完了） | AC-01〜AC-18 のテスト通過と §14 手順10 の実データ検証 | **毎時バッチが失敗し続けメールも出ない**（`run()` が成立しない状態で定期実行を入れることになる。§14 フェーズ3リリース順序の前提） |
+| **D6（フェーズ3のスコープ反転の共有と見積合意）** | 2026-08-16 のクライアント合意2件の反転を共有し、見積 58〜90h に合意していること | **満了（2026-08-19）**: ユーザー報告により共有済み。着手ゲート解除（§15.3 D6 行） | —（解消済み） |
+| **Q-J / Q-K（フェーズ3のクライアント確認）** | サイクルを停止できない制約の可否（Q-J）と、メール本文の範囲・送信経路（Q-K）が確定していること | **満了（2026-08-19）**: Q-J＝評価設定は GSC 同型（差分は通知先のみ）、Q-K＝現行 §9.5 / §10.9（通知のみ・独立メール）。§3.2 / §6.6 / §10.8 / §15.1 Q4 へ反映済み | —（解消済み。D6 共有時に差分と制約を説明する） |
+| **D8（手動評価とサイクルの関係）** | (a) / (b) のいずれかが選択されていること | §6.6.4 / §9.5 に選択結果を反映し、§13 のテスト対象を確定する | 手動再評価直後の重複通知の扱いが決まらず、§13 の冪等性テストの期待値が定まらない（**ミニマム版のリリースはブロックしない**。現状は (b) の記述） |
 
 ### 繁田さんへの確認事項（プロンプト関連）— 2026-08-17 にほぼ全件決着
 
@@ -1595,6 +2251,10 @@ Feature: GA4コンテンツ評価
 | 存在しない annotationId は null detail 描画を踏襲する（§5.5） | (a) `notFound()` を導入し 404 化 / (b) 現行踏襲（null detail で描画継続） | (b) を採用。フェーズ1は挙動保存が原則であり、`notFound()`・`not-found.tsx` はリポジトリに前例0件（2026-08-15 実測）で新規UI導入になる | (a) は挙動保存の範囲を超え、404 画面の設計・文言の新規決定が必要になる | 実在しない ID でも空の詳細画面が表示される（現行同等） | フェーズ2の統合レイアウト再設計時に 404 設計を扱うと決めた場合（現時点では `notFound()` 導入は引き続き Non-goal。§3.2） | 開発チーム / 2026-08-15 |
 | 未評価ソートを分離して先行リリースしない（§3.4） | (a) フェーズ0 → フェーズ2 を一括でリリース / (b) 一覧の並び替え・未評価フィルタだけを先行リリース | クライアント第1優先（§1.9.5「①未評価コンテンツのソート」）は「評価が走っていない記事を見つけて評価する」ための手段である。評価機能が無い状態では全記事が未評価となり、先行リリースしても優先要求を満たさない | (b) は DB migration と一覧RPC 再作成を2回に分けることになる | **2026-08-16 の Q-B 回答（並び替え自体を実装しない）により、本判断の対象は「未評価フィルタの先行リリース可否」に縮小した。**結論（先行リリースしない）は維持。利用者に見える変化を伴わない先行作業がフェーズ0＋フェーズ1＝54〜85h ある点は D1 提示時に論点として提示する | クライアントが「評価機能より先に一覧のフィルタだけ欲しい」と明示した場合 | 開発チーム / 2026-08-14（2026-08-16 に Q-B 反映） |
 | GSC 側の scope 縮小検知をMVP対象外とする（§9.1.1） | (a) `gsc-status.ts` に `webmasters.readonly` 欠落判定を追加 / (b) MVPでは検知対象外 | 4スコープは単一同意にまとめられており（§9.1）、GA4 スコープを保ったまま GSC スコープだけが失われる状況は通常発生しない。(a) は既存の GSC 連携ステータス表示の挙動を変える | (a) は本機能の要件に根拠がなく、既存画面の連携ステータス表示へ影響が及ぶ | `webmasters.readonly` のみ剥奪時に `needs_reauth` を出せない。発生時の GSC 取込の挙動は未確認 | GSC と GA4 の同意を分離した場合、または片方剥奪の事例が観測された場合 | 開発チーム / 2026-08-14 |
+| サイクル設定は専用テーブルに置く（§7.7） | (a) `ga4_content_evaluations` へ列追加 / (b) `ga4_content_evaluation_cycles` を新設 | (b) を採用。`ga4_content_evaluations.status` は NOT NULL + CHECK 6値で「サイクルだけ登録済み」を表せず、行の作成主体も `start_ga4_content_evaluation` RPC に限られている（§7.7）。列を足すと §6.5 の状態定義と RPC の原子性の両方に別経路が割り込む | (a) はテーブル数を増やさずに済むが、状態列の意味が「評価の結果」と「ユーザーの設定」で混ざる | テーブルが1つ増える。JOIN が1本増える | 両者の生存期間・作成主体が一致するようになった場合 | 開発チーム / 2026-08-19 |
+| 定期評価バッチが GA4 同期を伴う（§8.3） | (a) 評価だけ行い、取込はユーザーの手動同期に任せる / (b) バッチ内でユーザー単位に `syncUser` を呼ぶ | (b) を採用。`run()` は GA4 API を呼ばず取込済み行だけを読み、さらに鮮度48時間で `evaluation_stale` になる（§9.2.1）。フェーズ2までの GA4 取込はユーザー起動しかないため、(a) では「最近手動同期した人だけ評価が成立する」機能になる。GSC バッチも同じ理由で一括インポートを先に走らせている（`gscEvaluationService.ts:81-87`） | (a) は実質的に動かない | Kill Switch 停止時に GA4 同期のこの経路も止まる（§8.2 の原則に対する唯一の例外。手動同期は残るため取込手段は失われない）。GA4 クォータの消費が増える（§9.2.1） | GA4 取込の独立した Cron を別途持つことにした場合、バッチ側の同期は外せる | 開発チーム / 2026-08-19 |
+| 記事評価は逐次実行する（§8.3） | (a) GSC と同じ3並列 / (b) 逐次 | (b) を採用。GSC の1件は順位比較のみで LLM を伴わないが、コンテンツ評価は1件ごとに LLM を呼ぶ（最悪 45秒 × 3回）。並列化すると LLM のレート制限と Vercel の実行時間を同時に圧迫する | (a) は同時 LLM 呼び出しの制御が別途必要になる | 1バッチで捌ける件数が減る。毎時実行のため取りこぼしは次回で回復する（§8.3） | 実測でスループット不足が確認された場合 | 開発チーム / 2026-08-19 |
+| 通知は評価成立時のみ（§9.5） | (a) 失敗・データ不足も通知する / (b) 成立時のみ | (b) を採用。ミニマム開発の指示に沿い、送信条件と頻度制御の設計を持ち込まない。失敗はアプリの画面（§10.4）とログで確認できる | (a) は `needs_reauth` のように放置されると解消しない事象を伝えられる利点がある一方、頻度制御なしでは同じエラーメールが繰り返し届く | サイクルを設定した記事がデータ不足で止まり続けても、ユーザーはアプリを開くまで気づかない | 運用で失敗の放置が観測された場合（D7） | 開発チーム / 2026-08-19 |
 | ~~並び替えは永続状態を基準とし、表示上の上書きを反映しない（§10.2）~~ | (a) 表示値で並べる / (b) 永続状態で並べる | — | — | **失効（2026-08-16）: Q-B 回答により並び替え自体を実装しないため、本判断は対象を失った。**行順は既存の `ORDER BY f.updated_at DESC NULLS LAST` のまま | 並び替えを将来実装する場合は本行の (b) を再検討の起点にする | 開発チーム / 2026-08-14 → 失効 2026-08-16 |
 
 ### 15.5 リスク
@@ -1607,6 +2267,10 @@ Feature: GA4コンテンツ評価
 | R-12 | GA4 画面と生値が数値レベルで一致しない | ~~取得不可で÷sessionsフォールバック~~ → **Q-G 決着（2026-08-17）で取得可・÷activeUsers 確定**。残るのは landingPage 軸×÷activeUsers の値が「ページとスクリーン」（pagePath 軸）と母集団差でずれる可能性のみ | 低〜中 | Q-H の数値突合（データのあるプロパティで実施）で突合先を確定し、UI の説明文言に突合先画面を明示する。§10.3 の突合検証を §14 手順10 に含める | 開発チーム | 可能性低減（Q-H の数値突合待ち） |
 | R-13 | scroll 90% イベントが実プロパティに存在せず完読率が取れない | 完読率併用診断（流し読み型等）と人数ファネルの「最後まで」が出せない。設計上は完読率なしで評価が成立する（任意指標） | 中 | Q-I で実名を確認。取れない場合は §10.3 の率表現フォールバックで表示し、`data_quality_json` に記録 | 開発チーム | 未解消（Q-I 待ち） |
 | R-14 | スコアリング定数（アンカー・500字/分・30セッション）の改版で過去の点数と比較不能になる | 定数変更後の再評価で点数が変わり、前回差分・月次推移の解釈が壊れる | 低〜中 | `scoring_config_version` を履歴に保存し（§7.3）、差分表示は同一バージョン間のみで行うか、バージョン跨ぎを明示する | 開発チーム | 対応方針決定済み |
+| R-15 | 通知メールが重複して届く | Cron のリトライ・GitHub Actions の再実行・バッチの多重起動で同じ評価結果のメールが複数回送られる。ユーザーの信頼を直接損なう | 中（対策なしの場合） | **3段の防御**: (1) `hourly-cron.yml` の `maxRetries: 1`（同 workflow のコメントが明示的に要求している。`:7`）、(2) `last_notified_history_id` による冪等記録（BR-12）、(3) **Resend の `Idempotency-Key`（公式。24時間有効・最大256文字。§16）へ評価履歴 ID を渡す**。(1)(2) だけでは**送信成功後・DB 記録前のクラッシュ窓**が残る（`emailService.ts:37-41` の `emails.send` は単一呼び出しで再試行も冪等キーも持たない実測）ため、毎時実行の窓を (3) で塞ぐ。テストで冪等性と `Idempotency-Key` の受け渡しを固定する（§13） | 開発チーム | 対策確定（フェーズ3実装で解消） |
+| R-16 | 失敗した記事が毎時 LLM と GA4 を叩き続ける | クールダウン（BR-11）を落とすと、`import_failed` や `needs_reauth` の記事が毎時バッチのたびに GA4 同期と評価を再試行する。コストと GA4 クォータが止まらない | 中（実装漏れの場合） | BR-11 を業務ルール化し、**§6.6.4 の表の全行**（結末11値 ＋ 取込失敗 ＋ 中断事由）で `last_evaluated_on` が進む／進まない分岐を回帰テストで固定する（§13）。GSC 側も `no_metrics` で `updateCooldown` を呼んでいる（`gscEvaluationService.ts:306`。ただし取込失敗時は `:272-274` により呼ばない＝§6.6.4 で写した分岐） | 開発チーム | 対策確定（フェーズ3実装で解消） |
+| R-17 | due 候補が 1,000 行上限で黙って切り捨てられ、一部の記事が永久に評価されない | サイクル登録が 1,000 件を超えると PostgREST の `db-max-rows` で切り捨てられる。`next_evaluation_date` が進まないため毎回同じ先頭1,000件だけが対象になり、あふれた記事は**一度も評価されない** | 低（当面は登録件数が少ない）〜中（普及後） | `ORDER BY next_evaluation_date ASC, id ASC` を明示し、**既存の `SupabaseService.fetchAllPaged` に `count:'exact'` を渡して**全件回収する（独自実装しない。§8.3）。回収しきれない場合は `truncatedCandidates` として結果 JSON とログへ出す（§8.3 / AC-20）。**昇順が保証するのは「取得（回収）順」であり処理順ではない**（処理順はユーザー単位のシャッフルで決まる）。切り捨てが起きたときにあふれるのは `next_evaluation_date` が最も新しい側なので、最も長く待っている記事は取得側に残る。あわせて、降格ユーザーの行が枠を恒久占有しないよう**ロール絞り込みを due 抽出 SQL 側で行う**（§8.3） | 開発チーム | 対策確定（フェーズ3実装で解消） |
+| R-18 | メールアドレス未登録のユーザーに通知が届かない | `users.email` は NULL 許容（`20260311000000` migration）で、LINE 認証のみのユーザーは NULL でありうる。サイクルを設定したのに通知が来ない状態になる | 中 | 評価は成立させ通知だけを落とす（§9.5）。設定画面に「メールアドレスが未登録のため通知は送られません」を表示して気づけるようにする（§10.8）。D6 の提示条件(c)としてクライアントへも明示する | 開発チーム | 対応方針決定済み |
 | R-04 | Service Role 経路で `.eq('user_id', …)` を省略 | 他ユーザーの評価履歴・診断本文が漏れる | 中 | §7.2 で一次防衛線を明記。§13 DBテストでユーザー間の参照遮断を検証 | 開発チーム | 対応方針決定済み（実装時に検証） |
 | R-05 | GA4 の後追い確定（24〜48時間）を記事の変化と誤読 | 改善提案の効果測定を誤る | 中 | §4.2.4 で直近48時間を `data_quality_json` に記録 | 開発チーム | 対応方針決定済み |
 | R-06 | MVP対象外を実装に混ぜ込む | 要件にない作業でリリースが遅れる | 中 | §3.2 に Non-goal と理由を明記。§17 に「別チケットへ送るもの」を列挙 | 開発チーム | 対応方針決定済み |
@@ -1814,6 +2478,63 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 
 - 解釈: §5.5 の redirect 設計の根拠。(1) `permanent: true` は 308 で恒久キャッシュされるため旧URLへ戻すロールバックは不可（§14）。(2) **リクエストのクエリはすべて（"any query values"）redirect 先へ引き継がれる。**公式は `has` の named capture で消費したキーを destination のクエリから除外するとは述べておらず、**`annotationId` が残るか否かは公式未記載＝未確認**である。§5.5 / AC-15 はこの点を期待挙動として固定せず、フェーズ1で 308 応答の `Location` を実測して確定する（新ルートは route param を正とし残留クエリを読まない）。(3) `has` の named capture でクエリ値を destination のパスパラメータへ展開できる。(4) redirects は Proxy（`proxy.ts`）より先に評価されるため、旧URLアクセスは redirect → proxy の paid 判定の順に処理される（§3.3）。(5) Server Function 内での認可検証は公式推奨であり BR-07 の根拠となる。(6) 308 はリクエストメソッドを保ち、Server Function は使用ルートへの POST として扱われるため、**旧URLの redirect が救済するのは GET ナビゲーションであって、旧タブ内の Server Action 実行が救済されるとは限らない**（R-11）。
 
+### Resend — レート制限・クォータ・冪等キー（フェーズ3。2026-08-19 追加）
+
+フェーズ3の通知メール（§9.5）は Resend を使う。公式ページ本文の verbatim 引用と、そこから導いた解釈を分離する。
+
+#### レート制限（既定値）
+
+- URL: https://resend.com/docs/api-reference/introduction
+- 確認日: 2026-08-19
+- 公式記載（引用）:
+
+> The default maximum rate limit is 10 requests per second per team.
+
+> This number can be increased for trusted senders by request.
+
+#### レート制限のヘッダ・429・送信クォータ
+
+- URL: https://resend.com/docs/api-reference/rate-limit
+- 確認日: 2026-08-19
+- 公式記載（引用）:
+
+> `ratelimit-limit`: Maximum number of requests allowed within a window.
+
+> `ratelimit-remaining`: How many requests you have left within the current window.
+
+> `ratelimit-reset`: How many seconds until the limits are reset.
+
+> `retry-after`: How many seconds to wait before making a follow-up request.
+
+> `x-resend-daily-quota`: Your used daily email sending quota. Only sent to free plan users.
+
+> `x-resend-monthly-quota`: Your used monthly email sending quota.
+
+> `daily_quota_exceeded`: You have reached your daily email quota.
+
+> `monthly_quota_exceeded`: You have reached your monthly email quota.
+
+（上限を超えた場合の応答について）
+
+> you'll hit the rate limit and receive a `429` response error code
+
+#### 送信エンドポイントと `Idempotency-Key`
+
+- URL: https://resend.com/docs/api-reference/emails/send-email
+- 確認日: 2026-08-19
+- 公式記載（引用）:
+
+> Add an idempotency key to prevent duplicated emails. Should be unique per API request. Idempotency keys expire after 24 hours. Have a maximum length of 256 characters.
+
+- エンドポイントは `POST https://api.resend.com/emails`、必須パラメータは `from` / `to` / `subject`（`to` は最大50件）。
+
+#### 解釈（本仕様への当てはめ）
+
+1. **レート制限とクォータはチーム単位である**（"per team"）。API キーは既存の Google Ads 分析メール（`sendGoogleAdsAnalysis` / `sendGoogleAdsNegativeKeywords`）と共有されるため、本バッチの送信量だけでなく既存メールの送信量も同じ枠を消費する。毎時0分に `hourly-cron.yml` の matrix が並列起動するため、時間帯も重なる（§9.5）。
+2. **クォータ枯渇は 429 として返る**（`daily_quota_exceeded` / `monthly_quota_exceeded`）。§9.5 は再送しない方針のため、枯渇したサイクルの通知は次サイクル（既定30日後）まで欠落する。したがって 429 を他の送信失敗と区別して記録する（§9.5）。
+3. **`Idempotency-Key` の有効期間24時間は、毎時実行の再送窓（最大1時間）を完全に覆う。**評価履歴 ID は UUID（36文字）で「unique per API request」と 256 文字上限の両方を満たすため、そのまま渡せる（§9.5 の冪等性 3段目）。
+4. 本仕様はレート制限の**引き上げ申請を前提にしない**（"can be increased ... by request" は申請ベースであり、現時点で申請していない）。既定の 10 req/s の下で逐次送信する設計とする。
+
 ### 公式未確認（アプリ定義とする）
 
 | 項目 | 理由 |
@@ -1828,10 +2549,12 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 
 - フェーズ0の変更対象候補: `src/server/services/analyticsContentService.ts` の内部分離、新規の評価Context・状態・エラー型、新規の構造化LLMアダプター、単体/回帰テスト。`contentAnnotationSummaryService.ts` と `llmService.ts` は既存挙動不変のため変更しない。
 - フェーズ1（ルート移設）の変更対象: `app/analytics/[annotationId]/` の新設一式（`app/gsc-dashboard/` からの移設。§5.5）、`app/gsc-dashboard/` の削除、`next.config.ts`（redirects 新設）、`src/components/AnalyticsTable.tsx`（詳細ボタンの遷移先URL）、`src/components/GlobalToastBridge.tsx`（**D5 の確定後に対象化。(a) を選ぶ場合は変更対象から外れる**。§5.5）、`src/server/actions/gscDashboard.actions.ts`（`revalidatePath` 4箇所＋公開6関数への認可追加。読み取り2本＝`canAccessGa4` / 書き込み4本＝`canWriteGa4`）、`src/server/actions/gscNotification.actions.ts`（`revalidatePath` 1箇所）、`app/api/gsc/dashboard/route.ts`・`app/api/gsc/dashboard/[annotationId]/route.ts`（`canAccessGa4` 追加・403 応答）、`src/domain/errors/error-messages.ts`（**GA4 群へ機能アクセス拒否の文言定数を新設。§3.3 未認可時の応答契約**）、`tests/unit/server/lib/`（`ga4-permissions` テスト新設。`canAccessGa4` / `canWriteGa4` 両方）、移設テスト・E2E。
-- フェーズ2の変更対象候補（2026-08-17 更新）: **スコア算出エンジン（新設純関数群: 文字数正規化・期待読了時間・アンカー補間・幾何平均・診断マトリクス・足切り。§6.2）**、`src/server/services/`（評価サービス・順位/差分算出・メディア全体集計）、`src/server/actions/` または Route Handler、`src/types/`、`supabase/migrations/`（評価テーブル・settings・trigger・開始/完了RPC・`wp_image_count`）、`src/components/AnalyticsTable.tsx`（評価状態列・未評価フィルタ。並び替えは実装しない＝Q-B）、`app/analytics/[annotationId]/`（記事カード評価UI＋**情報階層のたたき台統合レイアウトへの再設計**＝Q-C。既存3タブの機能・データは維持する）、`app/ga4-dashboard/`＋`ga4Dashboard.actions.ts`（メディア全体スコア・散布図。§10.6）、`src/server/services/wordpressContentSync.ts`（img タグ数算出）、評価用・全体集計用入口での認可検証（§3.3 / BR-07 / AC-12）、`get_filtered_content_annotations` の再作成（未評価フィルタ・評価テーブルJOIN・返却フィールド追加。並び替えパラメータは追加しない）、`.agents/skills/growmate-ui-ux/ui-text.md`（「評価」行の修飾ルール更新・`/gsc-dashboard` 表記の差し替え・**§10.7 用語言い換え表の転記**）、既存画面の表示文言（用語言い換えの UI 全体適用＝§10.7。GSC タブ・既存 GA4 ダッシュボード等の GA4 用語置換）。
+- フェーズ2の変更対象候補（2026-08-17 更新）: **スコア算出エンジン（新設純関数群: 文字数正規化・期待読了時間・アンカー補間・幾何平均・診断マトリクス・足切り。§6.2）**、`src/server/services/`（評価サービス・順位/差分算出・メディア全体集計）、`src/server/actions/` または Route Handler、`src/types/`、`supabase/migrations/`（評価テーブル・settings・trigger・開始/完了RPC・`wp_image_count`）、`src/components/AnalyticsTable.tsx`（評価状態列・未評価フィルタ。並び替えは実装しない＝Q-B）、`app/analytics/[annotationId]/`（記事カード評価UI＋**4タブ構成への再設計**＝Q-C 改訂 2026-08-19。既存3タブの機能・データは維持し、右端に「コンテンツ評価」独立タブを追加する）、`app/ga4-dashboard/`＋`ga4Dashboard.actions.ts`（メディア全体スコア・散布図。§10.6）、`src/server/services/wordpressContentSync.ts`（img タグ数算出）、評価用・全体集計用入口での認可検証（§3.3 / BR-07 / AC-12）、`get_filtered_content_annotations` の再作成（未評価フィルタ・評価テーブルJOIN・返却フィールド追加。並び替えパラメータは追加しない）、`.agents/skills/growmate-ui-ux/ui-text.md`（「評価」行の修飾ルール更新・`/gsc-dashboard` 表記の差し替え・**§10.7 用語言い換え表の転記**）、既存画面の表示文言（用語言い換えの UI 全体適用＝§10.7。GSC タブ・既存 GA4 ダッシュボード等の GA4 用語置換）。
 - GA4取込拡張の変更対象（2026-08-17 に対象変更）: `src/server/services/ga4ImportService.ts`（既存 `landingPage` 軸クエリへの `engagementRate` / `activeUsers` 追加。取り出しインデックス・`mergeReports` 集計・`rowsToSave` の連鎖改修）、`src/server/lib/ga4-metrics-aggregation.ts`（型・集計）、`src/server/services/supabaseService.ts`（upsert）、select 文字列3箇所（`analyticsContentService.ts:278`・`ga4Dashboard.actions.ts:226,382,639`）、`src/server/services/ga4Service.ts`（`checkCompatibility` 経路の新設。§4.2.2 / §9.2）、`ga4_page_metrics_daily` の追加列 migration（`engagement_rate` / `active_users`）、§4.1.2 の後方互換対応。いずれも取込拡張（8〜14h）に含む。
 - §4.1.2 後方互換の導線（2026-08-19 追加。AC-18）: `src/components/Ga4BackfillButton.tsx`（新規。`backfillDays` 送信・打ち切り/サンプリング警告・完了後の再読込コールバック）、`app/ga4-dashboard/Ga4DashboardClient.tsx`（ヘッダーへの設置と表示中期間の再取得）、`src/components/Ga4SetupClient.tsx`（注記の追記）、`src/server/lib/ga4-sync-range.ts`（`splitGa4SyncRange`）、`src/server/services/ga4ImportService.ts`（窓ごとの取込＝`importWindow` 抽出）、`src/server/services/wordpressService.ts`（REST 一覧 normalizer で `content_text` / `image_count` を抽出）、`src/types/wordpress.ts`、`src/server/actions/wordpressImport.actions.ts`（2列の保存と差分判定）、`src/server/services/wordpressContentSync.ts`（再取得条件へ `wp_image_count IS NULL` を追加）、`src/server/services/gscSuggestionService.ts`（`cachedImageCount` の受け渡し）。
-- 変更しないもの: 既存3タブの**内容と操作**（移設後も挙動保存。AC-14）、`proxy.ts`（プレフィックスマッチにより新ルートが自動的に保護対象になるため変更不要。§3.3）、`app/ga4-dashboard/` の**既存**集計ロジック・SummaryCards・ranking・timeseries（追加はメディア全体スコア＋散布図のみ。§10.6）。
+- フェーズ3（コンテンツ評価サイクル。2026-08-19 追加）の変更対象: `supabase/migrations/`（`ga4_content_evaluation_cycles` 新設。§7.7）、`src/types/database.types.ts`（生成型更新。**migration 未適用の環境では `src/types/database.types.pending.ts` の pending 型を使い、適用後に生成型を再取得して pending 型を削除する**。`.agents/skills/supabase/service-usage.md` §6。§14 手順12）、`app/analytics/[annotationId]/ContentEvaluationCycleSettings.tsx`（新規。GSC の `EvaluationSettings.tsx` と同型）、`app/analytics/[annotationId]/components/OverviewTab.tsx`（2つのサイクル設定を横並びにするレイアウト。`:214` 付近）、`app/analytics/[annotationId]/components/content-evaluation/ContentEvaluationCard.tsx`（次回評価予定の読み取り表示）、`src/server/actions/ga4ContentEvaluationCycle.actions.ts`（新規。登録＝`canWriteGa4` / 取得＝`canAccessGa4`）、`src/server/schemas/ga4ContentEvaluationCycle.schema.ts`（新規）、`src/server/services/ga4ContentEvaluationCycleService.ts`（新規。バッチ本体。**`SupabaseService` のサブクラスとして実装する**＝due 抽出で `protected fetchAllPaged` を使うため。§8.3「行数上限」）、`app/api/cron/ga4-content-evaluate/route.ts`（新規）、`src/server/lib/cron-definitions.ts`（`ga4ContentEvaluate` 追加）、`.github/workflows/hourly-cron.yml`（matrix 1件追加。**`maxRetries: 1`**）、`src/server/services/emailService.ts`（`sendGa4ContentEvaluation` 追加）、`src/domain/errors/error-messages.ts`（サイクル設定・通知の文言）、`.agents/skills/growmate-ui-ux/ui-text.md`（「コンテンツ評価サイクル」の用語追加）、テスト一式（§13）。
+- **共通化candidate（フェーズ3。🟡）**: `sanitizeEmailHtml` が `googleAdsAiAnalysisService.ts:150` と `googleAdsNegativeKeywordsSuggestionService.ts:68` に**同一実装で2つ存在する**。フェーズ3で3つ目の呼び出し元が加わるため、`src/server/lib/` 配下の共通モジュールへ切り出して3箇所から使う。3箇所へコピーが増えると、HTML の無害化ルール（script/style/on*/javascript: の除去）を直すときに漏れが出るため、実装しないと後続コストが明白であり 🟢 ではなく 🟡 とする。
+- 変更しないもの: 既存3タブの**内容と操作**（移設後も挙動保存。AC-14）、**`app/analytics/[annotationId]/EvaluationSettings.tsx`（GSC の検索順位評価サイクル設定。フェーズ3では見出し・文言・props とも変更しない。§10.8「既存 GSC 側で変更する箇所」）**、**`src/server/services/ga4ImportService.ts` の `runBatch()`（フェーズ3では使わず削除もしない。理由は §8.3）**、`proxy.ts`（プレフィックスマッチにより新ルートが自動的に保護対象になるため変更不要。§3.3）、`app/ga4-dashboard/` の**既存**集計ロジック・SummaryCards・ranking・timeseries（追加はメディア全体スコア＋散布図のみ。§10.6）。
 - 別チケットへ送るもの: 一覧への戻り先クエリ引き継ぎ（§3.2）、存在しない annotationId の `notFound()` 導入（§15.4）、レスポンシブ・アクセシビリティの新規要件、定期Cron・非同期ジョブ、GSC `dataState` の明示指定と記録、インポート直後の自動評価、`src/server/lib/gsc-status.ts` への `webmasters.readonly` 欠落判定の追加（§9.1.1 / §15.4）。**情報階層の再設計（統合レイアウト化）は 2026-08-16 の Q-C 回答によりフェーズ2のスコープへ移動した。**
 - 既知の別課題: `app/ga4-dashboard/components/RankingTab.tsx` の `/analytics?annotationId=...` は `/analytics` 側が `annotationId` を読まないため現状無効。フェーズ1後は `/analytics/[annotationId]` 形式へ更新すれば有効化できる（フェーズ1のスコープに含めるかは実装時に判断し、含めない場合は別チケット）。`app/ga4-dashboard/page.tsx` の `annotationId` / `path` searchParams 型も未使用。
 - 他ドキュメントへの波及（フェーズ1実装時に同期更新する）。**2026-08-15 にリポジトリ全体を grep した結果、更新が必要な他ドキュメントは次の5件である**（R-09）。**判定範囲と更新対象は別物である**: 0ヒット判定の定義（判定対象の文字列・探索範囲・除外）は §3.4 フェーズ1の完了条件を正本とし、本表はその判定で検出された「更新すべきファイル」の一覧である。
@@ -1845,8 +2568,9 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 | `docs/plans/content-annotation-ai-summary-design.md:48,349` | `app/analytics/[annotationId]/components/SuggestionDataReadiness.tsx` をスコープ外／影響なしの対象として参照（2箇所） | 移設後パスへ更新。2026-08-15 追加（従来の同期一覧から漏れていた） |
 
 - 仕様書HTML束: `docs/plans/_html/ga4-content-evaluation-spec/` は本文改訂のたびに追従させる（直近の大改訂は 2026-08-17 の評価エンジン仕様反映）。**本文をさらに改訂した場合は、`core.yaml` の `source_label` / 行数参照と `source_refs` のアンカー行番号がずれるため、spec-to-html の手順で貼り直して `npm run spec-html:refresh` で再生成する。**なお `docs/plans/_html/` は `.gitignore:69` で除外されており、リポジトリの成果物には含まれない。
-- `README.md`: Kill SwitchのDB設定変更手順、手動評価経路、設定変更時の安全側挙動、GA4取込に追加した指標の追記に加え、移設に伴う `/gsc-dashboard` 記載の更新が発生しそうなセクションとして 🚀主な機能・📁プロジェクト構成が候補。READMEの更新要否・対象セクションは実装時の `readme_sync` で最終確認する。
+- `README.md`: Kill SwitchのDB設定変更手順、手動評価経路、設定変更時の安全側挙動、GA4取込に追加した指標の追記に加え、移設に伴う `/gsc-dashboard` 記載の更新が発生しそうなセクションとして 🚀主な機能・📁プロジェクト構成が候補。**フェーズ3では 🚀主な機能（コンテンツ評価サイクル・メール通知）・🏗️アーキテクチャ図（Cron 1本追加）・📋環境変数（`RESEND_API_KEY` / `EMAIL_FROM` / `CRON_SECRET` の用途に本機能を追記）・📁プロジェクト構成が候補。**READMEの更新要否・対象セクションは実装時の `readme_sync` で最終確認する。
 - 実装前の確定状況（2026-08-17 評価エンジン仕様反映後）: 旧確認事項はすべて決着または失効（§15.1 / §15.2）。プロンプト出力契約は受領で確定（§6.3.4）。フェーズ0・フェーズ1は実装完了（PR #496）。**`spec-to-pr` の実行ゲート（フェーズ2）: 全ゲート解消（2026-08-17）。D1'（再見積 231〜354h、原文正本決定後 235〜360h）は合意済み、Q-G は実測決着済みで、フェーズ2は実行できる。**Q-H（GA4 画面突合先の数値確認）・Q-I（scroll イベント名）・§4.1.2 後方互換方針は実装中〜実データ検証（§14 手順10）までに確定する。
+- **`spec-to-pr` の実行ゲート（フェーズ3。2026-08-19）**: **設計は確定、実行は保留。** D6 は共有済み。Q-J / Q-K は同日確定。**ただし同日ユーザー決定でフェーズ2の手動評価を先に本番出荷する。** フェーズ3の `spec-to-pr` は §14 手順11（フェーズ2本番稼働）まで実行しない。spec-review の再実行はユーザー判断で不要。D8 は未決だが現状の記述 (b) で実装可能。サイクル設定は概要タブ、評価結果・操作は独立タブのまま（§10.1 / §10.8）。
 
 ## 18. 変更履歴
 
@@ -1888,12 +2612,20 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 | 2026-08-19 | **文章化プロンプトを1本へ統合し、同日中に2本構成へ差し戻した（開発側決定）。** 統合の動機は (1) 既存の `gsc_insight_*` が1テンプレート＝1メッセージで構成が不揃いだったこと、(2) 評価履歴のプロンプト追跡がシステム側しか記録せずユーザー側の改版を追えなかったこと。**差し戻しの理由**: `llmService` は先頭の `role='system'` を messages から分離し Anthropic の top-level `system` パラメータとして送る（`llmService.ts:36-41`, `:145`）。1本へ統合すると `system` が消え、出力契約（前置きなしの5フィールドJSON）の指示位置と `cache_control: ephemeral` の経路を失う。受領仕様 §07 の2本立てにも反する。**(2) の追跡の穴は分割のまま解消**し、`prompt_content_sha256` を2本の原文を NUL 区切りで連結した hash に変更した（§7.3）。migration は `20260819000000`（統合）→ `20260819000100`（差し戻し）の2本で、いずれも本文未登録のもののみ入れ替える。あわせて §10.1 の「`/admin/prompts` は改修不要」を、カテゴリ追加が必要だった実態へ訂正 | プロンプト構成は2本のまま。追跡の穴は解消済み |
 | 2026-08-19 | **Kill Switch の管理画面 `/admin/ga4-evaluation` を追加し、同日撤回（開発側決定）。** 追加の動機は「`ga4_content_evaluation_settings` に書き込む経路がコード上に無く、有効化に本番DBへの直接SQLが必要」だったこと。**撤回の理由**: 既存リポジトリの全体キルスイッチは `INSTAGRAM_SYNC_ENABLED` のような env 方式で（`instagram-integration-design.md:359` が明示的に「キルスイッチ」と呼ぶ）、`/admin` 配下は `prompts` / `users` ともマスタデータ編集に統一されており、「機能のON/OFF画面」は既存に前例が無い。既存設計と揃わない新概念を持ち込まない判断で削除し、§7.2 の当初方針（運用手順または管理者専用経路から更新）へ戻した。運用手順は README「GA4コンテンツ評価の運用」と §14 に記載済み | BR-05 / AC-06 の要件は不変。操作は運用手順で行う |
 | 2026-08-19 | **§4.1.2 の後方互換方針が実装されていなかったことを検出し、導線を実装して AC-18 を新設（開発側決定）。** 本番DBの実測で `ga4_page_metrics_daily.engagement_rate` / `active_users` が 27,085 行すべて NULL、`content_annotations.wp_image_count` が 5,038 行すべて NULL であることを確認した。原因は**方針を「§14 リリース手順」＝運用手順としてのみ書き、実装スコープにも AC にも入れなかった**こと。AC が無いためテストも self-review も判定基準を持たず、実装完了と判定された。実態は (1) GA4 側＝`backfillDays` はスキーマ・ルート・範囲決定まで実装済みだが、`/setup/ga4` の同期ボタンが body を送らないため画面から過去分を取り直せない（`Ga4SetupClient.tsx:143`）。なお再取込ボタンの設置先は同日中に `/setup/ga4` から `/ga4-dashboard` へ移した（指標を見る画面に操作を置く）。(2) WordPress 側＝`wp_image_count` を書くのは `wordpressContentSync.ts:215` の1箇所のみで、`/wordpress-import` の一括インポートはこの列を書かず、記事単位の再取得条件（`:239-243`）も本文・抜粋しか見ないため本文キャッシュ済みの記事は永久に NULL のまま。仕様書の「既存記事は次回の同期で埋まる」は**実在しない導線を前提にしていた**。**対応**: `/ga4-dashboard` に「過去90日を再取込」を追加（`backfillDays` 送信・30日窓分割・打ち切り/サンプリングの警告表示）、一括インポートが `wp_content_text` / `wp_image_count` を書くよう normalizer と差分判定を拡張、`fetchWpPostContentWithCache` の再取得条件に `wp_image_count IS NULL` を追加。§4.1.1 / §4.1.2 / §14 を実導線名で書き直し、AC-18 を新設 | 運用手順が依存する導線は AC 化する（同じ抜けを繰り返さないため） |
-| 2026-08-19 | **記事詳細の「コンテンツ評価」を独立タブへ切り出した（暫定。D3 / Q-C の見直しにあたるためクライアント確認待ち）。** 統合レイアウト（概要への統合表示）は 2026-08-16 の Q-C 回答「まとめで全てやる」に基づく合意だが、実装では評価カードが概要タブの最下部（メトリクスカード → 時系列グラフ → データ準備状況 → 検索順位評価サイクル設定 → コンテンツ評価）に置かれ、到達に大きなスクロールを要していた。合意の趣旨（GSC と GA4 を1画面で見る）は満たしていても、主役が末尾という配置は実装側の裁量で是正できる範囲を超えていたため、タブ化して確認にかけることにした。タブ構成は「概要」「検索クエリ」「検索順位評価」「コンテンツ評価」の4本で、既存3タブの並びは変えず右端に追加した。`ContentEvaluationTab` として切り出してあるので、統合表示へ戻す場合は概要の上部へ差し込むだけで済む。§10.1 / §10.3 を暫定である旨つきで更新 | クライアント確認で決着。統合表示に戻す可能性を残す |
+| 2026-08-19 | **記事詳細の「コンテンツ評価」を独立タブへ切り出した（暫定。D3 / Q-C の見直しにあたるためクライアント確認待ち）。** 統合レイアウト（概要への統合表示）は 2026-08-16 の Q-C 回答「まとめで全てやる」に基づく合意だが、実装では評価カードが概要タブの最下部（メトリクスカード → 時系列グラフ → データ準備状況 → 検索順位評価サイクル設定 → コンテンツ評価）に置かれ、到達に大きなスクロールを要していた。合意の趣旨（GSC と GA4 を1画面で見る）は満たしていても、主役が末尾という配置は実装側の裁量で是正できる範囲を超えていたため、タブ化して確認にかけることにした。タブ構成は「概要」「検索クエリ」「検索順位評価」「コンテンツ評価」の4本で、既存3タブの並びは変えず右端に追加した。`ContentEvaluationTab` として切り出してあるので、統合表示へ戻す場合は概要の上部へ差し込むだけで済む。§10.1 / §10.3 を暫定である旨つきで更新 | 同日、ユーザー決定で出荷形として確定（次行） |
+| 2026-08-19 | **Kill Switch（`ga4_content_evaluation_settings`）を削除（ユーザー決定）。** DB `enabled` 判定・「評価機能は現在停止中です」表示・AC-06 / BR-05 を廃止。`start_ga4_content_evaluation` RPC から有効化チェックを除去し、テーブルを DROP。評価可否はロールとデータ充足のみ。緊急停止はデプロイ停止等で行う。migration `20260819000200_drop_ga4_content_evaluation_settings.sql` | 手動評価の停止中表示は解消。本番へ migration 適用が必要 |
+| 2026-08-19 | **独立タブをフェーズ2の出荷形として確定（ユーザー決定）。** Q-C「まとめてやる」は情報階層を別チケットに送らない意味で維持し、たたき台の概要統合は採用しない。§10.1 / §10.3 / §10.5 / Q-C / D3 から暫定・クライアント確認待ちを外した。概要統合へ戻す作業はフェーズ2スコープ外。**あわせてフェーズ3の `spec-to-pr` 実行を保留**（フェーズ2の手動評価を先に本番出荷する。§17） | フェーズ2出荷可（独立タブ）。フェーズ3実行は手順11まで不可 |
 | 2026-08-19 | **記事カードの視覚階層をクライアント提供のモックに合わせた。** 表示項目は §10.3 の1〜7から変えていない（データの追加・削除なし）。変更したのは見せ方のみ: 記事タイトルをカード見出しに出す／コンテンツ力スコアを大きな数字＋点数帯のピルにする／読み始め・読了はラベル＋数値＋バーを1行に並べる／人数ファネルは数字を大きくラベルを下に置く／診断見出しを点数帯の色で出す／NEXT ACTION と狙いを独立した箱にまとめる。点数帯の色は文言（要改善・良好など）と併記して色だけに頼らない（§10.3 の「状態は色だけで表現せず」）。PC 前提のため、`lg` 以上では左に数値ブロック（点数・内訳バー・診断・サイト内順位・人数ファネル）、右に診断文と NEXT ACTION を置く2カラムにし、メタ情報を最下部の4カラムに畳んだ。`lg` 未満は従来どおり縦積みへフォールバックする | 見せ方のみの変更。仕様の表示項目は不変 |
 | 2026-08-19 | **記事カードの補足情報（小さい文字）を整理した。** 8項目を平置きしていたのを4項目＋折りたたみへ。(1) `評価設定：v1 / 文章 v2` と `最終評価日時` `データ取得日時` を「評価情報」の詳細欄へ畳んだ（§10.3 の6が「プロンプトバージョン・スコアリング設定バージョンは『評価情報』の詳細欄で確認できるようにする」と定めており、平置きは仕様からのズレだった）。(2) `前回差分` は前回の成功評価があるときだけ出す（初回は「初回計測」が3つ並ぶだけで情報がない）。(3) `実際に読まれた時間` `読み始め率` は先頭へ移動。§10.3 が「GA4 の画面と一字一句一致させる」と定める突合用の生値であり、削除も畳み込みもしない | 表示項目の削除はなし（畳んだだけ）。仕様 §10.3 の1〜7は不変 |
 | 2026-08-19 | **コンテンツ評価履歴から、記事カードが表示している1件を除いた。** §10.3 の7は「この領域での評価履歴」を求めているが、実装では履歴の最新1件が持つ10項目のうち9項目（コンテンツ力・点数帯・診断コード・読み始めスコア・読了スコア・対象期間・実際に読まれた時間・データ品質・診断文）がカード本体と同じ値で、評価が1回しかない状態では同じ内容を2度読ませていた。カードが表示する1件の判定は `resolveCardHistoryItem` に共有化し、カード側と履歴側で必ず一致させる（ずれると二重表示か欠落のどちらかが起きる）。実行中・失敗の行はカードの本文にならないため履歴に残る。履歴が0件になる場合はパネルごと出さない。カード見出しに「最新の評価結果はこのページの上部に表示しています。」を添えて、履歴に最新が無い理由を示す | §10.3 の7の表示項目自体は不変 |
 | 2026-08-19 | **記事カードの配色規則を「色は常にその数字自身の良し悪しを表す」に統一した。** それまで読み始め・読了のバーはコンテンツ力スコアの色で塗られており、たとえばコンテンツ力62点の記事では読了42点（改善の余地あり）のバーまで合格ラインの色になって、悪い数字が良い色をまとっていた。各バーは自分の点数で色を決めるよう変更し、あわせて各バーの右に点数帯ラベル（良好・合格ライン・改善の余地あり・要改善・深刻）を併記した（§10.3 の「状態は色だけで表現せず、ラベル・アイコン・文言を併用する」）。色は4段・ラベルは5段で、深刻と要改善はどちらも赤とし区別は文言が担う（色を5種類に増やすと色同士の差が読めなくなる）。診断見出しは記事全体の話なのでコンテンツ力スコアの色を継続して使う | 配色規則のみの変更。表示項目は不変 |
 | 2026-08-19 | **点数帯の配色を5段（仕様 §03 と同数）へ揃えた。** 直前まで色は4段で `0-39` を1つにまとめており、ラベル5段（深刻／要改善／改善の余地あり／合格ライン／良好）と目盛りの数が食い違っていた。原文 §03 が「2つの指標も、掛け合わせも、すべて同じ点数帯の意味を持たせる。ユーザーが覚える物差しは1本だけにする」と定めている以上、視覚上の物差しも5段でなければ原則に反する。深刻と要改善は赤の濃淡で分ける（色相を5つ使うと色同士の差が読めない）。**色値そのものは原文に指定が無い**: 受領 HTML は点数帯を `.b1`〜`.b5` の5クラス、記事カードのバーを `var(--s3)` のように帯連動の CSS 変数で塗っているが、その CSS 本体は共有されていないため実際の色値は未確認。現在の値は開発側の選択で、確定値が共有され次第差し替える。なお HTML の記事カードが読み始め46・読了40のバーをどちらも `--s3`（40-59 の帯）で塗っている点は、**バーの色をそのバー自身の点数で決める**という直前の変更と整合する | 色値の確定はクライアント確認待ち。段数と規則は確定 |
+| 2026-08-19 | **フェーズ3「コンテンツ評価サイクル」を新設（ユーザー指示。計画のみ・未実装）。** 指示は「GSC評価と同様に評価サイクル設定できるようにする」「『検索順位評価サイクル設定』と横並びで設定する」「『検索順位評価サイクルの開始』と同じ仕様でミニマム開発」「評価後はシステム内ではなく Resend でメール送信し、文面に評価結果とシステムの遷移先URLを入れる」の4点。**本フェーズは 2026-08-16 のクライアント合意2件を反転させる**: (1) Q4＝改善提案のメール配信 Non-goal → 評価完了の**通知**メールを追加（提案本文の配信は引き続き Non-goal）、(2) 定期Cron・非同期ジョブによる一括評価は対象外 → **サイクル登録した記事に限り**定期評価（全記事の自動評価は Non-goal のまま）。共有と見積合意を **D6** として起票した。<br>**新設した節**: §6.6（サイクル判定。GSC の `isDue` と同一式。ただし初回計測の概念を持たないため初回評価は1サイクル後）、§7.7（`ga4_content_evaluation_cycles`。既存 `ga4_content_evaluations` へ列追加しない理由＝`status` の CHECK が settings 専用行を許さず、行の作成主体が RPC に限られる）、§8.3（毎時 Cron・バッチ設計）、§9.5（Resend 送信）、§10.8（設定UI。「概要」タブで GSC と横並び）、§10.9（メール文面）。BR-10〜BR-13、AC-19〜AC-21、R-15〜R-18、D6 / D7 を追加。§3.4 にフェーズ3（58〜90h）を追加（MVP 合計には含めない）。<br>**調査で判明した実装上の必須事項**: (a) `ga4ContentEvaluationService.run()` は **GA4 API を呼ばず取込済み行だけを読む**うえ鮮度48時間で `evaluation_stale` になるため、**バッチはユーザー単位で `ga4ImportService.syncUser` を先に呼ばなければ定期評価が成立しない**（GSC バッチが一括インポートを先に走らせているのと同じ構造。§8.3）。(b) `hourly-cron.yml:7` が「再実行でメールが重複しうるバッチは `maxRetries` を 1 にすること」と明示しているため matrix は `maxRetries: 1` とし、`last_notified_history_id` の冪等記録（BR-12）を二重の防御に置く。(c) 失敗した記事の `last_evaluated_on` を進めないと毎時 LLM を呼び続けるため、結末7種すべてでクールダウンする（BR-11 / R-16）。(d) Cron にはセッションが無いので due 抽出後にロール（`admin`/`paid`）で絞る（BR-07）。(e) due 抽出は `db-max-rows = 1000` の対象で、切り捨てると同じ先頭1,000件だけが処理され続けるため昇順＋`count:'exact'` 突合＋`range` ページングにする（R-17）。(f) `users.email` は NULL 許容のため未登録ユーザーには通知が届かない。評価は成立させ通知だけ落とす（R-18）。(g) `sanitizeEmailHtml` が2ファイルに重複しており3つ目を書かず共通化する（§17 共通化candidate 🟡） | 計画のみ。実装は D6 合意後 |
+| 2026-08-19 | **GSC との揃え方を正本化した（ユーザー指示）。** 評価設定は検索順位評価サイクルと同型。意図した差分は通知先だけ（GSC＝アプリ内 / コンテンツ評価＝メール）。通知先がメールだから設定操作（停止・削除・配信停止）を増やさない。§2.6 To-Be・§3.1・§3.2・§6.6 対比表・§10.8・Q-J に反映 | 設定項目・操作は不変。原則の明文化 |
+| 2026-08-19 | **D6 共有済み（ユーザー報告）。フェーズ3 の `spec-to-pr` 実行ゲートを解除。** spec-review の再実行は不要（第7回を実施済み）とユーザー判断。Q-J / Q-K 確定済み | フェーズ3実装可 |
+| 2026-08-19 | **記事詳細の「コンテンツ評価」タブから、`evaluated` のときの状態バッジを外した（ユーザー指示）。** カード見出し右の状態バッジは、評価済みのときだけ「評価済み」としか言わず、同じカード内にコンテンツ力スコア（大きな数字）・点数帯ピル・診断見出しがすでに出ているため情報を足していなかった。`displayStatus === 'evaluated'` のときだけ非表示にする条件付きレンダリングとし、`evaluating` / `insufficient_data` / `import_failed` / `evaluation_failed` / `needs_reauth` / `low_data` / `unassessed` / `eligible` / `narrative_failed` / `evaluation_disabled` は状態がバッジでしか伝わらないため従来どおり表示する。バッジは `CardHeader` の flex 行の2つ目の子要素なので、非表示時は見出しが左寄せで残るだけで空の箱は生じない。`GA4_STATUS_LABELS.evaluated` は一覧 `/analytics` の評価状態列（`AnalyticsTable.tsx`）と評価履歴パネル（`Ga4EvaluationHistoryPanel.tsx`）が参照しているため残し、それらの表示は変更していない。§10.4 の `evaluated` 行に注記を追記 | 記事詳細タブのみの表示変更。表示項目・他画面は不変 |
+
+| 2026-08-19 | **フェーズ3に対する spec-review audit 第7回（new 24件: 🔴2 / 🟡18 / 🟢4）を反映。** 🔴2件はいずれも**仕様書がコードの実測を誤って引用していた**もの: (1) バッチが `run()` の結末を取得する契約が未定義だった（Kill Switch と `needs_reauth` は履歴行が作られる前に throw、`low_data` は `fetchEvaluation()` をそのまま返すため**前回の成功結果が `displayStatus='evaluated'` として返る**、`displayStatus` は11値なのに表は7値、BR-12 の冪等キーの取得元が戻り値に無い）→ §8.3 に「結末の判定契約」を新設し、結末の語彙を11値に固定して §6.6.4 / §9.5 / §13 をこの語彙で書き直した。(2) `syncUser` 失敗時のクールダウンが GSC と逆だった（GSC は `gscEvaluationService.ts:272-274` の `if (!bulkImportFailed)` で**取込失敗時はクールダウンしない**。仕様書が根拠にしていた「GSC も `no_metrics` で同じ扱い」は `no_metrics` については正しいが取込失敗の側が抜けていた）→ §6.6.4 に「取込失敗の扱いと再試行の上限」を新設し、当日限りの見送り＋翌日以降は通常どおり進める上限を置いた。<br>**🟡18件の主な反映**: 可観測性の予約キーを `invoke-cron.sh` の `validate_count_batch` 実測（`.success` / `.data.failed` が FAIL、`.data.skipped` は使わない）に合わせた（§8.3）／`syncUser` の所要を予算表へ計上し `SYNC_TIME_BUDGET_MS` とライブロック回避条件（最低1記事・`stoppedReason='no_progress'` を FAIL 扱い）を追加（§8.3）／ロール絞り込みを due 抽出 SQL 側へ移し降格ユーザーの行が 1,000 行枠を恒久占有しないようにした（§8.3 / R-17）／独自ページングをやめ既存 `SupabaseService.fetchAllPaged`（`protected`）の再利用とサブクラス構成を明記（§8.3 / §17）／Resend のレート制限 10 req/s per team・日次月次クォータ・`Idempotency-Key` を公式 verbatim 付きで §16 に新設し §9.5 / §11 へ反映／昇順が保証するのは取得順であって処理順ではない旨を書き分け（§8.3 / AC-20 / R-17）／BR-06 に due 抽出の例外を明記／§3.3 にフェーズ3の入口3行・権限マトリクス4行・Cron の応答契約例外を追加／§8.1 と §11 運用監視行・可用性行のフェーズ2前提の記述を是正／§2.3 / §2.4 にフェーズ3の成功条件と KPI 3行を追加し §12 対応表をそれを参照する形へ／サイクルを停止・削除できない帰結と1バッチ最大20通を §3.2 / §9.5 / §10.8 / D6 提示条件(d) に明記／§10.8 に「既存 GSC 側で変更する箇所＝なし」を新設（§3.4 の1行が既存 GSC UI への無制限の変更許可として読まれるのを防ぐ）／§15.3 依存関係表にフェーズ3の5行を追加。<br>**🟢4件**: §7.7 の「RPC だけが作る」は DB 権限による強制ではない旨（`20260818000100:188-190` 実測）／`runBatch()` を使わない理由と温存の明記／§14 手順12 と §17 への pending 型の但し書き／§14 手順15 の「`RESEND_API_KEY` 未設定で無効化」を「送信対象の判定を落とす」へ是正（未設定時も `failed` が永続記録されるため）。<br>**クライアント確認・開発側判断として隔離したもの**: Q-J（サイクルを停止できない制約の可否）／Q-K（メール本文の範囲と送信経路。`client-vision-from-lark.md:116` の verbatim を出典として §15.1 Q4・D6 背景へ追加）／D8（手動評価とサイクルの `last_evaluated_on` の関係。両案が本書・実コード・ポリシーから一意に導けないため D5 と同じく隔離）。**D6（承認ゲート）は仕様書修正では解消しない** | フェーズ3は計画のみ。着手ゲートは D6（未共有）。Q-J / Q-K は同日ユーザー決定で閉じた（§15.2） |
 
 ## 19. レビュー記録
 
@@ -2053,9 +2785,44 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 | ARCH-NEW-spec-L210（🟡 acceptance-condition-unsatisfiable） | 修正 | 第5回の `ARCH-NEW-spec-L1547` 対応で grep 範囲をリポジトリ全体へ広げた際、判定文字列から先頭スラッシュが落ち（`/gsc-dashboard` → `gsc-dashboard`）、実測で満たせない完了条件になっていた。§3.4 フェーズ1完了条件を **判定対象・探索範囲・除外**の3要素に分けて再定義。判定対象を「旧ルートを指すパス参照」（先頭スラッシュ付き `/gsc-dashboard` と `app/gsc-dashboard/`）に限定し、除外に (2) 本仕様書自身（設計正本として旧ルート名を必ず含むため、歴史記録だけでなく §3.1 / §3.3 / §5.5 / §10.1 / §12 / §13 等の設計記述も対象外）と (3) `gscDashboard.actions.ts` のログ接頭辞 `[gsc-dashboard]` 7箇所（`:225` `:475` `:581` `:723` `:784` `:864` `:925`。2026-08-15 実測。パス参照ではなくログ文言であり §17 の同ファイル変更対象に含まれない）を追加。ファイル名・識別子の改称がスコープ外である旨も明記。§17`:1611` の「（§3.4 完了条件の 0ヒット判定はこの範囲で行う）」は「リポジトリ全体を grep した結果、更新が必要な他ドキュメントは次の5件である」へ改め、**判定範囲と更新対象を分離**（判定定義の正本は §3.4）。R-09 の対策欄も同期 |
 | ARCH-NEW-spec-L1646（🟢 doc-formatting） | 修正 | §18 変更履歴で、第5回の追記行の直前に空行が入りテーブルが分断されていた（Markdown は空行で表を終端するため、最新行が別テーブルとして描画される）。空行を削除して同一テーブルに収めた。spec-to-html の全文ビューは原本 Markdown から生成されるため、図解 HTML 束への波及も解消する |
 
+### 2026-08-19 audit 第7回（new 24件: 🔴2 / 🟡18 / 🟢4 / persists 0 / reopened 0）
+
+対象は **2026-08-19 に追加したフェーズ3（コンテンツ評価サイクル）の記述のみ**（フェーズ0〜2 は第1〜6回でレビュー済みのため対象外）。**audit レポート冒頭は「公式ドキュメント照合: 実施」**（確認日 2026-08-19、WebFetch、取得失敗0件。Resend 3本・GA4 quotas。公式と仕様書が矛盾する箇所はなく、公式に明記があるのに仕様書が未記載の項目が2件＝下表の `ARCH-NEW-spec-L1173` / `ARCH-NEW-spec-L1167`）。**本節の対応にあたり、Resend の3 URL は revise 側でも WebFetch で再取得し、§16 へ転記した引用が公式本文と一致することを確認した（2026-08-19）。**
+
+| finding_id | 対応 | 備考 |
+|---|---|---|
+| ARCH-NEW-spec-L993（🔴 batch-outcome-contract） | 修正 | §8.3 に「結末の判定契約」を新設。`run()` が例外でも結末を返すこと（`ga4ContentEvaluationService.ts:387` の Kill Switch throw、`:390-392` の `code:'needs_reauth'` throw。いずれも履歴行が作られる前）と、`low_data` の早期 return（`:398-399` / `:497-499`）では `resolveGa4EvaluationDisplayStatus`（`ga4-evaluation-status.ts:18-28`）が永続状態を優先するため**前回の成功結果が `displayStatus='evaluated'` として返る**ことを実測どおり記載。判定を `displayStatus`（11値。`src/types/ga4-evaluation.ts:25-32`）ではなく「今回の履歴行の有無（`history[0].startedAt` と呼び出し開始時刻の比較）＋その行の `status`」で行うと固定し、結末の語彙を11値へ確定。§6.6.4 / §9.5 / §13 を同語彙で全面的に書き直し、BR-11 / BR-12 も同期。BR-12 の冪等キーを「今回の run が生成した履歴行の `id`」と定義し取得方法を明記 |
+| ARCH-NEW-spec-L991（🔴 cooldown-on-sync-failure） | 修正 | §6.6.4 に「取込（`syncUser`）が失敗した実行」行と「取込失敗の扱いと再試行の上限」小節を新設し、当日は**クールダウンを進めない**と定めた。根拠の記述を実測どおりへ訂正: GSC は `gscEvaluationService.ts:272-274` の `if (!bulkImportFailed) { await this.updateCooldown(...) }` により**取込失敗時はクールダウンしない**一方、`no_metrics`（`:306`）では無条件に呼ぶ。改訂前は後者だけを引いており、直接の対応物である取込失敗の分岐が抜けていた。無制限リトライ回避の上限は**新しい列を足さずに済む形**（`next_evaluation_date` が当日である間だけ見送る＝毎時実行なので最大24回）を採用し、§8.3 手順5a に `syncFailed` の伝播を明記。AC-20 に2シナリオ追加 |
+| ARCH-NEW-spec-L1038（🟡 cron-observability-keys） | 修正 | §8.3 可観測性に予約キー表を新設。`scripts/invoke-cron.sh:123-158` の `validate_count_batch` 実測に合わせ、FAIL＝`.success` / `.data.failed`（`articlesFailed + emailsFailed` を合算）、WARN＝`.data.skippedDueToLimit`（件数上限＋`truncatedCandidates`）/ `.data.stoppedReason`、**`.data.skipped` はキー自体を出さない**（クールダウンスキップを入れると正常時に毎回 WARN が出るため）と定義。応答が `{success, data}` 形である旨、固有内訳は `data` 直下に併置する旨も明記し、§8.3 profile 行・§11 運用監視行・§14 手順18・§13 を同期 |
+| ARCH-NEW-spec-L934（🟡 stale-phase2-statements） | 修正 | §8.1 末尾を「**フェーズ2までは**……対象外とする。**フェーズ3で定期Cron を追加するが、claim RPC とジョブキューは引き続き導入しない**」へ書き換え（RPC は2本のまま）。実装エージェントが Cron 実装自体を Non-goal と誤読しうる状態を解消 |
+| ARCH-NEW-spec-L116（🟡 authz-entry-registry） | 修正 | §3.3 使い分け表へフェーズ3の3行（登録・更新＝`canWriteGa4` / 取得＝`canAccessGa4` / Cron＝どちらも使わず `CRON_SECRET` のみ）、権限マトリクスへ4行（サイクルの登録変更・参照・停止削除不可・バッチ対象）、未認可時の応答契約へ Cron の例外行（500 / 401、本文にユーザーデータを含めない）を追加。`gsc-evaluate/route.ts:17-31` にロール検査が無い実測も明記 |
+| ARCH-NEW-spec-L115（🟡 service-role-scoping） | 修正 | BR-06 の例外欄へ due 抽出（`status='active' AND next_evaluation_date <= today_jst` の横断 SELECT）を追加し、抽出後の全処理は `user_id` と `content_annotation_id` を明示指定すると定めた。例外は「読み取り専用かつ結果をユーザーへ返さない経路」に限定 |
+| ARCH-NEW-spec-L988（🟡 due-ordering-guarantee） | 修正 | §8.3 に「取得順と処理順」を新設し、昇順が保証するのは**取得（回収）順**であって処理順ではないと書き分けた（処理順はユーザー単位のシャッフル＝`gscEvaluationService.ts:487` の Fisher-Yates で決まる）。昇順の目的を「切り捨て時にあふれるのは最も新しい `next_evaluation_date` の側」「未処理候補が次回抽出でも先頭側に来る」の2点へ書き直し、AC-20 のシナリオと R-17 の対策欄も同期。**手順4 のシャッフル自体は GSC 正本を写す原則（§6.6 / §8.3）を優先して変更しない** |
+| ARCH-NEW-spec-L1023（🟡 batch-time-budget） | 修正 | 予算表へ `SYNC_TIME_BUDGET_MS`（120秒）を追加し、超過時は以降のユーザーの `syncUser` を呼ばず取込済みデータで評価すると定めた（実測: `ga4ImportService.ts:55-62` は同期単独で `MAX_DURATION_MS=280_000` を持つため、同期だけで枠を使い切りうる）。「1バッチで最低1記事は評価してから中断する」ライブロック回避条件と、0件で終わった実行を `stoppedReason:'no_progress'` ＋ `data.failed` で **FAIL 扱い**にする規定を追加（`time_limit` は WARN 止まりで検知されないため）。`MAX_ARTICLES_PER_BATCH` が GSC に存在しない新規定数である旨（`gscEvaluationService.ts:17-20` は定数3本のみ）も根拠欄へ明記 |
+| ARCH-NEW-spec-L987（🟡 role-excluded-row-lifecycle） | 修正 | §8.3 手順2 の due 抽出に `users` の JOIN と `u.role IN ('admin','paid')` を入れ、手順3 を多層防御の再確認へ格下げ。「ロール絞り込みを SQL 側へ置く理由」を新設し、降格ユーザーの行が毎時 due として抽出され R-17 の1,000行枠を恒久占有する経路を塞いだ。SQL で絞れない場合の恒久策（`status='paused'` への退避）も併記 |
+| ARCH-NEW-spec-L1173（🟡 resend-external-contract） | 修正 | §9.5 に「レート制限とクォータ」小節を新設し、(1) 10 req/s per team と本バッチの送信量の関係、(2) 既存 Google Ads メールとチーム単位で枠を共有すること（毎時0分の matrix 並列起動と時間帯が重なる）、(3) 429 の `daily_quota_exceeded` / `monthly_quota_exceeded` を他の失敗と区別して `last_notification_error` と構造化ログに残すこと、を記載。§11 通知行にも反映。公式引用は §16 へ verbatim で新設（確認日 2026-08-19） |
+| ARCH-NEW-spec-L1167（🟡 resend-external-contract） | 修正 | §9.5 冪等性を3段の防御へ書き換え、3段目として **Resend の `Idempotency-Key` に評価履歴 ID を渡す**ことを採用（公式 verbatim: "Should be unique per API request. Idempotency keys expire after 24 hours. Have a maximum length of 256 characters."）。送信と `last_notified_history_id` 記録の順序を「送信 → 成功したら記録」に確定し、そのクラッシュ窓を 3段目が埋めることを明記。`emailService.sendGa4ContentEvaluation` の引数に `idempotencyKey` を追加し、R-15・§13 も同期 |
+| ARCH-NEW-spec-L1169（🟡 manual-vs-cycle-evaluation） | **一部修正 + D8 へ隔離** | §9.5 の「同一記事の手動再評価直後のバッチ実行でも二重送信しない」は**成立しないため削除**し、代わりに「この冪等性が防げないもの」として重複通知が起こりうることを明記した（事実誤りの部分は修正済み）。**(a) 手動評価もサイクルの `last_evaluated_on` を進める／(b) 手動評価はサイクルに影響させない、の選択は利用者から見える挙動が異なる設計判断であり、本書・実コード・適用ポリシーのいずれからも一意に導けないため、revise では選ばず D8（§15.3）として隔離した**（`ARCH-NEW-spec-L367` → D5 と同じ扱い）。§6.6.4 にも未確定である旨を記載 |
+| ARCH-NEW-spec-L1376（🟡 stale-phase2-statements） | 修正 | §11 運用・監視行の根拠「定期Cronを持たないため常時監視の必要性が低い」がフェーズ3で成立しないため、監視手段を `hourly-cron.yml` ＋ `invoke-cron.sh` の `count-batch` profile 判定と定め、根拠を差し替えた（専用ダッシュボードは引き続き対象外）。可用性行にも「フェーズ3のバッチは1回の失敗を次の毎時実行で回復する設計」を追記 |
+| ARCH-NEW-spec-L1926（🟡 success-criteria-traceability） | 修正 | §2.3 にフェーズ3の成功条件3件、§2.4 KPI 表にフェーズ3の3行（サイクル評価の成立率・通知の送信成功率・バッチ完走率。測定方法＝Cron ログ＋DB 集計、測定時期＝§14 手順18）を追加。§12 対応表の AC-19/20/21 は「AC の要約を書いているだけ」だったのを、追加した成功条件・KPI を参照する形へ書き直した |
+| ARCH-NEW-spec-L1032（🟡 pagination-reuse） | 修正 | §8.3 行数上限を「独自実装（`count:'exact'` 突合＋`range` ページング）」から「**既存の `SupabaseService.fetchAllPaged` を使う**」へ書き換え。同ヘルパーが `protected`（`supabaseService.ts:234`）であることから `ga4ContentEvaluationCycleService` を `SupabaseService` のサブクラスとすることを §8.3 / §17 に明記し、`count:'exact'` を渡さないと `truncated` が常に `false` になる（`total` が `null` のまま）実測も記載。決定的タイブレーク（`next_evaluation_date ASC, id ASC`）も要件化 |
+| ARCH-NEW-spec-L165（🟡 cycle-stop-affordance） | **修正 + Q-J へ隔離 → 2026-08-19 確定** | §3.2 の当該 Non-goal に帰結を明記し、§10.8 に停止不可の告知を置いた。**Q-J: 評価設定は GSC 同型。意図した差分は通知先だけ。停止・削除 UI は作らない。** 告知は設定操作の追加ではなく、通知チャネル（メール）の開示 |
+| ARCH-NEW-spec-L297（🟡 gsc-side-edit-scope） | 修正 | §10.8 に「既存 GSC 側で変更する箇所」を新設し **「なし」**と明記（`EvaluationSettings.tsx` の見出し・文言・props とも変更しない。フェーズ3で触るのは `OverviewTab.tsx` のレイアウトのみ）。§3.4 内訳行の「既存 GSC 側の見出し・文言の整合」を「既存 GSC 側は変更しない」へ書き換え、§17「変更しないもの」へも追加。GSC 側の GA4 用語置換が必要な場合はフェーズ2の §10.7 スコープであることも明記。**工数レンジ（10〜16h）は変更していない**: 当該行は新規コンポーネントと `OverviewTab` の2カラム化を含む1本のレンジで、削除した項目に個別の工数が割り当てられておらず、再算定の根拠が本書に無いため（audit の修正案「内訳から工数を外す」は当該行の構造上そのままでは適用できない） |
+| ARCH-NEW-spec-L2015（🟡 client-alignment-mail） | **修正 + Q-K へ隔離 → 2026-08-19 確定** | §15.1 Q4 行と §15.3 D6 背景欄へ `docs/context/client-vision-from-lark.md:116` を出典として追加（verbatim を引用のうえ、反転が「開発側が合意を覆す」一方向ではないことを明記）。**Q-K は同日ユーザー決定で閉じた: 現行 §9.5 / §10.9（通知のみ・評価ごとの独立メール）でよい。日次メールへの相乗り・提案本文の配信は今回スコープ外** |
+| ARCH-NEW-spec-L1149（🟡 notification-fanout） | 修正 | §9.5 に「束ねない（1評価＝1通）」と1ユーザーが同一バッチで受け取りうる最大通数（`MAX_ARTICLES_PER_BATCH` と同じ20通）を明記。§3.2 フェーズ3 Non-goal に「通知のダイジェスト化」を項目として追加し理由と帰結を記載、§11 通知行と D6 提示条件(d) にも反映 |
+| ARCH-NEW-spec-L2065（🟡 phase3-dependency-registry） | 修正 | §15.3 依存関係表へフェーズ3の5行を追加（フェーズ2の本番稼働 / D6 / Q-J・Q-K / D8）。着手可否の判断が本文の散在記述に依存する状態を解消 |
+| ARCH-NEW-spec-L881（🟢 table-creation-rationale） | 修正 | §7.7 理由2 を「**権限で禁止されているわけではないが**、§8.1 の設計上 RPC が唯一の作成主体である」へ書き換え、根拠の限界（`20260818000100:188-190` の `revoke insert, update, delete` は history にのみ適用され、`ga4_content_evaluations` には `grant all to service_role` が付く／GSC 正本では Server Action の直 INSERT で作成用 RPC は存在しない）を併記した。専用テーブル新設の結論は理由1 で成立するため変更なし |
+| ARCH-NEW-spec-L1004（🟢 existing-batch-impl-reuse） | 修正 | §8.3 に「既存の同等物（`ga4ImportService.runBatch()`）を使わない理由」を新設。`runBatch()` は `listGa4SyncTargets` が返す同期対象ユーザー全体を回すもので「due なサイクル行を持つユーザーだけ」に絞れないため使わないこと、**削除もせず現状のまま残す**こと（呼び出し元は `src/`・`app/` で0件。doc `:76-81` の「本番投入後のCron実装時に使用予定」を温存）を明記し、§17「変更しないもの」へも追加 |
+| ARCH-NEW-spec-L1979（🟢 pending-types-window） | 修正 | §14 手順12 と §17 のフェーズ3変更対象へ pending 型（`src/types/database.types.pending.ts`）の但し書きを追加。手順7（フェーズ2）と同じ運用であることと、`spec-to-pr` が migration 適用前に実装するため必要である旨を記載 |
+| ARCH-NEW-spec-L1982（🟢 release-verification-side-effect） | 修正 | §14 手順15 の「`RESEND_API_KEY` 未設定の環境で無効化」を撤回し、ロールバック (2) と同じ「送信対象の判定を落とす」へ揃えた。実測（`emailService.ts:28-33`）で未設定時も `console.error` ＋ `{success:false}` を返すため §9.5 に従って `last_notification_status='failed'` が永続記録され、§10.8 が「前回の通知メールを送信できませんでした」を出し続けることを理由として明記 |
+
+**この回の対応で新たに開いた未解決事項:** D8（§15.3。開発側判断。ミニマム版のリリースはブロックしない）。Q-J / Q-K は 2026-08-19 ユーザー決定で閉じた。**D6 は同日ユーザー報告で共有済み。着手ゲートは解消。** spec-review の再実行はユーザー判断で不要。
+
+**仕様書への指摘ではないため対応しなかったもの（併せて提案）:** audit は `.agents/skills/spec-review/external-services.md` の「公式ドキュメントの起点」表（`:11-19`）に Resend の行が無いことを指摘し、同ファイル `:21` に従って `| Resend | https://resend.com/docs |` の追加を提案している。**本ステップの編集範囲は `docs/` 配下に限定されているため実施していない**（`.agents/skills/` 配下は範囲外）。別途対応が必要。
+
 ### 公式ドキュメント照合
 
-- **実施**（確認日: 2026-08-12 初回、2026-08-13 追加、2026-08-14 audit で9本、第2回改訂で5本、第3回改訂で1本を WebFetch により再取得）。§16 に URL・確認日・verbatim 引用を記録している。
+- **実施**（確認日: 2026-08-12 初回、2026-08-13 追加、2026-08-14 audit で9本、第2回改訂で5本、第3回改訂で1本を WebFetch により再取得。**2026-08-19 の第7回改訂で Resend 3本（introduction / rate-limit / emails/send-email）を WebFetch で取得し §16 へ verbatim を転記**）。§16 に URL・確認日・verbatim 引用を記録している。
 - 第2回改訂で再取得し公式本文との一致を確認したもの: `support.google.com/analytics/answer/9143382`（`landingPage` 定義。ページ名は "Analytics dimensions and metrics"）、GA4 Quotas 4行、GA4 Data freshness（24-48時間・Standard intraday 2-6 hours・Daily 12 hours）、GSC `dataState`（3値）・`startRow`・全行返却非保証、Google OAuth 2.0 のリフレッシュトークン失効条件。
 - 第3回改訂で再取得したもの: GSC `webmaster-tools/limits` の Search Analytics クォータ3区分（Per-site / Per-user / Per-project）。値は公式と一致し、引用を区分ごとに分割した。あわせて GA4 Data freshness のラベルを公式表記 `Daily` へ訂正した。
 - **不一致を検出し削除したもの**: 「Landing page レポート／Pages and screens レポートの構成」引用2ブロック。引用元 URL に当該記述も `unifiedPagePathScreen` も存在しないことを 2026-08-14 に実測したため §16 から削除し、「公式未確認」表へ移した。
@@ -2067,12 +2834,13 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 
 ### 残置（理由付き）
 
-§19 の記録は **計117行**（第1表 26行・第1回 audit 対応表 37行・第2回 audit 対応表 31行・第3回 audit 対応表 7行・第4回 audit 対応表 4行・第5回 audit 対応表 10行・第6回 audit 対応表 2行）。`finding_id` は行単位で一意に管理し、同一 ID を複数行に併記しない。
+§19 の記録は **計141行**（第1表 26行・第1回 audit 対応表 37行・第2回 audit 対応表 31行・第3回 audit 対応表 7行・第4回 audit 対応表 4行・第5回 audit 対応表 10行・第6回 audit 対応表 2行・**第7回 audit 対応表 24行**）。`finding_id` は行単位で一意に管理し、同一 ID を複数行に併記しない。
 
-残置は次の3件。それ以外はすべて修正、または §15.2 の確認質問・§15.3 の開発側確定事項へ隔離した。**第3回 audit（new 3・persists 1・🟢 3）および第4回 audit（new 2・🟢 2）はいずれも修正済みで、残置に追加はない。第5回 audit（🟡6・🟢4）は 9件を修正し、`ARCH-NEW-spec-L367` のみ下表の残置（部分対応）とした。第6回 audit（🟡1・🟢1）は2件とも修正済みで、残置に追加はない。**
+残置は次の4件。それ以外はすべて修正、または §15.2 の確認質問・§15.3 の開発側確定事項へ隔離した。**第3回 audit（new 3・persists 1・🟢 3）および第4回 audit（new 2・🟢 2）はいずれも修正済みで、残置に追加はない。第5回 audit（🟡6・🟢4）は 9件を修正し、`ARCH-NEW-spec-L367` のみ下表の残置（部分対応）とした。第6回 audit（🟡1・🟢1）は2件とも修正済みで、残置に追加はない。第7回 audit（🔴2・🟡18・🟢4）は 23件を修正し、`ARCH-NEW-spec-L1169` のみ下表の残置（部分対応。D8 へ隔離）とした。**
 
 | 残置項目 | finding_id | 理由 |
 |---|---|---|
 | `GlobalToastBridge.tsx` の扱いを (a)(b) のいずれかに確定しない | `ARCH-NEW-spec-L367` | audit の修正案は「(a) フェーズ1では変更せず別チケットへ送る」「(b) パス判定のみ新ルートへ変え遷移分岐を削除する」のいずれかに固定することを求めるが、**両案は利用者から見える挙動が同一**（当該分岐は到達不能）で、分かれるのは「到達不能な既存コードを移設のスコープで削除してよいか」という設計判断である。本書・実コード・適用ポリシーのいずれからも一意に導けないため、revise で任意に選ばず D5（§15.3）として隔離した。**指摘の事実誤りの部分（「挙動保存の唯一の意図的な逸脱」という前提評価）は §5.5 で撤回し、実測根拠を記載済みである。**D5 はフェーズ1着手のブロッカー |
 | テンプレート §5 の FR-ID 表と §6 のシナリオ対応表を導入しない | `ARCH-NEW-spec-L242` / `ARCH-PERSIST-spec-L242` | FR-ID 体系はプロンプト契約（Q1）確定後に一括導入する方が手戻りが少ない。代替として §12 末尾に AC ↔ 成功条件・要求出典の対応表を置き、追跡可能性を確保した |
 | §15.2 の各質問に具体的な回答期限日を入れない | `ARCH-NEW-spec-L931` | 期限日は開発チーム単独では決められず、D1（見積合意）の提示時にクライアントと同時に確定する。無期限に開いたままにしないため、「D1 提示時に確定」という期限の決め方自体を表に明記し、§17 で未回答のまま `spec-to-pr` へ進まないことを条件化した |
+| 手動評価とサイクルの `last_evaluated_on` の関係を (a)(b) のいずれかに確定しない | `ARCH-NEW-spec-L1169` | audit の修正案は「(a) 手動評価もサイクル登録済み記事の `last_evaluated_on` を進める」「(b) 手動評価はサイクルに影響しないと明記し、重複評価・重複通知を既知挙動として書く」のいずれかに固定することを求めるが、**両案は利用者から見える挙動が異なる**（(a) は手動評価がサイクルを1周分先送りする／(b) は手動評価直後に同じ内容のメールが届きうる）設計判断であり、本書・実コード・適用ポリシーのいずれからも一意に導けない。したがって revise で任意に選ばず **D8（§15.3）として隔離**した（`ARCH-NEW-spec-L367` → D5 と同じ扱い）。**指摘の事実誤りの部分（§9.5 の「手動再評価直後のバッチ実行でも二重送信しない」）は削除し、防げない範囲を明記済みである。**D8 はミニマム版のリリースをブロックしない |

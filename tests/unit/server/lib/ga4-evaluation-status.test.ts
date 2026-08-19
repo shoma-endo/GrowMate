@@ -6,31 +6,21 @@ import {
 } from '@/server/lib/ga4-evaluation-status';
 
 describe('ga4-evaluation-status', () => {
-  it('Kill Switch停止を最優先し、次に再認証、評価中、永続状態を表示する', () => {
+  it('再認証を最優先し、次に評価中、永続状態を表示する', () => {
     expect(
       resolveGa4EvaluationDisplayStatus({
-        killSwitchEnabled: false,
-        needsReauth: true,
-        persistedStatus: 'evaluated',
-      })
-    ).toBe('evaluation_disabled');
-    expect(
-      resolveGa4EvaluationDisplayStatus({
-        killSwitchEnabled: true,
         needsReauth: true,
         persistedStatus: 'evaluating',
       })
     ).toBe('needs_reauth');
     expect(
       resolveGa4EvaluationDisplayStatus({
-        killSwitchEnabled: true,
         needsReauth: false,
         persistedStatus: 'evaluating',
       })
     ).toBe('evaluating');
     expect(
       resolveGa4EvaluationDisplayStatus({
-        killSwitchEnabled: true,
         needsReauth: false,
         persistedStatus: 'evaluated',
       })
@@ -52,9 +42,9 @@ describe('ga4-evaluation-status', () => {
   });
 
   it('永続状態がない記事ではlow_data、eligible、unassessedを導出する', () => {
-    expect(resolveGa4EvaluationDisplayStatus({ killSwitchEnabled: true, needsReauth: false, persistedStatus: null, derivedStatus: 'low_data' })).toBe('low_data');
-    expect(resolveGa4EvaluationDisplayStatus({ killSwitchEnabled: true, needsReauth: false, persistedStatus: null, derivedStatus: 'eligible' })).toBe('eligible');
-    expect(resolveGa4EvaluationDisplayStatus({ killSwitchEnabled: true, needsReauth: false, persistedStatus: null })).toBe('unassessed');
-    expect(resolveGa4EvaluationDisplayStatus({ killSwitchEnabled: true, needsReauth: false, persistedStatus: 'narrative_failed' })).toBe('narrative_failed');
+    expect(resolveGa4EvaluationDisplayStatus({ needsReauth: false, persistedStatus: null, derivedStatus: 'low_data' })).toBe('low_data');
+    expect(resolveGa4EvaluationDisplayStatus({ needsReauth: false, persistedStatus: null, derivedStatus: 'eligible' })).toBe('eligible');
+    expect(resolveGa4EvaluationDisplayStatus({ needsReauth: false, persistedStatus: null })).toBe('unassessed');
+    expect(resolveGa4EvaluationDisplayStatus({ needsReauth: false, persistedStatus: 'narrative_failed' })).toBe('narrative_failed');
   });
 });

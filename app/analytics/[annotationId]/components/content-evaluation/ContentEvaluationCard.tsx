@@ -85,7 +85,7 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
   const latestRun = evaluation?.history[0] ?? null;
   const displayStatus = evaluation?.displayStatus ?? 'unassessed';
   const canRun = ['eligible', 'evaluated', 'narrative_failed', 'evaluation_failed'].includes(displayStatus);
-  const canShowAction = !['unassessed', 'low_data', 'evaluating', 'needs_reauth', 'import_failed', 'insufficient_data', 'evaluation_disabled'].includes(displayStatus);
+  const canShowAction = !['unassessed', 'low_data', 'evaluating', 'needs_reauth', 'import_failed', 'insufficient_data'].includes(displayStatus);
   const dataQualitySource = displayStatus === 'insufficient_data' ? latestRun : latest;
   const missingMetrics = displayStatus === 'unassessed'
     ? evaluation?.missingMetrics ?? []
@@ -129,14 +129,30 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
         <div className="min-w-0">
           <CardTitle className="truncate text-lg">{articleTitle || 'コンテンツ評価'}</CardTitle>
-          {articleTitle && <p className="mt-1 text-xs text-muted-foreground">コンテンツ評価</p>}
         </div>
-        <span className="rounded-full border px-3 py-1 text-sm" aria-live="polite">
-          {displayStatus === 'unassessed' ? '未評価（データが不足）' : getGa4EvaluationStatusLabel(displayStatus)}
-        </span>
+        {/* 状態バッジと主操作をタイトルと同じ行にまとめる。shrink-0 で、長い記事タイトル（左は
+            min-w-0 + truncate）に押されてボタンが潰れないようにする */}
+        {(displayStatus !== 'evaluated' || canShowAction) && (
+          <div className="flex shrink-0 items-center gap-3">
+            {/* 評価済みのときは状態バッジを出さない。カード本体にスコア・点数帯ピル・診断見出しが
+                出ており「評価済み」の一言が情報を足さないため。それ以外の状態は状態バッジでしか
+                伝わらないので引き続き表示する */}
+            {displayStatus !== 'evaluated' && (
+              <span className="rounded-full border px-3 py-1 text-sm" aria-live="polite">
+                {displayStatus === 'unassessed' ? '未評価（データが不足）' : getGa4EvaluationStatusLabel(displayStatus)}
+              </span>
+            )}
+            {canShowAction && (
+              <Button type="button" onClick={handleRun} disabled={isRunning || !canRun}>
+                {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : latest ? <RefreshCw className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
+                {actionLabel}
+              </Button>
+            )}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         {(error || displayStatus === 'evaluation_failed' || displayStatus === 'import_failed') && (
@@ -181,16 +197,6 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
             })()}
           </p>
         )}
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">評価対象期間は表示期間とは別に管理されます。</p>
-          {canShowAction && (
-            <Button type="button" onClick={handleRun} disabled={isRunning || !canRun}>
-              {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : latest ? <RefreshCw className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-              {actionLabel}
-            </Button>
-          )}
-        </div>
 
         {latest?.contentScore !== null && latest?.contentScore !== undefined ? (
           <div className="space-y-5">

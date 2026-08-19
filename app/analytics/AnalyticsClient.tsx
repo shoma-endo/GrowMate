@@ -35,7 +35,6 @@ interface AnalyticsClientProps {
   hasUnstartedGscEvaluation: boolean;
   hasUnstartedGa4Evaluation: boolean;
   ga4Truncated: boolean;
-  ga4EvaluationEnabled: boolean;
   periodClamped: boolean;
   hasUrlFilterParams: boolean;
   error?: string | null;
@@ -75,7 +74,6 @@ export default function AnalyticsClient({
   hasUnstartedGscEvaluation,
   hasUnstartedGa4Evaluation,
   ga4Truncated,
-  ga4EvaluationEnabled,
   periodClamped,
   hasUrlFilterParams,
   error,
@@ -253,7 +251,6 @@ export default function AnalyticsClient({
             hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
             hasUnstartedGa4Evaluation={hasUnstartedGa4Evaluation}
             hasUrlFilterParams={hasUrlFilterParams}
-            ga4EvaluationEnabled={ga4EvaluationEnabled}
           />
         ) : null}
 
@@ -300,7 +297,7 @@ export default function AnalyticsClient({
     <div className="w-full px-4 py-8">
       {!instagramConnected ? (
         <>
-          <h1 className="text-3xl font-bold mb-6">検索順位・コンテンツ評価</h1>
+          <h1 className="text-3xl font-bold mb-6">コンテンツ一覧</h1>
           {blogContent}
         </>
       ) : (
@@ -316,7 +313,7 @@ export default function AnalyticsClient({
           className="w-full"
         >
           <div className="flex flex-wrap items-center gap-4 mb-6">
-            <h1 className="text-3xl font-bold">検索順位・コンテンツ評価</h1>
+            <h1 className="text-3xl font-bold">コンテンツ一覧</h1>
             <TabsList>
               <TabsTrigger value="blog" className="flex items-center gap-1.5">
                 <FileText className="w-4 h-4" />

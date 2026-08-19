@@ -389,35 +389,6 @@ export type Database = {
           },
         ]
       }
-      ga4_content_evaluation_settings: {
-        Row: {
-          enabled: boolean
-          id: number
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          enabled?: boolean
-          id: number
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          enabled?: boolean
-          id?: number
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ga4_content_evaluation_settings_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       ga4_content_evaluations: {
         Row: {
           active_run_id: string | null

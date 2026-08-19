@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
 
+import {
+  buildMockEvaluationView,
+  isGa4EvaluationMockEnabled,
+} from '@/server/lib/ga4-evaluation-mock';
+
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -111,7 +116,6 @@ function toSafeErrorCode(error: unknown): string {
     if (typeof code === 'string' && /^[a-z0-9_]+$/.test(code)) return code.slice(0, 80);
   }
   const message = error instanceof Error ? error.message.toLowerCase() : '';
-  if (message.includes('disabled')) return 'evaluation_disabled';
   if (message.includes('already running')) return 'evaluation_already_running';
   return 'evaluation_failed';
 }
@@ -200,25 +204,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
     });
   }
 
-  async isEvaluationEnabled(): Promise<boolean> {
-    try {
-      return await this.withEvaluationClient(async client => {
-        const { data, error } = await client
-          .from('ga4_content_evaluation_settings')
-          .select('enabled')
-          .eq('id', 1)
-          .maybeSingle();
-        if (error) throw error;
-        return data?.enabled === true;
-      });
-    } catch (error) {
-      console.error('[Ga4ContentEvaluationService] evaluation setting read failed', {
-        code: error instanceof Error ? error.name : 'unknown',
-      });
-      return false;
-    }
-  }
-
   private async resolveInitialDisplayStatus(
     userId: string,
     annotationId: string,
@@ -285,7 +270,8 @@ class Ga4ContentEvaluationService extends SupabaseService {
   }
 
   async fetchEvaluation(userId: string, annotationId: string): Promise<Ga4ContentEvaluationView> {
-    const settingsEnabled = await this.isEvaluationEnabled();
+    // ローカルデモ用モック（コミットしない）
+    if (isGa4EvaluationMockEnabled()) return buildMockEvaluationView(annotationId);
     const credential = await this.getGscCredentialByUserId(userId);
     const needsReauth = toGa4ConnectionStatus(credential).needsReauth === true;
     const displayPeriod = getGa4EvaluationDateRange();
@@ -358,7 +344,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
         needsReauth,
         missingMetrics: initialDisplay?.missingMetrics ?? [],
         displayStatus: resolveGa4EvaluationDisplayStatus({
-          killSwitchEnabled: settingsEnabled,
           needsReauth,
           persistedStatus,
           ...(initialDisplay ? { derivedStatus: initialDisplay.status } : {}),
@@ -375,7 +360,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
   }
 
   async run(input: RunGa4ContentEvaluationInput): Promise<Ga4ContentEvaluationView> {
-    if (!(await this.isEvaluationEnabled())) throw new Error('evaluation disabled');
     const credential = await this.getGscCredentialByUserId(input.userId);
     if (toGa4ConnectionStatus(credential).needsReauth === true) {
       const error = new Error('needs_reauth');
@@ -608,7 +592,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
   }
 
   async retryNarrative(userId: string, annotationId: string): Promise<Ga4ContentEvaluationView> {
-    if (!(await this.isEvaluationEnabled())) throw new Error('evaluation disabled');
     const credential = await this.getGscCredentialByUserId(userId);
     if (toGa4ConnectionStatus(credential).needsReauth === true) {
       const error = new Error('needs_reauth');

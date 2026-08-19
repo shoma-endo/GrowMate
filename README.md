@@ -226,7 +226,7 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 
 > **Supabase 注意**: 本番と開発で同一プロジェクトを共有しています。`npx supabase db push` をリモートに対して実行しないこと。スキーマ変更は `supabase/migrations/` にコミットし、適用は管理者が行います。
 
-> **GA4コンテンツ評価の運用**: 評価機能はマイグレーション適用後も Kill Switch（`ga4_content_evaluation_settings.enabled`）が `false` の停止状態で出荷します。管理者が `/admin/prompts` で文章化テンプレートを登録し、実データ検証後に設定を `true` へ変更してください。設定未有効・DB読取失敗時は評価APIを実行しない安全側の挙動です。
+> **GA4コンテンツ評価の運用**: 管理者が `/admin/prompts` で文章化テンプレートを登録したうえで評価を実行する。評価の可否はロール（`admin` / `paid`）とデータ充足で決まり、DB Kill Switch は使わない。
 
 初回セットアップ後は Supabase の `users` テーブルで自分のロールを `admin` に変更し、`/business-info` で事業者情報を登録してください。Google / WordPress / Google Ads の詳細手順は [`docs/specs/`](docs/specs/) を参照。Instagram 連携の設計・OAuth 要件は [`docs/plans/instagram-integration-design.md`](docs/plans/instagram-integration-design.md) を参照。
 

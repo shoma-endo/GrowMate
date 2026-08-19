@@ -13,7 +13,6 @@ import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 import { clampAnalyticsPeriod } from '@/lib/analytics-period';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
-import { ga4ContentEvaluationService } from '@/server/services/ga4ContentEvaluationService';
 
 export const dynamic = 'force-dynamic';
 // Instagram 手動同期 Server Action が既定 300s を超えるため Fluid Compute 上限まで引き上げる。
@@ -96,7 +95,6 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     redirect('/login');
   }
   const { userId } = authResult;
-  const ga4EvaluationEnabled = await ga4ContentEvaluationService.isEvaluationEnabled();
 
   const tabParam = Array.isArray(params?.tab) ? params.tab[0] : params?.tab;
   const igPageParam = Array.isArray(params?.ig_page) ? params.ig_page[0] : params?.ig_page;
@@ -249,7 +247,6 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
       hasUnstartedGa4Evaluation={hasUnstartedGa4Evaluation}
       ga4Truncated={ga4Truncated ?? false}
-      ga4EvaluationEnabled={ga4EvaluationEnabled}
       periodClamped={clampedPeriod.clamped}
       hasUrlFilterParams={hasUrlFilterParams}
       instagramConnected={instagramConnected}
