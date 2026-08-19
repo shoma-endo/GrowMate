@@ -34,7 +34,18 @@ function formatDate(value: string | null): string {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ja-JP');
 }
 
-/** 点数帯で色を出し分ける。色だけに頼らず帯ラベルの文言も併記する */
+/**
+ * 点数帯で色を出し分ける。
+ *
+ * カード内の規則は「色は常にその数字自身の良し悪しを表す」の1本。
+ * 大きい数字とピルはコンテンツ力スコア、内訳バーはそれぞれ読み始め／読了スコア、
+ * 診断見出しは記事全体の話なのでコンテンツ力スコアで色を決める。
+ * バーをコンテンツ力スコアの色で塗ると、悪い数字が良い色をまとって読み手を迷わせる。
+ *
+ * 色は4段だが点数帯ラベルは5段（深刻／要改善／改善の余地あり／合格ライン／良好）。
+ * 深刻と要改善はどちらも赤で示すべき悪さで、区別は文言が担う。色を5種類に増やすと
+ * 色同士の差が読めなくなる。色だけに頼らないよう帯ラベルは必ず併記する。
+ */
 function getScoreBandTone(score: number | null): { text: string; pill: string; bar: string } {
   if (score === null) return { text: 'text-gray-700', pill: 'bg-gray-100 text-gray-700', bar: 'bg-gray-400' };
   if (score < 40) return { text: 'text-rose-600', pill: 'bg-rose-50 text-rose-700', bar: 'bg-rose-500' };
@@ -203,6 +214,9 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
                 <div key={item.label} className="flex items-center gap-3 text-sm">
                   <span className="w-16 shrink-0 text-muted-foreground">{item.label}</span>
                   <span className="w-8 shrink-0 text-right font-semibold tabular-nums">{item.value ?? '—'}</span>
+                  <span className="w-24 shrink-0 text-xs text-muted-foreground">
+                    {getGa4ScoreBand(item.value)}
+                  </span>
                   <div
                     className="h-2 flex-1 overflow-hidden rounded-full bg-muted"
                     role="progressbar"
@@ -211,7 +225,10 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
                     aria-valuemax={100}
                     {...(item.value !== null ? { 'aria-valuenow': item.value } : {})}
                   >
-                    <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${item.value ?? 0}%` }} />
+                    <div
+                      className={`h-full rounded-full ${getScoreBandTone(item.value).bar}`}
+                      style={{ width: `${item.value ?? 0}%` }}
+                    />
                   </div>
                 </div>
               ))}
