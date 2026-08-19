@@ -29,7 +29,7 @@ export function isValidUserRole(role: unknown): role is UserRole {
 }
 
 /**
- * 管理機能（設定・検索順位・コンテンツ評価）へのアクセスを許可するロール
+ * 管理機能（設定・コンテンツ一覧）へのアクセスを許可するロール
  */
 const PAID_FEATURE_ROLES = ['paid', 'admin'] as const;
 

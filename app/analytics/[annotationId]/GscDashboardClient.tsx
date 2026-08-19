@@ -130,7 +130,7 @@ export default function GscDashboardClient({
           className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 mr-1.5" />
-          検索順位・コンテンツ評価に戻る
+          コンテンツ一覧に戻る
         </Link>
         <h1 className="text-3xl font-bold">検索順位・コンテンツ評価</h1>
       </div>
