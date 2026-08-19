@@ -3,12 +3,13 @@
 import dynamic from 'next/dynamic';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, TrendingUp, Search, History, Bell } from 'lucide-react';
+import { ArrowLeft, TrendingUp, Search, History, Bell, Gauge } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useGscDashboard } from './hooks/useGscDashboard';
 import { OverviewTab } from './components/OverviewTab';
 import { EvaluationHistoryTab } from './components/EvaluationHistoryTab';
+import { ContentEvaluationTab } from './components/content-evaluation/ContentEvaluationTab';
 import type { GscDashboardDetailResponse } from './types';
 import type { QueryAnalysisTabProps } from './components/QueryAnalysisTab';
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
@@ -143,10 +144,14 @@ export default function GscDashboardClient({
 
       {/* タブ */}
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 h-12">
+        <TabsList className="grid w-full grid-cols-4 h-12">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4" />
             <span className="hidden sm:inline">概要</span>
+          </TabsTrigger>
+          <TabsTrigger value="content-evaluation" className="flex items-center gap-2">
+            <Gauge className="w-4 h-4" />
+            <span className="hidden sm:inline">コンテンツ評価</span>
           </TabsTrigger>
           <TabsTrigger value="queries" className="flex items-center gap-2">
             <Search className="w-4 h-4" />
@@ -179,10 +184,15 @@ export default function GscDashboardClient({
             onRefreshDetail={async (annotationId: string) => {
               await dashboard.refreshDetail(annotationId);
             }}
-            ga4Evaluation={ga4Evaluation}
-            ga4EvaluationError={ga4EvaluationError}
-            onRunGa4Evaluation={handleRunGa4Evaluation}
-            onRetryGa4Narrative={handleRetryGa4Narrative}
+          />
+        </TabsContent>
+
+        <TabsContent value="content-evaluation" className="mt-6">
+          <ContentEvaluationTab
+            evaluation={ga4Evaluation}
+            error={ga4EvaluationError}
+            onRun={handleRunGa4Evaluation}
+            onRetryNarrative={handleRetryGa4Narrative}
           />
         </TabsContent>
 
