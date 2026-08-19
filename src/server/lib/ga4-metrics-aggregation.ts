@@ -146,12 +146,21 @@ export function aggregateGa4EvaluationPageMetrics(
   const missingActiveUsersPaths = new Set(
     rows.filter(row => row.activeUsers === null).map(row => row.normalizedPath)
   );
+  // 期間内に1日でも未計測（null）があれば、その記事の完読率は「取得不可」として扱う。
+  // 一部の日だけを分子に、期間全体のセッションを分母にすると完読率を過小評価するため
+  // （engagementRate / activeUsers と同じ全か無かの方針。BR-02）
+  const missingScrollPaths = new Set(
+    rows.filter(row => row.scroll90EventCount === null).map(row => row.normalizedPath)
+  );
 
   return new Map(
     Array.from(summaries, ([normalizedPath, summary]) => [normalizedPath, {
       ...summary,
       engagementRate: missingEngagementRatePaths.has(normalizedPath) ? null : summary.engagementRate,
       activeUsers: missingActiveUsersPaths.has(normalizedPath) ? null : summary.activeUsers,
+      scrollMetricsAvailable: missingScrollPaths.has(normalizedPath)
+        ? false
+        : summary.scrollMetricsAvailable,
       isPartial:
         summary.isPartial ||
         missingEngagementRatePaths.has(normalizedPath) ||

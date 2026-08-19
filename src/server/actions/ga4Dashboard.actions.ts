@@ -272,6 +272,8 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
     let totalEngagementTimeSec = 0;
     let totalCvEventCount = 0;
     let totalScroll90EventCount = 0;
+    // 完読率は計測できた行のユーザーだけを母数にする（未計測を0で薄めない。BR-02）
+    let scrollMeasuredUsers = 0;
     let totalSearchClicks = 0;
     let totalImpressions = 0;
     let hasSampledData = false;
@@ -282,7 +284,9 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
       const users = Number(row.users ?? 0);
       const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
       const cvEventCount = Number(row.cv_event_count ?? 0);
-      const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
+      // null は未計測。0（実測0回）と区別して合算から除く（BR-02）
+      const scroll90EventCount =
+        row.scroll_90_event_count === null ? null : Number(row.scroll_90_event_count);
       const searchClicks = Number(row.search_clicks ?? 0);
       const impressions = Number(row.impressions ?? 0);
 
@@ -290,7 +294,10 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
       totalUsers += users;
       totalEngagementTimeSec += engagementTimeSec;
       totalCvEventCount += cvEventCount;
-      totalScroll90EventCount += scroll90EventCount;
+      if (scroll90EventCount !== null) {
+        totalScroll90EventCount += scroll90EventCount;
+        scrollMeasuredUsers += users;
+      }
       totalSearchClicks += searchClicks;
       totalImpressions += impressions;
 
@@ -303,7 +310,7 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
       totalSessions > 0 ? totalEngagementTimeSec / totalSessions : 0;
     const cvr = totalUsers > 0 ? (totalCvEventCount / totalUsers) * 100 : 0;
     const avgReadRate =
-      totalUsers > 0 ? (totalScroll90EventCount / totalUsers) * 100 : 0;
+      scrollMeasuredUsers > 0 ? (totalScroll90EventCount / scrollMeasuredUsers) * 100 : null;
     const ctr = totalImpressions > 0 ? totalSearchClicks / totalImpressions : null;
 
     return {
@@ -407,6 +414,7 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
         engagementTimeSec: number;
         cvEventCount: number;
         scroll90EventCount: number;
+        scrollMeasuredUsers: number;
         searchClicks: number;
         impressions: number;
         isSampled: boolean;
@@ -422,6 +430,7 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
         engagementTimeSec: 0,
         cvEventCount: 0,
         scroll90EventCount: 0,
+        scrollMeasuredUsers: 0,
         searchClicks: 0,
         impressions: 0,
         isSampled: false,
@@ -432,7 +441,9 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
       const users = Number(row.users ?? 0);
       const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
       const cvEventCount = Number(row.cv_event_count ?? 0);
-      const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
+      // null は未計測。0（実測0回）と区別して合算から除く（BR-02）
+      const scroll90EventCount =
+        row.scroll_90_event_count === null ? null : Number(row.scroll_90_event_count);
       const searchClicks = Number(row.search_clicks ?? 0);
       const impressions = Number(row.impressions ?? 0);
 
@@ -440,7 +451,10 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
       current.users += users;
       current.engagementTimeSec += engagementTimeSec;
       current.cvEventCount += cvEventCount;
-      current.scroll90EventCount += scroll90EventCount;
+      if (scroll90EventCount !== null) {
+        current.scroll90EventCount += scroll90EventCount;
+        current.scrollMeasuredUsers += users;
+      }
       current.searchClicks += searchClicks;
       current.impressions += impressions;
       current.isSampled = current.isSampled || Boolean(row.is_sampled);
@@ -455,7 +469,9 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
     for (const [normalizedPath, agg] of aggMap.entries()) {
       const cvr = agg.users > 0 ? (agg.cvEventCount / agg.users) * 100 : 0;
       const readRate =
-        agg.users > 0 ? (agg.scroll90EventCount / agg.users) * 100 : 0;
+        agg.scrollMeasuredUsers > 0
+          ? (agg.scroll90EventCount / agg.scrollMeasuredUsers) * 100
+          : null;
       const avgEngagementTimeSec =
         agg.sessions > 0 ? agg.engagementTimeSec / agg.sessions : 0;
       const ctr = agg.impressions > 0 ? agg.searchClicks / agg.impressions : null;
@@ -486,6 +502,10 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
         case 'cvr':
           return b.cvr - a.cvr;
         case 'readRate':
+          // 未計測（null）は数値と大小比較できないため末尾へ寄せる。0% として並べない（BR-02）
+          if (a.readRate === null && b.readRate === null) return 0;
+          if (a.readRate === null) return 1;
+          if (b.readRate === null) return -1;
           return b.readRate - a.readRate;
         case 'avgEngagementTimeSec':
           return b.avgEngagementTimeSec - a.avgEngagementTimeSec;
@@ -654,6 +674,7 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
         engagementTimeSec: number;
         cvEventCount: number;
         scroll90EventCount: number;
+        scrollMeasuredUsers: number;
         searchClicks: number;
         impressions: number;
         isSampled: boolean;
@@ -669,6 +690,7 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
         engagementTimeSec: 0,
         cvEventCount: 0,
         scroll90EventCount: 0,
+        scrollMeasuredUsers: 0,
         searchClicks: 0,
         impressions: 0,
         isSampled: false,
@@ -679,7 +701,9 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
       const users = Number(row.users ?? 0);
       const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
       const cvEventCount = Number(row.cv_event_count ?? 0);
-      const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
+      // null は未計測。0（実測0回）と区別して合算から除く（BR-02）
+      const scroll90EventCount =
+        row.scroll_90_event_count === null ? null : Number(row.scroll_90_event_count);
       const searchClicks = Number(row.search_clicks ?? 0);
       const impressions = Number(row.impressions ?? 0);
 
@@ -687,7 +711,10 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
       current.users += users;
       current.engagementTimeSec += engagementTimeSec;
       current.cvEventCount += cvEventCount;
-      current.scroll90EventCount += scroll90EventCount;
+      if (scroll90EventCount !== null) {
+        current.scroll90EventCount += scroll90EventCount;
+        current.scrollMeasuredUsers += users;
+      }
       current.searchClicks += searchClicks;
       current.impressions += impressions;
       current.isSampled = current.isSampled || Boolean(row.is_sampled);
@@ -703,7 +730,9 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
           agg.sessions > 0 ? agg.engagementTimeSec / agg.sessions : 0;
         const cvr = agg.users > 0 ? (agg.cvEventCount / agg.users) * 100 : 0;
         const readRate =
-          agg.users > 0 ? (agg.scroll90EventCount / agg.users) * 100 : 0;
+          agg.scrollMeasuredUsers > 0
+            ? (agg.scroll90EventCount / agg.scrollMeasuredUsers) * 100
+            : null;
         const ctr = agg.impressions > 0 ? agg.searchClicks / agg.impressions : null;
 
         return {

@@ -52,7 +52,8 @@ export function TimeseriesTab({
   // パーセント用のYAxisドメイン
   const percentValues = data.flatMap((d) => {
     const values: number[] = [];
-    if (visibleMetrics.readRate) values.push(d.readRate);
+    // 未計測（null）はY軸ドメインの計算に含めない（0として引き下げない）
+    if (visibleMetrics.readRate && d.readRate !== null) values.push(d.readRate);
     if (visibleMetrics.cvr) values.push(d.cvr);
     return values;
   });

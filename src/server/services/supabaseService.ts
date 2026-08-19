@@ -1660,7 +1660,8 @@ export class SupabaseService {
       engagementRate: number | null;
       activeUsers: number | null;
       cvEventCount: number;
-      scroll90EventCount: number;
+      /** null は「対象イベントがプロパティに存在せず未計測」。0（実測して0回）と区別する（BR-02） */
+      scroll90EventCount: number | null;
       searchClicks: number;
       impressions: number;
       ctr: number | null;

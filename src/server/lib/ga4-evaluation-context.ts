@@ -47,7 +47,9 @@ function toMetricSnapshot(summary: Ga4PeriodMetricSummary): Ga4EvaluationMetricS
     engagementRate: summary.engagementRate,
     activeUsers: summary.activeUsers,
     cvEventCount: summary.cvEventCount,
-    scroll90EventCount: summary.scroll90EventCount,
+    // 未計測のとき集計値は 0 になるが、評価入力の記録物としては 0（実測0回）と
+    // 区別できる形で残す（日次側と同じ扱い。BR-02）
+    scroll90EventCount: summary.scrollMetricsAvailable ? summary.scroll90EventCount : null,
   };
 }
 

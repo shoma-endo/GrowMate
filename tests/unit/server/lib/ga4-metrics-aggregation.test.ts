@@ -90,4 +90,25 @@ describe('ga4-metrics-aggregation', () => {
     expect(summary?.activeUsers).toBeNull();
     expect(summary?.isPartial).toBe(true);
   });
+
+  it('評価入力では期間内に1日でも未計測のスクロールがあれば取得不可として扱う', () => {
+    const summary = aggregateGa4EvaluationPageMetrics([
+      { ...baseMetric, sessions: 10, scroll90EventCount: 5 },
+      { ...baseMetric, sessions: 10, scroll90EventCount: null },
+    ], '2026-08-01', '2026-08-02').get('/articles/one');
+
+    // 一部の日だけを分子に期間全体のセッションを分母にすると完読率を過小評価するため、
+    // 全か無かで落とす（engagementRate / activeUsers と同じ方針）
+    expect(summary?.scrollMetricsAvailable).toBe(false);
+  });
+
+  it('スクロールが全日実測されていれば取得可能として扱う（実測0回はnullにしない）', () => {
+    const summary = aggregateGa4EvaluationPageMetrics([
+      { ...baseMetric, sessions: 10, scroll90EventCount: 0 },
+      { ...baseMetric, sessions: 10, scroll90EventCount: 0 },
+    ], '2026-08-01', '2026-08-02').get('/articles/one');
+
+    expect(summary?.scrollMetricsAvailable).toBe(true);
+    expect(summary?.scroll90EventCount).toBe(0);
+  });
 });

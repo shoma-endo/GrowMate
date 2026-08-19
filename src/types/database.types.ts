@@ -485,7 +485,7 @@ export type Database = {
           page_path: string
           page_views: number
           property_id: string
-          scroll_90_event_count: number
+          scroll_90_event_count: number | null
           search_clicks: number
           sessions: number
           updated_at: string
@@ -510,7 +510,7 @@ export type Database = {
           page_path: string
           page_views?: number
           property_id: string
-          scroll_90_event_count?: number
+          scroll_90_event_count?: number | null
           search_clicks?: number
           sessions?: number
           updated_at?: string
@@ -535,7 +535,7 @@ export type Database = {
           page_path?: string
           page_views?: number
           property_id?: string
-          scroll_90_event_count?: number
+          scroll_90_event_count?: number | null
           search_clicks?: number
           sessions?: number
           updated_at?: string

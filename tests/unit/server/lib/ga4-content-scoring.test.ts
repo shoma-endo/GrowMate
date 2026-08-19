@@ -54,6 +54,13 @@ describe('ga4-content-scoring', () => {
     expect(resolveDiagnosis(39, 60, 0.4)).toEqual({ code: 'R_MID_EXIT', auxiliaryLabel: '流し読み型' });
   });
 
+  it('完読率が未計測(null)なら併用そのものを行わず、マトリクス判定を上書きしない', () => {
+    // 未計測を 0 と混同すると 0 < 0.15 が成立し、読了40未満の記事が
+    // 計測していない完読率を根拠に R_TOP_EXIT へ強制上書きされる（BR-02 / §6.2.4）
+    expect(resolveDiagnosis(39, 60, null)).toEqual({ code: 'R_MID_EXIT', auxiliaryLabel: null });
+    expect(resolveDiagnosis(39, 60, 0).code).toBe('R_TOP_EXIT');
+  });
+
   it('30セッション未満は低データとし、同一入力は決定的に評価する', () => {
     expect(evaluateGa4ContentScore({ sessions: 29, readRate: 0.5, engagementRate: 0.5, scrollRate: 0.5 }).diagnosis.code).toBe('R_LOWDATA');
     const input = { sessions: 30, readRate: 0.12, engagementRate: 0.4, scrollRate: null } as const;

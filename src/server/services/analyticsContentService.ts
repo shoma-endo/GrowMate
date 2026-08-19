@@ -312,7 +312,9 @@ class AnalyticsContentService {
         engagementRate: row.engagement_rate === null ? null : Number(row.engagement_rate),
         activeUsers: row.active_users === null ? null : Number(row.active_users),
         cvEventCount: Number(row.cv_event_count ?? 0),
-        scroll90EventCount: Number(row.scroll_90_event_count ?? 0),
+        // null は「対象イベントがプロパティに存在せず未計測」。0（実測0回）と区別する（BR-02）
+        scroll90EventCount:
+          row.scroll_90_event_count === null ? null : Number(row.scroll_90_event_count),
         searchClicks: Number(row.search_clicks ?? 0),
         impressions: Number(row.impressions ?? 0),
         isSampled: Boolean(row.is_sampled),

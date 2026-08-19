@@ -19,7 +19,8 @@ export function RankingTab({
   onRowClick,
 }: Props) {
   const formatNumber = (num: number) => num.toLocaleString();
-  const formatPercent = (num: number) => `${num.toFixed(1)}%`;
+  // null は「90%スクロールイベントが未計測」。0.0% と書かない（BR-02）
+  const formatPercent = (num: number | null) => (num === null ? '-' : `${num.toFixed(1)}%`);
   const formatDuration = (sec: number) => {
     if (sec === 0) return '0秒';
     const avgSec = Math.round(sec);

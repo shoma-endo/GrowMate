@@ -74,7 +74,8 @@ export interface Ga4DashboardSummary {
   avgEngagementTimeSec: number;
   totalCvEventCount: number;
   cvr: number; // 0-100
-  avgReadRate: number; // 0-100
+  /** 0-100。null は「90%スクロールイベントが未計測」（0%＝実測して0とは区別する。BR-02） */
+  avgReadRate: number | null;
   totalSearchClicks: number; // 検索クリック数
   totalImpressions: number; // インプレッション数
   ctr: number | null; // クリック率
@@ -91,7 +92,8 @@ export interface Ga4DashboardRankingItem {
   avgEngagementTimeSec: number;
   cvEventCount: number;
   cvr: number; // 0-100
-  readRate: number; // 0-100
+  /** 0-100。null は「90%スクロールイベントが未計測」（BR-02） */
+  readRate: number | null;
   searchClicks: number; // 検索クリック数
   impressions: number; // インプレッション数
   ctr: number | null; // クリック率（0-1の比率、表示時に×100）
@@ -106,7 +108,8 @@ export interface Ga4DashboardTimeseriesPoint {
   avgEngagementTimeSec: number;
   cvEventCount: number;
   cvr: number; // 0-100
-  readRate: number; // 0-100
+  /** 0-100。null は「90%スクロールイベントが未計測」（BR-02） */
+  readRate: number | null;
   searchClicks: number; // 検索クリック数
   impressions: number; // インプレッション数
   ctr: number | null; // クリック率（0-1の比率、表示時に×100）
