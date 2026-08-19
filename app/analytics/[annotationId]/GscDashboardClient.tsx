@@ -189,6 +189,7 @@ export default function GscDashboardClient({
 
         <TabsContent value="content-evaluation" className="mt-6">
           <ContentEvaluationTab
+            articleTitle={dashboard.detail?.annotation.wp_post_title ?? null}
             evaluation={ga4Evaluation}
             error={ga4EvaluationError}
             onRun={handleRunGa4Evaluation}

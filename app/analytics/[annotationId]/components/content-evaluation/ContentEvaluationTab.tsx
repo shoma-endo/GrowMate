@@ -6,6 +6,7 @@ import { ContentEvaluationCard } from './ContentEvaluationCard';
 import { Ga4EvaluationHistoryPanel } from './Ga4EvaluationHistoryPanel';
 
 interface ContentEvaluationTabProps {
+  articleTitle?: string | null;
   evaluation: Ga4ContentEvaluationView | null;
   error?: string | null;
   onRun: () => Promise<void>;
@@ -21,6 +22,7 @@ interface ContentEvaluationTabProps {
  * GSC 側の「検索順位評価」タブとは別領域のまま保つ（仕様書 §10.3 の7番）。
  */
 export function ContentEvaluationTab({
+  articleTitle = null,
   evaluation,
   error = null,
   onRun,
@@ -29,6 +31,7 @@ export function ContentEvaluationTab({
   return (
     <div className="space-y-6">
       <ContentEvaluationCard
+        articleTitle={articleTitle}
         evaluation={evaluation}
         error={error}
         onRun={onRun}

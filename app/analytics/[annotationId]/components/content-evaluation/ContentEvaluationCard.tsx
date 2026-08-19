@@ -18,6 +18,8 @@ import {
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
 
 interface Props {
+  /** カード見出しに出す記事タイトル。クライアント提供の記事カード設計（評価エンジン仕様 §08）に合わせる */
+  articleTitle?: string | null;
   evaluation: Ga4ContentEvaluationView | null;
   onRun: () => Promise<void>;
   onRetryNarrative?: () => Promise<void>;
@@ -28,6 +30,15 @@ function formatDate(value: string | null): string {
   if (!value) return '—';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ja-JP');
+}
+
+/** 点数帯で色を出し分ける。色だけに頼らず帯ラベルの文言も併記する */
+function getScoreBandTone(score: number | null): { text: string; pill: string; bar: string } {
+  if (score === null) return { text: 'text-gray-700', pill: 'bg-gray-100 text-gray-700', bar: 'bg-gray-400' };
+  if (score < 40) return { text: 'text-rose-600', pill: 'bg-rose-50 text-rose-700', bar: 'bg-rose-500' };
+  if (score < 60) return { text: 'text-amber-600', pill: 'bg-amber-50 text-amber-800', bar: 'bg-amber-500' };
+  if (score < 80) return { text: 'text-sky-700', pill: 'bg-sky-50 text-sky-800', bar: 'bg-sky-500' };
+  return { text: 'text-emerald-700', pill: 'bg-emerald-50 text-emerald-800', bar: 'bg-emerald-500' };
 }
 
 function getMeasuredScrollUsers(dataQuality: unknown): number | null {
@@ -44,7 +55,7 @@ function getMissingMetricsFromDataQuality(dataQuality: unknown): string[] {
     : [];
 }
 
-export function ContentEvaluationCard({ evaluation, onRun, onRetryNarrative, error = null }: Props) {
+export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, onRetryNarrative, error = null }: Props) {
   const [isRunning, setIsRunning] = useState(false);
   const latest = evaluation?.history.find(item => item.id === evaluation.projection?.lastSuccessHistoryId)
     ?? evaluation?.history.find(item => item.status === 'evaluated' || item.status === 'narrative_failed')
@@ -92,11 +103,15 @@ export function ContentEvaluationCard({ evaluation, onRun, onRetryNarrative, err
     current === null || previousScore === null ? formatGa4ScoreDiff(null) : formatGa4ScoreDiff(current - previousScore);
   const formatPercent = (value: number | null): string =>
     value === null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(1)}%`;
+  const tone = getScoreBandTone(latest?.contentScore ?? null);
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-lg">コンテンツ評価</CardTitle>
+        <div className="min-w-0">
+          <CardTitle className="truncate text-lg">{articleTitle || 'コンテンツ評価'}</CardTitle>
+          {articleTitle && <p className="mt-1 text-xs text-muted-foreground">コンテンツ評価</p>}
+        </div>
         <span className="rounded-full border px-3 py-1 text-sm" aria-live="polite">
           {displayStatus === 'unassessed' ? '未評価（データが不足）' : getGa4EvaluationStatusLabel(displayStatus)}
         </span>
@@ -156,66 +171,107 @@ export function ContentEvaluationCard({ evaluation, onRun, onRetryNarrative, err
         </div>
 
         {latest?.contentScore !== null && latest?.contentScore !== undefined ? (
-          <div className="space-y-4">
+          // 幅を絞る。全幅だとバーが伸びきって大小の差が読み取りにくくなる
+          <div className="max-w-3xl space-y-5">
             {(displayStatus === 'evaluating' || displayStatus === 'evaluation_failed') && (
               <p className="rounded-md border p-3 text-sm font-medium">
                 {displayStatus === 'evaluating' ? '前回の評価結果' : '前回の成功結果'}
               </p>
             )}
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <p className="text-sm text-muted-foreground">コンテンツ力スコア</p>
-                <p className="text-2xl font-bold">{latest.contentScore}点 <span className="text-base font-normal">／ {getGa4ScoreBand(latest.contentScore)}</span></p>
-              </div>
-              <p className="text-sm text-muted-foreground">サイト内順位 {latest.siteRank ?? '—'}位 / {latest.totalArticles ?? '—'}記事中</p>
+            {/* 点数：数字を主役にし、点数帯はピルで右に置く（評価エンジン仕様 §08 の記事カード） */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="flex items-baseline gap-2">
+                <span className={`text-5xl font-bold leading-none tracking-tight ${tone.text}`}>
+                  {latest.contentScore}
+                </span>
+                <span className="text-sm text-muted-foreground">点 ／ コンテンツ力</span>
+              </p>
+              <span className={`rounded-full px-3 py-1 text-sm font-medium ${tone.pill}`}>
+                {getGa4ScoreBand(latest.contentScore)}
+              </span>
             </div>
-            <div className="h-3 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={latest.contentScore}>
-              <div className="h-full rounded-full bg-primary" style={{ width: `${latest.contentScore}%` }} />
+
+            {/* 内訳スコア：ラベル・数値・バーを1行に並べて大小を一目で比べられるようにする */}
+            <div className="space-y-2">
+              {([
+                { label: '読み始め', value: latest.engageScore },
+                { label: '読了', value: latest.readScore },
+              ] as const).map(item => (
+                <div key={item.label} className="flex items-center gap-3 text-sm">
+                  <span className="w-16 shrink-0 text-muted-foreground">{item.label}</span>
+                  <span className="w-8 shrink-0 text-right font-semibold tabular-nums">{item.value ?? '—'}</span>
+                  <div
+                    className="h-2 flex-1 overflow-hidden rounded-full bg-muted"
+                    role="progressbar"
+                    aria-label={`${item.label}スコア`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    {...(item.value !== null ? { 'aria-valuenow': item.value } : {})}
+                  >
+                    <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${item.value ?? 0}%` }} />
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2">
-              <div>
-                <div className="flex justify-between"><span>読み始めスコア</span><span>{latest.engageScore ?? '—'}</span></div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={latest.engageScore ?? undefined}>
-                  <div className="h-full rounded-full bg-blue-500" style={{ width: `${latest.engageScore ?? 0}%` }} />
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between"><span>読了スコア</span><span>{latest.readScore ?? '—'}</span></div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={latest.readScore ?? undefined}>
-                  <div className="h-full rounded-full bg-emerald-500" style={{ width: `${latest.readScore ?? 0}%` }} />
-                </div>
-              </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
               <span>診断：{getGa4DiagnosisLabel(latest.diagnosisCode)}</span>
+              <span>サイト内順位 {latest.siteRank ?? '—'}位 / {latest.totalArticles ?? '—'}記事中</span>
             </div>
             {measuredScrollUsers !== null && latest.scrollRate !== null && latest.readScore !== null && latest.scrollRate >= 0.4 && latest.readScore < 40 && (
               <p className="rounded-md bg-muted p-3 text-sm">補助ラベル：流し読み型</p>
             )}
-            <div className="rounded-md border p-3 text-sm">
-              <p className="font-medium">人数の内訳</p>
-              <p>
-                {latest.sessions ?? '—'}訪問
-                {' ▶ '}{engagedUsers ?? '—'}読み始め
-                {' ▶ '}{measuredScrollUsers === null
-                  ? latest.scrollRate === null
-                    ? '実測なし'
-                    : `1人あたり平均で全体の${formatPercent(latest.scrollRate)}まで読まれています`
-                  : `${measuredScrollUsers}最後まで`}
-              </p>
-              {measuredScrollUsers === null && latest.scrollRate === null && <p className="text-xs text-muted-foreground">最後までの人数と率は実測できないため表示していません。</p>}
+            {/* 人数ファネル：率ではなく人数で語る（評価エンジン仕様 §08） */}
+            <div className="border-y py-4">
+              <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+                <div>
+                  <p className="text-2xl font-bold leading-none tabular-nums">{latest.sessions ?? '—'}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">訪問</p>
+                </div>
+                <span aria-hidden="true" className="mt-1 text-muted-foreground">▶</span>
+                <div>
+                  <p className="text-2xl font-bold leading-none tabular-nums">{engagedUsers ?? '—'}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">読み始め</p>
+                </div>
+                {measuredScrollUsers !== null && (
+                  <>
+                    <span aria-hidden="true" className="mt-1 text-muted-foreground">▶</span>
+                    <div>
+                      <p className="text-2xl font-bold leading-none tabular-nums">{measuredScrollUsers}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">最後まで</p>
+                    </div>
+                  </>
+                )}
+              </div>
+              {/* 読了率から人数を換算しない（率は平均時間の比であり人数比ではない。§08 の禁則） */}
+              {measuredScrollUsers === null && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {latest.scrollRate === null
+                    ? '最後までの人数と率は実測できないため表示していません。'
+                    : `最後まで読んだ人数は実測できていません。1人あたり平均で全体の${formatPercent(latest.scrollRate)}まで読まれています。`}
+                </p>
+              )}
             </div>
             {latest.narrative ? (
-              <div className="space-y-2 rounded-md bg-muted p-3 text-sm">
-                <p className="font-semibold">{latest.narrative.headline}</p>
-                <p>{latest.narrative.situation}</p>
-                <p>{latest.narrative.cause}</p>
-                <p className="mt-2 font-semibold">NEXT ACTION</p>
-                <p>{latest.narrative.next_action}</p>
-                <p><span className="font-semibold">狙い：</span>{latest.narrative.target}</p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className={`text-base font-bold ${tone.text}`}>{latest.narrative.headline}</p>
+                  <p className="text-sm leading-relaxed text-gray-700">{latest.narrative.situation}</p>
+                  <p className="text-sm leading-relaxed text-gray-700">{latest.narrative.cause}</p>
+                </div>
+                {/* NEXT ACTION は独立した箱にする。次の一手を探して読み直さなくて済むように */}
+                <div className="rounded-md bg-teal-50 p-4">
+                  <p className="text-xs font-semibold tracking-widest text-teal-800">NEXT ACTION</p>
+                  <p className="mt-2 text-sm font-medium leading-relaxed text-gray-900">
+                    {latest.narrative.next_action}
+                  </p>
+                  <p className="mt-1 text-sm text-teal-900">狙い：{latest.narrative.target}</p>
+                </div>
               </div>
             ) : (
               <p className="rounded-md bg-muted p-3 text-sm">スコアは保存されています。診断コメントは作成できませんでした。</p>
             )}
-            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+            <div className="grid gap-2 border-t pt-4 text-xs text-muted-foreground sm:grid-cols-2">
               <span>評価対象期間：{latest.periodStart ?? '—'} から {latest.periodEnd ?? '—'}</span>
               <span>最終評価日時：{formatDate(latest.completedAt)}</span>
               <span>データ取得日時：{formatDate(latest.ga4DataFetchedAt)}</span>
