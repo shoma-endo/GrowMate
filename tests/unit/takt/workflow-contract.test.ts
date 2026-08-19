@@ -4,6 +4,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -51,9 +52,42 @@ function loadSchema(ref: string): Schema {
   return JSON.parse(readFileSync(path.join(SCHEMAS_DIR, `${ref}.json`), 'utf8')) as Schema;
 }
 
+/**
+ * ワークフローを実際に実行する takt の実体を解決する。
+ *
+ * PATH 上の takt（`npm install -g takt`）は誰かが撃つたびに予告なく上がり、
+ * takt は破壊的な schema 変更込みの minor を高頻度で出す。ai-os はこれを避けるため
+ * `~/.takt/.takt-version` で版を固定し、`~/.local/takt/<version>/bin/takt` に実体を置く。
+ * ジョブが使うのはこの pin 版なので、contract テストも同じ実体で検証する。
+ * PATH の takt で検証すると、リポジトリを一切触っていないのに突然赤くなる
+ * （2026-08-19 に global が 0.60.0 へ上がり、pin の 0.59.1 では OK な
+ * ワークフロー3本が一斉に落ちた）。
+ */
+function resolveTaktBin(): string {
+  const override = process.env.TAKT_BIN;
+  if (override && existsSync(override)) {
+    return override;
+  }
+
+  const versionFile = path.join(homedir(), '.takt', '.takt-version');
+  if (existsSync(versionFile)) {
+    const pinned = readFileSync(versionFile, 'utf8').trim();
+    const runtimeRoot = process.env.TAKT_RUNTIME_ROOT ?? path.join(homedir(), '.local', 'takt');
+    const pinnedBin = path.join(runtimeRoot, pinned, 'bin', 'takt');
+    if (existsSync(pinnedBin)) {
+      return pinnedBin;
+    }
+  }
+
+  // pin 版が未設置の環境（CI・他マシン）では PATH にフォールバックする
+  return 'takt';
+}
+
+const TAKT_BIN = resolveTaktBin();
+
 function taktAvailable(): boolean {
   try {
-    execFileSync('takt', ['--version'], { encoding: 'utf8' });
+    execFileSync(TAKT_BIN, ['--version'], { encoding: 'utf8' });
     return true;
   } catch {
     return false;
@@ -70,7 +104,7 @@ const KNOWN_DOCTOR_WARNINGS: Record<string, RegExp[]> = {
 
 describe.skipIf(!taktAvailable())('takt workflow doctor', () => {
   it.each(workflowFiles)('%s is accepted by the installed takt', (file) => {
-    const output = execFileSync('takt', ['workflow', 'doctor', path.join('.takt', 'workflows', file)], {
+    const output = execFileSync(TAKT_BIN, ['workflow', 'doctor', path.join('.takt', 'workflows', file)], {
       encoding: 'utf8',
       cwd: REPO_ROOT,
     });
