@@ -17,6 +17,8 @@ import {
 } from '@/lib/ga4-evaluation-display';
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
 
+import { resolveCardHistoryItem } from './latest-history';
+
 interface Props {
   /** カード見出しに出す記事タイトル。クライアント提供の記事カード設計（評価エンジン仕様 §08）に合わせる */
   articleTitle?: string | null;
@@ -57,9 +59,7 @@ function getMissingMetricsFromDataQuality(dataQuality: unknown): string[] {
 
 export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, onRetryNarrative, error = null }: Props) {
   const [isRunning, setIsRunning] = useState(false);
-  const latest = evaluation?.history.find(item => item.id === evaluation.projection?.lastSuccessHistoryId)
-    ?? evaluation?.history.find(item => item.status === 'evaluated' || item.status === 'narrative_failed')
-    ?? null;
+  const latest = resolveCardHistoryItem(evaluation);
   const latestRun = evaluation?.history[0] ?? null;
   const displayStatus = evaluation?.displayStatus ?? 'unassessed';
   const canRun = ['eligible', 'evaluated', 'narrative_failed', 'evaluation_failed'].includes(displayStatus);

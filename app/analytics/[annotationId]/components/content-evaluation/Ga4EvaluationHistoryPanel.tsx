@@ -11,6 +11,8 @@ import {
 } from '@/lib/ga4-evaluation-display';
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
 
+import { resolveCardHistoryItem } from './latest-history';
+
 function formatDate(value: string | null): string {
   if (!value) return '—';
   const date = new Date(value);
@@ -18,12 +20,19 @@ function formatDate(value: string | null): string {
 }
 
 export function Ga4EvaluationHistoryPanel({ evaluation }: { evaluation: Ga4ContentEvaluationView | null }) {
-  if (!evaluation || evaluation.history.length === 0) return null;
+  // 記事カードが本文として出している1件は除く。10項目中9項目が同じ値で、
+  // 評価が1回しかない状態だと同じ内容を2度読ませることになる
+  const cardItemId = resolveCardHistoryItem(evaluation)?.id ?? null;
+  const pastItems = (evaluation?.history ?? []).filter(item => item.id !== cardItemId);
+  if (!evaluation || pastItems.length === 0) return null;
   return (
     <Card className="mt-6">
-      <CardHeader><CardTitle className="text-lg">コンテンツ評価履歴</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-lg">コンテンツ評価履歴</CardTitle>
+        <p className="text-sm text-muted-foreground">最新の評価結果はこのページの上部に表示しています。</p>
+      </CardHeader>
       <CardContent className="space-y-2">
-        {evaluation.history.map(item => (
+        {pastItems.map(item => (
           <div key={item.id} className="space-y-2 rounded-md border p-3 text-sm">
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <span>実行日時：{formatDate(item.startedAt)}</span>
