@@ -1,10 +1,5 @@
 import { createHash } from 'node:crypto';
 
-import {
-  buildMockEvaluationView,
-  isGa4EvaluationMockEnabled,
-} from '@/server/lib/ga4-evaluation-mock';
-
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -270,8 +265,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
   }
 
   async fetchEvaluation(userId: string, annotationId: string): Promise<Ga4ContentEvaluationView> {
-    // ローカルデモ用モック（コミットしない）
-    if (isGa4EvaluationMockEnabled()) return buildMockEvaluationView(annotationId);
     const credential = await this.getGscCredentialByUserId(userId);
     const needsReauth = toGa4ConnectionStatus(credential).needsReauth === true;
     const displayPeriod = getGa4EvaluationDateRange();
