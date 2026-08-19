@@ -295,6 +295,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
         if (lastSuccessError) throw lastSuccessError;
         if (lastSuccess) historyRows.push(lastSuccess);
       }
+      const settingsEnabled = true;
       const viewHistory = historyRows.flatMap(row => {
         const rowStatus = toPersistentStatus(row.status, annotationId);
         if (!rowStatus) return [];
@@ -335,7 +336,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
         errorCode: row.error_code,
         }];
       }).sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
-      const initialDisplay = !projection && viewHistory.length === 0 && settingsEnabled
+      const initialDisplay = !projection && viewHistory.length === 0
         ? await this.resolveInitialDisplayStatus(userId, annotationId, displayPeriod, credential)
         : null;
       const persistedStatus = toPersistentStatus(projection?.status ?? null, annotationId);
