@@ -171,13 +171,16 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
         </div>
 
         {latest?.contentScore !== null && latest?.contentScore !== undefined ? (
-          // 幅を絞る。全幅だとバーが伸びきって大小の差が読み取りにくくなる
-          <div className="max-w-3xl space-y-5">
+          <div className="space-y-5">
             {(displayStatus === 'evaluating' || displayStatus === 'evaluation_failed') && (
               <p className="rounded-md border p-3 text-sm font-medium">
                 {displayStatus === 'evaluating' ? '前回の評価結果' : '前回の成功結果'}
               </p>
             )}
+            {/* PC では数値ブロックと診断文を横に並べる。1カラムのままだと
+                カード右側が大きく空き、バーだけが間延びして見える */}
+            <div className="grid gap-x-10 gap-y-5 lg:grid-cols-2">
+              <div className="space-y-5">
             {/* 点数：数字を主役にし、点数帯はピルで右に置く（評価エンジン仕様 §08 の記事カード） */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="flex items-baseline gap-2">
@@ -252,6 +255,9 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
                 </p>
               )}
             </div>
+              </div>
+
+              <div>
             {latest.narrative ? (
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -271,7 +277,10 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
             ) : (
               <p className="rounded-md bg-muted p-3 text-sm">スコアは保存されています。診断コメントは作成できませんでした。</p>
             )}
-            <div className="grid gap-2 border-t pt-4 text-xs text-muted-foreground sm:grid-cols-2">
+              </div>
+            </div>
+
+            <div className="grid gap-2 border-t pt-4 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
               <span>評価対象期間：{latest.periodStart ?? '—'} から {latest.periodEnd ?? '—'}</span>
               <span>最終評価日時：{formatDate(latest.completedAt)}</span>
               <span>データ取得日時：{formatDate(latest.ga4DataFetchedAt)}</span>
