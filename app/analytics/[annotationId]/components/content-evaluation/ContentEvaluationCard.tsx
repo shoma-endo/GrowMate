@@ -280,15 +280,29 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
               </div>
             </div>
 
-            <div className="grid gap-2 border-t pt-4 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
-              <span>評価対象期間：{latest.periodStart ?? '—'} から {latest.periodEnd ?? '—'}</span>
-              <span>最終評価日時：{formatDate(latest.completedAt)}</span>
-              <span>データ取得日時：{formatDate(latest.ga4DataFetchedAt)}</span>
-              <span>データ品質：{getGa4DataQualityLabel(latest.dataQuality)}</span>
-              <span>実際に読まれた時間：{formatGa4Duration(latest.avgEngagementSeconds)}</span>
-              <span>読み始め率：{formatPercent(latest.engageRate)}</span>
-              <span>前回差分：コンテンツ力 {scoreDiff(latest.contentScore, previous?.contentScore ?? null)} / 読み始め {scoreDiff(latest.engageScore, previous?.engageScore ?? null)} / 読了 {scoreDiff(latest.readScore, previous?.readScore ?? null)}</span>
-              <span>評価設定：v{latest.scoringConfigVersion} / 文章 v{latest.promptVersion ?? '—'}</span>
+            <div className="space-y-2 border-t pt-4 text-xs text-muted-foreground">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {/* 生値の2つは Google Analytics 4（以下、GA4）の画面と突き合わせる前提の数字なので先頭に置く（§10.3） */}
+                <span>実際に読まれた時間：{formatGa4Duration(latest.avgEngagementSeconds)}</span>
+                <span>読み始め率：{formatPercent(latest.engageRate)}</span>
+                <span>評価対象期間：{latest.periodStart ?? '—'} から {latest.periodEnd ?? '—'}</span>
+                <span>データ品質：{getGa4DataQualityLabel(latest.dataQuality)}</span>
+                {/* 前回が無い評価で「初回計測」を3つ並べても読み手に情報がないため出さない */}
+                {previous && (
+                  <span className="sm:col-span-2 xl:col-span-4">
+                    前回差分：コンテンツ力 {scoreDiff(latest.contentScore, previous.contentScore)} / 読み始め {scoreDiff(latest.engageScore, previous.engageScore)} / 読了 {scoreDiff(latest.readScore, previous.readScore)}
+                  </span>
+                )}
+              </div>
+              {/* 版番号と日時は普段は畳む。仕様 §10.3 の6も「評価情報」の詳細欄で確認できればよいとしている */}
+              <details>
+                <summary className="cursor-pointer">評価情報</summary>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <span>最終評価日時：{formatDate(latest.completedAt)}</span>
+                  <span>データ取得日時：{formatDate(latest.ga4DataFetchedAt)}</span>
+                  <span>評価設定：v{latest.scoringConfigVersion} / 文章 v{latest.promptVersion ?? '—'}</span>
+                </div>
+              </details>
             </div>
           </div>
         ) : (
