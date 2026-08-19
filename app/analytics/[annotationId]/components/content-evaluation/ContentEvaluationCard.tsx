@@ -42,15 +42,26 @@ function formatDate(value: string | null): string {
  * 診断見出しは記事全体の話なのでコンテンツ力スコアで色を決める。
  * バーをコンテンツ力スコアの色で塗ると、悪い数字が良い色をまとって読み手を迷わせる。
  *
- * 色は4段だが点数帯ラベルは5段（深刻／要改善／改善の余地あり／合格ライン／良好）。
- * 深刻と要改善はどちらも赤で示すべき悪さで、区別は文言が担う。色を5種類に増やすと
- * 色同士の差が読めなくなる。色だけに頼らないよう帯ラベルは必ず併記する。
+ * 段数は評価エンジン仕様 §03 の点数帯に合わせて5段にする。原文が
+ * 「2つの指標も、掛け合わせも、すべて同じ点数帯の意味を持たせる。ユーザーが覚える
+ * 物差しは1本だけにする」と定めているため、ラベル5段に対して色を4段へ丸めると
+ * 目盛りの数が食い違う。深刻と要改善は赤の濃淡で分ける（色相を5つ使うと差が読めない）。
+ * 色だけに頼らないよう帯ラベルは必ず併記する。
+ *
+ * 具体的な色値は原文に指定が無い（HTML は帯を .b1〜.b5 の5クラスで塗り分けているが、
+ * その CSS は共有されていない）。ここは開発側の選択で、確定値が共有されたら差し替える。
  */
 function getScoreBandTone(score: number | null): { text: string; pill: string; bar: string } {
   if (score === null) return { text: 'text-gray-700', pill: 'bg-gray-100 text-gray-700', bar: 'bg-gray-400' };
+  // 0-19 深刻
+  if (score < 20) return { text: 'text-rose-800', pill: 'bg-rose-100 text-rose-900', bar: 'bg-rose-700' };
+  // 20-39 要改善
   if (score < 40) return { text: 'text-rose-600', pill: 'bg-rose-50 text-rose-700', bar: 'bg-rose-500' };
+  // 40-59 改善の余地あり
   if (score < 60) return { text: 'text-amber-600', pill: 'bg-amber-50 text-amber-800', bar: 'bg-amber-500' };
+  // 60-79 合格ライン
   if (score < 80) return { text: 'text-sky-700', pill: 'bg-sky-50 text-sky-800', bar: 'bg-sky-500' };
+  // 80-100 良好
   return { text: 'text-emerald-700', pill: 'bg-emerald-50 text-emerald-800', bar: 'bg-emerald-500' };
 }
 
