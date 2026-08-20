@@ -43,6 +43,8 @@ export function RankingTab({
 
   const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1;
   const currentPage = pageSize > 0 ? Math.floor(offset / pageSize) + 1 : 1;
+  const hasSampledItem = items.some(item => item.isSampled);
+  const hasPartialItem = items.some(item => item.isPartial);
 
   if (items.length === 0 && !isLoading) {
     return (
@@ -187,18 +189,22 @@ export function RankingTab({
         </div>
       )}
 
-      {/* 注釈 */}
+      {/* 注釈。バッジの凡例は、実際にバッジが付いた行があるときだけ出す */}
       <div className="text-xs text-gray-500 pt-2 border-t">
         <ul className="list-disc list-inside space-y-1">
           <li>
             クリックすると時系列グラフが表示されます（タイトルをクリックすると記事の詳細画面に移動します）
           </li>
-          <li>
-            サンプリング: GA4データがサンプリングされている期間を含みます
-          </li>
-          <li>
-            一部取得: データ取得上限（50,000行）に達したため一部が未取得です
-          </li>
+          {hasSampledItem && (
+            <li>
+              サンプリング: GA4データがサンプリングされている期間を含みます
+            </li>
+          )}
+          {hasPartialItem && (
+            <li>
+              一部取得: GA4からの取得が上限（50,000行）に達したため一部が未取得です
+            </li>
+          )}
         </ul>
       </div>
     </div>
