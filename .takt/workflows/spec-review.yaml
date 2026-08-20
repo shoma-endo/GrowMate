@@ -5,10 +5,6 @@ description: >-
   is never a reason to invent a requirement. Do not flag the absence of requirements-free safety
   machinery such as kill switches, feature flags, dedicated settings tables, monitoring dashboards or
   redundancy; flag over-implementation of such machinery as needs_fix instead. A review cannot complete while in-scope client questions, implementation decisions, external inputs, or approval gates remain unresolved. Regenerates the spec's HTML visualization when the spec changed. Commits docs changes on the current branch only (no new branch, no push). Run before spec-to-pr.
-workflow_config:
-  provider_options:
-    codex:
-      network_access: true
 max_steps: 12
 initial_step: identify
 loop_monitors:
@@ -48,7 +44,6 @@ steps:
       - plan
     edit: false
     persona: planner
-    provider: claude-sdk
     knowledge:
       - growmate
     capabilities: readonly
@@ -74,7 +69,6 @@ steps:
       - review
     edit: false
     persona: architecture-reviewer
-    provider: claude-sdk
     knowledge:
       - growmate
     capabilities: readonly
@@ -103,11 +97,9 @@ steps:
       - implementation
     edit: true
     persona: coder
-    provider: claude-sdk
     knowledge:
       - growmate
-    provider_options:
-      extends: edit
+    capabilities: edit
     required_permission_mode: edit
     pass_previous_response: false
     instruction: spec-review/revise
@@ -128,8 +120,7 @@ steps:
     persona: coder
     knowledge:
       - growmate
-    provider_options:
-      extends: edit
+    capabilities: edit
     required_permission_mode: edit
     instruction: spec-review/visualize
     rules:
@@ -148,8 +139,6 @@ steps:
       - report
     edit: true
     persona: coder
-    provider: cursor
-    model: gpt-5.6-luna-high
     knowledge:
       - growmate
     required_permission_mode: edit

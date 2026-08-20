@@ -1,9 +1,5 @@
 name: grill-to-gherkin
 description: 要件を対話で明確化し、Gherkinと概算の着手判断を人間承認で確定してから仕様書・コード編集前に止める前段 workflow
-workflow_config:
-  provider_options:
-    codex:
-      network_access: true
 max_steps: 20
 initial_step: grill
 interactive_mode: grill-me
@@ -16,17 +12,9 @@ steps:
     persona: planner
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
     instruction: grill-to-gherkin/grill
     output_contracts:
       report:
@@ -48,17 +36,9 @@ steps:
     persona: planner
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
     instruction: grill-to-gherkin/gherkin
     output_contracts:
       report:
@@ -84,17 +64,9 @@ steps:
     persona: supervisor
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
     instruction: grill-to-gherkin/confirm
     output_contracts:
       report:
@@ -129,17 +101,9 @@ steps:
     persona: planner
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
     instruction: grill-to-gherkin/rough-estimate
     output_contracts:
       report:
@@ -159,17 +123,9 @@ steps:
     persona: supervisor
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
     instruction: grill-to-gherkin/estimate-confirm
     output_contracts:
       report:
@@ -199,17 +155,9 @@ steps:
     persona: planner
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
     instruction: grill-to-gherkin/handoff
     output_contracts:
       report:

@@ -1,9 +1,6 @@
 name: spec-to-pr
 description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, and PR creation with review summary body.
 workflow_config:
-  provider_options:
-    codex:
-      network_access: true
   # run 開始前に Cursor / Codex CLI の認証を fail-fast 検査する（review /
   # create_pr が cursor、coder 系・supervisor・内部エージェントが codex のため）。
   # スクリプトは ai-os（~/.takt/scripts/）で共通管理。絶対パスなのは
@@ -80,7 +77,6 @@ steps:
       - plan
     edit: false
     persona: planner
-    provider: claude-sdk
     knowledge:
       - architecture
       - growmate
@@ -114,8 +110,7 @@ steps:
       - coding
     knowledge:
       - growmate
-    provider_options:
-      extends: edit
+    capabilities: edit
     required_permission_mode: edit
     instruction: spec-to-pr/implement
     quality_gates:
@@ -197,8 +192,7 @@ steps:
       - coding
     knowledge:
       - growmate
-    provider_options:
-      extends: edit
+    capabilities: edit
     required_permission_mode: edit
     pass_previous_response: false
     instruction: spec-to-pr/fix
@@ -236,8 +230,7 @@ steps:
       - coding
     knowledge:
       - growmate
-    provider_options:
-      extends: edit
+    capabilities: edit
     required_permission_mode: edit
     pass_previous_response: false
     instruction: spec-to-pr/self-review-fix
@@ -275,8 +268,7 @@ steps:
       - coding
     knowledge:
       - growmate
-    provider_options:
-      extends: edit
+    capabilities: edit
     required_permission_mode: edit
     instruction: spec-to-pr/readme-sync
     structured_output:
@@ -337,8 +329,6 @@ steps:
       - coding
     edit: true
     persona: coder
-    provider: cursor
-    model: gpt-5.6-luna-high
     knowledge:
       - growmate
     required_permission_mode: edit
