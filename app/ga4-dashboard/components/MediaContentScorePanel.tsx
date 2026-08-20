@@ -75,10 +75,6 @@ export function MediaContentScorePanel({ scores }: { scores: Ga4MediaContentScor
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
-            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-              <span>右上は資産、左下は負債です。</span>
-              <span>点群が月次で右上へ移動することが改善の証明です。</span>
-            </div>
           </div>
         ) : (
           <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">

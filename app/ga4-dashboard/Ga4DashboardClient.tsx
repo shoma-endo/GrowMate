@@ -98,6 +98,9 @@ export default function Ga4DashboardClient({
   const [data, setData] = useState(initialData);
   const [error, setError] = useState<string | undefined>(initialError);
   const [isLoading, setIsLoading] = useState(false);
+  // 行クリックで取り直すのは時系列だけ。ランキング・サマリー・期間の操作まで
+  // 巻き込んで画面全体を無効化すると、選択のたびに再読込したように見える
+  const [isTimeseriesLoading, setIsTimeseriesLoading] = useState(false);
   const mediaContentScores = initialMediaContentScores;
 
 
@@ -313,7 +316,7 @@ export default function Ga4DashboardClient({
   const handleRowClick = useCallback(
     async (item: Ga4DashboardRankingItem) => {
       setSelectedNormalizedPath(item.normalizedPath);
-      setIsLoading(true);
+      setIsTimeseriesLoading(true);
       setError(undefined);
 
       try {
@@ -338,7 +341,7 @@ export default function Ga4DashboardClient({
         console.error('[GA4 Dashboard] Row click failed:', err);
         setError('データの取得に失敗しました');
       } finally {
-        setIsLoading(false);
+        setIsTimeseriesLoading(false);
       }
     },
     [dateRange.start, dateRange.end]
@@ -552,7 +555,7 @@ export default function Ga4DashboardClient({
         <TabsContent value="timeseries" className="mt-6">
           <TimeseriesTab
             data={data?.timeseries ?? []}
-            isLoading={isLoading}
+            isLoading={isLoading || isTimeseriesLoading}
             {...selectedPathProps}
             visibleMetrics={visibleTimeseriesMetrics}
             onToggleMetric={handleToggleMetric}
