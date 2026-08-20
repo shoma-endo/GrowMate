@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Ga4DashboardRankingItem } from '@/types/ga4';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { annotationDetailPath } from '@/lib/routes';
 
 interface Props {
   items: Ga4DashboardRankingItem[];
@@ -74,7 +75,7 @@ export function RankingTab({
                   <div className="min-w-0 flex-1">
                     {item.annotationId ? (
                       <Link
-                        href={`/analytics?annotationId=${item.annotationId}`}
+                        href={annotationDetailPath(item.annotationId)}
                         onClick={(e) => e.stopPropagation()}
                         className="hover:text-blue-600 hover:underline truncate block"
                       >
@@ -145,7 +146,7 @@ export function RankingTab({
       <div className="text-xs text-gray-500 pt-2 border-t">
         <ul className="list-disc list-inside space-y-1">
           <li>
-            クリックすると時系列グラフが表示されます（Analytics画面の記事に飛ぶこともできます）
+            クリックすると時系列グラフが表示されます（タイトルをクリックすると記事の詳細画面に移動します）
           </li>
           <li>
             サンプリング: GA4データがサンプリングされている期間を含みます

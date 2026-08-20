@@ -6,6 +6,7 @@ import TruncatedText from '@/components/TruncatedText';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
 import CategoryFilter from '@/components/CategoryFilter';
 import { cn } from '@/lib/utils';
+import { annotationDetailPath } from '@/lib/routes';
 import {
   ANALYTICS_COLUMNS,
   BLOG_STEP_IDS,
@@ -1124,7 +1125,7 @@ export default function AnalyticsTable({
                                     className="flex items-center gap-2"
                                     onClick={() => {
                                       window.open(
-                                        `/analytics/${encodeURIComponent(annotation.id ?? '')}`,
+                                        annotationDetailPath(annotation.id ?? ''),
                                         '_blank',
                                         'noopener,noreferrer'
                                       );
