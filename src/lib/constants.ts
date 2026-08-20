@@ -367,3 +367,11 @@ export function loadCategoryFilterFromStorage(): CategoryFilterConfig {
   }
   return DEFAULT_CATEGORY_FILTER;
 }
+
+/**
+ * /ga4-dashboard 記事別ランキングの1ページ件数。
+ *
+ * 集計は DB 側の `get_ga4_dashboard_ranking` が limit/offset を適用する。
+ * 上限は RPC 側でも 100 に制限しているため、これを超える値を渡さないこと。
+ */
+export const GA4_RANKING_PAGE_SIZE = 20;

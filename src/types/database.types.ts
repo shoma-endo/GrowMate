@@ -5,6 +5,7 @@ export type Json =
   | null
   | { [key: string]: Json | undefined }
   | Json[]
+
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -1689,6 +1690,78 @@ export type Database = {
           total_count: number
         }[]
       }
+      get_ga4_dashboard_ranking: {
+        Args: {
+          p_end: string
+          p_limit: number
+          p_offset: number
+          p_property_id: string
+          p_sort: string
+          p_start: string
+          p_user_id: string
+        }
+        Returns: {
+          annotation_id: string
+          avg_engagement_time_sec: number
+          ctr: number
+          cv_event_count: number
+          cvr: number
+          impressions: number
+          is_partial: boolean
+          is_sampled: boolean
+          normalized_path: string
+          read_rate: number
+          search_clicks: number
+          sessions: number
+          title: string
+          total_count: number
+          users: number
+        }[]
+      }
+      get_ga4_dashboard_summary: {
+        Args: {
+          p_end: string
+          p_property_id: string
+          p_start: string
+          p_user_id: string
+        }
+        Returns: {
+          has_partial_data: boolean
+          has_sampled_data: boolean
+          row_count: number
+          scroll_measured_users: number
+          total_cv_event_count: number
+          total_engagement_time_sec: number
+          total_impressions: number
+          total_scroll_90_event_count: number
+          total_search_clicks: number
+          total_sessions: number
+          total_users: number
+        }[]
+      }
+      get_ga4_dashboard_timeseries: {
+        Args: {
+          p_end: string
+          p_normalized_path: string
+          p_property_id: string
+          p_start: string
+          p_user_id: string
+        }
+        Returns: {
+          avg_engagement_time_sec: number
+          ctr: number
+          cv_event_count: number
+          cvr: number
+          date: string
+          impressions: number
+          is_partial: boolean
+          is_sampled: boolean
+          read_rate: number
+          search_clicks: number
+          sessions: number
+          users: number
+        }[]
+      }
       get_gsc_property_candidates: {
         Args: {
           p_end_date: string
@@ -1840,8 +1913,11 @@ export type Database = {
     }
   }
 }
+
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
@@ -1870,6 +1946,7 @@ export type Tables<
       ? R
       : never
     : never
+
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
@@ -1894,6 +1971,7 @@ export type TablesInsert<
       ? I
       : never
     : never
+
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
@@ -1918,6 +1996,7 @@ export type TablesUpdate<
       ? U
       : never
     : never
+
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
@@ -1934,6 +2013,7 @@ export type Enums<
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
+
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
@@ -1950,6 +2030,7 @@ export type CompositeTypes<
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
+
 export const Constants = {
   public: {
     Enums: {},

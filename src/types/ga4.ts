@@ -101,6 +101,21 @@ export interface Ga4DashboardRankingItem {
   isPartial: boolean;
 }
 
+/**
+ * ランキングの1ページ分。
+ *
+ * 集計は DB 側の `get_ga4_dashboard_ranking` が担い、`totalCount` は
+ * limit/offset を適用する前のパス総数を返す。全件を一度に返すと
+ * PostgREST の `db-max-rows = 1000` に当たるため、ページ送りを前提にする。
+ */
+export interface Ga4DashboardRankingPage {
+  items: Ga4DashboardRankingItem[];
+  /** limit/offset 適用前の総パス数 */
+  totalCount: number;
+  limit: number;
+  offset: number;
+}
+
 export interface Ga4DashboardTimeseriesPoint {
   date: string;
   sessions: number;
@@ -137,7 +152,7 @@ export interface Ga4MediaContentScores {
 
 interface Ga4DashboardChartData {
   summary: Ga4DashboardSummary;
-  ranking: Ga4DashboardRankingItem[];
+  ranking: Ga4DashboardRankingPage;
   timeseries: Ga4DashboardTimeseriesPoint[];
 }
 

@@ -23,10 +23,12 @@ import {
 import type {
   Ga4DashboardSummary,
   Ga4DashboardRankingItem,
+  Ga4DashboardRankingPage,
   Ga4DashboardTimeseriesPoint,
   Ga4DashboardSortKey,
   Ga4MediaContentScores,
 } from '@/types/ga4';
+import { GA4_RANKING_PAGE_SIZE } from '@/lib/constants';
 import { Ga4BackfillButton } from '@/components/Ga4BackfillButton';
 import { SummaryCards } from './components/SummaryCards';
 import { MediaContentScorePanel } from './components/MediaContentScorePanel';
@@ -78,7 +80,7 @@ const getPeriodPresetFromRange = (range: DateRange): PeriodPresetValue => {
 interface Props {
   initialData?: {
     summary: Ga4DashboardSummary;
-    ranking: Ga4DashboardRankingItem[];
+    ranking: Ga4DashboardRankingPage;
     timeseries: Ga4DashboardTimeseriesPoint[];
     initialNormalizedPath?: string;
   };
@@ -245,10 +247,12 @@ export default function Ga4DashboardClient({
       setError(undefined);
 
       try {
+        // 並び順が変わると順位も変わるため、ページ位置は先頭へ戻す
         const result = await fetchGa4DashboardRanking({
           start: dateRange.start ?? undefined,
           end: dateRange.end ?? undefined,
-          limit: 100,
+          limit: GA4_RANKING_PAGE_SIZE,
+          offset: 0,
           sort: value as Ga4DashboardSortKey,
         });
 
@@ -271,6 +275,38 @@ export default function Ga4DashboardClient({
       }
     },
     [dateRange.start, dateRange.end]
+  );
+
+  // ランキングのページ送り
+  const handleRankingPageChange = useCallback(
+    async (nextOffset: number) => {
+      setIsLoading(true);
+      setError(undefined);
+      try {
+        const result = await fetchGa4DashboardRanking({
+          start: dateRange.start ?? undefined,
+          end: dateRange.end ?? undefined,
+          limit: GA4_RANKING_PAGE_SIZE,
+          offset: nextOffset,
+          sort: sortKey,
+        });
+        if (!result.success || !result.data) {
+          if (isEmailLinkConflictResult(result)) {
+            replaceToEmailLinkConflictLogin();
+            return;
+          }
+          setError(result.error ?? 'データの取得に失敗しました');
+          return;
+        }
+        setData((prev) => (prev ? { ...prev, ranking: result.data! } : undefined));
+      } catch (err) {
+        console.error('[GA4 Dashboard] Ranking page change failed:', err);
+        setError('データの取得に失敗しました');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [dateRange.start, dateRange.end, sortKey]
   );
 
   // パージ選択（ランキング行クリック）
@@ -502,10 +538,14 @@ export default function Ga4DashboardClient({
           </div>
 
           <RankingTab
-            items={data?.ranking ?? []}
+            items={data?.ranking.items ?? []}
+            totalCount={data?.ranking.totalCount ?? 0}
+            offset={data?.ranking.offset ?? 0}
+            pageSize={data?.ranking.limit ?? GA4_RANKING_PAGE_SIZE}
             isLoading={isLoading}
             {...selectedPathProps}
             onRowClick={handleRowClick}
+            onPageChange={handleRankingPageChange}
           />
         </TabsContent>
 

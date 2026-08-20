@@ -3,21 +3,32 @@
 import Link from 'next/link';
 import type { Ga4DashboardRankingItem } from '@/types/ga4';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { annotationDetailPath } from '@/lib/routes';
 
 interface Props {
   items: Ga4DashboardRankingItem[];
+  /** ページングを適用する前の総パス数 */
+  totalCount: number;
+  /** 現在のページ先頭の位置（0始まり） */
+  offset: number;
+  pageSize: number;
   isLoading?: boolean;
   selectedNormalizedPath?: string;
   onRowClick: (item: Ga4DashboardRankingItem) => void;
+  onPageChange: (nextOffset: number) => void;
 }
 
 export function RankingTab({
   items,
+  totalCount,
+  offset,
+  pageSize,
   isLoading,
   selectedNormalizedPath,
   onRowClick,
+  onPageChange,
 }: Props) {
   const formatNumber = (num: number) => num.toLocaleString();
   // null は「90%スクロールイベントが未計測」。0.0% と書かない（BR-02）
@@ -29,6 +40,9 @@ export function RankingTab({
     const min = Math.floor(avgSec / 60);
     return `${min}分`;
   };
+
+  const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(totalCount / pageSize)) : 1;
+  const currentPage = pageSize > 0 ? Math.floor(offset / pageSize) + 1 : 1;
 
   if (items.length === 0 && !isLoading) {
     return (
@@ -141,6 +155,37 @@ export function RankingTab({
           );
         })}
       </div>
+
+      {/* ページ送り */}
+      {totalCount > 0 && (
+        <div className="flex items-center justify-between gap-4 pt-2">
+          <div className="text-sm text-gray-600">
+            {formatNumber(totalCount)}件中 {formatNumber(offset + 1)}〜
+            {formatNumber(Math.min(offset + items.length, totalCount))}件を表示
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isLoading || offset <= 0}
+              onClick={() => onPageChange(Math.max(0, offset - pageSize))}
+            >
+              前へ
+            </Button>
+            <span className="text-sm text-gray-600">
+              {currentPage} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isLoading || offset + pageSize >= totalCount}
+              onClick={() => onPageChange(offset + pageSize)}
+            >
+              次へ
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* 注釈 */}
       <div className="text-xs text-gray-500 pt-2 border-t">
