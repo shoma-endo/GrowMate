@@ -1,9 +1,5 @@
 name: grill-to-gherkin
 description: 要件を対話で明確化し、Gherkinと概算の着手判断を人間承認で確定してから仕様書・コード編集前に止める前段 workflow
-workflow_config:
-  provider_options:
-    codex:
-      network_access: true
 max_steps: 20
 initial_step: grill
 interactive_mode: grill-me
@@ -12,72 +8,19 @@ steps:
   - name: grill
     tags:
       - plan
+      - grill-readonly
     edit: false
     persona: planner
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-    instruction: |
-      TAKT標準の Grill Me 対話と `/go` によって生成された Markdown + Gherkin の指示書を、workflow の要件記録へ正規化してください。
-
-      目的:
-      - 標準 Grill Me が一問ずつ確認した決定事項を、後続ステップが追跡できる形で記録する。
-      - コードを変更しない。推測で要件を補完しない。
-      - この step では追加質問をしない。重要情報が不足している場合は `要件を確定できない` として停止し、標準 Grill Me を再実行する。
-      - `assistant.gherkin: true` により生成された Gherkin を、後続の Gherkin 検証の入力として保持する。
-
-      手順:
-      1. 標準 Grill Me が作成した最終指示書、関連する docs/plans、既存実装、AGENTS.md、GrowMate knowledge を読む。
-      2. `docs/templates/requirement-definition.md` をチェックリストとして読み、目的、業務、機能、非機能、制約、トレードオフ、リスク、テスト・リリースの不足を確認する。
-      3. 指示書に明示された決定事項、未確定事項、対象仕様書パス、Non-goals、利用者から見える振る舞いを抽出する。
-      4. 正常系・失敗系・境界条件が指示書に含まれているか確認する。根拠のないケースは追加しない。
-      5. 対象仕様書パスと要件が確定し、Gherkinを検証できる場合は、最後に `要件が明確になり、Gherkin化可能` と明記する。
-      6. 必須情報が不足している場合は、最後に `要件を確定できない` と明記する。
-
-      出力では、質問、回答、決定事項、未確定事項、Non-goals を分けてください。
-      標準 Grill Me でユーザーが回答した内容、既存資料から確認できた内容、推測を混同しないでください。
+    instruction: grill-to-gherkin/grill
     output_contracts:
       report:
         - name: 01-grill.md
-          format: |
-            # Grill結果
-
-            ## 決定事項
-            - {確定した要件}
-
-            ## 対象仕様書
-            - {既存または新規の docs/plans/<slug>.md}
-
-            ## 確認質問
-            - {標準 Grill Me で確認済みの質問と回答。なければ「なし」}
-
-            ## 未確定事項
-            - {未回答または根拠不足の事項}
-
-            ## 要件定義チェック
-            - 目的・成功指標: {確認済み / 不足 / 対象外と理由}
-            - 業務要件・利用者: {確認済み / 不足 / 対象外と理由}
-            - 機能要件・優先度: {確認済み / 不足 / 対象外と理由}
-            - 非機能要件: {確認済み / 不足 / 対象外と理由}
-            - 制約・前提・依存関係: {確認済み / 不足 / 対象外と理由}
-            - トレードオフ・リスク: {確認済み / 不足 / 対象外と理由}
-            - テスト・リリース・ロールバック: {確認済み / 不足 / 対象外と理由}
-
-            ## Non-goals
-            - {今回扱わない事項}
-
-            ## 判定
-            `要件が明確になり、Gherkin化可能` または `要件を確定できない`
+          format: grill-to-gherkin/result
           use_judge: false
     rules:
       - condition: 要件が明確になり、Gherkin化可能
@@ -90,63 +33,19 @@ steps:
   - name: gherkin
     tags:
       - plan
+      - grill-readonly
     edit: false
     persona: planner
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-    instruction: |
-      下記に全文添付された `01-grill.md` と元の依頼、既存仕様・コードを根拠に、合意済みの振る舞いだけを Gherkin に変換してください。
-
-      必須条件:
-      - 実装やファイル編集は行わない。
-      - 新しい要件を発明しない。根拠のない仕様は `未確定事項` に戻す。
-      - `Feature`、必要な `Rule`、`Scenario`、`Given`、`When`、`Then` を使う。
-      - 正常系だけでなく、Grill Meで確認された失敗系・境界条件も含める。
-      - 1シナリオに複数の目的を混ぜない。
-      - 仕様として検証可能な具体性を持たせる。実装クラス名・DB内部名への依存は避ける。
-      - どの決定事項から導いたかを、Gherkinの後に対応表として記録する。
-
-      未解決の論点があり、シナリオを安全に確定できない場合は、最後に `追加確認が必要` と明記し、質問を列挙してください。
-      すべて確定できた場合は、最後に `Gherkin化が完了` と明記してください。
-
-      ## 01-grill.md（全文）
-      {report:01-grill.md}
+    instruction: grill-to-gherkin/gherkin
     output_contracts:
       report:
         - name: 02-gherkin.md
-          format: |
-            # Gherkin受け入れ条件
-
-            ```gherkin
-            Feature: {機能名}
-
-            Rule: {業務ルール。不要なら省略}
-
-            Scenario: {振る舞い}
-              Given {前提}
-              When {操作}
-              Then {期待結果}
-            ```
-
-            ## 決定事項との対応
-            - {Gherkinのシナリオ} ← {Grill Meで確定した決定事項}
-
-            ## 未確定事項
-            - {あれば記載}
-
-            ## 判定
-            `追加確認が必要` または `Gherkin化が完了`
+          format: grill-to-gherkin/gherkin
           use_judge: false
     rules:
       - condition: 追加確認が必要
@@ -163,51 +62,19 @@ steps:
   - name: confirm
     tags:
       - review
+      - grill-readonly
     edit: false
     persona: supervisor
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-    instruction: |
-      下記に全文添付された `01-grill.md` と `02-gherkin.md` をもとに、実装前の人間承認を取得してください。
-
-      確認観点:
-      - 各シナリオが Grill の決定事項から追跡できる。
-      - 未合意の要件・推測・実装詳細が混入していない。
-      - Given / When / Then の因果関係が自然で、期待結果が検証可能。
-      - 正常系、失敗系、境界条件の不足がない。
-      - Non-goals が誤ってシナリオ化されていない。
-
-      初回は確認事項を簡潔に示し、ユーザーに「承認」または修正指示を求めてください。
-      ユーザーが修正を指示した場合は、最後に `修正が必要` と明記してください。
-      ユーザーが承認した場合だけ、最後に `ユーザー承認済み` と明記してください。
-
-      ## 01-grill.md（全文）
-      {report:01-grill.md}
-
-      ## 02-gherkin.md（全文）
-      {report:02-gherkin.md}
+    instruction: grill-to-gherkin/confirm
     output_contracts:
       report:
         - name: 03-confirmation.md
-          format: |
-            # Gherkin承認結果
-
-            ## 判定
-            `ユーザー承認済み` または `修正が必要` または `ユーザー確認が必要`
-
-            ## 確認内容
-            - {確認した内容}
+          format: grill-to-gherkin/confirmation
           use_judge: false
     rules:
       - condition: ユーザー承認済み
@@ -233,78 +100,19 @@ steps:
     tags:
       - plan
       - report
+      - grill-readonly
     edit: false
     persona: planner
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-    instruction: |
-      下記に全文添付された `01-grill.md`、`02-gherkin.md`、`03-confirmation.md` と、`docs/templates/requirement-definition.md` を読み、実装着手判断のための概算工数を作成してください。
-
-      目的:
-      - 正式見積もりではなく、機能の規模感・優先順位・着手可否を判断できる概算を出す。
-      - Gherkin承認時点で未確定な設計・非機能・外部連携は、無理に確定せず不確実性として残す。
-
-      必須条件:
-      - 仕様書・プロダクションコード・設定ファイルを編集しない。
-      - 金額、単価、契約条件は算出しない。
-      - 機能分解、概算工数の範囲（人日）、合計、前提、未確定事項、対象外を記載する。
-      - 正確さを装う単一の数値ではなく、原則として範囲で示す。根拠が弱い項目は信頼度を下げる。
-      - 工数には、必要に応じて設計・実装・テスト・レビュー・リリース準備を含める。含めない工程は明記する。
-      - DB変更、外部API、権限、移行、AI評価、UI確認など、工数を大きく変えうる要素を不確実性として列挙する。
-      - 概算できない場合も推測で埋めず、`概算工数は算出不能` と理由を記録して着手判断へ進める。
-      - 概算できた場合は最後に `概算工数を作成` と明記する。
-
-      ## 01-grill.md（全文）
-      {report:01-grill.md}
-
-      ## 02-gherkin.md（全文）
-      {report:02-gherkin.md}
-
-      ## 03-confirmation.md（全文）
-      {report:03-confirmation.md}
+    instruction: grill-to-gherkin/rough-estimate
     output_contracts:
       report:
         - name: 05-rough-estimate.md
-          format: |
-            # 概算工数
-
-            > これはGherkin承認時点の概算です。正式見積もりではありません。
-
-            ## 対象・目的
-            - 対象仕様書: `docs/plans/{slug}.md`
-            - 概算の用途: 着手判断・優先順位付け
-
-            ## 前提
-            - {工数算出の前提}
-
-            ## 機能・工程別概算
-            | ID | 対象・工程 | 概算（人日） | 信頼度 | 根拠・不確実性 |
-            | --- | --- | ---: | --- | --- |
-            | EST-001 |  | 〜 | 高 / 中 / 低 |  |
-
-            ## 合計
-            - 概算合計: {最小}〜{最大}人日
-            - 想定スケジュール: {期間または算出不能}
-
-            ## 未確定事項・リスク
-            - {工数を変えうる未確定事項}
-
-            ## 対象外
-            - {概算に含めないものと理由}
-
-            ## 判定
-            `概算工数を作成` または `概算工数は算出不能`
+          format: grill-to-gherkin/rough-estimate
           use_judge: false
     rules:
       - condition: 概算工数を作成
@@ -315,64 +123,19 @@ steps:
   - name: estimate_confirm
     tags:
       - review
+      - grill-readonly
     edit: false
     persona: supervisor
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-    instruction: |
-      下記に全文添付された `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`05-rough-estimate.md` をもとに、概算工数と前提・不確実性を人間に確認してください。
-
-      必須条件:
-      - 概算は正式見積もりではなく、着手判断・優先順位付けのための情報であることを明示する。
-      - 概算合計、想定スケジュール、信頼度、主要な不確実性、対象外を簡潔に示す。
-      - ユーザーに次のいずれかを選んでもらう。
-        - `着手承認`: 概算を前提として仕様書作成へ進む。
-        - `要件再確認が必要`: workflowを終了し、標準 `grill-me` を再実行して要件または前提を見直す。
-        - `見送り`: 今回は開発を進めない。
-      - ユーザーの明示的な判断なしに handoff へ進めない。
-      - ユーザーが判断を保留した場合は、最後に `ユーザー確認が必要` と明記する。
-      - ユーザーが着手を承認した場合は、最後に `着手承認` と明記する。
-      - ユーザーが要件の再確認を求めた場合は、最後に `要件再確認が必要` と明記する。
-      - ユーザーが見送りを決めた場合は、最後に `見送り` と明記する。
-
-      ## 01-grill.md（全文）
-      {report:01-grill.md}
-
-      ## 02-gherkin.md（全文）
-      {report:02-gherkin.md}
-
-      ## 03-confirmation.md（全文）
-      {report:03-confirmation.md}
-
-      ## 05-rough-estimate.md（全文）
-      {report:05-rough-estimate.md}
+    instruction: grill-to-gherkin/estimate-confirm
     output_contracts:
       report:
         - name: 06-estimate-confirmation.md
-          format: |
-            # 概算工数の着手判断
-
-            ## 対象
-            - `05-rough-estimate.md`
-
-            ## 確認内容
-            - 概算合計: {最小}〜{最大}人日、または算出不能
-            - 主要な前提・不確実性: {要約}
-            - 対象外: {要約}
-
-            ## 人間の判断
-            `着手承認` または `要件再確認が必要` または `見送り` または `ユーザー確認が必要`
+          format: grill-to-gherkin/estimate-confirmation
           use_judge: false
     rules:
       - condition: 着手承認
@@ -393,82 +156,19 @@ steps:
   - name: handoff
     tags:
       - report
+      - grill-readonly
     edit: false
     persona: planner
     policy:
       - grill-to-gherkin-exploration-boundary
-    provider: claude-sdk
-    model: opus
     knowledge:
       - growmate
     capabilities: readonly
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-    instruction: |
-      下記に全文添付された `01-grill.md`、`02-gherkin.md`、`03-confirmation.md`、`05-rough-estimate.md`、`06-estimate-confirmation.md` をもとに、仕様書レビューへ渡す引き継ぎレポートを作成してください。
-
-      必須条件:
-      - 対象仕様書のパスを明記する。パスは `docs/plans/<slug>.md` であること。
-      - 承認済み Gherkin の反映先が分かるようにする。
-      - 概算工数の結果と、概算に含まれない不確実性を引き継ぐ。
-      - `06-estimate-confirmation.md` が `着手承認` であることを確認する。
-      - 新規仕様書の場合は `docs/templates/requirement-definition.md` をコピーして、要件定義の全項目を埋めるよう明記する。該当なし・未確定の項目には理由または確認事項を残す。
-      - 次の手順を明記する。
-        1. 新規仕様書なら `docs/templates/requirement-definition.md` を `docs/plans/<slug>.md` にコピーする。
-        2. `02-gherkin.md` の Gherkin を対象仕様書の受け入れ条件へ反映する。
-        3. `05-rough-estimate.md` の概算工数・前提・不確実性を確認する。
-        4. `06-estimate-confirmation.md` の着手承認を確認する。
-        5. `takt -w spec-review -t "docs/plans/<slug>.md をレビューしてください"` を実行する。
-        6. spec-review 完了後、`takt -w spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してください"` を実行する。
-      - この step では仕様書・プロダクションコードを編集せず、後続 workflow を自動実行しない。
-      - 対象仕様書パス、承認済み Gherkin、次アクションが揃った場合は、最後に `引き継ぎ情報を作成` と明記する。
-
-      ## 01-grill.md（全文）
-      {report:01-grill.md}
-
-      ## 02-gherkin.md（全文）
-      {report:02-gherkin.md}
-
-      ## 03-confirmation.md（全文）
-      {report:03-confirmation.md}
-
-      ## 05-rough-estimate.md（全文）
-      {report:05-rough-estimate.md}
-
-      ## 06-estimate-confirmation.md（全文）
-      {report:06-estimate-confirmation.md}
+    instruction: grill-to-gherkin/handoff
     output_contracts:
       report:
         - name: 04-handoff.md
-          format: |
-            # 仕様レビュー引き継ぎ
-
-            ## 対象仕様書
-            - `docs/plans/{slug}.md`
-
-            ## 承認済み Gherkin
-            - {反映対象の Gherkin}
-
-            ## 概算工数
-            - `05-rough-estimate.md` の合計: {最小}〜{最大}人日
-            - 前提・不確実性: {要約}
-            - 着手判断: `06-estimate-confirmation.md` の `着手承認`
-
-            ## 次アクション
-            1. 必要ならテンプレートから対象仕様書を作成する。
-            2. Gherkinを対象仕様書へ反映する。
-            3. 要件定義の未記入項目を埋める。対象外は理由を記載する。
-            4. `05-rough-estimate.md` の概算工数・前提・不確実性を確認する。
-            5. `06-estimate-confirmation.md` の着手承認を確認する。
-            6. `spec-review` を実行する。
-            7. `spec-to-pr` を実行する。
-
-            ## 判定
-            `引き継ぎ情報を作成` または `引き継ぎ先を確定できない` または `引き継ぎ情報を作成できない`
+          format: grill-to-gherkin/handoff
           use_judge: false
     rules:
       - condition: 引き継ぎ情報を作成
