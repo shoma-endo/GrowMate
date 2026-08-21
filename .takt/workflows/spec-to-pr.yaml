@@ -23,8 +23,9 @@ loop_monitors:
         - growmate
       instruction: |
         reviewers（AIアンチパターン＋アーキテクチャの並列レビュー） -> fix のループが {cycle_count} 回繰り返されました。
-        下記に全文添付された最新のレビュー2本と修正結果を確認し、収束しているか判断してください。run ディレクトリやレポートパスの探索はしないでください。
+        閾値到達後はループ継続不可。下記に全文添付された最新のレビュー2本と修正結果を確認し、収束して抜けられるか・ABORT するかを二択で判断してください。run ディレクトリやレポートパスの探索はしないでください。
         残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として readme_sync を経て self_review に進めてください。
+        まだ直せそう・進捗がありそう、だけでは reviewers へ戻さないでください。必要なら ABORT し、人間が再実行します。
 
         ## ai-antipattern-review.md（最新・全文）
         {report:ai-antipattern-review.md}
@@ -37,9 +38,7 @@ loop_monitors:
       rules:
         - condition: 収束済み（残件が追加修正で解消不能な方針差分のみ）
           next: readme_sync
-        - condition: 健全（進捗あり）
-          next: reviewers
-        - condition: 非生産的（同じ指摘の反復・修正未反映）
+        - condition: 非生産的（同じ指摘の反復・修正未反映・追加修正で解消可能に見える残件）
           next: ABORT
   - cycle:
       - self_review
@@ -52,8 +51,9 @@ loop_monitors:
         - growmate
       instruction: |
         self_review -> self_review_fix -> readme_sync のループが {cycle_count} 回繰り返されました。
-        下記に全文添付された最新の self-review と修正結果を確認し、収束しているか判断してください。run ディレクトリやレポートパスの探索はしないでください。
+        閾値到達後はループ継続不可。下記に全文添付された最新の self-review と修正結果を確認し、収束して抜けられるか・ABORT するかを二択で判断してください。run ディレクトリやレポートパスの探索はしないでください。
         残件が「手動ブラウザ確認未実施」または管理者作業（マイグレーション適用・型再生成・pendingファイル削除）のみの場合は、追加修正で解消不能な残件として prepare_pr_summary に進めてください。
+        まだ直せそう・進捗がありそう、だけでは self_review へ戻さないでください。必要なら ABORT し、人間が再実行します。
 
         ## self-review.md（最新・全文）
         {report:self-review.md}
@@ -66,9 +66,7 @@ loop_monitors:
       rules:
         - condition: 収束済み（残件が手動確認・管理者作業のみ、または指摘なし）
           next: prepare_pr_summary
-        - condition: 健全（進捗あり）
-          next: self_review
-        - condition: 非生産的（同じ指摘の反復・修正未反映）
+        - condition: 非生産的（同じ指摘の反復・修正未反映・追加修正で解消可能に見える残件）
           next: ABORT
 
 steps:
