@@ -95,7 +95,7 @@ export default function PrivacyPolicyPage() {
                         https://www.googleapis.com/auth/webmasters.readonly
                       </code>
                       <br />
-                      検索クエリ、クリック数、検索結果に出た回数、検索順位等。
+                      検索クエリ、クリック数、表示回数、検索順位等。
                     </li>
                     <li>
                       GA4:{' '}

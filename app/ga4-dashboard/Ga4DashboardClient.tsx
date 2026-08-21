@@ -534,7 +534,7 @@ export default function Ga4DashboardClient({
                 <SelectItem value="cvr">問い合わせ率</SelectItem>
                 <SelectItem value="readRate">読了率</SelectItem>
                 <SelectItem value="avgEngagementTimeSec">
-                  実際に読まれた時間
+                  平均エンゲージメント時間
                 </SelectItem>
               </SelectContent>
             </Select>

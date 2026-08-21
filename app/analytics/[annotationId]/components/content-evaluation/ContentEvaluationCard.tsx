@@ -177,7 +177,7 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
             <Link href="/setup/ga4">データを再取得</Link>
           </Button>
         )}
-        {displayStatus === 'low_data' && <p className="text-sm text-muted-foreground">訪問した人が30人に達すると評価できます。</p>}
+        {displayStatus === 'low_data' && <p className="text-sm text-muted-foreground">セッションが30に達すると評価できます。</p>}
         {(displayStatus === 'unassessed' || displayStatus === 'insufficient_data') && (
           <details className="rounded-md border p-3 text-sm">
             <summary className="cursor-pointer font-medium">不足項目を確認</summary>
@@ -320,8 +320,8 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
             <div className="space-y-2 border-t pt-4 text-xs text-muted-foreground">
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 {/* 生値の2つは Google Analytics 4（以下、GA4）の画面と突き合わせる前提の数字なので先頭に置く（§10.3） */}
-                <span>実際に読まれた時間：{formatGa4Duration(latest.avgEngagementSeconds)}</span>
-                <span>読み始め率：{formatPercent(latest.engageRate)}</span>
+                <span>平均エンゲージメント時間：{formatGa4Duration(latest.avgEngagementSeconds)}</span>
+                <span>エンゲージメント率：{formatPercent(latest.engageRate)}</span>
                 <span>評価対象期間：{latest.periodStart ?? '—'} から {latest.periodEnd ?? '—'}</span>
                 <span>データ品質：{getGa4DataQualityLabel(latest.dataQuality)}</span>
                 {/* 前回が無い評価で「初回計測」を3つ並べても読み手に情報がないため出さない */}

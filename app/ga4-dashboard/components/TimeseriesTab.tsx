@@ -85,10 +85,10 @@ export function TimeseriesTab({
           <div className="text-gray-600">訪問数:</div>
           <div className="text-right font-medium">{formatNumber(data.sessions)}</div>
 
-          <div className="text-gray-600">訪問した人の数:</div>
+          <div className="text-gray-600">セッション:</div>
           <div className="text-right font-medium">{formatNumber(data.users)}</div>
 
-          <div className="text-gray-600">実際に読まれた時間:</div>
+          <div className="text-gray-600">平均エンゲージメント時間:</div>
           <div className="text-right font-medium">
             {Math.round(data.avgEngagementTimeSec)}秒
           </div>
@@ -187,7 +187,7 @@ export function TimeseriesTab({
                 stroke="#6b7280"
               />
 
-              {/* 左側YAxis: 訪問数・訪問した人 */}
+              {/* 左側YAxis: セッション */}
               <YAxis
                 yAxisId="sessions"
                 domain={sessionsDomain}
@@ -227,7 +227,7 @@ export function TimeseriesTab({
                 connectNulls={false}
               />
 
-              {/* 訪問した人（常時表示） */}
+              {/* セッション（常時表示） */}
               <Line
                 yAxisId="sessions"
                 type="monotone"
@@ -235,7 +235,7 @@ export function TimeseriesTab({
                 stroke="#3b82f6"
                 strokeWidth={2}
                 dot={false}
-                name="訪問した人の数"
+                name="セッション"
                 connectNulls={false}
               />
 

@@ -267,10 +267,10 @@ export const STEP7_FULL_BODY_TRIGGER = '完成形記事本文を生成してく�
 export const ANALYTICS_COLUMNS = [
   { id: 'main_kw', label: '主軸kw' },
   { id: 'kw', label: 'kw（参考）' },
-  { id: 'impressions', label: '検索結果に出た回数' },
+  { id: 'impressions', label: '表示回数' },
   { id: 'ga4_avg_engagement_time', label: '滞在時間(平均)' },
   { id: 'ga4_read_rate', label: '読了率' },
-  { id: 'ga4_engagement_rate', label: '読み始め率' },
+  { id: 'ga4_engagement_rate', label: 'エンゲージメント率' },
   { id: 'ga4_evaluation_status', label: 'コンテンツ評価状態' },
   { id: 'ga4_content_score', label: 'コンテンツ力スコア' },
   { id: 'ga4_diagnosis', label: '診断' },

@@ -58,7 +58,7 @@ export function TrendLineChart({ data, visibleMetrics }: TrendLineChartProps) {
               stroke="#a855f7"
               strokeWidth={2}
               dot={false}
-              name="検索結果に出た回数"
+              name="表示回数"
             />
           )}
           {visibleMetrics.ctr && (

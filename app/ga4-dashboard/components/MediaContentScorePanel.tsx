@@ -67,7 +67,7 @@ export function MediaContentScorePanel({ scores }: { scores: Ga4MediaContentScor
                     tick={{ fontSize: 12 }}
                     label={{ value: '読了スコア', angle: -90, position: 'insideLeft', fontSize: 12 }}
                   />
-                  <ZAxis type="number" dataKey="sessions" range={[40, 360]} name="訪問した人" />
+                  <ZAxis type="number" dataKey="sessions" range={[40, 360]} name="セッション" />
                   <ReferenceLine x={60} stroke="var(--border)" strokeDasharray="3 3" />
                   <ReferenceLine y={60} stroke="var(--border)" strokeDasharray="3 3" />
                   <Tooltip cursor={{ strokeDasharray: '3 3' }} />

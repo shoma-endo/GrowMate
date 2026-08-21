@@ -42,7 +42,7 @@ export function Ga4EvaluationHistoryPanel({ evaluation }: { evaluation: Ga4Conte
               <span>読み始めスコア：{item.engageScore ?? '—'}</span>
               <span>読了スコア：{item.readScore ?? '—'}</span>
               <span>対象期間：{item.periodStart ?? '—'} 〜 {item.periodEnd ?? '—'}</span>
-              <span>実際に読まれた時間：{formatGa4Duration(item.avgEngagementSeconds)}</span>
+              <span>平均エンゲージメント時間：{formatGa4Duration(item.avgEngagementSeconds)}</span>
               <span>データ品質：{getGa4DataQualityLabel(item.dataQuality)}</span>
             </div>
             {item.narrative && <p>診断文：{item.narrative.situation}</p>}

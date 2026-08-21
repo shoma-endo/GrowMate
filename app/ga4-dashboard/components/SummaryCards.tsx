@@ -34,12 +34,12 @@ export function SummaryCards({ summary, isLoading }: Props) {
       color: 'green',
     },
     {
-      label: '訪問した人の数',
+      label: 'セッション',
       value: formatNumber(summary.totalUsers),
       color: 'blue',
     },
     {
-      label: '実際に読まれた時間',
+      label: '平均エンゲージメント時間',
       value: formatDuration(summary.avgEngagementTimeSec),
       color: 'purple',
     },

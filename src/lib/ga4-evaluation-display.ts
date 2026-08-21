@@ -34,7 +34,7 @@ const GA4_MISSING_METRIC_LABELS: Record<string, string> = {
   ga4_data: '訪問データ',
   ga4: '訪問データ',
   bounce_rate: '直帰に関するデータ',
-  engagement_rate: '読み始め率',
+  engagement_rate: 'エンゲージメント率',
   active_users: '読み手の人数データ',
   scroll_90_event_count: '最後まで読まれた人数データ',
 };

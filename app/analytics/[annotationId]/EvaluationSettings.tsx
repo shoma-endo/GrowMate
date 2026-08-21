@@ -242,7 +242,7 @@ export function EvaluationSettings({
                 <div className="inline-flex items-start gap-2 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800 ring-1 ring-blue-200">
                   <Info className="h-4 w-4 mt-[1px] flex-shrink-0" />
                   <span>
-                    対象ページが未インデックス、または検索実績（検索結果に出た回数）がない場合は「データ未取得」になることがあります。
+                    対象ページが未インデックス、または検索実績（表示回数）がない場合は「データ未取得」になることがあります。
                     Search
                     Consoleの反映には通常2〜3日の遅延があるため、しばらく待ってから再確認してください。
                   </span>

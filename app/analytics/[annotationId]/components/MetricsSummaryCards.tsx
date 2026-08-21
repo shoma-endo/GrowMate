@@ -35,7 +35,7 @@ export function MetricsSummaryCards({
         }`}
         onClick={() => onToggle('impressions')}
       >
-        <p className="text-xs text-gray-500 mb-1">検索結果に出た回数</p>
+        <p className="text-xs text-gray-500 mb-1">表示回数</p>
         <p className="text-2xl font-bold text-gray-900">{summary.impressions.toLocaleString()}</p>
       </div>
 
