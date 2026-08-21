@@ -164,13 +164,16 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
         {displayStatus === 'needs_reauth' && (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-sm text-muted-foreground">Google連携を確認してから評価を実行してください。</p>
-            <Button asChild type="button" variant="outline">
+            {/* この状態では上の主操作ボタンが出ず、これが唯一の復帰導線になる。
+                白地の outline だと押せる要素に見えないため、既定の塗りつぶしにする
+                （Ga4DashboardClient.tsx の未連携時「GA4設定に移動」と同じ扱い） */}
+            <Button asChild type="button">
               <Link href="/setup/ga4">Googleを再連携</Link>
             </Button>
           </div>
         )}
         {displayStatus === 'import_failed' && (
-          <Button asChild type="button" variant="outline">
+          <Button asChild type="button">
             <Link href="/setup/ga4">データを再取得</Link>
           </Button>
         )}
