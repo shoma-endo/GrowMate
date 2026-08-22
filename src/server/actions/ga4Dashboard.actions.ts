@@ -11,9 +11,23 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { ServerActionResult } from '@/lib/async-handler';
 import type {
   Ga4DashboardSummary,
-  Ga4DashboardRankingItem,
+  Ga4DashboardRankingPage,
   Ga4DashboardTimeseriesPoint,
+  Ga4MediaContentScores,
 } from '@/types/ga4';
+import {
+  EMPTY_GA4_DASHBOARD_SUMMARY,
+  mapGa4DashboardRankingRows,
+  mapGa4DashboardSummaryRow,
+  mapGa4DashboardTimeseriesRows,
+  type Ga4DashboardRankingRow,
+  type Ga4DashboardSummaryRow,
+  type Ga4DashboardTimeseriesRow,
+} from '@/server/lib/ga4-dashboard-mapping';
+import { canAccessGa4 } from '@/server/lib/ga4-permissions';
+import { GA4_RANKING_PAGE_SIZE } from '@/lib/constants';
+import { calculateMediaScores } from '@/server/lib/ga4-content-score-aggregation';
+import { ga4ContentEvaluationService } from '@/server/services/ga4ContentEvaluationService';
 
 const supabaseService = new SupabaseService();
 
@@ -69,6 +83,7 @@ const rankingParamsSchema = z.object({
   start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit: z.coerce.number().min(1).max(100).default(50),
+  offset: z.coerce.number().min(0).default(0),
   sort: z.enum(['sessions', 'cvr', 'readRate', 'avgEngagementTimeSec'] as const).default('sessions'),
 }).superRefine((data, ctx) => {
   const hasStart = data.start !== undefined;
@@ -169,15 +184,43 @@ function ga4AuthFailureFrom(authResult: AuthResult): Ga4AuthFailure | null {
   return null;
 }
 
+function ga4AccessFailureFrom(authResult: AuthResult): Ga4AuthFailure | null {
+  const authFailure = ga4AuthFailureFrom(authResult);
+  if (authFailure) return authFailure;
+  if (!canAccessGa4({ role: authResult.role })) {
+    return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
+  }
+  return null;
+}
+
+/**
+ * 連携済みのGA4プロパティIDを引く。
+ *
+ * `gsc_credentials.user_id` は unique 制約付きなので、1ユーザーにつき最大1件。
+ */
+async function resolveGa4PropertyId(userId: string): Promise<string | null> {
+  const client = supabaseService.getClient();
+  const { data } = await client
+    .from('gsc_credentials')
+    .select('ga4_property_id')
+    .eq('user_id', userId)
+    .not('ga4_property_id', 'is', null)
+    .maybeSingle();
+  return data?.ga4_property_id ?? null;
+}
+
 /**
  * GA4ダッシュボード: 期間サマリーを取得
+ *
+ * 集計は `get_ga4_dashboard_summary` が DB 側で行う。日次行をアプリへ持ってくると
+ * PostgREST の `db-max-rows = 1000` で黙って打ち切られる（実測で90日=1625行中625行が欠落）。
  */
 async function fetchGa4DashboardSummary(input: unknown): Promise<
   ServerActionResult<Ga4DashboardSummary>
 > {
   try {
     const authResult = await getAuthUserId();
-    const authFail = ga4AuthFailureFrom(authResult);
+    const authFail = ga4AccessFailureFrom(authResult);
     if (authFail) return authFail;
 
     const userId = authResult.userId;
@@ -185,8 +228,6 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
       return { success: false, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
     }
     const client = supabaseService.getClient();
-
-    const userIds = [userId];
 
     // 日付範囲を解析
     const parsed = dateRangeSchema.safeParse(input);
@@ -197,127 +238,25 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
     const start = parsed.data.start ?? defaultDateRange.start;
     const end = parsed.data.end ?? defaultDateRange.end;
 
-    // GA4プロパティが設定されているユーザーを取得
-    const { data: credentials } = await client
-      .from('gsc_credentials')
-      .select('user_id, ga4_property_id')
-      .in('user_id', userIds)
-      .not('ga4_property_id', 'is', null);
-
-    if (!credentials || credentials.length === 0) {
-      return {
-        success: false,
-        error: ERROR_MESSAGES.GA4.NOT_CONNECTED,
-      };
+    const propertyId = await resolveGa4PropertyId(userId);
+    if (!propertyId) {
+      return { success: false, error: ERROR_MESSAGES.GA4.NOT_CONNECTED };
     }
 
-    // ORフィルタを構築
-    const orFilter = credentials
-      .map(
-        (c) =>
-          `and(user_id.eq.${c.user_id},property_id.eq."${String(c.ga4_property_id).replace(/"/g, '""')}")`
-      )
-      .join(',');
+    const { data, error: rpcError } = await client.rpc('get_ga4_dashboard_summary', {
+      p_user_id: userId,
+      p_property_id: propertyId,
+      p_start: start,
+      p_end: end,
+    });
 
-    // GA4データを集計
-    const { data: metrics, error: metricsError } = await client
-      .from('ga4_page_metrics_daily')
-      .select(
-        'sessions,users,engagement_time_sec,bounce_rate,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
-      )
-      .or(orFilter)
-      .gte('date', start)
-      .lte('date', end);
-
-    if (metricsError) {
-      logSupabaseError('[GA4 Dashboard] Summary fetch failed', metricsError);
+    if (rpcError) {
+      logSupabaseError('[GA4 Dashboard] Summary fetch failed', rpcError);
       return { success: false, error: 'データの取得に失敗しました' };
     }
 
-    if (!metrics || metrics.length === 0) {
-      return {
-        success: true,
-        data: {
-          totalSessions: 0,
-          totalUsers: 0,
-          avgEngagementTimeSec: 0,
-          avgBounceRate: 0,
-          totalCvEventCount: 0,
-          cvr: 0,
-          avgReadRate: 0,
-          totalSearchClicks: 0,
-          totalImpressions: 0,
-          ctr: null,
-          hasSampledData: false,
-          hasPartialData: false,
-        },
-      };
-    }
-
-    // 集計
-    let totalSessions = 0;
-    let totalUsers = 0;
-    let totalEngagementTimeSec = 0;
-    let bounceRateWeighted = 0;
-    let bounceRateSessions = 0;
-    let totalCvEventCount = 0;
-    let totalScroll90EventCount = 0;
-    let totalSearchClicks = 0;
-    let totalImpressions = 0;
-    let hasSampledData = false;
-    let hasPartialData = false;
-
-    for (const row of metrics) {
-      const sessions = Number(row.sessions ?? 0);
-      const users = Number(row.users ?? 0);
-      const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
-      const bounceRate = Number(row.bounce_rate ?? 0);
-      const cvEventCount = Number(row.cv_event_count ?? 0);
-      const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
-      const searchClicks = Number(row.search_clicks ?? 0);
-      const impressions = Number(row.impressions ?? 0);
-
-      totalSessions += sessions;
-      totalUsers += users;
-      totalEngagementTimeSec += engagementTimeSec;
-      totalCvEventCount += cvEventCount;
-      totalScroll90EventCount += scroll90EventCount;
-      totalSearchClicks += searchClicks;
-      totalImpressions += impressions;
-
-      bounceRateWeighted += bounceRate * sessions;
-      bounceRateSessions += sessions;
-
-      hasSampledData = hasSampledData || Boolean(row.is_sampled);
-      hasPartialData = hasPartialData || Boolean(row.is_partial);
-    }
-
-    const avgBounceRate =
-      bounceRateSessions > 0 ? bounceRateWeighted / bounceRateSessions : 0;
-    const avgEngagementTimeSec =
-      totalSessions > 0 ? totalEngagementTimeSec / totalSessions : 0;
-    const cvr = totalUsers > 0 ? (totalCvEventCount / totalUsers) * 100 : 0;
-    const avgReadRate =
-      totalUsers > 0 ? (totalScroll90EventCount / totalUsers) * 100 : 0;
-    const ctr = totalImpressions > 0 ? totalSearchClicks / totalImpressions : null;
-
-    return {
-      success: true,
-      data: {
-        totalSessions,
-        totalUsers,
-        avgEngagementTimeSec,
-        avgBounceRate,
-        totalCvEventCount,
-        cvr,
-        avgReadRate,
-        totalSearchClicks,
-        totalImpressions,
-        ctr,
-        hasSampledData,
-        hasPartialData,
-      },
-    };
+    const row = Array.isArray(data) ? (data[0] as Ga4DashboardSummaryRow | undefined) : undefined;
+    return { success: true, data: row ? mapGa4DashboardSummaryRow(row) : EMPTY_GA4_DASHBOARD_SUMMARY };
   } catch (error) {
     console.error('[GA4 Dashboard] Summary error:', error);
     return { success: false, error: 'サマリーの取得に失敗しました' };
@@ -328,11 +267,11 @@ async function fetchGa4DashboardSummary(input: unknown): Promise<
  * GA4ダッシュボード: 記事別ランキングを取得
  */
 export async function fetchGa4DashboardRanking(input: unknown): Promise<
-  ServerActionResult<Ga4DashboardRankingItem[]>
+  ServerActionResult<Ga4DashboardRankingPage>
 > {
   try {
     const authResult = await getAuthUserId();
-    const authFail = ga4AuthFailureFrom(authResult);
+    const authFail = ga4AccessFailureFrom(authResult);
     if (authFail) return authFail;
 
     const userId = authResult.userId;
@@ -341,201 +280,44 @@ export async function fetchGa4DashboardRanking(input: unknown): Promise<
     }
     const client = supabaseService.getClient();
 
-    const userIds = [userId];
-
     // パラメータを解析
     const parsed = rankingParamsSchema.safeParse(input);
     if (!parsed.success) {
       return { success: false, error: 'パラメータが無効です' };
     }
 
-    const { limit, sort } = parsed.data;
+    const { limit, offset, sort } = parsed.data;
     const defaultDateRange = getDefaultDateRange();
     const dateRange = {
       start: parsed.data.start ?? defaultDateRange.start,
       end: parsed.data.end ?? defaultDateRange.end,
     };
 
-    // GA4プロパティが設定されているユーザーを取得
-    const { data: credentials } = await client
-      .from('gsc_credentials')
-      .select('user_id, ga4_property_id')
-      .in('user_id', userIds)
-      .not('ga4_property_id', 'is', null);
-
-    if (!credentials || credentials.length === 0) {
-      return { success: true, data: [] };
+    const propertyId = await resolveGa4PropertyId(userId);
+    if (!propertyId) {
+      return { success: true, data: { items: [], totalCount: 0, limit, offset } };
     }
 
-    // ORフィルタを構築
-    const orFilter = credentials
-      .map(
-        (c) =>
-          `and(user_id.eq.${c.user_id},property_id.eq."${String(c.ga4_property_id).replace(/"/g, '""')}")`
-      )
-      .join(',');
+    // 集計・ソート・ページングと content_annotations の突合まで DB 側で完結させる。
+    // 日次行と記事全件をアプリへ持ってくると、いずれも db-max-rows = 1000 に当たる
+    const { data, error: rpcError } = await client.rpc('get_ga4_dashboard_ranking', {
+      p_user_id: userId,
+      p_property_id: propertyId,
+      p_start: dateRange.start,
+      p_end: dateRange.end,
+      p_sort: sort,
+      p_limit: limit,
+      p_offset: offset,
+    });
 
-    // GA4データをnormalized_path単位で集計
-    const { data: metrics, error: metricsError } = await client
-      .from('ga4_page_metrics_daily')
-      .select(
-        'normalized_path,sessions,users,engagement_time_sec,bounce_rate,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
-      )
-      .or(orFilter)
-      .gte('date', dateRange.start)
-      .lte('date', dateRange.end);
-
-    if (metricsError) {
-      logSupabaseError('[GA4 Dashboard] Ranking fetch failed', metricsError);
+    if (rpcError) {
+      logSupabaseError('[GA4 Dashboard] Ranking fetch failed', rpcError);
       return { success: false, error: 'データの取得に失敗しました' };
     }
 
-    if (!metrics || metrics.length === 0) {
-      return { success: true, data: [] };
-    }
-
-    // normalized_path単位で集計
-    const aggMap = new Map<
-      string,
-      {
-        sessions: number;
-        users: number;
-        engagementTimeSec: number;
-        bounceRateWeighted: number;
-        bounceRateSessions: number;
-        cvEventCount: number;
-        scroll90EventCount: number;
-        searchClicks: number;
-        impressions: number;
-        isSampled: boolean;
-        isPartial: boolean;
-      }
-    >();
-
-    for (const row of metrics) {
-      const normalizedPath = row.normalized_path as string;
-      const current = aggMap.get(normalizedPath) ?? {
-        sessions: 0,
-        users: 0,
-        engagementTimeSec: 0,
-        bounceRateWeighted: 0,
-        bounceRateSessions: 0,
-        cvEventCount: 0,
-        scroll90EventCount: 0,
-        searchClicks: 0,
-        impressions: 0,
-        isSampled: false,
-        isPartial: false,
-      };
-
-      const sessions = Number(row.sessions ?? 0);
-      const users = Number(row.users ?? 0);
-      const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
-      const bounceRate = Number(row.bounce_rate ?? 0);
-      const cvEventCount = Number(row.cv_event_count ?? 0);
-      const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
-      const searchClicks = Number(row.search_clicks ?? 0);
-      const impressions = Number(row.impressions ?? 0);
-
-      current.sessions += sessions;
-      current.users += users;
-      current.engagementTimeSec += engagementTimeSec;
-      current.cvEventCount += cvEventCount;
-      current.scroll90EventCount += scroll90EventCount;
-      current.searchClicks += searchClicks;
-      current.impressions += impressions;
-      current.bounceRateWeighted += bounceRate * sessions;
-      current.bounceRateSessions += sessions;
-      current.isSampled = current.isSampled || Boolean(row.is_sampled);
-      current.isPartial = current.isPartial || Boolean(row.is_partial);
-
-      aggMap.set(normalizedPath, current);
-    }
-
-    // ランキングデータを構築
-    const ranking: Ga4DashboardRankingItem[] = [];
-
-    for (const [normalizedPath, agg] of aggMap.entries()) {
-      const avgBounceRate =
-        agg.bounceRateSessions > 0
-          ? agg.bounceRateWeighted / agg.bounceRateSessions
-          : 0;
-      const cvr = agg.users > 0 ? (agg.cvEventCount / agg.users) * 100 : 0;
-      const readRate =
-        agg.users > 0 ? (agg.scroll90EventCount / agg.users) * 100 : 0;
-      const avgEngagementTimeSec =
-        agg.sessions > 0 ? agg.engagementTimeSec / agg.sessions : 0;
-      const ctr = agg.impressions > 0 ? agg.searchClicks / agg.impressions : null;
-
-      ranking.push({
-        normalizedPath,
-        title: null, // 後でJOINして設定
-        annotationId: null, // 後でJOINして設定
-        sessions: agg.sessions,
-        users: agg.users,
-        avgEngagementTimeSec,
-        bounceRate: avgBounceRate,
-        cvEventCount: agg.cvEventCount,
-        cvr,
-        readRate,
-        searchClicks: agg.searchClicks,
-        impressions: agg.impressions,
-        ctr,
-        isSampled: agg.isSampled,
-        isPartial: agg.isPartial,
-      });
-    }
-
-    // ソート
-    ranking.sort((a, b) => {
-      switch (sort) {
-        case 'sessions':
-          return b.sessions - a.sessions;
-        case 'cvr':
-          return b.cvr - a.cvr;
-        case 'readRate':
-          return b.readRate - a.readRate;
-        case 'avgEngagementTimeSec':
-          return b.avgEngagementTimeSec - a.avgEngagementTimeSec;
-        default:
-          return b.sessions - a.sessions;
-      }
-    });
-
-    // limitを適用
-    const limitedRanking = ranking.slice(0, limit);
-
-    // タイトルとannotationIdをcontent_annotationsから取得
-    if (limitedRanking.length > 0) {
-      const { data: annotations } = await client
-        .from('content_annotations')
-        .select('id,canonical_url,wp_post_title')
-        .in('user_id', userIds)
-        .not('canonical_url', 'is', null);
-
-      if (annotations) {
-        const pathToAnnotation = new Map<string, { id: string; title: string | null }>();
-        for (const ann of annotations) {
-          if (ann.canonical_url) {
-            const normalized = normalizeToPath(ann.canonical_url);
-            pathToAnnotation.set(normalized, {
-              id: ann.id,
-              title: ann.wp_post_title,
-            });
-          }
-        }
-
-        for (const item of limitedRanking) {
-          const ann = pathToAnnotation.get(item.normalizedPath);
-          if (ann) {
-            item.annotationId = ann.id;
-            item.title = ann.title;
-          }
-        }
-      }
-    }
-
-    return { success: true, data: limitedRanking };
+    const rows = Array.isArray(data) ? (data as Ga4DashboardRankingRow[]) : [];
+    const { items, totalCount } = mapGa4DashboardRankingRows(rows);
+    return { success: true, data: { items, totalCount, limit, offset } };
   } catch (error) {
     console.error('[GA4 Dashboard] Ranking error:', error);
     return { success: false, error: 'ランキングの取得に失敗しました' };
@@ -550,7 +332,7 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
 > {
   try {
     const authResult = await getAuthUserId();
-    const authFail = ga4AuthFailureFrom(authResult);
+    const authFail = ga4AccessFailureFrom(authResult);
     if (authFail) return authFail;
 
     const userId = authResult.userId;
@@ -558,8 +340,6 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
       return { success: false, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
     }
     const client = supabaseService.getClient();
-
-    const userIds = [userId];
 
     // パラメータを解析
     const parsed = timeseriesParamsSchema.safeParse(input);
@@ -574,175 +354,50 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
       end: parsed.data.end ?? defaultDateRange.end,
     };
 
-    // GA4プロパティが設定されているユーザーを取得
-    const { data: credentials } = await client
-      .from('gsc_credentials')
-      .select('user_id, ga4_property_id')
-      .in('user_id', userIds)
-      .not('ga4_property_id', 'is', null);
-
-    if (!credentials || credentials.length === 0) {
+    const propertyId = await resolveGa4PropertyId(userId);
+    if (!propertyId) {
       return { success: true, data: [] };
     }
 
-    // normalizedPathが未指定の場合、期間合算のsessions Top1記事を取得
+    // 未指定なら期間合算の訪問数トップを対象にする。
+    // ランキングRPCを limit 1 で呼べば、日次行を持ってこずに1件だけ引ける
     let targetNormalizedPath = normalizedPath;
-
     if (!targetNormalizedPath) {
-      const orFilter = credentials
-        .map(
-          (c) =>
-            `and(user_id.eq.${c.user_id},property_id.eq."${String(c.ga4_property_id).replace(/"/g, '""')}")`
-        )
-        .join(',');
-
-      const { data: topPathData } = await client
-        .from('ga4_page_metrics_daily')
-        .select('normalized_path,sessions')
-        .or(orFilter)
-        .gte('date', dateRange.start)
-        .lte('date', dateRange.end);
-
-      if (topPathData && topPathData.length > 0) {
-        const sessionMap = new Map<string, number>();
-        for (const row of topPathData) {
-          const path = String(row.normalized_path ?? '');
-          if (!path) continue;
-          const sessions = Number(row.sessions ?? 0);
-          sessionMap.set(path, (sessionMap.get(path) ?? 0) + sessions);
-        }
-
-        const sortedBySessions = [...sessionMap.entries()].sort(
-          (a, b) => b[1] - a[1]
-        );
-        targetNormalizedPath = sortedBySessions[0]?.[0];
-        if (!targetNormalizedPath) {
-          return { success: true, data: [] };
-        }
-      } else {
+      const { data: topRows, error: topError } = await client.rpc('get_ga4_dashboard_ranking', {
+        p_user_id: userId,
+        p_property_id: propertyId,
+        p_start: dateRange.start,
+        p_end: dateRange.end,
+        p_sort: 'sessions',
+        p_limit: 1,
+        p_offset: 0,
+      });
+      if (topError) {
+        logSupabaseError('[GA4 Dashboard] Timeseries top path fetch failed', topError);
+        return { success: false, error: 'データの取得に失敗しました' };
+      }
+      const rows = Array.isArray(topRows) ? (topRows as Ga4DashboardRankingRow[]) : [];
+      targetNormalizedPath = mapGa4DashboardRankingRows(rows).items[0]?.normalizedPath;
+      if (!targetNormalizedPath) {
         return { success: true, data: [] };
       }
     }
 
-    // ORフィルタを構築
-    const orFilter = credentials
-      .map(
-        (c) =>
-          `and(user_id.eq.${c.user_id},property_id.eq."${String(c.ga4_property_id).replace(/"/g, '""')}")`
-      )
-      .join(',');
+    const { data, error: rpcError } = await client.rpc('get_ga4_dashboard_timeseries', {
+      p_user_id: userId,
+      p_property_id: propertyId,
+      p_start: dateRange.start,
+      p_end: dateRange.end,
+      p_normalized_path: targetNormalizedPath,
+    });
 
-    // タイムシリーズデータを取得
-    const { data: metrics, error: metricsError } = await client
-      .from('ga4_page_metrics_daily')
-      .select(
-        'date,sessions,users,engagement_time_sec,bounce_rate,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
-      )
-      .or(orFilter)
-      .eq('normalized_path', targetNormalizedPath)
-      .gte('date', dateRange.start)
-      .lte('date', dateRange.end)
-      .order('date', { ascending: true });
-
-    if (metricsError) {
-      logSupabaseError('[GA4 Dashboard] Timeseries fetch failed', metricsError);
+    if (rpcError) {
+      logSupabaseError('[GA4 Dashboard] Timeseries fetch failed', rpcError);
       return { success: false, error: 'データの取得に失敗しました' };
     }
 
-    if (!metrics || metrics.length === 0) {
-      return { success: true, data: [] };
-    }
-
-    // 日付単位で集計してタイムシリーズを構築（複数ユーザー/複数プロパティ行を統合）
-    const aggMap = new Map<
-      string,
-      {
-        sessions: number;
-        users: number;
-        engagementTimeSec: number;
-        bounceRateWeighted: number;
-        bounceRateSessions: number;
-        cvEventCount: number;
-        scroll90EventCount: number;
-        searchClicks: number;
-        impressions: number;
-        isSampled: boolean;
-        isPartial: boolean;
-      }
-    >();
-
-    for (const row of metrics) {
-      const date = String(row.date);
-      const current = aggMap.get(date) ?? {
-        sessions: 0,
-        users: 0,
-        engagementTimeSec: 0,
-        bounceRateWeighted: 0,
-        bounceRateSessions: 0,
-        cvEventCount: 0,
-        scroll90EventCount: 0,
-        searchClicks: 0,
-        impressions: 0,
-        isSampled: false,
-        isPartial: false,
-      };
-
-      const sessions = Number(row.sessions ?? 0);
-      const users = Number(row.users ?? 0);
-      const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
-      const bounceRate = Number(row.bounce_rate ?? 0);
-      const cvEventCount = Number(row.cv_event_count ?? 0);
-      const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
-      const searchClicks = Number(row.search_clicks ?? 0);
-      const impressions = Number(row.impressions ?? 0);
-
-      current.sessions += sessions;
-      current.users += users;
-      current.engagementTimeSec += engagementTimeSec;
-      current.cvEventCount += cvEventCount;
-      current.scroll90EventCount += scroll90EventCount;
-      current.searchClicks += searchClicks;
-      current.impressions += impressions;
-      current.bounceRateWeighted += bounceRate * sessions;
-      current.bounceRateSessions += sessions;
-      current.isSampled = current.isSampled || Boolean(row.is_sampled);
-      current.isPartial = current.isPartial || Boolean(row.is_partial);
-
-      aggMap.set(date, current);
-    }
-
-    const timeseries: Ga4DashboardTimeseriesPoint[] = [...aggMap.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, agg]) => {
-        const avgEngagementTimeSec =
-          agg.sessions > 0 ? agg.engagementTimeSec / agg.sessions : 0;
-        const bounceRate =
-          agg.bounceRateSessions > 0
-            ? agg.bounceRateWeighted / agg.bounceRateSessions
-            : 0;
-        const cvr = agg.users > 0 ? (agg.cvEventCount / agg.users) * 100 : 0;
-        const readRate =
-          agg.users > 0 ? (agg.scroll90EventCount / agg.users) * 100 : 0;
-        const ctr = agg.impressions > 0 ? agg.searchClicks / agg.impressions : null;
-
-        return {
-          date,
-          sessions: agg.sessions,
-          users: agg.users,
-          avgEngagementTimeSec,
-          bounceRate,
-          cvEventCount: agg.cvEventCount,
-          cvr,
-          readRate,
-          searchClicks: agg.searchClicks,
-          impressions: agg.impressions,
-          ctr,
-          isSampled: agg.isSampled,
-          isPartial: agg.isPartial,
-        };
-      });
-
-    return { success: true, data: timeseries };
+    const rows = Array.isArray(data) ? (data as Ga4DashboardTimeseriesRow[]) : [];
+    return { success: true, data: mapGa4DashboardTimeseriesRows(rows) };
   } catch (error) {
     console.error('[GA4 Dashboard] Timeseries error:', error);
     return { success: false, error: 'タイムシリーズの取得に失敗しました' };
@@ -755,14 +410,14 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
 export async function fetchGa4DashboardData(input: unknown): Promise<
   ServerActionResult<{
     summary: Ga4DashboardSummary;
-    ranking: Ga4DashboardRankingItem[];
+    ranking: Ga4DashboardRankingPage;
     timeseries: Ga4DashboardTimeseriesPoint[];
     initialNormalizedPath?: string;
   }>
 > {
   try {
     const authResult = await getAuthUserId();
-    const authFail = ga4AuthFailureFrom(authResult);
+    const authFail = ga4AccessFailureFrom(authResult);
     if (authFail) return authFail;
 
     // パラメータを解析
@@ -777,7 +432,7 @@ export async function fetchGa4DashboardData(input: unknown): Promise<
     // 並列でサマリー、ランキングを取得
     const [summaryResult, rankingResult] = await Promise.all([
       fetchGa4DashboardSummary({ start, end }),
-      fetchGa4DashboardRanking({ start, end, limit: 100, sort: 'sessions' }),
+      fetchGa4DashboardRanking({ start, end, limit: GA4_RANKING_PAGE_SIZE, offset: 0, sort: 'sessions' }),
     ]);
 
     if (!summaryResult.success) {
@@ -800,7 +455,7 @@ export async function fetchGa4DashboardData(input: unknown): Promise<
     }
 
     // ランキングのTop1を初期選択として取得
-    const initialNormalizedPath = rankingResult.data[0]?.normalizedPath;
+    const initialNormalizedPath = rankingResult.data.items[0]?.normalizedPath;
 
     // タイムシリーズを取得
     const timeseriesResult = await fetchGa4DashboardTimeseries({
@@ -832,5 +487,26 @@ export async function fetchGa4DashboardData(input: unknown): Promise<
   } catch (error) {
     console.error('[GA4 Dashboard] Data fetch error:', error);
     return { success: false, error: 'データの取得に失敗しました' };
+  }
+}
+
+export async function fetchGa4MediaContentScores(): Promise<ServerActionResult<Ga4MediaContentScores>> {
+  try {
+    const authResult = await getAuthUserId();
+    const authFail = ga4AccessFailureFrom(authResult);
+    if (authFail) return authFail;
+    if (!authResult.userId) return { success: false, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    const client = supabaseService.getClient();
+    const [latestItems, { count: totalCount, error: totalCountError }] = await Promise.all([
+      ga4ContentEvaluationService.fetchLatestSuccessfulContentScores(authResult.userId),
+      client.from('content_annotations').select('id', { count: 'exact', head: true }).eq('user_id', authResult.userId),
+    ]);
+    if (totalCountError) throw totalCountError;
+    const points = latestItems;
+    const media = calculateMediaScores(points, totalCount ?? 0);
+    return { success: true, data: { ...media, points } };
+  } catch (error) {
+    logSupabaseError('[GA4 Dashboard] Media content scores error', error);
+    return { success: false, error: ERROR_MESSAGES.GA4.MEDIA_SCORE_FETCH_FAILED };
   }
 }

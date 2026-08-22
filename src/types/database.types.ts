@@ -167,6 +167,7 @@ export type Database = {
           wp_category_names: string[] | null
           wp_content_text: string | null
           wp_excerpt: string | null
+          wp_image_count: number | null
           wp_post_id: number | null
           wp_post_title: string | null
           wp_post_type: string
@@ -192,6 +193,7 @@ export type Database = {
           wp_category_names?: string[] | null
           wp_content_text?: string | null
           wp_excerpt?: string | null
+          wp_image_count?: number | null
           wp_post_id?: number | null
           wp_post_title?: string | null
           wp_post_type?: string
@@ -217,19 +219,263 @@ export type Database = {
           wp_category_names?: string[] | null
           wp_content_text?: string | null
           wp_excerpt?: string | null
+          wp_image_count?: number | null
           wp_post_id?: number | null
           wp_post_title?: string | null
           wp_post_type?: string
         }
         Relationships: []
       }
+      ga4_content_evaluation_history: {
+        Row: {
+          attempt_count: number
+          avg_engagement_seconds: number | null
+          canonical_url_snapshot: string | null
+          char_count: number | null
+          completed_at: string | null
+          content_annotation_id: string
+          content_score: number | null
+          context_schema_version: number
+          created_at: string
+          data_quality_json: Json | null
+          diagnosis_code: string | null
+          engage_rate: number | null
+          engage_score: number | null
+          error_code: string | null
+          error_message: string | null
+          evaluation_run_id: string
+          expected_read_seconds: number | null
+          ga4_data_fetched_at: string | null
+          ga4_property_id: string | null
+          id: string
+          image_count: number | null
+          input_fingerprint: string | null
+          narrative_json: Json | null
+          period_end: string | null
+          period_start: string | null
+          prompt_captured_at: string | null
+          prompt_content_sha256: string | null
+          prompt_template_id: string | null
+          prompt_version: number | null
+          prompt_version_id: string | null
+          read_rate: number | null
+          read_score: number | null
+          scoring_config_version: number
+          scroll_rate: number | null
+          sessions: number | null
+          site_rank: number | null
+          started_at: string
+          status: string
+          title_snapshot: string | null
+          total_articles: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          avg_engagement_seconds?: number | null
+          canonical_url_snapshot?: string | null
+          char_count?: number | null
+          completed_at?: string | null
+          content_annotation_id: string
+          content_score?: number | null
+          context_schema_version?: number
+          created_at?: string
+          data_quality_json?: Json | null
+          diagnosis_code?: string | null
+          engage_rate?: number | null
+          engage_score?: number | null
+          error_code?: string | null
+          error_message?: string | null
+          evaluation_run_id: string
+          expected_read_seconds?: number | null
+          ga4_data_fetched_at?: string | null
+          ga4_property_id?: string | null
+          id?: string
+          image_count?: number | null
+          input_fingerprint?: string | null
+          narrative_json?: Json | null
+          period_end?: string | null
+          period_start?: string | null
+          prompt_captured_at?: string | null
+          prompt_content_sha256?: string | null
+          prompt_template_id?: string | null
+          prompt_version?: number | null
+          prompt_version_id?: string | null
+          read_rate?: number | null
+          read_score?: number | null
+          scoring_config_version: number
+          scroll_rate?: number | null
+          sessions?: number | null
+          site_rank?: number | null
+          started_at?: string
+          status: string
+          title_snapshot?: string | null
+          total_articles?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempt_count?: number
+          avg_engagement_seconds?: number | null
+          canonical_url_snapshot?: string | null
+          char_count?: number | null
+          completed_at?: string | null
+          content_annotation_id?: string
+          content_score?: number | null
+          context_schema_version?: number
+          created_at?: string
+          data_quality_json?: Json | null
+          diagnosis_code?: string | null
+          engage_rate?: number | null
+          engage_score?: number | null
+          error_code?: string | null
+          error_message?: string | null
+          evaluation_run_id?: string
+          expected_read_seconds?: number | null
+          ga4_data_fetched_at?: string | null
+          ga4_property_id?: string | null
+          id?: string
+          image_count?: number | null
+          input_fingerprint?: string | null
+          narrative_json?: Json | null
+          period_end?: string | null
+          period_start?: string | null
+          prompt_captured_at?: string | null
+          prompt_content_sha256?: string | null
+          prompt_template_id?: string | null
+          prompt_version?: number | null
+          prompt_version_id?: string | null
+          read_rate?: number | null
+          read_score?: number | null
+          scoring_config_version?: number
+          scroll_rate?: number | null
+          sessions?: number | null
+          site_rank?: number | null
+          started_at?: string
+          status?: string
+          title_snapshot?: string | null
+          total_articles?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ga4_content_evaluation_history_content_annotation_id_fkey"
+            columns: ["content_annotation_id"]
+            isOneToOne: false
+            referencedRelation: "content_annotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ga4_content_evaluation_history_prompt_template_id_fkey"
+            columns: ["prompt_template_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ga4_content_evaluation_history_prompt_version_id_fkey"
+            columns: ["prompt_version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ga4_content_evaluation_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ga4_content_evaluations: {
+        Row: {
+          active_run_id: string | null
+          content_annotation_id: string
+          created_at: string
+          evaluation_started_at: string | null
+          id: string
+          last_error_code: string | null
+          last_error_message: string | null
+          last_success_evaluated_at: string | null
+          last_success_history_id: string | null
+          lease_expires_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active_run_id?: string | null
+          content_annotation_id: string
+          created_at?: string
+          evaluation_started_at?: string | null
+          id?: string
+          last_error_code?: string | null
+          last_error_message?: string | null
+          last_success_evaluated_at?: string | null
+          last_success_history_id?: string | null
+          lease_expires_at?: string | null
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active_run_id?: string | null
+          content_annotation_id?: string
+          created_at?: string
+          evaluation_started_at?: string | null
+          id?: string
+          last_error_code?: string | null
+          last_error_message?: string | null
+          last_success_evaluated_at?: string | null
+          last_success_history_id?: string | null
+          lease_expires_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ga4_content_evaluations_active_run_id_fkey"
+            columns: ["active_run_id"]
+            isOneToOne: false
+            referencedRelation: "ga4_content_evaluation_history"
+            referencedColumns: ["evaluation_run_id"]
+          },
+          {
+            foreignKeyName: "ga4_content_evaluations_content_annotation_id_fkey"
+            columns: ["content_annotation_id"]
+            isOneToOne: false
+            referencedRelation: "content_annotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ga4_content_evaluations_last_success_history_id_fkey"
+            columns: ["last_success_history_id"]
+            isOneToOne: false
+            referencedRelation: "ga4_content_evaluation_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ga4_content_evaluations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ga4_page_metrics_daily: {
         Row: {
+          active_users: number | null
           bounce_rate: number
           created_at: string
           ctr: number | null
           cv_event_count: number
           date: string
+          engagement_rate: number | null
           engagement_time_sec: number
           id: string
           imported_at: string
@@ -240,7 +486,7 @@ export type Database = {
           page_path: string
           page_views: number
           property_id: string
-          scroll_90_event_count: number
+          scroll_90_event_count: number | null
           search_clicks: number
           sessions: number
           updated_at: string
@@ -248,11 +494,13 @@ export type Database = {
           users: number
         }
         Insert: {
+          active_users?: number | null
           bounce_rate?: number
           created_at?: string
           ctr?: number | null
           cv_event_count?: number
           date: string
+          engagement_rate?: number | null
           engagement_time_sec?: number
           id?: string
           imported_at?: string
@@ -263,7 +511,7 @@ export type Database = {
           page_path: string
           page_views?: number
           property_id: string
-          scroll_90_event_count?: number
+          scroll_90_event_count?: number | null
           search_clicks?: number
           sessions?: number
           updated_at?: string
@@ -271,11 +519,13 @@ export type Database = {
           users?: number
         }
         Update: {
+          active_users?: number | null
           bounce_rate?: number
           created_at?: string
           ctr?: number | null
           cv_event_count?: number
           date?: string
+          engagement_rate?: number | null
           engagement_time_sec?: number
           id?: string
           imported_at?: string
@@ -286,7 +536,7 @@ export type Database = {
           page_path?: string
           page_views?: number
           property_id?: string
-          scroll_90_event_count?: number
+          scroll_90_event_count?: number | null
           search_clicks?: number
           sessions?: number
           updated_at?: string
@@ -909,6 +1159,7 @@ export type Database = {
       instagram_media: {
         Row: {
           avg_watch_time_ms: number | null
+          cached_thumbnail_path: string | null
           caption: string | null
           comments_count: number | null
           created_at: string
@@ -937,6 +1188,7 @@ export type Database = {
         }
         Insert: {
           avg_watch_time_ms?: number | null
+          cached_thumbnail_path?: string | null
           caption?: string | null
           comments_count?: number | null
           created_at?: string
@@ -965,6 +1217,7 @@ export type Database = {
         }
         Update: {
           avg_watch_time_ms?: number | null
+          cached_thumbnail_path?: string | null
           caption?: string | null
           comments_count?: number | null
           created_at?: string
@@ -1330,6 +1583,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cancel_ga4_content_evaluation: {
+        Args: {
+          p_content_annotation_id: string
+          p_evaluation_run_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       claim_gsc_suggestion_jobs: {
         Args: { p_limit?: number }
         Returns: {
@@ -1359,6 +1620,47 @@ export type Database = {
           success: boolean
         }[]
       }
+      finish_ga4_content_evaluation: {
+        Args: {
+          p_attempt_count?: number
+          p_avg_engagement_seconds?: number
+          p_canonical_url_snapshot?: string
+          p_char_count?: number
+          p_content_annotation_id: string
+          p_content_score?: number
+          p_data_quality_json?: Json
+          p_diagnosis_code?: string
+          p_engage_rate?: number
+          p_engage_score?: number
+          p_error_code?: string
+          p_error_message?: string
+          p_evaluation_run_id: string
+          p_expected_read_seconds?: number
+          p_ga4_data_fetched_at?: string
+          p_ga4_property_id?: string
+          p_image_count?: number
+          p_input_fingerprint?: string
+          p_narrative_json?: Json
+          p_period_end?: string
+          p_period_start?: string
+          p_prompt_captured_at?: string
+          p_prompt_content_sha256?: string
+          p_prompt_template_id?: string
+          p_prompt_version?: number
+          p_prompt_version_id?: string
+          p_read_rate?: number
+          p_read_score?: number
+          p_scoring_config_version?: number
+          p_scroll_rate?: number
+          p_sessions?: number
+          p_site_rank?: number
+          p_status: string
+          p_title_snapshot?: string
+          p_total_articles?: number
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       get_available_category_names: {
         Args: { p_user_id: string }
         Returns: {
@@ -1375,6 +1677,8 @@ export type Database = {
       get_filtered_content_annotations: {
         Args: {
           p_has_unread_suggestion?: boolean
+          p_has_unstarted_ga4_evaluation?: boolean
+          p_has_unstarted_gsc_evaluation?: boolean
           p_include_uncategorized?: boolean
           p_page: number
           p_per_page: number
@@ -1384,6 +1688,78 @@ export type Database = {
         Returns: {
           items: Json
           total_count: number
+        }[]
+      }
+      get_ga4_dashboard_ranking: {
+        Args: {
+          p_end: string
+          p_limit: number
+          p_offset: number
+          p_property_id: string
+          p_sort: string
+          p_start: string
+          p_user_id: string
+        }
+        Returns: {
+          annotation_id: string
+          avg_engagement_time_sec: number
+          ctr: number
+          cv_event_count: number
+          cvr: number
+          impressions: number
+          is_partial: boolean
+          is_sampled: boolean
+          normalized_path: string
+          read_rate: number
+          search_clicks: number
+          sessions: number
+          title: string
+          total_count: number
+          users: number
+        }[]
+      }
+      get_ga4_dashboard_summary: {
+        Args: {
+          p_end: string
+          p_property_id: string
+          p_start: string
+          p_user_id: string
+        }
+        Returns: {
+          has_partial_data: boolean
+          has_sampled_data: boolean
+          row_count: number
+          scroll_measured_users: number
+          total_cv_event_count: number
+          total_engagement_time_sec: number
+          total_impressions: number
+          total_scroll_90_event_count: number
+          total_search_clicks: number
+          total_sessions: number
+          total_users: number
+        }[]
+      }
+      get_ga4_dashboard_timeseries: {
+        Args: {
+          p_end: string
+          p_normalized_path: string
+          p_property_id: string
+          p_start: string
+          p_user_id: string
+        }
+        Returns: {
+          avg_engagement_time_sec: number
+          ctr: number
+          cv_event_count: number
+          cvr: number
+          date: string
+          impressions: number
+          is_partial: boolean
+          is_sampled: boolean
+          read_rate: number
+          search_clicks: number
+          sessions: number
+          users: number
         }[]
       }
       get_gsc_property_candidates: {
@@ -1509,6 +1885,21 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      start_ga4_content_evaluation: {
+        Args: { p_content_annotation_id: string; p_user_id: string }
+        Returns: {
+          evaluation_run_id: string
+        }[]
+      }
+      update_ga4_content_evaluation_attempt: {
+        Args: {
+          p_attempt_count: number
+          p_content_annotation_id: string
+          p_evaluation_run_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       upsert_brief: {
         Args: { p_data: Json; p_now: string; p_user_id: string }
         Returns: undefined

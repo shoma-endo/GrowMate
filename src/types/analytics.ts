@@ -5,6 +5,12 @@ export interface AnalyticsContentItem {
   rowKey: string;
   annotation: AnnotationRecord;
   ga4Summary?: Ga4PageMetricSummary | null;
+  ga4Evaluation?: {
+    status: string | null;
+    contentScore: number | null;
+    diagnosisCode: string | null;
+    lastEvaluatedAt: string | null;
+  };
 }
 
 export interface AnalyticsContentQuery {
@@ -16,6 +22,7 @@ export interface AnalyticsContentQuery {
   includeUncategorized?: boolean;
   hasUnreadSuggestion?: boolean;
   hasUnstartedGscEvaluation?: boolean;
+  hasUnstartedGa4Evaluation?: boolean;
 }
 
 export interface AnalyticsContentPage {
@@ -26,4 +33,5 @@ export interface AnalyticsContentPage {
   perPage: number;
   error?: string | undefined;
   ga4Error?: string | undefined;
+  ga4Truncated?: boolean;
 }

@@ -119,6 +119,11 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokens: 8000,
     label: 'コンテンツ情報のAI要約',
   },
+  ga4_content_evaluation: {
+    ...ANTHROPIC_BASE,
+    maxTokens: 700,
+    label: 'コンテンツ評価',
+  },
 };
 
 /**
@@ -136,6 +141,8 @@ export const GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS = 30_000;
 
 /** content_annotations AI要約: 本文サイズガード（文字数上限） */
 export const CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS = 80_000;
+
+/** 評価入力の本文削減を開始する予算。要約処理の拒否閾値とは異なる。 */
 
 // =============================================================================
 // Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)
@@ -263,9 +270,13 @@ export const ANALYTICS_COLUMNS = [
   { id: 'impressions', label: '表示回数' },
   { id: 'ga4_avg_engagement_time', label: '滞在時間(平均)' },
   { id: 'ga4_read_rate', label: '読了率' },
-  { id: 'ga4_bounce_rate', label: '直帰率' },
-  { id: 'ga4_cv_count', label: 'CV数' },
-  { id: 'ga4_cvr', label: 'CVR' },
+  { id: 'ga4_engagement_rate', label: 'エンゲージメント率' },
+  { id: 'ga4_evaluation_status', label: 'コンテンツ評価状態' },
+  { id: 'ga4_content_score', label: 'コンテンツ力スコア' },
+  { id: 'ga4_diagnosis', label: '診断' },
+  { id: 'ga4_last_evaluated_at', label: '最終評価日時' },
+  { id: 'ga4_cv_count', label: '問い合わせ数' },
+  { id: 'ga4_cvr', label: '問い合わせ率' },
   { id: 'ga4_flags', label: 'GA4状態' },
   { id: 'needs', label: 'ニーズ' },
   { id: 'persona', label: 'デモグラ・ペルソナ' },
@@ -356,3 +367,11 @@ export function loadCategoryFilterFromStorage(): CategoryFilterConfig {
   }
   return DEFAULT_CATEGORY_FILTER;
 }
+
+/**
+ * /ga4-dashboard 記事別ランキングの1ページ件数。
+ *
+ * 集計は DB 側の `get_ga4_dashboard_ranking` が limit/offset を適用する。
+ * 上限は RPC 側でも 100 に制限しているため、これを超える値を渡さないこと。
+ */
+export const GA4_RANKING_PAGE_SIZE = 20;

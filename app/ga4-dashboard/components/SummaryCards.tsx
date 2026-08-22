@@ -29,32 +29,27 @@ export function SummaryCards({ summary, isLoading }: Props) {
 
   const cards = [
     {
-      label: '総セッション数',
+      label: '総訪問数',
       value: formatNumber(summary.totalSessions),
       color: 'green',
     },
     {
-      label: '総ユーザー数',
+      label: 'セッション',
       value: formatNumber(summary.totalUsers),
       color: 'blue',
     },
     {
-      label: '平均滞在時間',
+      label: '平均エンゲージメント時間',
       value: formatDuration(summary.avgEngagementTimeSec),
       color: 'purple',
     },
     {
-      label: '平均直帰率',
-      value: formatPercent(summary.avgBounceRate * 100),
-      color: 'orange',
-    },
-    {
-      label: '総CV数',
+      label: '総問い合わせ数',
       value: formatNumber(summary.totalCvEventCount),
       color: 'fuchsia',
     },
     {
-      label: 'CVR',
+      label: '問い合わせ率',
       value: formatPercent(summary.cvr),
       color: 'rose',
     },
@@ -76,7 +71,6 @@ export function SummaryCards({ summary, isLoading }: Props) {
           green: 'bg-green-50 border-green-200',
           blue: 'bg-blue-50 border-blue-200',
           purple: 'bg-purple-50 border-purple-200',
-          orange: 'bg-orange-50 border-orange-200',
           fuchsia: 'bg-fuchsia-50 border-fuchsia-200',
           rose: 'bg-rose-50 border-rose-200',
           cyan: 'bg-cyan-50 border-cyan-200',

@@ -85,7 +85,10 @@ DICTIONARY='.agents/skills/growmate-ui-ux/ui-text.md'
 # 正本の「用語辞書」テーブルから <正><TAB><誤> の組を取り出す。
 # 「機械チェック」列が ✅ の行だけが対象（目視の行は誤検出が出るため検査しない）。
 dictionary_pairs() {
-  awk -F'|' '
+  # LC_ALL=C で byte 比較に固定する。macOS の /usr/bin/awk は UTF-8 ロケールだと
+  # 文字列比較に strcoll() を使い、CJK 同士（例: "事業者情報" == "正"）が true に
+  # なるため、正列が日本語の行が全てヘッダ行として捨てられる。
+  LC_ALL=C awk -F'|' '
     /^## 用語辞書/ { in_table = 1; next }
     in_table && /^#/ { in_table = 0 }
     !in_table { next }

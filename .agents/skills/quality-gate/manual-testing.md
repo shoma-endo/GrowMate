@@ -49,7 +49,7 @@
   - `/google-ads-dashboard` で取得データ・AI 分析結果が表示されるか確認する。
 
 - **GSC 連携変更時**
-  - `/gsc-dashboard` で Search Console から取得したデータが表示されるか確認する。
+  - 記事詳細 `/analytics/[annotationId]` で Search Console から取得したデータが表示されるか確認する。
   - `/gsc-import` でのインポートフローがエラーなく完了し、意図した範囲のデータが取り込まれているか確認する。
 
 - **GA4 連携変更時**

@@ -1,6 +1,11 @@
 import { SupabaseService } from '@/server/services/supabaseService';
 
 import { normalizeToPath } from '@/lib/ga4-utils';
+import {
+  aggregateGa4PageMetrics,
+  toDisplayedGa4PageMetricSummary,
+  type Ga4DailyMetricInput,
+} from '@/server/lib/ga4-metrics-aggregation';
 import type { AnnotationRecord } from '@/types/annotation';
 import type {
   AnalyticsContentItem,
@@ -9,26 +14,10 @@ import type {
 } from '@/types/analytics';
 import type { Ga4PageMetricSummary } from '@/types/ga4';
 import type { Json } from '@/types/database.types';
-import { asPendingClient, type AnalyticsDatabase } from '@/types/database.types.pending';
 
 const MAX_PER_PAGE = 100;
 
 const supabaseService = new SupabaseService();
-
-// GA4集計用の一時的な型定義
-interface Ga4MetricAggregate {
-  sessions: number;
-  users: number;
-  engagementTimeSec: number;
-  bounceRateWeighted: number;
-  bounceRateSessions: number;
-  cvEventCount: number;
-  scroll90EventCount: number;
-  searchClicks: number;
-  impressions: number;
-  isSampled: boolean;
-  isPartial: boolean;
-}
 
 class AnalyticsContentService {
   async getPage(userId: string, params: AnalyticsContentQuery): Promise<AnalyticsContentPage> {
@@ -50,7 +39,7 @@ class AnalyticsContentService {
     };
 
     try {
-      const client = asPendingClient<AnalyticsDatabase>(supabaseService.getClient());
+      const client = supabaseService.getClient();
 
       const fetchAnnotationsPage = async (targetPage: number) => {
         const { data, error } = await client.rpc('get_filtered_content_annotations', {
@@ -61,6 +50,7 @@ class AnalyticsContentService {
           p_include_uncategorized: includeUncategorized,
           p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
           p_has_unstarted_gsc_evaluation: params.hasUnstartedGscEvaluation ?? false,
+          p_has_unstarted_ga4_evaluation: params.hasUnstartedGa4Evaluation ?? false,
         });
 
         const row = data?.[0] as
@@ -134,18 +124,20 @@ class AnalyticsContentService {
       const from = (resolvedPage - 1) * perPage;
 
       let ga4Error: string | undefined;
-      let ga4Summaries: Map<string, Ga4PageMetricSummary>;
+      let ga4Summaries = new Map<string, Ga4PageMetricSummary>();
+      let ga4Truncated = false;
       try {
-        ga4Summaries = await this.fetchGa4Summaries(
+        const fetched = await this.fetchGa4Summaries(
           [userId],
           annotations,
           startDate,
           endDate
         );
+        ga4Summaries = fetched.summaries;
+        ga4Truncated = fetched.truncated;
       } catch (ga4Err) {
         console.error('[AnalyticsContentService] GA4 summary fetch failed:', ga4Err);
         ga4Error = 'GA4データの取得に失敗しました。GSCデータのみ表示されます。';
-        ga4Summaries = new Map();
       }
 
       const items: AnalyticsContentItem[] = annotations.map((annotation, index) => ({
@@ -154,6 +146,12 @@ class AnalyticsContentService {
         ga4Summary: this.hasValidCanonicalUrl(annotation)
           ? (ga4Summaries.get(normalizeToPath(annotation.canonical_url!)) ?? null)
           : null,
+        ga4Evaluation: {
+          status: this.readStringField(annotation, 'ga4_evaluation_status'),
+          contentScore: this.readNumberField(annotation, 'ga4_content_score'),
+          diagnosisCode: this.readStringField(annotation, 'ga4_diagnosis_code'),
+          lastEvaluatedAt: this.readStringField(annotation, 'ga4_last_evaluated_at'),
+        },
       }));
 
       return {
@@ -163,6 +161,7 @@ class AnalyticsContentService {
         page: resolvedPage,
         perPage,
         ga4Error,
+        ga4Truncated,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'ページデータの取得に失敗しました';
@@ -241,9 +240,9 @@ class AnalyticsContentService {
     annotations: AnnotationRecord[],
     startDate: string,
     endDate: string
-  ): Promise<Map<string, Ga4PageMetricSummary>> {
+  ): Promise<{ summaries: Map<string, Ga4PageMetricSummary>; truncated: boolean }> {
     if (!startDate || !endDate || startDate > endDate) {
-      return new Map();
+      return { summaries: new Map(), truncated: false };
     }
 
     const normalizedPaths = Array.from(
@@ -255,7 +254,7 @@ class AnalyticsContentService {
     );
 
     if (normalizedPaths.length === 0) {
-      return new Map();
+      return { summaries: new Map(), truncated: false };
     }
 
     const client = supabaseService.getClient();
@@ -272,7 +271,7 @@ class AnalyticsContentService {
     );
 
     if (userPropertyPairs.length === 0) {
-      return new Map();
+      return { summaries: new Map(), truncated: false };
     }
 
     const orFilter = userPropertyPairs
@@ -282,10 +281,11 @@ class AnalyticsContentService {
       )
       .join(',');
 
-    const { data, error } = await client
+    const { data, error, count } = await client
       .from('ga4_page_metrics_daily')
       .select(
-        'normalized_path,sessions,users,engagement_time_sec,bounce_rate,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial'
+        'normalized_path,sessions,users,engagement_time_sec,bounce_rate,engagement_rate,active_users,cv_event_count,scroll_90_event_count,search_clicks,impressions,ctr,is_sampled,is_partial',
+        { count: 'exact' }
       )
       .or(orFilter)
       .in('normalized_path', normalizedPaths)
@@ -297,76 +297,52 @@ class AnalyticsContentService {
       throw new Error(`GA4データの取得に失敗しました: ${error.message}`);
     }
 
-    const summaryMap = new Map<string, Ga4MetricAggregate>();
-
+    const dailyMetrics: Ga4DailyMetricInput[] = [];
     for (const row of data ?? []) {
-      const key = row.normalized_path as string;
-      const current = summaryMap.get(key) ?? {
-        sessions: 0,
-        users: 0,
-        engagementTimeSec: 0,
-        bounceRateWeighted: 0,
-        bounceRateSessions: 0,
-        cvEventCount: 0,
-        scroll90EventCount: 0,
-        searchClicks: 0,
-        impressions: 0,
-        isSampled: false,
-        isPartial: false,
-      };
+      if (typeof row.normalized_path !== 'string' || row.normalized_path.length === 0) {
+        continue;
+      }
 
-      const sessions = Number(row.sessions ?? 0);
-      const users = Number(row.users ?? 0);
-      const engagementTimeSec = Number(row.engagement_time_sec ?? 0);
-      const bounceRate = Number(row.bounce_rate ?? 0);
-      const cvEventCount = Number(row.cv_event_count ?? 0);
-      const scroll90EventCount = Number(row.scroll_90_event_count ?? 0);
-      const searchClicks = Number(row.search_clicks ?? 0);
-      const impressions = Number(row.impressions ?? 0);
-
-      current.sessions += sessions;
-      current.users += users;
-      current.engagementTimeSec += engagementTimeSec;
-      current.cvEventCount += cvEventCount;
-      current.scroll90EventCount += scroll90EventCount;
-      current.searchClicks += searchClicks;
-      current.impressions += impressions;
-      current.bounceRateWeighted += bounceRate * sessions;
-      current.bounceRateSessions += sessions;
-      current.isSampled ||= Boolean(row.is_sampled);
-      current.isPartial ||= Boolean(row.is_partial);
-
-      summaryMap.set(key, current);
-    }
-
-    const results = new Map<string, Ga4PageMetricSummary>();
-    for (const [key, agg] of summaryMap.entries()) {
-      const bounceRate =
-        agg.bounceRateSessions > 0 ? agg.bounceRateWeighted / agg.bounceRateSessions : 0;
-      const ctr = agg.impressions > 0 ? agg.searchClicks / agg.impressions : null;
-      results.set(key, {
-        normalizedPath: key,
-        dateFrom: startDate,
-        dateTo: endDate,
-        sessions: agg.sessions,
-        users: agg.users,
-        engagementTimeSec: agg.engagementTimeSec,
-        bounceRate,
-        cvEventCount: agg.cvEventCount,
-        scroll90EventCount: agg.scroll90EventCount,
-        searchClicks: agg.searchClicks,
-        impressions: agg.impressions,
-        ctr,
-        isSampled: agg.isSampled,
-        isPartial: agg.isPartial,
+      dailyMetrics.push({
+        normalizedPath: row.normalized_path,
+        sessions: Number(row.sessions ?? 0),
+        users: Number(row.users ?? 0),
+        engagementTimeSec: Number(row.engagement_time_sec ?? 0),
+        bounceRate: Number(row.bounce_rate ?? 0),
+        engagementRate: row.engagement_rate === null ? null : Number(row.engagement_rate),
+        activeUsers: row.active_users === null ? null : Number(row.active_users),
+        cvEventCount: Number(row.cv_event_count ?? 0),
+        // null は「対象イベントがプロパティに存在せず未計測」。0（実測0回）と区別する（BR-02）
+        scroll90EventCount:
+          row.scroll_90_event_count === null ? null : Number(row.scroll_90_event_count),
+        searchClicks: Number(row.search_clicks ?? 0),
+        impressions: Number(row.impressions ?? 0),
+        isSampled: Boolean(row.is_sampled),
+        isPartial: Boolean(row.is_partial),
       });
     }
 
-    return results;
+    const aggregatedMetrics = aggregateGa4PageMetrics(dailyMetrics, startDate, endDate);
+    return { summaries: new Map(
+      Array.from(aggregatedMetrics, ([key, summary]) => [
+        key,
+        toDisplayedGa4PageMetricSummary(summary),
+      ])
+    ), truncated: count !== null && count !== undefined && (data?.length ?? 0) < count };
   }
 
   private hasValidCanonicalUrl(a: AnnotationRecord): boolean {
     return a?.canonical_url != null && String(a.canonical_url).trim() !== '';
+  }
+
+  private readStringField(annotation: AnnotationRecord, key: string): string | null {
+    const value = (annotation as AnnotationRecord & Record<string, unknown>)[key];
+    return typeof value === 'string' ? value : null;
+  }
+
+  private readNumberField(annotation: AnnotationRecord, key: string): number | null {
+    const value = (annotation as AnnotationRecord & Record<string, unknown>)[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
   }
 
   private buildAnnotationRowKey(annotation: AnnotationRecord, fallbackIndex: number): string {

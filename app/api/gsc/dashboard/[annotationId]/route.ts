@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
+import { canAccessGa4 } from '@/server/lib/ga4-permissions';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 
 const supabaseService = new SupabaseService();
@@ -18,6 +20,12 @@ export async function GET(
       return NextResponse.json(
         { success: false, error: authResult.error || 'ユーザー認証に失敗しました' },
         { status: 401 }
+      );
+    }
+    if (!canAccessGa4({ role: authResult.userDetails?.role ?? null })) {
+      return NextResponse.json(
+        { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED },
+        { status: 403 }
       );
     }
 
