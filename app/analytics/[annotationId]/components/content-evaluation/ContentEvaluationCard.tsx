@@ -261,17 +261,17 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
             {measuredScrollUsers !== null && latest.scrollRate !== null && latest.readScore !== null && latest.scrollRate >= 0.4 && latest.readScore < 40 && (
               <p className="rounded-md bg-muted p-3 text-sm">補助ラベル：流し読み型</p>
             )}
-            {/* 人数ファネル：率ではなく人数で語る（評価エンジン仕様 §08） */}
+            {/* ファネル：率ではなく実数で語る（評価エンジン仕様 §08）。ラベルは GA4 の生指標名を使う（§10.7） */}
             <div className="border-y py-4">
               <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
                 <div>
                   <p className="text-2xl font-bold leading-none tabular-nums">{latest.sessions ?? '—'}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">訪問</p>
+                  <p className="mt-1 text-xs text-muted-foreground">セッション</p>
                 </div>
                 <span aria-hidden="true" className="mt-1 text-muted-foreground">▶</span>
                 <div>
                   <p className="text-2xl font-bold leading-none tabular-nums">{engagedUsers ?? '—'}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">読み始め</p>
+                  <p className="mt-1 text-xs text-muted-foreground">エンゲージメントのあったセッション数</p>
                 </div>
                 {measuredScrollUsers !== null && (
                   <>
