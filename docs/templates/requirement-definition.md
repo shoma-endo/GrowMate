@@ -10,8 +10,8 @@
 - ステータス: `draft` / `review` / `approved` / `implemented`
   - `draft`: 作成中・要件整理中
   - `review`: レビュー依頼中（人手で上げてよい。未使用でも可）
-  - `approved`: 実装着手可。`.takt/workflows/spec-review.yaml` が structured verdict `approved` で完了したとき、finalize がこの値へ自動更新する
-  - `implemented`: 実装・マージ後（人手、または実装ワークフロー側で更新）
+  - `approved`: 実装着手可。`.takt/workflows/spec-review.yaml` が structured verdict `approved` で完了したとき、finalize がこの値へ自動更新する。`.takt/workflows/spec-to-pr.yaml` の plan はこの値（または `implemented`）を必須ゲートにする
+  - `implemented`: 実装・マージ後（人手、または実装ワークフロー側で更新）。spec-to-pr 再実行・差分追記時も通過可
 - 作成日:
 - 最終更新日:
 - 作成者:
