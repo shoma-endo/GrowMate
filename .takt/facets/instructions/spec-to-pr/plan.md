@@ -4,7 +4,7 @@
 
 運用前提（このステップ固有）:
 - 人間の介在点は `docs/plans/` の仕様確定のみ。
-- 実装開始の前提は次をすべて満たすこと。(1) 対象仕様書メタデータの `- ステータス:` が `approved` または `implemented`。(2) `spec-review` が対象スコープの未解決質問・実装判断・外部入力・承認ゲートなしで approved 完了していること。(3) UI 実装が対象で、仕様に UI たたき台／UIモックの実装前ゲート（例: CP-2）がある場合、そのゲートが承認済みであること。欠ける場合は実装に進まず ABORT し、人間が仕様書を直して `spec-review` から再実行する（またはたたき台を承認する）前提の確認事項を残す。
+- 実装開始の前提は次をすべて満たすこと。(1) 対象仕様書メタデータの `- ステータス:` が `approved` または `implemented`。(2) `spec-review` が対象スコープの未解決質問・実装判断・外部入力・承認ゲートなしで approved 完了していること。(3) **UI 実装が対象範囲に含まれ、かつ**仕様に UI たたき台／UIモックの実装前ゲート（例: CP-2）がある場合に限り、そのゲートが承認済みであること。UI 無し・ゲート無しでは (3) は適用しない（満たしたものとして扱う）。欠ける場合は実装に進まず ABORT し、人間が仕様書を直して `spec-review` から再実行する（またはたたき台を承認する）前提の確認事項を残す。
 
 必須手順:
 1. ユーザー指示から対象仕様書を特定する。曖昧な場合は `docs/plans/` を列挙し、候補を示して ABORT する。
@@ -13,11 +13,13 @@
    - `draft` / `review` / 空欄 / 行欠損 / 表記ゆれは **ABORT**。レビュー記録や本文の「approved」表記だけでは代用しない。
    - `implemented` は再実行・差分追記を許容するため通過可。新規着手の正規は `approved`（`spec-review` finalize が更新する）。
    - `plan.md` に確認したステータス値を1行で残す。
-3. UI たたき台／UIモックのゲートを確認する（UI 実装が対象範囲に含まれるとき必須）:
-   - 仕様書のチェックポイント・承認表・未確定事項に「UIたたき台」「UIモック」「画面たたき台」等の実装前ゲートがあり、状態が未確認／未承認なら **ABORT**。仕様本文の画面設計だけ揃っていても代用しない。
-   - ゲートがあるのに図解バンドルに UIモックが無い（`docs/plans/_html/<slug>/views/06-ui-mock.html` または結合 HTML の「UIモック」タブが無い）場合も **ABORT**。先に `.agents/skills/spec-to-html/SKILL.md` に従い `06-ui-mock.html` を追加して `build` し、人間が承認する。
-   - ゲートが承認済み、または UI が対象外でゲート自体が無い場合は通過。`plan.md` に「UIモック: あり/なし・ゲート状態」を1行で残す。
-   - UIモックがある場合、見た目・文言・状態別UIの実装正本は **UIモック**（次点で仕様 §画面設計）。ASCII レイアウトや推測でモックを上書きする計画は禁止。
+3. UI たたき台／UIモックのゲートを確認する:
+   - **UI が対象範囲に含まれない**（画面・コンポーネント変更が Non-goals または対象外）場合: ゲート確認は不要。`plan.md` に「UIモック: 対象外」と1行書いて次へ進む。
+   - UI が対象のときのみ以下を見る:
+     - 仕様書のチェックポイント・承認表・未確定事項に「UIたたき台」「UIモック」「画面たたき台」等の実装前ゲートがあり、状態が未確認／未承認なら **ABORT**。仕様本文の画面設計だけ揃っていても代用しない。
+     - ゲートがあるのに図解バンドルに UIモックが無い（`docs/plans/_html/<slug>/views/06-ui-mock.html` または結合 HTML の「UIモック」タブが無い）場合も **ABORT**。先に `.agents/skills/spec-to-html/SKILL.md` に従い `06-ui-mock.html` を追加して `build` し、人間が承認する。
+     - ゲートが無い、または承認済みなら通過。`plan.md` に「UIモック: あり/なし・ゲート状態」を1行で残す。
+     - UIモックがある場合、見た目・文言・状態別UIの実装正本は **UIモック**（次点で仕様 §画面設計）。ASCII レイアウトや推測でモックを上書きする計画は禁止。
 4. 対象仕様書、`AGENTS.md`、`.takt/facets/knowledge/growmate.md`、`.agents/skills/implementation-guidelines/SKILL.md` を読む。UIモックがある場合は `docs/plans/_html/<slug>.html` の UIモックタブ（または `views/06-ui-mock.html`）も読む。
 5. Server Actions / Route Handlers / Zod / エラー処理が関わる場合は `.agents/skills/nextjs-server/SKILL.md` を読む。
 6. UI 実装が関わる場合は `.agents/skills/growmate-ui-ux/SKILL.md` と `.agents/skills/react/SKILL.md` を読む。
