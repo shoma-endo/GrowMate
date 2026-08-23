@@ -9,6 +9,15 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 - Do not ask humans for clarification mid-implementation. If the spec is insufficient, ABORT and leave concrete questions for the human to fix in `docs/plans/` before re-running.
 - Requeue / resume / existing WIP / existing PR must continue the same branch and update the same PR when possible. Do not restart from a clean slate by default.
 
+## Delivery Principle: MVP First
+
+- **GrowMate prioritizes MVP delivery above all else. When a judgment call is unclear, use this as one of the deciding axes.**
+- Do not add functionality that the requirements do not ask for. This applies especially to safety and availability machinery: kill switches, feature flags, dedicated settings tables, monitoring dashboards, redundancy, retry infrastructure.
+- Such machinery is in scope **only when** (a) the requirements or the client agreement explicitly ask for it, (b) leaving the broken state unattended would corrupt data, keep sending wrong data to an external service, or run up billing, or (c) it is concretely shown that existing means (rolling back a deploy, hiding the feature's UI, an existing env flag) cannot stop it.
+- Satisfying a review checklist is not a goal in itself. A checklist item never justifies inventing a requirement.
+- When you decide not to build something, record it in the target spec's Non-goals with the reason. Do not silently omit it.
+- Concrete failure this rule exists to prevent (2026-08-19): the GA4 content-evaluation spec grew a dedicated `ga4_content_evaluation_settings` kill-switch table, an RPC-level `enabled is true` check, stop-state UI, a business rule, an acceptance criterion, and rollback steps — none of which the client asked for. It had no write path, so enabling it required raw SQL against production. The user's feedback: "requirements-free work got in; we are being excessively cautious about security."
+
 ## Default Access Policy
 
 - New features are available to `admin` and `paid` users by default.
