@@ -1,6 +1,6 @@
 # ビュー執筆の正本（図版・実装約束・タブ間ジャンプ）
 
-`spec-to-html` の再構成ビュー（`01-status.html` / `02-decisions.html` / `03-quiz.html`、画面仕様の章がある仕様書では `05-screens.html` も）を**書く・直す前に必ず読む**。運用フロー・core.yaml の書き方は `SKILL.md` 側。
+`spec-to-html` の再構成ビュー（`01-status.html` / `02-decisions.html` / `03-quiz.html`、画面仕様の章がある仕様書では `05-screens.html`、UIたたき台がある仕様書では `06-ui-mock.html` も）を**書く・直す前に必ず読む**。運用フロー・core.yaml の書き方は `SKILL.md` 側。
 
 ## 設計原則
 
@@ -15,6 +15,8 @@
 ## 図版（必須）
 
 **再構成ビュー（`01-status.html` と `02-decisions.html`、および存在する場合は `05-screens.html`）のそれぞれに最低3点**、意味のある図版を入れる。入れられる図が無いなら、その仕様書はそもそも図解する価値が薄い。
+
+**例外: `06-ui-mock.html` は図版3点必須の対象外。** 操作可能なプロダクトUIモックそのものが成果物。ただしテーマ変数・IIFE・外部依存禁止・`querySelector` スコープ・`.panel` クラス名回避は必須（`SKILL.md` の `06-ui-mock.html` 行を正とする）。
 
 ### 図にするもの / しないもの
 

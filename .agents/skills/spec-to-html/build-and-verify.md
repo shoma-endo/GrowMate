@@ -25,9 +25,13 @@ python3 scripts/spec-html.py build \
   --source docs/plans/<slug>.md \
   --view "ステータスと次の一手=docs/plans/_html/<slug>/views/01-status.html" \
   --view "設計判断=docs/plans/_html/<slug>/views/02-decisions.html" \
+  --view "画面仕様=docs/plans/_html/<slug>/views/05-screens.html" \
+  --view "UIモック=docs/plans/_html/<slug>/views/06-ui-mock.html" \
   --view "クイズ=docs/plans/_html/<slug>/views/03-quiz.html" \
   --view "全文=docs/plans/_html/<slug>/views/04-fulltext.html"
 ```
+
+`05-screens.html` / `06-ui-mock.html` が無い仕様書では、該当 `--view` 行を**省略**する（空ファイルを渡さない）。既定タブ順は「ステータス→設計判断→画面仕様→UIモック→クイズ→全文」。
 
 `build` は結合後に安全検査を自動実行し、違反があれば **exit 1** で落ちる。検査だけしたいときは `python3 scripts/spec-html.py check <path>`。
 
@@ -45,7 +49,7 @@ python3 scripts/spec-html.py build \
   grep -c 'class="panel"'
 ```
 
-`<html data-theme=...>` が付いていれば JS が動いている。パネル数がビュー数と一致し、`hidden` が (ビュー数 - 1) 個あればタブ制御も動いている。
+`<html data-theme=...>` が付いていれば JS が動いている。パネル数が **渡した `--view` の数** と一致し、`hidden` が (ビュー数 - 1) 個あればタブ制御も動いている（05/06 を足したら 4 固定ではない）。
 
 `data-goto` を書いたら、**参照先 ID が実在するか**も確認する（存在しなくてもエラーは出ない）:
 
