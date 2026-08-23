@@ -81,18 +81,20 @@ steps:
     capabilities: readonly
     instruction: spec-to-pr/plan
     rules:
-      - condition: 要件が明確で実装可能、かつ仕様書メタデータ `- ステータス:` が approved または implemented、かつ spec-review が対象スコープの未解決事項なしで approved（新規または既存 WIP/PR への差分追記を含む。未適用マイグレーションへの対応は Pending Migration Types パターンで実装可能なため「明確」に含む）
+      - condition: 要件が明確で実装可能、かつ仕様書メタデータ `- ステータス:` が approved または implemented、かつ（UIたたき台／UIモックの実装前ゲートが無い、または承認済み）、かつ spec-review が対象スコープの未解決事項なしで approved（新規または既存 WIP/PR への差分追記を含む。未適用マイグレーションへの対応は Pending Migration Types パターンで実装可能なため「明確」に含む。UI 無し・ゲート無しはゲート条件を満たす）
         next: implement
       - condition: ユーザーが質問をしている（実装タスクではない）
         next: COMPLETE
-      - condition: 要件が不明確、情報不足、またはメタデータ `- ステータス:` が approved/implemented 以外（仕様書の修正が必要。マイグレーション未適用のみを理由にしない）
+      - condition: 要件が不明確、情報不足、メタデータ `- ステータス:` が approved/implemented 以外、または（UI 実装があり UIたたき台／UIモックの実装前ゲートが未承認）（仕様書の修正またはたたき台承認が必要。マイグレーション未適用のみを理由にしない。UI 無しでゲートも無い場合はこの条件を選ばない）
         next: ABORT
         appendix: |
-          仕様書の修正が必要です。次を確認してください。
+          仕様書の修正、または UI たたき台の承認が必要です。次を確認してください。
           - メタデータ `- ステータス:` が `approved` または `implemented` であること（`draft` / `review` / 欠損は不可。レビュー本文の表記では代用しない）
+          - UI 実装がある場合のみ: 仕様の UIたたき台／UIモック実装前ゲート（例: CP-2）が承認済みであること。未確認なら図解 HTML の UIモックタブを PO に見せて閉じてから再実行する。**UI が対象外でゲート自体が無い場合は不要**
+          - ゲートがあるのに `docs/plans/_html/<slug>/views/06-ui-mock.html`（または結合 HTML の UIモックタブ）が無い場合は、先に `spec-to-html` で追加する
           - 未回答の質問・実装判断・外部入力・承認ゲートがある場合は、回答と確定した仕様を対象仕様書へ反映すること
-          上記を満たすため `.takt/workflows/spec-review.yaml` を先に再実行してください（finalize がステータスを `approved` へ更新する）。
-          `spec-review` が対象スコープの未解決事項なしで approved になり、メタデータも揃った後、この workflow を再実行してください。
+          上記を満たすため必要なら `.takt/workflows/spec-review.yaml` を先に再実行してください（finalize がステータスを `approved` へ更新する）。
+          ゲートとメタデータが揃った後、この workflow を再実行してください。
           - {質問1}
           - {質問2}
     output_contracts:
