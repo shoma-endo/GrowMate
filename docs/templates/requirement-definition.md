@@ -8,6 +8,10 @@
 
 - 文書名:
 - ステータス: `draft` / `review` / `approved` / `implemented`
+  - `draft`: 作成中・要件整理中
+  - `review`: レビュー依頼中（人手で上げてよい。未使用でも可）
+  - `approved`: 実装着手可。`.takt/workflows/spec-review.yaml` が structured verdict `approved` で完了したとき、finalize がこの値へ自動更新する
+  - `implemented`: 実装・マージ後（人手、または実装ワークフロー側で更新）
 - 作成日:
 - 最終更新日:
 - 作成者:
