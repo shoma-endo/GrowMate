@@ -4,7 +4,7 @@ import { ga4ContentEvaluationService } from '@/server/services/ga4ContentEvaluat
 import { ga4ImportService } from '@/server/services/ga4ImportService';
 import { emailService } from '@/server/services/emailService';
 import { getGa4EvaluationDateRange } from '@/lib/ga4-evaluation-period';
-import { formatJstDateISO } from '@/lib/date-utils';
+import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
 import { buildGa4ContentEvaluationEmail } from '@/server/lib/ga4-content-evaluation-email';
 import {
   classifyGa4BatchRunError,
@@ -355,6 +355,12 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
               outcome: articleResult.outcome,
               historyId: articleResult.historyId,
               view: articleResult.view,
+              // cycle.next_evaluation_date は listDueCycles 時点（advanceCooldown より前）の
+              // DB生成列スナップショットで、今回処理した「過去/当日のdue日」のまま。この分岐へ来る
+              // ときは必ず shouldAdvance（cooldown進行）も真なので、last_evaluated_on は todayJst に
+              // 進んでいる。メール本文は生成列を再取得せず todayJst + cycle_days で正しい次回日を
+              // 算出する（高重要度レビュー指摘: 過去/当日の日付がメールに表示される不具合）。
+              nextEvaluationDate: addDaysISO(todayJst, cycle.cycle_days),
             });
             if (notification === 'sent') result.emailsSent += 1;
             else if (notification === 'skipped_no_email') result.emailsSkipped += 1;
@@ -503,8 +509,11 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
     outcome: Extract<Ga4CycleBatchOutcome, 'evaluated' | 'narrative_failed'>;
     historyId: string | null;
     view: Awaited<ReturnType<typeof ga4ContentEvaluationService.run>>;
+    /** 呼び出し側で advanceCooldown 後の値として算出した次回評価日（cycle.next_evaluation_date は
+     *  advanceCooldown 前のスナップショットのため使わない） */
+    nextEvaluationDate: string;
   }): Promise<'sent' | 'skipped_no_email' | 'failed' | 'skipped_duplicate'> {
-    const { cycle, userEmail, outcome, historyId, view } = params;
+    const { cycle, userEmail, outcome, historyId, view, nextEvaluationDate } = params;
     if (!historyId) return 'skipped_duplicate';
 
     const { data: currentCycle, error: currentCycleError } = await this.pendingClient()
@@ -554,7 +563,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
       narrative: outcome === 'evaluated' && latest.narrative ? latest.narrative : null,
       periodStart: latest.periodStart,
       periodEnd: latest.periodEnd,
-      nextEvaluationDate: cycle.next_evaluation_date,
+      nextEvaluationDate,
     });
 
     const response = await emailService.sendGa4ContentEvaluation(userEmail, content.subject, content.html, historyId);

@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
+import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
 
 // 再レビューで指摘された🟡#4「last_seen_content_score継続更新・truncatedCandidates合算の
 // 退行検知手段がない」への対応。Supabaseクライアントを最小限のフェイクで模倣し、
-// runAllDueEvaluations() を実際に走らせて2つの回帰を防ぐ。
+// runAllDueEvaluations() を実際に走らせて回帰を防ぐ。
 
 const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   syncUser: vi.fn(),
   rpc: vi.fn(),
+  sendEmail: vi.fn(),
   updateCalls: [] as Record<string, unknown>[],
+  userEmail: null as string | null,
 }));
 
 vi.mock('@/server/services/ga4ContentEvaluationService', () => ({
@@ -18,8 +21,10 @@ vi.mock('@/server/services/ga4ContentEvaluationService', () => ({
 vi.mock('@/server/services/ga4ImportService', () => ({
   ga4ImportService: { syncUser: mocks.syncUser },
 }));
+vi.mock('@/server/services/emailService', () => ({
+  emailService: { sendGa4ContentEvaluation: mocks.sendEmail },
+}));
 // ga4ContentEvaluationCycleService は emailService 経由で @/env を読み込む（RESEND_API_KEY等）。
-// このテストはメール未登録（送信されない）経路しか通らないため値はダミーでよい。
 vi.mock('@/env', () => ({
   env: { RESEND_API_KEY: undefined, NEXT_PUBLIC_SITE_URL: 'https://example.test' },
 }));
@@ -83,7 +88,13 @@ vi.mock('@/server/services/supabaseService', () => {
               return new FakeQuery({ data: { last_notified_history_id: null }, error: null });
             }
             if (table === 'users') {
-              return new FakeQuery({ data: { email: null }, error: null });
+              return new FakeQuery({ data: { email: mocks.userEmail }, error: null });
+            }
+            if (table === 'content_annotations') {
+              return new FakeQuery({
+                data: { wp_post_title: 'テスト記事', canonical_url: 'https://example.test/articles/a' },
+                error: null,
+              });
             }
             throw new Error(`unexpected table: ${table}`);
           },
@@ -146,6 +157,7 @@ describe('ga4ContentEvaluationCycleService.runAllDueEvaluations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.updateCalls.length = 0;
+    mocks.userEmail = null;
     mocks.syncUser.mockResolvedValue(undefined);
   });
 
@@ -178,5 +190,34 @@ describe('ga4ContentEvaluationCycleService.runAllDueEvaluations', () => {
       last_evaluated_on: expect.any(String),
       last_seen_content_score: 55,
     });
+  });
+
+  it('通知メールの「次回評価予定」は advanceCooldown 後の日付（todayJst + cycle_days）で組み立てられ、処理済みのdue日（過去日）を再掲しない（高重要度指摘の回帰防止）', async () => {
+    const cycleDays = 14;
+    const dueRow = {
+      id: 'cycle-2',
+      user_id: 'user-2',
+      content_annotation_id: 'annotation-2',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: cycleDays,
+      evaluation_hour: 0,
+      last_evaluated_on: '2020-01-17',
+      next_evaluation_date: '2020-01-31', // 過去日なので必ずdue。この日付がメールへ再掲されると不具合
+    };
+    mocks.rpc.mockResolvedValue({ data: [dueRow], error: null, count: 1 });
+    mocks.run.mockResolvedValue(buildEvaluatedView(70));
+    mocks.userEmail = 'user@example.test';
+    mocks.sendEmail.mockResolvedValue({ success: true });
+
+    const todayJst = formatJstDateISO(new Date());
+    const expectedNextDate = addDaysISO(todayJst, cycleDays).replaceAll('-', '/');
+    const staleDate = dueRow.next_evaluation_date.replaceAll('-', '/');
+
+    await ga4ContentEvaluationCycleService.runAllDueEvaluations();
+
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
+    const [, , html] = mocks.sendEmail.mock.calls[0] as [string, string, string, string];
+    expect(html).toContain(`次回評価予定: ${expectedNextDate}`);
+    expect(html).not.toContain(`次回評価予定: ${staleDate}`);
   });
 });
