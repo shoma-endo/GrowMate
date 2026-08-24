@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Loader2, Info, Calendar as CalendarIcon, Settings, Save, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +38,8 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
 
 interface ContentEvaluationCycleSettingsProps {
   annotationId: string;
+  /** GA4連携の再認証が必要か（GscDashboardClient の ga4Evaluation.needsReauth をそのまま渡す。§10.8） */
+  needsReauth?: boolean;
 }
 
 const formatDateJP = (dateStr: string | undefined | null) => {
@@ -51,7 +54,10 @@ const formatDateJP = (dateStr: string | undefined | null) => {
   }).format(d);
 };
 
-export function ContentEvaluationCycleSettings({ annotationId }: ContentEvaluationCycleSettingsProps) {
+export function ContentEvaluationCycleSettings({
+  annotationId,
+  needsReauth = false,
+}: ContentEvaluationCycleSettingsProps) {
   const [cycle, setCycle] = useState<Ga4ContentEvaluationCycleView | null>(null);
   const [cycleLoading, setCycleLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
@@ -127,7 +133,16 @@ export function ContentEvaluationCycleSettings({ annotationId }: ContentEvaluati
 
   const previewInitialMeasurementDate = dateStr;
   const previewInitialEvaluationDate = dateStr ? addDaysISO(dateStr, cycleDays) : '';
+  // last_seen_content_score は GSC の last_seen_position 相当（§7.7）。バッチは毎回の評価成功時に
+  // これを更新するため、登録時のベースライン取得が失敗しても以後の定期評価が成功すれば解消する。
   const hasBaseline = cycle?.lastSeenContentScore != null;
+  // GSC (EvaluationSettings.tsx:406-447) と同型の状態カード分岐（D10確定・§10.8「差はなし」）。
+  // 初回計測前は nextEvaluationDate が「次に取得を試みる日」を表すため、それを「初回計測予定」に、
+  // その1サイクル先を「初回評価予定」に充てる。
+  const initialMeasurementDate = cycle?.nextEvaluationDate ?? '';
+  const initialEvaluationDate = initialMeasurementDate
+    ? addDaysISO(initialMeasurementDate, cycle?.cycleDays ?? 30)
+    : '';
 
   if (cycleLoading) {
     return (
@@ -300,18 +315,47 @@ export function ContentEvaluationCycleSettings({ annotationId }: ContentEvaluati
 
       {cycle ? (
         <div className="space-y-2">
-          <div className="grid grid-cols-1 gap-4 mt-4 md:grid-cols-2">
+          {needsReauth && (
+            <div className="flex flex-wrap items-center gap-3 rounded-md bg-red-50 px-3 py-2 ring-1 ring-red-200">
+              <p className="text-xs text-red-700">
+                Google連携を確認してください。サイクルはそのまま残り、再連携すれば次回から自動的に動きます。
+              </p>
+              <Button asChild type="button" size="sm">
+                <Link href="/setup/ga4">Googleを再連携</Link>
+              </Button>
+            </div>
+          )}
+          <div className={`grid grid-cols-1 gap-4 mt-4 ${hasBaseline ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
             <div className="rounded-lg border border-blue-200 bg-blue-50 shadow-sm p-4">
               <div className="text-sm text-blue-600 mb-1">現在の基準日</div>
               <div className="text-2xl font-bold text-blue-900">{formatDateJP(cycle.baseEvaluationDate)}</div>
             </div>
-            <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
-              <div className="text-sm text-green-600 mb-1">次回評価予定</div>
-              <div className="text-2xl font-bold text-green-900">
-                {formatDateJP(cycle.nextEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
-                (日本時間)
+            {hasBaseline ? (
+              <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
+                <div className="text-sm text-green-600 mb-1">次回評価予定</div>
+                <div className="text-2xl font-bold text-green-900">
+                  {formatDateJP(cycle.nextEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
+                  (日本時間)
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="rounded-lg border border-cyan-200 bg-cyan-50 shadow-sm p-4">
+                  <div className="text-sm text-cyan-600 mb-1">初回計測予定</div>
+                  <div className="text-2xl font-bold text-cyan-900">
+                    {formatDateJP(initialMeasurementDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
+                    (日本時間)
+                  </div>
+                </div>
+                <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
+                  <div className="text-sm text-green-600 mb-1">初回評価予定</div>
+                  <div className="text-2xl font-bold text-green-900">
+                    {formatDateJP(initialEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
+                    (日本時間)
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           {!hasBaseline && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 ring-1 ring-amber-200">

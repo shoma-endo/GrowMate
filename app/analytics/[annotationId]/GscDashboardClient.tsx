@@ -184,11 +184,13 @@ export default function GscDashboardClient({
             onRefreshDetail={async (annotationId: string) => {
               await dashboard.refreshDetail(annotationId);
             }}
+            ga4NeedsReauth={ga4Evaluation?.needsReauth ?? false}
           />
         </TabsContent>
 
         <TabsContent value="content-evaluation" className="mt-6">
           <ContentEvaluationTab
+            annotationId={dashboard.selectedId}
             articleTitle={dashboard.detail?.annotation.wp_post_title ?? null}
             evaluation={ga4Evaluation}
             error={ga4EvaluationError}
