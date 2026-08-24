@@ -260,6 +260,33 @@ describe('analyticsContentService', () => {
     });
   });
 
+  it('コンテンツ力スコア閾値フィルター（D11）をRPCへ渡す', async () => {
+    await analyticsContentService.getPage('user-id', {
+      page: 1,
+      perPage: 10,
+      startDate: '2026-08-01',
+      endDate: '2026-08-08',
+      ga4ContentScoreBelow: 60,
+    });
+
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      'get_filtered_content_annotations',
+      expect.objectContaining({ p_ga4_content_score_below: 60 })
+    );
+  });
+
+  it('コンテンツ力スコア閾値フィルター未指定時はRPCへキーを渡さない', async () => {
+    await analyticsContentService.getPage('user-id', {
+      page: 1,
+      perPage: 10,
+      startDate: '2026-08-01',
+      endDate: '2026-08-08',
+    });
+
+    const [, args] = mocks.rpc.mock.calls[0]!;
+    expect(args).not.toHaveProperty('p_ga4_content_score_below');
+  });
+
   it('GSC評価未開始フィルター未指定時は無効値をRPCへ渡す', async () => {
     await analyticsContentService.getPage('user-id', {
       page: 1,

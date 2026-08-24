@@ -6,6 +6,13 @@ import { emailService } from '@/server/services/emailService';
 import { getGa4EvaluationDateRange } from '@/lib/ga4-evaluation-period';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { buildGa4ContentEvaluationEmail } from '@/server/lib/ga4-content-evaluation-email';
+import {
+  classifyGa4BatchRunError,
+  classifyGa4BatchRunResult,
+  type Ga4CycleBatchOutcome,
+  type Ga4CycleBatchOutcomeResult,
+} from '@/server/lib/ga4-content-evaluation-batch-outcome';
+import { isGa4CycleDue } from '@/server/lib/ga4-content-evaluation-cycle-due';
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 import { env } from '@/env';
 import type {
@@ -48,19 +55,6 @@ const MAX_USERS_PER_BATCH = 10;
 const MAX_ARTICLES_PER_BATCH = 20;
 const SYNC_TIME_BUDGET_MS = 120 * 1000;
 
-// §8.3「結末の判定契約」10値
-type Ga4CycleBatchOutcome =
-  | 'evaluated'
-  | 'narrative_failed'
-  | 'insufficient_data'
-  | 'import_failed'
-  | 'evaluation_failed'
-  | 'evaluating'
-  | 'low_data'
-  | 'needs_reauth'
-  | 'already_running'
-  | 'unknown_error';
-
 type DueCycleRow =
   Ga4ContentEvaluationCycleDatabase['public']['Functions']['list_due_ga4_content_evaluation_cycles']['Returns'][number];
 
@@ -100,10 +94,7 @@ function shuffleInPlace<T>(items: T[]): T[] {
   return items;
 }
 
-interface DueArticleResult {
-  outcome: Ga4CycleBatchOutcome;
-  historyId: string | null;
-  shouldAdvanceCooldown: boolean;
+interface DueArticleResult extends Ga4CycleBatchOutcomeResult {
   view: Awaited<ReturnType<typeof ga4ContentEvaluationService.run>> | null;
 }
 
@@ -220,13 +211,9 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
     // まだ当日の実行時刻に達していない行は今回の対象から外す（次の毎時実行で再評価する）。
     let articlesSkippedCooldown = 0;
     const dueNow = dueRows.filter(row => {
-      if (row.next_evaluation_date < todayJst) return true;
-      if (row.next_evaluation_date === todayJst) {
-        const isDue = currentHourJst >= row.evaluation_hour;
-        if (!isDue) articlesSkippedCooldown += 1;
-        return isDue;
-      }
-      return false;
+      const due = isGa4CycleDue(row.next_evaluation_date, row.evaluation_hour, todayJst, currentHourJst);
+      if (!due) articlesSkippedCooldown += 1;
+      return due;
     });
 
     const result: Ga4ContentEvaluateBatchResult = {
@@ -447,45 +434,25 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
         startDate,
         endDate,
       });
-      const latest = view.history[0];
-      const hasFreshHistory = latest !== undefined && Date.parse(latest.startedAt) >= callStartedAtMs;
-
-      if (!hasFreshHistory) {
-        if (view.displayStatus === 'unassessed' || view.displayStatus === 'eligible') {
-          console.error('[ga4ContentEvaluationCycleService] unexpected displayStatus with no fresh history', {
-            annotationId: cycle.content_annotation_id,
-            displayStatus: view.displayStatus,
-          });
-          return { outcome: 'unknown_error', historyId: null, shouldAdvanceCooldown: false, view: null };
-        }
-        return { outcome: 'low_data', historyId: null, shouldAdvanceCooldown: true, view: null };
-      }
-
-      if (latest.status === 'evaluating') {
-        console.error('[ga4ContentEvaluationCycleService] history row still evaluating after run() returned', {
+      const classification = classifyGa4BatchRunResult(view, callStartedAtMs);
+      if (classification.isUnexpected) {
+        console.error('[ga4ContentEvaluationCycleService] unexpected batch run classification', {
           annotationId: cycle.content_annotation_id,
-          historyId: latest.id,
+          outcome: classification.outcome,
+          displayStatus: view.displayStatus,
+          historyId: classification.historyId,
         });
-        return { outcome: 'evaluating', historyId: latest.id, shouldAdvanceCooldown: false, view: null };
       }
-
-      return { outcome: latest.status, historyId: latest.id, shouldAdvanceCooldown: true, view };
+      return { ...classification, view };
     } catch (error) {
-      const code =
-        typeof error === 'object' && error !== null && 'code' in error
-          ? (error as { code?: unknown }).code
-          : undefined;
-      if (code === 'needs_reauth') {
-        return { outcome: 'needs_reauth', historyId: null, shouldAdvanceCooldown: true, view: null };
+      const classification = classifyGa4BatchRunError(error);
+      if (classification.isUnexpected) {
+        console.error('[ga4ContentEvaluationCycleService] unexpected error during batch evaluation', {
+          annotationId: cycle.content_annotation_id,
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
-      if (error instanceof Error && error.message.includes('already running')) {
-        return { outcome: 'already_running', historyId: null, shouldAdvanceCooldown: false, view: null };
-      }
-      console.error('[ga4ContentEvaluationCycleService] unexpected error during batch evaluation', {
-        annotationId: cycle.content_annotation_id,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      return { outcome: 'unknown_error', historyId: null, shouldAdvanceCooldown: true, view: null };
+      return { ...classification, view: null };
     }
   }
 
