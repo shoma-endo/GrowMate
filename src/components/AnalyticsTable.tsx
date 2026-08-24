@@ -848,12 +848,12 @@ export default function AnalyticsTable({
                     )}
                     {isFilteringUnstartedGscEvaluation && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-blue-800 bg-blue-100">
-                        評価未開始
+                        検索順位評価未開始
                         <button
                           type="button"
                           onClick={removeUnstartedGscEvaluationFilter}
                           className="hover:bg-blue-200 rounded-full p-0.5"
-                          title="評価未開始フィルターを解除"
+                          title="検索順位評価未開始フィルターを解除"
                         >
                           <X className="h-3 w-3" />
                         </button>

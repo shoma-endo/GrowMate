@@ -85,7 +85,7 @@ export default function CategoryFilter({
 
       {/* 状態フィルター（カテゴリではないので見出しを分ける） */}
       <div className="space-y-2">
-        <span className="text-sm font-medium text-gray-700">Google Search Console の状態</span>
+        <span className="text-sm font-medium text-gray-700">状態でフィルター</span>
 
         <div className="border rounded-md px-2 py-2">
           <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded">
@@ -94,7 +94,7 @@ export default function CategoryFilter({
               onCheckedChange={checked => onUnstartedGscEvaluationChange(!!checked)}
             />
             <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-            <span className="text-sm font-medium text-blue-800">評価未開始</span>
+            <span className="text-sm font-medium text-blue-800">検索順位評価未開始</span>
           </label>
         </div>
         <div className="border rounded-md px-2 py-2">
