@@ -55,6 +55,14 @@ jobs:
             maxTime: 310
             maxRetries: 3
             timeoutMinutes: 20
+          - id: ga4-content-evaluate
+            path: /api/cron/ga4-content-evaluate
+            profile: count-batch
+            interval: hourly
+            maxTime: 310
+            # メール送信バッチのため再実行しない（§8.3）
+            maxRetries: 1
+            timeoutMinutes: 20
     concurrency:
       group: hourly-cron-${{ matrix.id }}
       cancel-in-progress: false

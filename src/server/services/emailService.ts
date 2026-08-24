@@ -69,6 +69,55 @@ export class EmailService {
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     return this.sendGoogleAdsAnalysis(to, subject, htmlContent);
   }
+
+  /**
+   * GA4コンテンツ評価サイクルの完了通知（§9.5）。既存2メソッドと送信処理を共有するが、
+   * BR-12の冪等性を担保するため Idempotency-Key（評価履歴行のid）を渡す点が異なる
+   * （公式仕様は §16「Resend — レート制限・クォータ・冪等キー」）。
+   */
+  async sendGa4ContentEvaluation(
+    to: string,
+    subject: string,
+    htmlContent: string,
+    idempotencyKey: string
+  ): Promise<{ success: boolean; messageId?: string; error?: string; errorName?: string }> {
+    try {
+      const resendClient = this.getResendClient();
+      if (!resendClient) {
+        console.error('[EmailService] RESEND_API_KEY is not configured');
+        return {
+          success: false,
+          error: 'RESEND_API_KEY is not configured',
+        };
+      }
+
+      const emailFrom = process.env.EMAIL_FROM?.trim() || DEFAULT_EMAIL_FROM;
+      const response = await resendClient.emails.send(
+        { from: emailFrom, to, subject, html: htmlContent },
+        { idempotencyKey }
+      );
+
+      if (response.error) {
+        console.error('[EmailService] Failed to send GA4 content evaluation email:', response.error);
+        return {
+          success: false,
+          error: response.error.message,
+          errorName: response.error.name,
+        };
+      }
+
+      return {
+        success: true,
+        messageId: response.data?.id,
+      };
+    } catch (error) {
+      console.error('[EmailService] Unexpected email send error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'メール送信に失敗しました',
+      };
+    }
+  }
 }
 
 export const emailService = new EmailService();

@@ -32,8 +32,21 @@ type Ga4ContentEvaluationCycleRow = {
   updated_at: string;
 };
 
+// PROVISIONAL: supabase/migrations/20260824000200_add_list_due_ga4_content_evaluation_cycles_rpc.sql
+type Ga4DueContentEvaluationCycleRow = Pick<
+  Ga4ContentEvaluationCycleRow,
+  | 'id'
+  | 'user_id'
+  | 'content_annotation_id'
+  | 'base_evaluation_date'
+  | 'cycle_days'
+  | 'evaluation_hour'
+  | 'last_evaluated_on'
+  | 'next_evaluation_date'
+>;
+
 export type Ga4ContentEvaluationCycleDatabase = Omit<Database, 'public'> & {
-  public: Omit<Database['public'], 'Tables'> & {
+  public: Omit<Database['public'], 'Tables' | 'Functions'> & {
     Tables: Omit<Database['public']['Tables'], 'ga4_content_evaluation_cycles'> & {
       ga4_content_evaluation_cycles: {
         Row: Ga4ContentEvaluationCycleRow;
@@ -46,6 +59,12 @@ export type Ga4ContentEvaluationCycleDatabase = Omit<Database, 'public'> & {
           >;
         Update: Partial<Omit<Ga4ContentEvaluationCycleRow, 'id' | 'next_evaluation_date'>>;
         Relationships: [];
+      };
+    };
+    Functions: Database['public']['Functions'] & {
+      list_due_ga4_content_evaluation_cycles: {
+        Args: { p_today_jst: string; p_limit: number; p_offset: number };
+        Returns: Ga4DueContentEvaluationCycleRow[];
       };
     };
   };
