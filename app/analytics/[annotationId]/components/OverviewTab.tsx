@@ -19,6 +19,7 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { EvaluationSettings } from '../EvaluationSettings';
+import { ContentEvaluationCycleSettings } from '../ContentEvaluationCycleSettings';
 import { MetricsSummaryCards } from './MetricsSummaryCards';
 import { SuggestionDataReadiness } from './SuggestionDataReadiness';
 import type {
@@ -209,15 +210,18 @@ export function OverviewTab({
           {...(onRefreshDetail && { onUpdate: onRefreshDetail })}
         />
 
-        {/* 評価設定 */}
-        {detail.credential?.propertyUri && (
-          <EvaluationSettings
-            currentEvaluation={detail.evaluation}
-            onRegister={onRegisterEvaluation}
-            onUpdate={onUpdateEvaluation}
-            onRunEvaluation={onRunEvaluation}
-          />
-        )}
+        {/* 評価設定（検索順位評価サイクル・コンテンツ評価サイクルを横並びで表示。§10.8） */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {detail.credential?.propertyUri && (
+            <EvaluationSettings
+              currentEvaluation={detail.evaluation}
+              onRegister={onRegisterEvaluation}
+              onUpdate={onUpdateEvaluation}
+              onRunEvaluation={onRunEvaluation}
+            />
+          )}
+          <ContentEvaluationCycleSettings annotationId={detail.annotation.id} />
+        </div>
       </CardContent>
     </Card>
   );

@@ -611,6 +611,24 @@ export const ERROR_MESSAGES = {
     EVALUATION_FETCH_FAILED: 'GA4コンテンツ評価の取得に失敗しました',
     EVALUATION_RUN_FAILED: 'GA4コンテンツ評価の実行に失敗しました',
     MEDIA_SCORE_FETCH_FAILED: 'GA4メディア全体スコアの取得に失敗しました',
+
+    /** コンテンツ評価サイクル設定の取得に失敗した場合 */
+    CYCLE_FETCH_FAILED: 'コンテンツ評価サイクル設定の取得に失敗しました',
+
+    /** コンテンツ評価サイクルの登録に失敗した場合 */
+    CYCLE_REGISTER_FAILED: 'コンテンツ評価サイクルの登録に失敗しました',
+
+    /** コンテンツ評価サイクルの更新に失敗した場合 */
+    CYCLE_UPDATE_FAILED: 'コンテンツ評価サイクルの更新に失敗しました',
+
+    /** 対象記事が既にコンテンツ評価サイクルに登録済みの場合 */
+    CYCLE_ALREADY_REGISTERED: 'この記事は既にコンテンツ評価サイクルに登録されています',
+
+    /** コンテンツ評価サイクルが見つからない場合（更新対象） */
+    CYCLE_NOT_FOUND: 'コンテンツ評価サイクルが見つかりません',
+
+    /** 対象記事が見つからない場合（コンテンツ評価サイクル） */
+    CYCLE_ARTICLE_NOT_FOUND: '指定された記事が見つかりません',
   },
 
   /**
