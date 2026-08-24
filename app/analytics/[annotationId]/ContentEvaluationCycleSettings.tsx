@@ -340,15 +340,18 @@ export function ContentEvaluationCycleSettings({
               </div>
             ) : (
               <>
+                {/* 「初回計測日」はダイアログのプレビュー（登録操作＝即日にベースラインを取得する約束）
+                    で使う語のため、ここでは使わない。ここは登録後にベースライン取得が失敗した
+                    再試行待ちの状態（レアケース）なので「ベースライン再試行予定」と明示する（再レビュー指摘）。 */}
                 <div className="rounded-lg border border-cyan-200 bg-cyan-50 shadow-sm p-4">
-                  <div className="text-sm text-cyan-600 mb-1">初回計測予定</div>
+                  <div className="text-sm text-cyan-600 mb-1">ベースライン再試行予定</div>
                   <div className="text-2xl font-bold text-cyan-900">
                     {formatDateJP(initialMeasurementDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
                     (日本時間)
                   </div>
                 </div>
                 <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
-                  <div className="text-sm text-green-600 mb-1">初回評価予定</div>
+                  <div className="text-sm text-green-600 mb-1">次回評価予定</div>
                   <div className="text-2xl font-bold text-green-900">
                     {formatDateJP(initialEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
                     (日本時間)
@@ -359,7 +362,7 @@ export function ContentEvaluationCycleSettings({
           </div>
           {!hasBaseline && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 ring-1 ring-amber-200">
-              初回のベースライン評価がまだ完了していません。次回の定期評価で再試行されます。記事詳細の「コンテンツ評価」タブから今すぐ評価することもできます。
+              初回のベースライン評価がまだ完了していません。次回の定期評価（上記のベースライン再試行予定）で再試行されます。すぐに反映したい場合は、記事詳細の「コンテンツ評価」タブから今すぐ評価を実行してください。
             </p>
           )}
           {cycle.lastNotificationStatus === 'failed' && (

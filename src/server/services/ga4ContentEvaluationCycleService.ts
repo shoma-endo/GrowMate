@@ -207,7 +207,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
 
     const { rows: dueRows, truncatedCandidates } = await this.listDueCycles(todayJst);
     // truncatedCandidates は1,000行上限（db-max-rows）による取りこぼしなので、
-    // 打ち切り監視（validate_count_batch）が読む skippedDueToLimit に合算する（🔴レビュー指摘#4）。
+    // 打ち切り監視（validate_count_batch）が読む skippedDueToLimit に合算する（レビュー指摘#4）。
 
     // next_evaluation_date === today の行だけ evaluation_hour をアプリ側で判定する（§6.6.2）。
     // まだ当日の実行時刻に達していない行は今回の対象から外す（次の毎時実行で再評価する）。
@@ -334,7 +334,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
           // last_seen_content_score は GSC の last_seen_position と同じ役割（§7.7）で、
           // 登録時のベースラインだけでなく毎回の評価結果で更新し続ける必要がある。
           // 登録時のベースライン取得が失敗した場合、ここで更新しないと状態カードの
-          // 「初回計測前」表示が以後の評価が成功しても解消しない（🔴レビュー指摘#1）。
+          // 「初回計測前」表示が以後の評価が成功しても解消しない（レビュー指摘#1）。
           const freshContentScore =
             articleResult.outcome === 'evaluated' || articleResult.outcome === 'narrative_failed'
               ? (articleResult.view?.history[0]?.contentScore ?? null)
