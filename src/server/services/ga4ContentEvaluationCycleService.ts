@@ -54,6 +54,16 @@ const BATCH_TIME_LIMIT_MS = 280 * 1000;
 const MAX_USERS_PER_BATCH = 10;
 const MAX_ARTICLES_PER_BATCH = 20;
 const SYNC_TIME_BUDGET_MS = 120 * 1000;
+// ライブロック回避（§8.3必須）の強制評価判定専用の締切（レビュー指摘・実装時訂正）。
+// 1記事の評価はLLM呼び出しを含み最悪45秒×3試行=135秒かかりうる（§8.1）。route.tsのmaxDuration
+// （300秒）に対しこの猶予を残せる時点でなければ強制的に開始してはいけない。BATCH_TIME_LIMIT_MS
+// （280秒）をそのまま使うと残り20秒しかなく、開始しても必ずmaxDurationで中断（504）され、
+// last_evaluated_onも進まないため次の毎時実行でも同じ状態が繰り返される（真のライブロック）。
+const ROUTE_MAX_DURATION_MS = 300 * 1000;
+const SINGLE_RUN_WORST_CASE_MS = 135 * 1000; // 45秒 × 3試行（§8.1）
+const FORCED_PROGRESS_SAFETY_MARGIN_MS = 10 * 1000;
+const FORCED_PROGRESS_DEADLINE_MS =
+  ROUTE_MAX_DURATION_MS - SINGLE_RUN_WORST_CASE_MS - FORCED_PROGRESS_SAFETY_MARGIN_MS; // 155秒
 
 type DueCycleRow =
   Ga4ContentEvaluationCycleDatabase['public']['Functions']['list_due_ga4_content_evaluation_cycles']['Returns'][number];
@@ -261,6 +271,16 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
         break;
       }
 
+      // 件数上限に既に達している場合、後続ユーザーはどのみち全記事が skippedDueToLimit になる
+      // だけなので、ここで打ち切る（レビュー指摘・実装時訂正）。以前は内側ループの continue
+      // だけに任せていたため、上限到達後も後続ユーザーの syncUser を呼び続け、同期予算と時間を
+      // 浪費していた。
+      if (totalArticlesAttempted >= MAX_ARTICLES_PER_BATCH) {
+        result.stoppedReason = result.stoppedReason === 'completed' ? 'max_articles' : result.stoppedReason;
+        result.skippedDueToLimit += this.countRemainingArticles(byUser, userIds, result.usersAttempted, 0);
+        break;
+      }
+
       const noProgressYet = result.articlesEvaluated + result.articlesFailed === 0;
       const elapsed = Date.now() - startedAt;
       if (elapsed > BATCH_TIME_LIMIT_MS && !(noProgressYet && !forcedProgressUsed)) {
@@ -282,7 +302,19 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
       if (syncBudgetRemainingMs > 0) {
         const syncStartedAt = Date.now();
         try {
-          await ga4ImportService.syncUser(userId);
+          const syncResult = await ga4ImportService.syncUser(userId);
+          // syncUser は例外だけでなく { ok: false, reason } も正常に返す（レビュー指摘・実装時訂正）。
+          // 'already_synced' は直近同期済みで新規取込対象が無いだけの正常系なので除外するが、
+          // それ以外（例: 'not_connected'）は取込が実質できていない状態のため syncFailed として扱う。
+          // これを見落とすと、GA4未接続のユーザーが古いデータのまま評価され、§6.6.4の
+          // 取込失敗時クールダウン抑止（withholdForSyncFailure）が効かなくなる。
+          if (!syncResult.ok && syncResult.reason !== 'already_synced') {
+            syncFailed = true;
+            console.warn('[ga4ContentEvaluationCycleService] syncUser returned failure', {
+              userId,
+              reason: syncResult.reason,
+            });
+          }
         } catch (error) {
           syncFailed = true;
           console.error('[ga4ContentEvaluationCycleService] syncUser failed', {
@@ -305,10 +337,14 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
 
         const stillNoProgress = result.articlesEvaluated + result.articlesFailed === 0;
         const elapsedNow = Date.now() - startedAt;
-        if (elapsedNow > BATCH_TIME_LIMIT_MS) {
+        // ライブロック回避（§8.3）: 進捗ゼロの間だけ締切を FORCED_PROGRESS_DEADLINE_MS（155秒）へ
+        // 前倒しする。BATCH_TIME_LIMIT_MS（280秒）まで待つと、1記事の最悪所要（135秒）を
+        // 確保できないまま強制評価を始めてしまい、必ずmaxDurationで中断される（レビュー指摘・
+        // 実装時訂正）。1件でも進捗が出れば以後は通常どおり280秒の締切に戻る。
+        const timeLimitForThisArticleMs = stillNoProgress ? FORCED_PROGRESS_DEADLINE_MS : BATCH_TIME_LIMIT_MS;
+        if (elapsedNow > timeLimitForThisArticleMs) {
           if (stillNoProgress && !forcedProgressUsed) {
-            // ライブロック回避（§8.3）: 1件も評価していない状態で時間切れを迎えた場合、
-            // 先頭の1記事だけは評価を試みてから中断する。
+            // 1件も評価していない状態で締切を迎えた場合、先頭の1記事だけは評価を試みてから中断する。
             forcedProgressUsed = true;
           } else {
             result.stoppedReason = 'time_limit';
@@ -409,6 +445,11 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
    * due な cycle 行を DB から抽出する（§8.3 処理順序1）。ロール絞り込みはSQL側で行い
    * （多層防御として呼び出し側でも役割を再確認する必要はない。RPCが`users.role in ('admin','paid')`
    * を強制するため）、1,000行上限（db-max-rows）を SupabaseService.fetchAllPaged で回避する。
+   *
+   * ページングはRPC関数の引数（p_limit/p_offset）ではなくPostgRESTの.range()に委ねる
+   * （レビュー指摘・実装時訂正）。関数内部でLIMIT/OFFSETを適用すると count:'exact' が
+   * 「その呼び出し自体が返した行数」しか返さず、全体件数を反映しないため truncated 判定が
+   * 常に false になってしまう（migration 20260824000200 のコメント参照）。
    */
   private async listDueCycles(
     todayJst: string
@@ -418,11 +459,9 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
 
     const { data, truncated } = await this.fetchAllPaged<DueCycleRow>(
       async (from, to) => {
-        const { data, error, count } = await client.rpc(
-          'list_due_ga4_content_evaluation_cycles',
-          { p_today_jst: todayJst, p_limit: to - from + 1, p_offset: from },
-          { count: 'exact' }
-        );
+        const { data, error, count } = await client
+          .rpc('list_due_ga4_content_evaluation_cycles', { p_today_jst: todayJst }, { count: 'exact' })
+          .range(from, to);
         lastCount = count ?? lastCount;
         return { data, error, count };
       },

@@ -106,6 +106,15 @@ vi.mock('@/server/services/supabaseService', () => {
 
 import { ga4ContentEvaluationCycleService } from '@/server/services/ga4ContentEvaluationCycleService';
 
+/**
+ * listDueCycles() は client.rpc(...).range(from, to) の形で呼ぶ（レビュー指摘・実装時訂正で
+ * p_limit/p_offset をRPC引数からPostgRESTの.range()へ移した）。mocks.rpc はその呼び出し自体
+ * ではなく、続く .range() の戻り値を解決させる必要がある。
+ */
+function mockRpcRange(value: { data: unknown; error: unknown; count: number | null }) {
+  mocks.rpc.mockReturnValue({ range: vi.fn().mockResolvedValue(value) });
+}
+
 function buildEvaluatedView(contentScore: number): Ga4ContentEvaluationView {
   const freshStartedAt = new Date(Date.now() + 60_000).toISOString();
   return {
@@ -173,7 +182,7 @@ describe('ga4ContentEvaluationCycleService.runAllDueEvaluations', () => {
       next_evaluation_date: '2020-01-31', // 過去日なので必ずdue（時刻判定を経由しない）
     };
     // count(5) > 実際に返った行数(1) のため truncated 扱いになる（listDueCycles の再現）
-    mocks.rpc.mockResolvedValue({ data: [dueRow], error: null, count: 5 });
+    mockRpcRange({ data: [dueRow], error: null, count: 5 });
     mocks.run.mockResolvedValue(buildEvaluatedView(55));
 
     const result = await ga4ContentEvaluationCycleService.runAllDueEvaluations();
@@ -204,7 +213,7 @@ describe('ga4ContentEvaluationCycleService.runAllDueEvaluations', () => {
       last_evaluated_on: '2020-01-17',
       next_evaluation_date: '2020-01-31', // 過去日なので必ずdue。この日付がメールへ再掲されると不具合
     };
-    mocks.rpc.mockResolvedValue({ data: [dueRow], error: null, count: 1 });
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
     mocks.run.mockResolvedValue(buildEvaluatedView(70));
     mocks.userEmail = 'user@example.test';
     mocks.sendEmail.mockResolvedValue({ success: true });
@@ -219,5 +228,71 @@ describe('ga4ContentEvaluationCycleService.runAllDueEvaluations', () => {
     const [, , html] = mocks.sendEmail.mock.calls[0] as [string, string, string, string];
     expect(html).toContain(`次回評価予定: ${expectedNextDate}`);
     expect(html).not.toContain(`次回評価予定: ${staleDate}`);
+  });
+
+  it('件数上限に達したら後続ユーザーの同期を行わず打ち切る（Cursor Bugbot指摘の回帰防止）', async () => {
+    const userACycles = Array.from({ length: 20 }, (_, i) => ({
+      id: `cycle-a-${i}`,
+      user_id: 'user-a',
+      content_annotation_id: `annotation-a-${i}`,
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      last_evaluated_on: null,
+      next_evaluation_date: '2020-01-31',
+    }));
+    const userBCycle = {
+      id: 'cycle-b-0',
+      user_id: 'user-b',
+      content_annotation_id: 'annotation-b-0',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      last_evaluated_on: null,
+      next_evaluation_date: '2020-01-31',
+    };
+    mockRpcRange({ data: [...userACycles, userBCycle], error: null, count: 21 });
+    mocks.run.mockResolvedValue(buildEvaluatedView(60));
+    // シャッフルで user-a が必ず先頭に来るよう固定する（Fisher-Yates を no-op にする）。
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    try {
+      const result = await ga4ContentEvaluationCycleService.runAllDueEvaluations();
+
+      // MAX_ARTICLES_PER_BATCH(20) に達した時点で打ち切り、user-b の syncUser は呼ばれない
+      expect(mocks.syncUser).toHaveBeenCalledTimes(1);
+      expect(mocks.syncUser).toHaveBeenCalledWith('user-a');
+      expect(result.articlesEvaluated).toBe(20);
+      expect(result.stoppedReason).toBe('max_articles');
+      expect(result.skippedDueToLimit).toBe(1);
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  it('syncUserが例外を投げず{ok:false}を返した場合もsyncFailedとして扱う（Codex指摘の回帰防止）', async () => {
+    const todayJst = formatJstDateISO(new Date());
+    const dueRow = {
+      id: 'cycle-3',
+      user_id: 'user-3',
+      content_annotation_id: 'annotation-3',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      last_evaluated_on: null,
+      next_evaluation_date: todayJst, // withholdForSyncFailure の判定に today と一致させる必要がある
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mocks.syncUser.mockResolvedValue({ ok: false, reason: 'not_connected' });
+    mocks.run.mockResolvedValue(buildEvaluatedView(60));
+
+    const result = await ga4ContentEvaluationCycleService.runAllDueEvaluations();
+
+    expect(result.syncFailedUsers).toBe(1);
+    // §6.6.4: 当日中のsyncFailedはクールダウンを進めない・メールも送らない
+    expect(result.articlesSkippedSyncFailed).toBe(1);
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    const cooldownUpdate = mocks.updateCalls.find(payload => 'last_evaluated_on' in payload);
+    expect(cooldownUpdate).toBeUndefined();
   });
 });

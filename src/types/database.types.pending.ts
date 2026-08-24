@@ -63,7 +63,7 @@ export type Ga4ContentEvaluationCycleDatabase = Omit<Database, 'public'> & {
     };
     Functions: Database['public']['Functions'] & {
       list_due_ga4_content_evaluation_cycles: {
-        Args: { p_today_jst: string; p_limit: number; p_offset: number };
+        Args: { p_today_jst: string };
         Returns: Ga4DueContentEvaluationCycleRow[];
       };
     };
