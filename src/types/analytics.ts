@@ -23,6 +23,7 @@ export interface AnalyticsContentQuery {
   hasUnreadSuggestion?: boolean;
   hasUnstartedGscEvaluation?: boolean;
   hasUnstartedGa4Evaluation?: boolean;
+  ga4ContentScoreBelow?: number;
 }
 
 export interface AnalyticsContentPage {

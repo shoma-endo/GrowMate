@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Bell, PlayCircle } from 'lucide-react';
+import { Bell, PlayCircle, TrendingDown } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import type { CategoryFilterConfig } from '@/types/category';
@@ -14,10 +14,12 @@ interface CategoryFilterProps {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnstartedGa4Evaluation: boolean;
+  hasGa4ContentScoreBelow: boolean;
   onFilterChange: (selectedCategoryNames: string[], includeUncategorized: boolean) => void;
   onUnreadSuggestionChange: (value: boolean) => void;
   onUnstartedGscEvaluationChange: (value: boolean) => void;
   onUnstartedGa4EvaluationChange: (value: boolean) => void;
+  onGa4ContentScoreBelowChange: (value: boolean) => void;
   onClearAll: () => void;
 }
 
@@ -28,10 +30,12 @@ export default function CategoryFilter({
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
   hasUnstartedGa4Evaluation,
+  hasGa4ContentScoreBelow,
   onFilterChange,
   onUnreadSuggestionChange,
   onUnstartedGscEvaluationChange,
   onUnstartedGa4EvaluationChange,
+  onGa4ContentScoreBelowChange,
   onClearAll,
 }: CategoryFilterProps) {
   // フィルター変更時に永続化
@@ -73,7 +77,8 @@ export default function CategoryFilter({
     includeUncategorized ||
     hasUnreadSuggestion ||
     hasUnstartedGscEvaluation ||
-    hasUnstartedGa4Evaluation;
+    hasUnstartedGa4Evaluation ||
+    hasGa4ContentScoreBelow;
 
   return (
     <div className="space-y-3">
@@ -102,6 +107,16 @@ export default function CategoryFilter({
             <Checkbox checked={hasUnstartedGa4Evaluation} onCheckedChange={checked => onUnstartedGa4EvaluationChange(!!checked)} />
             <PlayCircle className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" />
             <span className="text-sm font-medium text-indigo-800">コンテンツ評価未開始</span>
+          </label>
+        </div>
+        <div className="border rounded-md px-2 py-2">
+          <label className="flex items-center gap-2 cursor-pointer hover:bg-rose-50 px-1 py-1 rounded">
+            <Checkbox
+              checked={hasGa4ContentScoreBelow}
+              onCheckedChange={checked => onGa4ContentScoreBelowChange(!!checked)}
+            />
+            <TrendingDown className="h-3.5 w-3.5 text-rose-600 flex-shrink-0" />
+            <span className="text-sm font-medium text-rose-800">コンテンツ力スコア60点未満</span>
           </label>
         </div>
 

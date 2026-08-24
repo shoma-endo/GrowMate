@@ -12,6 +12,7 @@ import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareG
 import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 import { clampAnalyticsPeriod } from '@/lib/analytics-period';
+import { GA4_CONTENT_SCORE_PASSING_LINE } from '@/lib/ga4-evaluation-display';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,10 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     ? params.ga4_evaluation[0]
     : params?.ga4_evaluation;
   const hasUnstartedGa4Evaluation = ga4EvaluationParam === 'not_started';
+  const ga4LowScoreParam = Array.isArray(params?.ga4_low_score)
+    ? params.ga4_low_score[0]
+    : params?.ga4_low_score;
+  const hasGa4ContentScoreBelow = ga4LowScoreParam === '1';
   // unread_suggestion はカテゴリフィルターと直交するため hasUrlFilterParams に含めない。
   // 含めると ?unread_suggestion=1 のみの URL でも localStorage のカテゴリ復元が
   // スキップされ、保存済みカテゴリフィルターが失われる回帰が発生する。
@@ -146,6 +151,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         hasUnreadSuggestion,
         hasUnstartedGscEvaluation,
         hasUnstartedGa4Evaluation,
+        ...(hasGa4ContentScoreBelow ? { ga4ContentScoreBelow: GA4_CONTENT_SCORE_PASSING_LINE } : {}),
       }
     ),
     gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
@@ -210,6 +216,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     if (hasUnstartedGa4Evaluation) {
       query.set('ga4_evaluation', 'not_started');
     }
+    if (hasGa4ContentScoreBelow) {
+      query.set('ga4_low_score', '1');
+    }
     if (instagramConnected && activeTab === 'instagram') {
       query.set('tab', 'instagram');
       query.set('ig_page', String(igPage));
@@ -246,6 +255,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       hasUnreadSuggestion={hasUnreadSuggestion}
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
       hasUnstartedGa4Evaluation={hasUnstartedGa4Evaluation}
+      hasGa4ContentScoreBelow={hasGa4ContentScoreBelow}
       ga4Truncated={ga4Truncated ?? false}
       periodClamped={clampedPeriod.clamped}
       hasUrlFilterParams={hasUrlFilterParams}
