@@ -56,6 +56,7 @@ WordPress連携済みの記事（`content_annotations`）について、記事�
 ### 2.4 非対象（今回やらないこと）
 
 - 一括インポート時の自動実行（WordPress一括インポート画面 `app/wordpress-import/page.tsx` の挙動は変更しない）。
+- コンテンツ一覧からの AI 要約一括実行（トリガー・対象選定・時間予算）。**別仕様** `docs/plans/content-annotation-bulk-ai-summary-spec.md` で扱う。本設計は単記事要約の実装正本のままとする。
 - `SuggestionDataReadiness.tsx` への同機能追加。
 - 生成結果の履歴保存（`content_annotations` は現状どおり最新値のみ保持。バージョン管理は本設計の対象外）。
 
