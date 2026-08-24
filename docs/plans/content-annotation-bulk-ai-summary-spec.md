@@ -12,7 +12,7 @@
 - 関連する依頼・Issue・PR:
   - 背景: WordPress 一括インポート後、記事ごとの「AIで要約」手動実行が手間（クライアント文脈 `docs/context/client-vision-from-lark.md` §1.9.3）
   - §1.9.5（2026-08-05 定例）: 「外部コンテンツ取得タイミングでの自動処理は後回し」。本仕様は **インポート時自動をやらず**、**一覧からの手動一括**で負荷を下げる
-  - 単記事要約の実装正本: `docs/plans/content-annotation-ai-summary-design.md`（プロンプト・機械抽出・Server Action コア）。本仕様はトリガー（一覧一括）と対象選定・実行モデルのみを追加する
+  - 単記事要約の実装正本: `docs/specs/content-annotation-ai-summary-design.md`（プロンプト・機械抽出・Server Action コア）。本仕様はトリガー（一覧一括）と対象選定・実行モデルのみを追加する
   - 評価サイクル一括開始（`gsc-bulk-evaluation-start`）: **仕様書・実装とも develop に存在しない**（`docs/plans/_html/` に図解成果物のみ残存）。本仕様は同機能に依存せず単体で完結する（R-005）
 
 ## 1. 背景・目的・成功指標
