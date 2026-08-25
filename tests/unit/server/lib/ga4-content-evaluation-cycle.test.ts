@@ -262,7 +262,7 @@ describe('@/server/lib/ga4-content-evaluation-email', () => {
 
     it('narrative_failedのときは診断・次の一手を定型文へ置き換え、スコアと遷移先URLは通常どおり出す', () => {
       const content = buildGa4ContentEvaluationEmail({ ...baseInput, status: 'narrative_failed', narrative: null });
-      expect(content.html).toContain('診断コメントを作成できませんでした。点数は算出済みです。');
+      expect(content.html).toContain('診断コメントを作成できませんでした。スコアは算出済みです。');
       expect(content.html).not.toContain('次の一手');
       expect(content.html).toContain('75点');
       expect(content.html).toContain('https://app.growmate.tokyo/analytics/annotation-1');

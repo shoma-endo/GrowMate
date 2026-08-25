@@ -90,7 +90,7 @@ export function buildGa4ContentEvaluationEmail(
   const hasNarrative = input.status === 'evaluated' && input.narrative !== null;
   const diagnosisBlock = hasNarrative
     ? `<h2>${escapeHtml(input.narrative!.headline)}</h2><p>${escapeHtml(input.narrative!.situation)}</p>`
-    : '<p>診断コメントを作成できませんでした。点数は算出済みです。</p>';
+    : '<p>診断コメントを作成できませんでした。スコアは算出済みです。</p>';
   const nextActionBlock = hasNarrative
     ? `<p><strong>次の一手:</strong> ${escapeHtml(input.narrative!.next_action)}</p>
        <p><strong>狙い:</strong> ${escapeHtml(input.narrative!.target)}</p>`

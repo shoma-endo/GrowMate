@@ -38,7 +38,7 @@ export function Ga4EvaluationHistoryPanel({ evaluation }: { evaluation: Ga4Conte
               <span>実行日時：{formatDate(item.startedAt)}</span>
               <span>状態：{getGa4EvaluationStatusLabel(item.status)}</span>
               <span>コンテンツ力：{item.contentScore === null ? '—' : `${item.contentScore}点 ／ ${getGa4ScoreBand(item.contentScore)}`}</span>
-              <span>診断コード：{getGa4DiagnosisLabel(item.diagnosisCode)}</span>
+              <span>診断：{getGa4DiagnosisLabel(item.diagnosisCode)}</span>
               <span>読み始めスコア：{item.engageScore ?? '—'}</span>
               <span>読了スコア：{item.readScore ?? '—'}</span>
               <span>対象期間：{item.periodStart ?? '—'} 〜 {item.periodEnd ?? '—'}</span>

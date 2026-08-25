@@ -330,9 +330,11 @@ export function ContentEvaluationCard({
                   <p className="text-sm leading-relaxed text-gray-700">{latest.narrative.situation}</p>
                   <p className="text-sm leading-relaxed text-gray-700">{latest.narrative.cause}</p>
                 </div>
-                {/* NEXT ACTION は独立した箱にする。次の一手を探して読み直さなくて済むように */}
+                {/* 次の一手は独立した箱にする。探して読み直さなくて済むように。
+                    通知メール（ga4-content-evaluation-email.ts）と同じ「次の一手」の語で統一する
+                    （旧「NEXT ACTION」は growmate-ui-ux の「英語ラベルはユーザー向けに使わない」に抵触） */}
                 <div className="rounded-md bg-teal-50 p-4">
-                  <p className="text-xs font-semibold tracking-widest text-teal-800">NEXT ACTION</p>
+                  <p className="text-xs font-semibold tracking-widest text-teal-800">次の一手</p>
                   <p className="mt-2 text-sm font-medium leading-relaxed text-gray-900">
                     {latest.narrative.next_action}
                   </p>
@@ -340,7 +342,7 @@ export function ContentEvaluationCard({
                 </div>
               </div>
             ) : (
-              <p className="rounded-md bg-muted p-3 text-sm">スコアは保存されています。診断コメントは作成できませんでした。</p>
+              <p className="rounded-md bg-muted p-3 text-sm">診断コメントを作成できませんでした。スコアは算出済みです。</p>
             )}
               </div>
             </div>
@@ -350,7 +352,7 @@ export function ContentEvaluationCard({
                 {/* 生値の2つは Google Analytics 4（以下、GA4）の画面と突き合わせる前提の数字なので先頭に置く（§10.3） */}
                 <span>平均エンゲージメント時間：{formatGa4Duration(latest.avgEngagementSeconds)}</span>
                 <span>エンゲージメント率：{formatPercent(latest.engageRate)}</span>
-                <span>評価対象期間：{latest.periodStart ?? '—'} から {latest.periodEnd ?? '—'}</span>
+                <span>評価対象期間：{latest.periodStart ?? '—'} 〜 {latest.periodEnd ?? '—'}</span>
                 <span>データ品質：{getGa4DataQualityLabel(latest.dataQuality)}</span>
                 {/* 前回が無い評価で「初回計測」を3つ並べても読み手に情報がないため出さない */}
                 {previous && (
