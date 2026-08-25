@@ -28,7 +28,6 @@ import {
   registerGa4ContentEvaluationCycle,
   updateGa4ContentEvaluationCycle,
 } from '@/server/actions/ga4ContentEvaluationCycle.actions';
-import { getGa4MissingMetricLabel } from '@/lib/ga4-evaluation-display';
 import { resolveCardHistoryItem } from './components/content-evaluation/latest-history';
 import type { Ga4ContentEvaluationCycleView } from '@/types/ga4-evaluation-cycle';
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
@@ -91,32 +90,6 @@ export function ContentEvaluationCycleSettings({
           : latestEvaluation
             ? '再評価'
             : '評価を実行';
-
-  // !hasBaseline（初回計測未完了）のときの案内文。ボタンが出ない状態（canShowRunActionがfalse）
-  // でも無条件に「上の「今すぐ評価を実行」からお試しください」と案内していた過去の実装は、
-  // 実際には出ていないボタンを指す矛盾になっていた（2026-08-25 ユーザー報告で発覚）。
-  // displayStatus に応じて、押しても意味のない案内をしないよう分岐する。
-  const baselinePendingReason = (() => {
-    if (displayStatus === 'evaluating') {
-      return '現在評価を実行中です。完了後に再読み込みしてください。';
-    }
-    if (canShowRunAction) {
-      return 'すぐに反映したい場合は、上の「今すぐ評価を実行」からお試しください。';
-    }
-    if (displayStatus === 'low_data') {
-      return 'セッション数が30に達すると評価できるようになります。';
-    }
-    if (displayStatus === 'import_failed') {
-      return 'GA4データの取得に失敗しています。記事詳細の「コンテンツ評価」タブから確認してください。';
-    }
-    if (displayStatus === 'insufficient_data') {
-      return 'GA4データの取り込みが古いため、最新の同期が反映されるまでお待ちください。';
-    }
-    const missing = evaluation?.missingMetrics ?? [];
-    return missing.length > 0
-      ? `必要なデータ（${missing.map(getGa4MissingMetricLabel).join('・')}）が揃うまでお待ちください。`
-      : '必要なデータが揃うまでお待ちください。';
-  })();
 
   const handleRunEvaluation = async () => {
     if (!canRunEvaluation || isRunning) return;
@@ -445,11 +418,6 @@ export function ContentEvaluationCycleSettings({
               </>
             )}
           </div>
-          {!hasBaseline && (
-            <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 ring-1 ring-amber-200">
-              初回の計測がまだ完了していません。次回の定期評価（上記の「初回計測予定」）で再試行されます。{baselinePendingReason}
-            </p>
-          )}
           {cycle.lastNotificationStatus === 'failed' && (
             <p className="text-xs text-red-700 bg-red-50 rounded-md px-3 py-2 ring-1 ring-red-200">
               前回の通知メールを送信できませんでした。
