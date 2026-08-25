@@ -39,7 +39,6 @@ const GA4_MISSING_METRIC_LABELS: Record<string, string> = {
 };
 
 const GA4_ERROR_LABELS: Record<string, string> = {
-  ga4_data_stale: 'GA4データの取り込みが古いため、評価を実行できませんでした',
   evaluation_run_expired: '評価の実行が時間内に完了しませんでした。もう一度お試しください',
   ga4_api_error: '訪問データの取得に失敗しました',
   llm_rate_limited: '診断コメントの生成回数が上限に達しました',
@@ -89,9 +88,6 @@ export function getGa4DataQualityLabel(value: unknown): string {
     ? value.reasons.filter((item): item is string => typeof item === 'string')
     : [];
   const onlyLegacyGscReason = reasons.length > 0 && reasons.every(reason => reason === 'gsc_summary_missing');
-  if (isRecord(value.freshness) && value.freshness.periodEndWithin48HoursOfGa4Fetch === false) {
-    return 'データが古いため評価対象外';
-  }
   return value.partial === true && !onlyLegacyGscReason ? '一部取得' : '必要なデータを取得済み';
 }
 

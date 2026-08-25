@@ -32,7 +32,6 @@ const GA4_EVALUATION_DISPLAY_STATUSES = [
 export type Ga4EvaluationDisplayStatus = (typeof GA4_EVALUATION_DISPLAY_STATUSES)[number];
 
 export type Ga4EvaluationErrorCode =
-  | 'ga4_data_stale'
   | 'evaluation_run_expired'
   | 'ga4_api_error'
   | 'llm_rate_limited'
@@ -160,9 +159,6 @@ export interface Ga4EvaluationContext {
   fetchedAt: {
     ga4: string | null;
     gsc: string | null;
-  };
-  freshness: {
-    periodEndWithin48HoursOfGa4Fetch: boolean | null;
   };
   ga4: {
     summary: Ga4EvaluationMetricSnapshot | null;

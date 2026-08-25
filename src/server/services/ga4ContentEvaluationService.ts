@@ -360,7 +360,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
       readRate: null, engageRate: null, scrollRate: null, readScore: null, engageScore: null, contentScore: null,
       diagnosisCode: null, siteRank: null, totalArticles: null, sessions: null, charCount: null, imageCount: null,
       expectedReadSeconds: null, avgEngagementSeconds: null, narrativeJson: null,
-      dataQualityJson: { freshness: { periodEndWithin48HoursOfGa4Fetch: null } },
+      dataQualityJson: {},
       periodStart: input.startDate, periodEnd: input.endDate, canonicalUrl: null, title: null, ga4PropertyId: null,
       ga4DataFetchedAt: null, inputFingerprint: null, promptTemplateId: null, promptVersionId: null, promptVersion: null,
       promptCapturedAt: null, promptContentSha256: null,
@@ -422,24 +422,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
       values = { ...values, inputFingerprint: createInputFingerprint(context) };
       const sessions = summary?.sessions ?? 0;
       const expectedReadSeconds = calculateExpectedReadSeconds(context.article.charCount, context.article.imageCount);
-      if (context.freshness.periodEndWithin48HoursOfGa4Fetch === false) {
-        values = {
-          ...values,
-          status: 'insufficient_data',
-          errorCode: 'ga4_data_stale',
-          errorMessage: 'ga4_data_stale',
-          charCount: context.article.charCount,
-          imageCount: context.article.imageCount,
-          expectedReadSeconds,
-          dataQualityJson: toJson({
-            ...context.dataQuality,
-            freshness: context.freshness,
-            reasons: [...context.dataQuality.reasons, 'ga4_data_stale'],
-          }),
-        };
-        await this.finishRun(input, runId, values);
-        return this.fetchEvaluation(input.userId, input.annotationId);
-      }
       const activeEngagementTime = dailyMetrics.filter(row => row.activeUsers !== null).reduce((total, row) => total + row.engagementTimeSec, 0);
       const avgEngagementSeconds = calculateAverageEngagementSeconds(activeEngagementTime, summary?.activeUsers ?? null);
       const readRate = calculateReadRate(avgEngagementSeconds, expectedReadSeconds);
@@ -462,7 +444,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
         sessions, charCount: context.article.charCount, imageCount: context.article.imageCount,
         expectedReadSeconds,
         avgEngagementSeconds,
-        dataQualityJson: toJson({ ...context.dataQuality, freshness: context.freshness, scrollUsers }),
+        dataQualityJson: toJson({ ...context.dataQuality, scrollUsers }),
       };
       if (score.status === 'evaluated') {
         const ranking = await this.calculateRank(input.userId, input.annotationId, {

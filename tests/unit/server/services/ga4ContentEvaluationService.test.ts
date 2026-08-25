@@ -330,7 +330,8 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     });
   });
 
-  it('評価対象期間の終端から48時間を超えたデータはスコア・LLMを実行せず insufficient_data にする', async () => {
+  it('評価対象期間の終端からGA4取込までの間隔が長くても評価をブロックしない（データ鮮度チェック撤去の回帰）', async () => {
+    mocks.getTemplateByName.mockResolvedValue(null);
     mocks.credential = {
       ga4PropertyId: 'property-1',
       ga4LastSyncedAt: '2026-08-14T00:00:00.000Z',
@@ -343,20 +344,18 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     };
     vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
     vi.spyOn(ga4ContentEvaluationService, 'fetchEvaluation').mockResolvedValue(EVALUATION_VIEW);
-    configureRunClient({ importedAt: '2026-08-14T00:00:00.000Z' });
+    // 対象期間の終端（RUN_INPUT.endDate: 2026-08-10）から4日後の取込＝旧48時間鮮度チェックなら insufficient_data で打ち切っていたケース
+    configureRunClient({ includeRanking: true, importedAt: '2026-08-14T00:00:00.000Z' });
 
     await expect(ga4ContentEvaluationService.run(RUN_INPUT)).resolves.toEqual(EVALUATION_VIEW);
 
     const finishCall = mocks.client.rpc.mock.calls.find(([name]) => name === 'finish_ga4_content_evaluation');
     expect(finishCall?.[1]).toMatchObject({
-      p_status: 'insufficient_data',
-      p_error_code: 'ga4_data_stale',
-      p_data_quality_json: expect.objectContaining({
-        reasons: expect.arrayContaining(['ga4_data_stale']),
-      }),
+      p_status: 'narrative_failed',
+      p_content_score: expect.any(Number),
     });
-    expect(finishCall?.[1]?.p_content_score ?? null).toBeNull();
-    expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
+    expect(finishCall?.[1]?.p_status).not.toBe('insufficient_data');
+    expect(finishCall?.[1]?.p_error_code).not.toBe('ga4_data_stale');
   });
 
   it('narrative失敗時はスコアを保持して narrative_failed を保存する', async () => {
@@ -393,9 +392,6 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
       p_prompt_captured_at: expect.any(String),
       p_prompt_content_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       p_input_fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
-      p_data_quality_json: expect.objectContaining({
-        freshness: expect.objectContaining({ periodEndWithin48HoursOfGa4Fetch: true }),
-      }),
     });
     expect(mocks.client.rpc.mock.calls.filter(([name]) => name === 'update_ga4_content_evaluation_attempt')).toHaveLength(1);
   });

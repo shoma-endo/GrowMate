@@ -13,7 +13,6 @@ import { countContentChars } from '@/lib/content-text';
 import { extractHeadingsFromMarkdown } from '@/lib/heading-extractor';
 
 const MAX_DAILY_METRICS = 90;
-const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
 export interface BuildGa4EvaluationContextInput {
   annotation: AnnotationRecord;
@@ -65,19 +64,6 @@ function toDailyMetric(metric: Ga4DailyMetricInput & { date: string }): Ga4Evalu
     cvEventCount: metric.cvEventCount,
     scroll90EventCount: metric.scroll90EventCount,
   };
-}
-
-function isFreshWithin48Hours(periodEnd: string, fetchedAt: string | null): boolean | null {
-  if (!fetchedAt) {
-    return null;
-  }
-  const periodEndTime = Date.parse(`${periodEnd}T00:00:00.000Z`);
-  const fetchedTime = Date.parse(fetchedAt);
-  if (!Number.isFinite(periodEndTime) || !Number.isFinite(fetchedTime)) {
-    throw new Error('GA4評価Contextの日時が不正です');
-  }
-  const age = fetchedTime - periodEndTime;
-  return age >= 0 && age <= FORTY_EIGHT_HOURS_MS;
 }
 
 export function buildGa4EvaluationContext(
@@ -134,9 +120,6 @@ export function buildGa4EvaluationContext(
     },
     period: { startDate: input.startDate, endDate: input.endDate },
     fetchedAt: { ga4: input.ga4FetchedAt, gsc: input.gscFetchedAt },
-    freshness: {
-      periodEndWithin48HoursOfGa4Fetch: isFreshWithin48Hours(input.endDate, input.ga4FetchedAt),
-    },
     ga4: {
       summary: input.ga4Summary ? toMetricSnapshot(input.ga4Summary) : null,
       daily,

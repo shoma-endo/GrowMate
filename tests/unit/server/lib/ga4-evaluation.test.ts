@@ -175,7 +175,6 @@ describe('@/server/lib/ga4-evaluation-context', () => {
       expect(context.ga4.summary).not.toHaveProperty('ctr');
       expect(context.dataQuality.missingMetrics).toContain('bounce_rate');
       expect(context.dataQuality.missingMetrics).not.toContain('gsc');
-      expect(context.freshness.periodEndWithin48HoursOfGa4Fetch).toBe(true);
     });
 
     it('本文全文をLLMへ渡さず、正規化後の文字数と見出しを保持する', () => {
@@ -223,7 +222,6 @@ describe('@/server/lib/ga4-content-evaluation-prompt', () => {
     },
     period: { startDate: '2026-08-01', endDate: '2026-08-08' },
     fetchedAt: { ga4: '2026-08-09T00:00:00Z', gsc: null },
-    freshness: { periodEndWithin48HoursOfGa4Fetch: true },
     ga4: { summary: null, daily: [] },
     gsc: { summary: null },
     dataQuality: { missingMetrics: [], partial: false, reasons: [] },
