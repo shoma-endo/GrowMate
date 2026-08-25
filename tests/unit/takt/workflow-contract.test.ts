@@ -95,11 +95,17 @@ function taktAvailable(): boolean {
 }
 
 // doctor 0.58.0 は loop_monitor judge 経由の到達辺を実行順を無視して評価する。
-// spec-to-pr の prepare_pr_summary への全辺（self_review の pass / self_review サイクル監視 judge）は
-// self-review.md 生成後にしか通らないため、この WARN は誤検知としてベースライン化する。
+// また follow-up 用に reviewers / self_review_fix が「前回レポート」を参照すると、
+// 初回到達では未生成でも WARN になる（runtime は欠落文に置換）。意図的な参照なのでベースライン化する。
 // ここに無い WARN が新たに出たらテストが落ちる（黙殺しない）。
 const KNOWN_DOCTOR_WARNINGS: Record<string, RegExp[]> = {
-  'spec-to-pr.yaml': [/prepare_pr_summary.*\{report:self-review\.md\}/],
+  'spec-to-pr.yaml': [
+    /prepare_pr_summary.*\{report:self-review\.md\}/,
+    /step "reviewers" references \{report:fix-result\.md\}/,
+    /step "reviewers" references \{report:ai-antipattern-review\.md\}/,
+    /step "reviewers" references \{report:architecture-review\.md\}/,
+    /step "self_review_fix" references \{report:fix-result\.md\}/,
+  ],
 };
 
 describe.skipIf(!taktAvailable())('takt workflow doctor', () => {
