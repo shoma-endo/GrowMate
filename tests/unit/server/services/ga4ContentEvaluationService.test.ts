@@ -350,7 +350,7 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     const finishCall = mocks.client.rpc.mock.calls.find(([name]) => name === 'finish_ga4_content_evaluation');
     expect(finishCall?.[1]).toMatchObject({
       p_status: 'insufficient_data',
-      p_error_code: 'evaluation_stale',
+      p_error_code: 'ga4_data_stale',
       p_data_quality_json: expect.objectContaining({
         reasons: expect.arrayContaining(['ga4_data_stale']),
       }),

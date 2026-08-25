@@ -54,7 +54,7 @@ export function SummaryCards({ summary, isLoading }: Props) {
       color: 'rose',
     },
     {
-      label: '平均読了率',
+      label: '平均完読率',
       value: formatPercent(summary.avgReadRate),
       color: 'cyan',
     },

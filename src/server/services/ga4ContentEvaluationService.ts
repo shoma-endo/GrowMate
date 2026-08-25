@@ -109,8 +109,6 @@ function toSafeErrorCode(error: unknown): string {
     const code = (error as Record<string, unknown>).code;
     if (typeof code === 'string' && /^[a-z0-9_]+$/.test(code)) return code.slice(0, 80);
   }
-  const message = error instanceof Error ? error.message.toLowerCase() : '';
-  if (message.includes('already running')) return 'evaluation_already_running';
   return 'evaluation_failed';
 }
 
@@ -428,8 +426,8 @@ class Ga4ContentEvaluationService extends SupabaseService {
         values = {
           ...values,
           status: 'insufficient_data',
-          errorCode: 'evaluation_stale',
-          errorMessage: 'evaluation_stale',
+          errorCode: 'ga4_data_stale',
+          errorMessage: 'ga4_data_stale',
           charCount: context.article.charCount,
           imageCount: context.article.imageCount,
           expectedReadSeconds,

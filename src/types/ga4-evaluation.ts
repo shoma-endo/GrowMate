@@ -32,9 +32,9 @@ const GA4_EVALUATION_DISPLAY_STATUSES = [
 export type Ga4EvaluationDisplayStatus = (typeof GA4_EVALUATION_DISPLAY_STATUSES)[number];
 
 export type Ga4EvaluationErrorCode =
-  | 'evaluation_stale'
+  | 'ga4_data_stale'
+  | 'evaluation_run_expired'
   | 'ga4_api_error'
-  | 'gsc_api_error'
   | 'llm_rate_limited'
   | 'llm_server_error'
   | 'llm_timeout'

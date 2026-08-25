@@ -61,7 +61,7 @@ export function RankingTab({
         <div>ページ</div>
         <div className="text-right">訪問数</div>
         <div className="text-right">問い合わせ率</div>
-        <div className="text-right">読了率</div>
+        <div className="text-right">完読率</div>
         <div className="text-right">滞在時間</div>
         <div className="text-center">品質</div>
       </div>
@@ -124,7 +124,7 @@ export function RankingTab({
                 </div>
               </div>
 
-              {/* 読了率 */}
+              {/* 完読率 */}
               <div className="hidden md:block text-right">
                 <div className="text-gray-700">{formatPercent(item.readRate)}</div>
               </div>

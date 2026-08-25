@@ -39,14 +39,13 @@ const GA4_MISSING_METRIC_LABELS: Record<string, string> = {
 };
 
 const GA4_ERROR_LABELS: Record<string, string> = {
-  evaluation_stale: '評価結果が古いため、再評価が必要です',
+  ga4_data_stale: 'GA4データの取り込みが古いため、評価を実行できませんでした',
+  evaluation_run_expired: '評価の実行が時間内に完了しませんでした。もう一度お試しください',
   ga4_api_error: '訪問データの取得に失敗しました',
-  gsc_api_error: '検索データの取得に失敗しました',
   llm_rate_limited: '診断コメントの生成回数が上限に達しました',
   llm_server_error: '診断コメントの生成に失敗しました',
   llm_timeout: '診断コメントの生成が時間内に完了しませんでした',
   llm_output_invalid: '診断コメントの形式を確認できませんでした',
-  evaluation_already_running: '評価中...',
   insufficient_data: '評価に必要なデータが不足しています',
   evaluation_failed: '評価に失敗しました',
   unknown: '評価に失敗しました',

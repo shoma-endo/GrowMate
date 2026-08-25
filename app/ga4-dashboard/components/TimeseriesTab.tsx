@@ -96,7 +96,7 @@ export function TimeseriesTab({
           <div className="text-gray-600">問い合わせ率:</div>
           <div className="text-right font-medium">{formatPercent(data.cvr)}</div>
 
-          <div className="text-gray-600">読了率:</div>
+          <div className="text-gray-600">完読率:</div>
           <div className="text-right font-medium">{formatPercent(data.readRate)}</div>
         </div>
 
@@ -150,7 +150,7 @@ export function TimeseriesTab({
           onClick={() => onToggleMetric('readRate')}
           className="text-xs"
         >
-          読了率
+          完読率
         </Button>
 
         <Button
@@ -239,7 +239,7 @@ export function TimeseriesTab({
                 connectNulls={false}
               />
 
-              {/* 読了率（切替） */}
+              {/* 完読率（切替） */}
               {visibleMetrics.readRate && (
                 <Line
                   yAxisId="percent"
@@ -248,7 +248,7 @@ export function TimeseriesTab({
                   stroke="#0891b2"
                   strokeWidth={2}
                   dot={false}
-                  name="読了率(%)"
+                  name="完読率(%)"
                   connectNulls={false}
                 />
               )}

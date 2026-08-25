@@ -269,7 +269,7 @@ export const ANALYTICS_COLUMNS = [
   { id: 'kw', label: 'kw（参考）' },
   { id: 'impressions', label: '表示回数' },
   { id: 'ga4_avg_engagement_time', label: '滞在時間(平均)' },
-  { id: 'ga4_read_rate', label: '読了率' },
+  { id: 'ga4_read_rate', label: '完読率' },
   { id: 'ga4_engagement_rate', label: 'エンゲージメント率' },
   { id: 'ga4_evaluation_status', label: 'コンテンツ評価状態' },
   { id: 'ga4_content_score', label: 'コンテンツ力スコア' },

@@ -242,7 +242,7 @@ export default function AnalyticsClient({
           </button>
         </div>
         <p className="mb-4 text-xs text-gray-500">
-          指定期間でGA4 指標（平均エンゲージメント時間・読了率・エンゲージメント率・キーイベント数・キーイベント率）を集計して表示します。
+          指定期間でGA4 指標（平均エンゲージメント時間・完読率・エンゲージメント率・キーイベント数・キーイベント率）を集計して表示します。
         </p>
         {!error ? (
           <AnalyticsTable
