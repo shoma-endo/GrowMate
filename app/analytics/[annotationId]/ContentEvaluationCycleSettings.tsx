@@ -190,11 +190,16 @@ export function ContentEvaluationCycleSettings({
     }
   };
 
-  const previewInitialMeasurementDate = dateStr;
-  const previewInitialEvaluationDate = dateStr ? addDaysISO(dateStr, cycleDays) : '';
   // last_seen_content_score は GSC の last_seen_position 相当（§7.7）。バッチは毎回の評価成功時に
   // これを更新するため、登録時のベースライン取得が失敗しても以後の定期評価が成功すれば解消する。
   const hasBaseline = cycle?.lastSeenContentScore != null;
+  // DBの生成列 next_evaluation_date と同じ式（COALESCE(last_evaluated_on, base_evaluation_date) +
+  // cycle_days）をフォームの編集中の値に適用したプレビュー。変更ダイアログでは、既に評価が
+  // 何度か回っているサイクルの last_evaluated_on を優先しないと、フォームの基準日（登録時の古い日付）
+  // だけで計算した実態と無関係な日付を表示してしまう（2026-08-25 ユーザー指摘で発覚）。
+  const previewNextEvaluationDate = dateStr
+    ? addDaysISO(cycle?.lastEvaluatedOn ?? dateStr, cycleDays)
+    : '';
 
   if (cycleLoading) {
     return (
@@ -323,19 +328,15 @@ export function ContentEvaluationCycleSettings({
                     <Info className="h-5 w-5 text-blue-600 mt-0.5" />
                     <div className="flex-1">
                       <p className="font-medium text-blue-900">評価スケジュールのプレビュー</p>
-                      <div className="mt-3 grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
+                      <div className="mt-3 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                         <div>
                           <p className="text-blue-600 text-xs mb-1">基準日</p>
                           <p className="font-semibold text-blue-900">{formatDateJP(dateStr)}</p>
                         </div>
                         <div>
-                          <p className="text-blue-600 text-xs mb-1">初回計測日</p>
-                          <p className="font-semibold text-blue-900">{formatDateJP(previewInitialMeasurementDate)}</p>
-                        </div>
-                        <div>
-                          <p className="text-blue-600 text-xs mb-1">初回評価日</p>
+                          <p className="text-blue-600 text-xs mb-1">{hasBaseline ? '次回評価予定' : '初回評価予定'}</p>
                           <p className="font-semibold text-blue-900">
-                            {formatDateJP(previewInitialEvaluationDate)}{' '}
+                            {formatDateJP(previewNextEvaluationDate)}{' '}
                             {evaluationHour.toString().padStart(2, '0')}:00 (日本時間)
                           </p>
                         </div>
