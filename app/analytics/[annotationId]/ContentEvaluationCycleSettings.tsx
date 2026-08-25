@@ -340,13 +340,14 @@ export function ContentEvaluationCycleSettings({
               </div>
             ) : (
               <>
-                {/* 「初回計測日」はダイアログのプレビュー（登録操作＝即日に計測する約束）で使う語のため、
-                    ここでは使わない。ここは登録後の初回計測が失敗した再試行待ちの状態（レアケース）
-                    なので「初回計測の再試行予定」と明示する。「ベースライン」という専門用語は
-                    GrowMate の他画面で説明なしに使っておらず、初心者ユーザーに伝わらないため、
-                    GSC と同じ「初回計測」の語を土台に「再試行」を付けて区別する（ユーザー指摘で変更）。 */}
+                {/* cycle.nextEvaluationDate（基準日 + 1サイクル）は、GSCと違い「計測のみ・通知なし」の
+                    特別扱いを受けない（GA4のバッチはhasBaseline状態に関わらず常に通常のrun()を呼び、
+                    成功すれば必ず通知メールを送る）。したがってこの日付は実質「初回の本評価が
+                    行われる日」そのものであり、ダイアログのプレビュー「初回評価日」と同じ値・同じ
+                    意味を指す。「初回計測の再試行予定」は実態と異なる誤解を招く表現だったため
+                    「初回評価予定」に修正した（ユーザー指摘）。 */}
                 <div className="rounded-lg border border-cyan-200 bg-cyan-50 shadow-sm p-4">
-                  <div className="text-sm text-cyan-600 mb-1">初回計測の再試行予定</div>
+                  <div className="text-sm text-cyan-600 mb-1">初回評価予定</div>
                   <div className="text-2xl font-bold text-cyan-900">
                     {formatDateJP(initialMeasurementDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
                     (日本時間)
@@ -364,7 +365,7 @@ export function ContentEvaluationCycleSettings({
           </div>
           {!hasBaseline && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 ring-1 ring-amber-200">
-              初回の計測がまだ完了していません。次回の定期評価（上記の「初回計測の再試行予定」）で再試行されます。すぐに反映したい場合は、記事詳細の「コンテンツ評価」タブから今すぐ評価を実行してください。
+              初回の計測がまだ完了していません。次回の定期評価（上記の「初回評価予定」）で再試行されます。すぐに反映したい場合は、記事詳細の「コンテンツ評価」タブから今すぐ評価を実行してください。
             </p>
           )}
           {cycle.lastNotificationStatus === 'failed' && (

@@ -175,9 +175,10 @@ export function ContentEvaluationCard({
         {cycle && (
           <p className="text-xs text-muted-foreground">
             {/* 概要タブの状態カード（ContentEvaluationCycleSettings.tsx）とラベルの表記を揃える。
-                初回計測完了時は状態カードと同じ「次回評価予定」、未完了時は
-                「初回計測の再試行予定」（初回試行が失敗し再試行待ちの意）を使う */}
-            {cycle.lastSeenContentScore != null ? '次回評価予定' : '初回計測の再試行予定'}：
+                初回計測完了時は「次回評価予定」、未完了時は「初回評価予定」
+                （この日付は登録時のベースラインが失敗していても常に通常評価として実行され、
+                成功すれば通知メールも送られるため、実質「初回の本評価が行われる日」を指す） */}
+            {cycle.lastSeenContentScore != null ? '次回評価予定' : '初回評価予定'}：
             {formatDateJP(cycle.nextEvaluationDate)}{' '}
             {cycle.evaluationHour.toString().padStart(2, '0')}:00（日本時間）。設定は概要タブから変更できます。
           </p>
