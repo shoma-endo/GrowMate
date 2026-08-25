@@ -204,7 +204,7 @@ export function ContentEvaluationCycleSettings({
                 <Info className="h-4 w-4 mt-[1px] flex-shrink-0" />
                 <span>
                   評価対象期間は直近90日で固定です。評価サイクルは、次に評価するまでの間隔です。
-                  {!isUpdateMode && '開始すると同時に、初回のベースライン評価を実行します。'}
+                  {!isUpdateMode && '開始すると同時に、初回の計測を行います。'}
                 </span>
               </div>
 
@@ -340,11 +340,13 @@ export function ContentEvaluationCycleSettings({
               </div>
             ) : (
               <>
-                {/* 「初回計測日」はダイアログのプレビュー（登録操作＝即日にベースラインを取得する約束）
-                    で使う語のため、ここでは使わない。ここは登録後にベースライン取得が失敗した
-                    再試行待ちの状態（レアケース）なので「ベースライン再試行予定」と明示する（再レビュー指摘）。 */}
+                {/* 「初回計測日」はダイアログのプレビュー（登録操作＝即日に計測する約束）で使う語のため、
+                    ここでは使わない。ここは登録後の初回計測が失敗した再試行待ちの状態（レアケース）
+                    なので「初回計測の再試行予定」と明示する。「ベースライン」という専門用語は
+                    GrowMate の他画面で説明なしに使っておらず、初心者ユーザーに伝わらないため、
+                    GSC と同じ「初回計測」の語を土台に「再試行」を付けて区別する（ユーザー指摘で変更）。 */}
                 <div className="rounded-lg border border-cyan-200 bg-cyan-50 shadow-sm p-4">
-                  <div className="text-sm text-cyan-600 mb-1">ベースライン再試行予定</div>
+                  <div className="text-sm text-cyan-600 mb-1">初回計測の再試行予定</div>
                   <div className="text-2xl font-bold text-cyan-900">
                     {formatDateJP(initialMeasurementDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
                     (日本時間)
@@ -362,7 +364,7 @@ export function ContentEvaluationCycleSettings({
           </div>
           {!hasBaseline && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 ring-1 ring-amber-200">
-              初回のベースライン評価がまだ完了していません。次回の定期評価（上記のベースライン再試行予定）で再試行されます。すぐに反映したい場合は、記事詳細の「コンテンツ評価」タブから今すぐ評価を実行してください。
+              初回の計測がまだ完了していません。次回の定期評価（上記の「初回計測の再試行予定」）で再試行されます。すぐに反映したい場合は、記事詳細の「コンテンツ評価」タブから今すぐ評価を実行してください。
             </p>
           )}
           {cycle.lastNotificationStatus === 'failed' && (

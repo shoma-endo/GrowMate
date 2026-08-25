@@ -175,9 +175,9 @@ export function ContentEvaluationCard({
         {cycle && (
           <p className="text-xs text-muted-foreground">
             {/* 概要タブの状態カード（ContentEvaluationCycleSettings.tsx）とラベルの表記を揃える。
-                ベースライン完了時は状態カードと同じ「次回評価予定」、未完了時は
-                「ベースライン再試行予定」（初回試行が失敗し再試行待ちの意）を使う */}
-            {cycle.lastSeenContentScore != null ? '次回評価予定' : 'ベースライン再試行予定'}：
+                初回計測完了時は状態カードと同じ「次回評価予定」、未完了時は
+                「初回計測の再試行予定」（初回試行が失敗し再試行待ちの意）を使う */}
+            {cycle.lastSeenContentScore != null ? '次回評価予定' : '初回計測の再試行予定'}：
             {formatDateJP(cycle.nextEvaluationDate)}{' '}
             {cycle.evaluationHour.toString().padStart(2, '0')}:00（日本時間）。設定は概要タブから変更できます。
           </p>
