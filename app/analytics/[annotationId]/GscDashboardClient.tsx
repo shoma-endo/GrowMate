@@ -184,7 +184,6 @@ export default function GscDashboardClient({
             onRefreshDetail={async (annotationId: string) => {
               await dashboard.refreshDetail(annotationId);
             }}
-            ga4NeedsReauth={ga4Evaluation?.needsReauth ?? false}
           />
         </TabsContent>
 

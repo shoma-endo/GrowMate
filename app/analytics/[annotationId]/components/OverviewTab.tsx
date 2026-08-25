@@ -69,8 +69,6 @@ interface OverviewTabProps {
     | undefined
   >;
   onRefreshDetail?: (annotationId: string) => Promise<void>;
-  /** GA4連携の再認証が必要か（コンテンツ評価サイクル設定の状態カードへ渡す。§10.8） */
-  ga4NeedsReauth?: boolean;
 }
 
 export function OverviewTab({
@@ -85,7 +83,6 @@ export function OverviewTab({
   onRunEvaluation,
   onRunQueryImport,
   onRefreshDetail,
-  ga4NeedsReauth = false,
 }: OverviewTabProps) {
   const [isQueryImporting, setIsQueryImporting] = useState(false);
   const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
@@ -223,7 +220,7 @@ export function OverviewTab({
               onRunEvaluation={onRunEvaluation}
             />
           )}
-          <ContentEvaluationCycleSettings annotationId={detail.annotation.id} needsReauth={ga4NeedsReauth} />
+          <ContentEvaluationCycleSettings annotationId={detail.annotation.id} />
         </div>
       </CardContent>
     </Card>

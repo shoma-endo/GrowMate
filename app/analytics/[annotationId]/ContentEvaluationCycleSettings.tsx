@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { Loader2, Info, Calendar as CalendarIcon, Settings, Save, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,8 +37,6 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
 
 interface ContentEvaluationCycleSettingsProps {
   annotationId: string;
-  /** GA4連携の再認証が必要か（GscDashboardClient の ga4Evaluation.needsReauth をそのまま渡す。§10.8） */
-  needsReauth?: boolean;
 }
 
 const formatDateJP = (dateStr: string | undefined | null) => {
@@ -56,7 +53,6 @@ const formatDateJP = (dateStr: string | undefined | null) => {
 
 export function ContentEvaluationCycleSettings({
   annotationId,
-  needsReauth = false,
 }: ContentEvaluationCycleSettingsProps) {
   const [cycle, setCycle] = useState<Ga4ContentEvaluationCycleView | null>(null);
   const [cycleLoading, setCycleLoading] = useState(true);
@@ -315,16 +311,6 @@ export function ContentEvaluationCycleSettings({
 
       {cycle ? (
         <div className="space-y-2">
-          {needsReauth && (
-            <div className="flex flex-wrap items-center gap-3 rounded-md bg-red-50 px-3 py-2 ring-1 ring-red-200">
-              <p className="text-xs text-red-700">
-                Google連携を確認してください。サイクルはそのまま残り、再連携すれば次回から自動的に動きます。
-              </p>
-              <Button asChild type="button" size="sm">
-                <Link href="/setup/ga4">Googleを再連携</Link>
-              </Button>
-            </div>
-          )}
           <div className={`grid grid-cols-1 gap-4 mt-4 ${hasBaseline ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
             <div className="rounded-lg border border-blue-200 bg-blue-50 shadow-sm p-4">
               <div className="text-sm text-blue-600 mb-1">現在の基準日</div>
