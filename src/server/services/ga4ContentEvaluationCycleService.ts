@@ -77,6 +77,9 @@ interface Ga4ContentEvaluateBatchResult {
   usersAttempted: number;
   usersProcessed: number;
   articlesEvaluated: number;
+  /** articlesEvaluated の内数。軽量パス（baseline_initialized）で成立した件数（GSCのbaselineInitializedと同じ役割）。
+   *  history行を作らず通知も送らないため、§3.2の成立率KPI（history集計との突合）で全数評価と区別する目的の観測用カウンタ */
+  articlesBaselineInitialized: number;
   articlesFailed: number;
   articlesSkippedCooldown: number;
   articlesSkippedSyncFailed: number;
@@ -213,6 +216,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
       usersAttempted: 0,
       usersProcessed: 0,
       articlesEvaluated: 0,
+      articlesBaselineInitialized: 0,
       articlesFailed: 0,
       articlesSkippedCooldown,
       articlesSkippedSyncFailed: 0,
@@ -337,7 +341,14 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
         if (articleResult.outcome === 'unknown_error' || articleResult.outcome === 'evaluating') {
           result.articlesFailed += 1;
         } else {
+          // articlesEvaluated はライブロック回避の進捗判定（noProgressYet/stillNoProgress）にも使う
+          // ため、baseline_initialized（軽量パス成功）もここに含める（実際に進捗した実行のため）。
+          // 内訳の可観測性はarticlesBaselineInitializedを別途加算して確保する（レビュー指摘。
+          // GSCのbaselineInitializedと同じ役割の観測用カウンタ。§8.3可観測性）。
           result.articlesEvaluated += 1;
+          if (articleResult.outcome === 'baseline_initialized') {
+            result.articlesBaselineInitialized += 1;
+          }
         }
 
         // §6.6.4「取込失敗の扱い」: 当日中のsyncFailedはクールダウンを進めない。

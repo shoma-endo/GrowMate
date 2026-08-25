@@ -185,6 +185,9 @@ describe('ga4ContentEvaluationCycleService.runAllDueEvaluations', () => {
     expect(mocks.run).not.toHaveBeenCalled();
     expect(mocks.computeBaselineScore).toHaveBeenCalledTimes(1);
     expect(result.articlesEvaluated).toBe(1);
+    // articlesEvaluated の内数として、軽量パス成立件数を別カウンタでも観測できる
+    // （レビュー指摘。GSCのbaselineInitializedと同じ役割。§8.3可観測性）
+    expect(result.articlesBaselineInitialized).toBe(1);
     expect(result.articlesFailed).toBe(0);
     // 軽量パスは履歴行・メールを生成しない結末（baseline_initialized）なので送信されない
     expect(mocks.sendEmail).not.toHaveBeenCalled();
@@ -218,6 +221,8 @@ describe('ga4ContentEvaluationCycleService.runAllDueEvaluations', () => {
     const result = await ga4ContentEvaluationCycleService.runAllDueEvaluations();
 
     expect(result.articlesEvaluated).toBe(1);
+    // low_data はbaseline_initializedではないため観測用カウンタは増えない
+    expect(result.articlesBaselineInitialized).toBe(0);
     expect(result.articlesFailed).toBe(0);
     const cooldownUpdate = mocks.updateCalls.find(payload => 'last_evaluated_on' in payload);
     // contentScore が undefined のときは last_seen_content_score をペイロードに含めない
@@ -241,10 +246,11 @@ describe('ga4ContentEvaluationCycleService.runAllDueEvaluations', () => {
     mockRpcRange({ data: [firstRow], error: null, count: 1 });
     mocks.computeBaselineScore.mockResolvedValue({ status: 'scored', contentScore: 45 });
 
-    await ga4ContentEvaluationCycleService.runAllDueEvaluations();
+    const firstResult = await ga4ContentEvaluationCycleService.runAllDueEvaluations();
 
     expect(mocks.computeBaselineScore).toHaveBeenCalledTimes(1);
     expect(mocks.run).not.toHaveBeenCalled();
+    expect(firstResult.articlesBaselineInitialized).toBe(1);
 
     // 2回目: 1回目のbaseline成功で last_seen_content_score が埋まった状態（次回due）→ フルパス
     vi.clearAllMocks();
@@ -259,6 +265,8 @@ describe('ga4ContentEvaluationCycleService.runAllDueEvaluations', () => {
     expect(mocks.run).toHaveBeenCalledTimes(1);
     expect(mocks.computeBaselineScore).not.toHaveBeenCalled();
     expect(result.articlesEvaluated).toBe(1);
+    // フルパスはbaseline_initializedではないため観測用カウンタは増えない
+    expect(result.articlesBaselineInitialized).toBe(0);
   });
 
   it('通知メールの「次回評価予定」は advanceCooldown 後の日付（todayJst + cycle_days）で組み立てられ、処理済みのdue日（過去日）を再掲しない（高重要度指摘の回帰防止）', async () => {
