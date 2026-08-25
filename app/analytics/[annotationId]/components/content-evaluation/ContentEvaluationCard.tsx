@@ -176,7 +176,7 @@ export function ContentEvaluationCard({
               const evaluating = evaluation?.history.find(item => item.status === 'evaluating');
               return evaluating && evaluating.attemptCount > 1
                 ? `再試行中（${Math.min(evaluating.attemptCount, 3)}/3）`
-                : '評価中です。完了まで最大3分かかる場合があります。完了後に再読み込みしてください。';
+                : '評価中です。完了後に再読み込みしてください。';
             })()}
           </p>
         )}

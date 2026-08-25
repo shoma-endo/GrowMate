@@ -100,7 +100,7 @@ export function ContentEvaluationCycleSettings({
   // displayStatus に応じて、押しても意味のない案内をしないよう分岐する。
   const baselinePendingReason = (() => {
     if (displayStatus === 'evaluating') {
-      return '現在評価を実行中です。完了までしばらくお待ちください。';
+      return '現在評価を実行中です。完了後に再読み込みしてください。';
     }
     if (canShowRunAction) {
       return 'すぐに反映したい場合は、上の「今すぐ評価を実行」からお試しください。';
