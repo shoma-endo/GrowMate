@@ -149,7 +149,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
 
     // D10: 登録時にベースラインを取得する。通常の評価実行(run())をそのまま呼び、
     // 履歴行も通常どおり作成する(§6.6.2 実装時訂正)。失敗しても登録自体は成立させる
-    // (GA4未同期・needs_reauth等は外部要因であり、記事詳細から後で手動評価できる)。
+    // (GA4未同期等は外部要因であり、記事詳細から後で手動評価できる)。
     let baselineScore: number | null = null;
     try {
       const { startDate, endDate } = getGa4EvaluationDateRange();

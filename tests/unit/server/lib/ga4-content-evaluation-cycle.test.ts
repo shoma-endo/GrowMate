@@ -160,16 +160,6 @@ describe('@/server/lib/ga4-content-evaluation-batch-outcome', () => {
   });
 
   describe('classifyGa4BatchRunError', () => {
-    it('code:needs_reauth の例外はneeds_reauthとしクールダウンを進める', () => {
-      const error = Object.assign(new Error('reauth required'), { code: 'needs_reauth' });
-      expect(classifyGa4BatchRunError(error)).toEqual({
-        outcome: 'needs_reauth',
-        historyId: null,
-        shouldAdvanceCooldown: true,
-        isUnexpected: false,
-      });
-    });
-
     it('"already running" を含む例外はalready_runningとしクールダウンを進めない', () => {
       const error = new Error('ga4 evaluation already running');
       expect(classifyGa4BatchRunError(error)).toEqual({

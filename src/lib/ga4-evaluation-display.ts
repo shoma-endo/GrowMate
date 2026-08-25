@@ -39,7 +39,6 @@ const GA4_MISSING_METRIC_LABELS: Record<string, string> = {
 };
 
 const GA4_ERROR_LABELS: Record<string, string> = {
-  needs_reauth: 'Google連携の再確認が必要です',
   evaluation_stale: '評価結果が古いため、再評価が必要です',
   ga4_api_error: '訪問データの取得に失敗しました',
   gsc_api_error: '検索データの取得に失敗しました',

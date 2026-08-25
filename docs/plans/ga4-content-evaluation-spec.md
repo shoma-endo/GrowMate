@@ -812,13 +812,13 @@ due(now_jst) =
 
 評価を試みて終端に達したら、結果の成否にかかわらず `last_evaluated_on` を実行日（JST）へ進める。これにより `next_evaluation_date` が1サイクル先へ移動する。
 
-**結末の語彙は §8.3「結末の判定契約」で定義する10値を正本とする。**下表はその10値と、バッチ側の中断事由すべてを網羅する（`run()` の戻り値の `displayStatus` は `needs_reauth` などを被せた**表示用**の値であり、結末そのものではない。§8.3 を参照）。
+**結末の語彙は §8.3「結末の判定契約」で定義する9値（2026-08-25改定。旧10値から`needs_reauth`を除外）を正本とする。**下表はその9値と、バッチ側の中断事由すべてを網羅する（`run()` の戻り値の `displayStatus` は結末そのものではない。§8.3 を参照）。
 
 | バッチ内での結末 | `last_evaluated_on` | 理由 |
 |---|---|---|
 | `evaluated` / `narrative_failed` | 進める | 正常完了 |
 | `insufficient_data` / `low_data`（データ蓄積中） | 進める | データが貯まるのは時間の問題であり、毎時試しても結果は変わらない |
-| `evaluation_failed` / `unknown_error` / `needs_reauth` | 進める | 原因は外部要因で、毎時再試行しても解消しない。復旧後はユーザーが手動評価できる（§10.4） |
+| `evaluation_failed` / `unknown_error` | 進める | 原因は外部要因で、毎時再試行しても解消しない。復旧後はユーザーが手動評価できる（§10.4） |
 | `import_failed`（評価中の GA4 データ取得失敗） | 進める | 同上 |
 | **当日の `syncUser` が失敗した実行**（結末の判定より前。下記「取込失敗の扱い」） | **進めない（ただし当日限り）** | 取込済みデータが揃っていないため、この実行の結果は記事の実力を表さない。次の毎時実行で取込から再試行する |
 | `evaluating` / `already_running`（他経路が実行中。BR-04 で弾かれた） | **進めない** | この実行は評価していない。実行中の run が終端に達したときに別途クールダウンされる |
@@ -1070,14 +1070,14 @@ Server ActionまたはRoute Handlerから単記事評価を実行する。評価
 
 **この契約が無いと実装者裁量になる箇所が3つある**ため、実測（2026-08-19）に基づいて固定する。
 
-- `run()` は**例外**でも結末を返す: 再認証必要時は `Object.assign(error, { code: 'needs_reauth' })` を付けた Error を throw する（評価履歴行が作られる前）。Kill Switch 由来の `evaluation disabled` は削除済み。
+- ~~`run()` は**例外**でも結末を返す: 再認証必要時は `Object.assign(error, { code: 'needs_reauth' })` を付けた Error を throw する（評価履歴行が作られる前）。~~ **2026-08-25 削除。理由: `run()`/`retryNarrative()`はGoogle APIを一切呼ばない（既取込済みのDB行のみ読む）処理であり、Googleへの実リフレッシュを伴わない静的トークン判定で拒否すること自体が誤りだった実バグ（§6.5参照）。この`throw`自体を撤去したため、`code:'needs_reauth'`を投げる経路はコード上どこにも存在しない。** Kill Switch 由来の `evaluation disabled` は削除済み。
 - `run()` は **`low_data` のとき履歴行を作らずに `fetchEvaluation()` の結果をそのまま返す**（`:398-399` の早期 return、および `:497-499` の `cancelRun` 後の return）。戻り値の `displayStatus` は `resolveGa4EvaluationDisplayStatus`（`src/server/lib/ga4-evaluation-status.ts:18-28`）が **永続状態を優先**するため、**前回の評価が成功していれば `evaluated` が返り、`projection` と `history` も前回の値のままになる**。`displayStatus` だけを見ると「今回 `evaluated` になった」と誤読する。
-- 戻り値の `displayStatus` は **10値**（`unassessed` / `eligible` / `needs_reauth` / `low_data` ＋ 永続6値）であり、表示用に `needs_reauth` を被せた値である（`evaluation_disabled` は削除済み）。
+- ~~戻り値の `displayStatus` は **10値**（`unassessed` / `eligible` / `needs_reauth` / `low_data` ＋ 永続6値）であり、表示用に `needs_reauth` を被せた値である~~ **2026-08-25: `displayStatus` から `needs_reauth` を削除（9値。`unassessed` / `eligible` / `low_data` ＋ 永続6値。§6.5参照）**（`evaluation_disabled` は削除済み）。
 
 したがって次の手順で判定する。**`displayStatus` を結末の判定に使わない。**
 
 1. **例外を捕捉した場合**（`try` の外へ出さない）:
-   - `(err as { code?: string }).code === 'needs_reauth'` → 結末 `needs_reauth`
+   - ~~`(err as { code?: string }).code === 'needs_reauth'` → 結末 `needs_reauth`~~ **2026-08-25削除（上記のとおり発生源自体が無い）**
    - `err instanceof Error && err.message.includes('already running')` → 結末 `already_running`
    - それ以外 → 結末 `unknown_error`。`console.error` で構造化ログへ出す
 2. **正常に戻った場合**: 戻り値の `history[0]`（`created_at` 降順・最大20件。`ga4ContentEvaluationService.ts:304`）を見る。
@@ -1086,7 +1086,7 @@ Server ActionまたはRoute Handlerから単記事評価を実行する。評価
    - `displayStatus` が `unassessed` / `eligible` で、かつ今回の履歴行が無い場合も想定外として扱う（§6.6.4。`console.error` ＋ `articlesFailed` 計上）
 3. **BR-12 の冪等キー**は、2. で特定した「今回の履歴行」の `id` とする。1. の経路と `low_data` は履歴行を持たないため冪等キーが存在せず、§9.5 の送信対象にも該当しない。
 
-結末の語彙は次の10値に固定する: `evaluated` / `narrative_failed` / `insufficient_data` / `import_failed` / `evaluation_failed` / `evaluating` / `low_data` / `needs_reauth` / `already_running` / `unknown_error`（`evaluation_disabled` は削除済み）。§6.6.4（クールダウン）・§9.5（送信対象）・§13（テスト）はこの語彙で書く。
+~~結末の語彙は次の10値に固定する: `evaluated` / `narrative_failed` / `insufficient_data` / `import_failed` / `evaluation_failed` / `evaluating` / `low_data` / `needs_reauth` / `already_running` / `unknown_error`~~ **2026-08-25: `needs_reauth`を発生源の削除に伴い除外し、9値に改定する: `evaluated` / `narrative_failed` / `insufficient_data` / `import_failed` / `evaluation_failed` / `evaluating` / `low_data` / `already_running` / `unknown_error`**（`evaluation_disabled` は削除済み）。§6.6.4（クールダウン）・§9.5（送信対象）・§13（テスト）はこの語彙で書く。
 
 #### ロール絞り込みを SQL 側へ置く理由
 
@@ -1179,24 +1179,24 @@ due 抽出は `ga4_content_evaluation_cycles` に対する複数行 SELECT で�
 
 実装では上記4スコープが `GOOGLE_SEARCH_CONSOLE_SCOPES`（`src/lib/constants.ts`）にまとめられており、**GA4 スコープは GSC の同意に同梱された単一同意**である。§9.1.1 の scope 縮小シナリオはこの構成を前提とする。
 
-- `googleTokenService.ensureValidAccessToken` を利用する。
-- 再認証が必要な場合は、§6.5 の**非永続状態として表示時に導出**し、既存の Google 設定画面へ誘導する。**`ga4_content_evaluations.status` には `needs_reauth` を保存しない**（永続化すると再連携後も解消せずデッドロックになる。§6.5）。
+- `googleTokenService.ensureValidAccessToken` を利用する（GA4取込＝`ga4ImportService.ensureAccessToken`。実際にGoogleへのAPI呼び出しを伴う経路でのみ使う）。
+- ~~再認証が必要な場合は、§6.5 の**非永続状態として表示時に導出**し、既存の Google 設定画面へ誘導する。**`ga4_content_evaluations.status` には `needs_reauth` を保存しない**（永続化すると再連携後も解消せずデッドロックになる。§6.5）。~~ **2026-08-25: `ga4ContentEvaluationService.run()`/`retryNarrative()`はGoogle APIを一切呼ばないため（既取込済みのDB行のみ読む）、評価実行そのものに再認証チェックは不要と判明し撤去した（§6.5参照）。連携状態の確認・再認証導線は`/setup`ページに一元化する。**
 - 評価機能内で独自のトークン更新処理を作らない。
 
 #### 9.1.1 連携ライフサイクル
 
-**`needs_reauth` は永続状態ではない**（§6.5）。下表の「表示」列は表示時に導出する状態、「永続」列は `ga4_content_evaluations.status` と履歴に残る値を指す。
+~~**`needs_reauth` は永続状態ではない**（§6.5）。下表の「表示」列は表示時に導出する状態、「永続」列は `ga4_content_evaluations.status` と履歴に残る値を指す。~~ **2026-08-25: GA4コンテンツ評価の`run()`/`retryNarrative()`はGoogle APIを呼ばないため、この節が想定していた「評価実行が再認証状態によって直接ブロックされる」仕組み自体が無くなった。下表は歴史的経緯として残すが、「評価への影響」「表示（非永続）」列の記載は現在の実装と一致しない（取り消し線部分）。**
 
 | イベント | 評価への影響 | 表示（非永続） | 永続・既存結果の扱い |
 |---|---|---|---|
-| リフレッシュトークン失効（`invalid_grant`、6 ヶ月未使用、ユーザー revoke 等。公式条件は §16「Google OAuth 2.0」） | 新規評価不可 | `needs_reauth`（「Google連携を確認してください」） | 既存の成功結果と履歴は保持。評価実行中に発生した場合は下記の永続ルールに従う |
-| OAuth scope 縮小（`analytics.readonly` 不足） | 新規評価不可 | `needs_reauth`（`.agents/skills/google-integrations/SKILL.md` の実文は「**発火条件**: (a) refresh 失敗（期限切れ・取り消し）、(b) 必要スコープの不足。いずれも `ERROR_MESSAGES` 由来の文言とセットで返す」。同節のコード例は `needsReauth: true` を返す。実装 `ga4-status.ts:14,26` も `scopeMissing` → `needsReauth`） | 同上。不足 scope 名はサーバーログのみに出し、UI文言は既存 `ERROR_MESSAGES` に揃える。`import_failed` にすると主操作が「データを再取得」となり再連携導線が出ないため使わない |
+| リフレッシュトークン失効（`invalid_grant`、6 ヶ月未使用、ユーザー revoke 等。公式条件は §16「Google OAuth 2.0」） | ~~新規評価不可~~ **直接の評価不可はない（run()/retryNarrative()はGoogle APIを呼ばないため）。ただし`ga4ImportService.syncUser`（Cron同期）が失敗し続けるためデータが古くなり、いずれ`insufficient_data`/`evaluation_stale`に至りうる** | ~~`needs_reauth`（「Google連携を確認してください」）~~ **表示なし（`/setup`ページに委ねる）** | 既存の成功結果と履歴は保持 |
+| OAuth scope 縮小（`analytics.readonly` 不足） | 同上 | 同上 | 同上。不足 scope 名はサーバーログのみに出し、UI文言は既存 `ERROR_MESSAGES` に揃える |
 | OAuth scope 縮小（`webmasters.readonly` のみ不足） | GSC データ取得に影響 | **MVP では検知しない**（下記） | — |
 | Google アカウント削除・GrowMate ユーザー削除 | 新規評価不可 | — | 評価履歴は `ON DELETE CASCADE` でユーザーに追随。削除前の監査要件は別途 |
-| 再連携成功 | 以降の取込・評価が可能 | 次の描画で `needs_reauth` が自動解消し、直前の永続状態を表示 | **欠損期間の自動埋め戻しは MVP 対象外**。再連携後は次回評価から新データを使用 |
+| 再連携成功 | 以降の取込が正常化し、次回同期からデータが更新される | — | **欠損期間の自動埋め戻しは MVP 対象外**。再連携後は次回評価から新データを使用 |
 | プロパティ/サイト URL 変更 | URL 突合失敗の可能性 | — | `insufficient_data` + 正規化失敗理由 |
 
-**再認証事由で評価が中断したときの永続 status:** `needs_reauth` は永続5値（§6.5）に含まれないため、`finish_ga4_content_evaluation` は **`status='evaluation_failed'` + `error_code='needs_reauth'`** で確定する。表示は §6.5 の優先順位により `needs_reauth`（「Google連携を確認してください」）が被さる。`import_failed` は使わない（主操作が「データを再取得」になり再連携導線が出ないため）。受入条件は AC-05。
+~~**再認証事由で評価が中断したときの永続 status:** `needs_reauth` は永続5値（§6.5）に含まれないため、`finish_ga4_content_evaluation` は **`status='evaluation_failed'` + `error_code='needs_reauth'`** で確定する。表示は §6.5 の優先順位により `needs_reauth`（「Google連携を確認してください」）が被さる。`import_failed` は使わない（主操作が「データを再取得」になり再連携導線が出ないため）。受入条件は AC-05。~~ **2026-08-25削除: `run()`/`retryNarrative()`が`code:'needs_reauth'`を投げる経路自体を撤去したため、`error_code='needs_reauth'`が永続化されることはなくなった（§8.3参照）。AC-05は失効。**
 
 **GSC 側 scope 縮小を MVP の検知対象にしない理由（2026-08-14 実測）:** `ga4-status.ts:14,26` は `scopeMissing` を見るが、`gsc-status.ts:20` は `needsReauth: !hasValidToken` のみで scope を判定しない（`:29` で `scope` をそのまま返すだけ）。したがって `webmasters.readonly` だけが剥奪された状態は現状の実装では検知できない。§9.1 のとおり4スコープは `GOOGLE_SEARCH_CONSOLE_SCOPES` の**単一同意**にまとめられており、GA4 スコープを保ったまま GSC スコープだけが失われる状況は通常発生しない。この状態での GSC 取込の挙動は未確認である。`gsc-status.ts` への scope 判定追加は本 MVP の変更対象に含めず、§17 の別チケットとする。
 
@@ -1280,7 +1280,7 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 |---|---|---|
 | `evaluated` | **送る** | 点数・診断・次の一手が揃っている |
 | `narrative_failed` | **送る** | 点数・診断コードは確定している（部分成功。§6.5）。診断文の欄は「診断コメントを作成できませんでした」と書き、点数と次回の再評価を案内する |
-| `insufficient_data` / `low_data` / `import_failed` / `evaluation_failed` / `needs_reauth` | 送らない | §3.2 フェーズ3 Non-goal。アプリの画面（§10.4）とログで確認する。将来の拡張候補は D7（§15.3） |
+| `insufficient_data` / `low_data` / `import_failed` / `evaluation_failed` | 送らない | §3.2 フェーズ3 Non-goal。アプリの画面（§10.4）とログで確認する。将来の拡張候補は D7（§15.3） |
 | `evaluating` / `already_running` / `unknown_error` | 送らない | 結末が確定していない、または異常系。`evaluating` / `unknown_error` は `console.error` で記録する（§6.6.4） |
 | ロール不許可・時間予算切れ・件数上限切れ | 送らない（そもそも評価していない） | — |
 | 当日の `syncUser` が失敗したユーザーの記事（結末を問わない） | 送らない | 取込済みデータが揃っていない状態の結果を通知しない（§6.6.4「取込失敗の扱い」）。次の毎時実行で取込から再試行する |
@@ -1305,7 +1305,7 @@ GrowMate は単一の GCP プロジェクトで全ユーザー分を呼び出す
 
 #### 冪等性（BR-12）
 
-**冪等キーの定義:** 「今回の run が生成した評価履歴行の `id`」とする。取得方法は §8.3「結末の判定契約」の 2.（戻り値の `history[0]` が今回の実行の行であることを `startedAt` で確認する）に従う。履歴行が作られない結末（`low_data` / `needs_reauth` / `already_running`）には冪等キーが存在せず、送信対象にも該当しない。
+**冪等キーの定義:** 「今回の run が生成した評価履歴行の `id`」とする。取得方法は §8.3「結末の判定契約」の 2.（戻り値の `history[0]` が今回の実行の行であることを `startedAt` で確認する）に従う。履歴行が作られない結末（`low_data` / `already_running`）には冪等キーが存在せず、送信対象にも該当しない。
 
 防御は3段とする。
 
@@ -1406,7 +1406,7 @@ Resend が失敗を返した場合は `console.error` で記録し（`feedback_e
 | `evaluated` | 評価済み（**記事詳細の「コンテンツ評価」タブでは状態バッジを出さない**。コンテンツ力スコア・点数帯ピル・診断見出しが同じカードに出ており「評価済み」の一言が情報を足さないため。他の状態は状態バッジでしか伝わらないので引き続き表示する。一覧 `/analytics` の評価状態列と評価履歴の状態表示は従来どおり「評価済み」を出す） | 再評価 | 最新の成功結果 | なし |
 | `insufficient_data` | データが不足しています | 不足項目を確認 | ある場合は保持して表示 | 点数・提案を新規表示しない |
 | `import_failed` | データを取得できませんでした | データを再取得 | ある場合は保持して表示 | 評価開始を無効化 |
-| `needs_reauth`（非永続・導出） | Google連携を確認してください | Googleを再連携 | ある場合は保持して表示 | 評価開始を無効化。**再連携が成功すれば次の描画で自動解消する**（DBに残らない） |
+| ~~`needs_reauth`（非永続・導出）~~ | ~~Google連携を確認してください~~ | ~~Googleを再連携~~ | — | ~~評価開始を無効化。再連携が成功すれば次の描画で自動解消する（DBに残らない）~~ **2026-08-25削除（§8.3・§9.1.1参照。`run()`はGoogle APIを呼ばないため評価開始を無効化する理由が無い）** |
 | `narrative_failed` | 診断コメントを作成できませんでした（スコアは算出済み） | 再評価（文章の再生成） | **今回のスコア・診断は表示する**（部分成功。§6.5） | 診断文の領域のみ失敗表示 |
 | `evaluation_failed` | 評価に失敗しました | 再評価 | 前回の成功結果を明示して表示 | 失敗理由をsanitized値で表示 |
 
@@ -1674,7 +1674,9 @@ Feature: GA4コンテンツ評価
     And 最新実行は失敗状態とエラーコードを持つ
 ```
 
-### AC-05 再認証を誘導する
+### AC-05 再認証を誘導する（2026-08-25 失効）
+
+**`run()`/`retryNarrative()`はGoogle APIを一切呼ばないため（既取込済みのDB行のみ読む）、「評価実行がGoogle再認証状態によってブロックされる」という本ACの前提自体が成立しない（§8.3・§9.1.1参照）。Google連携状態の確認・再認証導線は`/setup`ページに一元化した。下記シナリオは歴史的記録として残す（実装しない）。**
 
 ```gherkin
   Scenario: Googleアクセストークンの再認証が必要である
@@ -2159,7 +2161,7 @@ Feature: GA4コンテンツ評価
 - サイト内順位・前回差分テスト: 同点の順位（DENSE_RANK 相当）、初回評価の差分なし、直前成功履歴との差分計算。
 - メディア全体スコアテスト: 単純平均・セッション加重平均の計算、評価済み記事のみが対象になること、対象0件時の表示（AC-16）。
 - サービステスト: GA4/GSCデータのユーザーID分離、プロンプトのsystem/user分離、履歴保存、失敗時の既存結果保持。
-- APIテスト: GA4互換性エラー、GSC未連携、Google再認証（永続は `evaluation_failed` + `error_code='needs_reauth'`、表示は導出）、429/5xx、LLMタイムアウト。
+- APIテスト: GA4互換性エラー、GSC未連携、429/5xx、LLMタイムアウト。~~Google再認証（永続は `evaluation_failed` + `error_code='needs_reauth'`、表示は導出）~~ **2026-08-25削除: `run()`はGoogle APIを呼ばないためこの経路自体が無い（§8.3・§9.1.1参照）**。
 - 認可テスト: `trial` 等の許可されないロールで、`/analytics/[annotationId]` が `/unauthorized` へ誘導されること、記事詳細・評価の Server Action が `{ success:false, error: <GA4 群の拒否文言> }` を返すこと、`app/api/gsc/dashboard/*` が 403 と同じ error を返すこと、いずれも評価データが応答に含まれないこと（AC-12 / BR-07 / §3.3 未認可時の応答契約）。`canAccessGa4` **と `canWriteGa4` の両方**のユニットテスト（`instagram-permissions.test.ts` と同型）を含み、書き込み4関数が `canWriteGa4` を経由することを固定する（§3.3 認可関数の使い分け）。
 - フェーズ1移設テスト: 既存3タブの挙動保存 E2E／特性テスト（AC-14）、redirect のステータス（308）・遷移先・`annotationId` 以外のクエリが失われないこと（AC-15。`annotationId` 自体の残留有無は期待値に含めず、実測結果を §5.5 に記録する）、`revalidatePath('/analytics/[annotationId]', 'page')` 更新後の再検証動作。**`GlobalToastBridge` のテストは D5 (b) に従う**: 新パス判定が記事詳細 `/analytics/[annotationId]` で機能すること、削除した else 側遷移分岐と死んだ配線（`gsc-dummy-open` / `gsc-dummy-update`）が復活していないこと（§5.5「GlobalToastBridge の扱い」）。
 - 打ち切り対処テスト（**D4 決着 2026-08-17: (b)＋(d) 併用**）: (d) では一覧の期間指定が上限100日へ丸められる（または上限超過が明示される）こと、上限ちょうど・上限未満で挙動が変わらないこと。(b) では `fetchGa4Summaries` で `count:'exact'` の総件数と取得件数が不一致のとき、そのページのGA4集計全体を部分取得として一覧表示（原因・対処を含む文言）と `data_quality_json` に伝播すること、件数一致時に誤検知しないこと（AC-13）。
@@ -2171,8 +2173,8 @@ Feature: GA4コンテンツ評価
   - **機械検査**（`scripts/check-ui-text.sh`）: 対象は `ui-text.md` の「機械チェック」列が ✅ の行の「使わない表記」のみ。探索範囲は `app/**` / `src/**` の `.ts(x)`。辞書駆動のため GA4 語をスクリプトへ書き足す必要はない。
   - **手動確認**（`quality-gate`）: `目視` 行（`セッション / ユーザー`・`表示回数`・`キーイベント` 等）、`supabase/migrations/*.sql` の `prompt_templates.variables[].description`（`/admin/prompts` に描画される。§10.7「適用範囲の既知の穴」）、**フェーズ3の通知メール本文組み立て関数**（BR-13 / AC-21）。いずれも機械検査の対象外である。
 - **サイクル判定の単体テスト（フェーズ3。純関数として切り出して網羅する）**: `next_evaluation_date` が過去／当日／未来のそれぞれ、当日 × `evaluation_hour` の前後（`hour-1` / `hour` / `hour+1`）、`last_evaluated_on` が NULL のとき基準日が使われること、`cycle_days` の境界（1 / 365）、JST 変換（UTC 15:00 = JST 翌日 00:00 の日跨ぎ）。判定式は GSC の `isDue`（`gscEvaluationService.ts:568-587`）と同値であることを対照して固定する。
-- **結末の判定契約テスト（フェーズ3。§8.3）**: `run()` が (1) `code:'needs_reauth'` 付き Error を throw → `needs_reauth`、(2) `'... already running ...'` を throw → `already_running`、(4) その他の throw → `unknown_error` かつ `console.error` が出ること、(5) **`low_data` の早期 return で「前回の成功結果（`displayStatus='evaluated'`・前回の `history`）」が返ってきても `evaluated` と誤判定せず `low_data` と判定すること**（`history[0].startedAt` が呼び出し開始時刻より前）、(6) 履歴行が今回のものであるとき結末はその行の `status` になること、を固定する。**(5) はこの契約の中核であり、落とすと前回の評価結果でメールを送る回帰が入る。**
-- クールダウンの分岐テスト（フェーズ3。BR-11）: §6.6.4 の表の全行（結末10値 ＋ 取込失敗 ＋ ロール不許可・時間予算切れ・件数上限切れ）で `last_evaluated_on` が進む／進まないことを固定する。とくに `evaluated` / `narrative_failed` / `insufficient_data` / `low_data` / `import_failed` / `evaluation_failed` / `unknown_error` / `needs_reauth` は進み、`evaluating` / `already_running` / `unassessed` / `eligible` と中断事由では進まないこと（`evaluation_disabled` は結末の語彙から除外済み。§8.2 / §8.3）。**取込失敗の分岐**（当日は進めない／`next_evaluation_date` が当日より前なら進める）も含める。**この分岐を落とすと失敗記事が毎時 LLM を呼び続けるため、回帰テストとして必ず置く。**
+- **結末の判定契約テスト（フェーズ3。§8.3）**: `run()` が ~~(1) `code:'needs_reauth'` 付き Error を throw → `needs_reauth`、~~**2026-08-25削除（この経路自体が無くなったため。§8.3参照）** (2) `'... already running ...'` を throw → `already_running`、(4) その他の throw → `unknown_error` かつ `console.error` が出ること、(5) **`low_data` の早期 return で「前回の成功結果（`displayStatus='evaluated'`・前回の `history`）」が返ってきても `evaluated` と誤判定せず `low_data` と判定すること**（`history[0].startedAt` が呼び出し開始時刻より前）、(6) 履歴行が今回のものであるとき結末はその行の `status` になること、を固定する。**(5) はこの契約の中核であり、落とすと前回の評価結果でメールを送る回帰が入る。**
+- クールダウンの分岐テスト（フェーズ3。BR-11）: §6.6.4 の表の全行（結末9値。2026-08-25に`needs_reauth`を除外 ＋ 取込失敗 ＋ ロール不許可・時間予算切れ・件数上限切れ）で `last_evaluated_on` が進む／進まないことを固定する。とくに `evaluated` / `narrative_failed` / `insufficient_data` / `low_data` / `import_failed` / `evaluation_failed` / `unknown_error` は進み、`evaluating` / `already_running` / `unassessed` / `eligible` と中断事由では進まないこと（`evaluation_disabled` は結末の語彙から除外済み。§8.2 / §8.3）。**取込失敗の分岐**（当日は進めない／`next_evaluation_date` が当日より前なら進める）も含める。**この分岐を落とすと失敗記事が毎時 LLM を呼び続けるため、回帰テストとして必ず置く。**
 - バッチのテスト（フェーズ3）: due 抽出が **SQL 側で**ロール絞り込みされること（`trial` / `unavailable` の行が SELECT の結果に含まれない）、アプリ側の再確認でも除外されること、ユーザー単位で `syncUser` が1回だけ呼ばれること（記事数ぶん呼ばれない）、`SYNC_TIME_BUDGET_MS` 超過で以降の `syncUser` を呼ばないこと、**1記事も評価できずに `time_limit` に達した場合に `stoppedReason='no_progress'` と `data.failed >= 1` を返すこと（ライブロック検知）**、件数上限で打ち切ること、`fetchAllPaged` に `count:'exact'` が渡されること・`truncated===true` のとき `truncatedCandidates` が出ること（AC-20）。**結果 JSON が `{success, data}` 形で、`data.failed` に `articlesFailed + emailsFailed` が合算され、`data.skipped` キーを出さないこと**（`scripts/invoke-cron.sh` の `validate_count_batch` と同じ判定を CI で再現する）。`CRON_SECRET` 不一致で 401、未設定で 500。
 - メール通知のテスト（フェーズ3。`emailService` はモックする。既存 `googleAdsNegativeKeywordsSuggestionService.sendForUser.test.ts` と同型）: 送信対象の結末分岐（§9.5 の表の全行）、`last_notified_history_id` が一致するとき送らないこと（BR-12）、**`Idempotency-Key` に今回の評価履歴 ID が渡されること**、送信成功後に記録する順序であること、`users.email` が NULL のとき `skipped_no_email` になり評価は成功のままであること、Resend 失敗時に `console.error` と `failed` 記録が行われ再送しないこと、**429 の `daily_quota_exceeded` / `monthly_quota_exceeded` が他の失敗と区別して `last_notification_error` に残ること**、本文に記事詳細URL（`${NEXT_PUBLIC_SITE_URL}/analytics/${annotationId}`）が含まれること、欠損指標の行が出力されないこと（AC-21）。
 - DBテスト（フェーズ3）: `ga4_content_evaluation_cycles` の RLS（自己参照のみ）、`unique (user_id, content_annotation_id)`、`next_evaluation_date` 生成列の値、CHECK（`cycle_days` 1〜365・`evaluation_hour` 0〜23・`status` 3値・`last_notification_status` 3値）、所有者検証 trigger（他ユーザーの記事を拒否）、`ON DELETE CASCADE`、Service Role からの更新が可能なこと。
@@ -2793,6 +2795,7 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 | 2026-08-25 | **ユーザーから「他の文言も問題ないか」と依頼を受け、GA4コンテンツ評価の通知メール・記事詳細・履歴パネル間の文言をExploreエージェント2本で横断調査し、見つかった不一致を修正した。** (1) **「次の一手」／「NEXT ACTION」**: 通知メール（`ga4-content-evaluation-email.ts`）は`narrative.next_action`を「次の一手」と呼ぶ一方、記事詳細のコンテンツ評価カード（`ContentEvaluationCard.tsx`）は同じ値を英語ラベル「NEXT ACTION」のまま表示していた。`growmate-ui-ux`の「英語ラベルはユーザー向けに使わない」に抵触するため「次の一手」へ統一。(2) **「点数」／「スコア」**: `narrative_failed`時の定型文で、メールは「点数は算出済みです」、記事詳細は「スコアは保存されています」と異なる語・語順を使っていた。同一メール内の他の全箇所（「コンテンツ力スコア」「読み始めスコア」「読了スコア」）が「スコア」で統一されていたため、「点数」側を「スコア」に合わせ、両者とも「診断コメントを作成できませんでした。スコアは算出済みです。」に統一（§10.9・Gherkinシナリオの文言も追随。テスト`ga4-content-evaluation-cycle.test.ts`のアサーションも更新）。(3) **評価対象期間の区切り**: 記事詳細だけ「から」（他は履歴パネル・メールとも「〜」）だったため「〜」に統一。(4) **診断ラベルの見出し語**: 履歴パネル（`Ga4EvaluationHistoryPanel.tsx`）の「診断コード：」を、記事詳細と同じ「診断：」へ統一（`getGa4DiagnosisLabel()`の戻り値は元々コード値ではなく訳語のため「コード」という呼称自体が不正確だった）。<br>**今回スコープ外とした指摘（ユーザー確認済み）**: エラーラベルの不正確さ（`evaluation_stale`が実際の発生要因〔入力データ鮮度不足／前回runのリース期限切れ〕のどちらも正確に説明していない、`gsc_api_error`/`evaluation_already_running`が実装上到達不能）は別ターンで対応。`/ga4-dashboard`の「読了スコア」（滞在時間ベース）と「読了率」（GA4のscroll_90イベント到達割合ベース）が同一画面で全く別の計算式に同じ「読了」を使っている件は、改名にダッシュボードの設計判断が必要なため別途調査 | `npx tsc --noEmit`・`npm run lint`・`npm run test`・`npm run verify:ui-text`すべて成功 |
 | 2026-08-25 | **ユーザーから「コンテンツ評価サイクル設定の『Google連携を確認してください』カードは必要か、GSCもそうなっているか」と問われ、調査の上でカードを削除した（§10.8「状態表示」の該当行をNon-goal化）。** GSC側（`EvaluationSettings.tsx`）には同等のカードが元々存在せず、GA4固有の追加仕様だった（§10.8で明示的に仕様化されており「GSC同型に揃える」の類推による見落としではない）。しかし調査の結果、このカードが依拠する`needsReauth`は、Googleへの実際のリフレッシュ試行結果ではなく、DB上のアクセストークンの残り有効期限だけを見る静的判定（`toGa4ConnectionStatus`・`hasReusableAccessToken`）であることが判明。GA4のアクセストークンの実効期限は約1時間だが、自動リフレッシュ経路（Cronの`syncUser`）はサイクル日数（既定30日）に1回程度しか発火しないため、**連携が実際には壊れていなくても、記事ページを開いただけで高確率でこのカードが表示されうる**設計になっていた（レアケースの警告のはずが恒常的な誤警告化）。既に`/setup`ページ（`SetupDashboard.tsx`）に、実際にGoogle APIを叩いて検証してから確定させる信頼性の高い同種の「要再認証」表示が存在し、二重掲示にもなっていた。CLAUDE.mdのMVP原則（既存手段で足りるなら新規の停止機構を作らない）に照らし、信頼性に欠ける専用UIを追加で持つより`/setup`の既存導線に委ねる方針とし、カードとその配線（`ContentEvaluationCycleSettings.tsx`の`needsReauth`プロパティ・`OverviewTab.tsx`/`GscDashboardClient.tsx`の`ga4NeedsReauth`スレッド）を削除した。**同じ`needsReauth`算出を使う`ContentEvaluationCard.tsx`の`displayStatus==='needs_reauth'`バッジ（「今すぐ評価を実行」ボタンの表示可否を兼ねる別機能）は、今回のスコープ外として変更していない**（サーバー側の`needsReauth`算出自体・§6.5の設計判断も変更なし） | `npx tsc --noEmit`・`npm run lint`（0 errors）・`npm run knip`・`npm run test`（507件）・`npm run verify:ui-text`すべて成功 |
 | 2026-08-25 | **ユーザーから「他に重複表示は無いか、なぜ意図的に追加したか」と問われ再調査した結果、上記2026-08-25の`needsReauth`表示問題より深刻な機能バグを発見・修正した。** `run()`・`retryNarrative()`（`ga4ContentEvaluationService.ts`）が、`toGa4ConnectionStatus(credential).needsReauth`（Googleへの実際のリフレッシュ試行を伴わない、アクセストークン残り期限の静的判定）が`true`のとき、**リフレッシュを一切試みずに即座に`needs_reauth`エラーで評価実行そのものを拒否していた**。しかもこの2関数は`ga4_page_metrics_daily`（Cronが事前インポート済みのDB行）とLLM（Anthropic。Googleではない）しか呼ばず、**Google APIを一切呼ばない**。つまり「Google接続が必要な処理」でもないのに、静的トークン判定だけで実行そのものを不当にブロックしていた。GA4トークンの実効期限は約1時間、自動リフレッシュ（Cronの`syncUser`）はサイクル日数（既定30日）に1回程度しか発火しないため、**「今すぐ評価を実行」ボタンとCronバッチ本体の両方が、高確率で恒常的に誤って拒否されうる**実バグだった。比較: GSC側（`gscEvaluationService.ts`）にはこの問題がない。GSCのインポート処理（`gscImportService.getAccessContext()`）は毎回無条件に実際のリフレッシュを試みてから結果で判定する設計。Google Ads・Instagramも実行経路では正しく実リフレッシュ後に判定しており同種の問題はない（調査済み）。<br>**修正**: `run()`・`retryNarrative()`から静的判定に基づく早期`throw`を削除（Google APIを呼ばない処理に対する不要なチェックのため撤去。リフレッシュへの置き換えではない）。この静的判定の唯一の消費者だった`displayStatus`の`needs_reauth`値も、同じ理由で信頼できないため削除した（`Ga4EvaluationDisplayStatus`型・`resolveGa4EvaluationDisplayStatus`・`Ga4ContentEvaluationView.needsReauth`・`GA4_STATUS_LABELS.needs_reauth`・`ContentEvaluationCard.tsx`の`needs_reauth`分岐と`canShowAction`の除外条件を削除。これにより「今すぐ評価を実行」ボタンの表示可否もこの静的判定に左右されなくなる）。§6.5の状態定義表・優先順位・永続/非永続の区分表から`needs_reauth`を削除（取り消し線＋理由注記で保持）。回帰テストを`ga4ContentEvaluationService.test.ts`に追加（期限切れの`accessTokenExpiresAt`でも`run()`が`import_failed`まで正常に進むことを検証。旧実装では`needs_reauth`で即rejectしていたことを確認済み）。<br>**今回のスコープ外として未確認のまま残した点（要フォローアップ）**: §8.3「結末の判定契約」の10値語彙・`classifyEvaluationFailure`の`errorCode==='needs_reauth'`分岐・`finish_ga4_content_evaluation`への`error_code='needs_reauth'`永続化（§9.1.1）は、`run()`の早期throw削除により**その唯一の発生源を失い、実質到達不能になった可能性がある**（ただし他の発生源が無いか未確認のため断定していない）。§8.3・§9.1・§9.1.1・§10.4・関連Gherkinシナリオの`needs_reauth`関連記述は未更新のまま残っている。次回の作業でこの経路の到達可能性を再調査し、本当に到達不能なら結末の10値語彙から`needs_reauth`を外す是非を検討する必要がある | `npx tsc --noEmit`・`npm run lint`（0 errors）・`npm run knip`・`npm run test`（508件）・`npm run build`すべて成功 |
+| 2026-08-25 | **上記のフォローアップ課題（§8.3の結末語彙・`error_code='needs_reauth'`永続化経路が到達不能かどうか）を、code-review skillでのレビュー指摘（後述）を受けて調査・解消した。** `ga4ContentEvaluationCycleService.ts`の`runDueArticle()`が`ga4ContentEvaluationService.run()`を呼ぶ経路を実際に読み、run()の現在の実装（credentialの取得・try/catch内の全処理）がGoogle系のエラーコードを一切生成しないことを確認。`classifyGa4BatchRunError`（バッチが`run()`の例外を分類）・`classifyEvaluationFailure`（run()自身の内部try/catch）のいずれも`code:'needs_reauth'`を投げる発生源が完全に無くなっており、**到達不能と断定**。<br>**対応**: 結末の判定契約を10値→9値に改定し、`needs_reauth`を完全に除去した。`src/server/lib/ga4-content-evaluation-batch-outcome.ts`（`Ga4CycleBatchOutcome`型・`classifyGa4BatchRunError`の死んだ分岐）・`src/server/services/ga4ContentEvaluationService.ts`（`classifyEvaluationFailure`の死んだ分岐）・`src/types/ga4-evaluation.ts`（`Ga4EvaluationErrorCode`型）・`src/lib/ga4-evaluation-display.ts`（`GA4_ERROR_LABELS.needs_reauth`）から削除。§6.6.4のクールダウン表・§9.5の非通知対象リスト・冪等キー定義・§10.4の状態表・AC-05のGherkinシナリオ（失効として明記）・§13のテスト記述を、9値の語彙に合わせて更新した（歴史的経緯として取り消し線＋理由注記で保持し、黙って書き換えない）。D7・R-16・GSC scope縮小のQ&A（決定の経緯を記録した節）は過去の意思決定記録であるため変更していない。<br>**あわせて、同じレビューで見つかった軽微な指摘2件も対応**: (1) `src/server/actions/ga4ContentEvaluation.actions.ts`の`runGa4ContentEvaluation`・`retryGa4ContentEvaluationNarrative`にあった`error.code === 'needs_reauth'`特別扱い（到達不能）を削除し汎用エラー文言へフォールバック。(2) CLAUDE.mdの「作らない判断はNon-goalに理由付きで書く」ルールに従い、§3.2フェーズ3Non-goalに「Google連携を確認してください」カード削除の理由を追記（commit `585b393a`で対応済み） | `npx tsc --noEmit`・`npm run lint`（0 errors）・`npm run knip`・`npm run test`（507件）・`npm run build`・`npm run verify:ui-text`すべて成功 |
 
 ## 19. レビュー記録
 

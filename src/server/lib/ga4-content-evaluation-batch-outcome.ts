@@ -13,7 +13,6 @@ export type Ga4CycleBatchOutcome =
   | 'evaluation_failed'
   | 'evaluating'
   | 'low_data'
-  | 'needs_reauth'
   | 'already_running'
   | 'unknown_error';
 
@@ -57,13 +56,6 @@ export function classifyGa4BatchRunResult(
 
 /** run() が例外を投げた場合の結末判定（§8.3 手順1）。 */
 export function classifyGa4BatchRunError(error: unknown): Ga4CycleBatchOutcomeResult {
-  const code =
-    typeof error === 'object' && error !== null && 'code' in error
-      ? (error as { code?: unknown }).code
-      : undefined;
-  if (code === 'needs_reauth') {
-    return { outcome: 'needs_reauth', historyId: null, shouldAdvanceCooldown: true, isUnexpected: false };
-  }
   if (error instanceof Error && error.message.includes('already running')) {
     return { outcome: 'already_running', historyId: null, shouldAdvanceCooldown: false, isUnexpected: false };
   }

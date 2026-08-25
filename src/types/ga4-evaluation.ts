@@ -32,7 +32,6 @@ const GA4_EVALUATION_DISPLAY_STATUSES = [
 export type Ga4EvaluationDisplayStatus = (typeof GA4_EVALUATION_DISPLAY_STATUSES)[number];
 
 export type Ga4EvaluationErrorCode =
-  | 'needs_reauth'
   | 'evaluation_stale'
   | 'ga4_api_error'
   | 'gsc_api_error'

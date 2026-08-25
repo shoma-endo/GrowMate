@@ -116,9 +116,6 @@ function toSafeErrorCode(error: unknown): string {
 
 function classifyEvaluationFailure(error: unknown, phase: EvaluationFailurePhase): EvaluationFailureOutcome {
   const errorCode = toSafeErrorCode(error);
-  if (errorCode === 'needs_reauth') {
-    return { status: 'evaluation_failed', errorCode, errorMessage: errorCode };
-  }
   if (phase === 'narrative') {
     return { status: 'narrative_failed', errorCode, errorMessage: errorCode };
   }
