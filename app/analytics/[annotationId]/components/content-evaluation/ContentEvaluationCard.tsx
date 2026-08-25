@@ -16,6 +16,7 @@ import {
   getGa4ScoreBand,
 } from '@/lib/ga4-evaluation-display';
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
+import type { Ga4ContentEvaluationCycleView } from '@/types/ga4-evaluation-cycle';
 
 import { resolveCardHistoryItem } from './latest-history';
 
@@ -26,6 +27,8 @@ interface Props {
   onRun: () => Promise<void>;
   onRetryNarrative?: () => Promise<void>;
   error?: string | null;
+  /** コンテンツ評価サイクル設定（読み取り専用表示のみ。設定操作は概要タブ。§10.8「配置」） */
+  cycle?: Ga4ContentEvaluationCycleView | null;
 }
 
 function formatDate(value: string | null): string {
@@ -79,7 +82,21 @@ function getMissingMetricsFromDataQuality(dataQuality: unknown): string[] {
     : [];
 }
 
-export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, onRetryNarrative, error = null }: Props) {
+function formatDateJP(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' }).format(d);
+}
+
+export function ContentEvaluationCard({
+  articleTitle = null,
+  evaluation,
+  onRun,
+  onRetryNarrative,
+  error = null,
+  cycle = null,
+}: Props) {
   const [isRunning, setIsRunning] = useState(false);
   const latest = resolveCardHistoryItem(evaluation);
   const latestRun = evaluation?.history[0] ?? null;
@@ -155,6 +172,16 @@ export function ContentEvaluationCard({ articleTitle = null, evaluation, onRun, 
         )}
       </CardHeader>
       <CardContent className="space-y-4">
+        {cycle && (
+          <p className="text-xs text-muted-foreground">
+            {/* 概要タブの状態カード（ContentEvaluationCycleSettings.tsx）とラベルの意味を揃える。
+                ベースライン未完了時は同じ値を「次回の自動評価予定」と呼ぶと語感が食い違うため
+                「ベースライン再試行予定」に統一する（再レビュー指摘） */}
+            {cycle.lastSeenContentScore != null ? '次回の自動評価予定' : 'ベースライン再試行予定'}：
+            {formatDateJP(cycle.nextEvaluationDate)}{' '}
+            {cycle.evaluationHour.toString().padStart(2, '0')}:00（日本時間）。設定は概要タブから変更できます。
+          </p>
+        )}
         {(error || displayStatus === 'evaluation_failed' || displayStatus === 'import_failed') && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />

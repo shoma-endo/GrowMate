@@ -17,6 +17,7 @@ import {
 } from '@/server/lib/google-ads-negative-keywords-prompt';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
+import { sanitizeEmailHtml } from '@/server/lib/email-html';
 import type { BriefInput, Service } from '@/server/schemas/brief.schema';
 import { normalizeQuery } from '@/lib/normalize-query';
 import type {
@@ -145,20 +146,6 @@ function formatJstTime(date: Date): string {
     minute: '2-digit',
     hour12: false,
   }).format(date);
-}
-
-function sanitizeEmailHtml(html: string): string {
-  if (!html) {
-    return '';
-  }
-
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\s+on[a-z]+\s*=\s*(['"]).*?\1/gi, '')
-    .replace(/\s+(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, '')
-    .replace(/<\/?(iframe|object|embed|form|input|button)[^>]*>/gi, '');
 }
 
 class GoogleAdsAiAnalysisService {

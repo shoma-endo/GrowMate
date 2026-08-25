@@ -28,6 +28,16 @@ export const CRON_CONFIGS = {
     maxTime: 820,
     maxRetries: 1,
   },
+  ga4ContentEvaluate: {
+    name: 'ga4_content_evaluate',
+    workflowId: 'ga4-content-evaluate',
+    routePath: '/api/cron/ga4-content-evaluate',
+    profile: 'count-batch',
+    maxDuration: 300,
+    maxTime: 310,
+    // メール送信バッチのため再実行しない（hourly-cron.yml:7。§8.3）
+    maxRetries: 1,
+  },
 } as const;
 
 export const CRON_DEFINITIONS = defineCronDefinitions(CRON_CONFIGS);

@@ -9,6 +9,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { prepareNegativeKeywordsForPrompt } from '@/server/lib/google-ads-negative-keywords-prompt';
 import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { EmailService, emailService as defaultEmailService } from '@/server/services/emailService';
+import { sanitizeEmailHtml } from '@/server/lib/email-html';
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 import type {
   GoogleAdsNegativeKeyword,
@@ -63,20 +64,6 @@ const BATCH_TIME_LIMIT_MS = CRON_MAX_DURATION_MS - USER_TIME_LIMIT_MS - SAFETY_M
 
 function buildPrompt(template: string, variables: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] ?? '');
-}
-
-function sanitizeEmailHtml(html: string): string {
-  if (!html) {
-    return '';
-  }
-
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\s+on[a-z]+\s*=\s*(['"]).*?\1/gi, '')
-    .replace(/\s+(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, '')
-    .replace(/<\/?(iframe|object|embed|form|input|button)[^>]*>/gi, '');
 }
 
 function getJstHour(date: Date): number {

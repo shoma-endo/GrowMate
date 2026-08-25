@@ -98,11 +98,15 @@ export function getGa4DataQualityLabel(value: unknown): string {
   return value.partial === true && !onlyLegacyGscReason ? '一部取得' : '必要なデータを取得済み';
 }
 
+// 「合格ライン」帯（60-79）の下限。一覧のスコア閾値フィルタ（D11）はこの値を流用し、
+// 新規の任意閾値を作らない（docs/plans/ga4-content-evaluation-spec.md §6.2.2 / §6.4）。
+export const GA4_CONTENT_SCORE_PASSING_LINE = 60;
+
 export function getGa4ScoreBand(score: number | null): string {
   if (score === null) return '—';
   if (score < 20) return '深刻';
   if (score < 40) return '要改善';
-  if (score < 60) return '改善の余地あり';
+  if (score < GA4_CONTENT_SCORE_PASSING_LINE) return '改善の余地あり';
   if (score < 80) return '合格ライン';
   return '良好';
 }
