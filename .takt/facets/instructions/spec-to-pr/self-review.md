@@ -10,7 +10,7 @@
 - `npm run verify` が成功していること。
 - architecture-reviewer の open findings がないこと。
 - `readme-sync.md` に README の更新要否と根拠が記録され、更新要の場合は実装差分と `README.md` が同期していること。
-- 変更差分が対象仕様書と `plan.md` の `対象スコープ:` 内であり、余計な差分や機密情報の露出がないこと。
+- 変更差分が対象仕様書と `plan.md` の `対象スコープ:` 内か確認する。要件にない画面・UI・機能・改善、ついで修正、将来対応が混入している場合は `needs_fix` とする。機密情報の露出がないこと。
 - PR確認用の要約に関連仕様書、検証結果、architecture review / self-review 結果、完了判断理由を含められること。
 
 {{include:instructions/unattended-operation}}
