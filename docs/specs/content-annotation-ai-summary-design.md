@@ -1,6 +1,7 @@
 # content_annotations AI要約生成 設計書
 
 > 改訂履歴
+> - 2026-08-24: 実装済みのため正本を `docs/plans/` から `docs/specs/content-annotation-ai-summary-design.md` へ移動（`update-docs` の分類に従う）。一覧一括は引き続き `docs/plans/content-annotation-bulk-ai-summary-spec.md`。
 > - 2026-07-02: 初版。ヒアリングの結果を反映（LLM要約方式を採用、basic_structureのみ機械抽出に分離）。
 > - 2026-07-02: サブエージェントレビューを反映。(1) 生HTML取得経路が既存共有関数には無かったため追加、(2) 書き込み先を`updateContentAnnotationFields`から`upsertContentAnnotationBySession`方式に変更、(3) HTMLエンティティのデコード方針を追加、(4) `maxTokens`を4000→8000に見直し、(5) フォーム表示への反映導線を未確定事項に追加。
 > - 2026-07-02: レビュー指摘（P2）を反映。`upsertContentAnnotationBySession`は`impressions`を渡さないと`null`で上書きする実装のため、対象外のはずの既存`impressions`値が消える問題を修正（既存値を明示的に引き継ぐよう8.2手順3・12を修正）。あわせて8.2で使っていた宙に浮いた「10-A」等の節参照を実在する参照先に修正。
@@ -56,6 +57,7 @@ WordPress連携済みの記事（`content_annotations`）について、記事�
 ### 2.4 非対象（今回やらないこと）
 
 - 一括インポート時の自動実行（WordPress一括インポート画面 `app/wordpress-import/page.tsx` の挙動は変更しない）。
+- コンテンツ一覧からの AI 要約一括実行（トリガー・対象選定・時間予算）。**別仕様** `docs/plans/content-annotation-bulk-ai-summary-spec.md` で扱う。本設計は単記事要約の実装正本のままとする。
 - `SuggestionDataReadiness.tsx` への同機能追加。
 - 生成結果の履歴保存（`content_annotations` は現状どおり最新値のみ保持。バージョン管理は本設計の対象外）。
 
