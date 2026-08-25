@@ -163,7 +163,12 @@ export function EvaluationSettings({
     }
   };
 
-  const nextEvaluationDateStr = dateStr ? addDays(dateStr, cycleDays) : '';
+  // フォームの基準日だけでなく currentEvaluation.last_evaluated_on を優先する。既に評価が
+  // 何度か回っているサイクルの「設定を変更」でフォームの基準日（登録時の古い値）だけを見ると、
+  // DBのnext_evaluation_date生成列（COALESCE(last_evaluated_on, base_evaluation_date) + cycle_days）
+  // と異なる、実態と無関係な日付を表示してしまうため（2026-08-25 GA4側で発覚・GSC側も同様に修正）。
+  const previewScheduleRefDate = currentEvaluation?.last_evaluated_on ?? dateStr;
+  const nextEvaluationDateStr = previewScheduleRefDate ? addDays(previewScheduleRefDate, cycleDays) : '';
   const firstEvaluationDateStr = nextEvaluationDateStr ? addDays(nextEvaluationDateStr, cycleDays) : '';
   // last_evaluated_on は no_metrics クールダウンでも更新されるため、ベースライン有無は last_seen_position で判定する
   const hasCompletedInitialMeasurement = currentEvaluation?.last_seen_position != null;
