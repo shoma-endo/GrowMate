@@ -375,9 +375,11 @@ export function ContentEvaluationCycleSettings({
         </Dialog>
 
           {/* 今すぐ評価を実行ボタン（GSCの検索順位評価サイクル設定カードと同じ位置。§10.8「今すぐ評価を実行ボタン」）
-              サイクル未登録時、および evaluation の状態上いま実行できない場合（unassessed / low_data /
-              evaluating / import_failed / insufficient_data）は表示しない */}
-          {cycle && canShowRunAction && (
+              表示条件は移設元の ContentEvaluationCard.tsx と同じ canShowRunAction のみ（サイクル未登録
+              でも単発評価はできた。2026-08-25、移設時に誤って cycle && を追加してしまい退行させた
+              ため削除。ユーザー指摘で復元）。evaluation の状態上いま実行できない場合（unassessed /
+              low_data / evaluating / import_failed / insufficient_data）は表示しない */}
+          {canShowRunAction && (
             <Button
               type="button"
               variant="outline"
