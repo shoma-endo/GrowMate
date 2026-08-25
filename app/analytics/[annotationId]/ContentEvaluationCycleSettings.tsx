@@ -42,7 +42,6 @@ interface ContentEvaluationCycleSettingsProps {
   annotationId: string;
   /** 「今すぐ評価を実行」ボタン用（コンテンツ評価タブから移動。§10.8「今すぐ評価を実行ボタン」） */
   evaluation: Ga4ContentEvaluationView | null;
-  evaluationError?: string | null;
   onRun: () => Promise<void>;
   onRetryNarrative?: () => Promise<void>;
 }
@@ -62,7 +61,6 @@ const formatDateJP = (dateStr: string | undefined | null) => {
 export function ContentEvaluationCycleSettings({
   annotationId,
   evaluation,
-  evaluationError = null,
   onRun,
   onRetryNarrative,
 }: ContentEvaluationCycleSettingsProps) {
@@ -443,11 +441,6 @@ export function ContentEvaluationCycleSettings({
           {!hasBaseline && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 ring-1 ring-amber-200">
               初回の計測がまだ完了していません。次回の定期評価（上記の「初回評価予定」）で再試行されます。{baselinePendingReason}
-            </p>
-          )}
-          {evaluationError && (
-            <p className="text-xs text-red-700 bg-red-50 rounded-md px-3 py-2 ring-1 ring-red-200">
-              {evaluationError}
             </p>
           )}
           {cycle.lastNotificationStatus === 'failed' && (

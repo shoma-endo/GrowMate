@@ -53,7 +53,6 @@ interface OverviewTabProps {
   onRunEvaluation: () => Promise<EvaluationResultSummary | undefined>;
   /** コンテンツ評価サイクル設定カードの「今すぐ評価を実行」ボタン用（§10.8。2026-08-25 コンテンツ評価タブから移動） */
   ga4Evaluation: Ga4ContentEvaluationView | null;
-  ga4EvaluationError?: string | null;
   onRunGa4Evaluation: () => Promise<void>;
   onRetryGa4Narrative?: () => Promise<void>;
   onRunQueryImport: () => Promise<
@@ -88,7 +87,6 @@ export function OverviewTab({
   onUpdateEvaluation,
   onRunEvaluation,
   ga4Evaluation,
-  ga4EvaluationError = null,
   onRunGa4Evaluation,
   onRetryGa4Narrative,
   onRunQueryImport,
@@ -233,7 +231,6 @@ export function OverviewTab({
           <ContentEvaluationCycleSettings
             annotationId={detail.annotation.id}
             evaluation={ga4Evaluation}
-            evaluationError={ga4EvaluationError}
             onRun={onRunGa4Evaluation}
             {...(onRetryGa4Narrative ? { onRetryNarrative: onRetryGa4Narrative } : {})}
           />

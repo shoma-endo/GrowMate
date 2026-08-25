@@ -211,7 +211,6 @@ export default function GscDashboardClient({
             onUpdateEvaluation={dashboard.handleUpdateEvaluation}
             onRunEvaluation={dashboard.handleRunEvaluation}
             ga4Evaluation={ga4Evaluation}
-            ga4EvaluationError={ga4EvaluationError}
             onRunGa4Evaluation={handleRunGa4Evaluation}
             onRetryGa4Narrative={handleRetryGa4Narrative}
             onRunQueryImport={dashboard.handleRunQueryImport}
