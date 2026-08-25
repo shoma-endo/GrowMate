@@ -120,7 +120,6 @@ function buildEvaluatedView(contentScore: number): Ga4ContentEvaluationView {
   return {
     settingsEnabled: true,
     displayStatus: 'evaluated',
-    needsReauth: false,
     missingMetrics: [],
     projection: null,
     history: [

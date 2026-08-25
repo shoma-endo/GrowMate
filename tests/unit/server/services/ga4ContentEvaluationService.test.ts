@@ -93,7 +93,6 @@ const RUN_INPUT = {
 
 const EVALUATION_VIEW = {
   settingsEnabled: true,
-  needsReauth: false,
   missingMetrics: [],
   displayStatus: 'narrative_failed' as const,
   projection: null,
@@ -305,6 +304,30 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     });
     // スコア未算出はキー省略で表す（SQL 側が default null のため NULL 保存と等価）
     expect(finishCall?.[1]?.p_content_score ?? null).toBeNull();
+  });
+
+  it('アクセストークンの残り期限が切れていてもリフレッシュを試みずに評価を実行する（run()はGoogle APIを呼ばないため再認証チェックは不要。過去の誤ブロック不具合の回帰）', async () => {
+    mocks.credential = {
+      ga4PropertyId: 'property-1',
+      ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
+      accessToken: 'access-token',
+      accessTokenExpiresAt: '2020-01-01T00:00:00.000Z', // 残り期限切れ（=旧実装ならneeds_reauthで即拒否していた）
+      scope: ['https://www.googleapis.com/auth/analytics.readonly'],
+    };
+    const serviceInternals = ga4ContentEvaluationService as unknown as {
+      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
+    };
+    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
+    vi.spyOn(ga4ContentEvaluationService, 'fetchEvaluation').mockResolvedValue(EVALUATION_VIEW);
+    configureRunClient({ metricsError: { code: 'ga4_query_failed' } });
+
+    await expect(ga4ContentEvaluationService.run(RUN_INPUT)).resolves.toEqual(EVALUATION_VIEW);
+
+    const finishCall = mocks.client.rpc.mock.calls.find(([name]) => name === 'finish_ga4_content_evaluation');
+    expect(finishCall?.[1]).toMatchObject({
+      p_status: 'import_failed',
+      p_error_code: 'ga4_query_failed',
+    });
   });
 
   it('評価対象期間の終端から48時間を超えたデータはスコア・LLMを実行せず insufficient_data にする', async () => {

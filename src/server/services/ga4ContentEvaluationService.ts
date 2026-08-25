@@ -33,7 +33,6 @@ import {
 import { generateGa4EvaluationLlmOutput } from '@/server/services/ga4EvaluationLlmService';
 import { ga4EvaluationLlmOutputSchema, type Ga4EvaluationNarrative } from '@/server/schemas/ga4ContentEvaluation.schema';
 import { MODEL_CONFIGS } from '@/lib/constants';
-import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
 import { countContentChars } from '@/lib/content-text';
 import { getGa4EvaluationDateRange } from '@/lib/ga4-evaluation-period';
 import {
@@ -266,7 +265,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
 
   async fetchEvaluation(userId: string, annotationId: string): Promise<Ga4ContentEvaluationView> {
     const credential = await this.getGscCredentialByUserId(userId);
-    const needsReauth = toGa4ConnectionStatus(credential).needsReauth === true;
     const displayPeriod = getGa4EvaluationDateRange();
     return this.withEvaluationClient(async client => {
       const [{ data: projection, error: projectionError }, { data: history, error: historyError }] = await Promise.all([
@@ -335,10 +333,8 @@ class Ga4ContentEvaluationService extends SupabaseService {
       const persistedStatus = toPersistentStatus(projection?.status ?? null, annotationId);
       return {
         settingsEnabled,
-        needsReauth,
         missingMetrics: initialDisplay?.missingMetrics ?? [],
         displayStatus: resolveGa4EvaluationDisplayStatus({
-          needsReauth,
           persistedStatus,
           ...(initialDisplay ? { derivedStatus: initialDisplay.status } : {}),
         }),
@@ -355,11 +351,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
 
   async run(input: RunGa4ContentEvaluationInput): Promise<Ga4ContentEvaluationView> {
     const credential = await this.getGscCredentialByUserId(input.userId);
-    if (toGa4ConnectionStatus(credential).needsReauth === true) {
-      const error = new Error('needs_reauth');
-      Object.assign(error, { code: 'needs_reauth' });
-      throw error;
-    }
     const initialStatus = await this.resolveInitialDisplayStatus(input.userId, input.annotationId, {
       startDate: input.startDate,
       endDate: input.endDate,
@@ -586,13 +577,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
   }
 
   async retryNarrative(userId: string, annotationId: string): Promise<Ga4ContentEvaluationView> {
-    const credential = await this.getGscCredentialByUserId(userId);
-    if (toGa4ConnectionStatus(credential).needsReauth === true) {
-      const error = new Error('needs_reauth');
-      Object.assign(error, { code: 'needs_reauth' });
-      throw error;
-    }
-
     const source = await this.withEvaluationClient(async client => {
       const { data: projection, error: projectionError } = await client
         .from('ga4_content_evaluations')

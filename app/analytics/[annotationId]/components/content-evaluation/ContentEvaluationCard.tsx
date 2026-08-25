@@ -102,7 +102,7 @@ export function ContentEvaluationCard({
   const latestRun = evaluation?.history[0] ?? null;
   const displayStatus = evaluation?.displayStatus ?? 'unassessed';
   const canRun = ['eligible', 'evaluated', 'narrative_failed', 'evaluation_failed'].includes(displayStatus);
-  const canShowAction = !['unassessed', 'low_data', 'evaluating', 'needs_reauth', 'import_failed', 'insufficient_data'].includes(displayStatus);
+  const canShowAction = !['unassessed', 'low_data', 'evaluating', 'import_failed', 'insufficient_data'].includes(displayStatus);
   const dataQualitySource = displayStatus === 'insufficient_data' ? latestRun : latest;
   const missingMetrics = displayStatus === 'unassessed'
     ? evaluation?.missingMetrics ?? []
@@ -188,17 +188,6 @@ export function ContentEvaluationCard({
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error ?? (displayStatus === 'import_failed' ? 'データを再取得してから評価を実行してください。' : '評価に失敗しました。時間をおいて再評価してください。')}</AlertDescription>
           </Alert>
-        )}
-        {displayStatus === 'needs_reauth' && (
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm text-muted-foreground">Google連携を確認してから評価を実行してください。</p>
-            {/* この状態では上の主操作ボタンが出ず、これが唯一の復帰導線になる。
-                白地の outline だと押せる要素に見えないため、既定の塗りつぶしにする
-                （Ga4DashboardClient.tsx の未連携時「GA4設定に移動」と同じ扱い） */}
-            <Button asChild type="button">
-              <Link href="/setup/ga4">Googleを再連携</Link>
-            </Button>
-          </div>
         )}
         {displayStatus === 'import_failed' && (
           <Button asChild type="button">

@@ -18,7 +18,6 @@ const GA4_DIAGNOSIS_LABELS: Record<Ga4DiagnosisCode, string> = {
 const GA4_STATUS_LABELS: Record<string, string> = {
   unassessed: '未評価',
   eligible: '評価可能',
-  needs_reauth: 'Google連携を確認してください',
   low_data: 'データ蓄積中',
   evaluated: '評価済み',
   narrative_failed: '診断コメントを作成できませんでした',

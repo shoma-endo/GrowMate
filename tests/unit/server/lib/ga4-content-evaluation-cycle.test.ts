@@ -42,7 +42,6 @@ function createView(overrides: Partial<Ga4ContentEvaluationView> = {}): Ga4Conte
   return {
     settingsEnabled: true,
     displayStatus: 'evaluated',
-    needsReauth: false,
     missingMetrics: [],
     projection: null,
     history: [],

@@ -52,7 +52,6 @@ function buildView(
   return {
     settingsEnabled: true,
     displayStatus: 'evaluated',
-    needsReauth: false,
     missingMetrics: [],
     projection: {
       status: 'evaluated',

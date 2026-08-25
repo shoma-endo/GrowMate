@@ -25,7 +25,6 @@ export function isGa4PersistentEvaluationStatus(
 const GA4_EVALUATION_DISPLAY_STATUSES = [
   'unassessed',
   'eligible',
-  'needs_reauth',
   'low_data',
   ...GA4_PERSISTENT_EVALUATION_STATUSES,
 ] as const;
@@ -54,7 +53,6 @@ interface Ga4EvaluationNarrativeView {
 export interface Ga4ContentEvaluationView {
   settingsEnabled: boolean;
   displayStatus: Ga4EvaluationDisplayStatus;
-  needsReauth: boolean;
   missingMetrics: string[];
   projection: {
     status: Ga4PersistentEvaluationStatus;

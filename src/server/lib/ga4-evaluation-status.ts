@@ -6,7 +6,6 @@ import type {
 } from '@/types/ga4-evaluation';
 
 export interface Ga4EvaluationDisplayInput {
-  needsReauth: boolean;
   persistedStatus: Ga4PersistentEvaluationStatus | null;
   derivedStatus?: 'low_data' | 'eligible' | 'unassessed';
 }
@@ -14,9 +13,6 @@ export interface Ga4EvaluationDisplayInput {
 export function resolveGa4EvaluationDisplayStatus(
   input: Ga4EvaluationDisplayInput
 ): Ga4EvaluationDisplayStatus {
-  if (input.needsReauth) {
-    return 'needs_reauth';
-  }
   if (input.persistedStatus) {
     return input.persistedStatus;
   }
