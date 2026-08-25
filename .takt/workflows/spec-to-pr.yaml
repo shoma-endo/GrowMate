@@ -100,7 +100,7 @@ steps:
     output_contracts:
       report:
         - name: plan.md
-          format: plan
+          format: spec-to-pr/plan
 
   - name: implement
     tags:
