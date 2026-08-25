@@ -428,9 +428,6 @@ export function ContentEvaluationCycleSettings({
               メールアドレスが未登録のため通知は送られません。評価結果はこの画面で確認できます。
             </p>
           )}
-          <p className="text-xs text-muted-foreground">
-            設定を変更すると次回以降の評価予定が変わります。評価の停止・削除は現在お使いいただけません。
-          </p>
         </div>
       ) : (
         <div className="rounded-lg border-2 border-dashed p-8 text-center bg-gray-50/50 mt-4">
