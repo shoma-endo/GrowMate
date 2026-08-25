@@ -195,13 +195,6 @@ export function ContentEvaluationCycleSettings({
   // last_seen_content_score は GSC の last_seen_position 相当（§7.7）。バッチは毎回の評価成功時に
   // これを更新するため、登録時のベースライン取得が失敗しても以後の定期評価が成功すれば解消する。
   const hasBaseline = cycle?.lastSeenContentScore != null;
-  // GSC (EvaluationSettings.tsx:406-447) と同型の状態カード分岐（D10確定・§10.8「差はなし」）。
-  // 初回計測前は nextEvaluationDate が「次に取得を試みる日」を表すため、それを「初回計測予定」に、
-  // その1サイクル先を「初回評価予定」に充てる。
-  const initialMeasurementDate = cycle?.nextEvaluationDate ?? '';
-  const initialEvaluationDate = initialMeasurementDate
-    ? addDaysISO(initialMeasurementDate, cycle?.cycleDays ?? 30)
-    : '';
 
   if (cycleLoading) {
     return (
@@ -400,43 +393,31 @@ export function ContentEvaluationCycleSettings({
 
       {cycle ? (
         <div className="space-y-2">
-          <div className={`grid grid-cols-1 gap-4 mt-4 ${hasBaseline ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+          <div className="grid grid-cols-1 gap-4 mt-4 md:grid-cols-2">
             <div className="rounded-lg border border-blue-200 bg-blue-50 shadow-sm p-4">
               <div className="text-sm text-blue-600 mb-1">現在の基準日</div>
               <div className="text-2xl font-bold text-blue-900">{formatDateJP(cycle.baseEvaluationDate)}</div>
             </div>
-            {hasBaseline ? (
-              <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
-                <div className="text-sm text-green-600 mb-1">次回評価予定</div>
-                <div className="text-2xl font-bold text-green-900">
-                  {formatDateJP(cycle.nextEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
-                  (日本時間)
-                </div>
+            {/* cycle.nextEvaluationDate はDBの唯一の権威ある値。hasBaseline（ベースライン取得済みか）
+                でラベルだけ「初回」/「次回」を切り替える（2026-08-25 簡略化：以前はhasBaseline=false時に
+                「初回評価予定」＋独自計算の「次回評価予定」を2枚出していたが、後者はフロント側の
+                推測値でDBの実データではなく、リース衝突等の稀なケースでは実際の次回日とズレうるため
+                誠実でないと判断し削除した。ユーザー指摘） */}
+            <div
+              className={
+                hasBaseline
+                  ? 'rounded-lg border border-green-200 bg-green-50 shadow-sm p-4'
+                  : 'rounded-lg border border-cyan-200 bg-cyan-50 shadow-sm p-4'
+              }
+            >
+              <div className={hasBaseline ? 'text-sm text-green-600 mb-1' : 'text-sm text-cyan-600 mb-1'}>
+                {hasBaseline ? '次回評価予定' : '初回評価予定'}
               </div>
-            ) : (
-              <>
-                {/* cycle.nextEvaluationDate（基準日 + 1サイクル）は、GSCと違い「計測のみ・通知なし」の
-                    特別扱いを受けない（GA4のバッチはhasBaseline状態に関わらず常に通常のrun()を呼び、
-                    成功すれば必ず通知メールを送る）。したがってこの日付は実質「初回の本評価が
-                    行われる日」そのものであり、ダイアログのプレビュー「初回評価日」と同じ値・同じ
-                    意味を指す。「初回計測の再試行予定」は実態と異なる誤解を招く表現だったため
-                    「初回評価予定」に修正した（ユーザー指摘）。 */}
-                <div className="rounded-lg border border-cyan-200 bg-cyan-50 shadow-sm p-4">
-                  <div className="text-sm text-cyan-600 mb-1">初回評価予定</div>
-                  <div className="text-2xl font-bold text-cyan-900">
-                    {formatDateJP(initialMeasurementDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
-                    (日本時間)
-                  </div>
-                </div>
-                <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
-                  <div className="text-sm text-green-600 mb-1">次回評価予定</div>
-                  <div className="text-2xl font-bold text-green-900">
-                    {formatDateJP(initialEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
-                    (日本時間)
-                  </div>
-                </div>
-              </>
-            )}
+              <div className={hasBaseline ? 'text-2xl font-bold text-green-900' : 'text-2xl font-bold text-cyan-900'}>
+                {formatDateJP(cycle.nextEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
+                (日本時間)
+              </div>
+            </div>
           </div>
           {!hasBaseline && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 ring-1 ring-amber-200">
