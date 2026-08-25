@@ -1,5 +1,4 @@
 import { SupabaseService } from '@/server/services/supabaseService';
-import { asPendingClient, type AnalyticsScoreFilterDatabase } from '@/types/database.types.pending';
 
 import { normalizeToPath } from '@/lib/ga4-utils';
 import {
@@ -41,10 +40,9 @@ class AnalyticsContentService {
 
     try {
       const client = supabaseService.getClient();
-      const scoreFilterClient = asPendingClient<AnalyticsScoreFilterDatabase>(client);
 
       const fetchAnnotationsPage = async (targetPage: number) => {
-        const { data, error } = await scoreFilterClient.rpc('get_filtered_content_annotations', {
+        const { data, error } = await client.rpc('get_filtered_content_annotations', {
           p_user_id: userId,
           p_page: targetPage,
           p_per_page: perPage,
@@ -53,9 +51,6 @@ class AnalyticsContentService {
           p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
           p_has_unstarted_gsc_evaluation: params.hasUnstartedGscEvaluation ?? false,
           p_has_unstarted_ga4_evaluation: params.hasUnstartedGa4Evaluation ?? false,
-          ...(params.ga4ContentScoreBelow !== undefined
-            ? { p_ga4_content_score_below: params.ga4ContentScoreBelow }
-            : {}),
         });
 
         const row = data?.[0] as

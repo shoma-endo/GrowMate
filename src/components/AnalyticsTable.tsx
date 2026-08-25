@@ -69,7 +69,6 @@ interface Props {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnstartedGa4Evaluation: boolean;
-  hasGa4ContentScoreBelow: boolean;
   hasUrlFilterParams: boolean;
 }
 
@@ -137,7 +136,6 @@ export default function AnalyticsTable({
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
   hasUnstartedGa4Evaluation,
-  hasGa4ContentScoreBelow,
   hasUrlFilterParams,
 }: Props) {
   const router = useRouter();
@@ -165,7 +163,7 @@ export default function AnalyticsTable({
   const didInitialFilterSyncRef = React.useRef(false);
   const prevHasUrlFilterParamsRef = React.useRef(hasUrlFilterParams);
   const prevHasIndependentFilterRef = React.useRef(
-    hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnstartedGa4Evaluation || hasGa4ContentScoreBelow
+    hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnstartedGa4Evaluation
   );
 
   const storedFilter = React.useMemo(() => loadCategoryFilterFromStorage(), []);
@@ -177,7 +175,7 @@ export default function AnalyticsTable({
     if (hasUrlFilterParams) {
       return selectedCategoryNames;
     }
-    if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnstartedGa4Evaluation || hasGa4ContentScoreBelow) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnstartedGa4Evaluation) {
       return [];
     }
     return storedFilter.selectedCategoryNames;
@@ -186,7 +184,7 @@ export default function AnalyticsTable({
     if (hasUrlFilterParams) {
       return includeUncategorized;
     }
-    if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnstartedGa4Evaluation || hasGa4ContentScoreBelow) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnstartedGa4Evaluation) {
       return false;
     }
     return storedFilter.includeUncategorized;
@@ -198,8 +196,6 @@ export default function AnalyticsTable({
     React.useState<boolean>(hasUnstartedGscEvaluation);
   const [isFilteringUnstartedGa4Evaluation, setIsFilteringUnstartedGa4Evaluation] =
     React.useState<boolean>(hasUnstartedGa4Evaluation);
-  const [isFilteringGa4ContentScoreBelow, setIsFilteringGa4ContentScoreBelow] =
-    React.useState<boolean>(hasGa4ContentScoreBelow);
 
   // 操作列の展開状態（初期値は true: 展開）
   const [isOpsExpanded, setIsOpsExpanded] = React.useState<boolean>(() => {
@@ -292,9 +288,6 @@ export default function AnalyticsTable({
   React.useEffect(() => {
     setIsFilteringUnstartedGa4Evaluation(hasUnstartedGa4Evaluation);
   }, [hasUnstartedGa4Evaluation]);
-  React.useEffect(() => {
-    setIsFilteringGa4ContentScoreBelow(hasGa4ContentScoreBelow);
-  }, [hasGa4ContentScoreBelow]);
 
   const pushFilterQuery = React.useCallback(
     (
@@ -302,7 +295,7 @@ export default function AnalyticsTable({
       includeUncat: boolean,
       includeUnreadSuggestion: boolean,
       includeUnstartedGscEvaluation: boolean,
-      options?: { replace?: boolean; ga4Evaluation?: boolean; ga4LowScore?: boolean }
+      options?: { replace?: boolean; ga4Evaluation?: boolean }
     ) => {
       const nextQuery = new URLSearchParams(searchParams?.toString() ?? '');
       const currentPath = pathname ?? '/analytics';
@@ -341,13 +334,6 @@ export default function AnalyticsTable({
         nextQuery.delete('ga4_evaluation');
       }
 
-      const includeGa4ContentScoreBelow = options?.ga4LowScore ?? isFilteringGa4ContentScoreBelow;
-      if (includeGa4ContentScoreBelow) {
-        nextQuery.set('ga4_low_score', '1');
-      } else {
-        nextQuery.delete('ga4_low_score');
-      }
-
       const next = nextQuery.toString();
       const href = next.length > 0 ? `${currentPath}?${next}` : currentPath;
       React.startTransition(() => {
@@ -358,7 +344,7 @@ export default function AnalyticsTable({
         router.push(href);
       });
     },
-    [isFilteringUnstartedGa4Evaluation, isFilteringGa4ContentScoreBelow, pathname, router, searchParams]
+    [isFilteringUnstartedGa4Evaluation, pathname, router, searchParams]
   );
 
   // URL未指定かつlocalStorageに復元対象がある場合は、初回にURLへ同期してサーバー再取得。
@@ -430,7 +416,6 @@ export default function AnalyticsTable({
     includeUnreadSuggestion?: boolean;
     includeUnstartedGscEvaluation?: boolean;
     includeUnstartedGa4Evaluation?: boolean;
-    includeGa4ContentScoreBelow?: boolean;
   }) => {
     const stored = loadCategoryFilterFromStorage();
     if (stored.selectedCategoryNames.length > 0 || stored.includeUncategorized) {
@@ -443,7 +428,6 @@ export default function AnalyticsTable({
         overrides?.includeUnstartedGscEvaluation ?? isFilteringUnstartedGscEvaluation
         , {
           ga4Evaluation: overrides?.includeUnstartedGa4Evaluation ?? isFilteringUnstartedGa4Evaluation,
-          ga4LowScore: overrides?.includeGa4ContentScoreBelow ?? isFilteringGa4ContentScoreBelow,
         }
       );
       return true;
@@ -491,21 +475,6 @@ export default function AnalyticsTable({
       isFilteringUnreadSuggestion,
       isFilteringUnstartedGscEvaluation,
       { ga4Evaluation: next }
-    );
-  };
-
-  // コンテンツ力スコア閾値フィルター（D11）の変更ハンドラ
-  const handleGa4ContentScoreBelowChange = (next: boolean) => {
-    setIsFilteringGa4ContentScoreBelow(next);
-    if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
-      if (restoreCategoryFiltersFromStorage({ includeGa4ContentScoreBelow: false })) return;
-    }
-    pushFilterQuery(
-      categoryFilterNames,
-      isIncludingUncategorized,
-      isFilteringUnreadSuggestion,
-      isFilteringUnstartedGscEvaluation,
-      { ga4LowScore: next }
     );
   };
 
@@ -582,14 +551,6 @@ export default function AnalyticsTable({
     pushFilterQuery(categoryFilterNames, isIncludingUncategorized, isFilteringUnreadSuggestion, isFilteringUnstartedGscEvaluation, { ga4Evaluation: false });
   };
 
-  const removeGa4ContentScoreBelowFilter = () => {
-    setIsFilteringGa4ContentScoreBelow(false);
-    if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
-      if (restoreCategoryFiltersFromStorage({ includeGa4ContentScoreBelow: false })) return;
-    }
-    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, isFilteringUnreadSuggestion, isFilteringUnstartedGscEvaluation, { ga4LowScore: false });
-  };
-
   // 全フィルターをクリア
   const clearAllFilters = () => {
     setCategoryFilterNames([]);
@@ -597,11 +558,10 @@ export default function AnalyticsTable({
     setIsFilteringUnreadSuggestion(false);
     setIsFilteringUnstartedGscEvaluation(false);
     setIsFilteringUnstartedGa4Evaluation(false);
-    setIsFilteringGa4ContentScoreBelow(false);
     if (categoryFilterNames.length > 0 || isIncludingUncategorized) {
       saveCategoryFilterToStorage([], false);
     }
-    pushFilterQuery([], false, false, false, { ga4Evaluation: false, ga4LowScore: false });
+    pushFilterQuery([], false, false, false, { ga4Evaluation: false });
   };
 
   // フィルターが適用中かどうか
@@ -610,8 +570,7 @@ export default function AnalyticsTable({
     isIncludingUncategorized ||
     isFilteringUnreadSuggestion ||
     isFilteringUnstartedGscEvaluation ||
-    isFilteringUnstartedGa4Evaluation ||
-    isFilteringGa4ContentScoreBelow;
+    isFilteringUnstartedGa4Evaluation;
 
   const handleLaunch = React.useCallback(
     async (payload: LaunchPayload) => {
@@ -830,12 +789,10 @@ export default function AnalyticsTable({
               hasUnreadSuggestion={isFilteringUnreadSuggestion}
               hasUnstartedGscEvaluation={isFilteringUnstartedGscEvaluation}
               hasUnstartedGa4Evaluation={isFilteringUnstartedGa4Evaluation}
-              hasGa4ContentScoreBelow={isFilteringGa4ContentScoreBelow}
               onFilterChange={handleCategoryFilterChange}
               onUnreadSuggestionChange={handleUnreadSuggestionChange}
               onUnstartedGscEvaluationChange={handleUnstartedGscEvaluationChange}
               onUnstartedGa4EvaluationChange={handleUnstartedGa4EvaluationChange}
-              onGa4ContentScoreBelowChange={handleGa4ContentScoreBelowChange}
               onClearAll={clearAllFilters}
             />
         }
@@ -912,14 +869,6 @@ export default function AnalyticsTable({
                         </button>
                       </span>
                     )}
-                    {isFilteringGa4ContentScoreBelow && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-rose-800 bg-rose-100">
-                        コンテンツ力スコア60点未満
-                        <button type="button" onClick={removeGa4ContentScoreBelowFilter} className="hover:bg-rose-200 rounded-full p-0.5" title="コンテンツ力スコア60点未満フィルターを解除">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
                     <button
                       type="button"
                       onClick={clearAllFilters}
@@ -942,7 +891,7 @@ export default function AnalyticsTable({
             <div className="overflow-x-auto contain-layout">
               {items.length === 0 ? (
                 <p className="text-sm text-gray-500 py-8 text-center">
-                  {hasUrlFilterParams || hasUnreadSuggestion || hasUnstartedGa4Evaluation || hasGa4ContentScoreBelow
+                  {hasUrlFilterParams || hasUnreadSuggestion || hasUnstartedGa4Evaluation
                     ? '表示条件に一致するコンテンツがありません。フィルタを変更してください。'
                     : 'まだコンテンツがありません。チャットでブログを作成するか、WordPress記事を一括インポートしてください。'}
                 </p>

@@ -15,7 +15,6 @@ export interface AnalyticsHrefState {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnstartedGa4Evaluation: boolean;
-  hasGa4ContentScoreBelow: boolean;
   instagramConnected: boolean;
   activeTab: 'blog' | 'instagram';
   igPage: number;
@@ -54,9 +53,6 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
   }
   if (state.hasUnstartedGa4Evaluation) {
     query.set('ga4_evaluation', 'not_started');
-  }
-  if (state.hasGa4ContentScoreBelow) {
-    query.set('ga4_low_score', '1');
   }
 
   const nextTab = patch.tab ?? state.activeTab;

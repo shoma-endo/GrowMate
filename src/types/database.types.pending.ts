@@ -69,21 +69,3 @@ export type Ga4ContentEvaluationCycleDatabase = Omit<Database, 'public'> & {
     };
   };
 };
-
-// PROVISIONAL: supabase/migrations/20260824000100_add_ga4_content_score_below_filter.sql
-// マイグレーション適用後に生成型を更新し、この型と asPendingClient 呼び出しを削除する。
-type FilteredContentAnnotationsFunction =
-  Database['public']['Functions']['get_filtered_content_annotations'];
-
-export type AnalyticsScoreFilterDatabase = Omit<Database, 'public'> & {
-  public: Omit<Database['public'], 'Functions'> & {
-    Functions: Omit<Database['public']['Functions'], 'get_filtered_content_annotations'> & {
-      get_filtered_content_annotations: {
-        Args: FilteredContentAnnotationsFunction['Args'] & {
-          p_ga4_content_score_below?: number;
-        };
-        Returns: FilteredContentAnnotationsFunction['Returns'];
-      };
-    };
-  };
-};

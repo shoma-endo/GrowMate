@@ -34,7 +34,6 @@ interface AnalyticsClientProps {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnstartedGa4Evaluation: boolean;
-  hasGa4ContentScoreBelow: boolean;
   ga4Truncated: boolean;
   periodClamped: boolean;
   hasUrlFilterParams: boolean;
@@ -74,7 +73,6 @@ export default function AnalyticsClient({
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
   hasUnstartedGa4Evaluation,
-  hasGa4ContentScoreBelow,
   ga4Truncated,
   periodClamped,
   hasUrlFilterParams,
@@ -112,7 +110,6 @@ export default function AnalyticsClient({
     hasUnreadSuggestion,
     hasUnstartedGscEvaluation,
     hasUnstartedGa4Evaluation,
-    hasGa4ContentScoreBelow,
     instagramConnected,
     activeTab,
     igPage,
@@ -151,7 +148,6 @@ export default function AnalyticsClient({
     if (hasUnreadSuggestion) params.set('unread_suggestion', '1');
     if (hasUnstartedGscEvaluation) params.set('gsc_evaluation', 'not_started');
     if (hasUnstartedGa4Evaluation) params.set('ga4_evaluation', 'not_started');
-    if (hasGa4ContentScoreBelow) params.set('ga4_low_score', '1');
     router.push(`/analytics?${params.toString()}`);
   };
   const startItemNumber = total > 0 ? (currentPage - 1) * perPage + 1 : 0;
@@ -254,7 +250,6 @@ export default function AnalyticsClient({
             hasUnreadSuggestion={hasUnreadSuggestion}
             hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
             hasUnstartedGa4Evaluation={hasUnstartedGa4Evaluation}
-            hasGa4ContentScoreBelow={hasGa4ContentScoreBelow}
             hasUrlFilterParams={hasUrlFilterParams}
           />
         ) : null}
