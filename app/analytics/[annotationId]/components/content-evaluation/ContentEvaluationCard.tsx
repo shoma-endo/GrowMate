@@ -174,10 +174,10 @@ export function ContentEvaluationCard({
       <CardContent className="space-y-4">
         {cycle && (
           <p className="text-xs text-muted-foreground">
-            {/* 概要タブの状態カード（ContentEvaluationCycleSettings.tsx）とラベルの意味を揃える。
-                ベースライン未完了時は同じ値を「次回の自動評価予定」と呼ぶと語感が食い違うため
-                「ベースライン再試行予定」に統一する（再レビュー指摘） */}
-            {cycle.lastSeenContentScore != null ? '次回の自動評価予定' : 'ベースライン再試行予定'}：
+            {/* 概要タブの状態カード（ContentEvaluationCycleSettings.tsx）とラベルの表記を揃える。
+                ベースライン完了時は状態カードと同じ「次回評価予定」、未完了時は
+                「ベースライン再試行予定」（初回試行が失敗し再試行待ちの意）を使う */}
+            {cycle.lastSeenContentScore != null ? '次回評価予定' : 'ベースライン再試行予定'}：
             {formatDateJP(cycle.nextEvaluationDate)}{' '}
             {cycle.evaluationHour.toString().padStart(2, '0')}:00（日本時間）。設定は概要タブから変更できます。
           </p>
