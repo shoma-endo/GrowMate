@@ -157,6 +157,27 @@ function getStoredScrollUsers(dataQuality: Json): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+interface ComputeGa4ScoreResult {
+  outcome: 'evaluated' | 'insufficient_data' | 'low_data' | 'import_failed';
+  errorCode: string | null;
+  canonicalUrl: string | null;
+  title: string | null;
+  ga4PropertyId: string | null;
+  ga4DataFetchedAt: string | null;
+  context: ReturnType<typeof buildGa4EvaluationContext> | null;
+  score: ReturnType<typeof evaluateGa4ContentScore> | null;
+  sessions: number | null;
+  charCount: number | null;
+  imageCount: number | null;
+  expectedReadSeconds: number | null;
+  avgEngagementSeconds: number | null;
+  readRate: number | null;
+  engageRate: number | null;
+  scrollRate: number | null;
+  scrollUsers: number | null;
+  dataQualityJson: Json;
+}
+
 class Ga4ContentEvaluationService extends SupabaseService {
   private async withEvaluationClient<T>(handler: (client: SupabaseClient<Database>) => Promise<T>): Promise<T> {
     return Ga4ContentEvaluationService.withServiceRoleClient(async client => handler(client), {
@@ -308,25 +329,18 @@ class Ga4ContentEvaluationService extends SupabaseService {
     });
   }
 
-  async run(input: RunGa4ContentEvaluationInput): Promise<Ga4ContentEvaluationView> {
-    const credential = await this.getGscCredentialByUserId(input.userId);
-    const initialStatus = await this.resolveInitialDisplayStatus(input.userId, input.annotationId, {
-      startDate: input.startDate,
-      endDate: input.endDate,
-    }, credential);
-    if (initialStatus.status === 'low_data') {
-      return this.fetchEvaluation(input.userId, input.annotationId);
-    }
-    const runId = await this.startRun(input.userId, input.annotationId);
-    let failurePhase: EvaluationFailurePhase = 'import';
-    let values: ScoringPersistValues = {
-      status: 'evaluation_failed', errorCode: 'evaluation_failed', errorMessage: 'evaluation_failed', attemptCount: 0,
-      readRate: null, engageRate: null, scrollRate: null, readScore: null, engageScore: null, contentScore: null,
-      diagnosisCode: null, siteRank: null, totalArticles: null, sessions: null, charCount: null, imageCount: null,
-      expectedReadSeconds: null, avgEngagementSeconds: null, narrativeJson: null,
-      dataQualityJson: {},
-      periodStart: input.startDate, periodEnd: input.endDate, canonicalUrl: null, title: null, ga4PropertyId: null,
-      ga4DataFetchedAt: null,
+  /**
+   * GA4データ取得〜スコア算出まで（LLM呼び出し・DB永続化を含まない）を run() / computeBaselineScore()
+   * の両方から使う共通ヘルパー。例外は投げず outcome で表す（D10当時「専用の計測経路を新設すると
+   * 評価パイプライン全体を複製することになる」として却下された懸念を、LLM呼び出しより手前に
+   * 分岐点を置くことで回避する）。
+   */
+  private async computeGa4Score(input: RunGa4ContentEvaluationInput): Promise<ComputeGa4ScoreResult> {
+    const base: ComputeGa4ScoreResult = {
+      outcome: 'import_failed', errorCode: null, canonicalUrl: null, title: null, ga4PropertyId: null,
+      ga4DataFetchedAt: null, context: null, score: null, sessions: null, charCount: null, imageCount: null,
+      expectedReadSeconds: null, avgEngagementSeconds: null, readRate: null, engageRate: null, scrollRate: null,
+      scrollUsers: null, dataQualityJson: {},
     };
     try {
       const client = this.getClient();
@@ -339,12 +353,9 @@ class Ga4ContentEvaluationService extends SupabaseService {
       if (annotationError || !annotation) throw annotationError ?? new Error('annotation not found');
       const credential = await this.getGscCredentialByUserId(input.userId);
       const propertyId = credential?.ga4PropertyId ?? null;
-      values = {
-        ...values,
-        canonicalUrl: annotation.canonical_url,
-        title: annotation.wp_post_title,
-        ga4PropertyId: propertyId,
-      };
+      base.canonicalUrl = annotation.canonical_url;
+      base.title = annotation.wp_post_title;
+      base.ga4PropertyId = propertyId;
       if (!propertyId || !annotation.canonical_url) throw new Error('GA4 property or canonical URL missing');
 
       const normalizedPath = normalizeToPath(annotation.canonical_url);
@@ -371,15 +382,12 @@ class Ga4ContentEvaluationService extends SupabaseService {
         }];
       }).sort((left, right) => left.date.localeCompare(right.date) || left.normalizedPath.localeCompare(right.normalizedPath));
       const summary = aggregateGa4EvaluationPageMetrics(dailyMetrics, input.startDate, input.endDate).get(normalizedPath) ?? null;
-      const ga4FetchedAt = getLatestImportedAt(rows ?? []);
-      values = {
-        ...values,
-        ga4DataFetchedAt: ga4FetchedAt,
-      };
+      base.ga4DataFetchedAt = getLatestImportedAt(rows ?? []);
+
       const context = buildGa4EvaluationContext({
         annotation: annotation as AnnotationRecord,
         startDate: input.startDate, endDate: input.endDate, ga4Summary: summary,
-        ga4DailyMetrics: dailyMetrics, gscSummary: null, ga4FetchedAt, gscFetchedAt: null,
+        ga4DailyMetrics: dailyMetrics, gscSummary: null, ga4FetchedAt: base.ga4DataFetchedAt, gscFetchedAt: null,
         ga4MetricsTruncated: metricCount !== null && metricCount !== undefined && dailyMetrics.length < metricCount,
       });
       const sessions = summary?.sessions ?? 0;
@@ -392,58 +400,134 @@ class Ga4ContentEvaluationService extends SupabaseService {
         ? summary.scroll90EventCount / sessions
         : null;
       const score = evaluateGa4ContentScore({ sessions, readRate, engagementRate: engageRate, scrollRate });
-      failurePhase = 'scoring';
-      if (score.status === 'low_data') {
-        await this.cancelRun(input, runId);
-        return this.fetchEvaluation(input.userId, input.annotationId);
-      }
       const scrollUsers = summary?.scrollMetricsAvailable === false ? null : summary?.scroll90EventCount ?? null;
-      values = {
-        ...values, status: score.status === 'evaluated' ? 'evaluated' : 'insufficient_data',
-        errorCode: score.status === 'evaluated' ? null : 'insufficient_data', errorMessage: null,
-        readRate, engageRate, scrollRate, readScore: score.readScore, engageScore: score.engageScore,
-        contentScore: score.contentScore, diagnosisCode: score.status === 'evaluated' ? score.diagnosis.code : null,
-        sessions, charCount: context.article.charCount, imageCount: context.article.imageCount,
-        expectedReadSeconds,
-        avgEngagementSeconds,
+
+      return {
+        ...base,
+        context, score, sessions,
+        charCount: context.article.charCount, imageCount: context.article.imageCount,
+        expectedReadSeconds, avgEngagementSeconds, readRate, engageRate, scrollRate, scrollUsers,
         dataQualityJson: toJson({ ...context.dataQuality, scrollUsers }),
+        outcome: score.status === 'low_data' ? 'low_data' : score.status === 'evaluated' ? 'evaluated' : 'insufficient_data',
       };
-      if (score.status === 'evaluated') {
+    } catch (error) {
+      return { ...base, outcome: 'import_failed', errorCode: toSafeErrorCode(error) };
+    }
+  }
+
+  async run(input: RunGa4ContentEvaluationInput): Promise<Ga4ContentEvaluationView> {
+    const credential = await this.getGscCredentialByUserId(input.userId);
+    const initialStatus = await this.resolveInitialDisplayStatus(input.userId, input.annotationId, {
+      startDate: input.startDate,
+      endDate: input.endDate,
+    }, credential);
+    if (initialStatus.status === 'low_data') {
+      return this.fetchEvaluation(input.userId, input.annotationId);
+    }
+    const runId = await this.startRun(input.userId, input.annotationId);
+    let values: ScoringPersistValues = {
+      status: 'evaluation_failed', errorCode: 'evaluation_failed', errorMessage: 'evaluation_failed', attemptCount: 0,
+      readRate: null, engageRate: null, scrollRate: null, readScore: null, engageScore: null, contentScore: null,
+      diagnosisCode: null, siteRank: null, totalArticles: null, sessions: null, charCount: null, imageCount: null,
+      expectedReadSeconds: null, avgEngagementSeconds: null, narrativeJson: null,
+      dataQualityJson: {},
+      periodStart: input.startDate, periodEnd: input.endDate, canonicalUrl: null, title: null, ga4PropertyId: null,
+      ga4DataFetchedAt: null,
+    };
+
+    const computed = await this.computeGa4Score(input);
+    values = {
+      ...values,
+      canonicalUrl: computed.canonicalUrl,
+      title: computed.title,
+      ga4PropertyId: computed.ga4PropertyId,
+      ga4DataFetchedAt: computed.ga4DataFetchedAt,
+    };
+
+    if (computed.outcome === 'import_failed') {
+      const failure = classifyEvaluationFailure({ code: computed.errorCode ?? 'evaluation_failed' }, 'import');
+      values = { ...values, status: failure.status, errorCode: failure.errorCode, errorMessage: failure.errorMessage };
+      await this.finishRun(input, runId, values);
+      return this.fetchEvaluation(input.userId, input.annotationId);
+    }
+    if (computed.outcome === 'low_data') {
+      await this.cancelRun(input, runId);
+      return this.fetchEvaluation(input.userId, input.annotationId);
+    }
+
+    const score = computed.score!;
+    values = {
+      ...values, status: computed.outcome === 'evaluated' ? 'evaluated' : 'insufficient_data',
+      errorCode: computed.outcome === 'evaluated' ? null : 'insufficient_data', errorMessage: null,
+      readRate: computed.readRate, engageRate: computed.engageRate, scrollRate: computed.scrollRate,
+      readScore: score.readScore, engageScore: score.engageScore,
+      contentScore: score.contentScore, diagnosisCode: computed.outcome === 'evaluated' ? score.diagnosis.code : null,
+      sessions: computed.sessions, charCount: computed.charCount, imageCount: computed.imageCount,
+      expectedReadSeconds: computed.expectedReadSeconds,
+      avgEngagementSeconds: computed.avgEngagementSeconds,
+      dataQualityJson: computed.dataQualityJson,
+    };
+    if (computed.outcome === 'evaluated') {
+      try {
         const ranking = await this.calculateRank(input.userId, input.annotationId, {
-          id: input.annotationId, contentScore: score.contentScore!, sessions,
+          id: input.annotationId, contentScore: score.contentScore!, sessions: computed.sessions!,
           readScore: score.readScore!, engageScore: score.engageScore!,
         });
         values = { ...values, siteRank: ranking.rank, totalArticles: ranking.totalArticles };
         const previous = await this.findPreviousSuccessfulScores(input.userId, input.annotationId);
-        failurePhase = 'narrative';
-        const narrative = await this.generateNarrative(context, score, ranking.rank, ranking.totalArticles, runId, input, {
-          sessions,
-          expectedReadSeconds,
-          avgEngagementSeconds,
-          scrollUsers,
-          scrollRate,
-          previous,
-        });
-        values = {
-          ...values,
-          status: narrative.success ? 'evaluated' : 'narrative_failed',
-          errorCode: narrative.success ? null : narrative.code,
-          errorMessage: narrative.success ? null : narrative.code,
-          attemptCount: narrative.attemptCount,
-          narrativeJson: narrative.success ? toJson(narrative.data) : null,
-        };
+        try {
+          const narrative = await this.generateNarrative(computed.context!, score, ranking.rank, ranking.totalArticles, runId, input, {
+            sessions: computed.sessions!,
+            expectedReadSeconds: computed.expectedReadSeconds!,
+            avgEngagementSeconds: computed.avgEngagementSeconds,
+            scrollUsers: computed.scrollUsers,
+            scrollRate: computed.scrollRate,
+            previous,
+          });
+          values = {
+            ...values,
+            status: narrative.success ? 'evaluated' : 'narrative_failed',
+            errorCode: narrative.success ? null : narrative.code,
+            errorMessage: narrative.success ? null : narrative.code,
+            attemptCount: narrative.attemptCount,
+            narrativeJson: narrative.success ? toJson(narrative.data) : null,
+          };
+        } catch (error) {
+          const failure = classifyEvaluationFailure(error, 'narrative');
+          values = { ...values, status: failure.status, errorCode: failure.errorCode, errorMessage: failure.errorMessage };
+        }
+      } catch (error) {
+        const failure = classifyEvaluationFailure(error, 'scoring');
+        values = { ...values, status: failure.status, errorCode: failure.errorCode, errorMessage: failure.errorMessage };
       }
-    } catch (error) {
-      const failure = classifyEvaluationFailure(error, failurePhase);
-      values = {
-        ...values,
-        status: failure.status,
-        errorCode: failure.errorCode,
-        errorMessage: failure.errorMessage,
-      };
     }
     await this.finishRun(input, runId, values);
     return this.fetchEvaluation(input.userId, input.annotationId);
+  }
+
+  /**
+   * 定期評価バッチの初回パス（ベースラインのみ）専用。スコア・診断コードの算出のみを行い、
+   * LLM診断コメント生成・ga4_content_evaluation_history/ga4_content_evaluationsへの書き込みは
+   * 一切行わない（GSCの gscEvaluationService.processEvaluation の last_seen_position===null
+   * 分岐と同型。last_seen_position 相当は ga4_content_evaluation_cycles.last_seen_content_score
+   * にのみ書く。呼び出し元は ga4ContentEvaluationCycleService）。
+   */
+  async computeBaselineScore(
+    input: RunGa4ContentEvaluationInput
+  ): Promise<{ status: 'scored' | 'low_data' | 'import_failed'; contentScore: number | null }> {
+    const credential = await this.getGscCredentialByUserId(input.userId);
+    const initialStatus = await this.resolveInitialDisplayStatus(input.userId, input.annotationId, {
+      startDate: input.startDate,
+      endDate: input.endDate,
+    }, credential);
+    if (initialStatus.status === 'low_data') return { status: 'low_data', contentScore: null };
+
+    const computed = await this.computeGa4Score(input);
+    if (computed.outcome === 'import_failed') return { status: 'import_failed', contentScore: null };
+    if (computed.outcome === 'evaluated') return { status: 'scored', contentScore: computed.score!.contentScore };
+    // 'insufficient_data' もここでは「まだ確定したスコアを出せない」の扱いに丸める
+    // （GSCの no_metrics と同様、次サイクルで再試行する。§6.6.4）
+    return { status: 'low_data', contentScore: null };
   }
 
   private async startRun(userId: string, annotationId: string): Promise<string> {

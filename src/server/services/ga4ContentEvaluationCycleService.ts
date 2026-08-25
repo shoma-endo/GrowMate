@@ -106,6 +106,8 @@ function shuffleInPlace<T>(items: T[]): T[] {
 
 interface DueArticleResult extends Ga4CycleBatchOutcomeResult {
   view: Awaited<ReturnType<typeof ga4ContentEvaluationService.run>> | null;
+  /** 軽量パス（outcome==='baseline_initialized'）で算出したスコア */
+  baselineContentScore?: number | null;
 }
 
 class Ga4ContentEvaluationCycleService extends SupabaseService {
@@ -147,35 +149,11 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
       .single();
     if (insertError) throw insertError;
 
-    // D10: 登録時にベースラインを取得する。通常の評価実行(run())をそのまま呼び、
-    // 履歴行も通常どおり作成する(§6.6.2 実装時訂正)。失敗しても登録自体は成立させる
-    // (GA4未同期等は外部要因であり、記事詳細から後で手動評価できる)。
-    let baselineScore: number | null = null;
-    try {
-      const { startDate, endDate } = getGa4EvaluationDateRange();
-      const baseline = await ga4ContentEvaluationService.run({
-        userId,
-        annotationId: input.annotationId,
-        startDate,
-        endDate,
-      });
-      baselineScore = baseline.history[0]?.contentScore ?? null;
-    } catch (error) {
-      console.error('[ga4ContentEvaluationCycleService] baseline evaluation failed', {
-        annotationId: input.annotationId,
-        code: error instanceof Error ? error.name : 'unknown',
-      });
-    }
-
-    const { data: updated, error: updateError } = await this.pendingClient()
-      .from('ga4_content_evaluation_cycles')
-      .update({ last_seen_content_score: baselineScore })
-      .eq('id', inserted.id)
-      .select('*')
-      .single();
-    if (updateError) throw updateError;
-
-    return toView(updated);
+    // GSCの登録（registerEvaluation）と同型: 単純なINSERTのみ。last_seen_content_scoreは
+    // nullのまま残り、定期評価バッチの初回due到達時にrunBaselinePass()（LLM・履歴行・通知なし
+    // の軽量パス）が算出する（GSCのgscEvaluationService.processEvaluationの
+    // last_seen_position===null分岐と同型。D10再訂正・§6.6.2）。
+    return toView(inserted);
   }
 
   async updateCycle(
@@ -374,7 +352,9 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
           const freshContentScore =
             articleResult.outcome === 'evaluated' || articleResult.outcome === 'narrative_failed'
               ? (articleResult.view?.history[0]?.contentScore ?? null)
-              : undefined;
+              : articleResult.outcome === 'baseline_initialized'
+                ? (articleResult.baselineContentScore ?? null)
+                : undefined;
           await this.advanceCooldown(cycle.id, freshContentScore);
         }
 
@@ -481,6 +461,13 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
    * displayStatus では判定せず、history[0] の実測で判定する。
    */
   private async runDueArticle(cycle: DueCycleRow): Promise<DueArticleResult> {
+    // last_seen_content_score は GSC の last_seen_position 相当（§7.7）。null のときはこの
+    // サイクルの初回評価であり、軽量パス（スコア算出のみ・LLMなし・履歴行なし・メールなし）へ
+    // 分岐する（gscEvaluationService.processEvaluation の lastSeen===null 分岐と同型。§6.6.2）。
+    if (cycle.last_seen_content_score === null) {
+      return this.runBaselinePass(cycle);
+    }
+
     const callStartedAtMs = Date.now();
     try {
       const { startDate, endDate } = getGa4EvaluationDateRange();
@@ -509,6 +496,44 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
         });
       }
       return { ...classification, view: null };
+    }
+  }
+
+  /**
+   * 初回パス（ベースラインのみ）。ga4ContentEvaluationService.computeBaselineScore を呼び、
+   * 履歴行・LLM診断コメント・通知メールを一切生成しない（GSCのbaseline_initializedと同型）。
+   * 結末は既存のGa4CycleBatchOutcomeの値（low_data/import_failed）を流用するか、
+   * 新設のbaseline_initializedを返す。
+   */
+  private async runBaselinePass(cycle: DueCycleRow): Promise<DueArticleResult> {
+    try {
+      const { startDate, endDate } = getGa4EvaluationDateRange();
+      const result = await ga4ContentEvaluationService.computeBaselineScore({
+        userId: cycle.user_id,
+        annotationId: cycle.content_annotation_id,
+        startDate,
+        endDate,
+      });
+      if (result.status === 'low_data') {
+        return { outcome: 'low_data', historyId: null, shouldAdvanceCooldown: true, isUnexpected: false, view: null };
+      }
+      if (result.status === 'import_failed') {
+        return { outcome: 'import_failed', historyId: null, shouldAdvanceCooldown: true, isUnexpected: false, view: null };
+      }
+      return {
+        outcome: 'baseline_initialized',
+        historyId: null,
+        shouldAdvanceCooldown: true,
+        isUnexpected: false,
+        view: null,
+        baselineContentScore: result.contentScore,
+      };
+    } catch (error) {
+      console.error('[ga4ContentEvaluationCycleService] unexpected error during baseline pass', {
+        annotationId: cycle.content_annotation_id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return { outcome: 'unknown_error', historyId: null, shouldAdvanceCooldown: true, isUnexpected: true, view: null };
     }
   }
 

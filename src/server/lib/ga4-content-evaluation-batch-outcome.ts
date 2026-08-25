@@ -14,7 +14,12 @@ export type Ga4CycleBatchOutcome =
   | 'evaluating'
   | 'low_data'
   | 'already_running'
-  | 'unknown_error';
+  | 'unknown_error'
+  // 定期評価バッチの初回パス（ベースラインのみ。LLM・通知なし）が成功した結末。
+  // ga4_content_evaluation_history には対応する行が存在しない（永続statusではない）。
+  // classifyGa4BatchRunResult では生成されず、ga4ContentEvaluationCycleService の
+  // runBaselinePass が直接組み立てる（GSCの baseline_initialized と同型）。
+  | 'baseline_initialized';
 
 export interface Ga4CycleBatchOutcomeResult {
   outcome: Ga4CycleBatchOutcome;

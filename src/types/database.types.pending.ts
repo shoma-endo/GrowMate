@@ -42,6 +42,7 @@ type Ga4DueContentEvaluationCycleRow = Pick<
   | 'cycle_days'
   | 'evaluation_hour'
   | 'last_evaluated_on'
+  | 'last_seen_content_score'
   | 'next_evaluation_date'
 >;
 

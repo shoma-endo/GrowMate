@@ -190,15 +190,21 @@ export function ContentEvaluationCycleSettings({
     }
   };
 
-  // last_seen_content_score は GSC の last_seen_position 相当（§7.7）。バッチは毎回の評価成功時に
-  // これを更新するため、登録時のベースライン取得が失敗しても以後の定期評価が成功すれば解消する。
+  // last_seen_content_score は GSC の last_seen_position 相当（§7.7）。バッチの初回パス（ベースライン
+  // のみ、LLM・履歴・通知なし）が成功するとここが埋まる。GSCの hasCompletedInitialMeasurement と同じ
+  // 判定（2026-08-25 D10再反転: GSCと同じ「初回は記録のみ、2回目から本評価」方式に統一）。
   const hasBaseline = cycle?.lastSeenContentScore != null;
   // DBの生成列 next_evaluation_date と同じ式（COALESCE(last_evaluated_on, base_evaluation_date) +
   // cycle_days）をフォームの編集中の値に適用したプレビュー。変更ダイアログでは、既に評価が
   // 何度か回っているサイクルの last_evaluated_on を優先しないと、フォームの基準日（登録時の古い日付）
-  // だけで計算した実態と無関係な日付を表示してしまう（2026-08-25 ユーザー指摘で発覚）。
-  const previewNextEvaluationDate = dateStr
-    ? addDaysISO(cycle?.lastEvaluatedOn ?? dateStr, cycleDays)
+  // だけで計算した実態と無関係な日付を表示してしまう（2026-08-25 ユーザー指摘で発覚。GSCの
+  // EvaluationSettings.tsx と同じ計算をここでも行う）。
+  const previewScheduleRefDate = cycle?.lastEvaluatedOn ?? dateStr;
+  const nextEvaluationDateStr = previewScheduleRefDate
+    ? addDaysISO(previewScheduleRefDate, cycleDays)
+    : '';
+  const firstEvaluationDateStr = nextEvaluationDateStr
+    ? addDaysISO(nextEvaluationDateStr, cycleDays)
     : '';
 
   if (cycleLoading) {
@@ -262,7 +268,6 @@ export function ContentEvaluationCycleSettings({
                 <Info className="h-4 w-4 mt-[1px] flex-shrink-0" />
                 <span>
                   評価対象期間は直近90日で固定です。評価サイクルは、次に評価するまでの間隔です。
-                  {!isUpdateMode && '開始すると同時に、初回の計測を行います。'}
                 </span>
               </div>
 
@@ -328,19 +333,29 @@ export function ContentEvaluationCycleSettings({
                     <Info className="h-5 w-5 text-blue-600 mt-0.5" />
                     <div className="flex-1">
                       <p className="font-medium text-blue-900">評価スケジュールのプレビュー</p>
-                      <div className="mt-3 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+                      <div className="mt-3 grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
                         <div>
                           <p className="text-blue-600 text-xs mb-1">基準日</p>
                           <p className="font-semibold text-blue-900">{formatDateJP(dateStr)}</p>
                         </div>
                         <div>
-                          <p className="text-blue-600 text-xs mb-1">{hasBaseline ? '次回評価予定' : '初回評価予定'}</p>
+                          <p className="text-blue-600 text-xs mb-1">初回計測日</p>
                           <p className="font-semibold text-blue-900">
-                            {formatDateJP(previewNextEvaluationDate)}{' '}
+                            {formatDateJP(nextEvaluationDateStr)}{' '}
+                            {evaluationHour.toString().padStart(2, '0')}:00 (日本時間)
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-blue-600 text-xs mb-1">初回評価日</p>
+                          <p className="font-semibold text-blue-900">
+                            {formatDateJP(firstEvaluationDateStr)}{' '}
                             {evaluationHour.toString().padStart(2, '0')}:00 (日本時間)
                           </p>
                         </div>
                       </div>
+                      <p className="mt-3 text-xs text-blue-700">
+                        初回計測日と初回評価日は月単位ではなく、設定した評価サイクル日数ごとに計算されます。
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -394,35 +409,45 @@ export function ContentEvaluationCycleSettings({
 
       {cycle ? (
         <div className="space-y-2">
-          <div className="grid grid-cols-1 gap-4 mt-4 md:grid-cols-2">
+          {/* GSCの EvaluationSettings.tsx と同型（2026-08-25 D10再反転: バッチの初回パスはベースライン
+              記録のみで、cycle.nextEvaluationDate は「まだ本評価に進んでいない」限りベースライン自体の
+              予定日を指す。hasBaseline 確定後は cycle.nextEvaluationDate がそのまま次回本評価予定になる
+              ため、DB権威値のまま2枚/3枚を切り替えられる（フロント独自の推測計算は不要）） */}
+          <div className={`grid grid-cols-1 gap-4 mt-4 ${hasBaseline ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
             <div className="rounded-lg border border-blue-200 bg-blue-50 shadow-sm p-4">
               <div className="text-sm text-blue-600 mb-1">現在の基準日</div>
               <div className="text-2xl font-bold text-blue-900">{formatDateJP(cycle.baseEvaluationDate)}</div>
             </div>
-            {/* cycle.nextEvaluationDate はDBの唯一の権威ある値。hasBaseline（ベースライン取得済みか）
-                でラベルだけ「初回」/「次回」を切り替える（2026-08-25 簡略化：以前はhasBaseline=false時に
-                「初回評価予定」＋独自計算の「次回評価予定」を2枚出していたが、後者はフロント側の
-                推測値でDBの実データではなく、リース衝突等の稀なケースでは実際の次回日とズレうるため
-                誠実でないと判断し削除した。ユーザー指摘） */}
-            <div
-              className={
-                hasBaseline
-                  ? 'rounded-lg border border-green-200 bg-green-50 shadow-sm p-4'
-                  : 'rounded-lg border border-cyan-200 bg-cyan-50 shadow-sm p-4'
-              }
-            >
-              <div className={hasBaseline ? 'text-sm text-green-600 mb-1' : 'text-sm text-cyan-600 mb-1'}>
-                {hasBaseline ? '次回評価予定' : '初回評価予定'}
+            {hasBaseline ? (
+              <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
+                <div className="text-sm text-green-600 mb-1">次回評価予定</div>
+                <div className="text-2xl font-bold text-green-900">
+                  {formatDateJP(cycle.nextEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
+                  (日本時間)
+                </div>
               </div>
-              <div className={hasBaseline ? 'text-2xl font-bold text-green-900' : 'text-2xl font-bold text-cyan-900'}>
-                {formatDateJP(cycle.nextEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
-                (日本時間)
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="rounded-lg border border-cyan-200 bg-cyan-50 shadow-sm p-4">
+                  <div className="text-sm text-cyan-600 mb-1">初回計測予定</div>
+                  <div className="text-2xl font-bold text-cyan-900">
+                    {formatDateJP(cycle.nextEvaluationDate)} {cycle.evaluationHour.toString().padStart(2, '0')}:00
+                    (日本時間)
+                  </div>
+                </div>
+                <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
+                  <div className="text-sm text-green-600 mb-1">初回評価予定</div>
+                  <div className="text-2xl font-bold text-green-900">
+                    {formatDateJP(addDaysISO(cycle.nextEvaluationDate, cycle.cycleDays))}{' '}
+                    {cycle.evaluationHour.toString().padStart(2, '0')}:00 (日本時間)
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           {!hasBaseline && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 ring-1 ring-amber-200">
-              初回の計測がまだ完了していません。次回の定期評価（上記の「初回評価予定」）で再試行されます。{baselinePendingReason}
+              初回の計測がまだ完了していません。次回の定期評価（上記の「初回計測予定」）で再試行されます。{baselinePendingReason}
             </p>
           )}
           {cycle.lastNotificationStatus === 'failed' && (

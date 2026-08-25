@@ -24,13 +24,14 @@ returns table(
   cycle_days integer,
   evaluation_hour smallint,
   last_evaluated_on date,
+  last_seen_content_score integer,
   next_evaluation_date date
 )
 language sql stable
 as $$
   select
     c.id, c.user_id, c.content_annotation_id, c.base_evaluation_date,
-    c.cycle_days, c.evaluation_hour, c.last_evaluated_on, c.next_evaluation_date
+    c.cycle_days, c.evaluation_hour, c.last_evaluated_on, c.last_seen_content_score, c.next_evaluation_date
   from public.ga4_content_evaluation_cycles c
   join public.users u on u.id = c.user_id
   where c.status = 'active'
