@@ -77,13 +77,6 @@ function createHistoryItem(
     periodStart: '2026-05-27',
     periodEnd: '2026-08-24',
     ga4DataFetchedAt: null,
-    promptVersion: 1,
-    promptTemplateId: null,
-    promptVersionId: null,
-    promptCapturedAt: null,
-    promptContentSha256: null,
-    inputFingerprint: null,
-    scoringConfigVersion: 1,
     errorCode: null,
     ...overrides,
   };

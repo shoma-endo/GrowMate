@@ -319,7 +319,6 @@ export function ContentEvaluationCard({
                 <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <span>最終評価日時：{formatDate(latest.completedAt)}</span>
                   <span>データ取得日時：{formatDate(latest.ga4DataFetchedAt)}</span>
-                  <span>評価設定：v{latest.scoringConfigVersion} / 文章 v{latest.promptVersion ?? '—'}</span>
                 </div>
               </details>
             </div>

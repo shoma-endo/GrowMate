@@ -34,13 +34,6 @@ function buildHistoryItem(
     periodStart: null,
     periodEnd: null,
     ga4DataFetchedAt: null,
-    promptVersion: null,
-    promptTemplateId: null,
-    promptVersionId: null,
-    promptCapturedAt: null,
-    promptContentSha256: null,
-    inputFingerprint: null,
-    scoringConfigVersion: 1,
     errorCode: null,
   };
 }

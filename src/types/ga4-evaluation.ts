@@ -83,13 +83,6 @@ export interface Ga4ContentEvaluationView {
     periodStart: string | null;
     periodEnd: string | null;
     ga4DataFetchedAt: string | null;
-    promptVersion: number | null;
-    promptTemplateId: string | null;
-    promptVersionId: string | null;
-    promptCapturedAt: string | null;
-    promptContentSha256: string | null;
-    inputFingerprint: string | null;
-    scoringConfigVersion: number;
     errorCode: string | null;
   }>;
 }

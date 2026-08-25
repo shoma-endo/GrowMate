@@ -153,7 +153,6 @@ function configureRunClient({
     queries.set('ga4_content_evaluation_history:previous', createRunQuery({
       data: [{ content_score: 60, engage_score: 50, read_score: 55 }], error: null,
     }));
-    queries.set('prompt_versions:version', createRunQuery({ data: { id: 'prompt-version-1' }, error: null }));
   }
   let detailQueryUsed = false;
   mocks.client.from.mockImplementation((table: string) => {
@@ -169,7 +168,6 @@ function configureRunClient({
     if (table === 'ga4_content_evaluation_history') {
       return queries.get('ga4_content_evaluation_history:ranking') ?? queries.get('ga4_content_evaluation_history:previous');
     }
-    if (table === 'prompt_versions') return queries.get('prompt_versions:version');
     throw new Error(`unexpected table: ${table}`);
   });
   mocks.client.rpc.mockImplementation((name: string) => {
@@ -386,47 +384,8 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
       p_error_code: 'llm_timeout',
       p_content_score: expect.any(Number),
       p_diagnosis_code: expect.any(String),
-      p_prompt_template_id: 'template-1',
-      p_prompt_version_id: 'prompt-version-1',
-      p_prompt_version: 1,
-      p_prompt_captured_at: expect.any(String),
-      p_prompt_content_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
-      p_input_fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
     expect(mocks.client.rpc.mock.calls.filter(([name]) => name === 'update_ga4_content_evaluation_attempt')).toHaveLength(1);
-  });
-
-  it('評価Contextの画像数が変わると保存するinput fingerprintも変わる', async () => {
-    mocks.credential = {
-      ga4PropertyId: 'property-1',
-      ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
-      accessToken: 'access-token',
-      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
-      scope: ['https://www.googleapis.com/auth/analytics.readonly'],
-    };
-    mocks.getTemplateByName.mockResolvedValue({ id: 'template-1', version: 1, content: 'prompt {{title}}' });
-    mocks.generateGa4EvaluationLlmOutput.mockResolvedValue({ success: false, code: 'llm_timeout', attemptCount: 3 });
-    const serviceInternals = ga4ContentEvaluationService as unknown as {
-      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
-    };
-    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
-    vi.spyOn(ga4ContentEvaluationService, 'fetchEvaluation').mockResolvedValue(EVALUATION_VIEW);
-
-    configureRunClient({ includeRanking: true, annotationPatch: { wp_image_count: 0 } });
-    await ga4ContentEvaluationService.run(RUN_INPUT);
-    const firstFingerprint = mocks.client.rpc.mock.calls
-      .filter(([name]) => name === 'finish_ga4_content_evaluation')
-      .at(-1)?.[1].p_input_fingerprint;
-
-    configureRunClient({ includeRanking: true, annotationPatch: { wp_image_count: 1 } });
-    await ga4ContentEvaluationService.run(RUN_INPUT);
-    const secondFingerprint = mocks.client.rpc.mock.calls
-      .filter(([name]) => name === 'finish_ga4_content_evaluation')
-      .at(-1)?.[1].p_input_fingerprint;
-
-    expect(firstFingerprint).toEqual(expect.stringMatching(/^[0-9a-f]{64}$/));
-    expect(secondFingerprint).toEqual(expect.stringMatching(/^[0-9a-f]{64}$/));
-    expect(secondFingerprint).not.toBe(firstFingerprint);
   });
 
   it('プロンプト未登録時はスコアを保持して narrative_failed を保存しLLMを呼び出さない', async () => {

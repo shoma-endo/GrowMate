@@ -235,7 +235,6 @@ export type Database = {
           completed_at: string | null
           content_annotation_id: string
           content_score: number | null
-          context_schema_version: number
           created_at: string
           data_quality_json: Json | null
           diagnosis_code: string | null
@@ -249,18 +248,11 @@ export type Database = {
           ga4_property_id: string | null
           id: string
           image_count: number | null
-          input_fingerprint: string | null
           narrative_json: Json | null
           period_end: string | null
           period_start: string | null
-          prompt_captured_at: string | null
-          prompt_content_sha256: string | null
-          prompt_template_id: string | null
-          prompt_version: number | null
-          prompt_version_id: string | null
           read_rate: number | null
           read_score: number | null
-          scoring_config_version: number
           scroll_rate: number | null
           sessions: number | null
           site_rank: number | null
@@ -279,7 +271,6 @@ export type Database = {
           completed_at?: string | null
           content_annotation_id: string
           content_score?: number | null
-          context_schema_version?: number
           created_at?: string
           data_quality_json?: Json | null
           diagnosis_code?: string | null
@@ -293,18 +284,11 @@ export type Database = {
           ga4_property_id?: string | null
           id?: string
           image_count?: number | null
-          input_fingerprint?: string | null
           narrative_json?: Json | null
           period_end?: string | null
           period_start?: string | null
-          prompt_captured_at?: string | null
-          prompt_content_sha256?: string | null
-          prompt_template_id?: string | null
-          prompt_version?: number | null
-          prompt_version_id?: string | null
           read_rate?: number | null
           read_score?: number | null
-          scoring_config_version: number
           scroll_rate?: number | null
           sessions?: number | null
           site_rank?: number | null
@@ -323,7 +307,6 @@ export type Database = {
           completed_at?: string | null
           content_annotation_id?: string
           content_score?: number | null
-          context_schema_version?: number
           created_at?: string
           data_quality_json?: Json | null
           diagnosis_code?: string | null
@@ -337,18 +320,11 @@ export type Database = {
           ga4_property_id?: string | null
           id?: string
           image_count?: number | null
-          input_fingerprint?: string | null
           narrative_json?: Json | null
           period_end?: string | null
           period_start?: string | null
-          prompt_captured_at?: string | null
-          prompt_content_sha256?: string | null
-          prompt_template_id?: string | null
-          prompt_version?: number | null
-          prompt_version_id?: string | null
           read_rate?: number | null
           read_score?: number | null
-          scoring_config_version?: number
           scroll_rate?: number | null
           sessions?: number | null
           site_rank?: number | null
@@ -365,20 +341,6 @@ export type Database = {
             columns: ["content_annotation_id"]
             isOneToOne: false
             referencedRelation: "content_annotations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ga4_content_evaluation_history_prompt_template_id_fkey"
-            columns: ["prompt_template_id"]
-            isOneToOne: false
-            referencedRelation: "prompt_templates"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ga4_content_evaluation_history_prompt_version_id_fkey"
-            columns: ["prompt_version_id"]
-            isOneToOne: false
-            referencedRelation: "prompt_versions"
             referencedColumns: ["id"]
           },
           {
@@ -1639,18 +1601,11 @@ export type Database = {
           p_ga4_data_fetched_at?: string
           p_ga4_property_id?: string
           p_image_count?: number
-          p_input_fingerprint?: string
           p_narrative_json?: Json
           p_period_end?: string
           p_period_start?: string
-          p_prompt_captured_at?: string
-          p_prompt_content_sha256?: string
-          p_prompt_template_id?: string
-          p_prompt_version?: number
-          p_prompt_version_id?: string
           p_read_rate?: number
           p_read_score?: number
-          p_scoring_config_version?: number
           p_scroll_rate?: number
           p_sessions?: number
           p_site_rank?: number

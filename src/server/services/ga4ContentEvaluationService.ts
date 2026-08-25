@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 import { PromptService } from '@/server/services/promptService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -17,7 +15,6 @@ import {
   calculateExpectedReadSeconds,
   calculateReadRate,
   evaluateGa4ContentScore,
-  SCORING_CONFIG_VERSION,
   type DiagnosisResult,
 } from '@/server/lib/ga4-content-scoring';
 import {
@@ -78,12 +75,6 @@ interface ScoringPersistValues {
   title: string | null;
   ga4PropertyId: string | null;
   ga4DataFetchedAt: string | null;
-  inputFingerprint: string | null;
-  promptTemplateId: string | null;
-  promptVersionId: string | null;
-  promptVersion: number | null;
-  promptCapturedAt: string | null;
-  promptContentSha256: string | null;
 }
 
 type EvaluationFailurePhase = 'import' | 'scoring' | 'narrative';
@@ -158,26 +149,6 @@ function getLatestImportedAt(rows: readonly { imported_at?: string | null }[]): 
     .filter((value): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value)))
     .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
   return importedAt ?? null;
-}
-
-function serializeFingerprintInput(input: unknown): string {
-  if (input === null) return 'null';
-  if (typeof input === 'undefined') return 'undefined';
-  if (typeof input !== 'object') {
-    const serialized = JSON.stringify(input);
-    if (serialized === undefined) throw new Error('GA4評価fingerprintの入力がシリアライズできません');
-    return serialized;
-  }
-  if (Array.isArray(input)) {
-    return `[${input.map(item => serializeFingerprintInput(item)).join(',')}]`;
-  }
-  const entries = Object.entries(input as Record<string, unknown>)
-    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
-  return `{${entries.map(([key, value]) => `${JSON.stringify(key)}:${serializeFingerprintInput(value)}`).join(',')}}`;
-}
-
-function createInputFingerprint(input: unknown): string {
-  return createHash('sha256').update(serializeFingerprintInput(input), 'utf8').digest('hex');
 }
 
 function getStoredScrollUsers(dataQuality: Json): number | null {
@@ -312,13 +283,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
         periodStart: row.period_start,
         periodEnd: row.period_end,
         ga4DataFetchedAt: row.ga4_data_fetched_at,
-        promptTemplateId: row.prompt_template_id,
-        promptVersionId: row.prompt_version_id,
-        promptVersion: row.prompt_version,
-        promptCapturedAt: row.prompt_captured_at,
-        promptContentSha256: row.prompt_content_sha256,
-        inputFingerprint: row.input_fingerprint,
-        scoringConfigVersion: row.scoring_config_version,
         errorCode: row.error_code,
         }];
       }).sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
@@ -362,8 +326,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
       expectedReadSeconds: null, avgEngagementSeconds: null, narrativeJson: null,
       dataQualityJson: {},
       periodStart: input.startDate, periodEnd: input.endDate, canonicalUrl: null, title: null, ga4PropertyId: null,
-      ga4DataFetchedAt: null, inputFingerprint: null, promptTemplateId: null, promptVersionId: null, promptVersion: null,
-      promptCapturedAt: null, promptContentSha256: null,
+      ga4DataFetchedAt: null,
     };
     try {
       const client = this.getClient();
@@ -419,7 +382,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
         ga4DailyMetrics: dailyMetrics, gscSummary: null, ga4FetchedAt, gscFetchedAt: null,
         ga4MetricsTruncated: metricCount !== null && metricCount !== undefined && dailyMetrics.length < metricCount,
       });
-      values = { ...values, inputFingerprint: createInputFingerprint(context) };
       const sessions = summary?.sessions ?? 0;
       const expectedReadSeconds = calculateExpectedReadSeconds(context.article.charCount, context.article.imageCount);
       const activeEngagementTime = dailyMetrics.filter(row => row.activeUsers !== null).reduce((total, row) => total + row.engagementTimeSec, 0);
@@ -469,13 +431,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
           errorMessage: narrative.success ? null : narrative.code,
           attemptCount: narrative.attemptCount,
           narrativeJson: narrative.success ? toJson(narrative.data) : null,
-          ...(narrative.provenance ? {
-            promptTemplateId: narrative.provenance.templateId,
-            promptVersionId: narrative.provenance.versionId,
-            promptVersion: narrative.provenance.version,
-            promptCapturedAt: narrative.provenance.capturedAt,
-            promptContentSha256: narrative.provenance.contentSha256,
-          } : {}),
         };
       }
     } catch (error) {
@@ -519,7 +474,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
       const { error } = await client.rpc('finish_ga4_content_evaluation', {
         p_user_id: input.userId, p_content_annotation_id: input.annotationId, p_evaluation_run_id: runId,
         p_status: values.status,
-        p_attempt_count: values.attemptCount, p_scoring_config_version: SCORING_CONFIG_VERSION,
+        p_attempt_count: values.attemptCount,
         ...omitNullArgs({
           p_error_code: values.errorCode, p_error_message: values.errorMessage,
           p_read_rate: values.readRate, p_engage_rate: values.engageRate,
@@ -531,10 +486,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
           p_data_quality_json: values.dataQualityJson, p_period_start: values.periodStart, p_period_end: values.periodEnd,
           p_canonical_url_snapshot: values.canonicalUrl, p_title_snapshot: values.title,
           p_ga4_property_id: values.ga4PropertyId, p_ga4_data_fetched_at: values.ga4DataFetchedAt,
-          p_input_fingerprint: values.inputFingerprint,
-          p_prompt_template_id: values.promptTemplateId,
-          p_prompt_version_id: values.promptVersionId, p_prompt_version: values.promptVersion,
-          p_prompt_captured_at: values.promptCapturedAt, p_prompt_content_sha256: values.promptContentSha256,
         }),
       });
       if (error) throw error;
@@ -619,12 +570,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
       title: source.history.title_snapshot,
       ga4PropertyId: source.history.ga4_property_id,
       ga4DataFetchedAt: source.history.ga4_data_fetched_at,
-      inputFingerprint: null,
-      promptTemplateId: null,
-      promptVersionId: null,
-      promptVersion: null,
-      promptCapturedAt: null,
-      promptContentSha256: null,
     };
     try {
       const contextBase = buildGa4EvaluationContext({
@@ -637,7 +582,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
         ga4FetchedAt: source.history.ga4_data_fetched_at,
         gscFetchedAt: null,
       });
-      values = { ...values, inputFingerprint: createInputFingerprint(contextBase) };
       const score = {
         status: 'evaluated' as const,
         readRate: source.history.read_rate,
@@ -663,13 +607,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
         errorMessage: narrative.success ? null : narrative.code,
         attemptCount: narrative.attemptCount,
         narrativeJson: narrative.success ? toJson(narrative.data) : null,
-        ...(narrative.provenance ? {
-          promptTemplateId: narrative.provenance.templateId,
-          promptVersionId: narrative.provenance.versionId,
-          promptVersion: narrative.provenance.version,
-          promptCapturedAt: narrative.provenance.capturedAt,
-          promptContentSha256: narrative.provenance.contentSha256,
-        } : {}),
       };
     } catch (error) {
       const failure = classifyEvaluationFailure(error, 'narrative');
@@ -816,28 +753,6 @@ class Ga4ContentEvaluationService extends SupabaseService {
     if (!systemTemplate || !userTemplate || !systemTemplate.content.trim() || !userTemplate.content.trim()) {
       return { success: false, code: 'llm_output_invalid', attemptCount: 0 };
     }
-    const promptCapturedAt = new Date().toISOString();
-    // 履歴のプロンプト追跡列は単数形だが、実際に送る本文はシステム／ユーザーの2本ある。
-    // 片方だけを hash すると、もう片方の改版が履歴に残らず再現できなくなるため、
-    // 2本を固定の順序・固定の区切りで連結した文字列を hash 対象にする。
-    // `prompt_template_id` / `prompt_version` はシステム側を指す（§6.3.1）。
-    const promptContentSha256 = createHash('sha256')
-      .update(systemTemplate.content, 'utf8')
-      // NUL は PostgreSQL の text に格納できないため、本文と衝突しない区切りになる。
-      .update('\u0000', 'utf8')
-      .update(userTemplate.content, 'utf8')
-      .digest('hex');
-    let promptVersionId: string | null = null;
-    await this.withEvaluationClient(async client => {
-      const { data, error } = await client
-        .from('prompt_versions')
-        .select('id')
-        .eq('template_id', systemTemplate.id)
-        .eq('version', systemTemplate.version)
-        .maybeSingle();
-      if (error) throw error;
-      promptVersionId = data?.id ?? null;
-    });
     const variables = buildGa4EvaluationPromptVariables(context, {
       contentScore: score.contentScore!,
       engageScore: score.engageScore!,
@@ -867,15 +782,8 @@ class Ga4ContentEvaluationService extends SupabaseService {
       maxTokens: config.maxTokens,
       onAttempt: attemptCount => this.updateAttemptCount(runInput, runId, attemptCount),
     });
-    const provenance = {
-      templateId: systemTemplate.id,
-      versionId: promptVersionId,
-      version: systemTemplate.version,
-      capturedAt: promptCapturedAt,
-      contentSha256: promptContentSha256,
-    };
-    if (result.success) return { success: true, data: result.data, attemptCount: result.attemptCount, provenance };
-    return { success: false, code: result.code, attemptCount: result.attemptCount, provenance };
+    if (result.success) return { success: true, data: result.data, attemptCount: result.attemptCount };
+    return { success: false, code: result.code, attemptCount: result.attemptCount };
   }
 }
 
@@ -884,25 +792,11 @@ type Ga4EvaluationLlmResult =
       success: true;
       data: Ga4EvaluationNarrative;
       attemptCount: number;
-      provenance: {
-        templateId: string;
-        versionId: string | null;
-        version: number;
-        capturedAt: string;
-        contentSha256: string;
-      };
     }
   | {
       success: false;
       code: string;
       attemptCount: number;
-      provenance?: {
-        templateId: string;
-        versionId: string | null;
-        version: number;
-        capturedAt: string;
-        contentSha256: string;
-      };
     };
 
 export const ga4ContentEvaluationService = new Ga4ContentEvaluationService();
