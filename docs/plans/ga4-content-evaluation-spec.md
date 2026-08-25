@@ -1367,7 +1367,7 @@ Resend が失敗を返した場合は `console.error` で記録し（`feedback_e
 
 評価UI（配置先がタブでも概要内セクションでも同じ）は**記事カード**（評価エンジン仕様 §08）を基本形とし、上から次の順に表示する。**率ではなく人数と点数で語る**（人数の禁則は下記 3。実測のない人数を率から換算しない）。**指標名は §10.7 に従い GA4 の名前を使う**（2026-08-22 方針転換）。
 
-1. 評価状態と主操作（「評価を実行」または「再評価」）。GSC の「評価を開始」とは別の操作であることを文言で明示する。
+1. ~~評価状態と主操作（「評価を実行」または「再評価」）。GSC の「評価を開始」とは別の操作であることを文言で明示する。~~ → **2026-08-25、主操作（「評価を実行」／「再評価」／「診断コメントを再作成」）は概要タブの「コンテンツ評価サイクル設定」カードへ移動した（§10.8「今すぐ評価を実行ボタン」）。この記事カードには評価状態（バッジ）のみを表示する**（§18 2026-08-25）。
 2. 評価済みの場合のみ: **コンテンツ力スコア＋点数帯ラベル**（例「43点 ／ 改善の余地あり」）、**読み始めスコア・読了スコアの内訳（バー付き）**、**サイト内順位**（「N位 / M記事中」）、前回差分、評価対象期間、最終評価日時。数字だけでなくバーで大小を示す。未評価・評価不能時に点数を0として表示しない。
 3. **ファネル表示**: 「N セッション ▶ N エンゲージメントのあったセッション数 ▶ N 最後まで」。**先頭2つは GA4 の生指標そのものなので §10.7 の表記を使う**（受領原文 §08 の例示「312訪問▶134読み始め▶38最後まで」は旧言い換え方針の表記であり、2026-08-22 の反転＝D9 で失効した）。2つ目は `engagementRate × sessions` の丸め＝§6.3.3 の `engaged_users` であり、表示名は「エンゲージメントのあったセッション数」とする（§6.3.3 / §10.7）。
    - **3段の計測単位は同一ではない**（セッション／セッション／人数）。反転後は先頭2つがセッションスコープになるため、**本書ではこのブロックを「人数ファネル」と呼ばない**。なお「人数ファネル」は仕様書と実装の内部呼称であって画面には出ない（実測 2026-08-22: `app/analytics/[annotationId]/components/content-evaluation/ContentEvaluationCard.tsx:264` はコード内コメント。画面に出るのは3段のラベルのみ）ため、**利用者向けの追加表示は要らない**。単位は §10.7 の指標名自体（「セッション」「エンゲージメントのあったセッション数」）が示す。
@@ -1395,7 +1395,7 @@ Resend が失敗を返した場合は `console.error` で記録し（`feedback_e
 
 ### 10.4 状態別UIと操作
 
-**この表は記事詳細の「コンテンツ評価」タブの状態表である。**一覧 `/analytics` には評価実行ボタンを置かないため（§10.2 の一覧仕様。評価の実行入口は記事詳細のみ＝§6.5 / §8.1）、一覧では状態の表示のみを行い、`unassessed` は「未評価」と表示する（§6.5）。
+**この表は記事詳細の「コンテンツ評価」タブの状態表である。**一覧 `/analytics` には評価実行ボタンを置かないため（§10.2 の一覧仕様。評価の実行入口は記事詳細のみ＝§6.5 / §8.1）、一覧では状態の表示のみを行い、`unassessed` は「未評価」と表示する（§6.5）。<br>**2026-08-25 補足**: 「主操作」列のうち評価実行ボタン（「評価を実行」「再評価」「診断コメントを再作成」）は概要タブの「コンテンツ評価サイクル設定」カードへ移動した（§10.8「今すぐ評価を実行ボタン」）。「コンテンツ評価」タブに残るのは「不足項目を確認」（詳細開閉）・「データを再取得」（`/setup/ga4` への導線）のような、評価実行そのものではない操作のみ。表の状態→ラベル・活性化条件の対応関係自体は変更していない（実装場所が変わっただけ）。
 
 | 内部状態 | ユーザー向け表示 | 主操作 | 既存の成功結果 | 操作制限 |
 |---|---|---|---|---|
@@ -1490,7 +1490,7 @@ Resend が失敗を返した場合は `console.error` で記録し（`feedback_e
 | ダイアログ | 基準日（date input）／評価サイクル日数（1〜365、既定30）／評価実行時間（0〜23時のセレクト） | 同型 |
 | スケジュールプレビュー | **GSC と同じ「基準日／初回計測日／初回評価日」の3枠（D10確定。2026-08-24）** | 差はなし。登録時にベースラインを取得するため（§6.6.2） |
 | 状態カード | GSC と同じ分岐（初回計測前は3枚、計測後は2枚。`EvaluationSettings.tsx:406-447` と同型。D10確定） | 差はなし。ただし「初回計測」の判定は`last_seen_content_score != null`（GSCの`last_seen_position`相当。§7.7） |
-| 「今すぐ評価を実行」ボタン | **置かない**（変更なし） | 既に「コンテンツ評価」タブに「評価を実行」がある（§10.4）。同じ操作を2箇所に置かない。ベースラインは登録操作自体が取得するため、GSCの「今すぐ評価を実行」に相当する操作は不要 |
+| 「今すぐ評価を実行」ボタン | ~~置かない（変更なし）~~ → **2026-08-25、ユーザー指示により反転。サイクル設定カード側へ配置する**（GSCの `EvaluationSettings.tsx` と同じ `flex-wrap gap-2` 行に、`Dialog`（設定を変更）の兄弟要素として配置。ラベル・活性化条件は `ContentEvaluationCard.tsx` から移設した「評価を実行／再評価／診断コメントを再作成／評価中です」の可変ラベルをそのまま踏襲） | 元の理由（既に「コンテンツ評価」タブに「評価を実行」がある。同じ操作を2箇所に置かない）は今も成立するため、**移動であって重複追加ではない**：`ContentEvaluationCard.tsx` 側のボタンは削除し、コンテンツ評価タブは結果の読み取り専用表示（スコア・診断・履歴）に専念させた。GSC側の配置と対称になり、記事詳細でタブを跨がずに再実行できる（§18 2026-08-25） |
 | 補足 | 「評価対象期間は直近90日で固定です。評価サイクルは、次に評価するまでの間隔です。」 | GSC には無い注記。§6.6.3 の混同を画面で防ぐ |
 
 #### 既存 GSC 側で変更する箇所
@@ -1737,7 +1737,7 @@ Feature: GA4コンテンツ評価
     Given 記事Aに最後の成功評価結果がある
     When 新しい評価が `evaluation_failed` になる
     Then 前回の成功評価結果は「前回の評価結果」として表示される
-    And 今回の失敗理由と「再評価」操作が表示される
+    And 今回の失敗理由が表示される（~~「再評価」操作が表示される~~ → **2026-08-25、「再評価」操作は概要タブの「コンテンツ評価サイクル設定」カードへ移動。§10.8「今すぐ評価を実行ボタン」**）
     And 前回の成功履歴は変更されない
 
   Scenario: 評価可能な記事を初めて開く
@@ -1746,13 +1746,13 @@ Feature: GA4コンテンツ評価
     When 記事Aの「コンテンツ評価」タブを開く
     Then 「評価可能」と表示される
     And 点数や診断を表示しない
-    And 「評価を実行」ボタンが表示される
+    And ~~「評価を実行」ボタンが表示される~~ → **2026-08-25、当タブでは表示されない。ボタンは概要タブの「コンテンツ評価サイクル設定」カードにある（§18 2026-08-25）**
     And 状態が色だけでなくラベル・文言でも判別できる
 
-  Scenario: GSCの既存操作と混同しない
+  Scenario: GSCの既存操作と混同しない（2026-08-25 前提を修正）
     Given 記事Aの記事詳細を開いている
-    When 「コンテンツ評価」タブと既存タブを見比べる
-    Then コンテンツ評価の「評価を実行」とGSCの「評価を開始」が別操作として文言で区別される
+    When ~~「コンテンツ評価」タブと既存タブを見比べる~~ → **概要タブの「検索順位評価サイクル設定」と「コンテンツ評価サイクル設定」を横並びで見比べる（§10.8。ボタン移動によりGSC・GA4双方の実行ボタンが同じタブに並ぶようになったため、シナリオの前提を「別タブ」から「同一タブの横並び」へ修正）**
+    Then コンテンツ評価の「評価を実行」（または状態に応じた可変ラベル）とGSCの「今すぐ評価を実行」が別操作として文言で区別される
     And 既存3タブの内容と操作が変更されていない
 ```
 
@@ -2798,6 +2798,7 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 | 2026-08-25 | **上記のフォローアップ課題（§8.3の結末語彙・`error_code='needs_reauth'`永続化経路が到達不能かどうか）を、code-review skillでのレビュー指摘（後述）を受けて調査・解消した。** `ga4ContentEvaluationCycleService.ts`の`runDueArticle()`が`ga4ContentEvaluationService.run()`を呼ぶ経路を実際に読み、run()の現在の実装（credentialの取得・try/catch内の全処理）がGoogle系のエラーコードを一切生成しないことを確認。`classifyGa4BatchRunError`（バッチが`run()`の例外を分類）・`classifyEvaluationFailure`（run()自身の内部try/catch）のいずれも`code:'needs_reauth'`を投げる発生源が完全に無くなっており、**到達不能と断定**。<br>**対応**: 結末の判定契約を10値→9値に改定し、`needs_reauth`を完全に除去した。`src/server/lib/ga4-content-evaluation-batch-outcome.ts`（`Ga4CycleBatchOutcome`型・`classifyGa4BatchRunError`の死んだ分岐）・`src/server/services/ga4ContentEvaluationService.ts`（`classifyEvaluationFailure`の死んだ分岐）・`src/types/ga4-evaluation.ts`（`Ga4EvaluationErrorCode`型）・`src/lib/ga4-evaluation-display.ts`（`GA4_ERROR_LABELS.needs_reauth`）から削除。§6.6.4のクールダウン表・§9.5の非通知対象リスト・冪等キー定義・§10.4の状態表・AC-05のGherkinシナリオ（失効として明記）・§13のテスト記述を、9値の語彙に合わせて更新した（歴史的経緯として取り消し線＋理由注記で保持し、黙って書き換えない）。D7・R-16・GSC scope縮小のQ&A（決定の経緯を記録した節）は過去の意思決定記録であるため変更していない。<br>**あわせて、同じレビューで見つかった軽微な指摘2件も対応**: (1) `src/server/actions/ga4ContentEvaluation.actions.ts`の`runGa4ContentEvaluation`・`retryGa4ContentEvaluationNarrative`にあった`error.code === 'needs_reauth'`特別扱い（到達不能）を削除し汎用エラー文言へフォールバック。(2) CLAUDE.mdの「作らない判断はNon-goalに理由付きで書く」ルールに従い、§3.2フェーズ3Non-goalに「Google連携を確認してください」カード削除の理由を追記（commit `585b393a`で対応済み） | `npx tsc --noEmit`・`npm run lint`（0 errors）・`npm run knip`・`npm run test`（507件）・`npm run build`・`npm run verify:ui-text`すべて成功 |
 | 2026-08-25 | **「他に残作業あるか」との確認を受け、保留していた2件（エラーラベルの不正確さ・「読了スコア」対「読了率」の同一語問題）に対応した。** **Part A: `evaluation_stale`エラーコードの分離。** 調査の結果、`evaluation_stale`は原因の異なる2つのケースを1つのコードで表現していた: (1) GA4取込データの鮮度不足（`run()`が`insufficient_data`で打ち切る場合。§9.2.1）と (2) 前回runの15分リース期限切れによる強制確定（`start_ga4_content_evaluation`RPC。`error_message`自体は「評価実行が期限切れになりました」で正確だが、UI表示に使う`error_code`由来のラベルが「評価結果が古いため、再評価が必要です」で原因・対処法とも食い違っていた）。(1)を`ga4_data_stale`、(2)を`evaluation_run_expired`に分離した。あわせて、発生源が存在しないデッドコードと判明した`gsc_api_error`（`Ga4EvaluationErrorCode`型）・`evaluation_already_running`（`toSafeErrorCode`の`message.includes('already running')`分岐）も削除した。DB側は`20260819000200_drop_ga4_content_evaluation_settings.sql`が本番適用済みのため直接編集せず、新規migration（`20260825000000_split_evaluation_stale_error_code.sql`）で`start_ga4_content_evaluation`関数を`create or replace`した。`Ga4EvaluationErrorCode`型・`GA4_ERROR_LABELS`・§7.1 BR-01・§9.1.1・§9.2.1・§15.3を更新。<br>**Part B: `/ga4-dashboard`・`/analytics`一覧の「読了率」（GA4のscroll_90イベント到達割合ベース）を「完読率」へ改称。** 仕様書§10.7（2026-08-22決定）が定義する「読了率」（滞在時間ベース。`averageEngagementSeconds / expectedReadSeconds`、読了スコアの元になる比率）と同一語で異なる指標を指す衝突状態だった。コード内部（SQLコメント・`ga4-utils.ts`・テスト・クライアント自身の評価エンジン正本`docs/context/ga4-evaluation-engine-spec-20260817.md:55`）は既にスクロールベース指標を「完読率」と呼んでおり、UIラベルだけが取り残されていたため、内部用語に合わせて改称した（新語の発明ではない）。改称対象: `RankingTab.tsx`・`TimeseriesTab.tsx`・`SummaryCards.tsx`・`Ga4DashboardClient.tsx`（ソート選択肢）・`src/lib/constants.ts`（`ANALYTICS_COLUMNS`）・`AnalyticsClient.tsx`（説明文）・`docs/specs/ga4-data-api-daily-cache-mvp.md`（旧設計書の指標定義・指標計算式）・本書§6.2.4の「既知の未対応」注記。`ui-text.md`に「完読率」を機械チェック対象として登録した（`目視`指定。滞在時間ベースの「読了率」との共存を機械ルールだけで区別できないため）。**改称対象外**（理由付きで見送り）: `Ga4SetupClient.tsx`の「読了率の閾値」ラベルとその根拠である`ga4ThresholdReadRate`/`ga4_threshold_read_rate`列は、スコアリングロジックのどこからも参照されていない機能していない旧設定と判明したが、これは別問題であり今回のスコープ外（触らない）。`docs/specs/ga4-data-api-daily-cache-mvp.md`の同閾値に言及する3箇所も同じ理由で変更していない。§10.7・`ContentEvaluationCycleSettings.tsx`の（滞在時間ベースの）正しい「読了率」用法・SQL列名`read_rate`自体の改名は、いずれも変更しない | `npx tsc --noEmit`・`npm run lint`（0 errors）・`npm run test`・`npm run knip`・`npm run build`・`npm run verify:ui-text`すべて成功 |
 | 2026-08-25 | **D11（一覧のコンテンツ力スコア60点未満フィルタ）をユーザー指示により削除した。**「フェーズ3で主にできるようになったこと」を説明した際、一覧フィルタ（D11）がそもそも要件（Q2）で一度「なくていい」と否定されたのち再依頼で実装した経緯であることを伝えたところ、あらためて要否を再検討したいとの流れになった。並行してGSC側にも同種のフィルタ（順位が悪い記事の絞り込み）が無い非対称性を指摘したが、ユーザーはGSC側への追加は今回のスコープ外と判断し、そのうえで既存のGA4「コンテンツ力スコア60点未満」フィルタ自体を「削除してよい。コンテンツ評価未開始だけあればOK」と明示指示した。<br>**対応**: D11で追加した一式をすべて削除した。(1) DB: `supabase/migrations/20260824000100_add_ga4_content_score_below_filter.sql`を削除（本PRで新設されたばかりで環境未適用のため直接削除可。`get_filtered_content_annotations`は`20260818000300`時点の定義＝`p_ga4_content_score_below`なしに戻る）。(2) 型: `src/types/database.types.pending.ts`の`AnalyticsScoreFilterDatabase`ブロックを削除。(3) サービス: `analyticsContentService.ts`の`asPendingClient`経由のRPC呼び出しを通常の`client.rpc`へ戻し、`p_ga4_content_score_below`引数を削除。(4) 型定義: `src/types/analytics.ts`の`AnalyticsContentQuery.ga4ContentScoreBelow`を削除。(5) UI: `CategoryFilter.tsx`のチェックボックス・props、`AnalyticsTable.tsx`の状態・ハンドラ・フィルタータグ表示、`AnalyticsClient.tsx`・`app/analytics/page.tsx`・`app/analytics/build-href.ts`の`hasGa4ContentScoreBelow`/`ga4_low_score`クエリパラメータのスレッドをすべて削除。(6) `GA4_CONTENT_SCORE_PASSING_LINE`定数（`ga4-evaluation-display.ts`）はスコア帯ラベル判定で引き続き内部使用するため残すが、外部からの参照が無くなったため`export`を外した。(7) テスト: `analyticsContentService.test.ts`のD11関連2件を削除（507件→505件）。<br>**あわせて仕様書を更新**: §3.2 Non-goal・§6.4・§10.2のD11関連記述を取り消し線＋理由注記へ変更し「実装しない（確定Non-goal）」に戻した。Q2（§15.1）・D11（§15.3）のテーブル行も「2026-08-25再反転」を追記（過去の行は書き換えず追記のみ）。**GSC側への同種フィルタ追加は、今回のユーザー判断により見送り（範囲外）**——D11自体が削除された以上、対称性を持たせる対象が無くなったため、新規のNon-goalとしては起票しない | `npx tsc --noEmit`・`npm run lint`（0 errors）・`npm run test`（505件）・`npm run knip`・`npm run build`・`npm run verify:ui-text`すべて成功 |
+| 2026-08-25 | **GA4「今すぐ評価を実行」ボタンを、コンテンツ評価タブから概要タブの「コンテンツ評価サイクル設定」カードへ移動した（§10.8「今すぐ評価を実行ボタン」を反転）。** ユーザーが画面キャプチャを提示し、GSCの「検索順位評価サイクル設定」カードには同カード上に「今すぐ評価を実行」ボタンがあるのに対し、GA4の「コンテンツ評価サイクル設定」カードには無く、実行するには別タブ（コンテンツ評価タブ）へ移動する必要がある非対称なUIを指摘。「同じ位置に配置した方がUIが整う」との提案を受け、Exploreエージェントでボタン配置・データフロー・過去の設計判断（フェーズ3時点の§10.8「置かない」の理由＝「同じ操作を2箇所に置かない」）を調査した。AskUserQuestionで「コンテンツ評価タブのボタンをどうするか」を確認し、**「移動する」**（削除して1箇所に一本化）を選択——「同じ操作を2箇所に置かない」という既存原則にも合致し、GSC側の配置とも対称になる。<br>**対応**: `ContentEvaluationCard.tsx`（コンテンツ評価タブ）から評価実行ボタン・その活性化ロジック（`canRun`/`canShowAction`/`actionLabel`/`isRunning`/`handleRun`）を削除し、結果の読み取り専用表示（スコア・診断・履歴・エラー表示）に専念させた。移設先の`ContentEvaluationCycleSettings.tsx`（概要タブ）に、GSCの`EvaluationSettings.tsx`と同じ`flex-wrap gap-2`行・`Dialog`（設定を変更）の兄弟要素として同ロジックを移植し、状態に応じた可変ラベル（評価を実行／再評価／診断コメントを再作成／評価中です）と表示条件（サイクル未登録時、および`unassessed`/`low_data`/`evaluating`/`import_failed`/`insufficient_data`のときは非表示）をそのまま踏襲した。プロパティ配線: `evaluation`（`Ga4ContentEvaluationView`）・`onRun`・`onRetryNarrative`を`ContentEvaluationCycleSettings`の新規propsとし、`OverviewTab.tsx`（`ga4Evaluation`/`onRunGa4Evaluation`/`onRetryGa4Narrative`を新規追加）→`GscDashboardClient.tsx`（既存の`ga4Evaluation` state・`handleRunGa4Evaluation`/`handleRetryGa4Narrative`をOverviewTabへも配線。新規フェッチ・新規ハンドラは追加していない）という経路で通す。エラー表示は、この画面の既存の表記慣習（`cycle.lastNotificationStatus`等の軽量な色付き`<p>`ボックス）に合わせ、`evaluationError`propを新設して同型の表示にした（`ContentEvaluationCard.tsx`側の`<Alert>`は流用しない）。あわせて、コンテンツ評価タブ側の関連文言（エラー時の再評価導線・「評価結果はまだありません」）を「概要タブの「コンテンツ評価サイクル設定」から実行してください」という誘導文へ更新した。<br>**GSC側（`EvaluationSettings.tsx`・`gscDashboard.actions.ts`等）は一切変更していない。** §10.3の記事カード構成表（項目1）・§10.4の状態表冒頭注記・AC-09のGherkinシナリオ2件を、取り消し線＋理由注記で新しい配置に合わせて更新した | `npx tsc --noEmit`・`npm run lint`（0 errors）・`npm run test`（505件）・`npm run knip`・`npm run build`・`npm run verify:ui-text`すべて成功 |
 
 ## 19. レビュー記録
 

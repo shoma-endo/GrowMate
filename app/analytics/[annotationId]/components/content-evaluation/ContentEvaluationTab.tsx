@@ -14,8 +14,6 @@ interface ContentEvaluationTabProps {
   articleTitle?: string | null;
   evaluation: Ga4ContentEvaluationView | null;
   error?: string | null;
-  onRun: () => Promise<void>;
-  onRetryNarrative?: () => Promise<void>;
 }
 
 /**
@@ -31,8 +29,6 @@ export function ContentEvaluationTab({
   articleTitle = null,
   evaluation,
   error = null,
-  onRun,
-  onRetryNarrative,
 }: ContentEvaluationTabProps) {
   const [cycle, setCycle] = useState<Ga4ContentEvaluationCycleView | null>(null);
 
@@ -57,9 +53,7 @@ export function ContentEvaluationTab({
         articleTitle={articleTitle}
         evaluation={evaluation}
         error={error}
-        onRun={onRun}
         cycle={cycle}
-        {...(onRetryNarrative ? { onRetryNarrative } : {})}
       />
       <Ga4EvaluationHistoryPanel evaluation={evaluation} />
     </div>

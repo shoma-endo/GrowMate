@@ -1,8 +1,7 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { AlertCircle, Loader2, Play, RefreshCw } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,10 +23,8 @@ interface Props {
   /** カード見出しに出す記事タイトル。クライアント提供の記事カード設計（評価エンジン仕様 §08）に合わせる */
   articleTitle?: string | null;
   evaluation: Ga4ContentEvaluationView | null;
-  onRun: () => Promise<void>;
-  onRetryNarrative?: () => Promise<void>;
   error?: string | null;
-  /** コンテンツ評価サイクル設定（読み取り専用表示のみ。設定操作は概要タブ。§10.8「配置」） */
+  /** コンテンツ評価サイクル設定（読み取り専用表示のみ。設定操作・「今すぐ評価を実行」は概要タブへ移動した。§10.8「配置」） */
   cycle?: Ga4ContentEvaluationCycleView | null;
 }
 
@@ -92,31 +89,16 @@ function formatDateJP(dateStr: string | null | undefined): string {
 export function ContentEvaluationCard({
   articleTitle = null,
   evaluation,
-  onRun,
-  onRetryNarrative,
   error = null,
   cycle = null,
 }: Props) {
-  const [isRunning, setIsRunning] = useState(false);
   const latest = resolveCardHistoryItem(evaluation);
   const latestRun = evaluation?.history[0] ?? null;
   const displayStatus = evaluation?.displayStatus ?? 'unassessed';
-  const canRun = ['eligible', 'evaluated', 'narrative_failed', 'evaluation_failed'].includes(displayStatus);
-  const canShowAction = !['unassessed', 'low_data', 'evaluating', 'import_failed', 'insufficient_data'].includes(displayStatus);
   const dataQualitySource = displayStatus === 'insufficient_data' ? latestRun : latest;
   const missingMetrics = displayStatus === 'unassessed'
     ? evaluation?.missingMetrics ?? []
     : getMissingMetricsFromDataQuality(dataQualitySource?.dataQuality);
-
-  const handleRun = async () => {
-    if (!canRun || isRunning) return;
-    setIsRunning(true);
-    try {
-      await (displayStatus === 'narrative_failed' && onRetryNarrative ? onRetryNarrative() : onRun());
-    } finally {
-      setIsRunning(false);
-    }
-  };
 
   const engagedUsers = latest?.sessions !== null && latest?.sessions !== undefined && latest.engageRate !== null
     ? Math.round(latest.engageRate * latest.sessions)
@@ -129,15 +111,6 @@ export function ContentEvaluationCard({
         item.contentScore !== null && item.engageScore !== null && item.readScore !== null
       ) ?? null
     : null;
-  const actionLabel = isRunning
-    ? '評価中です'
-    : displayStatus === 'eligible'
-      ? '評価を実行'
-      : displayStatus === 'narrative_failed'
-          ? '診断コメントを再作成'
-          : latest
-            ? '再評価'
-            : '評価を実行';
   const scoreDiff = (current: number | null, previousScore: number | null): string =>
     current === null || previousScore === null ? formatGa4ScoreDiff(null) : formatGa4ScoreDiff(current - previousScore);
   const formatPercent = (value: number | null): string =>
@@ -150,24 +123,14 @@ export function ContentEvaluationCard({
         <div className="min-w-0">
           <CardTitle className="truncate text-lg">{articleTitle || 'コンテンツ評価'}</CardTitle>
         </div>
-        {/* 状態バッジと主操作をタイトルと同じ行にまとめる。shrink-0 で、長い記事タイトル（左は
-            min-w-0 + truncate）に押されてボタンが潰れないようにする */}
-        {(displayStatus !== 'evaluated' || canShowAction) && (
+        {/* 状態バッジのみ。shrink-0 で、長い記事タイトル（左は min-w-0 + truncate）に
+            押されて潰れないようにする。評価の実行は概要タブの「コンテンツ評価サイクル設定」
+            カードへ移動した（同じ操作を2箇所に置かない。§10.8） */}
+        {displayStatus !== 'evaluated' && (
           <div className="flex shrink-0 items-center gap-3">
-            {/* 評価済みのときは状態バッジを出さない。カード本体にスコア・点数帯ピル・診断見出しが
-                出ており「評価済み」の一言が情報を足さないため。それ以外の状態は状態バッジでしか
-                伝わらないので引き続き表示する */}
-            {displayStatus !== 'evaluated' && (
-              <span className="rounded-full border px-3 py-1 text-sm" aria-live="polite">
-                {displayStatus === 'unassessed' ? '未評価（データが不足）' : getGa4EvaluationStatusLabel(displayStatus)}
-              </span>
-            )}
-            {canShowAction && (
-              <Button type="button" onClick={handleRun} disabled={isRunning || !canRun}>
-                {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : latest ? <RefreshCw className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-                {actionLabel}
-              </Button>
-            )}
+            <span className="rounded-full border px-3 py-1 text-sm" aria-live="polite">
+              {displayStatus === 'unassessed' ? '未評価（データが不足）' : getGa4EvaluationStatusLabel(displayStatus)}
+            </span>
           </div>
         )}
       </CardHeader>
@@ -186,7 +149,7 @@ export function ContentEvaluationCard({
         {(error || displayStatus === 'evaluation_failed' || displayStatus === 'import_failed') && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error ?? (displayStatus === 'import_failed' ? 'データを再取得してから評価を実行してください。' : '評価に失敗しました。時間をおいて再評価してください。')}</AlertDescription>
+            <AlertDescription>{error ?? (displayStatus === 'import_failed' ? 'データを再取得してから、概要タブの「コンテンツ評価サイクル設定」から評価を実行してください。' : '評価に失敗しました。時間をおいて、概要タブの「コンテンツ評価サイクル設定」から再評価してください。')}</AlertDescription>
           </Alert>
         )}
         {displayStatus === 'import_failed' && (
@@ -362,7 +325,7 @@ export function ContentEvaluationCard({
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">評価結果はまだありません。</p>
+          <p className="text-sm text-muted-foreground">評価結果はまだありません。概要タブの「コンテンツ評価サイクル設定」から評価を実行してください。</p>
         )}
       </CardContent>
     </Card>

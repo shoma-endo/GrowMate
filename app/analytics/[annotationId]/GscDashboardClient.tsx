@@ -180,6 +180,10 @@ export default function GscDashboardClient({
             onRegisterEvaluation={dashboard.handleRegisterEvaluation}
             onUpdateEvaluation={dashboard.handleUpdateEvaluation}
             onRunEvaluation={dashboard.handleRunEvaluation}
+            ga4Evaluation={ga4Evaluation}
+            ga4EvaluationError={ga4EvaluationError}
+            onRunGa4Evaluation={handleRunGa4Evaluation}
+            onRetryGa4Narrative={handleRetryGa4Narrative}
             onRunQueryImport={dashboard.handleRunQueryImport}
             onRefreshDetail={async (annotationId: string) => {
               await dashboard.refreshDetail(annotationId);
@@ -193,8 +197,6 @@ export default function GscDashboardClient({
             articleTitle={dashboard.detail?.annotation.wp_post_title ?? null}
             evaluation={ga4Evaluation}
             error={ga4EvaluationError}
-            onRun={handleRunGa4Evaluation}
-            onRetryNarrative={handleRetryGa4Narrative}
           />
         </TabsContent>
 

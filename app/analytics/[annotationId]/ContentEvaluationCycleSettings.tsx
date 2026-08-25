@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, Info, Calendar as CalendarIcon, Settings, Save, Clock } from 'lucide-react';
+import { Loader2, Info, Calendar as CalendarIcon, Settings, Save, Clock, Play, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -28,7 +28,9 @@ import {
   registerGa4ContentEvaluationCycle,
   updateGa4ContentEvaluationCycle,
 } from '@/server/actions/ga4ContentEvaluationCycle.actions';
+import { resolveCardHistoryItem } from './components/content-evaluation/latest-history';
 import type { Ga4ContentEvaluationCycleView } from '@/types/ga4-evaluation-cycle';
+import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
   value: i.toString(),
@@ -37,6 +39,11 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
 
 interface ContentEvaluationCycleSettingsProps {
   annotationId: string;
+  /** 「今すぐ評価を実行」ボタン用（コンテンツ評価タブから移動。§10.8「今すぐ評価を実行ボタン」） */
+  evaluation: Ga4ContentEvaluationView | null;
+  evaluationError?: string | null;
+  onRun: () => Promise<void>;
+  onRetryNarrative?: () => Promise<void>;
 }
 
 const formatDateJP = (dateStr: string | undefined | null) => {
@@ -53,6 +60,10 @@ const formatDateJP = (dateStr: string | undefined | null) => {
 
 export function ContentEvaluationCycleSettings({
   annotationId,
+  evaluation,
+  evaluationError = null,
+  onRun,
+  onRetryNarrative,
 }: ContentEvaluationCycleSettingsProps) {
   const [cycle, setCycle] = useState<Ga4ContentEvaluationCycleView | null>(null);
   const [cycleLoading, setCycleLoading] = useState(true);
@@ -62,8 +73,35 @@ export function ContentEvaluationCycleSettings({
   const [evaluationHour, setEvaluationHour] = useState<number>(12);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
 
   const isUpdateMode = !!cycle;
+
+  // 「今すぐ評価を実行」ボタンの表示・活性化条件はコンテンツ評価タブの ContentEvaluationCard.tsx
+  // から移設した（§10.8「今すぐ評価を実行ボタン」。2026-08-25 反転。同じ操作を2箇所に置かない）。
+  const latestEvaluation = resolveCardHistoryItem(evaluation);
+  const displayStatus = evaluation?.displayStatus ?? 'unassessed';
+  const canRunEvaluation = ['eligible', 'evaluated', 'narrative_failed', 'evaluation_failed'].includes(displayStatus);
+  const canShowRunAction = !['unassessed', 'low_data', 'evaluating', 'import_failed', 'insufficient_data'].includes(displayStatus);
+  const runActionLabel = isRunning
+    ? '評価中です'
+    : displayStatus === 'eligible'
+      ? '評価を実行'
+      : displayStatus === 'narrative_failed'
+          ? '診断コメントを再作成'
+          : latestEvaluation
+            ? '再評価'
+            : '評価を実行';
+
+  const handleRunEvaluation = async () => {
+    if (!canRunEvaluation || isRunning) return;
+    setIsRunning(true);
+    try {
+      await (displayStatus === 'narrative_failed' && onRetryNarrative ? onRetryNarrative() : onRun());
+    } finally {
+      setIsRunning(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -180,6 +218,7 @@ export function ContentEvaluationCycleSettings({
           </p>
         </div>
 
+        <div className="flex flex-wrap gap-2">
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
             <Button variant="default">
@@ -307,6 +346,29 @@ export function ContentEvaluationCycleSettings({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+          {/* 今すぐ評価を実行ボタン（GSCの検索順位評価サイクル設定カードと同じ位置。§10.8「今すぐ評価を実行ボタン」）
+              サイクル未登録時、および evaluation の状態上いま実行できない場合（unassessed / low_data /
+              evaluating / import_failed / insufficient_data）は表示しない */}
+          {cycle && canShowRunAction && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleRunEvaluation}
+              disabled={isRunning || !canRunEvaluation}
+              className="gap-2"
+            >
+              {isRunning ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : latestEvaluation ? (
+                <RefreshCw className="h-4 w-4" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              {runActionLabel}
+            </Button>
+          )}
+        </div>
       </div>
 
       {cycle ? (
@@ -351,7 +413,12 @@ export function ContentEvaluationCycleSettings({
           </div>
           {!hasBaseline && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2 ring-1 ring-amber-200">
-              初回の計測がまだ完了していません。次回の定期評価（上記の「初回評価予定」）で再試行されます。すぐに反映したい場合は、記事詳細の「コンテンツ評価」タブから今すぐ評価を実行してください。
+              初回の計測がまだ完了していません。次回の定期評価（上記の「初回評価予定」）で再試行されます。すぐに反映したい場合は、上の「今すぐ評価を実行」からお試しください。
+            </p>
+          )}
+          {evaluationError && (
+            <p className="text-xs text-red-700 bg-red-50 rounded-md px-3 py-2 ring-1 ring-red-200">
+              {evaluationError}
             </p>
           )}
           {cycle.lastNotificationStatus === 'failed' && (
