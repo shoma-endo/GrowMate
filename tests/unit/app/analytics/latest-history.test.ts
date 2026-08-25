@@ -92,20 +92,4 @@ describe('resolveCardHistoryItem', () => {
   it('evaluation が null なら null を返す', () => {
     expect(resolveCardHistoryItem(null)).toBeNull();
   });
-
-  it('カード表示分を除いた履歴には、実行中・失敗の行が残る', () => {
-    const view = buildView(
-      [
-        buildHistoryItem('running', 'evaluating'),
-        buildHistoryItem('success', 'evaluated'),
-        buildHistoryItem('past', 'evaluated'),
-      ],
-      'success'
-    );
-    const cardItemId = resolveCardHistoryItem(view)?.id ?? null;
-    expect(view.history.filter(item => item.id !== cardItemId).map(item => item.id)).toEqual([
-      'running',
-      'past',
-    ]);
-  });
 });

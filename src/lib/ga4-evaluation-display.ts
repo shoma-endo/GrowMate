@@ -103,6 +103,44 @@ export function getGa4ScoreBand(score: number | null): string {
   return '良好';
 }
 
+/**
+ * 点数帯で色を出し分ける。
+ *
+ * 規則は「色は常にその数字自身の良し悪しを表す」の1本。記事カードでは
+ * 大きい数字とピルはコンテンツ力スコア、内訳バーはそれぞれ読み始め／読了スコア、
+ * 診断見出しは記事全体の話なのでコンテンツ力スコアで色を決める。
+ * バーをコンテンツ力スコアの色で塗ると、悪い数字が良い色をまとって読み手を迷わせる。
+ *
+ * 段数は評価エンジン仕様 §03 の点数帯に合わせて5段にする。原文が
+ * 「2つの指標も、掛け合わせも、すべて同じ点数帯の意味を持たせる。ユーザーが覚える
+ * 物差しは1本だけにする」と定めているため、ラベル5段に対して色を4段へ丸めると
+ * 目盛りの数が食い違う。深刻と要改善は赤の濃淡で分ける（色相を5つ使うと差が読めない）。
+ * 色だけに頼らないよう帯ラベル（getGa4ScoreBand）は必ず併記する。
+ *
+ * 具体的な色値は原文に指定が無い（HTML は帯を .b1〜.b5 の5クラスで塗り分けているが、
+ * その CSS は共有されていない）。ここは開発側の選択で、確定値が共有されたら差し替える。
+ *
+ * 記事カードと評価履歴の両方が参照する。片方に複製すると配色規則が2箇所へ散り、
+ * 同じスコアがカードと履歴で違う色になりうる（§18 2026-08-19「配色規則を統一した」）。
+ */
+export function getGa4ScoreBandTone(score: number | null): {
+  text: string;
+  pill: string;
+  bar: string;
+} {
+  if (score === null) return { text: 'text-gray-700', pill: 'bg-gray-100 text-gray-700', bar: 'bg-gray-400' };
+  // 0-19 深刻
+  if (score < 20) return { text: 'text-rose-800', pill: 'bg-rose-100 text-rose-900', bar: 'bg-rose-700' };
+  // 20-39 要改善
+  if (score < 40) return { text: 'text-rose-600', pill: 'bg-rose-50 text-rose-700', bar: 'bg-rose-500' };
+  // 40-59 改善の余地あり
+  if (score < GA4_CONTENT_SCORE_PASSING_LINE) return { text: 'text-amber-600', pill: 'bg-amber-50 text-amber-800', bar: 'bg-amber-500' };
+  // 60-79 合格ライン
+  if (score < 80) return { text: 'text-sky-700', pill: 'bg-sky-50 text-sky-800', bar: 'bg-sky-500' };
+  // 80-100 良好
+  return { text: 'text-emerald-700', pill: 'bg-emerald-50 text-emerald-800', bar: 'bg-emerald-500' };
+}
+
 export function formatGa4Duration(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds)) return '—';
   const roundedSeconds = Math.max(0, Math.round(seconds));

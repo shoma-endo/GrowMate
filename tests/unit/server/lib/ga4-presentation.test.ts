@@ -14,6 +14,8 @@ import {
   getGa4DataQualityLabel,
   getGa4EvaluationErrorLabel,
   getGa4MissingMetricLabel,
+  getGa4ScoreBand,
+  getGa4ScoreBandTone,
 } from '@/lib/ga4-evaluation-display';
 import { canAccessGa4, canWriteGa4 } from '@/server/lib/ga4-permissions';
 
@@ -56,6 +58,29 @@ describe('@/lib/ga4-evaluation-display', () => {
     it('内部エラーコードをユーザー向け失敗理由へ変換する', () => {
       expect(getGa4EvaluationErrorLabel('llm_output_invalid')).toBe('診断コメントの形式を確認できませんでした');
       expect(getGa4EvaluationErrorLabel('unknown_internal_code')).toBe('評価に失敗しました');
+    });
+
+    // 点数帯の色とラベルは記事カードと評価履歴が同じ関数を共有する。
+    // 境界がずれると同じスコアが2箇所で違う帯に見える
+    it.each([
+      [0, '深刻', 'rose-100'],
+      [19, '深刻', 'rose-100'],
+      [20, '要改善', 'rose-50'],
+      [39, '要改善', 'rose-50'],
+      [40, '改善の余地あり', 'amber-50'],
+      [59, '改善の余地あり', 'amber-50'],
+      [60, '合格ライン', 'sky-50'],
+      [79, '合格ライン', 'sky-50'],
+      [80, '良好', 'emerald-50'],
+      [100, '良好', 'emerald-50'],
+    ])('スコア %i は「%s」帯として同じ色を返す', (score, band, pillColor) => {
+      expect(getGa4ScoreBand(score)).toBe(band);
+      expect(getGa4ScoreBandTone(score).pill).toContain(pillColor);
+    });
+
+    it('スコアが無い場合は帯を主張せず中立色にする', () => {
+      expect(getGa4ScoreBand(null)).toBe('—');
+      expect(getGa4ScoreBandTone(null).pill).toContain('gray');
     });
   });
 });

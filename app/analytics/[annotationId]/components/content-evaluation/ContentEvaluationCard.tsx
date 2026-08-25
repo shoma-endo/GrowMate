@@ -5,6 +5,7 @@ import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/date-utils';
 import {
   formatGa4Duration,
   formatGa4ScoreDiff,
@@ -13,10 +14,12 @@ import {
   getGa4DiagnosisLabel,
   getGa4EvaluationStatusLabel,
   getGa4ScoreBand,
+  getGa4ScoreBandTone,
 } from '@/lib/ga4-evaluation-display';
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
 import type { Ga4ContentEvaluationCycleView } from '@/types/ga4-evaluation-cycle';
 
+import { findPreviousScoredItem } from './ga4-evaluation-history-view';
 import { resolveCardHistoryItem } from './latest-history';
 
 interface Props {
@@ -28,41 +31,12 @@ interface Props {
   cycle?: Ga4ContentEvaluationCycleView | null;
 }
 
-function formatDate(value: string | null): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ja-JP');
-}
-
 /**
- * 点数帯で色を出し分ける。
- *
- * カード内の規則は「色は常にその数字自身の良し悪しを表す」の1本。
- * 大きい数字とピルはコンテンツ力スコア、内訳バーはそれぞれ読み始め／読了スコア、
- * 診断見出しは記事全体の話なのでコンテンツ力スコアで色を決める。
- * バーをコンテンツ力スコアの色で塗ると、悪い数字が良い色をまとって読み手を迷わせる。
- *
- * 段数は評価エンジン仕様 §03 の点数帯に合わせて5段にする。原文が
- * 「2つの指標も、掛け合わせも、すべて同じ点数帯の意味を持たせる。ユーザーが覚える
- * 物差しは1本だけにする」と定めているため、ラベル5段に対して色を4段へ丸めると
- * 目盛りの数が食い違う。深刻と要改善は赤の濃淡で分ける（色相を5つ使うと差が読めない）。
- * 色だけに頼らないよう帯ラベルは必ず併記する。
- *
- * 具体的な色値は原文に指定が無い（HTML は帯を .b1〜.b5 の5クラスで塗り分けているが、
- * その CSS は共有されていない）。ここは開発側の選択で、確定値が共有されたら差し替える。
+ * 評価情報のタイムスタンプ。未取得は '—'（`formatDateTime` の '日付不明' は
+ * 「値はあるが壊れている」の意味なので、値が無い場合に流用しない）。
  */
-function getScoreBandTone(score: number | null): { text: string; pill: string; bar: string } {
-  if (score === null) return { text: 'text-gray-700', pill: 'bg-gray-100 text-gray-700', bar: 'bg-gray-400' };
-  // 0-19 深刻
-  if (score < 20) return { text: 'text-rose-800', pill: 'bg-rose-100 text-rose-900', bar: 'bg-rose-700' };
-  // 20-39 要改善
-  if (score < 40) return { text: 'text-rose-600', pill: 'bg-rose-50 text-rose-700', bar: 'bg-rose-500' };
-  // 40-59 改善の余地あり
-  if (score < 60) return { text: 'text-amber-600', pill: 'bg-amber-50 text-amber-800', bar: 'bg-amber-500' };
-  // 60-79 合格ライン
-  if (score < 80) return { text: 'text-sky-700', pill: 'bg-sky-50 text-sky-800', bar: 'bg-sky-500' };
-  // 80-100 良好
-  return { text: 'text-emerald-700', pill: 'bg-emerald-50 text-emerald-800', bar: 'bg-emerald-500' };
+function formatTimestamp(value: string | null): string {
+  return value ? formatDateTime(value) : '—';
 }
 
 function getMeasuredScrollUsers(dataQuality: unknown): number | null {
@@ -104,18 +78,20 @@ export function ContentEvaluationCard({
     ? Math.round(latest.engageRate * latest.sessions)
     : null;
   const measuredScrollUsers = latest ? getMeasuredScrollUsers(latest.dataQuality) : null;
-  const previous = latest
-    ? evaluation?.history.find(item =>
-        item.id !== latest.id &&
-        (item.status === 'evaluated' || item.status === 'narrative_failed') &&
-        item.contentScore !== null && item.engageScore !== null && item.readScore !== null
-      ) ?? null
-    : null;
+  // 「前回」は履歴の並び（startedAt 降順）で latest より後ろ＝より古い行から探す。
+  // 評価履歴パネルの「前回 N → M 点」と同じ関数を使い、同じ画面で違う前回を出さない。
+  const previous =
+    latest && evaluation
+      ? findPreviousScoredItem(
+          evaluation.history,
+          evaluation.history.findIndex(item => item.id === latest.id)
+        )
+      : null;
   const scoreDiff = (current: number | null, previousScore: number | null): string =>
     current === null || previousScore === null ? formatGa4ScoreDiff(null) : formatGa4ScoreDiff(current - previousScore);
   const formatPercent = (value: number | null): string =>
     value === null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(1)}%`;
-  const tone = getScoreBandTone(latest?.contentScore ?? null);
+  const tone = getGa4ScoreBandTone(latest?.contentScore ?? null);
 
   return (
     <Card>
@@ -226,7 +202,7 @@ export function ContentEvaluationCard({
                     {...(item.value !== null ? { 'aria-valuenow': item.value } : {})}
                   >
                     <div
-                      className={`h-full rounded-full ${getScoreBandTone(item.value).bar}`}
+                      className={`h-full rounded-full ${getGa4ScoreBandTone(item.value).bar}`}
                       style={{ width: `${item.value ?? 0}%` }}
                     />
                   </div>
@@ -317,8 +293,8 @@ export function ContentEvaluationCard({
               <details>
                 <summary className="cursor-pointer">評価情報</summary>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <span>最終評価日時：{formatDate(latest.completedAt)}</span>
-                  <span>データ取得日時：{formatDate(latest.ga4DataFetchedAt)}</span>
+                  <span>最終評価日時：{formatTimestamp(latest.completedAt)}</span>
+                  <span>データ取得日時：{formatTimestamp(latest.ga4DataFetchedAt)}</span>
                 </div>
               </details>
             </div>
