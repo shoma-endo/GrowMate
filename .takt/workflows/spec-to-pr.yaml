@@ -324,7 +324,7 @@ steps:
     output_contracts:
       report:
         - name: pr-summary.md
-          format: summary
+          format: spec-to-pr/pr-summary
 
   - name: create_pr
     tags:

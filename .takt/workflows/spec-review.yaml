@@ -152,4 +152,4 @@ steps:
     output_contracts:
       report:
         - name: spec-review-summary.md
-          format: summary
+          format: spec-review/summary
