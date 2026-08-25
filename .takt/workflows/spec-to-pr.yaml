@@ -1,5 +1,5 @@
 name: spec-to-pr
-description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, and PR creation with review summary body. MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md (all_steps.rules).
+description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, and PR creation with review summary body. MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md (all_steps.rules). Reviewers attach previous reviews + fix-result for follow-up (finding_id / persists); unfixable residuals exit via cannot_fix rather than endless fix loops.
 all_steps:
   rules:
     - ref: mvp-scope
@@ -28,6 +28,7 @@ loop_monitors:
       instruction: |
         reviewers（AIアンチパターン＋アーキテクチャの並列レビュー） -> fix のループが {cycle_count} 回繰り返されました。
         閾値到達後はループ継続不可。下記に全文添付された最新のレビュー2本と修正結果を確認し、収束して抜けられるか・ABORT するかを二択で判断してください。run ディレクトリやレポートパスの探索はしないでください。
+        `finding_id` 単位で見る。fix-result が `cannot_fix` / `not_applicable` と記録した ID、および persists のみで新規実害がない場合は方針差分として抜け候補。
         残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として readme_sync を経て self_review に進めてください。
         まだ直せそう・進捗がありそう、だけでは reviewers へ戻さないでください。必要なら ABORT し、人間が再実行します。
 
@@ -56,7 +57,7 @@ loop_monitors:
       instruction: |
         self_review -> self_review_fix -> readme_sync のループが {cycle_count} 回繰り返されました。
         閾値到達後はループ継続不可。下記に全文添付された最新の self-review と修正結果を確認し、収束して抜けられるか・ABORT するかを二択で判断してください。run ディレクトリやレポートパスの探索はしないでください。
-        残件が「手動ブラウザ確認未実施」または管理者作業（マイグレーション適用・型再生成・pendingファイル削除）のみの場合は、追加修正で解消不能な残件として prepare_pr_summary に進めてください。
+        fix-result が追加修正不能（`cannot_fix`）と記録した残件、および「手動ブラウザ確認未実施」または管理者作業（マイグレーション適用・型再生成・pendingファイル削除）のみの場合は、追加修正で解消不能な残件として prepare_pr_summary に進めてください。
         まだ直せそう・進捗がありそう、だけでは self_review へ戻さないでください。必要なら ABORT し、人間が再実行します。
 
         ## self-review.md（最新・全文）
@@ -156,7 +157,9 @@ steps:
         knowledge:
           - growmate
         capabilities: readonly
-        instruction: ai-antipattern-review
+        instruction:
+          - ai-antipattern-review
+          - spec-to-pr/review-follow-up
         rules:
           - condition: approved
           - condition: needs_fix
@@ -181,7 +184,9 @@ steps:
           report:
             - name: architecture-review.md
               format: architecture-review
-        instruction: spec-to-pr/architecture-review
+        instruction:
+          - spec-to-pr/architecture-review
+          - spec-to-pr/review-follow-up
     rules:
       - condition: all("approved")
         next: readme_sync

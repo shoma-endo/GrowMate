@@ -34,6 +34,7 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 - After the rough estimate, `06-estimate-confirmation.md` records the human decision: `着手承認`, `要件再確認が必要`, or `見送り`. Only `着手承認` proceeds to handoff.
 - `.takt/workflows/spec-review.yaml` reviews specifications before implementation.
 - `.takt/workflows/spec-to-pr.yaml` is the source workflow for unattended implementation, review, and PR creation/update.
+- In `spec-to-pr`, the second and later `reviewers` passes are follow-up: previous review reports and `fix-result.md` are attached, findings are tracked by `finding_id` (`resolved` / `persists` / `new` / `reopened`), and residuals that cannot be fixed in code are recorded as `cannot_fix` so the loop can exit instead of spinning.
 - The approved Gherkin is not automatically copied into a spec. Follow `04-handoff.md`, reflect it into the target `docs/plans/<slug>.md`, then run `spec-review` and `spec-to-pr` explicitly.
 - `.agents/skills/` contains implementation-specific rules; the workflow loads relevant Skills when needed.
 - `docs/plans/` contains implementation specifications.

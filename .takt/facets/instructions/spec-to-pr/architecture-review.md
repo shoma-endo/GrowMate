@@ -13,6 +13,7 @@ GrowMate 固有条件:
 - UI変更がある場合は `.agents/skills/growmate-ui-ux/SKILL.md` を正本として、対象差分が既存の同種画面・`src/components/ui/`・`app/globals.css` から逸脱していないことを確認する。判断に迷った新規パターン、要件にないUI刷新、新しいデザインパターンの追加は `needs_fix` とする。
 - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターンは、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、キャスト自体を理由に `needs_fix` にしない。
 - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
+- 指摘には必ず `finding_id` を付ける。follow-up 時の突合・再指摘禁止は後続の共有規則に従う。
 
 ## plan.md（全文）
 {report:plan.md}
