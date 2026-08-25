@@ -94,17 +94,6 @@ export interface Ga4ContentEvaluationView {
   }>;
 }
 
-interface Ga4EvaluationSuccessSnapshot {
-  historyId: string;
-  evaluatedAt: string;
-}
-
-export interface Ga4EvaluationProjection {
-  status: Ga4PersistentEvaluationStatus;
-  lastSuccess: Ga4EvaluationSuccessSnapshot | null;
-  lastErrorCode: Ga4EvaluationErrorCode | null;
-}
-
 export interface Ga4EvaluationMetricSnapshot {
   sessions: number;
   users: number;

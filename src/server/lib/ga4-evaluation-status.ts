@@ -1,7 +1,5 @@
 import type {
   Ga4EvaluationDisplayStatus,
-  Ga4EvaluationErrorCode,
-  Ga4EvaluationProjection,
   Ga4PersistentEvaluationStatus,
 } from '@/types/ga4-evaluation';
 
@@ -18,15 +16,4 @@ export function resolveGa4EvaluationDisplayStatus(
   }
   if (input.derivedStatus) return input.derivedStatus;
   return 'unassessed';
-}
-
-export function applyGa4EvaluationFailure(
-  projection: Ga4EvaluationProjection,
-  errorCode: Ga4EvaluationErrorCode
-): Ga4EvaluationProjection {
-  return {
-    status: 'evaluation_failed',
-    lastSuccess: projection.lastSuccess,
-    lastErrorCode: errorCode,
-  };
 }
