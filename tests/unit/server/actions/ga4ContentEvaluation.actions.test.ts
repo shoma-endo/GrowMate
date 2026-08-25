@@ -115,9 +115,8 @@ describe('ga4ContentEvaluation actions', () => {
     expect(mocks.retryNarrative).toHaveBeenCalledWith(USER_ID, ANNOTATION_ID);
   });
 
-  it('再連携エラーは認証期限切れの利用者向け文言へ分類する', async () => {
-    const error = Object.assign(new Error('needs_reauth'), { code: 'needs_reauth' });
-    mocks.run.mockRejectedValue(error);
+  it('サービスが例外を投げた場合は評価失敗の汎用文言を返す', async () => {
+    mocks.run.mockRejectedValue(new Error('unexpected'));
 
     await expect(runGa4ContentEvaluation({
       annotationId: ANNOTATION_ID,
@@ -125,7 +124,7 @@ describe('ga4ContentEvaluation actions', () => {
       endDate: '2026-08-30',
     })).resolves.toEqual({
       success: false,
-      error: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED,
+      error: ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED,
     });
   });
 });

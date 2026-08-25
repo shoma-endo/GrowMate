@@ -49,9 +49,6 @@ export async function runGa4ContentEvaluation(
     };
   } catch (error) {
     console.error('[ga4ContentEvaluation.actions] run failed', { code: error instanceof Error ? error.name : 'unknown' });
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'needs_reauth') {
-      return { success: false, error: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED };
-    }
     return { success: false, error: ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED };
   }
 }
@@ -71,9 +68,6 @@ export async function retryGa4ContentEvaluationNarrative(
     };
   } catch (error) {
     console.error('[ga4ContentEvaluation.actions] narrative retry failed', { code: error instanceof Error ? error.name : 'unknown' });
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'needs_reauth') {
-      return { success: false, error: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED };
-    }
     return { success: false, error: ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED };
   }
 }
