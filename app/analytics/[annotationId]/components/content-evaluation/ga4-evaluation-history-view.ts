@@ -15,6 +15,8 @@ const PILL_BASE = 'inline-flex items-center rounded-md px-2 py-1 text-xs font-me
 /** 失敗・未計測の配色は GSC のリテラルをそのまま使う（状態色だけは両履歴で完全に一致させる） */
 const PILL_ERROR = 'bg-red-50 text-red-700 ring-red-600/20';
 const PILL_NEUTRAL = 'bg-gray-50 text-gray-700 ring-gray-500/10';
+/** 点数帯の pill（背景・文字色のみ）へ足す枠色。GSC の成功枝と同じ値 */
+const PILL_RING_NEUTRAL = 'ring-gray-500/10';
 
 interface Ga4EvaluationHistoryViewState {
   /** 評価そのものが失敗した行。一覧行を赤背景にし、詳細では Alert を出す */
@@ -32,7 +34,11 @@ interface Ga4EvaluationHistoryViewState {
   showScoreTransition: boolean;
   /** 常に `getGa4EvaluationStatusLabel` から引く。§10.4 が履歴に「評価済み」等の状態表示を求めている */
   statusLabel: string;
-  /** 一覧行のバッジ左に置く小さい文字。GSC の「判定:」「エラー:」と同じ位置・同じ役割 */
+  /**
+   * 一覧行のバッジ左に置く小さい文字。GSC の「判定:」「エラー:」と同じ位置・同じ役割。
+   * コロンが半角なのは GSC のリテラルに合わせているため（同じ画面に並ぶ同じ部品なので揃える）。
+   * 詳細ダイアログ下部のメタ情報は全角コロンで、そちらはグリッド内の他項目と揃えている。
+   */
   leadLabel: string;
   badgeLabel: string;
   badgeClassName: string;
@@ -64,7 +70,11 @@ export function getGa4EvaluationHistoryState(
       statusLabel,
       leadLabel: statusLabel,
       badgeLabel: getGa4DiagnosisLabel(item.diagnosisCode),
-      badgeClassName: `${PILL_BASE} ${getGa4ScoreBandTone(item.contentScore).pill}`,
+      // ring 色は必ず明示する。`ring-1 ring-inset` は色を指定しないと currentColor
+      // （= text-emerald-800 等の濃い文字色）になり、薄い pill に濃い枠が付く。
+      // GSC 側も成功枝で `ring-gray-500/10 ${outcomeConfig.className}` と同じ構造にしている。
+      // 色そのものは getGa4ScoreBandTone に足さない（記事カードの pill には枠が無いため）
+      badgeClassName: `${PILL_BASE} ${PILL_RING_NEUTRAL} ${getGa4ScoreBandTone(item.contentScore).pill}`,
     };
   }
 

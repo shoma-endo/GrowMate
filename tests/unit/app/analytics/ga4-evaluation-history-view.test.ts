@@ -92,6 +92,19 @@ describe('getGa4EvaluationHistoryState', () => {
     );
   });
 
+  it('すべてのバッジが枠の色を明示する', () => {
+    // `ring-1 ring-inset` は色を指定しないと currentColor になり、
+    // 薄い pill に濃い枠が付いて検索順位評価履歴と縁の濃さが食い違う
+    for (const state of [
+      getGa4EvaluationHistoryState(buildScoredItem('a', 85)),
+      getGa4EvaluationHistoryState(buildHistoryItem('b', 'import_failed')),
+      getGa4EvaluationHistoryState(buildHistoryItem('c', 'insufficient_data')),
+      getGa4EvaluationHistoryState(buildHistoryItem('d', 'evaluating')),
+    ]) {
+      expect(state.badgeClassName).toMatch(/ring-(gray|red)-\d{3}\/\d+/);
+    }
+  });
+
   it('失敗2種はエラー扱いにし、状態ラベルで原因を区別する', () => {
     const importFailed = getGa4EvaluationHistoryState(buildHistoryItem('a', 'import_failed'));
     expect(importFailed.isError).toBe(true);

@@ -67,9 +67,12 @@ export function Ga4EvaluationHistoryPanel({ evaluation }: { evaluation: Ga4Conte
                   }`}
                   onClick={() => setSelectedId(item.id)}
                 >
-                  <div className="flex items-center gap-3">
+                  {/* GSC の lead label は「判定:」固定だが、GA4 は narrative_failed で
+                      「診断コメントを作成できませんでした」まで伸びる。min-w-0 / shrink-0 が
+                      無いと狭い画面で日付まで折り返して行が縦に伸びる */}
+                  <div className="flex min-w-0 items-center gap-3">
                     {viewState.isError && <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />}
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium">{formatDateTime(item.startedAt)}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <span className="text-xs text-muted-foreground">{viewState.leadLabel}</span>
@@ -77,15 +80,16 @@ export function Ga4EvaluationHistoryPanel({ evaluation }: { evaluation: Ga4Conte
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex shrink-0 items-center gap-3">
                     {viewState.showScoreTransition && (
-                      <div className="flex items-baseline justify-end gap-2">
+                      <div className="flex shrink-0 items-baseline justify-end gap-2">
                         <span className="text-xs text-muted-foreground">
                           前回: {previous?.contentScore ?? '—'}
                         </span>
                         <span aria-hidden="true" className="text-muted-foreground">
                           →
                         </span>
+                        <span className="sr-only">から</span>
                         <span className="text-lg font-bold tabular-nums">
                           {item.contentScore ?? '—'}
                         </span>
@@ -190,7 +194,9 @@ function Ga4EvaluationHistoryDetail({
         <div>
           <p className="mb-2 text-sm font-semibold">診断コメント</p>
           {item.narrative ? (
-            // 記事カードと同じ組版にする。同じ内容が場所によって違う形で出ると読み直しが要る
+            // 記事カードと同じ組版にする。同じ内容が場所によって違う形で出ると読み直しが要る。
+            // ContentEvaluationCard.tsx の診断文ブロックと逐語で対応しているため、
+            // 片方の見た目を変えるときは必ずもう片方も直すこと（配色規則が2箇所へ散るのを防ぐ）
             <div className="space-y-4">
               <div className="space-y-2">
                 <p className={`text-base font-bold ${tone.text}`}>{item.narrative.headline}</p>
@@ -212,6 +218,14 @@ function Ga4EvaluationHistoryDetail({
               診断コメントを作成できませんでした。スコアは算出済みです。
             </p>
           )}
+          {/* narrative_failed はスコアが確定しているので Alert 側の枝に入らない。
+              「なぜ作れなかったか」（上限に達した／時間切れ）で次に取る行動が変わるため、
+              旧パネルと同じく status に関係なく失敗理由を出す */}
+          {item.errorCode && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              失敗理由：{getGa4EvaluationErrorLabel(item.errorCode)}
+            </p>
+          )}
         </div>
       )}
 
@@ -219,9 +233,6 @@ function Ga4EvaluationHistoryDetail({
         <span>状態：{viewState.statusLabel}</span>
         <span>読み始めスコア：{item.engageScore ?? '—'}</span>
         <span>読了スコア：{item.readScore ?? '—'}</span>
-        <span>
-          サイト内順位：{item.siteRank ?? '—'}位 / {item.totalArticles ?? '—'}記事中
-        </span>
         {/* 期間は 'YYYY-MM-DD' の日付であって時刻ではないため、日時整形に通さない */}
         <span>
           評価対象期間：{item.periodStart ?? '—'} 〜 {item.periodEnd ?? '—'}
