@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, TrendingUp, Search, History, Bell, Gauge } from 'lucide-react';
+import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useGscDashboard } from './hooks/useGscDashboard';
@@ -19,6 +20,7 @@ import {
   runGa4ContentEvaluation,
 } from '@/server/actions/ga4ContentEvaluation.actions';
 import { getGa4EvaluationDateRange } from '@/lib/ga4-evaluation-period';
+import { getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { ServerActionResult } from '@/lib/async-handler';
 
@@ -69,6 +71,32 @@ export default function GscDashboardClient({
     }
   };
 
+  // GSC の handleRunEvaluation（EvaluationSettings.tsx）と同じく、実行結果を toast で必ず知らせる
+  // （2026-08-25 追加。以前は失敗時のみ ga4EvaluationError の小さな赤文字表示に留まり、成功時は
+  // 無音だった。GA4は1記事単位の評価のためGSCのようなバッチ集計サマリーは無く、代わりに
+  // displayStatus と直近履歴のスコアで文言を出し分ける）
+  const notifyGa4EvaluationResult = (result: ServerActionResult<Ga4ContentEvaluationView>) => {
+    if (!result.success || !result.data) {
+      toast.error(result.error ?? ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED);
+      return;
+    }
+    const latest = result.data.history[0] ?? null;
+    switch (result.data.displayStatus) {
+      case 'evaluated':
+        toast.success(
+          latest?.contentScore != null
+            ? `評価が完了しました（コンテンツ力スコア: ${latest.contentScore}点）`
+            : '評価が完了しました'
+        );
+        return;
+      case 'narrative_failed':
+        toast.warning('スコアの算出は完了しましたが、診断コメントの作成に失敗しました');
+        return;
+      default:
+        toast.error(getGa4EvaluationStatusLabel(result.data.displayStatus));
+    }
+  };
+
   const handleRunGa4Evaluation = async () => {
     const annotationId = dashboard.selectedId;
     if (!annotationId) return;
@@ -79,6 +107,7 @@ export default function GscDashboardClient({
       startDate,
       endDate,
     }));
+    notifyGa4EvaluationResult(result);
     if (!result.success || !result.data) {
       setGa4EvaluationError(result.error ?? ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED);
       return;
@@ -91,6 +120,7 @@ export default function GscDashboardClient({
     if (!annotationId) return;
     setGa4EvaluationError(null);
     const result = await runGa4EvaluationWithProgress(annotationId, () => retryGa4ContentEvaluationNarrative(annotationId));
+    notifyGa4EvaluationResult(result);
     if (!result.success || !result.data) {
       setGa4EvaluationError(result.error ?? ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED);
       return;
