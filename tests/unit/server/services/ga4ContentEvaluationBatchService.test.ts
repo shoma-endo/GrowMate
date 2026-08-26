@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   sendEmail: vi.fn(),
   updateCalls: [] as Record<string, unknown>[],
   eqCalls: [] as Array<[string, unknown]>,
-  updateEqBoundaries: [] as number[],
+  /** updateCalls と同じ添字で、その update に付いた .eq(column, value) を保持する */
+  updateFilters: [] as Array<Array<[string, unknown]>>,
   userEmail: null as string | null,
   notifiedHistoryId: null as string | null,
 }));
@@ -36,6 +37,8 @@ vi.mock('@/env', () => ({
 vi.mock('@/server/services/supabaseService', () => {
   class FakeQuery {
     private resolveValue: { data: unknown; error: null };
+    /** update() が呼ばれた後は、以降の eq をその update の絞り込み条件として記録する */
+    private updateIndex: number | null = null;
     constructor(resolveValue: { data: unknown; error: null }) {
       this.resolveValue = resolveValue;
     }
@@ -46,14 +49,22 @@ vi.mock('@/server/services/supabaseService', () => {
     // BR-06「抽出後の書き込みは user_id を明示する」は Service Role 経由で RLS が
     // バイパスされる以上これが唯一の防御層なので、テスト側で観測できるようにする
     // （レビュー: ミューテーションで `.eq('user_id')` を外しても全テストが通っていた）。
+    //
+    // update に続く eq は updateFilters[i] へ、それ以外（select 側の絞り込み）は
+    // eqCalls へ分けて積む。両方を1つの配列に混ぜると、別のクエリが投げた
+    // `.eq('user_id', …)` を拾ってしまい、書き込み側の漏れを検知できない。
     eq(column: string, value: unknown) {
-      mocks.eqCalls.push([column, value]);
+      if (this.updateIndex === null) {
+        mocks.eqCalls.push([column, value]);
+      } else {
+        mocks.updateFilters[this.updateIndex]!.push([column, value]);
+      }
       return this;
     }
     update(payload: Record<string, unknown>) {
       mocks.updateCalls.push(payload);
-      // 直前までの eq と、この update に続く eq を区別できるようにする
-      mocks.updateEqBoundaries.push(mocks.eqCalls.length);
+      mocks.updateFilters.push([]);
+      this.updateIndex = mocks.updateFilters.length - 1;
       return this;
     }
     maybeSingle() {
@@ -197,14 +208,10 @@ function syncOk(userId: string) {
   };
 }
 
-/**
- * update(...) の直後に続く .eq(...) を取り出す。
- * FakeQuery は `update(payload).eq('id', …).eq('user_id', …)` の順に呼ばれるので、
- * update 時点の eqCalls 長を境界として、それ以降を「その update の絞り込み条件」とみなす。
- */
-function eqFiltersForLastUpdate(): Array<[string, unknown]> {
-  const boundary = mocks.updateEqBoundaries[mocks.updateEqBoundaries.length - 1] ?? 0;
-  return mocks.eqCalls.slice(boundary);
+/** payload に指定キーを含む update の絞り込み条件（.eq）を返す */
+function eqFiltersForUpdateWith(key: string): Array<[string, unknown]> | undefined {
+  const index = mocks.updateCalls.findIndex(payload => key in payload);
+  return index === -1 ? undefined : mocks.updateFilters[index];
 }
 
 describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
@@ -212,7 +219,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     vi.clearAllMocks();
     mocks.updateCalls.length = 0;
     mocks.eqCalls.length = 0;
-    mocks.updateEqBoundaries.length = 0;
+    mocks.updateFilters.length = 0;
     mocks.userEmail = null;
     mocks.notifiedHistoryId = null;
     mocks.syncUser.mockImplementation(async (userId: string) => syncOk(userId));
@@ -360,7 +367,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     vi.clearAllMocks();
     mocks.updateCalls.length = 0;
     mocks.eqCalls.length = 0;
-    mocks.updateEqBoundaries.length = 0;
+    mocks.updateFilters.length = 0;
     mocks.syncUser.mockImplementation(async (userId: string) => syncOk(userId));
     const secondRow = { ...firstRow, ga4_last_evaluated_on: '2020-01-31', ga4_last_seen_content_score: 45 };
     mockRpcRange({ data: [secondRow], error: null, count: 1 });
@@ -590,10 +597,10 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
 
     const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
     expect(cooldownUpdate).toBeDefined();
-    const filters = mocks.eqCalls.map(([column]) => column);
-    expect(filters).toContain('user_id');
-    expect(mocks.eqCalls).toContainEqual(['user_id', 'user-br06']);
-    expect(mocks.eqCalls).toContainEqual(['id', 'cycle-br06']);
+    // 他のクエリが投げた .eq('user_id') を拾わないよう、この update 自身の条件だけを見る
+    const filters = eqFiltersForUpdateWith('ga4_last_evaluated_on');
+    expect(filters).toContainEqual(['user_id', 'user-br06']);
+    expect(filters).toContainEqual(['id', 'cycle-br06']);
   });
 
   it('narrative_failed（LLMの文章化だけ失敗）でも、スコア更新・クールダウン前進・通知を行う', async () => {
@@ -620,7 +627,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     // スコアは確定しているので last_seen_content_score も進める
     expect(cooldownUpdate).toMatchObject({ ga4_last_seen_content_score: 72 });
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
-    expect(eqFiltersForLastUpdate()).toContainEqual(['user_id', 'user-nf']);
+    expect(eqFiltersForUpdateWith('ga4_last_evaluated_on')).toContainEqual(['user_id', 'user-nf']);
   });
 
   it('評価が失敗した記事は articlesFailed と result.failed に載る（Cron の FAIL 判定の入口）', async () => {
