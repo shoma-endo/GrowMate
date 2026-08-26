@@ -105,6 +105,15 @@ export function aggregateGa4PageMetrics(
     aggregates.set(row.normalizedPath, current);
   }
 
+  // 完読率は「期間内に1日でも未計測（null）があれば取得不可」で扱う（レビュー🔴4）。
+  // 分子だけを実測日に限りながら分母は全日を足すと、薄まった完読率になる。
+  // 20260819000300 が実測0を null 化して以降は、未計測の日が常に混じりうる。
+  // 評価パス（aggregateGa4EvaluationPageMetrics）と同じ意味にしておかないと、
+  // 同じ記事・同じ期間の完読率が一覧・ダッシュボード・記事詳細で食い違う。
+  const partiallyMeasuredScrollPaths = new Set(
+    rows.filter(row => row.scroll90EventCount === null).map(row => row.normalizedPath)
+  );
+
   return new Map(
     Array.from(aggregates, ([normalizedPath, aggregate]) => [normalizedPath, {
       normalizedPath,
@@ -124,7 +133,8 @@ export function aggregateGa4PageMetrics(
       activeUsers: aggregate.activeUsers,
       cvEventCount: aggregate.cvEventCount,
       scroll90EventCount: aggregate.scroll90EventCount,
-      scrollMetricsAvailable: aggregate.scrollMetricsAvailable,
+      scrollMetricsAvailable:
+        aggregate.scrollMetricsAvailable && !partiallyMeasuredScrollPaths.has(normalizedPath),
       searchClicks: aggregate.searchClicks,
       impressions: aggregate.impressions,
       ctr: aggregate.impressions > 0 ? aggregate.searchClicks / aggregate.impressions : null,
@@ -146,9 +156,9 @@ export function aggregateGa4EvaluationPageMetrics(
   const missingActiveUsersPaths = new Set(
     rows.filter(row => row.activeUsers === null).map(row => row.normalizedPath)
   );
-  // 期間内に1日でも未計測（null）があれば、その記事の完読率は「取得不可」として扱う。
-  // 一部の日だけを分子に、期間全体のセッションを分母にすると完読率を過小評価するため
-  // （engagementRate / activeUsers と同じ全か無かの方針。BR-02）
+  // 完読率の全か無かは aggregateGa4PageMetrics 側へ移した（レビュー🔴4。一覧も同じ意味に
+  // 揃えるため）。ここは engagementRate / activeUsers 用の後処理が主で、
+  // missingScrollPaths は冗長だが冪等なので残す（意図を読み取れる形を優先）。
   const missingScrollPaths = new Set(
     rows.filter(row => row.scroll90EventCount === null).map(row => row.normalizedPath)
   );

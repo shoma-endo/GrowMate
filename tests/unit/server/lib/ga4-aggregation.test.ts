@@ -273,4 +273,31 @@ describe('@/server/lib/ga4-dashboard-mapping', () => {
       expect(mapGa4DashboardTimeseriesRows(null)).toEqual([]);
     });
   });
+  // 完読率の分母と未計測の扱い（レビュー🔴4）。
+  // 一覧は aggregateGa4PageMetrics（基本版）を使うので、こちらでも
+  // 「1日でも未計測なら取得不可」にしておかないと、評価パス・ダッシュボードと
+  // 同じ記事の完読率が3通りになる。
+  it('期間内に1日でも未計測があれば scrollMetricsAvailable を false にする（基本版）', () => {
+    const rows = [
+      { normalizedPath: '/a', sessions: 10, users: 10, engagementTimeSec: 100, bounceRate: 0, engagementRate: 0.5, activeUsers: 10, cvEventCount: 0, scroll90EventCount: 3, searchClicks: 0, impressions: 0, isSampled: false, isPartial: false },
+      { normalizedPath: '/a', sessions: 10, users: 10, engagementTimeSec: 100, bounceRate: 0, engagementRate: 0.5, activeUsers: 10, cvEventCount: 0, scroll90EventCount: null, searchClicks: 0, impressions: 0, isSampled: false, isPartial: false },
+    ];
+    const summary = aggregateGa4PageMetrics(rows, '2026-05-01', '2026-05-02').get('/a');
+    expect(summary?.scrollMetricsAvailable).toBe(false);
+    // 分子は実測日だけを足すが、分母（sessions）は全日ぶんある。この非対称のまま
+    // 割ると薄まった完読率になるため、呼び出し側は上のフラグで «—» に倒す
+    expect(summary?.scroll90EventCount).toBe(3);
+    expect(summary?.sessions).toBe(20);
+  });
+
+  it('全日が実測済みなら scrollMetricsAvailable は true のまま（実測0を含む）', () => {
+    const rows = [
+      { normalizedPath: '/a', sessions: 10, users: 10, engagementTimeSec: 100, bounceRate: 0, engagementRate: 0.5, activeUsers: 10, cvEventCount: 0, scroll90EventCount: 3, searchClicks: 0, impressions: 0, isSampled: false, isPartial: false },
+      { normalizedPath: '/a', sessions: 10, users: 10, engagementTimeSec: 100, bounceRate: 0, engagementRate: 0.5, activeUsers: 10, cvEventCount: 0, scroll90EventCount: 0, searchClicks: 0, impressions: 0, isSampled: false, isPartial: false },
+    ];
+    const summary = aggregateGa4PageMetrics(rows, '2026-05-01', '2026-05-02').get('/a');
+    expect(summary?.scrollMetricsAvailable).toBe(true);
+    // 受領原文 §02「完読率 = scroll イベント数(90%到達) ÷ sessions」
+    expect(summary!.scroll90EventCount / summary!.sessions).toBeCloseTo(3 / 20, 10);
+  });
 });

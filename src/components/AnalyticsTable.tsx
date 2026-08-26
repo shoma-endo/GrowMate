@@ -935,10 +935,17 @@ export default function AnalyticsTable({
                       ga4Summary && ga4Summary.sessions > 0
                         ? ga4Summary.engagementTimeSec / ga4Summary.sessions
                         : 0;
+                    // 完読率（レビュー🔴4）。分母は sessions（受領原文 §02
+                    // 「完読率 = scroll イベント数(90%到達) ÷ sessions」）。
+                    // 期間内に1日でも未計測があれば null にして「—」を出す。
+                    // 旧実装は分子だけを実測日に限りながら分母は全日の users を足しており
+                    // （ga4-metrics-aggregation.ts:84 と :87-90 の非対称）、薄まった完読率と、
+                    // 全期間未計測のときの 0.0% を表示していた。scrollMetricsAvailable は
+                    // 集計側が立てているのに一覧だけが参照していなかった。
                     const readRate =
-                      ga4Summary && ga4Summary.users > 0
-                        ? ga4Summary.scroll90EventCount / ga4Summary.users
-                        : 0;
+                      ga4Summary && ga4Summary.scrollMetricsAvailable !== false && ga4Summary.sessions > 0
+                        ? ga4Summary.scroll90EventCount / ga4Summary.sessions
+                        : null;
                     const cvr =
                       ga4Summary && ga4Summary.users > 0
                         ? ga4Summary.cvEventCount / ga4Summary.users
@@ -1162,7 +1169,7 @@ export default function AnalyticsTable({
                               case 'ga4_read_rate':
                                 return (
                                   <td key={id} className="px-6 py-4 text-sm">
-                                    {ga4Summary ? formatPercent(readRate) : '—'}
+                                    {readRate === null ? '—' : formatPercent(readRate)}
                                   </td>
                                 );
                               case 'ga4_engagement_rate':
