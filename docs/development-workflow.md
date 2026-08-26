@@ -15,7 +15,7 @@ GrowMate の新規機能は、TAKT標準の Grill Me で要件を確認してか
 
 ```text
 依頼・アイデア
-    ↓  TAKT標準 Grill Me + Markdown/Gherkin 指示書
+    ↓  TAKT標準 Grill Me + 指示書（実装タスク時は Gherkin も）
     grill-to-gherkin
     ↓  要件記録と Gherkin を検証・承認
 05-rough-estimate.md
@@ -33,13 +33,13 @@ spec-to-pr
 
 ## 1. 要件を Grill する
 
-依頼がまだ粗い場合は、対話型 workflow を実行する。`grill-to-gherkin` は TAKT 標準の Grill Me を既定モードにしている。
+依頼がまだ粗い場合は、対話型 workflow を実行する。起動時（または会話中の `/interaction`）で対話モード **Grill Me** を選ぶ。
 
 ```bash
 takt -w grill-to-gherkin -t "実装したい機能の概要"
 ```
 
-Grill Me は重要な判断を推奨案付きで一問ずつ確認する。`/go` を入力すると、`assistant.gherkin: true` により Markdown + Gherkin の実行指示書が生成される。
+Grill Me は重要な判断を推奨案付きで一問ずつ確認する。`/go` を入力すると実行指示書が生成される。TAKT v0.62 以降、Gherkin は開発・実装タスクの指示書にだけ付く。要件確認だけの会話では Markdown 中心になり得る。受け入れ条件の Gherkin 化は workflow 内の `gherkin` step が担う。
 
 workflow の最初の `grill` step は追加質問をせず、その指示書を `01-grill.md` の決定事項・未確定事項・Non-goals へ正規化する。
 

@@ -28,8 +28,8 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 
 - `AGENTS.md` is the project-level operating rule.
 - `docs/templates/requirement-definition.md` is the checklist for implementation-ready requirements: purpose, scope, functional and non-functional requirements, constraints, trade-offs, risks, and release verification.
-- `.takt/workflows/grill-to-gherkin.yaml` uses TAKT standard `grill-me` as the default interactive mode, normalizes its Markdown + Gherkin instruction into a report, records recommended reuse/extend implementation options against existing code (without inventing requirements), and requires human approval for both the Gherkin and the rough-estimate go/no-go decision before any spec or code edit.
-- Project `.takt/config.yaml` enables `assistant.gherkin: true`, so `/go` produces Markdown + Gherkin task instructions from the Grill Me conversation.
+- `.takt/workflows/grill-to-gherkin.yaml` expects TAKT standard `grill-me` as the interactive mode (select Grill Me at startup, or switch with `/interaction` during the conversation). It normalizes the resulting Markdown instruction into a report, records recommended reuse/extend implementation options against existing code (without inventing requirements), and requires human approval for both the Gherkin and the rough-estimate go/no-go decision before any spec or code edit.
+- TAKT v0.62+ applies Gherkin guidance only to development/implementation tasks. `assistant.gherkin` is removed; do not rely on `/go` always emitting Gherkin. The dedicated `gherkin` step in `grill-to-gherkin` still produces and validates acceptance criteria as Gherkin.
 - After Gherkin approval, `grill-to-gherkin` creates `05-rough-estimate.md` with a range, assumptions, uncertainty, and exclusions. This is an internal rough estimate for go/no-go and prioritization, not a formal quote.
 - After the rough estimate, `06-estimate-confirmation.md` records the human decision: `着手承認`, `要件再確認が必要`, or `見送り`. Only `着手承認` proceeds to handoff.
 - `.takt/workflows/spec-review.yaml` reviews specifications before implementation.

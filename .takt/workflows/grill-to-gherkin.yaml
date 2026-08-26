@@ -4,7 +4,6 @@ description: >-
   Gherkinと概算の着手判断を人間承認で確定してから仕様書・コード編集前に止める前段 workflow
 max_steps: 20
 initial_step: grill
-interactive_mode: grill-me
 
 steps:
   - name: grill

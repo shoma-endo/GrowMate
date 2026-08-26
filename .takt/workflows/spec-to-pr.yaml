@@ -131,8 +131,10 @@ steps:
         next: reviewers
       - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
         next: plan
+        command_gates: skip
       - condition: 判断できない、情報不足（仕様書の修正が必要）
         next: ABORT
+        command_gates: skip
     output_contracts:
       report:
         - name: coder-scope.md
@@ -220,10 +222,13 @@ steps:
         next: reviewers
       - condition: when(structured.fix.verdict == "info_missing")
         next: plan
+        command_gates: skip
       - condition: when(structured.fix.verdict == "spec_changed")
         next: plan
+        command_gates: skip
       - condition: when(structured.fix.verdict == "stuck")
         next: ABORT
+        command_gates: skip
     output_contracts:
       report:
         - name: fix-result.md
@@ -258,10 +263,13 @@ steps:
         next: readme_sync
       - condition: when(structured.self_review_fix.verdict == "arch_impact")
         next: reviewers
+        command_gates: skip
       - condition: when(structured.self_review_fix.verdict == "info_missing")
         next: plan
+        command_gates: skip
       - condition: when(structured.self_review_fix.verdict == "stuck")
         next: ABORT
+        command_gates: skip
     output_contracts:
       report:
         - name: fix-result.md
