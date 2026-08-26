@@ -99,6 +99,26 @@ export default function CategoryFilter({
             <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
             <span className="text-sm font-medium text-blue-800">評価未設定</span>
           </label>
+          {/*
+            このフィルターは「サイクルが未設定」だけを拾い、設定済みで結果が出ていない記事は
+            拾わない（§15.4）。その差はラベルからは読み取れず、絞り込んで出てこなかった側の
+            記事にユーザーが気づけないため、条件をここで開示する。
+            既定で畳むのは、通常の絞り込み操作の邪魔をしないため。
+            `details` は ContentEvaluationCard.tsx:143 と同じ既存パターン。
+          */}
+          <details className="mt-1 px-1 text-xs">
+            <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+              絞り込まれる条件
+            </summary>
+            <ul className="mt-1 list-disc space-y-1 pl-4 text-gray-500">
+              <li>評価サイクルを設定していない記事だけが対象です。</li>
+              <li>
+                設定済みで、まだ結果が出ていない記事は含まれません（初回の計測待ち、Google
+                Analytics 4と連携していない、セッションが30に達していない）。
+              </li>
+              <li>それらの記事は「コンテンツ評価状態」列で確認できます。</li>
+            </ul>
+          </details>
         </div>
         <div className="border rounded-md px-2 py-2">
           <label className="flex items-center gap-2 cursor-pointer hover:bg-amber-50 px-1 py-1 rounded">
