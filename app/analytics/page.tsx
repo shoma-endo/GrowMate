@@ -11,6 +11,8 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
+import { clampAnalyticsPeriod } from '@/lib/analytics-period';
+import { canAccessGa4 } from '@/server/lib/ga4-permissions';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
 
 export const dynamic = 'force-dynamic';
@@ -80,11 +82,22 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   if (startDate > endDate) {
     [startDate, endDate] = [endDate, startDate];
   }
+  const clampedPeriod = clampAnalyticsPeriod(startDate, endDate);
+  startDate = clampedPeriod.startDate;
+  endDate = clampedPeriod.endDate;
 
   const authResult = await authMiddleware();
   redirectIfEmailLinkConflict(authResult);
   if (authResult.error || !authResult.userId) {
     redirect('/login');
+  }
+  // CLAUDE.md「新規機能の認可はUIだけでなくサーバー側でも検証する」。
+  // この画面は本PRでGA4評価の4列（評価状態・コンテンツ力スコア・診断・最終評価日時）を
+  // 載せたが、認可は proxy.ts の前方一致1箇所だけが担保していた。本PRは他の12箇所
+  // （ga4Dashboard.actions ×4 / gscDashboard.actions ×6 / /api/gsc/dashboard ×2）すべてに
+  // canAccessGa4 を足しており、ここだけが例外になっていた。
+  if (!canAccessGa4({ role: authResult.userDetails?.role ?? null })) {
+    redirect('/unauthorized');
   }
   const { userId } = authResult;
 
@@ -142,7 +155,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
     analyticsContentService.getAvailableCategoryNames(userId),
   ]);
-  const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error } = analyticsPage;
+  const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error, ga4Truncated } = analyticsPage;
 
   let instagramMediaPage = {
     items: [] as Awaited<ReturnType<typeof instagramMediaService.getPage>>['items'],
@@ -233,6 +246,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       includeUncategorized={includeUncategorized}
       hasUnreadSuggestion={hasUnreadSuggestion}
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
+      ga4Truncated={ga4Truncated ?? false}
+      periodClamped={clampedPeriod.clamped}
       hasUrlFilterParams={hasUrlFilterParams}
       instagramConnected={instagramConnected}
       activeTab={activeTab}

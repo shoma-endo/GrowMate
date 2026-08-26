@@ -154,6 +154,35 @@ export class Ga4Service {
 
     return (await response.json()) as Ga4RunReportResponse;
   }
+
+  async checkCompatibility(
+    accessToken: string,
+    propertyId: string,
+    body: Record<string, unknown>
+  ): Promise<boolean> {
+    const normalizedProperty = normalizePropertyId(propertyId);
+    const url = `${GA4_DATA_BASE}/${normalizedProperty}:checkCompatibility`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      redirect: 'error',
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('[ga4Service.checkCompatibility] API error', {
+        status: response.status,
+        url,
+        responseBody: text.slice(0, 500),
+      });
+      return false;
+    }
+    return true;
+  }
 }
 
 function normalizePropertyId(propertyId: string): string {

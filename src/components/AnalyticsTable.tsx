@@ -6,6 +6,7 @@ import TruncatedText from '@/components/TruncatedText';
 import AnnotationFormFields from '@/components/AnnotationFormFields';
 import CategoryFilter from '@/components/CategoryFilter';
 import { cn } from '@/lib/utils';
+import { annotationDetailPath } from '@/lib/routes';
 import {
   ANALYTICS_COLUMNS,
   BLOG_STEP_IDS,
@@ -56,6 +57,7 @@ import {
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
 import { ChatService } from '@/domain/services/chatService';
 import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
+import { getGa4DiagnosisLabel, getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
 
 interface Props {
   items: AnalyticsContentItem[];
@@ -318,6 +320,10 @@ export default function AnalyticsTable({
         nextQuery.delete('gsc_evaluation');
       }
 
+      // 2026-08-26 のサイクル統合で「コンテンツ評価未開始」フィルタを廃止したため、
+      // 旧 deep link（?ga4_evaluation=not_started）が残っていても効かないよう毎回落とす
+      nextQuery.delete('ga4_evaluation');
+
       const next = nextQuery.toString();
       const href = next.length > 0 ? `${currentPath}?${next}` : currentPath;
       React.startTransition(() => {
@@ -429,7 +435,7 @@ export default function AnalyticsTable({
     );
   };
 
-  // 評価未開始フィルターの変更ハンドラ
+  // 評価未設定フィルターの変更ハンドラ
   const handleUnstartedGscEvaluationChange = (next: boolean) => {
     setIsFilteringUnstartedGscEvaluation(next);
     if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
@@ -499,7 +505,7 @@ export default function AnalyticsTable({
     );
   };
 
-  // 評価未開始フィルターの削除ハンドラ
+  // 評価未設定フィルターの削除ハンドラ
   const removeUnstartedGscEvaluationFilter = () => {
     setIsFilteringUnstartedGscEvaluation(false);
     if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
@@ -803,12 +809,12 @@ export default function AnalyticsTable({
                     )}
                     {isFilteringUnstartedGscEvaluation && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-blue-800 bg-blue-100">
-                        評価未開始
+                        評価未設定
                         <button
                           type="button"
                           onClick={removeUnstartedGscEvaluationFilter}
                           className="hover:bg-blue-200 rounded-full p-0.5"
-                          title="評価未開始フィルターを解除"
+                          title="評価未設定フィルターを解除"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -836,7 +842,10 @@ export default function AnalyticsTable({
             <div className="overflow-x-auto contain-layout">
               {items.length === 0 ? (
                 <p className="text-sm text-gray-500 py-8 text-center">
-                  {hasUrlFilterParams || hasUnreadSuggestion
+                  {/* 2026-08-26: 旧実装は hasUnstartedGa4Evaluation を見ており、
+                      「評価未設定」だけを選んで0件になったときに「まだコンテンツがありません」と
+                      出る取りこぼしがあった。GA4フィルタ廃止にあわせて GSC 側を見るよう直した */}
+                  {hasUrlFilterParams || hasUnreadSuggestion || hasUnstartedGscEvaluation
                     ? '表示条件に一致するコンテンツがありません。フィルタを変更してください。'
                     : 'まだコンテンツがありません。チャットでブログを作成するか、WordPress記事を一括インポートしてください。'}
                 </p>
@@ -885,7 +894,11 @@ export default function AnalyticsTable({
                             [
                               'ga4_avg_engagement_time',
                               'ga4_read_rate',
-                              'ga4_bounce_rate',
+                              'ga4_engagement_rate',
+                              'ga4_evaluation_status',
+                              'ga4_content_score',
+                              'ga4_diagnosis',
+                              'ga4_last_evaluated_at',
                               'ga4_cv_count',
                               'ga4_cvr',
                               'ga4_flags',
@@ -922,10 +935,17 @@ export default function AnalyticsTable({
                       ga4Summary && ga4Summary.sessions > 0
                         ? ga4Summary.engagementTimeSec / ga4Summary.sessions
                         : 0;
+                    // 完読率（レビュー🔴4）。分母は sessions（受領原文 §02
+                    // 「完読率 = scroll イベント数(90%到達) ÷ sessions」）。
+                    // 期間内に1日でも未計測があれば null にして「—」を出す。
+                    // 旧実装は分子だけを実測日に限りながら分母は全日の users を足しており
+                    // （ga4-metrics-aggregation.ts:84 と :87-90 の非対称）、薄まった完読率と、
+                    // 全期間未計測のときの 0.0% を表示していた。scrollMetricsAvailable は
+                    // 集計側が立てているのに一覧だけが参照していなかった。
                     const readRate =
-                      ga4Summary && ga4Summary.users > 0
-                        ? ga4Summary.scroll90EventCount / ga4Summary.users
-                        : 0;
+                      ga4Summary && ga4Summary.scrollMetricsAvailable !== false && ga4Summary.sessions > 0
+                        ? ga4Summary.scroll90EventCount / ga4Summary.sessions
+                        : null;
                     const cvr =
                       ga4Summary && ga4Summary.users > 0
                         ? ga4Summary.cvEventCount / ga4Summary.users
@@ -1067,10 +1087,8 @@ export default function AnalyticsTable({
                                     size="sm"
                                     className="flex items-center gap-2"
                                     onClick={() => {
-                                      const target = new URLSearchParams();
-                                      target.set('annotationId', annotation.id ?? '');
                                       window.open(
-                                        `/gsc-dashboard?${target.toString()}`,
+                                        annotationDetailPath(annotation.id ?? ''),
                                         '_blank',
                                         'noopener,noreferrer'
                                       );
@@ -1151,15 +1169,23 @@ export default function AnalyticsTable({
                               case 'ga4_read_rate':
                                 return (
                                   <td key={id} className="px-6 py-4 text-sm">
-                                    {ga4Summary ? formatPercent(readRate) : '—'}
+                                    {readRate === null ? '—' : formatPercent(readRate)}
                                   </td>
                                 );
-                              case 'ga4_bounce_rate':
+                              case 'ga4_engagement_rate':
                                 return (
                                   <td key={id} className="px-6 py-4 text-sm">
-                                    {ga4Summary ? formatPercent(ga4Summary.bounceRate) : '—'}
+                                    {ga4Summary?.engagementRate !== null && ga4Summary?.engagementRate !== undefined ? formatPercent(ga4Summary.engagementRate) : '—'}
                                   </td>
                                 );
+                              case 'ga4_evaluation_status':
+                                return <td key={id} className="px-6 py-4 text-sm">{getGa4EvaluationStatusLabel(item.ga4Evaluation?.status ?? null)}</td>;
+                              case 'ga4_content_score':
+                                return <td key={id} className="px-6 py-4 text-sm">{item.ga4Evaluation?.contentScore ?? '—'}</td>;
+                              case 'ga4_diagnosis':
+                                return <td key={id} className="px-6 py-4 text-sm">{getGa4DiagnosisLabel(item.ga4Evaluation?.diagnosisCode ?? null)}</td>;
+                              case 'ga4_last_evaluated_at':
+                                return <td key={id} className="px-6 py-4 text-sm">{item.ga4Evaluation?.lastEvaluatedAt ? new Date(item.ga4Evaluation.lastEvaluatedAt).toLocaleDateString('ja-JP') : '—'}</td>;
                               case 'ga4_cv_count':
                                 return (
                                   <td key={id} className="px-6 py-4 text-sm">

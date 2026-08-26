@@ -88,6 +88,7 @@ export interface WordPressRestPost {
   link?: string;
   categories?: number[];
   excerpt?: WordPressRenderedField;
+  content?: WordPressRenderedField;
   yoast_head_json?: {
     canonical?: string;
   };
@@ -106,6 +107,10 @@ export interface WordPressNormalizedPost {
   categories?: number[];
   categoryNames: string[];
   excerpt?: string;
+  /** 本文HTMLから抽出した平文。一括インポートで `wp_content_text` を埋めるために保持する */
+  content_text?: string;
+  /** 本文HTML中の img タグ数。GA4評価の期待読了時間補正（`wp_image_count`）の入力 */
+  image_count?: number;
   post_type?: string;
 }
 

@@ -19,9 +19,9 @@ GA4 Data API の制約（`eventName` ディメンション追加でベース指�
 |---|---|
 | 表示対象 | 記事ページ別（landingPage を normalized_path に正規化してJOIN） |
 | 取得期間 | 直近30日（デフォルト） |
-| 指標 | 滞在時間（平均）/ 読了率 / 直帰率 / CV数 / CVR / インプレッション数 / 検索クリック数 / 検索CTR |
+| 指標 | 滞在時間（平均）/ 完読率 / 直帰率 / CV数 / CVR / インプレッション数 / 検索クリック数 / 検索CTR |
 | 直帰率 | GA4 定義（bounceRate）を使用 |
-| 読了率 | scroll 90% 到達（`scroll_90`、時間条件なし） |
+| 完読率 | scroll 90% 到達（`scroll_90`、時間条件なし）（2026-08-25、旧「読了率」から改称。§10.7の滞在時間ベース「読了率」との混同を避けるため） |
 | CV定義 | 記事ページ上の前段CVイベント（複数選択可） |
 | CV数 | 選択イベントの `eventCount` 合算（回数ベース） |
 | CVR | `cv_event_count / sessions`（landingPage と totalUsers が非互換のため、分母は sessions） |
@@ -99,19 +99,19 @@ GA4 Data API の制約（`eventName` ディメンション追加でベース指�
 - MVPは縦積みレイアウトを採用し、将来のタブ切替/左右分割は Phase 2 で検討する
 
 1. サマリーカード（期間集計）
-- 表示: `sessions`, `users`, `平均滞在時間`, `読了率`, `直帰率`, `CV数`, `CVR`
+- 表示: `sessions`, `users`, `平均滞在時間`, `完読率`, `直帰率`, `CV数`, `CVR`
 - 既存仕様の計算式を使用（本書「指標計算式」）
 
 2. 記事別ランキングテーブル
 - 行: `normalized_path`（必要に応じてタイトルJOIN）
 - 列: 上記主要指標 + `is_sampled` / `is_partial` フラグ
-- ソート: `sessions`, `CVR`, `読了率`, `平均滞在時間`（初期は `sessions DESC`）
+- ソート: `sessions`, `CVR`, `完読率`, `平均滞在時間`（初期は `sessions DESC`）
 - クリックで下段の時系列グラフ対象を切替
 
 3. 時系列グラフ（選択記事）
 - グラフライブラリ: `recharts`
 - 折れ線: `sessions`, `users`
-- 追加線（切替式）: `読了率`, `直帰率`, `CVR`
+- 追加線（切替式）: `完読率`, `直帰率`, `CVR`
 - 補助表示: `is_sampled` / `is_partial` 日をバッジまたは点スタイルで識別
 
 4. 品質フラグ表示
@@ -354,19 +354,19 @@ async function resolveOwnerUserId(userId: string): Promise<string> {
 | 直帰率 | `bounce_rate * 100` | 表示は% |
 | CV数 | `cv_event_count` | eventCount合算 |
 | CVR | `cv_event_count / sessions * 100` | sessions=0 の場合 0 |
-| 読了率 | `scroll_90_event_count / sessions * 100` | sessions=0 の場合 0 |
+| 完読率 | `scroll_90_event_count / sessions * 100` | sessions=0 の場合 0 |
 | 検索クリック数 | `search_clicks` | `organicGoogleSearchClicks`（検索クリック数） |
 | インプレッション数 | `impressions` | `organicGoogleSearchImpressions`（Search Console連携時） |
 | 検索CTR | `search_clicks / impressions` | 0-1の比率（表示時に×100）、impressions=0 の場合 NULL |
 
 > **追記（2026-02-16）**: 検索CTR は「検索結果からのクリック率」を表します。分母のインプレッション数は Search Console 連携時にのみ取得可能です。連携未設定時は検索CTRは NULL となります。DB保存時は0-1の比率で保存し、表示時に×100して%表示します（`numeric(10,9)`）。
-> **追記（2026-02-25）**: `users` 列には sessions が格納されるため、CVR・読了率の分母は実質セッション数。表示ラベルは「ユーザー数」のままでも、計算上はセッション基準。
+> **追記（2026-02-25）**: `users` 列には sessions が格納されるため、CVR・完読率の分母は実質セッション数。表示ラベルは「ユーザー数」のままでも、計算上はセッション基準。
 
 ---
 
 ## UI 仕様（MVP）
 
-### GA4 設定（/app/gsc-dashboard に統合）
+### GA4 設定（/app/analytics/[annotationId] に統合）
 
 - 接続状態
 - プロパティ選択

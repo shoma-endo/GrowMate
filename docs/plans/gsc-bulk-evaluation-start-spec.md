@@ -13,8 +13,8 @@
   - 背景会話: WordPress 一括インポート後の手動「評価を開始」負荷削減
   - クライアント文脈: `docs/context/client-vision-from-lark.md` §1.9.3 / §1.9.5。§1.9.5 の後回し合意の原文（verbatim）は「**後回し**: 外部コンテンツ取得タイミングでの自動処理（実装難易度が最も高いと開発側が判断。評価が走っていないものをソートできれば手動運用で代替可能）」であり、合意された代替手段は **「ソート（＝既存の評価未開始フィルタ）＋手動運用」まで**である。
   - 一覧一括開始という手段は、上記の合意文には無く、開発側が提案した拡張である。要件としての根拠は §12 Q-001（回答: フィルタ該当の全件・ページ跨ぎ）と Q-003（回答: 既存に合わせる＝非表示）に対する PO 回答であって、§1.9.5 の合意文そのものではない。
-  - 既存単記事開始: `app/gsc-dashboard/EvaluationSettings.tsx` / `registerEvaluation`（`src/server/actions/gscDashboard.actions.ts`）。画面パスは `/gsc-dashboard?annotationId=<id>`（`app/gsc-dashboard/page.tsx` が `searchParams.annotationId` を受け取る。遷移元は `src/components/AnalyticsTable.tsx` の `/gsc-dashboard?...` 遷移）
-  - 既存の GSC 未連携時 UI: `app/gsc-dashboard/components/OverviewTab.tsx` は `detail.credential?.propertyUri` が無いとき `EvaluationSettings` 自体を出さない（非表示）
+  - 既存単記事開始: `app/analytics/[annotationId]/EvaluationSettings.tsx` / `registerEvaluation`（`src/server/actions/gscDashboard.actions.ts`）。画面パスは `/analytics/[annotationId]`。<br>**2026-08-26 訂正（パス移設への追随）**: 本仕様の執筆時点では `app/gsc-dashboard/EvaluationSettings.tsx` / `/gsc-dashboard?annotationId=<id>` だったが、`feature/ga4-content-evaluation` のフェーズ1で記事詳細を `/analytics/[annotationId]` へ移設し、旧URLは `next.config.ts` の恒久 redirect（308）になった。旧 `app/gsc-dashboard/page.tsx` は削除済み。**本仕様の設計には影響しない**（単記事開始は現状維持というスタンスが変わらないため）が、パス・URLの記述のみ実態へ揃えた
+  - 既存の GSC 未連携時 UI: `app/analytics/[annotationId]/components/OverviewTab.tsx`（移設後）は `detail.credential?.propertyUri` が無いとき `EvaluationSettings` 自体を出さない（非表示）
 
 ## 1. 背景・目的・成功指標
 
@@ -22,7 +22,7 @@
 
 - 現在、誰が、どの業務で困っているか:
   - `admin` / `paid` 利用者が `/wordpress-import` で WordPress 記事を一括インポートすると、`/analytics` のコンテンツが一気に増える。
-  - 検索順位評価サイクルの開始は記事詳細（`/gsc-dashboard?annotationId=<id>`）の「評価を開始」ボタンを **1件ずつ** 開いて行う必要がある（実ラベルは `app/gsc-dashboard/EvaluationSettings.tsx` の `{isUpdateMode ? '設定を変更' : '評価を開始'}`）。
+  - 検索順位評価サイクルの開始は記事詳細（`/analytics/[annotationId]`）のボタンを **1件ずつ** 開いて行う必要がある（実ラベルは `app/analytics/[annotationId]/EvaluationSettings.tsx` の `{isUpdateMode ? '設定を変更' : '評価サイクルを開始'}`。~~`評価を開始`~~ **2026-08-26 に「評価サイクルを開始」へ改称**。同カードに「今すぐ評価を実行」が並ぶようになり即時実行と区別が付かなくなったため。`ga4-content-evaluation-spec.md` §10.8）。
   - クライアント運用では 100〜200 件規模の手動開始が発生し、負荷が高い（`client-vision` §1.9.3）。
 - 放置した場合の影響:
   - インポート済みでも評価サイクルが未開始のまま残り、定期バッチが回らず改善提案が生まれない。
@@ -66,7 +66,7 @@
 ```text
 WordPress 一括インポート
   -> コンテンツ一覧に記事が増える
-  -> 記事詳細（/gsc-dashboard?annotationId=<id>）を1件開く
+  -> 記事詳細（/analytics/[annotationId]）を1件開く
   -> 「評価を開始」で基準日・サイクル日数・実行時刻を指定して保存
   -> （必要なら）次の記事詳細へ… を繰り返す
   -> 登録済み記事は既存の定期バッチが初回計測→初回評価→以降を自動実行
@@ -146,11 +146,11 @@ WordPress 一括インポート
 | フィルタ OFF 時のチェック／一括開始 UI | 「評価未開始」ON のときだけ出すと誤操作と UI ノイズが減る（BR-06） | 常時チェックが欲しい要望が出たとき |
 | 1回 1000件超の一括開始 | WP インポート上限（1000）に揃える。全件 ID 解決（read）の `db-max-rows` クランプ上限とも一致する（`db-max-rows` は insert 側の制約ではない。詳細と根拠は BR-07）。超過はエラー | より大量の一括が必須になったとき |
 | 登録直後専用の新規ステータス列・バッジ | 評価未開始フィルタ適用中なら開始成功後に行が消えるため足りる。新規文言は作らない | フィルタなしでも進捗が見えないという苦情が出たとき |
-| GA4 コンテンツ評価サイクルの一括開始 | 本要件の対象は検索順位（GSC）のみ。GA4 は別仕様 | GA4 側で同様のオペレーション負荷が問題化したとき |
+| ~~GA4 コンテンツ評価サイクルの一括開始~~ | ~~本要件の対象は検索順位（GSC）のみ。GA4 は別仕様~~ **2026-08-26 失効: GA4に別サイクルは存在しなくなった。**`docs/plans/ga4-content-evaluation-spec.md` §6.6 でGSC検索順位評価サイクルとGA4コンテンツ評価サイクルを1本へ統合したため、`gsc_article_evaluations` へ行を作れば**検索順位評価とコンテンツ評価の両方が同じ周期で回る**。本仕様の一括開始は追加実装なしでGA4側も開始することになる。GA4の進捗列（`ga4_last_evaluated_on` / `ga4_last_seen_content_score` / `ga4_last_notified_history_id`）はいずれもNULL可で、NULLのまま作れば「未計測」として次のdueで軽量パスから始まるため、insert列を増やす必要はない。 | — |
 | AI 要約の自動開始 | §1.9.3 の要望には含まれるが、本チケットの目的外 | 別仕様 |
 | 評価サイクルの停止・削除の一括操作 | 既存単記事 UI にも無い。増やさない | 単記事側で先に提供されてから |
 | Feature flag / 専用設定テーブル / 監視ダッシュボード | 要件に無い。壊れたときはデプロイ巻き戻しと UI 非表示で足りる | 該当なし |
-| 既存の単記事開始経路（`registerEvaluation` / `app/api/gsc/evaluations/register/route.ts`）への role 強制の追加 | 現状これらに role チェックは無く（両者とも `authMiddleware` の認証のみ）、`/gsc-dashboard` は `proxy.ts` のロールゲート対象外のため `trial` でも単記事開始が可能。これは本仕様以前からの既存挙動であり、塞ぐと `trial` の既存操作を止める**プロダクト判断**になる。本仕様の要件（一括開始）には含まれないため据え置き、一括経路のみ新規に強制する。共通化する際も **role チェックは一括エントリポイント側に置き、共通の登録コアには入れない**（既存挙動を変えないため） | PO が `trial` の単記事開始を止める判断をしたとき（別チケット） |
+| 既存の単記事開始経路（`registerEvaluation` / `app/api/gsc/evaluations/register/route.ts`）への role 強制の追加 | ~~現状これらに role チェックは無く（両者とも `authMiddleware` の認証のみ）、`/gsc-dashboard` は `proxy.ts` のロールゲート対象外のため `trial` でも単記事開始が可能。これは本仕様以前からの既存挙動であり、塞ぐと `trial` の既存操作を止める**プロダクト判断**になる。~~<br>**2026-08-26 訂正（実測。この根拠の大半は既に失効している）**: (1) **`registerEvaluation` には `canWriteGa4` が入った**（`src/server/actions/gscDashboard.actions.ts:401`。フェーズ1が `ga4-content-evaluation-spec.md` §3.3 のポリシーに従って追加）。(2) 記事詳細は `/analytics/[annotationId]` へ移設され、`PAID_FEATURE_REQUIRED_PATHS = ['/analytics']` に**プレフィックスマッチで含まれる**ため画面自体がロールゲート下にある。旧 `/gsc-dashboard` は恒久 redirect で、redirect 後に proxy が `/unauthorized` へ誘導する。**したがって「`trial` でも単記事開始が可能」はもはや成り立たない。**<br>**残っているのは Route Handler だけ**: `app/api/gsc/evaluations/register/route.ts` は現在も `authMiddleware` のみで role チェックが無い（2026-08-26 実測）。ここは直URL到達点であり、塞ぐかどうかは引き続きプロダクト判断とする。本仕様の要件（一括開始）には含まれないため据え置き、一括経路のみ新規に強制する。共通化する際も **role チェックは一括エントリポイント側に置き、共通の登録コアには入れない** | PO が Route Handler 側を塞ぐ判断をしたとき（別チケット） |
 | `needsReauth` と連動した一括 UI の失効検知 | BR-04 の判定は `property_uri` の有無のみで、既存の単記事開始と同一。失効検知を一括だけに入れると既存と挙動が食い違い、要件にも無い（MVP 最優先）。失効時の結果は既存の `import_failed` 表示に委ねる（§12 R-005） | 既存 GSC 連携全体で失効検知（`needsReauth` の常時反映）を設計するとき。本仕様の責務外 |
 
 ## 5. 開発工数（概算）
@@ -238,7 +238,7 @@ WordPress 一括インポート
 | 画面 | パス | 新規/既存 | 概要・変更点 |
 | --- | --- | --- | --- |
 | コンテンツ一覧 | `/analytics` | 既存改修 | 「評価未開始」ON かつ GSC 連携済みのときだけ、行チェック・全選択・「評価を開始」を追加 |
-| 記事詳細・評価設定 | `/gsc-dashboard?annotationId=<id>`（`app/gsc-dashboard/page.tsx` / `EvaluationSettings.tsx`） | 変更なし | 単記事の開始・設定変更は現状維持。回帰確認はこのパスで行う |
+| 記事詳細・評価設定 | `/analytics/[annotationId]`（`app/analytics/[annotationId]/page.tsx` / `EvaluationSettings.tsx`。2026-08-26 訂正: 旧 `/gsc-dashboard?annotationId=<id>` から移設済み） | 変更なし | 単記事の開始・設定変更は現状維持。回帰確認はこのパスで行う |
 | WordPress インポート | `/wordpress-import` | 変更なし | 自動開始はしない |
 
 #### 画面ごとの詳細
@@ -289,13 +289,13 @@ WordPress 一括インポート
 - 画面遷移: 本画面に留まる。成功後に記事詳細へ強制遷移しない。
 - UI用語:
   - 一覧ボタンはフィルタ名「評価未開始」に揃え **「評価を開始」**とする（このフィルタ適用時のみ出るため文脈は十分）。
-  - 記事詳細の既存ボタンも実装上のラベルは **「評価を開始」**である（`app/gsc-dashboard/EvaluationSettings.tsx` の `{isUpdateMode ? '設定を変更' : '評価を開始'}`。空状態の案内文も「「評価を開始」ボタンから設定してください。」）。したがって一覧・詳細で同一文言になる。**詳細側の文言は変更しない**（「検索順位評価を開始」という文言はコード上に存在せず、新設もしない）。
+  - ~~記事詳細の既存ボタンも実装上のラベルは **「評価を開始」**である…したがって一覧・詳細で同一文言になる。**詳細側の文言は変更しない**（「検索順位評価を開始」という文言はコード上に存在せず、新設もしない）。~~<br>**2026-08-26 訂正: 詳細側のラベルは「評価サイクルを開始」に変わった**（`app/analytics/[annotationId]/EvaluationSettings.tsx` の `{isUpdateMode ? '設定を変更' : '評価サイクルを開始'}`。空状態の案内文も「「評価サイクルを開始」ボタンから設定してください。」）。同カードに「今すぐ評価を実行」が並ぶようになり、周期の設定と即時実行が読み分けられなくなったため（`ga4-content-evaluation-spec.md` §10.8）。**「一覧・詳細で同一文言にする」という本仕様の意図を保つなら、一括開始ボタンのラベルは詳細側の現行ラベルに合わせて再検討する**（本仕様は未実装のため実装時に確定させる）。
   - 「全選択」は BR-07 の定義（適用中フィルタ条件の AND 結果の全件・ページ跨ぎ）である。
 
 #### 誤読しやすい罠
 
 - 「評価を開始」＝その場で順位比較結果が出る、ではない。登録後、初回計測は約30日後・初回評価は約60日後（既定値）。
-- 「評価未開始」フィルタは GSC 用である。GA4 側の「コンテンツ評価未開始」に相当するフィルタは **現時点で未実装**（`CategoryFilter.tsx` の状態フィルタは「評価未開始」と「改善提案あり」の2つのみ。`src/` `app/` に「コンテンツ評価未開始」の文字列は存在しない）。本仕様で新設もしない。将来 GA4 側に同種のフィルタが追加されても、一括開始は **GSC のみ**が対象である。
+- 「評価未開始」フィルタは GSC 用である。GA4 側の「コンテンツ評価未開始」に相当するフィルタは **現時点で未実装**（`CategoryFilter.tsx` の状態フィルタは「評価未開始」と「改善提案あり」の2つのみ。`src/` `app/` の当該文字列は経緯コメントのみ。2026-08-26 のサイクル統合で一度追加されたGA4版フィルタを撤去した際に残した3箇所〈`CategoryFilter.tsx` / `AnalyticsTable.tsx` / `analyticsContentService.ts`〉で、いずれも画面表示ではない）。本仕様で新設もしない。**2026-08-26 追記**: フェーズ3の一時期（`0d911e22`〜`1a83430b`）だけ GA4 版フィルタが実在したが `532ce142` で撤去され、一覧の状態フィルタは本記述どおり「評価未開始」「改善提案あり」の2つに戻っている。将来 GA4 側に同種のフィルタが追加されても、一括開始は **GSC のみ**が対象である。
 - 開始成功の確認は、専用ステータス新設ではなく **フィルタ結果から行が消えること**と件数トーストで行う。
 
 ### 権限
@@ -306,7 +306,7 @@ WordPress 一括インポート
 | --- | --- | --- | --- | --- |
 | admin | 可 | 可 | 可（既存） | 不可（既存どおり提供しない） |
 | paid | 可 | 可 | 可（既存） | 不可 |
-| trial | 不可（`/analytics` は `proxy.ts` で `admin`/`paid` のみ） | 不可（本仕様でサーバー強制を新設） | 方針としては不可。ただし **既存実装では強制されていない**（`/gsc-dashboard` はロールゲート対象外で `registerEvaluation` に role チェックが無い）。本仕様では変更しない（§4 Non-goals） | 不可（削除・解除 UI は存在しない） |
+| trial | 不可（`/analytics` は `proxy.ts` で `admin`/`paid` のみ） | 不可（本仕様でサーバー強制を新設） | 方針としては不可。~~ただし **既存実装では強制されていない**（`/gsc-dashboard` はロールゲート対象外で `registerEvaluation` に role チェックが無い）。~~ **2026-08-26 訂正: 画面（`/analytics/[annotationId]`。proxy のプレフィックスマッチ）と Server Action（`registerEvaluation` の `canWriteGa4`）の両方で強制されるようになった。**未強制のまま残るのは Route Handler `app/api/gsc/evaluations/register/route.ts` のみ。本仕様では変更しない（§4 Non-goals） | 不可（削除・解除 UI は存在しない） |
 | unavailable | 不可（`proxy.ts` が `/unavailable` へ送る） | 不可 | 不可 | 不可 |
 
 #### 認可の実装方針（既存の事実と、今回新規に作るもの）
@@ -315,7 +315,7 @@ WordPress 一括インポート
 
 - 既存の単記事登録 `registerEvaluation`（`src/server/actions/gscDashboard.actions.ts`）には **role チェックが無い**。`getAuthUserId` は `role` を返しているが、`registerEvaluation` は `userId` しか使っていない。`app/api/gsc/evaluations/register/route.ts`（POST）も `authMiddleware` の認証のみで role を見ていない。
 - `canWriteGa4`（`src/server/lib/ga4-permissions.ts`）の利用箇所は `src/server/actions/ga4Setup.actions.ts` と `app/api/ga4/sync/route.ts` の2箇所のみで、**GSC 経路では使われていない**。
-- `/gsc-dashboard` は `proxy.ts` のロールゲート対象外。`/analytics` のみ `PAID_FEATURE_REQUIRED_PATHS` に含まれ `hasPaidFeatureAccess`（`admin`/`paid`）で保護されている。
+- ~~`/gsc-dashboard` は `proxy.ts` のロールゲート対象外。~~ **2026-08-26 訂正: `/gsc-dashboard` は削除され恒久 redirect になった。**`/analytics` が `PAID_FEATURE_REQUIRED_PATHS` に含まれ `hasPaidFeatureAccess`（`admin`/`paid`）で保護されており、判定が `pathname.startsWith(path)` のため **`/analytics/[annotationId]` も自動的に保護対象**である。
 
 したがって「既存と同様」では FR-006 / AC-06 を満たせない。今回の方針:
 
@@ -639,7 +639,7 @@ BR-04 の判定は `gsc_credentials.property_uri` の有無のみであり、**G
 - 本番確認項目:
   - paid + GSC 連携 + 評価未開始フィルタで数件〜全選択一括開始
   - 未連携・フィルタ OFF で一括 UI が出ない
-  - 単記事開始の回帰（`/gsc-dashboard?annotationId=<id>` を開き、`EvaluationSettings` の「評価を開始」／「設定を変更」が従来どおり動くこと）
+  - 単記事開始の回帰（`/analytics/[annotationId]` を開き、`EvaluationSettings` の「評価サイクルを開始」／「設定を変更」が従来どおり動くこと。2026-08-26 訂正: パスとラベルを実態へ）
 
 ### ロールバック方針
 
@@ -673,7 +673,7 @@ BR-04 の判定は `gsc_credentials.property_uri` の有無のみであり、**G
 - Definition of Done（すべて満たして完了）:
   - FR-001〜FR-011 が実装され、AC-01〜AC-11 を満たす
   - `trial`、GSC 未連携、評価未開始フィルタ OFF で一括 UI／登録ができない
-  - 既存の単記事開始（`/gsc-dashboard?annotationId=<id>` の「評価を開始」）が回帰していない
+  - 既存の単記事開始（`/analytics/[annotationId]` の「評価サイクルを開始」）が回帰していない
   - `npm run verify` 通過
   - WP インポート経路に自動開始が入っていない（Non-goals 遵守）
 - 検証方法・証跡（テスト結果・画面確認・ログ等）:
@@ -693,6 +693,7 @@ BR-04 の判定は `gsc_credentials.property_uri` の有無のみであり、**G
 
 | 日付 | 変更内容 | 変更理由 | 変更者 |
 | --- | --- | --- | --- |
+| 2026-08-26 | **本仕様の設計は変更せず、参照先の実態への追随のみ行った（12箇所）。**(1) **パス・URLの陳腐化**: 記事詳細は `feature/ga4-content-evaluation` のフェーズ1で `/gsc-dashboard?annotationId=<id>` から `/analytics/[annotationId]` へ移設され、`app/gsc-dashboard/{page.tsx, EvaluationSettings.tsx, components/OverviewTab.tsx}` は削除された（旧URLは恒久 redirect）。本仕様が旧パスを参照したままだったため `npm run verify:doc-paths` が3件で失敗し続けていた。全て新パスへ更新し、**同チェックが green になった**。(2) **認可の記述が実態と食い違っていた（§4 Non-goals・§6 権限マトリクス・§7）**: 「`registerEvaluation` に role チェックが無く `/gsc-dashboard` はロールゲート対象外なので `trial` でも単記事開始が可能」としていたが、フェーズ1で `registerEvaluation` に `canWriteGa4` が入り、移設先の `/analytics/[annotationId]` は `PAID_FEATURE_REQUIRED_PATHS` のプレフィックスマッチで保護されている。**この主張は成り立たなくなっており、Non-goal（単記事経路への role 強制を追加しない）の根拠の大半が失効していた。**未強制のまま残るのは Route Handler `app/api/gsc/evaluations/register/route.ts` のみで、Non-goal はその範囲へ縮小した。(3) **ボタンラベル**: 詳細側の実ラベルは 2026-08-26 に「評価を開始」→「評価サイクルを開始」へ改称された（`ga4-content-evaluation-spec.md` §10.8）。本仕様の「一覧・詳細で同一文言にする」という意図を保つなら、一括開始ボタンのラベルは実装時に詳細側の現行ラベルへ合わせて再検討する。 | `verify:doc-paths` の恒常的な失敗を解消するための調査で、参照先の陳腐化と認可記述の食い違いが判明したため。本仕様は未実装のため、設計判断そのものは変更していない | 開発チーム |
 | 2026-08-23 | 初版（draft）。一覧一括開始の要件を会話合意から文書化 | 新規 | 開発 |
 | 2026-08-23 | 未確定事項に Q-003〜Q-005 を追加（client-alignment 監査の残件） | 着手前確認の抜け防止 | 開発 |
 | 2026-08-23 | 全選択＝フィルタ全件、未連携＝UI非表示、評価未開始ON時のみ一括UI、登録直後はフィルタ消失で足りると更新 | PO 回答反映 | 開発 |
@@ -758,5 +759,5 @@ BR-04 の判定は `gsc_credentials.property_uri` の有無のみであり、**G
 - UI 主な変更ファイル: `src/components/AnalyticsTable.tsx` / `CategoryFilter.tsx` / `app/analytics/AnalyticsClient.tsx`、および `property_uri` を渡すための `app/analytics/page.tsx`。表示条件は **`hasUnstartedGscEvaluation && propertyUri`**（`canWrite` は条件に入れない。`/analytics` は `proxy.ts` で `admin`/`paid` に限定済み。§4 / §6）。
 - 取得失敗の通知を足す位置: `AnalyticsClient.tsx` の `ga4Error` ブロックと同じ位置。`error` の分岐（`<ErrorAlert>` ＋ `{!error ? (<AnalyticsTable ... />) : null}`）には**絶対に載せない**。載せると一時的な DB エラーでコンテンツ一覧が丸ごと消える（BR-04「例外の表示先」）。
 - 「選択 N / 対象総数 M」を出す場合: `total` は `app/analytics/page.tsx` から `AnalyticsClient` までは渡っているが `AnalyticsTable` には渡っていない（`Props` に `total` が無い）。plumbing を1本足す必要がある。要件ではない（§6 項目定義）。
-- GSC 未連携の既存正本: `app/gsc-dashboard/components/OverviewTab.tsx` の `{detail.credential?.propertyUri && (<EvaluationSettings .../>)}`。
+- GSC 未連携の既存正本: `app/analytics/[annotationId]/components/OverviewTab.tsx`（移設後）の `{detail.credential?.propertyUri && (<EvaluationSettings .../>)}`。
 - README 更新の予告: 「主な機能」に一覧一括開始が載る可能性がある。最終判断は実装時の `readme_sync`。

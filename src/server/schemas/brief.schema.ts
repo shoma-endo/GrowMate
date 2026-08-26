@@ -7,11 +7,11 @@ const validationMessages = ERROR_MESSAGES.VALIDATION;
 export const paymentEnum = z.enum([
   '現金',
   '銀行振込',
-  'クレジットカード(VISA)',
-  'クレジットカード(Master)',
-  'クレジットカード(AMEX)',
-  'クレジットカード(Diners)',
-  'クレジットカード(JCB)',
+  'クレジットカード（VISA）',
+  'クレジットカード（Master）',
+  'クレジットカード（AMEX）',
+  'クレジットカード（Diners）',
+  'クレジットカード（JCB）',
   '分割払い',
 ]);
 

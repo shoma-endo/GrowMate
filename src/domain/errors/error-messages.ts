@@ -324,6 +324,9 @@ export const ERROR_MESSAGES = {
     /** 一般的なサーバーエラー */
     SERVER_ERROR: 'サーバーエラーが発生しました',
 
+    /** 入力値の検証失敗 */
+    VALIDATION_FAILED: '入力値の検証に失敗しました',
+
     /** 予期しないエラー */
     UNEXPECTED_ERROR: '予期しないエラーが発生しました',
 
@@ -602,6 +605,12 @@ export const ERROR_MESSAGES = {
 
     /** GA4同期に失敗した場合 */
     SYNC_FAILED: 'GA4同期に失敗しました',
+
+    /** GA4機能へのアクセス権がない場合 */
+    FEATURE_ACCESS_DENIED: 'この機能を利用する権限がありません',
+    EVALUATION_FETCH_FAILED: 'GA4コンテンツ評価の取得に失敗しました',
+    EVALUATION_RUN_FAILED: 'GA4コンテンツ評価の実行に失敗しました',
+    MEDIA_SCORE_FETCH_FAILED: 'GA4メディア全体スコアの取得に失敗しました',
   },
 
   /**
@@ -864,7 +873,7 @@ export const ERROR_MESSAGES = {
     SYNC_DISABLED: 'Instagramの同期は現在停止されています',
 
     /** 手動同期に失敗した場合 */
-    SYNC_FAILED: 'Instagramデータの同期に失敗しました。時間をおいて再度お試しください',
+    SYNC_FAILED: 'Instagramデータの同期に失敗しました。時間をおいてもう一度お試しください',
 
     /** 一部の投稿で指標（リーチ・視聴数等）の取得に失敗した場合。投稿自体（サムネ・キャプション等）は取得済み */
     PARTIAL_MEDIA_FAILURE: (failedCount: number): string =>

@@ -432,7 +432,7 @@ export class PromptService extends SupabaseService {
 
     // バージョン履歴を保存（内容が変更された場合のみ）
     if (hasContentChange && data.content) {
-      await this.saveVersion(id, current.content, current.version, data.updated_by);
+      await this.saveVersion(id, data.content, newVersion, data.updated_by);
     }
 
     // メインテーブルを更新

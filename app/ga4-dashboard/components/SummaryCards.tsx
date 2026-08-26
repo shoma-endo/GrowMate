@@ -28,38 +28,40 @@ export function SummaryCards({ summary, isLoading }: Props) {
   };
 
   const cards = [
+    // GA4 の sessions は「セッション」（§10.7 / ui-text.md）。
+    // 以前は sessions を「総訪問数」、その代用値でしかない users を「セッション」と
+    // 呼んでおり、正しい語が間違ったフィールドに付いていた。
+    //
+    // users は取込側で `const users = sessions` としているため（ga4ImportService.ts。
+    // totalUsers は landingPage 軸と非互換で、CVR の分母を確保するための代用）、
+    // 常に sessions と同じ数値になる。同じ数字を2枚見せる意味が無いのでカードを1枚に統合した。
+    // totalUsers 自体は ga4-dashboard-mapping.ts の CVR 分母として使い続ける。
     {
-      label: '総セッション数',
+      label: 'セッション',
       value: formatNumber(summary.totalSessions),
       color: 'green',
     },
     {
-      label: '総ユーザー数',
-      value: formatNumber(summary.totalUsers),
-      color: 'blue',
-    },
-    {
+      // 「平均エンゲージメント時間」は使わない。受領仕様 §02 がこの名前を
+      // userEngagementDuration ÷ activeUsers と定義しているのに対し、この値は
+      // sum(engagement_time_sec) ÷ sum(sessions) で分母が違う（記事詳細の評価カードが
+      // 出す同名の数字とは別物になる）。名前を借りると突合で必ず食い違う。
       label: '平均滞在時間',
       value: formatDuration(summary.avgEngagementTimeSec),
       color: 'purple',
     },
     {
-      label: '平均直帰率',
-      value: formatPercent(summary.avgBounceRate * 100),
-      color: 'orange',
-    },
-    {
-      label: '総CV数',
+      label: '総問い合わせ数',
       value: formatNumber(summary.totalCvEventCount),
       color: 'fuchsia',
     },
     {
-      label: 'CVR',
+      label: '問い合わせ率',
       value: formatPercent(summary.cvr),
       color: 'rose',
     },
     {
-      label: '平均読了率',
+      label: '平均完読率',
       value: formatPercent(summary.avgReadRate),
       color: 'cyan',
     },
@@ -76,7 +78,6 @@ export function SummaryCards({ summary, isLoading }: Props) {
           green: 'bg-green-50 border-green-200',
           blue: 'bg-blue-50 border-blue-200',
           purple: 'bg-purple-50 border-purple-200',
-          orange: 'bg-orange-50 border-orange-200',
           fuchsia: 'bg-fuchsia-50 border-fuchsia-200',
           rose: 'bg-rose-50 border-rose-200',
           cyan: 'bg-cyan-50 border-cyan-200',

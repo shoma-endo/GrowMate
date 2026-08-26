@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils';
 
 interface TimeseriesMetric {
   readRate: boolean;
-  bounceRate: boolean;
   cvr: boolean;
 }
 
@@ -27,7 +26,7 @@ export interface TimeseriesTabProps {
   isLoading?: boolean;
   selectedNormalizedPath?: string;
   visibleMetrics: TimeseriesMetric;
-  onToggleMetric: (metric: 'readRate' | 'bounceRate' | 'cvr') => void;
+  onToggleMetric: (metric: 'readRate' | 'cvr') => void;
 }
 
 export function TimeseriesTab({
@@ -45,7 +44,7 @@ export function TimeseriesTab({
   const formatNumber = (num: number) => num.toLocaleString();
   const formatPercent = (num: number | null) => num === null ? '-' : `${num.toFixed(1)}%`;
 
-  // セッション・ユーザー用のYAxisドメイン
+  // セッション用のYAxisドメイン
   const sessionsDomain = data.length > 0
     ? [0, Math.max(...data.map((d) => d.sessions)) * 1.1]
     : [0, 100];
@@ -53,8 +52,8 @@ export function TimeseriesTab({
   // パーセント用のYAxisドメイン
   const percentValues = data.flatMap((d) => {
     const values: number[] = [];
-    if (visibleMetrics.readRate) values.push(d.readRate);
-    if (visibleMetrics.bounceRate) values.push(d.bounceRate * 100);
+    // 未計測（null）はY軸ドメインの計算に含めない（0として引き下げない）
+    if (visibleMetrics.readRate && d.readRate !== null) values.push(d.readRate);
     if (visibleMetrics.cvr) values.push(d.cvr);
     return values;
   });
@@ -86,23 +85,16 @@ export function TimeseriesTab({
           <div className="text-gray-600">セッション:</div>
           <div className="text-right font-medium">{formatNumber(data.sessions)}</div>
 
-          <div className="text-gray-600">ユーザー数:</div>
-          <div className="text-right font-medium">{formatNumber(data.users)}</div>
-
+          {/* ÷sessions のため「平均エンゲージメント時間」は名乗れない。SummaryCards 参照 */}
           <div className="text-gray-600">平均滞在時間:</div>
           <div className="text-right font-medium">
             {Math.round(data.avgEngagementTimeSec)}秒
           </div>
 
-          <div className="text-gray-600">直帰率:</div>
-          <div className="text-right font-medium">
-            {formatPercent(data.bounceRate * 100)}
-          </div>
-
-          <div className="text-gray-600">CVR:</div>
+          <div className="text-gray-600">問い合わせ率:</div>
           <div className="text-right font-medium">{formatPercent(data.cvr)}</div>
 
-          <div className="text-gray-600">読了率:</div>
+          <div className="text-gray-600">完読率:</div>
           <div className="text-right font-medium">{formatPercent(data.readRate)}</div>
         </div>
 
@@ -156,17 +148,7 @@ export function TimeseriesTab({
           onClick={() => onToggleMetric('readRate')}
           className="text-xs"
         >
-          読了率
-        </Button>
-
-        <Button
-          type="button"
-          variant={visibleMetrics.bounceRate ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => onToggleMetric('bounceRate')}
-          className="text-xs"
-        >
-          直帰率
+          完読率
         </Button>
 
         <Button
@@ -176,7 +158,7 @@ export function TimeseriesTab({
           onClick={() => onToggleMetric('cvr')}
           className="text-xs"
         >
-          CVR
+          問い合わせ率
         </Button>
 
       </div>
@@ -203,7 +185,7 @@ export function TimeseriesTab({
                 stroke="#6b7280"
               />
 
-              {/* 左側YAxis: セッション・ユーザー */}
+              {/* 左側YAxis: セッション */}
               <YAxis
                 yAxisId="sessions"
                 domain={sessionsDomain}
@@ -231,7 +213,10 @@ export function TimeseriesTab({
                 wrapperStyle={{ fontSize: 12 }}
               />
 
-              {/* セッション（常時表示） */}
+              {/* セッション（常時表示）。
+                  users は sessions のコピーなので、以前はここに完全に重なる青い線がもう1本あった。
+                  同じY軸・同じ値で後から描かれるため緑を覆い隠しており、凡例で片方を消しても
+                  見た目が変わらなかった。 */}
               <Line
                 yAxisId="sessions"
                 type="monotone"
@@ -243,19 +228,7 @@ export function TimeseriesTab({
                 connectNulls={false}
               />
 
-              {/* ユーザー（常時表示） */}
-              <Line
-                yAxisId="sessions"
-                type="monotone"
-                dataKey="users"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={false}
-                name="ユーザー数"
-                connectNulls={false}
-              />
-
-              {/* 読了率（切替） */}
+              {/* 完読率（切替） */}
               {visibleMetrics.readRate && (
                 <Line
                   yAxisId="percent"
@@ -264,26 +237,12 @@ export function TimeseriesTab({
                   stroke="#0891b2"
                   strokeWidth={2}
                   dot={false}
-                  name="読了率(%)"
+                  name="完読率（%）"
                   connectNulls={false}
                 />
               )}
 
-              {/* 直帰率（切替） */}
-              {visibleMetrics.bounceRate && (
-                <Line
-                  yAxisId="percent"
-                  type="monotone"
-                  dataKey={(d) => d.bounceRate * 100}
-                  stroke="#f97316"
-                  strokeWidth={2}
-                  dot={false}
-                  name="直帰率(%)"
-                  connectNulls={false}
-                />
-              )}
-
-              {/* CVR（切替） */}
+              {/* 問い合わせ率（切替） */}
               {visibleMetrics.cvr && (
                 <Line
                   yAxisId="percent"
@@ -292,7 +251,7 @@ export function TimeseriesTab({
                   stroke="#e11d48"
                   strokeWidth={2}
                   dot={false}
-                  name="CVR(%)"
+                  name="問い合わせ率（%）"
                   connectNulls={false}
                 />
               )}

@@ -8,7 +8,11 @@ import { updateSupabaseSession } from '@/lib/supabase/middleware';
 import { INSTAGRAM_CDN_HOSTS } from '@/lib/constants';
 
 const ADMIN_REQUIRED_PATHS = ['/admin'] as const;
-const PAID_FEATURE_REQUIRED_PATHS = ['/analytics'] as const;
+// '/ga4-dashboard' は本PRでGA4コンテンツ評価のメディア別スコアを載せた有料機能の画面だが、
+// このリストに無かったため trial でも画面枠までは到達していた（データは Server Action の
+// canAccessGa4 が弾くので漏洩は無いが、/unauthorized へ飛ばず「利用できません」の
+// ダッシュボードに留まる）。'/analytics' と同じ扱いに揃える。
+const PAID_FEATURE_REQUIRED_PATHS = ['/analytics', '/ga4-dashboard'] as const;
 const SETUP_PATHS = ['/setup'] as const;
 
 const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const;

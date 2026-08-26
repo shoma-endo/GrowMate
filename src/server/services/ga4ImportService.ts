@@ -3,27 +3,18 @@ import { Ga4Service } from '@/server/services/ga4Service';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
 import {
-  GA4_EVENT_SCROLL_90,
+  GA4_SCROLL_EVENT_NAMES,
+  resolveGa4ScrollEventName,
   ga4DateStringToIso,
   formatJstDateISO,
   getJstDateISOFromTimestamp,
   normalizeToPath,
 } from '@/lib/ga4-utils';
-import { addDaysISO } from '@/lib/date-utils';
 import { GA4_SCOPE } from '@/lib/constants';
-
-interface Ga4ReportRow {
-  date: string;
-  pagePath: string;
-  eventName?: string;
-  sessions?: number;
-  users?: number;
-  engagementTimeSec?: number;
-  bounceRate?: number;
-  eventCount?: number;
-  searchClicks?: number; // organicGoogleSearchClicks（検索クリック数、CTR分子）
-  impressions?: number; // organicGoogleSearchImpressions（検索インプレッション数、CTR分母）
-}
+import { GA4_EVALUATION_DEFAULT_DAYS } from '@/lib/ga4-evaluation-period';
+import { addDaysISO } from '@/lib/date-utils';
+import { resolveGa4SyncRange, splitGa4SyncRange } from '@/server/lib/ga4-sync-range';
+import { mergeGa4Reports, type Ga4ReportRow } from '@/server/lib/ga4-report-merge';
 
 interface ReportFetchResult {
   rows: Ga4ReportRow[];
@@ -45,6 +36,10 @@ type Ga4SyncResult =
   | { ok: true; data: Ga4SyncSummary }
   | { ok: false; reason: 'not_connected' | 'already_synced' };
 
+interface Ga4SyncOptions {
+  backfillDays?: number | undefined;
+}
+
 class Ga4ImportService {
   static readonly MAX_USERS_PER_BATCH = 10;
   static readonly MAX_DURATION_MS = 280_000;
@@ -52,6 +47,8 @@ class Ga4ImportService {
   static readonly MAX_TOTAL_ROWS = 50_000;
   /** 初回同期時に遡る日数（当日含まず） */
   static readonly INITIAL_SYNC_DAYS = 30;
+  /** 1レポートで取得する最大日数。長期間の再取込を分割して行数打ち切りを避ける */
+  static readonly MAX_DAYS_PER_WINDOW = 30;
 
   private readonly supabaseService = new SupabaseService();
   private readonly gscService = new GscService();
@@ -108,7 +105,7 @@ class Ga4ImportService {
     return { processed, attempted, stoppedReason };
   }
 
-  async syncUser(userId: string): Promise<Ga4SyncResult> {
+  async syncUser(userId: string, options?: Ga4SyncOptions): Promise<Ga4SyncResult> {
     const credential = await this.supabaseService.getGscCredentialByUserId(userId);
     if (!credential?.ga4PropertyId) {
       return { ok: false, reason: 'not_connected' };
@@ -122,25 +119,109 @@ class Ga4ImportService {
     const accessToken = await this.ensureAccessToken(userId, credential);
 
     const todayJst = formatJstDateISO(new Date());
-    const yesterdayJst = addDaysISO(todayJst, -1);
 
     const lastSyncedAt = credential.ga4LastSyncedAt;
     const lastSyncedDate = lastSyncedAt ? getJstDateISOFromTimestamp(lastSyncedAt) : null;
+    const syncRange = resolveGa4SyncRange({
+      todayJst,
+      lastSyncedDate,
+      initialSyncDays: Ga4ImportService.INITIAL_SYNC_DAYS,
+      backfillDays: options?.backfillDays,
+    });
 
-    const startDate = lastSyncedDate
-      ? addDaysISO(lastSyncedDate, 1)
-      : addDaysISO(yesterdayJst, -(Ga4ImportService.INITIAL_SYNC_DAYS - 1));
-    const endDate = yesterdayJst;
-
-    if (startDate > endDate) {
+    if (!syncRange.ok) {
       // データ未取得時に同期カーソルを進めると欠損の原因になるため、更新しない
       return { ok: false, reason: 'already_synced' };
     }
+    const { startDate, endDate } = syncRange.range;
 
     const conversionEvents = Array.isArray(credential.ga4ConversionEvents)
       ? credential.ga4ConversionEvents
       : [];
-    const eventNames = Array.from(new Set([GA4_EVENT_SCROLL_90, ...conversionEvents]));
+
+    // スクロールイベント名は「このプロパティに定義があるか」で決まるものなので、
+    // 取込ウィンドウ単位ではなく同期実行ごとに1度だけ解決する。
+    // ウィンドウ単位で判定すると、増分同期（1日窓）でたまたま誰も90%到達しなかった日に
+    // 「未計測」と誤判定し、評価側の全か無か集計で90日分の完読率が丸ごと落ちる。
+    // 解決に失敗しても取込本体は続ける（レビュー🟡）。ここは追加の runReport を1本投げるだけの
+    // 補助処理だが try/catch が無く、例外がそのまま syncUser を抜けて **baseReport すら
+    // 取得されずその回の取込が丸ごと失敗**していた。GA4の集計は /ga4-dashboard・一覧の
+    // 全列が依存する共有経路なので、完読率という任意指標のために全体を落とさない。
+    // 失敗時は null（＝未計測）として扱う。実測値は次回同期で復元される。
+    let scrollEventName: string | null = null;
+    try {
+      scrollEventName = await this.resolveScrollEventNameForProperty(accessToken, propertyId, endDate);
+    } catch (error) {
+      console.error('[Ga4ImportService] failed to resolve scroll event name; continuing without it', {
+        userId,
+        propertyId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+    const eventNames = Array.from(
+      new Set([...(scrollEventName === null ? [] : [scrollEventName]), ...conversionEvents])
+    );
+
+    // 長期間の再取込でも1レポートの行数を日数で有界化する（打ち切りの静かな欠損を防ぐ）
+    const windows = splitGa4SyncRange(syncRange.range, Ga4ImportService.MAX_DAYS_PER_WINDOW);
+
+    let totalUpserted = 0;
+    let isSampled = false;
+    let isPartial = false;
+
+    for (const window of windows) {
+      const result = await this.importWindow({
+        userId,
+        propertyId,
+        accessToken,
+        conversionEvents,
+        eventNames,
+        scrollEventName,
+        range: window,
+      });
+      totalUpserted += result.upserted;
+      isSampled = isSampled || result.isSampled;
+      isPartial = isPartial || result.isPartial;
+    }
+
+    // 0件時はカーソルを進めず、次回同一範囲を再取得して取りこぼしを防ぐ
+    if (totalUpserted > 0) {
+      await this.supabaseService.updateGscCredential(userId, {
+        // 次回の startDate を正しく進めるため、同期実行時刻ではなく取り込み済み最終日を保持する
+        ga4LastSyncedAt: Ga4ImportService.toUtcMidnightIso(endDate),
+      });
+    }
+
+    return {
+      ok: true,
+      data: {
+        userId,
+        propertyId,
+        startDate,
+        endDate,
+        upserted: totalUpserted,
+        isSampled,
+        isPartial,
+      },
+    };
+  }
+
+  /**
+   * 1つの日付窓ぶんの GA4 レポートを取得して upsert する。同期カーソルは更新しない。
+   */
+  private async importWindow(params: {
+    userId: string;
+    propertyId: string;
+    accessToken: string;
+    conversionEvents: string[];
+    eventNames: string[];
+    /** null は「対象イベントがこのプロパティに存在せず未計測」。0（実測して0回）と区別する（BR-02） */
+    scrollEventName: string | null;
+    range: { startDate: string; endDate: string };
+  }): Promise<{ upserted: number; isSampled: boolean; isPartial: boolean }> {
+    const { userId, propertyId, accessToken, conversionEvents, eventNames, scrollEventName } =
+      params;
+    const { startDate, endDate } = params.range;
 
     let baseReport: ReportFetchResult;
     try {
@@ -149,7 +230,7 @@ class Ga4ImportService {
         endDate,
       });
     } catch (error) {
-      console.error('[ga4ImportService.syncUser] baseReport fetch failed', {
+      console.error('[ga4ImportService.importWindow] baseReport fetch failed', {
         userId,
         propertyId,
         startDate,
@@ -159,15 +240,19 @@ class Ga4ImportService {
       throw error;
     }
 
-    let eventReport: ReportFetchResult;
+    // 要求するイベントが1つも無い（スクロール未定義かつCV未設定）ときは空フィルタで
+    // レポートを投げず、イベント行なしとして扱う
+    let eventReport: ReportFetchResult = { rows: [], isSampled: false, isPartial: false };
     try {
-      eventReport = await this.fetchEventReport(accessToken, propertyId, {
-        startDate,
-        endDate,
-        eventNames,
-      });
+      if (eventNames.length > 0) {
+        eventReport = await this.fetchEventReport(accessToken, propertyId, {
+          startDate,
+          endDate,
+          eventNames,
+        });
+      }
     } catch (error) {
-      console.error('[ga4ImportService.syncUser] eventReport fetch failed', {
+      console.error('[ga4ImportService.importWindow] eventReport fetch failed', {
         userId,
         propertyId,
         startDate,
@@ -178,7 +263,12 @@ class Ga4ImportService {
       throw error;
     }
 
-    const merged = this.mergeReports(baseReport.rows, eventReport.rows, conversionEvents);
+    const merged = mergeGa4Reports(
+      baseReport.rows,
+      eventReport.rows,
+      conversionEvents,
+      scrollEventName
+    );
     const importedAt = new Date().toISOString();
 
     const rowsToSave = merged.map(row => {
@@ -195,6 +285,8 @@ class Ga4ImportService {
         users: row.users,
         engagementTimeSec: row.engagementTimeSec,
         bounceRate: row.bounceRate,
+        engagementRate: row.engagementRate,
+        activeUsers: row.activeUsers,
         cvEventCount: row.cvEventCount,
         scroll90EventCount: row.scroll90EventCount,
         searchClicks: row.searchClicks,
@@ -206,26 +298,14 @@ class Ga4ImportService {
       };
     });
 
-    // 0件時はカーソルを進めず、次回同一範囲を再取得して取りこぼしを防ぐ
     if (rowsToSave.length > 0) {
       await this.supabaseService.upsertGa4PageMetricsDaily(rowsToSave);
-      await this.supabaseService.updateGscCredential(userId, {
-        // 次回の startDate を正しく進めるため、同期実行時刻ではなく取り込み済み最終日を保持する
-        ga4LastSyncedAt: Ga4ImportService.toUtcMidnightIso(endDate),
-      });
     }
 
     return {
-      ok: true,
-      data: {
-        userId,
-        propertyId,
-        startDate,
-        endDate,
-        upserted: rowsToSave.length,
-        isSampled: baseReport.isSampled || eventReport.isSampled,
-        isPartial: baseReport.isPartial || eventReport.isPartial,
-      },
+      upserted: rowsToSave.length,
+      isSampled: baseReport.isSampled || eventReport.isSampled,
+      isPartial: baseReport.isPartial || eventReport.isPartial,
     };
   }
 
@@ -263,9 +343,42 @@ class Ga4ImportService {
         { name: 'sessions' },
         { name: 'userEngagementDuration' },
         { name: 'bounceRate' },
+        { name: 'engagementRate' },
+        { name: 'activeUsers' },
       ],
       dateRanges: [{ startDate: range.startDate, endDate: range.endDate }],
     });
+  }
+
+  /**
+   * このプロパティに90%スクロールイベントの定義があるかを、同期実行ごとに1度だけ確かめる。
+   *
+   * 判定窓は評価期間（既定90日）に揃える。取込ウィンドウ（増分同期では1日）で判定すると、
+   * 「イベントは設定されているが、その日たまたま誰も90%到達しなかった」だけで未計測と
+   * 誤判定してしまうため。返り値が null のときだけ、その同期で書く行の完読率を NULL にする。
+   *
+   * イベント名のディメンションだけを引くのでレスポンスは数行に収まる。
+   */
+  private async resolveScrollEventNameForProperty(
+    accessToken: string,
+    propertyId: string,
+    endDate: string
+  ): Promise<string | null> {
+    const startDate = addDaysISO(endDate, -(GA4_EVALUATION_DEFAULT_DAYS - 1));
+    const response = await this.ga4Service.runReport(accessToken, propertyId, {
+      dimensions: [{ name: 'eventName' }],
+      metrics: [{ name: 'eventCount' }],
+      dateRanges: [{ startDate, endDate }],
+      dimensionFilter: {
+        filter: {
+          fieldName: 'eventName',
+          inListFilter: { values: [...GA4_SCROLL_EVENT_NAMES] },
+        },
+      },
+      limit: GA4_SCROLL_EVENT_NAMES.length,
+    });
+    const rows = Array.isArray(response.rows) ? response.rows : [];
+    return resolveGa4ScrollEventName(rows.map(row => row.dimensionValues?.[0]?.value));
   }
 
   private async fetchEventReport(
@@ -345,6 +458,8 @@ class Ga4ImportService {
           const users = sessions;
           const engagementTimeSec = Number(metrics[1]?.value ?? 0);
           const bounceRate = Number(metrics[2]?.value ?? 0);
+          const engagementRate = metrics[3]?.value === undefined ? null : Number(metrics[3].value);
+          const activeUsers = metrics[4]?.value === undefined ? null : Number(metrics[4].value);
           rows.push({
             date,
             pagePath: landingPage,
@@ -352,6 +467,8 @@ class Ga4ImportService {
             users,
             engagementTimeSec,
             bounceRate,
+            engagementRate,
+            activeUsers,
             // organicGoogleSearchClicks/Impressions は landingPage と非互換のため取得不可
             searchClicks: 0,
             impressions: 0,
@@ -377,88 +494,6 @@ class Ga4ImportService {
     return { rows, isSampled, isPartial };
   }
 
-  private mergeReports(
-    baseRows: Ga4ReportRow[],
-    eventRows: Ga4ReportRow[],
-    conversionEvents: string[]
-  ) {
-    const conversionSet = new Set(conversionEvents);
-    const map = new Map<
-      string,
-      {
-        date: string;
-        pagePath: string;
-        normalizedPath: string;
-        sessions: number;
-        users: number;
-        engagementTimeSec: number;
-        bounceRate: number;
-        cvEventCount: number;
-        scroll90EventCount: number;
-        searchClicks: number;
-        impressions: number;
-      }
-    >();
-
-    for (const row of baseRows) {
-      const normalizedPath = normalizeToPath(row.pagePath);
-      const key = `${row.date}::${normalizedPath}`;
-      const sessions = row.sessions ?? 0;
-      const users = row.users ?? 0;
-      const engagementTimeSec = row.engagementTimeSec ?? 0;
-      const bounceRate = row.bounceRate ?? 0;
-      const searchClicks = row.searchClicks ?? 0;
-      const impressions = row.impressions ?? 0;
-
-      const existing = map.get(key);
-      if (existing) {
-        const totalSessions = existing.sessions + sessions;
-        existing.bounceRate =
-          totalSessions > 0
-            ? (existing.bounceRate * existing.sessions + bounceRate * sessions) / totalSessions
-            : 0;
-        existing.sessions = totalSessions;
-        existing.users += users;
-        existing.engagementTimeSec += engagementTimeSec;
-        existing.searchClicks += searchClicks;
-        existing.impressions += impressions;
-      } else {
-        map.set(key, {
-          date: row.date,
-          pagePath: row.pagePath,
-          normalizedPath,
-          sessions,
-          users,
-          engagementTimeSec,
-          bounceRate,
-          cvEventCount: 0,
-          scroll90EventCount: 0,
-          searchClicks,
-          impressions,
-        });
-      }
-    }
-
-    for (const row of eventRows) {
-      if (!row.eventName) continue;
-      const normalizedPath = normalizeToPath(row.pagePath);
-      const key = `${row.date}::${normalizedPath}`;
-      const target = map.get(key);
-      // ベース行（セッションデータ）が存在しないイベントは集計対象外とする
-      // 理由: ページコンテキストなしのイベントは分析上の意味が限定的なため
-      if (!target) continue;
-
-      const count = row.eventCount ?? 0;
-      if (row.eventName === GA4_EVENT_SCROLL_90) {
-        target.scroll90EventCount += count;
-      }
-      if (conversionSet.has(row.eventName)) {
-        target.cvEventCount += count;
-      }
-    }
-
-    return Array.from(map.values());
-  }
 }
 
 export const ga4ImportService = new Ga4ImportService();

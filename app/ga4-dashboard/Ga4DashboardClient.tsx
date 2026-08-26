@@ -23,10 +23,15 @@ import {
 import type {
   Ga4DashboardSummary,
   Ga4DashboardRankingItem,
+  Ga4DashboardRankingPage,
   Ga4DashboardTimeseriesPoint,
   Ga4DashboardSortKey,
+  Ga4MediaContentScores,
 } from '@/types/ga4';
+import { GA4_RANKING_PAGE_SIZE } from '@/lib/constants';
+import { Ga4BackfillButton } from '@/components/Ga4BackfillButton';
 import { SummaryCards } from './components/SummaryCards';
+import { MediaContentScorePanel } from './components/MediaContentScorePanel';
 import { RankingTab } from './components/RankingTab';
 import type { TimeseriesTabProps } from './components/TimeseriesTab';
 import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
@@ -75,22 +80,29 @@ const getPeriodPresetFromRange = (range: DateRange): PeriodPresetValue => {
 interface Props {
   initialData?: {
     summary: Ga4DashboardSummary;
-    ranking: Ga4DashboardRankingItem[];
+    ranking: Ga4DashboardRankingPage;
     timeseries: Ga4DashboardTimeseriesPoint[];
     initialNormalizedPath?: string;
   };
   initialError?: string;
   initialDateRange: DateRange;
+  initialMediaContentScores?: Ga4MediaContentScores | null | undefined;
 }
 
 export default function Ga4DashboardClient({
   initialData,
   initialError,
   initialDateRange,
+  initialMediaContentScores = null,
 }: Props) {
   const [data, setData] = useState(initialData);
   const [error, setError] = useState<string | undefined>(initialError);
   const [isLoading, setIsLoading] = useState(false);
+  // 行クリックで取り直すのは時系列だけ。ランキング・サマリー・期間の操作まで
+  // 巻き込んで画面全体を無効化すると、選択のたびに再読込したように見える
+  const [isTimeseriesLoading, setIsTimeseriesLoading] = useState(false);
+  const mediaContentScores = initialMediaContentScores;
+
 
   // 現在の期間
   const [dateRange, setDateRange] = useState<DateRange>(() => {
@@ -116,7 +128,6 @@ export default function Ga4DashboardClient({
   // タイムシリーズ表示メトリック
   const [visibleTimeseriesMetrics, setVisibleTimeseriesMetrics] = useState({
     readRate: true,
-    bounceRate: true,
     cvr: true,
   });
 
@@ -174,6 +185,30 @@ export default function Ga4DashboardClient({
     [dateRange.end, dateRange.start]
   );
 
+  // 再取込のあと、表示中の期間のまま集計を取り直す（期間選択やソートの状態は変えない）
+  const reloadCurrentRange = useCallback(async () => {
+    setIsLoading(true);
+    setError(undefined);
+    try {
+      const result = await fetchGa4DashboardData(dateRange);
+      if (!result.success || !result.data) {
+        if (isEmailLinkConflictResult(result)) {
+          replaceToEmailLinkConflictLogin();
+          return;
+        }
+        setError(result.error ?? 'データの取得に失敗しました');
+        return;
+      }
+      setData(result.data);
+      setSelectedNormalizedPath(result.data.initialNormalizedPath);
+    } catch (err) {
+      console.error('[GA4 Dashboard] Reload after backfill failed:', err);
+      setError('データの取得に失敗しました');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [dateRange]);
+
   const handleApplyCustomRange = useCallback(async () => {
     const dateError = validateDateRange(customStart, customEnd);
     if (dateError) {
@@ -215,10 +250,12 @@ export default function Ga4DashboardClient({
       setError(undefined);
 
       try {
+        // 並び順が変わると順位も変わるため、ページ位置は先頭へ戻す
         const result = await fetchGa4DashboardRanking({
           start: dateRange.start ?? undefined,
           end: dateRange.end ?? undefined,
-          limit: 100,
+          limit: GA4_RANKING_PAGE_SIZE,
+          offset: 0,
           sort: value as Ga4DashboardSortKey,
         });
 
@@ -243,11 +280,43 @@ export default function Ga4DashboardClient({
     [dateRange.start, dateRange.end]
   );
 
+  // ランキングのページ送り
+  const handleRankingPageChange = useCallback(
+    async (nextOffset: number) => {
+      setIsLoading(true);
+      setError(undefined);
+      try {
+        const result = await fetchGa4DashboardRanking({
+          start: dateRange.start ?? undefined,
+          end: dateRange.end ?? undefined,
+          limit: GA4_RANKING_PAGE_SIZE,
+          offset: nextOffset,
+          sort: sortKey,
+        });
+        if (!result.success || !result.data) {
+          if (isEmailLinkConflictResult(result)) {
+            replaceToEmailLinkConflictLogin();
+            return;
+          }
+          setError(result.error ?? 'データの取得に失敗しました');
+          return;
+        }
+        setData((prev) => (prev ? { ...prev, ranking: result.data! } : undefined));
+      } catch (err) {
+        console.error('[GA4 Dashboard] Ranking page change failed:', err);
+        setError('データの取得に失敗しました');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [dateRange.start, dateRange.end, sortKey]
+  );
+
   // パージ選択（ランキング行クリック）
   const handleRowClick = useCallback(
     async (item: Ga4DashboardRankingItem) => {
       setSelectedNormalizedPath(item.normalizedPath);
-      setIsLoading(true);
+      setIsTimeseriesLoading(true);
       setError(undefined);
 
       try {
@@ -272,7 +341,7 @@ export default function Ga4DashboardClient({
         console.error('[GA4 Dashboard] Row click failed:', err);
         setError('データの取得に失敗しました');
       } finally {
-        setIsLoading(false);
+        setIsTimeseriesLoading(false);
       }
     },
     [dateRange.start, dateRange.end]
@@ -280,7 +349,7 @@ export default function Ga4DashboardClient({
 
   // タイムシリーズメトリック切替
   const handleToggleMetric = useCallback(
-    (metric: 'readRate' | 'bounceRate' | 'cvr') => {
+    (metric: 'readRate' | 'cvr') => {
       setVisibleTimeseriesMetrics((prev) => ({
         ...prev,
         [metric]: !prev[metric],
@@ -341,14 +410,17 @@ export default function Ga4DashboardClient({
           <ArrowLeft className="w-4 h-4 mr-1.5" />
           コンテンツ一覧に戻る
         </Link>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="text-3xl font-bold">Google Analytics 4 ダッシュボード</h1>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/setup/ga4">
-              <Settings className="w-4 h-4 mr-2" />
-              設定
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Ga4BackfillButton disabled={isLoading} onCompleted={reloadCurrentRange} />
+            <Button asChild variant="outline" size="sm">
+              <Link href="/setup/ga4">
+                <Settings className="w-4 h-4 mr-2" />
+                設定
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -430,6 +502,7 @@ export default function Ga4DashboardClient({
       {data?.summary && (
         <SummaryCards summary={data.summary} isLoading={isLoading} />
       )}
+      <MediaContentScorePanel scores={mediaContentScores} />
 
       {/* タブ */}
       <Tabs defaultValue="ranking" className="w-full">
@@ -457,28 +530,31 @@ export default function Ga4DashboardClient({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="sessions">セッション数</SelectItem>
-                <SelectItem value="cvr">CVR</SelectItem>
-                <SelectItem value="readRate">読了率</SelectItem>
-                <SelectItem value="avgEngagementTimeSec">
-                  平均滞在時間
-                </SelectItem>
+                <SelectItem value="sessions">セッション</SelectItem>
+                <SelectItem value="cvr">問い合わせ率</SelectItem>
+                <SelectItem value="readRate">完読率</SelectItem>
+                {/* ÷sessions のため「平均エンゲージメント時間」は名乗れない。SummaryCards 参照 */}
+                <SelectItem value="avgEngagementTimeSec">平均滞在時間</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <RankingTab
-            items={data?.ranking ?? []}
+            items={data?.ranking.items ?? []}
+            totalCount={data?.ranking.totalCount ?? 0}
+            offset={data?.ranking.offset ?? 0}
+            pageSize={data?.ranking.limit ?? GA4_RANKING_PAGE_SIZE}
             isLoading={isLoading}
             {...selectedPathProps}
             onRowClick={handleRowClick}
+            onPageChange={handleRankingPageChange}
           />
         </TabsContent>
 
         <TabsContent value="timeseries" className="mt-6">
           <TimeseriesTab
             data={data?.timeseries ?? []}
-            isLoading={isLoading}
+            isLoading={isLoading || isTimeseriesLoading}
             {...selectedPathProps}
             visibleMetrics={visibleTimeseriesMetrics}
             onToggleMetric={handleToggleMetric}

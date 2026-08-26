@@ -2,6 +2,21 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  async redirects() {
+    return [
+      {
+        source: '/gsc-dashboard',
+        has: [{ type: 'query', key: 'annotationId', value: '(?<annotationId>[^&]+)' }],
+        destination: '/analytics/:annotationId',
+        permanent: true,
+      },
+      {
+        source: '/gsc-dashboard',
+        destination: '/analytics',
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

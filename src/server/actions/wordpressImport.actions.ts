@@ -148,7 +148,7 @@ export async function runWordpressBulkImport() {
     const { data: existingAnnotations, error: existingError } = await supabaseClient
       .from('content_annotations')
       .select(
-        'id, canonical_url, wp_post_id, wp_post_title, wp_excerpt, wp_categories, wp_category_names, wp_post_type'
+        'id, canonical_url, wp_post_id, wp_post_title, wp_excerpt, wp_categories, wp_category_names, wp_post_type, wp_image_count'
       )
       .eq('user_id', userId);
 
@@ -168,6 +168,8 @@ export async function runWordpressBulkImport() {
       wp_categories: number[] | null;
       wp_category_names: string[] | null;
       wp_post_type: string | null;
+      // 本文キャッシュ済みかの判定に使う。wp_content_text は全件取得すると重いため取らない
+      wp_image_count: number | null;
     }
 
     const existingUrls = new Set<string>();
@@ -242,6 +244,8 @@ export async function runWordpressBulkImport() {
       const nextPostType = normalizeText(post.post_type);
       const nextCategories = normalizeCategories(post.categories);
       const nextCategoryNames = normalizeCategoryNames(post.categoryNames);
+      const nextContentText = normalizeText(post.content_text);
+      const nextImageCount = post.image_count ?? null;
 
       const existing =
         (canonical ? existingByCanonical.get(canonical) : undefined) ??
@@ -256,6 +260,9 @@ export async function runWordpressBulkImport() {
         wp_excerpt: nextExcerpt,
         updated_at: batchTimestamp,
         ...(nextPostType !== null ? { wp_post_type: nextPostType } : {}),
+        // 本文が取れた投稿だけ上書きする。取れなかった投稿で既存値を消さない
+        ...(nextContentText !== null ? { wp_content_text: nextContentText } : {}),
+        ...(nextImageCount !== null ? { wp_image_count: nextImageCount } : {}),
       };
 
       if (existing) {
@@ -266,7 +273,10 @@ export async function runWordpressBulkImport() {
           normalizeText(existing.wp_excerpt) !== nextExcerpt ||
           normalizeText(existing.wp_post_type) !== nextPostType ||
           !areArraysEqual(existing.wp_categories ?? null, nextCategories) ||
-          !areArraysEqual(existing.wp_category_names ?? null, nextCategoryNames);
+          !areArraysEqual(existing.wp_category_names ?? null, nextCategoryNames) ||
+          // wp_image_count が NULL の行は本文キャッシュ未取得。ここで拾わないと
+          // 他の列に差分がない限り永久にスキップされ、GA4評価の画像補正が効かない
+          (nextImageCount !== null && existing.wp_image_count !== nextImageCount);
 
         if (!hasChanges) {
           stats.skippedExisting += 1;
