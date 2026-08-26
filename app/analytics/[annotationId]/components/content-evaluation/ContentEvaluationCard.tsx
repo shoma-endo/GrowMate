@@ -244,12 +244,17 @@ export function ContentEvaluationCard({
                   </>
                 )}
               </div>
-              {/* 読了率から人数を換算しない（率は平均時間の比であり人数比ではない。§08 の禁則） */}
+              {/* 読了率から人数を換算しない（率は平均時間の比であり人数比ではない。§08 の禁則）。
+                  代わりに出すのは完読率ではなく **読了率**。受領原文 §08 は「取得できない場合は
+                  人数を出さず『1人あたり平均で全体の12%まで読まれています』と表記する」と書いており、
+                  この 12% は直前の文の「読了率12%」を指す。完読率は90%到達イベントの割合なので
+                  同じ文に入れると意味が変わる（プロンプト側は ga4-content-evaluation-prompt.ts:108-111
+                  で先に修正済み。ここが追随漏れだった）。 */}
               {measuredScrollUsers === null && (
                 <p className="mt-3 text-xs text-muted-foreground">
-                  {latest.scrollRate === null
-                    ? '最後までの人数と率は実測できないため表示していません。'
-                    : `最後まで読んだ人数は実測できていません。1人あたり平均で全体の${formatPercent(latest.scrollRate)}まで読まれています。`}
+                  {latest.readRate === null
+                    ? '最後まで読んだ人数は実測できていません。'
+                    : `最後まで読んだ人数は実測できていません。1人あたり平均で全体の${formatPercent(latest.readRate)}まで読まれています。`}
                 </p>
               )}
             </div>
