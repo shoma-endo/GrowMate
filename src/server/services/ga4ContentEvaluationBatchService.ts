@@ -288,7 +288,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
               : articleResult.outcome === 'baseline_initialized'
                 ? (articleResult.baselineContentScore ?? null)
                 : undefined;
-          await this.advanceCooldown(cycle.id, freshContentScore);
+          await this.advanceCooldown(cycle.id, cycle.user_id, freshContentScore);
         }
 
         if (articleResult.outcome === 'evaluated' || articleResult.outcome === 'narrative_failed') {
@@ -377,7 +377,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
     const client = this.pendingClient();
     let lastCount: number | null = null;
 
-    const { data, truncated } = await this.fetchAllPaged<DueEvaluationRow>(
+    const { data, error, truncated } = await this.fetchAllPaged<DueEvaluationRow>(
       async (from, to) => {
         const { data, error, count } = await client
           .rpc('list_due_ga4_content_evaluations', { p_today_jst: todayJst }, { count: 'exact' })
@@ -387,6 +387,14 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
       },
       { pageSize: 500 }
     );
+    // fetchAllPaged は失敗時に { data: [], error } を返す。error を捨てると due 0件の正常終了と
+    // 区別がつかず、RPC未適用・権限不足・DB障害のときに「毎時グリーンで1件も評価しない」状態が
+    // 誰にも気づかれないまま続く（validate_count_batch は success と data.failed しか見ない）。
+    // ここで throw すれば runBatch が batch_failed を出し、route が 500 を返して監視に乗る。
+    if (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`due extraction failed: ${message}`);
+    }
 
     const truncatedCandidates = truncated && lastCount !== null ? Math.max(0, lastCount - data.length) : 0;
     if (truncatedCandidates > 0) {
@@ -478,18 +486,74 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
   }
 
   /**
+   * 手動の「今すぐ評価を実行」でGA4評価が成功したときに、GA4側のクールダウンを進める。
+   *
+   * これを行わない場合、概要タブの「次回評価予定」（GSCの `last_evaluated_on` 起点。手動実行で
+   * 進む）とコンテンツ評価タブの「次回評価予定」（`ga4_last_evaluated_on` 起点）が手動実行の
+   * たびにズレていく。さらに、手動実行の直後に毎時Cronが同じ記事をdueとして拾い、同じ期間の
+   * データでLLMをもう一度呼ぶ二重評価も起きる。
+   *
+   * サイクル行が無い場合（GSC評価サイクル未登録のままGA4の単発評価だけを回したケース）は
+   * 何もしない。失敗しても throw しない: 予定日がズレる不利益より、算出済みの評価結果を
+   * ユーザーへ返せなくなる不利益の方が大きいため。
+   */
+  async advanceCooldownForManualRun(
+    userId: string,
+    annotationId: string,
+    contentScore: number | null
+  ): Promise<void> {
+    try {
+      const { data, error } = await this.pendingClient()
+        .from('gsc_article_evaluations')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('content_annotation_id', annotationId)
+        .eq('status', 'active')
+        .maybeSingle();
+      if (error) {
+        console.error('[ga4ContentEvaluationBatchService] failed to look up cycle for manual run', {
+          annotationId,
+          message: error.message,
+        });
+        return;
+      }
+      if (!data) return;
+      await this.advanceCooldown(data.id, userId, contentScore);
+    } catch (error) {
+      console.error('[ga4ContentEvaluationBatchService] manual cooldown advance failed', {
+        annotationId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
    * GA4側のクールダウンだけを進める。GSCの `last_evaluated_on` には触れない
    * （触ると2ジョブが互いのdue判定を壊す。このファイル冒頭のクラスコメント参照）。
    */
-  private async advanceCooldown(cycleId: string, contentScore?: number | null): Promise<void> {
-    const update: { ga4_last_evaluated_on: string; ga4_last_seen_content_score?: number | null } = {
+  private async advanceCooldown(
+    cycleId: string,
+    userId: string,
+    contentScore?: number | null
+  ): Promise<void> {
+    // updated_at は同テーブルの他のwriter（gscEvaluationService / gscDashboard.actions）が
+    // 全て明示更新しており、トリガーは存在しない。GA4の前進だけ古いままにしない
+    const update: {
+      ga4_last_evaluated_on: string;
+      updated_at: string;
+      ga4_last_seen_content_score?: number | null;
+    } = {
       ga4_last_evaluated_on: formatJstDateISO(new Date()),
+      updated_at: new Date().toISOString(),
     };
     if (contentScore !== undefined) update.ga4_last_seen_content_score = contentScore;
+    // BR-06: due抽出のSELECTだけが例外で、抽出後の書き込みは user_id を明示する
+    // （Service Role経由でRLSがバイパスされるため、これが唯一の防御層。GSC側の全writerも同様）
     const { error } = await this.pendingClient()
       .from('gsc_article_evaluations')
       .update(update)
-      .eq('id', cycleId);
+      .eq('id', cycleId)
+      .eq('user_id', userId);
     if (error) {
       console.error('[ga4ContentEvaluationBatchService] failed to advance cooldown', {
         cycleId,
@@ -534,6 +598,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
       .from('gsc_article_evaluations')
       .select('ga4_last_notified_history_id')
       .eq('id', cycle.id)
+      .eq('user_id', cycle.user_id)
       .maybeSingle();
     if (currentCycleError) {
       console.error('[ga4ContentEvaluationBatchService] failed to read notification state', {
@@ -556,6 +621,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
       .from('content_annotations')
       .select('wp_post_title, canonical_url')
       .eq('id', cycle.content_annotation_id)
+      .eq('user_id', cycle.user_id)
       .maybeSingle();
 
     const latest = view.history[0]!;
@@ -589,7 +655,8 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
     await this.pendingClient()
       .from('gsc_article_evaluations')
       .update({ ga4_last_notified_history_id: historyId })
-      .eq('id', cycle.id);
+      .eq('id', cycle.id)
+      .eq('user_id', cycle.user_id);
     return 'sent';
   }
 }

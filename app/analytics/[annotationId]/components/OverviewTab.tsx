@@ -68,6 +68,10 @@ interface OverviewTabProps {
     | undefined
   >;
   onRefreshDetail?: (annotationId: string) => Promise<void>;
+  /** 評価サイクル未登録でも「今すぐ評価を実行」を出す（GA4コンテンツ評価の単発実行用。2026-08-26） */
+  canRunWithoutCycle?: boolean;
+  /** 実行中に出す進捗の一言（「検索順位を評価しています…」→「コンテンツを評価しています…」） */
+  runningPhaseLabel?: string | null;
 }
 
 export function OverviewTab({
@@ -82,6 +86,8 @@ export function OverviewTab({
   onRunEvaluation,
   onRunQueryImport,
   onRefreshDetail,
+  canRunWithoutCycle = false,
+  runningPhaseLabel = null,
 }: OverviewTabProps) {
   const [isQueryImporting, setIsQueryImporting] = useState(false);
   const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
@@ -217,6 +223,8 @@ export function OverviewTab({
             onRegister={onRegisterEvaluation}
             onUpdate={onUpdateEvaluation}
             onRunEvaluation={onRunEvaluation}
+            canRunWithoutCycle={canRunWithoutCycle}
+            runningPhaseLabel={runningPhaseLabel}
           />
         )}
       </CardContent>

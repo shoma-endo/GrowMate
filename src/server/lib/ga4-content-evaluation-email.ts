@@ -113,7 +113,7 @@ export function buildGa4ContentEvaluationEmail(
       <hr />
       ${period ? `<p>評価対象期間: ${period}</p>` : ''}
       <p>次回評価予定: ${formatSlashDate(input.nextEvaluationDate)}</p>
-      <p>この記事にコンテンツ評価サイクルを設定しているため送信しています。設定の変更は<a href="${detailUrl}">記事詳細</a>から行えます。</p>
+      <p>この記事に評価サイクルを設定しているため送信しています。設定の変更は<a href="${detailUrl}">記事詳細</a>から行えます。</p>
     </div>
   `;
 

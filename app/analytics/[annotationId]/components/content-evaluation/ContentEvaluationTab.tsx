@@ -1,8 +1,8 @@
 'use client';
 
-import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
+import type { Ga4ContentEvaluationView, Ga4EvaluationScheduleView } from '@/types/ga4-evaluation';
 
-import { ContentEvaluationCard, type Ga4EvaluationScheduleView } from './ContentEvaluationCard';
+import { ContentEvaluationCard } from './ContentEvaluationCard';
 import { Ga4EvaluationHistoryPanel } from './Ga4EvaluationHistoryPanel';
 
 interface ContentEvaluationTabProps {

@@ -42,6 +42,17 @@ interface EvaluationSettingsProps {
   onRegister: (date: string, cycleDays: number, evaluationHour: number) => Promise<void>;
   onUpdate: (date: string, cycleDays: number, evaluationHour: number) => Promise<void>;
   onRunEvaluation: () => Promise<EvaluationResultSummary | undefined>;
+  /**
+   * 評価サイクル未登録でも「今すぐ評価を実行」を出す（2026-08-26）。
+   * サイクルを1本へ統合してGA4コンテンツ評価の単発実行もこのボタンに集約したため、
+   * サイクル未登録＝ボタン非表示だとGA4の単発評価がUIから到達できなくなる。
+   */
+  canRunWithoutCycle?: boolean;
+  /**
+   * 実行中に出す進捗の一言（例: 「検索順位を評価しています…」）。
+   * GSC→GA4を直列で実行すると最長で数分かかるため、いま何を待っているかを示す。
+   */
+  runningPhaseLabel?: string | null;
 }
 
 // 日付フォーマット用のユーティリティ
@@ -70,6 +81,8 @@ export function EvaluationSettings({
   onRegister,
   onUpdate,
   onRunEvaluation,
+  canRunWithoutCycle = false,
+  runningPhaseLabel = null,
 }: EvaluationSettingsProps) {
   const [isOpen, setIsOpen] = useState(false);
   // date string format: YYYY-MM-DD
@@ -140,24 +153,24 @@ export function EvaluationSettings({
       // インポート失敗があった場合は警告を表示
       if (result.skippedImportFailed > 0) {
         toast.warning(
-          `${result.skippedImportFailed}件でデータ取得に失敗しました（GSC再認証が必要な可能性があります）`
+          `検索順位評価: ${result.skippedImportFailed}件でデータ取得に失敗しました（GSC再認証が必要な可能性があります）`
         );
       }
 
       if (result.processed > 0) {
         toast.success(
-          `評価完了: ${result.processed}件処理（改善: ${result.improved}件、その他: ${result.advanced}件）`
+          `検索順位評価が完了しました: ${result.processed}件処理（改善: ${result.improved}件、その他: ${result.advanced}件）`
         );
       } else if (result.baselineInitialized > 0) {
-        toast.success(`${result.baselineInitialized}件の評価ベースラインを設定しました`);
+        toast.success(`検索順位評価: ${result.baselineInitialized}件の初回計測を行いました`);
         return;
       } else if (result.skippedNoMetrics > 0) {
-        toast.info('評価対象のデータがありませんでした');
+        toast.info('検索順位評価: 対象のデータがありませんでした');
       } else if (result.skippedImportFailed === 0) {
-        toast.info('評価対象の記事がありませんでした');
+        toast.info('検索順位評価: 対象の記事がありませんでした');
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '評価処理に失敗しました');
+      toast.error(err instanceof Error ? err.message : '検索順位評価に失敗しました');
     } finally {
       setRunningEvaluation(false);
     }
@@ -388,21 +401,30 @@ export function EvaluationSettings({
             </DialogContent>
           </Dialog>
 
-          {/* 今すぐ評価を実行ボタン（評価設定がある場合のみ表示） */}
-          {currentEvaluation && (
-            <Button
-              variant="outline"
-              onClick={handleRunEvaluation}
-              disabled={runningEvaluation}
-              className="gap-2"
-            >
-              {runningEvaluation ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
+          {/* 今すぐ評価を実行ボタン。
+              評価サイクルが登録されている場合に加え、canRunWithoutCycle のときも表示する
+              （2026-08-26。サイクル統合でGA4コンテンツ評価の単発実行もこのボタンへ集約したため、
+              サイクル未登録だとGA4の単発評価がUIから到達不能になっていた） */}
+          {(currentEvaluation || canRunWithoutCycle) && (
+            <div className="flex items-center gap-2 min-w-0">
+              <Button
+                variant="outline"
+                onClick={handleRunEvaluation}
+                disabled={runningEvaluation}
+                className="gap-2 shrink-0"
+              >
+                {runningEvaluation ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                今すぐ評価を実行
+              </Button>
+              {/* 実行中はGSC→GA4を直列で回すため最長で数分かかる。いま何を待っているかを示す */}
+              {runningEvaluation && runningPhaseLabel && (
+                <span className="text-sm text-gray-600 truncate">{runningPhaseLabel}</span>
               )}
-              今すぐ評価を実行
-            </Button>
+            </div>
           )}
         </div>
       </div>

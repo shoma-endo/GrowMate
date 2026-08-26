@@ -17,25 +17,10 @@ import {
   getGa4ScoreBandTone,
 } from '@/lib/ga4-evaluation-display';
 import { addDaysISO } from '@/lib/date-utils';
-import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
+import type { Ga4ContentEvaluationView, Ga4EvaluationScheduleView } from '@/types/ga4-evaluation';
 
 import { findPreviousScoredItem } from './ga4-evaluation-history-view';
 import { resolveCardHistoryItem } from './latest-history';
-
-/**
- * GA4コンテンツ評価のスケジュール表示に必要な最小限。
- *
- * 2026-08-26にGSC検索順位評価とサイクルを1本へ統合したため、基準日・サイクル日数・実行時刻は
- * `gsc_article_evaluations` の1行が正になった。GA4側の進捗（ga4_last_evaluated_on /
- * ga4_last_seen_content_score）だけが系統別に持たれる（§6.6.2）。
- */
-export interface Ga4EvaluationScheduleView {
-  baseEvaluationDate: string;
-  cycleDays: number;
-  evaluationHour: number;
-  ga4LastEvaluatedOn: string | null;
-  ga4LastSeenContentScore: number | null;
-}
 
 interface Props {
   /** カード見出しに出す記事タイトル。クライアント提供の記事カード設計（評価エンジン仕様 §08）に合わせる */
@@ -126,7 +111,11 @@ export function ContentEvaluationCard({
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        {schedule && (
+        {/* GA4評価ビューが取れているときだけ出す（2026-08-26 レビュー指摘）。
+            GA4未連携だと fetchGa4ContentEvaluation が失敗して evaluation が null になり、
+            この記事は定期バッチのdue抽出（GA4連携済みユーザーのみ）にも入らない。
+            そこへGSCの評価サイクル行を根拠に「次回評価予定」を出すと、来ない予定を約束してしまう */}
+        {schedule && evaluation && (
           <p className="text-xs text-muted-foreground">
             {/* 概要タブの検索順位評価サイクル設定カードとラベルの表記を揃える。
                 ベースライン計測が済んでいれば「次回評価予定」、未計測なら「初回計測予定」

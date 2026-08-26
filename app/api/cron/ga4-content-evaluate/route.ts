@@ -3,13 +3,17 @@ import { ga4ContentEvaluationBatchService } from '@/server/services/ga4ContentEv
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 
 /**
- * GA4コンテンツ評価サイクル バッチ Cron エンドポイント（docs/plans/ga4-content-evaluation-spec.md §8.3）
+ * GA4コンテンツ評価 定期バッチ Cron エンドポイント（docs/plans/ga4-content-evaluation-spec.md §8.3）
  *
  * GitHub Actions（`.github/workflows/hourly-cron.yml`）が毎時0分に GET で呼び出す。
- * 「次回評価予定日時 <= 現在日時」のサイクルのみ評価を実行する。
+ * 「GA4の次回評価予定日時 <= 現在日時」の記事のみ評価を実行する。
+ *
+ * スケジュール（基準日・サイクル日数・実行時刻）はGSC検索順位評価と同じ gsc_article_evaluations の
+ * 1行が正で、GA4は実行進捗（ga4_last_evaluated_on）だけを系統別に持つ（2026-08-26 サイクル統合）。
+ * gsc-evaluate と同じ毎時実行に並んで走るが、互いの進捗列には触れない。
  *
  * 認証: CRON_SECRET による Bearer トークン認証。
- * セッションが存在しないため、ロールの絞り込みは due 抽出の SQL（§8.3 手順2）で行う。
+ * セッションが存在しないため、ロールとGA4連携状態の絞り込みは due 抽出の SQL（§8.3 手順1）で行う。
  * 成功時の応答本文には集計値のみを含め、記事タイトル・URL・評価結果・メールアドレス等の
  * ユーザーデータは一切含めない（§3.3 Cron Route Handler の例外）。
  */

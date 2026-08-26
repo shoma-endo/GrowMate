@@ -23,6 +23,7 @@ import { getGa4EvaluationDateRange } from '@/lib/ga4-evaluation-period';
 import { getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { ServerActionResult } from '@/lib/async-handler';
+import type { EvaluationResultSummary } from '@/types/gsc';
 
 const GA4_EVALUATION_PROGRESS_POLL_INTERVAL_MS = 500;
 
@@ -46,6 +47,9 @@ export default function GscDashboardClient({
   const [readHistoryIds, setReadHistoryIds] = useState<Set<string>>(new Set());
   const [ga4Evaluation, setGa4Evaluation] = useState<Ga4ContentEvaluationView | null>(initialGa4Evaluation);
   const [ga4EvaluationError, setGa4EvaluationError] = useState<string | null>(null);
+  // 「今すぐ評価を実行」の進捗表示（2026-08-26）。GSC→GA4を直列で回し、GA4は1記事あたり最長135秒
+  // かかるため、スピナーだけだと固まったように見える。いま何を待っているかを1行で示す
+  const [runningPhase, setRunningPhase] = useState<'gsc' | 'ga4' | null>(null);
 
   const runGa4EvaluationWithProgress = async (
     annotationId: string,
@@ -77,7 +81,7 @@ export default function GscDashboardClient({
   // displayStatus と直近履歴のスコアで文言を出し分ける）
   const notifyGa4EvaluationResult = (result: ServerActionResult<Ga4ContentEvaluationView>) => {
     if (!result.success || !result.data) {
-      toast.error(result.error ?? ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED);
+      toast.error(`コンテンツ評価: ${result.error ?? ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED}`);
       return;
     }
     const latest = result.data.history[0] ?? null;
@@ -85,15 +89,15 @@ export default function GscDashboardClient({
       case 'evaluated':
         toast.success(
           latest?.contentScore != null
-            ? `評価が完了しました（コンテンツ力スコア: ${latest.contentScore}点）`
-            : '評価が完了しました'
+            ? `コンテンツ評価が完了しました（コンテンツ力スコア: ${latest.contentScore}点）`
+            : 'コンテンツ評価が完了しました'
         );
         return;
       case 'narrative_failed':
-        toast.warning('スコアの算出は完了しましたが、診断コメントの作成に失敗しました');
+        toast.warning('コンテンツ評価: スコアの算出は完了しましたが、診断コメントの作成に失敗しました');
         return;
       default:
-        toast.error(getGa4EvaluationStatusLabel(result.data.displayStatus));
+        toast.error(`コンテンツ評価: ${getGa4EvaluationStatusLabel(result.data.displayStatus)}`);
     }
   };
 
@@ -129,36 +133,79 @@ export default function GscDashboardClient({
   };
 
   /**
+   * GA4コンテンツ評価を「今すぐ」回せる状態か（§10.8）。
+   * narrative_failed は再評価ではなく診断コメントの再生成へ振るため、ここに含める。
+   */
+  const ga4DisplayStatus = ga4Evaluation?.displayStatus ?? 'unassessed';
+  const canRunGa4 =
+    ga4DisplayStatus === 'eligible' ||
+    ga4DisplayStatus === 'evaluated' ||
+    ga4DisplayStatus === 'evaluation_failed' ||
+    ga4DisplayStatus === 'narrative_failed';
+
+  /**
    * 「今すぐ評価を実行」の本体（§10.8）。
    *
    * 2026-08-26にGSC検索順位評価とGA4コンテンツ評価のサイクルを1本へ統合したため、ボタンも1つに
    * 統合し、押すと両方を順に実行する。GSCの結果（EvaluationResultSummary）をそのまま返すので、
-   * EvaluationSettings.tsx は無改修のまま既存のトーストを出せる。GA4側の結果は
-   * notifyGa4EvaluationResult が自前でトーストを出すため、トーストは2つ表示される。
+   * EvaluationSettings.tsx は既存のトーストをそのまま出せる。GA4側の結果は
+   * notifyGa4EvaluationResult が自前でトーストを出すため、トーストは2つ表示される
+   * （どちらの系統の結果か分かるよう、両方の文言に主語を入れてある）。
    *
    * GA4レッグは displayStatus を見て出し分ける。統合前は ContentEvaluationCycleSettings が
    * canShowRunAction / canRunEvaluation でボタン自体を隠していたが、統合後はGSCの都合でボタンが
    * 出るため、GA4が回せない状態のときは「静かにスキップ」してエラートーストを出さない。
+   *
+   * 片方の失敗がもう片方を巻き込まないよう、両レッグを独立して try/catch する（レビュー指摘）:
+   * - GSCが例外を投げてもGA4レッグは必ず実行し、そのうえで例外を投げ直す
+   *   （投げ直さないと EvaluationSettings がGSCのエラートーストを出せない）
+   * - GA4の例外がGSCの成功結果を握り潰さないよう、GA4側の例外はここで飲み込む
+   *   （GA4のエラー表示は notifyGa4EvaluationResult / ga4EvaluationError が担う）
+   * - GSCの評価サイクルが未登録のときはGSCレッグ自体を回さない（回すと必ず失敗する）。
+   *   この場合ボタンはGA4専用の導線として機能する
    */
-  const handleRunEvaluationBoth = async () => {
-    const gscSummary = await dashboard.handleRunEvaluation();
-    // undefined はメールアドレス紐付け競合などでログイン回復へ飛ばされたケース。GA4へは進まない
-    if (gscSummary === undefined) return gscSummary;
-
-    const displayStatus = ga4Evaluation?.displayStatus ?? 'unassessed';
-    if (displayStatus === 'narrative_failed') {
+  const runGa4Leg = async () => {
+    if (ga4DisplayStatus === 'narrative_failed') {
       // 統合前の ContentEvaluationCycleSettings と同じく、診断コメントだけ失敗している場合は
       // 再評価ではなく文章の再生成へ振る（スコアは算出済みのため作り直す必要がない）
       await handleRetryGa4Narrative();
-      return gscSummary;
+      return;
     }
-    const canRunGa4 =
-      displayStatus === 'eligible' ||
-      displayStatus === 'evaluated' ||
-      displayStatus === 'evaluation_failed';
-    if (canRunGa4) {
-      await handleRunGa4Evaluation();
+    if (!canRunGa4) return;
+    await handleRunGa4Evaluation();
+  };
+
+  const handleRunEvaluationBoth = async () => {
+    const hasGscCycle = dashboard.detail?.evaluation != null;
+    let gscSummary: EvaluationResultSummary | undefined;
+    let gscError: unknown = null;
+
+    if (hasGscCycle) {
+      setRunningPhase('gsc');
+      try {
+        gscSummary = await dashboard.handleRunEvaluation();
+      } catch (error) {
+        gscError = error;
+      }
+      // undefined はメールアドレス紐付け競合などでログイン回復へ飛ばされたケース。
+      // 画面遷移中なのでGA4へは進まない
+      if (!gscError && gscSummary === undefined) {
+        setRunningPhase(null);
+        return undefined;
+      }
     }
+
+    setRunningPhase('ga4');
+    try {
+      await runGa4Leg();
+    } catch (error) {
+      // GA4の失敗でGSCの成功結果を失わせない。表示は notifyGa4EvaluationResult 側で行う
+      console.error('[GscDashboardClient] GA4 evaluation leg failed', error);
+    } finally {
+      setRunningPhase(null);
+    }
+
+    if (gscError) throw gscError;
     return gscSummary;
   };
 
@@ -258,6 +305,14 @@ export default function GscDashboardClient({
             onRegisterEvaluation={dashboard.handleRegisterEvaluation}
             onUpdateEvaluation={dashboard.handleUpdateEvaluation}
             onRunEvaluation={handleRunEvaluationBoth}
+            canRunWithoutCycle={canRunGa4}
+            runningPhaseLabel={
+              runningPhase === 'gsc'
+                ? '検索順位を評価しています...'
+                : runningPhase === 'ga4'
+                  ? 'コンテンツを評価しています...'
+                  : null
+            }
             onRunQueryImport={dashboard.handleRunQueryImport}
             onRefreshDetail={async (annotationId: string) => {
               await dashboard.refreshDetail(annotationId);

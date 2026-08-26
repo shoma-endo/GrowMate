@@ -31,6 +31,21 @@ const GA4_EVALUATION_DISPLAY_STATUSES = [
 
 export type Ga4EvaluationDisplayStatus = (typeof GA4_EVALUATION_DISPLAY_STATUSES)[number];
 
+/**
+ * GA4コンテンツ評価のスケジュール表示に必要な最小限。
+ *
+ * 2026-08-26にGSC検索順位評価とサイクルを1本へ統合したため、基準日・サイクル日数・実行時刻は
+ * `gsc_article_evaluations` の1行が正になった。GA4側の進捗（ga4_last_evaluated_on /
+ * ga4_last_seen_content_score）だけが系統別に持たれる（§6.6.2）。
+ */
+export interface Ga4EvaluationScheduleView {
+  baseEvaluationDate: string;
+  cycleDays: number;
+  evaluationHour: number;
+  ga4LastEvaluatedOn: string | null;
+  ga4LastSeenContentScore: number | null;
+}
+
 export type Ga4EvaluationErrorCode =
   | 'evaluation_run_expired'
   | 'ga4_api_error'

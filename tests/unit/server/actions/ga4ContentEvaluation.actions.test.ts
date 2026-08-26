@@ -5,11 +5,19 @@ const mocks = vi.hoisted(() => ({
   fetchEvaluation: vi.fn(),
   run: vi.fn(),
   retryNarrative: vi.fn(),
+  advanceCooldownForManualRun: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/server/middleware/auth.middleware', () => ({
   authMiddleware: mocks.authMiddleware,
+}));
+// 手動実行時のGA4クールダウン前進（2026-08-26）。実体は SupabaseService 経由で @/env を読むため、
+// アクションのテストでは丸ごとフェイクにする
+vi.mock('@/server/services/ga4ContentEvaluationBatchService', () => ({
+  ga4ContentEvaluationBatchService: {
+    advanceCooldownForManualRun: mocks.advanceCooldownForManualRun,
+  },
 }));
 vi.mock('@/server/services/ga4ContentEvaluationService', () => ({
   ga4ContentEvaluationService: {
@@ -126,5 +134,42 @@ describe('ga4ContentEvaluation actions', () => {
       success: false,
       error: ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED,
     });
+  });
+  it('手動評価が成功したらGA4側のクールダウンを進める（概要タブとコンテンツ評価タブで次回評価予定がズレるのを防ぐ）', async () => {
+    mocks.run.mockResolvedValue({
+      displayStatus: 'evaluated',
+      history: [{ id: 'history-1', contentScore: 72 }],
+    });
+
+    await runGa4ContentEvaluation({
+      annotationId: ANNOTATION_ID,
+      startDate: '2026-08-01',
+      endDate: '2026-08-30',
+    });
+
+    expect(mocks.advanceCooldownForManualRun).toHaveBeenCalledWith(USER_ID, ANNOTATION_ID, 72);
+  });
+
+  it('スコアが確定しない結末（insufficient_data等）ではクールダウンを進めない（自動リトライが1サイクル先に飛ぶのを防ぐ）', async () => {
+    mocks.run.mockResolvedValue({ displayStatus: 'insufficient_data', history: [] });
+
+    await runGa4ContentEvaluation({
+      annotationId: ANNOTATION_ID,
+      startDate: '2026-08-01',
+      endDate: '2026-08-30',
+    });
+
+    expect(mocks.advanceCooldownForManualRun).not.toHaveBeenCalled();
+  });
+
+  it('診断コメントの再生成ではクールダウンを進めない（スコアを算出し直していないため）', async () => {
+    mocks.retryNarrative.mockResolvedValue({
+      displayStatus: 'evaluated',
+      history: [{ id: 'history-1', contentScore: 72 }],
+    });
+
+    await retryGa4ContentEvaluationNarrative(ANNOTATION_ID);
+
+    expect(mocks.advanceCooldownForManualRun).not.toHaveBeenCalled();
   });
 });

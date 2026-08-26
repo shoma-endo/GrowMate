@@ -25,8 +25,7 @@ alter table public.gsc_article_evaluations
   -- ベースライン（初回計測）のコンテンツ力スコア。GSCの last_seen_position と同じ役割で、
   -- null = 未計測（次のdueで軽量パスへ分岐する）
   add column if not exists ga4_last_seen_content_score integer
-    check (ga4_last_seen_content_score is null
-           or (ga4_last_seen_content_score >= 0 and ga4_last_seen_content_score <= 100)),
+    check (ga4_last_seen_content_score between 0 and 100),
   -- 通知メールの冪等キー（BR-12）。送信済みの評価履歴ID。
   -- ga4_content_evaluation_history への外部キーは張らない: GSC側テーブルからGA4側テーブルへの
   -- クロスドメイン参照を作らないため。履歴が消えても値が残るだけで、二重送信は起きない
@@ -49,10 +48,18 @@ update public.gsc_article_evaluations
   where last_evaluated_on is not null
     and ga4_last_evaluated_on is null;
 
--- GA4のdue抽出用。GSC用の idx_gsc_article_evaluations_due（生成列 next_evaluation_date を使う）とは
--- 式が違うため別に持つ
+-- GA4のdue抽出用。GSC用の idx_gsc_article_evaluations_due は生成列 next_evaluation_date を使うが、
+-- GA4のdue式は ga4_last_evaluated_on 起点で別物なので専用に持つ。
+--
+-- 複合btree（status, ga4_last_evaluated_on, base_evaluation_date）ではなく**式index**にする理由:
+-- 述語は3列にまたがる式 coalesce(ga4_last_evaluated_on, base_evaluation_date) + coalesce(cycle_days, 30)
+-- で、列並びのbtreeでは境界条件を作れずプランナが使えない（複合btreeで実測するとSeq Scanになり、
+-- order by も必ずSortが入る）。式indexは述語と**字面が完全一致**していないとマッチしないため、
+-- RPC本体の where 句と同じ形で書くこと。
 create index if not exists idx_gsc_article_evaluations_ga4_due
-  on public.gsc_article_evaluations (status, ga4_last_evaluated_on, base_evaluation_date)
+  on public.gsc_article_evaluations (
+    ((coalesce(ga4_last_evaluated_on, base_evaluation_date)::date + coalesce(cycle_days, 30)))
+  )
   where status = 'active';
 
 -- 定期評価バッチのdue抽出RPC（§8.3 処理順序1）。
@@ -62,6 +69,15 @@ create index if not exists idx_gsc_article_evaluations_ga4_due
 -- 昇順の先頭に居座り、1,000行枠（db-max-rows）を恒久占有する（R-17）。
 -- なおGSC側のdue抽出（gscEvaluationService）はロールを見ていないが、GSCはLLMを呼ばないため
 -- 実害が小さい。GA4はLLMを呼ぶので、この絞り込みを落としてはいけない。
+--
+-- GA4連携済みユーザーだけに絞る理由（2026-08-26 レビュー指摘）: サイクル統合により、due の母集団が
+-- 「GA4サイクルを登録済みの記事」から「admin/paid の active な gsc_article_evaluations すべて」へ
+-- 広がった。GSCとGA4は別々に連携するため、GSC評価サイクルは動いているがGA4は未連携という
+-- ユーザーが実在しうる。その記事を due に含めると、毎時のバッチ枠（MAX_ARTICLES_PER_BATCH = 20）を
+-- 取込失敗で空回りして消費し、連携済みユーザーの評価が後回しになる。さらにGSCの一括評価開始
+-- （最大1,000件）と組み合わさると、同数のLLM呼び出しと通知メールが発生しうる。
+-- exists を使い join にしない理由: gsc_credentials は user 1行を前提としているが、万一重複しても
+-- due 行を複製しないため（join だと行数が増え、同じ記事を同一バッチ内で二重評価する）。
 --
 -- due 日が p_today_jst と等しい行は evaluation_hour の判定をアプリ側で行う（§6.6.2）ため、
 -- ここでは日付のみで絞り込む。
@@ -98,6 +114,12 @@ as $$
     and (coalesce(e.ga4_last_evaluated_on, e.base_evaluation_date)::date
           + coalesce(e.cycle_days, 30)) <= p_today_jst
     and u.role in ('admin', 'paid')
+    and exists (
+      select 1
+      from public.gsc_credentials c
+      where c.user_id = e.user_id
+        and c.ga4_property_id is not null
+    )
   order by ga4_next_evaluation_date asc, e.id asc;
 $$;
 
@@ -105,6 +127,8 @@ revoke execute on function public.list_due_ga4_content_evaluations(date) from pu
 grant execute on function public.list_due_ga4_content_evaluations(date) to service_role;
 
 -- Rollback:
+-- （再適用時の注意: この関数は create or replace のため、ロールバック後に旧定義へ戻す手段は無い。
+--  本ファイルはどの環境にも未適用のため、巻き戻しは関数ごと drop する運用でよい）
 -- drop function if exists public.list_due_ga4_content_evaluations(date);
 -- drop index if exists public.idx_gsc_article_evaluations_ga4_due;
 -- alter table public.gsc_article_evaluations

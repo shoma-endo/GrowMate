@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   sendEmail: vi.fn(),
   updateCalls: [] as Record<string, unknown>[],
   userEmail: null as string | null,
+  notifiedHistoryId: null as string | null,
 }));
 
 vi.mock('@/server/services/ga4ContentEvaluationService', () => ({
@@ -86,7 +87,10 @@ vi.mock('@/server/services/supabaseService', () => {
           rpc: mocks.rpc,
           from: (table: string) => {
             if (table === 'gsc_article_evaluations') {
-              return new FakeQuery({ data: { ga4_last_notified_history_id: null }, error: null });
+              return new FakeQuery({
+                data: { id: 'cycle-1', ga4_last_notified_history_id: mocks.notifiedHistoryId },
+                error: null,
+              });
             }
             if (table === 'users') {
               return new FakeQuery({ data: { email: mocks.userEmail }, error: null });
@@ -155,12 +159,36 @@ function buildEvaluatedView(contentScore: number): Ga4ContentEvaluationView {
   };
 }
 
+/**
+ * ga4ImportService.syncUser() の成功戻り値。
+ *
+ * ここを `undefined` にすると実装の `syncResult.ok` が TypeError を投げ、catch 節が
+ * syncFailed = true にしてしまう（2026-08-26 レビューで検出。全ケースが「取込失敗」状態で
+ * 走っており、クールダウンが進む正常系が一度もテストされていなかった）。
+ * 失敗を意図するケースだけ、各テスト側で明示的に上書きする。
+ */
+function syncOk(userId: string) {
+  return {
+    ok: true as const,
+    data: {
+      userId,
+      propertyId: 'properties/123',
+      startDate: '2026-01-01',
+      endDate: '2026-03-31',
+      upserted: 10,
+      isSampled: false,
+      isPartial: false,
+    },
+  };
+}
+
 describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.updateCalls.length = 0;
     mocks.userEmail = null;
-    mocks.syncUser.mockResolvedValue(undefined);
+    mocks.notifiedHistoryId = null;
+    mocks.syncUser.mockImplementation(async (userId: string) => syncOk(userId));
   });
 
   it('last_seen_content_score=null（初回due）は軽量パス（computeBaselineScore）へ分岐し、LLM・履歴・メールなしにlast_seen_content_scoreのみ更新する。1,000行上限の取りこぼしはskippedDueToLimitへ合算される（D10再反転の回帰防止・🔴指摘#4）', async () => {
@@ -199,6 +227,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
     expect(cooldownUpdate).toEqual({
       ga4_last_evaluated_on: expect.any(String),
+      updated_at: expect.any(String),
       ga4_last_seen_content_score: 55,
     });
   });
@@ -239,6 +268,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
     expect(cooldownUpdate).toEqual({
       ga4_last_evaluated_on: expect.any(String),
+      updated_at: expect.any(String),
       ga4_last_seen_content_score: 70,
     });
     for (const payload of mocks.updateCalls) {
@@ -271,7 +301,10 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
     // contentScore が undefined のときは last_seen_content_score をペイロードに含めない
     // （advanceCooldown の仕様。null で上書きせず既存値=nullのまま維持する）
-    expect(cooldownUpdate).toEqual({ ga4_last_evaluated_on: expect.any(String) });
+    expect(cooldownUpdate).toEqual({
+      ga4_last_evaluated_on: expect.any(String),
+      updated_at: expect.any(String),
+    });
   });
 
   it('軽量パスで last_seen_content_score が埋まった後の次回dueは、フルパス（run()）で評価される（GSCの2回目以降と同型）', async () => {
@@ -299,7 +332,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     // 2回目: 1回目のbaseline成功で last_seen_content_score が埋まった状態（次回due）→ フルパス
     vi.clearAllMocks();
     mocks.updateCalls.length = 0;
-    mocks.syncUser.mockResolvedValue(undefined);
+    mocks.syncUser.mockImplementation(async (userId: string) => syncOk(userId));
     const secondRow = { ...firstRow, ga4_last_evaluated_on: '2020-01-31', ga4_last_seen_content_score: 45 };
     mockRpcRange({ data: [secondRow], error: null, count: 1 });
     mocks.run.mockResolvedValue(buildEvaluatedView(60));
@@ -410,5 +443,90 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     expect(mocks.sendEmail).not.toHaveBeenCalled();
     const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
     expect(cooldownUpdate).toBeUndefined();
+  });
+  it('取込に失敗しても、due日が過去（当日より前）ならクールダウンは通常どおり進む（§6.6.4。抑止は当日分だけ）', async () => {
+    const dueRow = {
+      id: 'cycle-past-due',
+      user_id: 'user-past',
+      content_annotation_id: 'annotation-past',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: '2020-01-01',
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: '2020-01-31', // today より前
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mocks.syncUser.mockResolvedValue({ ok: false, reason: 'not_connected' });
+    mocks.run.mockResolvedValue(buildEvaluatedView(60));
+
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+
+    expect(result.syncFailedUsers).toBe(1);
+    // 当日ではないので抑止しない。抑止し続けると、取込が壊れている間その記事が永久に評価されない
+    expect(result.articlesSkippedSyncFailed).toBe(0);
+    expect(result.articlesEvaluated).toBe(1);
+    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
+    expect(cooldownUpdate).toBeDefined();
+  });
+
+  it("syncUserの{ok:false, reason:'already_synced'}は正常系として扱い、syncFailedにしない（直近同期済みで新規取込が無いだけ）", async () => {
+    const todayJst = formatJstDateISO(new Date());
+    const dueRow = {
+      id: 'cycle-already',
+      user_id: 'user-already',
+      content_annotation_id: 'annotation-already',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: '2020-01-01',
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: todayJst, // 抑止が効くならここで止まる
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mocks.syncUser.mockResolvedValue({ ok: false, reason: 'already_synced' });
+    mocks.run.mockResolvedValue(buildEvaluatedView(60));
+
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+
+    expect(result.syncFailedUsers).toBe(0);
+    expect(result.articlesSkippedSyncFailed).toBe(0);
+    expect(result.articlesEvaluated).toBe(1);
+  });
+
+  it('due抽出RPCが失敗したら例外を投げる（0件と区別する。握り潰すとCronが緑のまま全記事の評価が止まる）', async () => {
+    mockRpcRange({ data: null, error: { message: 'rpc exploded' }, count: null });
+
+    await expect(ga4ContentEvaluationBatchService.runAllDueEvaluations()).rejects.toThrow(
+      /due extraction failed/
+    );
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
+  it('同じ評価履歴IDに対しては通知メールを送らない（BR-12。ga4_last_notified_history_id による冪等）', async () => {
+    const dueRow = {
+      id: 'cycle-1',
+      user_id: 'user-dup',
+      content_annotation_id: 'annotation-dup',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: '2020-01-01',
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: '2020-01-31',
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mocks.userEmail = 'user@example.test';
+    // buildEvaluatedView が返す履歴IDと同じ値が既に通知済みとして保存されている状態
+    mocks.notifiedHistoryId = 'history-1';
+    mocks.run.mockResolvedValue(buildEvaluatedView(60));
+
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(result.emailsSent).toBe(0);
+    expect(result.emailsFailed).toBe(0);
+    // 評価そのものは行われ、クールダウンも進む（通知だけを抑止する）
+    expect(result.articlesEvaluated).toBe(1);
   });
 });
