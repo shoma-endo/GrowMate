@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildInstagramHref, type AnalyticsHrefState } from '@/../app/analytics/build-href';
 
-// 一覧の状態フィルタは 2026-08-26 のサイクル統合で「評価未開始」1つになった
+// 一覧の状態フィルタは 2026-08-26 のサイクル統合で「評価未設定」1つになった
 // （フェーズ3で足した「コンテンツ評価未開始」＝ `ga4_evaluation` を撤回し、develop と同じ構成へ戻した）。
 // build-href.ts は副作用ゼロの純関数なのにテストが無く、次に誰かが
 // `hasUnstartedGscEvaluation` を消し忘れる／消しすぎる余地があったため新設する。
@@ -25,7 +25,7 @@ function buildState(overrides: Partial<AnalyticsHrefState> = {}): AnalyticsHrefS
 }
 
 describe('buildInstagramHref', () => {
-  it('「評価未開始」フィルタはタブを切り替えても維持される', () => {
+  it('「評価未設定」フィルタはタブを切り替えても維持される', () => {
     const href = buildInstagramHref(buildState({ hasUnstartedGscEvaluation: true }), {
       tab: 'instagram',
     });

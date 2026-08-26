@@ -13,7 +13,7 @@ interface CategoryFilterProps {
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
   /**
-   * 「評価未開始」＝評価サイクルが未登録の記事。
+   * 「評価未設定」＝評価サイクルが未登録の記事。
    * 2026-08-26 のサイクル統合で、サイクルを登録した時点でGSC検索順位評価とGA4コンテンツ評価が
    * 同時に始まるようになったため、系統別の「未開始」は存在しない。かつて併存していた
    * 「コンテンツ評価未開始」（= ga4_content_evaluations に行が無い）は「開始したか」ではなく
@@ -97,7 +97,7 @@ export default function CategoryFilter({
               onCheckedChange={checked => onUnstartedGscEvaluationChange(!!checked)}
             />
             <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-            <span className="text-sm font-medium text-blue-800">評価未開始</span>
+            <span className="text-sm font-medium text-blue-800">評価未設定</span>
           </label>
         </div>
         <div className="border rounded-md px-2 py-2">

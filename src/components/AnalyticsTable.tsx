@@ -435,7 +435,7 @@ export default function AnalyticsTable({
     );
   };
 
-  // 評価未開始フィルターの変更ハンドラ
+  // 評価未設定フィルターの変更ハンドラ
   const handleUnstartedGscEvaluationChange = (next: boolean) => {
     setIsFilteringUnstartedGscEvaluation(next);
     if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
@@ -505,7 +505,7 @@ export default function AnalyticsTable({
     );
   };
 
-  // 評価未開始フィルターの削除ハンドラ
+  // 評価未設定フィルターの削除ハンドラ
   const removeUnstartedGscEvaluationFilter = () => {
     setIsFilteringUnstartedGscEvaluation(false);
     if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
@@ -809,12 +809,12 @@ export default function AnalyticsTable({
                     )}
                     {isFilteringUnstartedGscEvaluation && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-blue-800 bg-blue-100">
-                        評価未開始
+                        評価未設定
                         <button
                           type="button"
                           onClick={removeUnstartedGscEvaluationFilter}
                           className="hover:bg-blue-200 rounded-full p-0.5"
-                          title="評価未開始フィルターを解除"
+                          title="評価未設定フィルターを解除"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -843,7 +843,7 @@ export default function AnalyticsTable({
               {items.length === 0 ? (
                 <p className="text-sm text-gray-500 py-8 text-center">
                   {/* 2026-08-26: 旧実装は hasUnstartedGa4Evaluation を見ており、
-                      「評価未開始」だけを選んで0件になったときに「まだコンテンツがありません」と
+                      「評価未設定」だけを選んで0件になったときに「まだコンテンツがありません」と
                       出る取りこぼしがあった。GA4フィルタ廃止にあわせて GSC 側を見るよう直した */}
                   {hasUrlFilterParams || hasUnreadSuggestion || hasUnstartedGscEvaluation
                     ? '表示条件に一致するコンテンツがありません。フィルタを変更してください。'
