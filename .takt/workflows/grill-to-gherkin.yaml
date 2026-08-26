@@ -1,8 +1,9 @@
 name: grill-to-gherkin
-description: 要件を対話で明確化し、Gherkinと概算の着手判断を人間承認で確定してから仕様書・コード編集前に止める前段 workflow
+description: >-
+  要件を対話で明確化し、既存実装の再利用・拡張候補を提案したうえで、
+  Gherkinと概算の着手判断を人間承認で確定してから仕様書・コード編集前に止める前段 workflow
 max_steps: 20
 initial_step: grill
-interactive_mode: grill-me
 
 steps:
   - name: grill

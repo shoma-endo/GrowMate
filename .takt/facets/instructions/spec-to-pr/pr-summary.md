@@ -11,7 +11,7 @@ push 前に、下記に全文添付された最新レポート群から、PR 本
   - 禁止: `[Auto]` 接頭辞、ブランチ名だけのタイトル、`実装完了` / `対応完了` などの自己申告、英語のみ、conventional commits 接頭辞（`feat:` 等）。
 - 必須セクション（この順）:
   1. `## 概要` — 何を・なぜ変えたか（仕様起点、2〜4文）
-  2. `## 関連仕様書` — `docs/plans/` のパス。`self-review.md` が完全実装と判定した場合は「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動」と明記する。部分実装の場合は「`docs/plans/` に残置（未実装: ○○）」と明記する
+  2. `## 関連仕様書` — `plan.md` の `# タスク計画` 直後の `対象仕様書:` パス（なければ `self-review.md` の記載）。`self-review.md` が完全実装と判定した場合は「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動」と明記する。部分実装の場合は「`docs/plans/` に残置（未実装: ○○）」と明記する
   3. `## 変更要点` — 主要変更のみ（ファイル一覧の羅列は禁止。カテゴリ単位で3〜7点）
   4. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
   5. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く

@@ -1,10 +1,15 @@
 name: spec-review
 description: >-
   GrowMate docs/plans specification review against spec-review skill checklist and spec revision loop.
-  MVP delivery comes first (see CLAUDE.md Core Rules and the growmate knowledge facet). A checklist item
-  is never a reason to invent a requirement. Do not flag the absence of requirements-free safety
-  machinery such as kill switches, feature flags, dedicated settings tables, monitoring dashboards or
-  redundancy; flag over-implementation of such machinery as needs_fix instead. A review cannot complete while in-scope client questions, implementation decisions, external inputs, or approval gates remain unresolved. Regenerates the spec's HTML visualization when the spec changed. Commits docs changes on the current branch only (no new branch, no push). Run before spec-to-pr.
+  MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md
+  (all_steps.rules). A review cannot complete while in-scope client questions, implementation
+  decisions, external inputs, or approval gates remain unresolved. Regenerates the spec's HTML
+  visualization when the spec changed. Commits docs changes on the current branch only (no new
+  branch, no push). Run before spec-to-pr.
+all_steps:
+  rules:
+    - ref: mvp-scope
+      position: before_instruction
 max_steps: 12
 initial_step: identify
 loop_monitors:
@@ -152,4 +157,4 @@ steps:
     output_contracts:
       report:
         - name: spec-review-summary.md
-          format: summary
+          format: spec-review/summary

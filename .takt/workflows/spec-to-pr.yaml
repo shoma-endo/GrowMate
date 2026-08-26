@@ -1,5 +1,9 @@
 name: spec-to-pr
-description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, and PR creation with review summary body.
+description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, and PR creation with review summary body. MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md (all_steps.rules). Reviewers attach previous reviews + fix-result for follow-up (finding_id / persists); unfixable residuals exit via cannot_fix rather than endless fix loops.
+all_steps:
+  rules:
+    - ref: mvp-scope
+      position: before_instruction
 workflow_config:
   # run 開始前に Cursor / Codex CLI の認証を fail-fast 検査する（review /
   # create_pr が cursor、coder 系・supervisor・内部エージェントが codex のため）。
@@ -24,6 +28,7 @@ loop_monitors:
       instruction: |
         reviewers（AIアンチパターン＋アーキテクチャの並列レビュー） -> fix のループが {cycle_count} 回繰り返されました。
         閾値到達後はループ継続不可。下記に全文添付された最新のレビュー2本と修正結果を確認し、収束して抜けられるか・ABORT するかを二択で判断してください。run ディレクトリやレポートパスの探索はしないでください。
+        `finding_id` 単位で見る。fix-result が `cannot_fix` / `not_applicable` と記録した ID、および persists のみで新規実害がない場合は方針差分として抜け候補。
         残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として readme_sync を経て self_review に進めてください。
         まだ直せそう・進捗がありそう、だけでは reviewers へ戻さないでください。必要なら ABORT し、人間が再実行します。
 
@@ -52,7 +57,7 @@ loop_monitors:
       instruction: |
         self_review -> self_review_fix -> readme_sync のループが {cycle_count} 回繰り返されました。
         閾値到達後はループ継続不可。下記に全文添付された最新の self-review と修正結果を確認し、収束して抜けられるか・ABORT するかを二択で判断してください。run ディレクトリやレポートパスの探索はしないでください。
-        残件が「手動ブラウザ確認未実施」または管理者作業（マイグレーション適用・型再生成・pendingファイル削除）のみの場合は、追加修正で解消不能な残件として prepare_pr_summary に進めてください。
+        fix-result が追加修正不能（`cannot_fix`）と記録した残件、および「手動ブラウザ確認未実施」または管理者作業（マイグレーション適用・型再生成・pendingファイル削除）のみの場合は、追加修正で解消不能な残件として prepare_pr_summary に進めてください。
         まだ直せそう・進捗がありそう、だけでは self_review へ戻さないでください。必要なら ABORT し、人間が再実行します。
 
         ## self-review.md（最新・全文）
@@ -81,11 +86,11 @@ steps:
     capabilities: readonly
     instruction: spec-to-pr/plan
     rules:
-      - condition: 要件が明確で実装可能、かつ仕様書メタデータ `- ステータス:` が approved または implemented、かつ（UIたたき台／UIモックの実装前ゲートが無い、または承認済み）、かつ spec-review が対象スコープの未解決事項なしで approved（新規または既存 WIP/PR への差分追記を含む。未適用マイグレーションへの対応は Pending Migration Types パターンで実装可能なため「明確」に含む。UI 無し・ゲート無しはゲート条件を満たす）
+      - condition: 実装前提を満たし実装可能（ステータス approved/implemented、UIゲート充足、spec-review 未解決なし）
         next: implement
       - condition: ユーザーが質問をしている（実装タスクではない）
         next: COMPLETE
-      - condition: 要件が不明確、情報不足、メタデータ `- ステータス:` が approved/implemented 以外、または（UI 実装があり UIたたき台／UIモックの実装前ゲートが未承認）（仕様書の修正またはたたき台承認が必要。マイグレーション未適用のみを理由にしない。UI 無しでゲートも無い場合はこの条件を選ばない）
+      - condition: 実装前提を満たさない（ステータス不正、UIゲート未承認、spec-review 未解決、情報不足）
         next: ABORT
         appendix: |
           仕様書の修正、または UI たたき台の承認が必要です。次を確認してください。
@@ -100,7 +105,7 @@ steps:
     output_contracts:
       report:
         - name: plan.md
-          format: plan
+          format: spec-to-pr/plan
 
   - name: implement
     tags:
@@ -122,12 +127,14 @@ steps:
         cwd: .
         timeout_ms: 900000
     rules:
-      - condition: 実装と必須検証が完了した（必須検証＝quality_gates の `npm run verify` 成功。マイグレーションのリモート適用・実DB/RLS実環境・外部API/LLM実通信・ブラウザ表示確認は無人運用の検証対象外であり、未実施はこの条件の選択を妨げない。レポートの未確認範囲に記載して先へ進む）
+      - condition: 実装と必須検証（npm run verify）が完了した
         next: reviewers
       - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
         next: plan
-      - condition: 判断できない、情報不足（仕様書の修正が必要。無人運用で実施不能な検証〔実DB・実API・ブラウザ・マイグレーション適用〕の未実施だけを理由にこの条件を選ばない）
+        command_gates: skip
+      - condition: 判断できない、情報不足（仕様書の修正が必要）
         next: ABORT
+        command_gates: skip
     output_contracts:
       report:
         - name: coder-scope.md
@@ -152,7 +159,9 @@ steps:
         knowledge:
           - growmate
         capabilities: readonly
-        instruction: ai-antipattern-review
+        instruction:
+          - ai-antipattern-review
+          - spec-to-pr/review-follow-up
         rules:
           - condition: approved
           - condition: needs_fix
@@ -177,7 +186,9 @@ steps:
           report:
             - name: architecture-review.md
               format: architecture-review
-        instruction: spec-to-pr/architecture-review
+        instruction:
+          - spec-to-pr/architecture-review
+          - spec-to-pr/review-follow-up
     rules:
       - condition: all("approved")
         next: readme_sync
@@ -211,10 +222,13 @@ steps:
         next: reviewers
       - condition: when(structured.fix.verdict == "info_missing")
         next: plan
+        command_gates: skip
       - condition: when(structured.fix.verdict == "spec_changed")
         next: plan
+        command_gates: skip
       - condition: when(structured.fix.verdict == "stuck")
         next: ABORT
+        command_gates: skip
     output_contracts:
       report:
         - name: fix-result.md
@@ -249,10 +263,13 @@ steps:
         next: readme_sync
       - condition: when(structured.self_review_fix.verdict == "arch_impact")
         next: reviewers
+        command_gates: skip
       - condition: when(structured.self_review_fix.verdict == "info_missing")
         next: plan
+        command_gates: skip
       - condition: when(structured.self_review_fix.verdict == "stuck")
         next: ABORT
+        command_gates: skip
     output_contracts:
       report:
         - name: fix-result.md
@@ -324,7 +341,7 @@ steps:
     output_contracts:
       report:
         - name: pr-summary.md
-          format: summary
+          format: spec-to-pr/pr-summary
 
   - name: create_pr
     tags:
