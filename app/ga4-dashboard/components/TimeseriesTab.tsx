@@ -44,7 +44,7 @@ export function TimeseriesTab({
   const formatNumber = (num: number) => num.toLocaleString();
   const formatPercent = (num: number | null) => num === null ? '-' : `${num.toFixed(1)}%`;
 
-  // 訪問数用のYAxisドメイン
+  // セッション用のYAxisドメイン
   const sessionsDomain = data.length > 0
     ? [0, Math.max(...data.map((d) => d.sessions)) * 1.1]
     : [0, 100];
@@ -82,11 +82,8 @@ export function TimeseriesTab({
           {data.date}
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <div className="text-gray-600">訪問数:</div>
-          <div className="text-right font-medium">{formatNumber(data.sessions)}</div>
-
           <div className="text-gray-600">セッション:</div>
-          <div className="text-right font-medium">{formatNumber(data.users)}</div>
+          <div className="text-right font-medium">{formatNumber(data.sessions)}</div>
 
           <div className="text-gray-600">平均エンゲージメント時間:</div>
           <div className="text-right font-medium">
@@ -215,7 +212,10 @@ export function TimeseriesTab({
                 wrapperStyle={{ fontSize: 12 }}
               />
 
-              {/* 訪問数（常時表示） */}
+              {/* セッション（常時表示）。
+                  users は sessions のコピーなので、以前はここに完全に重なる青い線がもう1本あった。
+                  同じY軸・同じ値で後から描かれるため緑を覆い隠しており、凡例で片方を消しても
+                  見た目が変わらなかった。 */}
               <Line
                 yAxisId="sessions"
                 type="monotone"
@@ -223,18 +223,6 @@ export function TimeseriesTab({
                 stroke="#22c55e"
                 strokeWidth={2}
                 dot={{ r: 3 }}
-                name="訪問数"
-                connectNulls={false}
-              />
-
-              {/* セッション（常時表示） */}
-              <Line
-                yAxisId="sessions"
-                type="monotone"
-                dataKey="users"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={false}
                 name="セッション"
                 connectNulls={false}
               />

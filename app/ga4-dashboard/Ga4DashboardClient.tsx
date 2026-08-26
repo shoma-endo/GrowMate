@@ -530,7 +530,7 @@ export default function Ga4DashboardClient({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="sessions">訪問数</SelectItem>
+                <SelectItem value="sessions">セッション</SelectItem>
                 <SelectItem value="cvr">問い合わせ率</SelectItem>
                 <SelectItem value="readRate">完読率</SelectItem>
                 <SelectItem value="avgEngagementTimeSec">

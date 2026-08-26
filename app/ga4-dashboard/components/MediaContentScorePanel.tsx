@@ -34,16 +34,16 @@ export function MediaContentScorePanel({ scores }: { scores: Ga4MediaContentScor
           <div className="rounded-md border p-4">
             <p className="text-sm text-muted-foreground">実効スコア</p>
             <p className="text-2xl font-bold">{scores.effectiveScore ?? '—'}</p>
-            <p className="text-xs text-muted-foreground">訪問数で重み付けした平均</p>
+            <p className="text-xs text-muted-foreground">セッション数で重み付けした平均</p>
           </div>
         </div>
 
         <p className="text-sm text-muted-foreground">
           {scores.effectiveScore !== null && scores.assetValueScore !== null && scores.effectiveScore > scores.assetValueScore
-            ? '実効スコアが高い状態です。訪問の多い記事は健全です。低スコア記事を整理して資産価値を引き上げます。'
+            ? '実効スコアが高い状態です。セッションの多い記事は健全です。低スコア記事を整理して資産価値を引き上げます。'
             : scores.effectiveScore !== null && scores.assetValueScore !== null && scores.effectiveScore < scores.assetValueScore
-              ? '実効スコアが低い状態です。訪問の多い低スコア記事を最優先で改善します。'
-              : '2つのスコアを比較して、訪問の多い記事から改善します。'}
+              ? '実効スコアが低い状態です。セッションの多い低スコア記事を最優先で改善します。'
+              : '2つのスコアを比較して、セッションの多い記事から改善します。'}
         </p>
 
         {scores.points.length > 0 ? (

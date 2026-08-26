@@ -59,7 +59,7 @@ export function RankingTab({
       {/* テーブルヘッダー・デスクトップのみ */}
       <div className="hidden md:grid grid-cols-6 gap-4 px-4 py-2 bg-gray-50 rounded-t-lg text-sm font-medium text-gray-700">
         <div>ページ</div>
-        <div className="text-right">訪問数</div>
+        <div className="text-right">セッション</div>
         <div className="text-right">問い合わせ率</div>
         <div className="text-right">完読率</div>
         <div className="text-right">滞在時間</div>
@@ -105,11 +105,11 @@ export function RankingTab({
                   </div>
                 </div>
                 <div className="text-xs text-gray-500 mt-1 md:hidden">
-                  訪問数: {formatNumber(item.sessions)}
+                  セッション: {formatNumber(item.sessions)}
                 </div>
               </div>
 
-              {/* 訪問数 */}
+              {/* セッション */}
               <div className="hidden md:block text-right">
                 <div className="font-medium text-gray-900">
                   {formatNumber(item.sessions)}

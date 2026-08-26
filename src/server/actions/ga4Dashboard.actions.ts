@@ -359,7 +359,7 @@ export async function fetchGa4DashboardTimeseries(input: unknown): Promise<
       return { success: true, data: [] };
     }
 
-    // 未指定なら期間合算の訪問数トップを対象にする。
+    // 未指定なら期間合算のセッション数トップを対象にする。
     // ランキングRPCを limit 1 で呼べば、日次行を持ってこずに1件だけ引ける
     let targetNormalizedPath = normalizedPath;
     if (!targetNormalizedPath) {

@@ -28,15 +28,18 @@ export function SummaryCards({ summary, isLoading }: Props) {
   };
 
   const cards = [
-    {
-      label: '総訪問数',
-      value: formatNumber(summary.totalSessions),
-      color: 'green',
-    },
+    // GA4 の sessions は「セッション」（§10.7 / ui-text.md）。
+    // 以前は sessions を「総訪問数」、その代用値でしかない users を「セッション」と
+    // 呼んでおり、正しい語が間違ったフィールドに付いていた。
+    //
+    // users は取込側で `const users = sessions` としているため（ga4ImportService.ts。
+    // totalUsers は landingPage 軸と非互換で、CVR の分母を確保するための代用）、
+    // 常に sessions と同じ数値になる。同じ数字を2枚見せる意味が無いのでカードを1枚に統合した。
+    // totalUsers 自体は ga4-dashboard-mapping.ts の CVR 分母として使い続ける。
     {
       label: 'セッション',
-      value: formatNumber(summary.totalUsers),
-      color: 'blue',
+      value: formatNumber(summary.totalSessions),
+      color: 'green',
     },
     {
       label: '平均エンゲージメント時間',
