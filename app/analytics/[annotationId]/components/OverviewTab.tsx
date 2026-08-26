@@ -19,7 +19,6 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { EvaluationSettings } from '../EvaluationSettings';
-import { ContentEvaluationCycleSettings } from '../ContentEvaluationCycleSettings';
 import { MetricsSummaryCards } from './MetricsSummaryCards';
 import { SuggestionDataReadiness } from './SuggestionDataReadiness';
 import type {
@@ -29,7 +28,6 @@ import type {
   GscChartDataPoint,
 } from '../types';
 import type { EvaluationResultSummary } from '@/types/gsc';
-import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
 import type { TrendLineChartProps } from './TrendLineChart';
 
 const TrendLineChart = dynamic<TrendLineChartProps>(
@@ -51,10 +49,6 @@ interface OverviewTabProps {
   ) => Promise<void>;
   onUpdateEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
   onRunEvaluation: () => Promise<EvaluationResultSummary | undefined>;
-  /** コンテンツ評価サイクル設定カードの「今すぐ評価を実行」ボタン用（§10.8。2026-08-25 コンテンツ評価タブから移動） */
-  ga4Evaluation: Ga4ContentEvaluationView | null;
-  onRunGa4Evaluation: () => Promise<void>;
-  onRetryGa4Narrative?: () => Promise<void>;
   onRunQueryImport: () => Promise<
     | {
         querySummary: {
@@ -86,9 +80,6 @@ export function OverviewTab({
   onRegisterEvaluation,
   onUpdateEvaluation,
   onRunEvaluation,
-  ga4Evaluation,
-  onRunGa4Evaluation,
-  onRetryGa4Narrative,
   onRunQueryImport,
   onRefreshDetail,
 }: OverviewTabProps) {
@@ -218,23 +209,16 @@ export function OverviewTab({
           {...(onRefreshDetail && { onUpdate: onRefreshDetail })}
         />
 
-        {/* 評価設定（検索順位評価サイクル・コンテンツ評価サイクルを横並びで表示。§10.8） */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {detail.credential?.propertyUri && (
-            <EvaluationSettings
-              currentEvaluation={detail.evaluation}
-              onRegister={onRegisterEvaluation}
-              onUpdate={onUpdateEvaluation}
-              onRunEvaluation={onRunEvaluation}
-            />
-          )}
-          <ContentEvaluationCycleSettings
-            annotationId={detail.annotation.id}
-            evaluation={ga4Evaluation}
-            onRun={onRunGa4Evaluation}
-            {...(onRetryGa4Narrative ? { onRetryNarrative: onRetryGa4Narrative } : {})}
+        {/* 評価設定。2026-08-26にサイクルを1本へ統合したため、カードは1枚に戻した。
+            この設定でGA4コンテンツ評価も同じ周期・同じ時刻に実行される（§6.6） */}
+        {detail.credential?.propertyUri && (
+          <EvaluationSettings
+            currentEvaluation={detail.evaluation}
+            onRegister={onRegisterEvaluation}
+            onUpdate={onUpdateEvaluation}
+            onRunEvaluation={onRunEvaluation}
           />
-        </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -5,7 +5,7 @@ import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
  * displayStatus では判定しない。history[0] が「今回の run() 呼び出しが作った履歴行」で
  * あることを startedAt で確認し、その行の status（永続6値）を結末とする。
  */
-export type Ga4CycleBatchOutcome =
+export type Ga4ContentEvaluationBatchOutcome =
   | 'evaluated'
   | 'narrative_failed'
   | 'insufficient_data'
@@ -17,12 +17,12 @@ export type Ga4CycleBatchOutcome =
   | 'unknown_error'
   // 定期評価バッチの初回パス（ベースラインのみ。LLM・通知なし）が成功した結末。
   // ga4_content_evaluation_history には対応する行が存在しない（永続statusではない）。
-  // classifyGa4BatchRunResult では生成されず、ga4ContentEvaluationCycleService の
+  // classifyGa4BatchRunResult では生成されず、ga4ContentEvaluationBatchService の
   // runBaselinePass が直接組み立てる（GSCの baseline_initialized と同型）。
   | 'baseline_initialized';
 
-export interface Ga4CycleBatchOutcomeResult {
-  outcome: Ga4CycleBatchOutcome;
+export interface Ga4ContentEvaluationBatchOutcomeResult {
+  outcome: Ga4ContentEvaluationBatchOutcome;
   historyId: string | null;
   /** §6.6.4 クールダウンの表に従い、last_evaluated_on を進めるべきか */
   shouldAdvanceCooldown: boolean;
@@ -37,7 +37,7 @@ export interface Ga4CycleBatchOutcomeResult {
 export function classifyGa4BatchRunResult(
   view: Ga4ContentEvaluationView,
   callStartedAtMs: number
-): Ga4CycleBatchOutcomeResult {
+): Ga4ContentEvaluationBatchOutcomeResult {
   const latest = view.history[0];
   const hasFreshHistory = latest !== undefined && Date.parse(latest.startedAt) >= callStartedAtMs;
 
@@ -60,7 +60,7 @@ export function classifyGa4BatchRunResult(
 }
 
 /** run() が例外を投げた場合の結末判定（§8.3 手順1）。 */
-export function classifyGa4BatchRunError(error: unknown): Ga4CycleBatchOutcomeResult {
+export function classifyGa4BatchRunError(error: unknown): Ga4ContentEvaluationBatchOutcomeResult {
   if (error instanceof Error && error.message.includes('already running')) {
     return { outcome: 'already_running', historyId: null, shouldAdvanceCooldown: false, isUnexpected: false };
   }

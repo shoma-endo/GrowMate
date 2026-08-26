@@ -128,6 +128,54 @@ export default function GscDashboardClient({
     setGa4Evaluation(result.data);
   };
 
+  /**
+   * 「今すぐ評価を実行」の本体（§10.8）。
+   *
+   * 2026-08-26にGSC検索順位評価とGA4コンテンツ評価のサイクルを1本へ統合したため、ボタンも1つに
+   * 統合し、押すと両方を順に実行する。GSCの結果（EvaluationResultSummary）をそのまま返すので、
+   * EvaluationSettings.tsx は無改修のまま既存のトーストを出せる。GA4側の結果は
+   * notifyGa4EvaluationResult が自前でトーストを出すため、トーストは2つ表示される。
+   *
+   * GA4レッグは displayStatus を見て出し分ける。統合前は ContentEvaluationCycleSettings が
+   * canShowRunAction / canRunEvaluation でボタン自体を隠していたが、統合後はGSCの都合でボタンが
+   * 出るため、GA4が回せない状態のときは「静かにスキップ」してエラートーストを出さない。
+   */
+  const handleRunEvaluationBoth = async () => {
+    const gscSummary = await dashboard.handleRunEvaluation();
+    // undefined はメールアドレス紐付け競合などでログイン回復へ飛ばされたケース。GA4へは進まない
+    if (gscSummary === undefined) return gscSummary;
+
+    const displayStatus = ga4Evaluation?.displayStatus ?? 'unassessed';
+    if (displayStatus === 'narrative_failed') {
+      // 統合前の ContentEvaluationCycleSettings と同じく、診断コメントだけ失敗している場合は
+      // 再評価ではなく文章の再生成へ振る（スコアは算出済みのため作り直す必要がない）
+      await handleRetryGa4Narrative();
+      return gscSummary;
+    }
+    const canRunGa4 =
+      displayStatus === 'eligible' ||
+      displayStatus === 'evaluated' ||
+      displayStatus === 'evaluation_failed';
+    if (canRunGa4) {
+      await handleRunGa4Evaluation();
+    }
+    return gscSummary;
+  };
+
+  // コンテンツ評価タブの「次回評価予定」表示に使うスケジュール。
+  // 2026-08-26のサイクル統合により、基準日・サイクル日数・実行時刻はGSCの評価サイクル行が正。
+  // GA4側の進捗2列だけが系統別に持たれる（§6.6.2）
+  const evaluationRow = dashboard.detail?.evaluation ?? null;
+  const ga4Schedule = evaluationRow
+    ? {
+        baseEvaluationDate: evaluationRow.base_evaluation_date,
+        cycleDays: evaluationRow.cycle_days,
+        evaluationHour: evaluationRow.evaluation_hour,
+        ga4LastEvaluatedOn: evaluationRow.ga4_last_evaluated_on ?? null,
+        ga4LastSeenContentScore: evaluationRow.ga4_last_seen_content_score ?? null,
+      }
+    : null;
+
   // 未読の改善提案があるか判定（improved以外で outcome_type が error でないもの）
   const hasUnreadSuggestions = useMemo(() => {
     if (!dashboard.detail?.history) return false;
@@ -209,10 +257,7 @@ export default function GscDashboardClient({
             onToggleMetric={dashboard.toggleMetric}
             onRegisterEvaluation={dashboard.handleRegisterEvaluation}
             onUpdateEvaluation={dashboard.handleUpdateEvaluation}
-            onRunEvaluation={dashboard.handleRunEvaluation}
-            ga4Evaluation={ga4Evaluation}
-            onRunGa4Evaluation={handleRunGa4Evaluation}
-            onRetryGa4Narrative={handleRetryGa4Narrative}
+            onRunEvaluation={handleRunEvaluationBoth}
             onRunQueryImport={dashboard.handleRunQueryImport}
             onRefreshDetail={async (annotationId: string) => {
               await dashboard.refreshDetail(annotationId);
@@ -222,9 +267,9 @@ export default function GscDashboardClient({
 
         <TabsContent value="content-evaluation" className="mt-6">
           <ContentEvaluationTab
-            annotationId={dashboard.selectedId}
             articleTitle={dashboard.detail?.annotation.wp_post_title ?? null}
             evaluation={ga4Evaluation}
+            schedule={ga4Schedule}
             error={ga4EvaluationError}
           />
         </TabsContent>

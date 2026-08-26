@@ -510,7 +510,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
    * LLM診断コメント生成・ga4_content_evaluation_history/ga4_content_evaluationsへの書き込みは
    * 一切行わない（GSCの gscEvaluationService.processEvaluation の last_seen_position===null
    * 分岐と同型。last_seen_position 相当は ga4_content_evaluation_cycles.last_seen_content_score
-   * にのみ書く。呼び出し元は ga4ContentEvaluationCycleService）。
+   * にのみ書く。呼び出し元は ga4ContentEvaluationBatchService）。
    */
   async computeBaselineScore(
     input: RunGa4ContentEvaluationInput

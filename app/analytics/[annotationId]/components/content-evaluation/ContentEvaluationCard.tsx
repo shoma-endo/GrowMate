@@ -16,19 +16,34 @@ import {
   getGa4ScoreBand,
   getGa4ScoreBandTone,
 } from '@/lib/ga4-evaluation-display';
+import { addDaysISO } from '@/lib/date-utils';
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
-import type { Ga4ContentEvaluationCycleView } from '@/types/ga4-evaluation-cycle';
 
 import { findPreviousScoredItem } from './ga4-evaluation-history-view';
 import { resolveCardHistoryItem } from './latest-history';
+
+/**
+ * GA4コンテンツ評価のスケジュール表示に必要な最小限。
+ *
+ * 2026-08-26にGSC検索順位評価とサイクルを1本へ統合したため、基準日・サイクル日数・実行時刻は
+ * `gsc_article_evaluations` の1行が正になった。GA4側の進捗（ga4_last_evaluated_on /
+ * ga4_last_seen_content_score）だけが系統別に持たれる（§6.6.2）。
+ */
+export interface Ga4EvaluationScheduleView {
+  baseEvaluationDate: string;
+  cycleDays: number;
+  evaluationHour: number;
+  ga4LastEvaluatedOn: string | null;
+  ga4LastSeenContentScore: number | null;
+}
 
 interface Props {
   /** カード見出しに出す記事タイトル。クライアント提供の記事カード設計（評価エンジン仕様 §08）に合わせる */
   articleTitle?: string | null;
   evaluation: Ga4ContentEvaluationView | null;
   error?: string | null;
-  /** コンテンツ評価サイクル設定（読み取り専用表示のみ。設定操作・「今すぐ評価を実行」は概要タブへ移動した。§10.8「配置」） */
-  cycle?: Ga4ContentEvaluationCycleView | null;
+  /** 次回評価予定の読み取り専用表示のみ（設定操作は概要タブの検索順位評価サイクル設定カード。§10.8「配置」） */
+  schedule?: Ga4EvaluationScheduleView | null;
 }
 
 /**
@@ -64,7 +79,7 @@ export function ContentEvaluationCard({
   articleTitle = null,
   evaluation,
   error = null,
-  cycle = null,
+  schedule = null,
 }: Props) {
   const latest = resolveCardHistoryItem(evaluation);
   const latestRun = evaluation?.history[0] ?? null;
@@ -100,7 +115,7 @@ export function ContentEvaluationCard({
           <CardTitle className="truncate text-lg">{articleTitle || 'コンテンツ評価'}</CardTitle>
         </div>
         {/* 状態バッジのみ。shrink-0 で、長い記事タイトル（左は min-w-0 + truncate）に
-            押されて潰れないようにする。評価の実行は概要タブの「コンテンツ評価サイクル設定」
+            押されて潰れないようにする。評価の実行は概要タブの「検索順位評価サイクル設定」
             カードへ移動した（同じ操作を2箇所に置かない。§10.8） */}
         {displayStatus !== 'evaluated' && (
           <div className="flex shrink-0 items-center gap-3">
@@ -111,21 +126,22 @@ export function ContentEvaluationCard({
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        {cycle && (
+        {schedule && (
           <p className="text-xs text-muted-foreground">
-            {/* 概要タブの状態カード（ContentEvaluationCycleSettings.tsx）とラベルの表記を揃える。
-                初回計測完了時は「次回評価予定」、未完了時は「初回評価予定」
-                （この日付は登録時のベースラインが失敗していても常に通常評価として実行され、
-                成功すれば通知メールも送られるため、実質「初回の本評価が行われる日」を指す） */}
-            {cycle.lastSeenContentScore != null ? '次回評価予定' : '初回評価予定'}：
-            {formatDateJP(cycle.nextEvaluationDate)}{' '}
-            {cycle.evaluationHour.toString().padStart(2, '0')}:00（日本時間）。設定は概要タブから変更できます。
+            {/* 概要タブの検索順位評価サイクル設定カードとラベルの表記を揃える。
+                ベースライン計測が済んでいれば「次回評価予定」、未計測なら「初回計測予定」
+                （未計測の回は軽量パスでスコアだけを記録し、本評価はその1サイクル後。§6.6.2） */}
+            {schedule.ga4LastSeenContentScore != null ? '次回評価予定' : '初回計測予定'}：
+            {formatDateJP(
+              addDaysISO(schedule.ga4LastEvaluatedOn ?? schedule.baseEvaluationDate, schedule.cycleDays)
+            )}{' '}
+            {schedule.evaluationHour.toString().padStart(2, '0')}:00（日本時間）。設定は概要タブから変更できます。
           </p>
         )}
         {(error || displayStatus === 'evaluation_failed' || displayStatus === 'import_failed') && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error ?? (displayStatus === 'import_failed' ? 'データを再取得してから、概要タブの「コンテンツ評価サイクル設定」から評価を実行してください。' : '評価に失敗しました。時間をおいて、概要タブの「コンテンツ評価サイクル設定」から再評価してください。')}</AlertDescription>
+            <AlertDescription>{error ?? (displayStatus === 'import_failed' ? 'データを再取得してから、概要タブの「検索順位評価サイクル設定」から評価を実行してください。' : '評価に失敗しました。時間をおいて、概要タブの「検索順位評価サイクル設定」から再評価してください。')}</AlertDescription>
           </Alert>
         )}
         {displayStatus === 'import_failed' && (
@@ -300,7 +316,7 @@ export function ContentEvaluationCard({
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">評価結果はまだありません。概要タブの「コンテンツ評価サイクル設定」から評価を実行してください。</p>
+          <p className="text-sm text-muted-foreground">評価結果はまだありません。概要タブの「検索順位評価サイクル設定」から評価を実行してください。</p>
         )}
       </CardContent>
     </Card>

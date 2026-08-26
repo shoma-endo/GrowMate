@@ -71,6 +71,14 @@ interface GscCurrentEvaluation {
   status: string;
   created_at: string;
   updated_at: string;
+  /**
+   * GA4コンテンツ評価の進捗（2026-08-26にサイクルを1本へ統合）。
+   * スケジュール（基準日・サイクル日数・評価実行時間）は上の列を共有し、実行済みマークだけ
+   * 系統別に持つ。2ジョブが並列に走るため共用すると片方がサイクルを飛ばす（§6.6.2）
+   */
+  ga4_last_evaluated_on?: string | null;
+  /** GA4のベースライン。null なら次のdueで軽量パス（スコア算出のみ）へ分岐する */
+  ga4_last_seen_content_score?: number | null;
 }
 
 /**

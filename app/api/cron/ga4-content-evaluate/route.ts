@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ga4ContentEvaluationCycleService } from '@/server/services/ga4ContentEvaluationCycleService';
+import { ga4ContentEvaluationBatchService } from '@/server/services/ga4ContentEvaluationBatchService';
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 
 /**
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const result = await ga4ContentEvaluationCycleService.runAllDueEvaluations();
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
 
     return NextResponse.json({
       success: true,

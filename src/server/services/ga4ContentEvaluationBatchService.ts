@@ -1,5 +1,9 @@
 import { SupabaseService } from '@/server/services/supabaseService';
-import { asPendingClient, type Ga4ContentEvaluationCycleDatabase } from '@/types/database.types.pending';
+import {
+  asPendingClient,
+  type Ga4ContentEvaluationScheduleDatabase,
+  type Ga4DueEvaluationRow,
+} from '@/types/database.types.pending';
 import { ga4ContentEvaluationService } from '@/server/services/ga4ContentEvaluationService';
 import { ga4ImportService } from '@/server/services/ga4ImportService';
 import { emailService } from '@/server/services/emailService';
@@ -9,45 +13,12 @@ import { buildGa4ContentEvaluationEmail } from '@/server/lib/ga4-content-evaluat
 import {
   classifyGa4BatchRunError,
   classifyGa4BatchRunResult,
-  type Ga4CycleBatchOutcome,
-  type Ga4CycleBatchOutcomeResult,
+  type Ga4ContentEvaluationBatchOutcome,
+  type Ga4ContentEvaluationBatchOutcomeResult,
 } from '@/server/lib/ga4-content-evaluation-batch-outcome';
-import { isGa4CycleDue } from '@/server/lib/ga4-content-evaluation-cycle-due';
+import { isGa4ContentEvaluationDue } from '@/server/lib/ga4-content-evaluation-due';
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 import { env } from '@/env';
-import type {
-  Ga4ContentEvaluationCycleRegisterInput,
-  Ga4ContentEvaluationCycleUpdateInput,
-} from '@/server/schemas/ga4ContentEvaluationCycle.schema';
-import type { Ga4ContentEvaluationCycleView } from '@/types/ga4-evaluation-cycle';
-
-type Ga4ContentEvaluationCycleRow =
-  Ga4ContentEvaluationCycleDatabase['public']['Tables']['ga4_content_evaluation_cycles']['Row'];
-
-function toView(row: Ga4ContentEvaluationCycleRow): Ga4ContentEvaluationCycleView {
-  return {
-    id: row.id,
-    baseEvaluationDate: row.base_evaluation_date,
-    cycleDays: row.cycle_days,
-    evaluationHour: row.evaluation_hour,
-    status: row.status,
-    lastEvaluatedOn: row.last_evaluated_on,
-    lastSeenContentScore: row.last_seen_content_score,
-    nextEvaluationDate: row.next_evaluation_date,
-    lastNotificationStatus: row.last_notification_status,
-    lastNotifiedAt: row.last_notified_at,
-  };
-}
-
-class ArticleNotFoundError extends Error {
-  code = 'article_not_found';
-}
-class CycleAlreadyRegisteredError extends Error {
-  code = 'cycle_already_registered';
-}
-class CycleNotFoundError extends Error {
-  code = 'cycle_not_found';
-}
 
 // §8.3「時間予算と件数上限」
 const BATCH_TIME_LIMIT_MS = 280 * 1000;
@@ -65,8 +36,8 @@ const FORCED_PROGRESS_SAFETY_MARGIN_MS = 10 * 1000;
 const FORCED_PROGRESS_DEADLINE_MS =
   ROUTE_MAX_DURATION_MS - SINGLE_RUN_WORST_CASE_MS - FORCED_PROGRESS_SAFETY_MARGIN_MS; // 155秒
 
-type DueCycleRow =
-  Ga4ContentEvaluationCycleDatabase['public']['Functions']['list_due_ga4_content_evaluation_cycles']['Returns'][number];
+/** due抽出RPCが返す1行。スケジュール設定はGSCの評価サイクル行と共有し、進捗だけGA4固有 */
+type DueEvaluationRow = Ga4DueEvaluationRow;
 
 type BatchStoppedReason = 'completed' | 'time_limit' | 'max_users' | 'max_articles' | 'no_progress';
 
@@ -107,80 +78,26 @@ function shuffleInPlace<T>(items: T[]): T[] {
   return items;
 }
 
-interface DueArticleResult extends Ga4CycleBatchOutcomeResult {
+interface DueArticleResult extends Ga4ContentEvaluationBatchOutcomeResult {
   view: Awaited<ReturnType<typeof ga4ContentEvaluationService.run>> | null;
   /** 軽量パス（outcome==='baseline_initialized'）で算出したスコア */
   baselineContentScore?: number | null;
 }
 
-class Ga4ContentEvaluationCycleService extends SupabaseService {
+/**
+ * GA4コンテンツ評価の定期評価バッチ（§8.3）。
+ *
+ * スケジュール（基準日・サイクル日数・評価実行時間）はGSC検索順位評価と同じ
+ * `gsc_article_evaluations` の1行を正とする（2026-08-26にサイクルを1本へ統合）。
+ * このサービスは設定を持たず、due な記事を拾って評価・通知するだけを担う。
+ *
+ * 進捗マーク（`ga4_last_evaluated_on`）だけをGSCと別に持つ理由: gsc-evaluate と
+ * ga4-content-evaluate は hourly-cron.yml の matrix で互いをブロックせず起動順が非決定的なので、
+ * `last_evaluated_on` を共用すると先に走った方だけが実行され、負けた方はそのサイクルを丸ごと飛ばす。
+ */
+class Ga4ContentEvaluationBatchService extends SupabaseService {
   private pendingClient() {
-    return asPendingClient<Ga4ContentEvaluationCycleDatabase>(this.getClient());
-  }
-
-  async fetchCycle(userId: string, annotationId: string): Promise<Ga4ContentEvaluationCycleView | null> {
-    const { data, error } = await this.pendingClient()
-      .from('ga4_content_evaluation_cycles')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('content_annotation_id', annotationId)
-      .maybeSingle();
-    if (error) throw error;
-    return data ? toView(data) : null;
-  }
-
-  async registerCycle(
-    userId: string,
-    input: Ga4ContentEvaluationCycleRegisterInput
-  ): Promise<Ga4ContentEvaluationCycleView> {
-    await this.assertOwnedAnnotation(userId, input.annotationId);
-
-    const existing = await this.fetchCycleRow(userId, input.annotationId);
-    if (existing) throw new CycleAlreadyRegisteredError('cycle already registered');
-
-    const { data: inserted, error: insertError } = await this.pendingClient()
-      .from('ga4_content_evaluation_cycles')
-      .insert({
-        user_id: userId,
-        content_annotation_id: input.annotationId,
-        base_evaluation_date: input.baseEvaluationDate,
-        cycle_days: input.cycleDays,
-        evaluation_hour: input.evaluationHour,
-        status: 'active',
-      })
-      .select('*')
-      .single();
-    if (insertError) throw insertError;
-
-    // GSCの登録（registerEvaluation）と同型: 単純なINSERTのみ。last_seen_content_scoreは
-    // nullのまま残り、定期評価バッチの初回due到達時にrunBaselinePass()（LLM・履歴行・通知なし
-    // の軽量パス）が算出する（GSCのgscEvaluationService.processEvaluationの
-    // last_seen_position===null分岐と同型。D10再訂正・§6.6.2）。
-    return toView(inserted);
-  }
-
-  async updateCycle(
-    userId: string,
-    input: Ga4ContentEvaluationCycleUpdateInput
-  ): Promise<Ga4ContentEvaluationCycleView> {
-    await this.assertOwnedAnnotation(userId, input.annotationId);
-
-    const existing = await this.fetchCycleRow(userId, input.annotationId);
-    if (!existing) throw new CycleNotFoundError('cycle not found');
-
-    const { data: updated, error: updateError } = await this.pendingClient()
-      .from('ga4_content_evaluation_cycles')
-      .update({
-        base_evaluation_date: input.baseEvaluationDate,
-        cycle_days: input.cycleDays,
-        evaluation_hour: input.evaluationHour,
-      })
-      .eq('id', existing.id)
-      .select('*')
-      .single();
-    if (updateError) throw updateError;
-
-    return toView(updated);
+    return asPendingClient<Ga4ContentEvaluationScheduleDatabase>(this.getClient());
   }
 
   // ===== 定期評価バッチ（§8.3）=====
@@ -196,7 +113,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
     const todayJst = formatJstDateISO(now);
     const currentHourJst = getJstHour(now);
 
-    const { rows: dueRows, truncatedCandidates } = await this.listDueCycles(todayJst);
+    const { rows: dueRows, truncatedCandidates } = await this.listDueEvaluations(todayJst);
     // truncatedCandidates は1,000行上限（db-max-rows）による取りこぼしなので、
     // 打ち切り監視（validate_count_batch）が読む skippedDueToLimit に合算する（レビュー指摘#4）。
 
@@ -204,7 +121,12 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
     // まだ当日の実行時刻に達していない行は今回の対象から外す（次の毎時実行で再評価する）。
     let articlesSkippedCooldown = 0;
     const dueNow = dueRows.filter(row => {
-      const due = isGa4CycleDue(row.next_evaluation_date, row.evaluation_hour, todayJst, currentHourJst);
+      const due = isGa4ContentEvaluationDue(
+        row.ga4_next_evaluation_date,
+        row.evaluation_hour,
+        todayJst,
+        currentHourJst
+      );
       if (!due) articlesSkippedCooldown += 1;
       return due;
     });
@@ -234,7 +156,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
     }
 
     // ユーザー単位にグルーピングし、シャッフルする（特定ユーザーが常に先頭になるのを防ぐ。§8.3 手順3）
-    const byUser = new Map<string, DueCycleRow[]>();
+    const byUser = new Map<string, DueEvaluationRow[]>();
     for (const row of dueNow) {
       const list = byUser.get(row.user_id) ?? [];
       list.push(row);
@@ -292,14 +214,14 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
           // 取込失敗時クールダウン抑止（withholdForSyncFailure）が効かなくなる。
           if (!syncResult.ok && syncResult.reason !== 'already_synced') {
             syncFailed = true;
-            console.warn('[ga4ContentEvaluationCycleService] syncUser returned failure', {
+            console.warn('[ga4ContentEvaluationBatchService] syncUser returned failure', {
               userId,
               reason: syncResult.reason,
             });
           }
         } catch (error) {
           syncFailed = true;
-          console.error('[ga4ContentEvaluationCycleService] syncUser failed', {
+          console.error('[ga4ContentEvaluationBatchService] syncUser failed', {
             userId,
             message: error instanceof Error ? error.message : String(error),
           });
@@ -353,7 +275,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
 
         // §6.6.4「取込失敗の扱い」: 当日中のsyncFailedはクールダウンを進めない。
         // next_evaluation_date が過去（当日より前）になってもなお失敗する場合は通常どおり進める。
-        const withholdForSyncFailure = syncFailed && cycle.next_evaluation_date === todayJst;
+        const withholdForSyncFailure = syncFailed && cycle.ga4_next_evaluation_date === todayJst;
         const shouldAdvance = articleResult.shouldAdvanceCooldown && !withholdForSyncFailure;
         if (shouldAdvance) {
           // last_seen_content_score は GSC の last_seen_position と同じ役割（§7.7）で、
@@ -420,7 +342,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
 
   /** シャッフル後の userIds のうち、まだ処理していないユーザーの残記事数を数える（打ち切りログ用）。 */
   private countRemainingArticles(
-    byUser: Map<string, DueCycleRow[]>,
+    byUser: Map<string, DueEvaluationRow[]>,
     userIds: string[],
     processedUserCount: number,
     processedArticleCountInCurrentUser: number
@@ -433,25 +355,32 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
   }
 
   /**
-   * due な cycle 行を DB から抽出する（§8.3 処理順序1）。ロール絞り込みはSQL側で行い
-   * （多層防御として呼び出し側でも役割を再確認する必要はない。RPCが`users.role in ('admin','paid')`
-   * を強制するため）、1,000行上限（db-max-rows）を SupabaseService.fetchAllPaged で回避する。
+   * due な評価サイクル行を DB から抽出する（§8.3 処理順序1）。
    *
-   * ページングはRPC関数の引数（p_limit/p_offset）ではなくPostgRESTの.range()に委ねる
-   * （レビュー指摘・実装時訂正）。関数内部でLIMIT/OFFSETを適用すると count:'exact' が
+   * 対象は GSC と共有する `gsc_article_evaluations`。due 日は RPC が
+   * `coalesce(ga4_last_evaluated_on, base_evaluation_date) + cycle_days` として算出するため、
+   * GSC 側の生成列 `next_evaluation_date` とは独立している（GSCバッチが先に走って
+   * `last_evaluated_on` を進めても、こちらの due 判定は影響を受けない）。
+   *
+   * ロール絞り込みはSQL側で行う（RPCが `users.role in ('admin','paid')` を強制するため、
+   * 呼び出し側で再確認しない）。GSC側のdue抽出はロールを見ていないが、GSCはLLMを呼ばないため
+   * 実害が小さい。GA4はLLMを呼ぶのでこの絞り込みを落としてはいけない。
+   *
+   * 1,000行上限（db-max-rows）は SupabaseService.fetchAllPaged で回避する。ページングはRPC関数の
+   * 引数ではなくPostgRESTの.range()に委ねる: 関数内部でLIMIT/OFFSETを適用すると count:'exact' が
    * 「その呼び出し自体が返した行数」しか返さず、全体件数を反映しないため truncated 判定が
-   * 常に false になってしまう（migration 20260824000200 のコメント参照）。
+   * 常に false になってしまう（migration のコメント参照）。
    */
-  private async listDueCycles(
+  private async listDueEvaluations(
     todayJst: string
-  ): Promise<{ rows: DueCycleRow[]; truncatedCandidates: number }> {
+  ): Promise<{ rows: DueEvaluationRow[]; truncatedCandidates: number }> {
     const client = this.pendingClient();
     let lastCount: number | null = null;
 
-    const { data, truncated } = await this.fetchAllPaged<DueCycleRow>(
+    const { data, truncated } = await this.fetchAllPaged<DueEvaluationRow>(
       async (from, to) => {
         const { data, error, count } = await client
-          .rpc('list_due_ga4_content_evaluation_cycles', { p_today_jst: todayJst }, { count: 'exact' })
+          .rpc('list_due_ga4_content_evaluations', { p_today_jst: todayJst }, { count: 'exact' })
           .range(from, to);
         lastCount = count ?? lastCount;
         return { data, error, count };
@@ -461,7 +390,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
 
     const truncatedCandidates = truncated && lastCount !== null ? Math.max(0, lastCount - data.length) : 0;
     if (truncatedCandidates > 0) {
-      console.warn('[ga4ContentEvaluationCycleService] due extraction truncated', { truncatedCandidates });
+      console.warn('[ga4ContentEvaluationBatchService] due extraction truncated', { truncatedCandidates });
     }
 
     return { rows: data, truncatedCandidates };
@@ -471,11 +400,11 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
    * 1記事の評価を実行し、結末を§8.3「結末の判定契約」の10値へ確定する。
    * displayStatus では判定せず、history[0] の実測で判定する。
    */
-  private async runDueArticle(cycle: DueCycleRow): Promise<DueArticleResult> {
-    // last_seen_content_score は GSC の last_seen_position 相当（§7.7）。null のときはこの
+  private async runDueArticle(cycle: DueEvaluationRow): Promise<DueArticleResult> {
+    // ga4_last_seen_content_score は GSC の last_seen_position 相当（§7.7）。null のときはこの
     // サイクルの初回評価であり、軽量パス（スコア算出のみ・LLMなし・履歴行なし・メールなし）へ
     // 分岐する（gscEvaluationService.processEvaluation の lastSeen===null 分岐と同型。§6.6.2）。
-    if (cycle.last_seen_content_score === null) {
+    if (cycle.ga4_last_seen_content_score === null) {
       return this.runBaselinePass(cycle);
     }
 
@@ -490,7 +419,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
       });
       const classification = classifyGa4BatchRunResult(view, callStartedAtMs);
       if (classification.isUnexpected) {
-        console.error('[ga4ContentEvaluationCycleService] unexpected batch run classification', {
+        console.error('[ga4ContentEvaluationBatchService] unexpected batch run classification', {
           annotationId: cycle.content_annotation_id,
           outcome: classification.outcome,
           displayStatus: view.displayStatus,
@@ -501,7 +430,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
     } catch (error) {
       const classification = classifyGa4BatchRunError(error);
       if (classification.isUnexpected) {
-        console.error('[ga4ContentEvaluationCycleService] unexpected error during batch evaluation', {
+        console.error('[ga4ContentEvaluationBatchService] unexpected error during batch evaluation', {
           annotationId: cycle.content_annotation_id,
           message: error instanceof Error ? error.message : String(error),
         });
@@ -513,10 +442,10 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
   /**
    * 初回パス（ベースラインのみ）。ga4ContentEvaluationService.computeBaselineScore を呼び、
    * 履歴行・LLM診断コメント・通知メールを一切生成しない（GSCのbaseline_initializedと同型）。
-   * 結末は既存のGa4CycleBatchOutcomeの値（low_data/import_failed）を流用するか、
+   * 結末は既存のGa4ContentEvaluationBatchOutcomeの値（low_data/import_failed）を流用するか、
    * 新設のbaseline_initializedを返す。
    */
-  private async runBaselinePass(cycle: DueCycleRow): Promise<DueArticleResult> {
+  private async runBaselinePass(cycle: DueEvaluationRow): Promise<DueArticleResult> {
     try {
       const { startDate, endDate } = getGa4EvaluationDateRange();
       const result = await ga4ContentEvaluationService.computeBaselineScore({
@@ -540,7 +469,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
         baselineContentScore: result.contentScore,
       };
     } catch (error) {
-      console.error('[ga4ContentEvaluationCycleService] unexpected error during baseline pass', {
+      console.error('[ga4ContentEvaluationBatchService] unexpected error during baseline pass', {
         annotationId: cycle.content_annotation_id,
         message: error instanceof Error ? error.message : String(error),
       });
@@ -548,17 +477,21 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
     }
   }
 
+  /**
+   * GA4側のクールダウンだけを進める。GSCの `last_evaluated_on` には触れない
+   * （触ると2ジョブが互いのdue判定を壊す。このファイル冒頭のクラスコメント参照）。
+   */
   private async advanceCooldown(cycleId: string, contentScore?: number | null): Promise<void> {
-    const update: { last_evaluated_on: string; last_seen_content_score?: number | null } = {
-      last_evaluated_on: formatJstDateISO(new Date()),
+    const update: { ga4_last_evaluated_on: string; ga4_last_seen_content_score?: number | null } = {
+      ga4_last_evaluated_on: formatJstDateISO(new Date()),
     };
-    if (contentScore !== undefined) update.last_seen_content_score = contentScore;
+    if (contentScore !== undefined) update.ga4_last_seen_content_score = contentScore;
     const { error } = await this.pendingClient()
-      .from('ga4_content_evaluation_cycles')
+      .from('gsc_article_evaluations')
       .update(update)
       .eq('id', cycleId);
     if (error) {
-      console.error('[ga4ContentEvaluationCycleService] failed to advance cooldown', {
+      console.error('[ga4ContentEvaluationBatchService] failed to advance cooldown', {
         cycleId,
         message: error.message,
       });
@@ -568,7 +501,7 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
   private async fetchUserEmail(userId: string): Promise<string | null> {
     const { data, error } = await this.getClient().from('users').select('email').eq('id', userId).maybeSingle();
     if (error) {
-      console.error('[ga4ContentEvaluationCycleService] failed to fetch user email', { userId, message: error.message });
+      console.error('[ga4ContentEvaluationBatchService] failed to fetch user email', { userId, message: error.message });
       return null;
     }
     return data?.email ?? null;
@@ -576,15 +509,21 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
 
   /**
    * 評価完了の通知メールを送る（§9.5）。冪等キーは今回の履歴行id。
-   * last_notified_history_id と比較して同一なら送らない（BR-12の2段目の防御）。
+   * `ga4_last_notified_history_id` と比較して同一なら送らない（BR-12の2段目の防御）。
+   * 3段目は emailService が Resend へ渡す idempotencyKey（同じ historyId）。
+   *
+   * 送信結果の状態列（旧 last_notification_status / _error / _at）は持たない。
+   * 唯一の読み手だったコンテンツ評価サイクル設定カードを、サイクル統合にあわせて廃止したため
+   * （2026-08-26。表示先の無い状態をDBに溜め続けない）。失敗は console.error と
+   * バッチ結果の emailsFailed で観測する。
    */
   private async notifyEvaluationResult(params: {
-    cycle: DueCycleRow;
+    cycle: DueEvaluationRow;
     userEmail: string | null;
-    outcome: Extract<Ga4CycleBatchOutcome, 'evaluated' | 'narrative_failed'>;
+    outcome: Extract<Ga4ContentEvaluationBatchOutcome, 'evaluated' | 'narrative_failed'>;
     historyId: string | null;
     view: Awaited<ReturnType<typeof ga4ContentEvaluationService.run>>;
-    /** 呼び出し側で advanceCooldown 後の値として算出した次回評価日（cycle.next_evaluation_date は
+    /** 呼び出し側で advanceCooldown 後の値として算出した次回評価日（cycle.ga4_next_evaluation_date は
      *  advanceCooldown 前のスナップショットのため使わない） */
     nextEvaluationDate: string;
   }): Promise<'sent' | 'skipped_no_email' | 'failed' | 'skipped_duplicate'> {
@@ -592,26 +531,22 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
     if (!historyId) return 'skipped_duplicate';
 
     const { data: currentCycle, error: currentCycleError } = await this.pendingClient()
-      .from('ga4_content_evaluation_cycles')
-      .select('last_notified_history_id')
+      .from('gsc_article_evaluations')
+      .select('ga4_last_notified_history_id')
       .eq('id', cycle.id)
       .maybeSingle();
     if (currentCycleError) {
-      console.error('[ga4ContentEvaluationCycleService] failed to read notification state', {
+      console.error('[ga4ContentEvaluationBatchService] failed to read notification state', {
         cycleId: cycle.id,
         message: currentCycleError.message,
       });
     }
-    if (currentCycle?.last_notified_history_id === historyId) {
+    if (currentCycle?.ga4_last_notified_history_id === historyId) {
       return 'skipped_duplicate';
     }
 
     if (!userEmail) {
-      await this.pendingClient()
-        .from('ga4_content_evaluation_cycles')
-        .update({ last_notification_status: 'skipped_no_email' })
-        .eq('id', cycle.id);
-      console.warn('[ga4ContentEvaluationCycleService] user has no email, skipping notification', {
+      console.warn('[ga4ContentEvaluationBatchService] user has no email, skipping notification', {
         userId: cycle.user_id,
       });
       return 'skipped_no_email';
@@ -643,54 +578,20 @@ class Ga4ContentEvaluationCycleService extends SupabaseService {
 
     const response = await emailService.sendGa4ContentEvaluation(userEmail, content.subject, content.html, historyId);
     if (!response.success) {
-      console.error('[ga4ContentEvaluationCycleService] notification email failed', {
+      console.error('[ga4ContentEvaluationBatchService] notification email failed', {
         cycleId: cycle.id,
         error: response.error,
         errorName: response.errorName,
       });
-      await this.pendingClient()
-        .from('ga4_content_evaluation_cycles')
-        .update({
-          last_notification_status: 'failed',
-          last_notification_error: (response.errorName ?? response.error ?? 'unknown_error').slice(0, 200),
-        })
-        .eq('id', cycle.id);
       return 'failed';
     }
 
     await this.pendingClient()
-      .from('ga4_content_evaluation_cycles')
-      .update({
-        last_notified_history_id: historyId,
-        last_notified_at: new Date().toISOString(),
-        last_notification_status: 'sent',
-        last_notification_error: null,
-      })
+      .from('gsc_article_evaluations')
+      .update({ ga4_last_notified_history_id: historyId })
       .eq('id', cycle.id);
     return 'sent';
   }
-
-  private async fetchCycleRow(userId: string, annotationId: string) {
-    const { data, error } = await this.pendingClient()
-      .from('ga4_content_evaluation_cycles')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('content_annotation_id', annotationId)
-      .maybeSingle();
-    if (error) throw error;
-    return data;
-  }
-
-  private async assertOwnedAnnotation(userId: string, annotationId: string): Promise<void> {
-    const { data, error } = await this.getClient()
-      .from('content_annotations')
-      .select('id')
-      .eq('id', annotationId)
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (error) throw error;
-    if (!data) throw new ArticleNotFoundError('article not found');
-  }
 }
 
-export const ga4ContentEvaluationCycleService = new Ga4ContentEvaluationCycleService();
+export const ga4ContentEvaluationBatchService = new Ga4ContentEvaluationBatchService();

@@ -10,62 +10,46 @@ export function asPendingClient<TDatabase>(
   return client as unknown as SupabaseClient<TDatabase>;
 }
 
-// PROVISIONAL: supabase/migrations/20260824000000_create_ga4_content_evaluation_cycles.sql
-type Ga4ContentEvaluationCycleStatus = 'active' | 'paused' | 'completed';
-type Ga4ContentEvaluationCycleNotificationStatus = 'sent' | 'skipped_no_email' | 'failed';
-type Ga4ContentEvaluationCycleRow = {
+// PROVISIONAL: supabase/migrations/20260826000000_merge_ga4_content_evaluation_into_gsc_cycle.sql
+//
+// GSC検索順位評価サイクルとGA4コンテンツ評価サイクルを1本へ統合した際に、
+// gsc_article_evaluations へ追加した GA4 側の実行進捗3列。
+// スケジュール設定（base_evaluation_date / cycle_days / evaluation_hour）は生成型に既にある。
+type Ga4EvaluationProgressColumns = {
+  ga4_last_evaluated_on: string | null;
+  ga4_last_seen_content_score: number | null;
+  ga4_last_notified_history_id: string | null;
+};
+
+type GscArticleEvaluationsTable = Database['public']['Tables']['gsc_article_evaluations'];
+
+/** due抽出RPC `list_due_ga4_content_evaluations` の戻り値1行 */
+export type Ga4DueEvaluationRow = {
   id: string;
   user_id: string;
   content_annotation_id: string;
   base_evaluation_date: string;
   cycle_days: number;
   evaluation_hour: number;
-  status: Ga4ContentEvaluationCycleStatus;
-  last_evaluated_on: string | null;
-  last_seen_content_score: number | null;
-  next_evaluation_date: string;
-  last_notified_history_id: string | null;
-  last_notification_status: Ga4ContentEvaluationCycleNotificationStatus | null;
-  last_notification_error: string | null;
-  last_notified_at: string | null;
-  created_at: string;
-  updated_at: string;
+  ga4_last_evaluated_on: string | null;
+  ga4_last_seen_content_score: number | null;
+  /** RPC が算出する「次にGA4評価を行う日」。coalesce(ga4_last_evaluated_on, base_evaluation_date) + cycle_days */
+  ga4_next_evaluation_date: string;
 };
 
-// PROVISIONAL: supabase/migrations/20260824000200_add_list_due_ga4_content_evaluation_cycles_rpc.sql
-type Ga4DueContentEvaluationCycleRow = Pick<
-  Ga4ContentEvaluationCycleRow,
-  | 'id'
-  | 'user_id'
-  | 'content_annotation_id'
-  | 'base_evaluation_date'
-  | 'cycle_days'
-  | 'evaluation_hour'
-  | 'last_evaluated_on'
-  | 'last_seen_content_score'
-  | 'next_evaluation_date'
->;
-
-export type Ga4ContentEvaluationCycleDatabase = Omit<Database, 'public'> & {
+export type Ga4ContentEvaluationScheduleDatabase = Omit<Database, 'public'> & {
   public: Omit<Database['public'], 'Tables' | 'Functions'> & {
-    Tables: Omit<Database['public']['Tables'], 'ga4_content_evaluation_cycles'> & {
-      ga4_content_evaluation_cycles: {
-        Row: Ga4ContentEvaluationCycleRow;
-        Insert: Pick<Ga4ContentEvaluationCycleRow, 'user_id' | 'content_annotation_id' | 'base_evaluation_date'> &
-          Partial<
-            Omit<
-              Ga4ContentEvaluationCycleRow,
-              'id' | 'user_id' | 'content_annotation_id' | 'base_evaluation_date' | 'next_evaluation_date' | 'created_at' | 'updated_at'
-            >
-          >;
-        Update: Partial<Omit<Ga4ContentEvaluationCycleRow, 'id' | 'next_evaluation_date'>>;
-        Relationships: [];
+    Tables: Omit<Database['public']['Tables'], 'gsc_article_evaluations'> & {
+      gsc_article_evaluations: Omit<GscArticleEvaluationsTable, 'Row' | 'Insert' | 'Update'> & {
+        Row: GscArticleEvaluationsTable['Row'] & Ga4EvaluationProgressColumns;
+        Insert: GscArticleEvaluationsTable['Insert'] & Partial<Ga4EvaluationProgressColumns>;
+        Update: GscArticleEvaluationsTable['Update'] & Partial<Ga4EvaluationProgressColumns>;
       };
     };
     Functions: Database['public']['Functions'] & {
-      list_due_ga4_content_evaluation_cycles: {
+      list_due_ga4_content_evaluations: {
         Args: { p_today_jst: string };
-        Returns: Ga4DueContentEvaluationCycleRow[];
+        Returns: Ga4DueEvaluationRow[];
       };
     };
   };

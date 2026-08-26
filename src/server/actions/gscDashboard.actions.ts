@@ -9,6 +9,10 @@ import { buildGscDateRange } from '@/lib/date-utils';
 import type { GscEvaluationOutcome } from '@/types/gsc';
 import type { UserRole } from '@/types/user';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import {
+  asPendingClient,
+  type Ga4ContentEvaluationScheduleDatabase,
+} from '@/types/database.types.pending';
 import { canAccessGa4, canWriteGa4 } from '@/server/lib/ga4-permissions';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
@@ -177,8 +181,12 @@ export async function fetchGscDetail(
       throw new Error(historyError.message);
     }
 
-    const { data: evaluation, error: evaluationError } = await supabaseService
-    .getClient()
+    // GA4コンテンツ評価の進捗列（ga4_last_evaluated_on / ga4_last_seen_content_score）を含めて読む。
+    // 2026-08-26にサイクルを1本へ統合し、記事詳細の「コンテンツ評価」タブが次回予定の表示に使う。
+    // 未適用migrationのため pending 型を経由する（適用・型再生成後は getClient() に戻す）
+    const { data: evaluation, error: evaluationError } = await asPendingClient<Ga4ContentEvaluationScheduleDatabase>(
+      supabaseService.getClient()
+    )
     .from('gsc_article_evaluations')
     .select('*')
     .eq('user_id', annotationUserId)

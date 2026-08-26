@@ -1,13 +1,13 @@
 /**
- * コンテンツ評価サイクル（フェーズ3）の純関数
+ * GA4コンテンツ評価の定期評価まわりの純関数
  *
- * due 判定（`ga4-content-evaluation-cycle-due`）、定期評価バッチの結末判定契約
+ * due 判定（`ga4-content-evaluation-due`）、定期評価バッチの結末判定契約
  * （`ga4-content-evaluation-batch-outcome`）、通知メールの文面組み立て
  * （`ga4-content-evaluation-email`）、メールHTMLの無害化（`email-html`）。
  * docs/plans/ga4-content-evaluation-spec.md §6.6.2 / §8.3 / §9.5 / §10.9 の正本。
  */
 import { describe, expect, it } from 'vitest';
-import { isGa4CycleDue } from '@/server/lib/ga4-content-evaluation-cycle-due';
+import { isGa4ContentEvaluationDue } from '@/server/lib/ga4-content-evaluation-due';
 import {
   classifyGa4BatchRunError,
   classifyGa4BatchRunResult,
@@ -16,22 +16,22 @@ import { buildGa4ContentEvaluationEmail } from '@/server/lib/ga4-content-evaluat
 import { sanitizeEmailHtml } from '@/server/lib/email-html';
 import type { Ga4ContentEvaluationView, Ga4PersistentEvaluationStatus } from '@/types/ga4-evaluation';
 
-describe('@/server/lib/ga4-content-evaluation-cycle-due', () => {
-  describe('isGa4CycleDue', () => {
+describe('@/server/lib/ga4-content-evaluation-due', () => {
+  describe('isGa4ContentEvaluationDue', () => {
     it('next_evaluation_date が過去なら常にdue', () => {
-      expect(isGa4CycleDue('2026-08-23', 12, '2026-08-24', 0)).toBe(true);
-      expect(isGa4CycleDue('2026-08-23', 23, '2026-08-24', 0)).toBe(true);
+      expect(isGa4ContentEvaluationDue('2026-08-23', 12, '2026-08-24', 0)).toBe(true);
+      expect(isGa4ContentEvaluationDue('2026-08-23', 23, '2026-08-24', 0)).toBe(true);
     });
 
     it('next_evaluation_date が未来ならdueではない', () => {
-      expect(isGa4CycleDue('2026-08-25', 0, '2026-08-24', 23)).toBe(false);
+      expect(isGa4ContentEvaluationDue('2026-08-25', 0, '2026-08-24', 23)).toBe(false);
     });
 
     it('next_evaluation_date が当日ならevaluation_hourの前後で判定する（GSCのisDueと同値）', () => {
       const today = '2026-08-24';
-      expect(isGa4CycleDue(today, 12, today, 11)).toBe(false); // hour-1
-      expect(isGa4CycleDue(today, 12, today, 12)).toBe(true); // hour ちょうど
-      expect(isGa4CycleDue(today, 12, today, 13)).toBe(true); // hour+1
+      expect(isGa4ContentEvaluationDue(today, 12, today, 11)).toBe(false); // hour-1
+      expect(isGa4ContentEvaluationDue(today, 12, today, 12)).toBe(true); // hour ちょうど
+      expect(isGa4ContentEvaluationDue(today, 12, today, 13)).toBe(true); // hour+1
     });
   });
 });
