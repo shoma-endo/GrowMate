@@ -429,7 +429,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
       evaluation_hour: 0,
       ga4_last_evaluated_on: '2020-01-01',
       ga4_last_seen_content_score: 40, // ベースライン済み。フルパス(run())を経由させ既存のsyncFailedテストを維持する
-      ga4_next_evaluation_date: todayJst, // withholdForSyncFailure の判定に today と一致させる必要がある
+      ga4_next_evaluation_date: todayJst,
     };
     mockRpcRange({ data: [dueRow], error: null, count: 1 });
     mocks.syncUser.mockResolvedValue({ ok: false, reason: 'not_connected' });
@@ -438,11 +438,9 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
 
     expect(result.syncFailedUsers).toBe(1);
-    // §6.6.4: 当日中のsyncFailedはクールダウンを進めない・メールも送らない
     expect(result.articlesSkippedSyncFailed).toBe(1);
-    expect(mocks.sendEmail).not.toHaveBeenCalled();
-    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
-    expect(cooldownUpdate).toBeUndefined();
+    // 取込に失敗している以上、古いデータで評価しない（レビュー🔴6）
+    expect(mocks.run).not.toHaveBeenCalled();
   });
   it('取込に失敗しても、due日が過去（当日より前）ならクールダウンは通常どおり進む（§6.6.4。抑止は当日分だけ）', async () => {
     const dueRow = {
@@ -459,15 +457,30 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     mockRpcRange({ data: [dueRow], error: null, count: 1 });
     mocks.syncUser.mockResolvedValue({ ok: false, reason: 'not_connected' });
     mocks.run.mockResolvedValue(buildEvaluatedView(60));
+    mocks.userEmail = 'user@example.test';
 
     const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
 
     expect(result.syncFailedUsers).toBe(1);
-    // 当日ではないので抑止しない。抑止し続けると、取込が壊れている間その記事が永久に評価されない
-    expect(result.articlesSkippedSyncFailed).toBe(0);
-    expect(result.articlesEvaluated).toBe(1);
+    // ~~当日ではないので抑止しない~~ → 2026-08-26 変更（レビュー🔴6）。
+    // 旧実装は due日が過去だと抑止が外れ、**古い取込データでスコアを出して
+    // スコア付きの「評価が完了しました」メールを送っていた**。取込が失敗している間は
+    // 予定日に関わらず評価しない。
+    expect(result.articlesSkippedSyncFailed).toBe(1);
+    expect(result.articlesEvaluated).toBe(0);
+    expect(mocks.run).not.toHaveBeenCalled();
+    // クールダウンは進める（進めないと毎時同じ記事を掴み続け、通知も毎時になる）
     const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
     expect(cooldownUpdate).toBeDefined();
+    // last_seen_content_score は触らない（評価していないので前回値を保つ）
+    expect(cooldownUpdate).not.toHaveProperty('ga4_last_seen_content_score');
+    // 取込できなかったことをユーザーへ通知する
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
+    const [, subject, html] = mocks.sendEmail.mock.calls[0]!;
+    expect(subject).toContain('GA4連携が切れているため');
+    expect(html).toContain('/setup/ga4');
+    // スコアや診断は載せない
+    expect(html).not.toContain('コンテンツ力スコア');
   });
 
   it("syncUserの{ok:false, reason:'already_synced'}は正常系として扱い、syncFailedにしない（直近同期済みで新規取込が無いだけ）", async () => {

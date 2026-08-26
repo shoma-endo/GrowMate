@@ -421,7 +421,13 @@ class Ga4ContentEvaluationService extends SupabaseService {
       startDate: input.startDate,
       endDate: input.endDate,
     }, credential);
-    if (initialStatus.status === 'low_data') {
+    // 本文が1文字も無い記事は採点しない。resolveInitialDisplayStatus は既に
+    // article_content 欠落を判定しているのに、ここが low_data しか見ていなかったため
+    // 素通りして採点されていた（レビュー🔴1）。期待読了時間が画像補正だけの数秒になり、
+    // 読了率がアンカー上限を超えて読了スコア100点に張り付く。
+    // unassessed を一律に弾かないこと: ga4_data / engagement_rate / active_users 欠落でも
+    // unassessed になるが、それらは computeGa4Score が insufficient_data として正しく扱う。
+    if (initialStatus.status === 'low_data' || initialStatus.missingMetrics.includes('article_content')) {
       return this.fetchEvaluation(input.userId, input.annotationId);
     }
     const runId = await this.startRun(input.userId, input.annotationId);
@@ -520,7 +526,11 @@ class Ga4ContentEvaluationService extends SupabaseService {
       startDate: input.startDate,
       endDate: input.endDate,
     }, credential);
-    if (initialStatus.status === 'low_data') return { status: 'low_data', contentScore: null };
+    // run() と同じ理由で本文0字を弾く（レビュー🔴1）。定期バッチの初回dueは
+    // この軽量パスを通るため、ここを外すとバッチ経由で0字記事にスコアが付く。
+    if (initialStatus.status === 'low_data' || initialStatus.missingMetrics.includes('article_content')) {
+      return { status: 'low_data', contentScore: null };
+    }
 
     const computed = await this.computeGa4Score(input);
     if (computed.outcome === 'import_failed') return { status: 'import_failed', contentScore: null };

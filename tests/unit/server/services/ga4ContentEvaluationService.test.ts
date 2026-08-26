@@ -104,11 +104,17 @@ function configureRunClient({
   includeRanking = false,
   importedAt = '2026-08-10T00:00:00.000Z',
   annotationPatch = {},
+  detailReads = 1,
 }: {
   metricsError?: unknown;
   includeRanking?: boolean;
   importedAt?: string;
   annotationPatch?: Record<string, unknown>;
+  // content_annotations の「記事1件を読む」クエリを何回返すか。
+  // 既定は1（呼び出し側が resolveInitialDisplayStatus を spyOn で差し替える前提）。
+  // 実物の resolveInitialDisplayStatus を走らせる場合は、そこで1回・computeGa4Score で
+  // もう1回読むため 2 を渡す。どちらも同じ行を同じ条件で読むので同じ結果を返してよい。
+  detailReads?: number;
 } = {}) {
   const annotation = {
     id: RUN_INPUT.annotationId,
@@ -154,11 +160,11 @@ function configureRunClient({
       data: [{ content_score: 60, engage_score: 50, read_score: 55 }], error: null,
     }));
   }
-  let detailQueryUsed = false;
+  let detailReadsServed = 0;
   mocks.client.from.mockImplementation((table: string) => {
     if (table === 'content_annotations') {
-      if (!detailQueryUsed) {
-        detailQueryUsed = true;
+      if (detailReadsServed < detailReads) {
+        detailReadsServed += 1;
         return queries.get('content_annotations:detail');
       }
       return queries.get('content_annotations:ranking');
@@ -489,5 +495,56 @@ describe('ga4ContentEvaluationService.computeBaselineScore（D10再反転: 定�
     expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
     // computeBaselineScore はDB永続化（start/finish RPC）を一切行わない
     expect(mocks.client.rpc).not.toHaveBeenCalled();
+  });
+  // 本文0字の記事を採点しないこと（レビュー🔴1）。resolveInitialDisplayStatus は
+  // 実物を走らせる（既存の run() テストは全て spyOn で差し替えており、この関数の
+  // 本体は一度も実行されていなかった）。
+  const CREDENTIAL = {
+    ga4PropertyId: 'property-1',
+    ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
+    accessToken: 'access-token',
+    accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+    scope: ['https://www.googleapis.com/auth/analytics.readonly'],
+  };
+
+  it.each([
+    { name: 'NULL', wpContentText: null },
+    { name: '空文字', wpContentText: '' },
+    // stripHtml はエンティティをデコードしないため <p>&nbsp;</p> は '&nbsp;' として
+    // 保存される（NOT NULL・非空）。一方 countContentChars はデコードしてから空白を
+    // 畳むので0文字になる。NULL 判定だけでは取りこぼす経路。
+    { name: 'エンティティのみ', wpContentText: '&nbsp;' },
+  ])('本文が$nameの記事は採点せず、評価を開始しない', async ({ wpContentText }) => {
+    mocks.credential = { ...CREDENTIAL };
+    vi.spyOn(ga4ContentEvaluationService, 'fetchEvaluation').mockResolvedValue(EVALUATION_VIEW);
+    configureRunClient({ annotationPatch: { wp_content_text: wpContentText, wp_image_count: 5 } });
+
+    await expect(ga4ContentEvaluationService.run(RUN_INPUT)).resolves.toEqual(EVALUATION_VIEW);
+
+    // 評価そのものを開始しない（履歴行もスコアも作らない）
+    const rpcNames = mocks.client.rpc.mock.calls.map(([name]) => name);
+    expect(rpcNames).not.toContain('start_ga4_content_evaluation');
+    expect(rpcNames).not.toContain('finish_ga4_content_evaluation');
+    expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
+  });
+
+  it('本文0字の記事はベースライン算出でもスコアを出さない', async () => {
+    mocks.credential = { ...CREDENTIAL };
+    configureRunClient({ annotationPatch: { wp_content_text: null, wp_image_count: 5 } });
+
+    const result = await ga4ContentEvaluationService.computeBaselineScore(BASELINE_INPUT);
+
+    expect(result).toEqual({ status: 'low_data', contentScore: null });
+    expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
+  });
+
+  it('本文がある記事はこれまでどおり採点される（上のガードが効きすぎていないこと）', async () => {
+    mocks.credential = { ...CREDENTIAL };
+    configureRunClient({ detailReads: 2 });
+
+    const result = await ga4ContentEvaluationService.computeBaselineScore(BASELINE_INPUT);
+
+    expect(result.status).toBe('scored');
+    expect(result.contentScore).toEqual(expect.any(Number));
   });
 });

@@ -9,7 +9,7 @@ import { ga4ImportService } from '@/server/services/ga4ImportService';
 import { emailService } from '@/server/services/emailService';
 import { getGa4EvaluationDateRange } from '@/lib/ga4-evaluation-period';
 import { addDaysISO, formatJstDateISO } from '@/lib/date-utils';
-import { buildGa4ContentEvaluationEmail } from '@/server/lib/ga4-content-evaluation-email';
+import { buildGa4ConnectionLostEmail, buildGa4ContentEvaluationEmail } from '@/server/lib/ga4-content-evaluation-email';
 import {
   classifyGa4BatchRunError,
   classifyGa4BatchRunResult,
@@ -231,6 +231,9 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
       if (syncFailed) result.syncFailedUsers += 1;
 
       let userEmail: string | null | undefined;
+      // 取込失敗でスキップした記事（ユーザー単位で1通にまとめて通知する。レビュー🔴6）
+      let syncFailureSkipped = 0;
+      let syncFailureNextDate: string | null = null;
 
       for (const cycle of userCycles) {
         if (totalArticlesAttempted >= MAX_ARTICLES_PER_BATCH) {
@@ -257,6 +260,29 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
           }
         }
 
+        // 取込に失敗している間は評価そのものを実行しない（レビュー🔴6）。
+        //
+        // 旧実装は抑止条件が `syncFailed && ga4_next_evaluation_date === todayJst` だったため、
+        // 予定日を過ぎた記事では抑止が外れ、**古い取込データでスコアを出してスコア付きの
+        // 「評価が完了しました」メールを送っていた**。数週間前の残存データで診断が出るうえ、
+        // ユーザーには取込が壊れていることが伝わらない。
+        //
+        // 判定に reason は使わない。`syncUser` が `{ok:false, reason:'not_connected'}` を返すのは
+        // `ga4_property_id` が無いときだけで（`ga4ImportService.ts:109-111`）、due抽出RPCが
+        // `ga4_property_id is not null` で絞っている以上そこへは実質来ない。実際に起きるのは
+        // トークン失効で、それは `ensureAccessToken` が例外を投げて catch 側に落ちる。
+        //
+        // クールダウンは進める。進めないと毎時同じ記事を掴み続け、通知も毎時になる。
+        // 再連携後は記事詳細の「今すぐ評価を実行」で次回予定日を待たずに評価できる。
+        if (syncFailed) {
+          totalArticlesAttempted += 1;
+          result.articlesSkippedSyncFailed += 1;
+          syncFailureSkipped += 1;
+          syncFailureNextDate = addDaysISO(todayJst, cycle.cycle_days);
+          await this.advanceCooldown(cycle.id, cycle.user_id, undefined);
+          continue;
+        }
+
         totalArticlesAttempted += 1;
         const articleResult = await this.runDueArticle(cycle);
 
@@ -273,11 +299,9 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
           }
         }
 
-        // §6.6.4「取込失敗の扱い」: 当日中のsyncFailedはクールダウンを進めない。
-        // next_evaluation_date が過去（当日より前）になってもなお失敗する場合は通常どおり進める。
-        const withholdForSyncFailure = syncFailed && cycle.ga4_next_evaluation_date === todayJst;
-        const shouldAdvance = articleResult.shouldAdvanceCooldown && !withholdForSyncFailure;
-        if (shouldAdvance) {
+        // §6.6.4「取込失敗の扱い」: syncFailed のときは上で continue しているため、
+        // ここへ来る時点で取込は成功している（旧 withholdForSyncFailure は不要になった）。
+        if (articleResult.shouldAdvanceCooldown) {
           // last_seen_content_score は GSC の last_seen_position と同じ役割（§7.7）で、
           // 登録時のベースラインだけでなく毎回の評価結果で更新し続ける必要がある。
           // 登録時のベースライン取得が失敗した場合、ここで更新しないと状態カードの
@@ -292,9 +316,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
         }
 
         if (articleResult.outcome === 'evaluated' || articleResult.outcome === 'narrative_failed') {
-          if (withholdForSyncFailure) {
-            result.articlesSkippedSyncFailed += 1;
-          } else if (articleResult.view) {
+          if (articleResult.view) {
             if (userEmail === undefined) {
               userEmail = await this.fetchUserEmail(userId);
             }
@@ -316,6 +338,22 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
             else if (notification === 'failed') result.emailsFailed += 1;
           }
         }
+      }
+
+      if (syncFailureSkipped > 0 && syncFailureNextDate) {
+        if (userEmail === undefined) {
+          userEmail = await this.fetchUserEmail(userId);
+        }
+        const notification = await this.notifyConnectionLost({
+          userId,
+          userEmail,
+          skippedArticleCount: syncFailureSkipped,
+          nextEvaluationDate: syncFailureNextDate,
+          todayJst,
+        });
+        if (notification === 'sent') result.emailsSent += 1;
+        else if (notification === 'skipped_no_email') result.emailsSkipped += 1;
+        else if (notification === 'failed') result.emailsFailed += 1;
       }
 
       result.usersProcessed += 1;
@@ -581,6 +619,51 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
    * （2026-08-26。表示先の無い状態をDBに溜め続けない）。失敗は console.error と
    * バッチ結果の emailsFailed で観測する。
    */
+  /**
+   * GA4のデータを取込めず評価できなかったことの通知（レビュー🔴6）。ユーザー単位で1通にまとめる。
+   *
+   * 冪等キーは userId + 当日（JST）で、Resend 側が同日中の重複送信を弾く。
+   * 毎時Cronなので、これが無いと同じ日に最大24通飛ぶ。クールダウンは進めてあるため
+   * 通常は1サイクルに1回しか到達しないが、複数の記事の予定日が別々の日に散っている
+   * 場合は日ごとに1通になる（その日の評価が実際に失敗しているので妥当）。
+   */
+  private async notifyConnectionLost(params: {
+    userId: string;
+    userEmail: string | null;
+    skippedArticleCount: number;
+    nextEvaluationDate: string;
+    todayJst: string;
+  }): Promise<'sent' | 'skipped_no_email' | 'failed'> {
+    const { userId, userEmail, skippedArticleCount, nextEvaluationDate, todayJst } = params;
+    if (!userEmail) {
+      console.warn('[ga4ContentEvaluationBatchService] user has no email, skipping connection-lost notification', {
+        userId,
+      });
+      return 'skipped_no_email';
+    }
+
+    const content = buildGa4ConnectionLostEmail({
+      siteUrl: env.NEXT_PUBLIC_SITE_URL,
+      skippedArticleCount,
+      nextEvaluationDate,
+    });
+    const response = await emailService.sendGa4ContentEvaluation(
+      userEmail,
+      content.subject,
+      content.html,
+      `ga4-connection-lost:${userId}:${todayJst}`
+    );
+    if (!response.success) {
+      console.error('[ga4ContentEvaluationBatchService] connection-lost email failed', {
+        userId,
+        error: response.error,
+        errorName: response.errorName,
+      });
+      return 'failed';
+    }
+    return 'sent';
+  }
+
   private async notifyEvaluationResult(params: {
     cycle: DueEvaluationRow;
     userEmail: string | null;
