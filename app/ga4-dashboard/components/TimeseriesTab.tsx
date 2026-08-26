@@ -85,7 +85,8 @@ export function TimeseriesTab({
           <div className="text-gray-600">セッション:</div>
           <div className="text-right font-medium">{formatNumber(data.sessions)}</div>
 
-          <div className="text-gray-600">平均エンゲージメント時間:</div>
+          {/* ÷sessions のため「平均エンゲージメント時間」は名乗れない。SummaryCards 参照 */}
+          <div className="text-gray-600">平均滞在時間:</div>
           <div className="text-right font-medium">
             {Math.round(data.avgEngagementTimeSec)}秒
           </div>

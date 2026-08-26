@@ -31,8 +31,20 @@ export function normalizeContentText(value: string | null | undefined): string {
     .trim();
 }
 
+/**
+ * 期待読了時間の元になる本文文字数。
+ *
+ * 受領仕様（`docs/context/ga4-evaluation-engine-spec-20260817.md` §09 実装チェック）は
+ * verbatim で「記事本文の文字数をツールのDBから取得（**HTMLタグ・空白を除いた本文のみ**）」
+ * と定める。HTML タグは取込側（`wordpressService` の `stripHtml`）で既に落ちているが、
+ * 空白は `normalizeContentText` が1個へ畳むだけで残っていたため、ここで除去する。
+ *
+ * 空白を数えると 文字数 → 期待読了時間 → 読了率 → コンテンツ力スコア と伝播して
+ * スコアが実際より低く出る。日本語主体の記事では差は小さいが、英数字や
+ * コードブロックを多く含む記事では無視できない。
+ */
 export function countContentChars(value: string | null | undefined): number {
-  return Array.from(normalizeContentText(value)).length;
+  return Array.from(normalizeContentText(value).replace(/\s/gu, '')).length;
 }
 
 export function countImageTags(value: string | null | undefined): number {

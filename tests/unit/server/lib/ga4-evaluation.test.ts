@@ -197,7 +197,9 @@ describe('@/server/lib/ga4-evaluation-context', () => {
         gscFetchedAt: null,
       });
 
-      expect(context.article.charCount).toBe('本文 & テキスト'.length);
+      // 受領仕様 §09「HTMLタグ・空白を除いた本文のみ」。エンティティをデコードした
+      // うえで空白を除くので '本文&テキスト' の7文字（'本文 & テキスト' の9文字ではない）
+      expect(context.article.charCount).toBe('本文&テキスト'.length);
       expect(context.article.imageCount).toBeNull();
       expect(context.article.headings).toEqual(['見出し1', '見出し2']);
       expect(context.article.title).toBe('記事タイトル');

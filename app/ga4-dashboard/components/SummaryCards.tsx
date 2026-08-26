@@ -42,7 +42,11 @@ export function SummaryCards({ summary, isLoading }: Props) {
       color: 'green',
     },
     {
-      label: '平均エンゲージメント時間',
+      // 「平均エンゲージメント時間」は使わない。受領仕様 §02 がこの名前を
+      // userEngagementDuration ÷ activeUsers と定義しているのに対し、この値は
+      // sum(engagement_time_sec) ÷ sum(sessions) で分母が違う（記事詳細の評価カードが
+      // 出す同名の数字とは別物になる）。名前を借りると突合で必ず食い違う。
+      label: '平均滞在時間',
       value: formatDuration(summary.avgEngagementTimeSec),
       color: 'purple',
     },

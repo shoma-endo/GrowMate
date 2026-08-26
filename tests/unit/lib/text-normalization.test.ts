@@ -64,9 +64,26 @@ describe('@/lib/content-text', () => {
       );
     });
 
-    it('正規化後の文字数を数える', () => {
-      expect(countContentChars(' A  &amp;  B ')).toBe(5);
+    // 受領仕様 §09「HTMLタグ・空白を除いた本文のみ」。空白を数えると
+    // 文字数 → 期待読了時間 → 読了率 → スコア と伝播してスコアが実際より低く出る。
+    it('空白を除いた文字数を数える', () => {
+      // 正規化後は 'A & B'（5文字）だが、空白2つを除いて 'A&B' の3文字
+      expect(countContentChars(' A  &amp;  B ')).toBe(3);
       expect(countContentChars(null)).toBe(0);
+    });
+
+    it('全角スペース・改行・タブも文字数に入れない', () => {
+      // 全角スペース（U+3000）は \s に含まれる。改行・タブは normalizeContentText が
+      // 半角スペースへ畳むが、そのスペースもここで消える
+      expect(countContentChars('あ　い')).toBe(2);
+      expect(countContentChars('あ\n\tい')).toBe(2);
+      expect(countContentChars('   ')).toBe(0);
+    });
+
+    it('空白しか無い本文は0字として扱う（採点対象外の判定に効く）', () => {
+      // ga4ContentEvaluationService は countContentChars === 0 で採点を止める。
+      // 空白だけの本文が1文字以上と数えられると素通りする
+      expect(countContentChars(' &nbsp; \n ')).toBe(0);
     });
 
     it('imgタグだけを数える', () => {

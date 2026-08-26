@@ -533,9 +533,8 @@ export default function Ga4DashboardClient({
                 <SelectItem value="sessions">セッション</SelectItem>
                 <SelectItem value="cvr">問い合わせ率</SelectItem>
                 <SelectItem value="readRate">完読率</SelectItem>
-                <SelectItem value="avgEngagementTimeSec">
-                  平均エンゲージメント時間
-                </SelectItem>
+                {/* ÷sessions のため「平均エンゲージメント時間」は名乗れない。SummaryCards 参照 */}
+                <SelectItem value="avgEngagementTimeSec">平均滞在時間</SelectItem>
               </SelectContent>
             </Select>
           </div>

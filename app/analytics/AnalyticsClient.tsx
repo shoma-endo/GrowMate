@@ -233,8 +233,10 @@ export default function AnalyticsClient({
             {isApplyingDateRange ? '適用中...' : '期間を適用'}
           </button>
         </div>
+        {/* 「平均滞在時間」は ÷sessions。列見出し「滞在時間（平均）」と同じ値で、
+            記事詳細の「平均エンゲージメント時間」（÷activeUsers）とは別物 */}
         <p className="mb-4 text-xs text-gray-500">
-          指定期間でGA4 指標（平均エンゲージメント時間・完読率・エンゲージメント率・キーイベント数・キーイベント率）を集計して表示します。
+          指定期間でGA4 指標（平均滞在時間・完読率・エンゲージメント率・キーイベント数・キーイベント率）を集計して表示します。
         </p>
         {!error ? (
           <AnalyticsTable
