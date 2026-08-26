@@ -4,7 +4,6 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -13,6 +12,8 @@ import YAML from 'yaml';
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const WORKFLOWS_DIR = path.join(REPO_ROOT, '.takt', 'workflows');
 const SCHEMAS_DIR = path.join(REPO_ROOT, '.takt', 'schemas');
+const RESOLVE_TAKT_BIN = path.join(REPO_ROOT, 'scripts', 'resolve-takt-bin.sh');
+const VERSION_FILE = path.join(REPO_ROOT, '.takt-version');
 
 interface WorkflowRule {
   condition: string;
@@ -53,49 +54,46 @@ function loadSchema(ref: string): Schema {
 }
 
 /**
- * ワークフローを実際に実行する takt の実体を解決する。
- *
- * PATH 上の takt（`npm install -g takt`）は誰かが撃つたびに予告なく上がり、
- * takt は破壊的な schema 変更込みの minor を高頻度で出す。ai-os はこれを避けるため
- * `~/.takt/.takt-version` で版を固定し、`~/.local/takt/<version>/bin/takt` に実体を置く。
- * ジョブが使うのはこの pin 版なので、contract テストも同じ実体で検証する。
- * PATH の takt で検証すると、リポジトリを一切触っていないのに突然赤くなる
- * （2026-08-19 に global が 0.60.0 へ上がり、pin の 0.59.1 では OK な
- * ワークフロー3本が一斉に落ちた）。
+ * GrowMate の takt 正本はリポジトリ直下の `.takt-version`。
+ * 実体は `~/.local/takt/<version>/bin/takt`（`scripts/takt-install-pinned.sh`）。
+ * PATH / Homebrew / ai-os の pin にはフォールバックしない。
+ * ローカルでは未設置・版不一致を skip せず fail（設置手順をエラーに出す）。
+ * CI で pin 未設置のときは doctor 系だけ skip（1GB 設置は別途。ローカル pre-push が主戦場）。
  */
 function resolveTaktBin(): string {
-  const override = process.env.TAKT_BIN;
-  if (override && existsSync(override)) {
-    return override;
-  }
-
-  const versionFile = path.join(homedir(), '.takt', '.takt-version');
-  if (existsSync(versionFile)) {
-    const pinned = readFileSync(versionFile, 'utf8').trim();
-    const runtimeRoot = process.env.TAKT_RUNTIME_ROOT ?? path.join(homedir(), '.local', 'takt');
-    const pinnedBin = path.join(runtimeRoot, pinned, 'bin', 'takt');
-    if (existsSync(pinnedBin)) {
-      return pinnedBin;
-    }
-  }
-
-  // pin 版が未設置の環境（CI・他マシン）では PATH にフォールバックする
-  return 'takt';
-}
-
-const TAKT_BIN = resolveTaktBin();
-
-function taktAvailable(): boolean {
   try {
-    execFileSync(TAKT_BIN, ['--version'], { encoding: 'utf8' });
-    return true;
-  } catch {
-    return false;
+    return execFileSync(RESOLVE_TAKT_BIN, {
+      encoding: 'utf8',
+      cwd: REPO_ROOT,
+    }).trim();
+  } catch (error) {
+    const stderr =
+      error && typeof error === 'object' && 'stderr' in error
+        ? String((error as { stderr?: Buffer | string }).stderr ?? '')
+        : '';
+    throw new Error(
+      stderr.trim() ||
+        `takt pin を解決できません。./scripts/takt-install-pinned.sh を実行してください（正本: ${VERSION_FILE}）`,
+    );
   }
 }
 
-// doctor 0.58.0 は loop_monitor judge 経由の到達辺を実行順を無視して評価する。
-// また follow-up 用に reviewers / self_review_fix が「前回レポート」を参照すると、
+function tryResolveTaktBin(): { bin: string } | { error: string } {
+  try {
+    return { bin: resolveTaktBin() };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+const isCi = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+const taktResolve = tryResolveTaktBin();
+const taktBin = 'bin' in taktResolve ? taktResolve.bin : null;
+const taktResolveError = 'error' in taktResolve ? taktResolve.error : null;
+/** ローカルは pin 必須。CI のみ未設置を許容して skip する */
+const runPinnedTaktTests = taktBin !== null || !isCi;
+
+// doctor は follow-up 用に reviewers / self_review_fix が「前回レポート」を参照すると、
 // 初回到達では未生成でも WARN になる（runtime は欠落文に置換）。意図的な参照なのでベースライン化する。
 // ここに無い WARN が新たに出たらテストが落ちる（黙殺しない）。
 const KNOWN_DOCTOR_WARNINGS: Record<string, RegExp[]> = {
@@ -108,12 +106,38 @@ const KNOWN_DOCTOR_WARNINGS: Record<string, RegExp[]> = {
   ],
 };
 
-describe.skipIf(!taktAvailable())('takt workflow doctor', () => {
-  it.each(workflowFiles)('%s is accepted by the installed takt', (file) => {
-    const output = execFileSync(TAKT_BIN, ['workflow', 'doctor', path.join('.takt', 'workflows', file)], {
-      encoding: 'utf8',
-      cwd: REPO_ROOT,
-    });
+describe.skipIf(!runPinnedTaktTests)('takt pin', () => {
+  it('resolves the binary declared by .takt-version', () => {
+    const want = readFileSync(VERSION_FILE, 'utf8').trim();
+    expect(want).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(taktBin, taktResolveError ?? 'takt pin unresolved').toBeTruthy();
+    const got = execFileSync(taktBin as string, ['--version'], { encoding: 'utf8' }).trim();
+    expect(got).toBe(want);
+  });
+});
+
+describe.skipIf(!runPinnedTaktTests)('takt workflow doctor', () => {
+  it.each(workflowFiles)('%s is accepted by the pinned takt', (file) => {
+    expect(taktBin, taktResolveError ?? 'takt pin unresolved').toBeTruthy();
+    let output: string;
+    try {
+      output = execFileSync(taktBin as string, ['workflow', 'doctor', path.join('.takt', 'workflows', file)], {
+        encoding: 'utf8',
+        cwd: REPO_ROOT,
+      });
+    } catch (error) {
+      const stdout =
+        error && typeof error === 'object' && 'stdout' in error
+          ? String((error as { stdout?: Buffer | string }).stdout ?? '')
+          : '';
+      const stderr =
+        error && typeof error === 'object' && 'stderr' in error
+          ? String((error as { stderr?: Buffer | string }).stderr ?? '')
+          : '';
+      output = `${stdout}${stderr}`;
+      expect(output, `doctor failed for ${file}`).not.toMatch(/\[ERROR\]/);
+      throw error;
+    }
     expect(output).not.toMatch(/\[ERROR\]/);
     const warnings = output.split('\n').filter((line) => line.includes('[WARN]'));
     const allowlist = KNOWN_DOCTOR_WARNINGS[file] ?? [];

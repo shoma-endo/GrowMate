@@ -10,6 +10,30 @@ GrowMate の新規機能は、TAKT標準の Grill Me で要件を確認してか
 - [`spec-review.yaml`](../.takt/workflows/spec-review.yaml): 仕様書レビューの実行定義
 - [`spec-to-pr.yaml`](../.takt/workflows/spec-to-pr.yaml): 仕様書起点の実装・レビュー・PR の実行定義
 - [`docs/plans/`](plans/): 実装対象の仕様書
+- [`.takt-version`](../.takt-version): GrowMate が検証・実行に使う takt の版正本（PATH / Homebrew の版ではない）
+
+## TAKT の版
+
+workflow YAML と doctor / contract テストは、リポジトリ直下の `.takt-version` が指す pin 版だけを正とする。
+
+```bash
+./scripts/takt-install-pinned.sh   # ~/.local/takt/<ver> に設置（冪等）
+./scripts/resolve-takt-bin.sh      # 検証に使う実体パスを表示
+```
+
+版を上げるときは **同じ変更で** 次を行う。Homebrew だけ先に上げて新構文を書くと、pin 不在または旧 pin で pre-push が落ちる。
+
+1. `.takt-version` を新しい版にする
+2. `./scripts/takt-install-pinned.sh` を実行する（pre-push でも未設置なら自動実行する）
+3. pin 版で `workflow doctor` と `tests/unit/takt/workflow-contract.test.ts` を緑にする
+4. 必要なら workflow YAML / facets を破壊的変更に追随させる
+
+pre-push（[`scripts/takt-pre-push-guard.sh`](../scripts/takt-pre-push-guard.sh)）は次だけ自動化する。
+
+- pin 実体が無ければ install する
+- PATH の takt が pin より新しいのに `.takt/workflows` / `.takt/facets` だけ変えて `.takt-version` を上げていない → push を止める
+
+`.takt-version` の自動バンプと YAML の自動修正はしない（破壊的 minor を黙って取り込むため）。
 
 ## 全体フロー
 

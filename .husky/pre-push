@@ -1,3 +1,8 @@
-#!/usr/bin/env sh
-# pre-commit で lint 済み。ここでは push 前に test、build、knip を回す（CI 到達前の早期検知）。
-npm run test && npm run build && npm run knip
+#!/usr/bin/env bash
+# pin 実体の自動設置 + workflow 変更時の版ズレ検知のあと、test / build / knip。
+# 詳細は scripts/takt-pre-push-guard.sh。
+set -euo pipefail
+bash scripts/takt-pre-push-guard.sh
+npm run test
+npm run build
+npm run knip

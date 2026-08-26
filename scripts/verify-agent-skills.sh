@@ -184,10 +184,14 @@ for removed in .agents/skills/spec-to-pr .agents/skills/react-doctor-to-pr .agen
   fi
 done
 
-if takt workflow doctor .takt/workflows/grill-to-gherkin.yaml .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml >/dev/null; then
-  ok "TAKT workflow doctor"
+if TAKT_BIN="$(./scripts/resolve-takt-bin.sh)"; then
+  if "${TAKT_BIN}" workflow doctor .takt/workflows/grill-to-gherkin.yaml .takt/workflows/spec-review.yaml .takt/workflows/spec-to-pr.yaml >/dev/null; then
+    ok "TAKT workflow doctor (${TAKT_BIN})"
+  else
+    fail "TAKT workflow doctor failed (${TAKT_BIN})"
+  fi
 else
-  fail "TAKT workflow doctor failed"
+  fail "TAKT pin 未解決（./scripts/takt-install-pinned.sh を実行。正本: .takt-version）"
 fi
 echo
 
