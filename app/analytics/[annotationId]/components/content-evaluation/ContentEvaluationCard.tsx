@@ -27,7 +27,7 @@ interface Props {
   articleTitle?: string | null;
   evaluation: Ga4ContentEvaluationView | null;
   error?: string | null;
-  /** 次回評価予定の読み取り専用表示のみ（設定操作は概要タブの検索順位評価サイクル設定カード。§10.8「配置」） */
+  /** 次回評価予定の読み取り専用表示のみ（設定操作は概要タブの検索順位・コンテンツ評価サイクル設定カード。§10.8「配置」） */
   schedule?: Ga4EvaluationScheduleView | null;
 }
 
@@ -100,7 +100,7 @@ export function ContentEvaluationCard({
           <CardTitle className="truncate text-lg">{articleTitle || 'コンテンツ評価'}</CardTitle>
         </div>
         {/* 状態バッジのみ。shrink-0 で、長い記事タイトル（左は min-w-0 + truncate）に
-            押されて潰れないようにする。評価の実行は概要タブの「検索順位評価サイクル設定」
+            押されて潰れないようにする。評価の実行は概要タブの「検索順位・コンテンツ評価サイクル設定」
             カードへ移動した（同じ操作を2箇所に置かない。§10.8） */}
         {displayStatus !== 'evaluated' && (
           <div className="flex shrink-0 items-center gap-3">
@@ -117,20 +117,20 @@ export function ContentEvaluationCard({
             そこへGSCの評価サイクル行を根拠に「次回評価予定」を出すと、来ない予定を約束してしまう */}
         {schedule && evaluation && (
           <p className="text-xs text-muted-foreground">
-            {/* 概要タブの検索順位評価サイクル設定カードとラベルの表記を揃える。
+            {/* 概要タブの検索順位・コンテンツ評価サイクル設定カードとラベルの表記を揃える。
                 ベースライン計測が済んでいれば「次回評価予定」、未計測なら「初回計測予定」
                 （未計測の回は軽量パスでスコアだけを記録し、本評価はその1サイクル後。§6.6.2） */}
             {schedule.ga4LastSeenContentScore != null ? '次回評価予定' : '初回計測予定'}：
             {formatDateJP(
               addDaysISO(schedule.ga4LastEvaluatedOn ?? schedule.baseEvaluationDate, schedule.cycleDays)
             )}{' '}
-            {schedule.evaluationHour.toString().padStart(2, '0')}:00（日本時間）。設定は概要タブから変更できます。
+            {schedule.evaluationHour.toString().padStart(2, '0')}:00(日本時間)。設定は概要タブから変更できます。
           </p>
         )}
         {(error || displayStatus === 'evaluation_failed' || displayStatus === 'import_failed') && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error ?? (displayStatus === 'import_failed' ? 'データを再取得してから、概要タブの「検索順位評価サイクル設定」から評価を実行してください。' : '評価に失敗しました。時間をおいて、概要タブの「検索順位評価サイクル設定」から再評価してください。')}</AlertDescription>
+            <AlertDescription>{error ?? (displayStatus === 'import_failed' ? 'データを再取得してから、概要タブの「検索順位・コンテンツ評価サイクル設定」から評価を実行してください。' : '評価に失敗しました。時間をおいて、概要タブの「検索順位・コンテンツ評価サイクル設定」から再評価してください。')}</AlertDescription>
           </Alert>
         )}
         {displayStatus === 'import_failed' && (
@@ -305,7 +305,7 @@ export function ContentEvaluationCard({
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">評価結果はまだありません。概要タブの「検索順位評価サイクル設定」から評価を実行してください。</p>
+          <p className="text-sm text-muted-foreground">評価結果はまだありません。概要タブの「検索順位・コンテンツ評価サイクル設定」から評価を実行してください。</p>
         )}
       </CardContent>
     </Card>

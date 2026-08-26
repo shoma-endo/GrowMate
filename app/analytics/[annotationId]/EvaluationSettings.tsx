@@ -128,7 +128,7 @@ export function EvaluationSettings({
       loading: '設定を保存中...',
       success: () => {
         setIsOpen(false);
-        return isUpdateMode ? '検索順位評価基準日を更新しました' : '検索順位評価を開始しました';
+        return isUpdateMode ? '評価基準日を更新しました' : '検索順位・コンテンツ評価を開始しました';
       },
       error: err => {
         return err instanceof Error ? err.message : 'エラーが発生しました';
@@ -208,8 +208,11 @@ export function EvaluationSettings({
     <div className="space-y-4 border-t pt-6">
       <div className="space-y-4">
         <div>
+          {/* 2026-08-26のサイクル統合以降、この1つの設定がGSC検索順位評価とGA4コンテンツ評価の
+              両方の周期を決める。ページ見出し「検索順位・コンテンツ評価」と同じ並べ方に揃えている
+              （§10.8。当初は「文言は現状のまま」としていたがユーザー指摘で反転。§3.2 / §18） */}
           <h3 className="text-lg font-semibold flex items-center gap-2">
-            検索順位評価サイクル設定
+            検索順位・コンテンツ評価サイクル設定
             {currentEvaluation?.status === 'active' && (
               <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
                 稼働中
@@ -228,8 +231,8 @@ export function EvaluationSettings({
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
             {currentEvaluation
-              ? `${currentEvaluation.cycle_days}日ごとに検索順位の変動を自動的に追跡・評価します`
-              : '設定した日数ごとに検索順位の変動を自動的に追跡・評価します'}
+              ? `${currentEvaluation.cycle_days}日ごとに検索順位の変動とコンテンツの状態を自動で評価します`
+              : '設定した日数ごとに検索順位の変動とコンテンツの状態を自動で評価します'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -237,13 +240,16 @@ export function EvaluationSettings({
             <DialogTrigger asChild>
               <Button variant="default">
                 <Settings className="w-4 h-4" />
-                {isUpdateMode ? '設定を変更' : '検索順位評価を開始'}
+                {isUpdateMode ? '設定を変更' : '評価を開始'}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[670px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
-                  {isUpdateMode ? '検索順位評価基準日の変更' : '検索順位評価サイクルの開始'}
+                  {/* カード内のラベルは系統名を繰り返さない（ui-text.md「評価」の行:
+                      「修飾を付けず『評価』と呼び、文脈は見出しで示す」）。新規登録のときだけ、
+                      何が始まるのかを初見で分かるよう見出しと同じ長い名前を使う */}
+                  {isUpdateMode ? '評価基準日の変更' : '検索順位・コンテンツ評価サイクルの開始'}
                 </DialogTitle>
                 <DialogDescription />
               </DialogHeader>
@@ -270,7 +276,7 @@ export function EvaluationSettings({
                     htmlFor="evaluation-date"
                     className="text-sm font-medium text-gray-700 block"
                   >
-                    検索順位評価基準日
+                    評価基準日
                   </label>
                   <div className="relative">
                     <Input
@@ -334,7 +340,7 @@ export function EvaluationSettings({
                       <Clock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400 pointer-events-none" />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      評価バッチが実行される時間（日本時間）
+                      評価バッチが実行される時間 (日本時間)
                     </p>
                   </div>
                 </div>
@@ -437,7 +443,7 @@ export function EvaluationSettings({
           }`}
         >
           <div className="rounded-lg border border-blue-200 bg-blue-50 shadow-sm p-4">
-            <div className="text-sm text-blue-600 mb-1">現在の検索順位評価基準日</div>
+            <div className="text-sm text-blue-600 mb-1">現在の評価基準日</div>
             <div className="text-2xl font-bold text-blue-900">
               {formatDateJP(currentEvaluation.base_evaluation_date)}
             </div>
@@ -476,7 +482,7 @@ export function EvaluationSettings({
         <div className="rounded-lg border-2 border-dashed p-8 text-center bg-gray-50/50 mt-4">
           <p className="text-muted-foreground font-medium mb-1">未設定</p>
           <p className="text-sm text-gray-500">
-            まだ検索順位評価サイクルが設定されていません。「検索順位評価を開始」ボタンから設定してください。
+            まだ評価サイクルが設定されていません。「評価を開始」ボタンから設定してください。
           </p>
         </div>
       )}
