@@ -112,10 +112,10 @@ export class GoogleTokenService {
     this.ensureCredentials();
 
     if (!code) {
-      throw new Error('認証コード(code)が指定されていません');
+      throw new Error('認証コード（code）が指定されていません');
     }
     if (!redirectUri) {
-      throw new Error('リダイレクトURI(redirectUri)が指定されていません');
+      throw new Error('リダイレクトURI（redirectUri）が指定されていません');
     }
 
     const params = new URLSearchParams({
@@ -159,7 +159,7 @@ export class GoogleTokenService {
     this.ensureCredentials();
 
     if (!refreshToken) {
-      throw new Error('リフレッシュトークン(refreshToken)が指定されていません');
+      throw new Error('リフレッシュトークン（refreshToken）が指定されていません');
     }
 
     const params = new URLSearchParams({

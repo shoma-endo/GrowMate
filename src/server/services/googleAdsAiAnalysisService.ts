@@ -724,7 +724,7 @@ class GoogleAdsAiAnalysisService {
 
   private formatKeywordMetrics(metrics: GoogleAdsKeywordMetric[]): string {
     const header =
-      'キーワード | マッチタイプ | ステータス | キャンペーン | 広告グループ | IMP | Click | CTR | CPC(円) | CV | CVR | CPA(円) | 費用(円) | 品質スコア | 検索IMP Share';
+      'キーワード | マッチタイプ | ステータス | キャンペーン | 広告グループ | IMP | Click | CTR | CPC（円） | CV | CVR | CPA（円） | 費用（円） | 品質スコア | 検索IMP Share';
     const separator =
       '----------|------------|----------|------------|------------|-----|-------|-----|---------|-----|-----|---------|---------|----------|-------------';
 

@@ -248,7 +248,7 @@ export function TimeseriesTab({
                   stroke="#0891b2"
                   strokeWidth={2}
                   dot={false}
-                  name="完読率(%)"
+                  name="完読率（%）"
                   connectNulls={false}
                 />
               )}
@@ -262,7 +262,7 @@ export function TimeseriesTab({
                   stroke="#e11d48"
                   strokeWidth={2}
                   dot={false}
-                  name="問い合わせ率(%)"
+                  name="問い合わせ率（%）"
                   connectNulls={false}
                 />
               )}

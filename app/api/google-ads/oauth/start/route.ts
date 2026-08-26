@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Google Ads連携は現在無効です。環境変数 (GOOGLE_ADS_REDIRECT_URI など) を設定してください。',
+          'Google Ads連携は現在無効です。環境変数（GOOGLE_ADS_REDIRECT_URI など）を設定してください。',
       },
       { status: 503 }
     );

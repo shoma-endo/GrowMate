@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Google Search Console連携は現在無効です。環境変数 (GOOGLE_OAUTH_CLIENT_ID など) を設定してください。',
+          'Google Search Console連携は現在無効です。環境変数（GOOGLE_OAUTH_CLIENT_ID など）を設定してください。',
       },
       { status: 503 }
     );
