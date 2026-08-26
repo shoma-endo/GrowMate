@@ -259,6 +259,10 @@ describe('analyticsContentService', () => {
       // p_has_unstarted_ga4_evaluation は渡さない（2026-08-26 サイクル統合で
       // 「コンテンツ評価未開始」フィルタを廃止。RPC側は default false のまま）
     });
+    // 上の toHaveBeenCalledWith は完全一致なので余分なキーがあれば落ちるが、
+    // それは暗黙の担保で、objectContaining へ書き換えられた瞬間に消える。
+    // 「渡していない」ことを明示的に固定しておく
+    expect(mocks.rpc.mock.calls[0]?.[1]).not.toHaveProperty('p_has_unstarted_ga4_evaluation');
   });
 
   it('GSC評価未開始フィルター未指定時は無効値をRPCへ渡す', async () => {

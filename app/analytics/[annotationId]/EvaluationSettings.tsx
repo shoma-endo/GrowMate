@@ -128,7 +128,7 @@ export function EvaluationSettings({
       loading: '設定を保存中...',
       success: () => {
         setIsOpen(false);
-        return isUpdateMode ? '評価基準日を更新しました' : '検索順位・コンテンツ評価を開始しました';
+        return isUpdateMode ? '評価基準日を更新しました' : '検索順位・コンテンツ評価サイクルを開始しました';
       },
       error: err => {
         return err instanceof Error ? err.message : 'エラーが発生しました';
@@ -240,7 +240,13 @@ export function EvaluationSettings({
             <DialogTrigger asChild>
               <Button variant="default">
                 <Settings className="w-4 h-4" />
-                {isUpdateMode ? '設定を変更' : '評価を開始'}
+                {/* 「評価サイクルを開始」（「評価を開始」ではない）。develop ではこのボタンと
+                    「今すぐ評価を実行」が同時に出ることは無かった（後者は評価設定がある場合のみ表示）が、
+                    2026-08-26 に canRunWithoutCycle を足してGA4の単発評価へ到達できるようにしたため、
+                    サイクル未登録かつGA4が評価可能なときに両方が同じ行へ並ぶようになった。
+                    押しても評価は走らない（初回計測は1サイクル後）ので、開始するのが「サイクル」だと
+                    分かる語にして即時実行と区別する（§10.8 / §18） */}
+                {isUpdateMode ? '設定を変更' : '評価サイクルを開始'}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[670px] max-h-[90vh] overflow-y-auto">
@@ -482,7 +488,7 @@ export function EvaluationSettings({
         <div className="rounded-lg border-2 border-dashed p-8 text-center bg-gray-50/50 mt-4">
           <p className="text-muted-foreground font-medium mb-1">未設定</p>
           <p className="text-sm text-gray-500">
-            まだ評価サイクルが設定されていません。「評価を開始」ボタンから設定してください。
+            まだ評価サイクルが設定されていません。「評価サイクルを開始」ボタンから設定してください。
           </p>
         </div>
       )}
