@@ -286,14 +286,17 @@ describe('@/server/lib/ga4-content-evaluation-prompt', () => {
       const prompt = renderGa4EvaluationUserPrompt(
         '最後までスクロールした人数: {{scroll_users}}人（全体の{{scroll_rate}}%）',
         variables,
-        { scrollRate: null, scrollUsers: null }
+        { readRate: null, scrollUsers: null }
       );
       expect(prompt).toContain('最後までスクロールした人数: 実測なし');
       expect(prompt).not.toContain('12%');
       expect(prompt).not.toContain('実測なし人');
     });
 
-    it('スクロール人数が実測できない場合はscroll率だけを表示する', () => {
+    // 受領原文 §08:「取得できない場合は人数を出さず『1人あたり平均で全体の12%まで
+    // 読まれています』と表記する」。この 12% は直前の文の**読了率**を指しており、
+    // 完読率（scroll率）ではない（レビュー🟡で判明。旧実装は scrollRate を渡していた）。
+    it('スクロール人数が実測できない場合は読了率で代替文言を出す', () => {
       const variables = buildGa4EvaluationPromptVariables(context, scores, {
         sessions: 100,
         engagedUsers: 40,
@@ -308,9 +311,11 @@ describe('@/server/lib/ga4-content-evaluation-prompt', () => {
       const prompt = renderGa4EvaluationUserPrompt(
         '最後までスクロールした人数: {{scroll_users}}人（全体の{{scroll_rate}}%）',
         variables,
-        { scrollRate: 0.2, scrollUsers: null }
+        { readRate: 0.75, scrollUsers: null }
       );
-      expect(prompt).toContain('実測なし。1人あたり平均で全体の20%まで読まれています');
+      // 読了率 75%。完読率 20% ではない
+      expect(prompt).toContain('実測なし。1人あたり平均で全体の75%まで読まれています');
+      expect(prompt).not.toContain('全体の20%まで読まれています');
     });
 
     it('スクロール実測がある場合は人数と率を維持する', () => {
@@ -328,7 +333,7 @@ describe('@/server/lib/ga4-content-evaluation-prompt', () => {
       const prompt = renderGa4EvaluationUserPrompt(
         '最後までスクロールした人数: {{scroll_users}}人（全体の{{scroll_rate}}%）',
         variables,
-        { scrollRate: 0.2, scrollUsers: 20 }
+        { readRate: 0.75, scrollUsers: 20 }
       );
       expect(prompt).toContain('最後までスクロールした人数: 20人（全体の20%）');
     });

@@ -143,11 +143,21 @@ class Ga4ImportService {
     // 取込ウィンドウ単位ではなく同期実行ごとに1度だけ解決する。
     // ウィンドウ単位で判定すると、増分同期（1日窓）でたまたま誰も90%到達しなかった日に
     // 「未計測」と誤判定し、評価側の全か無か集計で90日分の完読率が丸ごと落ちる。
-    const scrollEventName = await this.resolveScrollEventNameForProperty(
-      accessToken,
-      propertyId,
-      endDate
-    );
+    // 解決に失敗しても取込本体は続ける（レビュー🟡）。ここは追加の runReport を1本投げるだけの
+    // 補助処理だが try/catch が無く、例外がそのまま syncUser を抜けて **baseReport すら
+    // 取得されずその回の取込が丸ごと失敗**していた。GA4の集計は /ga4-dashboard・一覧の
+    // 全列が依存する共有経路なので、完読率という任意指標のために全体を落とさない。
+    // 失敗時は null（＝未計測）として扱う。実測値は次回同期で復元される。
+    let scrollEventName: string | null = null;
+    try {
+      scrollEventName = await this.resolveScrollEventNameForProperty(accessToken, propertyId, endDate);
+    } catch (error) {
+      console.error('[Ga4ImportService] failed to resolve scroll event name; continuing without it', {
+        userId,
+        propertyId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
     const eventNames = Array.from(
       new Set([...(scrollEventName === null ? [] : [scrollEventName]), ...conversionEvents])
     );

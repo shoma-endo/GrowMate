@@ -25,7 +25,14 @@ export interface Ga4PromptMetricValues {
 
 interface Ga4PromptScrollFallbackValues {
   scrollUsers: number | null;
-  scrollRate: number | null;
+  /**
+   * 代替文言に使うのは完読率（scroll率）ではなく**読了率**である（レビュー🟡）。
+   * 受領原文 §08 は「『読了率12%』を『38人が最後まで読んだ』と換算してはならない。…
+   * 取得できない場合は人数を出さず『1人あたり平均で全体の12%まで読まれています』と
+   * 表記する」と定めており、この 12% は直前の文の**読了率**を指す。
+   * 旧実装は scrollRate を渡していたため、入った場合に読了率と食い違う文が出ていた。
+   */
+  readRate: number | null;
 }
 
 function formatPercent(value: number | null): string {
@@ -99,9 +106,9 @@ export function renderGa4EvaluationUserPrompt(
   variables: Record<string, string>,
   scroll: Ga4PromptScrollFallbackValues
 ): string {
-  const unmeasuredScrollMessage = scroll.scrollRate === null
+  const unmeasuredScrollMessage = scroll.readRate === null
     ? '実測なし'
-    : `実測なし。1人あたり平均で全体の${formatPercent(scroll.scrollRate)}%まで読まれています`;
+    : `実測なし。1人あたり平均で全体の${formatPercent(scroll.readRate)}%まで読まれています`;
   const scrollLine = scroll.scrollUsers === null
     ? `最後までスクロールした人数: ${unmeasuredScrollMessage}`
     : null;

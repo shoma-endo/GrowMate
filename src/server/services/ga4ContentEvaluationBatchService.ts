@@ -21,15 +21,21 @@ import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 import { env } from '@/env';
 
 // §8.3「時間予算と件数上限」
+// 結末ログの観測用（§8.3）。記事の開始可否は FORCED_PROGRESS_DEADLINE_MS で判定する。
 const BATCH_TIME_LIMIT_MS = 280 * 1000;
 const MAX_USERS_PER_BATCH = 10;
 const MAX_ARTICLES_PER_BATCH = 20;
 const SYNC_TIME_BUDGET_MS = 120 * 1000;
-// ライブロック回避（§8.3必須）の強制評価判定専用の締切（レビュー指摘・実装時訂正）。
+// ~~ライブロック回避（§8.3必須）の強制評価判定専用の締切~~
+// **新しい記事を開始してよい最終時刻**（2026-08-26。レビュー🟡で用途を拡大）。
 // 1記事の評価はLLM呼び出しを含み最悪45秒×3試行=135秒かかりうる（§8.1）。route.tsのmaxDuration
-// （300秒）に対しこの猶予を残せる時点でなければ強制的に開始してはいけない。BATCH_TIME_LIMIT_MS
+// （300秒）に対しこの猶予を残せる時点でなければ開始してはいけない。BATCH_TIME_LIMIT_MS
 // （280秒）をそのまま使うと残り20秒しかなく、開始しても必ずmaxDurationで中断（504）され、
 // last_evaluated_onも進まないため次の毎時実行でも同じ状態が繰り返される（真のライブロック）。
+//
+// 当初は「進捗ゼロの間だけこの締切を使い、1件でも進めば280秒に戻す」としていたが、
+// **280秒側も同じ理由で155秒を超えて開始してはいけない**（279秒開始なら最悪414秒）。
+// 進捗の有無で規則を変える理由が無かったため、常にこの締切を使う形へ統一した。
 const ROUTE_MAX_DURATION_MS = 300 * 1000;
 const SINGLE_RUN_WORST_CASE_MS = 135 * 1000; // 45秒 × 3試行（§8.1）
 const FORCED_PROGRESS_SAFETY_MARGIN_MS = 10 * 1000;
@@ -187,7 +193,9 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
 
       const noProgressYet = result.articlesEvaluated + result.articlesFailed === 0;
       const elapsed = Date.now() - startedAt;
-      if (elapsed > BATCH_TIME_LIMIT_MS && !(noProgressYet && !forcedProgressUsed)) {
+      // 記事ループと同じ規則（下記）。次のユーザーへ進むことは新しい記事の開始を意味するので、
+      // ここも155秒で締める。
+      if (elapsed > FORCED_PROGRESS_DEADLINE_MS && !(noProgressYet && !forcedProgressUsed)) {
         result.stoppedReason = 'time_limit';
         result.skippedDueToLimit += this.countRemainingArticles(byUser, userIds, result.usersAttempted, 0);
         CRON_DEFINITIONS.ga4ContentEvaluate.log('warn', 'batch_time_budget_exceeded', {
@@ -244,12 +252,21 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
 
         const stillNoProgress = result.articlesEvaluated + result.articlesFailed === 0;
         const elapsedNow = Date.now() - startedAt;
-        // ライブロック回避（§8.3）: 進捗ゼロの間だけ締切を FORCED_PROGRESS_DEADLINE_MS（155秒）へ
-        // 前倒しする。BATCH_TIME_LIMIT_MS（280秒）まで待つと、1記事の最悪所要（135秒）を
-        // 確保できないまま強制評価を始めてしまい、必ずmaxDurationで中断される（レビュー指摘・
-        // 実装時訂正）。1件でも進捗が出れば以後は通常どおり280秒の締切に戻る。
-        const timeLimitForThisArticleMs = stillNoProgress ? FORCED_PROGRESS_DEADLINE_MS : BATCH_TIME_LIMIT_MS;
-        if (elapsedNow > timeLimitForThisArticleMs) {
+        // 新しい記事を開始してよい最終時刻は FORCED_PROGRESS_DEADLINE_MS（155秒）。
+        // 1記事の最悪所要は135秒（45秒×3試行。§8.1）で、route.ts の maxDuration は300秒だから、
+        // それより後に開始すると maxDuration で中断される。
+        //
+        // ~~進捗ゼロの間だけ155秒へ前倒しし、1件でも進めば280秒に戻す~~
+        // → 2026-08-26 訂正（レビュー🟡）。進捗の有無で締切を変えていたが、**280秒側も同じ理由で
+        // 155秒を超えて開始してはいけない**。279秒に開始した記事は最悪414秒までかかり、
+        // maxDuration を超えてプロセスごと落ちる。定数のコメント（:29-31「この猶予を残せる時点で
+        // なければ強制的に開始してはいけない」）と実装が矛盾していた状態を、コメント側の規則へ
+        // 揃える形で解消する。BATCH_TIME_LIMIT_MS は結末ログ（§8.3）の観測用途に残す。
+        //
+        // 引き換えに1回あたりの処理窓は 280秒 → 155秒へ縮む。ただし毎時実行で MAX_ARTICLES_PER_BATCH
+        // が20件である以上、通常は件数側が先に効くため実質的な取りこぼしは増えない。
+        // 逆に maxDuration による中断は、途中で死んだ記事が status='evaluating' で残る原因になる。
+        if (elapsedNow > FORCED_PROGRESS_DEADLINE_MS) {
           if (stillNoProgress && !forcedProgressUsed) {
             // 1件も評価していない状態で締切を迎えた場合、先頭の1記事だけは評価を試みてから中断する。
             forcedProgressUsed = true;
