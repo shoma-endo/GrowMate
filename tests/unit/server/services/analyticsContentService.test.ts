@@ -256,7 +256,8 @@ describe('analyticsContentService', () => {
       p_include_uncategorized: false,
       p_has_unread_suggestion: false,
       p_has_unstarted_gsc_evaluation: true,
-      p_has_unstarted_ga4_evaluation: false,
+      // p_has_unstarted_ga4_evaluation は渡さない（2026-08-26 サイクル統合で
+      // 「コンテンツ評価未開始」フィルタを廃止。RPC側は default false のまま）
     });
   });
 

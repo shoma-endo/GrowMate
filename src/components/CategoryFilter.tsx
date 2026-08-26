@@ -12,12 +12,18 @@ interface CategoryFilterProps {
   selectedCategoryNames: string[];
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
+  /**
+   * 「評価未開始」＝評価サイクルが未登録の記事。
+   * 2026-08-26 のサイクル統合で、サイクルを登録した時点でGSC検索順位評価とGA4コンテンツ評価が
+   * 同時に始まるようになったため、系統別の「未開始」は存在しない。かつて併存していた
+   * 「コンテンツ評価未開始」（= ga4_content_evaluations に行が無い）は「開始したか」ではなく
+   * 「結果があるか」を見ており、サイクル登録済みでも本評価が走る2サイクル目まで true のままで、
+   * その間ユーザーに取れるアクションが無かったため廃止した（§10.2 / §18）。
+   */
   hasUnstartedGscEvaluation: boolean;
-  hasUnstartedGa4Evaluation: boolean;
   onFilterChange: (selectedCategoryNames: string[], includeUncategorized: boolean) => void;
   onUnreadSuggestionChange: (value: boolean) => void;
   onUnstartedGscEvaluationChange: (value: boolean) => void;
-  onUnstartedGa4EvaluationChange: (value: boolean) => void;
   onClearAll: () => void;
 }
 
@@ -27,11 +33,9 @@ export default function CategoryFilter({
   includeUncategorized,
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
-  hasUnstartedGa4Evaluation,
   onFilterChange,
   onUnreadSuggestionChange,
   onUnstartedGscEvaluationChange,
-  onUnstartedGa4EvaluationChange,
   onClearAll,
 }: CategoryFilterProps) {
   // フィルター変更時に永続化
@@ -72,8 +76,7 @@ export default function CategoryFilter({
     selectedCategoryNames.length > 0 ||
     includeUncategorized ||
     hasUnreadSuggestion ||
-    hasUnstartedGscEvaluation ||
-    hasUnstartedGa4Evaluation;
+    hasUnstartedGscEvaluation;
 
   return (
     <div className="space-y-3">
@@ -94,14 +97,7 @@ export default function CategoryFilter({
               onCheckedChange={checked => onUnstartedGscEvaluationChange(!!checked)}
             />
             <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-            <span className="text-sm font-medium text-blue-800">検索順位評価未開始</span>
-          </label>
-        </div>
-        <div className="border rounded-md px-2 py-2">
-          <label className="flex items-center gap-2 cursor-pointer hover:bg-indigo-50 px-1 py-1 rounded">
-            <Checkbox checked={hasUnstartedGa4Evaluation} onCheckedChange={checked => onUnstartedGa4EvaluationChange(!!checked)} />
-            <PlayCircle className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" />
-            <span className="text-sm font-medium text-indigo-800">コンテンツ評価未開始</span>
+            <span className="text-sm font-medium text-blue-800">評価未開始</span>
           </label>
         </div>
         <div className="border rounded-md px-2 py-2">

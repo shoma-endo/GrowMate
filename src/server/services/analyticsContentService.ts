@@ -50,7 +50,10 @@ class AnalyticsContentService {
           p_include_uncategorized: includeUncategorized,
           p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
           p_has_unstarted_gsc_evaluation: params.hasUnstartedGscEvaluation ?? false,
-          p_has_unstarted_ga4_evaluation: params.hasUnstartedGa4Evaluation ?? false,
+          // p_has_unstarted_ga4_evaluation は渡さない。2026-08-26 のサイクル統合で
+          // 「コンテンツ評価未開始」フィルタを廃止したため（§10.2）。RPC 側の引数は
+          // `default false` で残してあるので、渡さなければ条件が効かない。
+          // SQL のシグネチャを変えないのは、本番適用済み関数の再定義を避けるため
         });
 
         const row = data?.[0] as
