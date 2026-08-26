@@ -99,6 +99,32 @@ const EVALUATION_VIEW = {
   history: [],
 };
 
+/**
+ * configureRunClient の入力から手計算した、finish_ga4_content_evaluation へ渡るべき値。
+ *
+ *   本文1000字・画像0点 → 期待読了時間 = round(1000/500*60 + 0) = 120秒
+ *   engagement_time_sec 3000 ÷ active_users 30 = 平均エンゲージメント時間 100秒
+ *   読了率 = 100/120 = 0.8333 → アンカー上限(0.5)超えで読了スコア 100
+ *   読み始め率 0.5 → アンカー (0.4,40)-(0.5,60) の右端で読み始めスコア 60
+ *   コンテンツ力 = round(sqrt(100*60)) = 77
+ *   読了80-100 × 読み始め60-79 → R_GOOD
+ *
+ * expect.any(Number) では p_read_score と p_engage_score を取り違えても、
+ * p_content_score にセッション数を入れても通ってしまう（レビューのミューテーションで実証）。
+ * スコアの計算自体は ga4-evaluation.test.ts が厳密に固定しているので、ここで守るのは
+ * 「算出結果がどの引数に載るか」という配線である。
+ */
+const EXPECTED_SCORE_ARGS = {
+  p_user_id: USER_ID,
+  p_content_score: 77,
+  p_read_score: 100,
+  p_engage_score: 60,
+  p_diagnosis_code: 'R_GOOD',
+  p_sessions: 30,
+  p_char_count: 1000,
+  p_expected_read_seconds: 120,
+} as const;
+
 function configureRunClient({
   metricsError = null,
   includeRanking = false,
@@ -356,7 +382,7 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     const finishCall = mocks.client.rpc.mock.calls.find(([name]) => name === 'finish_ga4_content_evaluation');
     expect(finishCall?.[1]).toMatchObject({
       p_status: 'narrative_failed',
-      p_content_score: expect.any(Number),
+      ...EXPECTED_SCORE_ARGS,
     });
     expect(finishCall?.[1]?.p_status).not.toBe('insufficient_data');
     expect(finishCall?.[1]?.p_error_code).not.toBe('ga4_data_stale');
@@ -388,8 +414,7 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     expect(finishCall?.[1]).toMatchObject({
       p_status: 'narrative_failed',
       p_error_code: 'llm_timeout',
-      p_content_score: expect.any(Number),
-      p_diagnosis_code: expect.any(String),
+      ...EXPECTED_SCORE_ARGS,
     });
     expect(mocks.client.rpc.mock.calls.filter(([name]) => name === 'update_ga4_content_evaluation_attempt')).toHaveLength(1);
   });
@@ -417,7 +442,7 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     expect(finishCall?.[1]).toMatchObject({
       p_status: 'narrative_failed',
       p_error_code: 'llm_output_invalid',
-      p_content_score: expect.any(Number),
+      ...EXPECTED_SCORE_ARGS,
     });
     expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
   });

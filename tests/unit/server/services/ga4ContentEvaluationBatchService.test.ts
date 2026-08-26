@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   sendEmail: vi.fn(),
   updateCalls: [] as Record<string, unknown>[],
+  eqCalls: [] as Array<[string, unknown]>,
+  updateEqBoundaries: [] as number[],
   userEmail: null as string | null,
   notifiedHistoryId: null as string | null,
 }));
@@ -40,11 +42,18 @@ vi.mock('@/server/services/supabaseService', () => {
     select() {
       return this;
     }
-    eq() {
+    // 引数を捨てると `.eq('user_id', …)` が付いているかを検査できない。
+    // BR-06「抽出後の書き込みは user_id を明示する」は Service Role 経由で RLS が
+    // バイパスされる以上これが唯一の防御層なので、テスト側で観測できるようにする
+    // （レビュー: ミューテーションで `.eq('user_id')` を外しても全テストが通っていた）。
+    eq(column: string, value: unknown) {
+      mocks.eqCalls.push([column, value]);
       return this;
     }
     update(payload: Record<string, unknown>) {
       mocks.updateCalls.push(payload);
+      // 直前までの eq と、この update に続く eq を区別できるようにする
+      mocks.updateEqBoundaries.push(mocks.eqCalls.length);
       return this;
     }
     maybeSingle() {
@@ -120,17 +129,23 @@ function mockRpcRange(value: { data: unknown; error: unknown; count: number | nu
   mocks.rpc.mockReturnValue({ range: vi.fn().mockResolvedValue(value) });
 }
 
-function buildEvaluatedView(contentScore: number): Ga4ContentEvaluationView {
+function buildEvaluatedView(
+  contentScore: number,
+  // narrative_failed は「スコアは確定したがLLMの文章化だけ失敗した」日常的な結末で、
+  // バッチ・アクションとも evaluated と同列に扱う（クールダウン前進・スコア更新・通知）。
+  // 既定引数のままだと入力が作れず、ミューテーションで3箇所すべてが生き残っていた。
+  status: 'evaluated' | 'narrative_failed' = 'evaluated'
+): Ga4ContentEvaluationView {
   const freshStartedAt = new Date(Date.now() + 60_000).toISOString();
   return {
     settingsEnabled: true,
-    displayStatus: 'evaluated',
+    displayStatus: status,
     missingMetrics: [],
     projection: null,
     history: [
       {
         id: 'history-1',
-        status: 'evaluated',
+        status,
         startedAt: freshStartedAt,
         completedAt: freshStartedAt,
         attemptCount: 1,
@@ -182,10 +197,22 @@ function syncOk(userId: string) {
   };
 }
 
+/**
+ * update(...) の直後に続く .eq(...) を取り出す。
+ * FakeQuery は `update(payload).eq('id', …).eq('user_id', …)` の順に呼ばれるので、
+ * update 時点の eqCalls 長を境界として、それ以降を「その update の絞り込み条件」とみなす。
+ */
+function eqFiltersForLastUpdate(): Array<[string, unknown]> {
+  const boundary = mocks.updateEqBoundaries[mocks.updateEqBoundaries.length - 1] ?? 0;
+  return mocks.eqCalls.slice(boundary);
+}
+
 describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.updateCalls.length = 0;
+    mocks.eqCalls.length = 0;
+    mocks.updateEqBoundaries.length = 0;
     mocks.userEmail = null;
     mocks.notifiedHistoryId = null;
     mocks.syncUser.mockImplementation(async (userId: string) => syncOk(userId));
@@ -332,6 +359,8 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     // 2回目: 1回目のbaseline成功で last_seen_content_score が埋まった状態（次回due）→ フルパス
     vi.clearAllMocks();
     mocks.updateCalls.length = 0;
+    mocks.eqCalls.length = 0;
+    mocks.updateEqBoundaries.length = 0;
     mocks.syncUser.mockImplementation(async (userId: string) => syncOk(userId));
     const secondRow = { ...firstRow, ga4_last_evaluated_on: '2020-01-31', ga4_last_seen_content_score: 45 };
     mockRpcRange({ data: [secondRow], error: null, count: 1 });
@@ -541,5 +570,81 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     expect(result.emailsFailed).toBe(0);
     // 評価そのものは行われ、クールダウンも進む（通知だけを抑止する）
     expect(result.articlesEvaluated).toBe(1);
+  });
+  it('BR-06: クールダウンの更新は user_id で必ず絞る（Service Role経由でRLSが効かないため唯一の防御層）', async () => {
+    const dueRow = {
+      id: 'cycle-br06',
+      user_id: 'user-br06',
+      content_annotation_id: 'annotation-br06',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: '2020-01-01',
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: '2020-01-31',
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mocks.run.mockResolvedValue(buildEvaluatedView(70));
+
+    await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+
+    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
+    expect(cooldownUpdate).toBeDefined();
+    const filters = mocks.eqCalls.map(([column]) => column);
+    expect(filters).toContain('user_id');
+    expect(mocks.eqCalls).toContainEqual(['user_id', 'user-br06']);
+    expect(mocks.eqCalls).toContainEqual(['id', 'cycle-br06']);
+  });
+
+  it('narrative_failed（LLMの文章化だけ失敗）でも、スコア更新・クールダウン前進・通知を行う', async () => {
+    const dueRow = {
+      id: 'cycle-nf',
+      user_id: 'user-nf',
+      content_annotation_id: 'annotation-nf',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: '2020-01-01',
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: '2020-01-31',
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mocks.run.mockResolvedValue(buildEvaluatedView(72, 'narrative_failed'));
+    mocks.userEmail = 'user@example.test';
+
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+
+    expect(result.articlesEvaluated).toBe(1);
+    expect(result.articlesFailed).toBe(0);
+    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
+    // スコアは確定しているので last_seen_content_score も進める
+    expect(cooldownUpdate).toMatchObject({ ga4_last_seen_content_score: 72 });
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
+    expect(eqFiltersForLastUpdate()).toContainEqual(['user_id', 'user-nf']);
+  });
+
+  it('評価が失敗した記事は articlesFailed と result.failed に載る（Cron の FAIL 判定の入口）', async () => {
+    const dueRow = {
+      id: 'cycle-fail',
+      user_id: 'user-fail',
+      content_annotation_id: 'annotation-fail',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: '2020-01-01',
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: '2020-01-31',
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    // run() が例外を投げると unknown_error になる
+    mocks.run.mockRejectedValue(new Error('boom'));
+
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+
+    expect(result.articlesEvaluated).toBe(0);
+    expect(result.articlesFailed).toBe(1);
+    // scripts/invoke-cron.sh:150 が .data.failed を FAIL 判定に使う。ここが 0 のままだと
+    // 全記事が失敗してもジョブが緑になる（ミューテーションで実証済み）
+    expect(result.failed).toBe(1);
   });
 });
