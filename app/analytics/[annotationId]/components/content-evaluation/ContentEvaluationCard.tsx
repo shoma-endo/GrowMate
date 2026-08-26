@@ -124,7 +124,7 @@ export function ContentEvaluationCard({
             {formatDateJP(
               addDaysISO(schedule.ga4LastEvaluatedOn ?? schedule.baseEvaluationDate, schedule.cycleDays)
             )}{' '}
-            {schedule.evaluationHour.toString().padStart(2, '0')}:00(日本時間)。設定は概要タブから変更できます。
+            {schedule.evaluationHour.toString().padStart(2, '0')}:00（日本時間）。設定は概要タブから変更できます。
           </p>
         )}
         {(error || displayStatus === 'evaluation_failed' || displayStatus === 'import_failed') && (

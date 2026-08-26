@@ -340,7 +340,7 @@ export function EvaluationSettings({
                       <Clock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400 pointer-events-none" />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      評価バッチが実行される時間 (日本時間)
+                      評価バッチが実行される時間（日本時間）
                     </p>
                   </div>
                 </div>
@@ -360,14 +360,14 @@ export function EvaluationSettings({
                             <p className="text-blue-600 text-xs mb-1">初回計測日</p>
                             <p className="font-semibold text-blue-900">
                               {formatDateJP(nextEvaluationDateStr)}{' '}
-                              {evaluationHour.toString().padStart(2, '0')}:00 (日本時間)
+                              {evaluationHour.toString().padStart(2, '0')}:00（日本時間）
                             </p>
                           </div>
                           <div>
                             <p className="text-blue-600 text-xs mb-1">初回評価日</p>
                             <p className="font-semibold text-blue-900">
                               {formatDateJP(firstEvaluationDateStr)}{' '}
-                              {evaluationHour.toString().padStart(2, '0')}:00 (日本時間)
+                              {evaluationHour.toString().padStart(2, '0')}:00（日本時間）
                             </p>
                           </div>
                         </div>
@@ -454,7 +454,7 @@ export function EvaluationSettings({
               <div className="text-2xl font-bold text-green-900">
                 {formatDateJP(nextScheduledEvaluationDate)}{' '}
                 {(currentEvaluation.evaluation_hour ?? 12).toString().padStart(2, '0')}:00
-                (日本時間)
+                （日本時間）
               </div>
             </div>
           ) : (
@@ -464,7 +464,7 @@ export function EvaluationSettings({
                 <div className="text-2xl font-bold text-cyan-900">
                   {formatDateJP(initialMeasurementDate)}{' '}
                   {(currentEvaluation.evaluation_hour ?? 12).toString().padStart(2, '0')}:00
-                  (日本時間)
+                  （日本時間）
                 </div>
               </div>
               <div className="rounded-lg border border-green-200 bg-green-50 shadow-sm p-4">
@@ -472,7 +472,7 @@ export function EvaluationSettings({
                 <div className="text-2xl font-bold text-green-900">
                   {formatDateJP(initialEvaluationDate)}{' '}
                   {(currentEvaluation.evaluation_hour ?? 12).toString().padStart(2, '0')}:00
-                  (日本時間)
+                  （日本時間）
                 </div>
               </div>
             </>
