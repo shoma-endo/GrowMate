@@ -1,47 +1,72 @@
 ---
 name: cloud-agent-unattended
-description: Cursor Cloud AgentがTAKT CLI無しでspec-reviewと実装→PRの無人ループを回すときの正本。Cloud上で仕様レビュー完了や仕様起点PRを依頼されたとき、またはTAKT/APIキー無しで無人系を進めるときに使う。ローカルのtakt -w起動やGrill Me対話では使わない。
+description: Cursor Cloud AgentがTAKT CLI無しでspec-reviewと実装→PRの無人ループを回すときの正本。工程ごとに subagent（Task）でコンテキスト分離する。Cloud上で仕様レビュー完了や仕様起点PRを依頼されたときに使う。ローカルのtakt -w起動やGrill Me対話では使わない。
 ---
 
 # Cloud Agent 無人ループ（TAKT CLI なし）
 
-Cursor Cloud Agent 自身がオーケストレータになる。**`takt` コマンドは起動しない。** Anthropic / Cursor の追加 API キーも要求しない（Cloud Agent のモデルを使う）。
+**親 Agent = 薄いオーケストレータ。** 工程の実作業は **必ず subagent（Task tool）** に委譲する。同一 context で audit/implement/review を兼務しない。
+
+- **`takt` は起動しない。**
+- 追加 API キーは要求しない（Cloud Agent / subagent の model は `inherit` 既定）。
+- handoff 正本: [`workflow-handoff.md`](workflow-handoff.md)
 
 ## 使うとき / 使わないとき
 
 | 使う | 使わない |
 |------|----------|
 | Cloud Agent 上で `spec-review` 相当 | ローカルで `takt -w grill-to-gherkin`（対話） |
-| Cloud Agent 上で実装→verify→PR | ローカルで `takt -w spec-review` / `spec-to-pr` を回すとき |
+| Cloud Agent 上で実装→verify→PR | ローカルで `takt -w spec-review` / `spec-to-pr` |
 | 「TAKT なしでレビューまで」「Cloud で PR まで」 | Grill Me・着手判断・人間承認待ちが必要な前段 |
 
-ローカル TAKT は残置する。Cloud の主系はこの Skill。
+ローカル TAKT は残置。Cloud 主系は本 Skill + `.agents/agents/spec-*.md`。
+
+## オーケストレーション規則
+
+1. **親は工程を実行しない。** Task で下表 subagent を起動する。
+2. **並列:** `spec-ai-antipattern-review` と `spec-architecture-review` は **1 メッセージで2 Task 並列**。
+3. **handoff:** `docs/plans/.workflow/<slug>/`（gitignore）。subagent はファイルに全文、親は **verdict + パス** のみ保持。
+4. **人間への途中質問をしない。** 判断不能なら停止し仕様書に未確定事項を残す。
+5. **`.takt/runs/` を正本にしない。**
+6. **merge しない。**
+
+## 工程 → subagent 対応表
+
+| 工程 | subagent | handoff 出力 |
+|------|----------|--------------|
+| identify | `spec-identify` | `review/01-scope.md` |
+| audit | `spec-audit` | `review/02-audit.md` |
+| revise | `spec-revise` | `review/03-revise.md` |
+| visualize | `spec-visualize` | `review/04-visualize.md` |
+| finalize | `spec-finalize` | `review/05-finalize.md` |
+| plan | `spec-plan` | `pr/01-plan.md` |
+| implement | `spec-implement` | `pr/02-implement-report.md` |
+| reviewers | `spec-ai-antipattern-review` + `spec-architecture-review` | `pr/03-*.md` |
+| fix | `spec-fix` (`mode: reviewers`) | `pr/04-fix-result.md` |
+| readme_sync | `spec-readme-sync` | `pr/05-readme-sync.md` |
+| self_review | `spec-self-review` | `pr/06-self-review.md` |
+| self_review_fix | `spec-fix` (`mode: self_review`) | `pr/04-fix-result.md` |
+| prepare_pr_summary | `spec-pr-summary` | `pr/07-pr-summary.md` |
+| create_pr | `spec-create-pr` | `pr/08-create-pr.md` |
 
 ## 正本の参照（複製しない）
 
-手順の中身は既存正本を **読んで従う**。ここにチェックリストを再掲しない。
-
-| 工程 | 正本 |
+| 観点 | 正本 |
 |------|------|
-| 仕様レビュー観点 | `.agents/skills/spec-review/SKILL.md`（条件付きは同ディレクトリ） |
+| 仕様レビュー | `.agents/skills/spec-review/SKILL.md` |
 | 図解 HTML | `.agents/skills/spec-to-html/SKILL.md` |
-| 実装ポリシー | `.agents/skills/implementation-guidelines/SKILL.md` ほか該当 Skill |
+| 実装 | `.agents/skills/implementation-guidelines/` ほか |
 | 品質ゲート | `.agents/skills/quality-gate/SKILL.md` |
-| 無人前提・ABORT | `.takt/facets/partials/instructions/unattended-operation.md` |
-| review 手順詳細 | `.takt/facets/instructions/spec-review/*` |
-| 実装→PR 手順詳細 | `.takt/facets/instructions/spec-to-pr/*` |
-| MVP / 運用モデル | `.takt/facets/knowledge/growmate.md`、`AGENTS.md` |
+| 無人前提 | `.takt/facets/partials/instructions/unattended-operation.md` |
+| review 詳細 | `.takt/facets/instructions/spec-review/*` |
+| 実装→PR 詳細 | `.takt/facets/instructions/spec-to-pr/*` |
 
-## 共通ルール（Cloud）
+## 検証・PR
 
-1. **人間への途中質問をしない。** 判断不能・仕様不足なら停止し、仕様書に未確定事項と次アクションを残す（TAKT の ABORT 相当）。
-2. **要件を発明しない。** MVP 最優先。Non-goals に無いものを足さない。
-3. **`.takt/runs/` を正本にしない。** 結果は仕様書本文（レビュー記録・未確定事項）と PR 本文、最終応答に残す。
-4. **ブランチ名:** Cloud Agent の制約に従う（例: `cursor/<slug>-e562`）。`ManagePullRequest` が使えるなら PR 作成・更新にそれを使う。使えないときだけ `gh`。
-5. **検証:** プロダクション影響パスを変えたら `npm run verify`（または `verify:changed`）。ブラウザ手動・実DB・外部 API 実通信・migration リモート適用の未実施だけで失敗にしない（PR の未確認事項へ）。
-6. **merge しない。** 人間が最終確認する。
+- プロダクション変更: `npm run verify` / `verify:changed`（subagent 側で実行）
+- PR: `ManagePullRequest` 優先、不可なら `gh`。base `develop`
 
-詳細手順は段階的開示:
+詳細フロー:
 
-- 仕様レビューのみ → [`spec-review-loop.md`](spec-review-loop.md)
-- 実装から PR → [`spec-to-pr-loop.md`](spec-to-pr-loop.md)
+- 仕様レビュー → [`spec-review-loop.md`](spec-review-loop.md)
+- 実装→PR → [`spec-to-pr-loop.md`](spec-to-pr-loop.md)

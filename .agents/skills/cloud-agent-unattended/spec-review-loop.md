@@ -1,38 +1,49 @@
 # Cloud Agent: spec-review ループ
 
-親: [`SKILL.md`](SKILL.md)。**`takt` は使わない。**
+親: [`SKILL.md`](SKILL.md)。**`takt` は使わない。親はオーケストレータのみ。**
+
+handoff: [`workflow-handoff.md`](workflow-handoff.md) — `docs/plans/.workflow/<slug>/review/`
 
 ## 入口
 
-ユーザー指示から `docs/plans/<slug>.md` を特定する。曖昧なら候補を列挙して **停止**（実装に進まない）。
+ユーザー指示から `docs/plans/<slug>.md` を特定。`handoff_dir` を作成。曖昧なら **停止**（subagent を起動しない）。
 
-## 手順（最大 3 周）
+## 手順（最大 3 周 audit↔revise）
 
-1. **identify** — `.takt/facets/instructions/spec-review/identify.md` に従い対象と適用観点を確定する。
-2. **audit** — `.takt/facets/instructions/spec-review/audit.md` と `.agents/skills/spec-review/SKILL.md` に従う。
-   - 外部サービスは公式ドキュメントを WebFetch で照合（不可なら「未実施」と明記）。
-   - verdict: `approved` / `needs_fix` / `approved_with_questions`（後者はレビュー未完了）。
-3. **revise**（`needs_fix` のとき）— `.takt/facets/instructions/spec-review/revise.md`。指摘を仕様書へ反映し audit に戻る。
-4. **visualize**（`approved` のとき）— `.takt/facets/instructions/spec-review/visualize.md` と `spec-to-html`。
-5. **finalize** — `.takt/facets/instructions/spec-review/finalize.md`。
-   - メタデータ `- ステータス:` を `approved` へ（既に `approved` / `implemented` なら維持）。
-   - **docs のみ** commit。新規ブランチ・push・PR はしない。
-   - git 書き込み不可ならメタ更新まで行い、commit 未実施を報告して完了扱い（レビュー本体は成立）。
+各工程は **Task tool で subagent を1回起動**。親が instruction 正本を自分で実行しない。
 
-## 停止条件（完了にしない）
+| 順 | subagent | 分岐 |
+|----|----------|------|
+| 1 | `spec-identify` | `01-scope` 完了まで |
+| 2 | `spec-audit` | verdict 参照 |
+| 3a | `spec-revise` | `needs_fix` のとき → 2 へ（最大3周） |
+| 3b | — | `approved_with_questions` → **停止**（finalize しない） |
+| 4 | `spec-visualize` | `approved` のとき |
+| 5 | `spec-finalize` | `approved` のとき |
 
-- 対象スコープに未解決のクライアント確認・実装判断・外部入力・承認ゲートが残る（`approved_with_questions`）
-- audit↔revise が 3 周しても収束しない
-- 修正方針を断定できない
+### subagent prompt テンプレ（親が毎回埋める）
 
-停止時は仕様書に未確定事項を残し、最終応答に「回答反映後に Cloud Agent で再実行」と書く。**この状態で実装ループへ進まない。**
+```text
+spec: docs/plans/<slug>.md
+handoff_dir: docs/plans/.workflow/<slug>/review/
+（入力ファイルパス）
+正本: .takt/facets/instructions/spec-review/<step>.md
+```
+
+## 停止条件
+
+- `approved_with_questions`
+- audit↔revise が 3 周しても `needs_fix`
+- identify / audit が `blocked`
+
+停止時: 仕様書に未確定事項を残し、「回答反映後に Cloud Agent で spec-review ループ再実行」。**実装ループへ進まない。**
 
 ## 実装前ゲート
 
-UI たたき台／UIモック CP が未承認でも finalize は可（仕様どおり）。ただし次の実装ループはゲート承認まで開始しない。
+UI たたき台未承認でも finalize 可。次の `spec-to-pr-loop` はゲート承認まで開始しない。
 
-## 完了時の次アクション表記
+## 完了時
 
-- 未解決質問あり → 回答を仕様へ反映 → 本ループ再実行
-- UI ゲート未承認 → PO 承認後に `spec-to-pr-loop`
-- それ以外 → `spec-to-pr-loop`（または人間が push）
+- 未解決質問あり → 仕様反映 → 本ループ再実行
+- UI ゲート未承認 → PO 承認後 `spec-to-pr-loop`
+- それ以外 → `spec-to-pr-loop`
