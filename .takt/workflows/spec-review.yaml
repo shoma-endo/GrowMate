@@ -150,9 +150,9 @@ steps:
     allow_git_commit: true
     instruction: spec-review/finalize
     rules:
-      - condition: レビュー確定（commit 完了、または変更なしで完了）
+      - condition: レビュー確定（commit 完了、変更なしで完了、または git 書き込み不可でメタデータ更新のみ完了）
         next: COMPLETE
-      - condition: docs/ の commit に失敗した、または docs/ 以外をステージ・コミットした
+      - condition: docs/ 以外をステージ・コミットした、または書き込み可能なのに docs の誤ステージを行った
         next: ABORT
     output_contracts:
       report:

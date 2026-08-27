@@ -2,9 +2,25 @@
 
 必須手順:
 1. ユーザー指示から対象仕様書（`docs/plans/` 配下）を特定する。曖昧な場合は `docs/plans/` を列挙し、候補を示して ABORT する。
-2. `.agents/skills/spec-review/SKILL.md` を読む。
-3. `docs/templates/requirement-definition.md` を要件定義チェックリストとして読む。
-4. 対象仕様書を読む。クライアント整合性・曖昧な要件・複数解釈・挙動変更・運用影響・未合意のトレードオフがある場合だけ `docs/context/client-vision-from-lark.md` を読む。純粋な技術仕様、DB・内部実装、または既存の正本で判断できるUI変更では読まない。
-5. spec-review skill のルーティング表に従い、対象仕様書に適用する条件付き観点（クライアント整合 / LLM / UI / データ / Google 連携 / 外部サービス連携）を判定し、対応する正本ファイルを列挙する。対象範囲（画面・機能・データ・API）と Non-goals（要件にない画面・UI・機能追加、ついで修正、将来対応）も確定する。
-6. 仕様書が対象とする機能の既存実装（`src/server/services/*`、`src/server/actions/*`、関連画面）を grep で把握する。
-7. 仕様書が外部サービス（Google / WordPress / Instagram(Meta) / Supabase 等）の API・挙動を前提にしている場合、`.agents/skills/spec-review/external-services.md` の「一次情報検証 > 公式ドキュメントの起点」の URL 表をもとに、audit で **実際に WebFetch して照合すべき公式ドキュメントの URL** を列挙する。仕様書のどの記述をどの URL で検証するかを対応付けて書く。外部サービス連携がない場合は「対象外」と明記する。
+2. **文書種別を判定する（必須）:**
+   - 対象のメタデータに `文書種別: **実装メモ**` または「要件定義書ではない」とある、もしくはファイル名が `*-impl-note.md` / `*-implementation-note.md` なら **実装メモ** とする。
+   - それ以外で `docs/templates/requirement-definition.md` 形式の要件定義なら **要件定義** とする。
+   - 判定結果を `spec-review-scope.md` 冒頭に `文書種別: 実装メモ | 要件定義` として書く。
+3. `.agents/skills/spec-review/SKILL.md` を読む。
+4. **要件定義のときだけ** `docs/templates/requirement-definition.md` を要件定義チェックリストとして読む。実装メモでは読まない（テンプレ全項目の充足を求めない）。
+5. 対象仕様書を読む。クライアント整合性・曖昧な要件・複数解釈・挙動変更・運用影響・未合意のトレードオフがある場合だけ `docs/context/client-vision-from-lark.md` を読む。純粋な技術仕様、DB・内部実装、または既存の正本で判断できるUI変更では読まない。
+6. spec-review skill のルーティング表に従い、対象仕様書に適用する条件付き観点（クライアント整合 / LLM / UI / データ / Google 連携 / 外部サービス連携）を判定し、対応する正本ファイルを列挙する。対象範囲（画面・機能・データ・API）と Non-goals（要件にない画面・UI・機能追加、ついで修正、将来対応）も確定する。
+7. 仕様書が対象とする機能の既存実装（`src/server/services/*`、`src/server/actions/*`、関連画面）を grep で把握する。
+8. 仕様書が外部サービス（Google / WordPress / Instagram(Meta) / Supabase 等）の API・挙動を前提にしている場合、`.agents/skills/spec-review/external-services.md` の「一次情報検証 > 公式ドキュメントの起点」の URL 表をもとに、audit で **実際に WebFetch して照合すべき公式ドキュメントの URL** を列挙する。仕様書のどの記述をどの URL で検証するかを対応付けて書く。外部サービス連携がない場合は「対象外」と明記する。
+
+## 実装メモのときの追加制約（親仕様を広げない）
+
+実装メモが親仕様（例: `関連` / `親仕様` / `受け入れ条件の正本`）を列挙している場合:
+
+- 親は **矛盾チェックの参照先** であり、本ランの主レビュー対象ではない。
+- identify では親の **該当章だけ**（メモが引用する BR/FR/AC/判断の節）を読む。親の全文監査・テンプレ充足・Gherkin 網羅レビューはしない。
+- `spec-review-scope.md` に書く:
+  - `親仕様の扱い: 矛盾チェックのみ`
+  - 読む範囲（親パスと章・ルール ID）
+  - `親の Gherkin / Non-goals / 工数の再設計は本ランの対象外。矛盾が親側修正を要する場合は指摘に「親仕様側の別チケット／追従改訂」と明記し、実装メモ側の誤記修正を優先する`
+- 親仕様の深い改訂（AC 分割・画面設計の全面書き換え等）を本ランの必須成果にしない。
