@@ -268,11 +268,12 @@ export function EvaluationSettings({
                   90日の評価対象期間には触れない: 「評価サイクル日数」入力の隣に置くと、
                   サイクル日数とデータの遡及期間を混同させるため（ユーザー確認済み）。
                 */}
-                <details className="rounded-md border px-3 py-2 text-xs">
-                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+                <details className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+                  <summary className="cursor-pointer font-medium text-amber-800 hover:text-amber-900">
+                    <Info className="mr-1.5 inline h-4 w-4 align-text-bottom" aria-hidden="true" />
                     注意事項を確認
                   </summary>
-                  <ul className="mt-2 list-disc space-y-1.5 pl-4 text-gray-600">
+                  <ul className="mt-2 list-disc space-y-1.5 pl-4 text-amber-800/90">
                     <li>
                       Google Search Console: 評価は当日値ではなく、取得済みの最新日付のデータを使います。反映は通常2〜3日遅れることがあります。未インデックスや表示回数が無いと「データ未取得」になることがあります。
                     </li>
