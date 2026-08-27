@@ -1,4 +1,4 @@
-実装・修正・architecture review が収束した時点の全差分を確認し、`README.md` の同期要否を判断してください。
+実装・修正・architecture review が収束した時点の全差分を確認し、`README.md` の同期要否を判断してください。本ステップは **reviewers が all(approved) の直後に1回だけ**走る。self_review / self_review_fix ループからは戻ってこない。
 
 {{include:instructions/unattended-operation}}
 

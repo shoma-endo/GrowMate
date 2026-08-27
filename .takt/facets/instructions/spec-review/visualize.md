@@ -1,11 +1,12 @@
 `.agents/skills/spec-to-html/SKILL.md` を正本として、対象仕様書の図解 HTML を最新化してください。
 
 最初に実行要否を判定する:
-1. `git status --porcelain docs/plans/` と `git diff --stat HEAD -- docs/plans/` で、本ランで対象仕様書が変更されたかを確認する。
-2. `docs/plans/_html/<slug>/core.yaml` の有無を確認する（`<slug>` は対象仕様書のファイル名から `.md` を除いたもの）。
-3. **対象仕様書が未変更、かつ `docs/plans/_html/<slug>.html` が既に存在する**場合は、生成を行わずスキップした旨だけ報告して次に進む。
+1. 下記の `spec-review-scope.md` または対象仕様書メタデータの **文書種別** を確認する。**実装メモ**（`文書種別: 実装メモ` / 要件定義書ではない / `*-impl-note.md`）の場合は **図解生成をスキップ**する。`spec-visualize-result.md` に「実装メモのためスキップ」と書き、次（finalize）へ進む。`core.yaml` の新規起案・`source_refs` 貼り直しはしない。
+2. `git status --porcelain docs/plans/` と `git diff --stat HEAD -- docs/plans/` で、本ランで対象仕様書が変更されたかを確認する。
+3. `docs/plans/_html/<slug>/core.yaml` の有無を確認する（`<slug>` は対象仕様書のファイル名から `.md` を除いたもの）。
+4. **対象仕様書が未変更、かつ `docs/plans/_html/<slug>.html` が既に存在する**場合は、生成を行わずスキップした旨だけ報告して次に進む。
 
-実行する場合:
+実行する場合（要件定義で上記スキップに該当しないとき）:
 - 再構成ビュー（01 ステータス / 02 設計判断 / 03 クイズ）: `core.yaml` が既にあるなら **更新モード**。仕様書の差分に対応する `concepts` / `relations` / `risks` / `questions` だけを直し、id は安定させる。全書き直しはしない。`core.yaml` が無いなら **新規モード**で SKILL.md の手順に従って起案する。
 - 全文ビュー（04）: **手で書かず** `python3 scripts/spec-html.py fulltext --spec <対象仕様書> --out docs/plans/_html/<slug>/views/04-fulltext.html` で機械変換する。仕様書が変わっていれば必ず再生成する。
 - 結合は必ず `python3 scripts/spec-html.py build` に必須4ビュー（01/02/03/04）と `--source <対象仕様書>` を渡して行う。画面仕様の章があれば `05-screens.html`、UIたたき台CPがあれば `06-ui-mock.html` も `--view` に含め、タブ順は「ステータス→設計判断→画面仕様→UIモック→クイズ→全文」（無い任意ビューは省略）。安全検査で落ちた場合は違反箇所を直して再実行する。
@@ -16,3 +17,6 @@
 - 編集対象は `docs/plans/_html/` 配下に限定する。仕様書本文・プロダクションコード・設定ファイルは一切編集しない。
 - `docs/plans/_html/` は `.gitignore` 済みのため commit しない。commit は次の finalize の責務。
 - 図解生成に失敗しても ABORT しない。レビュー結果の commit を妨げないよう、失敗理由を報告して finalize に進む。
+
+## spec-review-scope.md（全文）
+{report:spec-review-scope.md}

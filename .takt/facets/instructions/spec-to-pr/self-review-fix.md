@@ -8,7 +8,8 @@
 - 同種の潜在箇所がある場合は同時に修正する。
 - 追加修正で閉じられない残件だけが残る場合（手動ブラウザ確認未実施、管理者のマイグレーション適用・型再生成・pending削除、仕様がテスト追加不要と明示する論点、残置合意）は、コードを増やさず `cannot_fix` として記録し、verdict は `fixed` とする（後段ループが抜けられるようにする）。
 - `stuck` は、指摘内容が矛盾・不明で進行不能な場合、またはコード修正が必要と分かっているのに根拠不足で触れない場合に限る。台帳・再発メタ作業だけで回転させない。
-- プロダクションコードを変更した場合は `npm run verify` を再実行する。
+- **README の要否判定はしない**（`readme_sync` は reviewers 承認後に1回だけ走る）。self-review が README 文言の修正を求めた場合のみ最小差分で直し、判定レポート（readme-sync.md）は書かない。
+- 検証: プロダクション影響パス（`app/` `src/` `tests/` `supabase/` `public/` `scripts/` および `package.json` / Next・ESLint・Vitest・tsconfig 等）を変更した場合だけ、ステップ内で `npm run verify`（または `npm run verify:changed`）を実行する。docs / README / `.takt` / `.agents` のみならフル verify 不要。ステップ後の quality_gates も `npm run verify:changed` なので、成功済みフル verify の二重実行をしない。
 - ここでは commit / push を行わない。最終ステップでまとめて実施する。
 
 ## plan.md（全文）
