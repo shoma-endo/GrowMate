@@ -195,6 +195,24 @@ PR 作成後、人間が次を確認して merge する。
 
 TAKT は merge を完了条件にしない。merge と本番反映は人間が判断する。
 
+## 7. Cursor Cloud での無人実行（spec-review / 実装→PR）
+
+**主系: Cloud Agent が TAKT CLI なしでループする。** 正本は [`.agents/skills/cloud-agent-unattended/SKILL.md`](../.agents/skills/cloud-agent-unattended/SKILL.md)。
+
+- 仕様レビュー → [`spec-review-loop.md`](../.agents/skills/cloud-agent-unattended/spec-review-loop.md)
+- 実装→PR → [`spec-to-pr-loop.md`](../.agents/skills/cloud-agent-unattended/spec-to-pr-loop.md)
+
+Cloud Agent への依頼例:
+
+```text
+docs/plans/<slug>.md を cloud-agent-unattended の spec-review ループで完了させてください
+docs/plans/<slug>.md を cloud-agent-unattended の実装→PR ループで draft PR まで進めてください
+```
+
+`grill-to-gherkin` は対話必須のため Cloud 無人の対象外。ローカルで `takt -w grill-to-gherkin` を使う。
+
+**副系（ローカル / 任意）:** デスクトップで従来どおり `takt -w spec-review` / `takt -w spec-to-pr` を回してよい。Cloud 主系を TAKT 起動や追加 API キー前提にしない。
+
 ## 開発上の原則
 
 - 曖昧な依頼は標準 `grill-me` で一問ずつ解消する。

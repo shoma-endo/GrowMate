@@ -19,6 +19,13 @@
 - 仕様実装からPR: `.takt/workflows/spec-to-pr.yaml`
 - 人間向け開発手順: `docs/development-workflow.md`
 
+## Cursor Cloud specific instructions
+
+- **Cloud の無人系（spec-review / 実装→PR）の主系は TAKT CLI ではない。** Cursor Cloud Agent 自身がオーケストレータになる。手順の正本は `.agents/skills/cloud-agent-unattended/SKILL.md`。
+- Cloud で仕様レビューや仕様起点の PR を依頼されたら、先にその Skill を読み、`takt` を起動しない。追加の `TAKT_ANTHROPIC_API_KEY` / Cursor API キーも要求しない。
+- Grill Me・着手判断など対話必須の前段はローカル TAKT（`takt -w grill-to-gherkin`）のまま。Cloud では対話前段を無人完遂しようとしない。
+- ローカルで `takt -w spec-review` / `spec-to-pr` を回す運用は継続してよい（Cloud 主系の代替ではない）。
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
