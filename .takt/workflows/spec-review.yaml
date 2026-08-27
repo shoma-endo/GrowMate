@@ -10,6 +10,11 @@ all_steps:
   rules:
     - ref: mvp-scope
       position: before_instruction
+workflow_config:
+  # Cloud / CI 無人実行でも認証欠落で中盤 abort しないよう、開始前に fail-fast する。
+  runtime:
+    prepare:
+      - scripts/takt-check-provider-auth.sh
 max_steps: 12
 initial_step: identify
 loop_monitors:

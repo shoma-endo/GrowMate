@@ -79,7 +79,7 @@ workflow の最初の `grill` step は追加質問をせず、その指示書を
 
 成果物は `.takt/runs/<run>/reports/` に保存される。
 
-GrowMateのTAKT workflowは原則 `provider: claude-sdk` を使う。ただし、git commit / push / PR 操作を担当する `spec-review.finalize` と `spec-to-pr.create_pr` は `provider: cursor`、`model: gpt-5.6-luna-high` を使う。step間のレポート受け渡しは `{report:X}` プレースホルダ（本文をプロンプトへ全文注入。resume時はTAKTのsnapshotが引き継ぐ）で行い、エージェントはrunディレクトリのパスを一切必要としない。レポート保存はTAKTが行う。
+GrowMateのTAKT workflowはプロジェクト設定（`.takt/config.yaml`）で原則 `provider: claude-sdk` を使う。`finalize` / `create_pr` も bash + `gh` で完結するため Cloud / CI では Cursor CLI を必須にしない（ローカルで Cursor provider に上書きするのは可）。step間のレポート受け渡しは `{report:X}` プレースホルダ（本文をプロンプトへ全文注入。resume時はTAKTのsnapshotが引き継ぐ）で行い、エージェントはrunディレクトリのパスを一切必要としない。レポート保存はTAKTが行う。
 
 - `01-grill.md`: Grill Me の決定事項・未確定事項・Non-goals の記録
 - `02-gherkin.md`: Gherkin 形式の受け入れ条件
@@ -194,6 +194,28 @@ PR 作成後、人間が次を確認して merge する。
 - 本番反映のタイミング
 
 TAKT は merge を完了条件にしない。merge と本番反映は人間が判断する。
+
+## 7. Cloud / CI での無人実行（spec-review / spec-to-pr）
+
+`grill-to-gherkin` は対話必須のため対象外。`spec-review` と `spec-to-pr` だけを Cloud Agent や CI で回す。
+
+前提:
+
+1. `./scripts/takt-install-pinned.sh` で pin 版を設置（約1GB）
+2. 環境変数 `TAKT_ANTHROPIC_API_KEY` を設定（`ANTHROPIC_API_KEY` があれば prepare が橋渡しする）
+3. `gh` 認証（Cloud Agent は既定で利用可。CI は `GITHUB_TOKEN`）
+4. リポジトリ根で実行する（prepare の相対パス解決のため）
+
+```bash
+# 認証チェックのみ
+bash scripts/takt-check-provider-auth.sh >/dev/null
+
+# 無人実行（--pipeline --quiet）
+./scripts/takt-run-unattended.sh spec-review -t "docs/plans/<slug>.md をレビューしてください"
+./scripts/takt-run-unattended.sh spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してください"
+```
+
+ローカル対話実行（Grill Me 含む）は従来どおり `takt -w ...` でよい。prepare は `scripts/takt-check-provider-auth.sh` に寄せた（マシン固有の絶対パスは使わない）。
 
 ## 開発上の原則
 

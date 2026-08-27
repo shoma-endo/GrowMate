@@ -1,5 +1,10 @@
+# Cloud / CI でも ~/.takt 無しで起動できるよう、無人向け既定をプロジェクトに置く。
+# Grill Me 対話はローカル TUI のまま。spec-review / spec-to-pr は claude-sdk + API キー。
 base_branch: develop
+provider: claude-sdk
 workflow_command_gates:
+  custom_scripts: true
+workflow_runtime_prepare:
   custom_scripts: true
 observability:
   enabled: true

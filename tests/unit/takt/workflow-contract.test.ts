@@ -116,6 +116,31 @@ describe.skipIf(!runPinnedTaktTests)('takt pin', () => {
   });
 });
 
+describe('unattended prepare portability', () => {
+  it('keeps prepare scripts inside the repository (no machine-absolute paths)', () => {
+    for (const file of workflowFiles) {
+      const raw = readFileSync(path.join(WORKFLOWS_DIR, file), 'utf8');
+      const preparePaths = [...raw.matchAll(/^\s*-\s+(\S+\.sh)\s*$/gm)].map((m) => m[1] as string);
+      for (const entry of preparePaths) {
+        expect(entry, `${file} prepare must be repo-relative`).not.toMatch(/^\/Users\//);
+        expect(entry.startsWith('scripts/'), `${file} unexpected prepare: ${entry}`).toBe(true);
+        expect(existsSync(path.join(REPO_ROOT, entry)), `missing ${entry}`).toBe(true);
+      }
+    }
+    expect(existsSync(path.join(REPO_ROOT, 'scripts', 'takt-check-provider-auth.sh'))).toBe(true);
+    expect(existsSync(path.join(REPO_ROOT, 'scripts', 'takt-run-unattended.sh'))).toBe(true);
+  });
+
+  it('enables workflow_runtime_prepare.custom_scripts in project config', () => {
+    const config = YAML.parse(readFileSync(path.join(REPO_ROOT, '.takt', 'config.yaml'), 'utf8')) as {
+      provider?: string;
+      workflow_runtime_prepare?: { custom_scripts?: boolean };
+    };
+    expect(config.provider).toBe('claude-sdk');
+    expect(config.workflow_runtime_prepare?.custom_scripts).toBe(true);
+  });
+});
+
 describe.skipIf(!runPinnedTaktTests)('takt workflow doctor', () => {
   it.each(workflowFiles)('%s is accepted by the pinned takt', (file) => {
     expect(taktBin, taktResolveError ?? 'takt pin unresolved').toBeTruthy();
