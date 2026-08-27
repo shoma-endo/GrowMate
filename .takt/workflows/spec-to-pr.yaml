@@ -5,15 +5,11 @@ all_steps:
     - ref: mvp-scope
       position: before_instruction
 workflow_config:
-  # run 開始前に Cursor / Codex CLI の認証を fail-fast 検査する（review /
-  # create_pr が cursor、coder 系・supervisor・内部エージェントが codex のため）。
-  # スクリプトは ai-os（~/.takt/scripts/）で共通管理。絶対パスなのは
-  # resolvePrepareScript が ~ 非展開・相対パスは cwd 基準のため。
-  # global の prepare（pip/uv キャッシュ設定）を置換するが、本リポジトリは
-  # pip を使わないので影響なし。
+  # ローカル TAKT 用の認証 fail-fast。相対パスは cwd（リポジトリ根）基準。
+  # Cloud 無人の主系は .agents/skills/cloud-agent-unattended（takt を起動しない）。
   runtime:
     prepare:
-      - /Users/shoma.endo/.takt/scripts/check-provider-auth.sh
+      - scripts/takt-check-provider-auth.sh
 max_steps: 24
 initial_step: plan
 loop_monitors:

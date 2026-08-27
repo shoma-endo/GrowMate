@@ -1,5 +1,9 @@
+# ローカル TAKT 用。Cloud 無人の主系は cloud-agent-unattended Skill（TAKT CLI ではない）。
 base_branch: develop
+provider: claude-sdk
 workflow_command_gates:
+  custom_scripts: true
+workflow_runtime_prepare:
   custom_scripts: true
 observability:
   enabled: true

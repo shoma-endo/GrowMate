@@ -20,7 +20,9 @@ VERSION_FILE="${ROOT}/.takt-version"
 PRUNE=0
 [[ "${1:-}" == "--prune" ]] && PRUNE=1
 
-export PATH="${HOME}/.local/bin:/opt/homebrew/bin:/opt/homebrew/opt/node@24/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# 呼び出し元 PATH（nvm / mise / asdf）を残しつつ、Homebrew・システムを足す。
+# Cloud Agent は nvm 配下の Node 24 を使うことが多く、PATH を潰すと npm を見失う。
+export PATH="${PATH:+${PATH}:}${HOME}/.local/bin:/opt/homebrew/bin:/opt/homebrew/opt/node@24/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 if [[ ! -f "${VERSION_FILE}" ]]; then
   printf '%s\n' "✗ GrowMate の版正本がありません: ${VERSION_FILE}" >&2
@@ -36,6 +38,17 @@ fi
 RUNTIME_ROOT="${TAKT_RUNTIME_ROOT:-${HOME}/.local/takt}"
 PREFIX="${RUNTIME_ROOT}/${WANT}"
 BIN="${PREFIX}/bin/takt"
+
+if ! command -v npm >/dev/null 2>&1; then
+  shopt -s nullglob
+  for nvm_bin in "${HOME}/.nvm/versions/node"/*/bin; do
+    if [[ -x "${nvm_bin}/npm" ]]; then
+      export PATH="${nvm_bin}:${PATH}"
+      break
+    fi
+  done
+  shopt -u nullglob
+fi
 
 if command -v npm >/dev/null 2>&1; then
   NPM_BIN="$(command -v npm)"
