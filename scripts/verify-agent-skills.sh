@@ -18,6 +18,7 @@ warn() { echo -e "${YELLOW}!${NC} $1"; warnings=$((warnings + 1)); }
 ok()   { echo -e "${GREEN}✓${NC} $1"; }
 
 EXPECTED_SKILLS=(
+  cloud-agent-unattended
   google-integrations
   growmate-ui-ux
   implementation-guidelines

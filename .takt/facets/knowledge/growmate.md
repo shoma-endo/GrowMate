@@ -32,8 +32,8 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 - TAKT v0.62+ applies Gherkin guidance only to development/implementation tasks. `assistant.gherkin` is removed; do not rely on `/go` always emitting Gherkin. The dedicated `gherkin` step in `grill-to-gherkin` still produces and validates acceptance criteria as Gherkin.
 - After Gherkin approval, `grill-to-gherkin` creates `05-rough-estimate.md` with a range, assumptions, uncertainty, and exclusions. This is an internal rough estimate for go/no-go and prioritization, not a formal quote.
 - After the rough estimate, `06-estimate-confirmation.md` records the human decision: `着手承認`, `要件再確認が必要`, or `見送り`. Only `着手承認` proceeds to handoff.
-- `.takt/workflows/spec-review.yaml` reviews specifications before implementation.
-- `.takt/workflows/spec-to-pr.yaml` is the source workflow for unattended implementation, review, and PR creation/update.
+- `.takt/workflows/spec-review.yaml` reviews specifications before implementation (local TAKT). On Cursor Cloud, the primary unattended path is `.agents/skills/cloud-agent-unattended/` (no `takt` CLI).
+- `.takt/workflows/spec-to-pr.yaml` is the local TAKT workflow for unattended implementation, review, and PR creation/update. On Cursor Cloud, use `cloud-agent-unattended` `spec-to-pr-loop` instead of launching `takt`.
 - In `spec-to-pr`, the second and later `reviewers` passes are follow-up: previous review reports and `fix-result.md` are attached, findings are tracked by `finding_id` (`resolved` / `persists` / `new` / `reopened`), and residuals that cannot be fixed in code are recorded as `cannot_fix` so the loop can exit instead of spinning.
 - The approved Gherkin is not automatically copied into a spec. Follow `04-handoff.md`, reflect it into the target `docs/plans/<slug>.md`, then run `spec-review` and `spec-to-pr` explicitly.
 - `.agents/skills/` contains implementation-specific rules; the workflow loads relevant Skills when needed.
