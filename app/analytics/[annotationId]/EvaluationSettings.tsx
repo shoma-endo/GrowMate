@@ -261,22 +261,26 @@ export function EvaluationSettings({
               </DialogHeader>
 
               <div className="px-6 pt-3 pb-6 space-y-6">
-                <div className="inline-flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
-                  <Info className="h-4 w-4 mt-[1px] flex-shrink-0" />
-                  <span>
-                    評価日は「当日の計測値」ではなく、最新に取得できたSearch
-                    Consoleデータ（日付付き）を対象に判定します。
-                    データが遅延する場合でも最終取得日の数値で評価されます。
-                  </span>
-                </div>
-                <div className="inline-flex items-start gap-2 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800 ring-1 ring-blue-200">
-                  <Info className="h-4 w-4 mt-[1px] flex-shrink-0" />
-                  <span>
-                    対象ページが未インデックス、または検索実績（表示回数）がない場合は「データ未取得」になることがあります。
-                    Search
-                    Consoleの反映には通常2〜3日の遅延があるため、しばらく待ってから再確認してください。
-                  </span>
-                </div>
+                {/*
+                  サイクル統合後、このダイアログは GSC 検索順位評価と GA4 コンテンツ評価の両方を始める。
+                  常時表示の注意枠を増やすと入力より先に画面を占有するため、CategoryFilter.tsx /
+                  ContentEvaluationCard.tsx と同じ `<details>` で既定は畳む。
+                  90日の評価対象期間には触れない: 「評価サイクル日数」入力の隣に置くと、
+                  サイクル日数とデータの遡及期間を混同させるため（ユーザー確認済み）。
+                */}
+                <details className="rounded-md border px-3 py-2 text-xs">
+                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+                    注意事項を確認
+                  </summary>
+                  <ul className="mt-2 list-disc space-y-1.5 pl-4 text-gray-600">
+                    <li>
+                      Google Search Console: 評価は当日値ではなく、取得済みの最新日付のデータを使います。反映は通常2〜3日遅れることがあります。未インデックスや表示回数が無いと「データ未取得」になることがあります。
+                    </li>
+                    <li>
+                      Google Analytics 4: 連携とデータ取込が必要です。セッションが30未満の記事は「データ蓄積中」になり、評価結果は出ません。
+                    </li>
+                  </ul>
+                </details>
                 <div className="space-y-2">
                   <label
                     htmlFor="evaluation-date"
