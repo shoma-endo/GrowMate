@@ -116,7 +116,6 @@ export default function CategoryFilter({
                 設定済みで、まだ結果が出ていない記事は含まれません（初回の計測待ち、Google
                 Analytics 4と連携していない、セッションが30に達していない）。
               </li>
-              <li>それらの記事は「コンテンツ評価状態」列で確認できます。</li>
             </ul>
           </details>
         </div>
