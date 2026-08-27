@@ -1030,5 +1030,5 @@ Phase 3 が保留になったため、**Phase 2 の一覧に「台本作成」�
 - 同期バッチ: `src/server/services/gscEvaluationService.ts`, `app/api/cron/gsc-evaluate/route.ts`
 - cron matrix + profile: `.github/workflows/hourly-cron.yml`（`count-batch` プロファイル）
 - タブ UI: `app/ga4-dashboard/Ga4DashboardClient.tsx:435`
-- **inline 同期の単一トースト正本**: `app/gsc-dashboard/components/OverviewTab.tsx:111-186`（`handleSync`, `getQueryImportToastMessage` 相当。**Instagram は確認 Dialog は踏襲しない** — 2026-08-08 決定、§4 Phase 2 item3）
+- **inline 同期の単一トースト正本**: `app/analytics/[annotationId]/components/OverviewTab.tsx:111-186`（`handleSync`, `getQueryImportToastMessage` 相当。**Instagram は確認 Dialog は踏襲しない** — 2026-08-08 決定、§4 Phase 2 item3）
 - LLM 変数注入: `src/server/services/gscSuggestionService.ts` + `prompt_templates`

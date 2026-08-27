@@ -25,7 +25,7 @@ import KnowledgeSourcesSection from './KnowledgeSourcesSection';
 import type { GlobalKnowledgeSourceSummary } from '@/server/actions/adminKnowledgeSources.actions';
 import { GLOBAL_KNOWLEDGE_SOURCE_NAME } from '@/lib/globalKnowledgeContentValidation';
 
-type PromptCategory = 'chat' | 'gsc' | 'google_ads' | 'content_annotation';
+type PromptCategory = 'chat' | 'gsc' | 'ga4' | 'google_ads' | 'content_annotation';
 
 const RETIRED_PROMPT_NAMES = new Set([
   'ad_copy_finishing',
@@ -43,6 +43,7 @@ const PROMPT_CATEGORIES: Array<{
     label: 'AIチャット・生成',
     filter: template =>
       !template.name.startsWith('gsc_') &&
+      !template.name.startsWith('ga4_') &&
       !template.name.startsWith('google_ads_') &&
       !template.name.startsWith('content_annotation_'),
   },
@@ -55,6 +56,11 @@ const PROMPT_CATEGORIES: Array<{
     id: 'gsc',
     label: 'GSC改善提案',
     filter: template => template.name.startsWith('gsc_'),
+  },
+  {
+    id: 'ga4',
+    label: 'GA4コンテンツ評価',
+    filter: template => template.name.startsWith('ga4_'),
   },
   {
     id: 'google_ads',

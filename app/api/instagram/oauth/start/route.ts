@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Instagram連携は現在無効です。環境変数 (INSTAGRAM_APP_ID など) を設定してください。',
+          'Instagram連携は現在無効です。環境変数（INSTAGRAM_APP_ID など）を設定してください。',
       },
       { status: 503 }
     );

@@ -6,6 +6,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
+import { gscNotificationService } from '@/server/services/gscNotificationService';
 
 const supabaseService = new SupabaseService();
 
@@ -24,32 +25,17 @@ const getAuthUserId = async (): Promise<GscNotificationAuthResult> => {
 };
 
 /**
- * 未読のGSC改善提案の件数のみを取得する（グローバル通知用の軽量版）
+ * 未読のGSC改善提案があるコンテンツ件数を取得する（グローバル通知用）
+ * 評価履歴行数ではなく content_annotation_id のユニーク数を返す。
  */
 export async function getUnreadSuggestionsCount(): Promise<{ count: number }> {
   const auth = await getAuthUserId();
   if ('error' in auth) {
     return { count: 0 };
   }
-  const { userId } = auth;
 
-  const { count, error: queryError } = await supabaseService
-    .getClient()
-    .from('gsc_article_evaluation_history')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .eq('is_read', false)
-    .neq('outcome_type', 'error')
-    .not('outcome', 'is', null)
-    .neq('outcome', 'improved')
-    .not('suggestion_summary', 'is', null);
-
-  if (queryError) {
-    console.error('Error fetching unread suggestions count:', queryError);
-    return { count: 0 };
-  }
-
-  return { count: count ?? 0 };
+  const count = await gscNotificationService.getUnreadSuggestionsAnnotationCount(auth.userId);
+  return { count };
 }
 
 /**
@@ -76,6 +62,6 @@ export async function markSuggestionAsRead(historyId: string): Promise<{ success
 
   revalidatePath('/');
   revalidatePath('/analytics');
-  revalidatePath('/gsc-dashboard');
+  revalidatePath('/analytics/[annotationId]', 'page');
   return { success: true };
 }

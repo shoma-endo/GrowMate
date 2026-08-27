@@ -35,8 +35,11 @@ export interface Ga4PageMetricSummary {
   users: number;
   engagementTimeSec: number;
   bounceRate: number; // 0-1
+  engagementRate: number | null; // 0-1
+  activeUsers: number | null;
   cvEventCount: number;
   scroll90EventCount: number;
+  scrollMetricsAvailable?: boolean;
   searchClicks: number; // organicGoogleSearchClicks（検索クリック数、CTR分子）
   impressions: number; // organicGoogleSearchImpressions（検索インプレッション数、CTR分母）
   ctr: number | null; // searchClicks / impressions (0-1の比率、表示時に×100)
@@ -69,10 +72,10 @@ export interface Ga4DashboardSummary {
   totalSessions: number;
   totalUsers: number;
   avgEngagementTimeSec: number;
-  avgBounceRate: number; // 0-1
   totalCvEventCount: number;
   cvr: number; // 0-100
-  avgReadRate: number; // 0-100
+  /** 0-100。null は「90%スクロールイベントが未計測」（0%＝実測して0とは区別する。BR-02） */
+  avgReadRate: number | null;
   totalSearchClicks: number; // 検索クリック数
   totalImpressions: number; // インプレッション数
   ctr: number | null; // クリック率
@@ -87,15 +90,30 @@ export interface Ga4DashboardRankingItem {
   sessions: number;
   users: number;
   avgEngagementTimeSec: number;
-  bounceRate: number; // 0-1
   cvEventCount: number;
   cvr: number; // 0-100
-  readRate: number; // 0-100
+  /** 0-100。null は「90%スクロールイベントが未計測」（BR-02） */
+  readRate: number | null;
   searchClicks: number; // 検索クリック数
   impressions: number; // インプレッション数
   ctr: number | null; // クリック率（0-1の比率、表示時に×100）
   isSampled: boolean;
   isPartial: boolean;
+}
+
+/**
+ * ランキングの1ページ分。
+ *
+ * 集計は DB 側の `get_ga4_dashboard_ranking` が担い、`totalCount` は
+ * limit/offset を適用する前のパス総数を返す。全件を一度に返すと
+ * PostgREST の `db-max-rows = 1000` に当たるため、ページ送りを前提にする。
+ */
+export interface Ga4DashboardRankingPage {
+  items: Ga4DashboardRankingItem[];
+  /** limit/offset 適用前の総パス数 */
+  totalCount: number;
+  limit: number;
+  offset: number;
 }
 
 export interface Ga4DashboardTimeseriesPoint {
@@ -103,10 +121,10 @@ export interface Ga4DashboardTimeseriesPoint {
   sessions: number;
   users: number;
   avgEngagementTimeSec: number;
-  bounceRate: number; // 0-1
   cvEventCount: number;
   cvr: number; // 0-100
-  readRate: number; // 0-100
+  /** 0-100。null は「90%スクロールイベントが未計測」（BR-02） */
+  readRate: number | null;
   searchClicks: number; // 検索クリック数
   impressions: number; // インプレッション数
   ctr: number | null; // クリック率（0-1の比率、表示時に×100）
@@ -114,9 +132,27 @@ export interface Ga4DashboardTimeseriesPoint {
   isPartial: boolean;
 }
 
+interface Ga4MediaContentScorePoint {
+  annotationId: string;
+  title: string | null;
+  normalizedPath: string | null;
+  contentScore: number;
+  readScore: number;
+  engageScore: number;
+  sessions: number;
+}
+
+export interface Ga4MediaContentScores {
+  assetValueScore: number | null;
+  effectiveScore: number | null;
+  evaluatedCount: number;
+  totalCount: number;
+  points: Ga4MediaContentScorePoint[];
+}
+
 interface Ga4DashboardChartData {
   summary: Ga4DashboardSummary;
-  ranking: Ga4DashboardRankingItem[];
+  ranking: Ga4DashboardRankingPage;
   timeseries: Ga4DashboardTimeseriesPoint[];
 }
 
@@ -130,5 +166,4 @@ type Ga4DashboardTimeSeriesMetric =
   | 'sessions'
   | 'users'
   | 'readRate'
-  | 'bounceRate'
   | 'cvr';

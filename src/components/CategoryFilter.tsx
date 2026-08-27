@@ -12,6 +12,14 @@ interface CategoryFilterProps {
   selectedCategoryNames: string[];
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
+  /**
+   * 「評価未設定」＝評価サイクルが未登録の記事。
+   * 2026-08-26 のサイクル統合で、サイクルを登録した時点でGSC検索順位評価とGA4コンテンツ評価が
+   * 同時に始まるようになったため、系統別の「未開始」は存在しない。かつて併存していた
+   * 「コンテンツ評価未開始」（= ga4_content_evaluations に行が無い）は「開始したか」ではなく
+   * 「結果があるか」を見ており、サイクル登録済みでも本評価が走る2サイクル目まで true のままで、
+   * その間ユーザーに取れるアクションが無かったため廃止した（§10.2 / §18）。
+   */
   hasUnstartedGscEvaluation: boolean;
   onFilterChange: (selectedCategoryNames: string[], includeUncategorized: boolean) => void;
   onUnreadSuggestionChange: (value: boolean) => void;
@@ -80,7 +88,7 @@ export default function CategoryFilter({
 
       {/* 状態フィルター（カテゴリではないので見出しを分ける） */}
       <div className="space-y-2">
-        <span className="text-sm font-medium text-gray-700">Google Search Console の状態</span>
+        <span className="text-sm font-medium text-gray-700">状態でフィルター</span>
 
         <div className="border rounded-md px-2 py-2">
           <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded">
@@ -89,10 +97,28 @@ export default function CategoryFilter({
               onCheckedChange={checked => onUnstartedGscEvaluationChange(!!checked)}
             />
             <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-            <span className="text-sm font-medium text-blue-800">評価未開始</span>
+            <span className="text-sm font-medium text-blue-800">評価未設定</span>
           </label>
+          {/*
+            このフィルターは「サイクルが未設定」だけを拾い、設定済みで結果が出ていない記事は
+            拾わない（§15.4）。その差はラベルからは読み取れず、絞り込んで出てこなかった側の
+            記事にユーザーが気づけないため、条件をここで開示する。
+            既定で畳むのは、通常の絞り込み操作の邪魔をしないため。
+            `details` は ContentEvaluationCard.tsx:143 と同じ既存パターン。
+          */}
+          <details className="mt-1 px-1 text-xs">
+            <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+              絞り込まれる条件
+            </summary>
+            <ul className="mt-1 list-disc space-y-1 pl-4 text-gray-500">
+              <li>評価サイクルを設定していない記事だけが対象です。</li>
+              <li>
+                設定済みで、まだ結果が出ていない記事は含まれません（初回の計測待ち、Google
+                Analytics 4と連携していない、セッションが30に達していない）。
+              </li>
+            </ul>
+          </details>
         </div>
-
         <div className="border rounded-md px-2 py-2">
           <label className="flex items-center gap-2 cursor-pointer hover:bg-amber-50 px-1 py-1 rounded">
             <Checkbox

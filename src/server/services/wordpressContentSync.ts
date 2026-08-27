@@ -5,12 +5,14 @@ import {
   WPCOM_TOKEN_COOKIE_NAME,
 } from '@/server/services/wordpressContext';
 import { WordPressService } from '@/server/services/wordpressService';
+import { countImageTags } from '@/lib/content-text';
 
 export interface WpPostContentFields {
   contentText: string | null;
   contentHtml: string | null;
   title: string | null;
   excerpt: string | null;
+  imageCount: number | null;
 }
 
 type CookieGetter = (name: string) => string | undefined;
@@ -41,6 +43,7 @@ function extractPostFields(post: WpPostSource): WpPostContentFields {
     contentText: stripHtml(contentHtml).trim() || null,
     title: stripHtml(titleHtml).trim() || null,
     excerpt: stripHtml(excerptHtml).trim() || null,
+    imageCount: countImageTags(contentHtml),
   };
 }
 
@@ -198,42 +201,66 @@ async function updateContentCache(
   wpPostId: number,
   fields: WpPostContentFields
 ): Promise<void> {
-  if (!fields.contentText && !fields.excerpt && !fields.title) {
+  if (!fields.contentText?.trim() && !fields.excerpt?.trim() && !fields.title?.trim()) {
     return;
   }
-
-  await supabase
-    .getClient()
+  const client = supabase.getClient();
+  // 本文キャッシュの書き込みは best-effort。失敗しても取得済みの本文は返すが、
+  // Supabase の error は reject されないため明示的に拾ってログする。
+  const { error } = await client
     .from('content_annotations')
     .update({
       wp_content_text: fields.contentText,
       wp_excerpt: fields.excerpt ?? null,
+      wp_image_count: fields.imageCount,
       ...(fields.title ? { wp_post_title: fields.title } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId)
     .eq('wp_post_id', wpPostId);
+
+  if (error) {
+    console.error('[WordPressContentSync] updateContentCache failed', {
+      userId,
+      wpPostId,
+      code: error.code,
+      message: error.message,
+    });
+  }
 }
 
 export async function fetchWpPostContentWithCache(params: {
   wpPostId: number | null;
   cachedContent: string | null;
   cachedExcerpt: string | null;
+  /**
+   * `content_annotations.wp_image_count`。NULL は「画像点数を一度も取得していない」を意味するため
+   * 再取得の条件に含める。含めないと本文キャッシュ済みの記事が永久に NULL のまま残る。
+   */
+  cachedImageCount: number | null;
   userId: string;
 }): Promise<Omit<WpPostContentFields, 'contentHtml'> | null> {
-  const { wpPostId, cachedContent, cachedExcerpt, userId } = params;
+  const { wpPostId, cachedContent, cachedExcerpt, cachedImageCount, userId } = params;
   const needsFetch =
     !cachedContent ||
     cachedContent.trim().length === 0 ||
     !cachedExcerpt ||
-    cachedExcerpt.trim().length === 0;
+    cachedExcerpt.trim().length === 0 ||
+    cachedImageCount === null;
 
   if (!wpPostId) {
-    return needsFetch ? null : { contentText: cachedContent, title: null, excerpt: cachedExcerpt };
+    return needsFetch
+      ? null
+      : { contentText: cachedContent, title: null, excerpt: cachedExcerpt, imageCount: cachedImageCount };
   }
 
   if (!needsFetch) {
-    return { contentText: cachedContent, title: null, excerpt: cachedExcerpt };
+    return {
+      contentText: cachedContent,
+      title: null,
+      excerpt: cachedExcerpt,
+      imageCount: cachedImageCount,
+    };
   }
 
   try {
@@ -247,6 +274,7 @@ export async function fetchWpPostContentWithCache(params: {
       contentText: fields.contentText,
       title: fields.title,
       excerpt: fields.excerpt,
+      imageCount: fields.imageCount,
     };
   } catch (error) {
     console.error('[WordPressContentSync] fetchWpPostContentWithCache error', error);

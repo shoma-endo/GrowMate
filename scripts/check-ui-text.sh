@@ -78,6 +78,12 @@ RULES=(
   '再度お試し@@「再度お試しください」→「もう一度お試しください」'
   '[ぁ-んァ-ヶ一-龥]！@@感嘆符は使わない（成功通知も事実を述べる）'
   '[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}]@@絵文字を UI に使わない（アイコンは lucide-react）'
+  # 「中身が日本語かどうか」ではなく「括弧が日本語に隣接するか」で判定する。
+  # 中身で判定すると toast.info('保存しました') のような日本語文字列を引数に取る呼び出しが
+  # すべて誤検出になる（実測 305 件）。隣接条件なら success( の直前は s なので対象外で、
+  # 滞在時間(平均) だけが残る（実測 15 件・誤検出 0 件）。
+  # \p{...} は --pcre2 なしの既定エンジンでも使える（ripgrep 14.1.0 で実測）。
+  '[\p{Hiragana}\p{Katakana}\p{Han}][()]|[()][\p{Hiragana}\p{Katakana}\p{Han}]@@日本語に隣接する半角括弧は全角「（）」に統一（半角は中身が英数字・記号のみのときだけ。ui-text.md §8）'
 )
 
 DICTIONARY='.agents/skills/growmate-ui-ux/ui-text.md'
@@ -85,7 +91,10 @@ DICTIONARY='.agents/skills/growmate-ui-ux/ui-text.md'
 # 正本の「用語辞書」テーブルから <正><TAB><誤> の組を取り出す。
 # 「機械チェック」列が ✅ の行だけが対象（目視の行は誤検出が出るため検査しない）。
 dictionary_pairs() {
-  awk -F'|' '
+  # LC_ALL=C で byte 比較に固定する。macOS の /usr/bin/awk は UTF-8 ロケールだと
+  # 文字列比較に strcoll() を使い、CJK 同士（例: "事業者情報" == "正"）が true に
+  # なるため、正列が日本語の行が全てヘッダ行として捨てられる。
+  LC_ALL=C awk -F'|' '
     /^## 用語辞書/ { in_table = 1; next }
     in_table && /^#/ { in_table = 0 }
     !in_table { next }

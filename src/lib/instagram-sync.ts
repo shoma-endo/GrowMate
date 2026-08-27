@@ -16,7 +16,7 @@ export function getInstagramSyncToastMessage(
   if (result.stoppedReason === 'rate_limit') {
     return {
       type: 'warning',
-      message: 'Instagram APIの利用上限に近づいたため、同期を中断しました。時間をおいて再度お試しください。',
+      message: 'Instagram APIの利用上限に近づいたため、同期を中断しました。時間をおいてもう一度お試しください。',
     };
   }
 

@@ -50,6 +50,7 @@ class GscSuggestionService {
       wpPostId: annotation.wp_post_id,
       cachedContent: annotation.wp_content_text,
       cachedExcerpt: annotation.wp_excerpt,
+      cachedImageCount: annotation.wp_image_count,
       userId: params.userId,
     });
 
@@ -292,7 +293,7 @@ class GscSuggestionService {
       .getClient()
       .from('content_annotations')
       .select(
-        'id, wp_post_id, wp_post_title, opening_proposal, wp_content_text, wp_excerpt, persona, needs, main_kw, kw'
+        'id, wp_post_id, wp_post_title, opening_proposal, wp_content_text, wp_excerpt, wp_image_count, persona, needs, main_kw, kw'
       )
       .eq('user_id', userId)
       .eq('id', annotationId)
@@ -308,6 +309,7 @@ class GscSuggestionService {
       opening_proposal: string | null;
       wp_content_text: string | null;
       wp_excerpt: string | null;
+      wp_image_count: number | null;
       persona: string | null;
       needs: string | null;
       main_kw: string | null;

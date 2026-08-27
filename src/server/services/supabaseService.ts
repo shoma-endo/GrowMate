@@ -1657,8 +1657,11 @@ export class SupabaseService {
       users: number;
       engagementTimeSec: number;
       bounceRate: number;
+      engagementRate: number | null;
+      activeUsers: number | null;
       cvEventCount: number;
-      scroll90EventCount: number;
+      /** null は「対象イベントがプロパティに存在せず未計測」。0（実測して0回）と区別する（BR-02） */
+      scroll90EventCount: number | null;
       searchClicks: number;
       impressions: number;
       ctr: number | null;
@@ -1682,6 +1685,8 @@ export class SupabaseService {
         users: row.users,
         engagement_time_sec: row.engagementTimeSec,
         bounce_rate: row.bounceRate,
+        engagement_rate: row.engagementRate,
+        active_users: row.activeUsers,
         cv_event_count: row.cvEventCount,
         scroll_90_event_count: row.scroll90EventCount,
         search_clicks: row.searchClicks,
@@ -1694,7 +1699,8 @@ export class SupabaseService {
         updated_at: nowIso,
       }));
 
-      const { error } = await this.supabase.from('ga4_page_metrics_daily').upsert(payload, {
+      const pendingClient = this.supabase;
+      const { error } = await pendingClient.from('ga4_page_metrics_daily').upsert(payload, {
         onConflict: 'user_id,property_id,date,normalized_path',
       });
 

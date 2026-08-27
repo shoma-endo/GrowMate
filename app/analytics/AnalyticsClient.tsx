@@ -33,6 +33,8 @@ interface AnalyticsClientProps {
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
+  ga4Truncated: boolean;
+  periodClamped: boolean;
   hasUrlFilterParams: boolean;
   error?: string | null;
   ga4Error?: string | null;
@@ -69,6 +71,8 @@ export default function AnalyticsClient({
   includeUncategorized,
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
+  ga4Truncated,
+  periodClamped,
   hasUrlFilterParams,
   error,
   ga4Error,
@@ -197,6 +201,8 @@ export default function AnalyticsClient({
             {ga4Error}
           </div>
         ) : null}
+        {periodClamped ? <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">表示期間は最大100日に制限されています。</p> : null}
+        {ga4Truncated ? <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">表示期間が長いため、日次データをすべて取得できていません。期間を短くして再表示してください。</p> : null}
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <div className="flex flex-col gap-1">
             <span className="text-xs text-gray-500">GA4集計開始日</span>
@@ -227,8 +233,10 @@ export default function AnalyticsClient({
             {isApplyingDateRange ? '適用中...' : '期間を適用'}
           </button>
         </div>
+        {/* 「平均滞在時間」は ÷sessions。列見出し「滞在時間（平均）」と同じ値で、
+            記事詳細の「平均エンゲージメント時間」（÷activeUsers）とは別物 */}
         <p className="mb-4 text-xs text-gray-500">
-          指定期間でGA4指標（滞在時間・読了率・直帰率・CV数・CVR）を集計して表示します。
+          指定期間でGA4 指標（平均滞在時間・完読率・エンゲージメント率・キーイベント数・キーイベント率）を集計して表示します。
         </p>
         {!error ? (
           <AnalyticsTable

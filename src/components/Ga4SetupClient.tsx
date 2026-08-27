@@ -22,6 +22,7 @@ import {
   refetchGa4StatusWithValidation,
 } from '@/server/actions/ga4Setup.actions';
 import { formatDate } from '@/lib/date-utils';
+import { GA4_EVALUATION_DEFAULT_DAYS } from '@/lib/ga4-evaluation-period';
 import { useGa4Setup } from '@/hooks/useGa4Setup';
 import { handleAsyncAction } from '@/lib/async-handler';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
@@ -47,7 +48,13 @@ const GA4_STAGE_META: Record<Ga4ConnectionStage, { label: string; className: str
 
 type Ga4ManualSyncData =
   | { alreadySynced: true }
-  | { startDate: string; endDate: string; upserted: number };
+  | {
+      startDate: string;
+      endDate: string;
+      upserted: number;
+      isPartial?: boolean;
+      isSampled?: boolean;
+    };
 
 const getGa4EventLabel = (eventName: string): string => {
   return GA4_EVENT_LABELS[eventName] ?? eventName;
@@ -140,6 +147,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
   const handleGa4ManualSync = async () => {
     await handleAsyncAction<Ga4ManualSyncData>(
       async () => {
+        // body なし＝増分同期。過去分の取り直しは GA4ダッシュボードの再取込導線が担う
         const response = await fetch('/api/ga4/sync', { method: 'POST' });
         if (!response.ok) {
           const text = await response.text().catch(() => '');
@@ -164,6 +172,15 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
           toast.success(
             `GA4データを同期しました（${result.startDate} 〜 ${result.endDate}、${result.upserted}件）`
           );
+          // 打ち切り・サンプリングは数値の欠損につながるため、成功扱いのまま黙らせない
+          if (result.isPartial) {
+            toast.warning(
+              'GA4の取得件数が上限に達したため、一部の行が取り込めていません。期間を分けて再実行してください'
+            );
+          }
+          if (result.isSampled) {
+            toast.warning('GA4がサンプリングされたデータを返しました。数値は概算値です');
+          }
         },
         setLoading: setIsGa4Syncing,
         setMessage: setAlertMessage,
@@ -483,6 +500,10 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                   {isGa4Syncing ? '同期中...' : 'GA4日次同期を実行'}
                 </Button>
               </div>
+              <p className="text-xs text-gray-500">
+                日次同期は前回の取込日以降だけを取得します。過去分の数値が欠けている場合は、GA4ダッシュボードの「過去
+                {GA4_EVALUATION_DEFAULT_DAYS}日を再取込」で取り直してください。
+              </p>
             </>
           )}
         </CardContent>

@@ -1,7 +1,6 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
-import { asPendingClient, type InstagramMediaDatabase } from '@/types/database.types.pending';
 import type { Database, Tables, TablesInsert } from '@/types/database.types';
 import { INSTAGRAM_MEDIA_THUMBNAIL_BUCKET } from '@/lib/constants';
 import type {
@@ -432,7 +431,7 @@ class InstagramMediaService extends SupabaseService {
     cachedThumbnailPath: string | null;
   } | null> {
     return SupabaseService.withServiceRoleClient(async client => {
-      const { data, error } = await asPendingClient<InstagramMediaDatabase>(client)
+      const { data, error } = await client
         .from('instagram_media')
         .select('media_product_type, media_url, thumbnail_url, cached_thumbnail_path')
         .eq('user_id', userId)
@@ -495,7 +494,7 @@ class InstagramMediaService extends SupabaseService {
           return null;
         }
 
-        const { error: updateError } = await asPendingClient<InstagramMediaDatabase>(client)
+        const { error: updateError } = await client
           .from('instagram_media')
           .update({ cached_thumbnail_path: path })
           .eq('user_id', userId)
