@@ -1,6 +1,9 @@
 実装内容をコミット・push し、`pr-summary.md` を正本として Pull Request を作成または更新してください。プロダクションコードの編集は行わず、git / gh コマンドのみを実行してください。
 
 手順:
+0. **git 書き込み可否を先に確認する（必須・1回だけ）:**
+   - `git status` が通ること、および `git add --dry-run`（対象ファイル）または `git update-index --refresh` で index 書き込みを試す。
+   - `.git/index.lock` 作成や stage が `Operation not permitted` / `Read-only file system` / permission denied で失敗する場合は **commit / push / PR を再試行しない**。報告に「環境が `.git` 書き込み不可のため create_pr 未完了」と残差分を書いて失敗扱いとする（同じ git 操作をループしない）。
 1. 下記に全文添付された pr-summary を正本とする。先頭の `# ` 行を PR タイトル、それ以降を PR 本文とする。
 2. `git status` / `git diff` で変更内容を確認する。
 3. ブランチを決める（再実行・追記を優先）:
@@ -29,6 +32,7 @@
 - プロダクションコード編集。
 - `.takt/runs/` 配下のレポートを git にコミットすること。
 - 人間への確認待ち。
+- git 書き込み不可が分かったあとに、同じ `git add` / `commit` / `push` を繰り返すこと。
 
 ## pr-summary.md（全文）
 {report:pr-summary.md}

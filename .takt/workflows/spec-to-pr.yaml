@@ -48,17 +48,17 @@ loop_monitors:
   - cycle:
       - self_review
       - self_review_fix
-      - readme_sync
     threshold: 3
     judge:
       persona: supervisor
       knowledge:
         - growmate
       instruction: |
-        self_review -> self_review_fix -> readme_sync のループが {cycle_count} 回繰り返されました。
+        self_review -> self_review_fix のループが {cycle_count} 回繰り返されました。
         閾値到達後はループ継続不可。下記に全文添付された最新の self-review と修正結果を確認し、収束して抜けられるか・ABORT するかを二択で判断してください。run ディレクトリやレポートパスの探索はしないでください。
         fix-result が追加修正不能（`cannot_fix`）と記録した残件、および「手動ブラウザ確認未実施」または管理者作業（マイグレーション適用・型再生成・pendingファイル削除）のみの場合は、追加修正で解消不能な残件として prepare_pr_summary に進めてください。
         まだ直せそう・進捗がありそう、だけでは self_review へ戻さないでください。必要なら ABORT し、人間が再実行します。
+        注: readme_sync はこのループに含めない（reviewers 承認後の1回のみ。self_review_fix 後に README 判定へ戻さない）。
 
         ## self-review.md（最新・全文）
         {report:self-review.md}
@@ -66,7 +66,7 @@ loop_monitors:
         ## fix-result.md（最新・全文）
         {report:fix-result.md}
 
-        ## readme-sync.md（最新・全文）
+        ## readme-sync.md（参考・初回のみ。欠落文なら無視）
         {report:readme-sync.md}
       rules:
         - condition: 収束済み（残件が手動確認・管理者作業のみ、または指摘なし）
@@ -209,10 +209,11 @@ steps:
     required_permission_mode: edit
     pass_previous_response: false
     instruction: spec-to-pr/fix
+    # プロダクション影響パスがあるときだけフル verify（docs/README 等のみはスキップ）
     quality_gates:
       - type: command
-        name: npm-verify
-        command: npm run verify
+        name: npm-verify-changed
+        command: npm run verify:changed
         cwd: .
         timeout_ms: 900000
     structured_output:
@@ -250,17 +251,19 @@ steps:
     required_permission_mode: edit
     pass_previous_response: false
     instruction: spec-to-pr/self-review-fix
+    # プロダクション影響パスがあるときだけフル verify（docs/README 等のみはスキップ）
     quality_gates:
       - type: command
-        name: npm-verify
-        command: npm run verify
+        name: npm-verify-changed
+        command: npm run verify:changed
         cwd: .
         timeout_ms: 900000
     structured_output:
       schema_ref: self_review_fix
     rules:
+      # readme_sync は reviewers 承認後の1回のみ。ここへ戻さない（空回り防止）
       - condition: when(structured.self_review_fix.verdict == "fixed")
-        next: readme_sync
+        next: self_review
       - condition: when(structured.self_review_fix.verdict == "arch_impact")
         next: reviewers
         command_gates: skip
