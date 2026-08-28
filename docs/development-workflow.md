@@ -65,7 +65,7 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 
 Grill Me は重要な判断を推奨案付きで一問ずつ確認する。`/go` を入力すると実行指示書が生成される。TAKT v0.62 以降、Gherkin は開発・実装タスクの指示書にだけ付く。要件確認だけの会話では Markdown 中心になり得る。受け入れ条件の Gherkin 化は workflow 内の `gherkin` step が担う。
 
-workflow の最初の `grill` step は追加質問をせず、その指示書を `01-grill.md` の決定事項・未確定事項・Non-goals と、代替案・懸念点・未決定事項へ正規化する。
+workflow の最初の `grill` step は追加質問をせず、その指示書を `01-grill.md` の決定事項・Non-goals と、代替案・懸念点・未決定事項へ正規化する。
 
 確認対象は次のとおり。
 
@@ -82,7 +82,11 @@ workflow の最初の `grill` step は追加質問をせず、その指示書を
 `01-grill.md` に `ALT-` / `CON-` / `OPEN-` の ID で記録し、`04-handoff.md` から仕様書の「11. トレードオフ判断」「12. リスク・未確定事項・確認質問」へ引き継ぐ。
 記載量を増やすことが目的ではない。主要な設計判断がない小改修では3観点をまとめて1行で足りる。
 
-未確定事項（Q、まだ答えが必要）と未決定事項（OPEN、今は意図的に決めない）は別物として扱う。OPEN は仕様書 §12 の「未決定事項（今は決めない）」表に置き、仕様レビューのブロッカーとして数えない。
+この workflow の成果物に「未確定事項」欄は置かない。未解決の論点は次のいずれかに振り分ける。
+
+- 答えが出るまで要件を確定できない → `要件を確定できない` / `追加確認が必要` と判定して停止し、標準 Grill Me をやり直す
+- 答えがあると良いが要件確定は妨げない → 懸念点（CON）。仕様書 §12 の確認質問（Q）へ引き継ぐ
+- 今は意図的に決めない → 未決定事項（OPEN）。仕様書 §12 の「未決定事項（今は決めない）」表に置き、仕様レビューのブロッカーとして数えない
 
 この workflow は仕様書・プロダクションコードを自動編集しない。Grill Me の対話で人間が回答し、生成された Gherkin を承認する。
 
@@ -90,7 +94,7 @@ workflow の最初の `grill` step は追加質問をせず、その指示書を
 
 GrowMateのTAKT workflowは原則 `provider: claude-sdk` を使う。ただし、git commit / push / PR 操作を担当する `spec-review.finalize` と `spec-to-pr.create_pr` は `provider: cursor`、`model: gpt-5.6-luna-high` を使う。step間のレポート受け渡しは `{report:X}` プレースホルダ（本文をプロンプトへ全文注入。resume時はTAKTのsnapshotが引き継ぐ）で行い、エージェントはrunディレクトリのパスを一切必要としない。レポート保存はTAKTが行う。
 
-- `01-grill.md`: Grill Me の決定事項・未確定事項・Non-goals と、代替案（ALT）・懸念点（CON）・未決定事項（OPEN）の記録
+- `01-grill.md`: Grill Me の決定事項・Non-goals と、代替案（ALT）・懸念点（CON）・未決定事項（OPEN）の記録
 - `02-gherkin.md`: Gherkin 形式の受け入れ条件
 - `03-confirmation.md`: 人間承認の結果
 - `05-rough-estimate.md`: 概算工数・前提・不確実性
@@ -106,7 +110,7 @@ Gherkinを承認したら、workflowが概算工数を作成する。
 - 機能・工程別の概算（人日）
 - 合計工数と想定スケジュール
 - 算出の前提
-- 未確定事項・リスク
+- 未決定事項・リスク・不確実性
 - 対象外
 - 信頼度
 

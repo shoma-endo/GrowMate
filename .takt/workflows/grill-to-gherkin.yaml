@@ -64,7 +64,7 @@ steps:
       - condition: Gherkin化できない
         next: ABORT
         appendix: |
-          Gherkinを安全に確定できませんでした。`02-gherkin.md` の未確定事項を確認してください。
+          Gherkinを安全に確定できませんでした。`02-gherkin.md` の追加確認が必要な質問を確認してください。
 
   - name: confirm
     tags:
