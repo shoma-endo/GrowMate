@@ -55,7 +55,7 @@ python3 scripts/spec-html.py refresh --all --check                 # 書かず�
 - `.snapshot.json` の `spec_hash` と現物を突合し、**変わっていなければ何も出力せず終わる**（no-op）。
 - 変わっていれば `views/*fulltext*.html` を再生成し、`.snapshot.json` の `manifest`（タイトル・出力先・ビューのラベルと並び）どおりに `build` を再実行する。
 - **再構成ビュー（01〜03）には触らない。** `core.yaml` を LLM が解釈して書くものなので機械では直せない。代わりに整合性チェックが `fail`/`warn` を出したら「01〜03 が陳腐化している可能性がある」と明示的に警告する。**この警告が出たら更新モードで `core.yaml` を貼り直すこと。**
-- 発火経路（Claude Code `PostToolUse` フック / husky `pre-commit`）の詳細は `maintenance.md`。どちらも失敗しても編集・commit を止めない。
+- 発火経路（Claude Code / Cursor / Codex の編集後フック、husky `pre-commit`、手動 `npm run spec-html:refresh`）の詳細は `maintenance.md`。いずれも失敗しても編集・commit を止めない。**Cursor だけは陳腐化警告がエージェントに届かない**（`afterFileEdit` が fire-and-forget のため）ので、章を書き換えたら `npm run spec-html:refresh` の出力を人が読む。
 
 ## 出力先の規約
 
@@ -128,7 +128,7 @@ docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時�
 
 | ファイル | 内容 |
 |---|---|
-| `01-status.html` | **要注意（未決事項・リスク・着手前ゲートを冒頭に集約）** → ステータスボード → 次の一手 → 重要概念（絞り込み付き）→ 依存関係 → 読む順 → 次の質問 → 出典 |
+| `01-status.html` | **要注意（確認質問・未決定事項・リスク・着手前ゲートを冒頭に集約）** → ステータスボード → 次の一手 → 重要概念（絞り込み付き）→ 依存関係 → 読む順 → 次の質問 → 出典 |
 | `02-decisions.html` | 設計判断ごとに **狙い / ✕不採用案 / ✓採用理由 / △受け入れたトレードオフ** の4点セット。ブロック別の絞り込み付き |
 | `05-screens.html` | （画面仕様の章がある場合のみ）画面一覧 → 画面遷移図 → 記事詳細等の要素配置 → 状態別UI → UI用語 → 関連ACの順。**再構成ビューと同じ設計原則（例外ファースト・7ブロック上限・図版3点以上）に従う** |
 | `06-ui-mock.html` | （UIたたき台CPがある場合のみ）既存プロダクトUIに寄せた**操作可能な**モック。主要状態をタブ／ボタンで切り替え、PO確認項目（Q）を同タブ先頭に置く。図版3点の必須は**適用しない**（モック自体が図）。テーマ変数・IIFE・外部依存禁止・`document.querySelector` のみ（`getElementById` 禁止。結合時にパネルへスコープされる）は `authoring-views.md` に従う。シェルの `.panel` クラス名は使わない（タブパネルと衝突する） |

@@ -121,7 +121,7 @@ WordPress本文取得（1回のWordPress REST API呼び出しから2種類を得
   ↓
 対象annotation id・認証ユーザーのuser_idを指定して8項目のみ部分更新（impressionsは更新対象に含めず既存値を維持）
   ↓
-更新後の content_annotations を返却 → クライアントがフォーム表示を更新（12.の未確定事項参照）
+更新後の content_annotations を返却 → クライアントがフォーム表示を更新（12.の未決定事項参照）
 ```
 
 **設計判断: basic_structureをClaudeに書かせない理由**
@@ -375,10 +375,15 @@ export async function summarizeContentAnnotation(
 21. `canonical_url`のみの記事でも、WordPress REST APIの小文字`id`・大文字`ID`のどちらからでも投稿IDを解決してAI要約できる。API境界より内側の正規化済み投稿型は必須の`id`だけを公開し、トップレベルの`ID`を残さない
 22. WordPress.comの保存トークンが利用できなくても有効なブラウザCookieがあれば本文を取得してAI要約できる
 
-## 12. 未確定・実装時に確定すべき事項
+## 12. 確認質問・未決定事項
+
+### 確認質問（回答が出るまで実装方式を選べない）
+
+- **Q-001**: HTML解析ライブラリの選定（`node-html-parser` 等の**新規依存追加の可否・承認**）。回答者: PO / 開発リード。期限: 実装着手前。状態: 未回答
+
+### 未決定事項（実装時に確定する。決める人はいずれも実装担当）
 
 - 本文サイズガードの具体的な閾値（文字数 or トークン数）
-- HTML解析ライブラリの選定（`node-html-parser` 等の新規依存追加の可否・承認）
 - `ERROR_MESSAGES` の正式なキー名・日本語文言
 - **要約結果をUI表示へ反映する具体的な導線**: `useAnnotationForm`（`src/hooks/useAnnotationForm.ts`）は現状 `updateField`（1フィールドずつの更新）のみを公開しており、8項目を一括で表示反映するAPIがない。一方 `initialFields` プロパティが変わると `useEffect` でフォーム全体を再同期する仕組みは既にある。`AnnotationPanel` に渡る `initialData` は `ChatLayout`/`ChatLayoutContent` 経由で、`onSaveSuccess` 相当の既存の保存後リフレッシュ経路が `content_annotations` の再取得・再受け渡しを行っているかを実装時に確認し、それで賄えない場合は `ChatLayout` 内の `setAnnotationData`（既存・現状 `AnnotationPanel` まで届いていない）を新たに露出するかを判断する
 - `MODEL_CONFIGS['content_annotation_ai_summary'].maxTokens`（暫定8000）は実測のうえで調整する
@@ -397,7 +402,7 @@ export async function summarizeContentAnnotation(
 | 5 | `contentAnnotationSummaryService`（本文取得〜JSON抽出〜検証） | 1日 | 1.5日 |
 | 6 | Server Action（`summarizeContentAnnotation`、認可・エラーハンドリング） | 0.5日 | 1日 |
 | 7 | UI: 要約ボタン（ローディング/disabled/toast） | 0.5日 | 1日 |
-| 8 | UI: フォーム反映導線（12.の未確定事項。ChatLayout/ChatLayoutContent/AnnotationPanelにまたがる可能性あり） | 0.5日 | 1.5日 |
+| 8 | UI: フォーム反映導線（12.の未決定事項。ChatLayout/ChatLayoutContent/AnnotationPanelにまたがる可能性あり） | 0.5日 | 1.5日 |
 | 9 | `wp_post_id`受け渡し（ボタン活性化条件） | 0.25日 | 0.5日 |
 | 10 | 結合・手動確認（self-hosted/WordPress.com、見出しなし記事、エンティティ含む見出し等） | 1日 | 1.5日 |
 | 11 | quality-gate（lint/build/knip）＋GSC画面動作確認 | 0.5日 | 0.5日 |
@@ -406,7 +411,7 @@ export async function summarizeContentAnnotation(
 余裕を多めに積んだ項目とその理由:
 
 - **#3 プロンプト反復**: JSON出力の安定性・`maxTokens`実測調整は事前に回数が読めない
-- **#8 フォーム反映導線**: 12.で未確定のまま残した箇所。既存の保存後リフレッシュで足りるか、複数ファイルにまたがる新規配線が要るかで工数が倍近く変わる
+- **#8 フォーム反映導線**: 12. の未決定事項として残した箇所。既存の保存後リフレッシュで足りるか、複数ファイルにまたがる新規配線が要るかで工数が倍近く変わる
 - **#2 リファクタ**: GSC改善提案フローは既存本番機能のため、回帰があれば当該部分は仕様通り動くまでやり直し
 
 **結論**: 標準約6.5人日、余裕を持った工数として **12人日** 前後を見込む。

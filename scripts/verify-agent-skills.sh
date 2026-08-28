@@ -96,7 +96,7 @@ fi
 echo
 
 echo "--- Agent hooks ---"
-for hook_config in .claude/settings.json .codex/hooks.json; do
+for hook_config in .claude/settings.json .codex/hooks.json .cursor/hooks.json; do
   if [[ -f "$hook_config" ]] && grep -Fq "scripts/spec-html-hook.sh" "$hook_config"; then
     ok "$hook_config が共通HTMLフックを参照"
   else
