@@ -26,7 +26,7 @@ description: Cursor Cloud AgentがTAKT CLI無しでspec-reviewと実装→PRの�
 1. **親は工程を実行しない。** Task で下表 subagent を起動する。
 2. **並列:** `spec-ai-antipattern-review` と `spec-architecture-review` は **1 メッセージで2 Task 並列**。
 3. **handoff:** `docs/plans/.workflow/<slug>/`（gitignore）。subagent はファイルに全文、親は **verdict + パス** のみ保持。
-4. **人間への途中質問をしない。** 判断不能なら停止し仕様書に未確定事項を残す。
+4. **人間への途中質問をしない。** 判断不能なら停止し仕様書に確認質問（Q-xxx）を残す。
 5. **`.takt/runs/` を正本にしない。**
 6. **merge しない。**
 

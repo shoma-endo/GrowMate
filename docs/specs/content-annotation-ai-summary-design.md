@@ -121,7 +121,7 @@ WordPress本文取得（1回のWordPress REST API呼び出しから2種類を得
   ↓
 対象annotation id・認証ユーザーのuser_idを指定して8項目のみ部分更新（impressionsは更新対象に含めず既存値を維持）
   ↓
-更新後の content_annotations を返却 → クライアントがフォーム表示を更新（12.の未確定事項参照）
+更新後の content_annotations を返却 → クライアントがフォーム表示を更新（12.の未決定事項参照）
 ```
 
 **設計判断: basic_structureをClaudeに書かせない理由**
@@ -375,7 +375,7 @@ export async function summarizeContentAnnotation(
 21. `canonical_url`のみの記事でも、WordPress REST APIの小文字`id`・大文字`ID`のどちらからでも投稿IDを解決してAI要約できる。API境界より内側の正規化済み投稿型は必須の`id`だけを公開し、トップレベルの`ID`を残さない
 22. WordPress.comの保存トークンが利用できなくても有効なブラウザCookieがあれば本文を取得してAI要約できる
 
-## 12. 未確定・実装時に確定すべき事項
+## 12. 未決定事項（実装時に確定する）
 
 - 本文サイズガードの具体的な閾値（文字数 or トークン数）
 - HTML解析ライブラリの選定（`node-html-parser` 等の新規依存追加の可否・承認）
@@ -397,7 +397,7 @@ export async function summarizeContentAnnotation(
 | 5 | `contentAnnotationSummaryService`（本文取得〜JSON抽出〜検証） | 1日 | 1.5日 |
 | 6 | Server Action（`summarizeContentAnnotation`、認可・エラーハンドリング） | 0.5日 | 1日 |
 | 7 | UI: 要約ボタン（ローディング/disabled/toast） | 0.5日 | 1日 |
-| 8 | UI: フォーム反映導線（12.の未確定事項。ChatLayout/ChatLayoutContent/AnnotationPanelにまたがる可能性あり） | 0.5日 | 1.5日 |
+| 8 | UI: フォーム反映導線（12.の未決定事項。ChatLayout/ChatLayoutContent/AnnotationPanelにまたがる可能性あり） | 0.5日 | 1.5日 |
 | 9 | `wp_post_id`受け渡し（ボタン活性化条件） | 0.25日 | 0.5日 |
 | 10 | 結合・手動確認（self-hosted/WordPress.com、見出しなし記事、エンティティ含む見出し等） | 1日 | 1.5日 |
 | 11 | quality-gate（lint/build/knip）＋GSC画面動作確認 | 0.5日 | 0.5日 |

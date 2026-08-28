@@ -36,7 +36,7 @@ handoff_dir: docs/plans/.workflow/<slug>/review/
 - audit↔revise が 3 周しても `needs_fix`
 - identify / audit が `blocked`
 
-停止時: 仕様書に未確定事項を残し、「回答反映後に Cloud Agent で spec-review ループ再実行」。**実装ループへ進まない。**
+停止時: 仕様書に確認質問（Q-xxx）を残し、「回答反映後に Cloud Agent で spec-review ループ再実行」。**実装ループへ進まない。**
 
 ## 実装前ゲート
 

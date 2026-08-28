@@ -711,7 +711,7 @@ create table public.instagram_account_insights_daily (
 
 検証は `quality-gate` に従い `npm run verify`（audit → lint → test → build → knip）+ 上記画面の手動確認。純関数（インサイト整形・期限判定 `ensureValidInstagramToken` の分岐・cursor ページング処理）には vitest を追加する。
 
-## 9. 未確定事項（実装前に要確認）
+## 9. 確認質問（実装前に要確認）
 
 ### App Review 提出に関する確認事項 — **2026-08-01 時点で残件なし**
 
