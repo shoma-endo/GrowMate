@@ -15,7 +15,7 @@ Scenario: {振る舞い}
 - {Gherkinのシナリオ} ← {Grill Meで確定した決定事項}
 
 ## 未確定事項
-- {あれば記載}
+- {Gherkin化の過程で新たに判明した、答えが必要な事項。`01-grill.md` の CON-xxx / OPEN-xxx をここへ移し替えない}
 
 ## 判定
 `追加確認が必要` または `Gherkin化が完了`
