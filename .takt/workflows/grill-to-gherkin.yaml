@@ -1,7 +1,13 @@
 name: grill-to-gherkin
 description: >-
   要件を対話で明確化し、既存実装の再利用・拡張候補を提案したうえで、
-  Gherkinと概算の着手判断を人間承認で確定してから仕様書・コード編集前に止める前段 workflow
+  Gherkinと概算の着手判断を人間承認で確定してから仕様書・コード編集前に止める前段 workflow。
+  代替案・懸念点・未決定事項の3観点は workflows/rules/decision-viewpoints.md（all_steps.rules）で
+  全 step に強制し、`01-grill.md` に記録して `04-handoff.md` から仕様書へ引き継ぐ。
+all_steps:
+  rules:
+    - ref: decision-viewpoints
+      position: before_instruction
 max_steps: 20
 initial_step: grill
 
