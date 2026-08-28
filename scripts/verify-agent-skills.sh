@@ -18,6 +18,7 @@ warn() { echo -e "${YELLOW}!${NC} $1"; warnings=$((warnings + 1)); }
 ok()   { echo -e "${GREEN}✓${NC} $1"; }
 
 EXPECTED_SKILLS=(
+  cloud-agent-unattended
   google-integrations
   growmate-ui-ux
   implementation-guidelines
@@ -201,6 +202,28 @@ for f in .agents/agents/client-alignment-auditor.toml .agents/agents/client-alig
     ok "$f"
   else
     fail "Subagent 不足: $f"
+  fi
+done
+for f in .agents/agents/spec-*.md; do
+  if [[ -f "$f" ]]; then
+    name="$(extract_frontmatter_field "$f" name)"
+    if [[ -n "$name" ]]; then
+      ok "spec subagent: $name ($f)"
+    else
+      fail "spec subagent に name 欠落: $f"
+    fi
+  fi
+done
+EXPECTED_SPEC_AGENTS=(
+  spec-identify spec-audit spec-revise spec-visualize spec-finalize
+  spec-plan spec-implement spec-ai-antipattern-review spec-architecture-review
+  spec-fix spec-readme-sync spec-self-review spec-pr-summary spec-create-pr
+)
+for agent in "${EXPECTED_SPEC_AGENTS[@]}"; do
+  if [[ -f ".agents/agents/${agent}.md" ]]; then
+    :
+  else
+    fail "Cloud 無人 subagent 不足: .agents/agents/${agent}.md"
   fi
 done
 echo

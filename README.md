@@ -159,7 +159,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 - **型チェック**: TypeScript strict mode
 - **リンター**: ESLint, eslint-config-next
-- **AI開発workflow**: Takt（版は [`.takt-version`](.takt-version) が正本。実体は `./scripts/takt-install-pinned.sh` で `~/.local/takt/<ver>` に設置。workflow 変更後は pin 版で `takt workflow doctor` を検証。Node.js `>=24.15.0`）
+- **AI開発workflow**: Takt（ローカル。版は [`.takt-version`](.takt-version) が正本。`./scripts/takt-install-pinned.sh`）。**Cursor Cloud の無人系（spec-review / 実装→PR）は** [`.agents/skills/cloud-agent-unattended/`](.agents/skills/cloud-agent-unattended/)（TAKT CLI なし）。Node.js `>=24.15.0`
 - **コード整形**: `.prettierrc`（エディタ向け。Prettier は npm 依存に未登録）
 - **ビルド**: Turbopack（開発）/ Next.js build
 - **テスト**: Vitest、`@vitest/coverage-v8`（コアロジック・入力バリデーション）

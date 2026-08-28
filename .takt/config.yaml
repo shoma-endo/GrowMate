@@ -1,5 +1,9 @@
+# ローカル TAKT 用。Cloud 無人の主系は cloud-agent-unattended Skill（TAKT CLI ではない）。
+# provider/model 割当は ~/.takt/runtime.yaml が正本（config.yaml に書くと doctor が mixed provider で落ちる）。
 base_branch: develop
 workflow_command_gates:
+  custom_scripts: true
+workflow_runtime_prepare:
   custom_scripts: true
 observability:
   enabled: true

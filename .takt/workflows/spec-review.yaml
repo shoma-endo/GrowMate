@@ -10,6 +10,11 @@ all_steps:
   rules:
     - ref: mvp-scope
       position: before_instruction
+workflow_config:
+  # ローカル TAKT 用。Cloud 主系は cloud-agent-unattended Skill。
+  runtime:
+    prepare:
+      - scripts/takt-check-provider-auth.sh
 max_steps: 12
 initial_step: identify
 loop_monitors:
