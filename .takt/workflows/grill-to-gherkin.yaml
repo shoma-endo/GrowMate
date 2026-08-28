@@ -35,7 +35,7 @@ steps:
       - condition: 要件を確定できない
         next: ABORT
         appendix: |
-          要件を確定できませんでした。標準 `grill-me` で不足する判断事項を確認してから再実行してください。
+          要件を確定できませんでした。`01-grill.md` の「不足している判断事項」をそのまま標準 `grill-me` の入力にして回答を得てから、再実行してください。
 
   - name: gherkin
     tags:
@@ -58,13 +58,9 @@ steps:
       - condition: 追加確認が必要
         next: ABORT
         appendix: |
-          Gherkinの追加確認が必要です。`takt -w grill-to-gherkin -t "不足している要件を確認してください"` を再実行し、標準 `grill-me` で判断事項を確定してください。
+          Gherkinの追加確認が必要です。`02-gherkin.md` の「確認したい質問」をそのまま標準 `grill-me` の入力にして回答を得てから、`takt -w grill-to-gherkin` を再実行してください。
       - condition: Gherkin化が完了
         next: confirm
-      - condition: Gherkin化できない
-        next: ABORT
-        appendix: |
-          Gherkinを安全に確定できませんでした。`02-gherkin.md` の追加確認が必要な質問を確認してください。
 
   - name: confirm
     tags:
