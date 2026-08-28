@@ -24,9 +24,18 @@
 
 ## refresh の発火経路
 
-| 経路 | 定義 | 拾えるもの |
-|---|---|---|
-| Claude Code の `PostToolUse` フック | `.claude/settings.json` → `scripts/spec-html-hook.sh` | エージェントによる `Edit` / `Write`。更新があったときだけ結果をエージェントに差し戻す |
-| husky `pre-commit` | `.husky/pre-commit` | エディタでの手編集など、フックが拾えない経路の取りこぼし |
+全エージェントが `scripts/spec-html-hook.sh` を共有する。payload の形とイベント名の差はスクリプト側で吸収するので、増やすときも呼び出し1行を足すだけでよい。
 
-どちらも失敗しても編集・commit を止めない。
+| 経路 | 定義 | 渡し方 | 拾えるもの |
+|---|---|---|---|
+| Claude Code の `PostToolUse` フック | `.claude/settings.json` | `tool_input.file_path` の1本 | エージェントによる `Edit` / `Write` |
+| Cursor の `afterFileEdit` フック | `.cursor/hooks.json` | top-level `file_path` の1本 | Agent チャットによるファイル編集 |
+| Codex の `PostToolUse` フック | `.codex/hooks.json` | `--all`（`apply_patch` は1回で複数ファイルを変更でき payload から絞れない） | `apply_patch` |
+| husky `pre-commit` | `.husky/pre-commit` | staged な `docs/plans/*.md` | エディタでの手編集など、上記フックが拾えない経路の取りこぼし |
+| 手動 | `npm run spec-html:refresh` | `--all` | 上記のどれも効かない環境（依存未インストールで husky が入っていない等） |
+
+いずれも失敗しても編集・commit を止めない。`refresh` は `spec_hash` が変わっていなければ無言で終わる（no-op）ので、`--all` でも空振りのコストはほぼゼロ。
+
+**結果の差し戻し方だけがエージェントで違う。** Claude Code / Codex は `additionalContext` として整合性チェックの出力をエージェントへ返せるが、Cursor の `afterFileEdit` は fire-and-forget（返せる口が無い）なので `{}` を返し、警告は stderr に出す。**Cursor で仕様書の章を書き換えたときは、再構成ビューの陳腐化警告がエージェントに届かない。** `npm run spec-html:refresh` を手で叩いて出力を読むこと。
+
+`scripts/verify-agent-skills.sh` が3つの設定ファイルすべてについて共通フックを参照しているか検査する。

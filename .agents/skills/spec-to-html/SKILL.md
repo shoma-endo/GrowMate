@@ -55,7 +55,7 @@ python3 scripts/spec-html.py refresh --all --check                 # 書かず�
 - `.snapshot.json` の `spec_hash` と現物を突合し、**変わっていなければ何も出力せず終わる**（no-op）。
 - 変わっていれば `views/*fulltext*.html` を再生成し、`.snapshot.json` の `manifest`（タイトル・出力先・ビューのラベルと並び）どおりに `build` を再実行する。
 - **再構成ビュー（01〜03）には触らない。** `core.yaml` を LLM が解釈して書くものなので機械では直せない。代わりに整合性チェックが `fail`/`warn` を出したら「01〜03 が陳腐化している可能性がある」と明示的に警告する。**この警告が出たら更新モードで `core.yaml` を貼り直すこと。**
-- 発火経路（Claude Code `PostToolUse` フック / husky `pre-commit`）の詳細は `maintenance.md`。どちらも失敗しても編集・commit を止めない。
+- 発火経路（Claude Code / Cursor / Codex の編集後フック、husky `pre-commit`、手動 `npm run spec-html:refresh`）の詳細は `maintenance.md`。いずれも失敗しても編集・commit を止めない。**Cursor だけは陳腐化警告がエージェントに届かない**（`afterFileEdit` が fire-and-forget のため）ので、章を書き換えたら `npm run spec-html:refresh` の出力を人が読む。
 
 ## 出力先の規約
 

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "type": "command",
+        "command": "sh scripts/spec-html-hook.sh",
+        "timeout": 30
+      }
+    ]
+  }
+}
