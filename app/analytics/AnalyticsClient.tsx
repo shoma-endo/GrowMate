@@ -11,6 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Settings, BarChart3, Loader2, TrendingUp, FileText, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorAlert } from '@/components/ErrorAlert';
+import { toast } from 'sonner';
+import { registerEvaluationsBulk } from '@/server/actions/gscDashboard.actions';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { AnalyticsContentItem } from '@/types/analytics';
 import type {
   InstagramMediaListItem,
@@ -38,6 +41,9 @@ interface AnalyticsClientProps {
   hasUrlFilterParams: boolean;
   error?: string | null;
   ga4Error?: string | null;
+  gscPropertyUri: string | null;
+  gscCredentialError: string | null;
+  annotationTotalCount: number;
   total: number;
   totalPages: number;
   currentPage: number;
@@ -76,6 +82,9 @@ export default function AnalyticsClient({
   hasUrlFilterParams,
   error,
   ga4Error,
+  gscPropertyUri,
+  gscCredentialError,
+  annotationTotalCount,
   total,
   totalPages,
   currentPage,
@@ -122,13 +131,26 @@ export default function AnalyticsClient({
   const [rangeStart, setRangeStart] = React.useState(startDate);
   const [rangeEnd, setRangeEnd] = React.useState(endDate);
   const [isApplyingDateRange, setIsApplyingDateRange] = React.useState(false);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
+  const [isSelectAll, setIsSelectAll] = React.useState(false);
+  const [isStarting, setIsStarting] = React.useState(false);
   const isDateRangeChanged = rangeStart !== startDate || rangeEnd !== endDate;
+  // 要約一括が同居する場合は、AC-05c に従いこの条件を常時表示へ切り替える。
+  const showCheckColumn = gscPropertyUri !== null;
+  const rawSelectedCount = isSelectAll ? annotationTotalCount : selectedIds.size;
+  const selectedCount = Math.min(rawSelectedCount, 1000);
+  const isSelectionClamped = rawSelectedCount > 1000;
 
   React.useEffect(() => {
     setRangeStart(startDate);
     setRangeEnd(endDate);
     setIsApplyingDateRange(false);
   }, [startDate, endDate]);
+
+  React.useEffect(() => {
+    setSelectedIds(new Set());
+    setIsSelectAll(false);
+  }, [currentPage]);
 
   const applyDateRange = () => {
     if (!isDateRangeChanged || isApplyingDateRange) return;
@@ -148,6 +170,70 @@ export default function AnalyticsClient({
   };
   const startItemNumber = total > 0 ? (currentPage - 1) * perPage + 1 : 0;
   const endItemNumber = total > 0 ? Math.min(currentPage * perPage, total) : 0;
+
+  const startBulkEvaluation = async () => {
+    if (!gscPropertyUri || selectedCount < 1 || isStarting) return;
+
+    setIsStarting(true);
+    try {
+      const result = await registerEvaluationsBulk(
+        isSelectAll
+          ? { mode: 'all' }
+          : { mode: 'ids', contentAnnotationIds: Array.from(selectedIds) }
+      );
+
+      if (!result.success) {
+        toast.error(result.error ?? ERROR_MESSAGES.GSC.BULK_REGISTER_FAILED);
+        return;
+      }
+      if (!result.data) {
+        toast.error(ERROR_MESSAGES.GSC.BULK_REGISTER_FAILED);
+        return;
+      }
+
+      const { registeredCount, skippedAlreadyRegisteredCount, failedCount } = result.data;
+      const detail =
+        skippedAlreadyRegisteredCount > 0 || failedCount > 0
+          ? `（スキップ ${skippedAlreadyRegisteredCount} 件、失敗 ${failedCount} 件）`
+          : '';
+      toast.success(
+        `${registeredCount}件の検索順位・コンテンツ評価サイクルを開始しました${detail}`
+      );
+      setSelectedIds(new Set());
+      setIsSelectAll(false);
+      router.refresh();
+    } catch (error) {
+      console.error('[analytics] bulk evaluation failed', error);
+      toast.error(ERROR_MESSAGES.GSC.BULK_REGISTER_FAILED);
+    } finally {
+      setIsStarting(false);
+    }
+  };
+
+  const toggleRowSelection = (annotationId: string, checked: boolean) => {
+    setIsSelectAll(false);
+    setSelectedIds(previous => {
+      const next = new Set(previous);
+      if (checked) {
+        next.add(annotationId);
+      } else {
+        next.delete(annotationId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllSelection = (checked: boolean) => {
+    setIsSelectAll(checked);
+    setSelectedIds(new Set());
+    if (checked) {
+      toast.success(
+        annotationTotalCount > 1000
+          ? `全記事 ${annotationTotalCount} 件のうち先頭1000件を選択しました（updated_at 降順で丸め）`
+          : `絞り込みに関係なく全記事 ${annotationTotalCount} 件を選択しました`
+      );
+    }
+  };
 
   const blogContent = (
     <Card>
@@ -201,6 +287,11 @@ export default function AnalyticsClient({
             {ga4Error}
           </div>
         ) : null}
+        {gscCredentialError ? (
+          <div className="mb-4 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+            {gscCredentialError}
+          </div>
+        ) : null}
         {periodClamped ? <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">表示期間は最大100日に制限されています。</p> : null}
         {ga4Truncated ? <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">表示期間が長いため、日次データをすべて取得できていません。期間を短くして再表示してください。</p> : null}
         <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -232,6 +323,34 @@ export default function AnalyticsClient({
             {isApplyingDateRange && <Loader2 className="h-4 w-4 animate-spin" />}
             {isApplyingDateRange ? '適用中...' : '期間を適用'}
           </button>
+          {showCheckColumn && selectedCount >= 1 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-gray-600">
+                {isSelectionClamped
+                  ? `1000 / 全 ${annotationTotalCount} 件`
+                  : `選択中 ${selectedCount} 件 / 全 ${annotationTotalCount} 件`}
+              </span>
+              <button
+                type="button"
+                className={cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')}
+                onClick={startBulkEvaluation}
+                disabled={isStarting || !gscPropertyUri}
+              >
+                {isStarting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isStarting ? '開始中...' : '評価サイクルを開始'}
+              </button>
+              {isSelectionClamped ? (
+                <span className="text-xs text-gray-500">
+                  1000件へ丸めました（残りは行チェックで選択）
+                </span>
+              ) : null}
+              {isSelectAll && selectedCount > total ? (
+                <span className="text-xs text-gray-500">
+                  絞り込み外の記事も含みます（既登録はサーバーがスキップ）
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         {/* 「平均滞在時間」は ÷sessions。列見出し「滞在時間（平均）」と同じ値で、
             記事詳細の「平均エンゲージメント時間」（÷activeUsers）とは別物 */}
@@ -248,6 +367,16 @@ export default function AnalyticsClient({
             hasUnreadSuggestion={hasUnreadSuggestion}
             hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
             hasUrlFilterParams={hasUrlFilterParams}
+            {...(showCheckColumn
+              ? {
+                  selection: {
+                    selectedIds,
+                    isSelectAll,
+                    onToggleRow: toggleRowSelection,
+                    onToggleAll: toggleAllSelection,
+                  },
+                }
+              : {})}
           />
         ) : null}
 

@@ -18,8 +18,62 @@ import type { Json } from '@/types/database.types';
 const MAX_PER_PAGE = 100;
 
 const supabaseService = new SupabaseService();
+const ALL_ANNOTATIONS_ORDER = { ascending: false, nullsFirst: false } as const;
 
 class AnalyticsContentService {
+  /**
+   * BR-07 の母集団（利用者が所有する全記事）の件数を取得する。
+   * 一覧RPCのフィルタ未指定時と同じ user_id 条件を使い、絞り込み後の件数とは分離する。
+   */
+  async countAllAnnotations(userId: string): Promise<number> {
+    try {
+      const { count, error } = await supabaseService
+        .getClient()
+        .from('content_annotations')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('[AnalyticsContentService] countAllAnnotations failed:', error.message);
+        return 0;
+      }
+
+      return count ?? 0;
+    } catch (error) {
+      console.error('[AnalyticsContentService] countAllAnnotations error:', error);
+      return 0;
+    }
+  }
+
+  /** BR-07 の母集団を updated_at 降順で解決する。count は limit 適用前の件数を使う。 */
+  async resolveAllAnnotationIds(
+    userId: string,
+    limit: number
+  ): Promise<{ ids: string[]; total: number } | null> {
+    try {
+      const { data, count, error } = await supabaseService
+        .getClient()
+        .from('content_annotations')
+        .select('id', { count: 'exact' })
+        .eq('user_id', userId)
+        .order('updated_at', ALL_ANNOTATIONS_ORDER)
+        .limit(limit);
+
+      if (error) {
+        console.error('[AnalyticsContentService] resolveAllAnnotationIds failed:', error.message);
+        return null;
+      }
+
+      return {
+        ids: (data ?? []).map(annotation => annotation.id),
+        total: count ?? 0,
+      };
+    } catch (error) {
+      console.error('[AnalyticsContentService] resolveAllAnnotationIds error:', error);
+      return null;
+    }
+  }
+
   async getPage(userId: string, params: AnalyticsContentQuery): Promise<AnalyticsContentPage> {
     const page = Number.isFinite(params.page) ? Math.max(1, Math.floor(params.page)) : 1;
     const perPageRaw = Number.isFinite(params.perPage) ? Math.floor(params.perPage) : MAX_PER_PAGE;

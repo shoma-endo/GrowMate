@@ -26,6 +26,7 @@ import {
   deleteContentAnnotation,
 } from '@/server/actions/wordpress.actions';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -69,6 +70,12 @@ interface Props {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUrlFilterParams: boolean;
+  selection?: {
+    selectedIds: Set<string>;
+    isSelectAll: boolean;
+    onToggleRow: (annotationId: string, checked: boolean) => void;
+    onToggleAll: (checked: boolean) => void;
+  };
 }
 
 interface LaunchPayload {
@@ -135,6 +142,7 @@ export default function AnalyticsTable({
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
   hasUrlFilterParams,
+  selection,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -850,9 +858,32 @@ export default function AnalyticsTable({
                     : 'まだコンテンツがありません。チャットでブログを作成するか、WordPress記事を一括インポートしてください。'}
                 </p>
               ) : (
-              <table className="min-w-[2200px] divide-y divide-gray-200 text-sm">
+              <table
+                className={cn(
+                  'min-w-[2200px] divide-y divide-gray-200 text-sm',
+                  selection && 'analytics-has-select'
+                )}
+              >
                 <thead className="bg-gray-50 analytics-head">
                   <tr className="text-gray-600">
+                    {selection ? (
+                      <th
+                        className="analytics-select-cell px-2 py-3 text-center whitespace-nowrap"
+                        style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
+                      >
+                        <Checkbox
+                          aria-label="全選択"
+                          checked={
+                            selection.isSelectAll
+                              ? true
+                              : selection.selectedIds.size > 0
+                                ? 'indeterminate'
+                                : false
+                          }
+                          onCheckedChange={checked => selection.onToggleAll(checked === true)}
+                        />
+                      </th>
+                    ) : null}
                     <th
                       className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap relative group/th"
                       style={{
@@ -917,6 +948,7 @@ export default function AnalyticsTable({
                 <tbody className="divide-y divide-gray-200">
                   {items.map(item => {
                     const annotation = item.annotation;
+                    const annotationId = annotation?.id;
                     const ga4Summary = item.ga4Summary ?? null;
                     const wpPostId =
                       annotation?.wp_post_id != null && Number.isFinite(annotation.wp_post_id)
@@ -956,8 +988,32 @@ export default function AnalyticsTable({
                       Boolean(rowCanonicalUrl?.trim());
                     const isEditBusy = isPendingEdit || isSummarizing;
 
+                    const isRowSelected = Boolean(
+                      annotationId &&
+                        (selection?.isSelectAll || selection?.selectedIds.has(annotationId))
+                    );
+
                     return (
-                      <tr key={item.rowKey} className="analytics-row group">
+                      <tr
+                        key={item.rowKey}
+                        className={cn('analytics-row group', isRowSelected && 'bg-blue-50')}
+                      >
+                        {selection ? (
+                          <td
+                            className="analytics-select-cell px-2 py-4 text-center"
+                            style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
+                          >
+                            {annotationId ? (
+                              <Checkbox
+                                aria-label={`${fallbackTitle}を選択`}
+                                checked={selection.isSelectAll || selection.selectedIds.has(annotationId)}
+                                onCheckedChange={checked =>
+                                  selection.onToggleRow(annotationId, checked === true)
+                                }
+                              />
+                            ) : null}
+                          </td>
+                        ) : null}
                         <td
                           className="analytics-ops-cell px-2 py-4 whitespace-nowrap text-sm text-center relative"
                           style={{

@@ -5,15 +5,25 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { gscImportService } from '@/server/services/gscImportService';
 import { normalizeUrl } from '@/lib/normalize-url';
-import { buildGscDateRange } from '@/lib/date-utils';
+import { buildGscDateRange, formatJstDateISO } from '@/lib/date-utils';
 import type { GscEvaluationOutcome } from '@/types/gsc';
 import type { UserRole } from '@/types/user';
+import { z } from 'zod';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
   asPendingClient,
   type Ga4ContentEvaluationScheduleDatabase,
 } from '@/types/database.types.pending';
 import { canAccessGa4, canWriteGa4 } from '@/server/lib/ga4-permissions';
+import { analyticsContentService } from '@/server/services/analyticsContentService';
+import type { ServerActionResult } from '@/lib/async-handler';
+import {
+  chunkIds,
+  ID_QUERY_CHUNK_SIZE,
+  MAX_BULK_EVALUATION_TARGETS,
+  normalizeBulkTargetIds,
+  planBulkEvaluationInserts,
+} from '@/server/lib/gsc-bulk-evaluation';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
@@ -83,6 +93,12 @@ type GscDetailResponse = {
 type GscDashboardAuthIdResult =
   | { error: string; emailLinkConflict?: true }
   | { userId: string; role: UserRole | null };
+
+interface BulkRegisterResult {
+  registeredCount: number;
+  skippedAlreadyRegisteredCount: number;
+  failedCount: number;
+}
 
 function gscAuthErrorPayload(authId: Extract<GscDashboardAuthIdResult, { error: string }>): {
   success: false;
@@ -490,6 +506,165 @@ export async function registerEvaluation(params: {
     console.error('[gsc-dashboard] register evaluation failed', error);
     const message = error instanceof Error ? error.message : ERROR_MESSAGES.GSC.EVALUATION_REGISTER_FAILED;
     return { success: false, error: message };
+  }
+}
+
+export async function registerEvaluationsBulk(
+  params: unknown
+): Promise<ServerActionResult<BulkRegisterResult>> {
+  try {
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return gscAuthErrorPayload(authId);
+    }
+    if (!canWriteGa4({ role: authId.role })) {
+      return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
+    }
+
+    const inputSchema = z.discriminatedUnion('mode', [
+      z.object({
+        mode: z.literal('ids'),
+        contentAnnotationIds: z.array(z.uuidv4()),
+      }),
+      z.object({ mode: z.literal('all') }),
+    ]);
+    const parsed = inputSchema.safeParse(params);
+    if (!parsed.success) {
+      console.error('[gsc-dashboard] bulk evaluation validation failed:', z.prettifyError(parsed.error));
+      return { success: false, error: ERROR_MESSAGES.COMMON.VALIDATION_FAILED };
+    }
+
+    const { userId } = authId;
+    let candidateIds: string[] | undefined;
+    let failedCount = 0;
+
+    if (parsed.data.mode === 'ids') {
+      candidateIds = normalizeBulkTargetIds(parsed.data.contentAnnotationIds);
+      if (candidateIds.length === 0) {
+        return { success: false, error: ERROR_MESSAGES.GSC.BULK_TARGETS_REQUIRED };
+      }
+      if (candidateIds.length > MAX_BULK_EVALUATION_TARGETS) {
+        return { success: false, error: ERROR_MESSAGES.GSC.BULK_TARGETS_LIMIT_EXCEEDED };
+      }
+    }
+
+    const propertyResult = await supabaseService.resolveGscPropertyUri(userId);
+    if (!propertyResult.success) {
+      return { success: false, error: ERROR_MESSAGES.GSC.CREDENTIAL_RESOLVE_FAILED };
+    }
+    if (!propertyResult.data) {
+      return { success: false, error: ERROR_MESSAGES.GSC.NOT_CONNECTED };
+    }
+    const propertyUri = propertyResult.data;
+
+    if (parsed.data.mode === 'all') {
+      const population = await analyticsContentService.resolveAllAnnotationIds(
+        userId,
+        MAX_BULK_EVALUATION_TARGETS
+      );
+      if (!population) {
+        return { success: false, error: ERROR_MESSAGES.GSC.BULK_POPULATION_MISMATCH };
+      }
+
+      const expectedCount = Math.min(population.total, MAX_BULK_EVALUATION_TARGETS);
+      if (population.ids.length !== expectedCount) {
+        return { success: false, error: ERROR_MESSAGES.GSC.BULK_POPULATION_MISMATCH };
+      }
+      candidateIds = population.ids;
+      if (candidateIds.length === 0) {
+        return { success: false, error: ERROR_MESSAGES.GSC.BULK_TARGETS_REQUIRED };
+      }
+    }
+
+    if (candidateIds === undefined) {
+      throw new Error('Bulk evaluation targets were not resolved');
+    }
+
+    if (parsed.data.mode === 'ids') {
+      const ownedIds = new Set<string>();
+      for (const chunk of chunkIds(candidateIds, ID_QUERY_CHUNK_SIZE)) {
+        const { data, error } = await supabaseService
+          .getClient()
+          .from('content_annotations')
+          .select('id')
+          .eq('user_id', userId)
+          .in('id', chunk);
+
+        if (error) {
+          throw new Error(error.message);
+        }
+        for (const annotation of data ?? []) {
+          ownedIds.add(annotation.id);
+        }
+      }
+
+      failedCount = candidateIds.length - ownedIds.size;
+      candidateIds = candidateIds.filter(id => ownedIds.has(id));
+    }
+
+    const existingIds = new Set<string>();
+    for (const chunk of chunkIds(candidateIds, ID_QUERY_CHUNK_SIZE)) {
+      const { data, error } = await supabaseService
+        .getClient()
+        .from('gsc_article_evaluations')
+        .select('content_annotation_id')
+        .eq('user_id', userId)
+        .in('content_annotation_id', chunk);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+      for (const evaluation of data ?? []) {
+        existingIds.add(evaluation.content_annotation_id);
+      }
+    }
+
+    const insertPlan = planBulkEvaluationInserts({ candidateIds, existingIds });
+    let registeredCount = 0;
+    let concurrentSkipCount = 0;
+    if (insertPlan.toInsertIds.length > 0) {
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const rows = insertPlan.toInsertIds.map(contentAnnotationId => ({
+        user_id: userId,
+        content_annotation_id: contentAnnotationId,
+        property_uri: propertyUri,
+        base_evaluation_date: formatJstDateISO(now),
+        cycle_days: 30,
+        evaluation_hour: 12,
+        status: 'active' as const,
+        created_at: nowIso,
+        updated_at: nowIso,
+      }));
+      const { data, error } = await supabaseService
+        .getClient()
+        .from('gsc_article_evaluations')
+        .upsert(rows, {
+          onConflict: 'user_id,content_annotation_id',
+          ignoreDuplicates: true,
+        })
+        .select('content_annotation_id');
+
+      if (error) {
+        throw new Error(error.message);
+      }
+      registeredCount = data?.length ?? 0;
+      concurrentSkipCount = insertPlan.toInsertIds.length - registeredCount;
+    }
+
+    revalidatePath('/analytics');
+    return {
+      success: true,
+      data: {
+        registeredCount,
+        skippedAlreadyRegisteredCount:
+          insertPlan.skippedAlreadyRegisteredCount + concurrentSkipCount,
+        failedCount,
+      },
+    };
+  } catch (error) {
+    console.error('[gsc-dashboard] register evaluations bulk failed', error);
+    return { success: false, error: ERROR_MESSAGES.GSC.BULK_REGISTER_FAILED };
   }
 }
 

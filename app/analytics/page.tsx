@@ -13,6 +13,7 @@ import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 import { clampAnalyticsPeriod } from '@/lib/analytics-period';
 import { canAccessGa4 } from '@/server/lib/ga4-permissions';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
 
 export const dynamic = 'force-dynamic';
@@ -41,6 +42,7 @@ function isValidDate(dateStr: string): boolean {
 }
 
 export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps) {
+  const supabaseService = new SupabaseService();
   const params = await searchParams;
   const unreadSuggestionParam = Array.isArray(params?.unread_suggestion)
     ? params.unread_suggestion[0]
@@ -138,10 +140,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     igSortParam === 'reach' || igSortParam === 'views' ? igSortParam : 'posted_at';
 
   // 並列でデータ取得（一覧・未読・カテゴリ一覧）
-  const [analyticsPage, unreadResult, allCategoryNames] = await Promise.all([
-    analyticsContentService.getPage(
-      userId,
-      {
+  const [analyticsPage, unreadResult, allCategoryNames, gscPropertyResult, annotationTotalCount] =
+    await Promise.all([
+      analyticsContentService.getPage(userId, {
         page,
         perPage,
         startDate,
@@ -150,12 +151,17 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         includeUncategorized,
         hasUnreadSuggestion,
         hasUnstartedGscEvaluation,
-      }
-    ),
-    gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
-    analyticsContentService.getAvailableCategoryNames(userId),
-  ]);
+      }),
+      gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
+      analyticsContentService.getAvailableCategoryNames(userId),
+      supabaseService.resolveGscPropertyUri(userId),
+      analyticsContentService.countAllAnnotations(userId),
+    ]);
   const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error, ga4Truncated } = analyticsPage;
+  const gscPropertyUri = gscPropertyResult.success ? gscPropertyResult.data : null;
+  const gscCredentialError = gscPropertyResult.success
+    ? null
+    : ERROR_MESSAGES.GSC.CREDENTIAL_RESOLVE_FAILED;
 
   let instagramMediaPage = {
     items: [] as Awaited<ReturnType<typeof instagramMediaService.getPage>>['items'],
@@ -168,7 +174,6 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   let instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed' = 'not_started';
 
   if (instagramConnected && activeTab === 'instagram') {
-    const supabaseService = new SupabaseService();
     const [mediaPage, credential] = await Promise.all([
       instagramMediaService.getPage(userId, {
         page: igPage,
@@ -232,6 +237,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       unreadAnnotationIds={unreadResult.annotationIds}
       error={error ?? null}
       ga4Error={ga4Error ?? null}
+      gscPropertyUri={gscPropertyUri}
+      gscCredentialError={gscCredentialError}
+      annotationTotalCount={annotationTotalCount}
       total={total}
       totalPages={totalPages}
       currentPage={currentPage}

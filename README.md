@@ -18,7 +18,7 @@
 - **AI コンテンツ支援**: 7 ステップのブログ作成フロー（ニーズ整理〜本文作成）、広告／LP テンプレート、AI 応答ストリーミング
 - **キャンバス編集**: TipTap ベースの `CanvasPanel`、Markdown レンダリング／見出しアウトライン／バージョン履歴、選択範囲リライト
 - **見出しフロー・バージョン管理**: Step5 生成見出しからの `session_heading_sections` 初期化、個別 AI 生成・`session_combined_contents` への結合保存、`save_atomic_combined_content` RPC で競合シリアライズ
-- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。未評価フィルタとコンテンツ評価状態・スコア・診断を一覧で確認し、`/analytics/[annotationId]` の記事詳細で手動評価と履歴を表示する。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・手動「最新化」同期）を表示
+- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。評価未設定フィルタとコンテンツ評価状態・スコア・診断を一覧で確認し、`/analytics/[annotationId]` の記事詳細で手動評価と履歴を表示する。一覧では記事を選択して**検索順位・コンテンツ評価サイクルを一括開始**できる（全選択は絞り込みに依存せず全記事が対象。1回あたり最大1000件）。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・手動「最新化」同期）を表示
 - **WordPress 連携**: OAuth・Application Password 両対応、投稿の一括インポート、`AnnotationPanel` でメモ・キーワード・ペルソナ等を再利用
 - **Google Search Console 連携**: OAuth 認証、日次指標保存（`gsc_page_metrics` / `gsc_query_metrics`）、記事評価・改善提案（`gsc_article_evaluations`）、改善提案ジョブの Cron 実行（`/api/cron/gsc-suggestions`）
 - **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`）、サマリー・ランキング・時系列ダッシュボード、記事ごとのコンテンツ評価、メディア全体の資産価値・実効スコアと散布図

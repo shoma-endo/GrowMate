@@ -31,6 +31,7 @@ import {
   fetchGscDetail,
   fetchQueryAnalysis,
   registerEvaluation,
+  registerEvaluationsBulk,
   runEvaluationNow,
   runQueryImportForAnnotation,
   updateEvaluation,
@@ -81,5 +82,51 @@ describe('gscDashboard actions のGA4未認可応答', () => {
     );
     expectUnauthorized(await runQueryImportForAnnotation('annotation-id'));
     expectUnauthorized(await runEvaluationNow('annotation-id'));
+  });
+
+  it('trial は一括開始を拒否し、dataを返さない', async () => {
+    const result = await registerEvaluationsBulk({
+      mode: 'ids',
+      contentAnnotationIds: ['00000000-0000-4000-8000-000000000001'],
+    });
+
+    expectUnauthorized(result);
+  });
+
+  it('admin の空のID配列は対象必須エラーを返す', async () => {
+    mocks.authMiddleware.mockResolvedValue({
+      lineUserId: '',
+      userId: USER_ID,
+      userDetails: { role: 'admin' },
+    });
+
+    const result = await registerEvaluationsBulk({
+      mode: 'ids',
+      contentAnnotationIds: [],
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: ERROR_MESSAGES.GSC.BULK_TARGETS_REQUIRED,
+    });
+  });
+
+  it('admin の1001件入力は上限エラーを返す', async () => {
+    mocks.authMiddleware.mockResolvedValue({
+      lineUserId: '',
+      userId: USER_ID,
+      userDetails: { role: 'admin' },
+    });
+    const contentAnnotationIds = Array.from(
+      { length: 1001 },
+      (_, index) => `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`
+    );
+
+    const result = await registerEvaluationsBulk({ mode: 'ids', contentAnnotationIds });
+
+    expect(result).toEqual({
+      success: false,
+      error: ERROR_MESSAGES.GSC.BULK_TARGETS_LIMIT_EXCEEDED,
+    });
   });
 });

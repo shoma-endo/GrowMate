@@ -142,6 +142,29 @@
     box-shadow: 4px 0 8px -6px rgba(15, 23, 42, 0.25);
   }
 
+  /* 一括選択のチェック列は操作列より左に置く。操作列が sticky left:0 のままだと
+     横スクロール時にチェック列へ覆いかぶさって隠すため、チェック列も sticky にし、
+     操作列の left をチェック列の幅（44px）だけずらす。 */
+  .analytics-select-cell {
+    position: sticky;
+    left: 0;
+    z-index: 31;
+    background-color: inherit;
+  }
+
+  .analytics-select-cell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-color: inherit;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .analytics-has-select .analytics-ops-cell {
+    left: 44px;
+  }
+
   .analytics-ops-cell::before {
     content: '';
     position: absolute;
@@ -176,8 +199,14 @@
     z-index: 60;
   }
 
+  .analytics-head .analytics-select-cell {
+    top: 0;
+    z-index: 61;
+  }
+
   /* 任意のダイアログが開いている間は操作列の z-index を下げる */
-  body:has([data-state='open']) .analytics-ops-cell {
+  body:has([data-state='open']) .analytics-ops-cell,
+  body:has([data-state='open']) .analytics-select-cell {
     z-index: 1;
   }
 }
