@@ -858,17 +858,12 @@ export default function AnalyticsTable({
                     : 'まだコンテンツがありません。チャットでブログを作成するか、WordPress記事を一括インポートしてください。'}
                 </p>
               ) : (
-              <table
-                className={cn(
-                  'min-w-[2200px] divide-y divide-gray-200 text-sm',
-                  selection && 'analytics-has-select'
-                )}
-              >
+              <table className="min-w-[2200px] divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50 analytics-head">
                   <tr className="text-gray-600">
                     {selection ? (
                       <th
-                        className="analytics-select-cell px-2 py-3 text-center whitespace-nowrap"
+                        className="px-2 py-3 text-center whitespace-nowrap"
                         style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
                       >
                         <Checkbox
@@ -1000,7 +995,7 @@ export default function AnalyticsTable({
                       >
                         {selection ? (
                           <td
-                            className="analytics-select-cell px-2 py-4 text-center"
+                            className="px-2 py-4 text-center"
                             style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
                           >
                             {annotationId ? (
