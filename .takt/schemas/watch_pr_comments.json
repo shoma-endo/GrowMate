@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "reason_1_to_3_lines": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "fix_required",
+        "no_action",
+        "cannot_check"
+      ],
+      "description": "fix_required=PR コメントに本 PR で対応すべき指摘があり、コード修正が必要 / no_action=対応すべき指摘がない（コメントなし・対応済み・スコープ外・質問や感想のみ） / cannot_check=対象 PR またはコメントを取得できず、対応要否を判断できない"
+    }
+  },
+  "required": [
+    "reason_1_to_3_lines",
+    "verdict"
+  ],
+  "additionalProperties": false
+}

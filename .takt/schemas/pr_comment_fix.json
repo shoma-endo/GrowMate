@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "reason_1_to_3_lines": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "stuck"
+      ],
+      "description": "fixed=対応すると判断した PR コメント指摘を修正し、必須検証と commit / push が完了した（残件が not_applicable / cannot_fix のみの場合を含む） / stuck=修正・検証・commit / push を進行できない"
+    }
+  },
+  "required": [
+    "reason_1_to_3_lines",
+    "verdict"
+  ],
+  "additionalProperties": false
+}

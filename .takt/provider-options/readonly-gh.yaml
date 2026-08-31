@@ -1,0 +1,14 @@
+# PR コメント確認用。読み取りと `gh` / `git` / `jq` だけを許可する。
+#
+# builtin の `readonly` は無制限の `Bash` を含むため、非信頼データ（PR コメント）を
+# 読むステップに与えると `sed -i` 等でファイルを書き換えられる。ここではサブコマンドを
+# 限定し、Edit / Write / WebFetch / WebSearch も渡さない。
+# 使う側は `edit: true` が必要（claude provider は `edit: false` だと Bash ごと落ちる）。
+claude:
+  allowed_tools:
+    - Read
+    - Glob
+    - Grep
+    - Bash(gh:*)
+    - Bash(git:*)
+    - Bash(jq:*)
