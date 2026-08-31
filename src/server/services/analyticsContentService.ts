@@ -24,8 +24,9 @@ class AnalyticsContentService {
   /**
    * BR-07 の母集団（利用者が所有する全記事）の件数を取得する。
    * 一覧RPCのフィルタ未指定時と同じ user_id 条件を使い、絞り込み後の件数とは分離する。
+   * 取得に失敗した場合は 0 件と区別するため null を返す（呼び出し元で全選択を止める）。
    */
-  async countAllAnnotations(userId: string): Promise<number> {
+  async countAllAnnotations(userId: string): Promise<number | null> {
     try {
       const { count, error } = await supabaseService
         .getClient()
@@ -35,13 +36,13 @@ class AnalyticsContentService {
 
       if (error) {
         console.error('[AnalyticsContentService] countAllAnnotations failed:', error.message);
-        return 0;
+        return null;
       }
 
       return count ?? 0;
     } catch (error) {
       console.error('[AnalyticsContentService] countAllAnnotations error:', error);
-      return 0;
+      return null;
     }
   }
 

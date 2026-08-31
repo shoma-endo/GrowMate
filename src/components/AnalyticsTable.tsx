@@ -82,6 +82,8 @@ interface Props {
   selection?: {
     selectedIds: Set<string>;
     isSelectAll: boolean;
+    /** 全選択の母集団件数が取れないときは false。行チェックは使えるがヘッダの全選択だけ止める */
+    canSelectAll?: boolean;
     onToggleRow: (annotationId: string, checked: boolean) => void;
     onToggleAll: (checked: boolean) => void;
   };
@@ -878,6 +880,7 @@ export default function AnalyticsTable({
                         <Checkbox
                           aria-label="全選択"
                           className={SELECTION_CHECKBOX_CLASS}
+                          disabled={selection.canSelectAll === false}
                           checked={
                             selection.isSelectAll
                               ? true
