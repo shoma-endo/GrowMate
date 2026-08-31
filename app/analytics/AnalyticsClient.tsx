@@ -21,6 +21,7 @@ import type {
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
 import { useRouter } from 'next/navigation';
+import { buildListingSelectionKey } from './selection-scope';
 import {
   buildIgFilterHref,
   buildIgPageHref,
@@ -43,7 +44,8 @@ interface AnalyticsClientProps {
   ga4Error?: string | null;
   gscPropertyUri: string | null;
   gscCredentialError: string | null;
-  annotationTotalCount: number;
+  /** BR-07 の母集団（フィルタ非依存の全記事）の件数。取得失敗時は null（0件と区別する） */
+  annotationTotalCount: number | null;
   total: number;
   totalPages: number;
   currentPage: number;
@@ -137,7 +139,9 @@ export default function AnalyticsClient({
   const isDateRangeChanged = rangeStart !== startDate || rangeEnd !== endDate;
   // 要約一括が同居する場合は、AC-05c に従いこの条件を常時表示へ切り替える。
   const showCheckColumn = gscPropertyUri !== null;
-  const rawSelectedCount = isSelectAll ? annotationTotalCount : selectedIds.size;
+  // 件数を取れていないと全選択の母集団が確定しないため、全選択だけを止める（行チェックは使える）
+  const isAnnotationTotalCountUnavailable = annotationTotalCount === null;
+  const rawSelectedCount = isSelectAll ? (annotationTotalCount ?? 0) : selectedIds.size;
   const selectedCount = Math.min(rawSelectedCount, 1000);
   const isSelectionClamped = rawSelectedCount > 1000;
 
@@ -147,10 +151,31 @@ export default function AnalyticsClient({
     setIsApplyingDateRange(false);
   }, [startDate, endDate]);
 
+  // 行選択のスコープは表示中ページ内（実装メモ §3.1）。ページ送りだけでなく、
+  // 一覧の中身が入れ替わるフィルタ変更でも選択を解除する（1ページ目のままフィルタだけ
+  // 変えたときに、表示されていない記事の選択が残るのを防ぐ）。
+  const listingKey = React.useMemo(
+    () =>
+      buildListingSelectionKey({
+        currentPage,
+        selectedCategoryNames,
+        includeUncategorized,
+        hasUnreadSuggestion,
+        hasUnstartedGscEvaluation,
+      }),
+    [
+      currentPage,
+      selectedCategoryNames,
+      includeUncategorized,
+      hasUnreadSuggestion,
+      hasUnstartedGscEvaluation,
+    ]
+  );
+
   React.useEffect(() => {
     setSelectedIds(new Set());
     setIsSelectAll(false);
-  }, [currentPage]);
+  }, [listingKey]);
 
   const applyDateRange = () => {
     if (!isDateRangeChanged || isApplyingDateRange) return;
@@ -224,9 +249,13 @@ export default function AnalyticsClient({
   };
 
   const toggleAllSelection = (checked: boolean) => {
+    if (checked && annotationTotalCount === null) {
+      toast.error(ERROR_MESSAGES.GSC.BULK_TOTAL_COUNT_FETCH_FAILED);
+      return;
+    }
     setIsSelectAll(checked);
     setSelectedIds(new Set());
-    if (checked) {
+    if (checked && annotationTotalCount !== null) {
       toast.success(
         annotationTotalCount > 1000
           ? `全記事 ${annotationTotalCount} 件のうち先頭1000件を選択しました（updated_at 降順で丸め）`
@@ -292,6 +321,11 @@ export default function AnalyticsClient({
             {gscCredentialError}
           </div>
         ) : null}
+        {showCheckColumn && isAnnotationTotalCountUnavailable ? (
+          <div className="mb-4 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+            {ERROR_MESSAGES.GSC.BULK_TOTAL_COUNT_FETCH_FAILED}
+          </div>
+        ) : null}
         {periodClamped ? <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">表示期間は最大100日に制限されています。</p> : null}
         {ga4Truncated ? <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">表示期間が長いため、日次データをすべて取得できていません。期間を短くして再表示してください。</p> : null}
         <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -328,7 +362,9 @@ export default function AnalyticsClient({
               <span className="text-sm text-gray-600">
                 {isSelectionClamped
                   ? `1000 / 全 ${annotationTotalCount} 件`
-                  : `選択中 ${selectedCount} 件 / 全 ${annotationTotalCount} 件`}
+                  : isAnnotationTotalCountUnavailable
+                    ? `選択中 ${selectedCount} 件`
+                    : `選択中 ${selectedCount} 件 / 全 ${annotationTotalCount} 件`}
               </span>
               <button
                 type="button"
@@ -372,6 +408,7 @@ export default function AnalyticsClient({
                   selection: {
                     selectedIds,
                     isSelectAll,
+                    canSelectAll: !isAnnotationTotalCountUnavailable,
                     onToggleRow: toggleRowSelection,
                     onToggleAll: toggleAllSelection,
                   },
