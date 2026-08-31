@@ -255,13 +255,8 @@ export default function AnalyticsClient({
     }
     setIsSelectAll(checked);
     setSelectedIds(new Set());
-    if (checked && annotationTotalCount !== null) {
-      toast.success(
-        annotationTotalCount > 1000
-          ? `全記事 ${annotationTotalCount} 件のうち先頭1000件を選択しました（updated_at 降順で丸め）`
-          : `絞り込みに関係なく全記事 ${annotationTotalCount} 件を選択しました`
-      );
-    }
+    // 全選択の結果（母集団の件数・1000件への丸め・絞り込み外を含むこと）はツールバーに
+    // 常時表示しているため、toast は出さない。消える通知で同じことを二重に言わない
   };
 
   const blogContent = (
