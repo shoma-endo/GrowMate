@@ -1,5 +1,5 @@
 name: spec-to-pr
-description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, and PR creation with review summary body. MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md (all_steps.rules). Reviewers attach previous reviews + fix-result for follow-up (finding_id / persists); unfixable residuals exit via cannot_fix rather than endless fix loops.
+description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, PR creation with review summary body, and a single post-PR review-comment triage (5 minutes after create_pr). MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md (all_steps.rules). Reviewers attach previous reviews + fix-result for follow-up (finding_id / persists); unfixable residuals exit via cannot_fix rather than endless fix loops.
 all_steps:
   rules:
     - ref: mvp-scope
@@ -10,7 +10,7 @@ workflow_config:
   runtime:
     prepare:
       - scripts/takt-check-provider-auth.sh
-max_steps: 24
+max_steps: 26
 initial_step: plan
 loop_monitors:
   - cycle:
@@ -354,6 +354,69 @@ steps:
     instruction: spec-to-pr/create-pr
     rules:
       - condition: コミット・push・PR 作成または更新が完了した（create 失敗後の re-list → edit 成功、既存 PR 追記を含む）
-        next: COMPLETE
+        next: watch_pr_comments
       - condition: コミット、push、または PR 作成/更新に失敗した（re-list → edit でも回復できない場合）
         next: ABORT
+
+  # create_pr の 5 分後（delay_before_ms）に PR コメントを1回だけ取り込み、対応要否を判断する。
+  # コメント取得に `gh` が要るため edit: false にはできない（claude provider では edit: false で Bash が
+  # 許可ツールから外れる）。edit: true + capabilities: readonly で Bash だけ持たせ、編集ツールは与えない。
+  - name: watch_pr_comments
+    tags:
+      - review
+    edit: true
+    persona: supervisor
+    knowledge:
+      - growmate
+    capabilities: readonly
+    required_permission_mode: edit
+    delay_before_ms: 300000
+    instruction: spec-to-pr/pr-comment-triage
+    structured_output:
+      schema_ref: watch_pr_comments
+    rules:
+      - condition: when(structured.watch_pr_comments.verdict == "fix_required")
+        next: pr_comment_fix
+      - condition: when(structured.watch_pr_comments.verdict == "no_action")
+        next: COMPLETE
+      - condition: when(structured.watch_pr_comments.verdict == "cannot_check")
+        next: ABORT
+        appendix: |
+          PR またはコメントを取得できず、対応要否を判断できませんでした。PR は作成/更新済みです。
+          `gh auth status` と対象 PR を人間が確認し、必要ならコメント対応を手動で行ってください。
+    output_contracts:
+      report:
+        - name: pr-comment-triage.md
+          format: supervisor-validation
+
+  # triage が `fix` と判断した指摘だけを修正し、commit / push まで行って完了する。
+  # 再 triage には戻さない（コメントは随時増えるため、1周で終える。以降は人間が PR 上で判断する）。
+  - name: pr_comment_fix
+    tags:
+      - coding
+      - implementation
+    edit: true
+    persona: coder
+    policy:
+      - coding
+    knowledge:
+      - growmate
+    capabilities: edit
+    required_permission_mode: edit
+    allow_git_commit: true
+    pass_previous_response: false
+    instruction: spec-to-pr/pr-comment-fix
+    # quality_gates は置かない。このステップは commit / push まで行うため、ステップ後には
+    # working tree が空で `verify:changed` が必ずスキップされる（無意味なゲートになる）。
+    # 検証は commit 前にステップ内で実施し（instruction 参照）、push 時は pre-push フックが受ける。
+    structured_output:
+      schema_ref: pr_comment_fix
+    rules:
+      - condition: when(structured.pr_comment_fix.verdict == "fixed")
+        next: COMPLETE
+      - condition: when(structured.pr_comment_fix.verdict == "stuck")
+        next: ABORT
+    output_contracts:
+      report:
+        - name: pr-comment-fix-result.md
+          format: coder-decisions
