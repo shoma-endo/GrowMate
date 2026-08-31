@@ -218,6 +218,7 @@ EXPECTED_SPEC_AGENTS=(
   spec-identify spec-audit spec-revise spec-visualize spec-finalize
   spec-plan spec-implement spec-ai-antipattern-review spec-architecture-review
   spec-fix spec-readme-sync spec-self-review spec-pr-summary spec-create-pr
+  spec-pr-comment-triage spec-pr-comment-fix
 )
 for agent in "${EXPECTED_SPEC_AGENTS[@]}"; do
   if [[ -f ".agents/agents/${agent}.md" ]]; then

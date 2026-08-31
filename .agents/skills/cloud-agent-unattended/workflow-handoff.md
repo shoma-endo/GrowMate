@@ -22,6 +22,8 @@ docs/plans/.workflow/<slug>/
     06-self-review.md
     07-pr-summary.md
     08-create-pr.md
+    09-pr-comment-triage.md    # create_pr の5分後に1回だけ
+    10-pr-comment-fix-result.md # fix_required のときのみ
 ```
 
 - `<slug>` は対象仕様書 `docs/plans/<slug>.md` の basename。
@@ -55,6 +57,8 @@ cycle: 1
 | readme-sync | `done` / `skipped` |
 | self-review | `pass` / `needs_fix` / `cannot_verify` |
 | create-pr | `done` / `failed` |
+| pr-comment-triage | `fix_required` / `no_action` / `cannot_check` |
+| pr-comment-fix | `fixed` / `stuck` |
 
 ## 親（オーケストレータ）の義務
 

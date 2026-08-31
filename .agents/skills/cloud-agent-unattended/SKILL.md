@@ -48,6 +48,8 @@ description: Cursor Cloud AgentがTAKT CLI無しでspec-reviewと実装→PRの�
 | self_review_fix | `spec-fix` (`mode: self_review`) | `pr/04-fix-result.md` |
 | prepare_pr_summary | `spec-pr-summary` | `pr/07-pr-summary.md` |
 | create_pr | `spec-create-pr` | `pr/08-create-pr.md` |
+| watch_pr_comments | `spec-pr-comment-triage` | `pr/09-pr-comment-triage.md` |
+| pr_comment_fix | `spec-pr-comment-fix` | `pr/10-pr-comment-fix-result.md` |
 
 ## 正本の参照（複製しない）
 
@@ -65,6 +67,7 @@ description: Cursor Cloud AgentがTAKT CLI無しでspec-reviewと実装→PRの�
 
 - プロダクション変更: `npm run verify` / `verify:changed`（subagent 側で実行）
 - PR: `ManagePullRequest` 優先、不可なら `gh`。base `develop`
+- PR 作成後: `spec-pr-comment-triage` が **5分待って1回だけ**コメントを取り込み、対応要否を判断する。対応する指摘があるときだけ `spec-pr-comment-fix` が修正して commit / push する（1周で終了。返信・resolve・merge はしない）
 
 詳細フロー:
 
