@@ -526,7 +526,11 @@ export async function registerEvaluationsBulk(
         mode: z.literal('ids'),
         contentAnnotationIds: z.array(z.uuidv4()),
       }),
-      z.object({ mode: z.literal('all') }),
+      z.object({
+        mode: z.literal('all'),
+        /** 全選択したまま個別解除した記事（BR-07「全選択後の個別解除」）。母集団から差し引く */
+        excludedIds: z.array(z.uuidv4()).optional(),
+      }),
     ]);
     const parsed = inputSchema.safeParse(params);
     if (!parsed.success) {
@@ -570,7 +574,10 @@ export async function registerEvaluationsBulk(
       if (population.ids.length !== expectedCount) {
         return { success: false, error: ERROR_MESSAGES.GSC.BULK_POPULATION_MISMATCH };
       }
-      candidateIds = population.ids;
+      // 突合（R-002）は除外を差し引く前の母集団に対して行う。除外は利用者の意思なので
+      // 「取得できた件数が想定と食い違う」障害とは区別する
+      const excluded = new Set(normalizeBulkTargetIds(parsed.data.excludedIds ?? []));
+      candidateIds = population.ids.filter(id => !excluded.has(id));
       if (candidateIds.length === 0) {
         return { success: false, error: ERROR_MESSAGES.GSC.BULK_TARGETS_REQUIRED };
       }

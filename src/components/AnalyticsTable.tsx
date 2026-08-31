@@ -59,6 +59,7 @@ import { DeleteChatDialog } from '@/components/DeleteChatDialog';
 import { ChatService } from '@/domain/services/chatService';
 import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 import { getGa4DiagnosisLabel, getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
+import { resolveHeaderChecked, resolveRowChecked } from '@/lib/analytics-selection';
 
 /**
  * 一覧の選択チェックボックス。既定の border-input は行の背景（gray-50/100）に対して
@@ -81,6 +82,8 @@ interface Props {
   hasUrlFilterParams: boolean;
   selection?: {
     selectedIds: Set<string>;
+    /** 全選択中に個別解除した記事（BR-07「全選択後の個別解除」）。isSelectAll が false のときは空 */
+    excludedIds: Set<string>;
     isSelectAll: boolean;
     /** 全選択の母集団件数が取れないときは false。行チェックは使えるがヘッダの全選択だけ止める */
     canSelectAll?: boolean;
@@ -881,13 +884,7 @@ export default function AnalyticsTable({
                           aria-label="全選択"
                           className={SELECTION_CHECKBOX_CLASS}
                           disabled={selection.canSelectAll === false}
-                          checked={
-                            selection.isSelectAll
-                              ? true
-                              : selection.selectedIds.size > 0
-                                ? 'indeterminate'
-                                : false
-                          }
+                          checked={resolveHeaderChecked(selection)}
                           onCheckedChange={checked => selection.onToggleAll(checked === true)}
                         />
                       </th>
@@ -997,8 +994,7 @@ export default function AnalyticsTable({
                     const isEditBusy = isPendingEdit || isSummarizing;
 
                     const isRowSelected = Boolean(
-                      annotationId &&
-                        (selection?.isSelectAll || selection?.selectedIds.has(annotationId))
+                      annotationId && selection && resolveRowChecked(selection, annotationId)
                     );
 
                     return (
@@ -1015,7 +1011,7 @@ export default function AnalyticsTable({
                               <Checkbox
                                 aria-label={`${fallbackTitle}を選択`}
                                 className={SELECTION_CHECKBOX_CLASS}
-                                checked={selection.isSelectAll || selection.selectedIds.has(annotationId)}
+                                checked={isRowSelected}
                                 onCheckedChange={checked =>
                                   selection.onToggleRow(annotationId, checked === true)
                                 }

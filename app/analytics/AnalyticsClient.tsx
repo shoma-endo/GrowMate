@@ -22,6 +22,7 @@ import type {
 } from '@/types/instagram';
 import { useRouter } from 'next/navigation';
 import { buildListingSelectionKey } from './selection-scope';
+import { resolveRawSelectedCount, toggleIdMembership } from '@/lib/analytics-selection';
 import {
   buildIgFilterHref,
   buildIgPageHref,
@@ -135,13 +136,23 @@ export default function AnalyticsClient({
   const [isApplyingDateRange, setIsApplyingDateRange] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
   const [isSelectAll, setIsSelectAll] = React.useState(false);
+  // 全選択したまま個別の行だけ外すための除外集合（BR-07「全選択後の個別解除」）。
+  // 母集団の ID はクライアントに無いため、全選択を解除して選び直すのではなく除外で表す。
+  // isSelectAll が false のときは意味を持たない
+  const [excludedIds, setExcludedIds] = React.useState<Set<string>>(() => new Set());
   const [isStarting, setIsStarting] = React.useState(false);
   const isDateRangeChanged = rangeStart !== startDate || rangeEnd !== endDate;
   // 要約一括が同居する場合は、AC-05c に従いこの条件を常時表示へ切り替える。
   const showCheckColumn = gscPropertyUri !== null;
   // 件数を取れていないと全選択の母集団が確定しないため、全選択だけを止める（行チェックは使える）
   const isAnnotationTotalCountUnavailable = annotationTotalCount === null;
-  const rawSelectedCount = isSelectAll ? (annotationTotalCount ?? 0) : selectedIds.size;
+  // 母集団が1000件を超えるときの除外は、丸めた窓（updated_at 降順の先頭1000件）の中に
+  // あるとは限らない。その場合でも表示は「1000 / 全 M 件」の丸め表記のままで、
+  // 実際に登録される件数はサーバーが ID で突き合わせて確定する
+  const rawSelectedCount = resolveRawSelectedCount(
+    { selectedIds, excludedIds, isSelectAll },
+    annotationTotalCount
+  );
   const selectedCount = Math.min(rawSelectedCount, 1000);
   const isSelectionClamped = rawSelectedCount > 1000;
 
@@ -174,6 +185,7 @@ export default function AnalyticsClient({
 
   React.useEffect(() => {
     setSelectedIds(new Set());
+    setExcludedIds(new Set());
     setIsSelectAll(false);
   }, [listingKey]);
 
@@ -203,7 +215,7 @@ export default function AnalyticsClient({
     try {
       const result = await registerEvaluationsBulk(
         isSelectAll
-          ? { mode: 'all' }
+          ? { mode: 'all', excludedIds: Array.from(excludedIds) }
           : { mode: 'ids', contentAnnotationIds: Array.from(selectedIds) }
       );
 
@@ -225,6 +237,7 @@ export default function AnalyticsClient({
         `${registeredCount}件の検索順位・コンテンツ評価サイクルを開始しました${detail}`
       );
       setSelectedIds(new Set());
+      setExcludedIds(new Set());
       setIsSelectAll(false);
       router.refresh();
     } catch (error) {
@@ -236,16 +249,13 @@ export default function AnalyticsClient({
   };
 
   const toggleRowSelection = (annotationId: string, checked: boolean) => {
-    setIsSelectAll(false);
-    setSelectedIds(previous => {
-      const next = new Set(previous);
-      if (checked) {
-        next.add(annotationId);
-      } else {
-        next.delete(annotationId);
-      }
-      return next;
-    });
+    // 全選択中は「全選択を解除して選び直す」のではなく、その1件だけを母集団から除外する。
+    // 母集団の ID はクライアントに無いので、解除してしまうと表示中の行以外の選択を復元できない
+    if (isSelectAll) {
+      setExcludedIds(previous => toggleIdMembership(previous, annotationId, !checked));
+      return;
+    }
+    setSelectedIds(previous => toggleIdMembership(previous, annotationId, checked));
   };
 
   const toggleAllSelection = (checked: boolean) => {
@@ -255,6 +265,7 @@ export default function AnalyticsClient({
     }
     setIsSelectAll(checked);
     setSelectedIds(new Set());
+    setExcludedIds(new Set());
     // 全選択の結果（母集団の件数・1000件への丸め・絞り込み外を含むこと）はツールバーに
     // 常時表示しているため、toast は出さない。消える通知で同じことを二重に言わない
   };
@@ -402,6 +413,7 @@ export default function AnalyticsClient({
               ? {
                   selection: {
                     selectedIds,
+                    excludedIds,
                     isSelectAll,
                     canSelectAll: !isAnnotationTotalCountUnavailable,
                     onToggleRow: toggleRowSelection,
