@@ -359,8 +359,19 @@ steps:
         next: ABORT
 
   # create_pr の 5 分後（delay_before_ms）に PR コメントを1回だけ取り込み、対応要否を判断する。
-  # コメント取得に `gh` が要るため edit: false にはできない（claude provider では edit: false で Bash が
-  # 許可ツールから外れる）。edit: true + capabilities: readonly で Bash だけ持たせ、編集ツールは与えない。
+  #
+  # ツール権限の前提（消すと静かに壊れる）:
+  # - コメント取得に `gh` が要るため `edit: false` にできない。claude provider は
+  #   `edit: false`、または `output_contracts` があって `edit` 未指定のとき Bash ごと落とす
+  #   （engine-provider-options.js の shouldFilterAllowedTools）。`edit: true` の明示が必須。
+  # - `edit: true` だと TAKT が「編集が許可されています」という文を instruction に自動注入するが、
+  #   本ステップは編集しない。capabilities で Edit / Write を渡さず、instruction 側でも禁止している。
+  # - builtin の `readonly` は無制限の Bash を含むため使わない。`readonly-gh` で
+  #   `gh` / `git` / `jq` に絞る（非信頼データである PR コメントを読むステップのため）。
+  #
+  # delay_before_ms の前提:
+  # - resume・プロバイダのフォールバック再実行では、この5分をもう一度待つ。
+  # - `claude.guards.callTimeoutMs` を5分未満にすると、応答前に必ずタイムアウトする。
   - name: watch_pr_comments
     tags:
       - review
@@ -368,7 +379,7 @@ steps:
     persona: supervisor
     knowledge:
       - growmate
-    capabilities: readonly
+    capabilities: readonly-gh
     required_permission_mode: edit
     delay_before_ms: 300000
     instruction: spec-to-pr/pr-comment-triage
@@ -382,15 +393,18 @@ steps:
       - condition: when(structured.watch_pr_comments.verdict == "cannot_check")
         next: ABORT
         appendix: |
-          PR またはコメントを取得できず、対応要否を判断できませんでした。PR は作成/更新済みです。
+          PR またはコメントを取得できず、対応要否を判断できませんでした。**PR は作成/更新済みです**（この ABORT は PR 作成の失敗ではありません）。
           `gh auth status` と対象 PR を人間が確認し、必要ならコメント対応を手動で行ってください。
+          再実行する場合、実装からやり直さずに PR 上で対応するほうが安全です（同じコメントを二重に処理しないため）。
     output_contracts:
       report:
         - name: pr-comment-triage.md
-          format: supervisor-validation
+          format: spec-to-pr/pr-comment-triage
 
   # triage が `fix` と判断した指摘だけを修正し、commit / push まで行って完了する。
   # 再 triage には戻さない（コメントは随時増えるため、1周で終える。以降は人間が PR 上で判断する）。
+  # 検証ゲートは pre-commit（lint / doc-paths / ui-text）と pre-push（test / build / knip）が担う。
+  # instruction 側で `--no-verify` を禁止しているのはこのため。
   - name: pr_comment_fix
     tags:
       - coding
@@ -416,6 +430,12 @@ steps:
         next: COMPLETE
       - condition: when(structured.pr_comment_fix.verdict == "stuck")
         next: ABORT
+        appendix: |
+          PR コメントの指摘を修正しきれませんでした。**PR は作成/更新済みです**（この ABORT は PR 作成の失敗ではありません）。
+          作業ツリーに未 commit の差分が残っている可能性があります。次を人間が確認してください。
+          - `git status` / `git diff` の残差分（不要なら破棄する）
+          - `pr-comment-fix-result.md` の `cannot_fix` 行と、PR 上で引き取るべき指摘
+          仕様の修正が必要な指摘だった場合は、対象仕様書を直して `spec-review` から再実行してください。
     output_contracts:
       report:
         - name: pr-comment-fix-result.md
