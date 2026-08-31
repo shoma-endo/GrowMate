@@ -60,6 +60,15 @@ import { ChatService } from '@/domain/services/chatService';
 import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 import { getGa4DiagnosisLabel, getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
 
+/**
+ * 一覧の選択チェックボックス。既定の border-input は行の背景（gray-50/100）に対して
+ * コントラストが 1.1:1 程度しかなく初見で見つけられないため、境界線を muted-foreground に上げ、
+ * 白背景で行から浮かせる。::before でヒット領域を 38px 角に広げる（実測値。44px タッチターゲット指針に対する妥協点で、
+ * これ以上広げると隣の操作列のボタンに被る）。
+ */
+const SELECTION_CHECKBOX_CLASS =
+  "relative size-5 border-muted-foreground bg-background before:absolute before:-inset-2.5 before:content-['']";
+
 interface Props {
   items: AnalyticsContentItem[];
   /** フィルターに表示するカテゴリ一覧（未指定時は表示中 items から算出） */
@@ -868,6 +877,7 @@ export default function AnalyticsTable({
                       >
                         <Checkbox
                           aria-label="全選択"
+                          className={SELECTION_CHECKBOX_CLASS}
                           checked={
                             selection.isSelectAll
                               ? true
@@ -1001,6 +1011,7 @@ export default function AnalyticsTable({
                             {annotationId ? (
                               <Checkbox
                                 aria-label={`${fallbackTitle}を選択`}
+                                className={SELECTION_CHECKBOX_CLASS}
                                 checked={selection.isSelectAll || selection.selectedIds.has(annotationId)}
                                 onCheckedChange={checked =>
                                   selection.onToggleRow(annotationId, checked === true)
