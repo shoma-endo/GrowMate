@@ -31,6 +31,8 @@ const FAILURE_LABELS: Record<SummaryFailureCode, string> = {
   SUMMARY_PARSE_FAILED: 'AI の応答を解析できない（再実行すると成功することがあります）',
   ANNOTATION_NOT_FOUND: 'コンテンツ情報が見つからない',
   EMPTY_SUMMARY: 'AI が要約を返さなかった（再実行すると成功することがあります）',
+  ITEM_TIME_LIMIT:
+    '1件あたりの時間上限に達した（時間に余裕があるときに再実行すると成功することがあります）',
   SAVE_FAILED: '保存に失敗（時間をおいて再実行してください）',
   NOT_OWNED: '実行中に削除された',
   UNEXPECTED: '想定外のエラー',

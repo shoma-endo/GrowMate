@@ -82,22 +82,26 @@ const bulkSummaryInputSchema = z.discriminatedUnion('mode', [
  * 打ち切っても裏の fetch は走り続けるが、目的は**関数の応答を守ること**であり、
  * 成功済みの件数を利用者へ返せる状態を維持する。
  */
+type ItemOutcome = GenerateSummaryResult | { success: false; code: 'ITEM_TIME_LIMIT' };
+
 async function runWithItemTimeLimit(
   work: Promise<GenerateSummaryResult>,
   timeLimitMs: number,
   annotationId: string
-): Promise<GenerateSummaryResult> {
+): Promise<ItemOutcome> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       work,
-      new Promise<GenerateSummaryResult>(resolve => {
+      new Promise<ItemOutcome>(resolve => {
         timer = setTimeout(() => {
           console.error('[content-annotation-bulk-summary] item time limit reached:', {
             annotationId,
             timeLimitMs,
           });
-          resolve({ success: false, code: 'SUMMARY_CONTENT_FETCH_FAILED' });
+          // 専用コードで返す。既存コードを流用すると、時間切れなのに
+          // 「連携先と違うサイトの記事か、記事が削除・非公開」と通知に出て原因を誤らせる
+          resolve({ success: false, code: 'ITEM_TIME_LIMIT' });
         }, timeLimitMs);
       }),
     ]);

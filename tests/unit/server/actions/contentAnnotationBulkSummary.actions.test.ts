@@ -53,6 +53,7 @@ vi.mock('@/server/services/supabaseService', () => ({
 import { summarizeContentAnnotationsBulk } from '@/server/actions/contentAnnotationBulkSummary.actions';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
+  CONTENT_ANNOTATION_SUMMARY_LLM_TIMEOUT_MS,
   CONTENT_ANNOTATION_BULK_SUMMARY_MIN_ITEM_BUDGET_MS,
   CONTENT_ANNOTATION_BULK_SUMMARY_POST_LLM_BUFFER_MS,
   CONTENT_ANNOTATION_BULK_SUMMARY_TIME_BUDGET_MS,
@@ -179,6 +180,31 @@ describe('全選択（mode: all）', () => {
     expect(result.success).toBe(true);
     expect(mocks.selectRows).toHaveBeenCalledWith([uuid(1)]);
     expect(result.data?.succeededCount).toBe(1);
+  });
+
+  it('母集団が1000件超なら先頭1000件へ丸めて実行する（AC-09。エラーにしない）', async () => {
+    const ids = Array.from({ length: 1000 }, (_, i) => uuid(i + 1));
+    // total は limit 適用前の件数。ids は丸めた後の1000件
+    mocks.resolveAllAnnotationIds.mockResolvedValue({ ids, total: 1500 });
+    mocks.selectRows.mockResolvedValue({ data: [], error: null });
+
+    const result = await summarizeContentAnnotationsBulk({ mode: 'all' });
+
+    // 突合は min(total, 1000) と比較する。1500 と比べるとここで必ず不一致になり
+    // 「1000件超の利用者は全選択を一度も実行できない」状態になる
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(mocks.resolveAllAnnotationIds).toHaveBeenCalledWith(USER_ID, 1000);
+  });
+
+  it('丸めた後の件数が上限とずれていたら1件も実行しない（R-002）', async () => {
+    const ids = Array.from({ length: 999 }, (_, i) => uuid(i + 1));
+    mocks.resolveAllAnnotationIds.mockResolvedValue({ ids, total: 1500 });
+
+    const result = await summarizeContentAnnotationsBulk({ mode: 'all' });
+
+    expect(result.error).toBe(ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_POPULATION_MISMATCH);
+    expect(mocks.generateSummary).not.toHaveBeenCalled();
   });
 
   it('全件を除外したらエラー', async () => {
@@ -441,6 +467,32 @@ describe('例外の封じ込め', () => {
       succeededCount: 1,
       failedCount: 1,
       failedByCode: { UNEXPECTED: 1 },
+    });
+  });
+});
+
+describe('1件の時間切れ（M-3 の回帰）', () => {
+  it('打ち切りは専用コードで計上する（本文取得失敗と混同しない）', async () => {
+    mocks.selectRows.mockResolvedValue({
+      data: [emptyRow(uuid(1), '2026-08-01T00:00:00Z')],
+      error: null,
+    });
+    // generateSummary が返らないまま1件の上限に達する状況を作る
+    mocks.generateSummary.mockImplementation(() => new Promise(() => {}));
+
+    vi.useFakeTimers();
+    const pending = summarizeContentAnnotationsBulk({
+      mode: 'ids',
+      contentAnnotationIds: [uuid(1)],
+    });
+    await vi.advanceTimersByTimeAsync(CONTENT_ANNOTATION_SUMMARY_LLM_TIMEOUT_MS + 61_000);
+    const result = await pending;
+
+    // SUMMARY_CONTENT_FETCH_FAILED だと「連携先と違うサイトの記事か、記事が削除・非公開」と
+    // 通知に出て、時間切れという本当の原因を利用者から隠す
+    expect(result.data).toMatchObject({
+      failedCount: 1,
+      failedByCode: { ITEM_TIME_LIMIT: 1 },
     });
   });
 });
