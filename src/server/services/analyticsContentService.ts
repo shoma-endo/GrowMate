@@ -105,6 +105,11 @@ class AnalyticsContentService {
           p_include_uncategorized: includeUncategorized,
           p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
           p_has_unstarted_gsc_evaluation: params.hasUnstartedGscEvaluation ?? false,
+          // 未要約フィルタを使うときだけ引数を積む。常に送ると、migration 未適用の環境へ
+          // アプリを先にデプロイした瞬間に PostgREST が PGRST202（関数シグネチャ不一致）を返し、
+          // 下の catch が baseline を返して **一覧が全滅する**。渡さなければ SQL 側の
+          // `default false` が効くので、適用順が前後しても通常の一覧は壊れない
+          ...(params.hasUnsummarized === true ? { p_has_unsummarized: true } : {}),
           // p_has_unstarted_ga4_evaluation は渡さない。2026-08-26 のサイクル統合で
           // 「コンテンツ評価未開始」フィルタを廃止したため（§10.2）。RPC 側の引数は
           // `default false` で残してあるので、渡さなければ条件が効かない。
@@ -222,6 +227,9 @@ class AnalyticsContentService {
         ga4Truncated,
       };
     } catch (error) {
+      // 一覧が空で返る唯一の失敗経路なのでログを残す。ここが無音だと、RPC の
+      // シグネチャ不一致（migration 未適用）で一覧が全滅してもサーバーログに何も出ない
+      console.error('[AnalyticsContentService] getPage failed:', error);
       const message = error instanceof Error ? error.message : 'ページデータの取得に失敗しました';
       return {
         ...baseline,

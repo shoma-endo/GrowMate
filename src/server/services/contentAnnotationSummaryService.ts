@@ -1,4 +1,5 @@
 import {
+  CONTENT_ANNOTATION_SUMMARY_LLM_TIMEOUT_MS,
   CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS,
   MODEL_CONFIGS,
 } from '@/lib/constants';
@@ -33,7 +34,7 @@ interface ContentAnnotationSummaryFields {
   impressions: string | null;
 }
 
-type SummaryErrorCode =
+export type SummaryErrorCode =
   | 'SUMMARY_SOURCE_NOT_LINKED'
   | 'SUMMARY_CONTENT_FETCH_FAILED'
   | 'SUMMARY_CONTENT_TOO_LARGE'
@@ -41,7 +42,7 @@ type SummaryErrorCode =
   | 'SUMMARY_PARSE_FAILED'
   | 'ANNOTATION_NOT_FOUND';
 
-type GenerateSummaryResult =
+export type GenerateSummaryResult =
   | {
       success: true;
       fields: ContentAnnotationSummaryFields;
@@ -110,9 +111,16 @@ class ContentAnnotationSummaryService {
     target: SummarizeContentAnnotationTarget;
     executorUserId: string;
     cookieStore: ReadonlyRequestCookies;
+    /**
+     * LLM 呼び出しのタイムアウト（ミリ秒）。既定は単記事と同じ 180 秒。
+     * 一括実行は残り時間から算出した値を渡して既定を切り下げる
+     * （docs/plans/content-annotation-bulk-ai-summary-spec.md BR-03）。
+     */
+    llmTimeoutMs?: number;
   }): Promise<GenerateSummaryResult> {
     const client = this.supabase.getClient();
     const { target, executorUserId, cookieStore } = params;
+    const llmTimeoutMs = params.llmTimeoutMs ?? CONTENT_ANNOTATION_SUMMARY_LLM_TIMEOUT_MS;
 
     const annotationQuery = client
       .from('content_annotations')
@@ -188,7 +196,7 @@ class ContentAnnotationSummaryService {
         {
           maxTokens: modelConfig.maxTokens,
           temperature: modelConfig.temperature,
-          timeoutMs: 180000,
+          timeoutMs: llmTimeoutMs,
         }
       );
     } catch (error) {

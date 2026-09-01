@@ -10,6 +10,7 @@ const baseScope: AnalyticsListingScope = {
   includeUncategorized: false,
   hasUnreadSuggestion: false,
   hasUnstartedGscEvaluation: false,
+  hasUnsummarized: false,
 };
 
 describe('buildListingSelectionKey', () => {

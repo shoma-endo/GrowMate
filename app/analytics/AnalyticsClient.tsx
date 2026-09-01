@@ -8,7 +8,16 @@ import { Input } from '@/components/ui/input';
 import AnalyticsTable from '@/components/AnalyticsTable';
 import InstagramTab from './components/InstagramTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Settings, BarChart3, Loader2, TrendingUp, FileText, ImageIcon } from 'lucide-react';
+import {
+  Download,
+  Settings,
+  BarChart3,
+  Loader2,
+  TrendingUp,
+  FileText,
+  ImageIcon,
+  Sparkles,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import { toast } from 'sonner';
@@ -22,6 +31,8 @@ import type {
 } from '@/types/instagram';
 import { useRouter } from 'next/navigation';
 import { buildListingSelectionKey } from './selection-scope';
+import { summarizeContentAnnotationsBulk } from '@/server/actions/contentAnnotationBulkSummary.actions';
+import { getBulkSummaryToastMessage } from '@/lib/content-annotation-bulk-summary-display';
 import { resolveRawSelectedCount, toggleIdMembership } from '@/lib/analytics-selection';
 import {
   buildIgFilterHref,
@@ -38,6 +49,7 @@ interface AnalyticsClientProps {
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
+  hasUnsummarized: boolean;
   ga4Truncated: boolean;
   periodClamped: boolean;
   hasUrlFilterParams: boolean;
@@ -80,6 +92,7 @@ export default function AnalyticsClient({
   includeUncategorized,
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
+  hasUnsummarized,
   ga4Truncated,
   periodClamped,
   hasUrlFilterParams,
@@ -119,6 +132,7 @@ export default function AnalyticsClient({
     includeUncategorized,
     hasUnreadSuggestion,
     hasUnstartedGscEvaluation,
+    hasUnsummarized,
     instagramConnected,
     activeTab,
     igPage,
@@ -141,9 +155,17 @@ export default function AnalyticsClient({
   // isSelectAll が false のときは意味を持たない
   const [excludedIds, setExcludedIds] = React.useState<Set<string>>(() => new Set());
   const [isStarting, setIsStarting] = React.useState(false);
+  const [isSummarizing, setIsSummarizing] = React.useState(false);
   const isDateRangeChanged = rangeStart !== startDate || rangeEnd !== endDate;
-  // 要約一括が同居する場合は、AC-05c に従いこの条件を常時表示へ切り替える。
-  const showCheckColumn = gscPropertyUri !== null;
+  // チェック列・全選択・一括ツールバーは常時出す。評価一括と AI 要約一括で1本を共有し
+  // （実装メモ §3.1）、要約一括は WordPress 連携が前提で GSC とは無関係なので、
+  // GSC 条件を共有列へ持ち込むと GSC 未連携かつ WordPress 連携済みの paid/admin が
+  // 要約一括を1件も実行できなくなる（評価親 AC-05c / 要約親 BR-04・AC-02）。
+  // admin/paid の限定は /analytics のルートゲート（proxy.ts）で担保済み。
+  //
+  // GSC 未連携で隠すのは評価固有の操作系だけ。disabled ではなく非表示にする
+  // （評価親 AC-05c「『評価サイクルを開始』は表示されない」）。
+  const showBulkEvaluationButton = gscPropertyUri !== null;
   // 件数を取れていないと全選択の母集団が確定しないため、全選択だけを止める（行チェックは使える）
   const isAnnotationTotalCountUnavailable = annotationTotalCount === null;
   // 母集団が1000件を超えるときの除外は、丸めた窓（updated_at 降順の先頭1000件）の中に
@@ -173,6 +195,7 @@ export default function AnalyticsClient({
         includeUncategorized,
         hasUnreadSuggestion,
         hasUnstartedGscEvaluation,
+        hasUnsummarized,
       }),
     [
       currentPage,
@@ -180,6 +203,7 @@ export default function AnalyticsClient({
       includeUncategorized,
       hasUnreadSuggestion,
       hasUnstartedGscEvaluation,
+      hasUnsummarized,
     ]
   );
 
@@ -203,6 +227,7 @@ export default function AnalyticsClient({
     if (includeUncategorized) params.set('uncategorized', '1');
     if (hasUnreadSuggestion) params.set('unread_suggestion', '1');
     if (hasUnstartedGscEvaluation) params.set('gsc_evaluation', 'not_started');
+    if (hasUnsummarized) params.set('unsummarized', '1');
     router.push(`/analytics?${params.toString()}`);
   };
   const startItemNumber = total > 0 ? (currentPage - 1) * perPage + 1 : 0;
@@ -245,6 +270,66 @@ export default function AnalyticsClient({
       toast.error(ERROR_MESSAGES.GSC.BULK_REGISTER_FAILED);
     } finally {
       setIsStarting(false);
+    }
+  };
+
+  const startBulkSummary = async () => {
+    // 「未要約」フィルタは条件に入れない（2026-08-31 撤廃。BR-04）。
+    // 全選択の母集団はフィルタ非依存の全記事（BR-05）なので、フィルタを ON にしても
+    // 要約される記事は1件も減らない。ゲートは操作を1段増やすだけで何も守っていなかった。
+    // 誤実行を防ぐのはサーバー側の未要約再検証（BR-01。要約済み・WordPress 未連携は
+    // generateSummary を呼ぶ前にスキップするので LLM 費用は発生しない）
+    if (selectedCount < 1 || isSummarizing) return;
+
+    setIsSummarizing(true);
+    // 1件あたり最長180秒、全体で最長760秒かかる。ボタン内のスピナーだけだと
+    // スクロールアウトした時点で進行中かどうか分からなくなるので、単記事要約
+    // （ContentAnnotationSummaryAction）と同じく loading トーストを出して結果で差し替える
+    const toastId = toast.loading(`${selectedCount}件をAIで要約しています（数分かかります）`);
+    try {
+      const result = await summarizeContentAnnotationsBulk(
+        isSelectAll
+          ? { mode: 'all', excludedIds: Array.from(excludedIds) }
+          : { mode: 'ids', contentAnnotationIds: Array.from(selectedIds) }
+      );
+
+      if (!result.success || !result.data) {
+        // 数分待った末のエラーを既定の4秒で消さない。成功分が DB にコミット済みの可能性も
+        // あるので、利用者が読んで次の操作を決められるようにする
+        toast.error(result.error ?? ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_FAILED, {
+          id: toastId,
+          duration: Infinity,
+          closeButton: true,
+        });
+        return;
+      }
+
+      const { type, message, persist } = getBulkSummaryToastMessage(result.data);
+      // 待ち時間に見合う結果を既定の4秒で消さない。失敗や未実行があるときは
+      // 利用者が読んで次の操作を決める必要がある
+      // 自動で消えない通知には閉じる手段を付ける（Toaster は closeButton 既定 false）
+      const options = {
+        id: toastId,
+        ...(persist ? { duration: Infinity, closeButton: true } : {}),
+      };
+      if (type === 'warning') {
+        toast.warning(message, options);
+      } else {
+        toast.success(message, options);
+      }
+      setSelectedIds(new Set());
+      setExcludedIds(new Set());
+      setIsSelectAll(false);
+      router.refresh();
+    } catch (error) {
+      console.error('[analytics] bulk summary failed', error);
+      toast.error(ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_FAILED, {
+        id: toastId,
+        duration: Infinity,
+        closeButton: true,
+      });
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
@@ -327,7 +412,7 @@ export default function AnalyticsClient({
             {gscCredentialError}
           </div>
         ) : null}
-        {showCheckColumn && isAnnotationTotalCountUnavailable ? (
+        {isAnnotationTotalCountUnavailable ? (
           <div className="mb-4 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
             {ERROR_MESSAGES.GSC.BULK_TOTAL_COUNT_FETCH_FAILED}
           </div>
@@ -358,12 +443,14 @@ export default function AnalyticsClient({
               'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
             )}
             onClick={applyDateRange}
-            disabled={!isDateRangeChanged || isApplyingDateRange}
+            // 一括要約中の遷移は結果通知を永久に失わせる（成功分はコミット済みなのに
+            // 何件成功したか分からなくなる）ので、実行中は期間変更を止める
+            disabled={!isDateRangeChanged || isApplyingDateRange || isSummarizing}
           >
             {isApplyingDateRange && <Loader2 className="h-4 w-4 animate-spin" />}
             {isApplyingDateRange ? '適用中...' : '期間を適用'}
           </button>
-          {showCheckColumn && selectedCount >= 1 ? (
+          {selectedCount >= 1 ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-gray-600">
                 {isSelectionClamped
@@ -372,14 +459,40 @@ export default function AnalyticsClient({
                     ? `選択中 ${selectedCount} 件`
                     : `選択中 ${selectedCount} 件 / 全 ${annotationTotalCount} 件`}
               </span>
+              {showBulkEvaluationButton ? (
+                <button
+                  type="button"
+                  className={cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')}
+                  onClick={startBulkEvaluation}
+                  disabled={isStarting || isSummarizing}
+                >
+                  {isStarting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {isStarting ? '開始中...' : '評価サイクルを開始'}
+                </button>
+              ) : null}
               <button
                 type="button"
-                className={cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')}
-                onClick={startBulkEvaluation}
-                disabled={isStarting || !gscPropertyUri}
+                // 単記事の「AIで要約」（ContentAnnotationSummaryAction）と同じ見た目にする。
+                // 同じ機能が2箇所にあるので、色とアイコンまで揃えないと別物に見える
+                className={cn(
+                  buttonVariants({ variant: 'outline' }),
+                  'h-9 inline-flex items-center gap-2 border-purple-200 bg-purple-50 text-purple-900 hover:bg-purple-100 hover:text-purple-900'
+                )}
+                onClick={startBulkSummary}
+                disabled={isSummarizing || isStarting}
+                aria-busy={isSummarizing}
               >
-                {isStarting && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isStarting ? '開始中...' : '評価サイクルを開始'}
+                {isSummarizing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    要約中...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    AIで要約
+                  </>
+                )}
               </button>
               {isSelectionClamped ? (
                 <span className="text-xs text-gray-500">
@@ -387,8 +500,8 @@ export default function AnalyticsClient({
                 </span>
               ) : null}
               {isSelectAll && selectedCount > total ? (
-                <span className="text-xs text-gray-500">
-                  絞り込み外の記事も含みます（既登録はサーバーがスキップ）
+                <span className="text-xs text-muted-foreground">
+                  絞り込み外の記事も含みます（対象外はサーバーがスキップ）
                 </span>
               ) : null}
             </div>
@@ -408,19 +521,16 @@ export default function AnalyticsClient({
             includeUncategorized={includeUncategorized}
             hasUnreadSuggestion={hasUnreadSuggestion}
             hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
+            hasUnsummarized={hasUnsummarized}
             hasUrlFilterParams={hasUrlFilterParams}
-            {...(showCheckColumn
-              ? {
-                  selection: {
-                    selectedIds,
-                    excludedIds,
-                    isSelectAll,
-                    canSelectAll: !isAnnotationTotalCountUnavailable,
-                    onToggleRow: toggleRowSelection,
-                    onToggleAll: toggleAllSelection,
-                  },
-                }
-              : {})}
+            selection={{
+              selectedIds,
+              excludedIds,
+              isSelectAll,
+              canSelectAll: !isAnnotationTotalCountUnavailable,
+              onToggleRow: toggleRowSelection,
+              onToggleAll: toggleAllSelection,
+            }}
           />
         ) : null}
 

@@ -105,6 +105,19 @@ export const ERROR_MESSAGES = {
     SUMMARY_PARSE_FAILED:
       'AI要約結果の解析に失敗しました。もう一度要約ボタンを押してください。',
 
+    /** AI要約一括: 対象が0件だった場合 */
+    SUMMARY_BULK_TARGETS_REQUIRED: '対象の記事が選択されていません',
+
+    /** AI要約一括: 選択件数が上限を超えた場合 */
+    SUMMARY_BULK_TARGETS_LIMIT_EXCEEDED: '一度に要約できるのは1000件までです',
+
+    /** AI要約一括: 全選択の母集団と取得結果の件数が一致しない場合 */
+    SUMMARY_BULK_POPULATION_MISMATCH:
+      '対象の記事を取得できませんでした。時間をおいてもう一度お試しください。',
+
+    /** AI要約一括: 実行そのものに失敗した場合 */
+    SUMMARY_BULK_FAILED: 'AI要約の一括実行に失敗しました',
+
     /** インポート処理中にエラーが発生 */
     IMPORT_ERROR: 'インポート処理中にエラーが発生しました',
 

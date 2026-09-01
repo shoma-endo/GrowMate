@@ -142,6 +142,65 @@ export const GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS = 30_000;
 /** content_annotations AI要約: 本文サイズガード（文字数上限） */
 export const CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS = 80_000;
 
+/**
+ * AI要約一括実行（`/analytics`）が乗る Server Action の Vercel 関数 maxDuration（秒）。
+ * `app/analytics/page.tsx` の `export const maxDuration` と一致させる。
+ * route segment config は静的解析のため import 定数を使えずリテラル必須なので、
+ * `tests/unit/server/lib/analytics-max-duration.test.ts` で一致を機械的に担保する。
+ */
+export const CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC = 800;
+
+/**
+ * 一括要約1回の時間予算（ミリ秒）。maxDuration より 40 秒短くしてレスポンス返却の余裕を取る
+ * （`INSTAGRAM_SYNC_TIME_BUDGET_MS` と同型の算出）。
+ * 仕様: docs/plans/content-annotation-bulk-ai-summary-spec.md BR-03（760秒）。
+ */
+export const CONTENT_ANNOTATION_BULK_SUMMARY_TIME_BUDGET_MS =
+  (CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC - 40) * 1000;
+
+/**
+ * 1件の LLM 呼び出しの後段処理（HTML抽出・パース・DB更新・レスポンス整形）の予算（ミリ秒）。
+ * 残り時間からこれを差し引いた値を LLM の timeoutMs に渡し、Vercel のハードキルより手前で
+ * AbortError を出させる（`GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS` と同型）。
+ *
+ * 着手前の予算判定だけでは足りない。1単位が WordPress 本文取得 + LLM 呼び出し（既定 180 秒）
+ * なので、経過 759 秒で判定を通過した1件が 180 秒走ると経過 939 秒に達し maxDuration 800 秒で
+ * ハードキルされる。成功分は1件ずつコミット済みなのに件数通知が返らなくなる（BR-03）。
+ */
+export const CONTENT_ANNOTATION_BULK_SUMMARY_POST_LLM_BUFFER_MS = 30_000;
+
+/**
+ * 1件の WordPress 本文取得に見込む予算（ミリ秒）。
+ * `fetchWpPostContentLive` から先の `wordpressService` の fetch には**タイムアウトが無い**ため、
+ * LLM だけに上限を掛けても1件の所要は閉じない。1件全体の上限からこの分を引いた値を LLM に渡し、
+ * 1件全体には `Promise.race` で上限を掛ける（一括のみ。単記事経路は従来どおり）。
+ */
+export const CONTENT_ANNOTATION_BULK_SUMMARY_FETCH_BUDGET_MS = 60_000;
+
+/**
+ * 1件の LLM 呼び出しに最低限確保する予算（ミリ秒）。これを割り込むなら着手しない。
+ */
+export const CONTENT_ANNOTATION_BULK_SUMMARY_MIN_LLM_BUDGET_MS = 30_000;
+
+/**
+ * 1件に着手する最低予算（ミリ秒）。これを割ったら着手せず未実行に計上する。
+ *
+ * **本文取得の予算を含めること。** 本文取得の分を含めない下限にすると、下限ぎりぎりで
+ * 着手した1件は本文取得に使える時間が 0 になり、ほぼ確実にタイムアウトする。
+ * そのとき Claude への課金は発生し、`updateContentCache` が `updated_at` を進めたうえで
+ * 「再実行すれば進む未実行」であるべきものが「失敗」に化ける
+ * ＝この下限が防ぐと宣言している事象そのものが起きる。
+ */
+export const CONTENT_ANNOTATION_BULK_SUMMARY_MIN_ITEM_BUDGET_MS =
+  CONTENT_ANNOTATION_BULK_SUMMARY_FETCH_BUDGET_MS +
+  CONTENT_ANNOTATION_BULK_SUMMARY_MIN_LLM_BUDGET_MS;
+
+/** AI要約の LLM 呼び出しのタイムアウト既定値（ミリ秒）。単記事・一括の1件あたり上限。 */
+export const CONTENT_ANNOTATION_SUMMARY_LLM_TIMEOUT_MS = 180_000;
+
+/** 一括要約1回で扱える対象の上限件数（BR-06）。評価一括の上限と揃える。 */
+export const MAX_BULK_SUMMARY_TARGETS = 1000;
+
 
 // =============================================================================
 // Blog Creation Steps (単一ソースで一元管理、ステップズレを防止)

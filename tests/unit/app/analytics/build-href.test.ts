@@ -13,6 +13,7 @@ function buildState(overrides: Partial<AnalyticsHrefState> = {}): AnalyticsHrefS
     includeUncategorized: false,
     hasUnreadSuggestion: false,
     hasUnstartedGscEvaluation: false,
+    hasUnsummarized: false,
     instagramConnected: true,
     activeTab: 'blog',
     igPage: 1,

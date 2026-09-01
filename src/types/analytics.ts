@@ -28,6 +28,11 @@ export interface AnalyticsContentQuery {
    *  `default false` のまま渡さない。§10.2 / §18）。
    */
   hasUnstartedGscEvaluation?: boolean;
+  /**
+   * 「未要約」＝AI要約対象8項目がすべて空 かつ WordPress 連携済みの記事に絞る。
+   * 定義は docs/plans/content-annotation-bulk-ai-summary-spec.md BR-02 が正本。
+   */
+  hasUnsummarized?: boolean;
 }
 
 export interface AnalyticsContentPage {

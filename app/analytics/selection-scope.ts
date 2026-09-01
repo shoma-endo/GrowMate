@@ -11,6 +11,7 @@ export interface AnalyticsListingScope {
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
+  hasUnsummarized: boolean;
 }
 
 export function buildListingSelectionKey(scope: AnalyticsListingScope): string {
@@ -20,5 +21,6 @@ export function buildListingSelectionKey(scope: AnalyticsListingScope): string {
     scope.includeUncategorized,
     scope.hasUnreadSuggestion,
     scope.hasUnstartedGscEvaluation,
+    scope.hasUnsummarized,
   ]);
 }
