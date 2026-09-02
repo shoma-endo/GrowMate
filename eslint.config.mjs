@@ -50,7 +50,15 @@ const noServerInternalImportInClient = {
 
 const config = [
   {
-    ignores: ['.next', 'next-env.d.ts', 'scripts', 'types', 'coverage'],
+    ignores: [
+      '.next',
+      'next-env.d.ts',
+      'scripts',
+      'types',
+      'coverage',
+      // Supabase 自動生成。max-lines の対象外
+      'src/types/database.types.ts',
+    ],
   },
   ...nextConfig,
   // eslint-config-next 16 で追加された React Compiler 関連の厳格ルール
@@ -75,6 +83,8 @@ const config = [
     },
     rules: {
       'local/no-server-internal-import-in-client': 'error',
+      // 肥大化の可視化。warn 一覧は月次メンテの hotspot レビュー（docs/runbooks/monthly-maintenance.md）の入力
+      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
     },
   },
 ];
