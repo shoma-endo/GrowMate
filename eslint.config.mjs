@@ -48,6 +48,99 @@ const noServerInternalImportInClient = {
   },
 };
 
+// テストケース（it / test）の本体に expect / assert 呼び出しが 1 つも無いものを禁止する。
+// カバレッジ閾値を「コードを実行するだけのテスト」で埋める経路を機械的に塞ぐ
+// （docs/specs/testing-strategy.md「閾値の合意記録」）。アサーションの強さまでは見ない。
+const testHasAssertion = {
+  meta: {
+    type: 'problem',
+    docs: { description: 'it / test の本体に expect / assert 呼び出しを必須にする' },
+    schema: [],
+  },
+  create(context) {
+    const TEST_NAMES = new Set(['it', 'test']);
+    // 同一ファイル内で定義され、本体に expect を含むヘルパー関数名（Program で収集）
+    const helperNames = new Set();
+
+    function rootIdentifier(node) {
+      while (node && node.type === 'MemberExpression') node = node.object;
+      return node && node.type === 'Identifier' ? node.name : null;
+    }
+
+    // expect / assert 系、expectXxx / assertXxx という名前のヘルパー、同一ファイルの expect 入りヘルパー
+    function isAssertionName(name) {
+      if (!name) return false;
+      return /^(expect|assert)/i.test(name) || helperNames.has(name);
+    }
+
+    function isFunctionNode(node) {
+      return (
+        !!node &&
+        (node.type === 'FunctionDeclaration' ||
+          node.type === 'FunctionExpression' ||
+          node.type === 'ArrowFunctionExpression')
+      );
+    }
+
+    function isTestCall(node) {
+      // it(...), test(...), it.skip(...), test.each(...)(...) を対象にする
+      let callee = node.callee;
+      if (callee.type === 'CallExpression') callee = callee.callee; // it.each([...])('name', fn)
+      const root = rootIdentifier(callee);
+      return root !== null && TEST_NAMES.has(root);
+    }
+
+    function containsAssertion(node, seen = new Set()) {
+      if (!node || typeof node !== 'object' || seen.has(node)) return false;
+      seen.add(node);
+      if (node.type === 'CallExpression' && isAssertionName(rootIdentifier(node.callee))) return true;
+      for (const key of Object.keys(node)) {
+        if (key === 'parent' || key === 'loc' || key === 'range') continue;
+        const value = node[key];
+        if (Array.isArray(value)) {
+          if (value.some((v) => containsAssertion(v, seen))) return true;
+        } else if (value && typeof value.type === 'string') {
+          if (containsAssertion(value, seen)) return true;
+        }
+      }
+      return false;
+    }
+
+    return {
+      Program(program) {
+        // トップレベルの function / const fn = () => {} のうち expect を含むものをヘルパーとして登録する
+        for (const stmt of program.body) {
+          if (stmt.type === 'FunctionDeclaration' && stmt.id && containsAssertion(stmt.body)) {
+            helperNames.add(stmt.id.name);
+          }
+          if (stmt.type === 'VariableDeclaration') {
+            for (const decl of stmt.declarations) {
+              if (
+                decl.id.type === 'Identifier' &&
+                isFunctionNode(decl.init) &&
+                containsAssertion(decl.init.body)
+              ) {
+                helperNames.add(decl.id.name);
+              }
+            }
+          }
+        }
+      },
+      CallExpression(node) {
+        if (!isTestCall(node)) return;
+        const body = node.arguments[node.arguments.length - 1];
+        if (!body || (body.type !== 'ArrowFunctionExpression' && body.type !== 'FunctionExpression')) return;
+        if (containsAssertion(body.body)) return;
+        context.report({
+          node,
+          message:
+            'このテストには expect / assert が無い。実行しただけではカバレッジは増えても検証にならない。期待値を書くか、テストを削除する。',
+        });
+      },
+    };
+  },
+};
+
 const config = [
   {
     ignores: [
@@ -85,6 +178,19 @@ const config = [
       'local/no-server-internal-import-in-client': 'error',
       // 肥大化の可視化。warn 一覧は月次メンテの hotspot レビュー（docs/runbooks/monthly-maintenance.md）の入力
       'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    files: ['tests/**/*.{test,spec}.{ts,tsx}'],
+    plugins: {
+      'local-test': {
+        rules: {
+          'test-has-assertion': testHasAssertion,
+        },
+      },
+    },
+    rules: {
+      'local-test/test-has-assertion': 'error',
     },
   },
 ];

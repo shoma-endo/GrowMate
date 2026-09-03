@@ -45,7 +45,8 @@ npm run knip
 
 ```bash
 npm run hotspots
-npm run lint 2>&1 | grep -c max-lines   # 500 行超の warn 件数
+# 500 行超（max-lines）の warn 件数。lint 出力を grep すると出力フィルタ（rtk）で件数が化けるので JSON で数える
+npx eslint . -f json -o /tmp/eslint.json; node -e "console.log(require('/tmp/eslint.json').flatMap(f=>f.messages).filter(m=>m.ruleId==='max-lines').length)"
 ```
 
 `npm run hotspots` の上位 5 件について、1 件 1 行で判定と理由を PR 本文に書く。判定は次の 3 値。
@@ -58,10 +59,10 @@ npm run lint 2>&1 | grep -c max-lines   # 500 行超の warn 件数
 
 判定の材料:
 
-- 実行行数（空行・コメント除外。eslint `max-lines` と同じ基準）
+- 実行行数（空行・コメント除外。eslint `max-lines` の近似で、JSX 内コメント等で数行ズレる。順位判断に使い、閾値判定は lint 側）
 - 90 日 churn（触られている頻度。高いほど分割の効果が大きい）
-- テスト有無（無い巨大ファイルは分割前にキャラクタライズテストの要否を仕様書で判断する）
-- `max-lines` warn 件数の前月比（増えていれば新規コードの肥大化、減っていれば分割の効果）
+- テスト参照（`vi.mock` で丸ごと差し替えているだけのファイルは「なし」扱い。無い巨大ファイルは分割前にキャラクタライズテストの要否を仕様書で判断する）
+- `max-lines` warn 件数の前月比（`tests/` も含む数。増えていれば新規コードの肥大化、減っていれば分割の効果）
 
 判定結果が「分割する」の仕様書は、翌月以降の月次メンテで進捗を確認する。
 

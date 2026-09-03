@@ -210,7 +210,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 ```bash
 # GrowMateアプリ: Node.js 20以上
-# Takt 0.58.0: Node.js 24.15.0以上
+# Takt（版は .takt-version が正本）: Node.js 24.15.0以上
 npm ci
 # .env.local を作成し、src/env.ts の clientEnvSchema / serverEnvSchema を参照してキーを埋める
 npm run dev  # http://localhost:3000
