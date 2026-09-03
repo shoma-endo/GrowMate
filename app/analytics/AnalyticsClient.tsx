@@ -184,13 +184,14 @@ export default function AnalyticsClient({
     setIsApplyingDateRange(false);
   }, [startDate, endDate]);
 
-  // 行選択のスコープは表示中ページ内（実装メモ §3.1）。ページ送りだけでなく、
-  // 一覧の中身が入れ替わるフィルタ変更でも選択を解除する（1ページ目のままフィルタだけ
-  // 変えたときに、表示されていない記事の選択が残るのを防ぐ）。
+  // 行選択はページ送りをまたいで保持する（実装メモ §3.1。2026-09-03 改訂）。
+  // /analytics 内のページ送りは soft navigation で AnalyticsClient がアンマウント
+  // されないため、追加の永続化なしに React state のまま残る。
+  // 一方、一覧の中身が入れ替わるフィルタ変更では選択を解除する（表示されていない
+  // 記事の選択が残るのを防ぐ）。
   const listingKey = React.useMemo(
     () =>
       buildListingSelectionKey({
-        currentPage,
         selectedCategoryNames,
         includeUncategorized,
         hasUnreadSuggestion,
@@ -198,7 +199,6 @@ export default function AnalyticsClient({
         hasUnsummarized,
       }),
     [
-      currentPage,
       selectedCategoryNames,
       includeUncategorized,
       hasUnreadSuggestion,

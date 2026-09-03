@@ -1,12 +1,14 @@
 /**
- * 行選択のスコープ（表示中ページ内）を判定するためのキーを組み立てる。
- * ページ送りだけでなく、一覧の中身が入れ替わるフィルタ変更でも選択を解除するために使う。
+ * 行選択のスコープを判定するためのキーを組み立てる。
+ * 一覧の中身が入れ替わるフィルタ変更で選択を解除するために使う。
  * 実装メモ `docs/plans/analytics-bulk-actions-impl-note.md` §3.1「行チェックの選択スコープ」。
  *
+ * ページ番号はキーに含めない。「前へ」「次へ」でページを移動しても選択は保持する
+ * （2026-09-03 PO 指示。全選択はもともとページ非依存で、行チェックだけがページ送りで
+ * 消えるのは非対称だった）。
  * GA4 集計期間は一覧の行そのものを入れ替えないためキーに含めない。
  */
 export interface AnalyticsListingScope {
-  currentPage: number;
   selectedCategoryNames: string[];
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
@@ -16,7 +18,6 @@ export interface AnalyticsListingScope {
 
 export function buildListingSelectionKey(scope: AnalyticsListingScope): string {
   return JSON.stringify([
-    scope.currentPage,
     [...scope.selectedCategoryNames].sort(),
     scope.includeUncategorized,
     scope.hasUnreadSuggestion,

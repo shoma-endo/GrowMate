@@ -5,7 +5,6 @@ import {
 } from '@/../app/analytics/selection-scope';
 
 const baseScope: AnalyticsListingScope = {
-  currentPage: 1,
   selectedCategoryNames: [],
   includeUncategorized: false,
   hasUnreadSuggestion: false,
@@ -18,19 +17,19 @@ describe('buildListingSelectionKey', () => {
     expect(buildListingSelectionKey(baseScope)).toBe(buildListingSelectionKey({ ...baseScope }));
   });
 
-  it('ページが変わるとキーが変わる', () => {
-    expect(buildListingSelectionKey({ ...baseScope, currentPage: 2 })).not.toBe(
-      buildListingSelectionKey(baseScope)
-    );
-  });
-
-  it('1ページ目のままでもフィルタが変わるとキーが変わる', () => {
+  it('フィルタが変わるとキーが変わる', () => {
     const key = buildListingSelectionKey(baseScope);
     expect(buildListingSelectionKey({ ...baseScope, selectedCategoryNames: ['SEO'] })).not.toBe(key);
     expect(buildListingSelectionKey({ ...baseScope, includeUncategorized: true })).not.toBe(key);
     expect(buildListingSelectionKey({ ...baseScope, hasUnreadSuggestion: true })).not.toBe(key);
     expect(buildListingSelectionKey({ ...baseScope, hasUnstartedGscEvaluation: true })).not.toBe(
       key
+    );
+  });
+
+  it('未要約フィルタが変わるとキーが変わる', () => {
+    expect(buildListingSelectionKey({ ...baseScope, hasUnsummarized: true })).not.toBe(
+      buildListingSelectionKey(baseScope)
     );
   });
 
