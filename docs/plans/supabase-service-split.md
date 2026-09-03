@@ -289,9 +289,10 @@ Feature: supabaseService.ts のドメイン別分割
 | 依存対象 | 前提条件 | 完了確認 | 未完了時の影響 |
 | --- | --- | --- | --- |
 | `docs/plans/ga4-sync-cron-spec.md`（ステータス `review`）。`listGa4SyncTargets()` の `order by` 変更（同 `:666`）、`countStaleGa4SyncTargets()` の新規追加（同 `:667`）、`listGa4SyncTargets()` へのロール絞り込み追加（同 `:671`）を `supabaseService.ts` に対して計画している。`listGa4SyncTargets` は本仕様 §6 チェーン表 行6 で `gscMetrics.ts` へ移す対象 | 当該 PR がマージ済み | `docs/plans/*.md` のうちステータスが `draft` / `review` かつ本文に `supabaseService.ts` または `SupabaseService.` を含むものを grep して 0 件（`git log develop -- src/server/services/supabaseService.ts` はマージ済みの過去変更しか見えず、未着手の仕様を検出できない） | rebase で大量衝突。または本仕様を先にマージすると、ga4 側の実装者が 15 行の facade を編集対象と誤認する |
-| その他 `supabaseService.ts` を変更中の仕様（今後追加されるもの） | 当該 PR がマージ済み | 同上の grep | 同上 |
+| PR #515 `feat/analytics-bulk-evaluation-start`（2026-09-03 時点で唯一のオープン機能 PR）。`supabaseService.ts` を変更しており、対応仕様 `docs/plans/gsc-bulk-evaluation-start-spec.md` / `content-annotation-bulk-ai-summary-spec.md` / `analytics-bulk-actions-impl-note.md` はいずれもステータス `approved`（上の grep の `draft` / `review` フィルタでは検出できない） | #515 が develop にマージ済み | `gh pr list --state open --json number,files --jq '.[] \| select(.files[].path == "src/server/services/supabaseService.ts") \| .number'` が空 | rebase で大量衝突 |
+| その他 `supabaseService.ts` を変更中の仕様・PR（今後追加されるもの） | 当該 PR がマージ済み | 上の 2 つの確認（仕様 grep はステータス `draft` / `review` / `approved` を対象にする。`approved` は実装着手可で PR 未マージの状態を含む）と、オープン PR の変更ファイル確認 | 同上 |
 
-**着手順**: §5「カレンダー上の前提」の方針どおり **ga4-sync-cron-spec を先行させ、その PR がマージされた後に本仕様へ着手する**。本仕様を先行させる判断に変える場合は、`ga4-sync-cron-spec.md` §13 実装手順の対象ファイルを `src/server/services/supabase/gscMetrics.ts` に読み替える改訂を同時に行う。
+**着手順**: **#515 → ga4-sync-cron-spec → 本仕様** の順でマージする。#515 は実装済みでマージ待ち、ga4-sync-cron-spec は §5「カレンダー上の前提」の方針どおり先行させ、その PR がマージされた後に本仕様へ着手する。本仕様を先行させる判断に変える場合は、`ga4-sync-cron-spec.md` §13 実装手順の対象ファイルを `src/server/services/supabase/gscMetrics.ts` に読み替える改訂を同時に行う。
 
 ## 11. トレードオフ判断
 
@@ -342,9 +343,9 @@ Feature: supabaseService.ts のドメイン別分割
 
 | ID | リスク | 発生条件・影響 | 対策 | 担当 | 状態 |
 | --- | --- | --- | --- | --- | --- |
-| R-001 | 移動時にメソッド本文が改変される | AI 実装者が「ついでに」直す | BR-01 と行数総和 ±5% の完了条件。self_review で「移動のみ」を確認 | 実装者 | 対策済 |
+| R-001 | 移動時にメソッド本文が改変される | AI 実装者が「ついでに」直す | BR-01 と §15 の「行の多重集合一致」の完了条件（メソッド本文の行に差分があってはならない）。self_review で「移動のみ」を確認 | 実装者 | 対策済 |
 | R-002 | private ヘルパーの取り違え | 別ドメインの row mapper を参照 | FR-006。tsc で private 参照エラーになる | 実装者 | 対策済 |
-| R-003 | 進行中の機能 PR との衝突 | 同ファイルを変更中の仕様がある（実在する衝突先: `docs/plans/ga4-sync-cron-spec.md`、ステータス `review`） | §10 依存関係。着手前に `docs/plans/*.md` の `draft` / `review` を grep して `supabaseService.ts` / `SupabaseService.` の参照が 0 件であることを確認。ga4-sync-cron-spec を先行させる | 承認者 | 実装前ゲート（CP-1 で確認。仕様レビューのブロッカーにしない） |
+| R-003 | 進行中の機能 PR との衝突 | 同ファイルを変更中の仕様・PR がある（実在する衝突先: PR #515（`approved` 仕様 3 本、実装済みマージ待ち）と `docs/plans/ga4-sync-cron-spec.md`（ステータス `review`）） | §10 依存関係。着手前に (1) `docs/plans/*.md` の `draft` / `review` / `approved` を grep して `supabaseService.ts` / `SupabaseService.` の参照が 0 件、(2) オープン PR の変更ファイルに `supabaseService.ts` が無い、の 2 点を確認。#515 → ga4-sync-cron-spec の順で先行させる | 承認者 | 実装前ゲート（CP-1 で確認。仕様レビューのブロッカーにしない） |
 
 ### 確認質問
 
