@@ -15,7 +15,7 @@
 
 ### 背景・解決したい課題
 
-- 現在、誰が、どの業務で困っているか: `src/server/services/supabaseService.ts` は 2,829 行（実行行 2,353）、メンバー 79（public 68・protected 4・private 6・constructor）、10 ドメイン（users / chat / wordpress / gsc / googleAds / contentInventory / brief / userDeletion / instagram / 基盤）が 1 クラスに同居している。直近 90 日の churn は 26 回で全ファイル中 2 位。仕様起点の実装（`spec-to-pr`）でこのファイルを触るたびに、無関係ドメインの差分衝突とレビュー範囲の肥大が起きる
+- 現在、誰が、どの業務で困っているか: `src/server/services/supabaseService.ts` は 2,829 行（実行行 2,353）、メンバー 79（public 68・protected 4・private 6・constructor）、10 ドメイン（users / chat / wordpress / gsc / googleAds / contentInventory / brief / userDeletion / instagram / 基盤）が 1 クラスに同居している。直近 90 日の churn は 25 回で全ファイル中 1 位（develop、2026-09-03）。仕様起点の実装（`spec-to-pr`）でこのファイルを触るたびに、無関係ドメインの差分衝突とレビュー範囲の肥大が起きる
 - 放置した場合の影響: 新規テーブル追加のたびに末尾へメソッドが増え続ける（`.agents/skills/supabase/service-usage.md` 運用ルール 1 がこのファイルへの追加を基本としている）。eslint `max-lines`（500）の warn 最大件で、月次 hotspot レビューの上位に居座り続ける
 
 ### 目的
@@ -54,8 +54,8 @@
 import { SupabaseService } from '@/server/services/supabaseService'
   → 1 ファイル 2,829 行の class SupabaseService（10 ドメイン + 基盤ヘルパー）
   → 6 クラスが extends（protected supabase / success / failure / fetchAllPaged / static withServiceRoleClient を利用）
-  → 51 ファイルが new SupabaseService()
-  → 20 テストが vi.mock('@/server/services/supabaseService') で差し替え
+  → 50 ファイルが new SupabaseService()（件数は develop 2026-09-03 時点。判定は件数でなく「無変更で pass」で行う）
+  → 19 テストが vi.mock('@/server/services/supabaseService') で差し替え
 ```
 
 ### 導入後（To-Be）
@@ -64,7 +64,7 @@ import { SupabaseService } from '@/server/services/supabaseService'
 import { SupabaseService } from '@/server/services/supabaseService'   ← パス・クラス名・型 export は不変
   → supabaseService.ts は facade: export class SupabaseService extends SupabaseInstagramService {} と export type { SupabaseResult }
   → src/server/services/supabase/ 配下にドメイン別クラスを線形継承チェーンで配置（各 500 行以下）
-  → 6 サブクラス・51 呼び出し側・20 テストは無変更
+  → 6 サブクラス・50 呼び出し側・19 テストは無変更
 ```
 
 ### 業務ルール
@@ -95,8 +95,8 @@ import { SupabaseService } from '@/server/services/supabaseService'   ← パス
 
 ### Non-goals（今回の対象外）
 
-- 対象外にするもの: 呼び出し側 51 ファイルをドメインクラス直参照へ移行すること / テスト 20 件の mock 対象パス変更 / メソッドの振る舞い・命名・エラーメッセージの改善 / テスト追加のための export 追加や責務分割（`docs/specs/testing-strategy.md` Phase 1〜2 の方針） / 新規テストの追加
-- 対象外にする理由: 本仕様の価値は「差分ゼロで読む単位を小さくする」こと。呼び出し側を触ると検証範囲が 71 ファイルに広がり、挙動不変の証跡が弱くなる
+- 対象外にするもの: 呼び出し側 50 ファイルをドメインクラス直参照へ移行すること / テスト 19 件の mock 対象パス変更 / メソッドの振る舞い・命名・エラーメッセージの改善 / テスト追加のための export 追加や責務分割（`docs/specs/testing-strategy.md` Phase 1〜2 の方針） / 新規テストの追加
+- 対象外にする理由: 本仕様の価値は「差分ゼロで読む単位を小さくする」こと。呼び出し側を触ると検証範囲が 69 ファイルに広がり、挙動不変の証跡が弱くなる
 - 将来検討する条件・時期: §12 OPEN-001
 
 ## 5. 開発工数（概算）
@@ -135,7 +135,7 @@ import { SupabaseService } from '@/server/services/supabaseService'   ← パス
 | --- | --- | --- | --- | --- |
 | FR-001 | 基盤クラス `SupabaseBaseService` を `src/server/services/supabase/base.ts`（新規）に置き、`supabase` フィールド・`success`・`failure`・`fetchAllPaged`・`getClient`・`withServiceRoleClient`・`SupabaseResult` / `SupabaseErrorInfo` 型を移す | Must | §3 To-Be | 6 サブクラスが無変更で `npm run build` を通る |
 | FR-002 | 各ドメインをクラス 1 つ・ファイル 1 つとし、線形継承チェーンで積む（下表） | Must | ALT-001 | 各ファイル実行行数 ≤500、`npm run lint` で新規ファイルに `max-lines` warn なし |
-| FR-003 | `src/server/services/supabaseService.ts` を facade にする: `export class SupabaseService extends <チェーン末端> {}` と `export type { SupabaseResult }` のみ | Must | §3 To-Be | 呼び出し側 51 ファイル・テスト 20 件が無変更で pass |
+| FR-003 | `src/server/services/supabaseService.ts` を facade にする: `export class SupabaseService extends <チェーン末端> {}` と `export type { SupabaseResult }` のみ | Must | §3 To-Be | 呼び出し側 50 ファイル・テスト 19 件が無変更で pass |
 | FR-004 | `ExtendedDatabase` は **未反映 migration の型ではない**。3 表（`google_ads_evaluation_settings` / `google_ads_negative_keywords_settings` / `admin_action_logs`）は生成型 `src/types/database.types.ts` に既に存在する。**実際に生成型を絞り込んでいるのは `admin_action_logs.status` だけ**（生成型は `string`: `database.types.ts:25` / `:36` / `:47` → オーバーレイの `AdminActionLogStatus`: `supabaseService.ts:105`）。googleAds 2 表のオーバーレイは生成型と同じ列・型で、交差しても何も絞っていない（根拠と残置理由は ALT-002）。これをドメインごとに分け、`googleAds.ts` にファイル内ローカル型 `GoogleAdsDatabase`（2 表分）、`userDeletion.ts` に `AdminActionLogDatabase` を定義し、`src/types/database.types.pending.ts` の `asPendingClient<TDatabase>(this.supabase)` で取得する。**両ローカル型は現行 `ExtendedDatabase` と同じ合成方法（`Omit<Database, 'public'> & { public: Omit<Database['public'], 'Tables'> & { Tables: Database['public']['Tables'] & { …表… } } }`）を保ち、`database.types.pending.ts:15-17` の「差し替えは必ず `Omit` で置換」に合わせた書き換えは本仕様では行わない**（BR-01 = 移動のみ）。理由: 本件の補正は `string` → リテラル union の**絞り込み**で、交差でも `string & AdminActionLogStatus` = `AdminActionLogStatus` と有効に働き、同規約が警告する「`string \| null` が `string` に潰れる」ケースではない。逆に `Omit` 置換にすると `admin_action_logs` の型面がオーバーレイの列だけに縮み、オーバーレイの `Update` は 4 キーしか持たない（`supabaseService.ts:130-135`）ため生成型の他列を使う更新が型エラーになる。`database.types.pending.ts` 自体は変更しない（PROVISIONAL ブロックを足さない）。3 表の `Row/Insert/Update` 本文と `AdminActionLogStatus` union は現行から移動のみ | Must | ALT-002 | 併合型 `ExtendedDatabase` が消え、各ドメインファイルが自ドメインの表しか型付けしない。`updateAdminActionLogStatus` の引数型（`Extract<AdminActionLogStatus, ...>`）が不変で、`createAdminActionLogStarted` / `updateAdminActionLogStatus` と `admin_action_logs` 読み書き箇所の型エラーが 0 件 |
 | FR-005 | `.agents/skills/supabase/service-usage.md` の記載を分割後の構成へ更新する。対象は (i) §4（`:31`）の `failure()` の実体位置、(ii) 運用ルール 1（`:57`）の新規テーブル追加先、(iii) §6（`:112`）の `asPendingClient` のシグネチャと用途（`asPendingClient<TDatabase>` のジェネリック版であること、および「未反映 migration の暫定型」以外に「生成型の恒久補正」の用途があること。`src/types/database.types.pending.ts:9-13` の docblock が正） | Must | §4 対象範囲 / FR-004 | `service-usage.md` に (i) `failure()` / `success()` / `fetchAllPaged()` の実体が `src/server/services/supabase/base.ts` である旨、(ii) 新規テーブルの追加先が `src/server/services/supabase/<domain>.ts`（該当ドメインが無ければチェーン末端の直前に新規ファイルを挿入）である旨、(iii) `asPendingClient<TDatabase>(client)` の 2 用途が記載されている（PR レビューで目視）。回帰チェックとして `npm run verify:agent-skills` pass も併記（同スクリプトは skill 文書中のファイルパスの実在・鮮度を検査しないため、これ単独では FR-005 の達成を示さない） |
 | FR-006 | private ヘルパー（`mapGoogleAdsEvaluationSettingsRow` 等の row mapper、`get*Client`）は使うドメインのファイルへ一緒に移す | Must | 結合の局所化 | ドメイン間で private を参照しない |
@@ -188,7 +188,7 @@ Feature: supabaseService.ts のドメイン別分割
   Rule: 公開 API と import パスは不変
 
     Scenario: 既存の呼び出し側が無変更で動く
-      Given src と app の 51 ファイルが '@/server/services/supabaseService' から SupabaseService を import している
+      Given src と app の 50 ファイルが '@/server/services/supabaseService' から SupabaseService を import している
       When 分割後のブランチで npm run build を実行する
       Then 型エラーが 0 件で、呼び出し側のファイルに差分が無い
 
@@ -305,7 +305,7 @@ Feature: supabaseService.ts のドメイン別分割
 - 採用案: 案A
 - 採用理由: import パス・クラス名・protected API・`vi.mock` 対象が完全に不変で、検証が「tsc + 既存テスト + 行数総和」で閉じる。AI 実装で人がコードを読まない前提では、差分の局所性が最重要
 - 再調査: GrowMate 内のサービス分割前例（0 件）、TS mixin パターン（protected の型付けが崩れる） / より良い案なし
-- 却下した案と理由: 案B は boilerplate 72 本と protected の喪失。案C は 71 ファイル変更で挙動不変の証跡が弱い。案C は Phase 2（OPEN-001）に残す
+- 却下した案と理由: 案B は boilerplate 72 本と protected の喪失。案C は 69 ファイル変更で挙動不変の証跡が弱い。案C は Phase 2（OPEN-001）に残す
 - 影響（コスト・納期・品質・運用・拡張性）: チェーンが 13 段で「ドメイン順に意味が無い」違和感が残る。運用上は末端直前に挿入するだけ
 - 将来変更する条件: 呼び出し側の移行を決めたとき（OPEN-001）
 - 判断者・判断日: shoma-endo・2026-09-03
@@ -354,7 +354,7 @@ Feature: supabaseService.ts のドメイン別分割
 
 | ID | 未決定事項 | 今決めない理由 | 決めるタイミング | 決める人 |
 | --- | --- | --- | --- | --- |
-| OPEN-001 | 呼び出し側 51 ファイルをドメインクラス直参照へ移行し、チェーンを平坦化するか。平坦化するとサブクラスが他ドメインの public メソッドを `this.` で呼んでいる箇所（`headingFlowService` → `createChatMessage` / `updateSessionLastMessageAt`、`ga4ContentEvaluationService` → `getGscCredentialByUserId`）の扱いを決める必要がある | 本仕様の効果（レビュー範囲縮小）が出るかを先に見る | 本 PR マージ後 1 か月の月次メンテ hotspot レビュー | shoma-endo |
+| OPEN-001 | 呼び出し側 50 ファイルをドメインクラス直参照へ移行し、チェーンを平坦化するか。平坦化するとサブクラスが他ドメインの public メソッドを `this.` で呼んでいる箇所（`headingFlowService` → `createChatMessage` / `updateSessionLastMessageAt`、`ga4ContentEvaluationService` → `getGscCredentialByUserId`）の扱いを決める必要がある | 本仕様の効果（レビュー範囲縮小）が出るかを先に見る | 本 PR マージ後 1 か月の月次メンテ hotspot レビュー | shoma-endo |
 | OPEN-002 | `GoogleAdsDatabase`（googleAds 2 表のオーバーレイ）と `getGoogleAdsEvaluationClient()` / `getGoogleAdsNegativeKeywordsSettingsClient()` を削除して生成型・`this.supabase` に寄せるか（ALT-002 案D）。現状これらは生成型と同一で何も絞っていない | 本仕様は BR-01（移動のみ）で差分ゼロの証跡を成立させることが価値。削除は本文の書き換えを伴い、証跡を弱める | 本仕様マージ後、`googleAds.ts` が BR-03（500 行）に近づいたとき、または生成型を再生成したとき | shoma-endo |
 
 ## 13. テスト・リリース・ロールバック
