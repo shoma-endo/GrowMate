@@ -9,6 +9,7 @@ GrowMate 固有条件:
 - `plan.md` に spec-review で残置合意された指摘が転記されている場合、**その論点を再指摘して `needs_fix` にしない**（仕様書レビュー段階で理由付きの残置が合意済みのため）。実装が仕様書の記述どおりかだけを見る。
 - 対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合、テスト不在のみを理由に `needs_fix` にしない。
 - 簡易・形式的・低価値なユニットテストの追加を要求しない。
+- 逆に、追加・変更されたテストが「実行するだけで検証しない」形なら `needs_fix` にする。判定基準: 戻り値や状態を照合しない（`toBeDefined` / `not.toThrow` / `toBeTruthy` だけ）、実装と同じ式を期待値に書き写している、ビジネスロジック側を丸ごと mock して呼び出し回数しか見ていない。カバレッジ閾値通過のためだけに見えるテストは、その旨を指摘に書く。
 - 代替検証として `npm run verify` が実行されているかを確認する。
 - UI変更がある場合は `.agents/skills/growmate-ui-ux/SKILL.md` を正本として、対象差分が既存の同種画面・`src/components/ui/`・`app/globals.css` から逸脱していないことを確認する。判断に迷った新規パターン、要件にないUI刷新、新しいデザインパターンの追加は `needs_fix` とする。
 - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターンは、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、キャスト自体を理由に `needs_fix` にしない。

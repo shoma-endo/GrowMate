@@ -210,7 +210,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 ```bash
 # GrowMateアプリ: Node.js 20以上
-# Takt 0.58.0: Node.js 24.15.0以上
+# Takt（版は .takt-version が正本）: Node.js 24.15.0以上
 npm ci
 # .env.local を作成し、src/env.ts の clientEnvSchema / serverEnvSchema を参照してキーを埋める
 npm run dev  # http://localhost:3000
@@ -237,8 +237,9 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 | `npm run dev` | 開発サーバー（Turbopack） |
 | `npm run dev:types` | 型チェック watch |
 | `npm run test` | Vitestによるコアロジック・入力バリデーションのテスト |
-| `npm run test:coverage` | Vitestのカバレッジ計測（閾値によるCI強制なし） |
-| `npm run verify` | audit → lint → test → build → knip |
+| `npm run test:coverage` | Vitestのカバレッジ計測。src/app 全体基準の閾値（`vitest.config.ts`）を下回ると失敗。CI と verify で実行 |
+| `npm run verify` | audit → lint → test:coverage → build → knip |
+| `npm run hotspots` | 肥大化ファイル上位（実行行数・90日 churn・テスト有無）。月次メンテの hotspot レビュー入力 |
 | `npm run supabase:types` | `database.types.ts` 再生成 |
 | `npm run verify:agent-skills` | Agent Skills 静的検証 |
 | `npm run db:stats` / `vercel:stats` / `active:users` | 運用統計（要 `.env.local`） |
