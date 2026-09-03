@@ -10,29 +10,29 @@
     "wordpress-rest-api"
   ],
   "anthropic-platform": {
-    "checkedAt": "2026-08-11T06:45:24.261Z"
+    "checkedAt": "2026-09-01T05:59:05.380Z"
   },
   "google-search-console-api": {
-    "hash": "9d9e3dd42acebc38dd2719cce6cdc359d68648296007d0f9ad65751618067681",
-    "checkedAt": "2026-08-11T06:45:25.261Z"
+    "hash": "13c368f4eb3cef0ac48bd1027fa61932a6fd5a2e1088eb5de50f72f229456664",
+    "checkedAt": "2026-09-01T05:59:06.460Z"
   },
   "google-analytics-data-api": {
-    "hash": "e77deb096d0afdeb3130cc4cd7d6177a289314bcd68cb653f913f7aed07aced9",
-    "checkedAt": "2026-08-11T06:45:25.534Z"
+    "hash": "39bdb0df5985afeae7de2beea4246865a1016132b4402bb38efa7e9dcaa85871",
+    "checkedAt": "2026-09-01T05:59:06.886Z"
   },
   "google-ads-api": {
-    "hash": "dc8ca47a99af3318c78e1060fa20d84bb051f1845d5f2442a357e35fee6eb584",
-    "checkedAt": "2026-08-11T06:45:25.972Z"
+    "hash": "40b0bb7755579508e2aa82ec4acd5d8411cce3c65157a1acd29f402907b4d3cb",
+    "checkedAt": "2026-09-01T05:59:07.437Z"
   },
   "wordpress-rest-api": {
-    "checkedAt": "2026-08-11T06:45:30.318Z"
+    "checkedAt": "2026-09-01T05:59:09.321Z"
   },
   "openai-node": {
-    "lastTag": "v7.4.0",
-    "checkedAt": "2026-08-11T06:45:24.591Z"
+    "lastTag": "v7.8.0",
+    "checkedAt": "2026-09-01T05:59:05.705Z"
   },
   "supabase-js": {
-    "lastTag": "v2.112.2",
-    "checkedAt": "2026-08-11T06:45:24.804Z"
+    "lastTag": "v2.112.4",
+    "checkedAt": "2026-09-01T05:59:06.040Z"
   }
 }
