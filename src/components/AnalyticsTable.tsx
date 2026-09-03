@@ -47,6 +47,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
@@ -59,6 +60,16 @@ import { DeleteChatDialog } from '@/components/DeleteChatDialog';
 import { ChatService } from '@/domain/services/chatService';
 import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 import { getGa4DiagnosisLabel, getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
+import { resolveHeaderChecked, resolveRowChecked } from '@/lib/analytics-selection';
+
+/**
+ * 一覧の選択チェックボックス。既定の border-input は行の背景（gray-50/100）に対して
+ * コントラストが 1.1:1 程度しかなく初見で見つけられないため、境界線を muted-foreground に上げ、
+ * 白背景で行から浮かせる。::before でヒット領域を 38px 角に広げる（実測値。44px タッチターゲット指針に対する妥協点で、
+ * これ以上広げると隣の操作列のボタンに被る）。
+ */
+const SELECTION_CHECKBOX_CLASS =
+  "relative size-5 border-muted-foreground bg-background before:absolute before:-inset-2.5 before:content-['']";
 
 interface Props {
   items: AnalyticsContentItem[];
@@ -69,10 +80,15 @@ interface Props {
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
+  hasUnsummarized: boolean;
   hasUrlFilterParams: boolean;
   selection?: {
     selectedIds: Set<string>;
+    /** 全選択中に個別解除した記事（BR-07「全選択後の個別解除」）。isSelectAll が false のときは空 */
+    excludedIds: Set<string>;
     isSelectAll: boolean;
+    /** 全選択の母集団件数が取れないときは false。行チェックは使えるがヘッダの全選択だけ止める */
+    canSelectAll?: boolean;
     onToggleRow: (annotationId: string, checked: boolean) => void;
     onToggleAll: (checked: boolean) => void;
   };
@@ -141,6 +157,7 @@ export default function AnalyticsTable({
   includeUncategorized,
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
+  hasUnsummarized,
   hasUrlFilterParams,
   selection,
 }: Props) {
@@ -169,7 +186,7 @@ export default function AnalyticsTable({
   const didInitialFilterSyncRef = React.useRef(false);
   const prevHasUrlFilterParamsRef = React.useRef(hasUrlFilterParams);
   const prevHasIndependentFilterRef = React.useRef(
-    hasUnreadSuggestion || hasUnstartedGscEvaluation
+    hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnsummarized
   );
 
   const storedFilter = React.useMemo(() => loadCategoryFilterFromStorage(), []);
@@ -181,7 +198,7 @@ export default function AnalyticsTable({
     if (hasUrlFilterParams) {
       return selectedCategoryNames;
     }
-    if (hasUnreadSuggestion || hasUnstartedGscEvaluation) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnsummarized) {
       return [];
     }
     return storedFilter.selectedCategoryNames;
@@ -190,7 +207,7 @@ export default function AnalyticsTable({
     if (hasUrlFilterParams) {
       return includeUncategorized;
     }
-    if (hasUnreadSuggestion || hasUnstartedGscEvaluation) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnsummarized) {
       return false;
     }
     return storedFilter.includeUncategorized;
@@ -200,6 +217,8 @@ export default function AnalyticsTable({
     React.useState<boolean>(hasUnreadSuggestion);
   const [isFilteringUnstartedGscEvaluation, setIsFilteringUnstartedGscEvaluation] =
     React.useState<boolean>(hasUnstartedGscEvaluation);
+  const [isFilteringUnsummarized, setIsFilteringUnsummarized] =
+    React.useState<boolean>(hasUnsummarized);
 
   // 操作列の展開状態（初期値は true: 展開）
   const [isOpsExpanded, setIsOpsExpanded] = React.useState<boolean>(() => {
@@ -290,12 +309,21 @@ export default function AnalyticsTable({
     setIsFilteringUnstartedGscEvaluation(hasUnstartedGscEvaluation);
   }, [hasUnstartedGscEvaluation]);
 
+  React.useEffect(() => {
+    setIsFilteringUnsummarized(hasUnsummarized);
+  }, [hasUnsummarized]);
+
   const pushFilterQuery = React.useCallback(
     (
       selectedNames: string[],
       includeUncat: boolean,
-      includeUnreadSuggestion: boolean,
-      includeUnstartedGscEvaluation: boolean,
+      // 状態フィルタは3つに増えたため位置引数のブール並びをやめ、呼び出し側で
+      // どれを立てているか読めるようにする
+      statusFilters: {
+        unreadSuggestion: boolean;
+        unstartedGscEvaluation: boolean;
+        unsummarized: boolean;
+      },
       options?: { replace?: boolean }
     ) => {
       const nextQuery = new URLSearchParams(searchParams?.toString() ?? '');
@@ -316,16 +344,22 @@ export default function AnalyticsTable({
         nextQuery.delete('uncategorized');
       }
 
-      if (includeUnreadSuggestion) {
+      if (statusFilters.unreadSuggestion) {
         nextQuery.set('unread_suggestion', '1');
       } else {
         nextQuery.delete('unread_suggestion');
       }
 
-      if (includeUnstartedGscEvaluation) {
+      if (statusFilters.unstartedGscEvaluation) {
         nextQuery.set('gsc_evaluation', 'not_started');
       } else {
         nextQuery.delete('gsc_evaluation');
+      }
+
+      if (statusFilters.unsummarized) {
+        nextQuery.set('unsummarized', '1');
+      } else {
+        nextQuery.delete('unsummarized');
       }
 
       // 2026-08-26 のサイクル統合で「コンテンツ評価未開始」フィルタを廃止したため、
@@ -356,7 +390,7 @@ export default function AnalyticsTable({
     if (hasUrlFilterParams) {
       return;
     }
-    if (hasUnreadSuggestion || hasUnstartedGscEvaluation) {
+    if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnsummarized) {
       return;
     }
     if (storedFilter.selectedCategoryNames.length === 0 && !storedFilter.includeUncategorized) {
@@ -365,27 +399,42 @@ export default function AnalyticsTable({
     pushFilterQuery(
       storedFilter.selectedCategoryNames,
       storedFilter.includeUncategorized,
-      false,
-      false,
+      { unreadSuggestion: false, unstartedGscEvaluation: false, unsummarized: false },
       { replace: true }
     );
-  }, [hasUrlFilterParams, hasUnreadSuggestion, hasUnstartedGscEvaluation, pushFilterQuery, storedFilter]);
+  }, [
+    hasUrlFilterParams,
+    hasUnreadSuggestion,
+    hasUnstartedGscEvaluation,
+    hasUnsummarized,
+    pushFilterQuery,
+    storedFilter,
+  ]);
 
   // 独立フィルターのみの一覧から通常一覧へ戻ったとき、保存済みカテゴリがあれば URL へ復元する。
   // didInitialFilterSyncRef は初回マウント時しか動かないため、ここで明示的に処理する。
   React.useEffect(() => {
-    const hasIndependentFilter = hasUnreadSuggestion || hasUnstartedGscEvaluation;
+    const hasIndependentFilter = hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnsummarized;
     const prev = prevHasIndependentFilterRef.current;
     prevHasIndependentFilterRef.current = hasIndependentFilter;
     if (prev && !hasIndependentFilter && !hasUrlFilterParams) {
       const latest = loadCategoryFilterFromStorage();
       if (latest.selectedCategoryNames.length > 0 || latest.includeUncategorized) {
-        pushFilterQuery(latest.selectedCategoryNames, latest.includeUncategorized, false, false, {
-          replace: true,
-        });
+        pushFilterQuery(
+          latest.selectedCategoryNames,
+          latest.includeUncategorized,
+          { unreadSuggestion: false, unstartedGscEvaluation: false, unsummarized: false },
+          { replace: true }
+        );
       }
     }
-  }, [hasUnreadSuggestion, hasUnstartedGscEvaluation, hasUrlFilterParams, pushFilterQuery]);
+  }, [
+    hasUnreadSuggestion,
+    hasUnstartedGscEvaluation,
+    hasUnsummarized,
+    hasUrlFilterParams,
+    pushFilterQuery,
+  ]);
 
   // カテゴリフィルターの変更ハンドラ
   const handleCategoryFilterChange = React.useCallback(
@@ -393,18 +442,18 @@ export default function AnalyticsTable({
       setCategoryFilterNames(selectedNames);
       setIsIncludingUncategorized(includeUncat);
       saveCategoryFilterToStorage(selectedNames, includeUncat);
-      pushFilterQuery(
-        selectedNames,
-        includeUncat,
-        isFilteringUnreadSuggestion,
-        isFilteringUnstartedGscEvaluation
-      );
+      pushFilterQuery(selectedNames, includeUncat, {
+        unreadSuggestion: isFilteringUnreadSuggestion,
+        unstartedGscEvaluation: isFilteringUnstartedGscEvaluation,
+        unsummarized: isFilteringUnsummarized,
+      });
     },
     [
       pushFilterQuery,
       saveCategoryFilterToStorage,
       isFilteringUnreadSuggestion,
       isFilteringUnstartedGscEvaluation,
+      isFilteringUnsummarized,
     ]
   );
 
@@ -413,17 +462,18 @@ export default function AnalyticsTable({
   const restoreCategoryFiltersFromStorage = (overrides?: {
     includeUnreadSuggestion?: boolean;
     includeUnstartedGscEvaluation?: boolean;
+    includeUnsummarized?: boolean;
   }) => {
     const stored = loadCategoryFilterFromStorage();
     if (stored.selectedCategoryNames.length > 0 || stored.includeUncategorized) {
       setCategoryFilterNames(stored.selectedCategoryNames);
       setIsIncludingUncategorized(stored.includeUncategorized);
-      pushFilterQuery(
-        stored.selectedCategoryNames,
-        stored.includeUncategorized,
-        overrides?.includeUnreadSuggestion ?? isFilteringUnreadSuggestion,
-        overrides?.includeUnstartedGscEvaluation ?? isFilteringUnstartedGscEvaluation
-      );
+      pushFilterQuery(stored.selectedCategoryNames, stored.includeUncategorized, {
+        unreadSuggestion: overrides?.includeUnreadSuggestion ?? isFilteringUnreadSuggestion,
+        unstartedGscEvaluation:
+          overrides?.includeUnstartedGscEvaluation ?? isFilteringUnstartedGscEvaluation,
+        unsummarized: overrides?.includeUnsummarized ?? isFilteringUnsummarized,
+      });
       return true;
     }
     return false;
@@ -435,12 +485,11 @@ export default function AnalyticsTable({
     if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
       if (restoreCategoryFiltersFromStorage({ includeUnreadSuggestion: false })) return;
     }
-    pushFilterQuery(
-      categoryFilterNames,
-      isIncludingUncategorized,
-      next,
-      isFilteringUnstartedGscEvaluation
-    );
+    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, {
+      unreadSuggestion: next,
+      unstartedGscEvaluation: isFilteringUnstartedGscEvaluation,
+      unsummarized: isFilteringUnsummarized,
+    });
   };
 
   // 評価未設定フィルターの変更ハンドラ
@@ -449,12 +498,24 @@ export default function AnalyticsTable({
     if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
       if (restoreCategoryFiltersFromStorage({ includeUnstartedGscEvaluation: false })) return;
     }
-    pushFilterQuery(
-      categoryFilterNames,
-      isIncludingUncategorized,
-      isFilteringUnreadSuggestion,
-      next
-    );
+    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, {
+      unreadSuggestion: isFilteringUnreadSuggestion,
+      unstartedGscEvaluation: next,
+      unsummarized: isFilteringUnsummarized,
+    });
+  };
+
+  // 未要約フィルターの変更ハンドラ
+  const handleUnsummarizedChange = (next: boolean) => {
+    setIsFilteringUnsummarized(next);
+    if (!next && categoryFilterNames.length === 0 && !isIncludingUncategorized) {
+      if (restoreCategoryFiltersFromStorage({ includeUnsummarized: false })) return;
+    }
+    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, {
+      unreadSuggestion: isFilteringUnreadSuggestion,
+      unstartedGscEvaluation: isFilteringUnstartedGscEvaluation,
+      unsummarized: next,
+    });
   };
 
   // フィルタータグの削除ハンドラ
@@ -463,12 +524,11 @@ export default function AnalyticsTable({
       setCategoryFilterNames(prev => {
         const next = prev.filter(name => name !== categoryName);
         saveCategoryFilterToStorage(next, isIncludingUncategorized);
-        pushFilterQuery(
-          next,
-          isIncludingUncategorized,
-          isFilteringUnreadSuggestion,
-          isFilteringUnstartedGscEvaluation
-        );
+        pushFilterQuery(next, isIncludingUncategorized, {
+          unreadSuggestion: isFilteringUnreadSuggestion,
+          unstartedGscEvaluation: isFilteringUnstartedGscEvaluation,
+          unsummarized: isFilteringUnsummarized,
+        });
         return next;
       });
     },
@@ -476,6 +536,7 @@ export default function AnalyticsTable({
       isIncludingUncategorized,
       isFilteringUnreadSuggestion,
       isFilteringUnstartedGscEvaluation,
+      isFilteringUnsummarized,
       pushFilterQuery,
       saveCategoryFilterToStorage,
     ]
@@ -485,16 +546,16 @@ export default function AnalyticsTable({
   const removeUncategorizedFilter = React.useCallback(() => {
     setIsIncludingUncategorized(false);
     saveCategoryFilterToStorage(categoryFilterNames, false);
-    pushFilterQuery(
-      categoryFilterNames,
-      false,
-      isFilteringUnreadSuggestion,
-      isFilteringUnstartedGscEvaluation
-    );
+    pushFilterQuery(categoryFilterNames, false, {
+      unreadSuggestion: isFilteringUnreadSuggestion,
+      unstartedGscEvaluation: isFilteringUnstartedGscEvaluation,
+      unsummarized: isFilteringUnsummarized,
+    });
   }, [
     categoryFilterNames,
     isFilteringUnreadSuggestion,
     isFilteringUnstartedGscEvaluation,
+    isFilteringUnsummarized,
     pushFilterQuery,
     saveCategoryFilterToStorage,
   ]);
@@ -505,12 +566,11 @@ export default function AnalyticsTable({
     if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
       if (restoreCategoryFiltersFromStorage({ includeUnreadSuggestion: false })) return;
     }
-    pushFilterQuery(
-      categoryFilterNames,
-      isIncludingUncategorized,
-      false,
-      isFilteringUnstartedGscEvaluation
-    );
+    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, {
+      unreadSuggestion: false,
+      unstartedGscEvaluation: isFilteringUnstartedGscEvaluation,
+      unsummarized: isFilteringUnsummarized,
+    });
   };
 
   // 評価未設定フィルターの削除ハンドラ
@@ -519,7 +579,24 @@ export default function AnalyticsTable({
     if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
       if (restoreCategoryFiltersFromStorage({ includeUnstartedGscEvaluation: false })) return;
     }
-    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, isFilteringUnreadSuggestion, false);
+    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, {
+      unreadSuggestion: isFilteringUnreadSuggestion,
+      unstartedGscEvaluation: false,
+      unsummarized: isFilteringUnsummarized,
+    });
+  };
+
+  // 未要約フィルターの削除ハンドラ
+  const removeUnsummarizedFilter = () => {
+    setIsFilteringUnsummarized(false);
+    if (categoryFilterNames.length === 0 && !isIncludingUncategorized) {
+      if (restoreCategoryFiltersFromStorage({ includeUnsummarized: false })) return;
+    }
+    pushFilterQuery(categoryFilterNames, isIncludingUncategorized, {
+      unreadSuggestion: isFilteringUnreadSuggestion,
+      unstartedGscEvaluation: isFilteringUnstartedGscEvaluation,
+      unsummarized: false,
+    });
   };
 
   // 全フィルターをクリア
@@ -528,10 +605,15 @@ export default function AnalyticsTable({
     setIsIncludingUncategorized(false);
     setIsFilteringUnreadSuggestion(false);
     setIsFilteringUnstartedGscEvaluation(false);
+    setIsFilteringUnsummarized(false);
     if (categoryFilterNames.length > 0 || isIncludingUncategorized) {
       saveCategoryFilterToStorage([], false);
     }
-    pushFilterQuery([], false, false, false);
+    pushFilterQuery([], false, {
+      unreadSuggestion: false,
+      unstartedGscEvaluation: false,
+      unsummarized: false,
+    });
   };
 
   // フィルターが適用中かどうか
@@ -539,7 +621,8 @@ export default function AnalyticsTable({
     categoryFilterNames.length > 0 ||
     isIncludingUncategorized ||
     isFilteringUnreadSuggestion ||
-    isFilteringUnstartedGscEvaluation;
+    isFilteringUnstartedGscEvaluation ||
+    isFilteringUnsummarized;
 
   const handleLaunch = React.useCallback(
     async (payload: LaunchPayload) => {
@@ -760,6 +843,8 @@ export default function AnalyticsTable({
               onFilterChange={handleCategoryFilterChange}
               onUnreadSuggestionChange={handleUnreadSuggestionChange}
               onUnstartedGscEvaluationChange={handleUnstartedGscEvaluationChange}
+              hasUnsummarized={isFilteringUnsummarized}
+              onUnsummarizedChange={handleUnsummarizedChange}
               onClearAll={clearAllFilters}
             />
         }
@@ -828,6 +913,20 @@ export default function AnalyticsTable({
                         </button>
                       </span>
                     )}
+                    {isFilteringUnsummarized && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-purple-800 bg-purple-100">
+                        <Sparkles className="h-3 w-3" />
+                        未要約
+                        <button
+                          type="button"
+                          onClick={removeUnsummarizedFilter}
+                          className="hover:bg-purple-200 rounded-full p-0.5"
+                          title="未要約フィルターを解除"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={clearAllFilters}
@@ -853,7 +952,7 @@ export default function AnalyticsTable({
                   {/* 2026-08-26: 旧実装は hasUnstartedGa4Evaluation を見ており、
                       「評価未設定」だけを選んで0件になったときに「まだコンテンツがありません」と
                       出る取りこぼしがあった。GA4フィルタ廃止にあわせて GSC 側を見るよう直した */}
-                  {hasUrlFilterParams || hasUnreadSuggestion || hasUnstartedGscEvaluation
+                  {hasUrlFilterParams || hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnsummarized
                     ? '表示条件に一致するコンテンツがありません。フィルタを変更してください。'
                     : 'まだコンテンツがありません。チャットでブログを作成するか、WordPress記事を一括インポートしてください。'}
                 </p>
@@ -868,13 +967,9 @@ export default function AnalyticsTable({
                       >
                         <Checkbox
                           aria-label="全選択"
-                          checked={
-                            selection.isSelectAll
-                              ? true
-                              : selection.selectedIds.size > 0
-                                ? 'indeterminate'
-                                : false
-                          }
+                          className={SELECTION_CHECKBOX_CLASS}
+                          disabled={selection.canSelectAll === false}
+                          checked={resolveHeaderChecked(selection)}
                           onCheckedChange={checked => selection.onToggleAll(checked === true)}
                         />
                       </th>
@@ -984,8 +1079,7 @@ export default function AnalyticsTable({
                     const isEditBusy = isPendingEdit || isSummarizing;
 
                     const isRowSelected = Boolean(
-                      annotationId &&
-                        (selection?.isSelectAll || selection?.selectedIds.has(annotationId))
+                      annotationId && selection && resolveRowChecked(selection, annotationId)
                     );
 
                     return (
@@ -1001,7 +1095,8 @@ export default function AnalyticsTable({
                             {annotationId ? (
                               <Checkbox
                                 aria-label={`${fallbackTitle}を選択`}
-                                checked={selection.isSelectAll || selection.selectedIds.has(annotationId)}
+                                className={SELECTION_CHECKBOX_CLASS}
+                                checked={isRowSelected}
                                 onCheckedChange={checked =>
                                   selection.onToggleRow(annotationId, checked === true)
                                 }

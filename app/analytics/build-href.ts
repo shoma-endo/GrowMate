@@ -14,6 +14,7 @@ export interface AnalyticsHrefState {
   includeUncategorized: boolean;
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
+  hasUnsummarized: boolean;
   instagramConnected: boolean;
   activeTab: 'blog' | 'instagram';
   igPage: number;
@@ -49,6 +50,9 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
   }
   if (state.hasUnstartedGscEvaluation) {
     query.set('gsc_evaluation', 'not_started');
+  }
+  if (state.hasUnsummarized) {
+    query.set('unsummarized', '1');
   }
 
   const nextTab = patch.tab ?? state.activeTab;

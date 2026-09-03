@@ -52,6 +52,10 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     ? params.gsc_evaluation[0]
     : params?.gsc_evaluation;
   const hasUnstartedGscEvaluation = gscEvaluationParam === 'not_started';
+  const unsummarizedParam = Array.isArray(params?.unsummarized)
+    ? params.unsummarized[0]
+    : params?.unsummarized;
+  const hasUnsummarized = unsummarizedParam === '1';
   // unread_suggestion はカテゴリフィルターと直交するため hasUrlFilterParams に含めない。
   // 含めると ?unread_suggestion=1 のみの URL でも localStorage のカテゴリ復元が
   // スキップされ、保存済みカテゴリフィルターが失われる回帰が発生する。
@@ -151,6 +155,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         includeUncategorized,
         hasUnreadSuggestion,
         hasUnstartedGscEvaluation,
+        hasUnsummarized,
       }),
       gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
       analyticsContentService.getAvailableCategoryNames(userId),
@@ -216,6 +221,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     if (hasUnstartedGscEvaluation) {
       query.set('gsc_evaluation', 'not_started');
     }
+    if (hasUnsummarized) {
+      query.set('unsummarized', '1');
+    }
     if (instagramConnected && activeTab === 'instagram') {
       query.set('tab', 'instagram');
       query.set('ig_page', String(igPage));
@@ -254,6 +262,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       includeUncategorized={includeUncategorized}
       hasUnreadSuggestion={hasUnreadSuggestion}
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
+      hasUnsummarized={hasUnsummarized}
       ga4Truncated={ga4Truncated ?? false}
       periodClamped={clampedPeriod.clamped}
       hasUrlFilterParams={hasUrlFilterParams}

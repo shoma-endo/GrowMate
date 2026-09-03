@@ -24,8 +24,9 @@ class AnalyticsContentService {
   /**
    * BR-07 の母集団（利用者が所有する全記事）の件数を取得する。
    * 一覧RPCのフィルタ未指定時と同じ user_id 条件を使い、絞り込み後の件数とは分離する。
+   * 取得に失敗した場合は 0 件と区別するため null を返す（呼び出し元で全選択を止める）。
    */
-  async countAllAnnotations(userId: string): Promise<number> {
+  async countAllAnnotations(userId: string): Promise<number | null> {
     try {
       const { count, error } = await supabaseService
         .getClient()
@@ -35,13 +36,13 @@ class AnalyticsContentService {
 
       if (error) {
         console.error('[AnalyticsContentService] countAllAnnotations failed:', error.message);
-        return 0;
+        return null;
       }
 
       return count ?? 0;
     } catch (error) {
       console.error('[AnalyticsContentService] countAllAnnotations error:', error);
-      return 0;
+      return null;
     }
   }
 
@@ -104,6 +105,11 @@ class AnalyticsContentService {
           p_include_uncategorized: includeUncategorized,
           p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
           p_has_unstarted_gsc_evaluation: params.hasUnstartedGscEvaluation ?? false,
+          // 未要約フィルタを使うときだけ引数を積む。常に送ると、migration 未適用の環境へ
+          // アプリを先にデプロイした瞬間に PostgREST が PGRST202（関数シグネチャ不一致）を返し、
+          // 下の catch が baseline を返して **一覧が全滅する**。渡さなければ SQL 側の
+          // `default false` が効くので、適用順が前後しても通常の一覧は壊れない
+          ...(params.hasUnsummarized === true ? { p_has_unsummarized: true } : {}),
           // p_has_unstarted_ga4_evaluation は渡さない。2026-08-26 のサイクル統合で
           // 「コンテンツ評価未開始」フィルタを廃止したため（§10.2）。RPC 側の引数は
           // `default false` で残してあるので、渡さなければ条件が効かない。
@@ -221,6 +227,9 @@ class AnalyticsContentService {
         ga4Truncated,
       };
     } catch (error) {
+      // 一覧が空で返る唯一の失敗経路なのでログを残す。ここが無音だと、RPC の
+      // シグネチャ不一致（migration 未適用）で一覧が全滅してもサーバーログに何も出ない
+      console.error('[AnalyticsContentService] getPage failed:', error);
       const message = error instanceof Error ? error.message : 'ページデータの取得に失敗しました';
       return {
         ...baseline,
