@@ -3,6 +3,6 @@
 # 詳細は scripts/takt-pre-push-guard.sh。
 set -euo pipefail
 bash scripts/takt-pre-push-guard.sh
-npm run test
+npm run test:coverage
 npm run build
 npm run knip

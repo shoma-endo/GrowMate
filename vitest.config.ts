@@ -14,7 +14,8 @@ export default defineConfig({
       // テストが import したファイルだけでなく src/app 全体を分母にする（未テストのファイルを見えなくしない）
       include: ['src/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}'],
       exclude: ['src/types/**', '**/*.d.ts'],
-      reporter: ['text-summary', 'json-summary'],
+      // html はファイル別の未実行行を見るため（coverage/ は gitignore 済み）
+      reporter: ['text-summary', 'json-summary', 'html'],
       // 閾値は全ファイル基準の実測（2026-09-03: lines 16.29 / stmts 16.37 / funcs 17.70 / branches 12.14）の切り捨て。
       // 整数 1 ポイント上がるごとに autoUpdate が config を書き換える（ラチェット）。下げる変更は仕様合意が要る。
       // 数値合わせのテストは書かない（docs/specs/testing-strategy.md）。

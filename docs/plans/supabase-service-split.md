@@ -15,7 +15,7 @@
 
 ### 背景・解決したい課題
 
-- 現在、誰が、どの業務で困っているか: `src/server/services/supabaseService.ts` は 2,829 行（実行行 2,353）、公開メソッド 72 本、10 ドメイン（users / chat / wordpress / gsc / googleAds / contentInventory / brief / userDeletion / instagram / 基盤）が 1 クラスに同居している。直近 90 日の churn は 26 回で全ファイル中 2 位。仕様起点の実装（`spec-to-pr`）でこのファイルを触るたびに、無関係ドメインの差分衝突とレビュー範囲の肥大が起きる
+- 現在、誰が、どの業務で困っているか: `src/server/services/supabaseService.ts` は 2,829 行（実行行 2,353）、メンバー 79（public 68・protected 4・private 6・constructor）、10 ドメイン（users / chat / wordpress / gsc / googleAds / contentInventory / brief / userDeletion / instagram / 基盤）が 1 クラスに同居している。直近 90 日の churn は 26 回で全ファイル中 2 位。仕様起点の実装（`spec-to-pr`）でこのファイルを触るたびに、無関係ドメインの差分衝突とレビュー範囲の肥大が起きる
 - 放置した場合の影響: 新規テーブル追加のたびに末尾へメソッドが増え続ける（`.agents/skills/supabase/service-usage.md` 運用ルール 1 がこのファイルへの追加を基本としている）。eslint `max-lines`（500）の warn 最大件で、月次 hotspot レビューの上位に居座り続ける
 
 ### 目的
@@ -29,7 +29,7 @@
 | --- | --- | --- | --- | --- |
 | `supabaseService.ts` 実行行数 | 2,353 | 30 以下（facade のみ） | `npm run hotspots` | マージ時 |
 | 分割後の各ファイル実行行数 | – | 全て 500 以下 | `npm run lint` で `max-lines` warn が新規ファイルに 0 件 | マージ時 |
-| 呼び出し側・テストの変更ファイル数 | – | 0（`src/server/services/supabase/` 配下と facade、skill 文書以外に差分なし） | `git diff --stat` | PR レビュー時 |
+| 呼び出し側・テストの変更ファイル数 | – | 0（`git diff --stat develop -- src app tests` の変更が `src/server/services/supabase/*.ts`（新規）と `src/server/services/supabaseService.ts` のみ。`tests/` に差分なし） | `git diff --stat develop -- src app tests` | PR レビュー時 |
 | 既存テスト | 652 件 pass | 652 件 pass、テストコード無変更 | `npm run test:coverage` | PR 作成時 |
 
 ## 2. 利用者・関係者・利用シナリオ
@@ -136,9 +136,10 @@ import { SupabaseService } from '@/server/services/supabaseService'   ← パス
 | FR-001 | 基盤クラス `SupabaseBaseService` を `src/server/services/supabase/base.ts`（新規）に置き、`supabase` フィールド・`success`・`failure`・`fetchAllPaged`・`getClient`・`withServiceRoleClient`・`SupabaseResult` / `SupabaseErrorInfo` 型を移す | Must | §3 To-Be | 6 サブクラスが無変更で `npm run build` を通る |
 | FR-002 | 各ドメインをクラス 1 つ・ファイル 1 つとし、線形継承チェーンで積む（下表） | Must | ALT-001 | 各ファイル実行行数 ≤500、`npm run lint` で新規ファイルに `max-lines` warn なし |
 | FR-003 | `src/server/services/supabaseService.ts` を facade にする: `export class SupabaseService extends <チェーン末端> {}` と `export type { SupabaseResult }` のみ | Must | §3 To-Be | 呼び出し側 51 ファイル・テスト 20 件が無変更で pass |
-| FR-004 | `ExtendedDatabase`（googleAds 2 表 + `admin_action_logs` を 1 型に併合）をドメインごとに分ける。`src/types/database.types.pending.ts` の `asPendingClient()` を使い、googleAds 用と userDeletion 用の pending 型を分離する | Must | ALT-002 | 併合型 `ExtendedDatabase` が消え、各ドメインファイルが自ドメインの表しか型付けしない |
+| FR-004 | `ExtendedDatabase` は **未反映 migration の型ではない**。3 表（`google_ads_evaluation_settings` / `google_ads_negative_keywords_settings` / `admin_action_logs`）は生成型 `src/types/database.types.ts` に既に存在し、`ExtendedDatabase` は `status` 等をリテラル union に絞る**型絞り込みオーバーレイ**である。これをドメインごとに分け、`googleAds.ts` にファイル内ローカル型 `GoogleAdsDatabase`（2 表分）、`userDeletion.ts` に `AdminActionLogDatabase` を定義し、`src/types/database.types.pending.ts` の `asPendingClient<TDatabase>(this.supabase)` で取得する。`database.types.pending.ts` 自体は変更しない（PROVISIONAL ブロックを足さない）。3 表の `Row/Insert/Update` 本文と `AdminActionLogStatus` union は現行から移動のみ | Must | ALT-002 | 併合型 `ExtendedDatabase` が消え、各ドメインファイルが自ドメインの表しか型付けしない。`updateAdminActionLogStatus` の引数型（`Extract<AdminActionLogStatus, ...>`）が不変 |
 | FR-005 | `.agents/skills/supabase/service-usage.md` の実ファイルパス記載を更新し、「新規テーブル追加時はドメインファイルへ追加、該当ドメインが無ければ新規ファイルをチェーンに挿入」を運用ルールに追記する | Must | §4 対象範囲 | `npm run verify:agent-skills` pass |
 | FR-006 | private ヘルパー（`mapGoogleAdsEvaluationSettingsRow` 等の row mapper、`get*Client`）は使うドメインのファイルへ一緒に移す | Must | 結合の局所化 | ドメイン間で private を参照しない |
+| FR-007 | `import 'server-only'` は `base.ts`（新規）の先頭に置く。`SupabaseErrorInfo` は export しない（`base.ts` 内でのみ使用。export すると `npm run knip` の未使用 export になる）。`SupabaseResult` だけ `base.ts` から export し、facade が再 export する | Must | knip ゲート | `npm run knip` pass |
 
 ### チェーン構成（FR-002）
 
@@ -210,13 +211,14 @@ Feature: supabaseService.ts のドメイン別分割
 
     Scenario: max-lines の warn が増えない
       When npm run lint を実行する
-      Then src/server/services/supabase/ 配下に max-lines の warn が 0 件で、warn 総数が分割前（26）より 1 件減る
+      Then src/server/services/supabase/ 配下と supabaseService.ts に max-lines の warn が 0 件である
 
   Rule: 挙動を変えない
 
-    Scenario: 移動のみであることを行数で示す
-      When 分割前後で対象ファイル群の実行行数の総和を比べる
-      Then 差が ±5% 以内である
+    Scenario: 移動のみであることを行の多重集合で示す
+      Given 分割前の supabaseService.ts と、分割後の supabase/*.ts と facade を連結したもの
+      When それぞれから import / export / class 宣言 / 閉じ括弧のみ / 空行を除いた行を sort して比べる
+      Then 差分が FR-004 のローカル型宣言行だけである
 ```
 
 ### シナリオ対応表
@@ -228,7 +230,7 @@ Feature: supabaseService.ts のドメイン別分割
 | 継承サブクラスが protected API を使い続けられる | FR-001 | ALT-001 |
 | hotspot 上位から外れる | FR-002 | BR-03 |
 | max-lines の warn が増えない | FR-002 | BR-03 |
-| 移動のみであることを行数で示す | FR-006 | BR-01 |
+| 移動のみであることを行の多重集合で示す | FR-006 | BR-01 |
 
 ## 8. 非機能要件
 
@@ -303,18 +305,19 @@ Feature: supabaseService.ts のドメイン別分割
 - 将来変更する条件: 呼び出し側の移行を決めたとき（OPEN-001）
 - 判断者・判断日: shoma-endo・2026-09-03
 
-### ALT-002: 未反映テーブル型の扱い
+### ALT-002: 型絞り込みオーバーレイ `ExtendedDatabase` の扱い
 
-- 判断: `ExtendedDatabase`（googleAds 2 表 + admin_action_logs の併合型）をどう分けるか
+- 判断: `ExtendedDatabase`（googleAds 2 表 + admin_action_logs を生成型の上にリテラル union で絞る併合型）をどう分けるか
 - 比較した案:
-  - 案A: `asPendingClient()` を使い、ドメインごとに pending 型を定義
+  - 案A: ドメインごとのファイル内ローカル型（`GoogleAdsDatabase` / `AdminActionLogDatabase`）に分け、`asPendingClient<T>()` でクライアントを取得
   - 案B: 併合型を `base.ts` に残して全ドメインから参照
+  - 案C: オーバーレイを捨てて生成型（`status: string`）をそのまま使う
 - 採用案: 案A
-- 採用理由: 既存の正規パターン（`database.types.pending.ts`）に揃う。base が特定ドメインの表を知らなくなる
-- 再調査: `asPendingClient` の使用箇所 2 件を確認 / より良い案なし
-- 却下した案と理由: 案B は base がドメイン知識を持ち続け、分割の意味が薄れる
+- 採用理由: base が特定ドメインの表を知らなくなる。`asPendingClient<TDatabase>(client)` の型引数は任意の Database 形なので、未反映 migration 用でなくても使える（`src/server/actions/gscDashboard.actions.ts` に前例）
+- 再調査: 3 表が `src/types/database.types.ts` に生成済みであることを確認（17 / 647 / 682 行）。よって `database.types.pending.ts` に PROVISIONAL ブロックを足す対象ではない / より良い案なし
+- 却下した案と理由: 案B は base がドメイン知識を持ち続け、分割の意味が薄れる。案C は `updateAdminActionLogStatus` の引数型が緩み BR-01 に反する
 - 影響: 型の書き換えで最大 2 時間の上振れ
-- 将来変更する条件: `npm run supabase:types` で当該表が生成型に入ったとき pending 型を削除
+- 将来変更する条件: 生成型側で `status` が enum になりオーバーレイが不要になったとき
 - 判断者・判断日: shoma-endo・2026-09-03
 
 ## 12. リスク・確認質問・未決定事項
@@ -335,7 +338,7 @@ Feature: supabaseService.ts のドメイン別分割
 
 | ID | 未決定事項 | 今決めない理由 | 決めるタイミング | 決める人 |
 | --- | --- | --- | --- | --- |
-| OPEN-001 | 呼び出し側 51 ファイルをドメインクラス直参照へ移行し、チェーンを平坦化するか | 本仕様の効果（レビュー範囲縮小）が出るかを先に見る | 本 PR マージ後 1 か月の月次メンテ hotspot レビュー | shoma-endo |
+| OPEN-001 | 呼び出し側 51 ファイルをドメインクラス直参照へ移行し、チェーンを平坦化するか。平坦化するとサブクラスが他ドメインの public メソッドを `this.` で呼んでいる箇所（`headingFlowService` → `createChatMessage` / `updateSessionLastMessageAt`、`ga4ContentEvaluationService` → `getGscCredentialByUserId`）の扱いを決める必要がある | 本仕様の効果（レビュー範囲縮小）が出るかを先に見る | 本 PR マージ後 1 か月の月次メンテ hotspot レビュー | shoma-endo |
 
 ## 13. テスト・リリース・ロールバック
 
@@ -377,17 +380,24 @@ Feature: supabaseService.ts のドメイン別分割
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
 | CP-1 着手前 | `supabaseService.ts` を変更中の他 PR が無い（R-003） | shoma-endo | 未確認 |
-| CP-2 PR 作成時 | `git diff --stat` で `src/server/services/supabase/`・facade・`service-usage.md` 以外に差分が無い | spec-to-pr self_review | 未確認 |
+| CP-2 PR 作成時 | `git diff --stat develop -- src app tests` の変更が `src/server/services/supabase/*.ts` と `src/server/services/supabaseService.ts` のみ（`tests/` 差分なし）。それ以外は `.agents/skills/supabase/service-usage.md` と、workflow が書く仕様書ステータス・`vitest.config.ts` の閾値ラチェット・README 同期に限る | spec-to-pr self_review | 未確認 |
 
 ## 15. 完了条件
 
 - Definition of Done（すべて満たして完了）:
   - `npm run verify` 緑（audit / lint / test:coverage / build / knip）
   - `npm run verify:agent-skills` 緑
-  - `npm run lint` で `src/server/services/supabase/` 配下と facade に `max-lines` warn が 0 件、warn 総数が 25 以下
+  - `npm run lint` で `src/server/services/supabase/` 配下と facade に `max-lines` warn が 0 件
   - `npm run hotspots` の上位 5 件に `supabaseService.ts` と `src/server/services/supabase/` 配下が入らない
-  - `git diff --stat develop` の変更ファイルが `src/server/services/supabase/*.ts`（新規）、`src/server/services/supabaseService.ts`、`.agents/skills/supabase/service-usage.md` のみ
-  - 移動前後で対象ファイル群の実行行数総和の差が ±5% 以内
+  - `git diff --stat develop -- src app tests` の変更が `src/server/services/supabase/*.ts`（新規）と `src/server/services/supabaseService.ts` のみ。`tests/` に差分なし
+  - 移動のみの機械確認: 次の 2 つの出力の差分が FR-004 のローカル型宣言行だけである
+
+    ```bash
+    filt() { grep -vE '^\s*(import |export |class |\}\s*$|$)' | sort; }
+    git show develop:src/server/services/supabaseService.ts | filt > /tmp/before.txt
+    cat src/server/services/supabase/*.ts src/server/services/supabaseService.ts | filt > /tmp/after.txt
+    diff /tmp/before.txt /tmp/after.txt
+    ```
   - `tests/unit/server/services/supabaseService.negativeKeywordsDue.test.ts`（唯一実クラスを使うテスト）が無変更で pass
 - 検証方法・証跡（テスト結果・画面確認・ログ等）: PR 本文に verify のログ末尾、hotspots の表、`git diff --stat` を貼る
 - 完了確認者・確認日: shoma-endo・未

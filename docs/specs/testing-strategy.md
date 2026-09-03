@@ -250,6 +250,14 @@ test:
 - ラチェット運用: `autoUpdate` で整数 1 ポイント上がるごとに config が書き換わる。上がった差分はその PR でコミットする。閾値を下げる変更は本節を更新して理由を残す
 - 目的は「新しく入るコードがテスト無しで分母だけ増やす」事象を PR 単位で止めること。全体率を品質指標として扱う方針は変えない
 
+#### 閾値を AI 実装者に渡すときの前提
+
+カバレッジは「実行されたか」の指標で「正しいか」の指標ではない。AI に数値ゲートを渡すと、実行するだけで検証しないテストで数字を埋める（参考: [AI が書くテストとカバレッジの盲点](https://zenn.dev/okamyuji/articles/ai-tests-coverage-blindspot)）。それを防ぐため、ゲートは「AI が満たす対象」ではなく「AI が止まる合図」として運用する。
+
+- 閾値割れは実装・修正ステップで ABORT し、人に返す（`.takt/facets/instructions/spec-to-pr/implement.md` / `fix.md`）。テスト追加や閾値引き下げで通さない
+- `expect` / `assert` の無いテストケースは eslint（`local-test/test-has-assertion`）でエラーにする。アサーションの強さは機械で見ないので、`toBeDefined` だけのテストや実装式の写しは architecture review の `needs_fix` 対象にする
+- 弱いテストの検出力そのものを測る手段（mutation testing）は未導入。導入判断は「将来の拡張判断」に置く
+
 ---
 
 ## 将来の拡張判断
@@ -262,7 +270,7 @@ Phase 1〜3の運用後、次の事象が発生した領域から追加自動化
 - ログイン、チャット開始、設定保存など主要フローの回帰が目視確認だけでは不安定になった
 - LLM出力の構造違反、途中切れ、大量入力時の品質低下を定量的に追跡する必要が生じた
 
-候補はSupabaseローカル環境でのRLS・RPC統合テスト、少数のPlaywrightスモークテスト、LLM evalとする。Reactコンポーネントの網羅的なユニットテストは、明確な費用対効果が確認できるまで優先しない。
+候補はSupabaseローカル環境でのRLS・RPC統合テスト、少数のPlaywrightスモークテスト、LLM eval、`src/domain` と `src/lib` に限定した mutation testing（Stryker + vitest runner。月次計測から始め、ゲートにしない）とする。Reactコンポーネントの網羅的なユニットテストは、明確な費用対効果が確認できるまで優先しない。
 
 ---
 
