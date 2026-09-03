@@ -147,11 +147,6 @@ export default function AnalyticsClient({
     setIsApplyingDateRange(false);
   }, [startDate, endDate]);
 
-  React.useEffect(() => {
-    setSelectedIds(new Set());
-    setIsSelectAll(false);
-  }, [currentPage]);
-
   const applyDateRange = () => {
     if (!isDateRangeChanged || isApplyingDateRange) return;
     setIsApplyingDateRange(true);
