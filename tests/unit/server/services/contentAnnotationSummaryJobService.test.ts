@@ -75,6 +75,8 @@ interface FakeStore {
 let store: FakeStore;
 /** 進捗保存の呼び出しを記録する（チャンク境界でしか呼ばれないことの検証に使う） */
 let progressUpdates: Row[];
+/** `users` の SELECT を失敗させる（宛先の取得エラーと未登録を区別する検証に使う） */
+let userSelectFailure: string | null = null;
 
 function matches(row: Row, filters: Filter[]): boolean {
   return filters.every(filter => {
@@ -137,6 +139,10 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
 
   private run(): { data: unknown; error: unknown } {
     const rows = store[this.table];
+
+    if (this.op === 'select' && this.table === 'users' && userSelectFailure) {
+      return { data: null, error: { message: userSelectFailure } };
+    }
 
     if (this.op === 'insert') {
       const inserted: Row = {
@@ -341,6 +347,7 @@ beforeEach(() => {
   };
   progressUpdates = [];
   rpcFailure = null;
+  userSelectFailure = null;
   mocks.computeSummaryItemBudgetMs.mockReturnValue(BUDGET);
   mocks.canFetchWpPostContentLive.mockResolvedValue(true);
   mocks.saveSummary.mockResolvedValue({ success: true, data: {} });
@@ -750,6 +757,27 @@ describe('完了メール（AC-B04 / AC-B05 / AC-B06 / AC-B15）', () => {
     expect(jobRow().status).toBe('completed');
     expect(jobRow().notified_at).not.toBeNull();
     expect(result.emailsSkipped).toBe(1);
+  });
+
+  it('宛先の取得に失敗したら notified_at を打たず、次回起動で取り直す（未登録と区別する）', async () => {
+    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
+    store.content_annotations.push(annotation('a1'));
+    userSelectFailure = 'connection reset';
+
+    const first = await contentAnnotationSummaryJobService.runNextJob(Date.now());
+
+    // 取得エラーを「未登録」と同じ扱いにすると notified_at が打たれ、掃き出しの母集団
+    // （notified_at is null）から外れて完了通知が永久に届かなくなる
+    expect(jobRow().notified_at).toBeNull();
+    expect(first.emailsFailed).toBe(1);
+    expect(first.emailsSkipped).toBe(0);
+    expect(mocks.sendCompletionEmail).not.toHaveBeenCalled();
+
+    userSelectFailure = null;
+    const second = await contentAnnotationSummaryJobService.runNextJob(Date.now());
+
+    expect(second.emailsSent).toBe(1);
+    expect(jobRow().notified_at).not.toBeNull();
   });
 
   it('送信に失敗したら notified_at を打たず、次回起動の掃き出しで再送する', async () => {

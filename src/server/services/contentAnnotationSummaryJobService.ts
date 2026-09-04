@@ -654,9 +654,14 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
    * 終了したジョブに完了メールを1通送る（BR-B06）。
    *
    * **`notified_at` を打つのは「通知の試行を終えたとき」**で、送信成功時に加えて
-   * 宛先が無く送れなかったときも打つ。打たないと `notified_at is null` のまま毎起動の
+   * **宛先が無いと確認できた**ときも打つ。打たないと `notified_at is null` のまま毎起動の
    * 掃き出しに選ばれ続け、10件の枠を古い滞留行が永久に占有する（AC-B15 の経路が死ぬ）。
-   * **送信失敗のときだけ打たず**、次回の掃き出しで再送する。
+   * **送信失敗と宛先の取得失敗のときは打たず**、次回の掃き出しで再試行する。
+   *
+   * 宛先の取得失敗を「宛先が無い」と同じ扱いにしてはならない。`users` の SELECT が
+   * 一時的に落ちただけで `notified_at` を打つと、その行は二度と掃き出しに選ばれず、
+   * **画面を閉じた利用者へ完了結果が永久に届かない**。取得エラーは `failed` に倒し、
+   * 次回起動で取り直す（掃き出しの母集団は `created_at` 24時間以内なので再試行は有限）。
    */
   private async notifyJob(
     job: ContentAnnotationSummaryJobRow
@@ -664,7 +669,14 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
     if (job.notified_at) return 'already_notified';
     if (job.status !== 'completed' && job.status !== 'failed') return 'already_notified';
 
-    const userEmail = await this.fetchUserEmail(job.user_id);
+    const emailLookup = await this.fetchUserEmail(job.user_id);
+    if (!emailLookup.ok) {
+      // 取得エラーは「宛先が無い」と区別する。ここで notified_at を打つと掃き出しの
+      // 母集団から外れ、一時的な DB エラー1回で完了通知が永久に失われる
+      await this.recordNotificationFailure(job.id, 'user_email_lookup_failed');
+      return 'failed';
+    }
+    const userEmail = emailLookup.email;
     if (!userEmail) {
       console.warn('[content-annotation-summary-job] user has no email, skipping notification:', {
         jobId: job.id,
@@ -706,7 +718,13 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
     return 'sent';
   }
 
-  private async fetchUserEmail(userId: string): Promise<string | null> {
+  /**
+   * 宛先メールを取り出す。**「行が無い / 空」と「取得できなかった」を別の結果で返す**。
+   * 呼び出し側が前者を `notified_at` 打ち、後者を再試行に倒せるようにするため。
+   */
+  private async fetchUserEmail(
+    userId: string
+  ): Promise<{ ok: true; email: string | null } | { ok: false }> {
     const { data, error } = await this.getClient()
       .from('users')
       .select('email')
@@ -717,10 +735,10 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
         userId,
         message: error.message,
       });
-      return null;
+      return { ok: false };
     }
     const email = data?.email?.trim();
-    return email ? email : null;
+    return { ok: true, email: email ? email : null };
   }
 
   private async markNotified(jobId: string): Promise<void> {
