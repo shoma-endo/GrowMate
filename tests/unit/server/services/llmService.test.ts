@@ -76,4 +76,42 @@ describe('llmService', () => {
     await llmChat('anthropic', 'test-model', [{ role: 'user', content: 'test' }]);
     expect(mocks.anthropicCreate.mock.calls[1]?.[0]).not.toHaveProperty('thinking');
   });
+
+  /**
+   * `maxRetries` も**未指定なら SDK へ渡さない**（`thinking` と同型）。渡してしまうと
+   * SDK 既定（2回）に依存している他機能の再送挙動まで変わる。
+   * 逆に `0` を指定した経路では、SDK が 429 を裏でバックオフ再送しないことをここで固定する。
+   */
+  it('maxRetries を指定したときだけ SDK のリクエストオプションに載せる', async () => {
+    mocks.anthropicCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+
+    await llmChat('anthropic', 'test-model', [{ role: 'user', content: 'test' }], {
+      maxRetries: 0,
+    });
+    expect(mocks.anthropicCreate.mock.calls[0]?.[1]).toMatchObject({ maxRetries: 0 });
+
+    await llmChat('anthropic', 'test-model', [{ role: 'user', content: 'test' }]);
+    expect(mocks.anthropicCreate.mock.calls[1]?.[1]).not.toHaveProperty('maxRetries');
+  });
+
+  it('stream 経路でも maxRetries を SDK のリクエストオプションに載せる', async () => {
+    mocks.anthropicStream.mockReturnValue({
+      finalMessage: () =>
+        Promise.resolve({
+          content: [{ type: 'text', text: 'ok' }],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+    });
+
+    await llmChat('anthropic', 'test-model', [{ role: 'user', content: 'test' }], {
+      stream: true,
+      maxRetries: 0,
+    });
+    expect(mocks.anthropicStream.mock.calls[0]?.[1]).toMatchObject({ maxRetries: 0 });
+  });
 });

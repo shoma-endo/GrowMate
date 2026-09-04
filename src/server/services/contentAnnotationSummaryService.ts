@@ -215,6 +215,11 @@ class ContentAnnotationSummaryService {
           // 載らないとモデルによってはアダプティブ思考が既定で有効のまま動き、思考トークンが
           // 出力料金で課金される。出力自体は成立するのでテストでは落ちず、請求額でしか気づけない
           thinking: modelConfig.thinking,
+          // BR-B11「待機・再試行しない」。SDK は既定で 429 を最大2回**寝てから**再送するので、
+          // これが無いと (1) レート制限中に時間予算だけが減り、(2) 末尾チャンク（llmMs 最小30秒）
+          // では寝ている間に abort が先に立って CONNECTION_TIMEOUT → SUMMARY_AI_FAILED に化け、
+          // 完了メールがレート制限を「AI の呼び出しに失敗」と誤表示する
+          maxRetries: 0,
           timeoutMs: llmTimeoutMs,
         }
       );
