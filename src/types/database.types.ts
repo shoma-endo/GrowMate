@@ -226,6 +226,85 @@ export type Database = {
         }
         Relationships: []
       }
+      ga4_content_evaluation_cycles: {
+        Row: {
+          base_evaluation_date: string
+          content_annotation_id: string
+          created_at: string
+          cycle_days: number
+          evaluation_hour: number
+          id: string
+          last_evaluated_on: string | null
+          last_notification_error: string | null
+          last_notification_status: string | null
+          last_notified_at: string | null
+          last_notified_history_id: string | null
+          last_seen_content_score: number | null
+          next_evaluation_date: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          base_evaluation_date: string
+          content_annotation_id: string
+          created_at?: string
+          cycle_days?: number
+          evaluation_hour?: number
+          id?: string
+          last_evaluated_on?: string | null
+          last_notification_error?: string | null
+          last_notification_status?: string | null
+          last_notified_at?: string | null
+          last_notified_history_id?: string | null
+          last_seen_content_score?: number | null
+          next_evaluation_date?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          base_evaluation_date?: string
+          content_annotation_id?: string
+          created_at?: string
+          cycle_days?: number
+          evaluation_hour?: number
+          id?: string
+          last_evaluated_on?: string | null
+          last_notification_error?: string | null
+          last_notification_status?: string | null
+          last_notified_at?: string | null
+          last_notified_history_id?: string | null
+          last_seen_content_score?: number | null
+          next_evaluation_date?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ga4_content_evaluation_cycles_content_annotation_id_fkey"
+            columns: ["content_annotation_id"]
+            isOneToOne: false
+            referencedRelation: "content_annotations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ga4_content_evaluation_cycles_last_notified_history_id_fkey"
+            columns: ["last_notified_history_id"]
+            isOneToOne: false
+            referencedRelation: "ga4_content_evaluation_history"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ga4_content_evaluation_cycles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ga4_content_evaluation_history: {
         Row: {
           attempt_count: number
@@ -742,6 +821,9 @@ export type Database = {
           current_suggestion_stage: number
           cycle_days: number
           evaluation_hour: number
+          ga4_last_evaluated_on: string | null
+          ga4_last_notified_history_id: string | null
+          ga4_last_seen_content_score: number | null
           id: string
           last_evaluated_on: string | null
           last_seen_position: number | null
@@ -758,6 +840,9 @@ export type Database = {
           current_suggestion_stage?: number
           cycle_days?: number
           evaluation_hour?: number
+          ga4_last_evaluated_on?: string | null
+          ga4_last_notified_history_id?: string | null
+          ga4_last_seen_content_score?: number | null
           id?: string
           last_evaluated_on?: string | null
           last_seen_position?: number | null
@@ -774,6 +859,9 @@ export type Database = {
           current_suggestion_stage?: number
           cycle_days?: number
           evaluation_hour?: number
+          ga4_last_evaluated_on?: string | null
+          ga4_last_notified_history_id?: string | null
+          ga4_last_seen_content_score?: number | null
           id?: string
           last_evaluated_on?: string | null
           last_seen_position?: number | null
@@ -1634,6 +1722,7 @@ export type Database = {
           p_has_unread_suggestion?: boolean
           p_has_unstarted_ga4_evaluation?: boolean
           p_has_unstarted_gsc_evaluation?: boolean
+          p_has_unsummarized?: boolean
           p_include_uncategorized?: boolean
           p_page: number
           p_per_page: number
@@ -1807,6 +1896,33 @@ export type Database = {
       increment_google_search_count: {
         Args: { user_id: string }
         Returns: undefined
+      }
+      list_due_ga4_content_evaluation_cycles: {
+        Args: { p_today_jst: string }
+        Returns: {
+          base_evaluation_date: string
+          content_annotation_id: string
+          cycle_days: number
+          evaluation_hour: number
+          id: string
+          last_evaluated_on: string
+          next_evaluation_date: string
+          user_id: string
+        }[]
+      }
+      list_due_ga4_content_evaluations: {
+        Args: { p_today_jst: string }
+        Returns: {
+          base_evaluation_date: string
+          content_annotation_id: string
+          cycle_days: number
+          evaluation_hour: number
+          ga4_last_evaluated_on: string
+          ga4_last_seen_content_score: number
+          ga4_next_evaluation_date: string
+          id: string
+          user_id: string
+        }[]
       }
       normalize_keyword: { Args: { input_text: string }; Returns: string }
       normalize_to_path: { Args: { input_text: string }; Returns: string }

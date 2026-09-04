@@ -105,6 +105,19 @@ export const ERROR_MESSAGES = {
     SUMMARY_PARSE_FAILED:
       'AI要約結果の解析に失敗しました。もう一度要約ボタンを押してください。',
 
+    /** AI要約一括: 対象が0件だった場合 */
+    SUMMARY_BULK_TARGETS_REQUIRED: '対象の記事が選択されていません',
+
+    /** AI要約一括: 選択件数が上限を超えた場合 */
+    SUMMARY_BULK_TARGETS_LIMIT_EXCEEDED: '一度に要約できるのは1000件までです',
+
+    /** AI要約一括: 全選択の母集団と取得結果の件数が一致しない場合 */
+    SUMMARY_BULK_POPULATION_MISMATCH:
+      '対象の記事を取得できませんでした。時間をおいてもう一度お試しください。',
+
+    /** AI要約一括: 実行そのものに失敗した場合 */
+    SUMMARY_BULK_FAILED: 'AI要約の一括実行に失敗しました',
+
     /** インポート処理中にエラーが発生 */
     IMPORT_ERROR: 'インポート処理中にエラーが発生しました',
 
@@ -570,6 +583,27 @@ export const ERROR_MESSAGES = {
 
     /** 評価処理に失敗した場合 */
     EVALUATION_PROCESS_FAILED: '評価処理に失敗しました',
+
+    /** 一括開始の対象が未選択の場合 */
+    BULK_TARGETS_REQUIRED: '対象の記事が選択されていません',
+
+    /** 一括開始の対象件数が上限を超えた場合 */
+    BULK_TARGETS_LIMIT_EXCEEDED: '一度に評価サイクルを開始できるのは1000件までです',
+
+    /** 全選択の母集団と取得結果の件数が一致しない場合 */
+    BULK_POPULATION_MISMATCH:
+      '対象の記事を取得できませんでした。時間をおいてもう一度お試しください。',
+
+    /** GSC連携情報の取得に失敗した場合 */
+    CREDENTIAL_RESOLVE_FAILED:
+      'Google Search Console の連携情報を取得できませんでした。時間をおいてもう一度お試しください。',
+
+    /** 評価サイクルの一括登録に失敗した場合 */
+    BULK_REGISTER_FAILED: '評価サイクルの一括開始に失敗しました',
+
+    /** 全選択の母集団（全記事）の件数を取得できなかった場合 */
+    BULK_TOTAL_COUNT_FETCH_FAILED:
+      '全記事の件数を取得できなかったため、全選択は使えません。行チェックでの選択は使えます。ページを再読み込みしてください。',
   },
 
   /**

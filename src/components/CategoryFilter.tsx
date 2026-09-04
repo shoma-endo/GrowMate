@@ -1,10 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { Bell, PlayCircle } from 'lucide-react';
+import { Bell, PlayCircle, Sparkles } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import type { CategoryFilterConfig } from '@/types/category';
+import { SUMMARY_TARGET_COLUMN_LABELS } from '@/lib/content-annotation-bulk-summary-display';
 import { ANALYTICS_STORAGE_KEYS } from '@/lib/constants';
 
 interface CategoryFilterProps {
@@ -21,9 +22,15 @@ interface CategoryFilterProps {
    * その間ユーザーに取れるアクションが無かったため廃止した（§10.2 / §18）。
    */
   hasUnstartedGscEvaluation: boolean;
+  /**
+   * 「未要約」= AI要約対象8項目がすべて空 かつ WordPress 連携済み。
+   * 定義は docs/plans/content-annotation-bulk-ai-summary-spec.md BR-02 が正本。
+   */
+  hasUnsummarized: boolean;
   onFilterChange: (selectedCategoryNames: string[], includeUncategorized: boolean) => void;
   onUnreadSuggestionChange: (value: boolean) => void;
   onUnstartedGscEvaluationChange: (value: boolean) => void;
+  onUnsummarizedChange: (value: boolean) => void;
   onClearAll: () => void;
 }
 
@@ -36,6 +43,8 @@ export default function CategoryFilter({
   onFilterChange,
   onUnreadSuggestionChange,
   onUnstartedGscEvaluationChange,
+  hasUnsummarized,
+  onUnsummarizedChange,
   onClearAll,
 }: CategoryFilterProps) {
   // フィルター変更時に永続化
@@ -76,7 +85,8 @@ export default function CategoryFilter({
     selectedCategoryNames.length > 0 ||
     includeUncategorized ||
     hasUnreadSuggestion ||
-    hasUnstartedGscEvaluation;
+    hasUnstartedGscEvaluation ||
+    hasUnsummarized;
 
   return (
     <div className="space-y-3">
@@ -107,7 +117,10 @@ export default function CategoryFilter({
             `details` は ContentEvaluationCard.tsx:143 と同じ既存パターン。
           */}
           <details className="mt-1 px-1 text-xs">
-            <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+            <summary
+              className="cursor-pointer text-gray-500 hover:text-gray-700"
+              aria-label="評価未設定で絞り込まれる条件"
+            >
               絞り込まれる条件
             </summary>
             <ul className="mt-1 list-disc space-y-1 pl-4 text-gray-500">
@@ -128,6 +141,40 @@ export default function CategoryFilter({
             <Bell className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
             <span className="text-sm font-medium text-amber-800">改善提案あり</span>
           </label>
+        </div>
+        <div className="border rounded-md px-2 py-2">
+          <label className="flex items-center gap-2 cursor-pointer hover:bg-purple-50 px-1 py-1 rounded">
+            <Checkbox
+              checked={hasUnsummarized}
+              onCheckedChange={checked => onUnsummarizedChange(!!checked)}
+            />
+            <Sparkles className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+            <span className="text-sm font-medium text-purple-800">未要約</span>
+          </label>
+          {/*
+            「未要約」も評価未設定と同じく、ラベルからは境界が読み取れない。
+            とくに WordPress 未連携の空欄記事が対象外になることは、絞り込んで出てこなかった側の
+            記事にユーザーが気づけないので開示する。
+          */}
+          <details className="mt-1 px-1 text-xs">
+            <summary
+              className="cursor-pointer text-gray-500 hover:text-gray-700"
+              aria-label="未要約で絞り込まれる条件"
+            >
+              絞り込まれる条件
+            </summary>
+            <ul className="mt-1 list-disc space-y-1 pl-4 text-gray-500">
+              <li>
+                {/* 項目名と並び順は一覧の列見出し（ANALYTICS_COLUMNS）に合わせる。
+                    ここだけ独自の呼び方にするとユーザーがどの欄か照合できない */}
+                {SUMMARY_TARGET_COLUMN_LABELS.join('・')}の8項目がすべて空の記事だけが対象です。
+              </li>
+              <li>
+                WordPress と連携していない記事は、8項目が空でも含まれません（本文を取得できず
+                要約できないため）。
+              </li>
+            </ul>
+          </details>
         </div>
       </div>
 

@@ -2055,7 +2055,7 @@ export class SupabaseService {
    * getGscCredentialByUserId は DB エラー時も null を返すため、障害を未連携と誤認しないようにする用途。
    * 鮮度判定・順位スナップショットの両経路で共用する。
    */
-  private async resolveGscPropertyUri(userId: string): Promise<SupabaseResult<string | null>> {
+  public async resolveGscPropertyUri(userId: string): Promise<SupabaseResult<string | null>> {
     const { data, error } = await this.supabase
       .from('gsc_credentials')
       .select('property_uri')
