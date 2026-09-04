@@ -101,9 +101,35 @@ export const ERROR_MESSAGES = {
     /** AI要約のClaude呼び出し失敗 */
     SUMMARY_AI_FAILED: 'AI要約の生成に失敗しました。しばらくしてからもう一度お試しください。',
 
+    /** AI要約のClaude呼び出しがレート制限（429）で失敗 */
+    SUMMARY_AI_RATE_LIMITED:
+      'AIの利用が集中しています。時間をおいてもう一度お試しください。',
+
     /** AI要約のJSON抽出・パース失敗 */
     SUMMARY_PARSE_FAILED:
       'AI要約結果の解析に失敗しました。もう一度要約ボタンを押してください。',
+
+    /** AI要約一括: 対象が0件だった場合 */
+    SUMMARY_BULK_TARGETS_REQUIRED: '対象の記事が選択されていません',
+
+    /** AI要約一括: 選択件数が上限を超えた場合 */
+    SUMMARY_BULK_TARGETS_LIMIT_EXCEEDED: '一度に要約できるのは1000件までです',
+
+    /** AI要約一括: 全選択の母集団と取得結果の件数が一致しない場合 */
+    SUMMARY_BULK_POPULATION_MISMATCH:
+      '対象の記事を取得できませんでした。時間をおいてもう一度お試しください。',
+
+    /**
+     * AI要約一括: 未完了のジョブが既にある場合（1利用者1ジョブ）。
+     *
+     * 仕様の文面は「すでに要約を実行中です。」だが、`ui-text.md` の用語辞書が
+     * 「要約を実行」を禁止表記（正は「AIで要約」）としており `scripts/check-ui-text.sh` に
+     * 引っかかる。意味と語順（すでに…実行中）を保ったまま検査を通る形にした。
+     */
+    SUMMARY_BULK_ALREADY_RUNNING: 'AI要約はすでに実行中です。完了までお待ちください。',
+
+    /** AI要約一括: 実行そのものに失敗した場合 */
+    SUMMARY_BULK_FAILED: 'AI要約の一括実行に失敗しました',
 
     /** インポート処理中にエラーが発生 */
     IMPORT_ERROR: 'インポート処理中にエラーが発生しました',
@@ -570,6 +596,27 @@ export const ERROR_MESSAGES = {
 
     /** 評価処理に失敗した場合 */
     EVALUATION_PROCESS_FAILED: '評価処理に失敗しました',
+
+    /** 一括開始の対象が未選択の場合 */
+    BULK_TARGETS_REQUIRED: '対象の記事が選択されていません',
+
+    /** 一括開始の対象件数が上限を超えた場合 */
+    BULK_TARGETS_LIMIT_EXCEEDED: '一度に評価サイクルを開始できるのは1000件までです',
+
+    /** 全選択の母集団と取得結果の件数が一致しない場合 */
+    BULK_POPULATION_MISMATCH:
+      '対象の記事を取得できませんでした。時間をおいてもう一度お試しください。',
+
+    /** GSC連携情報の取得に失敗した場合 */
+    CREDENTIAL_RESOLVE_FAILED:
+      'Google Search Console の連携情報を取得できませんでした。時間をおいてもう一度お試しください。',
+
+    /** 評価サイクルの一括登録に失敗した場合 */
+    BULK_REGISTER_FAILED: '評価サイクルの一括開始に失敗しました',
+
+    /** 全選択の母集団（全記事）の件数を取得できなかった場合 */
+    BULK_TOTAL_COUNT_FETCH_FAILED:
+      '全記事の件数を取得できなかったため、全選択は使えません。行チェックでの選択は使えます。ページを再読み込みしてください。',
   },
 
   /**

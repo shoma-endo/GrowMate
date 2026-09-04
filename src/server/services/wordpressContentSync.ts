@@ -150,6 +150,45 @@ async function refreshWpComAccessToken(
   return accessToken;
 }
 
+/**
+ * **Cookie 無しで**本文取得に使えるアクセストークンを解決できるかを判定する（真偽値）。
+ *
+ * AI要約一括のバックグラウンド実行が、1起動につき1回だけ呼ぶ
+ * （docs/plans/content-annotation-bulk-summary-background-spec.md §9「本文取得の可否判定」）。
+ * 判定ロジックを cron 側へ複製しないためにここから export する。
+ *
+ * WordPress 設定を取得できない2ケースは**逆向きに倒す**:
+ * - **設定行が無い（クエリは成功）→ `false`（不可）**。連携していない／連携情報が消えた状態で、
+ *   `/setup/wordpress` からの再連携が正しい次アクションだから。
+ * - **クエリがエラー（DBの一時障害など）→ `true`（可）**。原因が連携状態だと確認できていないのに
+ *   「再連携してください」と案内すると、連携が正常な利用者へ誤った次アクションを送る。
+ *   判定材料が得られないときは断定の弱い既存コード（`SUMMARY_CONTENT_FETCH_FAILED`）へ落とす。
+ *
+ * 既知の限界: 保存済みトークンが解決できるのに WordPress 側では無効（失効済みなのに
+ * `wp_token_expires_at` が NULL / 未来日）なケースは `true` になる。ここまで出し分けるには
+ * `fetchWpPostContentLive` の戻り値契約（失敗を一律 `null`）を変える必要があり、親機能へ波及する。
+ */
+export async function canFetchWpPostContentLive(userId: string): Promise<boolean> {
+  const supabase = new SupabaseService();
+  const settingsResult = await supabase.getWordPressSettingsResultByUserId(userId);
+
+  if (!settingsResult.success) {
+    return true;
+  }
+
+  const wpSettings = settingsResult.data;
+  if (!wpSettings) {
+    return false;
+  }
+
+  if (wpSettings.wpType === 'self_hosted') {
+    return buildWordPressServiceFromSettings(wpSettings, () => undefined).success;
+  }
+
+  const accessToken = await refreshWpComAccessToken(userId, supabase, wpSettings);
+  return Boolean(accessToken);
+}
+
 async function fetchPostById(
   wpPostId: number,
   userId: string,
