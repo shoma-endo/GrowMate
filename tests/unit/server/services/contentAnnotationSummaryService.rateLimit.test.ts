@@ -141,6 +141,7 @@ describe('contentAnnotationSummaryService の 429 挙動（SDK 層まで通す�
     const result = await contentAnnotationSummaryService.generateSummary({
       target: { annotationId: 'annotation-id' },
       executorUserId: 'user-id',
+      maxRetries: 0,
     });
 
     expect(result).toEqual({ success: false, code: 'SUMMARY_AI_RATE_LIMITED' });
@@ -160,9 +161,30 @@ describe('contentAnnotationSummaryService の 429 挙動（SDK 層まで通す�
       target: { annotationId: 'annotation-id' },
       executorUserId: 'user-id',
       llmTimeoutMs: BACKOFF_MS / 2,
+      maxRetries: 0,
     });
 
     expect(result).toEqual({ success: false, code: 'SUMMARY_AI_RATE_LIMITED' });
     expect(mocks.anthropicRequests).toHaveLength(1);
+  });
+
+  /**
+   * 再試行を止めるのは**バックグラウンド経路だけ**であることの網。単記事の同期実行
+   * （`maxRetries` 未指定）で SDK 既定を潰すと、一時的な 429 / 5xx / 接続エラーが
+   * SDK 内で回復されず、既存機能の挙動を黙って変えてしまう。
+   */
+  it('maxRetries 未指定（単記事の同期実行）では SDK 既定の再送を潰さない', async () => {
+    const result = await contentAnnotationSummaryService.generateSummary({
+      target: { annotationId: 'annotation-id' },
+      executorUserId: 'user-id',
+    });
+
+    expect(result).toEqual({ success: false, code: 'SUMMARY_AI_RATE_LIMITED' });
+    // SDK 既定の2回再送が効いて3回発射され、リクエストに maxRetries が載っていない
+    expect(mocks.anthropicRequests).toEqual([
+      { maxRetries: undefined },
+      { maxRetries: undefined },
+      { maxRetries: undefined },
+    ]);
   });
 });

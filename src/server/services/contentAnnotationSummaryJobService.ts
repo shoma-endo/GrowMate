@@ -449,13 +449,31 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
       const rows = await this.fetchTargetRows(job.user_id, chunk);
       const rowById = new Map(rows.map(row => [row.id, row]));
 
+      // **前処理の待ち時間を予算に織り込み直す。**上の `budget` は
+      // `canFetchWpPostContentLive`（WordPress.com のトークン更新を伴う）と
+      // `fetchTargetRows` の**前**に算出した値で、記事タイマーが実際に始まるのは
+      // これらの await が終わった後。古い itemMs のまま着手すると、遅延した分だけ
+      // 760秒の予算と 800秒の関数上限を踏み越えてハードキルされ、保存済みチャンクの
+      // 続きからではなく 20分のスタック回収を待つことになる
+      const chunkBudget = computeSummaryItemBudgetMs(Date.now() - routeStartedAt);
+      if (chunkBudget === null) {
+        carriedOver = true;
+        CRON_DEFINITIONS.contentAnnotationSummary.log('warn', 'job_time_budget_exceeded', {
+          operation: 'summary_generation',
+          timeoutType: 'CRON_TIME_BUDGET_EXCEEDED',
+          durationMs: Date.now() - routeStartedAt,
+          remaining: targets.length - index,
+        });
+        break;
+      }
+
       const outcomes = await Promise.all(
         chunk.map(annotationId =>
           this.processAnnotation({
             annotationId,
             row: rowById.get(annotationId),
             userId: job.user_id,
-            budget,
+            budget: chunkBudget,
             contentFetchAvailable: contentFetchAvailable === true,
           })
         )
@@ -551,6 +569,8 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
           // cron にセッションは無い。cookie を持たない getCookie で DB 保存トークン経路だけを使う
           cookieStore: undefined,
           llmTimeoutMs: budget.llmMs,
+          // BR-B11。SDK の既定リトライ（429 を寝てから最大2回再送）を止めるのはこの経路だけ
+          maxRetries: 0,
         }),
         budget.itemMs,
         annotationId

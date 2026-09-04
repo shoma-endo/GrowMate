@@ -512,7 +512,12 @@ describe('時間予算（AC-B03 / BR-B04）', () => {
     const ids = Array.from({ length: 6 }, (_, index) => `a${index + 1}`);
     seedJob({ target_annotation_ids: ids, total_count: 6 });
     store.content_annotations.push(...ids.map(id => annotation(id)));
-    mocks.computeSummaryItemBudgetMs.mockReturnValueOnce(BUDGET).mockReturnValue(null);
+    // 予算判定はチャンクあたり2回（着手前の早期判定と、前処理の await 後の再判定）。
+    // 1チャンク目を通し、2チャンク目の早期判定で尽きさせる
+    mocks.computeSummaryItemBudgetMs
+      .mockReturnValueOnce(BUDGET)
+      .mockReturnValueOnce(BUDGET)
+      .mockReturnValue(null);
 
     await contentAnnotationSummaryJobService.runNextJob(Date.now());
 
@@ -531,6 +536,35 @@ describe('時間予算（AC-B03 / BR-B04）', () => {
 
     const elapsed = mocks.computeSummaryItemBudgetMs.mock.calls[0]?.[0] as number;
     expect(elapsed).toBeGreaterThanOrEqual(600_000);
+  });
+  it('前処理の待ち時間で予算が尽きたら着手せず持ち越す（古い itemMs で走らせない）', async () => {
+    seedJob({ target_annotation_ids: ['a1', 'a2'], total_count: 2 });
+    store.content_annotations.push(annotation('a1'), annotation('a2'));
+    // 1回目（チャンク着手前の早期判定）は通し、2回目（本文取得の可否判定と対象行取得の
+    // await 後の再判定）で尽きさせる。再計算が無いと古い予算のまま着手し、maxDuration を
+    // 踏み越えてハードキル → 20分のスタック回収待ちになる
+    mocks.computeSummaryItemBudgetMs.mockReturnValueOnce(BUDGET).mockReturnValueOnce(null);
+
+    await contentAnnotationSummaryJobService.runNextJob(Date.now());
+
+    expect(mocks.generateSummary).not.toHaveBeenCalled();
+    expect(jobRow().status).toBe('pending');
+    expect(jobRow().processed_count).toBe(0);
+  });
+
+  it('着手するときは前処理後に取り直した予算を使う（古い itemMs / llmMs を渡さない）', async () => {
+    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
+    store.content_annotations.push(annotation('a1'));
+    // 前処理で時間を食った分だけ縮んだ予算。これを渡さないと、記事タイマーが実際に始まる
+    // 時刻を無視した長さで走り、maxDuration を踏み越える
+    const shrunk = { itemMs: 90_000, llmMs: 60_000 };
+    mocks.computeSummaryItemBudgetMs.mockReturnValueOnce(BUDGET).mockReturnValueOnce(shrunk);
+
+    await contentAnnotationSummaryJobService.runNextJob(Date.now());
+
+    expect(mocks.generateSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ llmTimeoutMs: shrunk.llmMs })
+    );
   });
 });
 
@@ -553,7 +587,11 @@ describe('attempt_count は「連続無進捗回数」（BR-B09 / §13）', () =
     // 1起動につき1チャンク（3件）だけ進める
     for (let run = 0; run < 5; run += 1) {
       mocks.computeSummaryItemBudgetMs.mockReset();
-      mocks.computeSummaryItemBudgetMs.mockReturnValueOnce(BUDGET).mockReturnValue(null);
+      // チャンクあたり2回（早期判定 + 前処理後の再判定）通してから尽きさせる
+      mocks.computeSummaryItemBudgetMs
+        .mockReturnValueOnce(BUDGET)
+        .mockReturnValueOnce(BUDGET)
+        .mockReturnValue(null);
       await contentAnnotationSummaryJobService.runNextJob(Date.now());
       expect(jobRow().status).not.toBe('failed');
     }

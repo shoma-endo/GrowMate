@@ -132,6 +132,15 @@ class ContentAnnotationSummaryService {
      * （docs/plans/content-annotation-bulk-ai-summary-spec.md BR-03）。
      */
     llmTimeoutMs?: number;
+    /**
+     * SDK の自動再試行回数。**未指定なら SDK の既定（2回）のまま**にする。
+     *
+     * バックグラウンド実行だけが `0` を渡す。BR-B11 が「待機・再試行しない」を求めるのは
+     * 時間予算を持つ cron 経路であって、単記事の同期実行には当てはまらない。ここを共有コアに
+     * 直書きすると、単記事の「AIで要約」でも一時的な 429 / 5xx / 接続エラーが SDK 内で
+     * 回復されなくなり、既存機能の挙動を黙って変えてしまう。
+     */
+    maxRetries?: number;
   }): Promise<GenerateSummaryResult> {
     const client = this.supabase.getClient();
     const { target, executorUserId, cookieStore } = params;
@@ -216,10 +225,12 @@ class ContentAnnotationSummaryService {
           // 出力料金で課金される。出力自体は成立するのでテストでは落ちず、請求額でしか気づけない
           thinking: modelConfig.thinking,
           // BR-B11「待機・再試行しない」。SDK は既定で 429 を最大2回**寝てから**再送するので、
-          // これが無いと (1) レート制限中に時間予算だけが減り、(2) 末尾チャンク（llmMs 最小30秒）
+          // 0 を渡さないと (1) レート制限中に時間予算だけが減り、(2) 末尾チャンク（llmMs 最小30秒）
           // では寝ている間に abort が先に立って CONNECTION_TIMEOUT → SUMMARY_AI_FAILED に化け、
-          // 完了メールがレート制限を「AI の呼び出しに失敗」と誤表示する
-          maxRetries: 0,
+          // 完了メールがレート制限を「AI の呼び出しに失敗」と誤表示する。
+          // **渡すのは時間予算を持つバックグラウンド経路だけ**。未指定の単記事同期実行は
+          // SDK 既定（2回）のままにし、既存の回復挙動を変えない
+          ...(params.maxRetries !== undefined && { maxRetries: params.maxRetries }),
           timeoutMs: llmTimeoutMs,
         }
       );
