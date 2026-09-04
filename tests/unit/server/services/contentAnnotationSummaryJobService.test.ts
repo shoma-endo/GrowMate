@@ -79,6 +79,8 @@ let progressUpdates: Row[];
 let userSelectFailure: string | null = null;
 /** 終了状態（completed / pending）への UPDATE を失敗させる */
 let finishUpdateFailure: string | null = null;
+/** notified_at の UPDATE を失敗させる */
+let notifiedUpdateFailure: string | null = null;
 
 function matches(row: Row, filters: Filter[]): boolean {
   return filters.every(filter => {
@@ -153,6 +155,15 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
       (this.values?.status === 'completed' || this.values?.status === 'pending')
     ) {
       return { data: null, error: { message: finishUpdateFailure } };
+    }
+
+    if (
+      this.op === 'update' &&
+      this.table === 'content_annotation_summary_jobs' &&
+      notifiedUpdateFailure &&
+      this.values?.notified_at !== undefined
+    ) {
+      return { data: null, error: { message: notifiedUpdateFailure } };
     }
 
     if (this.op === 'insert') {
@@ -360,6 +371,7 @@ beforeEach(() => {
   rpcFailure = null;
   userSelectFailure = null;
   finishUpdateFailure = null;
+  notifiedUpdateFailure = null;
   mocks.computeSummaryItemBudgetMs.mockReturnValue(BUDGET);
   mocks.canFetchWpPostContentLive.mockResolvedValue(true);
   mocks.saveSummary.mockResolvedValue({ success: true, data: {} });
@@ -906,6 +918,21 @@ describe('cron レスポンスの契約（§9）', () => {
     const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
     expect(result.processedJobs).toBe(0);
     expect(result.failed).toBe(0);
+  });
+
+  it('送信後の notified_at 保存に失敗したら data.failed に計上する', async () => {
+    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
+    store.content_annotations.push(annotation('a1'));
+    notifiedUpdateFailure = 'update exploded';
+
+    const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
+
+    // 送信自体は成功しているが、notified_at を書けないと行は掃き出しに残り続ける。
+    // 成功として返すと failed 0 のまま Actions が緑になり、滞留に誰も気づかない
+    expect(mocks.sendCompletionEmail).toHaveBeenCalledTimes(1);
+    expect(result.emailsSent).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(jobRow().notified_at).toBeNull();
   });
 
   it('終了状態の保存に失敗したら data.failed に計上する（成功として返さない）', async () => {

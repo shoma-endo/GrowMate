@@ -924,9 +924,15 @@ export class SupabaseService {
       ...(options?.wpContentTypes && {
         wp_content_types: normalizeContentTypes(options.wpContentTypes) ?? [],
       }),
-      wp_access_token: options?.accessToken ?? null,
-      wp_refresh_token: options?.refreshToken ?? null,
-      wp_token_expires_at: options?.tokenExpiresAt ?? null,
+      // **トークンは渡されたときだけ書く。**未指定で null 上書きすると、OAuth 済みの
+      // 利用者が設定画面（投稿タイプなど）を保存しただけで保存済みトークンが消える。
+      // 同期経路はブラウザの Cookie で動けていたが、cron は Cookie を持たないため
+      // 同じ利用者の全記事が再連携要求で失敗する（`wpContentTypes` と同じ条件付き展開）
+      ...(options?.accessToken !== undefined && { wp_access_token: options.accessToken }),
+      ...(options?.refreshToken !== undefined && { wp_refresh_token: options.refreshToken }),
+      ...(options?.tokenExpiresAt !== undefined && {
+        wp_token_expires_at: options.tokenExpiresAt,
+      }),
       updated_at: new Date().toISOString(),
     };
 

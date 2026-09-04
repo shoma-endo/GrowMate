@@ -740,8 +740,11 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
       return 'failed';
     }
 
-    await this.markNotified(job.id);
-    return 'sent';
+    // 送信は成功しているが `notified_at` を書けなかった場合も**通知失敗として計上する**。
+    // ここを握りつぶすと failed 0 のまま Actions が緑になる一方、行は `notified_at is null`
+    // のまま毎起動の掃き出しに残り、10件の枠を占有し続ける。再送は Resend の
+    // `Idempotency-Key`（ジョブID）が重複配信を防ぐので、利用者に同じメールは届かない
+    return (await this.markNotified(job.id)) ? 'sent' : 'failed';
   }
 
   /**
@@ -767,7 +770,8 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
     return { ok: true, email: email ? email : null };
   }
 
-  private async markNotified(jobId: string): Promise<void> {
+  /** `notified_at` を打つ。**書けたかどうかを返す**（呼び出し側が失敗を計上するため） */
+  private async markNotified(jobId: string): Promise<boolean> {
     const { error } = await this.pendingClient()
       .from(TABLE)
       .update({ notified_at: new Date().toISOString() })
@@ -778,7 +782,9 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
         jobId,
         message: error.message,
       });
+      return false;
     }
+    return true;
   }
 
   private async recordNotificationFailure(jobId: string, reason?: string): Promise<void> {
