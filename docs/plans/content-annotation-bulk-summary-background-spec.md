@@ -100,7 +100,7 @@
   - ルール: `pending` または `processing` のジョブを持つ利用者は、新しいジョブを起票できない。実行中である旨を返す。
   - 理由: 二重起票は同じ記事への二重課金と、進捗表示・完了メールの意味の破壊を招く。
 - ルール ID: **BR-B04 1回の cron 起動で使う時間は現行の予算を踏襲する**
-  - ルール: 1回の起動で使える時間予算は **760 秒**（`CONTENT_ANNOTATION_BULK_SUMMARY_TIME_BUDGET_MS` = `maxDuration` 800秒 − 返却バッファ40秒）。次の1件に着手してよいかは既存の `computeSummaryItemBudgetMs(elapsedMs)`（`src/server/lib/content-annotation-bulk-summary.ts`）の戻り値で判定し、**`null`（残り予算が着手下限を割る）なら着手しない**。関連定数（LLM後バッファ30秒、着手下限90秒＝本文取得60秒＋LLM最低30秒、1件あたりの上限240秒＝LLMタイムアウト180秒＋本文取得60秒）は変更しない。
+  - ルール: 1回の起動で使える時間予算は **760 秒**（`CONTENT_ANNOTATION_BULK_SUMMARY_TIME_BUDGET_MS` = `maxDuration` 800秒 − 返却バッファ40秒）。次の1件に着手してよいかは既存の `computeSummaryItemBudgetMs(elapsedMs)`（`src/server/lib/content-annotation-bulk-summary.ts`）の戻り値で判定し、**`null`（残り予算が着手下限を割る）なら着手しない**。**`elapsedMs` の起点は cron ルートハンドラの開始時刻**であり、claim の前に走る完了メールの掃き出し（§9）に要した時間も予算に含める（claim 完了時刻を起点にすると返却バッファを掃き出しの分だけ食い潰す）。関連定数（LLM後バッファ30秒、着手下限90秒＝本文取得60秒＋LLM最低30秒、1件あたりの上限240秒＝LLMタイムアウト180秒＋本文取得60秒）は変更しない。
   - 導出値（閾値ではない）: 上記の結果、**新規着手の実効打ち切りは経過約 640 秒**（`760 − 640 − 30 = 90`）、着手済み1件を含めた最遅完了は経過 **730 秒**。730 秒は `maxDuration` 800 秒に対する余裕の説明であり、**実装が比較する閾値ではない**。「経過 730 秒を超えたら打ち切る」と事後判定で実装すると、経過 729 秒で着手した1件が最大 240 秒走って経過 969 秒に達し、`maxDuration` 800 秒でハードキルされる。
   - 例外: 着手できない時点で未処理が残っていれば、ジョブを `pending` に戻し、**直近に完了したチャンクの末尾**までのカーソル位置と件数を保存する（着手判定も保存もチャンク単位。BR-B05 / BR-B09）。
 - ルール ID: **BR-B05 並列数は3。並列は「3件のチャンク」単位で区切る**
@@ -108,10 +108,12 @@
   - 理由: チャンク境界を作らずに「1件終わるたびに次を投入する」形にすると、完了順が配列順と入れ替わるため進捗カーソルを安全に進められない（BR-B09 の理由）。既存の並列処理も `for (i += CONCURRENCY)` + `Promise.all` のチャンク形（`gscEvaluationService.ts:97-118`）であり、同型を踏襲する。
   - 例外: Anthropic のレート制限（429）が観測された場合の調整は定数1箇所で行える形にする。
 - ルール ID: **BR-B06 通知はジョブが終了した時点で1通だけ**
-  - ルール: ジョブが **`completed` または `failed`** になった時点で、成功・失敗・スキップ・未実行の件数と失敗理由の内訳をメールで1通送る（`failed` の場合は「途中まで」である旨を添える）。送信は `EmailService` に追加する専用メソッド `sendContentAnnotationSummaryCompletion(to, subject, htmlContent)` で行い、本文は **HTML で専用に組む**。失敗理由のラベルは既存の `FAILURE_LABELS` / `describeFailures`（`src/lib/content-annotation-bulk-summary-display.ts`。現在は未 export のため `export` を付ける）を共用する。
+  - ルール: ジョブが **`completed` または `failed`** になった時点で、成功・失敗・スキップ・未実行の件数と失敗理由の内訳をメールで1通送る（`failed` の場合は「途中まで」である旨を添える）。送信は `EmailService` に追加する専用メソッド `sendContentAnnotationSummaryCompletion(to, subject, htmlContent, idempotencyKey)`（冪等キーはジョブ ID。§9）で行い、本文は **HTML で専用に組む**。失敗理由のラベルは既存の `FAILURE_LABELS` / `describeFailures`（`src/lib/content-annotation-bulk-summary-display.ts`。現在は未 export のため `export` を付ける）を共用する。
   - 理由: 既存の `getBulkSummaryToastMessage` は**プレーンテキスト1行**を返し、`stoppedReason === 'time_budget'` のとき「未実行分はもう一度実行すると続きから進みます」＝**手動再実行を促す文面**になる。背景実行では cron が続きを処理するため誤案内になり、かつ同期版トースト（`app/analytics/AnalyticsClient.tsx`）と共用したまま分岐を足すと同期版の文面を壊す。共用するのは**ラベル辞書だけ**にする。
   - 起動経路: 送信は (1) cron が同じ起動内でジョブを `completed` / `failed` にしたときのその場の送信と、(2) cron ルートが claim の前に行う**未通知ジョブの掃き出し**（`status in ('completed','failed')` かつ `notified_at is null`）の2経路で行う。**(2) が無いと、claim RPC が `attempt_count >= 3` で `failed` に落とした行（アプリ層が一度も見ない）と、送信に失敗した行に通知が届かない**（詳細は §9「完了メールの起動経路」）。
-  - 例外: `users.email` が未登録の利用者には送らない（送信スキップとしてログに残す）。cron の再実行で二重送信しないよう `notified_at` で冪等にする。
+  - 例外: `users.email` が未登録の利用者には送らない。**この場合も `notified_at` を現在時刻で埋める**（＝「送る相手がいないので通知は完了」。ログには `skipped_no_email` を残す）。印を打たないと、そのジョブは `notified_at is null` のまま毎起動の掃き出しに選ばれ続け、**最大10件の枠を古い滞留行が永久に占有して AC-B15 の通知経路が二度と動かなくなる**。既存の同型実装 `ga4ContentEvaluationBatchService`（`:353-355`）も `skipped_no_email` を件数に計上して滞留を作らない。
+  - 例外: 送信に失敗した行の再送は**ジョブの `created_at` から24時間以内**に限る（§9「完了メールの起動経路」）。24時間は Resend の `Idempotency-Key` 有効期間と一致し、それを過ぎると重複送信を防げないため（BR-B06 の「1通」が担保できない）。24時間を超えた未通知行は掃き出し対象から外れ、`last_error` に理由が残る。**再送回数カラムは追加しない**（MVP。窓で切れば新規カラムが要らない）。
+  - 冪等: cron の再実行で二重送信しないよう `notified_at` で冪等にし、あわせて Resend の `Idempotency-Key` にジョブ ID を渡す（§9「`EmailService` への追加」）。
 - ルール ID: **BR-B07 途中経過は画面に出す**
   - ルール: 実行中のジョブがある利用者が `/analytics` を開いたとき、「要約中...（処理済み N / 対象 M 件）」を表示する。N は `processed_count`、M は `total_count`（＝起票時に固定した対象ID数。§9 の定義）。**分母語は「対象」とし「全」は使わない**（同じ画面のツールバーの「全 M 件」は利用者の全記事数を指すため。§6 UI用語）。
   - 例外: 自動更新（ポーリング）はしない。ページを再読み込みしたときに最新化される。
@@ -121,6 +123,7 @@
   - 例外: なし。起票時のフィルタ結果を根拠に再判定を省略してはならない。また、**ジョブ全体の対象記事をループ前に一括取得して振り分ける形（同期版 `src/server/actions/contentAnnotationBulkSummary.actions.ts:188-246`）は採らない**。採ると再判定が最大12分前（1起動分）のスナップショットに基づくことになり、「直前」の要件を満たさない（§14 手順2）。
 - ルール ID: **BR-B09 進捗はチャンク境界で保存し、カーソルを着手済みの記事より先へ進めない**
   - ルール: `processed_count` / `succeeded_count` / `failed_count` / `skipped_count` / `failed_by_code` は、**BR-B05 のチャンク（最大3件）が全件完了した時点でまとめて**ジョブ行へ書き戻す（1件ごとでも、予算切れ時にまとめてでもない）。`processed_count` は**完了したチャンクの末尾の位置**を指すカーソルであり、**処理中（in-flight）の記事を跨いで先へ進めない**。更新は claim 時に発行した `job_token` を `.eq('job_token', ...)` で条件に付け、別起動に回収済みのジョブへ書き込まない。
+  - **`attempt_count` は同じ書き込みで 0 に戻す**: この起動で `processed_count` が1件でも前進したら、上記の `job_token` 条件付き UPDATE に `attempt_count = 0` を併せて書く。`attempt_count` は claim のたびに +1 されるので、リセットしないと**前進している正常な継続そのものが試行回数を消費し、4起動目で必ず `failed` になる**（§4 Non-goals / §9 データ表）。リセットにより `attempt_count` は「**前進の無い claim が連続した回数**」を表し、Non-goals が意図した「想定外の例外で無限に claim され続けるのを止める」上限としてそのまま機能する。**新規カラムは追加しない**。
   - 理由: (1) 「予算切れ時のみ保存」だと、`maxDuration` によるハードキルや想定外例外で**1起動分（最大約70件）の進捗が丸ごと失われる**。(2) 逆に「1件処理するたびに `processed_count` を加算」すると、並列3では完了順が配列順と一致しないため事故になる。配列 index 0/1/2 を同時に走らせ 1 と 2 が先に完了した時点で `processed_count = 2` になり、その瞬間にハードキルまたは20分スタック回収（§8）が起きると、**再開位置が index 2 になって未処理の index 0 が永久に飛ばされる**。ジョブはやがて `completed` になり、完了メールは「全件終わった」意味の件数を返す（＝§1 の成功指標が利用者にも運用にも見えない形で破れる）。チャンク境界でのみ前進させれば、異常終了で失われるのは**高々1チャンク（3件）**に閉じ、その3件は再開時に再処理されても BR-B08 の再判定でスキップになるため、LLM 課金も件数の二重加算も起きない。
   - 例外: なし。
 
@@ -144,7 +147,7 @@
 - **評価サイクル一括開始のバックグラウンド化**: LLM を使わず1回で1000件処理できるため不要（→ OPEN-B03）。
 - **停止機構（feature flag / 環境変数 / 専用設定テーブル）**: 要件・クライアント合意になく、既存手段（デプロイ巻き戻し、当該ボタンの非表示）で止められるため作らない（`CLAUDE.md` Core Rules / MVP 最優先）。
 - **複数ジョブの同時実行・優先度制御**: BR-B03 により1利用者1ジョブ。利用者間の順序は claim 順（作成日時順）とし、優先度は持たない。
-- **失敗した記事の自動リトライ**: 決定的失敗（本文サイズ超過など）は再実行しても同じ結果になるため、自動リトライはしない。利用者が再度実行する。ジョブ単位の `attempt_count` 上限3（既存雛形の踏襲）は、想定外の例外で無限に claim され続けるのを止めるための上限であり、記事単位のリトライ機構ではない。
+- **失敗した記事の自動リトライ**: 決定的失敗（本文サイズ超過など）は再実行しても同じ結果になるため、自動リトライはしない。利用者が再度実行する。ジョブ単位の `attempt_count` 上限3は、想定外の例外で無限に claim され続けるのを止めるための上限であり、記事単位のリトライ機構ではない。**本仕様の `attempt_count` は「前進の無い claim が連続した回数」であって claim の総回数ではない**（BR-B09 / §9 データ表）。本仕様のジョブは設計上、複数回の cron 起動にまたがって同じ行を claim し直すため（BR-B04 例外 / FR-B03）、claim 総回数を数えると 267 件（約4起動）・1000 件（約15起動）のジョブが**1件も残していないのに `failed` に落ちる**（§1 の成功指標が構造的に成立しない）。雛形 `gsc_suggestion_jobs` は「1行＝1回の LLM 呼び出しで完結する単発ジョブ」なので「claim 回数＝失敗回数」が成り立つが、再開型の本仕様では成り立たないため、意味だけを読み替えて踏襲する。
 - **本文サイズ超過時の自動削減**: 80,000文字を超える本文を切り詰めて再試行する処理は作らない（§8「本文サイズ超過時の扱い」。既存挙動を変更しない）。
 
 ## 5. 開発工数（概算）
@@ -192,7 +195,7 @@
 | FR-B03 | cron が未処理ジョブを排他 claim し、カーソル位置から続きを処理する | Must | 既存 `claim_gsc_suggestion_jobs` 踏襲／BR-B01 | AC-B02 |
 | FR-B04 | `generateSummary` の直前に BR-B02 条件（8項目すべて空・WordPress 連携済み・`user_id` 一致）を再判定する | Must | **親仕様 BR-01**（手入力値の無音上書き防止。履歴が無く復旧不能）／BR-B08 | AC-B13 |
 | FR-B05 | 時間予算内で並列3で処理し、着手できなければ `pending` に戻す | Must | 既存 `computeSummaryItemBudgetMs` / `GscEvaluationService.EVALUATION_CONCURRENCY = 3`／BR-B04 / BR-B05 | AC-B03 |
-| FR-B06 | 進捗をチャンク（最大3件）境界で `job_token` 条件付きに保存し、カーソルを着手済み・未完了の記事より先へ進めない | Must | ハードキル・想定外例外での進捗ロスト対策（`spec-review` 指摘 F-06）と、並列3で完了順が入れ替わったときの記事の飛ばし防止（同 F-20）／BR-B05 / BR-B09 | AC-B03 / AC-B14 |
+| FR-B06 | 進捗をチャンク（最大3件）境界で `job_token` 条件付きに保存し、カーソルを着手済み・未完了の記事より先へ進めない。前進があった起動では同じ書き込みで `attempt_count` を 0 に戻す | Must | ハードキル・想定外例外での進捗ロスト対策（`spec-review` 指摘 F-06）と、並列3で完了順が入れ替わったときの記事の飛ばし防止（同 F-20）、再開型ジョブで正常な継続が試行回数を消費して `failed` になる問題の回避（同 F-29）／BR-B05 / BR-B09 | AC-B03 / AC-B14 |
 | FR-B07 | ジョブ終了（`completed` / `failed`）時に完了メールを1通送る（冪等）。同一起動で終了させられなかったジョブは、次回起動の掃き出しで送る | Must | クライアント合意 2026-09-04（完了時にメール1通）／BR-B06。掃き出しが無いと claim RPC が `failed` に落とした行に通知が届かない（`spec-review` 指摘 F-21） | AC-B04 / AC-B05 / AC-B06 / AC-B15 |
 | FR-B08 | 1利用者1未完了ジョブに制限し、二重起票を拒否する | Must | BR-B03（二重課金と件数集計の破壊を防ぐ） | AC-B07 |
 | FR-B09 | 実行中の進捗を `/analytics` に表示する（自動更新なし） | Should | BR-B07（放置前提のため状況が見えないと再実行を招く）／Non-goals でリアルタイム更新は対象外 | AC-B08 |
@@ -226,16 +229,20 @@ pending --[cron が claim / job_token 発行]--> processing
 processing --[着手できる残り予算が無く、未処理あり]--> pending（カーソル・件数保存、次回続行）
 processing --[全件処理済み]--> completed（同じ起動内で完了メール送信）
 processing --[想定外の例外]--> failed（同じ起動内で完了メール送信。件数は途中まで）
-processing --[試行上限（attempt_count >= 3）に達した行を次回の claim RPC が回収]--> failed（アプリ層を経由しないため、完了メールは次回起動の掃き出しで送信。§9）
+processing --[前進の無い claim が3回連続（attempt_count >= 3）した行を次回の claim RPC が回収]--> failed（アプリ層を経由しないため、完了メールは次回起動の掃き出しで送信。§9）
 ```
+
+> **`attempt_count` の意味**: claim のたびに +1 され、その起動で `processed_count` が1件でも前進したら 0 に戻る（BR-B09）。したがって上の遷移が起きるのは「claim した直後に前進できないまま落ちる」ことが3回続いた場合だけで、**予算切れで `pending` に戻る正常な継続を何回繰り返しても `failed` にはならない**（1000件なら約15起動を要する。§11 ALT-002）。
 
 - **冪等性・重複実行時の挙動**:
   - 起票: 1利用者につき未完了ジョブは1件（部分ユニークインデックス。BR-B03）。
   - claim: `for update skip locked` で排他。回収されたジョブへの遅延書き込みは `job_token` 条件で弾く（BR-B09）。
   - 進捗: チャンク（最大3件）境界で保存するため、再開時に再処理されうるのは**直近の未完了チャンクの最大3件だけ**で、それ以前の範囲は処理し直さない（BR-B09）。再処理された記事は BR-B08 の再判定でスキップになり、LLM 課金は発生しない。
-  - メール: `notified_at` が非 NULL なら送らない（BR-B06 / AC-B05）。送信成功後に `.is('notified_at', null)` を条件に印を付ける。起動の重なりによる二重送信は workflow の `concurrency`（§10）で抑止する。
+  - メール: `notified_at` が非 NULL なら送らない（BR-B06 / AC-B05）。印は「**このジョブについて通知の試行を終えたとき**」＝送信成功時に加えて**宛先が無く送れなかったとき**にも `.is('notified_at', null)` を条件に付ける（送信失敗のときだけ付けない。§9 経路2 / F-30）。防御は `maxRetries: 1` / `notified_at` / Resend の `Idempotency-Key`（ジョブ ID）の3段で、**送信成功後・`notified_at` 更新前のハードキルを塞ぐのは3段目だけ**（§9「`EmailService` への追加」）。起動の重なりによる二重送信は workflow の `concurrency`（§10）でも抑止する。
 
 **集計の定義（完了メール / 進捗表示で使う）**: 現行の `BulkSummaryResult` と同じ4区分（成功・失敗・スキップ・未実行）＋失敗理由の内訳（`failed_by_code`）。**文言生成関数 `getBulkSummaryToastMessage` は共用しない**（理由は BR-B06）。共用するのは失敗ラベル辞書 `FAILURE_LABELS` / `describeFailures` のみ。
+
+**件数のずれ（許容する既知の挙動）**: 異常終了からの再開時、直近の未完了チャンクで先行して完了していた記事（**最大2件**）は、BR-B08 の再判定でスキップに計上される（AC-B14）。要約は生成済みなので結果は正しく、LLM の二重課金も起きないが、完了メールの件数は**成功が最大2件少なく、スキップが同数多く**報告されうる（異常終了1回あたり）。**実装は変えず、この挙動を仕様として許容する**（理由は §16 レビュー記録）。
 
 **分母の定義**: 進捗表示と完了メールの分母 `total_count` は **起票時に固定した対象ID数**（`target_annotation_ids` の長さ）であり、「要約が生成される見込み件数」ではない。`mode: 'all'` の母集団は親仕様 BR-05 のとおり**利用者が所有する全記事**（`analyticsContentService.resolveAllAnnotationIds` は `user_id` のみで絞り `updated_at` 降順・上限1000件。未要約では絞らない）なので、既に要約済みの記事や WordPress 未連携の記事も `total_count` に含まれ、実行時に BR-B08 でスキップへ計上される。したがって `mode: 'all'` では「分母1000・実際に要約されるのは267件・残り733件は短時間でスキップ」という形になり、進捗の伸びは不連続になる。**この挙動を仕様として許容する**（分母を「見込み件数」に作り替えるのは、起票時に8項目と連携状態を全件判定する追加処理になり、MVP の範囲を超えるため）。UI 文言は「処理済み N / **対象** M 件」とし、分母語に「全」を使わない（既存ツールバーの「全 M 件」＝利用者の全記事数と同じ語で別の母数を指さないため。§6 UI用語）。
 
@@ -287,6 +294,7 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 - ジョブ起票: UI だけでなく Server Action 側でも `canWriteGa4` を検証する。
 - 進捗の閲覧: **起票者本人のみ**。`admin` でも他人のジョブは表示しない（進捗表示に管理用途はない）。
 - cron 実行: 既存 cron と同じ `CRON_SECRET` の Bearer 認証（`/api/cron/*` の共通ガード）。処理は Service Role で行い、**ジョブ行の `user_id` を明示的にスコープ**して他人の記事に触れない。
+  - **例外は完了メールの掃き出しだけ**: claim の前に行う未通知ジョブの取得（§9「完了メールの起動経路」経路2）は**全利用者のジョブを横断して取得する**（未通知の行がどの利用者のものか事前に分からないため）。ただし宛先（`public.users.email`）と本文は**取得した各行の `user_id` から解決**し、**行をまたいだ結合はしない**。他のクエリ（claim・記事取得・進捗保存・進捗表示）は例外なく単一 `user_id` にスコープする。
 - **画面側の読み取りも Service Role**: `app/analytics/page.tsx` からの進捗取得は `SupabaseService`（Service Role）経由で RLS をバイパスするため、クエリに `.eq('user_id', userId)` を必ず含める。RLS は多層防御であり、**実際のセキュリティ境界はアプリ層の `user_id` スコープ**（`.agents/skills/supabase/service-usage.md` 運用ルール3）。
 
 ## 7. Gherkin受け入れ条件
@@ -333,6 +341,8 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
     もし 完了処理が走る
     ならば メールは送られない
     かつ ジョブは completed のまま残る
+    かつ notified_at が現在時刻で埋まる（送る相手がいないので通知の試行は完了）
+    かつ そのジョブは次回以降の掃き出しに現れない
 
   シナリオ: AC-B07 二重起票を拒否する
     前提 pending または processing のジョブを持つ利用者がいる
@@ -390,7 +400,7 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
     かつ 再処理される10件目・12件目は BR-B08 の再判定でスキップに計上され、要約は再生成されない
 
   シナリオ: AC-B15 失敗で終わったジョブも1通だけ通知する
-    前提 試行回数が上限（3回）に達し、claim RPC によって failed に落とされたジョブがある
+    前提 前進の無い claim が3回連続し（attempt_count >= 3）、claim RPC によって failed に落とされたジョブがある
     かつ そのジョブは notified_at が未設定である
     もし 次の cron が起動する
     ならば claim の前の掃き出しで、途中までの件数を含むメールが1通送られる
@@ -421,7 +431,7 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 
 | 項目 | 要件 | 根拠・備考 |
 | --- | --- | --- |
-| 1回の cron 起動の実行時間 | `maxDuration = 800` 秒、時間予算 **760 秒**（`CONTENT_ANNOTATION_BULK_SUMMARY_TIME_BUDGET_MS` = `(800 - 40) * 1000`）。次の1件に着手してよいかは `computeSummaryItemBudgetMs(elapsedMs)` が `null` を返さないことで判定する | 既存 `CONTENT_ANNOTATION_BULK_SUMMARY_*` を数値ごと踏襲する。実効の着手打ち切りは経過約 **640 秒**、着手済み1件を含む最遅完了は **730 秒**（BR-B04 の導出値であり、実装が比較する閾値ではない） |
+| 1回の cron 起動の実行時間 | `maxDuration = 800` 秒、時間予算 **760 秒**（`CONTENT_ANNOTATION_BULK_SUMMARY_TIME_BUDGET_MS` = `(800 - 40) * 1000`）。次の1件に着手してよいかは `computeSummaryItemBudgetMs(elapsedMs)` が `null` を返さないことで判定する。**`elapsedMs` の起点はルートハンドラ開始時刻**で、claim 前の完了メール掃き出しの所要も含む（BR-B04 / §9） | 既存 `CONTENT_ANNOTATION_BULK_SUMMARY_*` を数値ごと踏襲する。実効の着手打ち切りは経過約 **640 秒**、着手済み1件を含む最遅完了は **730 秒**（BR-B04 の導出値であり、実装が比較する閾値ではない） |
 | 起動間隔 | 10分（`*/10 * * * *`） | 267件を約30〜60分で完了させるため（算式は §11 ALT-002） |
 | 1回の処理件数 | 並列3で 60〜70件（1件約30秒の実測ベース）。**目安であり保証値ではない** | 実測値: 730秒 ÷ 24件 ≒ 30.4秒/件（直列時）。BR-B05 のチャンク境界で3件が揃うのを待つため、実効スループットは理論値（並列3の連続投入）より落ちる。実データ検証で実測する（§13） |
 | 1ジョブの上限 | 1000件（`MAX_BULK_SUMMARY_TARGETS`） | 既存の上限を踏襲。`db-max-rows = 1000`（`docs/context/db-row-limits-and-data-truncation.md`）とも整合 |
@@ -431,7 +441,7 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 | 本文サイズ超過時の扱い | 80,000 文字を超える記事は**削減・切り詰めをせず** `SUMMARY_CONTENT_TOO_LARGE` として失敗に計上する（既存挙動を変更しない） | `llm-context-memory` の「上限超過時の削減順序」に対する明示的な選択。本文の機械的な切り詰めは要約品質を保証できず、利用者にも見えないため。再実行しても同じ結果になる決定的失敗として `FAILURE_LABELS` で案内済み |
 | LLM コスト | 1件あたり 4〜13円（`claude-sonnet-4-6`）。267件で約1,860円、1000件で約6,980円（≒ $46） | 入力 $3 / 出力 $15 per 1M。公式（確認日 2026-09-04、https://platform.claude.com/docs/en/about-claude/pricing ）の Claude Sonnet 4.6 の単価と一致。本文8,000字換算で1件約7円。**`mode: 'all'` で1000件を起票しても、LLM 課金が発生するのは BR-B08 の再判定を通過した未要約分のみ**（§6「分母の定義」）。1000件実行1回は月次 spend cap（Start $500）に対して約 $46 |
 | ジョブ行のサイズ | 対象ID配列は最大1000件（約16KB） | 配列で保持する。別テーブルへの正規化はしない（MVP） |
-| 失敗時の再実行 | 着手予算切れは次回起動で続行。想定外の例外は試行回数上限（`attempt_count >= 3`。最大3回試行）で `failed`。`processing` のまま **20分**以上動いていない行は次回 claim で回収する | 雛形 `claim_gsc_suggestion_jobs` と同型だが、**しきい値は15分から20分へ延ばす**。雛形の cron は `maxDuration` 300秒（余裕10分）だが本仕様は 800秒（13.3分）で、15分のままだと余裕が1.7分しかなく、稼働中のジョブが「スタック」と誤判定されて二重に claim され、同じ記事へ二重課金・件数の二重加算が起きる |
+| 失敗時の再実行 | 着手予算切れは次回起動で続行し、**この継続は試行回数を消費しない**（前進があった起動は `attempt_count` を 0 に戻す。BR-B09）。想定外の例外は**前進の無い claim が3回連続**（`attempt_count >= 3`）した時点で `failed`。`processing` のまま **20分**以上動いていない行は次回 claim で回収する（`attempt_count` は前進時にリセットされているため、長時間ジョブでも回収対象から外れない） | 雛形 `claim_gsc_suggestion_jobs` と同型だが、**カウンタの意味は「claim 総回数」ではなく「連続無進捗回数」に読み替える**（理由は §4 Non-goals）。また**しきい値は15分から20分へ延ばす**。雛形の cron は `maxDuration` 300秒（余裕10分）だが本仕様は 800秒（13.3分）で、15分のままだと余裕が1.7分しかなく、稼働中のジョブが「スタック」と誤判定されて二重に claim され、同じ記事へ二重課金・件数の二重加算が起きる |
 | 外部依存が壊れたときの表示 | 失敗理由コードごとの内訳を完了メールに出す（`FAILURE_LABELS` を共用） | 停止機構は作らない（Non-goals 参照） |
 
 ### AI機能の追加観点
@@ -460,9 +470,9 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 | `processed_count` | integer not null default 0 | 処理済み位置（`target_annotation_ids` の配列 index を指すカーソル兼用）。**完了したチャンクの末尾までしか進めない**（BR-B09） | 既存 `gsc_suggestion_jobs` 踏襲 |
 | `succeeded_count` / `failed_count` / `skipped_count` | integer not null default 0 | 集計。チャンク（最大3件）ごとに更新（BR-B09） | 親仕様の `BulkSummaryResult` 4区分 |
 | `failed_by_code` | jsonb not null default '{}' | 失敗理由コードごとの件数 | 親仕様の `failedByCode` |
-| `attempt_count` | integer not null default 0 | claim 回数。**3に達したら `failed`（`>= 3`。最大3回試行）** | 既存 `gsc_suggestion_jobs` 踏襲。雛形は `suggestion_attempt_count >= 3` で `failed` に落とし、claim 条件は `< 3`（`supabase/migrations/20260611000000_add_gsc_suggestion_jobs.sql:47,58,64`）＝最大3回試行。同値に揃える |
+| `attempt_count` | integer not null default 0 | **前進の無い claim が連続した回数**（claim の総回数ではない）。claim のたびに RPC が +1 し、その起動で `processed_count` が1件でも進んだらアプリ層が進捗保存と同じ `job_token` 条件付き UPDATE で **0 に戻す**（BR-B09）。**3に達したら `failed`（`>= 3`）** | 既存 `gsc_suggestion_jobs` 踏襲。雛形は `suggestion_attempt_count >= 3` で `failed` に落とし、claim 条件は `< 3`（`supabase/migrations/20260611000000_add_gsc_suggestion_jobs.sql:47,58,64`）。**カラム定義・しきい値は同値のまま、意味だけ「連続無進捗回数」に読み替える**（雛形は1行＝1回の LLM 呼び出しで完結する単発ジョブのため「claim 回数＝失敗回数」が成立するが、複数起動にまたがって claim し直す本仕様では成立しない。§4 Non-goals） |
 | `last_error` | text | 直近の想定外エラー。運用担当が失敗原因を追うために持つ | 既存 `gsc_suggestion_jobs` 踏襲 |
-| `notified_at` | timestamptz | 完了メール送信済み（BR-B06 の冪等） | BR-B06 / AC-B05 |
+| `notified_at` | timestamptz | **通知の試行を終えた時刻**（送信成功時 + 宛先が無く送れなかった時。送信失敗時は埋めない）。BR-B06 の冪等と、掃き出しの対象判定に使う | BR-B06 / AC-B05 / AC-B06 |
 | `created_at` / `started_at` / `finished_at` | timestamptz | 時刻。所要時間の測定（§1 成功指標）に使う | 既存 `gsc_suggestion_jobs` 踏襲 |
 
 - **処理順**: `target_annotation_ids` の配列順で固定する。既存の `orderTargetsForProcessing`（`src/server/lib/content-annotation-bulk-summary.ts:60`。親仕様の `updated_at` 昇順・`id` タイブレーク）は**使わない**。`processed_count` が配列 index を指すカーソルであるため、起動のたびに並べ替えるとカーソルの意味が壊れ、同じ記事を処理し続けて前進しない（親仕様 R-006 と同型の罠）。親仕様の処理順からの意図的な変更点であり、親仕様側の追従は不要（本仕様が実行モデルを差し替えることはメタデータに記載済み）。
@@ -478,7 +488,7 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 
 - `for update skip locked` で最大 `p_limit` 件（既定1件）を排他取得し、`processing` に更新して `attempt_count` を加算し、**新しい `job_token` を発行して返す**。
 - `processing` のまま **20分**以上動いていない行は回収対象に含める（関数がハードキルされた場合の復旧。しきい値の根拠は §8「失敗時の再実行」）。
-- `attempt_count` が**3に達している行（`>= 3`）**は claim せず `failed` に落とす（最大3回試行。雛形と同値）。雛形と同じく**この経路で `failed` になった行は `return query` で返さない**ため、アプリ層はその行を一度も見ない。完了メールは下の「完了メールの起動経路」の掃き出しが送る（AC-B15）。
+- `attempt_count` が**3に達している行（`>= 3`）**は claim せず `failed` に落とす（雛形と同値のしきい値）。**RPC 側は雛形どおり加算するだけで、0 へのリセットはアプリ層（進捗保存）が行う**（BR-B09）。RPC は「前進があったか」を知らないため、ここに判定を持ち込まない。雛形と同じく**この経路で `failed` になった行は `return query` で返さない**ため、アプリ層はその行を一度も見ない。完了メールは下の「完了メールの起動経路」の掃き出しが送る（AC-B15）。
 - `security definer` / `set search_path = public`、実行権限は `service_role` のみ（`anon` 不可を migration 内で検査する。`20260831010000` の前例に倣う）。
 - `p_limit default 1` なので**1起動につき1ジョブ**。複数利用者のジョブは直列化する（§1 成功指標の注記 / Non-goals「複数ジョブの同時実行」）。
 
@@ -504,9 +514,15 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 | --- | --- | --- |
 | `success` | claim・進捗保存・メール送信・ジョブ単位の想定外例外で**運用が気づくべき失敗が1件も無ければ** `true` | `false` なら job FAIL |
 | `data.failed` | **ジョブ処理そのものの失敗数**（claim 失敗、進捗保存失敗、メール送信失敗、ジョブ単位の想定外例外）。**記事単位の失敗は含めない** | `> 0` なら job FAIL |
-| `data.articleSucceeded` / `data.articleFailed` / `data.articleSkipped` | この起動で処理した**記事単位**の集計（正常系） | 参照されない（実行ログとして残る） |
-| `data.processedJobs` / `data.notified` | この起動で処理したジョブ数（`0` は空振り＝正常）と送信した完了メール数 | 参照されない |
+| `data.articlesSucceeded` / `data.articlesFailed` / `data.articlesSkipped` | この起動で処理した**記事単位**の集計（正常系） | 参照されない（実行ログとして残る） |
+| `data.emailsSent` / `data.emailsSkipped` / `data.emailsFailed` | 完了メールの送信数 / スキップ数（`skipped_no_email`）/ 送信失敗数 | 参照されない。ただし `emailsFailed` は `data.failed` に**含める**（下記） |
+| `data.processedJobs` / `data.carriedOver` | この起動で処理したジョブ数（`0` は空振り＝正常）と、時間予算で次回に持ち越したか（boolean） | 参照されない |
 | `data.skipped` / `data.skippedDueToLimit` / `data.stoppedReason` | **キーを載せない**。時間予算での持ち越しは本仕様の正常系（BR-B04）であり、載せると毎起動で `::warning::` が出て慢性化する。持ち越しは `data.carriedOver`（boolean）に載せる | 省略時は 0 / 空として扱われ、警告は出ない |
+
+**前例からの意図的な差分（実装時に必ず外すもの）**: 同じ `count-batch` profile の実在実装 `src/server/services/ga4ContentEvaluationBatchService.ts:385` は **`result.failed = result.articlesFailed + result.emailsFailed;`** と、記事単位の失敗を `failed` に**含める**構成を採っている。本機能は記事単位の失敗が正常系（AC-B10 / R-B01: WordPress.com 利用者のジョブが全件失敗しうる）なので、**`data.failed` に記事単位を含めない**。§14 手順3 で同ファイルを雛形に写すときは、**この合算式の `articlesFailed` の項を必ず外す**こと（写したままにすると、仕様レビューで解消したはずの「記事1件の失敗で毎回 GitHub Actions が赤くなる」状態が実装で復活する）。
+
+- `data.emailsFailed` は `data.failed` に**含める**（＝一時的な送信失敗でも job は赤くなる）。承知のうえでそうする。送信失敗は次回起動の掃き出しで自己回復するが、24時間の窓（BR-B06 例外）を過ぎると通知が届かないまま終わるため、運用担当が気づける必要がある。
+- 集計キー名は前例（`articlesFailed` / `emailsSent` / `emailsSkipped` / `emailsFailed`。`ga4ContentEvaluationBatchService.ts:60-65,353-355`）の**複数形に揃える**（`project-naming`: 既存の慣例に合わせる）。成功件数だけは前例が `articlesEvaluated` だが、本機能は「評価」ではなく要約なので `articlesSucceeded` とする。
 
 **マイグレーション/ロールバック**
 
@@ -519,7 +535,7 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 | --- | --- | --- | --- | --- |
 | Anthropic API | 要約生成 | 既存の `llmChat` 経由（`claude-sonnet-4-6`）。レート上限は組織単位で他機能と共有 | 記事単位で失敗に計上し、ジョブは続行（AC-B10）。429 の扱いは未決定（Q-B02） | https://platform.claude.com/docs/en/api/rate-limits ・ https://platform.claude.com/docs/en/about-claude/pricing （確認日 2026-09-04。引用は §8 / §12） |
 | WordPress（self-hosted / WordPress.com） | 本文取得 | `fetchWpPostContentLive`。**cron 実行時はブラウザの Cookie が無い** | 本文取得失敗は `SUMMARY_CONTENT_FETCH_FAILED` として失敗に計上（LLM 呼び出し前なので LLM 課金は発生しない） | **未照合**（`developer.wordpress.com` / `developer.wordpress.org` が実行環境の egress proxy にブロックされ取得不可。§16）。以下は実コードのみを根拠とする |
-| Resend | 完了メール | 既存 `EmailService` に**新規メソッドを追加**。宛先は `public.users.email` | 送信失敗時は `notified_at` を更新せず、次回の cron 起動の**掃き出し経路**が再送する（下の「完了メールの起動経路」） | **未照合**（`resend.com` がブロック。§16） |
+| Resend | 完了メール | 既存 `EmailService` に**新規メソッドを追加**（`idempotencyKey` 付き。下の「`EmailService` への追加」）。宛先は `public.users.email` | 送信失敗時は `notified_at` を更新せず、次回の cron 起動の**掃き出し経路**が `created_at` 24時間以内に限って再送する（下の「完了メールの起動経路」） | **社内に verbatim の公式記録あり**（`docs/plans/ga4-content-evaluation-spec.md` §16。URL・確認日 2026-08-19・引用つき。冪等キーとレート上限を本仕様に反映済み）。**web での再取得は egress ブロックのため未実施**（§16） |
 | GitHub Actions | 10分間隔の起動 | 新規ワークフロー1本（`CRON_SECRET` を渡して `scripts/invoke-cron.sh` を実行） | 失敗は GitHub Actions の通知で運用担当が検知する（§2）。何を失敗とみなすかは上の「cron ルートのレスポンス形」 | **一部確認済み**: リポジトリが public であることは 2026-09-04 に GitHub API で確認（§10）。`schedule` の遅延・ドロップ・60日無活動での自動停止の挙動は**未照合**（`docs.github.com` がブロック。§16 / §10 制約条件） |
 
 **cron からの `generateSummary` 呼び出し経路（実装契約）**
@@ -531,8 +547,19 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 
 **`EmailService` への追加（実装契約）**
 
-- 既存の公開メソッドは `sendGoogleAdsAnalysis` / `sendGoogleAdsNegativeKeywords` / `sendGa4ContentEvaluation` の3つのみで、いずれも `htmlContent: string` を受ける。**汎用の送信口は無いため新規メソッドが必須**。
-- 追加: `sendContentAnnotationSummaryCompletion(to: string, subject: string, htmlContent: string)`（既存3メソッドと同じ引数形）。
+- 既存の公開メソッドは `sendGoogleAdsAnalysis` / `sendGoogleAdsNegativeKeywords` / `sendGa4ContentEvaluation` の3つで（`sendGoogleAdsNegativeKeywords` は `sendGoogleAdsAnalysis` へ委譲する薄いラッパ）、いずれも `htmlContent: string` を受ける。**汎用の送信口は無いため新規メソッドが必須**。
+- 追加: `sendContentAnnotationSummaryCompletion(to: string, subject: string, htmlContent: string, idempotencyKey: string)`。**引数形は「cron + メール + 冪等」という本仕様と同じ構図の前例 `sendGa4ContentEvaluation(to, subject, htmlContent, idempotencyKey)`（`src/server/services/emailService.ts:78-98`。`resendClient.emails.send({ from, to, subject, html }, { idempotencyKey })` を呼ぶ）に揃える**。冪等キーには**ジョブ ID（UUID）**をそのまま渡す（1ジョブ1通なのでキーの意味が一致し、下の公式引用の「unique per API request」「256文字以内」も満たす）。
+- **二重送信の防御は3段**（1段目・2段目だけでは「送信は成功したが `notified_at` の更新前にハードキル」の窓が開き、10分後の掃き出しが `notified_at is null` を拾って**同じ完了メールが2通**届く。クライアント合意「完了時にメール1通」が破れる）:
+  1. cron 定義の `maxRetries: 1`（§9 cron 定義値）。
+  2. `notified_at` による DB 側の印（BR-B06 / AC-B05）。
+  3. **Resend の `Idempotency-Key`**。送信成功後・DB 記録前のクラッシュ窓を塞ぐのはこの3段目だけである。同じ構図で3段の防御を要求している前例: `docs/plans/ga4-content-evaluation-spec.md:1474`。
+- 根拠（公式ページ本文の verbatim 引用。**社内の公式記録** `docs/plans/ga4-content-evaluation-spec.md` §16 に URL・確認日つきで残っているものを転記。URL: https://resend.com/docs/api-reference/emails/send-email ／ 確認日: **2026-08-19**。本ランで web 再取得はしていない。§16）:
+
+  > Add an idempotency key to prevent duplicated emails. Should be unique per API request. Idempotency keys expire after 24 hours. Have a maximum length of 256 characters.
+
+  > The default maximum rate limit is 10 requests per second per team.（URL: https://resend.com/docs/api-reference/introduction ／ 確認日 2026-08-19）
+
+  解釈（引用と分離）: キーは24時間で失効するため、**24時間を超えて滞留した通知は再送しても重複を防げない**。掃き出しの対象を `created_at` 24時間以内に限る（BR-B06 例外 / §9 経路2）のはこの引用に合わせた判断である。また掃き出しの上限10件は逐次送信であれば秒あたり10リクエストの既定上限に触れない。
 - 件名・差出人: 既定の差出人は `GrowMate <noreply@mail.growmate.tokyo>`（`DEFAULT_EMAIL_FROM`。`EMAIL_FROM` 環境変数で上書き可）。**件名の文言と差出人表記は未確定** → Q-B03。
 - 本文構成: (1) 対象件数（`total_count`）、(2) 成功・失敗・スキップ・未実行の件数、(3) `describeFailures(failed_by_code)` による失敗内訳、(4) `failed` で終わった場合は「途中までの結果である」旨、(5) `/analytics` へのリンク。
 
@@ -541,10 +568,12 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 ジョブを `failed` に落とす主体（claim RPC。SQL 内で完結する）とメールを送る主体（アプリ層）が別なので、**アプリ層が一度も見ないまま終了するジョブが存在する**。BR-B06 の「終了時に1通」を成立させるため、起動経路を次の2つに分けて定義する。
 
 1. **同一起動内での送信**: cron がジョブを最後まで処理して `completed` にした場合、または想定外の例外で `failed` にした場合は、その起動の中で完了メールを送り、成功したら `notified_at` を更新する（AC-B04）。
-2. **未通知ジョブの掃き出し**: cron ルートは claim の**前**に、`status in ('completed','failed')` かつ `notified_at is null` のジョブを `created_at` 昇順で**最大10件**取得し、完了メールを送る。これが (a) claim RPC が `attempt_count >= 3` で `failed` に落とした行（AC-B15）、(b) 経路1で送信に失敗した行の再送（外部連携 Resend 行）、(c) 送信直前のハードキル、をまとめて拾う。これが無いと、`completed` かつ `notified_at is null` の行は claim 対象（`pending` / `processing`）に含まれないため二度と拾われない。
-   - 取得は Service Role で行い全利用者のジョブが対象になるが、**宛先は取得した行の `user_id` から解決（`public.users.email`）し、他の `user_id` の情報を混ぜない**（`supabase` skill 運用ルール3）。
-   - 冪等: 送信成功後に `.is('notified_at', null)` を条件にした更新で印を付ける（AC-B05）。起動の重なりによる二重送信は workflow の `concurrency`（§10）で抑止する。
-   - 最大10件は1起動の時間予算（BR-B04）を圧迫しないための件数上限。残りは次回の起動で送る。
+2. **未通知ジョブの掃き出し**: cron ルートは claim の**前**に、`status in ('completed','failed')` かつ `notified_at is null` かつ **`created_at` が直近24時間以内**のジョブを `created_at` 昇順で**最大10件**取得し、完了メールを送る。これが (a) claim RPC が `attempt_count >= 3` で `failed` に落とした行（AC-B15）、(b) 経路1で送信に失敗した行の再送（外部連携 Resend 行）、(c) 送信直前のハードキル、をまとめて拾う。これが無いと、`completed` かつ `notified_at is null` の行は claim 対象（`pending` / `processing`）に含まれないため二度と拾われない。
+   - 取得は Service Role で行い全利用者のジョブが対象になるが、**宛先は取得した行の `user_id` から解決（`public.users.email`）し、他の `user_id` の情報を混ぜない**（`supabase` skill 運用ルール3）。§6 権限の「cron は `user_id` を明示スコープ」に対する唯一の例外であり、そこにも明記する。
+   - **印を打つのは「送信に成功したとき」ではなく「このジョブについて通知の試行を終えたとき」**: (i) 送信成功時、(ii) `users.email` が NULL・空で送る相手がいないとき（BR-B06 例外。`skipped_no_email` をログに残す）のいずれも `notified_at` を埋める。更新は `.is('notified_at', null)` を条件にした条件付き更新で行う（AC-B05）。(iii) 送信失敗のときだけ印を打たず、次回の掃き出しで再送する。
+   - **24時間の窓**: 印を打てないまま24時間を過ぎた行は掃き出し対象から外れる（`last_error` に理由が残る）。窓が無いと恒久的な送信失敗（無効アドレスに対する Resend の 4xx など）の行が滞留し、**10件の枠を占有して他のジョブの通知が届かなくなる**。24時間は Resend の `Idempotency-Key` 有効期間（下記「`EmailService` への追加」の引用）と一致し、それを過ぎた再送はどのみち重複を防げない。**再送回数を数える新規カラムは追加しない**（MVP）。
+   - 最大10件は1起動の時間予算（BR-B04）を圧迫しないための件数上限。残りは次回の起動で送る。Resend の既定レート上限は「10 requests per second per team」（同引用）なので、**10件を逐次送信する限り上限には触れない**（既存の Google Ads / GA4 のメールと同一チーム枠を共有する点に注意）。
+   - **時間予算の起点**: 掃き出しは claim の前に走るため、`computeSummaryItemBudgetMs(elapsedMs)` に渡す `elapsedMs` の起点は **cron ルートハンドラの開始時刻**とし、**掃き出しに要した時間も予算に含める**（BR-B04）。claim 完了時刻を起点にすると、掃き出しの所要分だけ `maxDuration` 800 秒に対する40秒の返却バッファを食い潰す。
 
 ## 10. 制約・前提・依存関係
 
@@ -661,7 +690,7 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 
 ### 確認質問
 
-回答が出るまで実装に進めない事項。**本ランでは解消できず、`spec-review` のブロッカーとして残る。**
+回答が出るまで実装に進めない事項。**`spec-review` を3周実施しても解消できず、ブロッカーとして残っている**（レビューループはここで停止した。3件の回答と §16 承認表の記入が揃った時点で `spec-review` を再実行する。§16「未解決のブロッカー」）。
 
 | ID | 確認質問 | 回答が必要な理由 | 回答者 | 期限 | 状態 |
 | --- | --- | --- | --- | --- | --- |
@@ -692,10 +721,13 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
   - カーソル前進と再開（AC-B02。処理順が `target_annotation_ids` の配列順で、実行時に並べ替えられないこと）
   - **チャンク境界での進捗保存と異常終了後の再開**（AC-B14）: 並列3で**完了順が配列順と入れ替わった**状態（チャンク内の後ろの記事が先に完了）で異常終了させ、`processed_count` が直近に完了したチャンクの末尾で止まること、再開時に**着手済みで未完了だった記事が飛ばされず全件処理される**こと
   - 着手予算切れの打ち切りと件数保存（AC-B03。`computeSummaryItemBudgetMs` が `null` を返すケースをモックする。**経過秒数の閾値比較ではなく戻り値で判定していることを検証する**）
+  - **前進のある継続で `attempt_count` が積み上がらないこと**（BR-B09 / §9 データ表）: 予算切れで `pending` に戻る継続を **4回以上繰り返しても `failed` にならず、最後まで完走する**こと。あわせて、前進があった起動の進捗保存で `attempt_count` が 0 に戻ること、前進が無い（claim 直後に落ちる）起動だけがカウンタを積み上げ、3回連続で `failed` になることを検証する。**このテストが無いと、雛形の「claim 総回数」の意味が実装で復活し、267件（約4起動）・1000件（約15起動）のジョブが完走できない状態に戻る**
+  - 20分スタック回収の再 claim が、長時間ジョブでも `attempt_count < 3` の条件を満たすこと（前進時のリセットが効いていること。R-B05 / FR-B13）
   - **実行直前の再判定（AC-B13）**: 起票後に8項目が埋まった記事は `generateSummary` を呼ばずスキップに計上し、既存の値を更新しないこと
   - 完了メールの冪等（AC-B05）、メール未登録時のスキップ（AC-B06）、`failed` 終了時の送信（AC-B15。**claim RPC が `attempt_count >= 3` で `failed` に落とした行が、次回起動の掃き出しで通知されること**）
-  - 送信に失敗した場合に `notified_at` が更新されず、次回起動の掃き出しで再送されること（§9「完了メールの起動経路」）
-  - cron ルートのレスポンスが §9 の契約どおりであること（**記事単位の失敗が `data.failed` に載らない**。`data.skipped` / `data.stoppedReason` を載せない）
+  - 送信に失敗した場合に `notified_at` が更新されず、次回起動の掃き出しで再送されること。**`created_at` が24時間より古い未通知ジョブは掃き出し対象に含まれないこと**（§9「完了メールの起動経路」）
+  - **メール未登録（`users.email` が NULL・空）のジョブが `notified_at` を埋められ、次回以降の掃き出しに現れないこと**（AC-B06 / F-30。滞留が10件の枠を占有すると AC-B15 の通知経路が死ぬ）
+  - cron ルートのレスポンスが §9 の契約どおりであること（**記事単位の失敗が `data.failed` に載らない**。`data.skipped` / `data.stoppedReason` を載せない）。**前例 `ga4ContentEvaluationBatchService.ts:385` の合算式 `failed = articlesFailed + emailsFailed` を写していないこと**を意図的に確認する（`data.emailsFailed` は含めるが `data.articlesFailed` は含めない）
   - 二重起票の拒否（AC-B07。**事前検出とユニーク制約違反の両方**で `SUMMARY_BULK_ALREADY_RUNNING` が返ること）、上限超過（AC-B11）、権限（AC-B09）
   - 並列実行時の件数集計が直列時と一致すること
   - 進捗取得クエリに `.eq('user_id', ...)` が付いていること（§6 権限）
@@ -731,12 +763,12 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 ### 手順
 
 1. マイグレーション（テーブル + `job_token` + インデックス + RPC + 権限検査）と型再生成。
-2. ジョブ処理サービス（claim → **配列順に3件ずつのチャンクで処理** → **チャンク着手の直前にその3件を再取得して BR-B08 を再判定** → **チャンクが揃ってから `job_token` 条件付きで進捗保存** → 完了判定 → 完了メール）。ジョブ雛形は既存 `GscSuggestionJobService`、チャンク処理の形は `GscEvaluationService`（`:97-118`）と同型にする。
+2. ジョブ処理サービス（claim → **配列順に3件ずつのチャンクで処理** → **チャンク着手の直前にその3件を再取得して BR-B08 を再判定** → **チャンクが揃ってから `job_token` 条件付きで進捗保存（前進があれば同じ UPDATE で `attempt_count = 0`。BR-B09 / F-29）** → 完了判定 → 完了メール）。ジョブ雛形は既存 `GscSuggestionJobService`、チャンク処理の形は `GscEvaluationService`（`:97-118`）と同型にする。
    - `contentAnnotationSummaryService.generateSummary` の `cookieStore` を任意化し、cron からは cookie 無しの `getCookie` を渡す（§9）。
    - 処理順は `target_annotation_ids` の配列順で固定し、`orderTargetsForProcessing` は使わない（§9「処理順」）。
    - **対象記事の取得は、着手するチャンク（最大3件）ごとに行う。** ジョブ全体をループ前に `chunkIds(ID_QUERY_CHUNK_SIZE)` で一括取得して振り分ける同期版の形（`src/server/actions/contentAnnotationBulkSummary.actions.ts:188-246`）は採らない。採ると BR-B08 の再判定が最大12分前（1起動分）のスナップショットに基づくことになり、「`generateSummary` の直前」を満たさないため。1回の取得は最大3 ID なので PostgREST の `db-max-rows = 1000` にも触れない。
-3. cron ルート追加（**レスポンス形は §9 の契約に合わせる**。未通知ジョブの掃き出しを claim の前に置く）、`CRON_CONFIGS` へ登録（値は §9 の表）、10分間隔ワークフロー追加（`concurrency` 付き。**各ステップの `if` の schedule 文字列を `*/10 * * * *` にする**。§10）。`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属先を決め、`analytics-max-duration.test.ts` を更新する。
-4. 完了メール（`EmailService` の新規メソッド + HTML 本文 + `notified_at` による冪等 + `failed` 時の文面 + **未通知ジョブの掃き出し**。§9「完了メールの起動経路」）。
+3. cron ルート追加（**レスポンス形は §9 の契約に合わせる**。`ga4ContentEvaluationBatchService.ts:385` を雛形に写す場合は **`failed = articlesFailed + emailsFailed` の `articlesFailed` の項を必ず外す**。§9「前例からの意図的な差分」。未通知ジョブの掃き出しを claim の前に置き、時間予算の起点をルートハンドラ開始時刻にする）、`CRON_CONFIGS` へ登録（値は §9 の表）、10分間隔ワークフロー追加（`concurrency` 付き。**各ステップの `if` の schedule 文字列を `*/10 * * * *` にする**。§10）。`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属先を決め、`analytics-max-duration.test.ts` を更新する。
+4. 完了メール（`EmailService` の新規メソッド。**第4引数 `idempotencyKey` にジョブ ID を渡す**（前例 `sendGa4ContentEvaluation`。§9）+ HTML 本文 + `notified_at` による冪等（**送信成功時と宛先が無いときに打ち、送信失敗時は打たない**）+ `failed` 時の文面 + **未通知ジョブの掃き出し**（`created_at` 24時間以内・最大10件・逐次送信）。§9「完了メールの起動経路」）。
 5. Server Action を起票に差し替え、二重起票を拒否（`SUMMARY_BULK_ALREADY_RUNNING` を `ERROR_MESSAGES` に追加）。
 6. 画面（実行直後のトースト、進捗ラベル、`page.tsx` での進捗取得、UI 文言辞書の更新）。
 7. テスト追加・更新、`npm run verify`、実データ確認。
@@ -771,6 +803,7 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 | --- | --- | --- | --- | --- |
 | 1 | 2026-09-04 | 2 / 13 / 4 | 全19件を反映（`docs/plans/.workflow/content-annotation-bulk-summary-background-spec/review/03-revise.md`） | 下記「残置合意」を参照 |
 | 2 | 2026-09-04 | 0 / 5 / 4 | 全9件（F-20〜F-28）を反映。1周目の反映によって生じた矛盾の解消が中心（並列3とカーソルの両立不能、`failed` 通知の起動経路欠落、`count-batch` の判定セマンティクス、public 確定、UI 分母語の二義） | 下記「2周目で決めた設計判断」を参照 |
+| 3（**最終周**） | 2026-09-04 | 1 / 3 / 3 | 全7件（F-29〜F-35）を反映。🔴 F-29（`attempt_count` が「claim 回数」のため4起動目で必ず `failed` になり §1 の成功指標が構造的に破れる）の解消と、2周目で新設した掃き出し経路に起因する3件（通知の永久滞留 / Resend 冪等キー欠落 / 実在の前例との乖離）が中心 | 下記「3周目で決めた設計判断」「3周目の残置合意」を参照 |
 
 **残置合意した論点と理由**
 
@@ -789,11 +822,27 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 - **cron ルートのレスポンス形を定義した（F-22）**: `scripts/invoke-cron.sh` の `count-batch` は `data.failed > 0` を job FAIL にするため、記事単位の失敗（本仕様では正常系）を `data.failed` に載せると運用通知が常時鳴る。**新規 profile を足さず**、`data.failed` を「ジョブ処理そのものの失敗」に限定し、記事単位は別キーに載せる契約を §9 に置いた。
 - **進捗ラベルの分母語を「対象」にした（F-24）**: 既存ツールバーの「全 M 件」（＝利用者の全記事数 `annotationTotalCount`）と同じ語で別の母数を指す状態を避けるため。実装への影響は文言のみ。
 - **処理順を配列順に固定した（F-25）**: 親仕様の `updated_at` 昇順（`orderTargetsForProcessing`）からの意図的な変更。`processed_count` が配列 index を指すカーソルであるため、実行時に並べ替えると前進しなくなる。親仕様側の追従は不要。
-- **`attempt_count` の上限表現を `>= 3`（最大3回）に揃えた（F-26）**: 「既存雛形踏襲・同値」という根拠列と実コード（`suggestion_attempt_count >= 3`）に合わせた。
+- **`attempt_count` の上限表現を `>= 3` に揃えた（F-26）**: 「既存雛形踏襲・同値」という根拠列と実コード（`suggestion_attempt_count >= 3`）に合わせた。**なお、このとき併記した「claim 回数＝最大3回試行」という意味づけは3周目に「連続無進捗回数」へ読み替えた**（F-29。しきい値 `>= 3` は変えていない）。
 - **BR-B08 の再判定をチャンク単位の再取得と定義した（F-28）**: 同期版のループ前一括取得をそのまま持ち込むと、再判定が最大12分前のスナップショットになる。取得単位を最大3 ID にすることで「直前」を満たし、`db-max-rows` の懸念も生じない。
+
+**3周目（cycle 3）で決めた設計判断と理由**
+
+いずれも仕様書テキストの修正だけで解消しており、新規テーブル・新規カラム・feature flag・新規 cron profile・監視ダッシュボードは**1つも追加していない**（`CLAUDE.md` Core Rules / MVP 最優先）。
+
+- **`attempt_count` を「連続無進捗回数」に読み替えた（F-29 🔴）**: 2周目までの定義（claim 回数）では、複数回の cron 起動にまたがって同じ行を claim し直す本仕様の正常な継続が試行回数を消費し、**267件（約4起動）のジョブが1件も残していないのに4回目の claim で `failed` に落ちる**（1000件なら約15起動でほぼ確実に途中で死ぬ）。利用者には「途中までの結果です」という完了メールが正常系として届くため、運用も気づけない。雛形 `claim_gsc_suggestion_jobs` で「claim 回数＝失敗回数」が成立するのは1行＝1回の LLM 呼び出しで完結する単発ジョブだからで、再開型の本仕様には意味論ごと持ち込めない。採った案は**前進があった起動で `attempt_count` を 0 に戻す**（進捗保存と同じ `job_token` 条件付き UPDATE に含める）で、**新規カラムを増やさず**、Non-goals が宣言した「想定外の例外で無限に claim され続けるのを止める」上限はそのまま成立する。反映先は §4 Non-goals / §3 BR-B09 / §6 状態遷移・FR-B06 / §7 AC-B15 / §8「失敗時の再実行」/ §9 データ表・RPC / §13。
+- **通知の印を「送信成功時」から「通知の試行を終えた時」に広げた（F-30 🟡）**: メール未登録の利用者のジョブは送信されないため `notified_at` が永久に NULL のまま残り、`created_at` 昇順・最大10件の掃き出しに毎起動選ばれ続ける。累積すると**10枠を滞留行が占有し、AC-B15 の `failed` 通知と再送が二度と動かない**（2周目で掃き出しを新設したことで初めて生まれた欠陥）。メール未登録時も `notified_at` を埋める形にし、恒久的な送信失敗は `created_at` 24時間以内という**窓**で切った（再送回数カラムを増やさずに済み、Resend の冪等キー有効期間とも一致するため）。既存 `ga4ContentEvaluationBatchService`（`:353-355`）も `skipped_no_email` を計上して滞留を作らない同型。
+- **Resend の `Idempotency-Key` を採用した（F-31 🟡）**: 防御が `notified_at` の1段だけでは「送信成功後・`notified_at` 更新前のハードキル」の窓が塞がらず、10分後の掃き出しが同じ行を拾って**完了メールが2通**届く（クライアント合意「メール1通」が破れる）。同じ構図の前例 `sendGa4ContentEvaluation(to, subject, htmlContent, idempotencyKey)`（`emailService.ts:78-98`）に引数形を揃え、冪等キーにジョブ ID を渡す。根拠は社内に残る verbatim の公式記録（`ga4-content-evaluation-spec.md` §16。2026-08-19）で、§16 の照合表も「未確認」から「社内 verbatim 記録あり・web 再取得は未実施」へ訂正した。
+- **cron レスポンスのキー名を実在の前例に揃え、差分を名指しした（F-32 🟡）**: `ga4ContentEvaluationBatchService.ts:385` は `failed = articlesFailed + emailsFailed` と記事単位の失敗を `failed` に**含める**構成で、キー名も複数形（`articlesFailed` / `emailsSent` …）。本仕様は逆の判断（記事単位を含めない）を採るが、2周目の記述では「どの実装から意図的に外れるのか」を名指ししていなかったため、雛形を写した実装で F-22 の欠陥が復活しうる。キー名を前例の複数形へ統一し、**外すべき合算式の行を §9 と §13 に明記**した。`data.emailsFailed` は `data.failed` に含める（承知のうえで赤くする）。
+- **時間予算 `elapsedMs` の起点をルートハンドラ開始時刻に定義した（F-33 🟢）**: 掃き出しを claim の前に置いたため、claim 完了時刻を起点にすると掃き出しの所要が返却バッファ（40秒）を食い潰す。
+
+**3周目の残置合意（実装は変えない）**
+
+- **再開時の件数ずれ（F-34 🟢）**: 異常終了からの再開で、直近の未完了チャンクの先行完了分（最大2件）が再判定でスキップに計上される。要約は生成済みで結果は正しく、二重課金も起きない安全側の挙動であり、影響は完了メールの件数表示が**異常終了1回あたり最大2件**ずれることだけ。件数を正確にするには完了済み集合を別に保持する必要があり（2周目に F-20 で退けた案）、MVP の範囲を超える。**§6「集計の定義」に挙動を明記するに留める**。
+- **§6 権限と掃き出しの字面不整合（F-35 🟢）**: 実害は無い（掃き出しは行ごとに `user_id` から宛先を解決し、行をまたいだ結合をしない）が、§6 の権限節だけを読むと「cron のクエリは常に単一 `user_id`」と読めるため、**例外1文を §6 権限へ追記**した。実装・機構は変えていない。
 
 **未解決のブロッカー（次サイクルへ持ち越し）**
 
+- **本仕様は `spec-review`（audit ↔ revise）を3周実施し、指摘35件（F-01〜F-35）をすべて反映した。ここでレビューループは停止する。残る停止要因は次の2つだけで、いずれもエージェントでは解消できない外部入力である: (1) Q-B01〜Q-B03 の回答、(2) 本節「承認」表の記入（ステータス `draft` の解除・承認者・対象リリース）。回答が反映された時点で `spec-review` ループを再実行すること**（何周回しても、この2つが埋まらない限り到達できる最上位の verdict は `approved_with_questions` であり `approved` にはならないため、回答前の追加ループは意味がない）。
 - Q-B01 / Q-B02 / Q-B03 が未回答（クライアント確認中）。3件の回答が揃うまで verdict は `approved` にならず `approved_with_questions` 止まり。
 - 承認表（本節）が空欄。ステータスは `draft` のままで、承認者・対象リリースが未確定。
 - （解消済み）リポジトリ visibility は 2026-09-04 に **public** を確認したためブロッカーから外した。GitHub Actions で未照合のまま残るのは `schedule` の遅延・高負荷時のドロップ・60日無活動での自動停止の挙動のみ（`docs.github.com` が egress ブロックのため）。
@@ -809,6 +858,7 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
   | Claude レート制限 | https://platform.claude.com/docs/en/api/rate-limits | 照合済み。組織単位・Sonnet 4.x は 4.6/4.5 合算・429 に `retry-after` |
   | Message Batches API | https://platform.claude.com/docs/en/build-with-claude/batch-processing | 照合済み。「reducing costs by 50%」「most batches finishing in less than 1 hour」。Non-goals の記述と一致 |
   | リポジトリ visibility（公式ドキュメントではなく GitHub API の1次情報） | GitHub API の repository オブジェクト（`shoma-endo/GrowMate`） | 確認日 2026-09-04。`private=false` / `visibility=public`。§10 / ALT-002 / R-B07 の課金前提はこれで確定（`docs.github.com` の課金ページ自体は引き続き未照合） |
+  | Resend 送信 API（冪等キー・レート上限） | https://resend.com/docs/api-reference/emails/send-email ／ https://resend.com/docs/api-reference/introduction | **社内の公式記録を根拠に照合済み**。確認日 **2026-08-19**（`docs/plans/ga4-content-evaluation-spec.md` §16 に URL・確認日・公式ページ本文の verbatim 引用が残っており、要約経由ではないため一次情報として使える）。引用と解釈は §9「`EmailService` への追加」に転記。「Idempotency keys expire after 24 hours」「10 requests per second per team」を、掃き出しの24時間窓・上限10件の根拠にした。**本ランでの web 再取得は egress ブロックのため未実施**であり、egress が通る環境で再確認して確認日を更新すること |
 
 - **未確認（実行環境の egress proxy にブロックされ取得不可。実装前に照合し、verbatim 引用と確認日をここへ追記すること）**:
 
@@ -817,7 +867,6 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
   | WordPress.com OAuth2 | https://developer.wordpress.com/docs/oauth2/ | R-B01 / Q-B01（トークン期限・リフレッシュ挙動）。現状は実コードのみを根拠にしている |
   | WordPress.com REST（本文取得） | https://developer.wordpress.com/docs/api/ | §9 外部連携 |
   | WordPress REST API（posts） | https://developer.wordpress.org/rest-api/ | §9 外部連携（self-hosted） |
-  | Resend 送信 API | https://resend.com/docs/api-reference/emails/send-email | §9（送信レート・冪等キーの有無。`notified_at` 自前冪等の妥当性） |
   | GitHub Actions `schedule` | https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule | §10 制約条件（最小間隔・遅延・ドロップ・60日無活動での自動停止）。**課金前提は visibility の確定により解消済み**（下記） |
   | Vercel Functions duration | https://vercel.com/docs/functions/configuring-functions/duration | §10 技術前提（Pro の `maxDuration` 800秒） |
   | Supabase RLS / `security definer` | https://supabase.com/docs/guides/database/postgres/row-level-security | §9（判断は `.agents/skills/supabase/*` を正本として実施済み） |
@@ -837,4 +886,5 @@ processing --[試行上限（attempt_count >= 3）に達した行を次回の cl
 | --- | --- | --- | --- |
 | 2026-09-04 | 初版作成 | クライアント合意（キャンセル導線なし / 完了時にメール1通 / Sonnet 5 移行はステイ）を反映 | Claude（Cloud セッション） |
 | 2026-09-04 | `spec-review` サイクル1の指摘19件を反映（BR-B08 / BR-B09 / FR 表 / AC-B13〜B15 / cron 定義値 / 時間予算の数値訂正ほか） | 🔴 F-01（親 BR-01 の実行直前再検証の欠落）・🔴 F-02（時間予算730秒と既存定数760秒の矛盾）を含む監査指摘の解消 | Claude（spec-review revise） |
+| 2026-09-04 | `spec-review` サイクル3（最終周）の指摘7件（F-29〜F-35）を反映（`attempt_count` を「連続無進捗回数」に再定義し前進時に 0 へリセット、掃き出しの `notified_at` を「通知の試行を終えた時」に打つ＋24時間の窓、Resend `Idempotency-Key` の採用と §16 照合表の訂正、cron レスポンスのキー名統一と前例からの差分の名指し、`elapsedMs` の起点定義、件数ずれと権限例外の明記）。あわせて `spec-review` ループの停止とその再開条件を §12 / §16 に明記 | 🔴 F-29（`attempt_count` が claim 回数のため4起動目で必ず `failed` になり、§1 の成功指標「1回押すだけで最大1000件」が構造的に成立しない）の解消と、2周目で新設した掃き出し経路に起因する3件（通知の永久滞留・冪等キー欠落による二重送信・実在の前例との乖離による欠陥の復活）の解消 | Claude（spec-review revise） |
 | 2026-09-04 | `spec-review` サイクル2の指摘9件（F-20〜F-28）を反映（BR-B05 / BR-B09 をチャンク境界に再定義、完了メールの起動経路、cron ルートのレスポンス形、public 確定、進捗ラベルの分母語、処理順の固定、`attempt_count >= 3`、`schedule` ガード、BR-B08 の再取得粒度） | サイクル1の反映によって生じた矛盾（並列3と単一カーソルの両立不能で記事を飛ばす／`failed` 通知に起動経路が無い／`count-batch` が記事単位の失敗で job を FAIL にする）の解消 | Claude（spec-review revise） |
