@@ -143,6 +143,7 @@
 
 - 画面・操作: `/analytics` の「AIで要約」ボタンの挙動変更（同期実行 → ジョブ起票）、実行中の進捗表示、`ui-text.md` 辞書への新規用語追記（詳細は「6. 機能要件」の画面設計）
 - サーバー: ジョブ起票用 Server Action（戻り値の変更・`SUMMARY_BULK_ALREADY_RUNNING` の追加）、cron ルート、ジョブ処理サービス、完了メール送信（`EmailService` への新規メソッド追加、件名・本文ビルダーの新規モジュール）、`generateSummary` の `cookieStore` 任意化、`FAILURE_LABELS` / `describeFailures` の `export` 追加、**失敗理由コード2件の追加**（`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED`。BR-B10）と本文取得の可否判定（§9）
+- AI モデル: **要約に使うモデルを `claude-sonnet-4-6` から `claude-sonnet-5` へ移行する**（クライアント合意 2026-09-04）。`MODEL_CONFIGS.content_annotation_ai_summary`（`src/lib/constants.ts:117-121`）を共有定数 `ANTHROPIC_BASE`（`:48`）から切り離して要約専用のモデル設定にし、あわせて `llmChat` に `thinking` を渡す口を1つ追加する（**省略するとアダプティブ思考が既定で有効になり、思考トークンが出力料金で課金されるため**。§8「AI機能の追加観点」／§10 制約条件）。他機能のモデルは変更しない
 - データ・DB: ジョブテーブル1つと、排他取得用 RPC 1つ（マイグレーション）、`npm run supabase:types` の再生成
 - 権限・ロール: 起票は `admin` / `paid` のみ（`canWriteGa4` 流用）。進捗の閲覧は起票者本人のみ。cron は `CRON_SECRET` + Service Role + `user_id` 明示スコープ（§6 権限）
 - 定期実行: 10分間隔の GitHub Actions ワークフロー1本、`CRON_CONFIGS` への登録（値は §9）
@@ -151,7 +152,8 @@
 ### Non-goals（今回の対象外）
 
 - **キャンセル・停止導線**: 実行中ジョブを利用者が止める手段は作らない。クライアント判断（2026-09-04）で「不要」と合意済み。BR-B03 の1利用者1ジョブ制限により、暴走の上限は「1ジョブ＝最大1000件」に閉じる。
-- **Claude Sonnet 5 への移行**: 判断を保留（クライアント指示: 一旦ステイ。→ OPEN-B01）。本仕様は現行の `claude-sonnet-4-6` のまま実装する。移行する場合も本仕様の構造は変わらないため、別途決定してよい。
+- **要約以外の機能の Claude Sonnet 5 移行**: `ANTHROPIC_BASE`（`src/lib/constants.ts:48`）は **19 個のモデル設定に展開**されており、要約（`content_annotation_ai_summary`、`:117-121`）を除く **18 個**がチャット・ブログ生成・GSC 提案・Google Ads 分析・GA4 コンテンツ評価などで使われている。ここを書き換えると本仕様のレビュー範囲外の機能が一斉に別モデルへ移り、出力形式（JSON 末尾ブロック等）の回帰を本仕様のテストでは検知できない。**要約だけを共有定数から切り出して移行し、他機能は現行 `claude-sonnet-4-6` のまま据え置く**（判断は §11 ALT-005、残った移行は OPEN-B01）。
+  - なお **Claude Sonnet 5 への移行そのものは対象範囲**（クライアント合意 2026-09-04。従来の「一旦ステイ」は撤回）。対象範囲の記述は §4 対象範囲「AI モデル」、根拠は §8 / §10 / §11 ALT-005。
 - **進捗のリアルタイム更新**: WebSocket / SSE / 自動ポーリングは作らない。BR-B07 のとおり再読み込み時の表示にとどめる。
 - **Message Batches API（50%割引）の利用**: 投入・ポーリング・結果回収が別実装になるため今回は採らない。コスト削減が要件化された場合に再検討する（→ OPEN-B02）。
 - **評価サイクル一括開始のバックグラウンド化**: LLM を使わず1回で1000件処理できるため不要（→ OPEN-B03）。
@@ -161,6 +163,7 @@
 - **Anthropic 429 の待機・自動再試行**: `retry-after` を待って同一起動内で再試行する経路も、未処理として次回起動へ回す経路も作らない。**クライアント回答（2026-09-04 / Q-B02）で「(a) 失敗として計上する」と決定**したため（BR-B11）。
 - **失敗した記事の自動リトライ**: 決定的失敗（本文サイズ超過など）は再実行しても同じ結果になるため、自動リトライはしない。利用者が再度実行する。ジョブ単位の `attempt_count` 上限3は、想定外の例外で無限に claim され続けるのを止めるための上限であり、記事単位のリトライ機構ではない。**本仕様の `attempt_count` は「前進の無い claim が連続した回数」であって claim の総回数ではない**（BR-B09 / §9 データ表）。本仕様のジョブは設計上、複数回の cron 起動にまたがって同じ行を claim し直すため（BR-B04 例外 / FR-B03）、claim 総回数を数えると 267 件（約4起動）・1000 件（約15起動）のジョブが**1件も残していないのに `failed` に落ちる**（§1 の成功指標が構造的に成立しない）。雛形 `gsc_suggestion_jobs` は「1行＝1回の LLM 呼び出しで完結する単発ジョブ」なので「claim 回数＝失敗回数」が成り立つが、再開型の本仕様では成り立たないため、意味だけを読み替えて踏襲する。
 - **本文サイズ超過時の自動削減**: 80,000文字を超える本文を切り詰めて再試行する処理は作らない（§8「本文サイズ超過時の扱い」。既存挙動を変更しない）。
+- **キュー＋cron を他機能から再利用できる汎用基盤として作ること**: 本仕様では **AI要約専用の1テーブル・1 RPC・1 cron プロファイルとして作る**。汎用化しない理由は (1) 現時点の再利用先が OPEN-B03（評価一括。LLM を使わず1回で1000件処理できるため不要と判断済み）しか無く、実例1件では抽象の形を決められない、(2) 先行実装 `gsc_suggestion_jobs` は「1行＝1回の LLM 呼び出しで完結する単発ジョブ」で、本仕様の「複数回の cron 起動にまたがる再開型ジョブ」とは `attempt_count` の意味すら一致しない（F-29 の経緯。§4 Non-goals「失敗した記事の自動リトライ」）ため、2例から共通基盤を作ると両方に合わない抽象になる、(3) MVP 最優先（`CLAUDE.md` Core Rules）。ただし**将来の抽出を妨げない書き方はする**（claim / 進捗更新 / 完了通知を Service 層のメソッドとして分け、ジョブ固有のロジック〈対象解決・要約生成・メール本文〉と混ぜない）。3例目が出た時点で共通化を検討する（→ OPEN-B04）。
 
 ## 5. 開発工数（概算）
 
@@ -180,20 +183,23 @@
 | 仕様確定 | 本書のレビュー・確認質問（Q-B01〜Q-B03）の解消（**回答受領済み。残るは §16 承認表の記入**） | 4 | 0.5 |
 | DB | ジョブテーブル + claim RPC のマイグレーション、`supabase:types` 再生成 | 2 | 0.25 |
 | サーバー | ジョブ処理サービス（claim・チャンク直前の再判定・並列3のチャンク処理・時間予算・チャンク境界の進捗保存）、cron ルート（レスポンス形・未通知ジョブの掃き出し）、`CRON_CONFIGS` 追加、本文取得の可否判定（`SupabaseService` の読み取りメソッド1件追加を含む。§9「WordPress 設定の読み取り経路」） | 12 | 1.5 |
+| AI モデル | 要約のモデル設定を `ANTHROPIC_BASE` から切り出して `claude-sonnet-5` にする、`llmChat` / `LLMOptions` / `ModelConfig` に `thinking` を渡す口を1つ追加して要約では明示的に無効化する、JSON 出力の安定性（`SUMMARY_PARSE_FAILED` の発生率）を実データで確認する（§8 / §13 / §14 手順2） | 4 | 0.5 |
 | 起票 | Server Action の差し替え（同期実行 → 起票）、二重起票の防止（事前検出 + ユニーク制約違反の捕捉） | 4 | 0.5 |
 | 通知 | 完了メール（`EmailService` の新規メソッド + 件名・HTML 本文のビルダー + 失敗理由ごとの次アクション + `notified_at` による冪等） | 6 | 0.75 |
 | 画面 | 実行直後のトースト、進捗表示、UI 文言辞書の更新 | 4 | 0.5 |
 | CI/CD | 10分間隔ワークフロー追加、cron 整合性テスト更新（複数ワークフロー対応） | 2 | 0.25 |
 | テスト | ユニット追加・更新 | 6 | 0.75 |
 | 検証 | `npm run verify`、実データでの通し確認（並列数の実測含む） | 6 | 0.75 |
-| **合計** |  | **46** | **5.75** |
+| **合計** |  | **50** | **6.25** |
 
-幅: **40〜52時間（5〜6.5人日）**。Q-B01〜Q-B03 の回答受領により下振れ側の不確実性は減ったが、回答に伴って**失敗理由コード2件の追加と本文取得の可否判定**（BR-B10）、**完了メールの次アクション文面**（BR-B06）が確定作業として増えた。上振れの理由は、R-B01 の該当利用者を実データで数える検証と、`SUMMARY_WP_REAUTH_REQUIRED` の判定を既存 `wordpressContentSync` から切り出す際の影響範囲確認。**可否判定のために増える `SupabaseService` の読み取りメソッド1件（§9「WordPress 設定の読み取り経路」）は「サーバー」12時間の内数**で、既存前例 `getUserById` と同型のため上振れ要因には数えていない。
+幅: **44〜56時間（5.5〜7人日）**。Q-B01〜Q-B03 の回答受領により下振れ側の不確実性は減ったが、回答に伴って**失敗理由コード2件の追加と本文取得の可否判定**（BR-B10）、**完了メールの次アクション文面**（BR-B06）が確定作業として増えた。上振れの理由は、R-B01 の該当利用者を実データで数える検証と、`SUMMARY_WP_REAUTH_REQUIRED` の判定を既存 `wordpressContentSync` から切り出す際の影響範囲確認。**可否判定のために増える `SupabaseService` の読み取りメソッド1件（§9「WordPress 設定の読み取り経路」）は「サーバー」12時間の内数**で、既存前例 `getUserById` と同型のため上振れ要因には数えていない。
+
+- **Claude Sonnet 5 への移行分は「AI モデル」の +4時間（+0.5人日）**（クライアント合意 2026-09-04 で対象範囲に入った分。合計 46 → 50時間、幅 40〜52 → 44〜56時間）。内訳は (a) 要約のモデル設定を `ANTHROPIC_BASE` から切り出す、(b) `llmChat` に `thinking` を渡す口を1つ足して要約では明示的に無効化する、(c) 移行後の JSON 出力の安定性を実データで確認する（§13）の3点。**移行対象は要約1機能だけ**なので、他機能の回帰確認は工数に含めない（§4 Non-goals / §11 ALT-005）。プロンプト・出力スキーマ・`maxTokens` は変更しないため、書き直しの工数も見ていない。
 
 ### カレンダー上の前提（工数外）
 
-- 仕様レビュー・承認の見込み: `spec-review` の**監査を5周**実施して指摘47件（F-01〜F-47）を反映済み（§16 レビュー記録の行1・2・3・5・6。行4はクライアント回答の反映で監査指摘ではない）。Q-B01〜Q-B03 は 2026-09-04 に回答を受領し本書へ反映済みで、`approved` に残る条件は §16 承認表の記入のみ。
-- クライアント確認・たたき台合意の見込み: **完了（2026-09-04 受領）**。Q-B01 = (b) 失敗として計上、Q-B02 = (a) 失敗として計上、Q-B03 = エージェント裁量（§12「クライアント回答（決定事項）」）。
+- 仕様レビュー・承認の見込み: `spec-review` の**監査を6周**実施して指摘52件（F-01〜F-52）を反映済み（§16 レビュー記録の行1・2・3・5・6・7。行4はクライアント回答の反映で監査指摘ではない）。Q-B01〜Q-B03 は 2026-09-04 に回答を受領し本書へ反映済みで、`approved` に残る条件は §16 承認表の記入のみ。
+- クライアント確認・たたき台合意の見込み: **完了（2026-09-04 受領）**。Q-B01 = (b) 失敗として計上、Q-B02 = (a) 失敗として計上、Q-B03 = エージェント裁量（§12「クライアント回答（決定事項）」）。**同日の追加合意で Claude Sonnet 5 への移行も確定**（従来の「ステイ」は撤回。§4 対象範囲 / §11 ALT-005）。
 - 希望リリース時期との関係: 希望時期は未確定。Q-B01 が (b) に決まったため、WordPress.com 利用者向けの分岐実装（起票時の事前拒否）は不要になり、スコープを切り出す必要はなくなった。
 - 実データ検証は cron の起動を待つため、最短でも10分単位の待ち時間が入る（`workflow_dispatch` での手動起動は可能）。
 - 本番へのマイグレーション適用は別途調整（§13 リリース方針の手順1。完了条件には含めない。§15）。
@@ -309,7 +315,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - 進捗の閲覧: **起票者本人のみ**。`admin` でも他人のジョブは表示しない（進捗表示に管理用途はない）。
 - cron 実行: 既存 cron と同じ `CRON_SECRET` の Bearer 認証（`/api/cron/*` の共通ガード）。処理は Service Role で行い、**ジョブ行の `user_id` を明示的にスコープ**して他人の記事に触れない。
   - **例外は完了メールの掃き出しだけ**: claim の前に行う未通知ジョブの取得（§9「完了メールの起動経路」経路2）は**全利用者のジョブを横断して取得する**（未通知の行がどの利用者のものか事前に分からないため）。ただし宛先（`public.users.email`）と本文は**取得した各行の `user_id` から解決**し、**行をまたいだ結合はしない**。他のクエリ（claim・記事取得・進捗保存・進捗表示）は例外なく単一 `user_id` にスコープする。
-- **画面側の読み取りも Service Role**: `app/analytics/page.tsx` からの進捗取得は `SupabaseService`（Service Role）経由で RLS をバイパスするため、クエリに `.eq('user_id', userId)` を必ず含める。RLS は多層防御であり、**実際のセキュリティ境界はアプリ層の `user_id` スコープ**（`.agents/skills/supabase/service-usage.md` 運用ルール3）。
+- **画面側の読み取りも Service Role**: `app/analytics/page.tsx` からの進捗取得は `SupabaseService`（Service Role）経由で RLS をバイパスするため、クエリに `.eq('user_id', userId)` を必ず含める。RLS は多層防御であり、**実際のセキュリティ境界はアプリ層の `user_id` スコープ**（`.agents/skills/supabase/service-usage.md` §3「Service Role 利用の安全基準」）。
 
 ## 7. Gherkin受け入れ条件
 
@@ -343,7 +349,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
     もし その1件の処理が終わる
     ならば ジョブは completed になる
     かつ 利用者のメールアドレス宛に完了メールが1通送られる
-    かつ メール本文に成功・失敗・スキップの件数と失敗理由の内訳が含まれる
+    かつ メール本文に成功・失敗・スキップの件数と、失敗があるときは失敗理由の内訳が含まれる
 
   シナリオ: AC-B05 メールは二重送信されない
     前提 completed かつ送信済みのジョブがある
@@ -468,23 +474,28 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 起動間隔 | 10分（`*/10 * * * *`） | 267件を約30〜60分で完了させるため（算式は §11 ALT-002） |
 | 1回の処理件数 | 並列3で 60〜70件（1件約30秒の実測ベース）。**目安であり保証値ではない** | 実測値: 730秒 ÷ 24件 ≒ 30.4秒/件（直列時）。BR-B05 のチャンク境界で3件が揃うのを待つため、実効スループットは理論値（並列3の連続投入）より落ちる。実データ検証で実測する（§13） |
 | 1ジョブの上限 | 1000件（`MAX_BULK_SUMMARY_TARGETS`） | 既存の上限を踏襲。`db-max-rows = 1000`（`docs/context/db-row-limits-and-data-truncation.md`）とも整合 |
-| LLM のレート制限 | Anthropic のレート上限は**組織単位**で、チャット・GSC提案 cron 等と共有する。Sonnet 4.x の上限は Sonnet 4.6 と 4.5 の**合算**バケット | 公式（確認日 2026-09-04、https://platform.claude.com/docs/en/api/rate-limits ）。Start tier の Sonnet 4.x は 1,000 RPM / 2,000,000 ITPM / 400,000 OTPM。月次 spend cap は Start $500 / Build $1,000。**GrowMate の組織 usage tier は未確認**（429 の扱いは Q-B02 の回答で確定済みなので判断のブロッカーではない。tier は §13 の実データ検証で消費量を実測するときの照合材料） |
+| LLM のレート制限 | Anthropic のレート上限は**組織単位**。**要約を `claude-sonnet-5` へ移すと、Sonnet 4.x（4.6 と 4.5 の合算バケット）とは別のレート上限バケットに乗る**ため、`claude-sonnet-4-6` のまま残るチャット・GSC提案 cron・Google Ads 分析等とレート枠を奪い合わなくなる（**モデル移行の副次的な利点であり、この分離を目的とした実装は行わない**） | 公式（確認日 2026-09-04、https://platform.claude.com/docs/en/api/rate-limits ）。同ページに「Claude Sonnet 5 has a separate rate limit and is not part of this combined bucket.」とある（引用と解釈は分離。解釈＝上の要件欄）。Start tier の Sonnet 4.x は 1,000 RPM / 2,000,000 ITPM / 400,000 OTPM。月次 spend cap は Start $500 / Build $1,000。**GrowMate の組織 usage tier と、Sonnet 5 バケットの具体的な上限値は未確認**（429 の扱いは Q-B02 の回答で確定済みなので判断のブロッカーではない。tier は §13 の実データ検証で消費量を実測するときの照合材料） |
 | 429 到達時の挙動 | 公式は 429 とともに `retry-after` ヘッダを返すが、GrowMate は**待たずにその記事を失敗として計上し、次の記事へ進む**（未処理へも回さない）。内訳は `SUMMARY_AI_RATE_LIMITED` として完了メールに出す | **クライアント回答 2026-09-04 / Q-B02 = (a) 失敗として計上する**（BR-B11 / FR-B15 / AC-B17）。待機を作らない理由は BR-B11、判定経路は §9「429 の判定経路」 |
-| LLM の入出力量 | 1件の入力は本文最大 80,000 文字（`CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS`）＋プロンプト、出力は `maxTokens: 8000`。並列3なので同時実行は最大3件、1件約30秒なら分あたり最大6件 | 概算で 480,000 ITPM / 48,000 OTPM 程度（80,000文字 ≒ 80,000 トークンの上限ケース）。Start tier の上限に対して余裕はあるが、**実測ではないため実データ検証で確認する**（§13）。他機能と共有する組織上限であることに注意 |
+| LLM の入出力量 | 1件の入力は本文最大 80,000 文字（`CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS`）＋プロンプト、出力は `maxTokens: 8000`。並列3なので同時実行は最大3件、1件約30秒なら分あたり最大6件。**モデル移行でこの値は変えない**（`maxTokens` もプロンプトも据え置き） | 概算で 480,000 ITPM / 48,000 OTPM 程度（80,000文字 ≒ 80,000 トークンの上限ケース）。**実測ではないため実データ検証で確認する**（§13）。移行後は Sonnet 5 の独立バケットに対する消費になるため、Sonnet 4.x 側の他機能とは枠を共有しない |
 | 本文サイズ超過時の扱い | 80,000 文字を超える記事は**削減・切り詰めをせず** `SUMMARY_CONTENT_TOO_LARGE` として失敗に計上する（既存挙動を変更しない） | `llm-context-memory` の「上限超過時の削減順序」に対する明示的な選択。本文の機械的な切り詰めは要約品質を保証できず、利用者にも見えないため。再実行しても同じ結果になる決定的失敗として `FAILURE_LABELS` で案内済み |
-| LLM コスト | 1件あたり 4〜13円（`claude-sonnet-4-6`）。267件で約1,860円、1000件で約6,980円（≒ $46） | 入力 $3 / 出力 $15 per 1M。公式（確認日 2026-09-04、https://platform.claude.com/docs/en/about-claude/pricing ）の Claude Sonnet 4.6 の単価と一致。本文8,000字換算で1件約7円。**`mode: 'all'` で1000件を起票しても、LLM 課金が発生するのは BR-B08 の再判定を通過した未要約分のみ**（§6「分母の定義」）。1000件実行1回は月次 spend cap（Start $500）に対して約 $46 |
+| LLM コスト | **`claude-sonnet-5` で 1件あたり約 2.7〜8.7円**（本文8,000字換算では**1件約 4.7円**）。**267件で約 1,250円、1000件で約 4,650円（≒ $31）** | 入力 $2.00 / 出力 $10.00 per 1M（`claude-sonnet-5`）、`$1 = 150円` 換算。単価の出典は §16「公式ドキュメント照合」（公式ページ 確認日 2026-09-04、https://platform.claude.com/docs/en/about-claude/pricing ／`claude-api` skill の Current Models 表）。**移行前の `claude-sonnet-4-6` は入力 $3.00 / 出力 $15.00 で 1件約 7円・267件で約1,860円・1000件で約6,980円（≒ $46）だった**ので、入出力とも単価が 2/3 になり**コストも一律 2/3**（約33%減）になる。**`mode: 'all'` で1000件を起票しても、LLM 課金が発生するのは BR-B08 の再判定を通過した未要約分のみ**（§6「分母の定義」）。1000件実行1回は月次 spend cap（Start $500）に対して約 $31 |
+| 思考トークンの課金 | **要約では拡張思考を明示的に無効化する**（`thinking: { type: 'disabled' }`）。無効化しないと思考トークンが**出力料金**（$10 per 1M）で上乗せされ、上のコスト試算が崩れる | `claude-sonnet-5` は **`thinking` を省略するとアダプティブ思考が既定で有効**になる（`claude-sonnet-4-6` は明示指定しない限り思考しないため、モデル ID の差し替えだけでは挙動が変わる）。要約は「本文から8項目を JSON で埋める」定型タスクで、深い推論を必要としない。出力品質が落ちた場合の代替は `thinking: { type: 'adaptive' }` + `output_config: { effort: 'low' }`（§10 制約条件・§14 手順2） |
 | ジョブ行のサイズ | 対象ID配列は最大1000件（約16KB） | 配列で保持する。別テーブルへの正規化はしない（MVP） |
 | 失敗時の再実行 | 着手予算切れは次回起動で続行し、**この継続は試行回数を消費しない**（前進があった起動は `attempt_count` を 0 に戻す。BR-B09）。想定外の例外は**前進の無い claim が3回連続**（`attempt_count >= 3`）した時点で `failed`。`processing` のまま **20分**以上動いていない行は次回 claim で回収する（`attempt_count` は前進時にリセットされているため、長時間ジョブでも回収対象から外れない） | 雛形 `claim_gsc_suggestion_jobs` と同型だが、**カウンタの意味は「claim 総回数」ではなく「連続無進捗回数」に読み替える**（理由は §4 Non-goals）。また**しきい値は15分から20分へ延ばす**。雛形の cron は `maxDuration` 300秒（余裕10分）だが本仕様は 800秒（13.3分）で、15分のままだと余裕が1.7分しかなく、稼働中のジョブが「スタック」と誤判定されて二重に claim され、同じ記事へ二重課金・件数の二重加算が起きる |
 | 外部依存が壊れたときの表示 | 失敗理由コードごとの内訳と**次にすべきこと**を完了メールに出す（「何が起きたか」は `FAILURE_LABELS` を共用、「次にすること」はメール専用の辞書。§9）。WordPress の連携切れは `/setup/wordpress` への再連携導線まで出す | クライアント回答 2026-09-04 / Q-B01・Q-B02（BR-B06 / BR-B10 / FR-B14）。停止機構は作らない（Non-goals 参照） |
 
 ### AI機能の追加観点
 
-- プロンプト・モデル・出力形式は現行のまま変更しない（`content_annotation_ai_summary` テンプレート、`claude-sonnet-4-6`、`maxTokens: 8000`）。
+- **モデルは `claude-sonnet-5` へ移行する**（クライアント合意 2026-09-04。§4 対象範囲 / §11 ALT-005）。**変えるのはモデル ID と `thinking` の指定だけ**で、プロンプト（`content_annotation_ai_summary` テンプレート）・出力形式（8項目の JSON）・`maxTokens: 8000` は変更しない。
+- **モデル設定は要約専用に切り出す**。`MODEL_CONFIGS.content_annotation_ai_summary`（`src/lib/constants.ts:117-121`）は共有定数 `ANTHROPIC_BASE`（`:48`）を展開しているため、`ANTHROPIC_BASE.actualModel` を書き換えると**チャット・ブログ生成・GSC 提案・Google Ads 分析・GA4 コンテンツ評価など他 18 機能まで巻き込む**（§4 Non-goals）。要約のエントリだけ `actualModel: 'claude-sonnet-5'` を自前で持たせ、`ANTHROPIC_BASE` は書き換えない。
+- **拡張思考は明示的に無効化する（実装契約）**: `claude-sonnet-5` は **`thinking` を省略するとアダプティブ思考が既定で有効**になり、思考トークンが**出力料金で課金される**。現行の `llmChat`（`src/server/services/llmService.ts`）の `LLMOptions`（`:12-22`）と Anthropic 呼び出しの `params`（`:143-152`。`callAnthropic`）には `thinking` を渡す口が無いので、**`LLMOptions` と `ModelConfig`（`src/lib/constants.ts:33-42`）に `thinking` を1つ足し、要約の設定で `{ type: 'disabled' }` を指定する**。追加するのは省略可能な1オプションだけで、既定（未指定）は現行どおり `params` に含めない＝他機能の挙動は変わらない。
+  - 代替案（品質が落ちたときだけ採る）: `thinking: { type: 'adaptive' }` + `output_config: { effort: 'low' }`。どちらを採ったかは §13 の実データ確認の結果で決め、決めた値をコードのコメントに残す。**思考トークンの上限を数値で指定する `budget_tokens` は Sonnet 5 では拒否される（400）ので使わない**（§10 制約条件）。
 - 本文サイズ上限（80,000文字）も変更しない（超過時は削減せず失敗。上表参照）。
 - 1件あたりの LLM タイムアウトは残り時間から算出する現行ロジック（`computeSummaryItemBudgetMs`）を流用する。
 - 人間の確認・上書き: 生成結果は8項目に保存され、利用者が `/analytics` で上書きできる。**逆に、利用者が先に手入力した値を要約が上書きしないよう BR-B08 の再判定を必ず行う**（親仕様 BR-01）。
 - モデル・プロバイダ障害時: 記事単位で失敗として計上し、ジョブは止めない（AC-B10）。失敗理由は完了メールの内訳に出る。停止機構は作らない（Non-goals）。**レート制限（429）も同じ扱いで、待機・再試行はしない**（BR-B11 / AC-B17）。内訳では `SUMMARY_AI_RATE_LIMITED` として障害（`SUMMARY_AI_FAILED`）と区別する（BR-B10）。
-- **脚注（Sonnet 5 移行を後で判断するときの根拠）**: 公式（確認日 2026-09-04、https://platform.claude.com/docs/en/about-claude/pricing ）で Claude Sonnet 5 は $2 / $10 per MTok（Sonnet 4.6 は $3 / $15）。またレート制限の公式ページには「Claude Sonnet 5 has a separate rate limit and is not part of this combined bucket.」とあり、**Sonnet 4.x とは別のレート上限バケット**を持つ。移行はクライアント指示でステイ（Non-goals / OPEN-B01）だが、単価とレート枠の両面で有利になる可能性がある。
+- **モデル移行で回帰しうるのは出力形式**（プロンプトと `maxTokens` を据え置くため）。要約は8項目の JSON を返させて `JSON.parse` する形なので、**壊れたときは `SUMMARY_PARSE_FAILED` として1件失敗に落ちる**（`contentAnnotationSummaryService.ts:209`）。停止機構は作らず、**モデル変更後に実データで `SUMMARY_PARSE_FAILED` の発生率を確認する**（§13 テスト方針 / §14 手順2 のチェックポイント）。発生率が移行前より悪化した場合の巻き戻しは、モデル ID を `claude-sonnet-4-6` に戻す1行の変更で足りる（§13 ロールバック方針）。
+- **移行しても構造は変わらない**: ジョブ・cron・通知・失敗理由コード・件数集計はモデル非依存で、変わるのは `MODEL_CONFIGS` の1エントリと `llmChat` の `thinking` オプションだけ。したがって §7 の AC も §9 のデータ設計も本移行では変更していない。
 
 ## 9. データ・外部連携
 
@@ -495,7 +506,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | カラム | 型 | 説明 | 根拠・出典 |
 | --- | --- | --- | --- |
 | `id` | uuid PK | ジョブID | 新規 |
-| `user_id` | uuid not null | 所有者。処理時・進捗取得時のスコープに必ず使う | `supabase` skill 運用ルール3 |
+| `user_id` | uuid not null | 所有者。処理時・進捗取得時のスコープに必ず使う | `supabase` skill `service-usage.md` §3「Service Role 利用の安全基準」 |
 | `status` | text not null | `pending` / `processing` / `completed` / `failed` | 既存 `gsc_suggestion_jobs` 踏襲 |
 | `job_token` | uuid | claim 時に発行する実行トークン。進捗更新の条件に使う（BR-B09） | 既存 `gsc_suggestion_jobs.suggestion_job_token` と同型（`gscSuggestionJobService.ts:78,96,140`） |
 | `target_annotation_ids` | uuid[] not null | 起票時に解決した対象（BR-B02）。**cron はこの配列順で処理し、実行時に並べ替えない**（下の「処理順」） | 新規（BR-B02） |
@@ -512,7 +523,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - 未実行件数は `total_count - processed_count` から導出する（専用カラムは持たない）。
 - インデックス: `(status, created_at)` の部分インデックス（`pending` / `processing`）。
 - 一意制約: 1利用者につき未完了ジョブは1件（`status in ('pending','processing')` の部分ユニークインデックス。BR-B03 をDB側でも担保）。違反時のエラーは Server Action で捕捉して `SUMMARY_BULK_ALREADY_RUNNING` に変換する（§6）。
-- RLS: 利用者は自分の行のみ参照可、書き込みは Service Role のみ。**ただし本リポジトリのサーバー読み取りは `SupabaseService`（Service Role）経由で RLS をバイパスするため、RLS はセキュリティ境界ではなく多層防御**。実際の境界は、`app/analytics/page.tsx` と cron 双方のクエリに `.eq('user_id', userId)` を必ず付けること（`.agents/skills/supabase/service-usage.md` 運用ルール3）。
+- RLS: 利用者は自分の行のみ参照可、書き込みは Service Role のみ。**ただし本リポジトリのサーバー読み取りは `SupabaseService`（Service Role）経由で RLS をバイパスするため、RLS はセキュリティ境界ではなく多層防御**。実際の境界は、`app/analytics/page.tsx` と cron 双方のクエリに `.eq('user_id', userId)` を必ず付けること（`.agents/skills/supabase/service-usage.md` §3「Service Role 利用の安全基準」）。
 - 移行・既存データ: 新規テーブルのみ。既存の要約結果（`content_annotations` の8項目）には触れない。
 
 **進捗の読み取り経路**: `app/analytics/page.tsx`（サーバーコンポーネント）で `SupabaseService` から自分の未完了ジョブを1件取得し、`AnalyticsClient` に props で渡す。Server Action / API は増やさない（自動更新をしないため。Non-goals）。
@@ -566,7 +577,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 | 連携先 | 用途 | API・権限 | 失敗時の挙動 | 公式根拠 |
 | --- | --- | --- | --- | --- |
-| Anthropic API | 要約生成 | 既存の `llmChat` 経由（`claude-sonnet-4-6`）。レート上限は組織単位で他機能と共有 | 記事単位で失敗に計上し、ジョブは続行（AC-B10）。**429 は待機せず `SUMMARY_AI_RATE_LIMITED` として失敗に計上**（BR-B11 / AC-B17。クライアント回答 2026-09-04） | https://platform.claude.com/docs/en/api/rate-limits ・ https://platform.claude.com/docs/en/about-claude/pricing （確認日 2026-09-04。引用は §8 / §12） |
+| Anthropic API | 要約生成 | 既存の `llmChat` 経由。**モデルは `claude-sonnet-5`**（本仕様で `claude-sonnet-4-6` から移行。要約のモデル設定を `ANTHROPIC_BASE` から切り出す）。**`thinking: { type: 'disabled' }` を明示指定**する（省略するとアダプティブ思考が既定で有効になり出力料金が上乗せされる。§8）。レート上限は組織単位だが、Sonnet 5 は Sonnet 4.x とは別バケット | 記事単位で失敗に計上し、ジョブは続行（AC-B10）。**429 は待機せず `SUMMARY_AI_RATE_LIMITED` として失敗に計上**（BR-B11 / AC-B17。クライアント回答 2026-09-04）。**JSON が壊れた場合は既存どおり `SUMMARY_PARSE_FAILED`**（モデル移行の回帰はここに出る。§13） | https://platform.claude.com/docs/en/api/rate-limits ・ https://platform.claude.com/docs/en/about-claude/pricing （確認日 2026-09-04。引用は §8 / §12 / §16）。モデル ID・単価・`thinking` / サンプリングパラメータの制約は `claude-api` skill（社内正本。§16「公式ドキュメント照合」に verbatim 引用） |
 | WordPress（self-hosted / WordPress.com） | 本文取得 | `fetchWpPostContentLive`。**cron 実行時はブラウザの Cookie が無い** | 本文取得失敗は失敗に計上（LLM 呼び出し前なので LLM 課金は発生しない）。**cookie 無しでアクセストークンを解決できない利用者の分は `SUMMARY_WP_REAUTH_REQUIRED`、それ以外は `SUMMARY_CONTENT_FETCH_FAILED`**（BR-B10 / 下の「本文取得の可否判定」）。**起票時には弾かない**（クライアント回答 2026-09-04 / Q-B01 = (b)） | **未照合**（`developer.wordpress.com` / `developer.wordpress.org` が実行環境の egress proxy にブロックされ取得不可。§16）。以下は実コードのみを根拠とする |
 | Resend | 完了メール | 既存 `EmailService` に**新規メソッドを追加**（`idempotencyKey` 付き。下の「`EmailService` への追加」）。宛先は `public.users.email` | 送信失敗時は `notified_at` を更新せず、次回の cron 起動の**掃き出し経路**が `created_at` 24時間以内に限って再送する（下の「完了メールの起動経路」） | **社内に verbatim の公式記録あり**（`docs/plans/ga4-content-evaluation-spec.md` §16。URL・確認日 2026-08-19・引用つき。冪等キーとレート上限を本仕様に反映済み）。**web での再取得は egress ブロックのため未実施**（§16） |
 | GitHub Actions | 10分間隔の起動 | 新規ワークフロー1本（`CRON_SECRET` を渡して `scripts/invoke-cron.sh` を実行） | 失敗は GitHub Actions の通知で運用担当が検知する（§2）。何を失敗とみなすかは上の「cron ルートのレスポンス形」 | **一部確認済み**: リポジトリが public であることは 2026-09-04 に GitHub API で確認（§10）。`schedule` の遅延・ドロップ・60日無活動での自動停止の挙動は**未照合**（`docs.github.com` がブロック。§16 / §10 制約条件） |
@@ -590,7 +601,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - **WordPress 設定の読み取り経路（実装契約）**: 既存 `getWordPressSettingsByUserId` は (a) と (b) を同じ `null` に潰すため、上の分岐は既存メソッドのままでは実装できない。**`SupabaseService` に、行なしとクエリエラーを区別して返す読み取りメソッドを1つ追加する**。
   - 追加するもの: `getWordPressSettingsResultByUserId(userId: string): Promise<SupabaseResult<WordPressSettings | null>>`。**戻り値の形は同ファイルの既存前例 `getUserById`（`supabaseService.ts:305-321`）と同型**で、`success: true` かつ `data === null` が **(a) 設定行なし**、`success: false`（`this.failure(...)`）が **(b) クエリエラー**に対応する。`SupabaseResult<T>` は `supabaseService.ts:46-48` の既存型で、新規に定義しない。
   - **既存 `getWordPressSettingsByUserId` は変更しない**（単記事要約・WordPress インポートへ波及するため）。既存メソッドは新規メソッドの結果から設定を取り出す形に**寄せてもよいが、外から見えるシグネチャと戻り値（`WordPressSettings | null`）は変えない**。
-  - 可否判定関数（`wordpressContentSync.ts` から export）は**この新規メソッドを呼び、`maybeSingle()` を直接叩かない**。`SupabaseService.supabase` は `protected readonly`（`supabaseService.ts:155`）なのでクラス外からは触れず、`.agents/skills/supabase/service-usage.md` 運用ルール1（すべての Supabase 操作は `SupabaseService` またはそのサブクラス経由で行い、業務ロジック内にアドホックなクエリを書かない）にも反する。リポジトリ全体で `from('wordpress_settings')` を書いているのは `supabaseService.ts` の1ファイルだけであり、その形を崩さない。
+  - 可否判定関数（`wordpressContentSync.ts` から export）は**この新規メソッドを呼び、`maybeSingle()` を直接叩かない**。`SupabaseService.supabase` は `protected readonly`（`supabaseService.ts:155`）なのでクラス外からは触れず、`.agents/skills/supabase/service-usage.md` §1「サービス層の統一」（すべての Supabase 操作は `SupabaseService` またはそのサブクラス経由で行い、業務ロジック内にアドホックなクエリを書かない）にも反する。アプリケーションコードで `from('wordpress_settings')` を書いているのは `supabaseService.ts` だけ（運用スクリプト `scripts/check-active-users.ts:288` を除く）であり、その形を崩さない。
   - **新規カラム・新規テーブル・新規設定・新規型は伴わない。** 増えるのは読み取りメソッド1つだけで、工数は §5「サーバー」12時間の内数（§14 手順2）。
 - 判定結果の使い方: 「不可」だった起動で発生した本文取得失敗（`generateSummary` が `SUMMARY_CONTENT_FETCH_FAILED` を返したもの）を、`failed_by_code` へ書く直前に **`SUMMARY_WP_REAUTH_REQUIRED` へ読み替える**。「可」だった起動は従来どおり `SUMMARY_CONTENT_FETCH_FAILED` のまま計上する。
 - **`generateSummary`（単記事コア）は変更しない**。読み替えはジョブ処理サービス側の集計時に行う。したがって `SUMMARY_WP_REAUTH_REQUIRED` は**一括専用のコード**であり、単記事コアの `SummaryErrorCode` には追加しない（`tests/unit/lib/content-annotation-bulk-summary-display.test.ts` が固定しているのは「コア ⊆ 一括」の包含関係なので、一括側だけへの追加は既存テストと矛盾しない。`UNEXPECTED` / `ITEM_TIME_LIMIT` / `NOT_OWNED` などと同じ扱い）。
@@ -625,6 +636,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 - **機能名の表記は `AI要約`（半角スペースを入れない）に統一する**。`ui-text.md` §7 は英字と日本語の間に半角スペースを求めるが、この項目は**機械チェックの対象外**（同ファイル「検査しないもの」）で、既存の利用者向け文言は一貫してスペース無し（`ERROR_MESSAGES.WORDPRESS.SUMMARY_AI_FAILED`「AI要約の生成に失敗しました。…」、`SUMMARY_BULK_FAILED`「AI要約の一括実行に失敗しました」、`src/lib/constants.ts` の「コンテンツ情報のAI要約」）。`ui-text.md` 用語辞書も「『AI要約』は機能名として使う」と定めている。**同じ機能が画面では「AI要約」、メールでは「AI 要約」になるほうが利用者には有害**なため、既存側へ揃える。なお本書の地の文（見出し・説明文）の「AI 要約」は文書の記述であり、UI 文言ではない。
 - **リンクは絶対 URL で組む**。ビルダーは前例 `buildGa4ContentEvaluationEmail` と同型に**入力へ `siteUrl` を取り**、`${siteUrl}/setup/wordpress` / `${siteUrl}/analytics` を組み立てる（相対パスで書くとメールクライアントでリンクが機能しない）。`siteUrl` に渡す値は前例と同じく `env.NEXT_PUBLIC_SITE_URL`（`src/env.ts` で zod 検証済み。呼び出しの前例は `ga4ContentEvaluationBatchService.ts:663`）で、cron ルート側から渡す。**リンク文言も前例に揃える**（再連携は `GrowMate で再連携する`（`ga4-content-evaluation-email.ts:156`）、一覧は `GrowMate で一覧を見る`（同 `:111` の `GrowMate で詳細を見る` と同型））。
+- **「対象がありませんでした」はメールの語として固定する（同期版トーストと語が揃わないことを承知のうえで採る）**。同じ状態（成功0件・失敗0件）を、既存の同期版トースト `getBulkSummaryToastMessage` は「要約する記事がありませんでした」と呼ぶ（`content-annotation-bulk-summary-display.ts:113-121`）。メールは件名・見出し・本文のいずれでも **「AI要約の対象がありませんでした」に統一**し、本文で「要約する記事が…」と言い換えない。理由は、本仕様が分母語を §6 の決定どおり「対象」で統一しており（進捗表示・件数行・件名の `（対象 1000 件）` がすべて「対象」）、メール内で分母語だけ別語にすると同じメールの中で不整合になるため。**既存トーストの文言は変更しない**（親機能の同期版に手を入れないという本仕様の方針。§10 制約条件）。語の差は意図的な残置であり §16 に記録する。
 
 - 件名（前例 `【GrowMate】コンテンツ評価が完了しました：…` と同型）。**分岐はジョブの終わり方だけでなく「終わり方 × 成功件数 × 失敗件数」で決める**:
 
@@ -643,6 +655,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - 本文（HTML。上から順に）:
   1. 見出し: **件名と同じ分岐にする**（上の件名表の5行と1対1に対応させる）。`completed` かつ成功1件以上なら「AI要約が完了しました」、`failed` かつ成功1件以上なら「AI要約が途中で終了しました」、**`completed` かつ成功0件・失敗0件（全件スキップ）なら「AI要約の対象がありませんでした」**、**それ以外の成功0件は終わり方によらず「AI要約を完了できませんでした」**。
   2. 件数: 対象 M 件・成功 N 件・失敗 N 件・スキップ N 件・未実行 N 件（0 件の区分は行ごと省く）。分母語は進捗表示と揃えて「対象」とする（§6 UI用語）。
+     - **例外（1つだけ）: 見出しが「AI要約を完了できませんでした」になるとき**（＝成功0件 × 失敗1件以上、または `failed` × 成功0件）**は「成功 0 件」を省かず明示する**。見出しが「できませんでした」と言い切る以上、その根拠になる成功件数を本文から消すと読み手が確かめられないため。見出しが「AI要約の対象がありませんでした」（成功0件 × 失敗0件）のときはこの例外に当たらず、0 件の区分をすべて省く（下の本文の例1・例2がこの規則の実例）。
   3. 語の説明（同期版トーストと同じ誤読罠を防ぐ。§6）: 「スキップは要約の対象外（すでに入力済み、または WordPress 未連携）で、もう一度実行しても変わりません。」**スキップが1件以上のときだけ出す**（ブロック2で行ごと省いた区分の語を説明しても意味が無いため。全件スキップのメールでは必ず出る）。
   4. **失敗の内訳と次にすること**（FR-B14 / AC-B16）: `failed_by_code` を件数の多い順に並べ、1行ごとに「`FAILURE_LABELS` の文言 + 件数」と「次にすること」を並べる。次にすることは**完了メール専用の辞書**（同モジュール内）で持ち、同期版トーストの文言（`getBulkSummaryToastMessage`）は変更しない。**失敗が0件のときは見出しごとブロックを出さない**（全件スキップのメールで「失敗の内訳」の見出しだけが空で残るのを防ぐ）。
 
@@ -690,7 +703,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 1. **同一起動内での送信**: cron がジョブを最後まで処理して `completed` にした場合、または想定外の例外で `failed` にした場合は、その起動の中で完了メールを送り、成功したら `notified_at` を更新する（AC-B04）。
 2. **未通知ジョブの掃き出し**: cron ルートは claim の**前**に、`status in ('completed','failed')` かつ `notified_at is null` かつ **`created_at` が直近24時間以内**のジョブを `created_at` 昇順で**最大10件**取得し、完了メールを送る。これが (a) claim RPC が `attempt_count >= 3` で `failed` に落とした行（AC-B15）、(b) 経路1で送信に失敗した行の再送（外部連携 Resend 行）、(c) 送信直前のハードキル、をまとめて拾う。これが無いと、`completed` かつ `notified_at is null` の行は claim 対象（`pending` / `processing`）に含まれないため二度と拾われない。
-   - 取得は Service Role で行い全利用者のジョブが対象になるが、**宛先は取得した行の `user_id` から解決（`public.users.email`）し、他の `user_id` の情報を混ぜない**（`supabase` skill 運用ルール3）。§6 権限の「cron は `user_id` を明示スコープ」に対する唯一の例外であり、そこにも明記する。
+   - 取得は Service Role で行い全利用者のジョブが対象になるが、**宛先は取得した行の `user_id` から解決（`public.users.email`）し、他の `user_id` の情報を混ぜない**（`supabase` skill `service-usage.md` §3「Service Role 利用の安全基準」）。§6 権限の「cron は `user_id` を明示スコープ」に対する唯一の例外であり、そこにも明記する。
    - **印を打つのは「送信に成功したとき」ではなく「このジョブについて通知の試行を終えたとき」**: (i) 送信成功時、(ii) `users.email` が NULL・空で送る相手がいないとき（BR-B06 例外。`skipped_no_email` をログに残す）のいずれも `notified_at` を埋める。更新は `.is('notified_at', null)` を条件にした条件付き更新で行う（AC-B05）。(iii) 送信失敗のときだけ印を打たず、次回の掃き出しで再送する。
    - **24時間の窓**: 印を打てないまま24時間を過ぎた行は掃き出し対象から外れる（`last_error` に理由が残る）。窓が無いと恒久的な送信失敗（無効アドレスに対する Resend の 4xx など）の行が滞留し、**10件の枠を占有して他のジョブの通知が届かなくなる**。24時間は Resend の `Idempotency-Key` 有効期間（下記「`EmailService` への追加」の引用）と一致し、それを過ぎた再送はどのみち重複を防げない。**再送回数を数える新規カラムは追加しない**（MVP）。
    - 最大10件は1起動の時間予算（BR-B04）を圧迫しないための件数上限。残りは次回の起動で送る。Resend の既定レート上限は「10 requests per second per team」（同引用）なので、**10件を逐次送信する限り上限には触れない**（既存の Google Ads / GA4 のメールと同一チーム枠を共有する点に注意）。
@@ -718,6 +731,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 失敗ラベル | `src/lib/content-annotation-bulk-summary-display.ts` の `FAILURE_LABELS` / `describeFailures` | **拡張**（`export` を付けて共用し、新規コード2件の行を追加。既存行の文言と `getBulkSummaryToastMessage` は変更しない。§9） |
 | WordPress の本文取得可否 | `src/server/services/wordpressContentSync.ts` の `refreshWpComAccessToken` / `buildWordPressServiceFromSettings` | **拡張**（Cookie 無しでの解決可否を返す関数を1つ export する。判定ロジックを cron 側へ複製しない。§9「本文取得の可否判定」） |
 | WordPress 設定の読み取り | `src/server/services/supabaseService.ts` の `getWordPressSettingsByUserId` / `getUserById`（`SupabaseResult<T>` の前例） | **拡張**（行なしとクエリエラーを区別して返す読み取りメソッド `getWordPressSettingsResultByUserId` を1件追加する。既存メソッドのシグネチャは変えない。§9「WordPress 設定の読み取り経路」） |
+| 要約のモデル設定 | `src/lib/constants.ts` の `MODEL_CONFIGS.content_annotation_ai_summary`（`:117-121`）／共有定数 `ANTHROPIC_BASE`（`:48`） | **拡張**（要約のエントリだけ `ANTHROPIC_BASE` から切り出して `actualModel: 'claude-sonnet-5'` と `thinking` を自前で持たせる。`ANTHROPIC_BASE` は書き換えない。§8「AI機能の追加観点」） |
+| LLM 呼び出し | `src/server/services/llmService.ts` の `llmChat` / `LLMOptions`（`:12-22`）／ `callAnthropic` の `params`（`:143-152`） | **拡張**（`thinking` を渡す省略可能なオプションを1つ追加する。未指定時は `params` に含めない＝他機能の挙動は不変。§8） |
 | 429 の判定 | `src/domain/errors/ChatError.ts` の `ChatErrorCode.ANTHROPIC_RATE_LIMIT`（`:118` / `:178` で 429・`rate_limit_error` を分類済み） | **再利用**（新しい判定・待機・再試行は書かない。§9「429 の判定経路」） |
 | メール本文ビルダー | `src/server/lib/ga4-content-evaluation-email.ts` / `src/server/lib/email-html.ts` の `sanitizeEmailHtml` | **同型で新規**（`content-annotation-summary-email.ts`。§9「完了メールの件名・本文」） |
 | メール送信 | `src/server/services/emailService.ts` | **拡張**（新規メソッド追加。§9） |
@@ -731,10 +746,15 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - **新規ワークフローにも `concurrency` を張る**: 起動間隔10分 < 1回の最大実行13.3分なので実行が重なりうる。既存 `hourly-cron.yml` と同型に `concurrency: { group: ..., cancel-in-progress: false }` を設定する。
 - **`if` の schedule 文字列も新しい cron 式に合わせる**: 既存 `.github/workflows/hourly-cron.yml` は各ステップに `if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 * * * *'` を置いている（`:73` / `:79`）。同型でコピーして `'0 * * * *'` のままにすると、**`workflow_dispatch` では動くのに定期実行だけ何もしない**ワークフローになる。新規ワークフローでは `github.event.schedule == '*/10 * * * *'` に直す（検証は §14 チェックポイント「手順3完了時」）。
 - **整合性テストの前提が変わる**: `tests/unit/server/lib/cron-config-consistency.test.ts` は `readFileSync('.github/workflows/hourly-cron.yml')` をハードコードし、`CRON_CONFIGS` の宣言と workflow matrix を `toStrictEqual` で突き合わせる。10分間隔を別ファイルにすると新エントリが matrix に見つからず必ず失敗するため、**同テストを複数ワークフロー対応に更新する**（§13）。
-- Anthropic の組織レート制限はチャット・GSC提案 cron 等と共有する。並列3は実測で調整する前提とする（§8）。
+- Anthropic の組織レート制限は組織単位で管理される。**要約を `claude-sonnet-5` へ移すと Sonnet 4.x（`claude-sonnet-4-6` のまま残るチャット・GSC提案 cron 等）とは別バケットになる**が、並列3は依然として実測で調整する前提とする（§8）。
+- **`claude-sonnet-5` の API 制約（実装時に守る／出典は §16「公式ドキュメント照合」）**:
+  - **`thinking` を省略するとアダプティブ思考が既定で有効**になる。要約は定型タスクなので `thinking: { type: 'disabled' }` を明示指定する（§8「AI機能の追加観点」）。無効化しないと思考トークンが出力料金で課金され、§8 のコスト試算が崩れる。
+  - **`thinking` の `budget_tokens`（思考トークンの上限指定）は拒否される（400）**。深さを絞りたい場合は `output_config: { effort: 'low' }` を使う。
+  - **`temperature` / `top_p` / `top_k` は拒否される（400）**。ただし**現行コードは Anthropic 経路にこれらを渡していない**（`ANTHROPIC_BASE`（`src/lib/constants.ts:48`）に `temperature` が無く、`callAnthropic` は `opts.temperature !== undefined` のときだけ `params` に載せる（`llmService.ts:150`）。明示指定しているのは `OPENAI_BASE`（`:54-59`）だけ）ため、**この制約に対する改修は不要**。制約として記録するにとどめ、`ANTHROPIC_BASE` に `temperature` / `top_p` を足さないことだけを守る。
+  - `seed`（`ANTHROPIC_BASE:51`）は元々 Anthropic の `params` に載っていないため、移行の影響を受けない。
 - **失敗理由コードの追加は親機能（同期版）にも及ぶ**: `SUMMARY_AI_RATE_LIMITED` は単記事コアの `SummaryErrorCode` にも足すため、同期版のトーストと単記事要約のエラー表示でも 429 がレート制限として出るようになる（誤りの解消であり後退はしない）。`SUMMARY_WP_REAUTH_REQUIRED` は一括専用で、コアには足さない（§9「本文取得の可否判定」）。既存ラベルの文言は変更しないので、同期版トーストの既存文面は変わらない。
 - **`src/lib/content-annotation-summary-fields.ts` の型レベル整合**: `tests/unit/lib/content-annotation-bulk-summary-display.test.ts:22` が固定しているのは「コアの `SummaryErrorCode` ⊆ 一括の `SummaryFailureCode`」の包含関係。一括専用コードの追加はこれを壊さないが、**`FAILURE_LABELS` は `Record<SummaryFailureCode, string>` なので追加した2件のラベル行が必須**（欠けると型エラー）。
-- ジョブ処理・進捗取得はともに Service Role で行うため、`user_id` スコープの明示が必須（`supabase` skill の運用ルール3）。
+- ジョブ処理・進捗取得はともに Service Role で行うため、`user_id` スコープの明示が必須（`supabase` skill `service-usage.md` §3「Service Role 利用の安全基準」）。
 - **`app/analytics/page.tsx` の `maxDuration = 800` は削らない**。背景化後も Instagram 手動同期のために独立して必要（`page.tsx:20-23` のコメント）。`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属は cron ルート側へ移すが、`tests/unit/server/lib/analytics-max-duration.test.ts` が同定数と `page.tsx` のリテラルを突き合わせているため、**定数の帰属先とテストの突き合わせ先を実装時に決めて同テストを更新する**（§13 / §14 手順3）。
 
 ### 依存関係
@@ -745,6 +765,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 確認質問 Q-B01 | 成立しない利用者の扱いの決定 | **回答受領済み（2026-09-04）**= (b) 失敗として計上する | — （解消。BR-B10 / FR-B14 / AC-B16 へ反映） |
 | 確認質問 Q-B02 | 429 の扱いの決定 | **回答受領済み（2026-09-04）**= (a) 失敗として計上する | — （解消。BR-B11 / FR-B15 / AC-B17 へ反映） |
 | 確認質問 Q-B03 | 完了メールの件名・本文 | **回答受領済み（2026-09-04）**= エージェント裁量 | — （解消。§9「完了メールの件名・本文」へ反映） |
+| クライアント合意（Claude Sonnet 5 への移行） | 要約のモデルを `claude-sonnet-5` へ移すことの承諾 | **合意受領済み（2026-09-04）**。従来の「一旦ステイ」は撤回 | — （解消。§4 対象範囲 / §8 / §10 / §11 ALT-005 / §14 手順2 へ反映） |
 | §16 承認表の記入 | ステータス `draft` の解除・承認者・対象リリースの確定 | PO / 技術レビューの承認 | 実装に着手できない（唯一残るブロッカー） |
 
 ## 11. トレードオフ判断
@@ -758,7 +779,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - 採用案: **案B（バックグラウンド化）**。
 - 採用理由: 並列化だけでは1回60〜70件が上限で、267件なら依然4回の操作が必要。「1回で完了」という要件を満たさない。
 - 却下した案と理由: 案A は工数が小さい（1.5〜2人日）が、要件そのものを満たさない。
-- 影響: DB・cron・通知の実装が増える（本方式は **§5 工数サマリーのとおり 5.75 人日 / 幅 5〜6.5 人日**）。運用対象の cron が1本増える。
+- 影響: DB・cron・通知の実装が増える（本方式は **§5 工数サマリーのとおり 6.25 人日 / 幅 5.5〜7 人日**。うち 0.5 人日は実行モデルとは独立の Sonnet 5 移行分。§11 ALT-005）。運用対象の cron が1本増える。
 - 将来変更する条件: Vercel の関数実行上限が大幅に伸び、1回で1000件を処理できるようになった場合。
 - 判断者・判断日: 未確定（本書は下書き。§16 承認表）。
 
@@ -802,6 +823,22 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - 将来変更する条件: アプリ内通知の仕組みが別途導入された場合。
 - 判断者・判断日: クライアント（2026-09-04 合意）。
 
+### ALT-005: Claude Sonnet 5 への移行範囲（要約だけ先に移す vs 全機能を一斉に移す vs 移行しない）
+
+- 判断: **クライアントが Sonnet 5 移行に合意した（2026-09-04）**あとの、本仕様における移行範囲。
+- 比較した案:
+  - 案A: 移行しない（`claude-sonnet-4-6` のまま）。
+  - 案B: 共有定数 `ANTHROPIC_BASE`（`src/lib/constants.ts:48`）の `actualModel` を書き換え、Anthropic を使う全19エントリを一斉に移す。
+  - 案C: 要約のモデル設定だけ `ANTHROPIC_BASE` から切り出して移し、他18エントリは据え置く。
+- 採用案: **案C（要約だけ先に移行）**。
+- 採用理由: **合意された移行を、本仕様のレビューとテストで責任を持てる範囲に限定できるから**。移行の実質的な変更点はモデル ID と `thinking` の指定だけで、要約は「本文 → 8項目の JSON」という出力形式が固定されており、**壊れれば `SUMMARY_PARSE_FAILED` として1件失敗に現れる**（§13 で発生率を実データ確認する）。1件単位で観測でき、巻き戻しもモデル ID を戻す1行で済む。あわせて単価が入出力とも 2/3 になり（§8 コスト：1000件で約6,980円 → 約4,650円）、レート枠も Sonnet 4.x とは別バケットになる。
+- 却下した案と理由:
+  - **案A**: クライアントが移行に合意した以上、据え置く理由がない。コスト・レート枠の両面で不利なまま。
+  - **案B**: 一斉移行はチャット・ブログ生成・GSC 提案・Google Ads 分析・GA4 コンテンツ評価まで**本仕様のレビュー範囲外の18機能**を巻き込む。各機能は出力形式（末尾 JSON ブロック、ストリーミング、`maxTokens` 64,000 の長文生成など）が異なり、**本仕様のテストでは回帰を検知できない**。壊れたときの切り分けもできない。移行そのものは有益なので、機能ごとに別途進める（→ OPEN-B01）。
+- 影響: `MODEL_CONFIGS` に要約専用のモデル設定が1つ増え、`llmChat` に省略可能な `thinking` オプションが1つ増える（§8 / §10 再利用表）。工数 +4時間（§5「AI モデル」）。**一時的に、要約だけが他機能と異なるモデルで動く状態になる**（機能ごとの移行が終われば解消する）。
+- 将来変更する条件: 他機能の移行が順次完了し、`ANTHROPIC_BASE` 側が `claude-sonnet-5` になった時点で、要約の切り出しを `ANTHROPIC_BASE` へ戻してよい（設定の重複を解消する）。
+- 判断者・判断日: 移行の可否はクライアント（2026-09-04 合意）。**範囲を要約に限る判断は未確定**（本書は下書き。§16 承認表）。
+
 ## 12. リスク・確認質問・未決定事項
 
 ### リスク
@@ -811,7 +848,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | R-B01 | cron 実行時に Cookie が無く、WordPress.com の本文取得が失敗する利用者がいる | `wp_access_token` が空、または実際には失効しているのに `wp_token_expires_at` が NULL / 未来日の利用者。そのジョブが全件失敗する（本文取得失敗は LLM 呼び出し前なので LLM 課金は発生しない） | **クライアント回答（2026-09-04 / Q-B01 = (b)）で方針確定**: 起票時には弾かず、失敗として計上したうえで、完了メールに理由と再連携の導線を出す（BR-B10 / FR-B14 / AC-B16）。失敗ラベルが実態と食い違う問題は `SUMMARY_WP_REAUTH_REQUIRED` の追加で解消。実データでの該当利用者数の計測は、**影響範囲の把握のために実装前に行う**（`wp_type = 'wordpress_com'` かつ `wp_access_token` が NULL、または `wp_token_expires_at` が過去。§14 チェックポイント） | 実装者 | **対応済（方針確定。実データ計測は実装前）** |
 | R-B02 | 並列3で Anthropic の 429 が増える | 組織単位のレート上限を他機能と共有する（§8）。失敗件数が増え、利用者に「失敗」として見える | **クライアント回答（2026-09-04 / Q-B02 = (a)）で方針確定**: 429 は待機せず失敗に計上し、`SUMMARY_AI_RATE_LIMITED` として完了メールの内訳に出す（BR-B11 / AC-B17）。件数が多ければ並列数を定数1箇所で下げる（実測で調整） | 実装者 | **対応済（方針確定）** |
 | R-B03 | GitHub Actions のスケジュール遅延 | 完了までの時間が想定より延びる | 「約30〜60分」は目安として案内する。厳密な時刻保証はしない | 実装者 | 対応済（仕様に明記） |
-| R-B04 | 誤って1000件を起票した場合、停止できない | 最大約7,000円（≒ $46）の LLM 課金 | キャンセル導線は作らない合意（Non-goals）。BR-B03 で1ジョブに限定し、上限1000件で頭打ちにする。BR-B08 の再判定により、既に要約済みの記事には課金が発生しない | PO | 対応済（合意） |
+| R-B04 | 誤って1000件を起票した場合、停止できない | 最大約4,650円（≒ $31）の LLM 課金（`claude-sonnet-5` の単価。移行前の `claude-sonnet-4-6` では約6,980円 ≒ $46 だった。§8） | キャンセル導線は作らない合意（Non-goals）。BR-B03 で1ジョブに限定し、上限1000件で頭打ちにする。BR-B08 の再判定により、既に要約済みの記事には課金が発生しない | PO | 対応済（合意） |
 | R-B05 | ジョブが `processing` のままスタックする | 利用者が再実行できない（BR-B03 に阻まれる） | claim RPC で**20分**以上動いていない行を回収する（`maxDuration` 13.3分に対する余裕。§8） | 実装者 | 対応済（仕様に明記） |
 | R-B06 | 稼働中のジョブが二重に claim され、二重課金・件数の二重加算が起きる | 回収しきい値が `maxDuration` に近すぎる場合、または `maxRetries` を既定の3にした場合 | 回収しきい値20分、`maxRetries: 1`、`job_token` 条件付きの進捗更新（BR-B09）、workflow の `concurrency` の4点で防ぐ（§8 / §9 / §10） | 実装者 | 対応済（仕様に明記） |
 | R-B07 | GitHub Actions の課金前提（public リポジトリ）が誤っている | **現時点では発生条件が成立しない**。将来 private 化した場合のみ、概算 4,320 分/月で無料枠（Free 2,000 / Pro・Team 3,000 分）を超える | 2026-09-04 に GitHub API の repository オブジェクトで `private=false` / `visibility=public` を確認済み。private 化する場合の再検討条件は ALT-002「将来変更する条件」に移した | 実装者 | **対応済（前提を確認）** |
@@ -827,7 +864,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | Q-B03 | 完了メールの件名・差出人表記 | **件名・本文はエージェント裁量でよい。判断基準は「利用者が読んで内容が分かること」。** | §9「完了メールの件名・本文」（差出人は既存3種と同じ `GrowMate <noreply@mail.growmate.tokyo>` のまま） |
 
 - 回答を受けて**失敗理由コードを2件追加した**（`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED`）。「失敗理由と次アクションをメールに書く」（Q-B01）「429 の内訳を出す」（Q-B02）は、原因ごとに次アクションを出し分けられる粒度がなければ満たせないため。追加したのは理由コードとラベルだけで、テーブル・カラム・feature flag・リトライ機構は増やしていない（判断の記録は §16「クライアント回答の反映で決めたこと」、粒度の定義は BR-B10）。
-- クライアント合意済みで**変更していない**3点: キャンセル導線を作らない / 通知は全件完了後にメール1通 / Claude Sonnet 5 移行はステイ（いずれも 2026-09-04 合意。§4 Non-goals / §11 ALT-004）。
+- クライアント合意済みで**変更していない**2点: キャンセル導線を作らない / 通知は全件完了後にメール1通（いずれも 2026-09-04 合意。§4 Non-goals / §11 ALT-004）。
+- **追加のクライアント合意（2026-09-04 受領）: Claude Sonnet 5 への移行に合意。従来の「一旦ステイ（判断保留）」は撤回する。** 本仕様では**要約のモデルだけを `claude-sonnet-5` へ移す**（範囲を要約に限る理由は §11 ALT-005、実装契約は §8「AI機能の追加観点」と §10 制約条件、コスト影響は §8、確認方法は §13、手順は §14 手順2）。要約以外の機能の移行は本仕様の対象外（§4 Non-goals / OPEN-B01）。
 
 - Q-B02 の判断材料（公式一次情報。https://platform.claude.com/docs/en/api/rate-limits 、確認日 2026-09-04）:
 
@@ -839,9 +877,10 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 | ID | 未決定事項 | 今決めない理由 | 決めるタイミング | 決める人 |
 | --- | --- | --- | --- | --- |
-| OPEN-B01 | Claude Sonnet 5 への移行 | クライアント指示で一旦ステイ。移行しても本仕様の構造（ジョブ・cron・通知）は変わらず、モデル ID の差し替えで完結する | 単価・レート枠の見直しを行うとき（判断材料は §8 の脚注） | PO / クライアント |
+| OPEN-B01 | **要約以外**の機能（チャット・ブログ生成・GSC 提案・Google Ads 分析・GA4 コンテンツ評価など `ANTHROPIC_BASE` を共有する18エントリ）の Claude Sonnet 5 移行 | **要約の移行はクライアント合意済みで本仕様の対象範囲**（2026-09-04）。残る18機能は出力形式（末尾 JSON ブロック・ストリーミング・長文生成）が機能ごとに異なり、回帰の検知には機能ごとの確認が要る。本仕様のテストでは責任を持てない（§11 ALT-005 案B の却下理由） | 要約の移行後、`SUMMARY_PARSE_FAILED` の発生率など実運用の結果を見てから、機能ごとに判断する | PO / クライアント |
 | OPEN-B02 | Message Batches API によるコスト半減 | 投入・ポーリング・結果回収が現行と別実装になり、本仕様の cron モデルを作り直すことになる。MVP 最優先の範囲を超える | LLM コスト削減が要件として上がったとき | PO |
 | OPEN-B03 | 評価サイクル一括開始のバックグラウンド化 | LLM を使わず1回で1000件処理できるため、現時点で困っていない | 評価一括で時間超過の申告が出たとき | PO |
+| OPEN-B04 | キュー＋cron の仕組み（ジョブテーブル・claim RPC・cron プロファイル・完了通知）を、他機能から再利用できる共通基盤として切り出すか | 再利用先の実例がまだ本仕様の1件しか無い。先行実装 `gsc_suggestion_jobs`（単発ジョブ）とは `attempt_count` の意味から異なり、2例では両方に合わない抽象になる（§4 Non-goals「キュー＋cron を他機能から再利用できる汎用基盤として作ること」） | 同じ形（時間のかかる一括処理をバックグラウンドで完了させたい）の要件が3件目として出たとき | PO / 技術リード |
 
 ## 13. テスト・リリース・ロールバック
 
@@ -879,6 +918,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
   - 実行中の進捗表示、二重起票の拒否
   - **`processing` のまま20分放置した行が次回 claim で回収されること**（R-B05 / FR-B13）
   - 並列3実行時の Anthropic 消費量（ITPM / OTPM）を実測し、§8 の概算と突き合わせる
+  - **`claude-sonnet-5` への移行後、JSON 出力の安定性を実データで確認する**（§8「AI機能の追加観点」／§14 手順2 のチェックポイント）。プロンプトと出力スキーマを据え置いてモデルだけを差し替えるため、**回帰は「8項目の JSON をパースできない」＝ `SUMMARY_PARSE_FAILED` の発生率として現れる**（`contentAnnotationSummaryService.ts:209`）。**同じ記事集合を対象に、移行前（`claude-sonnet-4-6`）と移行後（`claude-sonnet-5`）の `failed_by_code` に占める `SUMMARY_PARSE_FAILED` の件数を突き合わせる**。50件程度の通し確認（上の項目）と同じジョブで観測できる。悪化していた場合は §8 の代替案（`thinking: { type: 'adaptive' }` + `output_config: { effort: 'low' }`）を試し、それでも改善しなければモデル ID を戻す（§13 ロールバック方針）。**この確認のために新しい計測基盤・ログ項目・ダッシュボードは作らない**（既存の `failed_by_code` の集計と完了メールの内訳で足りる）。
+  - あわせて、移行後の1件あたりの入出力トークンから実コストを算出し、§8 のコスト試算（1件約 4.7円）と突き合わせる。**思考トークンが出力に上乗せされていないこと**（`thinking` の無効化が効いていること）はここで確認する
 - 静的: `npm run verify`（audit / lint / test / build / knip）、`bash scripts/check-ui-text.sh`
 
 ### リリース方針
@@ -891,6 +932,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 ### ロールバック方針
 
 - アプリ: デプロイ巻き戻し。実行中ジョブは `processing` のまま残るが、cron が動かなければ処理は進まない。
+- **モデル移行だけを戻す場合**: `MODEL_CONFIGS.content_annotation_ai_summary` の `actualModel` を `claude-sonnet-4-6` へ戻し、`thinking` の指定を外す（**要約のエントリ1箇所の変更で足り、他機能には影響しない**。切り出しを維持したまま戻せる）。判断材料は §13 テスト方針の `SUMMARY_PARSE_FAILED` 発生率。**専用の切替フラグ・環境変数は作らない**（コード変更＋デプロイで戻す。§4 Non-goals の停止機構と同じ理由）。
 - cron: ワークフローを無効化する。
 - DB: テーブルと RPC を drop する（実行履歴のみで、要約結果には影響しない）。
 - ロールバック判断者: 運用担当（`/analytics` の一括要約が動かない、または完了メールが誤配信された場合）。
@@ -904,7 +946,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
    - `contentAnnotationSummaryService.generateSummary` の `cookieStore` を任意化し、cron からは cookie 無しの `getCookie` を渡す（§9）。
    - 処理順は `target_annotation_ids` の配列順で固定し、`orderTargetsForProcessing` は使わない（§9「処理順」）。
    - **最初のチャンクに着手する前に、本文取得の可否判定を1回だけ行う**（BR-B10 / §9「本文取得の可否判定」）。判定が「不可」の起動では、本文取得失敗を `SUMMARY_WP_REAUTH_REQUIRED` として計上する。判定関数は `wordpressContentSync.ts` から export し、cron 側にロジックを複製しない。
-   - **`SupabaseService` に `getWordPressSettingsResultByUserId` を1つ追加する**（§9「WordPress 設定の読み取り経路」）。戻り値は `SupabaseResult<WordPressSettings | null>` で前例 `getUserById` と同型にし、**設定行なし（`success: true` / `data === null`）とクエリエラー（`success: false`）を区別**する。既存 `getWordPressSettingsByUserId` のシグネチャは変えない。可否判定関数から `maybeSingle()` を直接叩かない（`supabase` skill 運用ルール1）。
+   - **`SupabaseService` に `getWordPressSettingsResultByUserId` を1つ追加する**（§9「WordPress 設定の読み取り経路」）。戻り値は `SupabaseResult<WordPressSettings | null>` で前例 `getUserById` と同型にし、**設定行なし（`success: true` / `data === null`）とクエリエラー（`success: false`）を区別**する。既存 `getWordPressSettingsByUserId` のシグネチャは変えない。可否判定関数から `maybeSingle()` を直接叩かない（`supabase` skill `service-usage.md` §1「サービス層の統一」）。
+   - **要約のモデルを `claude-sonnet-5` へ移行する**（§4 対象範囲 / §8「AI機能の追加観点」/ §11 ALT-005）。(1) `MODEL_CONFIGS.content_annotation_ai_summary`（`src/lib/constants.ts:117-121`）を共有定数 `ANTHROPIC_BASE`（`:48`）の展開から外し、`actualModel: 'claude-sonnet-5'` を自前で持たせる（**`ANTHROPIC_BASE` は書き換えない**。他18エントリを巻き込まないため）。(2) `LLMOptions`（`llmService.ts:12-22`）と `ModelConfig`（`constants.ts:33-42`）に**省略可能な `thinking` を1つ追加**し、`callAnthropic` の `params`（`llmService.ts:143-152`）で `opts.temperature` と同じく**未指定なら載せない**形で渡す。(3) 要約の設定で `thinking: { type: 'disabled' }` を指定する（**省略するとアダプティブ思考が既定で有効になり、思考トークンが出力料金で課金される**）。`temperature` / `top_p` / `top_k` は Sonnet 5 では拒否されるが、**現行コードは Anthropic 経路に渡していないため改修は不要**（§10 制約条件）。プロンプト・出力スキーマ・`maxTokens: 8000` は変更しない。
    - **429 の分類**（BR-B11 / §9「429 の判定経路」）: `contentAnnotationSummaryService.generateSummary` の LLM 呼び出しの `catch` で、`ChatError` かつ `ANTHROPIC_RATE_LIMIT` のときだけ `SUMMARY_AI_RATE_LIMITED` を返す。待機・再試行は書かない。あわせて `mapSummaryError` と `ERROR_MESSAGES.WORDPRESS` に1件追加する。
    - **対象記事の取得は、着手するチャンク（最大3件）ごとに行う。** ジョブ全体をループ前に `chunkIds(ID_QUERY_CHUNK_SIZE)` で一括取得して振り分ける同期版の形（`src/server/actions/contentAnnotationBulkSummary.actions.ts:188-246`）は採らない。採ると BR-B08 の再判定が最大12分前（1起動分）のスナップショットに基づくことになり、「`generateSummary` の直前」を満たさないため。1回の取得は最大3 ID なので PostgREST の `db-max-rows = 1000` にも触れない。
 3. cron ルート追加（**レスポンス形は §9 の契約に合わせる**。`ga4ContentEvaluationBatchService.ts:385` を雛形に写す場合は **`failed = articlesFailed + emailsFailed` の `articlesFailed` の項を必ず外す**。§9「前例からの意図的な差分」。未通知ジョブの掃き出しを claim の前に置き、時間予算の起点をルートハンドラ開始時刻にする）、`CRON_CONFIGS` へ登録（値は §9 の表）、10分間隔ワークフロー追加（`concurrency` 付き。**各ステップの `if` の schedule 文字列を `*/10 * * * *` にする**。§10）。`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属先を決め、`analytics-max-duration.test.ts` を更新する。
@@ -920,6 +963,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 着手前 | **§16 承認表が記入され、ステータスが `draft` を外れている**（Q-B01〜Q-B03 は 2026-09-04 に回答受領済み。リポジトリ visibility は public を確認済み。§10） | PO / 実装者 | 未確認 |
 | 着手前 | R-B01 の該当利用者数を実データで数える（`wp_type = 'wordpress_com'` かつ `wp_access_token` が NULL、または `wp_token_expires_at` が過去）。**扱いは Q-B01 = (b) で確定済みなので、これは影響範囲の把握が目的**（0件でも実装内容は変わらない） | 実装者 | 未確認 |
 | 手順1完了時 | `anon` から RPC を実行できない | 実装者 | 未確認 |
+| 手順2完了時 | **`claude-sonnet-5` への移行後、同じ記事集合で `SUMMARY_PARSE_FAILED` の発生率が移行前より悪化していない**（§13 テスト方針）。あわせて `thinking` の無効化が効いており、出力トークンに思考分が上乗せされていない（§8） | 実装者 | 未確認 |
 | 手順3完了時 | `workflow_dispatch` で手動起動し、pending 0件で即座に返る。**さらに初回の `schedule` 起動が実際に発火し、`if` ガードでステップがスキップされていないことを実行ログで確認する**（§10） | 実装者 | 未確認 |
 | 手順5完了時 | 起票が3秒以内に返る（AC-B01）。同時2クリックで `SUMMARY_BULK_ALREADY_RUNNING` が返る | 実装者 | 未確認 |
 | 手順7完了時 | 実データで複数回の起動をまたいで完了し、メールが1通である。起票後に手入力した記事が上書きされない（AC-B13）。**完了メールに失敗理由と「次にすること」が出ている**（AC-B16） | 実装者 | 未確認 |
@@ -949,13 +993,15 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 5（クライアント回答反映後の再監査） | 2026-09-04 | 0 / 2 / 4 | 全6件（F-36〜F-41）を反映。cycle 4 で新設した §9「完了メールの件名・本文」「本文取得の可否判定」に残っていた 🟡2件（成功0件のジョブに「完了しました」と名乗る件名が届く / WordPress 設定を取得できない場合の分岐が未定義）と、表記・体裁の 🟢4件（メールリンクの絶対 URL と文言、`AI要約` の表記統一、ALT-001 の工数、§16 の行順） | 下記「5周目で決めた設計判断」を参照 |
 | 6 | 2026-09-04 | 0 / 2 / 4 | 全6件（F-42〜F-47）を反映（**残置はゼロ**）。cycle 5 の反映が生んだ 🟡2件（§9「本文取得の可否判定」の読み取り経路が節内で自己矛盾 / 全件スキップのジョブにも「完了できませんでした」が届く）と、それに連なる 🟢4件（§13 の件名テスト観点、`failed` × 成功0件の文言の座り、本文ブロック3の出し分け条件、監査の周回数の数え方） | 下記「6周目で決めた設計判断」を参照。**残置合意した論点は無い**（🟢4件はいずれも1行で解消できたため、記述整合として直した） |
 
-> **「回」列は反映サイクルの通し番号**であり、監査の周回数とは一致しない。行4はクライアント回答の反映で監査指摘ではないため、**監査そのものは行1・2・3・5・6の5周**（§5 カレンダー上の前提と同じ数え方）。
+| 7 | 2026-09-04 | 0 / 0 / 5 | 全5件（F-48〜F-52）を反映（**残置はゼロ**）。あわせて**クライアントの追加合意（Claude Sonnet 5 への移行。従来の「ステイ」を撤回）を反映**し、要約のモデル移行を対象範囲へ移した（§4 / §5 / §8 / §9 / §10 / §11 ALT-005 / §12 / §13 / §14 / §16） | 下記「7周目で決めた設計判断」を参照。**残置合意した論点は無い**（🟢5件はいずれも1行〜1語で解消でき、Sonnet 5 移行で同じ節を触るためまとめて直した） |
+
+> **「回」列は反映サイクルの通し番号**であり、監査の周回数とは一致しない。行4はクライアント回答の反映で監査指摘ではないため、**監査そのものは行1・2・3・5・6・7の6周**（§5 カレンダー上の前提と同じ数え方）。行7は監査指摘（F-48〜F-52）の反映とクライアント追加合意（Sonnet 5 移行）の反映を兼ねる。
 
 **残置合意した論点と理由**
 
 - **`mode: 'all'` の進捗分母（F-04）**: 分母 `total_count` は「起票時に固定した対象ID数」であり、「要約される見込み件数」ではない。分母を見込み件数にするには起票時に全件の8項目と WordPress 連携状態を判定する追加処理が必要で、MVP の範囲を超える。**挙動を仕様として明記するに留め、実装は変えない**（§6「分母の定義」）。
 - **`failed` 終了時の完了メール（F-09）**: 状態遷移図が当初から「`failed` でも完了メール送信」としていたのに BR-B06 が `completed` のみを定義しており自己矛盾していた。**新機能を足すのではなく、既に本文にあった記述（状態遷移図）へ BR と AC を揃える**ことで解消した（BR-B06 / AC-B15）。放置前提の機能で失敗時に何も届かないと、利用者が待ち続けるため。
-- **クライアント合意済みで変更しない3点**: キャンセル導線を作らない / 通知は全件完了後にメール1通 / Claude Sonnet 5 移行はステイ（いずれも 2026-09-04 合意）。
+- **クライアント合意済みで変更しない2点**: キャンセル導線を作らない / 通知は全件完了後にメール1通（いずれも 2026-09-04 合意）。**3点目だった「Claude Sonnet 5 移行はステイ」は 2026-09-04 の追加合意で撤回され、要約のモデル移行は本仕様の対象範囲になった**（cycle 7。§4 対象範囲 / §11 ALT-005 / 下記「7周目で決めた設計判断」）。
 - **`getBulkSummaryToastMessage` の共用取りやめ（F-09）**: 当初の「文面を共用する」方針は、プレーンテキスト・誤った再実行案内・同期版トーストの破壊という3点で成立しない。ラベル辞書のみの共用に変更した（`EmailService` の新規メソッド追加は既存に汎用送信口が無いため不可避で、過剰実装ではない）。
 - **`job_token` カラムと回収しきい値20分の追加（F-05 / F-06）**: 新規の安全機構ではなく、雛形 `gsc_suggestion_jobs`（`suggestion_job_token`・スタック回収）の同型踏襲。しきい値だけ `maxDuration` 800秒に合わせて15分→20分へ延ばした。
 
@@ -1000,7 +1046,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 **5周目（cycle 5）で決めた設計判断と理由**
 
-cycle 4（クライアント回答の反映）で新設した §9 の2つの実装契約に残っていた穴を塞いだ。いずれも**仕様書テキストの修正だけ**で解消しており、新規テーブル・新規カラム・feature flag・新規 cron profile・停止機構は**1つも追加していない**（`CLAUDE.md` Core Rules / MVP 最優先）。クライアント合意済みの決定（キャンセル導線なし / メール1通 / Sonnet 5 ステイ / Q-B01・Q-B02・Q-B03 の回答）は一切変更していない。
+cycle 4（クライアント回答の反映）で新設した §9 の2つの実装契約に残っていた穴を塞いだ。いずれも**仕様書テキストの修正だけ**で解消しており、新規テーブル・新規カラム・feature flag・新規 cron profile・停止機構は**1つも追加していない**（`CLAUDE.md` Core Rules / MVP 最優先）。クライアント合意済みの決定（キャンセル導線なし / メール1通 / Sonnet 5 ステイ / Q-B01・Q-B02・Q-B03 の回答）は一切変更していない（**※「Sonnet 5 ステイ」は後の cycle 7 でクライアント合意により撤回された**）。
 
 - **完了メールの件名・見出しを「終わり方 × 成功件数」で分岐させた（F-36 🟡）**: §6 の状態遷移では**全件を処理し終えたジョブは全件失敗でも `completed`** になる（`failed` は想定外の例外か前進の無い claim 3回連続のときだけ）。cycle 4 の契約は `completed` / `failed` の2分岐だけだったため、Q-B01 が対象としたまさにその利用者（WordPress の連携が切れていて全件が本文取得に失敗する。R-B01）に「AI要約が完了しました（成功 0 件 / 対象 267 件）」が届く。AC-B16 の条件（内訳・再連携リンク）は `completed` でも満たされるので **AC では検知できない**欠陥だった。既存の同期版トースト `getBulkSummaryToastMessage` が持っている `succeededCount === 0` の分岐（「要約できませんでした」「1件も要約できませんでした」）と同じ配慮をメール契約にも入れ、成功0件は終わり方によらず「AI要約を完了できませんでした」とした。あわせて本文の例のラベルを実際に起きる状態（`completed` / 成功0件）へ直し、`failed` 限定のブロック5を例から外した。§13 にリグレッション網を1件追加。
 - **WordPress 設定を取得できない場合の分岐を仕様で決めた（F-37 🟡）**: `getWordPressSettingsByUserId`（`supabaseService.ts:846-877`）は「設定行が無い」ときと「クエリがエラー」のときの両方で同じ `null` を返すが、可否判定は真偽値を返す契約なので実装者はどちらかに倒すしかなく、**倒し方で利用者に送る次アクションが正反対**になる。**設定行なし＝「不可」（再連携へ導く）／取得エラー＝「可」（従来どおり `SUMMARY_CONTENT_FETCH_FAILED` に計上）** に分けた。判定材料が得られていないのに「再連携してください」と断定すると、DB の一時障害の起動で**連携が正常な利用者に誤案内**することになるため、原因不明のときは断定の弱い既存コードへ落とす。既存メソッドのシグネチャは変えず、判定関数の中で `maybeSingle()` の `error` / `data` を区別する（親機能への波及を避けるため）。§13 に2ケースのテストを追加。**（この読み取り経路は cycle 6 で `SupabaseService` の新規メソッド `getWordPressSettingsResultByUserId` へ統一した。下記「6周目で決めた設計判断」F-42。分岐の向き（設定行なし＝不可 / 取得エラー＝可）は変えていない。）**
@@ -1010,16 +1056,27 @@ cycle 4（クライアント回答の反映）で新設した §9 の2つの実�
 
 **6周目（cycle 6）で決めた設計判断と理由**
 
-cycle 5 の反映（完了メールの件名分岐 / 本文取得の可否判定）が新たに生んだ穴を塞いだ。いずれも**仕様書テキストの修正だけ**で解消しており、新規テーブル・新規カラム・feature flag・新規 cron profile・停止機構・監視ダッシュボードは**1つも追加していない**（`CLAUDE.md` Core Rules / MVP 最優先）。クライアント合意済みの決定（キャンセル導線なし / 完了時にメール1通 / Sonnet 5 ステイ / Q-B01・Q-B02・Q-B03 の回答）は一切変更していない。
+cycle 5 の反映（完了メールの件名分岐 / 本文取得の可否判定）が新たに生んだ穴を塞いだ。いずれも**仕様書テキストの修正だけ**で解消しており、新規テーブル・新規カラム・feature flag・新規 cron profile・停止機構・監視ダッシュボードは**1つも追加していない**（`CLAUDE.md` Core Rules / MVP 最優先）。クライアント合意済みの決定（キャンセル導線なし / 完了時にメール1通 / Sonnet 5 ステイ / Q-B01・Q-B02・Q-B03 の回答）は一切変更していない（**※「Sonnet 5 ステイ」は後の cycle 7 でクライアント合意により撤回された**）。
 
-- **WordPress 設定の読み取り経路を1つに統一し、`SupabaseService` に読み取りメソッドを1件足した（F-42 🟡）**: cycle 5 の記述は同じ実装契約の中に読み取り経路を2つ書いていた（「`getWordPressSettingsByUserId` を読む」と「判定関数の中で `maybeSingle()` の `error` / `data` を直接見る」）。前者に従うと (a) 設定行なしと (b) クエリエラーが同じ `null` に潰れて F-37 で決めた分岐そのものが実装できず、後者に従うと `SupabaseService.supabase` が `protected readonly`（`supabaseService.ts:155`）なので `wordpressContentSync.ts` からは呼べず、`.agents/skills/supabase/service-usage.md` 運用ルール1（アドホッククエリの禁止）にも触れる。実装者が「既存メソッドの戻り値型を変える（親機能へ波及）」か「規約違反のアドホッククエリを書く」のどちらかへ倒れる余地があった。採ったのは**行なしとクエリエラーを区別して返す読み取りメソッドを1つ追加する**案（`getWordPressSettingsResultByUserId`）で、戻り値は同ファイルの既存前例 `getUserById`（`supabaseService.ts:305-321`）と同じ `SupabaseResult<T>`（`supabaseService.ts:46-48`）。**新規の型・テーブル・カラムを伴わず、既存メソッドのシグネチャも変えない**ため、MVP 最優先と親機能への非波及を両立できる最小の案である。§14 手順2 と §5「サーバー」（12時間の内数）にも反映した。
+- **WordPress 設定の読み取り経路を1つに統一し、`SupabaseService` に読み取りメソッドを1件足した（F-42 🟡）**: cycle 5 の記述は同じ実装契約の中に読み取り経路を2つ書いていた（「`getWordPressSettingsByUserId` を読む」と「判定関数の中で `maybeSingle()` の `error` / `data` を直接見る」）。前者に従うと (a) 設定行なしと (b) クエリエラーが同じ `null` に潰れて F-37 で決めた分岐そのものが実装できず、後者に従うと `SupabaseService.supabase` が `protected readonly`（`supabaseService.ts:155`）なので `wordpressContentSync.ts` からは呼べず、`.agents/skills/supabase/service-usage.md` §1「サービス層の統一」（アドホッククエリの禁止）にも触れる。実装者が「既存メソッドの戻り値型を変える（親機能へ波及）」か「規約違反のアドホッククエリを書く」のどちらかへ倒れる余地があった。採ったのは**行なしとクエリエラーを区別して返す読み取りメソッドを1つ追加する**案（`getWordPressSettingsResultByUserId`）で、戻り値は同ファイルの既存前例 `getUserById`（`supabaseService.ts:305-321`）と同じ `SupabaseResult<T>`（`supabaseService.ts:46-48`）。**新規の型・テーブル・カラムを伴わず、既存メソッドのシグネチャも変えない**ため、MVP 最優先と親機能への非波及を両立できる最小の案である。§14 手順2 と §5「サーバー」（12時間の内数）にも反映した。
 - **完了メールの分岐に失敗件数の軸を足した（F-43 🟡）**: cycle 5 の件名・見出しは「終わり方 × 成功件数」の2軸で失敗件数を見ていなかったため、**`mode: 'all'` の2回目の実行**（§6「分母の定義」のとおり母集団は未要約で絞らない利用者の全記事なので、一度完走した利用者が押すと成功0件・失敗0件・スキップ1000件で `completed` になる）で、**何も失敗していない利用者に「AI要約を完了できませんでした」が届く**。F-36 が直した「1件も要約していないのに完了を名乗る」と向きが逆の同じ誤りで、AC-B16 / AC-B17 はいずれも失敗が存在するシナリオなので AC では検知できない。既存の同期版トースト `getBulkSummaryToastMessage` は3つ目の分岐（`succeededCount === 0` かつ失敗なし → 「要約する記事がありませんでした」。`content-annotation-bulk-summary-display.ts:112-121`）でこの状況を処理しており、**F-36 で写した配慮の3分岐目だけが落ちていた**。件名表に `completed` × 成功0件 × 失敗0件 の行（「AI要約の対象がありませんでした（対象 1000 件）」）を1行足し、あわせて**失敗0件のときはブロック4（失敗の内訳）を見出しごと出さない**ことを定義した（内訳が空のまま見出しだけ残るのを防ぐ）。文面はクライアント回答 Q-B03 でエージェント裁量と確定済みのため、クライアント確認は不要。§13 にリグレッション網を1件追加。
 - **記述整合の 🟢4件も同じ改訂でまとめて直した（F-44 / F-45 / F-46 / F-47。残置合意はゼロ）**: いずれも1行で解消でき、F-42 / F-43 と同じ箇所を触るため分けて残す利点が無かった。(1) §13 の件名テスト観点が旧2分岐のままだった（誤字「出し分く」も含む）ので、件名表5行に合わせて書き直した（F-44）。(2) `failed` × 成功0件では見出し「完了できませんでした」と本文ブロック5「途中まで**の結果**です」が同居して事実と食い違うため、成功0件のときは前半を省く1行を足した（F-45。案内の実体は変えていない）。(3) 本文ブロック3（語の説明）の出し分け条件が未定義で、例にも現れていなかった（常に出す実装と出さない実装のどちらもあり得た）ので、**スキップが1件以上のときだけ出す**と定めた（F-46。F-43 で「スキップだけがあるメール」が主役になるため同時に決める必要があった）。あわせて全件スキップのメールの本文例を1つ追加した。(4) §5「4周」と §16 レビュー記録の行「5」で周回の数え方が割れていたため、**「回」列は反映サイクルの通し番号・監査は行1・2・3・5・6の5周**と注記し、§5 も同じ数え方に揃えた（F-47）。
+
+**7周目（cycle 7）で決めた設計判断と理由**
+
+本ランは (1) **クライアントの追加合意（Claude Sonnet 5 への移行。2026-09-04 受領）の反映**と、(2) cycle 6 監査の 🟢5件（F-48〜F-52）の解消の2つを扱った。モデル移行に伴って増やしたのは**要約専用のモデル設定1エントリ**と**`llmChat` の省略可能な `thinking` オプション1つ**だけで、新規テーブル・新規カラム・feature flag・新規 cron profile・停止機構・監視ダッシュボード・専用の切替フラグは**1つも追加していない**（`CLAUDE.md` Core Rules / MVP 最優先）。クライアント合意済みの他の決定（キャンセル導線なし / 完了時にメール1通 / Q-B01・Q-B02・Q-B03 の回答）は一切変更していない。
+
+- **Sonnet 5 移行の範囲を「要約だけ」に限った**: 合意は「Sonnet 5 へ移行する」であって「全機能を一斉に移す」ではない。共有定数 `ANTHROPIC_BASE`（`src/lib/constants.ts:48`）は19エントリに展開されており、そこを書き換えると本仕様のレビュー範囲外の18機能（チャット・ブログ生成・GSC 提案・Google Ads 分析・GA4 コンテンツ評価など）を巻き込む。要約は出力形式が「8項目の JSON」で固定されており回帰が `SUMMARY_PARSE_FAILED` として1件単位で観測でき、巻き戻しもモデル ID を戻す1行で済むため、**責任を持てる範囲に限って移した**（判断は §11 ALT-005、残りは OPEN-B01）。
+- **`thinking` を明示的に無効化する契約を置いた**: `claude-sonnet-5` は **`thinking` を省略するとアダプティブ思考が既定で有効**になり、思考トークンが**出力料金**（$10 per 1M）で課金される。`claude-sonnet-4-6` は明示しない限り思考しないため、**モデル ID を差し替えるだけだと挙動とコストが黙って変わる**。現行 `llmChat` には `thinking` を渡す口が無い（`LLMOptions`（`llmService.ts:12-22`）にも `callAnthropic` の `params`（`:143-152`）にも無い）ので、省略可能なオプションを1つ足す実装契約を §8 / §10 / §14 手順2 に明記した。既定（未指定）は現行どおり `params` に載せないため、**他機能の挙動は変わらない**。要約は定型タスクなので `{ type: 'disabled' }` を既定とし、品質が落ちた場合の代替（`adaptive` + `effort: 'low'`）も併記した。
+- **`temperature` / `top_p` / `top_k` は「制約の記録」にとどめ、改修しないと決めた**: Sonnet 5 はこれらを拒否する（400）が、**現行コードは Anthropic 経路に渡していない**（`ANTHROPIC_BASE` に `temperature` が無く、`callAnthropic` は `opts.temperature !== undefined` のときだけ `params` に載せる（`llmService.ts:150`）。明示指定は `OPENAI_BASE`（`:54-59`）だけ）。**要件に無い改修を先回りで足さない**という MVP 原則に従い、§10 制約条件に「今後 `ANTHROPIC_BASE` に足さない」ことだけを残した。
+- **コスト試算をモデル単価に合わせて全面的に引き直した**: 入出力とも単価が 2/3（$3 / $15 → $2 / $10）になるため、§8 の LLM コスト行（1件約 4.7円 / 267件約1,250円 / 1000件約4,650円 ≒ $31）と §12 R-B04（最大約4,650円 ≒ $31）を同じ換算（`$1 = 150円`、本文8,000字換算）で揃えた。移行前の数値も**比較のために残した**（読み手が移行の効果を確認できるようにするため）。
+- **移行の回帰確認は既存の観測で足りると判断した**: 新しい計測基盤・ログ項目・ダッシュボードは作らず、**既存の `failed_by_code` 集計と完了メールの内訳で `SUMMARY_PARSE_FAILED` の発生率を見る**（§13 テスト方針・§14 チェックポイント「手順2完了時」）。巻き戻しもコード変更＋デプロイで済むため、切替フラグや環境変数は作らない（§13 ロールバック方針。§4 Non-goals の停止機構と同じ理由）。
+- **監査 🟢5件（F-48〜F-52）もまとめて直した（残置合意はゼロ）**: (1) 本文ブロック2の「0 件の区分は行ごと省く」に例外を1つ足し、**見出しが「AI要約を完了できませんでした」になるときだけ「成功 0 件」を明示する**と定めた（F-48。これで本文の例1・例2が同じ規則の実例になる）。(2) AC-B04 を「件数と、**失敗があるときは**失敗理由の内訳が含まれる」に直し、cycle 6 で定めた「失敗0件のときブロック4を出さない」と字面を揃えた（F-49）。(3) `supabase` skill の参照名を実物の見出し（`service-usage.md` §1「サービス層の統一」／§3「Service Role 利用の安全基準」）に置換した（F-50。「運用ルール1 / 3」は同ファイルの別リストの項目で、たどると違う内容に着く）。(4) 「リポジトリ全体で `from('wordpress_settings')` を書いているのは1ファイルだけ」を「アプリケーションコードでは `supabaseService.ts` だけ（運用スクリプト `scripts/check-active-users.ts:288` を除く）」に訂正した（F-51。結論は変わらないが断定が事実と合わなかった）。(5) 同じ状態を指す語がメール（「対象がありませんでした」）と既存トースト（「要約する記事がありませんでした」）で割れる件は、**メール側を「対象」で統一する意図的な差分**と決めて §9 に1行の理由付きで明記した（F-52。本仕様は分母語を §6 の決定どおり「対象」に統一しており、メール内で分母語だけ別語にするほうが不整合。既存トーストは親機能なので変更しない）。
 
 **未解決のブロッカー**
 
 - **残る停止要因は1つだけ**: 本節「承認」表の記入（ステータス `draft` の解除・承認者・対象リリースの確定）。エージェントでは解消できない外部入力であり、記入された時点で `spec-review` を再実行すれば `approved` 判定が可能になる。
-- Q-B01 / Q-B02 / Q-B03 は **2026-09-04 に回答受領・反映済み**（§12「クライアント回答（決定事項）」）。監査で出た指摘47件（F-01〜F-47）も反映済み。
+- Q-B01 / Q-B02 / Q-B03 は **2026-09-04 に回答受領・反映済み**（§12「クライアント回答（決定事項）」）。**Claude Sonnet 5 への移行合意（2026-09-04 受領。従来の「ステイ」の撤回）も反映済み**（§4 対象範囲 / §11 ALT-005 / 上記「7周目で決めた設計判断」）。監査で出た指摘 **52件（F-01〜F-52）** も反映済み（cycle 6 監査の 🟢5件 F-48〜F-52 を含む。**残置合意はゼロ**）。
 - （解消済み）リポジトリ visibility は 2026-09-04 に **public** を確認したためブロッカーから外した。GitHub Actions で未照合のまま残るのは `schedule` の遅延・高負荷時のドロップ・60日無活動での自動停止の挙動のみ（`docs.github.com` が egress ブロックのため）。
 
 #### 公式ドキュメント照合
@@ -1029,8 +1086,21 @@ cycle 5 の反映（完了メールの件名分岐 / 本文取得の可否判定
 
   | 対象 | URL | 結果 |
   | --- | --- | --- |
-  | Claude 価格 | https://platform.claude.com/docs/en/about-claude/pricing | 照合済み。Sonnet 4.6 は $3 / $15 per MTok で §8 の記述と一致。Sonnet 5 は $2 / $10 |
-  | Claude レート制限 | https://platform.claude.com/docs/en/api/rate-limits | 照合済み。組織単位・Sonnet 4.x は 4.6/4.5 合算・429 に `retry-after` |
+  | Claude 価格 | https://platform.claude.com/docs/en/about-claude/pricing | 照合済み。**`claude-sonnet-5` は $2.00 / $10.00 per MTok**（移行前の `claude-sonnet-4-6` は $3.00 / $15.00）。§8 の LLM コスト行はこの単価と `$1 = 150円` で算出している |
+  | Claude レート制限 | https://platform.claude.com/docs/en/api/rate-limits | 照合済み。組織単位・Sonnet 4.x は 4.6/4.5 合算・429 に `retry-after`。**「Claude Sonnet 5 has a separate rate limit and is not part of this combined bucket.」**（verbatim。解釈は §8 レート制限行に分離して記載） |
+  | Claude API のモデル ID・単価・パラメータ制約（`claude-sonnet-5`） | `.agents/skills`（`claude-api` skill。Anthropic 公式 API リファレンスのバンドル正本）。確認日 **2026-09-04** | **社内正本を根拠に照合済み**。web の公式ページ（上2行）と単価が一致することを確認したうえで、公式ページに無い実装上の制約（`thinking` の既定挙動・サンプリングパラメータの可否）はこちらを一次情報とした。verbatim 引用は下記 |
+
+  `claude-api` skill からの verbatim 引用（本仕様が根拠にした3点。引用と解釈は分ける）:
+
+  > \| Claude Sonnet 5   \| `claude-sonnet-5`   \| 1M             \| $2.00      \| $10.00      \|
+
+  > \| Sonnet 5 \| `{type: "adaptive"}` is the only on-mode; `{type: "disabled"}` accepted \| Runs adaptive \| Removed - 400 \| Removed - 400 \| `low`/`medium`/`high`/`xhigh`/`max` \|
+
+  （表の列は「Model / Thinking config / Omitting `thinking` / `budget_tokens` / Sampling (`temperature`/`top_p`/`top_k`) / Effort levels」）
+
+  > **Extended thinking** … On Claude 4.6+ models: `thinking: {type: "adaptive"}`. `budget_tokens` is deprecated on Opus 4.6 / Sonnet 4.6 and **rejected with a 400** on Fable 5/5.1 / Sonnet 5 / Opus 5 / 4.8 / 4.7.
+
+  解釈（引用と分離）: (1) 単価は入力 $2.00 / 出力 $10.00 per 1M で、`claude-sonnet-4-6`（$3.00 / $15.00）の 2/3 → §8 のコスト試算を一律 2/3 に引き直した。(2) **`thinking` を省略すると "Runs adaptive"＝アダプティブ思考が既定で有効**になり、思考トークンは出力として課金される → 要約では `{ type: "disabled" }` を明示指定する（§8 / §14 手順2）。(3) `budget_tokens` と `temperature` / `top_p` / `top_k` は "Removed - 400"＝拒否される → 前者は使わず、後者は**現行コードが Anthropic 経路に渡していない**ため改修不要（§10 制約条件）。深さを絞る手段は `output_config.effort` に限られる。
   | Message Batches API | https://platform.claude.com/docs/en/build-with-claude/batch-processing | 照合済み。「reducing costs by 50%」「most batches finishing in less than 1 hour」。Non-goals の記述と一致 |
   | リポジトリ visibility（公式ドキュメントではなく GitHub API の1次情報） | GitHub API の repository オブジェクト（`shoma-endo/GrowMate`） | 確認日 2026-09-04。`private=false` / `visibility=public`。§10 / ALT-002 / R-B07 の課金前提はこれで確定（`docs.github.com` の課金ページ自体は引き続き未照合） |
   | Resend 送信 API（冪等キー・レート上限） | https://resend.com/docs/api-reference/emails/send-email ／ https://resend.com/docs/api-reference/introduction | **社内の公式記録を根拠に照合済み**。確認日 **2026-08-19**（`docs/plans/ga4-content-evaluation-spec.md` §16 に URL・確認日・公式ページ本文の verbatim 引用が残っており、要約経由ではないため一次情報として使える）。引用と解釈は §9「`EmailService` への追加」に転記。「Idempotency keys expire after 24 hours」「10 requests per second per team」を、掃き出しの24時間窓・上限10件の根拠にした。**本ランでの web 再取得は egress ブロックのため未実施**であり、egress が通る環境で再確認して確認日を更新すること |
@@ -1059,10 +1129,12 @@ cycle 5 の反映（完了メールの件名分岐 / 本文取得の可否判定
 
 | 日付 | 変更内容 | 変更理由 | 変更者 |
 | --- | --- | --- | --- |
-| 2026-09-04 | 初版作成 | クライアント合意（キャンセル導線なし / 完了時にメール1通 / Sonnet 5 移行はステイ）を反映 | Claude（Cloud セッション） |
+| 2026-09-04 | 初版作成 | クライアント合意（キャンセル導線なし / 完了時にメール1通 / Sonnet 5 移行はステイ）を反映（**「Sonnet 5 移行はステイ」は同日の追加合意で撤回。下記 cycle 7 の行**） | Claude（Cloud セッション） |
 | 2026-09-04 | `spec-review` サイクル1の指摘19件を反映（BR-B08 / BR-B09 / FR 表 / AC-B13〜B15 / cron 定義値 / 時間予算の数値訂正ほか） | 🔴 F-01（親 BR-01 の実行直前再検証の欠落）・🔴 F-02（時間予算730秒と既存定数760秒の矛盾）を含む監査指摘の解消 | Claude（spec-review revise） |
 | 2026-09-04 | `spec-review` サイクル2の指摘9件（F-20〜F-28）を反映（BR-B05 / BR-B09 をチャンク境界に再定義、完了メールの起動経路、cron ルートのレスポンス形、public 確定、進捗ラベルの分母語、処理順の固定、`attempt_count >= 3`、`schedule` ガード、BR-B08 の再取得粒度） | サイクル1の反映によって生じた矛盾（並列3と単一カーソルの両立不能で記事を飛ばす／`failed` 通知に起動経路が無い／`count-batch` が記事単位の失敗で job を FAIL にする）の解消 | Claude（spec-review revise） |
 | 2026-09-04 | `spec-review` サイクル3の指摘7件（F-29〜F-35）を反映（`attempt_count` を「連続無進捗回数」に再定義し前進時に 0 へリセット、掃き出しの `notified_at` を「通知の試行を終えた時」に打つ＋24時間の窓、Resend `Idempotency-Key` の採用と §16 照合表の訂正、cron レスポンスのキー名統一と前例からの差分の名指し、`elapsedMs` の起点定義、件数ずれと権限例外の明記）。あわせて `spec-review` ループの停止とその再開条件を §12 / §16 に明記 | 🔴 F-29（`attempt_count` が claim 回数のため4起動目で必ず `failed` になり、§1 の成功指標「1回押すだけで最大1000件」が構造的に成立しない）の解消と、2周目で新設した掃き出し経路に起因する3件（通知の永久滞留・冪等キー欠落による二重送信・実在の前例との乖離による欠陥の復活）の解消 | Claude（spec-review revise） |
 | 2026-09-04 | **クライアント回答（Q-B01 / Q-B02 / Q-B03、2026-09-04 受領）を反映**。確認質問を §12「クライアント回答（決定事項）」へ移し、(1) cron で本文取得が成立しない利用者は起票時に弾かず失敗として計上し、完了メールに理由と再連携導線を出す（BR-B10 / FR-B14 / AC-B16）、(2) Anthropic 429 は待機せず失敗として計上し内訳をメールに出す（BR-B11 / FR-B15 / AC-B17）、(3) 完了メールの件名・本文を確定（§9「完了メールの件名・本文」）。あわせて失敗理由コード2件（`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED`）を追加し、Non-goals・非機能・データ/外部連携・テスト方針・実装手順・完了条件まで一貫させた | クライアント回答による決定事項の反映。既存の失敗理由コードのままでは「失敗理由と次にすべきことをメールに書く」「429 の内訳を出す」という回答の要求を満たせないため（判断の記録は §16「クライアント回答の反映で決めたこと」） | Claude（spec-review revise） |
 | 2026-09-04 | `spec-review` サイクル5の指摘6件（F-36〜F-41）を反映（完了メールの件名・見出しを「終わり方 × 成功件数」で分岐させ成功0件に「完了しました」と名乗らせない、本文の例を実際に起きる状態 `completed`（成功0件）へ訂正、本文取得の可否判定に「WordPress 設定を取得できない場合」の分岐を追加（設定行なし＝不可 / 取得エラー＝可）、メールリンクを絶対 URL に固定し `siteUrl` の供給元と文言を前例へ明示、機能名の表記を `AI要約` に統一、ALT-001 の工数を §5 に追従、§16 のレビュー記録・変更履歴を時系列順に整列）。あわせて §13 にリグレッション網を3件追加 | cycle 4（クライアント回答の反映）で新設した §9「完了メールの件名・本文」「本文取得の可否判定」に残っていた 🟡2件の解消。全件失敗のジョブは §6 の状態遷移では `completed` になるため、Q-B01 が対象とした利用者に「AI要約が完了しました（成功 0 件）」が届き、AC では検知できなかった。また設定取得が `null` のときの倒し方によって「再連携してください」と「記事が削除・非公開です」という正反対の案内になりうる状態だった（判断の記録は §16「5周目で決めた設計判断」） | Claude（spec-review revise） |
-| 2026-09-04 | `spec-review` サイクル6の指摘6件（F-42〜F-47）を反映（本文取得の可否判定の読み取り経路を1つに統一し `SupabaseService` に `getWordPressSettingsResultByUserId` を1件追加、完了メールの件名・見出しに失敗件数の軸を足して全件スキップのジョブに「完了できませんでした」と名乗らせない、失敗0件のときはブロック4を出さない、ブロック3をスキップ1件以上のときだけ出す、`failed` × 成功0件で「途中までの結果です」を省く、§13 の件名テスト観点を件名表5行に合わせて更新（誤字修正含む）、監査の周回数の数え方を §5 / §16 で統一）。あわせて §13 にリグレッション網を1件、全件スキップの本文例を1件追加 | cycle 5 の反映が生んだ 🟡2件の解消。(1) 同じ実装契約の中に読み取り経路が2つ書かれ、`getWordPressSettingsByUserId` に従うと F-37 の分岐が実装できず、`maybeSingle()` を直接叩く案は `SupabaseService.supabase` が `protected` であることと `supabase` skill 運用ルール1に反する。(2) 分岐が失敗件数を見ていないため、`mode: 'all'` の2回目の実行（全件スキップ）で何も失敗していない利用者に失敗を名乗る通知が届き、既存トーストの3分岐目が落ちていた（判断の記録は §16「6周目で決めた設計判断」） | Claude（spec-review revise） |
+| 2026-09-04 | `spec-review` サイクル6の指摘6件（F-42〜F-47）を反映（本文取得の可否判定の読み取り経路を1つに統一し `SupabaseService` に `getWordPressSettingsResultByUserId` を1件追加、完了メールの件名・見出しに失敗件数の軸を足して全件スキップのジョブに「完了できませんでした」と名乗らせない、失敗0件のときはブロック4を出さない、ブロック3をスキップ1件以上のときだけ出す、`failed` × 成功0件で「途中までの結果です」を省く、§13 の件名テスト観点を件名表5行に合わせて更新（誤字修正含む）、監査の周回数の数え方を §5 / §16 で統一）。あわせて §13 にリグレッション網を1件、全件スキップの本文例を1件追加 | cycle 5 の反映が生んだ 🟡2件の解消。(1) 同じ実装契約の中に読み取り経路が2つ書かれ、`getWordPressSettingsByUserId` に従うと F-37 の分岐が実装できず、`maybeSingle()` を直接叩く案は `SupabaseService.supabase` が `protected` であることと `supabase` skill `service-usage.md` §1「サービス層の統一」に反する。(2) 分岐が失敗件数を見ていないため、`mode: 'all'` の2回目の実行（全件スキップ）で何も失敗していない利用者に失敗を名乗る通知が届き、既存トーストの3分岐目が落ちていた（判断の記録は §16「6周目で決めた設計判断」） | Claude（spec-review revise） |
+| 2026-09-04 | **クライアントの追加合意（Claude Sonnet 5 への移行。2026-09-04 受領）を反映**し、要約のモデルを `claude-sonnet-4-6` から `claude-sonnet-5` へ移すことを対象範囲に入れた（要約のモデル設定を共有定数 `ANTHROPIC_BASE` から切り出す、`llmChat` に省略可能な `thinking` を1つ足して要約では明示的に無効化する、コスト試算を新単価で引き直す〈1件約4.7円 / 267件約1,250円 / 1000件約4,650円〉、レート枠が Sonnet 4.x と別バケットになることを記録する、`temperature` / `top_p` / `top_k` 拒否は制約として記録するのみで改修しない、`SUMMARY_PARSE_FAILED` の発生率での回帰確認と1行での巻き戻しを定める）。あわせて `spec-review` サイクル6監査の指摘5件（F-48〜F-52）を反映（本文ブロック2の「0 件の区分を省く」に成功0件の例外を明記、AC-B04 を「失敗があるときは内訳」に、`supabase` skill の参照名を実物の見出しへ、`from('wordpress_settings')` の「1ファイルだけ」を訂正、メールの「対象がありませんでした」を意図的な語の差分として明記）。§5 工数は 46 → 50時間（幅 44〜56時間）、§11 に ALT-005 を追加 | 従来の Non-goals「Claude Sonnet 5 移行はステイ（判断保留）」がクライアント合意の撤回により失効したため。移行範囲を要約1機能に限ったのは、共有定数 `ANTHROPIC_BASE` を書き換えると本仕様のレビュー範囲外の18機能を巻き込み、出力形式の回帰を本仕様のテストで検知できないため（判断の記録は §11 ALT-005 / §16「7周目で決めた設計判断」）。`thinking` のオプション追加は、Sonnet 5 では `thinking` を省略するとアダプティブ思考が既定で有効になり、思考トークンが出力料金で課金されてコスト試算が崩れるため（現行 `llmChat` には渡す口が無い） | Claude（spec-review revise） |
+| 2026-09-04 | **クライアント判断（2026-09-04 受領）**により、キュー＋cron を汎用基盤として作らず AI要約専用として作る方針を明記した（§4 Non-goals に理由付きで追記、再検討の条件を §12 OPEN-B04 として記録）。実装方針・工数・データ設計に変更は無い（追加した表・カラム・cron プロファイルは0件） | 「今後同じ要件が来たときに流用できる汎用的な作りにできるか」というクライアントの確認に対し、A案（汎用化はせず、判断の経緯を1行残す）で合意したため。`CLAUDE.md` Core Rules「作らない判断をしたものは、対象仕様書の Non-goal に理由付きで書く（黙って省略しない）」に従う | Claude（Cloud セッション） |
