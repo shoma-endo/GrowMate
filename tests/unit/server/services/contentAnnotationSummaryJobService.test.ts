@@ -77,6 +77,8 @@ let store: FakeStore;
 let progressUpdates: Row[];
 /** `users` の SELECT を失敗させる（宛先の取得エラーと未登録を区別する検証に使う） */
 let userSelectFailure: string | null = null;
+/** 終了状態（completed / pending）への UPDATE を失敗させる */
+let finishUpdateFailure: string | null = null;
 
 function matches(row: Row, filters: Filter[]): boolean {
   return filters.every(filter => {
@@ -142,6 +144,15 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
 
     if (this.op === 'select' && this.table === 'users' && userSelectFailure) {
       return { data: null, error: { message: userSelectFailure } };
+    }
+
+    if (
+      this.op === 'update' &&
+      this.table === 'content_annotation_summary_jobs' &&
+      finishUpdateFailure &&
+      (this.values?.status === 'completed' || this.values?.status === 'pending')
+    ) {
+      return { data: null, error: { message: finishUpdateFailure } };
     }
 
     if (this.op === 'insert') {
@@ -348,6 +359,7 @@ beforeEach(() => {
   progressUpdates = [];
   rpcFailure = null;
   userSelectFailure = null;
+  finishUpdateFailure = null;
   mocks.computeSummaryItemBudgetMs.mockReturnValue(BUDGET);
   mocks.canFetchWpPostContentLive.mockResolvedValue(true);
   mocks.saveSummary.mockResolvedValue({ success: true, data: {} });
@@ -894,6 +906,19 @@ describe('cron レスポンスの契約（§9）', () => {
     const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
     expect(result.processedJobs).toBe(0);
     expect(result.failed).toBe(0);
+  });
+
+  it('終了状態の保存に失敗したら data.failed に計上する（成功として返さない）', async () => {
+    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
+    store.content_annotations.push(annotation('a1'));
+    finishUpdateFailure = 'update exploded';
+
+    const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
+
+    // 握りつぶすと、処理済みのジョブが processing のまま残るのに GitHub Actions は
+    // 緑のまま。利用者は完了を知らされず 20分のスタック回収を待つことになる
+    expect(result.failed).toBe(1);
+    expect(mocks.sendCompletionEmail).not.toHaveBeenCalled();
   });
 
   it('claim に失敗したら data.failed に計上する', async () => {

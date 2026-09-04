@@ -506,15 +506,21 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
       }
     }
 
+    // **終了状態の保存が成立しなかったら、ジョブ単位の失敗として呼び出し元へ返す。**
+    // `markJobFinished` は UPDATE エラーと `job_token` 不一致（＝他の起動に横取りされた）で
+    // null を返す。ここを握りつぶすと、処理済みのジョブが `processing` のまま残るのに
+    // cron 応答は failed 0 になり、GitHub Actions は緑のまま。利用者には完了が伝わらず、
+    // 20分のスタック回収を待つことになる
     if (carriedOver && totals.processedCount < targets.length) {
-      await this.markJobFinished(job, 'pending');
-      return { carriedOver: true, progressSaveFailed: false };
+      const pendingRow = await this.markJobFinished(job, 'pending');
+      return { carriedOver: true, progressSaveFailed: pendingRow === null };
     }
 
     const completedRow = await this.markJobFinished(job, 'completed');
-    if (completedRow) {
-      this.countNotification(await this.notifyJob(completedRow), result);
+    if (!completedRow) {
+      return { carriedOver: false, progressSaveFailed: true };
     }
+    this.countNotification(await this.notifyJob(completedRow), result);
     return { carriedOver: false, progressSaveFailed: false };
   }
 
