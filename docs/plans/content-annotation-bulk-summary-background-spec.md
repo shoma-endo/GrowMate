@@ -106,9 +106,9 @@
 - ルール ID: **BR-B05 並列数は3。並列は「3件のチャンク」単位で区切る**
   - ルール: 未処理の記事を**配列順に3件ずつのチャンク**へ区切り、チャンク内の3件を `Promise.all` で同時に処理する。**次のチャンクには、前のチャンクの3件がすべて完了してから着手する**（時間予算の判定もチャンクの先頭で行う）。並列数3は既存の `GscEvaluationService.EVALUATION_CONCURRENCY = 3`（`src/server/services/gscEvaluationService.ts:20`）と揃える。
   - 理由: チャンク境界を作らずに「1件終わるたびに次を投入する」形にすると、完了順が配列順と入れ替わるため進捗カーソルを安全に進められない（BR-B09 の理由）。既存の並列処理も `for (i += CONCURRENCY)` + `Promise.all` のチャンク形（`gscEvaluationService.ts:97-118`）であり、同型を踏襲する。
-  - 例外: Anthropic のレート制限（429）が観測された場合の調整は定数1箇所で行える形にする。
+  - 例外: Anthropic のレート制限（429）に当たった記事は**その場で失敗に計上し、`retry-after` の待機も未処理への持ち越しもしない**（クライアント回答 2026-09-04 / Q-B02。BR-B11）。並列数そのものを実測で調整するときは定数1箇所で行える形にする。
 - ルール ID: **BR-B06 通知はジョブが終了した時点で1通だけ**
-  - ルール: ジョブが **`completed` または `failed`** になった時点で、成功・失敗・スキップ・未実行の件数と失敗理由の内訳をメールで1通送る（`failed` の場合は「途中まで」である旨を添える）。送信は `EmailService` に追加する専用メソッド `sendContentAnnotationSummaryCompletion(to, subject, htmlContent, idempotencyKey)`（冪等キーはジョブ ID。§9）で行い、本文は **HTML で専用に組む**。失敗理由のラベルは既存の `FAILURE_LABELS` / `describeFailures`（`src/lib/content-annotation-bulk-summary-display.ts`。現在は未 export のため `export` を付ける）を共用する。
+  - ルール: ジョブが **`completed` または `failed`** になった時点で、成功・失敗・スキップ・未実行の件数と失敗理由の内訳をメールで1通送る（`failed` の場合は「途中まで」である旨を添える）。**失敗理由の内訳には、理由ごとに「何が起きたか」と「利用者が次に何をすればよいか」を必ず併記する**（クライアント回答 2026-09-04 / Q-B01・Q-B02。WordPress の連携が切れている場合は再連携の導線 `/setup/wordpress` まで出す。理由コードの粒度は BR-B10、文面は §9「完了メールの件名・本文」）。件名・本文の文面はクライアント回答（Q-B03）により**エージェント裁量で確定**し、判断基準は「利用者が読んで内容が分かること」とする。送信は `EmailService` に追加する専用メソッド `sendContentAnnotationSummaryCompletion(to, subject, htmlContent, idempotencyKey)`（冪等キーはジョブ ID。§9）で行い、本文は **HTML で専用に組む**。失敗理由のラベルは既存の `FAILURE_LABELS` / `describeFailures`（`src/lib/content-annotation-bulk-summary-display.ts`。現在は未 export のため `export` を付ける）を共用する。
   - 理由: 既存の `getBulkSummaryToastMessage` は**プレーンテキスト1行**を返し、`stoppedReason === 'time_budget'` のとき「未実行分はもう一度実行すると続きから進みます」＝**手動再実行を促す文面**になる。背景実行では cron が続きを処理するため誤案内になり、かつ同期版トースト（`app/analytics/AnalyticsClient.tsx`）と共用したまま分岐を足すと同期版の文面を壊す。共用するのは**ラベル辞書だけ**にする。
   - 起動経路: 送信は (1) cron が同じ起動内でジョブを `completed` / `failed` にしたときのその場の送信と、(2) cron ルートが claim の前に行う**未通知ジョブの掃き出し**（`status in ('completed','failed')` かつ `notified_at is null`）の2経路で行う。**(2) が無いと、claim RPC が `attempt_count >= 3` で `failed` に落とした行（アプリ層が一度も見ない）と、送信に失敗した行に通知が届かない**（詳細は §9「完了メールの起動経路」）。
   - 例外: `users.email` が未登録の利用者には送らない。**この場合も `notified_at` を現在時刻で埋める**（＝「送る相手がいないので通知は完了」。ログには `skipped_no_email` を残す）。印を打たないと、そのジョブは `notified_at is null` のまま毎起動の掃き出しに選ばれ続け、**最大10件の枠を古い滞留行が永久に占有して AC-B15 の通知経路が二度と動かなくなる**。既存の同型実装 `ga4ContentEvaluationBatchService`（`:353-355`）も `skipped_no_email` を件数に計上して滞留を作らない。
@@ -126,13 +126,23 @@
   - **`attempt_count` は同じ書き込みで 0 に戻す**: この起動で `processed_count` が1件でも前進したら、上記の `job_token` 条件付き UPDATE に `attempt_count = 0` を併せて書く。`attempt_count` は claim のたびに +1 されるので、リセットしないと**前進している正常な継続そのものが試行回数を消費し、4起動目で必ず `failed` になる**（§4 Non-goals / §9 データ表）。リセットにより `attempt_count` は「**前進の無い claim が連続した回数**」を表し、Non-goals が意図した「想定外の例外で無限に claim され続けるのを止める」上限としてそのまま機能する。**新規カラムは追加しない**。
   - 理由: (1) 「予算切れ時のみ保存」だと、`maxDuration` によるハードキルや想定外例外で**1起動分（最大約70件）の進捗が丸ごと失われる**。(2) 逆に「1件処理するたびに `processed_count` を加算」すると、並列3では完了順が配列順と一致しないため事故になる。配列 index 0/1/2 を同時に走らせ 1 と 2 が先に完了した時点で `processed_count = 2` になり、その瞬間にハードキルまたは20分スタック回収（§8）が起きると、**再開位置が index 2 になって未処理の index 0 が永久に飛ばされる**。ジョブはやがて `completed` になり、完了メールは「全件終わった」意味の件数を返す（＝§1 の成功指標が利用者にも運用にも見えない形で破れる）。チャンク境界でのみ前進させれば、異常終了で失われるのは**高々1チャンク（3件）**に閉じ、その3件は再開時に再処理されても BR-B08 の再判定でスキップになるため、LLM 課金も件数の二重加算も起きない。
   - 例外: なし。
+- ルール ID: **BR-B10 失敗理由は「次に何をすればよいか」を出し分けられる粒度で計上する**
+  - ルール: 完了メールは失敗理由ごとに次アクションを示す（BR-B06）ため、**原因が違えば次アクションも違うものを同じ理由コードに寄せない**。本仕様で追加する失敗理由コードは次の2つだけで、いずれも既存の理由コード集合（`SUMMARY_FAILURE_CODES`。`src/lib/content-annotation-summary-fields.ts`）とラベル辞書（`FAILURE_LABELS`）への**追記**であり、新しいテーブル・カラム・設定・停止機構は伴わない。
+    - **`SUMMARY_WP_REAUTH_REQUIRED`**（WordPress の連携が切れている）: cron はジョブの処理を始める前に、**1起動につき1回だけ**、対象利用者の WordPress 連携から本文取得に使えるアクセストークンを Cookie 無しで解決できるかを判定する（§9「本文取得の可否判定」）。解決できない場合、その起動で発生した本文取得失敗はこのコードで計上する。次アクションは「WordPress を再連携する」（導線: `/setup/wordpress`）。
+    - **`SUMMARY_AI_RATE_LIMITED`**（Anthropic のレート制限に当たった）: BR-B11 で失敗に計上する 429 の内訳。次アクションは「時間をおいてもう一度実行する」。
+  - 理由: クライアント回答（2026-09-04）で、完了メールには失敗理由と**利用者が次にすべきこと**まで書くことが決まった（Q-B01 / Q-B02）。既存の `SUMMARY_CONTENT_FETCH_FAILED` のラベルは「連携先と違うサイトの記事か、記事が削除・非公開」と原因を断定しており、**連携が切れている利用者に誤った次アクションを案内する**（R-B01 の該当利用者はジョブ全件がこのコードで失敗する）。また 429 を `SUMMARY_AI_FAILED` に寄せると、内訳を出しても「AI の呼び出しに失敗」としか読めず、レート制限であることが利用者にも運用にも見えない（Q-B02 の「内訳を出す」という回答を満たせない）。
+  - 例外: **保存済みトークンが解決できるのに WordPress 側では無効**（失効済みなのに `wp_token_expires_at` が NULL / 未来日）なケースは上の判定を通過するため、従来どおり `SUMMARY_CONTENT_FETCH_FAILED` に計上される。ここまで出し分けるには `fetchWpPostContentLive` の戻り値契約（現在は失敗を一律 `null`）を変える必要があり、親機能（単記事要約・WordPress インポート）へ波及するため MVP の範囲外とする（§16「クライアント回答の反映で決めたこと」に既知の限界として記録）。
+- ルール ID: **BR-B11 Anthropic の 429 は失敗として計上する**
+  - ルール: 要約生成が Anthropic のレート制限（429 / `rate_limit_error`）で失敗した記事は、**その場で失敗に計上して次の記事へ進む**。`retry-after` を待って同一起動内で再試行することも、未処理として次回の起動へ回すこともしない。件数は `SUMMARY_AI_RATE_LIMITED` として `failed_by_code` に載り、完了メールの内訳に出る（BR-B10）。
+  - 理由: クライアント回答（2026-09-04 / Q-B02）で「(a) 失敗として計上する」と決定。設計上も、待機は1件あたりの時間予算（BR-B04）を圧迫して1起動で進む件数を減らし、未処理へ回すと「未実行」の意味（＝時間予算切れで着手していない。再実行すれば進む）が二重になって完了メールの4区分が読めなくなる。
+  - 例外: なし。429 の判定は既存の `ChatError`（`src/domain/errors/ChatError.ts`。HTTP 429 と `rate_limit_error` を `ANTHROPIC_RATE_LIMIT` に分類済み）を使い、新しい判定機構・リトライ機構は作らない（§9「429 の判定経路」）。
 
 ## 4. 対象範囲と Non-goals
 
 ### 対象範囲
 
 - 画面・操作: `/analytics` の「AIで要約」ボタンの挙動変更（同期実行 → ジョブ起票）、実行中の進捗表示、`ui-text.md` 辞書への新規用語追記（詳細は「6. 機能要件」の画面設計）
-- サーバー: ジョブ起票用 Server Action（戻り値の変更・`SUMMARY_BULK_ALREADY_RUNNING` の追加）、cron ルート、ジョブ処理サービス、完了メール送信（`EmailService` への新規メソッド追加）、`generateSummary` の `cookieStore` 任意化、`FAILURE_LABELS` / `describeFailures` の `export` 追加
+- サーバー: ジョブ起票用 Server Action（戻り値の変更・`SUMMARY_BULK_ALREADY_RUNNING` の追加）、cron ルート、ジョブ処理サービス、完了メール送信（`EmailService` への新規メソッド追加、件名・本文ビルダーの新規モジュール）、`generateSummary` の `cookieStore` 任意化、`FAILURE_LABELS` / `describeFailures` の `export` 追加、**失敗理由コード2件の追加**（`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED`。BR-B10）と本文取得の可否判定（§9）
 - データ・DB: ジョブテーブル1つと、排他取得用 RPC 1つ（マイグレーション）、`npm run supabase:types` の再生成
 - 権限・ロール: 起票は `admin` / `paid` のみ（`canWriteGa4` 流用）。進捗の閲覧は起票者本人のみ。cron は `CRON_SECRET` + Service Role + `user_id` 明示スコープ（§6 権限）
 - 定期実行: 10分間隔の GitHub Actions ワークフロー1本、`CRON_CONFIGS` への登録（値は §9）
@@ -147,6 +157,8 @@
 - **評価サイクル一括開始のバックグラウンド化**: LLM を使わず1回で1000件処理できるため不要（→ OPEN-B03）。
 - **停止機構（feature flag / 環境変数 / 専用設定テーブル）**: 要件・クライアント合意になく、既存手段（デプロイ巻き戻し、当該ボタンの非表示）で止められるため作らない（`CLAUDE.md` Core Rules / MVP 最優先）。
 - **複数ジョブの同時実行・優先度制御**: BR-B03 により1利用者1ジョブ。利用者間の順序は claim 順（作成日時順）とし、優先度は持たない。
+- **起票時の WordPress 連携チェック（事前拒否）**: cron 実行時に本文取得が成立しない利用者を、起票の時点で検出して弾く仕組みは作らない。**クライアント回答（2026-09-04 / Q-B01）で「(b) 実行して失敗として計上する」と決定**したため。起票は従来どおり通し、失敗は完了メールで理由と次アクション（再連携の導線）とともに伝える（BR-B06 / BR-B10 / AC-B16）。
+- **Anthropic 429 の待機・自動再試行**: `retry-after` を待って同一起動内で再試行する経路も、未処理として次回起動へ回す経路も作らない。**クライアント回答（2026-09-04 / Q-B02）で「(a) 失敗として計上する」と決定**したため（BR-B11）。
 - **失敗した記事の自動リトライ**: 決定的失敗（本文サイズ超過など）は再実行しても同じ結果になるため、自動リトライはしない。利用者が再度実行する。ジョブ単位の `attempt_count` 上限3は、想定外の例外で無限に claim され続けるのを止めるための上限であり、記事単位のリトライ機構ではない。**本仕様の `attempt_count` は「前進の無い claim が連続した回数」であって claim の総回数ではない**（BR-B09 / §9 データ表）。本仕様のジョブは設計上、複数回の cron 起動にまたがって同じ行を claim し直すため（BR-B04 例外 / FR-B03）、claim 総回数を数えると 267 件（約4起動）・1000 件（約15起動）のジョブが**1件も残していないのに `failed` に落ちる**（§1 の成功指標が構造的に成立しない）。雛形 `gsc_suggestion_jobs` は「1行＝1回の LLM 呼び出しで完結する単発ジョブ」なので「claim 回数＝失敗回数」が成り立つが、再開型の本仕様では成り立たないため、意味だけを読み替えて踏襲する。
 - **本文サイズ超過時の自動削減**: 80,000文字を超える本文を切り詰めて再試行する処理は作らない（§8「本文サイズ超過時の扱い」。既存挙動を変更しない）。
 
@@ -155,7 +167,7 @@
 ### 前提
 
 - 換算: **8時間 = 1人日**。
-- 見積の状態: **`仮置き`**（2026-09-04 時点。合意者・合意日は未確定）。確認質問 Q-B01 / Q-B02 の回答で振れる。
+- 見積の状態: **`仮置き`**（2026-09-04 時点。合意者・合意日は未確定）。確認質問 Q-B01〜Q-B03 は **2026-09-04 に回答受領済み**（§12「クライアント回答（決定事項）」）で、その分の振れ幅は解消した。残る変動要因は実データ検証（R-B01 の該当利用者の有無）のみ。
 - 含めるもの: 実装、ユニットテスト、本書に書いた範囲の UI / Server Action / cron ルート / migration / 完了メール。
 - 含めないもの: 仕様レビューの往復、クライアント確認待ち、本番へのマイグレーション適用とデプロイ（§13 リリース方針の運用作業）。
 - 既存の同型実装（`GscSuggestionJobService` + `claim_gsc_suggestion_jobs` + cron ルート + `CRON_CONFIGS`）を雛形として流用できる。
@@ -165,24 +177,24 @@
 
 | フェーズまたは区分 | 目的・主な成果物 | 工数（時間） | 人日 |
 | --- | --- | ---: | ---: |
-| 仕様確定 | 本書のレビュー・確認質問（Q-B01〜Q-B03）の解消 | 4 | 0.5 |
+| 仕様確定 | 本書のレビュー・確認質問（Q-B01〜Q-B03）の解消（**回答受領済み。残るは §16 承認表の記入**） | 4 | 0.5 |
 | DB | ジョブテーブル + claim RPC のマイグレーション、`supabase:types` 再生成 | 2 | 0.25 |
 | サーバー | ジョブ処理サービス（claim・チャンク直前の再判定・並列3のチャンク処理・時間予算・チャンク境界の進捗保存）、cron ルート（レスポンス形・未通知ジョブの掃き出し）、`CRON_CONFIGS` 追加 | 12 | 1.5 |
 | 起票 | Server Action の差し替え（同期実行 → 起票）、二重起票の防止（事前検出 + ユニーク制約違反の捕捉） | 4 | 0.5 |
-| 通知 | 完了メール（`EmailService` の新規メソッド + HTML 本文 + `notified_at` による冪等） | 4 | 0.5 |
+| 通知 | 完了メール（`EmailService` の新規メソッド + 件名・HTML 本文のビルダー + 失敗理由ごとの次アクション + `notified_at` による冪等） | 6 | 0.75 |
 | 画面 | 実行直後のトースト、進捗表示、UI 文言辞書の更新 | 4 | 0.5 |
 | CI/CD | 10分間隔ワークフロー追加、cron 整合性テスト更新（複数ワークフロー対応） | 2 | 0.25 |
 | テスト | ユニット追加・更新 | 6 | 0.75 |
 | 検証 | `npm run verify`、実データでの通し確認（並列数の実測含む） | 6 | 0.75 |
-| **合計** |  | **44** | **5.5** |
+| **合計** |  | **46** | **5.75** |
 
-幅: **36〜52時間（4.5〜6.5人日）**。幅の理由は確認質問 Q-B01（WordPress.com の Cookie 無し取得可否の実データ検証と、成立しない場合の分岐実装）と Q-B02（429 の扱いが `retry-after` 待機になる場合の追加実装）。
+幅: **40〜52時間（5〜6.5人日）**。Q-B01〜Q-B03 の回答受領により下振れ側の不確実性は減ったが、回答に伴って**失敗理由コード2件の追加と本文取得の可否判定**（BR-B10）、**完了メールの次アクション文面**（BR-B06）が確定作業として増えた。上振れの理由は、R-B01 の該当利用者を実データで数える検証と、`SUMMARY_WP_REAUTH_REQUIRED` の判定を既存 `wordpressContentSync` から切り出す際の影響範囲確認。
 
 ### カレンダー上の前提（工数外）
 
-- 仕様レビュー・承認の見込み: `spec-review` サイクル1で 🔴2件 / 🟡13件を反映済み。Q-B01〜Q-B03 の回答が揃うまで `approved` にはならない（§16）。
-- クライアント確認・たたき台合意の見込み: Q-B01（実データ検証 + PO）・Q-B02（PO）・Q-B03（PO / クライアント）。回答予定日は未確定。
-- 希望リリース時期との関係: 希望時期は未確定。Q-B01 の回答が遅れる場合、WordPress.com 分岐を後続チケットに切り出してスコープを削る余地がある（self-hosted 利用者だけでも価値が出るため）。
+- 仕様レビュー・承認の見込み: `spec-review` を3周実施して指摘35件を反映済み。Q-B01〜Q-B03 は 2026-09-04 に回答を受領し本書へ反映済みで、`approved` に残る条件は §16 承認表の記入のみ。
+- クライアント確認・たたき台合意の見込み: **完了（2026-09-04 受領）**。Q-B01 = (b) 失敗として計上、Q-B02 = (a) 失敗として計上、Q-B03 = エージェント裁量（§12「クライアント回答（決定事項）」）。
+- 希望リリース時期との関係: 希望時期は未確定。Q-B01 が (b) に決まったため、WordPress.com 利用者向けの分岐実装（起票時の事前拒否）は不要になり、スコープを切り出す必要はなくなった。
 - 実データ検証は cron の起動を待つため、最短でも10分単位の待ち時間が入る（`workflow_dispatch` での手動起動は可能）。
 - 本番へのマイグレーション適用は別途調整（§13 リリース方針の手順1。完了条件には含めない。§15）。
 
@@ -203,6 +215,8 @@
 | FR-B11 | 1件の失敗でジョブを止めず、失敗理由コードごとに計上する | Must | 親仕様の `BulkSummaryResult` 4区分を踏襲 | AC-B10 / AC-B12 |
 | FR-B12 | 対象上限1000件を超える起票を拒否する | Must | 既存 `MAX_BULK_SUMMARY_TARGETS = 1000` 踏襲／`db-max-rows = 1000` と整合 | AC-B11 |
 | FR-B13 | `processing` のまま20分以上動いていないジョブを次回の claim で回収する | Must | 既存 `claim_gsc_suggestion_jobs` のスタック回収を踏襲（しきい値のみ `maxDuration` に合わせて延長。§9）／R-B05 | 手動確認（§13） |
+| FR-B14 | 完了メールに失敗理由ごとの件数と**次にすべきこと**を出す。WordPress の連携が切れている場合は再連携の導線を出す | Must | **クライアント回答 2026-09-04 / Q-B01**（起票では弾かず失敗として計上し、理由と次アクションをメールに書く）／BR-B06 / BR-B10 | AC-B16 |
+| FR-B15 | Anthropic の 429 を失敗として計上し、待機も次回への持ち越しもしない。内訳をレート制限として区別できる形で残す | Must | **クライアント回答 2026-09-04 / Q-B02**（(a) 失敗として計上し、内訳をメールに出す）／BR-B11 | AC-B17 |
 
 > 優先度はすべて Must（FR-B09 のみ Should）。Should の FR-B09 を落とすと「放置してよい」体験が成立しないため、MVP では実装する前提だが、工数が溢れた場合の最初の削減候補である。
 
@@ -240,7 +254,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
   - 進捗: チャンク（最大3件）境界で保存するため、再開時に再処理されうるのは**直近の未完了チャンクの最大3件だけ**で、それ以前の範囲は処理し直さない（BR-B09）。再処理された記事は BR-B08 の再判定でスキップになり、LLM 課金は発生しない。
   - メール: `notified_at` が非 NULL なら送らない（BR-B06 / AC-B05）。印は「**このジョブについて通知の試行を終えたとき**」＝送信成功時に加えて**宛先が無く送れなかったとき**にも `.is('notified_at', null)` を条件に付ける（送信失敗のときだけ付けない。§9 経路2 / F-30）。防御は `maxRetries: 1` / `notified_at` / Resend の `Idempotency-Key`（ジョブ ID）の3段で、**送信成功後・`notified_at` 更新前のハードキルを塞ぐのは3段目だけ**（§9「`EmailService` への追加」）。起動の重なりによる二重送信は workflow の `concurrency`（§10）でも抑止する。
 
-**集計の定義（完了メール / 進捗表示で使う）**: 現行の `BulkSummaryResult` と同じ4区分（成功・失敗・スキップ・未実行）＋失敗理由の内訳（`failed_by_code`）。**文言生成関数 `getBulkSummaryToastMessage` は共用しない**（理由は BR-B06）。共用するのは失敗ラベル辞書 `FAILURE_LABELS` / `describeFailures` のみ。
+**集計の定義（完了メール / 進捗表示で使う）**: 現行の `BulkSummaryResult` と同じ4区分（成功・失敗・スキップ・未実行）＋失敗理由の内訳（`failed_by_code`）。失敗理由コードは既存集合に **`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED` の2件を追加**する（BR-B10）。**文言生成関数 `getBulkSummaryToastMessage` は共用しない**（理由は BR-B06）。共用するのは失敗ラベル辞書 `FAILURE_LABELS` / `describeFailures` のみで、**次アクションの文言は完了メール専用に持つ**（§9「完了メールの件名・本文」）。
 
 **件数のずれ（許容する既知の挙動）**: 異常終了からの再開時、直近の未完了チャンクで先行して完了していた記事（**最大2件**）は、BR-B08 の再判定でスキップに計上される（AC-B14）。要約は生成済みなので結果は正しく、LLM の二重課金も起きないが、完了メールの件数は**成功が最大2件少なく、スキップが同数多く**報告されうる（異常終了1回あたり）。**実装は変えず、この挙動を仕様として許容する**（理由は §16 レビュー記録）。
 
@@ -405,6 +419,23 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
     もし 次の cron が起動する
     ならば claim の前の掃き出しで、途中までの件数を含むメールが1通送られる
     かつ さらに cron が起動しても同じジョブにメールは送られない
+
+  シナリオ: AC-B16 WordPress の連携が切れていても起票でき、メールで再連携へ導く
+    前提 WordPress.com 連携の利用者がいる
+    かつ cron からは Cookie 無しで本文取得に使えるアクセストークンを解決できない
+    もし その利用者が「AIで要約」を押す
+    ならば 起票は成功する（起票時には弾かない）
+    かつ cron が処理した記事は SUMMARY_WP_REAUTH_REQUIRED として失敗に計上される
+    かつ 完了メールの内訳に「WordPress の連携が切れている」件数が出る
+    かつ 完了メールに再連携の導線（/setup/wordpress へのリンク）が含まれる
+
+  シナリオ: AC-B17 Anthropic のレート制限は失敗として計上する
+    前提 cron が要約を生成している
+    もし Anthropic が 429 を返す
+    ならば その記事は SUMMARY_AI_RATE_LIMITED として失敗に計上される
+    かつ retry-after を待たずに次の記事の処理へ進む
+    かつ その記事は未実行には計上されない
+    かつ 完了メールの内訳にレート制限の件数が出る
 ```
 
 ### シナリオ対応表
@@ -426,6 +457,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | AC-B13 | ユニット | FR-B04 | BR-B08 |
 | AC-B14 | ユニット | FR-B06 | BR-B09 |
 | AC-B15 | ユニット | FR-B07 | BR-B06 |
+| AC-B16 | ユニット（+ 実データ検証） | FR-B14 | BR-B06 / BR-B10 |
+| AC-B17 | ユニット | FR-B15 | BR-B10 / BR-B11 |
 
 ## 8. 非機能要件
 
@@ -435,14 +468,14 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 起動間隔 | 10分（`*/10 * * * *`） | 267件を約30〜60分で完了させるため（算式は §11 ALT-002） |
 | 1回の処理件数 | 並列3で 60〜70件（1件約30秒の実測ベース）。**目安であり保証値ではない** | 実測値: 730秒 ÷ 24件 ≒ 30.4秒/件（直列時）。BR-B05 のチャンク境界で3件が揃うのを待つため、実効スループットは理論値（並列3の連続投入）より落ちる。実データ検証で実測する（§13） |
 | 1ジョブの上限 | 1000件（`MAX_BULK_SUMMARY_TARGETS`） | 既存の上限を踏襲。`db-max-rows = 1000`（`docs/context/db-row-limits-and-data-truncation.md`）とも整合 |
-| LLM のレート制限 | Anthropic のレート上限は**組織単位**で、チャット・GSC提案 cron 等と共有する。Sonnet 4.x の上限は Sonnet 4.6 と 4.5 の**合算**バケット | 公式（確認日 2026-09-04、https://platform.claude.com/docs/en/api/rate-limits ）。Start tier の Sonnet 4.x は 1,000 RPM / 2,000,000 ITPM / 400,000 OTPM。月次 spend cap は Start $500 / Build $1,000。**GrowMate の組織 usage tier は未確認**（Q-B02 の判断材料。§12） |
-| 429 到達時の挙動 | 公式は 429 とともに `retry-after` ヘッダを返す。GrowMate としての扱い（失敗に計上 / 未処理として次回 / `retry-after` を待って同一起動内で再試行）は**未決定** | → 確認質問 Q-B02。実装者が裁量で決めない |
+| LLM のレート制限 | Anthropic のレート上限は**組織単位**で、チャット・GSC提案 cron 等と共有する。Sonnet 4.x の上限は Sonnet 4.6 と 4.5 の**合算**バケット | 公式（確認日 2026-09-04、https://platform.claude.com/docs/en/api/rate-limits ）。Start tier の Sonnet 4.x は 1,000 RPM / 2,000,000 ITPM / 400,000 OTPM。月次 spend cap は Start $500 / Build $1,000。**GrowMate の組織 usage tier は未確認**（429 の扱いは Q-B02 の回答で確定済みなので判断のブロッカーではない。tier は §13 の実データ検証で消費量を実測するときの照合材料） |
+| 429 到達時の挙動 | 公式は 429 とともに `retry-after` ヘッダを返すが、GrowMate は**待たずにその記事を失敗として計上し、次の記事へ進む**（未処理へも回さない）。内訳は `SUMMARY_AI_RATE_LIMITED` として完了メールに出す | **クライアント回答 2026-09-04 / Q-B02 = (a) 失敗として計上する**（BR-B11 / FR-B15 / AC-B17）。待機を作らない理由は BR-B11、判定経路は §9「429 の判定経路」 |
 | LLM の入出力量 | 1件の入力は本文最大 80,000 文字（`CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS`）＋プロンプト、出力は `maxTokens: 8000`。並列3なので同時実行は最大3件、1件約30秒なら分あたり最大6件 | 概算で 480,000 ITPM / 48,000 OTPM 程度（80,000文字 ≒ 80,000 トークンの上限ケース）。Start tier の上限に対して余裕はあるが、**実測ではないため実データ検証で確認する**（§13）。他機能と共有する組織上限であることに注意 |
 | 本文サイズ超過時の扱い | 80,000 文字を超える記事は**削減・切り詰めをせず** `SUMMARY_CONTENT_TOO_LARGE` として失敗に計上する（既存挙動を変更しない） | `llm-context-memory` の「上限超過時の削減順序」に対する明示的な選択。本文の機械的な切り詰めは要約品質を保証できず、利用者にも見えないため。再実行しても同じ結果になる決定的失敗として `FAILURE_LABELS` で案内済み |
 | LLM コスト | 1件あたり 4〜13円（`claude-sonnet-4-6`）。267件で約1,860円、1000件で約6,980円（≒ $46） | 入力 $3 / 出力 $15 per 1M。公式（確認日 2026-09-04、https://platform.claude.com/docs/en/about-claude/pricing ）の Claude Sonnet 4.6 の単価と一致。本文8,000字換算で1件約7円。**`mode: 'all'` で1000件を起票しても、LLM 課金が発生するのは BR-B08 の再判定を通過した未要約分のみ**（§6「分母の定義」）。1000件実行1回は月次 spend cap（Start $500）に対して約 $46 |
 | ジョブ行のサイズ | 対象ID配列は最大1000件（約16KB） | 配列で保持する。別テーブルへの正規化はしない（MVP） |
 | 失敗時の再実行 | 着手予算切れは次回起動で続行し、**この継続は試行回数を消費しない**（前進があった起動は `attempt_count` を 0 に戻す。BR-B09）。想定外の例外は**前進の無い claim が3回連続**（`attempt_count >= 3`）した時点で `failed`。`processing` のまま **20分**以上動いていない行は次回 claim で回収する（`attempt_count` は前進時にリセットされているため、長時間ジョブでも回収対象から外れない） | 雛形 `claim_gsc_suggestion_jobs` と同型だが、**カウンタの意味は「claim 総回数」ではなく「連続無進捗回数」に読み替える**（理由は §4 Non-goals）。また**しきい値は15分から20分へ延ばす**。雛形の cron は `maxDuration` 300秒（余裕10分）だが本仕様は 800秒（13.3分）で、15分のままだと余裕が1.7分しかなく、稼働中のジョブが「スタック」と誤判定されて二重に claim され、同じ記事へ二重課金・件数の二重加算が起きる |
-| 外部依存が壊れたときの表示 | 失敗理由コードごとの内訳を完了メールに出す（`FAILURE_LABELS` を共用） | 停止機構は作らない（Non-goals 参照） |
+| 外部依存が壊れたときの表示 | 失敗理由コードごとの内訳と**次にすべきこと**を完了メールに出す（「何が起きたか」は `FAILURE_LABELS` を共用、「次にすること」はメール専用の辞書。§9）。WordPress の連携切れは `/setup/wordpress` への再連携導線まで出す | クライアント回答 2026-09-04 / Q-B01・Q-B02（BR-B06 / BR-B10 / FR-B14）。停止機構は作らない（Non-goals 参照） |
 
 ### AI機能の追加観点
 
@@ -450,7 +483,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - 本文サイズ上限（80,000文字）も変更しない（超過時は削減せず失敗。上表参照）。
 - 1件あたりの LLM タイムアウトは残り時間から算出する現行ロジック（`computeSummaryItemBudgetMs`）を流用する。
 - 人間の確認・上書き: 生成結果は8項目に保存され、利用者が `/analytics` で上書きできる。**逆に、利用者が先に手入力した値を要約が上書きしないよう BR-B08 の再判定を必ず行う**（親仕様 BR-01）。
-- モデル・プロバイダ障害時: 記事単位で失敗として計上し、ジョブは止めない（AC-B10）。失敗理由は完了メールの内訳に出る。停止機構は作らない（Non-goals）。
+- モデル・プロバイダ障害時: 記事単位で失敗として計上し、ジョブは止めない（AC-B10）。失敗理由は完了メールの内訳に出る。停止機構は作らない（Non-goals）。**レート制限（429）も同じ扱いで、待機・再試行はしない**（BR-B11 / AC-B17）。内訳では `SUMMARY_AI_RATE_LIMITED` として障害（`SUMMARY_AI_FAILED`）と区別する（BR-B10）。
 - **脚注（Sonnet 5 移行を後で判断するときの根拠）**: 公式（確認日 2026-09-04、https://platform.claude.com/docs/en/about-claude/pricing ）で Claude Sonnet 5 は $2 / $10 per MTok（Sonnet 4.6 は $3 / $15）。またレート制限の公式ページには「Claude Sonnet 5 has a separate rate limit and is not part of this combined bucket.」とあり、**Sonnet 4.x とは別のレート上限バケット**を持つ。移行はクライアント指示でステイ（Non-goals / OPEN-B01）だが、単価とレート枠の両面で有利になる可能性がある。
 
 ## 9. データ・外部連携
@@ -533,8 +566,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 | 連携先 | 用途 | API・権限 | 失敗時の挙動 | 公式根拠 |
 | --- | --- | --- | --- | --- |
-| Anthropic API | 要約生成 | 既存の `llmChat` 経由（`claude-sonnet-4-6`）。レート上限は組織単位で他機能と共有 | 記事単位で失敗に計上し、ジョブは続行（AC-B10）。429 の扱いは未決定（Q-B02） | https://platform.claude.com/docs/en/api/rate-limits ・ https://platform.claude.com/docs/en/about-claude/pricing （確認日 2026-09-04。引用は §8 / §12） |
-| WordPress（self-hosted / WordPress.com） | 本文取得 | `fetchWpPostContentLive`。**cron 実行時はブラウザの Cookie が無い** | 本文取得失敗は `SUMMARY_CONTENT_FETCH_FAILED` として失敗に計上（LLM 呼び出し前なので LLM 課金は発生しない） | **未照合**（`developer.wordpress.com` / `developer.wordpress.org` が実行環境の egress proxy にブロックされ取得不可。§16）。以下は実コードのみを根拠とする |
+| Anthropic API | 要約生成 | 既存の `llmChat` 経由（`claude-sonnet-4-6`）。レート上限は組織単位で他機能と共有 | 記事単位で失敗に計上し、ジョブは続行（AC-B10）。**429 は待機せず `SUMMARY_AI_RATE_LIMITED` として失敗に計上**（BR-B11 / AC-B17。クライアント回答 2026-09-04） | https://platform.claude.com/docs/en/api/rate-limits ・ https://platform.claude.com/docs/en/about-claude/pricing （確認日 2026-09-04。引用は §8 / §12） |
+| WordPress（self-hosted / WordPress.com） | 本文取得 | `fetchWpPostContentLive`。**cron 実行時はブラウザの Cookie が無い** | 本文取得失敗は失敗に計上（LLM 呼び出し前なので LLM 課金は発生しない）。**cookie 無しでアクセストークンを解決できない利用者の分は `SUMMARY_WP_REAUTH_REQUIRED`、それ以外は `SUMMARY_CONTENT_FETCH_FAILED`**（BR-B10 / 下の「本文取得の可否判定」）。**起票時には弾かない**（クライアント回答 2026-09-04 / Q-B01 = (b)） | **未照合**（`developer.wordpress.com` / `developer.wordpress.org` が実行環境の egress proxy にブロックされ取得不可。§16）。以下は実コードのみを根拠とする |
 | Resend | 完了メール | 既存 `EmailService` に**新規メソッドを追加**（`idempotencyKey` 付き。下の「`EmailService` への追加」）。宛先は `public.users.email` | 送信失敗時は `notified_at` を更新せず、次回の cron 起動の**掃き出し経路**が `created_at` 24時間以内に限って再送する（下の「完了メールの起動経路」） | **社内に verbatim の公式記録あり**（`docs/plans/ga4-content-evaluation-spec.md` §16。URL・確認日 2026-08-19・引用つき。冪等キーとレート上限を本仕様に反映済み）。**web での再取得は egress ブロックのため未実施**（§16） |
 | GitHub Actions | 10分間隔の起動 | 新規ワークフロー1本（`CRON_SECRET` を渡して `scripts/invoke-cron.sh` を実行） | 失敗は GitHub Actions の通知で運用担当が検知する（§2）。何を失敗とみなすかは上の「cron ルートのレスポンス形」 | **一部確認済み**: リポジトリが public であることは 2026-09-04 に GitHub API で確認（§10）。`schedule` の遅延・ドロップ・60日無活動での自動停止の挙動は**未照合**（`docs.github.com` がブロック。§16 / §10 制約条件） |
 
@@ -542,8 +575,24 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 - 現行 `contentAnnotationSummaryService.generateSummary` の `cookieStore: ReadonlyRequestCookies` は**必須**で、`withAuth` が供給している（`src/server/services/contentAnnotationSummaryService.ts:110-113`、`:150` で `getCookie: name => cookieStore.get(name)?.value` として `fetchWpPostContentLive` へ渡る）。cron にはセッションが無い。
 - 対応: **`cookieStore` を任意化する**（または `getCookie: (name: string) => string | undefined` を注入できるようにする）。cron からは cookie を持たない `getCookie`（常に `undefined` を返す）を渡し、**DB 保存トークン経路のみ**を使う。cron ルートで `cookies()` を呼んで空の cookieStore を渡すような場当たりの実装はしない。
-- 既存のフォールバック経路（実コードで確認済み）: `wordpressContext.ts:38` は `getCookie(WPCOM_TOKEN_COOKIE_NAME) || wpSettings.wpAccessToken || ''`、`wordpressContentSync.ts:176-178` は Cookie が無ければ `refreshWpComAccessToken(userId, supabase, wpSettings)` を呼ぶ。ただし `refreshWpComAccessToken` は「`wpAccessToken` があり、かつ `wpTokenExpiresAt` が60秒以内」のときしかリフレッシュせず、`wpAccessToken` が空なら即 `null`（＝`SUMMARY_CONTENT_FETCH_FAILED`）を返す。**「実際には失効しているのに `wpTokenExpiresAt` が NULL / 未来日」のケースはリフレッシュされない**。→ Q-B01。
-- **失効時に利用者へ何と伝えるか（未定義だった論点）**: 現在の `FAILURE_LABELS.SUMMARY_CONTENT_FETCH_FAILED` は「WordPress から本文を取得できない（連携先と違うサイトの記事か、記事が削除・非公開）」で、**トークン失効という実態と食い違う**。完了メールで再連携導線に誘導するかを含め、Q-B01 の回答（実データで該当利用者が存在するか）を待って決める。存在しないなら現行ラベルのままとする。
+- 既存のフォールバック経路（実コードで確認済み）: `wordpressContext.ts:38` は `getCookie(WPCOM_TOKEN_COOKIE_NAME) || wpSettings.wpAccessToken || ''`、`wordpressContentSync.ts:176-178` は Cookie が無ければ `refreshWpComAccessToken(userId, supabase, wpSettings)` を呼ぶ。ただし `refreshWpComAccessToken` は「`wpAccessToken` があり、かつ `wpTokenExpiresAt` が60秒以内」のときしかリフレッシュせず、`wpAccessToken` が空なら即 `null`（＝`SUMMARY_CONTENT_FETCH_FAILED`）を返す。**「実際には失効しているのに `wpTokenExpiresAt` が NULL / 未来日」のケースはリフレッシュされない**。→ 下の「本文取得の可否判定」で「可」と判定される残余ケースであり、`SUMMARY_CONTENT_FETCH_FAILED` に落ちる（BR-B10 例外 / §16 の既知の限界）。
+- **失効時に利用者へ何と伝えるか（クライアント回答 2026-09-04 / Q-B01 = (b) で確定）**: 起票では弾かず**実行して失敗として計上**し、完了メールで理由と次アクションを伝える。現在の `FAILURE_LABELS.SUMMARY_CONTENT_FETCH_FAILED` は「WordPress から本文を取得できない（連携先と違うサイトの記事か、記事が削除・非公開）」と原因を断定しており、そのまま使うと連携が切れている利用者に**誤った次アクション**を案内する。そこで理由コードを1つ足して出し分ける（BR-B10）。**既存ラベルの文言は変更しない**（同期版トーストと共有しており、判定を通過した後の残余ケースには現行の断定がそのまま当てはまるため）。
+
+**本文取得の可否判定（実装契約。BR-B10）**
+
+- 判定するタイミング: cron がジョブを claim した後、**最初のチャンクに着手する前に1回だけ**。判定結果はその起動の間だけ保持する（新規カラム・新規テーブルは作らない）。
+- 判定の中身: 対象ジョブの `user_id` の WordPress 設定（`SupabaseService.getWordPressSettingsByUserId`）を読み、
+  - `wp_type = 'self_hosted'`: `buildWordPressServiceFromSettings` が成功する（接続設定が揃っている）なら「可」。
+  - `wp_type = 'wordpress_com'`: **Cookie 無しで**アクセストークンを解決できるなら「可」。解決は既存 `wordpressContentSync.ts` の `refreshWpComAccessToken` と同じ判定（`wpAccessToken` があり、`wpTokenExpiresAt` が60秒以内ならリフレッシュ。空またはリフレッシュ失敗なら `null`）。この判定を cron から呼べるように、**同ファイルから真偽値を返す関数を1つ export する**（例: `canFetchWpPostContentLive(userId: string): Promise<boolean>`）。判定ロジックを cron 側へ複製しない。
+- 判定結果の使い方: 「不可」だった起動で発生した本文取得失敗（`generateSummary` が `SUMMARY_CONTENT_FETCH_FAILED` を返したもの）を、`failed_by_code` へ書く直前に **`SUMMARY_WP_REAUTH_REQUIRED` へ読み替える**。「可」だった起動は従来どおり `SUMMARY_CONTENT_FETCH_FAILED` のまま計上する。
+- **`generateSummary`（単記事コア）は変更しない**。読み替えはジョブ処理サービス側の集計時に行う。したがって `SUMMARY_WP_REAUTH_REQUIRED` は**一括専用のコード**であり、単記事コアの `SummaryErrorCode` には追加しない（`tests/unit/lib/content-annotation-bulk-summary-display.test.ts` が固定しているのは「コア ⊆ 一括」の包含関係なので、一括側だけへの追加は既存テストと矛盾しない。`UNEXPECTED` / `ITEM_TIME_LIMIT` / `NOT_OWNED` などと同じ扱い）。
+- 判定できない残余（既知の限界）: 保存済みトークンが解決できるのに WordPress 側では無効（失効済みなのに `wp_token_expires_at` が NULL / 未来日）な場合は「可」と判定され、失敗は `SUMMARY_CONTENT_FETCH_FAILED` に落ちる。ここを出し分けるには `fetchWpPostContentLive` の戻り値契約（失敗を一律 `null`）を変える必要があり、親機能へ波及するため今回は行わない（BR-B10 例外 / §16）。
+
+**429 の判定経路（実装契約。BR-B11）**
+
+- 現行の `generateSummary` は LLM 呼び出しの例外を握りつぶして一律 `SUMMARY_AI_FAILED` を返す（`src/server/services/contentAnnotationSummaryService.ts:202-205`）。このままではレート制限を内訳に出せない（Q-B02 の回答が求める「内訳を出す」を満たせない）。
+- 対応: 同じ `catch` で、例外が `ChatError` かつ `code === ChatErrorCode.ANTHROPIC_RATE_LIMIT` のときだけ **`SUMMARY_AI_RATE_LIMITED`** を返す。429 / `rate_limit_error` の判定は既存の `ChatError.fromApiError`（`src/domain/errors/ChatError.ts:118,178`）が済ませているので、**新しい判定・待機・再試行は書かない**。
+- こちらは単記事コアの `SummaryErrorCode` にも追加する（単記事の要約でも同じ原因で失敗するため）。あわせて `mapSummaryError` の分岐と `ERROR_MESSAGES.WORDPRESS.SUMMARY_AI_RATE_LIMITED` を1件追加する（`nextjs-server` 規約）。**同期版（親仕様）のトーストでも、429 は「AI の呼び出しに失敗」ではなくレート制限として表示されるようになる**（挙動の改善であり後退はしない。§10 制約条件）。
 
 **`EmailService` への追加（実装契約）**
 
@@ -560,8 +609,48 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
   > The default maximum rate limit is 10 requests per second per team.（URL: https://resend.com/docs/api-reference/introduction ／ 確認日 2026-08-19）
 
   解釈（引用と分離）: キーは24時間で失効するため、**24時間を超えて滞留した通知は再送しても重複を防げない**。掃き出しの対象を `created_at` 24時間以内に限る（BR-B06 例外 / §9 経路2）のはこの引用に合わせた判断である。また掃き出しの上限10件は逐次送信であれば秒あたり10リクエストの既定上限に触れない。
-- 件名・差出人: 既定の差出人は `GrowMate <noreply@mail.growmate.tokyo>`（`DEFAULT_EMAIL_FROM`。`EMAIL_FROM` 環境変数で上書き可）。**件名の文言と差出人表記は未確定** → Q-B03。
-- 本文構成: (1) 対象件数（`total_count`）、(2) 成功・失敗・スキップ・未実行の件数、(3) `describeFailures(failed_by_code)` による失敗内訳、(4) `failed` で終わった場合は「途中までの結果である」旨、(5) `/analytics` へのリンク。
+- 件名・差出人: 差出人は既定の `GrowMate <noreply@mail.growmate.tokyo>` のまま（`DEFAULT_EMAIL_FROM`。`EMAIL_FROM` 環境変数で上書き可）で、**表記は変更しない**（既存3種のメールと同じ差出人にする）。件名の文言は下の「完了メールの件名・本文」で確定する。**クライアント回答（2026-09-04 / Q-B03）により、件名・本文はエージェント裁量。判断基準は「利用者が読んで内容が分かること」。**
+
+**完了メールの件名・本文（実装契約）**
+
+文面はコードで組み立てる（LLM には書かせない）。件名・本文ビルダーは前例 `src/server/lib/ga4-content-evaluation-email.ts` と同型に **`src/server/lib/content-annotation-summary-email.ts`** を新設し、`sanitizeEmailHtml`（`src/server/lib/email-html.ts`）を通す。文言は `.agents/skills/growmate-ui-ux/ui-text.md` に従う（敬体、全角括弧、感嘆符・絵文字を使わない、英字と日本語の間に半角スペース、再操作を促す文は「もう一度お試しください」、**利用者向けの語は「再認証」ではなく「再連携」**）。
+
+- 件名（前例 `【GrowMate】コンテンツ評価が完了しました：…` と同型）:
+
+  | ジョブの終わり方 | 件名 |
+  | --- | --- |
+  | `completed` | `【GrowMate】AI 要約が完了しました（成功 245 件 / 対象 267 件）` |
+  | `failed` | `【GrowMate】AI 要約が途中で終了しました（成功 120 件 / 対象 267 件）` |
+
+- 本文（HTML。上から順に）:
+  1. 見出し: 「AI 要約が完了しました」／`failed` なら「AI 要約が途中で終了しました」。
+  2. 件数: 対象 M 件・成功 N 件・失敗 N 件・スキップ N 件・未実行 N 件（0 件の区分は行ごと省く）。分母語は進捗表示と揃えて「対象」とする（§6 UI用語）。
+  3. 語の説明（同期版トーストと同じ誤読罠を防ぐ。§6）: 「スキップは要約の対象外（すでに入力済み、または WordPress 未連携）で、もう一度実行しても変わりません。」
+  4. **失敗の内訳と次にすること**（FR-B14 / AC-B16）: `failed_by_code` を件数の多い順に並べ、1行ごとに「`FAILURE_LABELS` の文言 + 件数」と「次にすること」を並べる。次にすることは**完了メール専用の辞書**（同モジュール内）で持ち、同期版トーストの文言（`getBulkSummaryToastMessage`）は変更しない。
+
+     | 失敗理由コード | 何が起きたか（`FAILURE_LABELS`。※印は本仕様で追加する行） | 次にすること（メール専用） |
+     | --- | --- | --- |
+     | `SUMMARY_WP_REAUTH_REQUIRED` | ※`WordPress の連携が切れている（再連携すると解消します）` | `設定画面から WordPress を再連携してから、もう一度お試しください。`＋ `/setup/wordpress` へのリンク |
+     | `SUMMARY_AI_RATE_LIMITED` | ※`AI の利用が集中している（時間をおいて再実行すると成功することがあります）` | `時間をおいてもう一度お試しください。` |
+     | `SUMMARY_CONTENT_FETCH_FAILED` | 既存（変更しない） | `記事が削除・非公開になっていないか、連携先のサイトが正しいかを確認してください。` |
+     | `SUMMARY_CONTENT_TOO_LARGE` | 既存 | `本文が長いため要約できません。もう一度実行しても同じ結果になります。` |
+     | `SUMMARY_SOURCE_NOT_LINKED` | 既存 | `WordPress と連携すると要約できます。` |
+     | `SUMMARY_AI_FAILED` / `SUMMARY_PARSE_FAILED` / `EMPTY_SUMMARY` / `SAVE_FAILED` / `ITEM_TIME_LIMIT` / `UNEXPECTED` | 既存 | `時間をおいてもう一度お試しください。` |
+     | `ANNOTATION_NOT_FOUND` / `NOT_OWNED` | 既存 | `対象の記事が見つかりません。一覧を再読み込みして確認してください。` |
+
+  5. `failed` で終わった場合: 「途中までの結果です。もう一度「AIで要約」を実行すると、残りの記事から続けられます。」（背景実行では時間予算切れの継続は cron が行うため、**この案内は `failed` のときだけ出す**。`completed` に出すと BR-B06 が避けた「誤った手動再実行の案内」になる）。
+  6. `/analytics` へのリンク。
+
+- 本文の例（`failed` / WordPress の連携が切れている利用者。実装時はこの粒度を満たすこと）:
+
+  > AI 要約が途中で終了しました。
+  >
+  > 対象 267 件のうち、成功 0 件・失敗 267 件です。
+  >
+  > 失敗の内訳
+  > ・WordPress の連携が切れている 267 件 — 設定画面から WordPress を再連携してから、もう一度お試しください。（WordPress の連携設定を開く）
+  >
+  > 途中までの結果です。もう一度「AIで要約」を実行すると、残りの記事から続けられます。
 
 **完了メールの起動経路（実装契約）**
 
@@ -594,7 +683,10 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 並列処理の形 | 同ファイル `:97-118`（`for (i += CONCURRENCY)` + `Promise.all` のチャンク処理。時間予算の判定もチャンク先頭） | **再利用**（BR-B05 のチャンク境界・BR-B09 の保存粒度はこの既存形と同型） |
 | 処理順の整列 | `src/server/lib/content-annotation-bulk-summary.ts:60` の `orderTargetsForProcessing` | **使わない**（配列順で固定。理由は §9「処理順」） |
 | 要約本体 | `src/server/services/contentAnnotationSummaryService.ts` の `generateSummary` | **拡張**（`cookieStore` の任意化。§9） |
-| 失敗ラベル | `src/lib/content-annotation-bulk-summary-display.ts` の `FAILURE_LABELS` / `describeFailures` | **拡張**（`export` を付けて共用。`getBulkSummaryToastMessage` 自体は共用しない） |
+| 失敗ラベル | `src/lib/content-annotation-bulk-summary-display.ts` の `FAILURE_LABELS` / `describeFailures` | **拡張**（`export` を付けて共用し、新規コード2件の行を追加。既存行の文言と `getBulkSummaryToastMessage` は変更しない。§9） |
+| WordPress の本文取得可否 | `src/server/services/wordpressContentSync.ts` の `refreshWpComAccessToken` / `buildWordPressServiceFromSettings` | **拡張**（Cookie 無しでの解決可否を返す関数を1つ export する。判定ロジックを cron 側へ複製しない。§9「本文取得の可否判定」） |
+| 429 の判定 | `src/domain/errors/ChatError.ts` の `ChatErrorCode.ANTHROPIC_RATE_LIMIT`（`:118` / `:178` で 429・`rate_limit_error` を分類済み） | **再利用**（新しい判定・待機・再試行は書かない。§9「429 の判定経路」） |
+| メール本文ビルダー | `src/server/lib/ga4-content-evaluation-email.ts` / `src/server/lib/email-html.ts` の `sanitizeEmailHtml` | **同型で新規**（`content-annotation-summary-email.ts`。§9「完了メールの件名・本文」） |
 | メール送信 | `src/server/services/emailService.ts` | **拡張**（新規メソッド追加。§9） |
 | 権限判定 | `src/server/lib/ga4-permissions.ts` の `canWriteGa4` | **再利用** |
 | cron ルート | `app/api/cron/ga4-content-evaluate/route.ts` の共通ガード（`CRON_SECRET` の Bearer 認証） | **再利用**（同型で新規ルートを作る） |
@@ -607,6 +699,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - **`if` の schedule 文字列も新しい cron 式に合わせる**: 既存 `.github/workflows/hourly-cron.yml` は各ステップに `if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 * * * *'` を置いている（`:73` / `:79`）。同型でコピーして `'0 * * * *'` のままにすると、**`workflow_dispatch` では動くのに定期実行だけ何もしない**ワークフローになる。新規ワークフローでは `github.event.schedule == '*/10 * * * *'` に直す（検証は §14 チェックポイント「手順3完了時」）。
 - **整合性テストの前提が変わる**: `tests/unit/server/lib/cron-config-consistency.test.ts` は `readFileSync('.github/workflows/hourly-cron.yml')` をハードコードし、`CRON_CONFIGS` の宣言と workflow matrix を `toStrictEqual` で突き合わせる。10分間隔を別ファイルにすると新エントリが matrix に見つからず必ず失敗するため、**同テストを複数ワークフロー対応に更新する**（§13）。
 - Anthropic の組織レート制限はチャット・GSC提案 cron 等と共有する。並列3は実測で調整する前提とする（§8）。
+- **失敗理由コードの追加は親機能（同期版）にも及ぶ**: `SUMMARY_AI_RATE_LIMITED` は単記事コアの `SummaryErrorCode` にも足すため、同期版のトーストと単記事要約のエラー表示でも 429 がレート制限として出るようになる（誤りの解消であり後退はしない）。`SUMMARY_WP_REAUTH_REQUIRED` は一括専用で、コアには足さない（§9「本文取得の可否判定」）。既存ラベルの文言は変更しないので、同期版トーストの既存文面は変わらない。
+- **`src/lib/content-annotation-summary-fields.ts` の型レベル整合**: `tests/unit/lib/content-annotation-bulk-summary-display.test.ts:22` が固定しているのは「コアの `SummaryErrorCode` ⊆ 一括の `SummaryFailureCode`」の包含関係。一括専用コードの追加はこれを壊さないが、**`FAILURE_LABELS` は `Record<SummaryFailureCode, string>` なので追加した2件のラベル行が必須**（欠けると型エラー）。
 - ジョブ処理・進捗取得はともに Service Role で行うため、`user_id` スコープの明示が必須（`supabase` skill の運用ルール3）。
 - **`app/analytics/page.tsx` の `maxDuration = 800` は削らない**。背景化後も Instagram 手動同期のために独立して必要（`page.tsx:20-23` のコメント）。`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属は cron ルート側へ移すが、`tests/unit/server/lib/analytics-max-duration.test.ts` が同定数と `page.tsx` のリテラルを突き合わせているため、**定数の帰属先とテストの突き合わせ先を実装時に決めて同テストを更新する**（§13 / §14 手順3）。
 
@@ -615,9 +709,10 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 依存対象 | 前提条件 | 完了確認 | 未完了時の影響 |
 | --- | --- | --- | --- |
 | 先行 PR shoma-endo/GrowMate#515（同期実行版） | `summarizeContentAnnotationsBulk` と周辺の純ロジック（`computeSummaryItemBudgetMs` / `FAILURE_LABELS` / 定数）がマージ済み | main に含まれていること | 本仕様の土台が無く着手できない |
-| 確認質問 Q-B01 | WordPress.com の Cookie 無し取得可否と、成立しない利用者の扱いの決定 | PO 回答 + 実データ検証 | WordPress.com 利用者のジョブが全件失敗しうる（R-B01） |
-| 確認質問 Q-B02 | 429 の扱いの決定 | PO 回答 | 完了メールの件数の意味が実装者裁量で決まる |
-| 確認質問 Q-B03 | 完了メールの件名・差出人表記 | PO / クライアント回答 | 実装後に文面差し替えの手戻り |
+| 確認質問 Q-B01 | 成立しない利用者の扱いの決定 | **回答受領済み（2026-09-04）**= (b) 失敗として計上する | — （解消。BR-B10 / FR-B14 / AC-B16 へ反映） |
+| 確認質問 Q-B02 | 429 の扱いの決定 | **回答受領済み（2026-09-04）**= (a) 失敗として計上する | — （解消。BR-B11 / FR-B15 / AC-B17 へ反映） |
+| 確認質問 Q-B03 | 完了メールの件名・本文 | **回答受領済み（2026-09-04）**= エージェント裁量 | — （解消。§9「完了メールの件名・本文」へ反映） |
+| §16 承認表の記入 | ステータス `draft` の解除・承認者・対象リリースの確定 | PO / 技術レビューの承認 | 実装に着手できない（唯一残るブロッカー） |
 
 ## 11. トレードオフ判断
 
@@ -680,29 +775,32 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 | ID | リスク | 発生条件・影響 | 対策 | 担当 | 状態 |
 | --- | --- | --- | --- | --- | --- |
-| R-B01 | cron 実行時に Cookie が無く、WordPress.com の本文取得が失敗する利用者がいる | `wp_access_token` が空、または実際には失効しているのに `wp_token_expires_at` が NULL / 未来日の利用者。そのジョブが全件失敗する（本文取得失敗は LLM 呼び出し前なので LLM 課金は発生しない）。失敗ラベルも実態と食い違う（§9） | 実装前に「`wp_type = 'wordpress_com'` かつ `wp_access_token` が NULL、または `wp_token_expires_at` が過去」の利用者を実データで数える。存在する場合の扱いは Q-B01 | 実装者 + PO | 未対応（Q-B01 待ち） |
-| R-B02 | 並列3で Anthropic の 429 が増える | 組織単位のレート上限を他機能と共有する（§8）。失敗件数が増え、利用者に「失敗」として見える | 並列数を定数1箇所で変更可能にし、実測で調整。429 の扱いは Q-B02（公式は `retry-after` を返すため「待って再試行」も選択肢） | 実装者 + PO | 未対応（Q-B02 待ち） |
+| R-B01 | cron 実行時に Cookie が無く、WordPress.com の本文取得が失敗する利用者がいる | `wp_access_token` が空、または実際には失効しているのに `wp_token_expires_at` が NULL / 未来日の利用者。そのジョブが全件失敗する（本文取得失敗は LLM 呼び出し前なので LLM 課金は発生しない） | **クライアント回答（2026-09-04 / Q-B01 = (b)）で方針確定**: 起票時には弾かず、失敗として計上したうえで、完了メールに理由と再連携の導線を出す（BR-B10 / FR-B14 / AC-B16）。失敗ラベルが実態と食い違う問題は `SUMMARY_WP_REAUTH_REQUIRED` の追加で解消。実データでの該当利用者数の計測は、**影響範囲の把握のために実装前に行う**（`wp_type = 'wordpress_com'` かつ `wp_access_token` が NULL、または `wp_token_expires_at` が過去。§14 チェックポイント） | 実装者 | **対応済（方針確定。実データ計測は実装前）** |
+| R-B02 | 並列3で Anthropic の 429 が増える | 組織単位のレート上限を他機能と共有する（§8）。失敗件数が増え、利用者に「失敗」として見える | **クライアント回答（2026-09-04 / Q-B02 = (a)）で方針確定**: 429 は待機せず失敗に計上し、`SUMMARY_AI_RATE_LIMITED` として完了メールの内訳に出す（BR-B11 / AC-B17）。件数が多ければ並列数を定数1箇所で下げる（実測で調整） | 実装者 | **対応済（方針確定）** |
 | R-B03 | GitHub Actions のスケジュール遅延 | 完了までの時間が想定より延びる | 「約30〜60分」は目安として案内する。厳密な時刻保証はしない | 実装者 | 対応済（仕様に明記） |
 | R-B04 | 誤って1000件を起票した場合、停止できない | 最大約7,000円（≒ $46）の LLM 課金 | キャンセル導線は作らない合意（Non-goals）。BR-B03 で1ジョブに限定し、上限1000件で頭打ちにする。BR-B08 の再判定により、既に要約済みの記事には課金が発生しない | PO | 対応済（合意） |
 | R-B05 | ジョブが `processing` のままスタックする | 利用者が再実行できない（BR-B03 に阻まれる） | claim RPC で**20分**以上動いていない行を回収する（`maxDuration` 13.3分に対する余裕。§8） | 実装者 | 対応済（仕様に明記） |
 | R-B06 | 稼働中のジョブが二重に claim され、二重課金・件数の二重加算が起きる | 回収しきい値が `maxDuration` に近すぎる場合、または `maxRetries` を既定の3にした場合 | 回収しきい値20分、`maxRetries: 1`、`job_token` 条件付きの進捗更新（BR-B09）、workflow の `concurrency` の4点で防ぐ（§8 / §9 / §10） | 実装者 | 対応済（仕様に明記） |
 | R-B07 | GitHub Actions の課金前提（public リポジトリ）が誤っている | **現時点では発生条件が成立しない**。将来 private 化した場合のみ、概算 4,320 分/月で無料枠（Free 2,000 / Pro・Team 3,000 分）を超える | 2026-09-04 に GitHub API の repository オブジェクトで `private=false` / `visibility=public` を確認済み。private 化する場合の再検討条件は ALT-002「将来変更する条件」に移した | 実装者 | **対応済（前提を確認）** |
 
-### 確認質問
+### クライアント回答（決定事項）
 
-回答が出るまで実装に進めない事項。**`spec-review` を3周実施しても解消できず、ブロッカーとして残っている**（レビューループはここで停止した。3件の回答と §16 承認表の記入が揃った時点で `spec-review` を再実行する。§16「未解決のブロッカー」）。
+**未解決の確認質問は無い。** Q-B01〜Q-B03 は **2026-09-04 にクライアントから回答を受領**し、本書へ反映済み。以下は決定の記録であり、これに反する実装・変更をしない。
 
-| ID | 確認質問 | 回答が必要な理由 | 回答者 | 期限 | 状態 |
-| --- | --- | --- | --- | --- | --- |
-| Q-B01 | cron 実行（Cookie 無し）で WordPress.com 連携の本文取得が成立するか。成立しない利用者がいる場合、(a) 起票時に検証して拒否する / (b) 実行して失敗に計上し完了メールで理由を伝える / (c) 該当記事だけスキップに計上する のどれを採るか。あわせて、トークン失効時に完了メールで再連携へ誘導するか | 利用者に見える結果が「実行できません」か「全件失敗のメール」かで正反対になる挙動変更。現在の失敗ラベル（「連携先と違うサイトの記事か、記事が削除・非公開」）はトークン失効という実態と食い違う | PO（+ 実データ検証） | 未定 | **未回答（クライアント確認中）** |
-| Q-B02 | Anthropic の 429 に当たった記事を (a) 失敗に計上する / (b) 未処理として次回の起動に回す / (c) 公式が返す `retry-after` を待って同一起動内で再試行する のどれにするか | 完了メールの4区分の意味（再実行で進むのか否か）が変わる。実装者の裁量で決めてはならない。判断には GrowMate の組織 usage tier と実測の分あたり消費量が必要（§8） | PO | 未定 | **未回答（クライアント確認中）** |
-| Q-B03 | 完了メールの件名・差出人表記の指定はあるか。既存3種のメール（Google Ads 分析 / 除外キーワード / GA4 コンテンツ評価）と体裁を揃えるか | 利用者に届く成果物の文面。未確定のまま実装すると差し替えの手戻りになる | PO / クライアント | 未定 | **未回答（クライアント確認中）** |
+| ID | 確認していたこと | 回答（2026-09-04 受領） | 反映先 |
+| --- | --- | --- | --- |
+| Q-B01 | cron 実行（Cookie 無し）で WordPress.com の本文取得が成立しない利用者の扱い。(a) 起票時に拒否 / (b) 失敗に計上 / (c) スキップに計上 | **(b) 失敗として計上する。起票時には弾かない。** さらに**完了メールの本文に、その失敗理由と「利用者が次に何をすればよいか」まで書く**（例: WordPress の連携が切れている旨と、その再連携導線） | §3 BR-B06 / BR-B10・§4 Non-goals「起票時の WordPress 連携チェック」・§6 FR-B14・§7 AC-B16・§9「本文取得の可否判定」「完了メールの件名・本文」・§12 R-B01 |
+| Q-B02 | Anthropic の 429 の扱い。(a) 失敗に計上 / (b) 未処理として次回 / (c) `retry-after` 待機 | **(a) 失敗として計上する。未処理へ回さず、`retry-after` 待機もしない。** **完了メールの本文にその内訳を出す** | §3 BR-B05 例外 / BR-B11・§4 Non-goals「Anthropic 429 の待機・自動再試行」・§6 FR-B15・§7 AC-B17・§8 429 行・§9「429 の判定経路」・§12 R-B02 |
+| Q-B03 | 完了メールの件名・差出人表記 | **件名・本文はエージェント裁量でよい。判断基準は「利用者が読んで内容が分かること」。** | §9「完了メールの件名・本文」（差出人は既存3種と同じ `GrowMate <noreply@mail.growmate.tokyo>` のまま） |
+
+- 回答を受けて**失敗理由コードを2件追加した**（`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED`）。「失敗理由と次アクションをメールに書く」（Q-B01）「429 の内訳を出す」（Q-B02）は、原因ごとに次アクションを出し分けられる粒度がなければ満たせないため。追加したのは理由コードとラベルだけで、テーブル・カラム・feature flag・リトライ機構は増やしていない（判断の記録は §16「クライアント回答の反映で決めたこと」、粒度の定義は BR-B10）。
+- クライアント合意済みで**変更していない**3点: キャンセル導線を作らない / 通知は全件完了後にメール1通 / Claude Sonnet 5 移行はステイ（いずれも 2026-09-04 合意。§4 Non-goals / §11 ALT-004）。
 
 - Q-B02 の判断材料（公式一次情報。https://platform.claude.com/docs/en/api/rate-limits 、確認日 2026-09-04）:
 
   > If you exceed any of the rate limits you will get a [429 error](...) describing which rate limit was exceeded, along with a `retry-after` header indicating how long to wait.
 
-  解釈（引用と分離）: 公式が `retry-after` の返却を明記しているため、選択肢 (c)「待って同一起動内で再試行」は技術的に成立する。ただし1件あたりの時間予算（BR-B04）を圧迫するため、待機の上限も併せて決める必要がある。
+  解釈（引用と分離）: 公式が `retry-after` の返却を明記しているため、選択肢 (c)「待って同一起動内で再試行」も技術的には成立した。**クライアントは (a) を選択した**ため本仕様では待機を実装せず、429 はその場で失敗に計上する（BR-B11）。引用は「待たない判断が公式挙動を知ったうえでの選択である」ことの記録として残す。
 
 ### 未決定事項（今は決めない）
 
@@ -728,6 +826,9 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
   - 送信に失敗した場合に `notified_at` が更新されず、次回起動の掃き出しで再送されること。**`created_at` が24時間より古い未通知ジョブは掃き出し対象に含まれないこと**（§9「完了メールの起動経路」）
   - **メール未登録（`users.email` が NULL・空）のジョブが `notified_at` を埋められ、次回以降の掃き出しに現れないこと**（AC-B06 / F-30。滞留が10件の枠を占有すると AC-B15 の通知経路が死ぬ）
   - cron ルートのレスポンスが §9 の契約どおりであること（**記事単位の失敗が `data.failed` に載らない**。`data.skipped` / `data.stoppedReason` を載せない）。**前例 `ga4ContentEvaluationBatchService.ts:385` の合算式 `failed = articlesFailed + emailsFailed` を写していないこと**を意図的に確認する（`data.emailsFailed` は含めるが `data.articlesFailed` は含めない）
+  - **WordPress の連携が切れている利用者の扱い**（AC-B16 / BR-B10）: (1) 起票が成功すること（**起票時に弾かない**。Q-B01 = (b)）、(2) 本文取得の可否判定が「不可」の起動では本文取得失敗が `SUMMARY_WP_REAUTH_REQUIRED` に、「可」の起動では従来どおり `SUMMARY_CONTENT_FETCH_FAILED` に計上されること、(3) 可否判定が**1起動につき1回だけ**呼ばれること（記事ごとに呼ぶと WordPress 設定の読み取りが最大1000回に膨らむ）
+  - **Anthropic 429 の扱い**（AC-B17 / BR-B11）: `llmChat` が `ChatErrorCode.ANTHROPIC_RATE_LIMIT` の `ChatError` を投げたとき、`SUMMARY_AI_RATE_LIMITED` として**失敗に計上**され、`SUMMARY_AI_FAILED` には計上されないこと。**未実行（`unprocessedCount`）に回らないこと**、**待機（`retry-after` 相当のスリープ）が発生しないこと**
+  - **完了メールの文面**（FR-B14 / §9「完了メールの件名・本文」）: 件名が `completed` / `failed` で出し分くこと、失敗内訳が件数の多い順に並ぶこと、理由ごとに**次にすること**が並ぶこと、`SUMMARY_WP_REAUTH_REQUIRED` があるとき `/setup/wordpress` へのリンクが含まれること、`completed` のときに「もう一度実行すると続きから進む」旨を**出さない**こと（BR-B06 が避けた誤案内）
   - 二重起票の拒否（AC-B07。**事前検出とユニーク制約違反の両方**で `SUMMARY_BULK_ALREADY_RUNNING` が返ること）、上限超過（AC-B11）、権限（AC-B09）
   - 並列実行時の件数集計が直列時と一致すること
   - 進捗取得クエリに `.eq('user_id', ...)` が付いていること（§6 権限）
@@ -735,10 +836,10 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
   - `tests/unit/server/actions/contentAnnotationBulkSummary.actions.test.ts`（同期実行前提の記述 → 起票の戻り値 `{ jobId, totalCount }` へ）
   - `tests/unit/server/lib/cron-config-consistency.test.ts`（cron 定義の追加。**`readFileSync('.github/workflows/hourly-cron.yml')` のハードコードを複数ワークフロー対応にする**。§10）
   - `tests/unit/server/lib/analytics-max-duration.test.ts`（`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属先が cron ルートへ移るため、突き合わせ先を更新する。**`app/analytics/page.tsx` の `maxDuration = 800` は Instagram 手動同期のために残す**）
-  - `tests/unit/lib/content-annotation-bulk-summary-display.test.ts`（`FAILURE_LABELS` / `describeFailures` の `export` 追加に伴う確認。`getBulkSummaryToastMessage` の既存挙動は変えない）
+  - `tests/unit/lib/content-annotation-bulk-summary-display.test.ts`（`FAILURE_LABELS` / `describeFailures` の `export` 追加と、**新規コード2件のラベル行が揃っていること**の確認。`getBulkSummaryToastMessage` の既存文面は変えない。`:22` の「コア ⊆ 一括」の型レベル包含も維持されること）
 - 手動確認（`quality-gate` の実画面確認に対応）:
   - 実データで50件程度のジョブを流し、複数回の cron 起動をまたいで完了すること
-  - 完了メールが1通だけ届き、件数が画面の集計と一致すること
+  - 完了メールが1通だけ届き、件数が画面の集計と一致すること。**失敗があるときは理由と「次にすること」が並び、WordPress の連携切れなら再連携リンクが押せること**（AC-B16）
   - 実行中の進捗表示、二重起票の拒否
   - **`processing` のまま20分放置した行が次回 claim で回収されること**（R-B05 / FR-B13）
   - 並列3実行時の Anthropic 消費量（ITPM / OTPM）を実測し、§8 の概算と突き合わせる
@@ -766,9 +867,11 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 2. ジョブ処理サービス（claim → **配列順に3件ずつのチャンクで処理** → **チャンク着手の直前にその3件を再取得して BR-B08 を再判定** → **チャンクが揃ってから `job_token` 条件付きで進捗保存（前進があれば同じ UPDATE で `attempt_count = 0`。BR-B09 / F-29）** → 完了判定 → 完了メール）。ジョブ雛形は既存 `GscSuggestionJobService`、チャンク処理の形は `GscEvaluationService`（`:97-118`）と同型にする。
    - `contentAnnotationSummaryService.generateSummary` の `cookieStore` を任意化し、cron からは cookie 無しの `getCookie` を渡す（§9）。
    - 処理順は `target_annotation_ids` の配列順で固定し、`orderTargetsForProcessing` は使わない（§9「処理順」）。
+   - **最初のチャンクに着手する前に、本文取得の可否判定を1回だけ行う**（BR-B10 / §9「本文取得の可否判定」）。判定が「不可」の起動では、本文取得失敗を `SUMMARY_WP_REAUTH_REQUIRED` として計上する。判定関数は `wordpressContentSync.ts` から export し、cron 側にロジックを複製しない。
+   - **429 の分類**（BR-B11 / §9「429 の判定経路」）: `contentAnnotationSummaryService.generateSummary` の LLM 呼び出しの `catch` で、`ChatError` かつ `ANTHROPIC_RATE_LIMIT` のときだけ `SUMMARY_AI_RATE_LIMITED` を返す。待機・再試行は書かない。あわせて `mapSummaryError` と `ERROR_MESSAGES.WORDPRESS` に1件追加する。
    - **対象記事の取得は、着手するチャンク（最大3件）ごとに行う。** ジョブ全体をループ前に `chunkIds(ID_QUERY_CHUNK_SIZE)` で一括取得して振り分ける同期版の形（`src/server/actions/contentAnnotationBulkSummary.actions.ts:188-246`）は採らない。採ると BR-B08 の再判定が最大12分前（1起動分）のスナップショットに基づくことになり、「`generateSummary` の直前」を満たさないため。1回の取得は最大3 ID なので PostgREST の `db-max-rows = 1000` にも触れない。
 3. cron ルート追加（**レスポンス形は §9 の契約に合わせる**。`ga4ContentEvaluationBatchService.ts:385` を雛形に写す場合は **`failed = articlesFailed + emailsFailed` の `articlesFailed` の項を必ず外す**。§9「前例からの意図的な差分」。未通知ジョブの掃き出しを claim の前に置き、時間予算の起点をルートハンドラ開始時刻にする）、`CRON_CONFIGS` へ登録（値は §9 の表）、10分間隔ワークフロー追加（`concurrency` 付き。**各ステップの `if` の schedule 文字列を `*/10 * * * *` にする**。§10）。`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属先を決め、`analytics-max-duration.test.ts` を更新する。
-4. 完了メール（`EmailService` の新規メソッド。**第4引数 `idempotencyKey` にジョブ ID を渡す**（前例 `sendGa4ContentEvaluation`。§9）+ HTML 本文 + `notified_at` による冪等（**送信成功時と宛先が無いときに打ち、送信失敗時は打たない**）+ `failed` 時の文面 + **未通知ジョブの掃き出し**（`created_at` 24時間以内・最大10件・逐次送信）。§9「完了メールの起動経路」）。
+4. 完了メール（`EmailService` の新規メソッド。**第4引数 `idempotencyKey` にジョブ ID を渡す**（前例 `sendGa4ContentEvaluation`。§9）+ 件名・HTML 本文のビルダー新設（`src/server/lib/content-annotation-summary-email.ts`。**失敗理由ごとの「次にすること」と `/setup/wordpress` の再連携導線を含む**。§9「完了メールの件名・本文」）+ `FAILURE_LABELS` への新規コード2行の追加 + `notified_at` による冪等（**送信成功時と宛先が無いときに打ち、送信失敗時は打たない**）+ `failed` 時の文面 + **未通知ジョブの掃き出し**（`created_at` 24時間以内・最大10件・逐次送信）。§9「完了メールの起動経路」）。
 5. Server Action を起票に差し替え、二重起票を拒否（`SUMMARY_BULK_ALREADY_RUNNING` を `ERROR_MESSAGES` に追加）。
 6. 画面（実行直後のトースト、進捗ラベル、`page.tsx` での進捗取得、UI 文言辞書の更新）。
 7. テスト追加・更新、`npm run verify`、実データ確認。
@@ -777,19 +880,20 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
-| 着手前 | Q-B01 / Q-B02 / Q-B03 の回答が揃っている（リポジトリ visibility は public を確認済みのため確認不要。§10） | PO / 実装者 | 未確認 |
+| 着手前 | **§16 承認表が記入され、ステータスが `draft` を外れている**（Q-B01〜Q-B03 は 2026-09-04 に回答受領済み。リポジトリ visibility は public を確認済み。§10） | PO / 実装者 | 未確認 |
+| 着手前 | R-B01 の該当利用者数を実データで数える（`wp_type = 'wordpress_com'` かつ `wp_access_token` が NULL、または `wp_token_expires_at` が過去）。**扱いは Q-B01 = (b) で確定済みなので、これは影響範囲の把握が目的**（0件でも実装内容は変わらない） | 実装者 | 未確認 |
 | 手順1完了時 | `anon` から RPC を実行できない | 実装者 | 未確認 |
 | 手順3完了時 | `workflow_dispatch` で手動起動し、pending 0件で即座に返る。**さらに初回の `schedule` 起動が実際に発火し、`if` ガードでステップがスキップされていないことを実行ログで確認する**（§10） | 実装者 | 未確認 |
 | 手順5完了時 | 起票が3秒以内に返る（AC-B01）。同時2クリックで `SUMMARY_BULK_ALREADY_RUNNING` が返る | 実装者 | 未確認 |
-| 手順7完了時 | 実データで複数回の起動をまたいで完了し、メールが1通である。起票後に手入力した記事が上書きされない（AC-B13） | 実装者 | 未確認 |
+| 手順7完了時 | 実データで複数回の起動をまたいで完了し、メールが1通である。起票後に手入力した記事が上書きされない（AC-B13）。**完了メールに失敗理由と「次にすること」が出ている**（AC-B16） | 実装者 | 未確認 |
 
 ## 15. 完了条件
 
 - Definition of Done（すべて満たして完了）:
-  - [ ] AC-B01〜AC-B15 をすべて満たす
+  - [ ] AC-B01〜AC-B17 をすべて満たす
   - [ ] `npm run verify` が exit 0、`scripts/check-ui-text.sh` が緑
   - [ ] 実データで50件以上のジョブが、複数回の cron 起動をまたいで完了する
-  - [ ] 完了メールが1通だけ届き、件数が画面の集計と一致する
+  - [ ] 完了メールが1通だけ届き、件数が画面の集計と一致する。失敗があるときは理由ごとに「次にすること」が出ている（AC-B16 / AC-B17）
   - [ ] **ローカル／ステージングでマイグレーションを適用し、`anon` から RPC を実行できないことを確認済み**（本番適用は §13 リリース方針の運用作業であり、完了条件には含めない）
   - [ ] README 更新の要否を `spec-to-pr` の `readme_sync` が判断済み（🏗️アーキテクチャ図・📁プロジェクト構成が候補）
 - 検証方法・証跡: `npm run verify` の出力、`/analytics` の実画面確認（実行直後・実行中・二重起票）、受信した完了メール、cron 実行ログ（`batch_completed`）。
@@ -803,7 +907,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | --- | --- | --- | --- | --- |
 | 1 | 2026-09-04 | 2 / 13 / 4 | 全19件を反映（`docs/plans/.workflow/content-annotation-bulk-summary-background-spec/review/03-revise.md`） | 下記「残置合意」を参照 |
 | 2 | 2026-09-04 | 0 / 5 / 4 | 全9件（F-20〜F-28）を反映。1周目の反映によって生じた矛盾の解消が中心（並列3とカーソルの両立不能、`failed` 通知の起動経路欠落、`count-batch` の判定セマンティクス、public 確定、UI 分母語の二義） | 下記「2周目で決めた設計判断」を参照 |
-| 3（**最終周**） | 2026-09-04 | 1 / 3 / 3 | 全7件（F-29〜F-35）を反映。🔴 F-29（`attempt_count` が「claim 回数」のため4起動目で必ず `failed` になり §1 の成功指標が構造的に破れる）の解消と、2周目で新設した掃き出し経路に起因する3件（通知の永久滞留 / Resend 冪等キー欠落 / 実在の前例との乖離）が中心 | 下記「3周目で決めた設計判断」「3周目の残置合意」を参照 |
+| 4（**クライアント回答の反映**） | 2026-09-04 | — （監査指摘ではない） | Q-B01〜Q-B03 の回答（2026-09-04 受領）を反映。確認質問を §12「クライアント回答（決定事項）」へ移し、業務ルール（BR-B05 例外 / BR-B06 / BR-B10 / BR-B11）・Non-goals・機能要件（FR-B14 / FR-B15）・AC-B16 / AC-B17・§8 / §9 / §10 / §13 / §14 / §15 まで一貫させた | 下記「クライアント回答の反映で決めたこと」を参照 |
+| 3（監査の最終周） | 2026-09-04 | 1 / 3 / 3 | 全7件（F-29〜F-35）を反映。🔴 F-29（`attempt_count` が「claim 回数」のため4起動目で必ず `failed` になり §1 の成功指標が構造的に破れる）の解消と、2周目で新設した掃き出し経路に起因する3件（通知の永久滞留 / Resend 冪等キー欠落 / 実在の前例との乖離）が中心 | 下記「3周目で決めた設計判断」「3周目の残置合意」を参照 |
 
 **残置合意した論点と理由**
 
@@ -840,11 +945,22 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - **再開時の件数ずれ（F-34 🟢）**: 異常終了からの再開で、直近の未完了チャンクの先行完了分（最大2件）が再判定でスキップに計上される。要約は生成済みで結果は正しく、二重課金も起きない安全側の挙動であり、影響は完了メールの件数表示が**異常終了1回あたり最大2件**ずれることだけ。件数を正確にするには完了済み集合を別に保持する必要があり（2周目に F-20 で退けた案）、MVP の範囲を超える。**§6「集計の定義」に挙動を明記するに留める**。
 - **§6 権限と掃き出しの字面不整合（F-35 🟢）**: 実害は無い（掃き出しは行ごとに `user_id` から宛先を解決し、行をまたいだ結合をしない）が、§6 の権限節だけを読むと「cron のクエリは常に単一 `user_id`」と読めるため、**例外1文を §6 権限へ追記**した。実装・機構は変えていない。
 
-**未解決のブロッカー（次サイクルへ持ち越し）**
+**クライアント回答の反映で決めたこと（2026-09-04。cycle 4）**
 
-- **本仕様は `spec-review`（audit ↔ revise）を3周実施し、指摘35件（F-01〜F-35）をすべて反映した。ここでレビューループは停止する。残る停止要因は次の2つだけで、いずれもエージェントでは解消できない外部入力である: (1) Q-B01〜Q-B03 の回答、(2) 本節「承認」表の記入（ステータス `draft` の解除・承認者・対象リリース）。回答が反映された時点で `spec-review` ループを再実行すること**（何周回しても、この2つが埋まらない限り到達できる最上位の verdict は `approved_with_questions` であり `approved` にはならないため、回答前の追加ループは意味がない）。
-- Q-B01 / Q-B02 / Q-B03 が未回答（クライアント確認中）。3件の回答が揃うまで verdict は `approved` にならず `approved_with_questions` 止まり。
-- 承認表（本節）が空欄。ステータスは `draft` のままで、承認者・対象リリースが未確定。
+回答そのものは §12「クライアント回答（決定事項）」に置いた。ここには**回答を仕様に落とす過程でエージェントが判断したこと**とその理由を残す。
+
+- **失敗理由コードを2件だけ足した（BR-B10）**: Q-B01 は「完了メールに失敗理由と次にすべきことまで書く」、Q-B02 は「429 の内訳を出す」を求めている。既存コードのままでは (1) 連携切れの利用者に `SUMMARY_CONTENT_FETCH_FAILED`（「連携先と違うサイトの記事か、記事が削除・非公開」）という**誤った断定と誤った次アクション**を送ることになり、(2) 429 が `SUMMARY_AI_FAILED` に埋もれて内訳を出しても区別できない。原因ごとに次アクションを出し分けられる粒度が回答の前提なので、`SUMMARY_WP_REAUTH_REQUIRED` と `SUMMARY_AI_RATE_LIMITED` を追加した。**追加したのは理由コードとラベル行だけ**で、テーブル・カラム・feature flag・リトライ機構・停止機構は1つも増やしていない（`CLAUDE.md` Core Rules / MVP 最優先）。
+- **却下した安い案**: 「新規コードを足さず、`SUMMARY_CONTENT_FETCH_FAILED` のラベルを『連携切れの可能性もある』に広げるだけ」。原因を断定しない代わりに**再連携すれば直るのかどうかを利用者が判断できない**ため、クライアントが求めた「次に何をすればよいか」を満たさない。加えて同ラベルは同期版トーストと共有しており、全利用者の文面を曖昧にする副作用がある。
+- **判定は「1起動につき1回」に閉じた（§9「本文取得の可否判定」）**: 記事ごとに WordPress 設定を読むと最大1000回の追加クエリになる。ジョブ単位・起動単位で1回だけ判定し、その起動の本文取得失敗を読み替える。判定ロジックは既存 `wordpressContentSync.ts` から export して複製しない。
+- **`generateSummary`（単記事コア）は必要最小限しか触らない**: `SUMMARY_WP_REAUTH_REQUIRED` は一括専用（コアの `SummaryErrorCode` には足さない）。`SUMMARY_AI_RATE_LIMITED` だけはコアの `catch` の分岐が必要なのでコアにも足す（同期版でも 429 が正しく表示されるようになる。改善であり後退はしない。§10 制約条件）。
+- **既知の限界（残置）**: 保存済みトークンが解決できるのに WordPress 側では無効なケース（失効済みなのに `wp_token_expires_at` が NULL / 未来日）は「可」と判定され、`SUMMARY_CONTENT_FETCH_FAILED` に落ちる。出し分けるには `fetchWpPostContentLive` の戻り値契約（失敗を一律 `null`）を変える必要があり、単記事要約・WordPress インポートまで波及する。**MVP の範囲を超えるため今回は行わず、挙動を BR-B10 例外に明記するに留める**。
+- **待機・自動リトライは作らなかった**: Q-B02 の (c)（`retry-after` 待機）は公式挙動としては成立するが、クライアントが (a) を選んだため実装しない。Non-goals に「Anthropic 429 の待機・自動再試行」を明記して、後から先回りで足されないようにした。
+- **UI 文言の語**: クライアントの回答文にある「再認証」は、利用者向け文言としては `.agents/skills/growmate-ui-ux/ui-text.md` の辞書で**「再連携」が正**と定められている。完了メールの文面は「再連携」を使う（意味は同じ。仕様書内の説明文では両方が出る）。
+
+**未解決のブロッカー**
+
+- **残る停止要因は1つだけ**: 本節「承認」表の記入（ステータス `draft` の解除・承認者・対象リリースの確定）。エージェントでは解消できない外部入力であり、記入された時点で `spec-review` を再実行すれば `approved` 判定が可能になる。
+- Q-B01 / Q-B02 / Q-B03 は **2026-09-04 に回答受領・反映済み**（§12「クライアント回答（決定事項）」）。監査ループで残っていた指摘35件（F-01〜F-35）も反映済み。
 - （解消済み）リポジトリ visibility は 2026-09-04 に **public** を確認したためブロッカーから外した。GitHub Actions で未照合のまま残るのは `schedule` の遅延・高負荷時のドロップ・60日無活動での自動停止の挙動のみ（`docs.github.com` が egress ブロックのため）。
 
 #### 公式ドキュメント照合
@@ -864,7 +980,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
   | 対象 | URL | 影響する記述 |
   | --- | --- | --- |
-  | WordPress.com OAuth2 | https://developer.wordpress.com/docs/oauth2/ | R-B01 / Q-B01（トークン期限・リフレッシュ挙動）。現状は実コードのみを根拠にしている |
+  | WordPress.com OAuth2 | https://developer.wordpress.com/docs/oauth2/ | R-B01 / §9「本文取得の可否判定」（トークン期限・リフレッシュ挙動）。現状は実コードのみを根拠にしている。**Q-B01 の回答で扱い（失敗として計上し再連携へ導く）は確定しているため、照合の有無は判断を変えない**（変わりうるのは可否判定の精度） |
   | WordPress.com REST（本文取得） | https://developer.wordpress.com/docs/api/ | §9 外部連携 |
   | WordPress REST API（posts） | https://developer.wordpress.org/rest-api/ | §9 外部連携（self-hosted） |
   | GitHub Actions `schedule` | https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule | §10 制約条件（最小間隔・遅延・ドロップ・60日無活動での自動停止）。**課金前提は visibility の確定により解消済み**（下記） |
@@ -877,8 +993,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 | 役割 | 氏名 | 判定 | 日付 | コメント |
 | --- | --- | --- | --- | --- |
-| 要件承認者 | 未確定 | 未承認 |  | Q-B01〜Q-B03 の回答待ち |
-| 技術レビュー | 未確定 | 未承認 |  | ステータス `draft`・対象リリース未確定 |
+| 要件承認者 | 未確定 | 未承認 |  | Q-B01〜Q-B03 は 2026-09-04 に回答受領・反映済み。承認の記入待ち |
+| 技術レビュー | 未確定 | 未承認 |  | ステータス `draft`・対象リリース未確定。**本書に残る唯一の停止要因** |
 
 ### 変更履歴
 
@@ -887,4 +1003,5 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 2026-09-04 | 初版作成 | クライアント合意（キャンセル導線なし / 完了時にメール1通 / Sonnet 5 移行はステイ）を反映 | Claude（Cloud セッション） |
 | 2026-09-04 | `spec-review` サイクル1の指摘19件を反映（BR-B08 / BR-B09 / FR 表 / AC-B13〜B15 / cron 定義値 / 時間予算の数値訂正ほか） | 🔴 F-01（親 BR-01 の実行直前再検証の欠落）・🔴 F-02（時間予算730秒と既存定数760秒の矛盾）を含む監査指摘の解消 | Claude（spec-review revise） |
 | 2026-09-04 | `spec-review` サイクル3（最終周）の指摘7件（F-29〜F-35）を反映（`attempt_count` を「連続無進捗回数」に再定義し前進時に 0 へリセット、掃き出しの `notified_at` を「通知の試行を終えた時」に打つ＋24時間の窓、Resend `Idempotency-Key` の採用と §16 照合表の訂正、cron レスポンスのキー名統一と前例からの差分の名指し、`elapsedMs` の起点定義、件数ずれと権限例外の明記）。あわせて `spec-review` ループの停止とその再開条件を §12 / §16 に明記 | 🔴 F-29（`attempt_count` が claim 回数のため4起動目で必ず `failed` になり、§1 の成功指標「1回押すだけで最大1000件」が構造的に成立しない）の解消と、2周目で新設した掃き出し経路に起因する3件（通知の永久滞留・冪等キー欠落による二重送信・実在の前例との乖離による欠陥の復活）の解消 | Claude（spec-review revise） |
+| 2026-09-04 | **クライアント回答（Q-B01 / Q-B02 / Q-B03、2026-09-04 受領）を反映**。確認質問を §12「クライアント回答（決定事項）」へ移し、(1) cron で本文取得が成立しない利用者は起票時に弾かず失敗として計上し、完了メールに理由と再連携導線を出す（BR-B10 / FR-B14 / AC-B16）、(2) Anthropic 429 は待機せず失敗として計上し内訳をメールに出す（BR-B11 / FR-B15 / AC-B17）、(3) 完了メールの件名・本文を確定（§9「完了メールの件名・本文」）。あわせて失敗理由コード2件（`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED`）を追加し、Non-goals・非機能・データ/外部連携・テスト方針・実装手順・完了条件まで一貫させた | クライアント回答による決定事項の反映。既存の失敗理由コードのままでは「失敗理由と次にすべきことをメールに書く」「429 の内訳を出す」という回答の要求を満たせないため（判断の記録は §16「クライアント回答の反映で決めたこと」） | Claude（spec-review revise） |
 | 2026-09-04 | `spec-review` サイクル2の指摘9件（F-20〜F-28）を反映（BR-B05 / BR-B09 をチャンク境界に再定義、完了メールの起動経路、cron ルートのレスポンス形、public 確定、進捗ラベルの分母語、処理順の固定、`attempt_count >= 3`、`schedule` ガード、BR-B08 の再取得粒度） | サイクル1の反映によって生じた矛盾（並列3と単一カーソルの両立不能で記事を飛ばす／`failed` 通知に起動経路が無い／`count-batch` が記事単位の失敗で job を FAIL にする）の解消 | Claude（spec-review revise） |
