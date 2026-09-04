@@ -1,0 +1,72 @@
+name: Content Annotation Summary Cron
+
+# AI要約一括のバックグラウンド実行を10分ごとに起動する
+# （docs/plans/content-annotation-bulk-summary-background-spec.md §11 ALT-002）。
+#
+# hourly-cron.yml とは別ファイルにする理由: 起動間隔が違う（毎時 vs 10分）。
+# matrix 形式・profile の意味・各パラメータの読み方は hourly-cron.yml のコメントと同じ。
+#
+# **各ステップの `if` の schedule 文字列は下の cron 式と一致させること。**
+# hourly-cron.yml から `'0 * * * *'` のままコピーすると、workflow_dispatch では動くのに
+# 定期実行だけ何もしないワークフローになる。
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  invoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeoutMinutes || 20 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: content-annotation-summary
+            path: /api/cron/content-annotation-summary
+            profile: count-batch
+            interval: 10min
+            # route の maxDuration 800秒より長く待つ
+            maxTime: 820
+            # メール送信バッチのため再実行しない。maxDuration 超過は 504 で返るので、
+            # リトライすると同じジョブがもう一度走って二重課金・重複配信のリスクが出る
+            maxRetries: 1
+            timeoutMinutes: 20
+    # 起動間隔10分 < 1回の最大実行13.3分なので実行が重なりうる。重なったまま走らせると
+    # 同じジョブが二重に処理されうるので、前の実行を待つ（キャンセルはしない）
+    concurrency:
+      group: content-annotation-summary-cron-${{ matrix.id }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          github.event.schedule == '*/10 * * * *'
+        uses: actions/checkout@v6
+
+      - name: Invoke ${{ matrix.id }}
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          github.event.schedule == '*/10 * * * *'
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          TARGET_PATH: ${{ matrix.path }}
+          PROFILE: ${{ matrix.profile }}
+          MAX_TIME: ${{ matrix.maxTime || 820 }}
+          MAX_RETRIES: ${{ matrix.maxRetries || 1 }}
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "NEXT_PUBLIC_SITE_URL is not set" >&2
+            exit 1
+          fi
+          chmod +x scripts/invoke-cron.sh
+          scripts/invoke-cron.sh \
+            --url "${SITE_URL}${TARGET_PATH}" \
+            --profile "$PROFILE" \
+            --max-time "$MAX_TIME" \
+            --max-retries "$MAX_RETRIES"

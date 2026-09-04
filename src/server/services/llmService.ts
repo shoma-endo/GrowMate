@@ -19,6 +19,15 @@ interface LLMOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   anthropicSystemBlocks?: AnthropicSystemBlock[];
+  /**
+   * Anthropic の拡張思考（Anthropic 経路のみ）。**未指定なら `params` に載せない**ので、
+   * 既存の呼び出し側の挙動は変わらない（`temperature` と同じ扱い）。
+   *
+   * 明示的な無効化が要るのは、モデルによっては省略時にアダプティブ思考が既定で有効になり、
+   * 思考トークンが出力料金で課金されるため。思考テキストはレスポンスに返らないので、
+   * 指定漏れは請求額でしか気づけない。
+   */
+  thinking?: { type: 'disabled' | 'adaptive' } | undefined;
 }
 
 class LLMService {
@@ -148,6 +157,8 @@ class LLMService {
         content: [{ type: 'text' as const, text: m.content }],
       })),
       ...(opts.temperature !== undefined && { temperature: opts.temperature }),
+      // 未指定なら載せない（temperature と同型）。載せない＝既存機能は現行どおり
+      ...(opts.thinking !== undefined && { thinking: opts.thinking }),
       max_tokens: opts.maxTokens ?? 3000,
     };
 

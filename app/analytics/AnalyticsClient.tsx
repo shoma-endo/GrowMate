@@ -32,7 +32,6 @@ import type {
 import { useRouter } from 'next/navigation';
 import { buildListingSelectionKey } from './selection-scope';
 import { summarizeContentAnnotationsBulk } from '@/server/actions/contentAnnotationBulkSummary.actions';
-import { getBulkSummaryToastMessage } from '@/lib/content-annotation-bulk-summary-display';
 import { resolveRawSelectedCount, toggleIdMembership } from '@/lib/analytics-selection';
 import {
   buildIgFilterHref,
@@ -59,6 +58,10 @@ interface AnalyticsClientProps {
   gscCredentialError: string | null;
   /** BR-07 の母集団（フィルタ非依存の全記事）の件数。取得失敗時は null（0件と区別する） */
   annotationTotalCount: number | null;
+  /** 実行中の AI要約ジョブの処理済み件数（BR-B07）。未完了ジョブが無ければ null */
+  summaryJobProcessedCount: number | null;
+  /** 同ジョブの分母。**起票時に固定した対象ID数**で、利用者の全記事数（`annotationTotalCount`）とは別物 */
+  summaryJobTotalCount: number | null;
   total: number;
   totalPages: number;
   currentPage: number;
@@ -101,6 +104,8 @@ export default function AnalyticsClient({
   gscPropertyUri,
   gscCredentialError,
   annotationTotalCount,
+  summaryJobProcessedCount,
+  summaryJobTotalCount,
   total,
   totalPages,
   currentPage,
@@ -277,16 +282,14 @@ export default function AnalyticsClient({
     // 「未要約」フィルタは条件に入れない（2026-08-31 撤廃。BR-04）。
     // 全選択の母集団はフィルタ非依存の全記事（BR-05）なので、フィルタを ON にしても
     // 要約される記事は1件も減らない。ゲートは操作を1段増やすだけで何も守っていなかった。
-    // 誤実行を防ぐのはサーバー側の未要約再検証（BR-01。要約済み・WordPress 未連携は
+    // 誤実行を防ぐのはサーバー側の未要約再検証（BR-B08。要約済み・WordPress 未連携は
     // generateSummary を呼ぶ前にスキップするので LLM 費用は発生しない）
     if (selectedCount < 1 || isSummarizing) return;
 
     setIsSummarizing(true);
-    // 1件あたり最長180秒、全体で最長760秒かかる。ボタン内のスピナーだけだと
-    // スクロールアウトした時点で進行中かどうか分からなくなるので、単記事要約
-    // （ContentAnnotationSummaryAction）と同じく loading トーストを出して結果で差し替える
-    const toastId = toast.loading(`${selectedCount}件をAIで要約しています（数分かかります）`);
     try {
+      // 2026-09-04 バックグラウンド化: この呼び出しはジョブを1件起票して即座に返る。
+      // 要約そのものは cron が行い、結果は完了メールと進捗表示で受け取る
       const result = await summarizeContentAnnotationsBulk(
         isSelectAll
           ? { mode: 'all', excludedIds: Array.from(excludedIds) }
@@ -294,40 +297,19 @@ export default function AnalyticsClient({
       );
 
       if (!result.success || !result.data) {
-        // 数分待った末のエラーを既定の4秒で消さない。成功分が DB にコミット済みの可能性も
-        // あるので、利用者が読んで次の操作を決められるようにする
-        toast.error(result.error ?? ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_FAILED, {
-          id: toastId,
-          duration: Infinity,
-          closeButton: true,
-        });
+        // 二重起票（SUMMARY_BULK_ALREADY_RUNNING）もここに来る。文言はサーバーが確定済み
+        toast.error(result.error ?? ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_FAILED);
         return;
       }
 
-      const { type, message, persist } = getBulkSummaryToastMessage(result.data);
-      // 待ち時間に見合う結果を既定の4秒で消さない。失敗や未実行があるときは
-      // 利用者が読んで次の操作を決める必要がある
-      // 自動で消えない通知には閉じる手段を付ける（Toaster は closeButton 既定 false）
-      const options = {
-        id: toastId,
-        ...(persist ? { duration: Infinity, closeButton: true } : {}),
-      };
-      if (type === 'warning') {
-        toast.warning(message, options);
-      } else {
-        toast.success(message, options);
-      }
+      toast.success('バックグラウンドで実行します。完了したらメールでお知らせします。');
       setSelectedIds(new Set());
       setExcludedIds(new Set());
       setIsSelectAll(false);
       router.refresh();
     } catch (error) {
-      console.error('[analytics] bulk summary failed', error);
-      toast.error(ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_FAILED, {
-        id: toastId,
-        duration: Infinity,
-        closeButton: true,
-      });
+      console.error('[analytics] bulk summary enqueue failed', error);
+      toast.error(ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_FAILED);
     } finally {
       setIsSummarizing(false);
     }
@@ -443,8 +425,8 @@ export default function AnalyticsClient({
               'h-9 inline-flex items-center gap-2 px-3 border-primary text-primary hover:bg-primary/10'
             )}
             onClick={applyDateRange}
-            // 一括要約中の遷移は結果通知を永久に失わせる（成功分はコミット済みなのに
-            // 何件成功したか分からなくなる）ので、実行中は期間変更を止める
+            // 起票のリクエスト中だけ期間変更を止める（起票は即座に返るので実質一瞬）。
+            // 要約そのものは cron が行うため、画面を離れても結果は失われない
             disabled={!isDateRangeChanged || isApplyingDateRange || isSummarizing}
           >
             {isApplyingDateRange && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -507,6 +489,14 @@ export default function AnalyticsClient({
             </div>
           ) : null}
         </div>
+        {/* 実行中の AI要約ジョブの進捗（BR-B07）。自動更新はしない（再読み込みで最新化）。
+            **分母語は「対象」**。すぐ上のツールバーの「全 M 件」は利用者の全記事数で母数が違うため、
+            同じ語を使うと全選択時に `1000 / 全 1200 件` と並んで読み違える */}
+        {summaryJobProcessedCount !== null && summaryJobTotalCount !== null ? (
+          <p className="mb-4 text-sm text-gray-600">
+            要約中...（処理済み {summaryJobProcessedCount} / 対象 {summaryJobTotalCount} 件）
+          </p>
+        ) : null}
         {/* 「平均滞在時間」は ÷sessions。列見出し「滞在時間（平均）」と同じ値で、
             記事詳細の「平均エンゲージメント時間」（÷activeUsers）とは別物 */}
         <p className="mb-4 text-xs text-gray-500">

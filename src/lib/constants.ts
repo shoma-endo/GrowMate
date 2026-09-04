@@ -30,6 +30,16 @@ export const GOOGLE_ADS_REAUTH_LINK_RULES: LinkedMessageRule[] = [
 
 // Feature Flags
 // AI モデル設定
+/**
+ * Anthropic の拡張思考の指定。**省略可能**で、未指定なら `callAnthropic` は `params` に載せない
+ * （＝既存機能の挙動は変わらない）。
+ *
+ * `display` は併記しない。`type: 'disabled'` と `display` の併用は 400 になる。
+ */
+interface AnthropicThinkingConfig {
+  type: 'disabled' | 'adaptive';
+}
+
 interface ModelConfig {
   provider: 'openai' | 'anthropic';
   maxTokens: number;
@@ -39,6 +49,8 @@ interface ModelConfig {
   seed?: number;
   top_p?: number;
   label?: string; // 人間向けラベル（GSC改善提案で利用）
+  /** Anthropic 経路のみ。呼び出し側が `llmChat` の options へ明示的に詰め替えること */
+  thinking?: AnthropicThinkingConfig;
 }
 
 /** GSC本文リライトの出力上限。長時間生成を抑え、個別タイムアウトを守る */
@@ -114,8 +126,24 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     maxTokens: 16000,
     label: 'Google Ads 除外キーワード提案',
   },
+  // **AI要約だけ ANTHROPIC_BASE から切り出している**
+  // （docs/plans/content-annotation-bulk-summary-background-spec.md §8 / §11 ALT-005）。
+  // ANTHROPIC_BASE は 19 エントリへ展開されており、そこを書き換えるとチャット・ブログ生成・
+  // GSC 提案・Google Ads 分析・GA4 コンテンツ評価まで一斉に別モデルへ移る。各機能は出力形式
+  // （末尾 JSON ブロック・ストリーミング・長文生成）が異なり、本仕様のテストでは回帰を検知できない。
+  //
+  // `thinking` を省略すると**アダプティブ思考が既定で有効**になり、思考トークンが出力料金で
+  // 課金される。しかも思考テキストはレスポンスに返らない（`display` の既定が `"omitted"`）ので、
+  // 指定漏れは請求額でしか気づけない。要約は「本文から8項目を JSON で埋める」定型タスクなので
+  // 明示的に無効化する。`display` は併記しない（`type: 'disabled'` との併用は 400）。
+  //
+  // 出力品質が落ちたときの巻き戻しはこの2行（`actualModel` と `thinking`）を戻すだけで足りる。
   content_annotation_ai_summary: {
-    ...ANTHROPIC_BASE,
+    provider: 'anthropic' as const,
+    // seed は Anthropic の params には載らない（ANTHROPIC_BASE と同値を保つためだけに残す）
+    seed: 42,
+    actualModel: 'claude-sonnet-5',
+    thinking: { type: 'disabled' },
     maxTokens: 8000,
     label: 'コンテンツ情報のAI要約',
   },
@@ -143,10 +171,16 @@ export const GOOGLE_ADS_AI_EVALUATION_POST_LLM_BUFFER_MS = 30_000;
 export const CONTENT_ANNOTATION_SUMMARY_MAX_CONTENT_CHARS = 80_000;
 
 /**
- * AI要約一括実行（`/analytics`）が乗る Server Action の Vercel 関数 maxDuration（秒）。
- * `app/analytics/page.tsx` の `export const maxDuration` と一致させる。
+ * AI要約一括実行が乗る Vercel 関数の maxDuration（秒）。
+ *
+ * **帰属先は cron ルート `app/api/cron/content-annotation-summary/route.ts`**
+ * （2026-09-04 バックグラウンド化。要約の実行主体が Server Action から cron へ移ったため）。
+ * `app/analytics/page.tsx` の `maxDuration = 800` は Instagram 手動同期のために独立して必要で、
+ * 本定数とは無関係に残す。
+ *
  * route segment config は静的解析のため import 定数を使えずリテラル必須なので、
- * `tests/unit/server/lib/analytics-max-duration.test.ts` で一致を機械的に担保する。
+ * cron ルートとの一致は `tests/unit/server/lib/cron-config-consistency.test.ts` が、
+ * 時間予算との関係は `tests/unit/server/lib/analytics-max-duration.test.ts` が機械的に担保する。
  */
 export const CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC = 800;
 
@@ -200,6 +234,32 @@ export const CONTENT_ANNOTATION_SUMMARY_LLM_TIMEOUT_MS = 180_000;
 
 /** 一括要約1回で扱える対象の上限件数（BR-06）。評価一括の上限と揃える。 */
 export const MAX_BULK_SUMMARY_TARGETS = 1000;
+
+/**
+ * 一括要約の並列数（背景化仕様 BR-B05）。`GscEvaluationService.EVALUATION_CONCURRENCY` と同値。
+ *
+ * **並列は「このサイズのチャンク」単位で区切る。** チャンク境界を作らずに「1件終わるたびに
+ * 次を投入する」形にすると、完了順が配列順と入れ替わるため進捗カーソルを安全に進められない
+ * （着手済みで未完了の記事を飛ばしたまま completed になる）。
+ * 実測で調整するときはこの1箇所を変える。
+ */
+export const CONTENT_ANNOTATION_BULK_SUMMARY_CONCURRENCY = 3;
+
+/**
+ * 未通知の完了ジョブを掃き出す対象の上限件数（1起動あたり。背景化仕様 §9）。
+ * 1起動の時間予算を圧迫しないための上限。残りは次回の起動で送る。
+ * Resend の既定レート上限は 10 requests/second/team なので、逐次送信なら上限に触れない。
+ */
+export const CONTENT_ANNOTATION_SUMMARY_JOB_NOTIFY_MAX_PER_RUN = 10;
+
+/**
+ * 未通知の完了ジョブを掃き出す対象の上限経過時間（ミリ秒。背景化仕様 BR-B06 例外）。
+ *
+ * **24時間は Resend の `Idempotency-Key` 有効期間と一致させている。** それを過ぎた再送は
+ * どのみち重複を防げない。窓が無いと恒久的な送信失敗の行が滞留し、掃き出しの件数枠を
+ * 占有して他のジョブの通知が届かなくなる。再送回数を数えるカラムは追加しない。
+ */
+export const CONTENT_ANNOTATION_SUMMARY_JOB_NOTIFY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 
 // =============================================================================
@@ -358,7 +418,9 @@ export const ANALYTICS_STORAGE_KEYS = {
 
 // Next.js の route segment config は静的解析のため import 定数を使えず、
 // app/analytics/page.tsx の maxDuration はリテラル必須。値はここと必ず一致させること（他ファイルから import しない）。
-const INSTAGRAM_SYNC_MAX_DURATION_SEC = 800;
+// 一致は tests/unit/server/lib/analytics-max-duration.test.ts が機械的に突き合わせる
+// （2026-09-04: 一括要約の背景化で、page.tsx の maxDuration の根拠は Instagram 手動同期だけになった）。
+export const INSTAGRAM_SYNC_MAX_DURATION_SEC = 800;
 // maxDuration より 40 秒短く（レスポンス返却の余裕。gscEvaluationService の 280/300 秒比を踏襲）。
 export const INSTAGRAM_SYNC_TIME_BUDGET_MS = (INSTAGRAM_SYNC_MAX_DURATION_SEC - 40) * 1000;
 export const INSTAGRAM_SYNC_MEDIA_LIMIT = 50;

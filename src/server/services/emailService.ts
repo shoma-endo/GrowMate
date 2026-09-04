@@ -118,6 +118,61 @@ export class EmailService {
       };
     }
   }
+
+  /**
+   * AI要約一括のバックグラウンド実行の完了通知（BR-B06）。
+   * 引数形は `sendGa4ContentEvaluation` に揃える（cron + メール + 冪等という同じ構図）。
+   *
+   * `idempotencyKey` にはジョブ ID（UUID）を渡す。1ジョブ1通なのでキーの意味が一致する。
+   * **送信成功後・`notified_at` 更新前のハードキル窓を塞ぐのはこのキーだけ**
+   * （`maxRetries: 1` と `notified_at` の2段では塞げない）。
+   */
+  async sendContentAnnotationSummaryCompletion(
+    to: string,
+    subject: string,
+    htmlContent: string,
+    idempotencyKey: string
+  ): Promise<{ success: boolean; messageId?: string; error?: string; errorName?: string }> {
+    try {
+      const resendClient = this.getResendClient();
+      if (!resendClient) {
+        console.error('[EmailService] RESEND_API_KEY is not configured');
+        return {
+          success: false,
+          error: 'RESEND_API_KEY is not configured',
+        };
+      }
+
+      const emailFrom = process.env.EMAIL_FROM?.trim() || DEFAULT_EMAIL_FROM;
+      const response = await resendClient.emails.send(
+        { from: emailFrom, to, subject, html: htmlContent },
+        { idempotencyKey }
+      );
+
+      if (response.error) {
+        console.error(
+          '[EmailService] Failed to send content annotation summary email:',
+          response.error
+        );
+        return {
+          success: false,
+          error: response.error.message,
+          errorName: response.error.name,
+        };
+      }
+
+      return {
+        success: true,
+        messageId: response.data?.id,
+      };
+    } catch (error) {
+      console.error('[EmailService] Unexpected email send error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'メール送信に失敗しました',
+      };
+    }
+  }
 }
 
 export const emailService = new EmailService();

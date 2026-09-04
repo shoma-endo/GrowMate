@@ -841,9 +841,30 @@ export class SupabaseService {
   }
 
   /**
-   * wordpress_settingsテーブルからユーザーのWordPress設定を取得（セルフホスト対応版）
+   * wordpress_settingsテーブルからユーザーのWordPress設定を取得（セルフホスト対応版）。
+   *
+   * **設定行が無い場合とクエリがエラーになった場合の両方で `null` を返す。** この2つを
+   * 区別する必要がある呼び出し元は `getWordPressSettingsResultByUserId` を使うこと。
+   * 本メソッドのシグネチャ・戻り値は変更しない（単記事要約・WordPressインポートへ波及するため）。
    */
   async getWordPressSettingsByUserId(userId: string): Promise<WordPressSettings | null> {
+    const result = await this.getWordPressSettingsResultByUserId(userId);
+    return result.success ? result.data : null;
+  }
+
+  /**
+   * WordPress設定を「行なし」と「クエリエラー」を区別して返す読み取り。
+   *
+   * `success: true` かつ `data === null` が **(a) 設定行なし**、
+   * `success: false` が **(b) クエリエラー** に対応する（前例 `getUserById` と同型）。
+   *
+   * AI要約一括のバックグラウンド実行が、本文取得の可否判定でこの2つを逆向きに倒すため必要
+   * （docs/plans/content-annotation-bulk-summary-background-spec.md §9「WordPress 設定の読み取り経路」）:
+   * (a) は「不可」＝再連携を案内、(b) は「可」＝断定の弱い既存コードへ落とす。
+   */
+  async getWordPressSettingsResultByUserId(
+    userId: string
+  ): Promise<SupabaseResult<WordPressSettings | null>> {
     const { data, error } = await this.supabase
       .from('wordpress_settings')
       .select('*')
@@ -851,13 +872,16 @@ export class SupabaseService {
       .maybeSingle();
 
     if (error) {
-      console.error('Failed to fetch WordPress settings:', error);
-      return null;
+      return this.failure('WordPress設定の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to fetch WordPress settings',
+        context: { userId },
+      });
     }
 
-    if (!data) return null;
+    if (!data) return this.success(null);
 
-    return {
+    return this.success({
       id: data.id,
       userId: data.user_id,
       wpType: data.wp_type as WordPressType,
@@ -873,7 +897,7 @@ export class SupabaseService {
       wpContentTypes: normalizeContentTypes(data.wp_content_types as string[] | null),
       createdAt: data.created_at ?? undefined,
       updatedAt: data.updated_at ?? undefined,
-    };
+    });
   }
 
   /**
