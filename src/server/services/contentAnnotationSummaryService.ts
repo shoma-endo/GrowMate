@@ -7,6 +7,7 @@ import {
   extractBasicStructureFromHtml,
   extractOpeningProposalFromHtml,
 } from '@/lib/html-content-extractor';
+import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { PromptService } from '@/server/services/promptService';
 import { llmChat } from '@/server/services/llmService';
@@ -39,6 +40,12 @@ export type SummaryErrorCode =
   | 'SUMMARY_CONTENT_FETCH_FAILED'
   | 'SUMMARY_CONTENT_TOO_LARGE'
   | 'SUMMARY_AI_FAILED'
+  /**
+   * Anthropic のレート制限（429）。`SUMMARY_AI_FAILED` に寄せると内訳を出しても
+   * 「AI の呼び出しに失敗」としか読めず、利用者にも運用にもレート制限だと分からない。
+   * 次アクションが「時間をおいて再実行」で確定するので独立させる。
+   */
+  | 'SUMMARY_AI_RATE_LIMITED'
   | 'SUMMARY_PARSE_FAILED'
   | 'ANNOTATION_NOT_FOUND';
 
@@ -65,6 +72,8 @@ function mapSummaryError(code: SummaryErrorCode): string {
       return ERROR_MESSAGES.WORDPRESS.SUMMARY_CONTENT_TOO_LARGE;
     case 'SUMMARY_AI_FAILED':
       return ERROR_MESSAGES.WORDPRESS.SUMMARY_AI_FAILED;
+    case 'SUMMARY_AI_RATE_LIMITED':
+      return ERROR_MESSAGES.WORDPRESS.SUMMARY_AI_RATE_LIMITED;
     case 'SUMMARY_PARSE_FAILED':
       return ERROR_MESSAGES.WORDPRESS.SUMMARY_PARSE_FAILED;
     case 'ANNOTATION_NOT_FOUND':
@@ -110,13 +119,28 @@ class ContentAnnotationSummaryService {
   async generateSummary(params: {
     target: SummarizeContentAnnotationTarget;
     executorUserId: string;
-    cookieStore: ReadonlyRequestCookies;
+    /**
+     * ブラウザの Cookie。**任意**（2026-09-04 バックグラウンド化）。
+     * cron にはセッションが無いため未指定で呼ばれ、その場合は WordPress.com の
+     * アクセストークンを DB 保存トークン経路だけで解決する。
+     * cron 側で `cookies()` を呼んで空の cookieStore を渡すような場当たりはしない。
+     */
+    cookieStore?: ReadonlyRequestCookies | undefined;
     /**
      * LLM 呼び出しのタイムアウト（ミリ秒）。既定は単記事と同じ 180 秒。
      * 一括実行は残り時間から算出した値を渡して既定を切り下げる
      * （docs/plans/content-annotation-bulk-ai-summary-spec.md BR-03）。
      */
     llmTimeoutMs?: number;
+    /**
+     * SDK の自動再試行回数。**未指定なら SDK の既定（2回）のまま**にする。
+     *
+     * バックグラウンド実行だけが `0` を渡す。BR-B11 が「待機・再試行しない」を求めるのは
+     * 時間予算を持つ cron 経路であって、単記事の同期実行には当てはまらない。ここを共有コアに
+     * 直書きすると、単記事の「AIで要約」でも一時的な 429 / 5xx / 接続エラーが SDK 内で
+     * 回復されなくなり、既存機能の挙動を黙って変えてしまう。
+     */
+    maxRetries?: number;
   }): Promise<GenerateSummaryResult> {
     const client = this.supabase.getClient();
     const { target, executorUserId, cookieStore } = params;
@@ -147,7 +171,7 @@ class ContentAnnotationSummaryService {
       userId: typedAnnotation.user_id,
       wpPostId: typedAnnotation.wp_post_id ?? null,
       canonicalUrl: typedAnnotation.canonical_url ?? null,
-      getCookie: name => cookieStore.get(name)?.value,
+      getCookie: cookieStore ? name => cookieStore.get(name)?.value : () => undefined,
     });
 
     if (!wpContent?.contentText) {
@@ -196,11 +220,27 @@ class ContentAnnotationSummaryService {
         {
           maxTokens: modelConfig.maxTokens,
           temperature: modelConfig.temperature,
+          // **この1行が無いと `MODEL_CONFIGS` の `thinking` は params に載らない。**
+          // 載らないとモデルによってはアダプティブ思考が既定で有効のまま動き、思考トークンが
+          // 出力料金で課金される。出力自体は成立するのでテストでは落ちず、請求額でしか気づけない
+          thinking: modelConfig.thinking,
+          // BR-B11「待機・再試行しない」。SDK は既定で 429 を最大2回**寝てから**再送するので、
+          // 0 を渡さないと (1) レート制限中に時間予算だけが減り、(2) 末尾チャンク（llmMs 最小30秒）
+          // では寝ている間に abort が先に立って CONNECTION_TIMEOUT → SUMMARY_AI_FAILED に化け、
+          // 完了メールがレート制限を「AI の呼び出しに失敗」と誤表示する。
+          // **渡すのは時間予算を持つバックグラウンド経路だけ**。未指定の単記事同期実行は
+          // SDK 既定（2回）のままにし、既存の回復挙動を変えない
+          ...(params.maxRetries !== undefined && { maxRetries: params.maxRetries }),
           timeoutMs: llmTimeoutMs,
         }
       );
     } catch (error) {
       console.error('[ContentAnnotationSummary] LLM call failed:', error);
+      // 429 だけを分けて返す（待機・再試行はしない）。判定は ChatError.fromApiError が
+      // 済ませているので、ここで新しい判定機構を作らない
+      if (error instanceof ChatError && error.code === ChatErrorCode.ANTHROPIC_RATE_LIMIT) {
+        return { success: false, code: 'SUMMARY_AI_RATE_LIMITED' };
+      }
       return { success: false, code: 'SUMMARY_AI_FAILED' };
     }
 

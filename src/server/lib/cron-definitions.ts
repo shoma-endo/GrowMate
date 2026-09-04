@@ -28,6 +28,18 @@ export const CRON_CONFIGS = {
     maxTime: 820,
     maxRetries: 1,
   },
+  contentAnnotationSummary: {
+    name: 'content_annotation_summary',
+    workflowId: 'content-annotation-summary',
+    routePath: '/api/cron/content-annotation-summary',
+    // 件数集計＋メール送信型なので既存の count-batch を流用する（新規 profile は作らない）
+    profile: 'count-batch',
+    maxDuration: 800,
+    maxTime: 820,
+    // メール送信バッチのため再実行しない。既定の3にすると 504（maxDuration 超過）で
+    // リトライが走り、同じジョブが並走して二重課金・メール重複を招く
+    maxRetries: 1,
+  },
   ga4ContentEvaluate: {
     name: 'ga4_content_evaluate',
     workflowId: 'ga4-content-evaluate',

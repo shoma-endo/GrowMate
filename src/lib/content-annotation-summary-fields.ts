@@ -26,14 +26,21 @@ export const SUMMARY_TARGET_FIELD_KEYS = [
 export type SummaryTargetFieldKey = (typeof SUMMARY_TARGET_FIELD_KEYS)[number];
 
 /**
- * 一括要約の失敗理由。単記事コアの `SummaryErrorCode` と同じ集合＋想定外例外の `UNEXPECTED`。
- * 集合がずれると内訳が「その他」に落ちるので、`tests/unit/lib/...` で型レベルの一致を固定する。
+ * 一括要約の失敗理由。単記事コアの `SummaryErrorCode` を包含し、一括だけで起きる理由を足す。
+ * 包含関係がずれると内訳が「その他」に落ちるので、`tests/unit/lib/...` で型レベルの包含を固定する。
  */
 const SUMMARY_FAILURE_CODES = [
   'SUMMARY_SOURCE_NOT_LINKED',
   'SUMMARY_CONTENT_FETCH_FAILED',
   'SUMMARY_CONTENT_TOO_LARGE',
   'SUMMARY_AI_FAILED',
+  // Anthropic のレート制限（429）。単記事コアの SummaryErrorCode にもある
+  'SUMMARY_AI_RATE_LIMITED',
+  // WordPress の連携が切れていて Cookie 無しでは本文を取得できない。
+  // **一括専用**（単記事コアの SummaryErrorCode には足さない）。
+  // ジョブ処理サービスが「本文取得の可否判定」の結果で
+  // SUMMARY_CONTENT_FETCH_FAILED から読み替えて計上する
+  'SUMMARY_WP_REAUTH_REQUIRED',
   'SUMMARY_PARSE_FAILED',
   'ANNOTATION_NOT_FOUND',
   'EMPTY_SUMMARY',
@@ -67,4 +74,4 @@ export interface BulkSummaryResult {
   stoppedReason: BulkSummaryStoppedReason;
 }
 
-export type BulkSummaryStoppedReason = 'completed' | 'time_budget';
+type BulkSummaryStoppedReason = 'completed' | 'time_budget';

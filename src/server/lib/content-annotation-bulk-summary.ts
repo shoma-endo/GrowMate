@@ -17,8 +17,6 @@ export {
   SUMMARY_TARGET_FIELD_KEYS,
   type SummaryTargetFieldKey,
   type SummaryFailureCode,
-  type BulkSummaryResult,
-  type BulkSummaryStoppedReason,
 } from '@/lib/content-annotation-summary-fields';
 
 /**
