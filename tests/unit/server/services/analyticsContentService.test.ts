@@ -258,11 +258,27 @@ describe('analyticsContentService', () => {
       p_has_unstarted_gsc_evaluation: true,
       // p_has_unstarted_ga4_evaluation は渡さない（2026-08-26 サイクル統合で
       // 「コンテンツ評価未開始」フィルタを廃止。RPC側は default false のまま）
+      // p_has_unsummarized も未要約フィルタ OFF のときは渡さない（migration 未適用の環境へ
+      // アプリを先にデプロイしても一覧が壊れないようにするため。RPC側は default false）
     });
     // 上の toHaveBeenCalledWith は完全一致なので余分なキーがあれば落ちるが、
     // それは暗黙の担保で、objectContaining へ書き換えられた瞬間に消える。
     // 「渡していない」ことを明示的に固定しておく
     expect(mocks.rpc.mock.calls[0]?.[1]).not.toHaveProperty('p_has_unstarted_ga4_evaluation');
+    // 未適用の migration に依存しないための「渡していない」ことの固定
+    expect(mocks.rpc.mock.calls[0]?.[1]).not.toHaveProperty('p_has_unsummarized');
+  });
+
+  it('未要約フィルターをRPCへ渡す', async () => {
+    await analyticsContentService.getPage('user-id', {
+      page: 1,
+      perPage: 10,
+      startDate: '2026-08-01',
+      endDate: '2026-08-08',
+      hasUnsummarized: true,
+    });
+
+    expect(mocks.rpc.mock.calls[0]?.[1]).toMatchObject({ p_has_unsummarized: true });
   });
 
   it('GSC評価未開始フィルター未指定時は無効値をRPCへ渡す', async () => {

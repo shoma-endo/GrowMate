@@ -109,8 +109,13 @@ jobs:
             gh label create "${LABEL_NAME}" --color "fbca04" --description "Automatically created PR" || echo "Failed to create label."
           fi
 
-          # PRが既に存在するか確認（存在しない場合は empty により空文字になる）
-          PR_EXISTS=$(gh pr list --head "${BRANCH_NAME}" --base "${BASE_BRANCH}" --state open --json number -q '.[0].number // empty')
+          # PRが既に存在するか確認（存在しない場合は empty により空文字になる）。
+          # **--base で絞らない。** 絞ると、base が develop 以外の PR（スタック PR）が既にある
+          # ブランチに対して「PR は無い」と判定し、push のたびに base=develop の重複 PR を作る。
+          # 実際 #525（base: feat/analytics-bulk-evaluation-start）のブランチで #526 が生まれ、
+          # その diff には先行 PR の内容まで含まれてレビュー単位が崩れた。
+          # head が同じ open PR が1本でもあれば、base が何であれ作者が管理しているとみなす。
+          PR_EXISTS=$(gh pr list --head "${BRANCH_NAME}" --state open --json number -q '.[0].number // empty')
 
           if [ -n "${PR_EXISTS}" ]; then
             echo "Pull Request already exists: #${PR_EXISTS}."
@@ -141,7 +146,7 @@ jobs:
               else
                 # TAKT が list〜create の間に先に PR を作った逆レースを吸収する
                 echo "Create failed (possible race with TAKT). Re-checking for existing PR..."
-                PR_EXISTS=$(gh pr list --head "${BRANCH_NAME}" --base "${BASE_BRANCH}" --state open --json number -q '.[0].number // empty')
+                PR_EXISTS=$(gh pr list --head "${BRANCH_NAME}" --state open --json number -q '.[0].number // empty')
                 if [ -n "${PR_EXISTS}" ]; then
                   echo "Pull Request already exists: #${PR_EXISTS}. Treating as success."
                   echo "Skipping body/title overwrite (TAKT or author owns the PR body)."
