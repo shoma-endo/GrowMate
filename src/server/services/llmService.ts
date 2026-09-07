@@ -19,6 +19,25 @@ interface LLMOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   anthropicSystemBlocks?: AnthropicSystemBlock[];
+  /**
+   * Anthropic の拡張思考（Anthropic 経路のみ）。**未指定なら `params` に載せない**ので、
+   * 既存の呼び出し側の挙動は変わらない（`temperature` と同じ扱い）。
+   *
+   * 明示的な無効化が要るのは、モデルによっては省略時にアダプティブ思考が既定で有効になり、
+   * 思考トークンが出力料金で課金されるため。思考テキストはレスポンスに返らないので、
+   * 指定漏れは請求額でしか気づけない。
+   */
+  thinking?: { type: 'disabled' | 'adaptive' } | undefined;
+  /**
+   * Anthropic SDK のリクエスト単位の再送回数（Anthropic 経路のみ）。**未指定なら渡さない**ので、
+   * 既存の呼び出し側は SDK 既定（2回）のまま（`thinking` / `temperature` と同じ扱い）。
+   *
+   * SDK は 429 / 5xx / 接続エラーを既定で最大2回**バックオフして寝てから**再送する。
+   * 「待機・再試行しない」ことが要件の経路（一括要約ジョブ）では `0` を渡す。寝ている間に
+   * 呼び出し側の AbortController が先に発火すると `CONNECTION_TIMEOUT` になり、
+   * レート制限が別の失敗理由に化けるため。共有クライアントの既定は変えない。
+   */
+  maxRetries?: number | undefined;
 }
 
 class LLMService {
@@ -148,12 +167,21 @@ class LLMService {
         content: [{ type: 'text' as const, text: m.content }],
       })),
       ...(opts.temperature !== undefined && { temperature: opts.temperature }),
+      // 未指定なら載せない（temperature と同型）。載せない＝既存機能は現行どおり
+      ...(opts.thinking !== undefined && { thinking: opts.thinking }),
       max_tokens: opts.maxTokens ?? 3000,
     };
 
+    // リクエスト単位のオプション。`maxRetries` は未指定なら載せない＝SDK 既定（2回）のまま。
+    // 共有クライアント（`this.anthropic`）の既定を書き換えると他機能の再送挙動まで変わる
+    const sdkRequestOptions = {
+      signal: opts.signal,
+      ...(opts.maxRetries !== undefined && { maxRetries: opts.maxRetries }),
+    };
+
     const resp = opts.stream
-      ? await this.anthropic.messages.stream(params, { signal: opts.signal }).finalMessage()
-      : await this.anthropic.messages.create(params, { signal: opts.signal });
+      ? await this.anthropic.messages.stream(params, sdkRequestOptions).finalMessage()
+      : await this.anthropic.messages.create(params, sdkRequestOptions);
 
     // 出力が max_tokens で打ち切られた場合は本番ログで検知できるようにする
     // （末尾の JSON ブロック欠落など、サイレントな出力欠けの原因になるため）。

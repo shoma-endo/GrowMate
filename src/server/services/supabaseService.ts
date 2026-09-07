@@ -841,9 +841,30 @@ export class SupabaseService {
   }
 
   /**
-   * wordpress_settingsテーブルからユーザーのWordPress設定を取得（セルフホスト対応版）
+   * wordpress_settingsテーブルからユーザーのWordPress設定を取得（セルフホスト対応版）。
+   *
+   * **設定行が無い場合とクエリがエラーになった場合の両方で `null` を返す。** この2つを
+   * 区別する必要がある呼び出し元は `getWordPressSettingsResultByUserId` を使うこと。
+   * 本メソッドのシグネチャ・戻り値は変更しない（単記事要約・WordPressインポートへ波及するため）。
    */
   async getWordPressSettingsByUserId(userId: string): Promise<WordPressSettings | null> {
+    const result = await this.getWordPressSettingsResultByUserId(userId);
+    return result.success ? result.data : null;
+  }
+
+  /**
+   * WordPress設定を「行なし」と「クエリエラー」を区別して返す読み取り。
+   *
+   * `success: true` かつ `data === null` が **(a) 設定行なし**、
+   * `success: false` が **(b) クエリエラー** に対応する（前例 `getUserById` と同型）。
+   *
+   * AI要約一括のバックグラウンド実行が、本文取得の可否判定でこの2つを逆向きに倒すため必要
+   * （docs/plans/content-annotation-bulk-summary-background-spec.md §9「WordPress 設定の読み取り経路」）:
+   * (a) は「不可」＝再連携を案内、(b) は「可」＝断定の弱い既存コードへ落とす。
+   */
+  async getWordPressSettingsResultByUserId(
+    userId: string
+  ): Promise<SupabaseResult<WordPressSettings | null>> {
     const { data, error } = await this.supabase
       .from('wordpress_settings')
       .select('*')
@@ -851,13 +872,16 @@ export class SupabaseService {
       .maybeSingle();
 
     if (error) {
-      console.error('Failed to fetch WordPress settings:', error);
-      return null;
+      return this.failure('WordPress設定の取得に失敗しました', {
+        error,
+        developerMessage: 'Failed to fetch WordPress settings',
+        context: { userId },
+      });
     }
 
-    if (!data) return null;
+    if (!data) return this.success(null);
 
-    return {
+    return this.success({
       id: data.id,
       userId: data.user_id,
       wpType: data.wp_type as WordPressType,
@@ -873,7 +897,7 @@ export class SupabaseService {
       wpContentTypes: normalizeContentTypes(data.wp_content_types as string[] | null),
       createdAt: data.created_at ?? undefined,
       updatedAt: data.updated_at ?? undefined,
-    };
+    });
   }
 
   /**
@@ -900,9 +924,15 @@ export class SupabaseService {
       ...(options?.wpContentTypes && {
         wp_content_types: normalizeContentTypes(options.wpContentTypes) ?? [],
       }),
-      wp_access_token: options?.accessToken ?? null,
-      wp_refresh_token: options?.refreshToken ?? null,
-      wp_token_expires_at: options?.tokenExpiresAt ?? null,
+      // **トークンは渡されたときだけ書く。**未指定で null 上書きすると、OAuth 済みの
+      // 利用者が設定画面（投稿タイプなど）を保存しただけで保存済みトークンが消える。
+      // 同期経路はブラウザの Cookie で動けていたが、cron は Cookie を持たないため
+      // 同じ利用者の全記事が再連携要求で失敗する（`wpContentTypes` と同じ条件付き展開）
+      ...(options?.accessToken !== undefined && { wp_access_token: options.accessToken }),
+      ...(options?.refreshToken !== undefined && { wp_refresh_token: options.refreshToken }),
+      ...(options?.tokenExpiresAt !== undefined && {
+        wp_token_expires_at: options.tokenExpiresAt,
+      }),
       updated_at: new Date().toISOString(),
     };
 
@@ -2055,7 +2085,7 @@ export class SupabaseService {
    * getGscCredentialByUserId は DB エラー時も null を返すため、障害を未連携と誤認しないようにする用途。
    * 鮮度判定・順位スナップショットの両経路で共用する。
    */
-  private async resolveGscPropertyUri(userId: string): Promise<SupabaseResult<string | null>> {
+  public async resolveGscPropertyUri(userId: string): Promise<SupabaseResult<string | null>> {
     const { data, error } = await this.supabase
       .from('gsc_credentials')
       .select('property_uri')
