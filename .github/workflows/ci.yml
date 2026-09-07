@@ -1,14 +1,19 @@
 name: CI
 
+# push 起動に一本化している（2026-09-03）。
+# auto-pr.yml が GITHUB_TOKEN で作る PR の pull_request イベントは承認待ち（action_required）で
+# 止まり、毎回 approve API を手で叩いていた。branch protection は無く必須チェックの契約も無いので、
+# 全ブランチの push で同じ SHA を検証し、PR の Checks には commit のステータスとして表示させる。
 on:
-  pull_request:
-    branches:
-      - main
-      - develop
   push:
     branches:
-      - main
-      - develop
+      - '**'
+  workflow_dispatch:
+
+# 同じブランチへの連続 push は古い run を捨てる
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -17,7 +22,6 @@ jobs:
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Checkout code
@@ -47,7 +51,6 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Checkout code
@@ -68,7 +71,6 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Checkout code
@@ -89,7 +91,6 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Checkout code
@@ -120,7 +121,6 @@ jobs:
   knip:
     name: Knip
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Checkout code
@@ -142,7 +142,7 @@ jobs:
     name: Notify
     runs-on: ubuntu-latest
     needs: [audit, lint, test, build, knip]
-    if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: always()
 
     steps:
       - name: Checkout code
