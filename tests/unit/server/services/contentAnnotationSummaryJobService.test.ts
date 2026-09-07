@@ -345,7 +345,11 @@ function seedJob(overrides: Partial<Row> = {}): Row {
     attempt_count: 0,
     last_error: null,
     notified_at: null,
-    created_at: '2026-09-04T00:00:00.000Z',
+    // **固定日付を置かない。** 掃き出しの母集団は `created_at >= now - 24時間`
+    // （CONTENT_ANNOTATION_SUMMARY_JOB_NOTIFY_MAX_AGE_MS）なので、固定日付にすると
+    // その日を過ぎた瞬間から通知系のテストが一斉に落ちる（実際に落ちた）。
+    // 24時間より古い行を作るテストは、この既定を明示的に上書きする（下の該当テスト）
+    created_at: new Date().toISOString(),
     started_at: null,
     finished_at: null,
     ...overrides,
