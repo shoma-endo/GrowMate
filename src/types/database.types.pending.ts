@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from './database.types';
+import type { Database, Json } from './database.types';
 
 /**
  * 生成型（`database.types.ts`）を部分的に差し替えて Supabase クライアントを使うための型置き場。
@@ -70,6 +70,108 @@ export type Ga4ContentEvaluationScheduleDatabase = Omit<Database, 'public'> & {
       list_due_ga4_content_evaluations: {
         Args: { p_today_jst: string };
         Returns: Ga4DueEvaluationRow[];
+      };
+    };
+  };
+};
+
+/**
+ * PROVISIONAL: supabase/migrations/20260904000000_add_content_annotation_summary_jobs.sql
+ *
+ * AI要約一括のバックグラウンド実行ジョブ（`content_annotation_summary_jobs`）と
+ * 排他取得 RPC（`claim_content_annotation_summary_jobs`）の暫定型。
+ *
+ * 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
+ * このブロックを削除し、呼び出し側を `Database['public']['Tables']['content_annotation_summary_jobs']`
+ * と生成済みの Functions 型へ切り替える（`.agents/skills/supabase/service-usage.md` §6）。
+ */
+type ContentAnnotationSummaryJobStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+/**
+ * **`interface` ではなく `type` で書くこと。** supabase-js の `GenericTable` は
+ * `Row: Record<string, unknown>` を要求するが、`interface` には暗黙のインデックス
+ * シグネチャが付かないため制約を満たせず、`.insert()` の引数型が `never` に落ちる
+ * （`.select()` は通るので気づきにくい）。同ファイルの他の暫定型・
+ * `supabaseService.ts` の拡張テーブル型も同じ理由で `type` を使っている。
+ */
+export type ContentAnnotationSummaryJobRow = {
+  id: string;
+  user_id: string;
+  status: ContentAnnotationSummaryJobStatus;
+  job_token: string | null;
+  target_annotation_ids: string[];
+  total_count: number;
+  processed_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  skipped_count: number;
+  failed_by_code: Json;
+  attempt_count: number;
+  last_error: string | null;
+  notified_at: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+type ContentAnnotationSummaryJobInsert = {
+  id?: string;
+  user_id: string;
+  status?: ContentAnnotationSummaryJobStatus;
+  job_token?: string | null;
+  target_annotation_ids: string[];
+  total_count: number;
+  processed_count?: number;
+  succeeded_count?: number;
+  failed_count?: number;
+  skipped_count?: number;
+  failed_by_code?: Json;
+  attempt_count?: number;
+  last_error?: string | null;
+  notified_at?: string | null;
+  created_at?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+};
+
+type ContentAnnotationSummaryJobUpdate = Partial<ContentAnnotationSummaryJobInsert>;
+
+/**
+ * claim RPC が返す1行。`attempt_count` は加算後の値で、
+ * 意味は「前進の無い claim が連続した回数」（migration のコメント参照）。
+ */
+export type ContentAnnotationSummaryClaimedJob = {
+  id: string;
+  user_id: string;
+  target_annotation_ids: string[];
+  total_count: number;
+  processed_count: number;
+  succeeded_count: number;
+  failed_count: number;
+  skipped_count: number;
+  failed_by_code: Json;
+  attempt_count: number;
+  job_token: string;
+};
+
+/**
+ * 上記のテーブルと RPC を載せた Database 型。
+ * **`Omit` で置換する**（交差にすると補正が無言で潰れる。本ファイル冒頭の注意書き）。
+ */
+export type ContentAnnotationSummaryJobDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables' | 'Functions'> & {
+    Tables: Database['public']['Tables'] & {
+      content_annotation_summary_jobs: {
+        Row: ContentAnnotationSummaryJobRow;
+        Insert: ContentAnnotationSummaryJobInsert;
+        Update: ContentAnnotationSummaryJobUpdate;
+        Relationships: [];
+      };
+    };
+    Functions: Database['public']['Functions'] & {
+      claim_content_annotation_summary_jobs: {
+        Args: { p_limit?: number };
+        Returns: ContentAnnotationSummaryClaimedJob[];
       };
     };
   };

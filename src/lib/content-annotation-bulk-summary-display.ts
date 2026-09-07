@@ -21,13 +21,25 @@ export const SUMMARY_TARGET_COLUMN_LABELS: string[] = ANALYTICS_COLUMNS.filter(c
  * 変わらないが、**未実行**は時間予算切れなので再実行すれば進む。この2つを混ぜると、
  * 利用者が無駄な再実行を繰り返すか、進む分をあきらめる。
  */
-/** 失敗理由ごとの「何が起きたか」と「次に何をすればよいか」 */
-const FAILURE_LABELS: Record<SummaryFailureCode, string> = {
+/**
+ * 失敗理由ごとの「何が起きたか」。
+ *
+ * **同期版トーストと完了メールで共用する**（`src/server/lib/content-annotation-summary-email.ts`）。
+ * 共用するのはこの辞書と `describeFailures` だけで、**文面生成関数
+ * `getBulkSummaryToastMessage` は共用しない**（背景実行では「もう一度実行すると続きから進みます」が
+ * 誤案内になる。背景化仕様 BR-B06）。
+ *
+ * 「次に何をすればよいか」はメール専用の辞書が持つ（同期版トーストの文面を変えないため）。
+ */
+export const FAILURE_LABELS: Record<SummaryFailureCode, string> = {
   SUMMARY_SOURCE_NOT_LINKED: 'WordPress 未連携',
   SUMMARY_CONTENT_FETCH_FAILED:
     'WordPress から本文を取得できない（連携先と違うサイトの記事か、記事が削除・非公開）',
   SUMMARY_CONTENT_TOO_LARGE: '本文が長すぎる（再実行しても同じ結果になります）',
   SUMMARY_AI_FAILED: 'AI の呼び出しに失敗（時間をおいて再実行すると成功することがあります）',
+  SUMMARY_AI_RATE_LIMITED:
+    'AI の利用が集中している（時間をおいて再実行すると成功することがあります）',
+  SUMMARY_WP_REAUTH_REQUIRED: 'WordPress の連携が切れている（再連携すると解消します）',
   SUMMARY_PARSE_FAILED: 'AI の応答を解析できない（再実行すると成功することがあります）',
   ANNOTATION_NOT_FOUND: 'コンテンツ情報が見つからない',
   EMPTY_SUMMARY: 'AI が要約を返さなかった（再実行すると成功することがあります）',
@@ -39,7 +51,7 @@ const FAILURE_LABELS: Record<SummaryFailureCode, string> = {
 };
 
 /** 失敗の内訳を1文にする。件数の多い順に並べる */
-function describeFailures(failedByCode: BulkSummaryResult['failedByCode']): string {
+export function describeFailures(failedByCode: BulkSummaryResult['failedByCode']): string {
   const entries = Object.entries(failedByCode)
     .filter((entry): entry is [SummaryFailureCode, number] => (entry[1] ?? 0) > 0)
     .sort((a, b) => b[1] - a[1]);

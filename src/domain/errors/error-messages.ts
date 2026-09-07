@@ -101,6 +101,10 @@ export const ERROR_MESSAGES = {
     /** AI要約のClaude呼び出し失敗 */
     SUMMARY_AI_FAILED: 'AI要約の生成に失敗しました。しばらくしてからもう一度お試しください。',
 
+    /** AI要約のClaude呼び出しがレート制限（429）で失敗 */
+    SUMMARY_AI_RATE_LIMITED:
+      'AIの利用が集中しています。時間をおいてもう一度お試しください。',
+
     /** AI要約のJSON抽出・パース失敗 */
     SUMMARY_PARSE_FAILED:
       'AI要約結果の解析に失敗しました。もう一度要約ボタンを押してください。',
@@ -114,6 +118,15 @@ export const ERROR_MESSAGES = {
     /** AI要約一括: 全選択の母集団と取得結果の件数が一致しない場合 */
     SUMMARY_BULK_POPULATION_MISMATCH:
       '対象の記事を取得できませんでした。時間をおいてもう一度お試しください。',
+
+    /**
+     * AI要約一括: 未完了のジョブが既にある場合（1利用者1ジョブ）。
+     *
+     * 仕様の文面は「すでに要約を実行中です。」だが、`ui-text.md` の用語辞書が
+     * 「要約を実行」を禁止表記（正は「AIで要約」）としており `scripts/check-ui-text.sh` に
+     * 引っかかる。意味と語順（すでに…実行中）を保ったまま検査を通る形にした。
+     */
+    SUMMARY_BULK_ALREADY_RUNNING: 'AI要約はすでに実行中です。完了までお待ちください。',
 
     /** AI要約一括: 実行そのものに失敗した場合 */
     SUMMARY_BULK_FAILED: 'AI要約の一括実行に失敗しました',

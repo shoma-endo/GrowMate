@@ -191,7 +191,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 | 変数名 | 必須 | 用途 |
 | ------ | ---- | ---- |
-| `CRON_SECRET` | 任意（`/api/cron/*` バッチを使う場合は必須） | Cron バッチの Bearer 認証（`gsc-evaluate` / `gsc-suggestions` / `google-ads-negative-keywords-suggestion`） |
+| `CRON_SECRET` | 任意（`/api/cron/*` バッチを使う場合は必須） | Cron バッチの Bearer 認証（`gsc-evaluate` / `gsc-suggestions` / `google-ads-negative-keywords-suggestion` / `content-annotation-summary`） |
 | `GOOGLE_ADS_REDIRECT_URI` | 任意（Google Ads OAuth 利用時は必須） | [`app/api/google-ads/oauth/`](app/api/google-ads/oauth) |
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | 任意（Google Ads API 利用時は必須） | [`src/server/services/googleAdsService.ts`](src/server/services/googleAdsService.ts) |
 | `EMAIL_FROM` | 任意（未設定時は既定の送信元にフォールバック） | [`src/server/services/emailService.ts`](src/server/services/emailService.ts) の送信元アドレス |
@@ -288,7 +288,7 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 - husky フック: **pre-commit = `lint`、pre-push = `test` + `build` + `knip`**（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
 - CI 品質ゲート: `npm audit --audit-level=high`、`npm run lint`、`npm run test`、`npm run build`、`npm run knip`
 - 環境変数は Vercel Project Settings へ反映し、本番は WordPress 本番サイトなどの外部連携設定に切り替え
-- GitHub Actions: 毎時 Cron（`gsc-evaluate` / `gsc-suggestions` / `google-ads-negative-keywords-suggestion`）、CI（audit / lint / test / build / knip + Lark 通知）、`develop` 以外への push 時の Auto PR、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
+- GitHub Actions: 毎時 Cron（`gsc-evaluate` / `gsc-suggestions` / `google-ads-negative-keywords-suggestion`）、10 分間隔 Cron（`content-annotation-summary`＝`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）、CI（audit / lint / test / build / knip + Lark 通知）、`develop` 以外への push 時の Auto PR、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
 - **Supabase スキーマ**: Vercel のデプロイだけでは DB は更新されない。変更は `supabase/migrations/` にコミットし、マイグレーション内にロールバック案をコメントで残す。**本番（共有プロジェクト）への適用タイミングと手順は「セットアップ手順」の Supabase 注意書きに従う。**
 
 ## 📄 ライセンス
