@@ -116,7 +116,7 @@ function buildCountsLine(
 }
 
 /**
- * 失敗理由コードの内訳を件数の多い順に並べる（`describeFailures` と同じ並び）。
+ * 失敗理由コードの内訳を件数の多い順に並べる。
  *
  * **辞書に無いコードは落とす。** `failed_by_code` は DB の jsonb で、過去のジョブ行には
  * 現在の集合に無いコードが入りうる。そのまま辞書を引くと `undefined` を描画しようとして

@@ -141,6 +141,8 @@ class ContentAnnotationSummaryService {
      * 回復されなくなり、既存機能の挙動を黙って変えてしまう。
      */
     maxRetries?: number;
+    /** 項目単位のタイムアウト。WordPress と LLM の外部呼び出しを中断する。 */
+    signal?: AbortSignal;
   }): Promise<GenerateSummaryResult> {
     const client = this.supabase.getClient();
     const { target, executorUserId, cookieStore } = params;
@@ -172,6 +174,7 @@ class ContentAnnotationSummaryService {
       wpPostId: typedAnnotation.wp_post_id ?? null,
       canonicalUrl: typedAnnotation.canonical_url ?? null,
       getCookie: cookieStore ? name => cookieStore.get(name)?.value : () => undefined,
+      ...(params.signal ? { signal: params.signal } : {}),
     });
 
     if (!wpContent?.contentText) {
@@ -231,6 +234,7 @@ class ContentAnnotationSummaryService {
           // **渡すのは時間予算を持つバックグラウンド経路だけ**。未指定の単記事同期実行は
           // SDK 既定（2回）のままにし、既存の回復挙動を変えない
           ...(params.maxRetries !== undefined && { maxRetries: params.maxRetries }),
+          ...(params.signal ? { signal: params.signal } : {}),
           timeoutMs: llmTimeoutMs,
         }
       );

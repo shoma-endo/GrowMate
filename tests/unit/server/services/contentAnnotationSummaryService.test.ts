@@ -147,6 +147,36 @@ describe('contentAnnotationSummaryService', () => {
     expect(options.maxTokens).toBe(8000);
   });
 
+  it('項目の中断信号を WordPress と LLM の呼び出しへ渡す', async () => {
+    const annotation = {
+      id: 'annotation-id',
+      user_id: 'user-id',
+      session_id: null,
+      wp_post_id: 42,
+      canonical_url: null,
+      wp_post_title: '記事タイトル',
+      impressions: null,
+    };
+    const controller = new AbortController();
+    mocks.maybeSingle.mockResolvedValueOnce({ data: annotation, error: null });
+
+    await contentAnnotationSummaryService.generateSummary({
+      target: { annotationId: 'annotation-id' },
+      executorUserId: 'user-id',
+      signal: controller.signal,
+    });
+
+    expect(mocks.fetchWpPostContentLive).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: controller.signal })
+    );
+    expect(mocks.llmChat).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ signal: controller.signal })
+    );
+  });
+
   it('cookieStore 無しでも動く（cron 経路は Cookie を持たない）', async () => {
     const annotation = {
       id: 'annotation-id',

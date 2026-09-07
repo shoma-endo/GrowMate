@@ -1004,7 +1004,8 @@ export class SupabaseService {
    */
   async refreshWpComToken(
     userId: string,
-    wpSettings?: WordPressSettings
+    wpSettings?: WordPressSettings,
+    signal?: AbortSignal
   ): Promise<
     | {
         success: true;
@@ -1033,6 +1034,7 @@ export class SupabaseService {
       const resp = await fetch('https://public-api.wordpress.com/oauth2/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        ...(signal ? { signal } : {}),
         body: new URLSearchParams({
           client_id: clientId,
           client_secret: clientSecret,
@@ -1077,6 +1079,7 @@ export class SupabaseService {
         expiresAt,
       };
     } catch (error) {
+      if (signal?.aborted) throw error;
       console.error('[SupabaseService.refreshWpComToken] error', error);
       return { success: false, error: ERROR_MESSAGES.COMMON.TOKEN_REFRESH_REQUEST_FAILED };
     }

@@ -102,9 +102,10 @@ export class WordPressService {
   /**
    * セルフホスト環境で /wp-json/ が拒否される場合に、rest_route 形式へフォールバックする。
    */
-  private async fetchRestResource(resource: string): Promise<Response> {
+  private async fetchRestResource(resource: string, signal?: AbortSignal): Promise<Response> {
     const primaryResponse = await fetch(`${this.baseUrl}/${resource}`, {
       headers: this.getAuthHeaders(),
+      ...(signal ? { signal } : {}),
     });
     const isWordPressNotFound =
       primaryResponse.status === 404 &&
@@ -124,7 +125,10 @@ export class WordPressService {
       status: primaryResponse.status,
       resource: pathname,
     });
-    return fetch(fallbackUrl, { headers: this.getAuthHeaders() });
+    return fetch(fallbackUrl, {
+      headers: this.getAuthHeaders(),
+      ...(signal ? { signal } : {}),
+    });
   }
 
   private async getRestErrorMessage(response: Response): Promise<string> {
@@ -266,10 +270,14 @@ export class WordPressService {
    */
   async findExistingContent(
     slug: string,
-    type: 'posts' | 'pages' = 'posts'
+    type: 'posts' | 'pages' = 'posts',
+    signal?: AbortSignal
   ): Promise<WordPressApiResult<WordPressPostResponse | null>> {
     try {
-      const response = await this.fetchRestResource(`${type}?slug=${encodeURIComponent(slug)}`);
+      const response = await this.fetchRestResource(
+        `${type}?slug=${encodeURIComponent(slug)}`,
+        signal
+      );
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -302,6 +310,7 @@ export class WordPressService {
         data: resultData,
       };
     } catch (error) {
+      if (signal?.aborted) throw error;
       console.error(`Error in findExistingContent for slug ${slug} (type: ${type}):`, error);
       return {
         success: false,
@@ -316,12 +325,15 @@ export class WordPressService {
   /**
    * 投稿IDからコンテンツ詳細を取得（投稿→固定ページの順で検索）
    */
-  async resolveContentById(id: number): Promise<WordPressApiResult<WordPressPostResponse | null>> {
+  async resolveContentById(
+    id: number,
+    signal?: AbortSignal
+  ): Promise<WordPressApiResult<WordPressPostResponse | null>> {
     const tryFetch = async (
       type: 'posts' | 'pages'
     ): Promise<WordPressApiResult<WordPressPostResponse | null>> => {
       try {
-        const response = await this.fetchRestResource(`${type}/${id}?_embed=true`);
+        const response = await this.fetchRestResource(`${type}/${id}?_embed=true`, signal);
 
         if (!response.ok) {
           if (response.status === 404) {
@@ -339,6 +351,7 @@ export class WordPressService {
         }
         return { success: true, data: item };
       } catch (error) {
+        if (signal?.aborted) throw error;
         console.error(`Error in getContentById for id ${id} (type: ${type}):`, error);
         return {
           success: false,

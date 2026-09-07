@@ -108,7 +108,7 @@
   - 理由: チャンク境界を作らずに「1件終わるたびに次を投入する」形にすると、完了順が配列順と入れ替わるため進捗カーソルを安全に進められない（BR-B09 の理由）。既存の並列処理も `for (i += CONCURRENCY)` + `Promise.all` のチャンク形（`gscEvaluationService.ts:97-118`）であり、同型を踏襲する。
   - 例外: Anthropic のレート制限（429）に当たった記事は**その場で失敗に計上し、`retry-after` の待機も未処理への持ち越しもしない**（クライアント回答 2026-09-04 / Q-B02。BR-B11）。並列数そのものを実測で調整するときは定数1箇所で行える形にする。
 - ルール ID: **BR-B06 通知はジョブが終了した時点で1通だけ**
-  - ルール: ジョブが **`completed` または `failed`** になった時点で、成功・失敗・スキップ・未実行の件数と失敗理由の内訳をメールで1通送る（`failed` の場合は「残りは次の実行で続けられる」旨を添える。件名・見出し・本文の出し分けは**「終わり方 × 成功件数 × 失敗件数」**で決める。§9「完了メールの件名・本文」）。**失敗理由の内訳には、理由ごとに「何が起きたか」と「利用者が次に何をすればよいか」を必ず併記する**（クライアント回答 2026-09-04 / Q-B01・Q-B02。WordPress の連携が切れている場合は再連携の導線 `/setup/wordpress` まで出す。理由コードの粒度は BR-B10、文面は §9「完了メールの件名・本文」）。件名・本文の文面はクライアント回答（Q-B03）により**エージェント裁量で確定**し、判断基準は「利用者が読んで内容が分かること」とする。送信は `EmailService` に追加する専用メソッド `sendContentAnnotationSummaryCompletion(to, subject, htmlContent, idempotencyKey)`（冪等キーはジョブ ID。§9）で行い、本文は **HTML で専用に組む**。失敗理由のラベルは既存の `FAILURE_LABELS` / `describeFailures`（`src/lib/content-annotation-bulk-summary-display.ts`。現在は未 export のため `export` を付ける）を共用する。
+  - ルール: ジョブが **`completed` または `failed`** になった時点で、成功・失敗・スキップ・未実行の件数と失敗理由の内訳をメールで1通送る（`failed` の場合は「残りは次の実行で続けられる」旨を添える。件名・見出し・本文の出し分けは**「終わり方 × 成功件数 × 失敗件数」**で決める。§9「完了メールの件名・本文」）。**失敗理由の内訳には、理由ごとに「何が起きたか」と「利用者が次に何をすればよいか」を必ず併記する**（クライアント回答 2026-09-04 / Q-B01・Q-B02。WordPress の連携が切れている場合は再連携の導線 `/setup/wordpress` まで出す。理由コードの粒度は BR-B10、文面は §9「完了メールの件名・本文」）。件名・本文の文面はクライアント回答（Q-B03）により**エージェント裁量で確定**し、判断基準は「利用者が読んで内容が分かること」とする。送信は `EmailService` に追加する専用メソッド `sendContentAnnotationSummaryCompletion(to, subject, htmlContent, idempotencyKey)`（冪等キーはジョブ ID。§9）で行い、本文は **HTML で専用に組む**。失敗理由のラベルは既存の `FAILURE_LABELS`（`src/lib/content-annotation-bulk-summary-display.ts`）を共用する。
   - 理由: 既存の `getBulkSummaryToastMessage` は**プレーンテキスト1行**を返し、`stoppedReason === 'time_budget'` のとき「未実行分はもう一度実行すると続きから進みます」＝**手動再実行を促す文面**になる。背景実行では cron が続きを処理するため誤案内になり、かつ同期版トースト（`app/analytics/AnalyticsClient.tsx`）と共用したまま分岐を足すと同期版の文面を壊す。共用するのは**ラベル辞書だけ**にする。
   - 起動経路: 送信は (1) cron が同じ起動内でジョブを `completed` / `failed` にしたときのその場の送信と、(2) cron ルートが claim の前に行う**未通知ジョブの掃き出し**（`status in ('completed','failed')` かつ `notified_at is null`）の2経路で行う。**(2) が無いと、claim RPC が `attempt_count >= 3` で `failed` に落とした行（アプリ層が一度も見ない）と、送信に失敗した行に通知が届かない**（詳細は §9「完了メールの起動経路」）。
   - 例外: `users.email` が未登録の利用者には送らない。**この場合も `notified_at` を現在時刻で埋める**（＝「送る相手がいないので通知は完了」。ログには `skipped_no_email` を残す）。印を打たないと、そのジョブは `notified_at is null` のまま毎起動の掃き出しに選ばれ続け、**最大10件の枠を古い滞留行が永久に占有して AC-B15 の通知経路が二度と動かなくなる**。既存の同型実装 `ga4ContentEvaluationBatchService`（`:353-355`）も `skipped_no_email` を件数に計上して滞留を作らない。
@@ -142,7 +142,7 @@
 ### 対象範囲
 
 - 画面・操作: `/analytics` の「AIで要約」ボタンの挙動変更（同期実行 → ジョブ起票）、実行中の進捗表示、`ui-text.md` 辞書への新規用語追記（詳細は「6. 機能要件」の画面設計）
-- サーバー: ジョブ起票用 Server Action（戻り値の変更・`SUMMARY_BULK_ALREADY_RUNNING` の追加）、cron ルート、ジョブ処理サービス、完了メール送信（`EmailService` への新規メソッド追加、件名・本文ビルダーの新規モジュール）、`generateSummary` の `cookieStore` 任意化、`FAILURE_LABELS` / `describeFailures` の `export` 追加、**失敗理由コード2件の追加**（`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED`。BR-B10）と本文取得の可否判定（§9）
+  - サーバー: ジョブ起票用 Server Action（戻り値の変更・`SUMMARY_BULK_ALREADY_RUNNING` の追加）、cron ルート、ジョブ処理サービス、完了メール送信（`EmailService` への新規メソッド追加、件名・本文ビルダーの新規モジュール）、`generateSummary` の `cookieStore` 任意化、`FAILURE_LABELS` の `export` 追加、**失敗理由コード2件の追加**（`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED`。BR-B10）と本文取得の可否判定（§9）
 - AI モデル: **要約に使うモデルを `claude-sonnet-4-6` から `claude-sonnet-5` へ移行する**（クライアント合意 2026-09-04）。`MODEL_CONFIGS.content_annotation_ai_summary`（`src/lib/constants.ts:117-121`）を共有定数 `ANTHROPIC_BASE`（`:48`）から切り離して要約専用のモデル設定にし、あわせて `llmChat` に `thinking` を渡す口を1つ追加する（**省略するとアダプティブ思考が既定で有効になり、思考トークンが出力料金で課金されるため**。§8「AI機能の追加観点」／§10 制約条件）。他機能のモデルは変更しない
 - データ・DB: ジョブテーブル1つと、排他取得用 RPC 1つ（マイグレーション）、`npm run supabase:types` の再生成
 - 権限・ロール: 起票は `admin` / `paid` のみ（`canWriteGa4` 流用）。進捗の閲覧は起票者本人のみ。cron は `CRON_SECRET` + Service Role + `user_id` 明示スコープ（§6 権限）
@@ -238,7 +238,7 @@
   | 対象が0件 | `SUMMARY_BULK_TARGETS_REQUIRED` | 既存 |
   | 1001件以上 | `SUMMARY_BULK_TARGETS_LIMIT_EXCEEDED` | 既存 |
   | 母集団解決の不整合 | `SUMMARY_BULK_POPULATION_MISMATCH` | 既存 |
-  | 未完了ジョブが既にある | **`SUMMARY_BULK_ALREADY_RUNNING`**「すでに要約を実行中です。完了までお待ちください。」 | **新規追加** |
+  | 未完了ジョブが既にある | **`SUMMARY_BULK_ALREADY_RUNNING`**「AI要約はすでに実行中です。完了までお待ちください。」 | **新規追加** |
   | 上記以外の失敗 | `SUMMARY_BULK_FAILED` | 既存 |
 
 - **二重起票の検出は2段構え**: 事前 SELECT で未完了ジョブを見つけた場合も、部分ユニークインデックス違反（同時2クリック・二重送信での競合）を捕捉した場合も、**同じ `SUMMARY_BULK_ALREADY_RUNNING` を返す**。ユニーク制約違反を汎用の `SUMMARY_BULK_FAILED`（「AI要約の一括実行に失敗しました」）に落とすと、AC-B07 の期待表示と食い違う。
@@ -261,7 +261,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
   - 進捗: チャンク（最大3件）境界で保存するため、再開時に再処理されうるのは**直近の未完了チャンクの最大3件だけ**で、それ以前の範囲は処理し直さない（BR-B09）。再処理された記事は BR-B08 の再判定でスキップになり、LLM 課金は発生しない。
   - メール: `notified_at` が非 NULL なら送らない（BR-B06 / AC-B05）。印は「**このジョブについて通知の試行を終えたとき**」＝送信成功時に加えて**宛先が無く送れなかったとき**にも `.is('notified_at', null)` を条件に付ける（送信失敗のときだけ付けない。§9 経路2 / F-30）。防御は `maxRetries: 1` / `notified_at` / Resend の `Idempotency-Key`（ジョブ ID）の3段で、**送信成功後・`notified_at` 更新前のハードキルを塞ぐのは3段目だけ**（§9「`EmailService` への追加」）。起動の重なりによる二重送信は workflow の `concurrency`（§10）でも抑止する。
 
-**集計の定義（完了メール / 進捗表示で使う）**: 現行の `BulkSummaryResult` と同じ4区分（成功・失敗・スキップ・未実行）＋失敗理由の内訳（`failed_by_code`）。失敗理由コードは既存集合に **`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED` の2件を追加**する（BR-B10）。**文言生成関数 `getBulkSummaryToastMessage` は共用しない**（理由は BR-B06）。共用するのは失敗ラベル辞書 `FAILURE_LABELS` / `describeFailures` のみで、**次アクションの文言は完了メール専用に持つ**（§9「完了メールの件名・本文」）。
+**集計の定義（完了メール / 進捗表示で使う）**: 現行のジョブ結果と同じ4区分（成功・失敗・スキップ・未実行）＋失敗理由の内訳（`failed_by_code`）。失敗理由コードは既存集合に **`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED` の2件を追加**する（BR-B10）。旧同期版の文言生成関数は背景実行と共用せず、旧同期版一括経路の削除後も共用するのは失敗ラベル辞書 `FAILURE_LABELS` のみとする。**次アクションの文言は完了メール専用に持つ**（§9「完了メールの件名・本文」）。
 
 **件数のずれ（許容する既知の挙動）**: 異常終了からの再開時、直近の未完了チャンクで先行して完了していた記事（**最大2件**）は、BR-B08 の再判定でスキップに計上される（AC-B14）。要約は生成済みなので結果は正しく、LLM の二重課金も起きないが、完了メールの件数は**成功が最大2件少なく、スキップが同数多く**報告されうる（異常終了1回あたり）。**実装は変えず、この挙動を仕様として許容する**（理由は §16 レビュー記録）。
 
@@ -286,14 +286,14 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
   | --- | --- | --- | --- |
   | 起票直後（Server Action が成功） | トースト「バックグラウンドで実行します。完了したらメールでお知らせします。」 | なし（画面を閉じてよい） | 既存の実行中トーストを置き換える |
   | 未完了ジョブあり（`pending` / `processing`）でページを開いた | ツールバー付近に「要約中...（処理済み N / 対象 M 件）」 | 再読み込みで最新化 | 自動更新なし（BR-B07） |
-  | 未完了ジョブありで再度「AIで要約」を押した | トースト「すでに要約を実行中です。完了までお待ちください。」 | なし | 新規ジョブは作られない（BR-B03） |
+  | 未完了ジョブありで再度「AIで要約」を押した | トースト「AI要約はすでに実行中です。完了までお待ちください。」 | なし | 新規ジョブは作られない（BR-B03） |
   | 未完了ジョブなし（`completed` / `failed` / ジョブ無し） | 通常表示（進捗ラベルは出さない） | 通常操作 | 結果はメールで確認する |
 
 - 「実行中」の表示中もチェック列と他のボタン（評価サイクル開始）は従来どおり使える。
 - UI用語:
   - 「要約中...（処理済み N / 対象 M 件）」は `ui-text.md` §3「進行中の状態表現」の**ラベル**として扱う（`<動詞>中...` の形）。説明文ではないので `要約を実行中` とはしない。
   - **「対象」と「全」を使い分ける**: 進捗ラベルの分母は「対象 M 件」＝起票時に固定した対象ID数（`total_count`）。既存ツールバーの「選択中 N 件 / 全 M 件」（`app/analytics/AnalyticsClient.tsx:457-460` の `annotationTotalCount`）の「全」は**利用者の全記事数**であり、意味が違う。進捗ラベルはそのツールバー付近に出るため（本節冒頭）、全記事1200件の利用者が全選択すると `1000 / 全 1200 件` と `要約中...（処理済み 45 / 対象 1000 件）` が同じ視野に並ぶ。同じ語で別の母数を指さないよう、分母語を分ける（`growmate-ui-ux` の用語一貫性）。
-  - トースト2件（「バックグラウンドで実行します。完了したらメールでお知らせします。」「すでに要約を実行中です。完了までお待ちください。」）は説明文として普通の日本語で書く。
+  - トースト2件（「バックグラウンドで実行します。完了したらメールでお知らせします。」「AI要約はすでに実行中です。完了までお待ちください。」）は説明文として普通の日本語で書く。
   - **辞書に無い新規用語**: 「バックグラウンド」。`.agents/skills/growmate-ui-ux/ui-text.md` の辞書へ追記し、`scripts/check-ui-text.sh` を通す（この追記も対象範囲に含む）。
 
 #### 誤読しやすい罠
@@ -369,7 +369,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
     前提 pending または processing のジョブを持つ利用者がいる
     もし その利用者が「AIで要約」を押す
     ならば 新しいジョブは作られない
-    かつ 「すでに要約を実行中です」と表示される
+    かつ 「AI要約はすでに実行中です」と表示される
 
   シナリオ: AC-B08 実行中は進捗が見える
     前提 267件を選択して（mode: ids）起票したジョブがある
@@ -731,7 +731,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 並列処理の形 | 同ファイル `:97-118`（`for (i += CONCURRENCY)` + `Promise.all` のチャンク処理。時間予算の判定もチャンク先頭） | **再利用**（BR-B05 のチャンク境界・BR-B09 の保存粒度はこの既存形と同型） |
 | 処理順の整列 | `src/server/lib/content-annotation-bulk-summary.ts:60` の `orderTargetsForProcessing` | **使わない**（配列順で固定。理由は §9「処理順」） |
 | 要約本体 | `src/server/services/contentAnnotationSummaryService.ts` の `generateSummary` | **拡張**（`cookieStore` の任意化。§9） |
-| 失敗ラベル | `src/lib/content-annotation-bulk-summary-display.ts` の `FAILURE_LABELS` / `describeFailures` | **拡張**（`export` を付けて共用し、新規コード2件の行を追加。既存行の文言と `getBulkSummaryToastMessage` は変更しない。§9） |
+| 失敗ラベル | `src/lib/content-annotation-bulk-summary-display.ts` の `FAILURE_LABELS` | **拡張**（`export` を付けて共用し、新規コード2件の行を追加。既存行の文言は変更しない。§9） |
 | WordPress の本文取得可否 | `src/server/services/wordpressContentSync.ts` の `refreshWpComAccessToken` / `buildWordPressServiceFromSettings` | **拡張**（Cookie 無しでの解決可否を返す関数を1つ export する。判定ロジックを cron 側へ複製しない。§9「本文取得の可否判定」） |
 | WordPress 設定の読み取り | `src/server/services/supabaseService.ts` の `getWordPressSettingsByUserId` / `getUserById`（`SupabaseResult<T>` の前例） | **拡張**（行なしとクエリエラーを区別して返す読み取りメソッド `getWordPressSettingsResultByUserId` を1件追加する。既存メソッドのシグネチャは変えない。§9「WordPress 設定の読み取り経路」） |
 | 要約のモデル設定 | `src/lib/constants.ts` の `MODEL_CONFIGS.content_annotation_ai_summary`（`:117-121`）／共有定数 `ANTHROPIC_BASE`（`:48`） | **拡張**（要約のエントリだけ `ANTHROPIC_BASE` から切り出して `actualModel: 'claude-sonnet-5'` と `thinking` を自前で持たせる。`ANTHROPIC_BASE` は書き換えない。§8「AI機能の追加観点」） |
@@ -986,7 +986,7 @@ GitHub Actions の `schedule` は数分〜十数分遅延することがある�
   - `tests/unit/server/actions/contentAnnotationBulkSummary.actions.test.ts`（同期実行前提の記述 → 起票の戻り値 `{ jobId, totalCount }` へ）
   - `tests/unit/server/lib/cron-config-consistency.test.ts`（cron 定義の追加。**`readFileSync('.github/workflows/hourly-cron.yml')` のハードコードを複数ワークフロー対応にする**。§10）
   - `tests/unit/server/lib/analytics-max-duration.test.ts`（`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属先が cron ルートへ移るため、突き合わせ先を更新する。**`app/analytics/page.tsx` の `maxDuration = 800` は Instagram 手動同期のために残す**）
-  - `tests/unit/lib/content-annotation-bulk-summary-display.test.ts`（`FAILURE_LABELS` / `describeFailures` の `export` 追加と、**新規コード2件のラベル行が揃っていること**の確認。`getBulkSummaryToastMessage` の既存文面は変えない。`:22` の「コア ⊆ 一括」の型レベル包含も維持されること）
+  - `tests/unit/lib/content-annotation-bulk-summary-display.test.ts`（`FAILURE_LABELS` の `export` 追加と、**新規コード2件のラベル行が揃っていること**の確認。`:22` の「コア ⊆ 一括」の型レベル包含も維持されること）
 - 手動確認（`quality-gate` の実画面確認に対応）:
   - 実データで50件程度のジョブを流し、複数回の cron 起動をまたいで完了すること
   - 完了メールが1通だけ届き、件数が画面の集計と一致すること。**失敗があるときは理由と「次にすること」が並び、WordPress の連携切れなら再連携リンクが押せること**（AC-B16）
@@ -1174,6 +1174,11 @@ cycle 5 の反映（完了メールの件名分岐 / 本文取得の可否判定
 - **最大出力は 128k トークン**で要約の `maxTokens: 8000` は十分下回る。**SDK が streaming を要求するのは `max_tokens > 21,333` のときだけ**なので、実装者が誤ってストリーミング化しないよう §10 に1行記録した。
 - **扱わないと決めたもの**: prompt caching と thinking の相互作用、interleaved thinking、progress updates、preserved thinking（思考ブロックの往復）。要約は**ツールを使わない単発リクエストでマルチターンも無い**ため該当しない。§4 Non-goals に理由付きで1行だけ書いた（`CLAUDE.md`「作らない判断は理由付きで書く」。それ以上は書かない）。
 - **敷衍しなかったもの**: 「thinking を無効化するとツール呼び出しを平文で出すことがある」は公式が `claude-opus-5` に限定して書いている記述で、Sonnet 5 に同種の注意書きは無い。**推測でリスクを新設せず**、「Sonnet 5 については公式に記載が無い」という事実だけを §8 に記録し、既存の `SUMMARY_PARSE_FAILED` の観測（§13）に接続した。
+
+**今回の修正計画で確認した契約差分**
+
+- 旧同期版一括要約の表示関数（`getBulkSummaryToastMessage`、`describeFailures`）と処理順 helper（`orderTargetsForProcessing`）は、ジョブ起票への移行後に production の呼び出し元が無いため削除した。完了メールが共用するのは `FAILURE_LABELS` のみである。
+- 二重起票の文言は、`ERROR_MESSAGES` と UI 用語辞書の契約に合わせて「AI要約はすでに実行中です。完了までお待ちください。」へ統一した。辞書の禁止表記「要約を実行」を含む旧文言へ戻す変更は行わない。
 
 **未解決のブロッカー**
 

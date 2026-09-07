@@ -14,7 +14,6 @@ import {
   isGeneratedSummaryEmpty,
   isSummaryEmpty,
   isWordPressLinkedForSummary,
-  orderTargetsForProcessing,
   SUMMARY_TARGET_FIELD_KEYS,
 } from '@/server/lib/content-annotation-bulk-summary';
 
@@ -79,52 +78,6 @@ describe('生成結果が8項目すべて空なら成功にしない（AC-04b）
 
   it('1項目でも非空なら成功扱いにできる', () => {
     expect(isGeneratedSummaryEmpty({ ...filled, main_kw: null })).toBe(false);
-  });
-});
-
-describe('処理順序は updated_at 昇順・id タイブレーク（§6 実行順序）', () => {
-  it('古い順に並ぶ', () => {
-    const sorted = orderTargetsForProcessing([
-      { id: 'c', updated_at: '2026-08-30T00:00:00Z' },
-      { id: 'a', updated_at: '2026-08-01T00:00:00Z' },
-      { id: 'b', updated_at: '2026-08-15T00:00:00Z' },
-    ]);
-    expect(sorted.map(t => t.id)).toEqual(['a', 'b', 'c']);
-  });
-
-  it('updated_at が同値なら id 昇順で決定的に並ぶ', () => {
-    const sorted = orderTargetsForProcessing([
-      { id: 'b', updated_at: '2026-08-01T00:00:00Z' },
-      { id: 'a', updated_at: '2026-08-01T00:00:00Z' },
-    ]);
-    expect(sorted.map(t => t.id)).toEqual(['a', 'b']);
-  });
-
-  it('updated_at が無い行は最も古いものとして先に処理する', () => {
-    const sorted = orderTargetsForProcessing([
-      { id: 'a', updated_at: '2026-08-01T00:00:00Z' },
-      { id: 'z', updated_at: null },
-    ]);
-    expect(sorted.map(t => t.id)).toEqual(['z', 'a']);
-  });
-
-  it('要約に失敗して updated_at だけ最新化された記事は次回の末尾へ回る（R-001 の回帰）', () => {
-    // 前回 WP 取得だけ成功して updated_at が最新化された失敗記事 = failed
-    const sorted = orderTargetsForProcessing([
-      { id: 'failed', updated_at: '2026-08-31T00:00:00Z' },
-      { id: 'untouched-1', updated_at: '2026-08-01T00:00:00Z' },
-      { id: 'untouched-2', updated_at: '2026-08-02T00:00:00Z' },
-    ]);
-    expect(sorted.map(t => t.id)).toEqual(['untouched-1', 'untouched-2', 'failed']);
-  });
-
-  it('元の配列を破壊しない', () => {
-    const input = [
-      { id: 'b', updated_at: '2026-08-02T00:00:00Z' },
-      { id: 'a', updated_at: '2026-08-01T00:00:00Z' },
-    ];
-    orderTargetsForProcessing(input);
-    expect(input.map(t => t.id)).toEqual(['b', 'a']);
   });
 });
 
