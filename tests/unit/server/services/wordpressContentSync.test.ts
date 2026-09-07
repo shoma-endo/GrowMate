@@ -85,7 +85,7 @@ describe('fetchWpPostContentLive', () => {
       getCookie: () => undefined,
     });
 
-    expect(mocks.resolveContentById).toHaveBeenCalledWith(42);
+    expect(mocks.resolveContentById).toHaveBeenCalledWith(42, undefined);
     expect(result).toEqual({
       contentText: '見出し  記事本文',
       contentHtml: '<h2>見出し</h2><p>記事本文</p>',
@@ -122,7 +122,7 @@ describe('fetchWpPostContentLive', () => {
     });
 
     expect(mocks.refreshWpComToken).not.toHaveBeenCalled();
-    expect(mocks.resolveContentById).toHaveBeenCalledWith(42);
+    expect(mocks.resolveContentById).toHaveBeenCalledWith(42, undefined);
     expect(result?.contentText).toBe('見出し  記事本文');
   });
 
@@ -206,7 +206,7 @@ describe('fetchWpPostContentWithCache の再取得条件', () => {
       userId: 'user-id',
     });
 
-    expect(mocks.resolveContentById).toHaveBeenCalledWith(42);
+    expect(mocks.resolveContentById).toHaveBeenCalledWith(42, undefined);
     expect(result?.imageCount).toBe(1);
     expect(mocks.update).toHaveBeenCalledWith(
       expect.objectContaining({ wp_image_count: 1 })

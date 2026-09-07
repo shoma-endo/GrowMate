@@ -462,6 +462,57 @@ describe('cron の処理順とカーソル（AC-B02 / AC-B14）', () => {
     expect(cursors).toEqual([3, 6]);
   });
 
+  it('チャンク内の3件を同時に開始し、全件完了後に次チャンクへ進む', async () => {
+    const ids = Array.from({ length: 6 }, (_, index) => `a${index + 1}`);
+    seedJob({ target_annotation_ids: ids, total_count: 6 });
+    store.content_annotations.push(...ids.map(id => annotation(id)));
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const resolvers = new Map<string, () => void>();
+    let resolveFirstChunkStarted!: () => void;
+    let resolveSecondChunkStarted!: () => void;
+    const firstChunkStarted = new Promise<void>(resolve => {
+      resolveFirstChunkStarted = resolve;
+    });
+    const secondChunkStarted = new Promise<void>(resolve => {
+      resolveSecondChunkStarted = resolve;
+    });
+    mocks.generateSummary.mockImplementation(
+      ({ target }: { target: { annotationId: string } }) =>
+        new Promise(resolve => {
+          const annotationId = target.annotationId;
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          resolvers.set(annotationId, () => {
+            inFlight -= 1;
+            resolve(generated(annotationId));
+          });
+          if (mocks.generateSummary.mock.calls.length === 3) resolveFirstChunkStarted();
+          if (mocks.generateSummary.mock.calls.length === 6) resolveSecondChunkStarted();
+        })
+    );
+
+    const run = contentAnnotationSummaryJobService.runNextJob(Date.now());
+    await firstChunkStarted;
+
+    expect(mocks.generateSummary).toHaveBeenCalledTimes(3);
+    expect(maxInFlight).toBe(3);
+    expect(progressUpdates.filter(update => update.processed_count !== undefined)).toEqual([]);
+
+    for (const id of ids.slice(0, 3)) resolvers.get(id)?.();
+    await secondChunkStarted;
+
+    expect(progressUpdates.find(update => update.processed_count === 3)).toBeDefined();
+    expect(mocks.generateSummary).toHaveBeenCalledTimes(6);
+
+    for (const id of ids.slice(3)) resolvers.get(id)?.();
+    await run;
+
+    expect(maxInFlight).toBe(3);
+    expect(jobRow().processed_count).toBe(6);
+  });
+
   it('チャンク内で完了順が入れ替わっても、カーソルは直近に完了したチャンクの末尾で止まる', async () => {
     const ids = Array.from({ length: 12 }, (_, index) => `a${index + 1}`);
     seedJob({ target_annotation_ids: ids, total_count: 12 });
@@ -593,6 +644,25 @@ describe('時間予算（AC-B03 / BR-B04）', () => {
     expect(mocks.generateSummary).toHaveBeenCalledWith(
       expect.objectContaining({ llmTimeoutMs: shrunk.llmMs })
     );
+  });
+
+  it('項目タイムアウト時は要約処理へ中断信号を送り、ITEM_TIME_LIMIT に計上する', async () => {
+    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
+    store.content_annotations.push(annotation('a1'));
+    mocks.computeSummaryItemBudgetMs.mockReturnValue({ itemMs: 20, llmMs: 10 });
+    let receivedSignal: AbortSignal | undefined;
+  mocks.generateSummary.mockImplementation(
+    ({ signal }: { signal: AbortSignal }) =>
+      new Promise(() => {
+        receivedSignal = signal;
+      })
+  );
+
+    const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
+
+    expect(receivedSignal?.aborted).toBe(true);
+    expect(jobRow().failed_by_code).toEqual({ ITEM_TIME_LIMIT: 1 });
+    expect(result.carriedOver).toBe(false);
   });
 });
 
@@ -823,6 +893,21 @@ describe('完了メール（AC-B04 / AC-B05 / AC-B06 / AC-B15）', () => {
     expect(jobRow().status).toBe('completed');
     expect(jobRow().notified_at).not.toBeNull();
     expect(result.emailsSkipped).toBe(1);
+  });
+
+  it('メール未登録でも notified_at の保存に失敗したら通知失敗に計上する', async () => {
+    store.users = [{ id: USER_ID, email: null }];
+    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
+    store.content_annotations.push(annotation('a1'));
+    notifiedUpdateFailure = 'update exploded';
+
+    const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
+
+    expect(mocks.sendCompletionEmail).not.toHaveBeenCalled();
+    expect(result.emailsSkipped).toBe(0);
+    expect(result.emailsFailed).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(jobRow().notified_at).toBeNull();
   });
 
   it('宛先の取得に失敗したら notified_at を打たず、次回起動で取り直す（未登録と区別する）', async () => {

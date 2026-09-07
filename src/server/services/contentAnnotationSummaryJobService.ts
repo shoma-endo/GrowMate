@@ -117,16 +117,18 @@ function parseFailedByCode(value: unknown): Partial<Record<SummaryFailureCode, n
  * （タイムアウト無し）を閉じられず、ハングすると `maxDuration` でハードキルされる。
  */
 async function runWithItemTimeLimit(
-  work: Promise<GenerateSummaryResult>,
+  work: (signal: AbortSignal) => Promise<GenerateSummaryResult>,
   timeLimitMs: number,
   annotationId: string
 ): Promise<ItemOutcome> {
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      work,
+      work(controller.signal),
       new Promise<ItemOutcome>(resolve => {
         timer = setTimeout(() => {
+          controller.abort(new Error('item time limit'));
           console.error('[content-annotation-summary-job] item time limit reached:', {
             annotationId,
             timeLimitMs,
@@ -398,7 +400,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
   /**
    * 1ジョブを配列順に3件ずつのチャンクで処理する。
    *
-   * - 処理順は `target_annotation_ids` の配列順で固定する（`orderTargetsForProcessing` は使わない）。
+   * - 処理順は `target_annotation_ids` の配列順で固定する。
    *   `processed_count` が配列 index を指すカーソルなので、並べ替えるとカーソルの意味が壊れる。
    * - **チャンクごとに対象記事を取り直し**、`generateSummary` の直前に BR-B08 を再判定する。
    *   ジョブ全体をループ前に一括取得すると、再判定が最大12分前のスナップショットになる。
@@ -569,12 +571,13 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
 
     try {
       const generated = await runWithItemTimeLimit(
-        contentAnnotationSummaryService.generateSummary({
+        signal => contentAnnotationSummaryService.generateSummary({
           target: { annotationId },
           executorUserId: userId,
           // cron にセッションは無い。cookie を持たない getCookie で DB 保存トークン経路だけを使う
           cookieStore: undefined,
           llmTimeoutMs: budget.llmMs,
+          signal,
           // BR-B11。SDK の既定リトライ（429 を寝てから最大2回再送）を止めるのはこの経路だけ
           maxRetries: 0,
         }),
@@ -707,8 +710,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
       console.warn('[content-annotation-summary-job] user has no email, skipping notification:', {
         jobId: job.id,
       });
-      await this.markNotified(job.id);
-      return 'skipped_no_email';
+      return (await this.markNotified(job.id)) ? 'skipped_no_email' : 'failed';
     }
 
     const content = buildContentAnnotationSummaryEmail({

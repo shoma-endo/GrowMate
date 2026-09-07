@@ -49,29 +49,6 @@ export function isGeneratedSummaryEmpty(fields: Partial<Record<SummaryTargetFiel
 }
 
 /**
- * 処理順序を `updated_at` 昇順（同値は `id` 昇順でタイブレーク）に並べる。
- *
- * 降順のままだと、WordPress 本文取得に成功して `updated_at` だけ最新化された失敗記事が
- * 次回実行でキュー先頭に戻る。本文サイズ超過は本文が縮まない限り毎回必ず失敗する決定的失敗なので、
- * 先頭に溜まると再実行の前進件数が 0 になりうる（仕様 §6 実行順序 / R-001）。
- */
-export function orderTargetsForProcessing<T extends { id: string; updated_at?: string | null }>(
-  targets: readonly T[]
-): T[] {
-  return [...targets].sort((a, b) => {
-    const au = a.updated_at ?? '';
-    const bu = b.updated_at ?? '';
-    if (au !== bu) {
-      // updated_at が無い行は最も古いものとして先に処理する
-      if (au === '') return -1;
-      if (bu === '') return 1;
-      return au < bu ? -1 : 1;
-    }
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-}
-
-/**
  * 残り時間から1件分の予算を算出する。着手できないときは null を返し、呼び出し側は
  * 未実行件数へ計上する（`googleAdsAiAnalysisService.computeLlmTimeoutMs` と同型だが、
  * 例外ではなく null で返す）。

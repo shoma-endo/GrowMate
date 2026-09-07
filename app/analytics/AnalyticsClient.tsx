@@ -337,6 +337,13 @@ export default function AnalyticsClient({
     // 常時表示しているため、toast は出さない。消える通知で同じことを二重に言わない
   };
 
+  const summaryJobProgress =
+    summaryJobProcessedCount !== null && summaryJobTotalCount !== null ? (
+      <p className="mb-4 text-sm text-gray-600">
+        要約中...（処理済み {summaryJobProcessedCount} / 対象 {summaryJobTotalCount} 件）
+      </p>
+    ) : null;
+
   const blogContent = (
     <Card>
       <CardHeader>
@@ -489,14 +496,6 @@ export default function AnalyticsClient({
             </div>
           ) : null}
         </div>
-        {/* 実行中の AI要約ジョブの進捗（BR-B07）。自動更新はしない（再読み込みで最新化）。
-            **分母語は「対象」**。すぐ上のツールバーの「全 M 件」は利用者の全記事数で母数が違うため、
-            同じ語を使うと全選択時に `1000 / 全 1200 件` と並んで読み違える */}
-        {summaryJobProcessedCount !== null && summaryJobTotalCount !== null ? (
-          <p className="mb-4 text-sm text-gray-600">
-            要約中...（処理済み {summaryJobProcessedCount} / 対象 {summaryJobTotalCount} 件）
-          </p>
-        ) : null}
         {/* 「平均滞在時間」は ÷sessions。列見出し「滞在時間（平均）」と同じ値で、
             記事詳細の「平均エンゲージメント時間」（÷activeUsers）とは別物 */}
         <p className="mb-4 text-xs text-gray-500">
@@ -568,6 +567,7 @@ export default function AnalyticsClient({
       {!instagramConnected ? (
         <>
           <h1 className="text-3xl font-bold mb-6">コンテンツ一覧</h1>
+          {summaryJobProgress}
           {blogContent}
         </>
       ) : (
@@ -595,6 +595,7 @@ export default function AnalyticsClient({
               </TabsTrigger>
             </TabsList>
           </div>
+          {summaryJobProgress}
           <TabsContent value="blog">{blogContent}</TabsContent>
           <TabsContent value="instagram">
             <InstagramTab

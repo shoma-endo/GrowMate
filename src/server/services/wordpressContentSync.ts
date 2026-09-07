@@ -91,7 +91,8 @@ function buildSlugCandidates(url: URL): string[] {
 
 async function resolveWpPostIdFromCanonical(
   canonicalUrl: string,
-  wpService: WordPressService
+  wpService: WordPressService,
+  signal?: AbortSignal
 ): Promise<number | null> {
   let targetUrl: URL;
   try {
@@ -112,7 +113,7 @@ async function resolveWpPostIdFromCanonical(
 
   for (const type of ['posts', 'pages'] as const) {
     for (const slug of slugCandidates) {
-      const result = await wpService.findExistingContent(slug, type);
+      const result = await wpService.findExistingContent(slug, type, signal);
       if (result.success && result.data) {
         const postId = result.data.id;
         if (typeof postId === 'number' && Number.isSafeInteger(postId) && postId > 0) {
@@ -128,7 +129,8 @@ async function resolveWpPostIdFromCanonical(
 async function refreshWpComAccessToken(
   userId: string,
   supabase: SupabaseService,
-  wpSettings: NonNullable<Awaited<ReturnType<SupabaseService['getWordPressSettingsByUserId']>>>
+  wpSettings: NonNullable<Awaited<ReturnType<SupabaseService['getWordPressSettingsByUserId']>>>,
+  signal?: AbortSignal
 ): Promise<string | null> {
   let accessToken = wpSettings.wpAccessToken ?? null;
   const expiresAt = wpSettings.wpTokenExpiresAt
@@ -136,7 +138,7 @@ async function refreshWpComAccessToken(
     : null;
 
   if (accessToken && expiresAt && expiresAt - Date.now() < 60 * 1000) {
-    const refreshed = await supabase.refreshWpComToken(userId, wpSettings);
+    const refreshed = await supabase.refreshWpComToken(userId, wpSettings, signal);
     if (refreshed.success) {
       accessToken = refreshed.accessToken;
       wpSettings.wpAccessToken = refreshed.accessToken ?? null;
@@ -192,7 +194,8 @@ export async function canFetchWpPostContentLive(userId: string): Promise<boolean
 async function fetchPostById(
   wpPostId: number,
   userId: string,
-  getCookie: CookieGetter
+  getCookie: CookieGetter,
+  signal?: AbortSignal
 ): Promise<WpPostContentFields | null> {
   const supabase = new SupabaseService();
   const wpSettings = await supabase.getWordPressSettingsByUserId(userId);
@@ -205,7 +208,7 @@ async function fetchPostById(
     if (!ctx.success) {
       return null;
     }
-    const post = await ctx.service.resolveContentById(wpPostId);
+    const post = await ctx.service.resolveContentById(wpPostId, signal);
     if (!post.success || !post.data) {
       return null;
     }
@@ -214,7 +217,7 @@ async function fetchPostById(
 
   const cookieAccessToken = getCookie(WPCOM_TOKEN_COOKIE_NAME);
   const accessToken =
-    cookieAccessToken || (await refreshWpComAccessToken(userId, supabase, wpSettings));
+    cookieAccessToken || (await refreshWpComAccessToken(userId, supabase, wpSettings, signal));
   if (!accessToken) {
     return null;
   }
@@ -226,7 +229,7 @@ async function fetchPostById(
     return null;
   }
 
-  const post = await ctx.service.resolveContentById(wpPostId);
+  const post = await ctx.service.resolveContentById(wpPostId, signal);
   if (!post.success || !post.data) {
     return null;
   }
@@ -326,8 +329,9 @@ export async function fetchWpPostContentLive(params: {
   wpPostId: number | null;
   canonicalUrl: string | null;
   getCookie: CookieGetter;
+  signal?: AbortSignal;
 }): Promise<WpPostContentFields | null> {
-  const { userId, wpPostId, canonicalUrl, getCookie } = params;
+  const { userId, wpPostId, canonicalUrl, getCookie, signal } = params;
 
   try {
     let resolvedPostId = wpPostId;
@@ -342,14 +346,14 @@ export async function fetchWpPostContentLive(params: {
       if (!ctx.success) {
         return null;
       }
-      resolvedPostId = await resolveWpPostIdFromCanonical(canonicalUrl, ctx.service);
+      resolvedPostId = await resolveWpPostIdFromCanonical(canonicalUrl, ctx.service, signal);
     }
 
     if (!resolvedPostId) {
       return null;
     }
 
-    const fields = await fetchPostById(resolvedPostId, userId, getCookie);
+    const fields = await fetchPostById(resolvedPostId, userId, getCookie, signal);
     if (!fields) {
       return null;
     }
@@ -357,6 +361,7 @@ export async function fetchWpPostContentLive(params: {
     await updateContentCache(new SupabaseService(), userId, resolvedPostId, fields);
     return fields;
   } catch (error) {
+    if (signal?.aborted) throw error;
     console.error('[WordPressContentSync] fetchWpPostContentLive error', error);
     return null;
   }
