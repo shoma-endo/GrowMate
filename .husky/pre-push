@@ -1,8 +1,4 @@
-#!/usr/bin/env bash
-# pin 実体の自動設置 + workflow 変更時の版ズレ検知のあと、test / build / knip。
-# 詳細は scripts/takt-pre-push-guard.sh。
-set -euo pipefail
-bash scripts/takt-pre-push-guard.sh
-npm run test:coverage
-npm run build
-npm run knip
+# husky v9 はフックを `sh -e <hook>` で起動する（.husky/_/h）ためシェバンが効かない。
+# bash 専用構文をここに書くと /bin/sh が dash の環境で落ちるので、本体は bash 明示で呼ぶ。
+# 中身は scripts/pre-push.sh（takt pin ガード → test:coverage → build → knip）。
+bash scripts/pre-push.sh "$@"
