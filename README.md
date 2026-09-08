@@ -210,7 +210,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 ```bash
 # GrowMateアプリ: Node.js 20以上
-# Takt 0.58.0: Node.js 24.15.0以上
+# Takt（版は .takt-version が正本）: Node.js 24.15.0以上
 npm ci
 # .env.local を作成し、src/env.ts の clientEnvSchema / serverEnvSchema を参照してキーを埋める
 npm run dev  # http://localhost:3000
@@ -237,15 +237,16 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 | `npm run dev` | 開発サーバー（Turbopack） |
 | `npm run dev:types` | 型チェック watch |
 | `npm run test` | Vitestによるコアロジック・入力バリデーションのテスト |
-| `npm run test:coverage` | Vitestのカバレッジ計測（閾値によるCI強制なし） |
-| `npm run verify` | audit → lint → test → build → knip |
+| `npm run test:coverage` | Vitestのカバレッジ計測。src/app 全体基準の閾値（`vitest.config.ts`）を下回ると失敗。CI と verify で実行 |
+| `npm run verify` | audit → lint → test:coverage → build → knip |
+| `npm run hotspots` | 肥大化ファイル上位（実行行数・90日 churn・テスト有無）。月次メンテの hotspot レビュー入力 |
 | `npm run supabase:types` | `database.types.ts` 再生成 |
 | `npm run verify:agent-skills` | Agent Skills 静的検証 |
 | `npm run db:stats` / `vercel:stats` / `active:users` | 運用統計（要 `.env.local`） |
 
 ## ✅ 動作確認
 
-`npm audit --audit-level=high`、`npm run lint`、`npm run test`、`npm run build`、`npm run knip` で基本チェック（5点まとめは `npm run verify`）。コアロジックと分離済みZodスキーマはVitest、UIの表示・操作感・導線と外部APIを含む実画面は人間の目視で確認する。Agent Skills を変更した場合は `npm run verify:agent-skills` も実行する。husky で **pre-commit に lint、pre-push に test + build + knip** を配置し、CIでも`npm audit --audit-level=high` / lint / test / build / knipを実行する。各機能の詳細な検証手順は [`quality-gate`](.agents/skills/quality-gate/SKILL.md) スキルを参照。
+`npm audit --audit-level=high`、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip` で基本チェック（5点まとめは `npm run verify`）。コアロジックと分離済みZodスキーマはVitest、UIの表示・操作感・導線と外部APIを含む実画面は人間の目視で確認する。Agent Skills を変更した場合は `npm run verify:agent-skills` も実行する。husky で **pre-commit に lint、pre-push に test:coverage + build + knip** を配置し、CIでも`npm audit --audit-level=high` / lint / test:coverage / build / knipを実行する。各機能の詳細な検証手順は [`quality-gate`](.agents/skills/quality-gate/SKILL.md) スキルを参照。
 
 ## 📁 プロジェクト構成（概要）
 
@@ -284,9 +285,9 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 ## 📱 デプロイと運用
 
 - Vercel を想定。一部の Route Handler は Node.js Runtime を明示し、その他は Next.js のデフォルト Runtime を使用
-- ローカル品質ゲート: `npm run verify`（`audit` → `lint` → `test` → `build` → `knip` を順次実行）
-- husky フック: **pre-commit = `lint`、pre-push = `test` + `build` + `knip`**（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
-- CI 品質ゲート: `npm audit --audit-level=high`、`npm run lint`、`npm run test`、`npm run build`、`npm run knip`
+- ローカル品質ゲート: `npm run verify`（`audit` → `lint` → `test:coverage` → `build` → `knip` を順次実行）
+- husky フック: **pre-commit = `lint`、pre-push = `test:coverage` + `build` + `knip`**（本体は [`scripts/pre-push.sh`](scripts/pre-push.sh)。husky はフックを `sh` で起動しシェバンを無視するため、bash 専用構文を `.husky/pre-push` に直接書かない）（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
+- CI 品質ゲート: `npm audit --audit-level=high`、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip`
 - 環境変数は Vercel Project Settings へ反映し、本番は WordPress 本番サイトなどの外部連携設定に切り替え
 - GitHub Actions: 毎時 Cron（`gsc-evaluate` / `gsc-suggestions` / `google-ads-negative-keywords-suggestion`）、10 分間隔 Cron（`content-annotation-summary`＝`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）、CI（audit / lint / test / build / knip + Lark 通知）、`develop` 以外への push 時の Auto PR、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
 - **Supabase スキーマ**: Vercel のデプロイだけでは DB は更新されない。変更は `supabase/migrations/` にコミットし、マイグレーション内にロールバック案をコメントで残す。**本番（共有プロジェクト）への適用タイミングと手順は「セットアップ手順」の Supabase 注意書きに従う。**
