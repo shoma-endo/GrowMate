@@ -10,7 +10,7 @@
 - 簡易・形式的・低価値なユニットテストは追加しない。テスト追加は対象仕様書またはユーザー指示で明示されている場合に限る。
 - 同種の潜在箇所がある場合は同時に修正する。
 - 追加修正で閉じられない残件（仕様がテスト追加不要と明示、残置合意、無人では検証不能な手動確認のみ等）は、無理にコードやテストを増やさず `cannot_fix` として記録する。それ以外に未解決の実害指摘が残る場合だけ `stuck`。実害指摘をすべて処理でき、残が `cannot_fix` / `not_applicable` のみなら `fixed`。
-- 検証: プロダクション影響パス（`app/` `src/` `tests/` `supabase/` `public/` `scripts/` および `package.json` / Next・ESLint・Vitest・tsconfig 等のビルド設定）を変更した場合だけ、ステップ内で `npm run verify`（または `npm run verify:changed`）を実行する。docs / README / `.takt` / `.agents` のみならフル verify は不要（`git diff --check` で足りる）。ステップ後の quality_gates も同じ差分判定（`npm run verify:changed`）なので、成功済みのフル verify をゲート前に二重実行しない。
+- 検証: プロダクション影響パス（`app/` `src/` `tests/` `supabase/` `public/` `scripts/` および `package.json` / Next・ESLint・Vitest・tsconfig 等のビルド設定）を変更した場合だけ、ステップ内で `npm run verify`（または `npm run verify:changed`）を実行。カバレッジ閾値割れは実装ステップと同じく修正対象にしない（テスト水増し・閾値引き下げ禁止。ABORT して報告）する。docs / README / `.takt` / `.agents` のみならフル verify は不要（`git diff --check` で足りる）。ステップ後の quality_gates も同じ差分判定（`npm run verify:changed`）なので、成功済みのフル verify をゲート前に二重実行しない。
 - ここでは commit / push を行わない。最終ステップでまとめて実施する。
 
 ## plan.md（全文）
