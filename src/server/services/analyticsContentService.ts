@@ -18,8 +18,63 @@ import type { Json } from '@/types/database.types';
 const MAX_PER_PAGE = 100;
 
 const supabaseService = new SupabaseService();
+const ALL_ANNOTATIONS_ORDER = { ascending: false, nullsFirst: false } as const;
 
 class AnalyticsContentService {
+  /**
+   * BR-07 の母集団（利用者が所有する全記事）の件数を取得する。
+   * 一覧RPCのフィルタ未指定時と同じ user_id 条件を使い、絞り込み後の件数とは分離する。
+   * 取得に失敗した場合は 0 件と区別するため null を返す（呼び出し元で全選択を止める）。
+   */
+  async countAllAnnotations(userId: string): Promise<number | null> {
+    try {
+      const { count, error } = await supabaseService
+        .getClient()
+        .from('content_annotations')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('[AnalyticsContentService] countAllAnnotations failed:', error.message);
+        return null;
+      }
+
+      return count ?? 0;
+    } catch (error) {
+      console.error('[AnalyticsContentService] countAllAnnotations error:', error);
+      return null;
+    }
+  }
+
+  /** BR-07 の母集団を updated_at 降順で解決する。count は limit 適用前の件数を使う。 */
+  async resolveAllAnnotationIds(
+    userId: string,
+    limit: number
+  ): Promise<{ ids: string[]; total: number } | null> {
+    try {
+      const { data, count, error } = await supabaseService
+        .getClient()
+        .from('content_annotations')
+        .select('id', { count: 'exact' })
+        .eq('user_id', userId)
+        .order('updated_at', ALL_ANNOTATIONS_ORDER)
+        .limit(limit);
+
+      if (error) {
+        console.error('[AnalyticsContentService] resolveAllAnnotationIds failed:', error.message);
+        return null;
+      }
+
+      return {
+        ids: (data ?? []).map(annotation => annotation.id),
+        total: count ?? 0,
+      };
+    } catch (error) {
+      console.error('[AnalyticsContentService] resolveAllAnnotationIds error:', error);
+      return null;
+    }
+  }
+
   async getPage(userId: string, params: AnalyticsContentQuery): Promise<AnalyticsContentPage> {
     const page = Number.isFinite(params.page) ? Math.max(1, Math.floor(params.page)) : 1;
     const perPageRaw = Number.isFinite(params.perPage) ? Math.floor(params.perPage) : MAX_PER_PAGE;
@@ -50,6 +105,11 @@ class AnalyticsContentService {
           p_include_uncategorized: includeUncategorized,
           p_has_unread_suggestion: params.hasUnreadSuggestion ?? false,
           p_has_unstarted_gsc_evaluation: params.hasUnstartedGscEvaluation ?? false,
+          // 未要約フィルタを使うときだけ引数を積む。常に送ると、migration 未適用の環境へ
+          // アプリを先にデプロイした瞬間に PostgREST が PGRST202（関数シグネチャ不一致）を返し、
+          // 下の catch が baseline を返して **一覧が全滅する**。渡さなければ SQL 側の
+          // `default false` が効くので、適用順が前後しても通常の一覧は壊れない
+          ...(params.hasUnsummarized === true ? { p_has_unsummarized: true } : {}),
           // p_has_unstarted_ga4_evaluation は渡さない。2026-08-26 のサイクル統合で
           // 「コンテンツ評価未開始」フィルタを廃止したため（§10.2）。RPC 側の引数は
           // `default false` で残してあるので、渡さなければ条件が効かない。
@@ -167,6 +227,9 @@ class AnalyticsContentService {
         ga4Truncated,
       };
     } catch (error) {
+      // 一覧が空で返る唯一の失敗経路なのでログを残す。ここが無音だと、RPC の
+      // シグネチャ不一致（migration 未適用）で一覧が全滅してもサーバーログに何も出ない
+      console.error('[AnalyticsContentService] getPage failed:', error);
       const message = error instanceof Error ? error.message : 'ページデータの取得に失敗しました';
       return {
         ...baseline,

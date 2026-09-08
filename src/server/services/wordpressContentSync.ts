@@ -91,7 +91,8 @@ function buildSlugCandidates(url: URL): string[] {
 
 async function resolveWpPostIdFromCanonical(
   canonicalUrl: string,
-  wpService: WordPressService
+  wpService: WordPressService,
+  signal?: AbortSignal
 ): Promise<number | null> {
   let targetUrl: URL;
   try {
@@ -112,7 +113,7 @@ async function resolveWpPostIdFromCanonical(
 
   for (const type of ['posts', 'pages'] as const) {
     for (const slug of slugCandidates) {
-      const result = await wpService.findExistingContent(slug, type);
+      const result = await wpService.findExistingContent(slug, type, signal);
       if (result.success && result.data) {
         const postId = result.data.id;
         if (typeof postId === 'number' && Number.isSafeInteger(postId) && postId > 0) {
@@ -128,7 +129,8 @@ async function resolveWpPostIdFromCanonical(
 async function refreshWpComAccessToken(
   userId: string,
   supabase: SupabaseService,
-  wpSettings: NonNullable<Awaited<ReturnType<SupabaseService['getWordPressSettingsByUserId']>>>
+  wpSettings: NonNullable<Awaited<ReturnType<SupabaseService['getWordPressSettingsByUserId']>>>,
+  signal?: AbortSignal
 ): Promise<string | null> {
   let accessToken = wpSettings.wpAccessToken ?? null;
   const expiresAt = wpSettings.wpTokenExpiresAt
@@ -136,7 +138,7 @@ async function refreshWpComAccessToken(
     : null;
 
   if (accessToken && expiresAt && expiresAt - Date.now() < 60 * 1000) {
-    const refreshed = await supabase.refreshWpComToken(userId, wpSettings);
+    const refreshed = await supabase.refreshWpComToken(userId, wpSettings, signal);
     if (refreshed.success) {
       accessToken = refreshed.accessToken;
       wpSettings.wpAccessToken = refreshed.accessToken ?? null;
@@ -150,10 +152,50 @@ async function refreshWpComAccessToken(
   return accessToken;
 }
 
+/**
+ * **Cookie 無しで**本文取得に使えるアクセストークンを解決できるかを判定する（真偽値）。
+ *
+ * AI要約一括のバックグラウンド実行が、1起動につき1回だけ呼ぶ
+ * （docs/plans/content-annotation-bulk-summary-background-spec.md §9「本文取得の可否判定」）。
+ * 判定ロジックを cron 側へ複製しないためにここから export する。
+ *
+ * WordPress 設定を取得できない2ケースは**逆向きに倒す**:
+ * - **設定行が無い（クエリは成功）→ `false`（不可）**。連携していない／連携情報が消えた状態で、
+ *   `/setup/wordpress` からの再連携が正しい次アクションだから。
+ * - **クエリがエラー（DBの一時障害など）→ `true`（可）**。原因が連携状態だと確認できていないのに
+ *   「再連携してください」と案内すると、連携が正常な利用者へ誤った次アクションを送る。
+ *   判定材料が得られないときは断定の弱い既存コード（`SUMMARY_CONTENT_FETCH_FAILED`）へ落とす。
+ *
+ * 既知の限界: 保存済みトークンが解決できるのに WordPress 側では無効（失効済みなのに
+ * `wp_token_expires_at` が NULL / 未来日）なケースは `true` になる。ここまで出し分けるには
+ * `fetchWpPostContentLive` の戻り値契約（失敗を一律 `null`）を変える必要があり、親機能へ波及する。
+ */
+export async function canFetchWpPostContentLive(userId: string): Promise<boolean> {
+  const supabase = new SupabaseService();
+  const settingsResult = await supabase.getWordPressSettingsResultByUserId(userId);
+
+  if (!settingsResult.success) {
+    return true;
+  }
+
+  const wpSettings = settingsResult.data;
+  if (!wpSettings) {
+    return false;
+  }
+
+  if (wpSettings.wpType === 'self_hosted') {
+    return buildWordPressServiceFromSettings(wpSettings, () => undefined).success;
+  }
+
+  const accessToken = await refreshWpComAccessToken(userId, supabase, wpSettings);
+  return Boolean(accessToken);
+}
+
 async function fetchPostById(
   wpPostId: number,
   userId: string,
-  getCookie: CookieGetter
+  getCookie: CookieGetter,
+  signal?: AbortSignal
 ): Promise<WpPostContentFields | null> {
   const supabase = new SupabaseService();
   const wpSettings = await supabase.getWordPressSettingsByUserId(userId);
@@ -166,7 +208,7 @@ async function fetchPostById(
     if (!ctx.success) {
       return null;
     }
-    const post = await ctx.service.resolveContentById(wpPostId);
+    const post = await ctx.service.resolveContentById(wpPostId, signal);
     if (!post.success || !post.data) {
       return null;
     }
@@ -175,7 +217,7 @@ async function fetchPostById(
 
   const cookieAccessToken = getCookie(WPCOM_TOKEN_COOKIE_NAME);
   const accessToken =
-    cookieAccessToken || (await refreshWpComAccessToken(userId, supabase, wpSettings));
+    cookieAccessToken || (await refreshWpComAccessToken(userId, supabase, wpSettings, signal));
   if (!accessToken) {
     return null;
   }
@@ -187,7 +229,7 @@ async function fetchPostById(
     return null;
   }
 
-  const post = await ctx.service.resolveContentById(wpPostId);
+  const post = await ctx.service.resolveContentById(wpPostId, signal);
   if (!post.success || !post.data) {
     return null;
   }
@@ -287,8 +329,9 @@ export async function fetchWpPostContentLive(params: {
   wpPostId: number | null;
   canonicalUrl: string | null;
   getCookie: CookieGetter;
+  signal?: AbortSignal;
 }): Promise<WpPostContentFields | null> {
-  const { userId, wpPostId, canonicalUrl, getCookie } = params;
+  const { userId, wpPostId, canonicalUrl, getCookie, signal } = params;
 
   try {
     let resolvedPostId = wpPostId;
@@ -303,14 +346,14 @@ export async function fetchWpPostContentLive(params: {
       if (!ctx.success) {
         return null;
       }
-      resolvedPostId = await resolveWpPostIdFromCanonical(canonicalUrl, ctx.service);
+      resolvedPostId = await resolveWpPostIdFromCanonical(canonicalUrl, ctx.service, signal);
     }
 
     if (!resolvedPostId) {
       return null;
     }
 
-    const fields = await fetchPostById(resolvedPostId, userId, getCookie);
+    const fields = await fetchPostById(resolvedPostId, userId, getCookie, signal);
     if (!fields) {
       return null;
     }
@@ -318,6 +361,7 @@ export async function fetchWpPostContentLive(params: {
     await updateContentCache(new SupabaseService(), userId, resolvedPostId, fields);
     return fields;
   } catch (error) {
+    if (signal?.aborted) throw error;
     console.error('[WordPressContentSync] fetchWpPostContentLive error', error);
     return null;
   }
