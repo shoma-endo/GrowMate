@@ -7,7 +7,6 @@ import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
-import { gscNotificationService } from '@/server/services/gscNotificationService';
 import { hasPaidFeatureAccess } from '@/types/user';
 import { buildHomeToday, type HomeTodayInput } from '@/lib/home-today';
 import { TodayChecklist } from './_components/TodayChecklist';
@@ -29,7 +28,7 @@ async function settle<T>(label: string, promise: Promise<T>): Promise<Settled<T>
 }
 
 /**
- * マイホーム。「今日確認が必要なこと」だけを出す（docs/plans/home-today-spec.md）。
+ * マイホーム。連携の異常だけを出す（docs/plans/home-today-spec.md）。改善提案は toast が担う。
  * 連携状態の取得は /setup と同じ関数。Google Ads だけはトークン期限切れ時にリフレッシュ
  * （Google OAuth 呼び出し＋保存）が走る。それ以外は DB 読み取りのみ。
  */
@@ -49,13 +48,10 @@ export default async function HomePage() {
   const paid = hasPaidFeatureAccess(role);
   const input: HomeTodayInput = { role };
 
-  const [gscCredential, googleAds, instagram, unread] = await Promise.all([
+  const [gscCredential, googleAds, instagram] = await Promise.all([
     paid ? settle('GSC credential', supabaseService.getGscCredentialByUserId(authResult.userId)) : undefined,
     settle('Google Ads status', getGoogleAdsConnectionStatus()),
     canAccessInstagram(role) ? settle('Instagram status', getInstagramConnectionStatus()) : undefined,
-    paid
-      ? settle('unread suggestions', gscNotificationService.getUnreadSuggestionsAnnotationCount(authResult.userId))
-      : undefined,
   ]);
 
   if (gscCredential) {
@@ -73,9 +69,6 @@ export default async function HomePage() {
   }
   if (instagram) {
     input.instagram = instagram.ok && instagram.value.success && instagram.value.data ? instagram.value.data : null;
-  }
-  if (unread) {
-    input.unreadSuggestionCount = unread.ok ? unread.value : null;
   }
 
   return <TodayChecklist today={buildHomeToday(input)} canOpenSetup={paid} />;

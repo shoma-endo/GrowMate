@@ -1,5 +1,5 @@
 /**
- * マイホーム「今日の確認」の表示条件（`home-today`）
+ * マイホーム（連携の異常）の表示条件（`home-today`）
  *
  * 表示条件は遷移先の proxy.ts ゲート（/setup /analytics は paid/admin、
  * /setup/google-ads は認証のみ、Instagram は paid/admin）と一致していなければならない。
@@ -12,7 +12,6 @@ const allBroken: Omit<HomeTodayInput, 'role'> = {
   ga4: { connected: true, connectionStage: 'configured', needsReauth: true },
   googleAds: { connected: true, needsReauth: true },
   instagram: { connected: true, needsReauth: true },
-  unreadSuggestionCount: 3,
 };
 
 const allHealthy: Omit<HomeTodayInput, 'role'> = {
@@ -20,7 +19,6 @@ const allHealthy: Omit<HomeTodayInput, 'role'> = {
   ga4: { connected: true, connectionStage: 'configured', needsReauth: false },
   googleAds: { connected: true, needsReauth: false },
   instagram: { connected: true, needsReauth: false },
-  unreadSuggestionCount: 0,
 };
 
 const idsOf = (input: HomeTodayInput) => buildHomeToday(input).items.map(item => item.id);
@@ -33,7 +31,6 @@ describe('@/lib/home-today', () => {
         'ga4-reauth',
         'google-ads-reauth',
         'instagram-reauth',
-        'unread-suggestions',
       ]);
     });
 
@@ -41,7 +38,7 @@ describe('@/lib/home-today', () => {
       expect(idsOf({ role: 'trial', ...allBroken })).toEqual(['google-ads-reauth']);
     });
 
-    it('全連携が正常で未読 0 件なら空（空状態を出す）', () => {
+    it('全連携が正常なら空（空状態を出す）', () => {
       const result = buildHomeToday({ role: 'paid', ...allHealthy });
       expect(result.items).toEqual([]);
       expect(result.fetchFailed).toBe(false);
@@ -71,12 +68,6 @@ describe('@/lib/home-today', () => {
       expect(buildHomeToday({ role: 'paid', ...allHealthy, googleAds: { connected: false, needsReauth: false } }).hasUnlinked).toBe(true);
     });
 
-    it('改善提案は件数を見出しに含め、未読フィルタ付きの一覧へ飛ばす', () => {
-      const result = buildHomeToday({ role: 'paid', ...allHealthy, unreadSuggestionCount: 3 });
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]?.title).toBe('3 件のコンテンツに改善提案があります');
-      expect(result.items[0]?.cta.href).toBe('/analytics?unread_suggestion=1');
-    });
 
     it('paid でも Instagram の再連携は出る（canAccessInstagram は paid/admin）', () => {
       expect(
@@ -84,11 +75,6 @@ describe('@/lib/home-today', () => {
       ).toEqual(['instagram-reauth']);
     });
 
-    it('未読件数の取得失敗は fetchFailed にし、提案は出さない', () => {
-      const result = buildHomeToday({ role: 'paid', ...allHealthy, unreadSuggestionCount: null });
-      expect(result.fetchFailed).toBe(true);
-      expect(result.items).toEqual([]);
-    });
 
     it('trial で唯一取得する Google Ads の失敗も fetchFailed になる', () => {
       expect(buildHomeToday({ role: 'trial', googleAds: null }).fetchFailed).toBe(true);
@@ -99,10 +85,10 @@ describe('@/lib/home-today', () => {
         role: 'paid',
         ...allHealthy,
         gsc: null,
-        unreadSuggestionCount: 2,
+        googleAds: { connected: true, needsReauth: true },
       });
       expect(result.fetchFailed).toBe(true);
-      expect(result.items.map(item => item.id)).toEqual(['unread-suggestions']);
+      expect(result.items.map(item => item.id)).toEqual(['google-ads-reauth']);
     });
 
     it('役割上取得しないもの（undefined）は失敗扱いにしない', () => {

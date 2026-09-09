@@ -5,12 +5,13 @@ import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 
 /**
- * マイホーム（`/`）に出す「今日確認が必要なこと」の組み立て。
+ * マイホーム（`/`）に出す「連携の異常」の組み立て。
+ * 改善提案は toast（GscNotificationHandler）が全画面で担うのでここには置かない。
  * 表示条件は遷移先の proxy.ts ゲートと同じにする（docs/plans/home-today-spec.md HOME-02）。
  * 純粋関数にして役割 × 状態の組み合わせを単体テストで固定する。
  */
 
-export type HomeTodayItemKind = 'reauth' | 'setup' | 'suggestion';
+export type HomeTodayItemKind = 'reauth' | 'setup';
 
 interface HomeTodayItem {
   id: string;
@@ -27,7 +28,6 @@ export interface HomeTodayInput {
   ga4?: Ga4ConnectionStatus | null;
   googleAds?: { connected: boolean; needsReauth: boolean } | null;
   instagram?: InstagramConnectionStatus | null;
-  unreadSuggestionCount?: number | null;
 }
 
 export interface HomeToday {
@@ -52,7 +52,6 @@ export function buildHomeToday(input: HomeTodayInput): HomeToday {
   const ga4 = track(input.ga4);
   const googleAds = track(input.googleAds);
   const instagram = track(input.instagram);
-  const unread = track(input.unreadSuggestionCount);
 
   // 異常（放置するとデータが止まる）を先に置く
   if (paid && gsc?.connected && gsc.needsReauth) {
@@ -99,17 +98,6 @@ export function buildHomeToday(input: HomeTodayInput): HomeToday {
       title: 'Instagram の再連携が必要です',
       description: '投稿データの取得が止まっています。',
       cta: { label: '再連携する', href: '/setup/instagram' },
-    });
-  }
-
-  if (paid && unread !== undefined && unread > 0) {
-    items.push({
-      id: 'unread-suggestions',
-      kind: 'suggestion',
-      // 件数は記事数（toast「N件のコンテンツに改善提案があります」と同じ取得元）
-      title: `${unread} 件のコンテンツに改善提案があります`,
-      description: 'AI が記事の改善案を用意しました。',
-      cta: { label: '提案を確認する', href: '/analytics?unread_suggestion=1' },
     });
   }
 

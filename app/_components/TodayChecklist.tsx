@@ -1,14 +1,14 @@
 import Link from 'next/link';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { CircleCheck, Bell, MessageCircle, Settings2, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { CircleCheck, Settings2, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import type { HomeToday, HomeTodayItemKind } from '@/lib/home-today';
 import { cn } from '@/lib/utils';
 
 /**
- * マイホームの本文。出すのは「今日確認が必要なこと」と「次の一歩」だけで、
- * 機能一覧（サイドバーの複製）は置かない（docs/plans/home-today-spec.md HOME-01）。
+ * マイホームの本文。出すのは連携の異常だけで、機能一覧（サイドバーの複製）や
+ * toast と重複する改善提案は置かない（docs/plans/home-today-spec.md HOME-01）。
  */
 interface TodayChecklistProps {
   today: HomeToday;
@@ -19,7 +19,6 @@ interface TodayChecklistProps {
 const KIND_ICON: Record<HomeTodayItemKind, LucideIcon> = {
   reauth: TriangleAlert,
   setup: Settings2,
-  suggestion: Bell,
 };
 
 interface TodayCardProps {
@@ -66,10 +65,7 @@ function TodayCard({ icon: Icon, title, description, cta, tone = 'default' }: To
 export function TodayChecklist({ today, canOpenSetup }: TodayChecklistProps) {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 space-y-4">
-      <div className="space-y-1">
-        <h1 className="text-3xl font-bold">マイホーム</h1>
-        <p className="text-sm text-muted-foreground">今日確認が必要なことだけをまとめています。</p>
-      </div>
+      <h1 className="text-3xl font-bold">マイホーム</h1>
 
       {today.fetchFailed && (
         <p
@@ -114,13 +110,6 @@ export function TodayChecklist({ today, canOpenSetup }: TodayChecklistProps) {
           />
         ))
       )}
-
-      <TodayCard
-        icon={MessageCircle}
-        title="新しく相談する"
-        description="広告や記事の相談を AI と始めます。"
-        cta={{ label: '新規チャットを開始', href: '/chat' }}
-      />
     </div>
   );
 }
