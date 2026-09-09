@@ -363,19 +363,58 @@ def _spec_outline(md: str) -> list[tuple[str, int, int]]:
     return out
 
 
-def _collect_refs(node: object, out: list[dict]) -> None:
-    """core.yaml の任意の深さにある source_refs を集める。"""
+def _collect_refs(node: object, out: list[dict], owner: str | None = None) -> None:
+    """core.yaml の任意の深さにある source_refs を、持ち主の id 付きで集める。
+
+    持ち主（`_owner`）は「id と source_refs を両方持つ dict」の id。concept がこれに当たる。
+    トップレベルの source_refs は持ち主が無いので None のままになる。
+    参照が「どの concept の根拠か」を捨てると、原本が改訂されたときに直すべき concept を
+    名指しできず、バンドル単位の「01〜03 が古いかもしれない」までしか言えなくなる。
+    """
     if isinstance(node, dict):
         refs = node.get("source_refs")
+        here = node.get("id") if isinstance(node.get("id"), str) and isinstance(refs, list) else None
+        owner = here or owner
         if isinstance(refs, list):
             for r in refs:
                 if isinstance(r, dict):
-                    out.append(r)
-        for v in node.values():
-            _collect_refs(v, out)
+                    out.append({**r, "_owner": owner})
+        for k, v in node.items():
+            if k != "source_refs":
+                _collect_refs(v, out, owner)
     elif isinstance(node, list):
         for v in node:
-            _collect_refs(v, out)
+            _collect_refs(v, out, owner)
+
+
+def _concept_index(doc: object) -> tuple[dict[str, str], list[dict]]:
+    """core.yaml から concept の id→ラベルと relations を取り出す。"""
+    labels: dict[str, str] = {}
+    rels: list[dict] = []
+    if isinstance(doc, dict):
+        for c in doc.get("concepts") or []:
+            if isinstance(c, dict) and isinstance(c.get("id"), str):
+                labels[c["id"]] = str(c.get("label") or c.get("summary") or "")[:48]
+        for r in doc.get("relations") or []:
+            if isinstance(r, dict) and isinstance(r.get("from"), str) and isinstance(r.get("to"), str):
+                rels.append(r)
+    return labels, rels
+
+
+def _one_hop(seeds: set[str], rels: list[dict]) -> dict[str, str]:
+    """直接古くなった concept から、relations を1ホップ辿って波及先を出す。
+
+    戻り値は 波及先id → 「どの concept から どの関係で 届いたか」の説明。
+    2ホップ以上は追わない（辿るほど当たりが増えて、結局全部を読み直すことになる）。
+    """
+    out: dict[str, str] = {}
+    for r in rels:
+        a, b, t = r["from"], r["to"], str(r.get("type") or "related")
+        if a in seeds and b not in seeds and b not in out:
+            out[b] = f"{a} --{t}--> {b}"
+        elif b in seeds and a not in seeds and a not in out:
+            out[a] = f"{a} --{t}--> {b}"
+    return out
 
 
 def _load_snapshot(path: Path) -> dict:
@@ -430,6 +469,8 @@ def integrity(spec_path: Path, bundle: Path) -> tuple[list[dict], dict, dict]:
     core_path = bundle / "core.yaml"
     refs: list[dict] = []
     snap_refs: dict = {}
+    concept_labels: dict[str, str] = {}
+    relations: list[dict] = []
 
     if not core_path.is_file():
         add("info", f"{core_path} が無いため参照突合をスキップした")
@@ -437,17 +478,25 @@ def integrity(spec_path: Path, bundle: Path) -> tuple[list[dict], dict, dict]:
         add("info", "PyYAML が無いため core.yaml の参照突合をスキップした", "pip install pyyaml")
     else:
         try:
-            _collect_refs(yaml.safe_load(core_path.read_text(encoding="utf-8")), refs)
+            core_doc = yaml.safe_load(core_path.read_text(encoding="utf-8"))
+            _collect_refs(core_doc, refs)
+            concept_labels, relations = _concept_index(core_doc)
         except yaml.YAMLError as exc:  # type: ignore[union-attr]
             add("fail", f"core.yaml をパースできない: {exc}")
 
     # 行番号が全体的にズレると参照は一斉に壊れる。1件ずつ並べると本当に見るべき
     # 「指す章が変わった」が埋もれるので、同じ診断はまとめて1行にする。
     changed_sids = {d["id"] for d in diff["changed"]}
+    # 最初の ## より前（前文）は sections に入らないので、前文の改訂は diff に出ない。
+    # 前文より上に行は無く「上流がズレて押された」があり得ないため、前文に掛かる参照の
+    # 内容が変わったなら行番号ズレではなく本当の改訂として扱う。
+    first_sec = outline[0][1] if outline else 1
     covered_sids: set[str] = set()
     moved: list[str] = []    # 指す章そのものが変わった（決定的なズレ）
     shifted: list[str] = []  # 章は改訂されていないのに参照先本文が変わった（行番号ズレ）
     revised: list[str] = []  # 章自体が改訂された（ビューの記述が古い可能性）
+    # 原本の改訂が直接効く concept。shifted は行番号だけの問題（本文は同じ）なので入れない。
+    stale: set[str] = set()
 
     for ref in refs:
         rid = str(ref.get("id") or "?")
@@ -480,8 +529,15 @@ def integrity(spec_path: Path, bundle: Path) -> tuple[list[dict], dict, dict]:
                     f"参照 {rid} の指す章が変わった: 「{old.get('heading')}」→「{heading}」",
                     "core.yaml の source_refs を貼り直す", goto)
                 moved.append(rid)
+                if ref.get("_owner"):
+                    stale.add(str(ref["_owner"]))
             elif old.get("hash") != cur_hash:
-                (revised if goto in changed_sids else shifted).append(rid)
+                if goto in changed_sids or start < first_sec:
+                    revised.append(rid)
+                    if ref.get("_owner"):
+                        stale.add(str(ref["_owner"]))
+                else:
+                    shifted.append(rid)
         elif len(hit) > 1:
             # 前回比が取れない初回のみ、範囲が章をまたぐこと自体を疑う
             add("warn",
@@ -501,6 +557,34 @@ def integrity(spec_path: Path, bundle: Path) -> tuple[list[dict], dict, dict]:
         add("warn",
             f"参照先の章が改訂された参照が {len(revised)} 件: {_ids(revised)}",
             "これらを根拠にした再構成ビューの記述が古い可能性がある")
+
+    # ── 原本の改訂 → 根拠にしている concept → relations を1ホップ ──────────────
+    # 「01〜03 が古いかもしれない」というバンドル単位の警告では、どこを直せばいいか分からない。
+    # source_refs は持ち主の concept を知っているので、直すべき concept を名指しする。
+    # さらに depends_on / blocks / affects を1ホップ辿り、直接は改訂されていないが
+    # 前提が動いたことで古くなりうる concept も出す（こちらは info。断定しない）。
+    def _concepts(ids: list[str]) -> str:
+        out = []
+        for cid in ids[:6]:
+            label = concept_labels.get(cid)
+            out.append(f"{cid}「{label}」" if label else cid)
+        return " / ".join(out) + (f" …他 {len(ids) - 6} 件" if len(ids) > 6 else "")
+
+    if stale:
+        direct = sorted(stale)
+        add("warn",
+            f"原本の改訂が直接効く concept が {len(direct)} 件: {_concepts(direct)}",
+            "更新モードでこの concept の summary / detail を見直す（id は変えない）")
+        findings[-1]["concepts"] = direct
+
+        hop = _one_hop(stale, relations)
+        if hop:
+            paths = sorted(hop.items())
+            add("info",
+                f"1ホップで波及しうる concept が {len(paths)} 件: "
+                + _concepts([cid for cid, _ in paths]),
+                "経路: " + " / ".join(via for _, via in paths[:6])
+                + "。直接改訂されてはいないが、前提が動いたぶん記述が古い可能性がある")
 
     # ── どの参照にも触れられていない章 ──
     if refs:
@@ -1745,8 +1829,11 @@ def refresh(specs: list[Path], check_only: bool) -> int:
         # 参照のズレ ＝ core.yaml が仕様書に追いついていない ＝ 01〜03 の記述も古い可能性。
         drift = [f for f in findings if f["level"] in ("fail", "warn")]
         if drift:
+            named = [c for f in findings for c in f.get("concepts") or []]
+            where = ("直すべき concept: " + " / ".join(named) + "。"
+                     if named else "")
             print(f"spec-html.py: 再構成ビュー（01〜03）が陳腐化している可能性がある。"
-                  f"整合性チェックが {len(drift)} 件の fail/warn を出した（上記）。"
+                  f"整合性チェックが {len(drift)} 件の fail/warn を出した（上記）。{where}"
                   f"`.agents/skills/spec-to-html/SKILL.md` に従って core.yaml の source_refs を貼り直すこと")
 
     if failed:
