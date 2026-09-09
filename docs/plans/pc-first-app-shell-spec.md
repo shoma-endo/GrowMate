@@ -17,11 +17,12 @@
 
 - 共通ナビが画面下部固定の 3 項目（`src/components/Footer.tsx`、本実装で削除）で、モバイル前提の設計だった。利用者の 9 割は PC で、PC では下部固定バーが視線から遠く、設定・コンテンツ一覧・Google Ads 分析へはマイホームのカード経由でしか到達できなかった。
 - chat 画面はヘッダーが `fixed` でビューポート全幅を占め、ルート高が実体の無い旧補正（`calc(100vh-3rem)`）のままで、入力欄の下端がフッターの下に隠れていた。
+- `AuthProvider` がパス変更ごとのユーザー再取得中に子要素を全置換していたため、認証必須画面間の遷移でも共通サイドバーが消えて再表示されていた。
 
 ### 目的
 
 - 共通ナビを左サイドバーへ移し、全画面から主要機能へ 1 クリックで移動できる状態にする。
-- ナビ項目の定義を 1 か所（`src/lib/app-nav.ts`）に集約し、役割による出し分けをサーバー側ゲート（`proxy.ts`）と同じ条件に揃える。
+- ナビ項目の定義を 1 か所（`src/lib/app-nav.ts`）に集約し、役割による出し分けをサーバー側ゲート（`proxy.ts`）と同じ条件に揃える。パス別のロール判定は `src/lib/role-access.ts` をクライアントとサーバーで共有する。
 
 ### 成功指標
 
@@ -112,6 +113,26 @@ Feature: アプリ共通ナビ
     When 「メニューを広げる」を押す
     Then サイドバーは 240px に戻る
 
+  Scenario: 認証必須画面間の遷移
+    Given 認証済みユーザーがサイドバーのある画面を開いている
+    When サイドバーから別の認証必須画面へ遷移する
+    Then サイドバーは消えず操作可能なまま維持される
+    And 事前取得済みなら本文領域だけがルートの読み込み状態へ切り替わる
+    And 事前取得が間に合わなければ旧本文が一時的に残る
+    And 遷移先の認証再検証中も本文領域だけに読み込み状態が表示される
+
+  Scenario: 公開画面間の遷移
+    Given "/home" を開いている
+    When "/privacy" へ遷移する
+    Then ルートの読み込み状態が表示されてもサイドバー・上部バーは表示されない
+
+  Scenario: 認証再検証が一時的に失敗する
+    Given 認証済みユーザーがサイドバーのある画面を開いている
+    When 別の認証必須画面へ遷移後、ユーザー情報の再取得が通信エラーまたは 5xx で失敗する
+    Then サイドバーは維持される
+    And 未検証の本文は表示されない
+    And 本文領域に再試行できるエラーが表示される
+
   Scenario: モバイル幅のドロワー
     Given 幅 1024px 未満で "/chat" を開く
     Then 下部固定バーは無く、上部バーの「メニューを開く」ボタンでドロワーが開く
@@ -193,7 +214,9 @@ lg 未満: 上部バー（`h-14`、「メニューを開く」ボタン＋ブラ
 | --- | --- |
 | `src/lib/app-nav.ts` | 項目定義（`group` 付き）・グループ定義・`getVisibleNavItems`・`getVisibleNavGroups`・`isNavItemActive`（純粋ロジック） |
 | `src/components/AppShell.tsx` | サイドバー（折りたたみ・グループ・ツールチップ） / 上部バー / ドロワー / ユーザーブロック。CSS ブレークポイント（`lg`）で出し分け。折りたたみ状態は `useSidebarCollapsed`（localStorage、AuthProvider がロード中は children を描画しないので初期値で読んで hydration 安全） |
-| `src/components/AuthProvider.tsx` | `showAppNav`（旧 `showFooter` と同条件）で `AppShell` を描画 |
+| `src/components/AuthProvider.tsx` | `showAppNav`（旧 `showFooter` と同条件）で `AppShell` を描画。認証必須画面を全置換するローディングは初回認証確認だけとし、パス変更時は検証済みパスとの差分から本文だけをローディングへ切り替える。再取得後にロール不足なら本文を戻さず退避 |
+| `src/components/PageLoadingSkeleton.tsx` / `app/loading.tsx` | 共通の本文ローディング UI。`loading.tsx` はルートセグメント配下（nested layout と page を含む）の Suspense fallback として公開・認証必須の両方へ適用。`AuthProvider` も認証再検証中に同じ UI を使う |
+| `src/lib/role-access.ts` / `proxy.ts` | パス別のロール不足時の退避先を純粋関数へ集約。サーバー認可を正本としつつ、クライアントキャッシュから復元した権限外本文も `AuthProvider` が表示前に隠す |
 | `app/admin/layout.tsx` | 独自トップバーを撤去。`bg-gray-50` と container のみ |
 | `app/chat/components/*` | ヘッダーを `fixed` → `absolute`、ルートを `relative` ＋ `h-[calc(100dvh-3.5rem)] lg:h-dvh`。Canvas / Annotation の `sticky` 見出しをフロー内 `pt-16` へ。セッション一覧は 1280px 未満で既定折りたたみ（折りたたみレールは `History` アイコン＋「チャット履歴を開く」）。`ChatLayoutContent` の `SheetTrigger`（旧 fixed ヘッダーの下に `absolute top-2 left-2 z-10` で置かれ押せなかった）を削除。開閉は `InputArea` の「チャット履歴を開く」ボタンが担う |
 | `app/business-info/page.tsx` / `app/globals.css` | フッター補正 `pb-24` と未使用の `.footer-tab-active` を削除 |
@@ -204,6 +227,9 @@ lg 未満: 上部バー（`h-14`、「メニューを開く」ボタン＋ブラ
 ### 設計判断
 
 - **出し分けは CSS ブレークポイント**: `useMobile` は初回 width 0 で描画が跳ねるため使わない。chat 固有の `isMobile`（768px）はそのまま。768〜1023px はシェルが上部バー、chat は PC 版セッション一覧を出す。
+- **遷移中もシェルを維持**: `AuthProvider` のユーザー再取得はロール変更を画面遷移時に反映するため継続する。一方、Context の `isLoading` と保護画面全体のローディングは初回認証確認に限定する。事前取得済みなら Next.js の root `loading.tsx` がルートセグメント配下の children subtree（nested layout と page）を Suspense fallback に差し替え、事前取得が間に合わない低速回線では旧本文が一時的に残る。新ルートの確定後も認証再検証が残っていれば `AuthProvider` が同じ本文ローディングを継続する。いずれも root layout 内の `AppShell` はアンマウントしない。root fallback は公開画面にも適用されるが、公開パスでは `showAppNav=false` のためナビは出さない。
+- **キャッシュ復元時の再認可**: サーバー認可は `proxy.ts` が担う。Back などでキャッシュ済みの画面が復元された場合は、`AuthProvider` がパス変更を検知した時点で本文をローディングへ退避し、`/api/user/current` の最新ロールを `src/lib/role-access.ts` で再判定する。権限が不足していれば本文を再表示せず `/unauthorized` または `/unavailable` へ移す。
+- **再検証失敗時は fail-closed**: `/api/user/current` の 5xx と通信失敗は未認証と区別する。現在パスを検証済みにせず本文を閉じたまま、シェル内に再試行 UI を表示する。初回確認で失敗しユーザー情報が無い場合はシェルも表示しない。明示的にユーザー無しの正常応答だけをセッション失効として `/login` へ移す。
 - **z-index**: `<main>` に `isolate` を付け、ページ内の z-index（chat ヘッダー 50、分析テーブルの sticky セル 30/40/60）をシェルのクロームより下に閉じ込める。上部バー 40、サイドバー 30、Sheet/Dialog は body ポータルの 50。
 - **折りたたみの参考**: muz.li の Dashboard Inspiration（2026-09-09 にユーザー指定）に多い「アイコンレール＋ツールチップ＋ヘッダーのトグル＋グループ見出し＋左アクセントのアクティブ表示」を、既存トークンと primitives（Tooltip / Avatar / Button）だけで再現。新しい色・フォントは入れない。
 - **グループ分けは据え置き（2026-09-09 レビュー）**: 「メイン」は寄せ集めに近い名前、paid では「管理」が「設定」1 項目になるが、7 項目・3 グループは見出しが効く最小サイズで許容。事業者情報は本来「AI に読ませる設定」に近く、将来「管理」へ移す余地がある（今は初回導線として上に置く）。先頭グループを無見出しにする案は採らない。
@@ -212,15 +238,15 @@ lg 未満: 上部バー（`h-14`、「メニューを開く」ボタン＋ブラ
 
 ## 8. 非機能・セキュリティ
 
-- 認可はサーバー側（`proxy.ts`）が担う。ナビの非表示は補助であり、直接 URL を開いた場合の拒否は既存どおり。
+- 認可はサーバー側（`proxy.ts`）が担う。ナビの非表示と `AuthProvider` の再判定はキャッシュ復元時の表示を守る補助であり、直接 URL を開いた場合の拒否は既存どおり。判定条件は `src/lib/role-access.ts` を共有する。
 - 新規依存なし。
 
 ## 9. 検証
 
 - `npm run verify`（lint / test / build / knip）、`npm run verify:ui-text`
-- 単体: `tests/unit/lib/app-nav.test.ts`（役割別の項目数・アクティブ判定・境界）
-- 手動（実装時、admin）: 1440px で折りたたみ（64px、ツールチップ、遷移・リロード後の復元、`/chat` ヘッダー追従、`/analytics` 横スクロール無し）と展開復帰。1600px で `/` `/analytics` `/chat`、800px で `/chat`（上部バー・ドロワー開閉→遷移・Canvas 見出し位置）、`/admin` `/business-info` `/privacy`。
-- 未検証: 768px 未満（chat の履歴ボタン `History` アイコン）、trial / paid での出し分けの実画面（単体テストのみ）、ログアウトの実クリック（セッションを切るため。コード経路は `logout()` 1 本に統一済み）。
+- 単体: `tests/unit/lib/app-nav.test.ts`（役割別の項目数・アクティブ判定・境界）、`tests/unit/lib/role-access.test.ts`（パス別のロール不足時の退避先と Google Ads 例外）
+- 手動（実装時、admin）: 1440px で折りたたみ（64px、ツールチップ、認証必須画面間の遷移中もサイドバーが消えず、遷移後の本文だけが更新されること、リロード後の復元、`/chat` ヘッダー追従、`/analytics` 横スクロール無し）と展開復帰。3G 制限下の `/analytics` → `/admin` では、クリック時点で事前取得が未完了だった実行において旧本文と共通ナビを維持し、完了後に本文だけが更新されることを確認。1600px で `/` `/analytics` `/chat`、800px で `/chat`（上部バー・ドロワー開閉→遷移・Canvas 見出し位置）、`/admin` `/business-info` `/privacy`。
+- 未検証: 事前取得済み遷移で本文だけがスケルトンへ切り替わる瞬間、認証再検証の通信失敗・5xxからの再試行、`/home` → `/privacy` の root fallback 中にナビが出ないこと、768px 未満（chat の履歴ボタン `History` アイコン）、trial / paid での出し分けの実画面（単体テストのみ）、セッション失効と実ロール変更、ログアウトの実クリック（セッションを切るため。コード経路は `logout()` 1 本に統一済み）。
 - レビュー: growmate-ui-ux 観点と quality-gate 2 パスをサブエージェントで実施し、🔴🟡 を反映済み（2026-09-09）。
 
 ## 10. リスク・未決定事項

@@ -85,7 +85,7 @@ const ChatClient: React.FC<ChatClientProps> = ({ initialSessionId, initialStep }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSessionId, isLoggedIn, authLoading, user]);
 
-  // 認証状態読み込み中は AuthProvider がローディング UI を担当するため、ここでは何も表示しない
+  // 初回の認証確認中は AuthProvider がローディング UI を担当するため、ここでは何も表示しない
   if (authLoading) {
     return null;
   }

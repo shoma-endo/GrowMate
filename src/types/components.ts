@@ -13,6 +13,7 @@ import type { Ga4ConnectionStatus } from './ga4';
  */
 export interface AuthContextType {
   isLoggedIn: boolean;
+  /** 初回の認証確認中だけ true。パス変更時の再検証は AppShell 内の本文ローディングで扱う。 */
   isLoading: boolean;
   /** legacy: 常に null */
   profile: null;

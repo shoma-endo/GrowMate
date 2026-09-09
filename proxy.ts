@@ -1,21 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { isAdmin, isUnavailable } from '@/authUtils';
 import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
+import type { UserRole } from '@/types/user';
+import { getRoleAccessRedirectPath } from '@/lib/role-access';
 import { updateSupabaseSession } from '@/lib/supabase/middleware';
 import { INSTAGRAM_CDN_HOSTS } from '@/lib/constants';
-
-const ADMIN_REQUIRED_PATHS = ['/admin'] as const;
-// '/ga4-dashboard' は本PRでGA4コンテンツ評価のメディア別スコアを載せた有料機能の画面だが、
-// このリストに無かったため trial でも画面枠までは到達していた（データは Server Action の
-// canAccessGa4 が弾くので漏洩は無いが、/unauthorized へ飛ばず「利用できません」の
-// ダッシュボードに留まる）。'/analytics' と同じ扱いに揃える。
-const PAID_FEATURE_REQUIRED_PATHS = ['/analytics', '/ga4-dashboard'] as const;
-const SETUP_PATHS = ['/setup'] as const;
-
-const GOOGLE_ADS_PATHS = ['/setup/google-ads', '/google-ads-dashboard'] as const;
 
 // 認証不要なパスの定義
 // '/review-login' は Meta App Review のレビュアー専用ログイン経路。
@@ -170,19 +160,9 @@ async function handleMiddleware(request: NextRequest, nonce: string, cspHeader: 
       return redirect(new URL('/login', request.url));
     }
 
-    if (isUnavailable(emailRole)) {
-      if (pathname === '/unavailable') return supabaseResponse;
-      return redirect(new URL('/unavailable', request.url));
-    }
-
-    if (requiresSetupAccess(pathname) && !hasSetupAccess(emailRole)) {
-      return redirect(new URL('/unauthorized', request.url));
-    }
-    if (requiresPaidFeatureAccess(pathname) && !hasPaidFeatureAccess(emailRole)) {
-      return redirect(new URL('/unauthorized', request.url));
-    }
-    if (requiresAdminAccess(pathname) && !isAdmin(emailRole)) {
-      return redirect(new URL('/unauthorized', request.url));
+    const roleRedirectPath = getRoleAccessRedirectPath(pathname, emailRole);
+    if (roleRedirectPath) {
+      return redirect(new URL(roleRedirectPath, request.url));
     }
     supabaseResponse.headers.set('x-user-role', emailRole);
 
@@ -210,26 +190,6 @@ function isPublicPath(pathname: string): boolean {
     if (path === '/') return pathname === '/';
     return pathname === path || pathname.startsWith(path + '/');
   });
-}
-
-function requiresAdminAccess(pathname: string): boolean {
-  return ADMIN_REQUIRED_PATHS.some(path => pathname.startsWith(path));
-}
-
-function requiresPaidFeatureAccess(pathname: string): boolean {
-  return PAID_FEATURE_REQUIRED_PATHS.some(path => pathname.startsWith(path));
-}
-
-function requiresSetupAccess(pathname: string): boolean {
-  return SETUP_PATHS.some(path => pathname.startsWith(path)) && !requiresGoogleAdsAccess(pathname);
-}
-
-function hasSetupAccess(role: UserRole | null): boolean {
-  return hasPaidFeatureAccess(role);
-}
-
-function requiresGoogleAdsAccess(pathname: string): boolean {
-  return GOOGLE_ADS_PATHS.some(path => pathname.startsWith(path));
 }
 
 type EmailUserAccess = {
