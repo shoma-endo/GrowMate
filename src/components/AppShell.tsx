@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { toast } from 'sonner';
-import { LogOut, Menu, PanelLeftClose, PanelLeftOpen, Sprout } from 'lucide-react';
+import { LogOut, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { useAuth } from '@/components/AuthProvider';
 import { Avatar } from '@/components/ui/avatar';
@@ -69,21 +69,14 @@ function useSidebarCollapsed(): [boolean, () => void] {
   return [collapsed, () => setCollapsed(value => !value)];
 }
 
-function BrandMark({ collapsed = false, onClick }: { collapsed?: boolean; onClick?: () => void }) {
+function BrandLink({ onClick }: { onClick?: () => void }) {
   return (
     <Link
       href="/"
       {...(onClick ? { onClick } : {})}
-      aria-label={collapsed ? BRAND_LABEL : undefined}
-      className={cn(
-        'flex items-center gap-2 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50',
-        collapsed && 'justify-center'
-      )}
+      className="truncate rounded-md text-lg font-bold outline-none focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50"
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-        <Sprout className="h-4 w-4" />
-      </span>
-      {!collapsed && <span className="truncate text-base font-bold">{BRAND_LABEL}</span>}
+      {BRAND_LABEL}
     </Link>
   );
 }
@@ -102,13 +95,14 @@ function AppSidebar() {
         collapsed ? 'w-16' : 'w-60'
       )}
     >
+      {/* 折りたたみ時はブランド名を出さずトグルだけを中央に置く */}
       <div
         className={cn(
-          'flex shrink-0 items-center border-b border-sidebar-border',
-          collapsed ? 'flex-col gap-1 py-2' : 'h-14 justify-between px-3'
+          'flex h-14 shrink-0 items-center border-b border-sidebar-border',
+          collapsed ? 'justify-center' : 'justify-between px-3'
         )}
       >
-        <BrandMark collapsed={collapsed} />
+        {!collapsed && <BrandLink />}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -149,13 +143,13 @@ function AppMobileTopBar() {
         >
           <SheetTitle className="sr-only">メインメニュー</SheetTitle>
           <div className="flex h-14 shrink-0 items-center px-3 border-b border-sidebar-border">
-            <BrandMark onClick={() => setOpen(false)} />
+            <BrandLink onClick={() => setOpen(false)} />
           </div>
           <AppNavList onNavigate={() => setOpen(false)} />
           <AppUserBlock />
         </SheetContent>
       </Sheet>
-      <BrandMark />
+      <BrandLink />
     </header>
   );
 }

@@ -137,8 +137,8 @@ PC（lg 以上）:
 ```text
 展開（240px）                       折りたたみ（64px）
 ┌────────────────┬──────────────┐  ┌────┬──────────────┐
-│ [芽] GrowMate  ⊏│              │  │[芽]│              │
-│────────────────│  本文         │  │ ⊐  │  本文         │
+│ GrowMate      ⊏│              │  │ ⊐  │              │
+│────────────────│  本文         │  │────│  本文         │
 │ メイン          │  (main,      │  │────│              │
 │ ▏⌂ マイホーム    │   flex-1     │  │ ⌂ │ ← hover で    │
 │  ▤ 事業者情報   │   min-w-0)   │  │ ▤ │   ツールチップ │
@@ -155,7 +155,7 @@ PC（lg 以上）:
   sticky top-0 h-dvh                └────┴──────────────┘
 ```
 
-- ヘッダー: ブランドマーク（lucide `Sprout` を `bg-sidebar-primary` の角丸に載せる）＋「GrowMate」、右端に折りたたみトグル（`PanelLeftClose` / `PanelLeftOpen`、`aria-expanded`、ツールチップ「メニューを折りたたむ／広げる」）。
+- ヘッダー: 「GrowMate」（`/` へのリンク。アイコンやロゴマークは付けない。2026-09-09 にユーザー指示で撤去）、右端に折りたたみトグル（`PanelLeftClose` / `PanelLeftOpen`、`aria-expanded`、ツールチップ「メニューを折りたたむ／広げる」）。折りたたみ時はブランド名を出さずトグルだけ。
 - グループ見出し「メイン」「分析」「管理」（`text-[11px] uppercase tracking-wider`、`text-sidebar-foreground/50`）。折りたたみ時は見出しの代わりに区切り線。
 - アクティブ項目: `bg-sidebar-accent` ＋ `font-semibold` ＋ 左端 2px のアクセントバー（`bg-sidebar-primary`）。折りたたみ時はバー無し。
 - 折りたたみ時の各項目: アイコンのみ＋ `aria-label` ＋右側ツールチップ（既存 `tooltip.tsx`）。
