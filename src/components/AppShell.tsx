@@ -260,6 +260,28 @@ function AppUserBlock({ collapsed = false }: { collapsed?: boolean }) {
     </Avatar>
   );
 
+  // アカウント情報カード（旧マイホーム）の代替。メールアドレスはツールチップ（PC）と title に出す。
+  // トリガーは名前付きの button にし、Tab で止まったときに読み上げ対象になるようにする
+  const identityTrigger = (
+    <button
+      type="button"
+      aria-label="アカウント情報"
+      {...(user.email ? { title: user.email } : {})}
+      className="flex size-9 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50"
+    >
+      {avatar}
+    </button>
+  );
+
+  const identityTooltip = (
+    <div className="space-y-0.5">
+      <p>
+        {displayName}（{roleName}）
+      </p>
+      {user.email && <p className="text-primary-foreground/80">{user.email}</p>}
+    </div>
+  );
+
   const logoutButton = (
     <Button
       variant="ghost"
@@ -277,14 +299,8 @@ function AppUserBlock({ collapsed = false }: { collapsed?: boolean }) {
     return (
       <div className="flex shrink-0 flex-col items-center gap-1 border-t border-sidebar-border py-2">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="flex size-9 items-center justify-center" tabIndex={0}>
-              {avatar}
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            {displayName}（{roleName}）
-          </TooltipContent>
+          <TooltipTrigger asChild>{identityTrigger}</TooltipTrigger>
+          <TooltipContent side="right">{identityTooltip}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>{logoutButton}</TooltipTrigger>
@@ -296,7 +312,10 @@ function AppUserBlock({ collapsed = false }: { collapsed?: boolean }) {
 
   return (
     <div className="flex shrink-0 items-center gap-2 border-t border-sidebar-border px-3 py-3">
-      {avatar}
+      <Tooltip>
+        <TooltipTrigger asChild>{identityTrigger}</TooltipTrigger>
+        <TooltipContent side="top">{identityTooltip}</TooltipContent>
+      </Tooltip>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{displayName}</p>
         <p className="truncate text-xs text-sidebar-foreground/70">{roleName}</p>

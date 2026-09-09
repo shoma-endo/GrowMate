@@ -74,7 +74,7 @@ lg 未満: 上部バー（56px、メニューボタン）→ 左ドロワー（�
 ### Non-goals
 
 - サイドバーの幅ドラッグ: 折りたたみ（240px ⇔ 64px のアイコンレール）で足りる。折りたたみ状態は localStorage に持つ（`APP_SHELL_STORAGE_KEYS.SIDEBAR_COLLAPSED`）が、幅の自由変更は作らない。
-- マイホーム（`/`）のカード・アカウント情報カード・見出し「GrowMate」の再設計: サイドバー（ナビ項目・ブランド・ログアウト）と重複するが、まずナビ移動を先行させる。次段で扱う。
+- マイホーム（`/`）のカード・アカウント情報カード・見出し「GrowMate」の再設計: サイドバー（ナビ項目・ブランド・ログアウト）と重複するが、まずナビ移動を先行させる。→ [`home-today-spec.md`](home-today-spec.md) で実施（2026-09-09）。
 - shadcn `sidebar.tsx` の導入: 依存追加（separator / collapsible）と未使用 export が増え、knip に弾かれる。既存 primitives（`sheet` / `button`）で足りる。
 - ダークモード切替 UI: `--sidebar-*` トークンはダーク定義済みだが、切替 UI 自体が未導入。
 - `/admin` 配下（users / prompts）のサイドバー掲載: 管理者ダッシュボードのカードから到達できる。
