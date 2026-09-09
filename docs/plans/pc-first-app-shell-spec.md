@@ -74,7 +74,7 @@ lg 未満: 上部バー（56px、メニューボタン）→ 左ドロワー（�
 ### Non-goals
 
 - サイドバーの折りたたみ・幅ドラッグ・幅の永続化: MVP では固定幅で足りる。
-- マイホーム（`/`）のカード再設計: サイドバーと重複するが、まずナビ移動を先行させる。次段で扱う。
+- マイホーム（`/`）のカード・アカウント情報カード・見出し「GrowMate」の再設計: サイドバー（ナビ項目・ブランド・ログアウト）と重複するが、まずナビ移動を先行させる。次段で扱う。
 - shadcn `sidebar.tsx` の導入: 依存追加（separator / collapsible）と未使用 export が増え、knip に弾かれる。既存 primitives（`sheet` / `button`）で足りる。
 - ダークモード切替 UI: `--sidebar-*` トークンはダーク定義済みだが、切替 UI 自体が未導入。
 - `/admin` 配下（users / prompts）のサイドバー掲載: 管理者ダッシュボードのカードから到達できる。
@@ -105,7 +105,7 @@ Feature: アプリ共通ナビ
 
   Scenario: モバイル幅のドロワー
     Given 幅 1024px 未満で "/chat" を開く
-    Then 下部固定バーは無く、上部バーの「メニュー」でドロワーが開く
+    Then 下部固定バーは無く、上部バーの「メニューを開く」ボタンでドロワーが開く
     When ドロワーの「設定」を押す
     Then "/setup" へ遷移しドロワーが閉じる
 
@@ -142,7 +142,7 @@ PC（lg 以上）:
   w-60 sticky top-0 h-screen
 ```
 
-lg 未満: 上部バー（`h-14`、メニューボタン＋ブランド）→ `Sheet side="left"`（240px）に同じナビ＋ユーザーブロック。
+lg 未満: 上部バー（`h-14`、「メニューを開く」ボタン＋ブランド）→ `Sheet side="left"`（240px、タイトル「メインメニュー」）に同じナビ＋ユーザーブロック。ドロワー内のナビ項目は 44px のタッチターゲット（`py-3`）。
 
 ### ナビ項目（正本: `src/lib/app-nav.ts`）
 
@@ -166,12 +166,17 @@ lg 未満: 上部バー（`h-14`、メニューボタン＋ブランド）→ `S
 | `src/components/AppShell.tsx` | サイドバー / 上部バー / ドロワー / ユーザーブロック。CSS ブレークポイント（`lg`）で出し分け |
 | `src/components/AuthProvider.tsx` | `showAppNav`（旧 `showFooter` と同条件）で `AppShell` を描画 |
 | `app/admin/layout.tsx` | 独自トップバーを撤去。`bg-gray-50` と container のみ |
-| `app/chat/components/*` | ヘッダーを `fixed` → `absolute`、ルートを `relative` ＋ `h-[calc(100dvh-3.5rem)] lg:h-dvh`。Canvas / Annotation の `sticky` 見出しをフロー内 `pt-16` へ。セッション一覧は 1280px 未満で既定折りたたみ |
+| `app/chat/components/*` | ヘッダーを `fixed` → `absolute`、ルートを `relative` ＋ `h-[calc(100dvh-3.5rem)] lg:h-dvh`。Canvas / Annotation の `sticky` 見出しをフロー内 `pt-16` へ。セッション一覧は 1280px 未満で既定折りたたみ（折りたたみレールは `History` アイコン＋「チャット履歴を開く」）。`ChatLayoutContent` の `SheetTrigger`（旧 fixed ヘッダーの下に `absolute top-2 left-2 z-10` で置かれ押せなかった）を削除。開閉は `InputArea` の「チャット履歴を開く」ボタンが担う |
+| `app/business-info/page.tsx` / `app/globals.css` | フッター補正 `pb-24` と未使用の `.footer-tab-active` を削除 |
+| `app/layout.tsx` | `Toaster` を `AuthProvider` の外へ。Sonner はポータルしないため `main`（`isolate`）内に置くと Dialog / Sheet のオーバーレイの下に潜る |
+| `src/components/AuthProvider.tsx` `logout` | `signOutEmail` の失敗を `false` で返す。失敗時にローカルだけクリアして `/login` へ飛ばすと Cookie が残り proxy が `/` へ戻す（押しても何も起きないように見える）。サイドバーとマイホームのログアウトは同じ `logout()` を使い、失敗は toast `ERROR_MESSAGES.AUTH.LOGOUT_FAILED` で伝える |
+| `src/components/ui/sheet.tsx` | `SheetTitle` を追加（Radix Dialog のタイトル必須）。閉じるボタンを「閉じる」（sr-only）＋ 44px のヒット領域に |
 
 ### 設計判断
 
 - **出し分けは CSS ブレークポイント**: `useMobile` は初回 width 0 で描画が跳ねるため使わない。chat 固有の `isMobile`（768px）はそのまま。768〜1023px はシェルが上部バー、chat は PC 版セッション一覧を出す。
 - **z-index**: `<main>` に `isolate` を付け、ページ内の z-index（chat ヘッダー 50、分析テーブルの sticky セル 30/40/60）をシェルのクロームより下に閉じ込める。上部バー 40、サイドバー 30、Sheet/Dialog は body ポータルの 50。
+- **文言**: `/chat` のセッション一覧は「チャット履歴」で統一（`ui-text.md` に追記。旧「サイドバーを開く／閉じる」はアプリ共通サイドバーと衝突）。`/google-ads-dashboard` の見出しを「Google Ads 分析」に揃え、ナビ・カード・見出しで同じ語にする。
 - **chat ヘッダーは absolute**: `InputArea` が返す fragment の先頭にあり `MessageArea` の後に描画されるため、フローに戻すには構造変更が要る。`relative` なルート基準の `absolute` なら既存の `pt-16` 群がそのまま生きる。
 
 ## 8. 非機能・セキュリティ
@@ -184,9 +189,11 @@ lg 未満: 上部バー（`h-14`、メニューボタン＋ブランド）→ `S
 - `npm run verify`（lint / test / build / knip）、`npm run verify:ui-text`
 - 単体: `tests/unit/lib/app-nav.test.ts`（役割別の項目数・アクティブ判定・境界）
 - 手動（実装時、admin）: 1600px で `/` `/analytics` `/chat`、800px で `/chat`（上部バー・ドロワー開閉→遷移・Canvas 見出し位置）、`/admin` `/business-info` `/privacy`。
-- 未検証: 768px 未満（chat の履歴ボタン `History` アイコン）、trial / paid での出し分けの実画面（単体テストのみ）。
+- 未検証: 768px 未満（chat の履歴ボタン `History` アイコン）、trial / paid での出し分けの実画面（単体テストのみ）、ログアウトの実クリック（セッションを切るため。コード経路は `logout()` 1 本に統一済み）。
+- レビュー: growmate-ui-ux 観点と quality-gate 2 パスをサブエージェントで実施し、🔴🟡 を反映済み（2026-09-09）。
 
 ## 10. リスク・未決定事項
 
 - 1024〜1279px で Canvas を開くと本文が狭い（既存の挙動。セッション一覧の既定折りたたみで緩和）。
-- マイホームのカードとサイドバーの重複（Non-goal、次段）。
+- マイホームのカード・見出し・ログアウトとサイドバーの重複（Non-goal、次段）。
+- 768px 未満の chat でセッション削除が Sheet（チャット履歴）→ Dialog（削除確認）のモーダル on モーダルになる（既存。`growmate-ui-ux` の禁止事項に抵触）。恒久策は削除確認前に `ui.sidebar.setOpen(false)` してから Dialog を開く。本仕様では既存挙動を踏襲し、次段で扱う。

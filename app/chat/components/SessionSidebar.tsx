@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import { ChatSession, ChatSessionSearchResult } from '@/domain/interfaces/IChatService';
 import { ChatSessionActions } from '@/hooks/useChatSession';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { History, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import SessionListContent from '@/components/SessionListContent';
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
@@ -209,15 +209,16 @@ const SessionSidebar: React.FC<SessionSidebarProps> = ({
         }`}
       >
         {sidebarCollapsed ? (
-          <div className="flex flex-col items-center pt-20">
+          <div className="flex flex-col items-center pt-4">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="h-8 w-8 hover:bg-gray-200"
-              title="サイドバーを開く"
+              className="hover:bg-gray-200"
+              title="チャット履歴を開く"
+              aria-label="チャット履歴を開く"
             >
-              <ChevronRight size={16} />
+              <History className="h-5 w-5" />
             </Button>
           </div>
         ) : (

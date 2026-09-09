@@ -17,9 +17,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning>
         <AuthProvider>
           {children}
-          <Toaster />
           <GscNotificationHandler />
         </AuthProvider>
+        {/* AppShell の main（isolate）の外に置く。Sonner はポータルしないため、中に置くと Dialog/Sheet のオーバーレイの下に潜る */}
+        <Toaster />
       </body>
     </html>
   );

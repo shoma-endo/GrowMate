@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle } from 'lucide-react';
 import {
@@ -251,6 +251,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
       {isMobile && (
         <Sheet open={ui.sidebar.open} onOpenChange={ui.sidebar.setOpen}>
           <SheetContent side="left" className="p-0 max-w-[280px] sm:max-w-[280px]">
+            <SheetTitle className="sr-only">チャット履歴</SheetTitle>
             <SessionSidebar
               sessions={chatSession.state.sessions}
               currentSessionId={chatSession.state.currentSessionId}

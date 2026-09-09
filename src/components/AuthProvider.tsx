@@ -189,16 +189,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       router.push('/login');
     },
     logout: async () => {
+      // 失敗時にローカルだけクリアして /login へ飛ばすと、Cookie が残っているため proxy が
+      // 認証済みとして / へ戻し「押しても何も起きない」ように見える。失敗は false で返し、
+      // 呼び出し側が toast で伝える。
       try {
-        await signOutEmail();
+        const result = await signOutEmail();
+        if (!result.success) {
+          console.error('Failed to sign out:', result.error);
+          return false;
+        }
       } catch (error) {
-        // サーバー側 signOut 失敗時もローカル状態はクリアし /login へ誘導する。
-        // middleware が次回アクセス時に再検証するため、セッション残留は次リクエストで解消される。
         console.error('Failed to sign out:', error);
-      } finally {
-        setUser(null);
-        router.push('/login');
+        return false;
       }
+      setUser(null);
+      router.push('/login');
+      return true;
     },
     liffObject: null,
     refreshUser,

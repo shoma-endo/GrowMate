@@ -162,6 +162,9 @@ export const ERROR_MESSAGES = {
     /** ログインしていない場合 */
     NOT_LOGGED_IN: 'ログインしていません',
 
+    /** ログアウト（signOut）に失敗した場合 */
+    LOGOUT_FAILED: 'ログアウトに失敗しました。もう一度お試しください。',
+
     /** ユーザー認証に失敗した場合 */
     USER_AUTH_FAILED: 'ユーザー認証に失敗しました',
 

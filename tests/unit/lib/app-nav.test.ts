@@ -5,13 +5,17 @@
  * UI で見えるのにサーバーで /unauthorized へ飛ばされる、またはその逆が起きる。
  */
 import { describe, expect, it } from 'vitest';
-import { APP_NAV_ITEMS, getVisibleNavItems, isNavItemActive } from '@/lib/app-nav';
+import { getVisibleNavItems, isNavItemActive } from '@/lib/app-nav';
 
-const labelsFor = (role: Parameters<typeof getVisibleNavItems>[0]) =>
-  getVisibleNavItems(role).map(item => item.label);
+type Role = Parameters<typeof getVisibleNavItems>[0];
 
+const labelsFor = (role: Role) => getVisibleNavItems(role).map(item => item.label);
+const hrefsFor = (role: Role) => getVisibleNavItems(role).map(item => item.href);
+
+// admin は全項目を見られるので、個別項目の取得は admin 起点で行う
+const ALL_ITEMS = getVisibleNavItems('admin');
 const itemByHref = (href: string) => {
-  const item = APP_NAV_ITEMS.find(candidate => candidate.href === href);
+  const item = ALL_ITEMS.find(candidate => candidate.href === href);
   if (!item) throw new Error(`nav item not found: ${href}`);
   return item;
 };
@@ -36,8 +40,16 @@ describe('@/lib/app-nav', () => {
     });
 
     it('admin は全7項目', () => {
-      expect(labelsFor('admin')).toHaveLength(APP_NAV_ITEMS.length);
+      expect(labelsFor('admin')).toHaveLength(7);
       expect(labelsFor('admin')).toContain('管理者ダッシュボード');
+    });
+
+    it('href で proxy.ts のゲートと一致する（trial に paid/admin 画面を出さない）', () => {
+      // proxy.ts: /analytics /setup は paid/admin、/admin は admin。/google-ads-dashboard は認証のみ
+      expect(hrefsFor('trial')).toEqual(['/', '/business-info', '/chat', '/google-ads-dashboard']);
+      expect(hrefsFor('paid')).not.toContain('/admin');
+      expect(hrefsFor('paid')).toEqual(expect.arrayContaining(['/analytics', '/setup']));
+      expect(hrefsFor('admin')).toContain('/admin');
     });
 
     it('unavailable は trial と同じ（画面自体は /unavailable へ誘導される）', () => {

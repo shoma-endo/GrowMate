@@ -7,7 +7,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-full bg-gray-50">
+    <div className="min-h-full bg-muted">
       <div className="container mx-auto px-4 py-8">
         <Suspense fallback={<AdminLoadingSkeleton />}>
           {children}

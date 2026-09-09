@@ -8,28 +8,22 @@ import { Toaster } from '@/components/ui/sonner';
 import Image from 'next/image';
 import { Settings, Shield, List, Plug } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { hasPaidFeatureAccess } from '@/types/user';
 import { isAdmin as isAdminRole } from '@/authUtils';
-import { signOutEmail } from '@/server/actions/auth.actions';
 import { toast } from 'sonner';
-
-const LOGOUT_ERROR_MSG = 'ログアウトに失敗しました。もう一度お試しください。';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 const ProfileDisplay = () => {
-  const { isLoading, user } = useAuth();
-  const router = useRouter();
+  const { isLoading, user, logout } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
-    try {
-      const result = await signOutEmail();
-      if (!result.success) {
-        toast.error(result.error ?? LOGOUT_ERROR_MSG);
-        return;
-      }
-      router.push('/login');
-    } catch {
-      toast.error(LOGOUT_ERROR_MSG);
+    setIsLoggingOut(true);
+    const ok = await logout();
+    if (!ok) {
+      toast.error(ERROR_MESSAGES.AUTH.LOGOUT_FAILED);
+      setIsLoggingOut(false);
     }
   };
 
@@ -53,14 +47,8 @@ const ProfileDisplay = () => {
         )}
         <h3 className="text-xl font-bold mb-2">{displayName}</h3>
         {user.email && <p className="text-sm text-gray-600 mb-4">メールアドレス: {user.email}</p>}
-        <Button
-          onClick={handleLogout}
-          variant="destructive"
-          className="mt-4"
-          aria-label="ログアウト"
-          tabIndex={0}
-        >
-          ログアウト
+        <Button onClick={handleLogout} variant="destructive" className="mt-4" disabled={isLoggingOut}>
+          {isLoggingOut ? 'ログアウト中...' : 'ログアウト'}
         </Button>
       </CardContent>
     </Card>

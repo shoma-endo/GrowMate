@@ -55,7 +55,7 @@ export function DashboardContent({
         <div className="space-y-1">
           <h1 className="text-3xl font-bold flex items-center gap-3">
             <BarChart3 className="h-8 w-8 text-blue-600" />
-            Google Ads パフォーマンス
+            Google Ads 分析
           </h1>
           <p className="text-gray-500">連携済みアカウントの広告パフォーマンス概要</p>
         </div>

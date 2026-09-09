@@ -20,7 +20,7 @@ export interface AppNavItem {
   activePrefixes?: readonly string[];
 }
 
-export const APP_NAV_ITEMS: readonly AppNavItem[] = [
+const APP_NAV_ITEMS: readonly AppNavItem[] = [
   { label: 'マイホーム', href: '/', icon: Home, access: 'all' },
   { label: '事業者情報', href: '/business-info', icon: FileText, access: 'all' },
   { label: 'チャット', href: '/chat', icon: MessageCircle, access: 'all' },

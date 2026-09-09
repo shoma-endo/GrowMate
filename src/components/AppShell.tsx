@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { usePathname } from 'next/navigation';
 import { LogOut, Menu } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
@@ -24,11 +26,11 @@ const BRAND_LABEL = 'GrowMate';
 
 export function AppShell({ showNav, children }: AppShellProps) {
   if (!showNav) {
-    return <main className="min-h-screen min-w-0">{children}</main>;
+    return <main className="min-h-dvh min-w-0">{children}</main>;
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-dvh">
       <AppSidebar />
       <div className="flex flex-1 flex-col min-w-0">
         <AppMobileTopBar />
@@ -47,7 +49,7 @@ export function AppShell({ showNav, children }: AppShellProps) {
 
 function AppSidebar() {
   return (
-    <aside className="hidden lg:flex lg:flex-col w-60 shrink-0 sticky top-0 h-screen z-30 bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
+    <aside className="hidden lg:flex lg:flex-col w-60 shrink-0 sticky top-0 h-dvh z-30 bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       <div className="flex h-14 items-center px-4 border-b border-sidebar-border">
         <Link href="/" className="text-lg font-bold">
           {BRAND_LABEL}
@@ -66,17 +68,20 @@ function AppMobileTopBar() {
     <header className="lg:hidden sticky top-0 z-40 flex h-14 items-center gap-2 px-2 bg-background border-b border-border">
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="メニュー">
+          <Button variant="ghost" size="icon" className="size-11" aria-label="メニューを開く">
             <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
         <SheetContent
           side="left"
+          aria-describedby={undefined}
           className="w-60 max-w-[240px] sm:max-w-[240px] gap-0 bg-sidebar text-sidebar-foreground"
         >
-          <SheetTitle className="sr-only">メニュー</SheetTitle>
+          <SheetTitle className="sr-only">メインメニュー</SheetTitle>
           <div className="flex h-14 items-center px-4 border-b border-sidebar-border">
-            <span className="text-lg font-bold">{BRAND_LABEL}</span>
+            <Link href="/" onClick={() => setOpen(false)} className="text-lg font-bold">
+              {BRAND_LABEL}
+            </Link>
           </div>
           <AppNavList onNavigate={() => setOpen(false)} />
           <AppUserBlock />
@@ -107,7 +112,9 @@ function AppNavList({ onNavigate }: { onNavigate?: () => void }) {
                 {...(onNavigate ? { onClick: onNavigate } : {})}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                  // lg 未満はドロワー内なので 44px のタッチターゲット（py-3）、lg 以上は py-2
+                  'flex items-center gap-3 rounded-md px-3 py-3 lg:py-2 text-sm font-medium transition-colors',
+                  'outline-none focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50',
                   active
                     ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                     : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -126,9 +133,19 @@ function AppNavList({ onNavigate }: { onNavigate?: () => void }) {
 
 function AppUserBlock() {
   const { user, logout } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   if (!user) return null;
 
   const displayName = user.fullName ?? user.email ?? 'ユーザー';
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    const ok = await logout();
+    if (!ok) {
+      toast.error(ERROR_MESSAGES.AUTH.LOGOUT_FAILED);
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <div className="border-t border-sidebar-border px-4 py-3 space-y-2">
@@ -140,11 +157,11 @@ function AppUserBlock() {
         variant="outline"
         size="sm"
         className="w-full justify-start"
-        onClick={() => void logout()}
-        aria-label="ログアウト"
+        onClick={handleLogout}
+        disabled={isLoggingOut}
       >
         <LogOut className="h-4 w-4" />
-        ログアウト
+        {isLoggingOut ? 'ログアウト中...' : 'ログアウト'}
       </Button>
     </div>
   );

@@ -18,7 +18,8 @@ export interface AuthContextType {
   profile: null;
   user?: import('@/types/user').User | null;
   login: () => void;
-  logout: () => void | Promise<void>;
+  /** サインアウトに成功したら /login へ遷移して true。失敗時は状態を変えず false（呼び出し側が通知する） */
+  logout: () => Promise<boolean>;
   /** legacy: 常に null */
   liffObject: null;
   refreshUser: () => Promise<boolean>;
