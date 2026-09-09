@@ -53,8 +53,8 @@
 ### 導入後（To-Be）
 
 ```text
-lg 以上: 左サイドバー（240px、役割で 4〜7 項目）＋本文
-lg 未満: 上部バー（56px、メニューボタン）→ 左ドロワー（同じ項目）
+lg 以上: 左サイドバー（240px ⇔ 64px のアイコンレールに折りたたみ可。役割で 4〜7 項目をグループ見出し付きで表示）＋本文
+lg 未満: 上部バー（56px、メニューボタン）→ 左ドロワー（同じ項目。折りたたみ無し）
 ```
 
 ### 業務ルール
@@ -73,7 +73,7 @@ lg 未満: 上部バー（56px、メニューボタン）→ 左ドロワー（�
 
 ### Non-goals
 
-- サイドバーの折りたたみ・幅ドラッグ・幅の永続化: MVP では固定幅で足りる。
+- サイドバーの幅ドラッグ: 折りたたみ（240px ⇔ 64px のアイコンレール）で足りる。折りたたみ状態は localStorage に持つ（`APP_SHELL_STORAGE_KEYS.SIDEBAR_COLLAPSED`）が、幅の自由変更は作らない。
 - マイホーム（`/`）のカード・アカウント情報カード・見出し「GrowMate」の再設計: サイドバー（ナビ項目・ブランド・ログアウト）と重複するが、まずナビ移動を先行させる。次段で扱う。
 - shadcn `sidebar.tsx` の導入: 依存追加（separator / collapsible）と未使用 export が増え、knip に弾かれる。既存 primitives（`sheet` / `button`）で足りる。
 - ダークモード切替 UI: `--sidebar-*` トークンはダーク定義済みだが、切替 UI 自体が未導入。
@@ -103,6 +103,15 @@ Feature: アプリ共通ナビ
     Given "/analytics/<id>" または "/ga4-dashboard" を開く
     Then 「コンテンツ一覧」がアクティブになる
 
+  Scenario: サイドバーの折りたたみ
+    Given 幅 1024px 以上でサイドバーが表示されている
+    When 「メニューを折りたたむ」を押す
+    Then サイドバーは 64px のアイコンレールになり、各項目はアイコンだけになる
+    And アイコンにマウスを載せると項目名がツールチップで出る
+    And 別画面へ移動・リロードしても折りたたみ状態が保たれる
+    When 「メニューを広げる」を押す
+    Then サイドバーは 240px に戻る
+
   Scenario: モバイル幅のドロワー
     Given 幅 1024px 未満で "/chat" を開く
     Then 下部固定バーは無く、上部バーの「メニューを開く」ボタンでドロワーが開く
@@ -126,21 +135,32 @@ Feature: アプリ共通ナビ
 PC（lg 以上）:
 
 ```text
-┌────────────┬───────────────────────────────┐
-│ GrowMate   │                               │
-│────────────│  本文（main, flex-1 min-w-0）  │
-│ マイホーム   │                               │
-│ 事業者情報   │                               │
-│ チャット     │                               │
-│ コンテンツ一覧 (paid/admin)                   │
-│ Google Ads 分析                              │
-│ 設定        (paid/admin)                     │
-│ 管理者ダッシュボード (admin)                  │
-│────────────│                               │
-│ 氏名 / 役割 / ログアウト                       │
-└────────────┴───────────────────────────────┘
-  w-60 sticky top-0 h-screen
+展開（240px）                       折りたたみ（64px）
+┌────────────────┬──────────────┐  ┌────┬──────────────┐
+│ [芽] GrowMate  ⊏│              │  │[芽]│              │
+│────────────────│  本文         │  │ ⊐  │  本文         │
+│ メイン          │  (main,      │  │────│              │
+│ ▏⌂ マイホーム    │   flex-1     │  │ ⌂ │ ← hover で    │
+│  ▤ 事業者情報   │   min-w-0)   │  │ ▤ │   ツールチップ │
+│  ✉ チャット     │              │  │ ✉ │              │
+│ 分析            │              │  │────│              │
+│  ≡ コンテンツ一覧 (paid/admin)  │  │ ≡ │              │
+│  ⚡ Google Ads 分析            │  │ ⚡ │              │
+│ 管理            │              │  │────│              │
+│  ⚙ 設定 (paid/admin)          │  │ ⚙ │              │
+│  ⛨ 管理者ダッシュボード (admin) │  │ ⛨ │              │
+│────────────────│              │  │────│              │
+│ (顔) 氏名 / 役割        [⇥]    │  │(顔)│              │
+└────────────────┴──────────────┘  │[⇥] │              │
+  sticky top-0 h-dvh                └────┴──────────────┘
 ```
+
+- ヘッダー: ブランドマーク（lucide `Sprout` を `bg-sidebar-primary` の角丸に載せる）＋「GrowMate」、右端に折りたたみトグル（`PanelLeftClose` / `PanelLeftOpen`、`aria-expanded`、ツールチップ「メニューを折りたたむ／広げる」）。
+- グループ見出し「メイン」「分析」「管理」（`text-[11px] uppercase tracking-wider`、`text-sidebar-foreground/50`）。折りたたみ時は見出しの代わりに区切り線。
+- アクティブ項目: `bg-sidebar-accent` ＋ `font-semibold` ＋ 左端 2px のアクセントバー（`bg-sidebar-primary`）。折りたたみ時はバー無し。
+- 折りたたみ時の各項目: アイコンのみ＋ `aria-label` ＋右側ツールチップ（既存 `tooltip.tsx`）。
+- ユーザーブロック: アバター（`linePictureUrl` があれば画像、無ければ頭文字）＋氏名／役割＋ログアウトのアイコンボタン（ツールチップ）。折りたたみ時はアバターとログアウトだけを縦に並べ、氏名／役割はツールチップ。
+- 幅の遷移は `transition-[width] duration-200`（`motion-reduce` で無効）。
 
 lg 未満: 上部バー（`h-14`、「メニューを開く」ボタン＋ブランド）→ `Sheet side="left"`（240px、タイトル「メインメニュー」）に同じナビ＋ユーザーブロック。ドロワー内のナビ項目は 44px のタッチターゲット（`py-3`）。
 
@@ -162,8 +182,8 @@ lg 未満: 上部バー（`h-14`、「メニューを開く」ボタン＋ブラ
 
 | ファイル | 役割 |
 | --- | --- |
-| `src/lib/app-nav.ts` | 項目定義・`getVisibleNavItems`・`isNavItemActive`（純粋ロジック） |
-| `src/components/AppShell.tsx` | サイドバー / 上部バー / ドロワー / ユーザーブロック。CSS ブレークポイント（`lg`）で出し分け |
+| `src/lib/app-nav.ts` | 項目定義（`group` 付き）・グループ定義・`getVisibleNavItems`・`getVisibleNavGroups`・`isNavItemActive`（純粋ロジック） |
+| `src/components/AppShell.tsx` | サイドバー（折りたたみ・グループ・ツールチップ） / 上部バー / ドロワー / ユーザーブロック。CSS ブレークポイント（`lg`）で出し分け。折りたたみ状態は `useSidebarCollapsed`（localStorage、AuthProvider がロード中は children を描画しないので初期値で読んで hydration 安全） |
 | `src/components/AuthProvider.tsx` | `showAppNav`（旧 `showFooter` と同条件）で `AppShell` を描画 |
 | `app/admin/layout.tsx` | 独自トップバーを撤去。`bg-gray-50` と container のみ |
 | `app/chat/components/*` | ヘッダーを `fixed` → `absolute`、ルートを `relative` ＋ `h-[calc(100dvh-3.5rem)] lg:h-dvh`。Canvas / Annotation の `sticky` 見出しをフロー内 `pt-16` へ。セッション一覧は 1280px 未満で既定折りたたみ（折りたたみレールは `History` アイコン＋「チャット履歴を開く」）。`ChatLayoutContent` の `SheetTrigger`（旧 fixed ヘッダーの下に `absolute top-2 left-2 z-10` で置かれ押せなかった）を削除。開閉は `InputArea` の「チャット履歴を開く」ボタンが担う |
@@ -176,6 +196,7 @@ lg 未満: 上部バー（`h-14`、「メニューを開く」ボタン＋ブラ
 
 - **出し分けは CSS ブレークポイント**: `useMobile` は初回 width 0 で描画が跳ねるため使わない。chat 固有の `isMobile`（768px）はそのまま。768〜1023px はシェルが上部バー、chat は PC 版セッション一覧を出す。
 - **z-index**: `<main>` に `isolate` を付け、ページ内の z-index（chat ヘッダー 50、分析テーブルの sticky セル 30/40/60）をシェルのクロームより下に閉じ込める。上部バー 40、サイドバー 30、Sheet/Dialog は body ポータルの 50。
+- **折りたたみの参考**: muz.li の Dashboard Inspiration（2026-09-09 にユーザー指定）に多い「アイコンレール＋ツールチップ＋ヘッダーのトグル＋グループ見出し＋左アクセントのアクティブ表示」を、既存トークンと primitives（Tooltip / Avatar / Button）だけで再現。新しい色・フォントは入れない。
 - **文言**: `/chat` のセッション一覧は「チャット履歴」で統一（`ui-text.md` に追記。旧「サイドバーを開く／閉じる」はアプリ共通サイドバーと衝突）。`/google-ads-dashboard` の見出しを「Google Ads 分析」に揃え、ナビ・カード・見出しで同じ語にする。
 - **chat ヘッダーは absolute**: `InputArea` が返す fragment の先頭にあり `MessageArea` の後に描画されるため、フローに戻すには構造変更が要る。`relative` なルート基準の `absolute` なら既存の `pt-16` 群がそのまま生きる。
 
@@ -188,7 +209,7 @@ lg 未満: 上部バー（`h-14`、「メニューを開く」ボタン＋ブラ
 
 - `npm run verify`（lint / test / build / knip）、`npm run verify:ui-text`
 - 単体: `tests/unit/lib/app-nav.test.ts`（役割別の項目数・アクティブ判定・境界）
-- 手動（実装時、admin）: 1600px で `/` `/analytics` `/chat`、800px で `/chat`（上部バー・ドロワー開閉→遷移・Canvas 見出し位置）、`/admin` `/business-info` `/privacy`。
+- 手動（実装時、admin）: 1440px で折りたたみ（64px、ツールチップ、遷移・リロード後の復元、`/chat` ヘッダー追従、`/analytics` 横スクロール無し）と展開復帰。1600px で `/` `/analytics` `/chat`、800px で `/chat`（上部バー・ドロワー開閉→遷移・Canvas 見出し位置）、`/admin` `/business-info` `/privacy`。
 - 未検証: 768px 未満（chat の履歴ボタン `History` アイコン）、trial / paid での出し分けの実画面（単体テストのみ）、ログアウトの実クリック（セッションを切るため。コード経路は `logout()` 1 本に統一済み）。
 - レビュー: growmate-ui-ux 観点と quality-gate 2 パスをサブエージェントで実施し、🔴🟡 を反映済み（2026-09-09）。
 

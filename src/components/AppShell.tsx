@@ -1,21 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
-import { toast } from 'sonner';
-import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { usePathname } from 'next/navigation';
-import { LogOut, Menu } from 'lucide-react';
+import { toast } from 'sonner';
+import { LogOut, Menu, PanelLeftClose, PanelLeftOpen, Sprout } from 'lucide-react';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { useAuth } from '@/components/AuthProvider';
+import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { getVisibleNavItems, isNavItemActive } from '@/lib/app-nav';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { getVisibleNavGroups, isNavItemActive } from '@/lib/app-nav';
+import { APP_SHELL_STORAGE_KEYS } from '@/lib/constants';
 import { getRoleDisplayName } from '@/authUtils';
 import { cn } from '@/lib/utils';
 
 /**
- * アプリ共通シェル。lg（1024px）以上は左サイドバー、未満は上部バー＋左ドロワー。
- * 出し分けは CSS ブレークポイントで行う（useMobile は初回 width 0 で描画が跳ねるため使わない）。
+ * アプリ共通シェル。lg（1024px）以上は左サイドバー（240px ⇔ 64px のアイコンレールに折りたたみ可）、
+ * 未満は上部バー＋左ドロワー。出し分けは CSS ブレークポイントで行う
+ * （useMobile は初回 width 0 で描画が跳ねるため使わない）。
  */
 interface AppShellProps {
   showNav: boolean;
@@ -47,16 +52,81 @@ export function AppShell({ showNav, children }: AppShellProps) {
   );
 }
 
-function AppSidebar() {
+/**
+ * 折りたたみ状態。AuthProvider がロード完了まで children を描画しないので、
+ * 初期値で localStorage を読んでも hydration 不一致にならない。
+ */
+function useSidebarCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(APP_SHELL_STORAGE_KEYS.SIDEBAR_COLLAPSED) === 'true';
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(APP_SHELL_STORAGE_KEYS.SIDEBAR_COLLAPSED, String(collapsed));
+  }, [collapsed]);
+
+  return [collapsed, () => setCollapsed(value => !value)];
+}
+
+function BrandMark({ collapsed = false, onClick }: { collapsed?: boolean; onClick?: () => void }) {
   return (
-    <aside className="hidden lg:flex lg:flex-col w-60 shrink-0 sticky top-0 h-dvh z-30 bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
-      <div className="flex h-14 items-center px-4 border-b border-sidebar-border">
-        <Link href="/" className="text-lg font-bold">
-          {BRAND_LABEL}
-        </Link>
+    <Link
+      href="/"
+      {...(onClick ? { onClick } : {})}
+      aria-label={collapsed ? BRAND_LABEL : undefined}
+      className={cn(
+        'flex items-center gap-2 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50',
+        collapsed && 'justify-center'
+      )}
+    >
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+        <Sprout className="h-4 w-4" />
+      </span>
+      {!collapsed && <span className="truncate text-base font-bold">{BRAND_LABEL}</span>}
+    </Link>
+  );
+}
+
+function AppSidebar() {
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
+  const toggleLabel = collapsed ? 'メニューを広げる' : 'メニューを折りたたむ';
+  const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+
+  return (
+    <aside
+      data-collapsed={collapsed}
+      className={cn(
+        'hidden lg:flex lg:flex-col shrink-0 sticky top-0 h-dvh z-30 bg-sidebar text-sidebar-foreground border-r border-sidebar-border',
+        'transition-[width] duration-200 ease-in-out motion-reduce:transition-none',
+        collapsed ? 'w-16' : 'w-60'
+      )}
+    >
+      <div
+        className={cn(
+          'flex shrink-0 items-center border-b border-sidebar-border',
+          collapsed ? 'flex-col gap-1 py-2' : 'h-14 justify-between px-3'
+        )}
+      >
+        <BrandMark collapsed={collapsed} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleCollapsed}
+              aria-label={toggleLabel}
+              aria-expanded={!collapsed}
+              className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <ToggleIcon className="h-5 w-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{toggleLabel}</TooltipContent>
+        </Tooltip>
       </div>
-      <AppNavList />
-      <AppUserBlock />
+      <AppNavList collapsed={collapsed} />
+      <AppUserBlock collapsed={collapsed} />
     </aside>
   );
 }
@@ -78,65 +148,102 @@ function AppMobileTopBar() {
           className="w-60 max-w-[240px] sm:max-w-[240px] gap-0 bg-sidebar text-sidebar-foreground"
         >
           <SheetTitle className="sr-only">メインメニュー</SheetTitle>
-          <div className="flex h-14 items-center px-4 border-b border-sidebar-border">
-            <Link href="/" onClick={() => setOpen(false)} className="text-lg font-bold">
-              {BRAND_LABEL}
-            </Link>
+          <div className="flex h-14 shrink-0 items-center px-3 border-b border-sidebar-border">
+            <BrandMark onClick={() => setOpen(false)} />
           </div>
           <AppNavList onNavigate={() => setOpen(false)} />
           <AppUserBlock />
         </SheetContent>
       </Sheet>
-      <Link href="/" className="text-lg font-bold">
-        {BRAND_LABEL}
-      </Link>
+      <BrandMark />
     </header>
   );
 }
 
-function AppNavList({ onNavigate }: { onNavigate?: () => void }) {
+interface AppNavListProps {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}
+
+function AppNavList({ collapsed = false, onNavigate }: AppNavListProps) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const items = getVisibleNavItems(user?.role ?? null);
+  const groups = getVisibleNavGroups(user?.role ?? null);
 
   return (
-    <nav aria-label="メインメニュー" className="flex-1 overflow-y-auto px-2 py-3">
-      <ul className="flex flex-col gap-1">
-        {items.map(item => {
-          const active = isNavItemActive(pathname, item);
-          const Icon = item.icon;
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                {...(onNavigate ? { onClick: onNavigate } : {})}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  // lg 未満はドロワー内なので 44px のタッチターゲット（py-3）、lg 以上は py-2
-                  'flex items-center gap-3 rounded-md px-3 py-3 lg:py-2 text-sm font-medium transition-colors',
-                  'outline-none focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50',
-                  active
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                )}
-              >
-                <Icon className="h-5 w-5 shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+    <nav
+      aria-label="メインメニュー"
+      className={cn('flex-1 overflow-y-auto overflow-x-hidden py-2', collapsed ? 'px-2' : 'px-3')}
+    >
+      {groups.map(({ group, items }, groupIndex) => (
+        <div
+          key={group.id}
+          className={cn(
+            groupIndex > 0 && (collapsed ? 'mt-2 border-t border-sidebar-border pt-2' : 'mt-4')
+          )}
+        >
+          {!collapsed && (
+            <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-sidebar-foreground/50">
+              {group.label}
+            </p>
+          )}
+          <ul className="flex flex-col gap-0.5">
+            {items.map(item => {
+              const active = isNavItemActive(pathname, item);
+              const Icon = item.icon;
+              const link = (
+                <Link
+                  href={item.href}
+                  {...(onNavigate ? { onClick: onNavigate } : {})}
+                  aria-current={active ? 'page' : undefined}
+                  aria-label={collapsed ? item.label : undefined}
+                  className={cn(
+                    // lg 未満はドロワー内なので 44px のタッチターゲット（py-3）、lg 以上は py-2
+                    'relative flex items-center gap-3 rounded-md text-sm transition-colors',
+                    'outline-none focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50',
+                    collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-3 lg:py-2',
+                    active
+                      ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground'
+                      : 'font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                    // アクティブ項目の左アクセントバー（折りたたみ時はレール外側に出る）
+                    active &&
+                      !collapsed &&
+                      'before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-sidebar-primary'
+                  )}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </Link>
+              );
+              return (
+                <li key={item.href}>
+                  {collapsed ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>{link}</TooltipTrigger>
+                      <TooltipContent side="right">{item.label}</TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    link
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
     </nav>
   );
 }
 
-function AppUserBlock() {
+function AppUserBlock({ collapsed = false }: { collapsed?: boolean }) {
   const { user, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   if (!user) return null;
 
   const displayName = user.fullName ?? user.email ?? 'ユーザー';
+  const roleName = getRoleDisplayName(user.role);
+  const initial = displayName.trim().charAt(0).toUpperCase();
+  const logoutLabel = isLoggingOut ? 'ログアウト中...' : 'ログアウト';
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -147,22 +254,63 @@ function AppUserBlock() {
     }
   };
 
-  return (
-    <div className="border-t border-sidebar-border px-4 py-3 space-y-2">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{displayName}</p>
-        <p className="truncate text-xs text-sidebar-foreground/70">{getRoleDisplayName(user.role)}</p>
+  const avatar = (
+    <Avatar className="size-8 bg-sidebar-accent text-sidebar-accent-foreground">
+      {user.linePictureUrl ? (
+        <Image src={user.linePictureUrl} alt="" width={32} height={32} />
+      ) : (
+        <span className="flex size-full items-center justify-center text-xs font-semibold" aria-hidden>
+          {initial}
+        </span>
+      )}
+    </Avatar>
+  );
+
+  const logoutButton = (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={handleLogout}
+      disabled={isLoggingOut}
+      aria-label={logoutLabel}
+      className="shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+    >
+      <LogOut className="h-4 w-4" />
+    </Button>
+  );
+
+  if (collapsed) {
+    return (
+      <div className="flex shrink-0 flex-col items-center gap-1 border-t border-sidebar-border py-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex size-9 items-center justify-center" tabIndex={0}>
+              {avatar}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {displayName}（{roleName}）
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>{logoutButton}</TooltipTrigger>
+          <TooltipContent side="right">{logoutLabel}</TooltipContent>
+        </Tooltip>
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full justify-start"
-        onClick={handleLogout}
-        disabled={isLoggingOut}
-      >
-        <LogOut className="h-4 w-4" />
-        {isLoggingOut ? 'ログアウト中...' : 'ログアウト'}
-      </Button>
+    );
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-t border-sidebar-border px-3 py-3">
+      {avatar}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{displayName}</p>
+        <p className="truncate text-xs text-sidebar-foreground/70">{roleName}</p>
+      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>{logoutButton}</TooltipTrigger>
+        <TooltipContent side="top">{logoutLabel}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

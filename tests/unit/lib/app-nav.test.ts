@@ -5,7 +5,7 @@
  * UI で見えるのにサーバーで /unauthorized へ飛ばされる、またはその逆が起きる。
  */
 import { describe, expect, it } from 'vitest';
-import { getVisibleNavItems, isNavItemActive } from '@/lib/app-nav';
+import { getVisibleNavGroups, getVisibleNavItems, isNavItemActive } from '@/lib/app-nav';
 
 type Role = Parameters<typeof getVisibleNavItems>[0];
 
@@ -54,6 +54,16 @@ describe('@/lib/app-nav', () => {
 
     it('unavailable は trial と同じ（画面自体は /unavailable へ誘導される）', () => {
       expect(labelsFor('unavailable')).toEqual(labelsFor('trial'));
+    });
+  });
+
+  describe('getVisibleNavGroups', () => {
+    it('グループはメイン→分析→管理の順で、項目が無いグループは返さない', () => {
+      expect(getVisibleNavGroups('admin').map(g => g.group.label)).toEqual(['メイン', '分析', '管理']);
+      // trial は「管理」に出せる項目（設定・管理者ダッシュボード）が無い
+      expect(getVisibleNavGroups('trial').map(g => g.group.label)).toEqual(['メイン', '分析']);
+      // paid は「管理」に設定だけが残る
+      expect(getVisibleNavGroups('paid').at(-1)?.items.map(i => i.href)).toEqual(['/setup']);
     });
   });
 
