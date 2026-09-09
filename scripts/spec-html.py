@@ -215,6 +215,28 @@ body{padding:0}
 .ig-lv.warn{color:var(--amber,#a86a00)}
 .ig-lv.info{color:var(--muted)}
 .ig-lv.ig-cat{flex:0 0 auto;white-space:nowrap}
+/* ===== ビューを増やす（プロンプトカード） ===== */
+.pc-lead{margin:0 0 14px;font-size:13.5px;line-height:1.75;color:var(--muted);max-width:70ch}
+.pc-paths{border:1px solid var(--border);border-radius:10px;background:var(--card);
+  padding:11px 14px;margin:0 0 18px;font-size:12px;line-height:1.9;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto}
+.pc-paths b{font-family:inherit;color:var(--muted);font-weight:600;margin-right:.5em}
+.pc{border:1px solid var(--border);border-radius:12px;background:var(--card);
+  padding:14px 16px;margin:0 0 12px}
+.pc h2{margin:0 0 4px;font-size:14.5px}
+.pc .pc-desc{margin:0 0 10px;font-size:12.5px;color:var(--muted);line-height:1.7}
+.pc>details{margin:0}
+.pc>details>summary{cursor:pointer;font-size:12px;color:var(--accent);list-style:none}
+.pc>details>summary::-webkit-details-marker{display:none}
+.pc>details>summary::before{content:"\25B8 ";}
+.pc>details[open]>summary::before{content:"\25BE ";}
+.pc>details>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pc pre{margin:10px 0 0;padding:12px;border:1px solid var(--border);border-radius:8px;
+  background:var(--bg);font-size:11.5px;line-height:1.7;white-space:pre-wrap;
+  word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.pc-copy{margin-top:10px;border:1px solid var(--border);background:var(--bg);border-radius:999px;
+  padding:5px 15px;font-size:12px;cursor:pointer;color:var(--accent);font-family:inherit}
+.pc-copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* タブをまたぐジャンプボタン（再構成ビュー → 全文の該当章） */
 .jump{border:1px solid var(--border);background:var(--bg);border-radius:999px;padding:1px 10px;
   font-size:11.5px;cursor:pointer;color:var(--accent);font-family:inherit;white-space:nowrap;margin:2px 4px 2px 0}
@@ -575,6 +597,178 @@ def _render_integrity(findings: list[dict], diff: dict) -> str:
     )
 
 
+# ── ビューを増やす導線（成果物が自分の増やし方を同梱する） ────────────────────
+# 数週間ぶりに戻った読者が「依存関係だけの図が欲しい」と思ったとき、SKILL.md を開き直す
+# ところから始めさせない。成果物自身に、そのまま別のエージェントへ投げられるプロンプトを
+# 載せる。プロンプトは YAML の中身を貼らず絶対パスだけを渡す（貼ると陳腐化する）。
+#
+# カードは build が書く。LLM には書かせない ── シェルとプロンプトの作者を1つに保つため、
+# 「HTML 全体を作り直す」テンプレートは意図的に置かない。シェルを変えるならこの定数を変える。
+#
+# 本文に URL を書かないこと（安全検査の `https?://` は文書全体を見るので、
+# プロンプトの地の文でも落ちる）。外部依存の禁止は語彙で表現する。
+
+_PROMPT_COMMON = """# 参照（必ず開いてから書く。中身はこのプロンプトに貼っていない）
+- 意味の正本 core.yaml: {core}
+- 見せ方 view.yaml: {view}
+- 理解度クイズ quiz.yaml: {quiz}
+- 原本の仕様書: {spec}
+- ビュー執筆の正本: {authoring}
+- 読者カタログ: {readers}
+
+# 出力
+{bundle}/views/ に、<!DOCTYPE html> から始まる完結した HTML document を1枚だけ書く。
+ファイル名は既存と重ならない連番 NN を付けて NN-<id>.html にする。
+**既存のビューとシェルは書き換えない。**
+
+# 制約（結合時の安全検査で落ちる）
+- inline CSS / inline JS のみ。外部CDN・外部CSS・外部スクリプト・外部フォントを読み込まない。
+  ネットワーク通信・ブラウザの保存領域・cookie・親フレームへのアクセスもしない。
+  地の文にも URL を書かない（スキーム付きの文字列が1つでもあると落ちる）。
+- ライトを既定にし、:root と :root[data-theme="dark"] を CSS 変数で両方持つ。
+  自分の location.hash を読んで theme=dark ならダークにし、hashchange も listen する。
+- JS は IIFE で包む。DOM 探索は querySelector / querySelectorAll だけを使う
+  （getElementById は結合時に自パネルへスコープされないので使わない）。
+- シェルと衝突するので .panel というクラス名は使わない。
+- 図版を3点以上入れる。まず flow / compare / causemap / er のジェネレータで書けないか
+  確かめる（座標を手で書かない）。型と使い分けは上の「ビュー執筆の正本」にある。
+
+# 足し方
+書けたらリポジトリ根で1本流す:
+python3 scripts/spec-html.py add-view --spec {spec} --view "<タブ名>=<書いたパス>"
+既存タブは保たれ、新しいタブが1枚増える（同じタブ名なら差し替え）。
+"""
+
+PROMPT_CARDS: list[dict[str, str]] = [
+    {
+        "id": "deps",
+        "title": "依存関係だけのビューを足す",
+        "desc": "何が何をブロックしているか、着手可能なものはどれかだけを見たいとき。"
+                "ステータスビューが混んできたら分離する。",
+        "task": "この仕様書の依存関係だけを見るビューを1枚作る。\n"
+                "core.yaml の relations（depends_on / blocks / sequence_next）を主役にし、\n"
+                "「いま着手できるもの」「何かを待っているもの」を色で分ける。\n"
+                "依存図（ジェネレータの flow か手書きSVG）を中心に据え、文章は判断点だけに絞る。",
+    },
+    {
+        "id": "reader",
+        "title": "読者を変えたビューを足す",
+        "desc": "PO・クライアント・引き継ぎ先など、開発者本人以外に見せるとき。"
+                "core.yaml はそのまま、view.yaml の方針だけ差し替える。",
+        "task": "読者を {{どの読者か（例: PO・クライアント / 引き継ぎ先 / 初見の開発者）}} に変えたビューを1枚作る。\n"
+                "core.yaml は一切変えない。読者カタログの該当プロファイルを読み、\n"
+                "emphasize / de_emphasize に従って取捨選択する。\n"
+                "その読者が判断できない情報（実装の内部・DDL・プロンプト本文）は落とす。",
+    },
+    {
+        "id": "handoff",
+        "title": "引き継ぎビューを足す",
+        "desc": "他の人にこの仕様を渡すとき。前提知識・地雷・最初に読む順を1枚に。",
+        "task": "引き継ぎ先が最初に読む1枚を作る。\n"
+                "前提知識（この仕様を読む前に知っておくこと）、risks を severity 順、\n"
+                "読む順（どのファイル・どの章から）、詰まったら誰に聞くか、\n"
+                "そして「まだ決まっていないこと」（questions）を先頭に集約する。",
+    },
+    {
+        "id": "table",
+        "title": "概念テーブルのビューを足す",
+        "desc": "全体を一覧で舐めたいとき。重要度・難易度・確信度・出典で絞り込める表。",
+        "task": "core.yaml の concepts を1つの表にするビューを作る。\n"
+                "列は 概念 / 重要度 / 難易度 / 確信度 / 関係 / 出典（原本の行番号）。\n"
+                "重要度と確信度で絞り込めるようにし、確信度の低い行は視覚的に落とす。\n"
+                "出典セルは data-goto で全文タブの該当章へ飛ばす。",
+    },
+    {
+        "id": "free",
+        "title": "自由記述でビューを足す",
+        "desc": "上のどれでもないとき。1行目を書き換えてから投げる。",
+        "task": "{{どんなビューが欲しいか（例: 状態遷移だけ / API 一覧 / 用語集）}} のビューを1枚作る。",
+    },
+]
+
+
+def _render_prompts(bundle: Path, spec: str, panel_id: str) -> tuple[str, str]:
+    """「ビューを増やす」パネルの HTML と JS を組む。
+
+    YAML は絶対パスで指すだけで中身は載せない。読む側（Claude Code / Cursor / Codex）が
+    ローカルファイルを開ける前提。開けないチャットは対象外。
+    """
+    root = bundle.resolve()
+    quiz = root / "quiz.yaml"
+    skill = ROOT / ".agents" / "skills" / "spec-to-html"
+    subst = {
+        "core": str(root / "core.yaml"),
+        "view": str(root / "view.yaml"),
+        "quiz": str(quiz) if quiz.is_file() else "（未作成。core.yaml から起こす）",
+        "spec": spec,
+        "bundle": str(root),
+        "authoring": str(skill / "authoring-views.md"),
+        "readers": str(skill / "readers.md"),
+    }
+    common = _PROMPT_COMMON.format(**subst)
+
+    cards: list[str] = []
+    for i, card in enumerate(PROMPT_CARDS, 1):
+        body_id = f"pc-body-{i}"
+        body = f"# やること\n{card['task']}\n\n{common}"
+        cards.append(
+            f'<article class="pc">'
+            f'<h2>{_escape(card["title"])}</h2>'
+            f'<p class="pc-desc">{_escape(card["desc"])}</p>'
+            f'<details><summary>プロンプトを見る</summary>'
+            f'<pre id="{body_id}">{_escape(body)}</pre></details>'
+            f'<button type="button" class="pc-copy" data-for="{body_id}">コピー</button>'
+            f'</article>'
+        )
+
+    paths = (
+        '<div class="pc-paths">'
+        + "".join(
+            f"<div><b>{_escape(label)}</b>{_escape(subst[key])}</div>"
+            for label, key in (
+                ("core.yaml", "core"), ("view.yaml", "view"), ("quiz.yaml", "quiz"),
+                ("原本", "spec"), ("バンドル", "bundle"),
+            )
+        )
+        + "</div>"
+    )
+
+    html = (
+        "<h1>ビューを増やす</h1>"
+        '<p class="pc-lead">この図解はタブを足して育てられる。'
+        "下のプロンプトをコピーして、ローカルのファイルを開けるエージェント"
+        "（Claude Code / Cursor / Codex）に投げると、ビューが1枚返ってくる。"
+        "プロンプトは YAML の中身ではなく<b>絶対パス</b>を渡すので、"
+        "仕様書が改訂されても投げ直すだけで最新の意味から書かれる。</p>"
+        + paths + "".join(cards)
+    )
+
+    js = f"""var __root = document.getElementById('{panel_id}');
+__root.addEventListener('click', function(ev){{
+  var btn = (ev.target && ev.target.closest) ? ev.target.closest('.pc-copy') : null;
+  if(!btn){{ return; }}
+  var body = __root.querySelector('#' + btn.getAttribute('data-for'));
+  if(!body){{ return; }}
+  var text = body.textContent;
+  function done(){{
+    btn.textContent = 'コピーした';
+    setTimeout(function(){{ btn.textContent = 'コピー'; }}, 1600);
+  }}
+  function fallback(){{
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try {{ document.execCommand('copy'); done(); }} catch(e) {{}}
+    document.body.removeChild(ta);
+  }}
+  if(navigator.clipboard && navigator.clipboard.writeText){{
+    navigator.clipboard.writeText(text).then(done, fallback);
+  }} else {{ fallback(); }}
+}});"""
+    return html, js
+
+
 def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | None) -> list[dict]:
     """ビューを単一 HTML に結合する。戻り値は整合性チェックの findings（原本が無いときは空）。"""
     styles: list[str] = []
@@ -602,6 +796,19 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
         tabs.append(
             f'  <button type="button" class="tab" role="tab" data-panel="{panel_id}" '
             f'aria-selected="{"true" if i == 0 else "false"}">{_escape(label)}</button>'
+        )
+
+    # 「ビューを増やす」タブ。manifest には入れない（毎回 build が作り直す機械生成物で、
+    # 人が書いたビューではないため）。原本が分からないとプロンプトのパスを埋められないので
+    # --source があるときだけ出す。
+    if source:
+        grow_id = f"panel-{len(views) + 1}"
+        grow_html, grow_js = _render_prompts(out.parent / out.stem, source, grow_id)
+        panels.append(f'<section class="panel" id="{grow_id}" hidden>\n{grow_html}\n</section>')
+        scripts.append(f"/* ===== ビューを増やす ===== */\n(function(){{\n{grow_js}\n}})();")
+        tabs.append(
+            f'  <button type="button" class="tab" role="tab" data-panel="{grow_id}" '
+            f'aria-selected="false">ビューを増やす</button>'
         )
 
     brand = f'<span class="brand">{_escape(source)}</span>\n' if source else ""
@@ -1573,6 +1780,14 @@ def main() -> None:
     p_full.add_argument("--spec", required=True, type=Path, help="原本の仕様書 Markdown")
     p_full.add_argument("--out", required=True, type=Path, help="出力先ビュー HTML")
 
+    p_add = sub.add_parser(
+        "add-view", help="既存バンドルにビューを1枚足す（既存タブ・並び・タイトルは保たれる）")
+    p_add.add_argument("--spec", required=True, type=Path, help="原本の仕様書 Markdown")
+    p_add.add_argument("--view", action="append", required=True, metavar="ラベル=パス",
+                       help="足すビュー。同じラベルが既にあれば差し替える。繰り返し指定可")
+    p_add.add_argument("--before", default="全文", metavar="ラベル",
+                       help="このラベルのタブの手前に挿す（既定: 全文。無ければ末尾）")
+
     p_check = sub.add_parser("check", help="生成物の安全検査のみ実行する")
     p_check.add_argument("paths", nargs="+", type=Path)
 
@@ -1589,6 +1804,30 @@ def main() -> None:
     if args.command == "build":
         build([_parse_view(v) for v in args.view], args.out, args.title, args.source)
         ng = check(args.out) + check(args.out.with_suffix(".artifact.html"))
+        sys.exit(1 if ng else 0)
+
+    if args.command == "add-view":
+        # build を毎回フルの --view 列で叩き直すと、05/06 の有無で行を足し引きする運用になり
+        # タブを1枚落とした状態で上書きしてしまう。既存の並びは .snapshot.json の manifest に
+        # あるので、そこへ差し込む形にして「1枚足す」を1コマンドにする。
+        os.chdir(ROOT)
+        spec = args.spec.resolve()
+        plan = _bundle_plan(spec)
+        if plan is None:
+            sys.exit(f"バンドルが無い: {spec}。先に build で作ること")
+        views = list(plan["views"])
+        for label, path in [_parse_view(v) for v in args.view]:
+            hit = next((i for i, (l, _) in enumerate(views) if l == label), None)
+            if hit is not None:
+                views[hit] = (label, path)
+                print(f"spec-html.py: 既存タブ「{label}」を差し替える")
+                continue
+            anchor_at = next((i for i, (l, _) in enumerate(views) if l == args.before), len(views))
+            views.insert(anchor_at, (label, path))
+            print(f"spec-html.py: タブ「{label}」を追加する")
+        rel = spec.relative_to(ROOT) if spec.is_relative_to(ROOT) else spec
+        build(views, plan["out"], plan["title"], str(rel))
+        ng = check(plan["out"]) + check(plan["out"].with_suffix(".artifact.html"))
         sys.exit(1 if ng else 0)
 
     if args.command == "fulltext":
