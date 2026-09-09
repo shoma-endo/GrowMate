@@ -96,15 +96,6 @@ export interface SessionListContentProps {
   disableActions?: boolean;
 }
 
-/**
- * UI コンポーネント関連の型定義
- */
-export interface NavItem {
-  icon: React.ReactNode;
-  label: string;
-  href: string;
-}
-
 export interface DeleteChatDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

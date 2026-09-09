@@ -1,5 +1,4 @@
 import { Suspense } from 'react';
-import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 
 export default function AdminLayout({
@@ -8,32 +7,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="border-b bg-white shadow-sm">
-        <div className="container mx-auto px-4">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center space-x-8">
-              <Link href="/" className="flex items-center space-x-2">
-                <span className="text-xl font-bold">AI Marketing Assistant</span>
-              </Link>
-              <nav className="flex items-center space-x-6">
-                <Link 
-                  href="/admin" 
-                  className="text-sm font-medium text-gray-600 hover:text-gray-900"
-                >
-                  ダッシュボード
-                </Link>
-              </nav>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
-                管理者
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="min-h-full bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         <Suspense fallback={<AdminLoadingSkeleton />}>
           {children}

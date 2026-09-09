@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Bot, Send, Menu, Pencil, Check, X, Loader2 } from 'lucide-react';
+import { Bot, Send, History, Pencil, Check, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -439,7 +439,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background border-b border-border shadow-sm h-16">
+      <header className="absolute top-0 left-0 right-0 z-50 bg-background border-b border-border shadow-sm h-16">
         <div className="px-4 h-full flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-1">
             <div className="hidden lg:block w-72">
@@ -453,8 +453,14 @@ const InputArea: React.FC<InputAreaProps> = ({
               />
             </div>
             {isMobile && onMenuToggle && (
-              <Button variant="ghost" size="icon" onClick={onMenuToggle} aria-label="メニュー">
-                <Menu className="h-5 w-5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onMenuToggle}
+                aria-label="チャット履歴を開く"
+                title="チャット履歴"
+              >
+                <History className="h-5 w-5" />
               </Button>
             )}
             <div className="flex items-center space-x-2">
@@ -601,7 +607,7 @@ const InputArea: React.FC<InputAreaProps> = ({
         </div>
       </header>
 
-      <div className="lg:hidden px-4 mt-16 py-2 bg-background border-b border-border">
+      <div className="lg:hidden px-4 py-2 bg-background border-b border-border">
         <ChatSearch
           query={searchQuery}
           isSearching={isSearching}

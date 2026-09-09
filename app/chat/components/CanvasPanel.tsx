@@ -794,7 +794,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
   return (
     <div
-      className="canvas-panel h-full bg-gray-50 border-l flex flex-col relative"
+      className="canvas-panel h-full bg-gray-50 border-l flex flex-col relative pt-16"
       style={{ width: canvasWidth }}
     >
       {/* ✅ リサイザーハンドル - 固定ヘッダー下から開始 */}
@@ -813,7 +813,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
       </div>
 
       {/* ヘッダー部分 - 固定ヘッダー分のtop位置を調整 */}
-      <div className="sticky top-16 z-40 flex items-center justify-between p-4 border-b bg-white/90 backdrop-blur-sm ml-2 shadow-sm">
+      <div className="flex items-center justify-between p-4 border-b bg-white/90 backdrop-blur-sm ml-2 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -985,7 +985,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
       {/* ✅ アウトラインパネル - ヘッダー下の適切な位置に配置 */}
       {outlineVisible && headings.length > 0 && !hideOutline && (
-        <div className="sticky top-32 z-30 border-b bg-white ml-2 max-h-48 overflow-y-auto shadow-sm">
+        <div className="border-b bg-white ml-2 max-h-48 overflow-y-auto shadow-sm">
           <div className="p-3">
             <h4 className="text-sm font-medium text-gray-600 mb-2">アウトライン</h4>
             <div className="space-y-1">
@@ -1017,7 +1017,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
       )}
 
       {/* エディタエリア - ChatGPT風Canvas同様のスタイル */}
-      <div className="flex-1 overflow-auto ml-2 pt-20 relative" ref={scrollContainerRef}>
+      <div className="flex-1 overflow-auto ml-2 pt-4 relative" ref={scrollContainerRef}>
         {onSelectionEdit && selectionMode && selectionMenuPosition && (
           <div
             className="absolute z-50 max-w-xs"

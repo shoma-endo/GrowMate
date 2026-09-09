@@ -3,7 +3,7 @@
 import React, { createContext, use, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
-import { Footer } from '@/components/Footer';
+import { AppShell } from '@/components/AppShell';
 import type { AuthContextType, AuthProviderProps } from '@/types/components';
 import type { User } from '@/types/user';
 import { signOutEmail } from '@/server/actions/auth.actions';
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const publicPath = isPublicPath(pathname);
-  const showFooter = !publicPath && pathname !== '/unavailable';
+  const showAppNav = !publicPath && pathname !== '/unavailable';
 
   const refreshUser = useCallback(async (): Promise<boolean> => {
     try {
@@ -206,15 +206,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   return (
     <AuthContext value={contextValue}>
-      <div className="flex flex-col min-h-screen">
-        {/*
-          min-w-0: flex アイテムの min-width デフォルト値（auto = 中身の最小コンテンツ幅）を
-          解除する。無いと、横に長いテーブル（overflow-x-auto でラップ済みでも）の最小幅が
-          main 自身に伝播しページ全体が横に広がってしまい、テーブル右側に余白が生まれる。
-        */}
-        <main className={`flex-1 min-w-0 ${showFooter ? 'pb-20' : ''}`}>{children}</main>
-        {showFooter && <Footer />}
-      </div>
+      <AppShell showNav={showAppNav}>{children}</AppShell>
     </AuthContext>
   );
 }
