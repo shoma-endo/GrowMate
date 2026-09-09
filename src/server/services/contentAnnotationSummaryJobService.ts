@@ -807,7 +807,12 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
       durationMs: Date.now() - routeStartedAt,
       total: result.processedJobs,
       succeeded: result.articlesSucceeded,
+      // ジョブ単位（claim 失敗・進捗保存失敗・メール失敗）。記事単位の失敗は含めない
       failed: result.failed,
+      // **記事単位の失敗はここにだけ出る。** `failed` に足すと `invoke-cron.sh` の
+      // `data.failed > 0` 判定が赤くなるため足せないが、ログに出ないと
+      // `[ContentAnnotationSummary]` のエラーログと件数が突き合わせられない
+      itemsFailed: result.articlesFailed,
     });
   }
 }

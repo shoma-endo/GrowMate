@@ -87,9 +87,32 @@ export function getContentAnnotationSummaryErrorMessage(code: SummaryErrorCode):
   return mapSummaryError(code);
 }
 
+/**
+ * 受け取った JSON の**形だけ**を「キー名:JS型」で表す。
+ *
+ * `SUMMARY_PARSE_FAILED` は「7項目すべて必須の `z.string()`」に対して `null`・キー欠落・
+ * 配列・入れ子オブジェクトのいずれかが返ったときに起きるが、どれだったかはスキーマの
+ * issue だけでは追い切れないことがある。**記事本文は載せない**（値ではなく型のみ）。
+ */
+function describeJsonShape(parsed: unknown): string {
+  if (parsed === null) return 'null';
+  if (Array.isArray(parsed)) return 'array';
+  if (typeof parsed !== 'object') return typeof parsed;
+  return Object.entries(parsed as Record<string, unknown>)
+    .map(([key, value]) => `${key}:${describeJsonShape(value)}`)
+    .join(', ');
+}
+
 function extractJsonBlock(markdown: string): ContentAnnotationAiSummaryFields | null {
   const match = markdown.match(JSON_BLOCK_REGEX);
   if (!match?.[1]) {
+    // **無言で null を返さない。** 開きフェンスだけあって閉じフェンスが無い＝
+    // `maxTokens` 到達での出力打ち切りで、スキーマ不一致とは対処が違う（本文が長すぎる）。
+    // この2値が無いと両者をログから区別できない
+    console.error('[ContentAnnotationSummary] JSON block not found in LLM response:', {
+      responseLength: markdown.length,
+      hasOpeningFence: markdown.includes('```json'),
+    });
     return null;
   }
 
@@ -97,7 +120,17 @@ function extractJsonBlock(markdown: string): ContentAnnotationAiSummaryFields | 
     const parsed: unknown = JSON.parse(match[1]);
     const result = contentAnnotationAiSummarySchema.safeParse(parsed);
     if (!result.success) {
-      console.error('[ContentAnnotationSummary] JSON schema validation failed');
+      // **どの項目が落ちたかを必ず残す。** issue を捨てると、失敗記事を手元で再現する以外に
+      // 原因を特定する手段が無くなる（LLM 呼び出しは課金される）。
+      // 記事本文は載せない。zod のメッセージは型名だけを含む
+      console.error('[ContentAnnotationSummary] JSON schema validation failed:', {
+        issues: result.error.issues.map(issue => ({
+          path: issue.path.join('.'),
+          code: issue.code,
+          message: issue.message,
+        })),
+        receivedShape: describeJsonShape(parsed),
+      });
       return null;
     }
     return result.data;
