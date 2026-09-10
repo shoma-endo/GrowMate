@@ -176,3 +176,30 @@ export type ContentAnnotationSummaryJobDatabase = Omit<Database, 'public'> & {
     };
   };
 };
+
+/**
+ * PROVISIONAL: supabase/migrations/20260911000000_add_memo_to_gsc_article_evaluation_history.sql
+ *
+ * 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
+ * このブロックを削除し、呼び出し側を生成済みの
+ * `Database['public']['Tables']['gsc_article_evaluation_history']` 型へ切り替える
+ * （`.agents/skills/supabase/service-usage.md` §6）。
+ */
+export type GscEvaluationHistoryMemoDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables'> & {
+    Tables: Omit<Database['public']['Tables'], 'gsc_article_evaluation_history'> & {
+      gsc_article_evaluation_history: {
+        Row: Database['public']['Tables']['gsc_article_evaluation_history']['Row'] & {
+          memo: string | null;
+        };
+        Insert: Database['public']['Tables']['gsc_article_evaluation_history']['Insert'] & {
+          memo?: string | null;
+        };
+        Update: Database['public']['Tables']['gsc_article_evaluation_history']['Update'] & {
+          memo?: string | null;
+        };
+        Relationships: Database['public']['Tables']['gsc_article_evaluation_history']['Relationships'];
+      };
+    };
+  };
+};

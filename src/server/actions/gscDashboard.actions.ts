@@ -13,6 +13,7 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
   asPendingClient,
   type Ga4ContentEvaluationScheduleDatabase,
+  type GscEvaluationHistoryMemoDatabase,
 } from '@/types/database.types.pending';
 import { canAccessGa4, canWriteGa4 } from '@/server/lib/ga4-permissions';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
@@ -64,6 +65,7 @@ type GscDetailResponse = {
       suggestion_attempt_count: number;
       suggestion_error: string | null;
       is_read: boolean;
+      memo: string | null;
       created_at: string;
     }>;
     evaluation: {
@@ -184,14 +186,16 @@ export async function fetchGscDetail(
       throw new Error(metricError.message);
     }
 
-    const { data: history, error: historyError } = await supabaseService
-    .getClient()
-    .from('gsc_article_evaluation_history')
-    .select('*')
-    .eq('user_id', annotationUserId)
-    .eq('content_annotation_id', annotationId)
-    .order('created_at', { ascending: false })
-    .limit(100);
+    // memo列はマイグレーション適用・型再生成まで生成型に存在しないため pending 型を経由する。
+    const { data: history, error: historyError } = await asPendingClient<GscEvaluationHistoryMemoDatabase>(
+      supabaseService.getClient()
+    )
+      .from('gsc_article_evaluation_history')
+      .select('*')
+      .eq('user_id', annotationUserId)
+      .eq('content_annotation_id', annotationId)
+      .order('created_at', { ascending: false })
+      .limit(100);
 
     if (historyError) {
       throw new Error(historyError.message);
@@ -236,6 +240,7 @@ export async function fetchGscDetail(
                 ? item.error_code
                 : null,
             errorMessage: item.error_message,
+            memo: item.memo ?? null,
             suggestion_status:
               item.suggestion_status === 'pending' ||
               item.suggestion_status === 'processing' ||
@@ -253,6 +258,79 @@ export async function fetchGscDetail(
     console.error('[gsc-dashboard] fetch detail failed', error);
     const message = error instanceof Error ? error.message : ERROR_MESSAGES.GSC.DETAIL_FETCH_FAILED;
     return { success: false, error: message };
+  }
+}
+
+const saveEvaluationHistoryMemoSchema = z.object({
+  historyId: z.uuidv4(),
+  memo: z.string(),
+});
+
+type SaveEvaluationHistoryMemoInput = z.infer<typeof saveEvaluationHistoryMemoSchema>;
+
+type SaveEvaluationHistoryMemoResult =
+  | { success: true; data: { memo: string | null } }
+  | { success: false; error: string; emailLinkConflict?: true };
+
+export async function saveEvaluationHistoryMemo(
+  historyId: SaveEvaluationHistoryMemoInput['historyId'],
+  memo: SaveEvaluationHistoryMemoInput['memo']
+): Promise<SaveEvaluationHistoryMemoResult> {
+  try {
+    const authId = await getAuthUserId();
+    if ('error' in authId) {
+      return gscAuthErrorPayload(authId);
+    }
+    if (!canWriteGa4({ role: authId.role })) {
+      return { success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
+    }
+
+    const parsed = saveEvaluationHistoryMemoSchema.safeParse({ historyId, memo });
+    if (!parsed.success) {
+      console.error(
+        '[gsc-dashboard] save evaluation history memo validation failed:',
+        z.prettifyError(parsed.error)
+      );
+      return {
+        success: false,
+        error: ERROR_MESSAGES.GSC.EVALUATION_MEMO_SAVE_FAILED,
+      };
+    }
+
+    const { userId } = authId;
+    const savedMemo = parsed.data.memo.trim() === '' ? null : parsed.data.memo;
+    const { data, error } = await asPendingClient<GscEvaluationHistoryMemoDatabase>(
+      supabaseService.getClient()
+    )
+      .from('gsc_article_evaluation_history')
+      .update({ memo: savedMemo })
+      .eq('id', parsed.data.historyId)
+      .eq('user_id', userId)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      console.error('[gsc-dashboard] save evaluation history memo database failed', error);
+      return {
+        success: false,
+        error: ERROR_MESSAGES.GSC.EVALUATION_MEMO_SAVE_FAILED,
+      };
+    }
+    if (!data) {
+      return {
+        success: false,
+        error: ERROR_MESSAGES.GSC.EVALUATION_MEMO_SAVE_FAILED,
+      };
+    }
+
+    revalidatePath('/analytics/[annotationId]', 'page');
+    return { success: true, data: { memo: savedMemo } };
+  } catch (error) {
+    console.error('[gsc-dashboard] save evaluation history memo failed', error);
+    return {
+      success: false,
+      error: ERROR_MESSAGES.GSC.EVALUATION_MEMO_SAVE_FAILED,
+    };
   }
 }
 
