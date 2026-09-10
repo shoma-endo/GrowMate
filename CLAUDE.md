@@ -10,7 +10,7 @@
 - `.env`・secret・credential・tokenは読取・出力しない。破壊的操作は対象を限定する。
 - 新規機能は原則として `admin` または `paid` ロールだけに提供する。`trial` と `unavailable` は対象外とし、例外は対象仕様書で明示する。
 - 新規機能の認可はUIだけでなく、Server Action・Route Handler・APIなどのサーバー側でも検証する。
-- **実装前の最小実装ラダー**（[Ponytail](https://github.com/DietrichGebert/ponytail) 思想の薄い取り込み。プラグイン依存なし）。コードを書く前に上から見て、最初に成立する段で止める:
+- **実装前の最小実装ラダー**（[Ponytail](https://github.com/DietrichGebert/ponytail) 思想の薄い取り込み。プラグイン依存なし。TAKT では `.takt/workflows/rules/minimal-impl-ladder.md` と同文）。コードを書く前に上から見て、最初に成立する段で止める:
   1. これは存在する必要があるか（YAGNI）→ 不要なら作らない
   2. このコードベースに既にあるか → 再利用・拡張する
   3. 言語／ランタイムの標準機能で足りるか
