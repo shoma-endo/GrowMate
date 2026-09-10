@@ -10,6 +10,7 @@
 - `.env`・secret・credential・tokenは読取・出力しない。破壊的操作は対象を限定する。
 - 新規機能は原則として `admin` または `paid` ロールだけに提供する。`trial` と `unavailable` は対象外とし、例外は対象仕様書で明示する。
 - 新規機能の認可はUIだけでなく、Server Action・Route Handler・APIなどのサーバー側でも検証する。
+- 実装の最小化（YAGNI ラダー）は `.takt/workflows/rules/minimal-impl-ladder.md` に従う。
 
 ## Workflow Source of Truth
 
