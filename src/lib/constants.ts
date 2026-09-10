@@ -408,6 +408,11 @@ export const ANALYTICS_COLUMNS = [
   { id: 'url', label: 'URL' },
 ];
 
+// アプリ共通シェル（サイドバー）の localStorage キー
+export const APP_SHELL_STORAGE_KEYS = {
+  SIDEBAR_COLLAPSED: 'appShell.sidebarCollapsed',
+} as const;
+
 // Analytics ページの localStorage キー
 export const ANALYTICS_STORAGE_KEYS = {
   CATEGORY_FILTER: 'analytics.categoryFilter',

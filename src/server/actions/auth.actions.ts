@@ -106,7 +106,7 @@ export async function signOutEmail(): Promise<{ success: boolean; error?: string
   const { error: signOutError } = await supabase.auth.signOut();
   if (signOutError && !isUnauthenticatedAuthError(signOutError)) {
     console.error('[auth.actions] signOutEmail error:', signOutError.message);
-    return { success: false, error: 'ログアウトに失敗しました。もう一度お試しください。' };
+    return { success: false, error: ERROR_MESSAGES.AUTH.LOGOUT_FAILED };
   }
 
   // LINE cookie が残っていると middleware が /login → / へリダイレクトするため削除する

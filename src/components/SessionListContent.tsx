@@ -41,7 +41,8 @@ const SessionListContent = memo(function SessionListContent({
                 size="icon"
                 onClick={onToggleSidebar}
                 className="bg-white border-gray-200 hover:bg-gray-50"
-                title="サイドバーを閉じる"
+                title="チャット履歴を閉じる"
+                aria-label="チャット履歴を閉じる"
               >
                 <ChevronLeft size={16} />
               </Button>

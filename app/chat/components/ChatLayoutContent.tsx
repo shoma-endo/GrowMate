@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, Menu } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { AlertTriangle } from 'lucide-react';
 import {
   BLOG_STEP_IDS,
   FIRST_BLOG_STEP_ID,
@@ -251,17 +250,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
       {/* モバイルサイドバー（Sheet） */}
       {isMobile && (
         <Sheet open={ui.sidebar.open} onOpenChange={ui.sidebar.setOpen}>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 left-2 z-10"
-              aria-label="メニューを開く"
-            >
-              <Menu size={20} />
-            </Button>
-          </SheetTrigger>
           <SheetContent side="left" className="p-0 max-w-[280px] sm:max-w-[280px]">
+            <SheetTitle className="sr-only">チャット履歴</SheetTitle>
             <SessionSidebar
               sessions={chatSession.state.sessions}
               currentSessionId={chatSession.state.currentSessionId}
@@ -287,7 +277,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
         </Sheet>
       )}
 
-      <div className={cn('flex-1 flex flex-col pt-16', isMobile && 'pt-16')}>
+      <div className="flex-1 flex flex-col pt-16">
         {chatSession.state.error && !isErrorDismissed && (
           <DismissibleErrorAlert error={chatSession.state.error} onClose={() => setIsErrorDismissed(true)} />
         )}

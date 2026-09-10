@@ -29,6 +29,12 @@ interface CronLogDetails {
   failed?: number;
   skipped?: number;
   remaining?: number;
+  /**
+   * 記事・レコード単位の失敗数。`failed`（ジョブ単位）と単位が違うので別キーにする。
+   * AI要約一括のように記事単位の失敗を `failed` に含めない cron では、これが無いと
+   * 「エラーログは出ているのに failed:0」に見えて失敗件数を追えない。
+   */
+  itemsFailed?: number;
 }
 
 interface CronDefinition<Name extends string> {

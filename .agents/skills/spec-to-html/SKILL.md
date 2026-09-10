@@ -21,6 +21,7 @@ description: docs/plansの仕様書を単一HTMLの「見る地図」に変換�
 | 再構成（任意） | 05 画面仕様 | **LLM** | 画面一覧・遷移・状態別UIの圧縮ビュー |
 | 対話（任意） | 06 UIモック | **LLM** | CP／UIたたき台合意用の操作可能な見た目。本番コードではない |
 | 全文 | 04 全文 | **スクリプト**（`spec-html.py fulltext`） | 実装（DDL を書く・プロンプトを直す・型を定義する） |
+| 導線 | ビューを増やす | **スクリプト**（`build` が毎回生成） | 別のエージェントに投げてタブを1枚足すためのプロンプト集。読者を変えたビューもここから作る |
 
 全文ビューは原本と1文字も乖離してはいけないので **LLM に書かせない**。機械変換にすることで、生成のたびに解釈が入る余地を消し、トークンも消費せず常に同期する。
 
@@ -28,7 +29,7 @@ description: docs/plansの仕様書を単一HTMLの「見る地図」に変換�
 
 **UIたたき台（CP）が実装前ゲートの仕様書には `06-ui-mock.html` を追加する。** PO／クライアントが操作して見た目・文言・状態遷移を合意するための対話型モック。トリガーは「仕様のチェックポイントや承認表に UI たたき台／CP が明示されている」、または人間が「図解に UI モックタブを足せ」と指示したとき。無いなら作らない。`05-screens`（構造の再構成）と役割が違う — 05 は読む図、06 は触る図。両方あるなら両方載せる。片方だけで足りるなら片方でよい。
 
-ファイル名の連番と `build --view` のタブ表示順は無関係（指定順にタブが並ぶだけで、`build()` はファイル名を解釈しない）なので、既存ファイルのリネームは不要。既定タブ順は「ステータス→設計判断→画面仕様→**UIモック**→クイズ→全文」（存在する任意ビューだけ差し込む。クイズが画面／モックの理解度も問えるように、クイズの直前に置く）。
+ファイル名の連番と `build --view` のタブ表示順は無関係（指定順にタブが並ぶだけで、`build()` はファイル名を解釈しない）なので、既存ファイルのリネームは不要。既定タブ順は「ステータス→設計判断→画面仕様→**UIモック**→クイズ→全文→ビューを増やす」（存在する任意ビューだけ差し込む。クイズが画面／モックの理解度も問えるように、クイズの直前に置く。「ビューを増やす」は `--view` で渡さない — `build` が `--source` があるとき常に末尾へ付ける）。
 
 ## 図版とビュー実装（正本: `authoring-views.md`）
 
@@ -38,7 +39,8 @@ description: docs/plansの仕様書を単一HTMLの「見る地図」に変換�
 
 再構成ビューは LLM が「そのときの原本」から書く。原本が改訂されてもビューは黙って古いままになり、`core.yaml` の `source_refs`（行番号）は静かにズレる。これを検知するため、`build` は毎回 **宣言（core.yaml）と実体（原本 Markdown）を突合**し、結果を成果物の先頭バーとコンソールに自己申告する。基準は `docs/plans/_html/<slug>/.snapshot.json`（`build` が毎回更新）。
 
-- レベル別（`fail` / `warn` / `info`）の意味と対処、**更新モードで fail が出たときの手順**は同ディレクトリの `maintenance.md` が正本。fail / warn が出たら読む。
+- レベル別（`fail` / `warn` / `info`）の意味と対処、**更新モードで fail / warn が出たときの手順**は同ディレクトリの `maintenance.md` が正本。fail / warn が出たら読む。
+- **どこを直すかは機械が名指しする。** `source_refs` は持ち主の concept を覚えているので、改訂された章を根拠にしている concept を `warn` で名指しし、さらに `relations` を**1ホップ**辿って「直接は改訂されていないが前提が動いた」concept を `info` で出す（経路つき）。バンドル単位の「01〜03 が古いかも」で止めない。2ホップ以上は追わない。
 - **fail を放置しない。** 参照が壊れた状態で更新モードを続けると、LLM が「ズレた行」を根拠に書き足していく。fail が出てもビルド自体は落ちない（落ちるのは安全検査だけ）ので、コンソール出力を必ず読む。
 
 ## 自動追従（`refresh`）
@@ -56,6 +58,23 @@ python3 scripts/spec-html.py refresh --all --check                 # 書かず�
 - 変わっていれば `views/*fulltext*.html` を再生成し、`.snapshot.json` の `manifest`（タイトル・出力先・ビューのラベルと並び）どおりに `build` を再実行する。
 - **再構成ビュー（01〜03）には触らない。** `core.yaml` を LLM が解釈して書くものなので機械では直せない。代わりに整合性チェックが `fail`/`warn` を出したら「01〜03 が陳腐化している可能性がある」と明示的に警告する。**この警告が出たら更新モードで `core.yaml` を貼り直すこと。**
 - 発火経路（Claude Code / Cursor / Codex の編集後フック、husky `pre-commit`、手動 `npm run spec-html:refresh`）の詳細は `maintenance.md`。いずれも失敗しても編集・commit を止めない。**Cursor だけは陳腐化警告がエージェントに届かない**（`afterFileEdit` が fire-and-forget のため）ので、章を書き換えたら `npm run spec-html:refresh` の出力を人が読む。
+
+## ビューを1枚足す（`add-view`）
+
+タブを増やすのに `build` のフル引数を組み直さない。**既存の並びは `.snapshot.json` の `manifest` にあるので、そこへ差し込む。**
+
+```bash
+python3 scripts/spec-html.py add-view \
+  --spec docs/plans/<slug>.md \
+  --view "依存関係=docs/plans/_html/<slug>/views/07-deps.html"
+```
+
+- 既存タブ・タイトル・出力先はそのまま。**同じラベルを指定したときだけ差し替える**（重複タブは作らない）。
+- 挿入位置は既定で「全文」タブの手前。`--before <ラベル>` で変えられる。
+- `build` と同じく整合性チェックと安全検査が走る。
+- **`build` をフル引数で叩き直す運用に戻さないこと。** 05/06 の有無で `--view` 行を足し引きする形は、タブを1枚落としたまま上書きする事故が起きる。
+
+生成された図解の「**ビューを増やす**」タブに、そのまま別のエージェントへ投げられるプロンプトが5枚入っている（依存関係 / 読者を変える / 引き継ぎ / 概念テーブル / 自由記述）。プロンプトは YAML の中身ではなく**絶対パス**を渡すので、仕様書が改訂されても投げ直せば最新の意味から書かれる。**カードの内容を LLM に書かせない** — 正本は `scripts/spec-html.py` の `PROMPT_CARDS`。シェルとプロンプトの作者を1つに保つため、「HTML 全体を作り直す」テンプレートは意図的に置いていない。
 
 ## 出力先の規約
 
@@ -75,6 +94,7 @@ docs/plans/_html/<slug>.html                ← 成果物（単一ファイル�
 docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時生成・スマホ/クラウド閲覧用）
 ```
 
+- あとから足すビューは同じ `views/` に `07-` 以降の連番で置き、`add-view` で結合する（下記）。
 - `<slug>` は仕様書のファイル名から `.md` を除いたもの。
 - `docs/plans/_html/` は `.gitignore` 済み。**成果物も中間ファイルも commit しない**。意味の正本は常に `docs/plans/<slug>.md` 側にある。
 - **対象は `docs/plans/` 直下の仕様書だけ**。`refresh` は `docs/plans/` 直下以外のパスを黙って捨てる（`scripts/spec-html.py` の `refresh` 分岐）ため、実装完了時に `docs/specs/` へ移動した仕様書はバンドルの更新対象外になる。移動時は古いバンドル（`docs/plans/_html/<slug>/`、`docs/plans/_html/<slug>.html`、`docs/plans/_html/<slug>.artifact.html`）を消す。残すと**中身が更新されないまま開ける状態**になり、古い仕様を最新と誤読する。
@@ -114,9 +134,9 @@ docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時�
 
 ### 3. view.yaml を書く（見せ方の層）
 
-読者は既定で「このリポジトリの開発者本人・数週間ぶりの復帰」。`emphasize` は `implementation_status` / `next_actions` / `risks` / `decision_rationale` / `dependencies` / `reading_order`。`de_emphasize` に `sql_ddl_verbatim` / `prompt_body_verbatim` を入れる。
+**読者プロファイルの正本は [`readers.md`](readers.md)。** 既定は R1「このリポジトリの開発者本人・数週間ぶりの復帰」で、`emphasize` は `implementation_status` / `next_actions` / `risks` / `decision_rationale` / `dependencies` / `reading_order`、`de_emphasize` は `sql_ddl_verbatim` / `prompt_body_verbatim`。
 
-読者が変わったら `core.yaml` はそのままに `view.yaml` だけ差し替えて再生成する。
+読者が変わったら `core.yaml` はそのままに `view.yaml` だけ差し替える。R2（PO・クライアント）と R3（引き継ぎ先）のプロファイルは `readers.md` にある。**`06-ui-mock.html` を作る仕様書は読者が R2 なので、モックの中では R2 の `de_emphasize` に従う**（実装語を出さない・PO確認項目を先頭に置く）。
 
 ### 4. quiz.yaml を書く（理解度チェック）
 

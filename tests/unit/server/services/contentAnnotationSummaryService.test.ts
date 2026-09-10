@@ -229,4 +229,75 @@ describe('contentAnnotationSummaryService', () => {
     });
     expect(otherFailure).toEqual({ success: false, code: 'SUMMARY_AI_FAILED' });
   });
+
+  /**
+   * **`SUMMARY_PARSE_FAILED` の原因項目がログから追えることを固定する。**
+   * 本番（2026-09-08 の cron）で1件出たが、当時のログは項目名を持たず、
+   * LLM を再度叩く（＝課金する）以外に特定手段が無かった。
+   */
+  it('スキーマ不一致は落ちた項目と受け取った形をログに残す', async () => {
+    const annotation = {
+      id: 'annotation-id',
+      user_id: 'user-id',
+      session_id: null,
+      wp_post_id: 42,
+      canonical_url: null,
+      wp_post_title: '記事タイトル',
+      impressions: null,
+    };
+    mocks.maybeSingle.mockResolvedValue({ data: annotation, error: null });
+    // 本文の薄い記事で起きる形。プロンプトの「推測で埋めない」に従うと null が返りうる
+    mocks.llmChat.mockResolvedValueOnce(`\`\`\`json
+{"main_kw":null,"kw":["kw1","kw2"],"needs":"ニーズ","persona":"ペルソナ","goal":"ゴール","prep":"PREP","opening_proposal":"書き出し"}
+\`\`\``);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const generated = await contentAnnotationSummaryService.generateSummary({
+      target: { annotationId: 'annotation-id' },
+      executorUserId: 'user-id',
+    });
+
+    expect(generated).toEqual({ success: false, code: 'SUMMARY_PARSE_FAILED' });
+    const [message, payload] = errorSpy.mock.calls.at(-1) as [string, Record<string, unknown>];
+    expect(message).toContain('JSON schema validation failed');
+    const issues = payload.issues as Array<{ path: string }>;
+    expect(issues.map(issue => issue.path).sort()).toEqual(['kw', 'main_kw']);
+    expect(payload.receivedShape).toContain('main_kw:null');
+    expect(payload.receivedShape).toContain('kw:array');
+    // 記事本文・生成値そのものはログに載せない
+    expect(JSON.stringify(payload)).not.toContain('ペルソナ');
+
+    errorSpy.mockRestore();
+  });
+
+  /**
+   * 出力打ち切り（`maxTokens` 到達）は閉じフェンスが欠けるためスキーマ検証まで到達しない。
+   * 対処が違う（本文が長すぎる）ので、無言 null にせずログで区別できるようにする。
+   */
+  it('閉じフェンスが無い応答は開きフェンスの有無つきでログに残す', async () => {
+    const annotation = {
+      id: 'annotation-id',
+      user_id: 'user-id',
+      session_id: null,
+      wp_post_id: 42,
+      canonical_url: null,
+      wp_post_title: '記事タイトル',
+      impressions: null,
+    };
+    mocks.maybeSingle.mockResolvedValue({ data: annotation, error: null });
+    mocks.llmChat.mockResolvedValueOnce('```json\n{"main_kw":"主軸kw",');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const generated = await contentAnnotationSummaryService.generateSummary({
+      target: { annotationId: 'annotation-id' },
+      executorUserId: 'user-id',
+    });
+
+    expect(generated).toEqual({ success: false, code: 'SUMMARY_PARSE_FAILED' });
+    const [message, payload] = errorSpy.mock.calls.at(-1) as [string, Record<string, unknown>];
+    expect(message).toContain('JSON block not found');
+    expect(payload).toEqual({ responseLength: expect.any(Number), hasOpeningFence: true });
+
+    errorSpy.mockRestore();
+  });
 });

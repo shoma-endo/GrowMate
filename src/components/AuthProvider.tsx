@@ -3,11 +3,14 @@
 import React, { createContext, use, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
-import { Footer } from '@/components/Footer';
+import { Button } from '@/components/ui/button';
+import { AppShell } from '@/components/AppShell';
+import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton';
 import type { AuthContextType, AuthProviderProps } from '@/types/components';
 import type { User } from '@/types/user';
 import { signOutEmail } from '@/server/actions/auth.actions';
 import { isClientPublicPath as isPublicPath } from '@/lib/public-paths';
+import { getRoleAccessRedirectPath } from '@/lib/role-access';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -53,7 +56,7 @@ async function fetchCurrentUser(): Promise<FetchCurrentUserResult> {
     }
   }
   if (!res.ok) {
-    return { user: null, emailLinkConflict: false, roleUnavailable: false, hasFullName: false };
+    throw new Error(`Failed to fetch current user: ${res.status}`);
   }
   const data = (await res.json()) as { user?: User | null };
   const user = data?.user ?? null;
@@ -73,15 +76,48 @@ function redirectIfNeedsFullName(
   pathname: string | null,
   router: ReturnType<typeof useRouter>
 ): boolean {
-  if (pathname && FULL_NAME_DIALOG_PATHS.includes(pathname)) return true;
+  if (pathname && FULL_NAME_DIALOG_PATHS.includes(pathname)) return false;
   router.replace('/login');
   return true;
 }
 
 function redirectIfRoleUnavailable(pathname: string | null, router: ReturnType<typeof useRouter>): boolean {
-  if (pathname === '/unavailable') return true;
+  if (pathname === '/unavailable') return false;
   router.replace('/unavailable');
   return true;
+}
+
+function redirectIfRoleRestricted(
+  pathname: string | null,
+  user: User,
+  router: ReturnType<typeof useRouter>
+): boolean {
+  const redirectPath = getRoleAccessRedirectPath(pathname ?? '', user.role);
+  if (!redirectPath) return false;
+  router.replace(redirectPath);
+  return true;
+}
+
+interface AuthLoadErrorProps {
+  onRetry: () => void;
+}
+
+function AuthLoadError({ onRetry }: AuthLoadErrorProps) {
+  return (
+    <Card className="mx-auto mt-8 max-w-md" role="alert">
+      <CardContent className="space-y-4 p-8 text-center">
+        <div className="space-y-1">
+          <p className="font-medium">ユーザー情報を確認できませんでした</p>
+          <p className="text-sm text-muted-foreground">
+            通信状態を確認して、もう一度お試しください。
+          </p>
+        </div>
+        <Button type="button" variant="outline" onClick={onRetry}>
+          再試行
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 /**
@@ -93,82 +129,129 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [validatedPathname, setValidatedPathname] = useState<string | null>(null);
+  const [failedPathname, setFailedPathname] = useState<string | null>(null);
+  const [authRequestVersion, setAuthRequestVersion] = useState(0);
   const publicPath = isPublicPath(pathname);
-  const showFooter = !publicPath && pathname !== '/unavailable';
+  const showAppNav = !publicPath && pathname !== '/unavailable';
+  const isRevalidatingPath = !isLoading && validatedPathname !== pathname;
+  const hasAuthLoadError = failedPathname === pathname;
+  const roleRedirectPath = user
+    ? getRoleAccessRedirectPath(pathname ?? '', user.role)
+    : null;
 
   const refreshUser = useCallback(async (): Promise<boolean> => {
     try {
       const { user: nextUser, emailLinkConflict, roleUnavailable, hasFullName } =
         await fetchCurrentUser();
+      setFailedPathname(current => (current === pathname ? null : current));
       setUser(nextUser);
       if (emailLinkConflict) {
         if (!isPublicPath(pathname)) {
+          setValidatedPathname(null);
           router.replace('/login?reason=email_link_conflict');
         }
         return false;
       }
       // フルネーム未登録はサービス停止より優先して登録画面へ戻す
       if (!hasFullName && (nextUser || roleUnavailable)) {
-        redirectIfNeedsFullName(pathname, router);
+        const redirected = redirectIfNeedsFullName(pathname, router);
+        setValidatedPathname(redirected ? null : pathname);
         return false;
       }
       if (roleUnavailable) {
-        redirectIfRoleUnavailable(pathname, router);
+        const redirected = redirectIfRoleUnavailable(pathname, router);
+        setValidatedPathname(redirected ? null : pathname);
+        return false;
+      }
+      if (nextUser && redirectIfRoleRestricted(pathname, nextUser, router)) {
+        setValidatedPathname(null);
+        return false;
+      }
+      if (!nextUser && !isPublicPath(pathname)) {
+        setValidatedPathname(null);
+        router.replace('/login');
         return false;
       }
       return nextUser !== null;
     } catch (error) {
       console.error('Failed to refresh user:', error);
-      setUser(null);
+      if (!isPublicPath(pathname)) {
+        setFailedPathname(pathname);
+      }
       return false;
     }
   }, [router, pathname]);
+
+  const retryAuthLoad = () => {
+    setFailedPathname(null);
+    setValidatedPathname(null);
+    if (!user) {
+      setIsLoading(true);
+    }
+    setAuthRequestVersion(version => version + 1);
+  };
 
   // 初回マウント時・パス変更時にユーザー情報を取得する。
   // middleware.ts が非公開パスでは認証を強制しているため、
   // ここでは UI 表示用のユーザー情報取得のみを行う。
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
+    let redirected = false;
+    let failed = false;
     fetchCurrentUser()
       .then(({ user: nextUser, emailLinkConflict, roleUnavailable, hasFullName }) => {
         if (cancelled) return;
+        setFailedPathname(current => (current === pathname ? null : current));
         setUser(nextUser);
         if (emailLinkConflict) {
           if (!publicPath) {
+            redirected = true;
             router.replace('/login?reason=email_link_conflict');
           }
           return;
         }
         // フルネーム未登録はサービス停止より優先して登録画面へ戻す
         if (!hasFullName && (nextUser || roleUnavailable)) {
-          redirectIfNeedsFullName(pathname, router);
+          redirected = redirectIfNeedsFullName(pathname, router);
           return;
         }
         if (roleUnavailable) {
-          redirectIfRoleUnavailable(pathname, router);
+          redirected = redirectIfRoleUnavailable(pathname, router);
+          return;
+        }
+        if (nextUser && redirectIfRoleRestricted(pathname, nextUser, router)) {
+          redirected = true;
           return;
         }
         // 非公開パスで user が取れない場合のみ /login へ誘導（middleware の補助）
         if (!nextUser && !publicPath) {
+          redirected = true;
           router.replace('/login');
         }
       })
       .catch(error => {
         if (cancelled) return;
+        failed = true;
         console.error('Failed to load current user:', error);
-        setUser(null);
+        if (!publicPath) {
+          setFailedPathname(pathname);
+        }
       })
       .finally(() => {
         if (cancelled) return;
         setIsLoading(false);
+        if (!redirected && !failed) {
+          setValidatedPathname(pathname);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [pathname, publicPath, router]);
+  }, [authRequestVersion, pathname, publicPath, router]);
 
-  // 非公開パスでロード中はコンテンツを隠す
+  // 初回の認証確認中だけ保護画面全体を隠す。
+  // パス変更時の再取得では AppShell を維持し、本文だけを共通スケルトンへ差し替える。
   if (isLoading && !publicPath) {
     return (
       <Card className="max-w-md mx-auto mt-8">
@@ -177,6 +260,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         </CardContent>
       </Card>
     );
+  }
+
+  if (hasAuthLoadError && !user && !publicPath) {
+    return <AuthLoadError onRetry={retryAuthLoad} />;
   }
 
   // 旧 LINE LIFF 連携由来のフィールドは互換のため残し、常に固定値を返す。
@@ -189,16 +276,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       router.push('/login');
     },
     logout: async () => {
+      // 失敗時にローカルだけクリアして /login へ飛ばすと、Cookie が残っているため proxy が
+      // 認証済みとして / へ戻し「押しても何も起きない」ように見える。失敗は false で返し、
+      // 呼び出し側が toast で伝える。
       try {
-        await signOutEmail();
+        const result = await signOutEmail();
+        if (!result.success) {
+          console.error('Failed to sign out:', result.error);
+          return false;
+        }
       } catch (error) {
-        // サーバー側 signOut 失敗時もローカル状態はクリアし /login へ誘導する。
-        // middleware が次回アクセス時に再検証するため、セッション残留は次リクエストで解消される。
         console.error('Failed to sign out:', error);
-      } finally {
-        setUser(null);
-        router.push('/login');
+        return false;
       }
+      setUser(null);
+      router.push('/login');
+      return true;
     },
     liffObject: null,
     refreshUser,
@@ -206,15 +299,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   return (
     <AuthContext value={contextValue}>
-      <div className="flex flex-col min-h-screen">
-        {/*
-          min-w-0: flex アイテムの min-width デフォルト値（auto = 中身の最小コンテンツ幅）を
-          解除する。無いと、横に長いテーブル（overflow-x-auto でラップ済みでも）の最小幅が
-          main 自身に伝播しページ全体が横に広がってしまい、テーブル右側に余白が生まれる。
-        */}
-        <main className={`flex-1 min-w-0 ${showFooter ? 'pb-20' : ''}`}>{children}</main>
-        {showFooter && <Footer />}
-      </div>
+      <AppShell showNav={showAppNav}>
+        {!publicPath && hasAuthLoadError ? (
+          <AuthLoadError onRetry={retryAuthLoad} />
+        ) : !publicPath && (isRevalidatingPath || roleRedirectPath) ? (
+          <PageLoadingSkeleton />
+        ) : (
+          children
+        )}
+      </AppShell>
     </AuthContext>
   );
 }

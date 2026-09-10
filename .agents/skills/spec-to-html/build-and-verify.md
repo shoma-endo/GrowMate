@@ -33,6 +33,15 @@ python3 scripts/spec-html.py build \
 
 `05-screens.html` / `06-ui-mock.html` が無い仕様書では、該当 `--view` 行を**省略**する（空ファイルを渡さない）。既定タブ順は「ステータス→設計判断→画面仕様→UIモック→クイズ→全文」。
 
+**`--source` があると `build` は末尾に「ビューを増やす」タブを自動で足す**（`--view` では渡さない。`scripts/spec-html.py` の `PROMPT_CARDS` が正本の機械生成物で、`manifest` にも入らない）。したがって**結合後のパネル数は `--view` の数 + 1** になる。
+
+あとから1枚足すときは `build` を組み直さず `add-view` を使う（`SKILL.md` の「ビューを1枚足す」）:
+
+```bash
+python3 scripts/spec-html.py add-view --spec docs/plans/<slug>.md \
+  --view "依存関係=docs/plans/_html/<slug>/views/07-deps.html"
+```
+
 `build` は結合後に安全検査を自動実行し、違反があれば **exit 1** で落ちる。検査だけしたいときは `python3 scripts/spec-html.py check <path>`。
 
 `--source` を渡すと**整合性チェックと前回比 diff**（`SKILL.md` 参照）も走る（省略すると `core.yaml` の参照突合が行われず、ズレを検知できない。必ず渡すこと）。こちらは fail が出ても exit 1 にはならないので、**コンソール出力を必ず読む**。
@@ -49,7 +58,7 @@ python3 scripts/spec-html.py build \
   grep -c 'class="panel"'
 ```
 
-`<html data-theme=...>` が付いていれば JS が動いている。パネル数が **渡した `--view` の数** と一致し、`hidden` が (ビュー数 - 1) 個あればタブ制御も動いている（05/06 を足したら 4 固定ではない）。
+`<html data-theme=...>` が付いていれば JS が動いている。パネル数が **渡した `--view` の数 + 1**（末尾に自動で付く「ビューを増やす」タブのぶん）と一致し、`hidden` がそれより1個少なければタブ制御も動いている（05/06 を足したら固定値ではない）。
 
 `data-goto` を書いたら、**参照先 ID が実在するか**も確認する（存在しなくてもエラーは出ない）:
 

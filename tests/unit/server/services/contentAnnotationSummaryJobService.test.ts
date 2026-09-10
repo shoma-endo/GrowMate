@@ -995,6 +995,27 @@ describe('cron レスポンスの契約（§9）', () => {
     expect(result.failed).toBe(0);
   });
 
+  /**
+   * `failed` に記事単位の失敗を含めないぶん、**ログには出す**。
+   * 両方欠けると「エラーログは出ているのに failed:0」になり件数を突き合わせられない。
+   */
+  it('batch_completed ログに記事単位の失敗数を itemsFailed で出す', async () => {
+    const ids = ['a1', 'a2', 'a3'];
+    seedJob({ target_annotation_ids: ids, total_count: 3 });
+    store.content_annotations.push(...ids.map(id => annotation(id)));
+    mocks.generateSummary.mockResolvedValue({ success: false, code: 'SUMMARY_AI_FAILED' });
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    await contentAnnotationSummaryJobService.runNextJob(Date.now());
+
+    const completed = infoSpy.mock.calls
+      .map(([line]) => JSON.parse(String(line)) as Record<string, unknown>)
+      .find(entry => entry.event === 'batch_completed');
+    expect(completed).toMatchObject({ failed: 0, itemsFailed: 3 });
+
+    infoSpy.mockRestore();
+  });
+
   it('skipped / skippedDueToLimit / stoppedReason のキーを載せない', async () => {
     const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
     expect(result).not.toHaveProperty('skipped');
