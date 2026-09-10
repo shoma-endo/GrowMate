@@ -13,12 +13,14 @@ import type { Ga4ConnectionStatus } from './ga4';
  */
 export interface AuthContextType {
   isLoggedIn: boolean;
+  /** 初回の認証確認中だけ true。パス変更時の再検証は AppShell 内の本文ローディングで扱う。 */
   isLoading: boolean;
   /** legacy: 常に null */
   profile: null;
   user?: import('@/types/user').User | null;
   login: () => void;
-  logout: () => void | Promise<void>;
+  /** サインアウトに成功したら /login へ遷移して true。失敗時は状態を変えず false（呼び出し側が通知する） */
+  logout: () => Promise<boolean>;
   /** legacy: 常に null */
   liffObject: null;
   refreshUser: () => Promise<boolean>;
@@ -94,15 +96,6 @@ export interface SessionListContentProps {
   showToggleButton?: boolean;
   headerExtra?: React.ReactNode;
   disableActions?: boolean;
-}
-
-/**
- * UI コンポーネント関連の型定義
- */
-export interface NavItem {
-  icon: React.ReactNode;
-  label: string;
-  href: string;
 }
 
 export interface DeleteChatDialogProps {

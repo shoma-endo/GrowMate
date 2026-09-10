@@ -96,7 +96,7 @@ export default function AnnotationPanel({
 
   return (
     <div
-      className={cn('h-full bg-gray-50 border-l flex flex-col relative')}
+      className={cn('h-full bg-gray-50 border-l flex flex-col relative pt-16')}
       style={{ width: panelWidth }}
     >
       {/* リサイザーハンドル - 固定ヘッダー下から開始 */}
@@ -115,7 +115,7 @@ export default function AnnotationPanel({
       </div>
 
       {/* ヘッダー部分 - 固定ヘッダー分のtop位置を調整 */}
-      <div className="sticky top-16 z-40 flex items-center justify-between px-4 py-3 border-b bg-white/90 backdrop-blur-sm ml-2 shadow-sm">
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-white/90 backdrop-blur-sm ml-2 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
@@ -135,7 +135,7 @@ export default function AnnotationPanel({
       </div>
 
       {/* コンテンツエリア - ヘッダーとの重なりを防ぐため上部パディングを調整 */}
-      <div className="flex-1 overflow-auto p-4 ml-2" style={{ paddingTop: '80px' }}>
+      <div className="flex-1 overflow-auto p-4 ml-2">
         <div className="space-y-5">
           <fieldset>
             <AnnotationFormFields

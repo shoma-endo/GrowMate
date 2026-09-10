@@ -1,217 +1,75 @@
-'use client';
-
-import { useAuth } from '@/components/AuthProvider';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { Toaster } from '@/components/ui/sonner';
-import Image from 'next/image';
-import { Settings, Shield, List, Plug } from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { redirect } from 'next/navigation';
+import { authMiddleware } from '@/server/middleware/auth.middleware';
+import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
+import { SupabaseService } from '@/server/services/supabaseService';
+import { toGscConnectionStatus } from '@/server/lib/gsc-status';
+import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
+import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
+import { canAccessInstagram } from '@/server/lib/instagram-permissions';
+import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
 import { hasPaidFeatureAccess } from '@/types/user';
-import { isAdmin as isAdminRole } from '@/authUtils';
-import { signOutEmail } from '@/server/actions/auth.actions';
-import { toast } from 'sonner';
+import { buildHomeToday, type HomeTodayInput } from '@/lib/home-today';
+import { TodayChecklist } from './_components/TodayChecklist';
 
-const LOGOUT_ERROR_MSG = 'ログアウトに失敗しました。もう一度お試しください。';
+export const dynamic = 'force-dynamic';
 
-const ProfileDisplay = () => {
-  const { isLoading, user } = useAuth();
-  const router = useRouter();
+const supabaseService = new SupabaseService();
 
-  const handleLogout = async () => {
-    try {
-      const result = await signOutEmail();
-      if (!result.success) {
-        toast.error(result.error ?? LOGOUT_ERROR_MSG);
-        return;
-      }
-      router.push('/login');
-    } catch {
-      toast.error(LOGOUT_ERROR_MSG);
-    }
-  };
+type Settled<T> = { ok: true; value: T } | { ok: false };
 
-  if (isLoading || !user) {
-    return null;
+/** 例外は ok:false に落として画面を止めない（ログは残す）。値の null は「未連携」なので区別する */
+async function settle<T>(label: string, promise: Promise<T>): Promise<Settled<T>> {
+  try {
+    return { ok: true, value: await promise };
+  } catch (error) {
+    console.error(`[Home] Failed to load ${label}:`, error);
+    return { ok: false };
   }
-
-  const displayName = user.fullName ?? user.email ?? 'ユーザー';
-  const pictureUrl = user?.linePictureUrl;
-
-  return (
-    <Card className="w-full max-w-md mb-6">
-      <CardHeader>
-        <CardTitle className="text-xl text-center">アカウント情報</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col items-center">
-        {pictureUrl && (
-          <Avatar className="h-26 w-26 mb-6">
-            <Image src={pictureUrl} alt={displayName} width={104} height={104} />
-          </Avatar>
-        )}
-        <h3 className="text-xl font-bold mb-2">{displayName}</h3>
-        {user.email && <p className="text-sm text-gray-600 mb-4">メールアドレス: {user.email}</p>}
-        <Button
-          onClick={handleLogout}
-          variant="destructive"
-          className="mt-4"
-          aria-label="ログアウト"
-          tabIndex={0}
-        >
-          ログアウト
-        </Button>
-      </CardContent>
-    </Card>
-  );
-};
-
-// 管理者向けカードコンポーネント（constパターン使用）
-interface AdminAccessCardProps {
-  isAdmin: boolean;
-  hasAuthenticatedUser: boolean;
-  isLoading: boolean;
 }
 
-const AdminAccessCard = ({ isAdmin, hasAuthenticatedUser, isLoading }: AdminAccessCardProps) => {
-  if (isLoading || !hasAuthenticatedUser || !isAdmin) {
-    return null;
+/**
+ * マイホーム。連携の異常だけを出す（docs/plans/home-today-spec.md）。改善提案は toast が担う。
+ * 連携状態の取得は /setup と同じ関数。Google Ads だけはトークン期限切れ時にリフレッシュ
+ * （Google OAuth 呼び出し＋保存）が走る。それ以外は DB 読み取りのみ。
+ */
+export default async function HomePage() {
+  const authResult = await authMiddleware();
+  redirectIfEmailLinkConflict(authResult);
+  // '/' は proxy.ts の公開パスなので、利用停止ロールの振り分けを proxy が行わない。
+  // ここで /unavailable へ送らないと /login → / → /login の無限リダイレクトになる。
+  if (authResult.roleUnavailable) {
+    redirect('/unavailable');
+  }
+  if (authResult.error || !authResult.userId) {
+    redirect('/login');
   }
 
-  return (
-    <Card className="border-blue-200 bg-blue-50">
-      <CardHeader>
-        <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
-          <Shield className="h-6 w-6 text-blue-600" />
-          管理者機能
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          <p className="text-sm text-gray-600 text-center mb-4">
-            管理者権限でログインしています。
-            <br />
-            管理者のみ編集/閲覧できます。
-          </p>
+  const role = authResult.userDetails?.role ?? null;
+  const paid = hasPaidFeatureAccess(role);
+  const input: HomeTodayInput = { role };
 
-          <Button
-            asChild
-            className="w-full bg-blue-600 hover:bg-blue-700"
-            aria-label="管理者ダッシュボードへ移動"
-            tabIndex={0}
-          >
-            <Link href="/admin">
-              <Settings className="h-4 w-4" />
-              管理者ダッシュボード
-            </Link>
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
+  const [gscCredential, googleAds, instagram] = await Promise.all([
+    paid ? settle('GSC credential', supabaseService.getGscCredentialByUserId(authResult.userId)) : undefined,
+    settle('Google Ads status', getGoogleAdsConnectionStatus()),
+    canAccessInstagram(role) ? settle('Instagram status', getInstagramConnectionStatus()) : undefined,
+  ]);
 
-export default function Home() {
-  const { isLoading, user } = useAuth();
-  const hasAuthenticatedUser = Boolean(user);
-  const userRole = user?.role ?? null;
+  if (gscCredential) {
+    // credential が null なのは未連携（/setup と同じ扱い）。取得失敗だけを null にする
+    input.gsc = gscCredential.ok ? toGscConnectionStatus(gscCredential.value) : null;
+    input.ga4 = gscCredential.ok ? toGa4ConnectionStatus(gscCredential.value) : null;
+  }
+  if (googleAds) {
+    // getGoogleAdsConnectionStatus は例外を握って error 付きの disconnected を返す。
+    // connected: true + error は再連携待ちの正当な状態なので、未連携 + error だけを取得失敗にする
+    const failed = !googleAds.ok || (Boolean(googleAds.value.error) && !googleAds.value.connected);
+    input.googleAds = failed
+      ? null
+      : { connected: googleAds.value.connected, needsReauth: Boolean(googleAds.value.needsReauth) };
+  }
+  if (instagram) {
+    input.instagram = instagram.ok && instagram.value.success && instagram.value.data ? instagram.value.data : null;
+  }
 
-  const isAdmin = isAdminRole(userRole);
-  const hasManagementAccess = hasPaidFeatureAccess(userRole);
-
-  return (
-    <>
-      <Toaster />
-
-      {!isLoading && hasAuthenticatedUser && (
-        <div className="flex flex-col items-center justify-center min-h-screen p-4 lg:p-8">
-          <h1 className="text-3xl font-bold mb-8">GrowMate</h1>
-
-          <ProfileDisplay />
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-md lg:max-w-6xl">
-            <AdminAccessCard
-              isAdmin={isAdmin}
-              hasAuthenticatedUser={hasAuthenticatedUser}
-              isLoading={isLoading}
-            />
-
-            {/* 有料/管理者向け 設定ページ導線 */}
-            {hasAuthenticatedUser && hasManagementAccess && (
-              <Card className="">
-                <CardHeader>
-                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
-                    <Settings className="h-5 w-5" />
-                    設定
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-600 text-center mb-4">
-                    WordPressやGoogle Search Consoleの
-                    <br />
-                    連携設定はこちらから
-                  </p>
-                  <Button asChild className="w-full" aria-label="設定ページへ移動" tabIndex={0}>
-                    <Link href="/setup">設定を開く</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* 有料/管理者向け コンテンツ一覧導線 */}
-            {hasAuthenticatedUser && hasManagementAccess && (
-              <Card className="">
-                <CardHeader>
-                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2 -ml-2">
-                    <List className="h-5 w-5" />
-                    コンテンツ一覧
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-600 text-center mb-4">
-                    WordPressとGoogle Search Consoleの
-                    <br />
-                    メタ情報を一覧表示します
-                  </p>
-                  <Button asChild className="w-full" aria-label="コンテンツ一覧へ移動" tabIndex={0}>
-                    <Link href="/analytics">一覧を開く</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Google Ads 分析導線 */}
-            {hasAuthenticatedUser && (
-              <Card className="border-indigo-200 bg-indigo-50">
-                <CardHeader>
-                  <CardTitle className="text-xl font-semibold text-center flex items-center justify-center gap-2">
-                    <Plug className="h-5 w-5 text-indigo-600" />
-                    Google Ads 分析
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-700 text-center mb-4">
-                    広告キャンペーンのパフォーマンスを
-                    <br />
-                    確認・分析できます
-                  </p>
-                  <Button
-                    asChild
-                    className="w-full bg-indigo-600 hover:bg-indigo-700"
-                    aria-label="Google Ads ダッシュボードへ移動"
-                    tabIndex={0}
-                  >
-                    <Link href="/google-ads-dashboard">
-                      ダッシュボードを開く
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
-      )}
-    </>
-  );
+  return <TodayChecklist today={buildHomeToday(input)} canOpenSetup={paid} />;
 }

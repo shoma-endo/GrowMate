@@ -1791,8 +1791,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     ]
   );
 
+  // relative: InputArea の absolute ヘッダーの基準。高さは AppShell のモバイル上部バー
+  // （h-14 = 3.5rem。lg 以上では無い）を引いたビューポート高。
   return (
-    <div className="flex h-[calc(100vh-3rem)]" data-testid="chat-layout">
+    <div className="relative flex h-[calc(100dvh-3.5rem)] lg:h-dvh" data-testid="chat-layout">
       <ChatLayoutContent
         ctx={{
           chatSession,
