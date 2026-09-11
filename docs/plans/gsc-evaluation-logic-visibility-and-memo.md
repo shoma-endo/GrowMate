@@ -333,7 +333,8 @@ Feature: GSC評価PDCAのステージ進行ロジック可視化とメモ機能
 - データの所有者: 評価対象記事のユーザー（既存の `user_id` 境界に従う）
 - 保持期間・削除条件: 評価履歴レコード（`gsc_article_evaluation_history`）に `on delete cascade` でぶら下がる親（`content_annotations`／`users`）が削除された場合のみ連動削除される。評価履歴単体を削除するUI・バッチは現状存在しないため、メモも同じ寿命（記事またはユーザーが削除されるまで保持）とする。ユーザーが空欄で保存した場合は `null` になる（BR-001 例外）。クライアント確認不要（コード確認で解決）
 - 移行・既存データとの互換性: 既存レコードは `null`（メモ未記入）。後方互換に影響なし
-- RLS・Service Role・ユーザー境界: 書き込みは Service Role クライアント（`src/server/services/supabaseService.ts:151-160`）で行うため RLS は効かない。このテーブルの RLS は SELECT ポリシーのみ（`supabase/migrations/20260107000002_update_rls_policies.sql:53-58`）で、本機能では RLS を変更しない。ユーザー境界はアプリ層で `.eq('id', historyId).eq('user_id', userId)` と絞り、更新が0件なら失敗として扱う（§6「メモ保存の Server Action」）
+- RLS・Service Role・ユーザー境界: 書き込みは Service Role クライアント（`src/server/services/supabaseService.ts:151-160`）で行うため RLS は効かない。ユーザー境界はアプリ層で `.eq('id', historyId).eq('user_id', userId)` と絞り、更新が0件なら失敗として扱う（§6「メモ保存の Server Action」）
+- RLS の変更: このテーブルには SELECT ポリシー（`supabase/migrations/20260107000002_update_rls_policies.sql:53-58`）に加えて、`for all` の書き込みポリシー `gsc_article_eval_history_mutate_own`（`supabase/migrations/20251123090000_create_gsc_metrics_and_evaluations.sql:107-111`）が残っている。このポリシーは `auth.uid() = user_id` のみを条件とするため、`trial` / `unavailable` のユーザーが PostgREST を直接呼んで自分の行の `memo`（および既存の `stage` や順位）を更新でき、§6 の `canWriteGa4` 判定を迂回できる。アプリ側にこのポリシーを使う書き込み経路は無い（全て Service Role 経由）ため、本機能の migration で当該ポリシーを削除する
 
 ### 外部連携
 
@@ -423,7 +424,7 @@ Feature: GSC評価PDCAのステージ進行ロジック可視化とメモ機能
   - DB エラー: `ERROR_MESSAGES.GSC.EVALUATION_MEMO_SAVE_FAILED` が返り、DB のエラーメッセージは返らない
 - Gherkinシナリオとの対応: §7 の全シナリオ。画面で確認するもの（ロジック説明の表示、エラー・no_metrics 時の表示、保存・再表示、空欄保存、保存失敗時のトーストと入力保持）は実画面で、権限・他ユーザーは単体テストで確認する
 - 外部API・失敗系・境界条件: 保存失敗時のエラートースト表示と入力保持を確認
-- セキュリティ・権限・RLS: 他ユーザーの評価履歴にメモを書き込めないこと、trial が保存できないことを Server Action 単体テストで確認（RLS は書き込み経路に効かないため RLS では確認しない）
+- セキュリティ・権限・RLS: 他ユーザーの評価履歴にメモを書き込めないこと、trial が保存できないことを Server Action 単体テストで確認する。PostgREST を直接呼ぶ経路は §9 の書き込みポリシー削除で塞ぐ（自動テストは無い。migration 適用後に `trial` のトークンで `PATCH /rest/v1/gsc_article_evaluation_history` が拒否されることを手動で確認する）
 - 非機能要件の測定: 該当なし（§8で対象外多数のため）
 
 ### リリース方針
