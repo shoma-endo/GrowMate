@@ -5,7 +5,7 @@
  * /setup/google-ads は認証のみ、Instagram は paid/admin）と一致していなければならない。
  */
 import { describe, expect, it } from 'vitest';
-import { buildHomeToday, type HomeTodayInput } from '@/lib/home-today';
+import { buildHomeToday, isGoogleAdsFetchFailed, type HomeTodayInput } from '@/lib/home-today';
 
 const allBroken: Omit<HomeTodayInput, 'role'> = {
   gsc: { connected: true, needsReauth: true },
@@ -95,6 +95,36 @@ describe('@/lib/home-today', () => {
       const result = buildHomeToday({ role: 'trial', googleAds: { connected: false, needsReauth: false } });
       expect(result.fetchFailed).toBe(false);
       expect(result.items).toEqual([]);
+    });
+  });
+
+  describe('isGoogleAdsFetchFailed', () => {
+    it('例外で ok:false なら取得失敗', () => {
+      expect(isGoogleAdsFetchFailed({ ok: false })).toBe(true);
+    });
+
+    it('needsReauth:true + error は正当な再連携待ちなので取得失敗にしない', () => {
+      expect(
+        isGoogleAdsFetchFailed({
+          ok: true,
+          value: { connected: true, needsReauth: true, error: 'AUTH_EXPIRED_OR_REVOKED' },
+        })
+      ).toBe(false);
+    });
+
+    it('needsReauth:false + error（一時的失敗）は取得失敗にする', () => {
+      expect(
+        isGoogleAdsFetchFailed({
+          ok: true,
+          value: { connected: true, needsReauth: false, error: 'TOKEN_REFRESH_TEMPORARY_FAILURE' },
+        })
+      ).toBe(true);
+    });
+
+    it('needsReauth:false + error無しは健全（取得失敗にしない）', () => {
+      expect(
+        isGoogleAdsFetchFailed({ ok: true, value: { connected: true, needsReauth: false } })
+      ).toBe(false);
     });
   });
 });

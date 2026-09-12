@@ -225,6 +225,6 @@ PC（lg 以上、サイドバー展開時）:
 ## 10. リスク・未決定事項
 
 - 「再連携が必要」の判定（`needsReauth`）は `/setup` と同じ関数を使うが、`/setup` はクライアント側で WordPress 状態を追加取得している。本画面では WordPress を扱わない（異常の概念が「未設定」しか無いため。§4 Non-goal）。
-- DB 障害と「未連携」の区別: `getGscCredentialByUserId` は DB エラーでも `null` を返す（`/setup` と同じ）。本画面では未連携として表示され、項目 7 にはならない。service 側で `console.error` は出る。strict 変種の新設は見送り（受容）。Google Ads は `error` 付き未連携を取得失敗として拾う。
+- DB 障害と「未連携」の区別: `getGscCredentialByUserId` は DB エラーでも `null` を返す（`/setup` と同じ）。本画面では未連携として表示され、項目 7 にはならない。service 側で `console.error` は出る。strict 変種の新設は見送り（受容）。Google Ads は `needsReauth:false` の `error`（未連携・一時的なリフレッシュ失敗等）を取得失敗として拾う（`isGoogleAdsFetchFailed`）。`needsReauth:true` は再連携待ちの正当な状態として区別する。
 - スマホ（ドロワー内のユーザーブロック）ではメールアドレスに到達できない（ツールチップ非対応）。必要になったら事業者情報かアカウント画面に出す。
 - `transient` エラー（DB 一時障害）時に `/login` ⇄ `/` を往復しうるのは旧クライアント版からの既存挙動。本仕様では扱わない。

@@ -38,6 +38,20 @@ export interface HomeToday {
   hasUnlinked: boolean;
 }
 
+/**
+ * Google Ads 連携状態の取得が「取得失敗」扱いになるかを判定する。
+ * needsReauth:true は再連携待ちの正当な状態なので取得失敗ではない。
+ * それ以外で error が付いている場合（一時的なリフレッシュ失敗・DB書き込み失敗等）は
+ * 取得失敗として汎用バナー（fetchFailed）に流す。
+ */
+export function isGoogleAdsFetchFailed(
+  result:
+    | { ok: true; value: { connected: boolean; needsReauth: boolean; error?: string } }
+    | { ok: false }
+): boolean {
+  return !result.ok || (Boolean(result.value.error) && !result.value.needsReauth);
+}
+
 export function buildHomeToday(input: HomeTodayInput): HomeToday {
   const paid = hasPaidFeatureAccess(input.role);
   const items: HomeTodayItem[] = [];

@@ -8,7 +8,7 @@ import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
 import { hasPaidFeatureAccess } from '@/types/user';
-import { buildHomeToday, type HomeTodayInput } from '@/lib/home-today';
+import { buildHomeToday, isGoogleAdsFetchFailed, type HomeTodayInput } from '@/lib/home-today';
 import { TodayChecklist } from './_components/TodayChecklist';
 
 export const dynamic = 'force-dynamic';
@@ -60,12 +60,16 @@ export default async function HomePage() {
     input.ga4 = gscCredential.ok ? toGa4ConnectionStatus(gscCredential.value) : null;
   }
   if (googleAds) {
-    // getGoogleAdsConnectionStatus は例外を握って error 付きの disconnected を返す。
-    // connected: true + error は再連携待ちの正当な状態なので、未連携 + error だけを取得失敗にする
-    const failed = !googleAds.ok || (Boolean(googleAds.value.error) && !googleAds.value.connected);
-    input.googleAds = failed
-      ? null
-      : { connected: googleAds.value.connected, needsReauth: Boolean(googleAds.value.needsReauth) };
+    // getGoogleAdsConnectionStatus は例外を握って error 付きの disconnected/一時失敗を返す。
+    // needsReauth:true は再連携待ちの正当な状態、それ以外で error があれば
+    // 一時的失敗を含む取得失敗として扱う（isGoogleAdsFetchFailed 参照）
+    if (!googleAds.ok) {
+      input.googleAds = null;
+    } else {
+      input.googleAds = isGoogleAdsFetchFailed(googleAds)
+        ? null
+        : { connected: googleAds.value.connected, needsReauth: Boolean(googleAds.value.needsReauth) };
+    }
   }
   if (instagram) {
     input.instagram = instagram.ok && instagram.value.success && instagram.value.data ? instagram.value.data : null;
