@@ -41,6 +41,7 @@ interface UseGscDashboardReturn {
 
   // Actions
   setSelectedHistory: (history: GscEvaluationHistoryItem | null) => void;
+  updateHistoryMemo: (historyId: string, memo: string | null) => void;
   toggleMetric: (key: keyof GscVisibleMetrics) => void;
   handleRegisterEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
   handleUpdateEvaluation: (dateStr: string, cycleDays: number, evaluationHour: number) => Promise<void>;
@@ -184,6 +185,16 @@ export function useGscDashboard({
     }
   }, []);
 
+  const updateHistoryMemo = useCallback((historyId: string, memo: string | null) => {
+    setDetail(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        history: prev.history.map(item => (item.id === historyId ? { ...item, memo } : item)),
+      };
+    });
+  }, []);
+
   // アクション: 評価登録
   const handleRegisterEvaluation = useCallback(
     async (dateStr: string, cycleDays: number, evaluationHour: number) => {
@@ -294,6 +305,7 @@ export function useGscDashboard({
 
     // Actions
     setSelectedHistory,
+    updateHistoryMemo,
     toggleMetric,
     handleRegisterEvaluation,
     handleUpdateEvaluation,

@@ -624,6 +624,9 @@ export const ERROR_MESSAGES = {
     /** 全選択の母集団（全記事）の件数を取得できなかった場合 */
     BULK_TOTAL_COUNT_FETCH_FAILED:
       '全記事の件数を取得できなかったため、全選択は使えません。行チェックでの選択は使えます。ページを再読み込みしてください。',
+
+    /** 評価履歴のメモ保存に失敗した場合 */
+    EVALUATION_MEMO_SAVE_FAILED: 'メモの保存に失敗しました',
   },
 
   /**

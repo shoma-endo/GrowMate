@@ -12,10 +12,14 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { markSuggestionAsRead } from '@/server/actions/gscNotification.actions';
+import { saveEvaluationHistoryMemo } from '@/server/actions/gscDashboard.actions';
 import type { GscEvaluationHistoryItem } from '../types';
 import { formatDateTime } from '@/lib/date-utils';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { EvaluationResultAlert } from './evaluation-history/EvaluationResultAlert';
 import {
   getEvaluationHistoryState,
@@ -26,15 +30,19 @@ import { SuggestionSections } from './evaluation-history/SuggestionSections';
 interface EvaluationHistoryTabProps {
   history: GscEvaluationHistoryItem[] | undefined;
   onHistoryRead?: (historyId: string) => void;
+  onHistoryMemoSaved?: (historyId: string, memo: string | null) => void;
 }
 
 export function EvaluationHistoryTab({
   history: initialHistory,
   onHistoryRead,
+  onHistoryMemoSaved,
 }: EvaluationHistoryTabProps) {
   const [history, setHistory] = useState(initialHistory);
   const [selectedHistory, setSelectedHistory] = useState<GscEvaluationHistoryItem | null>(null);
+  const [memoDraft, setMemoDraft] = useState('');
   const [isPending, startTransition] = useTransition();
+  const [isSavingMemo, startSavingMemo] = useTransition();
 
   // 親からの最新履歴に同期（ローカルで既読にした状態を保持）
   useEffect(() => {
@@ -78,6 +86,33 @@ export function EvaluationHistoryTab({
     });
   };
 
+  const handleSaveMemo = () => {
+    if (!selectedHistory) return;
+
+    const historyId = selectedHistory.id;
+    startSavingMemo(async () => {
+      try {
+        const result = await saveEvaluationHistoryMemo(historyId, memoDraft);
+        if (!result.success) {
+          toast.error(result.error);
+          return;
+        }
+
+        setHistory(prev =>
+          prev?.map(item => (item.id === historyId ? { ...item, memo: result.data.memo } : item))
+        );
+        setSelectedHistory(prev =>
+          prev && prev.id === historyId ? { ...prev, memo: result.data.memo } : prev
+        );
+        onHistoryMemoSaved?.(historyId, result.data.memo);
+        toast.success('メモを保存しました');
+      } catch (error) {
+        console.error('[EvaluationHistoryTab] save memo failed', error);
+        toast.error(ERROR_MESSAGES.GSC.EVALUATION_MEMO_SAVE_FAILED);
+      }
+    });
+  };
+
   if (!history || history.length === 0) {
     return <Card><CardContent className="py-20 text-center text-gray-500"><p>まだ検索順位評価履歴がありません</p><p className="text-sm mt-2">概要タブの「検索順位・コンテンツ評価サイクル設定」で評価サイクルを設定すると、履歴がここに表示されます</p></CardContent></Card>;
   }
@@ -99,7 +134,10 @@ export function EvaluationHistoryTab({
                       ? 'bg-red-50 border-red-200 hover:bg-red-100'
                       : 'bg-white hover:bg-gray-50'
                   } w-full text-left`}
-                  onClick={() => setSelectedHistory(item)}
+                  onClick={() => {
+                    setSelectedHistory(item);
+                    setMemoDraft(item.memo ?? '');
+                  }}
                 >
                   <div className="flex items-center gap-3">
                     {viewState.isError && <AlertCircle className="w-5 h-5 text-red-500" />}
@@ -227,6 +265,48 @@ export function EvaluationHistoryTab({
                   )}
                 </div>
               )}
+              <div>
+                <p className="text-sm font-semibold mb-2">評価と改善提案の進み方</p>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-gray-600">
+                  <li>
+                    評価は、設定した評価サイクル（初期設定は30日）ごとに自動で行われます。「今すぐ評価を実行」を押したときも同じように評価されます。
+                  </li>
+                  <li>評価では、前回の評価時と今回の検索順位を比べます。</li>
+                  <li>
+                    順位が上がった場合: 改善提案は届かず、次の提案は1段階目からやり直します。
+                  </li>
+                  <li>
+                    順位が変わらない・下がった場合: 改善提案が届き、次の評価では1段階先の提案に進みます（4段階目で止まります）。
+                  </li>
+                  <li>
+                    提案の段階: 1 タイトル・説明文の提案 → 2 書き出し案の提案 → 3 本文の提案 → 4 ペルソナから全て変更。2段階目以降は、それまでの段階の提案もあわせて表示されます。
+                  </li>
+                  <li>
+                    最初の評価は、比べる基準となる順位を記録するだけで、改善提案は届きません。
+                  </li>
+                  <li>順位のデータを取得できなかった回は、段階は進みません。</li>
+                  <li>
+                    「既読にする」は通知を消すだけで、段階の進み方には影響しません。
+                  </li>
+                </ul>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="evaluation-history-memo">この評価のメモ</Label>
+                <Textarea
+                  id="evaluation-history-memo"
+                  value={memoDraft}
+                  onChange={event => setMemoDraft(event.target.value)}
+                />
+                <Button
+                  type="button"
+                  onClick={handleSaveMemo}
+                  disabled={isSavingMemo}
+                  className="gap-2"
+                >
+                  {isSavingMemo && <Loader2 className="h-4 w-4 animate-spin" />}
+                  保存
+                </Button>
+              </div>
             </div>
           )}
           <DialogFooter>
