@@ -7,6 +7,7 @@ import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
 import { getKeywordMetricsSchema } from '@/server/schemas/googleAds.schema';
 import type {
   DisconnectGoogleAdsResult,
@@ -93,25 +94,29 @@ export async function getGoogleAdsConnectionStatus(): Promise<GoogleAdsConnectio
           scope: newTokens.scope || credential.scope || [],
         });
         if (!saveResult.success) {
+          // Google側のリフレッシュ自体は成功しているので、これは自社DB書き込みの一時的失敗
           console.error('[getGoogleAdsConnectionStatus] Token save failed');
           return {
             connected: true,
-            needsReauth: true,
+            needsReauth: false,
             googleAccountEmail: credential.googleAccountEmail,
             customerId: credential.customerId,
             managerCustomerId: credential.managerCustomerId,
-            error: ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED,
+            error: ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_TEMPORARY_FAILURE,
           };
         }
       } catch (refreshError) {
         console.error('[getGoogleAdsConnectionStatus] Token refresh failed:', refreshError);
+        const reauthRequired = isGoogleOAuthReauthError(refreshError);
         return {
           connected: true,
-          needsReauth: true,
+          needsReauth: reauthRequired,
           googleAccountEmail: credential.googleAccountEmail,
           customerId: credential.customerId,
           managerCustomerId: credential.managerCustomerId,
-          error: ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED,
+          error: reauthRequired
+            ? ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED
+            : ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_TEMPORARY_FAILURE,
         };
       }
     }
@@ -232,11 +237,16 @@ export async function fetchKeywordMetrics(
         });
         if (!saveResult.success) {
           console.error('[fetchKeywordMetrics] Token save failed');
-          return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED };
+          return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_TEMPORARY_FAILURE };
         }
       } catch (refreshError) {
         console.error('[fetchKeywordMetrics] Token refresh failed:', refreshError);
-        return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED };
+        return {
+          success: false,
+          error: isGoogleOAuthReauthError(refreshError)
+            ? ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED
+            : ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_TEMPORARY_FAILURE,
+        };
       }
     }
 
@@ -347,10 +357,16 @@ export async function fetchCampaignMetrics(
 
         if (!saveResult.success) {
           console.error('[fetchCampaignMetrics] Token save failed');
-          return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED };
+          return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_TEMPORARY_FAILURE };
         }
-      } catch {
-        return { success: false, error: ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED };
+      } catch (refreshError) {
+        console.error('[fetchCampaignMetrics] Token refresh failed:', refreshError);
+        return {
+          success: false,
+          error: isGoogleOAuthReauthError(refreshError)
+            ? ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED
+            : ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_TEMPORARY_FAILURE,
+        };
       }
     }
 

@@ -57,6 +57,10 @@ interface GoogleAdsConnectionStatus {
   needsReauth: boolean;
   googleAccountEmail: string | null;
   customerId: string | null;
+  /** リフレッシュの一時的失敗（429/5xx・ネットワーク障害・DB保存失敗）。needsReauth とは区別する */
+  hasTemporaryError: boolean;
+  /** hasTemporaryError が true のときの実際のエラー文言。false のときは null */
+  temporaryErrorMessage: string | null;
 }
 
 export interface SetupDashboardProps {

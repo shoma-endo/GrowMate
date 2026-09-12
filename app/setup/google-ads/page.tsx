@@ -7,6 +7,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
+import { isGoogleAdsTemporaryError } from '@/lib/home-today';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { GoogleAdsAccountSelector } from '@/components/GoogleAdsAccountSelector';
 import { GoogleAdsSetupClient } from '@/components/GoogleAdsSetupClient';
@@ -107,7 +108,24 @@ async function GoogleAdsSetupContent({
         </Alert>
       )}
 
-      {!success && isConnected && !connectionStatus.needsReauth && (
+      {!success && isGoogleAdsTemporaryError(connectionStatus) && (
+        <Alert className="bg-yellow-50 border-yellow-200">
+          <AlertTitle className="text-yellow-800 font-medium flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-yellow-600" />
+            <span>一時的に確認できません</span>
+          </AlertTitle>
+          <AlertDescription className="text-yellow-700">
+            {connectionStatus.error}
+            {connectionStatus.googleAccountEmail && (
+              <span className="block mt-1">
+                連携アカウント: {connectionStatus.googleAccountEmail}
+              </span>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {!success && isConnected && !connectionStatus.needsReauth && !isGoogleAdsTemporaryError(connectionStatus) && (
         <Alert className="bg-blue-50 border-blue-200">
           <AlertTitle className="text-blue-800 font-medium flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-blue-600" />

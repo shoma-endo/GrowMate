@@ -12,7 +12,7 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
 import type { Ga4ConnectionStatus } from '@/types/ga4';
 import type { GscCredential } from '@/types/gsc';
-import { isGa4ReauthError } from '@/domain/errors/ga4-error-handlers';
+import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
 import { GA4_SCOPE } from '@/lib/constants';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
 import type { ServerActionResult } from '@/lib/async-handler';
@@ -154,7 +154,7 @@ export async function fetchGa4Properties() {
   } catch (error) {
     const message = error instanceof Error ? error.message : ERROR_MESSAGES.GA4.PROPERTIES_FETCH_FAILED;
     console.error('[GA4 Setup] fetch properties failed', error);
-    if (isGa4ReauthError(message)) {
+    if (isGoogleOAuthReauthError(message)) {
       return {
         success: false,
         error: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED,
@@ -187,7 +187,7 @@ export async function fetchGa4KeyEvents(propertyId: string) {
   } catch (error) {
     const message = error instanceof Error ? error.message : ERROR_MESSAGES.GA4.KEY_EVENTS_FETCH_FAILED;
     console.error('[GA4 Setup] fetch key events failed', error);
-    if (isGa4ReauthError(message)) {
+    if (isGoogleOAuthReauthError(message)) {
       return {
         success: false,
         error: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED,

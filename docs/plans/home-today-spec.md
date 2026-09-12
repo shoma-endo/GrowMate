@@ -195,7 +195,7 @@ PC（lg 以上、サイドバー展開時）:
 
 | ファイル | 役割 |
 | --- | --- |
-| `app/page.tsx` | server component に作り替え。`authMiddleware` → `roleUnavailable` なら `/unavailable`（`/` は proxy の公開パスで proxy が振り分けないため。無いと `/login` ⇄ `/` の無限リダイレクト）→ 役割判定 → 連携状態（`/setup` と同じ取得: `getGscCredentialByUserId` → `toGscConnectionStatus` / `toGa4ConnectionStatus`、`getGoogleAdsConnectionStatus`、`canAccessInstagram` なら `getInstagramConnectionStatus`）を `Promise.all` ＋ `settle()`（例外を `ok:false` に落とす）で並列取得。失敗は項目 7 に落とす |
+| `app/page.tsx` | server component に作り替え。`authMiddleware` → `roleUnavailable` なら `/unavailable`（`/` は proxy の公開パスで proxy が振り分けないため。無いと `/login` ⇄ `/` の無限リダイレクト）→ 役割判定 → 連携状態（GSC/GA4 は `resolveHomeGoogleCredential`（`src/server/lib/home-google-credential.ts`。実際にトークンリフレッシュを試みてから `toGscConnectionStatus` / `toGa4ConnectionStatus` に渡す）、`getGoogleAdsConnectionStatus`、`canAccessInstagram` なら `getInstagramConnectionStatus`）を `Promise.all` ＋ `settle()`（例外を `ok:false` に落とす）で並列取得。失敗は項目 7 に落とす |
 | `app/_components/TodayChecklist.tsx`（新規、server component） | 項目 1〜7 の描画。props は取得済みの状態と役割だけ。クリックは `Link` のみでクライアント状態を持たない |
 | `src/lib/home-today.ts`（新規、純粋ロジック） | `buildHomeToday({ role, gsc, ga4, googleAds, instagram })` → `{ items, fetchFailed, hasUnlinked }`。`null` は取得失敗、`undefined` は役割上取得しない。表示条件（HOME-02）をここに集約し `tests/unit/lib/home-today.test.ts` で検査 |
 | `src/components/AppShell.tsx` | ユーザーブロックのアバターにメールのツールチップ |
@@ -212,7 +212,7 @@ PC（lg 以上、サイドバー展開時）:
 ## 8. 非機能・セキュリティ
 
 - 認可は各遷移先の `proxy.ts` ゲートが担う。本画面の表示条件はそれと同じ（HOME-02）。
-- 取得は `/setup` と同じ関数。Google Ads だけは access token の期限が近いとリフレッシュ（Google OAuth 呼び出し）と保存が走る（`googleAds.actions.ts`。頻度はトークン寿命ごと）。それ以外は DB 読み取りのみ。
+- GSC/GA4・Google Ads とも、access token の期限が近いとリフレッシュ（Google OAuth 呼び出し）と保存が走る（GSC/GA4 は `home-google-credential.ts`、Google Ads は `googleAds.actions.ts`。頻度はトークン寿命ごと）。GSC/GA4 は同一 credential（アクセストークン）を共有するため、マイホームでは呼び出しを1回にまとめる。
 - `/` は `proxy.ts` の公開パスなので、利用停止ロール（`unavailable`）の `/unavailable` への振り分けは page が担う。
 - 取得失敗はログ（`console.error`）＋項目 9 で表示。サイレント失敗にしない。
 
@@ -225,6 +225,7 @@ PC（lg 以上、サイドバー展開時）:
 ## 10. リスク・未決定事項
 
 - 「再連携が必要」の判定（`needsReauth`）は `/setup` と同じ関数を使うが、`/setup` はクライアント側で WordPress 状態を追加取得している。本画面では WordPress を扱わない（異常の概念が「未設定」しか無いため。§4 Non-goal）。
-- DB 障害と「未連携」の区別: `getGscCredentialByUserId` は DB エラーでも `null` を返す（`/setup` と同じ）。本画面では未連携として表示され、項目 7 にはならない。service 側で `console.error` は出る。strict 変種の新設は見送り（受容）。Google Ads は `error` 付き未連携を取得失敗として拾う。
+- DB 障害と「未連携」の区別: `getGscCredentialByUserId` は DB エラーでも `null` を返す（`/setup` と同じ）。本画面では未連携として表示され、項目 7 にはならない。service 側で `console.error` は出る。strict 変種の新設は見送り（受容）。Google Ads は `needsReauth:false` の `error`（未連携・一時的なリフレッシュ失敗等）を取得失敗として拾う（`isGoogleAdsFetchFailed`）。`needsReauth:true` は再連携待ちの正当な状態として区別する。
+- Google側の一時的な 5xx/429 リフレッシュ失敗を「未連携」「再連携要」のいずれとも区別し、項目 7（取得失敗）に落とす。GSC/GA4/Google Ads いずれも `src/domain/errors/google-oauth-error-handlers.ts` の `isGoogleOAuthReauthError` （ステータスコード優先の判定）を共有する（`googleTokenService.refreshAccessToken` がステータスに関わらず同一文言のエラーを投げるため、文字列一致だけでは区別できないことが判明したための対策。2026-09-12、`/setup` 系の旧分類器 `isTokenExpiredError`/`isGa4ReauthError` もこの1本に統合済み）。
 - スマホ（ドロワー内のユーザーブロック）ではメールアドレスに到達できない（ツールチップ非対応）。必要になったら事業者情報かアカウント画面に出す。
 - `transient` エラー（DB 一時障害）時に `/login` ⇄ `/` を往復しうるのは旧クライアント版からの既存挙動。本仕様では扱わない。
