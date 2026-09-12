@@ -226,6 +226,6 @@ PC（lg 以上、サイドバー展開時）:
 
 - 「再連携が必要」の判定（`needsReauth`）は `/setup` と同じ関数を使うが、`/setup` はクライアント側で WordPress 状態を追加取得している。本画面では WordPress を扱わない（異常の概念が「未設定」しか無いため。§4 Non-goal）。
 - DB 障害と「未連携」の区別: `getGscCredentialByUserId` は DB エラーでも `null` を返す（`/setup` と同じ）。本画面では未連携として表示され、項目 7 にはならない。service 側で `console.error` は出る。strict 変種の新設は見送り（受容）。Google Ads は `needsReauth:false` の `error`（未連携・一時的なリフレッシュ失敗等）を取得失敗として拾う（`isGoogleAdsFetchFailed`）。`needsReauth:true` は再連携待ちの正当な状態として区別する。
-- Google側の一時的な 5xx/429 リフレッシュ失敗を「未連携」「再連携要」のいずれとも区別し、項目 7（取得失敗）に落とす（GSC/GA4 は `home-google-credential.ts`が`isGoogleOAuthReauthError`で、Google Ads は `googleAds.actions.ts`が`isGoogleAdsReauthError`で、それぞれステータスコード優先の判定を行う。`googleTokenService.refreshAccessToken` がステータスに関わらず同一文言のエラーを投げるため、文字列一致だけでは区別できないことが判明したための対策）。
+- Google側の一時的な 5xx/429 リフレッシュ失敗を「未連携」「再連携要」のいずれとも区別し、項目 7（取得失敗）に落とす。GSC/GA4/Google Ads いずれも `src/domain/errors/google-oauth-error-handlers.ts` の `isGoogleOAuthReauthError` （ステータスコード優先の判定）を共有する（`googleTokenService.refreshAccessToken` がステータスに関わらず同一文言のエラーを投げるため、文字列一致だけでは区別できないことが判明したための対策。2026-09-12、`/setup` 系の旧分類器 `isTokenExpiredError`/`isGa4ReauthError` もこの1本に統合済み）。
 - スマホ（ドロワー内のユーザーブロック）ではメールアドレスに到達できない（ツールチップ非対応）。必要になったら事業者情報かアカウント画面に出す。
 - `transient` エラー（DB 一時障害）時に `/login` ⇄ `/` を往復しうるのは旧クライアント版からの既存挙動。本仕様では扱わない。

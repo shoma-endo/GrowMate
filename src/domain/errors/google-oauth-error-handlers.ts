@@ -9,11 +9,12 @@ const extractRefreshErrorStatus = (message: string): number | null => {
  * （`Google OAuthトークンリフレッシュに失敗しました: Status {code}`）を投げるため、
  * まずステータスコードで判定し、取れない場合はメッセージの部分一致にフォールバックする。
  *
- * 文字列フォールバックのパターンは isGa4ReauthError（src/domain/errors/ga4-error-handlers.ts）と
- * ほぼ同じだが、意図的に再利用していない: isGa4ReauthError は `'トークンリフレッシュに失敗'`
- * という汎用文言を含んでおり、これは上記の同一文言問題によりステータスに関係なく常に一致してしまう
- * （＝一時的失敗まで再認証要と誤判定する、本ファイルが解消しようとしている欠陥そのもの）。
- * isGa4ReauthError 自体は /setup 系の既存挙動を変えないため今回は修正せず据え置いている。
+ * GSC/GA4/Google Ads はいずれも同一の googleTokenService.refreshAccessToken を経由するため、
+ * この関数を唯一の判定器として共有する（2026-09-12統合。旧 isTokenExpiredError /
+ * isGa4ReauthError / googleAds.actions.ts ローカル版 isGoogleAdsReauthError は廃止）。
+ * 旧実装が個別に持っていた `'トークンリフレッシュに失敗'` という汎用文言の部分一致は、
+ * 上記の同一文言問題によりステータスに関係なく常に一致してしまう（＝一時的失敗まで
+ * 再認証要と誤判定する）ため、意図的に含めていない。
  */
 export function isGoogleOAuthReauthError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);

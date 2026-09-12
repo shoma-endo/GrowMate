@@ -5,7 +5,7 @@ import {
   fetchGa4Status,
   fetchGa4KeyEvents,
 } from '@/server/actions/ga4Setup.actions';
-import { isGa4ReauthError } from '@/domain/errors/ga4-error-handlers';
+import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
 import { handleAsyncAction } from '@/lib/async-handler';
 
 interface UseGa4SetupResult {
@@ -52,7 +52,7 @@ export function useGa4Setup(initialStatus: Ga4ConnectionStatus): UseGa4SetupResu
       },
       onError: error => {
         const errorMessage = error.message;
-        if (isGa4ReauthError(errorMessage)) {
+        if (isGoogleOAuthReauthError(errorMessage)) {
           refreshStatus();
           setAlertMessage('GA4の認証が期限切れまたは取り消されています。再認証してください。');
         }
@@ -73,7 +73,7 @@ export function useGa4Setup(initialStatus: Ga4ConnectionStatus): UseGa4SetupResu
       },
       onError: error => {
         const errorMessage = error.message;
-        if (isGa4ReauthError(errorMessage)) {
+        if (isGoogleOAuthReauthError(errorMessage)) {
           refreshStatus();
           setAlertMessage('GA4の認証が期限切れまたは取り消されています。再認証してください。');
         }

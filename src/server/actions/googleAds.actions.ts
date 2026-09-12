@@ -7,6 +7,7 @@ import { GoogleAdsService } from '@/server/services/googleAdsService';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
 import { getKeywordMetricsSchema } from '@/server/schemas/googleAds.schema';
 import type {
   DisconnectGoogleAdsResult,
@@ -16,36 +17,6 @@ import type {
 
 /** トークン期限切れ判定の閾値（5分） */
 const TOKEN_EXPIRY_THRESHOLD_MS = 5 * 60 * 1000;
-
-/** refreshAccessToken の Error メッセージに埋め込まれた HTTP ステータスを取り出す */
-const extractRefreshErrorStatus = (message: string): number | null => {
-  const match = message.match(/Status (\d+)/);
-  return match ? Number(match[1]) : null;
-};
-
-/**
- * トークンrefresh失敗が「本当の認証失効」かどうかを判定する。
- * googleTokenService.refreshAccessToken は 5xx/429 でも 400/401 でも同じ文言
- * （`Google OAuthトークンリフレッシュに失敗しました: Status {code}`）を投げるため、
- * まずステータスコードで判定し、ステータスが取れない場合（ネットワーク例外等）は
- * メッセージの部分一致にフォールバックする（isGa4ReauthError と同じパターン）。
- */
-const isGoogleAdsReauthError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error);
-  const status = extractRefreshErrorStatus(message);
-  if (status !== null) {
-    return status === 400 || status === 401 || status === 403;
-  }
-  const lower = message.toLowerCase();
-  return (
-    lower.includes('invalid_grant') ||
-    lower.includes('token has been expired') ||
-    lower.includes('token has been revoked') ||
-    lower.includes('insufficient permissions') ||
-    lower.includes('permission_denied') ||
-    lower.includes('insufficientpermissions')
-  );
-};
 
 /**
  * Google Ads 連携状態の結果型
@@ -136,7 +107,7 @@ export async function getGoogleAdsConnectionStatus(): Promise<GoogleAdsConnectio
         }
       } catch (refreshError) {
         console.error('[getGoogleAdsConnectionStatus] Token refresh failed:', refreshError);
-        const reauthRequired = isGoogleAdsReauthError(refreshError);
+        const reauthRequired = isGoogleOAuthReauthError(refreshError);
         return {
           connected: true,
           needsReauth: reauthRequired,
@@ -272,7 +243,7 @@ export async function fetchKeywordMetrics(
         console.error('[fetchKeywordMetrics] Token refresh failed:', refreshError);
         return {
           success: false,
-          error: isGoogleAdsReauthError(refreshError)
+          error: isGoogleOAuthReauthError(refreshError)
             ? ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED
             : ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_TEMPORARY_FAILURE,
         };
@@ -392,7 +363,7 @@ export async function fetchCampaignMetrics(
         console.error('[fetchCampaignMetrics] Token refresh failed:', refreshError);
         return {
           success: false,
-          error: isGoogleAdsReauthError(refreshError)
+          error: isGoogleOAuthReauthError(refreshError)
             ? ERROR_MESSAGES.GOOGLE_ADS.AUTH_EXPIRED_OR_REVOKED
             : ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_TEMPORARY_FAILURE,
         };

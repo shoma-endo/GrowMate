@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { GscConnectionStatus, GscSiteEntry } from '@/types/gsc';
 import { fetchGscProperties, fetchGscStatus } from '@/server/actions/gscSetup.actions';
-import { isTokenExpiredError } from '@/domain/errors/gsc-error-handlers';
+import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
 import { handleAsyncAction } from '@/lib/async-handler';
 
 interface UseGscSetupResult {
@@ -50,7 +50,7 @@ export function useGscSetup(initialStatus: GscConnectionStatus): UseGscSetupResu
       onError: error => {
         const errorMessage = error.message;
         // トークン期限切れ/取り消しエラーの場合は再認証を促す
-        if (isTokenExpiredError(errorMessage)) {
+        if (isGoogleOAuthReauthError(errorMessage)) {
           // ステータスを再取得して needsReauth を更新
           refreshStatus();
           setAlertMessage(
