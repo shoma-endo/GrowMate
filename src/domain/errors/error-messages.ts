@@ -722,6 +722,10 @@ export const ERROR_MESSAGES = {
     /** アクセストークンの更新に失敗した場合 */
     TOKEN_REFRESH_FAILED: 'アクセストークンの更新に失敗しました。再認証してください。',
 
+    /** アクセストークンの更新が一時的に失敗した場合（DB書き込み失敗・ネットワーク一時エラー・Google側5xx/429等） */
+    TOKEN_REFRESH_TEMPORARY_FAILURE:
+      '一時的にGoogle Adsの情報取得に失敗しました。時間をおいてもう一度お試しください。',
+
     /** アカウント一覧の取得に失敗した場合（select route用） */
     ACCOUNT_LIST_FETCH_FAILED_SELECT: 'アカウント一覧の取得に失敗しました',
 

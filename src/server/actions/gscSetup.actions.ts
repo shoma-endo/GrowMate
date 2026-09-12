@@ -10,21 +10,10 @@ import { GscSiteEntry, GscCredential, GscConnectionStatus } from '@/types/gsc';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
+import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
 
 const supabaseService = new SupabaseService();
 const gscService = new GscService();
-
-/** トークン期限切れ/取り消しエラーかどうかを判定 */
-const isTokenExpiredError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error);
-  const lower = message.toLowerCase();
-  return (
-    lower.includes('invalid_grant') ||
-    lower.includes('token has been expired') ||
-    lower.includes('token has been revoked') ||
-    lower.includes('トークンリフレッシュに失敗')
-  );
-};
 
 const ensureAccessToken = async (userId: string, credential: GscCredential): Promise<string> =>
   ensureValidAccessToken(credential, {
@@ -98,7 +87,7 @@ export async function fetchGscProperties() {
     console.error('[GSC Setup] fetch properties failed', error);
 
     // トークン期限切れ/取り消しの場合は再認証フラグを返す
-    if (isTokenExpiredError(error)) {
+    if (isGoogleOAuthReauthError(error)) {
       return {
         success: false,
         error: ERROR_MESSAGES.GSC.AUTH_EXPIRED_OR_REVOKED,
