@@ -5,7 +5,12 @@
  * /setup/google-ads は認証のみ、Instagram は paid/admin）と一致していなければならない。
  */
 import { describe, expect, it } from 'vitest';
-import { buildHomeToday, isGoogleAdsFetchFailed, type HomeTodayInput } from '@/lib/home-today';
+import {
+  buildHomeToday,
+  isGoogleAdsFetchFailed,
+  isGoogleAdsTemporaryError,
+  type HomeTodayInput,
+} from '@/lib/home-today';
 
 const allBroken: Omit<HomeTodayInput, 'role'> = {
   gsc: { connected: true, needsReauth: true },
@@ -125,6 +130,30 @@ describe('@/lib/home-today', () => {
       expect(
         isGoogleAdsFetchFailed({ ok: true, value: { connected: true, needsReauth: false } })
       ).toBe(false);
+    });
+  });
+
+  describe('isGoogleAdsTemporaryError', () => {
+    it('connected:true + needsReauth:false + error は一時的失敗', () => {
+      expect(
+        isGoogleAdsTemporaryError({ connected: true, needsReauth: false, error: 'TEMP' })
+      ).toBe(true);
+    });
+
+    it('needsReauth:true は再連携待ちの正当な状態なので一時的失敗にしない', () => {
+      expect(
+        isGoogleAdsTemporaryError({ connected: true, needsReauth: true, error: 'AUTH_EXPIRED' })
+      ).toBe(false);
+    });
+
+    it('connected:false は setup 画面の「連携を開始」表示に譲るため一時的失敗にしない（google-ads/page.tsxと条件を揃える）', () => {
+      expect(
+        isGoogleAdsTemporaryError({ connected: false, needsReauth: false, error: 'UNKNOWN_ERROR' })
+      ).toBe(false);
+    });
+
+    it('error が無ければ健全', () => {
+      expect(isGoogleAdsTemporaryError({ connected: true, needsReauth: false })).toBe(false);
     });
   });
 });

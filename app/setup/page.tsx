@@ -9,6 +9,7 @@ import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
+import { isGoogleAdsTemporaryError } from '@/lib/home-today';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,11 +45,14 @@ export default async function SetupPage() {
   const ga4Status = toGa4ConnectionStatus(gscCredential);
 
   const result = await getGoogleAdsConnectionStatus();
+  const isGoogleAdsTemporarilyFailing = isGoogleAdsTemporaryError(result);
   const googleAdsStatus = {
     connected: result.connected,
     needsReauth: result.needsReauth,
     googleAccountEmail: result.googleAccountEmail,
     customerId: result.customerId,
+    hasTemporaryError: isGoogleAdsTemporarilyFailing,
+    temporaryErrorMessage: isGoogleAdsTemporarilyFailing ? (result.error ?? null) : null,
   };
 
   let instagramStatus;

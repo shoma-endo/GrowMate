@@ -39,6 +39,19 @@ export interface HomeToday {
 }
 
 /**
+ * Google Ads の連携状態が「一時的失敗」（本当の再認証要ではないerror）かどうかを判定する。
+ * setup系2画面（app/setup/page.tsx・app/setup/google-ads/page.tsx）で条件がずれないよう、
+ * 単一の関数に集約する。
+ */
+export function isGoogleAdsTemporaryError(status: {
+  connected: boolean;
+  needsReauth: boolean;
+  error?: string;
+}): boolean {
+  return status.connected && !status.needsReauth && Boolean(status.error);
+}
+
+/**
  * Google Ads 連携状態の取得が「取得失敗」扱いになるかを判定する。
  * needsReauth:true は再連携待ちの正当な状態なので取得失敗ではない。
  * それ以外で error が付いている場合（一時的なリフレッシュ失敗・DB書き込み失敗等）は
