@@ -32,6 +32,8 @@ export interface ServerActionResult<T> {
   success: boolean;
   data?: T;
   error?: string;
+  /** トークン期限切れ/取り消し・スコープ不足など、再認証が必要な失敗であることを示す */
+  needsReauth?: boolean;
   /** メール紐付け競合（クライアントが専用ログイン導線へ誘導可能） */
   emailLinkConflict?: true;
 }
@@ -46,9 +48,10 @@ interface AsyncHandlerOptions<T> {
   onSuccess?: (data: T) => void;
 
   /**
-   * エラー時のコールバック
+   * エラー時のコールバック。result は失敗レスポンスがあるとき（result.success===false）のみ渡され、
+   * action が例外を投げた場合は undefined（needsReauth 等の判定はサーバー側の失敗レスポンスでしか得られない）
    */
-  onError?: (error: Error) => void;
+  onError?: (error: Error, result?: ServerActionResult<T>) => void;
 
   /**
    * Loading状態を設定する関数
@@ -125,7 +128,7 @@ export async function handleAsyncAction<T>(
       }
 
       setMessage?.(errorMessage);
-      onError?.(error);
+      onError?.(error, result);
     }
   } catch (error) {
     const errorMessage = isDeploymentMismatchError(error)
