@@ -27,6 +27,9 @@ export interface GscCredential {
 export interface GscConnectionStatus {
   connected: boolean;
   needsReauth?: boolean;
+  /** refresh tokenは生きているが一時的に確認できない（Google側5xx/429・ネットワーク・DB書き込み失敗等）。needsReauthとは排他 */
+  hasTemporaryError?: boolean;
+  temporaryErrorMessage?: string | null;
   googleAccountEmail?: string | null;
   propertyUri?: string | null;
   propertyDisplayName?: string | null;

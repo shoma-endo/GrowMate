@@ -2,12 +2,10 @@ import { redirect } from 'next/navigation';
 import GscSetupClient from '@/components/GscSetupClient';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
-import { SupabaseService } from '@/server/services/supabaseService';
-import { toGscConnectionStatus } from '@/server/lib/gsc-status';
+import { toGscConnectionStatusFromResolution } from '@/server/lib/gsc-status';
+import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
 
 export const dynamic = 'force-dynamic';
-
-const supabaseService = new SupabaseService();
 
 export default async function GscSetupPage() {
   const isOauthConfigured = Boolean(
@@ -23,8 +21,10 @@ export default async function GscSetupPage() {
   }
   // Setup pages should be accessible to owners at all times
 
-  const credential = await supabaseService.getGscCredentialByUserId(authResult.userId);
-  const initialStatus = toGscConnectionStatus(credential);
+  // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを
+  // 試みてから判定する（マイホームと同じロジックを共有。詳細は home-google-credential.ts 参照）。
+  const googleCredentialResult = await resolveHomeGoogleCredential(authResult.userId);
+  const initialStatus = toGscConnectionStatusFromResolution(googleCredentialResult);
 
   return <GscSetupClient initialStatus={initialStatus} isOauthConfigured={isOauthConfigured} />;
 }

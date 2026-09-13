@@ -17,6 +17,9 @@ export interface Ga4ConnectionStatus {
   connectionStage: Ga4ConnectionStage;
   needsReauth?: boolean;
   scopeMissing?: boolean;
+  /** refresh tokenは生きているが一時的に確認できない（Google側5xx/429・ネットワーク・DB書き込み失敗等）。needsReauthとは排他 */
+  hasTemporaryError?: boolean;
+  temporaryErrorMessage?: string | null;
   googleAccountEmail?: string | null;
   propertyId?: string | null;
   propertyName?: string | null;

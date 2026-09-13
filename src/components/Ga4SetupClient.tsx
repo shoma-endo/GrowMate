@@ -26,6 +26,7 @@ import { GA4_EVALUATION_DEFAULT_DAYS } from '@/lib/ga4-evaluation-period';
 import { useGa4Setup } from '@/hooks/useGa4Setup';
 import { handleAsyncAction } from '@/lib/async-handler';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { toast } from 'sonner';
 
 interface Ga4SetupClientProps {
@@ -88,6 +89,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
   );
   const isGa4DirtyRef = useRef(false);
   const [ga4NeedsReauth, setGa4NeedsReauth] = useState(false);
+  const [ga4HasTemporaryError, setGa4HasTemporaryError] = useState(false);
 
   const connectedGa4Property = useMemo(() => {
     if (!selectedGa4PropertyId) return null;
@@ -197,13 +199,16 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
       if (result.success) {
         setStatus(result.data);
         setGa4NeedsReauth(result.needsReauth);
+        setGa4HasTemporaryError(result.data.hasTemporaryError ?? false);
       } else {
         setGa4NeedsReauth(false);
+        setGa4HasTemporaryError(false);
         setAlertMessage(result.error || 'GA4ステータスの取得に失敗しました');
       }
     } catch (error) {
       console.error('GA4ステータス取得エラー:', error);
       setGa4NeedsReauth(false);
+      setGa4HasTemporaryError(false);
       setAlertMessage('GA4ステータスの取得に失敗しました');
     } finally {
       setIsCheckingGa4Status(false);
@@ -236,6 +241,10 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
   useEffect(() => {
     setGa4NeedsReauth(status.needsReauth ?? false);
   }, [status.needsReauth]);
+
+  useEffect(() => {
+    setGa4HasTemporaryError(status.hasTemporaryError ?? false);
+  }, [status.hasTemporaryError]);
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-8 space-y-6">
@@ -277,7 +286,19 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
         </div>
       )}
 
-      {alertMessage && !ga4NeedsReauth && (
+      {!ga4NeedsReauth && ga4HasTemporaryError && (
+        <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-yellow-800">
+            <AlertTriangle className="h-5 w-5" />
+            <p className="font-semibold">一時的に確認できません</p>
+          </div>
+          <p className="text-sm text-yellow-700">
+            {status.temporaryErrorMessage ?? ERROR_MESSAGES.GA4.TOKEN_REFRESH_TEMPORARY_FAILURE}
+          </p>
+        </div>
+      )}
+
+      {alertMessage && !ga4NeedsReauth && !ga4HasTemporaryError && (
         <div className="rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
           {alertMessage}
         </div>
@@ -305,9 +326,15 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
               <span className="text-sm text-gray-500">現在の状態</span>
               <Badge
                 variant="outline"
-                className={ga4NeedsReauth ? 'bg-orange-100 text-orange-800' : stageMeta.className}
+                className={
+                  ga4NeedsReauth
+                    ? 'bg-orange-100 text-orange-800'
+                    : ga4HasTemporaryError
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : stageMeta.className
+                }
               >
-                {ga4NeedsReauth ? '要再認証' : stageMeta.label}
+                {ga4NeedsReauth ? '要再認証' : ga4HasTemporaryError ? '未確認' : stageMeta.label}
               </Badge>
             </div>
             {isOauthConfigured ? (
