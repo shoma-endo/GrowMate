@@ -53,7 +53,12 @@ vi.mock('@/server/services/ga4Service', () => ({
   },
 }));
 
-import { fetchGa4Properties, fetchGa4KeyEvents, fetchGa4Status } from '@/server/actions/ga4Setup.actions';
+import {
+  fetchGa4Properties,
+  fetchGa4KeyEvents,
+  fetchGa4Status,
+  refetchGa4StatusWithValidation,
+} from '@/server/actions/ga4Setup.actions';
 
 const USER_ID = 'b0ed75ba-bb37-4dd7-89a0-c6ce940f991c';
 
@@ -179,12 +184,56 @@ describe('fetchGa4Status の再認証判定', () => {
     expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
   });
 
-  it('refresh が 429 等の一時的失敗なら、改修前と同じ生credentialベースの判定に落ちる（needsReauth:true のまま。専用の一時失敗表示は追加しない）', async () => {
+  it('refresh が 429 等の一時的失敗なら needsReauth:false かつ hasTemporaryError:true（誤って再認証を促さない）', async () => {
     mocks.refreshAccessToken.mockRejectedValue(rateLimited429);
 
     const result = await fetchGa4Status();
 
     expect(result.success).toBe(true);
-    expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
+    expect('data' in result ? result.data?.needsReauth : undefined).toBe(false);
+    expect('data' in result ? result.data?.hasTemporaryError : undefined).toBe(true);
+    expect('data' in result ? result.data?.temporaryErrorMessage : undefined).toBe(
+      ERROR_MESSAGES.GA4.TOKEN_REFRESH_TEMPORARY_FAILURE
+    );
+  });
+});
+
+/**
+ * refetchGa4StatusWithValidation の一時的失敗の伝播検証（gscSetup.actions.test.ts の
+ * 同名テストと同じ理由。GSC/GA4は同一credentialを共有するため同種の欠陥が起きていた）。
+ */
+describe('refetchGa4StatusWithValidation の一時的失敗の伝播', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID, userDetails: { role: 'paid' } });
+    mocks.getGscCredentialByUserId.mockResolvedValue({
+      ...EXPIRED_CREDENTIAL_WITH_SCOPE,
+      accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      ga4PropertyId: 'properties/123',
+    });
+  });
+
+  it('プロパティ取得が一時的失敗（500）なら needsReauth:false かつ data.hasTemporaryError:true', async () => {
+    mocks.listProperties.mockRejectedValue(serverError500);
+
+    const result = await refetchGa4StatusWithValidation();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.needsReauth).toBe(false);
+      expect(result.data.hasTemporaryError).toBe(true);
+    }
+  });
+
+  it('プロパティ取得が成功すれば hasTemporaryError は立たない', async () => {
+    mocks.listProperties.mockResolvedValue([]);
+
+    const result = await refetchGa4StatusWithValidation();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.needsReauth).toBe(false);
+      expect(result.data.hasTemporaryError).toBeFalsy();
+    }
   });
 });

@@ -9,7 +9,7 @@ import { Ga4Service } from '@/server/services/ga4Service';
 import { ga4SettingsSchema } from '@/server/schemas/ga4.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
-import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
+import { toGa4ConnectionStatus, toGa4ConnectionStatusFromResolution } from '@/server/lib/ga4-status';
 import type { Ga4ConnectionStatus } from '@/types/ga4';
 import type { GscCredential } from '@/types/gsc';
 import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
@@ -131,9 +131,7 @@ export async function fetchGa4Status(): Promise<ServerActionResult<Ga4Connection
     // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを
     // 試みてから判定する（マイホームと同じロジックを共有。詳細は home-google-credential.ts 参照）。
     const googleCredentialResult = await resolveHomeGoogleCredential(userId);
-    const credential =
-      googleCredentialResult.kind === 'unconnected' ? null : googleCredentialResult.credential;
-    const status = toGa4ConnectionStatus(credential);
+    const status = toGa4ConnectionStatusFromResolution(googleCredentialResult);
     return { success: true, data: status };
   } catch (error) {
     console.error('[GA4 Setup] fetch status failed', error);
@@ -268,15 +266,26 @@ export async function refetchGa4StatusWithValidation(): Promise<
 
     if (status.connectionStage !== 'unlinked') {
       const propertiesResult = await fetchGa4Properties();
-      if (
-        !propertiesResult.success &&
-        'needsReauth' in propertiesResult &&
-        propertiesResult.needsReauth
-      ) {
+      if (!propertiesResult.success) {
+        if ('needsReauth' in propertiesResult && propertiesResult.needsReauth) {
+          return {
+            success: true,
+            data: status,
+            needsReauth: true,
+          };
+        }
+        // 本当の認証失効ではない失敗（Google側5xx/429・ネットワーク等）。
+        // 誤って「要再認証」を出さず、一時的失敗として区別する。
         return {
           success: true,
-          data: status,
-          needsReauth: true,
+          data: {
+            ...status,
+            needsReauth: false,
+            hasTemporaryError: true,
+            temporaryErrorMessage:
+              propertiesResult.error || ERROR_MESSAGES.GA4.TOKEN_REFRESH_TEMPORARY_FAILURE,
+          },
+          needsReauth: false,
         };
       }
     }

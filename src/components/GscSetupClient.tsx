@@ -29,6 +29,7 @@ import { GscStatusBadge } from '@/components/ui/GscStatusBadge';
 import { useGscSetup } from '@/hooks/useGscSetup';
 import { handleAsyncAction } from '@/lib/async-handler';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
 interface GscSetupClientProps {
   initialStatus: GscConnectionStatus;
@@ -65,6 +66,7 @@ export default function GscSetupClient({
     refetchProperties,
   } = useGscSetup(initialStatus);
   const needsReauth = status.needsReauth ?? false;
+  const hasTemporaryError = status.hasTemporaryError ?? false;
   const canImport = status.connected && Boolean(status.propertyUri) && !needsReauth;
 
   const [isUpdatingProperty, setIsUpdatingProperty] = useState(false);
@@ -162,8 +164,21 @@ export default function GscSetupClient({
         </div>
       )}
 
+      {/* 一時的な取得失敗（refresh tokenは生きているので再認証は不要） */}
+      {!needsReauth && hasTemporaryError && (
+        <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-yellow-800">
+            <AlertTriangle className="h-5 w-5" />
+            <p className="font-semibold">一時的に確認できません</p>
+          </div>
+          <p className="text-sm text-yellow-700">
+            {status.temporaryErrorMessage ?? ERROR_MESSAGES.GSC.TOKEN_REFRESH_TEMPORARY_FAILURE}
+          </p>
+        </div>
+      )}
+
       {/* 通常のアラートメッセージ */}
-      {alertMessage && !needsReauth && (
+      {alertMessage && !needsReauth && !hasTemporaryError && (
         <div className="rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
           {alertMessage}
         </div>
@@ -187,7 +202,11 @@ export default function GscSetupClient({
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-sm text-gray-500">現在の状態</span>
-              <GscStatusBadge connected={status.connected} needsReauth={needsReauth} />
+              <GscStatusBadge
+                connected={status.connected}
+                needsReauth={needsReauth}
+                hasTemporaryError={hasTemporaryError}
+              />
             </div>
             {isOauthConfigured ? (
               <GoogleSignInButton href={OAUTH_START_PATH}>Googleでログイン</GoogleSignInButton>

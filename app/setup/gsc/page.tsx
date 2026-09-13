@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import GscSetupClient from '@/components/GscSetupClient';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
-import { toGscConnectionStatus } from '@/server/lib/gsc-status';
+import { toGscConnectionStatusFromResolution } from '@/server/lib/gsc-status';
 import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
 
 export const dynamic = 'force-dynamic';
@@ -24,9 +24,7 @@ export default async function GscSetupPage() {
   // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを
   // 試みてから判定する（マイホームと同じロジックを共有。詳細は home-google-credential.ts 参照）。
   const googleCredentialResult = await resolveHomeGoogleCredential(authResult.userId);
-  const credential =
-    googleCredentialResult.kind === 'unconnected' ? null : googleCredentialResult.credential;
-  const initialStatus = toGscConnectionStatus(credential);
+  const initialStatus = toGscConnectionStatusFromResolution(googleCredentialResult);
 
   return <GscSetupClient initialStatus={initialStatus} isOauthConfigured={isOauthConfigured} />;
 }

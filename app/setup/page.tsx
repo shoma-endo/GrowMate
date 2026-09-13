@@ -3,8 +3,8 @@ import { getWordPressSettings } from '@/server/actions/wordpress.actions';
 import SetupDashboard from '@/components/SetupDashboard';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
-import { toGscConnectionStatus } from '@/server/lib/gsc-status';
-import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
+import { toGscConnectionStatusFromResolution } from '@/server/lib/gsc-status';
+import { toGa4ConnectionStatusFromResolution } from '@/server/lib/ga4-status';
 import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
@@ -41,10 +41,8 @@ export default async function SetupPage() {
   // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを
   // 試みてから判定する（マイホームと同じロジックを共有。詳細は home-google-credential.ts 参照）。
   const googleCredentialResult = await resolveHomeGoogleCredential(authResult.userId);
-  const gscCredential =
-    googleCredentialResult.kind === 'unconnected' ? null : googleCredentialResult.credential;
-  const gscStatus = toGscConnectionStatus(gscCredential);
-  const ga4Status = toGa4ConnectionStatus(gscCredential);
+  const gscStatus = toGscConnectionStatusFromResolution(googleCredentialResult);
+  const ga4Status = toGa4ConnectionStatusFromResolution(googleCredentialResult);
 
   const result = await getGoogleAdsConnectionStatus();
   const isGoogleAdsTemporarilyFailing = isGoogleAdsTemporaryError(result);

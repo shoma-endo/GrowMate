@@ -44,7 +44,11 @@ vi.mock('@/server/services/gscService', () => ({
   formatGscPropertyDisplayName: (uri: string) => uri,
 }));
 
-import { fetchGscProperties, fetchGscStatus } from '@/server/actions/gscSetup.actions';
+import {
+  fetchGscProperties,
+  fetchGscStatus,
+  refetchGscStatusWithValidation,
+} from '@/server/actions/gscSetup.actions';
 
 const USER_ID = 'b0ed75ba-bb37-4dd7-89a0-c6ce940f991c';
 
@@ -151,12 +155,55 @@ describe('fetchGscStatus の再認証判定', () => {
     expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
   });
 
-  it('refresh が 429 等の一時的失敗なら、改修前と同じ生credentialベースの判定に落ちる（needsReauth:true のまま。専用の一時失敗表示は追加しない）', async () => {
+  it('refresh が 429 等の一時的失敗なら needsReauth:false かつ hasTemporaryError:true（誤って再認証を促さない）', async () => {
     mocks.refreshAccessToken.mockRejectedValue(rateLimited429);
 
     const result = await fetchGscStatus();
 
     expect(result.success).toBe(true);
-    expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
+    expect('data' in result ? result.data?.needsReauth : undefined).toBe(false);
+    expect('data' in result ? result.data?.hasTemporaryError : undefined).toBe(true);
+    expect('data' in result ? result.data?.temporaryErrorMessage : undefined).toBe(
+      ERROR_MESSAGES.GSC.TOKEN_REFRESH_TEMPORARY_FAILURE
+    );
+  });
+});
+
+/**
+ * refetchGscStatusWithValidation の一時的失敗の伝播検証。
+ *
+ * 要点: fetchGscStatus自体は成功（refresh tokenは生きている）だが、その後の
+ * プロパティ一覧取得（fetchGscProperties）が本当の認証失効以外の理由で失敗した場合、
+ * 誤って needsReauth:true にせず hasTemporaryError で区別できているかを固定する。
+ */
+describe('refetchGscStatusWithValidation の一時的失敗の伝播', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID });
+    mocks.getGscCredentialByUserId.mockResolvedValue(VALID_CREDENTIAL);
+  });
+
+  it('プロパティ取得が一時的失敗（500）なら needsReauth:false かつ data.hasTemporaryError:true', async () => {
+    mocks.listSites.mockRejectedValue(serverError500);
+
+    const result = await refetchGscStatusWithValidation();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.needsReauth).toBe(false);
+      expect(result.data.hasTemporaryError).toBe(true);
+    }
+  });
+
+  it('プロパティ取得が成功すれば hasTemporaryError は立たない', async () => {
+    mocks.listSites.mockResolvedValue([]);
+
+    const result = await refetchGscStatusWithValidation();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.needsReauth).toBe(false);
+      expect(result.data.hasTemporaryError).toBeFalsy();
+    }
   });
 });
