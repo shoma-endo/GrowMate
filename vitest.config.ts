@@ -24,9 +24,9 @@ export default defineConfig({
       // 数値合わせのテストは書かない（docs/specs/testing-strategy.md「閾値の合意記録」）。
       thresholds: {
         autoUpdate: (newThreshold) => Math.max(0, Math.floor(newThreshold) - 1),
-        lines: 16,
-        statements: 16,
-        functions: 18,
+        lines: 17,
+        statements: 17,
+        functions: 19,
         branches: 12,
       },
     },
