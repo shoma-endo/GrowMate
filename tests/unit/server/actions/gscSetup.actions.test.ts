@@ -44,7 +44,7 @@ vi.mock('@/server/services/gscService', () => ({
   formatGscPropertyDisplayName: (uri: string) => uri,
 }));
 
-import { fetchGscProperties } from '@/server/actions/gscSetup.actions';
+import { fetchGscProperties, fetchGscStatus } from '@/server/actions/gscSetup.actions';
 
 const USER_ID = 'b0ed75ba-bb37-4dd7-89a0-c6ce940f991c';
 
@@ -112,5 +112,51 @@ describe('fetchGscProperties のリフレッシュ失敗分類', () => {
     expect(result.success).toBe(false);
     expect('needsReauth' in result ? result.needsReauth : undefined).toBeFalsy();
     expect(result.error).toBe(ERROR_MESSAGES.GSC.PROPERTIES_FETCH_FAILED);
+  });
+});
+
+/**
+ * fetchGscStatus の再認証判定の検証（setup/GSCで「1時間おきに再認証」と誤表示されたバグの回帰確認）。
+ *
+ * 要点: アクセストークンの期限切れ（約1時間TTL）だけを見て needsReauth を立てるのではなく、
+ * resolveHomeGoogleCredential 経由で実際にリフレッシュを試みてから判定できているかを固定する。
+ */
+describe('fetchGscStatus の再認証判定', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID });
+    mocks.getGscCredentialByUserId.mockResolvedValue(EXPIRED_CREDENTIAL);
+  });
+
+  it('アクセストークン期限切れでも refresh 成功なら needsReauth:false', async () => {
+    mocks.refreshAccessToken.mockResolvedValue({
+      accessToken: 'new-token',
+      expiresIn: 3600,
+      scope: EXPIRED_CREDENTIAL.scope,
+    });
+    mocks.updateGscCredential.mockResolvedValue(undefined);
+
+    const result = await fetchGscStatus();
+
+    expect(result.success).toBe(true);
+    expect('data' in result ? result.data?.needsReauth : undefined).toBe(false);
+  });
+
+  it('refresh が 401 相当で失敗（本当の認証失効）なら needsReauth:true', async () => {
+    mocks.refreshAccessToken.mockRejectedValue(authExpired400);
+
+    const result = await fetchGscStatus();
+
+    expect(result.success).toBe(true);
+    expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
+  });
+
+  it('refresh が 429 等の一時的失敗なら、改修前と同じ生credentialベースの判定に落ちる（needsReauth:true のまま。専用の一時失敗表示は追加しない）', async () => {
+    mocks.refreshAccessToken.mockRejectedValue(rateLimited429);
+
+    const result = await fetchGscStatus();
+
+    expect(result.success).toBe(true);
+    expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
   });
 });

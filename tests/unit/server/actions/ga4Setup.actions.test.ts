@@ -53,7 +53,7 @@ vi.mock('@/server/services/ga4Service', () => ({
   },
 }));
 
-import { fetchGa4Properties, fetchGa4KeyEvents } from '@/server/actions/ga4Setup.actions';
+import { fetchGa4Properties, fetchGa4KeyEvents, fetchGa4Status } from '@/server/actions/ga4Setup.actions';
 
 const USER_ID = 'b0ed75ba-bb37-4dd7-89a0-c6ce940f991c';
 
@@ -139,5 +139,52 @@ describe('fetchGa4Properties / fetchGa4KeyEvents のリフレッシュ失敗分�
       expect('needsReauth' in result ? result.needsReauth : undefined).toBeFalsy();
       expect(result.error).toBe(ERROR_MESSAGES.GA4.KEY_EVENTS_FETCH_FAILED);
     });
+  });
+});
+
+/**
+ * fetchGa4Status の再認証判定の検証（setup/GSCと同じ「1時間おきに再認証」誤表示バグの回帰確認。
+ * GSC/GA4 は同一 credential 行を共有するため同じ欠陥が起きていた）。
+ *
+ * 要点: アクセストークンの期限切れ（約1時間TTL）だけを見て needsReauth を立てるのではなく、
+ * resolveHomeGoogleCredential 経由で実際にリフレッシュを試みてから判定できているかを固定する。
+ */
+describe('fetchGa4Status の再認証判定', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID, userDetails: { role: 'paid' } });
+    mocks.getGscCredentialByUserId.mockResolvedValue(EXPIRED_CREDENTIAL_WITH_SCOPE);
+  });
+
+  it('アクセストークン期限切れでも refresh 成功なら needsReauth:false', async () => {
+    mocks.refreshAccessToken.mockResolvedValue({
+      accessToken: 'new-token',
+      expiresIn: 3600,
+      scope: EXPIRED_CREDENTIAL_WITH_SCOPE.scope,
+    });
+    mocks.updateGscCredential.mockResolvedValue(undefined);
+
+    const result = await fetchGa4Status();
+
+    expect(result.success).toBe(true);
+    expect('data' in result ? result.data?.needsReauth : undefined).toBe(false);
+  });
+
+  it('refresh が 401 相当で失敗（本当の認証失効）なら needsReauth:true', async () => {
+    mocks.refreshAccessToken.mockRejectedValue(authExpired400);
+
+    const result = await fetchGa4Status();
+
+    expect(result.success).toBe(true);
+    expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
+  });
+
+  it('refresh が 429 等の一時的失敗なら、改修前と同じ生credentialベースの判定に落ちる（needsReauth:true のまま。専用の一時失敗表示は追加しない）', async () => {
+    mocks.refreshAccessToken.mockRejectedValue(rateLimited429);
+
+    const result = await fetchGa4Status();
+
+    expect(result.success).toBe(true);
+    expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
   });
 });

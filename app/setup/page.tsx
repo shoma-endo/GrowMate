@@ -3,17 +3,15 @@ import { getWordPressSettings } from '@/server/actions/wordpress.actions';
 import SetupDashboard from '@/components/SetupDashboard';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
-import { SupabaseService } from '@/server/services/supabaseService';
 import { toGscConnectionStatus } from '@/server/lib/gsc-status';
 import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
+import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
 import { isGoogleAdsTemporaryError } from '@/lib/home-today';
 
 export const dynamic = 'force-dynamic';
-
-const supabaseService = new SupabaseService();
 
 export default async function SetupPage() {
   const authResult = await authMiddleware();
@@ -40,7 +38,11 @@ export default async function SetupPage() {
     console.error('[Setup] Failed to fetch WordPress settings:', error);
   }
 
-  const gscCredential = await supabaseService.getGscCredentialByUserId(authResult.userId);
+  // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを
+  // 試みてから判定する（マイホームと同じロジックを共有。詳細は home-google-credential.ts 参照）。
+  const googleCredentialResult = await resolveHomeGoogleCredential(authResult.userId);
+  const gscCredential =
+    googleCredentialResult.kind === 'unconnected' ? null : googleCredentialResult.credential;
   const gscStatus = toGscConnectionStatus(gscCredential);
   const ga4Status = toGa4ConnectionStatus(gscCredential);
 

@@ -11,13 +11,19 @@ const gscService = new GscService();
 export type HomeGoogleCredentialResult =
   | { kind: 'unconnected' }
   | { kind: 'ok'; credential: GscCredential }
-  | { kind: 'transient_failure' };
+  | { kind: 'transient_failure'; credential: GscCredential };
 
 /**
  * マイホームで GSC/GA4 の連携状態を計算する前に、実際にトークンをリフレッシュしておく。
  * GSC/GA4 は同一 credential 行（アクセストークン）を共有するため、ここで一度だけ試みれば
  * 両方のステータス計算（toGscConnectionStatus/toGa4ConnectionStatus）に使い回せる。
  * キャッシュが有効な間は ensureValidAccessToken 内部で実際の API 呼び出しをスキップする。
+ *
+ * setup系ページ・Server Action（/setup, /setup/gsc, /setup/ga4, fetchGscStatus, fetchGa4Status）
+ * も同じ理由（アクセストークンの期限切れだけを見て再認証必須と誤判定しないため）でこの関数を使う。
+ * transient_failure に生の credential を含めているのはそのため：マイホームは kind だけ見て
+ * 表示を空欄にするが、setup系は一時的失敗時に「改修前と同じ生 credential ベースの判定」へ
+ * フォールバックしたい。
  */
 export async function resolveHomeGoogleCredential(userId: string): Promise<HomeGoogleCredentialResult> {
   const credential = await supabaseService.getGscCredentialByUserId(userId);
@@ -59,6 +65,6 @@ export async function resolveHomeGoogleCredential(userId: string): Promise<HomeG
     }
     // DB保存失敗（updateGscCredential が例外を投げるケース）もここに落ちる。
     // メッセージが reauth 系のいずれにも一致しないため自然に transient 扱いになる。
-    return { kind: 'transient_failure' };
+    return { kind: 'transient_failure', credential };
   }
 }

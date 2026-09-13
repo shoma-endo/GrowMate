@@ -11,6 +11,7 @@ import { GscSiteEntry, GscCredential, GscConnectionStatus } from '@/types/gsc';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
 import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
+import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
 
 const supabaseService = new SupabaseService();
 const gscService = new GscService();
@@ -59,7 +60,11 @@ export async function fetchGscStatus() {
     return gscSetupReturnAuthError(authId);
   }
   const { userId } = authId;
-  const credential = await supabaseService.getGscCredentialByUserId(userId);
+  // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを
+  // 試みてから判定する（マイホームと同じロジックを共有。詳細は home-google-credential.ts 参照）。
+  const googleCredentialResult = await resolveHomeGoogleCredential(userId);
+  const credential =
+    googleCredentialResult.kind === 'unconnected' ? null : googleCredentialResult.credential;
   const status = toGscConnectionStatus(credential);
   return { success: true, data: status };
 }
