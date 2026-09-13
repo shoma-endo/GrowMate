@@ -52,6 +52,7 @@ export interface GscEvaluationHistoryItem {
   suggestion_attempt_count: number;
   suggestion_error: string | null;
   is_read: boolean;
+  memo: string | null;
   created_at: string;
 }
 

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { GscConnectionStatus, GscSiteEntry } from '@/types/gsc';
 import { fetchGscProperties, fetchGscStatus } from '@/server/actions/gscSetup.actions';
-import { isTokenExpiredError } from '@/domain/errors/gsc-error-handlers';
 import { handleAsyncAction } from '@/lib/async-handler';
 
 interface UseGscSetupResult {
@@ -46,11 +45,14 @@ export function useGscSetup(initialStatus: GscConnectionStatus): UseGscSetupResu
         if (Array.isArray(data)) {
           setProperties(data as GscSiteEntry[]);
         }
+        // プロパティ取得は内部でアクセストークンを実際にリフレッシュしている。
+        // 成功した直後に status を取り直さないと、SSR時点のアクセストークン期限切れ判定
+        // （約1時間ごと）由来の古い needsReauth:true が画面に残り続けてしまう。
+        refreshStatus();
       },
-      onError: error => {
-        const errorMessage = error.message;
+      onError: (_error, result) => {
         // トークン期限切れ/取り消しエラーの場合は再認証を促す
-        if (isTokenExpiredError(errorMessage)) {
+        if (result?.needsReauth) {
           // ステータスを再取得して needsReauth を更新
           refreshStatus();
           setAlertMessage(

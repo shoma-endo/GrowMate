@@ -9,12 +9,13 @@ import { Ga4Service } from '@/server/services/ga4Service';
 import { ga4SettingsSchema } from '@/server/schemas/ga4.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
-import { toGa4ConnectionStatus } from '@/server/lib/ga4-status';
+import { toGa4ConnectionStatus, toGa4ConnectionStatusFromResolution } from '@/server/lib/ga4-status';
 import type { Ga4ConnectionStatus } from '@/types/ga4';
 import type { GscCredential } from '@/types/gsc';
-import { isGa4ReauthError } from '@/domain/errors/ga4-error-handlers';
+import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
 import { GA4_SCOPE } from '@/lib/constants';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
+import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
 import type { ServerActionResult } from '@/lib/async-handler';
 import { canAccessGa4, canWriteGa4 } from '@/server/lib/ga4-permissions';
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
@@ -127,8 +128,10 @@ export async function fetchGa4Status(): Promise<ServerActionResult<Ga4Connection
       return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
     }
 
-    const credential = await supabaseService.getGscCredentialByUserId(userId);
-    const status = toGa4ConnectionStatus(credential);
+    // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを
+    // 試みてから判定する（マイホームと同じロジックを共有。詳細は home-google-credential.ts 参照）。
+    const googleCredentialResult = await resolveHomeGoogleCredential(userId);
+    const status = toGa4ConnectionStatusFromResolution(googleCredentialResult);
     return { success: true, data: status };
   } catch (error) {
     console.error('[GA4 Setup] fetch status failed', error);
@@ -154,7 +157,7 @@ export async function fetchGa4Properties() {
   } catch (error) {
     const message = error instanceof Error ? error.message : ERROR_MESSAGES.GA4.PROPERTIES_FETCH_FAILED;
     console.error('[GA4 Setup] fetch properties failed', error);
-    if (isGa4ReauthError(message)) {
+    if (isGoogleOAuthReauthError(message)) {
       return {
         success: false,
         error: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED,
@@ -187,7 +190,7 @@ export async function fetchGa4KeyEvents(propertyId: string) {
   } catch (error) {
     const message = error instanceof Error ? error.message : ERROR_MESSAGES.GA4.KEY_EVENTS_FETCH_FAILED;
     console.error('[GA4 Setup] fetch key events failed', error);
-    if (isGa4ReauthError(message)) {
+    if (isGoogleOAuthReauthError(message)) {
       return {
         success: false,
         error: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED,
@@ -263,15 +266,36 @@ export async function refetchGa4StatusWithValidation(): Promise<
 
     if (status.connectionStage !== 'unlinked') {
       const propertiesResult = await fetchGa4Properties();
-      if (
-        !propertiesResult.success &&
-        'needsReauth' in propertiesResult &&
-        propertiesResult.needsReauth
-      ) {
+      if (!propertiesResult.success) {
+        if ('needsReauth' in propertiesResult && propertiesResult.needsReauth) {
+          return {
+            success: true,
+            data: status,
+            needsReauth: true,
+          };
+        }
+        // 本当の認証失効ではない失敗（Google側5xx/429・ネットワーク等）。
+        // 誤って「要再認証」を出さず、一時的失敗として区別する。
         return {
           success: true,
-          data: status,
-          needsReauth: true,
+          data: {
+            ...status,
+            needsReauth: false,
+            hasTemporaryError: true,
+            temporaryErrorMessage:
+              propertiesResult.error || ERROR_MESSAGES.GA4.TOKEN_REFRESH_TEMPORARY_FAILURE,
+          },
+          needsReauth: false,
+        };
+      }
+      // プロパティ取得（内部で独立にリフレッシュを試みる）が成功した＝トークンは今は有効。
+      // fetchGa4Status側の判定が一時的失敗だった場合でも、ここで判明した最新の結果で上書きする
+      // （古いhasTemporaryErrorを引きずらない）。
+      if (status.hasTemporaryError) {
+        return {
+          success: true,
+          data: { ...status, hasTemporaryError: false, temporaryErrorMessage: null },
+          needsReauth: false,
         };
       }
     }

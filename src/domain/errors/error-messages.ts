@@ -524,6 +524,10 @@ export const ERROR_MESSAGES = {
     /** ステータスの取得に失敗した場合 */
     STATUS_FETCH_FAILED: 'ステータスの取得に失敗しました',
 
+    /** アクセストークンの更新が一時的に失敗した場合（DB書き込み失敗・ネットワーク一時エラー・Google側5xx/429等） */
+    TOKEN_REFRESH_TEMPORARY_FAILURE:
+      '一時的にGoogle Search Consoleの情報取得に失敗しました。時間をおいてもう一度お試しください。',
+
     /** startDateとendDateが必須の場合 */
     DATE_RANGE_REQUIRED: 'startDate と endDate は必須です',
 
@@ -629,6 +633,9 @@ export const ERROR_MESSAGES = {
     /** 全選択の母集団（全記事）の件数を取得できなかった場合 */
     BULK_TOTAL_COUNT_FETCH_FAILED:
       '全記事の件数を取得できなかったため、全選択は使えません。行チェックでの選択は使えます。ページを再読み込みしてください。',
+
+    /** 評価履歴のメモ保存に失敗した場合 */
+    EVALUATION_MEMO_SAVE_FAILED: 'メモの保存に失敗しました',
   },
 
   /**
@@ -640,6 +647,10 @@ export const ERROR_MESSAGES = {
 
     /** ステータスの取得に失敗した場合 */
     STATUS_FETCH_FAILED: 'ステータスの取得に失敗しました',
+
+    /** アクセストークンの更新が一時的に失敗した場合（DB書き込み失敗・ネットワーク一時エラー・Google側5xx/429等） */
+    TOKEN_REFRESH_TEMPORARY_FAILURE:
+      '一時的にGA4の情報取得に失敗しました。時間をおいてもう一度お試しください。',
 
     /** GA4の権限が不足している場合 */
     INSUFFICIENT_PERMISSION: 'GA4の権限が不足しています',
@@ -726,6 +737,10 @@ export const ERROR_MESSAGES = {
 
     /** アクセストークンの更新に失敗した場合 */
     TOKEN_REFRESH_FAILED: 'アクセストークンの更新に失敗しました。再認証してください。',
+
+    /** アクセストークンの更新が一時的に失敗した場合（DB書き込み失敗・ネットワーク一時エラー・Google側5xx/429等） */
+    TOKEN_REFRESH_TEMPORARY_FAILURE:
+      '一時的にGoogle Adsの情報取得に失敗しました。時間をおいてもう一度お試しください。',
 
     /** アカウント一覧の取得に失敗した場合（select route用） */
     ACCOUNT_LIST_FETCH_FAILED_SELECT: 'アカウント一覧の取得に失敗しました',

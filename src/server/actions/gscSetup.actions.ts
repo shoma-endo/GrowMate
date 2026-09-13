@@ -4,27 +4,21 @@ import { revalidatePath } from 'next/cache';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { GscService, formatGscPropertyDisplayName } from '@/server/services/gscService';
-import { toGscConnectionStatus, propertyTypeFromUri } from '@/server/lib/gsc-status';
+import {
+  toGscConnectionStatus,
+  toGscConnectionStatusFromResolution,
+  propertyTypeFromUri,
+} from '@/server/lib/gsc-status';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GscSiteEntry, GscCredential, GscConnectionStatus } from '@/types/gsc';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
+import { isGoogleOAuthReauthError } from '@/domain/errors/google-oauth-error-handlers';
+import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
 
 const supabaseService = new SupabaseService();
 const gscService = new GscService();
-
-/** トークン期限切れ/取り消しエラーかどうかを判定 */
-const isTokenExpiredError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : String(error);
-  const lower = message.toLowerCase();
-  return (
-    lower.includes('invalid_grant') ||
-    lower.includes('token has been expired') ||
-    lower.includes('token has been revoked') ||
-    lower.includes('トークンリフレッシュに失敗')
-  );
-};
 
 const ensureAccessToken = async (userId: string, credential: GscCredential): Promise<string> =>
   ensureValidAccessToken(credential, {
@@ -70,8 +64,10 @@ export async function fetchGscStatus() {
     return gscSetupReturnAuthError(authId);
   }
   const { userId } = authId;
-  const credential = await supabaseService.getGscCredentialByUserId(userId);
-  const status = toGscConnectionStatus(credential);
+  // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを
+  // 試みてから判定する（マイホームと同じロジックを共有。詳細は home-google-credential.ts 参照）。
+  const googleCredentialResult = await resolveHomeGoogleCredential(userId);
+  const status = toGscConnectionStatusFromResolution(googleCredentialResult);
   return { success: true, data: status };
 }
 
@@ -98,7 +94,7 @@ export async function fetchGscProperties() {
     console.error('[GSC Setup] fetch properties failed', error);
 
     // トークン期限切れ/取り消しの場合は再認証フラグを返す
-    if (isTokenExpiredError(error)) {
+    if (isGoogleOAuthReauthError(error)) {
       return {
         success: false,
         error: ERROR_MESSAGES.GSC.AUTH_EXPIRED_OR_REVOKED,
@@ -215,15 +211,36 @@ export async function refetchGscStatusWithValidation(): Promise<
     // 接続済みの場合、プロパティ取得を試みてトークンの有効性をチェック
     if (status.connected) {
       const propertiesResult = await fetchGscProperties();
-      if (
-        !propertiesResult.success &&
-        'needsReauth' in propertiesResult &&
-        propertiesResult.needsReauth
-      ) {
+      if (!propertiesResult.success) {
+        if ('needsReauth' in propertiesResult && propertiesResult.needsReauth) {
+          return {
+            success: true,
+            data: status,
+            needsReauth: true,
+          };
+        }
+        // 本当の認証失効ではない失敗（Google側5xx/429・ネットワーク等）。
+        // 誤って「要再認証」を出さず、一時的失敗として区別する。
         return {
           success: true,
-          data: status,
-          needsReauth: true,
+          data: {
+            ...status,
+            needsReauth: false,
+            hasTemporaryError: true,
+            temporaryErrorMessage:
+              propertiesResult.error || ERROR_MESSAGES.GSC.TOKEN_REFRESH_TEMPORARY_FAILURE,
+          },
+          needsReauth: false,
+        };
+      }
+      // プロパティ取得（内部で独立にリフレッシュを試みる）が成功した＝トークンは今は有効。
+      // fetchGscStatus側の判定が一時的失敗だった場合でも、ここで判明した最新の結果で上書きする
+      // （古いhasTemporaryErrorを引きずらない）。
+      if (status.hasTemporaryError) {
+        return {
+          success: true,
+          data: { ...status, hasTemporaryError: false, temporaryErrorMessage: null },
+          needsReauth: false,
         };
       }
     }

@@ -20,6 +20,7 @@ import { BackLink } from '@/components/BackLink';
 import { InstagramGlyph } from '@/components/InstagramGlyph';
 import { SetupDashboardProps } from '@/types/components';
 import type { Ga4ConnectionStage } from '@/types/ga4';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { refetchGscStatusWithValidation } from '@/server/actions/gscSetup.actions';
 import { refetchGa4StatusWithValidation } from '@/server/actions/ga4Setup.actions';
 import {
@@ -252,6 +253,11 @@ export default function SetupDashboard({
                       <AlertTriangle className="text-orange-600" size={16} />
                       <span className="text-sm font-medium text-orange-700">要再認証</span>
                     </>
+                  ) : gscConnection.hasTemporaryError ? (
+                    <>
+                      <AlertCircle className="text-yellow-600" size={16} />
+                      <span className="text-sm font-medium text-yellow-700">一時的に確認できません</span>
+                    </>
                   ) : gscConnection.connected ? (
                     <>
                       <CheckCircle className="text-green-600" size={16} />
@@ -274,17 +280,27 @@ export default function SetupDashboard({
                 ) : (
                   <Badge
                     variant={
-                      gscNeedsReauth ? 'default' : gscConnection.connected ? 'default' : 'secondary'
+                      gscNeedsReauth || gscConnection.hasTemporaryError || gscConnection.connected
+                        ? 'default'
+                        : 'secondary'
                     }
                     className={`text-xs ${
                       gscNeedsReauth
                         ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
-                        : gscConnection.connected
-                          ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                          : 'bg-gray-100 text-gray-800'
+                        : gscConnection.hasTemporaryError
+                          ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                          : gscConnection.connected
+                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                            : 'bg-gray-100 text-gray-800'
                     }`}
                   >
-                    {gscNeedsReauth ? '要再認証' : gscConnection.connected ? '接続OK' : '未設定'}
+                    {gscNeedsReauth
+                      ? '要再認証'
+                      : gscConnection.hasTemporaryError
+                        ? '未確認'
+                        : gscConnection.connected
+                          ? '接続OK'
+                          : '未設定'}
                   </Badge>
                 )}
               </div>
@@ -302,6 +318,18 @@ export default function SetupDashboard({
                   <p className="text-gray-600">
                     アカウント: {gscConnection.googleAccountEmail ?? '取得中'}
                   </p>
+                </div>
+              ) : gscConnection.hasTemporaryError ? (
+                <div className="text-sm space-y-2">
+                  <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200">
+                    <p className="text-sm font-medium text-yellow-800">
+                      {gscConnection.temporaryErrorMessage ??
+                        ERROR_MESSAGES.GSC.TOKEN_REFRESH_TEMPORARY_FAILURE}
+                    </p>
+                  </div>
+                  {gscConnection.googleAccountEmail && (
+                    <p className="text-gray-600">アカウント: {gscConnection.googleAccountEmail}</p>
+                  )}
                 </div>
               ) : gscConnection.connected ? (
                 <div className="text-sm text-gray-600 space-y-1">
@@ -393,6 +421,11 @@ export default function SetupDashboard({
                       <AlertTriangle className="text-orange-600" size={16} />
                       <span className="text-sm font-medium text-orange-700">要再認証</span>
                     </>
+                  ) : ga4Connection.hasTemporaryError ? (
+                    <>
+                      <AlertCircle className="text-yellow-600" size={16} />
+                      <span className="text-sm font-medium text-yellow-700">一時的に確認できません</span>
+                    </>
                   ) : isGa4Configured ? (
                     <>
                       <CheckCircle className="text-green-600" size={16} />
@@ -419,14 +452,16 @@ export default function SetupDashboard({
                   </div>
                 ) : (
                   <Badge
-                    variant={ga4NeedsReauth ? 'default' : 'secondary'}
+                    variant={ga4NeedsReauth || ga4Connection.hasTemporaryError ? 'default' : 'secondary'}
                     className={`text-xs ${
                       ga4NeedsReauth
                         ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
-                        : ga4StageMeta.className
+                        : ga4Connection.hasTemporaryError
+                          ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                          : ga4StageMeta.className
                     }`}
                   >
-                    {ga4NeedsReauth ? '要再認証' : ga4StageMeta.label}
+                    {ga4NeedsReauth ? '要再認証' : ga4Connection.hasTemporaryError ? '未確認' : ga4StageMeta.label}
                   </Badge>
                 )}
               </div>
@@ -444,6 +479,18 @@ export default function SetupDashboard({
                   <p className="text-gray-600">
                     アカウント: {ga4Connection.googleAccountEmail ?? '取得中'}
                   </p>
+                </div>
+              ) : ga4Connection.hasTemporaryError ? (
+                <div className="text-sm space-y-2">
+                  <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200">
+                    <p className="text-sm font-medium text-yellow-800">
+                      {ga4Connection.temporaryErrorMessage ??
+                        ERROR_MESSAGES.GA4.TOKEN_REFRESH_TEMPORARY_FAILURE}
+                    </p>
+                  </div>
+                  {ga4Connection.googleAccountEmail && (
+                    <p className="text-gray-600">アカウント: {ga4Connection.googleAccountEmail}</p>
+                  )}
                 </div>
               ) : isGa4Configured ? (
                 <div className="text-sm text-gray-600 space-y-1">
@@ -532,6 +579,11 @@ export default function SetupDashboard({
                         <AlertTriangle className="text-orange-600" size={16} />
                         <span className="text-sm font-medium text-orange-700">要再認証</span>
                       </>
+                    ) : googleAdsStatus.hasTemporaryError ? (
+                      <>
+                        <AlertCircle className="text-yellow-600" size={16} />
+                        <span className="text-sm font-medium text-yellow-700">一時的に確認できません</span>
+                      </>
                     ) : googleAdsStatus.connected ? (
                       <>
                         <CheckCircle className="text-green-600" size={16} />
@@ -546,25 +598,29 @@ export default function SetupDashboard({
                   </div>
                   <Badge
                     variant={
-                      googleAdsStatus.needsReauth
+                      googleAdsStatus.needsReauth ||
+                      googleAdsStatus.hasTemporaryError ||
+                      googleAdsStatus.connected
                         ? 'default'
-                        : googleAdsStatus.connected
-                          ? 'default'
-                          : 'secondary'
+                        : 'secondary'
                     }
                     className={`text-xs ${
                       googleAdsStatus.needsReauth
                         ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
-                        : googleAdsStatus.connected
-                          ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                          : 'bg-gray-100 text-gray-800'
+                        : googleAdsStatus.hasTemporaryError
+                          ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                          : googleAdsStatus.connected
+                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                            : 'bg-gray-100 text-gray-800'
                     }`}
                   >
                     {googleAdsStatus.needsReauth
                       ? '要再認証'
-                      : googleAdsStatus.connected
-                        ? '接続OK'
-                        : '未設定'}
+                      : googleAdsStatus.hasTemporaryError
+                        ? '未確認'
+                        : googleAdsStatus.connected
+                          ? '接続OK'
+                          : '未設定'}
                   </Badge>
                 </div>
 
@@ -581,6 +637,20 @@ export default function SetupDashboard({
                     <p className="text-gray-600">
                       アカウント: {googleAdsStatus.googleAccountEmail ?? '取得中'}
                     </p>
+                  </div>
+                ) : googleAdsStatus.hasTemporaryError ? (
+                  <div className="text-sm space-y-2">
+                    <div className="p-3 rounded-lg bg-yellow-50 border border-yellow-200">
+                      <p className="text-sm font-medium text-yellow-800">
+                        {googleAdsStatus.temporaryErrorMessage ??
+                          ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_TEMPORARY_FAILURE}
+                      </p>
+                    </div>
+                    {googleAdsStatus.googleAccountEmail && (
+                      <p className="text-gray-600">
+                        アカウント: {googleAdsStatus.googleAccountEmail}
+                      </p>
+                    )}
                   </div>
                 ) : googleAdsStatus.connected ? (
                   <div className="text-sm text-gray-600 space-y-1">

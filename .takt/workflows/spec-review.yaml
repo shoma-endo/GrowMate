@@ -1,14 +1,16 @@
 name: spec-review
 description: >-
   GrowMate docs/plans specification review against spec-review skill checklist and spec revision loop.
-  MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md
-  (all_steps.rules). A review cannot complete while in-scope client questions, implementation
+  MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md;
+  minimal-impl ladder via workflows/rules/minimal-impl-ladder.md (all_steps.rules). A review cannot complete while in-scope client questions, implementation
   decisions, external inputs, or approval gates remain unresolved. Regenerates the spec's HTML
   visualization when the spec changed. Commits docs changes on the current branch only (no new
   branch, no push). Run before spec-to-pr.
 all_steps:
   rules:
     - ref: mvp-scope
+      position: before_instruction
+    - ref: minimal-impl-ladder
       position: before_instruction
 workflow_config:
   # ローカル TAKT 用。Cloud 主系は cloud-agent-unattended Skill。

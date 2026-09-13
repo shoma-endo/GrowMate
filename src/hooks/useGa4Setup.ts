@@ -5,7 +5,6 @@ import {
   fetchGa4Status,
   fetchGa4KeyEvents,
 } from '@/server/actions/ga4Setup.actions';
-import { isGa4ReauthError } from '@/domain/errors/ga4-error-handlers';
 import { handleAsyncAction } from '@/lib/async-handler';
 
 interface UseGa4SetupResult {
@@ -49,10 +48,13 @@ export function useGa4Setup(initialStatus: Ga4ConnectionStatus): UseGa4SetupResu
         if (Array.isArray(data)) {
           setProperties(data as Ga4PropertySummary[]);
         }
+        // プロパティ取得は内部でアクセストークンを実際にリフレッシュしている。
+        // 成功した直後に status を取り直さないと、SSR時点のアクセストークン期限切れ判定
+        // （約1時間ごと）由来の古い needsReauth:true が画面に残り続けてしまう。
+        refreshStatus();
       },
-      onError: error => {
-        const errorMessage = error.message;
-        if (isGa4ReauthError(errorMessage)) {
+      onError: (_error, result) => {
+        if (result?.needsReauth) {
           refreshStatus();
           setAlertMessage('GA4の認証が期限切れまたは取り消されています。再認証してください。');
         }
@@ -71,9 +73,8 @@ export function useGa4Setup(initialStatus: Ga4ConnectionStatus): UseGa4SetupResu
           setKeyEvents(data as Ga4KeyEvent[]);
         }
       },
-      onError: error => {
-        const errorMessage = error.message;
-        if (isGa4ReauthError(errorMessage)) {
+      onError: (_error, result) => {
+        if (result?.needsReauth) {
           refreshStatus();
           setAlertMessage('GA4の認証が期限切れまたは取り消されています。再認証してください。');
         }
