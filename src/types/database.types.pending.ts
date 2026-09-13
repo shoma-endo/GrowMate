@@ -176,3 +176,57 @@ export type ContentAnnotationSummaryJobDatabase = Omit<Database, 'public'> & {
     };
   };
 };
+
+/**
+ * PROVISIONAL: supabase/migrations/20260913000000_create_user_table_field_configs.sql
+ *
+ * 一覧テーブルの「フィールド構成」永続化先（`user_table_field_configs`）の暫定型。
+ *
+ * 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
+ * このブロックを削除し、呼び出し側を
+ * `Database['public']['Tables']['user_table_field_configs']` へ切り替える
+ * （`.agents/skills/supabase/service-usage.md` §6）。
+ *
+ * **`interface` ではなく `type` で書くこと。** supabase-js の `GenericTable` は
+ * `Row: Record<string, unknown>` を要求するが、`interface` には暗黙のインデックス
+ * シグネチャが付かないため制約を満たせず、`.insert()` / `.upsert()` の引数型が
+ * `never` に落ちる（`.select()` は通るので気づきにくい）。
+ */
+type UserTableFieldConfigRow = {
+  id: string;
+  user_id: string;
+  table_key: string;
+  visible_ids: string[];
+  ordered_ids: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+type UserTableFieldConfigInsert = {
+  id?: string;
+  user_id: string;
+  table_key: string;
+  visible_ids: string[];
+  ordered_ids: string[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+type UserTableFieldConfigUpdate = Partial<UserTableFieldConfigInsert>;
+
+/**
+ * 上記テーブルを載せた Database 型。
+ * **`Omit` で置換する**（交差にすると補正が無言で潰れる。本ファイル冒頭の注意書き）。
+ */
+export type UserTableFieldConfigDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables'> & {
+    Tables: Database['public']['Tables'] & {
+      user_table_field_configs: {
+        Row: UserTableFieldConfigRow;
+        Insert: UserTableFieldConfigInsert;
+        Update: UserTableFieldConfigUpdate;
+        Relationships: [];
+      };
+    };
+  };
+};

@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { registerEvaluationsBulk } from '@/server/actions/gscDashboard.actions';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { AnalyticsContentItem } from '@/types/analytics';
+import type { StoredFieldConfig } from '@/types/field-config';
 import type {
   InstagramMediaListItem,
   InstagramMediaSortKey,
@@ -85,6 +86,10 @@ interface AnalyticsClientProps {
   instagramLastSyncedAt: string | null;
   instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed';
   instagramSyncEnabled: boolean;
+  /** コンテンツ一覧のフィールド構成（未保存なら null）。初期描画から確定させるため props で流す */
+  analyticsFieldConfig: StoredFieldConfig | null;
+  /** Instagramメディア一覧のフィールド構成（未保存なら null） */
+  instagramFieldConfig: StoredFieldConfig | null;
 }
 
 export default function AnalyticsClient({
@@ -129,6 +134,8 @@ export default function AnalyticsClient({
   instagramLastSyncedAt,
   instagramBackfillStatus,
   instagramSyncEnabled,
+  analyticsFieldConfig,
+  instagramFieldConfig,
 }: AnalyticsClientProps) {
   const router = useRouter();
   const hrefState: AnalyticsHrefState = {
@@ -512,6 +519,7 @@ export default function AnalyticsClient({
             hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
             hasUnsummarized={hasUnsummarized}
             hasUrlFilterParams={hasUrlFilterParams}
+            fieldConfig={analyticsFieldConfig}
             selection={{
               selectedIds,
               excludedIds,
@@ -612,6 +620,7 @@ export default function AnalyticsClient({
               syncEnabled={instagramSyncEnabled}
               buildIgPageHref={targetPage => buildIgPageHref(hrefState, targetPage)}
               buildFilterHref={patch => buildIgFilterHref(hrefState, patch)}
+              fieldConfig={instagramFieldConfig}
             />
           </TabsContent>
         </Tabs>

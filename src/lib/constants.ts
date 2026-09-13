@@ -1,3 +1,4 @@
+import type { FieldConfigTableKey } from '@/types/field-config';
 import type { CategoryFilterConfig } from '@/types/category';
 import type { LinkedMessageRule } from '@/components/LinkedMessage';
 
@@ -412,6 +413,12 @@ export const ANALYTICS_COLUMNS = [
 export const APP_SHELL_STORAGE_KEYS = {
   SIDEBAR_COLLAPSED: 'appShell.sidebarCollapsed',
 } as const;
+
+// フィールド構成の保存先を識別する一覧キー（DB の `user_table_field_configs.table_key`）
+export const FIELD_CONFIG_TABLE_KEYS = {
+  ANALYTICS: 'analytics',
+  INSTAGRAM_MEDIA: 'instagram_media',
+} as const satisfies Record<string, FieldConfigTableKey>;
 
 // Analytics ページの localStorage キー
 export const ANALYTICS_STORAGE_KEYS = {

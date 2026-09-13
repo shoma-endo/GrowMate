@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Settings, GripVertical } from 'lucide-react';
@@ -12,28 +13,35 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useDragReorder } from '@/hooks/useDragReorder';
+import {
+  isSameFieldConfig,
+  normalizeFieldConfig,
+  parseLegacyStoredFieldConfig,
+} from '@/lib/field-config';
+import { saveFieldConfig } from '@/server/actions/fieldConfig.actions';
+import type {
+  FieldColumnOption,
+  FieldConfigState,
+  FieldConfigTableKey,
+  StoredFieldConfig,
+} from '@/types/field-config';
 
-interface ColumnOption {
-  id: string;
-  label: string;
-  defaultVisible?: boolean;
-}
+/** 保存はDBへの往復になるため、チェック連打・ドラッグ中の書き込み嵐を抑える */
+const SAVE_DEBOUNCE_MS = 600;
 
 interface FieldConfigRenderProps {
   visibleSet: Set<string>;
   orderedIds: string[];
 }
 
-type StoredConfig =
-  | string[]
-  | {
-      visible?: string[];
-      order?: string[];
-    };
-
 interface FieldConfiguratorProps {
-  columns: ColumnOption[];
-  storageKey: string;
+  columns: FieldColumnOption[];
+  /** 保存先を識別する一覧キー（DB の `user_table_field_configs.table_key`） */
+  tableKey: FieldConfigTableKey;
+  /** サーバーコンポーネントが読み出した保存済み構成。未保存なら `null` */
+  initialConfig: StoredFieldConfig | null;
+  /** DB 移行前に localStorage へ保存していたキー。初回の移し替えにだけ使う */
+  legacyStorageKey: string;
   onChange?: (visibleIds: string[], orderedIds: string[]) => void;
   children: (config: FieldConfigRenderProps) => ReactNode;
   hideTrigger?: boolean;
@@ -43,106 +51,126 @@ interface FieldConfiguratorProps {
 
 export default function FieldConfigurator({
   columns,
-  storageKey,
+  tableKey,
+  initialConfig,
+  legacyStorageKey,
   onChange,
   children,
   hideTrigger,
   triggerId,
   dialogExtraContent,
 }: FieldConfiguratorProps) {
-  const defaultVisibleIds = useMemo(
-    () => columns.filter(c => c.defaultVisible !== false).map(c => c.id),
-    [columns]
+  // **初期値はサーバーが読んだ構成から作る。** サーバーとクライアントで同じ入力から
+  // 同じ結果になるので hydration mismatch にならず、既定列が一瞬見えるチラつきも出ない。
+  const [config, setConfig] = useState<FieldConfigState>(() =>
+    normalizeFieldConfig(columns, initialConfig)
   );
-  const defaultOrder = useMemo(() => columns.map(c => c.id), [columns]);
-
-  const normalizeOrder = useCallback(
-    (order: string[]) => {
-      const knownIds = columns.map(c => c.id);
-      const filtered = order.filter(id => knownIds.includes(id));
-      const missing = knownIds.filter(id => !filtered.includes(id));
-      return [...filtered, ...missing];
-    },
-    [columns]
-  );
-
-  const mergeNewDefaultVisibleColumns = useCallback(
-    (visible: string[], order: string[]) => {
-      const visibleSet = new Set(visible);
-      const orderSet = new Set(order);
-      const newlyAddedDefaultVisibleIds = defaultVisibleIds.filter(
-        id => !visibleSet.has(id) && !orderSet.has(id)
-      );
-      if (newlyAddedDefaultVisibleIds.length === 0) {
-        return visible;
-      }
-      return [...visible, ...newlyAddedDefaultVisibleIds];
-    },
-    [defaultVisibleIds]
-  );
-
-  // 初期state は SSR と一致させるため常にデフォルト値で始める。localStorage の読み込みは
-  // window が存在しないサーバーでは行えず、ここで分岐すると SSR の描画結果とクライアント
-  // hydrate 時の描画結果が食い違い hydration mismatch を起こす。保存済み設定の反映は
-  // マウント後の useEffect（下方）に委ねる。
   const [open, setOpen] = useState(false);
-  const [visibleIds, setVisibleIds] = useState<string[]>(defaultVisibleIds);
-  const [orderedIds, setOrderedIds] = useState<string[]>(defaultOrder);
 
-  const loadStoredConfig = useCallback((): { visible: string[]; order: string[] } => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as StoredConfig;
+  const { visibleIds, orderedIds } = config;
+  const visibleSet = useMemo(() => new Set(visibleIds), [visibleIds]);
 
-        // 旧フォーマット（string配列）との互換性維持。
-        // 空配列（全解除して保存した状態）も正当な値のため、length チェックで
-        // デフォルトにフォールバックさせない（フォールバックすると全解除が復元されない）。
-        if (Array.isArray(parsed)) {
-          const normalizedVisible = parsed.filter(id => columns.some(c => c.id === id));
-          const mergedVisible = mergeNewDefaultVisibleColumns(normalizedVisible, defaultOrder);
-          return { visible: mergedVisible, order: defaultOrder };
-        }
+  // **状態の最新値を同期的に保持する。** ハンドラがレンダリング時のクロージャ値を読むと、
+  // 再レンダリング前に続けて操作されたときに1つ前の構成を元に上書きしてしまう。
+  const configRef = useRef<FieldConfigState>(config);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingConfigRef = useRef<FieldConfigState | null>(null);
+  const savedConfigRef = useRef<FieldConfigState>(config);
 
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          const visible = Array.isArray(parsed.visible) ? parsed.visible : defaultVisibleIds;
-          const order = Array.isArray(parsed.order) ? parsed.order : defaultOrder;
-          const mergedVisible = mergeNewDefaultVisibleColumns(visible, order);
-          return { visible: mergedVisible, order: normalizeOrder(order) };
-        }
+  const persist = useCallback(
+    async (next: FieldConfigState) => {
+      if (isSameFieldConfig(next, savedConfigRef.current)) {
+        return;
       }
-    } catch {
-      // フォールスルーしてデフォルトを返す
-    }
-    return { visible: defaultVisibleIds, order: defaultOrder };
-  }, [columns, storageKey, defaultVisibleIds, defaultOrder, mergeNewDefaultVisibleColumns, normalizeOrder]);
-
-  const persistConfig = useCallback(
-    (nextVisible: string[], nextOrder: string[]) => {
-      localStorage.setItem(storageKey, JSON.stringify({ visible: nextVisible, order: nextOrder }));
+      savedConfigRef.current = next;
+      const result = await saveFieldConfig({
+        tableKey,
+        visibleIds: next.visibleIds,
+        orderedIds: next.orderedIds,
+      });
+      if (!result.success && result.error) {
+        toast.error(result.error);
+      }
     },
-    [storageKey]
+    [tableKey]
   );
 
-  // localStorage の読み込み・書き戻し（旧フォーマット移行・新規デフォルト列マージの反映）と
-  // 親への初回通知は、hydration 後にのみ許される副作用のため useEffect で行う。
-  // 依存配列は空にしてマウント時の1回だけ実行する。
-  // onChange は毎レンダリングで参照が変わりうるため ref 経由で読み、依存配列に含めない
-  // （含めると useEffect が毎レンダリング後に再実行され、意図しない無限ループの原因になる）。
+  /** 溜めている変更を即座に書き出す（ダイアログを閉じたとき・アンマウント時） */
+  const flush = useCallback(() => {
+    if (saveTimerRef.current === null) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    const pending = pendingConfigRef.current;
+    pendingConfigRef.current = null;
+    if (pending) {
+      void persist(pending);
+    }
+  }, [persist]);
+
+  /** 楽観更新（UI は即時反映）＋ 保存は debounce する */
+  const applyConfig = useCallback(
+    (next: FieldConfigState) => {
+      configRef.current = next;
+      setConfig(next);
+      onChange?.(next.visibleIds, next.orderedIds);
+
+      pendingConfigRef.current = next;
+      if (saveTimerRef.current !== null) {
+        clearTimeout(saveTimerRef.current);
+      }
+      saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = null;
+        const pending = pendingConfigRef.current;
+        pendingConfigRef.current = null;
+        if (pending) {
+          void persist(pending);
+        }
+      }, SAVE_DEBOUNCE_MS);
+    },
+    [onChange, persist]
+  );
+
+  // onChange は毎レンダリングで参照が変わりうるため ref 経由で読む
+  // （依存配列に入れると初回通知の useEffect が毎レンダリング後に再実行される）
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
   });
+
+  // マウント時に1回だけ:
+  //   1. 解決済みの構成を親へ通知する（Instagram 側はソート列が隠れたかの判定に使う）
+  //   2. DB 未保存かつ localStorage に旧データがあれば、それを引き継いでDBへ移す
+  // 旧キーはどちらの経路でも消す。**DB を唯一の正本にし、二重管理にしない。**
   useEffect(() => {
-    const stored = loadStoredConfig();
-    setVisibleIds(stored.visible);
-    setOrderedIds(stored.order);
-    persistConfig(stored.visible, stored.order);
-    onChangeRef.current?.(stored.visible, stored.order);
+    const legacy = (() => {
+      try {
+        return parseLegacyStoredFieldConfig(localStorage.getItem(legacyStorageKey));
+      } catch {
+        return null;
+      }
+    })();
+
+    const migrated = initialConfig === null && legacy !== null;
+    const resolved = migrated ? normalizeFieldConfig(columns, legacy) : config;
+
+    if (migrated) {
+      configRef.current = resolved;
+      setConfig(resolved);
+      void persist(resolved);
+    }
+
+    try {
+      localStorage.removeItem(legacyStorageKey);
+    } catch {
+      // ストレージが使えない環境でも動作を止めない
+    }
+
+    onChangeRef.current?.(resolved.visibleIds, resolved.orderedIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visibleSet = useMemo(() => new Set(visibleIds), [visibleIds]);
+  // アンマウント時に未保存の変更を取りこぼさない
+  useEffect(() => flush, [flush]);
 
   // 外部ボタン（triggerId）から開くためのリスナー
   useEffect(() => {
@@ -160,13 +188,19 @@ export default function FieldConfigurator({
     };
   }, [triggerId]);
 
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      flush();
+    }
+  };
+
   const toggle = (id: string) => {
-    setVisibleIds(prev => {
-      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      persistConfig(next, orderedIds);
-      onChange?.(next, orderedIds);
-      return next;
-    });
+    const current = configRef.current;
+    const nextVisible = current.visibleIds.includes(id)
+      ? current.visibleIds.filter(x => x !== id)
+      : [...current.visibleIds, id];
+    applyConfig({ visibleIds: nextVisible, orderedIds: current.orderedIds });
   };
 
   // ドラッグ＆ドロップによる並び替え
@@ -174,16 +208,14 @@ export default function FieldConfigurator({
     items: orderedIds,
     getId: id => id,
     onReorder: nextOrder => {
-      setOrderedIds(nextOrder);
-      persistConfig(visibleIds, nextOrder);
-      onChange?.(visibleIds, nextOrder);
+      applyConfig({ visibleIds: configRef.current.visibleIds, orderedIds: nextOrder });
     },
   });
 
   return (
     <div className="w-full">
       <div className={hideTrigger ? 'sr-only' : 'flex items-center justify-start mb-2'}>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
             <Button
               // hideTrigger 時はこのボタンは sr-only で隠され、開閉は外部の triggerId 要素の
@@ -215,12 +247,12 @@ export default function FieldConfigurator({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        const allIds = columns.map(c => c.id);
-                        persistConfig(allIds, orderedIds);
-                        setVisibleIds(allIds);
-                        onChange?.(allIds, orderedIds);
-                      }}
+                      onClick={() =>
+                        applyConfig({
+                          visibleIds: columns.map(c => c.id),
+                          orderedIds: configRef.current.orderedIds,
+                        })
+                      }
                       className="h-7 px-3 text-xs"
                     >
                       全選択
@@ -228,11 +260,9 @@ export default function FieldConfigurator({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        persistConfig([], orderedIds);
-                        setVisibleIds([]);
-                        onChange?.([], orderedIds);
-                      }}
+                      onClick={() =>
+                        applyConfig({ visibleIds: [], orderedIds: configRef.current.orderedIds })
+                      }
                       className="h-7 px-3 text-xs"
                     >
                       全解除
@@ -282,7 +312,7 @@ export default function FieldConfigurator({
               )}
             </div>
             <div className="mt-3 flex justify-end">
-              <Button onClick={() => setOpen(false)}>閉じる</Button>
+              <Button onClick={() => handleOpenChange(false)}>閉じる</Button>
             </div>
           </DialogContent>
         </Dialog>
