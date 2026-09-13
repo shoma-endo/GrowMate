@@ -48,6 +48,10 @@ export function useGa4Setup(initialStatus: Ga4ConnectionStatus): UseGa4SetupResu
         if (Array.isArray(data)) {
           setProperties(data as Ga4PropertySummary[]);
         }
+        // プロパティ取得は内部でアクセストークンを実際にリフレッシュしている。
+        // 成功した直後に status を取り直さないと、SSR時点のアクセストークン期限切れ判定
+        // （約1時間ごと）由来の古い needsReauth:true が画面に残り続けてしまう。
+        refreshStatus();
       },
       onError: (_error, result) => {
         if (result?.needsReauth) {

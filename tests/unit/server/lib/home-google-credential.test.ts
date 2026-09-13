@@ -138,7 +138,7 @@ describe('resolveHomeGoogleCredential', () => {
 
     const result = await resolveHomeGoogleCredential(USER_ID);
 
-    expect(result).toEqual({ kind: 'transient_failure' });
+    expect(result).toEqual({ kind: 'transient_failure', credential: expiredCredential });
   });
 
   it('ステータスの取れないネットワーク例外は一時的失敗', async () => {
@@ -147,7 +147,7 @@ describe('resolveHomeGoogleCredential', () => {
 
     const result = await resolveHomeGoogleCredential(USER_ID);
 
-    expect(result).toEqual({ kind: 'transient_failure' });
+    expect(result).toEqual({ kind: 'transient_failure', credential: expiredCredential });
   });
 
   it('ステータスが無くても invalid_grant を含めば再認証要（古い credential のまま）', async () => {
@@ -166,6 +166,6 @@ describe('resolveHomeGoogleCredential', () => {
 
     const result = await resolveHomeGoogleCredential(USER_ID);
 
-    expect(result).toEqual({ kind: 'transient_failure' });
+    expect(result).toEqual({ kind: 'transient_failure', credential: expiredCredential });
   });
 });
