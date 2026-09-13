@@ -334,7 +334,11 @@ export default function GscDashboardClient({
         </TabsContent>
 
         <TabsContent value="history" className="mt-6">
-          <EvaluationHistoryTab history={dashboard.detail?.history} onHistoryRead={handleHistoryRead} />
+          <EvaluationHistoryTab
+            history={dashboard.detail?.history}
+            onHistoryRead={handleHistoryRead}
+            onHistoryMemoSaved={dashboard.updateHistoryMemo}
+          />
         </TabsContent>
       </Tabs>
     </div>
