@@ -35,6 +35,14 @@ interface ZaiResponse {
   choices?: Array<{ message?: { content?: string } }>;
 }
 
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -65,6 +73,7 @@ function buildPrompt(params: {
 5. 出力は Markdown 本文のみ。前置き・後書き・コードフェンスで全体を囲うことはしない。
 6. 全体で ${MAX_BODY_CHARS} 文字以内。日本語で書く。
 7. ファイル名・関数名・テーブル名などの固有名詞は diff の表記をそのまま使う。省略や言い換えをしない。
+8. 「## 比較」の節は書かない。呼び出し側が機械的に付けるので、書くと重複する。
 
 # 見出し構成（この4つを順に使う。該当なしの節は見出しごと省略してよい）
 
@@ -169,7 +178,9 @@ async function main(): Promise<void> {
   const compareUrl = requireEnv('COMPARE_URL');
   const commitMessages = process.env['COMMIT_MESSAGES'] || '- (コミットメッセージなし)';
   const changedFiles = process.env['CHANGED_FILES'] || '- (変更ファイルを取得できませんでした)';
-  const rawDiff = process.env['PR_DIFF'] || '';
+  // **diff は stdin から受け取る。** 環境変数で渡すと Linux の MAX_ARG_STRLEN（128KB）に
+  // 当たり、大きい PR ほど exec が E2BIG で落ちる（＝差分が大きい PR ほど本文が生成されない）。
+  const rawDiff = await readStdin();
 
   if (!rawDiff.trim()) {
     console.error('[generate-pr-body] diff が空のためスキップします');
