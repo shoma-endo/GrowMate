@@ -288,6 +288,16 @@ export async function refetchGa4StatusWithValidation(): Promise<
           needsReauth: false,
         };
       }
+      // プロパティ取得（内部で独立にリフレッシュを試みる）が成功した＝トークンは今は有効。
+      // fetchGa4Status側の判定が一時的失敗だった場合でも、ここで判明した最新の結果で上書きする
+      // （古いhasTemporaryErrorを引きずらない）。
+      if (status.hasTemporaryError) {
+        return {
+          success: true,
+          data: { ...status, hasTemporaryError: false, temporaryErrorMessage: null },
+          needsReauth: false,
+        };
+      }
     }
 
     return {

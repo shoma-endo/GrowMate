@@ -1,4 +1,4 @@
-import type { Ga4ConnectionStatus } from '@/types/ga4';
+import type { Ga4ConnectionStatus, Ga4ConnectionStage } from '@/types/ga4';
 import type { GscCredential } from '@/types/gsc';
 import { GA4_SCOPE } from '@/lib/constants';
 import { hasReusableAccessToken } from '@/server/services/googleTokenService';
@@ -52,9 +52,27 @@ export function toGa4ConnectionStatusFromResolution(
   }
   const status = toGa4ConnectionStatus(result.credential);
   if (result.kind === 'transient_failure') {
+    // toGa4ConnectionStatus の connected/connectionStage/needsReauth は
+    // hasValidToken（アクセストークンの期限切れ判定）に連動しているが、
+    // transient_failure時はそのhasValidTokenの判定自体が信用できない
+    // （リフレッシュを試みて確認できなかっただけ）。
+    // scopeMissing はcredential.scopeという静的な事実から決まり
+    // トークンの有効性とは独立なので、これはそのまま信用してよい
+    // （GA4スコープ不足は一時的失敗でもみ消してはいけない、本当の再認証要）。
+    // hasValidToken起因の部分だけ「不明＝あるものとみなす」に倒し、
+    // 誤ってunlinked/needsReauthに転落させない。
+    const scopeMissing = status.scopeMissing ?? false;
+    const hasGa4Property = Boolean(result.credential.ga4PropertyId);
+    const connectionStage: Ga4ConnectionStage = hasGa4Property
+      ? 'configured'
+      : scopeMissing
+        ? 'unlinked'
+        : 'linked_unselected';
     return {
       ...status,
-      needsReauth: false,
+      connected: hasGa4Property || !scopeMissing,
+      connectionStage,
+      needsReauth: scopeMissing,
       hasTemporaryError: true,
       temporaryErrorMessage: ERROR_MESSAGES.GA4.TOKEN_REFRESH_TEMPORARY_FAILURE,
     };

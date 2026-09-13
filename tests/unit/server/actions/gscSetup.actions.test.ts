@@ -206,4 +206,23 @@ describe('refetchGscStatusWithValidation の一時的失敗の伝播', () => {
       expect(result.data.hasTemporaryError).toBeFalsy();
     }
   });
+
+  it('fetchGscStatus側が一時的失敗でも、直後のプロパティ取得が成功すれば古いhasTemporaryErrorを引きずらない', async () => {
+    // 期限切れ credential: 1回目（fetchGscStatus内のresolveHomeGoogleCredential）は一時的失敗、
+    // 2回目（fetchGscProperties内のensureAccessToken）は成功、という揺れを再現する
+    mocks.getGscCredentialByUserId.mockResolvedValue(EXPIRED_CREDENTIAL);
+    mocks.refreshAccessToken
+      .mockRejectedValueOnce(rateLimited429)
+      .mockResolvedValueOnce({ accessToken: 'new-token', expiresIn: 3600, scope: EXPIRED_CREDENTIAL.scope });
+    mocks.updateGscCredential.mockResolvedValue(undefined);
+    mocks.listSites.mockResolvedValue([]);
+
+    const result = await refetchGscStatusWithValidation();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.needsReauth).toBe(false);
+      expect(result.data.hasTemporaryError).toBeFalsy();
+    }
+  });
 });

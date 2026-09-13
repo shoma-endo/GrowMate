@@ -233,6 +233,16 @@ export async function refetchGscStatusWithValidation(): Promise<
           needsReauth: false,
         };
       }
+      // プロパティ取得（内部で独立にリフレッシュを試みる）が成功した＝トークンは今は有効。
+      // fetchGscStatus側の判定が一時的失敗だった場合でも、ここで判明した最新の結果で上書きする
+      // （古いhasTemporaryErrorを引きずらない）。
+      if (status.hasTemporaryError) {
+        return {
+          success: true,
+          data: { ...status, hasTemporaryError: false, temporaryErrorMessage: null },
+          needsReauth: false,
+        };
+      }
     }
 
     return {

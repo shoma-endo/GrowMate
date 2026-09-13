@@ -9,8 +9,9 @@ interface GscStatusBadgeProps {
 }
 
 /**
- * Google Search Console / GA4 共通のステータスバッジコンポーネント
- * （名前はGSC由来だがGa4SetupClientからも使う。汎用の連携ステータス表示として扱う）
+ * Google Search Console のステータスバッジコンポーネント
+ * （GA4はconnectionStage別ラベルが必要なためGa4SetupClientでは使わず別実装。
+ * 優先度と配色（要再認証>一時的失敗>接続済み>未設定）だけ揃えている）
  *
  * 優先度：再認証 > 一時的失敗 > 接続済み > 未設定
  */
