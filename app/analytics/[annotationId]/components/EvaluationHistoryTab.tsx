@@ -300,32 +300,30 @@ export function EvaluationHistoryTab({
               </div>
             </div>
           )}
-          <DialogFooter className="sm:justify-between">
-            <div className="flex justify-end gap-2">
-              {selectedHistory &&
-                getEvaluationHistoryState(selectedHistory).canMarkAsRead &&
-                !selectedHistory.is_read && (
-                  <Button
-                    variant="outline"
-                    onClick={() => handleMarkAsRead(selectedHistory.id)}
-                    disabled={isPending}
-                    className="gap-2"
-                  >
-                    {isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCheck className="h-4 w-4" />
-                    )}
-                    既読にする
-                  </Button>
-                )}
-              {selectedHistory?.is_read && (
-                <span className="text-sm text-gray-500 flex items-center gap-1">
-                  <CheckCheck className="h-4 w-4" />
-                  既読済み
-                </span>
+          <DialogFooter className="gap-2 sm:gap-0">
+            {selectedHistory &&
+              getEvaluationHistoryState(selectedHistory).canMarkAsRead &&
+              !selectedHistory.is_read && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleMarkAsRead(selectedHistory.id)}
+                  disabled={isPending}
+                  className="gap-2"
+                >
+                  {isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCheck className="h-4 w-4" />
+                  )}
+                  既読にする
+                </Button>
               )}
-            </div>
+            {selectedHistory?.is_read && (
+              <span className="text-sm text-gray-500 flex items-center gap-1 sm:mr-2">
+                <CheckCheck className="h-4 w-4" />
+                既読済み
+              </span>
+            )}
             {selectedHistory && (
               <Button
                 type="button"
