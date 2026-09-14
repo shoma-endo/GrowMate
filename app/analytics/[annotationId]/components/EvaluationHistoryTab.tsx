@@ -301,23 +301,12 @@ export function EvaluationHistoryTab({
             </div>
           )}
           <DialogFooter className="sm:justify-between">
-            {selectedHistory && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleSaveMemo}
-                disabled={isSavingMemo}
-                className="gap-2"
-              >
-                {isSavingMemo && <Loader2 className="h-4 w-4 animate-spin" />}
-                保存
-              </Button>
-            )}
             <div className="flex justify-end gap-2">
               {selectedHistory &&
                 getEvaluationHistoryState(selectedHistory).canMarkAsRead &&
                 !selectedHistory.is_read && (
                   <Button
+                    variant="outline"
                     onClick={() => handleMarkAsRead(selectedHistory.id)}
                     disabled={isPending}
                     className="gap-2"
@@ -337,6 +326,17 @@ export function EvaluationHistoryTab({
                 </span>
               )}
             </div>
+            {selectedHistory && (
+              <Button
+                type="button"
+                onClick={handleSaveMemo}
+                disabled={isSavingMemo}
+                className="gap-2"
+              >
+                {isSavingMemo && <Loader2 className="h-4 w-4 animate-spin" />}
+                保存
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
