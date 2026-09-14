@@ -297,41 +297,45 @@ export function EvaluationHistoryTab({
                   value={memoDraft}
                   onChange={event => setMemoDraft(event.target.value)}
                 />
-                <Button
-                  type="button"
-                  onClick={handleSaveMemo}
-                  disabled={isSavingMemo}
-                  className="gap-2"
-                >
-                  {isSavingMemo && <Loader2 className="h-4 w-4 animate-spin" />}
-                  保存
-                </Button>
               </div>
             </div>
           )}
-          <DialogFooter>
-            {selectedHistory &&
-              getEvaluationHistoryState(selectedHistory).canMarkAsRead &&
-              !selectedHistory.is_read && (
-                <Button
-                  onClick={() => handleMarkAsRead(selectedHistory.id)}
-                  disabled={isPending}
-                  className="gap-2"
-                >
-                  {isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCheck className="h-4 w-4" />
-                  )}
-                  既読にする
-                </Button>
-              )}
-            {selectedHistory?.is_read && (
-              <span className="text-sm text-gray-500 flex items-center gap-1">
-                <CheckCheck className="h-4 w-4" />
-                既読済み
-              </span>
+          <DialogFooter className="sm:justify-between">
+            {selectedHistory && (
+              <Button
+                type="button"
+                onClick={handleSaveMemo}
+                disabled={isSavingMemo}
+                className="gap-2"
+              >
+                {isSavingMemo && <Loader2 className="h-4 w-4 animate-spin" />}
+                保存
+              </Button>
             )}
+            <div className="flex justify-end gap-2">
+              {selectedHistory &&
+                getEvaluationHistoryState(selectedHistory).canMarkAsRead &&
+                !selectedHistory.is_read && (
+                  <Button
+                    onClick={() => handleMarkAsRead(selectedHistory.id)}
+                    disabled={isPending}
+                    className="gap-2"
+                  >
+                    {isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCheck className="h-4 w-4" />
+                    )}
+                    既読にする
+                  </Button>
+                )}
+              {selectedHistory?.is_read && (
+                <span className="text-sm text-gray-500 flex items-center gap-1">
+                  <CheckCheck className="h-4 w-4" />
+                  既読済み
+                </span>
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
