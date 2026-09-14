@@ -304,6 +304,7 @@ export function EvaluationHistoryTab({
             {selectedHistory && (
               <Button
                 type="button"
+                variant="outline"
                 onClick={handleSaveMemo}
                 disabled={isSavingMemo}
                 className="gap-2"
