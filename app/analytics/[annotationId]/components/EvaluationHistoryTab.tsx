@@ -291,7 +291,7 @@ export function EvaluationHistoryTab({
                 </ul>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="evaluation-history-memo">この評価のメモ</Label>
+                <Label htmlFor="evaluation-history-memo">メモ</Label>
                 <Textarea
                   id="evaluation-history-memo"
                   value={memoDraft}
