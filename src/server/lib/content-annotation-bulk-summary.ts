@@ -21,7 +21,7 @@ export {
 
 /**
  * AI 要約一括実行の純粋ロジック。
- * 正本: docs/plans/content-annotation-bulk-ai-summary-spec.md
+ * 正本: docs/specs/content-annotation-bulk-ai-summary-spec.md
  */
 
 const readField = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');

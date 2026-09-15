@@ -1,0 +1,601 @@
+{
+  "app/admin/layout.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 8
+    }
+  },
+  "app/admin/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 5
+    }
+  },
+  "app/admin/prompts/KnowledgeSourcesSection.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 5
+    }
+  },
+  "app/admin/prompts/PromptsClient.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 18
+    }
+  },
+  "app/admin/users/UsersClient.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 31
+    }
+  },
+  "app/admin/users/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 2
+    }
+  },
+  "app/analytics/AnalyticsClient.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 29
+    }
+  },
+  "app/analytics/[annotationId]/EvaluationSettings.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 50
+    }
+  },
+  "app/analytics/[annotationId]/GscDashboardClient.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 4
+    }
+  },
+  "app/analytics/[annotationId]/components/EvaluationHistoryTab.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 25
+    }
+  },
+  "app/analytics/[annotationId]/components/MetricsSummaryCards.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 28
+    }
+  },
+  "app/analytics/[annotationId]/components/OverviewTab.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 11
+    }
+  },
+  "app/analytics/[annotationId]/components/QueryAnalysisTab.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 3
+    },
+    "shadcn/no-inline-styles": {
+      "count": 5
+    },
+    "shadcn/no-raw-colors": {
+      "count": 38
+    }
+  },
+  "app/analytics/[annotationId]/components/SuggestionDataReadiness.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 28
+    },
+    "shadcn/no-unknown-classes": {
+      "count": 1
+    }
+  },
+  "app/analytics/[annotationId]/components/TrendLineChart.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 1
+    }
+  },
+  "app/analytics/[annotationId]/components/content-evaluation/ContentEvaluationCard.tsx": {
+    "shadcn/no-inline-styles": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 6
+    }
+  },
+  "app/analytics/[annotationId]/components/content-evaluation/Ga4EvaluationHistoryPanel.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 12
+    }
+  },
+  "app/analytics/[annotationId]/components/evaluation-history/EvaluationResultAlert.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 6
+    }
+  },
+  "app/analytics/[annotationId]/components/evaluation-history/SuggestionMarkdown.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 12
+    }
+  },
+  "app/analytics/[annotationId]/components/evaluation-history/SuggestionSections.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 5
+    }
+  },
+  "app/analytics/components/InstagramMediaTable.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 7
+    }
+  },
+  "app/analytics/components/InstagramTab.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 17
+    }
+  },
+  "app/business-info/components/BusinessInfoForm.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 1
+    }
+  },
+  "app/business-info/components/BusinessInfoFormClient.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 4
+    }
+  },
+  "app/business-info/components/ServiceCard.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "app/chat/components/AnnotationPanel.tsx": {
+    "shadcn/no-inline-styles": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 9
+    }
+  },
+  "app/chat/components/CanvasPanel.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 11
+    },
+    "shadcn/no-inline-styles": {
+      "count": 6
+    },
+    "shadcn/no-raw-colors": {
+      "count": 71
+    },
+    "shadcn/no-unknown-classes": {
+      "count": 1
+    }
+  },
+  "app/chat/components/ChatLayout.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "app/chat/components/ChatLayoutContent.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 5
+    }
+  },
+  "app/chat/components/InputArea.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 16
+    },
+    "shadcn/no-raw-colors": {
+      "count": 13
+    }
+  },
+  "app/chat/components/MessageArea.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 8
+    },
+    "shadcn/no-inline-styles": {
+      "count": 3
+    },
+    "shadcn/no-raw-colors": {
+      "count": 19
+    }
+  },
+  "app/chat/components/SessionSidebar.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 4
+    },
+    "shadcn/no-inline-styles": {
+      "count": 3
+    },
+    "shadcn/no-raw-colors": {
+      "count": 6
+    }
+  },
+  "app/chat/components/StepActionBar.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 33
+    }
+  },
+  "app/chat/components/common/BlogPreviewTile.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 15
+    }
+  },
+  "app/chat/components/common/ErrorBoundary.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 6
+    }
+  },
+  "app/chat/components/search/ChatSearch.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 5
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "app/error.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "app/ga4-dashboard/Ga4DashboardClient.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 4
+    },
+    "shadcn/no-raw-colors": {
+      "count": 12
+    }
+  },
+  "app/ga4-dashboard/components/RankingTab.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 18
+    }
+  },
+  "app/ga4-dashboard/components/SummaryCards.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 2
+    }
+  },
+  "app/ga4-dashboard/components/TimeseriesTab.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 13
+    }
+  },
+  "app/global-error.tsx": {
+    "shadcn/no-inline-styles": {
+      "count": 1
+    }
+  },
+  "app/google-ads-dashboard/_components/NegativeKeywordsSuggestionSettings.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 6
+    }
+  },
+  "app/google-ads-dashboard/_components/campaigns-table.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 4
+    }
+  },
+  "app/google-ads-dashboard/_components/dashboard-content.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 5
+    }
+  },
+  "app/google-ads-dashboard/_components/evaluation-controls.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 17
+    }
+  },
+  "app/google-ads-dashboard/_components/metrics-cards.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 24
+    }
+  },
+  "app/gsc-import/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 24
+    }
+  },
+  "app/home/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 109
+    },
+    "shadcn/no-unknown-classes": {
+      "count": 1
+    }
+  },
+  "app/login/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 6
+    }
+  },
+  "app/privacy/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 40
+    },
+    "shadcn/no-unknown-classes": {
+      "count": 1
+    }
+  },
+  "app/setup/google-ads/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 30
+    }
+  },
+  "app/terms/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 15
+    }
+  },
+  "app/unauthorized/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 16
+    }
+  },
+  "app/unavailable/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 10
+    }
+  },
+  "app/wordpress-import/page.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 32
+    }
+  },
+  "src/components/AnalyticsTable.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 11
+    },
+    "shadcn/no-inline-styles": {
+      "count": 13
+    },
+    "shadcn/no-raw-colors": {
+      "count": 42
+    }
+  },
+  "src/components/AnnotationFormFields.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 29
+    },
+    "shadcn/no-unknown-classes": {
+      "count": 1
+    }
+  },
+  "src/components/AppShell.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 7
+    }
+  },
+  "src/components/BackLink.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 2
+    }
+  },
+  "src/components/CategoryFilter.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 24
+    }
+  },
+  "src/components/ConfirmDeleteDialog.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 3
+    }
+  },
+  "src/components/ContentAnnotationSummaryAction.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 8
+    }
+  },
+  "src/components/DeleteChatDialog.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 5
+    }
+  },
+  "src/components/DismissibleAlerts.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 14
+    }
+  },
+  "src/components/FieldConfigurator.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 3
+    },
+    "shadcn/no-raw-colors": {
+      "count": 7
+    }
+  },
+  "src/components/FullNameDialog.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/Ga4SetupClient.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 43
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/GoogleAdsAccountSelector.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 30
+    }
+  },
+  "src/components/GoogleAdsSetupClient.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 10
+    }
+  },
+  "src/components/GoogleSignInButton.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 9
+    },
+    "shadcn/no-raw-colors": {
+      "count": 4
+    }
+  },
+  "src/components/GscNotificationHandler.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 12
+    }
+  },
+  "src/components/GscSetupClient.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 43
+    }
+  },
+  "src/components/InstagramSetupClient.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 52
+    }
+  },
+  "src/components/ServiceSelector.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/SessionListContent.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 3
+    },
+    "shadcn/no-raw-colors": {
+      "count": 9
+    }
+  },
+  "src/components/SetupDashboard.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 159
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/TruncatedText.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-inline-styles": {
+      "count": 4
+    }
+  },
+  "src/components/WordPressSettingsForm.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 33
+    }
+  },
+  "src/components/ui/GscStatusBadge.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 10
+    }
+  },
+  "src/components/ui/alert.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 8
+    }
+  },
+  "src/components/ui/badge.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/ui/button.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/ui/card.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/ui/checkbox.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/ui/dialog.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 6
+    }
+  },
+  "src/components/ui/dropdown-menu.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/ui/input.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/ui/select.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 5
+    }
+  },
+  "src/components/ui/sonner.tsx": {
+    "shadcn/no-unknown-classes": {
+      "count": 1
+    }
+  },
+  "src/components/ui/table.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/ui/tabs.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 4
+    }
+  },
+  "src/components/ui/textarea.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/ui/tooltip.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  }
+}

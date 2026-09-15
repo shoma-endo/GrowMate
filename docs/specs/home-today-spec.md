@@ -200,7 +200,7 @@ PC（lg 以上、サイドバー展開時）:
 | `src/lib/home-today.ts`（新規、純粋ロジック） | `buildHomeToday({ role, gsc, ga4, googleAds, instagram })` → `{ items, fetchFailed, hasUnlinked }`。`null` は取得失敗、`undefined` は役割上取得しない。表示条件（HOME-02）をここに集約し `tests/unit/lib/home-today.test.ts` で検査 |
 | `src/components/AppShell.tsx` | ユーザーブロックのアバターにメールのツールチップ |
 | `.agents/skills/growmate-ui-ux/ui-text.md` | 変更なし（「マイホーム」「改善提案」は既存の語。新語は増やさない） |
-| `docs/plans/pc-first-app-shell-spec.md` | Non-goal「マイホームの再設計」を本仕様へ委譲した旨を追記 |
+| `docs/specs/pc-first-app-shell-spec.md` | Non-goal「マイホームの再設計」を本仕様へ委譲した旨を追記 |
 
 ### 設計判断
 

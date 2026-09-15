@@ -419,7 +419,7 @@ class InstagramMediaService extends SupabaseService {
 
   /**
    * サムネイルキャッシュの表示に必要な最小フィールドを1件取得する。
-   * docs/plans/instagram-media-url-refresh-design.md §4 の Route Handler から呼ばれる。
+   * docs/specs/instagram-media-url-refresh-design.md §4 の Route Handler から呼ばれる。
    */
   async getMediaForThumbnail(
     userId: string,

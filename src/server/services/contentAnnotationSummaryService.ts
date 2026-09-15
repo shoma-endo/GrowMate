@@ -162,7 +162,7 @@ class ContentAnnotationSummaryService {
     /**
      * LLM 呼び出しのタイムアウト（ミリ秒）。既定は単記事と同じ 180 秒。
      * 一括実行は残り時間から算出した値を渡して既定を切り下げる
-     * （docs/plans/content-annotation-bulk-ai-summary-spec.md BR-03）。
+     * （docs/specs/content-annotation-bulk-ai-summary-spec.md BR-03）。
      */
     llmTimeoutMs?: number;
     /**

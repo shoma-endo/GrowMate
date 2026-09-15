@@ -10,8 +10,8 @@
 - 作成者: 開発
 - 対象リリース: 未定（MVP）。評価一括・AI要約一括を **同じ開発波** で実装する前提。同波でない（片方だけ先行する）場合の扱いは §3.1 の「評価一括のみ先行」バレットに従う
 - 親仕様（受け入れ条件の正本）:
-  - `docs/plans/gsc-bulk-evaluation-start-spec.md`（検索順位・コンテンツ評価サイクル一括開始）
-  - `docs/plans/content-annotation-bulk-ai-summary-spec.md`（AI要約一括実行）
+  - `docs/specs/gsc-bulk-evaluation-start-spec.md`（検索順位・コンテンツ評価サイクル一括開始）
+  - `docs/specs/content-annotation-bulk-ai-summary-spec.md`（AI要約一括実行）
 
 ## 1. 目的
 
