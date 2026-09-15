@@ -1,6 +1,6 @@
 # Instagram サムネイル自前キャッシュ設計書
 
-関連: [`instagram-integration-design.md`](./instagram-integration-design.md)（Instagram 連携本体の設計書。本書はその Phase 2 実装後に見つかった不具合の是正設計）
+関連: [`instagram-integration-design.md`](../plans/instagram-integration-design.md)（Instagram 連携本体の設計書。本書はその Phase 2 実装後に見つかった不具合の是正設計）
 
 ## 1. 背景・目的
 

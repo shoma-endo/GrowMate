@@ -9,7 +9,7 @@ import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
  * （/analytics・/setup は paid/admin、/admin は admin）が行うので、ここは
  * それと同じ条件に揃えておく。
  *
- * 追加基準（docs/plans/pc-first-app-shell-spec.md「項目とグループの追加基準」）:
+ * 追加基準（docs/specs/pc-first-app-shell-spec.md「項目とグループの追加基準」）:
  * - 足すのは他の画面から辿れないハブだけ。既存ハブ配下の画面は親の activePrefixes に足す
  * - グループは 3 つ据え置き。増やすのはどこにも入らない項目が 2 つ以上たまったとき
  * - 10 個を超えたら階層表示を別仕様で検討する（グループ折りたたみは作らない）

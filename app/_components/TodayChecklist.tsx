@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * マイホームの本文。出すのは連携の異常だけで、機能一覧（サイドバーの複製）や
- * toast と重複する改善提案は置かない（docs/plans/home-today-spec.md HOME-01）。
+ * toast と重複する改善提案は置かない（docs/specs/home-today-spec.md HOME-01）。
  */
 interface TodayChecklistProps {
   today: HomeToday;

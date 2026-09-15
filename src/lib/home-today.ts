@@ -7,7 +7,7 @@ import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 /**
  * マイホーム（`/`）に出す「連携の異常」の組み立て。
  * 改善提案は toast（GscNotificationHandler）が全画面で担うのでここには置かない。
- * 表示条件は遷移先の proxy.ts ゲートと同じにする（docs/plans/home-today-spec.md HOME-02）。
+ * 表示条件は遷移先の proxy.ts ゲートと同じにする（docs/specs/home-today-spec.md HOME-02）。
  * 純粋関数にして役割 × 状態の組み合わせを単体テストで固定する。
  */
 
