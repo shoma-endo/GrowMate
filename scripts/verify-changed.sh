@@ -40,7 +40,7 @@ is_production_path() {
       ;;
     proxy.ts|next.config.ts|next.config.js|next.config.mjs| \
     tsconfig.json|vitest.config.ts|vitest.config.mts| \
-    eslint.config.mjs|eslint.config.js|knip.config.ts|postcss.config.mjs| \
+    eslint.config.mjs|eslint.config.js|eslint-suppressions.json|knip.config.ts|postcss.config.mjs| \
     package.json|package-lock.json|components.json|next-env.d.ts)
       return 0
       ;;
