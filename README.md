@@ -14,11 +14,13 @@
 ## 🚀 主な機能
 
 - **認証・ユーザー管理**: メール OTP（Supabase Auth）、[`proxy.ts`](proxy.ts) によるセッション更新・CSP・ロール別パスゲート、`authMiddleware`（Server Actions / Route Handlers）、ロール管理（`trial` / `paid` / `admin` / `unavailable`）
-- **ランディング** (`/home`): 未ログイン向けの公開 LP。ログイン済みダッシュボードは `/`
+- **ランディング** (`/home`): 未ログイン向けの公開 LP
+- **マイホーム** (`/`): ログイン済みユーザー向けに、連携の再認証・未設定など「今日確認が必要なこと」だけを表示（[`src/lib/home-today.ts`](src/lib/home-today.ts)）
+- **アプリシェル**: 共通ナビは左サイドバー（アイコンレールに折りたたみ可、モバイルはドロワー）。項目定義の正本は [`src/lib/app-nav.ts`](src/lib/app-nav.ts)
 - **AI コンテンツ支援**: 7 ステップのブログ作成フロー（ニーズ整理〜本文作成）、広告／LP テンプレート、AI 応答ストリーミング
 - **キャンバス編集**: TipTap ベースの `CanvasPanel`、Markdown レンダリング／見出しアウトライン／バージョン履歴、選択範囲リライト
 - **見出しフロー・バージョン管理**: Step5 生成見出しからの `session_heading_sections` 初期化、個別 AI 生成・`session_combined_contents` への結合保存、`save_atomic_combined_content` RPC で競合シリアライズ
-- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。評価未設定フィルタとコンテンツ評価状態・スコア・診断を一覧で確認し、`/analytics/[annotationId]` の記事詳細で手動評価と履歴を表示する。一覧では記事を選択して**検索順位・コンテンツ評価サイクルを一括開始**できる（全選択は絞り込みに依存せず全記事が対象。1回あたり最大1000件）。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・手動「最新化」同期）を表示
+- **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。評価未設定フィルタとコンテンツ評価状態・スコア・診断を一覧で確認し、`/analytics/[annotationId]` の記事詳細で手動評価と履歴を表示する。GSC 評価履歴では順位変化に応じたステージ進行ロジックを表示し、履歴ごとにメモを残せる。一覧では記事を選択して**検索順位・コンテンツ評価サイクルを一括開始**できる（全選択は絞り込みに依存せず全記事が対象。1回あたり最大1000件）。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・手動「最新化」同期）を表示
 - **WordPress 連携**: OAuth・Application Password 両対応、投稿の一括インポート、`AnnotationPanel` でメモ・キーワード・ペルソナ等を再利用
 - **Google Search Console 連携**: OAuth 認証、日次指標保存（`gsc_page_metrics` / `gsc_query_metrics`）、記事評価・改善提案（`gsc_article_evaluations`）、改善提案ジョブの Cron 実行（`/api/cron/gsc-suggestions`）
 - **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`）、サマリー・ランキング・時系列ダッシュボード、記事ごとのコンテンツ評価、メディア全体の資産価値・実効スコアと散布図
@@ -34,6 +36,7 @@
 graph TB
   subgraph Client["Next.js (App Router)"]
     AuthShell["AuthProvider（Email セッション）"]
+    Home["My Home（今日確認が必要なこと）"]
     ChatUI["Chat / Session UI"]
     Canvas["Canvas（TipTap）"]
     HeadingFlow["HeadingFlow"]
@@ -82,6 +85,7 @@ graph TB
 
   AuthShell --> ProxyGate
   ProxyGate --> AuthMiddleware
+  Home --> ServerActions
   ChatUI --> ChatAPI
   Canvas --> ChatAPI
   HeadingFlow --> ServerActions
@@ -159,9 +163,9 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 - **型チェック**: TypeScript strict mode
 - **リンター**: ESLint, eslint-config-next
-- **AI開発workflow**: Takt（ローカル。版は [`.takt-version`](.takt-version) が正本。`./scripts/takt-install-pinned.sh`）。**Cursor Cloud の無人系（spec-review / 実装→PR）は** [`.agents/skills/cloud-agent-unattended/`](.agents/skills/cloud-agent-unattended/)（TAKT CLI なし）。Node.js `>=24.15.0`
+- **AI開発workflow**: Takt（ローカル。版は [`.takt-version`](.takt-version) が正本。`./scripts/takt-install-pinned.sh`）。**Cursor Cloud の無人系（spec-review / 実装→PR）は** [`.agents/skills/cloud-agent-unattended/`](.agents/skills/cloud-agent-unattended/)（TAKT CLI なし）。Node.js 24.x（`package.json` の `engines`）
 - **コード整形**: `.prettierrc`（エディタ向け。Prettier は npm 依存に未登録）
-- **ビルド**: Turbopack（開発）/ Next.js build
+- **ビルド**: webpack（開発。`npm run dev`）/ Turbopack（`npm run dev:turbopack`）/ Next.js build
 - **テスト**: Vitest、`@vitest/coverage-v8`（コアロジック・入力バリデーション）
 - **依存関係解析**: Knip
 
@@ -191,7 +195,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 | 変数名 | 必須 | 用途 |
 | ------ | ---- | ---- |
-| `CRON_SECRET` | 任意（`/api/cron/*` バッチを使う場合は必須） | Cron バッチの Bearer 認証（`gsc-evaluate` / `gsc-suggestions` / `google-ads-negative-keywords-suggestion` / `content-annotation-summary`） |
+| `CRON_SECRET` | 任意（`/api/cron/*` バッチを使う場合は必須） | Cron バッチの Bearer 認証（`gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion` / `content-annotation-summary`） |
 | `GOOGLE_ADS_REDIRECT_URI` | 任意（Google Ads OAuth 利用時は必須） | [`app/api/google-ads/oauth/`](app/api/google-ads/oauth) |
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | 任意（Google Ads API 利用時は必須） | [`src/server/services/googleAdsService.ts`](src/server/services/googleAdsService.ts) |
 | `EMAIL_FROM` | 任意（未設定時は既定の送信元にフォールバック） | [`src/server/services/emailService.ts`](src/server/services/emailService.ts) の送信元アドレス |
@@ -209,8 +213,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 ## 🚀 セットアップ手順
 
 ```bash
-# GrowMateアプリ: Node.js 20以上
-# Takt（版は .takt-version が正本）: Node.js 24.15.0以上
+# Node.js 24.x（package.json の engines。Takt も同じ Node で動かす）
 npm ci
 # .env.local を作成し、src/env.ts の clientEnvSchema / serverEnvSchema を参照してキーを埋める
 npm run dev  # http://localhost:3000
@@ -234,11 +237,15 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 
 | コマンド | 用途 |
 | -------- | ---- |
-| `npm run dev` | 開発サーバー（Turbopack） |
+| `npm run dev` | 開発サーバー（webpack・ポーリング監視） |
+| `npm run dev:turbopack` | 開発サーバー（Turbopack） |
 | `npm run dev:types` | 型チェック watch |
 | `npm run test` | Vitestによるコアロジック・入力バリデーションのテスト |
 | `npm run test:coverage` | Vitestのカバレッジ計測。src/app 全体基準の閾値（`vitest.config.ts`）を下回ると失敗。CI と verify で実行 |
-| `npm run verify` | audit → lint → test:coverage → build → knip |
+| `npm run verify` | audit（本番依存のみ）→ lint → test:coverage → build → knip |
+| `npm run verify:changed` | プロダクション影響パスに差分があるときだけ `verify` を実行（docs 等のみならスキップ） |
+| `npm run verify:doc-paths` / `verify:ui-text` | docs のコードパス参照の陳腐化 / UI 表示文言の表記揺れを検出 |
+| `npm run spec-html:refresh` | `docs/plans` の仕様書図解 HTML を一括再生成 |
 | `npm run hotspots` | 肥大化ファイル上位（実行行数・90日 churn・テスト有無）。月次メンテの hotspot レビュー入力 |
 | `npm run supabase:types` | `database.types.ts` 再生成 |
 | `npm run verify:agent-skills` | Agent Skills 静的検証 |
@@ -246,7 +253,7 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 
 ## ✅ 動作確認
 
-`npm audit --audit-level=high`、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip` で基本チェック（5点まとめは `npm run verify`）。コアロジックと分離済みZodスキーマはVitest、UIの表示・操作感・導線と外部APIを含む実画面は人間の目視で確認する。Agent Skills を変更した場合は `npm run verify:agent-skills` も実行する。husky で **pre-commit に lint、pre-push に test:coverage + build + knip** を配置し、CIでも`npm audit --audit-level=high` / lint / test:coverage / build / knipを実行する。各機能の詳細な検証手順は [`quality-gate`](.agents/skills/quality-gate/SKILL.md) スキルを参照。
+`npm audit --omit=dev --audit-level=high`、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip` で基本チェック（5点まとめは `npm run verify`）。コアロジックと分離済みZodスキーマはVitest、UIの表示・操作感・導線と外部APIを含む実画面は人間の目視で確認する。Agent Skills を変更した場合は `npm run verify:agent-skills` も実行する。husky で **pre-commit に lint + staged 分の docs パス参照・UI 文言チェック + 仕様書図解 HTML 追従、pre-push に takt pin ガード + test:coverage + build + knip** を配置し、CIでも`npm audit --omit=dev --audit-level=high`（dev 依存の audit は非ブロッキング） / lint / test:coverage / build / knipを実行する。各機能の詳細な検証手順は [`quality-gate`](.agents/skills/quality-gate/SKILL.md) スキルを参照。
 
 ## 📁 プロジェクト構成（概要）
 
@@ -261,7 +268,7 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 | [`src/server/actions/`](src/server/actions/) | Server Actions（`*.actions.ts` がドメインごとに並ぶ） |
 | [`src/server/services/`](src/server/services/) | サーバー統合層（LLM / WordPress / GSC / GA4 / Google Ads / Instagram（setup・sync・media 等）） |
 | [`src/server/middleware/`](src/server/middleware/) | `authMiddleware` 等 |
-| [`tests/unit/`](tests/unit/) | Vitestユニットテスト（`lib/`・`server/schemas/`） |
+| [`tests/unit/`](tests/unit/) | Vitestユニットテスト（`app/`・`domain/`・`lib/`・`server/`・`scripts/`・`takt/`・`types/`） |
 | [`supabase/migrations/`](supabase/migrations/) | DB マイグレーション |
 | [`docs/context/`](docs/context/) | クライアント文脈・開発上の判断基準・調査知見 |
 | [`docs/specs/`](docs/specs/) | 機能仕様書・要件定義（実装状況は各文書を参照） |
@@ -286,10 +293,10 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 
 - Vercel を想定。一部の Route Handler は Node.js Runtime を明示し、その他は Next.js のデフォルト Runtime を使用
 - ローカル品質ゲート: `npm run verify`（`audit` → `lint` → `test:coverage` → `build` → `knip` を順次実行）
-- husky フック: **pre-commit = `lint`、pre-push = `test:coverage` + `build` + `knip`**（本体は [`scripts/pre-push.sh`](scripts/pre-push.sh)。husky はフックを `sh` で起動しシェバンを無視するため、bash 専用構文を `.husky/pre-push` に直接書かない）（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
-- CI 品質ゲート: `npm audit --audit-level=high`、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip`
+- husky フック: **pre-commit = `lint` + staged 分の docs パス参照・UI 文言チェック + 仕様書図解 HTML 追従、pre-push = takt pin ガード + `test:coverage` + `build` + `knip`**（pre-push の本体は [`scripts/pre-push.sh`](scripts/pre-push.sh)。husky はフックを `sh` で起動しシェバンを無視するため、bash 専用構文を `.husky/pre-push` に直接書かない）（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
+- CI 品質ゲート: `npm audit --omit=dev --audit-level=high`（dev 依存は非ブロッキングで別途実行）、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip`
 - 環境変数は Vercel Project Settings へ反映し、本番は WordPress 本番サイトなどの外部連携設定に切り替え
-- GitHub Actions: 毎時 Cron（`gsc-evaluate` / `gsc-suggestions` / `google-ads-negative-keywords-suggestion`）、10 分間隔 Cron（`content-annotation-summary`＝`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）、CI（audit / lint / test / build / knip + Lark 通知）、`develop` 以外への push 時の Auto PR、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
+- GitHub Actions: 毎時 Cron（`gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion`）、10 分間隔 Cron（`content-annotation-summary`＝`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）、CI（audit / lint / test / build / knip + Lark 通知）、`main` 以外への push 時の Auto PR（`develop` は `main` 宛て、それ以外は `develop` 宛て。新規作成時は [`scripts/generate-pr-body.ts`](scripts/generate-pr-body.ts) が diff から本文を LLM 生成し、失敗時は静的テンプレート。`ZAI_API_KEY` を使用）、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
 - **Supabase スキーマ**: Vercel のデプロイだけでは DB は更新されない。変更は `supabase/migrations/` にコミットし、マイグレーション内にロールバック案をコメントで残す。**本番（共有プロジェクト）への適用タイミングと手順は「セットアップ手順」の Supabase 注意書きに従う。**
 
 ## 📄 ライセンス
