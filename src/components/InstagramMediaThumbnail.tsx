@@ -12,7 +12,7 @@ interface InstagramMediaThumbnailProps {
   /**
    * 指定時は `src` の代わりに `/api/instagram/media/{igMediaId}/thumbnail`（自前キャッシュ
    * ルート）を使う。DB由来の投稿一覧（InstagramMediaTable）用。Meta の生URLはクライアントに
-   * 一切渡さない（docs/plans/instagram-media-url-refresh-design.md §4）。
+   * 一切渡さない（docs/specs/instagram-media-url-refresh-design.md §4）。
    */
   igMediaId?: string;
   /** 失敗時・URL 未設定時に表示するプレースホルダー */

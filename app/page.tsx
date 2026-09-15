@@ -26,7 +26,7 @@ async function settle<T>(label: string, promise: Promise<T>): Promise<Settled<T>
 }
 
 /**
- * マイホーム。連携の異常だけを出す（docs/plans/home-today-spec.md）。改善提案は toast が担う。
+ * マイホーム。連携の異常だけを出す（docs/specs/home-today-spec.md）。改善提案は toast が担う。
  * GSC/GA4・Google Ads とも、アクセストークンの期限が近ければリフレッシュ
  * （Google OAuth 呼び出し＋保存）を試みてから判定する。GSC/GA4 は同一 credential
  * （アクセストークン）を共有するため、リフレッシュは resolveHomeGoogleCredential で1回にまとめる。

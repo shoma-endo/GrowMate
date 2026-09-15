@@ -3,7 +3,7 @@
 -- 未要約 = AI要約対象8項目（main_kw, kw, needs, persona, goal, prep, opening_proposal,
 -- basic_structure）がすべて未設定（NULL または trim 後空文字）かつ WordPress 連携済み
 -- （wp_post_id が正の数、または canonical_url が trim 後非空）。
--- 定義は docs/plans/content-annotation-bulk-ai-summary-spec.md BR-02 が正本。
+-- 定義は docs/specs/content-annotation-bulk-ai-summary-spec.md BR-02 が正本。
 -- impressions は AI 要約の書き込み対象外（saveSummary が更新しない）ため判定に含めない。
 --
 -- 引数リストが変わるため create or replace では置き換わらない。8引数版を drop してから作り直す

@@ -187,7 +187,7 @@ export const CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC = 800;
 /**
  * 一括要約1回の時間予算（ミリ秒）。maxDuration より 40 秒短くしてレスポンス返却の余裕を取る
  * （`INSTAGRAM_SYNC_TIME_BUDGET_MS` と同型の算出）。
- * 仕様: docs/plans/content-annotation-bulk-ai-summary-spec.md BR-03（760秒）。
+ * 仕様: docs/specs/content-annotation-bulk-ai-summary-spec.md BR-03（760秒）。
  */
 export const CONTENT_ANNOTATION_BULK_SUMMARY_TIME_BUDGET_MS =
   (CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC - 40) * 1000;
@@ -432,7 +432,7 @@ export const INSTAGRAM_SYNC_MEDIA_LIMIT = 50;
 export const INSTAGRAM_SYNC_CONSECUTIVE_FAILURE_LIMIT = 5;
 export const INSTAGRAM_RATE_CALL_COUNT_THRESHOLD = 80;
 
-// docs/plans/instagram-media-url-refresh-design.md §4.3。
+// docs/specs/instagram-media-url-refresh-design.md §4.3。
 // 非公開バケット。Service Role（Route Handler 経由）以外からのアクセスは行わない。
 export const INSTAGRAM_MEDIA_THUMBNAIL_BUCKET = 'instagram-media-thumbnails';
 

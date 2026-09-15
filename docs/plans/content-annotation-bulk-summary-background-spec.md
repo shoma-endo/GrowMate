@@ -10,7 +10,7 @@
 - 承認者: 未確定
 - 対象リリース: 未確定
 - 関連する依頼・Issue・PR:
-  - 親仕様: `docs/plans/content-annotation-bulk-ai-summary-spec.md`（同期実行版。本仕様はその実行モデルを差し替える）
+  - 親仕様: `docs/specs/content-annotation-bulk-ai-summary-spec.md`（同期実行版。本仕様はその実行モデルを差し替える）
   - 共有UI契約: `docs/plans/analytics-bulk-actions-impl-note.md`
   - 先行 PR: shoma-endo/GrowMate#515（同期実行版の実装。本仕様は別スコープ・別 PR）
 

@@ -1,5 +1,5 @@
 -- Instagram サムネイル自前キャッシュ用の列とバケットを追加する。
--- 設計: docs/plans/instagram-media-url-refresh-design.md
+-- 設計: docs/specs/instagram-media-url-refresh-design.md
 --
 -- 背景: instagram_media.media_url / thumbnail_url は Instagram CDN の署名付き URL で、
 -- 実測で約6日で失効する。既存の同期（incremental/backfill）は一度保存した投稿の URL を
