@@ -291,29 +291,21 @@ export function EvaluationHistoryTab({
                 </ul>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="evaluation-history-memo">この評価のメモ</Label>
+                <Label htmlFor="evaluation-history-memo">メモ</Label>
                 <Textarea
                   id="evaluation-history-memo"
                   value={memoDraft}
                   onChange={event => setMemoDraft(event.target.value)}
                 />
-                <Button
-                  type="button"
-                  onClick={handleSaveMemo}
-                  disabled={isSavingMemo}
-                  className="gap-2"
-                >
-                  {isSavingMemo && <Loader2 className="h-4 w-4 animate-spin" />}
-                  保存
-                </Button>
               </div>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             {selectedHistory &&
               getEvaluationHistoryState(selectedHistory).canMarkAsRead &&
               !selectedHistory.is_read && (
                 <Button
+                  variant="outline"
                   onClick={() => handleMarkAsRead(selectedHistory.id)}
                   disabled={isPending}
                   className="gap-2"
@@ -327,10 +319,21 @@ export function EvaluationHistoryTab({
                 </Button>
               )}
             {selectedHistory?.is_read && (
-              <span className="text-sm text-gray-500 flex items-center gap-1">
+              <span className="text-sm text-gray-500 flex items-center gap-1 sm:mr-2">
                 <CheckCheck className="h-4 w-4" />
                 既読済み
               </span>
+            )}
+            {selectedHistory && (
+              <Button
+                type="button"
+                onClick={handleSaveMemo}
+                disabled={isSavingMemo}
+                className="gap-2"
+              >
+                {isSavingMemo && <Loader2 className="h-4 w-4 animate-spin" />}
+                保存
+              </Button>
             )}
           </DialogFooter>
         </DialogContent>
