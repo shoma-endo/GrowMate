@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import AnalyticsClient from './AnalyticsClient';
+import { setOptionalDate } from './build-href';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
 import { gscNotificationService } from '@/server/services/gscNotificationService';
 import { instagramMediaService } from '@/server/services/instagramMediaService';
@@ -14,6 +15,8 @@ import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 import { clampAnalyticsPeriod } from '@/lib/analytics-period';
 import { canAccessGa4 } from '@/server/lib/ga4-permissions';
+import { shouldAutoSyncInstagram } from '@/lib/instagram-sync';
+import { buildInstagramAutoSyncStorageKey } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
 
@@ -131,13 +134,15 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const igType: InstagramMediaTypeFilter =
     igTypeParam === 'reels' || igTypeParam === 'feed' ? igTypeParam : 'all';
 
-  const igDefaultEnd = addDaysISO(formatJstDateISO(new Date()), -1);
-  const igDefaultStart = addDaysISO(igDefaultEnd, -29);
-  const igStartValid = typeof igStartParam === 'string' && isValidDate(igStartParam);
-  const igEndValid = typeof igEndParam === 'string' && isValidDate(igEndParam);
-  let igStartDate = igStartValid ? igStartParam : igDefaultStart;
-  let igEndDate = igEndValid ? igEndParam : igDefaultEnd;
-  if (igStartDate > igEndDate) {
+  // Instagram の期間は「行フィルタ」で、ブログ側の start/end（GA4 の集計窓）とは意味が違う。
+  // 既定を直近30日にしていたため、30日以内に投稿が無いアカウントは DB に投稿があっても
+  // 一覧が空になり、「最新化」を押しても期間は変わらないので空のままだった。
+  // 未指定は絞り込みなし（全期間）とし、日付条件はユーザーが明示したときだけ掛ける。
+  // 片方だけの指定も許す（開始日のみ＝それ以降 / 終了日のみ＝それ以前）。
+  let igStartDate =
+    typeof igStartParam === 'string' && isValidDate(igStartParam) ? igStartParam : null;
+  let igEndDate = typeof igEndParam === 'string' && isValidDate(igEndParam) ? igEndParam : null;
+  if (igStartDate !== null && igEndDate !== null && igStartDate > igEndDate) {
     [igStartDate, igEndDate] = [igEndDate, igStartDate];
   }
 
@@ -187,6 +192,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   };
   let instagramLastSyncedAt: string | null = null;
   let instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed' = 'not_started';
+  // Instagram タブを開いた時点で自動同期するか。credential を読む下のブロック内でしか
+  // 確定しないので、ブロック外の既定は false（blog タブでは常に false）。
+  let instagramAutoSyncNeeded = false;
 
   if (instagramConnected && activeTab === 'instagram') {
     const [mediaPage, credential] = await Promise.all([
@@ -208,6 +216,12 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         : credential?.backfillCursor != null
           ? 'in_progress'
           : 'not_started';
+    // キルスイッチ（isInstagramSyncEnabled）はここで混ぜない。instagramSyncEnabled prop が
+    // 既にあるので、クライアント側で合成して判定の出所を1つに保つ。
+    instagramAutoSyncNeeded = shouldAutoSyncInstagram(
+      instagramLastSyncedAt,
+      formatJstDateISO(new Date())
+    );
   }
 
   const currentPage = resolvedPage ?? page;
@@ -238,8 +252,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       query.set('tab', 'instagram');
       query.set('ig_page', String(igPage));
       query.set('ig_type', igType);
-      query.set('ig_start', igStartDate);
-      query.set('ig_end', igEndDate);
+      // 未指定（全期間）のときは載せない。build-href.ts と同じ規則を共有する
+      setOptionalDate(query, 'ig_start', igStartDate);
+      setOptionalDate(query, 'ig_end', igEndDate);
       query.set('ig_sort', igSort);
     }
     return `/analytics?${query.toString()}`;
@@ -291,6 +306,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       instagramLastSyncedAt={instagramLastSyncedAt}
       instagramBackfillStatus={instagramBackfillStatus}
       instagramSyncEnabled={isInstagramSyncEnabled()}
+      instagramAutoSyncNeeded={instagramAutoSyncNeeded}
+      instagramAutoSyncStorageKey={buildInstagramAutoSyncStorageKey(userId)}
     />
   );
 }

@@ -1,8 +1,21 @@
 import { cache } from 'react';
 import { createHash } from 'crypto';
+import { z } from 'zod';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { briefInputSchema, paymentEnum } from '@/server/schemas/brief.schema';
+import { briefInputSchema, storedPaymentSchema } from '@/server/schemas/brief.schema';
 import type { BriefInput, Payment } from '@/server/schemas/brief.schema';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+
+/**
+ * 新形式として保存された事業者情報が検証に落ちたときに投げる。
+ * 旧形式変換で握り潰すと中身が空になったまま正常系として返ってしまうため、明示的に失敗させる。
+ */
+export class BriefDataFormatError extends Error {
+  constructor() {
+    super(ERROR_MESSAGES.BRIEF.INVALID_DATA_FORMAT);
+    this.name = 'BriefDataFormatError';
+  }
+}
 
 interface Brief {
   id: string;
@@ -30,7 +43,7 @@ export class BriefService extends SupabaseService {
     }
     const validPayments: Payment[] = [];
     for (const item of value) {
-      const result = paymentEnum.safeParse(item);
+      const result = storedPaymentSchema.safeParse(item);
       if (result.success) {
         validPayments.push(result.data);
       }
@@ -70,7 +83,20 @@ export class BriefService extends SupabaseService {
       return parseResult.data;
     }
 
-    const data = oldData as Record<string, unknown>;
+    const data = (oldData && typeof oldData === 'object' ? oldData : {}) as Record<string, unknown>;
+
+    // 新形式のキーを持つデータを旧形式として読むと、旧形式にしか無いトップレベルキー
+    // （data.company / data.service など）を引きに行くので profile と services が丸ごと
+    // undefined になる。その結果は briefInputSchema を通ってしまうため、画面もプロンプトも
+    // 無言で空になる（2026-08-26 の paymentEnum 変更で実際に発生）。
+    // 旧形式変換の対象は、新形式のキーを持たないデータだけに限る。
+    if ('profile' in data || 'services' in data) {
+      console.error(
+        '[BriefService] Stored brief is in the current shape but failed validation:',
+        z.prettifyError(parseResult.error)
+      );
+      throw new BriefDataFormatError();
+    }
 
     return {
       profile: {

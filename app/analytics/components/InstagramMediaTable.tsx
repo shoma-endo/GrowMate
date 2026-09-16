@@ -83,8 +83,15 @@ function MetricCell({
     return (
       <TooltipProvider>
         <Tooltip>
+          {/*
+            tabIndex/button 化しないと hover 専用になり、キーボードとタッチでは
+            「対象外」の理由に到達できない。既定が全期間になり、指標を取得できない
+            古い投稿が初期表示に並ぶようになったため実際に踏まれる
+          */}
           <TooltipTrigger asChild>
-            <span className="text-gray-500">対象外</span>
+            <span tabIndex={0} role="button" className="text-gray-500 underline decoration-dotted">
+              対象外
+            </span>
           </TooltipTrigger>
           <TooltipContent>{unavailableTooltip(item.insightsUnavailableReason)}</TooltipContent>
         </Tooltip>
@@ -235,7 +242,13 @@ export default function InstagramMediaTable({
     >
       {({ visibleSet, orderedIds }) => {
         if (items.length === 0) {
-          return <p className="text-sm text-gray-500 py-8 text-center">{emptyMessage}</p>;
+          // role="status": 取得中→一覧表示という状態変化がここにしか出ないことがあるため、
+          // 支援技術にも伝わるようにする
+          return (
+            <p role="status" className="text-sm text-gray-500 py-8 text-center">
+              {emptyMessage}
+            </p>
+          );
         }
         const visibleOrdered = orderedIds.filter(id => visibleSet.has(id));
         // contain-layout: table 要素の auto レイアウト計算（列幅の内容依存計算）は、

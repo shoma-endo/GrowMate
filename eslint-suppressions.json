@@ -136,7 +136,7 @@
       "count": 2
     },
     "shadcn/no-raw-colors": {
-      "count": 17
+      "count": 15
     }
   },
   "app/business-info/components/BusinessInfoForm.tsx": {
