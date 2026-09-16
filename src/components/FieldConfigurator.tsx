@@ -77,20 +77,28 @@ export default function FieldConfigurator({
   const pendingConfigRef = useRef<FieldConfigState | null>(null);
   const savedConfigRef = useRef<FieldConfigState>(config);
 
+  /** 保存を試みて成否を返す。**旧キーの削除可否の判断に使うので、必ず結果を見ること。** */
   const persist = useCallback(
-    async (next: FieldConfigState) => {
+    async (next: FieldConfigState): Promise<boolean> => {
       if (isSameFieldConfig(next, savedConfigRef.current)) {
-        return;
+        // DB は既にこの内容。投げる必要がない
+        return true;
       }
-      savedConfigRef.current = next;
       const result = await saveFieldConfig({
         tableKey,
         visibleIds: next.visibleIds,
         orderedIds: next.orderedIds,
       });
-      if (!result.success && result.error) {
-        toast.error(result.error);
+      if (!result.success) {
+        if (result.error) {
+          toast.error(result.error);
+        }
+        return false;
       }
+      // **成功したときだけ「保存済み」を進める。** 先に進めると、失敗した内容が
+      // 保存済みとみなされ、次に同じ構成へ戻したときの再送が握り潰される
+      savedConfigRef.current = next;
+      return true;
     },
     [tableKey]
   );
@@ -140,7 +148,8 @@ export default function FieldConfigurator({
   // マウント時に1回だけ:
   //   1. 解決済みの構成を親へ通知する（Instagram 側はソート列が隠れたかの判定に使う）
   //   2. DB 未保存かつ localStorage に旧データがあれば、それを引き継いでDBへ移す
-  // 旧キーはどちらの経路でも消す。**DB を唯一の正本にし、二重管理にしない。**
+  // 移行がDBへ入りきってから旧キーを消す。DB を唯一の正本にしつつ、
+  // **移行に失敗した利用者の構成を消さない**（下のコメント参照）。
   useEffect(() => {
     const legacy = (() => {
       try {
@@ -153,16 +162,26 @@ export default function FieldConfigurator({
     const migrated = initialConfig === null && legacy !== null;
     const resolved = migrated ? normalizeFieldConfig(columns, legacy) : config;
 
+    const dropLegacyKey = () => {
+      try {
+        localStorage.removeItem(legacyStorageKey);
+      } catch {
+        // ストレージが使えない環境でも動作を止めない
+      }
+    };
+
     if (migrated) {
       configRef.current = resolved;
       setConfig(resolved);
-      void persist(resolved);
-    }
-
-    try {
-      localStorage.removeItem(legacyStorageKey);
-    } catch {
-      // ストレージが使えない環境でも動作を止めない
+      // **保存が成功したときだけ旧キーを消す。** 無条件に消すと、保存が失敗した利用者の
+      // 構成が localStorage からもDBからも無くなり、次のリロードで既定へ戻る
+      // （マイグレーション未適用時は保存が必ず失敗するため、全カスタマイズが消える）。
+      void persist(resolved).then(saved => {
+        if (saved) dropLegacyKey();
+      });
+    } else {
+      // DB に行がある（= 旧キーは陳腐化）か、そもそも旧データが無い。どちらも消して安全
+      dropLegacyKey();
     }
 
     onChangeRef.current?.(resolved.visibleIds, resolved.orderedIds);
