@@ -2,7 +2,7 @@
 
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { BriefService } from '@/server/services/briefService';
+import { BriefDataFormatError, BriefService } from '@/server/services/briefService';
 import { briefInputSchema, type BriefInput } from '@/server/schemas/brief.schema';
 import type { ZodIssue } from 'zod';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -88,6 +88,9 @@ export const getBrief = async (): Promise<ActionResult<BriefInput | null>> => {
     return { success: true, data: parseResult.data };
   } catch (error) {
     console.error('事業者情報の取得エラー:', error);
+    if (error instanceof BriefDataFormatError) {
+      return { success: false, error: ERROR_MESSAGES.BRIEF.INVALID_DATA_FORMAT };
+    }
     return {
       success: false,
       error: error instanceof Error ? error.message : ERROR_MESSAGES.BRIEF.FETCH_FAILED,
