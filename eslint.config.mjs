@@ -1,3 +1,4 @@
+import { plugin as shadcn } from '@shadcn/lint';
 import nextConfig from 'eslint-config-next';
 
 // 'use client' ファイルから src/server/{services,lib,middleware,auth} への直 import を禁止する。
@@ -178,6 +179,25 @@ const config = [
       'local/no-server-internal-import-in-client': 'error',
       // 肥大化の可視化。warn 一覧は月次メンテの hotspot レビュー（docs/runbooks/monthly-maintenance.md）の入力
       'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // Tailwind のデザイントークン逸脱を機械検出する（components.json から theme と ui を自動検出）
+  // 既存違反は eslint-suppressions.json に件数で記録済みで、新たに増えた分だけ error になる。
+  // 件数を超えるとそのファイル×ルールの既存分も全件表示されるが、直すのは自分が足した分だけ。
+  // `--suppress-all` / `--suppress-rule` で記録を増やして黙らせない。
+  // 違反を直して件数が減ったら `npx eslint . --prune-suppressions` で記録を更新する（しないと lint が落ちる）。
+  // no-restyle は既存 688 件で、Card 等への className 上書きが日常的なため未導入（contracts 設計が先）。
+  // package.json overrides の @shadcn/lint > @typescript-eslint/parser 8.59.0 固定は、導入時に 8.70.0 が
+  // 公開直後で safe-chain の年齢チェック対象だったため。typescript-eslint を上げるときに外す。
+  {
+    files: ['**/*.{ts,tsx}'],
+    plugins: { shadcn },
+    rules: {
+      'shadcn/no-raw-colors': 'error',
+      'shadcn/no-unknown-classes': 'error',
+      'shadcn/require-static-classes': 'error',
+      'shadcn/no-arbitrary-values': 'error',
+      'shadcn/no-inline-styles': 'error',
     },
   },
   {

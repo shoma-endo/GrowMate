@@ -80,12 +80,18 @@ interface AnalyticsClientProps {
   instagramTotalPages: number;
   igPage: number;
   igType: InstagramMediaTypeFilter;
-  igStart: string;
-  igEnd: string;
+  /** null は絞り込みなし（全期間） */
+  igStart: string | null;
+  /** null は絞り込みなし（全期間） */
+  igEnd: string | null;
   igSort: InstagramMediaSortKey;
   instagramLastSyncedAt: string | null;
   instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed';
   instagramSyncEnabled: boolean;
+  /** Instagram タブ初回表示で自動同期するか（JST で今日まだ同期していない）。blog タブでは常に false */
+  instagramAutoSyncNeeded: boolean;
+  /** 自動同期の発火ガードに使う localStorage キー（ユーザー単位） */
+  instagramAutoSyncStorageKey: string;
   /** コンテンツ一覧のフィールド構成（未保存なら null）。初期描画から確定させるため props で流す */
   analyticsFieldConfig: StoredFieldConfig | null;
   /** Instagramメディア一覧のフィールド構成（未保存なら null） */
@@ -134,6 +140,8 @@ export default function AnalyticsClient({
   instagramLastSyncedAt,
   instagramBackfillStatus,
   instagramSyncEnabled,
+  instagramAutoSyncNeeded,
+  instagramAutoSyncStorageKey,
   analyticsFieldConfig,
   instagramFieldConfig,
 }: AnalyticsClientProps) {
@@ -618,6 +626,8 @@ export default function AnalyticsClient({
               lastSyncedAt={instagramLastSyncedAt}
               backfillStatus={instagramBackfillStatus}
               syncEnabled={instagramSyncEnabled}
+              autoSyncNeeded={instagramAutoSyncNeeded}
+              autoSyncStorageKey={instagramAutoSyncStorageKey}
               buildIgPageHref={targetPage => buildIgPageHref(hrefState, targetPage)}
               buildFilterHref={patch => buildIgFilterHref(hrefState, patch)}
               fieldConfig={instagramFieldConfig}

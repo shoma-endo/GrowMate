@@ -19,8 +19,10 @@ export interface AnalyticsHrefState {
   activeTab: 'blog' | 'instagram';
   igPage: number;
   igType: InstagramMediaTypeFilter;
-  igStart: string;
-  igEnd: string;
+  /** null / 空文字は絞り込みなし。URL にも出さない */
+  igStart: string | null;
+  /** null / 空文字は絞り込みなし。URL にも出さない */
+  igEnd: string | null;
   igSort: InstagramMediaSortKey;
 }
 
@@ -28,9 +30,24 @@ export interface InstagramHrefPatch {
   tab?: 'blog' | 'instagram';
   igPage?: number;
   igType?: InstagramMediaTypeFilter;
-  igStart?: string;
-  igEnd?: string;
+  igStart?: string | null;
+  igEnd?: string | null;
   igSort?: InstagramMediaSortKey;
+}
+
+/**
+ * 期間は未指定なら URL に載せない。日付入力を空にしたときは空文字で来るのでそれも未指定扱い。
+ * page.tsx の buildPageHref も同じ規則で組み立てる必要があるため export する
+ * （片方だけ直すと、ページ送りだけ絞り込みが残る／消えるという食い違いが出る）。
+ */
+export function setOptionalDate(
+  query: URLSearchParams,
+  key: string,
+  value: string | null | undefined
+) {
+  if (typeof value === 'string' && value.length > 0) {
+    query.set(key, value);
+  }
 }
 
 export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHrefPatch): string {
@@ -56,12 +73,17 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
   }
 
   const nextTab = patch.tab ?? state.activeTab;
+  // patch で明示的に null / '' が来たら「絞り込み解除」なので ?? で state に落とさない。
+  // 1度だけ解決して両分岐で使う（blog 分岐だけ state を見ていると解除が効かない）
+  const nextIgStart = patch.igStart !== undefined ? patch.igStart : state.igStart;
+  const nextIgEnd = patch.igEnd !== undefined ? patch.igEnd : state.igEnd;
+
   if (state.instagramConnected && nextTab === 'instagram') {
     query.set('tab', 'instagram');
     query.set('ig_page', String(patch.igPage ?? state.igPage));
     query.set('ig_type', patch.igType ?? state.igType);
-    query.set('ig_start', patch.igStart ?? state.igStart);
-    query.set('ig_end', patch.igEnd ?? state.igEnd);
+    setOptionalDate(query, 'ig_start', nextIgStart);
+    setOptionalDate(query, 'ig_end', nextIgEnd);
     query.set('ig_sort', patch.igSort ?? state.igSort);
   }
   if (patch.tab === 'instagram') {
@@ -71,8 +93,8 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
     query.set('page', '1');
     query.set('ig_page', String(state.igPage));
     query.set('ig_type', state.igType);
-    query.set('ig_start', state.igStart);
-    query.set('ig_end', state.igEnd);
+    setOptionalDate(query, 'ig_start', nextIgStart);
+    setOptionalDate(query, 'ig_end', nextIgEnd);
     query.set('ig_sort', state.igSort);
   }
 
@@ -85,8 +107,8 @@ export function buildIgPageHref(state: AnalyticsHrefState, targetIgPage: number)
 
 export interface InstagramFilterPatch {
   igType?: InstagramMediaTypeFilter;
-  igStart?: string;
-  igEnd?: string;
+  igStart?: string | null;
+  igEnd?: string | null;
   igSort?: InstagramMediaSortKey;
   igPage?: number;
 }

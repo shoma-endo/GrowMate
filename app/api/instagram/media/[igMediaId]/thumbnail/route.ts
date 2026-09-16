@@ -32,7 +32,7 @@ function isAllowedImageHost(url: string): boolean {
   }
 }
 
-// docs/plans/instagram-media-url-refresh-design.md §4
+// docs/specs/instagram-media-url-refresh-design.md §4
 //
 // 一覧画面（app/analytics）のサムネイルはこの Route Handler 経由でのみ表示する。
 // キャッシュ済みなら Storage から即返し、未キャッシュなら Meta から一度だけ再取得して
@@ -121,7 +121,7 @@ function imageResponse(bytes: Blob, contentType: string): NextResponse {
 
 // Meta 公式: thumbnail_url は VIDEO (REELS) media でのみ利用可能。
 // REELS の media_url は動画本体のため、thumbnail_url が無い場合はキャッシュ対象なし
-// （動画バイトはキャッシュしない。docs/plans/instagram-media-url-refresh-design.md §4.4）。
+// （動画バイトはキャッシュしない。docs/specs/instagram-media-url-refresh-design.md §4.4）。
 function pickCandidate(media: {
   mediaProductType: string;
   mediaUrl: string | null;

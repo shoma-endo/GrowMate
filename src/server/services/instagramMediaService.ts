@@ -74,8 +74,10 @@ interface InstagramMediaQuery {
   page: number;
   perPage: number;
   type: InstagramMediaTypeFilter;
-  startDate: string;
-  endDate: string;
+  /** null は絞り込みなし（その側の境界を設けない） */
+  startDate: string | null;
+  /** null は絞り込みなし（その側の境界を設けない） */
+  endDate: string | null;
   sort: InstagramMediaSortKey;
 }
 
@@ -112,6 +114,12 @@ function mapMediaRow(row: InstagramMediaRow): InstagramMediaListItem {
 }
 
 class InstagramMediaService extends SupabaseService {
+  /**
+   * 天井: `count: 'exact'` は毎回テーブル全件を数える。2026-09-16 に期間の既定を全期間へ
+   * 変えたため、従来は30日窓で抑えられていた対象が全投稿になった。インデックスは
+   * `(user_id, posted_at desc)` のみで、`sort=reach|views` は無索引の全件ソートになる。
+   * 1ユーザーあたり数千件までは許容。超えたら planned count か keyset ページングへ移す。
+   */
   async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
     const client = this.getClient();
 
@@ -120,9 +128,17 @@ class InstagramMediaService extends SupabaseService {
       let dbQuery = client
         .from('instagram_media')
         .select('*', { count: 'exact' })
-        .eq('user_id', userId)
-        .gte('posted_at', `${query.startDate}T00:00:00.000Z`)
-        .lte('posted_at', `${query.endDate}T23:59:59.999Z`);
+        .eq('user_id', userId);
+
+      // 境界は JST で切る。posted_at は timestamptz で、一覧の投稿日表示は端末ローカル（JST）。
+      // UTC 日界（...Z）で切ると 9 時間ずれ、「2026/8/2 投稿」と表示されている行が
+      // ig_start=2026-08-02 で落ちる（= 期間指定時に投稿が黙って消える）。
+      if (query.startDate !== null) {
+        dbQuery = dbQuery.gte('posted_at', `${query.startDate}T00:00:00.000+09:00`);
+      }
+      if (query.endDate !== null) {
+        dbQuery = dbQuery.lte('posted_at', `${query.endDate}T23:59:59.999+09:00`);
+      }
 
       if (query.type === 'reels') {
         dbQuery = dbQuery.eq('media_product_type', 'REELS');
@@ -419,7 +435,7 @@ class InstagramMediaService extends SupabaseService {
 
   /**
    * サムネイルキャッシュの表示に必要な最小フィールドを1件取得する。
-   * docs/plans/instagram-media-url-refresh-design.md §4 の Route Handler から呼ばれる。
+   * docs/specs/instagram-media-url-refresh-design.md §4 の Route Handler から呼ばれる。
    */
   async getMediaForThumbnail(
     userId: string,

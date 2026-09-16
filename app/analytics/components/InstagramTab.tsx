@@ -18,6 +18,7 @@ import {
 import { cn } from '@/lib/utils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getInstagramSyncToastMessage } from '@/lib/instagram-sync';
+import { formatJstDateISO } from '@/lib/date-utils';
 import { syncInstagramData } from '@/server/actions/instagramSync.actions';
 import type {
   InstagramMediaListItem,
@@ -33,23 +34,33 @@ interface InstagramTabProps {
   totalPages: number;
   igPage: number;
   igType: InstagramMediaTypeFilter;
-  igStart: string;
-  igEnd: string;
+  /** null は絞り込みなし（全期間）。日付入力は空で表示する */
+  igStart: string | null;
+  /** null は絞り込みなし（全期間）。日付入力は空で表示する */
+  igEnd: string | null;
   igSort: InstagramMediaSortKey;
   lastSyncedAt: string | null;
   backfillStatus: 'not_started' | 'in_progress' | 'completed';
   syncEnabled: boolean;
+  /** サーバー側の判定（JST で今日まだ同期していない）。実際の発火は下の localStorage ガードと AND */
+  autoSyncNeeded: boolean;
+  /** 自動同期の localStorage ガードをユーザー単位に分けるためのキー。同一ブラウザでの
+   *  アカウント切替時に、前のユーザーの記録で次のユーザーの自動同期が止まるのを防ぐ */
+  autoSyncStorageKey: string;
   buildIgPageHref: (targetPage: number) => string;
   buildFilterHref: (patch: {
     igType?: InstagramMediaTypeFilter;
-    igStart?: string;
-    igEnd?: string;
+    igStart?: string | null;
+    igEnd?: string | null;
     igSort?: InstagramMediaSortKey;
     igPage?: number;
   }) => string;
   /** 保存済みのフィールド構成（未保存なら null） */
   fieldConfig: StoredFieldConfig | null;
 }
+
+/** 同期中の表示文言。トースト・ツールバー直下の進行表示・空状態の3箇所で共有する */
+const INSTAGRAM_SYNCING_LABEL = 'Instagram データを取得中...';
 
 function formatLastSyncedAt(value: string | null): string | null {
   if (!value) {
@@ -74,67 +85,110 @@ export default function InstagramTab({
   lastSyncedAt,
   backfillStatus,
   syncEnabled,
+  autoSyncNeeded,
+  autoSyncStorageKey,
   buildIgPageHref,
   buildFilterHref,
   fieldConfig,
 }: InstagramTabProps) {
   const router = useRouter();
-  const [isSyncing, setIsSyncing] = React.useState(false);
+  // 自動同期する回は、エフェクトが走る前の1フレームで「まだデータがありません」が
+  // ちらつかないよう最初から同期中にしておく。localStorage はここで見ない
+  // （SSR 側で読めず hydration mismatch になる）。見送りの判定はエフェクト内で行い、
+  // そのとき false に戻す。
+  const [isSyncing, setIsSyncing] = React.useState(autoSyncNeeded && syncEnabled);
   const [syncAlert, setSyncAlert] = React.useState<string | null>(null);
+  // 自動同期は toast を出さないので、その結果を伝えるチャネルは syncAlert だけになる。
+  // 手動時の警告と違って消える先が無いため、絞り込み変更でクリアしない
+  const [isSyncAlertFromAuto, setIsSyncAlertFromAuto] = React.useState(false);
   const [isBackfilling, setIsBackfilling] = React.useState(false);
   const [backfillAlert, setBackfillAlert] = React.useState<string | null>(null);
-  const [rangeStart, setRangeStart] = React.useState(igStart);
-  const [rangeEnd, setRangeEnd] = React.useState(igEnd);
-  const [isApplyingDateRange, setIsApplyingDateRange] = React.useState(false);
-  const isDateRangeChanged = rangeStart !== igStart || rangeEnd !== igEnd;
+  // 未指定（全期間）は空文字で入力欄に出す。空にして「期間を適用」すれば絞り込みを外せる
+  const [rangeStart, setRangeStart] = React.useState(igStart ?? '');
+  const [rangeEnd, setRangeEnd] = React.useState(igEnd ?? '');
+  // 旧実装は props（igStart/igEnd）の変化を待って解除していたが、サーバーが入力を正規化して
+  // props が変わらない経路（不正日付 → null に落ちる / 開始と終了を逆に入れて swap で元に戻る）で
+  // 「適用中...」が永久に残った。遷移そのものに紐づける。
+  const [isApplyingDateRange, startDateRangeTransition] = React.useTransition();
+  const isDateRangeChanged = rangeStart !== (igStart ?? '') || rangeEnd !== (igEnd ?? '');
+  const hasDateRange = igStart !== null || igEnd !== null;
+
+  // 絞り込み変更で前回同期の警告表示をクリアする（そのまま残すと別の絞り込み条件を
+  // 見ていても古い警告が出続ける）。ただし自動同期由来の警告は残す — トーストが出ていないので
+  // ここで消すと失敗の理由がどこにも無くなる。
+  const clearManualSyncAlert = React.useCallback(() => {
+    setSyncAlert(previous => (isSyncAlertFromAuto ? previous : null));
+  }, [isSyncAlertFromAuto]);
 
   React.useEffect(() => {
-    setRangeStart(igStart);
-    setRangeEnd(igEnd);
-    setIsApplyingDateRange(false);
-    setSyncAlert(null);
+    setRangeStart(igStart ?? '');
+    setRangeEnd(igEnd ?? '');
+    clearManualSyncAlert();
+    // clearManualSyncAlert を依存に入れると isSyncAlertFromAuto の変化でも走ってしまう。
+    // クリアの契機は絞り込みの変化だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [igStart, igEnd]);
 
-  // 種別・並び順・ページが変わった場合も前回同期の警告表示をクリアする
-  // （そのまま残すと別の絞り込み条件を見ていても古い警告が出続ける）。
   React.useEffect(() => {
-    setSyncAlert(null);
+    clearManualSyncAlert();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [igType, igSort, igPage]);
 
   const lastSyncedLabel = formatLastSyncedAt(lastSyncedAt);
 
-  const handleSync = async () => {
+  /**
+   * incremental 同期。`auto` はタブ初回表示の自動同期で、ユーザーが押していないので
+   * トーストを一切出さない（ブログタブが自動取得で通知を出さないのに合わせる）。
+   * 代わりに、握り潰すと困る結果（レート制限中断・打ち切り・部分失敗）は Alert に落とす。
+   */
+  const handleSync = async (options?: { auto?: boolean }) => {
+    const isAuto = options?.auto === true;
     setIsSyncing(true);
     setSyncAlert(null);
-    const toastId = toast.loading('Instagramデータを取得中...');
+    setIsSyncAlertFromAuto(isAuto);
+    // 自動時は toastId を持たず notify が丸ごと no-op になる。分岐を1箇所に閉じ込めて、
+    // 以降は「トーストを出すか」を意識せずに結果ハンドリングだけを書く
+    const toastId = isAuto ? null : toast.loading(INSTAGRAM_SYNCING_LABEL);
+    const notify = (type: 'success' | 'warning' | 'error' | 'info', message: string) => {
+      if (toastId === null) return;
+      toast[type](message, { id: toastId });
+    };
     try {
-      const result = await syncInstagramData('incremental');
+      const result = await syncInstagramData(
+        'incremental',
+        isAuto ? { trigger: 'auto' } : undefined
+      );
+      // サーバー側の1日1回ガードに弾かれた回。取得は走っていないので表示も通知も変えない。
+      // toast.dismiss(undefined) は画面上の全トーストを消すため、id があるときだけ呼ぶ
+      if (result.alreadySynced) {
+        if (toastId !== null) {
+          toast.dismiss(toastId);
+        }
+        return;
+      }
       if (!result.success || !result.data) {
+        const message = result.error ?? ERROR_MESSAGES.INSTAGRAM.SYNC_FAILED;
+        notify('error', message);
         if (result.needsReauth) {
-          toast.error(result.error, { id: toastId });
           setSyncAlert(ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED);
-        } else {
-          toast.error(result.error, { id: toastId });
+        } else if (isAuto) {
+          // 自動時はトーストが出ないので、失敗を握り潰さないよう Alert に落とす
+          setSyncAlert(message);
         }
         return;
       }
       // needsReauth は success:false と必ずセットで返るため（instagramSync.actions.ts）、
       // ここに到達した時点では常に undefined。渡す必要はない。
       const toastMessage = getInstagramSyncToastMessage(result.data);
-      switch (toastMessage.type) {
-        case 'warning':
-          toast.warning(toastMessage.message, { id: toastId });
-          setSyncAlert(ERROR_MESSAGES.INSTAGRAM.API_ERROR);
-          break;
-        case 'info':
-          toast.info(toastMessage.message, { id: toastId });
-          break;
-        case 'error':
-          toast.error(toastMessage.message, { id: toastId });
-          break;
-        case 'success':
-          toast.success(toastMessage.message, { id: toastId });
-          break;
+      notify(toastMessage.type, toastMessage.message);
+      if (isAuto) {
+        // 自動時は success 以外だけ Alert に出す。success（「N件を更新しました」等）は
+        // 一覧そのものが結果なので黙って反映する
+        if (toastMessage.type !== 'success') {
+          setSyncAlert(toastMessage.message);
+        }
+      } else if (toastMessage.type === 'warning') {
+        setSyncAlert(ERROR_MESSAGES.INSTAGRAM.API_ERROR);
       }
       if (result.data.failed > 0) {
         setSyncAlert(ERROR_MESSAGES.INSTAGRAM.PARTIAL_MEDIA_FAILURE(result.data.failed));
@@ -142,7 +196,10 @@ export default function InstagramTab({
       router.refresh();
     } catch (error) {
       console.error('[Instagram Tab] sync failed', error);
-      toast.error(ERROR_MESSAGES.INSTAGRAM.SYNC_FAILED, { id: toastId });
+      notify('error', ERROR_MESSAGES.INSTAGRAM.SYNC_FAILED);
+      if (isAuto) {
+        setSyncAlert(ERROR_MESSAGES.INSTAGRAM.SYNC_FAILED);
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -191,12 +248,57 @@ export default function InstagramTab({
     }
   };
 
+  // タブ初回表示の自動同期。発火は「サーバー判定（今日まだ同期していない）」かつ
+  // 「この端末で今日まだ自動発火していない」ときだけ。
+  //
+  // localStorage を使うのは useRef では足りないため。Radix の TabsContent は forceMount 無しだと
+  // 非アクティブ時にアンマウントするので、blog ⇔ instagram を往復するたび ref が新品になる。
+  // かつ last_synced_at は同期完了時にしか進まない（instagramSyncService）ので、in-flight 中も
+  // 失敗後も autoSyncNeeded prop は true のまま。ガードが無いと開くたびに再実行になる。
+  //
+  // 天井: 別端末・別ブラウザ・localStorage クリア時は同日に再発火しうる（Server Action 側の
+  // 1日1回チェックが最後の砦で、そこも in-flight の並走までは止めない）。実運用で重複が
+  // 問題になったら instagram_credentials に last_sync_started_at 相当を足してロックする。
+  //
+  // 天井2: 自動発火した同期は app router の Server Action キューを占有するため、完了までの間は
+  // 他の Server Action が待たされる（新着ゼロなら数秒、初回同期は最大760秒）。実害が出たら
+  // /api/ga4/sync 型の Route Handler へ移すのが upgrade path。
+  const didAutoSyncRef = React.useRef(false);
+  React.useEffect(() => {
+    if (didAutoSyncRef.current) return;
+    didAutoSyncRef.current = true;
+
+    if (!autoSyncNeeded || !syncEnabled) {
+      setIsSyncing(false);
+      return;
+    }
+    const todayJst = formatJstDateISO(new Date());
+    if (localStorage.getItem(autoSyncStorageKey) === todayJst) {
+      setIsSyncing(false);
+      return;
+    }
+    // 発火前に記録する。同期中にアンマウント→再マウントしても二重に走らせない
+    localStorage.setItem(autoSyncStorageKey, todayJst);
+    void handleSync({ auto: true });
+    // handleSync は毎レンダリング作り直されるが、このエフェクトは ref で1回に制限しており
+    // 依存に入れても入れなくても発火回数は変わらない。意図しない再実行を避けるため入れない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSyncNeeded, syncEnabled]);
+
   const applyDateRange = () => {
     if (!isDateRangeChanged || isApplyingDateRange) return;
-    setIsApplyingDateRange(true);
-    router.push(
-      buildFilterHref({ igStart: rangeStart, igEnd: rangeEnd, igPage: 1 })
-    );
+    startDateRangeTransition(() => {
+      router.push(buildFilterHref({ igStart: rangeStart, igEnd: rangeEnd, igPage: 1 }));
+    });
+  };
+
+  // iOS Safari の <input type="date"> は一度値が入るとユーザー操作で空にできない。
+  // 「空にして［期間を適用］」だけを解除手段にすると、絞り込んだまま戻れない端末が出る。
+  const clearDateRange = () => {
+    if (isApplyingDateRange) return;
+    startDateRangeTransition(() => {
+      router.push(buildFilterHref({ igStart: '', igEnd: '', igPage: 1 }));
+    });
   };
 
   // buildFilterHref は AnalyticsClient.tsx から毎レンダリング新規生成される関数のため
@@ -205,6 +307,33 @@ export default function InstagramTab({
   const resetSortIfHidden = () => {
     router.push(buildFilterHref({ igSort: 'posted_at', igPage: 1 }));
   };
+
+  // 一覧が0件のときの文言。押せないボタンへ誘導しないよう、キルスイッチ中と
+  // backfill 完了済みを分けている（§11.3）。
+  const emptyMessage = (() => {
+    if (isSyncing || isBackfilling) {
+      return INSTAGRAM_SYNCING_LABEL;
+    }
+    if (!syncEnabled) {
+      return 'Instagramの同期を一時停止しているため、データを取得できません。';
+    }
+    // 未同期のときだけ「データ」と呼ぶ。投稿が無いのか取得していないのか区別が付かないため。
+    // 同期済みの分岐は「投稿」で統一する
+    if (lastSyncedAt == null) {
+      return 'まだデータがありません。「最新化」を押してください';
+    }
+    // 絞り込んでいないのに「条件を変更してください」と言わない。
+    // ig_sort / ig_page は行を減らさないので絞り込みに数えない
+    const hasFilter = igStart !== null || igEnd !== null || igType !== 'all';
+    if (!hasFilter) {
+      return backfillStatus === 'completed'
+        ? 'まだ投稿がありません'
+        : 'まだ投稿がありません。「過去の投稿をインポート」を押してください';
+    }
+    return backfillStatus === 'completed'
+      ? '表示条件に一致する投稿がありません。投稿日や種別を変更してください'
+      : '表示条件に一致する投稿がありません。投稿日や種別を変更するか、「過去の投稿をインポート」を押してください';
+  })();
 
   const prevHref = buildIgPageHref(Math.max(1, igPage - 1));
   const nextHref = buildIgPageHref(Math.min(totalPages, igPage + 1));
@@ -254,27 +383,63 @@ export default function InstagramTab({
                 </SelectContent>
               </Select>
             </div>
+            {/*
+              ラベルに「投稿日」を冠する。ブログタブの「GA4集計開始日/終了日」は集計窓で記事は
+              消えないが、こちらは posted_at の行フィルタで投稿が消える。同じ「開始日/終了日」だと
+              役割の違いが読み取れない。語は並び順・テーブル見出しの「投稿日」を再利用する。
+              未指定＝全期間なので、空欄がその状態であることを補足で明示する。
+            */}
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-gray-500">開始日</span>
+              <label htmlFor="ig-range-start" className="text-xs text-muted-foreground">
+                投稿日（開始）
+              </label>
               <Input
+                id="ig-range-start"
                 type="date"
+                max={rangeEnd || undefined}
                 value={rangeStart}
                 onChange={e => setRangeStart(e.target.value)}
               />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-gray-500">終了日</span>
-              <Input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
+              <label htmlFor="ig-range-end" className="text-xs text-muted-foreground">
+                投稿日（終了）
+              </label>
+              <Input
+                id="ig-range-end"
+                type="date"
+                min={rangeStart || undefined}
+                value={rangeEnd}
+                onChange={e => setRangeEnd(e.target.value)}
+              />
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={applyDateRange}
-              disabled={!isDateRangeChanged || isApplyingDateRange}
-            >
-              {isApplyingDateRange && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {isApplyingDateRange ? '適用中...' : '期間を適用'}
-            </Button>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">
+                {hasDateRange ? '投稿日で絞り込み中' : '未指定なら全期間'}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={applyDateRange}
+                  disabled={!isDateRangeChanged || isApplyingDateRange}
+                  title={isDateRangeChanged ? undefined : '投稿日を変更すると押せます'}
+                >
+                  {isApplyingDateRange && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {isApplyingDateRange ? '適用中...' : '期間を適用'}
+                </Button>
+                {hasDateRange ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={clearDateRange}
+                    disabled={isApplyingDateRange}
+                  >
+                    期間をクリア
+                  </Button>
+                ) : null}
+              </div>
+            </div>
             <div className="flex flex-col gap-1">
               <span className="text-xs text-gray-500">並び順</span>
               <Select
@@ -299,7 +464,7 @@ export default function InstagramTab({
               type="button"
               variant="outline"
               disabled={!syncEnabled || isSyncing || isBackfilling}
-              onClick={handleSync}
+              onClick={() => void handleSync()}
             >
               <RefreshCw className={cn('w-4 h-4 mr-2', isSyncing && 'animate-spin')} />
               最新化
@@ -332,8 +497,30 @@ export default function InstagramTab({
           </div>
         ) : null}
 
+        {/*
+          進行表示はテーブルの空状態だけに頼れない。2日目以降は既存データが並ぶので
+          items.length > 0 になり、自動同期中でも「最新化」が disabled なこと以外に手掛かりが
+          無くなる（ユーザーが押していない処理なので、なおさら説明が要る）。
+          初回（last_synced_at が null）は最大760秒かかりうるため、長くなることも書く。
+        */}
+        {isSyncing ? (
+          <div
+            role="status"
+            className="flex items-center gap-2 rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground mb-4"
+          >
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            <span>
+              {INSTAGRAM_SYNCING_LABEL}
+              {lastSyncedAt == null ? '（初回は数分かかることがあります）' : ''}
+            </span>
+          </div>
+        ) : null}
+
         {syncAlert ? (
-          <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 mb-4">
+          <div
+            role="alert"
+            className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 mb-4"
+          >
             {syncAlert}
             {syncAlert === ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED ? (
               <Link href="/setup/instagram" className="ml-2 underline font-medium">
@@ -344,7 +531,10 @@ export default function InstagramTab({
         ) : null}
 
         {backfillAlert ? (
-          <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 mb-4">
+          <div
+            role="alert"
+            className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 mb-4"
+          >
             {backfillAlert}
             {backfillAlert === ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED ? (
               <Link href="/setup/instagram" className="ml-2 underline font-medium">
@@ -359,11 +549,7 @@ export default function InstagramTab({
           igSort={igSort}
           fieldConfig={fieldConfig}
           onSortColumnHidden={resetSortIfHidden}
-          emptyMessage={
-            lastSyncedAt == null
-              ? 'まだデータがありません。「最新化」を押すと取得します。'
-              : '表示条件に一致する投稿がありません。期間や種別フィルタを変更してください。'
-          }
+          emptyMessage={emptyMessage}
         />
         <div className="flex items-center justify-between mt-4">
           <div className="text-sm text-gray-600">

@@ -2,7 +2,7 @@
  * コンテンツ一覧の一括選択の状態を解く。
  *
  * 全選択（`isSelectAll`）の母集団はフィルタ非依存の全記事で、その ID はクライアントに無い
- * （`docs/plans/gsc-bulk-evaluation-start-spec.md` BR-07）。そのため全選択中の個別解除は
+ * （`docs/specs/gsc-bulk-evaluation-start-spec.md` BR-07）。そのため全選択中の個別解除は
  * 「全選択を解除して選び直す」のではなく **除外集合 `excludedIds` に足す**ことで表す。
  * 解除してしまうと、表示中のページ以外の選択を復元する手立てが無い。
  */

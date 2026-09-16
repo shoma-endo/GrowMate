@@ -49,6 +49,51 @@ describe('buildInstagramHref', () => {
     expect(href).not.toContain('category=');
   });
 
+  // 期間は「未指定＝全期間」。既定の直近30日が投稿を黙って隠していたため 2026-09-16 に変更した。
+  // URL に空の ig_start が生えると、そこから組み立てた次の href で不正な絞り込みになる。
+  it('期間が未指定（null）なら ig_start / ig_end を出力しない', () => {
+    const href = buildInstagramHref(buildState({ igStart: null, igEnd: null }), {
+      tab: 'instagram',
+    });
+    expect(href).not.toContain('ig_start');
+    expect(href).not.toContain('ig_end');
+    expect(href).toContain('tab=instagram');
+  });
+
+  it('patch で空文字を渡したら絞り込み解除として扱い、state の期間に落とさない', () => {
+    const href = buildInstagramHref(buildState(), { tab: 'instagram', igStart: '', igEnd: '' });
+    expect(href).not.toContain('ig_start');
+    expect(href).not.toContain('ig_end');
+  });
+
+  it('片側だけの指定なら、その側だけ出力する', () => {
+    const href = buildInstagramHref(buildState({ igEnd: null }), { tab: 'instagram' });
+    expect(href).toContain('ig_start=2026-08-01');
+    expect(href).not.toContain('ig_end');
+  });
+
+  it('patch で片側だけ解除しても、もう片側は state から残る', () => {
+    const href = buildInstagramHref(buildState(), { tab: 'instagram', igEnd: '' });
+    expect(href).toContain('ig_start=2026-08-01');
+    expect(href).not.toContain('ig_end');
+  });
+
+  it('ブログ側へ切り替える patch でも期間の解除が効く（分岐の非対称検知）', () => {
+    const href = buildInstagramHref(buildState({ activeTab: 'instagram' }), {
+      tab: 'blog',
+      igStart: '',
+      igEnd: '',
+    });
+    expect(href).not.toContain('ig_start');
+    expect(href).not.toContain('ig_end');
+  });
+
+  it('タブをブログへ切り替えても、指定済みの期間は維持する', () => {
+    const href = buildInstagramHref(buildState({ activeTab: 'instagram' }), { tab: 'blog' });
+    expect(href).toContain('ig_start=2026-08-01');
+    expect(href).toContain('ig_end=2026-08-25');
+  });
+
   it('カテゴリは append で複数回出力する（set への退行検知）', () => {
     const href = buildInstagramHref(
       buildState({ selectedCategoryNames: ['SEO', '広告運用'] }),
