@@ -8,11 +8,13 @@ import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.ac
 import { isInstagramSyncEnabled } from '@/server/lib/instagram-sync-config';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { contentAnnotationSummaryJobService } from '@/server/services/contentAnnotationSummaryJobService';
+import { userTableFieldConfigService } from '@/server/services/userTableFieldConfigService';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 import { clampAnalyticsPeriod } from '@/lib/analytics-period';
+import { FIELD_CONFIG_TABLE_KEYS } from '@/lib/constants';
 import { canAccessGa4 } from '@/server/lib/ga4-permissions';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
@@ -152,6 +154,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     gscPropertyResult,
     annotationTotalCount,
     activeSummaryJob,
+    fieldConfigs,
   ] = await Promise.all([
       analyticsContentService.getPage(userId, {
         page,
@@ -171,6 +174,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       // 実行中ジョブの進捗（BR-B07）。Server Action / API は増やさない（自動更新をしないため）。
       // Service Role 経路なのでクエリ側で user_id をスコープする（findActiveJob 内で `.eq`）
       contentAnnotationSummaryJobService.findActiveJob(userId),
+      // フィールド構成（表示列・並び順）。両タブ分を1クエリで引き、初期描画から確定させる
+      // （クライアントで復元するとチラつくため）。Instagram タブを開いていなくても引く。
+      userTableFieldConfigService.getByUser(userId),
     ]);
   const { items, total, totalPages, page: resolvedPage, perPage: resolvedPerPage, error, ga4Error, ga4Truncated } = analyticsPage;
   const gscPropertyUri = gscPropertyResult.success ? gscPropertyResult.data : null;
@@ -291,6 +297,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       instagramLastSyncedAt={instagramLastSyncedAt}
       instagramBackfillStatus={instagramBackfillStatus}
       instagramSyncEnabled={isInstagramSyncEnabled()}
+      analyticsFieldConfig={fieldConfigs[FIELD_CONFIG_TABLE_KEYS.ANALYTICS] ?? null}
+      instagramFieldConfig={fieldConfigs[FIELD_CONFIG_TABLE_KEYS.INSTAGRAM_MEDIA] ?? null}
     />
   );
 }

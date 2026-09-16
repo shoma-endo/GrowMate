@@ -11,7 +11,11 @@ import {
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ANALYTICS_STORAGE_KEYS, INSTAGRAM_COLUMNS } from '@/lib/constants';
+import {
+  ANALYTICS_STORAGE_KEYS,
+  FIELD_CONFIG_TABLE_KEYS,
+  INSTAGRAM_COLUMNS,
+} from '@/lib/constants';
 import {
   calculateInstagramRate,
   formatCount,
@@ -21,6 +25,7 @@ import {
   formatSkipRate,
 } from '@/lib/instagram-format';
 import type { InstagramMediaListItem, InstagramMediaSortKey } from '@/types/instagram';
+import type { StoredFieldConfig } from '@/types/field-config';
 import { ExternalLink } from 'lucide-react';
 
 const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>(['posted_at', 'reach', 'views']);
@@ -28,6 +33,8 @@ const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>(['posted_at', 'reach'
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
   igSort: InstagramMediaSortKey;
+  /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
+  fieldConfig: StoredFieldConfig | null;
   onSortColumnHidden: () => void;
   /**
    * items が空のときに表示するメッセージ。
@@ -125,6 +132,7 @@ function RateCell({
 export default function InstagramMediaTable({
   items,
   igSort,
+  fieldConfig,
   onSortColumnHidden,
   emptyMessage,
 }: InstagramMediaTableProps) {
@@ -228,7 +236,9 @@ export default function InstagramMediaTable({
   return (
     <FieldConfigurator
       columns={columns}
-      storageKey={ANALYTICS_STORAGE_KEYS.IG_VISIBLE_COLUMNS}
+      tableKey={FIELD_CONFIG_TABLE_KEYS.INSTAGRAM_MEDIA}
+      initialConfig={fieldConfig}
+      legacyStorageKey={ANALYTICS_STORAGE_KEYS.IG_VISIBLE_COLUMNS}
       onChange={handleConfiguratorChange}
       triggerId="instagram-field-config-trigger"
       hideTrigger

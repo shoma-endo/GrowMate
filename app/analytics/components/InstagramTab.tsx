@@ -24,6 +24,7 @@ import type {
   InstagramMediaSortKey,
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
+import type { StoredFieldConfig } from '@/types/field-config';
 import InstagramMediaTable from './InstagramMediaTable';
 
 interface InstagramTabProps {
@@ -46,6 +47,8 @@ interface InstagramTabProps {
     igSort?: InstagramMediaSortKey;
     igPage?: number;
   }) => string;
+  /** 保存済みのフィールド構成（未保存なら null） */
+  fieldConfig: StoredFieldConfig | null;
 }
 
 function formatLastSyncedAt(value: string | null): string | null {
@@ -73,6 +76,7 @@ export default function InstagramTab({
   syncEnabled,
   buildIgPageHref,
   buildFilterHref,
+  fieldConfig,
 }: InstagramTabProps) {
   const router = useRouter();
   const [isSyncing, setIsSyncing] = React.useState(false);
@@ -353,6 +357,7 @@ export default function InstagramTab({
         <InstagramMediaTable
           items={items}
           igSort={igSort}
+          fieldConfig={fieldConfig}
           onSortColumnHidden={resetSortIfHidden}
           emptyMessage={
             lastSyncedAt == null
