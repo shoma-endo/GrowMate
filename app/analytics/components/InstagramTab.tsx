@@ -33,8 +33,10 @@ interface InstagramTabProps {
   totalPages: number;
   igPage: number;
   igType: InstagramMediaTypeFilter;
-  igStart: string;
-  igEnd: string;
+  /** null は絞り込みなし（全期間）。日付入力は空で表示する */
+  igStart: string | null;
+  /** null は絞り込みなし（全期間）。日付入力は空で表示する */
+  igEnd: string | null;
   igSort: InstagramMediaSortKey;
   lastSyncedAt: string | null;
   backfillStatus: 'not_started' | 'in_progress' | 'completed';
@@ -47,8 +49,8 @@ interface InstagramTabProps {
   buildIgPageHref: (targetPage: number) => string;
   buildFilterHref: (patch: {
     igType?: InstagramMediaTypeFilter;
-    igStart?: string;
-    igEnd?: string;
+    igStart?: string | null;
+    igEnd?: string | null;
     igSort?: InstagramMediaSortKey;
     igPage?: number;
   }) => string;
@@ -97,10 +99,15 @@ export default function InstagramTab({
   const [isSyncAlertFromAuto, setIsSyncAlertFromAuto] = React.useState(false);
   const [isBackfilling, setIsBackfilling] = React.useState(false);
   const [backfillAlert, setBackfillAlert] = React.useState<string | null>(null);
-  const [rangeStart, setRangeStart] = React.useState(igStart);
-  const [rangeEnd, setRangeEnd] = React.useState(igEnd);
-  const [isApplyingDateRange, setIsApplyingDateRange] = React.useState(false);
-  const isDateRangeChanged = rangeStart !== igStart || rangeEnd !== igEnd;
+  // 未指定（全期間）は空文字で入力欄に出す。空にして「期間を適用」すれば絞り込みを外せる
+  const [rangeStart, setRangeStart] = React.useState(igStart ?? '');
+  const [rangeEnd, setRangeEnd] = React.useState(igEnd ?? '');
+  // 旧実装は props（igStart/igEnd）の変化を待って解除していたが、サーバーが入力を正規化して
+  // props が変わらない経路（不正日付 → null に落ちる / 開始と終了を逆に入れて swap で元に戻る）で
+  // 「適用中...」が永久に残った。遷移そのものに紐づける。
+  const [isApplyingDateRange, startDateRangeTransition] = React.useTransition();
+  const isDateRangeChanged = rangeStart !== (igStart ?? '') || rangeEnd !== (igEnd ?? '');
+  const hasDateRange = igStart !== null || igEnd !== null;
 
   // 絞り込み変更で前回同期の警告表示をクリアする（そのまま残すと別の絞り込み条件を
   // 見ていても古い警告が出続ける）。ただし自動同期由来の警告は残す — トーストが出ていないので
@@ -110,9 +117,8 @@ export default function InstagramTab({
   }, [isSyncAlertFromAuto]);
 
   React.useEffect(() => {
-    setRangeStart(igStart);
-    setRangeEnd(igEnd);
-    setIsApplyingDateRange(false);
+    setRangeStart(igStart ?? '');
+    setRangeEnd(igEnd ?? '');
     clearManualSyncAlert();
     // clearManualSyncAlert を依存に入れると isSyncAlertFromAuto の変化でも走ってしまう。
     // クリアの契機は絞り込みの変化だけ
@@ -277,10 +283,18 @@ export default function InstagramTab({
 
   const applyDateRange = () => {
     if (!isDateRangeChanged || isApplyingDateRange) return;
-    setIsApplyingDateRange(true);
-    router.push(
-      buildFilterHref({ igStart: rangeStart, igEnd: rangeEnd, igPage: 1 })
-    );
+    startDateRangeTransition(() => {
+      router.push(buildFilterHref({ igStart: rangeStart, igEnd: rangeEnd, igPage: 1 }));
+    });
+  };
+
+  // iOS Safari の <input type="date"> は一度値が入るとユーザー操作で空にできない。
+  // 「空にして［期間を適用］」だけを解除手段にすると、絞り込んだまま戻れない端末が出る。
+  const clearDateRange = () => {
+    if (isApplyingDateRange) return;
+    startDateRangeTransition(() => {
+      router.push(buildFilterHref({ igStart: '', igEnd: '', igPage: 1 }));
+    });
   };
 
   // buildFilterHref は AnalyticsClient.tsx から毎レンダリング新規生成される関数のため
@@ -299,13 +313,22 @@ export default function InstagramTab({
     if (!syncEnabled) {
       return 'Instagramの同期を一時停止しているため、データを取得できません。';
     }
+    // 未同期のときだけ「データ」と呼ぶ。投稿が無いのか取得していないのか区別が付かないため。
+    // 同期済みの分岐は「投稿」で統一する
     if (lastSyncedAt == null) {
-      return 'まだデータがありません。「最新化」を押すと取得します。';
+      return 'まだデータがありません。「最新化」を押してください';
     }
-    // 一覧の既定期間は直近30日。30日以内に投稿が無いアカウントは同期が成功してもここに来る
+    // 絞り込んでいないのに「条件を変更してください」と言わない。
+    // ig_sort / ig_page は行を減らさないので絞り込みに数えない
+    const hasFilter = igStart !== null || igEnd !== null || igType !== 'all';
+    if (!hasFilter) {
+      return backfillStatus === 'completed'
+        ? 'まだ投稿がありません'
+        : 'まだ投稿がありません。「過去の投稿をインポート」を押してください';
+    }
     return backfillStatus === 'completed'
-      ? '表示条件に一致する投稿がありません。期間や種別を変更してください。'
-      : '表示条件に一致する投稿がありません。期間や種別を変更するか、「過去の投稿をインポート」で古い投稿を取得してください。';
+      ? '表示条件に一致する投稿がありません。投稿日や種別を変更してください'
+      : '表示条件に一致する投稿がありません。投稿日や種別を変更するか、「過去の投稿をインポート」を押してください';
   })();
 
   const prevHref = buildIgPageHref(Math.max(1, igPage - 1));
@@ -356,27 +379,63 @@ export default function InstagramTab({
                 </SelectContent>
               </Select>
             </div>
+            {/*
+              ラベルに「投稿日」を冠する。ブログタブの「GA4集計開始日/終了日」は集計窓で記事は
+              消えないが、こちらは posted_at の行フィルタで投稿が消える。同じ「開始日/終了日」だと
+              役割の違いが読み取れない。語は並び順・テーブル見出しの「投稿日」を再利用する。
+              未指定＝全期間なので、空欄がその状態であることを補足で明示する。
+            */}
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-gray-500">開始日</span>
+              <label htmlFor="ig-range-start" className="text-xs text-muted-foreground">
+                投稿日（開始）
+              </label>
               <Input
+                id="ig-range-start"
                 type="date"
+                max={rangeEnd || undefined}
                 value={rangeStart}
                 onChange={e => setRangeStart(e.target.value)}
               />
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-gray-500">終了日</span>
-              <Input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
+              <label htmlFor="ig-range-end" className="text-xs text-muted-foreground">
+                投稿日（終了）
+              </label>
+              <Input
+                id="ig-range-end"
+                type="date"
+                min={rangeStart || undefined}
+                value={rangeEnd}
+                onChange={e => setRangeEnd(e.target.value)}
+              />
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={applyDateRange}
-              disabled={!isDateRangeChanged || isApplyingDateRange}
-            >
-              {isApplyingDateRange && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {isApplyingDateRange ? '適用中...' : '期間を適用'}
-            </Button>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">
+                {hasDateRange ? '投稿日で絞り込み中' : '未指定なら全期間'}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={applyDateRange}
+                  disabled={!isDateRangeChanged || isApplyingDateRange}
+                  title={isDateRangeChanged ? undefined : '投稿日を変更すると押せます'}
+                >
+                  {isApplyingDateRange && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {isApplyingDateRange ? '適用中...' : '期間を適用'}
+                </Button>
+                {hasDateRange ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={clearDateRange}
+                    disabled={isApplyingDateRange}
+                  >
+                    期間をクリア
+                  </Button>
+                ) : null}
+              </div>
+            </div>
             <div className="flex flex-col gap-1">
               <span className="text-xs text-gray-500">並び順</span>
               <Select

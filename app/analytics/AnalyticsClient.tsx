@@ -79,8 +79,10 @@ interface AnalyticsClientProps {
   instagramTotalPages: number;
   igPage: number;
   igType: InstagramMediaTypeFilter;
-  igStart: string;
-  igEnd: string;
+  /** null は絞り込みなし（全期間） */
+  igStart: string | null;
+  /** null は絞り込みなし（全期間） */
+  igEnd: string | null;
   igSort: InstagramMediaSortKey;
   instagramLastSyncedAt: string | null;
   instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed';

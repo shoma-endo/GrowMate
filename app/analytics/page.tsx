@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import AnalyticsClient from './AnalyticsClient';
+import { setOptionalDate } from './build-href';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
 import { gscNotificationService } from '@/server/services/gscNotificationService';
 import { instagramMediaService } from '@/server/services/instagramMediaService';
@@ -133,13 +134,15 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const igType: InstagramMediaTypeFilter =
     igTypeParam === 'reels' || igTypeParam === 'feed' ? igTypeParam : 'all';
 
-  const igDefaultEnd = addDaysISO(formatJstDateISO(new Date()), -1);
-  const igDefaultStart = addDaysISO(igDefaultEnd, -29);
-  const igStartValid = typeof igStartParam === 'string' && isValidDate(igStartParam);
-  const igEndValid = typeof igEndParam === 'string' && isValidDate(igEndParam);
-  let igStartDate = igStartValid ? igStartParam : igDefaultStart;
-  let igEndDate = igEndValid ? igEndParam : igDefaultEnd;
-  if (igStartDate > igEndDate) {
+  // Instagram の期間は「行フィルタ」で、ブログ側の start/end（GA4 の集計窓）とは意味が違う。
+  // 既定を直近30日にしていたため、30日以内に投稿が無いアカウントは DB に投稿があっても
+  // 一覧が空になり、「最新化」を押しても期間は変わらないので空のままだった。
+  // 未指定は絞り込みなし（全期間）とし、日付条件はユーザーが明示したときだけ掛ける。
+  // 片方だけの指定も許す（開始日のみ＝それ以降 / 終了日のみ＝それ以前）。
+  let igStartDate =
+    typeof igStartParam === 'string' && isValidDate(igStartParam) ? igStartParam : null;
+  let igEndDate = typeof igEndParam === 'string' && isValidDate(igEndParam) ? igEndParam : null;
+  if (igStartDate !== null && igEndDate !== null && igStartDate > igEndDate) {
     [igStartDate, igEndDate] = [igEndDate, igStartDate];
   }
 
@@ -249,8 +252,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       query.set('tab', 'instagram');
       query.set('ig_page', String(igPage));
       query.set('ig_type', igType);
-      query.set('ig_start', igStartDate);
-      query.set('ig_end', igEndDate);
+      // 未指定（全期間）のときは載せない。build-href.ts と同じ規則を共有する
+      setOptionalDate(query, 'ig_start', igStartDate);
+      setOptionalDate(query, 'ig_end', igEndDate);
       query.set('ig_sort', igSort);
     }
     return `/analytics?${query.toString()}`;

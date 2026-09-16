@@ -83,8 +83,15 @@ function MetricCell({
     return (
       <TooltipProvider>
         <Tooltip>
+          {/*
+            tabIndex/button 化しないと hover 専用になり、キーボードとタッチでは
+            「対象外」の理由に到達できない。既定が全期間になり、指標を取得できない
+            古い投稿が初期表示に並ぶようになったため実際に踏まれる
+          */}
           <TooltipTrigger asChild>
-            <span className="text-gray-500">対象外</span>
+            <span tabIndex={0} role="button" className="text-gray-500 underline decoration-dotted">
+              対象外
+            </span>
           </TooltipTrigger>
           <TooltipContent>{unavailableTooltip(item.insightsUnavailableReason)}</TooltipContent>
         </Tooltip>
