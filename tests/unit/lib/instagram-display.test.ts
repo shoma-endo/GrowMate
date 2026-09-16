@@ -9,9 +9,9 @@
  * どのモジュールの検査かは外側の describe が示す。
  * 各モジュールのフック（useFakeTimers 等）も外側の describe に閉じる。
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { formatCount, formatPostedAt, calculateInstagramRate } from '@/lib/instagram-format';
-import { getInstagramSyncToastMessage } from '@/lib/instagram-sync';
+import { getInstagramSyncToastMessage, shouldAutoSyncInstagram } from '@/lib/instagram-sync';
 import type { InstagramSyncResult } from '@/types/instagram';
 
 describe('@/lib/instagram-format', () => {
@@ -148,6 +148,33 @@ describe('@/lib/instagram-sync', () => {
       );
       expect(message.type).toBe('warning');
       expect(message.message).toContain('利用上限');
+    });
+  });
+
+  describe('shouldAutoSyncInstagram', () => {
+    it('未同期（null）なら同期する', () => {
+      expect(shouldAutoSyncInstagram(null, '2026-09-16')).toBe(true);
+    });
+
+    it('前日までの同期なら同期する', () => {
+      // JST 2026-09-15 23:00 = UTC 14:00
+      expect(shouldAutoSyncInstagram('2026-09-15T14:00:00.000Z', '2026-09-16')).toBe(true);
+    });
+
+    it('同日に同期済みなら同期しない', () => {
+      // JST 2026-09-16 00:30 = UTC 前日 15:30。UTC 日付で比較すると取りこぼす境界
+      expect(shouldAutoSyncInstagram('2026-09-15T15:30:00.000Z', '2026-09-16')).toBe(false);
+    });
+
+    it('未来日時でも同期する（大小比較だと恒久的に止まる）', () => {
+      expect(shouldAutoSyncInstagram('2026-09-20T00:00:00.000Z', '2026-09-16')).toBe(true);
+    });
+
+    it('不正なタイムスタンプは同期する側に倒し、console.error を出す', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect(shouldAutoSyncInstagram('not-a-date', '2026-09-16')).toBe(true);
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
     });
   });
 });

@@ -14,6 +14,8 @@ import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 import { clampAnalyticsPeriod } from '@/lib/analytics-period';
 import { canAccessGa4 } from '@/server/lib/ga4-permissions';
+import { shouldAutoSyncInstagram } from '@/lib/instagram-sync';
+import { buildInstagramAutoSyncStorageKey } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
 
@@ -187,6 +189,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   };
   let instagramLastSyncedAt: string | null = null;
   let instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed' = 'not_started';
+  // Instagram タブを開いた時点で自動同期するか。credential を読む下のブロック内でしか
+  // 確定しないので、ブロック外の既定は false（blog タブでは常に false）。
+  let instagramAutoSyncNeeded = false;
 
   if (instagramConnected && activeTab === 'instagram') {
     const [mediaPage, credential] = await Promise.all([
@@ -208,6 +213,12 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         : credential?.backfillCursor != null
           ? 'in_progress'
           : 'not_started';
+    // キルスイッチ（isInstagramSyncEnabled）はここで混ぜない。instagramSyncEnabled prop が
+    // 既にあるので、クライアント側で合成して判定の出所を1つに保つ。
+    instagramAutoSyncNeeded = shouldAutoSyncInstagram(
+      instagramLastSyncedAt,
+      formatJstDateISO(new Date())
+    );
   }
 
   const currentPage = resolvedPage ?? page;
@@ -291,6 +302,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       instagramLastSyncedAt={instagramLastSyncedAt}
       instagramBackfillStatus={instagramBackfillStatus}
       instagramSyncEnabled={isInstagramSyncEnabled()}
+      instagramAutoSyncNeeded={instagramAutoSyncNeeded}
+      instagramAutoSyncStorageKey={buildInstagramAutoSyncStorageKey(userId)}
     />
   );
 }

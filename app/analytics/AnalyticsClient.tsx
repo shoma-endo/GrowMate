@@ -85,6 +85,10 @@ interface AnalyticsClientProps {
   instagramLastSyncedAt: string | null;
   instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed';
   instagramSyncEnabled: boolean;
+  /** Instagram タブ初回表示で自動同期するか（JST で今日まだ同期していない）。blog タブでは常に false */
+  instagramAutoSyncNeeded: boolean;
+  /** 自動同期の発火ガードに使う localStorage キー（ユーザー単位） */
+  instagramAutoSyncStorageKey: string;
 }
 
 export default function AnalyticsClient({
@@ -129,6 +133,8 @@ export default function AnalyticsClient({
   instagramLastSyncedAt,
   instagramBackfillStatus,
   instagramSyncEnabled,
+  instagramAutoSyncNeeded,
+  instagramAutoSyncStorageKey,
 }: AnalyticsClientProps) {
   const router = useRouter();
   const hrefState: AnalyticsHrefState = {
@@ -610,6 +616,8 @@ export default function AnalyticsClient({
               lastSyncedAt={instagramLastSyncedAt}
               backfillStatus={instagramBackfillStatus}
               syncEnabled={instagramSyncEnabled}
+              autoSyncNeeded={instagramAutoSyncNeeded}
+              autoSyncStorageKey={instagramAutoSyncStorageKey}
               buildIgPageHref={targetPage => buildIgPageHref(hrefState, targetPage)}
               buildFilterHref={patch => buildIgFilterHref(hrefState, patch)}
             />

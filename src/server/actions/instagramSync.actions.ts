@@ -16,15 +16,25 @@ import {
   createInstagramTokenDeps,
   ensureValidInstagramToken,
 } from '@/server/services/instagramTokenService';
+import { shouldAutoSyncInstagram } from '@/lib/instagram-sync';
+import { formatJstDateISO } from '@/lib/date-utils';
 import type { ServerActionResult } from '@/lib/async-handler';
 import type { InstagramSyncMode, InstagramSyncResult } from '@/types/instagram';
 import type { UserRole } from '@/types/user';
 
 const supabaseService = new SupabaseService();
 
+/**
+ * @param mode 'incremental' = 最新化 / 'backfill' = 過去の投稿をインポート
+ * @param options.trigger 'auto' は Instagram タブ初回表示の自動同期。省略時は 'manual'（ボタン押下）。
+ *   'auto' のときだけ「今日すでに同期済みなら何もしない」サーバー側の再チェックが効く
+ */
 export async function syncInstagramData(
-  mode: InstagramSyncMode
-): Promise<ServerActionResult<InstagramSyncResult> & { needsReauth?: boolean }> {
+  mode: InstagramSyncMode,
+  options?: { trigger?: 'manual' | 'auto' }
+): Promise<
+  ServerActionResult<InstagramSyncResult> & { needsReauth?: boolean; alreadySynced?: true }
+> {
   if (!isInstagramSyncEnabled()) {
     return { success: false, error: ERROR_MESSAGES.INSTAGRAM.SYNC_DISABLED };
   }
@@ -49,6 +59,16 @@ export async function syncInstagramData(
     const credential = await supabaseService.getInstagramCredential(userId);
     if (!credential) {
       return { success: false, error: ERROR_MESSAGES.INSTAGRAM.CONNECTION_FAILED };
+    }
+
+    // 自動同期（Instagram タブ初回表示）は1日1回まで。クライアント側にも localStorage の
+    // 発火ガードがあるが、別デバイス・別ブラウザからは見えないのでここでも見る。
+    // 手動の「最新化」は trigger 省略（= 'manual'）なので素通しで、挙動は変わらない。
+    if (options?.trigger === 'auto') {
+      const todayJst = formatJstDateISO(new Date());
+      if (!shouldAutoSyncInstagram(credential.lastSyncedAt, todayJst)) {
+        return { success: true, alreadySynced: true };
+      }
     }
 
     const tokenResult = await ensureValidInstagramToken(

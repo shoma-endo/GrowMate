@@ -235,7 +235,13 @@ export default function InstagramMediaTable({
     >
       {({ visibleSet, orderedIds }) => {
         if (items.length === 0) {
-          return <p className="text-sm text-gray-500 py-8 text-center">{emptyMessage}</p>;
+          // role="status": 取得中→一覧表示という状態変化がここにしか出ないことがあるため、
+          // 支援技術にも伝わるようにする
+          return (
+            <p role="status" className="text-sm text-gray-500 py-8 text-center">
+              {emptyMessage}
+            </p>
+          );
         }
         const visibleOrdered = orderedIds.filter(id => visibleSet.has(id));
         // contain-layout: table 要素の auto レイアウト計算（列幅の内容依存計算）は、

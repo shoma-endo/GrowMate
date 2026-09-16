@@ -419,12 +419,24 @@ export const ANALYTICS_STORAGE_KEYS = {
   OPS_EXPANDED: 'analytics.opsExpanded',
   VISIBLE_COLUMNS: 'analytics.visibleColumns',
   IG_VISIBLE_COLUMNS: 'analytics.instagramVisibleColumns',
+  /**
+   * Instagram タブの自動同期を最後に試みた JST 日付（`YYYY-MM-DD`）。1日1回の発火ガード。
+   * 実際のキーは `buildInstagramAutoSyncStorageKey(userId)` でユーザー単位に分ける
+   * （同一ブラウザでのアカウント切替時に、前のユーザーの記録で次のユーザーの同期が止まるため）
+   */
+  IG_AUTO_SYNCED_ON: 'analytics.instagramAutoSyncedOn',
 } as const;
+
+/** Instagram 自動同期ガードの localStorage キー。ユーザーごとに分ける */
+export function buildInstagramAutoSyncStorageKey(userId: string): string {
+  return `${ANALYTICS_STORAGE_KEYS.IG_AUTO_SYNCED_ON}.${userId}`;
+}
 
 // Next.js の route segment config は静的解析のため import 定数を使えず、
 // app/analytics/page.tsx の maxDuration はリテラル必須。値はここと必ず一致させること（他ファイルから import しない）。
 // 一致は tests/unit/server/lib/analytics-max-duration.test.ts が機械的に突き合わせる
-// （2026-09-04: 一括要約の背景化で、page.tsx の maxDuration の根拠は Instagram 手動同期だけになった）。
+// （2026-09-04: 一括要約の背景化で、page.tsx の maxDuration の根拠は Instagram 同期だけになった。
+//   2026-09-16: タブ初回表示の自動同期も同じ予算に乗る）。
 export const INSTAGRAM_SYNC_MAX_DURATION_SEC = 800;
 // maxDuration より 40 秒短く（レスポンス返却の余裕。gscEvaluationService の 280/300 秒比を踏襲）。
 export const INSTAGRAM_SYNC_TIME_BUDGET_MS = (INSTAGRAM_SYNC_MAX_DURATION_SEC - 40) * 1000;

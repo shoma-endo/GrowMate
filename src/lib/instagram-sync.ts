@@ -1,7 +1,36 @@
 import { INSTAGRAM_SYNC_MEDIA_LIMIT } from '@/lib/constants';
+import { getJstDateISOFromTimestamp } from '@/lib/date-utils';
 import type { InstagramSyncResult } from '@/types/instagram';
 
 type SyncToastType = 'success' | 'warning' | 'error' | 'info';
+
+/**
+ * Instagram タブの初回表示で自動同期すべきかを判定する。
+ *
+ * 粒度は JST の1日。ブログ側 GA4 取込の `resolveGa4SyncRange`（`already_synced`）と同型で、
+ * 「今日まだ同期していなければ取りに行く、済んでいれば DB のまま表示する」ことでレート枠
+ * （1同期あたり最大 51 コール）の消費を1日1回に抑える。
+ *
+ * @param lastSyncedAt `instagram_credentials.last_synced_at`。null は未同期
+ * @param todayJst 現在の JST 日付（`YYYY-MM-DD`）
+ */
+export function shouldAutoSyncInstagram(lastSyncedAt: string | null, todayJst: string): boolean {
+  if (lastSyncedAt === null) {
+    return true;
+  }
+  try {
+    // `< todayJst` ではなく不一致で見る。クロックスキューや手入力で last_synced_at が未来に
+    // なったとき、大小比較だとその日付を過ぎるまで自動同期が永久に止まる
+    return getJstDateISOFromTimestamp(lastSyncedAt) !== todayJst;
+  } catch (error) {
+    // getJstDateISOFromTimestamp は不正値で throw する。Server Component 内で投げると
+    // 画面全体が 500 になるため握る。値は自前の timestamptz 列なので通常は到達しない。
+    // 「要同期」に倒すのは、黙って永久に同期されなくなるより気づける方を選ぶため
+    // （実際の発火回数は呼び出し側の1日1回ガードで抑えられる）。
+    console.error('[Instagram Sync] invalid lastSyncedAt', { lastSyncedAt, error });
+    return true;
+  }
+}
 
 export function getInstagramSyncToastMessage(
   result: InstagramSyncResult & { needsReauth?: boolean }

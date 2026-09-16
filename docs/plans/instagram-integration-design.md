@@ -334,11 +334,11 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - **トークン失効の判定は `isInstagramRevokedTokenError` を使う**（`isInstagramReauthError` ではない）。Meta はレート制限（code 4 / 17 / 32 / 613）にも `"type":"OAuthException"` を付けるため、広い方の判定で credential を書き換えると**レート制限を恒久失効と誤認して全ユーザーの連携を壊す**。手動同期でも同じ判定を使うため、誤ると当該ユーザーの連携が自力回復不能になる。詳細は §6
    - **レート消費を記録する**: 応答ヘッダ `X-App-Usage` / `X-Business-Use-Case-Usage`（§3.3）を読み、`console.warn('[Instagram Sync]', { appUsage, bucUsage })` で残量を出す。閾値（例: `call_count >= 80`）を超えたら当該同期を打ち切り次回に委ねる。**現行 `instagramService` はヘッダを一切読んでいない**ため新規実装
    - **同期頻度の概念自体を持たない**（2026-08-05 決定。下記 item3）。同期はユーザーが「最新化」を押したときだけ走る
-3. **同期トリガーは手動のみ（MVP。2026-08-05 クライアント判断で cron を落とした）**
+3. **同期トリガーは手動のみ（MVP。2026-08-05 クライアント判断で cron を落とした）** → **2026-09-16 に「タブ初回表示の自動同期（JST 1日1回）」を追加した。下記「タブ初回表示の自動同期」を参照**
 
    **決定**: 自動同期（cron）を Phase 2 のスコープから外し、**Instagram タブの「最新化」ボタンだけ**にする。理由は「最初はシンプルな作り（MVP）優先」（CLAUDE.md の MVP 原則にも沿う）。
    - **落としたもの**: ~~`app/api/cron/instagram-sync/route.ts`~~（廃止）、~~`.github/workflows/hourly-cron.yml` の matrix 追加~~（廃止）、`count-batch` profile 連携、`INSTAGRAM_SYNC_ENABLED` キルスイッチの cron 側分岐、**§9 Q9（同期頻度の確認）そのもの**
-   - **副次的な利点**: §3.3 のレート枠の懸念（毎時×50件＝1ユーザー約1,200コール/日）が消える。ユーザーが押した回数しか消費しない。審査提出前にレート枠を使い切る事故（着手条件）も起こらなくなる
+   - **副次的な利点**: §3.3 のレート枠の懸念（毎時×50件＝1ユーザー約1,200コール/日）が消える。~~ユーザーが押した回数しか消費しない。~~ **（2026-09-16 訂正）自動同期の追加でこの前提は崩れた。消費量は「押した回数 + 1日1回 × Instagram タブを開いた日数」になる。上限は 1ユーザーあたり 51 コール/日 × DAU** で、毎時 cron 案（約1,200コール/日）の 1/24 に収まる。審査提出前にレート枠を使い切る事故（着手条件）も起こらない点は変わらない
    - **専用インポート画面は設けない**（従来どおり）。GSC dashboard の `OverviewTab.tsx` inline「最新化」とは異なり、**確認ダイアログは設けずボタン押下で即実行**する（**2026-08-08 決定**: データ取得・upsert による表示更新のみで、削除や連携解除のような不可逆な操作ではないため。連打・APIコスト保護はダイアログではなく `disabled={!syncEnabled || isSyncing}` で担保する）
 
    実装:
@@ -359,7 +359,25 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - **キルスイッチ**: 環境変数 `INSTAGRAM_SYNC_ENABLED`（既定 `true`、`false` で無効）は**残す**。cron が無くても、Meta 側の仕様変更・障害時に手動同期を止める手段は要る。無効時の挙動:
      - 手動「最新化」: ボタンを disabled にし、ツールバー直下に情報色 Alert「Instagramの同期を一時停止しています」。**押せるのに何も起きない状態にしない**
      - 一覧表示: DB の既存データはそのまま出す（`last_synced_at` も従来値のまま）。空にしない
-   - **初回同期の起動導線**: Phase 1 で既に連携済みのユーザーは `last_synced_at` が null。**OAuth callback 成功時に同期を自動起動しない**（callback を重くしない。10秒 timeout × 50件は callback 内で完了しない）。`/analytics` の Instagram タブ初回表示時に「まだデータがありません。［最新化］を押すと取得します」（§11.3）を出してユーザー操作を起点にする。**cron が無いので、押さなければ永久に空**である点が従来案との違い。空状態の文言はこの前提で書く
+   - **初回同期の起動導線**: Phase 1 で既に連携済みのユーザーは `last_synced_at` が null。**OAuth callback 成功時に同期を自動起動しない**（callback を重くしない。10秒 timeout × 50件は callback 内で完了しない）。~~`/analytics` の Instagram タブ初回表示時に「まだデータがありません。［最新化］を押すと取得します」（§11.3）を出してユーザー操作を起点にする。cron が無いので、押さなければ永久に空である点が従来案との違い~~ → **2026-09-16 変更。下記「タブ初回表示の自動同期」に置き換え**（「押さなければ永久に空」はクライアントから UX 上の問題として指摘された）
+
+   - **タブ初回表示の自動同期（2026-09-16 追加）**: `/analytics` の Instagram タブを開いた時点で `incremental` 同期を自動実行する。cron は引き続き作らない（下の「将来 cron を足す場合」は未着手のまま）。実質「ログイン起点の日次同期」になる。
+     - **キャッシュ粒度は JST 1日1回**。判定は純関数 `shouldAutoSyncInstagram(lastSyncedAt, todayJst)`（`src/lib/instagram-sync.ts`）で、ブログ側 GA4 取込の `resolveGa4SyncRange`（`src/server/lib/ga4-sync-range.ts`。`already_synced` を返す）と同型。`last_synced_at` が今日なら API を叩かず DB のまま表示する
+     - **判定の置き場所は2箇所**。①`app/analytics/page.tsx` が `instagramAutoSyncNeeded` を算出して prop で渡す（`instagramConnected && activeTab==='instagram'` のブロック内。ブロック外だと `last_synced_at` が常に null で blog タブでも true になる）②`syncInstagramData(mode, { trigger: 'auto' })` がサーバー側で再チェックし、今日すでに同期済みなら `{ success: true, alreadySynced: true }` で即返す。`trigger` 省略時は `'manual'` で、「最新化」ボタンの挙動は一切変えない
+     - **発火ガードは localStorage**（`ANALYTICS_STORAGE_KEYS.IG_AUTO_SYNCED_ON` = 最後に自動発火を試みた JST 日付）。`useRef` では足りない: Radix の `TabsContent` は `forceMount` 無しだと非アクティブ時にアンマウントするため blog ⇔ instagram の往復で ref が新品になり、かつ `last_synced_at` は同期完了時にしか進まない（in-flight 中も失敗後も prop は true のまま）。**発火の直前に日付を書く**
+     - **既知の天井（2つ）**:
+       1. 別端末・別ブラウザ・localStorage クリア時は同日に再発火しうる。サーバー側の1日1回チェックが最後の砦だが、それも in-flight の並走までは止めない。潰すなら `instagram_credentials.last_sync_started_at` 相当の列かロックが要る。**MVP 原則により先回りでは作らない**（実運用で重複が問題になったら着手）
+       2. 自動発火した Server Action は app router の単一キューを占有するため、完了までの間は他の Server Action が待たされる（新着ゼロなら数秒、初回同期は最大760秒）。タブ切替・ページ遷移は pending を discard するので恒久フリーズにはならない。実害が出たら `/api/ga4/sync` 型の Route Handler へ移すのが upgrade path。認可・キルスイッチ・トークン延長・revalidate を1呼び出し元のために二重化するので、現時点では採らない
+     - **UI**: 自動時は**トーストを出さない**（ブログタブが自動取得で通知を出さないのに合わせる）。ただし `getInstagramSyncToastMessage` が `success` 以外（レート制限中断・時間打ち切り・部分失敗・truncated）を返したときは握り潰さずツールバー直下 Alert（`syncAlert`）に落とす。
+       - **進行表示はツールバー直下に常時出す**（`role="status"` + spinner + 文言）。テーブルの空状態文言だけに頼ると、**2日目以降は既存データが並ぶので `items.length > 0` になり、自動同期中の手掛かりが「最新化」ボタンの disabled だけになる**。ユーザーが押していない処理なので、なおさら何が起きているか書く。初回（`last_synced_at == null`）は最大760秒かかりうるので「（初回は数分かかることがあります）」を添える
+       - **自動同期由来の Alert は絞り込み変更でクリアしない**。手動時はトーストが別に残るので消えてよかったが、自動時は Alert が唯一のチャネルで、消すと失敗の理由が画面のどこにも無くなる
+       - `syncAlert` / `backfillAlert` には `role="alert"`、テーブルの空状態には `role="status"` を付ける。取得中→一覧表示という状態変化がそこにしか出ないことがある
+       - 0件時の文言分岐は §11.3
+     - **副次的な利点**: 下記「⚠ トークン延長の契機がユーザー操作だけになる」が緩和される。自動発火も `ensureValidInstagramToken` を通るため、Instagram タブを開いているだけで 60日トークンが延長される
+     - **Non-goal**:
+       - cron の復活（2026-08-05 のクライアント判断を覆す範囲になる。タブオープン起点で「一覧が空のまま出ない」という要求は満たせる）
+       - 一覧の既定期間（直近30日）の変更（今回の要求外。§11.3 の空状態文言で backfill 導線だけ担保する）
+       - **中断（`stoppedReason`）時の同日自動リトライ**。`last_synced_at` は中断しても無条件で進む（`instagramSyncService`）ため、時間予算・レート制限・連続失敗で打ち切った日は自動同期が再開しない。回復は `syncAlert`（絞り込み変更でも消えない）と「最新化」ボタンに委ねる。自動リトライを入れるには「中断時は `last_synced_at` を進めない」というサービス側の挙動変更が要り、手動経路の意味づけも変わるため今回は取らない
    - **1リクエストで実行時間を使い切る経路がある**: 投稿インサイトは1件1コールで各 10 秒 timeout のため、**全件がタイムアウトすると 500 秒**かかる。Server Action は **`app/analytics/page.tsx` に `export const maxDuration = 800` を設定**する（`app/google-ads-dashboard/page.tsx:15` と同型。Vercel Pro / Fluid Compute 上限）。同期本体の**時間予算は 760 秒**（maxDuration より 40 秒短く、レスポンス返却の余裕 — `gscEvaluationService` の 280/300 秒比を踏襲）。**連続失敗 K 件（初期値 5）** は時間上限に達する**前**の早期中断条件（各失敗最大 10 秒 × 5 = 50 秒程度で打ち切りうる）。時間予算到達時は `{ stoppedReason: 'time_budget' }`、連続失敗時は `{ stoppedReason: 'consecutive_failures' }` を結果に含めトーストで伝える（再度「最新化」で続き）
    - **`truncated` の扱い**: 50件上限で打ち切った場合 `truncated: true` を結果に含め `console.warn` で記録する。**エラー扱いにしない**（意図した上限動作）。UI は §11.3 のトースト（incremental/backfill でモード別に文言を出し分け。詳細は §11.3「同期結果 UI」）で伝える。**2026-08-08 追加**: 50件上限自体はレート制限対策として維持するが、「51件目以降（それより古い投稿）が永遠に同期対象へ入らない」対応漏れがあったため、上記「同期モードの分離」で `incremental`（差分同期）と `backfill`（過去投稿の段階的取り込み）に分離して解消した
    - **将来 cron を足す場合**（本 Phase では実装しない）: `.github/workflows/hourly-cron.yml` は `on.schedule` が `'0 * * * *'` の1本のみで、各 step も `github.event.schedule == '0 * * * *'` で守られている（`hourly-cron.yml:65,71`）。matrix の `interval` フィールドはどこからも参照されていない注記にすぎず、**日次の枠は存在しない**。日1回にしたい場合は ①workflow に日次 cron を足して `interval` で分岐させる ②毎時呼び出しのまま route 側で `last_synced_at` を見てスキップする（`gsc-evaluate` の「次回評価予定日時 <= 現在日時」と同型）のいずれか。**②の方が既存前例があり、ユーザーごとに実行が分散する分レート枠にも優しい**
@@ -659,6 +677,9 @@ create table public.instagram_account_insights_daily (
 - [ ] 率の算出が純関数として切り出され、vitest がある（分母 `reach` が null / 0 / 通常値、分子 null、分子 0 かつ分母 > 0 のケースを含む）
 - [ ] 非表示にした列でソート中になる状態が起きない — **列を非表示にした時点で `ig_sort` を `posted_at` desc に戻す**（§11.3 採用方式）
 - [ ] **手動「最新化」で同期され、`last_synced_at` が進む**（cron は Phase 2 スコープ外 — §4 Phase 2 item3）
+- [x] **（2026-09-16 追加）Instagram タブを開くと自動で `incremental` 同期が走り、押さずに一覧が出る**。同日中はタブを往復・リロードしても再発火しない（localStorage `analytics.instagramAutoSyncedOn.<userId>` と Server Action 側の1日1回チェックの二重ガード）。自動時はトーストを出さず、`success` 以外の結果だけ Alert に出る — §4 Phase 2 item3「タブ初回表示の自動同期」
+  - 実機確認済み（2026-09-16、ローカル dev）: 初回表示で `syncInstagramData("incremental", {"trigger":"auto"})` が**1回だけ**実行され `last_synced_at` が進む。その後 blog ⇔ instagram の往復・F5 リロードでは Server Action 自体が呼ばれない（`autoSyncNeeded=false`）。localStorage を消して再読込しても、`last_synced_at` が同日なのでサーバー判定で発火しない。手動「最新化」は従来どおりトースト（「更新対象の投稿はありませんでした」）が出て `last_synced_at` が更新される
+  - **未確認**: `INSTAGRAM_SYNC_ENABLED=false` での自動発火抑止（コード上は `autoSyncNeeded && syncEnabled` の AND だが、env を落とした実機確認はしていない）
 - [x] ~~初回同期で、**§5.4 で日次取得可と確定した列**について `instagram_account_insights_daily` に直近30日分が取り込まれる~~ → **2026-08-08 廃止**（§4 Phase2 item3 末尾参照）
 - [ ] STORIES 等非スコープ `media_product_type` が来ても同期全体が失敗せず skipped ログが出る
 - [ ] 50件打ち切り時 `truncated: true` がログに残り、エラー扱いにならない
@@ -999,7 +1020,11 @@ create table public.instagram_account_insights_daily (
     - **「独自計算です」だけで済ませない。式そのものを出す** — 何と比較すべきかが分からないと、ズレたときに判断できない
   - **ソート対象にしない**（`ig_sort` は `posted_at` / `reach` / `views` のまま）。DB に持たない以上、ページング前の全体ソートができないため。**ページ内だけ並び替わる中途半端な挙動を作らない**
 - **未連携ユーザー向けの Instagram タブ空状態は定義しない（到達不能）**: §4 Phase 2 item4 / §8 により、未連携ユーザーは Instagram タブ UI 自体が出ず `?tab=instagram` も `blog` にフォールバックする。**連携導線は §11.1 の `/setup` カードのみ**
-- **連携済みだが同期0件**: 「まだデータがありません。［最新化］を押すと取得します」。Phase 1 から連携済みのユーザーは初回同期が走っていないため**必ずこの状態から始まる**（§4 Phase 2 item3「初回同期の起動導線」）
+- **一覧が0件のときの文言は3分岐**（2026-09-16 改訂。§4 Phase 2 item3「タブ初回表示の自動同期」に対応）:
+  1. **同期中**（自動・手動を問わず）→「Instagramデータを取得中...」
+  2. **未同期（`last_synced_at == null`）かつ非同期中** →「まだデータがありません。「最新化」を押すと取得します」。自動同期がキルスイッチや localStorage ガードで見送られたときにだけ出る
+  3. **同期済みで0件** →「表示条件に一致する投稿がありません。期間や種別フィルタを変更するか、「過去の投稿をインポート」で古い投稿を取得してください」。**一覧の既定期間は直近30日なので、30日以内に投稿が無いアカウントは自動同期が成功してもここに来る**。旧文言は期間フィルタにしか触れておらず、この状態から backfill への導線が消えていた
+  - ~~Phase 1 から連携済みのユーザーは初回同期が走っていないため必ずこの状態から始まる~~ → 自動同期の追加で、タブを開いた時点で 1 → 3（または一覧表示）へ進むようになった
 - **指標セルの3状態を見分けられるようにする**（2026-08-04 追記）: ①実データの `0`（保存・シェアが実際に0件。§3.3）②取得失敗（再試行で回復しうる。`-` + 再取得導線）③**対象外**（`insights_unavailable` + `insights_unavailable_reason`）。③は再試行しても直らないので、`-` と同じ見た目にせず **`reason` に応じたツールチップ**（§5.2 / §3.3）を出す
 - **同期停止中**（`INSTAGRAM_SYNC_ENABLED=false`）: 「最新化」ボタンを disabled にし、ツールバー直下に情報色 Alert「Instagramの同期を一時停止しています」。テーブルは既存データをそのまま表示する（§4 Phase 2 item3）
 - **同期結果 UI**（`getInstagramSyncToastMessage(result)` に集約。`OverviewTab.tsx` の `getQueryImportToastMessage` と同型。§6 エラーパス準拠。**単一の toast を `id` で更新し続ける**方式で、成功時も失敗時も新規 toast を積み増さない。**2026-08-08 追加**: `result.mode`（`incremental`/`backfill`）で文言を出し分ける）:
