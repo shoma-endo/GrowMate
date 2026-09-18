@@ -1,5 +1,6 @@
 import type { FieldConfigTableKey } from '@/types/field-config';
 import type { CategoryFilterConfig, StatusFilterConfig } from '@/types/category';
+import type { InstagramMediaSortKey } from '@/types/instagram';
 import type { LinkedMessageRule } from '@/components/LinkedMessage';
 
 // Chat Configuration
@@ -429,6 +430,11 @@ export const ANALYTICS_STORAGE_KEYS = {
    * URL に絞り込み指定があるときは復元しない（`AnalyticsTable` 側で制御）。
    */
   STATUS_FILTER: 'analytics.statusFilter',
+  /**
+   * Instagram タブの並び順。**ページ番号は保存しない。**
+   * 3ページ目が復元されると「先頭が見つからない」という別の誤認を生むため。
+   */
+  IG_SORT: 'analytics.instagramSort',
   OPS_EXPANDED: 'analytics.opsExpanded',
   VISIBLE_COLUMNS: 'analytics.visibleColumns',
   IG_VISIBLE_COLUMNS: 'analytics.instagramVisibleColumns',
@@ -564,6 +570,28 @@ export function loadStatusFilterFromStorage(): StatusFilterConfig {
 /** 状態フィルターが1つでも有効か（復元対象・残留判定に使う） */
 export function hasAnyStatusFilter(config: StatusFilterConfig): boolean {
   return config.unreadSuggestion || config.unstartedGscEvaluation || config.unsummarized;
+}
+
+/** Instagram タブの既定の並び順。`app/analytics/page.tsx` のフォールバックと揃える */
+const DEFAULT_IG_SORT: InstagramMediaSortKey = 'posted_at';
+
+/**
+ * 保存済みの並び順を解釈する。**許可値以外は既定へ畳む。**
+ * 解釈せずに URL へ流すと、壊れた値がサーバーのクエリに乗る。
+ * localStorage に触らない純粋関数にしてあるのは、vitest の environment が `node` のみのため。
+ */
+export function parseInstagramSortKey(raw: string | null): InstagramMediaSortKey {
+  return raw === 'reach' || raw === 'views' || raw === 'posted_at' ? raw : DEFAULT_IG_SORT;
+}
+
+/** localStorageから Instagram タブの並び順を読み込むヘルパー */
+export function loadInstagramSortFromStorage(): InstagramMediaSortKey {
+  if (typeof window === 'undefined') return DEFAULT_IG_SORT;
+  try {
+    return parseInstagramSortKey(localStorage.getItem(ANALYTICS_STORAGE_KEYS.IG_SORT));
+  } catch {
+    return DEFAULT_IG_SORT;
+  }
 }
 
 /**

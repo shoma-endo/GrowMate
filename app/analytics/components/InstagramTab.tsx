@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { RefreshCw, Settings, Loader2, History } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import {
+  ANALYTICS_STORAGE_KEYS,
+  INSTAGRAM_COLUMNS,
+  loadInstagramSortFromStorage,
+} from '@/lib/constants';
+import { normalizeFieldConfig } from '@/lib/field-config';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getInstagramSyncToastMessage } from '@/lib/instagram-sync';
 import { formatJstDateISO } from '@/lib/date-utils';
@@ -92,6 +98,7 @@ export default function InstagramTab({
   fieldConfig,
 }: InstagramTabProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   // 自動同期する回は、エフェクトが走る前の1フレームで「まだデータがありません」が
   // ちらつかないよう最初から同期中にしておく。localStorage はここで見ない
   // （SSR 側で読めず hydration mismatch になる）。見送りの判定はエフェクト内で行い、
@@ -301,10 +308,41 @@ export default function InstagramTab({
     });
   };
 
+  // localStorageに並び順を保存するヘルパー。**ページ番号は保存しない**
+  const saveInstagramSort = (sort: InstagramMediaSortKey) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(ANALYTICS_STORAGE_KEYS.IG_SORT, sort);
+    } catch {
+      // ストレージが使えない環境でも並び替え自体は URL で動くので止めない
+    }
+  };
+
+  // URL に ig_sort が無いときだけ、保存済みの並び順を1回だけ復元する。
+  // URL 指定時は deep link の意図を尊重して触らない。
+  const didRestoreSortRef = React.useRef(false);
+  React.useEffect(() => {
+    if (didRestoreSortRef.current) return;
+    didRestoreSortRef.current = true;
+
+    if (searchParams?.get('ig_sort')) return;
+    const stored = loadInstagramSortFromStorage();
+    if (stored === 'posted_at') return;
+    // **非表示の列を指す並び順は復元しない。** 復元しても resetSortIfHidden が
+    // すぐ既定へ戻すので、無駄な画面遷移が1回増えるだけになる
+    const { visibleIds } = normalizeFieldConfig(INSTAGRAM_COLUMNS, fieldConfig);
+    if (!visibleIds.includes(stored)) return;
+
+    router.replace(buildFilterHref({ igSort: stored, igPage: 1 }));
+  }, [searchParams, fieldConfig, buildFilterHref, router]);
+
   // buildFilterHref は AnalyticsClient.tsx から毎レンダリング新規生成される関数のため
   // useCallback で包んでも参照は安定しない。FieldConfigurator 側が onChangeRef で
   // 参照不安定性を吸収する設計になっているため、ここは素の関数でよい。
   const resetSortIfHidden = () => {
+    // **リセット結果も保存する。** 保存しないと、非表示の列を指す並び順が
+    // localStorage に残り続け、次回マウントで復元 → 即リセットを繰り返す
+    saveInstagramSort('posted_at');
     router.push(buildFilterHref({ igSort: 'posted_at', igPage: 1 }));
   };
 
@@ -444,11 +482,11 @@ export default function InstagramTab({
               <span className="text-xs text-gray-500">並び順</span>
               <Select
                 value={igSort}
-                onValueChange={value =>
-                  router.push(
-                    buildFilterHref({ igSort: value as InstagramMediaSortKey, igPage: 1 })
-                  )
-                }
+                onValueChange={value => {
+                  const next = value as InstagramMediaSortKey;
+                  saveInstagramSort(next);
+                  router.push(buildFilterHref({ igSort: next, igPage: 1 }));
+                }}
               >
                 <SelectTrigger className="w-[160px]">
                   <SelectValue />
