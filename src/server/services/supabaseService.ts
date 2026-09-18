@@ -47,104 +47,7 @@ export type SupabaseResult<T> =
   | { success: true; data: T }
   | { success: false; error: SupabaseErrorInfo };
 
-type GoogleAdsEvaluationSettingsTable = {
-  Row: {
-    id: string;
-    user_id: string;
-    date_range_days: number;
-    last_evaluated_on: string | null;
-    created_at: string;
-    updated_at: string;
-  };
-  Insert: {
-    user_id: string;
-    date_range_days?: number;
-    last_evaluated_on?: string | null;
-    updated_at?: string;
-  };
-  Update: {
-    date_range_days?: number;
-    last_evaluated_on?: string | null;
-    updated_at?: string;
-  };
-  Relationships: [];
-};
-
-type GoogleAdsNegativeKeywordsSettingsTable = {
-  Row: {
-    id: string;
-    user_id: string;
-    enabled: boolean;
-    send_hour_jst: number;
-    last_sent_on: string | null;
-    last_attempted_on: string | null;
-    last_send_error: string | null;
-    created_at: string;
-    updated_at: string;
-  };
-  Insert: {
-    user_id: string;
-    enabled?: boolean;
-    send_hour_jst?: number;
-    last_sent_on?: string | null;
-    last_attempted_on?: string | null;
-    last_send_error?: string | null;
-    updated_at?: string;
-  };
-  Update: {
-    enabled?: boolean;
-    send_hour_jst?: number;
-    last_sent_on?: string | null;
-    last_attempted_on?: string | null;
-    last_send_error?: string | null;
-    updated_at?: string;
-  };
-  Relationships: [];
-};
-
 type AdminActionLogStatus = 'started' | 'succeeded' | 'failed';
-
-type AdminActionLogTable = {
-  Row: {
-    id: string;
-    actor_user_id: string;
-    target_user_id: string;
-    target_supabase_auth_id: string | null;
-    action: string;
-    status: AdminActionLogStatus;
-    failure_code: string | null;
-    created_at: string;
-    completed_at: string | null;
-  };
-  Insert: {
-    id?: string;
-    actor_user_id: string;
-    target_user_id: string;
-    target_supabase_auth_id?: string | null;
-    action: string;
-    status: AdminActionLogStatus;
-    failure_code?: string | null;
-    created_at?: string;
-    completed_at?: string | null;
-  };
-  Update: {
-    status?: AdminActionLogStatus;
-    failure_code?: string | null;
-    completed_at?: string | null;
-    target_supabase_auth_id?: string | null;
-  };
-  Relationships: [];
-};
-
-type ExtendedDatabase = Omit<Database, 'public'> & {
-  public: Omit<Database['public'], 'Tables'> & {
-    Tables: Database['public']['Tables'] & {
-      google_ads_evaluation_settings: GoogleAdsEvaluationSettingsTable;
-      google_ads_negative_keywords_settings: GoogleAdsNegativeKeywordsSettingsTable;
-      admin_action_logs: AdminActionLogTable;
-    };
-  };
-};
 
 /**
  * SupabaseServiceクラス: サーバーサイドでSupabaseを操作するためのサービス
@@ -1219,20 +1122,8 @@ export class SupabaseService {
     };
   }
 
-  private getGoogleAdsEvaluationClient(): SupabaseClient<ExtendedDatabase> {
-    return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
-  }
-
-  private getGoogleAdsNegativeKeywordsSettingsClient(): SupabaseClient<ExtendedDatabase> {
-    return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
-  }
-
-  private getAdminActionLogsClient(): SupabaseClient<ExtendedDatabase> {
-    return this.supabase as unknown as SupabaseClient<ExtendedDatabase>;
-  }
-
   private mapGoogleAdsEvaluationSettingsRow(
-    row: GoogleAdsEvaluationSettingsTable['Row']
+    row: Tables<'google_ads_evaluation_settings'>
   ): GoogleAdsEvaluationSettingsRecord {
     return {
       userId: row.user_id,
@@ -1244,7 +1135,7 @@ export class SupabaseService {
   async getGoogleAdsEvaluationSettings(
     userId: string
   ): Promise<SupabaseResult<GoogleAdsEvaluationSettingsRecord | null>> {
-    const client = this.getGoogleAdsEvaluationClient();
+    const client = this.supabase;
     const { data, error } = await client
       .from('google_ads_evaluation_settings')
       .select('*')
@@ -1267,9 +1158,9 @@ export class SupabaseService {
   async upsertGoogleAdsEvaluationSettings(
     input: UpsertGoogleAdsEvaluationSettingsInput
   ): Promise<SupabaseResult<void>> {
-    const client = this.getGoogleAdsEvaluationClient();
+    const client = this.supabase;
     const now = new Date().toISOString();
-    const payload: GoogleAdsEvaluationSettingsTable['Insert'] = {
+    const payload: TablesInsert<'google_ads_evaluation_settings'> = {
       user_id: input.userId,
       updated_at: now,
     };
@@ -1298,9 +1189,9 @@ export class SupabaseService {
 
   async updateGoogleAdsEvaluationSettings(
     userId: string,
-    updates: GoogleAdsEvaluationSettingsTable['Update']
+    updates: TablesUpdate<'google_ads_evaluation_settings'>
   ): Promise<SupabaseResult<void>> {
-    const client = this.getGoogleAdsEvaluationClient();
+    const client = this.supabase;
     const { data, error } = await client
       .from('google_ads_evaluation_settings')
       .update({
@@ -1330,7 +1221,7 @@ export class SupabaseService {
   }
 
   private mapGoogleAdsNegativeKeywordsSettingsRow(
-    row: GoogleAdsNegativeKeywordsSettingsTable['Row']
+    row: Tables<'google_ads_negative_keywords_settings'>
   ): GoogleAdsNegativeKeywordsSuggestionSettingsRecord {
     return {
       userId: row.user_id,
@@ -1345,7 +1236,7 @@ export class SupabaseService {
   async getGoogleAdsNegativeKeywordsSettings(
     userId: string
   ): Promise<SupabaseResult<GoogleAdsNegativeKeywordsSuggestionSettingsRecord | null>> {
-    const client = this.getGoogleAdsNegativeKeywordsSettingsClient();
+    const client = this.supabase;
     const { data, error } = await client
       .from('google_ads_negative_keywords_settings')
       .select('*')
@@ -1366,8 +1257,8 @@ export class SupabaseService {
   async upsertGoogleAdsNegativeKeywordsSettings(
     input: UpsertGoogleAdsNegativeKeywordsSuggestionSettingsInput
   ): Promise<SupabaseResult<void>> {
-    const client = this.getGoogleAdsNegativeKeywordsSettingsClient();
-    const payload: GoogleAdsNegativeKeywordsSettingsTable['Insert'] = {
+    const client = this.supabase;
+    const payload: TablesInsert<'google_ads_negative_keywords_settings'> = {
       user_id: input.userId,
       updated_at: new Date().toISOString(),
     };
@@ -1402,9 +1293,9 @@ export class SupabaseService {
 
   async updateGoogleAdsNegativeKeywordsSettings(
     userId: string,
-    updates: GoogleAdsNegativeKeywordsSettingsTable['Update']
+    updates: TablesUpdate<'google_ads_negative_keywords_settings'>
   ): Promise<SupabaseResult<void>> {
-    const client = this.getGoogleAdsNegativeKeywordsSettingsClient();
+    const client = this.supabase;
     const { data, error } = await client
       .from('google_ads_negative_keywords_settings')
       .update({
@@ -1437,7 +1328,7 @@ export class SupabaseService {
     sendHourJst: number,
     todayJst: string
   ): Promise<SupabaseResult<GoogleAdsNegativeKeywordsSuggestionSettingsRecord[]>> {
-    const client = this.getGoogleAdsNegativeKeywordsSettingsClient();
+    const client = this.supabase;
     const { data, error } = await client
       .from('google_ads_negative_keywords_settings')
       .select('*')
@@ -2513,7 +2404,7 @@ export class SupabaseService {
     action: string;
     targetSupabaseAuthId?: string | null;
   }): Promise<SupabaseResult<string>> {
-    const client = this.getAdminActionLogsClient();
+    const client = this.supabase;
     const { data, error } = await client
       .from('admin_action_logs')
       .insert({
@@ -2542,7 +2433,7 @@ export class SupabaseService {
     status: Extract<AdminActionLogStatus, 'succeeded' | 'failed'>,
     failureCode?: string
   ): Promise<SupabaseResult<void>> {
-    const client = this.getAdminActionLogsClient();
+    const client = this.supabase;
     const { data, error } = await client
       .from('admin_action_logs')
       .update({
