@@ -1,5 +1,5 @@
 import type { FieldConfigTableKey } from '@/types/field-config';
-import type { CategoryFilterConfig } from '@/types/category';
+import type { CategoryFilterConfig, StatusFilterConfig } from '@/types/category';
 import type { LinkedMessageRule } from '@/components/LinkedMessage';
 
 // Chat Configuration
@@ -423,6 +423,12 @@ export const FIELD_CONFIG_TABLE_KEYS = {
 // Analytics ページの localStorage キー
 export const ANALYTICS_STORAGE_KEYS = {
   CATEGORY_FILTER: 'analytics.categoryFilter',
+  /**
+   * 状態フィルター（改善提案あり / 評価未設定 / 未要約）。カテゴリとは別キーにする。
+   * 通知からのディープリンク（`?unread_suggestion=1`）と混ざらないよう、
+   * URL に絞り込み指定があるときは復元しない（`AnalyticsTable` 側で制御）。
+   */
+  STATUS_FILTER: 'analytics.statusFilter',
   OPS_EXPANDED: 'analytics.opsExpanded',
   VISIBLE_COLUMNS: 'analytics.visibleColumns',
   IG_VISIBLE_COLUMNS: 'analytics.instagramVisibleColumns',
@@ -510,6 +516,54 @@ export function loadCategoryFilterFromStorage(): CategoryFilterConfig {
     // ignore
   }
   return DEFAULT_CATEGORY_FILTER;
+}
+
+// 状態フィルターのデフォルト値
+const DEFAULT_STATUS_FILTER: StatusFilterConfig = {
+  unreadSuggestion: false,
+  unstartedGscEvaluation: false,
+  unsummarized: false,
+};
+
+/**
+ * 保存済みの状態フィルターを解釈する。
+ *
+ * 壊れた値・欠けた値は「絞り込みなし」へ畳む。**既定を「絞り込みあり」にしてはならない。**
+ * 残留したフィルターで一覧がほぼ空になると、利用者は記事が消えたと誤認する。
+ * localStorage に触らない純粋関数にしてあるのは、vitest の environment が `node` のみで
+ * ブラウザ API を伴う関数をテストできないため。
+ */
+export function parseStatusFilterConfig(raw: string | null): StatusFilterConfig {
+  if (!raw) return DEFAULT_STATUS_FILTER;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_STATUS_FILTER;
+    const record = parsed as Record<string, unknown>;
+    const pick = (key: keyof StatusFilterConfig) =>
+      typeof record[key] === 'boolean' ? (record[key] as boolean) : false;
+    return {
+      unreadSuggestion: pick('unreadSuggestion'),
+      unstartedGscEvaluation: pick('unstartedGscEvaluation'),
+      unsummarized: pick('unsummarized'),
+    };
+  } catch {
+    return DEFAULT_STATUS_FILTER;
+  }
+}
+
+/** localStorageから状態フィルターを読み込むヘルパー */
+export function loadStatusFilterFromStorage(): StatusFilterConfig {
+  if (typeof window === 'undefined') return DEFAULT_STATUS_FILTER;
+  try {
+    return parseStatusFilterConfig(localStorage.getItem(ANALYTICS_STORAGE_KEYS.STATUS_FILTER));
+  } catch {
+    return DEFAULT_STATUS_FILTER;
+  }
+}
+
+/** 状態フィルターが1つでも有効か（復元対象・残留判定に使う） */
+export function hasAnyStatusFilter(config: StatusFilterConfig): boolean {
+  return config.unreadSuggestion || config.unstartedGscEvaluation || config.unsummarized;
 }
 
 /**
