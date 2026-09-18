@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import ws from 'ws';
+import { loadEnv } from './lib/load-env';
 
 // PostgreSQL接続用の型定義（pgライブラリがインストールされていない場合のフォールバック）
 interface TableSizeInfo {
@@ -249,33 +250,6 @@ function printProPlanQuotaAndRecommendations(databaseSizeBytes: number | null): 
   console.log(
     '  ℹ️  MAU / ストレージ / エグレスは本スクリプトでは計測していません（Supabase Dashboard で確認）。'
   );
-}
-
-// .env.localファイルから環境変数を読み込む
-function loadEnv() {
-  try {
-    const envPath = join(__dirname, '../.env.local');
-    const envContent = readFileSync(envPath, 'utf-8');
-    const env: Record<string, string> = {};
-
-    for (const line of envContent.split('\n')) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        const [key, ...valueParts] = trimmed.split('=');
-        if (key && valueParts.length > 0) {
-          env[key.trim()] = valueParts
-            .join('=')
-            .trim()
-            .replace(/^["']|["']$/g, '');
-        }
-      }
-    }
-
-    return env;
-  } catch (error) {
-    console.error('環境変数の読み込みエラー:', error);
-    return {};
-  }
 }
 
 /**

@@ -1,10 +1,8 @@
-import { redirect } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import { BackLink } from '@/components/BackLink';
-import { authMiddleware } from '@/server/middleware/auth.middleware';
-import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
+import { requireSetupAuth } from '@/server/lib/require-setup-auth';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions';
 import { isGoogleAdsTemporaryError } from '@/lib/home-today';
@@ -224,11 +222,7 @@ export default async function GoogleAdsSetupPage({
 }: {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const authResult = await authMiddleware();
-  redirectIfEmailLinkConflict(authResult);
-  if (authResult.error || !authResult.userId) {
-    redirect('/login');
-  }
+  const authResult = await requireSetupAuth();
 
   const resolvedParams = searchParams ? await searchParams : {};
 

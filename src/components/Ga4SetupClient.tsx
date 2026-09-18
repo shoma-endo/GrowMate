@@ -14,7 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { Ga4ConnectionStage, Ga4ConnectionStatus } from '@/types/ga4';
+import type { Ga4ConnectionStatus } from '@/types/ga4';
+import { GA4_STAGE_META } from '@/lib/ga4-stage-meta';
 import { Plug, RefreshCw, AlertTriangle, BarChart3, Loader2 } from 'lucide-react';
 import { BackLink } from '@/components/BackLink';
 import {
@@ -40,11 +41,6 @@ const GA4_EVENT_LABELS: Record<string, string> = {
   purchase: '購入完了',
   close_convert_lead: 'リード獲得完了（クローズ）',
   qualify_lead: '有望リード判定',
-};
-const GA4_STAGE_META: Record<Ga4ConnectionStage, { label: string; className: string }> = {
-  unlinked: { label: '未連携', className: 'bg-gray-100 text-gray-800' },
-  linked_unselected: { label: '連携済み未選択', className: 'bg-amber-100 text-amber-800' },
-  configured: { label: '設定完了', className: 'bg-green-100 text-green-800' },
 };
 
 type Ga4ManualSyncData =
@@ -88,8 +84,8 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
     status.thresholdReadRate != null ? String(status.thresholdReadRate) : ''
   );
   const isGa4DirtyRef = useRef(false);
-  const [ga4NeedsReauth, setGa4NeedsReauth] = useState(false);
-  const [ga4HasTemporaryError, setGa4HasTemporaryError] = useState(false);
+  const ga4NeedsReauth = status.needsReauth ?? false;
+  const ga4HasTemporaryError = status.hasTemporaryError ?? false;
 
   const connectedGa4Property = useMemo(() => {
     if (!selectedGa4PropertyId) return null;
@@ -197,23 +193,19 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
     try {
       const result = await refetchGa4StatusWithValidation();
       if (result.success) {
-        setStatus(result.data);
-        setGa4NeedsReauth(result.needsReauth);
-        setGa4HasTemporaryError(result.data.hasTemporaryError ?? false);
+        setStatus({ ...result.data, needsReauth: result.needsReauth });
       } else {
-        setGa4NeedsReauth(false);
-        setGa4HasTemporaryError(false);
+        setStatus({ ...status, needsReauth: false, hasTemporaryError: false });
         setAlertMessage(result.error || 'GA4ステータスの取得に失敗しました');
       }
     } catch (error) {
       console.error('GA4ステータス取得エラー:', error);
-      setGa4NeedsReauth(false);
-      setGa4HasTemporaryError(false);
+      setStatus({ ...status, needsReauth: false, hasTemporaryError: false });
       setAlertMessage('GA4ステータスの取得に失敗しました');
     } finally {
       setIsCheckingGa4Status(false);
     }
-  }, [setAlertMessage, setStatus]);
+  }, [setAlertMessage, setStatus, status]);
 
   useEffect(() => {
     if (isGa4DirtyRef.current) {
@@ -237,14 +229,6 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
       refetchKeyEvents(selectedGa4PropertyId);
     }
   }, [selectedGa4PropertyId, refetchKeyEvents]);
-
-  useEffect(() => {
-    setGa4NeedsReauth(status.needsReauth ?? false);
-  }, [status.needsReauth]);
-
-  useEffect(() => {
-    setGa4HasTemporaryError(status.hasTemporaryError ?? false);
-  }, [status.hasTemporaryError]);
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-8 space-y-6">

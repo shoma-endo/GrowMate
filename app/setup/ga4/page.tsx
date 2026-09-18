@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
 import Ga4SetupClient from '@/components/Ga4SetupClient';
-import { authMiddleware } from '@/server/middleware/auth.middleware';
-import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
+import { requireSetupAuth } from '@/server/lib/require-setup-auth';
 import { toGa4ConnectionStatusFromResolution } from '@/server/lib/ga4-status';
 import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
 
@@ -14,11 +12,7 @@ export default async function Ga4SetupPage() {
       process.env.GOOGLE_SEARCH_CONSOLE_REDIRECT_URI
   );
 
-  const authResult = await authMiddleware();
-  redirectIfEmailLinkConflict(authResult);
-  if (authResult.error || !authResult.userId) {
-    redirect('/login');
-  }
+  const authResult = await requireSetupAuth();
 
   const targetUserId = authResult.userId;
   // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを

@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
-import { authMiddleware } from '@/server/middleware/auth.middleware';
-import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
+import { requireSetupAuth } from '@/server/lib/require-setup-auth';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -68,11 +67,7 @@ export default async function InstagramSetupPage({
 }: {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const authResult = await authMiddleware();
-  redirectIfEmailLinkConflict(authResult);
-  if (authResult.error || !authResult.userId) {
-    redirect('/login');
-  }
+  const authResult = await requireSetupAuth();
 
   if (!canAccessInstagram(authResult.userDetails?.role ?? null)) {
     redirect('/setup');
