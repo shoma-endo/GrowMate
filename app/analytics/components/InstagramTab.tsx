@@ -25,6 +25,7 @@ import type {
   InstagramMediaSortKey,
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
+import type { StoredFieldConfig } from '@/types/field-config';
 import InstagramMediaTable from './InstagramMediaTable';
 
 interface InstagramTabProps {
@@ -54,6 +55,8 @@ interface InstagramTabProps {
     igSort?: InstagramMediaSortKey;
     igPage?: number;
   }) => string;
+  /** 保存済みのフィールド構成（未保存なら null） */
+  fieldConfig: StoredFieldConfig | null;
 }
 
 /** 同期中の表示文言。トースト・ツールバー直下の進行表示・空状態の3箇所で共有する */
@@ -86,6 +89,7 @@ export default function InstagramTab({
   autoSyncStorageKey,
   buildIgPageHref,
   buildFilterHref,
+  fieldConfig,
 }: InstagramTabProps) {
   const router = useRouter();
   // 自動同期する回は、エフェクトが走る前の1フレームで「まだデータがありません」が
@@ -543,6 +547,7 @@ export default function InstagramTab({
         <InstagramMediaTable
           items={items}
           igSort={igSort}
+          fieldConfig={fieldConfig}
           onSortColumnHidden={resetSortIfHidden}
           emptyMessage={emptyMessage}
         />

@@ -11,10 +11,12 @@ import {
   ANALYTICS_COLUMNS,
   BLOG_STEP_IDS,
   ANALYTICS_STORAGE_KEYS,
+  FIELD_CONFIG_TABLE_KEYS,
   loadCategoryFilterFromStorage,
   type BlogStepId,
 } from '@/lib/constants';
 import type { AnalyticsContentItem } from '@/types/analytics';
+import type { StoredFieldConfig } from '@/types/field-config';
 import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 import {
   isEmailLinkConflictResult,
@@ -82,6 +84,8 @@ interface Props {
   hasUnstartedGscEvaluation: boolean;
   hasUnsummarized: boolean;
   hasUrlFilterParams: boolean;
+  /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
+  fieldConfig: StoredFieldConfig | null;
   selection?: {
     selectedIds: Set<string>;
     /** 全選択中に個別解除した記事（BR-07「全選択後の個別解除」）。isSelectAll が false のときは空 */
@@ -159,6 +163,7 @@ export default function AnalyticsTable({
   hasUnstartedGscEvaluation,
   hasUnsummarized,
   hasUrlFilterParams,
+  fieldConfig,
   selection,
 }: Props) {
   const router = useRouter();
@@ -829,7 +834,9 @@ export default function AnalyticsTable({
   return (
     <>
       <FieldConfigurator
-        storageKey={ANALYTICS_STORAGE_KEYS.VISIBLE_COLUMNS}
+        tableKey={FIELD_CONFIG_TABLE_KEYS.ANALYTICS}
+        initialConfig={fieldConfig}
+        legacyStorageKey={ANALYTICS_STORAGE_KEYS.VISIBLE_COLUMNS}
         columns={ANALYTICS_COLUMNS}
         hideTrigger
         triggerId="analytics-field-config-trigger"
