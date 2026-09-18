@@ -1,8 +1,6 @@
-import { redirect } from 'next/navigation';
 import { getWordPressSettings } from '@/server/actions/wordpress.actions';
 import SetupDashboard from '@/components/SetupDashboard';
-import { authMiddleware } from '@/server/middleware/auth.middleware';
-import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
+import { requireSetupAuth } from '@/server/lib/require-setup-auth';
 import { toGscConnectionStatusFromResolution } from '@/server/lib/gsc-status';
 import { toGa4ConnectionStatusFromResolution } from '@/server/lib/ga4-status';
 import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
@@ -14,11 +12,7 @@ import { isGoogleAdsTemporaryError } from '@/lib/home-today';
 export const dynamic = 'force-dynamic';
 
 export default async function SetupPage() {
-  const authResult = await authMiddleware();
-  redirectIfEmailLinkConflict(authResult);
-  if (authResult.error || !authResult.userId) {
-    redirect('/login');
-  }
+  const authResult = await requireSetupAuth();
   // Setup page should be accessible to owners at all times
   // for configuration and error resolution (e.g., GSC re-auth).
 
