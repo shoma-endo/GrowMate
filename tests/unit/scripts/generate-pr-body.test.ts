@@ -70,4 +70,13 @@ describe('composeBody', () => {
     expect(composed).toContain('## 概要\n列の保存先を変更する。');
     expect(composed).toContain('## 比較\nhttps://example.com/compare');
   });
+
+  it('受け入れテスト手順と検証観点を含む本文を壊さない', () => {
+    const body = `## 概要\n${'内容'.repeat(30)}\n\n## 受け入れテスト手順\n1. 画面を開く\n\n## 検証観点\n- 境界値`;
+    expect(normalizeGeneratedBody(body)).toBe(body);
+    expect(isUsableBody(body)).toBe(true);
+    const withNewSections = composeBody(body, 'https://example.com/compare');
+    expect(withNewSections).toContain('## 受け入れテスト手順');
+    expect(withNewSections).toContain('## 検証観点');
+  });
 });
