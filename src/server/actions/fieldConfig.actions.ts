@@ -21,14 +21,15 @@ import type { ServerActionResult } from '@/lib/async-handler';
 export async function saveFieldConfig(
   input: SaveFieldConfigInput
 ): Promise<ServerActionResult<never>> {
-  const parsed = saveFieldConfigSchema.safeParse(input);
-  if (!parsed.success) {
-    console.error('[fieldConfig.actions] validation failed:', z.prettifyError(parsed.error));
-    return { success: false, error: ERROR_MESSAGES.COMMON.VALIDATION_FAILED };
-  }
-
   try {
     const result = await withAuth(async ({ userId }) => {
+      // **認証を通してから検証する。** 未認証の相手に入力検証を走らせない
+      const parsed = saveFieldConfigSchema.safeParse(input);
+      if (!parsed.success) {
+        console.error('[fieldConfig.actions] validation failed:', z.prettifyError(parsed.error));
+        return { success: false as const, error: ERROR_MESSAGES.COMMON.VALIDATION_FAILED };
+      }
+
       const saved = await userTableFieldConfigService.upsert({
         userId,
         tableKey: parsed.data.tableKey,

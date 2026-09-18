@@ -147,4 +147,24 @@ describe('isSameFieldConfig', () => {
       )
     ).toBe(true);
   });
+
+  // FieldConfigurator はこの関数だけで「保存を投げるか」を決める。
+  // 下記2件が false にならないと、表示列の変更がサーバーへ送られずに消える
+  it('visibleIds だけが違うケースを同値と誤判定しない', () => {
+    expect(
+      isSameFieldConfig(
+        { visibleIds: ['a'], orderedIds: ['a', 'b'] },
+        { visibleIds: ['b'], orderedIds: ['a', 'b'] }
+      )
+    ).toBe(false);
+  });
+
+  it('長さが違うケースを同値と誤判定しない（全解除 ⇔ 全選択）', () => {
+    expect(
+      isSameFieldConfig(
+        { visibleIds: [], orderedIds: ['a', 'b'] },
+        { visibleIds: ['a', 'b'], orderedIds: ['a', 'b'] }
+      )
+    ).toBe(false);
+  });
 });

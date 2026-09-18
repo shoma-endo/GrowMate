@@ -75,28 +75,39 @@ export default function FieldConfigurator({
   const configRef = useRef<FieldConfigState>(config);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingConfigRef = useRef<FieldConfigState | null>(null);
+  // **送信済みの構成**（往復中を含む）。空振り判定はこちらで行う
+  const dispatchedConfigRef = useRef<FieldConfigState>(config);
+  // **DB に入ったことが確定した構成**。旧キーの削除可否の判断に使う
   const savedConfigRef = useRef<FieldConfigState>(config);
 
-  /** 保存を試みて成否を返す。**旧キーの削除可否の判断に使うので、必ず結果を見ること。** */
+  /**
+   * 保存を試みて成否を返す。**旧キーの削除可否の判断に使うので、必ず結果を見ること。**
+   * `silent` は背景の移行用。利用者の操作に紐づかない失敗でトーストを出さない。
+   */
   const persist = useCallback(
-    async (next: FieldConfigState): Promise<boolean> => {
-      if (isSameFieldConfig(next, savedConfigRef.current)) {
-        // DB は既にこの内容。投げる必要がない
+    async (next: FieldConfigState, options?: { silent?: boolean }): Promise<boolean> => {
+      // **「確定済み」ではなく「送信済み」と比べる。** 確定済みで判定すると、保存が往復中の
+      // 間は1本前の値のままなので、その値へ戻す操作が「DB は既にこの内容」と誤判定されて
+      // 送信されず、往復中だった内容で DB が確定してしまう（戻した操作がリロードで消える）
+      if (isSameFieldConfig(next, dispatchedConfigRef.current)) {
         return true;
       }
+      // await の前に進める。往復中に同じ内容が再度来ても二重送信しない
+      dispatchedConfigRef.current = next;
       const result = await saveFieldConfig({
         tableKey,
         visibleIds: next.visibleIds,
         orderedIds: next.orderedIds,
       });
       if (!result.success) {
-        if (result.error) {
+        // 失敗した内容を送信済みに残すと、同じ構成へ戻したときの再送が握り潰される。
+        // 確定済みへ巻き戻すことで、以降の判定は「送りすぎ」側に倒れる（取りこぼさない）
+        dispatchedConfigRef.current = savedConfigRef.current;
+        if (result.error && !options?.silent) {
           toast.error(result.error);
         }
         return false;
       }
-      // **成功したときだけ「保存済み」を進める。** 先に進めると、失敗した内容が
-      // 保存済みとみなされ、次に同じ構成へ戻したときの再送が握り潰される
       savedConfigRef.current = next;
       return true;
     },
@@ -176,7 +187,9 @@ export default function FieldConfigurator({
       // **保存が成功したときだけ旧キーを消す。** 無条件に消すと、保存が失敗した利用者の
       // 構成が localStorage からもDBからも無くなり、次のリロードで既定へ戻る
       // （マイグレーション未適用時は保存が必ず失敗するため、全カスタマイズが消える）。
-      void persist(resolved).then(saved => {
+      // 利用者の操作ではないのでトーストは出さない。失敗しても旧キーが残るため
+      // 次回ロードで自動的に再試行される（マイグレーション未適用時の通知連発を避ける）
+      void persist(resolved, { silent: true }).then(saved => {
         if (saved) dropLegacyKey();
       });
     } else {
