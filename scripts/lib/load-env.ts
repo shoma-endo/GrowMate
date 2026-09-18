@@ -1,7 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-// .env.localファイルから環境変数を読み込む
 export function loadEnv(): Record<string, string> {
   try {
     const envPath = join(__dirname, '../../.env.local');
