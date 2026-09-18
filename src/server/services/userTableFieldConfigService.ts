@@ -1,8 +1,4 @@
 import { SupabaseService } from '@/server/services/supabaseService';
-import {
-  asPendingClient,
-  type UserTableFieldConfigDatabase,
-} from '@/types/database.types.pending';
 import type { FieldConfigTableKey, StoredFieldConfig } from '@/types/field-config';
 
 /**
@@ -20,10 +16,6 @@ type StoredFieldConfigByTableKey = Partial<
 >;
 
 class UserTableFieldConfigService extends SupabaseService {
-  private pendingClient() {
-    return asPendingClient<UserTableFieldConfigDatabase>(this.getClient());
-  }
-
   /**
    * 対象ユーザーの全一覧分の構成をまとめて取得する。
    *
@@ -32,7 +24,7 @@ class UserTableFieldConfigService extends SupabaseService {
    * `null` を既定へ畳む）ので、例外にせず空を返す。
    */
   async getByUser(userId: string): Promise<StoredFieldConfigByTableKey> {
-    const { data, error } = await this.pendingClient()
+    const { data, error } = await this.getClient()
       .from(TABLE)
       .select('table_key, visible_ids, ordered_ids')
       .eq('user_id', userId);
@@ -64,7 +56,7 @@ class UserTableFieldConfigService extends SupabaseService {
   }): Promise<boolean> {
     const { userId, tableKey, visibleIds, orderedIds } = params;
 
-    const { error } = await this.pendingClient()
+    const { error } = await this.getClient()
       .from(TABLE)
       .upsert(
         {
