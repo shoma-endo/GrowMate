@@ -14,7 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { Ga4ConnectionStage, Ga4ConnectionStatus } from '@/types/ga4';
+import type { Ga4ConnectionStatus } from '@/types/ga4';
+import { GA4_STAGE_META } from '@/lib/ga4-stage-meta';
 import { Plug, RefreshCw, AlertTriangle, BarChart3, Loader2 } from 'lucide-react';
 import { BackLink } from '@/components/BackLink';
 import {
@@ -40,11 +41,6 @@ const GA4_EVENT_LABELS: Record<string, string> = {
   purchase: '購入完了',
   close_convert_lead: 'リード獲得完了（クローズ）',
   qualify_lead: '有望リード判定',
-};
-const GA4_STAGE_META: Record<Ga4ConnectionStage, { label: string; className: string }> = {
-  unlinked: { label: '未連携', className: 'bg-gray-100 text-gray-800' },
-  linked_unselected: { label: '連携済み未選択', className: 'bg-amber-100 text-amber-800' },
-  configured: { label: '設定完了', className: 'bg-green-100 text-green-800' },
 };
 
 type Ga4ManualSyncData =
