@@ -58,7 +58,7 @@ export async function summarizeContentAnnotationsBulk(
 
   try {
     const authResult = await withAuth(async ({ userId, userDetails }) => {
-      // UI だけでなくサーバー側でも認可を検証する（CLAUDE.md Core Rules。AC-B09）
+      // UI だけでなくサーバー側でも認可を検証する（AGENTS.md Core Rules。AC-B09）
       if (!canWriteGa4({ role: userDetails?.role ?? null })) {
         console.error('[content-annotation-bulk-summary] forbidden role:', {
           role: userDetails?.role ?? null,

@@ -102,7 +102,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   if (authResult.error || !authResult.userId) {
     redirect('/login');
   }
-  // CLAUDE.md「新規機能の認可はUIだけでなくサーバー側でも検証する」。
+  // AGENTS.md「新規機能の認可はUIだけでなくサーバー側でも検証する」。
   // この画面は本PRでGA4評価の4列（評価状態・コンテンツ力スコア・診断・最終評価日時）を
   // 載せたが、認可は proxy.ts の前方一致1箇所だけが担保していた。本PRは他の12箇所
   // （ga4Dashboard.actions ×4 / gscDashboard.actions ×6 / /api/gsc/dashboard ×2）すべてに

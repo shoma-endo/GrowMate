@@ -1,4 +1,4 @@
-// Server Component（CLAUDE.md準拠：認証状態チェックのみ）
+// Server Component（AGENTS.md準拠：認証状態チェックのみ）
 import { getBriefServer } from '@/server/actions/brief.actions';
 import BusinessInfoFormClient from './BusinessInfoFormClient';
 
