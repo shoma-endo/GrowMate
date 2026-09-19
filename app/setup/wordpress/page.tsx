@@ -1,15 +1,13 @@
 import { redirect } from 'next/navigation';
 import WordPressSettingsForm from '@/components/WordPressSettingsForm';
 import { getWordPressSettings } from '@/server/actions/wordpress.actions';
-import { authMiddleware } from '@/server/middleware/auth.middleware';
-import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
+import { requireSetupAuth } from '@/server/lib/require-setup-auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function WordPressSetupPage() {
-  const authResult = await authMiddleware();
-  redirectIfEmailLinkConflict(authResult);
-  if (authResult.error || !authResult.userDetails?.role) {
+  const authResult = await requireSetupAuth();
+  if (!authResult.userDetails?.role) {
     redirect('/login');
   }
   // Setup pages should be accessible to owners at all times

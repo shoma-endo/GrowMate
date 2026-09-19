@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Settings, GripVertical } from 'lucide-react';
@@ -12,28 +13,35 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useDragReorder } from '@/hooks/useDragReorder';
+import {
+  isSameFieldConfig,
+  normalizeFieldConfig,
+  parseLegacyStoredFieldConfig,
+} from '@/lib/field-config';
+import { saveFieldConfig } from '@/server/actions/fieldConfig.actions';
+import type {
+  FieldColumnOption,
+  FieldConfigState,
+  FieldConfigTableKey,
+  StoredFieldConfig,
+} from '@/types/field-config';
 
-interface ColumnOption {
-  id: string;
-  label: string;
-  defaultVisible?: boolean;
-}
+/** 保存はDBへの往復になるため、チェック連打・ドラッグ中の書き込み嵐を抑える */
+const SAVE_DEBOUNCE_MS = 600;
 
 interface FieldConfigRenderProps {
   visibleSet: Set<string>;
   orderedIds: string[];
 }
 
-type StoredConfig =
-  | string[]
-  | {
-      visible?: string[];
-      order?: string[];
-    };
-
 interface FieldConfiguratorProps {
-  columns: ColumnOption[];
-  storageKey: string;
+  columns: FieldColumnOption[];
+  /** 保存先を識別する一覧キー（DB の `user_table_field_configs.table_key`） */
+  tableKey: FieldConfigTableKey;
+  /** サーバーコンポーネントが読み出した保存済み構成。未保存なら `null` */
+  initialConfig: StoredFieldConfig | null;
+  /** DB 移行前に localStorage へ保存していたキー。初回の移し替えにだけ使う */
+  legacyStorageKey: string;
   onChange?: (visibleIds: string[], orderedIds: string[]) => void;
   children: (config: FieldConfigRenderProps) => ReactNode;
   hideTrigger?: boolean;
@@ -43,106 +51,158 @@ interface FieldConfiguratorProps {
 
 export default function FieldConfigurator({
   columns,
-  storageKey,
+  tableKey,
+  initialConfig,
+  legacyStorageKey,
   onChange,
   children,
   hideTrigger,
   triggerId,
   dialogExtraContent,
 }: FieldConfiguratorProps) {
-  const defaultVisibleIds = useMemo(
-    () => columns.filter(c => c.defaultVisible !== false).map(c => c.id),
-    [columns]
+  // **初期値はサーバーが読んだ構成から作る。** サーバーとクライアントで同じ入力から
+  // 同じ結果になるので hydration mismatch にならず、既定列が一瞬見えるチラつきも出ない。
+  const [config, setConfig] = useState<FieldConfigState>(() =>
+    normalizeFieldConfig(columns, initialConfig)
   );
-  const defaultOrder = useMemo(() => columns.map(c => c.id), [columns]);
-
-  const normalizeOrder = useCallback(
-    (order: string[]) => {
-      const knownIds = columns.map(c => c.id);
-      const filtered = order.filter(id => knownIds.includes(id));
-      const missing = knownIds.filter(id => !filtered.includes(id));
-      return [...filtered, ...missing];
-    },
-    [columns]
-  );
-
-  const mergeNewDefaultVisibleColumns = useCallback(
-    (visible: string[], order: string[]) => {
-      const visibleSet = new Set(visible);
-      const orderSet = new Set(order);
-      const newlyAddedDefaultVisibleIds = defaultVisibleIds.filter(
-        id => !visibleSet.has(id) && !orderSet.has(id)
-      );
-      if (newlyAddedDefaultVisibleIds.length === 0) {
-        return visible;
-      }
-      return [...visible, ...newlyAddedDefaultVisibleIds];
-    },
-    [defaultVisibleIds]
-  );
-
-  // 初期state は SSR と一致させるため常にデフォルト値で始める。localStorage の読み込みは
-  // window が存在しないサーバーでは行えず、ここで分岐すると SSR の描画結果とクライアント
-  // hydrate 時の描画結果が食い違い hydration mismatch を起こす。保存済み設定の反映は
-  // マウント後の useEffect（下方）に委ねる。
   const [open, setOpen] = useState(false);
-  const [visibleIds, setVisibleIds] = useState<string[]>(defaultVisibleIds);
-  const [orderedIds, setOrderedIds] = useState<string[]>(defaultOrder);
 
-  const loadStoredConfig = useCallback((): { visible: string[]; order: string[] } => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as StoredConfig;
+  const { visibleIds, orderedIds } = config;
+  const visibleSet = useMemo(() => new Set(visibleIds), [visibleIds]);
 
-        // 旧フォーマット（string配列）との互換性維持。
-        // 空配列（全解除して保存した状態）も正当な値のため、length チェックで
-        // デフォルトにフォールバックさせない（フォールバックすると全解除が復元されない）。
-        if (Array.isArray(parsed)) {
-          const normalizedVisible = parsed.filter(id => columns.some(c => c.id === id));
-          const mergedVisible = mergeNewDefaultVisibleColumns(normalizedVisible, defaultOrder);
-          return { visible: mergedVisible, order: defaultOrder };
-        }
+  // **状態の最新値を同期的に保持する。** ハンドラがレンダリング時のクロージャ値を読むと、
+  // 再レンダリング前に続けて操作されたときに1つ前の構成を元に上書きしてしまう。
+  const configRef = useRef<FieldConfigState>(config);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingConfigRef = useRef<FieldConfigState | null>(null);
+  // **送信済みの構成**（往復中を含む）。空振り判定はこちらで行う
+  const dispatchedConfigRef = useRef<FieldConfigState>(config);
+  // **DB に入ったことが確定した構成**。旧キーの削除可否の判断に使う
+  const savedConfigRef = useRef<FieldConfigState>(config);
 
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          const visible = Array.isArray(parsed.visible) ? parsed.visible : defaultVisibleIds;
-          const order = Array.isArray(parsed.order) ? parsed.order : defaultOrder;
-          const mergedVisible = mergeNewDefaultVisibleColumns(visible, order);
-          return { visible: mergedVisible, order: normalizeOrder(order) };
-        }
+  /**
+   * 保存を試みて成否を返す。**旧キーの削除可否の判断に使うので、必ず結果を見ること。**
+   * `silent` は背景の移行用。利用者の操作に紐づかない失敗でトーストを出さない。
+   */
+  const persist = useCallback(
+    async (next: FieldConfigState, options?: { silent?: boolean }): Promise<boolean> => {
+      // **「確定済み」ではなく「送信済み」と比べる。** 確定済みで判定すると、保存が往復中の
+      // 間は1本前の値のままなので、その値へ戻す操作が「DB は既にこの内容」と誤判定されて
+      // 送信されず、往復中だった内容で DB が確定してしまう（戻した操作がリロードで消える）
+      if (isSameFieldConfig(next, dispatchedConfigRef.current)) {
+        return true;
       }
-    } catch {
-      // フォールスルーしてデフォルトを返す
-    }
-    return { visible: defaultVisibleIds, order: defaultOrder };
-  }, [columns, storageKey, defaultVisibleIds, defaultOrder, mergeNewDefaultVisibleColumns, normalizeOrder]);
-
-  const persistConfig = useCallback(
-    (nextVisible: string[], nextOrder: string[]) => {
-      localStorage.setItem(storageKey, JSON.stringify({ visible: nextVisible, order: nextOrder }));
+      // await の前に進める。往復中に同じ内容が再度来ても二重送信しない
+      dispatchedConfigRef.current = next;
+      const result = await saveFieldConfig({
+        tableKey,
+        visibleIds: next.visibleIds,
+        orderedIds: next.orderedIds,
+      });
+      if (!result.success) {
+        // 失敗した内容を送信済みに残すと、同じ構成へ戻したときの再送が握り潰される。
+        // 確定済みへ巻き戻すことで、以降の判定は「送りすぎ」側に倒れる（取りこぼさない）
+        dispatchedConfigRef.current = savedConfigRef.current;
+        if (result.error && !options?.silent) {
+          toast.error(result.error);
+        }
+        return false;
+      }
+      savedConfigRef.current = next;
+      return true;
     },
-    [storageKey]
+    [tableKey]
   );
 
-  // localStorage の読み込み・書き戻し（旧フォーマット移行・新規デフォルト列マージの反映）と
-  // 親への初回通知は、hydration 後にのみ許される副作用のため useEffect で行う。
-  // 依存配列は空にしてマウント時の1回だけ実行する。
-  // onChange は毎レンダリングで参照が変わりうるため ref 経由で読み、依存配列に含めない
-  // （含めると useEffect が毎レンダリング後に再実行され、意図しない無限ループの原因になる）。
+  /** 溜めている変更を即座に書き出す（ダイアログを閉じたとき・アンマウント時） */
+  const flush = useCallback(() => {
+    if (saveTimerRef.current === null) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    const pending = pendingConfigRef.current;
+    pendingConfigRef.current = null;
+    if (pending) {
+      void persist(pending);
+    }
+  }, [persist]);
+
+  /** 楽観更新（UI は即時反映）＋ 保存は debounce する */
+  const applyConfig = useCallback(
+    (next: FieldConfigState) => {
+      configRef.current = next;
+      setConfig(next);
+      onChange?.(next.visibleIds, next.orderedIds);
+
+      pendingConfigRef.current = next;
+      if (saveTimerRef.current !== null) {
+        clearTimeout(saveTimerRef.current);
+      }
+      saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = null;
+        const pending = pendingConfigRef.current;
+        pendingConfigRef.current = null;
+        if (pending) {
+          void persist(pending);
+        }
+      }, SAVE_DEBOUNCE_MS);
+    },
+    [onChange, persist]
+  );
+
+  // onChange は毎レンダリングで参照が変わりうるため ref 経由で読む
+  // （依存配列に入れると初回通知の useEffect が毎レンダリング後に再実行される）
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
   });
+
+  // マウント時に1回だけ:
+  //   1. 解決済みの構成を親へ通知する（Instagram 側はソート列が隠れたかの判定に使う）
+  //   2. DB 未保存かつ localStorage に旧データがあれば、それを引き継いでDBへ移す
+  // 移行がDBへ入りきってから旧キーを消す。DB を唯一の正本にしつつ、
+  // **移行に失敗した利用者の構成を消さない**（下のコメント参照）。
   useEffect(() => {
-    const stored = loadStoredConfig();
-    setVisibleIds(stored.visible);
-    setOrderedIds(stored.order);
-    persistConfig(stored.visible, stored.order);
-    onChangeRef.current?.(stored.visible, stored.order);
+    const legacy = (() => {
+      try {
+        return parseLegacyStoredFieldConfig(localStorage.getItem(legacyStorageKey));
+      } catch {
+        return null;
+      }
+    })();
+
+    const migrated = initialConfig === null && legacy !== null;
+    const resolved = migrated ? normalizeFieldConfig(columns, legacy) : config;
+
+    const dropLegacyKey = () => {
+      try {
+        localStorage.removeItem(legacyStorageKey);
+      } catch {
+        // ストレージが使えない環境でも動作を止めない
+      }
+    };
+
+    if (migrated) {
+      configRef.current = resolved;
+      setConfig(resolved);
+      // **保存が成功したときだけ旧キーを消す。** 無条件に消すと、保存が失敗した利用者の
+      // 構成が localStorage からもDBからも無くなり、次のリロードで既定へ戻る
+      // （マイグレーション未適用時は保存が必ず失敗するため、全カスタマイズが消える）。
+      // 利用者の操作ではないのでトーストは出さない。失敗しても旧キーが残るため
+      // 次回ロードで自動的に再試行される（マイグレーション未適用時の通知連発を避ける）
+      void persist(resolved, { silent: true }).then(saved => {
+        if (saved) dropLegacyKey();
+      });
+    } else {
+      // DB に行がある（= 旧キーは陳腐化）か、そもそも旧データが無い。どちらも消して安全
+      dropLegacyKey();
+    }
+
+    onChangeRef.current?.(resolved.visibleIds, resolved.orderedIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visibleSet = useMemo(() => new Set(visibleIds), [visibleIds]);
+  // アンマウント時に未保存の変更を取りこぼさない
+  useEffect(() => flush, [flush]);
 
   // 外部ボタン（triggerId）から開くためのリスナー
   useEffect(() => {
@@ -160,13 +220,19 @@ export default function FieldConfigurator({
     };
   }, [triggerId]);
 
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      flush();
+    }
+  };
+
   const toggle = (id: string) => {
-    setVisibleIds(prev => {
-      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      persistConfig(next, orderedIds);
-      onChange?.(next, orderedIds);
-      return next;
-    });
+    const current = configRef.current;
+    const nextVisible = current.visibleIds.includes(id)
+      ? current.visibleIds.filter(x => x !== id)
+      : [...current.visibleIds, id];
+    applyConfig({ visibleIds: nextVisible, orderedIds: current.orderedIds });
   };
 
   // ドラッグ＆ドロップによる並び替え
@@ -174,16 +240,14 @@ export default function FieldConfigurator({
     items: orderedIds,
     getId: id => id,
     onReorder: nextOrder => {
-      setOrderedIds(nextOrder);
-      persistConfig(visibleIds, nextOrder);
-      onChange?.(visibleIds, nextOrder);
+      applyConfig({ visibleIds: configRef.current.visibleIds, orderedIds: nextOrder });
     },
   });
 
   return (
     <div className="w-full">
       <div className={hideTrigger ? 'sr-only' : 'flex items-center justify-start mb-2'}>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
             <Button
               // hideTrigger 時はこのボタンは sr-only で隠され、開閉は外部の triggerId 要素の
@@ -215,12 +279,12 @@ export default function FieldConfigurator({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        const allIds = columns.map(c => c.id);
-                        persistConfig(allIds, orderedIds);
-                        setVisibleIds(allIds);
-                        onChange?.(allIds, orderedIds);
-                      }}
+                      onClick={() =>
+                        applyConfig({
+                          visibleIds: columns.map(c => c.id),
+                          orderedIds: configRef.current.orderedIds,
+                        })
+                      }
                       className="h-7 px-3 text-xs"
                     >
                       全選択
@@ -228,11 +292,9 @@ export default function FieldConfigurator({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        persistConfig([], orderedIds);
-                        setVisibleIds([]);
-                        onChange?.([], orderedIds);
-                      }}
+                      onClick={() =>
+                        applyConfig({ visibleIds: [], orderedIds: configRef.current.orderedIds })
+                      }
                       className="h-7 px-3 text-xs"
                     >
                       全解除
@@ -282,7 +344,7 @@ export default function FieldConfigurator({
               )}
             </div>
             <div className="mt-3 flex justify-end">
-              <Button onClick={() => setOpen(false)}>閉じる</Button>
+              <Button onClick={() => handleOpenChange(false)}>閉じる</Button>
             </div>
           </DialogContent>
         </Dialog>

@@ -145,6 +145,74 @@ export type Database = {
         }
         Relationships: []
       }
+      content_annotation_summary_jobs: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          failed_by_code: Json
+          failed_count: number
+          finished_at: string | null
+          id: string
+          job_token: string | null
+          last_error: string | null
+          notified_at: string | null
+          processed_count: number
+          skipped_count: number
+          started_at: string | null
+          status: string
+          succeeded_count: number
+          target_annotation_ids: string[]
+          total_count: number
+          user_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          failed_by_code?: Json
+          failed_count?: number
+          finished_at?: string | null
+          id?: string
+          job_token?: string | null
+          last_error?: string | null
+          notified_at?: string | null
+          processed_count?: number
+          skipped_count?: number
+          started_at?: string | null
+          status?: string
+          succeeded_count?: number
+          target_annotation_ids: string[]
+          total_count: number
+          user_id: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          failed_by_code?: Json
+          failed_count?: number
+          finished_at?: string | null
+          id?: string
+          job_token?: string | null
+          last_error?: string | null
+          notified_at?: string | null
+          processed_count?: number
+          skipped_count?: number
+          started_at?: string | null
+          status?: string
+          succeeded_count?: number
+          target_annotation_ids?: string[]
+          total_count?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_annotation_summary_jobs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       content_annotations: {
         Row: {
           basic_structure: string | null
@@ -733,6 +801,7 @@ export type Database = {
           evaluation_date: string
           id: string
           is_read: boolean
+          memo: string | null
           outcome: string | null
           outcome_type: string
           previous_position: number | null
@@ -757,6 +826,7 @@ export type Database = {
           evaluation_date: string
           id?: string
           is_read?: boolean
+          memo?: string | null
           outcome?: string | null
           outcome_type?: string
           previous_position?: number | null
@@ -781,6 +851,7 @@ export type Database = {
           evaluation_date?: string
           id?: string
           is_read?: boolean
+          memo?: string | null
           outcome?: string | null
           outcome_type?: string
           previous_position?: number | null
@@ -1515,6 +1586,44 @@ export type Database = {
           },
         ]
       }
+      user_table_field_configs: {
+        Row: {
+          created_at: string
+          id: string
+          ordered_ids: string[]
+          table_key: string
+          updated_at: string
+          user_id: string
+          visible_ids: string[]
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ordered_ids?: string[]
+          table_key: string
+          updated_at?: string
+          user_id: string
+          visible_ids?: string[]
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ordered_ids?: string[]
+          table_key?: string
+          updated_at?: string
+          user_id?: string
+          visible_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_table_field_configs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           created_at: string
@@ -1640,6 +1749,22 @@ export type Database = {
           p_user_id: string
         }
         Returns: boolean
+      }
+      claim_content_annotation_summary_jobs: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempt_count: number
+          failed_by_code: Json
+          failed_count: number
+          id: string
+          job_token: string
+          processed_count: number
+          skipped_count: number
+          succeeded_count: number
+          target_annotation_ids: string[]
+          total_count: number
+          user_id: string
+        }[]
       }
       claim_gsc_suggestion_jobs: {
         Args: { p_limit?: number }
@@ -1993,12 +2118,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2022,11 +2147,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2047,11 +2172,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2072,11 +2197,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2089,11 +2214,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

@@ -11,10 +11,15 @@ import {
   ANALYTICS_COLUMNS,
   BLOG_STEP_IDS,
   ANALYTICS_STORAGE_KEYS,
+  FIELD_CONFIG_TABLE_KEYS,
   loadCategoryFilterFromStorage,
+  loadStatusFilterFromStorage,
+  hasAnyStatusFilter,
   type BlogStepId,
 } from '@/lib/constants';
 import type { AnalyticsContentItem } from '@/types/analytics';
+import type { StoredFieldConfig } from '@/types/field-config';
+import type { StatusFilterConfig } from '@/types/category';
 import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
 import {
   isEmailLinkConflictResult,
@@ -82,6 +87,8 @@ interface Props {
   hasUnstartedGscEvaluation: boolean;
   hasUnsummarized: boolean;
   hasUrlFilterParams: boolean;
+  /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
+  fieldConfig: StoredFieldConfig | null;
   selection?: {
     selectedIds: Set<string>;
     /** 全選択中に個別解除した記事（BR-07「全選択後の個別解除」）。isSelectAll が false のときは空 */
@@ -159,6 +166,7 @@ export default function AnalyticsTable({
   hasUnstartedGscEvaluation,
   hasUnsummarized,
   hasUrlFilterParams,
+  fieldConfig,
   selection,
 }: Props) {
   const router = useRouter();
@@ -190,6 +198,12 @@ export default function AnalyticsTable({
   );
 
   const storedFilter = React.useMemo(() => loadCategoryFilterFromStorage(), []);
+  const storedStatusFilter = React.useMemo(() => loadStatusFilterFromStorage(), []);
+
+  // **URL に絞り込み指定が1つでもあれば URL が正本。** 通知からの `?unread_suggestion=1` は
+  // 明示的な deep link なので、保存済みの状態フィルターを重ねて意図を壊さない
+  const hasAnyUrlFilter =
+    hasUrlFilterParams || hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnsummarized;
 
   // URL明示時はURL優先。未指定時のみlocalStorageを初期値として復元。
   // ただし独立フィルターが指定されている場合は明示的な deep link なので
@@ -213,12 +227,27 @@ export default function AnalyticsTable({
     return storedFilter.includeUncategorized;
   });
 
-  const [isFilteringUnreadSuggestion, setIsFilteringUnreadSuggestion] =
-    React.useState<boolean>(hasUnreadSuggestion);
+  // URL明示時はURL優先。未指定時のみlocalStorageを初期値として復元する
+  const [isFilteringUnreadSuggestion, setIsFilteringUnreadSuggestion] = React.useState<boolean>(
+    () => (hasAnyUrlFilter ? hasUnreadSuggestion : storedStatusFilter.unreadSuggestion)
+  );
   const [isFilteringUnstartedGscEvaluation, setIsFilteringUnstartedGscEvaluation] =
-    React.useState<boolean>(hasUnstartedGscEvaluation);
-  const [isFilteringUnsummarized, setIsFilteringUnsummarized] =
-    React.useState<boolean>(hasUnsummarized);
+    React.useState<boolean>(() =>
+      hasAnyUrlFilter ? hasUnstartedGscEvaluation : storedStatusFilter.unstartedGscEvaluation
+    );
+  const [isFilteringUnsummarized, setIsFilteringUnsummarized] = React.useState<boolean>(() =>
+    hasAnyUrlFilter ? hasUnsummarized : storedStatusFilter.unsummarized
+  );
+
+  // 復元した絞り込みで一覧がほぼ空になったとき「記事が消えた」と誤認されるため、
+  // 自分で操作したのではなく前回の絞り込みが復元された、と読み取れる表示を出す
+  const [isRestoredFromStorage, setIsRestoredFromStorage] = React.useState<boolean>(
+    () =>
+      !hasAnyUrlFilter &&
+      (hasAnyStatusFilter(storedStatusFilter) ||
+        storedFilter.selectedCategoryNames.length > 0 ||
+        storedFilter.includeUncategorized)
+  );
 
   // 操作列の展開状態（初期値は true: 展開）
   const [isOpsExpanded, setIsOpsExpanded] = React.useState<boolean>(() => {
@@ -281,6 +310,16 @@ export default function AnalyticsTable({
     []
   );
 
+  // localStorageに状態フィルターを保存するヘルパー
+  const saveStatusFilterToStorage = React.useCallback((config: StatusFilterConfig) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(ANALYTICS_STORAGE_KEYS.STATUS_FILTER, JSON.stringify(config));
+    } catch {
+      // ストレージが使えない環境でも絞り込み自体は URL で動くので止めない
+    }
+  }, []);
+
   // URL のカテゴリ指定に合わせてローカル状態を同期する。
   // hasUrlFilterParams が true→false になった遷移（category が URL から消えた）のみリセットし、
   // false→false（unread-only からの復帰など）ではリセットしない。
@@ -326,6 +365,14 @@ export default function AnalyticsTable({
       },
       options?: { replace?: boolean }
     ) => {
+      // **状態フィルターの永続化はここに集約する。** 呼び出し側（トグル・タグ解除・
+      // クリア）ごとに書くと、増えたときに書き漏れる
+      saveStatusFilterToStorage(statusFilters);
+      // `replace: true` は保存済み構成の復元のみ。利用者が操作したときだけバッジを消す
+      if (!options?.replace) {
+        setIsRestoredFromStorage(false);
+      }
+
       const nextQuery = new URLSearchParams(searchParams?.toString() ?? '');
       const currentPath = pathname ?? '/analytics';
       nextQuery.set('page', '1');
@@ -376,7 +423,7 @@ export default function AnalyticsTable({
         router.push(href);
       });
     },
-    [pathname, router, searchParams]
+    [pathname, router, searchParams, saveStatusFilterToStorage]
   );
 
   // URL未指定かつlocalStorageに復元対象がある場合は、初回にURLへ同期してサーバー再取得。
@@ -393,13 +440,17 @@ export default function AnalyticsTable({
     if (hasUnreadSuggestion || hasUnstartedGscEvaluation || hasUnsummarized) {
       return;
     }
-    if (storedFilter.selectedCategoryNames.length === 0 && !storedFilter.includeUncategorized) {
+    const hasStoredCategory =
+      storedFilter.selectedCategoryNames.length > 0 || storedFilter.includeUncategorized;
+    if (!hasStoredCategory && !hasAnyStatusFilter(storedStatusFilter)) {
       return;
     }
+    // **カテゴリと状態を1回の push で戻す。** 2回に分けると後の push が
+    // 先の push の内容を落とす（URL が正本なので、渡さなかった条件は消える）
     pushFilterQuery(
       storedFilter.selectedCategoryNames,
       storedFilter.includeUncategorized,
-      { unreadSuggestion: false, unstartedGscEvaluation: false, unsummarized: false },
+      storedStatusFilter,
       { replace: true }
     );
   }, [
@@ -409,6 +460,7 @@ export default function AnalyticsTable({
     hasUnsummarized,
     pushFilterQuery,
     storedFilter,
+    storedStatusFilter,
   ]);
 
   // 独立フィルターのみの一覧から通常一覧へ戻ったとき、保存済みカテゴリがあれば URL へ復元する。
@@ -829,7 +881,9 @@ export default function AnalyticsTable({
   return (
     <>
       <FieldConfigurator
-        storageKey={ANALYTICS_STORAGE_KEYS.VISIBLE_COLUMNS}
+        tableKey={FIELD_CONFIG_TABLE_KEYS.ANALYTICS}
+        initialConfig={fieldConfig}
+        legacyStorageKey={ANALYTICS_STORAGE_KEYS.VISIBLE_COLUMNS}
         columns={ANALYTICS_COLUMNS}
         hideTrigger
         triggerId="analytics-field-config-trigger"
@@ -934,6 +988,16 @@ export default function AnalyticsTable({
                     >
                       クリア
                     </button>
+                    {/*
+                      復元した絞り込みで一覧がほぼ空になると「記事が消えた」と誤認される。
+                      自分の操作ではなく前回の絞り込みが戻ってきたのだと読み取れるようにする。
+                      解除は左の「クリア」で足りるのでボタンは増やさない。
+                    */}
+                    {isRestoredFromStorage && (
+                      <span className="text-xs text-muted-foreground">
+                        （前回の絞り込みを復元しました）
+                      </span>
+                    )}
                   </>
                 )}
               </div>

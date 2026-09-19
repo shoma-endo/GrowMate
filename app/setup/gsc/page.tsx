@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
 import GscSetupClient from '@/components/GscSetupClient';
-import { authMiddleware } from '@/server/middleware/auth.middleware';
-import { redirectIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
+import { requireSetupAuth } from '@/server/lib/require-setup-auth';
 import { toGscConnectionStatusFromResolution } from '@/server/lib/gsc-status';
 import { resolveHomeGoogleCredential } from '@/server/lib/home-google-credential';
 
@@ -14,11 +12,7 @@ export default async function GscSetupPage() {
     process.env.GOOGLE_SEARCH_CONSOLE_REDIRECT_URI
   );
 
-  const authResult = await authMiddleware();
-  redirectIfEmailLinkConflict(authResult);
-  if (authResult.error || !authResult.userId) {
-    redirect('/login');
-  }
+  const authResult = await requireSetupAuth();
   // Setup pages should be accessible to owners at all times
 
   // アクセストークンの期限切れだけで再認証必須と誤判定しないよう、実際にリフレッシュを
