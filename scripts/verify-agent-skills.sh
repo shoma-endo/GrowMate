@@ -82,7 +82,8 @@ else
   fail "AGENTS.md が正本ファイルではない"
 fi
 
-if [[ -e CLAUDE.md ]]; then
+# -e は dangling symlink を false にする。-L も見て旧名の残骸を拒否する。
+if [[ -e CLAUDE.md || -L CLAUDE.md ]]; then
   fail "CLAUDE.md が残っている（正本は AGENTS.md のみ。Claude Code は CLAUDE.md 不在時に AGENTS.md へフォールバックする）"
 else
   ok "CLAUDE.md が存在しない"
