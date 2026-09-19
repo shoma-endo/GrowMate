@@ -277,7 +277,7 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 | [`docs/runbooks/`](docs/runbooks/) | 運用手順書 |
 | [`scripts/`](scripts/) | DB・Vercel 統計、Cron、Skill 検証等の運用スクリプト |
 | [`.agents/skills/`](.agents/skills/) | AI エージェント向け Skill 正本（Codex / Claude Code / Cursor 共通） |
-| [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | エージェント共通運用ルール（`AGENTS.md`は`CLAUDE.md`のsymlink） |
+| [`AGENTS.md`](AGENTS.md) | エージェント共通運用ルール（Claude Code 2.1.277+ は `CLAUDE.md` 不在時にこれを読む） |
 | [`.takt/`](.takt/) | 要件確認（`grill-to-gherkin.yaml`）・仕様書レビュー（`spec-review.yaml`）・仕様書起点 PR（`spec-to-pr.yaml`） |
 
 ## 🛡️ セキュリティと運用の注意点
