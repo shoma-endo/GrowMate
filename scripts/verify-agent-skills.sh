@@ -76,22 +76,17 @@ done
 echo
 
 echo "--- Core files ---"
-if [[ -f CLAUDE.md && ! -L CLAUDE.md ]]; then
-  ok "CLAUDE.md が正本ファイル"
+if [[ -f AGENTS.md && ! -L AGENTS.md ]]; then
+  ok "AGENTS.md が正本ファイル"
 else
-  fail "CLAUDE.md が正本ファイルではない"
+  fail "AGENTS.md が正本ファイルではない"
 fi
 
-if [[ -L AGENTS.md && "$(readlink AGENTS.md)" == "CLAUDE.md" ]]; then
-  ok "AGENTS.md -> CLAUDE.md"
+# -e は dangling symlink を false にする。-L も見て旧名の残骸を拒否する。
+if [[ -e CLAUDE.md || -L CLAUDE.md ]]; then
+  fail "CLAUDE.md が残っている（正本は AGENTS.md のみ。Claude Code は CLAUDE.md 不在時に AGENTS.md へフォールバックする）"
 else
-  fail "AGENTS.md が CLAUDE.md への symlink ではない"
-fi
-
-if cmp -s AGENTS.md CLAUDE.md; then
-  ok "AGENTS.md と CLAUDE.md の内容が一致"
-else
-  fail "AGENTS.md と CLAUDE.md の内容が不一致"
+  ok "CLAUDE.md が存在しない"
 fi
 echo
 
