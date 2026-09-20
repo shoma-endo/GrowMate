@@ -3,9 +3,9 @@
 ## メタデータ
 
 - 文書名: 高エンゲージメント投稿のブログ化（Phase 1: エンゲージメント率の算出と抽出）
-- ステータス: `approved`
+- ステータス: `review`
 - 作成日: 2026-09-19
-- 最終更新日: 2026-09-20
+- 最終更新日: 2026-09-21
 - 作成者: 遠藤
 - 承認者: カオルさん（要件）/ 遠藤（技術）
 - 対象リリース: Phase 1（本書の完了定義は Phase 1 まで。Phase 2 以降は §17 のロードマップのみ）
@@ -122,7 +122,6 @@ GrowMate の Instagram タブで［最新化］（投稿インサイトとフォ
 | キャプションからのキーワード立案・ブログ下書き作成 | Phase 2（§17） | Phase 1 リリース後 |
 | 既存記事への内部リンク提案・再作成 | Phase 3（§17） | Phase 2 リリース後 |
 | 目標達成投稿の自動検出・通知 | MTG で「まずはピックアップ」と合意。自動化は Phase 2 の判断 | Phase 2 仕様作成時 |
-| 「目標達成のみ」の localStorage 保存 | Trello・MTG に要求が無い。URL で保持すれば足りる | 再訪のたびに付け直す手間が問題になったとき |
 | 7日を過ぎた投稿のインサイト再取得、定期同期（cron） | API 呼び出しが投稿数に比例して増える。Instagram 連携 Phase 2 で cron を落とした判断（`instagram-integration-design.md` §4 Phase 2 item3）を維持する | 古い投稿の率がずれて判断を誤る事例が出たとき |
 | エンゲージメント率順の並べ替え用インデックス | 既存の `reach` / `views` 並べ替えも無索引で、1ユーザー数千件までは許容と判断済み（`instagramMediaService.getPage` のコメント） | 同コメントの上限（数千件）を超えたとき |
 
@@ -139,8 +138,8 @@ GrowMate の Instagram タブで［最新化］（投稿インサイトとフォ
 
 | フェーズまたは区分 | 目的・主な成果物 | 工数（時間） | 人日 |
 | --- | --- | ---: | ---: |
-| Phase 1 | 本書の FR-001〜FR-007 | 22〜28 | 2.8〜3.5 |
-| **合計** |  | **22〜28** | **2.8〜3.5** |
+| Phase 1 | 本書の FR-001〜FR-007 | 23〜29 | 2.9〜3.6 |
+| **合計** |  | **23〜29** | **2.9〜3.6** |
 
 幅の理由: FR-005（7日以内の再取得）は同期処理のカーソル・ウォーターマーク周りに触れるため、既存テストの修正量で幅が出る。
 
@@ -150,7 +149,7 @@ GrowMate の Instagram タブで［最新化］（投稿インサイトとフォ
 | --- | --- | ---: |
 | DB | 生成列 + credentials の列追加 + ロールバック + 型再生成 | 2 |
 | サーバー | 並べ替えキー追加・目標判定の純関数・絞り込み・page.tsx の解析共通化・credentials の読み書き | 5 |
-| UI | 列・セル表示・並び順・絞り込み・目標値表示・ui-text 更新（§6 UI用語） | 5 |
+| UI | 列・セル表示・並び順・絞り込み・絞り込みの保存と復元・目標値表示・ui-text 更新（§6 UI用語） | 6 |
 | 同期 | 7日以内の既存投稿のインサイト再取得、フォロワー数の取得・保存（同期と OAuth callback） | 6〜10 |
 | テスト | 単体テスト追加・既存テスト修正 | 3〜4 |
 | 確認 | 画面確認・スプレッドシート突き合わせ | 1〜2 |
@@ -172,7 +171,7 @@ GrowMate の Instagram タブで［最新化］（投稿インサイトとフォ
 | FR-003 | 一覧の上部に、フォロワー数・区分・目標エンゲージメント率を表示する | Must | Trello「目標エンゲージメント率 / フォロワー規模別の目標・目安」、MTG 00:29「今のフォロワーを分析し…それだったらこれぐらいは欲しいよね」 | 例「フォロワー 3,200人（ナノ）の目標: 4.0〜6.0%」。フォロワー数が未取得のときは［最新化］を促す案内を表示 |
 | FR-004 | 「目標達成のみ」の絞り込みを追加し、目標達成の投稿に目印を付ける | Must | Trello「高エンゲージメント率を抽出するようにする」、BR-003 | 絞り込み ON で目標達成の投稿だけが表示される。一覧上でも目標達成の投稿が見分けられる |
 | FR-005 | ［最新化］のたびに、投稿後7日以内の既存投稿のインサイトを取り直す | Must | FR-001 の値の正しさ（下記「現行の制約」） | 7日以内の投稿は最新化で値が更新され、率も変わる |
-| FR-006 | 並び順「エンゲージメント率」も既存の並び順保存（localStorage）で復元される。「目標達成のみ」は URL だけで保持する | Should | 既存の並び順保持（PR #555） | 再訪時に前回の並び順が復元される |
+| FR-006 | 並び順「エンゲージメント率」と「目標達成のみ」を localStorage に保存し、再訪時に復元する。ブログ一覧の状態フィルターと同じ挙動にそろえる（URL 明示時は URL 優先、URL に指定が無いときだけ復元、壊れた値は「絞り込みなし」へ畳む） | Should | 既存の並び順保持（PR #555）、ブログ一覧の状態フィルター（`AnalyticsTable.tsx` / `loadStatusFilterFromStorage`）、2026-09-21 ユーザー指示「基本的な仕様はブログと揃えたい」 | 再訪時に前回の並び順と絞り込みが復元される |
 | FR-007 | Instagram 連携時と［最新化］のたびにフォロワー数を取得して保存する | Must | BR-003 の判定に必要。現状フォロワー数は連携設定画面で表示しているだけで DB に保存していない | 最新化後、目標値表示のフォロワー数が Instagram の値に更新される |
 
 **現行の制約（FR-005 の根拠）**: incremental 同期は DB 内の最新 `posted_at` より新しい投稿しか取得せず（`instagramSyncService.syncUserData` のウォーターマーク）、backfill も既存投稿を `getExistingMediaIds` で飛ばす。つまり**インサイトは初回取得時の値で固定される**。投稿直後に［最新化］すると、リーチ・保存が伸びる前の値で率が固定され、率順の並べ替えと目標判定が実態とずれる。
@@ -200,7 +199,10 @@ GrowMate の Instagram タブで［最新化］（投稿インサイトとフォ
 
 - 入力値・形式・必須条件:
   - URL パラメータ `ig_sort=engagement_rate`（既存の `posted_at` / `reach` / `views` に追加）
-  - URL パラメータ `ig_high=1`（目標達成のみ）。それ以外の値・未指定は OFF
+  - URL パラメータ `ig_high`（目標達成のみ）。解釈はブログの状態フィルターと同じ優先順位にする。
+    - `ig_high=1`: ON
+    - `ig_high` がそれ以外の値（`0` 等）: OFF。**URL を優先し、保存値で復元しない**（絞り込みを外した deep link を保存値が上書きしないため）
+    - `ig_high` 無し: localStorage の保存値で1回だけ復元する。保存値が無い・壊れているときは OFF
 - 正常時の出力: 一覧に率を表示。並べ替え・絞り込みを反映。目標値を表示。
 - エラー時の出力:
   - フォロワー数が未取得: 目標値の代わりに［最新化］を促す案内を表示し、「目標達成のみ」と目印を出さない。`ig_high=1` の状態なら絞り込み無しで一覧を返す（黙って0件にしない）。
@@ -306,6 +308,21 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
     When もう一度 Instagram タブを開く
     Then 並び順は「エンゲージメント率」で復元される
 
+  Scenario: 「目標達成のみ」が再訪時に復元される
+    Given 「目標達成のみ」をオンにして Instagram タブを離れた
+    When もう一度 Instagram タブを開く
+    Then 「目標達成のみ」はオンで復元される
+
+  Scenario: URL の指定が保存値より優先される
+    Given 「目標達成のみ」をオンにして Instagram タブを離れた
+    When ig_high=0 を指定した URL を開く
+    Then 「目標達成のみ」はオフで表示され、全投稿が出る
+
+  Scenario: 保存値が壊れていても絞り込まない
+    Given localStorage の「目標達成のみ」の保存値が壊れている
+    When Instagram タブを開く
+    Then 「目標達成のみ」はオフで表示され、全投稿が出る
+
   Rule: フォロワー規模別の目標の下限以上を「目標達成」とする
 
   Scenario Outline: フォロワー数から目標エンゲージメント率を決める
@@ -394,6 +411,9 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
 | 元の数値が欠けている投稿は率を出さない | FR-001 | BR-002 |
 | エンゲージメント率の高い順に並べ替える | FR-002 | BR-002 |
 | 並び順「エンゲージメント率」が再訪時に復元される | FR-006 | 既存の並び順保存（PR #555） |
+| 「目標達成のみ」が再訪時に復元される | FR-006 | ブログ一覧の状態フィルターと同じ挙動 |
+| URL の指定が保存値より優先される | FR-006 | 同上（URL 優先） |
+| 保存値が壊れていても絞り込まない | FR-006 | 同上（既定は絞り込みなし） |
 | フォロワー数から目標エンゲージメント率を決める | FR-003 | BR-003 |
 | 目標を達成した投稿だけに絞り込む | FR-004 | BR-003 |
 | フォロワー数をまだ取得していない | FR-003, FR-007 | BR-005 |
@@ -470,6 +490,7 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
   | 並べ替えキーの列挙箇所 | 拡張。**列 id と sort key はどちらも `engagement_rate`** にする（並び順の復元処理が `visibleIds.includes(stored)` で判定するため）。対象: `InstagramMediaSortKey`、`parseInstagramSortKey`、`page.tsx` の解析、`InstagramTab.tsx` の SelectItem、`InstagramMediaTable.tsx` の `SORTABLE_COLUMN_IDS` と `sortColumnId`（現行は三項演算子で、該当しないと `'views'` になる。追加しないと視聴数の列を隠したときに率の並べ替えが解除され、率の列を隠しても解除されない） | 左記 |
   | `ig_high` の受け渡し | 拡張。`build-href.ts` の `ig_*` を組み立てる2つの分岐（`patch.tab==='blog'` 側も含む）と `InstagramFilterPatch`、`page.tsx` の `buildPageHref`、`AnalyticsClient` の props | 左記 |
   | 並び順の保存・復元 | 再利用 | `InstagramTab.tsx` `saveInstagramSort` / 復元 effect |
+  | 「目標達成のみ」の保存・復元 | 拡張。`ANALYTICS_STORAGE_KEYS` に `IG_HIGH_ONLY: 'analytics.instagramHighOnly'` を追加し、解釈は純関数（壊れた値・欠けた値は `false` へ畳む。既定を「絞り込みあり」にしない）。復元は `InstagramTab.tsx` の並び順復元 effect と同じ形で、URL に `ig_high` が無いときだけ1回。**ブログ側の `parseStatusFilter` / `loadStatusFilterFromStorage` と同じ設計**（localStorage に触らない純関数にして node environment でテストできるようにする） | `src/lib/constants.ts`、`src/components/AnalyticsTable.tsx`、`InstagramTab.tsx` |
   | フォロワー数の取得 | 再利用（`fetchProfile` は `followers_count` を取得済み） | `src/server/services/instagramService.ts` `fetchProfile` |
   | credentials の型・読み書き | 拡張（`InstagramCredential` に `followersCount` / `followersCountSyncedAt`、`updateInstagramCredential` 相当で部分更新） | `src/types/instagram.ts`、`src/server/services/supabaseService.ts` |
   | 連携時の保存 | 拡張（既に取得済みの `profileResult` から保存）。**`upsert(record, { onConflict: 'user_id' })` は `record` に無い列を衝突時に更新しない**ため、`saveInstagramCredential` の payload 型・`record`（`InstagramCredentialInsertRow`）・`mapInstagramCredentialRow` の3箇所すべてに列を通す。型追加だけでは書き込まれない | `app/api/instagram/oauth/callback/route.ts`、`src/server/services/supabaseService.ts` `saveInstagramCredential` / `mapInstagramCredentialRow` |
@@ -590,6 +611,7 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
   - OAuth callback: 取得済みプロフィールの `followersCount` を credentials に保存する／**`followers_count_synced_at` も連携時刻で併せて保存される**（`saveInstagramCredential` の `record` に2列とも含まれること。片方だけ入る状態を作らない）／**アカウント切り替え時（`igUserId` 不一致）に `followers_count` / `followers_count_synced_at` が null にリセットされる**（`fetchProfile` が `followers_count` を返さなかった場合も旧アカウントの値が残らない）
   - 目標達成の絞り込み: フォロワー数が未取得のとき `ig_high=1` でも `gte(engagement_rate, ...)` を付けず全件返す（黙って0件にしない）／「目標達成のみ」と目印を出さない
   - URL（`build-href.test.ts`。置き場所は `tests/unit/app/analytics/`）: `ig_high` がタブ切り替え・ページ送り・並べ替え変更で引き継がれる
+  - 「目標達成のみ」の保存値の解釈（`instagram-sort-storage.test.ts` に追加）: `'1'` / `'true'` 等の正常値、壊れた値・未設定は `false`（ブログの `parseStatusFilter` と同じ「既定は絞り込みなし」）
   - 表示: 率の丸め（6.04→6.0、6.06→6.1。浮動小数の境界値 x.x5 はテスト例に使わない）、NULL は `-`
 - 統合・実画面確認: `/analytics?tab=instagram` で列・並べ替え・絞り込み・目標値表示（区分内／未取得）・列非表示時の並び順リセットを確認
 - 文言チェック: `npm run verify:ui-text` を実行する。**`npm run verify` には含まれない**（`package.json` の `verify` は `npm audit` / `lint` / `test:coverage` / `build` / `knip` のみ）ため個別に実行する。`scripts/check-ui-text.sh` は `ui-text.md` の用語辞書表から検査ルールを生成するので、辞書を更新すればそのまま効く
@@ -717,6 +739,7 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
 | 2026-09-19 | 初版 | 2026-09-16 定例・Trello カードから作成 | 遠藤 |
 | 2026-09-19 | 「高エンゲージメント」の基準を「アカウント平均以上」から「フォロワー規模別の目標の下限以上」へ変更。フォロワー数の保存（FR-007）を追加、平均 RPC を削除 | Trello の目標値の表が判定基準として明記されていたため | 遠藤 |
 | 2026-09-20 | 目標値の表に 1,000 人未満（6.0〜10.0% 以上）と 10 万人以上（0.8〜1.5%）を追加。範囲外で判定しない分岐を削除 | クライアント補足の受領 | 遠藤 |
+| 2026-09-21 | 「目標達成のみ」を localStorage に保存・復元する（ブログ一覧の状態フィルターと同じ挙動）。Non-goals から該当行を削除し、FR-006・Gherkin 3本・単体テスト・工数（UI 5→6h）を更新。ステータスを `review` に戻す | ユーザー指示「基本的な仕様はブログと揃えたい」（2026-09-21） | 遠藤 |
 | 2026-09-20 | 第1回 `spec-review` の指摘14件を反映（BR-005 例外2＝アカウント切り替え時のフォロワー数リセット、§14 実装着手前 UI たたき台 CP、公式ドキュメント引用の追加、`refreshed` の振り分けと `consecutiveFailures` の明記、Gherkin 3本と対応表、Non-goals 1件、移行行数とロック、`verify:ui-text`、Q-001 → R-004、ALT-002 却下理由、`followers_count_synced_at` の理由、`ui-text.md` の既存行併記） | `spec-review` audit 第1回（詳細は §16 レビュー記録） | 遠藤 |
 | 2026-09-20 | 第2回 `spec-review` の指摘2件を反映（OAuth callback で `followers_count_synced_at` も同時に保存する不変条件、目標値ツールチップを「最後に取得した時点」へ改める、IG User リファレンスによる `followers_count` の公式照合） | `spec-review` audit 第2回（詳細は §16 レビュー記録） | 遠藤 |
 
