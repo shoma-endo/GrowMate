@@ -121,7 +121,9 @@ steps:
     quality_gates:
       - type: command
         name: npm-verify
-        command: npm run verify
+        # takt の command gate は出力64KB超でプロセスを kill し失敗扱いにする（commandGateRunner の固定値）。
+        # verify はテストの stderr だけで超えるため、全文はファイルへ逃がし、失敗時だけ末尾を出す。終了コードは verify のまま。
+        command: npm run verify > .takt/quality-gates/logs/npm-verify-last.log 2>&1 || { tail -c 40000 .takt/quality-gates/logs/npm-verify-last.log; exit 1; }
         cwd: .
         timeout_ms: 900000
     rules:
@@ -211,7 +213,8 @@ steps:
     quality_gates:
       - type: command
         name: npm-verify-changed
-        command: npm run verify:changed
+        # 出力64KB上限の回避は implement の npm-verify と同じ理由
+        command: npm run verify:changed > .takt/quality-gates/logs/npm-verify-changed-last.log 2>&1 || { tail -c 40000 .takt/quality-gates/logs/npm-verify-changed-last.log; exit 1; }
         cwd: .
         timeout_ms: 900000
     structured_output:
@@ -253,7 +256,8 @@ steps:
     quality_gates:
       - type: command
         name: npm-verify-changed
-        command: npm run verify:changed
+        # 出力64KB上限の回避は implement の npm-verify と同じ理由
+        command: npm run verify:changed > .takt/quality-gates/logs/npm-verify-changed-last.log 2>&1 || { tail -c 40000 .takt/quality-gates/logs/npm-verify-changed-last.log; exit 1; }
         cwd: .
         timeout_ms: 900000
     structured_output:
