@@ -3,7 +3,7 @@
 ## メタデータ
 
 - 文書名: 高エンゲージメント投稿のブログ化（Phase 1: エンゲージメント率の算出と抽出）
-- ステータス: `review`
+- ステータス: `approved`
 - 作成日: 2026-09-19
 - 最終更新日: 2026-09-21
 - 作成者: 遠藤
@@ -150,7 +150,7 @@ GrowMate の Instagram タブで［最新化］（投稿インサイトとフォ
 | --- | --- | ---: |
 | DB | 生成列 + credentials の列追加 + ロールバック + 型再生成 | 2 |
 | サーバー | 並べ替えキー追加・目標判定の純関数・絞り込み・page.tsx の解析共通化・credentials の読み書き | 5 |
-| UI | 列・セル表示・並び順・絞り込み・絞り込みの保存と復元・目標値表示・ui-text 更新（§6 UI用語） | 6 |
+| UI | 列・セル表示・並び順・絞り込み・絞り込みの保存と復元・目標値表示・ダイアログ内の判定基準の表示と計算式の開閉・ui-text 更新（§6 UI用語）。判定基準と計算式は既存の `dialogExtraContent` と `details` への表示の追加だけで新規コンポーネントが無いため、6h に内包する | 6 |
 | 同期 | 7日以内の既存投稿のインサイト再取得、フォロワー数の取得・保存（同期と OAuth callback） | 6〜10 |
 | テスト | 単体テスト追加・既存テスト修正 | 3〜4 |
 | 確認 | 画面確認・スプレッドシート突き合わせ | 1〜2 |
@@ -243,17 +243,17 @@ GrowMate の Instagram タブで［最新化］（投稿インサイトとフォ
   │ 表示フィールド                                  │
   │  ☑ 種別  ☑ キャプション … ☑ エンゲージメント率  │
   │ ───────────────────────────  │
-  │ 絞り込み                                        │
+  │ 絞り込み                                        │  ← 見出しは Instagram 側が描く
   │  ☑ 目標達成のみ                                 │  ← 本仕様で追加（dialogExtraContent）
   │     フォロワー 3,200人（ナノ）の目標: 4.0〜6.0% │  ← 判定の基準。チェックの直下に常時表示
+  │     （フォロワー数は最後に取得した時点の値）    │
   │     ▸ エンゲージメント率の出し方                │  ← 既定は畳む（details）
   │       （開くと）（いいね＋コメント＋保存）÷     │
-  │       リーチ × 100。フォロワー数は最後に取得    │
-  │       した時点の値                              │
+  │       リーチ × 100                              │
   └─────────────────────────────┘
   ```
 
-  ダイアログ内の配置は既存 `FieldConfigurator` の構成のまま（`src/components/FieldConfigurator.tsx:268,340-344`）。上図は縦に並べて描いているが、実際は **lg 以上では「表示フィールド」が左列、「絞り込み」が右列**（左に境界線付き）に並び、幅が狭いときだけ下に並ぶ。
+  ダイアログ内の配置は既存 `FieldConfigurator` の構成のまま（`src/components/FieldConfigurator.tsx:268,340-344`）。上図は縦に並べて描いているが、実際は **lg 以上では「表示フィールド」が左列、「絞り込み」が右列**（左に境界線付き）に並び、幅が狭いときだけ下に並ぶ。右列（「絞り込み」節）はフォロワー数が取得済み（目標を判定できる）ときだけ出る。未取得のときは `dialogExtraContent` を渡さず、節ごと出さない（§10 再利用表「「目標達成のみ」の置き場所」）。
 
   **「目標達成のみ」はフィールド構成ダイアログの中に置く**（2026-09-21 ユーザー判断。ALT-004）。ブログ一覧が状態フィルターを同じ場所に置いているため（`AnalyticsTable.tsx:883-901` が `FieldConfigurator` の `dialogExtraContent` に `CategoryFilter` を渡す）。既存の種別・期間・並び順は今回は動かさない（同 ALT-004 の却下案B）。
 
@@ -265,8 +265,8 @@ GrowMate の Instagram タブで［最新化］（投稿インサイトとフォ
   | 目標達成の目印 | バッジ「目標達成」 | — | — | 率 ≧ 目標の下限のときだけ。比較は丸め前の値で行う（表示が「4.0%」でも丸め前が 3.96% ならバッジは付かない。仕様どおり） |
   | 並び順「エンゲージメント率」 | Select の選択肢 | — | 既定は投稿日のまま | 列を非表示にすると既存の `resetSortIfHidden` で投稿日に戻る |
   | 目標達成のみ | チェックボックス | — | OFF | フィールド構成ダイアログ内の「絞り込み」節に置く。目標値を判定できるときだけ表示 |
-  | 目標達成のみの補足（判定の基準） | 「フォロワー N人（区分）の目標: a〜b%」 | — | — | チェックボックスの直下に常に表示（チェックの ON / OFF によらず）。**この補足が無いと、ダイアログの中では何を基準に絞り込むのかが分からない**（一覧側の目標値の行はダイアログを開いている間は見えない）。数値は一覧側の目標値の表示（FR-003）と同じ値を使い、2箇所で食い違わせない |
-  | 計算式の開閉 | `<details>`（summary「エンゲージメント率の出し方」／本文は「（いいね＋コメント＋保存）÷ リーチ × 100。フォロワー数は最後に取得した時点の値」） | — | 畳んだ状態 | 上の補足の直下。**既定で畳む**（通常の絞り込み操作の邪魔をしないため）。ブログ一覧の状態フィルターと同じ既存パターンを使う（`src/components/CategoryFilter.tsx:118-131` の `details` + `summary`。元は `app/analytics/[annotationId]/components/content-evaluation/ContentEvaluationCard.tsx`）。新しい開閉コンポーネントは作らない |
+  | 目標達成のみの補足（判定の基準） | 「フォロワー N人（区分）の目標: a〜b%」と、その下に「（フォロワー数は最後に取得した時点の値）」 | — | — | チェックボックスの直下に常に表示（チェックの ON / OFF によらず）。**この補足が無いと、ダイアログの中では何を基準に絞り込むのかが分からない**（一覧側の目標値の行はダイアログを開いている間は見えない）。数値は一覧側の目標値の表示（FR-003）と同じ値を使い、2箇所で食い違わせない（同じ整形関数を使う。§10 再利用表「目標値の文言の整形」）。フォロワー数の但し書きは、フォロワー数を使うこの行に置く（フォロワー数は BR-003 の区分判定の入力で、BR-001 の式には登場しないため、計算式の側には書かない。R-001 / R-002 の分母の誤読を招かない） |
+  | 計算式の開閉 | `<details>`（summary「エンゲージメント率の出し方」／本文は「（いいね＋コメント＋保存）÷ リーチ × 100」の1文。1文のため句点を付けない（`ui-text.md`「表記ルール > 1. 句点」）） | — | 畳んだ状態 | 上の補足の直下。**既定で畳む**（通常の絞り込み操作の邪魔をしないため）。ブログ一覧の状態フィルターと同じ既存パターンを使う（`src/components/CategoryFilter.tsx:119-133` の `details` + `summary`。元は `app/analytics/[annotationId]/components/content-evaluation/ContentEvaluationCard.tsx`）。新しい開閉コンポーネントは作らない |
   | 目標エンゲージメント率 | 「フォロワー N人（区分）の目標エンゲージメント率: a〜b%」+ ツールチップ。「目標達成のみ」が ON のときだけ末尾に「（目標達成のみ表示中）」 | — | — | 常に表示。判定できないときは下表の文言。末尾の「（目標達成のみ表示中）」は、チェックがダイアログ内にあり一覧から ON が見えないため（ALT-004）、復元直後を含めて絞り込み中であることを一覧の上で示す |
 
 - 状態別UI:
@@ -389,12 +389,18 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
     Given フォロワー数が 3,200 人（目標 4.0〜6.0%）である
     When フィールド構成を開く
     Then 「目標達成のみ」の直下に「フォロワー 3,200人（ナノ）の目標: 4.0〜6.0%」と表示される
+    And その下に「（フォロワー数は最後に取得した時点の値）」と表示される
 
-  Scenario: 計算式は畳まれていて、開くと読める
-    Given フィールド構成を開いている
+  Scenario: 計算式は既定で畳まれている
+    Given フォロワー数が 3,200 人（目標 4.0〜6.0%）である
+    When フィールド構成を開く
     Then 計算式は畳まれていて、「エンゲージメント率の出し方」とだけ表示される
+
+  Scenario: 計算式を開くと読める
+    Given フォロワー数が 3,200 人（目標 4.0〜6.0%）である
+    And フィールド構成を開いている
     When 「エンゲージメント率の出し方」を開く
-    Then 「（いいね＋コメント＋保存）÷ リーチ × 100」と、フォロワー数が最後に取得した時点の値である旨が表示される
+    Then 「（いいね＋コメント＋保存）÷ リーチ × 100」と表示される
 
   Scenario: 目標を達成した投稿だけに絞り込む
     Given フォロワー数が 3,200 人（目標 4.0〜6.0%）である
@@ -474,7 +480,8 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
 | 保存値が壊れていても絞り込まない | FR-006 | 同上（既定は絞り込みなし） |
 | フォロワー数から目標エンゲージメント率を決める | FR-003 | BR-003 |
 | 絞り込みの基準がダイアログの中で読める | FR-004 | BR-003、2026-09-21 ユーザー指摘 |
-| 計算式は畳まれていて、開くと読める | FR-004 | BR-001、2026-09-21 ユーザー指示（開閉できるようにする） |
+| 計算式は既定で畳まれている | FR-004 | BR-001、2026-09-21 ユーザー指示（開閉できるようにする） |
+| 計算式を開くと読める | FR-004 | 同上 |
 | 目標を達成した投稿だけに絞り込む | FR-004 | BR-003 |
 | フォロワー数をまだ取得していない | FR-003, FR-007 | BR-005 |
 | フォロワー数が未取得のまま「目標達成のみ」付きの URL を開く | FR-004 | BR-003（判定しない） |
@@ -548,10 +555,11 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
   | 目標判定の純関数 | 新規（同ファイルに追加。既存に同等物なし） | `src/lib/instagram-format.ts` |
   | 一覧の型・マッパー | 拡張（`InstagramMediaListItem.engagementRate: number \| null`、`mapMediaRow` に追加） | `src/types/instagram.ts`、`instagramMediaService.ts` `mapMediaRow` |
   | 並べ替えキーの列挙箇所 | 拡張。**列 id と sort key はどちらも `engagement_rate`** にする（並び順の復元処理が `visibleIds.includes(stored)` で判定するため）。対象: `InstagramMediaSortKey`、`parseInstagramSortKey`、`page.tsx` の解析、`InstagramTab.tsx` の SelectItem、`InstagramMediaTable.tsx` の `SORTABLE_COLUMN_IDS` と `sortColumnId`（現行は三項演算子で、該当しないと `'views'` になる。追加しないと視聴数の列を隠したときに率の並べ替えが解除され、率の列を隠しても解除されない） | 左記 |
-  | `ig_high` の受け渡し | 拡張。**並び順キーと同様に列挙箇所を漏らさない**（1つ落ちると patch 未指定の href で `ig_high` が毎回消える）。対象: `AnalyticsHrefState`（`app/analytics/build-href.ts:11-27`）、`InstagramHrefPatch`（同 `:29-36`）、`buildInstagramHref` の `ig_*` を組み立てる2つの分岐（同 `:81-99`。`patch.tab==='blog'` 側も含む）、`InstagramFilterPatch`（同 `:108-114`）、`InstagramTab` props のインライン patch 型（`app/analytics/components/InstagramTab.tsx:57-63`）、`app/analytics/page.tsx` のパラメータ取り出し（`page.tsx:115-120`）と `buildPageHref`（同 `:235-266`）、`AnalyticsClient` の `hrefState`（`app/analytics/AnalyticsClient.tsx:149-163`）と `InstagramTab` への props、**`InstagramMediaTable` の props**（`app/analytics/components/InstagramMediaTable.tsx:33-47`。現行は5つだけ。`igHigh`・変更ハンドラ・表示可否の3つを足し、`InstagramTab.tsx:585-591` から渡す）、**`InstagramTab` の props に「目標を判定できるか」（フォロワー数が取得済みか）**（`InstagramTab.tsx:36-66` には現行フォロワー関係の props が無い。`page.tsx` が読む credential から、既存の `instagramLastSyncedAt` と同じく `page.tsx` → `AnalyticsClient.tsx` の props → `InstagramTab` の経路で渡す。契約3 の復元可否と §6 のチェックボックス表示条件はこの値で決める） | 左記 |
+  | `ig_high` の受け渡し | 拡張。**並び順キーと同様に列挙箇所を漏らさない**（1つ落ちると patch 未指定の href で `ig_high` が毎回消える）。対象: `AnalyticsHrefState`（`app/analytics/build-href.ts:11-27`）、`InstagramHrefPatch`（同 `:29-36`）、`buildInstagramHref` の `ig_*` を組み立てる2つの分岐（同 `:81-99`。`patch.tab==='blog'` 側も含む）、`InstagramFilterPatch`（同 `:108-114`）、`InstagramTab` props のインライン patch 型（`app/analytics/components/InstagramTab.tsx:57-63`）、`app/analytics/page.tsx` のパラメータ取り出し（`page.tsx:115-120`）と `buildPageHref`（同 `:235-266`）、`AnalyticsClient` の `hrefState`（`app/analytics/AnalyticsClient.tsx:149-163`）と `InstagramTab` への props、**`InstagramMediaTable` の props**（`app/analytics/components/InstagramMediaTable.tsx:33-47`。現行は5つだけ。`igHigh`・変更ハンドラ・ダイアログ内に出す判定基準の文言（`string | null`。null は「目標を判定できない」＝表示しない、を兼ねる）の3つを足し、`InstagramTab.tsx:585-591` から渡す）、**`InstagramTab` の props にフォロワー数 `followersCount: number | null` と取得時刻 `followersCountSyncedAt: string | null`**（`InstagramTab.tsx:36-66` には現行フォロワー関係の props が無い。`page.tsx` が読む credential から、既存の `instagramLastSyncedAt` と同じく `page.tsx` → `AnalyticsClient.tsx` の props → `InstagramTab` の経路で渡す。「目標を判定できるか」は `followersCount !== null` で決め、契約3 の復元可否と §6 のチェックボックス表示条件はこの値を使う。取得時刻は §6 目標値のツールチップの日付に使う） | 左記 |
+  | 目標値の文言の整形 | 新規（1関数。一覧側の目標値の行（FR-003「フォロワー N人（区分）の目標エンゲージメント率: a〜b%」）とダイアログ内の判定基準（FR-004「フォロワー N人（区分）の目標: a〜b%」）の**両方がこの関数を使う**。「目標エンゲージメント率: 」と「目標: 」の違いは引数で表す。`InstagramTab` が `followersCount` から目標判定の純関数経由で文言を作り、一覧側に表示し、ダイアログ用の文言を `InstagramMediaTable` へ渡す。2箇所で別々に組み立てない（§6 項目定義「目標達成のみの補足」） | `src/lib/instagram-format.ts`（目標判定の純関数と同居。現行の export は `formatCount` / `formatPostedAt` / `calculateInstagramRate` / `formatInstagramRate` / `formatSkipRate` / `formatDurationMs` のみで同等物なし） |
   | 並び順の保存・復元 | **拡張**（既存の復元 effect に `ig_high` を合流させる。下行のとおり1本の effect で両方を戻す） | `InstagramTab.tsx` `saveInstagramSort` / 復元 effect（`InstagramTab.tsx:323-337`） |
-  | 計算式の開閉 | 再利用。ブログ一覧の状態フィルターと同じ `details` + `summary`（既定で畳む）。新しい開閉コンポーネントは作らない | `src/components/CategoryFilter.tsx:118-131`、`app/analytics/[annotationId]/components/content-evaluation/ContentEvaluationCard.tsx` |
-  | 「目標達成のみ」の置き場所 | 再利用（拡張なし）。`FieldConfigurator` の既存 props `dialogExtraContent` に渡すだけ（ブログ一覧と同じ使い方）。Instagram 側は現在 children（render prop）だけを渡しているので、`dialogExtraContent` を足す。チェックの値・変更ハンドラ・表示可否は `InstagramMediaTable` が持たず、`InstagramTab` から props で受ける（上の「`ig_high` の受け渡し」行）。トリガーは既存の `instagram-field-config-trigger` ボタンをそのまま使う | `src/components/FieldConfigurator.tsx`（`dialogExtraContent`）、`src/components/AnalyticsTable.tsx`（ブログ側の使い方）、`app/analytics/components/InstagramMediaTable.tsx`、`app/analytics/components/InstagramTab.tsx`（トリガー） |
+  | 計算式の開閉 | 再利用。ブログ一覧の状態フィルターと同じ `details` + `summary`（既定で畳む）。新しい開閉コンポーネントは作らない | `src/components/CategoryFilter.tsx:119-133`、`app/analytics/[annotationId]/components/content-evaluation/ContentEvaluationCard.tsx` |
+  | 「目標達成のみ」の置き場所 | 再利用（拡張なし）。`FieldConfigurator` の既存 props `dialogExtraContent` に渡すだけ（ブログ一覧と同じ使い方）。Instagram 側は現在 children（render prop）だけを渡しているので、`dialogExtraContent` を足す。チェックの値・変更ハンドラ・判定基準の文言は `InstagramMediaTable` が持たず、`InstagramTab` から props で受ける（上の「`ig_high` の受け渡し」行）。**「絞り込み」見出しは Instagram 側が `dialogExtraContent` の中で描く**（`FieldConfigurator` は右列の枠だけを描き見出しを描かない。`src/components/FieldConfigurator.tsx:340-344`。ブログ側も `CategoryFilter` が自前で見出しを描く。`src/components/CategoryFilter.tsx:101`）。**目標を判定できない（判定基準の文言が null）ときは `dialogExtraContent` を渡さず、「絞り込み」節ごと出さない**（`FieldConfigurator.tsx:340` は `dialogExtraContent` 未指定なら右列自体を描かない）。トリガーは既存の `instagram-field-config-trigger` ボタンをそのまま使う | `src/components/FieldConfigurator.tsx`（`dialogExtraContent`）、`src/components/AnalyticsTable.tsx`（ブログ側の使い方）、`app/analytics/components/InstagramMediaTable.tsx`、`app/analytics/components/InstagramTab.tsx`（トリガー） |
   | 「目標達成のみ」の保存・復元 | 拡張。`ANALYTICS_STORAGE_KEYS` に `IG_HIGH_ONLY: 'analytics.instagramHighOnly'` を追加し、解釈は純関数（壊れた値・欠けた値は `false` へ畳む。既定を「絞り込みあり」にしない）。**ブログ側の `parseStatusFilterConfig` / `loadStatusFilterFromStorage`（`src/lib/constants.ts:542` / `:561`）と同じ設計**（localStorage に触らない純関数にして node environment でテストできるようにする）。契約は表の下の4点 | `src/lib/constants.ts`、`src/components/AnalyticsTable.tsx`、`InstagramTab.tsx` |
   | フォロワー数の取得 | 再利用（`fetchProfile` は `followers_count` を取得済み） | `src/server/services/instagramService.ts` `fetchProfile` |
   | credentials の型・読み書き | 拡張（`InstagramCredential` に `followersCount` / `followersCountSyncedAt`、`updateInstagramCredential` 相当で部分更新） | `src/types/instagram.ts`、`src/server/services/supabaseService.ts` |
@@ -697,7 +705,7 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
   - 「目標達成のみ」の保存値の解釈（`instagram-sort-storage.test.ts` に追加）: `'1'` は `true`、`'0'`・それ以外の文字列・壊れた値・未設定は `false`（ブログの `parseStatusFilterConfig` と同じ「既定は絞り込みなし」。§10 再利用表の契約2）
   - 保存・復元の配線（同上）: 保存値が並び順・「目標達成のみ」の両方にあるとき、復元は**1回の遷移で両方が URL に載る**（`igSort` と `igHigh` を同じ patch に載せていることの確認。2回に分けると後の replace が先の条件を落とす）／フォロワー数が未取得のときは `ig_high` を復元しない（並び順だけを復元する）／**保存値の並び順が `posted_at`、URL に `ig_sort` がある、または並び順が指す列が非表示のときでも、`ig_high` だけは復元される**（並び順側の3条件が effect 全体を止めないことの確認。契約3）／どちらも復元対象が無ければ遷移しない
   - 表示: 率の丸め（6.04→6.0、6.06→6.1。浮動小数の境界値 x.x5 はテスト例に使わない）、NULL は `-`
-- 統合・実画面確認: `/analytics?tab=instagram` で列・並べ替え・絞り込み・目標値表示（区分内／未取得）・列非表示時の並び順リセットを確認
+- 統合・実画面確認: `/analytics?tab=instagram` で列・並べ替え・絞り込み・目標値表示（区分内／未取得）・列非表示時の並び順リセットを確認。あわせてフィールド構成ダイアログを開き、(1)「目標達成のみ」の直下に判定基準が一覧側の目標値の行と同じ値で出る、(2) 計算式が既定で畳まれ、開くと読める、(3) フォロワー数が未取得のときは「絞り込み」節ごと出ない、を確認する（§7「絞り込みの基準がダイアログの中で読める」「計算式は既定で畳まれている」「計算式を開くと読める」）。この表示は props の受け渡しと既存の `details` だけのため、**表示のための単体テストは新設しない**（文言の数値は目標判定の純関数の境界値テストと、一覧側・ダイアログ側で同じ整形関数を使うことで担保する）
 - 文言チェック: `npm run verify:ui-text` を実行する。**`npm run verify` には含まれない**（`package.json` の `verify` は `npm audit` / `lint` / `test:coverage` / `build` / `knip` のみ）ため個別に実行する。`scripts/check-ui-text.sh` は `ui-text.md` の用語辞書表から検査ルールを生成するので、辞書を更新すればそのまま効く
 - Gherkin との対応: §7 対応表のとおり
 - 外部API・失敗系・境界条件: リーチ 0、元数値 NULL、フォロワー数の境界（0・999/1000・99999/100000）・未取得・取得失敗
@@ -764,6 +772,7 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
 | 2（`spec-review` audit 再監査） | 2026-09-20 | 0 / 1 / 1 | 全2件を本書へ反映（下記「第2回レビューの反映内容」）。第1回の14件は全件 `resolved` と確認された | 残置合意なし（🟡 は修正済み）。未確認のまま持ち越すのは下記「残置・未確認」3 の1件のみ |
 | 3（`spec-review` audit。2026-09-21 差分＝「目標達成のみ」の保存・復元） | 2026-09-21 | 1 / 5 / 3 | 全9件を本書へ反映（下記「第3回レビューの反映内容」）。`persists` / `reopened` はゼロ | 残置合意なし（全件を本文で解消）。🟡#2(b)（復元通知）は「そろえない」を選び §4 Non-goals へ理由付きで記録した |
 | 4（`spec-review` audit。2026-09-21 差分＝ALT-004 と保存・復元の再監査） | 2026-09-21 | 0 / 3 / 3 | 全6件を本書へ反映（下記「第4回レビューの反映内容」） | 残置合意なし（全件を本文で解消）。公式ドキュメント照合は未実施（下記「公式ドキュメント照合（第4回）」） |
+| 5（`spec-review` audit。2026-09-21 差分＝ダイアログ内の判定基準の表示と計算式の `details` 開閉） | 2026-09-21 | 0 / 3 / 4 | 全7件を本書へ反映（下記「第5回レビューの反映内容」）。第1〜4回の31件は全件 `resolved`、`persists` / `reopened` はゼロ | 残置合意なし（全件を本文で解消）。公式ドキュメント照合は未実施（下記「公式ドキュメント照合（第5回）」） |
 
 #### 第1回レビューの反映内容（2026-09-20）
 
@@ -818,13 +827,27 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
 | finding_id | 反映先 |
 | --- | --- |
 | SPEC-NEW-ighigh-state-invisible-outside-dialog 🟡 | 監査の推奨 (a) を採用。新しいコンポーネント・通知は作らず、§6 項目定義「目標エンゲージメント率」に「ON のときだけ末尾に（目標達成のみ表示中）」を追加し、§6 レイアウト図・状態別UI（該当0件／復元された直後）・§4 Non-goals の理由・ALT-004 の影響・上記「復元通知を Non-goals にした理由」を事実（チェックはダイアログを開かないと見えない）に合わせて改めた。§7 に Gherkin「復元された直後に絞り込み中であることが一覧の上に出る」と対応表の行を追加。(b)（表示を足さず R-006 で受容）は、既定の動きで §4 自身が挙げる「投稿が消えた」誤認が起き、ユーザー指示「ブログと揃えたい」（ブログはダイアログ外に ON の状態を出す）とも合わないため採らない |
-| SPEC-NEW-ighigh-wiring-missing-table-and-followers-props 🟡 | §10 再利用表「`ig_high` の受け渡し」に `InstagramMediaTable` の props（`igHigh`・変更ハンドラ・表示可否）と、`InstagramTab` の props「目標を判定できるか」（`page.tsx` → `AnalyticsClient.tsx` → `InstagramTab`）を追加。「目標達成のみ」の置き場所の行に「値とハンドラは `InstagramTab` から props で受ける」を追記 |
+| SPEC-NEW-ighigh-wiring-missing-table-and-followers-props 🟡 | §10 再利用表「`ig_high` の受け渡し」に `InstagramMediaTable` の props（`igHigh`・変更ハンドラ・表示可否）と、`InstagramTab` の props「目標を判定できるか」（`page.tsx` → `AnalyticsClient.tsx` → `InstagramTab`）を追加。「目標達成のみ」の置き場所の行に「値とハンドラは `InstagramTab` から props で受ける」を追記（**第5回で差し替え**: 「表示可否」は判定基準の文言へ、「目標を判定できるか」は `followersCount` / `followersCountSyncedAt` へ。下記「第5回レビューの反映内容」） |
 | SPEC-NEW-restore-early-return-couples-keys 🟡 | §10 契約3 に「並び順と `ig_high` の復元可否は別々に判定する。`InstagramTab.tsx:328` / `:330` / `:334` の3条件は並び順の patch からだけ外し、effect 全体を return させない」を明記。§13 保存・復元の配線テストに「保存値が `posted_at`・URL に `ig_sort` がある・列が非表示でも `ig_high` だけは復元される」を、§7 に Gherkin「並び順が既定のままでも『目標達成のみ』は復元される」と対応表の行を追加 |
 | SPEC-NEW-dialog-layout-ascii-mismatch 🟢 | §6 レイアウト図の下に「lg 以上では左列＝表示フィールド、右列＝絞り込み（既存 `FieldConfigurator` の構成のまま）。幅が狭いときだけ下に並ぶ」を注記 |
 | SPEC-NEW-wiring-paths-abbreviated 🟢 | §10 再利用表の `build-href.ts` / `AnalyticsClient.tsx` / `page.tsx` / `InstagramTab.tsx` を `app/analytics/` 起点のフルパスへ直した |
 | SPEC-NEW-cp-scope-omits-placement 🟢 | §14 実装着手前 CP の確認内容に「フィールド構成ダイアログ内の『目標達成のみ』（ALT-004）と目標値の行の『（目標達成のみ表示中）』」を追記。確認質問は新設しない（§12 の「なし」を維持） |
 
 **公式ドキュメント照合（第4回）**: 未実施。`spec-audit.md` 冒頭の記録どおり、今回の差分は ALT-004 と localStorage の保存・復元だけで外部 API に関わる部分が無く、§10 制約条件の引用文も書き換わっていない。照合済みの記録は下記「公式ドキュメント照合」（2026-09-20）と上記「公式ドキュメント照合（第3回）」（2026-09-21）。
+
+#### 第5回レビューの反映内容（2026-09-21）
+
+| finding_id | 反映先 |
+| --- | --- |
+| SPEC-NEW-dialog-criteria-values-unwired 🟡 | §10 再利用表「`ig_high` の受け渡し」を改め、`InstagramTab` の props を真偽値「目標を判定できるか」から `followersCount` / `followersCountSyncedAt` へ広げ（`page.tsx` → `AnalyticsClient.tsx` → `InstagramTab`。判定可否は `followersCount !== null`）、`InstagramMediaTable` の props の「表示可否」を判定基準の文言（`string \| null`。null が「表示しない」を兼ねる）へ差し替えた。同表に「目標値の文言の整形」行を新設し、一覧側（FR-003）とダイアログ内（FR-004）が `src/lib/instagram-format.ts` の同じ1関数を使い、「目標エンゲージメント率: 」と「目標: 」の違いは引数で表すと明記。§6 項目定義「目標達成のみの補足」からも参照 |
+| SPEC-NEW-formula-details-mixes-follower-note 🟡 | 監査の修正案 (a) を採用。`details` 本文を式だけ（「（いいね＋コメント＋保存）÷ リーチ × 100」）にし、フォロワー数の但し書き「（フォロワー数は最後に取得した時点の値）」は判定基準の行の下へ移した。§6 項目定義・§6 レイアウト図・§7 Gherkin の3箇所をそろえた。(b)（summary を「エンゲージメント率と目標の出し方」に改め2文にする）は採らない。理由: フォロワー数は BR-003 の区分判定の入力で BR-001 の式に登場しないため、計算式の開示に同居させる限り R-001 / R-002 の分母の誤読を招く余地が残る。(a) なら summary 文言と既存 Gherkin の判定基準の文字列を変えずに済む |
+| SPEC-NEW-dialog-additions-absent-from-test-plan 🟡 | §13「統合・実画面確認」にダイアログ内の (1) 判定基準が一覧側と同じ値で出る (2) 計算式が既定で畳まれ開くと読める (3) フォロワー数未取得時は節ごと出ない、を追加。表示のための単体テストは新設しない旨と、その理由（props の受け渡しと既存 `details` のみ。数値は純関数の境界値テストと共通の整形関数で担保）を明記 |
+| SPEC-NEW-filter-section-heading-owner-undefined 🟢 | §10 再利用表「「目標達成のみ」の置き場所」に「『絞り込み』見出しは Instagram 側が `dialogExtraContent` の中で描く（`FieldConfigurator.tsx:340-344` は見出しを描かない。ブログ側 `CategoryFilter.tsx:101` と同じ）」「目標を判定できないときは `dialogExtraContent` を渡さず節ごと出さない（`FieldConfigurator.tsx:340`）」を追記。§6 レイアウト図の注記にも同旨を追加。`details` の参照行を `CategoryFilter.tsx:118-131` → `:119-133` へ直した（§6 項目定義・§10 再利用表の2箇所） |
+| SPEC-NEW-gherkin-then-before-when 🟢 | §7「計算式は畳まれていて、開くと読める」を「計算式は既定で畳まれている」（Given → When フィールド構成を開く → Then）と「計算式を開くと読める」（Given → When 開く → Then）の2本に分け、§7 対応表も2行にした |
+| SPEC-NEW-details-text-punctuation 🟢 | 指摘2の (a) 採用で `details` 本文が1文になったため、`ui-text.md`「表記ルール > 1. 句点」の「1 文で完結する…付けない」に従い句点なしで確定し、§6 項目定義に根拠を併記。§6 レイアウト図・§7 Gherkin も同文言 |
+| SPEC-NEW-estimate-not-updated-for-dialog-additions 🟢 | §5 内訳の UI 行に「ダイアログ内の判定基準の表示と計算式の開閉」を加え、既存の `dialogExtraContent` と `details` への表示の追加だけで新規コンポーネントが無いため 6h に内包する旨を添えた（工数は据え置き） |
+
+**公式ドキュメント照合（第5回）**: 未実施。`spec-audit.md` 冒頭の記録どおり、今回の差分（§5 / §6 / §7 / §10 再利用表 / §13 / §16）は外部 API 面を持たず、§9 外部連携表・§10 制約条件1〜4 の verbatim 引用と確認日 2026-09-20 は変更していない。照合済みの記録は下記「公式ドキュメント照合」（2026-09-20）と上記「公式ドキュメント照合（第3回）」（2026-09-21）。
 
 #### 残置・未確認として合意した論点
 
@@ -864,6 +887,7 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
 | 2026-09-21 | 計算式を既定で畳んだ `details`（summary「エンゲージメント率の出し方」）に入れて開閉できるようにする。ブログ一覧の状態フィルターと同じ既存パターン | ユーザー指示「計算式は開閉できるように」（2026-09-21） | 遠藤 |
 | 2026-09-21 | フィールド構成ダイアログ内の「目標達成のみ」の直下に判定基準（フォロワー数・区分・目標・計算式）を表示する。FR-004・§6 レイアウト図・項目定義・Gherkin・§14 CP を更新 | ユーザー指摘「フォロワー数ごとの高エンゲージメント率の基準が無いとユーザーが分からない」（2026-09-21） | 遠藤 |
 | 2026-09-21 | 第4回 `spec-review` の指摘6件を反映（ON のとき目標値の行に「（目標達成のみ表示中）」、`InstagramMediaTable` の props と「目標を判定できるか」の配線、並び順と `ig_high` の復元可否を別々に判定、ダイアログ内レイアウトの注記、配線表のフルパス、実装着手前 CP に ALT-004） | `spec-review` audit 第4回（詳細は §16 レビュー記録） | 遠藤 |
+| 2026-09-21 | 第5回 `spec-review` の指摘7件を反映（判定基準の値の配線と一覧側・ダイアログ側で共用する整形関数、計算式の本文を式だけにしフォロワー数の但し書きを判定基準の行へ移す、§13 実画面確認の追加、「絞り込み」見出しの描画主体と未取得時は節ごと出さないこと、Gherkin の分割、句点、§5 内訳） | `spec-review` audit 第5回（詳細は §16 レビュー記録） | 遠藤 |
 
 ## 17. フェーズ全体のロードマップ（参考・本書の完了定義外）
 
