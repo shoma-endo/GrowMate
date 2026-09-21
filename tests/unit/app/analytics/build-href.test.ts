@@ -21,11 +21,19 @@ function buildState(overrides: Partial<AnalyticsHrefState> = {}): AnalyticsHrefS
     igStart: '2026-08-01',
     igEnd: '2026-08-25',
     igSort: 'posted_at',
+    igHigh: false,
     ...overrides,
   };
 }
 
 describe('buildInstagramHref', () => {
+  it('Instagram の絞り込みをタブ切り替え・ページ送り・並び替えで引き継ぐ', () => {
+    const state = buildState({ activeTab: 'instagram', igHigh: true });
+    expect(buildInstagramHref(state, { tab: 'blog' })).toContain('ig_high=1');
+    expect(buildInstagramHref(state, { igPage: 2 })).toContain('ig_high=1');
+    expect(buildInstagramHref(state, { igSort: 'engagement_rate' })).toContain('ig_high=1');
+    expect(buildInstagramHref(state, { tab: 'instagram' })).toContain('ig_high=1');
+  });
   it('「評価未設定」フィルタはタブを切り替えても維持される', () => {
     const href = buildInstagramHref(buildState({ hasUnstartedGscEvaluation: true }), {
       tab: 'instagram',

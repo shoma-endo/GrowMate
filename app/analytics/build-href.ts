@@ -24,6 +24,7 @@ export interface AnalyticsHrefState {
   /** null / 空文字は絞り込みなし。URL にも出さない */
   igEnd: string | null;
   igSort: InstagramMediaSortKey;
+  igHigh: boolean;
 }
 
 export interface InstagramHrefPatch {
@@ -33,6 +34,7 @@ export interface InstagramHrefPatch {
   igStart?: string | null;
   igEnd?: string | null;
   igSort?: InstagramMediaSortKey;
+  igHigh?: boolean;
 }
 
 /**
@@ -77,6 +79,7 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
   // 1度だけ解決して両分岐で使う（blog 分岐だけ state を見ていると解除が効かない）
   const nextIgStart = patch.igStart !== undefined ? patch.igStart : state.igStart;
   const nextIgEnd = patch.igEnd !== undefined ? patch.igEnd : state.igEnd;
+  const nextIgHigh = patch.igHigh !== undefined ? patch.igHigh : state.igHigh;
 
   if (state.instagramConnected && nextTab === 'instagram') {
     query.set('tab', 'instagram');
@@ -85,6 +88,7 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
     setOptionalDate(query, 'ig_start', nextIgStart);
     setOptionalDate(query, 'ig_end', nextIgEnd);
     query.set('ig_sort', patch.igSort ?? state.igSort);
+    query.set('ig_high', nextIgHigh ? '1' : '0');
   }
   if (patch.tab === 'instagram') {
     query.set('ig_page', '1');
@@ -96,6 +100,7 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
     setOptionalDate(query, 'ig_start', nextIgStart);
     setOptionalDate(query, 'ig_end', nextIgEnd);
     query.set('ig_sort', state.igSort);
+    query.set('ig_high', nextIgHigh ? '1' : '0');
   }
 
   return `/analytics?${query.toString()}`;
@@ -110,6 +115,7 @@ export interface InstagramFilterPatch {
   igStart?: string | null;
   igEnd?: string | null;
   igSort?: InstagramMediaSortKey;
+  igHigh?: boolean;
   igPage?: number;
 }
 

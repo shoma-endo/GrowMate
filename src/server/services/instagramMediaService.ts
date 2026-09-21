@@ -2,6 +2,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
 import type { Database, Tables, TablesInsert } from '@/types/database.types';
+import { asPendingClient, type InstagramEngagementDatabase } from '@/types/database.types.pending';
 import { INSTAGRAM_MEDIA_THUMBNAIL_BUCKET } from '@/lib/constants';
 import type {
   InstagramMediaListItem,
@@ -10,7 +11,6 @@ import type {
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
 
-type InstagramMediaRow = Tables<'instagram_media'>;
 type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
 
 export type InstagramMediaListingFields = {
@@ -79,9 +79,13 @@ interface InstagramMediaQuery {
   /** null は絞り込みなし（その側の境界を設けない） */
   endDate: string | null;
   sort: InstagramMediaSortKey;
+  /** null は目標達成の絞り込みなし */
+  minEngagementRate: number | null;
 }
 
-function mapMediaRow(row: InstagramMediaRow): InstagramMediaListItem {
+function mapMediaRow(
+  row: InstagramEngagementDatabase['public']['Tables']['instagram_media']['Row']
+): InstagramMediaListItem {
   const reason = row.insights_unavailable_reason;
   const unavailableReason: InstagramMediaListItem['insightsUnavailableReason'] =
     reason === 'pre_conversion' || reason === 'retention_expired' ? reason : null;
@@ -101,6 +105,7 @@ function mapMediaRow(row: InstagramMediaRow): InstagramMediaListItem {
     reach: row.reach,
     views: row.views,
     saved: row.saved,
+    engagementRate: row.engagement_rate === null ? null : Number(row.engagement_rate),
     shares: row.shares,
     totalInteractions: row.total_interactions,
     reposts: row.reposts,
@@ -121,7 +126,7 @@ class InstagramMediaService extends SupabaseService {
    * 1ユーザーあたり数千件までは許容。超えたら planned count か keyset ページングへ移す。
    */
   async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
-    const client = this.getClient();
+    const client = asPendingClient<InstagramEngagementDatabase>(this.getClient());
 
     const runQuery = async (page: number) => {
       const offset = (page - 1) * query.perPage;
@@ -151,8 +156,14 @@ class InstagramMediaService extends SupabaseService {
         dbQuery = dbQuery.order('reach', { ascending, nullsFirst: false });
       } else if (query.sort === 'views') {
         dbQuery = dbQuery.order('views', { ascending, nullsFirst: false });
+      } else if (query.sort === 'engagement_rate') {
+        dbQuery = dbQuery.order('engagement_rate', { ascending, nullsFirst: false });
       } else {
         dbQuery = dbQuery.order('posted_at', { ascending });
+      }
+
+      if (query.minEngagementRate !== null) {
+        dbQuery = dbQuery.gte('engagement_rate', query.minEngagementRate);
       }
 
       dbQuery = dbQuery.order('id', { ascending: true }).range(offset, offset + query.perPage - 1);

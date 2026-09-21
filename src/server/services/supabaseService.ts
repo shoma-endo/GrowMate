@@ -27,12 +27,13 @@ import type {
 } from '@/types/google-ads-negative-keywords-suggestion';
 import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
 import type { InstagramCredential } from '@/types/instagram';
+import { asPendingClient, type InstagramEngagementDatabase } from '@/types/database.types.pending';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
 
-type InstagramCredentialRow = Tables<'instagram_credentials'>;
-type InstagramCredentialInsertRow = TablesInsert<'instagram_credentials'>;
-type InstagramCredentialUpdateRow = TablesUpdate<'instagram_credentials'>;
+type InstagramCredentialRow = InstagramEngagementDatabase['public']['Tables']['instagram_credentials']['Row'];
+type InstagramCredentialInsertRow = InstagramEngagementDatabase['public']['Tables']['instagram_credentials']['Insert'];
+type InstagramCredentialUpdateRow = InstagramEngagementDatabase['public']['Tables']['instagram_credentials']['Update'];
 
 interface SupabaseErrorInfo {
   userMessage: string;
@@ -2605,6 +2606,8 @@ export class SupabaseService {
       lastSyncedAt: row.last_synced_at,
       backfillCursor: row.backfill_cursor,
       backfillCompletedAt: row.backfill_completed_at,
+      followersCount: row.followers_count,
+      followersCountSyncedAt: row.followers_count_synced_at,
     };
   }
 
@@ -2619,6 +2622,7 @@ export class SupabaseService {
       accessTokenExpiresAt: string;
       accessTokenIssuedAt: string;
       scope?: string[];
+      followers?: { count: number; syncedAt: string };
     }
   ): Promise<SupabaseResult<void>> {
     const record: InstagramCredentialInsertRow = {
@@ -2633,8 +2637,13 @@ export class SupabaseService {
       scope: payload.scope ?? [],
       updated_at: new Date().toISOString(),
     };
+    if (payload.followers !== undefined) {
+      record.followers_count = payload.followers.count;
+      record.followers_count_synced_at = payload.followers.syncedAt;
+    }
 
-    const { error } = await this.supabase
+    const client = asPendingClient<InstagramEngagementDatabase>(this.supabase);
+    const { error } = await client
       .from('instagram_credentials')
       .upsert(record, { onConflict: 'user_id' });
 
@@ -2650,7 +2659,8 @@ export class SupabaseService {
   }
 
   async getInstagramCredential(userId: string): Promise<InstagramCredential | null> {
-    const { data, error } = await this.supabase
+    const client = asPendingClient<InstagramEngagementDatabase>(this.supabase);
+    const { data, error } = await client
       .from('instagram_credentials')
       .select('*')
       .eq('user_id', userId)
@@ -2681,6 +2691,7 @@ export class SupabaseService {
       lastSyncedAt: string | null;
       backfillCursor: string | null;
       backfillCompletedAt: string | null;
+      followers: { count: number; syncedAt: string } | null;
     }>
   ): Promise<SupabaseResult<void>> {
     const record: InstagramCredentialUpdateRow = {
@@ -2717,8 +2728,13 @@ export class SupabaseService {
     if ('backfillCompletedAt' in updates) {
       record.backfill_completed_at = updates.backfillCompletedAt ?? null;
     }
+    if ('followers' in updates) {
+      record.followers_count = updates.followers?.count ?? null;
+      record.followers_count_synced_at = updates.followers?.syncedAt ?? null;
+    }
 
-    const { error } = await this.supabase
+    const client = asPendingClient<InstagramEngagementDatabase>(this.supabase);
+    const { error } = await client
       .from('instagram_credentials')
       .update(record)
       .eq('user_id', userId);

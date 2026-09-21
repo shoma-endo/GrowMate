@@ -10,6 +10,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import {
   ANALYTICS_STORAGE_KEYS,
@@ -23,12 +25,18 @@ import {
   formatInstagramRate,
   formatPostedAt,
   formatSkipRate,
+  isInstagramEngagementTargetMet,
 } from '@/lib/instagram-format';
 import type { InstagramMediaListItem, InstagramMediaSortKey } from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
 import { ExternalLink } from 'lucide-react';
 
-const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>(['posted_at', 'reach', 'views']);
+const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>([
+  'posted_at',
+  'reach',
+  'views',
+  'engagement_rate',
+]);
 
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
@@ -36,6 +44,10 @@ interface InstagramMediaTableProps {
   /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
   fieldConfig: StoredFieldConfig | null;
   onSortColumnHidden: () => void;
+  igHigh: boolean;
+  onHighOnlyChange: (checked: boolean) => void;
+  criteriaLabel: string | null;
+  targetMinRate: number | null;
   /**
    * items が空のときに表示するメッセージ。
    * items が空でもこのコンポーネント（＝内包する FieldConfigurator）は必ずマウントする必要がある。
@@ -142,6 +154,10 @@ export default function InstagramMediaTable({
   fieldConfig,
   onSortColumnHidden,
   emptyMessage,
+  igHigh,
+  onHighOnlyChange,
+  criteriaLabel,
+  targetMinRate,
 }: InstagramMediaTableProps) {
   const columns = React.useMemo(() => INSTAGRAM_COLUMNS.map(col => ({ ...col })), []);
 
@@ -151,8 +167,7 @@ export default function InstagramMediaTable({
       if (!SORTABLE_COLUMN_IDS.has(igSort)) {
         return;
       }
-      const sortColumnId =
-        igSort === 'posted_at' ? 'posted_at' : igSort === 'reach' ? 'reach' : 'views';
+      const sortColumnId = igSort;
       if (!visibleIds.includes(sortColumnId)) {
         onSortColumnHidden();
       }
@@ -178,6 +193,36 @@ export default function InstagramMediaTable({
         return <MetricCell item={item} value={formatCount(item.commentsCount)} />;
       case 'saved':
         return <MetricCell item={item} value={formatCount(item.saved)} />;
+      case 'engagement_rate': {
+        if (item.insightsUnavailable) {
+          return <MetricCell item={item} value="-" />;
+        }
+        const targetMet = isInstagramEngagementTargetMet(
+          item.engagementRate,
+          targetMinRate === null ? null : { min: targetMinRate }
+        );
+        return (
+          <div className="flex items-center gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    tabIndex={0}
+                    role="button"
+                    className="underline decoration-dotted"
+                  >
+                    {formatInstagramRate(item.engagementRate)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  （いいね＋コメント＋保存）÷ リーチ で GrowMate が計算した値です。Instagram アプリの表示と一致しない場合があります
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            {targetMet ? <Badge variant="secondary">目標達成</Badge> : null}
+          </div>
+        );
+      }
       case 'shares':
         return <MetricCell item={item} value={formatCount(item.shares)} />;
       case 'reposts':
@@ -249,6 +294,30 @@ export default function InstagramMediaTable({
       onChange={handleConfiguratorChange}
       triggerId="instagram-field-config-trigger"
       hideTrigger
+      dialogExtraContent={
+        criteriaLabel === null ? undefined : (
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-foreground">絞り込み</h3>
+            <div className="border rounded-md px-2 py-2">
+              <label className="flex items-center gap-2 cursor-pointer px-1 py-1 rounded">
+                <Checkbox
+                  checked={igHigh}
+                  onCheckedChange={checked => onHighOnlyChange(checked === true)}
+                />
+                <span className="text-sm font-medium">目標達成のみ</span>
+              </label>
+              <p className="mt-1 px-1 text-xs text-muted-foreground">{criteriaLabel}</p>
+              <p className="px-1 text-xs text-muted-foreground">（フォロワー数は最後に取得した時点の値）</p>
+              <details className="mt-2 px-1 text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  エンゲージメント率の出し方
+                </summary>
+                <p className="mt-1 text-muted-foreground">（いいね＋コメント＋保存）÷ リーチ × 100</p>
+              </details>
+            </div>
+          </div>
+        )
+      }
     >
       {({ visibleSet, orderedIds }) => {
         if (items.length === 0) {
