@@ -3,13 +3,14 @@
 ## メタデータ
 
 - 文書名: 共有定数 `ANTHROPIC_BASE` の Claude Sonnet 5 移行
-- ステータス: `approved`
+- ステータス: `implemented`
 - 作成日: 2026-09-07
-- 最終更新日: 2026-09-08
+- 最終更新日: 2026-09-22
 - 作成者: Claude（ローカルセッション。下書き）
 - 承認者: プロジェクトオーナー（2026-09-08 承認。Q-M01〜Q-M05 の回答は §12 確認質問、承認の記録は §16 承認表）
 - 対象リリース: 未定（理由: 承認は得たが着手日を置いていない。実装着手時に決める。確認者: プロジェクトオーナー）
 - 関連する依頼・Issue・PR:
+  - 実装: https://github.com/shoma-endo/GrowMate/pull/559
   - 発端: `docs/specs/content-annotation-bulk-summary-background-spec.md` §12 **OPEN-B01**（「要約以外の18エントリの Claude Sonnet 5 移行」として登録されていた未決定事項）
   - 判断の前提: 同仕様 §11 **ALT-005 案B**（一斉移行を却下した理由）／§8「AI機能の追加観点」／§10 制約条件／§16「公式ドキュメント照合」
   - 先行実装: 要約1機能の移行（`MODEL_CONFIGS.content_annotation_ai_summary`）。本仕様はその残り
