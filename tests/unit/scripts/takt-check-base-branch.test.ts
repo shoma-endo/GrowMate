@@ -61,9 +61,18 @@ function createFixture(): { bare: string; work: string } {
 
   const work = path.join(root, 'work');
   git(root, ['clone', bare, work]);
-  git(work, ['remote', 'set-url', 'origin', bare]);
 
   return { bare, work };
+}
+
+function advanceOriginDevelop(bare: string, fileName: string, message: string): void {
+  const pushSeed = path.join(path.dirname(bare), `push-seed-${fileName}`);
+  git(path.dirname(bare), ['clone', bare, pushSeed]);
+  git(pushSeed, ['checkout', 'develop']);
+  writeFileSync(path.join(pushSeed, fileName), 'newer\n');
+  git(pushSeed, ['add', fileName]);
+  git(pushSeed, ['commit', '-m', message]);
+  git(pushSeed, ['push', 'origin', 'develop']);
 }
 
 function runCheck(cwd: string): { status: number | null; stdout: string; stderr: string } {
@@ -86,45 +95,38 @@ describe('takt-check-base-branch.sh', () => {
 
     const result = runCheck(work);
     expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/基準ブランチ: origin\/develop@[0-9a-f]+ \/ HEAD: feature\/from-develop@[0-9a-f]+/);
+    expect(result.stdout).toMatch(
+      /基準ブランチ: origin\/develop@[0-9a-f]+ \/ HEAD: feature\/from-develop@[0-9a-f]+/,
+    );
   });
 
-  it('② main 起点（origin/develop を含まない）→ exit 非 0、stderr に behind 数', () => {
+  it('② main 起点（origin/develop を含まない）→ exit 1、behind=1', () => {
     const { work } = createFixture();
     git(work, ['checkout', '-b', 'feature/from-main', 'origin/main']);
 
     const result = runCheck(work);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/behind=\d+/);
-    expect(result.stderr).toMatch(/origin\/develop/);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('behind=1');
+    expect(result.stderr).toContain('origin/develop');
   });
 
-  it('③ develop が進んで HEAD が取り残されている → exit 非 0', () => {
+  it('③ develop が進んで HEAD が取り残されている → exit 1、behind=1', () => {
     const { bare, work } = createFixture();
     git(work, ['checkout', '-b', 'feature/stale', 'origin/develop']);
-
-    const pushSeed = path.join(path.dirname(bare), 'push-seed');
-    git(path.dirname(bare), ['clone', bare, pushSeed]);
-    git(pushSeed, ['checkout', 'develop']);
-    writeFileSync(path.join(pushSeed, 'newer.txt'), 'newer\n');
-    git(pushSeed, ['add', 'newer.txt']);
-    git(pushSeed, ['commit', '-m', 'develop advanced']);
-    git(pushSeed, ['push', 'origin', 'develop']);
+    advanceOriginDevelop(bare, 'newer.txt', 'develop advanced');
 
     const result = runCheck(work);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/behind=\d+/);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('behind=1');
   });
 
-  it('④ fetch 失敗（remote URL を存在しないパスにする）→ exit 非 0', () => {
+  it('④ origin URL が壊れていてもローカル origin/develop があっても exit 非 0', () => {
     const { work } = createFixture();
     git(work, ['checkout', '-b', 'feature/ok', 'origin/develop']);
-    expect(runCheck(work).status).toBe(0);
-
     git(work, ['remote', 'set-url', 'origin', path.join(path.dirname(work), 'does-not-exist.git')]);
 
     const result = runCheck(work);
-    expect(result.status).not.toBe(0);
+    expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/fetch/);
   });
 
@@ -134,17 +136,22 @@ describe('takt-check-base-branch.sh', () => {
 
     git(work, ['config', '--unset-all', 'remote.origin.fetch']);
     git(work, ['config', 'remote.origin.fetch', '+refs/heads/main:refs/remotes/origin/main']);
-
-    const pushSeed = path.join(path.dirname(bare), 'push-seed-restricted');
-    git(path.dirname(bare), ['clone', bare, pushSeed]);
-    git(pushSeed, ['checkout', 'develop']);
-    writeFileSync(path.join(pushSeed, 'restricted-newer.txt'), 'newer\n');
-    git(pushSeed, ['add', 'restricted-newer.txt']);
-    git(pushSeed, ['commit', '-m', 'develop advanced under restricted refmap']);
-    git(pushSeed, ['push', 'origin', 'develop']);
+    advanceOriginDevelop(bare, 'restricted-newer.txt', 'develop advanced under restricted refmap');
 
     const result = runCheck(work);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/behind=\d+/);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('behind=1');
+  });
+
+  it('⑥ ブランチ名に = があっても stdout は KEY=value にならない', () => {
+    const { work } = createFixture();
+    git(work, ['checkout', '-b', 'feature/a=b', 'origin/develop']);
+
+    const result = runCheck(work);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(
+      /基準ブランチ: origin\/develop@[0-9a-f]+ \/ HEAD: feature\/a_b@[0-9a-f]+/,
+    );
+    expect(result.stdout).not.toMatch(/^feature\/a=/m);
   });
 });
