@@ -269,6 +269,7 @@ class GscSuggestionService {
         maxTokens: modelConfig.maxTokens,
         temperature: modelConfig.temperature,
         stream: modelConfig.stream,
+        thinking: modelConfig.thinking,
         timeoutMs: LLM_TIMEOUT_MS,
         signal,
       });

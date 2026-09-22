@@ -874,6 +874,7 @@ class Ga4ContentEvaluationService extends SupabaseService {
       userPrompt: renderGa4EvaluationUserPrompt(userTemplate.content, variables, { scrollUsers: values.scrollUsers, readRate: score.readRate }),
       schema: ga4EvaluationLlmOutputSchema,
       maxTokens: config.maxTokens,
+      ...(config.thinking !== undefined && { thinking: config.thinking }),
       onAttempt: attemptCount => this.updateAttemptCount(runInput, runId, attemptCount),
     });
     if (result.success) return { success: true, data: result.data, attemptCount: result.attemptCount };

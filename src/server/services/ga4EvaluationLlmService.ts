@@ -16,6 +16,7 @@ export interface Ga4EvaluationLlmRequest<T> {
   userPrompt: string;
   schema: z.ZodType<T>;
   maxTokens: number;
+  thinking?: { type: 'disabled' | 'adaptive' };
   onAttempt?: (attemptCount: number) => Promise<void>;
 }
 
@@ -134,7 +135,11 @@ export async function generateGa4EvaluationLlmOutput<T>(
           { role: 'system', content: request.systemPrompt },
           { role: 'user', content: request.userPrompt },
         ],
-        { timeoutMs: LLM_TIMEOUT_MS, maxTokens: request.maxTokens }
+        {
+          timeoutMs: LLM_TIMEOUT_MS,
+          maxTokens: request.maxTokens,
+          ...(request.thinking !== undefined && { thinking: request.thinking }),
+        }
       );
       const parsed = parseStructuredResponse(response, request.schema);
       if (parsed !== null) {
