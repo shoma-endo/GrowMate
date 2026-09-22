@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# TAKT runtime.prepare 用: HEAD が origin/develop を含むことを fail-fast 検査する。
-#
-# - 相対パス `scripts/takt-check-base-branch.sh` で参照する（cwd = リポジトリ根）。
-# - fetch 失敗時は古い origin/develop で通さない。
-# - 通過時の1行は stdout へ出すが KEY=value 形式にはしない（prepare の環境注入と衝突させない）。
-# - スキップ用 env は置かない（ゲートの抜け道を作らない）。
+# TAKT runtime.prepare: fail-fast unless HEAD contains origin/develop.
 set -euo pipefail
 
-if ! git fetch origin develop --quiet; then
+# Explicit refmap so a remote.origin.fetch that omits develop cannot leave
+# origin/develop stale while only FETCH_HEAD advances.
+if ! git fetch origin '+refs/heads/develop:refs/remotes/origin/develop' --quiet; then
   printf '%s\n' "✗ origin/develop の fetch に失敗しました。ネットワークを確認してから再実行してください。" >&2
   exit 1
 fi
@@ -26,5 +23,5 @@ if [[ -z "${branch}" || "${branch}" == "HEAD" ]]; then
   branch="detached"
 fi
 
-# KEY=value ではないプレーン1行（parseScriptOutput は '=' 無し行を無視する）
+# Plain line (no KEY=value) so prepare's parseScriptOutput does not inject it.
 printf '%s\n' "基準ブランチ: origin/develop@${develop_sha} / HEAD: ${branch}@${head_sha}"

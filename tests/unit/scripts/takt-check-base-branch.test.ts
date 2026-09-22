@@ -1,10 +1,3 @@
-/**
- * scripts/takt-check-base-branch.sh
- *
- * HEAD が origin/develop を含むかの prepare ゲート。一時 bare + clone で
- * 正例・負例（main 起点 / 取り残し / fetch 失敗）を機械検証する。
- */
-
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -41,10 +34,6 @@ function git(cwd: string, args: string[], env?: NodeJS.ProcessEnv): string {
   }).trim();
 }
 
-/**
- * bare origin に develop / main を用意し、work clone を返す。
- * main は develop の祖先ではなく分岐（= origin/develop を含まない）。
- */
 function createFixture(): { bare: string; work: string } {
   const root = mkdtempSync(path.join(tmpdir(), 'ol-034-'));
   tempRoots.push(root);
@@ -58,7 +47,6 @@ function createFixture(): { bare: string; work: string } {
   git(seed, ['add', 'README.md']);
   git(seed, ['commit', '-m', 'root']);
 
-  // main を分岐（develop と分岐後に互いに含まない）
   git(seed, ['checkout', '-b', 'main']);
   writeFileSync(path.join(seed, 'main-only.txt'), 'main\n');
   git(seed, ['add', 'main-only.txt']);
@@ -73,7 +61,6 @@ function createFixture(): { bare: string; work: string } {
 
   const work = path.join(root, 'work');
   git(root, ['clone', bare, work]);
-  // clone 既定ブランチは develop（bare の HEAD）
   git(work, ['remote', 'set-url', 'origin', bare]);
 
   return { bare, work };
@@ -116,7 +103,6 @@ describe('takt-check-base-branch.sh', () => {
     const { bare, work } = createFixture();
     git(work, ['checkout', '-b', 'feature/stale', 'origin/develop']);
 
-    // bare 上で develop を進める
     const pushSeed = path.join(path.dirname(bare), 'push-seed');
     git(path.dirname(bare), ['clone', bare, pushSeed]);
     git(pushSeed, ['checkout', 'develop']);
@@ -133,7 +119,6 @@ describe('takt-check-base-branch.sh', () => {
   it('④ fetch 失敗（remote URL を存在しないパスにする）→ exit 非 0', () => {
     const { work } = createFixture();
     git(work, ['checkout', '-b', 'feature/ok', 'origin/develop']);
-    // 一度成功させて origin/develop をローカルに残す
     expect(runCheck(work).status).toBe(0);
 
     git(work, ['remote', 'set-url', 'origin', path.join(path.dirname(work), 'does-not-exist.git')]);
@@ -141,5 +126,25 @@ describe('takt-check-base-branch.sh', () => {
     const result = runCheck(work);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/fetch/);
+  });
+
+  it('⑤ remote.origin.fetch が develop をマップしない構成でも最新 tip で判定する', () => {
+    const { bare, work } = createFixture();
+    git(work, ['checkout', '-b', 'feature/restricted-fetch', 'origin/develop']);
+
+    git(work, ['config', '--unset-all', 'remote.origin.fetch']);
+    git(work, ['config', 'remote.origin.fetch', '+refs/heads/main:refs/remotes/origin/main']);
+
+    const pushSeed = path.join(path.dirname(bare), 'push-seed-restricted');
+    git(path.dirname(bare), ['clone', bare, pushSeed]);
+    git(pushSeed, ['checkout', 'develop']);
+    writeFileSync(path.join(pushSeed, 'restricted-newer.txt'), 'newer\n');
+    git(pushSeed, ['add', 'restricted-newer.txt']);
+    git(pushSeed, ['commit', '-m', 'develop advanced under restricted refmap']);
+    git(pushSeed, ['push', 'origin', 'develop']);
+
+    const result = runCheck(work);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/behind=\d+/);
   });
 });
