@@ -9,7 +9,7 @@
 - 作成者: shoma-endo
 - 承認者: 未承認
 - 対象リリース: 未定（`feature/ga4-content-evaluation` のフェーズ3実装より前）。実装ブランチは `feature/ga4-content-evaluation`（§9 依存関係。窓分割の実装が同ブランチにしか無いため）
-- 関連する依頼・Issue・PR: `docs/plans/ga4-content-evaluation-spec.md`（本仕様は同仕様書フェーズ3の前提条件）
+- 関連する依頼・Issue・PR: `docs/specs/ga4-content-evaluation-spec.md`（本仕様は同仕様書フェーズ3の前提条件）
 
 ## 1. 背景・目的・成功指標
 
@@ -28,7 +28,7 @@
   - 対象ロール（`admin` / `paid`）17 人のうち **15 人の取込が停止**している。うち 6 人は連携直後から一度も取り込まれていない。
 - 放置した場合の影響:
   - 有料ユーザーが「連携したのに何も出ない」状態で放置され続ける。実際に 2026-02 から半年間気づかれていない。
-  - `docs/plans/ga4-content-evaluation-spec.md` のコンテンツ評価は取込済みデータを入力にするため、取込が止まっているユーザーでは全記事が「データ蓄積中」（BR-08、期間合計 `sessions < 30`）になる。**評価機能を実装しても動かない。**
+  - `docs/specs/ga4-content-evaluation-spec.md` のコンテンツ評価は取込済みデータを入力にするため、取込が止まっているユーザーでは全記事が「データ蓄積中」（BR-08、期間合計 `sessions < 30`）になる。**評価機能を実装しても動かない。**
   - 停止に気づく手段が存在しない。取込失敗もカーソル停止も、誰にも通知されずログにも残らない。
 
 ### 目的
@@ -145,7 +145,7 @@ GitHub Actions（hourly-cron.yml、毎時0分）
 | 初回取込の遡り日数を 30 日から 90 日へ広げること（`INITIAL_SYNC_DAYS` の変更） | `INITIAL_SYNC_DAYS` の意味を変える変更で、GSC 側の初回取込とも整合を取る必要がある。初回 30 日でも既存の「過去90日を再取込」で補える（Q-003 の回答をここへ移設） | 初回連携ユーザーの評価開始待ちが実運用で問題になったとき |
 | 90 日を超える遡り取込 | 評価入力の期間上限が 90 日（`GA4_EVALUATION_DEFAULT_DAYS`）で、それ以上遡る用途が無い | なし |
 | WordPress 同期・Instagram 同期の自動化 | 本仕様のスコープ外。GA4 取込の停止だけが今回の課題 | 同様の停止が実測されたとき |
-| GA4 以外の取込項目追加（`engagement_rate` / `active_users` 等） | `docs/plans/ga4-content-evaluation-spec.md` §4.1.1 の担当。本仕様は**取込を回す仕組みだけ**を対象とし、取込内容は変更しない | なし |
+| GA4 以外の取込項目追加（`engagement_rate` / `active_users` 等） | `docs/specs/ga4-content-evaluation-spec.md` §4.1.1 の担当。本仕様は**取込を回す仕組みだけ**を対象とし、取込内容は変更しない | なし |
 | Vercel Cron への移行 | 既存 3 本が GitHub Actions で動いており、実行基盤を混在させない | なし |
 
 ## 5. 機能要件
@@ -413,7 +413,7 @@ JST 0 時に `endDate`（前日）が進むため、その瞬間に**全対象�
 
 ### AI機能の追加観点
 
-該当なし。本仕様に LLM 呼び出しは含まれない（取込のみ。評価の文章化は `docs/plans/ga4-content-evaluation-spec.md` の担当）。
+該当なし。本仕様に LLM 呼び出しは含まれない（取込のみ。評価の文章化は `docs/specs/ga4-content-evaluation-spec.md` の担当）。
 
 ## 8. データ・外部連携
 
@@ -472,7 +472,7 @@ JST 0 時に `endDate`（前日）が進むため、その瞬間に**全対象�
 
 ### 制約条件
 
-- 納期・予算・人員: `docs/plans/ga4-content-evaluation-spec.md` フェーズ3の着手前に完了させる。
+- 納期・予算・人員: `docs/specs/ga4-content-evaluation-spec.md` フェーズ3の着手前に完了させる。
 - 法令・契約・審査: 該当なし。
 - 変更できない既存仕様:
   - `endDate` は常に「前日（JST）」。当日は取り込まない。
@@ -729,7 +729,7 @@ JST 0 時に `endDate`（前日）が進むため、その瞬間に**全対象�
 | 2026-08-21 | Q-004 に回答し `RESYNC_OVERLAP_DAYS` を 2 → **3** に確定（判断 4 を案B から案C へ差し替え、FR-004・AC-05 の期待値を「カーソルの 2 日前」へ更新、AC-05b を追加、§8 解釈・§13 手順 3・チェックポイント・承認表・§16 を同期）。ステータスを `in_review` → `review` へ | 公式が処理時間の上限を保証していない以上、overlap = 2（+48 時間同着）は公式自身が否定している前提に依存するため。判断者は shoma-endo | shoma-endo |
 | 2026-08-21 | 2 回目 spec-review の指摘 🟡 4 件を反映。①§5 状態遷移表「追いつき中」のカーソル欄に残っていた overlap = 2 前提の `[カーソル - 1 .. 前日]` を `[カーソル - 2 .. 前日]` へ修正。②§7 監査・ログの根拠を実読どおり（`runBatch()` のラップだけでは `batch_completed` は出ない）へ修正し、§13 手順 3 に `CRON_DEFINITIONS.ga4Sync.runBatch()` でのラップと `batch_completed` の明示ログを追加。③FR-005 に `processed` / `attempted` / `skippedDueToLimit` / `stoppedReason` の定義（`attempted` の加算位置を時間予算チェックの後へ移すことを含む）を追記し、§12 に境界値テストを追加。④§13 チェックポイントに「リリース前: R-002 / R-004 の運用をクライアントへ事前共有したか」を追加。あわせて 🟢 4 件（判断 4 の日数幅表記、§8 クォータの verbatim、成功指標の `schedule` 遅延注記、§4 の「壊れたときユーザーに何が見えるか」）も反映 | `.takt/workflows/spec-review.yaml` の 2 回目 audit で 🟡 4 件（🔴 0 件）の指摘を受けたため。いずれも既に仕様書が要求・宣言している事項の記述欠落であり、新規要件の追加ではない | spec-review / revise |
 | 2026-08-21 | 3 回目 spec-review の指摘 🟡 4 件・🟢 4 件を反映。①§13 手順 3 の migration「作成・適用」を「ファイル作成のみ（適用は管理者の手動運用）」へ改め、pending types による暫定実装を明記。§13 チェックポイントに「マージ前 / デプロイ前: migration 適用済み」を追加し、§14 完了条件に適用と暫定定義削除を追加。②FR-009 に `staleTargets` を `count:'exact'` の独立クエリで取得する旨を明記し、§13 手順 3 を 2 項目へ分割、§12 に上限超過時の境界値テストを追加。③§7 2 か所と R-008 の「上限接近を `staleTargets` で検知できる」という過大主張を実態（事後 signal）へ訂正し、接近検知を持たないことを §16 残置合意へ記録。④BR-C08 例外欄と FR-008 で `ga4_last_synced_at`（取得期間＋遅延判定）と `ga4_last_attempted_at`（並び順のみ）の役割を排他に再定義。あわせて 🟢 4 件（§4 への `hourly-cron.yml` コメント同期、§12 の AC-16 テスト項目、FR-007 への手動導線の副作用注記、BR-C09 の閾値根拠）も反映 | `.takt/workflows/spec-review.yaml` の 3 回目 audit で 🟡 4 件・🟢 4 件（🔴 0 件）の指摘を受けたため。いずれも記述の定義欠落・実態との食い違いの訂正であり、新規要件の追加ではない。クライアント確認を要する論点は発生していない | spec-review / revise |
-| 2026-08-26 | **本仕様への影響なしを確認した（本文の変更なし）。** `docs/plans/ga4-content-evaluation-spec.md` のフェーズ3で、GSC検索順位評価サイクルとGA4コンテンツ評価サイクルを1本へ統合した（スケジュールの正は `gsc_article_evaluations` の1行。GA4専用のサイクル表・RPC・設定UIは廃止）。**本仕様（GA4取込 cron）の設計は変更しない**: 取込は評価サイクルとは独立に毎時走る仕組みであり、統合は「いつ評価するか」の層だけを変えたため、FR・BR・判断のいずれにも波及しない。なお、コンテンツ評価バッチはユーザー単位で `ga4ImportService.syncUser()` を1回呼ぶ設計を統合後も維持しており、本仕様の `ga4-sync` が実装されれば取込の主経路はそちらへ移る（バッチ内同期は取りこぼしの保険として残る）という関係も変わらない。<br>**同日訂正:** 一度は本文の cron 本数を「3 本→4 本」へ書き換えたが、`ga4-content-evaluate` は `origin/develop` に未マージで `feature/ga4-content-evaluation` にしか無く、本仕様の依頼範囲外の編集でもあったため元の「既存 3 本」へ戻した。同ブランチがマージされた時点で 4 本になる。 | フェーズ3の要件変更（サイクル統合）に伴う波及有無の確認。実装は `feature/ga4-content-evaluation` で完了 | 開発チーム |
+| 2026-08-26 | **本仕様への影響なしを確認した（本文の変更なし）。** `docs/specs/ga4-content-evaluation-spec.md` のフェーズ3で、GSC検索順位評価サイクルとGA4コンテンツ評価サイクルを1本へ統合した（スケジュールの正は `gsc_article_evaluations` の1行。GA4専用のサイクル表・RPC・設定UIは廃止）。**本仕様（GA4取込 cron）の設計は変更しない**: 取込は評価サイクルとは独立に毎時走る仕組みであり、統合は「いつ評価するか」の層だけを変えたため、FR・BR・判断のいずれにも波及しない。なお、コンテンツ評価バッチはユーザー単位で `ga4ImportService.syncUser()` を1回呼ぶ設計を統合後も維持しており、本仕様の `ga4-sync` が実装されれば取込の主経路はそちらへ移る（バッチ内同期は取りこぼしの保険として残る）という関係も変わらない。<br>**同日訂正:** 一度は本文の cron 本数を「3 本→4 本」へ書き換えたが、`ga4-content-evaluate` は `origin/develop` に未マージで `feature/ga4-content-evaluation` にしか無く、本仕様の依頼範囲外の編集でもあったため元の「既存 3 本」へ戻した。同ブランチがマージされた時点で 4 本になる。 | フェーズ3の要件変更（サイクル統合）に伴う波及有無の確認。実装は `feature/ga4-content-evaluation` で完了 | 開発チーム |
 
 ## 16. レビュー記録
 

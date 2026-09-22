@@ -10,7 +10,7 @@
 - 承認者: プロジェクトオーナー（2026-09-08 承認。Q-M01〜Q-M05 の回答は §12 確認質問、承認の記録は §16 承認表）
 - 対象リリース: 未定（理由: 承認は得たが着手日を置いていない。実装着手時に決める。確認者: プロジェクトオーナー）
 - 関連する依頼・Issue・PR:
-  - 発端: `docs/plans/content-annotation-bulk-summary-background-spec.md` §12 **OPEN-B01**（「要約以外の18エントリの Claude Sonnet 5 移行」として登録されていた未決定事項）
+  - 発端: `docs/specs/content-annotation-bulk-summary-background-spec.md` §12 **OPEN-B01**（「要約以外の18エントリの Claude Sonnet 5 移行」として登録されていた未決定事項）
   - 判断の前提: 同仕様 §11 **ALT-005 案B**（一斉移行を却下した理由）／§8「AI機能の追加観点」／§10 制約条件／§16「公式ドキュメント照合」
   - 先行実装: 要約1機能の移行（`MODEL_CONFIGS.content_annotation_ai_summary`）。本仕様はその残り
 
@@ -429,7 +429,7 @@ DB スキーマの変更は無い。マイグレーションも不要。
 5. （RISK-M01 が顕在化した場合のみ）`app/api/chat/anthropic/stream/route.ts:281` の `web_search_20250305` を `web_search_20260209` へ変更し、**あわせて `allowed_callers: ['direct']` を明示する**。20260209 以降は `allowed_callers` の既定が `['code_execution_20260120']` に変わり、明示しないと動的フィルタリング（コード実行サンドボックス）経由になるか 400 になる（出典 URL・確認日・verbatim は §16）。変更後に再確認する
 6. G1〜G7 を §13 の手順で確認する
 7. 回帰があれば原因を特定し、BR-M04（モデル ID を戻す）か、RISK-M02 の対応（まず既存の続き生成導線での吸収。`maxTokens` 引き上げはクライアントへの事前共有を経てから）かを判断する
-8. **（済）** `docs/plans/content-annotation-bulk-summary-background-spec.md` の OPEN-B01 は **2026-09-07 に「本仕様へ移管」と更新済み**（同仕様 §12 OPEN-B01 行）。**再確認のみで、書き換え作業は不要**
+8. **（済）** `docs/specs/content-annotation-bulk-summary-background-spec.md` の OPEN-B01 は **2026-09-07 に「本仕様へ移管」と更新済み**（同仕様 §12 OPEN-B01 行）。**再確認のみで、書き換え作業は不要**
 
 ### チェックポイント
 

@@ -3,7 +3,7 @@ import { ga4ContentEvaluationBatchService } from '@/server/services/ga4ContentEv
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 
 /**
- * GA4コンテンツ評価 定期バッチ Cron エンドポイント（docs/plans/ga4-content-evaluation-spec.md §8.3）
+ * GA4コンテンツ評価 定期バッチ Cron エンドポイント（docs/specs/ga4-content-evaluation-spec.md §8.3）
  *
  * GitHub Actions（`.github/workflows/hourly-cron.yml`）が毎時0分に GET で呼び出す。
  * 「GA4の次回評価予定日時 <= 現在日時」の記事のみ評価を実行する。

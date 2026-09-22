@@ -4,7 +4,7 @@ import type { SummaryTargetFieldKey } from '@/lib/content-annotation-summary-fie
 
 /**
  * AI要約一括のバックグラウンド実行（ジョブ処理サービス）のユニットテスト。
- * 正本: docs/plans/content-annotation-bulk-summary-background-spec.md §7 / §13
+ * 正本: docs/specs/content-annotation-bulk-summary-background-spec.md §7 / §13
  *
  * ここで固定するのは、実データでは再現できない or 再現しても気づけない性質に絞る:
  * - 時間予算の打ち切りが**戻り値**で判定されていること（経過秒の閾値比較でないこと）

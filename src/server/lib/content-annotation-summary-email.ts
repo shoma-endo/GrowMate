@@ -4,7 +4,7 @@ import { sanitizeEmailHtml } from '@/server/lib/email-html';
 
 /**
  * AI要約一括のバックグラウンド実行の完了メール（件名・HTML本文）。
- * 正本: docs/plans/content-annotation-bulk-summary-background-spec.md §9「完了メールの件名・本文」
+ * 正本: docs/specs/content-annotation-bulk-summary-background-spec.md §9「完了メールの件名・本文」
  *
  * 文面はコードで組み立てる（LLM には書かせない）。前例は `ga4-content-evaluation-email.ts`。
  *

@@ -1,5 +1,5 @@
 /**
- * GA4コンテンツ評価の due 判定（docs/plans/ga4-content-evaluation-spec.md §6.6.2）。
+ * GA4コンテンツ評価の due 判定（docs/specs/ga4-content-evaluation-spec.md §6.6.2）。
  * GSC の `gscEvaluationService.isDue`（gscEvaluationService.ts:568-587）と同値の判定式。
  *
  * スケジュール設定（基準日・サイクル日数・評価実行時間）は GSC の評価サイクル行と共有するが、

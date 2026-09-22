@@ -2,7 +2,7 @@
  * メール本文向けのHTML無害化。script/style/コメント/on*属性/javascript:リンク/
  * 埋め込み系タグを除去する。googleAdsAiAnalysisService.ts・
  * googleAdsNegativeKeywordsSuggestionService.ts・ga4ContentEvaluationBatchService.ts
- * (§9.5) の3箇所から共通利用する（docs/plans/ga4-content-evaluation-spec.md §17 共通化candidate）。
+ * (§9.5) の3箇所から共通利用する（docs/specs/ga4-content-evaluation-spec.md §17 共通化candidate）。
  */
 export function sanitizeEmailHtml(html: string): string {
   if (!html) {
