@@ -35,6 +35,7 @@ Use this project knowledge for GrowMate-specific TAKT workflows.
 - `.takt/workflows/spec-review.yaml` reviews specifications before implementation (local TAKT). On Cursor Cloud, the primary unattended path is `.agents/skills/cloud-agent-unattended/` (no `takt` CLI).
 - `.takt/workflows/spec-to-pr.yaml` is the local TAKT workflow for unattended implementation, review, and PR creation/update. On Cursor Cloud, use `cloud-agent-unattended` `spec-to-pr-loop` instead of launching `takt`.
 - In `spec-to-pr`, the second and later `reviewers` passes are follow-up: previous review reports and `fix-result.md` are attached, findings are tracked by `finding_id` (`resolved` / `persists` / `new` / `reopened`), and residuals that cannot be fixed in code are recorded as `cannot_fix` so the loop can exit instead of spinning.
+- UI PRs (`plan.md` `UIモック:` other than `対象外`): if files exist under `.takt/artifacts/pr-screenshots/`, `create_pr` passes them to `gh pr create/edit --attach`. Do not generate screenshots; missing files soft-fail and leave「手動ブラウザ確認未実施」.
 - The approved Gherkin is not automatically copied into a spec. Follow `04-handoff.md`, reflect it into the target `docs/plans/<slug>.md`, then run `spec-review` and `spec-to-pr` explicitly.
 - `.agents/skills/` contains implementation-specific rules; the workflow loads relevant Skills when needed.
 - `docs/plans/` contains implementation specifications.

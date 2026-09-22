@@ -28,22 +28,31 @@
 8. base は `develop`（ブランチが `develop` の場合のみ `main`）。
 9. PR を冪等に作成または更新する（auto-pr とのレースに耐える。既存 PR への追記を含む）:
    a. 下記添付の pr-summary からタイトル行を除いた本文を一時ファイルに書き出して `--body-file` に渡す（シェル展開で壊さない）。
-   b. `gh pr list --head <branch> --base <base> --state open` で既存 PR を確認する。
-   c. 既存があれば `gh pr edit <number> --title "..." --body-file ...` で更新する（TAKT が正本。追記コミット後も本文を最新化する）。
-   d. 既存がなければ `gh pr create --base ... --head ... --title "..." --body-file ...` で作成する。
-   e. `gh pr create` が「already exists」等で失敗した場合は ABORT せず、再度 `gh pr list` して番号を取得し、`gh pr edit` で本文・タイトルを更新する。edit 成功なら完了とする。
-   f. auto-pr の完了は待たない。再 list → edit で吸収する。
-   g. 再 list でも PR が見つからない、または edit も失敗した場合のみ失敗とする。
-10. 作成/更新した PR の URL・番号・ブランチ・コミット SHA を報告する。CI 完了は待たない。移動した場合は、参照置換件数（おおよそ）とステータス更新の有無も報告する。
+   b. **画面キャプチャ添付（条件付き・soft-fail）:**
+      - 判定: 本文に `## 画面キャプチャ` があり内容が「対象外」だけではない、または `![...](.takt/artifacts/pr-screenshots/...)` がある → UI 対象。それ以外は非UIとして添付スキップ。
+      - UI 対象時のみ `.takt/artifacts/pr-screenshots/` を列挙する。許可拡張子: `.png` `.jpg` `.jpeg` `.webp` `.gif` `.mp4` `.webm`。該当ファイルがある場合、各ファイルに `--attach '相対パス#alt'` を付ける（alt は拡張子を除いたファイル名。動画は `#alt` を付けない）。`gh pr create` と `gh pr edit` の両方で同じフラグを使う。
+      - body 内の同一ローカルパス参照は gh が in-place で URL に書き換える。本文未参照の添付は末尾追記でよい。
+      - ディレクトリ無し・0件・upload 失敗・フラグ非対応は **ABORT しない**。報告に理由を残し、`--attach` なしで create/edit にフォールバックして続行する（偽の検証済みにしない）。
+      - スクショの新規撮影・生成はしない。図解 HTML（`docs/plans/_html/`）は添付しない。画像を git にコミットしない。
+   c. `gh pr list --head <branch> --base <base> --state open` で既存 PR を確認する。
+   d. 既存があれば `gh pr edit <number> --title "..." --body-file ...`（＋該当時 `--attach`）で更新する（TAKT が正本。追記コミット後も本文を最新化する）。
+   e. 既存がなければ `gh pr create --base ... --head ... --title "..." --body-file ...`（＋該当時 `--attach`）で作成する。
+   f. `gh pr create` が「already exists」等で失敗した場合は ABORT せず、再度 `gh pr list` して番号を取得し、`gh pr edit` で本文・タイトルを更新する（step b と同じ `--attach` 条件を edit にも付ける）。edit 成功なら完了とする。
+   g. auto-pr の完了は待たない。再 list → edit（＋該当時 `--attach`）で吸収する。
+   h. 再 list でも PR が見つからない、または edit も失敗した場合のみ失敗とする（`--attach` 失敗だけの理由では失敗にしない）。
+10. 作成/更新した PR の URL・番号・ブランチ・コミット SHA を報告する。画面キャプチャは「添付 N 件」または「スキップ（未配置/非UI/upload失敗）」を含める。CI 完了は待たない。移動した場合は、参照置換件数（おおよそ）とステータス更新の有無も報告する。
 
 やらないこと:
 - `@codex` レビュー依頼コメントの投稿。
 - PR のマージ・クローズ。
 - プロダクションの挙動変更（ロジック・UI・スキーマ・設定の変更）。手順4以外の docs / コメント編集。
 - `.takt/runs/` 配下のレポートを git にコミットすること。
+- `.takt/artifacts/pr-screenshots/` の画像を git にコミットすること。
+- 画面キャプチャの新規撮影・生成。
 - 人間への確認待ち。
 - git 書き込み不可が分かったあとに、同じ `git add` / `commit` / `push` を繰り返すこと。
 - 移動指示が無いのに仕様書を `docs/specs/` へ移すこと。
+- キャプチャ未配置や `--attach` 失敗だけで create_pr を失敗扱いすること。
 
 ## pr-summary.md（全文）
 {report:pr-summary.md}
