@@ -357,7 +357,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { maxTokens, temperature, actualModel } = modelConfig;
+    const { maxTokens, temperature, actualModel, thinking } = modelConfig;
 
     const isHeadingUnitRequest = targetStep === STEP7_ID && isHeadingUnit;
 
@@ -560,6 +560,7 @@ export async function POST(req: NextRequest) {
                 const searchStream = await anthropic.messages.stream({
                   model: actualModel,
                   max_tokens: 2000,
+                  ...(thinking !== undefined && { thinking }),
                   system: [
                     {
                       type: 'text',
@@ -723,6 +724,7 @@ export async function POST(req: NextRequest) {
             model: actualModel,
             max_tokens: canvasMaxTokens,
             ...(temperature !== undefined && { temperature }),
+            ...(thinking !== undefined && { thinking }),
             system: anthropicSystem,
             tools: [CANVAS_EDIT_TOOL],
             tool_choice: { type: 'tool', name: 'apply_full_text_replacement' },
@@ -945,6 +947,7 @@ export async function POST(req: NextRequest) {
             const analysisStream = await anthropic.messages.stream({
               model: actualModel,
               max_tokens: 500, // 簡潔な出力のためトークン数を削減
+              ...(thinking !== undefined && { thinking }),
               system: [
                 {
                   type: 'text',

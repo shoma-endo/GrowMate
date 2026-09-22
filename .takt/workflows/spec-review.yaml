@@ -17,6 +17,7 @@ workflow_config:
   runtime:
     prepare:
       - scripts/takt-check-provider-auth.sh
+      - scripts/takt-check-base-branch.sh
 max_steps: 12
 initial_step: identify
 loop_monitors:

@@ -84,9 +84,11 @@ class ChatService {
             temperature: number | undefined;
             maxTokens: number;
             anthropicSystemBlocks?: AnthropicSystemBlock[];
+            thinking?: { type: 'disabled' | 'adaptive' };
           } = {
             temperature: config.temperature,
             maxTokens: config.maxTokens,
+            ...(config.thinking !== undefined && { thinking: config.thinking }),
           };
           if (llmOptions?.anthropicSystemBlocks) {
             llmCallOptions.anthropicSystemBlocks = llmOptions.anthropicSystemBlocks;
@@ -284,9 +286,11 @@ class ChatService {
             temperature: number | undefined;
             maxTokens: number;
             anthropicSystemBlocks?: AnthropicSystemBlock[];
+            thinking?: { type: 'disabled' | 'adaptive' };
           } = {
             temperature: config.temperature,
             maxTokens: config.maxTokens,
+            ...(config.thinking !== undefined && { thinking: config.thinking }),
           };
           if (anthropicSystemBlocks && anthropicSystemBlocks.length > 0) {
             continueLlmOptions.anthropicSystemBlocks = anthropicSystemBlocks;

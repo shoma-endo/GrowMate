@@ -2,7 +2,7 @@ push 前に、下記に全文添付された最新レポート群から、PR 本
 
 必須条件:
 - 実装やレビュー判断は行わない。確認済みの事実と意見（完了判断）を分けて整理する。
-- 一次情報は下記添付の `plan.md` / `ai-antipattern-review.md` / `architecture-review.md` / `readme-sync.md` / `self-review.md` の5つに限る。run ディレクトリやレポートパスを探索しない。
+- 一次情報は下記添付の `plan.md` / `ai-antipattern-review.md` / `architecture-review.md` / `readme-sync.md` / `self-review.md` の5つに限る。run ディレクトリやレポートパスを探索しない。**例外:** `plan.md` ヘッダの `UIモック:` が `対象外` 以外のときだけ、キャプチャ有無の確認のため `.takt/artifacts/pr-screenshots/` を列挙してよい（スクショの新規撮影・生成はしない）。
 - `self-review.md` の仕様書完全実装判定を読み取り、`## 関連仕様書` に転記する（実装やレビュー判断はしない、転記のみ）。
 - `pr-summary.md` は GitHub PR 本文としてそのまま使える Markdown にする。先頭に PR タイトル案を1行（`# ` 見出し）で書き、続けて本文セクションを書く。
 - PR タイトル形式（必須）:
@@ -16,8 +16,9 @@ push 前に、下記に全文添付された最新レポート群から、PR 本
   4. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
   5. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く
   6. `## 検証` — `npm run verify` 等の結果（手動ブラウザ確認は無人のため未実施が既定）
-  7. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める。`src/types/database.types.pending.ts` を追加している場合は「管理者によるマイグレーション適用・`npm run supabase:types` 実行・pendingファイル削除が必要」を含める。添付レポート間に食い違いがある場合は、その内容を含める（新規セクションは作らない）。その他あれば列挙。なければ「なし」
-  8. `## コミットメッセージ案` — 日本語1行
+  7. `## 画面キャプチャ` — `plan.md` の `UIモック:` が `対象外` なら「対象外」1行のみ。UI 対象（`なし` / `あり(...)`）なら `.takt/artifacts/pr-screenshots/` を列挙し、許可拡張子（`.png` `.jpg` `.jpeg` `.webp` `.gif` `.mp4` `.webm`）のファイルだけを `![alt](.takt/artifacts/pr-screenshots/NN-short-slug.ext)` で書く（alt は拡張子を除いたファイル名。create_pr が `--attach` で URL に書き換える）。0件なら「なし（ローカルキャプチャ未配置）」。モック HTML・図解バンドルへのリンクは書かない。スクショを新規に撮らない。
+  8. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める（キャプチャ 0 件でも同様）。`src/types/database.types.pending.ts` を追加している場合は「管理者によるマイグレーション適用・`npm run supabase:types` 実行・pendingファイル削除が必要」を含める。添付レポート間に食い違いがある場合は、その内容を含める（新規セクションは作らない）。その他あれば列挙。なければ「なし」
+  9. `## コミットメッセージ案` — 日本語1行
 - 変更ファイルの詳細表は作らない。
 
 ## plan.md（全文）

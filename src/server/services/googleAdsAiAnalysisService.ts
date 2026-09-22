@@ -253,6 +253,7 @@ class GoogleAdsAiAnalysisService {
           {
             maxTokens: modelConfig.maxTokens,
             temperature: modelConfig.temperature,
+            thinking: modelConfig.thinking,
             ...(modelConfig.stream ? { stream: true } : {}),
             timeoutMs: this.computeLlmTimeoutMs(startMs),
           }
@@ -498,6 +499,7 @@ class GoogleAdsAiAnalysisService {
         {
           maxTokens: modelConfig.maxTokens,
           temperature: modelConfig.temperature,
+          thinking: modelConfig.thinking,
           ...(modelConfig.stream ? { stream: true } : {}),
           // Vercel 関数 maxDuration から経過時間と後段処理予算を差し引いた残時間を渡し、
           // Vercel のハードキルより手前で SDK が AbortError を出すようにする。

@@ -239,6 +239,7 @@ export async function POST(req: NextRequest) {
           const resolvedModel = cfg.actualModel;
           const resolvedMaxTokens = cfg.maxTokens;
           const resolvedTemperature = cfg.temperature;
+          const resolvedThinking = cfg.thinking;
 
           const l2SystemPrompt = systemPromptOverride?.trim()
             ? systemPromptOverride
@@ -273,6 +274,7 @@ export async function POST(req: NextRequest) {
             model: resolvedModel,
             max_tokens: resolvedMaxTokens,
             ...(resolvedTemperature !== undefined && { temperature: resolvedTemperature }),
+            ...(resolvedThinking !== undefined && { thinking: resolvedThinking }),
             system: anthropicSystem,
             messages: anthropicMessages,
             ...(enableWebSearch && {
