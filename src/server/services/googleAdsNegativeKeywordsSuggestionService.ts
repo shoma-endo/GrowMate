@@ -306,6 +306,7 @@ class GoogleAdsNegativeKeywordsSuggestionService {
         {
           maxTokens: modelConfig.maxTokens,
           temperature: modelConfig.temperature,
+          thinking: modelConfig.thinking,
           timeoutMs: LLM_TIMEOUT_MS,
         }
       );
