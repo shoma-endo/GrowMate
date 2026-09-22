@@ -20,7 +20,7 @@ const base = {
 
 /**
  * 完了メールの件名・見出しは**「終わり方 × 成功件数 × 失敗件数」の3軸**で決まる
- * （docs/plans/content-annotation-bulk-summary-background-spec.md §9 件名表の5行）。
+ * （docs/specs/content-annotation-bulk-summary-background-spec.md §9 件名表の5行）。
  *
  * この網が無いと AC では検知できない欠陥が2つ通る:
  * - 全件失敗でもジョブは `completed` になるので、状態だけで分岐すると1件も要約できて

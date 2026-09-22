@@ -131,7 +131,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     label: 'Google Ads 除外キーワード提案',
   },
   // **AI要約だけ ANTHROPIC_BASE から切り出している**
-  // （docs/plans/content-annotation-bulk-summary-background-spec.md §8 / §11 ALT-005）。
+  // （docs/specs/content-annotation-bulk-summary-background-spec.md §8 / §11 ALT-005）。
   // ANTHROPIC_BASE は 18 エントリへ展開されており、そこを書き換えるとチャット・ブログ生成・
   // GSC 提案・Google Ads 分析・GA4 コンテンツ評価まで一斉に別モデルへ移る。各機能は出力形式
   // （末尾 JSON ブロック・ストリーミング・長文生成）が異なり、本仕様のテストでは回帰を検知できない。

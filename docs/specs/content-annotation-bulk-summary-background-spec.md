@@ -11,7 +11,7 @@
 - 対象リリース: 未確定
 - 関連する依頼・Issue・PR:
   - 親仕様: `docs/specs/content-annotation-bulk-ai-summary-spec.md`（同期実行版。本仕様はその実行モデルを差し替える）
-  - 共有UI契約: `docs/plans/analytics-bulk-actions-impl-note.md`
+  - 共有UI契約: `docs/specs/analytics-bulk-actions-impl-note.md`
   - 先行 PR: shoma-endo/GrowMate#515（同期実行版の実装。本仕様は別スコープ・別 PR）
 
 ## 1. 背景・目的・成功指標
@@ -582,7 +582,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | --- | --- | --- | --- | --- |
 | Anthropic API | 要約生成 | 既存の `llmChat` 経由。**モデルは `claude-sonnet-5`**（本仕様で `claude-sonnet-4-6` から移行。要約のモデル設定を `ANTHROPIC_BASE` から切り出す）。**`thinking: { type: 'disabled' }` を明示指定**する（省略するとアダプティブ思考が既定で有効になり出力料金が上乗せされる。§8）。レート上限は組織単位だが、Sonnet 5 は Sonnet 4.x とは別バケット | 記事単位で失敗に計上し、ジョブは続行（AC-B10）。**429 は待機せず `SUMMARY_AI_RATE_LIMITED` として失敗に計上**（BR-B11 / AC-B17。クライアント回答 2026-09-04）。**JSON が壊れた場合は既存どおり `SUMMARY_PARSE_FAILED`**（モデル移行の回帰はここに出る。§13） | https://platform.claude.com/docs/en/api/rate-limits ・ https://platform.claude.com/docs/en/about-claude/pricing （確認日 2026-09-04。引用は §8 / §12 / §16）。単価・レート制限・トークナイザは上記の公式ページ、`thinking` の既定挙動とサンプリングパラメータの可否は **Claude Code バンドル skill `claude-api`（リポジトリ内 `.agents/skills` には存在しない）**（いずれも §16「公式ドキュメント照合」に verbatim 引用） |
 | WordPress（self-hosted / WordPress.com） | 本文取得 | `fetchWpPostContentLive`。**cron 実行時はブラウザの Cookie が無い** | 本文取得失敗は失敗に計上（LLM 呼び出し前なので LLM 課金は発生しない）。**cookie 無しでアクセストークンを解決できない利用者の分は `SUMMARY_WP_REAUTH_REQUIRED`、それ以外は `SUMMARY_CONTENT_FETCH_FAILED`**（BR-B10 / 下の「本文取得の可否判定」）。**起票時には弾かない**（クライアント回答 2026-09-04 / Q-B01 = (b)） | **未照合**（`developer.wordpress.com` / `developer.wordpress.org` が実行環境の egress proxy にブロックされ取得不可。§16）。以下は実コードのみを根拠とする |
-| Resend | 完了メール | 既存 `EmailService` に**新規メソッドを追加**（`idempotencyKey` 付き。下の「`EmailService` への追加」）。宛先は `public.users.email` | 送信失敗時は `notified_at` を更新せず、次回の cron 起動の**掃き出し経路**が `created_at` 24時間以内に限って再送する（下の「完了メールの起動経路」） | **社内に verbatim の公式記録あり**（`docs/plans/ga4-content-evaluation-spec.md` §16。URL・確認日 2026-08-19・引用つき。冪等キーとレート上限を本仕様に反映済み）。**web での再取得は egress ブロックのため未実施**（§16） |
+| Resend | 完了メール | 既存 `EmailService` に**新規メソッドを追加**（`idempotencyKey` 付き。下の「`EmailService` への追加」）。宛先は `public.users.email` | 送信失敗時は `notified_at` を更新せず、次回の cron 起動の**掃き出し経路**が `created_at` 24時間以内に限って再送する（下の「完了メールの起動経路」） | **社内に verbatim の公式記録あり**（`docs/specs/ga4-content-evaluation-spec.md` §16。URL・確認日 2026-08-19・引用つき。冪等キーとレート上限を本仕様に反映済み）。**web での再取得は egress ブロックのため未実施**（§16） |
 | GitHub Actions | 10分間隔の起動 | 新規ワークフロー1本（`CRON_SECRET` を渡して `scripts/invoke-cron.sh` を実行） | 失敗は GitHub Actions の通知で運用担当が検知する（§2）。何を失敗とみなすかは上の「cron ルートのレスポンス形」 | **一部確認済み**: リポジトリが public であることは 2026-09-04 に GitHub API で確認（§10）。`schedule` の遅延・ドロップ・60日無活動での自動停止の挙動は**未照合**（`docs.github.com` がブロック。§16 / §10 制約条件） |
 
 **cron からの `generateSummary` 呼び出し経路（実装契約）**
@@ -623,8 +623,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - **二重送信の防御は3段**（1段目・2段目だけでは「送信は成功したが `notified_at` の更新前にハードキル」の窓が開き、10分後の掃き出しが `notified_at is null` を拾って**同じ完了メールが2通**届く。クライアント合意「完了時にメール1通」が破れる）:
   1. cron 定義の `maxRetries: 1`（§9 cron 定義値）。
   2. `notified_at` による DB 側の印（BR-B06 / AC-B05）。
-  3. **Resend の `Idempotency-Key`**。送信成功後・DB 記録前のクラッシュ窓を塞ぐのはこの3段目だけである。同じ構図で3段の防御を要求している前例: `docs/plans/ga4-content-evaluation-spec.md:1474`。
-- 根拠（公式ページ本文の verbatim 引用。**社内の公式記録** `docs/plans/ga4-content-evaluation-spec.md` §16 に URL・確認日つきで残っているものを転記。URL: https://resend.com/docs/api-reference/emails/send-email ／ 確認日: **2026-08-19**。本ランで web 再取得はしていない。§16）:
+  3. **Resend の `Idempotency-Key`**。送信成功後・DB 記録前のクラッシュ窓を塞ぐのはこの3段目だけである。同じ構図で3段の防御を要求している前例: `docs/specs/ga4-content-evaluation-spec.md:1474`。
+- 根拠（公式ページ本文の verbatim 引用。**社内の公式記録** `docs/specs/ga4-content-evaluation-spec.md` §16 に URL・確認日つきで残っているものを転記。URL: https://resend.com/docs/api-reference/emails/send-email ／ 確認日: **2026-08-19**。本ランで web 再取得はしていない。§16）:
 
   > Add an idempotency key to prevent duplicated emails. Should be unique per API request. Idempotency keys expire after 24 hours. Have a maximum length of 256 characters.
 
@@ -1199,7 +1199,7 @@ cycle 5 の反映（完了メールの件名分岐 / 本文取得の可否判定
   | `thinking` の既定挙動・サンプリングパラメータの可否（`claude-sonnet-5`） | **Claude Code バンドル skill `claude-api`（リポジトリ内 `.agents/skills` には存在しない）**。確認日 **2026-09-04** | 照合済み。**単価・レート制限・トークナイザ・`thinking` の仕様は上の公式ページ3行を一次情報とし**（本ランで直接取得できたため）、この skill は公式ページと矛盾が無いことの突き合わせに使った。verbatim 引用は下記 |
   | Message Batches API | https://platform.claude.com/docs/en/build-with-claude/batch-processing | 照合済み。「reducing costs by 50%」「most batches finishing in less than 1 hour」。Non-goals の記述と一致 |
   | リポジトリ visibility（公式ドキュメントではなく GitHub API の1次情報） | GitHub API の repository オブジェクト（`shoma-endo/GrowMate`） | 確認日 2026-09-04。`private=false` / `visibility=public`。§10 / ALT-002 / R-B07 の課金前提はこれで確定（`docs.github.com` の課金ページ自体は引き続き未照合） |
-  | Resend 送信 API（冪等キー・レート上限） | https://resend.com/docs/api-reference/emails/send-email ／ https://resend.com/docs/api-reference/introduction | **社内の公式記録を根拠に照合済み**。確認日 **2026-08-19**（`docs/plans/ga4-content-evaluation-spec.md` §16 に URL・確認日・公式ページ本文の verbatim 引用が残っており、要約経由ではないため一次情報として使える）。引用と解釈は §9「`EmailService` への追加」に転記。「Idempotency keys expire after 24 hours」「10 requests per second per team」を、掃き出しの24時間窓・上限10件の根拠にした。**本ランでの web 再取得は egress ブロックのため未実施**であり、egress が通る環境で再確認して確認日を更新すること |
+  | Resend 送信 API（冪等キー・レート上限） | https://resend.com/docs/api-reference/emails/send-email ／ https://resend.com/docs/api-reference/introduction | **社内の公式記録を根拠に照合済み**。確認日 **2026-08-19**（`docs/specs/ga4-content-evaluation-spec.md` §16 に URL・確認日・公式ページ本文の verbatim 引用が残っており、要約経由ではないため一次情報として使える）。引用と解釈は §9「`EmailService` への追加」に転記。「Idempotency keys expire after 24 hours」「10 requests per second per team」を、掃き出しの24時間窓・上限10件の根拠にした。**本ランでの web 再取得は egress ブロックのため未実施**であり、egress が通る環境で再確認して確認日を更新すること |
 
   公式ページ / `claude-api` skill からの verbatim 引用（本仕様が根拠にした事項。引用と解釈は分ける）:
 

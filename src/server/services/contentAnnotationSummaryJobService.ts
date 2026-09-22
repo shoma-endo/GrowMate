@@ -31,7 +31,7 @@ import {
 
 /**
  * AI要約一括のバックグラウンド実行（ジョブ処理サービス）。
- * 正本: docs/plans/content-annotation-bulk-summary-background-spec.md
+ * 正本: docs/specs/content-annotation-bulk-summary-background-spec.md
  *
  * 起票（`createJob`）・claim（`claimJobs`）・進捗更新（`saveChunkProgress`）・
  * 完了通知（`notifyJob`）は**それぞれ独立したメソッド**にし、対象解決・要約生成・

@@ -1,4 +1,4 @@
--- AI要約一括実行のバックグラウンド化（docs/plans/content-annotation-bulk-summary-background-spec.md §9）
+-- AI要約一括実行のバックグラウンド化（docs/specs/content-annotation-bulk-summary-background-spec.md §9）
 --
 -- 起票された1ジョブ = 対象記事IDの配列。cron が claim して配列順にチャンク（最大3件）で処理し、
 -- チャンク境界でカーソル（processed_count）と件数を書き戻す（BR-B09）。

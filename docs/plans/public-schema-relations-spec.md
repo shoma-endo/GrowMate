@@ -13,7 +13,7 @@
 - 作成者: 実装エージェント（リモート実測）
 - 承認者: 未確定
 - 対象リリース: 対象外（本仕様はスキーマ変更を出荷しない。正本化と追加規則の合意が成果物）
-- 関連する依頼・Issue・PR: 2026-08-15 のリモート FK / 孤立行調査。関連既存仕様: `docs/plans/admin-user-deletion-design.md`
+- 関連する依頼・Issue・PR: 2026-08-15 のリモート FK / 孤立行調査。関連既存仕様: `docs/specs/admin-user-deletion-design.md`
 
 ## 1. 背景・目的・成功指標
 

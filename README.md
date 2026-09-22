@@ -231,7 +231,7 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 
 > **GA4コンテンツ評価の運用**: 管理者が `/admin/prompts` で文章化テンプレートを登録したうえで評価を実行する。評価の可否はロール（`admin` / `paid`）とデータ充足で決まり、DB Kill Switch は使わない。
 
-初回セットアップ後は Supabase の `users` テーブルで自分のロールを `admin` に変更し、`/business-info` で事業者情報を登録してください。Google / WordPress / Google Ads の詳細手順は [`docs/specs/`](docs/specs/) を参照。Instagram 連携の設計・OAuth 要件は [`docs/plans/instagram-integration-design.md`](docs/plans/instagram-integration-design.md) を参照。
+初回セットアップ後は Supabase の `users` テーブルで自分のロールを `admin` に変更し、`/business-info` で事業者情報を登録してください。Google / WordPress / Google Ads の詳細手順は [`docs/specs/`](docs/specs/) を参照。Instagram 連携の設計・OAuth 要件は [`docs/specs/instagram-integration-design.md`](docs/specs/instagram-integration-design.md) を参照。
 
 ### よく使う npm scripts
 

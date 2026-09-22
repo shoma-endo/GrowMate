@@ -156,7 +156,7 @@ async function refreshWpComAccessToken(
  * **Cookie 無しで**本文取得に使えるアクセストークンを解決できるかを判定する（真偽値）。
  *
  * AI要約一括のバックグラウンド実行が、1起動につき1回だけ呼ぶ
- * （docs/plans/content-annotation-bulk-summary-background-spec.md §9「本文取得の可否判定」）。
+ * （docs/specs/content-annotation-bulk-summary-background-spec.md §9「本文取得の可否判定」）。
  * 判定ロジックを cron 側へ複製しないためにここから export する。
  *
  * WordPress 設定を取得できない2ケースは**逆向きに倒す**:
