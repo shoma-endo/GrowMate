@@ -248,7 +248,7 @@ describe('fetchWpPostContentWithCache の再取得条件', () => {
 
 /**
  * cron（Cookie 無し）から本文取得が成立するかの事前判定。
- * 正本: docs/plans/content-annotation-bulk-summary-background-spec.md §9「本文取得の可否判定」
+ * 正本: docs/specs/content-annotation-bulk-summary-background-spec.md §9「本文取得の可否判定」
  *
  * **設定を取得できない2ケースを逆向きに倒す**のが要点。倒し方を間違えると、
  * DB の一時障害の起動で連携が正常な利用者に「WordPress を再連携してください」と誤案内する。

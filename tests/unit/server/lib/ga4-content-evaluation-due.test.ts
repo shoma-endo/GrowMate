@@ -4,7 +4,7 @@
  * due 判定（`ga4-content-evaluation-due`）、定期評価バッチの結末判定契約
  * （`ga4-content-evaluation-batch-outcome`）、通知メールの文面組み立て
  * （`ga4-content-evaluation-email`）、メールHTMLの無害化（`email-html`）。
- * docs/plans/ga4-content-evaluation-spec.md §6.6.2 / §8.3 / §9.5 / §10.9 の正本。
+ * docs/specs/ga4-content-evaluation-spec.md §6.6.2 / §8.3 / §9.5 / §10.9 の正本。
  */
 import { describe, expect, it } from 'vitest';
 import { isGa4ContentEvaluationDue } from '@/server/lib/ga4-content-evaluation-due';

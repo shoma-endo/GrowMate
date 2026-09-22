@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * AI要約一括の Server Action（**ジョブ起票**）のユニットテスト。
- * 正本: docs/plans/content-annotation-bulk-summary-background-spec.md §6 / §7
+ * 正本: docs/specs/content-annotation-bulk-summary-background-spec.md §6 / §7
  *
  * 2026-09-04 に同期実行からバックグラウンド実行へ差し替えたため、要約の生成・件数集計・
  * 時間予算の網は `tests/unit/server/services/contentAnnotationSummaryJobService.test.ts` へ移した。

@@ -1,7 +1,7 @@
 import type { UserRole } from '@/types/user';
 
 /**
- * Instagram 機能を利用できるロール（`docs/plans/instagram-integration-design.md` §7）。
+ * Instagram 機能を利用できるロール（`docs/specs/instagram-integration-design.md` §7）。
  * 他の有料機能（`/setup/*`・`/analytics`）と同じ paid / admin に揃える。
  * `trial` は 2026-08-14 に対象外とした（Q4 の決定変更。同 §9 Q4）。
  *
