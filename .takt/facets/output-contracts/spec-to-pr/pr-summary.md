@@ -6,7 +6,7 @@
 
 ## 関連仕様書
 - {`plan.md` の `# タスク計画` 直後の `対象仕様書:` パス。なければ self-review の記載}
-- {完全実装なら「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動」。部分実装なら「`docs/plans/` に残置（未実装: ○○）」}
+- {完全実装なら「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動（create_pr が git mv・参照パス置換・ステータス `implemented` 更新まで実施）」。部分実装なら「`docs/plans/` に残置（未実装: ○○）」}
 
 ## 変更要点
 - {カテゴリ単位で3〜7点。ファイル一覧の羅列は禁止}
