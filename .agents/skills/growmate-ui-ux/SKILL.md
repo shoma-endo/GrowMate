@@ -19,7 +19,7 @@ GrowMate は **広告運用・コンテンツマーケティング初心者** �
 
 1. **既存コンポーネントをそのまま使う**（import して props を渡す）
 2. **既存を共通コンポーネントへ切り出して両方で使う**（拡張）
-3. **マークアップとクラスを1文字も変えずに写す**（1・2 ができない理由を PR に書く）。**ただし既存が生の Tailwind 色を使っていて、写すと `shadcn/no-raw-colors` の違反が増える場合は写さない**。`eslint.config.mjs` が `--suppress-rule` で抑制件数を増やすことを禁じているため。この場合は 2（共通化）を採り、共通部品は **既存のファイル内で export する**（例: `CategoryFilter.tsx` の行を同じファイル内の部品にして export し、両方から使う）。既存の違反が同じファイルに留まるので抑制件数は増えない（減った分は `npx eslint . --prune-suppressions`）
+3. **マークアップとクラスを1文字も変えずに写す**（1・2 ができない理由を PR に書く）。**ただし既存が生の Tailwind 色を使っていて、写すと `shadcn/no-raw-colors` の違反が増える場合は写さない**。`eslint.config.mjs` が `--suppress-rule` で抑制件数を増やすことを禁じているため。この場合は 2（共通化）を採り、共通部品は **既存のファイル内で export する**（実例: `src/components/CategoryFilter.tsx` の `StatusFilterSection` / `StatusFilterOption`、`src/components/AnalyticsTable.tsx` の `ActiveFilterBar` / `FilterTag`。ブログ一覧と Instagram タブの両方が使う）。既存の違反が同じファイルに留まるので抑制件数は増えない（減った分は `npx eslint . --prune-suppressions`）
 
 写すとき・再利用するときに、**自分の判断で次を変えない**: 見出しの語、文言、色クラス、`title` / `aria-label`、アイコンの有無、余白、枠。変える場合は仕様書の明示か利用者の指示を根拠として PR に書く。
 
@@ -31,7 +31,8 @@ GrowMate は **広告運用・コンテンツマーケティング初心者** �
 
 | 今回の UI 要素 | 同種の既存 UI（`file:line`） | 採る方法（そのまま使う / 共通化 / 写す / 新規） | 変える点と根拠 |
 |---|---|---|---|
-| 例: 状態フィルター（見出し＋各行） | `src/components/CategoryFilter.tsx:99-179` | 共通化（CategoryFilter.tsx 内で export） | なし |
+| 例: 「状態でフィルター」の見出しと行 | `src/components/CategoryFilter.tsx` の `StatusFilterSection` / `StatusFilterOption` | そのまま使う | なし |
+| 例: 一覧上の「フィルター:」とタグ | `src/components/AnalyticsTable.tsx` の `ActiveFilterBar` / `FilterTag` | そのまま使う | なし |
 
 同種の既存 UI が無い要素だけ「新規」とし、無いことを確かめた grep の語を「変える点と根拠」に書く。
 
