@@ -59,9 +59,11 @@ interface ModelConfig {
 const GSC_SUGGESTION_BODY_MAX_OUTPUT_TOKENS = 16_000;
 
 // 共通設定（DRY原則に基づく定数化）
+// content_annotation_ai_summary は OPEN-M01 のため ANTHROPIC_BASE へ戻さない（要約だけ2行で巻き戻せる手段を残す）。
 const ANTHROPIC_BASE = {
   provider: 'anthropic' as const,
-  actualModel: 'claude-sonnet-4-6',
+  actualModel: 'claude-sonnet-5',
+  thinking: { type: 'disabled' as const },
   seed: 42,
 };
 
@@ -129,8 +131,8 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
     label: 'Google Ads 除外キーワード提案',
   },
   // **AI要約だけ ANTHROPIC_BASE から切り出している**
-  // （docs/plans/content-annotation-bulk-summary-background-spec.md §8 / §11 ALT-005）。
-  // ANTHROPIC_BASE は 19 エントリへ展開されており、そこを書き換えるとチャット・ブログ生成・
+  // （docs/specs/content-annotation-bulk-summary-background-spec.md §8 / §11 ALT-005）。
+  // ANTHROPIC_BASE は 18 エントリへ展開されており、そこを書き換えるとチャット・ブログ生成・
   // GSC 提案・Google Ads 分析・GA4 コンテンツ評価まで一斉に別モデルへ移る。各機能は出力形式
   // （末尾 JSON ブロック・ストリーミング・長文生成）が異なり、本仕様のテストでは回帰を検知できない。
   //

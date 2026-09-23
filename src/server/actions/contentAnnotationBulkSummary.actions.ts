@@ -14,7 +14,7 @@ import { contentAnnotationSummaryJobService } from '@/server/services/contentAnn
 
 /**
  * AI 要約一括実行の Server Action（**ジョブ起票**）。
- * 正本: docs/plans/content-annotation-bulk-summary-background-spec.md
+ * 正本: docs/specs/content-annotation-bulk-summary-background-spec.md
  *
  * 2026-09-04 に同期実行からバックグラウンド実行へ差し替えた。この Action がするのは
  * 「対象 ID を解決してジョブを1件作る」ところまでで（BR-B01 / BR-B02）、要約の生成は

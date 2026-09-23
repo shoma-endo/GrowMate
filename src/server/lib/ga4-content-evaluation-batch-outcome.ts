@@ -1,7 +1,7 @@
 import type { Ga4ContentEvaluationView } from '@/types/ga4-evaluation';
 
 /**
- * 定期評価バッチの結末の判定契約（docs/plans/ga4-content-evaluation-spec.md §8.3）。
+ * 定期評価バッチの結末の判定契約（docs/specs/ga4-content-evaluation-spec.md §8.3）。
  * displayStatus では判定しない。history[0] が「今回の run() 呼び出しが作った履歴行」で
  * あることを startedAt で確認し、その行の status（永続6値）を結末とする。
  */

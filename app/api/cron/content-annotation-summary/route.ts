@@ -4,7 +4,7 @@ import { contentAnnotationSummaryJobService } from '@/server/services/contentAnn
 
 /**
  * AI要約一括のバックグラウンド実行 Cron エンドポイント
- * （docs/plans/content-annotation-bulk-summary-background-spec.md §9）
+ * （docs/specs/content-annotation-bulk-summary-background-spec.md §9）
  *
  * GitHub Actions（`.github/workflows/content-annotation-summary-cron.yml`）が10分ごとに
  * GET で呼び出す。1起動で行うのは次の順序:

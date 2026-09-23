@@ -6,7 +6,7 @@
 
 ## 関連仕様書
 - {`plan.md` の `# タスク計画` 直後の `対象仕様書:` パス。なければ self-review の記載}
-- {完全実装なら「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動」。部分実装なら「`docs/plans/` に残置（未実装: ○○）」}
+- {完全実装なら「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動（create_pr が git mv・参照パス置換・ステータス `implemented` 更新まで実施）」。部分実装なら「`docs/plans/` に残置（未実装: ○○）」}
 
 ## 変更要点
 - {カテゴリ単位で3〜7点。ファイル一覧の羅列は禁止}
@@ -24,8 +24,11 @@
 - `npm run verify`: {結果}
 - その他: {あれば。手動ブラウザ確認は無人のため未実施が既定}
 
+## 画面キャプチャ
+{`plan.md` の `UIモック:` が `対象外` なら「対象外」。UI 対象なら `.takt/artifacts/pr-screenshots/` の許可拡張子ファイルを `![alt](.takt/artifacts/pr-screenshots/NN-short-slug.ext)` で列挙。0件なら「なし（ローカルキャプチャ未配置）」。モック HTML・図解は禁止}
+
 ## 未確認事項
-- {UI変更時は「手動ブラウザ確認未実施」を含める}
+- {UI変更時は「手動ブラウザ確認未実施」を含める（キャプチャ未配置でも同様）}
 - {`database.types.pending.ts` 追加時は管理者によるマイグレーション適用・`npm run supabase:types`・pending削除を含める}
 - {添付レポート間の食い違いがあれば含める}
 - {なければ「なし」}

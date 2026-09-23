@@ -763,7 +763,7 @@ export class SupabaseService {
    * `success: false` が **(b) クエリエラー** に対応する（前例 `getUserById` と同型）。
    *
    * AI要約一括のバックグラウンド実行が、本文取得の可否判定でこの2つを逆向きに倒すため必要
-   * （docs/plans/content-annotation-bulk-summary-background-spec.md §9「WordPress 設定の読み取り経路」）:
+   * （docs/specs/content-annotation-bulk-summary-background-spec.md §9「WordPress 設定の読み取り経路」）:
    * (a) は「不可」＝再連携を案内、(b) は「可」＝断定の弱い既存コードへ落とす。
    */
   async getWordPressSettingsResultByUserId(

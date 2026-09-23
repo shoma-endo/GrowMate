@@ -19,7 +19,7 @@ description: Cursor Cloud AgentがTAKT CLI無しでspec-reviewと実装→PRの�
 | Cloud Agent 上で実装→verify→PR | ローカルで `takt -w spec-review` / `spec-to-pr` |
 | 「TAKT なしでレビューまで」「Cloud で PR まで」 | Grill Me・着手判断・人間承認待ちが必要な前段 |
 
-ローカル TAKT は残置。Cloud 主系は本 Skill + `.agents/agents/spec-*.md`。
+ローカル TAKT が基本。ユーザーが Cloud を明示したときだけ本 Skill + `.agents/agents/spec-*.md` を使う。
 
 ## オーケストレーション規則
 

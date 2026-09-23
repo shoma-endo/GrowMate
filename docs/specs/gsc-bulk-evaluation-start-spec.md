@@ -15,7 +15,7 @@
   - 一覧一括開始という手段は、上記の合意文には無く、開発側が提案した拡張である。要件としての根拠は §12 Q-001（回答: フィルタ該当の全件・ページ跨ぎ）と Q-003（回答: 既存に合わせる＝非表示）に対する PO 回答であって、§1.9.5 の合意文そのものではない。
   - 既存単記事開始: `app/analytics/[annotationId]/EvaluationSettings.tsx` / `registerEvaluation`（`src/server/actions/gscDashboard.actions.ts`）。画面パスは `/analytics/[annotationId]`。<br>**2026-08-26 訂正（パス移設への追随）**: 本仕様の執筆時点では `app/gsc-dashboard/EvaluationSettings.tsx` / `/gsc-dashboard?annotationId=<id>` だったが、`feature/ga4-content-evaluation` のフェーズ1で記事詳細を `/analytics/[annotationId]` へ移設し、旧URLは `next.config.ts` の恒久 redirect（308）になった。旧 `app/gsc-dashboard/page.tsx` は削除済み。**本仕様の設計には影響しない**（単記事開始は現状維持というスタンスが変わらないため）が、パス・URLの記述のみ実態へ揃えた
   - 既存の GSC 未連携時 UI: `app/analytics/[annotationId]/components/OverviewTab.tsx`（移設後）は `detail.credential?.propertyUri` が無いとき `EvaluationSettings` 自体を出さない（非表示）
-  - 共同実装メモ（共有チェック列・ツールバー）: `docs/plans/analytics-bulk-actions-impl-note.md`。受け入れ条件の正本は本仕様のまま
+  - 共同実装メモ（共有チェック列・ツールバー）: `docs/specs/analytics-bulk-actions-impl-note.md`。受け入れ条件の正本は本仕様のまま
 
 ## 1. 背景・目的・成功指標
 
@@ -110,7 +110,7 @@ WordPress 一括インポート
   - 同ファイルの `ga4Error` prop は通知ブロックを出すだけで、上記ゲート条件には入らず一覧は描画され続ける。
   - **`property_uri` の取得失敗は `ga4Error` と同型の非ブロッキング通知とする**。`app/analytics/page.tsx` から `error` とは**別の prop**（例: `gscCredentialError`）で渡し、`ga4Error` と同じ位置に通知を出す。**`error` prop および `AnalyticsTable` の描画ゲートには載せない。**
   - すなわち **`property_uri` の取得失敗でコンテンツ一覧の描画を止めてはならない。止まるのは本仕様の一括 UI だけである。**
-  - **2026-08-27 訂正（共有チェック列の範囲）**: 非表示にするのは **「評価サイクルを開始」ボタンと評価側の理由表示**である。**チェック列・全選択は、AI 要約一括（`content-annotation-bulk-ai-summary-spec.md` BR-04 / FR-002 / AC-02）と同居する場合は常時表示とし、GSC の連携状態・取得失敗で隠さない。** 要約一括は WordPress 連携（同仕様 BR-02）が前提で GSC とは無関係のため、共有列に GSC 条件を掛けると GSC 未連携かつ WordPress 連携済みの `paid`/`admin` が要約一括を1件も実行できなくなり、承認済みの同仕様 AC を上書きしてしまう。PO 回答（§12 Q-003）の逐語は「GSC 未連携時の**ボタン**見た目」であり、チェック列まで含む判断ではない。**本仕様が単独で先行し要約一括が未実装の期間**は、共有列に載る操作が評価だけになるため従来どおりチェック列も非表示でよい（FR-005 / AC-05）。共有 UI 契約は `docs/plans/analytics-bulk-actions-impl-note.md` §3.1。
+  - **2026-08-27 訂正（共有チェック列の範囲）**: 非表示にするのは **「評価サイクルを開始」ボタンと評価側の理由表示**である。**チェック列・全選択は、AI 要約一括（`content-annotation-bulk-ai-summary-spec.md` BR-04 / FR-002 / AC-02）と同居する場合は常時表示とし、GSC の連携状態・取得失敗で隠さない。** 要約一括は WordPress 連携（同仕様 BR-02）が前提で GSC とは無関係のため、共有列に GSC 条件を掛けると GSC 未連携かつ WordPress 連携済みの `paid`/`admin` が要約一括を1件も実行できなくなり、承認済みの同仕様 AC を上書きしてしまう。PO 回答（§12 Q-003）の逐語は「GSC 未連携時の**ボタン**見た目」であり、チェック列まで含む判断ではない。**本仕様が単独で先行し要約一括が未実装の期間**は、共有列に載る操作が評価だけになるため従来どおりチェック列も非表示でよい（FR-005 / AC-05）。共有 UI 契約は `docs/specs/analytics-bulk-actions-impl-note.md` §3.1。
 - 判定の限界（既知・受容）: 本判定は `property_uri` 行の有無のみを見る。**OAuth トークン失効や Google 側での連携解除は検知しない**（`gsc_credentials.property_uri` は失効後も残る）。詳細と根拠は「9. データ・外部連携」の外部連携と §12 R-005 を参照。既存の単記事開始も同じ判定であり、本仕様で判定を厳格化しない。
 
 - ルール ID: BR-05
@@ -125,7 +125,7 @@ WordPress 一括インポート
 
 - ルール ID: BR-07
 - ルール（母集団の定義。**本仕様で「全選択の母集団」を定義するのはここだけ**。他節は再掲せず本ルールを参照する）: 「全選択」の対象は **利用者が所有する全記事**（`content_annotations` の `user_id` が一致する行すべて）とする。**表示中のページにも、一覧に適用中のフィルタ（カテゴリ名・未分類・改善提案あり・評価未設定）にも依存しない。** すなわち「評価未設定 ON かつカテゴリ X 選択中」でも全選択の母集団は**全記事**であり、絞り込み後の件数を示す一覧の総件数表示（`total_count`）とは**一致しない**。**ID の解決方式は下の「ID 解決の方式」ルールで定義する**（本ルールは母集団の範囲だけを定める）。
-- ルール（本定義の適用範囲。**2026-08-29 Q-008 で確定**）: 本定義は `/analytics` の行チェック・全選択が **AI 要約一括と共有する1本**（`docs/plans/analytics-bulk-actions-impl-note.md` §3.1）**そのもの**に適用される。すなわち要約一括の全選択も同じ母集団（フィルタ非依存の全記事）になる。要約親 `content-annotation-bulk-ai-summary-spec.md` BR-05 の旧定義（全フィルタ条件の AND 結果の全件・件数は `total_count` と一致）は本定義へ追従改訂する。**母集団の正本は本ルール（BR-07）1つとし、要約親は本ルールを参照する。**
+- ルール（本定義の適用範囲。**2026-08-29 Q-008 で確定**）: 本定義は `/analytics` の行チェック・全選択が **AI 要約一括と共有する1本**（`docs/specs/analytics-bulk-actions-impl-note.md` §3.1）**そのもの**に適用される。すなわち要約一括の全選択も同じ母集団（フィルタ非依存の全記事）になる。要約親 `content-annotation-bulk-ai-summary-spec.md` BR-05 の旧定義（全フィルタ条件の AND 結果の全件・件数は `total_count` と一致）は本定義へ追従改訂する。**母集団の正本は本ルール（BR-07）1つとし、要約親は本ルールを参照する。**
 - ルール（開始対象）: 母集団に既登録記事が混ざるのは正常である。サーバーは BR-01 のとおり未登録のみを登録し、既登録はスキップして成功件数に混ぜない。
 - ルール（上限）: 1回の開始上限は **1000件**。根拠は **WordPress 一括インポートの上限（1000）に揃えること、これ1本**とする。母集団がフィルタ非依存の全記事になったため絞り込みでは上限を下回らせられないが、超過時は下の例外のとおり**丸める**ので全選択が使えなくなることはない。
 - **根拠に`しない`もの（2026-08-29 訂正）**: PostgREST の `db-max-rows`（GrowMate では 1000）を 1000 の根拠にしない。公式 verbatim は「fetch する行数」の上限であり insert 側の制約でもなければ、本機能の ID 解決経路にも当たらない（公式引用は §9 / §16 参照）。実測（2026-08-29）: 一覧 RPC は `returns table(items jsonb, total_count bigint)` の **jsonb 集約1行返し**（`20260818000300_…sql:16` `:89-90`）で `db-max-rows` に当たらない。むしろ `p_per_page` が `greatest(1, least(100, …))` で **1ページ最大100件にクランプ**され（同 `:22`）、呼び出し側 `src/server/services/analyticsContentService.ts:18` の `MAX_PER_PAGE = 100`・`:26` の同型クランプも同じ上限である。**したがって一覧 RPC を1回呼ぶだけでは最大100件しか解決できない。**
@@ -172,7 +172,7 @@ WordPress 一括インポート
 | 開始ボタンのフィルタ連動ゲート | 2026-08-29 Q-007 で**撤廃**。選択≥1 のみを条件とし、誤登録は BR-01 の既登録スキップで防ぐ（BR-06 / 判断6） | 「絞ったつもりで全件開始してしまった」苦情が出たとき（そのときは確認ダイアログの検討であり、ゲートの復活ではない） |
 | 1回 1000件超の一括開始 | WP インポート上限（1000）に揃える（**これが唯一の根拠**。2026-08-29 訂正で `db-max-rows` 由来の根拠は撤回した。詳細は BR-07「根拠にしないもの」）。**全選択は先頭1000件へ丸めて開始できる（BR-07 例外 / AC-11）ため、全選択が使えなくなることはない。エラーになるのは API 直叩きで1001件以上の ID を送った場合だけ（AC-11b）。**丸めた残りは行チェックで個別に選択する（BR-07「丸めた残りの扱い」/ R-007） | より大量の一括が必須になったとき |
 | 登録直後専用の新規ステータス列・バッジ | 評価未設定フィルタ適用中なら開始成功後に行が消えるため足りる。新規文言は作らない | フィルタなしでも進捗が見えないという苦情が出たとき |
-| ~~GA4 コンテンツ評価サイクルの一括開始~~ | ~~本要件の対象は検索順位（GSC）のみ。GA4 は別仕様~~ **2026-08-26 失効: GA4に別サイクルは存在しなくなった。**`docs/plans/ga4-content-evaluation-spec.md` §6.6 でGSC検索順位評価サイクルとGA4コンテンツ評価サイクルを1本へ統合したため、`gsc_article_evaluations` へ行を作れば**検索順位評価とコンテンツ評価の両方が同じ周期で回る**。本仕様の一括開始は追加実装なしでGA4側も開始することになる。GA4の進捗列（`ga4_last_evaluated_on` / `ga4_last_seen_content_score` / `ga4_last_notified_history_id`）はいずれもNULL可で、NULLのまま作れば「未計測」として次のdueで軽量パスから始まるため、insert列を増やす必要はない。 | — |
+| ~~GA4 コンテンツ評価サイクルの一括開始~~ | ~~本要件の対象は検索順位（GSC）のみ。GA4 は別仕様~~ **2026-08-26 失効: GA4に別サイクルは存在しなくなった。**`docs/specs/ga4-content-evaluation-spec.md` §6.6 でGSC検索順位評価サイクルとGA4コンテンツ評価サイクルを1本へ統合したため、`gsc_article_evaluations` へ行を作れば**検索順位評価とコンテンツ評価の両方が同じ周期で回る**。本仕様の一括開始は追加実装なしでGA4側も開始することになる。GA4の進捗列（`ga4_last_evaluated_on` / `ga4_last_seen_content_score` / `ga4_last_notified_history_id`）はいずれもNULL可で、NULLのまま作れば「未計測」として次のdueで軽量パスから始まるため、insert列を増やす必要はない。 | — |
 | AI 要約の自動開始 | §1.9.3 の要望には含まれるが、本チケットの目的外 | 別仕様 |
 | 評価サイクルの停止・削除の一括操作 | 既存単記事 UI にも無い。増やさない | 単記事側で先に提供されてから |
 | Feature flag / 専用設定テーブル / 監視ダッシュボード | 要件に無い。壊れたときはデプロイ巻き戻しと UI 非表示で足りる | 該当なし |
@@ -289,7 +289,7 @@ WordPress 一括インポート
   - **一括操作のツールバーは GA4 集計期間の行に横並び**で置く（`app/analytics/AnalyticsClient.tsx` の `<div className="flex flex-wrap items-end gap-3 mb-4">`。「期間を適用」の右）。
   - **カテゴリ・状態フィルタ（`CategoryFilter`）は画面に常設されていない。** 「フィールド構成」ダイアログの中にある（`src/components/AnalyticsTable.tsx` の `FieldConfigurator` の `dialogExtraContent`）。したがって「フィルタ群の下にツールバーを置く」という配置は取れない。
   - 「評価サイクルを開始」は **GSC 連携済みかつ選択≥1** のとき活性（BR-06 / FR-010）。フィルタに連動しないため、評価側の理由表示スロットは持たない。
-  - 「AIで要約」は AI 要約一括（`content-annotation-bulk-ai-summary-spec.md`）の担当で、**選択≥1 のみ**（フィルタ非依存。2026-08-31 にゲート撤廃。要約親 BR-04）。未実装の期間はボタンを出さない。両ボタンの並び順と共有契約は `docs/plans/analytics-bulk-actions-impl-note.md` §3.4。
+  - 「AIで要約」は AI 要約一括（`content-annotation-bulk-ai-summary-spec.md`）の担当で、**選択≥1 のみ**（フィルタ非依存。2026-08-31 にゲート撤廃。要約親 BR-04）。未実装の期間はボタンを出さない。両ボタンの並び順と共有契約は `docs/specs/analytics-bulk-actions-impl-note.md` §3.4。
 
   GSC 未連携時は、**「評価サイクルを開始」ボタンを出さない**。チェック列・全選択は、AI 要約一括が同居する場合は常時表示のまま残し（BR-04「2026-08-27 訂正」）、本仕様が単独で先行する期間はチェック列・ツールバーごと出さず既存一覧のままとする。
 

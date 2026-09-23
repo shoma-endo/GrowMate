@@ -291,7 +291,7 @@ MVP合計は **235〜360時間（30〜45人日）**（フェーズ3を含める�
 - `app/gsc-dashboard/` が削除され、**旧ルートを指す「参照」が0件**である。判定の定義は次のとおり。
   - **判定対象**: リンク・遷移先・`revalidatePath` 等のパス指定・redirect の `source` / `destination`・ドキュメント内のパス参照として書かれた `/gsc-dashboard`（**先頭スラッシュ付き**）、および移設対象ディレクトリを指す `app/gsc-dashboard/`。
   - **探索範囲**: **git 管理下のファイル全体**（`.gitignore` を尊重する検索を用いる。`rg` は既定で尊重する。`grep -r` を使う場合は `node_modules/`・`.git/`・`.next/`・`docs/plans/_html/`・`.takt/`・`*.tsbuildinfo` を明示除外する）。**`src/`・`app/` 限定では §17 の同期対象（`.agents/skills/` 配下・`docs/` 配下）を捕捉できないため範囲を広げる。**ビルド生成物・TAKT 作業ファイルはいずれも `.gitignore` 対象であり成果物ではないため判定に含めない（2026-08-15 実測: `.gitignore:17,43,69` および `.takt/.gitignore:2`）。
-  - **除外**: (1) `next.config.ts` の redirect 定義（`source: '/gsc-dashboard'`）。(2) **本仕様書（`docs/plans/ga4-content-evaluation-spec.md`）自身**。移設の設計正本として旧ルート名を必ず含むため、歴史記録（§18 / §19 / §15.4）だけでなく設計記述（§3.1 / §3.3 / §3.4 / §5.1 / §5.5 / §10.1 / §10.3 / §12 / §13 / §14 / §15.2 / §15.3 / R-09）も判定対象外とする。(3) `src/server/actions/gscDashboard.actions.ts` のログ接頭辞 `[gsc-dashboard]` 計7箇所（`:225` `:475` `:581` `:723` `:784` `:864` `:925`。2026-08-15 実測）。これはパス参照ではなくログ文言であり、**ログ文言の改称はフェーズ1のスコープ外**（§17 の同ファイル変更対象は `revalidatePath` 4箇所と公開6関数への認可追加のみ）。
+  - **除外**: (1) `next.config.ts` の redirect 定義（`source: '/gsc-dashboard'`）。(2) **本仕様書（`docs/specs/ga4-content-evaluation-spec.md`）自身**。移設の設計正本として旧ルート名を必ず含むため、歴史記録（§18 / §19 / §15.4）だけでなく設計記述（§3.1 / §3.3 / §3.4 / §5.1 / §5.5 / §10.1 / §10.3 / §12 / §13 / §14 / §15.2 / §15.3 / R-09）も判定対象外とする。(3) `src/server/actions/gscDashboard.actions.ts` のログ接頭辞 `[gsc-dashboard]` 計7箇所（`:225` `:475` `:581` `:723` `:784` `:864` `:925`。2026-08-15 実測）。これはパス参照ではなくログ文言であり、**ログ文言の改称はフェーズ1のスコープ外**（§17 の同ファイル変更対象は `revalidatePath` 4箇所と公開6関数への認可追加のみ）。
   - **改称しないもの**: `gscDashboard.actions.ts` / `gscNotification.actions.ts` のファイル名、`GscDashboardClient` 等の識別子（camelCase・PascalCase であり本判定の文字列にはヒットしない）。改称はフェーズ1のスコープ外とし、必要になれば別チケットで扱う。
   - 更新が必要な他ドキュメントの一覧は §17（R-09）。
 - `gscDashboard.actions.ts` の全公開関数と `app/api/gsc/dashboard/*` が、許可されないロールに §3.3「未認可時の応答契約」の応答を返す（AC-12）。
@@ -3042,7 +3042,7 @@ Search Analytics の QPS quota として、公式は次の区分と値を示す�
 
 | ファイル | 現状の記述 | 対応 |
 |---|---|---|
-| `docs/plans/instagram-integration-design.md:1033` | `app/analytics/[annotationId]/components/OverviewTab.tsx:111-186` を単一トースト実装の正本として参照 | 移設後パスへ更新 |
+| `docs/specs/instagram-integration-design.md:1033` | `app/analytics/[annotationId]/components/OverviewTab.tsx:111-186` を単一トースト実装の正本として参照 | 移設後パスへ更新 |
 | `docs/specs/ga4-data-api-daily-cache-mvp.md:369` | 見出し「GA4 設定（/app/gsc-dashboard に統合）」 | 移設後の配置へ更新 |
 | `.agents/skills/growmate-ui-ux/ui-text.md:35` | 「評価」行が「`/gsc-dashboard` の「評価を開始」「評価基準日」に合わせる」と規定 | 移設後パスへ更新。修飾ルールの一般化（§10.3）と同時に行う |
 | `.agents/skills/quality-gate/manual-testing.md:52` | 「- `/gsc-dashboard` で Search Console から取得したデータが表示されるか確認する。」 | **リリース前の必須ゲート手順が旧URLを指したままになる。**移設後パスへ更新する。2026-08-15 追加（従来の同期一覧から漏れていた） |

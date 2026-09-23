@@ -1,7 +1,7 @@
 # Instagram 限定公開の解除 Runbook（2026-08-14）
 
 App Review 通過に伴い、Instagram 機能を **admin / paid** へ開放する本番作業の手順書。
-設計書の正本は [`docs/plans/instagram-integration-design.md`](../plans/instagram-integration-design.md) §4 Phase 2 item6 / §7 / §9 Q4。
+設計書の正本は [`docs/specs/instagram-integration-design.md`](../specs/instagram-integration-design.md) §4 Phase 2 item6 / §7 / §9 Q4。
 
 **コード側（限定公開ゲートの撤去）は実装・マージ済み**。本 Runbook が扱うのは **本番デプロイ・Vercel の変数削除・本番実測**。
 
