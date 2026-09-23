@@ -2,7 +2,6 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
 import type { Database, Tables, TablesInsert } from '@/types/database.types';
-import { asPendingClient, type InstagramEngagementDatabase } from '@/types/database.types.pending';
 import { INSTAGRAM_MEDIA_THUMBNAIL_BUCKET } from '@/lib/constants';
 import type {
   InstagramMediaListItem,
@@ -84,7 +83,7 @@ interface InstagramMediaQuery {
 }
 
 function mapMediaRow(
-  row: InstagramEngagementDatabase['public']['Tables']['instagram_media']['Row']
+  row: Tables<'instagram_media'>
 ): InstagramMediaListItem {
   const reason = row.insights_unavailable_reason;
   const unavailableReason: InstagramMediaListItem['insightsUnavailableReason'] =
@@ -126,7 +125,7 @@ class InstagramMediaService extends SupabaseService {
    * 1ユーザーあたり数千件までは許容。超えたら planned count か keyset ページングへ移す。
    */
   async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
-    const client = asPendingClient<InstagramEngagementDatabase>(this.getClient());
+    const client = this.getClient();
 
     const runQuery = async (page: number) => {
       const offset = (page - 1) * query.perPage;
