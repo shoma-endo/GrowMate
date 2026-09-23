@@ -34,6 +34,16 @@ describe('buildInstagramHref', () => {
     expect(buildInstagramHref(state, { igSort: 'engagement_rate' })).toContain('ig_high=1');
     expect(buildInstagramHref(state, { tab: 'instagram' })).toContain('ig_high=1');
   });
+  it('既定の並び順・目標達成OFFは URL に載せない（保存値の復元を止めない）', () => {
+    const href = buildInstagramHref(buildState(), { tab: 'instagram' });
+    expect(href).not.toContain('ig_sort');
+    expect(href).not.toContain('ig_high');
+    const sorted = buildInstagramHref(buildState(), {
+      tab: 'instagram',
+      igSort: 'engagement_rate',
+    });
+    expect(sorted).toContain('ig_sort=engagement_rate');
+  });
   it('「評価未設定」フィルタはタブを切り替えても維持される', () => {
     const href = buildInstagramHref(buildState({ hasUnstartedGscEvaluation: true }), {
       tab: 'instagram',

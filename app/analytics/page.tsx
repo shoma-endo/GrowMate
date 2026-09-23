@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import AnalyticsClient from './AnalyticsClient';
-import { setOptionalDate } from './build-href';
+import { setInstagramListParams, setOptionalDate } from './build-href';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
 import { gscNotificationService } from '@/server/services/gscNotificationService';
 import { instagramMediaService } from '@/server/services/instagramMediaService';
@@ -278,8 +278,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       // 未指定（全期間）のときは載せない。build-href.ts と同じ規則を共有する
       setOptionalDate(query, 'ig_start', igStartDate);
       setOptionalDate(query, 'ig_end', igEndDate);
-      query.set('ig_sort', igSort);
-      query.set('ig_high', igHigh ? '1' : '0');
+      setInstagramListParams(query, igSort, igHigh);
     }
     return `/analytics?${query.toString()}`;
   };

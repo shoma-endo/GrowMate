@@ -52,6 +52,25 @@ export function setOptionalDate(
   }
 }
 
+/**
+ * 並び順・「目標達成のみ」は既定値（投稿日順 / OFF）なら URL に載せない。
+ * 載せると InstagramTab の保存値復元（URL に無いときだけ復元）が常に止まり、
+ * `/analytics` からタブを開いたときに前回の状態が戻らない。
+ * page.tsx の buildPageHref も同じ規則で組み立てる。
+ */
+export function setInstagramListParams(
+  query: URLSearchParams,
+  sort: InstagramMediaSortKey,
+  highOnly: boolean
+) {
+  if (sort !== 'posted_at') {
+    query.set('ig_sort', sort);
+  }
+  if (highOnly) {
+    query.set('ig_high', '1');
+  }
+}
+
 export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHrefPatch): string {
   const query = new URLSearchParams();
   query.set('page', String(state.currentPage));
@@ -87,8 +106,7 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
     query.set('ig_type', patch.igType ?? state.igType);
     setOptionalDate(query, 'ig_start', nextIgStart);
     setOptionalDate(query, 'ig_end', nextIgEnd);
-    query.set('ig_sort', patch.igSort ?? state.igSort);
-    query.set('ig_high', nextIgHigh ? '1' : '0');
+    setInstagramListParams(query, patch.igSort ?? state.igSort, nextIgHigh);
   }
   if (patch.tab === 'instagram') {
     query.set('ig_page', '1');
@@ -99,8 +117,7 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
     query.set('ig_type', state.igType);
     setOptionalDate(query, 'ig_start', nextIgStart);
     setOptionalDate(query, 'ig_end', nextIgEnd);
-    query.set('ig_sort', state.igSort);
-    query.set('ig_high', nextIgHigh ? '1' : '0');
+    setInstagramListParams(query, state.igSort, nextIgHigh);
   }
 
   return `/analytics?${query.toString()}`;

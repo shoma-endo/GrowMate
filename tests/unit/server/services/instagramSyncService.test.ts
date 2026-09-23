@@ -308,6 +308,30 @@ describe('InstagramSyncService.syncUserData incremental', () => {
     expect(upsertMediaListingPreservingInsightsMock).not.toHaveBeenCalled();
   });
 
+  it('取り直しがちょうど5件で全件失敗しても中断扱いにする', async () => {
+    syncMediaLimit.value = 50;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage(
+        Array.from({ length: 5 }, (_, index) =>
+          rawItem(`recent-${index}`, `2026-09-${20 - index}T00:00:00+0000`)
+        )
+      )
+    );
+    getExistingMediaIdsMock.mockResolvedValue(
+      new Set(Array.from({ length: 5 }, (_, index) => `recent-${index}`))
+    );
+    fetchMediaInsightsMock.mockRejectedValue(new Error('temporary insights failure'));
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(result.stoppedReason).toBe('consecutive_failures');
+    expect(result).toMatchObject({ synced: 0, refreshed: 0, failed: 0 });
+    expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(5);
+  });
+
   it('取り直しのpre-conversion errorでも前回値を保持し連続失敗に数える', async () => {
     syncMediaLimit.value = 50;
     vi.useFakeTimers();

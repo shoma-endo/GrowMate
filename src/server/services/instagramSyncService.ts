@@ -448,6 +448,13 @@ class InstagramSyncService {
         }
       }
 
+      // ループ先頭の判定は「次の1件」があるときしか走らない。最後の1件で閾値に
+      // 達した場合（例: 取り直し5件が全件失敗）もここで中断扱いにしないと、
+      // failed に数えない取り直し失敗が成功表示になる
+      if (!result.stoppedReason && consecutiveFailures >= INSTAGRAM_SYNC_CONSECUTIVE_FAILURE_LIMIT) {
+        result.stoppedReason = 'consecutive_failures';
+      }
+
       if (!result.stoppedReason) {
         const budgetStop = checkBudget();
         if (budgetStop) {
