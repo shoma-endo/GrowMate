@@ -575,7 +575,7 @@ export default function InstagramTab({
           <div className="flex items-center gap-2 text-sm mb-4">
             <span>
               {targetLabel}
-              {highOnlyActive ? '（目標達成のみ表示中）' : ''}
+              {highOnlyActive ? '（高エンゲージメント率のみ表示中）' : ''}
             </span>
             <TooltipProvider>
               <Tooltip>

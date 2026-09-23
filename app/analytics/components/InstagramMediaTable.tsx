@@ -272,7 +272,7 @@ export default function InstagramMediaTable({
                   checked={igHigh}
                   onCheckedChange={checked => onHighOnlyChange(checked === true)}
                 />
-                <span className="text-sm font-medium">目標達成のみ</span>
+                <span className="text-sm font-medium">高エンゲージメント率</span>
               </label>
               <p className="mt-1 px-1 text-xs text-muted-foreground">{criteriaLabel}</p>
               <p className="px-1 text-xs text-muted-foreground">（フォロワー数は最後に取得した時点の値）</p>

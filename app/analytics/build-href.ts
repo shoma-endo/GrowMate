@@ -53,7 +53,7 @@ export function setOptionalDate(
 }
 
 /**
- * 並び順・「目標達成のみ」は既定値（投稿日順 / OFF）なら URL に載せない。
+ * 並び順・「高エンゲージメント率」の絞り込みは既定値（投稿日順 / OFF）なら URL に載せない。
  * 載せると InstagramTab の保存値復元（URL に無いときだけ復元）が常に止まり、
  * `/analytics` からタブを開いたときに前回の状態が戻らない。
  * page.tsx の buildPageHref も同じ規則で組み立てる。
