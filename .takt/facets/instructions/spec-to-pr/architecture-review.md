@@ -12,6 +12,7 @@ GrowMate 固有条件:
 - 逆に、追加・変更されたテストが「実行するだけで検証しない」形なら `needs_fix` にする。判定基準: 戻り値や状態を照合しない（`toBeDefined` / `not.toThrow` / `toBeTruthy` だけ）、実装と同じ式を期待値に書き写している、ビジネスロジック側を丸ごと mock して呼び出し回数しか見ていない。カバレッジ閾値通過のためだけに見えるテストは、その旨を指摘に書く。
 - 代替検証として `npm run verify` が実行されているかを確認する。
 - UI変更がある場合は `.agents/skills/growmate-ui-ux/SKILL.md` を正本として、対象差分が既存の同種画面・`src/components/ui/`・`app/globals.css` から逸脱していないことを確認する。判断に迷った新規パターン、要件にないUI刷新、新しいデザインパターンの追加は `needs_fix` とする。
+- UI変更の有無は `plan.md` の `UIモック:` ヘッダで判断する（`対象外` なら UI 変更なしとして以下を適用しない）。UI変更があるのに `plan.md` に「UI 既存パターン対照表」が無い場合は、コード修正ではなく plan 再作成が必要である旨を明記して `needs_fix` とする（`fix` が `info_missing` で plan へ戻す）。表がある場合は行ごとに、差分が表の方法どおりか（「写す」ならマークアップとクラスが既存と同じか、「そのまま使う」「共通化」なら既存コンポーネントを import しているか）を既存ファイルと突き合わせる。表に根拠の無い見出し・文言・色クラス・`title` / `aria-label`・アイコン・余白の違いは `needs_fix` とする。表で「新規」とし、同種の既存 UI が無いことを grep の語で示している行は、上の「新しいデザインパターンの追加」として指摘しない。`eslint-suppressions.json` の件数が増えていれば `needs_fix` とする。
 - `.agents/skills/supabase/service-usage.md` §6 の Pending Migration Types パターンは、マイグレーション未適用時の許容された実装パターンである。パターンに従っている（合成 `Database` 型が対象マイグレーションSQLと一致し、キャスト箇所が1箇所に閉じている）限り、キャスト自体を理由に `needs_fix` にしない。
 - 実装上の correctness / security / data integrity / architecture 問題がある場合は具体的に `needs_fix` とする。
 - 指摘には必ず `finding_id` を付ける。follow-up 時の突合・再指摘禁止は後続の共有規則に従う。

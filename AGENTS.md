@@ -11,6 +11,7 @@
 - 新規機能は原則として `admin` または `paid` ロールだけに提供する。`trial` と `unavailable` は対象外とし、例外は対象仕様書で明示する。
 - 新規機能の認可はUIだけでなく、Server Action・Route Handler・APIなどのサーバー側でも検証する。
 - 実装の最小化（YAGNI ラダー）は `.takt/workflows/rules/minimal-impl-ladder.md` に従う。
+- UI（`app/**`・`src/components/**`）を変える前に `.agents/skills/growmate-ui-ux/SKILL.md` を読み、同種の既存 UI を調べて「UI 既存パターン対照表」を作る。同種の既存 UI があれば、そのまま使う・共通化する・マークアップとクラスを変えずに写すのいずれかにし、見出し・文言・色（トークン化を含む）を自分の判断で変えない。`eslint-suppressions.json` の件数は増やさない（写すと生の色の違反が増えるなら、既存ファイル内で部品を export して共通化する）。
 
 ## Workflow Source of Truth
 
