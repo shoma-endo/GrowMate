@@ -123,29 +123,14 @@ function MetricCell({
 function RateCell({
   item,
   numerator,
-  label,
 }: {
   item: InstagramMediaListItem;
   numerator: number | null;
-  label: string;
 }) {
   if (item.insightsUnavailable) {
     return <MetricCell item={item} value="-" />;
   }
-  const rate = calculateInstagramRate(numerator, item.reach);
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>{formatInstagramRate(rate)}</span>
-        </TooltipTrigger>
-        <TooltipContent>
-          Instagram 非公式の GrowMate 独自計算（{label}）。Instagram
-          アプリの表示と一致しない場合があります
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+  return <span>{formatInstagramRate(calculateInstagramRate(numerator, item.reach))}</span>;
 }
 
 export default function InstagramMediaTable({
@@ -203,22 +188,7 @@ export default function InstagramMediaTable({
         );
         return (
           <div className="flex items-center gap-2">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    tabIndex={0}
-                    role="button"
-                    className="underline decoration-dotted"
-                  >
-                    {formatInstagramRate(item.engagementRate)}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  （いいね＋コメント＋保存）÷ リーチ で GrowMate が計算した値です。Instagram アプリの表示と一致しない場合があります
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <span>{formatInstagramRate(item.engagementRate)}</span>
             {targetMet ? <Badge variant="secondary">目標達成</Badge> : null}
           </div>
         );
@@ -269,17 +239,15 @@ export default function InstagramMediaTable({
           </TooltipProvider>
         );
       case 'like_rate':
-        return <RateCell item={item} numerator={item.likeCount} label="いいね数 ÷ リーチ数" />;
+        return <RateCell item={item} numerator={item.likeCount} />;
       case 'saved_rate':
-        return <RateCell item={item} numerator={item.saved} label="保存数 ÷ リーチ数" />;
+        return <RateCell item={item} numerator={item.saved} />;
       case 'share_rate':
-        return <RateCell item={item} numerator={item.shares} label="シェア数 ÷ リーチ数" />;
+        return <RateCell item={item} numerator={item.shares} />;
       case 'comment_rate':
-        return (
-          <RateCell item={item} numerator={item.commentsCount} label="コメント数 ÷ リーチ数" />
-        );
+        return <RateCell item={item} numerator={item.commentsCount} />;
       case 'repost_rate':
-        return <RateCell item={item} numerator={item.reposts} label="再投稿数 ÷ リーチ数" />;
+        return <RateCell item={item} numerator={item.reposts} />;
       default:
         return '—';
     }
