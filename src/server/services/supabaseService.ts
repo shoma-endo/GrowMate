@@ -2605,6 +2605,8 @@ export class SupabaseService {
       lastSyncedAt: row.last_synced_at,
       backfillCursor: row.backfill_cursor,
       backfillCompletedAt: row.backfill_completed_at,
+      followersCount: row.followers_count,
+      followersCountSyncedAt: row.followers_count_synced_at,
     };
   }
 
@@ -2619,6 +2621,7 @@ export class SupabaseService {
       accessTokenExpiresAt: string;
       accessTokenIssuedAt: string;
       scope?: string[];
+      followers?: { count: number; syncedAt: string };
     }
   ): Promise<SupabaseResult<void>> {
     const record: InstagramCredentialInsertRow = {
@@ -2633,6 +2636,10 @@ export class SupabaseService {
       scope: payload.scope ?? [],
       updated_at: new Date().toISOString(),
     };
+    if (payload.followers !== undefined) {
+      record.followers_count = payload.followers.count;
+      record.followers_count_synced_at = payload.followers.syncedAt;
+    }
 
     const { error } = await this.supabase
       .from('instagram_credentials')
@@ -2681,6 +2688,7 @@ export class SupabaseService {
       lastSyncedAt: string | null;
       backfillCursor: string | null;
       backfillCompletedAt: string | null;
+      followers: { count: number; syncedAt: string } | null;
     }>
   ): Promise<SupabaseResult<void>> {
     const record: InstagramCredentialUpdateRow = {
@@ -2716,6 +2724,10 @@ export class SupabaseService {
     }
     if ('backfillCompletedAt' in updates) {
       record.backfill_completed_at = updates.backfillCompletedAt ?? null;
+    }
+    if ('followers' in updates) {
+      record.followers_count = updates.followers?.count ?? null;
+      record.followers_count_synced_at = updates.followers?.syncedAt ?? null;
     }
 
     const { error } = await this.supabase

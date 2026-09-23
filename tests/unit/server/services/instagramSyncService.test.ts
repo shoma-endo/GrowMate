@@ -7,13 +7,21 @@ vi.mock('server-only', () => ({}));
 // INSTAGRAM_SYNC_MEDIA_LIMIT を小さい値に固定し、複数バッチにまたがる backfill の
 // ループ挙動を、50件分のフィクスチャを用意せずに検証できるようにする。
 // 他の定数（レート閾値・時間予算等）は実値のまま使う。
+const { syncMediaLimit } = vi.hoisted(() => ({ syncMediaLimit: { value: 2 } }));
+
 vi.mock('@/lib/constants', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/constants')>();
-  return { ...actual, INSTAGRAM_SYNC_MEDIA_LIMIT: 2 };
+  return {
+    ...actual,
+    get INSTAGRAM_SYNC_MEDIA_LIMIT() {
+      return syncMediaLimit.value;
+    },
+  };
 });
 
 const fetchMediaPageMock = vi.fn();
 const fetchMediaInsightsMock = vi.fn();
+const fetchProfileMock = vi.fn();
 
 vi.mock('@/server/services/instagramService', async importOriginal => {
   const actual = await importOriginal<typeof import('@/server/services/instagramService')>();
@@ -23,6 +31,7 @@ vi.mock('@/server/services/instagramService', async importOriginal => {
       return {
         fetchMediaPage: fetchMediaPageMock,
         fetchMediaInsights: fetchMediaInsightsMock,
+        fetchProfile: fetchProfileMock,
       };
     }),
   };
@@ -113,10 +122,16 @@ beforeEach(() => {
   fetchMediaInsightsMock.mockResolvedValue({ usage: emptyUsage, data: insights });
   updateInstagramCredentialMock.mockResolvedValue({ success: true });
   upsertMediaMock.mockResolvedValue(undefined);
+  getExistingMediaIdsMock.mockResolvedValue(new Set());
+  fetchProfileMock.mockResolvedValue({
+    usage: emptyUsage,
+    data: { followersCount: null },
+  });
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  syncMediaLimit.value = 2;
 });
 
 describe('InstagramSyncService.syncUserData incremental', () => {
@@ -160,6 +175,196 @@ describe('InstagramSyncService.syncUserData incremental', () => {
     expect(result.synced).toBe(2); // id:3, id:2 のみ
     expect(fetchMediaPageMock).toHaveBeenCalledTimes(1); // ウォーターマーク到達で即打ち切り、2ページ目は取得しない
   });
+
+  it('投稿後7日以内の既存投稿は refreshed としてインサイトを取り直す', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage([
+        rawItem('recent', '2026-09-20T00:00:00+0000'),
+        rawItem('old', '2026-09-13T00:00:00+0000'),
+      ])
+    );
+    getExistingMediaIdsMock.mockResolvedValue(new Set(['recent']));
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(result).toMatchObject({ synced: 0, refreshed: 1, failed: 0 });
+    expect(fetchMediaInsightsMock).toHaveBeenCalledWith('token', 'recent', 'FEED');
+    expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(1);
+    expect(upsertMediaMock).toHaveBeenCalledTimes(1);
+    expect(upsertMediaListingPreservingInsightsMock).not.toHaveBeenCalled();
+  });
+
+  it('投稿後7日を過ぎた既存投稿はインサイトを取り直さない', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+    getLatestPostedAtMock.mockResolvedValue('2026-09-13T00:00:00.000Z');
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage([rawItem('old', '2026-09-13T00:00:00+0000')])
+    );
+    getExistingMediaIdsMock.mockResolvedValue(new Set(['old']));
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(result).toMatchObject({ synced: 0, refreshed: 0, failed: 0 });
+    expect(fetchMediaInsightsMock).not.toHaveBeenCalled();
+    expect(upsertMediaMock).not.toHaveBeenCalled();
+  });
+
+  it('ウォーターマーク以前でも DB に無い投稿は新着として数える', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage([rawItem('missing', '2026-09-19T00:00:00+0000')])
+    );
+    getExistingMediaIdsMock.mockResolvedValue(new Set());
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(result).toMatchObject({ synced: 1, refreshed: 0 });
+    expect(upsertMediaMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('取り直しに失敗しても前回値を上書きせず failed に数えない', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage([rawItem('recent', '2026-09-20T00:00:00+0000')])
+    );
+    getExistingMediaIdsMock.mockResolvedValue(new Set(['recent']));
+    fetchMediaInsightsMock.mockRejectedValueOnce(new Error('temporary insights failure'));
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(result).toMatchObject({ synced: 0, refreshed: 0, failed: 0 });
+    expect(upsertMediaMock).not.toHaveBeenCalled();
+    expect(upsertMediaListingPreservingInsightsMock).not.toHaveBeenCalled();
+  });
+
+  it('incremental 開始時に取得したフォロワー数を保存する', async () => {
+    getLatestPostedAtMock.mockResolvedValue(null);
+    fetchProfileMock.mockResolvedValueOnce({
+      usage: emptyUsage,
+      data: { followersCount: 3200 },
+    });
+    fetchMediaPageMock.mockResolvedValueOnce(mediaPage([]));
+
+    await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(updateInstagramCredentialMock).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({
+        followers: { count: 3200, syncedAt: expect.any(String) },
+      })
+    );
+  });
+
+  it('フォロワー数の取得に失敗しても投稿同期は完了する', async () => {
+    getLatestPostedAtMock.mockResolvedValue(null);
+    fetchProfileMock.mockRejectedValueOnce(new Error('profile unavailable'));
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage([rawItem('new', '2026-09-20T00:00:00+0000')])
+    );
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(result.synced).toBe(1);
+    expect(updateInstagramCredentialMock).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ lastSyncedAt: expect.any(String) })
+    );
+    expect(updateInstagramCredentialMock).not.toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ followers: expect.anything() })
+    );
+  });
+
+  it('取り直しの5連続失敗で中断するが failed には数えない', async () => {
+    syncMediaLimit.value = 50;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage(
+        Array.from({ length: 6 }, (_, index) =>
+          rawItem(`recent-${index}`, `2026-09-${20 - index}T00:00:00+0000`)
+        )
+      )
+    );
+    getExistingMediaIdsMock.mockResolvedValue(
+      new Set(Array.from({ length: 6 }, (_, index) => `recent-${index}`))
+    );
+    fetchMediaInsightsMock.mockRejectedValue(new Error('temporary insights failure'));
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(result.stoppedReason).toBe('consecutive_failures');
+    expect(result).toMatchObject({ synced: 0, refreshed: 0, failed: 0 });
+    expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(5);
+    expect(upsertMediaListingPreservingInsightsMock).not.toHaveBeenCalled();
+  });
+
+  it('取り直しがちょうど5件で全件失敗しても中断扱いにする', async () => {
+    syncMediaLimit.value = 50;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage(
+        Array.from({ length: 5 }, (_, index) =>
+          rawItem(`recent-${index}`, `2026-09-${20 - index}T00:00:00+0000`)
+        )
+      )
+    );
+    getExistingMediaIdsMock.mockResolvedValue(
+      new Set(Array.from({ length: 5 }, (_, index) => `recent-${index}`))
+    );
+    fetchMediaInsightsMock.mockRejectedValue(new Error('temporary insights failure'));
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(result.stoppedReason).toBe('consecutive_failures');
+    expect(result).toMatchObject({ synced: 0, refreshed: 0, failed: 0 });
+    expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(5);
+  });
+
+  it('取り直しのpre-conversion errorでも前回値を保持し連続失敗に数える', async () => {
+    syncMediaLimit.value = 50;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage(
+        Array.from({ length: 6 }, (_, index) =>
+          rawItem(`pre-conversion-${index}`, `2026-09-${20 - index}T00:00:00+0000`)
+        )
+      )
+    );
+    getExistingMediaIdsMock.mockResolvedValue(
+      new Set(Array.from({ length: 6 }, (_, index) => `pre-conversion-${index}`))
+    );
+    fetchMediaInsightsMock.mockRejectedValue(
+      new Error('Meta API error_subcode":2108006: pre-conversion media')
+    );
+
+    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+
+    expect(result.stoppedReason).toBe('consecutive_failures');
+    expect(result).toMatchObject({
+      synced: 0,
+      refreshed: 0,
+      failed: 0,
+      preConversionCount: 0,
+    });
+    expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(5);
+    expect(upsertMediaInsightsUnavailableMock).not.toHaveBeenCalled();
+    expect(upsertMediaMock).not.toHaveBeenCalled();
+    expect(upsertMediaListingPreservingInsightsMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('InstagramSyncService.syncUserData backfill', () => {
@@ -193,6 +398,20 @@ describe('InstagramSyncService.syncUserData backfill', () => {
     expect(result.synced).toBe(1); // new-1 のみ
     expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(1);
     expect(fetchMediaInsightsMock).toHaveBeenCalledWith('token', 'new-1', 'FEED');
+  });
+
+  it('backfill ではフォロワー数を取得しない', async () => {
+    getInstagramCredentialMock.mockResolvedValue({ backfillCompletedAt: null, backfillCursor: null });
+    fetchMediaPageMock.mockResolvedValueOnce(mediaPage([rawItem('new-1', '2026-06-01T00:00:00+0000')], null));
+    getExistingMediaIdsMock.mockResolvedValue(new Set());
+
+    await instagramSyncService.syncUserData('user-1', 'token', 'backfill');
+
+    expect(fetchProfileMock).not.toHaveBeenCalled();
+    expect(updateInstagramCredentialMock).not.toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ followers: expect.anything() })
+    );
   });
 
   it('アカウント末端（nextCursor=null）に到達したら backfillCompletedAt を保存する', async () => {

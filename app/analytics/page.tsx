@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import AnalyticsClient from './AnalyticsClient';
-import { setOptionalDate } from './build-href';
+import { setInstagramListParams, setOptionalDate } from './build-href';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
 import { gscNotificationService } from '@/server/services/gscNotificationService';
 import { instagramMediaService } from '@/server/services/instagramMediaService';
@@ -17,7 +17,12 @@ import { formatJstDateISO } from '@/lib/ga4-utils';
 import { clampAnalyticsPeriod } from '@/lib/analytics-period';
 import { canAccessGa4 } from '@/server/lib/ga4-permissions';
 import { shouldAutoSyncInstagram } from '@/lib/instagram-sync';
-import { buildInstagramAutoSyncStorageKey, FIELD_CONFIG_TABLE_KEYS } from '@/lib/constants';
+import {
+  buildInstagramAutoSyncStorageKey,
+  FIELD_CONFIG_TABLE_KEYS,
+  parseInstagramSortKey,
+} from '@/lib/constants';
+import { getInstagramEngagementTarget } from '@/lib/instagram-format';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
 
@@ -118,6 +123,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const igStartParam = Array.isArray(params?.ig_start) ? params.ig_start[0] : params?.ig_start;
   const igEndParam = Array.isArray(params?.ig_end) ? params.ig_end[0] : params?.ig_end;
   const igSortParam = Array.isArray(params?.ig_sort) ? params.ig_sort[0] : params?.ig_sort;
+  const igHighParam = Array.isArray(params?.ig_high) ? params.ig_high[0] : params?.ig_high;
 
   const connectionStatusResult = await getInstagramConnectionStatus();
   const instagramConnected =
@@ -147,8 +153,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     [igStartDate, igEndDate] = [igEndDate, igStartDate];
   }
 
-  const igSort: InstagramMediaSortKey =
-    igSortParam === 'reach' || igSortParam === 'views' ? igSortParam : 'posted_at';
+  const igSort: InstagramMediaSortKey = parseInstagramSortKey(igSortParam ?? null);
+  const igHigh = igHighParam === '1';
 
   // 並列でデータ取得（一覧・未読・カテゴリ一覧・AI要約ジョブの進捗）
   const [
@@ -196,13 +202,21 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     perPage: igPerPage,
   };
   let instagramLastSyncedAt: string | null = null;
+  let instagramFollowersCount: number | null = null;
   let instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed' = 'not_started';
   // Instagram タブを開いた時点で自動同期するか。credential を読む下のブロック内でしか
   // 確定しないので、ブロック外の既定は false（blog タブでは常に false）。
   let instagramAutoSyncNeeded = false;
 
   if (instagramConnected && activeTab === 'instagram') {
-    const [mediaPage, credential] = await Promise.all([
+    const credentialPromise = supabaseService.getInstagramCredential(userId);
+    let minEngagementRate: number | null = null;
+    if (igHigh) {
+      const credential = await credentialPromise;
+      minEngagementRate =
+        getInstagramEngagementTarget(credential?.followersCount ?? null)?.min ?? null;
+    }
+    const [mediaPage, resolvedCredential] = await Promise.all([
       instagramMediaService.getPage(userId, {
         page: igPage,
         perPage: igPerPage,
@@ -210,15 +224,17 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         startDate: igStartDate,
         endDate: igEndDate,
         sort: igSort,
+        minEngagementRate,
       }),
-      supabaseService.getInstagramCredential(userId),
+      credentialPromise,
     ]);
     instagramMediaPage = mediaPage;
-    instagramLastSyncedAt = credential?.lastSyncedAt ?? null;
+    instagramLastSyncedAt = resolvedCredential?.lastSyncedAt ?? null;
+    instagramFollowersCount = resolvedCredential?.followersCount ?? null;
     instagramBackfillStatus =
-      credential?.backfillCompletedAt != null
+      resolvedCredential?.backfillCompletedAt != null
         ? 'completed'
-        : credential?.backfillCursor != null
+        : resolvedCredential?.backfillCursor != null
           ? 'in_progress'
           : 'not_started';
     // キルスイッチ（isInstagramSyncEnabled）はここで混ぜない。instagramSyncEnabled prop が
@@ -260,7 +276,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       // 未指定（全期間）のときは載せない。build-href.ts と同じ規則を共有する
       setOptionalDate(query, 'ig_start', igStartDate);
       setOptionalDate(query, 'ig_end', igEndDate);
-      query.set('ig_sort', igSort);
+      setInstagramListParams(query, igSort, igHigh);
     }
     return `/analytics?${query.toString()}`;
   };
@@ -308,6 +324,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       igStart={igStartDate}
       igEnd={igEndDate}
       igSort={igSort}
+      igHigh={igHigh}
+      instagramFollowersCount={instagramFollowersCount}
       instagramLastSyncedAt={instagramLastSyncedAt}
       instagramBackfillStatus={instagramBackfillStatus}
       instagramSyncEnabled={isInstagramSyncEnabled()}

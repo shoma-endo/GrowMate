@@ -49,6 +49,52 @@ export function formatInstagramRate(value: number | null): string {
   return `${value.toFixed(1)}%`;
 }
 
+export interface InstagramEngagementTarget {
+  tierLabel: string | null;
+  min: number;
+  max: number;
+  maxFollowers: number | null;
+  firstTier: boolean;
+}
+
+const INSTAGRAM_ENGAGEMENT_TARGETS: readonly InstagramEngagementTarget[] = [
+  { tierLabel: 'ライト／ビギナー', min: 6, max: 10, maxFollowers: 1000, firstTier: true },
+  { tierLabel: 'ナノ', min: 4, max: 6, maxFollowers: 5000, firstTier: false },
+  { tierLabel: null, min: 3, max: 4.5, maxFollowers: 10000, firstTier: false },
+  { tierLabel: 'マイクロ', min: 2, max: 3.5, maxFollowers: 50000, firstTier: false },
+  { tierLabel: 'ミドル', min: 1.5, max: 2.5, maxFollowers: 100000, firstTier: false },
+  { tierLabel: 'メガ／インフルエンサー', min: 0.8, max: 1.5, maxFollowers: null, firstTier: false },
+];
+
+export function getInstagramEngagementTarget(
+  followersCount: number | null
+): InstagramEngagementTarget | null {
+  if (followersCount === null) {
+    return null;
+  }
+  return (
+    INSTAGRAM_ENGAGEMENT_TARGETS.find(
+      target => target.maxFollowers === null || followersCount < target.maxFollowers
+    ) ?? null
+  );
+}
+
+export function isInstagramEngagementTargetMet(
+  rate: number | null,
+  target: Pick<InstagramEngagementTarget, 'min'> | null
+): boolean {
+  return rate !== null && target !== null && rate >= target.min;
+}
+
+export function formatInstagramEngagementTargetLabel(
+  followersCount: number,
+  target: InstagramEngagementTarget
+): string {
+  const tier = target.tierLabel === null ? '' : `（${target.tierLabel}）`;
+  const range = `${target.min.toFixed(1)}〜${target.max.toFixed(1)}%${target.firstTier ? ' 以上' : ''}`;
+  return `フォロワー ${followersCount.toLocaleString('ja-JP')}人${tier}の目標: ${range}`;
+}
+
 export function formatSkipRate(value: number | null): string {
   if (value == null) {
     return '-';

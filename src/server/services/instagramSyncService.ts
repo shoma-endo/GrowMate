@@ -3,6 +3,7 @@ import { isInstagramPreConversionMediaError } from '@/domain/errors/instagram-er
 import {
   INSTAGRAM_RATE_CALL_COUNT_THRESHOLD,
   INSTAGRAM_SYNC_CONSECUTIVE_FAILURE_LIMIT,
+  INSTAGRAM_INSIGHTS_REFRESH_WINDOW_DAYS,
   INSTAGRAM_SYNC_MEDIA_LIMIT,
   INSTAGRAM_SYNC_TIME_BUDGET_MS,
 } from '@/lib/constants';
@@ -86,12 +87,8 @@ function countUnsupportedMediaFromRaw(rawItems: unknown[]): number {
  * （DB内の既存最新投稿日時）以下になる最初の index を返す。そこから先は同期済みとみなして
  * 打ち切る。該当する要素が無ければ -1（このページは全件がウォーターマークより新しい）。
  */
-function findWatermarkCutIndex(rawItems: unknown[], watermarkPostedAt: string | null): number {
-  if (!watermarkPostedAt) {
-    return -1;
-  }
-  const watermarkMs = new Date(watermarkPostedAt).getTime();
-  if (Number.isNaN(watermarkMs)) {
+function findWatermarkCutIndex(rawItems: unknown[], cutoffMs: number | null): number {
+  if (cutoffMs === null) {
     return -1;
   }
   for (let i = 0; i < rawItems.length; i += 1) {
@@ -107,7 +104,7 @@ function findWatermarkCutIndex(rawItems: unknown[], watermarkPostedAt: string | 
     if (Number.isNaN(itemMs)) {
       continue;
     }
-    if (itemMs <= watermarkMs) {
+    if (itemMs <= cutoffMs) {
       return i;
     }
   }
@@ -172,6 +169,7 @@ class InstagramSyncService {
       mode,
       synced: 0,
       failed: 0,
+      refreshed: 0,
       skipped: 0,
       truncated: false,
       preConversionCount: 0,
@@ -194,6 +192,7 @@ class InstagramSyncService {
     // incremental は常に after=null（最新から）で、DB内最新 posted_at をウォーターマークに使う。
     let cursor: string | null = null;
     let watermarkPostedAt: string | null = null;
+    let refreshCutoffMs: number | null = null;
 
     if (mode === 'backfill') {
       const credential = await this.supabaseService.getInstagramCredential(userId);
@@ -204,6 +203,39 @@ class InstagramSyncService {
       cursor = credential?.backfillCursor ?? null;
     } else {
       watermarkPostedAt = await instagramMediaService.getLatestPostedAt(userId);
+      if (watermarkPostedAt !== null) {
+        const watermarkMs = new Date(watermarkPostedAt).getTime();
+        if (!Number.isNaN(watermarkMs)) {
+          refreshCutoffMs = Math.min(
+            watermarkMs,
+            Date.now() - INSTAGRAM_INSIGHTS_REFRESH_WINDOW_DAYS * 24 * 60 * 60 * 1000
+          );
+        }
+      }
+
+      if (!checkBudget()) {
+        try {
+          const profileResult = await this.instagramService.fetchProfile(accessToken);
+          usage = mergeInstagramRateUsage(usage, profileResult.usage);
+          if (profileResult.data.followersCount !== null) {
+            const updateResult = await this.supabaseService.updateInstagramCredential(userId, {
+              followers: {
+                count: profileResult.data.followersCount,
+                syncedAt: new Date().toISOString(),
+              },
+            });
+            if (!updateResult.success) {
+              console.error('[Instagram Sync] follower count update failed', {
+                error: updateResult.error,
+              });
+            }
+          } else {
+            console.error('[Instagram Sync] follower count missing from profile');
+          }
+        } catch (error) {
+          console.error('[Instagram Sync] follower count fetch failed', { error });
+        }
+      }
     }
 
     let reachedEnd = false;
@@ -254,7 +286,7 @@ class InstagramSyncService {
 
         if (mode === 'incremental' && watermarkPostedAt) {
           const rawItems = Array.isArray(pageResult.data.data) ? pageResult.data.data : [];
-          const cutIndex = findWatermarkCutIndex(rawItems, watermarkPostedAt);
+          const cutIndex = findWatermarkCutIndex(rawItems, refreshCutoffMs);
           if (cutIndex !== -1) {
             pages.push({ data: rawItems.slice(0, cutIndex), paging: pageResult.data.paging });
             break;
@@ -294,13 +326,17 @@ class InstagramSyncService {
       result.skipped += countUnsupportedMediaFromRaw(collected.items);
       let parsedItems = parseInstagramMediaItems(collected.items, { logUnsupported: false });
 
+      const existingIds =
+        parsedItems.length > 0
+          ? await instagramMediaService.getExistingMediaIds(
+              userId,
+              parsedItems.map(item => item.id)
+            )
+          : new Set<string>();
+
       // backfill は既存投稿のインサイトを再取得しない（レート消費を新規分に温存する）。
       // skipped（非対応 media_product_type 用の既存カウンタ）には加算しない。
       if (mode === 'backfill') {
-        const existingIds = await instagramMediaService.getExistingMediaIds(
-          userId,
-          parsedItems.map(item => item.id)
-        );
         parsedItems = parsedItems.filter(item => !existingIds.has(item.id));
       }
 
@@ -326,6 +362,7 @@ class InstagramSyncService {
           }
 
           const listing = buildMediaListingFields(item);
+          const isRefresh = mode === 'incremental' && existingIds.has(item.id);
 
           if (unavailableIds.has(item.id)) {
             try {
@@ -356,9 +393,22 @@ class InstagramSyncService {
               buildMediaRowWithInsights(userId, listing, insights, insightsSyncedAt)
             );
 
-            result.synced += 1;
+            if (isRefresh) {
+              result.refreshed += 1;
+            } else {
+              result.synced += 1;
+            }
             consecutiveFailures = 0;
           } catch (error) {
+            if (isRefresh) {
+              consecutiveFailures += 1;
+              console.error('[Instagram Sync] fetchMediaInsights failed', {
+                mediaId: item.id,
+                error,
+              });
+              continue;
+            }
+
             if (isInstagramPreConversionMediaError(error)) {
               result.preConversionCount += 1;
               await instagramMediaService.upsertMediaInsightsUnavailable(
@@ -388,7 +438,6 @@ class InstagramSyncService {
                 listingError,
               });
             }
-
             result.failed += 1;
             consecutiveFailures += 1;
             console.error('[Instagram Sync] fetchMediaInsights failed', {
@@ -397,6 +446,13 @@ class InstagramSyncService {
             });
           }
         }
+      }
+
+      // ループ先頭の判定は「次の1件」があるときしか走らない。最後の1件で閾値に
+      // 達した場合（例: 取り直し5件が全件失敗）もここで中断扱いにしないと、
+      // failed に数えない取り直し失敗が成功表示になる
+      if (!result.stoppedReason && consecutiveFailures >= INSTAGRAM_SYNC_CONSECUTIVE_FAILURE_LIMIT) {
+        result.stoppedReason = 'consecutive_failures';
       }
 
       if (!result.stoppedReason) {
@@ -454,6 +510,7 @@ class InstagramSyncService {
       bucUsage: usage.bucUsage,
       synced: result.synced,
       failed: result.failed,
+      refreshed: result.refreshed,
     });
 
     if (mode === 'incremental') {

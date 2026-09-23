@@ -10,6 +10,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { StatusFilterOption, StatusFilterSection } from '@/components/CategoryFilter';
 import { cn } from '@/lib/utils';
 import {
   ANALYTICS_STORAGE_KEYS,
@@ -23,12 +25,18 @@ import {
   formatInstagramRate,
   formatPostedAt,
   formatSkipRate,
+  isInstagramEngagementTargetMet,
 } from '@/lib/instagram-format';
 import type { InstagramMediaListItem, InstagramMediaSortKey } from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, TrendingUp } from 'lucide-react';
 
-const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>(['posted_at', 'reach', 'views']);
+const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>([
+  'posted_at',
+  'reach',
+  'views',
+  'engagement_rate',
+]);
 
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
@@ -36,6 +44,10 @@ interface InstagramMediaTableProps {
   /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
   fieldConfig: StoredFieldConfig | null;
   onSortColumnHidden: () => void;
+  igHigh: boolean;
+  onHighOnlyChange: (checked: boolean) => void;
+  criteriaLabel: string | null;
+  targetMinRate: number | null;
   /**
    * items が空のときに表示するメッセージ。
    * items が空でもこのコンポーネント（＝内包する FieldConfigurator）は必ずマウントする必要がある。
@@ -111,29 +123,14 @@ function MetricCell({
 function RateCell({
   item,
   numerator,
-  label,
 }: {
   item: InstagramMediaListItem;
   numerator: number | null;
-  label: string;
 }) {
   if (item.insightsUnavailable) {
     return <MetricCell item={item} value="-" />;
   }
-  const rate = calculateInstagramRate(numerator, item.reach);
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>{formatInstagramRate(rate)}</span>
-        </TooltipTrigger>
-        <TooltipContent>
-          Instagram 非公式の GrowMate 独自計算（{label}）。Instagram
-          アプリの表示と一致しない場合があります
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+  return <span>{formatInstagramRate(calculateInstagramRate(numerator, item.reach))}</span>;
 }
 
 export default function InstagramMediaTable({
@@ -142,6 +139,10 @@ export default function InstagramMediaTable({
   fieldConfig,
   onSortColumnHidden,
   emptyMessage,
+  igHigh,
+  onHighOnlyChange,
+  criteriaLabel,
+  targetMinRate,
 }: InstagramMediaTableProps) {
   const columns = React.useMemo(() => INSTAGRAM_COLUMNS.map(col => ({ ...col })), []);
 
@@ -151,8 +152,7 @@ export default function InstagramMediaTable({
       if (!SORTABLE_COLUMN_IDS.has(igSort)) {
         return;
       }
-      const sortColumnId =
-        igSort === 'posted_at' ? 'posted_at' : igSort === 'reach' ? 'reach' : 'views';
+      const sortColumnId = igSort;
       if (!visibleIds.includes(sortColumnId)) {
         onSortColumnHidden();
       }
@@ -178,6 +178,21 @@ export default function InstagramMediaTable({
         return <MetricCell item={item} value={formatCount(item.commentsCount)} />;
       case 'saved':
         return <MetricCell item={item} value={formatCount(item.saved)} />;
+      case 'engagement_rate': {
+        if (item.insightsUnavailable) {
+          return <MetricCell item={item} value="-" />;
+        }
+        const targetMet = isInstagramEngagementTargetMet(
+          item.engagementRate,
+          targetMinRate === null ? null : { min: targetMinRate }
+        );
+        return (
+          <div className="flex items-center gap-2">
+            <span>{formatInstagramRate(item.engagementRate)}</span>
+            {targetMet ? <Badge variant="secondary">目標達成</Badge> : null}
+          </div>
+        );
+      }
       case 'shares':
         return <MetricCell item={item} value={formatCount(item.shares)} />;
       case 'reposts':
@@ -224,17 +239,15 @@ export default function InstagramMediaTable({
           </TooltipProvider>
         );
       case 'like_rate':
-        return <RateCell item={item} numerator={item.likeCount} label="いいね数 ÷ リーチ数" />;
+        return <RateCell item={item} numerator={item.likeCount} />;
       case 'saved_rate':
-        return <RateCell item={item} numerator={item.saved} label="保存数 ÷ リーチ数" />;
+        return <RateCell item={item} numerator={item.saved} />;
       case 'share_rate':
-        return <RateCell item={item} numerator={item.shares} label="シェア数 ÷ リーチ数" />;
+        return <RateCell item={item} numerator={item.shares} />;
       case 'comment_rate':
-        return (
-          <RateCell item={item} numerator={item.commentsCount} label="コメント数 ÷ リーチ数" />
-        );
+        return <RateCell item={item} numerator={item.commentsCount} />;
       case 'repost_rate':
-        return <RateCell item={item} numerator={item.reposts} label="再投稿数 ÷ リーチ数" />;
+        return <RateCell item={item} numerator={item.reposts} />;
       default:
         return '—';
     }
@@ -249,6 +262,26 @@ export default function InstagramMediaTable({
       onChange={handleConfiguratorChange}
       triggerId="instagram-field-config-trigger"
       hideTrigger
+      dialogExtraContent={
+        criteriaLabel === null ? undefined : (
+          // ブログ一覧と同じ部品を使う（src/components/CategoryFilter.tsx）
+          <div className="space-y-3">
+            <StatusFilterSection>
+              <StatusFilterOption
+                checked={igHigh}
+                onCheckedChange={onHighOnlyChange}
+                icon={TrendingUp}
+                label="高エンゲージメント率"
+                tone="blue"
+              >
+                <li>エンゲージメント率が目標の下限以上の投稿だけが対象です（{criteriaLabel}）。</li>
+                <li>エンゲージメント率は（いいね＋コメント＋保存）÷ リーチ × 100 です。</li>
+                <li>フォロワー数は最後に取得した時点の値です。</li>
+              </StatusFilterOption>
+            </StatusFilterSection>
+          </div>
+        )
+      }
     >
       {({ visibleSet, orderedIds }) => {
         if (items.length === 0) {

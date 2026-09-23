@@ -27,6 +27,8 @@ describe('@/server/lib/instagram-status', () => {
     lastSyncedAt: null,
     backfillCursor: null,
     backfillCompletedAt: null,
+    followersCount: null,
+    followersCountSyncedAt: null,
   };
 
   describe('toInstagramConnectionStatus', () => {
@@ -89,6 +91,8 @@ describe('認可解除の検知（instagram-status × instagram-token）', () =>
     lastSyncedAt: null,
     backfillCursor: null,
     backfillCompletedAt: null,
+    followersCount: null,
+    followersCountSyncedAt: null,
   };
 
   describe('認可解除を検知して期限を現在時刻へ落とした credential', () => {

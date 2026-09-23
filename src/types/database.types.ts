@@ -1224,6 +1224,8 @@ export type Database = {
           backfill_completed_at: string | null
           backfill_cursor: string | null
           created_at: string
+          followers_count: number | null
+          followers_count_synced_at: string | null
           id: string
           ig_user_id: string
           last_synced_at: string | null
@@ -1241,6 +1243,8 @@ export type Database = {
           backfill_completed_at?: string | null
           backfill_cursor?: string | null
           created_at?: string
+          followers_count?: number | null
+          followers_count_synced_at?: string | null
           id?: string
           ig_user_id: string
           last_synced_at?: string | null
@@ -1258,6 +1262,8 @@ export type Database = {
           backfill_completed_at?: string | null
           backfill_cursor?: string | null
           created_at?: string
+          followers_count?: number | null
+          followers_count_synced_at?: string | null
           id?: string
           ig_user_id?: string
           last_synced_at?: string | null
@@ -1284,6 +1290,7 @@ export type Database = {
           caption: string | null
           comments_count: number | null
           created_at: string
+          engagement_rate: number | null
           id: string
           ig_media_id: string
           insights_synced_at: string | null
@@ -1313,6 +1320,7 @@ export type Database = {
           caption?: string | null
           comments_count?: number | null
           created_at?: string
+          engagement_rate?: number | null
           id?: string
           ig_media_id: string
           insights_synced_at?: string | null
@@ -1342,6 +1350,7 @@ export type Database = {
           caption?: string | null
           comments_count?: number | null
           created_at?: string
+          engagement_rate?: number | null
           id?: string
           ig_media_id?: string
           insights_synced_at?: string | null
