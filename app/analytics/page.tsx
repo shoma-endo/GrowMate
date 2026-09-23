@@ -203,7 +203,6 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   };
   let instagramLastSyncedAt: string | null = null;
   let instagramFollowersCount: number | null = null;
-  let instagramFollowersCountSyncedAt: string | null = null;
   let instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed' = 'not_started';
   // Instagram タブを開いた時点で自動同期するか。credential を読む下のブロック内でしか
   // 確定しないので、ブロック外の既定は false（blog タブでは常に false）。
@@ -232,7 +231,6 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     instagramMediaPage = mediaPage;
     instagramLastSyncedAt = resolvedCredential?.lastSyncedAt ?? null;
     instagramFollowersCount = resolvedCredential?.followersCount ?? null;
-    instagramFollowersCountSyncedAt = resolvedCredential?.followersCountSyncedAt ?? null;
     instagramBackfillStatus =
       resolvedCredential?.backfillCompletedAt != null
         ? 'completed'
@@ -328,7 +326,6 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       igSort={igSort}
       igHigh={igHigh}
       instagramFollowersCount={instagramFollowersCount}
-      instagramFollowersCountSyncedAt={instagramFollowersCountSyncedAt}
       instagramLastSyncedAt={instagramLastSyncedAt}
       instagramBackfillStatus={instagramBackfillStatus}
       instagramSyncEnabled={isInstagramSyncEnabled()}

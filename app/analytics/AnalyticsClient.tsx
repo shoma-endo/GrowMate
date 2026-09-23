@@ -87,7 +87,6 @@ interface AnalyticsClientProps {
   igSort: InstagramMediaSortKey;
   igHigh: boolean;
   instagramFollowersCount: number | null;
-  instagramFollowersCountSyncedAt: string | null;
   instagramLastSyncedAt: string | null;
   instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed';
   instagramSyncEnabled: boolean;
@@ -142,7 +141,6 @@ export default function AnalyticsClient({
   igSort,
   igHigh,
   instagramFollowersCount,
-  instagramFollowersCountSyncedAt,
   instagramLastSyncedAt,
   instagramBackfillStatus,
   instagramSyncEnabled,
@@ -632,7 +630,6 @@ export default function AnalyticsClient({
               igSort={igSort}
               igHigh={igHigh}
               followersCount={instagramFollowersCount}
-              followersCountSyncedAt={instagramFollowersCountSyncedAt}
               lastSyncedAt={instagramLastSyncedAt}
               backfillStatus={instagramBackfillStatus}
               syncEnabled={instagramSyncEnabled}

@@ -113,19 +113,14 @@ describe('@/lib/instagram-format', () => {
       expect(isInstagramEngagementTargetMet(null, target)).toBe(false);
     });
 
-    it('一覧とダイアログの目標文言を整形する', () => {
+    it('ダイアログの目標文言を整形する', () => {
       const target = getInstagramEngagementTarget(3200);
       expect(target).not.toBeNull();
-      expect(formatInstagramEngagementTargetLabel(3200, target!, 'list')).toBe(
-        'フォロワー 3,200人（ナノ）の目標エンゲージメント率: 4.0〜6.0%'
-      );
-      expect(formatInstagramEngagementTargetLabel(3200, target!, 'dialog')).toBe(
+      expect(formatInstagramEngagementTargetLabel(3200, target!)).toBe(
         'フォロワー 3,200人（ナノ）の目標: 4.0〜6.0%'
       );
       const firstTarget = getInstagramEngagementTarget(0);
-      expect(formatInstagramEngagementTargetLabel(0, firstTarget!, 'list')).toContain(
-        '6.0〜10.0% 以上'
-      );
+      expect(formatInstagramEngagementTargetLabel(0, firstTarget!)).toContain('6.0〜10.0% 以上');
     });
 
     it('率を小数第1位へ表示する', () => {

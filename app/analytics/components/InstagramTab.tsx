@@ -16,7 +16,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   ANALYTICS_STORAGE_KEYS,
   INSTAGRAM_COLUMNS,
@@ -27,7 +26,7 @@ import {
 import { normalizeFieldConfig } from '@/lib/field-config';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getInstagramSyncToastMessage } from '@/lib/instagram-sync';
-import { formatJstDateISO, getJstDateISOFromTimestamp } from '@/lib/date-utils';
+import { formatJstDateISO } from '@/lib/date-utils';
 import {
   formatInstagramEngagementTargetLabel,
   getInstagramEngagementTarget,
@@ -54,7 +53,6 @@ interface InstagramTabProps {
   igSort: InstagramMediaSortKey;
   igHigh: boolean;
   followersCount: number | null;
-  followersCountSyncedAt: string | null;
   lastSyncedAt: string | null;
   backfillStatus: 'not_started' | 'in_progress' | 'completed';
   syncEnabled: boolean;
@@ -101,7 +99,6 @@ export default function InstagramTab({
   igSort,
   igHigh,
   followersCount,
-  followersCountSyncedAt,
   lastSyncedAt,
   backfillStatus,
   syncEnabled,
@@ -358,15 +355,7 @@ export default function InstagramTab({
   const criteriaLabel =
     target === null || followersCount === null
       ? null
-      : formatInstagramEngagementTargetLabel(followersCount, target, 'dialog');
-  const targetLabel =
-    target === null || followersCount === null
-      ? null
-      : formatInstagramEngagementTargetLabel(followersCount, target, 'list');
-  const targetTooltipDate =
-    followersCountSyncedAt === null
-      ? null
-      : getJstDateISOFromTimestamp(followersCountSyncedAt).replaceAll('-', '/');
+      : formatInstagramEngagementTargetLabel(followersCount, target);
 
   const handleHighOnlyChange = (checked: boolean) => {
     try {
@@ -571,37 +560,17 @@ export default function InstagramTab({
           </div>
         </div>
 
-        {targetLabel !== null ? (
-          <div className="flex items-center gap-2 text-sm mb-4">
-            <span>
-              {targetLabel}
-              {highOnlyActive ? '（高エンゲージメント率のみ表示中）' : ''}
-            </span>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    tabIndex={0}
-                    role="img"
-                    aria-label="目標エンゲージメント率の説明"
-                    className="cursor-help rounded-full text-muted-foreground underline decoration-dotted"
-                  >
-                    (i)
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {targetTooltipDate === null
-                    ? 'フォロワー規模別の目安です。フォロワー数は最後に取得した時点の値で、すべての投稿を同じ目標で判定します'
-                    : `フォロワー規模別の目安です。フォロワー数は最後に取得した時点（${targetTooltipDate}）の値で、すべての投稿を同じ目標で判定します`}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        ) : (
+        {/*
+          目標値はフィールド構成ダイアログ内の判定基準に出すため、一覧の上には重ねて出さない。
+          ここに出すのは、ダイアログを開かないと分からない2つの状態だけ
+        */}
+        {target === null ? (
           <p className="text-sm text-muted-foreground mb-4">
             ［最新化］するとフォロワー数を取得し、目標エンゲージメント率を表示します
           </p>
-        )}
+        ) : highOnlyActive ? (
+          <p className="text-sm mb-4">高エンゲージメント率のみ表示中</p>
+        ) : null}
 
         {!syncEnabled ? (
           <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 mb-4">

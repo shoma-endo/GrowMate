@@ -88,13 +88,11 @@ export function isInstagramEngagementTargetMet(
 
 export function formatInstagramEngagementTargetLabel(
   followersCount: number,
-  target: InstagramEngagementTarget,
-  variant: 'list' | 'dialog'
+  target: InstagramEngagementTarget
 ): string {
   const tier = target.tierLabel === null ? '' : `（${target.tierLabel}）`;
   const range = `${target.min.toFixed(1)}〜${target.max.toFixed(1)}%${target.firstTier ? ' 以上' : ''}`;
-  const suffix = variant === 'list' ? '目標エンゲージメント率' : '目標';
-  return `フォロワー ${followersCount.toLocaleString('ja-JP')}人${tier}の${suffix}: ${range}`;
+  return `フォロワー ${followersCount.toLocaleString('ja-JP')}人${tier}の目標: ${range}`;
 }
 
 export function formatSkipRate(value: number | null): string {
