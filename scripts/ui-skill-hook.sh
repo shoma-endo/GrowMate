@@ -13,26 +13,21 @@ set -eu
 
 command -v python3 >/dev/null 2>&1 || exit 0
 
-root="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-
-ROOT="$root" python3 -c '
-import json, os, sys
+python3 -c '
+import json, re, sys
 
 try:
     d = json.load(sys.stdin)
+    path = (d.get("tool_input") or {}).get("file_path") or ""
 except Exception:
     sys.exit(0)
-path = (d.get("tool_input") or {}).get("file_path") or ""
-if not path:
+if not isinstance(path, str) or not path:
     sys.exit(0)
-cwd = d.get("cwd") or ""
-rel = path
-for base in (cwd, os.environ.get("ROOT", "")):
-    if base and rel.startswith(base.rstrip("/") + "/"):
-        rel = rel[len(base.rstrip("/")) + 1:]
-        break
-if not rel.endswith(".tsx") or not (rel.startswith("app/") or rel.startswith("src/components/")):
+# 接頭辞を剥がすと cwd がサブディレクトリのときや worktree 配下で外れるため、パスの途中で判定する
+m = re.search(r"(?:^|/)((?:app|src/components)/.+\.tsx)$", path)
+if not m:
     sys.exit(0)
+rel = m.group(1)
 
 text = (
     f"UI ファイル {rel} を編集する。.agents/skills/growmate-ui-ux/SKILL.md に従うこと。"
@@ -42,7 +37,7 @@ text = (
     "(2) 同種の既存 UI があれば、そのまま使う > 共通化 > マークアップとクラスを変えずに写す、の順。"
     "見出し・文言・色クラス・title / aria-label・アイコン・余白を自分の判断で変えない。"
     "既存が生の Tailwind 色なら写す側も同じ色にし、トークンへ置き換えない"
-    "（eslint --suppress-rule shadcn/no-raw-colors で抑制）。"
+    "（写すと生の色の違反が増えるなら写さず、既存ファイル内で部品を export して共通化。suppressions は増やさない）。"
     "(3) ユーザー向け文言は .agents/skills/growmate-ui-ux/ui-text.md の用語辞書に無い語を新造しない。"
 )
 print(json.dumps({
