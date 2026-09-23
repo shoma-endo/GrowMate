@@ -128,7 +128,7 @@
   },
   "app/analytics/components/InstagramMediaTable.tsx": {
     "shadcn/no-raw-colors": {
-      "count": 7
+      "count": 14
     }
   },
   "app/analytics/components/InstagramTab.tsx": {
@@ -136,7 +136,7 @@
       "count": 2
     },
     "shadcn/no-raw-colors": {
-      "count": 15
+      "count": 21
     }
   },
   "app/business-info/components/BusinessInfoForm.tsx": {

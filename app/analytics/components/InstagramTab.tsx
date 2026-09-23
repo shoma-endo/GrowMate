@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { RefreshCw, Settings, Loader2, History, TrendingUp, X } from 'lucide-react';
+import { RefreshCw, Settings, Loader2, History, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -576,31 +576,35 @@ export default function InstagramTab({
             ［最新化］するとフォロワー数を取得し、目標エンゲージメント率を表示します
           </p>
         ) : highOnlyActive ? (
-          // ブログ一覧のフィルター表示（AnalyticsTable.tsx「フィルター:」のタグ＋クリア）と同じ構成
-          <div className="flex items-center gap-2 flex-wrap mb-3 px-1">
-            <span className="text-sm text-muted-foreground">フィルター:</span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
-              <TrendingUp className="h-3 w-3" />
-              高エンゲージメント率
+          // ブログ一覧のフィルター表示（src/components/AnalyticsTable.tsx の「フィルター:」行と
+          // 「評価未設定」のタグ）をそのまま写している。変えるときは両方をそろえる
+          <div className="flex items-center justify-between mb-3 px-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-gray-500">フィルター:</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-blue-800 bg-blue-100">
+                高エンゲージメント率
+                <button
+                  type="button"
+                  onClick={() => handleHighOnlyChange(false)}
+                  className="hover:bg-blue-200 rounded-full p-0.5"
+                  title="高エンゲージメント率フィルターを解除"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
               <button
                 type="button"
                 onClick={() => handleHighOnlyChange(false)}
-                className="hover:bg-accent rounded-full p-0.5"
-                aria-label="高エンゲージメント率フィルターを解除"
+                className="text-xs text-gray-500 hover:text-gray-700 underline"
               >
-                <X className="h-3 w-3" />
+                クリア
               </button>
-            </span>
-            <button
-              type="button"
-              onClick={() => handleHighOnlyChange(false)}
-              className="text-xs text-muted-foreground hover:text-foreground underline"
-            >
-              クリア
-            </button>
-            {isHighOnlyRestored ? (
-              <span className="text-xs text-muted-foreground">（前回の絞り込みを復元しました）</span>
-            ) : null}
+              {isHighOnlyRestored && (
+                <span className="text-xs text-muted-foreground">
+                  （前回の絞り込みを復元しました）
+                </span>
+              )}
+            </div>
           </div>
         ) : null}
 

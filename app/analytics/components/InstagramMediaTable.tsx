@@ -264,32 +264,32 @@ export default function InstagramMediaTable({
       hideTrigger
       dialogExtraContent={
         criteriaLabel === null ? undefined : (
-          // ブログ一覧の「状態でフィルター」（CategoryFilter.tsx）と同じ構成・文言にそろえる。
-          // 色だけは生のパレットを使わずトークンで表す（shadcn/no-raw-colors）
-          <div className="space-y-2">
-            <span className="text-sm font-medium text-foreground/80">状態でフィルター</span>
-            <div className="border rounded-md px-2 py-2">
-              <label className="flex items-center gap-2 cursor-pointer hover:bg-accent px-1 py-1 rounded">
-                <Checkbox
-                  checked={igHigh}
-                  onCheckedChange={checked => onHighOnlyChange(checked === true)}
-                />
-                <TrendingUp className="h-3.5 w-3.5 text-chart-2 flex-shrink-0" />
-                <span className="text-sm font-medium">高エンゲージメント率</span>
-              </label>
-              <details className="mt-1 px-1 text-xs">
-                <summary
-                  className="cursor-pointer text-muted-foreground hover:text-foreground"
-                  aria-label="高エンゲージメント率で絞り込まれる条件"
-                >
-                  絞り込まれる条件
-                </summary>
-                <ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
-                  <li>エンゲージメント率が目標の下限以上の投稿だけが対象です（{criteriaLabel}）。</li>
-                  <li>エンゲージメント率は（いいね＋コメント＋保存）÷ リーチ × 100 です。</li>
-                  <li>フォロワー数は最後に取得した時点の値です。</li>
-                </ul>
-              </details>
+          // ブログ一覧の状態フィルター（src/components/CategoryFilter.tsx の「評価未設定」の行）を
+          // そのまま写している。クラス・構成を変えるときは両方をそろえる
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-gray-700">状態でフィルター</span>
+
+              <div className="border rounded-md px-2 py-2">
+                <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded">
+                  <Checkbox checked={igHigh} onCheckedChange={checked => onHighOnlyChange(!!checked)} />
+                  <TrendingUp className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
+                  <span className="text-sm font-medium text-blue-800">高エンゲージメント率</span>
+                </label>
+                <details className="mt-1 px-1 text-xs">
+                  <summary
+                    className="cursor-pointer text-gray-500 hover:text-gray-700"
+                    aria-label="高エンゲージメント率で絞り込まれる条件"
+                  >
+                    絞り込まれる条件
+                  </summary>
+                  <ul className="mt-1 list-disc space-y-1 pl-4 text-gray-500">
+                    <li>エンゲージメント率が目標の下限以上の投稿だけが対象です（{criteriaLabel}）。</li>
+                    <li>エンゲージメント率は（いいね＋コメント＋保存）÷ リーチ × 100 です。</li>
+                    <li>フォロワー数は最後に取得した時点の値です。</li>
+                  </ul>
+                </details>
+              </div>
             </div>
           </div>
         )
