@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
+import { StatusFilterOption, StatusFilterSection } from '@/components/CategoryFilter';
 import { cn } from '@/lib/utils';
 import {
   ANALYTICS_STORAGE_KEYS,
@@ -264,33 +264,21 @@ export default function InstagramMediaTable({
       hideTrigger
       dialogExtraContent={
         criteriaLabel === null ? undefined : (
-          // ブログ一覧の状態フィルター（src/components/CategoryFilter.tsx の「評価未設定」の行）を
-          // そのまま写している。クラス・構成を変えるときは両方をそろえる
+          // ブログ一覧と同じ部品を使う（src/components/CategoryFilter.tsx）
           <div className="space-y-3">
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-gray-700">状態でフィルター</span>
-
-              <div className="border rounded-md px-2 py-2">
-                <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded">
-                  <Checkbox checked={igHigh} onCheckedChange={checked => onHighOnlyChange(!!checked)} />
-                  <TrendingUp className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-                  <span className="text-sm font-medium text-blue-800">高エンゲージメント率</span>
-                </label>
-                <details className="mt-1 px-1 text-xs">
-                  <summary
-                    className="cursor-pointer text-gray-500 hover:text-gray-700"
-                    aria-label="高エンゲージメント率で絞り込まれる条件"
-                  >
-                    絞り込まれる条件
-                  </summary>
-                  <ul className="mt-1 list-disc space-y-1 pl-4 text-gray-500">
-                    <li>エンゲージメント率が目標の下限以上の投稿だけが対象です（{criteriaLabel}）。</li>
-                    <li>エンゲージメント率は（いいね＋コメント＋保存）÷ リーチ × 100 です。</li>
-                    <li>フォロワー数は最後に取得した時点の値です。</li>
-                  </ul>
-                </details>
-              </div>
-            </div>
+            <StatusFilterSection>
+              <StatusFilterOption
+                checked={igHigh}
+                onCheckedChange={onHighOnlyChange}
+                icon={TrendingUp}
+                label="高エンゲージメント率"
+                tone="blue"
+              >
+                <li>エンゲージメント率が目標の下限以上の投稿だけが対象です（{criteriaLabel}）。</li>
+                <li>エンゲージメント率は（いいね＋コメント＋保存）÷ リーチ × 100 です。</li>
+                <li>フォロワー数は最後に取得した時点の値です。</li>
+              </StatusFilterOption>
+            </StatusFilterSection>
           </div>
         )
       }

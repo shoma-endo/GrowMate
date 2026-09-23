@@ -53,6 +53,7 @@ import {
   ChevronsRight,
   X,
   Sparkles,
+  type LucideIcon,
 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
@@ -155,6 +156,88 @@ const createEmptyForm = (): Record<AnnotationFieldKey, string> =>
     AnnotationFieldKey,
     string
   >;
+
+const FILTER_TAG_TONE_CLASSES = {
+  gray: { tag: 'text-gray-700 bg-gray-100', remove: 'hover:bg-gray-200' },
+  grayStrong: { tag: 'text-gray-700 bg-gray-200', remove: 'hover:bg-gray-300' },
+  amber: { tag: 'text-amber-800 bg-amber-100', remove: 'hover:bg-amber-200' },
+  blue: { tag: 'text-blue-800 bg-blue-100', remove: 'hover:bg-blue-200' },
+  purple: { tag: 'text-purple-800 bg-purple-100', remove: 'hover:bg-purple-200' },
+} as const;
+
+/**
+ * 一覧の上の「フィルター:」行。ブログ一覧と Instagram タブで同じ見た目にするため共用する
+ * （growmate-ui-ux「同種の既存 UI があるときは『そのまま』使う」）。生の色クラスをこのファイルに
+ * 留め、eslint-suppressions.json の件数を増やさないために、ここで export している
+ */
+export function ActiveFilterBar({
+  onClear,
+  isRestored,
+  children,
+}: {
+  onClear: () => void;
+  isRestored: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between mb-3 px-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-gray-500">フィルター:</span>
+        {children}
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-xs text-gray-500 hover:text-gray-700 underline"
+        >
+          クリア
+        </button>
+        {/*
+          復元した絞り込みで一覧がほぼ空になると「記事が消えた」と誤認される。
+          自分の操作ではなく前回の絞り込みが戻ってきたのだと読み取れるようにする。
+          解除は左の「クリア」で足りるのでボタンは増やさない。
+        */}
+        {isRestored && (
+          <span className="text-xs text-muted-foreground">（前回の絞り込みを復元しました）</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function FilterTag({
+  label,
+  icon: Icon,
+  tone,
+  onRemove,
+  removeTitle,
+}: {
+  label: string;
+  icon?: LucideIcon;
+  tone: keyof typeof FILTER_TAG_TONE_CLASSES;
+  onRemove: () => void;
+  removeTitle: string;
+}) {
+  const toneClasses = FILTER_TAG_TONE_CLASSES[tone];
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+        toneClasses.tag
+      )}
+    >
+      {Icon ? <Icon className="h-3 w-3" /> : null}
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        className={cn('rounded-full p-0.5', toneClasses.remove)}
+        title={removeTitle}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  );
+}
 
 export default function AnalyticsTable({
   items,
@@ -906,102 +989,53 @@ export default function AnalyticsTable({
         {({ visibleSet, orderedIds }) => (
           <div className="w-full">
             {/* フィルター情報と件数表示 */}
-            <div className="flex items-center justify-between mb-3 px-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                {hasActiveFilters && (
-                  <>
-                    <span className="text-sm text-gray-500">フィルター:</span>
-                    {categoryFilterNames.map(cat => (
-                      <span
-                        key={cat}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-gray-700 bg-gray-100"
-                      >
-                        {cat}
-                        <button
-                          type="button"
-                          onClick={() => removeCategoryFilter(cat)}
-                          className="hover:bg-gray-200 rounded-full p-0.5"
-                          title={`${cat}を解除`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                    {isIncludingUncategorized && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-gray-700 bg-gray-200">
-                        未分類
-                        <button
-                          type="button"
-                          onClick={removeUncategorizedFilter}
-                          className="hover:bg-gray-300 rounded-full p-0.5"
-                          title="未分類を解除"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
-                    {isFilteringUnreadSuggestion && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-amber-800 bg-amber-100">
-                        <Bell className="h-3 w-3" />
-                        改善提案あり
-                        <button
-                          type="button"
-                          onClick={removeUnreadSuggestionFilter}
-                          className="hover:bg-amber-200 rounded-full p-0.5"
-                          title="改善提案フィルターを解除"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
-                    {isFilteringUnstartedGscEvaluation && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-blue-800 bg-blue-100">
-                        評価未設定
-                        <button
-                          type="button"
-                          onClick={removeUnstartedGscEvaluationFilter}
-                          className="hover:bg-blue-200 rounded-full p-0.5"
-                          title="評価未設定フィルターを解除"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
-                    {isFilteringUnsummarized && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-purple-800 bg-purple-100">
-                        <Sparkles className="h-3 w-3" />
-                        未要約
-                        <button
-                          type="button"
-                          onClick={removeUnsummarizedFilter}
-                          className="hover:bg-purple-200 rounded-full p-0.5"
-                          title="未要約フィルターを解除"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={clearAllFilters}
-                      className="text-xs text-gray-500 hover:text-gray-700 underline"
-                    >
-                      クリア
-                    </button>
-                    {/*
-                      復元した絞り込みで一覧がほぼ空になると「記事が消えた」と誤認される。
-                      自分の操作ではなく前回の絞り込みが戻ってきたのだと読み取れるようにする。
-                      解除は左の「クリア」で足りるのでボタンは増やさない。
-                    */}
-                    {isRestoredFromStorage && (
-                      <span className="text-xs text-muted-foreground">
-                        （前回の絞り込みを復元しました）
-                      </span>
-                    )}
-                  </>
+            {hasActiveFilters && (
+              <ActiveFilterBar onClear={clearAllFilters} isRestored={isRestoredFromStorage}>
+                {categoryFilterNames.map(cat => (
+                  <FilterTag
+                    key={cat}
+                    label={cat}
+                    tone="gray"
+                    onRemove={() => removeCategoryFilter(cat)}
+                    removeTitle={`${cat}を解除`}
+                  />
+                ))}
+                {isIncludingUncategorized && (
+                  <FilterTag
+                    label="未分類"
+                    tone="grayStrong"
+                    onRemove={removeUncategorizedFilter}
+                    removeTitle="未分類を解除"
+                  />
                 )}
-              </div>
-            </div>
+                {isFilteringUnreadSuggestion && (
+                  <FilterTag
+                    label="改善提案あり"
+                    icon={Bell}
+                    tone="amber"
+                    onRemove={removeUnreadSuggestionFilter}
+                    removeTitle="改善提案フィルターを解除"
+                  />
+                )}
+                {isFilteringUnstartedGscEvaluation && (
+                  <FilterTag
+                    label="評価未設定"
+                    tone="blue"
+                    onRemove={removeUnstartedGscEvaluationFilter}
+                    removeTitle="評価未設定フィルターを解除"
+                  />
+                )}
+                {isFilteringUnsummarized && (
+                  <FilterTag
+                    label="未要約"
+                    icon={Sparkles}
+                    tone="purple"
+                    onRemove={removeUnsummarizedFilter}
+                    removeTitle="未要約フィルターを解除"
+                  />
+                )}
+              </ActiveFilterBar>
+            )}
 
             {/*
               contain-layout: table 要素の auto レイアウト計算（列幅の内容依存計算）は、

@@ -1,9 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { Bell, PlayCircle, Sparkles } from 'lucide-react';
+import { Bell, PlayCircle, Sparkles, type LucideIcon } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import type { CategoryFilterConfig } from '@/types/category';
 import { SUMMARY_TARGET_COLUMN_LABELS } from '@/lib/content-annotation-bulk-summary-display';
 import { ANALYTICS_STORAGE_KEYS } from '@/lib/constants';
@@ -32,6 +33,72 @@ interface CategoryFilterProps {
   onUnstartedGscEvaluationChange: (value: boolean) => void;
   onUnsummarizedChange: (value: boolean) => void;
   onClearAll: () => void;
+}
+
+const STATUS_FILTER_TONE_CLASSES = {
+  blue: { row: 'hover:bg-blue-50', icon: 'text-blue-600', label: 'text-blue-800' },
+  amber: { row: 'hover:bg-amber-50', icon: 'text-amber-600', label: 'text-amber-800' },
+  purple: { row: 'hover:bg-purple-50', icon: 'text-purple-600', label: 'text-purple-800' },
+} as const;
+
+/**
+ * 一覧の「フィールド構成」ダイアログ内の「状態でフィルター」節。
+ * ブログ一覧と Instagram タブで同じ見た目にするため共用する（growmate-ui-ux
+ * 「同種の既存 UI があるときは『そのまま』使う」）。生の色クラスをこのファイルに留め、
+ * eslint-suppressions.json の件数を増やさないために、ここで export している
+ */
+export function StatusFilterSection({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <span className="text-sm font-medium text-gray-700">状態でフィルター</span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * 「状態でフィルター」の1行。children に `<li>` を渡すと、既定で畳んだ「絞り込まれる条件」を出す
+ * （`details` は ContentEvaluationCard.tsx:143 と同じ既存パターン。既定で畳むのは、
+ * 通常の絞り込み操作の邪魔をしないため）
+ */
+export function StatusFilterOption({
+  checked,
+  onCheckedChange,
+  icon: Icon,
+  label,
+  tone,
+  children,
+}: {
+  checked: boolean;
+  onCheckedChange: (value: boolean) => void;
+  icon: LucideIcon;
+  label: string;
+  tone: keyof typeof STATUS_FILTER_TONE_CLASSES;
+  children?: React.ReactNode;
+}) {
+  const toneClasses = STATUS_FILTER_TONE_CLASSES[tone];
+  return (
+    <div className="border rounded-md px-2 py-2">
+      <label
+        className={cn('flex items-center gap-2 cursor-pointer px-1 py-1 rounded', toneClasses.row)}
+      >
+        <Checkbox checked={checked} onCheckedChange={value => onCheckedChange(!!value)} />
+        <Icon className={cn('h-3.5 w-3.5 flex-shrink-0', toneClasses.icon)} />
+        <span className={cn('text-sm font-medium', toneClasses.label)}>{label}</span>
+      </label>
+      {children ? (
+        <details className="mt-1 px-1 text-xs">
+          <summary
+            className="cursor-pointer text-gray-500 hover:text-gray-700"
+            aria-label={`${label}で絞り込まれる条件`}
+          >
+            絞り込まれる条件
+          </summary>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-gray-500">{children}</ul>
+        </details>
+      ) : null}
+    </div>
+  );
 }
 
 export default function CategoryFilter({
@@ -97,86 +164,55 @@ export default function CategoryFilter({
       )}
 
       {/* 状態フィルター（カテゴリではないので見出しを分ける） */}
-      <div className="space-y-2">
-        <span className="text-sm font-medium text-gray-700">状態でフィルター</span>
-
-        <div className="border rounded-md px-2 py-2">
-          <label className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded">
-            <Checkbox
-              checked={hasUnstartedGscEvaluation}
-              onCheckedChange={checked => onUnstartedGscEvaluationChange(!!checked)}
-            />
-            <PlayCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-            <span className="text-sm font-medium text-blue-800">評価未設定</span>
-          </label>
+      <StatusFilterSection>
+        <StatusFilterOption
+          checked={hasUnstartedGscEvaluation}
+          onCheckedChange={onUnstartedGscEvaluationChange}
+          icon={PlayCircle}
+          label="評価未設定"
+          tone="blue"
+        >
           {/*
             このフィルターは「サイクルが未設定」だけを拾い、設定済みで結果が出ていない記事は
             拾わない（§15.4）。その差はラベルからは読み取れず、絞り込んで出てこなかった側の
             記事にユーザーが気づけないため、条件をここで開示する。
-            既定で畳むのは、通常の絞り込み操作の邪魔をしないため。
-            `details` は ContentEvaluationCard.tsx:143 と同じ既存パターン。
           */}
-          <details className="mt-1 px-1 text-xs">
-            <summary
-              className="cursor-pointer text-gray-500 hover:text-gray-700"
-              aria-label="評価未設定で絞り込まれる条件"
-            >
-              絞り込まれる条件
-            </summary>
-            <ul className="mt-1 list-disc space-y-1 pl-4 text-gray-500">
-              <li>評価サイクルを設定していない記事だけが対象です。</li>
-              <li>
-                設定済みで、まだ結果が出ていない記事は含まれません（初回の計測待ち、Google
-                Analytics 4と連携していない、セッションが30に達していない）。
-              </li>
-            </ul>
-          </details>
-        </div>
-        <div className="border rounded-md px-2 py-2">
-          <label className="flex items-center gap-2 cursor-pointer hover:bg-amber-50 px-1 py-1 rounded">
-            <Checkbox
-              checked={hasUnreadSuggestion}
-              onCheckedChange={checked => onUnreadSuggestionChange(!!checked)}
-            />
-            <Bell className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
-            <span className="text-sm font-medium text-amber-800">改善提案あり</span>
-          </label>
-        </div>
-        <div className="border rounded-md px-2 py-2">
-          <label className="flex items-center gap-2 cursor-pointer hover:bg-purple-50 px-1 py-1 rounded">
-            <Checkbox
-              checked={hasUnsummarized}
-              onCheckedChange={checked => onUnsummarizedChange(!!checked)}
-            />
-            <Sparkles className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
-            <span className="text-sm font-medium text-purple-800">未要約</span>
-          </label>
+          <li>評価サイクルを設定していない記事だけが対象です。</li>
+          <li>
+            設定済みで、まだ結果が出ていない記事は含まれません（初回の計測待ち、Google
+            Analytics 4と連携していない、セッションが30に達していない）。
+          </li>
+        </StatusFilterOption>
+        <StatusFilterOption
+          checked={hasUnreadSuggestion}
+          onCheckedChange={onUnreadSuggestionChange}
+          icon={Bell}
+          label="改善提案あり"
+          tone="amber"
+        />
+        <StatusFilterOption
+          checked={hasUnsummarized}
+          onCheckedChange={onUnsummarizedChange}
+          icon={Sparkles}
+          label="未要約"
+          tone="purple"
+        >
           {/*
             「未要約」も評価未設定と同じく、ラベルからは境界が読み取れない。
             とくに WordPress 未連携の空欄記事が対象外になることは、絞り込んで出てこなかった側の
             記事にユーザーが気づけないので開示する。
           */}
-          <details className="mt-1 px-1 text-xs">
-            <summary
-              className="cursor-pointer text-gray-500 hover:text-gray-700"
-              aria-label="未要約で絞り込まれる条件"
-            >
-              絞り込まれる条件
-            </summary>
-            <ul className="mt-1 list-disc space-y-1 pl-4 text-gray-500">
-              <li>
-                {/* 項目名と並び順は一覧の列見出し（ANALYTICS_COLUMNS）に合わせる。
-                    ここだけ独自の呼び方にするとユーザーがどの欄か照合できない */}
-                {SUMMARY_TARGET_COLUMN_LABELS.join('・')}の8項目がすべて空の記事だけが対象です。
-              </li>
-              <li>
-                WordPress と連携していない記事は、8項目が空でも含まれません（本文を取得できず
-                要約できないため）。
-              </li>
-            </ul>
-          </details>
-        </div>
-      </div>
+          <li>
+            {/* 項目名と並び順は一覧の列見出し（ANALYTICS_COLUMNS）に合わせる。
+                ここだけ独自の呼び方にするとユーザーがどの欄か照合できない */}
+            {SUMMARY_TARGET_COLUMN_LABELS.join('・')}の8項目がすべて空の記事だけが対象です。
+          </li>
+          <li>
+            WordPress と連携していない記事は、8項目が空でも含まれません（本文を取得できず
+            要約できないため）。
+          </li>
+        </StatusFilterOption>
+      </StatusFilterSection>
 
       <div className="flex items-center justify-between">
         <div>
