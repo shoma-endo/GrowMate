@@ -29,7 +29,7 @@ import {
 } from '@/lib/instagram-format';
 import type { InstagramMediaListItem, InstagramMediaSortKey } from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, TrendingUp } from 'lucide-react';
 
 const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>([
   'posted_at',
@@ -264,23 +264,31 @@ export default function InstagramMediaTable({
       hideTrigger
       dialogExtraContent={
         criteriaLabel === null ? undefined : (
-          <div className="space-y-3">
-            <h3 className="text-sm font-medium text-foreground">絞り込み</h3>
+          // ブログ一覧の「状態でフィルター」（CategoryFilter.tsx）と同じ構成・文言にそろえる。
+          // 色だけは生のパレットを使わずトークンで表す（shadcn/no-raw-colors）
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-foreground/80">状態でフィルター</span>
             <div className="border rounded-md px-2 py-2">
-              <label className="flex items-center gap-2 cursor-pointer px-1 py-1 rounded">
+              <label className="flex items-center gap-2 cursor-pointer hover:bg-accent px-1 py-1 rounded">
                 <Checkbox
                   checked={igHigh}
                   onCheckedChange={checked => onHighOnlyChange(checked === true)}
                 />
+                <TrendingUp className="h-3.5 w-3.5 text-chart-2 flex-shrink-0" />
                 <span className="text-sm font-medium">高エンゲージメント率</span>
               </label>
-              <p className="mt-1 px-1 text-xs text-muted-foreground">{criteriaLabel}</p>
-              <p className="px-1 text-xs text-muted-foreground">（フォロワー数は最後に取得した時点の値）</p>
-              <details className="mt-2 px-1 text-xs">
-                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                  エンゲージメント率の出し方
+              <details className="mt-1 px-1 text-xs">
+                <summary
+                  className="cursor-pointer text-muted-foreground hover:text-foreground"
+                  aria-label="高エンゲージメント率で絞り込まれる条件"
+                >
+                  絞り込まれる条件
                 </summary>
-                <p className="mt-1 text-muted-foreground">（いいね＋コメント＋保存）÷ リーチ × 100</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
+                  <li>エンゲージメント率が目標の下限以上の投稿だけが対象です（{criteriaLabel}）。</li>
+                  <li>エンゲージメント率は（いいね＋コメント＋保存）÷ リーチ × 100 です。</li>
+                  <li>フォロワー数は最後に取得した時点の値です。</li>
+                </ul>
               </details>
             </div>
           </div>

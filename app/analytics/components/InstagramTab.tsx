@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { RefreshCw, Settings, Loader2, History } from 'lucide-react';
+import { RefreshCw, Settings, Loader2, History, TrendingUp, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -332,6 +332,9 @@ export default function InstagramTab({
   // URL に ig_sort が無いときだけ、保存済みの並び順を1回だけ復元する。
   // URL 指定時は deep link の意図を尊重して触らない。
   const didRestoreInstagramStateRef = React.useRef(false);
+  // ブログ一覧と同じく、前回の絞り込みが戻ってきたことを一覧の上で示す（AnalyticsTable.tsx の
+  // isRestoredFromStorage）。利用者が絞り込みを操作したら消す
+  const [isHighOnlyRestored, setIsHighOnlyRestored] = React.useState(false);
   React.useEffect(() => {
     if (didRestoreInstagramStateRef.current) return;
     didRestoreInstagramStateRef.current = true;
@@ -346,6 +349,9 @@ export default function InstagramTab({
       canJudgeTarget: followersCount !== null,
     });
     if (patch !== null) {
+      if (patch.igHigh) {
+        setIsHighOnlyRestored(true);
+      }
       router.replace(buildFilterHref({ ...patch, igPage: 1 }));
     }
   }, [searchParams, fieldConfig, followersCount, buildFilterHref, router]);
@@ -358,6 +364,7 @@ export default function InstagramTab({
       : formatInstagramEngagementTargetLabel(followersCount, target);
 
   const handleHighOnlyChange = (checked: boolean) => {
+    setIsHighOnlyRestored(false);
     try {
       localStorage.setItem(ANALYTICS_STORAGE_KEYS.IG_HIGH_ONLY, checked ? '1' : '0');
     } catch {
@@ -561,15 +568,40 @@ export default function InstagramTab({
         </div>
 
         {/*
-          目標値はフィールド構成ダイアログ内の判定基準に出すため、一覧の上には重ねて出さない。
-          ここに出すのは、ダイアログを開かないと分からない2つの状態だけ
+          目標値はフィールド構成ダイアログ内の「絞り込まれる条件」に出すため、一覧の上には重ねて出さない。
+          ここに出すのは、フォロワー数未取得の案内と、ブログ一覧と同じ形のフィルター表示だけ
         */}
         {target === null ? (
           <p className="text-sm text-muted-foreground mb-4">
             ［最新化］するとフォロワー数を取得し、目標エンゲージメント率を表示します
           </p>
         ) : highOnlyActive ? (
-          <p className="text-sm mb-4">高エンゲージメント率のみ表示中</p>
+          // ブログ一覧のフィルター表示（AnalyticsTable.tsx「フィルター:」のタグ＋クリア）と同じ構成
+          <div className="flex items-center gap-2 flex-wrap mb-3 px-1">
+            <span className="text-sm text-muted-foreground">フィルター:</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
+              <TrendingUp className="h-3 w-3" />
+              高エンゲージメント率
+              <button
+                type="button"
+                onClick={() => handleHighOnlyChange(false)}
+                className="hover:bg-accent rounded-full p-0.5"
+                aria-label="高エンゲージメント率フィルターを解除"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+            <button
+              type="button"
+              onClick={() => handleHighOnlyChange(false)}
+              className="text-xs text-muted-foreground hover:text-foreground underline"
+            >
+              クリア
+            </button>
+            {isHighOnlyRestored ? (
+              <span className="text-xs text-muted-foreground">（前回の絞り込みを復元しました）</span>
+            ) : null}
+          </div>
         ) : null}
 
         {!syncEnabled ? (
