@@ -12,6 +12,8 @@ export interface InstagramCredential {
   backfillCursor: string | null;
   /** 過去投稿取り込みが完了した日時。null は未完了（進行中 or 未着手） */
   backfillCompletedAt: string | null;
+  followersCount: number | null;
+  followersCountSyncedAt: string | null;
 }
 
 export interface InstagramConnectionStatus {
@@ -47,7 +49,7 @@ export interface InstagramMediaInsights {
 
 type InstagramInsightsUnavailableReason = 'pre_conversion' | 'retention_expired';
 
-export type InstagramMediaSortKey = 'posted_at' | 'reach' | 'views';
+export type InstagramMediaSortKey = 'posted_at' | 'reach' | 'views' | 'engagement_rate';
 export type InstagramMediaTypeFilter = 'all' | 'reels' | 'feed';
 
 export interface InstagramMediaListItem {
@@ -65,6 +67,7 @@ export interface InstagramMediaListItem {
   reach: number | null;
   views: number | null;
   saved: number | null;
+  engagementRate: number | null;
   shares: number | null;
   totalInteractions: number | null;
   reposts: number | null;
@@ -97,6 +100,7 @@ export interface InstagramSyncResult {
   mode: InstagramSyncMode;
   synced: number;
   failed: number;
+  refreshed: number;
   skipped: number;
   truncated: boolean;
   preConversionCount: number;

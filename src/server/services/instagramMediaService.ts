@@ -10,7 +10,6 @@ import type {
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
 
-type InstagramMediaRow = Tables<'instagram_media'>;
 type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
 
 export type InstagramMediaListingFields = {
@@ -79,9 +78,13 @@ interface InstagramMediaQuery {
   /** null は絞り込みなし（その側の境界を設けない） */
   endDate: string | null;
   sort: InstagramMediaSortKey;
+  /** null は目標達成の絞り込みなし */
+  minEngagementRate: number | null;
 }
 
-function mapMediaRow(row: InstagramMediaRow): InstagramMediaListItem {
+function mapMediaRow(
+  row: Tables<'instagram_media'>
+): InstagramMediaListItem {
   const reason = row.insights_unavailable_reason;
   const unavailableReason: InstagramMediaListItem['insightsUnavailableReason'] =
     reason === 'pre_conversion' || reason === 'retention_expired' ? reason : null;
@@ -101,6 +104,7 @@ function mapMediaRow(row: InstagramMediaRow): InstagramMediaListItem {
     reach: row.reach,
     views: row.views,
     saved: row.saved,
+    engagementRate: row.engagement_rate === null ? null : Number(row.engagement_rate),
     shares: row.shares,
     totalInteractions: row.total_interactions,
     reposts: row.reposts,
@@ -151,8 +155,14 @@ class InstagramMediaService extends SupabaseService {
         dbQuery = dbQuery.order('reach', { ascending, nullsFirst: false });
       } else if (query.sort === 'views') {
         dbQuery = dbQuery.order('views', { ascending, nullsFirst: false });
+      } else if (query.sort === 'engagement_rate') {
+        dbQuery = dbQuery.order('engagement_rate', { ascending, nullsFirst: false });
       } else {
         dbQuery = dbQuery.order('posted_at', { ascending });
+      }
+
+      if (query.minEngagementRate !== null) {
+        dbQuery = dbQuery.gte('engagement_rate', query.minEngagementRate);
       }
 
       dbQuery = dbQuery.order('id', { ascending: true }).range(offset, offset + query.perPage - 1);

@@ -437,6 +437,7 @@ export const ANALYTICS_STORAGE_KEYS = {
    * 3ページ目が復元されると「先頭が見つからない」という別の誤認を生むため。
    */
   IG_SORT: 'analytics.instagramSort',
+  IG_HIGH_ONLY: 'analytics.instagramHighOnly',
   OPS_EXPANDED: 'analytics.opsExpanded',
   VISIBLE_COLUMNS: 'analytics.visibleColumns',
   IG_VISIBLE_COLUMNS: 'analytics.instagramVisibleColumns',
@@ -486,6 +487,7 @@ export const INSTAGRAM_COLUMNS = [
   { id: 'like_count', label: 'いいね', defaultVisible: true },
   { id: 'comments_count', label: 'コメント', defaultVisible: true },
   { id: 'saved', label: '保存', defaultVisible: true },
+  { id: 'engagement_rate', label: 'エンゲージメント率', defaultVisible: true },
   { id: 'shares', label: 'シェア', defaultVisible: false },
   { id: 'reposts', label: '再投稿', defaultVisible: false },
   { id: 'total_interactions', label: '総インタラクション', defaultVisible: false },
@@ -583,7 +585,9 @@ const DEFAULT_IG_SORT: InstagramMediaSortKey = 'posted_at';
  * localStorage に触らない純粋関数にしてあるのは、vitest の environment が `node` のみのため。
  */
 export function parseInstagramSortKey(raw: string | null): InstagramMediaSortKey {
-  return raw === 'reach' || raw === 'views' || raw === 'posted_at' ? raw : DEFAULT_IG_SORT;
+  return raw === 'reach' || raw === 'views' || raw === 'posted_at' || raw === 'engagement_rate'
+    ? raw
+    : DEFAULT_IG_SORT;
 }
 
 /** localStorageから Instagram タブの並び順を読み込むヘルパー */
@@ -595,6 +599,46 @@ export function loadInstagramSortFromStorage(): InstagramMediaSortKey {
     return DEFAULT_IG_SORT;
   }
 }
+
+export function parseInstagramHighOnly(raw: string | null): boolean {
+  return raw === '1';
+}
+
+export function loadInstagramHighOnlyFromStorage(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return parseInstagramHighOnly(localStorage.getItem(ANALYTICS_STORAGE_KEYS.IG_HIGH_ONLY));
+  } catch {
+    return false;
+  }
+}
+
+export function resolveInstagramRestorePatch({
+  urlSort,
+  urlHigh,
+  storedSort,
+  storedHighOnly,
+  visibleIds,
+  canJudgeTarget,
+}: {
+  urlSort: string | null;
+  urlHigh: string | null;
+  storedSort: InstagramMediaSortKey;
+  storedHighOnly: boolean;
+  visibleIds: string[];
+  canJudgeTarget: boolean;
+}): { igSort?: InstagramMediaSortKey; igHigh?: true } | null {
+  const patch: { igSort?: InstagramMediaSortKey; igHigh?: true } = {};
+  if (urlSort === null && storedSort !== 'posted_at' && visibleIds.includes(storedSort)) {
+    patch.igSort = storedSort;
+  }
+  if (urlHigh === null && storedHighOnly && canJudgeTarget) {
+    patch.igHigh = true;
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+export const INSTAGRAM_INSIGHTS_REFRESH_WINDOW_DAYS = 7;
 
 /**
  * /ga4-dashboard 記事別ランキングの1ページ件数。

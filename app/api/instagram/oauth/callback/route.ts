@@ -131,6 +131,7 @@ export async function GET(request: NextRequest) {
         backfillCursor: null,
         backfillCompletedAt: null,
         lastSyncedAt: null,
+        followers: null,
       });
       if (!resetResult.success) {
         console.error(
@@ -153,6 +154,9 @@ export async function GET(request: NextRequest) {
       accessTokenExpiresAt: expiresAt,
       accessTokenIssuedAt: now.toISOString(),
       scope: [...INSTAGRAM_OAUTH_SCOPES],
+      ...(profile.followersCount !== null
+        ? { followers: { count: profile.followersCount, syncedAt: now.toISOString() } }
+        : {}),
     });
 
     if (!saveResult.success) {

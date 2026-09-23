@@ -85,6 +85,8 @@ interface AnalyticsClientProps {
   /** null は絞り込みなし（全期間） */
   igEnd: string | null;
   igSort: InstagramMediaSortKey;
+  igHigh: boolean;
+  instagramFollowersCount: number | null;
   instagramLastSyncedAt: string | null;
   instagramBackfillStatus: 'not_started' | 'in_progress' | 'completed';
   instagramSyncEnabled: boolean;
@@ -137,6 +139,8 @@ export default function AnalyticsClient({
   igStart,
   igEnd,
   igSort,
+  igHigh,
+  instagramFollowersCount,
   instagramLastSyncedAt,
   instagramBackfillStatus,
   instagramSyncEnabled,
@@ -160,6 +164,7 @@ export default function AnalyticsClient({
     igStart,
     igEnd,
     igSort,
+    igHigh,
   };
   const unreadAnnotationSet = React.useMemo(
     () => new Set(unreadAnnotationIds),
@@ -623,6 +628,8 @@ export default function AnalyticsClient({
               igStart={igStart}
               igEnd={igEnd}
               igSort={igSort}
+              igHigh={igHigh}
+              followersCount={instagramFollowersCount}
               lastSyncedAt={instagramLastSyncedAt}
               backfillStatus={instagramBackfillStatus}
               syncEnabled={instagramSyncEnabled}

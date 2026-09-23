@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { RefreshCw, Settings, Loader2, History } from 'lucide-react';
+import { ActiveFilterBar, FilterTag } from '@/components/AnalyticsTable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -19,12 +20,18 @@ import { cn } from '@/lib/utils';
 import {
   ANALYTICS_STORAGE_KEYS,
   INSTAGRAM_COLUMNS,
+  loadInstagramHighOnlyFromStorage,
   loadInstagramSortFromStorage,
+  resolveInstagramRestorePatch,
 } from '@/lib/constants';
 import { normalizeFieldConfig } from '@/lib/field-config';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getInstagramSyncToastMessage } from '@/lib/instagram-sync';
 import { formatJstDateISO } from '@/lib/date-utils';
+import {
+  formatInstagramEngagementTargetLabel,
+  getInstagramEngagementTarget,
+} from '@/lib/instagram-format';
 import { syncInstagramData } from '@/server/actions/instagramSync.actions';
 import type {
   InstagramMediaListItem,
@@ -45,6 +52,8 @@ interface InstagramTabProps {
   /** null は絞り込みなし（全期間）。日付入力は空で表示する */
   igEnd: string | null;
   igSort: InstagramMediaSortKey;
+  igHigh: boolean;
+  followersCount: number | null;
   lastSyncedAt: string | null;
   backfillStatus: 'not_started' | 'in_progress' | 'completed';
   syncEnabled: boolean;
@@ -60,6 +69,7 @@ interface InstagramTabProps {
     igEnd?: string | null;
     igSort?: InstagramMediaSortKey;
     igPage?: number;
+    igHigh?: boolean;
   }) => string;
   /** 保存済みのフィールド構成（未保存なら null） */
   fieldConfig: StoredFieldConfig | null;
@@ -88,6 +98,8 @@ export default function InstagramTab({
   igStart,
   igEnd,
   igSort,
+  igHigh,
+  followersCount,
   lastSyncedAt,
   backfillStatus,
   syncEnabled,
@@ -320,21 +332,47 @@ export default function InstagramTab({
 
   // URL に ig_sort が無いときだけ、保存済みの並び順を1回だけ復元する。
   // URL 指定時は deep link の意図を尊重して触らない。
-  const didRestoreSortRef = React.useRef(false);
+  const didRestoreInstagramStateRef = React.useRef(false);
+  // ブログ一覧と同じく、前回の絞り込みが戻ってきたことを一覧の上で示す（AnalyticsTable.tsx の
+  // isRestoredFromStorage）。利用者が絞り込みを操作したら消す
+  const [isHighOnlyRestored, setIsHighOnlyRestored] = React.useState(false);
   React.useEffect(() => {
-    if (didRestoreSortRef.current) return;
-    didRestoreSortRef.current = true;
+    if (didRestoreInstagramStateRef.current) return;
+    didRestoreInstagramStateRef.current = true;
 
-    if (searchParams?.get('ig_sort')) return;
-    const stored = loadInstagramSortFromStorage();
-    if (stored === 'posted_at') return;
-    // **非表示の列を指す並び順は復元しない。** 復元しても resetSortIfHidden が
-    // すぐ既定へ戻すので、無駄な画面遷移が1回増えるだけになる
     const { visibleIds } = normalizeFieldConfig(INSTAGRAM_COLUMNS, fieldConfig);
-    if (!visibleIds.includes(stored)) return;
+    const patch = resolveInstagramRestorePatch({
+      urlSort: searchParams?.get('ig_sort') ?? null,
+      urlHigh: searchParams?.get('ig_high') ?? null,
+      storedSort: loadInstagramSortFromStorage(),
+      storedHighOnly: loadInstagramHighOnlyFromStorage(),
+      visibleIds,
+      canJudgeTarget: followersCount !== null,
+    });
+    if (patch !== null) {
+      if (patch.igHigh) {
+        setIsHighOnlyRestored(true);
+      }
+      router.replace(buildFilterHref({ ...patch, igPage: 1 }));
+    }
+  }, [searchParams, fieldConfig, followersCount, buildFilterHref, router]);
 
-    router.replace(buildFilterHref({ igSort: stored, igPage: 1 }));
-  }, [searchParams, fieldConfig, buildFilterHref, router]);
+  const target = getInstagramEngagementTarget(followersCount);
+  const highOnlyActive = igHigh && target !== null;
+  const criteriaLabel =
+    target === null || followersCount === null
+      ? null
+      : formatInstagramEngagementTargetLabel(followersCount, target);
+
+  const handleHighOnlyChange = (checked: boolean) => {
+    setIsHighOnlyRestored(false);
+    try {
+      localStorage.setItem(ANALYTICS_STORAGE_KEYS.IG_HIGH_ONLY, checked ? '1' : '0');
+    } catch {
+      // ストレージが使えない環境でも URL の絞り込みは動かす
+    }
+    router.push(buildFilterHref({ igHigh: checked, igPage: 1 }));
+  };
 
   // buildFilterHref は AnalyticsClient.tsx から毎レンダリング新規生成される関数のため
   // useCallback で包んでも参照は安定しない。FieldConfigurator 側が onChangeRef で
@@ -362,7 +400,7 @@ export default function InstagramTab({
     }
     // 絞り込んでいないのに「条件を変更してください」と言わない。
     // ig_sort / ig_page は行を減らさないので絞り込みに数えない
-    const hasFilter = igStart !== null || igEnd !== null || igType !== 'all';
+    const hasFilter = igStart !== null || igEnd !== null || igType !== 'all' || highOnlyActive;
     if (!hasFilter) {
       return backfillStatus === 'completed'
         ? 'まだ投稿がありません'
@@ -495,6 +533,7 @@ export default function InstagramTab({
                   <SelectItem value="posted_at">投稿日</SelectItem>
                   <SelectItem value="reach">リーチ</SelectItem>
                   <SelectItem value="views">視聴数</SelectItem>
+                  <SelectItem value="engagement_rate">エンゲージメント率</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -528,6 +567,29 @@ export default function InstagramTab({
             ) : null}
           </div>
         </div>
+
+        {/*
+          目標値はフィールド構成ダイアログ内の「絞り込まれる条件」に出すため、一覧の上には重ねて出さない。
+          ここに出すのは、フォロワー数未取得の案内と、ブログ一覧と同じ形のフィルター表示だけ
+        */}
+        {target === null ? (
+          <p className="text-sm text-muted-foreground mb-4">
+            ［最新化］するとフォロワー数を取得し、目標エンゲージメント率を表示します
+          </p>
+        ) : highOnlyActive ? (
+          // ブログ一覧と同じ部品を使う（src/components/AnalyticsTable.tsx）
+          <ActiveFilterBar
+            onClear={() => handleHighOnlyChange(false)}
+            isRestored={isHighOnlyRestored}
+          >
+            <FilterTag
+              label="高エンゲージメント率"
+              tone="blue"
+              onRemove={() => handleHighOnlyChange(false)}
+              removeTitle="高エンゲージメント率フィルターを解除"
+            />
+          </ActiveFilterBar>
+        ) : null}
 
         {!syncEnabled ? (
           <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 mb-4">
@@ -588,6 +650,10 @@ export default function InstagramTab({
           fieldConfig={fieldConfig}
           onSortColumnHidden={resetSortIfHidden}
           emptyMessage={emptyMessage}
+          igHigh={highOnlyActive}
+          onHighOnlyChange={handleHighOnlyChange}
+          criteriaLabel={criteriaLabel}
+          targetMinRate={target?.min ?? null}
         />
         <div className="flex items-center justify-between mt-4">
           <div className="text-sm text-gray-600">
