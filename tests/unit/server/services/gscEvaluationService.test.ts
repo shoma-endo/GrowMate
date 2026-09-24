@@ -55,6 +55,7 @@ describe('gscEvaluationService.runAllDueEvaluations', () => {
       advanced: 0,
       baselineInitialized: 0,
       skippedNoMetrics: 0,
+      skippedClaimLost: 0,
       skippedImportFailed: 0,
       skippedSystemError: 3,
     });
@@ -120,6 +121,7 @@ describe('gscEvaluationService.runAllDueEvaluations', () => {
       advanced: 0,
       baselineInitialized: 0,
       skippedNoMetrics: 0,
+      skippedClaimLost: 0,
       skippedImportFailed: 0,
       skippedSystemError: 0,
     });

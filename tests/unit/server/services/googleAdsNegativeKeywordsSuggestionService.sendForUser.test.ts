@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getUserById: vi.fn(),
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  claimAttempt: vi.fn(),
   getCredential: vi.fn(),
   getSearchTermMetrics: vi.fn(),
   getNegativeKeywords: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('@/server/services/supabaseService', () => ({
     getUserById = mocks.getUserById;
     getGoogleAdsNegativeKeywordsSettings = mocks.getSettings;
     updateGoogleAdsNegativeKeywordsSettings = mocks.updateSettings;
+    claimGoogleAdsNegativeKeywordsAttempt = mocks.claimAttempt;
     getGoogleAdsCredential = mocks.getCredential;
   },
 }));
@@ -71,6 +73,7 @@ describe('googleAdsNegativeKeywordsSuggestionService.sendNegativeKeywordsSuggest
       },
     });
     mocks.updateSettings.mockResolvedValue({ success: true, data: undefined });
+    mocks.claimAttempt.mockResolvedValue({ success: true, data: true });
     mocks.getCredential.mockResolvedValue({
       customerId: '1234567890',
       managerCustomerId: null,
@@ -114,10 +117,10 @@ describe('googleAdsNegativeKeywordsSuggestionService.sendNegativeKeywordsSuggest
     });
 
     const updates = mocks.updateSettings.mock.calls.map(call => call[1]);
-    expect(updates[0]).toStrictEqual({ last_attempted_on: expect.any(String) });
-    expect(updates[1]).toStrictEqual({ last_sent_on: expect.any(String), last_send_error: null });
+    expect(mocks.claimAttempt).toHaveBeenCalledWith(USER_ID, expect.any(String));
+    expect(updates).toStrictEqual([{ last_sent_on: expect.any(String), last_send_error: null }]);
     // 試行フラグは LLM 実行より前に立てる（途中で関数が落ちても同日再実行させないため）
-    expect(mocks.updateSettings.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.claimAttempt.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.llmChat.mock.invocationCallOrder[0]!
     );
   });
@@ -133,8 +136,8 @@ describe('googleAdsNegativeKeywordsSuggestionService.sendNegativeKeywordsSuggest
     );
   });
 
-  it('試行フラグを立てられなければ LLM もメール送信も行わない', async () => {
-    mocks.updateSettings.mockResolvedValue({
+  it('確保のDB更新に失敗したらエラーを返し、LLMもメール送信もしない', async () => {
+    mocks.claimAttempt.mockResolvedValue({
       success: false,
       error: { userMessage: '更新に失敗しました' },
     });
@@ -147,6 +150,18 @@ describe('googleAdsNegativeKeywordsSuggestionService.sendNegativeKeywordsSuggest
     });
     expect(mocks.llmChat).not.toHaveBeenCalled();
     expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('当日分を既に確保済みなら成功スキップし、LLM・メール・失敗記録を行わない', async () => {
+    mocks.claimAttempt.mockResolvedValue({ success: true, data: false });
+
+    await expect(
+      googleAdsNegativeKeywordsSuggestionService.sendNegativeKeywordsSuggestionForUser(USER_ID)
+    ).resolves.toStrictEqual({ success: true, skipped: true });
+    expect(mocks.llmChat).not.toHaveBeenCalled();
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
   it('抽出後にメール未登録が判明しても当日試行済みとエラーを記録する', async () => {
@@ -159,20 +174,17 @@ describe('googleAdsNegativeKeywordsSuggestionService.sendNegativeKeywordsSuggest
       error: ERROR_MESSAGES.GOOGLE_ADS.EMAIL_REQUIRED_FOR_NEGATIVE_KEYWORDS_SUGGESTION,
     });
 
-    expect(mocks.updateSettings.mock.calls.map(call => call[1])).toStrictEqual([
-      { last_attempted_on: expect.any(String) },
-      {
+    expect(mocks.claimAttempt).toHaveBeenCalledTimes(1);
+    expect(mocks.updateSettings.mock.calls.map(call => call[1])).toStrictEqual([{
         last_send_error:
           ERROR_MESSAGES.GOOGLE_ADS.EMAIL_REQUIRED_FOR_NEGATIVE_KEYWORDS_SUGGESTION,
-      },
-    ]);
+      }]);
     expect(mocks.llmChat).not.toHaveBeenCalled();
     expect(mocks.sendEmail).not.toHaveBeenCalled();
   });
 
   it('送信日の記録に失敗したら成功と報告しない', async () => {
     mocks.updateSettings
-      .mockResolvedValueOnce({ success: true, data: undefined })
       .mockResolvedValueOnce({ success: false, error: { userMessage: '更新に失敗しました' } });
 
     await expect(
@@ -213,5 +225,6 @@ describe('googleAdsNegativeKeywordsSuggestionService.sendNegativeKeywordsSuggest
       message: ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_EMAIL_SENT,
     });
     expect(mocks.updateSettings).not.toHaveBeenCalled();
+    expect(mocks.claimAttempt).not.toHaveBeenCalled();
   });
 });

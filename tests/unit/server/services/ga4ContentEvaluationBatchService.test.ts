@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   eqCalls: [] as Array<[string, unknown]>,
   /** updateCalls と同じ添字で、その update に付いた .eq(column, value) を保持する */
   updateFilters: [] as Array<Array<[string, unknown]>>,
+  claimOutcome: 'claimed' as 'claimed' | 'lost' | 'error',
   userEmail: null as string | null,
   notifiedHistoryId: null as string | null,
 }));
@@ -39,6 +40,7 @@ vi.mock('@/server/services/supabaseService', () => {
     private resolveValue: { data: unknown; error: null };
     /** update() が呼ばれた後は、以降の eq をその update の絞り込み条件として記録する */
     private updateIndex: number | null = null;
+    private updatePayload: Record<string, unknown> | null = null;
     constructor(resolveValue: { data: unknown; error: null }) {
       this.resolveValue = resolveValue;
     }
@@ -61,17 +63,33 @@ vi.mock('@/server/services/supabaseService', () => {
       }
       return this;
     }
+    // .eq(col, null) は SQL で常に偽になり NULL 行を永久に確保できないため、
+    // .is と区別して記録する（`is:` 接頭辞）
+    is(column: string, value: unknown) {
+      if (this.updateIndex !== null) mocks.updateFilters[this.updateIndex]!.push([`is:${column}`, value]);
+      return this;
+    }
     update(payload: Record<string, unknown>) {
       mocks.updateCalls.push(payload);
       mocks.updateFilters.push([]);
       this.updateIndex = mocks.updateFilters.length - 1;
+      this.updatePayload = payload;
       return this;
     }
     maybeSingle() {
+      if (this.updatePayload && 'ga4_last_evaluated_on' in this.updatePayload) {
+        if (mocks.claimOutcome === 'error') {
+          return Promise.resolve({ data: null, error: { message: 'claim failed' } });
+        }
+        return Promise.resolve({
+          data: mocks.claimOutcome === 'claimed' ? { id: 'cycle-1' } : null,
+          error: null,
+        });
+      }
       return Promise.resolve(this.resolveValue);
     }
     then(onFulfilled: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) {
-      return Promise.resolve(this.resolveValue).then(onFulfilled, onRejected);
+      return Promise.resolve({ data: null, error: null }).then(onFulfilled, onRejected);
     }
   }
 
@@ -220,6 +238,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     mocks.updateCalls.length = 0;
     mocks.eqCalls.length = 0;
     mocks.updateFilters.length = 0;
+    mocks.claimOutcome = 'claimed';
     mocks.userEmail = null;
     mocks.notifiedHistoryId = null;
     mocks.syncUser.mockImplementation(async (userId: string) => syncOk(userId));
@@ -258,7 +277,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
 
     // last_evaluated_on の更新（クールダウン進行）と同時に last_seen_content_score も
     // computeBaselineScore の結果で更新される
-    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
+    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_seen_content_score' in payload);
     expect(cooldownUpdate).toEqual({
       ga4_last_evaluated_on: expect.any(String),
       updated_at: expect.any(String),
@@ -299,7 +318,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     expect(result.articlesSkippedCooldown).toBe(0);
 
     // 書き込みも ga4_ 列だけ。GSCの last_evaluated_on / last_seen_position には触れない
-    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
+    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_seen_content_score' in payload);
     expect(cooldownUpdate).toEqual({
       ga4_last_evaluated_on: expect.any(String),
       updated_at: expect.any(String),
@@ -332,7 +351,9 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     // low_data はbaseline_initializedではないため観測用カウンタは増えない
     expect(result.articlesBaselineInitialized).toBe(0);
     expect(result.articlesFailed).toBe(0);
-    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
+    const cooldownUpdate = mocks.updateCalls.find(payload =>
+      'ga4_last_evaluated_on' in payload && !('ga4_last_seen_content_score' in payload)
+    );
     // contentScore が undefined のときは last_seen_content_score をペイロードに含めない
     // （advanceCooldown の仕様。null で上書きせず既存値=nullのまま維持する）
     expect(cooldownUpdate).toEqual({
@@ -506,7 +527,9 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     expect(result.articlesEvaluated).toBe(0);
     expect(mocks.run).not.toHaveBeenCalled();
     // クールダウンは進める（進めないと毎時同じ記事を掴み続け、通知も毎時になる）
-    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
+    const cooldownUpdate = mocks.updateCalls.find(payload =>
+      'ga4_last_evaluated_on' in payload && !('ga4_last_seen_content_score' in payload)
+    );
     expect(cooldownUpdate).toBeDefined();
     // last_seen_content_score は触らない（評価していないので前回値を保つ）
     expect(cooldownUpdate).not.toHaveProperty('ga4_last_seen_content_score');
@@ -595,7 +618,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
 
     await ga4ContentEvaluationBatchService.runAllDueEvaluations();
 
-    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
+    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_seen_content_score' in payload);
     expect(cooldownUpdate).toBeDefined();
     // 他のクエリが投げた .eq('user_id') を拾わないよう、この update 自身の条件だけを見る
     const filters = eqFiltersForUpdateWith('ga4_last_evaluated_on');
@@ -623,7 +646,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
 
     expect(result.articlesEvaluated).toBe(1);
     expect(result.articlesFailed).toBe(0);
-    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_evaluated_on' in payload);
+    const cooldownUpdate = mocks.updateCalls.find(payload => 'ga4_last_seen_content_score' in payload);
     // スコアは確定しているので last_seen_content_score も進める
     expect(cooldownUpdate).toMatchObject({ ga4_last_seen_content_score: 72 });
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
@@ -653,5 +676,112 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     // scripts/invoke-cron.sh:150 が .data.failed を FAIL 判定に使う。ここが 0 のままだと
     // 全記事が失敗してもジョブが緑になる（ミューテーションで実証済み）
     expect(result.failed).toBe(1);
+  });
+
+  it('確保に負けた記事を実行・失敗に数えず、ログでは skipped に含める', async () => {
+    const dueRow = {
+      id: 'cycle-lost',
+      user_id: 'user-lost',
+      content_annotation_id: 'annotation-lost',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: null,
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: '2020-01-31',
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mocks.claimOutcome = 'lost';
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+    const completedLog = info.mock.calls
+      .map(call => String(call[0]))
+      .filter(message => message.includes('"event":"batch_completed"'))
+      .map(message => JSON.parse(message) as Record<string, unknown>)[0];
+
+    expect(result.articlesSkippedClaimLost).toBe(1);
+    expect(result.articlesFailed).toBe(0);
+    expect(result.stoppedReason).toBe('completed');
+    expect(mocks.run).not.toHaveBeenCalled();
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.updateFilters[0]).toContainEqual(['user_id', 'user-lost']);
+    expect(mocks.updateFilters[0]).toContainEqual(['is:ga4_last_evaluated_on', null]);
+    expect(completedLog).toMatchObject({ skipped: 1, failed: 0 });
+  });
+
+  it('確保に負けた記事しか無い起動を no_progress にしない', async () => {
+    const dueRow = {
+      id: 'cycle-lost',
+      user_id: 'user-lost',
+      content_annotation_id: 'annotation-lost',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: '2020-01-01',
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: '2020-01-31',
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mocks.claimOutcome = 'lost';
+
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+
+    expect(result.stoppedReason).toBe('completed');
+    expect(result.articlesFailed).toBe(0);
+    expect(result.failed).toBe(0);
+  });
+
+  it('確保の DB エラーでは記事を失敗に数え、評価処理を実行しない', async () => {
+    const dueRow = {
+      id: 'cycle-claim-error',
+      user_id: 'user-claim-error',
+      content_annotation_id: 'annotation-claim-error',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: '2020-01-01',
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: '2020-01-31',
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mocks.claimOutcome = 'error';
+
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+
+    expect(result.articlesFailed).toBe(1);
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
+  it('クールダウンを進めない結果は、当日値の条件付き更新で抽出時の NULL に戻す', async () => {
+    const dueRow = {
+      id: 'cycle-release',
+      user_id: 'user-release',
+      content_annotation_id: 'annotation-release',
+      base_evaluation_date: '2020-01-01',
+      cycle_days: 30,
+      evaluation_hour: 0,
+      ga4_last_evaluated_on: null,
+      ga4_last_seen_content_score: 40,
+      ga4_next_evaluation_date: '2020-01-31',
+    };
+    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    const evaluatingView = buildEvaluatedView(40);
+    evaluatingView.history[0]!.status = 'evaluating';
+    mocks.run.mockResolvedValue(evaluatingView);
+
+    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
+    const todayJst = formatJstDateISO(new Date());
+    const claimUpdate = mocks.updateCalls[0];
+    const releaseUpdate = mocks.updateCalls[1];
+
+    expect(result.articlesFailed).toBe(1);
+    expect(claimUpdate).toMatchObject({ ga4_last_evaluated_on: todayJst });
+    expect(releaseUpdate).toMatchObject({ ga4_last_evaluated_on: null });
+    expect(mocks.updateFilters[1]).toContainEqual(['id', 'cycle-release']);
+    expect(mocks.updateFilters[1]).toContainEqual(['user_id', 'user-release']);
+    expect(mocks.updateFilters[1]).toContainEqual(['ga4_last_evaluated_on', todayJst]);
+    // updated_at は GSC 評価も同じ行で更新するため、確保の識別に使わない
+    expect(mocks.updateFilters[1]?.some(([column]) => column === 'updated_at')).toBe(false);
   });
 });

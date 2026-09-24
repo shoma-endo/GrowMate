@@ -292,11 +292,14 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 ## 📱 デプロイと運用
 
 - Vercel を想定。一部の Route Handler は Node.js Runtime を明示し、その他は Next.js のデフォルト Runtime を使用
+- **Vercel のプランは Pro**（チーム `shoma-endo's projects`。2026-09-24 にダッシュボードで確認）。仕様書・レビューでは確認済みの前提として扱ってよい。Pro であることに依存しているもの: `maxDuration` 800 秒のルート、Vercel Cron の毎時・10 分間隔の起動（Hobby は1日1回まで）、runtime log の保持1日
+- **Supabase のプランは Pro**（プロジェクト `rnmljzdsncucvkcmoaun`。本番と開発で共有。2026-09-25 に確認）。仕様書・レビューでは確認済みの前提として扱ってよい
+- 定期起動（Vercel Cron、[`vercel.json`](vercel.json)。UTC）: 毎時 `gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion`、10 分間隔 `content-annotation-summary`（`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）。失敗は Vercel の runtime log で確認する。経緯は [`docs/plans/vercel-cron-migration-spec.md`](docs/plans/vercel-cron-migration-spec.md)
 - ローカル品質ゲート: `npm run verify`（`audit` → `lint` → `test:coverage` → `build` → `knip` を順次実行）
 - husky フック: **pre-commit = `lint` + staged 分の docs パス参照・UI 文言チェック + 仕様書図解 HTML 追従、pre-push = takt pin ガード + `test:coverage` + `build` + `knip`**（pre-push の本体は [`scripts/pre-push.sh`](scripts/pre-push.sh)。husky はフックを `sh` で起動しシェバンを無視するため、bash 専用構文を `.husky/pre-push` に直接書かない）（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
 - CI 品質ゲート: `npm audit --omit=dev --audit-level=high`（dev 依存は非ブロッキングで別途実行）、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip`
 - 環境変数は Vercel Project Settings へ反映し、本番は WordPress 本番サイトなどの外部連携設定に切り替え
-- GitHub Actions: 毎時 Cron（`gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion`）、10 分間隔 Cron（`content-annotation-summary`＝`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）、CI（audit / lint / test / build / knip + Lark 通知）、`main` 以外への push 時の Auto PR（`develop` は `main` 宛て、それ以外は `develop` 宛て。新規作成時は [`scripts/generate-pr-body.ts`](scripts/generate-pr-body.ts) が diff から本文を LLM 生成し、失敗時は静的テンプレート。`ZAI_API_KEY` を使用）、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
+- GitHub Actions: 上記 cron の手動実行（`hourly-cron.yml` / `content-annotation-summary-cron.yml` の `workflow_dispatch`。定期起動はしない）、CI（audit / lint / test / build / knip + Lark 通知）、`main` 以外への push 時の Auto PR（`develop` は `main` 宛て、それ以外は `develop` 宛て。新規作成時は [`scripts/generate-pr-body.ts`](scripts/generate-pr-body.ts) が diff から本文を LLM 生成し、失敗時は静的テンプレート。`ZAI_API_KEY` を使用）、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
 - **Supabase スキーマ**: Vercel のデプロイだけでは DB は更新されない。変更は `supabase/migrations/` にコミットし、マイグレーション内にロールバック案をコメントで残す。**本番（共有プロジェクト）への適用タイミングと手順は「セットアップ手順」の Supabase 注意書きに従う。**
 
 ## 📄 ライセンス

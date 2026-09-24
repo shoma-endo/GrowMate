@@ -1,7 +1,7 @@
 name: Hourly Cron
 
-# 各 cron エンドポイントを並列起動する統合 workflow。
-# 追加方法: matrix.include に { id, path, profile, interval, maxTime, maxRetries, timeoutMinutes } を 1 件追加するだけ。
+# 手動実行用。定期起動は vercel.json の Vercel Cron。
+# cron の追加時は vercel.json・CRON_CONFIGS・matrix の3か所に登録する。
 #
 # maxTime       : 1回の curl の最大待ち時間（秒）。route の maxDuration より長くすること。
 # maxRetries    : curl の試行回数上限。1 はリトライなし。再実行でメールが重複しうるバッチは 1 にすること。
@@ -14,8 +14,6 @@ name: Hourly Cron
 #                  data.stoppedReason を WARN 通知（件数集計型バッチ）
 
 on:
-  schedule:
-    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -68,15 +66,9 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout
-        if: >-
-          github.event_name == 'workflow_dispatch' ||
-          github.event.schedule == '0 * * * *'
         uses: actions/checkout@v6
 
       - name: Invoke ${{ matrix.id }}
-        if: >-
-          github.event_name == 'workflow_dispatch' ||
-          github.event.schedule == '0 * * * *'
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}

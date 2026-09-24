@@ -213,6 +213,7 @@ export interface EvaluationResultSummary {
   advanced: number;
   baselineInitialized: number;
   skippedNoMetrics: number;
+  skippedClaimLost: number;
   skippedImportFailed: number;
   skippedSystemError: number;
 }

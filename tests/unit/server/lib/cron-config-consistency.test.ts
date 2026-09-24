@@ -42,16 +42,12 @@ function readWorkflowCronConfigs(): WorkflowCronConfig[] {
   return configs;
 }
 
-/** cron を起動する workflow のファイル名と、その `schedule` の cron 式 */
-function readWorkflowSchedules(): { file: string; schedules: string[] }[] {
+/** `scripts/invoke-cron.sh` を呼ぶ workflow のファイル名と本文 */
+function readInvokeCronWorkflows(): { file: string; source: string }[] {
   return readdirSync(WORKFLOW_DIR)
     .filter(name => name.endsWith('.yml'))
     .map(file => ({ file, source: readFileSync(`${WORKFLOW_DIR}/${file}`, 'utf8') }))
-    .filter(({ source }) => source.includes('scripts/invoke-cron.sh'))
-    .map(({ file, source }) => ({
-      file,
-      schedules: [...source.matchAll(/- cron: '([^']+)'/g)].map(match => match[1] ?? ''),
-    }));
+    .filter(({ source }) => source.includes('scripts/invoke-cron.sh'));
 }
 
 describe('cron config consistency', () => {
@@ -70,6 +66,38 @@ describe('cron config consistency', () => {
     );
 
     expect(workflow).toStrictEqual(declared);
+  });
+
+  it('vercel.json と CRON_CONFIGS の route と schedule が一致する', () => {
+    const config: unknown = JSON.parse(readFileSync('vercel.json', 'utf8'));
+    if (typeof config !== 'object' || config === null || !('crons' in config)) {
+      throw new Error('vercel.json に crons 配列がありません');
+    }
+    if (!Array.isArray(config.crons)) {
+      throw new Error('vercel.json の crons は配列ではありません');
+    }
+
+    const vercelCrons = config.crons.map((cron: unknown) => {
+      if (
+        typeof cron !== 'object' ||
+        cron === null ||
+        !('path' in cron) ||
+        typeof cron.path !== 'string' ||
+        !('schedule' in cron) ||
+        typeof cron.schedule !== 'string'
+      ) {
+        throw new Error('vercel.json の cron に path または schedule がありません');
+      }
+      return { path: cron.path, schedule: cron.schedule };
+    });
+    const declaredCrons = Object.values(CRON_CONFIGS).map(({ routePath, schedule }) => ({
+      path: routePath,
+      schedule,
+    }));
+    const byPath = (left: { path: string }, right: { path: string }) =>
+      left.path.localeCompare(right.path);
+
+    expect(vercelCrons.sort(byPath)).toStrictEqual(declaredCrons.sort(byPath));
   });
 
   it.each(Object.values(CRON_CONFIGS))(
@@ -96,27 +124,17 @@ describe('cron config consistency', () => {
     expect(script).toContain('cron_timeout_type=GATEWAY_OR_FUNCTION_TIMEOUT_INFERRED');
     expect(script).not.toContain('cron_timeout_type=FUNCTION_HARD_TIMEOUT_INFERRED');
   });
-  /**
-   * **`if` の schedule 文字列を cron 式と一致させる。**
-   * 既存 workflow をコピーして cron 式だけ変えると、`github.event.schedule == '0 * * * *'`
-   * のガードが残り、`workflow_dispatch` では動くのに定期実行だけ何もしない workflow になる。
-   */
-  it('各ステップの if ガードが自分の schedule と一致する', () => {
-    for (const { file, schedules } of readWorkflowSchedules()) {
-      const source = readFileSync(`${WORKFLOW_DIR}/${file}`, 'utf8');
-      const guards = [...source.matchAll(/github\.event\.schedule == '([^']+)'/g)].map(
-        match => match[1] ?? ''
+  it('invoke-cron.sh を呼ぶ workflow に schedule trigger と schedule 条件が残っていない', () => {
+    for (const { file, source } of readInvokeCronWorkflows()) {
+      expect(source, `${file} に schedule trigger が残っている`).not.toMatch(/^\s*schedule:/m);
+      expect(source, `${file} に github.event.schedule 条件が残っている`).not.toContain(
+        'github.event.schedule'
       );
-      expect(guards.length, `${file} に schedule ガードが無い`).toBeGreaterThan(0);
-      for (const guard of guards) {
-        expect(schedules, `${file} の if ガード ${guard} が schedule に無い`).toContain(guard);
-      }
     }
   });
 
   it('起動が重なりうる workflow には concurrency がある', () => {
-    for (const { file } of readWorkflowSchedules()) {
-      const source = readFileSync(`${WORKFLOW_DIR}/${file}`, 'utf8');
+    for (const { file, source } of readInvokeCronWorkflows()) {
       expect(source, `${file} に concurrency が無い`).toContain('concurrency:');
       expect(source, `${file} が実行中の起動をキャンセルしている`).toContain(
         'cancel-in-progress: false'

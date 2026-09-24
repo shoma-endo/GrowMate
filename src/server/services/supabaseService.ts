@@ -1324,6 +1324,29 @@ export class SupabaseService {
     return this.success(undefined);
   }
 
+  async claimGoogleAdsNegativeKeywordsAttempt(
+    userId: string,
+    todayJst: string
+  ): Promise<SupabaseResult<boolean>> {
+    const { data, error } = await this.supabase
+      .from('google_ads_negative_keywords_settings')
+      .update({ last_attempted_on: todayJst, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .or(`last_attempted_on.is.null,last_attempted_on.neq.${todayJst}`)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED, {
+        error,
+        developerMessage: 'Error claiming Google Ads negative keywords attempt',
+        context: { userId, todayJst },
+      });
+    }
+
+    return this.success(data !== null);
+  }
+
   async listDueGoogleAdsNegativeKeywordsSettings(
     sendHourJst: number,
     todayJst: string

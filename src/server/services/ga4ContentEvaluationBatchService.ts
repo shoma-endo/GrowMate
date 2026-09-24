@@ -58,6 +58,7 @@ interface Ga4ContentEvaluateBatchResult {
    *  history行を作らず通知も送らないため、§3.2の成立率KPI（history集計との突合）で全数評価と区別する目的の観測用カウンタ */
   articlesBaselineInitialized: number;
   articlesFailed: number;
+  articlesSkippedClaimLost: number;
   articlesSkippedCooldown: number;
   articlesSkippedSyncFailed: number;
   emailsSent: number;
@@ -146,6 +147,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
       articlesEvaluated: 0,
       articlesBaselineInitialized: 0,
       articlesFailed: 0,
+      articlesSkippedClaimLost: 0,
       articlesSkippedCooldown,
       articlesSkippedSyncFailed: 0,
       emailsSent: 0,
@@ -300,6 +302,30 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
           continue;
         }
 
+        // 確保で当日を書いてから評価する。評価の途中で関数が落ちる（maxDuration 超過・デプロイ）と
+        // 当日のまま残り、再試行は次の毎時ではなく次の評価周期まで遅れる。着手打ち切りの時間予算で
+        // 起きにくくしている。頻発したら確保をリース（期限付きの状態列）に替える。
+        const claim = await this.claimArticle(cycle, todayJst);
+        if (claim.status === 'lost') {
+          result.articlesSkippedClaimLost += 1;
+          console.info('[ga4ContentEvaluationBatchService] Evaluation already claimed', {
+            cycleId: cycle.id,
+            userId: cycle.user_id,
+            todayJst,
+          });
+          continue;
+        }
+        if (claim.status === 'error') {
+          console.error('[ga4ContentEvaluationBatchService] Failed to claim evaluation', {
+            cycleId: cycle.id,
+            userId: cycle.user_id,
+            message: claim.message,
+          });
+          totalArticlesAttempted += 1;
+          result.articlesFailed += 1;
+          continue;
+        }
+
         totalArticlesAttempted += 1;
         const articleResult = await this.runDueArticle(cycle);
 
@@ -330,6 +356,8 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
                 ? (articleResult.baselineContentScore ?? null)
                 : undefined;
           await this.advanceCooldown(cycle.id, cycle.user_id, freshContentScore);
+        } else {
+          await this.releaseClaim(cycle, todayJst);
         }
 
         if (articleResult.outcome === 'evaluated' || articleResult.outcome === 'narrative_failed') {
@@ -376,8 +404,12 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
       result.usersProcessed += 1;
     }
 
-    // ライブロック回避条件（§8.3必須）: 0件で終わった実行は no_progress として FAIL 扱いにする。
-    if (result.usersAttempted > 0 && result.articlesEvaluated + result.articlesFailed === 0) {
+    // 確保前の同時起動は totalArticlesAttempted に含めず、進捗なしの失敗にしない。
+    if (
+      result.usersAttempted > 0 &&
+      totalArticlesAttempted > 0 &&
+      result.articlesEvaluated + result.articlesFailed === 0
+    ) {
       result.stoppedReason = 'no_progress';
       result.articlesFailed += 1;
     }
@@ -389,7 +421,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
       total: dueNow.length,
       succeeded: result.articlesEvaluated,
       failed: result.failed,
-      skipped: result.skippedDueToLimit,
+      skipped: result.skippedDueToLimit + result.articlesSkippedClaimLost,
     });
 
     return result;
@@ -612,6 +644,48 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
     if (error) {
       console.error('[ga4ContentEvaluationBatchService] failed to advance cooldown', {
         cycleId,
+        message: error.message,
+      });
+    }
+  }
+
+  private async claimArticle(
+    cycle: DueEvaluationRow,
+    todayJst: string
+  ): Promise<{ status: 'claimed' } | { status: 'lost' } | { status: 'error'; message: string }> {
+    let query = this.pendingClient()
+      .from('gsc_article_evaluations')
+      .update({ ga4_last_evaluated_on: todayJst, updated_at: new Date().toISOString() })
+      .eq('id', cycle.id)
+      .eq('user_id', cycle.user_id);
+    query = cycle.ga4_last_evaluated_on === null
+      ? query.is('ga4_last_evaluated_on', null)
+      : query.eq('ga4_last_evaluated_on', cycle.ga4_last_evaluated_on);
+
+    const { data, error } = await query.select('id').maybeSingle();
+    if (error) return { status: 'error', message: error.message };
+    return data ? { status: 'claimed' } : { status: 'lost' };
+  }
+
+  /**
+   * 確保で書いた値を抽出時の値へ戻す。条件は GA4 専用列の ga4_last_evaluated_on が当日のまま。
+   * updated_at は同じ行を毎時0分に GSC 評価も更新するため、確保の識別に使えない（戻らずに
+   * 再試行が次の評価周期まで飛ぶ）。手動実行が評価を終えて当日を書いた直後にここへ来ると
+   * その値も戻すが、already_running の判定から戻すまでの間に手動実行が完了した場合に限られる。
+   */
+  private async releaseClaim(cycle: DueEvaluationRow, todayJst: string): Promise<void> {
+    const { error } = await this.pendingClient()
+      .from('gsc_article_evaluations')
+      .update({
+        ga4_last_evaluated_on: cycle.ga4_last_evaluated_on,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', cycle.id)
+      .eq('user_id', cycle.user_id)
+      .eq('ga4_last_evaluated_on', todayJst);
+    if (error) {
+      console.error('[ga4ContentEvaluationBatchService] Failed to release evaluation claim', {
+        cycleId: cycle.id,
         message: error.message,
       });
     }
