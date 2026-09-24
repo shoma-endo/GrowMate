@@ -293,6 +293,7 @@ takt -w grill-to-gherkin -t "実装したい機能の概要"
 
 - Vercel を想定。一部の Route Handler は Node.js Runtime を明示し、その他は Next.js のデフォルト Runtime を使用
 - **Vercel のプランは Pro**（チーム `shoma-endo's projects`。2026-09-24 にダッシュボードで確認）。仕様書・レビューでは確認済みの前提として扱ってよい。Pro であることに依存しているもの: `maxDuration` 800 秒のルート、Vercel Cron の毎時・10 分間隔の起動（Hobby は1日1回まで）、runtime log の保持1日
+- **Supabase のプランは Pro**（プロジェクト `rnmljzdsncucvkcmoaun`。本番と開発で共有。2026-09-25 に確認）。仕様書・レビューでは確認済みの前提として扱ってよい
 - 定期起動（Vercel Cron、[`vercel.json`](vercel.json)。UTC）: 毎時 `gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion`、10 分間隔 `content-annotation-summary`（`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）。失敗は Vercel の runtime log で確認する。経緯は [`docs/plans/vercel-cron-migration-spec.md`](docs/plans/vercel-cron-migration-spec.md)
 - ローカル品質ゲート: `npm run verify`（`audit` → `lint` → `test:coverage` → `build` → `knip` を順次実行）
 - husky フック: **pre-commit = `lint` + staged 分の docs パス参照・UI 文言チェック + 仕様書図解 HTML 追従、pre-push = takt pin ガード + `test:coverage` + `build` + `knip`**（pre-push の本体は [`scripts/pre-push.sh`](scripts/pre-push.sh)。husky はフックを `sh` で起動しシェバンを無視するため、bash 専用構文を `.husky/pre-push` に直接書かない）（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
