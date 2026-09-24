@@ -357,7 +357,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
                 : undefined;
           await this.advanceCooldown(cycle.id, cycle.user_id, freshContentScore);
         } else {
-          await this.releaseClaim(cycle, claim.claimedAt);
+          await this.releaseClaim(cycle, todayJst);
         }
 
         if (articleResult.outcome === 'evaluated' || articleResult.outcome === 'narrative_failed') {
@@ -652,11 +652,10 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
   private async claimArticle(
     cycle: DueEvaluationRow,
     todayJst: string
-  ): Promise<{ status: 'claimed'; claimedAt: string } | { status: 'lost' } | { status: 'error'; message: string }> {
-    const claimedAt = new Date().toISOString();
+  ): Promise<{ status: 'claimed' } | { status: 'lost' } | { status: 'error'; message: string }> {
     let query = this.pendingClient()
       .from('gsc_article_evaluations')
-      .update({ ga4_last_evaluated_on: todayJst, updated_at: claimedAt })
+      .update({ ga4_last_evaluated_on: todayJst, updated_at: new Date().toISOString() })
       .eq('id', cycle.id)
       .eq('user_id', cycle.user_id);
     query = cycle.ga4_last_evaluated_on === null
@@ -665,15 +664,16 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
 
     const { data, error } = await query.select('id').maybeSingle();
     if (error) return { status: 'error', message: error.message };
-    return data ? { status: 'claimed', claimedAt } : { status: 'lost' };
+    return data ? { status: 'claimed' } : { status: 'lost' };
   }
 
   /**
-   * 確保で書いた値を抽出時の値へ戻す。条件は「確保時に書いた updated_at のまま」。
-   * 評価中に手動実行（advanceCooldownForManualRun）が当日の値を書いた場合は updated_at が
-   * 変わっているので戻さない（戻すと次の毎時で同じ評価とメールを繰り返す）。
+   * 確保で書いた値を抽出時の値へ戻す。条件は GA4 専用列の ga4_last_evaluated_on が当日のまま。
+   * updated_at は同じ行を毎時0分に GSC 評価も更新するため、確保の識別に使えない（戻らずに
+   * 再試行が次の評価周期まで飛ぶ）。手動実行が評価を終えて当日を書いた直後にここへ来ると
+   * その値も戻すが、already_running の判定から戻すまでの間に手動実行が完了した場合に限られる。
    */
-  private async releaseClaim(cycle: DueEvaluationRow, claimedAt: string): Promise<void> {
+  private async releaseClaim(cycle: DueEvaluationRow, todayJst: string): Promise<void> {
     const { error } = await this.pendingClient()
       .from('gsc_article_evaluations')
       .update({
@@ -682,7 +682,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
       })
       .eq('id', cycle.id)
       .eq('user_id', cycle.user_id)
-      .eq('updated_at', claimedAt);
+      .eq('ga4_last_evaluated_on', todayJst);
     if (error) {
       console.error('[ga4ContentEvaluationBatchService] Failed to release evaluation claim', {
         cycleId: cycle.id,

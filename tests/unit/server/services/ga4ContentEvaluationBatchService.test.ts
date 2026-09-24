@@ -753,7 +753,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     expect(mocks.run).not.toHaveBeenCalled();
   });
 
-  it('クールダウンを進めない結果は、確保時の updated_at の条件付き更新で抽出時の NULL に戻す', async () => {
+  it('クールダウンを進めない結果は、当日値の条件付き更新で抽出時の NULL に戻す', async () => {
     const dueRow = {
       id: 'cycle-release',
       user_id: 'user-release',
@@ -780,8 +780,8 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     expect(releaseUpdate).toMatchObject({ ga4_last_evaluated_on: null });
     expect(mocks.updateFilters[1]).toContainEqual(['id', 'cycle-release']);
     expect(mocks.updateFilters[1]).toContainEqual(['user_id', 'user-release']);
-    // 評価中に手動実行が当日の値を書いた場合は updated_at が変わるので戻さない
-    expect(mocks.updateFilters[1]).toContainEqual(['updated_at', claimUpdate?.updated_at]);
-    expect(mocks.updateFilters[1]).not.toContainEqual(['ga4_last_evaluated_on', todayJst]);
+    expect(mocks.updateFilters[1]).toContainEqual(['ga4_last_evaluated_on', todayJst]);
+    // updated_at は GSC 評価も同じ行で更新するため、確保の識別に使わない
+    expect(mocks.updateFilters[1]?.some(([column]) => column === 'updated_at')).toBe(false);
   });
 });
