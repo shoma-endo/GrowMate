@@ -132,8 +132,15 @@ class GoogleAdsNegativeKeywordsSuggestionService {
       // 恒久的に失敗するユーザー（未接続・メールバウンス等）が同日中ずっと再実行される。
       // 立てられなかった場合は同日中の重複送信を防げないため、処理自体を行わない。
       if (!force) {
-        const claimed = await this.markAttempt(userId, todayJst);
-        if (!claimed) {
+        const claimResult = await this.markAttempt(userId, todayJst);
+        if (claimResult === 'already_claimed') {
+          console.info('[GoogleAdsNegativeKeywordsSuggestionService] Attempt already claimed', {
+            userId,
+            todayJst,
+          });
+          return { success: true, skipped: true };
+        }
+        if (claimResult === 'failed') {
           return {
             success: false,
             error: ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED,
@@ -513,16 +520,14 @@ class GoogleAdsNegativeKeywordsSuggestionService {
     });
   }
 
-  /** @returns 更新に成功したか */
-  private async markAttempt(userId: string, todayJst: string): Promise<boolean> {
-    const result = await this.supabaseService.updateGoogleAdsNegativeKeywordsSettings(userId, {
-      last_attempted_on: todayJst,
-    });
+  /** @returns 当日の試行枠を確保できたか、既に確保済みか、DB更新に失敗したか */
+  private async markAttempt(userId: string, todayJst: string): Promise<'claimed' | 'already_claimed' | 'failed'> {
+    const result = await this.supabaseService.claimGoogleAdsNegativeKeywordsAttempt(userId, todayJst);
     if (!result.success) {
       console.error('[GoogleAdsNegativeKeywordsSuggestionService] Failed to mark attempt:', result.error);
-      return false;
+      return 'failed';
     }
-    return true;
+    return result.data ? 'claimed' : 'already_claimed';
   }
 
   /** @returns 更新に成功したか */

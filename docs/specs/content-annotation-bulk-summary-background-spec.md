@@ -38,24 +38,24 @@
 | 指標 | 現状 | 目標 | 測定方法 | 測定時期 |
 | --- | --- | --- | --- | --- |
 | 300件の要約完了に必要な利用者の操作回数 | 約10回 | **1回** | 実データでの手動確認 | リリース直後 |
-| 300件の要約完了までの所要時間 | 約2時間（張り付き） | **約30〜60分**（放置可） | cron 実行ログの `batch_completed` | リリース直後 |
+| 300件の要約完了までの所要時間 | 約2時間（張り付き） | **約90〜100分**（放置可） | cron 実行ログの `batch_completed` | リリース直後 |
 | 実行後にタブを開いたまま待つ必要 | あり（約12分/回） | なし | 手動確認 | リリース直後 |
 
-> **「約30〜60分」の前提（F-17 / F-18）**: 未要約267件・1起動あたり60〜70件・単独利用者。1起動は最大約12.2分（730秒）かかるため 10 分間隔でも実質は直列化し、`4起動 × max(10分, 12.2分) ≒ 49分`（算式は §11 ALT-002）。claim は `p_limit default 1`（§9）なので、**複数の利用者が同時に起票した場合、後発のジョブは先発の完走まで待つ**（1000件なら数時間）。この指標は単独利用者を前提にした目安であり、時刻を保証しない（R-B03）。
+> **「約90〜100分」の前提（F-17 / F-18）**: 未要約267件・1起動あたり約66件・単独利用者。必要な5起動の処理は各最大約13.3分かかるため、10分後に重なって始まる起動は既存 claim により同じジョブを取れず、次の20分時点の起動で続きから処理する。`4 × 20分 + 約11〜13.3分 ≒ 91〜93分`（算式は §11 ALT-002）。複数利用者のジョブは別々の起動が重なれば並行して進む（R-B03）。この指標は目安であり、時刻を保証しない。
 
 ## 2. 利用者・関係者・利用シナリオ
 
 | 区分 | 対象 | 期待すること・責任 |
 | --- | --- | --- |
 | 利用者 | `paid` / `admin` ロールの利用者 | 一覧から対象を選び実行する。完了はメールで受け取る |
-| 運用担当 | GrowMate 運用 | cron の失敗を GitHub Actions の通知で検知する |
+| 運用担当 | GrowMate 運用 | cron の失敗を Vercel のログで確認する。手動実行は GitHub Actions の `workflow_dispatch` を使う |
 | 管理者・承認者 | PO | 対象範囲・通知方針の承認 |
-| 外部サービス・連携先 | Anthropic API / WordPress / Resend / GitHub Actions | 要約生成・本文取得・メール送信・定期起動 |
+| 外部サービス・連携先 | Anthropic API / WordPress / Resend / Vercel Cron / GitHub Actions | 要約生成・本文取得・メール送信・定期起動・手動実行 |
 
 ### 主な利用シナリオ
 
 1. **`paid` の利用者が**、**WordPress インポート直後（未要約が267件ある状態）で**、一覧の全選択から「AIで要約」を実行し、画面を閉じる。
-2. **同じ利用者が**、**約30〜60分後に届いたメールで**、成功・失敗・スキップの件数を確認する。
+2. **同じ利用者が**、**約90〜100分後に届いたメールで**、成功・失敗・スキップの件数を確認する。
 3. **同じ利用者が**、**処理中に `/analytics` を開いたとき**、実行中である旨と進捗（処理済み/全体）を確認する。
 
 ## 3. 業務要件と業務フロー
@@ -76,7 +76,7 @@
         → Server Action はジョブを1件起票して即応答（「バックグラウンドで実行します」）
         → 利用者はタブを閉じてよい
 
-10分ごと → GitHub Actions → /api/cron/content-annotation-summary
+10分ごと → Vercel Cron（vercel.json）→ /api/cron/content-annotation-summary
         → 未通知で終了済み（completed / failed）のジョブがあれば完了メールを送る（BR-B06 の掃き出し）
         → 未処理ジョブを1件 claim（排他。job_token を発行）
         → 時間予算(760秒。新規着手の実効打ち切りは経過約640秒)の範囲で、配列順に3件ずつのチャンクで処理
@@ -119,7 +119,7 @@
   - 例外: 自動更新（ポーリング）はしない。ページを再読み込みしたときに最新化される。
 - ルール ID: **BR-B08 実行直前に対象条件を再判定する（親仕様 BR-01 の継承）**
   - ルール: cron は、**チャンク（最大3件）に着手する直前にその3件の対象記事を取り直し**（＝`generateSummary` 呼び出しの直前）、**親仕様 BR-01 / BR-02 の条件（8項目がすべて空・WordPress 連携済み・`user_id` 一致）**を再判定する。満たさない件は `generateSummary` を呼ばず `skipped_count` に計上する（`user_id` 不一致・不在だけは `NOT_OWNED` として失敗に計上。BR-B02 例外）。判定には既存の純関数 `isSummaryEmpty` / `isWordPressLinkedForSummary`（`src/server/lib/content-annotation-bulk-summary.ts`）を使う。
-  - 理由: 親仕様 BR-01 は「単記事コアは充填チェックを持たず `contentAnnotationSummaryService.saveSummary` は無条件 UPDATE なので、取り直さないと手入力値を黙って上書きし、履歴が無く復旧できない」ためにこの再判定を置いている。同期版は「起票＝実行」で間隔が実質ゼロだったが、**背景化により起票から実行まで 30〜60 分（cron 遅延・他利用者のジョブ待ちならさらに長い）開く**。その間に利用者が `/analytics` で8項目を手入力しうるため、再判定を落とすと親仕様が防いでいた事故がそのまま起きる。BR-B09 の再開時の二重 LLM 課金も、この再判定が併せて抑止する。
+  - 理由: 親仕様 BR-01 は「単記事コアは充填チェックを持たず `contentAnnotationSummaryService.saveSummary` は無条件 UPDATE なので、取り直さないと手入力値を黙って上書きし、履歴が無く復旧できない」ためにこの再判定を置いている。同期版は「起票＝実行」で間隔が実質ゼロだったが、**背景化により起票から実行まで複数の cron 起動間隔が開く**。その間に利用者が `/analytics` で8項目を手入力しうるため、再判定を落とすと親仕様が防いでいた事故がそのまま起きる。BR-B09 の再開時の二重 LLM 課金も、この再判定が併せて抑止する。
   - 例外: なし。起票時のフィルタ結果を根拠に再判定を省略してはならない。また、**ジョブ全体の対象記事をループ前に一括取得して振り分ける形（同期版 `src/server/actions/contentAnnotationBulkSummary.actions.ts:188-246`）は採らない**。採ると再判定が最大12分前（1起動分）のスナップショットに基づくことになり、「直前」の要件を満たさない（§14 手順2）。
 - ルール ID: **BR-B09 進捗はチャンク境界で保存し、カーソルを着手済みの記事より先へ進めない**
   - ルール: `processed_count` / `succeeded_count` / `failed_count` / `skipped_count` / `failed_by_code` は、**BR-B05 のチャンク（最大3件）が全件完了した時点でまとめて**ジョブ行へ書き戻す（1件ごとでも、予算切れ時にまとめてでもない）。`processed_count` は**完了したチャンクの末尾の位置**を指すカーソルであり、**処理中（in-flight）の記事を跨いで先へ進めない**。更新は claim 時に発行した `job_token` を `.eq('job_token', ...)` で条件に付け、別起動に回収済みのジョブへ書き込まない。
@@ -146,7 +146,7 @@
 - AI モデル: **要約に使うモデルを `claude-sonnet-4-6` から `claude-sonnet-5` へ移行する**（クライアント合意 2026-09-04）。`MODEL_CONFIGS.content_annotation_ai_summary`（`src/lib/constants.ts:117-121`）を共有定数 `ANTHROPIC_BASE`（`:48`）から切り離して要約専用のモデル設定にし、あわせて `llmChat` に `thinking` を渡す口を1つ追加する（**省略するとアダプティブ思考が既定で有効になり、思考トークンが出力料金で課金されるため**。§8「AI機能の追加観点」／§10 制約条件）。他機能のモデルは変更しない
 - データ・DB: ジョブテーブル1つと、排他取得用 RPC 1つ（マイグレーション）、`npm run supabase:types` の再生成
 - 権限・ロール: 起票は `admin` / `paid` のみ（`canWriteGa4` 流用）。進捗の閲覧は起票者本人のみ。cron は `CRON_SECRET` + Service Role + `user_id` 明示スコープ（§6 権限）
-- 定期実行: 10分間隔の GitHub Actions ワークフロー1本、`CRON_CONFIGS` への登録（値は §9）
+- 定期実行: Vercel Cron（`vercel.json`）で10分間隔に起動。`CRON_CONFIGS` にも登録する（値は §9）。GitHub Actions は `workflow_dispatch` による手動実行に使う
 - 運用・監視: 既存の cron 観測基盤（`cron-observability.ts` / `invoke-cron.sh` の `count-batch` profile）に載せる。専用の監視ダッシュボードは作らない（Non-goals の停止機構と同じ理由）
 
 ### Non-goals（今回の対象外）
@@ -159,7 +159,7 @@
 - **Message Batches API（50%割引）の利用**: 投入・ポーリング・結果回収が別実装になるため今回は採らない。コスト削減が要件化された場合に再検討する（→ OPEN-B02）。
 - **評価サイクル一括開始のバックグラウンド化**: LLM を使わず1回で1000件処理できるため不要（→ OPEN-B03）。
 - **停止機構（feature flag / 環境変数 / 専用設定テーブル）**: 要件・クライアント合意になく、既存手段（デプロイ巻き戻し、当該ボタンの非表示）で止められるため作らない（`CLAUDE.md` Core Rules / MVP 最優先）。
-- **複数ジョブの同時実行・優先度制御**: BR-B03 により1利用者1ジョブ。利用者間の順序は claim 順（作成日時順）とし、優先度は持たない。
+- **優先度制御・任意の並列度制御**: BR-B03 により1利用者1ジョブ。各 cron 起動は1ジョブを claim し、Vercel Cron の起動が重なると別ジョブが並行処理されうる（R-B03）。優先度制御は持たない。
 - **起票時の WordPress 連携チェック（事前拒否）**: cron 実行時に本文取得が成立しない利用者を、起票の時点で検出して弾く仕組みは作らない。**クライアント回答（2026-09-04 / Q-B01）で「(b) 実行して失敗として計上する」と決定**したため。起票は従来どおり通し、失敗は完了メールで理由と次アクション（再連携の導線）とともに伝える（BR-B06 / BR-B10 / AC-B16）。
 - **Anthropic 429 の待機・自動再試行**: `retry-after` を待って同一起動内で再試行する経路も、未処理として次回起動へ回す経路も作らない。**クライアント回答（2026-09-04 / Q-B02）で「(a) 失敗として計上する」と決定**したため（BR-B11）。
 - **失敗した記事の自動リトライ**: 決定的失敗（本文サイズ超過など）は再実行しても同じ結果になるため、自動リトライはしない。利用者が再度実行する。ジョブ単位の `attempt_count` 上限3は、想定外の例外で無限に claim され続けるのを止めるための上限であり、記事単位のリトライ機構ではない。**本仕様の `attempt_count` は「前進の無い claim が連続した回数」であって claim の総回数ではない**（BR-B09 / §9 データ表）。本仕様のジョブは設計上、複数回の cron 起動にまたがって同じ行を claim し直すため（BR-B04 例外 / FR-B03）、claim 総回数を数えると 267 件（約4起動）・1000 件（約15起動）のジョブが**1件も残していないのに `failed` に落ちる**（§1 の成功指標が構造的に成立しない）。雛形 `gsc_suggestion_jobs` は「1行＝1回の LLM 呼び出しで完結する単発ジョブ」なので「claim 回数＝失敗回数」が成り立つが、再開型の本仕様では成り立たないため、意味だけを読み替えて踏襲する。
@@ -259,7 +259,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
   - 起票: 1利用者につき未完了ジョブは1件（部分ユニークインデックス。BR-B03）。
   - claim: `for update skip locked` で排他。回収されたジョブへの遅延書き込みは `job_token` 条件で弾く（BR-B09）。
   - 進捗: チャンク（最大3件）境界で保存するため、再開時に再処理されうるのは**直近の未完了チャンクの最大3件だけ**で、それ以前の範囲は処理し直さない（BR-B09）。再処理された記事は BR-B08 の再判定でスキップになり、LLM 課金は発生しない。
-  - メール: `notified_at` が非 NULL なら送らない（BR-B06 / AC-B05）。印は「**このジョブについて通知の試行を終えたとき**」＝送信成功時に加えて**宛先が無く送れなかったとき**にも `.is('notified_at', null)` を条件に付ける（送信失敗のときだけ付けない。§9 経路2 / F-30）。防御は `maxRetries: 1` / `notified_at` / Resend の `Idempotency-Key`（ジョブ ID）の3段で、**送信成功後・`notified_at` 更新前のハードキルを塞ぐのは3段目だけ**（§9「`EmailService` への追加」）。起動の重なりによる二重送信は workflow の `concurrency`（§10）でも抑止する。
+  - メール: `notified_at` が非 NULL なら送らない（BR-B06 / AC-B05）。印は「**このジョブについて通知の試行を終えたとき**」＝送信成功時に加えて**宛先が無く送れなかったとき**にも `.is('notified_at', null)` を条件に付ける（送信失敗のときだけ付けない。§9 経路2 / F-30）。防御は `maxRetries: 1` / `notified_at` / Resend の `Idempotency-Key`（ジョブ ID）の3段で、**送信成功後・`notified_at` 更新前のハードキルを塞ぐのは3段目だけ**（§9「`EmailService` への追加」）。
 
 **集計の定義（完了メール / 進捗表示で使う）**: 現行のジョブ結果と同じ4区分（成功・失敗・スキップ・未実行）＋失敗理由の内訳（`failed_by_code`）。失敗理由コードは既存集合に **`SUMMARY_WP_REAUTH_REQUIRED` / `SUMMARY_AI_RATE_LIMITED` の2件を追加**する（BR-B10）。旧同期版の文言生成関数は背景実行と共用せず、旧同期版一括経路の削除後も共用するのは失敗ラベル辞書 `FAILURE_LABELS` のみとする。**次アクションの文言は完了メール専用に持つ**（§9「完了メールの件名・本文」）。
 
@@ -472,7 +472,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 項目 | 要件 | 根拠・備考 |
 | --- | --- | --- |
 | 1回の cron 起動の実行時間 | `maxDuration = 800` 秒、時間予算 **760 秒**（`CONTENT_ANNOTATION_BULK_SUMMARY_TIME_BUDGET_MS` = `(800 - 40) * 1000`）。次の1件に着手してよいかは `computeSummaryItemBudgetMs(elapsedMs)` が `null` を返さないことで判定する。**`elapsedMs` の起点はルートハンドラ開始時刻**で、claim 前の完了メール掃き出しの所要も含む（BR-B04 / §9） | 既存 `CONTENT_ANNOTATION_BULK_SUMMARY_*` を数値ごと踏襲する。実効の着手打ち切りは経過約 **640 秒**、着手済み1件を含む最遅完了は **730 秒**（BR-B04 の導出値であり、実装が比較する閾値ではない） |
-| 起動間隔 | 10分（`*/10 * * * *`） | 267件を約30〜60分で完了させるため（算式は §11 ALT-002） |
+| 起動間隔 | 10分（`*/10 * * * *`） | 267件を約90〜100分で完了させるため（Vercel の起動重なりを含む。算式は §11 ALT-002） |
 | 1回の処理件数 | 並列3で 60〜70件（1件約30秒の実測ベース）。**目安であり保証値ではない** | 実測値: 730秒 ÷ 24件 ≒ 30.4秒/件（直列時）。BR-B05 のチャンク境界で3件が揃うのを待つため、実効スループットは理論値（並列3の連続投入）より落ちる。実データ検証で実測する（§13） |
 | 1ジョブの上限 | 1000件（`MAX_BULK_SUMMARY_TARGETS`） | 既存の上限を踏襲。`db-max-rows = 1000`（`docs/context/db-row-limits-and-data-truncation.md`）とも整合 |
 | LLM のレート制限 | Anthropic のレート上限は**組織単位**。**要約を `claude-sonnet-5` へ移すと、Sonnet 4.x（4.6 と 4.5 の合算バケット）とは別のレート上限バケットに乗る**ため、`claude-sonnet-4-6` のまま残るチャット・GSC提案 cron・Google Ads 分析等とレート枠を奪い合わなくなる（**モデル移行の副次的な利点であり、この分離を目的とした実装は行わない**） | 公式（確認日 2026-09-04、https://platform.claude.com/docs/en/api/rate-limits ）。同ページに「Claude Sonnet 5 has a separate rate limit and is not part of this combined bucket.」とある（引用と解釈は分離。解釈＝上の要件欄）。同ページの上限表では **`claude-sonnet-5` も Sonnet 4.x と同値**（Start: 1,000 RPM / 2,000,000 ITPM / 400,000 OTPM。Build: 5,000 / 5,000,000 / 1,000,000、Scale: 10,000 / 10,000,000 / 2,000,000）で、**別バケットなので枠は重複して使える**。月次 spend cap は Start $500 / Build $1,000。**未確認なのは GrowMate の組織 usage tier だけ**（429 の扱いは Q-B02 の回答で確定済みなので判断のブロッカーではない。tier は §13 の実データ検証で消費量を実測するときの照合材料） |
@@ -537,7 +537,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 - `processing` のまま **20分**以上動いていない行は回収対象に含める（関数がハードキルされた場合の復旧。しきい値の根拠は §8「失敗時の再実行」）。
 - `attempt_count` が**3に達している行（`>= 3`）**は claim せず `failed` に落とす（雛形と同値のしきい値）。**RPC 側は雛形どおり加算するだけで、0 へのリセットはアプリ層（進捗保存）が行う**（BR-B09）。RPC は「前進があったか」を知らないため、ここに判定を持ち込まない。雛形と同じく**この経路で `failed` になった行は `return query` で返さない**ため、アプリ層はその行を一度も見ない。完了メールは下の「完了メールの起動経路」の掃き出しが送る（AC-B15）。
 - `security definer` / `set search_path = public`、実行権限は `service_role` のみ（`anon` 不可を migration 内で検査する。`20260831010000` の前例に倣う）。
-- `p_limit default 1` なので**1起動につき1ジョブ**。複数利用者のジョブは直列化する（§1 成功指標の注記 / Non-goals「複数ジョブの同時実行」）。
+- `p_limit default 1` なので**1起動につき1ジョブ**。10分ごとの Vercel Cron 起動が重なる場合、別々のジョブが並行して処理されうる（R-B03）。
 
 **cron 定義値**（`src/server/lib/cron-definitions.ts` の `CRON_CONFIGS` へ追加。既存エントリは全項目必須で、`tests/unit/server/lib/cron-config-consistency.test.ts` が workflow / route / `invoke-cron.sh` との一致を検査する）
 
@@ -555,7 +555,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 **cron ルートのレスポンス形（実装契約）**
 
-`scripts/invoke-cron.sh` の `validate_count_batch()`（`:123-158`）が読むのは `success` / `data.failed` / `data.skipped` / `data.skippedDueToLimit` / `data.stoppedReason` の5キーで、**job を FAIL にするのは `success != true` と `data.failed > 0` の2つだけ**（他は `::warning::` 止まり）。本機能は記事単位の失敗が正常系（AC-B10 / R-B01: WordPress.com 利用者のジョブが全件失敗しうる）なので、記事単位の失敗数を素直に `data.failed` に載せると**1件でも失敗した起動がすべて GitHub Actions の job 失敗**になり、運用担当（§2）への通知が常時鳴る。逆にキーを載せなければジョブ処理そのものの故障も検知できない。そこで次の形で返す（新規 profile は追加せず、`count-batch` のセマンティクスにレスポンスを合わせる）。
+`scripts/invoke-cron.sh` の `validate_count_batch()`（`:123-158`）が読むのは `success` / `data.failed` / `data.skipped` / `data.skippedDueToLimit` / `data.stoppedReason` の5キーで、**手動実行時に job を FAIL にするのは `success != true` と `data.failed > 0` の2つだけ**（他は `::warning::` 止まり）。本機能は記事単位の失敗が正常系（AC-B10 / R-B01: WordPress.com 利用者のジョブが全件失敗しうる）なので、記事単位の失敗数を素直に `data.failed` に載せると**1件でも失敗した手動実行が GitHub Actions の job 失敗**になり、運用担当（§2）への通知が常時鳴る。逆にキーを載せなければジョブ処理そのものの故障も検知できない。そこで次の形で返す（新規 profile は追加せず、`count-batch` のセマンティクスにレスポンスを合わせる）。定期実行の失敗は Vercel のログで確認する。
 
 | キー | 内容 | 検証スクリプトでの扱い |
 | --- | --- | --- |
@@ -566,7 +566,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | `data.processedJobs` / `data.carriedOver` | この起動で処理したジョブ数（`0` は空振り＝正常）と、時間予算で次回に持ち越したか（boolean） | 参照されない |
 | `data.skipped` / `data.skippedDueToLimit` / `data.stoppedReason` | **キーを載せない**。時間予算での持ち越しは本仕様の正常系（BR-B04）であり、載せると毎起動で `::warning::` が出て慢性化する。持ち越しは `data.carriedOver`（boolean）に載せる | 省略時は 0 / 空として扱われ、警告は出ない |
 
-**前例からの意図的な差分（実装時に必ず外すもの）**: 同じ `count-batch` profile の実在実装 `src/server/services/ga4ContentEvaluationBatchService.ts:385` は **`result.failed = result.articlesFailed + result.emailsFailed;`** と、記事単位の失敗を `failed` に**含める**構成を採っている。本機能は記事単位の失敗が正常系（AC-B10 / R-B01: WordPress.com 利用者のジョブが全件失敗しうる）なので、**`data.failed` に記事単位を含めない**。§14 手順3 で同ファイルを雛形に写すときは、**この合算式の `articlesFailed` の項を必ず外す**こと（写したままにすると、仕様レビューで解消したはずの「記事1件の失敗で毎回 GitHub Actions が赤くなる」状態が実装で復活する）。
+**前例からの意図的な差分（実装時に必ず外すもの）**: 同じ `count-batch` profile の実在実装 `src/server/services/ga4ContentEvaluationBatchService.ts:385` は **`result.failed = result.articlesFailed + result.emailsFailed;`** と、記事単位の失敗を `failed` に**含める**構成を採っている。本機能は記事単位の失敗が正常系（AC-B10 / R-B01: WordPress.com 利用者のジョブが全件失敗しうる）なので、**`data.failed` に記事単位を含めない**。§14 手順3 で同ファイルを雛形に写すときは、**この合算式の `articlesFailed` の項を必ず外す**こと（写したままにすると、手動実行の GitHub Actions job が記事1件の失敗で赤くなる）。定期実行の失敗は Vercel のログで確認する。
 
 - `data.emailsFailed` は `data.failed` に**含める**（＝一時的な送信失敗でも job は赤くなる）。承知のうえでそうする。送信失敗は次回起動の掃き出しで自己回復するが、24時間の窓（BR-B06 例外）を過ぎると通知が届かないまま終わるため、運用担当が気づける必要がある。
 - 集計キー名は前例（`articlesFailed` / `emailsSent` / `emailsSkipped` / `emailsFailed`。`ga4ContentEvaluationBatchService.ts:60-65,353-355`）の**複数形に揃える**（`project-naming`: 既存の慣例に合わせる）。成功件数だけは前例が `articlesEvaluated` だが、本機能は「評価」ではなく要約なので `articlesSucceeded` とする。
@@ -583,7 +583,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | Anthropic API | 要約生成 | 既存の `llmChat` 経由。**モデルは `claude-sonnet-5`**（本仕様で `claude-sonnet-4-6` から移行。要約のモデル設定を `ANTHROPIC_BASE` から切り出す）。**`thinking: { type: 'disabled' }` を明示指定**する（省略するとアダプティブ思考が既定で有効になり出力料金が上乗せされる。§8）。レート上限は組織単位だが、Sonnet 5 は Sonnet 4.x とは別バケット | 記事単位で失敗に計上し、ジョブは続行（AC-B10）。**429 は待機せず `SUMMARY_AI_RATE_LIMITED` として失敗に計上**（BR-B11 / AC-B17。クライアント回答 2026-09-04）。**JSON が壊れた場合は既存どおり `SUMMARY_PARSE_FAILED`**（モデル移行の回帰はここに出る。§13） | https://platform.claude.com/docs/en/api/rate-limits ・ https://platform.claude.com/docs/en/about-claude/pricing （確認日 2026-09-04。引用は §8 / §12 / §16）。単価・レート制限・トークナイザは上記の公式ページ、`thinking` の既定挙動とサンプリングパラメータの可否は **Claude Code バンドル skill `claude-api`（リポジトリ内 `.agents/skills` には存在しない）**（いずれも §16「公式ドキュメント照合」に verbatim 引用） |
 | WordPress（self-hosted / WordPress.com） | 本文取得 | `fetchWpPostContentLive`。**cron 実行時はブラウザの Cookie が無い** | 本文取得失敗は失敗に計上（LLM 呼び出し前なので LLM 課金は発生しない）。**cookie 無しでアクセストークンを解決できない利用者の分は `SUMMARY_WP_REAUTH_REQUIRED`、それ以外は `SUMMARY_CONTENT_FETCH_FAILED`**（BR-B10 / 下の「本文取得の可否判定」）。**起票時には弾かない**（クライアント回答 2026-09-04 / Q-B01 = (b)） | **未照合**（`developer.wordpress.com` / `developer.wordpress.org` が実行環境の egress proxy にブロックされ取得不可。§16）。以下は実コードのみを根拠とする |
 | Resend | 完了メール | 既存 `EmailService` に**新規メソッドを追加**（`idempotencyKey` 付き。下の「`EmailService` への追加」）。宛先は `public.users.email` | 送信失敗時は `notified_at` を更新せず、次回の cron 起動の**掃き出し経路**が `created_at` 24時間以内に限って再送する（下の「完了メールの起動経路」） | **社内に verbatim の公式記録あり**（`docs/specs/ga4-content-evaluation-spec.md` §16。URL・確認日 2026-08-19・引用つき。冪等キーとレート上限を本仕様に反映済み）。**web での再取得は egress ブロックのため未実施**（§16） |
-| GitHub Actions | 10分間隔の起動 | 新規ワークフロー1本（`CRON_SECRET` を渡して `scripts/invoke-cron.sh` を実行） | 失敗は GitHub Actions の通知で運用担当が検知する（§2）。何を失敗とみなすかは上の「cron ルートのレスポンス形」 | **一部確認済み**: リポジトリが public であることは 2026-09-04 に GitHub API で確認（§10）。`schedule` の遅延・ドロップ・60日無活動での自動停止の挙動は**未照合**（`docs.github.com` がブロック。§16 / §10 制約条件） |
+| Vercel Cron | 10分間隔の定期起動 | `vercel.json` から GET。認証は `CRON_SECRET` の Bearer ヘッダー | 失敗は Vercel のログで確認する | Vercel 公式照合は `docs/plans/vercel-cron-migration-spec.md` §9 |
+| GitHub Actions | 手動実行 | `workflow_dispatch` から `CRON_SECRET` を渡して `scripts/invoke-cron.sh` を実行 | 失敗は GitHub Actions の通知で検知する。判定条件は上の「cron ルートのレスポンス形」 | workflow_dispatch のみ。定期スケジュールは Vercel Cron |
 
 **cron からの `generateSummary` 呼び出し経路（実装契約）**
 
@@ -717,7 +718,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 ### 技術前提
 
 - Vercel Pro（関数の `maxDuration` 最大800秒）。**公式ドキュメントは未照合**（`vercel.com` が実行環境の egress proxy にブロック。§16）。既存 `app/analytics/page.tsx` と `googleAdsNegativeKeywords` cron が 800 秒で運用できている実績を根拠とする。
-- cron は GitHub Actions からの HTTP 起動（既存 `.github/workflows/hourly-cron.yml` と同じ方式。`scripts/invoke-cron.sh` を呼ぶ）。10分間隔は別ワークフローとして追加する。
+- cron は Vercel Cron（`vercel.json`）からの HTTP 起動。GitHub Actions の `workflow_dispatch` は手動実行として残し、`scripts/invoke-cron.sh` を呼ぶ。
 - 既存の cron 観測基盤（`src/server/lib/cron-definitions.ts` / `cron-observability.ts`）と、その整合性テスト（`tests/unit/server/lib/cron-config-consistency.test.ts`）に載せる。
 
 #### 再利用する既存実装
@@ -744,11 +745,10 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 ### 制約条件
 
-- GitHub Actions のスケジュールは数分程度ずれることがある（10分間隔は「おおむね10分」）。高負荷時の遅延・ドロップ、および60日無活動時の自動無効化の条件は**公式未照合**（§16）。
+- Vercel Cron は実行中でも次の起動を開始しうる。最大約13.3分の処理が10分間隔の次回起動と重なり、既存 workflow の `concurrency` は Vercel Cron の起動には適用されない（`docs/plans/vercel-cron-migration-spec.md` §6 R-03）。
 - **リポジトリは public であることを確認済み**（2026-09-04、GitHub API の repository オブジェクトで `private=false` / `visibility=public`）。したがって §11 ALT-002 の前提どおり、空振り起動（1日約144回）の実行時間は課金されない。将来 private 化する場合の再検討条件と算術は ALT-002「将来変更する条件」に置く。
-- **新規ワークフローにも `concurrency` を張る**: 起動間隔10分 < 1回の最大実行13.3分なので実行が重なりうる。既存 `hourly-cron.yml` と同型に `concurrency: { group: ..., cancel-in-progress: false }` を設定する。
-- **`if` の schedule 文字列も新しい cron 式に合わせる**: 既存 `.github/workflows/hourly-cron.yml` は各ステップに `if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 * * * *'` を置いている（`:73` / `:79`）。同型でコピーして `'0 * * * *'` のままにすると、**`workflow_dispatch` では動くのに定期実行だけ何もしない**ワークフローになる。新規ワークフローでは `github.event.schedule == '*/10 * * * *'` に直す（検証は §14 チェックポイント「手順3完了時」）。
-- **整合性テストの前提が変わる**: `tests/unit/server/lib/cron-config-consistency.test.ts` は `readFileSync('.github/workflows/hourly-cron.yml')` をハードコードし、`CRON_CONFIGS` の宣言と workflow matrix を `toStrictEqual` で突き合わせる。10分間隔を別ファイルにすると新エントリが matrix に見つからず必ず失敗するため、**同テストを複数ワークフロー対応に更新する**（§13）。
+- 手動 workflow の `concurrency` は手動実行同士の重なりを抑える。Vercel Cron の実行とは共有されないため、Vercel 側の重なりによる同時実行は既存ジョブ claim と FR-007 の条件付き更新で扱う。
+- `tests/unit/server/lib/cron-config-consistency.test.ts` は `vercel.json` と `CRON_CONFIGS` の一致、および `invoke-cron.sh` を呼ぶ workflow に schedule trigger が残っていないことを検証する（§13）。
 - Anthropic の組織レート制限は組織単位で管理される。**要約を `claude-sonnet-5` へ移すと Sonnet 4.x（`claude-sonnet-4-6` のまま残るチャット・GSC提案 cron 等）とは別バケットになる**が、並列3は依然として実測で調整する前提とする（§8）。
 - **`claude-sonnet-5` の API 制約（実装時に守る／出典は §16「公式ドキュメント照合」）**:
   - **`thinking` を省略するとアダプティブ思考が既定で有効**になる。要約は定型タスクなので `thinking: { type: 'disabled' }` を明示指定する（§8「AI機能の追加観点」）。無効化しないと思考トークンが出力料金で課金され、§8 のコスト試算が崩れる。
@@ -792,14 +792,14 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 - 判断: 新規 cron の起動間隔。
 - 比較した案:
-  - 案A: 既存の毎時 cron（`hourly-cron.yml`）に相乗りする。
-  - 案B: 10分間隔の新規ワークフローを1本追加する。
-- 採用案: **案B（10分間隔の新規ワークフロー）**。
-- 採用理由: 案A では267件で約11時間かかり（4起動分の処理を1時間おきに実行）、「その日のうちに終わる」体験にならない。
-- 算式（§1 成功指標の根拠）: `267件 ÷ 60〜70件/起動 ≒ 4起動`。1起動は最大 730 秒 ≒ 12.2分かかるため 10 分間隔でも実質は直列化し、`4 × max(10分, 12.2分) ≒ 49分`。よって目安は **約30〜60分**。
+  - 案A: 既存の毎時 Vercel Cron に相乗りする。
+  - 案B: Vercel Cron を10分間隔で追加する。
+- 採用案: **案B（10分間隔の Vercel Cron）**。
+- 採用理由: 毎時起動より、10分間隔の方が処理の続きを早く開始できる。
+- 算式（§1 成功指標の根拠）: `267件 ÷ 約66件/起動 ≒ 5起動`。同じジョブの処理中に来た10分後の起動は claim できず、次の20分時点で続きを処理するため、`4 × 20分 + 約11〜13.3分 ≒ 91〜93分`。よって目安は **約90〜100分**。
 - 却下した案と理由: 案A は追加ワークフローが不要だが、所要時間が要件に合わない。
-- 影響: ワークフローが1本増える。空振り起動が1日約144回発生する（pending 0件なら即座に返る）。**リポジトリが public であることは確認済み（2026-09-04、GitHub API で `visibility=public`）なので、この空振りの実行時間は課金されない**（§10 制約条件）。
-- 将来変更する条件: **リポジトリを private 化する場合**（1日144回 × 30日 = 4,320 job-run/月。分単位切り上げ課金なら概算 4,320 分/月となり、Free 2,000 分 / Pro・Team 3,000 分の月次無料枠を既存 `hourly-cron.yml` の 96 job-run/日と合わせて超えるため、10分間隔そのものを再検討する）。または利用者数が増えて claim の直列化が問題になった場合（閾値は下記「スループット試算」を参照。**`p_limit` の引き上げでは throughput は増えない**ため、検討するのは並列数 `CONTENT_ANNOTATION_BULK_SUMMARY_CONCURRENCY` の引き上げ）。
+- 影響: 10分間隔で起動し、空振りは1日約144回発生する（pending 0件なら即座に返る）。同じジョブの処理は約20分ごとに再開し、別ジョブがあれば重なった起動が並行処理しうる（R-B03）。
+- 将来変更する条件: Vercel の実行頻度・実行時間による制約が処理に影響する場合。または利用者数増加で同時実行時のリソース競合が実際に問題になった場合（閾値は下記「スループット試算」を参照）。
 - 判断者・判断日: 未確定。
 
 ### ALT-003: 対象IDの保持方法（起票時に固定 vs 実行時に再解決）
@@ -846,7 +846,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 ### スループット試算（ALT-002 の算式の一般化）
 
-ALT-002 の算式（`267件 ÷ 60〜70件/起動 ≒ 4起動`）を任意の件数・利用者数へ広げたもの。**新しい要件でも設計変更でもなく、確定済みの定数から導出できる値の記録**であり、実装・データ設計・工数への影響は無い。2026-09-07 に本番の実データで1起動を実測（対象24件 / 成功13件 / `carriedOver: false`）したのに合わせ、「24時間を超えるジョブはありうるか」という問いに答えられる形で残す。
+ALT-002 の算式（`267件 ÷ 約66件/起動 ≒ 5起動`）を任意の件数・利用者数へ広げ、Vercel Cron の起動重なり（R-B03）を織り込んだもの。**新しい要件でも設計変更でもなく、確定済みの定数から導出できる値の記録**であり、実装・データ設計・工数への影響は無い。2026-09-07 に本番の実データで1起動を実測（対象24件 / 成功13件 / `carriedOver: false`）したのに合わせ、「24時間を超えるジョブはありうるか」という問いに答えられる形で残す。
 
 #### 前提（すべて実装済みの定数）
 
@@ -858,7 +858,7 @@ ALT-002 の算式（`267件 ÷ 60〜70件/起動 ≒ 4起動`）を任意の件�
 | 並列数 | 3 | `CONTENT_ANNOTATION_BULK_SUMMARY_CONCURRENCY` |
 | 1件の実所要 | 約30秒 | 実測（親仕様 §1） |
 | 上限件数 | 1000件 | `MAX_BULK_SUMMARY_TARGETS` |
-| 起動間隔 | 10分 | `.github/workflows/content-annotation-summary-cron.yml` |
+| 起動間隔 | 10分 | `vercel.json` |
 
 #### 1起動あたりの処理件数
 
@@ -866,39 +866,41 @@ ALT-002 の算式（`267件 ÷ 60〜70件/起動 ≒ 4起動`）を任意の件�
 
 - 着手できるチャンクは t = 0〜630 秒の **22個** → **1起動あたり 66件**
 - 実処理時間は 22 × 30 = 660秒 ≒ **11分**（オーバーヘッド込みの最悪値は 730秒 ≒ 12.2分）
-- 1起動が10分を超えるため、`concurrency` グループ（`cancel-in-progress: false`）で後続が待つ。**実効の起動間隔は `max(10分, 11〜12.2分)` ＝ 約11〜12分に1起動**
+- 1起動は約11〜12.2分かかり、Vercel Cron は10分ごとに次を起動するため、実行が約1〜2.2分重なる。重なった起動は別のジョブを claim して並行処理しうる（R-B03）。
 
 #### 単独利用者の所要時間
 
+単独のジョブ実行中に10分後の Cron が来ると、処理中のジョブは claim されず、その起動は空振りする。ジョブが約11〜13.3分で pending に戻った後、次の20分時点の起動で続きから進む。
+
 | 件数 | 起動回数 | 所要時間 |
 | --- | --- | --- |
-| 66件 | 1 | 11分 |
-| 100件 | 2 | 17分 |
-| **267件**（§1 の想定） | 5 | **45分** |
-| 500件 | 8 | 1.4時間 |
-| **1000件**（上限） | 16 | **2.8時間** |
+| 66件 | 1 | 約11〜13.3分 |
+| 100件 | 2 | 約31〜33.3分 |
+| **267件**（§1 の想定） | 5 | **約91〜93.3分** |
+| 500件 | 8 | 約2.5時間 |
+| **1000件**（上限） | 16 | **約5.2時間** |
 
-267件で45分は §1 成功指標の「約30〜60分」と整合する。**上限1000件が構造的なキャップとして効くため、単独利用者では最大でも約2.8時間（最悪値でも約3.3時間）で終わり、24時間には到達しない。** 単独で24時間かかるには約8,600件が必要で、上限の約9倍にあたる。
+267件で約91〜93分は §1 の「約90〜100分」と整合する。**上限1000件が構造的なキャップとして効くため、単独利用者では最大でも約5.2時間で終わり、24時間には到達しない。** 単独で24時間かかるには約5,200件が必要で、上限の約5倍にあたる。
 
-#### 複数利用者（待ち行列）
+#### 複数利用者（Vercel 起動の重なり）
 
-claim RPC は `order by job.created_at ... limit p_limit`（既定1）、アプリ側も `JOBS_PER_INVOCATION = 1`。したがって**全体で常に1ジョブしか進まない FIFO** であり、24時間を超えるのは件数ではなく順番待ちで起きる。
+claim RPC は `order by job.created_at ... limit p_limit`（既定1）、アプリ側も `JOBS_PER_INVOCATION = 1`。各起動は1ジョブを処理する。複数ジョブがあれば、処理中に次の10分間隔の起動が別のジョブを claim して並行処理しうる。以下は必要な各起動が10分間隔で続き、最後の起動が約11分で完了する場合の概算。
 
 | 各1000件（上限）を同時起票 | 最後の利用者の完了まで |
 | --- | --- |
-| 4人 | 11.1時間 |
-| 7人 | 19.5時間 |
-| 8人 | 22.3時間 |
-| **10人** | **27.8時間（24時間超）** |
+| 4人 | 約10.7時間 |
+| 7人 | 約18.7時間 |
+| 8人 | 約21.3時間 |
+| **10人** | **約26.7時間** |
 
 | 各267件を同時起票 | 最後の利用者の完了まで |
 | --- | --- |
-| 10人 | 7.4時間 |
-| 20人 | 14.8時間 |
-| 30人 | 22.3時間 |
-| **33人** | **24.5時間（24時間超）** |
+| 10人 | 約8.5時間 |
+| 20人 | 約16.8時間 |
+| 30人 | 約25.2時間 |
+| **33人** | **約27.7時間** |
 
-GitHub Actions の `schedule` は数分〜十数分遅延することがあるため、実際の到達はこれより早い。
+Vercel Cron の配信は best effort のため、実際の到達時間は前後する。
 
 #### 24時間を超えたときに壊れるもの
 
@@ -920,11 +922,11 @@ GitHub Actions の `schedule` は数分〜十数分遅延することがある�
 | --- | --- | --- | --- | --- | --- |
 | R-B01 | cron 実行時に Cookie が無く、WordPress.com の本文取得が失敗する利用者がいる | `wp_access_token` が空、または実際には失効しているのに `wp_token_expires_at` が NULL / 未来日の利用者。そのジョブが全件失敗する（本文取得失敗は LLM 呼び出し前なので LLM 課金は発生しない） | **クライアント回答（2026-09-04 / Q-B01 = (b)）で方針確定**: 起票時には弾かず、失敗として計上したうえで、完了メールに理由と再連携の導線を出す（BR-B10 / FR-B14 / AC-B16）。失敗ラベルが実態と食い違う問題は `SUMMARY_WP_REAUTH_REQUIRED` の追加で解消。実データでの該当利用者数の計測は、**影響範囲の把握のために実装前に行う**（`wp_type = 'wordpress_com'` かつ `wp_access_token` が NULL、または `wp_token_expires_at` が過去。§14 チェックポイント） | 実装者 | **対応済（方針確定。実データ計測は実装前）** |
 | R-B02 | 並列3で Anthropic の 429 が増える | 組織単位のレート上限を他機能と共有する（§8）。失敗件数が増え、利用者に「失敗」として見える | **クライアント回答（2026-09-04 / Q-B02 = (a)）で方針確定**: 429 は待機せず失敗に計上し、`SUMMARY_AI_RATE_LIMITED` として完了メールの内訳に出す（BR-B11 / AC-B17）。件数が多ければ並列数を定数1箇所で下げる（実測で調整） | 実装者 | **対応済（方針確定）** |
-| R-B03 | GitHub Actions のスケジュール遅延 | 完了までの時間が想定より延びる | 「約30〜60分」は目安として案内する。厳密な時刻保証はしない | 実装者 | 対応済（仕様に明記） |
+| R-B03 | Vercel Cron の起動が処理中に重なる | 10分間隔に対し1回の実行が最大約13.3分かかる。workflow の `concurrency` は Vercel 起動に適用されず、別ジョブを並行処理して LLM の同時実行数が一時的に倍（並列3×2）になりうる | 許容する（2026-09-24 の判断）。同じジョブの二重処理は既存 claim が防ぐ。完了時間の目安は1起動ごとの同時実行を含めて示し、厳密な時刻保証はしない | 運用担当 | 許容 |
 | R-B04 | 誤って1000件を起票した場合、停止できない | 最大**約6,070円（≒ $40）**の LLM 課金（`claude-sonnet-5` の単価と新トークナイザ〈同じテキストで約30%多いトークン〉を織り込んだ概算。移行前の `claude-sonnet-4-6` では約6,980円 ≒ $46 で、実効の削減は約13%。**確定値は §13 の実測で置き換える**。§8） | キャンセル導線は作らない合意（Non-goals）。BR-B03 で1ジョブに限定し、上限1000件で頭打ちにする。BR-B08 の再判定により、既に要約済みの記事には課金が発生しない | PO | 対応済（合意） |
 | R-B05 | ジョブが `processing` のままスタックする | 利用者が再実行できない（BR-B03 に阻まれる） | claim RPC で**20分**以上動いていない行を回収する（`maxDuration` 13.3分に対する余裕。§8） | 実装者 | 対応済（仕様に明記） |
-| R-B06 | 稼働中のジョブが二重に claim され、二重課金・件数の二重加算が起きる | 回収しきい値が `maxDuration` に近すぎる場合、または `maxRetries` を既定の3にした場合 | 回収しきい値20分、`maxRetries: 1`、`job_token` 条件付きの進捗更新（BR-B09）、workflow の `concurrency` の4点で防ぐ（§8 / §9 / §10） | 実装者 | 対応済（仕様に明記） |
-| R-B07 | GitHub Actions の課金前提（public リポジトリ）が誤っている | **現時点では発生条件が成立しない**。将来 private 化した場合のみ、概算 4,320 分/月で無料枠（Free 2,000 / Pro・Team 3,000 分）を超える | 2026-09-04 に GitHub API の repository オブジェクトで `private=false` / `visibility=public` を確認済み。private 化する場合の再検討条件は ALT-002「将来変更する条件」に移した | 実装者 | **対応済（前提を確認）** |
+| R-B06 | 稼働中のジョブが二重に claim され、二重課金・件数の二重加算が起きる | 回収しきい値が `maxDuration` に近すぎる場合、または `maxRetries` を既定の3にした場合 | 回収しきい値20分、`maxRetries: 1`、`job_token` 条件付きの進捗更新（BR-B09）で防ぐ（§8 / §9）。workflow の `concurrency` は Vercel Cron の同時起動を防がない | 実装者 | 対応済（仕様に明記） |
+| R-B07 | GitHub Actions の定期実行による課金 | 定期起動を残した場合は実行回数に応じて課金対象となる | 定期起動を Vercel Cron へ移し、GitHub Actions は手動実行用に残す（`docs/plans/vercel-cron-migration-spec.md`） | 実装者 | 対応済（移行仕様で解消） |
 
 ### クライアント回答（決定事項）
 
@@ -984,7 +986,7 @@ GitHub Actions の `schedule` は数分〜十数分遅延することがある�
   - 進捗取得クエリに `.eq('user_id', ...)` が付いていること（§6 権限）
 - 既存テストの更新:
   - `tests/unit/server/actions/contentAnnotationBulkSummary.actions.test.ts`（同期実行前提の記述 → 起票の戻り値 `{ jobId, totalCount }` へ）
-  - `tests/unit/server/lib/cron-config-consistency.test.ts`（cron 定義の追加。**`readFileSync('.github/workflows/hourly-cron.yml')` のハードコードを複数ワークフロー対応にする**。§10）
+  - `tests/unit/server/lib/cron-config-consistency.test.ts`（`vercel.json` と `CRON_CONFIGS` の一致、および手動実行 workflow に schedule が残っていないことを検証する。§10）
   - `tests/unit/server/lib/analytics-max-duration.test.ts`（`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属先が cron ルートへ移るため、突き合わせ先を更新する。**`app/analytics/page.tsx` の `maxDuration = 800` は Instagram 手動同期のために残す**）
   - `tests/unit/lib/content-annotation-bulk-summary-display.test.ts`（`FAILURE_LABELS` の `export` 追加と、**新規コード2件のラベル行が揃っていること**の確認。`:22` の「コア ⊆ 一括」の型レベル包含も維持されること）
 - 手動確認（`quality-gate` の実画面確認に対応）:
@@ -1001,8 +1003,8 @@ GitHub Actions の `schedule` は数分〜十数分遅延することがある�
 
 1. マイグレーションを本番へ適用（`supabase db push`）し、型を再生成する。**この作業は PR マージ後の運用作業であり、完了条件（§15）には含めない。**
 2. アプリをデプロイする。
-3. GitHub Actions のワークフローを有効化する（マージ時点で有効になるため、順序に注意）。
-   - アプリ未デプロイの状態で cron が動いてもジョブが存在しないため空振りで終わる（安全側）。
+3. Vercel の本番デプロイで cron を有効にする。GitHub Actions の `workflow_dispatch` は手動実行として残す。
+   - Vercel Cron は本番デプロイで有効になる。GitHub Actions 側に定期起動を残さない。
 
 ### ロールバック方針
 
@@ -1026,7 +1028,7 @@ GitHub Actions の `schedule` は数分〜十数分遅延することがある�
    - **要約のモデルを `claude-sonnet-5` へ移行する**（§4 対象範囲 / §8「AI機能の追加観点」/ §11 ALT-005）。(1) `MODEL_CONFIGS.content_annotation_ai_summary`（`src/lib/constants.ts:117-121`）を共有定数 `ANTHROPIC_BASE`（`:48`）の展開から外し、`actualModel: 'claude-sonnet-5'` を自前で持たせる（**`ANTHROPIC_BASE` は書き換えない**。他18エントリを巻き込まないため）。(2) `LLMOptions`（`llmService.ts:12-22`）と `ModelConfig`（`constants.ts:33-42`）に**省略可能な `thinking` を1つ追加**し、`callAnthropic` の `params`（`llmService.ts:143-152`）で `opts.temperature` と同じく**未指定なら載せない**形で渡す。(3) 要約の設定で `thinking: { type: 'disabled' }` を指定する（**省略するとアダプティブ思考が既定で有効になり、思考トークンが出力料金で課金される**）。(4) **`contentAnnotationSummaryService.ts:196-200` の `llmChat` オプションにも `thinking: modelConfig.thinking` を1行追加する**（`maxTokens` / `temperature` / `timeoutMs` と同じ詰め替えが要る。ここが漏れると `ModelConfig` に `thinking` を足しても `params` には載らず、アダプティブ思考が有効のまま課金される）。(5) `scripts/check-api-changelogs.ts:450` の「使用モデル」行に `claude-sonnet-5`（AI要約）を併記する（移行後は `claude-sonnet-4-6`〈18機能〉との併用になるため、Sonnet 5 側の破壊的変更をこのスクリプトが自プロジェクトの対象と判定できるようにする）。`temperature` / `top_p` / `top_k` は Sonnet 5 では拒否されるが、**現行コードは Anthropic 経路に渡していないため改修は不要**（§10 制約条件）。プロンプト・出力スキーマ・`maxTokens: 8000` は変更しない。
    - **429 の分類**（BR-B11 / §9「429 の判定経路」）: `contentAnnotationSummaryService.generateSummary` の LLM 呼び出しの `catch` で、`ChatError` かつ `ANTHROPIC_RATE_LIMIT` のときだけ `SUMMARY_AI_RATE_LIMITED` を返す。待機・再試行は書かない。あわせて `mapSummaryError` と `ERROR_MESSAGES.WORDPRESS` に1件追加する。
    - **対象記事の取得は、着手するチャンク（最大3件）ごとに行う。** ジョブ全体をループ前に `chunkIds(ID_QUERY_CHUNK_SIZE)` で一括取得して振り分ける同期版の形（`src/server/actions/contentAnnotationBulkSummary.actions.ts:188-246`）は採らない。採ると BR-B08 の再判定が最大12分前（1起動分）のスナップショットに基づくことになり、「`generateSummary` の直前」を満たさないため。1回の取得は最大3 ID なので PostgREST の `db-max-rows = 1000` にも触れない。
-3. cron ルート追加（**レスポンス形は §9 の契約に合わせる**。`ga4ContentEvaluationBatchService.ts:385` を雛形に写す場合は **`failed = articlesFailed + emailsFailed` の `articlesFailed` の項を必ず外す**。§9「前例からの意図的な差分」。未通知ジョブの掃き出しを claim の前に置き、時間予算の起点をルートハンドラ開始時刻にする）、`CRON_CONFIGS` へ登録（値は §9 の表）、10分間隔ワークフロー追加（`concurrency` 付き。**各ステップの `if` の schedule 文字列を `*/10 * * * *` にする**。§10）。`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属先を決め、`analytics-max-duration.test.ts` を更新する。
+3. cron ルート追加（**レスポンス形は §9 の契約に合わせる**。`ga4ContentEvaluationBatchService.ts:385` を雛形に写す場合は **`failed = articlesFailed + emailsFailed` の `articlesFailed` の項を必ず外す**。§9「前例からの意図的な差分」。未通知ジョブの掃き出しを claim の前に置き、時間予算の起点をルートハンドラ開始時刻にする）、`CRON_CONFIGS` へ登録し、`vercel.json` に10分間隔の Vercel Cron を登録する。GitHub Actions workflow は `workflow_dispatch` と `concurrency` を残し、schedule trigger と `github.event.schedule` 条件は置かない（§10）。`CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC` の帰属先を決め、`analytics-max-duration.test.ts` を更新する。
 4. 完了メール（`EmailService` の新規メソッド。**第4引数 `idempotencyKey` にジョブ ID を渡す**（前例 `sendGa4ContentEvaluation`。§9）+ 件名・HTML 本文のビルダー新設（`src/server/lib/content-annotation-summary-email.ts`。**失敗理由ごとの「次にすること」と `/setup/wordpress` の再連携導線を含む**。§9「完了メールの件名・本文」）+ `FAILURE_LABELS` への新規コード2行の追加 + `notified_at` による冪等（**送信成功時と宛先が無いときに打ち、送信失敗時は打たない**）+ `failed` 時の文面 + **未通知ジョブの掃き出し**（`created_at` 24時間以内・最大10件・逐次送信）。§9「完了メールの起動経路」）。
 5. Server Action を起票に差し替え、二重起票を拒否（`SUMMARY_BULK_ALREADY_RUNNING` を `ERROR_MESSAGES` に追加）。
 6. 画面（実行直後のトースト、進捗ラベル、`page.tsx` での進捗取得、UI 文言辞書の更新）。
@@ -1040,7 +1042,7 @@ GitHub Actions の `schedule` は数分〜十数分遅延することがある�
 | 着手前 | R-B01 の該当利用者数を実データで数える（`wp_type = 'wordpress_com'` かつ `wp_access_token` が NULL、または `wp_token_expires_at` が過去）。**扱いは Q-B01 = (b) で確定済みなので、これは影響範囲の把握が目的**（0件でも実装内容は変わらない） | 実装者 | 未確認 |
 | 手順1完了時 | `anon` から RPC を実行できない | 実装者 | 未確認 |
 | 手順2完了時 | **`generateSummary` を数件だけ直接呼び、`claude-sonnet-5` で8項目の JSON がパースできる**。この時点では起票（手順5）も cron ルート（手順3）も無くジョブ行が作れないため、**`failed_by_code` を使う発生率の突き合わせと思考トークン非課金の確認は手順7完了時に行う**（§13） | 実装者 | 未確認 |
-| 手順3完了時 | `workflow_dispatch` で手動起動し、pending 0件で即座に返る。**さらに初回の `schedule` 起動が実際に発火し、`if` ガードでステップがスキップされていないことを実行ログで確認する**（§10） | 実装者 | 未確認 |
+| 手順3完了時 | `workflow_dispatch` で手動起動し、pending 0件で即座に返る。Vercel 本番デプロイ後は定期起動と実行ログを確認する（§13） | 実装者 | 未確認 |
 | 手順5完了時 | 起票が3秒以内に返る（AC-B01）。同時2クリックで `SUMMARY_BULK_ALREADY_RUNNING` が返る | 実装者 | 未確認 |
 | 手順7完了時 | 実データで複数回の起動をまたいで完了し、メールが1通である。起票後に手入力した記事が上書きされない（AC-B13）。**完了メールに失敗理由と「次にすること」が出ている**（AC-B16）。**あわせてモデル移行を受け入れる: `failed_by_code` に占める `SUMMARY_PARSE_FAILED` の割合が移行前の基準値（先行 PR #515 の実行結果）より悪化しておらず、1件あたりの実入出力トークンから算出した実コストが §8 の試算と整合し、思考トークンが出力に上乗せされていない**（§8 / §13） | 実装者 | 未確認 |
 
