@@ -11,6 +11,9 @@ import {
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+// 記事詳細タブと同じローディング表示。共通部品は既存ファイル内で export する規約
+// （growmate-ui-ux SKILL「同種の既存 UI があるときは『そのまま』使う」）のため、OverviewTab から読む
+import { CenteredLoading } from '../[annotationId]/components/OverviewTab';
 import { StatusFilterOption, StatusFilterSection } from '@/components/CategoryFilter';
 import { cn } from '@/lib/utils';
 import {
@@ -56,6 +59,8 @@ interface InstagramMediaTableProps {
    * クリックリスナーが登録されず、投稿0件時に「フィールド構成」ボタンが無反応になる。
    */
   emptyMessage: string;
+  /** 取得中の文言。null でないとき、0件なら emptyMessage の代わりにスピナーを出す */
+  loadingLabel: string | null;
 }
 
 function captionPreview(caption: string | null): string {
@@ -136,6 +141,7 @@ export default function InstagramMediaTable({
   fieldConfig,
   onSortColumnHidden,
   emptyMessage,
+  loadingLabel,
   igHigh,
   onHighOnlyChange,
   criteriaLabel,
@@ -277,12 +283,17 @@ export default function InstagramMediaTable({
     >
       {({ visibleSet, orderedIds }) => {
         if (items.length === 0) {
-          // role="status": 取得中→一覧表示という状態変化がここにしか出ないことがあるため、
-          // 支援技術にも伝わるようにする
+          // role="status" の要素は取得中→空状態のあいだ差し替えずに置いたままにする。
+          // 中身の入った live region を新しく差し込むと読み上げられないスクリーンリーダーが多く、
+          // 取得完了後の「まだ投稿がありません」などが伝わらなくなる
           return (
-            <p role="status" className="text-sm text-gray-500 py-8 text-center">
-              {emptyMessage}
-            </p>
+            <div role="status" className="py-8">
+              {loadingLabel !== null ? (
+                <CenteredLoading label={loadingLabel} />
+              ) : (
+                <p className="text-sm text-gray-500 text-center">{emptyMessage}</p>
+              )}
+            </div>
           );
         }
         const visibleOrdered = orderedIds.filter(id => visibleSet.has(id));

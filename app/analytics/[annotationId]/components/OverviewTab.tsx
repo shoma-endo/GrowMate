@@ -74,6 +74,22 @@ interface OverviewTabProps {
   runningPhaseLabel?: string | null;
 }
 
+/**
+ * パネルの中央に出すローディング表示（スピナー＋文言）。記事詳細の概要・クエリ分析タブと
+ * Instagram 投稿一覧で共用する。外側の余白・枠は呼び出し側で決める。
+ */
+interface CenteredLoadingProps {
+  label: string;
+}
+
+export function CenteredLoading({ label }: CenteredLoadingProps) {
+  return (
+    <div className="flex items-center gap-2 text-gray-500 justify-center">
+      <Loader2 className="w-6 h-6 animate-spin" /> {label}
+    </div>
+  );
+}
+
 export function OverviewTab({
   detail,
   detailLoading,
@@ -96,9 +112,7 @@ export function OverviewTab({
     return (
       <Card>
         <CardContent className="py-10">
-          <div className="flex items-center gap-2 text-gray-500 justify-center">
-            <Loader2 className="w-6 h-6 animate-spin" /> 読み込み中...
-          </div>
+          <CenteredLoading label="読み込み中..." />
         </CardContent>
       </Card>
     );

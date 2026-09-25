@@ -76,7 +76,7 @@
       "count": 5
     },
     "shadcn/no-raw-colors": {
-      "count": 38
+      "count": 37
     }
   },
   "app/analytics/[annotationId]/components/SuggestionDataReadiness.tsx": {
