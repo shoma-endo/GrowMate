@@ -3,7 +3,7 @@
 ## メタデータ
 
 - 文書名: cron 実行記録の Supabase 保存（90日保持）
-- ステータス: `approved`
+- ステータス: `implemented`
 - 作成日: 2026-09-25
 - 最終更新日: 2026-09-25
 - 作成者: shoma-endo（Claude Code で作成）

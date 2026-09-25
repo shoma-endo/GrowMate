@@ -1,3 +1,7 @@
+import { after } from 'next/server';
+import type { Json } from '@/types/database.types';
+import type { CronRunLogInsert } from '@/types/database.types.pending';
+
 export type CronTimeoutType =
   | 'LLM_TIMEOUT'
   | 'JOB_TIMEOUT'
@@ -107,6 +111,7 @@ export function defineCronObservability<const Name extends string>(
 ): CronObserver<Name> {
   const log = (level: CronLogLevel, event: CronEvent, details: CronLogDetails = {}): void => {
     console[level](JSON.stringify({ source: 'cron', cron: definition.name, event, ...details }));
+    persistCronLog(definition.name, level, event, details);
   };
 
   return {
@@ -134,6 +139,63 @@ export function defineCronObservability<const Name extends string>(
       });
     },
   };
+}
+
+function persistCronLog(
+  cronName: string,
+  level: CronLogLevel,
+  event: CronEvent,
+  details: CronLogDetails
+): void {
+  let settle: () => void = () => undefined;
+  const settled = new Promise<void>(resolve => {
+    settle = resolve;
+  });
+
+  try {
+    after(settled);
+  } catch {
+    // Outside a request, keep the existing console log without persisting or surfacing the registration error.
+    return;
+  }
+
+  const allowedDetailKeys = [
+    'durationMs',
+    'timeoutType',
+    'operation',
+    'attempt',
+    'total',
+    'succeeded',
+    'failed',
+    'skipped',
+    'remaining',
+    'itemsFailed',
+  ] as const satisfies readonly (keyof CronLogDetails)[];
+  const persistedDetails: { [key: string]: Json } = {};
+  for (const key of allowedDetailKeys) {
+    const value = details[key];
+    if (value !== undefined) persistedDetails[key] = value;
+  }
+
+  const environment =
+    process.env.VERCEL_ENV === 'production'
+      ? 'production'
+      : process.env.VERCEL_ENV === 'preview'
+        ? 'preview'
+        : 'local';
+  const row: CronRunLogInsert = {
+    cron_name: cronName,
+    event,
+    level,
+    logged_at: new Date().toISOString(),
+    details: persistedDetails,
+    environment,
+  };
+
+  void import('@/server/services/supabaseService')
+    .then(({ SupabaseService }) => SupabaseService.insertCronRunLog(row))
+    .catch(error => console.error('[cron-observability] Failed to persist cron log', error))
+    .finally(settle);
 }
 
 export function defineCronDefinitions<

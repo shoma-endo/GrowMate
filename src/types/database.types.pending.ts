@@ -178,6 +178,50 @@ export type ContentAnnotationSummaryJobDatabase = Omit<Database, 'public'> & {
 };
 
 /**
+ * PROVISIONAL: supabase/migrations/20260925000000_add_cron_run_logs.sql
+ *
+ * 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
+ * このブロックを削除し、呼び出し側を生成済みの `cron_run_logs` 型へ切り替える
+ * （`.agents/skills/supabase/service-usage.md` §6）。
+ */
+type CronRunLogRow = {
+  id: string;
+  cron_name: string;
+  event: string;
+  level: 'info' | 'warn' | 'error';
+  environment: 'production' | 'preview' | 'local';
+  details: Json;
+  logged_at: string;
+  created_at: string;
+};
+
+export type CronRunLogInsert = {
+  id?: string;
+  cron_name: string;
+  event: string;
+  level: 'info' | 'warn' | 'error';
+  environment: 'production' | 'preview' | 'local';
+  details?: Json;
+  logged_at: string;
+  created_at?: string;
+};
+
+type CronRunLogUpdate = Partial<CronRunLogInsert>;
+
+export type CronRunLogDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables'> & {
+    Tables: Database['public']['Tables'] & {
+      cron_run_logs: {
+        Row: CronRunLogRow;
+        Insert: CronRunLogInsert;
+        Update: CronRunLogUpdate;
+        Relationships: [];
+      };
+    };
+  };
+};
+
+/**
  * PROVISIONAL: supabase/migrations/20260911000000_add_memo_to_gsc_article_evaluation_history.sql
  *
  * 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
