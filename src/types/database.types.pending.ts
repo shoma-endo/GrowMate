@@ -205,13 +205,13 @@ export type GscEvaluationHistoryMemoDatabase = Omit<Database, 'public'> & {
 };
 
 /** 20260925000000 で追加する率の生成列 */
-type InstagramMediaRateColumns = {
+interface InstagramMediaRateColumns {
   like_rate: number | null;
   saved_rate: number | null;
   share_rate: number | null;
   comment_rate: number | null;
   repost_rate: number | null;
-};
+}
 type InstagramMediaRateColumnName = keyof InstagramMediaRateColumns;
 
 /**

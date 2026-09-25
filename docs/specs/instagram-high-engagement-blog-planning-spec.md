@@ -198,7 +198,7 @@ GrowMate の Instagram タブで［最新化］（投稿インサイトとフォ
 ### 入力・出力・状態遷移
 
 - 入力値・形式・必須条件:
-  - URL パラメータ `ig_sort=engagement_rate`（既存の `posted_at` / `reach` / `views` に追加）。2026-09-25 に列見出しでの並べ替えへ変えたため、現行は DB に列がある15列（`INSTAGRAM_SORTABLE_COLUMN_IDS`）を受け付ける
+  - URL パラメータ `ig_sort=engagement_rate`（既存の `posted_at` / `reach` / `views` に追加）。2026-09-25 に列見出しでの並べ替えへ変えたため、現行はサムネ・リンク以外の20列（`src/types/instagram.ts` の `INSTAGRAM_MEDIA_SORT_KEYS`）を受け付ける
   - URL パラメータ `ig_order=asc`（2026-09-25 追加）。昇順のときだけ載せ、既定の降順は載せない。`asc` 以外は降順へ畳む
   - URL パラメータ `ig_high`（高エンゲージメント率）。解釈はブログの状態フィルターと同じ優先順位にする。
     - `ig_high=1`: ON
@@ -562,7 +562,7 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
   | 一覧の型・マッパー | 拡張（`InstagramMediaListItem.engagementRate: number \| null`、`mapMediaRow` に追加） | `src/types/instagram.ts`、`instagramMediaService.ts` `mapMediaRow` |
   | 並べ替えキーの列挙箇所 | 拡張。**列 id と sort key はどちらも `engagement_rate`** にする（並び順の復元処理が `visibleIds.includes(stored)` で判定するため）。対象: `InstagramMediaSortKey`、`parseInstagramSortKey`、`page.tsx` の解析、`InstagramTab.tsx` の SelectItem、`InstagramMediaTable.tsx` の `SORTABLE_COLUMN_IDS` と `sortColumnId`（現行は三項演算子で、該当しないと `'views'` になる。追加しないと視聴数の列を隠したときに率の並べ替えが解除され、率の列を隠しても解除されない） | 左記 |
   | `ig_high` の受け渡し | 拡張。**並び順キーと同様に列挙箇所を漏らさない**（1つ落ちると patch 未指定の href で `ig_high` が毎回消える）。対象: `AnalyticsHrefState`（`app/analytics/build-href.ts:11-27`）、`InstagramHrefPatch`（同 `:29-36`）、`buildInstagramHref` の `ig_*` を組み立てる2つの分岐（同 `:81-99`。`patch.tab==='blog'` 側も含む）、`InstagramFilterPatch`（同 `:108-114`）、`InstagramTab` props のインライン patch 型（`app/analytics/components/InstagramTab.tsx:57-63`）、`app/analytics/page.tsx` のパラメータ取り出し（`page.tsx:115-120`）と `buildPageHref`（同 `:235-266`）、`AnalyticsClient` の `hrefState`（`app/analytics/AnalyticsClient.tsx:149-163`）と `InstagramTab` への props、**`InstagramMediaTable` の props**（`app/analytics/components/InstagramMediaTable.tsx:33-47`。現行は5つだけ。`igHigh`・変更ハンドラ・ダイアログ内に出す判定基準の文言（`string | null`。null は「目標を判定できない」＝表示しない、を兼ねる）の3つを足し、`InstagramTab.tsx:585-591` から渡す）、**`InstagramTab` の props にフォロワー数 `followersCount: number | null` と取得時刻 `followersCountSyncedAt: string | null`**（`InstagramTab.tsx:36-66` には現行フォロワー関係の props が無い。`page.tsx` が読む credential から、既存の `instagramLastSyncedAt` と同じく `page.tsx` → `AnalyticsClient.tsx` の props → `InstagramTab` の経路で渡す。「目標を判定できるか」は `followersCount !== null` で決め、契約3 の復元可否と §6 のチェックボックス表示条件はこの値を使う。取得時刻は §6 目標値のツールチップの日付に使う） | 左記 |
-  | 目標値の文言の整形 | 新規（1関数。ダイアログ内の判定基準（FR-003 / FR-004「フォロワー N人（区分）の目標: a〜b%」）を作る。`InstagramTab` が `followersCount` から目標判定の純関数経由で文言を作り、`InstagramMediaTable` へ渡す。2箇所で別々に組み立てない（§6 項目定義「高エンゲージメント率の補足」） | `src/lib/instagram-format.ts`（目標判定の純関数と同居。現行の export は `formatCount` / `formatPostedAt` / `calculateInstagramRate` / `formatInstagramRate` / `formatSkipRate` / `formatDurationMs` のみで同等物なし） |
+  | 目標値の文言の整形 | 新規（1関数。ダイアログ内の判定基準（FR-003 / FR-004「フォロワー N人（区分）の目標: a〜b%」）を作る。`InstagramTab` が `followersCount` から目標判定の純関数経由で文言を作り、`InstagramMediaTable` へ渡す。2箇所で別々に組み立てない（§6 項目定義「高エンゲージメント率の補足」） | `src/lib/instagram-format.ts`（目標判定の純関数と同居。現行の export は `formatCount` / `formatPostedAt` / `formatInstagramRate` / `formatSkipRate` / `formatDurationMs` のみで同等物なし） |
   | 並び順の保存・復元 | **拡張**（既存の復元 effect に `ig_high` を合流させる。下行のとおり1本の effect で両方を戻す） | `InstagramTab.tsx` `saveInstagramSort` / 復元 effect（`InstagramTab.tsx:323-337`） |
   | 絞り込まれる条件の開閉 | 再利用。ブログ一覧の状態フィルターと同じ `details` + `summary`「絞り込まれる条件」（既定で畳む）と、同じ枠付きの行。新しい開閉コンポーネントは作らない | `src/components/CategoryFilter.tsx`（「評価未設定」「未要約」の行） |
   | 「高エンゲージメント率」の置き場所 | 再利用（拡張なし）。`FieldConfigurator` の既存 props `dialogExtraContent` に渡すだけ（ブログ一覧と同じ使い方）。Instagram 側は現在 children（render prop）だけを渡しているので、`dialogExtraContent` を足す。チェックの値・変更ハンドラ・判定基準の文言は `InstagramMediaTable` が持たず、`InstagramTab` から props で受ける（上の「`ig_high` の受け渡し」行）。**「絞り込み」見出しは Instagram 側が `dialogExtraContent` の中で描く**（`FieldConfigurator` は右列の枠だけを描き見出しを描かない。`src/components/FieldConfigurator.tsx:340-344`。ブログ側も `CategoryFilter` が自前で見出しを描く。`src/components/CategoryFilter.tsx:101`）。**目標を判定できない（判定基準の文言が null）ときは `dialogExtraContent` を渡さず、「絞り込み」節ごと出さない**（`FieldConfigurator.tsx:340` は `dialogExtraContent` 未指定なら右列自体を描かない）。トリガーは既存の `instagram-field-config-trigger` ボタンをそのまま使う | `src/components/FieldConfigurator.tsx`（`dialogExtraContent`）、`src/components/AnalyticsTable.tsx`（ブログ側の使い方）、`app/analytics/components/InstagramMediaTable.tsx`、`app/analytics/components/InstagramTab.tsx`（トリガー） |
@@ -586,7 +586,7 @@ Feature: Instagram 投稿のエンゲージメント率と目標判定
 
 - 納期・予算・人員: 遠藤1名
 - 法令・契約・審査: Meta App Review で承認済みのパーミッションの範囲内
-- 変更できない既存仕様: 既存の率の列（いいね率・保存率等）は変更しない（Phase 1 時点。2026-09-25 に並べ替えのため DB の生成列へ移した。式と表示は変えていない。§16 変更履歴）
+- 変更できない既存仕様: 既存の率の列（いいね率・保存率等）は変更しない（Phase 1 時点。2026-09-25 に並べ替えのため DB の生成列へ移した。式は変えていない。表示の丸めは `engagement_rate` と同じ（丸めずに保存し表示で小数第1位）に揃えた。§16 変更履歴）
 - 外部API（Meta 公式ドキュメント。いずれも確認日 2026-09-20）:
 
   1. 指標の遅延と保持期間 — 出典: <https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights/>
