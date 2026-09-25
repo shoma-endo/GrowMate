@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { CenteredLoading } from '../[annotationId]/components/OverviewTab';
 import { StatusFilterOption, StatusFilterSection } from '@/components/CategoryFilter';
 import { cn } from '@/lib/utils';
 import {
@@ -56,6 +57,8 @@ interface InstagramMediaTableProps {
    * クリックリスナーが登録されず、投稿0件時に「フィールド構成」ボタンが無反応になる。
    */
   emptyMessage: string;
+  /** 取得中の文言。null でないとき、0件なら emptyMessage の代わりにスピナーを出す */
+  loadingLabel: string | null;
 }
 
 function captionPreview(caption: string | null): string {
@@ -136,6 +139,7 @@ export default function InstagramMediaTable({
   fieldConfig,
   onSortColumnHidden,
   emptyMessage,
+  loadingLabel,
   igHigh,
   onHighOnlyChange,
   criteriaLabel,
@@ -276,6 +280,13 @@ export default function InstagramMediaTable({
       }
     >
       {({ visibleSet, orderedIds }) => {
+        if (items.length === 0 && loadingLabel !== null) {
+          return (
+            <div role="status" className="py-8">
+              <CenteredLoading label={loadingLabel} />
+            </div>
+          );
+        }
         if (items.length === 0) {
           // role="status": 取得中→一覧表示という状態変化がここにしか出ないことがあるため、
           // 支援技術にも伝わるようにする
