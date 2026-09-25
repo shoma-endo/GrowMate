@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+// 記事詳細タブと同じローディング表示。共通部品は既存ファイル内で export する規約
+// （growmate-ui-ux SKILL「同種の既存 UI があるときは『そのまま』使う」）のため、OverviewTab から読む
 import { CenteredLoading } from '../[annotationId]/components/OverviewTab';
 import { StatusFilterOption, StatusFilterSection } from '@/components/CategoryFilter';
 import { cn } from '@/lib/utils';

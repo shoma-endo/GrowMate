@@ -137,6 +137,10 @@ export default function InstagramTab({
   // props が変わらない経路（不正日付 → null に落ちる / 開始と終了を逆に入れて swap で元に戻る）で
   // 「適用中...」が永久に残った。遷移そのものに紐づける。
   const [isApplyingDateRange, startDateRangeTransition] = React.useTransition();
+  // 同期・インポート完了後の router.refresh() で新しい一覧が届くまでのあいだ。
+  // これを見ないと、取得完了から一覧の再描画までのすきまに空状態の文言（「まだデータがありません」など）が
+  // 一瞬出て、読み上げもされてしまう
+  const [isRefreshingList, startListRefresh] = React.useTransition();
   const isDateRangeChanged = rangeStart !== (igStart ?? '') || rangeEnd !== (igEnd ?? '');
   const hasDateRange = igStart !== null || igEnd !== null;
 
@@ -220,7 +224,7 @@ export default function InstagramTab({
       if (result.data.failed > 0) {
         setSyncAlert(ERROR_MESSAGES.INSTAGRAM.PARTIAL_MEDIA_FAILURE(result.data.failed));
       }
-      router.refresh();
+      startListRefresh(() => router.refresh());
     } catch (error) {
       console.error('[Instagram Tab] sync failed', error);
       notify('error', ERROR_MESSAGES.INSTAGRAM.SYNC_FAILED);
@@ -266,7 +270,7 @@ export default function InstagramTab({
       if (result.data.failed > 0) {
         setBackfillAlert(ERROR_MESSAGES.INSTAGRAM.PARTIAL_MEDIA_FAILURE(result.data.failed));
       }
-      router.refresh();
+      startListRefresh(() => router.refresh());
     } catch (error) {
       console.error('[Instagram Tab] backfill failed', error);
       toast.error(ERROR_MESSAGES.INSTAGRAM.SYNC_FAILED, { id: toastId });
@@ -411,8 +415,8 @@ export default function InstagramTab({
   // 取得中は一覧の場所にスピナーを出す（記事詳細タブと同じ CenteredLoading）。
   // 初回（last_synced_at が null）は最大760秒かかりうるため、長くなることも書く
   const loadingLabel =
-    isSyncing || isBackfilling
-      ? `${INSTAGRAM_SYNCING_LABEL}${isSyncing && lastSyncedAt == null ? '（初回は数分かかることがあります）' : ''}`
+    isSyncing || isBackfilling || isRefreshingList
+      ? `${INSTAGRAM_SYNCING_LABEL}${(isSyncing || isRefreshingList) && lastSyncedAt == null ? '（初回は数分かかることがあります）' : ''}`
       : null;
 
   const emptyMessage = (() => {
