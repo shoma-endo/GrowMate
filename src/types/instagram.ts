@@ -49,7 +49,27 @@ export interface InstagramMediaInsights {
 
 type InstagramInsightsUnavailableReason = 'pre_conversion' | 'retention_expired';
 
-export type InstagramMediaSortKey = 'posted_at' | 'reach' | 'views' | 'engagement_rate';
+/**
+ * 一覧の列見出しで並べ替えできる列。DB の列で並べ替えるため、画面側で計算する率の列
+ * （いいね率・保存率・シェア率・コメント率・再投稿率）は含めない。
+ */
+export type InstagramMediaSortKey =
+  | 'media_product_type'
+  | 'caption'
+  | 'posted_at'
+  | 'reach'
+  | 'views'
+  | 'like_count'
+  | 'comments_count'
+  | 'saved'
+  | 'engagement_rate'
+  | 'shares'
+  | 'reposts'
+  | 'total_interactions'
+  | 'avg_watch_time_ms'
+  | 'total_watch_time_ms'
+  | 'reels_skip_rate';
+export type InstagramMediaSortOrder = 'asc' | 'desc';
 export type InstagramMediaTypeFilter = 'all' | 'reels' | 'feed';
 
 export interface InstagramMediaListItem {

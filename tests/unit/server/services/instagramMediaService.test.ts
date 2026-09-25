@@ -85,6 +85,7 @@ describe('InstagramMediaService.getPage', () => {
       startDate: null,
       endDate: null,
       sort: 'engagement_rate',
+      order: 'desc',
       minEngagementRate: 4,
     });
 
@@ -108,10 +109,33 @@ describe('InstagramMediaService.getPage', () => {
       startDate: null,
       endDate: null,
       sort: 'posted_at',
+      order: 'desc',
       minEngagementRate: null,
     });
 
     expect(result.items[0]?.engagementRate).toBeNull();
     expect(query.calls.some((call: unknown[]) => call[0] === 'gte')).toBe(false);
+  });
+
+  it('昇順でも未取得（null）の投稿は末尾に置き、同順位は id で固定する', async () => {
+    const query = queryBuilder({ data: [mediaRow()], count: 1, error: null });
+    clientMock.from.mockReturnValue(query);
+
+    await instagramMediaService.getPage('user-1', {
+      page: 1,
+      perPage: 10,
+      type: 'all',
+      startDate: null,
+      endDate: null,
+      sort: 'like_count',
+      order: 'asc',
+      minEngagementRate: null,
+    });
+
+    const orders = query.calls.filter((call: unknown[]) => call[0] === 'order');
+    expect(orders).toEqual([
+      ['order', 'like_count', { ascending: true, nullsFirst: false }],
+      ['order', 'id', { ascending: true }],
+    ]);
   });
 });

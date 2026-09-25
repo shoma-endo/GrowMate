@@ -21,6 +21,7 @@ function buildState(overrides: Partial<AnalyticsHrefState> = {}): AnalyticsHrefS
     igStart: '2026-08-01',
     igEnd: '2026-08-25',
     igSort: 'posted_at',
+    igOrder: 'desc',
     igHigh: false,
     ...overrides,
   };
@@ -43,6 +44,17 @@ describe('buildInstagramHref', () => {
       igSort: 'engagement_rate',
     });
     expect(sorted).toContain('ig_sort=engagement_rate');
+    expect(sorted).not.toContain('ig_order');
+  });
+  it('昇順のときだけ ig_order=asc を載せ、ページ送りでも引き継ぐ', () => {
+    const state = buildState({ activeTab: 'instagram', igSort: 'caption', igOrder: 'asc' });
+    const href = buildInstagramHref(state, { igPage: 2 });
+    expect(href).toContain('ig_sort=caption');
+    expect(href).toContain('ig_order=asc');
+    expect(buildInstagramHref(state, { tab: 'blog' })).toContain('ig_order=asc');
+    expect(buildInstagramHref(state, { igSort: 'reach', igOrder: 'desc' })).not.toContain(
+      'ig_order'
+    );
   });
   it('「評価未設定」フィルタはタブを切り替えても維持される', () => {
     const href = buildInstagramHref(buildState({ hasUnstartedGscEvaluation: true }), {

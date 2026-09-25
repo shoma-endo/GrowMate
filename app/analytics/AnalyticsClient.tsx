@@ -28,6 +28,7 @@ import type { StoredFieldConfig } from '@/types/field-config';
 import type {
   InstagramMediaListItem,
   InstagramMediaSortKey,
+  InstagramMediaSortOrder,
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
 import { useRouter } from 'next/navigation';
@@ -85,6 +86,7 @@ interface AnalyticsClientProps {
   /** null は絞り込みなし（全期間） */
   igEnd: string | null;
   igSort: InstagramMediaSortKey;
+  igOrder: InstagramMediaSortOrder;
   igHigh: boolean;
   instagramFollowersCount: number | null;
   instagramLastSyncedAt: string | null;
@@ -139,6 +141,7 @@ export default function AnalyticsClient({
   igStart,
   igEnd,
   igSort,
+  igOrder,
   igHigh,
   instagramFollowersCount,
   instagramLastSyncedAt,
@@ -164,6 +167,7 @@ export default function AnalyticsClient({
     igStart,
     igEnd,
     igSort,
+    igOrder,
     igHigh,
   };
   const unreadAnnotationSet = React.useMemo(
@@ -628,6 +632,7 @@ export default function AnalyticsClient({
               igStart={igStart}
               igEnd={igEnd}
               igSort={igSort}
+              igOrder={igOrder}
               igHigh={igHigh}
               followersCount={instagramFollowersCount}
               lastSyncedAt={instagramLastSyncedAt}

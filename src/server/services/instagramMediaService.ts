@@ -7,6 +7,7 @@ import type {
   InstagramMediaListItem,
   InstagramMediaPageResult,
   InstagramMediaSortKey,
+  InstagramMediaSortOrder,
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
 
@@ -78,6 +79,7 @@ interface InstagramMediaQuery {
   /** null は絞り込みなし（その側の境界を設けない） */
   endDate: string | null;
   sort: InstagramMediaSortKey;
+  order: InstagramMediaSortOrder;
   /** null は目標達成の絞り込みなし */
   minEngagementRate: number | null;
 }
@@ -121,7 +123,7 @@ class InstagramMediaService extends SupabaseService {
   /**
    * 天井: `count: 'exact'` は毎回テーブル全件を数える。2026-09-16 に期間の既定を全期間へ
    * 変えたため、従来は30日窓で抑えられていた対象が全投稿になった。インデックスは
-   * `(user_id, posted_at desc)` のみで、`sort=reach|views` は無索引の全件ソートになる。
+   * `(user_id, posted_at desc)` のみで、投稿日以外の並べ替えは無索引の全件ソートになる。
    * 1ユーザーあたり数千件までは許容。超えたら planned count か keyset ページングへ移す。
    */
   async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
@@ -150,16 +152,12 @@ class InstagramMediaService extends SupabaseService {
         dbQuery = dbQuery.eq('media_product_type', 'FEED');
       }
 
-      const ascending = false;
-      if (query.sort === 'reach') {
-        dbQuery = dbQuery.order('reach', { ascending, nullsFirst: false });
-      } else if (query.sort === 'views') {
-        dbQuery = dbQuery.order('views', { ascending, nullsFirst: false });
-      } else if (query.sort === 'engagement_rate') {
-        dbQuery = dbQuery.order('engagement_rate', { ascending, nullsFirst: false });
-      } else {
-        dbQuery = dbQuery.order('posted_at', { ascending });
-      }
+      // 並べ替えキーは列名と同じ。未取得（null）の投稿は向きに関係なく末尾に置く
+      // （昇順で先頭に「-」が並ぶと、値のある投稿が見えなくなる）
+      dbQuery = dbQuery.order(query.sort, {
+        ascending: query.order === 'asc',
+        nullsFirst: false,
+      });
 
       if (query.minEngagementRate !== null) {
         dbQuery = dbQuery.gte('engagement_rate', query.minEngagementRate);

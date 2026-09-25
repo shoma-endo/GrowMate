@@ -17,6 +17,7 @@ import {
   ANALYTICS_STORAGE_KEYS,
   FIELD_CONFIG_TABLE_KEYS,
   INSTAGRAM_COLUMNS,
+  isInstagramSortKey,
 } from '@/lib/constants';
 import {
   calculateInstagramRate,
@@ -27,20 +28,20 @@ import {
   formatSkipRate,
   isInstagramEngagementTargetMet,
 } from '@/lib/instagram-format';
-import type { InstagramMediaListItem, InstagramMediaSortKey } from '@/types/instagram';
+import type {
+  InstagramMediaListItem,
+  InstagramMediaSortKey,
+  InstagramMediaSortOrder,
+} from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
-import { ExternalLink, TrendingUp } from 'lucide-react';
-
-const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>([
-  'posted_at',
-  'reach',
-  'views',
-  'engagement_rate',
-]);
+import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, TrendingUp } from 'lucide-react';
 
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
   igSort: InstagramMediaSortKey;
+  igOrder: InstagramMediaSortOrder;
+  /** 列見出しを押したとき。同じ列なら向きを反転、別の列なら降順から始める（呼び出し側で決める） */
+  onSortChange: (sort: InstagramMediaSortKey) => void;
   /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
   fieldConfig: StoredFieldConfig | null;
   onSortColumnHidden: () => void;
@@ -136,6 +137,8 @@ function RateCell({
 export default function InstagramMediaTable({
   items,
   igSort,
+  igOrder,
+  onSortChange,
   fieldConfig,
   onSortColumnHidden,
   emptyMessage,
@@ -149,11 +152,7 @@ export default function InstagramMediaTable({
   const handleConfiguratorChange = React.useCallback(
     (visibleIds: string[], _orderedIds: string[]) => {
       void _orderedIds;
-      if (!SORTABLE_COLUMN_IDS.has(igSort)) {
-        return;
-      }
-      const sortColumnId = igSort;
-      if (!visibleIds.includes(sortColumnId)) {
+      if (!visibleIds.includes(igSort)) {
         onSortColumnHidden();
       }
     },
@@ -307,9 +306,37 @@ export default function InstagramMediaTable({
                   <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
+                    const label = col?.label ?? columnId;
+                    // 率の列（いいね率など）は画面側で計算しており DB で並べ替えられないため押せない
+                    if (!isInstagramSortKey(columnId)) {
+                      return (
+                        <th key={columnId} className="px-6 py-3 whitespace-nowrap">
+                          {label}
+                        </th>
+                      );
+                    }
+                    const isActive = columnId === igSort;
+                    const SortIcon = !isActive
+                      ? ArrowUpDown
+                      : igOrder === 'asc'
+                        ? ArrowUp
+                        : ArrowDown;
                     return (
-                      <th key={columnId} className="px-6 py-3 whitespace-nowrap">
-                        {col?.label ?? columnId}
+                      <th
+                        key={columnId}
+                        aria-sort={
+                          isActive ? (igOrder === 'asc' ? 'ascending' : 'descending') : undefined
+                        }
+                        className="px-6 py-3 whitespace-nowrap"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onSortChange(columnId)}
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                        >
+                          {label}
+                          <SortIcon className="w-3 h-3" aria-hidden />
+                        </button>
                       </th>
                     );
                   })}

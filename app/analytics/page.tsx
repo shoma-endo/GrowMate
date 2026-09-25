@@ -21,10 +21,15 @@ import {
   buildInstagramAutoSyncStorageKey,
   FIELD_CONFIG_TABLE_KEYS,
   parseInstagramSortKey,
+  parseInstagramSortOrder,
 } from '@/lib/constants';
 import { getInstagramEngagementTarget } from '@/lib/instagram-format';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
+import type {
+  InstagramMediaSortKey,
+  InstagramMediaSortOrder,
+  InstagramMediaTypeFilter,
+} from '@/types/instagram';
 
 export const dynamic = 'force-dynamic';
 // Instagram 手動同期 Server Action が既定 300s を超えるため Fluid Compute 上限まで引き上げる。
@@ -123,6 +128,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const igStartParam = Array.isArray(params?.ig_start) ? params.ig_start[0] : params?.ig_start;
   const igEndParam = Array.isArray(params?.ig_end) ? params.ig_end[0] : params?.ig_end;
   const igSortParam = Array.isArray(params?.ig_sort) ? params.ig_sort[0] : params?.ig_sort;
+  const igOrderParam = Array.isArray(params?.ig_order) ? params.ig_order[0] : params?.ig_order;
   const igHighParam = Array.isArray(params?.ig_high) ? params.ig_high[0] : params?.ig_high;
 
   const connectionStatusResult = await getInstagramConnectionStatus();
@@ -154,6 +160,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   }
 
   const igSort: InstagramMediaSortKey = parseInstagramSortKey(igSortParam ?? null);
+  const igOrder: InstagramMediaSortOrder = parseInstagramSortOrder(igOrderParam ?? null);
   const igHigh = igHighParam === '1';
 
   // 並列でデータ取得（一覧・未読・カテゴリ一覧・AI要約ジョブの進捗）
@@ -224,6 +231,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         startDate: igStartDate,
         endDate: igEndDate,
         sort: igSort,
+        order: igOrder,
         minEngagementRate,
       }),
       credentialPromise,
@@ -276,7 +284,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       // 未指定（全期間）のときは載せない。build-href.ts と同じ規則を共有する
       setOptionalDate(query, 'ig_start', igStartDate);
       setOptionalDate(query, 'ig_end', igEndDate);
-      setInstagramListParams(query, igSort, igHigh);
+      setInstagramListParams(query, igSort, igOrder, igHigh);
     }
     return `/analytics?${query.toString()}`;
   };
@@ -324,6 +332,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       igStart={igStartDate}
       igEnd={igEndDate}
       igSort={igSort}
+      igOrder={igOrder}
       igHigh={igHigh}
       instagramFollowersCount={instagramFollowersCount}
       instagramLastSyncedAt={instagramLastSyncedAt}
