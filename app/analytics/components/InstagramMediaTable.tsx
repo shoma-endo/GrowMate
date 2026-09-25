@@ -20,7 +20,6 @@ import {
   isInstagramSortKey,
 } from '@/lib/constants';
 import {
-  calculateInstagramRate,
   formatCount,
   formatDurationMs,
   formatInstagramRate,
@@ -121,17 +120,12 @@ function MetricCell({
   return <span>{value}</span>;
 }
 
-function RateCell({
-  item,
-  numerator,
-}: {
-  item: InstagramMediaListItem;
-  numerator: number | null;
-}) {
+/** 率の列（DB の生成列）。並べ替えと同じ値を表示する */
+function RateCell({ item, value }: { item: InstagramMediaListItem; value: number | null }) {
   if (item.insightsUnavailable) {
     return <MetricCell item={item} value="-" />;
   }
-  return <span>{formatInstagramRate(calculateInstagramRate(numerator, item.reach))}</span>;
+  return <span>{formatInstagramRate(value)}</span>;
 }
 
 export default function InstagramMediaTable({
@@ -178,16 +172,15 @@ export default function InstagramMediaTable({
       case 'saved':
         return <MetricCell item={item} value={formatCount(item.saved)} />;
       case 'engagement_rate': {
-        if (item.insightsUnavailable) {
-          return <MetricCell item={item} value="-" />;
-        }
-        const targetMet = isInstagramEngagementTargetMet(
-          item.engagementRate,
-          targetMinRate === null ? null : { min: targetMinRate }
-        );
+        const targetMet =
+          !item.insightsUnavailable &&
+          isInstagramEngagementTargetMet(
+            item.engagementRate,
+            targetMinRate === null ? null : { min: targetMinRate }
+          );
         return (
           <div className="flex items-center gap-2">
-            <span>{formatInstagramRate(item.engagementRate)}</span>
+            <RateCell item={item} value={item.engagementRate} />
             {targetMet ? <Badge variant="secondary">目標達成</Badge> : null}
           </div>
         );
@@ -238,15 +231,15 @@ export default function InstagramMediaTable({
           </TooltipProvider>
         );
       case 'like_rate':
-        return <RateCell item={item} numerator={item.likeCount} />;
+        return <RateCell item={item} value={item.likeRate} />;
       case 'saved_rate':
-        return <RateCell item={item} numerator={item.saved} />;
+        return <RateCell item={item} value={item.savedRate} />;
       case 'share_rate':
-        return <RateCell item={item} numerator={item.shares} />;
+        return <RateCell item={item} value={item.shareRate} />;
       case 'comment_rate':
-        return <RateCell item={item} numerator={item.commentsCount} />;
+        return <RateCell item={item} value={item.commentRate} />;
       case 'repost_rate':
-        return <RateCell item={item} numerator={item.reposts} />;
+        return <RateCell item={item} value={item.repostRate} />;
       default:
         return '—';
     }
@@ -307,7 +300,7 @@ export default function InstagramMediaTable({
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
                     const label = col?.label ?? columnId;
-                    // 率の列（いいね率など）は画面側で計算しており DB で並べ替えられないため押せない
+                    // 並べ替えキーは DB の列名。対応する列が無い見出しは押せない
                     if (!isInstagramSortKey(columnId)) {
                       return (
                         <th key={columnId} className="px-6 py-3 whitespace-nowrap">

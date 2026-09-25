@@ -1,7 +1,8 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
-import type { Database, Tables, TablesInsert } from '@/types/database.types';
+import type { Database, TablesInsert } from '@/types/database.types';
+import { asPendingClient, type InstagramMediaRatesDatabase } from '@/types/database.types.pending';
 import { INSTAGRAM_MEDIA_THUMBNAIL_BUCKET } from '@/lib/constants';
 import type {
   InstagramMediaListItem,
@@ -91,8 +92,16 @@ interface InstagramMediaQuery {
   minEngagementRate: number | null;
 }
 
+/**
+ * numeric 列は PostgREST から文字列で返ることがあるため数値へ揃える。
+ * 列がまだ無い DB（マイグレーション未適用）では undefined になるので null に畳む（NaN% を出さない）
+ */
+function toRate(value: number | string | null | undefined): number | null {
+  return value == null ? null : Number(value);
+}
+
 function mapMediaRow(
-  row: Tables<'instagram_media'>
+  row: InstagramMediaRatesDatabase['public']['Tables']['instagram_media']['Row']
 ): InstagramMediaListItem {
   const reason = row.insights_unavailable_reason;
   const unavailableReason: InstagramMediaListItem['insightsUnavailableReason'] =
@@ -113,7 +122,12 @@ function mapMediaRow(
     reach: row.reach,
     views: row.views,
     saved: row.saved,
-    engagementRate: row.engagement_rate === null ? null : Number(row.engagement_rate),
+    engagementRate: toRate(row.engagement_rate),
+    likeRate: toRate(row.like_rate),
+    savedRate: toRate(row.saved_rate),
+    shareRate: toRate(row.share_rate),
+    commentRate: toRate(row.comment_rate),
+    repostRate: toRate(row.repost_rate),
     shares: row.shares,
     totalInteractions: row.total_interactions,
     reposts: row.reposts,
@@ -134,7 +148,7 @@ class InstagramMediaService extends SupabaseService {
    * 1ユーザーあたり数千件までは許容。超えたら planned count か keyset ページングへ移す。
    */
   async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
-    const client = this.getClient();
+    const client = asPendingClient<InstagramMediaRatesDatabase>(this.getClient());
 
     const runQuery = async (page: number) => {
       const offset = (page - 1) * query.perPage;

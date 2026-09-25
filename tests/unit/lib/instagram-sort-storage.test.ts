@@ -28,14 +28,19 @@ describe('parseInstagramSortKey', () => {
     ['avg_watch_time_ms'],
     ['total_watch_time_ms'],
     ['reels_skip_rate'],
+    ['like_rate'],
+    ['saved_rate'],
+    ['share_rate'],
+    ['comment_rate'],
+    ['repost_rate'],
   ])('許可値 %s はそのまま通す', raw => {
     expect(parseInstagramSortKey(raw)).toBe(raw);
   });
 
-  // 率の列は画面側で計算しており DB の列が無い。URL に載っても DB クエリへ流さない
-  it('画面側で計算する率の列は既定へ畳む', () => {
-    expect(parseInstagramSortKey('like_rate')).toBe('posted_at');
-    expect(parseInstagramSortKey('repost_rate')).toBe('posted_at');
+  // DB に列が無い見出し（サムネ・リンク）や一覧に無い列名は DB クエリへ流さない
+  it('DB の並べ替え列でない値は既定へ畳む', () => {
+    expect(parseInstagramSortKey('thumbnail_url')).toBe('posted_at');
+    expect(parseInstagramSortKey('permalink')).toBe('posted_at');
   });
 
   it('null は既定へ畳む', () => {

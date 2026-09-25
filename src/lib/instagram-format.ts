@@ -33,15 +33,10 @@ export function formatPostedAt(timestamp: string): string {
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} 投稿`;
 }
 
-/** 率 = (実数 ÷ reach) × 100、小数第1位で四捨五入（§11.3） */
-export function calculateInstagramRate(numerator: number | null, reach: number | null): number | null {
-  if (numerator == null || reach == null || reach <= 0) {
-    return null;
-  }
-  const rate = (numerator / reach) * 100;
-  return Math.round(rate * 10) / 10;
-}
-
+/**
+ * 率を小数第1位の「n.n%」にする。率そのもの（分子 ÷ リーチ × 100）は DB の生成列で計算する
+ * （engagement_rate: 20260921000000、like_rate ほか: 20260925000000）。
+ */
 export function formatInstagramRate(value: number | null): string {
   if (value == null) {
     return '-';

@@ -1,6 +1,10 @@
 import type { FieldConfigTableKey } from '@/types/field-config';
 import type { CategoryFilterConfig, StatusFilterConfig } from '@/types/category';
-import type { InstagramMediaSortKey, InstagramMediaSortOrder } from '@/types/instagram';
+import {
+  INSTAGRAM_MEDIA_SORT_KEYS,
+  type InstagramMediaSortKey,
+  type InstagramMediaSortOrder,
+} from '@/types/instagram';
 import type { LinkedMessageRule } from '@/components/LinkedMessage';
 
 // Chat Configuration
@@ -583,27 +587,8 @@ export const DEFAULT_IG_SORT: InstagramMediaSortKey = 'posted_at';
 /** 列見出しを初めて押したときの向きも兼ねる（多い順・新しい順から見せる） */
 export const DEFAULT_IG_SORT_ORDER: InstagramMediaSortOrder = 'desc';
 
-/** 列見出しで並べ替えできる列。`InstagramMediaSortKey` と1対1で揃える */
-const INSTAGRAM_SORTABLE_COLUMN_IDS: readonly InstagramMediaSortKey[] = [
-  'media_product_type',
-  'caption',
-  'posted_at',
-  'reach',
-  'views',
-  'like_count',
-  'comments_count',
-  'saved',
-  'engagement_rate',
-  'shares',
-  'reposts',
-  'total_interactions',
-  'avg_watch_time_ms',
-  'total_watch_time_ms',
-  'reels_skip_rate',
-];
-
 export function isInstagramSortKey(raw: string): raw is InstagramMediaSortKey {
-  return (INSTAGRAM_SORTABLE_COLUMN_IDS as readonly string[]).includes(raw);
+  return (INSTAGRAM_MEDIA_SORT_KEYS as readonly string[]).includes(raw);
 }
 
 /**

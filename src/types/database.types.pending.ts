@@ -203,3 +203,38 @@ export type GscEvaluationHistoryMemoDatabase = Omit<Database, 'public'> & {
     };
   };
 };
+
+/** 20260925000000 で追加する率の生成列 */
+type InstagramMediaRateColumns = {
+  like_rate: number | null;
+  saved_rate: number | null;
+  share_rate: number | null;
+  comment_rate: number | null;
+  repost_rate: number | null;
+};
+type InstagramMediaRateColumnName = keyof InstagramMediaRateColumns;
+
+/**
+ * PROVISIONAL: supabase/migrations/20260925000000_add_instagram_media_rate_columns.sql
+ *
+ * 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
+ * このブロックを削除し、呼び出し側（`instagramMediaService` の `getPage` / `mapMediaRow`）を
+ * 生成済みの `Tables<'instagram_media'>` へ切り替える（`.agents/skills/supabase/service-usage.md` §6）。
+ * 生成列なので Insert / Update では書き込めない（`never`）。
+ */
+export type InstagramMediaRatesDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables'> & {
+    Tables: Omit<Database['public']['Tables'], 'instagram_media'> & {
+      instagram_media: {
+        Row: Database['public']['Tables']['instagram_media']['Row'] & InstagramMediaRateColumns;
+        Insert: Database['public']['Tables']['instagram_media']['Insert'] & {
+          [K in InstagramMediaRateColumnName]?: never;
+        };
+        Update: Database['public']['Tables']['instagram_media']['Update'] & {
+          [K in InstagramMediaRateColumnName]?: never;
+        };
+        Relationships: Database['public']['Tables']['instagram_media']['Relationships'];
+      };
+    };
+  };
+};
