@@ -329,10 +329,15 @@ export default function InstagramMediaTable({
                         }
                         className="px-6 py-3 whitespace-nowrap"
                       >
+                        {/*
+                          見出しの文字だけを押せる範囲にするため素の button を使う（ui/button は
+                          高さ・余白を持ち、見出しの行の高さと既存の見出しとの揃いが崩れる）。
+                          既存の QueryAnalysisTab は <th onClick> でキーボードから押せないため写さない
+                        */}
                         <button
                           type="button"
                           onClick={() => onSortChange(columnId)}
-                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {label}
                           <SortIcon className="w-3 h-3" aria-hidden />

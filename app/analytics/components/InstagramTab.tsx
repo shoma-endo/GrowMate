@@ -25,6 +25,7 @@ import {
   loadInstagramHighOnlyFromStorage,
   loadInstagramSortFromStorage,
   loadInstagramSortOrderFromStorage,
+  nextInstagramSortOrder,
   resolveInstagramRestorePatch,
 } from '@/lib/constants';
 import { normalizeFieldConfig } from '@/lib/field-config';
@@ -338,10 +339,8 @@ export default function InstagramTab({
     }
   };
 
-  // 列見出しを押したとき。同じ列なら向きを反転し、別の列なら降順（多い順・新しい順）から始める
   const handleSortChange = (sort: InstagramMediaSortKey) => {
-    const order: InstagramMediaSortOrder =
-      sort === igSort ? (igOrder === 'asc' ? 'desc' : 'asc') : DEFAULT_IG_SORT_ORDER;
+    const order = nextInstagramSortOrder({ sort: igSort, order: igOrder }, sort);
     saveInstagramSort(sort, order);
     router.push(buildFilterHref({ igSort: sort, igOrder: order, igPage: 1 }));
   };
@@ -396,6 +395,9 @@ export default function InstagramTab({
   // useCallback で包んでも参照は安定しない。FieldConfigurator 側が onChangeRef で
   // 参照不安定性を吸収する設計になっているため、ここは素の関数でよい。
   const resetSortIfHidden = () => {
+    // 既定（投稿日の降順）のまま投稿日の列を隠している場合、FieldConfigurator はマウント時にも
+    // onChange を呼ぶため、ここで遷移すると開くたびに1ページ目へ飛ばされ履歴も積まれる
+    if (igSort === DEFAULT_IG_SORT && igOrder === DEFAULT_IG_SORT_ORDER) return;
     // **リセット結果も保存する。** 保存しないと、非表示の列を指す並び順が
     // localStorage に残り続け、次回マウントで復元 → 即リセットを繰り返す
     saveInstagramSort(DEFAULT_IG_SORT, DEFAULT_IG_SORT_ORDER);

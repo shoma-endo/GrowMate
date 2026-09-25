@@ -969,6 +969,7 @@ create table public.instagram_account_insights_daily (
 │ 並び順: [投稿日▼]  [RefreshCw 最新化]  [History 過去の投稿をインポート] │  ← どちらもクリックで即実行（確認ダイアログなし）
 │ 最終同期: 2026-07-23 10:00                    │  ← last_synced_at（incremental のみ更新）。未同期時は非表示
 └──────────────────────────────────────────────┘
+  ※ 2026-09-25 以降、並び順の Select は削除し、一覧の列見出しで並べ替える
 
 「最新化」（incremental）クリック時（**確認ダイアログなし。2026-08-08 決定**）:
   → クリックで即 `toast.loading('Instagramデータを取得中...')` を表示し Server Action（`mode:'incremental'`）を実行
@@ -1005,8 +1006,8 @@ create table public.instagram_account_insights_daily (
     - **境界は JST で切る**: `posted_at` は `timestamptz`、一覧の投稿日表示は端末ローカル（JST）。UTC 日界（`...T00:00:00.000Z`）で切ると9時間ずれ、**「2026/8/2 投稿」と表示されている行が `ig_start=2026-08-02` で落ちる**。`+09:00` オフセット付きで組み立てる（`instagramMediaService.getPage`）。期間指定時に投稿が黙って消えるという、既定30日と同じクラスの不具合になる
     - **絞り込みの解除手段は［期間をクリア］ボタン**（期間が指定されているときだけ出す）。「日付入力を空にして［期間を適用］」も使えるが、**iOS Safari の `<input type="date">` は一度値が入るとユーザー操作で空にできない**ため、それだけを解除手段にしない
     - UI ラベルは「投稿日（開始）/（終了）」。ブログの「GA4集計開始日/終了日」と役割が違うことをラベルで名乗る（用語辞書に登録済み）
-    - **天井**: `count: 'exact'` が全期間で全件 COUNT になる。インデックスは `(user_id, posted_at desc)` のみで、`ig_sort=reach|views` は無索引の全件ソート。1ユーザー数千件までは許容し、超えたら planned count か keyset ページングへ移す（`instagramMediaService.getPage` に同内容のコメント）
-  - `ig_sort`: ソートキー `posted_at` | `reach` | `views`。未指定時 `posted_at` desc
+    - **天井**: `count: 'exact'` が全期間で全件 COUNT になる。インデックスは `(user_id, posted_at desc)` のみで、`ig_sort=reach|views` は無索引の全件ソート（2026-09-25 以降は投稿日以外の15列すべて）。1ユーザー数千件までは許容し、超えたら planned count か keyset ページングへ移す（`instagramMediaService.getPage` に同内容のコメント）
+  - `ig_sort`: ソートキー `posted_at` | `reach` | `views`。未指定時 `posted_at` desc（2026-09-25 以降は列見出しでの並べ替えになり、DB に列がある15列と `ig_order=asc` を受け付ける。並び順の Select は削除。正本は [`instagram-high-engagement-blog-planning-spec.md`](instagram-high-engagement-blog-planning-spec.md) の変更履歴）
 - **列構成はユーザーが選ぶ（2026-08-05 Q2 回答）— `FieldConfigurator` を再利用する**
   - **既存コンポーネントをそのまま使う**: `src/components/FieldConfigurator.tsx`。ブログ一覧が `AnalyticsTable.tsx:634-640` で使っている。props は `columns: {id, label, defaultVisible?}[]` / `storageKey` / render prop（`visibleSet`・`orderedIds` を受け取る）。表示チェックボックス・**ドラッグ並び替え**・localStorage 永続化・**新規追加した `defaultVisible` 列の自動表示**（`FieldConfigurator.tsx:94-106`）まで揃っているので、Instagram 用の実装は**列定義の定数を足すだけ**
   - **`storageKey` はブログと別にする**: `src/lib/constants.ts` の `ANALYTICS_STORAGE_KEYS` に `IG_VISIBLE_COLUMNS: 'analytics.instagramVisibleColumns'` を追加する。**`VISIBLE_COLUMNS`（`'analytics.visibleColumns'`）を共用してはいけない** — `FieldConfigurator` は保存値を `columns` に無い id で正規化して落とすため（`FieldConfigurator.tsx:66-68`, `117-118`）、共用するとタブを切り替えるたびに相手側の設定が消える

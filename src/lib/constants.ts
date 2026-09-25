@@ -620,6 +620,15 @@ export function parseInstagramSortOrder(raw: string | null): InstagramMediaSortO
   return raw === 'asc' ? 'asc' : DEFAULT_IG_SORT_ORDER;
 }
 
+/** 列見出しを押したときの向き。同じ列なら反転し、別の列なら降順（多い順・新しい順）から始める */
+export function nextInstagramSortOrder(
+  current: { sort: InstagramMediaSortKey; order: InstagramMediaSortOrder },
+  clicked: InstagramMediaSortKey
+): InstagramMediaSortOrder {
+  if (clicked !== current.sort) return DEFAULT_IG_SORT_ORDER;
+  return current.order === 'asc' ? 'desc' : 'asc';
+}
+
 /** localStorageから Instagram タブの並び順を読み込むヘルパー */
 export function loadInstagramSortFromStorage(): InstagramMediaSortKey {
   if (typeof window === 'undefined') return DEFAULT_IG_SORT;

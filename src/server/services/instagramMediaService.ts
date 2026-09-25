@@ -70,6 +70,13 @@ function listingFieldsToInsertRow(
   };
 }
 
+/** 「対象外」表示にならない列（投稿そのものの属性）。これ以外の並べ替えでは対象外を末尾に寄せる */
+const INSIGHTS_INDEPENDENT_SORT_KEYS = new Set<InstagramMediaSortKey>([
+  'media_product_type',
+  'caption',
+  'posted_at',
+]);
+
 interface InstagramMediaQuery {
   page: number;
   perPage: number;
@@ -153,11 +160,21 @@ class InstagramMediaService extends SupabaseService {
       }
 
       // 並べ替えキーは列名と同じ。未取得（null）の投稿は向きに関係なく末尾に置く
-      // （昇順で先頭に「-」が並ぶと、値のある投稿が見えなくなる）
-      dbQuery = dbQuery.order(query.sort, {
-        ascending: query.order === 'asc',
-        nullsFirst: false,
-      });
+      // （昇順で先頭に「-」が並ぶと、値のある投稿が見えなくなる）。
+      // 指標の列では「対象外」の投稿も末尾に寄せる。対象外でも like_count / comments_count は
+      // 一覧 API の値で埋まっているため、null 判定だけでは表示（対象外）と並び位置がずれる
+      if (!INSIGHTS_INDEPENDENT_SORT_KEYS.has(query.sort)) {
+        dbQuery = dbQuery.order('insights_unavailable', { ascending: true });
+      }
+      // posted_at は NOT NULL。nullsFirst を付けると (user_id, posted_at desc) の索引と
+      // 並び順が一致しなくなり、既定表示まで全件ソートになるため付けない
+      dbQuery =
+        query.sort === 'posted_at'
+          ? dbQuery.order('posted_at', { ascending: query.order === 'asc' })
+          : dbQuery.order(query.sort, {
+              ascending: query.order === 'asc',
+              nullsFirst: false,
+            });
 
       if (query.minEngagementRate !== null) {
         dbQuery = dbQuery.gte('engagement_rate', query.minEngagementRate);

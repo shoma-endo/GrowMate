@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  nextInstagramSortOrder,
   parseInstagramHighOnly,
   parseInstagramSortKey,
   parseInstagramSortOrder,
@@ -65,6 +66,18 @@ describe('parseInstagramSortOrder', () => {
     expect(parseInstagramSortOrder('ASC')).toBe('desc');
     expect(parseInstagramSortOrder('')).toBe('desc');
     expect(parseInstagramSortOrder(null)).toBe('desc');
+  });
+});
+
+describe('nextInstagramSortOrder', () => {
+  it('同じ列を押すと向きを反転する', () => {
+    expect(nextInstagramSortOrder({ sort: 'reach', order: 'desc' }, 'reach')).toBe('asc');
+    expect(nextInstagramSortOrder({ sort: 'reach', order: 'asc' }, 'reach')).toBe('desc');
+  });
+
+  it('別の列を押すと、今の向きに関係なく降順から始める', () => {
+    expect(nextInstagramSortOrder({ sort: 'reach', order: 'asc' }, 'saved')).toBe('desc');
+    expect(nextInstagramSortOrder({ sort: 'posted_at', order: 'desc' }, 'caption')).toBe('desc');
   });
 });
 
