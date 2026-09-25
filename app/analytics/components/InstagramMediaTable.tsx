@@ -17,9 +17,9 @@ import {
   ANALYTICS_STORAGE_KEYS,
   FIELD_CONFIG_TABLE_KEYS,
   INSTAGRAM_COLUMNS,
+  isInstagramSortKey,
 } from '@/lib/constants';
 import {
-  calculateInstagramRate,
   formatCount,
   formatDurationMs,
   formatInstagramRate,
@@ -27,20 +27,20 @@ import {
   formatSkipRate,
   isInstagramEngagementTargetMet,
 } from '@/lib/instagram-format';
-import type { InstagramMediaListItem, InstagramMediaSortKey } from '@/types/instagram';
+import type {
+  InstagramMediaListItem,
+  InstagramMediaSortKey,
+  InstagramMediaSortOrder,
+} from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
-import { ExternalLink, TrendingUp } from 'lucide-react';
-
-const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>([
-  'posted_at',
-  'reach',
-  'views',
-  'engagement_rate',
-]);
+import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, TrendingUp } from 'lucide-react';
 
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
   igSort: InstagramMediaSortKey;
+  igOrder: InstagramMediaSortOrder;
+  /** 列見出しを押したとき。同じ列なら向きを反転、別の列なら降順から始める（呼び出し側で決める） */
+  onSortChange: (sort: InstagramMediaSortKey) => void;
   /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
   fieldConfig: StoredFieldConfig | null;
   onSortColumnHidden: () => void;
@@ -120,22 +120,19 @@ function MetricCell({
   return <span>{value}</span>;
 }
 
-function RateCell({
-  item,
-  numerator,
-}: {
-  item: InstagramMediaListItem;
-  numerator: number | null;
-}) {
+/** 率の列（DB の生成列）。並べ替えと同じ値を表示する */
+function RateCell({ item, value }: { item: InstagramMediaListItem; value: number | null }) {
   if (item.insightsUnavailable) {
     return <MetricCell item={item} value="-" />;
   }
-  return <span>{formatInstagramRate(calculateInstagramRate(numerator, item.reach))}</span>;
+  return <span>{formatInstagramRate(value)}</span>;
 }
 
 export default function InstagramMediaTable({
   items,
   igSort,
+  igOrder,
+  onSortChange,
   fieldConfig,
   onSortColumnHidden,
   emptyMessage,
@@ -149,11 +146,7 @@ export default function InstagramMediaTable({
   const handleConfiguratorChange = React.useCallback(
     (visibleIds: string[], _orderedIds: string[]) => {
       void _orderedIds;
-      if (!SORTABLE_COLUMN_IDS.has(igSort)) {
-        return;
-      }
-      const sortColumnId = igSort;
-      if (!visibleIds.includes(sortColumnId)) {
+      if (!visibleIds.includes(igSort)) {
         onSortColumnHidden();
       }
     },
@@ -179,16 +172,15 @@ export default function InstagramMediaTable({
       case 'saved':
         return <MetricCell item={item} value={formatCount(item.saved)} />;
       case 'engagement_rate': {
-        if (item.insightsUnavailable) {
-          return <MetricCell item={item} value="-" />;
-        }
-        const targetMet = isInstagramEngagementTargetMet(
-          item.engagementRate,
-          targetMinRate === null ? null : { min: targetMinRate }
-        );
+        const targetMet =
+          !item.insightsUnavailable &&
+          isInstagramEngagementTargetMet(
+            item.engagementRate,
+            targetMinRate === null ? null : { min: targetMinRate }
+          );
         return (
           <div className="flex items-center gap-2">
-            <span>{formatInstagramRate(item.engagementRate)}</span>
+            <RateCell item={item} value={item.engagementRate} />
             {targetMet ? <Badge variant="secondary">目標達成</Badge> : null}
           </div>
         );
@@ -239,15 +231,15 @@ export default function InstagramMediaTable({
           </TooltipProvider>
         );
       case 'like_rate':
-        return <RateCell item={item} numerator={item.likeCount} />;
+        return <RateCell item={item} value={item.likeRate} />;
       case 'saved_rate':
-        return <RateCell item={item} numerator={item.saved} />;
+        return <RateCell item={item} value={item.savedRate} />;
       case 'share_rate':
-        return <RateCell item={item} numerator={item.shares} />;
+        return <RateCell item={item} value={item.shareRate} />;
       case 'comment_rate':
-        return <RateCell item={item} numerator={item.commentsCount} />;
+        return <RateCell item={item} value={item.commentRate} />;
       case 'repost_rate':
-        return <RateCell item={item} numerator={item.reposts} />;
+        return <RateCell item={item} value={item.repostRate} />;
       default:
         return '—';
     }
@@ -307,9 +299,42 @@ export default function InstagramMediaTable({
                   <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
+                    const label = col?.label ?? columnId;
+                    // 並べ替えキーは DB の列名。対応する列が無い見出しは押せない
+                    if (!isInstagramSortKey(columnId)) {
+                      return (
+                        <th key={columnId} className="px-6 py-3 whitespace-nowrap">
+                          {label}
+                        </th>
+                      );
+                    }
+                    const isActive = columnId === igSort;
+                    const SortIcon = !isActive
+                      ? ArrowUpDown
+                      : igOrder === 'asc'
+                        ? ArrowUp
+                        : ArrowDown;
                     return (
-                      <th key={columnId} className="px-6 py-3 whitespace-nowrap">
-                        {col?.label ?? columnId}
+                      <th
+                        key={columnId}
+                        aria-sort={
+                          isActive ? (igOrder === 'asc' ? 'ascending' : 'descending') : undefined
+                        }
+                        className="px-6 py-3 whitespace-nowrap"
+                      >
+                        {/*
+                          見出しの文字だけを押せる範囲にするため素の button を使う（ui/button は
+                          高さ・余白を持ち、見出しの行の高さと既存の見出しとの揃いが崩れる）。
+                          既存の QueryAnalysisTab は <th onClick> でキーボードから押せないため写さない
+                        */}
+                        <button
+                          type="button"
+                          onClick={() => onSortChange(columnId)}
+                          className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {label}
+                          <SortIcon className="w-3 h-3" aria-hidden />
+                        </button>
                       </th>
                     );
                   })}

@@ -19,9 +19,13 @@ import {
 import { cn } from '@/lib/utils';
 import {
   ANALYTICS_STORAGE_KEYS,
+  DEFAULT_IG_SORT,
+  DEFAULT_IG_SORT_ORDER,
   INSTAGRAM_COLUMNS,
   loadInstagramHighOnlyFromStorage,
   loadInstagramSortFromStorage,
+  loadInstagramSortOrderFromStorage,
+  nextInstagramSortOrder,
   resolveInstagramRestorePatch,
 } from '@/lib/constants';
 import { normalizeFieldConfig } from '@/lib/field-config';
@@ -36,6 +40,7 @@ import { syncInstagramData } from '@/server/actions/instagramSync.actions';
 import type {
   InstagramMediaListItem,
   InstagramMediaSortKey,
+  InstagramMediaSortOrder,
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
@@ -52,6 +57,7 @@ interface InstagramTabProps {
   /** null は絞り込みなし（全期間）。日付入力は空で表示する */
   igEnd: string | null;
   igSort: InstagramMediaSortKey;
+  igOrder: InstagramMediaSortOrder;
   igHigh: boolean;
   followersCount: number | null;
   lastSyncedAt: string | null;
@@ -68,6 +74,7 @@ interface InstagramTabProps {
     igStart?: string | null;
     igEnd?: string | null;
     igSort?: InstagramMediaSortKey;
+    igOrder?: InstagramMediaSortOrder;
     igPage?: number;
     igHigh?: boolean;
   }) => string;
@@ -98,6 +105,7 @@ export default function InstagramTab({
   igStart,
   igEnd,
   igSort,
+  igOrder,
   igHigh,
   followersCount,
   lastSyncedAt,
@@ -151,7 +159,7 @@ export default function InstagramTab({
   React.useEffect(() => {
     clearManualSyncAlert();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [igType, igSort, igPage]);
+  }, [igType, igSort, igOrder, igPage]);
 
   const lastSyncedLabel = formatLastSyncedAt(lastSyncedAt);
 
@@ -321,16 +329,23 @@ export default function InstagramTab({
   };
 
   // localStorageに並び順を保存するヘルパー。**ページ番号は保存しない**
-  const saveInstagramSort = (sort: InstagramMediaSortKey) => {
+  const saveInstagramSort = (sort: InstagramMediaSortKey, order: InstagramMediaSortOrder) => {
     if (typeof window === 'undefined') return;
     try {
       localStorage.setItem(ANALYTICS_STORAGE_KEYS.IG_SORT, sort);
+      localStorage.setItem(ANALYTICS_STORAGE_KEYS.IG_SORT_ORDER, order);
     } catch {
       // ストレージが使えない環境でも並び替え自体は URL で動くので止めない
     }
   };
 
-  // URL に ig_sort が無いときだけ、保存済みの並び順を1回だけ復元する。
+  const handleSortChange = (sort: InstagramMediaSortKey) => {
+    const order = nextInstagramSortOrder({ sort: igSort, order: igOrder }, sort);
+    saveInstagramSort(sort, order);
+    router.push(buildFilterHref({ igSort: sort, igOrder: order, igPage: 1 }));
+  };
+
+  // URL に ig_sort / ig_order が無いときだけ、保存済みの並び順を1回だけ復元する。
   // URL 指定時は deep link の意図を尊重して触らない。
   const didRestoreInstagramStateRef = React.useRef(false);
   // ブログ一覧と同じく、前回の絞り込みが戻ってきたことを一覧の上で示す（AnalyticsTable.tsx の
@@ -343,8 +358,10 @@ export default function InstagramTab({
     const { visibleIds } = normalizeFieldConfig(INSTAGRAM_COLUMNS, fieldConfig);
     const patch = resolveInstagramRestorePatch({
       urlSort: searchParams?.get('ig_sort') ?? null,
+      urlOrder: searchParams?.get('ig_order') ?? null,
       urlHigh: searchParams?.get('ig_high') ?? null,
       storedSort: loadInstagramSortFromStorage(),
+      storedOrder: loadInstagramSortOrderFromStorage(),
       storedHighOnly: loadInstagramHighOnlyFromStorage(),
       visibleIds,
       canJudgeTarget: followersCount !== null,
@@ -378,10 +395,15 @@ export default function InstagramTab({
   // useCallback で包んでも参照は安定しない。FieldConfigurator 側が onChangeRef で
   // 参照不安定性を吸収する設計になっているため、ここは素の関数でよい。
   const resetSortIfHidden = () => {
+    // 既定（投稿日の降順）のまま投稿日の列を隠している場合、FieldConfigurator はマウント時にも
+    // onChange を呼ぶため、ここで遷移すると開くたびに1ページ目へ飛ばされ履歴も積まれる
+    if (igSort === DEFAULT_IG_SORT && igOrder === DEFAULT_IG_SORT_ORDER) return;
     // **リセット結果も保存する。** 保存しないと、非表示の列を指す並び順が
     // localStorage に残り続け、次回マウントで復元 → 即リセットを繰り返す
-    saveInstagramSort('posted_at');
-    router.push(buildFilterHref({ igSort: 'posted_at', igPage: 1 }));
+    saveInstagramSort(DEFAULT_IG_SORT, DEFAULT_IG_SORT_ORDER);
+    router.push(
+      buildFilterHref({ igSort: DEFAULT_IG_SORT, igOrder: DEFAULT_IG_SORT_ORDER, igPage: 1 })
+    );
   };
 
   // 一覧が0件のときの文言。押せないボタンへ誘導しないよう、キルスイッチ中と
@@ -399,7 +421,7 @@ export default function InstagramTab({
       return 'まだデータがありません。「最新化」を押してください';
     }
     // 絞り込んでいないのに「条件を変更してください」と言わない。
-    // ig_sort / ig_page は行を減らさないので絞り込みに数えない
+    // ig_sort / ig_order / ig_page は行を減らさないので絞り込みに数えない
     const hasFilter = igStart !== null || igEnd !== null || igType !== 'all' || highOnlyActive;
     if (!hasFilter) {
       return backfillStatus === 'completed'
@@ -516,27 +538,6 @@ export default function InstagramTab({
                 ) : null}
               </div>
             </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-gray-500">並び順</span>
-              <Select
-                value={igSort}
-                onValueChange={value => {
-                  const next = value as InstagramMediaSortKey;
-                  saveInstagramSort(next);
-                  router.push(buildFilterHref({ igSort: next, igPage: 1 }));
-                }}
-              >
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="posted_at">投稿日</SelectItem>
-                  <SelectItem value="reach">リーチ</SelectItem>
-                  <SelectItem value="views">視聴数</SelectItem>
-                  <SelectItem value="engagement_rate">エンゲージメント率</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <Button
               type="button"
               variant="outline"
@@ -647,6 +648,8 @@ export default function InstagramTab({
         <InstagramMediaTable
           items={items}
           igSort={igSort}
+          igOrder={igOrder}
+          onSortChange={handleSortChange}
           fieldConfig={fieldConfig}
           onSortColumnHidden={resetSortIfHidden}
           emptyMessage={emptyMessage}

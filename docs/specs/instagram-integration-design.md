@@ -669,7 +669,7 @@ create table public.instagram_account_insights_daily (
 - [ ] Instagram タブに投稿一覧＋指標が表示され、種別フィルタ・ソートが機能する
 - [x] ~~**§5.4 で確定したアカウント指標**が Instagram タブのサマリー Card に表示される~~ → **2026-08-08 廃止**。理由は §4 Phase2 item3 末尾「アカウント指標サマリー Card の廃止」を参照
 - [ ] **フィールド構成ダイアログで表示列を変更でき、リロード後も保持される**（`FieldConfigurator` 再利用）。**ブログタブの列設定が影響を受けない**（`storageKey` が別であること）
-- [ ] **率の列（いいね率 / 保存率 / シェア率 / コメント率 / 再投稿率）が `(実数 ÷ reach) × 100` で算出され、小数第1位で表示される**。既定は非表示。DB に保存されていない（表示時計算）
+- [ ] **率の列（いいね率 / 保存率 / シェア率 / コメント率 / 再投稿率）が `(実数 ÷ reach) × 100` で算出され、小数第1位で表示される**。既定は非表示。~~DB に保存されていない（表示時計算）~~ → 2026-09-25 以降は DB の生成列（`like_rate` ほか。[`instagram-high-engagement-blog-planning-spec.md`](instagram-high-engagement-blog-planning-spec.md) §9）で算出する
 - [ ] 率の表示: 分母 `reach` が `null` / `0`、または分子（いいね / 保存 / シェア / コメント / 再投稿の実数）が `null` のときは `-`（`0%` にしない）。分子が `0` かつ分母 `reach > 0` のときのみ `0.0%`
 - [ ] **着手前**: 率の**分母を複数投稿で確定**する（フィード・リール双方でアプリ表示値と誤差を測る。現状の「分母 = `reach`」は1投稿・2指標だけの逆算で根拠が弱く、リールは `views` の方が近い可能性がある — §9 Q10）
 - [ ] `reels_skip_rate` が `null` で返っても列が壊れない（**"estimated and in development" のため値が変動・欠損し得る** — §3.3）
@@ -969,6 +969,7 @@ create table public.instagram_account_insights_daily (
 │ 並び順: [投稿日▼]  [RefreshCw 最新化]  [History 過去の投稿をインポート] │  ← どちらもクリックで即実行（確認ダイアログなし）
 │ 最終同期: 2026-07-23 10:00                    │  ← last_synced_at（incremental のみ更新）。未同期時は非表示
 └──────────────────────────────────────────────┘
+  ※ 2026-09-25 以降、並び順の Select は削除し、一覧の列見出しで並べ替える
 
 「最新化」（incremental）クリック時（**確認ダイアログなし。2026-08-08 決定**）:
   → クリックで即 `toast.loading('Instagramデータを取得中...')` を表示し Server Action（`mode:'incremental'`）を実行
@@ -1005,8 +1006,8 @@ create table public.instagram_account_insights_daily (
     - **境界は JST で切る**: `posted_at` は `timestamptz`、一覧の投稿日表示は端末ローカル（JST）。UTC 日界（`...T00:00:00.000Z`）で切ると9時間ずれ、**「2026/8/2 投稿」と表示されている行が `ig_start=2026-08-02` で落ちる**。`+09:00` オフセット付きで組み立てる（`instagramMediaService.getPage`）。期間指定時に投稿が黙って消えるという、既定30日と同じクラスの不具合になる
     - **絞り込みの解除手段は［期間をクリア］ボタン**（期間が指定されているときだけ出す）。「日付入力を空にして［期間を適用］」も使えるが、**iOS Safari の `<input type="date">` は一度値が入るとユーザー操作で空にできない**ため、それだけを解除手段にしない
     - UI ラベルは「投稿日（開始）/（終了）」。ブログの「GA4集計開始日/終了日」と役割が違うことをラベルで名乗る（用語辞書に登録済み）
-    - **天井**: `count: 'exact'` が全期間で全件 COUNT になる。インデックスは `(user_id, posted_at desc)` のみで、`ig_sort=reach|views` は無索引の全件ソート。1ユーザー数千件までは許容し、超えたら planned count か keyset ページングへ移す（`instagramMediaService.getPage` に同内容のコメント）
-  - `ig_sort`: ソートキー `posted_at` | `reach` | `views`。未指定時 `posted_at` desc
+    - **天井**: `count: 'exact'` が全期間で全件 COUNT になる。インデックスは `(user_id, posted_at desc)` のみで、`ig_sort=reach|views` は無索引の全件ソート（2026-09-25 以降は投稿日以外の15列すべて）。1ユーザー数千件までは許容し、超えたら planned count か keyset ページングへ移す（`instagramMediaService.getPage` に同内容のコメント）
+  - `ig_sort`: ソートキー `posted_at` | `reach` | `views`。未指定時 `posted_at` desc（2026-09-25 以降は列見出しでの並べ替えになり、DB に列がある15列と `ig_order=asc` を受け付ける。並び順の Select は削除。正本は [`instagram-high-engagement-blog-planning-spec.md`](instagram-high-engagement-blog-planning-spec.md) の変更履歴）
 - **列構成はユーザーが選ぶ（2026-08-05 Q2 回答）— `FieldConfigurator` を再利用する**
   - **既存コンポーネントをそのまま使う**: `src/components/FieldConfigurator.tsx`。ブログ一覧が `AnalyticsTable.tsx:634-640` で使っている。props は `columns: {id, label, defaultVisible?}[]` / `storageKey` / render prop（`visibleSet`・`orderedIds` を受け取る）。表示チェックボックス・**ドラッグ並び替え**・localStorage 永続化・**新規追加した `defaultVisible` 列の自動表示**（`FieldConfigurator.tsx:94-106`）まで揃っているので、Instagram 用の実装は**列定義の定数を足すだけ**
   - **`storageKey` はブログと別にする**: `src/lib/constants.ts` の `ANALYTICS_STORAGE_KEYS` に `IG_VISIBLE_COLUMNS: 'analytics.instagramVisibleColumns'` を追加する。**`VISIBLE_COLUMNS`（`'analytics.visibleColumns'`）を共用してはいけない** — `FieldConfigurator` は保存値を `columns` に無い id で正規化して落とすため（`FieldConfigurator.tsx:66-68`, `117-118`）、共用するとタブを切り替えるたびに相手側の設定が消える
@@ -1017,14 +1018,14 @@ create table public.instagram_account_insights_daily (
 - **率の列（2026-08-05 Q10 回答。GrowMate 独自計算）**
   - **対象**: いいね率 / 保存率 / シェア率 / コメント率 / 再投稿率。**既定は非表示**（`defaultVisible: false`）にし、必要な人だけ出す
   - **算出**: `率 = 実数 ÷ reach × 100`、**小数第1位で四捨五入**（アプリの表記に合わせる）。分母は `views` ではなく **`reach`**（§9 Q10 の検算根拠）。**検算に基づく推定であり、Instagram が公開している算出定義はない。UI 上は参考値として表示する**（§3.3「推定・一致保証なし」と同強度）
-  - **DB に保存しない。表示時に計算する。** 保存すると、次の同期で `reach` だけが更新されたときに率が古い分母のまま残る。純関数は `src/lib/instagram-format.ts` に切り出し vitest を書く（§8 の「純関数には vitest」に該当）
+  - ~~**DB に保存しない。表示時に計算する。** 保存すると、次の同期で `reach` だけが更新されたときに率が古い分母のまま残る。純関数は `src/lib/instagram-format.ts` に切り出し vitest を書く（§8 の「純関数には vitest」に該当）~~ → **2026-09-25 変更**: 列見出しで並べ替えるため、DB の生成列（STORED。`like_rate` / `saved_rate` / `share_rate` / `comment_rate` / `repost_rate`）で計算する。生成列は `reach` などの元の列が更新されるたびに再計算されるため、「古い分母のまま残る」懸念は当たらない。表示は丸めずに保存した値を `formatInstagramRate` で小数第1位にする（`engagement_rate` と同じ）。正本は [`instagram-high-engagement-blog-planning-spec.md`](instagram-high-engagement-blog-planning-spec.md) §9
   - **表示ルール**: 分母 `reach` が `null` / `0`、または分子（各実数）が `null` のときは `-`（ゼロ除算を出さない。未取得を「0%」と表示しない）。**分子が `0` かつ分母 `reach > 0` のときのみ `0.0%`**
   - **恒久的に取得できない投稿**（`insights_unavailable`）では率も出さない。「対象外」表示に従う
   - **`reels_skip_rate` と混ぜない**: スキップ率は**公式が率で返す唯一の指標**で、**分母も違う**（initial views ＝ リールセッション内の初回再生。§3.3 の verbatim 定義）。独自計算の率（分母 = `reach`）と同じ見た目で並べると、片方だけアプリと一致しない理由を説明できなくなる。**ツールチップで出所と分母を書き分ける**:
     - スキップ率 →「Instagram が提供する値（3秒以内にスキップされた再生数 ÷ 初回再生数）。**推定値・開発中の指標**のため変動することがあります」
     - その他の率 →「**Instagram 非公式の GrowMate 独自計算**（例: いいね数 ÷ リーチ数）。Instagram アプリの表示と一致しない場合があります」
     - **「独自計算です」だけで済ませない。式そのものを出す** — 何と比較すべきかが分からないと、ズレたときに判断できない
-  - **ソート対象にしない**（`ig_sort` は `posted_at` / `reach` / `views` のまま）。DB に持たない以上、ページング前の全体ソートができないため。**ページ内だけ並び替わる中途半端な挙動を作らない**
+  - ~~**ソート対象にしない**（`ig_sort` は `posted_at` / `reach` / `views` のまま）。DB に持たない以上、ページング前の全体ソートができないため~~ → **2026-09-25 変更**: DB の生成列にしたため、列見出しで DB 側で並べ替える。**ページ内だけ並び替わる中途半端な挙動を作らない**という原則は維持
 - **未連携ユーザー向けの Instagram タブ空状態は定義しない（到達不能）**: §4 Phase 2 item4 / §8 により、未連携ユーザーは Instagram タブ UI 自体が出ず `?tab=instagram` も `blog` にフォールバックする。**連携導線は §11.1 の `/setup` カードのみ**
 - **一覧が0件のときの文言は3分岐**（2026-09-16 改訂。§4 Phase 2 item3「タブ初回表示の自動同期」に対応）:
   1. **同期中**（自動・手動を問わず）→「Instagramデータを取得中...」

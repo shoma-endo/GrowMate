@@ -1,12 +1,14 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
-import type { Database, Tables, TablesInsert } from '@/types/database.types';
+import type { Database, TablesInsert } from '@/types/database.types';
+import { asPendingClient, type InstagramMediaRatesDatabase } from '@/types/database.types.pending';
 import { INSTAGRAM_MEDIA_THUMBNAIL_BUCKET } from '@/lib/constants';
 import type {
   InstagramMediaListItem,
   InstagramMediaPageResult,
   InstagramMediaSortKey,
+  InstagramMediaSortOrder,
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
 
@@ -69,6 +71,13 @@ function listingFieldsToInsertRow(
   };
 }
 
+/** 「対象外」表示にならない列（投稿そのものの属性）。これ以外の並べ替えでは対象外を末尾に寄せる */
+const INSIGHTS_INDEPENDENT_SORT_KEYS = new Set<InstagramMediaSortKey>([
+  'media_product_type',
+  'caption',
+  'posted_at',
+]);
+
 interface InstagramMediaQuery {
   page: number;
   perPage: number;
@@ -78,12 +87,21 @@ interface InstagramMediaQuery {
   /** null は絞り込みなし（その側の境界を設けない） */
   endDate: string | null;
   sort: InstagramMediaSortKey;
+  order: InstagramMediaSortOrder;
   /** null は目標達成の絞り込みなし */
   minEngagementRate: number | null;
 }
 
+/**
+ * numeric 列は PostgREST から文字列で返ることがあるため数値へ揃える。
+ * 列がまだ無い DB（マイグレーション未適用）では undefined になるので null に畳む（NaN% を出さない）
+ */
+function toRate(value: number | string | null | undefined): number | null {
+  return value == null ? null : Number(value);
+}
+
 function mapMediaRow(
-  row: Tables<'instagram_media'>
+  row: InstagramMediaRatesDatabase['public']['Tables']['instagram_media']['Row']
 ): InstagramMediaListItem {
   const reason = row.insights_unavailable_reason;
   const unavailableReason: InstagramMediaListItem['insightsUnavailableReason'] =
@@ -104,7 +122,12 @@ function mapMediaRow(
     reach: row.reach,
     views: row.views,
     saved: row.saved,
-    engagementRate: row.engagement_rate === null ? null : Number(row.engagement_rate),
+    engagementRate: toRate(row.engagement_rate),
+    likeRate: toRate(row.like_rate),
+    savedRate: toRate(row.saved_rate),
+    shareRate: toRate(row.share_rate),
+    commentRate: toRate(row.comment_rate),
+    repostRate: toRate(row.repost_rate),
     shares: row.shares,
     totalInteractions: row.total_interactions,
     reposts: row.reposts,
@@ -121,11 +144,11 @@ class InstagramMediaService extends SupabaseService {
   /**
    * 天井: `count: 'exact'` は毎回テーブル全件を数える。2026-09-16 に期間の既定を全期間へ
    * 変えたため、従来は30日窓で抑えられていた対象が全投稿になった。インデックスは
-   * `(user_id, posted_at desc)` のみで、`sort=reach|views` は無索引の全件ソートになる。
+   * `(user_id, posted_at desc)` のみで、投稿日以外の並べ替えは無索引の全件ソートになる。
    * 1ユーザーあたり数千件までは許容。超えたら planned count か keyset ページングへ移す。
    */
   async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
-    const client = this.getClient();
+    const client = asPendingClient<InstagramMediaRatesDatabase>(this.getClient());
 
     const runQuery = async (page: number) => {
       const offset = (page - 1) * query.perPage;
@@ -150,16 +173,22 @@ class InstagramMediaService extends SupabaseService {
         dbQuery = dbQuery.eq('media_product_type', 'FEED');
       }
 
-      const ascending = false;
-      if (query.sort === 'reach') {
-        dbQuery = dbQuery.order('reach', { ascending, nullsFirst: false });
-      } else if (query.sort === 'views') {
-        dbQuery = dbQuery.order('views', { ascending, nullsFirst: false });
-      } else if (query.sort === 'engagement_rate') {
-        dbQuery = dbQuery.order('engagement_rate', { ascending, nullsFirst: false });
-      } else {
-        dbQuery = dbQuery.order('posted_at', { ascending });
+      // 並べ替えキーは列名と同じ。未取得（null）の投稿は向きに関係なく末尾に置く
+      // （昇順で先頭に「-」が並ぶと、値のある投稿が見えなくなる）。
+      // 指標の列では「対象外」の投稿も末尾に寄せる。対象外でも like_count / comments_count は
+      // 一覧 API の値で埋まっているため、null 判定だけでは表示（対象外）と並び位置がずれる
+      if (!INSIGHTS_INDEPENDENT_SORT_KEYS.has(query.sort)) {
+        dbQuery = dbQuery.order('insights_unavailable', { ascending: true });
       }
+      // posted_at は NOT NULL。nullsFirst を付けると (user_id, posted_at desc) の索引と
+      // 並び順が一致しなくなり、既定表示まで全件ソートになるため付けない
+      dbQuery =
+        query.sort === 'posted_at'
+          ? dbQuery.order('posted_at', { ascending: query.order === 'asc' })
+          : dbQuery.order(query.sort, {
+              ascending: query.order === 'asc',
+              nullsFirst: false,
+            });
 
       if (query.minEngagementRate !== null) {
         dbQuery = dbQuery.gte('engagement_rate', query.minEngagementRate);

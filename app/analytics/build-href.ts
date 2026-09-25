@@ -1,4 +1,9 @@
-import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
+import { DEFAULT_IG_SORT, DEFAULT_IG_SORT_ORDER } from '@/lib/constants';
+import type {
+  InstagramMediaSortKey,
+  InstagramMediaSortOrder,
+  InstagramMediaTypeFilter,
+} from '@/types/instagram';
 
 /**
  * /analytics の URL 組み立てに必要な状態。
@@ -24,6 +29,7 @@ export interface AnalyticsHrefState {
   /** null / 空文字は絞り込みなし。URL にも出さない */
   igEnd: string | null;
   igSort: InstagramMediaSortKey;
+  igOrder: InstagramMediaSortOrder;
   igHigh: boolean;
 }
 
@@ -34,6 +40,7 @@ export interface InstagramHrefPatch {
   igStart?: string | null;
   igEnd?: string | null;
   igSort?: InstagramMediaSortKey;
+  igOrder?: InstagramMediaSortOrder;
   igHigh?: boolean;
 }
 
@@ -53,7 +60,7 @@ export function setOptionalDate(
 }
 
 /**
- * 並び順・「高エンゲージメント率」の絞り込みは既定値（投稿日順 / OFF）なら URL に載せない。
+ * 並び順・「高エンゲージメント率」の絞り込みは既定値（投稿日順 / 降順 / OFF）なら URL に載せない。
  * 載せると InstagramTab の保存値復元（URL に無いときだけ復元）が常に止まり、
  * `/analytics` からタブを開いたときに前回の状態が戻らない。
  * page.tsx の buildPageHref も同じ規則で組み立てる。
@@ -61,10 +68,14 @@ export function setOptionalDate(
 export function setInstagramListParams(
   query: URLSearchParams,
   sort: InstagramMediaSortKey,
+  order: InstagramMediaSortOrder,
   highOnly: boolean
 ) {
-  if (sort !== 'posted_at') {
+  if (sort !== DEFAULT_IG_SORT) {
     query.set('ig_sort', sort);
+  }
+  if (order !== DEFAULT_IG_SORT_ORDER) {
+    query.set('ig_order', order);
   }
   if (highOnly) {
     query.set('ig_high', '1');
@@ -106,7 +117,12 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
     query.set('ig_type', patch.igType ?? state.igType);
     setOptionalDate(query, 'ig_start', nextIgStart);
     setOptionalDate(query, 'ig_end', nextIgEnd);
-    setInstagramListParams(query, patch.igSort ?? state.igSort, nextIgHigh);
+    setInstagramListParams(
+      query,
+      patch.igSort ?? state.igSort,
+      patch.igOrder ?? state.igOrder,
+      nextIgHigh
+    );
   }
   if (patch.tab === 'instagram') {
     query.set('ig_page', '1');
@@ -117,7 +133,7 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
     query.set('ig_type', state.igType);
     setOptionalDate(query, 'ig_start', nextIgStart);
     setOptionalDate(query, 'ig_end', nextIgEnd);
-    setInstagramListParams(query, state.igSort, nextIgHigh);
+    setInstagramListParams(query, state.igSort, state.igOrder, nextIgHigh);
   }
 
   return `/analytics?${query.toString()}`;
@@ -132,6 +148,7 @@ export interface InstagramFilterPatch {
   igStart?: string | null;
   igEnd?: string | null;
   igSort?: InstagramMediaSortKey;
+  igOrder?: InstagramMediaSortOrder;
   igHigh?: boolean;
   igPage?: number;
 }

@@ -133,10 +133,10 @@
   },
   "app/analytics/components/InstagramTab.tsx": {
     "shadcn/no-arbitrary-values": {
-      "count": 2
+      "count": 1
     },
     "shadcn/no-raw-colors": {
-      "count": 15
+      "count": 14
     }
   },
   "app/business-info/components/BusinessInfoForm.tsx": {
