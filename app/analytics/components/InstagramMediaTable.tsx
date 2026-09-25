@@ -280,20 +280,18 @@ export default function InstagramMediaTable({
       }
     >
       {({ visibleSet, orderedIds }) => {
-        if (items.length === 0 && loadingLabel !== null) {
+        if (items.length === 0) {
+          // role="status" の要素は取得中→空状態のあいだ差し替えずに置いたままにする。
+          // 中身の入った live region を新しく差し込むと読み上げられないスクリーンリーダーが多く、
+          // 取得完了後の「まだ投稿がありません」などが伝わらなくなる
           return (
             <div role="status" className="py-8">
-              <CenteredLoading label={loadingLabel} />
+              {loadingLabel !== null ? (
+                <CenteredLoading label={loadingLabel} />
+              ) : (
+                <p className="text-sm text-gray-500 text-center">{emptyMessage}</p>
+              )}
             </div>
-          );
-        }
-        if (items.length === 0) {
-          // role="status": 取得中→一覧表示という状態変化がここにしか出ないことがあるため、
-          // 支援技術にも伝わるようにする
-          return (
-            <p role="status" className="text-sm text-gray-500 py-8 text-center">
-              {emptyMessage}
-            </p>
           );
         }
         const visibleOrdered = orderedIds.filter(id => visibleSet.has(id));
