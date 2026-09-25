@@ -207,6 +207,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 | `REVIEW_LOGIN_EMAIL` | 任意（App Review 期間のみ設定。審査終了後は削除して経路を塞ぐ） | [`app/review-login/page.tsx`](app/review-login/page.tsx), [`src/server/actions/auth.actions.ts`](src/server/actions/auth.actions.ts) の `signInWithReviewPassword`。**撤去時はこの行と併せて以下も削除する**: [`src/components/ReviewLoginForm.tsx`](src/components/ReviewLoginForm.tsx) / [`proxy.ts`](proxy.ts) と [`src/lib/public-paths.ts`](src/lib/public-paths.ts) の `/review-login` / [`src/domain/errors/error-messages.ts`](src/domain/errors/error-messages.ts) の `REVIEW_LOGIN_*` / `tests/unit/server/actions/reviewLogin.actions.test.ts` / `tests/unit/lib/public-paths.test.ts` の `/review-login` ケース / [`src/components/AuthProvider.tsx`](src/components/AuthProvider.tsx) の `FULL_NAME_DIALOG_PATHS` |
 | `NEXT_PUBLIC_APP_URL` | 任意（内部 API 呼び出しのベース URL） | [`src/server/actions/adminUsers.actions.ts`](src/server/actions/adminUsers.actions.ts) |
 | `VERCEL_URL` | Vercel が自動設定 | [`src/server/middleware/authMiddlewareGuards.ts`](src/server/middleware/authMiddlewareGuards.ts) の許可オリジン判定 |
+| `VERCEL_ENV` | Vercel が自動設定 | [`src/server/lib/cron-observability.ts`](src/server/lib/cron-observability.ts) の実行環境判定（production / preview。それ以外は local） |
 
 追加・リネーム時は **`env.ts` の更新と README の「区分」行の見直し**が必要（フル一覧はソースを見ろ、という運用）。
 
