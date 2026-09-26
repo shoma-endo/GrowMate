@@ -99,51 +99,22 @@ describe('fetchGa4Properties / fetchGa4KeyEvents のリフレッシュ失敗分�
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
   });
 
-  describe('fetchGa4Properties', () => {
-    it('refresh失敗 status 400 は再認証要', async () => {
-      mocks.refreshAccessToken.mockRejectedValue(authExpired400);
+  // 400/429/500 の分類自体は google-oauth-error-handlers.test.ts が固定している。
+  // ここで守るのは各アクションがその分類を needsReauth と文言へ写す配線
+  it.each([
+    { action: 'fetchGa4Properties', run: () => fetchGa4Properties(), status: '400', error: authExpired400, needsReauth: true, message: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED },
+    { action: 'fetchGa4Properties', run: () => fetchGa4Properties(), status: '429', error: rateLimited429, needsReauth: false, message: ERROR_MESSAGES.GA4.PROPERTIES_FETCH_FAILED },
+    { action: 'fetchGa4Properties', run: () => fetchGa4Properties(), status: '500', error: serverError500, needsReauth: false, message: ERROR_MESSAGES.GA4.PROPERTIES_FETCH_FAILED },
+    { action: 'fetchGa4KeyEvents', run: () => fetchGa4KeyEvents('properties/123'), status: '400', error: authExpired400, needsReauth: true, message: ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED },
+    { action: 'fetchGa4KeyEvents', run: () => fetchGa4KeyEvents('properties/123'), status: '500', error: serverError500, needsReauth: false, message: ERROR_MESSAGES.GA4.KEY_EVENTS_FETCH_FAILED },
+  ])('$action: refresh失敗 status $status は needsReauth:$needsReauth（一時的失敗で再認証を促さない）', async ({ run, error, needsReauth, message }) => {
+    mocks.refreshAccessToken.mockRejectedValue(error);
 
-      const result = await fetchGa4Properties();
+    const result = await run();
 
-      expect(result.success).toBe(false);
-      expect('needsReauth' in result && result.needsReauth).toBe(true);
-      expect(result.error).toBe(ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED);
-    });
-
-    it.each([
-      ['429', rateLimited429],
-      ['500', serverError500],
-    ])('refresh失敗 status %s は一時的失敗（needsReauthにしない）', async (_label, error) => {
-      mocks.refreshAccessToken.mockRejectedValue(error);
-
-      const result = await fetchGa4Properties();
-
-      expect(result.success).toBe(false);
-      expect('needsReauth' in result ? result.needsReauth : undefined).toBeFalsy();
-      expect(result.error).toBe(ERROR_MESSAGES.GA4.PROPERTIES_FETCH_FAILED);
-    });
-  });
-
-  describe('fetchGa4KeyEvents', () => {
-    it('refresh失敗 status 400 は再認証要', async () => {
-      mocks.refreshAccessToken.mockRejectedValue(authExpired400);
-
-      const result = await fetchGa4KeyEvents('properties/123');
-
-      expect(result.success).toBe(false);
-      expect('needsReauth' in result && result.needsReauth).toBe(true);
-      expect(result.error).toBe(ERROR_MESSAGES.GA4.AUTH_EXPIRED_OR_REVOKED);
-    });
-
-    it('refresh失敗 status 500 は一時的失敗（needsReauthにしない）', async () => {
-      mocks.refreshAccessToken.mockRejectedValue(serverError500);
-
-      const result = await fetchGa4KeyEvents('properties/123');
-
-      expect(result.success).toBe(false);
-      expect('needsReauth' in result ? result.needsReauth : undefined).toBeFalsy();
-      expect(result.error).toBe(ERROR_MESSAGES.GA4.KEY_EVENTS_FETCH_FAILED);
-    });
+    expect(result.success).toBe(false);
+    expect(Boolean('needsReauth' in result && result.needsReauth)).toBe(needsReauth);
+    expect(result.error).toBe(message);
   });
 });
 
@@ -153,6 +124,8 @@ describe('fetchGa4Properties / fetchGa4KeyEvents のリフレッシュ失敗分�
  *
  * 要点: アクセストークンの期限切れ（約1時間TTL）だけを見て needsReauth を立てるのではなく、
  * resolveHomeGoogleCredential 経由で実際にリフレッシュを試みてから判定できているかを固定する。
+ * 失敗の分類は home-google-credential.test.ts、分類結果からの needsReauth / hasTemporaryError /
+ * linked_unselected の組み立ては ga4-status.test.ts（toGa4ConnectionStatusFromResolution）が固定する。
  */
 describe('fetchGa4Status の再認証判定', () => {
   beforeEach(() => {
@@ -173,28 +146,6 @@ describe('fetchGa4Status の再認証判定', () => {
 
     expect(result.success).toBe(true);
     expect('data' in result ? result.data?.needsReauth : undefined).toBe(false);
-  });
-
-  it('refresh が 401 相当で失敗（本当の認証失効）なら needsReauth:true', async () => {
-    mocks.refreshAccessToken.mockRejectedValue(authExpired400);
-
-    const result = await fetchGa4Status();
-
-    expect(result.success).toBe(true);
-    expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
-  });
-
-  it('refresh が 429 等の一時的失敗なら needsReauth:false かつ hasTemporaryError:true（誤って再認証を促さない）', async () => {
-    mocks.refreshAccessToken.mockRejectedValue(rateLimited429);
-
-    const result = await fetchGa4Status();
-
-    expect(result.success).toBe(true);
-    expect('data' in result ? result.data?.needsReauth : undefined).toBe(false);
-    expect('data' in result ? result.data?.hasTemporaryError : undefined).toBe(true);
-    expect('data' in result ? result.data?.temporaryErrorMessage : undefined).toBe(
-      ERROR_MESSAGES.GA4.TOKEN_REFRESH_TEMPORARY_FAILURE
-    );
   });
 });
 
@@ -261,46 +212,5 @@ describe('refetchGa4StatusWithValidation の一時的失敗の伝播', () => {
       expect(result.needsReauth).toBe(false);
       expect(result.data.hasTemporaryError).toBeFalsy();
     }
-  });
-});
-
-/**
- * toGa4ConnectionStatusFromResolution のtransient_failure分岐の検証。
- *
- * 要点1: GA4スコープ不足（scopeMissing）はcredential.scopeという静的な事実であり
- * トークンの有効性とは独立なので、一時的失敗時でもneedsReauthをもみ消してはいけない。
- * 要点2: プロパティ未選択（linked_unselected）の連携済みユーザーが一時的失敗に遭遇しても、
- * hasValidToken起因の誤判定で「未連携」に転落させてはいけない。
- */
-describe('fetchGa4Status のtransient_failure分岐', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID, userDetails: { role: 'paid' } });
-  });
-
-  it('GA4スコープ不足かつ一時的失敗なら needsReauth:true を維持する（もみ消さない）', async () => {
-    mocks.getGscCredentialByUserId.mockResolvedValue({
-      ...EXPIRED_CREDENTIAL_WITH_SCOPE,
-      scope: ['https://www.googleapis.com/auth/webmasters.readonly'], // GA4_SCOPEなし
-    });
-    mocks.refreshAccessToken.mockRejectedValue(rateLimited429);
-
-    const result = await fetchGa4Status();
-
-    expect(result.success).toBe(true);
-    expect('data' in result ? result.data?.needsReauth : undefined).toBe(true);
-    expect('data' in result ? result.data?.hasTemporaryError : undefined).toBe(true);
-  });
-
-  it('プロパティ未選択（連携済み）が一時的失敗に遭遇しても未連携扱いにしない', async () => {
-    mocks.getGscCredentialByUserId.mockResolvedValue(EXPIRED_CREDENTIAL_WITH_SCOPE); // ga4PropertyIdなし、scopeはあり
-    mocks.refreshAccessToken.mockRejectedValue(rateLimited429);
-
-    const result = await fetchGa4Status();
-
-    expect(result.success).toBe(true);
-    expect('data' in result ? result.data?.connectionStage : undefined).toBe('linked_unselected');
-    expect('data' in result ? result.data?.connected : undefined).toBe(true);
-    expect('data' in result ? result.data?.needsReauth : undefined).toBe(false);
   });
 });

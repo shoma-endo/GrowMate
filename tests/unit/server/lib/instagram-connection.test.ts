@@ -106,18 +106,13 @@ describe('認可解除の検知（instagram-status × instagram-token）', () =>
       vi.useRealTimers();
     });
 
-    it('/setup 側の判定で needsReauth=true になる', () => {
+    it('/setup 側の判定で needsReauth=true になり、連携済み扱いは維持する', () => {
+      // 未連携に落とすと「再連携してください」の導線が消えるため、connected は true のまま
       expect(toInstagramConnectionStatus(revokedCredential)).toEqual({
         connected: true,
         needsReauth: true,
         username: 'manbou536',
       });
-    });
-
-    it('連携済み扱いは維持する（未連携に落とさない）', () => {
-      // 未連携に落とすと「再連携してください」の導線が消えるため、
-      // connected は true のままであることを固定する。
-      expect(toInstagramConnectionStatus(revokedCredential).connected).toBe(true);
     });
 
     it('トークンサービスがリフレッシュを試みず needs_reauth を返す', () => {

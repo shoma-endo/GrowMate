@@ -82,7 +82,7 @@ describe('gscDashboard actions のGA4未認可応答', () => {
     });
   });
 
-  it('読み取り2本と書き込み4本がデータなしの拒否ペイロードを返す', async () => {
+  it('読み取り2本と書き込み5本がデータなしの拒否ペイロードを返す', async () => {
     expectUnauthorized(await fetchGscDetail('annotation-id'));
     expectUnauthorized(await fetchQueryAnalysis('annotation-id'));
     expectUnauthorized(
@@ -100,52 +100,39 @@ describe('gscDashboard actions のGA4未認可応答', () => {
     );
     expectUnauthorized(await runQueryImportForAnnotation('annotation-id'));
     expectUnauthorized(await runEvaluationNow('annotation-id'));
+    expectUnauthorized(
+      await registerEvaluationsBulk({
+        mode: 'ids',
+        contentAnnotationIds: ['00000000-0000-4000-8000-000000000001'],
+      })
+    );
   });
 
-  it('trial は一括開始を拒否し、dataを返さない', async () => {
-    const result = await registerEvaluationsBulk({
-      mode: 'ids',
-      contentAnnotationIds: ['00000000-0000-4000-8000-000000000001'],
-    });
-
-    expectUnauthorized(result);
-  });
-
-  it('admin の空のID配列は対象必須エラーを返す', async () => {
-    mocks.authMiddleware.mockResolvedValue({
-      lineUserId: '',
-      userId: USER_ID,
-      userDetails: { role: 'admin' },
-    });
-
-    const result = await registerEvaluationsBulk({
-      mode: 'ids',
-      contentAnnotationIds: [],
-    });
-
-    expect(result).toEqual({
-      success: false,
+  it.each([
+    {
+      label: '空のID配列は対象必須エラー',
+      count: 0,
       error: ERROR_MESSAGES.GSC.BULK_TARGETS_REQUIRED,
-    });
-  });
-
-  it('admin の1001件入力は上限エラーを返す', async () => {
+    },
+    {
+      label: '1001件入力は上限エラー',
+      count: 1001,
+      error: ERROR_MESSAGES.GSC.BULK_TARGETS_LIMIT_EXCEEDED,
+    },
+  ])('admin の$labelを返す', async ({ count, error }) => {
     mocks.authMiddleware.mockResolvedValue({
       lineUserId: '',
       userId: USER_ID,
       userDetails: { role: 'admin' },
     });
     const contentAnnotationIds = Array.from(
-      { length: 1001 },
+      { length: count },
       (_, index) => `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`
     );
 
     const result = await registerEvaluationsBulk({ mode: 'ids', contentAnnotationIds });
 
-    expect(result).toEqual({
-      success: false,
-      error: ERROR_MESSAGES.GSC.BULK_TARGETS_LIMIT_EXCEEDED,
-    });
+    expect(result).toEqual({ success: false, error });
   });
 
   it('全選択の母集団が1000件超なら先頭1000件へ丸めて実行する（AC-11。エラーにしない）', async () => {
@@ -216,6 +203,7 @@ describe('saveEvaluationHistoryMemo', () => {
     expect(mocks.update).toHaveBeenCalledWith({ memo });
     expect(mocks.eq).toHaveBeenNthCalledWith(1, 'id', historyId);
     expect(mocks.eq).toHaveBeenNthCalledWith(2, 'user_id', USER_ID);
+    // 更新行を返させないと実環境では data が常に null になり、保存がすべて失敗扱いになる
     expect(mocks.select).toHaveBeenCalledWith('id');
   });
 
@@ -237,8 +225,6 @@ describe('saveEvaluationHistoryMemo', () => {
       success: false,
       error: ERROR_MESSAGES.GSC.EVALUATION_MEMO_SAVE_FAILED,
     });
-    expect(mocks.eq).toHaveBeenNthCalledWith(1, 'id', historyId);
-    expect(mocks.eq).toHaveBeenNthCalledWith(2, 'user_id', USER_ID);
   });
 
   it('trialは保存処理を実行せず拒否する', async () => {
@@ -265,6 +251,5 @@ describe('saveEvaluationHistoryMemo', () => {
       success: false,
       error: ERROR_MESSAGES.GSC.EVALUATION_MEMO_SAVE_FAILED,
     });
-    expect(result).not.toHaveProperty('error', 'internal database details');
   });
 });

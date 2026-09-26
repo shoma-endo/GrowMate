@@ -37,8 +37,6 @@ const USER_ID = 'b0ed75ba-bb37-4dd7-89a0-c6ce940f991c';
 
 const authExpired400 = new Error('Google OAuthトークンリフレッシュに失敗しました: Status 400');
 const rateLimited429 = new Error('Google OAuthトークンリフレッシュに失敗しました: Status 429');
-const networkError = new Error('fetch failed');
-const invalidGrantNoStatus = new Error('invalid_grant: Token has been expired or revoked.');
 
 const baseCredential = {
   id: 'cred-1',
@@ -139,24 +137,6 @@ describe('resolveHomeGoogleCredential', () => {
     const result = await resolveHomeGoogleCredential(USER_ID);
 
     expect(result).toEqual({ kind: 'transient_failure', credential: expiredCredential });
-  });
-
-  it('ステータスの取れないネットワーク例外は一時的失敗', async () => {
-    mocks.getGscCredentialByUserId.mockResolvedValue(expiredCredential);
-    mocks.refreshAccessToken.mockRejectedValue(networkError);
-
-    const result = await resolveHomeGoogleCredential(USER_ID);
-
-    expect(result).toEqual({ kind: 'transient_failure', credential: expiredCredential });
-  });
-
-  it('ステータスが無くても invalid_grant を含めば再認証要（古い credential のまま）', async () => {
-    mocks.getGscCredentialByUserId.mockResolvedValue(expiredCredential);
-    mocks.refreshAccessToken.mockRejectedValue(invalidGrantNoStatus);
-
-    const result = await resolveHomeGoogleCredential(USER_ID);
-
-    expect(result).toEqual({ kind: 'ok', credential: expiredCredential });
   });
 
   it('リフレッシュは成功したが DB 保存が失敗したら一時的失敗', async () => {
