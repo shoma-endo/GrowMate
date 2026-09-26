@@ -69,8 +69,11 @@ beforeEach(() => {
 });
 
 describe('認可（FR-B10 / AC-B09）', () => {
-  it('trial はサーバー側で拒否し、ジョブを作らない', async () => {
-    authAs('trial');
+  it.each([
+    ['trial', 'trial'],
+    ['role なし', null],
+  ])('%s はサーバー側で拒否し、ジョブを作らない', async (_name, role) => {
+    authAs(role);
     const result = await summarizeContentAnnotationsBulk({
       mode: 'ids',
       contentAnnotationIds: [uuid(1)],
@@ -79,41 +82,21 @@ describe('認可（FR-B10 / AC-B09）', () => {
     expect(result.error).toBe(ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED);
     expect(mocks.createJob).not.toHaveBeenCalled();
   });
-
-  it('role なしも拒否する', async () => {
-    authAs(null);
-    const result = await summarizeContentAnnotationsBulk({
-      mode: 'ids',
-      contentAnnotationIds: [uuid(1)],
-    });
-    expect(result.success).toBe(false);
-    expect(mocks.createJob).not.toHaveBeenCalled();
-  });
 });
 
 describe('入力検証（AC-B11）', () => {
-  it('0件はエラー', async () => {
-    const result = await summarizeContentAnnotationsBulk({
-      mode: 'ids',
-      contentAnnotationIds: [],
-    });
-    expect(result.error).toBe(ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_TARGETS_REQUIRED);
-    expect(mocks.createJob).not.toHaveBeenCalled();
-  });
-
-  it('1001件はジョブを作らずエラー', async () => {
-    const ids = Array.from({ length: 1001 }, (_, i) => uuid(i + 1));
+  it.each([
+    ['0件', [], ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_TARGETS_REQUIRED],
+    [
+      '1001件',
+      Array.from({ length: 1001 }, (_, i) => uuid(i + 1)),
+      ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_TARGETS_LIMIT_EXCEEDED,
+    ],
+    ['UUID でない ID', ['not-a-uuid'], ERROR_MESSAGES.COMMON.VALIDATION_FAILED],
+  ])('%s はジョブを作らずエラー', async (_name, ids: string[], expectedError) => {
     const result = await summarizeContentAnnotationsBulk({ mode: 'ids', contentAnnotationIds: ids });
-    expect(result.error).toBe(ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_TARGETS_LIMIT_EXCEEDED);
+    expect(result.error).toBe(expectedError);
     expect(mocks.createJob).not.toHaveBeenCalled();
-  });
-
-  it('UUID でない ID は検証で弾く', async () => {
-    const result = await summarizeContentAnnotationsBulk({
-      mode: 'ids',
-      contentAnnotationIds: ['not-a-uuid'],
-    });
-    expect(result.error).toBe(ERROR_MESSAGES.COMMON.VALIDATION_FAILED);
   });
 });
 
@@ -190,26 +173,25 @@ describe('二重起票の拒否（AC-B07 / BR-B03）', () => {
     expect(mocks.createJob).not.toHaveBeenCalled();
   });
 
-  it('ユニーク制約違反も同じ文言を返す（汎用の失敗に落とさない）', async () => {
-    mocks.createJob.mockResolvedValue({ success: false, reason: 'already_running' });
+  it.each([
+    [
+      'ユニーク制約違反も同じ文言を返す（汎用の失敗に落とさない）',
+      'already_running',
+      ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_ALREADY_RUNNING,
+    ],
+    [
+      '起票そのものの失敗は SUMMARY_BULK_FAILED を返す',
+      'failed',
+      ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_FAILED,
+    ],
+  ])('%s', async (_name, reason, expectedError) => {
+    mocks.createJob.mockResolvedValue({ success: false, reason });
 
     const result = await summarizeContentAnnotationsBulk({
       mode: 'ids',
       contentAnnotationIds: [uuid(1)],
     });
 
-    expect(result.error).toBe(ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_ALREADY_RUNNING);
-    expect(result.error).not.toBe(ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_FAILED);
-  });
-
-  it('起票そのものの失敗は SUMMARY_BULK_FAILED を返す', async () => {
-    mocks.createJob.mockResolvedValue({ success: false, reason: 'failed' });
-
-    const result = await summarizeContentAnnotationsBulk({
-      mode: 'ids',
-      contentAnnotationIds: [uuid(1)],
-    });
-
-    expect(result.error).toBe(ERROR_MESSAGES.WORDPRESS.SUMMARY_BULK_FAILED);
+    expect(result.error).toBe(expectedError);
   });
 });

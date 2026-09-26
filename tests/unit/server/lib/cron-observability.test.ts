@@ -15,24 +15,24 @@ describe('cron-observability', () => {
     );
   });
 
-  it('undiciのタイムアウトコードを上流HTTPタイムアウトとして分類する', () => {
-    const error = Object.assign(new Error('request failed'), { code: 'UND_ERR_HEADERS_TIMEOUT' });
-    expect(classifyCronTimeout(error)).toBe('UPSTREAM_HTTP_TIMEOUT');
-  });
-
-  it('cause内のundiciタイムアウトコードを分類する', () => {
-    const error = Object.assign(new TypeError('fetch failed'), {
-      cause: { code: 'UND_ERR_CONNECT_TIMEOUT' },
-    });
-
-    expect(classifyCronTimeout(error)).toBe('UPSTREAM_HTTP_TIMEOUT');
-  });
-
-  it('複数段のcauseを探索する', () => {
-    const error = Object.assign(new Error('request failed'), {
-      cause: { cause: { code: 'ETIMEDOUT' } },
-    });
-
+  it.each([
+    {
+      label: 'undiciのタイムアウトコード',
+      error: Object.assign(new Error('request failed'), { code: 'UND_ERR_HEADERS_TIMEOUT' }),
+    },
+    {
+      label: 'cause内のundiciタイムアウトコード',
+      error: Object.assign(new TypeError('fetch failed'), {
+        cause: { code: 'UND_ERR_CONNECT_TIMEOUT' },
+      }),
+    },
+    {
+      label: '複数段のcause内のタイムアウトコード',
+      error: Object.assign(new Error('request failed'), {
+        cause: { cause: { code: 'ETIMEDOUT' } },
+      }),
+    },
+  ])('$labelを上流HTTPタイムアウトとして分類する', ({ error }) => {
     expect(classifyCronTimeout(error)).toBe('UPSTREAM_HTTP_TIMEOUT');
   });
 
@@ -49,14 +49,6 @@ describe('cron-observability', () => {
 
   it('abortedだけではタイムアウトに分類しない', () => {
     expect(classifyCronTimeout(new Error('Request was aborted.'))).toBeUndefined();
-  });
-
-  it('Cron宣言から名前付きObserverを動的に生成する', () => {
-    const definitions = defineCronDefinitions({
-      newCron: { name: 'new_cron' },
-    });
-
-    expect(definitions.newCron.name).toBe('new_cron');
   });
 
   it('Cron名が重複する宣言を拒否する', () => {
@@ -119,34 +111,25 @@ describe('cron-observability', () => {
     });
   });
 
-  it('Route失敗を共通処理でタイムアウトとして記録する', () => {
+  it.each([
+    {
+      label: 'タイムアウトをroute_timed_out',
+      error: new CronTimeoutError('JOB_TIMEOUT', 'timeout'),
+      expected: { event: 'route_timed_out', timeoutType: 'JOB_TIMEOUT' },
+    },
+    { label: '通常失敗をroute_failed', error: new Error('failed'), expected: { event: 'route_failed' } },
+  ])('Route失敗のうち$labelとして記録する', ({ error, expected }) => {
     vi.spyOn(Date, 'now').mockReturnValue(250);
-    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const cron = defineCronObservability({ name: 'test_cron' });
 
-    cron.logRouteFailure(new CronTimeoutError('JOB_TIMEOUT', 'timeout'), 100);
+    cron.logRouteFailure(error, 100);
 
-    expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toStrictEqual({
+    expect(JSON.parse(String(errorLog.mock.calls[0]?.[0]))).toStrictEqual({
       source: 'cron',
       cron: 'test_cron',
-      event: 'route_timed_out',
       durationMs: 150,
-      timeoutType: 'JOB_TIMEOUT',
-    });
-  });
-
-  it('Routeの通常失敗をroute_failedとして記録する', () => {
-    vi.spyOn(Date, 'now').mockReturnValue(250);
-    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const cron = defineCronObservability({ name: 'test_cron' });
-
-    cron.logRouteFailure(new Error('failed'), 100);
-
-    expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toStrictEqual({
-      source: 'cron',
-      cron: 'test_cron',
-      event: 'route_failed',
-      durationMs: 150,
+      ...expected,
     });
   });
 });

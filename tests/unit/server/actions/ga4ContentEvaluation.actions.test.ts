@@ -135,10 +135,17 @@ describe('ga4ContentEvaluation actions', () => {
       error: ERROR_MESSAGES.GA4.EVALUATION_RUN_FAILED,
     });
   });
-  it('手動評価が成功したらGA4側のクールダウンを進める（概要タブとコンテンツ評価タブで次回評価予定がズレるのを防ぐ）', async () => {
+
+  // 概要タブとコンテンツ評価タブで次回評価予定がズレるのを防ぐため、スコアが確定した手動評価では
+  // GA4側のクールダウンを進める。確定しない結末で進めると自動リトライが1サイクル先に飛ぶ
+  it.each([
+    { displayStatus: 'evaluated', advances: true },
+    { displayStatus: 'narrative_failed', advances: true },
+    { displayStatus: 'insufficient_data', advances: false },
+  ])('手動評価の結末が$displayStatusならクールダウンを進める=$advances', async ({ displayStatus, advances }) => {
     mocks.run.mockResolvedValue({
-      displayStatus: 'evaluated',
-      history: [{ id: 'history-1', contentScore: 72 }],
+      displayStatus,
+      history: advances ? [{ id: 'history-1', contentScore: 72 }] : [],
     });
 
     await runGa4ContentEvaluation({
@@ -147,19 +154,9 @@ describe('ga4ContentEvaluation actions', () => {
       endDate: '2026-08-30',
     });
 
-    expect(mocks.advanceCooldownForManualRun).toHaveBeenCalledWith(USER_ID, ANNOTATION_ID, 72);
-  });
-
-  it('スコアが確定しない結末（insufficient_data等）ではクールダウンを進めない（自動リトライが1サイクル先に飛ぶのを防ぐ）', async () => {
-    mocks.run.mockResolvedValue({ displayStatus: 'insufficient_data', history: [] });
-
-    await runGa4ContentEvaluation({
-      annotationId: ANNOTATION_ID,
-      startDate: '2026-08-01',
-      endDate: '2026-08-30',
-    });
-
-    expect(mocks.advanceCooldownForManualRun).not.toHaveBeenCalled();
+    expect(mocks.advanceCooldownForManualRun.mock.calls).toEqual(
+      advances ? [[USER_ID, ANNOTATION_ID, 72]] : []
+    );
   });
 
   it('診断コメントの再生成ではクールダウンを進めない（スコアを算出し直していないため）', async () => {

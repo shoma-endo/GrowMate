@@ -23,30 +23,23 @@ describe('handleAsyncAction', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it('needsReauth:true の失敗時、onError が (error, result) の2引数で呼ばれ result.needsReauth が true', async () => {
-    const onError = vi.fn();
+  it.each([
+    ['needsReauth:true', { success: false as const, error: '認証切れ', needsReauth: true }, true],
+    ['needsReauth を持たない通常', { success: false as const, error: '取得失敗' }, undefined],
+  ])(
+    '%sの失敗時、onError が (error, result) の2引数で呼ばれ result の needsReauth をそのまま届ける',
+    async (_label, failure, expectedNeedsReauth) => {
+      const onError = vi.fn();
 
-    await handleAsyncAction(
-      async () => ({ success: false, error: '認証切れ', needsReauth: true }),
-      { onError }
-    );
+      await handleAsyncAction(async () => failure, { onError });
 
-    expect(onError).toHaveBeenCalledTimes(1);
-    const [error, result] = onError.mock.calls[0]!;
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toBe('認証切れ');
-    expect(result?.needsReauth).toBe(true);
-  });
-
-  it('needsReauth を持たない通常の失敗時も (error, result) で呼ばれるが needsReauth は undefined', async () => {
-    const onError = vi.fn();
-
-    await handleAsyncAction(async () => ({ success: false, error: '取得失敗' }), { onError });
-
-    expect(onError).toHaveBeenCalledTimes(1);
-    const [, result] = onError.mock.calls[0]!;
-    expect(result?.needsReauth).toBeUndefined();
-  });
+      expect(onError).toHaveBeenCalledTimes(1);
+      const [error, result] = onError.mock.calls[0]!;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(failure.error);
+      expect(result?.needsReauth).toBe(expectedNeedsReauth);
+    }
+  );
 
   it('例外パス（actionがthrow）では onError が result 無しで（1引数のみで）呼ばれる', async () => {
     const onError = vi.fn();

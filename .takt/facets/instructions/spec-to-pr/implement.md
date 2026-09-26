@@ -5,7 +5,7 @@
 - Server Actions / Route Handlers / エラー処理: `nextjs-server`
 - UI 変更: `growmate-ui-ux` と `react`
 - Supabase / migration / RLS / Service Role のスコープ条件: `supabase`。未適用マイグレーションは `service-usage.md` §6 の Pending Migration Types パターンで実装を継続する（型が無いことを理由に停止・ABORT しない）
-- テスト方針: `docs/specs/testing-strategy.md`（自動テスト対象のみ Vitest を追加・更新。簡易・形式的・低価値なテストは追加しない。実行は `npm run test`、`npx vitest` 直接実行は不可）
+- テスト方針: `docs/specs/testing-strategy.md`（自動テスト対象のみ Vitest を追加・更新。簡易・形式的・低価値なテストは追加しない。追加するテストは `docs/specs/testing-strategy.md`「過剰なテストを書かない」 に従う。実行は `npm run test`、`npx vitest` 直接実行は不可）
 
 {{include:instructions/unattended-operation}}
 

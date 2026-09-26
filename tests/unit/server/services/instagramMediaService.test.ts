@@ -34,8 +34,10 @@ function queryBuilder(response: { data: unknown[]; count: number; error: null })
       return builder;
     });
   }
-  builder.then = (resolve: (value: typeof response) => unknown, reject: (error: unknown) => unknown) =>
-    Promise.resolve(response).then(resolve, reject);
+  builder.then = (
+    resolve: (value: typeof response) => unknown,
+    reject: (error: unknown) => unknown
+  ) => Promise.resolve(response).then(resolve, reject);
   return builder;
 }
 
@@ -132,7 +134,33 @@ describe('InstagramMediaService.getPage', () => {
     expect(query.calls.some((call: unknown[]) => call[0] === 'gte')).toBe(false);
   });
 
-  it('昇順でも未取得（null）の投稿は末尾に置き、同順位は id で固定する', async () => {
+  // インサイト由来の列は対象外（insights_unavailable）を末尾へ寄せ、未取得（null）は昇順でも末尾。
+  // 投稿の属性の列は寄せない。posted_at は索引と同じ並び（nullsFirst 指定なし）。同順位は id で固定する
+  it.each([
+    [
+      'like_count',
+      'asc',
+      [
+        ['order', 'insights_unavailable', { ascending: true }],
+        ['order', 'like_count', { ascending: true, nullsFirst: false }],
+      ],
+    ],
+    [
+      'like_rate',
+      'desc',
+      [
+        ['order', 'insights_unavailable', { ascending: true }],
+        ['order', 'like_rate', { ascending: false, nullsFirst: false }],
+      ],
+    ],
+    ['posted_at', 'desc', [['order', 'posted_at', { ascending: false }]]],
+    ['caption', 'desc', [['order', 'caption', { ascending: false, nullsFirst: false }]]],
+    [
+      'media_product_type',
+      'desc',
+      [['order', 'media_product_type', { ascending: false, nullsFirst: false }]],
+    ],
+  ] as const)('%s（%s）の並び順', async (sort, order, expectedOrders) => {
     const query = queryBuilder({ data: [mediaRow()], count: 1, error: null });
     clientMock.from.mockReturnValue(query);
 
@@ -142,87 +170,12 @@ describe('InstagramMediaService.getPage', () => {
       type: 'all',
       startDate: null,
       endDate: null,
-      sort: 'like_count',
-      order: 'asc',
+      sort,
+      order,
       minEngagementRate: null,
     });
 
     const orders = query.calls.filter((call: unknown[]) => call[0] === 'order');
-    expect(orders).toEqual([
-      // 対象外の投稿は like_count が埋まっていても末尾へ
-      ['order', 'insights_unavailable', { ascending: true }],
-      ['order', 'like_count', { ascending: true, nullsFirst: false }],
-      ['order', 'id', { ascending: true }],
-    ]);
+    expect(orders).toEqual([...expectedOrders, ['order', 'id', { ascending: true }]]);
   });
-
-  it('投稿日は索引と同じ並び（nullsFirst 指定なし）で並べる', async () => {
-    const query = queryBuilder({ data: [mediaRow()], count: 1, error: null });
-    clientMock.from.mockReturnValue(query);
-
-    await instagramMediaService.getPage('user-1', {
-      page: 1,
-      perPage: 10,
-      type: 'all',
-      startDate: null,
-      endDate: null,
-      sort: 'posted_at',
-      order: 'desc',
-      minEngagementRate: null,
-    });
-
-    const orders = query.calls.filter((call: unknown[]) => call[0] === 'order');
-    expect(orders).toEqual([
-      ['order', 'posted_at', { ascending: false }],
-      ['order', 'id', { ascending: true }],
-    ]);
-  });
-
-  it('率の列（生成列）でも対象外を末尾に寄せてから並べる', async () => {
-    const query = queryBuilder({ data: [mediaRow()], count: 1, error: null });
-    clientMock.from.mockReturnValue(query);
-
-    await instagramMediaService.getPage('user-1', {
-      page: 1,
-      perPage: 10,
-      type: 'all',
-      startDate: null,
-      endDate: null,
-      sort: 'like_rate',
-      order: 'desc',
-      minEngagementRate: null,
-    });
-
-    const orders = query.calls.filter((call: unknown[]) => call[0] === 'order');
-    expect(orders).toEqual([
-      ['order', 'insights_unavailable', { ascending: true }],
-      ['order', 'like_rate', { ascending: false, nullsFirst: false }],
-      ['order', 'id', { ascending: true }],
-    ]);
-  });
-
-  it.each([['posted_at'], ['caption'], ['media_product_type']] as const)(
-    '投稿の属性の列（%s）では対象外を末尾に寄せない',
-    async sort => {
-      const query = queryBuilder({ data: [mediaRow()], count: 1, error: null });
-      clientMock.from.mockReturnValue(query);
-
-      await instagramMediaService.getPage('user-1', {
-        page: 1,
-        perPage: 10,
-        type: 'all',
-        startDate: null,
-        endDate: null,
-        sort,
-        order: 'desc',
-        minEngagementRate: null,
-      });
-
-      expect(query.calls).not.toContainEqual([
-        'order',
-        'insights_unavailable',
-        { ascending: true },
-      ]);
-    }
-  );
 });

@@ -137,7 +137,6 @@ afterEach(() => {
 describe('InstagramSyncService.syncUserData incremental', () => {
   it('初回同期（ウォーターマークなし）は取得した全件を同期する', async () => {
     getLatestPostedAtMock.mockResolvedValue(null);
-    getInstagramCredentialMock.mockResolvedValue({ lastSyncedAt: null });
     fetchMediaPageMock.mockResolvedValueOnce(
       mediaPage(
         [rawItem('1', '2026-08-01T00:00:00+0000'), rawItem('2', '2026-08-02T00:00:00+0000')],
@@ -158,7 +157,6 @@ describe('InstagramSyncService.syncUserData incremental', () => {
 
   it('ウォーターマーク以下の投稿に到達したらページングを打ち切り、新着のみ同期する', async () => {
     getLatestPostedAtMock.mockResolvedValue('2026-08-01T00:00:00.000Z');
-    getInstagramCredentialMock.mockResolvedValue({ lastSyncedAt: '2026-08-01T00:00:00.000Z' });
     fetchMediaPageMock.mockResolvedValueOnce(
       mediaPage(
         [
@@ -228,23 +226,6 @@ describe('InstagramSyncService.syncUserData incremental', () => {
     expect(upsertMediaMock).toHaveBeenCalledTimes(1);
   });
 
-  it('取り直しに失敗しても前回値を上書きせず failed に数えない', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
-    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
-    fetchMediaPageMock.mockResolvedValueOnce(
-      mediaPage([rawItem('recent', '2026-09-20T00:00:00+0000')])
-    );
-    getExistingMediaIdsMock.mockResolvedValue(new Set(['recent']));
-    fetchMediaInsightsMock.mockRejectedValueOnce(new Error('temporary insights failure'));
-
-    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
-
-    expect(result).toMatchObject({ synced: 0, refreshed: 0, failed: 0 });
-    expect(upsertMediaMock).not.toHaveBeenCalled();
-    expect(upsertMediaListingPreservingInsightsMock).not.toHaveBeenCalled();
-  });
-
   it('incremental 開始時に取得したフォロワー数を保存する', async () => {
     getLatestPostedAtMock.mockResolvedValue(null);
     fetchProfileMock.mockResolvedValueOnce({
@@ -283,88 +264,49 @@ describe('InstagramSyncService.syncUserData incremental', () => {
     );
   });
 
-  it('取り直しの5連続失敗で中断するが failed には数えない', async () => {
-    syncMediaLimit.value = 50;
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
-    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
-    fetchMediaPageMock.mockResolvedValueOnce(
-      mediaPage(
-        Array.from({ length: 6 }, (_, index) =>
-          rawItem(`recent-${index}`, `2026-09-${20 - index}T00:00:00+0000`)
-        )
-      )
-    );
-    getExistingMediaIdsMock.mockResolvedValue(
-      new Set(Array.from({ length: 6 }, (_, index) => `recent-${index}`))
-    );
-    fetchMediaInsightsMock.mockRejectedValue(new Error('temporary insights failure'));
+  // 取り直し失敗は前回値を上書きせず failed にも数えないが、連続失敗には数える。
+  // 「ちょうど5件」はループ先頭の判定に届かない最後の1件で閾値に達するケース
+  it.each([
+    ['1件の失敗では中断しない', 1, 'temporary insights failure', undefined, 1],
+    ['5連続失敗で中断する', 6, 'temporary insights failure', 'consecutive_failures', 5],
+    [
+      'ちょうど5件で全件失敗しても中断扱いにする',
+      5,
+      'temporary insights failure',
+      'consecutive_failures',
+      5,
+    ],
+    [
+      'pre-conversion error でも前回値を保持し連続失敗に数える',
+      6,
+      'Meta API error_subcode":2108006: pre-conversion media',
+      'consecutive_failures',
+      5,
+    ],
+  ] as const)(
+    '取り直しの失敗: %s（failed に数えない）',
+    async (_label, itemCount, errorMessage, stoppedReason, insightCalls) => {
+      syncMediaLimit.value = 50;
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
+      getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
+      const ids = Array.from({ length: itemCount }, (_, index) => `recent-${index}`);
+      fetchMediaPageMock.mockResolvedValueOnce(
+        mediaPage(ids.map((id, index) => rawItem(id, `2026-09-${20 - index}T00:00:00+0000`)))
+      );
+      getExistingMediaIdsMock.mockResolvedValue(new Set(ids));
+      fetchMediaInsightsMock.mockRejectedValue(new Error(errorMessage));
 
-    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
+      const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
 
-    expect(result.stoppedReason).toBe('consecutive_failures');
-    expect(result).toMatchObject({ synced: 0, refreshed: 0, failed: 0 });
-    expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(5);
-    expect(upsertMediaListingPreservingInsightsMock).not.toHaveBeenCalled();
-  });
-
-  it('取り直しがちょうど5件で全件失敗しても中断扱いにする', async () => {
-    syncMediaLimit.value = 50;
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
-    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
-    fetchMediaPageMock.mockResolvedValueOnce(
-      mediaPage(
-        Array.from({ length: 5 }, (_, index) =>
-          rawItem(`recent-${index}`, `2026-09-${20 - index}T00:00:00+0000`)
-        )
-      )
-    );
-    getExistingMediaIdsMock.mockResolvedValue(
-      new Set(Array.from({ length: 5 }, (_, index) => `recent-${index}`))
-    );
-    fetchMediaInsightsMock.mockRejectedValue(new Error('temporary insights failure'));
-
-    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
-
-    expect(result.stoppedReason).toBe('consecutive_failures');
-    expect(result).toMatchObject({ synced: 0, refreshed: 0, failed: 0 });
-    expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(5);
-  });
-
-  it('取り直しのpre-conversion errorでも前回値を保持し連続失敗に数える', async () => {
-    syncMediaLimit.value = 50;
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-09-21T00:00:00.000Z'));
-    getLatestPostedAtMock.mockResolvedValue('2026-09-20T00:00:00.000Z');
-    fetchMediaPageMock.mockResolvedValueOnce(
-      mediaPage(
-        Array.from({ length: 6 }, (_, index) =>
-          rawItem(`pre-conversion-${index}`, `2026-09-${20 - index}T00:00:00+0000`)
-        )
-      )
-    );
-    getExistingMediaIdsMock.mockResolvedValue(
-      new Set(Array.from({ length: 6 }, (_, index) => `pre-conversion-${index}`))
-    );
-    fetchMediaInsightsMock.mockRejectedValue(
-      new Error('Meta API error_subcode":2108006: pre-conversion media')
-    );
-
-    const result = await instagramSyncService.syncUserData('user-1', 'token', 'incremental');
-
-    expect(result.stoppedReason).toBe('consecutive_failures');
-    expect(result).toMatchObject({
-      synced: 0,
-      refreshed: 0,
-      failed: 0,
-      preConversionCount: 0,
-    });
-    expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(5);
-    expect(upsertMediaInsightsUnavailableMock).not.toHaveBeenCalled();
-    expect(upsertMediaMock).not.toHaveBeenCalled();
-    expect(upsertMediaListingPreservingInsightsMock).not.toHaveBeenCalled();
-  });
+      expect(result.stoppedReason).toBe(stoppedReason);
+      expect(result).toMatchObject({ synced: 0, refreshed: 0, failed: 0, preConversionCount: 0 });
+      expect(fetchMediaInsightsMock).toHaveBeenCalledTimes(insightCalls);
+      expect(upsertMediaMock).not.toHaveBeenCalled();
+      expect(upsertMediaInsightsUnavailableMock).not.toHaveBeenCalled();
+      expect(upsertMediaListingPreservingInsightsMock).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe('InstagramSyncService.syncUserData backfill', () => {
@@ -381,7 +323,10 @@ describe('InstagramSyncService.syncUserData backfill', () => {
   });
 
   it('既存投稿はインサイト取得をスキップしつつページングを継続する', async () => {
-    getInstagramCredentialMock.mockResolvedValue({ backfillCompletedAt: null, backfillCursor: null });
+    getInstagramCredentialMock.mockResolvedValue({
+      backfillCompletedAt: null,
+      backfillCursor: null,
+    });
     fetchMediaPageMock.mockResolvedValueOnce(
       mediaPage(
         [
@@ -401,8 +346,13 @@ describe('InstagramSyncService.syncUserData backfill', () => {
   });
 
   it('backfill ではフォロワー数を取得しない', async () => {
-    getInstagramCredentialMock.mockResolvedValue({ backfillCompletedAt: null, backfillCursor: null });
-    fetchMediaPageMock.mockResolvedValueOnce(mediaPage([rawItem('new-1', '2026-06-01T00:00:00+0000')], null));
+    getInstagramCredentialMock.mockResolvedValue({
+      backfillCompletedAt: null,
+      backfillCursor: null,
+    });
+    fetchMediaPageMock.mockResolvedValueOnce(
+      mediaPage([rawItem('new-1', '2026-06-01T00:00:00+0000')], null)
+    );
     getExistingMediaIdsMock.mockResolvedValue(new Set());
 
     await instagramSyncService.syncUserData('user-1', 'token', 'backfill');
@@ -415,7 +365,10 @@ describe('InstagramSyncService.syncUserData backfill', () => {
   });
 
   it('アカウント末端（nextCursor=null）に到達したら backfillCompletedAt を保存する', async () => {
-    getInstagramCredentialMock.mockResolvedValue({ backfillCompletedAt: null, backfillCursor: null });
+    getInstagramCredentialMock.mockResolvedValue({
+      backfillCompletedAt: null,
+      backfillCursor: null,
+    });
     fetchMediaPageMock.mockResolvedValueOnce(
       mediaPage([rawItem('1', '2026-08-01T00:00:00+0000')], null)
     );
@@ -436,7 +389,10 @@ describe('InstagramSyncService.syncUserData backfill', () => {
   });
 
   it('1バッチで件数上限に達した場合、次のバッチへ自動的に進み最終的に完了する（サーバー側で複数バッチを繰り返す）', async () => {
-    getInstagramCredentialMock.mockResolvedValue({ backfillCompletedAt: null, backfillCursor: null });
+    getInstagramCredentialMock.mockResolvedValue({
+      backfillCompletedAt: null,
+      backfillCursor: null,
+    });
     getExistingMediaIdsMock.mockResolvedValue(new Set());
     fetchMediaPageMock
       .mockResolvedValueOnce(
