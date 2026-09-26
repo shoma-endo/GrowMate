@@ -36,7 +36,8 @@ import type {
   InstagramMediaSortOrder,
 } from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
-import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, TrendingUp } from 'lucide-react';
+import { ExternalLink, TrendingUp } from 'lucide-react';
+import { getAriaSort, SortHeaderButton } from '@/components/SortHeaderButton';
 
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
@@ -320,32 +321,18 @@ export default function InstagramMediaTable({
                       );
                     }
                     const isActive = columnId === igSort;
-                    const SortIcon = !isActive
-                      ? ArrowUpDown
-                      : igOrder === 'asc'
-                        ? ArrowUp
-                        : ArrowDown;
                     return (
                       <th
                         key={columnId}
-                        aria-sort={
-                          isActive ? (igOrder === 'asc' ? 'ascending' : 'descending') : undefined
-                        }
+                        aria-sort={getAriaSort(isActive, igOrder)}
                         className="px-6 py-3 whitespace-nowrap"
                       >
-                        {/*
-                          見出しの文字だけを押せる範囲にするため素の button を使う（ui/button は
-                          高さ・余白を持ち、見出しの行の高さと既存の見出しとの揃いが崩れる）。
-                          既存の QueryAnalysisTab は <th onClick> でキーボードから押せないため写さない
-                        */}
-                        <button
-                          type="button"
+                        <SortHeaderButton
+                          label={label}
+                          isActive={isActive}
+                          order={igOrder}
                           onClick={() => onSortChange(columnId)}
-                          className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          {label}
-                          <SortIcon className="w-3 h-3" aria-hidden />
-                        </button>
+                        />
                       </th>
                     );
                   })}

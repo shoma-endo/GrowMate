@@ -1,4 +1,6 @@
 import { DEFAULT_IG_SORT, DEFAULT_IG_SORT_ORDER } from '@/lib/constants';
+import { setAnalyticsSortParams } from '@/lib/analytics-sort';
+import type { AnalyticsContentSort } from '@/types/analytics';
 import type {
   InstagramMediaSortKey,
   InstagramMediaSortOrder,
@@ -20,6 +22,13 @@ export interface AnalyticsHrefState {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnsummarized: boolean;
+  /** ブログ一覧の並べ替え。タブを切り替えても保つ（カテゴリ等の絞り込みと同じ扱い） */
+  blogSort: AnalyticsContentSort;
+  /**
+   * ブログ一覧の期間（start / end）。null なら URL に載せない（既定の直近30日）。
+   * 期間を指定しているときと並べ替え中に値が入る（page.tsx の keepBlogPeriodInHref）
+   */
+  blogPeriodInHref: BlogPeriod | null;
   instagramConnected: boolean;
   activeTab: 'blog' | 'instagram';
   igPage: number;
@@ -31,6 +40,18 @@ export interface AnalyticsHrefState {
   igSort: InstagramMediaSortKey;
   igOrder: InstagramMediaSortOrder;
   igHigh: boolean;
+}
+
+export interface BlogPeriod {
+  start: string;
+  end: string;
+}
+
+/** ブログ一覧の期間を URL に書く。page.tsx のページ送りとタブ切替で同じ規則を使う */
+export function setBlogPeriodParams(query: URLSearchParams, period: BlogPeriod | null) {
+  if (period === null) return;
+  query.set('start', period.start);
+  query.set('end', period.end);
 }
 
 export interface InstagramHrefPatch {
@@ -103,6 +124,8 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
   if (state.hasUnsummarized) {
     query.set('unsummarized', '1');
   }
+  setBlogPeriodParams(query, state.blogPeriodInHref);
+  setAnalyticsSortParams(query, state.blogSort);
 
   const nextTab = patch.tab ?? state.activeTab;
   // patch で明示的に null / '' が来たら「絞り込み解除」なので ?? で state に落とさない。
