@@ -76,7 +76,7 @@
       "count": 5
     },
     "shadcn/no-raw-colors": {
-      "count": 38
+      "count": 37
     }
   },
   "app/analytics/[annotationId]/components/SuggestionDataReadiness.tsx": {
@@ -133,10 +133,10 @@
   },
   "app/analytics/components/InstagramTab.tsx": {
     "shadcn/no-arbitrary-values": {
-      "count": 2
+      "count": 1
     },
     "shadcn/no-raw-colors": {
-      "count": 15
+      "count": 14
     }
   },
   "app/business-info/components/BusinessInfoForm.tsx": {
@@ -374,7 +374,7 @@
       "count": 13
     },
     "shadcn/no-raw-colors": {
-      "count": 42
+      "count": 27
     }
   },
   "src/components/AnnotationFormFields.tsx": {
@@ -403,7 +403,7 @@
       "count": 1
     },
     "shadcn/no-raw-colors": {
-      "count": 24
+      "count": 12
     }
   },
   "src/components/ConfirmDeleteDialog.tsx": {

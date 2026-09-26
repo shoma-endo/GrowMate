@@ -12,6 +12,8 @@ export interface InstagramCredential {
   backfillCursor: string | null;
   /** 過去投稿取り込みが完了した日時。null は未完了（進行中 or 未着手） */
   backfillCompletedAt: string | null;
+  followersCount: number | null;
+  followersCountSyncedAt: string | null;
 }
 
 export interface InstagramConnectionStatus {
@@ -47,7 +49,34 @@ export interface InstagramMediaInsights {
 
 type InstagramInsightsUnavailableReason = 'pre_conversion' | 'retention_expired';
 
-export type InstagramMediaSortKey = 'posted_at' | 'reach' | 'views';
+/**
+ * 一覧の列見出しで並べ替えできる列（＝ DB の列名）。型 `InstagramMediaSortKey` と
+ * 許可リスト（`isInstagramSortKey`）はここから作る。列を足すときはここだけ直す。
+ */
+export const INSTAGRAM_MEDIA_SORT_KEYS = [
+  'media_product_type',
+  'caption',
+  'posted_at',
+  'reach',
+  'views',
+  'like_count',
+  'comments_count',
+  'saved',
+  'engagement_rate',
+  'shares',
+  'reposts',
+  'total_interactions',
+  'avg_watch_time_ms',
+  'total_watch_time_ms',
+  'reels_skip_rate',
+  'like_rate',
+  'saved_rate',
+  'share_rate',
+  'comment_rate',
+  'repost_rate',
+] as const;
+export type InstagramMediaSortKey = (typeof INSTAGRAM_MEDIA_SORT_KEYS)[number];
+export type InstagramMediaSortOrder = 'asc' | 'desc';
 export type InstagramMediaTypeFilter = 'all' | 'reels' | 'feed';
 
 export interface InstagramMediaListItem {
@@ -65,6 +94,13 @@ export interface InstagramMediaListItem {
   reach: number | null;
   views: number | null;
   saved: number | null;
+  engagementRate: number | null;
+  /** 率の列は DB の生成列（丸めない値）。表示側で小数第1位にする */
+  likeRate: number | null;
+  savedRate: number | null;
+  shareRate: number | null;
+  commentRate: number | null;
+  repostRate: number | null;
   shares: number | null;
   totalInteractions: number | null;
   reposts: number | null;
@@ -97,6 +133,7 @@ export interface InstagramSyncResult {
   mode: InstagramSyncMode;
   synced: number;
   failed: number;
+  refreshed: number;
   skipped: number;
   truncated: boolean;
   preConversionCount: number;

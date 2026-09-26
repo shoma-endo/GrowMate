@@ -18,6 +18,8 @@ const baseCredential: InstagramCredential = {
   lastSyncedAt: null,
   backfillCursor: null,
   backfillCompletedAt: null,
+  followersCount: null,
+  followersCountSyncedAt: null,
 };
 
 afterEach(() => {

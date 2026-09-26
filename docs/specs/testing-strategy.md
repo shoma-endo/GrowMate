@@ -58,7 +58,7 @@ UI・外部 API・Supabase を含む変更は、`spec-to-pr` によるPR作成�
 }
 ```
 
-`npm run verify` をローカル・TAKT共通の品質ゲートとする。テストだけを実行する場合も、直接 `npx vitest` を呼ばず `npm run test` を使用する。
+`npm run verify` をローカル・TAKT共通の品質ゲートとする。テストだけを実行する場合も、直接 `npx vitest` を呼ばず `npm run test` を使用する。開発中に変更に関係するテストだけを回す場合は `npm run test:related -- <変更したファイル…>` を使う（全件は pre-push と CI が必ず実行する。`.agents/skills/quality-gate/SKILL.md`）。
 
 ---
 

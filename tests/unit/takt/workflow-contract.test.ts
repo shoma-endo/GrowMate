@@ -106,6 +106,10 @@ const KNOWN_DOCTOR_WARNINGS: Record<string, RegExp[]> = {
   ],
 };
 
+// takt は外部 CLI で、新しいコンテナでの初回起動は 5 秒（vitest の既定）を超えることがある
+// （2026-09-25 クラウド環境で 7.6 秒）。遅いだけで失敗扱いにしないよう、呼び出すテストは長めに待つ
+const TAKT_CLI_TIMEOUT_MS = 30_000;
+
 describe.skipIf(!runPinnedTaktTests)('takt pin', () => {
   it('resolves the binary declared by .takt-version', () => {
     const want = readFileSync(VERSION_FILE, 'utf8').trim();
@@ -113,7 +117,7 @@ describe.skipIf(!runPinnedTaktTests)('takt pin', () => {
     expect(taktBin, taktResolveError ?? 'takt pin unresolved').toBeTruthy();
     const got = execFileSync(taktBin as string, ['--version'], { encoding: 'utf8' }).trim();
     expect(got).toBe(want);
-  });
+  }, TAKT_CLI_TIMEOUT_MS);
 });
 
 describe.skipIf(!runPinnedTaktTests)('takt workflow doctor', () => {
@@ -150,7 +154,7 @@ describe.skipIf(!runPinnedTaktTests)('takt workflow doctor', () => {
     if (warnings.length === 0) {
       expect(output).toMatch(/Workflow OK/);
     }
-  });
+  }, TAKT_CLI_TIMEOUT_MS);
 });
 
 describe('structured output schemas', () => {

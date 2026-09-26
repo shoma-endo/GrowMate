@@ -7,6 +7,13 @@
         "command": "sh scripts/spec-html-hook.sh",
         "timeout": 30
       }
+    ],
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "sh scripts/ui-skill-hook.sh --session-start",
+        "timeout": 10
+      }
     ]
   }
 }

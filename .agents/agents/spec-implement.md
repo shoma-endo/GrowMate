@@ -15,7 +15,7 @@ model: inherit
 ## 手順
 
 1. plan の `対象仕様書:` を Read。スコープ外変更禁止。
-2. UI 対象なら仕様の画面設計または UIモックタブを正本とする（implement 正本どおり）。
+2. UI 対象なら仕様の画面設計または UIモックタブを正本とし、`01-plan.md` の「UI 既存パターン対照表」の方法どおりに既存 UI を使う・写す（implement 正本どおり）。
 3. 実装後、プロダクション影響パス変更時は `npm run verify`（または `verify:changed`）。
 4. **`{handoff_dir}/02-implement-report.md`** に変更ファイル・未確認事項・verify 結果。
 

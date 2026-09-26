@@ -14,6 +14,8 @@ function buildState(overrides: Partial<AnalyticsHrefState> = {}): AnalyticsHrefS
     hasUnreadSuggestion: false,
     hasUnstartedGscEvaluation: false,
     hasUnsummarized: false,
+    blogSort: null,
+    blogPeriodInHref: null,
     instagramConnected: true,
     activeTab: 'blog',
     igPage: 1,
@@ -21,11 +23,41 @@ function buildState(overrides: Partial<AnalyticsHrefState> = {}): AnalyticsHrefS
     igStart: '2026-08-01',
     igEnd: '2026-08-25',
     igSort: 'posted_at',
+    igOrder: 'desc',
+    igHigh: false,
     ...overrides,
   };
 }
 
 describe('buildInstagramHref', () => {
+  it('Instagram の絞り込みをタブ切り替え・ページ送り・並び替えで引き継ぐ', () => {
+    const state = buildState({ activeTab: 'instagram', igHigh: true });
+    expect(buildInstagramHref(state, { tab: 'blog' })).toContain('ig_high=1');
+    expect(buildInstagramHref(state, { igPage: 2 })).toContain('ig_high=1');
+    expect(buildInstagramHref(state, { igSort: 'engagement_rate' })).toContain('ig_high=1');
+    expect(buildInstagramHref(state, { tab: 'instagram' })).toContain('ig_high=1');
+  });
+  it('既定の並び順・目標達成OFFは URL に載せない（保存値の復元を止めない）', () => {
+    const href = buildInstagramHref(buildState(), { tab: 'instagram' });
+    expect(href).not.toContain('ig_sort');
+    expect(href).not.toContain('ig_high');
+    const sorted = buildInstagramHref(buildState(), {
+      tab: 'instagram',
+      igSort: 'engagement_rate',
+    });
+    expect(sorted).toContain('ig_sort=engagement_rate');
+    expect(sorted).not.toContain('ig_order');
+  });
+  it('昇順のときだけ ig_order=asc を載せ、ページ送りでも引き継ぐ', () => {
+    const state = buildState({ activeTab: 'instagram', igSort: 'caption', igOrder: 'asc' });
+    const href = buildInstagramHref(state, { igPage: 2 });
+    expect(href).toContain('ig_sort=caption');
+    expect(href).toContain('ig_order=asc');
+    expect(buildInstagramHref(state, { tab: 'blog' })).toContain('ig_order=asc');
+    expect(buildInstagramHref(state, { igSort: 'reach', igOrder: 'desc' })).not.toContain(
+      'ig_order'
+    );
+  });
   it('「評価未設定」フィルタはタブを切り替えても維持される', () => {
     const href = buildInstagramHref(buildState({ hasUnstartedGscEvaluation: true }), {
       tab: 'instagram',
@@ -101,5 +133,39 @@ describe('buildInstagramHref', () => {
     );
     const categories = [...new URL(href, 'https://example.test').searchParams.getAll('category')];
     expect(categories).toEqual(['SEO', '広告運用']);
+  });
+
+  it('ブログ一覧の並べ替えはタブを切り替えても残り、並べ替えなしなら URL に載せない', () => {
+    const sorted = buildState({ blogSort: { key: 'ga4_read_rate', order: 'asc' } });
+    for (const href of [
+      buildInstagramHref(sorted, { tab: 'instagram' }),
+      buildInstagramHref(sorted, { tab: 'blog' }),
+      buildInstagramHref(sorted, { igPage: 2 }),
+    ]) {
+      const query = new URL(href, 'https://example.com').searchParams;
+      expect(query.get('sort')).toBe('ga4_read_rate');
+      expect(query.get('order')).toBe('asc');
+    }
+    const unsorted = new URL(buildInstagramHref(buildState(), { tab: 'blog' }), 'https://example.com')
+      .searchParams;
+    expect(unsorted.has('sort')).toBe(false);
+    expect(unsorted.has('order')).toBe(false);
+  });
+
+  it('ブログ一覧の期間はタブを切り替えても残り、null なら URL に載せない', () => {
+    const withPeriod = buildState({
+      blogSort: { key: 'ga4_cvr', order: 'desc' },
+      blogPeriodInHref: { start: '2026-08-01', end: '2026-08-20' },
+    });
+    for (const patch of [{ tab: 'instagram' as const }, { tab: 'blog' as const }]) {
+      const query = new URL(buildInstagramHref(withPeriod, patch), 'https://example.com')
+        .searchParams;
+      expect(query.get('start')).toBe('2026-08-01');
+      expect(query.get('end')).toBe('2026-08-20');
+    }
+    const withoutPeriod = new URL(buildInstagramHref(buildState(), { tab: 'blog' }), 'https://example.com')
+      .searchParams;
+    expect(withoutPeriod.has('start')).toBe(false);
+    expect(withoutPeriod.has('end')).toBe(false);
   });
 });

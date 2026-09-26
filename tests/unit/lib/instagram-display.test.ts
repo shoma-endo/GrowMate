@@ -10,7 +10,14 @@
  * 各モジュールのフック（useFakeTimers 等）も外側の describe に閉じる。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { formatCount, formatPostedAt, calculateInstagramRate } from '@/lib/instagram-format';
+import {
+  formatCount,
+  formatInstagramEngagementTargetLabel,
+  formatInstagramRate,
+  formatPostedAt,
+  getInstagramEngagementTarget,
+  isInstagramEngagementTargetMet,
+} from '@/lib/instagram-format';
 import { getInstagramSyncToastMessage, shouldAutoSyncInstagram } from '@/lib/instagram-sync';
 import type { InstagramSyncResult } from '@/types/instagram';
 
@@ -54,22 +61,52 @@ describe('@/lib/instagram-format', () => {
     });
   });
 
-  describe('calculateInstagramRate', () => {
-    it('reach が null / 0 のとき null', () => {
-      expect(calculateInstagramRate(10, null)).toBeNull();
-      expect(calculateInstagramRate(10, 0)).toBeNull();
+  describe('engagement target', () => {
+    it.each([
+      [0, 'ライト／ビギナー', 6],
+      [999, 'ライト／ビギナー', 6],
+      [1000, 'ナノ', 4],
+      [4999, 'ナノ', 4],
+      [5000, null, 3],
+      [9999, null, 3],
+      [10000, 'マイクロ', 2],
+      [49999, 'マイクロ', 2],
+      [50000, 'ミドル', 1.5],
+      [99999, 'ミドル', 1.5],
+      [100000, 'メガ／インフルエンサー', 0.8],
+      [1000000, 'メガ／インフルエンサー', 0.8],
+    ] as const)('フォロワー数 %s は %s の目標になる', (followers, tier, min) => {
+      const target = getInstagramEngagementTarget(followers);
+      expect(target?.tierLabel).toBe(tier);
+      expect(target?.min).toBe(min);
     });
 
-    it('分子が null のとき null', () => {
-      expect(calculateInstagramRate(null, 100)).toBeNull();
+    it('フォロワー数が null なら判定しない', () => {
+      expect(getInstagramEngagementTarget(null)).toBeNull();
     });
 
-    it('分子 0 かつ分母 > 0 のとき 0.0%', () => {
-      expect(calculateInstagramRate(0, 523)).toBe(0);
+    it('下限と同値は達成、下限未満と率 null は未達成', () => {
+      const target = getInstagramEngagementTarget(3200);
+      expect(target).not.toBeNull();
+      expect(isInstagramEngagementTargetMet(4, target)).toBe(true);
+      expect(isInstagramEngagementTargetMet(3.99, target)).toBe(false);
+      expect(isInstagramEngagementTargetMet(null, target)).toBe(false);
     });
 
-    it('reach を分母に小数第1位で四捨五入', () => {
-      expect(calculateInstagramRate(21, 523)).toBe(4);
+    it('ダイアログの目標文言を整形する', () => {
+      const target = getInstagramEngagementTarget(3200);
+      expect(target).not.toBeNull();
+      expect(formatInstagramEngagementTargetLabel(3200, target!)).toBe(
+        'フォロワー 3,200人（ナノ）の目標: 4.0〜6.0%'
+      );
+      const firstTarget = getInstagramEngagementTarget(0);
+      expect(formatInstagramEngagementTargetLabel(0, firstTarget!)).toContain('6.0〜10.0% 以上');
+    });
+
+    it('率を小数第1位へ表示する', () => {
+      expect(formatInstagramRate(6.04)).toBe('6.0%');
+      expect(formatInstagramRate(6.06)).toBe('6.1%');
+      expect(formatInstagramRate(null)).toBe('-');
     });
   });
 });
@@ -80,6 +117,7 @@ describe('@/lib/instagram-sync', () => {
       mode: 'incremental',
       synced: 0,
       failed: 0,
+      refreshed: 0,
       skipped: 0,
       truncated: false,
       preConversionCount: 0,
@@ -93,6 +131,13 @@ describe('@/lib/instagram-sync', () => {
       expect(getInstagramSyncToastMessage(baseResult({ synced: 3 }))).toEqual({
         type: 'success',
         message: '3件を更新しました',
+      });
+    });
+
+    it('取り直しだけのときは「更新対象なし」を返す', () => {
+      expect(getInstagramSyncToastMessage(baseResult({ refreshed: 2 }))).toEqual({
+        type: 'success',
+        message: '更新対象の投稿はありませんでした',
       });
     });
 

@@ -13,6 +13,29 @@ export interface AnalyticsContentItem {
   };
 }
 
+/**
+ * ブログ一覧の列見出しで並べ替えできる列（＝一覧の列 id。RPC の `p_sort_key` にそのまま渡す）。
+ * 型 `AnalyticsContentSortKey` と許可リスト（`isAnalyticsSortKey`）はここから作る。
+ * 列を足すときはここと `get_filtered_content_annotations` の許可リストを直す。
+ */
+export const ANALYTICS_CONTENT_SORT_KEYS = [
+  'impressions',
+  'ga4_avg_engagement_time',
+  'ga4_read_rate',
+  'ga4_engagement_rate',
+  'ga4_evaluation_status',
+  'ga4_content_score',
+  'ga4_cv_count',
+  'ga4_cvr',
+] as const;
+export type AnalyticsContentSortKey = (typeof ANALYTICS_CONTENT_SORT_KEYS)[number];
+
+/** 並べ替え中の列と向き。null は並べ替えなし（更新日の新しい順） */
+export type AnalyticsContentSort = {
+  key: AnalyticsContentSortKey;
+  order: 'asc' | 'desc';
+} | null;
+
 export interface AnalyticsContentQuery {
   page: number;
   perPage: number;
@@ -33,6 +56,8 @@ export interface AnalyticsContentQuery {
    * 定義は docs/specs/content-annotation-bulk-ai-summary-spec.md BR-02 が正本。
    */
   hasUnsummarized?: boolean;
+  /** 未指定・null は更新日の新しい順。GA4 の列は startDate〜endDate で集計した値で並べる */
+  sort?: AnalyticsContentSort;
 }
 
 export interface AnalyticsContentPage {

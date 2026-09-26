@@ -1,6 +1,10 @@
 import type { FieldConfigTableKey } from '@/types/field-config';
 import type { CategoryFilterConfig, StatusFilterConfig } from '@/types/category';
-import type { InstagramMediaSortKey } from '@/types/instagram';
+import {
+  INSTAGRAM_MEDIA_SORT_KEYS,
+  type InstagramMediaSortKey,
+  type InstagramMediaSortOrder,
+} from '@/types/instagram';
 import type { LinkedMessageRule } from '@/components/LinkedMessage';
 
 // Chat Configuration
@@ -437,6 +441,9 @@ export const ANALYTICS_STORAGE_KEYS = {
    * 3ページ目が復元されると「先頭が見つからない」という別の誤認を生むため。
    */
   IG_SORT: 'analytics.instagramSort',
+  /** Instagram タブの並び順の向き（`asc` / `desc`）。IG_SORT と対で保存する */
+  IG_SORT_ORDER: 'analytics.instagramSortOrder',
+  IG_HIGH_ONLY: 'analytics.instagramHighOnly',
   OPS_EXPANDED: 'analytics.opsExpanded',
   VISIBLE_COLUMNS: 'analytics.visibleColumns',
   IG_VISIBLE_COLUMNS: 'analytics.instagramVisibleColumns',
@@ -486,6 +493,7 @@ export const INSTAGRAM_COLUMNS = [
   { id: 'like_count', label: 'いいね', defaultVisible: true },
   { id: 'comments_count', label: 'コメント', defaultVisible: true },
   { id: 'saved', label: '保存', defaultVisible: true },
+  { id: 'engagement_rate', label: 'エンゲージメント率', defaultVisible: true },
   { id: 'shares', label: 'シェア', defaultVisible: false },
   { id: 'reposts', label: '再投稿', defaultVisible: false },
   { id: 'total_interactions', label: '総インタラクション', defaultVisible: false },
@@ -575,7 +583,13 @@ export function hasAnyStatusFilter(config: StatusFilterConfig): boolean {
 }
 
 /** Instagram タブの既定の並び順。`app/analytics/page.tsx` のフォールバックと揃える */
-const DEFAULT_IG_SORT: InstagramMediaSortKey = 'posted_at';
+export const DEFAULT_IG_SORT: InstagramMediaSortKey = 'posted_at';
+/** 列見出しを初めて押したときの向きも兼ねる（多い順・新しい順から見せる） */
+export const DEFAULT_IG_SORT_ORDER: InstagramMediaSortOrder = 'desc';
+
+export function isInstagramSortKey(raw: string): raw is InstagramMediaSortKey {
+  return (INSTAGRAM_MEDIA_SORT_KEYS as readonly string[]).includes(raw);
+}
 
 /**
  * 保存済みの並び順を解釈する。**許可値以外は既定へ畳む。**
@@ -583,7 +597,21 @@ const DEFAULT_IG_SORT: InstagramMediaSortKey = 'posted_at';
  * localStorage に触らない純粋関数にしてあるのは、vitest の environment が `node` のみのため。
  */
 export function parseInstagramSortKey(raw: string | null): InstagramMediaSortKey {
-  return raw === 'reach' || raw === 'views' || raw === 'posted_at' ? raw : DEFAULT_IG_SORT;
+  return raw !== null && isInstagramSortKey(raw) ? raw : DEFAULT_IG_SORT;
+}
+
+/** 並び順の向きを解釈する。`asc` 以外は既定（降順）へ畳む */
+export function parseInstagramSortOrder(raw: string | null): InstagramMediaSortOrder {
+  return raw === 'asc' ? 'asc' : DEFAULT_IG_SORT_ORDER;
+}
+
+/** 列見出しを押したときの向き。同じ列なら反転し、別の列なら降順（多い順・新しい順）から始める */
+export function nextInstagramSortOrder(
+  current: { sort: InstagramMediaSortKey; order: InstagramMediaSortOrder },
+  clicked: InstagramMediaSortKey
+): InstagramMediaSortOrder {
+  if (clicked !== current.sort) return DEFAULT_IG_SORT_ORDER;
+  return current.order === 'asc' ? 'desc' : 'asc';
 }
 
 /** localStorageから Instagram タブの並び順を読み込むヘルパー */
@@ -595,6 +623,71 @@ export function loadInstagramSortFromStorage(): InstagramMediaSortKey {
     return DEFAULT_IG_SORT;
   }
 }
+
+/** localStorageから Instagram タブの並び順の向きを読み込むヘルパー */
+export function loadInstagramSortOrderFromStorage(): InstagramMediaSortOrder {
+  if (typeof window === 'undefined') return DEFAULT_IG_SORT_ORDER;
+  try {
+    return parseInstagramSortOrder(localStorage.getItem(ANALYTICS_STORAGE_KEYS.IG_SORT_ORDER));
+  } catch {
+    return DEFAULT_IG_SORT_ORDER;
+  }
+}
+
+export function parseInstagramHighOnly(raw: string | null): boolean {
+  return raw === '1';
+}
+
+export function loadInstagramHighOnlyFromStorage(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return parseInstagramHighOnly(localStorage.getItem(ANALYTICS_STORAGE_KEYS.IG_HIGH_ONLY));
+  } catch {
+    return false;
+  }
+}
+
+export function resolveInstagramRestorePatch({
+  urlSort,
+  urlOrder,
+  urlHigh,
+  storedSort,
+  storedOrder,
+  storedHighOnly,
+  visibleIds,
+  canJudgeTarget,
+}: {
+  urlSort: string | null;
+  urlOrder: string | null;
+  urlHigh: string | null;
+  storedSort: InstagramMediaSortKey;
+  storedOrder: InstagramMediaSortOrder;
+  storedHighOnly: boolean;
+  visibleIds: string[];
+  canJudgeTarget: boolean;
+}): {
+  igSort?: InstagramMediaSortKey;
+  igOrder?: InstagramMediaSortOrder;
+  igHigh?: true;
+} | null {
+  const patch: {
+    igSort?: InstagramMediaSortKey;
+    igOrder?: InstagramMediaSortOrder;
+    igHigh?: true;
+  } = {};
+  // 列と向きは対で復元する。片方だけ URL にあるときは deep link の意図を優先して触らない
+  const isDefaultSort = storedSort === DEFAULT_IG_SORT && storedOrder === DEFAULT_IG_SORT_ORDER;
+  if (urlSort === null && urlOrder === null && !isDefaultSort && visibleIds.includes(storedSort)) {
+    patch.igSort = storedSort;
+    patch.igOrder = storedOrder;
+  }
+  if (urlHigh === null && storedHighOnly && canJudgeTarget) {
+    patch.igHigh = true;
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+export const INSTAGRAM_INSIGHTS_REFRESH_WINDOW_DAYS = 7;
 
 /**
  * /ga4-dashboard 記事別ランキングの1ページ件数。

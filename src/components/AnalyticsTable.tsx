@@ -17,7 +17,9 @@ import {
   hasAnyStatusFilter,
   type BlogStepId,
 } from '@/lib/constants';
-import type { AnalyticsContentItem } from '@/types/analytics';
+import type { AnalyticsContentItem, AnalyticsContentSort } from '@/types/analytics';
+import { isAnalyticsSortKey, nextAnalyticsSort, setAnalyticsSortParams } from '@/lib/analytics-sort';
+import { getAriaSort, SortHeaderButton } from '@/components/SortHeaderButton';
 import type { StoredFieldConfig } from '@/types/field-config';
 import type { StatusFilterConfig } from '@/types/category';
 import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
@@ -53,6 +55,7 @@ import {
   ChevronsRight,
   X,
   Sparkles,
+  type LucideIcon,
 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
@@ -86,6 +89,8 @@ interface Props {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnsummarized: boolean;
+  /** 列見出しによる並べ替え。null は並べ替えなし（更新日の新しい順） */
+  sort: AnalyticsContentSort;
   hasUrlFilterParams: boolean;
   /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
   fieldConfig: StoredFieldConfig | null;
@@ -156,6 +161,88 @@ const createEmptyForm = (): Record<AnnotationFieldKey, string> =>
     string
   >;
 
+const FILTER_TAG_TONE_CLASSES = {
+  gray: { tag: 'text-gray-700 bg-gray-100', remove: 'hover:bg-gray-200' },
+  grayStrong: { tag: 'text-gray-700 bg-gray-200', remove: 'hover:bg-gray-300' },
+  amber: { tag: 'text-amber-800 bg-amber-100', remove: 'hover:bg-amber-200' },
+  blue: { tag: 'text-blue-800 bg-blue-100', remove: 'hover:bg-blue-200' },
+  purple: { tag: 'text-purple-800 bg-purple-100', remove: 'hover:bg-purple-200' },
+} as const;
+
+/**
+ * 一覧の上の「フィルター:」行。ブログ一覧と Instagram タブで同じ見た目にするため共用する
+ * （growmate-ui-ux「同種の既存 UI があるときは『そのまま』使う」）。生の色クラスをこのファイルに
+ * 留め、eslint-suppressions.json の件数を増やさないために、ここで export している
+ */
+export function ActiveFilterBar({
+  onClear,
+  isRestored,
+  children,
+}: {
+  onClear: () => void;
+  isRestored: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between mb-3 px-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-gray-500">フィルター:</span>
+        {children}
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-xs text-gray-500 hover:text-gray-700 underline"
+        >
+          クリア
+        </button>
+        {/*
+          復元した絞り込みで一覧がほぼ空になると「記事が消えた」と誤認される。
+          自分の操作ではなく前回の絞り込みが戻ってきたのだと読み取れるようにする。
+          解除は左の「クリア」で足りるのでボタンは増やさない。
+        */}
+        {isRestored && (
+          <span className="text-xs text-muted-foreground">（前回の絞り込みを復元しました）</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function FilterTag({
+  label,
+  icon: Icon,
+  tone,
+  onRemove,
+  removeTitle,
+}: {
+  label: string;
+  icon?: LucideIcon;
+  tone: keyof typeof FILTER_TAG_TONE_CLASSES;
+  onRemove: () => void;
+  removeTitle: string;
+}) {
+  const toneClasses = FILTER_TAG_TONE_CLASSES[tone];
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+        toneClasses.tag
+      )}
+    >
+      {Icon ? <Icon className="h-3 w-3" /> : null}
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        className={cn('rounded-full p-0.5', toneClasses.remove)}
+        title={removeTitle}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  );
+}
+
 export default function AnalyticsTable({
   items,
   allCategoryNames,
@@ -165,6 +252,7 @@ export default function AnalyticsTable({
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
   hasUnsummarized,
+  sort,
   hasUrlFilterParams,
   fieldConfig,
   selection,
@@ -352,6 +440,10 @@ export default function AnalyticsTable({
     setIsFilteringUnsummarized(hasUnsummarized);
   }, [hasUnsummarized]);
 
+  // FieldConfigurator が最後に知らせた表示列。絞り込みの URL を組むときに、非表示の列を指す
+  // 並べ替えを落とすために使う（下の handleFieldConfigChange を参照）
+  const visibleColumnIdsRef = React.useRef<string[] | null>(null);
+
   const pushFilterQuery = React.useCallback(
     (
       selectedNames: string[],
@@ -412,6 +504,15 @@ export default function AnalyticsTable({
       // 2026-08-26 のサイクル統合で「コンテンツ評価未開始」フィルタを廃止したため、
       // 旧 deep link（?ga4_evaluation=not_started）が残っていても効かないよう毎回落とす
       nextQuery.delete('ga4_evaluation');
+
+      // 非表示の列を指す並べ替えは落とす。FieldConfigurator の初回通知（子の effect）は
+      // 保存済みフィルタの復元（この関数を replace で呼ぶ親の effect）より先に走るため、
+      // 並べ替えの解除を別に push しても、古い URL から組んだこの遷移が上書きしてしまう
+      const sortKey = nextQuery.get('sort');
+      const visibleIds = visibleColumnIdsRef.current;
+      if (sortKey !== null && visibleIds !== null && !visibleIds.includes(sortKey)) {
+        setAnalyticsSortParams(nextQuery, null);
+      }
 
       const next = nextQuery.toString();
       const href = next.length > 0 ? `${currentPath}?${next}` : currentPath;
@@ -878,6 +979,33 @@ export default function AnalyticsTable({
     }
   }, [deleteTargetSessionId, deleteTargetAnnotationId, router]);
 
+  // 並べ替えは URL（sort / order）が正本。他の条件（期間・カテゴリ・状態）はそのまま残し、
+  // 並びが変わるので1ページ目へ戻す
+  const pushSort = (next: AnalyticsContentSort, options?: { replace?: boolean }) => {
+    const nextQuery = new URLSearchParams(searchParams?.toString() ?? '');
+    nextQuery.set('page', '1');
+    setAnalyticsSortParams(nextQuery, next);
+    const href = `${pathname ?? '/analytics'}?${nextQuery.toString()}`;
+    React.startTransition(() => {
+      if (options?.replace) {
+        router.replace(href);
+        return;
+      }
+      router.push(href);
+    });
+  };
+
+  // 並べ替え中の列を非表示にしたら並べ替えを解除する（Instagram タブの resetSortIfHidden と同じ）。
+  // 見えない列の順に並んだままだと、並びの理由が画面から読めない。
+  // FieldConfigurator はマウント時にも呼ぶが、並べ替えなしなら何もしないので遷移は起きない。
+  // 自動の解除なので replace にする（push だと「戻る」で非表示の列の並べ替えへ戻れてしまう）
+  const handleFieldConfigChange = (visibleIds: string[]) => {
+    visibleColumnIdsRef.current = visibleIds;
+    if (sort !== null && !visibleIds.includes(sort.key)) {
+      pushSort(null, { replace: true });
+    }
+  };
+
   return (
     <>
       <FieldConfigurator
@@ -885,6 +1013,7 @@ export default function AnalyticsTable({
         initialConfig={fieldConfig}
         legacyStorageKey={ANALYTICS_STORAGE_KEYS.VISIBLE_COLUMNS}
         columns={ANALYTICS_COLUMNS}
+        onChange={handleFieldConfigChange}
         hideTrigger
         triggerId="analytics-field-config-trigger"
         dialogExtraContent={
@@ -906,102 +1035,53 @@ export default function AnalyticsTable({
         {({ visibleSet, orderedIds }) => (
           <div className="w-full">
             {/* フィルター情報と件数表示 */}
-            <div className="flex items-center justify-between mb-3 px-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                {hasActiveFilters && (
-                  <>
-                    <span className="text-sm text-gray-500">フィルター:</span>
-                    {categoryFilterNames.map(cat => (
-                      <span
-                        key={cat}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-gray-700 bg-gray-100"
-                      >
-                        {cat}
-                        <button
-                          type="button"
-                          onClick={() => removeCategoryFilter(cat)}
-                          className="hover:bg-gray-200 rounded-full p-0.5"
-                          title={`${cat}を解除`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                    {isIncludingUncategorized && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-gray-700 bg-gray-200">
-                        未分類
-                        <button
-                          type="button"
-                          onClick={removeUncategorizedFilter}
-                          className="hover:bg-gray-300 rounded-full p-0.5"
-                          title="未分類を解除"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
-                    {isFilteringUnreadSuggestion && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-amber-800 bg-amber-100">
-                        <Bell className="h-3 w-3" />
-                        改善提案あり
-                        <button
-                          type="button"
-                          onClick={removeUnreadSuggestionFilter}
-                          className="hover:bg-amber-200 rounded-full p-0.5"
-                          title="改善提案フィルターを解除"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
-                    {isFilteringUnstartedGscEvaluation && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-blue-800 bg-blue-100">
-                        評価未設定
-                        <button
-                          type="button"
-                          onClick={removeUnstartedGscEvaluationFilter}
-                          className="hover:bg-blue-200 rounded-full p-0.5"
-                          title="評価未設定フィルターを解除"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
-                    {isFilteringUnsummarized && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-purple-800 bg-purple-100">
-                        <Sparkles className="h-3 w-3" />
-                        未要約
-                        <button
-                          type="button"
-                          onClick={removeUnsummarizedFilter}
-                          className="hover:bg-purple-200 rounded-full p-0.5"
-                          title="未要約フィルターを解除"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={clearAllFilters}
-                      className="text-xs text-gray-500 hover:text-gray-700 underline"
-                    >
-                      クリア
-                    </button>
-                    {/*
-                      復元した絞り込みで一覧がほぼ空になると「記事が消えた」と誤認される。
-                      自分の操作ではなく前回の絞り込みが戻ってきたのだと読み取れるようにする。
-                      解除は左の「クリア」で足りるのでボタンは増やさない。
-                    */}
-                    {isRestoredFromStorage && (
-                      <span className="text-xs text-muted-foreground">
-                        （前回の絞り込みを復元しました）
-                      </span>
-                    )}
-                  </>
+            {hasActiveFilters && (
+              <ActiveFilterBar onClear={clearAllFilters} isRestored={isRestoredFromStorage}>
+                {categoryFilterNames.map(cat => (
+                  <FilterTag
+                    key={cat}
+                    label={cat}
+                    tone="gray"
+                    onRemove={() => removeCategoryFilter(cat)}
+                    removeTitle={`${cat}を解除`}
+                  />
+                ))}
+                {isIncludingUncategorized && (
+                  <FilterTag
+                    label="未分類"
+                    tone="grayStrong"
+                    onRemove={removeUncategorizedFilter}
+                    removeTitle="未分類を解除"
+                  />
                 )}
-              </div>
-            </div>
+                {isFilteringUnreadSuggestion && (
+                  <FilterTag
+                    label="改善提案あり"
+                    icon={Bell}
+                    tone="amber"
+                    onRemove={removeUnreadSuggestionFilter}
+                    removeTitle="改善提案フィルターを解除"
+                  />
+                )}
+                {isFilteringUnstartedGscEvaluation && (
+                  <FilterTag
+                    label="評価未設定"
+                    tone="blue"
+                    onRemove={removeUnstartedGscEvaluationFilter}
+                    removeTitle="評価未設定フィルターを解除"
+                  />
+                )}
+                {isFilteringUnsummarized && (
+                  <FilterTag
+                    label="未要約"
+                    icon={Sparkles}
+                    tone="purple"
+                    onRemove={removeUnsummarizedFilter}
+                    removeTitle="未要約フィルターを解除"
+                  />
+                )}
+              </ActiveFilterBar>
+            )}
 
             {/*
               contain-layout: table 要素の auto レイアウト計算（列幅の内容依存計算）は、
@@ -1093,8 +1173,22 @@ export default function AnalyticsTable({
                             ) && 'min-w-[220px]',
                             id === 'date' && 'min-w-[120px]'
                           )}
+                          aria-sort={
+                            isAnalyticsSortKey(id)
+                              ? getAriaSort(sort?.key === id, sort?.order ?? 'desc')
+                              : undefined
+                          }
                         >
-                          {columnLabelMap[id]}
+                          {isAnalyticsSortKey(id) ? (
+                            <SortHeaderButton
+                              label={columnLabelMap[id] ?? id}
+                              isActive={sort?.key === id}
+                              order={sort?.order ?? 'desc'}
+                              onClick={() => pushSort(nextAnalyticsSort(sort, id))}
+                            />
+                          ) : (
+                            columnLabelMap[id]
+                          )}
                         </th>
                       ))}
                   </tr>

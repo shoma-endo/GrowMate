@@ -35,6 +35,8 @@ UIモック: 対象外|なし|あり（ゲート: なし|承認済み）
 4. 必須出力ヘッダの `対象仕様書:` パスの現行ファイル、`AGENTS.md`、`.takt/facets/knowledge/growmate.md`、`.agents/skills/implementation-guidelines/SKILL.md` を読む。UIモックがある場合は `docs/plans/_html/<slug>.html` の UIモックタブ（または `views/06-ui-mock.html`）も読む。
 5. Server Actions / Route Handlers / Zod / エラー処理が関わる場合は `.agents/skills/nextjs-server/SKILL.md` を読む。
 6. UI 実装が関わる場合は `.agents/skills/growmate-ui-ux/SKILL.md` と `.agents/skills/react/SKILL.md` を読む。
+   - `growmate-ui-ux` の「UI 既存パターン対照表」を作り、`plan.md` の「UI 既存パターン対照表」節に書く。今回追加・変更する UI 要素ごとに、同種の既存 UI を grep で探して `file:line` を書き、採る方法（そのまま使う / 共通化 / 写す / 新規）を決める。**同種の既存 UI があるのに「新規」にする、または見出し・文言・色クラス・`title` を変える計画は、仕様書の明示を根拠に書けない限り禁止**（トークン化はこの根拠にならない）。
+   - 仕様書の画面設計が同種の既存 UI と違う見出し・文言・構成を書いていて、それを仕様の明示として採る場合は、その箇所を「変える点と根拠」に仕様書の行番号で書く。
 7. Supabase / migration / RLS / Service Role が関わる場合は `.agents/skills/supabase/SKILL.md` を読む。
 8. 再実行 / 途中再開の現状を確認する（新規一発前提で計画しない）:
    - 現在ブランチ、`git status`、未コミット差分の有無。

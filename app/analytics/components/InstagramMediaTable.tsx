@@ -10,32 +10,48 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+// 記事詳細タブと同じローディング表示。共通部品は既存ファイル内で export する規約
+// （growmate-ui-ux SKILL「同種の既存 UI があるときは『そのまま』使う」）のため、OverviewTab から読む
+import { CenteredLoading } from '../[annotationId]/components/OverviewTab';
+import { StatusFilterOption, StatusFilterSection } from '@/components/CategoryFilter';
 import { cn } from '@/lib/utils';
 import {
   ANALYTICS_STORAGE_KEYS,
   FIELD_CONFIG_TABLE_KEYS,
   INSTAGRAM_COLUMNS,
+  isInstagramSortKey,
 } from '@/lib/constants';
 import {
-  calculateInstagramRate,
   formatCount,
   formatDurationMs,
   formatInstagramRate,
   formatPostedAt,
   formatSkipRate,
+  isInstagramEngagementTargetMet,
 } from '@/lib/instagram-format';
-import type { InstagramMediaListItem, InstagramMediaSortKey } from '@/types/instagram';
+import type {
+  InstagramMediaListItem,
+  InstagramMediaSortKey,
+  InstagramMediaSortOrder,
+} from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
-import { ExternalLink } from 'lucide-react';
-
-const SORTABLE_COLUMN_IDS = new Set<InstagramMediaSortKey>(['posted_at', 'reach', 'views']);
+import { ExternalLink, TrendingUp } from 'lucide-react';
+import { getAriaSort, SortHeaderButton } from '@/components/SortHeaderButton';
 
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
   igSort: InstagramMediaSortKey;
+  igOrder: InstagramMediaSortOrder;
+  /** 列見出しを押したとき。同じ列なら向きを反転、別の列なら降順から始める（呼び出し側で決める） */
+  onSortChange: (sort: InstagramMediaSortKey) => void;
   /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
   fieldConfig: StoredFieldConfig | null;
   onSortColumnHidden: () => void;
+  igHigh: boolean;
+  onHighOnlyChange: (checked: boolean) => void;
+  criteriaLabel: string | null;
+  targetMinRate: number | null;
   /**
    * items が空のときに表示するメッセージ。
    * items が空でもこのコンポーネント（＝内包する FieldConfigurator）は必ずマウントする必要がある。
@@ -44,6 +60,8 @@ interface InstagramMediaTableProps {
    * クリックリスナーが登録されず、投稿0件時に「フィールド構成」ボタンが無反応になる。
    */
   emptyMessage: string;
+  /** 取得中の文言。null でないとき、0件なら emptyMessage の代わりにスピナーを出す */
+  loadingLabel: string | null;
 }
 
 function captionPreview(caption: string | null): string {
@@ -108,52 +126,34 @@ function MetricCell({
   return <span>{value}</span>;
 }
 
-function RateCell({
-  item,
-  numerator,
-  label,
-}: {
-  item: InstagramMediaListItem;
-  numerator: number | null;
-  label: string;
-}) {
+/** 率の列（DB の生成列）。並べ替えと同じ値を表示する */
+function RateCell({ item, value }: { item: InstagramMediaListItem; value: number | null }) {
   if (item.insightsUnavailable) {
     return <MetricCell item={item} value="-" />;
   }
-  const rate = calculateInstagramRate(numerator, item.reach);
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>{formatInstagramRate(rate)}</span>
-        </TooltipTrigger>
-        <TooltipContent>
-          Instagram 非公式の GrowMate 独自計算（{label}）。Instagram
-          アプリの表示と一致しない場合があります
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
+  return <span>{formatInstagramRate(value)}</span>;
 }
 
 export default function InstagramMediaTable({
   items,
   igSort,
+  igOrder,
+  onSortChange,
   fieldConfig,
   onSortColumnHidden,
   emptyMessage,
+  loadingLabel,
+  igHigh,
+  onHighOnlyChange,
+  criteriaLabel,
+  targetMinRate,
 }: InstagramMediaTableProps) {
   const columns = React.useMemo(() => INSTAGRAM_COLUMNS.map(col => ({ ...col })), []);
 
   const handleConfiguratorChange = React.useCallback(
     (visibleIds: string[], _orderedIds: string[]) => {
       void _orderedIds;
-      if (!SORTABLE_COLUMN_IDS.has(igSort)) {
-        return;
-      }
-      const sortColumnId =
-        igSort === 'posted_at' ? 'posted_at' : igSort === 'reach' ? 'reach' : 'views';
-      if (!visibleIds.includes(sortColumnId)) {
+      if (!visibleIds.includes(igSort)) {
         onSortColumnHidden();
       }
     },
@@ -178,6 +178,20 @@ export default function InstagramMediaTable({
         return <MetricCell item={item} value={formatCount(item.commentsCount)} />;
       case 'saved':
         return <MetricCell item={item} value={formatCount(item.saved)} />;
+      case 'engagement_rate': {
+        const targetMet =
+          !item.insightsUnavailable &&
+          isInstagramEngagementTargetMet(
+            item.engagementRate,
+            targetMinRate === null ? null : { min: targetMinRate }
+          );
+        return (
+          <div className="flex items-center gap-2">
+            <RateCell item={item} value={item.engagementRate} />
+            {targetMet ? <Badge variant="secondary">目標達成</Badge> : null}
+          </div>
+        );
+      }
       case 'shares':
         return <MetricCell item={item} value={formatCount(item.shares)} />;
       case 'reposts':
@@ -224,17 +238,15 @@ export default function InstagramMediaTable({
           </TooltipProvider>
         );
       case 'like_rate':
-        return <RateCell item={item} numerator={item.likeCount} label="いいね数 ÷ リーチ数" />;
+        return <RateCell item={item} value={item.likeRate} />;
       case 'saved_rate':
-        return <RateCell item={item} numerator={item.saved} label="保存数 ÷ リーチ数" />;
+        return <RateCell item={item} value={item.savedRate} />;
       case 'share_rate':
-        return <RateCell item={item} numerator={item.shares} label="シェア数 ÷ リーチ数" />;
+        return <RateCell item={item} value={item.shareRate} />;
       case 'comment_rate':
-        return (
-          <RateCell item={item} numerator={item.commentsCount} label="コメント数 ÷ リーチ数" />
-        );
+        return <RateCell item={item} value={item.commentRate} />;
       case 'repost_rate':
-        return <RateCell item={item} numerator={item.reposts} label="再投稿数 ÷ リーチ数" />;
+        return <RateCell item={item} value={item.repostRate} />;
       default:
         return '—';
     }
@@ -249,15 +261,40 @@ export default function InstagramMediaTable({
       onChange={handleConfiguratorChange}
       triggerId="instagram-field-config-trigger"
       hideTrigger
+      dialogExtraContent={
+        criteriaLabel === null ? undefined : (
+          // ブログ一覧と同じ部品を使う（src/components/CategoryFilter.tsx）
+          <div className="space-y-3">
+            <StatusFilterSection>
+              <StatusFilterOption
+                checked={igHigh}
+                onCheckedChange={onHighOnlyChange}
+                icon={TrendingUp}
+                label="高エンゲージメント率"
+                tone="blue"
+              >
+                <li>エンゲージメント率が目標の下限以上の投稿だけが対象です（{criteriaLabel}）。</li>
+                <li>エンゲージメント率は（いいね＋コメント＋保存）÷ リーチ × 100 です。</li>
+                <li>フォロワー数は最後に取得した時点の値です。</li>
+              </StatusFilterOption>
+            </StatusFilterSection>
+          </div>
+        )
+      }
     >
       {({ visibleSet, orderedIds }) => {
         if (items.length === 0) {
-          // role="status": 取得中→一覧表示という状態変化がここにしか出ないことがあるため、
-          // 支援技術にも伝わるようにする
+          // role="status" の要素は取得中→空状態のあいだ差し替えずに置いたままにする。
+          // 中身の入った live region を新しく差し込むと読み上げられないスクリーンリーダーが多く、
+          // 取得完了後の「まだ投稿がありません」などが伝わらなくなる
           return (
-            <p role="status" className="text-sm text-gray-500 py-8 text-center">
-              {emptyMessage}
-            </p>
+            <div role="status" className="py-8">
+              {loadingLabel !== null ? (
+                <CenteredLoading label={loadingLabel} />
+              ) : (
+                <p className="text-sm text-gray-500 text-center">{emptyMessage}</p>
+              )}
+            </div>
           );
         }
         const visibleOrdered = orderedIds.filter(id => visibleSet.has(id));
@@ -274,9 +311,28 @@ export default function InstagramMediaTable({
                   <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
+                    const label = col?.label ?? columnId;
+                    // 並べ替えキーは DB の列名。対応する列が無い見出しは押せない
+                    if (!isInstagramSortKey(columnId)) {
+                      return (
+                        <th key={columnId} className="px-6 py-3 whitespace-nowrap">
+                          {label}
+                        </th>
+                      );
+                    }
+                    const isActive = columnId === igSort;
                     return (
-                      <th key={columnId} className="px-6 py-3 whitespace-nowrap">
-                        {col?.label ?? columnId}
+                      <th
+                        key={columnId}
+                        aria-sort={getAriaSort(isActive, igOrder)}
+                        className="px-6 py-3 whitespace-nowrap"
+                      >
+                        <SortHeaderButton
+                          label={label}
+                          isActive={isActive}
+                          order={igOrder}
+                          onClick={() => onSortChange(columnId)}
+                        />
                       </th>
                     );
                   })}
