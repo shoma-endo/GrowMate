@@ -16,6 +16,7 @@ import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 import { clampAnalyticsPeriod } from '@/lib/analytics-period';
 import { canAccessGa4 } from '@/server/lib/ga4-permissions';
+import { parseAnalyticsSort, setAnalyticsSortParams } from '@/lib/analytics-sort';
 import { shouldAutoSyncInstagram } from '@/lib/instagram-sync';
 import {
   buildInstagramAutoSyncStorageKey,
@@ -88,6 +89,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       ? [params.category]
       : [];
   const includeUncategorized = params?.uncategorized === '1';
+  const sortParam = Array.isArray(params?.sort) ? params.sort[0] : params?.sort;
+  const orderParam = Array.isArray(params?.order) ? params.order[0] : params?.order;
+  const blogSort = parseAnalyticsSort(sortParam, orderParam);
 
   const todayJst = formatJstDateISO(new Date());
   const defaultEnd = addDaysISO(todayJst, -1);
@@ -106,6 +110,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const clampedPeriod = clampAnalyticsPeriod(startDate, endDate);
   startDate = clampedPeriod.startDate;
   endDate = clampedPeriod.endDate;
+  // 期間を URL で指定しているか。ページ送りの URL に期間を引き継ぐかどうかに使う
+  const hasExplicitPeriod = isStartValid || isEndValid;
 
   const authResult = await authMiddleware();
   redirectIfEmailLinkConflict(authResult);
@@ -183,6 +189,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         hasUnreadSuggestion,
         hasUnstartedGscEvaluation,
         hasUnsummarized,
+        sort: blogSort,
       }),
       gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
       analyticsContentService.getAvailableCategoryNames(userId),
@@ -277,6 +284,13 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     if (hasUnsummarized) {
       query.set('unsummarized', '1');
     }
+    // 期間と並べ替えも引き継ぐ。GA4 の列での並べ替えは期間で集計した値の順なので、
+    // 2ページ目で期間が既定（直近30日）に戻ると並び順が変わり、行が重複・欠落する
+    if (hasExplicitPeriod) {
+      query.set('start', startDate);
+      query.set('end', endDate);
+    }
+    setAnalyticsSortParams(query, blogSort);
     if (instagramConnected && activeTab === 'instagram') {
       query.set('tab', 'instagram');
       query.set('ig_page', String(igPage));
@@ -319,6 +333,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       hasUnreadSuggestion={hasUnreadSuggestion}
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
       hasUnsummarized={hasUnsummarized}
+      blogSort={blogSort}
       ga4Truncated={ga4Truncated ?? false}
       periodClamped={clampedPeriod.clamped}
       hasUrlFilterParams={hasUrlFilterParams}

@@ -23,7 +23,8 @@ import { ErrorAlert } from '@/components/ErrorAlert';
 import { toast } from 'sonner';
 import { registerEvaluationsBulk } from '@/server/actions/gscDashboard.actions';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import type { AnalyticsContentItem } from '@/types/analytics';
+import type { AnalyticsContentItem, AnalyticsContentSort } from '@/types/analytics';
+import { setAnalyticsSortParams } from '@/lib/analytics-sort';
 import type { StoredFieldConfig } from '@/types/field-config';
 import type {
   InstagramMediaListItem,
@@ -51,6 +52,8 @@ interface AnalyticsClientProps {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnsummarized: boolean;
+  /** ブログ一覧の並べ替え（URL の sort / order を page.tsx が解釈したもの） */
+  blogSort: AnalyticsContentSort;
   ga4Truncated: boolean;
   periodClamped: boolean;
   hasUrlFilterParams: boolean;
@@ -111,6 +114,7 @@ export default function AnalyticsClient({
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
   hasUnsummarized,
+  blogSort,
   ga4Truncated,
   periodClamped,
   hasUrlFilterParams,
@@ -160,6 +164,7 @@ export default function AnalyticsClient({
     hasUnreadSuggestion,
     hasUnstartedGscEvaluation,
     hasUnsummarized,
+    blogSort,
     instagramConnected,
     activeTab,
     igPage,
@@ -257,6 +262,7 @@ export default function AnalyticsClient({
     if (hasUnreadSuggestion) params.set('unread_suggestion', '1');
     if (hasUnstartedGscEvaluation) params.set('gsc_evaluation', 'not_started');
     if (hasUnsummarized) params.set('unsummarized', '1');
+    setAnalyticsSortParams(params, blogSort);
     router.push(`/analytics?${params.toString()}`);
   };
   const startItemNumber = total > 0 ? (currentPage - 1) * perPage + 1 : 0;
@@ -535,6 +541,7 @@ export default function AnalyticsClient({
             hasUnreadSuggestion={hasUnreadSuggestion}
             hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
             hasUnsummarized={hasUnsummarized}
+            sort={blogSort}
             hasUrlFilterParams={hasUrlFilterParams}
             fieldConfig={analyticsFieldConfig}
             selection={{

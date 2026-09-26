@@ -281,6 +281,40 @@ describe('analyticsContentService', () => {
     expect(mocks.rpc.mock.calls[0]?.[1]).toMatchObject({ p_has_unsummarized: true });
   });
 
+  it('並べ替え中は列・向き・一覧の期間をRPCへ渡す', async () => {
+    await analyticsContentService.getPage('user-id', {
+      page: 1,
+      perPage: 10,
+      startDate: '2026-08-01',
+      endDate: '2026-08-08',
+      sort: { key: 'ga4_read_rate', order: 'asc' },
+    });
+
+    // GA4 の列は一覧に表示している期間で集計した値で並べる（表示と並びの根拠をそろえる）
+    expect(mocks.rpc.mock.calls[0]?.[1]).toMatchObject({
+      p_sort_key: 'ga4_read_rate',
+      p_sort_order: 'asc',
+      p_start_date: '2026-08-01',
+      p_end_date: '2026-08-08',
+    });
+  });
+
+  it('並べ替えていないときは並べ替えの引数を渡さない', async () => {
+    await analyticsContentService.getPage('user-id', {
+      page: 1,
+      perPage: 10,
+      startDate: '2026-08-01',
+      endDate: '2026-08-08',
+      sort: null,
+    });
+
+    // migration 未適用の環境でも通常の一覧が壊れないようにするための「渡していない」ことの固定
+    const args = mocks.rpc.mock.calls[0]?.[1];
+    for (const key of ['p_sort_key', 'p_sort_order', 'p_start_date', 'p_end_date']) {
+      expect(args).not.toHaveProperty(key);
+    }
+  });
+
   it('GSC評価未開始フィルター未指定時は無効値をRPCへ渡す', async () => {
     await analyticsContentService.getPage('user-id', {
       page: 1,

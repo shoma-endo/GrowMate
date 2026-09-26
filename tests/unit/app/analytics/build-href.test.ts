@@ -14,6 +14,7 @@ function buildState(overrides: Partial<AnalyticsHrefState> = {}): AnalyticsHrefS
     hasUnreadSuggestion: false,
     hasUnstartedGscEvaluation: false,
     hasUnsummarized: false,
+    blogSort: null,
     instagramConnected: true,
     activeTab: 'blog',
     igPage: 1,
@@ -131,5 +132,22 @@ describe('buildInstagramHref', () => {
     );
     const categories = [...new URL(href, 'https://example.test').searchParams.getAll('category')];
     expect(categories).toEqual(['SEO', '広告運用']);
+  });
+
+  it('ブログ一覧の並べ替えはタブを切り替えても残り、並べ替えなしなら URL に載せない', () => {
+    const sorted = buildState({ blogSort: { key: 'ga4_read_rate', order: 'asc' } });
+    for (const href of [
+      buildInstagramHref(sorted, { tab: 'instagram' }),
+      buildInstagramHref(sorted, { tab: 'blog' }),
+      buildInstagramHref(sorted, { igPage: 2 }),
+    ]) {
+      const query = new URL(href, 'https://example.com').searchParams;
+      expect(query.get('sort')).toBe('ga4_read_rate');
+      expect(query.get('order')).toBe('asc');
+    }
+    const unsorted = new URL(buildInstagramHref(buildState(), { tab: 'blog' }), 'https://example.com')
+      .searchParams;
+    expect(unsorted.has('sort')).toBe(false);
+    expect(unsorted.has('order')).toBe(false);
   });
 });

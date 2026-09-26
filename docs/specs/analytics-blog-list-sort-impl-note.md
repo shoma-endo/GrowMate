@@ -1,0 +1,47 @@
+# 実装メモ: ブログ一覧（/analytics）の列見出しによる並べ替え
+
+## メタデータ
+
+- 文書名: ブログ一覧の列見出しによる並べ替え（実装メモ）
+- 文書種別: **実装メモ**（要件定義書ではない）
+- ステータス: `approved`
+- 作成日: 2026-09-26
+- 最終更新日: 2026-09-26
+- 作成者: 開発
+- 依頼: クライアント要望「表示回数、滞在時間（平均）、完読率、問い合わせ数、問い合わせ率、エンゲージメント率、コンテンツ評価状態、コンテンツ力スコアも（Instagram 投稿一覧と）同様に並び順変更対応」
+- 関連: Instagram タブの列見出しでの並べ替え（[`instagram-integration-design.md`](instagram-integration-design.md) §11.3）
+
+## 1. 振る舞い
+
+- 並べ替えできる列は依頼の8列。一覧の列 id がそのまま並べ替えキーになる（正本は `src/types/analytics.ts` の `ANALYTICS_CONTENT_SORT_KEYS`）。
+- 列見出しを押すと、**降順 → 昇順 → 並べ替えなし（既定の「更新日の新しい順」）** と巡る。別の列を押したら降順から始める（`src/lib/analytics-sort.ts` の `nextAnalyticsSort`）。
+  - Instagram タブは降順⇄昇順の2状態で、既定（投稿日時）へは投稿日時の見出しで戻せる。ブログ一覧には「更新日」列が無いので、3回目で解除する形にした（2026-09-26 利用者判断）。
+- 並べ替えは **DB 側でページングの前に** 行う（`get_filtered_content_annotations` の `p_sort_key` / `p_sort_order`）。表示中の10件だけを並べ替える挙動は作らない（Instagram タブと同じ原則）。
+- GA4 の5列（滞在時間・完読率・エンゲージメント率・問い合わせ数・問い合わせ率）は、**一覧の期間（`start`〜`end`）で集計した値**で並べる。式は画面の表示と同じ意味にそろえる（`AnalyticsTable.tsx` の `avgEngagementSeconds` / `readRate` / `cvr` と、`aggregateGa4PageMetrics` の加重平均・完読率の全か無か）。
+- 表示回数（`content_annotations.impressions`）は利用者が入力する文字列。桁区切り（`,` `，`）と全角数字を許して**数として読めるものだけ**を数値で並べる。
+- コンテンツ評価状態は進み具合の順（降順で 評価済み → 評価中 → 診断コメント作成失敗 → データ不足 → データ取得失敗 → 評価失敗 → 未評価）（2026-09-26 利用者判断）。
+- 値が無い行（「—」の行・数として読めない表示回数）は、**昇順・降順どちらでも末尾**。同じ値の中は更新日の新しい順 → id。
+- 状態は URL の `sort` / `order` だけで持つ。ページ送り・期間変更・カテゴリ等の絞り込み・タブ切替では保ち、画面を開き直すと既定に戻る。
+- 並べ替え中の列を「フィールド構成」で非表示にしたら、並べ替えを解除する（Instagram タブと同じ）。
+- ページ送りのリンクに期間（`start` / `end`）も引き継ぐようにした。従来は期間を落としており、GA4 の列で並べたまま2ページ目へ進むと既定の期間（直近30日）で並び直され、行が重複・欠落するため。
+
+## 2. Non-goals
+
+| 対象外 | 理由 |
+| --- | --- |
+| 並べ替えの保存（localStorage）と次回表示での復元 | ブログ一覧の復元処理（カテゴリ・状態フィルタ）は既に複雑で、並び順を足すと壊れやすい。MVP では URL だけで足りる（2026-09-26 利用者判断）。Instagram タブは保存する点が異なる |
+| 依頼の8列以外（主軸kw・診断・最終評価日時・GA4状態など）の並べ替え | 要件に無い |
+| 「更新日」列の新設 | 既定の並びへは同じ見出しの3回目で戻れる |
+| 並べ替え用の索引・集計テーブル | GA4 ダッシュボードのランキング（`get_ga4_dashboard_ranking`）と同じく、期間内の日次行をその場で集計する。遅くなったら見直す |
+
+## 3. デプロイ順
+
+- migration `supabase/migrations/20260926000000_add_sort_to_get_filtered_content_annotations.sql` を、アプリより先に（少なくとも同時に）本番へ適用する。
+- アプリは**並べ替え中だけ**新しい引数を送る。未適用でも既定の一覧は動くが、見出しを押すと一覧の取得に失敗する（URL で保つだけなので、開き直せば戻る）。
+- 適用後に `npm run supabase:types` で型を再生成し、`src/types/database.types.pending.ts` の `AnalyticsContentSortDatabase` と、`analyticsContentService.getPage` の `asPendingClient` を外す。
+
+## 4. UI 既存パターン対照表
+
+| 今回の UI 要素 | 同種の既存 UI | 採る方法 | 変える点と根拠 |
+|---|---|---|---|
+| 列見出しの並べ替えボタン（アイコン・`aria-sort`） | Instagram タブ `app/analytics/components/InstagramMediaTable.tsx` の見出しボタン | 共通化（`src/components/SortHeaderButton.tsx` へ切り出し、両方で使う） | なし（マークアップ・クラス・アイコンは Instagram のまま） |

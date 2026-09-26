@@ -17,7 +17,9 @@ import {
   hasAnyStatusFilter,
   type BlogStepId,
 } from '@/lib/constants';
-import type { AnalyticsContentItem } from '@/types/analytics';
+import type { AnalyticsContentItem, AnalyticsContentSort } from '@/types/analytics';
+import { isAnalyticsSortKey, nextAnalyticsSort, setAnalyticsSortParams } from '@/lib/analytics-sort';
+import { getAriaSort, SortHeaderButton } from '@/components/SortHeaderButton';
 import type { StoredFieldConfig } from '@/types/field-config';
 import type { StatusFilterConfig } from '@/types/category';
 import { AuthEmailLinkConflictError } from '@/domain/errors/AuthEmailLinkConflictError';
@@ -87,6 +89,8 @@ interface Props {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnsummarized: boolean;
+  /** 列見出しによる並べ替え。null は並べ替えなし（更新日の新しい順） */
+  sort: AnalyticsContentSort;
   hasUrlFilterParams: boolean;
   /** 保存済みのフィールド構成（未保存なら null）。サーバーが読んだ値をそのまま流す */
   fieldConfig: StoredFieldConfig | null;
@@ -248,6 +252,7 @@ export default function AnalyticsTable({
   hasUnreadSuggestion,
   hasUnstartedGscEvaluation,
   hasUnsummarized,
+  sort,
   hasUrlFilterParams,
   fieldConfig,
   selection,
@@ -961,6 +966,27 @@ export default function AnalyticsTable({
     }
   }, [deleteTargetSessionId, deleteTargetAnnotationId, router]);
 
+  // 並べ替えは URL（sort / order）が正本。他の条件（期間・カテゴリ・状態）はそのまま残し、
+  // 並びが変わるので1ページ目へ戻す
+  const pushSort = (next: AnalyticsContentSort) => {
+    const nextQuery = new URLSearchParams(searchParams?.toString() ?? '');
+    nextQuery.set('page', '1');
+    setAnalyticsSortParams(nextQuery, next);
+    const href = `${pathname ?? '/analytics'}?${nextQuery.toString()}`;
+    React.startTransition(() => {
+      router.push(href);
+    });
+  };
+
+  // 並べ替え中の列を非表示にしたら並べ替えを解除する（Instagram タブの resetSortIfHidden と同じ）。
+  // 見えない列の順に並んだままだと、並びの理由が画面から読めない。
+  // FieldConfigurator はマウント時にも呼ぶが、並べ替えなしなら何もしないので遷移は起きない
+  const handleFieldConfigChange = (visibleIds: string[]) => {
+    if (sort !== null && !visibleIds.includes(sort.key)) {
+      pushSort(null);
+    }
+  };
+
   return (
     <>
       <FieldConfigurator
@@ -968,6 +994,7 @@ export default function AnalyticsTable({
         initialConfig={fieldConfig}
         legacyStorageKey={ANALYTICS_STORAGE_KEYS.VISIBLE_COLUMNS}
         columns={ANALYTICS_COLUMNS}
+        onChange={handleFieldConfigChange}
         hideTrigger
         triggerId="analytics-field-config-trigger"
         dialogExtraContent={
@@ -1127,8 +1154,22 @@ export default function AnalyticsTable({
                             ) && 'min-w-[220px]',
                             id === 'date' && 'min-w-[120px]'
                           )}
+                          aria-sort={
+                            isAnalyticsSortKey(id)
+                              ? getAriaSort(sort?.key === id, sort?.order ?? 'desc')
+                              : undefined
+                          }
                         >
-                          {columnLabelMap[id]}
+                          {isAnalyticsSortKey(id) ? (
+                            <SortHeaderButton
+                              label={columnLabelMap[id] ?? id}
+                              isActive={sort?.key === id}
+                              order={sort?.order ?? 'desc'}
+                              onClick={() => pushSort(nextAnalyticsSort(sort, id))}
+                            />
+                          ) : (
+                            columnLabelMap[id]
+                          )}
                         </th>
                       ))}
                   </tr>

@@ -1,4 +1,6 @@
 import { DEFAULT_IG_SORT, DEFAULT_IG_SORT_ORDER } from '@/lib/constants';
+import { setAnalyticsSortParams } from '@/lib/analytics-sort';
+import type { AnalyticsContentSort } from '@/types/analytics';
 import type {
   InstagramMediaSortKey,
   InstagramMediaSortOrder,
@@ -20,6 +22,8 @@ export interface AnalyticsHrefState {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnsummarized: boolean;
+  /** ブログ一覧の並べ替え。タブを切り替えても保つ（カテゴリ等の絞り込みと同じ扱い） */
+  blogSort: AnalyticsContentSort;
   instagramConnected: boolean;
   activeTab: 'blog' | 'instagram';
   igPage: number;
@@ -103,6 +107,7 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
   if (state.hasUnsummarized) {
     query.set('unsummarized', '1');
   }
+  setAnalyticsSortParams(query, state.blogSort);
 
   const nextTab = patch.tab ?? state.activeTab;
   // patch で明示的に null / '' が来たら「絞り込み解除」なので ?? で state に落とさない。
