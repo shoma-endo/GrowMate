@@ -18,6 +18,8 @@ const VERSION_FILE = path.join(REPO_ROOT, '.takt-version');
 interface WorkflowRule {
   condition: string;
   next: string;
+  interactive_only?: boolean;
+  requires_user_input?: boolean;
 }
 
 interface WorkflowStep {
@@ -219,5 +221,33 @@ describe.each(workflowFiles)('%s structured references', (file) => {
     for (const name of reportReferences) {
       expect(producedReports, `{report:${name}} has no producing output_contract`).toContain(name);
     }
+  });
+});
+
+describe('grill-to-gherkin confirm step', () => {
+  const { workflow } = loadWorkflow('grill-to-gherkin.yaml');
+  const confirm = workflow.steps.find((step) => step.name === 'confirm');
+
+  it('waits for a human in interactive runs and completes unattended runs', () => {
+    const answerPendingRules = (confirm?.rules ?? [])
+      .filter((rule) => rule.condition === '人間の回答待ち')
+      .map((rule) => ({
+        next: rule.next,
+        interactive_only: rule.interactive_only === true,
+        requires_user_input: rule.requires_user_input === true,
+      }));
+
+    expect(answerPendingRules).toEqual([
+      { next: 'confirm', interactive_only: true, requires_user_input: true },
+      { next: 'COMPLETE', interactive_only: false, requires_user_input: false },
+    ]);
+  });
+
+  it('reserves unattended abort for an unfinishable approval decision', () => {
+    const unattendedAbortConditions = (confirm?.rules ?? [])
+      .filter((rule) => rule.interactive_only !== true && rule.next === 'ABORT')
+      .map((rule) => rule.condition);
+
+    expect(unattendedAbortConditions).toEqual(['承認判定を完了できない']);
   });
 });

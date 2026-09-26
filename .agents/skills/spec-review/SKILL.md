@@ -54,7 +54,7 @@ description: docs/plansの仕様書・設計書を作成前、レビュー・監
 ### D. セキュリティ
 
 - [ ] 認可条件（role: `admin` / `paid` / `trial` / `unavailable`）が明記されているか
-- [ ] RLS / Service Role の使い分けと、Service Role 使用時の明示的な user_id スコープが設計されているか
+- [ ] 対象テーブルの既存ポリシー全件（`grep -rn 'create policy' supabase/migrations` で当該テーブル名）を列挙し、仕様書の RLS 記述と突合してから設計妥当性を判定する。Service Role 使用時は明示的な user_id スコープを確認する
 - [ ] 機密情報（credential、token、`.env`）がクライアントや LLM 入力に露出しない設計か
 - [ ] パブリックページ（`/home`, `/privacy` 等）に認証済み情報を出していないか
 

@@ -84,16 +84,16 @@ steps:
         next: rough_estimate
       - condition: 修正が必要
         next: gherkin
-      - condition: ユーザー確認が必要
+      - condition: 人間の回答待ち
         next: confirm
         requires_user_input: true
         interactive_only: true
         appendix: |
-          Gherkinの人間承認が必要です。`takt` の対話モードで承認または修正指示を入力してください。
-      - condition: ユーザー確認が必要
-        next: ABORT
+          Gherkinの人間承認待ちです。質問一覧は `03-confirmation.md` の「確認したい質問」にあります。対話モードでは承認または修正指示を入力してください。無人実行ではここで正常終了するため、質問への回答を得てから `takt -w grill-to-gherkin` を再実行してください。
+      - condition: 人間の回答待ち
+        next: COMPLETE
         appendix: |
-          Gherkinの人間承認が必要です。`takt` の対話モードで承認または修正指示を入力してください。
+          Gherkinの人間承認待ちです。質問一覧は `03-confirmation.md` の「確認したい質問」にあります。対話モードでは承認または修正指示を入力してください。無人実行ではここで正常終了するため、質問への回答を得てから `takt -w grill-to-gherkin` を再実行してください。
       - condition: 承認判定を完了できない
         next: ABORT
         appendix: |
