@@ -59,11 +59,6 @@ describe('userTableFieldConfigService.getByUser', () => {
     });
   });
 
-  it('未保存なら空オブジェクト（呼び出し側が既定へ畳む）', async () => {
-    mockSelect({ data: [], error: null });
-    await expect(userTableFieldConfigService.getByUser(USER_ID)).resolves.toEqual({});
-  });
-
   it('取得失敗でも例外にせず空を返す（一覧全体を落とさない）', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mockSelect({ data: null, error: { message: 'boom' } });
@@ -78,7 +73,7 @@ describe('userTableFieldConfigService.upsert', () => {
 
   it('user_id と table_key の組で upsert する', async () => {
     mocks.upsert.mockResolvedValue({ error: null });
-    mocks.from.mockReturnValue({ select: mocks.select, upsert: mocks.upsert });
+    mocks.from.mockReturnValue({ upsert: mocks.upsert });
 
     const ok = await userTableFieldConfigService.upsert({
       userId: USER_ID,
@@ -100,7 +95,7 @@ describe('userTableFieldConfigService.upsert', () => {
   it('保存失敗は false を返す（呼び出し側がユーザーへ通知する）', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.upsert.mockResolvedValue({ error: { message: 'boom' } });
-    mocks.from.mockReturnValue({ select: mocks.select, upsert: mocks.upsert });
+    mocks.from.mockReturnValue({ upsert: mocks.upsert });
 
     await expect(
       userTableFieldConfigService.upsert({

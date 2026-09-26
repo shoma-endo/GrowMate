@@ -46,32 +46,32 @@ import {
   fetchWpPostContentWithCache,
 } from '@/server/services/wordpressContentSync';
 
-describe('fetchWpPostContentLive', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.updateError.mockReturnValue(null);
-    mocks.getWordPressSettingsByUserId.mockResolvedValue({
-      wpType: 'self_hosted',
-      wpSiteUrl: 'https://example.com',
-    });
-    mocks.buildWordPressServiceFromSettings.mockReturnValue({
-      success: true,
-      service: {
-        findExistingContent: mocks.findExistingContent,
-        resolveContentById: mocks.resolveContentById,
-      },
-    });
-    mocks.resolveContentById.mockResolvedValue({
-      success: true,
-      data: {
-        id: 42,
-        title: { rendered: '記事タイトル' },
-        content: { rendered: '<h2>見出し</h2><p>記事本文</p>' },
-        excerpt: { rendered: '抜粋' },
-      },
-    });
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.updateError.mockReturnValue(null);
+  mocks.getWordPressSettingsByUserId.mockResolvedValue({
+    wpType: 'self_hosted',
+    wpSiteUrl: 'https://example.com',
   });
+  mocks.buildWordPressServiceFromSettings.mockReturnValue({
+    success: true,
+    service: {
+      findExistingContent: mocks.findExistingContent,
+      resolveContentById: mocks.resolveContentById,
+    },
+  });
+  mocks.resolveContentById.mockResolvedValue({
+    success: true,
+    data: {
+      id: 42,
+      title: { rendered: '記事タイトル' },
+      content: { rendered: '<h2>見出し</h2><p>記事本文</p>' },
+      excerpt: { rendered: '抜粋' },
+    },
+  });
+});
 
+describe('fetchWpPostContentLive', () => {
   it('正規化済みidからcanonical URLのみの記事の投稿IDを解決する', async () => {
     mocks.findExistingContent.mockResolvedValue({
       success: true,
@@ -172,20 +172,7 @@ describe('fetchWpPostContentLive', () => {
 });
 
 describe('fetchWpPostContentWithCache の再取得条件', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.updateError.mockReturnValue(null);
-    mocks.getWordPressSettingsByUserId.mockResolvedValue({
-      wpType: 'self_hosted',
-      wpSiteUrl: 'https://example.com',
-    });
-    mocks.buildWordPressServiceFromSettings.mockReturnValue({
-      success: true,
-      service: {
-        findExistingContent: mocks.findExistingContent,
-        resolveContentById: mocks.resolveContentById,
-      },
-    });
+  it('本文・抜粋が揃っていても画像点数が未取得なら取得し直して保存する', async () => {
     mocks.resolveContentById.mockResolvedValue({
       success: true,
       data: {
@@ -195,9 +182,7 @@ describe('fetchWpPostContentWithCache の再取得条件', () => {
         excerpt: { rendered: '抜粋' },
       },
     });
-  });
 
-  it('本文・抜粋が揃っていても画像点数が未取得なら取得し直して保存する', async () => {
     const result = await fetchWpPostContentWithCache({
       wpPostId: 42,
       cachedContent: 'キャッシュ済み本文',
@@ -213,12 +198,15 @@ describe('fetchWpPostContentWithCache の再取得条件', () => {
     );
   });
 
-  it('本文・抜粋・画像点数がすべて揃っていれば WordPress を叩かない', async () => {
+  it.each([
+    ['本文・抜粋・画像点数がすべて揃っていれば WordPress を叩かない', 3],
+    ['画像点数が0で保存済みなら「未取得」と区別して再取得しない', 0],
+  ])('%s', async (_name, cachedImageCount) => {
     const result = await fetchWpPostContentWithCache({
       wpPostId: 42,
       cachedContent: 'キャッシュ済み本文',
       cachedExcerpt: 'キャッシュ済み抜粋',
-      cachedImageCount: 3,
+      cachedImageCount,
       userId: 'user-id',
     });
 
@@ -228,21 +216,8 @@ describe('fetchWpPostContentWithCache の再取得条件', () => {
       contentText: 'キャッシュ済み本文',
       title: null,
       excerpt: 'キャッシュ済み抜粋',
-      imageCount: 3,
+      imageCount: cachedImageCount,
     });
-  });
-
-  it('画像点数が0で保存済みなら「未取得」と区別して再取得しない', async () => {
-    const result = await fetchWpPostContentWithCache({
-      wpPostId: 42,
-      cachedContent: 'キャッシュ済み本文',
-      cachedExcerpt: 'キャッシュ済み抜粋',
-      cachedImageCount: 0,
-      userId: 'user-id',
-    });
-
-    expect(mocks.resolveContentById).not.toHaveBeenCalled();
-    expect(result?.imageCount).toBe(0);
   });
 });
 
@@ -255,10 +230,6 @@ describe('fetchWpPostContentWithCache の再取得条件', () => {
  */
 describe('canFetchWpPostContentLive', () => {
   const USER_ID = 'user-1';
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
 
   it('設定行が無い（クエリは成功）なら「不可」→ 再連携を案内できる', async () => {
     mocks.getWordPressSettingsResultByUserId.mockResolvedValue({ success: true, data: null });
@@ -273,59 +244,41 @@ describe('canFetchWpPostContentLive', () => {
     expect(await canFetchWpPostContentLive(USER_ID)).toBe(true);
   });
 
-  it('self_hosted は接続設定が揃っていれば「可」', async () => {
-    mocks.getWordPressSettingsResultByUserId.mockResolvedValue({
-      success: true,
-      data: { wpType: 'self_hosted', wpSiteUrl: 'https://example.com' },
-    });
-    mocks.buildWordPressServiceFromSettings.mockReturnValue({ success: true, service: {} });
-    expect(await canFetchWpPostContentLive(USER_ID)).toBe(true);
+  it.each([
+    ['組み立てられれば「可」', { success: true, service: {} }, true],
+    [
+      '組み立てられなければ「不可」',
+      { success: false, reason: 'self_hosted_credentials_missing', message: 'x' },
+      false,
+    ],
+  ])('self_hosted は Cookie 無しで接続設定を組み立て、%s', async (_label, built, expected) => {
+    const settings = { wpType: 'self_hosted', wpSiteUrl: 'https://example.com' };
+    mocks.getWordPressSettingsResultByUserId.mockResolvedValue({ success: true, data: settings });
+    mocks.buildWordPressServiceFromSettings.mockReturnValue(built);
+
+    expect(await canFetchWpPostContentLive(USER_ID)).toBe(expected);
+    const [passedSettings, getCookie] = mocks.buildWordPressServiceFromSettings.mock.calls[0] as [
+      unknown,
+      (name: string) => string | undefined,
+    ];
+    expect(passedSettings).toEqual(settings);
+    expect(getCookie('wpcom_oauth_token')).toBeUndefined();
   });
 
-  it('self_hosted で接続設定が欠けていれば「不可」', async () => {
+  const inOneHour = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const inOneSecond = () => new Date(Date.now() + 1_000).toISOString();
+  it.each([
+    ['保存トークンが空なら「不可」（Cookie は使えない）', null, inOneHour, 0, false],
+    ['保存トークンを解決できれば「可」', 'stored-token', inOneHour, 0, true],
+    ['期限間近ならリフレッシュを試み、失敗すれば「不可」', 'stored-token', inOneSecond, 1, false],
+  ])('wordpress_com は%s', async (_name, wpAccessToken, expiresAt, refreshCalls, expected) => {
     mocks.getWordPressSettingsResultByUserId.mockResolvedValue({
       success: true,
-      data: { wpType: 'self_hosted' },
-    });
-    mocks.buildWordPressServiceFromSettings.mockReturnValue({
-      success: false,
-      reason: 'self_hosted_credentials_missing',
-      message: 'x',
-    });
-    expect(await canFetchWpPostContentLive(USER_ID)).toBe(false);
-  });
-
-  it('wordpress_com は保存トークンが空なら「不可」（Cookie は使えない）', async () => {
-    mocks.getWordPressSettingsResultByUserId.mockResolvedValue({
-      success: true,
-      data: { wpType: 'wordpress_com', wpAccessToken: null },
-    });
-    expect(await canFetchWpPostContentLive(USER_ID)).toBe(false);
-  });
-
-  it('wordpress_com は保存トークンを解決できれば「可」', async () => {
-    mocks.getWordPressSettingsResultByUserId.mockResolvedValue({
-      success: true,
-      data: {
-        wpType: 'wordpress_com',
-        wpAccessToken: 'stored-token',
-        wpTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      },
-    });
-    expect(await canFetchWpPostContentLive(USER_ID)).toBe(true);
-    expect(mocks.refreshWpComToken).not.toHaveBeenCalled();
-  });
-
-  it('wordpress_com は期限間近ならリフレッシュを試み、失敗すれば「不可」', async () => {
-    mocks.getWordPressSettingsResultByUserId.mockResolvedValue({
-      success: true,
-      data: {
-        wpType: 'wordpress_com',
-        wpAccessToken: 'stored-token',
-        wpTokenExpiresAt: new Date(Date.now() + 1_000).toISOString(),
-      },
+      data: { wpType: 'wordpress_com', wpAccessToken, wpTokenExpiresAt: expiresAt() },
     });
     mocks.refreshWpComToken.mockResolvedValue({ success: false });
-    expect(await canFetchWpPostContentLive(USER_ID)).toBe(false);
+
+    expect(await canFetchWpPostContentLive(USER_ID)).toBe(expected);
+    expect(mocks.refreshWpComToken).toHaveBeenCalledTimes(refreshCalls);
   });
 });

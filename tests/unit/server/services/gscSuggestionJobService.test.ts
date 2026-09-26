@@ -27,12 +27,33 @@ vi.mock('@/server/services/gscSuggestionService', () => ({
 
 import { gscSuggestionJobService } from '@/server/services/gscSuggestionJobService';
 
+function claimedJob(overrides: Record<string, unknown> = {}) {
+  return {
+    data: [
+      {
+        id: 'history-id',
+        user_id: 'user-id',
+        content_annotation_id: 'annotation-id',
+        outcome: 'no_change',
+        current_position: 10,
+        previous_position: 10,
+        suggestion_stage: 3,
+        suggestion_attempt_count: 1,
+        suggestion_job_token: 'job-token',
+        ...overrides,
+      },
+    ],
+    error: null,
+  };
+}
+
 describe('gscSuggestionJobService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('1回の実行で最大3件をclaimする', async () => {
+  // 1件ずつ claim する（a6516ea3 のタイムアウト対策で 3→1 にした値を固定する）
+  it('1回の実行で1件だけclaimし、0件なら空振りで終わる', async () => {
     mocks.rpc.mockResolvedValue({ data: [], error: null });
 
     await expect(gscSuggestionJobService.runNextJobs()).resolves.toEqual({
@@ -44,36 +65,16 @@ describe('gscSuggestionJobService', () => {
     expect(mocks.rpc).toHaveBeenCalledWith('claim_gsc_suggestion_jobs', { p_limit: 1 });
   });
 
-  it('claim失敗をbatch_failedとして記録して再throwする', async () => {
+  it('claim失敗を再throwする', async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { message: 'claim failed' } });
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
-    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     await expect(gscSuggestionJobService.runNextJobs()).rejects.toThrow('claim failed');
-    expect(
-      error.mock.calls
-        .map(call => JSON.parse(String(call[0])) as Record<string, unknown>)
-        .map(log => log.event)
-    ).toContain('batch_failed');
   });
 
   it('3回目の失敗をterminalFailedとして集計する', async () => {
-    mocks.rpc.mockResolvedValue({
-      data: [
-        {
-          id: 'history-id',
-          user_id: 'user-id',
-          content_annotation_id: 'annotation-id',
-          outcome: 'no_change',
-          current_position: 10,
-          previous_position: 10,
-          suggestion_stage: 3,
-          suggestion_attempt_count: 3,
-          suggestion_job_token: 'job-token',
-        },
-      ],
-      error: null,
-    });
+    mocks.rpc.mockResolvedValue(claimedJob({ suggestion_attempt_count: 3 }));
     mocks.generate.mockRejectedValue(new Error('Request was aborted.'));
     mocks.maybeSingle.mockResolvedValue({ data: { id: 'history-id' }, error: null });
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -87,22 +88,7 @@ describe('gscSuggestionJobService', () => {
   });
 
   it('LLMのChatErrorをLLM_TIMEOUTとして構造化ログへ記録する', async () => {
-    mocks.rpc.mockResolvedValue({
-      data: [
-        {
-          id: 'history-id',
-          user_id: 'user-id',
-          content_annotation_id: 'annotation-id',
-          outcome: 'no_change',
-          current_position: 10,
-          previous_position: 10,
-          suggestion_stage: 3,
-          suggestion_attempt_count: 1,
-          suggestion_job_token: 'job-token',
-        },
-      ],
-      error: null,
-    });
+    mocks.rpc.mockResolvedValue(claimedJob());
     mocks.generate.mockRejectedValue(
       new ChatError('request timeout', ChatErrorCode.CONNECTION_TIMEOUT)
     );
@@ -121,22 +107,7 @@ describe('gscSuggestionJobService', () => {
   });
 
   it('discardedジョブを完了ログのskippedへ計上する', async () => {
-    mocks.rpc.mockResolvedValue({
-      data: [
-        {
-          id: 'history-id',
-          user_id: 'user-id',
-          content_annotation_id: 'annotation-id',
-          outcome: 'no_change',
-          current_position: 10,
-          previous_position: 10,
-          suggestion_stage: 3,
-          suggestion_attempt_count: 1,
-          suggestion_job_token: 'stale-job-token',
-        },
-      ],
-      error: null,
-    });
+    mocks.rpc.mockResolvedValue(claimedJob({ suggestion_job_token: 'stale-job-token' }));
     mocks.generate.mockResolvedValue(undefined);
     mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);

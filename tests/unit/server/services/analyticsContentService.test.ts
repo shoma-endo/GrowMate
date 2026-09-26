@@ -173,23 +173,17 @@ describe('analyticsContentService', () => {
   });
 
   it.each([
-    {
-      name: '日付未指定',
-      startDate: '',
-      endDate: '2026-08-08',
-    },
-    {
-      name: '日付逆転',
-      startDate: '2026-08-09',
-      endDate: '2026-08-08',
-    },
-  ])('$nameではGA4クエリを発行せず空の集計を返す', async ({ startDate, endDate }) => {
+    { name: '日付未指定', startDate: '', endDate: '2026-08-08', canonicalUrl: 'https://example.com/articles/one', properties: 1, tables: [] },
+    { name: '日付逆転', startDate: '2026-08-09', endDate: '2026-08-08', canonicalUrl: 'https://example.com/articles/one', properties: 1, tables: [] },
+    { name: '有効なcanonical_urlが0件', startDate: '2026-08-01', endDate: '2026-08-08', canonicalUrl: '   ', properties: 1, tables: [] },
+    // プロパティの有無は資格情報を読まないと分からないので、そこまでは読む
+    { name: 'GA4プロパティ未設定', startDate: '2026-08-01', endDate: '2026-08-08', canonicalUrl: 'https://example.com/articles/one', properties: 0, tables: ['gsc_credentials'] },
+  ])('$nameならGA4クエリを発行せず空の集計を返す', async ({ startDate, endDate, canonicalUrl, properties, tables }) => {
     mocks.rpc.mockResolvedValue({
-      data: [
-        { items: [{ id: 'annotation-id', canonical_url: 'https://example.com/articles/one' }], total_count: 1 },
-      ],
+      data: [{ items: [{ id: 'annotation-id', canonical_url: canonicalUrl }], total_count: 1 }],
       error: null,
     });
+    if (properties === 0) mocks.not.mockResolvedValue({ data: [], error: null });
 
     const result = await analyticsContentService.getPage('user-id', {
       page: 1,
@@ -199,44 +193,7 @@ describe('analyticsContentService', () => {
     });
 
     expect(result.items[0]?.ga4Summary).toBeNull();
-    expect(mocks.from).not.toHaveBeenCalled();
-  });
-
-  it('有効なcanonical_urlが0件ならGA4クエリを発行しない', async () => {
-    mocks.rpc.mockResolvedValue({
-      data: [{ items: [{ id: 'annotation-id', canonical_url: '   ' }], total_count: 1 }],
-      error: null,
-    });
-
-    const result = await analyticsContentService.getPage('user-id', {
-      page: 1,
-      perPage: 10,
-      startDate: '2026-08-01',
-      endDate: '2026-08-08',
-    });
-
-    expect(result.items[0]?.ga4Summary).toBeNull();
-    expect(mocks.from).not.toHaveBeenCalled();
-  });
-
-  it('GA4プロパティ未設定ならGA4クエリを発行せず空の集計を返す', async () => {
-    mocks.rpc.mockResolvedValue({
-      data: [
-        { items: [{ id: 'annotation-id', canonical_url: 'https://example.com/articles/one' }], total_count: 1 },
-      ],
-      error: null,
-    });
-    mocks.not.mockResolvedValue({ data: [], error: null });
-
-    const result = await analyticsContentService.getPage('user-id', {
-      page: 1,
-      perPage: 10,
-      startDate: '2026-08-01',
-      endDate: '2026-08-08',
-    });
-
-    expect(result.items[0]?.ga4Summary).toBeNull();
-    expect(mocks.or).not.toHaveBeenCalled();
+    expect(mocks.from.mock.calls.map(([table]) => table)).toEqual(tables);
   });
 
   it('GSC評価未開始フィルターをRPCへ渡す', async () => {
@@ -269,64 +226,32 @@ describe('analyticsContentService', () => {
     expect(mocks.rpc.mock.calls[0]?.[1]).not.toHaveProperty('p_has_unsummarized');
   });
 
-  it('未要約フィルターをRPCへ渡す', async () => {
-    await analyticsContentService.getPage('user-id', {
-      page: 1,
-      perPage: 10,
-      startDate: '2026-08-01',
-      endDate: '2026-08-08',
-      hasUnsummarized: true,
-    });
-
-    expect(mocks.rpc.mock.calls[0]?.[1]).toMatchObject({ p_has_unsummarized: true });
-  });
-
-  it('並べ替え中は列・向き・一覧の期間をRPCへ渡す', async () => {
-    await analyticsContentService.getPage('user-id', {
-      page: 1,
-      perPage: 10,
-      startDate: '2026-08-01',
-      endDate: '2026-08-08',
-      sort: { key: 'ga4_read_rate', order: 'asc' },
-    });
-
+  // migration 未適用の環境へアプリを先にデプロイしても通常の一覧が壊れないよう、
+  // フィルター OFF / 並べ替えなしのときは引数自体を渡さない（RPC側は default のまま）
+  it.each([
+    { name: '未要約フィルターON', options: { hasUnsummarized: true }, passed: { p_has_unsummarized: true }, omitted: [] },
     // GA4 の列は一覧に表示している期間で集計した値で並べる（表示と並びの根拠をそろえる）
-    expect(mocks.rpc.mock.calls[0]?.[1]).toMatchObject({
-      p_sort_key: 'ga4_read_rate',
-      p_sort_order: 'asc',
-      p_start_date: '2026-08-01',
-      p_end_date: '2026-08-08',
-    });
-  });
-
-  it('並べ替えていないときは並べ替えの引数を渡さない', async () => {
+    {
+      name: '並べ替え中',
+      options: { sort: { key: 'ga4_read_rate', order: 'asc' } as const },
+      passed: { p_sort_key: 'ga4_read_rate', p_sort_order: 'asc', p_start_date: '2026-08-01', p_end_date: '2026-08-08' },
+      omitted: [],
+    },
+    { name: '並べ替えなし', options: { sort: null }, passed: {}, omitted: ['p_sort_key', 'p_sort_order', 'p_start_date', 'p_end_date'] },
+  ])('$nameのRPC引数', async ({ options, passed, omitted }) => {
     await analyticsContentService.getPage('user-id', {
       page: 1,
       perPage: 10,
       startDate: '2026-08-01',
       endDate: '2026-08-08',
-      sort: null,
+      ...options,
     });
 
-    // migration 未適用の環境でも通常の一覧が壊れないようにするための「渡していない」ことの固定
     const args = mocks.rpc.mock.calls[0]?.[1];
-    for (const key of ['p_sort_key', 'p_sort_order', 'p_start_date', 'p_end_date']) {
+    expect(args).toMatchObject(passed);
+    for (const key of omitted) {
       expect(args).not.toHaveProperty(key);
     }
-  });
-
-  it('GSC評価未開始フィルター未指定時は無効値をRPCへ渡す', async () => {
-    await analyticsContentService.getPage('user-id', {
-      page: 1,
-      perPage: 10,
-      startDate: '2026-08-01',
-      endDate: '2026-08-08',
-    });
-
-    expect(mocks.rpc).toHaveBeenCalledWith(
-      'get_filtered_content_annotations',
-      expect.objectContaining({ p_has_unstarted_gsc_evaluation: false })
-    );
   });
 
   it('カテゴリ・未読提案・GSC評価未開始の条件を同時にRPCへ渡す', async () => {

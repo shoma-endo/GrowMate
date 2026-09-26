@@ -47,18 +47,8 @@ describe('gscSuggestionService', () => {
     mocks.llmChat.mockResolvedValue('generated suggestion');
     mocks.maybeSingle
       .mockResolvedValueOnce({
-        data: {
-          id: 'annotation-id',
-          wp_post_id: null,
-          wp_post_title: 'title',
-          opening_proposal: null,
-          wp_content_text: 'cached content',
-          wp_excerpt: 'cached excerpt',
-          persona: null,
-          needs: null,
-          main_kw: 'main keyword',
-          kw: 'keyword',
-        },
+        // ステージ1はタイトルがあればLLMを呼ぶ。他の列は未使用
+        data: { id: 'annotation-id', wp_post_id: null, wp_post_title: 'title' },
         error: null,
       })
       .mockResolvedValueOnce({ data: { id: 'history-id' }, error: null });
