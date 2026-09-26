@@ -41,6 +41,7 @@ import {
   buildIgPageHref,
   buildInstagramHref,
   type AnalyticsHrefState,
+  type BlogPeriod,
 } from './build-href';
 
 interface AnalyticsClientProps {
@@ -54,6 +55,8 @@ interface AnalyticsClientProps {
   hasUnsummarized: boolean;
   /** ブログ一覧の並べ替え（URL の sort / order を page.tsx が解釈したもの） */
   blogSort: AnalyticsContentSort;
+  /** ページ送り・タブ切替の URL に載せるブログ一覧の期間（page.tsx が決める） */
+  blogPeriodInHref: BlogPeriod | null;
   ga4Truncated: boolean;
   periodClamped: boolean;
   hasUrlFilterParams: boolean;
@@ -115,6 +118,7 @@ export default function AnalyticsClient({
   hasUnstartedGscEvaluation,
   hasUnsummarized,
   blogSort,
+  blogPeriodInHref,
   ga4Truncated,
   periodClamped,
   hasUrlFilterParams,
@@ -165,6 +169,7 @@ export default function AnalyticsClient({
     hasUnstartedGscEvaluation,
     hasUnsummarized,
     blogSort,
+    blogPeriodInHref,
     instagramConnected,
     activeTab,
     igPage,

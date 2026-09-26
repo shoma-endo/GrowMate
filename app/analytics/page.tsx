@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import AnalyticsClient from './AnalyticsClient';
-import { setInstagramListParams, setOptionalDate } from './build-href';
+import { setBlogPeriodParams, setInstagramListParams, setOptionalDate } from './build-href';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
 import { gscNotificationService } from '@/server/services/gscNotificationService';
 import { instagramMediaService } from '@/server/services/instagramMediaService';
@@ -110,8 +110,10 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const clampedPeriod = clampAnalyticsPeriod(startDate, endDate);
   startDate = clampedPeriod.startDate;
   endDate = clampedPeriod.endDate;
-  // 期間を URL で指定しているか。ページ送りの URL に期間を引き継ぐかどうかに使う
-  const hasExplicitPeriod = isStartValid || isEndValid;
+  // ページ送り・タブ切替の URL に期間を書くか。URL で指定しているときに加え、並べ替え中も書く。
+  // GA4 の列は期間で集計した値の順なので、既定の期間（直近30日）のまま日付をまたぐと
+  // 2ページ目で期間がずれて並びが変わり、行が重複・欠落する
+  const keepBlogPeriodInHref = isStartValid || isEndValid || blogSort !== null;
 
   const authResult = await authMiddleware();
   redirectIfEmailLinkConflict(authResult);
@@ -263,6 +265,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const currentPage = resolvedPage ?? page;
   const prevDisabled = currentPage <= 1;
   const nextDisabled = currentPage >= totalPages;
+  const blogPeriodInHref = keepBlogPeriodInHref ? { start: startDate, end: endDate } : null;
   const buildPageHref = (targetPage: number) => {
     const query = new URLSearchParams();
     query.set('page', String(targetPage));
@@ -284,12 +287,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     if (hasUnsummarized) {
       query.set('unsummarized', '1');
     }
-    // 期間と並べ替えも引き継ぐ。GA4 の列での並べ替えは期間で集計した値の順なので、
-    // 2ページ目で期間が既定（直近30日）に戻ると並び順が変わり、行が重複・欠落する
-    if (hasExplicitPeriod) {
-      query.set('start', startDate);
-      query.set('end', endDate);
-    }
+    // 期間と並べ替えも引き継ぐ（keepBlogPeriodInHref のコメントを参照）
+    setBlogPeriodParams(query, blogPeriodInHref);
     setAnalyticsSortParams(query, blogSort);
     if (instagramConnected && activeTab === 'instagram') {
       query.set('tab', 'instagram');
@@ -334,6 +333,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
       hasUnsummarized={hasUnsummarized}
       blogSort={blogSort}
+      blogPeriodInHref={blogPeriodInHref}
       ga4Truncated={ga4Truncated ?? false}
       periodClamped={clampedPeriod.clamped}
       hasUrlFilterParams={hasUrlFilterParams}

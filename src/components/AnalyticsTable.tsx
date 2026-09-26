@@ -440,6 +440,10 @@ export default function AnalyticsTable({
     setIsFilteringUnsummarized(hasUnsummarized);
   }, [hasUnsummarized]);
 
+  // FieldConfigurator が最後に知らせた表示列。絞り込みの URL を組むときに、非表示の列を指す
+  // 並べ替えを落とすために使う（下の handleFieldConfigChange を参照）
+  const visibleColumnIdsRef = React.useRef<string[] | null>(null);
+
   const pushFilterQuery = React.useCallback(
     (
       selectedNames: string[],
@@ -500,6 +504,15 @@ export default function AnalyticsTable({
       // 2026-08-26 のサイクル統合で「コンテンツ評価未開始」フィルタを廃止したため、
       // 旧 deep link（?ga4_evaluation=not_started）が残っていても効かないよう毎回落とす
       nextQuery.delete('ga4_evaluation');
+
+      // 非表示の列を指す並べ替えは落とす。FieldConfigurator の初回通知（子の effect）は
+      // 保存済みフィルタの復元（この関数を replace で呼ぶ親の effect）より先に走るため、
+      // 並べ替えの解除を別に push しても、古い URL から組んだこの遷移が上書きしてしまう
+      const sortKey = nextQuery.get('sort');
+      const visibleIds = visibleColumnIdsRef.current;
+      if (sortKey !== null && visibleIds !== null && !visibleIds.includes(sortKey)) {
+        setAnalyticsSortParams(nextQuery, null);
+      }
 
       const next = nextQuery.toString();
       const href = next.length > 0 ? `${currentPath}?${next}` : currentPath;
@@ -968,22 +981,28 @@ export default function AnalyticsTable({
 
   // 並べ替えは URL（sort / order）が正本。他の条件（期間・カテゴリ・状態）はそのまま残し、
   // 並びが変わるので1ページ目へ戻す
-  const pushSort = (next: AnalyticsContentSort) => {
+  const pushSort = (next: AnalyticsContentSort, options?: { replace?: boolean }) => {
     const nextQuery = new URLSearchParams(searchParams?.toString() ?? '');
     nextQuery.set('page', '1');
     setAnalyticsSortParams(nextQuery, next);
     const href = `${pathname ?? '/analytics'}?${nextQuery.toString()}`;
     React.startTransition(() => {
+      if (options?.replace) {
+        router.replace(href);
+        return;
+      }
       router.push(href);
     });
   };
 
   // 並べ替え中の列を非表示にしたら並べ替えを解除する（Instagram タブの resetSortIfHidden と同じ）。
   // 見えない列の順に並んだままだと、並びの理由が画面から読めない。
-  // FieldConfigurator はマウント時にも呼ぶが、並べ替えなしなら何もしないので遷移は起きない
+  // FieldConfigurator はマウント時にも呼ぶが、並べ替えなしなら何もしないので遷移は起きない。
+  // 自動の解除なので replace にする（push だと「戻る」で非表示の列の並べ替えへ戻れてしまう）
   const handleFieldConfigChange = (visibleIds: string[]) => {
+    visibleColumnIdsRef.current = visibleIds;
     if (sort !== null && !visibleIds.includes(sort.key)) {
-      pushSort(null);
+      pushSort(null, { replace: true });
     }
   };
 

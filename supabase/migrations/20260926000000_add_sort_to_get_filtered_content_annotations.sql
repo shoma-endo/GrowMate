@@ -80,8 +80,8 @@ as $$
         ) then p_sort_key
       end as sort_key,
       case when p_sort_order = 'asc' then 'asc' else 'desc' end as sort_order,
-      -- GA4 の集計が要る並べ替えのときだけ立てる。立たなければ下の ga4_metrics は空になり、
-      -- 既定の一覧（並べ替えなし）で ga4_page_metrics_daily を読まない
+      -- GA4 の集計が要る並べ替えか。下の ga4_metrics は同じ条件を**引数で直接**持つ
+      -- （この列を参照すると行ごとの判定になり、GA4 以外の並べ替えでも日次行を全件読む）
       p_sort_key in (
         'ga4_avg_engagement_time', 'ga4_read_rate', 'ga4_engagement_rate', 'ga4_cv_count', 'ga4_cvr'
       ) and p_start_date is not null and p_end_date is not null and p_start_date <= p_end_date
@@ -159,10 +159,14 @@ as $$
       sum(m.sessions) filter (where m.engagement_rate is not null)::numeric
         as engagement_rate_sessions
     from public.ga4_page_metrics_daily m
-    cross join normalized n
     join public.gsc_credentials gc
       on gc.user_id = p_user_id and gc.ga4_property_id = m.property_id
-    where n.needs_ga4_metrics
+    -- 引数だけの条件なので planner が One-Time Filter にし、不要なら日次行を読まない。
+    -- normalized.needs_ga4_metrics と同じ条件（片方だけ直さないこと）
+    where p_sort_key in (
+        'ga4_avg_engagement_time', 'ga4_read_rate', 'ga4_engagement_rate', 'ga4_cv_count', 'ga4_cvr'
+      )
+      and p_start_date is not null and p_end_date is not null and p_start_date <= p_end_date
       and m.user_id = p_user_id
       and m.date >= p_start_date
       and m.date <= p_end_date
@@ -196,7 +200,8 @@ as $$
     cross join normalized n
     left join ga4_metrics gm
       on n.needs_ga4_metrics
-      and coalesce(btrim(w.canonical_url), '') <> ''
+      -- 空白の扱いはアプリの hasValidCanonicalUrl（String.prototype.trim）に寄せる
+      and coalesce(btrim(w.canonical_url, n.blank), '') <> ''
       and gm.normalized_path = public.normalize_to_path(w.canonical_url)
     cross join lateral (
       select case n.sort_key
