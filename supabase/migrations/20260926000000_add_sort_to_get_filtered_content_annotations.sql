@@ -200,7 +200,7 @@ as $$
     cross join normalized n
     left join ga4_metrics gm
       on n.needs_ga4_metrics
-      -- 空白の扱いはアプリの hasValidCanonicalUrl（String.prototype.trim）に寄せる
+      -- 空白の扱いは上の未要約述語と同じ集合（アプリの String.prototype.trim にほぼ寄せたもの）
       and coalesce(btrim(w.canonical_url, n.blank), '') <> ''
       and gm.normalized_path = public.normalize_to_path(w.canonical_url)
     cross join lateral (
