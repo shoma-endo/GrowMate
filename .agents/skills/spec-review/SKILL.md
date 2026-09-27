@@ -54,7 +54,7 @@ description: docs/plansの仕様書・設計書を作成前、レビュー・監
 ### D. セキュリティ
 
 - [ ] 認可条件（role: `admin` / `paid` / `trial` / `unavailable`）が明記されているか
-- [ ] 対象テーブルの既存ポリシー全件（`grep -rn 'create policy' supabase/migrations` で当該テーブル名）を列挙し、仕様書の RLS 記述と突合してから設計妥当性を判定する。Service Role 使用時は明示的な user_id スコープを確認する
+- [ ] 対象テーブルの現行ポリシー全件を復元し、仕様書の RLS 記述と突合してから設計妥当性を判定する。復元は `grep -rliE '(create|drop|alter) policy' supabase/migrations | xargs grep -lw '<テーブル名>' | sort` で該当マイグレーションをタイムスタンプ順に並べ、各ファイルの CREATE / DROP / ALTER POLICY を順に適用して行う。大文字小文字が混在し、テーブル名が次行に来る定義もあるため、`create policy` の1行 grep で済ませない（`content_annotations` の現行 select / mutation ポリシーは大文字 `CREATE POLICY` のため漏れる）。`--` で始まる行はロールバック手順のコメントなので数えない。Service Role 使用時は明示的な user_id スコープを確認する
 - [ ] 機密情報（credential、token、`.env`）がクライアントや LLM 入力に露出しない設計か
 - [ ] パブリックページ（`/home`, `/privacy` 等）に認証済み情報を出していないか
 
