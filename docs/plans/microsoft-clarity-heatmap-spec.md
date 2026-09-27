@@ -7,11 +7,11 @@
 - 作成日: 2026-09-27
 - 最終更新日: 2026-09-27
 - 作成者: 遠藤
-- 承認者: 未定（プライバシーポリシー文言は §14 チェックポイント CP-1（マージ前）でクライアント確認）
+- 承認者: 遠藤
 - 対象リリース: 単独リリース（他機能と依存なし）
 - 関連する依頼・Issue・PR:
   - Lark タスク t100492「ヒートマップ入れる」（説明: 「↓Clarityでユーザー行動分析できる（ヒートマップ）https://clarity.microsoft.com/」）
-  - 対象の解釈は 2026-09-27 遠藤決定: 「GrowMate 本体にタグを入れ、Strict マスキングにしてプライバシーポリシーも直す」。顧客ブログのヒートマップを GrowMate に表示する案は採らない（§11 ALT-001）
+  - 対象の解釈は 2026-09-27 遠藤決定: 「GrowMate 本体にタグを入れ、Strict マスキングにしてプライバシーポリシーも直す」。その後、プライバシーポリシーへの追記は行わないことにした（2026-09-27 遠藤決定「プライバシーポリシーに書かなくて良い。プライバシーポリシーは Google や Instagram の審査用に作ったもので、一般公開はしないため基本的には誰も見ない想定」。§11 ALT-003）。顧客ブログのヒートマップを GrowMate に表示する案は採らない（§11 ALT-001）
 
 ## 1. 背景・目的・成功指標
 
@@ -41,7 +41,7 @@
 | --- | --- | --- |
 | 利用者 | GrowMate の全利用者（ロール問わず）と未ログインの訪問者 | 画面の使い方は変わらない。操作情報が Microsoft に送信される。画面の文字・画像・入力欄は伏せ字になるが、閲覧したページの URL（絞り込み条件を含む）とクリックしたリンクの URL は伏せ字にならない（§9「URL の伏せ字」） |
 | 運用担当 | 遠藤 | Clarity プロジェクトの作成、マスキング設定、Vercel 環境変数の設定 |
-| 管理者・承認者 | クライアント（株式会社ドリームプランナー） | プライバシーポリシー追記文言の確認 |
+| 管理者・承認者 | 遠藤 | 仕様の承認。プライバシーポリシーを変更しないため、クライアントの文言確認は不要（ALT-003） |
 | 外部サービス・連携先 | Microsoft Clarity | 操作情報の収集・ヒートマップと再生の提供 |
 
 ### 主な利用シナリオ
@@ -81,7 +81,7 @@
 
 ### 対象範囲
 
-- 画面・操作: 全ページ（ルートレイアウト配下）に Clarity の読み込みスクリプトを追加する。画面の見た目・操作は変わらない。`app/layout.tsx` と `app/global-error.tsx` の `<body>` に伏せ字の属性を付ける（FR-003）。プライバシーポリシー（`/privacy`）に Microsoft Clarity の利用を追記する。
+- 画面・操作: 全ページ（ルートレイアウト配下）に Clarity の読み込みスクリプトを追加する。画面の見た目・操作は変わらない。`app/layout.tsx` と `app/global-error.tsx` の `<body>` に伏せ字の属性を付ける（FR-003）。プライバシーポリシー（`/privacy`）は変更しない（ALT-003）。
 - API・外部連携: Microsoft Clarity（ブラウザからの送信のみ。サーバーからの API 呼び出しはない）。
 - データ・DB: なし。
 - 権限・ロール: 全ロールと未ログインの訪問者が対象（§6 権限）。
@@ -94,11 +94,12 @@
 | 顧客ブログのヒートマップを GrowMate 画面に表示する | Clarity Data Export API はヒートマップ・再生を返さず、1プロジェクト1日10リクエスト・直近1〜3日分に制限される（§9 公式根拠）。顧客サイトごとのタグ設置も必要で、目的に対して費用が見合わない | クライアントから顧客向け機能として明示的に依頼されたとき |
 | 見出し・ナビゲーションの伏せ字解除（`data-clarity-unmask`） | どの要素なら個人・顧客情報を含まないかの洗い出しが必要。全体伏せ字でもクリック位置と画面構造は見える | 伏せ字のせいでヒートマップが読めないと運用担当が判断したとき |
 | 同意バナー（Cookie 同意の取得） | 利用者は日本の事業者で、Clarity が同意シグナルを求める EEA・英国・スイスの利用者は想定していない。公式は、これらの地域からの利用者がいなければ同意シグナルを送る必要はないとしている（§9 公式根拠「同意」）。Clarity 管理画面の Cookie 設定は既定（オン）のまま使う | EEA・英国・スイスの利用者を受け入れるとき。または Clarity が同意シグナルの要求を他の地域へ広げたとき（公式 FAQ "enforcement may extend to other regions in the future"） |
-| 画面フッター等への導入表示（Clarity 公式の「Site Disclosure」推奨） | 公式は推奨（"We recommend"）であり必須ではない。プライバシーポリシーへの記載で利用目的と送信内容は公表できる | クライアントが画面上での表示を求めたとき |
+| プライバシーポリシー（`/privacy`）への Clarity 利用の追記（FR-005） | 2026-09-27 遠藤決定。`/privacy` は Google・Instagram の審査用で一般公開しない想定（§11 ALT-003）。利用規約 4.4(b) の開示義務を満たさない点は R-003 で受容 | `/privacy` を一般公開するとき |
+| 画面フッター等への導入表示（Clarity 公式の「Site Disclosure」推奨） | 公式は推奨（"We recommend"）であり必須ではない。プライバシーポリシーにも記載しない方針（ALT-003）と合わせて行わない | クライアントが画面上での表示を求めたとき |
 | Google Analytics との連携（Clarity の GA 連携） | GrowMate 本体に GA タグは入っていない | GrowMate 本体に GA を入れるとき |
 | `@microsoft/clarity` npm パッケージ | Clarity 管理画面の tracking code（§6、Q-001）をインラインで入れれば足りる。依存追加は不要 | Clarity のカスタムイベント・タグ API を使うとき |
 | Clarity 停止用の専用スイッチ | 環境変数を外して再デプロイすれば止まる（既存手段） | なし |
-| URL パラメータの伏せ字化（Clarity サポートへの依頼） | 依頼の要件がない。URL が伏せ字にならないことはプライバシーポリシーに書く（FR-005）。公式は Clarity サポートへの依頼で対応するとしている（§9「URL の伏せ字」） | クライアントが求めたとき |
+| URL パラメータの伏せ字化（Clarity サポートへの依頼） | 依頼の要件がない。URL がそのまま送信されることは R-002 で受容する。公式は Clarity サポートへの依頼で対応するとしている（§9「URL の伏せ字」） | クライアントが求めたとき |
 
 ## 5. 開発工数（概算）
 
@@ -106,14 +107,14 @@
 
 - 換算: 8時間 = 1人日
 - 見積の状態: `仮置き`（2026-09-27 遠藤）
-- 含めるもの: 読み込みスクリプト追加、CSP 変更、環境変数定義、プライバシーポリシー追記、実装時の確認（§13）
+- 含めるもの: 読み込みスクリプト追加、CSP 変更、環境変数定義、実装時の確認（§13）
 - 含めないもの: 仕様レビュー往復、クライアントの文言確認待ち、Clarity プロジェクト作成と Vercel 環境変数設定（運用担当の手作業、約0.5時間）
 
 ### 工数サマリー
 
 | フェーズまたは区分 | 目的・主な成果物 | 工数（時間） | 人日 |
 | --- | --- | ---: | ---: |
-| 実装 | 読み込みスクリプト・CSP・環境変数・プライバシーポリシー | 2 | 0.25 |
+| 実装 | 読み込みスクリプト・CSP・環境変数 | 2 | 0.25 |
 | 検証 | `npm run verify`、ブラウザでの読み込み確認と CSP ヘッダーの確認（実装完了条件）。本番での CSP 違反なし・送信確認は運用完了条件（§15） | 1〜2 | 0.125〜0.25 |
 | **合計** |  | **3〜4** | **0.4〜0.5** |
 
@@ -122,7 +123,7 @@
 ### カレンダー上の前提（工数外）
 
 - 仕様レビュー・承認の見込み: 1日以内
-- クライアント確認・たたき台合意の見込み: プライバシーポリシー文言の確認。PR 作成後・マージ前に依頼する（§14 CP-1）
+- クライアント確認・たたき台合意の見込み: なし（プライバシーポリシーを変更しないため。ALT-003）
 - 希望リリース時期との関係: 指定なし
 
 ## 6. 機能要件
@@ -133,7 +134,7 @@
 | FR-002 | プロジェクト ID の環境変数が未設定なら読み込まない | Must | BR-002 | 環境変数未設定で起動したとき、ページの HTML と DOM に `microsoft-clarity` のスクリプトがなく、`clarity.ms` への通信も起きない（`<body>` の `data-clarity-mask` は FR-003 により残る） |
 | FR-003 | 画面全体を伏せ字にする | Must | BR-001、2026-09-27 遠藤決定（Strict マスキング） | `app/layout.tsx` と `app/global-error.tsx` の `<body>` に `data-clarity-mask="true"` が付く（実装完了条件）。Clarity の再生で文字・画像が伏せ字になる（運用完了条件。§15） |
 | FR-004 | CSP で Clarity の通信を許可する | Must | Clarity 公式 CSP 要件（§9） | CSP ヘッダーの差分が `connect-src`・`img-src` へのホスト追加だけで、既存の CSP 指定（nonce・`'strict-dynamic'`・既存ホスト）は変えない（実装完了条件）。本番で Clarity 由来の CSP 違反がコンソールに出ない（運用完了条件。§15） |
-| FR-005 | プライバシーポリシーに Microsoft Clarity の利用を追記する | Must | Clarity 公式の開示推奨（§9）、2026-09-27 遠藤決定 | `/privacy` の「5. 第三者サービスと共同利用」に Microsoft Corporation（Microsoft Clarity）が載り、収集内容・利用目的・伏せ字化（URL は伏せ字の対象外であることを含む）・Microsoft プライバシー ステートメントへのリンクが書かれている。最終更新日が更新されている |
+| FR-005 | プライバシーポリシーに Microsoft Clarity の利用を追記する | Won't | 2026-09-27 遠藤決定「プライバシーポリシーに書かなくて良い。プライバシーポリシーは Google や Instagram の審査用に作ったもので、一般公開はしないため基本的には誰も見ない想定」（§11 ALT-003） | `/privacy` を変更しない |
 
 ### FR ごとの実装上の決定
 
@@ -145,14 +146,7 @@
 - FR-001 の補足（`next/script` の出力）: `strategy="afterInteractive"` の `<Script>` はサーバー描画時に `<script>` 要素を出さない（`node_modules/next/dist/client/script.js:319-335` で `return null`）。要素はハイドレーション後に `useEffect`（`:217-224`）→ `loadScript` の `document.body.appendChild`（`:131`）で作られる。そのため FR-001 の完了確認は SSR の HTML ではなく、ブラウザでの動作（DOM・Network・コンソール）で行う。完了確認を満たすために `beforeInteractive` や生の `<script>` へ書き換えない。
 - FR-003: `app/layout.tsx` の `<body>` に `data-clarity-mask="true"` を常に付ける（環境変数の有無に関わらない。Clarity が無ければ無害）。`app/global-error.tsx:23` の `<body style={{ padding: 24 }}>` にも `data-clarity-mask="true"` を付ける（理由: `global-error.tsx` は自前の `<html>`・`<body>` を描画し、ルートレイアウトを置き換える。Next 同梱ドキュメント `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/error.md:163`: "Global error UI must define its own `<html>` and `<body>` tags … This file replaces the root layout or template when active."。読み込み済みの Clarity はエラー画面でも記録を続け、`:35` で `{error?.message}` を表示するため）。公式: `data-clarity-mask` は "That node and its children's contents are masked. This overrides anything set on the Clarity website."（§9）。加えて運用担当が Clarity 管理画面のマスキングモードを Strict にする（二重化。コード側が正）。
 - FR-004: `proxy.ts` の `buildCspHeader` で `connect-src` と `img-src` に `https://*.clarity.ms https://c.bing.com` を追加する。公式の例は `default-src` への追加だが、`proxy.ts:37-38` は `img-src`・`connect-src` を個別に指定しており、個別指定のあるディレクティブには `default-src` が適用されないため、この2つに足す。`script-src` は変更しない（nonce 付きスクリプトが挿入したスクリプトは `'strict-dynamic'` で許可され、`'strict-dynamic'` 下ではホスト指定は無視されるため）。
-- FR-005: 追記文言（マージ前に §14 CP-1 でクライアント確認する。仕様レビュー・実装のブロッカーにしない）
-  - 箇条書きに追加（`app/privacy/page.tsx` の §5 `<ul className="list-disc pl-5 space-y-1">` の末尾、238-240行の Anthropic PBC / OpenAI の `<li>` の後に `<li>` で追加）: 「Microsoft Corporation（Microsoft Clarity。画面の操作状況の分析）」
-  - 段落を追加（242-244行の `<p className="mt-3">` の後に `<p className="mt-3">` で追加）:
-    「本サービスは、画面の使いやすさを改善するため、Microsoft Corporation が提供する Microsoft Clarity を利用しています。Microsoft Clarity は Cookie 等を用いて、ページ内のクリック位置・スクロール・画面遷移などの操作情報と、ブラウザ・端末・おおよその地域などの情報を収集し、ヒートマップや操作の再生として表示します。画面に表示される文字・画像と入力欄の内容は伏せ字にしたうえで送信し、元の内容は Microsoft へ送信しません。ただし、閲覧したページの URL（絞り込み条件を含みます）とクリックしたリンクの URL は伏せ字の対象外で、そのまま送信されます。当社は、収集した情報を本サービスの改善にのみ利用します。なお、Microsoft は Microsoft プライバシー ステートメントに従い、Microsoft Clarity を通じて収集した個人データを、Microsoft Advertising を含む Microsoft のサービスの提供・改善に利用することがあります。Microsoft によるデータの取り扱いは Microsoft プライバシー ステートメント をご確認ください。」
-  - 「ただし、閲覧したページの URL …」の一文は、Clarity の伏せ字が URL に及ばないことによる（§9「URL の伏せ字」）。たとえば `/analytics` は顧客の WordPress カテゴリ名を `?category=` として URL に載せる（`app/analytics/AnalyticsClient.tsx:262-265`、読み出しは `app/analytics/page.tsx:86-89`）。最終文言は Q-002（§14 CP-1）で確認する。
-  - 「Microsoft Advertising」の一文は Clarity 利用規約 4.4(b) の開示義務による（§9）。削ると規約違反になるため、クライアント確認（Q-002）でも削除不可として扱う。
-  - 「Microsoft プライバシー ステートメント」は `https://privacy.microsoft.com/ja-jp/privacystatement` へのリンク（利用規約 4.4(b) が示す `https://privacy.microsoft.com/en-us/privacystatement` の日本語版）。マークアップは写さず、`app/privacy/page.tsx` の中に外部リンク用のコンポーネント（`Link` + `className="text-blue-600 underline"`・`target="_blank"`・`rel="noreferrer"`。§7 の Google リンクと同じ見た目）を置き、§7 の Google リンク（265-272行）と新しいリンクの両方で使う。理由: そのまま写すと生の色クラスが増え、`eslint-suppressions.json:336-338` で件数を 40 に固定している `shadcn/no-raw-colors` が落ちる。`eslint.config.mjs:185-188` は抑制件数を増やすことを禁じており、`growmate-ui-ux` SKILL.md の方針（写すと違反が増える場合は同じファイル内で共通化する）に従う。
-  - 「最終更新日」を実装日に更新する。
+- FR-005: 実装しない（§11 ALT-003）。`app/privacy/page.tsx` は変更しない。
 
 ### Clarity 読み込みスクリプト（Q-001 回答済み・2026-09-27）
 
@@ -181,13 +175,7 @@ y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
 
 ### 画面設計
 
-画面の追加・レイアウト変更はない。`/privacy` の本文に追記するのみ（FR-005）。
-
-#### 画面一覧
-
-| 画面 | パス | 新規/既存 | 概要・変更点 |
-| --- | --- | --- | --- |
-| プライバシーポリシー | `/privacy` | 既存 | §5 に Microsoft Clarity の記載を追加、最終更新日を更新 |
+画面の追加・変更はない（`/privacy` も変更しない。ALT-003）。
 
 ### 権限
 
@@ -228,13 +216,6 @@ Feature: Microsoft Clarity による操作計測
     Given Clarity が読み込まれている
     When 利用者がチャット画面で本文を表示する
     Then Clarity の再生では本文の文字が伏せ字になっている
-
-  Rule: 利用者に計測の事実を知らせる
-
-  Scenario: プライバシーポリシーに Clarity の利用が書かれている
-    When 訪問者がプライバシーポリシーを開く
-    Then 第三者サービスの一覧に Microsoft Clarity が載っている
-    And 収集内容・利用目的・伏せ字化・Microsoft プライバシー ステートメントへのリンクが書かれている
 ```
 
 ### シナリオ対応表
@@ -244,7 +225,6 @@ Feature: Microsoft Clarity による操作計測
 | 本番で任意のページを開くと Clarity が読み込まれる | FR-001, FR-004 | 2026-09-27 遠藤決定 |
 | プロジェクト ID が未設定の環境では読み込まない | FR-002 | BR-002 |
 | 記録された再生で画面の内容が読めない | FR-003 | BR-001 |
-| プライバシーポリシーに Clarity の利用が書かれている | FR-005 | 2026-09-27 遠藤決定 |
 
 確認する時期の区分（§15）:
 
@@ -264,7 +244,7 @@ Feature: Microsoft Clarity による操作計測
 | バックアップ・復旧 | データを持たない | - | 対象外 |
 | 運用・監視 | Clarity 管理画面で確認 | - | 確定 |
 | 拡張性・互換性 | Clarity は "It requires some modern browser APIs but should never throw exceptions on older browsers." | - | 公式記載 |
-| アクセシビリティ | 画面の見た目・操作は変わらない。`/privacy` の追記は既存の `<li>` と `<p className="mt-3">` を写し、外部リンクはファイル内の共通コンポーネントで §7 と同じ見た目にする（FR-005） | `/privacy` の表示確認 | 確定 |
+| アクセシビリティ | 画面の見た目・操作は変わらない | - | 対象外 |
 | コスト | Clarity は無料 | - | 確定 |
 
 AI 機能ではないため「AI機能の追加観点」は対象外。
@@ -290,7 +270,7 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
 - CSP: https://learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-csp — "Example: `default-src 'self' https://*.clarity.ms https://c.bing.com 'unsafe-inline';`"。本件は `'unsafe-inline'` を使わず、nonce + `'strict-dynamic'` のまま `connect-src`・`img-src` にホストを足す。
 - マスキング: https://learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-masking — "Strict: The entire content is masked." / "Balanced: Only sensitive content is masked. We classify numbers and email addresses as sensitive content." / "Content in the input boxes is masked in all modes and can't be customized." / `data-clarity-mask`: "That node and its children's contents are masked. This overrides anything set on the Clarity website." / "The masking ensures it's never uploaded to Clarity."
 - URL の伏せ字: https://learn.microsoft.com/en-us/clarity/faq（2026-09-27 確認）— "Does Clarity support masking URL Parameters? Yes. Contact Clarity support to request URL parameter masking." / "For URLs, Masking only applies to page URL. Currently, it doesn't apply to other URLs that Clarity captures such as: - Referrer URLs - Clicked URLs (the URLs that are captured when a user clicks on the page)."
-  - 解釈: `data-clarity-mask` が伏せ字にするのは DOM の中身だけで、ページ URL は Clarity サポートへ依頼しない限り伏せ字にならない。クリックしたリンクの URL・参照元 URL は依頼しても対象外。そのため FR-005 の文言で URL が伏せ字の対象外であることを書く。サポートへの依頼は §4 Non-goals。
+  - 解釈: `data-clarity-mask` が伏せ字にするのは DOM の中身だけで、ページ URL は Clarity サポートへ依頼しない限り伏せ字にならない。クリックしたリンクの URL・参照元 URL は依頼しても対象外。URL がそのまま送信されることは R-002 で受容する（開示は ALT-003 により行わない）。サポートへの依頼は §4 Non-goals。
 - 開示: https://learn.microsoft.com/en-us/clarity/setup-and-installation/privacy-disclosure — "Ensure your Privacy Policy properly communicates to your users on how you're using Clarity" と、記載すべき事項（Clarity の利用、収集データと目的、Microsoft Privacy Statement へのリンク）。
 - 利用規約: https://clarity.microsoft.com/terms（2026-09-27 取得）
   - 4.4(b): "Your privacy notice will disclose that third parties such as Microsoft may collect Personal Data from individuals visiting Your websites and offer appropriate opt-out choices as required by Data Protection Law. You will disclose in your privacy notice the fact that Microsoft collects or receives Personal Data from you to provide Microsoft Advertising, and provide a link to the Microsoft Privacy Statements: https://privacy.microsoft.com/en-us/privacystatement." → FR-005 の文言に反映。
@@ -313,7 +293,6 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
   - 再利用: `x-nonce` リクエストヘッダー（`src/lib/supabase/middleware.ts` の `updateSupabaseSession`）
   - 再利用: `next/script`（Next.js 同梱。新規依存なし）
   - 拡張: `src/env.ts` の `clientEnvSchema`（任意項目を1つ追加）
-  - 拡張: `app/privacy/page.tsx` の §5（既存の `li` と `<p className="mt-3">` を写す。外部リンクは同じファイル内に共通コンポーネントを置き、§7 の Google リンクと共用する。FR-005）
   - 拡張: `app/global-error.tsx` の `<body>`（`data-clarity-mask="true"` を付ける。FR-003）
 - `.env.example`: 変更しない。理由: 既存の任意項目はプレースホルダ付きで列挙されている（`.env.example:47-59`）が、空文字で足すとコピーした環境が `src/env.ts` の `min(1)` で起動時に落ち、プレースホルダを入れるとローカルでも Clarity が読み込まれて BR-002 に反する（spec-review audit 2026-09-27 の修正案に従う）。
 - README: `README.md` の「📋 環境変数」節の「区分」行に `NEXT_PUBLIC_CLARITY_PROJECT_ID` を足す見込み（`README.md` の「追加・リネーム時は `env.ts` の更新と README の『区分』行の見直し」に従う）。要否の判断は spec-to-pr の readme_sync に任せる。
@@ -321,7 +300,7 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
 ### 制約条件
 
 - 納期・予算・人員: なし
-- 法令・契約・審査: プライバシーポリシーの変更は、本番へ反映されるマージの前にクライアントの確認を経る（§14 CP-1）
+- 法令・契約・審査: Clarity 利用規約 4.4(b) はプライバシーポリシーでの開示を求めているが、本件では開示しない（ALT-003・R-003 で受容）
 - 変更できない既存仕様: CSP の既存指定（nonce・`'strict-dynamic'`・既存の許可ホスト）
 
 ### 依存関係
@@ -330,7 +309,6 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
 | --- | --- | --- | --- |
 | Clarity プロジェクト | 運用担当が spec-to-pr の前に作成し、マスキングモードを Strict にする。"Get tracking code" の内容を §6 に貼る（Q-001） | 完了（2026-09-27。プロジェクト ID `yoo4bko8re`、Strict 設定済み、§6 に転記済み） | 読み込みスクリプトの本文が確定せず、FR-001 を実装できない |
 | Vercel 環境変数 | 運用担当が Production に `NEXT_PUBLIC_CLARITY_PROJECT_ID` を設定 | Vercel の Environment Variables | 本番で計測が始まらない。`NEXT_PUBLIC_*` はビルド時に埋め込まれるため設定後に再デプロイが必要 |
-| プライバシーポリシー文言 | クライアントの確認（Q-002・Q-003） | §14 チェックポイント CP-1 | 未確認ならマージしない（FR-005 の文言はマージ時点で `/privacy` に公開されるため）。仕様レビュー・実装のブロッカーにはしない |
 
 ## 11. トレードオフ判断
 
@@ -361,6 +339,19 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
 - 将来変更する条件: 伏せ字でヒートマップが読めないと判断したとき、個人・顧客情報を含まない要素に限って `data-clarity-unmask` を検討する
 - 判断者・判断日: 遠藤（Strict の方針）・2026-09-27／コード側で付ける方式は spec-review audit（2026-09-27）で公式ドキュメントと照合済み（`data-clarity-mask`: "That node and its children's contents are masked. This overrides anything set on the Clarity website."。§9）
 
+### ALT-003: プライバシーポリシーに Clarity の利用を書くか
+
+- 判断: 書かない（FR-005 を Won't にする）
+- 比較した案:
+  - 案A: `/privacy` の §5 に Microsoft Clarity の利用・収集内容・URL が伏せ字の対象外であること・Microsoft Advertising での利用・Microsoft プライバシー ステートメントへのリンクを追記する（Clarity 利用規約 4.4(b) と公式の開示推奨に沿う）
+  - 案B: 追記しない
+- 採用案: 案B
+- 採用理由: 2026-09-27 遠藤決定「プライバシーポリシーに書かなくて良い。プライバシーポリシーは Google や Instagram の審査用に作ったもので、一般公開はしないため基本的には誰も見ない想定」。
+- 却下した案と理由: 案A はクライアントの文言確認（旧 Q-002・Q-003・CP-1）が必要になる一方、`/privacy` は審査用で利用者が見る想定がない
+- 影響: Clarity 利用規約 4.4(b) の開示義務を満たさない（R-003）。ページ URL（`/analytics?category=` の WordPress カテゴリ名など）が伏せ字にならず送信されることも開示しない（R-002）
+- 将来変更する条件: `/privacy` を一般公開するとき、Microsoft から開示を求められたとき、EEA・英国・スイスの利用者を受け入れるとき
+- 判断者・判断日: 遠藤・2026-09-27
+
 ## 12. リスク・確認質問・未決定事項
 
 ### リスク
@@ -368,15 +359,16 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
 | ID | リスク | 発生条件・影響 | 対策 | 担当 | 状態 |
 | --- | --- | --- | --- | --- | --- |
 | R-001 | `'strict-dynamic'` 下で Clarity の2段階の読み込み（タグ → 本体スクリプト）がブロックされる | CSP 違反で計測されない | 本番有効化の直後に、運用担当が実ブラウザで CSP 違反と `collect` への POST を確認する（運用完了条件。§15）。ブロックされた場合は違反内容に合わせて許可を足す PR を出し、nonce・`'strict-dynamic'` は外さない | 運用担当 | 未確認 |
-| R-002 | 伏せ字の漏れ | `<body>` 外（ポータル等）の要素に文字が出る。ルートレイアウトを置き換えるエラー画面（`app/global-error.tsx`）の `<body>` に属性が無い。URL に載る情報（`/analytics?category=` の WordPress カテゴリ名など）が送信される | ポータルも `<body>` 配下に描画されるため対象に含まれる。公式: `data-clarity-mask` は "That node and its children's contents are masked."（§9）。`app/global-error.tsx` の `<body>` にも属性を付ける（FR-003）。URL は Clarity の仕様で伏せ字の対象外（§9「URL の伏せ字」）のため、伏せ字にせずプライバシーポリシーに書く（FR-005）。本番反映後に再生を1件以上目視する（運用完了条件） | 運用担当 | 対策済み（URL は伏せ字にせず開示で対応） |
+| R-002 | 伏せ字の漏れ | `<body>` 外（ポータル等）の要素に文字が出る。ルートレイアウトを置き換えるエラー画面（`app/global-error.tsx`）の `<body>` に属性が無い。URL に載る情報（`/analytics?category=` の WordPress カテゴリ名など）が送信される | ポータルも `<body>` 配下に描画されるため対象に含まれる。公式: `data-clarity-mask` は "That node and its children's contents are masked."（§9）。`app/global-error.tsx` の `<body>` にも属性を付ける（FR-003）。URL は Clarity の仕様で伏せ字の対象外（§9「URL の伏せ字」）で、送信を受容する（ALT-003）。本番反映後に再生を1件以上目視する（運用完了条件） | 運用担当 | 受容（URL は伏せ字にせず、開示もしない。ALT-003） |
+| R-003 | Clarity 利用規約 4.4(b) の開示義務を満たさない | 規約上は Microsoft が利用を停止できる（規約 9: "Microsoft may cancel or suspend Your use of the Offering ... at any time."）。停止されても GrowMate の画面動作には影響しない | 受容（ALT-003）。`/privacy` を一般公開する時点で開示を追加する | 遠藤 | 受容 |
 
 ### 確認質問
 
 | ID | 質問 | 回答者 | 状態 | 未回答時の扱い |
 | --- | --- | --- | --- | --- |
 | Q-001 | Clarity プロジェクトを作成し（マスキングモード Strict）、管理画面の tracking code を §6「Clarity 読み込みスクリプト」に貼る | 遠藤 | 回答済み（2026-09-27） | 2026-09-27 にプロジェクト「GrowMate」（ID `yoo4bko8re`）を作成し、Strict に設定、tracking code を §6 に転記済み。利用規約上の告知義務は §9「利用規約」と FR-005 に反映済み |
-| Q-002 | FR-005 の追記文言（§6）で問題ないか | クライアント（株式会社ドリームプランナー） | クライアント確認中 | §14 CP-1（マージ前ゲート）で確認する。未確認ならマージしない。仕様レビュー・実装のブロッカーにはしない。「Microsoft Advertising」の開示（利用規約 4.4(b)。削除不可）を拒否された場合は Clarity の導入を見送り、PR をクローズする |
-| Q-003 | この変更を `/privacy` §8「ポリシーの改定」の「重要な変更がある場合は、アプリ内通知またはメールで告知します。」（`app/privacy/page.tsx:293`）に当たる変更として利用者に告知するか | クライアント（株式会社ドリームプランナー） | クライアント確認中 | §14 CP-1（マージ前ゲート）で確認する。アプリ内通知の実装は追加しない（告知が必要なら運用で対応）。仕様レビュー・実装のブロッカーにはしない |
+| Q-002 | FR-005 の追記文言で問題ないか | クライアント | 取り下げ（2026-09-27） | FR-005 を実装しないため不要（ALT-003） |
+| Q-003 | この変更を利用者に「重要な変更」として告知するか | クライアント | 取り下げ（2026-09-27） | プライバシーポリシーを変更しないため不要（ALT-003） |
 
 ### 未決定事項（今は決めない）
 
@@ -396,7 +388,6 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
   - `app/global-error.tsx` の `<body>` に `data-clarity-mask="true"` がある（エラー画面は意図的に起こしにくいため、コードの差分で確認する）
   - CSP ヘッダーの差分が `connect-src`・`img-src` へのホスト追加のみ
   - 環境変数を外して起動し直すと、HTML と DOM に `microsoft-clarity` のスクリプトがなく、`clarity.ms` への通信も起きない（`<body>` の `data-clarity-mask` は FR-003 により残る）
-  - `/privacy` に追記が表示され、外部リンクに `target="_blank"` が付いている
 - マージ後の確認（運用担当・遠藤。§15 運用完了条件。本番）:
   - 任意のページで DevTools のコンソールに Clarity 由来の CSP 違反が出ない
   - Network に Clarity のスクリプト取得と `collect` への POST がある
@@ -429,19 +420,18 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
 1. 要件定義（本ドキュメント）作成・レビュー
 2. 運用担当が Clarity プロジェクトを作成し（Strict）、"Get tracking code" の内容を §6 に貼る（Q-001。2026-09-27 完了）
 3. 仕様レビュー通過（`.takt/workflows/spec-review.yaml`）
-4. 実装（`.takt/workflows/spec-to-pr.yaml`。PR 作成まで）。コードの変更ファイル: `src/env.ts`、`app/layout.tsx`、`app/global-error.tsx`、`proxy.ts`、`app/privacy/page.tsx`（`.env.example` は変更しない。§10）
+4. 実装（`.takt/workflows/spec-to-pr.yaml`。PR 作成まで）。コードの変更ファイル: `src/env.ts`、`app/layout.tsx`、`app/global-error.tsx`、`proxy.ts`（`.env.example` は変更しない。§10）
 5. 品質ゲート通過（`npm run verify`）と §13「実装時の確認」
 6. PR作成・レビュー
-7. クライアントがプライバシーポリシー文言を確認（CP-1。Q-002・Q-003）
-8. マージ
-9. 運用担当が Vercel の Production に環境変数を設定し、再デプロイ
-10. 運用担当が §13「マージ後の確認」を行う（CP-2）
+7. マージ
+8. 運用担当が Vercel の Production に環境変数を設定し、再デプロイ
+9. 運用担当が §13「マージ後の確認」を行う（CP-2）
 
 ### チェックポイント
 
 | ID | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- | --- |
-| CP-1 | 本番へ反映されるマージの前 | プライバシーポリシー追記文言（FR-005）の確認（Q-002）と、この変更を「重要な変更」として告知するか（Q-003）。未確認ならマージしない。仕様レビュー・実装のブロッカーにはしない（spec-to-pr は PR 作成まで） | クライアント | 未確認 |
+| CP-1 | 本番へ反映されるマージの前 | 取り下げ（2026-09-27。プライバシーポリシーを変更しないため。ALT-003） | - | 不要 |
 | CP-2 | 本番有効化の直後と翌日 | §13「マージ後の確認」（CSP 違反なし、`collect` への POST、再生が伏せ字） | 遠藤 | 未確認 |
 
 ## 15. 完了条件
@@ -453,14 +443,12 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
     - `app/layout.tsx` と `app/global-error.tsx` がともに `<body data-clarity-mask="true">` になっている（FR-003）
     - CSP ヘッダーの差分が `connect-src`・`img-src` へのホスト追加だけ（FR-004）
     - 環境変数を外すと、HTML と DOM に `microsoft-clarity` のスクリプトが無く、`clarity.ms` への通信も起きない（FR-002。`data-clarity-mask` は FR-003 により残る）
-    - `/privacy` に FR-005 の追記と外部リンクが表示され、最終更新日が更新されている（FR-005）
   - **運用完了条件（遠藤・マージ後）**:
     - 本番で Clarity への `collect` の POST がある（FR-001）
     - 本番で Clarity 由来の CSP 違反が無い（FR-004）
     - 翌日、Clarity 管理画面の再生が伏せ字になっている（FR-003）
-    - プライバシーポリシーの文言をクライアントが確認済み（CP-1。マージの前に満たす）
 - 検証方法・証跡（テスト結果・画面確認・ログ等）:
-  - 実装完了条件: `npm run verify` の結果と、ブラウザでの DOM・Network・コンソール（または §13 の代替）、CSP ヘッダー、`/privacy` の確認結果を PR に記載
+  - 実装完了条件: `npm run verify` の結果と、ブラウザでの DOM・Network・コンソール（または §13 の代替）、CSP ヘッダーの確認結果を PR に記載
   - 運用完了条件: 本番のコンソール（CSP 違反なし）と Network（`collect` への POST）、Clarity 管理画面の再生の確認結果
 - 完了確認者・確認日: 遠藤・未定
 
@@ -496,3 +484,4 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
 | 2026-09-27 | spec-review 第1回の指摘を反映（完了条件の分割、マージ前ゲート、Q-001〜Q-003 追加ほか。§16 レビュー記録） | spec-review audit | Claude（spec-review revise） |
 | 2026-09-27 | Q-001 回答（Clarity プロジェクト作成・Strict 設定・tracking code を §6 に転記）。Clarity 利用規約を取得し、§9 に引用、FR-005 に Microsoft Advertising の開示とプライバシー ステートメントのリンク先を反映 | Q-001、利用規約 4.4(b) | 遠藤（Claude 作業） |
 | 2026-09-27 | spec-review 第2回の指摘を反映（URL が伏せ字の対象外であることの開示、FR-001・FR-002 の完了確認の見直し、`global-error.tsx` の伏せ字、`.env.example`、BR-002 の決定者、Q-002 の拒否時の扱い。§16 レビュー記録） | spec-review audit | Claude（spec-review revise） |
+| 2026-09-27 | FR-005（プライバシーポリシー追記）を Won't にし、ALT-003・R-003 を追加。Q-002・Q-003・CP-1 を取り下げ、`/privacy` 関連の確認・変更ファイルを削除 | 遠藤決定（ALT-003） | 遠藤（Claude 作業） |
