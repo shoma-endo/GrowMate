@@ -2,7 +2,7 @@
 """docs/plans の仕様書ビュー HTML を、単一の自己完結 HTML に束ねる。
 
 `.agents/skills/spec-to-html/SKILL.md` が正本。本スクリプトは「結合」「全文ビューの生成」
-「安全検査」「整合性チェック」を担い、意味を再構成するビュー（01〜03）の内容は生成側の責務とする。
+「安全検査」「整合性チェック」を担い、意味を再構成するビュー（01/02）の内容は生成側の責務とする。
 
 使い方:
     # 全文ビューの生成（原本 Markdown からの決定論的変換。LLM を介さない）
@@ -17,7 +17,6 @@
       --source docs/plans/<slug>.md \\
       --view "ステータスと次の一手=docs/plans/_html/<slug>/views/01-status.html" \\
       --view "設計判断=docs/plans/_html/<slug>/views/02-decisions.html" \\
-      --view "クイズ=docs/plans/_html/<slug>/views/03-quiz.html" \\
       --view "全文=docs/plans/_html/<slug>/views/04-fulltext.html"
 
     # 安全検査のみ
@@ -302,7 +301,7 @@ def _escape(text: str) -> str:
 
 
 # ── 整合性チェックと前回比 diff ──────────────────────────────────────────────
-# 再構成ビュー（01〜03）は LLM が「そのときの原本」から書く。原本が改訂されても
+# 再構成ビュー（01/02）は LLM が「そのときの原本」から書く。原本が改訂されても
 # ビューは黙って古いままになり、`core.yaml` の source_refs（行番号）は静かにズレる。
 # そこで生成のたびに宣言（core.yaml）と実体（原本 Markdown）を突合し、
 # 乖離を fail / warn / info として生成物自身とコンソールに自己申告する。
@@ -369,7 +368,7 @@ def _collect_refs(node: object, out: list[dict], owner: str | None = None) -> No
     持ち主（`_owner`）は「id と source_refs を両方持つ dict」の id。concept がこれに当たる。
     トップレベルの source_refs は持ち主が無いので None のままになる。
     参照が「どの concept の根拠か」を捨てると、原本が改訂されたときに直すべき concept を
-    名指しできず、バンドル単位の「01〜03 が古いかもしれない」までしか言えなくなる。
+    名指しできず、バンドル単位の「01/02 が古いかもしれない」までしか言えなくなる。
     """
     if isinstance(node, dict):
         refs = node.get("source_refs")
@@ -559,7 +558,7 @@ def integrity(spec_path: Path, bundle: Path) -> tuple[list[dict], dict, dict]:
             "これらを根拠にした再構成ビューの記述が古い可能性がある")
 
     # ── 原本の改訂 → 根拠にしている concept → relations を1ホップ ──────────────
-    # 「01〜03 が古いかもしれない」というバンドル単位の警告では、どこを直せばいいか分からない。
+    # 「01/02 が古いかもしれない」というバンドル単位の警告では、どこを直せばいいか分からない。
     # source_refs は持ち主の concept を知っているので、直すべき concept を名指しする。
     # さらに depends_on / blocks / affects を1ホップ辿り、直接は改訂されていないが
     # 前提が動いたことで古くなりうる concept も出す（こちらは info。断定しない）。
@@ -695,7 +694,6 @@ def _render_integrity(findings: list[dict], diff: dict) -> str:
 _PROMPT_COMMON = """# 参照（必ず開いてから書く。中身はこのプロンプトに貼っていない）
 - 意味の正本 core.yaml: {core}
 - 見せ方 view.yaml: {view}
-- 理解度クイズ quiz.yaml: {quiz}
 - 原本の仕様書: {spec}
 - ビュー執筆の正本: {authoring}
 - 読者カタログ: {readers}
@@ -778,12 +776,10 @@ def _render_prompts(bundle: Path, spec: str, panel_id: str) -> tuple[str, str]:
     ローカルファイルを開ける前提。開けないチャットは対象外。
     """
     root = bundle.resolve()
-    quiz = root / "quiz.yaml"
     skill = ROOT / ".agents" / "skills" / "spec-to-html"
     subst = {
         "core": str(root / "core.yaml"),
         "view": str(root / "view.yaml"),
-        "quiz": str(quiz) if quiz.is_file() else "（未作成。core.yaml から起こす）",
         "spec": spec,
         "bundle": str(root),
         "authoring": str(skill / "authoring-views.md"),
@@ -810,7 +806,7 @@ def _render_prompts(bundle: Path, spec: str, panel_id: str) -> tuple[str, str]:
         + "".join(
             f"<div><b>{_escape(label)}</b>{_escape(subst[key])}</div>"
             for label, key in (
-                ("core.yaml", "core"), ("view.yaml", "view"), ("quiz.yaml", "quiz"),
+                ("core.yaml", "core"), ("view.yaml", "view"),
                 ("原本", "spec"), ("バンドル", "bundle"),
             )
         )
@@ -1734,7 +1730,7 @@ def _expand_diagrams(body: str, base: Path) -> str:
 
 
 # ── refresh: 仕様書の改訂に、機械生成できる部分だけ即座に追従させる ──────────
-# 01〜03 の再構成ビューは core.yaml を LLM が解釈して書くので機械では直せない。
+# 01/02 の再構成ビューは core.yaml を LLM が解釈して書くので機械では直せない。
 # ここで触るのは全文ビューと結合 HTML だけにして、意味側の陳腐化は「黙って直す」
 # のではなく整合性チェックの結果として声に出す。
 
@@ -1746,7 +1742,6 @@ HTML_DIR = PLANS_DIR / "_html"
 _FALLBACK_LABELS = {
     "status": "ステータスと次の一手",
     "decisions": "設計判断",
-    "quiz": "クイズ",
     "fulltext": "全文",
 }
 
@@ -1826,13 +1821,13 @@ def refresh(specs: list[Path], check_only: bool) -> int:
             failed += 1
             continue
 
-        # 参照のズレ ＝ core.yaml が仕様書に追いついていない ＝ 01〜03 の記述も古い可能性。
+        # 参照のズレ ＝ core.yaml が仕様書に追いついていない ＝ 01/02 の記述も古い可能性。
         drift = [f for f in findings if f["level"] in ("fail", "warn")]
         if drift:
             named = [c for f in findings for c in f.get("concepts") or []]
             where = ("直すべき concept: " + " / ".join(named) + "。"
                      if named else "")
-            print(f"spec-html.py: 再構成ビュー（01〜03）が陳腐化している可能性がある。"
+            print(f"spec-html.py: 再構成ビュー（01/02）が陳腐化している可能性がある。"
                   f"整合性チェックが {len(drift)} 件の fail/warn を出した（上記）。{where}"
                   f"`.agents/skills/spec-to-html/SKILL.md` に従って core.yaml の source_refs を貼り直すこと")
 
