@@ -34,8 +34,8 @@ function buildCspHeader(nonce: string): string {
     "font-src 'self' https://fonts.gstatic.com data:",
     // INSTAGRAM_CDN_HOSTS は Instagram のプロフィール画像・メディアの配信元。
     // 許可しないと /setup/instagram の画像がすべてブラウザ側でブロックされる。
-    `img-src 'self' data: https://profile.line-scdn.net ${INSTAGRAM_CDN_HOSTS.map(host => `https://*.${host}`).join(' ')}`,
-    `connect-src 'self'${isDev ? ' ws://localhost:* wss://localhost:*' : ''} https://oauth2.googleapis.com https://openidconnect.googleapis.com https://www.googleapis.com https://accounts.google.com https://public-api.wordpress.com https://*.supabase.co wss://*.supabase.co`,
+    `img-src 'self' data: https://profile.line-scdn.net ${INSTAGRAM_CDN_HOSTS.map(host => `https://*.${host}`).join(' ')} https://*.clarity.ms https://c.bing.com`,
+    `connect-src 'self'${isDev ? ' ws://localhost:* wss://localhost:*' : ''} https://oauth2.googleapis.com https://openidconnect.googleapis.com https://www.googleapis.com https://accounts.google.com https://public-api.wordpress.com https://*.supabase.co wss://*.supabase.co https://*.clarity.ms https://c.bing.com`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
