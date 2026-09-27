@@ -228,7 +228,7 @@ Feature: Microsoft Clarity による操作計測
 
 確認する時期の区分（§15）:
 
-- spec-to-pr（実装完了条件）で確認する: 「本番で任意のページを開くと Clarity が読み込まれる」のうち、ローカルのブラウザでハイドレーション後の DOM に `script#microsoft-clarity` があり、Network に `https://www.clarity.ms/tag/<プロジェクト ID>` の取得があり、コンソールに CSP 違反が出ないこと（ブラウザが使えない場合の代替は §13）。「プロジェクト ID が未設定の環境では読み込まない」。「プライバシーポリシーに Clarity の利用が書かれている」。
+- spec-to-pr（実装完了条件）で確認する: 「本番で任意のページを開くと Clarity が読み込まれる」のうち、ローカルのブラウザでハイドレーション後の DOM に `script#microsoft-clarity` があり、Network に `https://www.clarity.ms/tag/<プロジェクト ID>` の取得があり、コンソールに CSP 違反が出ないこと（ブラウザが使えない場合の代替は §13）。「プロジェクト ID が未設定の環境では読み込まない」。
 - マージ後に運用担当が確認する（運用完了条件）: 「本番で任意のページを開くと Clarity が読み込まれる」のうち、Clarity への送信（`collect` への POST）と CSP 違反が無いこと。「記録された再生で画面の内容が読めない」（Clarity 管理画面でしか確認できない）。
 
 ## 8. 非機能要件
@@ -237,7 +237,7 @@ Feature: Microsoft Clarity による操作計測
 | --- | --- | --- | --- |
 | 性能・レイテンシ | 初期表示を妨げない | `strategy="afterInteractive"` で非同期読み込み | 確定 |
 | 可用性・信頼性 | Clarity 障害時も GrowMate の動作に影響しない | 読み込み失敗は画面の動作に関与しない構造 | 確定 |
-| セキュリティ・プライバシー | 画面の文字・画像・入力欄を送信しない。URL（ページ URL・クリックしたリンクの URL）は伏せ字の対象外で、そのまま送信される（§9「URL の伏せ字」）。CSP は既存の nonce・`'strict-dynamic'` を維持し、許可ホストの追加のみ | `data-clarity-mask="true"`（FR-003）、Clarity 再生の目視、CSP ヘッダーの差分確認 | 確定。GrowMate の画面 URL にトークン等を含むページが無いことを確認済み（ページ側で `code`・`token` 等のクエリを読む箇所なし。OAuth コールバックは Route Handler）。ただし `/analytics?category=` は顧客の WordPress カテゴリ名を URL に載せており（`app/analytics/AnalyticsClient.tsx:262-265`）、伏せ字なしで送信される。この点はプライバシーポリシーに書く（FR-005）。URL パラメータの伏せ字化は今回行わない（§4 Non-goals） |
+| セキュリティ・プライバシー | 画面の文字・画像・入力欄を送信しない。URL（ページ URL・クリックしたリンクの URL）は伏せ字の対象外で、そのまま送信される（§9「URL の伏せ字」）。CSP は既存の nonce・`'strict-dynamic'` を維持し、許可ホストの追加のみ | `data-clarity-mask="true"`（FR-003）、Clarity 再生の目視、CSP ヘッダーの差分確認 | 確定。GrowMate の画面 URL にトークン等を含むページが無いことを確認済み（ページ側で `code`・`token` 等のクエリを読む箇所なし。OAuth コールバックは Route Handler）。ただし `/analytics?category=` は顧客の WordPress カテゴリ名を URL に載せており（`app/analytics/AnalyticsClient.tsx:262-265`）、伏せ字なしで送信される。この送信は受容し、開示もしない（§11 ALT-003・R-002）。URL パラメータの伏せ字化は今回行わない（§4 Non-goals） |
 | 認証・認可 | 変更なし | - | 対象外 |
 | 監査・ログ | 変更なし | - | 対象外 |
 | 障害対応 | Clarity を止めたいときは Vercel の環境変数を外して再デプロイ | - | 確定（既存手段） |
@@ -358,7 +358,7 @@ AI 機能ではないため「AI機能の追加観点」は対象外。
 
 | ID | リスク | 発生条件・影響 | 対策 | 担当 | 状態 |
 | --- | --- | --- | --- | --- | --- |
-| R-001 | `'strict-dynamic'` 下で Clarity の2段階の読み込み（タグ → 本体スクリプト）がブロックされる | CSP 違反で計測されない | 本番有効化の直後に、運用担当が実ブラウザで CSP 違反と `collect` への POST を確認する（運用完了条件。§15）。ブロックされた場合は違反内容に合わせて許可を足す PR を出し、nonce・`'strict-dynamic'` は外さない | 運用担当 | 未確認 |
+| R-001 | `'strict-dynamic'` 下で Clarity の2段階の読み込み（タグ → 本体スクリプト）がブロックされる | CSP 違反で計測されない | 本番有効化の直後に、運用担当が実ブラウザで CSP 違反と `collect` への POST を確認する（運用完了条件。§15）。ブロックされた場合は違反内容に合わせて許可を足す PR を出し、nonce・`'strict-dynamic'` は外さない | 運用担当 | 確認済み（2026-09-27、ローカル `next dev` + Chrome。`/home` で `www.clarity.ms/tag/yoo4bko8re` 200 → `scripts.clarity.ms/0.8.70/clarity.js` 200 → `t.clarity.ms/collect` POST 204、コンソールに CSP 違反なし。dev の CSP は本番に `'unsafe-eval'` を足しただけで、`'strict-dynamic'` の挙動は同じ） |
 | R-002 | 伏せ字の漏れ | `<body>` 外（ポータル等）の要素に文字が出る。ルートレイアウトを置き換えるエラー画面（`app/global-error.tsx`）の `<body>` に属性が無い。URL に載る情報（`/analytics?category=` の WordPress カテゴリ名など）が送信される | ポータルも `<body>` 配下に描画されるため対象に含まれる。公式: `data-clarity-mask` は "That node and its children's contents are masked."（§9）。`app/global-error.tsx` の `<body>` にも属性を付ける（FR-003）。URL は Clarity の仕様で伏せ字の対象外（§9「URL の伏せ字」）で、送信を受容する（ALT-003）。本番反映後に再生を1件以上目視する（運用完了条件） | 運用担当 | 受容（URL は伏せ字にせず、開示もしない。ALT-003） |
 | R-003 | Clarity 利用規約 4.4(b) の開示義務を満たさない | 規約上は Microsoft が利用を停止できる（規約 9: "Microsoft may cancel or suspend Your use of the Offering ... at any time."）。停止されても GrowMate の画面動作には影響しない | 受容（ALT-003）。`/privacy` を一般公開する時点で開示を追加する | 遠藤 | 受容 |
 
