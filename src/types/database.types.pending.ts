@@ -178,7 +178,7 @@ export type ContentAnnotationSummaryJobDatabase = Omit<Database, 'public'> & {
 };
 
 /**
- * PROVISIONAL: supabase/migrations/20260927000000_add_cron_run_logs.sql
+ * PROVISIONAL: supabase/migrations/20260928220845_add_cron_run_logs.sql
  *
  * 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
  * このブロックを削除し、呼び出し側を生成済みの `cron_run_logs` 型へ切り替える
