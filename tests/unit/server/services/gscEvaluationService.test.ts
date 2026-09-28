@@ -44,6 +44,7 @@ function mockUserResult(overrides: { processed?: number; skippedSystemError?: nu
     advanced: 0,
     baselineInitialized: 0,
     skippedNoMetrics: 0,
+    skippedClaimLost: 0,
     skippedImportFailed: 0,
     skippedSystemError: 0,
     ...overrides,

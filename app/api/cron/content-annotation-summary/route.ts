@@ -6,8 +6,8 @@ import { contentAnnotationSummaryJobService } from '@/server/services/contentAnn
  * AI要約一括のバックグラウンド実行 Cron エンドポイント
  * （docs/specs/content-annotation-bulk-summary-background-spec.md §9）
  *
- * GitHub Actions（`.github/workflows/content-annotation-summary-cron.yml`）が10分ごとに
- * GET で呼び出す。1起動で行うのは次の順序:
+ * Vercel Cron（`vercel.json`）が10分ごとに GET で呼び出す。手動実行は GitHub Actions の
+ * `workflow_dispatch`。1起動で行うのは次の順序:
  *   1. 未通知で終了済みのジョブの掃き出し（**claim の前**。claim RPC が failed に落とした行は
  *      アプリ層が一度も見ないため、ここが無いと通知が永久に届かない）
  *   2. 未処理ジョブを1件 claim
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// GitHub Actions の invoke-cron.sh は GET で呼び出す
+// Vercel Cron と手動実行の invoke-cron.sh は GET で呼び出す
 export const dynamic = 'force-dynamic';
 // 値は src/lib/constants.ts の CONTENT_ANNOTATION_BULK_SUMMARY_MAX_DURATION_SEC と必ず一致させること。
 // route segment config は静的解析のため import 定数を使えず、ここはリテラル必須。
