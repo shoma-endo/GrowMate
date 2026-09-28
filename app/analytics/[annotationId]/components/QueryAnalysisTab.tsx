@@ -12,8 +12,9 @@ import {
   Cell,
   ReferenceLine,
 } from 'recharts';
-import { Loader2, Search, ArrowUpDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Search, ArrowUpDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CenteredLoading } from './OverviewTab';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -259,10 +260,7 @@ export function QueryAnalysisTab({ annotationId }: QueryAnalysisTabProps) {
     return (
       <Card>
         <CardContent className="py-20">
-          <div className="flex items-center justify-center gap-2 text-gray-500">
-            <Loader2 className="w-6 h-6 animate-spin" />
-            クエリデータを読み込み中...
-          </div>
+          <CenteredLoading label="クエリデータを読み込み中..." />
         </CardContent>
       </Card>
     );

@@ -1,6 +1,6 @@
 ---
 name: spec-to-html
-description: docs/plansの仕様書を単一HTMLの「見る地図」に変換・更新するときだけ使う正本。core.yamlからステータス・設計判断・クイズの再構成ビューを作り、任意で画面仕様（05）とUIモック（06）を足し、原本Markdownから全文ビューを生成する。TAKT spec-reviewのvisualize、仕様書の図解HTML生成・再生成・陳腐化確認で使う。仕様書本文のレビュー・修正（spec-review）やリポジトリ全体のキャッチアップには使わない。
+description: docs/plansの仕様書を単一HTMLの「見る地図」に変換・更新するときだけ使う正本。core.yamlからステータス・設計判断の再構成ビューを作り、任意で画面仕様（05）とUIモック（06）を足し、原本Markdownから全文ビューを生成する。TAKT spec-reviewのvisualize、仕様書の図解HTML生成・再生成・陳腐化確認で使う。仕様書本文のレビュー・修正（spec-review）やリポジトリ全体のキャッチアップには使わない。
 ---
 
 # 仕様書の図解化（SSoT）
@@ -11,13 +11,13 @@ description: docs/plansの仕様書を単一HTMLの「見る地図」に変換�
 
 **変換ではなく再構成である。** Markdown を HTML に整形しても認知負荷は下がらない。下がるのは、仕様書を「意味の単位」に圧縮し、実装ステータス軸で並べ替えたときだけ。したがって本スキルの中核は `core.yaml` の執筆であり、HTML 生成はその副産物として自動化する。
 
-ビュー執筆の設計原則（形が先・例外ファースト・色の規律・7ブロック上限・丸写し禁止・全文隔離・削る勇気）は `authoring-views.md` の「設計原則」が正本。ビューを書く手順5で読む。
+ビュー執筆の設計原則（形が先・例外ファースト・色の規律・7ブロック上限・丸写し禁止・全文隔離・削る勇気）は `authoring-views.md` の「設計原則」が正本。ビューを書く手順4で読む。
 
 ## 二層構造
 
 | 層 | ビュー | 誰が作るか | 用途 |
 |---|---|---|---|
-| 再構成 | 01 ステータス / 02 設計判断 / 03 クイズ | **LLM**（core.yaml 経由） | 状況把握・次の一手の判断・設計判断の再確認 |
+| 再構成 | 01 ステータス / 02 設計判断 | **LLM**（core.yaml 経由） | 状況把握・次の一手の判断・設計判断の再確認 |
 | 再構成（任意） | 05 画面仕様 | **LLM** | 画面一覧・遷移・状態別UIの圧縮ビュー |
 | 対話（任意） | 06 UIモック | **LLM** | CP／UIたたき台合意用の操作可能な見た目。本番コードではない |
 | 全文 | 04 全文 | **スクリプト**（`spec-html.py fulltext`） | 実装（DDL を書く・プロンプトを直す・型を定義する） |
@@ -25,11 +25,11 @@ description: docs/plansの仕様書を単一HTMLの「見る地図」に変換�
 
 全文ビューは原本と1文字も乖離してはいけないので **LLM に書かせない**。機械変換にすることで、生成のたびに解釈が入る余地を消し、トークンも消費せず常に同期する。
 
-**画面仕様を含む仕様書には `05-screens.html` を追加する。** 仕様書に画面一覧・画面遷移・状態別UI・UI用語・画面のGherkin受入条件のいずれかを含む章（`## 画面仕様` / `## 画面設計` 相当）が実在すれば、01〜03と同じ再構成ビューとして `views/05-screens.html` を作る。無ければ作らない（トリガーは「UI開発を伴うか」ではなく「原本に画面仕様の章が実在するか」）。
+**画面仕様を含む仕様書には `05-screens.html` を追加する。** 仕様書に画面一覧・画面遷移・状態別UI・UI用語・画面のGherkin受入条件のいずれかを含む章（`## 画面仕様` / `## 画面設計` 相当）が実在すれば、01/02と同じ再構成ビューとして `views/05-screens.html` を作る。無ければ作らない（トリガーは「UI開発を伴うか」ではなく「原本に画面仕様の章が実在するか」）。
 
 **UIたたき台（CP）が実装前ゲートの仕様書には `06-ui-mock.html` を追加する。** PO／クライアントが操作して見た目・文言・状態遷移を合意するための対話型モック。トリガーは「仕様のチェックポイントや承認表に UI たたき台／CP が明示されている」、または人間が「図解に UI モックタブを足せ」と指示したとき。無いなら作らない。`05-screens`（構造の再構成）と役割が違う — 05 は読む図、06 は触る図。両方あるなら両方載せる。片方だけで足りるなら片方でよい。
 
-ファイル名の連番と `build --view` のタブ表示順は無関係（指定順にタブが並ぶだけで、`build()` はファイル名を解釈しない）なので、既存ファイルのリネームは不要。既定タブ順は「ステータス→設計判断→画面仕様→**UIモック**→クイズ→全文→ビューを増やす」（存在する任意ビューだけ差し込む。クイズが画面／モックの理解度も問えるように、クイズの直前に置く。「ビューを増やす」は `--view` で渡さない — `build` が `--source` があるとき常に末尾へ付ける）。
+ファイル名の連番と `build --view` のタブ表示順は無関係（指定順にタブが並ぶだけで、`build()` はファイル名を解釈しない）なので、既存ファイルのリネームは不要。既定タブ順は「ステータス→設計判断→画面仕様→**UIモック**→全文→ビューを増やす」（存在する任意ビューだけ差し込む。「ビューを増やす」は `--view` で渡さない — `build` が `--source` があるとき常に末尾へ付ける）。
 
 ## 図版とビュー実装（正本: `authoring-views.md`）
 
@@ -40,7 +40,7 @@ description: docs/plansの仕様書を単一HTMLの「見る地図」に変換�
 再構成ビューは LLM が「そのときの原本」から書く。原本が改訂されてもビューは黙って古いままになり、`core.yaml` の `source_refs`（行番号）は静かにズレる。これを検知するため、`build` は毎回 **宣言（core.yaml）と実体（原本 Markdown）を突合**し、結果を成果物の先頭バーとコンソールに自己申告する。基準は `docs/plans/_html/<slug>/.snapshot.json`（`build` が毎回更新）。
 
 - レベル別（`fail` / `warn` / `info`）の意味と対処、**更新モードで fail / warn が出たときの手順**は同ディレクトリの `maintenance.md` が正本。fail / warn が出たら読む。
-- **どこを直すかは機械が名指しする。** `source_refs` は持ち主の concept を覚えているので、改訂された章を根拠にしている concept を `warn` で名指しし、さらに `relations` を**1ホップ**辿って「直接は改訂されていないが前提が動いた」concept を `info` で出す（経路つき）。バンドル単位の「01〜03 が古いかも」で止めない。2ホップ以上は追わない。
+- **どこを直すかは機械が名指しする。** `source_refs` は持ち主の concept を覚えているので、改訂された章を根拠にしている concept を `warn` で名指しし、さらに `relations` を**1ホップ**辿って「直接は改訂されていないが前提が動いた」concept を `info` で出す（経路つき）。バンドル単位の「01/02 が古いかも」で止めない。2ホップ以上は追わない。
 - **fail を放置しない。** 参照が壊れた状態で更新モードを続けると、LLM が「ズレた行」を根拠に書き足していく。fail が出てもビルド自体は落ちない（落ちるのは安全検査だけ）ので、コンソール出力を必ず読む。
 
 ## 自動追従（`refresh`）
@@ -56,7 +56,7 @@ python3 scripts/spec-html.py refresh --all --check                 # 書かず�
 - 対象は `docs/plans/_html/<slug>/` が **既にある**仕様書だけ。バンドルが無ければ無言でスキップする（新規作成は下の「手順」でやること）。
 - `.snapshot.json` の `spec_hash` と現物を突合し、**変わっていなければ何も出力せず終わる**（no-op）。
 - 変わっていれば `views/*fulltext*.html` を再生成し、`.snapshot.json` の `manifest`（タイトル・出力先・ビューのラベルと並び）どおりに `build` を再実行する。
-- **再構成ビュー（01〜03）には触らない。** `core.yaml` を LLM が解釈して書くものなので機械では直せない。代わりに整合性チェックが `fail`/`warn` を出したら「01〜03 が陳腐化している可能性がある」と明示的に警告する。**この警告が出たら更新モードで `core.yaml` を貼り直すこと。**
+- **再構成ビュー（01/02・任意の 05/06）には触らない。** `core.yaml` を LLM が解釈して書くものなので機械では直せない。代わりに整合性チェックが `fail`/`warn` を出したら「再構成ビュー（01/02）が陳腐化している可能性がある」と明示的に警告する。**この警告が出たら更新モードで `core.yaml` を貼り直すこと。**
 - 発火経路（Claude Code / Cursor / Codex の編集後フック、husky `pre-commit`、手動 `npm run spec-html:refresh`）の詳細は `maintenance.md`。いずれも失敗しても編集・commit を止めない。**Cursor だけは陳腐化警告がエージェントに届かない**（`afterFileEdit` が fire-and-forget のため）ので、章を書き換えたら `npm run spec-html:refresh` の出力を人が読む。
 
 ## ビューを1枚足す（`add-view`）
@@ -83,10 +83,8 @@ docs/plans/<slug>.md                        ← 入力（正本）
 docs/plans/_html/<slug>/core.yaml           ← 意味の正本（reader 非依存）
 docs/plans/_html/<slug>/.snapshot.json      ← 整合性チェックの基準 ＋ refresh 用の manifest（build が自動更新）
 docs/plans/_html/<slug>/view.yaml           ← 見せ方の方針（reader 依存）
-docs/plans/_html/<slug>/quiz.yaml           ← 理解度チェック
 docs/plans/_html/<slug>/views/01-status.html      ← ステータスと次の一手
 docs/plans/_html/<slug>/views/02-decisions.html   ← 設計判断
-docs/plans/_html/<slug>/views/03-quiz.html        ← クイズ
 docs/plans/_html/<slug>/views/04-fulltext.html    ← 全文（スクリプト生成・手で書かない）
 docs/plans/_html/<slug>/views/05-screens.html     ← 画面仕様（画面仕様の章がある仕様書のみ・任意）
 docs/plans/_html/<slug>/views/06-ui-mock.html      ← UIモック（たたき台CPがある仕様書のみ・任意・対話型）
@@ -108,7 +106,7 @@ docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時�
 
 `docs/plans/_html/<slug>/core.yaml` が存在するなら **更新モード**、無ければ **新規モード**。
 
-- **更新モード**: 仕様書の差分（`git diff` / `git log -p` で直近の変更）を読み、`core.yaml` の該当する `concepts` / `relations` / `risks` / `questions` だけを直す。id は安定させる（relations・questions・risks・quiz が id を参照しているため）。全書き直しはしない。
+- **更新モード**: 仕様書の差分（`git diff` / `git log -p` で直近の変更）を読み、`core.yaml` の該当する `concepts` / `relations` / `risks` / `questions` だけを直す。id は安定させる（relations・questions・risks が id を参照しているため）。全書き直しはしない。
 - **新規モード**: 仕様書を通読して `core.yaml` を起案する。
 
 ### 2. core.yaml を書く（意味の層）
@@ -138,11 +136,7 @@ docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時�
 
 読者が変わったら `core.yaml` はそのままに `view.yaml` だけ差し替える。R2（PO・クライアント）と R3（引き継ぎ先）のプロファイルは `readers.md` にある。**`06-ui-mock.html` を作る仕様書は読者が R2 なので、モックの中では R2 の `de_emphasize` に従う**（実装語を出さない・PO確認項目を先頭に置く）。
 
-### 4. quiz.yaml を書く（理解度チェック）
-
-正解は **必ず `core.yaml` の事実に紐づける**。誤答選択肢は「斜め読みで実際に起きる誤読」から作る。`confidence` が低い事実は出題しない。エンジニア向けなので `relation` / `ordering` / 難易度高から並べ、易しい ○× は末尾に畳む。
-
-### 5. 再構成ビューと任意ビューを書く
+### 4. 再構成ビューと任意ビューを書く
 
 各ファイルは `<!DOCTYPE html>` から始まる完結した HTML document。inline CSS / inline JS のみ。
 
@@ -152,13 +146,12 @@ docs/plans/_html/<slug>.artifact.html       ← Artifact 版（build が同時�
 | `02-decisions.html` | 設計判断ごとに **狙い / ✕不採用案 / ✓採用理由 / △受け入れたトレードオフ** の4点セット。ブロック別の絞り込み付き |
 | `05-screens.html` | （画面仕様の章がある場合のみ）画面一覧 → 画面遷移図 → 記事詳細等の要素配置 → 状態別UI → UI用語 → 関連ACの順。**再構成ビューと同じ設計原則（例外ファースト・7ブロック上限・図版3点以上）に従う** |
 | `06-ui-mock.html` | （UIたたき台CPがある場合のみ）既存プロダクトUIに寄せた**操作可能な**モック。主要状態をタブ／ボタンで切り替え、PO確認項目（Q）を同タブ先頭に置く。図版3点の必須は**適用しない**（モック自体が図）。テーマ変数・IIFE・外部依存禁止・`document.querySelector` のみ（`getElementById` 禁止。結合時にパネルへスコープされる）は `authoring-views.md` に従う。シェルの `.panel` クラス名は使わない（タブパネルと衝突する） |
-| `03-quiz.html` | `quiz.yaml` を出題。即時採点 → 正誤表示（色だけに頼らずアイコンと文字も）→ 解説・関連概念・出典を開示 → 採点後は入力をロック。末尾にスコア集計と「もう一度」 |
 
-`04-fulltext.html` は **手で書かない**。手順6（[`build-and-verify.md`](build-and-verify.md)）のコマンドで生成する。
+`04-fulltext.html` は **手で書かない**。手順5（[`build-and-verify.md`](build-and-verify.md)）のコマンドで生成する。
 
 **書く前に `authoring-views.md` を必ず読む**（図版の必須数と型、テーマ変数・hash 連動・IIFE・外部依存の禁止リストを含む必須実装約束の正本）。
 
-### 6〜8. 全文生成 → 結合・安全検査 → 動作確認
+### 5〜7. 全文生成 → 結合・安全検査 → 動作確認
 
 **[`build-and-verify.md`](build-and-verify.md) を Read してから実行する**（fulltext 生成コマンド・`build` の引数と安全検査の仕組み・ヘッドレス Chrome での確認・`data-goto` の実在検証・更新モードで fail が出たときの導線の正本）。要点のみ:
 

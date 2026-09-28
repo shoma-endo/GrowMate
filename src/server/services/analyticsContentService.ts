@@ -14,6 +14,10 @@ import type {
 } from '@/types/analytics';
 import type { Ga4PageMetricSummary } from '@/types/ga4';
 import type { Json } from '@/types/database.types';
+import {
+  asPendingClient,
+  type AnalyticsContentSortDatabase,
+} from '@/types/database.types.pending';
 
 const MAX_PER_PAGE = 100;
 
@@ -94,7 +98,9 @@ class AnalyticsContentService {
     };
 
     try {
-      const client = supabaseService.getClient();
+      // 並べ替えの引数（migration 20260926000000）が生成型に入るまでの暫定型
+      const client = asPendingClient<AnalyticsContentSortDatabase>(supabaseService.getClient());
+      const sort = params.sort ?? null;
 
       const fetchAnnotationsPage = async (targetPage: number) => {
         const { data, error } = await client.rpc('get_filtered_content_annotations', {
@@ -114,6 +120,18 @@ class AnalyticsContentService {
           // 「コンテンツ評価未開始」フィルタを廃止したため（§10.2）。RPC 側の引数は
           // `default false` で残してあるので、渡さなければ条件が効かない。
           // SQL のシグネチャを変えないのは、本番適用済み関数の再定義を避けるため
+          //
+          // 並べ替えの引数も並べ替え中だけ積む（p_has_unsummarized と同じ理由。migration
+          // 20260926000000 が未適用でも、並べ替えていない通常の一覧は壊れない）。
+          // 期間は GA4 の列を一覧の表示と同じ期間で集計して並べるために渡す
+          ...(sort !== null
+            ? {
+                p_sort_key: sort.key,
+                p_sort_order: sort.order,
+                p_start_date: startDate,
+                p_end_date: endDate,
+              }
+            : {}),
         });
 
         const row = data?.[0] as

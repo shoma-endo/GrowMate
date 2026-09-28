@@ -40,11 +40,7 @@ describe('signInWithReviewPassword のキルスイッチ', () => {
     ['空文字', ''],
     ['空白のみ', '   '],
   ])('REVIEW_LOGIN_EMAIL が%sなら認証に到達せず失敗する', async (_label, value) => {
-    if (value === undefined) {
-      vi.stubEnv('REVIEW_LOGIN_EMAIL', '');
-    } else {
-      vi.stubEnv('REVIEW_LOGIN_EMAIL', value);
-    }
+    vi.stubEnv('REVIEW_LOGIN_EMAIL', value);
 
     const result = await signInWithReviewPassword('review@example.com', 'password');
 

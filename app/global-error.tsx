@@ -20,7 +20,7 @@ export default function GlobalError({
 
   return (
     <html>
-      <body style={{ padding: 24 }}>
+      <body style={{ padding: 24 }} data-clarity-mask="true">
         {isDeploymentMismatch ? (
           <>
             <h2>新しいバージョンが公開されました</h2>

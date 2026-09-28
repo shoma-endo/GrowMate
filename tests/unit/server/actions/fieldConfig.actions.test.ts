@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * 見るのは2点。
  *  1. `userId` をクライアントから受け取らず、サーバーのセッションから解決していること
  *  2. 列カタログに無いIDを弾くこと（DB側は `text[]` なので中身を検証できない）
+ *     弾く入力の個別ケースは `tests/unit/server/schemas/fieldConfig.schema.test.ts` が見る
  */
 
 const mocks = vi.hoisted(() => ({
@@ -56,25 +57,21 @@ describe('saveFieldConfig', () => {
     });
   });
 
-  it('ロールで拒否しない（既存の localStorage 保存と同じく全ロールが使える）', async () => {
+  it('ロールで拒否せず、全解除（空配列）も保存できる（既存の localStorage 保存と同じく全ロールが使える）', async () => {
     mocks.authMiddleware.mockResolvedValue({
       userId: USER_ID,
       userDetails: { role: 'unavailable' },
     });
 
     await expect(
-      saveFieldConfig({ tableKey: 'analytics', visibleIds: [], orderedIds: [] })
+      saveFieldConfig({ tableKey: 'analytics', visibleIds: [], orderedIds: ['main_kw'] })
     ).resolves.toEqual({ success: true });
-  });
-
-  it('全解除（空配列）を保存できる', async () => {
-    await saveFieldConfig({ tableKey: 'analytics', visibleIds: [], orderedIds: ['main_kw'] });
     expect(mocks.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ visibleIds: [], orderedIds: ['main_kw'] })
     );
   });
 
-  it('列カタログに無いIDを弾く', async () => {
+  it('不正な入力（列カタログに無いID）は検証エラーで返し保存しない', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await saveFieldConfig({
@@ -84,45 +81,6 @@ describe('saveFieldConfig', () => {
     });
 
     expect(result).toEqual({ success: false, error: ERROR_MESSAGES.COMMON.VALIDATION_FAILED });
-    expect(mocks.upsert).not.toHaveBeenCalled();
-  });
-
-  it('別一覧の列IDを混ぜられない（analytics に Instagram の列）', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const result = await saveFieldConfig({
-      tableKey: 'analytics',
-      visibleIds: ['reach'],
-      orderedIds: [],
-    });
-
-    expect(result.success).toBe(false);
-    expect(mocks.upsert).not.toHaveBeenCalled();
-  });
-
-  it('未知の tableKey を弾く', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const result = await saveFieldConfig({
-      tableKey: 'users' as 'analytics',
-      visibleIds: [],
-      orderedIds: [],
-    });
-
-    expect(result.success).toBe(false);
-    expect(mocks.upsert).not.toHaveBeenCalled();
-  });
-
-  it('重複した列IDを弾く', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const result = await saveFieldConfig({
-      tableKey: 'analytics',
-      visibleIds: ['main_kw', 'main_kw'],
-      orderedIds: [],
-    });
-
-    expect(result.success).toBe(false);
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
 

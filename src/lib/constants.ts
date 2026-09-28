@@ -1,6 +1,10 @@
 import type { FieldConfigTableKey } from '@/types/field-config';
 import type { CategoryFilterConfig, StatusFilterConfig } from '@/types/category';
-import type { InstagramMediaSortKey } from '@/types/instagram';
+import {
+  INSTAGRAM_MEDIA_SORT_KEYS,
+  type InstagramMediaSortKey,
+  type InstagramMediaSortOrder,
+} from '@/types/instagram';
 import type { LinkedMessageRule } from '@/components/LinkedMessage';
 
 // Chat Configuration
@@ -437,6 +441,8 @@ export const ANALYTICS_STORAGE_KEYS = {
    * 3ページ目が復元されると「先頭が見つからない」という別の誤認を生むため。
    */
   IG_SORT: 'analytics.instagramSort',
+  /** Instagram タブの並び順の向き（`asc` / `desc`）。IG_SORT と対で保存する */
+  IG_SORT_ORDER: 'analytics.instagramSortOrder',
   IG_HIGH_ONLY: 'analytics.instagramHighOnly',
   OPS_EXPANDED: 'analytics.opsExpanded',
   VISIBLE_COLUMNS: 'analytics.visibleColumns',
@@ -577,7 +583,13 @@ export function hasAnyStatusFilter(config: StatusFilterConfig): boolean {
 }
 
 /** Instagram タブの既定の並び順。`app/analytics/page.tsx` のフォールバックと揃える */
-const DEFAULT_IG_SORT: InstagramMediaSortKey = 'posted_at';
+export const DEFAULT_IG_SORT: InstagramMediaSortKey = 'posted_at';
+/** 列見出しを初めて押したときの向きも兼ねる（多い順・新しい順から見せる） */
+export const DEFAULT_IG_SORT_ORDER: InstagramMediaSortOrder = 'desc';
+
+export function isInstagramSortKey(raw: string): raw is InstagramMediaSortKey {
+  return (INSTAGRAM_MEDIA_SORT_KEYS as readonly string[]).includes(raw);
+}
 
 /**
  * 保存済みの並び順を解釈する。**許可値以外は既定へ畳む。**
@@ -585,9 +597,21 @@ const DEFAULT_IG_SORT: InstagramMediaSortKey = 'posted_at';
  * localStorage に触らない純粋関数にしてあるのは、vitest の environment が `node` のみのため。
  */
 export function parseInstagramSortKey(raw: string | null): InstagramMediaSortKey {
-  return raw === 'reach' || raw === 'views' || raw === 'posted_at' || raw === 'engagement_rate'
-    ? raw
-    : DEFAULT_IG_SORT;
+  return raw !== null && isInstagramSortKey(raw) ? raw : DEFAULT_IG_SORT;
+}
+
+/** 並び順の向きを解釈する。`asc` 以外は既定（降順）へ畳む */
+export function parseInstagramSortOrder(raw: string | null): InstagramMediaSortOrder {
+  return raw === 'asc' ? 'asc' : DEFAULT_IG_SORT_ORDER;
+}
+
+/** 列見出しを押したときの向き。同じ列なら反転し、別の列なら降順（多い順・新しい順）から始める */
+export function nextInstagramSortOrder(
+  current: { sort: InstagramMediaSortKey; order: InstagramMediaSortOrder },
+  clicked: InstagramMediaSortKey
+): InstagramMediaSortOrder {
+  if (clicked !== current.sort) return DEFAULT_IG_SORT_ORDER;
+  return current.order === 'asc' ? 'desc' : 'asc';
 }
 
 /** localStorageから Instagram タブの並び順を読み込むヘルパー */
@@ -597,6 +621,16 @@ export function loadInstagramSortFromStorage(): InstagramMediaSortKey {
     return parseInstagramSortKey(localStorage.getItem(ANALYTICS_STORAGE_KEYS.IG_SORT));
   } catch {
     return DEFAULT_IG_SORT;
+  }
+}
+
+/** localStorageから Instagram タブの並び順の向きを読み込むヘルパー */
+export function loadInstagramSortOrderFromStorage(): InstagramMediaSortOrder {
+  if (typeof window === 'undefined') return DEFAULT_IG_SORT_ORDER;
+  try {
+    return parseInstagramSortOrder(localStorage.getItem(ANALYTICS_STORAGE_KEYS.IG_SORT_ORDER));
+  } catch {
+    return DEFAULT_IG_SORT_ORDER;
   }
 }
 
@@ -615,22 +649,37 @@ export function loadInstagramHighOnlyFromStorage(): boolean {
 
 export function resolveInstagramRestorePatch({
   urlSort,
+  urlOrder,
   urlHigh,
   storedSort,
+  storedOrder,
   storedHighOnly,
   visibleIds,
   canJudgeTarget,
 }: {
   urlSort: string | null;
+  urlOrder: string | null;
   urlHigh: string | null;
   storedSort: InstagramMediaSortKey;
+  storedOrder: InstagramMediaSortOrder;
   storedHighOnly: boolean;
   visibleIds: string[];
   canJudgeTarget: boolean;
-}): { igSort?: InstagramMediaSortKey; igHigh?: true } | null {
-  const patch: { igSort?: InstagramMediaSortKey; igHigh?: true } = {};
-  if (urlSort === null && storedSort !== 'posted_at' && visibleIds.includes(storedSort)) {
+}): {
+  igSort?: InstagramMediaSortKey;
+  igOrder?: InstagramMediaSortOrder;
+  igHigh?: true;
+} | null {
+  const patch: {
+    igSort?: InstagramMediaSortKey;
+    igOrder?: InstagramMediaSortOrder;
+    igHigh?: true;
+  } = {};
+  // 列と向きは対で復元する。片方だけ URL にあるときは deep link の意図を優先して触らない
+  const isDefaultSort = storedSort === DEFAULT_IG_SORT && storedOrder === DEFAULT_IG_SORT_ORDER;
+  if (urlSort === null && urlOrder === null && !isDefaultSort && visibleIds.includes(storedSort)) {
     patch.igSort = storedSort;
+    patch.igOrder = storedOrder;
   }
   if (urlHigh === null && storedHighOnly && canJudgeTarget) {
     patch.igHigh = true;

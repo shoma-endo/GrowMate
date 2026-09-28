@@ -18,6 +18,8 @@ const VERSION_FILE = path.join(REPO_ROOT, '.takt-version');
 interface WorkflowRule {
   condition: string;
   next: string;
+  interactive_only?: boolean;
+  requires_user_input?: boolean;
 }
 
 interface WorkflowStep {
@@ -106,6 +108,10 @@ const KNOWN_DOCTOR_WARNINGS: Record<string, RegExp[]> = {
   ],
 };
 
+// takt は外部 CLI で、新しいコンテナでの初回起動は 5 秒（vitest の既定）を超えることがある
+// （2026-09-25 クラウド環境で 7.6 秒）。遅いだけで失敗扱いにしないよう、呼び出すテストは長めに待つ
+const TAKT_CLI_TIMEOUT_MS = 30_000;
+
 describe.skipIf(!runPinnedTaktTests)('takt pin', () => {
   it('resolves the binary declared by .takt-version', () => {
     const want = readFileSync(VERSION_FILE, 'utf8').trim();
@@ -113,7 +119,7 @@ describe.skipIf(!runPinnedTaktTests)('takt pin', () => {
     expect(taktBin, taktResolveError ?? 'takt pin unresolved').toBeTruthy();
     const got = execFileSync(taktBin as string, ['--version'], { encoding: 'utf8' }).trim();
     expect(got).toBe(want);
-  });
+  }, TAKT_CLI_TIMEOUT_MS);
 });
 
 describe.skipIf(!runPinnedTaktTests)('takt workflow doctor', () => {
@@ -150,7 +156,7 @@ describe.skipIf(!runPinnedTaktTests)('takt workflow doctor', () => {
     if (warnings.length === 0) {
       expect(output).toMatch(/Workflow OK/);
     }
-  });
+  }, TAKT_CLI_TIMEOUT_MS);
 });
 
 describe('structured output schemas', () => {
@@ -215,5 +221,33 @@ describe.each(workflowFiles)('%s structured references', (file) => {
     for (const name of reportReferences) {
       expect(producedReports, `{report:${name}} has no producing output_contract`).toContain(name);
     }
+  });
+});
+
+describe('grill-to-gherkin confirm step', () => {
+  const { workflow } = loadWorkflow('grill-to-gherkin.yaml');
+  const confirm = workflow.steps.find((step) => step.name === 'confirm');
+
+  it('waits for a human in interactive runs and completes unattended runs', () => {
+    const answerPendingRules = (confirm?.rules ?? [])
+      .filter((rule) => rule.condition === '人間の回答待ち')
+      .map((rule) => ({
+        next: rule.next,
+        interactive_only: rule.interactive_only === true,
+        requires_user_input: rule.requires_user_input === true,
+      }));
+
+    expect(answerPendingRules).toEqual([
+      { next: 'confirm', interactive_only: true, requires_user_input: true },
+      { next: 'COMPLETE', interactive_only: false, requires_user_input: false },
+    ]);
+  });
+
+  it('reserves unattended abort for an unfinishable approval decision', () => {
+    const unattendedAbortConditions = (confirm?.rules ?? [])
+      .filter((rule) => rule.interactive_only !== true && rule.next === 'ABORT')
+      .map((rule) => rule.condition);
+
+    expect(unattendedAbortConditions).toEqual(['承認判定を完了できない']);
   });
 });

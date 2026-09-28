@@ -16,5 +16,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 bash scripts/takt-pre-push-guard.sh
 npm run test:coverage
-npm run build
+# build は src/env.ts でサーバーの必須キーが「空でないか」だけを検証する。値の中身は使わない。
+# クラウド環境（Claude Code on the web）では ANTHROPIC_API_KEY が環境から外されるため、
+# 未設定なら CI（.github/workflows/ci.yml の build ジョブ）と同じダミー値で補う。
+# シェルに値があればそれを使う。.env.local にだけ書いてある環境ではダミーが優先される
+# （Next.js は process.env を .env.* より優先する）が、CI と同じ条件で通るので build の検証には足りる。
+# この build 成果物はデプロイしない。
+SUPABASE_SERVICE_ROLE="${SUPABASE_SERVICE_ROLE:-dummy-service-role}" \
+OPENAI_API_KEY="${OPENAI_API_KEY:-sk-dummy}" \
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-sk-ant-dummy}" \
+  npm run build
 npm run knip

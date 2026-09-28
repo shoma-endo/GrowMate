@@ -1,33 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  from: vi.fn(),
-  select: vi.fn(),
-  update: vi.fn(),
-  eq: vi.fn(),
-  maybeSingle: vi.fn(),
   fetchWpPostContentLive: vi.fn(),
   getTemplateByName: vi.fn(),
   replaceVariables: vi.fn(),
   llmChat: vi.fn(),
 }));
 
-vi.mock('@/server/services/supabaseService', () => ({
-  SupabaseService: class {
-    getClient() {
-      const query = {
-        select: mocks.select,
-        update: mocks.update,
-        eq: mocks.eq,
-        maybeSingle: mocks.maybeSingle,
-      };
-      mocks.select.mockReturnValue(query);
-      mocks.update.mockReturnValue(query);
-      mocks.eq.mockReturnValue(query);
-      mocks.from.mockReturnValue(query);
-      return { from: mocks.from };
-    }
-  },
+vi.mock('@/server/services/supabaseService', async () => ({
+  SupabaseService: (await import('./contentAnnotationSummaryService.supabaseMock'))
+    .FakeSupabaseService,
 }));
 
 vi.mock('@/server/services/wordpressContentSync', () => ({
@@ -45,9 +27,20 @@ vi.mock('@/server/services/llmService', () => ({
   llmChat: mocks.llmChat,
 }));
 
-import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { MODEL_CONFIGS } from '@/lib/constants';
 import { contentAnnotationSummaryService } from '@/server/services/contentAnnotationSummaryService';
+
+import { summaryDb } from './contentAnnotationSummaryService.supabaseMock';
+
+const annotation = {
+  id: 'annotation-id',
+  user_id: 'user-id',
+  session_id: null,
+  wp_post_id: 42,
+  canonical_url: null,
+  wp_post_title: '記事タイトル',
+  impressions: null,
+};
 
 describe('contentAnnotationSummaryService', () => {
   beforeEach(() => {
@@ -67,15 +60,11 @@ describe('contentAnnotationSummaryService', () => {
 
   it('session_idがない本人所有のインポート記事をannotationIdで要約・保存する', async () => {
     const importedAnnotation = {
-      id: 'annotation-id',
-      user_id: 'user-id',
-      session_id: null,
-      wp_post_id: 42,
+      ...annotation,
       canonical_url: 'https://example.com/sample-post/',
-      wp_post_title: '記事タイトル',
       impressions: '100',
     };
-    mocks.maybeSingle
+    summaryDb.maybeSingle
       .mockResolvedValueOnce({ data: importedAnnotation, error: null })
       .mockResolvedValueOnce({
         data: { ...importedAnnotation, main_kw: '主軸kw', basic_structure: 'h2 見出し' },
@@ -94,11 +83,13 @@ describe('contentAnnotationSummaryService', () => {
     expect(generated.userId).toBe('user-id');
     expect(generated.fields.opening_proposal).toBe('元記事の書き出し');
     expect(generated.fields.opening_proposal).not.toBe('書き出し');
-    expect(mocks.eq).toHaveBeenCalledWith('user_id', 'user-id');
+    expect(summaryDb.eq).toHaveBeenCalledWith('user_id', 'user-id');
     expect(mocks.fetchWpPostContentLive).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-id', wpPostId: 42 })
     );
 
+    // 保存側の user_id スコープを取得側の呼び出しと区別するため、ここで記録を切る
+    summaryDb.eq.mockClear();
     const saved = await contentAnnotationSummaryService.saveSummary({
       annotationId: generated.annotationId,
       userId: generated.userId,
@@ -106,10 +97,10 @@ describe('contentAnnotationSummaryService', () => {
     });
 
     expect(saved.success).toBe(true);
-    expect(mocks.update).toHaveBeenCalledWith(
+    expect(summaryDb.update).toHaveBeenCalledWith(
       expect.not.objectContaining({ impressions: expect.anything() })
     );
-    expect(mocks.eq).toHaveBeenCalledWith('user_id', 'user-id');
+    expect(summaryDb.eq).toHaveBeenCalledWith('user_id', 'user-id');
   });
   /**
    * **拡張思考の指定が `llmChat` まで届いていることを固定する。**
@@ -118,16 +109,7 @@ describe('contentAnnotationSummaryService', () => {
    * 失敗としては現れず、**請求額でしか気づけない**（思考テキストもレスポンスに返らない）。
    */
   it('モデル設定の thinking を llmChat のオプションへ詰め替える', async () => {
-    const annotation = {
-      id: 'annotation-id',
-      user_id: 'user-id',
-      session_id: null,
-      wp_post_id: 42,
-      canonical_url: null,
-      wp_post_title: '記事タイトル',
-      impressions: null,
-    };
-    mocks.maybeSingle.mockResolvedValueOnce({ data: annotation, error: null });
+    summaryDb.maybeSingle.mockResolvedValueOnce({ data: annotation, error: null });
 
     await contentAnnotationSummaryService.generateSummary({
       target: { annotationId: 'annotation-id' },
@@ -148,17 +130,8 @@ describe('contentAnnotationSummaryService', () => {
   });
 
   it('項目の中断信号を WordPress と LLM の呼び出しへ渡す', async () => {
-    const annotation = {
-      id: 'annotation-id',
-      user_id: 'user-id',
-      session_id: null,
-      wp_post_id: 42,
-      canonical_url: null,
-      wp_post_title: '記事タイトル',
-      impressions: null,
-    };
     const controller = new AbortController();
-    mocks.maybeSingle.mockResolvedValueOnce({ data: annotation, error: null });
+    summaryDb.maybeSingle.mockResolvedValueOnce({ data: annotation, error: null });
 
     await contentAnnotationSummaryService.generateSummary({
       target: { annotationId: 'annotation-id' },
@@ -178,16 +151,7 @@ describe('contentAnnotationSummaryService', () => {
   });
 
   it('cookieStore 無しでも動く（cron 経路は Cookie を持たない）', async () => {
-    const annotation = {
-      id: 'annotation-id',
-      user_id: 'user-id',
-      session_id: null,
-      wp_post_id: 42,
-      canonical_url: null,
-      wp_post_title: '記事タイトル',
-      impressions: null,
-    };
-    mocks.maybeSingle.mockResolvedValueOnce({ data: annotation, error: null });
+    summaryDb.maybeSingle.mockResolvedValueOnce({ data: annotation, error: null });
 
     const generated = await contentAnnotationSummaryService.generateSummary({
       target: { annotationId: 'annotation-id' },
@@ -201,27 +165,9 @@ describe('contentAnnotationSummaryService', () => {
     expect(call.getCookie('wpcom_oauth_token')).toBeUndefined();
   });
 
-  it('429（ANTHROPIC_RATE_LIMIT）だけ SUMMARY_AI_RATE_LIMITED を返す', async () => {
-    const annotation = {
-      id: 'annotation-id',
-      user_id: 'user-id',
-      session_id: null,
-      wp_post_id: 42,
-      canonical_url: null,
-      wp_post_title: '記事タイトル',
-      impressions: null,
-    };
-    mocks.maybeSingle.mockResolvedValue({ data: annotation, error: null });
-    mocks.llmChat.mockRejectedValueOnce(
-      new ChatError('rate limited', ChatErrorCode.ANTHROPIC_RATE_LIMIT)
-    );
-
-    const rateLimited = await contentAnnotationSummaryService.generateSummary({
-      target: { annotationId: 'annotation-id' },
-      executorUserId: 'user-id',
-    });
-    expect(rateLimited).toEqual({ success: false, code: 'SUMMARY_AI_RATE_LIMITED' });
-
+  // 429 → SUMMARY_AI_RATE_LIMITED は contentAnnotationSummaryService.rateLimit.test.ts が SDK 層から検証する
+  it('429 以外の例外は SUMMARY_AI_FAILED を返す', async () => {
+    summaryDb.maybeSingle.mockResolvedValue({ data: annotation, error: null });
     mocks.llmChat.mockRejectedValueOnce(new Error('boom'));
     const otherFailure = await contentAnnotationSummaryService.generateSummary({
       target: { annotationId: 'annotation-id' },
@@ -236,16 +182,7 @@ describe('contentAnnotationSummaryService', () => {
    * LLM を再度叩く（＝課金する）以外に特定手段が無かった。
    */
   it('スキーマ不一致は落ちた項目と受け取った形をログに残す', async () => {
-    const annotation = {
-      id: 'annotation-id',
-      user_id: 'user-id',
-      session_id: null,
-      wp_post_id: 42,
-      canonical_url: null,
-      wp_post_title: '記事タイトル',
-      impressions: null,
-    };
-    mocks.maybeSingle.mockResolvedValue({ data: annotation, error: null });
+    summaryDb.maybeSingle.mockResolvedValue({ data: annotation, error: null });
     // 本文の薄い記事で起きる形。プロンプトの「推測で埋めない」に従うと null が返りうる
     mocks.llmChat.mockResolvedValueOnce(`\`\`\`json
 {"main_kw":null,"kw":["kw1","kw2"],"needs":"ニーズ","persona":"ペルソナ","goal":"ゴール","prep":"PREP","opening_proposal":"書き出し"}
@@ -275,16 +212,7 @@ describe('contentAnnotationSummaryService', () => {
    * 対処が違う（本文が長すぎる）ので、無言 null にせずログで区別できるようにする。
    */
   it('閉じフェンスが無い応答は開きフェンスの有無つきでログに残す', async () => {
-    const annotation = {
-      id: 'annotation-id',
-      user_id: 'user-id',
-      session_id: null,
-      wp_post_id: 42,
-      canonical_url: null,
-      wp_post_title: '記事タイトル',
-      impressions: null,
-    };
-    mocks.maybeSingle.mockResolvedValue({ data: annotation, error: null });
+    summaryDb.maybeSingle.mockResolvedValue({ data: annotation, error: null });
     mocks.llmChat.mockResolvedValueOnce('```json\n{"main_kw":"主軸kw",');
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 

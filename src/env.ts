@@ -4,6 +4,7 @@ const clientEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   NEXT_PUBLIC_SITE_URL: z.url(),
+  NEXT_PUBLIC_CLARITY_PROJECT_ID: z.string().min(1).optional(),
 });
 
 const serverEnvSchema = z.object({
@@ -30,6 +31,7 @@ const clientRuntimeEnv = {
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+  NEXT_PUBLIC_CLARITY_PROJECT_ID: process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID,
 } satisfies { [K in keyof ClientEnv]?: ClientEnv[K] | undefined };
 
 const parsedClientEnv = clientEnvSchema.parse(clientRuntimeEnv);
@@ -71,6 +73,7 @@ const clientKeys = new Set<keyof ClientEnv>([
   'NEXT_PUBLIC_SUPABASE_URL',
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'NEXT_PUBLIC_SITE_URL',
+  'NEXT_PUBLIC_CLARITY_PROJECT_ID',
 ]);
 
 const envProxy = new Proxy({} as Env, {

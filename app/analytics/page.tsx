@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import AnalyticsClient from './AnalyticsClient';
-import { setInstagramListParams, setOptionalDate } from './build-href';
+import { setBlogPeriodParams, setInstagramListParams, setOptionalDate } from './build-href';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
 import { gscNotificationService } from '@/server/services/gscNotificationService';
 import { instagramMediaService } from '@/server/services/instagramMediaService';
@@ -16,15 +16,21 @@ import { addDaysISO } from '@/lib/date-utils';
 import { formatJstDateISO } from '@/lib/ga4-utils';
 import { clampAnalyticsPeriod } from '@/lib/analytics-period';
 import { canAccessGa4 } from '@/server/lib/ga4-permissions';
+import { parseAnalyticsSort, setAnalyticsSortParams } from '@/lib/analytics-sort';
 import { shouldAutoSyncInstagram } from '@/lib/instagram-sync';
 import {
   buildInstagramAutoSyncStorageKey,
   FIELD_CONFIG_TABLE_KEYS,
   parseInstagramSortKey,
+  parseInstagramSortOrder,
 } from '@/lib/constants';
 import { getInstagramEngagementTarget } from '@/lib/instagram-format';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
+import type {
+  InstagramMediaSortKey,
+  InstagramMediaSortOrder,
+  InstagramMediaTypeFilter,
+} from '@/types/instagram';
 
 export const dynamic = 'force-dynamic';
 // Instagram 手動同期 Server Action が既定 300s を超えるため Fluid Compute 上限まで引き上げる。
@@ -83,6 +89,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       ? [params.category]
       : [];
   const includeUncategorized = params?.uncategorized === '1';
+  const sortParam = Array.isArray(params?.sort) ? params.sort[0] : params?.sort;
+  const orderParam = Array.isArray(params?.order) ? params.order[0] : params?.order;
+  const blogSort = parseAnalyticsSort(sortParam, orderParam);
 
   const todayJst = formatJstDateISO(new Date());
   const defaultEnd = addDaysISO(todayJst, -1);
@@ -101,6 +110,10 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const clampedPeriod = clampAnalyticsPeriod(startDate, endDate);
   startDate = clampedPeriod.startDate;
   endDate = clampedPeriod.endDate;
+  // ページ送り・タブ切替の URL に期間を書くか。URL で指定しているときに加え、並べ替え中も書く。
+  // GA4 の列は期間で集計した値の順なので、既定の期間（直近30日）のまま日付をまたぐと
+  // 2ページ目で期間がずれて並びが変わり、行が重複・欠落する
+  const keepBlogPeriodInHref = isStartValid || isEndValid || blogSort !== null;
 
   const authResult = await authMiddleware();
   redirectIfEmailLinkConflict(authResult);
@@ -123,6 +136,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const igStartParam = Array.isArray(params?.ig_start) ? params.ig_start[0] : params?.ig_start;
   const igEndParam = Array.isArray(params?.ig_end) ? params.ig_end[0] : params?.ig_end;
   const igSortParam = Array.isArray(params?.ig_sort) ? params.ig_sort[0] : params?.ig_sort;
+  const igOrderParam = Array.isArray(params?.ig_order) ? params.ig_order[0] : params?.ig_order;
   const igHighParam = Array.isArray(params?.ig_high) ? params.ig_high[0] : params?.ig_high;
 
   const connectionStatusResult = await getInstagramConnectionStatus();
@@ -154,6 +168,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   }
 
   const igSort: InstagramMediaSortKey = parseInstagramSortKey(igSortParam ?? null);
+  const igOrder: InstagramMediaSortOrder = parseInstagramSortOrder(igOrderParam ?? null);
   const igHigh = igHighParam === '1';
 
   // 並列でデータ取得（一覧・未読・カテゴリ一覧・AI要約ジョブの進捗）
@@ -176,6 +191,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         hasUnreadSuggestion,
         hasUnstartedGscEvaluation,
         hasUnsummarized,
+        sort: blogSort,
       }),
       gscNotificationService.getAnnotationIdsWithUnreadSuggestions(userId),
       analyticsContentService.getAvailableCategoryNames(userId),
@@ -224,6 +240,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         startDate: igStartDate,
         endDate: igEndDate,
         sort: igSort,
+        order: igOrder,
         minEngagementRate,
       }),
       credentialPromise,
@@ -248,6 +265,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   const currentPage = resolvedPage ?? page;
   const prevDisabled = currentPage <= 1;
   const nextDisabled = currentPage >= totalPages;
+  const blogPeriodInHref = keepBlogPeriodInHref ? { start: startDate, end: endDate } : null;
   const buildPageHref = (targetPage: number) => {
     const query = new URLSearchParams();
     query.set('page', String(targetPage));
@@ -269,6 +287,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     if (hasUnsummarized) {
       query.set('unsummarized', '1');
     }
+    // 期間と並べ替えも引き継ぐ（keepBlogPeriodInHref のコメントを参照）
+    setBlogPeriodParams(query, blogPeriodInHref);
+    setAnalyticsSortParams(query, blogSort);
     if (instagramConnected && activeTab === 'instagram') {
       query.set('tab', 'instagram');
       query.set('ig_page', String(igPage));
@@ -276,7 +297,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       // 未指定（全期間）のときは載せない。build-href.ts と同じ規則を共有する
       setOptionalDate(query, 'ig_start', igStartDate);
       setOptionalDate(query, 'ig_end', igEndDate);
-      setInstagramListParams(query, igSort, igHigh);
+      setInstagramListParams(query, igSort, igOrder, igHigh);
     }
     return `/analytics?${query.toString()}`;
   };
@@ -311,6 +332,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       hasUnreadSuggestion={hasUnreadSuggestion}
       hasUnstartedGscEvaluation={hasUnstartedGscEvaluation}
       hasUnsummarized={hasUnsummarized}
+      blogSort={blogSort}
+      blogPeriodInHref={blogPeriodInHref}
       ga4Truncated={ga4Truncated ?? false}
       periodClamped={clampedPeriod.clamped}
       hasUrlFilterParams={hasUrlFilterParams}
@@ -324,6 +347,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       igStart={igStartDate}
       igEnd={igEndDate}
       igSort={igSort}
+      igOrder={igOrder}
       igHigh={igHigh}
       instagramFollowersCount={instagramFollowersCount}
       instagramLastSyncedAt={instagramLastSyncedAt}

@@ -1,4 +1,11 @@
-import type { InstagramMediaSortKey, InstagramMediaTypeFilter } from '@/types/instagram';
+import { DEFAULT_IG_SORT, DEFAULT_IG_SORT_ORDER } from '@/lib/constants';
+import { setAnalyticsSortParams } from '@/lib/analytics-sort';
+import type { AnalyticsContentSort } from '@/types/analytics';
+import type {
+  InstagramMediaSortKey,
+  InstagramMediaSortOrder,
+  InstagramMediaTypeFilter,
+} from '@/types/instagram';
 
 /**
  * /analytics の URL 組み立てに必要な状態。
@@ -15,6 +22,13 @@ export interface AnalyticsHrefState {
   hasUnreadSuggestion: boolean;
   hasUnstartedGscEvaluation: boolean;
   hasUnsummarized: boolean;
+  /** ブログ一覧の並べ替え。タブを切り替えても保つ（カテゴリ等の絞り込みと同じ扱い） */
+  blogSort: AnalyticsContentSort;
+  /**
+   * ブログ一覧の期間（start / end）。null なら URL に載せない（既定の直近30日）。
+   * 期間を指定しているときと並べ替え中に値が入る（page.tsx の keepBlogPeriodInHref）
+   */
+  blogPeriodInHref: BlogPeriod | null;
   instagramConnected: boolean;
   activeTab: 'blog' | 'instagram';
   igPage: number;
@@ -24,7 +38,20 @@ export interface AnalyticsHrefState {
   /** null / 空文字は絞り込みなし。URL にも出さない */
   igEnd: string | null;
   igSort: InstagramMediaSortKey;
+  igOrder: InstagramMediaSortOrder;
   igHigh: boolean;
+}
+
+export interface BlogPeriod {
+  start: string;
+  end: string;
+}
+
+/** ブログ一覧の期間を URL に書く。page.tsx のページ送りとタブ切替で同じ規則を使う */
+export function setBlogPeriodParams(query: URLSearchParams, period: BlogPeriod | null) {
+  if (period === null) return;
+  query.set('start', period.start);
+  query.set('end', period.end);
 }
 
 export interface InstagramHrefPatch {
@@ -34,6 +61,7 @@ export interface InstagramHrefPatch {
   igStart?: string | null;
   igEnd?: string | null;
   igSort?: InstagramMediaSortKey;
+  igOrder?: InstagramMediaSortOrder;
   igHigh?: boolean;
 }
 
@@ -53,7 +81,7 @@ export function setOptionalDate(
 }
 
 /**
- * 並び順・「高エンゲージメント率」の絞り込みは既定値（投稿日順 / OFF）なら URL に載せない。
+ * 並び順・「高エンゲージメント率」の絞り込みは既定値（投稿日順 / 降順 / OFF）なら URL に載せない。
  * 載せると InstagramTab の保存値復元（URL に無いときだけ復元）が常に止まり、
  * `/analytics` からタブを開いたときに前回の状態が戻らない。
  * page.tsx の buildPageHref も同じ規則で組み立てる。
@@ -61,10 +89,14 @@ export function setOptionalDate(
 export function setInstagramListParams(
   query: URLSearchParams,
   sort: InstagramMediaSortKey,
+  order: InstagramMediaSortOrder,
   highOnly: boolean
 ) {
-  if (sort !== 'posted_at') {
+  if (sort !== DEFAULT_IG_SORT) {
     query.set('ig_sort', sort);
+  }
+  if (order !== DEFAULT_IG_SORT_ORDER) {
+    query.set('ig_order', order);
   }
   if (highOnly) {
     query.set('ig_high', '1');
@@ -92,6 +124,8 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
   if (state.hasUnsummarized) {
     query.set('unsummarized', '1');
   }
+  setBlogPeriodParams(query, state.blogPeriodInHref);
+  setAnalyticsSortParams(query, state.blogSort);
 
   const nextTab = patch.tab ?? state.activeTab;
   // patch で明示的に null / '' が来たら「絞り込み解除」なので ?? で state に落とさない。
@@ -106,7 +140,12 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
     query.set('ig_type', patch.igType ?? state.igType);
     setOptionalDate(query, 'ig_start', nextIgStart);
     setOptionalDate(query, 'ig_end', nextIgEnd);
-    setInstagramListParams(query, patch.igSort ?? state.igSort, nextIgHigh);
+    setInstagramListParams(
+      query,
+      patch.igSort ?? state.igSort,
+      patch.igOrder ?? state.igOrder,
+      nextIgHigh
+    );
   }
   if (patch.tab === 'instagram') {
     query.set('ig_page', '1');
@@ -117,7 +156,7 @@ export function buildInstagramHref(state: AnalyticsHrefState, patch: InstagramHr
     query.set('ig_type', state.igType);
     setOptionalDate(query, 'ig_start', nextIgStart);
     setOptionalDate(query, 'ig_end', nextIgEnd);
-    setInstagramListParams(query, state.igSort, nextIgHigh);
+    setInstagramListParams(query, state.igSort, state.igOrder, nextIgHigh);
   }
 
   return `/analytics?${query.toString()}`;
@@ -132,6 +171,7 @@ export interface InstagramFilterPatch {
   igStart?: string | null;
   igEnd?: string | null;
   igSort?: InstagramMediaSortKey;
+  igOrder?: InstagramMediaSortOrder;
   igHigh?: boolean;
   igPage?: number;
 }

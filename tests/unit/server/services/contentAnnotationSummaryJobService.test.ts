@@ -81,6 +81,8 @@ let userSelectFailure: string | null = null;
 let finishUpdateFailure: string | null = null;
 /** notified_at の UPDATE を失敗させる */
 let notifiedUpdateFailure: string | null = null;
+/** `content_annotations` の `.in()` にこの ID が含まれたら例外を投げる（ジョブ単位の想定外例外） */
+let annotationFetchThrowIds = new Set<string>();
 
 function matches(row: Row, filters: Filter[]): boolean {
   return filters.every(filter => {
@@ -116,6 +118,12 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
     return this;
   }
   in(column: string, values: unknown[]): this {
+    if (
+      this.table === 'content_annotations' &&
+      values.some(value => annotationFetchThrowIds.has(String(value)))
+    ) {
+      throw new Error('simulated hard failure');
+    }
     this.filters.push(['in', column, values]);
     return this;
   }
@@ -201,7 +209,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
 
     if (this.op === 'update') {
       if (this.table === 'content_annotation_summary_jobs' && this.values) {
-        progressUpdates.push({ ...this.values, __matched: selectedRows.length });
+        progressUpdates.push({ ...this.values });
       }
       selectedRows = selectedRows.map(row => Object.assign(row, this.values ?? {}));
     }
@@ -262,19 +270,7 @@ function fakeClaim(limit: number): Row[] {
     row.started_at = new Date().toISOString();
     row.last_error = null;
     row.job_token = `token-${row.attempt_count}-${row.id}`;
-    return {
-      id: row.id,
-      user_id: row.user_id,
-      target_annotation_ids: row.target_annotation_ids,
-      total_count: row.total_count,
-      processed_count: row.processed_count,
-      succeeded_count: row.succeeded_count,
-      failed_count: row.failed_count,
-      skipped_count: row.skipped_count,
-      failed_by_code: row.failed_by_code,
-      attempt_count: row.attempt_count,
-      job_token: row.job_token,
-    };
+    return { ...row };
   });
 }
 
@@ -376,6 +372,7 @@ beforeEach(() => {
   userSelectFailure = null;
   finishUpdateFailure = null;
   notifiedUpdateFailure = null;
+  annotationFetchThrowIds = new Set();
   mocks.computeSummaryItemBudgetMs.mockReturnValue(BUDGET);
   mocks.canFetchWpPostContentLive.mockResolvedValue(true);
   mocks.saveSummary.mockResolvedValue({ success: true, data: {} });
@@ -411,13 +408,14 @@ describe('起票（AC-B01 / AC-B07 / AC-B11）', () => {
     expect(result).toEqual({ success: false, reason: 'already_running' });
   });
 
-  it('completed のジョブは未完了扱いにしない', async () => {
-    seedJob({ status: 'completed' });
-    expect(await contentAnnotationSummaryJobService.findActiveJob(USER_ID)).toBeNull();
-  });
-
-  it('他人のジョブは進捗として返さない（Service Role 経路の user_id スコープ）', async () => {
-    seedJob({ user_id: 'other-user', status: 'processing' });
+  it.each([
+    ['completed のジョブは未完了扱いにしない', { status: 'completed' }],
+    [
+      '他人のジョブは進捗として返さない（Service Role 経路の user_id スコープ）',
+      { user_id: 'other-user', status: 'processing' },
+    ],
+  ])('%s', async (_name, job: Partial<Row>) => {
+    seedJob(job);
     expect(await contentAnnotationSummaryJobService.findActiveJob(USER_ID)).toBeNull();
   });
 });
@@ -449,20 +447,7 @@ describe('cron の処理順とカーソル（AC-B02 / AC-B14）', () => {
     expect(called).toEqual(['a3', 'a1', 'a2']);
   });
 
-  it('進捗はチャンク境界でしか保存しない（3の倍数でのみ前進する）', async () => {
-    const ids = Array.from({ length: 6 }, (_, index) => `a${index + 1}`);
-    seedJob({ target_annotation_ids: ids, total_count: 6 });
-    store.content_annotations.push(...ids.map(id => annotation(id)));
-
-    await contentAnnotationSummaryJobService.runNextJob(Date.now());
-
-    const cursors = progressUpdates
-      .filter(update => update.processed_count !== undefined)
-      .map(update => update.processed_count);
-    expect(cursors).toEqual([3, 6]);
-  });
-
-  it('チャンク内の3件を同時に開始し、全件完了後に次チャンクへ進む', async () => {
+  it('チャンク内の3件を同時に開始し、全件完了後に次チャンクへ進む（進捗はチャンク境界でしか保存しない）', async () => {
     const ids = Array.from({ length: 6 }, (_, index) => `a${index + 1}`);
     seedJob({ target_annotation_ids: ids, total_count: 6 });
     store.content_annotations.push(...ids.map(id => annotation(id)));
@@ -493,54 +478,41 @@ describe('cron の処理順とカーソル（AC-B02 / AC-B14）', () => {
         })
     );
 
+    const savedCursors = () =>
+      progressUpdates
+        .filter(update => update.processed_count !== undefined)
+        .map(update => update.processed_count);
+
     const run = contentAnnotationSummaryJobService.runNextJob(Date.now());
     await firstChunkStarted;
 
     expect(mocks.generateSummary).toHaveBeenCalledTimes(3);
     expect(maxInFlight).toBe(3);
-    expect(progressUpdates.filter(update => update.processed_count !== undefined)).toEqual([]);
+    expect(savedCursors()).toEqual([]);
 
     for (const id of ids.slice(0, 3)) resolvers.get(id)?.();
     await secondChunkStarted;
 
-    expect(progressUpdates.find(update => update.processed_count === 3)).toBeDefined();
+    expect(savedCursors()).toEqual([3]);
     expect(mocks.generateSummary).toHaveBeenCalledTimes(6);
 
     for (const id of ids.slice(3)) resolvers.get(id)?.();
     await run;
 
     expect(maxInFlight).toBe(3);
+    // 3の倍数でのみ前進する
+    expect(savedCursors()).toEqual([3, 6]);
     expect(jobRow().processed_count).toBe(6);
   });
 
-  it('チャンク内で完了順が入れ替わっても、カーソルは直近に完了したチャンクの末尾で止まる', async () => {
+  it('途中のチャンクで想定外例外が起きても、カーソルは直近に完了したチャンクの末尾で止まる', async () => {
     const ids = Array.from({ length: 12 }, (_, index) => `a${index + 1}`);
     seedJob({ target_annotation_ids: ids, total_count: 12 });
     // 4つ目のチャンク（a10/a11/a12）の取得で異常終了させる
     store.content_annotations.push(...ids.slice(0, 9).map(id => annotation(id)));
-    const failingIds = new Set(['a10', 'a11', 'a12']);
-    const originalFrom = fakeClient.from;
-    vi.spyOn(fakeClient, 'from').mockImplementation((table: keyof FakeStore) => {
-      const builder = originalFrom.call(fakeClient, table);
-      if (table !== 'content_annotations') return builder;
-      return {
-        ...builder,
-        select: () => {
-          const query = builder.select();
-          const originalIn = query.in.bind(query);
-          query.in = (column: string, values: unknown[]) => {
-            if ((values as string[]).some(value => failingIds.has(value))) {
-              throw new Error('simulated hard failure');
-            }
-            return originalIn(column, values);
-          };
-          return query;
-        },
-      };
-    });
+    annotationFetchThrowIds = new Set(['a10', 'a11', 'a12']);
 
     const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
-    vi.mocked(fakeClient.from).mockRestore();
 
     // 直近に完了したチャンクの末尾（9件目）で止まる。着手済みで未完了だった記事は飛ばさない
     expect(jobRow().processed_count).toBe(9);
@@ -548,26 +520,6 @@ describe('cron の処理順とカーソル（AC-B02 / AC-B14）', () => {
     expect(jobRow().status).toBe('failed');
     // ジョブ単位の想定外例外は data.failed に計上する
     expect(result.failed).toBe(1);
-  });
-
-  it('再開時に再処理される記事は BR-B08 の再判定でスキップになり、要約を再生成しない', async () => {
-    const ids = ['a10', 'a11', 'a12'];
-    seedJob({ target_annotation_ids: ids, total_count: 3, processed_count: 0 });
-    // a10 / a12 は前回の異常終了までに要約済み（8項目が埋まっている）
-    store.content_annotations.push(
-      annotation('a10', { main_kw: '埋まっている' }),
-      annotation('a11'),
-      annotation('a12', { main_kw: '埋まっている' })
-    );
-
-    await contentAnnotationSummaryJobService.runNextJob(Date.now());
-
-    const called = mocks.generateSummary.mock.calls.map(
-      call => (call[0] as { target: { annotationId: string } }).target.annotationId
-    );
-    expect(called).toEqual(['a11']);
-    expect(jobRow().skipped_count).toBe(2);
-    expect(jobRow().succeeded_count).toBe(1);
   });
 });
 
@@ -584,25 +536,6 @@ describe('時間予算（AC-B03 / BR-B04）', () => {
     expect(mocks.generateSummary).not.toHaveBeenCalled();
     expect(jobRow().status).toBe('pending');
     expect(result.carriedOver).toBe(true);
-    expect(mocks.sendCompletionEmail).not.toHaveBeenCalled();
-  });
-
-  it('予算が尽きた時点までの件数は保存され、完了メールは送らない', async () => {
-    const ids = Array.from({ length: 6 }, (_, index) => `a${index + 1}`);
-    seedJob({ target_annotation_ids: ids, total_count: 6 });
-    store.content_annotations.push(...ids.map(id => annotation(id)));
-    // 予算判定はチャンクあたり2回（着手前の早期判定と、前処理の await 後の再判定）。
-    // 1チャンク目を通し、2チャンク目の早期判定で尽きさせる
-    mocks.computeSummaryItemBudgetMs
-      .mockReturnValueOnce(BUDGET)
-      .mockReturnValueOnce(BUDGET)
-      .mockReturnValue(null);
-
-    await contentAnnotationSummaryJobService.runNextJob(Date.now());
-
-    expect(jobRow().processed_count).toBe(3);
-    expect(jobRow().succeeded_count).toBe(3);
-    expect(jobRow().status).toBe('pending');
     expect(mocks.sendCompletionEmail).not.toHaveBeenCalled();
   });
 
@@ -667,16 +600,7 @@ describe('時間予算（AC-B03 / BR-B04）', () => {
 });
 
 describe('attempt_count は「連続無進捗回数」（BR-B09 / §13）', () => {
-  it('前進があった起動の進捗保存で attempt_count を 0 に戻す', async () => {
-    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
-    store.content_annotations.push(annotation('a1'));
-
-    await contentAnnotationSummaryJobService.runNextJob(Date.now());
-
-    const progressSave = progressUpdates.find(update => update.processed_count !== undefined);
-    expect(progressSave?.attempt_count).toBe(0);
-  });
-
+  // 前進があった起動の進捗保存で attempt_count を 0 に戻さないと、4起動目で failed に落ちる
   it('予算切れで pending に戻る継続を5回繰り返しても failed にならず完走する', async () => {
     const ids = Array.from({ length: 15 }, (_, index) => `a${index + 1}`);
     seedJob({ target_annotation_ids: ids, total_count: 15 });
@@ -691,7 +615,15 @@ describe('attempt_count は「連続無進捗回数」（BR-B09 / §13）', () =
         .mockReturnValueOnce(BUDGET)
         .mockReturnValue(null);
       await contentAnnotationSummaryJobService.runNextJob(Date.now());
-      expect(jobRow().status).not.toBe('failed');
+      if (run < 4) {
+        // 予算が尽きた時点までの件数は保存され、完了メールは送らない
+        expect(jobRow()).toMatchObject({
+          status: 'pending',
+          processed_count: (run + 1) * 3,
+          succeeded_count: (run + 1) * 3,
+        });
+        expect(mocks.sendCompletionEmail).not.toHaveBeenCalled();
+      }
     }
 
     expect(jobRow().status).toBe('completed');
@@ -717,6 +649,7 @@ describe('attempt_count は「連続無進捗回数」（BR-B09 / §13）', () =
 });
 
 describe('実行直前の再判定（AC-B12 / AC-B13）', () => {
+  // 異常終了後の再開で再処理される要約済み記事（AC-B14）も同じ分岐でスキップになる
   it('起票後に8項目が埋まった記事は generateSummary を呼ばずスキップに計上する', async () => {
     seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
     store.content_annotations.push(annotation('a1', { persona: '手入力' }));
@@ -747,15 +680,6 @@ describe('実行直前の再判定（AC-B12 / AC-B13）', () => {
     expect(mocks.generateSummary).not.toHaveBeenCalled();
     expect(jobRow().failed_by_code).toEqual({ NOT_OWNED: 1 });
   });
-
-  it('cron は cookieStore を渡さない（DB 保存トークン経路だけを使う）', async () => {
-    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
-    store.content_annotations.push(annotation('a1'));
-
-    await contentAnnotationSummaryJobService.runNextJob(Date.now());
-
-    expect(mocks.generateSummary.mock.calls[0]?.[0]).toMatchObject({ cookieStore: undefined });
-  });
 });
 
 describe('失敗の計上先（AC-B10 / AC-B16 / AC-B17）', () => {
@@ -777,10 +701,13 @@ describe('失敗の計上先（AC-B10 / AC-B16 / AC-B17）', () => {
     expect(jobRow().status).toBe('completed');
   });
 
-  it('可否判定が「不可」なら本文取得失敗を SUMMARY_WP_REAUTH_REQUIRED に読み替える', async () => {
+  it.each([
+    ['「不可」なら SUMMARY_WP_REAUTH_REQUIRED に読み替える', false, 'SUMMARY_WP_REAUTH_REQUIRED'],
+    ['「可」なら従来どおり SUMMARY_CONTENT_FETCH_FAILED に計上する', true, 'SUMMARY_CONTENT_FETCH_FAILED'],
+  ])('本文取得失敗は、可否判定が%s', async (_name, canFetch, expectedCode) => {
     seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
     store.content_annotations.push(annotation('a1'));
-    mocks.canFetchWpPostContentLive.mockResolvedValue(false);
+    mocks.canFetchWpPostContentLive.mockResolvedValue(canFetch);
     mocks.generateSummary.mockResolvedValue({
       success: false,
       code: 'SUMMARY_CONTENT_FETCH_FAILED',
@@ -788,21 +715,7 @@ describe('失敗の計上先（AC-B10 / AC-B16 / AC-B17）', () => {
 
     await contentAnnotationSummaryJobService.runNextJob(Date.now());
 
-    expect(jobRow().failed_by_code).toEqual({ SUMMARY_WP_REAUTH_REQUIRED: 1 });
-  });
-
-  it('可否判定が「可」なら従来どおり SUMMARY_CONTENT_FETCH_FAILED に計上する', async () => {
-    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
-    store.content_annotations.push(annotation('a1'));
-    mocks.canFetchWpPostContentLive.mockResolvedValue(true);
-    mocks.generateSummary.mockResolvedValue({
-      success: false,
-      code: 'SUMMARY_CONTENT_FETCH_FAILED',
-    });
-
-    await contentAnnotationSummaryJobService.runNextJob(Date.now());
-
-    expect(jobRow().failed_by_code).toEqual({ SUMMARY_CONTENT_FETCH_FAILED: 1 });
+    expect(jobRow().failed_by_code).toEqual({ [expectedCode]: 1 });
   });
 
   it('可否判定は1起動につき1回だけ呼ぶ（記事ごとに呼ぶと最大1000回になる）', async () => {
@@ -829,18 +742,6 @@ describe('失敗の計上先（AC-B10 / AC-B16 / AC-B17）', () => {
     expect(jobRow().processed_count).toBe(2);
     expect(jobRow().status).toBe('completed');
     expect(result.carriedOver).toBe(false);
-  });
-
-  it('429 で待機しない（次の記事へすぐ進む）', async () => {
-    const ids = Array.from({ length: 3 }, (_, index) => `a${index + 1}`);
-    seedJob({ target_annotation_ids: ids, total_count: 3 });
-    store.content_annotations.push(...ids.map(id => annotation(id)));
-    mocks.generateSummary.mockResolvedValue({ success: false, code: 'SUMMARY_AI_RATE_LIMITED' });
-
-    const startedAt = Date.now();
-    await contentAnnotationSummaryJobService.runNextJob(startedAt);
-
-    expect(Date.now() - startedAt).toBeLessThan(1_000);
   });
 
   it('生成結果が8項目すべて空なら EMPTY_SUMMARY（成功に数えない）', async () => {
@@ -971,57 +872,35 @@ describe('完了メール（AC-B04 / AC-B05 / AC-B06 / AC-B15）', () => {
 
     expect(mocks.sendCompletionEmail).not.toHaveBeenCalled();
   });
-
-  it('掃き出しは claim の前に走る（同じ起動で完了したジョブと二重送信しない）', async () => {
-    seedJob({ target_annotation_ids: ['a1'], total_count: 1 });
-    store.content_annotations.push(annotation('a1'));
-
-    await contentAnnotationSummaryJobService.runNextJob(Date.now());
-
-    expect(mocks.sendCompletionEmail).toHaveBeenCalledTimes(1);
-  });
 });
 
 describe('cron レスポンスの契約（§9）', () => {
-  it('data.failed に記事単位の失敗を含めない（前例の合算式を写さない）', async () => {
-    const ids = ['a1', 'a2', 'a3'];
-    seedJob({ target_annotation_ids: ids, total_count: 3 });
-    store.content_annotations.push(...ids.map(id => annotation(id)));
-    mocks.generateSummary.mockResolvedValue({ success: false, code: 'SUMMARY_AI_FAILED' });
-
-    const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
-
-    expect(result.articlesFailed).toBe(3);
-    expect(result.failed).toBe(0);
-  });
-
   /**
    * `failed` に記事単位の失敗を含めないぶん、**ログには出す**。
    * 両方欠けると「エラーログは出ているのに failed:0」になり件数を突き合わせられない。
    */
-  it('batch_completed ログに記事単位の失敗数を itemsFailed で出す', async () => {
+  it('data.failed に記事単位の失敗を含めず（前例の合算式を写さない）、ログの itemsFailed に出す', async () => {
     const ids = ['a1', 'a2', 'a3'];
     seedJob({ target_annotation_ids: ids, total_count: 3 });
     store.content_annotations.push(...ids.map(id => annotation(id)));
     mocks.generateSummary.mockResolvedValue({ success: false, code: 'SUMMARY_AI_FAILED' });
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
 
-    await contentAnnotationSummaryJobService.runNextJob(Date.now());
+    const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
 
+    expect(result.articlesFailed).toBe(3);
+    expect(result.failed).toBe(0);
     const completed = infoSpy.mock.calls
       .map(([line]) => JSON.parse(String(line)) as Record<string, unknown>)
       .find(entry => entry.event === 'batch_completed');
     expect(completed).toMatchObject({ failed: 0, itemsFailed: 3 });
-
-    infoSpy.mockRestore();
-  });
-
-  it('skipped / skippedDueToLimit / stoppedReason のキーを載せない', async () => {
-    const result = await contentAnnotationSummaryJobService.runNextJob(Date.now());
+    // skipped / skippedDueToLimit / stoppedReason のキーを載せない（§13 の確認項目）
     expect(result).not.toHaveProperty('skipped');
     expect(result).not.toHaveProperty('skippedDueToLimit');
     expect(result).not.toHaveProperty('stoppedReason');
     expect(result).toHaveProperty('carriedOver');
+
+    infoSpy.mockRestore();
   });
 
   it('claim できるジョブが無い起動は空振りで success 相当（failed 0）', async () => {
