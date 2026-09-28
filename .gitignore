@@ -25,6 +25,7 @@
 *.pem
 .venv/
 .claude/settings.local.json
+.claude/session/
 
 # debug
 npm-debug.log*

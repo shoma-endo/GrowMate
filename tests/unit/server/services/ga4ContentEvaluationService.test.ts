@@ -125,6 +125,22 @@ const EXPECTED_SCORE_ARGS = {
   p_expected_read_seconds: 120,
 } as const;
 
+const CREDENTIAL = {
+  ga4PropertyId: 'property-1',
+  ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
+  accessToken: 'access-token',
+  accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+  scope: ['https://www.googleapis.com/auth/analytics.readonly'],
+};
+
+/** private の resolveInitialDisplayStatus を差し替え、記事の適格判定を飛ばす */
+function stubInitialDisplayStatus(status: 'eligible' | 'low_data') {
+  const serviceInternals = ga4ContentEvaluationService as unknown as {
+    resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: string; missingMetrics: string[] }>;
+  };
+  vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status, missingMetrics: [] });
+}
+
 function configureRunClient({
   metricsError = null,
   includeRanking = false,
@@ -308,20 +324,14 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     })).resolves.toEqual({ rank: 1, totalArticles: 2 });
   });
 
-
-
-  it('GA4取得失敗を import_failed として完了RPCへ渡す', async () => {
-    mocks.credential = {
-      ga4PropertyId: 'property-1',
-      ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
-      accessToken: 'access-token',
-      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
-      scope: ['https://www.googleapis.com/auth/analytics.readonly'],
-    };
-    const serviceInternals = ga4ContentEvaluationService as unknown as {
-      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
-    };
-    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
+  it.each([
+    { label: '有効', accessTokenExpiresAt: CREDENTIAL.accessTokenExpiresAt },
+    // run() はGoogle APIを呼ばないため再認証チェックは不要。旧実装は残り期限切れを
+    // needs_reauth で即拒否していた（過去の誤ブロック不具合の回帰 fa5630f8）
+    { label: '期限切れ（リフレッシュを試みずに評価を実行する）', accessTokenExpiresAt: '2020-01-01T00:00:00.000Z' },
+  ])('GA4取得失敗を import_failed として完了RPCへ渡す（アクセストークン$label）', async ({ accessTokenExpiresAt }) => {
+    mocks.credential = { ...CREDENTIAL, accessTokenExpiresAt };
+    stubInitialDisplayStatus('eligible');
     vi.spyOn(ga4ContentEvaluationService, 'fetchEvaluation').mockResolvedValue(EVALUATION_VIEW);
     configureRunClient({ metricsError: { code: 'ga4_query_failed' } });
 
@@ -336,75 +346,14 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     expect(finishCall?.[1]?.p_content_score ?? null).toBeNull();
   });
 
-  it('アクセストークンの残り期限が切れていてもリフレッシュを試みずに評価を実行する（run()はGoogle APIを呼ばないため再認証チェックは不要。過去の誤ブロック不具合の回帰）', async () => {
-    mocks.credential = {
-      ga4PropertyId: 'property-1',
-      ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
-      accessToken: 'access-token',
-      accessTokenExpiresAt: '2020-01-01T00:00:00.000Z', // 残り期限切れ（=旧実装ならneeds_reauthで即拒否していた）
-      scope: ['https://www.googleapis.com/auth/analytics.readonly'],
-    };
-    const serviceInternals = ga4ContentEvaluationService as unknown as {
-      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
-    };
-    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
-    vi.spyOn(ga4ContentEvaluationService, 'fetchEvaluation').mockResolvedValue(EVALUATION_VIEW);
-    configureRunClient({ metricsError: { code: 'ga4_query_failed' } });
-
-    await expect(ga4ContentEvaluationService.run(RUN_INPUT)).resolves.toEqual(EVALUATION_VIEW);
-
-    const finishCall = mocks.client.rpc.mock.calls.find(([name]) => name === 'finish_ga4_content_evaluation');
-    expect(finishCall?.[1]).toMatchObject({
-      p_status: 'import_failed',
-      p_error_code: 'ga4_query_failed',
-    });
-  });
-
-  it('評価対象期間の終端からGA4取込までの間隔が長くても評価をブロックしない（データ鮮度チェック撤去の回帰）', async () => {
-    mocks.getTemplateByName.mockResolvedValue(null);
-    mocks.credential = {
-      ga4PropertyId: 'property-1',
-      ga4LastSyncedAt: '2026-08-14T00:00:00.000Z',
-      accessToken: 'access-token',
-      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
-      scope: ['https://www.googleapis.com/auth/analytics.readonly'],
-    };
-    const serviceInternals = ga4ContentEvaluationService as unknown as {
-      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
-    };
-    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
-    vi.spyOn(ga4ContentEvaluationService, 'fetchEvaluation').mockResolvedValue(EVALUATION_VIEW);
-    // 対象期間の終端（RUN_INPUT.endDate: 2026-08-10）から4日後の取込＝旧48時間鮮度チェックなら insufficient_data で打ち切っていたケース
-    configureRunClient({ includeRanking: true, importedAt: '2026-08-14T00:00:00.000Z' });
-
-    await expect(ga4ContentEvaluationService.run(RUN_INPUT)).resolves.toEqual(EVALUATION_VIEW);
-
-    const finishCall = mocks.client.rpc.mock.calls.find(([name]) => name === 'finish_ga4_content_evaluation');
-    expect(finishCall?.[1]).toMatchObject({
-      p_status: 'narrative_failed',
-      ...EXPECTED_SCORE_ARGS,
-    });
-    expect(finishCall?.[1]?.p_status).not.toBe('insufficient_data');
-    expect(finishCall?.[1]?.p_error_code).not.toBe('ga4_data_stale');
-  });
-
   it('narrative失敗時はスコアを保持して narrative_failed を保存する', async () => {
-    mocks.credential = {
-      ga4PropertyId: 'property-1',
-      ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
-      accessToken: 'access-token',
-      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
-      scope: ['https://www.googleapis.com/auth/analytics.readonly'],
-    };
+    mocks.credential = { ...CREDENTIAL };
     mocks.getTemplateByName.mockResolvedValue({ id: 'template-1', version: 1, content: 'prompt {{title}}' });
     mocks.generateGa4EvaluationLlmOutput.mockImplementation(async (request: { onAttempt?: (attemptCount: number) => Promise<void> }) => {
       await request.onAttempt?.(1);
       return { success: false, code: 'llm_timeout', attemptCount: 3 };
     });
-    const serviceInternals = ga4ContentEvaluationService as unknown as {
-      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
-    };
-    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
+    stubInitialDisplayStatus('eligible');
     vi.spyOn(ga4ContentEvaluationService, 'fetchEvaluation').mockResolvedValue(EVALUATION_VIEW);
     configureRunClient({ includeRanking: true });
 
@@ -419,22 +368,14 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
     expect(mocks.client.rpc.mock.calls.filter(([name]) => name === 'update_ga4_content_evaluation_attempt')).toHaveLength(1);
   });
 
-  it('プロンプト未登録時はスコアを保持して narrative_failed を保存しLLMを呼び出さない', async () => {
+  it('プロンプト未登録時はスコアを保持して narrative_failed を保存しLLMを呼び出さない。評価対象期間の終端からGA4取込までの間隔が長くても評価をブロックしない（データ鮮度チェック撤去の回帰 16d2f208）', async () => {
     mocks.getTemplateByName.mockResolvedValue(null);
     mocks.generateGa4EvaluationLlmOutput.mockResolvedValue({ success: true });
-    mocks.credential = {
-      ga4PropertyId: 'property-1',
-      ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
-      accessToken: 'access-token',
-      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
-      scope: ['https://www.googleapis.com/auth/analytics.readonly'],
-    };
-    const serviceInternals = ga4ContentEvaluationService as unknown as {
-      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
-    };
-    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
+    mocks.credential = { ...CREDENTIAL, ga4LastSyncedAt: '2026-08-14T00:00:00.000Z' };
+    stubInitialDisplayStatus('eligible');
     vi.spyOn(ga4ContentEvaluationService, 'fetchEvaluation').mockResolvedValue(EVALUATION_VIEW);
-    configureRunClient({ includeRanking: true });
+    // 対象期間の終端（RUN_INPUT.endDate: 2026-08-10）から4日後の取込＝旧48時間鮮度チェックなら insufficient_data で打ち切っていたケース
+    configureRunClient({ includeRanking: true, importedAt: '2026-08-14T00:00:00.000Z' });
 
     await expect(ga4ContentEvaluationService.run(RUN_INPUT)).resolves.toEqual(EVALUATION_VIEW);
 
@@ -444,6 +385,7 @@ describe('ga4ContentEvaluationService の評価済み記事集計', () => {
       p_error_code: 'llm_output_invalid',
       ...EXPECTED_SCORE_ARGS,
     });
+    expect(finishCall?.[1]?.p_status).not.toBe('insufficient_data');
     expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
   });
 });
@@ -466,10 +408,7 @@ describe('ga4ContentEvaluationService.computeBaselineScore（D10再反転: 定�
   };
 
   it('resolveInitialDisplayStatusがlow_dataの時点で早期returnし、GA4データ取得（computeGa4Score）を行わない', async () => {
-    const serviceInternals = ga4ContentEvaluationService as unknown as {
-      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'low_data'; missingMetrics: string[] }>;
-    };
-    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'low_data', missingMetrics: [] });
+    stubInitialDisplayStatus('low_data');
 
     const result = await ga4ContentEvaluationService.computeBaselineScore(BASELINE_INPUT);
 
@@ -479,17 +418,8 @@ describe('ga4ContentEvaluationService.computeBaselineScore（D10再反転: 定�
   });
 
   it('GA4データ取得に失敗した場合はimport_failedを返す（LLM・RPC呼び出しなし）', async () => {
-    mocks.credential = {
-      ga4PropertyId: 'property-1',
-      ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
-      accessToken: 'access-token',
-      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
-      scope: ['https://www.googleapis.com/auth/analytics.readonly'],
-    };
-    const serviceInternals = ga4ContentEvaluationService as unknown as {
-      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
-    };
-    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
+    mocks.credential = { ...CREDENTIAL };
+    stubInitialDisplayStatus('eligible');
     configureRunClient({ metricsError: { code: 'ga4_query_failed' } });
 
     const result = await ga4ContentEvaluationService.computeBaselineScore(BASELINE_INPUT);
@@ -499,39 +429,9 @@ describe('ga4ContentEvaluationService.computeBaselineScore（D10再反転: 定�
     expect(mocks.client.rpc).not.toHaveBeenCalled();
   });
 
-  it('成功時はスコアのみを返し、LLM診断コメント生成・履歴行/RPCへの書き込みを一切行わない', async () => {
-    mocks.credential = {
-      ga4PropertyId: 'property-1',
-      ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
-      accessToken: 'access-token',
-      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
-      scope: ['https://www.googleapis.com/auth/analytics.readonly'],
-    };
-    const serviceInternals = ga4ContentEvaluationService as unknown as {
-      resolveInitialDisplayStatus: (...args: unknown[]) => Promise<{ status: 'eligible'; missingMetrics: string[] }>;
-    };
-    vi.spyOn(serviceInternals, 'resolveInitialDisplayStatus').mockResolvedValue({ status: 'eligible', missingMetrics: [] });
-    configureRunClient();
-
-    const result = await ga4ContentEvaluationService.computeBaselineScore(BASELINE_INPUT);
-
-    expect(result.status).toBe('scored');
-    expect(result.contentScore).toEqual(expect.any(Number));
-    expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
-    // computeBaselineScore はDB永続化（start/finish RPC）を一切行わない
-    expect(mocks.client.rpc).not.toHaveBeenCalled();
-  });
   // 本文0字の記事を採点しないこと（レビュー🔴1）。resolveInitialDisplayStatus は
   // 実物を走らせる（既存の run() テストは全て spyOn で差し替えており、この関数の
   // 本体は一度も実行されていなかった）。
-  const CREDENTIAL = {
-    ga4PropertyId: 'property-1',
-    ga4LastSyncedAt: '2026-08-11T00:00:00.000Z',
-    accessToken: 'access-token',
-    accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
-    scope: ['https://www.googleapis.com/auth/analytics.readonly'],
-  };
-
   it.each([
     { name: 'NULL', wpContentText: null },
     { name: '空文字', wpContentText: '' },
@@ -563,13 +463,16 @@ describe('ga4ContentEvaluationService.computeBaselineScore（D10再反転: 定�
     expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
   });
 
-  it('本文がある記事はこれまでどおり採点される（上のガードが効きすぎていないこと）', async () => {
+  it('本文がある記事はこれまでどおり採点され、スコアのみを返してLLM診断コメント生成・履歴行/RPCへの書き込みを一切行わない（上のガードが効きすぎていないこと）', async () => {
     mocks.credential = { ...CREDENTIAL };
     configureRunClient({ detailReads: 2 });
 
     const result = await ga4ContentEvaluationService.computeBaselineScore(BASELINE_INPUT);
 
-    expect(result.status).toBe('scored');
-    expect(result.contentScore).toEqual(expect.any(Number));
+    // 77 の内訳は EXPECTED_SCORE_ARGS のコメント参照
+    expect(result).toEqual({ status: 'scored', contentScore: EXPECTED_SCORE_ARGS.p_content_score });
+    expect(mocks.generateGa4EvaluationLlmOutput).not.toHaveBeenCalled();
+    // computeBaselineScore はDB永続化（start/finish RPC）を一切行わない
+    expect(mocks.client.rpc).not.toHaveBeenCalled();
   });
 });

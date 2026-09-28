@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * **429 の扱いを Anthropic SDK クライアント層から検証する。**
  *
- * `contentAnnotationSummaryService.test.ts` の 429 テストは `llmChat` をモックして
- * `ChatError(ANTHROPIC_RATE_LIMIT)` を直接投げるため、SDK 層は一度も走らない。
+ * `llmChat` をモックして `ChatError(ANTHROPIC_RATE_LIMIT)` を直接投げる形では SDK 層が一度も
+ * 走らないため、429 の分類はこのファイルだけで検証する。
  * SDK は既定で 429 を最大2回**バックオフして寝てから**再送する（`maxRetries` 既定 2）ので、
  * その構成ではレート制限中に時間予算だけが減り、末尾チャンク（`llmMs` 最小30秒）では
  * 寝ている間に呼び出し側の abort が先に立って `CONNECTION_TIMEOUT` になり、
@@ -14,11 +14,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const mocks = vi.hoisted(() => ({
-  from: vi.fn(),
-  select: vi.fn(),
-  update: vi.fn(),
-  eq: vi.fn(),
-  maybeSingle: vi.fn(),
   fetchWpPostContentLive: vi.fn(),
   getTemplateByName: vi.fn(),
   replaceVariables: vi.fn(),
@@ -26,22 +21,9 @@ const mocks = vi.hoisted(() => ({
   anthropicRequests: [] as { maxRetries: number | undefined }[],
 }));
 
-vi.mock('@/server/services/supabaseService', () => ({
-  SupabaseService: class {
-    getClient() {
-      const query = {
-        select: mocks.select,
-        update: mocks.update,
-        eq: mocks.eq,
-        maybeSingle: mocks.maybeSingle,
-      };
-      mocks.select.mockReturnValue(query);
-      mocks.update.mockReturnValue(query);
-      mocks.eq.mockReturnValue(query);
-      mocks.from.mockReturnValue(query);
-      return { from: mocks.from };
-    }
-  },
+vi.mock('@/server/services/supabaseService', async () => ({
+  SupabaseService: (await import('./contentAnnotationSummaryService.supabaseMock'))
+    .FakeSupabaseService,
 }));
 
 vi.mock('@/server/services/wordpressContentSync', () => ({
@@ -105,6 +87,8 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 import { contentAnnotationSummaryService } from '@/server/services/contentAnnotationSummaryService';
 
+import { summaryDb } from './contentAnnotationSummaryService.supabaseMock';
+
 const annotation = {
   id: 'annotation-id',
   user_id: 'user-id',
@@ -128,35 +112,19 @@ describe('contentAnnotationSummaryService の 429 挙動（SDK 層まで通す�
     });
     mocks.getTemplateByName.mockResolvedValue({ content: 'template' });
     mocks.replaceVariables.mockReturnValue('filled prompt');
-    mocks.maybeSingle.mockResolvedValue({ data: annotation, error: null });
+    summaryDb.maybeSingle.mockResolvedValue({ data: annotation, error: null });
   });
 
   /**
    * 落とせない網: 429 を受けても**再送せず・待たず**、失敗理由が `SUMMARY_AI_RATE_LIMITED` に
    * 分類されること。`maxRetries: 0` の詰め替えが1行でも欠けると、SDK は2回再送するので
    * リクエスト数が増え、`llmMs` が短い末尾チャンクでは `SUMMARY_AI_FAILED` に化ける。
+   *
+   * 末尾チャンクの再現として `llmMs` を BACKOFF_MS より短くしてある。再送で寝れば abort が
+   * 先に立ち、レート制限が `CONNECTION_TIMEOUT` 由来の `SUMMARY_AI_FAILED` へ化けて落ちる。
    */
-  it('429 を再送も待機もせず SUMMARY_AI_RATE_LIMITED に分類する', async () => {
+  it('429 を再送も待機もせず、LLM タイムアウトが短くても SUMMARY_AI_RATE_LIMITED に分類する', async () => {
     const startedAt = Date.now();
-    const result = await contentAnnotationSummaryService.generateSummary({
-      target: { annotationId: 'annotation-id' },
-      executorUserId: 'user-id',
-      maxRetries: 0,
-    });
-
-    expect(result).toEqual({ success: false, code: 'SUMMARY_AI_RATE_LIMITED' });
-    // 上流への発射は1回だけ（SDK 既定の 2回再送が効いていれば3回になる）
-    expect(mocks.anthropicRequests).toEqual([{ maxRetries: 0 }]);
-    // バックオフで寝ていない（1回でも寝ていれば BACKOFF_MS 以上かかる）
-    expect(Date.now() - startedAt).toBeLessThan(BACKOFF_MS);
-  });
-
-  /**
-   * 末尾チャンクの再現: `llmMs` が最小 30 秒まで下がった状態でも、再送で寝ないので
-   * abort が先に立たず、レート制限が `CONNECTION_TIMEOUT` 由来の `SUMMARY_AI_FAILED` へ
-   * 化けないこと。BACKOFF_MS より短いタイムアウトで、再送があれば必ず落ちる条件にしてある。
-   */
-  it('LLM タイムアウトが短くても 429 が SUMMARY_AI_FAILED へ化けない', async () => {
     const result = await contentAnnotationSummaryService.generateSummary({
       target: { annotationId: 'annotation-id' },
       executorUserId: 'user-id',
@@ -165,7 +133,10 @@ describe('contentAnnotationSummaryService の 429 挙動（SDK 層まで通す�
     });
 
     expect(result).toEqual({ success: false, code: 'SUMMARY_AI_RATE_LIMITED' });
-    expect(mocks.anthropicRequests).toHaveLength(1);
+    // 上流への発射は1回だけ（SDK 既定の 2回再送が効いていれば3回になる）
+    expect(mocks.anthropicRequests).toEqual([{ maxRetries: 0 }]);
+    // バックオフで寝ていない（1回でも寝ていれば BACKOFF_MS 以上かかる）
+    expect(Date.now() - startedAt).toBeLessThan(BACKOFF_MS);
   });
 
   /**

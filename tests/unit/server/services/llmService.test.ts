@@ -28,6 +28,12 @@ vi.mock('@/env', () => ({
 
 import { llmChat } from '@/server/services/llmService';
 
+const ANTHROPIC_OK_RESPONSE = {
+  content: [{ type: 'text', text: 'ok' }],
+  stop_reason: 'end_turn',
+  usage: { input_tokens: 1, output_tokens: 1 },
+};
+
 describe('llmService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,11 +66,7 @@ describe('llmService', () => {
    * 無条件に載せると、明示していない18機能のリクエスト形まで変わる。
    */
   it('thinking を指定したときだけ Anthropic の params に載せる', async () => {
-    mocks.anthropicCreate.mockResolvedValue({
-      content: [{ type: 'text', text: 'ok' }],
-      stop_reason: 'end_turn',
-      usage: { input_tokens: 1, output_tokens: 1 },
-    });
+    mocks.anthropicCreate.mockResolvedValue(ANTHROPIC_OK_RESPONSE);
 
     await llmChat('anthropic', 'test-model', [{ role: 'user', content: 'test' }], {
       thinking: { type: 'disabled' },
@@ -83,11 +85,7 @@ describe('llmService', () => {
    * 逆に `0` を指定した経路では、SDK が 429 を裏でバックオフ再送しないことをここで固定する。
    */
   it('maxRetries を指定したときだけ SDK のリクエストオプションに載せる', async () => {
-    mocks.anthropicCreate.mockResolvedValue({
-      content: [{ type: 'text', text: 'ok' }],
-      stop_reason: 'end_turn',
-      usage: { input_tokens: 1, output_tokens: 1 },
-    });
+    mocks.anthropicCreate.mockResolvedValue(ANTHROPIC_OK_RESPONSE);
 
     await llmChat('anthropic', 'test-model', [{ role: 'user', content: 'test' }], {
       maxRetries: 0,
@@ -100,12 +98,7 @@ describe('llmService', () => {
 
   it('stream 経路でも maxRetries を SDK のリクエストオプションに載せる', async () => {
     mocks.anthropicStream.mockReturnValue({
-      finalMessage: () =>
-        Promise.resolve({
-          content: [{ type: 'text', text: 'ok' }],
-          stop_reason: 'end_turn',
-          usage: { input_tokens: 1, output_tokens: 1 },
-        }),
+      finalMessage: () => Promise.resolve(ANTHROPIC_OK_RESPONSE),
     });
 
     await llmChat('anthropic', 'test-model', [{ role: 'user', content: 'test' }], {

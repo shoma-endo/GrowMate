@@ -19,6 +19,7 @@
     "knip": "knip",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:related": "vitest related --run",
     "verify": "npm audit --omit=dev --audit-level=high && npm run lint && npm run test:coverage && npm run build && npm run knip",
     "hotspots": "bash scripts/hotspots.sh",
     "verify:changed": "bash scripts/verify-changed.sh",

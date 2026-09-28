@@ -1,8 +1,8 @@
-# 全文生成・結合・動作確認の正本（手順6〜8）
+# 全文生成・結合・動作確認の正本（手順5〜7）
 
-`spec-to-html` の手順6〜8（`core.yaml` と再構成ビューを書き終えた後）で読む。core.yaml・ビューの書き方は `SKILL.md` と `authoring-views.md` 側。
+`spec-to-html` の手順5〜7（`core.yaml` と再構成ビューを書き終えた後）で読む。core.yaml・ビューの書き方は `SKILL.md` と `authoring-views.md` 側。
 
-## 6. 全文ビューを生成する
+## 5. 全文ビューを生成する
 
 ```bash
 python3 scripts/spec-html.py fulltext \
@@ -16,7 +16,7 @@ python3 scripts/spec-html.py fulltext \
 - 目次のジャンプは `href="#..."` ではなくスクロールで行う。`location.hash` はテーマ状態（`#theme=dark`）に使っているため。
 - 原本に含まれる URL は **スキームを除いた平文**になる（オフライン自己完結の制約）。この旨はビュー冒頭に明記される。
 
-## 7. 結合して安全検査する
+## 6. 結合して安全検査する
 
 ```bash
 python3 scripts/spec-html.py build \
@@ -27,11 +27,10 @@ python3 scripts/spec-html.py build \
   --view "設計判断=docs/plans/_html/<slug>/views/02-decisions.html" \
   --view "画面仕様=docs/plans/_html/<slug>/views/05-screens.html" \
   --view "UIモック=docs/plans/_html/<slug>/views/06-ui-mock.html" \
-  --view "クイズ=docs/plans/_html/<slug>/views/03-quiz.html" \
   --view "全文=docs/plans/_html/<slug>/views/04-fulltext.html"
 ```
 
-`05-screens.html` / `06-ui-mock.html` が無い仕様書では、該当 `--view` 行を**省略**する（空ファイルを渡さない）。既定タブ順は「ステータス→設計判断→画面仕様→UIモック→クイズ→全文」。
+`05-screens.html` / `06-ui-mock.html` が無い仕様書では、該当 `--view` 行を**省略**する（空ファイルを渡さない）。既定タブ順は「ステータス→設計判断→画面仕様→UIモック→全文」。
 
 **`--source` があると `build` は末尾に「ビューを増やす」タブを自動で足す**（`--view` では渡さない。`scripts/spec-html.py` の `PROMPT_CARDS` が正本の機械生成物で、`manifest` にも入らない）。したがって**結合後のパネル数は `--view` の数 + 1** になる。
 
@@ -50,7 +49,7 @@ python3 scripts/spec-html.py add-view --spec docs/plans/<slug>.md \
 
 安全検査は2段構え。マークアップとして書かれた時点で外部依存になるもの（外部スクリプト / 外部CSS / iframe / `http(s)://` 等）は**文書全体**、JS API（`localStorage` / `fetch` 等）は **`<script>` 本文と `on*` 属性だけ**を見る。全文ビューは仕様書の地の文に「localStorage に保持する」のような記述をそのまま含むが、テキストノードは何も実行しないため検査対象外。
 
-## 8. 動作を確認する
+## 7. 動作を確認する
 
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \

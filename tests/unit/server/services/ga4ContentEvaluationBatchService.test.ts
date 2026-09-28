@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   sendEmail: vi.fn(),
   updateCalls: [] as Record<string, unknown>[],
-  eqCalls: [] as Array<[string, unknown]>,
   /** updateCalls と同じ添字で、その update に付いた .eq(column, value) を保持する */
   updateFilters: [] as Array<Array<[string, unknown]>>,
   userEmail: null as string | null,
@@ -50,13 +49,11 @@ vi.mock('@/server/services/supabaseService', () => {
     // バイパスされる以上これが唯一の防御層なので、テスト側で観測できるようにする
     // （レビュー: ミューテーションで `.eq('user_id')` を外しても全テストが通っていた）。
     //
-    // update に続く eq は updateFilters[i] へ、それ以外（select 側の絞り込み）は
-    // eqCalls へ分けて積む。両方を1つの配列に混ぜると、別のクエリが投げた
-    // `.eq('user_id', …)` を拾ってしまい、書き込み側の漏れを検知できない。
+    // update に続く eq だけを updateFilters[i] へ積み、select 側の絞り込みは捨てる。
+    // 両方を1つの配列に混ぜると、別のクエリが投げた `.eq('user_id', …)` を
+    // 拾ってしまい、書き込み側の漏れを検知できない。
     eq(column: string, value: unknown) {
-      if (this.updateIndex === null) {
-        mocks.eqCalls.push([column, value]);
-      } else {
+      if (this.updateIndex !== null) {
         mocks.updateFilters[this.updateIndex]!.push([column, value]);
       }
       return this;
@@ -208,6 +205,37 @@ function syncOk(userId: string) {
   };
 }
 
+type DueRow = {
+  id: string;
+  user_id: string;
+  content_annotation_id: string;
+  base_evaluation_date: string;
+  cycle_days: number;
+  evaluation_hour: number;
+  ga4_last_evaluated_on: string | null;
+  ga4_last_seen_content_score: number | null;
+  ga4_next_evaluation_date: string;
+};
+
+/**
+ * due抽出RPCが返す1行。既定はベースライン済み（last_seen_content_score あり＝フルパス run() へ
+ * 進む2回目以降のdue）で、ga4_next_evaluation_date は過去日なので必ずdue（時刻判定を経由しない）。
+ */
+function buildDueRow(overrides: Partial<DueRow> = {}): DueRow {
+  return {
+    id: 'cycle-1',
+    user_id: 'user-1',
+    content_annotation_id: 'annotation-1',
+    base_evaluation_date: '2020-01-01',
+    cycle_days: 30,
+    evaluation_hour: 0,
+    ga4_last_evaluated_on: '2020-01-01',
+    ga4_last_seen_content_score: 40,
+    ga4_next_evaluation_date: '2020-01-31',
+    ...overrides,
+  };
+}
+
 /** payload に指定キーを含む update の絞り込み条件（.eq）を返す */
 function eqFiltersForUpdateWith(key: string): Array<[string, unknown]> | undefined {
   const index = mocks.updateCalls.findIndex(payload => key in payload);
@@ -218,7 +246,6 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.updateCalls.length = 0;
-    mocks.eqCalls.length = 0;
     mocks.updateFilters.length = 0;
     mocks.userEmail = null;
     mocks.notifiedHistoryId = null;
@@ -226,17 +253,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
   });
 
   it('last_seen_content_score=null（初回due）は軽量パス（computeBaselineScore）へ分岐し、LLM・履歴・メールなしにlast_seen_content_scoreのみ更新する。1,000行上限の取りこぼしはskippedDueToLimitへ合算される（D10再反転の回帰防止・🔴指摘#4）', async () => {
-    const dueRow = {
-      id: 'cycle-1',
-      user_id: 'user-1',
-      content_annotation_id: 'annotation-1',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: null,
-      ga4_last_seen_content_score: null,
-      ga4_next_evaluation_date: '2020-01-31', // 過去日なので必ずdue（時刻判定を経由しない）
-    };
+    const dueRow = buildDueRow({ ga4_last_evaluated_on: null, ga4_last_seen_content_score: null });
     // count(5) > 実際に返った行数(1) のため truncated 扱いになる（listDueEvaluations の再現）
     mockRpcRange({ data: [dueRow], error: null, count: 5 });
     mocks.computeBaselineScore.mockResolvedValue({ status: 'scored', contentScore: 55 });
@@ -271,19 +288,9 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     // 起動順は非決定的。両者が last_evaluated_on を共用すると、先に走った方がそれを today へ
     // 進めて生成列 next_evaluation_date が +cycle_days 跳ぶため、負けた方はそのサイクルを
     // 丸ごと飛ばす。設定は共有・進捗は系統別、という分離が壊れていないことを固定する。
-    const dueRow = {
-      id: 'cycle-1',
-      user_id: 'user-1',
-      content_annotation_id: 'annotation-1',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      // GSC側は既に今日まで進んでいる（GSCバッチが先に走った直後の状態）。
-      // それでもGA4は ga4_last_evaluated_on が古いままなので due でなければならない
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40,
-      ga4_next_evaluation_date: '2020-01-31',
-    };
+    // GSC側は既に今日まで進んでいる（GSCバッチが先に走った直後の状態）。
+    // それでもGA4は ga4_last_evaluated_on が古いままなので due でなければならない
+    const dueRow = buildDueRow();
     mockRpcRange({ data: [dueRow], error: null, count: 1 });
     mocks.run.mockResolvedValue(buildEvaluatedView(70));
 
@@ -312,17 +319,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
   });
 
   it('軽量パス（computeBaselineScore）がlow_data/import_failedを返した場合もクールダウンは進むが、last_seen_content_scoreは更新しない（次回dueで再び軽量パスに入り再試行できる）', async () => {
-    const lowDataRow = {
-      id: 'cycle-low',
-      user_id: 'user-low',
-      content_annotation_id: 'annotation-low',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: null,
-      ga4_last_seen_content_score: null,
-      ga4_next_evaluation_date: '2020-01-31',
-    };
+    const lowDataRow = buildDueRow({ ga4_last_evaluated_on: null, ga4_last_seen_content_score: null });
     mockRpcRange({ data: [lowDataRow], error: null, count: 1 });
     mocks.computeBaselineScore.mockResolvedValue({ status: 'low_data', contentScore: null });
 
@@ -341,60 +338,11 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     });
   });
 
-  it('軽量パスで last_seen_content_score が埋まった後の次回dueは、フルパス（run()）で評価される（GSCの2回目以降と同型）', async () => {
-    // 1回目: last_seen_content_score=null（初回due）→ 軽量パス
-    const firstRow = {
-      id: 'cycle-transition',
-      user_id: 'user-transition',
-      content_annotation_id: 'annotation-transition',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: null,
-      ga4_last_seen_content_score: null,
-      ga4_next_evaluation_date: '2020-01-31',
-    };
-    mockRpcRange({ data: [firstRow], error: null, count: 1 });
-    mocks.computeBaselineScore.mockResolvedValue({ status: 'scored', contentScore: 45 });
-
-    const firstResult = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
-
-    expect(mocks.computeBaselineScore).toHaveBeenCalledTimes(1);
-    expect(mocks.run).not.toHaveBeenCalled();
-    expect(firstResult.articlesBaselineInitialized).toBe(1);
-
-    // 2回目: 1回目のbaseline成功で last_seen_content_score が埋まった状態（次回due）→ フルパス
-    vi.clearAllMocks();
-    mocks.updateCalls.length = 0;
-    mocks.eqCalls.length = 0;
-    mocks.updateFilters.length = 0;
-    mocks.syncUser.mockImplementation(async (userId: string) => syncOk(userId));
-    const secondRow = { ...firstRow, ga4_last_evaluated_on: '2020-01-31', ga4_last_seen_content_score: 45 };
-    mockRpcRange({ data: [secondRow], error: null, count: 1 });
-    mocks.run.mockResolvedValue(buildEvaluatedView(60));
-
-    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
-
-    expect(mocks.run).toHaveBeenCalledTimes(1);
-    expect(mocks.computeBaselineScore).not.toHaveBeenCalled();
-    expect(result.articlesEvaluated).toBe(1);
-    // フルパスはbaseline_initializedではないため観測用カウンタは増えない
-    expect(result.articlesBaselineInitialized).toBe(0);
-  });
-
   it('通知メールの「次回評価予定」は advanceCooldown 後の日付（todayJst + cycle_days）で組み立てられ、処理済みのdue日（過去日）を再掲しない（高重要度指摘の回帰防止）', async () => {
     const cycleDays = 14;
-    const dueRow = {
-      id: 'cycle-2',
-      user_id: 'user-2',
-      content_annotation_id: 'annotation-2',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: cycleDays,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-17',
-      ga4_last_seen_content_score: 40, // ベースライン済み（2回目以降のdue）なのでフルパスへ進む
-      ga4_next_evaluation_date: '2020-01-31', // 過去日なので必ずdue。この日付がメールへ再掲されると不具合
-    };
+    // ベースライン済み（2回目以降のdue）なのでフルパスへ進む。
+    // ga4_next_evaluation_date（過去日）がメールへ再掲されると不具合
+    const dueRow = buildDueRow({ cycle_days: cycleDays });
     mockRpcRange({ data: [dueRow], error: null, count: 1 });
     mocks.run.mockResolvedValue(buildEvaluatedView(70));
     mocks.userEmail = 'user@example.test';
@@ -413,28 +361,11 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
   });
 
   it('件数上限に達したら後続ユーザーの同期を行わず打ち切る（Cursor Bugbot指摘の回帰防止）', async () => {
-    const userACycles = Array.from({ length: 20 }, (_, i) => ({
-      id: `cycle-a-${i}`,
-      user_id: 'user-a',
-      content_annotation_id: `annotation-a-${i}`,
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40, // ベースライン済み。フルパス(run())を経由させ既存の上限テストを維持する
-      ga4_next_evaluation_date: '2020-01-31',
-    }));
-    const userBCycle = {
-      id: 'cycle-b-0',
-      user_id: 'user-b',
-      content_annotation_id: 'annotation-b-0',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40,
-      ga4_next_evaluation_date: '2020-01-31',
-    };
+    // ベースライン済み。フルパス(run())を経由させ既存の上限テストを維持する
+    const userACycles = Array.from({ length: 20 }, (_, i) =>
+      buildDueRow({ id: `cycle-a-${i}`, user_id: 'user-a', content_annotation_id: `annotation-a-${i}` })
+    );
+    const userBCycle = buildDueRow({ id: 'cycle-b-0', user_id: 'user-b', content_annotation_id: 'annotation-b-0' });
     mockRpcRange({ data: [...userACycles, userBCycle], error: null, count: 21 });
     mocks.run.mockResolvedValue(buildEvaluatedView(60));
     // シャッフルで user-a が必ず先頭に来るよう固定する（Fisher-Yates を no-op にする）。
@@ -454,42 +385,8 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     }
   });
 
-  it('syncUserが例外を投げず{ok:false}を返した場合もsyncFailedとして扱う（Codex指摘の回帰防止）', async () => {
-    const todayJst = formatJstDateISO(new Date());
-    const dueRow = {
-      id: 'cycle-3',
-      user_id: 'user-3',
-      content_annotation_id: 'annotation-3',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40, // ベースライン済み。フルパス(run())を経由させ既存のsyncFailedテストを維持する
-      ga4_next_evaluation_date: todayJst,
-    };
-    mockRpcRange({ data: [dueRow], error: null, count: 1 });
-    mocks.syncUser.mockResolvedValue({ ok: false, reason: 'not_connected' });
-    mocks.run.mockResolvedValue(buildEvaluatedView(60));
-
-    const result = await ga4ContentEvaluationBatchService.runAllDueEvaluations();
-
-    expect(result.syncFailedUsers).toBe(1);
-    expect(result.articlesSkippedSyncFailed).toBe(1);
-    // 取込に失敗している以上、古いデータで評価しない（レビュー🔴6）
-    expect(mocks.run).not.toHaveBeenCalled();
-  });
-  it('取込に失敗しても、due日が過去（当日より前）ならクールダウンは通常どおり進む（§6.6.4。抑止は当日分だけ）', async () => {
-    const dueRow = {
-      id: 'cycle-past-due',
-      user_id: 'user-past',
-      content_annotation_id: 'annotation-past',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40,
-      ga4_next_evaluation_date: '2020-01-31', // today より前
-    };
+  it('syncUserが例外を投げず{ok:false}を返した場合もsyncFailedとして扱い評価しない。due日が過去（当日より前）でもクールダウンは通常どおり進み、連携切れを通知する（§6.6.4・Codex指摘の回帰防止）', async () => {
+    const dueRow = buildDueRow(); // ga4_next_evaluation_date は today より前
     mockRpcRange({ data: [dueRow], error: null, count: 1 });
     mocks.syncUser.mockResolvedValue({ ok: false, reason: 'not_connected' });
     mocks.run.mockResolvedValue(buildEvaluatedView(60));
@@ -521,17 +418,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
 
   it("syncUserの{ok:false, reason:'already_synced'}は正常系として扱い、syncFailedにしない（直近同期済みで新規取込が無いだけ）", async () => {
     const todayJst = formatJstDateISO(new Date());
-    const dueRow = {
-      id: 'cycle-already',
-      user_id: 'user-already',
-      content_annotation_id: 'annotation-already',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40,
-      ga4_next_evaluation_date: todayJst, // 抑止が効くならここで止まる
-    };
+    const dueRow = buildDueRow({ ga4_next_evaluation_date: todayJst }); // 抑止が効くならここで止まる
     mockRpcRange({ data: [dueRow], error: null, count: 1 });
     mocks.syncUser.mockResolvedValue({ ok: false, reason: 'already_synced' });
     mocks.run.mockResolvedValue(buildEvaluatedView(60));
@@ -553,18 +440,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
   });
 
   it('同じ評価履歴IDに対しては通知メールを送らない（BR-12。ga4_last_notified_history_id による冪等）', async () => {
-    const dueRow = {
-      id: 'cycle-1',
-      user_id: 'user-dup',
-      content_annotation_id: 'annotation-dup',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40,
-      ga4_next_evaluation_date: '2020-01-31',
-    };
-    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mockRpcRange({ data: [buildDueRow()], error: null, count: 1 });
     mocks.userEmail = 'user@example.test';
     // buildEvaluatedView が返す履歴IDと同じ値が既に通知済みとして保存されている状態
     mocks.notifiedHistoryId = 'history-1';
@@ -578,19 +454,9 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
     // 評価そのものは行われ、クールダウンも進む（通知だけを抑止する）
     expect(result.articlesEvaluated).toBe(1);
   });
+
   it('BR-06: クールダウンの更新は user_id で必ず絞る（Service Role経由でRLSが効かないため唯一の防御層）', async () => {
-    const dueRow = {
-      id: 'cycle-br06',
-      user_id: 'user-br06',
-      content_annotation_id: 'annotation-br06',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40,
-      ga4_next_evaluation_date: '2020-01-31',
-    };
-    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mockRpcRange({ data: [buildDueRow({ id: 'cycle-br06', user_id: 'user-br06' })], error: null, count: 1 });
     mocks.run.mockResolvedValue(buildEvaluatedView(70));
 
     await ga4ContentEvaluationBatchService.runAllDueEvaluations();
@@ -604,18 +470,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
   });
 
   it('narrative_failed（LLMの文章化だけ失敗）でも、スコア更新・クールダウン前進・通知を行う', async () => {
-    const dueRow = {
-      id: 'cycle-nf',
-      user_id: 'user-nf',
-      content_annotation_id: 'annotation-nf',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40,
-      ga4_next_evaluation_date: '2020-01-31',
-    };
-    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mockRpcRange({ data: [buildDueRow({ user_id: 'user-nf' })], error: null, count: 1 });
     mocks.run.mockResolvedValue(buildEvaluatedView(72, 'narrative_failed'));
     mocks.userEmail = 'user@example.test';
 
@@ -631,18 +486,7 @@ describe('ga4ContentEvaluationBatchService.runAllDueEvaluations', () => {
   });
 
   it('評価が失敗した記事は articlesFailed と result.failed に載る（Cron の FAIL 判定の入口）', async () => {
-    const dueRow = {
-      id: 'cycle-fail',
-      user_id: 'user-fail',
-      content_annotation_id: 'annotation-fail',
-      base_evaluation_date: '2020-01-01',
-      cycle_days: 30,
-      evaluation_hour: 0,
-      ga4_last_evaluated_on: '2020-01-01',
-      ga4_last_seen_content_score: 40,
-      ga4_next_evaluation_date: '2020-01-31',
-    };
-    mockRpcRange({ data: [dueRow], error: null, count: 1 });
+    mockRpcRange({ data: [buildDueRow()], error: null, count: 1 });
     // run() が例外を投げると unknown_error になる
     mocks.run.mockRejectedValue(new Error('boom'));
 
