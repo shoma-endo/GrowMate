@@ -1,18 +1,11 @@
 name: Content Annotation Summary Cron
 
-# AI要約一括のバックグラウンド実行を10分ごとに起動する
-# （docs/plans/content-annotation-bulk-summary-background-spec.md §11 ALT-002）。
+# 手動実行（workflow_dispatch）用。定期起動は vercel.json の Vercel Cron。
 #
 # hourly-cron.yml とは別ファイルにする理由: 起動間隔が違う（毎時 vs 10分）。
 # matrix 形式・profile の意味・各パラメータの読み方は hourly-cron.yml のコメントと同じ。
 #
-# **各ステップの `if` の schedule 文字列は下の cron 式と一致させること。**
-# hourly-cron.yml から `'0 * * * *'` のままコピーすると、workflow_dispatch では動くのに
-# 定期実行だけ何もしないワークフローになる。
-
 on:
-  schedule:
-    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -43,15 +36,9 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout
-        if: >-
-          github.event_name == 'workflow_dispatch' ||
-          github.event.schedule == '*/10 * * * *'
         uses: actions/checkout@v6
 
       - name: Invoke ${{ matrix.id }}
-        if: >-
-          github.event_name == 'workflow_dispatch' ||
-          github.event.schedule == '*/10 * * * *'
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
