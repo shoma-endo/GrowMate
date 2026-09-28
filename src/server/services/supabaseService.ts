@@ -5,6 +5,7 @@ import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
+import { asPendingClient, type CronRunLogDatabase, type CronRunLogInsert } from '@/types/database.types.pending';
 import {
   DbChatMessage,
   DbChatSession,
@@ -203,6 +204,18 @@ export class SupabaseService {
 
       throw error;
     }
+  }
+
+  static async insertCronRunLog(row: CronRunLogInsert): Promise<void> {
+    await this.withServiceRoleClient(
+      async client => {
+        const { error } = await asPendingClient<CronRunLogDatabase>(client)
+          .from('cron_run_logs')
+          .insert(row);
+        if (error) throw error;
+      },
+      { logMessage: null }
+    );
   }
 
   async getUserById(id: string): Promise<SupabaseResult<DbUser | null>> {
