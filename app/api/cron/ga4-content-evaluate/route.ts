@@ -5,7 +5,7 @@ import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 /**
  * GA4コンテンツ評価 定期バッチ Cron エンドポイント（docs/specs/ga4-content-evaluation-spec.md §8.3）
  *
- * GitHub Actions（`.github/workflows/hourly-cron.yml`）が毎時0分に GET で呼び出す。
+ * Vercel Cron（`vercel.json`）が毎時0分に GET で呼び出す。手動実行は GitHub Actions の `workflow_dispatch`。
  * 「GA4の次回評価予定日時 <= 現在日時」の記事のみ評価を実行する。
  *
  * スケジュール（基準日・サイクル日数・実行時刻）はGSC検索順位評価と同じ gsc_article_evaluations の
@@ -50,6 +50,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// GitHub Actions の invoke-cron.sh は GET で呼び出す
+// Vercel Cron と手動実行の invoke-cron.sh は GET で呼び出す
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;

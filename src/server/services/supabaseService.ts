@@ -5,6 +5,7 @@ import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
+import { asPendingClient, type CronRunLogDatabase, type CronRunLogInsert } from '@/types/database.types.pending';
 import {
   DbChatMessage,
   DbChatSession,
@@ -203,6 +204,18 @@ export class SupabaseService {
 
       throw error;
     }
+  }
+
+  static async insertCronRunLog(row: CronRunLogInsert): Promise<void> {
+    await this.withServiceRoleClient(
+      async client => {
+        const { error } = await asPendingClient<CronRunLogDatabase>(client)
+          .from('cron_run_logs')
+          .insert(row);
+        if (error) throw error;
+      },
+      { logMessage: null }
+    );
   }
 
   async getUserById(id: string): Promise<SupabaseResult<DbUser | null>> {
@@ -1322,6 +1335,29 @@ export class SupabaseService {
     }
 
     return this.success(undefined);
+  }
+
+  async claimGoogleAdsNegativeKeywordsAttempt(
+    userId: string,
+    todayJst: string
+  ): Promise<SupabaseResult<boolean>> {
+    const { data, error } = await this.supabase
+      .from('google_ads_negative_keywords_settings')
+      .update({ last_attempted_on: todayJst, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .or(`last_attempted_on.is.null,last_attempted_on.neq.${todayJst}`)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED, {
+        error,
+        developerMessage: 'Error claiming Google Ads negative keywords attempt',
+        context: { userId, todayJst },
+      });
+    }
+
+    return this.success(data !== null);
   }
 
   async listDueGoogleAdsNegativeKeywordsSettings(

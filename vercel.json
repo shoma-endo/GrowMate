@@ -1,0 +1,9 @@
+{
+  "crons": [
+    { "path": "/api/cron/gsc-evaluate", "schedule": "0 * * * *" },
+    { "path": "/api/cron/ga4-content-evaluate", "schedule": "0 * * * *" },
+    { "path": "/api/cron/google-ads-negative-keywords-suggestion", "schedule": "0 * * * *" },
+    { "path": "/api/cron/gsc-suggestions", "schedule": "0 * * * *" },
+    { "path": "/api/cron/content-annotation-summary", "schedule": "*/10 * * * *" }
+  ]
+}

@@ -10,6 +10,7 @@ import type {
 import { gscImportService } from '@/server/services/gscImportService';
 import { formatDateISO, addDaysISO } from '@/lib/date-utils';
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
+import type { TablesUpdate } from '@/types/database.types';
 
 class GscEvaluationService {
   private readonly supabaseService = new SupabaseService();
@@ -34,6 +35,7 @@ class GscEvaluationService {
       advanced: 0,
       baselineInitialized: 0,
       skippedNoMetrics: 0,
+      skippedClaimLost: 0,
       skippedImportFailed: 0,
       skippedSystemError: 0,
     };
@@ -139,6 +141,8 @@ class GscEvaluationService {
       for (const evalResult of results) {
         if (evalResult.status === 'skipped_no_metrics') {
           summary.skippedNoMetrics += 1;
+        } else if (evalResult.status === 'skipped_claim_lost') {
+          summary.skippedClaimLost += 1;
         } else if (evalResult.status === 'skipped_import_failed') {
           summary.skippedImportFailed += 1;
         } else if (evalResult.status === 'baseline_initialized') {
@@ -205,6 +209,7 @@ class GscEvaluationService {
     | { status: 'baseline_initialized' }
     | { status: 'skipped_import_failed' }
     | { status: 'skipped_no_metrics' }
+    | { status: 'skipped_claim_lost' }
   > {
     // 1. 最新メトリクスの取得試行
     let metric = await this.fetchLatestMetric(userId, evaluation);
@@ -248,6 +253,19 @@ class GscEvaluationService {
         ? 'Google Search Consoleのデータ一括取得に失敗したため、最新の指標を取得できませんでした。'
         : `この記事のメトリクスデータが見つかりませんでした。Google Search Consoleに記事が表示されているか確認してください。（次回再試行予定日: ${nextRetryDate}）`;
 
+      if (!bulkImportFailed) {
+        const claim = await this.claimEvaluation(evaluation, userId, {
+          last_evaluated_on: today,
+          updated_at: new Date().toISOString(),
+        });
+        if (!claim.claimed && !claim.error) {
+          return { status: 'skipped_claim_lost' };
+        }
+        if (claim.error) {
+          console.error(`[gscEvaluationService] Failed to claim evaluation ${evaluation.id}:`, claim.error);
+        }
+      }
+
       const { error: historyError } = await this.supabaseService
         .getClient()
         .from('gsc_article_evaluation_history')
@@ -269,10 +287,6 @@ class GscEvaluationService {
         );
       }
 
-      if (!bulkImportFailed) {
-        await this.updateCooldown(evaluation.id, userId, today);
-      }
-
       return { status: bulkImportFailed ? 'skipped_import_failed' : 'skipped_no_metrics' };
     }
 
@@ -281,6 +295,16 @@ class GscEvaluationService {
 
     if (currentPos === null) {
       const nextRetryDate = addDaysISO(today, evaluation.cycle_days || 30);
+      const claim = await this.claimEvaluation(evaluation, userId, {
+        last_evaluated_on: today,
+        updated_at: new Date().toISOString(),
+      });
+      if (!claim.claimed && !claim.error) {
+        return { status: 'skipped_claim_lost' };
+      }
+      if (claim.error) {
+        console.error(`[gscEvaluationService] Failed to claim evaluation ${evaluation.id}:`, claim.error);
+      }
       // 履歴にエラーを記録
       const { error: historyInsertError } = await this.supabaseService
         .getClient()
@@ -303,27 +327,20 @@ class GscEvaluationService {
         );
       }
 
-      await this.updateCooldown(evaluation.id, userId, today);
-
       return { status: 'skipped_no_metrics' };
     }
 
     // 初回評価はベースライン記録のみ（履歴・改善提案は生成しない）
     if (lastSeen === null) {
-      const { error: updateError } = await this.supabaseService
-        .getClient()
-        .from('gsc_article_evaluations')
-        .update({
+      const claim = await this.claimEvaluation(evaluation, userId, {
           last_seen_position: currentPos,
           last_evaluated_on: today,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', evaluation.id)
-        .eq('user_id', userId);
-
-      if (updateError) {
-        throw new Error(updateError.message || '評価レコード更新に失敗しました');
+        });
+      if (claim.error) {
+        throw new Error(claim.error.message || '評価レコード更新に失敗しました');
       }
+      if (!claim.claimed) return { status: 'skipped_claim_lost' };
 
       return { status: 'baseline_initialized' as const };
     }
@@ -345,21 +362,16 @@ class GscEvaluationService {
 
     // 更新: evaluations
     // base_evaluation_date は更新しない（固定された評価基準日として保持）
-    const { error: updateError } = await this.supabaseService
-      .getClient()
-      .from('gsc_article_evaluations')
-      .update({
+    const claim = await this.claimEvaluation(evaluation, userId, {
         last_seen_position: currentPos,
         last_evaluated_on: today,
         current_suggestion_stage: nextStage,
         updated_at: new Date().toISOString(),
-      })
-      .eq('id', evaluation.id)
-      .eq('user_id', userId);
-
-    if (updateError) {
-      throw new Error(updateError.message || '評価レコード更新に失敗しました');
+      });
+    if (claim.error) {
+      throw new Error(claim.error.message || '評価レコード更新に失敗しました');
     }
+    if (!claim.claimed) return { status: 'skipped_claim_lost' };
 
     // 挿入: history
     const { error: historyError } = await this.supabaseService
@@ -534,7 +546,7 @@ class GscEvaluationService {
         summary.totalImproved += result.improved;
         summary.totalAdvanced += result.advanced;
         summary.totalBaselineInitialized += result.baselineInitialized;
-        summary.totalSkipped += result.skippedNoMetrics;
+        summary.totalSkipped += result.skippedNoMetrics + result.skippedClaimLost;
         summary.totalImportFailed += result.skippedImportFailed;
         summary.totalSystemError += result.skippedSystemError;
       } catch (error) {
@@ -602,23 +614,23 @@ class GscEvaluationService {
     return 'no_change';
   }
 
-  private async updateCooldown(evaluationId: string, userId: string, today: string): Promise<void> {
-    const { error } = await this.supabaseService
+  private async claimEvaluation(
+    evaluation: GscEvaluationRow,
+    userId: string,
+    updates: TablesUpdate<'gsc_article_evaluations'>
+  ): Promise<{ claimed: boolean; error: { message: string } | null }> {
+    let query = this.supabaseService
       .getClient()
       .from('gsc_article_evaluations')
-      .update({
-        last_evaluated_on: today,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', evaluationId)
+      .update(updates)
+      .eq('id', evaluation.id)
       .eq('user_id', userId);
+    query = evaluation.last_evaluated_on == null
+      ? query.is('last_evaluated_on', null)
+      : query.eq('last_evaluated_on', evaluation.last_evaluated_on);
 
-    if (error) {
-      console.error(
-        `[gscEvaluationService] Failed to update last_evaluated_on for ${evaluationId}:`,
-        error
-      );
-    }
+    const { data, error } = await query.select('id').maybeSingle();
+    return { claimed: data !== null, error };
   }
 
   private toNumberOrNull(value: unknown): number | null {
