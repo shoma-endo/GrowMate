@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database, Json } from './database.types';
+import type { Database } from './database.types';
 
 /**
  * 生成型（`database.types.ts`）を部分的に差し替えて Supabase クライアントを使うための型置き場。
@@ -70,109 +70,6 @@ export type Ga4ContentEvaluationScheduleDatabase = Omit<Database, 'public'> & {
       list_due_ga4_content_evaluations: {
         Args: { p_today_jst: string };
         Returns: Ga4DueEvaluationRow[];
-      };
-    };
-  };
-};
-
-/**
- * PROVISIONAL: supabase/migrations/20260928220845_add_cron_run_logs.sql
- *
- * 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
- * このブロックを削除し、呼び出し側を生成済みの `cron_run_logs` 型へ切り替える
- * （`.agents/skills/supabase/service-usage.md` §6）。
- */
-type CronRunLogRow = {
-  id: string;
-  cron_name: string;
-  event: string;
-  level: 'info' | 'warn' | 'error';
-  environment: 'production' | 'preview' | 'local';
-  details: Json;
-  logged_at: string;
-  created_at: string;
-};
-
-export type CronRunLogInsert = {
-  id?: string;
-  cron_name: string;
-  event: string;
-  level: 'info' | 'warn' | 'error';
-  environment: 'production' | 'preview' | 'local';
-  details?: Json;
-  logged_at: string;
-  created_at?: string;
-};
-
-type CronRunLogUpdate = Partial<CronRunLogInsert>;
-
-export type CronRunLogDatabase = Omit<Database, 'public'> & {
-  public: Omit<Database['public'], 'Tables'> & {
-    Tables: Database['public']['Tables'] & {
-      cron_run_logs: {
-        Row: CronRunLogRow;
-        Insert: CronRunLogInsert;
-        Update: CronRunLogUpdate;
-        Relationships: [];
-      };
-    };
-  };
-};
-
-/** 20260925000000 で追加する率の生成列 */
-interface InstagramMediaRateColumns {
-  like_rate: number | null;
-  saved_rate: number | null;
-  share_rate: number | null;
-  comment_rate: number | null;
-  repost_rate: number | null;
-}
-type InstagramMediaRateColumnName = keyof InstagramMediaRateColumns;
-
-/**
- * PROVISIONAL: supabase/migrations/20260925000000_add_instagram_media_rate_columns.sql
- *
- * 管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、
- * このブロックを削除し、呼び出し側（`instagramMediaService` の `getPage` / `mapMediaRow`）を
- * 生成済みの `Tables<'instagram_media'>` へ切り替える（`.agents/skills/supabase/service-usage.md` §6）。
- * 生成列なので Insert / Update では書き込めない（`never`）。
- */
-export type InstagramMediaRatesDatabase = Omit<Database, 'public'> & {
-  public: Omit<Database['public'], 'Tables'> & {
-    Tables: Omit<Database['public']['Tables'], 'instagram_media'> & {
-      instagram_media: {
-        Row: Database['public']['Tables']['instagram_media']['Row'] & InstagramMediaRateColumns;
-        Insert: Database['public']['Tables']['instagram_media']['Insert'] & {
-          [K in InstagramMediaRateColumnName]?: never;
-        };
-        Update: Database['public']['Tables']['instagram_media']['Update'] & {
-          [K in InstagramMediaRateColumnName]?: never;
-        };
-        Relationships: Database['public']['Tables']['instagram_media']['Relationships'];
-      };
-    };
-  };
-};
-
-/**
- * PROVISIONAL: supabase/migrations/20260926000000_add_sort_to_get_filtered_content_annotations.sql
- *
- * ブログ一覧 RPC に並べ替えの引数（`p_sort_key` / `p_sort_order` / `p_start_date` / `p_end_date`）を
- * 足した。管理者がマイグレーションを適用し `npm run supabase:types` を実行した後、このブロックを削除し、
- * 呼び出し側（`analyticsContentService.getPage`）を生成型のクライアントへ戻す
- * （`.agents/skills/supabase/service-usage.md` §6）。
- */
-export type AnalyticsContentSortDatabase = Omit<Database, 'public'> & {
-  public: Omit<Database['public'], 'Functions'> & {
-    Functions: Omit<Database['public']['Functions'], 'get_filtered_content_annotations'> & {
-      get_filtered_content_annotations: {
-        Args: Database['public']['Functions']['get_filtered_content_annotations']['Args'] & {
-          p_sort_key?: string;
-          p_sort_order?: string;
-          p_start_date?: string;
-          p_end_date?: string;
-        };
-        Returns: Database['public']['Functions']['get_filtered_content_annotations']['Returns'];
       };
     };
   };
