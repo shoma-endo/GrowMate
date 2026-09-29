@@ -22,12 +22,15 @@ import {
 import { emailService } from '@/server/services/emailService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { canFetchWpPostContentLive } from '@/server/services/wordpressContentSync';
-import {
-  asPendingClient,
-  type ContentAnnotationSummaryClaimedJob,
-  type ContentAnnotationSummaryJobDatabase,
-  type ContentAnnotationSummaryJobRow,
-} from '@/types/database.types.pending';
+import type { Database, Tables } from '@/types/database.types';
+
+type ContentAnnotationSummaryJobRow = Tables<'content_annotation_summary_jobs'>;
+/**
+ * claim RPC が返す1行。`attempt_count` は加算後の値で、
+ * 意味は「前進の無い claim が連続した回数」（migration のコメント参照）。
+ */
+type ContentAnnotationSummaryClaimedJob =
+  Database['public']['Functions']['claim_content_annotation_summary_jobs']['Returns'][number];
 
 /**
  * AI要約一括のバックグラウンド実行（ジョブ処理サービス）。
@@ -143,10 +146,6 @@ async function runWithItemTimeLimit(
 }
 
 class ContentAnnotationSummaryJobService extends SupabaseService {
-  private pendingClient() {
-    return asPendingClient<ContentAnnotationSummaryJobDatabase>(this.getClient());
-  }
-
   // ===== 起票・進捗表示（Server Action / サーバーコンポーネントから使う） =====
 
   /**
@@ -154,7 +153,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
    * BR-B07 の進捗表示の両方で使う。**必ず `user_id` でスコープする**（Service Role 経路）。
    */
   async findActiveJob(userId: string): Promise<ActiveSummaryJobProgress | null> {
-    const { data, error } = await this.pendingClient()
+    const { data, error } = await this.getClient()
       .from(TABLE)
       .select('id, processed_count, total_count')
       .eq('user_id', userId)
@@ -195,7 +194,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
   > {
     const { userId, targetAnnotationIds } = params;
 
-    const { data, error } = await this.pendingClient()
+    const { data, error } = await this.getClient()
       .from(TABLE)
       .insert({
         user_id: userId,
@@ -311,7 +310,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
 
   /** claim（排他取得）。ジョブ固有のロジックはここに持ち込まない */
   private async claimJobs(limit: number): Promise<ContentAnnotationSummaryClaimedJob[]> {
-    const { data, error } = await this.pendingClient().rpc(
+    const { data, error } = await this.getClient().rpc(
       'claim_content_annotation_summary_jobs',
       { p_limit: limit }
     );
@@ -335,7 +334,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
     totals: ChunkTotals;
   }): Promise<boolean> {
     const { jobId, jobToken, totals } = params;
-    const { data, error } = await this.pendingClient()
+    const { data, error } = await this.getClient()
       .from(TABLE)
       .update({
         processed_count: totals.processedCount,
@@ -373,7 +372,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
     status: 'pending' | 'completed' | 'failed',
     options: { lastError?: string } = {}
   ): Promise<ContentAnnotationSummaryJobRow | null> {
-    const { data, error } = await this.pendingClient()
+    const { data, error } = await this.getClient()
       .from(TABLE)
       .update({
         status,
@@ -648,7 +647,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
       Date.now() - CONTENT_ANNOTATION_SUMMARY_JOB_NOTIFY_MAX_AGE_MS
     ).toISOString();
 
-    const { data, error } = await this.pendingClient()
+    const { data, error } = await this.getClient()
       .from(TABLE)
       .select('*')
       .in('status', ['completed', 'failed'])
@@ -774,7 +773,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
 
   /** `notified_at` を打つ。**書けたかどうかを返す**（呼び出し側が失敗を計上するため） */
   private async markNotified(jobId: string): Promise<boolean> {
-    const { error } = await this.pendingClient()
+    const { error } = await this.getClient()
       .from(TABLE)
       .update({ notified_at: new Date().toISOString() })
       .eq('id', jobId)
@@ -790,7 +789,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
   }
 
   private async recordNotificationFailure(jobId: string, reason?: string): Promise<void> {
-    const { error } = await this.pendingClient()
+    const { error } = await this.getClient()
       .from(TABLE)
       .update({ last_error: `completion_email_failed: ${reason ?? 'unknown'}` })
       .eq('id', jobId);
