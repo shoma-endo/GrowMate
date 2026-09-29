@@ -110,9 +110,7 @@ describe('時間予算から1件分の予算を算出する（BR-03）', () => {
       CONTENT_ANNOTATION_BULK_SUMMARY_MIN_ITEM_BUDGET_MS;
     expect(computeSummaryItemBudgetMs(elapsed)).not.toBeNull();
     expect(computeSummaryItemBudgetMs(elapsed + 1)).toBeNull();
-  });
-
-  it('予算を超過していても null（負の値を渡さない）', () => {
+    // 予算を超過していても負の値を渡さない
     expect(computeSummaryItemBudgetMs(CONTENT_ANNOTATION_BULK_SUMMARY_TIME_BUDGET_MS * 2)).toBeNull();
   });
 

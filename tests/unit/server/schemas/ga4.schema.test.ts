@@ -38,12 +38,8 @@ describe('@/server/schemas/ga4.schema', () => {
       ).toBe(true);
     });
 
-    it('propertyId欠落を拒否する', () => {
-      expect(ga4SettingsSchema.safeParse({}).success).toBe(false);
-    });
-
-    it('空のpropertyIdを拒否する', () => {
-      expect(ga4SettingsSchema.safeParse({ propertyId: '' }).success).toBe(false);
+    it.each([{}, { propertyId: '' }])('propertyId が欠落・空なら拒否する: %o', value => {
+      expect(ga4SettingsSchema.safeParse(value).success).toBe(false);
     });
 
     it.each([0, 86400])('engagement境界値 %s を受理する', value => {

@@ -13,9 +13,6 @@ describe('gsc-bulk-evaluation', () => {
   describe('normalizeBulkTargetIds', () => {
     it('空白と重複を除去し、最初の出現順を保つ', () => {
       expect(normalizeBulkTargetIds([' a ', '', 'b', 'a', '  ', ' b '])).toEqual(['a', 'b']);
-    });
-
-    it('すべて空白なら空配列を返す', () => {
       expect(normalizeBulkTargetIds(['', '  ', '\t'])).toEqual([]);
     });
   });
@@ -35,28 +32,17 @@ describe('gsc-bulk-evaluation', () => {
   });
 
   describe('planBulkEvaluationInserts', () => {
-    it('既登録がなければ全件を投入対象にする', () => {
-      expect(
-        planBulkEvaluationInserts({ candidateIds: ['a', 'b'], existingIds: new Set() })
-      ).toEqual({ toInsertIds: ['a', 'b'], skippedAlreadyRegisteredCount: 0 });
-    });
-
-    it('全件既登録なら全件をスキップする', () => {
-      expect(
-        planBulkEvaluationInserts({
-          candidateIds: ['a', 'b'],
-          existingIds: new Set(['a', 'b']),
-        })
-      ).toEqual({ toInsertIds: [], skippedAlreadyRegisteredCount: 2 });
-    });
-
-    it('既登録分を差し引く', () => {
+    it.each([
+      ['既登録なし', [], ['a', 'b', 'c'], 0],
+      ['一部既登録', ['b'], ['a', 'c'], 1],
+      ['全件既登録', ['a', 'b', 'c'], [], 3],
+    ])('既登録分を差し引く（%s）', (_label, existing, toInsertIds, skippedAlreadyRegisteredCount) => {
       expect(
         planBulkEvaluationInserts({
           candidateIds: ['a', 'b', 'c'],
-          existingIds: new Set(['b']),
+          existingIds: new Set(existing),
         })
-      ).toEqual({ toInsertIds: ['a', 'c'], skippedAlreadyRegisteredCount: 1 });
+      ).toEqual({ toInsertIds, skippedAlreadyRegisteredCount });
     });
   });
 });
