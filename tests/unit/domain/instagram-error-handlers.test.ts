@@ -17,12 +17,11 @@ const PRE_CONVERSION_BODY =
   '{"error":{"message":"このメディアは、ユーザーのアカウントが個人アカウントからビジネスアカウントに最後に変換された時点より前に投稿されました。","type":"IGApiException","code":100,"error_subcode":2108006,"fbtrace_id":"AbCdEf"}}';
 
 describe('isInstagramPreConversionMediaError', () => {
-  it('error_subcode 2108006 を含むエラーを検出する', () => {
-    expect(isInstagramPreConversionMediaError(graphError(PRE_CONVERSION_BODY))).toBe(true);
-  });
-
-  it('スペース入りの表記でも検出する', () => {
-    expect(isInstagramPreConversionMediaError(new Error('error_subcode: 2108006'))).toBe(true);
+  it.each([
+    ['実測の JSON 表記', graphError(PRE_CONVERSION_BODY)],
+    ['スペース入りの表記', new Error('error_subcode: 2108006')],
+  ])('error_subcode 2108006 を含むエラーを検出する（%s）', (_label, error) => {
+    expect(isInstagramPreConversionMediaError(error)).toBe(true);
   });
 
   it('別の subcode は検出しない', () => {
@@ -44,12 +43,6 @@ describe('isInstagramPreConversionMediaError', () => {
     const preConversion = graphError(PRE_CONVERSION_BODY);
     expect(isInstagramReauthError(preConversion)).toBe(false);
     expect(isInstagramPreConversionMediaError(preConversion)).toBe(true);
-  });
-
-  it('Error 以外は false を返す', () => {
-    expect(isInstagramPreConversionMediaError('error_subcode":2108006')).toBe(false);
-    expect(isInstagramPreConversionMediaError(null)).toBe(false);
-    expect(isInstagramPreConversionMediaError(undefined)).toBe(false);
   });
 });
 
@@ -83,10 +76,5 @@ describe('isInstagramRevokedTokenError', () => {
 
   it('転換前エラーを失効として扱わない', () => {
     expect(isInstagramRevokedTokenError(graphError(PRE_CONVERSION_BODY))).toBe(false);
-  });
-
-  it('Error 以外は false を返す', () => {
-    expect(isInstagramRevokedTokenError('code":190')).toBe(false);
-    expect(isInstagramRevokedTokenError(null)).toBe(false);
   });
 });

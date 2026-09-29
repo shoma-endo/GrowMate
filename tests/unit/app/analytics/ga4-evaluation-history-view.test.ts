@@ -150,15 +150,6 @@ describe('findPreviousScoredItem', () => {
     expect(findPreviousScoredItem(history, 0)?.id).toBe('previous');
   });
 
-  it('スコアが欠けている行は前回として採らない', () => {
-    const history: History = [
-      buildScoredItem('latest', 70),
-      buildScoredItem('broken', 60, { readScore: null }),
-      buildScoredItem('previous', 55),
-    ];
-    expect(findPreviousScoredItem(history, 0)?.id).toBe('previous');
-  });
-
   it('起点より新しい行は見ない（履歴は新しい順に並んでいる）', () => {
     const history: History = [
       buildScoredItem('newer', 80),

@@ -60,11 +60,14 @@ describe('normalizeHeadingUnitContent', () => {
     );
   });
 
-  it('区切りなし独自形式は後続の正本見出しと一致する場合だけ境界として扱う', () => {
-    const content = ['H2直下の導入本文です。', '', 'H3次の見出し', '', '後続本文です。'].join('\n');
+  it.each([
+    ['区切りなし', 'H3次の見出し'],
+    ['コロン付き', 'H3: 次の見出し'],
+  ])('%s独自形式は後続の正本見出しと一致する場合だけ境界として扱う', (_label, headingLine) => {
+    const content = ['現在の本文です。', '', headingLine, '', '後続本文です。'].join('\n');
 
     expect(normalizeHeadingUnitContent(content, '現在の見出し', ['次の見出し'])).toBe(
-      'H2直下の導入本文です。'
+      '現在の本文です。'
     );
   });
 
@@ -98,14 +101,6 @@ describe('normalizeHeadingUnitContent', () => {
       );
     }
   );
-
-  it('コロン付き独自形式は後続の正本見出しと一致する場合だけ境界として扱う', () => {
-    const content = ['現在の本文です。', '', 'H3: 次の見出し', '', '後続本文です。'].join('\n');
-
-    expect(normalizeHeadingUnitContent(content, '現在の見出し', ['次の見出し'])).toBe(
-      '現在の本文です。'
-    );
-  });
 
   it('fenced code block内の見出し風テキストを保持する', () => {
     const content = ['本文です。', '', '```md', '### コード例', '```', '', '続きです。'].join('\n');

@@ -31,12 +31,11 @@ describe('dateStringSchema', () => {
 });
 
 describe('validateDateRange', () => {
-  it('開始日が終了日より前なら受理する', () => {
-    expect(validateDateRange('2026-01-01', '2026-01-31')).toBeNull();
-  });
-
-  it('開始日と終了日が同日でも受理する', () => {
-    expect(validateDateRange('2026-01-01', '2026-01-01')).toBeNull();
+  it.each([
+    ['開始日が終了日より前', '2026-01-31'],
+    ['同日（境界）', '2026-01-01'],
+  ])('%sなら受理する', (_label, endDate) => {
+    expect(validateDateRange('2026-01-01', endDate)).toBeNull();
   });
 
   it('開始日が終了日より後なら拒否する', () => {

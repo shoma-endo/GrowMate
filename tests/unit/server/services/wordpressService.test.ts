@@ -36,52 +36,42 @@ describe('WordPressService（REST API フォールバック）', () => {
       vi.unstubAllGlobals();
     });
 
-    it('セルフホストの投稿検索でwp-jsonが失敗した場合にrest_routeを試す', async () => {
+    it.each([
+      {
+        label: '投稿検索',
+        call: (service: WordPressService) => service.findExistingContent('sample-post'),
+        body: [{ ID: 42, slug: 'sample-post' }],
+        expectedData: { id: 42, slug: 'sample-post' },
+        expectedUrls: [
+          'https://example.com/wp-json/wp/v2/posts?slug=sample-post',
+          'https://example.com/index.php?rest_route=/wp/v2/posts&slug=sample-post',
+        ],
+      },
+      {
+        label: 'ID取得',
+        call: (service: WordPressService) => service.resolveContentById(42),
+        body: { ID: 42, title: { rendered: '記事タイトル' } },
+        expectedData: { id: 42, title: { rendered: '記事タイトル' } },
+        expectedUrls: [
+          expect.any(String),
+          'https://example.com/index.php?rest_route=/wp/v2/posts/42&_embed=true',
+        ],
+      },
+    ])('セルフホストの$labelでwp-jsonが失敗した場合にrest_routeを試す', async ({ call, body, expectedData, expectedUrls }) => {
       fetchMock
         .mockResolvedValueOnce(new Response('Forbidden', { status: 403, statusText: 'Forbidden' }))
         .mockResolvedValueOnce(
-          new Response(JSON.stringify([{ ID: 42, slug: 'sample-post' }]), {
+          new Response(JSON.stringify(body), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           })
         );
 
-      const result = await createSelfHostedService().findExistingContent('sample-post');
+      const result = await call(createSelfHostedService());
 
-      expect(result).toEqual({ success: true, data: { id: 42, slug: 'sample-post' } });
+      expect(result).toEqual({ success: true, data: expectedData });
       expect(result.data).not.toHaveProperty('ID');
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        1,
-        'https://example.com/wp-json/wp/v2/posts?slug=sample-post',
-        expect.any(Object)
-      );
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        2,
-        'https://example.com/index.php?rest_route=/wp/v2/posts&slug=sample-post',
-        expect.any(Object)
-      );
-    });
-
-    it('セルフホストのID取得でもrest_routeを試す', async () => {
-      fetchMock
-        .mockResolvedValueOnce(new Response('Forbidden', { status: 403, statusText: 'Forbidden' }))
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ ID: 42, title: { rendered: '記事タイトル' } }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          })
-        );
-
-      const result = await createSelfHostedService().resolveContentById(42);
-
-      expect(result.success).toBe(true);
-      expect(result.data).toEqual({ id: 42, title: { rendered: '記事タイトル' } });
-      expect(result.data).not.toHaveProperty('ID');
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(fetchMock).toHaveBeenLastCalledWith(
-        'https://example.com/index.php?rest_route=/wp/v2/posts/42&_embed=true',
-        expect.any(Object)
-      );
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(expectedUrls);
     });
 
     it('WordPress標準のJSON 404はフォールバックせず固定ページ検索へ進む', async () => {

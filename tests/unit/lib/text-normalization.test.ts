@@ -70,9 +70,6 @@ describe('@/lib/content-text', () => {
       // 正規化後は 'A & B'（5文字）だが、空白2つを除いて 'A&B' の3文字
       expect(countContentChars(' A  &amp;  B ')).toBe(3);
       expect(countContentChars(null)).toBe(0);
-    });
-
-    it('全角スペース・改行・タブも文字数に入れない', () => {
       // 全角スペース（U+3000）は \s に含まれる。改行・タブは normalizeContentText が
       // 半角スペースへ畳むが、そのスペースもここで消える
       expect(countContentChars('あ　い')).toBe(2);

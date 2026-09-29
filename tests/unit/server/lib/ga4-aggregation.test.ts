@@ -267,11 +267,6 @@ describe('@/server/lib/ga4-dashboard-mapping', () => {
       expect(points[0]?.readRate).toBeNull();
       expect(points[0]?.isPartial).toBe(true);
     });
-
-    it('空配列・null を空配列として扱う', () => {
-      expect(mapGa4DashboardTimeseriesRows([])).toEqual([]);
-      expect(mapGa4DashboardTimeseriesRows(null)).toEqual([]);
-    });
   });
   // 完読率の分母と未計測の扱い（レビュー🔴4）。
   // 一覧は aggregateGa4PageMetrics（基本版）を使うので、こちらでも

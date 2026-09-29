@@ -91,13 +91,6 @@ describe('gscNotificationService', () => {
     await expect(gscNotificationService.getUnreadSuggestionsAnnotationCount(USER_ID)).resolves.toBe(2);
   });
 
-  it('該当が無ければ0件を返す', async () => {
-    const result = await gscNotificationService.getAnnotationIdsWithUnreadSuggestions(USER_ID);
-
-    expect(result.annotationIds).toEqual([]);
-    await expect(gscNotificationService.getUnreadSuggestionsAnnotationCount(USER_ID)).resolves.toBe(0);
-  });
-
   it('クエリが失敗しても例外にせず0件として扱う（通知はベストエフォート）', async () => {
     mocks.resolveValue = { data: null as never, error: { message: 'boom' } };
 

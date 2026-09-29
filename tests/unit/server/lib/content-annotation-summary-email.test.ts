@@ -151,21 +151,11 @@ describe('完了メールの本文', () => {
     expect(html).not.toContain('href="/setup/wordpress"');
   });
 
-  it('completed では「もう一度実行すると続きから進む」旨を出さない（誤案内になる）', () => {
-    const { html } = buildContentAnnotationSummaryEmail({
-      ...base,
-      succeededCount: 100,
-      unprocessedCount: 0,
-    });
-    expect(html).not.toContain('残りの記事から続けられます');
-  });
-
-  it('completed かつ成功0件でも「続きから」を出さない（全件処理は終わっている）', () => {
-    const { html } = buildContentAnnotationSummaryEmail({
-      ...base,
-      failedCount: 267,
-      failedByCode: { SUMMARY_CONTENT_FETCH_FAILED: 267 },
-    });
+  it.each([
+    ['成功あり', { succeededCount: 100, unprocessedCount: 0 }],
+    ['成功0件', { failedCount: 267, failedByCode: { SUMMARY_CONTENT_FETCH_FAILED: 267 } }],
+  ])('completed（%s）では「もう一度実行すると続きから進む」旨を出さない（誤案内になる）', (_label, counts) => {
+    const { html } = buildContentAnnotationSummaryEmail({ ...base, ...counts });
     expect(html).not.toContain('残りの記事から続けられます');
   });
 
