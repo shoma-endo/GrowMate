@@ -21,6 +21,7 @@
 
 - 正しさ・安全を守るルール（`react-hooks/exhaustive-deps`、`@typescript-eslint/no-explicit-any`、型エラー全般など）の違反は、抑制せずにコードを直す。
 - 新たに足してよいのは、ルールが誤検知している・書式だけのルールであるときに限る。理由を同じ行に書く（例: `// eslint-disable-next-line <rule> -- <理由>`）。
+- 例外: 型エラーになること自体を検証する型テストの `@ts-expect-error` は使ってよい（例: `tests/unit/types/database-types-pending.test.ts`）。同じ行に期待するエラーを書く。
 - 抑制を含むコードに触れたら、そのルールが何を防ぐかを確かめ、直せるなら同じ差分で抑制を外す。
 
 **書き方**:
