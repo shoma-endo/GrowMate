@@ -1,8 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
-import type { Database, TablesInsert } from '@/types/database.types';
-import { asPendingClient, type InstagramMediaRatesDatabase } from '@/types/database.types.pending';
+import type { Database, Tables, TablesInsert } from '@/types/database.types';
 import { INSTAGRAM_MEDIA_THUMBNAIL_BUCKET } from '@/lib/constants';
 import type {
   InstagramMediaListItem,
@@ -100,9 +99,7 @@ function toRate(value: number | string | null | undefined): number | null {
   return value == null ? null : Number(value);
 }
 
-function mapMediaRow(
-  row: InstagramMediaRatesDatabase['public']['Tables']['instagram_media']['Row']
-): InstagramMediaListItem {
+function mapMediaRow(row: Tables<'instagram_media'>): InstagramMediaListItem {
   const reason = row.insights_unavailable_reason;
   const unavailableReason: InstagramMediaListItem['insightsUnavailableReason'] =
     reason === 'pre_conversion' || reason === 'retention_expired' ? reason : null;
@@ -148,7 +145,7 @@ class InstagramMediaService extends SupabaseService {
    * 1ユーザーあたり数千件までは許容。超えたら planned count か keyset ページングへ移す。
    */
   async getPage(userId: string, query: InstagramMediaQuery): Promise<InstagramMediaPageResult> {
-    const client = asPendingClient<InstagramMediaRatesDatabase>(this.getClient());
+    const client = this.getClient();
 
     const runQuery = async (page: number) => {
       const offset = (page - 1) * query.perPage;

@@ -13,7 +13,6 @@ import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import {
   asPendingClient,
   type Ga4ContentEvaluationScheduleDatabase,
-  type GscEvaluationHistoryMemoDatabase,
 } from '@/types/database.types.pending';
 import { canAccessGa4, canWriteGa4 } from '@/server/lib/ga4-permissions';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
@@ -186,10 +185,8 @@ export async function fetchGscDetail(
       throw new Error(metricError.message);
     }
 
-    // memo列はマイグレーション適用・型再生成まで生成型に存在しないため pending 型を経由する。
-    const { data: history, error: historyError } = await asPendingClient<GscEvaluationHistoryMemoDatabase>(
-      supabaseService.getClient()
-    )
+    const { data: history, error: historyError } = await supabaseService
+      .getClient()
       .from('gsc_article_evaluation_history')
       .select('*')
       .eq('user_id', annotationUserId)
@@ -299,9 +296,8 @@ export async function saveEvaluationHistoryMemo(
 
     const { userId } = authId;
     const savedMemo = parsed.data.memo.trim() === '' ? null : parsed.data.memo;
-    const { data, error } = await asPendingClient<GscEvaluationHistoryMemoDatabase>(
-      supabaseService.getClient()
-    )
+    const { data, error } = await supabaseService
+      .getClient()
       .from('gsc_article_evaluation_history')
       .update({ memo: savedMemo })
       .eq('id', parsed.data.historyId)

@@ -294,6 +294,39 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_run_logs: {
+        Row: {
+          created_at: string
+          cron_name: string
+          details: Json
+          environment: string
+          event: string
+          id: string
+          level: string
+          logged_at: string
+        }
+        Insert: {
+          created_at?: string
+          cron_name: string
+          details?: Json
+          environment: string
+          event: string
+          id?: string
+          level: string
+          logged_at: string
+        }
+        Update: {
+          created_at?: string
+          cron_name?: string
+          details?: Json
+          environment?: string
+          event?: string
+          id?: string
+          level?: string
+          logged_at?: string
+        }
+        Relationships: []
+      }
       ga4_content_evaluation_cycles: {
         Row: {
           base_evaluation_date: string
@@ -1288,6 +1321,7 @@ export type Database = {
           avg_watch_time_ms: number | null
           cached_thumbnail_path: string | null
           caption: string | null
+          comment_rate: number | null
           comments_count: number | null
           created_at: string
           engagement_rate: number | null
@@ -1297,6 +1331,7 @@ export type Database = {
           insights_unavailable: boolean
           insights_unavailable_reason: string | null
           like_count: number | null
+          like_rate: number | null
           media_product_type: string
           media_type: string
           media_url: string | null
@@ -1304,8 +1339,11 @@ export type Database = {
           posted_at: string
           reach: number | null
           reels_skip_rate: number | null
+          repost_rate: number | null
           reposts: number | null
           saved: number | null
+          saved_rate: number | null
+          share_rate: number | null
           shares: number | null
           thumbnail_url: string | null
           total_interactions: number | null
@@ -1318,6 +1356,7 @@ export type Database = {
           avg_watch_time_ms?: number | null
           cached_thumbnail_path?: string | null
           caption?: string | null
+          comment_rate?: number | null
           comments_count?: number | null
           created_at?: string
           engagement_rate?: number | null
@@ -1327,6 +1366,7 @@ export type Database = {
           insights_unavailable?: boolean
           insights_unavailable_reason?: string | null
           like_count?: number | null
+          like_rate?: number | null
           media_product_type: string
           media_type: string
           media_url?: string | null
@@ -1334,8 +1374,11 @@ export type Database = {
           posted_at: string
           reach?: number | null
           reels_skip_rate?: number | null
+          repost_rate?: number | null
           reposts?: number | null
           saved?: number | null
+          saved_rate?: number | null
+          share_rate?: number | null
           shares?: number | null
           thumbnail_url?: string | null
           total_interactions?: number | null
@@ -1348,6 +1391,7 @@ export type Database = {
           avg_watch_time_ms?: number | null
           cached_thumbnail_path?: string | null
           caption?: string | null
+          comment_rate?: number | null
           comments_count?: number | null
           created_at?: string
           engagement_rate?: number | null
@@ -1357,6 +1401,7 @@ export type Database = {
           insights_unavailable?: boolean
           insights_unavailable_reason?: string | null
           like_count?: number | null
+          like_rate?: number | null
           media_product_type?: string
           media_type?: string
           media_url?: string | null
@@ -1364,8 +1409,11 @@ export type Database = {
           posted_at?: string
           reach?: number | null
           reels_skip_rate?: number | null
+          repost_rate?: number | null
           reposts?: number | null
           saved?: number | null
+          saved_rate?: number | null
+          share_rate?: number | null
           shares?: number | null
           thumbnail_url?: string | null
           total_interactions?: number | null
@@ -1853,6 +1901,7 @@ export type Database = {
       }
       get_filtered_content_annotations: {
         Args: {
+          p_end_date?: string
           p_has_unread_suggestion?: boolean
           p_has_unstarted_ga4_evaluation?: boolean
           p_has_unstarted_gsc_evaluation?: boolean
@@ -1861,6 +1910,9 @@ export type Database = {
           p_page: number
           p_per_page: number
           p_selected_category_names?: string[]
+          p_sort_key?: string
+          p_sort_order?: string
+          p_start_date?: string
           p_user_id: string
         }
         Returns: {
