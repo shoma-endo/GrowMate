@@ -55,7 +55,8 @@ UI・外部 API・Supabase を含む変更は、`spec-to-pr` によるPR作成�
   "scripts": {
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "verify": "npm audit --omit=dev --audit-level=high && npm run lint && npm run test && npm run build && npm run knip"
+    "test:related": "vitest related --run",
+    "verify": "npm audit --omit=dev --audit-level=high && npm run lint && npm run test:coverage && npm run build && npm run knip"
   }
 }
 ```
@@ -200,12 +201,12 @@ VitestはPostgreSQL関数自体を実行しないため、「DBとの同一挙�
 
 ### ローカル・TAKT品質ゲート
 
-- `package.json` の `verify` に `npm run test` を組み込む
+- `package.json` の `verify` に `npm run test:coverage` を組み込む（閾値は「[閾値の合意記録](#閾値の合意記録2026-09-03)」）
 - `.agents/skills/quality-gate/SKILL.md` の品質ゲート記述を、audit → lint → test → build → knipへ同期する
 - `spec-to-pr` は既存どおり `npm run verify` を実行することでテストを必須通過する
 - `.agents/skills/spec-review/SKILL.md` の完全性チェックへ「純関数・正規化・集計・日付・分離済みZodスキーマを変更する場合、仕様書に追加・更新するテストケースと期待結果が明記されているか」を追加し、将来の仕様書に対する確認ルールの正本とする
 - Skill更新後に `npm run verify:agent-skills` を実行する
-- `.husky/pre-push` を `npm run test && npm run build && npm run knip` に更新し、push前にもコアロジックテストを実行する。pre-commitは既存どおりlintのみとする
+- pre-push（`.husky/pre-push` → `scripts/pre-push.sh`）で `npm run test:coverage && npm run build && npm run knip` を実行し、push前にもコアロジックテストを実行する。pre-commitは既存どおりlintのみとする
 - TAKT `spec-to-pr` の `create_pr` は通常の `git push` を実行し、pre-pushフックも実行する。TAKTの `npm run verify` とフックの検証が重複するが、ローカルとTAKT双方の完了ゲートとして維持する
 
 ### CI
@@ -228,7 +229,7 @@ test:
     - name: Install dependencies
       run: npm ci
     - name: Run tests
-      run: npm run test
+      run: npm run test:coverage
 ```
 
 通知ジョブでは次の両方を更新し、テスト失敗をLark通知でも失敗として扱う。

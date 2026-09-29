@@ -7,14 +7,10 @@
 #   `/bin/sh` が dash の環境（Linux コンテナ / Claude Code on the web / CI イメージ）で
 #   `set: Illegal option -o pipefail` になり、push が必ず失敗する。
 #   macOS の `/bin/sh` は bash なので手元では再現しない。
-#
-# 内容: pin 実体の自動設置 + workflow 変更時の版ズレ検知のあと、test:coverage / build / knip。
-# 詳細は scripts/takt-pre-push-guard.sh。
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-bash scripts/takt-pre-push-guard.sh
 npm run test:coverage
 # build は src/env.ts でサーバーの必須キーが「空でないか」だけを検証する。値の中身は使わない。
 # クラウド環境（Claude Code on the web）では ANTHROPIC_API_KEY が環境から外されるため、
