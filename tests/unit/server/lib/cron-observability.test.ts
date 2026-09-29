@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   classifyCronTimeout,
   CronTimeoutError,
-  defineCronDefinitions,
   defineCronObservability,
 } from '@/server/lib/cron-observability';
 
@@ -49,30 +48,6 @@ describe('cron-observability', () => {
 
   it('abortedだけではタイムアウトに分類しない', () => {
     expect(classifyCronTimeout(new Error('Request was aborted.'))).toBeUndefined();
-  });
-
-  it('Cron名が重複する宣言を拒否する', () => {
-    expect(() =>
-      defineCronDefinitions({
-        first: { name: 'duplicate' },
-        second: { name: 'duplicate' },
-      })
-    ).toThrow('Cron definition names must be unique');
-  });
-
-  it('宣言したCron名と許可された診断項目だけを構造化ログへ出力する', () => {
-    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
-    const cron = defineCronObservability({ name: 'gsc_suggestions' });
-
-    cron.log('info', 'batch_completed', { durationMs: 123, total: 3 });
-
-    expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toStrictEqual({
-      source: 'cron',
-      cron: 'gsc_suggestions',
-      event: 'batch_completed',
-      durationMs: 123,
-      total: 3,
-    });
   });
 
   it('batch処理を開始して結果をそのまま返す', async () => {

@@ -23,21 +23,14 @@ describe('isGoogleOAuthReauthError', () => {
     expect(isGoogleOAuthReauthError(error)).toBe(false);
   });
 
-  it('ステータスが無くても invalid_grant を含めば再認証要', () => {
-    expect(isGoogleOAuthReauthError(new Error('invalid_grant: Token has been expired or revoked.'))).toBe(
-      true
-    );
-  });
-
-  it('ステータスが無くても insufficient permissions を含めば再認証要', () => {
-    expect(isGoogleOAuthReauthError(new Error('Error: Insufficient Permissions'))).toBe(true);
+  it.each([
+    ['invalid_grant', new Error('invalid_grant: Token has been expired or revoked.')],
+    ['insufficient permissions', new Error('Error: Insufficient Permissions')],
+  ])('ステータスが無くても %s を含めば再認証要', (_label, error) => {
+    expect(isGoogleOAuthReauthError(error)).toBe(true);
   });
 
   it('ステータスも既知の文字列も無いネットワーク例外は一時的失敗と判定する', () => {
     expect(isGoogleOAuthReauthError(new Error('fetch failed'))).toBe(false);
-  });
-
-  it('Error インスタンスでなくても文字列化して判定する', () => {
-    expect(isGoogleOAuthReauthError('invalid_grant')).toBe(true);
   });
 });

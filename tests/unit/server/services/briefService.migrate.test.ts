@@ -38,16 +38,11 @@ describe('BriefService.migrateOldBriefToNew', () => {
     expect(result.services[0]?.name).toBe('エアコンクリーニング');
   });
 
-  it('新形式が検証に失敗したら旧形式変換に落とさず失敗させる', () => {
-    // 旧形式変換に回ると profile と services が空になり、正常系として返ってしまう
-    expect(() =>
-      BriefService.migrateOldBriefToNew(createStoredBrief(['暗号資産']), USER_ID)
-    ).toThrow(BriefDataFormatError);
-  });
-
-  it('services が空でも旧形式変換に落とさず失敗させる', () => {
-    const broken = { ...createStoredBrief(['現金']), services: [] };
-
+  // 旧形式変換に回ると profile と services が空になり、正常系として返ってしまう
+  it.each([
+    ['profile を持つ', createStoredBrief(['暗号資産'])],
+    ['services だけを持つ', { services: [] }],
+  ])('新形式のキー（%s）で検証に失敗したら旧形式変換に落とさず失敗させる', (_label, broken) => {
     expect(() => BriefService.migrateOldBriefToNew(broken, USER_ID)).toThrow(BriefDataFormatError);
   });
 

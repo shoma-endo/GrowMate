@@ -37,30 +37,20 @@ describe('parseInstagramSortKey', () => {
     expect(parseInstagramSortKey(raw)).toBe(raw);
   });
 
-  // DB に列が無い見出し（サムネ・リンク）や一覧に無い列名は DB クエリへ流さない
-  it('DB の並べ替え列でない値は既定へ畳む', () => {
-    expect(parseInstagramSortKey('thumbnail_url')).toBe('posted_at');
-    expect(parseInstagramSortKey('permalink')).toBe('posted_at');
-  });
-
-  it('null は既定へ畳む', () => {
-    expect(parseInstagramSortKey(null)).toBe('posted_at');
-  });
-
-  it('空文字は既定へ畳む', () => {
-    expect(parseInstagramSortKey('')).toBe('posted_at');
-  });
-
-  it('未知の値は既定へ畳む', () => {
-    expect(parseInstagramSortKey('likes')).toBe('posted_at');
-    expect(parseInstagramSortKey('POSTED_AT')).toBe('posted_at');
-    expect(parseInstagramSortKey('reach; drop table')).toBe('posted_at');
-  });
-
+  // DB に列が無い見出し（サムネ・リンク）や一覧に無い列名は DB クエリへ流さない。
   // 旧実装の JSON 形式が残っていても既定へ畳む（生の文字列で保存しているため）
-  it('JSON らしき値でも既定へ畳む', () => {
-    expect(parseInstagramSortKey('{"sort":"reach"}')).toBe('posted_at');
-    expect(parseInstagramSortKey('"reach"')).toBe('posted_at');
+  it.each([
+    'thumbnail_url',
+    'permalink',
+    null,
+    '',
+    'likes',
+    'POSTED_AT',
+    'reach; drop table',
+    '{"sort":"reach"}',
+    '"reach"',
+  ])('DB の並べ替え列でない値 %s は既定へ畳む', raw => {
+    expect(parseInstagramSortKey(raw)).toBe('posted_at');
   });
 });
 
@@ -139,25 +129,11 @@ describe('Instagram high-only storage', () => {
     ).toEqual({ igHigh: true });
   });
 
-  it('URL に絞り込み指定があれば保存値で上書きしない', () => {
-    expect(
-      resolveInstagramRestorePatch({
-        urlSort: null,
-        urlOrder: null,
-        urlHigh: '0',
-        storedSort: 'posted_at',
-        storedOrder: 'desc',
-        storedHighOnly: true,
-        visibleIds: [],
-        canJudgeTarget: true,
-      })
-    ).toBeNull();
-  });
-
   it.each<
     [string, string | null, string | null, InstagramMediaSortKey, boolean]
   >([
     ['URL に並び順と絞り込みの指定がある', 'posted_at', '0', 'engagement_rate', true],
+    ['URL に絞り込み指定があり保存値が既定の並び順', null, '0', 'posted_at', true],
     ['保存値が無い', null, null, 'posted_at', false],
   ])('%s ときは遷移しない', (_label, urlSort, urlHigh, storedSort, storedHighOnly) => {
     expect(

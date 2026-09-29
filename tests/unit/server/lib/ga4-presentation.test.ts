@@ -21,24 +21,14 @@ import { canAccessGa4, canWriteGa4 } from '@/server/lib/ga4-permissions';
 
 describe('@/server/lib/ga4-evaluation-status', () => {
   describe('ga4-evaluation-status', () => {
-    it('評価中、永続状態を表示する', () => {
-      expect(
-        resolveGa4EvaluationDisplayStatus({
-          persistedStatus: 'evaluating',
-        })
-      ).toBe('evaluating');
-      expect(
-        resolveGa4EvaluationDisplayStatus({
-          persistedStatus: 'evaluated',
-        })
-      ).toBe('evaluated');
+    it.each(['evaluating', 'evaluated', 'narrative_failed'] as const)('永続状態 %s はそのまま表示する', persistedStatus => {
+      expect(resolveGa4EvaluationDisplayStatus({ persistedStatus })).toBe(persistedStatus);
     });
 
     it('永続状態がない記事ではlow_data、eligible、unassessedを導出する', () => {
       expect(resolveGa4EvaluationDisplayStatus({ persistedStatus: null, derivedStatus: 'low_data' })).toBe('low_data');
       expect(resolveGa4EvaluationDisplayStatus({ persistedStatus: null, derivedStatus: 'eligible' })).toBe('eligible');
       expect(resolveGa4EvaluationDisplayStatus({ persistedStatus: null })).toBe('unassessed');
-      expect(resolveGa4EvaluationDisplayStatus({ persistedStatus: 'narrative_failed' })).toBe('narrative_failed');
     });
   });
 });

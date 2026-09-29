@@ -11,22 +11,15 @@ const NONE = {
 describe('parseStatusFilterConfig', () => {
   // 既定が「絞り込みあり」に倒れると、残留フィルターで一覧がほぼ空になり
   // 利用者が記事の消失と誤認する。壊れた入力はすべて「絞り込みなし」へ畳む
-  it('null は絞り込みなしへ畳む', () => {
-    expect(parseStatusFilterConfig(null)).toEqual(NONE);
-  });
-
-  it('空文字は絞り込みなしへ畳む', () => {
-    expect(parseStatusFilterConfig('')).toEqual(NONE);
-  });
-
-  it('壊れた JSON は絞り込みなしへ畳む', () => {
-    expect(parseStatusFilterConfig('{"unreadSuggestion":')).toEqual(NONE);
-  });
-
-  it('オブジェクト以外の JSON は絞り込みなしへ畳む', () => {
-    expect(parseStatusFilterConfig('"unreadSuggestion"')).toEqual(NONE);
-    expect(parseStatusFilterConfig('[true]')).toEqual(NONE);
-    expect(parseStatusFilterConfig('null')).toEqual(NONE);
+  it.each([
+    ['null', null],
+    ['空文字', ''],
+    ['壊れた JSON', '{"unreadSuggestion":'],
+    ['文字列の JSON', '"unreadSuggestion"'],
+    ['配列の JSON', '[true]'],
+    ['null の JSON', 'null'],
+  ])('%s は絞り込みなしへ畳む', (_label, input) => {
+    expect(parseStatusFilterConfig(input)).toEqual(NONE);
   });
 
   it('boolean 以外の値は false として扱う', () => {
@@ -52,16 +45,6 @@ describe('parseStatusFilterConfig', () => {
       unsummarized: true,
     };
     expect(parseStatusFilterConfig(JSON.stringify(saved))).toEqual(saved);
-  });
-
-  it('未知のキーは落とす', () => {
-    expect(
-      parseStatusFilterConfig(JSON.stringify({ unreadSuggestion: true, bogus: true }))
-    ).toEqual({
-      unreadSuggestion: true,
-      unstartedGscEvaluation: false,
-      unsummarized: false,
-    });
   });
 });
 

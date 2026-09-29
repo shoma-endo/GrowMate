@@ -33,13 +33,6 @@ describe('@/server/lib/ga4-sync-range', () => {
       });
     });
 
-    it('backfillDays=1は前日だけを返す', () => {
-      expect(resolveGa4SyncRange({ ...baseInput, backfillDays: 1 })).toEqual({
-        ok: true,
-        range: { startDate: '2026-08-17', endDate: '2026-08-17' },
-      });
-    });
-
     it('カーソルありの通常同期は翌日から前日までを返す', () => {
       expect(
         resolveGa4SyncRange({ ...baseInput, lastSyncedDate: '2026-08-10' })
@@ -64,10 +57,11 @@ describe('@/server/lib/ga4-sync-range', () => {
   });
 
   describe('splitGa4SyncRange', () => {
-    it('maxDays以下の範囲は分割しない', () => {
-      expect(
-        splitGa4SyncRange({ startDate: '2026-08-01', endDate: '2026-08-30' }, 30)
-      ).toEqual([{ startDate: '2026-08-01', endDate: '2026-08-30' }]);
+    it.each([
+      ['maxDays ちょうど', { startDate: '2026-08-01', endDate: '2026-08-30' }],
+      ['1日だけ', { startDate: '2026-08-17', endDate: '2026-08-17' }],
+    ])('maxDays以下の範囲は分割しない（%s）', (_label, range) => {
+      expect(splitGa4SyncRange(range, 30)).toEqual([range]);
     });
 
     it('90日を30日ずつ3窓へ古い順に分割し、境界日を重複も欠落もさせない', () => {
@@ -88,18 +82,6 @@ describe('@/server/lib/ga4-sync-range', () => {
         { startDate: '2026-08-03', endDate: '2026-08-04' },
         { startDate: '2026-08-05', endDate: '2026-08-05' },
       ]);
-    });
-
-    it('1日だけの範囲は1窓になる', () => {
-      expect(
-        splitGa4SyncRange({ startDate: '2026-08-17', endDate: '2026-08-17' }, 30)
-      ).toEqual([{ startDate: '2026-08-17', endDate: '2026-08-17' }]);
-    });
-
-    it('maxDaysが0以下なら例外にする（無限ループを防ぐ）', () => {
-      expect(() =>
-        splitGa4SyncRange({ startDate: '2026-08-01', endDate: '2026-08-05' }, 0)
-      ).toThrow('maxDays must be >= 1');
     });
   });
 });

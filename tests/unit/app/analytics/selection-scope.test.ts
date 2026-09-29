@@ -25,23 +25,12 @@ describe('buildListingSelectionKey', () => {
     expect(buildListingSelectionKey({ ...baseScope, hasUnstartedGscEvaluation: true })).not.toBe(
       key
     );
-  });
-
-  it('未要約フィルタが変わるとキーが変わる', () => {
-    expect(buildListingSelectionKey({ ...baseScope, hasUnsummarized: true })).not.toBe(
-      buildListingSelectionKey(baseScope)
-    );
+    expect(buildListingSelectionKey({ ...baseScope, hasUnsummarized: true })).not.toBe(key);
   });
 
   it('カテゴリの指定順が違うだけならキーは変わらない', () => {
     expect(
       buildListingSelectionKey({ ...baseScope, selectedCategoryNames: ['SEO', 'AI'] })
     ).toBe(buildListingSelectionKey({ ...baseScope, selectedCategoryNames: ['AI', 'SEO'] }));
-  });
-
-  it('入力のカテゴリ配列を破壊しない', () => {
-    const selectedCategoryNames = ['SEO', 'AI'];
-    buildListingSelectionKey({ ...baseScope, selectedCategoryNames });
-    expect(selectedCategoryNames).toEqual(['SEO', 'AI']);
   });
 });

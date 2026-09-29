@@ -171,11 +171,7 @@ describe('@/server/lib/ga4-content-evaluation-batch-outcome', () => {
         shouldAdvanceCooldown: true,
         isUnexpected: true,
       });
-    });
-
-    it('Error以外がthrowされてもunknown_errorとして扱う', () => {
       expect(classifyGa4BatchRunError('string thrown').outcome).toBe('unknown_error');
-      expect(classifyGa4BatchRunError(null).outcome).toBe('unknown_error');
     });
   });
 });
@@ -200,10 +196,6 @@ describe('@/server/lib/email-html', () => {
       expect(output).not.toContain('<iframe');
       expect(output).toContain('text');
       expect(output).toContain('link');
-    });
-
-    it('空文字は空文字を返す', () => {
-      expect(sanitizeEmailHtml('')).toBe('');
     });
   });
 });

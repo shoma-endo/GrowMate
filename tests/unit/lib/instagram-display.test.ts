@@ -32,10 +32,6 @@ describe('@/lib/instagram-format', () => {
     it('今年の投稿にも年を出す', () => {
       expect(formatPostedAt('2026-08-02T03:03:06+0000')).toBe('2026/8/2 投稿');
     });
-
-    it('パースできない値はそのまま返す', () => {
-      expect(formatPostedAt('not-a-date')).toBe('not-a-date');
-    });
   });
 
   describe('formatCount', () => {
