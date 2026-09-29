@@ -1,6 +1,5 @@
 import { after } from 'next/server';
-import type { Json } from '@/types/database.types';
-import type { CronRunLogInsert } from '@/types/database.types.pending';
+import type { Json, TablesInsert } from '@/types/database.types';
 
 export type CronTimeoutType =
   | 'LLM_TIMEOUT'
@@ -183,7 +182,7 @@ function persistCronLog(
       : process.env.VERCEL_ENV === 'preview'
         ? 'preview'
         : 'local';
-  const row: CronRunLogInsert = {
+  const row: TablesInsert<'cron_run_logs'> = {
     cron_name: cronName,
     event,
     level,

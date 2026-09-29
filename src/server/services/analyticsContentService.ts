@@ -14,10 +14,6 @@ import type {
 } from '@/types/analytics';
 import type { Ga4PageMetricSummary } from '@/types/ga4';
 import type { Json } from '@/types/database.types';
-import {
-  asPendingClient,
-  type AnalyticsContentSortDatabase,
-} from '@/types/database.types.pending';
 
 const MAX_PER_PAGE = 100;
 
@@ -98,8 +94,7 @@ class AnalyticsContentService {
     };
 
     try {
-      // 並べ替えの引数（migration 20260926000000）が生成型に入るまでの暫定型
-      const client = asPendingClient<AnalyticsContentSortDatabase>(supabaseService.getClient());
+      const client = supabaseService.getClient();
       const sort = params.sort ?? null;
 
       const fetchAnnotationsPage = async (targetPage: number) => {
@@ -122,7 +117,7 @@ class AnalyticsContentService {
           // SQL のシグネチャを変えないのは、本番適用済み関数の再定義を避けるため
           //
           // 並べ替えの引数も並べ替え中だけ積む（p_has_unsummarized と同じ理由。migration
-          // 20260926000000 が未適用でも、並べ替えていない通常の一覧は壊れない）。
+          // より先にアプリがデプロイされても、並べ替えていない通常の一覧は壊れない）。
           // 期間は GA4 の列を一覧の表示と同じ期間で集計して並べるために渡す
           ...(sort !== null
             ? {
