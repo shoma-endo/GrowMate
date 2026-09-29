@@ -1341,23 +1341,46 @@ export class SupabaseService {
     userId: string,
     todayJst: string
   ): Promise<SupabaseResult<boolean>> {
-    const { data, error } = await this.supabase
+    // .or() は使わない。PostgREST は論理条件を返却行の読み出しにも再適用するため、
+    // select('id') と組み合わせると last_attempted_on を参照できず 42703 になる。
+    // 単純な条件の条件付き更新を「未試行（NULL）」→「前日以前に試行」の順に試す。
+    const updates = { last_attempted_on: todayJst, updated_at: new Date().toISOString() };
+    const claimNeverAttempted = await this.supabase
       .from('google_ads_negative_keywords_settings')
-      .update({ last_attempted_on: todayJst, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq('user_id', userId)
-      .or(`last_attempted_on.is.null,last_attempted_on.neq.${todayJst}`)
+      .is('last_attempted_on', null)
       .select('id')
       .maybeSingle();
+    if (claimNeverAttempted.error) {
+      return this.claimNegativeKeywordsAttemptFailure(claimNeverAttempted.error, userId, todayJst);
+    }
+    if (claimNeverAttempted.data) return this.success(true);
 
+    const { data, error } = await this.supabase
+      .from('google_ads_negative_keywords_settings')
+      .update(updates)
+      .eq('user_id', userId)
+      .neq('last_attempted_on', todayJst)
+      .select('id')
+      .maybeSingle();
     if (error) {
-      return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED, {
-        error,
-        developerMessage: 'Error claiming Google Ads negative keywords attempt',
-        context: { userId, todayJst },
-      });
+      return this.claimNegativeKeywordsAttemptFailure(error, userId, todayJst);
     }
 
     return this.success(data !== null);
+  }
+
+  private claimNegativeKeywordsAttemptFailure(
+    error: PostgrestError,
+    userId: string,
+    todayJst: string
+  ): SupabaseResult<boolean> {
+    return this.failure(ERROR_MESSAGES.GOOGLE_ADS.NEGATIVE_KEYWORDS_SUGGESTION_SETTINGS_UPDATE_FAILED, {
+      error,
+      developerMessage: 'Error claiming Google Ads negative keywords attempt',
+      context: { userId, todayJst },
+    });
   }
 
   async listDueGoogleAdsNegativeKeywordsSettings(
