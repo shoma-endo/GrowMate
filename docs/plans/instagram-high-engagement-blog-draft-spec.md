@@ -5,7 +5,7 @@
 - 文書名: 高エンゲージメント投稿のブログ化（Phase 2: 投稿からブログ記事を自動作成）
 - ステータス: `approved`
 - 作成日: 2026-09-26
-- 最終更新日: 2026-09-27
+- 最終更新日: 2026-09-30
 - 作成者: 遠藤
 - 承認者: カオルさん（要件）/ 遠藤（技術）
 - 対象リリース: Phase 2（一括作成を含む）。Phase 3（過去記事から新しい記事への内部リンク提案）は Phase 2 の完了後に別の仕様書で扱う（2026-09-27 遠藤決定「やっぱり開発はフェーズ2とフェーズ3で分けた方がいいかも。フェーズ3の話は、フェーズ2が完了した後でいいかな」）
@@ -138,8 +138,8 @@ Instagram タブで記事にしたい投稿のチェックボックスを選び�
   - 理由: 完成まで数分〜数十分かかり、ユーザーは画面を離れる前提（「作って提案しました」）。複数件を選んだときに1件ごとに送ると最大10通になるため、まとめて1通にする（2026-09-27 遠藤決定「完了したらメールで通知する」、停止時も送る案を選択。まとめ方は一括化に伴う設計判断）。
   - 例外1: `users.email` が未登録の利用者には送らない（一括 AI 要約の完了メールと同じ。`contentAnnotationSummaryJobService.fetchUserEmail`）。
   - 例外2: サーバー停止（BR-007 (3)）で処理が途中で落ち、自動の引き継ぎも途切れたときは送れない。定期処理による後追い送信は持たない（§4 Non-goals の cron と同じ理由）。この場合は 20 分後に Instagram タブで「失敗」と表示されるだけになる（R-008）。
-  - 例外4: まとまりの投稿の行が1件も残っていない（Instagram の連携解除で `instagram_media` ごと消えた。§9 保持期間）ときは送らず、`notified_at` だけ埋める（FR-010）。
   - 例外3: メールの送信に失敗しても、作成の状態（`status`）は変えない。`console.error` に記録するだけで再送しない。
+  - 例外4: まとまりの投稿の行が1件も残っていない（Instagram の連携解除で `instagram_media` ごと消えた。§9 保持期間）ときは送らず、`notified_at` だけ埋める（FR-010）。
   - ［続きを作成］で再開した投稿は、新しいまとまり（1件）として扱い、終わったときにもう1通送る。
 - ルール ID: BR-015（一度に作れる件数と同時に進める件数）
   - ルール: 1回に選べるのは最大10件。11件以上選んだときは［ブログ記事を作成］を押せず、「一度に作成できるのは10件までです」と出す。作成中・待機中のまとまりがあるあいだは、次の［ブログ記事を作成］を押せない（「作成中の記事があります。終わってから次を選んでください」）。1つのまとまりの中では、同時に3件まで並行して進める。
@@ -173,7 +173,7 @@ Instagram タブで記事にしたい投稿のチェックボックスを選び�
 | 同じ投稿からの作り直し（2本目の作成、削除後の再作成） | BR-003。作り直したいときは既存のチャットで該当ステップからやり直せる | 要望が出たとき |
 | 自動作成の途中でステップの出力をユーザーが確認・修正する中間確認 | MTG 00:29:58「作って提案しました」を、完成してから見る流れと解釈した（解釈であり原文ではない。開発方針は Q-002 で遠藤が決め、§14 の実装前ゲートでクライアントに確認する）。修正は完成後に既存のチャット・Canvas で行う | 出力品質の問題で途中確認の要望が出たとき |
 | 作成中のチャットの入力欄の無効化 | 作成中にユーザーが同じチャットへ手動で送信すると、自動作成のメッセージと混ざる。Instagram タブの［チャット］は作成中は出さないが、**クライアントが主な導線にしているコンテンツ一覧（`client-vision-from-lark.md` §1.10.1）からは開けるため、起こりうる**（R-006）。チャット画面に「作成中」の状態を足すと手動フローの画面全体に分岐が入るため、今回は足さない。混ざった場合も、各ステップは保存済みの出力から再開できる | 混在による不具合が実際に出たとき |
-| 定期実行（cron）による引き継ぎ・再開 | 時間の上限は自分で次の処理を起動して引き継ぐ（FR-006）。GitHub Actions の schedule は間引かれて起動が遅れる実績があり（2026-08-26 以降）、続きを cron に預けられない（ALT-001）。引き継ぎが途切れた分は［続きを作成］で再開する | 引き継ぎの途切れが頻発したとき |
+| 定期実行（cron）による引き継ぎ・再開 | 時間の上限は自分で次の処理を起動して引き継ぐ（FR-006）。cron に預けると引き継ぎのたびに最大10分待つ（ALT-001）。定期起動は既存の Vercel Cron（10分間隔。README「デプロイと運用」）で足せるが、引き継ぎの途切れは稀で、途切れた分は［続きを作成］で再開できるため、止まった行を拾う経路は作らない（MVP 最優先） | 引き継ぎの途切れが頻発したとき |
 | WordPress への投稿・公開 | GrowMate は WordPress へ公開する機能を持たない（`wordpressService.ts` に POST なし）。既存のブログ作成フローと同じく、完成形はチャット・Canvas で扱う | — |
 | タイトル・説明文の自動生成（`blog_title_meta_generation`） | 既存フローでも step7 の後に任意で押すボタンで、記事の完成形には含まれない | 要望が出たとき |
 | 記事全体の AI 清書（step7 の［本文生成］＝`step7FullBodyGeneration`） | BR-006。完成形は結合で作る。清書したいときは既存のボタンを押せる | — |
@@ -293,7 +293,8 @@ Instagram タブで記事にしたい投稿のチェックボックスを選び�
 - 見出し: `headingFlowService.initializeHeadingSections(sessionId, step5 の出力)`。手動フローは見出しを `basic_structure` から取るが（`useHeadingFlow.ts:221`）、FR-004 で step5 の出力をそのまま `basic_structure` に入れるため同じ値になる。抽出の対象は `h2` / `H3` / `h4` の独自プレフィックス形式だけで、`##` 形式は拾わない（`src/lib/heading-extractor.ts:17-33`）。
   - `initializeHeadingSections` は見出しが0件でも成功を返し、既に行があれば何もしない。そのため呼んだ後に `getHeadingSections` の件数を数え、0件なら失敗（`error_code = 'NO_HEADINGS'`）にする。この件数を `heading_total` に入れる。
 - 書き出し: step6 の出力から「【書き出し案：パターンA」で始まる節の「▼本文（通常版）」から「▼本文（短縮版）」の手前までを取り出し、前後の空白を除いて `headingFlowService.saveStep7UserLead(sessionId, userId, 取り出した本文)` で保存する（BR-005）。見出しの文言はテンプレートの出力形式（`prompt_templates.blog_creation_step6`）に合わせ、純関数 `extractStep6LeadPatternA` にまとめる。取り出せない（形式が違う・空）ときは `failed`（`error_code = 'LEAD_PARSE_FAILED'`）にする。出力全体を書き出しに流し込まない（4案と解説が記事の冒頭に入るため）。
-  - `saveStep7UserLead` は毎回 user メッセージを insert するだけで冪等でない（`src/server/services/headingFlowService.ts:234-269`）。`headings` から再開するときは、先に `getStep7UserLead(sessionId)` を呼び、値が返れば書き出しの保存を飛ばす（書き出しの user メッセージを2件にしない）。
+  - `saveStep7UserLead` は毎回 user メッセージを insert するだけで冪等でない（`src/server/services/headingFlowService.ts:234-269`）。`headings` から再開するときは、先に書き出しが保存済みかを読み、値が返れば書き出しの保存を飛ばす（書き出しの user メッセージを2件にしない）。
+  - 既存の `getStep7UserLead(sessionId)` は DB エラーを握りつぶして `null` を返す（`headingFlowService.ts:224-227`）ため、そのまま使うと読み取りの一時的な失敗を「未保存」と取り違え、書き出しを2件保存する。エラーと未保存を区別して返す取得（`SupabaseResult<string | null>`）を `headingFlowService` に足し、自動作成はそれを使ってエラーなら `SAVE_FAILED` で止める。`getStep7UserLead` はそれを呼んでエラー時に `null` を返す形にし、既存の呼び出し元の挙動は変えない。
 - 各見出し: 手動フローの見出し生成（`ChatLayout.tsx:1091-1098` → `sendMessage`）と同じ材料で呼ぶ。
   - 入力: `「<見出しの文言>」の本文を書いてください`（`ChatLayout.tsx:1144-1146` と同じ文）
   - system: `getSystemPrompt(getStep7HeadingModel(i), undefined, sessionId, undefined, { userId })`
@@ -301,6 +302,7 @@ Instagram タブで記事にしたい投稿のチェックボックスを選び�
   - モデル設定: `MODEL_CONFIGS[STEP7_HEADING_CONFIG_KEY]`（`blog_creation_step7_heading`、`maxTokens` 7000。ストリーミング Route Handler `route.ts:228-234` と同じ解決）
   - 保存: 出力を `continueChat` で `model = blog_creation_step7_h{i}` として保存し、手動の［保存］と同じく `normalizeHeadingUnitContent` を通してから（`ChatLayout.tsx:900-906`）`headingFlowService.saveHeadingSection(sessionId, headingKey, 本文)` で確定する。
   - 見出しは順番に1本ずつ生成する（並列にしない。見出し単位プロンプトは次の見出しを参照し、履歴に前の見出しの出力が入るため）。
+- `headingFlowService` の `initializeHeadingSections` / `saveStep7UserLead` / `saveHeadingSection` / `getCombinedContentForPrompt` / `saveCombinedContentSnapshot` は失敗を例外ではなく戻り値（`SupabaseResult` の `success: false`）で返す。`success: false` なら `SAVE_FAILED` で止める。
 - 完成形: `headingFlowService.getCombinedContentForPrompt(sessionId)` で書き出し＋見出しを結合し、`saveCombinedContentSnapshot(sessionId, content, userId)` で保存する（RPC `save_atomic_combined_content` はセッションの所有を `p_authenticated_user_id` で検証する）。`combine` から再開すると完成形の版が1つ増えるが、害は無い。既存の `saveCombinedContentForStep7`（`src/server/actions/heading-flow.actions.ts:387`）と同じ処理を、`userId` を明示するサービス層の関数として切り出して両方から使う。
 
 **FR-006（実行方式・並行・時間の上限と自動の引き継ぎ）**:
@@ -821,7 +823,7 @@ Feature: Instagram 投稿からブログ記事を自動作成する
 | 依存対象 | 前提条件 | 完了確認 | 未完了時の影響 |
 | --- | --- | --- | --- |
 | Phase 1 | Instagram タブ・`instagram_media.caption` がある | 実装済み（PR #558） | — |
-| `content_annotations` の `prep` / `basic_structure` / `opening_proposal` 列と `wp_post_id` の NULL 許可 | 実 DB に存在する／NULL を許す | 存在は確認済み（`database.types.ts` にあり、`20260831000000_...sql:105` が参照）。ただし `ADD COLUMN` の migration が無い。`wp_post_id` も作成時の migration は `bigint NOT NULL` のままで `DROP NOT NULL` の migration が無い（型定義は nullable） | 新しい環境（ローカルのリセット等）で FR-003 / FR-004 の insert・保存が失敗する。実装時に `ADD COLUMN IF NOT EXISTS` と `ALTER COLUMN wp_post_id DROP NOT NULL` の migration を足して記録を合わせる（R-003） |
+| `content_annotations` の `prep` / `basic_structure` / `opening_proposal` 列と `wp_post_id` の NULL 許可 | 実 DB に存在する／NULL を許す | 存在は確認済み（`database.types.ts` にあり、`20260831000000_...sql:105` が参照）。ただし `ADD COLUMN` の migration が無い。`wp_post_id` も作成時の migration は `bigint NOT NULL` のままで `DROP NOT NULL` の migration が無い（型定義は nullable） | 開発と本番は同一の Supabase プロジェクトを共有しており（README「Supabase 注意」）、列と NULL 許可が無い環境は無い。migration は足さない（R-003） |
 | step1〜7 の DB テンプレート | 自動の受け渡しで動く出力の形である | 確認済み（Q-001。2026-09-27）。step6 だけ書き出しの取り出しが要る（BR-005） | テンプレートを管理画面で変えると取り出しが外れうる（R-005） |
 
 ## 11. トレードオフ判断
@@ -831,15 +833,15 @@ Feature: Instagram 投稿からブログ記事を自動作成する
 - 判断: 数分かかる複数回の AI 呼び出しをどこで実行するか
 - 比較した案:
   - 案A: Route Handler の `after()` で応答後に実行し、1回の実行時間を超えそうなら自分で次の処理を起動して引き継ぐ（採用。当初は「ユーザーの［続きを作成］で再開」としていたが、一括作成（ALT-006）で10件を手で再開させるのは成り立たないため 2026-09-27 に自動の引き継ぎへ変更）
-  - 案B: ジョブを積み、既存の一括 AI 要約と同じ GitHub Actions の10分間隔の定期実行（cron）で処理
+  - 案B: ジョブを積み、既存の一括 AI 要約と同じ Vercel Cron の10分間隔の定期実行（cron）で処理
   - 案C: ブラウザが1ステップずつ API を呼んで進める
 - 採用案: 案A
 - 採用理由: 押してすぐ始まり、定期処理・キュー基盤を新設しない。1回の実行（740 秒）で終わらない分は、自分で次の処理を起動して自動で引き継ぐ（FR-006。上限30回）。
 - 却下した案と理由:
-  - 案B: 始まるまで最大10分以上待つ。GitHub Actions の schedule は 2026-08-26 以降大幅に間引かれており、起動間隔を当てにできない。
+  - 案B: 始まるまで最大10分待ち、1回の実行（740 秒）で終わらない分も次の起動まで最大10分待つ。10件で引き継ぎが3〜4回起きると、待ちだけで最大30〜40分増える。
   - 案C: タブを閉じると止まる。「作って提案しました」（ユーザーは作成を見張らない）に合わない。
 - 影響: 1回で終わらない分は自動で引き継ぐ（R-002）。引き継ぎが途切れると待機中で止まり、20 分後に「失敗」と表示される（R-012）。
-- 将来変更する条件: 引き継ぎの途切れが頻発したら、案B の cron で止まった `queued` を拾う経路を足す（本書のテーブルはそのまま使える）。
+- 将来変更する条件: 引き継ぎの途切れが頻発したら、既存の Vercel Cron に止まった `queued` を拾う経路を1本足す（本書のテーブルとワーカーはそのまま使える）。
 - 判断者・判断日: 遠藤・2026-09-26
 
 ### ALT-002: 作成のきっかけと自動化の範囲
@@ -899,7 +901,7 @@ Feature: Instagram 投稿からブログ記事を自動作成する
 | --- | --- | --- | --- | --- | --- |
 | R-001 | `after()` の中で Cookie 依存の処理（`authMiddleware` / `getBrief`）を呼ぶと、Cookie は読めるが書き込めない（`ReadonlyRequestCookiesError` は `src/lib/supabase/server.ts:21-35` が握りつぶす）ため、更新したトークンを保存できないまま静かに進む。`getSystemPrompt` は認証が取れないと例外にならず、見出し制約の無いテンプレートへ落ちる | 既存のプロンプト組み立てをそのまま呼んだ場合 | §10 のとおり `userId` を明示で渡す口を足し、`after()` 内では Cookie を読まない。DB は Service Role + `user_id` 絞り込み | 遠藤 | 対策済み（設計） |
 | R-002 | 1回の実行（740 秒）で終わらず、引き継ぎが何度も起きる | 10件選んだとき、見出しが多い記事、AI の応答が遅いとき | 自動で引き継ぐ（FR-006。上限30回）。終わったらメールで結果を知らせる（FR-010）。実測で目安の見出し数を §8 に追記 | 遠藤 | 監視 |
-| R-003 | `content_annotations` の `prep` / `basic_structure` / `opening_proposal` の `ADD COLUMN` と、`wp_post_id` の `DROP NOT NULL` の migration が無い | ローカルのリセット等で列が無い・NULL を許さない環境 | 本実装で `ADD COLUMN IF NOT EXISTS` と `ALTER COLUMN wp_post_id DROP NOT NULL` の migration を追加する（本番は既に適用済みの状態に合わせるだけで影響なし） | 遠藤 | 対応予定 |
+| R-003 | `content_annotations` の `prep` / `basic_structure` / `opening_proposal` の `ADD COLUMN` と、`wp_post_id` の `DROP NOT NULL` の migration が無い | 列が無い・NULL を許さない DB で動かしたとき | 開発と本番は同一の Supabase プロジェクトを共有しており（README「Supabase 注意」）、該当する環境が無い。migration は足さない | 遠藤 | 受容 |
 | R-004 | 途中の出力を人が確認しないため、どこかのステップの出力が崩れると後続も崩れる | AI がテンプレートの出力形式から外れた場合 | Q-001 で step1〜6 が質問を返さず、step2・3 は複数案から1つを選び切る形と確認済み。完成後はチャットで該当ステップからやり直せる | 遠藤 | 受容 |
 | R-005 | step6 のテンプレートを管理画面で変える（パターン名・「▼本文（通常版）」の見出しを変える）と、書き出しを取り出せなくなる | 管理画面でのテンプレート編集 | 取り出せないときは `LEAD_PARSE_FAILED` で止め、全体を流し込まない。取り出しの見出しの文言を `extractStep6LeadPatternA` に集め、テンプレートを変えるときの確認先にする | 遠藤 | 受容 |
 | R-006 | 作成中のチャットをコンテンツ一覧から開いて手動で送信すると、自動作成のメッセージと混ざる | 作成中にコンテンツ一覧の［チャット］から開いた場合 | Instagram タブでは作成中に［チャット］を出さない。混ざっても各ステップは保存済みの出力から再開できる。実害が出たら入力欄の無効化を検討（§4 Non-goals） | 遠藤 | 監視 |
@@ -934,7 +936,7 @@ Feature: Instagram 投稿からブログ記事を自動作成する
   - 権限と開始の拒否: trial は 403。他人の投稿・存在しない ID・作成あり・キャプションなしは対象外として除外（全件対象外なら 400）。作成中・待機中のまとまりありは 409。再開できない状態の再開は 409
   - `getSystemPrompt` の `userId` 明示の口: 渡したときに `authMiddleware` / `getBrief`（Cookie 経路）を呼ばないこと、渡さないときは従来どおりであること。**step7 の見出し分岐（`blog_creation_step7_h{i}`）で、`userId` を渡すと見出し単位プロンプト（「このリクエストの対象見出しは…」を含む）が返ること**（渡し忘れると全体テンプレートへ静かに落ちるため）
   - 途中で切れたとき: 続き生成の指示文で呼び、`updateLastAssistantMessage` で結合すること、2回で打ち切ること、同じステップを最初から生成し直さないこと、続きの生成中に止まった行の再開が続き生成から入ること、途切れた出力の末尾の改行が連結後も残ること（新しいメソッドが trim しない）
-  - `continueChat` が `error` を返したとき、`updateLastAssistantMessage` が例外を投げたときに `SAVE_FAILED` で止まること
+  - `continueChat` が `error` を返したとき、`updateLastAssistantMessage` が例外を投げたとき、`headingFlowService` の各関数が `success: false` を返したとき、書き出しの保存済み確認の読み取りがエラーのとき（書き出しを2件保存しない）に `SAVE_FAILED` で止まること
   - 一括作成: 0件・11件以上・作成中のまとまりありの拒否、対象外（他人の投稿・キャプションなし・作成済み）の除外と内訳、引き継ぎの受け口の `CRON_SECRET` 認証と権限の読み直し（`ROLE_REVOKED`）、［続きを作成］で新しいまとまりへ付け替えること、止まった `queued` の判定
   - メール通知: まとまりが全件終わったときだけ1通送ること（引き継ぎの途中では送らない・複数のワーカーが同時に最後を迎えても1通）、件名の出し分け、投稿ごとの結果とリンク、まとまり ID を `Idempotency-Key` に渡すこと、`users.email` 未登録なら送らないこと、送信失敗でも `status` を変えないこと
   - 見出しが0件のとき（`initializeHeadingSections` は成功を返す）に `NO_HEADINGS` で止まること
@@ -948,13 +950,13 @@ Feature: Instagram 投稿からブログ記事を自動作成する
 
 - リリース単位・段階展開: 一括リリース
 - Feature Flag / allowlist: なし（既存の Instagram タブと同じロール制御）
-- データベース変更の適用順序: migration（`instagram_blog_draft_batches` / `instagram_blog_draft_jobs` のテーブル・RLS・索引、テンプレート1本の投入、`ADD COLUMN IF NOT EXISTS` と `wp_post_id` の `DROP NOT NULL`）→ アプリ
+- データベース変更の適用順序: migration（`instagram_blog_draft_batches` / `instagram_blog_draft_jobs` のテーブル・RLS・索引、テンプレート1本の投入）→ アプリ
 - 本番確認項目: 自分のアカウントで投稿1件をブログ化し、完成形まで届くこと
 
 ### ロールバック方針
 
 - アプリケーションの戻し方: デプロイの巻き戻し。操作列が消え、新たな作成は始まらない
-- DB変更の戻し方・逆マイグレーション: `drop table instagram_blog_draft_jobs`、`drop table instagram_blog_draft_batches`（FK の向きに合わせて jobs → batches の順）、テンプレート1行の削除（migration にロールバック SQL をコメントで残す）。`ADD COLUMN IF NOT EXISTS` と `DROP NOT NULL` は既存の状態に記録を合わせるだけなので戻さない
+- DB変更の戻し方・逆マイグレーション: `drop table instagram_blog_draft_jobs`、`drop table instagram_blog_draft_batches`（FK の向きに合わせて jobs → batches の順）、テンプレート1行の削除（migration にロールバック SQL をコメントで残す）
 - データ不整合時の復旧: 作成済みの記事は通常のチャット・コンテンツとして残る（手動フローで作ったものと区別なく使える）
 - ロールバック判断者: 遠藤
 
@@ -1042,6 +1044,8 @@ Feature: Instagram 投稿からブログ記事を自動作成する
 | 2026-09-27 | Phase 3（過去記事からの内部リンク提案）を本書から外し、Phase 2 だけにする。BR-009〜BR-014・FR-011〜FR-014（欠番）、Phase 3 の出典・目的・成功指標・利用シナリオ・To-Be の行、記事の詳細画面の「内部リンク」タブ、`internal_link_suggestions` テーブル・RPC `find_internal_link_candidates`・テンプレート `internal_link_suggestion`、ジョブの `link_terms` / `link_index` / `link_total` 列と `links` ステージ、キーワード案の出力の `link_terms`、メールの提案件数、ALT-004 / ALT-005、R-009 / R-010、Gherkin 6本、テスト・migration・ロールバック・公式根拠（Supabase 関数・MDN）の該当部分を削除。R-011 の対策を既存の挙動として書き直し。§4 Non-goals に Phase 3 の行を追加、§14 の実装前ゲート (5) を「Phase 3 は Phase 2 の完了後」に変更、1記事あたりの AI 呼び出しを約25回→約15回、10件の所要時間を 30〜50 分→20〜40 分、工数を 61〜84h → 47〜64h、§17 の Phase 3 を後続に戻す | 遠藤決定「やっぱり開発はフェーズ2とフェーズ3で分けた方がいいかも。フェーズ3の話は、フェーズ2が完了した後でいいかな」（2026-09-27） | 遠藤 |
 | 2026-09-27 | §14 の実装前ゲート「UIたたき台・要件合意」を承認済みにし、承認表の要件承認者を「承認」にする | 遠藤報告「§14 ゲートの10項目を見せて合意もらったよ」（2026-09-27） | 遠藤 |
 | 2026-09-27 | §5 の工数を、内訳の合計 47〜64h に余裕を持たせた 64〜80h（8〜10人日）にし、見積の状態を合意済みにする | 遠藤決定「開発工数は余裕持って8〜10日にする」（2026-09-27） | 遠藤 |
+| 2026-09-30 | R-003 を「対応予定」から「受容」にし、`content_annotations` の `ADD COLUMN IF NOT EXISTS` と `wp_post_id` の `DROP NOT NULL` の migration を実装範囲から外す（§10 依存関係・§12 R-003・§13 適用順序と戻し方） | 遠藤指摘「DBは本番と共有している」。README「Supabase 注意」（開発と本番で同一プロジェクトを共有）により、列が無い環境の前提が成り立たないため | 遠藤 |
+| 2026-09-30 | 定期起動が Vercel Cron に移った（2026-09-24、`4ccd0ebb`）ことに合わせ、ALT-001 案B の却下理由・将来変更する条件と §4 Non-goals の cron の行を書き直す（採用案と設計は変えない）。FR-005 に、`getStep7UserLead` がエラーを `null` に握りつぶすため、エラーと未保存を区別する取得を足して書き出しの二重保存を防ぐことを追記。`headingFlowService` の `SupabaseResult` の失敗を `SAVE_FAILED` にすることを FR-005 と §13 に追記。BR-008 の例外を番号順に並べ替え | 仕様書の自己レビュー（2026-09-30）。遠藤決定「理由の記述だけ直す」 | 遠藤 |
 
 ## 17. フェーズ全体のロードマップ（参考・本書の完了定義外）
 
