@@ -174,6 +174,9 @@ export default function InstagramTab({
   // これを見ないと、取得完了から一覧の再描画までのすきまに空状態の文言（「まだデータがありません」など）が
   // 一瞬出て、読み上げもされてしまう
   const [isRefreshingList, startListRefresh] = React.useTransition();
+  // 開始の応答から、作成中の状態を持った一覧が届くまで。このあいだに次の開始を押させない
+  const [isRefreshingBlogDraft, startBlogDraftRefresh] = React.useTransition();
+  const isBlogDraftLocked = hasActiveBlogDraft || isStartingBlogDraft || isRefreshingBlogDraft;
   const isDateRangeChanged = rangeStart !== (igStart ?? '') || rangeEnd !== (igEnd ?? '');
   const hasDateRange = igStart !== null || igEnd !== null;
 
@@ -214,7 +217,7 @@ export default function InstagramTab({
       });
       if (response.status === 409) {
         toast.error(ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_ACTIVE_EXISTS);
-        router.refresh();
+        startBlogDraftRefresh(() => router.refresh());
         return;
       }
       const payload: unknown = await response.json();
@@ -235,7 +238,7 @@ export default function InstagramTab({
           : ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTED(payload.started + payload.resumed, payload.resumed, excluded)
       );
       setSelectedMediaIds(new Set());
-      router.refresh();
+      startBlogDraftRefresh(() => router.refresh());
     } catch (error) {
       console.error('[Instagram Tab] blog draft start failed', error);
       toast.error(ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_START_FAILED);
@@ -484,7 +487,7 @@ export default function InstagramTab({
   const selectedCount = selectedMediaIds.size;
   const draftDisabledReason = selectedCount > INSTAGRAM_BLOG_DRAFT_MAX_SELECTION
     ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_LIMIT_REACHED
-    : hasActiveBlogDraft
+    : hasActiveBlogDraft || isRefreshingBlogDraft
       ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_ACTIVE_EXISTS
       : null;
   const criteriaLabel =
@@ -771,7 +774,7 @@ export default function InstagramTab({
         <InstagramMediaTable
           items={items}
           selectedIds={selectedMediaIds}
-          hasActiveBlogDraft={hasActiveBlogDraft}
+          isBlogDraftLocked={isBlogDraftLocked}
           now={blogDraftNow}
           pendingResumeId={pendingResumeId}
           onToggleRow={(id, checked) => setSelectedMediaIds(previous => toggleIdMembership(previous, id, checked))}

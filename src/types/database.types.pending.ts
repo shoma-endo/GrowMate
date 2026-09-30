@@ -149,7 +149,23 @@ type InstagramBlogDraftJobInsert = {
 export type InstagramBlogDraftJobUpdate = Partial<InstagramBlogDraftJobInsert>;
 
 export interface InstagramBlogDraftDatabase {
-  public: Omit<Database['public'], 'Tables'> & {
+  public: Omit<Database['public'], 'Tables' | 'Functions'> & {
+    Functions: {
+      start_instagram_blog_draft_batch: {
+        Args: {
+          p_user_id: string;
+          p_new_media_ids: string[];
+          p_resume_job_ids: string[];
+          p_stale_before: string;
+        };
+        Returns: {
+          batch_id: string;
+          started: number;
+          resumed: number;
+          original_batch_ids: string[];
+        }[];
+      };
+    };
     Tables: {
       instagram_blog_draft_batches: {
         Row: InstagramBlogDraftBatchRow;

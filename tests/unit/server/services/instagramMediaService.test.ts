@@ -143,6 +143,26 @@ describe('InstagramMediaService.getPage', () => {
     expect(query.calls.some((call: unknown[]) => call[0] === 'gte')).toBe(false);
   });
 
+  it('絞り込みで0件のページでも、作成中のまとまりがあれば hasActiveBlogDraft を true で返す', async () => {
+    clientMock.from.mockImplementation((table: string) => table === 'instagram_blog_draft_jobs'
+      ? queryBuilder({ data: [{ id: 'job-active' }], count: 1, error: null })
+      : queryBuilder({ data: [], count: 0, error: null }));
+
+    const result = await instagramMediaService.getPage('user-1', {
+      page: 1,
+      perPage: 10,
+      type: 'all',
+      startDate: null,
+      endDate: null,
+      sort: 'posted_at',
+      order: 'desc',
+      minEngagementRate: 4,
+    });
+
+    expect(result.items).toEqual([]);
+    expect(result.hasActiveBlogDraft).toBe(true);
+  });
+
   // インサイト由来の列は対象外（insights_unavailable）を末尾へ寄せ、未取得（null）は昇順でも末尾。
   // 投稿の属性の列は寄せない。posted_at は索引と同じ並び（nullsFirst 指定なし）。同順位は id で固定する
   it.each([

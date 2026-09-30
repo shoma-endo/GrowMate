@@ -179,23 +179,50 @@ describe('開始と再開（start）', () => {
     expect(rows('instagram_blog_draft_batches')).toHaveLength(0);
   });
 
-  it('同じ止まった投稿を2つの要求が同時に再開すると、片方だけが通り、もう片方は作成ありで対象外になる', async () => {
-    rows('instagram_media').push({ id: MEDIA_RESUME, user_id: USER_ID, caption: 'c' });
+  it('同じユーザーの開始要求が同時に届くと、片方だけが通り、もう片方は作成中のまとまりありで始めない', async () => {
+    rows('instagram_media').push(
+      { id: MEDIA_RESUME, user_id: USER_ID, caption: 'c' },
+      { id: MEDIA_NEW, user_id: USER_ID, caption: 'c' }
+    );
     rows('instagram_blog_draft_jobs').push(
       job({ id: 'job-1', instagram_media_id: MEDIA_RESUME, batch_id: 'batch-old', status: 'failed' })
     );
 
-    const results = await Promise.all([
+    const results = await Promise.allSettled([
       instagramBlogDraftJobService.start(USER_ID, [MEDIA_RESUME]),
-      instagramBlogDraftJobService.start(USER_ID, [MEDIA_RESUME]),
+      instagramBlogDraftJobService.start(USER_ID, [MEDIA_NEW]),
     ]);
 
-    expect(results.map(result => result.resumed).sort()).toEqual([0, 1]);
-    const loser = results.find(result => result.resumed === 0);
-    expect(loser).toMatchObject({ batchId: null, excluded: { created: 1 } });
-    expect(rows('instagram_blog_draft_batches').map(batch => batch.id)).toEqual([
-      results.find(result => result.resumed === 1)?.batchId,
-    ]);
+    expect(results[0]).toMatchObject({ status: 'fulfilled', value: { batchId: 'batch-new-1', resumed: 1 } });
+    expect(results[1]).toMatchObject({ status: 'rejected', reason: expect.any(InstagramBlogDraftBatchActiveError) });
+    expect(rows('instagram_blog_draft_batches').map(batch => batch.id)).toEqual(['batch-new-1']);
+    expect(rows('instagram_blog_draft_jobs')).toHaveLength(1);
+  });
+
+  it('開始の RPC で作れなかった投稿は作成ありで対象外に数え、1件も始まらなければまとまりを返さない', async () => {
+    rows('instagram_media').push({ id: MEDIA_NEW, user_id: USER_ID, caption: 'c' });
+    // 開始前の確認の後に別の要求が作った行の代わり（本人の行の取得には出ない）
+    rows('instagram_blog_draft_jobs').push(
+      job({ id: 'job-other', user_id: 'user-2', instagram_media_id: MEDIA_NEW, status: 'completed' })
+    );
+
+    await expect(instagramBlogDraftJobService.start(USER_ID, [MEDIA_NEW])).resolves.toEqual({
+      batchId: null,
+      started: 0,
+      resumed: 0,
+      excluded: { created: 1, emptyCaption: 0, unavailable: 0 },
+    });
+    expect(rows('instagram_blog_draft_batches')).toHaveLength(0);
+  });
+
+  it('開始の RPC が失敗したら例外にし、409 とは区別する', async () => {
+    rows('instagram_media').push({ id: MEDIA_NEW, user_id: USER_ID, caption: 'c' });
+    failNext('start_instagram_blog_draft_batch', 'rpc');
+
+    const error = await instagramBlogDraftJobService.start(USER_ID, [MEDIA_NEW]).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(InstagramBlogDraftBatchActiveError);
   });
 
   it('行を移した元のまとまりが全部終われば、元のまとまりの結果メールを送る', async () => {
@@ -423,6 +450,20 @@ describe('結果メール（finalizeBatchIfDone）', () => {
 
     expect(emailService.sendInstagramBlogDraftNotification).not.toHaveBeenCalled();
     expect(batch.notified_at).not.toBeNull();
+  });
+
+  it('全件がチャットを作る前に止まっていても、キーワードの取得を飛ばして結果メールを送る', async () => {
+    rows('users').push({ id: USER_ID, email: 'user@example.com', role: 'paid' });
+    rows('instagram_media').push({ id: 'media-1', user_id: USER_ID, caption: 'caption 1' });
+    rows('instagram_blog_draft_jobs').push(
+      job({ id: 'job-1', instagram_media_id: 'media-1', status: 'failed', error_code: 'KEYWORD_PARSE_FAILED' })
+    );
+    rows('instagram_blog_draft_batches').push({ id: BATCH, user_id: USER_ID, chain_count: 0, notified_at: null });
+    failNext('content_annotations', 'select');
+
+    await instagramBlogDraftJobService.runBatch(BATCH, USER_ID, 'paid');
+
+    expect(emailService.sendInstagramBlogDraftNotification).toHaveBeenCalledOnce();
   });
 
   it('待機中・作成中の行が残っていれば送らない', async () => {

@@ -241,7 +241,10 @@ class InstagramMediaService extends SupabaseService {
     userId: string,
     items: InstagramMediaListItem[]
   ): Promise<{ items: InstagramMediaListItem[]; hasActiveBlogDraft: boolean }> {
-    if (items.length === 0) return { items, hasActiveBlogDraft: false };
+    // 絞り込みで0件のページでも、作成中のまとまりがあれば画面の再取得と［ブログ記事を作成］の停止を続ける
+    if (items.length === 0) {
+      return { items, hasActiveBlogDraft: await hasActiveInstagramBlogDraftJob(this.getClient(), userId) };
+    }
     const [{ data: drafts, error: draftsError }, hasActiveBlogDraft] = await Promise.all([
       asPendingClient<InstagramBlogDraftDatabase>(this.getClient())
         .from('instagram_blog_draft_jobs')

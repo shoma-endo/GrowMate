@@ -1,6 +1,6 @@
 type Row = Record<string, unknown>;
 type Filter = { op: 'eq' | 'lt' | 'in' | 'is' | 'gte'; column: string; value: unknown };
-type Operation = 'select' | 'insert' | 'update' | 'delete' | 'upsert';
+type Operation = 'select' | 'insert' | 'update' | 'delete' | 'upsert' | 'rpc';
 type Result = { data: unknown; error: { code?: string; message: string } | null };
 
 const store: Record<string, Row[]> = {};
@@ -17,7 +17,7 @@ export function rows(table: string): Row[] {
   return store[table];
 }
 
-/** 次に table への operation が実行されたとき、1回だけ error を返す */
+/** 次に table への operation（rpc は関数名）が実行されたとき、1回だけ error を返す */
 export function failNext(table: string, operation: Operation, error = { message: 'injected' }): void {
   injectedErrors.push({ table, operation, error });
 }
@@ -108,7 +108,72 @@ class Query implements PromiseLike<Result> {
   }
 }
 
+type StartBatchArgs = {
+  p_user_id: string;
+  p_new_media_ids: string[];
+  p_resume_job_ids: string[];
+  p_stale_before: string;
+};
+
+/** migration の `start_instagram_blog_draft_batch` と同じ結果を返す（1トランザクション・ユーザーごとのロック相当） */
+function startBatch(args: StartBatchArgs): Result {
+  const jobs = rows('instagram_blog_draft_jobs');
+  const isUnfinished = (job: Row) => job.status === 'queued' || job.status === 'running';
+  if (jobs.some(job => job.user_id === args.p_user_id && isUnfinished(job) && String(job.updated_at) >= args.p_stale_before)) {
+    return { data: [], error: null };
+  }
+  const batchId = crypto.randomUUID();
+  rows('instagram_blog_draft_batches').push({ id: batchId, user_id: args.p_user_id, chain_count: 0, notified_at: null });
+  const now = new Date(Date.now()).toISOString();
+  const originalBatchIds = new Set<string>();
+  let resumed = 0;
+  for (const job of jobs) {
+    if (!args.p_resume_job_ids.includes(String(job.id)) || job.user_id !== args.p_user_id) continue;
+    const stopped = job.status === 'failed' || (isUnfinished(job) && String(job.updated_at) < args.p_stale_before);
+    if (!stopped) continue;
+    originalBatchIds.add(String(job.batch_id));
+    Object.assign(job, {
+      batch_id: batchId,
+      status: 'queued',
+      error_code: null,
+      completed_at: null,
+      continuation_count: job.continuation_count === null ? null : 0,
+      updated_at: now,
+    });
+    resumed += 1;
+  }
+  let started = 0;
+  for (const mediaId of args.p_new_media_ids) {
+    const owned = rows('instagram_media').some(media => media.id === mediaId && media.user_id === args.p_user_id);
+    if (!owned || jobs.some(job => job.instagram_media_id === mediaId)) continue;
+    jobs.push({
+      id: `job-${mediaId}`,
+      user_id: args.p_user_id,
+      instagram_media_id: mediaId,
+      batch_id: batchId,
+      status: 'queued',
+      stage: 'keywords',
+      updated_at: now,
+    });
+    started += 1;
+  }
+  if (started + resumed === 0) {
+    store.instagram_blog_draft_batches = rows('instagram_blog_draft_batches').filter(batch => batch.id !== batchId);
+  }
+  return {
+    data: [{ batch_id: batchId, started, resumed, original_batch_ids: [...originalBatchIds] }],
+    error: null,
+  };
+}
+
 const fakeClient = {
+  async rpc(name: string, args: StartBatchArgs): Promise<Result> {
+    const injected = injectedErrors.findIndex(e => e.table === name && e.operation === 'rpc');
+    const injectedError = injected >= 0 ? injectedErrors.splice(injected, 1)[0] : undefined;
+    if (injectedError) return { data: null, error: injectedError.error };
+    if (name !== 'start_instagram_blog_draft_batch') throw new Error(`unexpected rpc: ${name}`);
+    return startBatch(args);
+  },
   from(table: string) {
     return {
       select: () => new Query(table, 'select'),

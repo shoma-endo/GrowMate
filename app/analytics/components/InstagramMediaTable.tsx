@@ -55,7 +55,7 @@ import { useRouter } from 'next/navigation';
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
   selectedIds: Set<string>;
-  hasActiveBlogDraft: boolean;
+  isBlogDraftLocked: boolean;
   /** 止まった判定の基準時刻（ミリ秒）。呼び出し側が定期的に進める */
   now: number;
   pendingResumeId: string | null;
@@ -158,7 +158,7 @@ function RateCell({ item, value }: { item: InstagramMediaListItem; value: number
 export default function InstagramMediaTable({
   items,
   selectedIds,
-  hasActiveBlogDraft,
+  isBlogDraftLocked,
   now,
   pendingResumeId,
   onToggleRow,
@@ -389,7 +389,7 @@ export default function InstagramMediaTable({
                       />
                     </AnalyticsSelectionCell>
                     <AnalyticsOpsCell expanded={opsExpanded}>
-                      <BlogDraftOperation item={item} now={now} expanded={opsExpanded} active={hasActiveBlogDraft} pending={pendingResumeId === item.id} onResume={onResume} onNavigate={href => router.push(href)} />
+                      <BlogDraftOperation item={item} now={now} expanded={opsExpanded} active={isBlogDraftLocked} pending={pendingResumeId === item.id} onResume={onResume} onNavigate={href => router.push(href)} />
                     </AnalyticsOpsCell>
                     <td className="px-6 py-4">
                       <ThumbnailCell item={item} />

@@ -248,7 +248,7 @@ Instagram タブで記事にしたい投稿のチェックボックスを選び�
   3. 作成中・待機中のまとまり（`status in ('queued','running')` かつ `updated_at` が 20 分以内の行を持つまとまり。FR-007 の止まった行は除く。FR-008 の画面の判定と同じ）があれば 409（BR-015）
   4. `instagram_media` を `user_id` 一致・`id in (...)` で取得する。本人のものでない ID・存在しない ID・キャプションが空の投稿・既に `instagram_blog_draft_jobs` の行があり止まっていない（作成中・待機中・作成済み）投稿は対象外として数える（BR-001 例外 / BR-003）。行があり止まっている投稿（`status = 'failed'`、または FR-007 の止まっている `running` / `queued`）は再開の対象にする
   5. 対象が0件なら 400（トーストで対象外の件数と理由を伝える）
-  6. `instagram_blog_draft_batches` に1行、対象の投稿ごとに `instagram_blog_draft_jobs` に1行（`status = 'queued'`、`stage = 'keywords'`、`batch_id`）を作る。同じ投稿の行が同時に作られた場合は一意制約違反になり、その投稿は対象外に数える。再開の対象は、FR-007 の再開の更新で同じまとまりへ移す
+  6. `instagram_blog_draft_batches` に1行、対象の投稿ごとに `instagram_blog_draft_jobs` に1行（`status = 'queued'`、`stage = 'keywords'`、`batch_id`）を作る。同じ投稿の行が既にある場合は一意制約で作られず、その投稿は対象外に数える。再開の対象は、FR-007 の再開の更新で同じまとまりへ移す。手順3の判定からこの作成・付け替えまでは、RPC `start_instagram_blog_draft_batch` の中でユーザーごとのロック（`pg_advisory_xact_lock`）を取り、1トランザクションで行う。同じユーザーの開始要求が同時に届いたときは後の要求が 409 になり、途中で失敗しても待機中の行だけが残る（ワーカーが起動せず、20分たつまで次を始められない）ことはない。手順3はこの前にも一度確かめ、対象外の判定より先に 409 を返す
   7. 行を移したことで元のまとまりの残りが全部終わった場合に備え、移した行の元のまとまりごとに `finalizeBatchIfDone` を呼ぶ（FR-006）
   8. 200 を返す（本文は新規・再開それぞれの件数と、対象外の件数と理由の内訳）。以降は `after()` の中で FR-006 のワーカーを動かす。`after()` には開始時に確定した `userId` と `userRole`（ナレッジ注入の判定に使う。`knowledgeInjection.ts:114-123`）と `batchId` を値で渡し、`after()` の中では Cookie を読まない
 - トースト: 「N件のブログ記事の作成を始めました」（N は新規と再開の合計）。再開が1件以上あれば「（うち続きから M件）」を添える。対象外があれば理由ごとの件数を「（対象外: 作成あり M件・キャプションなし K件・その他 L件）」の形で添える（0件の理由は省く）。「作成あり」は作成中・待機中・完了のいずれか、「その他」は他人の投稿・存在しない ID。［続きを作成］（1件）のときは「続きから作成を始めました」だけを出す。文言は既存の文言の置き場（`error-messages.ts` の規約）に置く。
@@ -798,7 +798,7 @@ Feature: Instagram 投稿からブログ記事を自動作成する
 - データの所有者: ユーザー本人
 - 保持期間・削除条件: 投稿（`instagram_media`）が消えたらジョブも消える（cascade）。Instagram の連携解除（`purgeInstagramData`）で `instagram_media` が全削除されるとジョブの行も消えるが、まとまり（`instagram_blog_draft_batches`。FK は `users`）・作った記事・チャットは残る。解除中に動いていたワーカーの扱いは FR-006、解除後の表示と再作成は §4 Non-goals。チャットが消えたら `session_id` は null（OPEN-001）
 - 移行・既存データとの互換性: 新規テーブルのみ。既存データの移行なし
-- RLS・Service Role・ユーザー境界: `instagram_blog_draft_jobs`・`instagram_blog_draft_batches` は RLS を有効にし、`(select auth.uid()) = user_id` の select のみ許可する（自己参照のみ）。2テーブルとも `user_id` に B-tree 索引を付ける。書き込みは Route Handler と `after()` 内のサービスが `SupabaseService`（Service Role）で行い、すべて `user_id` で絞る。Service Role を使うのは、`after()` の中では Cookie の書き込みができず、更新したトークンを保存できないまま進むため（R-001）
+- RLS・Service Role・ユーザー境界: 開始の RPC `start_instagram_blog_draft_batch`（FR-001）は `security definer`・`search_path = public` で、冒頭で `auth.role() <> 'service_role'` を弾き、実行権限も `service_role` だけに付ける（`list_due_ga4_content_evaluations` と同じ）。`instagram_blog_draft_jobs`・`instagram_blog_draft_batches` は RLS を有効にし、`(select auth.uid()) = user_id` の select のみ許可する（自己参照のみ）。2テーブルとも `user_id` に B-tree 索引を付ける。書き込みは Route Handler と `after()` 内のサービスが `SupabaseService`（Service Role）で行い、すべて `user_id` で絞る。Service Role を使うのは、`after()` の中では Cookie の書き込みができず、更新したトークンを保存できないまま進むため（R-001）
 
 ### 外部連携
 
@@ -973,13 +973,13 @@ Feature: Instagram 投稿からブログ記事を自動作成する
 
 - リリース単位・段階展開: 一括リリース
 - Feature Flag / allowlist: なし（既存の Instagram タブと同じロール制御）
-- データベース変更の適用順序: migration（`instagram_blog_draft_batches` / `instagram_blog_draft_jobs` のテーブル・RLS・索引、テンプレート1本の投入）→ アプリ
+- データベース変更の適用順序: migration（`instagram_blog_draft_batches` / `instagram_blog_draft_jobs` のテーブル・RLS・索引、開始の RPC、テンプレート1本の投入）→ アプリ
 - 本番確認項目: 自分のアカウントで投稿1件をブログ化し、完成形まで届くこと
 
 ### ロールバック方針
 
 - アプリケーションの戻し方: デプロイの巻き戻し。操作列が消え、新たな作成は始まらない
-- DB変更の戻し方・逆マイグレーション: `drop table instagram_blog_draft_jobs`、`drop table instagram_blog_draft_batches`（FK の向きに合わせて jobs → batches の順）、テンプレート1行の削除（migration にロールバック SQL をコメントで残す）
+- DB変更の戻し方・逆マイグレーション: `drop function start_instagram_blog_draft_batch`、`drop table instagram_blog_draft_jobs`、`drop table instagram_blog_draft_batches`（FK の向きに合わせて jobs → batches の順）、テンプレート1行の削除（migration にロールバック SQL をコメントで残す）
 - データ不整合時の復旧: 作成済みの記事は通常のチャット・コンテンツとして残る（手動フローで作ったものと区別なく使える）
 - ロールバック判断者: 遠藤
 
@@ -1070,6 +1070,7 @@ Feature: Instagram 投稿からブログ記事を自動作成する
 | 2026-09-30 | R-003 を「対応予定」から「受容」にし、`content_annotations` の `ADD COLUMN IF NOT EXISTS` と `wp_post_id` の `DROP NOT NULL` の migration を実装範囲から外す（§10 依存関係・§12 R-003・§13 適用順序と戻し方） | 遠藤指摘「DBは本番と共有している」。README「Supabase 注意」（開発と本番で同一プロジェクトを共有）により、列が無い環境の前提が成り立たないため | 遠藤 |
 | 2026-09-30 | 定期起動が Vercel Cron に移った（2026-09-24、`4ccd0ebb`）ことに合わせ、ALT-001 案B の却下理由・将来変更する条件と §4 Non-goals の cron の行を書き直す（採用案と設計は変えない）。FR-005 に、`getStep7UserLead` がエラーを `null` に握りつぶすため、エラーと未保存を区別する取得を足して書き出しの二重保存を防ぐことを追記。`headingFlowService` の `SupabaseResult` の失敗を `SAVE_FAILED` にすることを FR-005 と §13 に追記。BR-008 の例外を番号順に並べ替え | 仕様書の自己レビュー（2026-09-30）。遠藤決定「理由の記述だけ直す」 | 遠藤 |
 | 2026-09-30 | 止まった投稿をチェックして［ブログ記事を作成］でまとめて再開できるようにする（BR-003・BR-007・BR-015・FR-001・FR-007・§6・Gherkin 3本・§13・R-012 / R-013）。再開用の Route Handler `POST /api/instagram/blog-drafts/[jobId]/resume` をやめ、行の［続きを作成］も開始の Route Handler に1件で渡す。作成中・待機中の記事があるあいだは［続きを作成］を押せず、409 時はトーストを出す。再開時は `continuation_count` が null でなければ理由を問わず 0 に戻す | spec-review（2026-09-30）の指摘。429 や引き継ぎの途切れで複数件が止まると、1件ずつ・前の作成の終了を待って再開することになり、メールも件数ぶん届く（ALT-001 の「10件を手で再開させるのは成り立たない」と矛盾）。遠藤決定「1（チェックで一括再開）」 | 遠藤 |
+| 2026-10-01 | 開始の判定と、まとまり・行の作成・付け替えを RPC `start_instagram_blog_draft_batch` で1トランザクションにし、ユーザーごとのロックを取る（FR-001・§9 RLS・適用順序・戻し方） | PR #596 の Bot レビュー（Cursor Bugbot・Codex）の指摘。途中で失敗すると待機中の行だけが残り20分次を始められない、同じユーザーの開始要求が同時に届くと両方が判定を通る | 遠藤 |
 
 ## 17. フェーズ全体のロードマップ（参考・本書の完了定義外）
 

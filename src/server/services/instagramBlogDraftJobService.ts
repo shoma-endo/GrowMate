@@ -36,6 +36,7 @@ export class InstagramBlogDraftBatchActiveError extends Error {}
 class InstagramBlogDraftJobService extends SupabaseService {
   async start(userId: string, mediaIds: string[]): Promise<StartInstagramBlogDraftResult> {
     const client = this.jobsClient();
+    // 対象外の判定より先に 409 を返すための事前確認。確定の判定は開始の RPC の中でロックを取って行う
     if (await hasActiveInstagramBlogDraftJob(this.getClient(), userId)) throw new InstagramBlogDraftBatchActiveError();
 
     const { data: media, error: mediaError } = await this.getClient()
@@ -79,63 +80,32 @@ class InstagramBlogDraftJobService extends SupabaseService {
     }
 
     if (selected.length === 0) return { batchId: null, started: 0, resumed: 0, excluded };
-    const batchId = crypto.randomUUID();
-    const { error: batchError } = await client.from('instagram_blog_draft_batches').insert({ id: batchId, user_id: userId });
-    if (batchError) throw new Error('Instagram blog draft batch creation failed');
-
-    let started = 0;
-    let resumed = 0;
-    const originalBatchIds = new Set<string>();
-    for (const item of selected) {
-      const prior = item.prior;
-      if (prior) {
-        let update = client.from('instagram_blog_draft_jobs')
-          .update({ batch_id: batchId, status: 'queued', error_code: null, completed_at: null,
-            ...(prior.continuation_count === null ? {} : { continuation_count: 0 }) })
-          .eq('id', prior.id).eq('user_id', userId);
-        update = prior.status === 'failed'
-          ? update.eq('status', 'failed')
-          : update.eq('status', prior.status).lt('updated_at', new Date(now - INSTAGRAM_BLOG_DRAFT_STALE_AFTER_MS).toISOString());
-        const { data: moved, error } = await update.select('id').maybeSingle();
-        if (error) throw new Error('Instagram blog draft resume failed');
-        if (!moved) {
-          excluded.created += 1;
-          continue;
-        }
-        originalBatchIds.add(prior.batch_id);
-        resumed += 1;
-      } else {
-        const { error } = await client.from('instagram_blog_draft_jobs').insert({
-          user_id: userId,
-          instagram_media_id: item.mediaId,
-          batch_id: batchId,
-          status: 'queued',
-          stage: 'keywords',
-        });
-        if (error?.code === '23505') {
-          excluded.created += 1;
-          continue;
-        }
-        if (error) throw new Error('Instagram blog draft job creation failed');
-        started += 1;
-      }
-    }
+    const { data: created, error: startError } = await client.rpc('start_instagram_blog_draft_batch', {
+      p_user_id: userId,
+      p_new_media_ids: selected.flatMap(item => (item.prior ? [] : [item.mediaId])),
+      p_resume_job_ids: selected.flatMap(item => (item.prior ? [item.prior.id] : [])),
+      p_stale_before: new Date(now - INSTAGRAM_BLOG_DRAFT_STALE_AFTER_MS).toISOString(),
+    });
+    if (startError) throw new Error('Instagram blog draft batch creation failed');
+    const batch = created?.[0];
+    if (!batch) throw new InstagramBlogDraftBatchActiveError();
+    // 同時に別の要求が作成・再開していた投稿
+    excluded.created += selected.length - batch.started - batch.resumed;
 
     // 元のまとまりのメールは付随する処理。失敗しても新しいまとまり（行は付け替え済み）の起動を止めない
-    for (const originalBatchId of originalBatchIds) {
+    for (const originalBatchId of batch.original_batch_ids) {
       try {
         await this.finalizeBatchIfDone(originalBatchId, userId);
       } catch (error) {
         console.error(`${LOG_TAG} original batch finalize failed`, { batchId: originalBatchId, error });
       }
     }
-    if (started + resumed === 0) {
-      const { error: deleteError } = await client.from('instagram_blog_draft_batches').delete()
-        .eq('id', batchId).eq('user_id', userId);
-      if (deleteError) console.error(`${LOG_TAG} empty batch delete failed`, { batchId, error: deleteError });
-      return { batchId: null, started, resumed, excluded };
-    }
-    return { batchId, started, resumed, excluded };
+    return {
+      batchId: batch.started + batch.resumed > 0 ? batch.batch_id : null,
+      started: batch.started,
+      resumed: batch.resumed,
+      excluded,
+    };
   }
 
   async runBatch(batchId: string, userId: string, userRole: UserRole): Promise<void> {
@@ -280,8 +250,11 @@ class InstagramBlogDraftJobService extends SupabaseService {
     const { data: media, error: mediaError } = await this.getClient().from('instagram_media')
       .select('id, caption').eq('user_id', userId).in('id', mediaIds);
     if (mediaError) throw new Error('Instagram blog draft email media lookup failed');
-    const { data: annotations, error: annotationsError } = await this.getClient().from('content_annotations')
-      .select('session_id, main_kw').eq('user_id', userId).in('session_id', jobs.flatMap(job => job.session_id ? [job.session_id] : []));
+    const sessionIds = jobs.flatMap(job => job.session_id ? [job.session_id] : []);
+    const { data: annotations, error: annotationsError } = sessionIds.length === 0
+      ? { data: [], error: null }
+      : await this.getClient().from('content_annotations')
+        .select('session_id, main_kw').eq('user_id', userId).in('session_id', sessionIds);
     if (annotationsError) throw new Error('Instagram blog draft email keyword lookup failed');
     const email = buildInstagramBlogDraftEmail(siteUrl, jobs.map(job => ({
       status: job.status === 'completed' ? 'completed' as const : 'failed' as const,
