@@ -64,7 +64,8 @@
 | origin | text | NO | `interactive`（ユーザー操作の同期実行）/ `cron`（cron 起点。ユーザー起票ジョブを cron が処理する場合を含む）。CHECK で 2 値に制限 |
 | environment | text | NO | `production` / `preview` / `local`。**本番とプレビューが同じ共有 DB を使う**ため、集計時に切り分けられるようにする（`cron_run_logs.environment` と同じ考え方。判定ロジックは `src/server/lib/cron-observability.ts` の関数内にあり export されていないため、PR2 で共通関数へ切り出す） |
 | provider | text | NO | `anthropic` / `openai` |
-| model | text | NO | 実際に API へ渡したモデル名（例 `claude-sonnet-5`、`ft:gpt-4.1-nano-…`）。`MODEL_CONFIGS[*].actualModel` |
+| model | text | NO | 実際に API へ渡したモデル名（例 `claude-sonnet-5`、`ft:gpt-4.1-nano-…`）。`MODEL_CONFIGS[*].actualModel`。§6 の単価結合キー |
+| response_model | text | YES | API が応答で返したモデル名（Anthropic `message.model` / OpenAI `completion.model`）。`model` が別名の場合、別名の指す実体（スナップショット）が変わったことを後から見分けるため（Claude 案・未確認）。単価結合には使わない |
 | input_tokens | integer | NO | キャッシュ分を**含まない**通常入力（§9 の正規化ルール） |
 | output_tokens | integer | NO | 出力。拡張思考（thinking）を有効にした場合の思考トークンは出力側に含まれる想定（公式で要再確認） |
 | cache_read_tokens | integer | NO | キャッシュ読み取り入力（Anthropic `cache_read_input_tokens`） |
@@ -129,6 +130,7 @@ create table if not exists public.llm_token_usages (
   environment text not null check (environment in ('production', 'preview', 'local')),
   provider text not null check (provider in ('anthropic', 'openai')),
   model text not null,
+  response_model text,
   input_tokens integer not null default 0 check (input_tokens >= 0),
   output_tokens integer not null default 0 check (output_tokens >= 0),
   cache_read_tokens integer not null default 0 check (cache_read_tokens >= 0),
@@ -194,17 +196,19 @@ develop（`b26c3207`）でリポジトリ全体（`src` / `app` / `scripts` / `s
    };
    ```
    必須にすることで、全呼び出し元（§4 の `llmChat` 経由 11 箇所）が指定しないとコンパイルエラーになる。`userId: null` は「システム分」を**明示的に**選ばせるため（付け忘れで NULL になる事故を防ぐ）。
-2. `callAnthropic` / `callOpenAI` の戻り値を `{ text, usage }` に変更し、`llmChat` の外向き戻り値は **`Promise<string>` のまま**にする（既存呼び出し元・テストを壊さない）。
+2. `callAnthropic` / `callOpenAI` の戻り値を `{ text, usage, requestId, responseModel }` に変更し、`llmChat` の外向き戻り値は **`Promise<string>` のまま**にする（呼び出し元の戻り値の扱いは変わらない）。現状「応答が空」の例外は `callOpenAI`（`llmService.ts:138`）・`callAnthropic`（同 `:202`）の中で戻り値を返す前に投げているため、**空チェックを `llmChat` 側へ移す**（`call*` は空文字のまま返し、`llmChat` が記録した後に同じ例外を投げる）。`usageContext` を `call*` まで渡す案より変更箇所が少ない。
+   - 既存テストへの影響: `usageContext` 必須化で、`tests/unit/server/services/ga4EvaluationLlmService.test.ts` の `toHaveBeenCalledWith(…, { timeoutMs: 45_000, maxTokens: 1234 })`（オプションの完全一致）と、`tests/unit/server/services/llmService.test.ts` の 3 引数呼び出しは書き換えが要る（PR2 に含める。§10）。
 3. usage の取り込み:
    - Anthropic: `resp.usage`（`input_tokens`・`output_tokens`・`cache_read_input_tokens`・`cache_creation_input_tokens`・`cache_creation.ephemeral_5m/1h_input_tokens`・`server_tool_use.web_search_requests`）。既存 `mergeTokenUsage` を再利用して `TokenUsageTotals` に正規化する。`stream: true` の場合も `finalMessage()` の `usage` を使う。
    - OpenAI: `completion.usage`（`prompt_tokens` / `completion_tokens` / `prompt_tokens_details.cached_tokens`）。正規化ルールは §9。
-4. **記録のタイミング**: 応答取得直後、**「応答が空」エラーを投げる前**に記録する（トークンは課金済みのため）。`max_tokens` 打ち切りでも応答は返るので通常どおり記録。
+4. **記録のタイミング**: `llmChat` 内で `call*` から戻った直後、**「応答が空」エラーを投げる前**に記録する（トークンは課金済みのため。手順 2 の空チェック移動が前提）。`max_tokens` 打ち切りでも応答は返るので通常どおり記録。
 5. 記録は新設の `recordLlmTokenUsage(input)`（新規ファイル案: `src/server/services/llmTokenUsageService.ts`）に集約する。`SupabaseService` のサービスロールクライアントで insert し、`environment` はここで解決する。
 
 ### 5.2 記録失敗が本処理を止めない
 
 - `recordLlmTokenUsage` は**例外を投げない**（内部で try/catch）。失敗は `logger.error('[LLM Token Usage] record failed', {feature, provider, model, …})` に出すだけで、**リトライしない**（合意済み）。DB 障害時は欠損し得る（§11 リスク）。
-- Vercel のサーバーレスでは、応答返却後の未 await の Promise は打ち切られ得るため、**fire-and-forget にはせず `await` する**。ただし待ち時間が本処理を伸ばさないよう短いタイムアウト（値は実装時に決める。未決）を付ける。代案として Next.js の `after()` で応答後に記録する方法もあるが、利用可否は**未検証**（実装時に確認）。
+- Vercel のサーバーレスでは、応答返却後の未 await の Promise は打ち切られ得るため、**fire-and-forget にはせず `await` する**。ただし待ち時間が本処理を伸ばさないよう短いタイムアウト（値は実装時に決める。未決）を付ける。代案として Next.js の `after()` で応答後に記録する方法もある。公式ドキュメント（`node_modules/next/dist/docs/01-app/03-api-reference/04-functions/after.md`）上は Route Handler・Server Function で使えるが、Vercel で応答後に確実に実行されるか、リクエスト外（下記の打ち切られた処理など）から呼んだときの挙動は**未検証**（実装時に確認）。
+- `await` しても、呼び出し元が LLM 呼び出しの完了を待たずに先へ進む経路では記録が失われ得る。現状の該当: `googleAdsNegativeKeywordsSuggestionService.runWithUserTimeLimit`（`Promise.race` でユーザー単位の時間切れを判定し、LLM 呼び出しは裏で走り続ける）。時間切れ後に完了した呼び出しの記録は、関数終了後に凍結・打ち切られ得る（既知の欠損。§11 リスク 3）。
 - usage が取れない（プロバイダが返さない等）場合は記録をスキップしてログのみ。0 埋めの行は作らない。
 - タイムアウト・中断（`AbortSignal`）・API エラーで応答が取れなかった呼び出しは usage が無いため**記録されない**（既知の欠損。§11）。
 
@@ -212,8 +216,8 @@ develop（`b26c3207`）でリポジトリ全体（`src` / `app` / `scripts` / `s
 
 `llmChat` を通らないため、**既存の `logTokenUsage` 呼び出し箇所で DB にも記録**する。
 
-- **チャット**（`app/api/chat/anthropic/stream/route.ts`）: `message_stop` の `logTokenUsage(tokenUsage)` の直後に `recordLlmTokenUsage`（`feature: 'chat'`、`origin: 'interactive'`、`userId`、`sessionId` = リクエストの `sessionId`、`context.model_key` = `model`）。新規セッションでは `sessionId` が保存後に確定するため NULL になり得る（許容）。`message_id` は常に NULL（§3.2）。ストリーム後の上限チェック（`checkTrialDailyLimit`）や保存処理が失敗しても usage は残すため、**これらより前に**記録する。
-- **Canvas**（`app/api/chat/canvas/stream/route.ts`）: 現状は最大 3 段（Web 検索（`shouldEnableWebSearch` のときのみ）・編集・分析）の usage を `requestTokenUsageTotal` に合算して末尾で 1 回だけログ出力している。末尾まで到達しないエラーでは途中段の usage が失われるため、**各段の完了直後に 1 行ずつ記録する案を推奨**（`feature: 'canvas'`、`context.stage` = `web_search` / `edit` / `analysis`）。モデルは各段とも同一（`actualModel`）なので合算 1 行でも原価は同じだが、欠損耐性と段別の原価把握のため段別を推奨。`withAnthropicRetry`（`src/server/lib/anthropic-retry.ts`）で再試行された場合、失敗した試行の usage は現状取得していない（**未確認**: 失敗試行が課金対象かどうかも含め実装時に確認）。
+- **チャット**（`app/api/chat/anthropic/stream/route.ts`）: `message_stop` の `logTokenUsage(tokenUsage)` の直後に `recordLlmTokenUsage`（`feature: 'chat'`、`origin: 'interactive'`、`userId`、`sessionId` = リクエストの `sessionId`、`context.model_key` = `model`）。新規セッションでは `sessionId` が保存後に確定するため NULL になり得る（許容）。`message_id` は常に NULL（§3.2）。ストリーム後の上限チェック（`checkTrialDailyLimit`）や保存処理が失敗しても usage は残すため、**これらより前に**記録を開始する。ただし記録の insert を待ってから上限チェックに進むと、毎ターンの保存と最後の SSE が insert の分だけ遅れる。記録と上限チェックは互いに依存しないため、**`Promise.all` で並行実行**する（Claude 案・未確認）。
+- **Canvas**（`app/api/chat/canvas/stream/route.ts`）: 現状は最大 3 段（Web 検索（`shouldEnableWebSearch` のときのみ）・編集・分析）の usage を `requestTokenUsageTotal` に合算して末尾で 1 回だけログ出力している。末尾まで到達しないエラーでは途中段の usage が失われるため、**各段の完了直後に 1 行ずつ記録する案を推奨**（`feature: 'canvas'`、`context.stage` = `web_search` / `edit` / `analysis`）。モデルは各段とも同一（`actualModel`）なので合算 1 行でも原価は同じだが、欠損耐性と段別の原価把握のため段別を推奨。記録の置き場所は、各段の `withAnthropicRetry`（`src/server/lib/anthropic-retry.ts`）に渡す**クロージャの中**とし、試行ごとに `try/finally` で「その試行で `message_start` 以降に取れた usage」があれば 1 行記録する（`context.attempt` に試行番号。Claude 案・未確認）。クロージャの外に置くと成功した試行の分しか残らず、現状 `requestTokenUsageTotal` への加算も成功経路（`message_stop` 後、Web 検索段は成功時の戻り値）でしか行っていないため、`message_start` 後に overloaded 等で再試行された試行の usage は失われる。失敗試行が課金対象かどうかは**未確認**（実装時に確認。課金されないと分かれば成功試行のみに絞る）。
 - `logTokenUsage` 自体は残す（アプリログでの即時確認用）。ただし `sonnet46CostUsd` の出力は、sonnet-5 の単価確認後に削除または差し替える（§7）。
 
 ### 5.4 feature と user_id を呼び出し元から渡す
@@ -303,7 +307,7 @@ order by total_tokens desc;
 
 **金額の計算（単価表を結合する考え方）**
 
-単価は期間で変わり得るため、`effective_from` を持つ単価表から「その行の `created_at` 時点で有効な 1 件」を引く。単価が未登録のモデルは**金額 NULL**（0 にしない）にする。ただし `sum()` は NULL を無視して一部の月の金額を小さく見せるため、`unpriced_rows`（単価未登録行数）を併記し、0 でない月は金額を信用しない。
+単価は期間で変わり得るため、`effective_from` を持つ単価表から「その行の `created_at` 時点で有効な 1 件」を引く。単価が未登録のモデルは**金額 NULL**（0 にしない）にする。ただし `sum()` は NULL を無視して一部の月の金額を小さく見せるため、`unpriced_rows`（単価未登録行数）を併記し、0 でない月は金額を信用しない。`unpriced_rows` が数えるのは単価行が無い場合だけなので、単価行の**列**が NULL だと（例: Web 検索の無い OpenAI の `web_search_per_request_usd`）その行の金額が警告なしに NULL になる。これを防ぐため単価表の単価列は `not null default 0` にする（§7）。
 
 ```sql
 select date_trunc('month', u.created_at) as month,
@@ -333,7 +337,7 @@ group by 1, 2;
 
 ## 7. 単価表の置き場所（案）と単価の扱い
 
-- **案（推奨）: DB に `llm_model_prices` テーブル**を別マイグレーションで作る。カラム案: `provider`, `model`, `effective_from`, `input_per_mtok_usd`, `output_per_mtok_usd`, `cache_read_per_mtok_usd`, `cache_write_5m_per_mtok_usd`, `cache_write_1h_per_mtok_usd`, `web_search_per_request_usd`。SQL だけで過去分も含め再計算でき、単価修正（`effective_from` の追加・修正）で**過去分の金額も再計算**される。
+- **案（推奨）: DB に `llm_model_prices` テーブル**を別マイグレーションで作る。カラム案: `provider`, `model`, `effective_from`, `input_per_mtok_usd`, `output_per_mtok_usd`, `cache_read_per_mtok_usd`, `cache_write_5m_per_mtok_usd`, `cache_write_1h_per_mtok_usd`, `web_search_per_request_usd`。単価列はすべて `numeric not null default 0`（そのモデルに該当しない項目は 0。NULL を許すと §6 の金額が警告なしに欠ける）。SQL だけで過去分も含め再計算でき、単価修正（`effective_from` の追加・修正）で**過去分の金額も再計算**される。
 - 代替: TS の定数ファイル＋アプリ側集計。DB に依存しないが、SQL 集計・将来の管理画面で二重管理になる。
 - **単価の数値は本書に書かない。`claude-sonnet-5` の公式単価は未確認（要確認）**。OpenAI の FT モデル（`ft:gpt-4.1-nano-…`）・`gpt-4o-mini` の単価も**未確認**。Web 検索の 1 リクエスト単価も、コード中の定数 `WEB_SEARCH_PRICE_PER_REQUEST_USD` は現行で有効か**未確認**。
 - 既存 `anthropic-token-usage.ts` の `SONNET_4_6_*` 定数は旧モデル（Sonnet 4.6）用の値であり、**sonnet-5 の単価として流用しない**。単価確認後に、`logTokenUsage` のコスト出力は削除するか単価表参照に寄せる。
@@ -361,7 +365,7 @@ group by 1, 2;
 | PR | 内容 | 目安 | 備考 |
 | --- | --- | --- | --- |
 | PR1 | マイグレーション: `llm_token_usages`（§3）＋ RLS | 0.5d | **共有 DB への適用は別途ユーザー承認が必要**。先にマージ・適用しないと PR2 以降の insert が失敗する（失敗しても本処理は止まらない設計だが記録は欠損する） |
-| PR2 | 新テーブルの型の扱い（`.agents/skills/supabase/service-usage.md` §6 の pending 型か、生成型の再作成か。実装時に決める）＋ `recordLlmTokenUsage`＋`LLM_FEATURES`＋`llmService` の usage 受け取り・記録＋全 `llmChat` 呼び出し元に `usageContext` を追加（§4 の 11 箇所、§5.4 の引数追加） | 1.5〜2d | `usageContext` 必須化のため全呼び出し元を同一 PR で直す |
+| PR2 | 新テーブルの型の扱い（`.agents/skills/supabase/service-usage.md` §6 の pending 型か、生成型の再作成か。実装時に決める）＋ `recordLlmTokenUsage`＋`LLM_FEATURES`＋`llmService` の usage 受け取り・記録＋全 `llmChat` 呼び出し元に `usageContext` を追加（§4 の 11 箇所、§5.4 の引数追加）＋既存テストの書き換え（§5.1 手順 2） | 2〜2.5d | `usageContext` 必須化のため全呼び出し元・既存テストを同一 PR で直す |
 | PR3 | ストリーム 2 ルート（chat / canvas）の DB 記録（§5.3） | 1.0d | Canvas を段別 1 行にする場合のテスト追加を含む |
 | PR4 | 単価表 `llm_model_prices`（別マイグレーション）＋集計 SQL（§6）の整備。`logTokenUsage` のコスト出力整理 | 1.0d | **単価確認後**。単価はユーザーが承認した値のみ |
 | （別タスク） | 管理画面 UI（§8） | 未見積り | スコープ外 |
@@ -371,7 +375,7 @@ group by 1, 2;
 - `recordLlmTokenUsage`: insert 失敗・例外時に**投げない**こと、usage なしでスキップすること、`total_tokens` を payload に含めないこと。
 - `llmChat`: Anthropic / OpenAI のモックで usage が正規化されて記録されること（キャッシュあり/なし、`stream: true`、「応答が空」エラー時も記録されること）。`usageContext` が未指定だと型エラーになること（型テスト）。
 - 各呼び出し元: 正しい `feature` / `userId` / `origin` を渡していること（cron 経路で `job.user_id` / `cycle.user_id` が渡る）。
-- ストリーム: `message_stop` で 1 回だけ記録されること、Canvas は段ごとに記録されること。
+- ストリーム: `message_stop` で 1 回だけ記録されること、Canvas は段・試行ごとに記録されること（`message_start` 後に再試行された試行も 1 行残る）。
 - マイグレーション: ローカルでの適用確認と RLS（§3.5 の最終案どおり。select 本人を許可する場合は他人・システム行が見えないこと）の確認。
 
 ## 11. リスク・未決事項・ユーザーに確認したい点
@@ -380,7 +384,7 @@ group by 1, 2;
 
 1. **単価が未確認**: `claude-sonnet-5`、OpenAI FT モデル、`gpt-4o-mini`、Web 検索の単価はいずれも未確認。確認が取れるまで金額は出せない（トークン数のみ先行して記録できる設計にしてある）。
 2. **入力トークンのキャッシュ内訳**: Anthropic の `input_tokens` の定義と、OpenAI の `prompt_tokens` がキャッシュ分を含むかは未確認（§9）。実装前に公式仕様と実レスポンスで確認する。取り違えると金額が過大/過小になる。
-3. **失敗時の欠損**: 記録失敗（ログのみ・リトライなし）に加え、タイムアウト・クライアント切断・API エラーで usage が取れない呼び出しは記録されない。チャットのストリームはクライアントが切断すると `message_stop` に到達せず usage が失われる（現行の `logTokenUsage` も同じ）。この欠損率は実測しないと分からない（**未確認**）。
+3. **失敗時の欠損**: 記録失敗（ログのみ・リトライなし）に加え、タイムアウト・クライアント切断・API エラーで usage が取れない呼び出しは記録されない。チャットのストリームはクライアントが切断すると `message_stop` に到達せず usage が失われる（現行の `logTokenUsage` も同じ）。除外キーワード提案の cron は、ユーザー単位の時間切れ（`runWithUserTimeLimit`）後に完了した LLM 呼び出しの記録が失われ得る（§5.2）。この欠損率は実測しないと分からない（**未確認**）。
 4. **OpenAI FT 経路の usage 取得**: `callOpenAI` は `completion.usage` を現状無視している。FT モデルでも `usage` / `prompt_tokens_details` が返るかは**未確認**。返らない場合はその行をスキップ（ログのみ）にする。
 5. **共有 DB**: 本番・プレビューが同じ DB のため `environment` で分離しないと原価が混ざる。プレビューの動作確認でも本番 DB に行が入る（集計時に除外）。
 6. **二重計上**: `llmChat` 経由の記録とストリームルートの記録は経路が重ならないため通常は起きないが、将来ストリームルートを `llmChat` 化する際は片方に寄せること。
@@ -393,7 +397,7 @@ group by 1, 2;
 2. **`user_id` の FK と select 本人の許可**: FK を張らない案（ユーザー削除後も原価履歴を残す）と、RLS で select 本人を許可する案（ユーザー指定どおり）のままでよいか。ユーザー向け表示は非目標なので、select 許可が不要なら revoke のみに絞れる。
 3. **単価表の置き場所**: DB（`llm_model_prices`、推奨）か TS 定数か。
 
-**確認なしで本書が置いた既定案（Claude 案・未確認。異論があれば修正する）**: `cache_creation_5m/1h_tokens`（TTL 内訳）の保存、追加カラム `origin` / `environment` / `context`、Canvas を段別に最大 3 行で記録、保持期間は当面設けない（未決）、管理画面 UI は別タスク（着手時期は本書の範囲外）。
+**確認なしで本書が置いた既定案（Claude 案・未確認。異論があれば修正する）**: `cache_creation_5m/1h_tokens`（TTL 内訳）の保存、追加カラム `origin` / `environment` / `context` / `response_model`、Canvas を段別・試行別に記録（§5.3）、チャットの記録と上限チェックの並行実行、単価列の `not null default 0`、保持期間は当面設けない（未決）、管理画面 UI は別タスク（着手時期は本書の範囲外）。
 
 ---
 
