@@ -131,10 +131,14 @@ steps:
     rules:
       - condition: 実装と必須検証（npm run verify）が完了した
         next: reviewers
+      # 完了契約の「未完了」行（テスト・観測記録の不足）は仕様の問題ではなく reviewers → fix で閉じる。
+      # この行が無いと判定が下の ABORT を選び、resume しても同じ所で止まり続ける。
+      - condition: npm run verify は成功したが、実装レポートの完了契約に「未完了」の行が残っている（テスト不足・観測記録不足など、仕様書の修正を要しない残件）
+        next: reviewers
       - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
         next: plan
         command_gates: skip
-      - condition: 判断できない、情報不足（仕様書の修正が必要）
+      - condition: 判断できない、情報不足（仕様書の矛盾・欠落があり、仕様書を直さないと実装を進められない）
         next: ABORT
         command_gates: skip
     output_contracts:
