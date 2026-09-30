@@ -356,11 +356,6 @@
       "count": 16
     }
   },
-  "app/unavailable/page.tsx": {
-    "shadcn/no-raw-colors": {
-      "count": 10
-    }
-  },
   "app/wordpress-import/page.tsx": {
     "shadcn/no-raw-colors": {
       "count": 32
