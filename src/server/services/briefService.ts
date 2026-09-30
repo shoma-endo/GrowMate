@@ -28,6 +28,36 @@ interface Brief {
 export class BriefService extends SupabaseService {
 
   /**
+   * 失敗は `kind` で「読み取り失敗（`db_error`）」と「保存済みの形式が不正（`invalid_format`）」を分けて返す。
+   * 後者は再試行しても直らないため、呼び出し側が扱いを変えられるようにする
+   */
+  async getValidatedBriefByUserId(userId: string): Promise<
+    | { success: true; data: BriefInput | null }
+    | { success: false; kind: 'db_error' | 'invalid_format'; error: string }
+  > {
+    const briefResult = await this.getBrief(userId);
+    if (!briefResult.success) {
+      return { success: false, kind: 'db_error', error: briefResult.error.userMessage };
+    }
+    if (briefResult.data == null) return { success: true, data: null };
+
+    try {
+      const migratedData = BriefService.migrateOldBriefToNew(briefResult.data, userId);
+      const parsed = briefInputSchema.safeParse(migratedData);
+      if (!parsed.success) {
+        console.warn('事業者情報のバリデーション失敗:', parsed.error.issues);
+        return { success: false, kind: 'invalid_format', error: ERROR_MESSAGES.BRIEF.INVALID_DATA_FORMAT };
+      }
+      return { success: true, data: parsed.data };
+    } catch (error) {
+      if (error instanceof BriefDataFormatError) {
+        return { success: false, kind: 'invalid_format', error: ERROR_MESSAGES.BRIEF.INVALID_DATA_FORMAT };
+      }
+      throw error;
+    }
+  }
+
+  /**
    * 型安全な文字列変換ヘルパー
    */
   private static asString(value: unknown): string | undefined {

@@ -79,6 +79,41 @@ export type InstagramMediaSortKey = (typeof INSTAGRAM_MEDIA_SORT_KEYS)[number];
 export type InstagramMediaSortOrder = 'asc' | 'desc';
 export type InstagramMediaTypeFilter = 'all' | 'reels' | 'feed';
 
+type InstagramBlogDraftStatus = 'queued' | 'running' | 'failed' | 'completed';
+export type InstagramBlogDraftStage =
+  | 'keywords'
+  | 'step1'
+  | 'step2'
+  | 'step3'
+  | 'step4'
+  | 'step5'
+  | 'step6'
+  | 'headings'
+  | 'heading'
+  | 'combine'
+  | 'done';
+export type InstagramBlogDraftErrorCode =
+  | 'KEYWORD_PARSE_FAILED'
+  | 'AI_FAILED'
+  | 'AI_RATE_LIMITED'
+  | 'MAX_TOKENS'
+  | 'NO_HEADINGS'
+  | 'SAVE_FAILED'
+  | 'LEAD_PARSE_FAILED'
+  | 'CHAIN_LIMIT'
+  | 'ROLE_REVOKED';
+
+export interface InstagramBlogDraftListItem {
+  id: string;
+  sessionId: string | null;
+  status: InstagramBlogDraftStatus;
+  stage: InstagramBlogDraftStage;
+  headingIndex: number;
+  headingTotal: number | null;
+  errorCode: InstagramBlogDraftErrorCode | null;
+  updatedAt: string;
+}
+
 export interface InstagramMediaListItem {
   id: string;
   igMediaId: string;
@@ -110,6 +145,7 @@ export interface InstagramMediaListItem {
   insightsSyncedAt: string | null;
   insightsUnavailable: boolean;
   insightsUnavailableReason: InstagramInsightsUnavailableReason | null;
+  blogDraft: InstagramBlogDraftListItem | null;
 }
 
 export interface InstagramMediaPageResult {
@@ -118,6 +154,7 @@ export interface InstagramMediaPageResult {
   totalPages: number;
   page: number;
   perPage: number;
+  hasActiveBlogDraft: boolean;
 }
 
 export type InstagramSyncStoppedReason = 'time_budget' | 'consecutive_failures' | 'rate_limit';

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { INSTAGRAM_BLOG_DRAFT_MAX_SELECTION } from '@/lib/instagram-blog-draft';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
@@ -37,6 +38,7 @@ import {
   getInstagramEngagementTarget,
 } from '@/lib/instagram-format';
 import { syncInstagramData } from '@/server/actions/instagramSync.actions';
+import { toggleIdMembership } from '@/lib/analytics-selection';
 import type {
   InstagramMediaListItem,
   InstagramMediaSortKey,
@@ -46,8 +48,31 @@ import type {
 import type { StoredFieldConfig } from '@/types/field-config';
 import InstagramMediaTable from './InstagramMediaTable';
 
+export interface InstagramBlogDraftToolbarProps {
+  selectedCount: number;
+  isStarting: boolean;
+  disabledReason: string | null;
+  onStart: () => void;
+}
+
+interface BlogDraftStartResponse {
+  started: number;
+  resumed: number;
+  excluded: { created: number; emptyCaption: number; unavailable: number };
+}
+
+function isBlogDraftStartResponse(value: unknown): value is BlogDraftStartResponse {
+  return typeof value === 'object' && value !== null && 'excluded' in value;
+}
+
 interface InstagramTabProps {
   items: InstagramMediaListItem[];
+  hasActiveBlogDraft: boolean;
+  /**
+   * ブログ一覧と同じ見た目のツールバー。生の色を含む部品は AnalyticsClient.tsx の中で共通化しており
+   * （写すと lint の抑制件数が増えるため）、ここから import すると循環参照になるので親から受け取る
+   */
+  renderBlogDraftToolbar: (props: InstagramBlogDraftToolbarProps) => React.ReactNode;
   total: number;
   totalPages: number;
   igPage: number;
@@ -98,6 +123,8 @@ function formatLastSyncedAt(value: string | null): string | null {
 
 export default function InstagramTab({
   items,
+  hasActiveBlogDraft,
+  renderBlogDraftToolbar,
   total,
   totalPages,
   igPage,
@@ -129,6 +156,12 @@ export default function InstagramTab({
   // 手動時の警告と違って消える先が無いため、絞り込み変更でクリアしない
   const [isSyncAlertFromAuto, setIsSyncAlertFromAuto] = React.useState(false);
   const [isBackfilling, setIsBackfilling] = React.useState(false);
+  const [selectedMediaIds, setSelectedMediaIds] = React.useState<Set<string>>(() => new Set());
+  const [isStartingBlogDraft, setIsStartingBlogDraft] = React.useState(false);
+  const [pendingResumeId, setPendingResumeId] = React.useState<string | null>(null);
+  // 止まった判定（20分）の基準時刻。止まった行は updated_at が進まず、一覧を取り直しても表示が変わらないため、
+  // 待機中・作成中の行がある間は画面側で時刻を進める。初期値 0 は SSR とのずれを避けるため
+  const [blogDraftNow, setBlogDraftNow] = React.useState(0);
   const [backfillAlert, setBackfillAlert] = React.useState<string | null>(null);
   // 未指定（全期間）は空文字で入力欄に出す。空にして「期間を適用」すれば絞り込みを外せる
   const [rangeStart, setRangeStart] = React.useState(igStart ?? '');
@@ -143,6 +176,74 @@ export default function InstagramTab({
   const [isRefreshingList, startListRefresh] = React.useTransition();
   const isDateRangeChanged = rangeStart !== (igStart ?? '') || rangeEnd !== (igEnd ?? '');
   const hasDateRange = igStart !== null || igEnd !== null;
+
+  React.useEffect(() => {
+    setSelectedMediaIds(new Set());
+  }, [igType, igStart, igEnd, igHigh]);
+
+  React.useEffect(() => {
+    if (!hasActiveBlogDraft) return;
+    const interval = window.setInterval(() => router.refresh(), 15_000);
+    return () => window.clearInterval(interval);
+  }, [hasActiveBlogDraft, router]);
+
+  const hasUnfinishedBlogDraft = items.some(
+    item => item.blogDraft?.status === 'queued' || item.blogDraft?.status === 'running'
+  );
+  React.useEffect(() => {
+    setBlogDraftNow(Date.now());
+    if (!hasUnfinishedBlogDraft) return;
+    const interval = window.setInterval(() => setBlogDraftNow(Date.now()), 15_000);
+    return () => window.clearInterval(interval);
+  }, [hasUnfinishedBlogDraft]);
+
+  const togglePageSelection = (checked: boolean) => {
+    setSelectedMediaIds(previous =>
+      items.reduce((next, item) => toggleIdMembership(next, item.id, checked), previous)
+    );
+  };
+
+  const startBlogDraft = async (mediaIds: string[], source: 'toolbar' | 'row') => {
+    setIsStartingBlogDraft(true);
+    if (source === 'row') setPendingResumeId(mediaIds[0] ?? null);
+    try {
+      const response = await fetch('/api/instagram/blog-drafts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ instagramMediaIds: mediaIds }),
+      });
+      if (response.status === 409) {
+        toast.error(ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_ACTIVE_EXISTS);
+        router.refresh();
+        return;
+      }
+      const payload: unknown = await response.json();
+      if (!isBlogDraftStartResponse(payload)) {
+        toast.error(ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_START_FAILED);
+        return;
+      }
+      const excluded = ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_EXCLUDED_BREAKDOWN(payload.excluded);
+      // 対象外の内訳付きの 400 は、選んだ投稿がすべて対象外だったとき
+      if (!response.ok) {
+        toast.error(ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_ALL_EXCLUDED(excluded));
+        router.refresh();
+        return;
+      }
+      toast.success(
+        source === 'row'
+          ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_RESUME_STARTED
+          : ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTED(payload.started + payload.resumed, payload.resumed, excluded)
+      );
+      setSelectedMediaIds(new Set());
+      router.refresh();
+    } catch (error) {
+      console.error('[Instagram Tab] blog draft start failed', error);
+      toast.error(ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_START_FAILED);
+    } finally {
+      setIsStartingBlogDraft(false);
+      setPendingResumeId(null);
+    }
+  };
 
   // 絞り込み変更で前回同期の警告表示をクリアする（そのまま残すと別の絞り込み条件を
   // 見ていても古い警告が出続ける）。ただし自動同期由来の警告は残す — トーストが出ていないので
@@ -380,6 +481,12 @@ export default function InstagramTab({
 
   const target = getInstagramEngagementTarget(followersCount);
   const highOnlyActive = igHigh && target !== null;
+  const selectedCount = selectedMediaIds.size;
+  const draftDisabledReason = selectedCount > INSTAGRAM_BLOG_DRAFT_MAX_SELECTION
+    ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_LIMIT_REACHED
+    : hasActiveBlogDraft
+      ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_ACTIVE_EXISTS
+      : null;
   const criteriaLabel =
     target === null || followersCount === null
       ? null
@@ -546,6 +653,14 @@ export default function InstagramTab({
                 ) : null}
               </div>
             </div>
+            {selectedCount > 0
+              ? renderBlogDraftToolbar({
+                  selectedCount,
+                  isStarting: isStartingBlogDraft,
+                  disabledReason: draftDisabledReason,
+                  onStart: () => void startBlogDraft([...selectedMediaIds], 'toolbar'),
+                })
+              : null}
             <Button
               type="button"
               variant="outline"
@@ -655,6 +770,13 @@ export default function InstagramTab({
 
         <InstagramMediaTable
           items={items}
+          selectedIds={selectedMediaIds}
+          hasActiveBlogDraft={hasActiveBlogDraft}
+          now={blogDraftNow}
+          pendingResumeId={pendingResumeId}
+          onToggleRow={(id, checked) => setSelectedMediaIds(previous => toggleIdMembership(previous, id, checked))}
+          onToggleAll={togglePageSelection}
+          onResume={id => void startBlogDraft([id], 'row')}
           igSort={igSort}
           igOrder={igOrder}
           onSortChange={handleSortChange}

@@ -87,6 +87,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   ad_copy_creation: { ...ANTHROPIC_BASE, maxTokens: 4000 },
   lp_draft_creation: { ...ANTHROPIC_BASE, maxTokens: 32000 },
   blog_creation_step1: { ...ANTHROPIC_BASE, maxTokens: 5000 },
+  instagram_blog_keyword_generation: { ...ANTHROPIC_BASE, maxTokens: 1000 },
   blog_creation_step2: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step3: { ...ANTHROPIC_BASE, maxTokens: 5000 },
   blog_creation_step4: { ...ANTHROPIC_BASE, maxTokens: 5000 },

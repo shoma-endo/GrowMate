@@ -78,6 +78,49 @@ import { resolveHeaderChecked, resolveRowChecked } from '@/lib/analytics-selecti
  */
 const SELECTION_CHECKBOX_CLASS =
   "relative size-5 border-muted-foreground bg-background before:absolute before:-inset-2.5 before:content-['']";
+export const ANALYTICS_SELECTED_ROW_CLASS = 'bg-blue-50';
+
+export function AnalyticsSelectionCheckbox(props: React.ComponentProps<typeof Checkbox>) {
+  return (
+    <Checkbox
+      {...props}
+      className={SELECTION_CHECKBOX_CLASS}
+    />
+  );
+}
+
+const SELECTION_COLUMN_STYLE = { width: '44px', minWidth: '44px', maxWidth: '44px' };
+
+/** 一覧のチェック列の見出し（全選択）。ブログ一覧と Instagram タブで共用する */
+export function AnalyticsSelectionHeaderCell({
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  checked: boolean | 'indeterminate';
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <th className="px-2 py-3 text-center whitespace-nowrap" style={SELECTION_COLUMN_STYLE}>
+      <AnalyticsSelectionCheckbox
+        aria-label="全選択"
+        disabled={disabled ?? false}
+        checked={checked}
+        onCheckedChange={value => onCheckedChange(value === true)}
+      />
+    </th>
+  );
+}
+
+/** 一覧のチェック列のセル。選べない行は children を渡さず空のセルにする */
+export function AnalyticsSelectionCell({ children }: { children?: React.ReactNode }) {
+  return (
+    <td className="px-2 py-4 text-center" style={SELECTION_COLUMN_STYLE}>
+      {children}
+    </td>
+  );
+}
 
 interface Props {
   items: AnalyticsContentItem[];
@@ -121,26 +164,106 @@ interface LaunchChatButtonProps {
   label: string;
   isPending: boolean;
   onClick: () => void;
+  pendingLabel?: string;
+  disabled?: boolean;
 }
 
-function LaunchChatButton({ label, isPending, onClick }: LaunchChatButtonProps) {
+export function LaunchChatButton({ label, isPending, onClick, pendingLabel, disabled }: LaunchChatButtonProps) {
   return (
     <Button
       variant="default"
       size="sm"
       className="bg-green-600 hover:bg-green-700 text-white focus-visible:ring-green-400"
       onClick={onClick}
-      disabled={isPending}
+      disabled={isPending || disabled}
+      aria-busy={isPending}
     >
       {isPending ? (
         <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          移動中...
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+          {pendingLabel ?? '移動中...'}
         </>
       ) : (
         label
       )}
     </Button>
+  );
+}
+
+export function useAnalyticsOpsColumnState(): [boolean, () => void] {
+  const [expanded, setExpanded] = React.useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem(ANALYTICS_STORAGE_KEYS.OPS_EXPANDED) !== 'false';
+  });
+  React.useEffect(() => {
+    window.localStorage.setItem(ANALYTICS_STORAGE_KEYS.OPS_EXPANDED, String(expanded));
+  }, [expanded]);
+  const toggle = React.useCallback(() => setExpanded(previous => !previous), []);
+  return [expanded, toggle];
+}
+
+function getAnalyticsOpsColumnWidth(expanded: boolean): 380 | 120 {
+  return expanded ? 380 : 120;
+}
+
+/** 左に固定する操作列の見出し。展開状態は useAnalyticsOpsColumnState で一覧どうし共有する */
+export function AnalyticsOpsHeaderCell({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const width = getAnalyticsOpsColumnWidth(expanded);
+  return (
+    <th
+      className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap relative group/th"
+      style={{
+        width: `${width}px`,
+        minWidth: `${width}px`,
+        maxWidth: `${width}px`,
+        transition: 'width 0.2s ease-in-out',
+      }}
+    >
+      <div className="flex items-center justify-center relative w-full">
+        <span>操作</span>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-6 w-6 ml-2 text-gray-500 hover:text-gray-700 bg-white border-gray-300 shadow-sm"
+          onClick={onToggle}
+          title={expanded ? '操作列を折りたたむ' : '操作列を展開する'}
+        >
+          {expanded ? (
+            <ChevronsLeft className="h-4 w-4" />
+          ) : (
+            <ChevronsRight className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+    </th>
+  );
+}
+
+export function AnalyticsOpsCell({
+  expanded,
+  children,
+}: {
+  expanded: boolean;
+  children: React.ReactNode;
+}) {
+  const width = getAnalyticsOpsColumnWidth(expanded);
+  return (
+    <td
+      className="analytics-ops-cell px-2 py-4 whitespace-nowrap text-sm text-center relative"
+      style={{
+        width: `${width}px`,
+        minWidth: `${width}px`,
+        maxWidth: `${width}px`,
+      }}
+    >
+      {children}
+    </td>
   );
 }
 
@@ -338,16 +461,7 @@ export default function AnalyticsTable({
   );
 
   // 操作列の展開状態（初期値は true: 展開）
-  const [isOpsExpanded, setIsOpsExpanded] = React.useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    const saved = localStorage.getItem(ANALYTICS_STORAGE_KEYS.OPS_EXPANDED);
-    return saved !== 'false'; // デフォルトは true
-  });
-
-  // 操作列の幅（展開/収縮に応じて自動切り替え）
-  const opsWidth = React.useMemo(() => {
-    return isOpsExpanded ? 380 : 120;
-  }, [isOpsExpanded]);
+  const [isOpsExpanded, toggleOpsExpanded] = useAnalyticsOpsColumnState();
 
   const columnLabelMap = React.useMemo(
     () =>
@@ -824,16 +938,6 @@ export default function AnalyticsTable({
     [pendingRowKey, router]
   );
 
-  // 展開状態の永続化
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(ANALYTICS_STORAGE_KEYS.OPS_EXPANDED, String(isOpsExpanded));
-  }, [isOpsExpanded]);
-
-  const toggleOpsExpanded = React.useCallback(() => {
-    setIsOpsExpanded(prev => !prev);
-  }, []);
-
   const openEdit = React.useCallback(async (item: AnalyticsContentItem) => {
     const annotation = item.annotation;
     const nextForm = Object.fromEntries(
@@ -1105,45 +1209,13 @@ export default function AnalyticsTable({
                 <thead className="bg-gray-50 analytics-head">
                   <tr className="text-gray-600">
                     {selection ? (
-                      <th
-                        className="px-2 py-3 text-center whitespace-nowrap"
-                        style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
-                      >
-                        <Checkbox
-                          aria-label="全選択"
-                          className={SELECTION_CHECKBOX_CLASS}
-                          disabled={selection.canSelectAll === false}
-                          checked={resolveHeaderChecked(selection)}
-                          onCheckedChange={checked => selection.onToggleAll(checked === true)}
-                        />
-                      </th>
+                      <AnalyticsSelectionHeaderCell
+                        disabled={selection.canSelectAll === false}
+                        checked={resolveHeaderChecked(selection)}
+                        onCheckedChange={checked => selection.onToggleAll(checked)}
+                      />
                     ) : null}
-                    <th
-                      className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap relative group/th"
-                      style={{
-                        width: `${opsWidth}px`,
-                        minWidth: `${opsWidth}px`,
-                        maxWidth: `${opsWidth}px`,
-                        transition: 'width 0.2s ease-in-out',
-                      }}
-                    >
-                      <div className="flex items-center justify-center relative w-full">
-                        <span>操作</span>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-6 w-6 ml-2 text-gray-500 hover:text-gray-700 bg-white border-gray-300 shadow-sm"
-                          onClick={toggleOpsExpanded}
-                          title={isOpsExpanded ? '操作列を折りたたむ' : '操作列を展開する'}
-                        >
-                          {isOpsExpanded ? (
-                            <ChevronsLeft className="h-4 w-4" />
-                          ) : (
-                            <ChevronsRight className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </th>
+                    <AnalyticsOpsHeaderCell expanded={isOpsExpanded} onToggle={toggleOpsExpanded} />
                     {orderedIds
                       .filter(id => visibleSet.has(id))
                       .map(id => (
@@ -1243,33 +1315,22 @@ export default function AnalyticsTable({
                     return (
                       <tr
                         key={item.rowKey}
-                        className={cn('analytics-row group', isRowSelected && 'bg-blue-50')}
+                        className={cn('analytics-row group', isRowSelected && ANALYTICS_SELECTED_ROW_CLASS)}
                       >
                         {selection ? (
-                          <td
-                            className="px-2 py-4 text-center"
-                            style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
-                          >
+                          <AnalyticsSelectionCell>
                             {annotationId ? (
-                              <Checkbox
+                              <AnalyticsSelectionCheckbox
                                 aria-label={`${fallbackTitle}を選択`}
-                                className={SELECTION_CHECKBOX_CLASS}
                                 checked={isRowSelected}
                                 onCheckedChange={checked =>
                                   selection.onToggleRow(annotationId, checked === true)
                                 }
                               />
                             ) : null}
-                          </td>
+                          </AnalyticsSelectionCell>
                         ) : null}
-                        <td
-                          className="analytics-ops-cell px-2 py-4 whitespace-nowrap text-sm text-center relative"
-                          style={{
-                            width: `${opsWidth}px`,
-                            minWidth: `${opsWidth}px`,
-                            maxWidth: `${opsWidth}px`,
-                          }}
-                        >
+                        <AnalyticsOpsCell expanded={isOpsExpanded}>
                           <div className="flex items-center justify-center gap-2">
                             <LaunchChatButton
                               label="チャット"
@@ -1430,7 +1491,7 @@ export default function AnalyticsTable({
                               </>
                             )}
                           </div>
-                        </td>
+                        </AnalyticsOpsCell>
                         {orderedIds
                           .filter(id => visibleSet.has(id))
                           .map(id => {

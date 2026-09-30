@@ -23,21 +23,26 @@ function queryBuilder(response: { data: unknown[]; count: number; error: null })
     eq: vi.fn(),
     gte: vi.fn(),
     lte: vi.fn(),
+    in: vi.fn(),
+    limit: vi.fn(),
     order: vi.fn(),
     range: vi.fn(),
-    then: undefined as unknown,
-  } as Record<string, any>;
+    then: (
+      resolve: (value: typeof response) => unknown,
+      reject: (error: unknown) => unknown
+    ) => Promise.resolve(response).then(resolve, reject),
+  };
 
-  for (const method of ['select', 'eq', 'gte', 'lte', 'order', 'range']) {
-    builder[method].mockImplementation((...args: unknown[]) => {
+  const methods = [
+    ['select', builder.select], ['eq', builder.eq], ['gte', builder.gte], ['lte', builder.lte],
+    ['in', builder.in], ['limit', builder.limit], ['order', builder.order], ['range', builder.range],
+  ] as const;
+  for (const [method, mock] of methods) {
+    mock.mockImplementation((...args: unknown[]) => {
       builder.calls.push([method, ...args]);
       return builder;
     });
   }
-  builder.then = (
-    resolve: (value: typeof response) => unknown,
-    reject: (error: unknown) => unknown
-  ) => Promise.resolve(response).then(resolve, reject);
   return builder;
 }
 
@@ -83,7 +88,9 @@ beforeEach(() => {
 describe('InstagramMediaService.getPage', () => {
   it('エンゲージメント率で並べ替え、目標下限を DB に渡す', async () => {
     const query = queryBuilder({ data: [mediaRow()], count: 1, error: null });
-    clientMock.from.mockReturnValue(query);
+    clientMock.from.mockImplementation((table: string) => table === 'instagram_media'
+      ? query
+      : queryBuilder({ data: [], count: 0, error: null }));
 
     const result = await instagramMediaService.getPage('user-1', {
       page: 1,
@@ -116,7 +123,9 @@ describe('InstagramMediaService.getPage', () => {
       count: 1,
       error: null,
     });
-    clientMock.from.mockReturnValue(query);
+    clientMock.from.mockImplementation((table: string) => table === 'instagram_media'
+      ? query
+      : queryBuilder({ data: [], count: 0, error: null }));
 
     const result = await instagramMediaService.getPage('user-1', {
       page: 1,
@@ -162,7 +171,9 @@ describe('InstagramMediaService.getPage', () => {
     ],
   ] as const)('%s（%s）の並び順', async (sort, order, expectedOrders) => {
     const query = queryBuilder({ data: [mediaRow()], count: 1, error: null });
-    clientMock.from.mockReturnValue(query);
+    clientMock.from.mockImplementation((table: string) => table === 'instagram_media'
+      ? query
+      : queryBuilder({ data: [], count: 0, error: null }));
 
     await instagramMediaService.getPage('user-1', {
       page: 1,

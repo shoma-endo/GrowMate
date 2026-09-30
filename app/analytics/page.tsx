@@ -216,6 +216,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     totalPages: 1,
     page: igPage,
     perPage: igPerPage,
+    hasActiveBlogDraft: false,
   };
   let instagramLastSyncedAt: string | null = null;
   let instagramFollowersCount: number | null = null;
@@ -340,6 +341,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       instagramConnected={instagramConnected}
       activeTab={activeTab}
       instagramItems={instagramMediaPage.items}
+      instagramHasActiveBlogDraft={instagramMediaPage.hasActiveBlogDraft}
       instagramTotal={instagramMediaPage.total}
       instagramTotalPages={instagramMediaPage.totalPages}
       igPage={instagramMediaPage.page}
