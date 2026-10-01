@@ -143,9 +143,16 @@ describe('InstagramMediaService.getPage', () => {
     expect(query.calls.some((call: unknown[]) => call[0] === 'gte')).toBe(false);
   });
 
-  it('絞り込みで0件のページでも、作成中のまとまりがあれば hasActiveBlogDraft を true で返す', async () => {
+  it('絞り込みで0件のページでも、作成中のまとまりがあればその進み具合を返す', async () => {
+    const activeJobQuery = queryBuilder({ data: [{ batch_id: 'batch-1' }], count: 1, error: null });
+    const batchJobsQuery = queryBuilder({
+      data: [{ status: 'completed' }, { status: 'failed' }, { status: 'running' }],
+      count: 3,
+      error: null,
+    });
+    const jobQueries = [activeJobQuery, batchJobsQuery];
     clientMock.from.mockImplementation((table: string) => table === 'instagram_blog_draft_jobs'
-      ? queryBuilder({ data: [{ id: 'job-active' }], count: 1, error: null })
+      ? jobQueries.shift()
       : queryBuilder({ data: [], count: 0, error: null }));
 
     const result = await instagramMediaService.getPage('user-1', {
@@ -160,7 +167,8 @@ describe('InstagramMediaService.getPage', () => {
     });
 
     expect(result.items).toEqual([]);
-    expect(result.hasActiveBlogDraft).toBe(true);
+    expect(result.activeBlogDraft).toEqual({ processed: 2, total: 3 });
+    expect(batchJobsQuery.calls).toContainEqual(['eq', 'batch_id', 'batch-1']);
   });
 
   // インサイト由来の列は対象外（insights_unavailable）を末尾へ寄せ、未取得（null）は昇順でも末尾。

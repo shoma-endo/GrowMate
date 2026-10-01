@@ -444,9 +444,7 @@ function BlogDraftOperation({
   if (state.kind === 'none') return null;
   if (state.kind === 'queued') return <span className="text-xs text-muted-foreground">待機中</span>;
   if (state.kind === 'running') {
-    return (
-      <LaunchChatButton label="チャット" isPending onClick={() => undefined} disabled pendingLabel={`作成中${progress ? `（${progress}）` : ''}`} />
-    );
+    return <span className="text-xs text-muted-foreground">作成中{progress ? `（${progress}）` : ''}</span>;
   }
   if (state.kind === 'completed') {
     const sessionId = item.blogDraft?.sessionId;

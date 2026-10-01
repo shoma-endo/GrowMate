@@ -40,6 +40,7 @@ import {
 import { syncInstagramData } from '@/server/actions/instagramSync.actions';
 import { toggleIdMembership } from '@/lib/analytics-selection';
 import type {
+  InstagramBlogDraftBatchProgress,
   InstagramMediaListItem,
   InstagramMediaSortKey,
   InstagramMediaSortOrder,
@@ -50,6 +51,8 @@ import InstagramMediaTable from './InstagramMediaTable';
 
 export interface InstagramBlogDraftToolbarProps {
   selectedCount: number;
+  /** 作成中のまとまりの進み具合。あればボタンを「作成中...」にして件数を並べる */
+  activeProgress: InstagramBlogDraftBatchProgress | null;
   isStarting: boolean;
   disabledReason: string | null;
   onStart: () => void;
@@ -67,7 +70,7 @@ function isBlogDraftStartResponse(value: unknown): value is BlogDraftStartRespon
 
 interface InstagramTabProps {
   items: InstagramMediaListItem[];
-  hasActiveBlogDraft: boolean;
+  activeBlogDraft: InstagramBlogDraftBatchProgress | null;
   /**
    * ブログ一覧と同じ見た目のツールバー。生の色を含む部品は AnalyticsClient.tsx の中で共通化しており
    * （写すと lint の抑制件数が増えるため）、ここから import すると循環参照になるので親から受け取る
@@ -123,7 +126,7 @@ function formatLastSyncedAt(value: string | null): string | null {
 
 export default function InstagramTab({
   items,
-  hasActiveBlogDraft,
+  activeBlogDraft,
   renderBlogDraftToolbar,
   total,
   totalPages,
@@ -158,6 +161,7 @@ export default function InstagramTab({
   const [isBackfilling, setIsBackfilling] = React.useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = React.useState<Set<string>>(() => new Set());
   const [isStartingBlogDraft, setIsStartingBlogDraft] = React.useState(false);
+  const hasActiveBlogDraft = activeBlogDraft !== null;
   const [pendingResumeId, setPendingResumeId] = React.useState<string | null>(null);
   // 止まった判定（20分）の基準時刻。止まった行は updated_at が進まず、一覧を取り直しても表示が変わらないため、
   // 待機中・作成中の行がある間は画面側で時刻を進める。初期値 0 は SSR とのずれを避けるため
@@ -485,11 +489,10 @@ export default function InstagramTab({
   const target = getInstagramEngagementTarget(followersCount);
   const highOnlyActive = igHigh && target !== null;
   const selectedCount = selectedMediaIds.size;
+  // 作成中はボタン自体が「作成中...」になるので、理由の文字は件数超過のときだけ出す
   const draftDisabledReason = selectedCount > INSTAGRAM_BLOG_DRAFT_MAX_SELECTION
     ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_LIMIT_REACHED
-    : hasActiveBlogDraft || isRefreshingBlogDraft
-      ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_ACTIVE_EXISTS
-      : null;
+    : null;
   const criteriaLabel =
     target === null || followersCount === null
       ? null
@@ -656,10 +659,11 @@ export default function InstagramTab({
                 ) : null}
               </div>
             </div>
-            {selectedCount > 0
+            {selectedCount > 0 || hasActiveBlogDraft || isRefreshingBlogDraft
               ? renderBlogDraftToolbar({
                   selectedCount,
-                  isStarting: isStartingBlogDraft,
+                  activeProgress: activeBlogDraft,
+                  isStarting: isStartingBlogDraft || isRefreshingBlogDraft,
                   disabledReason: draftDisabledReason,
                   onStart: () => void startBlogDraft([...selectedMediaIds], 'toolbar'),
                 })

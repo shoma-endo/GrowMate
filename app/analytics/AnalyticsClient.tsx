@@ -27,6 +27,7 @@ import type { AnalyticsContentItem, AnalyticsContentSort } from '@/types/analyti
 import { setAnalyticsSortParams } from '@/lib/analytics-sort';
 import type { StoredFieldConfig } from '@/types/field-config';
 import type {
+  InstagramBlogDraftBatchProgress,
   InstagramMediaListItem,
   InstagramMediaSortKey,
   InstagramMediaSortOrder,
@@ -83,7 +84,7 @@ interface AnalyticsClientProps {
   instagramConnected: boolean;
   activeTab: 'blog' | 'instagram';
   instagramItems: InstagramMediaListItem[];
-  instagramHasActiveBlogDraft: boolean;
+  instagramActiveBlogDraft: InstagramBlogDraftBatchProgress | null;
   instagramTotal: number;
   instagramTotalPages: number;
   igPage: number;
@@ -124,24 +125,33 @@ function BulkActionNote({ children }: { children: React.ReactNode }) {
 
 function InstagramBlogDraftToolbar({
   selectedCount,
+  activeProgress,
   isStarting,
   disabledReason,
   onStart,
 }: InstagramBlogDraftToolbarProps) {
+  const isBusy = isStarting || activeProgress !== null;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <BulkSelectionCount>選択中 {selectedCount} 件</BulkSelectionCount>
+      {selectedCount > 0 ? <BulkSelectionCount>選択中 {selectedCount} 件</BulkSelectionCount> : null}
       <button
         type="button"
         className={cn(buttonVariants({ variant: 'outline' }), 'h-9 inline-flex items-center gap-2', BULK_SUMMARY_BUTTON_CLASS)}
         onClick={onStart}
-        disabled={isStarting || disabledReason !== null}
-        aria-busy={isStarting}
+        disabled={isBusy || disabledReason !== null}
+        aria-busy={isBusy}
       >
-        {isStarting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
-        {isStarting ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING : 'ブログ記事を作成'}
+        {isBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+        {isStarting
+          ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING
+          : activeProgress
+            ? '作成中...'
+            : 'ブログ記事を作成'}
       </button>
-      {disabledReason ? <BulkActionNote>{disabledReason}</BulkActionNote> : null}
+      {activeProgress ? (
+        <BulkSelectionCount>（処理済み {activeProgress.processed} / 対象 {activeProgress.total} 件）</BulkSelectionCount>
+      ) : null}
+      {disabledReason && selectedCount > 0 ? <BulkActionNote>{disabledReason}</BulkActionNote> : null}
     </div>
   );
 }
@@ -180,7 +190,7 @@ export default function AnalyticsClient({
   instagramConnected,
   activeTab,
   instagramItems,
-  instagramHasActiveBlogDraft,
+  instagramActiveBlogDraft,
   instagramTotal,
   instagramTotalPages,
   igPage,
@@ -673,7 +683,7 @@ export default function AnalyticsClient({
           <TabsContent value="instagram">
             <InstagramTab
               items={instagramItems}
-              hasActiveBlogDraft={instagramHasActiveBlogDraft}
+              activeBlogDraft={instagramActiveBlogDraft}
               renderBlogDraftToolbar={props => <InstagramBlogDraftToolbar {...props} />}
               total={instagramTotal}
               totalPages={instagramTotalPages}

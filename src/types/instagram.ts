@@ -172,7 +172,14 @@ export interface InstagramMediaPageResult {
   totalPages: number;
   page: number;
   perPage: number;
-  hasActiveBlogDraft: boolean;
+  /** 作成中・待機中のまとまりの進み具合。無ければ null */
+  activeBlogDraft: InstagramBlogDraftBatchProgress | null;
+}
+
+/** 作成中のまとまりのうち、終わった（作成済み・失敗）件数と全件数 */
+export interface InstagramBlogDraftBatchProgress {
+  processed: number;
+  total: number;
 }
 
 export type InstagramSyncStoppedReason = 'time_budget' | 'consecutive_failures' | 'rate_limit';

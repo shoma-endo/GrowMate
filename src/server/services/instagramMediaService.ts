@@ -7,6 +7,7 @@ import {
   isInstagramBlogDraftErrorCode,
   isInstagramBlogDraftStage,
   isInstagramBlogDraftStatus,
+  type InstagramBlogDraftBatchProgress,
   type InstagramBlogDraftListItem,
   type InstagramMediaListItem,
   type InstagramMediaPageResult,
@@ -14,7 +15,7 @@ import {
   type InstagramMediaSortOrder,
   type InstagramMediaTypeFilter,
 } from '@/types/instagram';
-import { hasActiveInstagramBlogDraftJob } from '@/server/lib/instagram-blog-draft-jobs';
+import { getActiveInstagramBlogDraftProgress } from '@/server/lib/instagram-blog-draft-jobs';
 
 type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
 
@@ -242,18 +243,18 @@ class InstagramMediaService extends SupabaseService {
   private async attachBlogDrafts(
     userId: string,
     items: InstagramMediaListItem[]
-  ): Promise<{ items: InstagramMediaListItem[]; hasActiveBlogDraft: boolean }> {
+  ): Promise<{ items: InstagramMediaListItem[]; activeBlogDraft: InstagramBlogDraftBatchProgress | null }> {
     // 絞り込みで0件のページでも、作成中のまとまりがあれば画面の再取得と［ブログ記事を作成］の停止を続ける
     if (items.length === 0) {
-      return { items, hasActiveBlogDraft: await hasActiveInstagramBlogDraftJob(this.getClient(), userId) };
+      return { items, activeBlogDraft: await getActiveInstagramBlogDraftProgress(this.getClient(), userId) };
     }
-    const [{ data: drafts, error: draftsError }, hasActiveBlogDraft] = await Promise.all([
+    const [{ data: drafts, error: draftsError }, activeBlogDraft] = await Promise.all([
       this.getClient()
         .from('instagram_blog_draft_jobs')
         .select('id, instagram_media_id, session_id, status, stage, heading_index, heading_total, error_code, updated_at')
         .eq('user_id', userId)
         .in('instagram_media_id', items.map(item => item.id)),
-      hasActiveInstagramBlogDraftJob(this.getClient(), userId),
+      getActiveInstagramBlogDraftProgress(this.getClient(), userId),
     ]);
     if (draftsError) throw new Error('Instagram blog draft status lookup failed');
     const byMediaId = new Map<string, InstagramBlogDraftListItem>(
@@ -281,7 +282,7 @@ class InstagramMediaService extends SupabaseService {
     );
     return {
       items: items.map(item => ({ ...item, blogDraft: byMediaId.get(item.id) ?? null })),
-      hasActiveBlogDraft,
+      activeBlogDraft,
     };
   }
 
