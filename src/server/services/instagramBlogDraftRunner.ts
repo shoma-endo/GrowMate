@@ -12,12 +12,7 @@ import {
 import { normalizeHeadingUnitContent } from '@/lib/heading-extractor';
 import { resolveKnowledgeBlocksForRequest } from '@/lib/knowledgeInjection';
 import { generateInstagramBlogKeywordPrompt, getSystemPrompt } from '@/lib/prompts';
-import {
-  asPendingClient,
-  type InstagramBlogDraftDatabase,
-  type InstagramBlogDraftJobRow,
-  type InstagramBlogDraftJobUpdate,
-} from '@/types/database.types.pending';
+import type { Tables, TablesUpdate } from '@/types/database.types';
 import type {
   InstagramBlogDraftErrorCode,
   InstagramBlogDraftStage,
@@ -37,7 +32,8 @@ import { chatService } from '@/server/services/chatService';
 import { headingFlowService } from '@/server/services/headingFlowService';
 import { llmChatWithStopReason } from '@/server/services/llmService';
 
-type JobRow = InstagramBlogDraftJobRow;
+type JobRow = Tables<'instagram_blog_draft_jobs'>;
+type JobUpdate = TablesUpdate<'instagram_blog_draft_jobs'>;
 type ChatHistory = Awaited<ReturnType<typeof chatService.getSessionMessages>>;
 type BlogStepStage = Extract<InstagramBlogDraftStage, `step${number}`>;
 
@@ -68,7 +64,7 @@ class InstagramBlogDraftRunner extends SupabaseService {
   }
 
   private async runSteps(jobId: string, userId: string, userRole: UserRole, deadline: number): Promise<void> {
-    const { data: jobData, error: jobError } = await this.jobsClient()
+    const { data: jobData, error: jobError } = await this.getClient()
       .from('instagram_blog_draft_jobs')
       .select('*')
       .eq('id', jobId)
@@ -113,6 +109,8 @@ class InstagramBlogDraftRunner extends SupabaseService {
         case 'combine':
           job = await this.combineArticle(job, userId);
           break;
+        default:
+          throw new InstagramBlogDraftFailure('SAVE_FAILED');
       }
     }
   }
@@ -436,7 +434,7 @@ class InstagramBlogDraftRunner extends SupabaseService {
     job: JobRow,
     userId: string,
     stage: InstagramBlogDraftStage,
-    extra: InstagramBlogDraftJobUpdate = {}
+    extra: JobUpdate = {}
   ): Promise<JobRow> {
     return this.updateJob(job, userId, {
       ...extra,
@@ -447,8 +445,8 @@ class InstagramBlogDraftRunner extends SupabaseService {
   }
 
   /** 自分の running の行だけを更新する。0件なら行が無くなったので処理を止める */
-  private async updateJob(job: JobRow, userId: string, values: InstagramBlogDraftJobUpdate): Promise<JobRow> {
-    const { data, error } = await this.jobsClient()
+  private async updateJob(job: JobRow, userId: string, values: JobUpdate): Promise<JobRow> {
+    const { data, error } = await this.getClient()
       .from('instagram_blog_draft_jobs')
       .update(values)
       .eq('id', job.id)
@@ -470,10 +468,6 @@ class InstagramBlogDraftRunner extends SupabaseService {
   private requireSession(job: JobRow): string {
     if (!job.session_id) throw new InstagramBlogDraftFailure('SAVE_FAILED');
     return job.session_id;
-  }
-
-  private jobsClient() {
-    return asPendingClient<InstagramBlogDraftDatabase>(this.getClient());
   }
 }
 

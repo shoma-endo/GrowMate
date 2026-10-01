@@ -3,15 +3,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
 import type { Database, Tables, TablesInsert } from '@/types/database.types';
 import { INSTAGRAM_MEDIA_THUMBNAIL_BUCKET } from '@/lib/constants';
-import type {
-  InstagramBlogDraftListItem,
-  InstagramMediaListItem,
-  InstagramMediaPageResult,
-  InstagramMediaSortKey,
-  InstagramMediaSortOrder,
-  InstagramMediaTypeFilter,
+import {
+  isInstagramBlogDraftErrorCode,
+  isInstagramBlogDraftStage,
+  isInstagramBlogDraftStatus,
+  type InstagramBlogDraftListItem,
+  type InstagramMediaListItem,
+  type InstagramMediaPageResult,
+  type InstagramMediaSortKey,
+  type InstagramMediaSortOrder,
+  type InstagramMediaTypeFilter,
 } from '@/types/instagram';
-import { asPendingClient, type InstagramBlogDraftDatabase } from '@/types/database.types.pending';
 import { hasActiveInstagramBlogDraftJob } from '@/server/lib/instagram-blog-draft-jobs';
 
 type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
@@ -246,7 +248,7 @@ class InstagramMediaService extends SupabaseService {
       return { items, hasActiveBlogDraft: await hasActiveInstagramBlogDraftJob(this.getClient(), userId) };
     }
     const [{ data: drafts, error: draftsError }, hasActiveBlogDraft] = await Promise.all([
-      asPendingClient<InstagramBlogDraftDatabase>(this.getClient())
+      this.getClient()
         .from('instagram_blog_draft_jobs')
         .select('id, instagram_media_id, session_id, status, stage, heading_index, heading_total, error_code, updated_at')
         .eq('user_id', userId)
@@ -255,16 +257,27 @@ class InstagramMediaService extends SupabaseService {
     ]);
     if (draftsError) throw new Error('Instagram blog draft status lookup failed');
     const byMediaId = new Map<string, InstagramBlogDraftListItem>(
-      (drafts ?? []).map(draft => [draft.instagram_media_id, {
-        id: draft.id,
-        sessionId: draft.session_id,
-        status: draft.status,
-        stage: draft.stage,
-        headingIndex: draft.heading_index,
-        headingTotal: draft.heading_total,
-        errorCode: draft.error_code,
-        updatedAt: draft.updated_at,
-      }])
+      (drafts ?? []).flatMap(draft => {
+        const { status, stage, error_code: errorCode } = draft;
+        if (
+          !isInstagramBlogDraftStatus(status)
+          || !isInstagramBlogDraftStage(stage)
+          || (errorCode !== null && !isInstagramBlogDraftErrorCode(errorCode))
+        ) {
+          console.error('[Instagram Media] unexpected blog draft job values', { jobId: draft.id, status, stage, errorCode });
+          return [];
+        }
+        return [[draft.instagram_media_id, {
+          id: draft.id,
+          sessionId: draft.session_id,
+          status,
+          stage,
+          headingIndex: draft.heading_index,
+          headingTotal: draft.heading_total,
+          errorCode,
+          updatedAt: draft.updated_at,
+        }]];
+      })
     );
     return {
       items: items.map(item => ({ ...item, blogDraft: byMediaId.get(item.id) ?? null })),

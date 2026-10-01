@@ -1248,6 +1248,118 @@ export type Database = {
           },
         ]
       }
+      instagram_blog_draft_batches: {
+        Row: {
+          chain_count: number
+          created_at: string
+          id: string
+          notified_at: string | null
+          user_id: string
+        }
+        Insert: {
+          chain_count?: number
+          created_at?: string
+          id?: string
+          notified_at?: string | null
+          user_id: string
+        }
+        Update: {
+          chain_count?: number
+          created_at?: string
+          id?: string
+          notified_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_blog_draft_batches_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      instagram_blog_draft_jobs: {
+        Row: {
+          batch_id: string
+          completed_at: string | null
+          continuation_count: number | null
+          created_at: string
+          error_code: string | null
+          heading_index: number
+          heading_total: number | null
+          id: string
+          instagram_media_id: string
+          session_id: string | null
+          stage: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          batch_id: string
+          completed_at?: string | null
+          continuation_count?: number | null
+          created_at?: string
+          error_code?: string | null
+          heading_index?: number
+          heading_total?: number | null
+          id?: string
+          instagram_media_id: string
+          session_id?: string | null
+          stage: string
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          batch_id?: string
+          completed_at?: string | null
+          continuation_count?: number | null
+          created_at?: string
+          error_code?: string | null
+          heading_index?: number
+          heading_total?: number | null
+          id?: string
+          instagram_media_id?: string
+          session_id?: string | null
+          stage?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_blog_draft_jobs_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_blog_draft_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_blog_draft_jobs_instagram_media_id_fkey"
+            columns: ["instagram_media_id"]
+            isOneToOne: true
+            referencedRelation: "instagram_media"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_blog_draft_jobs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_blog_draft_jobs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       instagram_credentials: {
         Row: {
           access_token: string
@@ -2146,6 +2258,20 @@ export type Database = {
         Args: { p_content_annotation_id: string; p_user_id: string }
         Returns: {
           evaluation_run_id: string
+        }[]
+      }
+      start_instagram_blog_draft_batch: {
+        Args: {
+          p_new_media_ids: string[]
+          p_resume_job_ids: string[]
+          p_stale_before: string
+          p_user_id: string
+        }
+        Returns: {
+          batch_id: string
+          original_batch_ids: string[]
+          resumed: number
+          started: number
         }[]
       }
       update_ga4_content_evaluation_attempt: {

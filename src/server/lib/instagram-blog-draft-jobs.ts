@@ -2,7 +2,6 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { INSTAGRAM_BLOG_DRAFT_STALE_AFTER_MS } from '@/lib/instagram-blog-draft';
 import type { Database } from '@/types/database.types';
-import { asPendingClient, type InstagramBlogDraftDatabase } from '@/types/database.types.pending';
 
 /**
  * 次のステップ（または見出し・続きの生成）に着手するのに要る残り時間。
@@ -17,7 +16,7 @@ export async function hasActiveInstagramBlogDraftJob(
   userId: string
 ): Promise<boolean> {
   const cutoff = new Date(Date.now() - INSTAGRAM_BLOG_DRAFT_STALE_AFTER_MS).toISOString();
-  const { data, error } = await asPendingClient<InstagramBlogDraftDatabase>(client)
+  const { data, error } = await client
     .from('instagram_blog_draft_jobs')
     .select('id')
     .eq('user_id', userId)

@@ -1,10 +1,7 @@
 import 'server-only';
 import { SupabaseService } from '@/server/services/supabaseService';
-import {
-  asPendingClient,
-  type InstagramBlogDraftDatabase,
-  type InstagramBlogDraftJobRow,
-} from '@/types/database.types.pending';
+import type { Tables } from '@/types/database.types';
+import { isInstagramBlogDraftErrorCode, isInstagramBlogDraftStatus } from '@/types/instagram';
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { isValidUserRole, type UserRole } from '@/types/user';
 import { instagramBlogDraftRunner, InstagramBlogDraftFailure } from '@/server/services/instagramBlogDraftRunner';
@@ -24,6 +21,8 @@ const WORKER_BUDGET_MS = 740_000;
 const MAX_PARALLEL_JOBS = 3;
 const LOG_TAG = '[Instagram BlogDraft]';
 
+type InstagramBlogDraftJobRow = Tables<'instagram_blog_draft_jobs'>;
+
 type StartInstagramBlogDraftResult = {
   batchId: string | null;
   started: number;
@@ -35,7 +34,7 @@ export class InstagramBlogDraftBatchActiveError extends Error {}
 
 class InstagramBlogDraftJobService extends SupabaseService {
   async start(userId: string, mediaIds: string[]): Promise<StartInstagramBlogDraftResult> {
-    const client = this.jobsClient();
+    const client = this.getClient();
     // 対象外の判定より先に 409 を返すための事前確認。確定の判定は開始の RPC の中でロックを取って行う
     if (await hasActiveInstagramBlogDraftJob(this.getClient(), userId)) throw new InstagramBlogDraftBatchActiveError();
 
@@ -66,7 +65,10 @@ class InstagramBlogDraftJobService extends SupabaseService {
       }
       const prior = priorJobByMedia.get(mediaId) ?? null;
       const stopped = prior !== null && (
-        prior.status === 'failed' || isInstagramBlogDraftStalled({ status: prior.status, updatedAt: prior.updated_at }, now)
+        prior.status === 'failed' || (
+          isInstagramBlogDraftStatus(prior.status)
+          && isInstagramBlogDraftStalled({ status: prior.status, updatedAt: prior.updated_at }, now)
+        )
       );
       if (prior && !stopped) {
         excluded.created += 1;
@@ -110,7 +112,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
 
   async runBatch(batchId: string, userId: string, userRole: UserRole): Promise<void> {
     const deadline = Date.now() + WORKER_BUDGET_MS;
-    const client = this.jobsClient();
+    const client = this.getClient();
     const { error: touchError } = await client.from('instagram_blog_draft_jobs')
       .update({ updated_at: new Date().toISOString() })
       .eq('batch_id', batchId).eq('user_id', userId).eq('status', 'queued');
@@ -132,7 +134,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
   }
 
   async authorizeContinuation(batchId: string): Promise<{ userId: string; userRole: UserRole } | null> {
-    const client = this.jobsClient();
+    const client = this.getClient();
     const { data: batch, error } = await client.from('instagram_blog_draft_batches')
       .select('user_id').eq('id', batchId).maybeSingle();
     if (error) throw new Error('Instagram blog draft batch lookup failed');
@@ -150,7 +152,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
   }
 
   private async claimNext(batchId: string, userId: string): Promise<InstagramBlogDraftJobRow | null> {
-    const client = this.jobsClient();
+    const client = this.getClient();
     // 他のレーンに同じ行を先に取られたら、次の候補を取り直す（取られるたびに queued が1行減るので終わる）
     for (;;) {
       const { data: candidate, error } = await client.from('instagram_blog_draft_jobs').select('*')
@@ -183,7 +185,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
   ): Promise<void> {
     const logContext = { jobId: job.id, batchId: job.batch_id, stage: job.stage };
     console.error(`${LOG_TAG} job failed`, { ...logContext, errorCode });
-    const { data: failed, error: failError } = await this.jobsClient().from('instagram_blog_draft_jobs')
+    const { data: failed, error: failError } = await this.getClient().from('instagram_blog_draft_jobs')
       .update({ status: 'failed', error_code: errorCode })
       .eq('id', job.id).eq('user_id', userId).eq('status', 'running')
       .select('id').maybeSingle();
@@ -195,7 +197,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
   }
 
   private async chain(batchId: string, userId: string): Promise<void> {
-    const client = this.jobsClient();
+    const client = this.getClient();
     const { data: batch, error } = await client.from('instagram_blog_draft_batches').select('chain_count')
       .eq('id', batchId).eq('user_id', userId).maybeSingle();
     if (error || !batch) throw new Error('Instagram blog draft chain lookup failed');
@@ -231,7 +233,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
   }
 
   private async finalizeBatchIfDone(batchId: string, userId: string): Promise<void> {
-    const client = this.jobsClient();
+    const client = this.getClient();
     const { data: jobs, error } = await client.from('instagram_blog_draft_jobs').select('id, status, error_code, session_id, instagram_media_id')
       .eq('batch_id', batchId).eq('user_id', userId);
     if (error) throw new Error('Instagram blog draft completion lookup failed');
@@ -258,7 +260,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
     if (annotationsError) throw new Error('Instagram blog draft email keyword lookup failed');
     const email = buildInstagramBlogDraftEmail(siteUrl, jobs.map(job => ({
       status: job.status === 'completed' ? 'completed' as const : 'failed' as const,
-      errorCode: job.error_code,
+      errorCode: isInstagramBlogDraftErrorCode(job.error_code) ? job.error_code : null,
       sessionId: job.session_id,
       mainKeyword: annotations?.find(annotation => annotation.session_id === job.session_id)?.main_kw ?? null,
       caption: media?.find(item => item.id === job.instagram_media_id)?.caption ?? '',
@@ -276,7 +278,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
   }
 
   private async markNotifiedWithoutEmail(batchId: string, userId: string): Promise<void> {
-    const { error } = await this.jobsClient().from('instagram_blog_draft_batches')
+    const { error } = await this.getClient().from('instagram_blog_draft_batches')
       .update({ notified_at: new Date().toISOString() })
       .eq('id', batchId).eq('user_id', userId).is('notified_at', null);
     if (error) throw new Error('Instagram blog draft notified_at update failed');
@@ -289,10 +291,6 @@ class InstagramBlogDraftJobService extends SupabaseService {
     if (error) throw new Error('Instagram blog draft user lookup failed');
     if (!user || !isValidUserRole(user.role) || !canAccessInstagram(user.role)) return null;
     return user.role;
-  }
-
-  private jobsClient() {
-    return asPendingClient<InstagramBlogDraftDatabase>(this.getClient());
   }
 }
 

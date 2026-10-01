@@ -79,29 +79,47 @@ export type InstagramMediaSortKey = (typeof INSTAGRAM_MEDIA_SORT_KEYS)[number];
 export type InstagramMediaSortOrder = 'asc' | 'desc';
 export type InstagramMediaTypeFilter = 'all' | 'reels' | 'feed';
 
-type InstagramBlogDraftStatus = 'queued' | 'running' | 'failed' | 'completed';
-export type InstagramBlogDraftStage =
-  | 'keywords'
-  | 'step1'
-  | 'step2'
-  | 'step3'
-  | 'step4'
-  | 'step5'
-  | 'step6'
-  | 'headings'
-  | 'heading'
-  | 'combine'
-  | 'done';
-export type InstagramBlogDraftErrorCode =
-  | 'KEYWORD_PARSE_FAILED'
-  | 'AI_FAILED'
-  | 'AI_RATE_LIMITED'
-  | 'MAX_TOKENS'
-  | 'NO_HEADINGS'
-  | 'SAVE_FAILED'
-  | 'LEAD_PARSE_FAILED'
-  | 'CHAIN_LIMIT'
-  | 'ROLE_REVOKED';
+// instagram_blog_draft_jobs の CHECK 制約と同じ値。生成型はこの3列を string にするので、読んだ値は下のガードで絞る
+const INSTAGRAM_BLOG_DRAFT_STATUSES = ['queued', 'running', 'failed', 'completed'] as const;
+type InstagramBlogDraftStatus = (typeof INSTAGRAM_BLOG_DRAFT_STATUSES)[number];
+const INSTAGRAM_BLOG_DRAFT_STAGES = [
+  'keywords',
+  'step1',
+  'step2',
+  'step3',
+  'step4',
+  'step5',
+  'step6',
+  'headings',
+  'heading',
+  'combine',
+  'done',
+] as const;
+export type InstagramBlogDraftStage = (typeof INSTAGRAM_BLOG_DRAFT_STAGES)[number];
+const INSTAGRAM_BLOG_DRAFT_ERROR_CODES = [
+  'KEYWORD_PARSE_FAILED',
+  'AI_FAILED',
+  'AI_RATE_LIMITED',
+  'MAX_TOKENS',
+  'NO_HEADINGS',
+  'SAVE_FAILED',
+  'LEAD_PARSE_FAILED',
+  'CHAIN_LIMIT',
+  'ROLE_REVOKED',
+] as const;
+export type InstagramBlogDraftErrorCode = (typeof INSTAGRAM_BLOG_DRAFT_ERROR_CODES)[number];
+
+export function isInstagramBlogDraftStatus(value: unknown): value is InstagramBlogDraftStatus {
+  return typeof value === 'string' && (INSTAGRAM_BLOG_DRAFT_STATUSES as readonly string[]).includes(value);
+}
+
+export function isInstagramBlogDraftStage(value: unknown): value is InstagramBlogDraftStage {
+  return typeof value === 'string' && (INSTAGRAM_BLOG_DRAFT_STAGES as readonly string[]).includes(value);
+}
+
+export function isInstagramBlogDraftErrorCode(value: unknown): value is InstagramBlogDraftErrorCode {
+  return typeof value === 'string' && (INSTAGRAM_BLOG_DRAFT_ERROR_CODES as readonly string[]).includes(value);
+}
 
 export interface InstagramBlogDraftListItem {
   id: string;
