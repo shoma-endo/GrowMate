@@ -174,21 +174,28 @@ class InstagramBlogDraftJobService extends SupabaseService {
       const result = await instagramBlogDraftRunner.run(job.id, userId, role, deadline);
       if (result === 'lost') console.error(`${LOG_TAG} job row lost`, logContext);
     } catch (error) {
-      await this.recordJobFailure(job, userId, error instanceof InstagramBlogDraftFailure ? error.code : 'SAVE_FAILED');
+      await this.recordJobFailure(job, userId, error instanceof InstagramBlogDraftFailure ? error.code : 'SAVE_FAILED', error);
     }
   }
 
   private async recordJobFailure(
     job: InstagramBlogDraftJobRow,
     userId: string,
-    errorCode: InstagramBlogDraftFailure['code']
+    errorCode: InstagramBlogDraftFailure['code'],
+    cause: unknown
   ): Promise<void> {
-    const logContext = { jobId: job.id, batchId: job.batch_id, stage: job.stage };
-    console.error(`${LOG_TAG} job failed`, { ...logContext, errorCode });
     const { data: failed, error: failError } = await this.getClient().from('instagram_blog_draft_jobs')
       .update({ status: 'failed', error_code: errorCode })
       .eq('id', job.id).eq('user_id', userId).eq('status', 'running')
-      .select('id').maybeSingle();
+      .select('stage, heading_index').maybeSingle();
+    // job は取り出した時点の行なので、止まった段階は更新後の行から取る
+    const logContext = {
+      jobId: job.id,
+      batchId: job.batch_id,
+      stage: failed?.stage ?? job.stage,
+      headingIndex: failed?.heading_index ?? job.heading_index,
+    };
+    console.error(`${LOG_TAG} job failed`, { ...logContext, errorCode, cause });
     if (failError) {
       console.error(`${LOG_TAG} job failure record failed`, { ...logContext, errorCode, error: failError });
     } else if (!failed) {

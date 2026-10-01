@@ -23,7 +23,7 @@ import {
   instagramBlogDraftJobService,
   InstagramBlogDraftBatchActiveError,
 } from '@/server/services/instagramBlogDraftJobService';
-import { instagramBlogDraftRunner } from '@/server/services/instagramBlogDraftRunner';
+import { instagramBlogDraftRunner, InstagramBlogDraftFailure } from '@/server/services/instagramBlogDraftRunner';
 import { emailService } from '@/server/services/emailService';
 
 const USER_ID = 'user-1';
@@ -370,6 +370,30 @@ describe('ワーカー（runBatch）', () => {
       jobId: 'job-1',
       batchId: BATCH,
       stage: 'keywords',
+    });
+  });
+
+  it('Runner が失敗したら failed にし、ログには取り出した時点ではなく止まった段階を出す', async () => {
+    const stored = job({ id: 'job-1', instagram_media_id: 'media-1' });
+    rows('instagram_blog_draft_jobs').push(stored);
+    rows('instagram_blog_draft_batches').push({ id: BATCH, user_id: USER_ID, chain_count: 0, notified_at: null });
+    const cause = new InstagramBlogDraftFailure('AI_FAILED');
+    vi.mocked(instagramBlogDraftRunner.run).mockImplementation(async () => {
+      Object.assign(stored, { stage: 'heading', heading_index: 3 });
+      throw cause;
+    });
+    const logError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await instagramBlogDraftJobService.runBatch(BATCH, USER_ID, 'paid');
+
+    expect(stored).toMatchObject({ status: 'failed', error_code: 'AI_FAILED' });
+    expect(logError).toHaveBeenCalledWith('[Instagram BlogDraft] job failed', {
+      jobId: 'job-1',
+      batchId: BATCH,
+      stage: 'heading',
+      headingIndex: 3,
+      errorCode: 'AI_FAILED',
+      cause,
     });
   });
 
