@@ -17,6 +17,13 @@ describe('Instagram blog draft content', () => {
     expect(() => parseInstagramKeywordProposal('[]')).toThrow();
   });
 
+  it('キーワード案の JSON に前置きの文や言語名なしのコードブロックが付いていても読む', () => {
+    const expected = { main_kw: '主題', kw: ['関連'] };
+    expect(parseInstagramKeywordProposal('以下が提案です。\n{"main_kw":"主題","kw":["関連"]}\n以上です。')).toEqual(expected);
+    expect(parseInstagramKeywordProposal('```\n{"main_kw":"主題","kw":["関連"]}\n```')).toEqual(expected);
+    expect(() => parseInstagramKeywordProposal('キーワードを提案できません')).toThrow();
+  });
+
   it('手動フローと同じ入力文を組み立てる', () => {
     expect(buildInstagramStep1Input('主題', ['関連1', '関連2'], '投稿文'))
       .toBe('主題\n関連1\n関連2\n\n【元になった Instagram 投稿】\n投稿文');

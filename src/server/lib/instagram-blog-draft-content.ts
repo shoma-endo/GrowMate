@@ -1,17 +1,16 @@
 import { z } from 'zod';
+import { extractJsonObjectText } from '@/server/lib/llm-json';
 
 const keywordProposalSchema = z.object({
   main_kw: z.string().trim().min(1),
   kw: z.array(z.string().trim().min(1)).min(1),
 });
 
-const JSON_BLOCK_REGEX = /```json\s*([\s\S]*?)\s*```/i;
-
 export type InstagramKeywordProposal = z.infer<typeof keywordProposalSchema>;
 
 export function parseInstagramKeywordProposal(content: string): InstagramKeywordProposal {
-  const fenced = content.match(JSON_BLOCK_REGEX)?.[1];
-  const json = fenced ?? content;
+  const json = extractJsonObjectText(content);
+  if (json === null) throw new Error('Keyword proposal JSON not found');
   return keywordProposalSchema.parse(JSON.parse(json) as unknown);
 }
 

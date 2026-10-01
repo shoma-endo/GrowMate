@@ -151,7 +151,13 @@ class InstagramBlogDraftRunner extends SupabaseService {
     let proposal;
     try {
       proposal = parseInstagramKeywordProposal(generated.content);
-    } catch {
+    } catch (error) {
+      console.error('[Instagram BlogDraft] keyword proposal parse failed', {
+        jobId: job.id,
+        error,
+        truncated: generated.truncated,
+        output: generated.content.slice(0, 500),
+      });
       throw new InstagramBlogDraftFailure('KEYWORD_PARSE_FAILED');
     }
 
