@@ -226,7 +226,7 @@ npm run dev  # http://localhost:3000
 新規機能は、標準 Grill Me による要件確認・Gherkin承認・概算工数と着手判断・要件定義・仕様レビュー・実装の順に進めます。詳細は [`docs/development-workflow.md`](docs/development-workflow.md) を参照してください。
 
 ```bash
-./scripts/takt-grill.sh "実装したい機能の概要"
+takt -w grill-to-gherkin  # 対話モード Grill Me を選び、機能の概要を入力する
 ```
 
 > **Supabase 注意**: 本番と開発で同一プロジェクトを共有しています。`npx supabase db push` をリモートに対して実行しないこと。スキーマ変更は `supabase/migrations/` にコミットし、適用は管理者が行います。

@@ -146,7 +146,7 @@ steps:
       - condition: 要件再確認が必要
         next: ABORT
         appendix: |
-          要件または概算前提の再確認が必要です。`takt -w grill-to-gherkin -t "要件または概算前提を再確認してください"` を再実行し、標準 `grill-me` で見直してください。
+          要件または概算前提の再確認が必要です。`takt -w grill-to-gherkin` を再実行し、標準 `grill-me` で要件または概算前提を見直してください。
       - condition: 見送り
         next: COMPLETE
       - condition: ユーザー確認が必要
