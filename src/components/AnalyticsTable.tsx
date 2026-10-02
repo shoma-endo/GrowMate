@@ -202,19 +202,25 @@ export function useAnalyticsOpsColumnState(): [boolean, () => void] {
   return [expanded, toggle];
 }
 
-function getAnalyticsOpsColumnWidth(expanded: boolean): 380 | 120 {
-  return expanded ? 380 : 120;
+const ANALYTICS_OPS_EXPANDED_WIDTH = 380;
+const ANALYTICS_OPS_COLLAPSED_WIDTH = 120;
+
+/** 展開時の幅は一覧ごとにボタンの数が違うので呼び出し側で変えられる。既定はブログ一覧（ボタン4つ） */
+function getAnalyticsOpsColumnWidth(expanded: boolean, expandedWidth: number): number {
+  return expanded ? expandedWidth : ANALYTICS_OPS_COLLAPSED_WIDTH;
 }
 
 /** 左に固定する操作列の見出し。展開状態は useAnalyticsOpsColumnState で一覧どうし共有する */
 export function AnalyticsOpsHeaderCell({
   expanded,
   onToggle,
+  expandedWidth = ANALYTICS_OPS_EXPANDED_WIDTH,
 }: {
   expanded: boolean;
   onToggle: () => void;
+  expandedWidth?: number;
 }) {
-  const width = getAnalyticsOpsColumnWidth(expanded);
+  const width = getAnalyticsOpsColumnWidth(expanded, expandedWidth);
   return (
     <th
       className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap relative group/th"
@@ -248,11 +254,13 @@ export function AnalyticsOpsHeaderCell({
 export function AnalyticsOpsCell({
   expanded,
   children,
+  expandedWidth = ANALYTICS_OPS_EXPANDED_WIDTH,
 }: {
   expanded: boolean;
   children: React.ReactNode;
+  expandedWidth?: number;
 }) {
-  const width = getAnalyticsOpsColumnWidth(expanded);
+  const width = getAnalyticsOpsColumnWidth(expanded, expandedWidth);
   return (
     <td
       className="analytics-ops-cell px-2 py-4 whitespace-nowrap text-sm text-center relative"
