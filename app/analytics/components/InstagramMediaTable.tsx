@@ -9,7 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 // 記事詳細タブと同じローディング表示。共通部品は既存ファイル内で export する規約
 // （growmate-ui-ux SKILL「同種の既存 UI があるときは『そのまま』使う」）のため、OverviewTab から読む
@@ -467,13 +467,11 @@ function BlogDraftOperation({
       <div className="flex items-center justify-center gap-2">
         <LaunchChatButton label="続きを作成" isPending={pending} onClick={() => onResume(item.id)} disabled={active} pendingLabel={ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING} />
         {expanded && stoppedSessionId ? (
-          <Button
-            variant="outline"
-            size="sm"
+          <LaunchChatButton
+            label="チャット"
+            isPending={false}
             onClick={() => onNavigate(`/chat?session=${encodeURIComponent(stoppedSessionId)}`)}
-          >
-            チャット
-          </Button>
+          />
         ) : null}
       </div>
       <span className="text-xs text-muted-foreground">{state.label}{progress ? `（${progress}）` : ''}</span>
