@@ -29,9 +29,9 @@
 | --- | --- | --- | --- | --- |
 | `ChatLayout.tsx` 実行行数 | 1,651 | 600 以下（500 を超えた分の `max-lines` の warn は残してよい。ALT-003） | `npm run hotspots`（`scripts/hotspots.sh` の数え方） | マージ時 |
 | 新規ファイルの実行行数 | – | すべて 500 以下 | `npm run lint` で新規ファイルに `max-lines` の warn が 0 件 | マージ時 |
-| `max-lines` の warn 件数 | develop の件数 | 増えない（`ChatLayout.tsx` の 1 件は残っても減ってもよい） | `docs/runbooks/monthly-maintenance.md` §4 の数え方 | PR 作成時 |
-| 呼び出し側・テストの変更 | – | 0（`app/chat/ChatClient.tsx` と `tests/` に差分がない） | `git diff --stat develop -- app/chat/ChatClient.tsx tests` | PR レビュー時 |
-| `eslint-suppressions.json` | `ChatLayout.tsx` に `no-arbitrary-values: 1` | 差分なし | `git diff develop -- eslint-suppressions.json` が空 | PR レビュー時 |
+| `max-lines` の warn 件数 | 基準コミット `${B}`（§13）の件数 | 増えない（`ChatLayout.tsx` の 1 件は残っても減ってもよい） | `docs/runbooks/monthly-maintenance.md` §4 の数え方 | PR 作成時 |
+| 呼び出し側・テストの変更 | – | 0（`app/chat/ChatClient.tsx` と `tests/` に差分がない） | `git diff --stat ${B} -- app/chat/ChatClient.tsx tests`（`B` は §13） | PR レビュー時 |
+| `eslint-suppressions.json` | `ChatLayout.tsx` に `no-arbitrary-values: 1` | 差分なし | `git diff ${B} -- eslint-suppressions.json` が空（`B` は §13） | PR レビュー時 |
 | 既存テスト | 全件 pass | `npm run verify` が緑 | `npm run verify` | PR 作成時 |
 
 ## 2. 利用者・関係者・利用シナリオ
@@ -138,7 +138,7 @@ src/lib/step7-lead.ts（新規）              Step 6 → Step 7 の書き出し
 | 検証 | `npm run verify`・§7 の行比較・§13 の手動確認 | 2 | 0.25 |
 | **合計** |  | 5 | 0.65 |
 
-幅: 4〜8 時間。上限側は、フックの引数に setter を渡したことで `react-hooks/exhaustive-deps` が出す警告への対応（§10 R-002）。
+幅: 4〜8 時間。上限側は、フックの引数に setter を渡したことで `react-hooks/exhaustive-deps` が出す警告への対応（§12 R-002）。
 
 ### カレンダー上の前提（工数外）
 
@@ -161,7 +161,7 @@ src/lib/step7-lead.ts（新規）              Step 6 → Step 7 の書き出し
 | FR-007 | `src/hooks/useCanvasNavigation.ts`（新規）に `:1158-1305`（`handleShowCanvas`、自動で開く effect、`handleOpenCombinedCanvas`、`:1305` の ref 代入）と `:1348-1442`（バージョン選択、`effective*`、ステップ切替）を移す | Must | §3 To-Be | BR-03 の 1 を満たす |
 | FR-008 | `handleOpenAnnotation`（`:1308-1346`）は React のフックを使わない普通の関数なので、`ChatLayout` に残す。`CanvasPanel` の `dynamic` import（`:60`）と未使用の `useAuth` import（`:6`）も `ChatLayout` に残す（OPEN-002） | Must | YAGNI / BR-01 | – |
 | FR-009 | `ChatLayout` は新フックを FR-002 → FR-003 → FR-004 → FR-005 → FR-006 → FR-007 の順で呼ぶ。`useCanvasVersions` と `useWordpressSync`（`:343-370`）は FR-002 より前に呼ぶ（effect を持たない `useHeadingCanvasState` が後ろへ動くだけになる）。ルート div（`:1797`）と JSX は `ChatLayout` に残す | Must | BR-02 | 宣言順の前方参照がない（2026-10-03 に確認済み: FR-006 の範囲は FR-007 のハンドラと `handleOpenAnnotation` を参照せず、FR-004 の範囲は FR-005 の値を参照しない） |
-| FR-010 | 移動元と移動先で内容が変わってよいのは次の行だけ: (a) 新ファイルの import・フック関数の宣言・引数の分割代入・return 文（新ファイルから export するのは、別のファイルが import するものだけにする。引数と戻り値の型は export しない。`npm run knip` が未使用の export で落ちるため）、(b) `ChatLayout` の import、新フックの呼び出しと戻り値の分割代入、(c) FR-001 の useMemo 本体を関数呼び出し 1 行に置き換えた行、(d) フックの引数になった setter・ref オブジェクトを依存配列に足す行（useState の setter と `useRef` の戻り値に限る。§12 R-002） | Must | BR-01 | §7 の行比較で差分がこの範囲に収まる |
+| FR-010 | 移動元と移動先で内容が変わってよいのは次の行だけ: (a) 新ファイルの import・フック関数の宣言・引数の分割代入・return 文（新ファイルから export するのは、別のファイルが import するものだけにする。引数と戻り値の型は export しない。`npm run knip` が未使用の export で落ちるため）、(b) `ChatLayout` の import、新フックの呼び出しと戻り値の分割代入、(c) FR-001 の useMemo 本体を関数呼び出し 1 行に置き換えた行、(d) フックの引数になった setter・ref オブジェクトを依存配列に足す行（useState の setter と `useRef` の戻り値に限る。§12 R-002）。FR-002〜FR-007 の各範囲の直前にある、その関数・effect の説明コメント（`:584`・`:839-842`・`:946`・`:1048`・`:1090`・`:1130-1131`・`:1157`）も範囲と一緒に移す | Must | BR-01 | §7 の行比較で差分がこの範囲に収まる |
 
 ### 入力・出力・状態遷移
 
@@ -194,10 +194,19 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
   Rule: 挙動を変えない
 
     Scenario: 移動のみであることを行の多重集合で示す
-      Given develop の ChatLayout.tsx
+      Given 基準コミット ${B}（§13）の ChatLayout.tsx
       And 実装後の ChatLayout.tsx・新しいフック 6 本・src/lib/step7-lead.ts を連結したもの
       When §13 の norm で import ブロック・空行・閉じ括弧だけの行を除き、sort して比べる
       Then 差分が FR-010 の許可行だけである
+
+    Scenario: 各範囲が位置を保ったまま移っている
+      Given 基準コミット ${B} の ChatLayout.tsx から切り出した FR-002〜FR-007 の各行範囲（§13）
+      When 移動先のフックと diff -wB で比べる
+      Then 差分が FR-010 (a)(d) の行だけである
+
+    Scenario: 依存配列の警告が増えない
+      When §13 の「依存配列の検証」を実行する
+      Then 新しいフック 6 本と src/lib/step7-lead.ts の react-hooks/exhaustive-deps の warn が 0 件で、ChatLayout.tsx の件数が ${B} より増えない
 
     Scenario: effect の順序が保たれる
       Given 実装後の ChatLayout.tsx
@@ -227,6 +236,8 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 | 呼び出し側が無変更で動く | FR-009 | – |
 | lint の抑制記録が動かない | FR-009 | ALT-001 |
 | 移動のみであることを行の多重集合で示す | FR-010 | BR-01 |
+| 各範囲が位置を保ったまま移っている | FR-002〜FR-007 / FR-010 | BR-01 |
+| 依存配列の警告が増えない | FR-010 (d) | BR-01 / R-002 |
 | effect の順序が保たれる | FR-009 | BR-02 |
 | ブログ作成の見出しフローが変わらない | FR-002 / FR-005 / FR-007 | BR-03 |
 | Canvas の AI 編集が変わらない | FR-006 | – |
@@ -236,12 +247,12 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 
 | 分類 | 要件・目標値 | 検証方法 | 状態・根拠 |
 | --- | --- | --- | --- |
-| 性能・レイテンシ | 現行と同等。メモ化の有無と依存配列を変えないので、再描画の回数も変わらない。React Compiler は無効（`next.config.ts`・`package.json` に設定なし）なので、メモ化は手書きの依存配列だけで決まる | §7 の行比較 | BR-01 |
+| 性能・レイテンシ | 現行と同等。メモ化の有無と依存配列を変えないので、再描画の回数も変わらない。React Compiler は無効（`next.config.ts`・`package.json` に設定なし）なので、メモ化は手書きの依存配列だけで決まる | §13 の範囲ごとの比較（`diff -wB`）と「依存配列の検証」。行の多重集合の比較は依存配列の要素と同じ文字列の行を区別できないので、これだけでは根拠にしない | BR-01 |
 | 可用性・信頼性 | 対象外 | – | 対象外 |
 | セキュリティ・プライバシー | 対象外（データの流れは変わらない） | – | 対象外 |
 | 認証・認可 | 対象外 | – | 対象外 |
 | 監査・ログ | `console.error` などのログ出力は不変 | §7 の行比較 | BR-01 |
-| 障害対応 | Canvas 編集の SSE が失敗したときの表示（トースト `canvas-anthropic-retry` など）は不変 | §13 の手動確認 | BR-01 |
+| 障害対応 | Canvas 編集の SSE が失敗したときの表示（トースト `canvas-anthropic-retry` など）は不変 | §13 の範囲ごとの比較で、FR-006 の範囲（409・非 ok・retry・error イベント・catch / finally を含む `:1444-1792`）がそのまま移ったことを確かめる。失敗を起こす手動確認は行わない | BR-01 |
 | バックアップ・復旧 | 対象外 | – | 対象外 |
 | 運用・監視 | `npm run hotspots` の月次確認で効果を見る | `docs/runbooks/monthly-maintenance.md` §4 | 既存の運用を使う |
 | 拡張性・互換性 | 対象外 | – | 対象外 |
@@ -298,7 +309,7 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 - 却下した案と理由: 案B は state の持ち主が増え、移動のみの証跡が取りにくい
 - 影響: `ChatLayout` に宣言が約 30 行残り、フックの引数が多くなる（setter・ref を受け取るため）
 - 将来変更する条件: OPEN-001 で重複ロジックを統合するとき
-- 判断者・判断日: Claude 案（2026-10-03）。承認者の確認待ち
+- 判断者・判断日: shoma-endo・2026-10-03（Claude 案を Q-001 で承認）
 
 ### ALT-002: 新しいフックの置き場所（Claude 案・未確認）
 
@@ -310,7 +321,7 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 - 採用理由: `ChatLayout` が使う既存フック 7 本（`useHeadingFlow`・`useCanvasVersions` など）は、`ChatLayout` からしか使われていないのにすべて `src/hooks/` にある。README の「📁 プロジェクト構成」も `src/hooks/` をチャット・キャンバス・見出しフローのフックの置き場と書いている。案B だと `ChatLayout` のフックが 2 つのディレクトリに分かれる
 - 却下した案と理由: 案B は上記のとおり置き場が割れる。既存 7 本も移すと移動のみの範囲を超える
 - 影響: README の更新は不要
-- 判断者・判断日: Claude 案（2026-10-03）。承認者の確認待ち
+- 判断者・判断日: shoma-endo・2026-10-03（Claude 案を Q-001 で承認）
 
 ### ALT-003: `ChatLayout.tsx` の目標行数（Claude 案・未確認）
 
@@ -325,7 +336,7 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 - 却下した案と理由: 上記
 - 影響: `max-lines` の warn が `ChatLayout.tsx` に 1 件残る（develop でも 1 件あるので、件数は増えない）
 - 将来変更する条件: OPEN-001 で重複を統合し、引数が減ったとき
-- 判断者・判断日: Claude 案（2026-10-03）。承認者の確認待ち
+- 判断者・判断日: shoma-endo・2026-10-03（Claude 案を Q-001 で承認）
 
 ## 12. リスク・確認質問・未決定事項
 
@@ -338,7 +349,9 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 
 ### 確認質問
 
-なし。
+| ID | 確認質問 | 回答が必要な理由 | 回答者 | 期限 | 状態 |
+| --- | --- | --- | --- | --- | --- |
+| Q-001 | ALT-001（state・ref の宣言と JSX は `ChatLayout` に残す）、ALT-002（新しいフックは `src/hooks/` に置く）、ALT-003（`ChatLayout.tsx` は実行行 600 以下で止め、`max-lines` の warn 1 件は残す）の Claude 案でよいか | 3 つとも Claude 案で、承認者の確認待ち（§11）。案が変わると FR-002〜FR-009 の分け方・置き場所・行数目標が変わる | shoma-endo | spec-review の前（CP-1） | 回答済み（2026-10-03 shoma-endo: 3 つとも Claude 案で承認） |
 
 ### 未決定事項（今は決めない）
 
@@ -354,7 +367,44 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 - 単体テスト: 追加しない。`tests/` は `environment: 'node'`（`vitest.config.ts`）で、フックや画面を描画するテストの基盤がない。基盤を足すのは本仕様の範囲を超える（Claude 案・未確認）。`src/lib/step7-lead.ts` は純関数なのでテストを書けるが、移動のみの本仕様では追加しない（`docs/specs/testing-strategy.md` の方針に従い、数値合わせのテストは書かない）
 - カバレッジ: 移動のみで、未テストの行が増えも減りもしないので、`vitest.config.ts` の閾値には影響しない（分母は `src/**` と `app/**` の全ファイル）
 - 自動検証: `npm run verify`
-- 移動の証跡: `docs/plans/client-page-boundary.md` §13 と同じ `norm` を使い、`git show develop:app/chat/components/ChatLayout.tsx | norm` と、`norm app/chat/components/ChatLayout.tsx src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts src/hooks/useBlogFlowControls.ts src/hooks/useStep7HeadingActions.ts src/hooks/useCanvasSelectionEditStream.ts src/hooks/useCanvasNavigation.ts src/lib/step7-lead.ts` の差分を PR 本文に貼る
+- 基準コミット: ローカルの `develop` は `origin/develop` より古いことがあるため、比較の基準は次の `B` に統一する。§1 の成功指標、§7、§14 CP-2 の `${B}` もこれを指す。zsh では `$B:app` の `:a` が修飾子として解釈されるため、`${B}:app` と書く
+- 移動の証跡: 次の 3 つを実行し、出力を PR 本文に貼る。`norm` の書き方は `docs/plans/client-page-boundary.md` §13 を出典とする
+
+```bash
+git fetch origin develop
+B=$(git merge-base origin/develop HEAD)
+F=app/chat/components/ChatLayout.tsx
+
+# 1. 行の多重集合の比較。複数行の import は、import で始まり ; で終わる行までを 1 ブロックとして落とす
+norm() { awk '/^(import|export \{.*\} from|export \{$)/{imp=1} imp{ if (/;[[:space:]]*$/) imp=0; next } {print}' "$@" \
+  | sed -E 's/^[[:space:]]+//' | grep -vE '^$|^[]\)\}>;,]+$' | sort; }
+diff <(git show ${B}:$F | norm) \
+     <(norm $F src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts src/hooks/useBlogFlowControls.ts \
+            src/hooks/useStep7HeadingActions.ts src/hooks/useCanvasSelectionEditStream.ts src/hooks/useCanvasNavigation.ts \
+            src/lib/step7-lead.ts)
+
+# 2. 範囲ごとの比較（位置を保つ。依存配列の要素も行の位置で比べる）。範囲は FR-002〜FR-007 と、FR-010 で一緒に移す説明コメント
+rng() { git show ${B}:$F | sed -n "$1"; }
+diff -wB <(rng '286,341p;372,582p')        src/hooks/useStep7HeadingView.ts
+diff -wB <(rng '62,80p;584,837p')          src/hooks/useCanvasPanelContent.ts
+diff -wB <(rng '1006,1030p;1033,1128p')    src/hooks/useBlogFlowControls.ts
+diff -wB <(rng '839,1004p;1130,1155p')     src/hooks/useStep7HeadingActions.ts
+diff -wB <(rng '58p;1444,1792p')           src/hooks/useCanvasSelectionEditStream.ts
+diff -wB <(rng '1157,1305p;1348,1442p')    src/hooks/useCanvasNavigation.ts
+
+# 3. 依存配列の検証（react-hooks/exhaustive-deps の warn 件数）
+git show ${B}:$F | npx eslint --stdin --stdin-filename $F | grep -c 'react-hooks/exhaustive-deps'
+npx eslint $F | grep -c 'react-hooks/exhaustive-deps'
+npx eslint src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts src/hooks/useBlogFlowControls.ts \
+  src/hooks/useStep7HeadingActions.ts src/hooks/useCanvasSelectionEditStream.ts src/hooks/useCanvasNavigation.ts \
+  src/lib/step7-lead.ts | grep -c 'react-hooks/exhaustive-deps'
+```
+
+期待結果:
+
+- 1: 差分が FR-010 の許可行だけ
+- 2: 6 本とも、差分が FR-010 (a)（import・フック関数の宣言・引数の分割代入・return 文）と (d)（依存配列に足した setter・ref）の行だけ。FR-004 の範囲は `stepActionBarRef` の宣言とその説明コメント（`:1031-1032`）を除く
+- 3: 1 行目より 2 行目が大きくない。3 行目が `0`
 - 手動確認（ローカルの dev サーバー、デスクトップ幅とモバイル幅の両方）:
   1. 新しいチャットでメッセージを送る
   2. ブログ作成で Step 1 から Step 6 まで、ステップ操作バーで進める。モデルを切り替える
@@ -371,25 +421,26 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 ### ロールバック方針
 
 - PR を revert する。データ変更はない
+- ロールバック判断者: shoma-endo
 
 ## 14. 実装手順・チェックポイント
 
 ### 手順
 
-1. §10 の依存確認を 2 つとも実行する
+1. §10 の依存確認を実行する
 2. FR-001 の純関数を切り出し、`npm run build` を通す
 3. FR-006（最も大きく、依存が閉じている）→ FR-003 → FR-002 → FR-004 → FR-005 → FR-007 の順に、1 本移すごとに `npm run lint` と `npm run build` を通す
 4. FR-009 の呼び出し順を確かめる
 5. `npm run verify` を実行する
-6. §13 の `norm` で行比較を実行し、出力を PR 本文に貼る
+6. §13 の行比較（`norm`・範囲ごとの比較・依存配列の検証）を実行し、出力を PR 本文に貼る
 7. §13 の手動確認を行い、結果を PR 本文に書く
 
 ### チェックポイント
 
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
-| CP-1 spec-review 前 | ALT-002 / ALT-003 の Claude 案でよいか | shoma-endo | 未確認 |
-| CP-2 PR 作成時 | `git diff --stat develop` の変更が `app/chat/components/ChatLayout.tsx`・新しいフック 6 本・`src/lib/step7-lead.ts`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
+| CP-1 spec-review 前 | §12 Q-001（ALT-001 / ALT-002 / ALT-003 の Claude 案でよいか）に回答がある | shoma-endo | 確認済み（2026-10-03） |
+| CP-2 PR 作成時 | `git diff --stat ${B}`（`B` は §13）の変更が `app/chat/components/ChatLayout.tsx`・新しいフック 6 本・`src/lib/step7-lead.ts`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
 
 ## 15. 完了条件
 
@@ -398,7 +449,7 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
   - §7 のシナリオをすべて満たす
   - `npm run verify` が緑
 - 検証方法・証跡（テスト結果・画面確認・ログ等）:
-  - `norm` の行比較の出力と、§13 の手動確認 7 項目の結果を PR 本文に書く
+  - §13 の行比較（`norm`・範囲ごとの比較・依存配列の検証）の出力と、§13 の手動確認 7 項目の結果を PR 本文に書く
 - 完了確認者・確認日: 未定
 
 ## 16. レビュー記録・承認・変更履歴
@@ -408,6 +459,7 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 | 回 | 日付 | 指摘件数（🔴 / 🟡 / 🟢） | 反映状況 | 残置合意した論点と理由 |
 | --- | --- | --- | --- | --- |
 | 0（起票時のセルフレビュー） | 2026-10-03 | 0 / 5 / 7 | 全件反映 | なし |
+| 1（spec-review audit） | 2026-10-03 | 0 / 5 / 3 | 全件反映。比較の基準を `${B}`（`git merge-base origin/develop HEAD`）に統一し、`norm` の定義・範囲ごとの比較・依存配列の検証を §13 に直接書いた。SSE 失敗時の確認は手動手順を足さず範囲ごとの比較で行う（§8）。ALT-001〜003 の承認は §12 Q-001 にまとめた | なし。ただし Q-001 は未回答で、回答まで CP-1 は未確認のまま |
 
 #### 公式ドキュメント照合
 
@@ -425,3 +477,5 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 | 日付 | 変更内容 | 変更理由 | 変更者 |
 | --- | --- | --- | --- |
 | 2026-10-03 | 起票 | 可読性レビュー | shoma-endo（Claude Code 支援） |
+| 2026-10-03 | Q-001 に回答（ALT-001〜003 を承認）。§1 の表の改行抜けを修正 | spec-review の ABORT（承認待ち） | shoma-endo（Claude Code 支援） |
+| 2026-10-03 | 比較の基準・`norm`・範囲ごとの比較・依存配列の検証を §13 に追加。Q-001・ロールバック判断者を追加。相互参照を修正 | spec-review audit 1 回目 | Claude Code（spec-review revise） |
