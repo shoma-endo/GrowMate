@@ -3,11 +3,11 @@
 ## メタデータ
 
 - 文書名: ChatLayout.tsx の状態とハンドラをフックへ分ける
-- ステータス: `draft`
+- ステータス: `approved`
 - 作成日: 2026-10-03
 - 最終更新日: 2026-10-03
 - 作成者: shoma-endo（Claude Code 支援）
-- 承認者: 未定
+- 承認者: shoma-endo（Claude 案・未確認。Q-001 の回答者で、ロールバック判断者でもあるため）
 - 対象リリース: 機能リリースと独立。`develop` へマージ後、次の通常デプロイに乗る
 - 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー。`npm run hotspots`（develop 4fd6ae2e）の第 2 位。同時に起こした `docs/plans/analytics-table-split.md` / `docs/plans/client-page-boundary.md`
 
@@ -40,7 +40,7 @@
 | --- | --- | --- |
 | 利用者 | 該当なし（見た目・挙動は変わらない） | – |
 | 運用担当 | 開発者（本人）・AI 実装者 | 関心ごとに 1 ファイルを読めば済む |
-| 管理者・承認者 | 未定 | 移動のみの証跡（§7）と手動確認の結果を見てマージを判断する |
+| 管理者・承認者 | shoma-endo（Claude 案・未確認。メタデータの承認者と同じ） | 移動のみの証跡（§7）と手動確認の結果を見てマージを判断する |
 | 外部サービス・連携先 | Anthropic（Canvas 編集の SSE） | 呼び出し内容は不変 |
 
 ### 主な利用シナリオ
@@ -87,13 +87,17 @@ src/lib/step7-lead.ts（新規）              Step 6 → Step 7 の書き出し
 - 例外: なし。effect を持たないフック（`useHeadingCanvasState`・`useBlogTitleMetaGeneration`・FR-005・FR-006）は位置を動かしてよい
 
 - ルール ID: BR-03
-- ルール: 次の 4 つの性質を保つ
+- ルール: 次の 5 つの性質を保つ
   1. `openCombinedCanvasRef.current = handleOpenCombinedCanvas`（`:1305`）は毎回の描画で実行する。`handleBuildCombinedOnly`（`:989`）が await のあとにこの ref から最新のクロージャを呼ぶため
   2. `canvasContent` の useMemo（`:601-779`）は描画中に ref へ書く（`:624-626`・`:641-644`）。これと、`.current` を依存配列に入れないことを保つ。ref が引数になったことで `react-hooks/exhaustive-deps` が ref オブジェクト自体の追加を求めた場合は、FR-010 (d) で足してよい（ref オブジェクトの同一性は変わらないので、メモ化の結果は変わらない）
   3. `effectiveViewingHeadingIndex`（`:331-334`）は描画中に `pendingViewingIndexRef.current` を読む。state にキャッシュしない
   4. ref はすべて `ChatLayout` で 1 回だけ作り、`RefObject` として各フックへ渡す。フック内で `useRef` を新しく作らない
   5. フックは引数を関数の引数部で分割代入して受け取る。`args.xRef.current = …` のように引数オブジェクト経由で書き換えない（`react-hooks/immutability` が error にする）
-- 例外: 4 について、ほかの関心から参照されない `prevStep6SessionIdRef`（`:421`）は FR-002 のフック内で作る
+- 例外: 4 について、ほかの関心から参照されない `prevStep6SessionIdRef`（`:421`）は FR-002 のフック内で作る（ALT-001）
+- 5 の前提の確認: 2026-10-03 にプローブで確認した（Claude 実施）。方法は、本リポジトリの `eslint.config.mjs` と同じ設定で `eslint --stdin --stdin-filename src/hooks/useProbe.ts` に検証用のフックを渡した。結果は次のとおり。
+  - 分割代入で受け取った ref への `.current` 書き込みは、`useCallback`・`useMemo`・`useEffect` の中でも描画中でも error にならなかった（`react-hooks/refs` は off）
+  - `args.barRef.current = …` は `react-hooks/immutability` の error になった
+  - 実ファイルでの重大度は、spec-to-pr の implement が `npm run lint` で確かめる。前提が外れた場合の扱いは §12 R-003
 
 ## 4. 対象範囲と Non-goals
 
@@ -152,16 +156,16 @@ src/lib/step7-lead.ts（新規）              Step 6 → Step 7 の書き出し
 
 | ID | 機能要件 | 優先度 | 根拠・出典 | 受け入れ条件 |
 | --- | --- | --- | --- | --- |
-| FR-001 | `src/lib/step7-lead.ts`（新規）に、`step6ToStep7Lead` の useMemo 本体（`:150-191`）を純関数 `resolveStep6ToStep7Lead` として移す。`ChatLayout` の useMemo は、現行の依存配列のままこの関数を呼ぶ | Must | 行数目標 | useMemo の依存配列が現行と同じ |
-| FR-002 | `src/hooks/useStep7HeadingView.ts`（新規）に `:286-341`（`useHeadingCanvasState` の呼び出しと inline クロージャ、表示位置の派生値）と `:372-582`（同期 effect、`isStep6ContentStale` / `prevStep6SessionIdRef` を除く stale 判定、2 つの `hasContentFor*`、stale effect）を移す。`isStep6ContentStale` の useState（`:420`）と `prevStep6SessionIdRef`（`:421`）はこのフックの中で宣言する | Must | §3 To-Be | `:293-323` の inline クロージャがメモ化されないまま残る |
+| FR-001 | `src/lib/step7-lead.ts`（新規）に、純関数 `resolveStep6ToStep7Lead(msgs: ChatMessage[])` を作る。関数の本体は `step6ToStep7Lead` の useMemo 本体のうち `:151-191`（`const msgs = …` の `:150` を除く）をそのまま移す。`ChatLayout` 側は `:149`・`:150`・`:192` を `useMemo(() => resolveStep6ToStep7Lead([...(chatSession.state.messages ?? []), ...optimisticMessages]), [chatSession.state.messages, optimisticMessages])` に置き換える | Must | 行数目標 | useMemo の依存配列が現行と同じ |
+| FR-002 | `src/hooks/useStep7HeadingView.ts`（新規）に `:286-341`（`useHeadingCanvasState` の呼び出しと inline クロージャ、表示位置の派生値）と `:372-582`（同期 effect、stale 判定、2 つの `hasContentFor*`、stale effect）をそのまま移す。`:372-582` には `isStep6ContentStale` の useState（`:420`）と `prevStep6SessionIdRef`（`:421`）の宣言も含まれ、宣言ごとこのフックへ移る。戻り値に `isStep6ContentStale` と `setIsStep6ContentStale` を含める（FR-003・FR-005・JSX が使うため。ALT-001） | Must | §3 To-Be | `:293-323` の inline クロージャがメモ化されないまま残る |
 | FR-003 | `src/hooks/useCanvasPanelContent.ts`（新規）に `deriveTileFromContent`（`:62-80`、モジュール関数のまま）、`:585-599` の effect、`:601-837`（`canvasContent`・表示フラグ・`canvasVersionsWithMeta`・`canvasStepOptions`・`combinedTiles`）を移す | Must | §3 To-Be | BR-03 の 2 を満たす |
 | FR-004 | `src/hooks/useBlogFlowControls.ts`（新規）に `:1006-1047`（`stepActionBarRef` の宣言を除く）、effect `:1049-1088`、`handleSendMessage` と `handleSaveStep7UserLead`（`:1091-1128`）を移す | Must | §3 To-Be | – |
-| FR-005 | `src/hooks/useStep7HeadingActions.ts`（新規）に `viewingSection`（`:843-848`）、`handleSaveHeadingClick`（`:850-944`）、`handleBuildCombinedOnly`（`:947-1004`）、`handleStartHeadingGeneration`（`:1132-1155`）を移す。`openCombinedCanvasRef` は引数で受け取る | Must | §3 To-Be | BR-03 の 1 を満たす |
+| FR-005 | `src/hooks/useStep7HeadingActions.ts`（新規）に `viewingSection`（`:843-848`）、`handleSaveHeadingClick`（`:850-944`）、`handleBuildCombinedOnly`（`:947-1004`）、`handleStartHeadingGeneration`（`:1132-1155`）を移す。`openCombinedCanvasRef` は引数で受け取る。`isStep6ContentStale` と `setIsStep6ContentStale` は FR-002 の戻り値を引数で受け取る。`setIsStep6ContentStale` が引数になったことで `handleSaveHeadingClick` の依存配列に足すことは FR-010 (d) で許可している | Must | §3 To-Be | BR-03 の 1 を満たす |
 | FR-006 | `src/hooks/useCanvasSelectionEditStream.ts`（新規）に `CANVAS_ANTHROPIC_RETRY_TOAST_ID`（`:58`）と `handleCanvasSelectionEdit`（`:1444-1792`、内側の `processEventBlock` を含む）を移す。名前は既存の `src/hooks/useCanvasSelection.ts`（`CanvasPanel` が使う）と区別する | Must | §3 To-Be | – |
 | FR-007 | `src/hooks/useCanvasNavigation.ts`（新規）に `:1158-1305`（`handleShowCanvas`、自動で開く effect、`handleOpenCombinedCanvas`、`:1305` の ref 代入）と `:1348-1442`（バージョン選択、`effective*`、ステップ切替）を移す | Must | §3 To-Be | BR-03 の 1 を満たす |
 | FR-008 | `handleOpenAnnotation`（`:1308-1346`）は React のフックを使わない普通の関数なので、`ChatLayout` に残す。`CanvasPanel` の `dynamic` import（`:60`）と未使用の `useAuth` import（`:6`）も `ChatLayout` に残す（OPEN-002） | Must | YAGNI / BR-01 | – |
 | FR-009 | `ChatLayout` は新フックを FR-002 → FR-003 → FR-004 → FR-005 → FR-006 → FR-007 の順で呼ぶ。`useCanvasVersions` と `useWordpressSync`（`:343-370`）は FR-002 より前に呼ぶ（effect を持たない `useHeadingCanvasState` が後ろへ動くだけになる）。ルート div（`:1797`）と JSX は `ChatLayout` に残す | Must | BR-02 | 宣言順の前方参照がない（2026-10-03 に確認済み: FR-006 の範囲は FR-007 のハンドラと `handleOpenAnnotation` を参照せず、FR-004 の範囲は FR-005 の値を参照しない） |
-| FR-010 | 移動元と移動先で内容が変わってよいのは次の行だけ: (a) 新ファイルの import・フック関数の宣言・引数の分割代入・return 文（新ファイルから export するのは、別のファイルが import するものだけにする。引数と戻り値の型は export しない。`npm run knip` が未使用の export で落ちるため）、(b) `ChatLayout` の import、新フックの呼び出しと戻り値の分割代入、(c) FR-001 の useMemo 本体を関数呼び出し 1 行に置き換えた行、(d) フックの引数になった setter・ref オブジェクトを依存配列に足す行（useState の setter と `useRef` の戻り値に限る。§12 R-002）。FR-002〜FR-007 の各範囲の直前にある、その関数・effect の説明コメント（`:584`・`:839-842`・`:946`・`:1048`・`:1090`・`:1130-1131`・`:1157`）も範囲と一緒に移す | Must | BR-01 | §7 の行比較で差分がこの範囲に収まる |
+| FR-010 | 移動元と移動先で内容が変わってよいのは次の行だけ: (a) 新ファイルの import・フック関数と純関数の宣言・引数の分割代入・return 文・引数と戻り値の interface（export しない。既存の `UseHeadingFlowParams`（`src/hooks/useHeadingFlow.ts:15`）と同じ形）。新ファイルから export するのは、別のファイルが import するものだけにする（`npm run knip` が未使用の export で落ちるため）、(b) `ChatLayout` の import、新フックの呼び出しと戻り値の分割代入、(c) FR-001 で `:149`・`:150`・`:192` を `resolveStep6ToStep7Lead` の呼び出しに置き換えた行、(d) フックの引数になった setter・ref オブジェクトを依存配列に足す行（useState の setter と `useRef` の戻り値に限る。§12 R-002）。FR-002〜FR-007 の各範囲の直前にある、その関数・effect の説明コメント（`:584`・`:839-842`・`:946`・`:1048`・`:1090`・`:1130-1131`・`:1157`）も範囲と一緒に移す | Must | BR-01 | §7 の行比較で差分がこの範囲に収まる |
 
 ### 入力・出力・状態遷移
 
@@ -298,20 +302,20 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 
 ## 11. トレードオフ判断
 
-### ALT-001: どこまでフックへ出すか（Claude 案・未確認）
+### ALT-001: どこまでフックへ出すか（Claude 案・2026-10-03 shoma-endo 承認済み）
 
 - 判断: 状態の宣言と JSX をどこに置くか
 - 比較した案:
   - 案A: useState / useRef の宣言と JSX は `ChatLayout` に残し、ハンドラ・派生値・effect だけをフックへ移す
   - 案B: 関心ごとに state もフックの中へ移す
-- 採用案: 案A（`isStep6ContentStale` と `prevStep6SessionIdRef` だけは、ほかの関心から参照されないので FR-002 のフック内へ移す）
+- 採用案: 案A。ただし `isStep6ContentStale` と `prevStep6SessionIdRef` だけは FR-002 のフック内で宣言する。`prevStep6SessionIdRef` はほかの関心から参照されない。`isStep6ContentStale` は FR-003（`:669`・`:773`）・FR-005（`:852`・`:932`）・JSX（`:1864`）からも読まれるが、書き込むのは FR-002 の effect と FR-005（`:893`・`:916`）だけなので、FR-002 で宣言して値と setter を返す
 - 採用理由: `setCanvasStreamingContent` は 12 の関数（17 行）から、`setCanvasPanelOpen` は 7 の関数（8 行）から、`pendingViewingIndexRef` は 7 か所から書かれ、関心をまたいでいる（2026-10-03 の調査）。案B では、どのフックが state を持つかによって呼び出し順の制約が増え、BR-02 / BR-03 を保つのが難しくなる。ルート div には `shadcn/no-arbitrary-values` の抑制記録がある（`eslint-suppressions.json:179-183`、`:1797` の `h-[calc(100dvh-3.5rem)]`）。JSX を残せば抑制記録も動かない
 - 却下した案と理由: 案B は state の持ち主が増え、移動のみの証跡が取りにくい
 - 影響: `ChatLayout` に宣言が約 30 行残り、フックの引数が多くなる（setter・ref を受け取るため）
 - 将来変更する条件: OPEN-001 で重複ロジックを統合するとき
 - 判断者・判断日: shoma-endo・2026-10-03（Claude 案を Q-001 で承認）
 
-### ALT-002: 新しいフックの置き場所（Claude 案・未確認）
+### ALT-002: 新しいフックの置き場所（Claude 案・2026-10-03 shoma-endo 承認済み）
 
 - 判断: `src/hooks/` に置くか、`app/chat/hooks/`（新規）に置くか
 - 比較した案:
@@ -323,7 +327,7 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 - 影響: README の更新は不要
 - 判断者・判断日: shoma-endo・2026-10-03（Claude 案を Q-001 で承認）
 
-### ALT-003: `ChatLayout.tsx` の目標行数（Claude 案・未確認）
+### ALT-003: `ChatLayout.tsx` の目標行数（Claude 案・2026-10-03 shoma-endo 承認済み）
 
 - 判断: `ChatLayout.tsx` の実行行を 500 以下にするか、600 以下で止めるか
 - 前提: 残る行の実行行は約 315（import を整理した後）。ここに新しいフック 6 本の呼び出しが加わる。各フックは setter と ref を 20〜25 個受け取り、1 行に 1 つずつ並ぶため、呼び出しだけで約 200〜230 行になる。合計の見込みは約 520〜550（2026-10-03 のレビューでの見積もり）
@@ -346,6 +350,7 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 | --- | --- | --- | --- | --- | --- |
 | R-001 | テストがないため、移動の誤りが自動検証では見つからない | クロージャの取り違え、ref の二重生成、呼び出し順の誤り | BR-02 / BR-03 と §7 の行比較で構造を確かめ、§13 の手動確認で振る舞いを確かめる | 実装者 | 対策済み |
 | R-002 | setter と ref をフックの引数で受け取ると、`react-hooks/exhaustive-deps` が依存配列への追加を求める | 依存配列を書き換えると、メモ化の結果が変わるおそれがある | 追加してよいのは、useState の setter と `useRef` の戻り値（どちらも安定した値）だけ（FR-010 (d)）。それ以外の追加が要ると言われたら、移動のやり方を見直す。lint の抑制コメントで黙らせない | 実装者 | 対策済み |
+| R-003 | `react-hooks/*`（`immutability` など）が、分割代入で受け取った ref への `.current` 書き込みを error にする | BR-03 の 5 の前提が実ファイルで外れると、実装の途中で lint が通らなくなる。抑制コメントや、ref を setter 関数に置き換える構造変更（挙動が変わる）で回避すると BR-01 に反する | 抑制コメントで黙らせず、構造も変えずに ABORT し、`docs/plans/` の本仕様へ戻す（BR-03 の 5 の前提はプローブで確認済み） | 実装者 | 対策済み |
 
 ### 確認質問
 
@@ -403,7 +408,7 @@ npx eslint src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts s
 期待結果:
 
 - 1: 差分が FR-010 の許可行だけ
-- 2: 6 本とも、差分が FR-010 (a)（import・フック関数の宣言・引数の分割代入・return 文）と (d)（依存配列に足した setter・ref）の行だけ。FR-004 の範囲は `stepActionBarRef` の宣言とその説明コメント（`:1031-1032`）を除く
+- 2: 6 本とも、差分が FR-010 (a)（import・フック関数の宣言・引数の分割代入・return 文・引数と戻り値の interface）と (d)（依存配列に足した setter・ref）の行だけ。FR-004 の範囲は `stepActionBarRef` の宣言とその説明コメント（`:1031-1032`）を除く
 - 3: 1 行目より 2 行目が大きくない。3 行目が `0`
 - 手動確認（ローカルの dev サーバー、デスクトップ幅とモバイル幅の両方）:
   1. 新しいチャットでメッセージを送る
@@ -417,6 +422,7 @@ npx eslint src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts s
 ### リリース方針
 
 - 通常デプロイに乗せる。段階リリースやフラグは使わない
+- 本番確認項目: 該当なし（Claude 案・未確認）。見た目・挙動を変えないため、§13 の手動確認（ローカル）で代える
 
 ### ロールバック方針
 
@@ -440,7 +446,7 @@ npx eslint src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts s
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
 | CP-1 spec-review 前 | §12 Q-001（ALT-001 / ALT-002 / ALT-003 の Claude 案でよいか）に回答がある | shoma-endo | 確認済み（2026-10-03） |
-| CP-2 PR 作成時 | `git diff --stat ${B}`（`B` は §13）の変更が `app/chat/components/ChatLayout.tsx`・新しいフック 6 本・`src/lib/step7-lead.ts`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
+| CP-2 PR 作成時 | `git diff --stat ${B} -- . ':(exclude)docs'`（`B` は §13。docs の差分は対象外）の変更が `app/chat/components/ChatLayout.tsx`・新しいフック 6 本・`src/lib/step7-lead.ts`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
 
 ## 15. 完了条件
 
@@ -450,7 +456,7 @@ npx eslint src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts s
   - `npm run verify` が緑
 - 検証方法・証跡（テスト結果・画面確認・ログ等）:
   - §13 の行比較（`norm`・範囲ごとの比較・依存配列の検証）の出力と、§13 の手動確認 7 項目の結果を PR 本文に書く
-- 完了確認者・確認日: 未定
+- 完了確認者・確認日: shoma-endo（Claude 案・未確認。承認者・ロールバック判断者と同じ）。確認日は PR のマージ時に書く
 
 ## 16. レビュー記録・承認・変更履歴
 
@@ -459,7 +465,8 @@ npx eslint src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts s
 | 回 | 日付 | 指摘件数（🔴 / 🟡 / 🟢） | 反映状況 | 残置合意した論点と理由 |
 | --- | --- | --- | --- | --- |
 | 0（起票時のセルフレビュー） | 2026-10-03 | 0 / 5 / 7 | 全件反映 | なし |
-| 1（spec-review audit） | 2026-10-03 | 0 / 5 / 3 | 全件反映。比較の基準を `${B}`（`git merge-base origin/develop HEAD`）に統一し、`norm` の定義・範囲ごとの比較・依存配列の検証を §13 に直接書いた。SSE 失敗時の確認は手動手順を足さず範囲ごとの比較で行う（§8）。ALT-001〜003 の承認は §12 Q-001 にまとめた | なし。ただし Q-001 は未回答で、回答まで CP-1 は未確認のまま |
+| 1（spec-review audit） | 2026-10-03 | 0 / 5 / 3 | 全件反映。比較の基準を `${B}`（`git merge-base origin/develop HEAD`）に統一し、`norm` の定義・範囲ごとの比較・依存配列の検証を §13 に直接書いた。SSE 失敗時の確認は手動手順を足さず範囲ごとの比較で行う（§8）。ALT-001〜003 の承認は §12 Q-001 にまとめた | なし。Q-001 は 1 回目の時点で回答待ちだったが、その後 2026-10-03 に回答済み。CP-1 は確認済み |
+| 2（spec-review audit） | 2026-10-03 | 0 / 6 / 1 | 全件反映。FR-001 の関数の引数と ChatLayout 側の呼び出しを確定し、FR-010 の許可行に純関数の宣言と interface・`:149`/`:150`/`:192` の置き換えを足した。ALT-001 の理由を実コードに合わせ、FR-002 の戻り値に `isStep6ContentStale` / `setIsStep6ContentStale` を足した。BR-03 の 5 の lint 前提をプローブで確かめ、外れた場合の ABORT を R-003 に書いた。CP-2 から docs の差分を除いた。§11 の見出しを承認済みに直した。承認者・完了確認者・本番確認項目を埋めた（Claude 案・未確認） | なし。Q-001 は 2026-10-03 に回答済み。CP-1 は確認済み。未解決の確認質問・承認ゲートはない |
 
 #### 公式ドキュメント照合
 
@@ -479,3 +486,4 @@ npx eslint src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts s
 | 2026-10-03 | 起票 | 可読性レビュー | shoma-endo（Claude Code 支援） |
 | 2026-10-03 | Q-001 に回答（ALT-001〜003 を承認）。§1 の表の改行抜けを修正 | spec-review の ABORT（承認待ち） | shoma-endo（Claude Code 支援） |
 | 2026-10-03 | 比較の基準・`norm`・範囲ごとの比較・依存配列の検証を §13 に追加。Q-001・ロールバック判断者を追加。相互参照を修正 | spec-review audit 1 回目 | Claude Code（spec-review revise） |
+| 2026-10-03 | FR-001・FR-002・FR-005・FR-010・ALT-001・BR-03・CP-2 を修正。R-003 を追加。§11 の見出し、承認者、完了確認者、本番確認項目を更新 | spec-review audit 2 回目 | Claude Code（spec-review revise） |
