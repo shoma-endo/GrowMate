@@ -3,7 +3,7 @@
 ## メタデータ
 
 - 文書名: ChatLayout.tsx の状態とハンドラをフックへ分ける
-- ステータス: `approved`
+- ステータス: `implemented`
 - 作成日: 2026-10-03
 - 最終更新日: 2026-10-04
 - 作成者: shoma-endo（Claude Code 支援）

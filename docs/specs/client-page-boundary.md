@@ -9,7 +9,7 @@
 - 作成者: shoma-endo（Claude Code 支援）
 - 承認者: shoma-endo（§16 の要件承認で確定する）
 - 対象リリース: 機能リリースと独立。`develop` へマージ後、次の通常デプロイに乗る
-- 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー（Next.js App Router の「page は薄く、`"use client"` は葉だけ」との突合）。同時に起こした `docs/plans/analytics-table-split.md` / `docs/plans/chat-layout-split.md`
+- 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー（Next.js App Router の「page は薄く、`"use client"` は葉だけ」との突合）。同時に起こした `docs/plans/analytics-table-split.md` / `docs/specs/chat-layout-split.md`
 
 ## 1. 背景・目的・成功指標
 
