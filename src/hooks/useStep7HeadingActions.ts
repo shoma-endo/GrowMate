@@ -5,11 +5,9 @@ import { useHeadingFlow } from '@/hooks/useHeadingFlow';
 import { useCanvasVersions } from '@/hooks/useCanvasVersions';
 import { useBlogFlowControls } from '@/hooks/useBlogFlowControls';
 import type { ChatLayoutProps } from '@/types/chat-layout';
-import type { BlogStepId } from '@/lib/constants';
 import type { SessionHeadingSection } from '@/types/heading-flow';
 import { getStep7HeadingModel, STEP7_ID, toBlogModel } from '@/lib/constants';
-import type { BlogCanvasVersion } from '@/types/chat-layout';
-import { formatMarkdownHeading, normalizeHeadingUnitContent } from '@/lib/heading-extractor';
+import { normalizeHeadingUnitContent } from '@/lib/heading-extractor';
 import {
   getCombinedContentForStep7,
   saveCombinedContentForStep7,

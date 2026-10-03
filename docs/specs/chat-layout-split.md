@@ -448,7 +448,7 @@ npx eslint src/hooks/useStep7HeadingView.ts src/hooks/useCanvasPanelContent.ts s
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
 | CP-1 spec-review 前 | §12 Q-001（ALT-001 / ALT-002 / ALT-003 の Claude 案でよいか）に回答がある | shoma-endo | 確認済み（2026-10-03） |
-| CP-2 PR 作成時 | `git diff --stat ${B} -- . ':(exclude)docs'`（`B` は §13。docs の差分は対象外）の変更が `app/chat/components/ChatLayout.tsx`・新しいフック 6 本・`src/lib/step7-lead.ts`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
+| CP-2 PR 作成時 | `git diff --stat ${B} -- . ':(exclude)docs'`（`B` は §13。docs の差分は対象外）の変更が `app/chat/components/ChatLayout.tsx`・新しいフック 6 本・`src/lib/step7-lead.ts`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 確認済み（2026-10-04。docs を除く変更は ChatLayout.tsx・新しいフック 6 本・src/lib/step7-lead.ts だけで、vitest.config.ts の変更なし） |
 
 ## 15. 完了条件
 

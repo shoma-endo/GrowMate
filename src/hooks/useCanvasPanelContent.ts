@@ -2,7 +2,6 @@ import { useEffect, useMemo, type RefObject, type Dispatch, type SetStateAction 
 import type { ChatMessage } from '@/domain/interfaces/IChatService';
 import { useCanvasVersions } from '@/hooks/useCanvasVersions';
 import { useHeadingFlow } from '@/hooks/useHeadingFlow';
-import type { BlogStepId } from '@/lib/constants';
 import { BLOG_STEP_IDS, STEP7_ID } from '@/lib/constants';
 import type { SessionHeadingSection } from '@/types/heading-flow';
 import { resolveHeadingCanvasViewMode } from '@/lib/canvas-mode';
