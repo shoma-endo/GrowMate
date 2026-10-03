@@ -24,10 +24,10 @@ export default defineConfig({
       // 数値合わせのテストは書かない（docs/specs/testing-strategy.md「閾値の合意記録」）。
       thresholds: {
         autoUpdate: (newThreshold) => Math.max(0, Math.floor(newThreshold) - 1),
-        lines: 19,
-        statements: 19,
-        functions: 21,
-        branches: 14,
+        lines: 22,
+        statements: 22,
+        functions: 23,
+        branches: 16,
       },
     },
   },

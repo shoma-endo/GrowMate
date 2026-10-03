@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AnalyticsTable from '@/components/AnalyticsTable';
-import InstagramTab from './components/InstagramTab';
+import InstagramTab, { type InstagramBlogDraftToolbarProps } from './components/InstagramTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Download,
@@ -27,6 +27,7 @@ import type { AnalyticsContentItem, AnalyticsContentSort } from '@/types/analyti
 import { setAnalyticsSortParams } from '@/lib/analytics-sort';
 import type { StoredFieldConfig } from '@/types/field-config';
 import type {
+  InstagramBlogDraftBatchProgress,
   InstagramMediaListItem,
   InstagramMediaSortKey,
   InstagramMediaSortOrder,
@@ -83,6 +84,7 @@ interface AnalyticsClientProps {
   instagramConnected: boolean;
   activeTab: 'blog' | 'instagram';
   instagramItems: InstagramMediaListItem[];
+  instagramActiveBlogDraft: InstagramBlogDraftBatchProgress | null;
   instagramTotal: number;
   instagramTotalPages: number;
   igPage: number;
@@ -106,6 +108,52 @@ interface AnalyticsClientProps {
   analyticsFieldConfig: StoredFieldConfig | null;
   /** Instagramメディア一覧のフィールド構成（未保存なら null） */
   instagramFieldConfig: StoredFieldConfig | null;
+}
+
+const BULK_SUMMARY_BUTTON_CLASS =
+  'border-purple-200 bg-purple-50 text-purple-900 hover:bg-purple-100 hover:text-purple-900';
+
+/** 一括操作ツールバーの「選択中 N 件」。ブログ一覧と Instagram タブで共用する */
+function BulkSelectionCount({ children }: { children: React.ReactNode }) {
+  return <span className="text-sm text-gray-600">{children}</span>;
+}
+
+/** 一括操作ツールバーのボタン横の補足（押せない理由・丸めた件数など） */
+function BulkActionNote({ children }: { children: React.ReactNode }) {
+  return <span className="text-xs text-gray-500">{children}</span>;
+}
+
+function InstagramBlogDraftToolbar({
+  selectedCount,
+  activeProgress,
+  isStarting,
+  disabledReason,
+  onStart,
+}: InstagramBlogDraftToolbarProps) {
+  const isBusy = isStarting || activeProgress !== null;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {selectedCount > 0 ? <BulkSelectionCount>選択中 {selectedCount} 件</BulkSelectionCount> : null}
+      <button
+        type="button"
+        className={cn(buttonVariants({ variant: 'outline' }), 'h-9 inline-flex items-center gap-2', BULK_SUMMARY_BUTTON_CLASS)}
+        onClick={onStart}
+        disabled={isBusy || disabledReason !== null}
+        aria-busy={isBusy}
+      >
+        {isBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+        {isStarting
+          ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING
+          : activeProgress
+            ? '作成中...'
+            : 'ブログ記事を作成'}
+      </button>
+      {activeProgress ? (
+        <BulkSelectionCount>（処理済み {activeProgress.processed} / 対象 {activeProgress.total} 件）</BulkSelectionCount>
+      ) : null}
+      {disabledReason && selectedCount > 0 ? <BulkActionNote>{disabledReason}</BulkActionNote> : null}
+    </div>
+  );
 }
 
 export default function AnalyticsClient({
@@ -142,6 +190,7 @@ export default function AnalyticsClient({
   instagramConnected,
   activeTab,
   instagramItems,
+  instagramActiveBlogDraft,
   instagramTotal,
   instagramTotalPages,
   igPage,
@@ -476,13 +525,13 @@ export default function AnalyticsClient({
           </button>
           {selectedCount >= 1 ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-gray-600">
+              <BulkSelectionCount>
                 {isSelectionClamped
                   ? `1000 / 全 ${annotationTotalCount} 件`
                   : isAnnotationTotalCountUnavailable
                     ? `選択中 ${selectedCount} 件`
                     : `選択中 ${selectedCount} 件 / 全 ${annotationTotalCount} 件`}
-              </span>
+              </BulkSelectionCount>
               {showBulkEvaluationButton ? (
                 <button
                   type="button"
@@ -498,10 +547,7 @@ export default function AnalyticsClient({
                 type="button"
                 // 単記事の「AIで要約」（ContentAnnotationSummaryAction）と同じ見た目にする。
                 // 同じ機能が2箇所にあるので、色とアイコンまで揃えないと別物に見える
-                className={cn(
-                  buttonVariants({ variant: 'outline' }),
-                  'h-9 inline-flex items-center gap-2 border-purple-200 bg-purple-50 text-purple-900 hover:bg-purple-100 hover:text-purple-900'
-                )}
+                className={cn(buttonVariants({ variant: 'outline' }), 'h-9 inline-flex items-center gap-2', BULK_SUMMARY_BUTTON_CLASS)}
                 onClick={startBulkSummary}
                 disabled={isSummarizing || isStarting}
                 aria-busy={isSummarizing}
@@ -519,9 +565,9 @@ export default function AnalyticsClient({
                 )}
               </button>
               {isSelectionClamped ? (
-                <span className="text-xs text-gray-500">
+                <BulkActionNote>
                   1000件へ丸めました（残りは行チェックで選択）
-                </span>
+                </BulkActionNote>
               ) : null}
               {isSelectAll && selectedCount > total ? (
                 <span className="text-xs text-muted-foreground">
@@ -637,6 +683,8 @@ export default function AnalyticsClient({
           <TabsContent value="instagram">
             <InstagramTab
               items={instagramItems}
+              activeBlogDraft={instagramActiveBlogDraft}
+              renderBlogDraftToolbar={props => <InstagramBlogDraftToolbar {...props} />}
               total={instagramTotal}
               totalPages={instagramTotalPages}
               igPage={igPage}

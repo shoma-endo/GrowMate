@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
+import { AI_ACTION_BUTTON_CLASS } from '@/components/ContentAnnotationSummaryAction';
 import { Badge } from '@/components/ui/badge';
 // 記事詳細タブと同じローディング表示。共通部品は既存ファイル内で export する規約
 // （growmate-ui-ux SKILL「同種の既存 UI があるときは『そのまま』使う」）のため、OverviewTab から読む
@@ -36,11 +37,31 @@ import type {
   InstagramMediaSortOrder,
 } from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
-import { ExternalLink, TrendingUp } from 'lucide-react';
+import { ExternalLink, Loader2, Sparkles, TrendingUp } from 'lucide-react';
 import { getAriaSort, SortHeaderButton } from '@/components/SortHeaderButton';
+import {
+  ANALYTICS_SELECTED_ROW_CLASS,
+  AnalyticsOpsCell,
+  AnalyticsOpsHeaderCell,
+  AnalyticsSelectionCell,
+  AnalyticsSelectionCheckbox,
+  AnalyticsSelectionHeaderCell,
+  LaunchChatButton,
+} from '@/components/AnalyticsTable';
+import { getInstagramBlogDraftDisplayState } from '@/lib/instagram-blog-draft';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { useRouter } from 'next/navigation';
 
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
+  selectedIds: Set<string>;
+  isBlogDraftLocked: boolean;
+  /** 止まった判定の基準時刻（ミリ秒）。呼び出し側が定期的に進める */
+  now: number;
+  pendingResumeId: string | null;
+  onToggleRow: (id: string, checked: boolean) => void;
+  onToggleAll: (checked: boolean) => void;
+  onResume: (id: string) => void;
   igSort: InstagramMediaSortKey;
   igOrder: InstagramMediaSortOrder;
   /** 列見出しを押したとき。同じ列なら向きを反転、別の列なら降順から始める（呼び出し側で決める） */
@@ -136,6 +157,13 @@ function RateCell({ item, value }: { item: InstagramMediaListItem; value: number
 
 export default function InstagramMediaTable({
   items,
+  selectedIds,
+  isBlogDraftLocked,
+  now,
+  pendingResumeId,
+  onToggleRow,
+  onToggleAll,
+  onResume,
   igSort,
   igOrder,
   onSortChange,
@@ -148,6 +176,9 @@ export default function InstagramMediaTable({
   criteriaLabel,
   targetMinRate,
 }: InstagramMediaTableProps) {
+  const router = useRouter();
+  const selectedOnPage = items.filter(item => selectedIds.has(item.id)).length;
+  const allOnPageSelected = items.length > 0 && selectedOnPage === items.length;
   const columns = React.useMemo(() => INSTAGRAM_COLUMNS.map(col => ({ ...col })), []);
 
   const handleConfiguratorChange = React.useCallback(
@@ -306,8 +337,13 @@ export default function InstagramMediaTable({
         return (
           <div className="overflow-x-auto contain-layout">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 analytics-head">
                 <tr className="text-left text-gray-600">
+                  <AnalyticsSelectionHeaderCell
+                    checked={allOnPageSelected ? true : selectedOnPage > 0 ? 'indeterminate' : false}
+                    onCheckedChange={onToggleAll}
+                  />
+                  <AnalyticsOpsHeaderCell expanded expandedWidth="fit-content" />
                   <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
@@ -340,8 +376,20 @@ export default function InstagramMediaTable({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {items.map(item => (
-                  <tr key={item.id} className="align-top">
+                {items.map(item => {
+                  const selected = selectedIds.has(item.id);
+                  return (
+                  <tr key={item.id} className={cn('analytics-row', selected && ANALYTICS_SELECTED_ROW_CLASS)}>
+                    <AnalyticsSelectionCell>
+                      <AnalyticsSelectionCheckbox
+                        aria-label={`${item.caption?.trim().slice(0, 60) || '投稿'}を選択`}
+                        checked={selected}
+                        onCheckedChange={checked => onToggleRow(item.id, checked === true)}
+                      />
+                    </AnalyticsSelectionCell>
+                    <AnalyticsOpsCell expanded expandedWidth="fit-content">
+                      <BlogDraftOperation item={item} now={now} active={isBlogDraftLocked} pending={pendingResumeId === item.id} onResume={onResume} onNavigate={href => router.push(href)} />
+                    </AnalyticsOpsCell>
                     <td className="px-6 py-4">
                       <ThumbnailCell item={item} />
                     </td>
@@ -362,12 +410,72 @@ export default function InstagramMediaTable({
                       </a>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
         );
       }}
     </FieldConfigurator>
+  );
+}
+
+function BlogDraftOperation({
+  item,
+  now,
+  active,
+  pending,
+  onResume,
+  onNavigate,
+}: {
+  item: InstagramMediaListItem;
+  now: number;
+  active: boolean;
+  pending: boolean;
+  onResume: (id: string) => void;
+  onNavigate: (href: string) => void;
+}) {
+  const state = getInstagramBlogDraftDisplayState(item.blogDraft, now);
+  const progress = state.kind === 'running' || state.kind === 'stopped' ? state.progress : null;
+  if (state.kind === 'none') return null;
+  if (state.kind === 'queued') return <span className="text-xs text-muted-foreground">待機中</span>;
+  if (state.kind === 'running') {
+    return <span className="text-xs text-muted-foreground">作成中{progress ? `（${progress}）` : ''}</span>;
+  }
+  if (state.kind === 'completed') {
+    const sessionId = item.blogDraft?.sessionId;
+    return (
+      <div className="flex flex-col items-center gap-1">
+        {sessionId ? <LaunchChatButton label="チャット" isPending={false} onClick={() => onNavigate(`/chat?session=${encodeURIComponent(sessionId)}&initialStep=step7`)} /> : null}
+        <span className="text-xs text-muted-foreground">作成済み</span>
+      </div>
+    );
+  }
+  const stoppedSessionId = item.blogDraft?.sessionId;
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="flex items-center justify-center gap-2">
+        {/* ツールバーの［ブログ記事を作成］と同じく、色のクラスを足すため素の button に buttonVariants を当てる */}
+        <button
+          type="button"
+          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), AI_ACTION_BUTTON_CLASS)}
+          onClick={() => onResume(item.id)}
+          disabled={pending || active}
+          aria-busy={pending}
+        >
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+          {pending ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING : '続きを作成'}
+        </button>
+        {stoppedSessionId ? (
+          <LaunchChatButton
+            label="チャット"
+            isPending={false}
+            onClick={() => onNavigate(`/chat?session=${encodeURIComponent(stoppedSessionId)}`)}
+          />
+        ) : null}
+      </div>
+      <span className="text-xs text-muted-foreground">{state.label}{progress ? `（${progress}）` : ''}</span>
+    </div>
   );
 }

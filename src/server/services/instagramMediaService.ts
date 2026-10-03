@@ -3,13 +3,19 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService, type SupabaseResult } from '@/server/services/supabaseService';
 import type { Database, Tables, TablesInsert } from '@/types/database.types';
 import { INSTAGRAM_MEDIA_THUMBNAIL_BUCKET } from '@/lib/constants';
-import type {
-  InstagramMediaListItem,
-  InstagramMediaPageResult,
-  InstagramMediaSortKey,
-  InstagramMediaSortOrder,
-  InstagramMediaTypeFilter,
+import {
+  isInstagramBlogDraftErrorCode,
+  isInstagramBlogDraftStage,
+  isInstagramBlogDraftStatus,
+  type InstagramBlogDraftBatchProgress,
+  type InstagramBlogDraftListItem,
+  type InstagramMediaListItem,
+  type InstagramMediaPageResult,
+  type InstagramMediaSortKey,
+  type InstagramMediaSortOrder,
+  type InstagramMediaTypeFilter,
 } from '@/types/instagram';
+import { getActiveInstagramBlogDraftProgress } from '@/server/lib/instagram-blog-draft-jobs';
 
 type InstagramMediaInsertRow = TablesInsert<'instagram_media'>;
 
@@ -134,6 +140,7 @@ function mapMediaRow(row: Tables<'instagram_media'>): InstagramMediaListItem {
     insightsSyncedAt: row.insights_synced_at,
     insightsUnavailable: row.insights_unavailable,
     insightsUnavailableReason: unavailableReason,
+    blogDraft: null,
   };
 }
 
@@ -213,8 +220,9 @@ class InstagramMediaService extends SupabaseService {
         console.error('[Instagram Media] getPage clamped fetch failed', { userId, clampedError });
         throw new Error('Instagram media fetch failed');
       }
+      const pageData = await this.attachBlogDrafts(userId, (clampedData ?? []).map(mapMediaRow));
       return {
-        items: (clampedData ?? []).map(mapMediaRow),
+        ...pageData,
         total,
         totalPages,
         page: totalPages,
@@ -222,8 +230,9 @@ class InstagramMediaService extends SupabaseService {
       };
     }
 
+    const pageData = await this.attachBlogDrafts(userId, (data ?? []).map(mapMediaRow));
     return {
-      items: (data ?? []).map(mapMediaRow),
+      ...pageData,
       total,
       totalPages,
       page: query.page,
@@ -231,6 +240,51 @@ class InstagramMediaService extends SupabaseService {
     };
   }
 
+  private async attachBlogDrafts(
+    userId: string,
+    items: InstagramMediaListItem[]
+  ): Promise<{ items: InstagramMediaListItem[]; activeBlogDraft: InstagramBlogDraftBatchProgress | null }> {
+    // 絞り込みで0件のページでも、作成中のまとまりがあれば画面の再取得と［ブログ記事を作成］の停止を続ける
+    if (items.length === 0) {
+      return { items, activeBlogDraft: await getActiveInstagramBlogDraftProgress(this.getClient(), userId) };
+    }
+    const [{ data: drafts, error: draftsError }, activeBlogDraft] = await Promise.all([
+      this.getClient()
+        .from('instagram_blog_draft_jobs')
+        .select('id, instagram_media_id, session_id, status, stage, heading_index, heading_total, error_code, updated_at')
+        .eq('user_id', userId)
+        .in('instagram_media_id', items.map(item => item.id)),
+      getActiveInstagramBlogDraftProgress(this.getClient(), userId),
+    ]);
+    if (draftsError) throw new Error('Instagram blog draft status lookup failed');
+    const byMediaId = new Map<string, InstagramBlogDraftListItem>(
+      (drafts ?? []).flatMap(draft => {
+        const { status, stage, error_code: errorCode } = draft;
+        if (
+          !isInstagramBlogDraftStatus(status)
+          || !isInstagramBlogDraftStage(stage)
+          || (errorCode !== null && !isInstagramBlogDraftErrorCode(errorCode))
+        ) {
+          console.error('[Instagram Media] unexpected blog draft job values', { jobId: draft.id, status, stage, errorCode });
+          return [];
+        }
+        return [[draft.instagram_media_id, {
+          id: draft.id,
+          sessionId: draft.session_id,
+          status,
+          stage,
+          headingIndex: draft.heading_index,
+          headingTotal: draft.heading_total,
+          errorCode,
+          updatedAt: draft.updated_at,
+        }]];
+      })
+    );
+    return {
+      items: items.map(item => ({ ...item, blogDraft: byMediaId.get(item.id) ?? null })),
+      activeBlogDraft,
+    };
+  }
 
   async getInsightsUnavailableMediaIds(
     userId: string,

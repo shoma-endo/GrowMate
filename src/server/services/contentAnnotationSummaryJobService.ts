@@ -19,6 +19,7 @@ import {
   contentAnnotationSummaryService,
   type GenerateSummaryResult,
 } from '@/server/services/contentAnnotationSummaryService';
+import { fetchUserEmail } from '@/server/lib/user-email-lookup';
 import { emailService } from '@/server/services/emailService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { canFetchWpPostContentLive } from '@/server/services/wordpressContentSync';
@@ -697,7 +698,7 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
     if (job.notified_at) return 'already_notified';
     if (job.status !== 'completed' && job.status !== 'failed') return 'already_notified';
 
-    const emailLookup = await this.fetchUserEmail(job.user_id);
+    const emailLookup = await fetchUserEmail(this.getClient(), job.user_id, '[content-annotation-summary-job]');
     if (!emailLookup.ok) {
       // 取得エラーは「宛先が無い」と区別する。ここで notified_at を打つと掃き出しの
       // 母集団から外れ、一時的な DB エラー1回で完了通知が永久に失われる
@@ -746,29 +747,6 @@ class ContentAnnotationSummaryJobService extends SupabaseService {
     // のまま毎起動の掃き出しに残り、10件の枠を占有し続ける。再送は Resend の
     // `Idempotency-Key`（ジョブID）が重複配信を防ぐので、利用者に同じメールは届かない
     return (await this.markNotified(job.id)) ? 'sent' : 'failed';
-  }
-
-  /**
-   * 宛先メールを取り出す。**「行が無い / 空」と「取得できなかった」を別の結果で返す**。
-   * 呼び出し側が前者を `notified_at` 打ち、後者を再試行に倒せるようにするため。
-   */
-  private async fetchUserEmail(
-    userId: string
-  ): Promise<{ ok: true; email: string | null } | { ok: false }> {
-    const { data, error } = await this.getClient()
-      .from('users')
-      .select('email')
-      .eq('id', userId)
-      .maybeSingle();
-    if (error) {
-      console.error('[content-annotation-summary-job] failed to fetch user email:', {
-        userId,
-        message: error.message,
-      });
-      return { ok: false };
-    }
-    const email = data?.email?.trim();
-    return { ok: true, email: email ? email : null };
   }
 
   /** `notified_at` を打つ。**書けたかどうかを返す**（呼び出し側が失敗を計上するため） */

@@ -2,12 +2,12 @@ import { z } from 'zod';
 
 import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { llmChat } from '@/server/services/llmService';
+import { extractJsonObjectText } from '@/server/lib/llm-json';
 import type { Ga4EvaluationErrorCode } from '@/types/ga4-evaluation';
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 2_000;
 const LLM_TIMEOUT_MS = 45_000;
-const JSON_BLOCK_REGEX = /```json\s*([\s\S]*?)\s*```/i;
 
 export interface Ga4EvaluationLlmRequest<T> {
   provider: 'openai' | 'anthropic';
@@ -83,33 +83,8 @@ function classifyLlmError(error: unknown): {
   return { code: 'unknown', retryable: false };
 }
 
-function findFirstJsonObject(response: string): string | null {
-  const start = response.indexOf('{');
-  if (start < 0) return null;
-  let depth = 0;
-  let quoted = false;
-  let escaped = false;
-  for (let index = start; index < response.length; index += 1) {
-    const character = response[index];
-    if (quoted) {
-      if (escaped) escaped = false;
-      else if (character === '\\') escaped = true;
-      else if (character === '"') quoted = false;
-      continue;
-    }
-    if (character === '"') quoted = true;
-    else if (character === '{') depth += 1;
-    else if (character === '}') {
-      depth -= 1;
-      if (depth === 0) return response.slice(start, index + 1);
-    }
-  }
-  return null;
-}
-
 function parseStructuredResponse<T>(response: string, schema: z.ZodType<T>): T | null {
-  const match = response.match(JSON_BLOCK_REGEX);
-  const jsonText = match?.[1]?.trim() || findFirstJsonObject(response);
+  const jsonText = extractJsonObjectText(response);
   if (!jsonText) return null;
   try {
     const parsed: unknown = JSON.parse(jsonText);
