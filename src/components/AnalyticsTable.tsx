@@ -164,24 +164,22 @@ interface LaunchChatButtonProps {
   label: string;
   isPending: boolean;
   onClick: () => void;
-  pendingLabel?: string;
-  disabled?: boolean;
 }
 
-export function LaunchChatButton({ label, isPending, onClick, pendingLabel, disabled }: LaunchChatButtonProps) {
+export function LaunchChatButton({ label, isPending, onClick }: LaunchChatButtonProps) {
   return (
     <Button
       variant="default"
       size="sm"
       className="bg-green-600 hover:bg-green-700 text-white focus-visible:ring-green-400"
       onClick={onClick}
-      disabled={isPending || disabled}
+      disabled={isPending}
       aria-busy={isPending}
     >
       {isPending ? (
         <>
           <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-          {pendingLabel ?? '移動中...'}
+          移動中...
         </>
       ) : (
         label

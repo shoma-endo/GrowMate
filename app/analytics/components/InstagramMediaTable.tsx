@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { buttonVariants } from '@/components/ui/button';
+import { AI_ACTION_BUTTON_CLASS } from '@/components/ContentAnnotationSummaryAction';
 import { Badge } from '@/components/ui/badge';
 // 記事詳細タブと同じローディング表示。共通部品は既存ファイル内で export する規約
 // （growmate-ui-ux SKILL「同種の既存 UI があるときは『そのまま』使う」）のため、OverviewTab から読む
@@ -36,7 +37,7 @@ import type {
   InstagramMediaSortOrder,
 } from '@/types/instagram';
 import type { StoredFieldConfig } from '@/types/field-config';
-import { ExternalLink, TrendingUp } from 'lucide-react';
+import { ExternalLink, Loader2, Sparkles, TrendingUp } from 'lucide-react';
 import { getAriaSort, SortHeaderButton } from '@/components/SortHeaderButton';
 import {
   ANALYTICS_SELECTED_ROW_CLASS,
@@ -465,7 +466,17 @@ function BlogDraftOperation({
   return (
     <div className="flex flex-col items-center gap-1">
       <div className="flex items-center justify-center gap-2">
-        <LaunchChatButton label="続きを作成" isPending={pending} onClick={() => onResume(item.id)} disabled={active} pendingLabel={ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING} />
+        {/* ツールバーの［ブログ記事を作成］と同じく、色のクラスを足すため素の button に buttonVariants を当てる */}
+        <button
+          type="button"
+          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), AI_ACTION_BUTTON_CLASS)}
+          onClick={() => onResume(item.id)}
+          disabled={pending || active}
+          aria-busy={pending}
+        >
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+          {pending ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING : '続きを作成'}
+        </button>
         {expanded && stoppedSessionId ? (
           <LaunchChatButton
             label="チャット"
