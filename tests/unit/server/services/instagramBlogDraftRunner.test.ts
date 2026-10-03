@@ -58,6 +58,8 @@ import { instagramBlogDraftRunner, InstagramBlogDraftFailure } from '@/server/se
 
 const USER_ID = 'user-1';
 const SESSION_ID = 'session-1';
+/** キーワード案の段階で作るチャットの ID（ジョブの ID と同じ） */
+const JOB_SESSION_ID = 'job-1';
 const T0 = Date.parse('2026-09-30T00:00:00Z');
 const DEADLINE = T0 + 740_000;
 const CAPTION = '割れた卵を無料で交換しました';
@@ -119,7 +121,6 @@ beforeEach(() => {
   messages.splice(0);
   rows('instagram_media').push({ id: 'media-1', user_id: USER_ID, caption: CAPTION });
   vi.spyOn(Date, 'now').mockReturnValue(T0);
-  vi.stubGlobal('crypto', { randomUUID: () => SESSION_ID });
   vi.mocked(headingFlowService.initializeHeadingSections).mockResolvedValue({ success: true, data: undefined });
   vi.mocked(headingFlowService.getHeadingSections).mockResolvedValue({ success: true, data: SECTIONS } as never);
   vi.mocked(headingFlowService.getStep7UserLeadResult).mockResolvedValue({ success: true, data: null });
@@ -144,9 +145,9 @@ describe('Instagram ブログ自動作成の実行（Runner）', () => {
 
     await expect(run()).resolves.toBe('completed');
 
-    expect(rows('chat_sessions')).toEqual([expect.objectContaining({ id: SESSION_ID, user_id: USER_ID, title: '卵 交換', service_id: null })]);
+    expect(rows('chat_sessions')).toEqual([expect.objectContaining({ id: JOB_SESSION_ID, user_id: USER_ID, title: '卵 交換', service_id: null })]);
     expect(rows('content_annotations')[0]).toMatchObject({
-      session_id: SESSION_ID,
+      session_id: JOB_SESSION_ID,
       main_kw: '卵 交換',
       kw: '補償\n割れ',
       needs: 'step1 出力',
@@ -166,13 +167,13 @@ describe('Instagram ブログ自動作成の実行（Runner）', () => {
       'blog_creation_step1', 'blog_creation_step2', 'blog_creation_step3', 'blog_creation_step4',
       'blog_creation_step5', 'blog_creation_step6', 'blog_creation_step7_h0', 'blog_creation_step7_h1',
     ]);
-    expect(headingFlowService.initializeHeadingSections).toHaveBeenCalledWith(SESSION_ID, 'step5 出力');
-    expect(headingFlowService.saveStep7UserLead).toHaveBeenCalledWith(SESSION_ID, USER_ID, '通常版の書き出しです。');
+    expect(headingFlowService.initializeHeadingSections).toHaveBeenCalledWith(JOB_SESSION_ID, 'step5 出力');
+    expect(headingFlowService.saveStep7UserLead).toHaveBeenCalledWith(JOB_SESSION_ID, USER_ID, '通常版の書き出しです。');
     expect(vi.mocked(headingFlowService.saveHeadingSection).mock.calls.map(call => [call[1], call[2]])).toEqual([
       ['h0', '見出しAの本文'],
       ['h1', '見出しBの本文'],
     ]);
-    expect(headingFlowService.saveCombinedContentForStep7).toHaveBeenCalledWith(SESSION_ID, USER_ID);
+    expect(headingFlowService.saveCombinedContentForStep7).toHaveBeenCalledWith(JOB_SESSION_ID, USER_ID);
     expect(job).toMatchObject({ status: 'completed', stage: 'done', heading_total: 2, heading_index: 2 });
   });
 
@@ -307,6 +308,19 @@ describe('Instagram ブログ自動作成の実行（Runner）', () => {
       expect(job.stage).toBe('step1');
     });
 
+    it('チャットを作った直後にジョブへの紐付けが失敗していたら、再開時に同じチャットを使い、2つ目を作らない', async () => {
+      rows('chat_sessions').push({ id: JOB_SESSION_ID, user_id: USER_ID });
+      const job = seedJob({ session_id: null, stage: 'keywords' });
+      llmReturns('{"main_kw":"卵","kw":["交換"]}');
+      vi.mocked(llmChatWithStopReason).mockRejectedValueOnce(new Error('stop at step1'));
+
+      await expect(run()).rejects.toBeInstanceOf(InstagramBlogDraftFailure);
+
+      expect(rows('chat_sessions')).toHaveLength(1);
+      expect(job.session_id).toBe(JOB_SESSION_ID);
+      expect(rows('content_annotations')).toEqual([expect.objectContaining({ session_id: JOB_SESSION_ID })]);
+    });
+
     it('keywords から再開したとき、チャットだけあって行が無ければ、キーワード案を作り直して同じチャットに行を作る', async () => {
       rows('chat_sessions').push({ id: SESSION_ID, user_id: USER_ID });
       seedJob({ session_id: SESSION_ID, stage: 'keywords' });
@@ -420,6 +434,13 @@ describe('Instagram ブログ自動作成の実行（Runner）', () => {
       await expect(instagramBlogDraftRunner.run('job-1', USER_ID, 'paid', T0 + 199_999)).resolves.toBe('queued');
 
       expect(job).toMatchObject({ status: 'queued', stage: 'step3' });
+      expect(llmChatWithStopReason).not.toHaveBeenCalled();
+    });
+
+    it('作成中にチャットが削除されていたら lost ではなく SAVE_FAILED で止める', async () => {
+      seedJob({ session_id: SESSION_ID, stage: 'step2' });
+
+      await expect(run()).rejects.toMatchObject({ code: 'SAVE_FAILED' });
       expect(llmChatWithStopReason).not.toHaveBeenCalled();
     });
 

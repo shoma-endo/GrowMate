@@ -119,7 +119,8 @@ class InstagramBlogDraftRunner extends SupabaseService {
     if (!job.session_id) return;
     const result = await this.getChatSessionById(job.session_id, userId);
     if (!result.success) throw new InstagramBlogDraftFailure('SAVE_FAILED');
-    if (!result.data) throw new JobRowLostError();
+    // 作成中にチャットが削除された。行は残っているので lost にせず失敗にする（running のまま残すと結果メールも届かない）
+    if (!result.data) throw new InstagramBlogDraftFailure('SAVE_FAILED');
   }
 
   private async runKeywords(
@@ -161,20 +162,25 @@ class InstagramBlogDraftRunner extends SupabaseService {
       throw new InstagramBlogDraftFailure('KEYWORD_PARSE_FAILED');
     }
 
-    const sessionId = job.session_id ?? crypto.randomUUID();
+    // チャットの ID はジョブの ID にする。作成直後にジョブへの紐付けが失敗しても、再開時に同じチャットを使い回せる
+    const sessionId = job.session_id ?? job.id;
     if (!job.session_id) {
-      const now = new Date().toISOString();
-      const createResult = await this.createChatSession({
-        id: sessionId,
-        user_id: userId,
-        title: proposal.main_kw.slice(0, 50),
-        created_at: now,
-        last_message_at: now,
-        system_prompt: null,
-        service_id: null,
-        search_vector: null,
-      });
-      if (!createResult.success) throw new InstagramBlogDraftFailure('SAVE_FAILED');
+      const existing = await this.getChatSessionById(sessionId, userId);
+      if (!existing.success) throw new InstagramBlogDraftFailure('SAVE_FAILED');
+      if (!existing.data) {
+        const now = new Date().toISOString();
+        const createResult = await this.createChatSession({
+          id: sessionId,
+          user_id: userId,
+          title: proposal.main_kw.slice(0, 50),
+          created_at: now,
+          last_message_at: now,
+          system_prompt: null,
+          service_id: null,
+          search_vector: null,
+        });
+        if (!createResult.success) throw new InstagramBlogDraftFailure('SAVE_FAILED');
+      }
       job = await this.updateJob(job, userId, { session_id: sessionId });
     }
 
