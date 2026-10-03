@@ -46,7 +46,7 @@
 | --- | --- | --- |
 | 利用者 | 該当なし（見た目・挙動は変わらない） | – |
 | 運用担当 | 開発者（本人）・AI 実装者 | 関心ごとに 1 ファイルを読めば済む |
-| 管理者・承認者 | 未定 | Q-001 に答える。移動のみの証跡（§7）と手動確認の結果を見てマージを判断する |
+| 管理者・承認者 | 未定 | 移動のみの証跡（§7）と手動確認の結果を見てマージを判断する |
 | 外部サービス・連携先 | 該当なし | – |
 
 ### 主な利用シナリオ
@@ -143,7 +143,7 @@ src/components/analytics-table/（新規ディレクトリ）
 
 ### カレンダー上の前提（工数外）
 
-- 仕様レビュー・承認の見込み: `spec-review` 1 回。Q-001 の回答
+- 仕様レビュー・承認の見込み: `spec-review` 1 回
 - クライアント確認・たたき台合意の見込み: 該当なし（内部作業）
 - 希望リリース時期との関係: §10 の依存（PR #596 のマージ）を満たしたあと
 
@@ -163,7 +163,7 @@ src/components/analytics-table/（新規ディレクトリ）
 | FR-008 | `src/components/analytics-table/AnalyticsTableDataCells.tsx`（新規）に、`formatPercent` / `formatSeconds`（`:277-286`）、データ列だけが使う値（`ga4Summary` `:1279`、`updatedAt` `:1287-1289`、`avgEngagementSeconds` / `readRate` / `cvr` `:1293-1311`、コメントを含む）、列の描画（`:1502-1725`）を移す。データ列は `item`・`orderedIds`・`visibleSet`・`rowCanonicalUrl` を props で受け取る。`rowCanonicalUrl` は行でも使うので、行で求めて渡す。`annotation` は `const annotation = item.annotation;` をデータ列の中でも書く（FR-010 (f)） | Must | §3 To-Be | BR-03 を満たす |
 | FR-009 | `AnalyticsTable` はフックを `useAnalyticsOpsColumnState` → `useAnalyticsTableDelete` → `useAnalyticsTableFilters` の順で呼ぶ（effect を持つ 3 本）。`useAnalyticsTableLaunch` と `useAnalyticsTableEdit` は任意の位置でよい | Must | BR-02 | – |
 | FR-010 | 移動元と移動先で内容が変わってよいのは次の行だけ: (a) 新ファイルの `'use client'`・import・関数の宣言・props の型と分割代入・return 文（新ファイルから export するのは、別のファイルが import するものだけにする。props の型・戻り値の型・`LaunchPayload`・`formatPercent`・`createEmptyForm` などファイル内でしか使わないものは export しない。`npm run knip` が未使用の export で落ちるため）、(b) 入口の import と再 export、フックの呼び出しと戻り値の分割代入、(c) 行とデータ列を `<AnalyticsTableRow … />` / `<AnalyticsTableDataCells … />` の呼び出しに置き換えた行、(d) 子へ移った値を props 経由で読むための参照名の変更（例: `pendingRowKey` → `launch.pendingRowKey`）、(e) フックの引数になった値を依存配列に足す行（useState の setter・`useRef` の戻り値・`router` など、現行でもコンポーネント内で安定している値に限る）、(f) データ列の中の `const annotation = item.annotation;` の 1 行（行の中の同じ行と重複する） | Must | BR-01 | §7 の行比較で差分がこの範囲に収まる |
-| FR-011 | `eslint-suppressions.json` の `src/components/AnalyticsTable.tsx` の件数を、移動した違反の分だけ新規ファイルのエントリへ付け替える。ルールごとの合計は変えない。付け替えは JSON を直接編集して行い、`--suppress-all` / `--suppress-rule` は使わない（ALT-002。Q-001 の回答が前提） | Must | AGENTS.md「件数は増やさない」 | 成功指標の「`eslint-suppressions.json` の件数」を満たし、`npm run lint` が通る |
+| FR-011 | `eslint-suppressions.json` の `src/components/AnalyticsTable.tsx` の件数を、移動した違反の分だけ新規ファイルのエントリへ付け替える。ルールごとの合計は変えない。付け替えは JSON を直接編集して行い、`--suppress-all` / `--suppress-rule` は使わない（ALT-002。Q-001 で承認済み） | Must | AGENTS.md「件数は増やさない」 | 成功指標の「`eslint-suppressions.json` の件数」を満たし、`npm run lint` が通る |
 
 ### 入力・出力・状態遷移
 
@@ -298,7 +298,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 - 将来変更する条件: 同じ形のサブディレクトリが増え、置き方の規約を `project-naming` に書く必要が出たとき
 - 判断者・判断日: Claude 案（2026-10-03）。承認者の確認待ち
 
-### ALT-002: lint の抑制件数の扱い（Claude 案・未確認。Q-001）
+### ALT-002: lint の抑制件数の扱い
 
 - 判断: 違反のあるマークアップを新しいファイルへ移すとき、`eslint-suppressions.json` をどう扱うか
 - 比較した案:
@@ -318,7 +318,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
   - 案C は行とデータ列を入口から出せず、500 行に届かない
 - 影響: 本仕様のマージ後、`eslint-suppressions.json` に新規ファイル 3 件のエントリが増える（件数の合計は同じ）
 - 将来変更する条件: 違反を解消する仕様ができたとき
-- 判断者・判断日: Claude 案（2026-10-03）。Q-001 で承認者が確認する
+- 判断者・判断日: shoma-endo・2026-10-03（Q-001 で案A を承認）
 
 ## 12. リスク・確認質問・未決定事項
 
@@ -333,7 +333,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 
 | ID | 確認質問 | 回答が必要な理由 | 回答者 | 期限 | 状態 |
 | --- | --- | --- | --- | --- | --- |
-| Q-001 | 違反の数を変えずに、`eslint-suppressions.json` の記録をファイル間で付け替えてよいか（ALT-002 案A） | `AGENTS.md` と `eslint.config.mjs:185-188` は記録を増やすことを禁じているが、付け替えについては書いていない。認められない場合は分割の形が変わる（案C では 500 行に届かない） | shoma-endo | spec-review の前 | 未回答 |
+| Q-001 | 違反の数を変えずに、`eslint-suppressions.json` の記録をファイル間で付け替えてよいか（ALT-002 案A） | `AGENTS.md` と `eslint.config.mjs:185-188` は記録を増やすことを禁じているが、付け替えについては書いていない。認められない場合は分割の形が変わる（案C では 500 行に届かない） | shoma-endo | spec-review の前 | 回答済み（2026-10-03 shoma-endo: 付け替えを認める） |
 
 ### 未決定事項（今は決めない）
 
@@ -382,7 +382,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
-| CP-1 spec-review 前 | Q-001 の回答（`docs/plans/client-page-boundary.md` の Q-001 と同じ論点。1 回で決める）と、ALT-001 の Claude 案でよいか | shoma-endo | 未確認 |
+| CP-1 spec-review 前 | Q-001 の回答（`docs/plans/client-page-boundary.md` の Q-001 と同じ論点）は確認済み（2026-10-03）。ALT-001 の Claude 案でよいか | shoma-endo | 一部確認済み |
 | CP-2 着手前 | PR #596 がマージ済みで、§6 の行番号を読み替えた | 実装者 | 未確認 |
 | CP-3 PR 作成時 | `git diff --stat develop` の変更が `src/components/AnalyticsTable.tsx`・`src/components/analytics-table/`・`eslint-suppressions.json`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
 
@@ -402,7 +402,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 
 | 回 | 日付 | 指摘件数（🔴 / 🟡 / 🟢） | 反映状況 | 残置合意した論点と理由 |
 | --- | --- | --- | --- | --- |
-| 0（起票時のセルフレビュー） | 2026-10-03 | 1 / 3 / 4 | 🔴 の Q-001 は回答待ち。ほかは全件反映 | なし |
+| 0（起票時のセルフレビュー） | 2026-10-03 | 1 / 3 / 4 | 全件反映（🔴 の Q-001 は 2026-10-03 に承認済み） | なし |
 
 #### 公式ドキュメント照合
 

@@ -297,17 +297,17 @@ Feature: page.tsx から "use client" を外す
 - 将来変更する条件: OPEN-001
 - 判断者・判断日: Claude 案（2026-10-03）。承認者の確認待ち
 
-### ALT-003: lint の抑制件数の扱い（Q-001）
+### ALT-003: lint の抑制件数の扱い
 
 - 判断: 違反のあるマークアップを新しいファイルへ移すとき、`eslint-suppressions.json` をどう扱うか
 - 前提: 抑制の記録はファイルのパスごとに付く。移した先には記録がないため lint が落ち、移した元には記録が余るため lint が落ちる（`eslint.config.mjs:185-188`）
 - 比較した案:
   - 案A: 件数をファイル間で付け替える。合計は変えない。JSON を直接編集する
   - 案B: 違反を直してから移す（生の色をトークンに置き換える）
-- 採用案: 案A（Q-001 の回答が前提。`docs/plans/analytics-table-split.md` の ALT-002 と同じ論点）
+- 採用案: 案A（Q-001 で承認済み。`docs/plans/analytics-table-split.md` の ALT-002 と同じ論点）
 - 採用理由: `AGENTS.md` と `eslint.config.mjs:187` が防ぎたいのは違反が増えること。案A は違反の数が変わらない
 - 却下した案と理由: 案B は色クラスが変わり、BR-01 と growmate-ui-ux（`SKILL.md:22`）に反する
-- 判断者・判断日: Q-001 で承認者が確認する
+- 判断者・判断日: shoma-endo・2026-10-03（Q-001 で案A を承認）
 
 ## 12. リスク・確認質問・未決定事項
 
@@ -321,7 +321,7 @@ Feature: page.tsx から "use client" を外す
 
 | ID | 確認質問 | 回答が必要な理由 | 回答者 | 期限 | 状態 |
 | --- | --- | --- | --- | --- | --- |
-| Q-001 | 違反の数を変えずに、`eslint-suppressions.json` の記録をファイル間で付け替えてよいか（ALT-003 案A） | `AGENTS.md` と `eslint.config.mjs:185-188` は記録を増やすことを禁じているが、付け替えについては書いていない。認められないと、移動のみでは lint を通せない | shoma-endo | spec-review の前 | 未回答 |
+| Q-001 | 違反の数を変えずに、`eslint-suppressions.json` の記録をファイル間で付け替えてよいか（ALT-003 案A） | `AGENTS.md` と `eslint.config.mjs:185-188` は記録を増やすことを禁じているが、付け替えについては書いていない。認められないと、移動のみでは lint を通せない | shoma-endo | spec-review の前 | 回答済み（2026-10-03 shoma-endo: 付け替えを認める） |
 
 ### 未決定事項（今は決めない）
 
@@ -370,7 +370,7 @@ diff <(git show develop:app/login/page.tsx develop:app/gsc-import/page.tsx devel
 
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
-| CP-1 spec-review 前 | Q-001 の回答 | shoma-endo | 未確認 |
+| CP-1 spec-review 前 | Q-001 の回答 | shoma-endo | 確認済み（2026-10-03） |
 | CP-2 PR 作成時 | `git diff --stat develop` の変更が `app/login/`・`app/gsc-import/`・`app/wordpress-import/`・`eslint-suppressions.json`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
 
 ## 15. 完了条件
@@ -389,7 +389,7 @@ diff <(git show develop:app/login/page.tsx develop:app/gsc-import/page.tsx devel
 
 | 回 | 日付 | 指摘件数（🔴 / 🟡 / 🟢） | 反映状況 | 残置合意した論点と理由 |
 | --- | --- | --- | --- | --- |
-| 0（起票時のセルフレビュー） | 2026-10-03 | 1 / 1 / 4 | 🔴（抑制記録の付け替え）は FR-006 で反映し、可否は Q-001 で回答待ち。ほかは全件反映 | なし |
+| 0（起票時のセルフレビュー） | 2026-10-03 | 1 / 1 / 4 | 全件反映（🔴 の抑制記録の付け替えは FR-006 に書き、可否は Q-001 で承認済み） | なし |
 
 #### 公式ドキュメント照合
 
