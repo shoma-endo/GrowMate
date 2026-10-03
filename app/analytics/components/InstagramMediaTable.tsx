@@ -52,12 +52,6 @@ import { getInstagramBlogDraftDisplayState } from '@/lib/instagram-blog-draft';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { useRouter } from 'next/navigation';
 
-/**
- * 操作列の幅（折りたたみなし）。最も広い［作成を開始中...］（押下中の［続きを作成］）＋［チャット］が収まる幅。
- * ブログ一覧の 380px のままだとボタン2つの左右が大きく空く
- */
-const INSTAGRAM_OPS_WIDTH = 248;
-
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
   selectedIds: Set<string>;
@@ -349,7 +343,7 @@ export default function InstagramMediaTable({
                     checked={allOnPageSelected ? true : selectedOnPage > 0 ? 'indeterminate' : false}
                     onCheckedChange={onToggleAll}
                   />
-                  <AnalyticsOpsHeaderCell expanded expandedWidth={INSTAGRAM_OPS_WIDTH} />
+                  <AnalyticsOpsHeaderCell expanded expandedWidth="fit-content" />
                   <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
@@ -393,7 +387,7 @@ export default function InstagramMediaTable({
                         onCheckedChange={checked => onToggleRow(item.id, checked === true)}
                       />
                     </AnalyticsSelectionCell>
-                    <AnalyticsOpsCell expanded expandedWidth={INSTAGRAM_OPS_WIDTH}>
+                    <AnalyticsOpsCell expanded expandedWidth="fit-content">
                       <BlogDraftOperation item={item} now={now} active={isBlogDraftLocked} pending={pendingResumeId === item.id} onResume={onResume} onNavigate={href => router.push(href)} />
                     </AnalyticsOpsCell>
                     <td className="px-6 py-4">
