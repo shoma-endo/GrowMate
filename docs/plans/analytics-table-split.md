@@ -3,11 +3,11 @@
 ## メタデータ
 
 - 文書名: AnalyticsTable.tsx を行・セル・フックに分ける
-- ステータス: `draft`
+- ステータス: `approved`
 - 作成日: 2026-10-03
 - 最終更新日: 2026-10-03
 - 作成者: shoma-endo（Claude Code 支援）
-- 承認者: 未定
+- 承認者: shoma-endo（§16 の要件承認で確定する）
 - 対象リリース: 機能リリースと独立。PR #596 のマージ後に着手し、`develop` へマージ後の通常デプロイに乗る
 - 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー。`npm run hotspots`（develop 4fd6ae2e）の第 3 位で、churn は全ファイル中 1 位（90 日で 34 回）。前提 PR #596。同時に起こした `docs/plans/chat-layout-split.md` / `docs/plans/client-page-boundary.md`
 
@@ -36,8 +36,8 @@
 | --- | --- | --- | --- | --- |
 | `AnalyticsTable.tsx` 実行行数 | 1,563 | 500 以下 | `npm run hotspots` | マージ時 |
 | 新規ファイルの実行行数 | – | すべて 500 以下 | `npm run lint` で新規ファイルに `max-lines` の warn が 0 件 | マージ時 |
-| 呼び出し側・テストの変更 | – | 0（`app/analytics/` と `tests/` に差分がない） | `git diff --stat develop -- app/analytics tests` | PR レビュー時 |
-| `eslint-suppressions.json` の件数 | `AnalyticsTable.tsx` に `no-arbitrary-values: 11` / `no-inline-styles: 9` / `no-raw-colors: 27` | ルールごとの合計が同じ（11 / 9 / 27）で、`AnalyticsTable.tsx` と `src/components/analytics-table/` 以外のエントリに差分がない | `git diff develop -- eslint-suppressions.json` とルール別の合計 | PR レビュー時 |
+| 呼び出し側・テストの変更 | – | 0（`app/analytics/` と `tests/` に差分がない） | `git diff --stat "${B}" -- app/analytics tests`（`B` は §13 の基準コミット） | PR レビュー時 |
+| `eslint-suppressions.json` の件数 | `AnalyticsTable.tsx` に `no-arbitrary-values: 11` / `no-inline-styles: 9` / `no-raw-colors: 27` | ルールごとの合計が同じ（11 / 9 / 27）で、`AnalyticsTable.tsx` と `src/components/analytics-table/` 以外のエントリに差分がない | `git diff "${B}" -- eslint-suppressions.json`（`B` は §13 の基準コミット）とルール別の合計 | PR レビュー時 |
 | 既存テスト | 全件 pass | `npm run verify` が緑 | `npm run verify` | PR 作成時 |
 
 ## 2. 利用者・関係者・利用シナリオ
@@ -46,7 +46,7 @@
 | --- | --- | --- |
 | 利用者 | 該当なし（見た目・挙動は変わらない） | – |
 | 運用担当 | 開発者（本人）・AI 実装者 | 関心ごとに 1 ファイルを読めば済む |
-| 管理者・承認者 | 未定 | 移動のみの証跡（§7）と手動確認の結果を見てマージを判断する |
+| 管理者・承認者 | shoma-endo | 移動のみの証跡（§7）と手動確認の結果を見てマージを判断する |
 | 外部サービス・連携先 | 該当なし | – |
 
 ### 主な利用シナリオ
@@ -110,7 +110,7 @@ src/components/analytics-table/（新規ディレクトリ）
 ### Non-goals（今回の対象外）
 
 - 対象外にするもの:
-  - lint 違反（生の色・任意値・inline style）の解消。理由: 色クラスを変えると見た目が変わり、growmate-ui-ux の「色クラスを自分の判断で変えない」（`.agents/skills/growmate-ui-ux/SKILL.md:22`）に反する
+  - lint 違反（生の色・任意値・inline style）の解消。理由: 色クラスを変えると見た目が変わり、growmate-ui-ux の「色クラスを自分の判断で変えない」（`.agents/skills/growmate-ui-ux/SKILL.md:24`）に反する
   - `ActiveFilterBar` / `FilterTag` の移動。理由: growmate-ui-ux が「`AnalyticsTable.tsx` の `ActiveFilterBar` / `FilterTag`」を共通部品の実例として名指ししている（同 `:22` / `:35`）。入口に残せばこの記述を書き換えずに済む
   - 並べ替え（`:1093-1118`、約 30 行）の切り出し。理由: 500 行の目標に必要ない
   - 編集ダイアログ（`:1364-1454`）を行から別ファイルへ出すこと。理由: 行のファイルは約 240 行で、500 行の目標に必要ない
@@ -149,20 +149,20 @@ src/components/analytics-table/（新規ディレクトリ）
 
 ## 6. 機能要件
 
-行番号はすべて PR #596 の版（`feat/instagram-blog-draft` の ce60787c）の `src/components/AnalyticsTable.tsx`。#596 がこのあとさらに変わった場合は、着手時にマージ後の develop で行番号を読み替える（§14 手順 1）。
+行番号はすべて PR #596 の版（`feat/instagram-blog-draft` の ce60787c）の `src/components/AnalyticsTable.tsx`。#596 がこのあとさらに変わった場合は、着手時に §13 の基準コミット `B`（マージ後の `origin/develop` との merge-base）で行番号を読み替える（§14 手順 1）。
 
 | ID | 機能要件 | 優先度 | 根拠・出典 | 受け入れ条件 |
 | --- | --- | --- | --- | --- |
 | FR-001 | `src/components/analytics-table/AnalyticsTableCells.tsx`（新規）に `:73-123`（選択列の定数と 3 部品）、`:163-189`（`LaunchChatButtonProps` と `LaunchChatButton`）、`:191-275`（`useAnalyticsOpsColumnState`、操作列の定数・型・`getAnalyticsOpsColumnStyle`、2 部品）を移す。`useAnalyticsOpsColumnState` はこのファイルからは export するが、入口からは再 export しない（現行どおり外部非公開） | Must | §3 To-Be | 入口の named export が現行の 9 つ（`ANALYTICS_SELECTED_ROW_CLASS`・`AnalyticsSelectionCheckbox`・`AnalyticsSelectionHeaderCell`・`AnalyticsSelectionCell`・`LaunchChatButton`・`AnalyticsOpsHeaderCell`・`AnalyticsOpsCell`・`ActiveFilterBar`・`FilterTag`）と一致する |
 | FR-002 | `src/components/AnalyticsTable.tsx` は FR-001 の 7 つを `export { … } from './analytics-table/AnalyticsTableCells'` で再 export する。`ActiveFilterBar` / `FilterTag` / `FILTER_TAG_TONE_CLASSES`（`:294-374`）は入口に残す | Must | 呼び出し側無変更 | `app/analytics/` に差分がなく `npm run build` が通る |
 | FR-003 | `src/components/analytics-table/useAnalyticsTableFilters.ts`（新規）に、フィルターの ref（`:412-416`）、state と派生値（`:418-468`）、`allCategories`（`:489-504`）、保存・URL 同期・復元・変更・解除のハンドラと effect（`:506-899`）を移す。`router` / `pathname` / `searchParams` は引数で受け取る。`visibleColumnIdsRef` はこのフックが持ち、並べ替えの `handleFieldConfigChange`（`:1113-1118`）が書けるよう戻り値に含める。`AnalyticsTable` は戻り値を分割代入で受け取り、`filters.visibleColumnIdsRef.current = …` のように戻り値のオブジェクト経由で書き換えない（`react-hooks/immutability` が error にする） | Must | §3 To-Be | BR-02 を満たす |
-| FR-004 | `src/components/analytics-table/useAnalyticsTableLaunch.ts`（新規）に `LaunchPayload`（`:152-161`）、`pendingRowKey`（`:393`）、`handleLaunch`（`:901-946`）を移す | Must | §3 To-Be | – |
-| FR-005 | `src/components/analytics-table/useAnalyticsTableEdit.ts`（新規）に `createEmptyForm`（`:288-292`）、編集の state（`:394-401`）、`openEdit` / `closeEdit` / `handleSave` / `handleSummarySuccess`（`:948-1026`）を移す | Must | §3 To-Be | – |
-| FR-006 | `src/components/analytics-table/useAnalyticsTableDelete.ts`（新規）に削除の state と `chatServiceRef`（`:402-411`）、ChatService を作る effect（`:483-487`）、`handleDeleteClick` / `handleDeleteConfirm`（`:1028-1091`）を移す | Must | §3 To-Be | – |
-| FR-007 | `src/components/analytics-table/AnalyticsTableRow.tsx`（新規）に、`items.map` のコールバック本体（`:1277-1727`）を移す。ただし FR-008 へ移す部分を除く。行は、`item`・`selection`・`unreadAnnotationIds`・操作列の開閉状態・`orderedIds`・`visibleSet`・FR-004〜006 の戻り値（フックごとに 1 つのオブジェクト。ref を含まないので R-001 のまとめ方で immutability の問題は起きない）を props で受け取る | Must | §3 To-Be | BR-03 を満たす |
-| FR-008 | `src/components/analytics-table/AnalyticsTableDataCells.tsx`（新規）に、`formatPercent` / `formatSeconds`（`:277-286`）、データ列だけが使う値（`ga4Summary` `:1279`、`updatedAt` `:1287-1289`、`avgEngagementSeconds` / `readRate` / `cvr` `:1293-1311`、コメントを含む）、列の描画（`:1502-1725`）を移す。データ列は `item`・`orderedIds`・`visibleSet`・`rowCanonicalUrl` を props で受け取る。`rowCanonicalUrl` は行でも使うので、行で求めて渡す。`annotation` は `const annotation = item.annotation;` をデータ列の中でも書く（FR-010 (f)） | Must | §3 To-Be | BR-03 を満たす |
+| FR-004 | `src/components/analytics-table/useAnalyticsTableLaunch.ts`（新規）に `LaunchPayload`（`:152-161`）、`pendingRowKey`（`:393`）、`handleLaunch`（`:901-946`）を移す。`router` は引数で受け取る（FR-003 と同じ。`handleLaunch` が `:933` で使う） | Must | §3 To-Be | – |
+| FR-005 | `src/components/analytics-table/useAnalyticsTableEdit.ts`（新規）に `createEmptyForm`（`:288-292`）、編集の state（`:394-401`）、`openEdit` / `closeEdit` / `handleSave` / `handleSummarySuccess`（`:948-1026`）を移す。`router` は引数で受け取る（FR-003 と同じ。`:1004` / `:1023` で使う） | Must | §3 To-Be | – |
+| FR-006 | `src/components/analytics-table/useAnalyticsTableDelete.ts`（新規）に削除の state と `chatServiceRef`（`:402-411`）、ChatService を作る effect（`:483-487`）、`handleDeleteClick` / `handleDeleteConfirm`（`:1028-1091`）を移す。`router` は引数で受け取る（FR-003 と同じ。`:1079` で使う） | Must | §3 To-Be | – |
+| FR-007 | `src/components/analytics-table/AnalyticsTableRow.tsx`（新規）に、`items.map` のコールバック本体（`:1277-1727`）を移す。ただし FR-008 へ移す部分を除く。行は、`item`・`selection`・`unreadAnnotationIds`・操作列の開閉状態・`orderedIds`・`visibleSet`・FR-004〜006 の戻り値（フックごとに 1 つのオブジェクト `launch` / `edit` / `del`。ref を含まないので R-001 のまとめ方で immutability の問題は起きない）を props で受け取る。行の関数の冒頭で props と `launch` / `edit` / `del` を分割代入し（例: `const { pendingRowKey, handleLaunch } = launch;`）、移した本文の参照名は 1 つも変えない（存在しないキーを分割代入すると `npm run build` の型エラーになり、別のフックの値との取り違えが残らない）。入口に残る本文（`DeleteChatDialog` の描画など）が使うフックの値も、入口で同じく分割代入して参照名を変えない。`selection` の型（現行は入口の `interface Props` の中 `:140-149`）は `AnalyticsTableRow.tsx` に `export interface AnalyticsTableSelection` として移し、入口の `Props` は `selection?: AnalyticsTableSelection;` とする | Must | §3 To-Be | BR-03 を満たす |
+| FR-008 | `src/components/analytics-table/AnalyticsTableDataCells.tsx`（新規）に、`formatPercent` / `formatSeconds`（`:277-286`）、データ列だけが使う値（`ga4Summary` `:1279`、`updatedAt` `:1287-1289`、`avgEngagementSeconds` / `readRate` / `cvr` `:1293-1311`、コメントを含む）、列の描画（`:1502-1725`）を移す。データ列は `item`・`orderedIds`・`visibleSet`・`rowCanonicalUrl` を props で受け取る。`rowCanonicalUrl` は行でも使うので、行で求めて渡す。`annotation` は `const annotation = item.annotation;` をデータ列の中でも書く（FR-010 (e)）。props は FR-007 と同じく関数の冒頭で分割代入し、移した本文の参照名を変えない | Must | §3 To-Be | BR-03 を満たす |
 | FR-009 | `AnalyticsTable` はフックを `useAnalyticsOpsColumnState` → `useAnalyticsTableDelete` → `useAnalyticsTableFilters` の順で呼ぶ（effect を持つ 3 本）。`useAnalyticsTableLaunch` と `useAnalyticsTableEdit` は任意の位置でよい | Must | BR-02 | – |
-| FR-010 | 移動元と移動先で内容が変わってよいのは次の行だけ: (a) 新ファイルの `'use client'`・import・関数の宣言・props の型と分割代入・return 文（新ファイルから export するのは、別のファイルが import するものだけにする。props の型・戻り値の型・`LaunchPayload`・`formatPercent`・`createEmptyForm` などファイル内でしか使わないものは export しない。`npm run knip` が未使用の export で落ちるため）、(b) 入口の import と再 export、フックの呼び出しと戻り値の分割代入、(c) 行とデータ列を `<AnalyticsTableRow … />` / `<AnalyticsTableDataCells … />` の呼び出しに置き換えた行、(d) 子へ移った値を props 経由で読むための参照名の変更（例: `pendingRowKey` → `launch.pendingRowKey`）、(e) フックの引数になった値を依存配列に足す行（useState の setter・`useRef` の戻り値・`router` など、現行でもコンポーネント内で安定している値に限る）、(f) データ列の中の `const annotation = item.annotation;` の 1 行（行の中の同じ行と重複する） | Must | BR-01 | §7 の行比較で差分がこの範囲に収まる |
+| FR-010 | 移動元と移動先で内容が変わってよいのは次の行だけ: (a) 新ファイルの `'use client'`・import・関数の宣言・props の型と分割代入（FR-007 の `launch` / `edit` / `del` の分割代入を含む）・return 文（新ファイルから export するのは、別のファイルが import するものだけにする。props の型・戻り値の型・`LaunchPayload`・`formatPercent`・`createEmptyForm` などファイル内でしか使わないものは export しない。`npm run knip` が未使用の export で落ちるため）、(b) 入口の import と再 export、フックの呼び出しと戻り値の分割代入、(c) 行とデータ列を `<AnalyticsTableRow … />` / `<AnalyticsTableDataCells … />` の呼び出しに置き換えた行と `items.map` の行、(d) フックの引数になった値を依存配列に足す行（useState の setter・`useRef` の戻り値・`router` など、現行でもコンポーネント内で安定している値に限る）、(e) データ列の中の `const annotation = item.annotation;` の 1 行（行の中の同じ行と重複する）、(f) `selection` の型の置き場の変更（`AnalyticsTableRow.tsx` の `export interface AnalyticsTableSelection {` と、入口の `selection?: AnalyticsTableSelection;`。FR-007）。移した本文の参照名の変更（例: `pendingRowKey` → `launch.pendingRowKey`）は許さない | Must | BR-01 | §7 の行比較で差分が §13 に列挙した行の種類に収まる |
 | FR-011 | `eslint-suppressions.json` の `src/components/AnalyticsTable.tsx` の件数を、移動した違反の分だけ新規ファイルのエントリへ付け替える。ルールごとの合計は変えない。付け替えは JSON を直接編集して行い、`--suppress-all` / `--suppress-rule` は使わない（ALT-002。Q-001 で承認済み） | Must | AGENTS.md「件数は増やさない」 | 成功指標の「`eslint-suppressions.json` の件数」を満たし、`npm run lint` が通る |
 
 ### 入力・出力・状態遷移
@@ -196,18 +196,18 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
   Rule: 挙動を変えない
 
     Scenario: 移動のみであることを行の多重集合で示す
-      Given develop（#596 マージ後）の AnalyticsTable.tsx
+      Given §13 の基準コミット ${B}（#596 マージ後の origin/develop との merge-base）の AnalyticsTable.tsx
       And 実装後の AnalyticsTable.tsx と src/components/analytics-table/ 配下を連結したもの
       When §13 の norm で import ブロック・空行・閉じ括弧だけの行を除き、行頭の空白を落として sort して比べる
-      Then 差分が FR-010 の許可行だけである
+      Then 差分が §13 に列挙した行の種類（FR-010 の許可行）だけである
 
     Scenario: DOM が変わらない
       Given 同じデータで /analytics のブログタブを開き、ダイアログをすべて閉じている
-      When develop と実装後のブランチで、table 要素の outerHTML を取得して比べる
+      When 基準コミット ${B} と実装後のブランチで、table 要素の outerHTML を取得して比べる
       Then 差分がない
 
     Scenario: フィルターの URL 同期と復元が変わらない
-      Given ブログタブでカテゴリと「未読の提案あり」で絞り込んでいる
+      Given ブログタブでカテゴリと「改善提案あり」で絞り込んでいる
       When ページを再読み込みし、そのあと別画面から URL のクエリなしで /analytics に戻る
       Then 再読み込み後も同じ絞り込みが URL に残り、クエリなしで戻ったときは保存済みのフィルターが復元される
 
@@ -279,12 +279,12 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 
 | 依存対象 | 前提条件 | 完了確認 | 未完了時の影響 |
 | --- | --- | --- | --- |
-| PR #596（`feat/instagram-blog-draft`） | develop にマージ済み。本仕様の行番号はこの PR の版（ce60787c）で取っている。`shoma-endo/blog-draft-types` は #596 の祖先なので別途待つ必要はない | `gh pr view 596 --json state` が `MERGED` | 選択列・操作列の部品がまだ develop になく、FR-001 の対象が存在しない。先行すると #596 と大量に衝突する |
+| PR #596（`feat/instagram-blog-draft`） | develop にマージ済み。本仕様の行番号はこの PR の版（ce60787c）で取っている。`shoma-endo/blog-draft-types` は #596 の祖先なので別途待つ必要はない | `gh pr view 596 --json state` が `MERGED` | 選択列・操作列の部品がまだ develop になく、FR-001 の対象が存在しない。先行すると #596 と大量に衝突する。`MERGED` でなければ実装に進まず ABORT する（独自の判断で部品を作ったり移したりしない） |
 | その他 `AnalyticsTable.tsx` を変更中の PR | マージ済み、またはなし | 着手前に `gh pr list --state open --json number,files --jq '.[] \| select(.files[].path == "src/components/AnalyticsTable.tsx") \| .number'` が空 | 衝突する |
 
 ## 11. トレードオフ判断
 
-### ALT-001: 新規ファイルの置き場所（Claude 案・未確認）
+### ALT-001: 新規ファイルの置き場所（Claude 案。§16 の要件承認で確定する）
 
 - 判断: 分けたファイルをどこに置くか
 - 比較した案:
@@ -296,7 +296,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 - 却下した案と理由: 案C は `src/components/AnalyticsTable.tsx` が `app/` を import することになり、依存の向きが逆になる
 - 影響: `src/components/` に `ui/` 以外のサブディレクトリが初めてできる
 - 将来変更する条件: 同じ形のサブディレクトリが増え、置き方の規約を `project-naming` に書く必要が出たとき
-- 判断者・判断日: Claude 案（2026-10-03）。承認者の確認待ち
+- 判断者・判断日: shoma-endo・2026-10-03（Claude 案を承認）
 
 ### ALT-002: lint の抑制件数の扱い
 
@@ -314,7 +314,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
   
   実際の件数は実装後に `npx eslint <新規ファイル> -f json` で数える
 - 却下した案と理由:
-  - 案B は色クラスが変わり、見た目が変わる。BR-03 と growmate-ui-ux（`SKILL.md:22`）に反する
+  - 案B は色クラスが変わり、見た目が変わる。BR-03 と growmate-ui-ux（`SKILL.md:24`）に反する
   - 案C は行とデータ列を入口から出せず、500 行に届かない
 - 影響: 本仕様のマージ後、`eslint-suppressions.json` に新規ファイル 3 件のエントリが増える（件数の合計は同じ）
 - 将来変更する条件: 違反を解消する仕様ができたとき
@@ -327,7 +327,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 | ID | リスク | 発生条件・影響 | 対策 | 担当 | 状態 |
 | --- | --- | --- | --- | --- | --- |
 | R-001 | 行コンポーネントへ渡す値が多く、props の型が長くなる | 編集だけで約 15 の値を使う | FR-007 でフックの戻り値をフックごとに 1 つのオブジェクトとして渡す（`launch` / `edit` / `del`）。props は約 8 つになる見込み | 実装者 | 対策済み |
-| R-002 | テストがないため、移動の誤りが自動検証では見つからない | 参照名の取り違え、effect の順序 | BR-02 と §7 の行比較・DOM 比較、§13 の手動確認 | 実装者 | 対策済み |
+| R-002 | テストがないため、移動の誤りが自動検証では見つからない | 参照名の取り違え、effect の順序 | 参照名は FR-007 / FR-008 の分割代入で変えず（存在しないキーは `npm run build` の型エラーになる）、FR-010 で参照名の変更を許さないので、取り違えは §7 の行比較に許可外の行として出る。effect の順序は BR-02 / FR-009。加えて §7 の DOM 比較、§13 の手動確認 | 実装者 | 対策済み |
 
 ### 確認質問
 
@@ -345,11 +345,35 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 
 ### テスト方針
 
-- 単体テスト: 追加しない。`tests/` は `environment: 'node'`（`vitest.config.ts`）で、コンポーネントを描画するテストの基盤がない。基盤を足すのは本仕様の範囲を超える（Claude 案・未確認）
+- 単体テスト: 追加しない。`tests/` は `environment: 'node'`（`vitest.config.ts`）で、コンポーネントを描画するテストの基盤がない。基盤を足すのは本仕様の範囲を超える（Claude 案。§16 の要件承認で確定する。仕様レビューのブロッカーにしない）
 - カバレッジ: 移動のみで、未テストの行が増えも減りもしないので、閾値には影響しない
 - 自動検証: `npm run verify`
-- DOM 比較: §7 のとおり、同じデータで develop と実装後の `table` の outerHTML を比べる（ブラウザの開発者ツールで取得）。Radix の DialogTrigger は開いているときだけ `useId` 由来の `aria-controls` を出し、行をコンポーネントにすると `useId` の値が変わるため、ダイアログをすべて閉じた状態で取る
-- 移動の証跡: `docs/plans/client-page-boundary.md` §13 と同じ `norm` を使い、`git show develop:src/components/AnalyticsTable.tsx | norm` と `norm src/components/AnalyticsTable.tsx src/components/analytics-table/*` の差分を PR 本文に貼る
+- 基準コミット: ローカルの `develop` は `origin/develop` より古いことがあり、#596 より前の版（1,679 行）と比べると成り立たないため、比較の基準は下のコマンドの `B` に統一する。§1 の成功指標、§7、§14 の `git diff` も同じ `B` を使う
+- DOM 比較: §7 のとおり、同じデータで基準コミット `B` と実装後の `table` の outerHTML を比べる（ブラウザの開発者ツールで取得）。Radix の DialogTrigger は開いているときだけ `useId` 由来の `aria-controls` を出し、行をコンポーネントにすると `useId` の値が変わるため、ダイアログをすべて閉じた状態で取る
+- 移動の証跡: 次の `norm` で移動前と移動後を比べ、出力を PR 本文に貼る。複数行の import と再 export は、`import` / `export {` で始まり `;` で終わる行までを 1 ブロックとして落とす。zsh では `$B:s` の `:s` が修飾子として解釈されるため、`${B}:src` と書く
+
+```bash
+git fetch origin develop
+B=$(git merge-base origin/develop HEAD)
+norm() { awk '/^(import|export \{.*\} from|export \{$)/{imp=1} imp{ if (/;[[:space:]]*$/) imp=0; next } {print}' "$@" \
+  | sed -E 's/^[[:space:]]+//' | grep -vE '^$|^[]\)\}>;,]+$' | sort; }
+diff <(git show ${B}:src/components/AnalyticsTable.tsx | norm) \
+     <(norm src/components/AnalyticsTable.tsx src/components/analytics-table/*)
+```
+
+行比較で出てよい行の種類（FR-010 の許可行）。これ以外の行（参照名を変えた行など）が出たら FR-010 の範囲外の変更がある。
+
+- `'use client';`
+- 新規ファイルの関数の宣言（`export function AnalyticsTableRow({` など）
+- props の型と戻り値の型の行
+- 分割代入の行（props、`launch` / `edit` / `del`、入口でのフックの戻り値）
+- return 文の行（フックが返すオブジェクトの行を含む）
+- フックの呼び出しの行（入口）
+- `<AnalyticsTableRow` / `<AnalyticsTableDataCells` の呼び出しの行（属性の行を含む）
+- `items.map` の行
+- `const annotation = item.annotation;`（データ列で 1 行増える）
+- `export interface AnalyticsTableSelection {` と `selection?: AnalyticsTableSelection;`、およびこれに置き換わる現行の `selection?: {`
+- 依存配列に値を足した行（FR-010 (d)）
 - 手動確認（ローカルの dev サーバー）:
   1. ブログタブ: カテゴリ・状態 3 種で絞り込む → タグで個別に解除 → 全解除 → 再読み込み → クエリなしで戻って復元
   2. 列の並べ替え、列の表示・非表示（非表示の列で並べ替えていたら解除される）
@@ -369,7 +393,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 
 ### 手順
 
-1. §10 の依存確認を実行する。マージ後の develop の `AnalyticsTable.tsx` を ce60787c 版と比べ、変わっていれば §6 の行番号を読み替える
+1. §10 の依存確認を実行する。`gh pr view 596 --json state` が `MERGED` でなければ、ここで実装に進まず ABORT する。マージ済みなら、§13 の基準コミット `B` の `AnalyticsTable.tsx` を ce60787c 版と比べ（`git diff ce60787c "${B}" -- src/components/AnalyticsTable.tsx`）、変わっていれば §6 の行番号を読み替える
 2. FR-001 / FR-002（部品）を移し、`npm run build` を通す
 3. FR-004 → FR-005 → FR-006 → FR-003 の順にフックへ移す。1 本移すごとに `npm run build` を通す
 4. FR-008 → FR-007 の順に、データ列と行を子コンポーネントへ移す
@@ -382,9 +406,9 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
-| CP-1 spec-review 前 | Q-001 の回答（`docs/plans/client-page-boundary.md` の Q-001 と同じ論点）は確認済み（2026-10-03）。ALT-001 の Claude 案でよいか | shoma-endo | 一部確認済み |
-| CP-2 着手前 | PR #596 がマージ済みで、§6 の行番号を読み替えた | 実装者 | 未確認 |
-| CP-3 PR 作成時 | `git diff --stat develop` の変更が `src/components/AnalyticsTable.tsx`・`src/components/analytics-table/`・`eslint-suppressions.json`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
+| CP-1 spec-review 前 | Q-001 の回答（`docs/plans/client-page-boundary.md` の Q-001 と同じ論点） | shoma-endo | 確認済み（2026-10-03） |
+| CP-2 着手前 | PR #596 がマージ済み（`gh pr view 596 --json state` が `MERGED`。そうでなければ実装に進まず ABORT する）で、§6 の行番号を読み替えた。実装前ゲートであり、仕様レビューのブロッカーにしない | 実装者 | 未確認 |
+| CP-3 PR 作成時 | `git diff --stat "${B}"`（`B` は §13 の基準コミット）の変更が `src/components/AnalyticsTable.tsx`・`src/components/analytics-table/`・`eslint-suppressions.json`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
 
 ## 15. 完了条件
 
@@ -394,7 +418,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
   - `npm run verify` が緑
 - 検証方法・証跡（テスト結果・画面確認・ログ等）:
   - `norm` の行比較の出力、DOM 比較の結果、§13 の手動確認 5 項目の結果を PR 本文に書く
-- 完了確認者・確認日: 未定
+- 完了確認者・確認日: shoma-endo・PR のマージ時
 
 ## 16. レビュー記録・承認・変更履歴
 
@@ -403,10 +427,11 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 | 回 | 日付 | 指摘件数（🔴 / 🟡 / 🟢） | 反映状況 | 残置合意した論点と理由 |
 | --- | --- | --- | --- | --- |
 | 0（起票時のセルフレビュー） | 2026-10-03 | 1 / 3 / 4 | 全件反映（🔴 の Q-001 は 2026-10-03 に承認済み） | なし |
+| 1（spec-review audit） | 2026-10-03 | 0 / 5 / 2 | 全件反映。ARCH-NEW-analytics-table-split-L352（§13 に基準コミット `B` と `norm` を書き写し、§1・§7・§14 の `develop` を `B` に統一）、-L165（FR-007 / FR-008 で分割代入と参照名の不変を定め、FR-010 から参照名の変更を削除。§13 に行比較で出てよい行の種類を列挙。R-002 の対策を更新）、-L159（FR-004〜006 に `router` を引数で受け取ると明記。`selection` の型を `AnalyticsTableRow.tsx` の `AnalyticsTableSelection` に置き、FR-010 (f) に追加）、-L282（§10・§14 手順 1・CP-2 に「#596 が `MERGED` でなければ ABORT」、CP-2 は実装前ゲートで仕様レビューのブロッカーにしない）、-L299（ALT-001 とテスト方針を「§16 の要件承認で確定」、承認者・完了確認者を shoma-endo に、CP-1 を Q-001 だけにして確認済み）、-L113（growmate-ui-ux の引用を `SKILL.md:24` に修正）、-L210（フィルター名を「改善提案あり」に修正） | なし |
 
 #### 公式ドキュメント照合
 
-- 実施 / 未実施: 対象外（外部サービス連携なし）
+- 実施 / 未実施: 対象外（外部サービス連携なし。spec-review の identify でも対象外と判定）
 
 ### 承認
 
@@ -420,3 +445,4 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
 | 日付 | 変更内容 | 変更理由 | 変更者 |
 | --- | --- | --- | --- |
 | 2026-10-03 | 起票 | 可読性レビュー | shoma-endo（Claude Code 支援） |
+| 2026-10-03 | 比較の基準コミットと `norm` を本仕様に記載、参照名の変更を禁止して分割代入に統一、`router` と `selection` の型の置き場を明記、#596 未マージ時の ABORT を追加、承認者を確定、引用行とフィルター名を修正 | spec-review audit 回 1 の指摘 | shoma-endo（Claude Code 支援） |
