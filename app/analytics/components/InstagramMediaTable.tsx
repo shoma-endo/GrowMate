@@ -47,17 +47,16 @@ import {
   AnalyticsSelectionCheckbox,
   AnalyticsSelectionHeaderCell,
   LaunchChatButton,
-  useAnalyticsOpsColumnState,
 } from '@/components/AnalyticsTable';
 import { getInstagramBlogDraftDisplayState } from '@/lib/instagram-blog-draft';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { useRouter } from 'next/navigation';
 
 /**
- * 展開時の操作列の幅。最も広い［作成を開始中...］（押下中の［続きを作成］）＋［チャット］が収まる幅。
+ * 操作列の幅（折りたたみなし）。最も広い［作成を開始中...］（押下中の［続きを作成］）＋［チャット］が収まる幅。
  * ブログ一覧の 380px のままだとボタン2つの左右が大きく空く
  */
-const INSTAGRAM_OPS_EXPANDED_WIDTH = 248;
+const INSTAGRAM_OPS_WIDTH = 248;
 
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
@@ -184,7 +183,6 @@ export default function InstagramMediaTable({
   targetMinRate,
 }: InstagramMediaTableProps) {
   const router = useRouter();
-  const [opsExpanded, toggleOpsExpanded] = useAnalyticsOpsColumnState();
   const selectedOnPage = items.filter(item => selectedIds.has(item.id)).length;
   const allOnPageSelected = items.length > 0 && selectedOnPage === items.length;
   const columns = React.useMemo(() => INSTAGRAM_COLUMNS.map(col => ({ ...col })), []);
@@ -351,7 +349,7 @@ export default function InstagramMediaTable({
                     checked={allOnPageSelected ? true : selectedOnPage > 0 ? 'indeterminate' : false}
                     onCheckedChange={onToggleAll}
                   />
-                  <AnalyticsOpsHeaderCell expanded={opsExpanded} onToggle={toggleOpsExpanded} expandedWidth={INSTAGRAM_OPS_EXPANDED_WIDTH} />
+                  <AnalyticsOpsHeaderCell expanded expandedWidth={INSTAGRAM_OPS_WIDTH} />
                   <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
@@ -395,8 +393,8 @@ export default function InstagramMediaTable({
                         onCheckedChange={checked => onToggleRow(item.id, checked === true)}
                       />
                     </AnalyticsSelectionCell>
-                    <AnalyticsOpsCell expanded={opsExpanded} expandedWidth={INSTAGRAM_OPS_EXPANDED_WIDTH}>
-                      <BlogDraftOperation item={item} now={now} expanded={opsExpanded} active={isBlogDraftLocked} pending={pendingResumeId === item.id} onResume={onResume} onNavigate={href => router.push(href)} />
+                    <AnalyticsOpsCell expanded expandedWidth={INSTAGRAM_OPS_WIDTH}>
+                      <BlogDraftOperation item={item} now={now} active={isBlogDraftLocked} pending={pendingResumeId === item.id} onResume={onResume} onNavigate={href => router.push(href)} />
                     </AnalyticsOpsCell>
                     <td className="px-6 py-4">
                       <ThumbnailCell item={item} />
@@ -432,7 +430,6 @@ export default function InstagramMediaTable({
 function BlogDraftOperation({
   item,
   now,
-  expanded,
   active,
   pending,
   onResume,
@@ -440,7 +437,6 @@ function BlogDraftOperation({
 }: {
   item: InstagramMediaListItem;
   now: number;
-  expanded: boolean;
   active: boolean;
   pending: boolean;
   onResume: (id: string) => void;
@@ -477,7 +473,7 @@ function BlogDraftOperation({
           {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
           {pending ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING : '続きを作成'}
         </button>
-        {expanded && stoppedSessionId ? (
+        {stoppedSessionId ? (
           <LaunchChatButton
             label="チャット"
             isPending={false}

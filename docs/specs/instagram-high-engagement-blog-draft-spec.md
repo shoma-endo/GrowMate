@@ -424,7 +424,7 @@ Instagram タブで記事にしたい投稿のチェックボックスを選び�
     - 作成中・待機中のまとまりがあるあいだは、選んでいなくてもツールバーを出し、［ブログ記事を作成］を回転アイコン＋「作成中...」（押せない）にして、右に「（処理済み x / 対象 y 件）」を出す。x はまとまりのうち作成済み・失敗になった件数、y はまとまりの件数。ボタンの色・部品（`BULK_SUMMARY_BUTTON_CLASS`・`BulkSelectionCount`）と文言の形（「〜中...」「（処理済み n / 対象 m 件）」）はブログ一覧の［AIで要約］から取る。ブログ一覧は進み具合をタブの上の別の行に出しており、ツールバーの中に出すのは本機能だけの配置（2026-10-02 遠藤指示「この枠内に出そう」「色味も既存と合わせて」。プレビューで行の緑のボタンの「作成中（n/m）」を見て）。
   - **変更するファイルと差し込み位置**: 表の本体は `app/analytics/components/InstagramMediaTable.tsx`。チェック列と操作列は、今の左端のサムネ列（`<thead>` の `:311`、行の `:345-347`）の左に、チェック列 → 操作列の順で差し込む。選択の状態・作成中の判定・ツールバーは `app/analytics/components/InstagramTab.tsx` で持ち、選択中の ID・切り替えの関数・各行の `blogDraft` を props で `InstagramMediaTable` に渡す。
   - **固定列の背景**: 固定の操作列 `.analytics-ops-cell` は背景色を親の行から `inherit` する（`app/globals.css:130-145`）。今の Instagram の表は `<tr className="align-top">`（`InstagramMediaTable.tsx:344`）で `analytics-row` が無く、`<thead>` にも `analytics-head` が無い（`:309`）ため、そのままでは固定列が透けて下のセルが見える。ブログ一覧（`src/components/AnalyticsTable.tsx:1105` の `analytics-head`、`:1246` の `analytics-row`）と同じく、`<thead>` に `analytics-head`、各行の `<tr>` に `analytics-row` を付ける（選択中の行は `bg-blue-50` を重ねる）。
-  - **操作列**: チェック列の右（サムネ列の左）。横スクロールしても左に固定（`analytics-ops-cell`）。見出しは「操作」と折りたたみボタン（展開 248px・折りたたみ 120px。展開状態はブログ一覧と同じ `ANALYTICS_STORAGE_KEYS.OPS_EXPANDED` を共有）。作成が無い投稿の行は空欄。作成がある行は状態に応じて、緑の［チャット］・紫の［続きを作成］・作成中の表示・状態の文字（作成済みを含む）を出す。止まったときの［チャット］（緑）は展開時だけ出す。
+  - **操作列**: チェック列の右（サムネ列の左）。横スクロールしても左に固定（`analytics-ops-cell`）。見出しは「操作」だけで、折りたたみボタンは付けない（幅 248px で固定。ブログ一覧と違い、たたんで隠れるのが止まったときの［チャット］1つだけで、120px にたたむと［続きを作成］がはみ出すため。2026-10-03 遠藤決定）。作成が無い投稿の行は空欄。作成がある行は状態に応じて、緑の［チャット］・紫の［続きを作成］・作成中の表示・状態の文字（作成済みを含む）を出す。止まったときは［続きを作成］と［チャット］（緑）を並べる。
 - UI 既存パターン対照表（`.agents/skills/growmate-ui-ux/SKILL.md`）:
 
   | 今回の UI 要素 | 同種の既存 UI（`file:line`） | 採る方法 | 変える点と根拠 |
@@ -434,7 +434,7 @@ Instagram タブで記事にしたい投稿のチェックボックスを選び�
   | ツールバーの「選択中 N 件」 | `app/analytics/AnalyticsClient.tsx:477-485`（`<span className="text-sm text-gray-600">`） | 共通化（選択件数とボタンを並べる枠を同ファイル群で export して両方で使う。生の色を含むため写さない） | 「/ 全 M 件」を出さない |
   | ［ブログ記事を作成］ | `app/analytics/AnalyticsClient.tsx:496-518`（［AIで要約］。紫の枠線＋`Sparkles`） | 共通化（紫のボタンのクラスを部品として export し、［AIで要約］と両方で使う） | 文言だけ変える（「ブログ記事を作成」。2026-09-27 遠藤決定） |
   | 押せない理由の文字 | `app/analytics/AnalyticsClient.tsx:519-523`（1000件丸めの `text-xs text-gray-500`） | 共通化（同上） | 文言は BR-015 |
-  | 操作列の見出し・セル・展開状態 | `src/components/AnalyticsTable.tsx:1121-1149, 1265-1274, 340-350, 828-831` | 共通化（前版どおり） | 展開時の幅だけ 380px → 248px（ボタンが最大2つで、380px のままだと左右が約 98px ずつ空く。ブログ一覧の左右の余白 8px に近づける。2026-10-03 遠藤指示「ボタン左右に余白ありすぎ。ブログと同じように」） |
+  | 操作列の見出し・セル | `src/components/AnalyticsTable.tsx:1121-1149, 1265-1274, 340-350, 828-831` | 共通化（前版どおり） | 折りたたみボタンを出さない（2026-10-03 遠藤決定）。幅は 380px → 248px（ボタンが最大2つで、380px のままだと左右が約 98px ずつ空く。ブログ一覧の左右の余白 8px に近づける。2026-10-03 遠藤指示「ボタン左右に余白ありすぎ。ブログと同じように」） |
   | ［チャット］ | `src/components/AnalyticsTable.tsx` `LaunchChatButton` | そのまま使う（export する） | なし |
   | ［続きを作成］ | `src/components/ContentAnnotationSummaryAction.tsx` の単記事の［AIで要約］（紫の枠線＋`Sparkles`） | 共通化（紫のクラスを `AI_ACTION_BUTTON_CLASS` として同ファイルで export して使う） | 大きさは隣の［チャット］に合わせて `size="sm"`。押下中は回転アイコン＋「作成を開始中...」（2026-10-03 遠藤指示「続きを作成のボタン色はチャットと分けよう」で「紫の枠線（AI に作らせる操作と同じ）」を選択） |
   | ツールバーの作成中の表示（「作成中...」と処理済み件数） | `app/analytics/AnalyticsClient.tsx` の［AIで要約］の要約中（回転アイコン＋「要約中...」）と `summaryJobProgress`（「要約中...（処理済み n / 対象 m 件）」） | 共通化（［ブログ記事を作成］と同じ紫のボタン・「選択中 N 件」と同じ文字の部品を使う） | 文言を変える（「作成中...」「（処理済み x / 対象 y 件）」）。置き場所をツールバーの中にする（ブログ一覧はタブの上の別の行。2026-10-02 遠藤指示） |
@@ -472,7 +472,7 @@ Instagram タブで記事にしたい投稿のチェックボックスを選び�
   | ツールバーの［⟳ 作成中...］と「（処理済み x / 対象 y 件）」 | ボタン（紫の枠線・押せない）＋文字 | 作成中・待機中のまとまりがあるとき（選んでいなくても出す） |
   | ［続きを作成］ | ボタン（紫の枠線＋`Sparkles`） | 失敗・途中で切れましたのとき。作成中・待機中の記事があるあいだは押せない（ツールバーの［ブログ記事を作成］と同じ判定。BR-015）。押下中は回転アイコン＋「作成を開始中...」 |
   | ［チャット］（作成済み） | 主ボタン（緑） | `completed` のとき |
-  | ［チャット］（止まったとき） | 主ボタン（緑、展開時のみ） | 失敗・途中で切れましたのとき。キーワード案の前に止まった（`session_id` が null）ならチャットが無いので出さない |
+  | ［チャット］（止まったとき） | 主ボタン（緑） | 失敗・途中で切れましたのとき。キーワード案の前に止まった（`session_id` が null）ならチャットが無いので出さない |
   | 失敗（n/m） | 文字（主ボタンの下） | `failed`（`error_code` が `MAX_TOKENS` 以外）と止まった `running` / `queued`。m が未確定なら「失敗」だけ |
   | 途中で切れました（n/m） | 文字（主ボタンの下） | `failed` かつ `error_code = 'MAX_TOKENS'`。m が未確定なら「途中で切れました」だけ |
   | 作成済み | 文字（主ボタンの下） | `completed` のとき。一度作った投稿であることを一覧で分かるようにする（2026-09-27 遠藤決定） |
@@ -484,8 +484,8 @@ Instagram タブで記事にしたい投稿のチェックボックスを選び�
   | 作成なし | 空欄 | チェックして［ブログ記事を作成］ | — |
   | `queued` | 待機中 | なし | ［チャット］を出さない |
   | `running` | 作成中（n/m） | なし | ［チャット］を出さない（作成中のチャットへの手動送信を避ける。§4 Non-goals） |
-  | `failed`（`MAX_TOKENS` 以外）・止まった `running` / `queued` | ［続きを作成］＋失敗（n/m）、展開時［チャット］ | 再開（複数ならチェックしてまとめて再開）、またはチャットで手動で続ける | 作成中・待機中の記事があるあいだは［続きを作成］を押せない |
-  | `failed`（`MAX_TOKENS`） | ［続きを作成］＋途中で切れました（n/m）、展開時［チャット］ | 続きだけを生成して再開（複数ならチェックしてまとめて再開） | 同上 |
+  | `failed`（`MAX_TOKENS` 以外）・止まった `running` / `queued` | ［続きを作成］＋［チャット］＋失敗（n/m） | 再開（複数ならチェックしてまとめて再開）、またはチャットで手動で続ける | 作成中・待機中の記事があるあいだは［続きを作成］を押せない |
+  | `failed`（`MAX_TOKENS`） | ［続きを作成］＋［チャット］＋途中で切れました（n/m） | 続きだけを生成して再開（複数ならチェックしてまとめて再開） | 同上 |
   | `completed` | ［チャット］＋作成済み | チャットを開く | — |
 
   止まった理由は2種類に分けて表示する（失敗＝AI の呼び出し失敗・サーバー停止・引き継ぎの途切れなど、途中で切れました＝出力が上限で途切れた）。時間の上限は自動で引き継ぐので止まった理由に出ない。細かい原因（`error_code`）は画面に出さず `console.error` に残す。
@@ -534,7 +534,7 @@ Feature: Instagram 投稿からブログ記事を自動作成する
     When ユーザーが Instagram タブの一覧を開く
     Then 表の左端にチェック列があり、その右に「操作」列がある
     And 「操作」列は横にスクロールしても左に固定されている
-    And チェックボックス・選択した行の色・「操作」列の見出しと折りたたみボタンの見た目がブログ一覧と同じである
+    And チェックボックス・選択した行の色・「操作」列の見出しの見た目がブログ一覧と同じである（Instagram は折りたたみボタンを出さない）
     And 1件以上選ぶと、「期間を適用」の右に「選択中 N 件」と［ブログ記事を作成］が表示される
     And ［ブログ記事を作成］の見た目がブログ一覧の［AIで要約］と同じである
     And 片方のタブで操作列を折りたたむと、もう片方のタブでも折りたたまれている
@@ -829,7 +829,7 @@ Feature: Instagram 投稿からブログ記事を自動作成する
   | チャット・行の作成 | 新規（サービス層） | `SupabaseService.createChatSession`、`content_annotations` insert | `ensureAnnotationChatSession` は `withAuth` 依存のため呼ばない |
   | 見出し・書き出し・完成形 | 再利用 | `src/server/services/headingFlowService.ts` の `initializeHeadingSections` / `saveStep7UserLead` / `saveHeadingSection` / `getCombinedContentForPrompt` / `saveCombinedContentSnapshot` | 完成形の結合（`heading-flow.actions.ts:421-423`）はサービス層へ切り出して共用 |
   | JSON の取り出し | 再利用 | `JSON_BLOCK_REGEX`（下記の3ファイルに同じもの） | 同じ正規表現を使う。既存は3か所（`contentAnnotationSummaryService.ts:24`・`googleAdsAiAnalysisService.ts:38`・`ga4EvaluationLlmService.ts:10`）あり、共通化の候補ではあるが、**今回は共通化せず新しいサービスに同じ定数を写す**（共通化は既存3サービスの変更を伴い、本書の要件の外のため） |
-  | 操作列（見出し・セル・主ボタン・展開状態） | 共通化 | `src/components/AnalyticsTable.tsx` の操作列（`:1121-1149` / `:1265-1432`）と `LaunchChatButton`（`:126`） | 同ファイル内で export して Instagram タブからも使う（Phase 1 のフィルター部品と同じやり方）。詳細は §6 の UI 既存パターン対照表 |
+  | 操作列（見出し・セル・主ボタン） | 共通化 | `src/components/AnalyticsTable.tsx` の操作列（`:1121-1149` / `:1265-1432`）と `LaunchChatButton`（`:126`） | 同ファイル内で export して Instagram タブからも使う（Phase 1 のフィルター部品と同じやり方）。詳細は §6 の UI 既存パターン対照表 |
   | 一覧データへの状態の追加 | 拡張 | `instagramMediaService.getPage` / `InstagramMediaListItem`（`src/types/instagram.ts`） | ジョブの状態を `blogDraft` として載せる（FR-008） |
   | Instagram の一覧の表とツールバー（変更するファイル） | 拡張 | `app/analytics/components/InstagramMediaTable.tsx`（表の本体。`<thead>` `:309-310`、行 `:344`、サムネ列 `:311` / `:345-347`）、`app/analytics/components/InstagramTab.tsx`（フィルターの行 `:471`、表の呼び出し `:656`） | チェック列と操作列は `InstagramMediaTable.tsx` のサムネ列の左に、チェック列 → 操作列の順で差し込む。選択の状態・作成中の判定・ツールバーは `InstagramTab.tsx` で持ち、選択中の ID・切り替えの関数・各行の `blogDraft` を props で `InstagramMediaTable` に渡す。`<thead>` に `analytics-head`、各行の `<tr>` に `analytics-row` を付ける（§6） |
   | 一括選択・ツールバー | 共通化 | `src/components/AnalyticsTable.tsx`（チェック列・`SELECTION_CHECKBOX_CLASS`）、`app/analytics/AnalyticsClient.tsx:477-530`（選択件数・［AIで要約］の見た目）、`src/lib/analytics-selection.ts` `toggleIdMembership` | §6 の対照表 |
@@ -1081,6 +1081,7 @@ Feature: Instagram 投稿からブログ記事を自動作成する
 | 2026-10-03 | 止まったときの［チャット］を枠線の副ボタンから、作成済みと同じ緑の［チャット］（`LaunchChatButton`）に変える（§6 対照表・レイアウト・項目定義） | 遠藤指示「チャットのボタンの色は統一しよう」（2026-10-03） | 遠藤 |
 | 2026-10-03 | Instagram タブの行の縦位置を上揃え（`align-top`）からブログ一覧と同じ中央揃えにする（既存の列を含む行全体） | 遠藤指示（既存 UI との差分確認でブログは中央揃え、Instagram は上揃えと分かり「1（行全体を中央揃え）」） | 遠藤 |
 | 2026-10-03 | ［続きを作成］を緑の主ボタンから、［ブログ記事を作成］［AIで要約］と同じ紫の枠線＋`Sparkles` に変える（§6 対照表・レイアウト・項目定義） | 遠藤指示「続きを作成のボタン色はチャットと分けよう」→「1（紫の枠線）」（2026-10-03） | 遠藤 |
+| 2026-10-03 | Instagram タブの操作列の折りたたみをやめ、幅 248px で固定する。止まったときの［チャット］は常に出す（§6 操作列・対照表・項目定義・状態別UI・Gherkin） | 遠藤の問い「操作のところは開閉必要ですか？」→ 隠れるのは［チャット］1つだけで、たたむと［続きを作成］がはみ出すことを示し「1（開閉をやめる）」 | 遠藤 |
 
 ## 17. フェーズ全体のロードマップ（参考・本書の完了定義外）
 

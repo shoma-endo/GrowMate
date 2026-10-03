@@ -188,7 +188,7 @@ export function LaunchChatButton({ label, isPending, onClick }: LaunchChatButton
   );
 }
 
-export function useAnalyticsOpsColumnState(): [boolean, () => void] {
+function useAnalyticsOpsColumnState(): [boolean, () => void] {
   const [expanded, setExpanded] = React.useState(() => {
     if (typeof window === 'undefined') return true;
     return window.localStorage.getItem(ANALYTICS_STORAGE_KEYS.OPS_EXPANDED) !== 'false';
@@ -208,14 +208,14 @@ function getAnalyticsOpsColumnWidth(expanded: boolean, expandedWidth: number): n
   return expanded ? expandedWidth : ANALYTICS_OPS_COLLAPSED_WIDTH;
 }
 
-/** 左に固定する操作列の見出し。展開状態は useAnalyticsOpsColumnState で一覧どうし共有する */
+/** 左に固定する操作列の見出し。onToggle を渡さない一覧は折りたたみボタンを出さず、展開時の幅で固定する */
 export function AnalyticsOpsHeaderCell({
   expanded,
   onToggle,
   expandedWidth = ANALYTICS_OPS_EXPANDED_WIDTH,
 }: {
   expanded: boolean;
-  onToggle: () => void;
+  onToggle?: () => void;
   expandedWidth?: number;
 }) {
   const width = getAnalyticsOpsColumnWidth(expanded, expandedWidth);
@@ -231,19 +231,21 @@ export function AnalyticsOpsHeaderCell({
     >
       <div className="flex items-center justify-center relative w-full">
         <span>操作</span>
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-6 w-6 ml-2 text-gray-500 hover:text-gray-700 bg-white border-gray-300 shadow-sm"
-          onClick={onToggle}
-          title={expanded ? '操作列を折りたたむ' : '操作列を展開する'}
-        >
-          {expanded ? (
-            <ChevronsLeft className="h-4 w-4" />
-          ) : (
-            <ChevronsRight className="h-4 w-4" />
-          )}
-        </Button>
+        {onToggle ? (
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-6 w-6 ml-2 text-gray-500 hover:text-gray-700 bg-white border-gray-300 shadow-sm"
+            onClick={onToggle}
+            title={expanded ? '操作列を折りたたむ' : '操作列を展開する'}
+          >
+            {expanded ? (
+              <ChevronsLeft className="h-4 w-4" />
+            ) : (
+              <ChevronsRight className="h-4 w-4" />
+            )}
+          </Button>
+        ) : null}
       </div>
     </th>
   );
