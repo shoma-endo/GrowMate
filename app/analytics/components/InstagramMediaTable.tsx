@@ -386,7 +386,7 @@ export default function InstagramMediaTable({
                 {items.map(item => {
                   const selected = selectedIds.has(item.id);
                   return (
-                  <tr key={item.id} className={cn('align-top analytics-row', selected && ANALYTICS_SELECTED_ROW_CLASS)}>
+                  <tr key={item.id} className={cn('analytics-row', selected && ANALYTICS_SELECTED_ROW_CLASS)}>
                     <AnalyticsSelectionCell>
                       <AnalyticsSelectionCheckbox
                         aria-label={`${item.caption?.trim().slice(0, 60) || '投稿'}を選択`}
