@@ -9,7 +9,7 @@
 - 作成者: shoma-endo（Claude Code 支援）
 - 承認者: shoma-endo（Claude 案・未確認。Q-001 の回答者で、ロールバック判断者でもあるため）
 - 対象リリース: 機能リリースと独立。`develop` へマージ後、次の通常デプロイに乗る
-- 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー。`npm run hotspots`（develop 4fd6ae2e）の第 2 位。同時に起こした `docs/plans/analytics-table-split.md` / `docs/plans/client-page-boundary.md`
+- 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー。`npm run hotspots`（develop 4fd6ae2e）の第 2 位。同時に起こした `docs/plans/analytics-table-split.md` / `docs/specs/client-page-boundary.md`
 
 ## 1. 背景・目的・成功指標
 
@@ -94,7 +94,7 @@ src/lib/step7-lead.ts（新規）              Step 6 → Step 7 の書き出し
   4. ref はすべて `ChatLayout` で 1 回だけ作り、`RefObject` として各フックへ渡す。フック内で `useRef` を新しく作らない
   5. フックは引数を関数の引数部で分割代入して受け取る。`args.xRef.current = …` のように引数オブジェクト経由で書き換えない（`react-hooks/immutability` が error にする）
 - 例外: 4 について、ほかの関心から参照されない `prevStep6SessionIdRef`（`:421`）は FR-002 のフック内で作る（ALT-001）
-- 5 の前提の確認: 2026-10-03 にプローブで確認した（Claude 実施）。方法は、本リポジトリの `eslint.config.mjs` と同じ設定で `eslint --stdin --stdin-filename src/hooks/useProbe.ts` に検証用のフックを渡した。結果は次のとおり。
+- 5 の前提の確認: 2026-10-03 にプローブで確認した（Claude 実施）。方法は、本リポジトリの `eslint.config.mjs` と同じ設定で `eslint --stdin --stdin-filename src/hooks/useProbe.ts`（未実装。検証用）に検証用のフックを渡した。結果は次のとおり。
   - 分割代入で受け取った ref への `.current` 書き込みは、`useCallback`・`useMemo`・`useEffect` の中でも描画中でも error にならなかった（`react-hooks/refs` は off）
   - `args.barRef.current = …` は `react-hooks/immutability` の error になった
   - 実ファイルでの重大度は、spec-to-pr の implement が `npm run lint` で確かめる。前提が外れた場合の扱いは §12 R-003
@@ -121,7 +121,7 @@ src/lib/step7-lead.ts（新規）              Step 6 → Step 7 の書き出し
   - `ChatLayoutCtx` の props 束（`src/types/chat-layout.ts:28`）の見直し
   - 新規テストの追加 → §13
   - 既存の仕様書・設計書（`docs/plans/*`・`docs/specs/*`）にある `ChatLayout.tsx` の行番号の更新。理由: 行番号は書いた時点の版を指す記録で、`scripts/check-doc-paths.sh` もパスの実在しか見ない。2026-10-03 時点の引用は `docs/plans/instagram-high-engagement-blog-draft-spec.md`（PR #596 自身の仕様）と `docs/plans/google-ads-evaluation-design.md:812`
-  - `features/` 構成への移行、`app/api` の更新系 Route の Server Action 化、jsx-a11y の導入と `shadcn/no-raw-colors` の解消。理由は `docs/plans/client-page-boundary.md` §4 と同じ
+  - `features/` 構成への移行、`app/api` の更新系 Route の Server Action 化、jsx-a11y の導入と `shadcn/no-raw-colors` の解消。理由は `docs/specs/client-page-boundary.md` §4 と同じ
 - 対象外にする理由: 本仕様の価値は「差分を移動だけにして、読む単位を小さくする」こと。テストがないため、挙動の変更を混ぜると手動確認だけでは証跡が足りない
 - 将来検討する条件・時期: §12 の OPEN を参照
 
@@ -373,7 +373,7 @@ Feature: ChatLayout.tsx の状態とハンドラをフックへ分ける
 - カバレッジ: 移動のみで、未テストの行が増えも減りもしないので、`vitest.config.ts` の閾値には影響しない（分母は `src/**` と `app/**` の全ファイル）
 - 自動検証: `npm run verify`
 - 基準コミット: ローカルの `develop` は `origin/develop` より古いことがあるため、比較の基準は次の `B` に統一する。§1 の成功指標、§7、§14 CP-2 の `${B}` もこれを指す。zsh では `$B:app` の `:a` が修飾子として解釈されるため、`${B}:app` と書く
-- 移動の証跡: 次の 3 つを実行し、出力を PR 本文に貼る。`norm` の書き方は `docs/plans/client-page-boundary.md` §13 を出典とする
+- 移動の証跡: 次の 3 つを実行し、出力を PR 本文に貼る。`norm` の書き方は `docs/specs/client-page-boundary.md` §13 を出典とする
 
 ```bash
 git fetch origin develop

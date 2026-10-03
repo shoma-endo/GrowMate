@@ -9,7 +9,7 @@
 - 作成者: shoma-endo（Claude Code 支援）
 - 承認者: shoma-endo（§16 の要件承認で確定する）
 - 対象リリース: 機能リリースと独立。PR #596 のマージ後に着手し、`develop` へマージ後の通常デプロイに乗る
-- 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー。`npm run hotspots`（develop 4fd6ae2e）の第 3 位で、churn は全ファイル中 1 位（90 日で 34 回）。前提 PR #596。同時に起こした `docs/plans/chat-layout-split.md` / `docs/plans/client-page-boundary.md`
+- 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー。`npm run hotspots`（develop 4fd6ae2e）の第 3 位で、churn は全ファイル中 1 位（90 日で 34 回）。前提 PR #596。同時に起こした `docs/plans/chat-layout-split.md` / `docs/specs/client-page-boundary.md`
 
 ## 1. 背景・目的・成功指標
 
@@ -117,7 +117,7 @@ src/components/analytics-table/（新規ディレクトリ）
   - 行内の値 `hasUnreadSuggestion`（`:1290`）が同名の prop を隠している点と、`annotation.session_id` を `?.` なしで読んでいる点（`:1419`）の修正 → OPEN-001
   - `src/hooks/useAnnotationForm.ts` との統合。理由: 似た編集フォームだが、統合すると挙動が変わる
   - 既存の仕様書（`docs/specs/*`、および PR #596 自身の仕様 `docs/plans/instagram-high-engagement-blog-draft-spec.md`）にある `AnalyticsTable.tsx` の行番号の更新。理由: 行番号は書いた時点の版を指す記録で、当時の行番号のままでよい
-  - `features/` 構成への移行、`app/api` の更新系 Route の Server Action 化、jsx-a11y の導入。理由は `docs/plans/client-page-boundary.md` §4 と同じ
+  - `features/` 構成への移行、`app/api` の更新系 Route の Server Action 化、jsx-a11y の導入。理由は `docs/specs/client-page-boundary.md` §4 と同じ
 - 対象外にする理由: 本仕様の価値は「差分を移動だけにして、churn がもっとも多いファイルの読む単位を小さくする」こと
 - 将来検討する条件・時期: §12 の OPEN を参照
 
@@ -406,7 +406,7 @@ diff <(git show ${B}:src/components/AnalyticsTable.tsx | norm) \
 
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
-| CP-1 spec-review 前 | Q-001 の回答（`docs/plans/client-page-boundary.md` の Q-001 と同じ論点） | shoma-endo | 確認済み（2026-10-03） |
+| CP-1 spec-review 前 | Q-001 の回答（`docs/specs/client-page-boundary.md` の Q-001 と同じ論点） | shoma-endo | 確認済み（2026-10-03） |
 | CP-2 着手前 | PR #596 がマージ済み（`gh pr view 596 --json state` が `MERGED`。そうでなければ実装に進まず ABORT する）で、§6 の行番号を読み替えた。実装前ゲートであり、仕様レビューのブロッカーにしない | 実装者 | 未確認 |
 | CP-3 PR 作成時 | `git diff --stat "${B}"`（`B` は §13 の基準コミット）の変更が `src/components/AnalyticsTable.tsx`・`src/components/analytics-table/`・`eslint-suppressions.json`（と `vitest.config.ts` の閾値ラチェット）だけ | 実装者 | 未確認 |
 
