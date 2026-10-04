@@ -128,26 +128,33 @@ function InstagramBlogDraftToolbar({
   activeProgress,
   isStarting,
   disabledReason,
-  onStart,
+  busyAction,
+  createCount,
+  resumeCount,
+  onCreate,
+  onResume,
 }: InstagramBlogDraftToolbarProps) {
   const isBusy = isStarting || activeProgress !== null;
+  const busyLabel = isStarting ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING : '作成中...';
+  const buttonClass = cn(buttonVariants({ variant: 'outline' }), 'h-9 inline-flex items-center gap-2', BULK_SUMMARY_BUTTON_CLASS);
+  // 作成中・開始中はボタン1つにまとめる。押したボタンは同じ位置の要素のまま文言だけ変える
+  const showCreate = isBusy ? busyAction === 'create' : createCount > 0;
+  const showResume = isBusy ? busyAction === 'resume' : resumeCount > 0;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {selectedCount > 0 ? <BulkSelectionCount>選択中 {selectedCount} 件</BulkSelectionCount> : null}
-      <button
-        type="button"
-        className={cn(buttonVariants({ variant: 'outline' }), 'h-9 inline-flex items-center gap-2', BULK_SUMMARY_BUTTON_CLASS)}
-        onClick={onStart}
-        disabled={isBusy || disabledReason !== null}
-        aria-busy={isBusy}
-      >
-        {isBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
-        {isStarting
-          ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING
-          : activeProgress
-            ? '作成中...'
-            : 'ブログ記事を作成'}
-      </button>
+      {showCreate ? (
+        <button type="button" className={buttonClass} onClick={onCreate} disabled={isBusy || disabledReason !== null} aria-busy={isBusy}>
+          {isBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+          {isBusy ? busyLabel : 'ブログ記事を作成'}
+        </button>
+      ) : null}
+      {showResume ? (
+        <button type="button" className={buttonClass} onClick={onResume} disabled={isBusy || disabledReason !== null} aria-busy={isBusy}>
+          {isBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+          {isBusy ? busyLabel : '続きを作成'}
+        </button>
+      ) : null}
       {activeProgress ? (
         <BulkSelectionCount>（処理済み {activeProgress.processed} / 対象 {activeProgress.total} 件）</BulkSelectionCount>
       ) : null}

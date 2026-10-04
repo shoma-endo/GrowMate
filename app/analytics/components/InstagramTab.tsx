@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { INSTAGRAM_BLOG_DRAFT_MAX_SELECTION } from '@/lib/instagram-blog-draft';
+import { getInstagramBlogDraftDisplayState, INSTAGRAM_BLOG_DRAFT_MAX_SELECTION } from '@/lib/instagram-blog-draft';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
@@ -38,7 +38,6 @@ import {
   getInstagramEngagementTarget,
 } from '@/lib/instagram-format';
 import { syncInstagramData } from '@/server/actions/instagramSync.actions';
-import { toggleIdMembership } from '@/lib/analytics-selection';
 import type {
   InstagramBlogDraftBatchProgress,
   InstagramMediaListItem,
@@ -55,7 +54,14 @@ export interface InstagramBlogDraftToolbarProps {
   activeProgress: InstagramBlogDraftBatchProgress | null;
   isStarting: boolean;
   disabledReason: string | null;
-  onStart: () => void;
+  /** 開始中・作成中に回転表示で残すボタン。開始中は押したほう、それ以外は［ブログ記事を作成］の位置 */
+  busyAction: 'create' | 'resume';
+  /** 選んだうち、まだ作成の無い（または作成中・作成済みでサーバーが外す）投稿の件数。1件以上なら［ブログ記事を作成］を出す */
+  createCount: number;
+  /** 選んだうち、止まった投稿の件数。1件以上なら［続きを作成］を出す */
+  resumeCount: number;
+  onCreate: () => void;
+  onResume: () => void;
 }
 
 interface BlogDraftStartResponse {
@@ -159,8 +165,11 @@ export default function InstagramTab({
   // 手動時の警告と違って消える先が無いため、絞り込み変更でクリアしない
   const [isSyncAlertFromAuto, setIsSyncAlertFromAuto] = React.useState(false);
   const [isBackfilling, setIsBackfilling] = React.useState(false);
-  const [selectedMediaIds, setSelectedMediaIds] = React.useState<Set<string>>(() => new Set());
+  // 値は「選んだ時点で止まった投稿だったか」。選択はページを送っても残り、別のページの行の状態は画面から読めないため、選んだ時点で覚える
+  const [selectedMedia, setSelectedMedia] = React.useState<Map<string, boolean>>(() => new Map());
   const [isStartingBlogDraft, setIsStartingBlogDraft] = React.useState(false);
+  // 開始中に、押したほうのボタンを回転表示のまま残すため（押したボタンが消えるとフォーカスが外れる）
+  const [lastStartSource, setLastStartSource] = React.useState<'create' | 'resume' | 'row'>('create');
   const hasActiveBlogDraft = activeBlogDraft !== null;
   const [pendingResumeId, setPendingResumeId] = React.useState<string | null>(null);
   // 止まった判定（20分）の基準時刻。止まった行は updated_at が進まず、一覧を取り直しても表示が変わらないため、
@@ -185,7 +194,7 @@ export default function InstagramTab({
   const hasDateRange = igStart !== null || igEnd !== null;
 
   React.useEffect(() => {
-    setSelectedMediaIds(new Set());
+    setSelectedMedia(new Map());
   }, [igType, igStart, igEnd, igHigh]);
 
   React.useEffect(() => {
@@ -204,14 +213,22 @@ export default function InstagramTab({
     return () => window.clearInterval(interval);
   }, [hasUnfinishedBlogDraft]);
 
-  const togglePageSelection = (checked: boolean) => {
-    setSelectedMediaIds(previous =>
-      items.reduce((next, item) => toggleIdMembership(next, item.id, checked), previous)
-    );
+  const isStoppedRow = (item: InstagramMediaListItem) =>
+    getInstagramBlogDraftDisplayState(item.blogDraft, blogDraftNow).kind === 'stopped';
+  const updateSelection = (targets: InstagramMediaListItem[], checked: boolean) => {
+    setSelectedMedia(previous => {
+      const next = new Map(previous);
+      for (const item of targets) {
+        if (checked) next.set(item.id, isStoppedRow(item));
+        else next.delete(item.id);
+      }
+      return next;
+    });
   };
 
-  const startBlogDraft = async (mediaIds: string[], source: 'toolbar' | 'row') => {
+  const startBlogDraft = async (mediaIds: string[], source: 'create' | 'resume' | 'row') => {
     setIsStartingBlogDraft(true);
+    setLastStartSource(source);
     if (source === 'row') setPendingResumeId(mediaIds[0] ?? null);
     try {
       const response = await fetch('/api/instagram/blog-drafts', {
@@ -241,7 +258,12 @@ export default function InstagramTab({
           ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_RESUME_STARTED
           : ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTED(payload.started + payload.resumed, payload.resumed, excluded)
       );
-      setSelectedMediaIds(new Set());
+      // 送らなかった側（［続きを作成］を押したときの新しい投稿など）は選んだまま残す
+      setSelectedMedia(previous => {
+        const next = new Map(previous);
+        for (const id of mediaIds) next.delete(id);
+        return next;
+      });
       startBlogDraftRefresh(() => router.refresh());
     } catch (error) {
       console.error('[Instagram Tab] blog draft start failed', error);
@@ -488,7 +510,15 @@ export default function InstagramTab({
 
   const target = getInstagramEngagementTarget(followersCount);
   const highOnlyActive = igHigh && target !== null;
-  const selectedCount = selectedMediaIds.size;
+  const selectedCount = selectedMedia.size;
+  // 表示中の行は今の状態で分ける（選んだあとに作成中から止まった、などがあるため）。覚えた値は別のページの行にだけ使う
+  const itemById = new Map(items.map(item => [item.id, item]));
+  const isSelectedStopped = (id: string, stoppedWhenSelected: boolean) => {
+    const item = itemById.get(id);
+    return item ? isStoppedRow(item) : stoppedWhenSelected;
+  };
+  const resumeMediaIds = [...selectedMedia].flatMap(([id, stopped]) => (isSelectedStopped(id, stopped) ? [id] : []));
+  const createMediaIds = [...selectedMedia].flatMap(([id, stopped]) => (isSelectedStopped(id, stopped) ? [] : [id]));
   // 作成中はボタン自体が「作成中...」になるので、理由の文字は件数超過のときだけ出す
   const draftDisabledReason = selectedCount > INSTAGRAM_BLOG_DRAFT_MAX_SELECTION
     ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_LIMIT_REACHED
@@ -665,7 +695,11 @@ export default function InstagramTab({
                   activeProgress: activeBlogDraft,
                   isStarting: isStartingBlogDraft || isRefreshingBlogDraft,
                   disabledReason: draftDisabledReason,
-                  onStart: () => void startBlogDraft([...selectedMediaIds], 'toolbar'),
+                  busyAction: lastStartSource === 'resume' && (isStartingBlogDraft || isRefreshingBlogDraft) ? 'resume' : 'create',
+                  createCount: createMediaIds.length,
+                  resumeCount: resumeMediaIds.length,
+                  onCreate: () => void startBlogDraft(createMediaIds, 'create'),
+                  onResume: () => void startBlogDraft(resumeMediaIds, 'resume'),
                 })
               : null}
             <Button
@@ -777,12 +811,12 @@ export default function InstagramTab({
 
         <InstagramMediaTable
           items={items}
-          selectedIds={selectedMediaIds}
+          selectedIds={selectedMedia}
           isBlogDraftLocked={isBlogDraftLocked}
           now={blogDraftNow}
           pendingResumeId={pendingResumeId}
-          onToggleRow={(id, checked) => setSelectedMediaIds(previous => toggleIdMembership(previous, id, checked))}
-          onToggleAll={togglePageSelection}
+          onToggleRow={(id, checked) => updateSelection(items.filter(item => item.id === id), checked)}
+          onToggleAll={checked => updateSelection(items, checked)}
           onResume={id => void startBlogDraft([id], 'row')}
           igSort={igSort}
           igOrder={igOrder}

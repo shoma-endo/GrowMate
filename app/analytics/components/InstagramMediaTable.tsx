@@ -54,7 +54,7 @@ import { useRouter } from 'next/navigation';
 
 interface InstagramMediaTableProps {
   items: InstagramMediaListItem[];
-  selectedIds: Set<string>;
+  selectedIds: ReadonlyMap<string, unknown>;
   isBlogDraftLocked: boolean;
   /** 止まった判定の基準時刻（ミリ秒）。呼び出し側が定期的に進める */
   now: number;
