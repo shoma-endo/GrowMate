@@ -329,6 +329,8 @@ export default function InstagramMediaTable({
           );
         }
         const visibleOrdered = orderedIds.filter(id => visibleSet.has(id));
+        // 作成の無い行の操作列は空欄なので、表示中の行に作成が1つも無ければ列ごと出さない
+        const showOpsColumn = items.some(item => item.blogDraft !== null);
         // contain-layout: table 要素の auto レイアウト計算（列幅の内容依存計算）は、
         // overflow-x-auto や min-w-0 だけでは祖先への伝播を防ぎきれず、documentElement
         // のスクロール幅にまで影響してページ全体が横スクロールしてしまう
@@ -343,7 +345,7 @@ export default function InstagramMediaTable({
                     checked={allOnPageSelected ? true : selectedOnPage > 0 ? 'indeterminate' : false}
                     onCheckedChange={onToggleAll}
                   />
-                  <AnalyticsOpsHeaderCell expanded expandedWidth="fit-content" />
+                  {showOpsColumn ? <AnalyticsOpsHeaderCell expanded expandedWidth="fit-content" /> : null}
                   <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
@@ -387,9 +389,11 @@ export default function InstagramMediaTable({
                         onCheckedChange={checked => onToggleRow(item.id, checked === true)}
                       />
                     </AnalyticsSelectionCell>
-                    <AnalyticsOpsCell expanded expandedWidth="fit-content">
-                      <BlogDraftOperation item={item} now={now} active={isBlogDraftLocked} pending={pendingResumeId === item.id} onResume={onResume} onNavigate={href => router.push(href)} />
-                    </AnalyticsOpsCell>
+                    {showOpsColumn ? (
+                      <AnalyticsOpsCell expanded expandedWidth="fit-content">
+                        <BlogDraftOperation item={item} now={now} active={isBlogDraftLocked} pending={pendingResumeId === item.id} onResume={onResume} onNavigate={href => router.push(href)} />
+                      </AnalyticsOpsCell>
+                    ) : null}
                     <td className="px-6 py-4">
                       <ThumbnailCell item={item} />
                     </td>
