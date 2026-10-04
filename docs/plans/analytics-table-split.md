@@ -9,7 +9,7 @@
 - 作成者: shoma-endo（Claude Code 支援）
 - 承認者: shoma-endo（§16 の要件承認で確定する）
 - 対象リリース: 機能リリースと独立。PR #596 のマージ後に着手し、`develop` へマージ後の通常デプロイに乗る
-- 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー。`npm run hotspots`（develop 4fd6ae2e）の第 3 位で、churn は全ファイル中 1 位（90 日で 34 回）。前提 PR #596。同時に起こした `docs/plans/chat-layout-split.md` / `docs/specs/client-page-boundary.md`
+- 関連する依頼・Issue・PR: 2026-10-03 可読性レビュー。`npm run hotspots`（develop 4fd6ae2e）の第 3 位で、churn は全ファイル中 1 位（90 日で 34 回）。前提 PR #596。同時に起こした `docs/specs/chat-layout-split.md` / `docs/specs/client-page-boundary.md`
 
 ## 1. 背景・目的・成功指標
 
@@ -292,7 +292,7 @@ Feature: AnalyticsTable.tsx を行・セル・フックに分ける
   - 案B: `src/components/` 直下に並べ、フックは `src/hooks/` へ
   - 案C: `app/analytics/components/` と `app/analytics/hooks/`
 - 採用案: 案A
-- 採用理由: 7 ファイルが 1 つの部品にしか属さないことを、ディレクトリ名で示せる。案B だと、1 つの部品の内部（部品・行・データ列のコンポーネント 3 本とフック 4 本）が `src/components/` の 32 ファイルと `src/hooks/` に分かれる。`src/hooks/` には `ChatLayout` 専用のフックも置かれているが（`docs/plans/chat-layout-split.md` ALT-002）、あちらはフックだけを足すのに対し、こちらはコンポーネントとフックを同時に足すので、1 か所にまとめるほうが読みやすい。ディレクトリ名は `project-naming` の kebab-case に合わせる
+- 採用理由: 7 ファイルが 1 つの部品にしか属さないことを、ディレクトリ名で示せる。案B だと、1 つの部品の内部（部品・行・データ列のコンポーネント 3 本とフック 4 本）が `src/components/` の 32 ファイルと `src/hooks/` に分かれる。`src/hooks/` には `ChatLayout` 専用のフックも置かれているが（`docs/specs/chat-layout-split.md` ALT-002）、あちらはフックだけを足すのに対し、こちらはコンポーネントとフックを同時に足すので、1 か所にまとめるほうが読みやすい。ディレクトリ名は `project-naming` の kebab-case に合わせる
 - 却下した案と理由: 案C は `src/components/AnalyticsTable.tsx` が `app/` を import することになり、依存の向きが逆になる
 - 影響: `src/components/` に `ui/` 以外のサブディレクトリが初めてできる
 - 将来変更する条件: 同じ形のサブディレクトリが増え、置き方の規約を `project-naming` に書く必要が出たとき
