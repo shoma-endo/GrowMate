@@ -212,6 +212,93 @@ describe('Instagram ブログ自動作成の実行（Runner）', () => {
 
     vi.mocked(llmChatWithStopReason).mockRejectedValueOnce(new Error('timeout'));
     await expect(run()).rejects.toMatchObject({ code: 'AI_FAILED' });
+    expect(llmChatWithStopReason).toHaveBeenCalledTimes(2);
+  });
+
+  describe('一時的な AI の失敗（529・500）', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout'] });
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it.each([
+      ['529', ChatErrorCode.ANTHROPIC_OVERLOADED],
+      ['500', ChatErrorCode.ANTHROPIC_API_ERROR],
+    ])('%s は5秒待って1回だけ送り直す', async (_label, code) => {
+      seedSession();
+      seedJob({ session_id: SESSION_ID, stage: 'step1' });
+      vi.mocked(llmChatWithStopReason)
+        .mockRejectedValueOnce(new ChatError('transient', code))
+        .mockRejectedValueOnce(new Error('stop after retry'));
+
+      const result = expect(run()).rejects.toMatchObject({ code: 'AI_FAILED' });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(llmChatWithStopReason).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      await result;
+      expect(llmChatWithStopReason).toHaveBeenCalledTimes(2);
+    });
+
+    it('送り直しが成功すれば、その出力で次のステップへ進む', async () => {
+      seedSession();
+      seedJob({ session_id: SESSION_ID, stage: 'step1' });
+      vi.mocked(llmChatWithStopReason)
+        .mockRejectedValueOnce(new ChatError('overloaded', ChatErrorCode.ANTHROPIC_OVERLOADED))
+        .mockResolvedValueOnce({ content: 'step1 出力', stopReason: 'end_turn' })
+        .mockRejectedValueOnce(new Error('stop at step2'));
+
+      const result = expect(run()).rejects.toMatchObject({ code: 'AI_FAILED' });
+      await vi.advanceTimersByTimeAsync(5_000);
+      await result;
+      expect(rows('content_annotations')[0]).toMatchObject({ needs: 'step1 出力' });
+      expect(rows('instagram_blog_draft_jobs')[0]).toMatchObject({ stage: 'step2' });
+    });
+
+    it('送り直しも 529 なら AI_FAILED（送り直しは1回だけ）', async () => {
+      seedSession();
+      seedJob({ session_id: SESSION_ID, stage: 'step1' });
+      vi.mocked(llmChatWithStopReason)
+        .mockRejectedValueOnce(new ChatError('overloaded', ChatErrorCode.ANTHROPIC_OVERLOADED))
+        .mockRejectedValueOnce(new ChatError('overloaded', ChatErrorCode.ANTHROPIC_OVERLOADED));
+
+      const result = expect(run()).rejects.toMatchObject({ code: 'AI_FAILED' });
+      await vi.advanceTimersByTimeAsync(5_000);
+      await result;
+      expect(llmChatWithStopReason).toHaveBeenCalledTimes(2);
+    });
+
+    it('待ったあとに1ステップ分の時間が残らないなら送り直さず AI_FAILED', async () => {
+      seedSession();
+      seedJob({ session_id: SESSION_ID, stage: 'step1' });
+      vi.mocked(llmChatWithStopReason).mockImplementationOnce(async () => {
+        vi.spyOn(Date, 'now').mockReturnValue(DEADLINE - 200_000);
+        throw new ChatError('overloaded', ChatErrorCode.ANTHROPIC_OVERLOADED);
+      });
+
+      await expect(run()).rejects.toMatchObject({ code: 'AI_FAILED' });
+      expect(llmChatWithStopReason).toHaveBeenCalledOnce();
+    });
+
+    it('タイムアウトは送り直さない', async () => {
+      seedSession();
+      seedJob({ session_id: SESSION_ID, stage: 'step1' });
+      vi.mocked(llmChatWithStopReason).mockRejectedValueOnce(new ChatError('timeout', ChatErrorCode.CONNECTION_TIMEOUT));
+
+      await expect(run()).rejects.toMatchObject({ code: 'AI_FAILED' });
+      expect(llmChatWithStopReason).toHaveBeenCalledOnce();
+    });
+
+    it('429 は送り直さない', async () => {
+      seedSession();
+      seedJob({ session_id: SESSION_ID, stage: 'step1' });
+      vi.mocked(llmChatWithStopReason).mockRejectedValueOnce(new ChatError('rate', ChatErrorCode.ANTHROPIC_RATE_LIMIT));
+
+      await expect(run()).rejects.toMatchObject({ code: 'AI_RATE_LIMITED' });
+      expect(llmChatWithStopReason).toHaveBeenCalledOnce();
+    });
   });
 
   describe('途中で切れたとき', () => {

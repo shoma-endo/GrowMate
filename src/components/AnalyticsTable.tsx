@@ -230,7 +230,7 @@ export function AnalyticsOpsHeaderCell({
 }) {
   return (
     <th
-      className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap relative group/th"
+      className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap group/th"
       style={{ ...getAnalyticsOpsColumnStyle(expanded, expandedWidth), transition: 'width 0.2s ease-in-out' }}
     >
       <div className="flex items-center justify-center relative w-full">
@@ -266,7 +266,7 @@ export function AnalyticsOpsCell({
 }) {
   return (
     <td
-      className="analytics-ops-cell px-2 py-4 whitespace-nowrap text-sm text-center relative"
+      className="analytics-ops-cell px-2 py-4 whitespace-nowrap text-sm text-center"
       style={getAnalyticsOpsColumnStyle(expanded, expandedWidth)}
     >
       {children}

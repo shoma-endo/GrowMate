@@ -37,6 +37,13 @@ type JobUpdate = TablesUpdate<'instagram_blog_draft_jobs'>;
 type ChatHistory = Awaited<ReturnType<typeof chatService.getSessionMessages>>;
 type BlogStepStage = Extract<InstagramBlogDraftStage, `step${number}`>;
 
+/** 一時的な AI の失敗（529 過負荷・500）。1回だけ待って送り直す */
+const TRANSIENT_AI_ERROR_CODES: ReadonlySet<string> = new Set<string>([
+  ChatErrorCode.ANTHROPIC_OVERLOADED,
+  ChatErrorCode.ANTHROPIC_API_ERROR,
+]);
+const TRANSIENT_AI_RETRY_DELAY_MS = 5_000;
+
 export class InstagramBlogDraftFailure extends Error {
   constructor(readonly code: InstagramBlogDraftErrorCode) {
     super(code);
@@ -148,7 +155,7 @@ class InstagramBlogDraftRunner extends SupabaseService {
       throw new InstagramBlogDraftFailure('AI_FAILED');
     }
     await this.requeueIfOutOfTime(job, userId, deadline);
-    const generated = await this.callModel(userRole, 'instagram_blog_keyword_generation', systemPrompt, [], caption);
+    const generated = await this.callModel(userRole, 'instagram_blog_keyword_generation', systemPrompt, [], caption, deadline);
     let proposal;
     try {
       proposal = parseInstagramKeywordProposal(generated.content);
@@ -351,7 +358,7 @@ class InstagramBlogDraftRunner extends SupabaseService {
     deadline: number
   ): Promise<string> {
     await this.requeueIfOutOfTime(job, userId, deadline);
-    const result = await this.callModel(userRole, model, systemPrompt, history, input);
+    const result = await this.callModel(userRole, model, systemPrompt, history, input, deadline);
     // 途切れた出力を保存する前に記録する。保存後に落ちても、再開時に続きの生成から入れるようにするため
     if (result.truncated) job = await this.updateJob(job, userId, { continuation_count: 0 });
     const saved = await chatService.continueChat(
@@ -388,7 +395,7 @@ class InstagramBlogDraftRunner extends SupabaseService {
       await this.updateJob(job, userId, { continuation_count: continuationCount + 1 });
       continuationCount += 1;
       const currentHistory = await chatService.getSessionMessages(this.requireSession(job), userId);
-      const result = await this.callModel(userRole, model, systemPrompt, currentHistory, CONTINUATION_INSTRUCTION);
+      const result = await this.callModel(userRole, model, systemPrompt, currentHistory, CONTINUATION_INSTRUCTION, deadline);
       // 途切れた出力は trim せずに連結する（行の途中で切れた箇所の改行や空白を保つため）
       latest += result.content;
       const saved = await chatService.updateLastAssistantMessage(userId, this.requireSession(job), latest, model);
@@ -406,7 +413,8 @@ class InstagramBlogDraftRunner extends SupabaseService {
     model: string,
     systemPrompt: string,
     history: ChatHistory,
-    input: string
+    input: string,
+    deadline: number
   ): Promise<{ content: string; truncated: boolean }> {
     const configKey = model.startsWith('blog_creation_step7_h') ? STEP7_HEADING_CONFIG_KEY : model;
     const config = MODEL_CONFIGS[configKey];
@@ -421,18 +429,32 @@ class InstagramBlogDraftRunner extends SupabaseService {
       userRole,
       inputEstimate: { recentMessages: messages, userMessage },
     });
+    const request = () => llmChatWithStopReason(config.provider, config.actualModel, [
+      ...messages,
+      { role: 'user', content: userMessage },
+    ], {
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+      thinking: config.thinking,
+      timeoutMs: 180_000,
+      maxRetries: 0,
+      anthropicSystemBlocks: anthropicSystem,
+    });
     try {
-      const result = await llmChatWithStopReason(config.provider, config.actualModel, [
-        ...messages,
-        { role: 'user', content: userMessage },
-      ], {
-        temperature: config.temperature,
-        maxTokens: config.maxTokens,
-        thinking: config.thinking,
-        timeoutMs: 180_000,
-        maxRetries: 0,
-        anthropicSystemBlocks: anthropicSystem,
-      });
+      let result;
+      try {
+        result = await request();
+      } catch (error) {
+        // SDK の待機つき再送（maxRetries）は時間の上限を食うので使わず、一時的な 529・500 だけ、
+        // 待ったあとも1ステップ分の時間が残るときに1回だけ送り直す
+        const canRetry = error instanceof ChatError
+          && TRANSIENT_AI_ERROR_CODES.has(error.code)
+          && Date.now() + TRANSIENT_AI_RETRY_DELAY_MS + INSTAGRAM_BLOG_DRAFT_MIN_STEP_REMAINING_MS <= deadline;
+        if (!canRetry) throw error;
+        console.warn('[Instagram BlogDraft] transient AI error, retrying once', { model, code: error.code });
+        await new Promise<void>(resolve => setTimeout(resolve, TRANSIENT_AI_RETRY_DELAY_MS));
+        result = await request();
+      }
       return { content: result.content, truncated: result.stopReason === 'max_tokens' };
     } catch (error) {
       if (error instanceof ChatError && error.code === ChatErrorCode.ANTHROPIC_RATE_LIMIT) {
