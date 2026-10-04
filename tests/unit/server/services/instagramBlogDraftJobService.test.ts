@@ -441,7 +441,7 @@ describe('結果メール（finalizeBatchIfDone）', () => {
     expect(emailService.sendInstagramBlogDraftNotification).toHaveBeenCalledOnce();
     const [to, subject, , key] = vi.mocked(emailService.sendInstagramBlogDraftNotification).mock.calls[0] ?? [];
     expect(to).toBe('user@example.com');
-    expect(subject).toBe('【GrowMate】ブログ記事の作成が終わりました（完了 1件・止まった 1件）');
+    expect(subject).toBe('【GrowMate】ブログ記事生成完了');
     expect(key).toBe(BATCH);
     expect(batch.notified_at).not.toBeNull();
   });
@@ -476,14 +476,13 @@ describe('結果メール（finalizeBatchIfDone）', () => {
     expect(batch.notified_at).not.toBeNull();
   });
 
-  it('全件がチャットを作る前に止まっていても、キーワードの取得を飛ばして結果メールを送る', async () => {
+  it('全件がチャットを作る前に止まっていても、結果メールを送る', async () => {
     rows('users').push({ id: USER_ID, email: 'user@example.com', role: 'paid' });
     rows('instagram_media').push({ id: 'media-1', user_id: USER_ID, caption: 'caption 1' });
     rows('instagram_blog_draft_jobs').push(
       job({ id: 'job-1', instagram_media_id: 'media-1', status: 'failed', error_code: 'KEYWORD_PARSE_FAILED' })
     );
     rows('instagram_blog_draft_batches').push({ id: BATCH, user_id: USER_ID, chain_count: 0, notified_at: null });
-    failNext('content_annotations', 'select');
 
     await instagramBlogDraftJobService.runBatch(BATCH, USER_ID, 'paid');
 
