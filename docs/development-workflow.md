@@ -52,11 +52,15 @@ spec-to-pr
 
 ## 1. 要件を Grill する
 
-依頼がまだ粗い場合は、対話型 workflow を実行する。起動時（または会話中の `/interaction`）で対話モード **Grill Me** を選ぶ。
+依頼がまだ粗い場合は、対話型 workflow を実行する。起動時（または会話中の `/interaction`）で対話モード **Grill Me** を選び、最初のメッセージで実装したい機能の概要を入力する。
 
 ```bash
-takt -w grill-to-gherkin -t "実装したい機能の概要"
+takt -w grill-to-gherkin
 ```
+
+`-t` は付けない。`-t` を付けると対話モードに入らず、workflow がそのまま実行される。
+
+Grill Me は応答の先頭に論点ツリー（`[確定]` / `[未解決]` / `[OPEN: 今は決めない]` / `[CON: 懸念]`）を出す。ツリー全体を出すのは最初・論点が追加・分割・削除・保留されたとき・完了時のまとめで、それ以外は件数を1行だけ出す。「ツリー」とだけ入力するとツリー全体を出し直す。表示ルールは [`grill-me-display.md`](../.takt/workflows/rules/grill-me-display.md) にあり、`.takt/config.yaml` の `assistant.init_files` で渡している。ツリーはその場で再構成した表示であり、記録の正本は `01-grill.md`。
 
 Grill Me は重要な判断を推奨案付きで一問ずつ確認する。`/go` を入力すると実行指示書が生成される。TAKT v0.62 以降、Gherkin は開発・実装タスクの指示書にだけ付く。要件確認だけの会話では Markdown 中心になり得る。受け入れ条件の Gherkin 化は workflow 内の `gherkin` step が担う。
 

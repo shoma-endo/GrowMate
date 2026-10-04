@@ -315,7 +315,7 @@
       "count": 24
     }
   },
-  "app/gsc-import/page.tsx": {
+  "app/gsc-import/GscImportClient.tsx": {
     "shadcn/no-raw-colors": {
       "count": 24
     }
@@ -328,9 +328,14 @@
       "count": 1
     }
   },
+  "app/login/LoginClient.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 5
+    }
+  },
   "app/login/page.tsx": {
     "shadcn/no-raw-colors": {
-      "count": 6
+      "count": 1
     }
   },
   "app/privacy/page.tsx": {
@@ -356,7 +361,7 @@
       "count": 16
     }
   },
-  "app/wordpress-import/page.tsx": {
+  "app/wordpress-import/WordPressImportClient.tsx": {
     "shadcn/no-raw-colors": {
       "count": 32
     }

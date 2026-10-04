@@ -8,3 +8,8 @@ workflow_runtime_prepare:
 observability:
   enabled: true
   usage_events_phase: true
+# Grill Me の system prompt は TAKT 本体固定のため、対話中の表示書式は init_files で渡す。
+# init_files は全対話モードに効くので、Grill Me だけに絞る条件はファイル側に書く。
+assistant:
+  init_files:
+    - .takt/workflows/rules/grill-me-display.md
