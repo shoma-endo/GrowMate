@@ -1,4 +1,4 @@
-export type DeploymentSuccessLevel = 'success' | 'warning' | 'critical' | 'no-data';
+type DeploymentSuccessLevel = 'success' | 'warning' | 'critical' | 'no-data';
 
 export interface DeploymentSuccessEvaluation {
   level: DeploymentSuccessLevel;
