@@ -11,14 +11,21 @@ push 前に、下記に全文添付された最新レポート群から、PR 本
   - 禁止: `[Auto]` 接頭辞、ブランチ名だけのタイトル、`実装完了` / `対応完了` などの自己申告、英語のみ、conventional commits 接頭辞（`feat:` 等）。
 - 必須セクション（この順）:
   1. `## 概要` — 何を・なぜ変えたか（仕様起点、2〜4文）
-  2. `## 関連仕様書` — `plan.md` の `# タスク計画` 直後の `対象仕様書:` パス（なければ `self-review.md` の記載）。`self-review.md` が完全実装と判定した場合は「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動（create_pr が git mv・当該 slug の参照パス置換・ステータスを `implemented` に更新まで実施）」と明記する。部分実装の場合は「`docs/plans/` に残置（未実装: ○○）」と明記する（移動指示を書かない）
-  3. `## 変更要点` — 主要変更のみ（ファイル一覧の羅列は禁止。カテゴリ単位で3〜7点）
-  4. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
-  5. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く
-  6. `## 検証` — `npm run verify` 等の結果（手動ブラウザ確認は無人のため未実施が既定）
-  7. `## 画面キャプチャ` — `plan.md` の `UIモック:` が `対象外` なら「対象外」1行のみ。UI 対象（`なし` / `あり(...)`）なら `.takt/artifacts/pr-screenshots/` を列挙し、許可拡張子（`.png` `.jpg` `.jpeg` `.webp` `.gif` `.mp4` `.webm`）のファイルだけを `![alt](.takt/artifacts/pr-screenshots/NN-short-slug.ext)` で書く（alt は拡張子を除いたファイル名。create_pr が `--attach` で URL に書き換える）。0件なら「なし（ローカルキャプチャ未配置）」。モック HTML・図解バンドルへのリンクは書かない。スクショを新規に撮らない。
-  8. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める（キャプチャ 0 件でも同様）。`src/types/database.types.pending.ts` を追加している場合は「管理者によるマイグレーション適用・`npm run supabase:types` 実行・pendingファイル削除が必要」を含める。添付レポート間に食い違いがある場合は、その内容を含める（新規セクションは作らない）。その他あれば列挙。なければ「なし」
-  9. `## コミットメッセージ案` — 日本語1行
+  2. `## 全体像` — 変更の全体像を Mermaid 図（` ```mermaid ` フェンス）で示す。GitHub 上で図として描画される前提で書く。
+     - 図1（必須）: `flowchart LR`（縦長なら `flowchart TD`）。変更が載る経路（画面 → Server Action / Route Handler → サービス → DB / 外部API など）をノードと矢印で描く。本PRで追加・変更した要素に `:::changed` を付け、既存のまま使う要素は無印にする。ノードは15個以内。
+     - 図2（任意）: 処理の順序そのものが変更の要点のとき（認可 → 外部API → 保存など）だけ `sequenceDiagram` を足す。参加者は6以内。
+     - 根拠: 添付レポート（主に `plan.md` の変更対象と、レビューで確認された実装）に書かれた要素・関係だけを描く。推測でノードや矢印を足さない。読み取れない部分は描かずに省く。plan とレビュー結果で実装が食い違う場合はレビュー結果側を描き、食い違いを `## 未確認事項` に書く。
+     - 記法（描画エラー防止）: ノード ID は英数字と `_` のみ（`end` `graph` `subgraph` などの予約語は使わない）。ラベルは必ず `["..."]` で囲み、ラベル内に `"` を書かない。改行は `<br/>`。図1の末尾に `classDef changed stroke:#f08c00,stroke-width:3px` を置く（`fill` は指定しない。ダークテーマで文字が読めなくなるため）。`%%{init}%%`・`click`・`style` は使わない。
+     - 図の直後に凡例を1行書く: `太枠（橙）= 本PRで追加・変更`。
+     - 変更が docs・設定のみで描く経路が無い場合は、図を作らず「図示対象なし（理由）」の1行にする。
+  3. `## 関連仕様書` — `plan.md` の `# タスク計画` 直後の `対象仕様書:` パス（なければ `self-review.md` の記載）。`self-review.md` が完全実装と判定した場合は「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動（create_pr が git mv・当該 slug の参照パス置換・ステータスを `implemented` に更新まで実施）」と明記する。部分実装の場合は「`docs/plans/` に残置（未実装: ○○）」と明記する（移動指示を書かない）
+  4. `## 変更要点` — 主要変更のみ（ファイル一覧の羅列は禁止。カテゴリ単位で3〜7点）
+  5. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
+  6. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く
+  7. `## 検証` — `npm run verify` 等の結果（手動ブラウザ確認は無人のため未実施が既定）
+  8. `## 画面キャプチャ` — `plan.md` の `UIモック:` が `対象外` なら「対象外」1行のみ。UI 対象（`なし` / `あり(...)`）なら `.takt/artifacts/pr-screenshots/` を列挙し、許可拡張子（`.png` `.jpg` `.jpeg` `.webp` `.gif` `.mp4` `.webm`）のファイルだけを `![alt](.takt/artifacts/pr-screenshots/NN-short-slug.ext)` で書く（alt は拡張子を除いたファイル名。create_pr が `--attach` で URL に書き換える）。0件なら「なし（ローカルキャプチャ未配置）」。モック HTML・図解バンドルへのリンクは書かない。スクショを新規に撮らない。
+  9. `## 未確認事項` — UI 変更時は「手動ブラウザ確認未実施」を含める（キャプチャ 0 件でも同様）。`src/types/database.types.pending.ts` を追加している場合は「管理者によるマイグレーション適用・`npm run supabase:types` 実行・pendingファイル削除が必要」を含める。添付レポート間に食い違いがある場合は、その内容を含める（新規セクションは作らない）。その他あれば列挙。なければ「なし」
+  10. `## コミットメッセージ案` — 日本語1行
 - 変更ファイルの詳細表は作らない。
 
 ## plan.md（全文）

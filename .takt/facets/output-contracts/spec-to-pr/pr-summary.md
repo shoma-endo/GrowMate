@@ -1,8 +1,17 @@
-```markdown
+````markdown
 # {日本語・1行・50字以内のPRタイトル。What/Whyが一覧で分かる。禁止: [Auto]、ブランチ名のみ、実装完了/対応完了、英語のみ、conventional commits 接頭辞}
 
 ## 概要
 {仕様起点で何を・なぜ変えたか。2〜4文}
+
+## 全体像
+```mermaid
+flowchart LR
+  {nodeId}["{要素名}"] --> {nodeId2}["{要素名}"]:::changed
+  classDef changed stroke:#f08c00,stroke-width:3px
+```
+太枠（橙）= 本PRで追加・変更
+{処理順序が要点のときだけ sequenceDiagram を追加。経路が無い変更なら図を作らず「図示対象なし（理由）」}
 
 ## 関連仕様書
 - {`plan.md` の `# タスク計画` 直後の `対象仕様書:` パス。なければ self-review の記載}
@@ -35,4 +44,4 @@
 
 ## コミットメッセージ案
 {日本語1行}
-```
+````
