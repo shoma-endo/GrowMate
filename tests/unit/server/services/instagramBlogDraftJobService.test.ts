@@ -439,9 +439,11 @@ describe('結果メール（finalizeBatchIfDone）', () => {
     ]);
 
     expect(emailService.sendInstagramBlogDraftNotification).toHaveBeenCalledOnce();
-    const [to, subject, , key] = vi.mocked(emailService.sendInstagramBlogDraftNotification).mock.calls[0] ?? [];
+    const [to, subject, html, key] = vi.mocked(emailService.sendInstagramBlogDraftNotification).mock.calls[0] ?? [];
     expect(to).toBe('user@example.com');
     expect(subject).toBe('【GrowMate】ブログ記事生成完了');
+    // 完了1件と MAX_TOKENS で止まった1件
+    expect(html).toContain('完了 1件・失敗 1件');
     expect(key).toBe(BATCH);
     expect(batch.notified_at).not.toBeNull();
   });

@@ -255,7 +255,8 @@ class InstagramBlogDraftJobService extends SupabaseService {
     if (!emailAddress) return this.markNotifiedWithoutEmail(batchId, userId);
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
     if (!siteUrl) throw new Error('Instagram blog draft email URL is not configured');
-    const email = buildInstagramBlogDraftEmail(siteUrl);
+    const completed = jobs.filter(job => job.status === 'completed').length;
+    const email = buildInstagramBlogDraftEmail(siteUrl, { completed, failed: jobs.length - completed });
     const { data: claimed, error: claimError } = await client.from('instagram_blog_draft_batches')
       .update({ notified_at: new Date().toISOString() }).eq('id', batchId).eq('user_id', userId).is('notified_at', null)
       .select('id').maybeSingle();
