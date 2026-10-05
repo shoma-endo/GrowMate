@@ -15,29 +15,7 @@ interface VercelDeployment {
   buildLogs?: string; // ビルドログのエラー部分
 }
 
-interface VercelMetrics {
-  edgeRequests?: {
-    total: number;
-    status2xx: number;
-    status3xx: number;
-    status4xx: number;
-    status5xx: number;
-  };
-  dataTransfer?: {
-    incoming: number; // bytes
-    outgoing: number; // bytes
-  };
-  functions?: {
-    invocations: number;
-    errors: number;
-    timeouts: number;
-  };
-  compute?: {
-    activeCpuTime: number; // milliseconds
-  };
-}
-
-/**
+  /**
  * Vercel APIからデプロイメント一覧を取得（過去7日間）
  */
 export async function getVercelDeployments(
@@ -315,73 +293,7 @@ async function enrichErrorDeployments(
 }
 
 /**
- * デプロイメントのイベントログからメトリクスを推定
- * 注意: Vercel APIには直接的なメトリクス取得エンドポイントがないため、
- * デプロイメント情報から推定値を計算します
- */
-async function estimateMetrics(
-  token: string,
-  deployments: VercelDeployment[]
-): Promise<VercelMetrics> {
-  // 実際のメトリクス取得はVercel Analytics APIが必要ですが、
-  // ここではデプロイメント情報から推定値を返します
-  const readyDeployments = deployments.filter(d => d.state === 'READY');
-  const failedDeployments = deployments.filter(d => d.state === 'ERROR');
-
-  // デプロイメント数から推定
-  const totalDeployments = deployments.length;
-  const successRate = totalDeployments > 0 ? readyDeployments.length / totalDeployments : 0;
-
-  return {
-    edgeRequests: {
-      total: totalDeployments * 100, // 推定値
-      status2xx: Math.floor(totalDeployments * 100 * successRate),
-      status3xx: 0,
-      status4xx: Math.floor(totalDeployments * 100 * (1 - successRate) * 0.3),
-      status5xx: Math.floor(totalDeployments * 100 * (1 - successRate) * 0.7),
-    },
-    dataTransfer: {
-      incoming: totalDeployments * 1024 * 1024, // 推定値（1MB per deployment）
-      outgoing: totalDeployments * 4 * 1024 * 1024, // 推定値（4MB per deployment）
-    },
-    functions: {
-      invocations: totalDeployments * 10, // 推定値
-      errors: failedDeployments.length,
-      timeouts: 0,
-    },
-    compute: {
-      activeCpuTime: readyDeployments.reduce((sum, d) => {
-        if (d.buildingAt && d.readyAt) {
-          return sum + (d.readyAt - d.buildingAt);
-        }
-        return sum;
-      }, 0),
-    },
-  };
-}
-
-/**
- * バイト数を人間が読みやすい形式に変換
- */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-}
-
-/**
- * ミリ秒を人間が読みやすい形式に変換
- */
-function formatTime(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60000).toFixed(1)}m`;
-}
-
-/**
- * Vercelダッシュボードの統計情報を取得するスクリプト
+ * Vercelデプロイの死活を確認するスクリプト（過去7日間）
  */
 async function checkVercelStats() {
   const env = loadEnv();
@@ -397,7 +309,7 @@ async function checkVercelStats() {
     throw new Error('VERCEL_PROJECT_ID環境変数が設定されていません。');
   }
 
-  console.log('=== Vercel ダッシュボード統計情報 ===\n');
+  console.log('=== Vercel デプロイ死活チェック ===\n');
 
   try {
     // デプロイメント情報を取得（過去7日間）
@@ -421,43 +333,6 @@ async function checkVercelStats() {
       console.log('\n🔍 エラーデプロイメントの詳細情報を取得中...');
       deployments = await enrichErrorDeployments(vercelToken, deployments, vercelTeamId);
     }
-    console.log('');
-
-    // メトリクスを推定（実際のメトリクス取得にはVercel Analytics APIが必要）
-    console.log('📊 メトリクス情報を推定中...');
-    const metrics = await estimateMetrics(vercelToken, deployments);
-
-    console.log('\n【Edge Requests】');
-    if (metrics.edgeRequests) {
-      console.log(`  総リクエスト数: ${metrics.edgeRequests.total.toLocaleString()}`);
-      console.log(`  2XX (成功): ${metrics.edgeRequests.status2xx.toLocaleString()}`);
-      console.log(`  3XX (リダイレクト): ${metrics.edgeRequests.status3xx.toLocaleString()}`);
-      console.log(`  4XX (クライアントエラー): ${metrics.edgeRequests.status4xx.toLocaleString()}`);
-      console.log(`  5XX (サーバーエラー): ${metrics.edgeRequests.status5xx.toLocaleString()}`);
-    }
-
-    console.log('\n【Fast Data Transfer】');
-    if (metrics.dataTransfer) {
-      console.log(`  受信: ${formatBytes(metrics.dataTransfer.incoming)}`);
-      console.log(`  送信: ${formatBytes(metrics.dataTransfer.outgoing)}`);
-    }
-
-    console.log('\n【Vercel Functions】');
-    if (metrics.functions) {
-      console.log(`  実行回数: ${metrics.functions.invocations.toLocaleString()}`);
-      console.log(
-        `  エラー: ${metrics.functions.errors} (${metrics.functions.errors > 0 ? ((metrics.functions.errors / metrics.functions.invocations) * 100).toFixed(2) : '0.00'}%)`
-      );
-      console.log(
-        `  タイムアウト: ${metrics.functions.timeouts} (${metrics.functions.timeouts > 0 ? ((metrics.functions.timeouts / metrics.functions.invocations) * 100).toFixed(2) : '0.00'}%)`
-      );
-    }
-
-    console.log('\n【Compute】');
-    if (metrics.compute) {
-      console.log(`  Active CPU: ${formatTime(metrics.compute.activeCpuTime)}`);
-    }
-
     // 総合評価
     console.log('\n【総合評価】');
     const evaluation = evaluateDeploymentSuccess(readyDeployments.length, deployments.length);
@@ -514,7 +389,7 @@ async function checkVercelStats() {
 if (process.argv[1]?.endsWith('check-vercel-stats.ts')) {
   checkVercelStats()
     .then(() => {
-      console.log('\n✅ Vercel統計情報の取得が完了しました');
+      console.log('\n✅ Vercelデプロイ死活チェックが完了しました');
       process.exit(0);
     })
     .catch(error => {
