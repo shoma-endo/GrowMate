@@ -327,6 +327,21 @@ describe('ワーカー（runBatch）', () => {
     expect(emailService.sendInstagramBlogDraftNotification).not.toHaveBeenCalled();
   });
 
+  it('Preview では本番ドメインではなく、そのデプロイの URL の受け口を呼ぶ', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_URL', 'growmate-preview.vercel.app');
+    rows('instagram_blog_draft_jobs').push(job({ id: 'job-1', instagram_media_id: 'media-1' }));
+    rows('instagram_blog_draft_batches').push({ id: BATCH, user_id: USER_ID, chain_count: 0, notified_at: null });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal('fetch', fetchMock);
+    mockElapsed(540_000);
+
+    await instagramBlogDraftJobService.runBatch(BATCH, USER_ID, 'paid');
+
+    const [url] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe('https://growmate-preview.vercel.app/api/instagram/blog-drafts/continue');
+  });
+
   it('残り時間が 200 秒を超えていれば取り出す', async () => {
     rows('instagram_blog_draft_jobs').push(job({ id: 'job-1', instagram_media_id: 'media-1' }));
     rows('instagram_blog_draft_batches').push({ id: BATCH, user_id: USER_ID, chain_count: 0, notified_at: null });
@@ -455,6 +470,22 @@ describe('結果メール（finalizeBatchIfDone）', () => {
 
     expect(emailService.sendInstagramBlogDraftNotification).not.toHaveBeenCalled();
     expect(batch.notified_at).not.toBeNull();
+  });
+
+  it('リンクは本番では NEXT_PUBLIC_SITE_URL、Preview ではそのデプロイの URL に向ける', async () => {
+    seedFinishedBatch('user@example.com');
+    await instagramBlogDraftJobService.runBatch(BATCH, USER_ID, 'paid');
+    expect(vi.mocked(emailService.sendInstagramBlogDraftNotification).mock.calls[0]?.[2])
+      .toContain('href="https://growmate.test/analytics?tab=instagram"');
+
+    resetStore();
+    vi.mocked(emailService.sendInstagramBlogDraftNotification).mockClear();
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('VERCEL_URL', 'growmate-preview.vercel.app');
+    seedFinishedBatch('user@example.com');
+    await instagramBlogDraftJobService.runBatch(BATCH, USER_ID, 'paid');
+    expect(vi.mocked(emailService.sendInstagramBlogDraftNotification).mock.calls[0]?.[2])
+      .toContain('href="https://growmate-preview.vercel.app/analytics?tab=instagram"');
   });
 
   it('送信に失敗しても作成の状態は変えず、ログだけ残す', async () => {
