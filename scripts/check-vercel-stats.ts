@@ -1,4 +1,5 @@
 import { loadEnv } from './lib/load-env';
+import { describeVercelApiError, evaluateDeploymentSuccess } from './lib/vercel-stats';
 
 // Vercel APIレスポンスの型定義
 interface VercelDeployment {
@@ -39,50 +40,42 @@ interface VercelMetrics {
 /**
  * Vercel APIからデプロイメント一覧を取得（過去7日間）
  */
-async function getVercelDeployments(
+export async function getVercelDeployments(
   token: string,
   projectId: string,
   teamId?: string
 ): Promise<VercelDeployment[]> {
-  try {
-    const since = Date.now() - 7 * 24 * 60 * 60 * 1000; // 7日前
-    const url = teamId
-      ? `https://api.vercel.com/v6/deployments?projectId=${projectId}&teamId=${teamId}&since=${since}&limit=100`
-      : `https://api.vercel.com/v6/deployments?projectId=${projectId}&since=${since}&limit=100`;
+  const since = Date.now() - 7 * 24 * 60 * 60 * 1000; // 7日前
+  const url = teamId
+    ? `https://api.vercel.com/v6/deployments?projectId=${projectId}&teamId=${teamId}&since=${since}&limit=100`
+    : `https://api.vercel.com/v6/deployments?projectId=${projectId}&since=${since}&limit=100`;
 
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      let errorMessage = `HTTP error! status: ${response.status}`;
-      try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson.error) {
-          errorMessage += `, message: ${errorJson.error.message || errorJson.error}`;
-        }
-      } catch {
-        if (errorText) {
-          errorMessage += `, response: ${errorText.substring(0, 200)}`;
-        }
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    let detail = '';
+    try {
+      const errorJson = JSON.parse(errorText) as { error?: { message?: string } | string };
+      if (typeof errorJson.error === 'string') {
+        detail = errorJson.error;
+      } else if (errorJson.error?.message) {
+        detail = errorJson.error.message;
       }
-      throw new Error(errorMessage);
+    } catch {
+      if (errorText) {
+        detail = errorText.substring(0, 200);
+      }
     }
-
-    const data = (await response.json()) as { deployments: VercelDeployment[] };
-    return data.deployments || [];
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error('デプロイメント情報の取得エラー:', errorMessage);
-    if (errorStack) {
-      console.error('スタックトレース:', errorStack);
-    }
-    return [];
+    throw new Error(describeVercelApiError(response.status, detail, Boolean(teamId)));
   }
+
+  const data = (await response.json()) as { deployments: VercelDeployment[] };
+  return data.deployments || [];
 }
 
 /**
@@ -409,6 +402,9 @@ async function checkVercelStats() {
   try {
     // デプロイメント情報を取得（過去7日間）
     console.log('📈 デプロイメント情報を取得中（過去7日間）...');
+    console.log(
+      `  対象プロジェクトID: ${vercelProjectId ? '設定あり' : '未設定'} / チームID: ${vercelTeamId ? '設定あり' : '未設定'}`
+    );
     let deployments = await getVercelDeployments(vercelToken, vercelProjectId, vercelTeamId);
 
     console.log(`📊 総デプロイメント数: ${deployments.length}`);
@@ -464,14 +460,8 @@ async function checkVercelStats() {
 
     // 総合評価
     console.log('\n【総合評価】');
-    const successRate = deployments.length > 0 ? readyDeployments.length / deployments.length : 0;
-    if (successRate >= 0.95) {
-      console.log('  ✅ 正常: デプロイメント成功率が95%以上です。');
-    } else if (successRate >= 0.8) {
-      console.log('  ⚠️  注意: デプロイメント成功率が80%以上ですが、改善の余地があります。');
-    } else {
-      console.log('  ❌ 警告: デプロイメント成功率が80%未満です。調査が必要です。');
-    }
+    const evaluation = evaluateDeploymentSuccess(readyDeployments.length, deployments.length);
+    console.log(evaluation.message);
 
     if (errorDeployments.length > 0) {
       console.log(`\n  ⚠️  エラーデプロイメント: ${errorDeployments.length}件`);
@@ -520,20 +510,22 @@ async function checkVercelStats() {
   }
 }
 
-// スクリプト実行
-checkVercelStats()
-  .then(() => {
-    console.log('\n✅ Vercel統計情報の取得が完了しました');
-    process.exit(0);
-  })
-  .catch(error => {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error('\n❌ スクリプト実行エラー:');
-    console.error('エラーメッセージ:', errorMessage);
-    if (errorStack) {
-      console.error('\nスタックトレース:');
-      console.error(errorStack);
-    }
-    process.exit(1);
-  });
+// 直接実行時のみ走らせる（vitestからのimportでは実行しない）
+if (process.argv[1]?.endsWith('check-vercel-stats.ts')) {
+  checkVercelStats()
+    .then(() => {
+      console.log('\n✅ Vercel統計情報の取得が完了しました');
+      process.exit(0);
+    })
+    .catch(error => {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error('\n❌ スクリプト実行エラー:');
+      console.error('エラーメッセージ:', errorMessage);
+      if (errorStack) {
+        console.error('\nスタックトレース:');
+        console.error(errorStack);
+      }
+      process.exit(1);
+    });
+}
