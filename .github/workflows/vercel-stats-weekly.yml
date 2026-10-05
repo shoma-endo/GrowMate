@@ -91,14 +91,14 @@ jobs:
           const elements = [
             div(`**${statusEmoji} ${statusText}**`),
             hr(),
-            div(`**▲ 統計情報**\n\`\`\`\n${escapeLarkMd(output)}\n\`\`\``),
+            div(`**▲ デプロイ死活情報**\n\`\`\`\n${escapeLarkMd(output)}\n\`\`\``),
             hr(),
             note(`[実行ログを見る](${workflowUrl})`),
           ];
 
           sendLarkCard({
             webhookUrl: process.env.VERCEL_STATS_WEBHOOK_URL,
-            title: `▲ Vercel ダッシュボード統計レポート：${statusText}`,
+            title: `▲ Vercel デプロイ死活レポート：${statusText}`,
             template: isSuccess ? 'green' : 'red',
             elements,
           })
