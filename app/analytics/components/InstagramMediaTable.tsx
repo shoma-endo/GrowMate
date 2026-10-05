@@ -177,8 +177,14 @@ export default function InstagramMediaTable({
   targetMinRate,
 }: InstagramMediaTableProps) {
   const router = useRouter();
-  const selectedOnPage = items.filter(item => selectedIds.has(item.id)).length;
-  const allOnPageSelected = items.length > 0 && selectedOnPage === items.length;
+  // 再開できない止まった投稿（チャットが削除された）は、どちらのボタンでも作れないので選ばせない
+  const isSelectable = (item: InstagramMediaListItem) => {
+    const state = getInstagramBlogDraftDisplayState(item.blogDraft, now);
+    return state.kind !== 'stopped' || state.resumable;
+  };
+  const selectableItems = items.filter(isSelectable);
+  const selectedOnPage = selectableItems.filter(item => selectedIds.has(item.id)).length;
+  const allOnPageSelected = selectableItems.length > 0 && selectedOnPage === selectableItems.length;
   const columns = React.useMemo(() => INSTAGRAM_COLUMNS.map(col => ({ ...col })), []);
 
   const handleConfiguratorChange = React.useCallback(
@@ -386,6 +392,7 @@ export default function InstagramMediaTable({
                       <AnalyticsSelectionCheckbox
                         aria-label={`${item.caption?.trim().slice(0, 60) || '投稿'}を選択`}
                         checked={selected}
+                        disabled={!isSelectable(item)}
                         onCheckedChange={checked => onToggleRow(item.id, checked === true)}
                       />
                     </AnalyticsSelectionCell>
@@ -461,16 +468,18 @@ function BlogDraftOperation({
     <div className="flex flex-col items-center gap-1">
       <div className="flex items-center justify-center gap-2">
         {/* ツールバーの［ブログ記事を作成］と同じく、色のクラスを足すため素の button に buttonVariants を当てる */}
-        <button
-          type="button"
-          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), AI_ACTION_BUTTON_CLASS)}
-          onClick={() => onResume(item.id)}
-          disabled={pending || active}
-          aria-busy={pending}
-        >
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
-          {pending ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING : '続きを作成'}
-        </button>
+        {state.resumable ? (
+          <button
+            type="button"
+            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), AI_ACTION_BUTTON_CLASS)}
+            onClick={() => onResume(item.id)}
+            disabled={pending || active}
+            aria-busy={pending}
+          >
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+            {pending ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_STARTING : '続きを作成'}
+          </button>
+        ) : null}
         {stoppedSessionId ? (
           <LaunchChatButton
             label="チャット"

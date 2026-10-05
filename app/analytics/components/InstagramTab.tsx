@@ -58,11 +58,14 @@ export interface InstagramBlogDraftToolbarProps {
   busyAction: 'create' | 'resume';
   /** 選んだうち、まだ作成の無い（または作成中・作成済みでサーバーが外す）投稿の件数。1件以上なら［ブログ記事を作成］を出す */
   createCount: number;
-  /** 選んだうち、止まった投稿の件数。1件以上なら［続きを作成］を出す */
+  /** 選んだうち、再開できる止まった投稿の件数。1件以上なら［続きを作成］を出す */
   resumeCount: number;
   onCreate: () => void;
   onResume: () => void;
 }
+
+/** 'none' は再開できない止まった投稿（チャットが削除された）。どちらのボタンでも送らない */
+type BlogDraftSelectionTarget = 'create' | 'resume' | 'none';
 
 interface BlogDraftStartResponse {
   started: number;
@@ -165,8 +168,8 @@ export default function InstagramTab({
   // 手動時の警告と違って消える先が無いため、絞り込み変更でクリアしない
   const [isSyncAlertFromAuto, setIsSyncAlertFromAuto] = React.useState(false);
   const [isBackfilling, setIsBackfilling] = React.useState(false);
-  // 値は「選んだ時点で止まった投稿だったか」。選択はページを送っても残り、別のページの行の状態は画面から読めないため、選んだ時点で覚える
-  const [selectedMedia, setSelectedMedia] = React.useState<Map<string, boolean>>(() => new Map());
+  // 値は選んだ時点でどのボタンの対象だったか。選択はページを送っても残り、別のページの行の状態は画面から読めないため、選んだ時点で覚える
+  const [selectedMedia, setSelectedMedia] = React.useState<Map<string, BlogDraftSelectionTarget>>(() => new Map());
   const [isStartingBlogDraft, setIsStartingBlogDraft] = React.useState(false);
   // 開始中に、押したほうのボタンを回転表示のまま残すため（押したボタンが消えるとフォーカスが外れる）
   const [lastStartSource, setLastStartSource] = React.useState<'create' | 'resume' | 'row'>('create');
@@ -213,13 +216,17 @@ export default function InstagramTab({
     return () => window.clearInterval(interval);
   }, [hasUnfinishedBlogDraft]);
 
-  const isStoppedRow = (item: InstagramMediaListItem) =>
-    getInstagramBlogDraftDisplayState(item.blogDraft, blogDraftNow).kind === 'stopped';
+  const getSelectionTarget = (item: InstagramMediaListItem): BlogDraftSelectionTarget => {
+    const state = getInstagramBlogDraftDisplayState(item.blogDraft, blogDraftNow);
+    if (state.kind !== 'stopped') return 'create';
+    return state.resumable ? 'resume' : 'none';
+  };
   const updateSelection = (targets: InstagramMediaListItem[], checked: boolean) => {
     setSelectedMedia(previous => {
       const next = new Map(previous);
       for (const item of targets) {
-        if (checked) next.set(item.id, isStoppedRow(item));
+        const target = getSelectionTarget(item);
+        if (checked && target !== 'none') next.set(item.id, target);
         else next.delete(item.id);
       }
       return next;
@@ -513,12 +520,12 @@ export default function InstagramTab({
   const selectedCount = selectedMedia.size;
   // 表示中の行は今の状態で分ける（選んだあとに作成中から止まった、などがあるため）。覚えた値は別のページの行にだけ使う
   const itemById = new Map(items.map(item => [item.id, item]));
-  const isSelectedStopped = (id: string, stoppedWhenSelected: boolean) => {
+  const selectedIdsFor = (target: BlogDraftSelectionTarget) => [...selectedMedia].flatMap(([id, targetWhenSelected]) => {
     const item = itemById.get(id);
-    return item ? isStoppedRow(item) : stoppedWhenSelected;
-  };
-  const resumeMediaIds = [...selectedMedia].flatMap(([id, stopped]) => (isSelectedStopped(id, stopped) ? [id] : []));
-  const createMediaIds = [...selectedMedia].flatMap(([id, stopped]) => (isSelectedStopped(id, stopped) ? [] : [id]));
+    return (item ? getSelectionTarget(item) : targetWhenSelected) === target ? [id] : [];
+  });
+  const resumeMediaIds = selectedIdsFor('resume');
+  const createMediaIds = selectedIdsFor('create');
   // 作成中はボタン自体が「作成中...」になるので、理由の文字は件数超過のときだけ出す
   const draftDisabledReason = selectedCount > INSTAGRAM_BLOG_DRAFT_MAX_SELECTION
     ? ERROR_MESSAGES.INSTAGRAM.BLOG_DRAFT_LIMIT_REACHED

@@ -26,11 +26,20 @@ describe('Instagram blog draft display state', () => {
 
   it('停止・失敗・完了の表示を判定する', () => {
     expect(getInstagramBlogDraftDisplayState(draft, Date.parse(draft.updatedAt) + 20 * 60_000 + 1))
-      .toEqual({ kind: 'stopped', label: '失敗', progress: '10/23' });
+      .toEqual({ kind: 'stopped', label: '失敗', progress: '10/23', resumable: true });
     expect(getInstagramBlogDraftDisplayState({ ...draft, status: 'failed', errorCode: 'MAX_TOKENS' }, 0))
-      .toEqual({ kind: 'stopped', label: '途中で切れました', progress: '10/23' });
+      .toEqual({ kind: 'stopped', label: '途中で切れました', progress: '10/23', resumable: true });
     expect(getInstagramBlogDraftDisplayState({ ...draft, status: 'completed' }, 0))
       .toEqual({ kind: 'completed' });
+  });
+
+  it('チャットが削除された（sessionId が null）止まった作成は、キーワード案の段階のときだけ再開できる', () => {
+    const failed = { ...draft, status: 'failed' as const, sessionId: null };
+    expect(getInstagramBlogDraftDisplayState(failed, 0)).toMatchObject({ kind: 'stopped', resumable: false });
+    expect(getInstagramBlogDraftDisplayState({ ...failed, stage: 'step3', headingTotal: null }, 0))
+      .toMatchObject({ kind: 'stopped', resumable: false });
+    expect(getInstagramBlogDraftDisplayState({ ...failed, stage: 'keywords', headingTotal: null }, 0))
+      .toMatchObject({ kind: 'stopped', resumable: true });
   });
 
   // m = キーワード案 1 + step1〜6 + 見出しの数 + 完成形 1。n は保存を終えたステップの数

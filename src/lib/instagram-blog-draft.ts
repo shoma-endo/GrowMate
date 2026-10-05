@@ -54,7 +54,7 @@ export type InstagramBlogDraftDisplayState =
   | { kind: 'none' }
   | { kind: 'queued' }
   | { kind: 'running'; progress: string | null }
-  | { kind: 'stopped'; label: '失敗' | '途中で切れました'; progress: string | null }
+  | { kind: 'stopped'; label: '失敗' | '途中で切れました'; progress: string | null; resumable: boolean }
   | { kind: 'completed' };
 
 export function getInstagramBlogDraftDisplayState(
@@ -71,6 +71,8 @@ export function getInstagramBlogDraftDisplayState(
       kind: 'stopped',
       label: draft.errorCode === 'MAX_TOKENS' ? '途中で切れました' : '失敗',
       progress,
+      // チャットが削除されると session_id は null になる。キーワード案より後の段階はチャットが無いと進められない
+      resumable: draft.sessionId !== null || draft.stage === 'keywords',
     };
   }
   if (draft.status === 'queued') return { kind: 'queued' };
