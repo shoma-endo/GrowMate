@@ -2,7 +2,7 @@ push 前に、下記に全文添付された最新レポート群から、PR 本
 
 必須条件:
 - 実装やレビュー判断は行わない。確認済みの事実と意見（完了判断）を分けて整理する。
-- 一次情報は下記添付の `plan.md` / `ai-antipattern-review.md` / `architecture-review.md` / `readme-sync.md` / `self-review.md` の5つに限る。run ディレクトリやレポートパスを探索しない。**例外:** `plan.md` ヘッダの `UIモック:` が `対象外` 以外のときだけ、キャプチャ有無の確認のため `.takt/artifacts/pr-screenshots/` を列挙してよい（スクショの新規撮影・生成はしない）。
+- 一次情報は下記添付の `plan.md` / `implement-report.md` / `fix-result.md` / `ai-antipattern-review.md` / `architecture-review.md` / `readme-sync.md` / `self-review.md` に限る。`fix-result.md` は fix 工程が一度も走らなかった run では欠落文になるが、正常であり ABORT 理由にしない。run ディレクトリやレポートパスを探索しない。**例外:** `plan.md` ヘッダの `UIモック:` が `対象外` 以外のときだけ、キャプチャ有無の確認のため `.takt/artifacts/pr-screenshots/` を列挙してよい（スクショの新規撮影・生成はしない）。
 - `self-review.md` の仕様書完全実装判定を読み取り、`## 関連仕様書` に転記する（実装やレビュー判断はしない、転記のみ）。
 - `pr-summary.md` は GitHub PR 本文としてそのまま使える Markdown にする。先頭に PR タイトル案を1行（`# ` 見出し）で書き、続けて本文セクションを書く。
 - PR タイトル形式（必須）:
@@ -12,12 +12,15 @@ push 前に、下記に全文添付された最新レポート群から、PR 本
 - 必須セクション（この順）:
   1. `## 概要` — 何を・なぜ変えたか（仕様起点、2〜4文）
   2. `## 全体像` — 変更の全体像を Mermaid 図（` ```mermaid ` フェンス）で示す。GitHub 上で図として描画される前提で書く。
-     - 図1（必須）: `flowchart LR`（縦長なら `flowchart TD`）。変更が載る経路（画面 → Server Action / Route Handler → サービス → DB / 外部API など）をノードと矢印で描く。本PRで追加・変更した要素に `:::changed` を付け、既存のまま使う要素は無印にする。ノードは15個以内。
-     - 図2（任意）: 処理の順序そのものが変更の要点のとき（認可 → 外部API → 保存など）だけ `sequenceDiagram` を足す。参加者は6以内。
-     - 根拠: 添付レポート（主に `plan.md` の変更対象と、レビューで確認された実装）に書かれた要素・関係だけを描く。推測でノードや矢印を足さない。読み取れない部分は描かずに省く。plan とレビュー結果で実装が食い違う場合はレビュー結果側を描き、食い違いを `## 未確認事項` に書く。
-     - 記法（描画エラー防止）: ノード ID は英数字と `_` のみ（`end` `graph` `subgraph` などの予約語は使わない）。ラベルは必ず `["..."]` で囲み、ラベル内に `"` を書かない。改行は `<br/>`。図1の末尾に `classDef changed stroke:#f08c00,stroke-width:3px` を置く（`fill` は指定しない。ダークテーマで文字が読めなくなるため）。`%%{init}%%`・`click`・`style` は使わない。
+     - 図は `flowchart LR`（縦長なら `flowchart TD`）を1枚だけ。変更が載る経路（画面 → Server Action / Route Handler → サービス → DB / 外部API など）をノードと矢印で描く。本PRで追加・変更した要素に `:::changed` を付け、既存のまま使う要素は無印にする。ノードは15個以内。
+     - 根拠: 実装の実体は `implement-report.md`（実装箇所と影響経路）と `fix-result.md`（その後の修正）から取る。`plan.md` は変更候補にすぎないため、実装レポートに無い要素を plan だけを根拠に描かない。推測でノードや矢印を足さない。読み取れない部分は描かずに省く。plan と実装レポートが食い違う場合は実装レポート側を描き、食い違いを `## 未確認事項` に書く。
+     - 記法（描画エラー防止）:
+       - ノード ID は `n1`〜`n15` の連番、subgraph ID は `g1` からの連番にする（予約語との衝突を避けるため）。
+       - ノードは `n1["..."]`、エッジラベルは `-->|"..."|`、subgraph は `subgraph g1["..."]` と、ラベルは必ず `"` で囲む。
+       - ラベル内に `"` とバッククォートを書かない（識別子もそのまま書く）。改行は `<br/>`。
+       - 図の末尾に `classDef changed stroke:#f08c00,stroke-width:3px` を置く（`fill` は指定しない。ダークテーマで文字が読めなくなるため）。`%%{init}%%`・`click`・`style` は使わない。
      - 図の直後に凡例を1行書く: `太枠（橙）= 本PRで追加・変更`。
-     - 変更が docs・設定のみで描く経路が無い場合は、図を作らず「図示対象なし（理由）」の1行にする。
+     - 変更が docs・設定のみで描く経路が無い場合は、図と凡例を書かず「図示対象なし（理由）」の1行にする。
   3. `## 関連仕様書` — `plan.md` の `# タスク計画` 直後の `対象仕様書:` パス（なければ `self-review.md` の記載）。`self-review.md` が完全実装と判定した場合は「本PR完了後 `docs/plans/xxx.md` → `docs/specs/xxx.md` へ移動（create_pr が git mv・当該 slug の参照パス置換・ステータスを `implemented` に更新まで実施）」と明記する。部分実装の場合は「`docs/plans/` に残置（未実装: ○○）」と明記する（移動指示を書かない）
   4. `## 変更要点` — 主要変更のみ（ファイル一覧の羅列は禁止。カテゴリ単位で3〜7点）
   5. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
@@ -30,6 +33,12 @@ push 前に、下記に全文添付された最新レポート群から、PR 本
 
 ## plan.md（全文）
 {report:plan.md}
+
+## implement-report.md（全文）
+{report:implement-report.md}
+
+## fix-result.md（最新・全文）
+{report:fix-result.md}
 
 ## ai-antipattern-review.md（全文）
 {report:ai-antipattern-review.md}

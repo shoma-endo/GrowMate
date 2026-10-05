@@ -5,13 +5,13 @@
 {仕様起点で何を・なぜ変えたか。2〜4文}
 
 ## 全体像
+{経路がある変更は下の mermaid 図と凡例1行。docs・設定のみで経路が無い変更は、図と凡例を書かず「図示対象なし（理由）」1行のみ}
 ```mermaid
 flowchart LR
-  {nodeId}["{要素名}"] --> {nodeId2}["{要素名}"]:::changed
+  n1["{既存の要素名}"] --> n2["{追加・変更した要素名}"]:::changed
   classDef changed stroke:#f08c00,stroke-width:3px
 ```
 太枠（橙）= 本PRで追加・変更
-{処理順序が要点のときだけ sequenceDiagram を追加。経路が無い変更なら図を作らず「図示対象なし（理由）」}
 
 ## 関連仕様書
 - {`plan.md` の `# タスク計画` 直後の `対象仕様書:` パス。なければ self-review の記載}
