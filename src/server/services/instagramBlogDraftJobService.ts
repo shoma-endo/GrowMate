@@ -241,7 +241,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
 
   private async finalizeBatchIfDone(batchId: string, userId: string): Promise<void> {
     const client = this.getClient();
-    const { data: jobs, error } = await client.from('instagram_blog_draft_jobs').select('status, error_code')
+    const { data: jobs, error } = await client.from('instagram_blog_draft_jobs').select('status, error_code, session_id, instagram_media_id')
       .eq('batch_id', batchId).eq('user_id', userId);
     if (error) throw new Error('Instagram blog draft completion lookup failed');
     // 行が0件（連携解除で消えた）・ROLE_REVOKED・宛先なしは送らずに notified_at だけ埋める（仕様 BR-008・FR-010）
@@ -255,8 +255,26 @@ class InstagramBlogDraftJobService extends SupabaseService {
     if (!emailAddress) return this.markNotifiedWithoutEmail(batchId, userId);
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
     if (!siteUrl) throw new Error('Instagram blog draft email URL is not configured');
-    const completed = jobs.filter(job => job.status === 'completed').length;
-    const email = buildInstagramBlogDraftEmail(siteUrl, { completed, failed: jobs.length - completed });
+    const { data: media, error: mediaError } = await client.from('instagram_media')
+      .select('id, caption, posted_at').eq('user_id', userId).in('id', jobs.map(job => job.instagram_media_id));
+    if (mediaError) throw new Error('Instagram blog draft email media lookup failed');
+    const sessionIds = jobs.flatMap(job => job.session_id ? [job.session_id] : []);
+    // 全件がチャットを作る前に止まったときは、空の in() を投げずに飛ばす
+    const { data: annotations, error: annotationsError } = sessionIds.length === 0
+      ? { data: [], error: null }
+      : await client.from('content_annotations')
+        .select('session_id, main_kw').eq('user_id', userId).in('session_id', sessionIds);
+    if (annotationsError) throw new Error('Instagram blog draft email keyword lookup failed');
+    const email = buildInstagramBlogDraftEmail(siteUrl, jobs.map(job => {
+      const item = media?.find(row => row.id === job.instagram_media_id);
+      return {
+        status: job.status === 'completed' ? 'completed' as const : 'failed' as const,
+        sessionId: job.session_id,
+        mainKeyword: annotations?.find(annotation => annotation.session_id === job.session_id)?.main_kw ?? null,
+        caption: item?.caption ?? '',
+        postedAt: item?.posted_at ?? null,
+      };
+    }));
     const { data: claimed, error: claimError } = await client.from('instagram_blog_draft_batches')
       .update({ notified_at: new Date().toISOString() }).eq('id', batchId).eq('user_id', userId).is('notified_at', null)
       .select('id').maybeSingle();

@@ -417,8 +417,8 @@ describe('結果メール（finalizeBatchIfDone）', () => {
   function seedFinishedBatch(email: string | null): { notified_at: string | null } {
     rows('users').push({ id: USER_ID, email, role: 'paid' });
     rows('instagram_media').push(
-      { id: 'media-1', user_id: USER_ID, caption: 'caption 1' },
-      { id: 'media-2', user_id: USER_ID, caption: 'caption 2' }
+      { id: 'media-1', user_id: USER_ID, caption: 'caption 1', posted_at: '2022-09-08T23:27:45Z' },
+      { id: 'media-2', user_id: USER_ID, caption: 'caption 2', posted_at: '2022-09-01T03:00:00Z' }
     );
     rows('content_annotations').push({ user_id: USER_ID, session_id: 'session-1', main_kw: '主キーワード' });
     rows('instagram_blog_draft_jobs').push(
@@ -442,8 +442,10 @@ describe('結果メール（finalizeBatchIfDone）', () => {
     const [to, subject, html, key] = vi.mocked(emailService.sendInstagramBlogDraftNotification).mock.calls[0] ?? [];
     expect(to).toBe('user@example.com');
     expect(subject).toBe('【GrowMate】ブログ記事生成完了');
-    // 完了1件と MAX_TOKENS で止まった1件
+    // 完了1件と MAX_TOKENS で止まった1件。記事名は主軸kw、チャットの無い記事はキャプションの先頭
     expect(html).toContain('完了 1件・失敗 1件');
+    expect(html).toContain('>主キーワード</a>（2022/9/9 投稿）');
+    expect(html).toContain('caption 2（2022/9/1 投稿）: 失敗');
     expect(key).toBe(BATCH);
     expect(batch.notified_at).not.toBeNull();
   });
