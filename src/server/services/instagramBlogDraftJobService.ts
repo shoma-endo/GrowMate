@@ -21,6 +21,12 @@ const WORKER_BUDGET_MS = 740_000;
 const MAX_PARALLEL_JOBS = 3;
 const LOG_TAG = '[Instagram BlogDraft]';
 
+/** Preview の NEXT_PUBLIC_SITE_URL は本番ドメインで、DB も本番と共有のため、引き継ぎとリンクはそのデプロイ自身に向ける */
+function resolveAppBaseUrl(): string | undefined {
+  if (process.env.VERCEL_ENV === 'preview' && process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return process.env.NEXT_PUBLIC_SITE_URL;
+}
+
 type InstagramBlogDraftJobRow = Tables<'instagram_blog_draft_jobs'>;
 
 type StartInstagramBlogDraftResult = {
@@ -221,7 +227,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
       .eq('chain_count', batch.chain_count).select('id').maybeSingle();
     if (updateError) throw new Error('Instagram blog draft chain counter update failed');
     if (!incremented) return;
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    const baseUrl = resolveAppBaseUrl();
     const secret = process.env.CRON_SECRET;
     if (!baseUrl || !secret) {
       console.error(`${LOG_TAG} continuation fetch failed`, { batchId, error: 'Missing configuration' });
@@ -253,7 +259,7 @@ class InstagramBlogDraftJobService extends SupabaseService {
     if (!emailLookup.ok) throw new Error('Instagram blog draft user email lookup failed');
     const emailAddress = emailLookup.email;
     if (!emailAddress) return this.markNotifiedWithoutEmail(batchId, userId);
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    const siteUrl = resolveAppBaseUrl();
     if (!siteUrl) throw new Error('Instagram blog draft email URL is not configured');
     const { data: media, error: mediaError } = await client.from('instagram_media')
       .select('id, caption, posted_at').eq('user_id', userId).in('id', jobs.map(job => job.instagram_media_id));
