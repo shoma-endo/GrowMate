@@ -42,6 +42,12 @@ jobs:
           timestamp=$(date -u +"%Y%m%dT%H%M%SZ")
           mkdir -p backup
           echo "BACKUP_PREFIX=${timestamp}" >> "$GITHUB_ENV"
+          # First Sunday of month (day<=7 on Sunday run) => monthly, else weekly.
+          if [ "$(date -u +"%-d")" -le 7 ]; then
+            echo "BACKUP_KIND=monthly" >> "$GITHUB_ENV"
+          else
+            echo "BACKUP_KIND=weekly" >> "$GITHUB_ENV"
+          fi
 
       - parallel:
           - name: Dump schema
@@ -95,8 +101,16 @@ jobs:
       - name: Upload to GCS
         run: |
           set -euo pipefail
-          destination="gs://${GCS_BUCKET_NAME}/supabase-backups/${BACKUP_PREFIX}/"
+          destination="gs://${GCS_BUCKET_NAME}/supabase-backups/${BACKUP_KIND}/${BACKUP_PREFIX}/"
           gcloud storage cp backup/*.gz "$destination"
+
+      - name: Apply GCS lifecycle
+        run: |
+          set -euo pipefail
+          # Legacy flat objects directly under supabase-backups/ are out of scope (left for manual cleanup).
+          if ! gcloud storage buckets update "gs://${GCS_BUCKET_NAME}" --lifecycle-file=.github/workflows/supabase-backup.lifecycle.json; then
+            echo "Warning: GCS lifecycle update failed (backup itself succeeded)" >&2
+          fi
 
       - name: Collect GCS usage
         if: always()
@@ -149,9 +163,10 @@ jobs:
           const workflowUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
 
           const backupPrefix = process.env.BACKUP_PREFIX || '';
+          const backupKind = process.env.BACKUP_KIND || '';
           const gcsBucket = process.env.GCS_BUCKET_NAME || '';
-          const dumpPath = (isSuccess && backupPrefix && gcsBucket)
-            ? `gs://${gcsBucket}/supabase-backups/${backupPrefix}/${backupPrefix}_data.sql.gz`
+          const dumpPath = (isSuccess && backupPrefix && backupKind && gcsBucket)
+            ? `gs://${gcsBucket}/supabase-backups/${backupKind}/${backupPrefix}/${backupPrefix}_data.sql.gz`
             : '';
 
           const elements = [
