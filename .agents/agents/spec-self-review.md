@@ -14,7 +14,7 @@ model: inherit
 
 ## 手順
 
-1. 仕様充足・verify 証跡・スコープ逸脱を確認。
+1. 仕様充足・verify 証跡・スコープ逸脱を確認。Gherkin シナリオごとの受け入れ検証表（シナリオ / 検証手段 / 結果）も正本どおり書く。
 2. 手動ブラウザ未実施・migration 未適用のみでは `needs_fix` にしない（self-review 正本どおり）。
 3. **`{handoff_dir}/06-self-review.md`** に verdict: `pass` / `needs_fix` / `cannot_verify`
 

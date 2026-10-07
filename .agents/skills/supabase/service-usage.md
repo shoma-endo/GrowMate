@@ -128,7 +128,7 @@ const { data, error } = await asPendingClient(client)
 
 - 暫定型の行・列定義は、対応するマイグレーションSQLと完全に一致させる（新規に推測しない）。
 - `database.types.pending.ts`のエクスポート・コメントに、参照元マイグレーションファイル名を必ず記載する。
-- PRの未確認事項に「マイグレーション適用・`npm run supabase:types`実行後、`database.types.pending.ts`の該当ブロックを削除し呼び出し側を生成型へ切り替える」旨を明記する。
+- PR 本文の `## 最終確認（引き継ぎ用）` に「マイグレーション適用・`npm run supabase:types`実行後、`database.types.pending.ts`の該当ブロックを削除し呼び出し側を生成型へ切り替える」旨を明記する。
 - マイグレーション未適用であること自体は、実装不能・仕様不足の理由にしない。
 
 ## 7. RPC の認証・実行権限
