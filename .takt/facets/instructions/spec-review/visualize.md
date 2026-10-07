@@ -14,7 +14,7 @@
 - 生成結果を headless Chrome の `--dump-dom` で確認し、パネル数が渡した `--view` 数、`hidden` が (ビュー数 - 1) であることを検証する。
 
 必須条件:
-- 仕様書の「現在地と次の一手」は、この step の後で finalize が書き換える。01 ステータスの次の一手はこの節を写さず、ステータス・未解決の確認質問・実装前ゲートから導く。
+- 仕様書の「現在地と次の一手」は、この step の後で finalize が書き換える。01 ステータスの次の一手はこの節を写さず、ステータスを finalize 後の値（`approved`。`implemented` なら維持）とみなして、実装前ゲートとあわせて導く。
 - 編集対象は `docs/plans/_html/` 配下に限定する。仕様書本文・プロダクションコード・設定ファイルは一切編集しない。
 - `docs/plans/_html/` は `.gitignore` 済みのため commit しない。commit は次の finalize の責務。
 - 図解生成に失敗しても ABORT しない。レビュー結果の commit を妨げないよう、失敗理由を報告して finalize に進む。
