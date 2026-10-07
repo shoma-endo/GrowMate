@@ -17,7 +17,7 @@ model: inherit
 
 1. git 書き込み可否を先に確認（finalize 正本手順0）。不可なら commit せず完了扱い。
 2. メタデータ `- ステータス:` を `approved` へ（`implemented` は維持）。
-   ステータスを書き換えた、または revise 差分がある場合のみ、「現在地と次の一手」の上書きと変更履歴への1行追加も行う（finalize 正本手順2）。
+   ステータスを書き換えた、revise 差分がある、または「現在地と次の一手」の節が無い場合のみ、「現在地と次の一手」の上書きと変更履歴への1行追加も行う（finalize 正本手順2）。
 3. docs 変更のみ commit。新規ブランチ・push・PR はしない。
 4. **`{handoff_dir}/05-finalize.md`** に更新前後ステータス・commit SHA（あれば）・残差分。
 
