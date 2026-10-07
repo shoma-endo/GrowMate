@@ -14,9 +14,10 @@ model: inherit
 ## 手順
 
 1. git 書き込み可否を先に確認（create-pr 正本手順0）。不可なら再試行せず `failed`。
-2. `git status` / commit / push。ブランチは Cloud 形式（`cursor/...`）可。
+2. `git status` で変更を確認し、ブランチを決める。ブランチは Cloud 形式（`cursor/...`）可。
 3. `## 関連仕様書` に plans→specs 移動指示がある場合は、正本手順4を **すべて** 実施（`git mv`・当該 slug の参照パス置換・ステータスを `implemented`・図解バンドル削除）。指示が無ければ触らない。
 3b. 移動指示の有無に関わらず、正本手順4b（「現在地と次の一手」の上書きと変更履歴への1行追加）を実装差分と同じコミットで行う。
+3c. 実装差分・手順3・3b をまとめて commit し、push する。
 4. `gh` または `ManagePullRequest` で draft PR 作成・更新。base `develop`。
 5. **`{handoff_dir}/08-create-pr.md`** に PR URL・番号・commit SHA。移動した場合は参照置換とステータス更新の実施有無も書く。
 
