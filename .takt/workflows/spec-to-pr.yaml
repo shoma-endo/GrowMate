@@ -1,5 +1,5 @@
 name: spec-to-pr
-description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, PR creation with review summary body, and a single post-PR review-comment triage (5 minutes after create_pr). MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md; minimal-impl ladder via workflows/rules/minimal-impl-ladder.md and code comment rules via workflows/rules/code-comments.md (all_steps.rules). Reviewers attach previous reviews + fix-result for follow-up (finding_id / persists); unfixable residuals exit via cannot_fix rather than endless fix loops.
+description: GrowMate docs/plans specification to implementation, quality gates, architecture review loop, commit, PR creation with review summary body, and a single post-PR review-comment triage (5 minutes after create_pr) whose outcome is recorded on the PR as one comment. MVP scope and requirements traceability are enforced via workflows/rules/mvp-scope.md; minimal-impl ladder via workflows/rules/minimal-impl-ladder.md and code comment rules via workflows/rules/code-comments.md (all_steps.rules). Reviewers attach previous reviews + fix-result for follow-up (finding_id / persists); unfixable residuals exit via cannot_fix rather than endless fix loops.
 all_steps:
   rules:
     - ref: mvp-scope
@@ -14,7 +14,7 @@ workflow_config:
   runtime:
     prepare:
       - scripts/takt-check-provider-auth.sh
-max_steps: 26
+max_steps: 27
 initial_step: plan
 loop_monitors:
   - cycle:
@@ -334,7 +334,7 @@ steps:
     output_contracts:
       report:
         - name: self-review.md
-          format: supervisor-validation
+          format: spec-to-pr/self-review
   - name: prepare_pr_summary
     tags:
       - report
@@ -401,7 +401,7 @@ steps:
       - condition: when(structured.watch_pr_comments.verdict == "fix_required")
         next: pr_comment_fix
       - condition: when(structured.watch_pr_comments.verdict == "no_action")
-        next: COMPLETE
+        next: record_pr_comments
       - condition: when(structured.watch_pr_comments.verdict == "cannot_check")
         next: ABORT
         appendix: |
@@ -439,7 +439,7 @@ steps:
       schema_ref: pr_comment_fix
     rules:
       - condition: when(structured.pr_comment_fix.verdict == "fixed")
-        next: COMPLETE
+        next: record_pr_comments
       - condition: when(structured.pr_comment_fix.verdict == "stuck")
         next: ABORT
         appendix: |
@@ -447,8 +447,30 @@ steps:
           作業ツリーに未 commit の差分が残っている可能性があります。次を人間が確認してください。
           - `git status` / `git diff` の残差分（不要なら破棄する）
           - `pr-comment-fix-result.md` の `cannot_fix` 行と、PR 上で引き取るべき指摘
+          - 対応結果は PR へ自動記録されていないので、`pr-comment-triage.md` と `pr-comment-fix-result.md` の要点を PR にコメントで残す
           仕様の修正が必要な指摘だった場合は、対象仕様書を直して `spec-review` から再実行してください。
     output_contracts:
       report:
         - name: pr-comment-fix-result.md
           format: coder-decisions
+  # PR はカルテ。コメント対応の結果（対応しない判断を含む）を PR コメント1件で残す。
+  # 本文は人が最終確認のチェックを入れるため触らない。入力は triage が要約済みのレポートだけ。
+  - name: record_pr_comments
+    tags:
+      - report
+    edit: true
+    persona: supervisor
+    knowledge:
+      - growmate
+    capabilities: readonly-gh
+    required_permission_mode: edit
+    pass_previous_response: false
+    instruction: spec-to-pr/record-pr-comments
+    rules:
+      - condition: PR コメント対応を記録した
+        next: COMPLETE
+      - condition: PR コメント対応を記録できなかった
+        next: ABORT
+        appendix: |
+          PR コメント対応の記録コメントを投稿できませんでした。**PR は作成/更新済みで、コメント対応も終わっています**（この ABORT は記録だけの失敗です）。
+          `pr-comment-triage.md` と `pr-comment-fix-result.md` の要点を、人間が PR にコメントで残してください。

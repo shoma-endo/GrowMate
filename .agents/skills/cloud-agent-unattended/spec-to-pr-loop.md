@@ -21,8 +21,9 @@ handoff: [`workflow-handoff.md`](workflow-handoff.md) — `docs/plans/.workflow/
 | 7 | `spec-fix` (`mode: self_review`) | `needs_fix` のとき。fixed 後は 6 へ（readme へ戻さない） |
 | 8 | `spec-pr-summary` | |
 | 9 | `spec-create-pr` | draft PR |
-| 10 | `spec-pr-comment-triage` | **`sleep 300` 後に1回だけ**コメント取り込み。`no_action` なら完了 |
-| 11 | `spec-pr-comment-fix` | `fix_required` のときのみ。修正 → commit → push で完了（10 へ戻さない） |
+| 10 | `spec-pr-comment-triage` | **`sleep 300` 後に1回だけ**コメント取り込み。`no_action` なら 12 へ |
+| 11 | `spec-pr-comment-fix` | `fix_required` のときのみ。修正 → commit → push（10 へ戻さない） |
+| 12 | 親（`gh` のみ） | `no_action` または fix 後に、`.takt/facets/instructions/spec-to-pr/record-pr-comments.md` に従い対応結果を PR へコメント1件で記録して完了 |
 
 ### reviewers ループ（最大 3 周）
 
@@ -39,7 +40,7 @@ self_review → (needs_fix ? fix[self_review] → self_review : pr-summary)
 ### PR コメント対応（1周のみ）
 
 ```
-create_pr → sleep 300 → triage → (fix_required ? pr_comment_fix → 完了 : 完了)
+create_pr → sleep 300 → triage → (fix_required ? pr_comment_fix → record : record) → 完了
 ```
 
 TAKT 側の `delay_before_ms: 300000` に相当する待機は `spec-pr-comment-triage` が行う。再巡回しないので、5分より後に付いたコメントは人間が PR 上で扱う。
@@ -57,5 +58,6 @@ TAKT 側の `delay_before_ms: 300000` に相当する待機は `spec-pr-comment-
 - 必須 verify 成功（またはスキップ理由記載）
 - `07-pr-summary.md` 完成
 - draft PR URL（または権限で不可の報告）
-- 未確認事項が PR 本文に列挙
+- PR 本文がカルテの節構成（`## 最終確認（引き継ぎ用）`・`## 受け入れ検証`・`## 実装中の判断` を含む）になっている
+- PR コメント対応の記録コメント（見出し「PR コメント対応の記録（TAKT）」）が投稿済み
 - `09-pr-comment-triage.md` の判断結果（`fix` があれば `10-pr-comment-fix-result.md` の disposition と push 済み commit SHA）
