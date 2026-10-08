@@ -2,7 +2,7 @@
 
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { BriefDataFormatError, BriefService } from '@/server/services/briefService';
+import { briefService } from '@/server/services/briefService';
 import { briefInputSchema, type BriefInput } from '@/server/schemas/brief.schema';
 import type { ZodIssue } from 'zod';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -63,34 +63,11 @@ export const getBrief = async (): Promise<ActionResult<BriefInput | null>> => {
     if (auth.error || !auth.userId) {
       return { success: false, error: auth.error || ERROR_MESSAGES.AUTH.AUTH_ERROR_GENERIC };
     }
-    // 事業者情報を取得
-    const briefResult = await supabaseService.getBrief(auth.userId);
-
-    if (!briefResult.success) {
-      return { success: false, error: briefResult.error.userMessage };
-    }
-
-    // データがない場合はnullを返す（null と undefined の両方を考慮）
-    if (briefResult.data == null) {
-      return { success: true, data: null };
-    }
-
-    // 古い形式のデータを新形式に変換（必要に応じて）
-    const migratedData = BriefService.migrateOldBriefToNew(briefResult.data, auth.userId);
-
-    // Zodスキーマでバリデーション
-    const parseResult = briefInputSchema.safeParse(migratedData);
-    if (!parseResult.success) {
-      console.warn('事業者情報のバリデーション失敗:', parseResult.error.issues);
-      return { success: false, error: ERROR_MESSAGES.BRIEF.INVALID_DATA_FORMAT };
-    }
-
-    return { success: true, data: parseResult.data };
+    const result = await briefService.getValidatedBriefByUserId(auth.userId);
+    if (!result.success) return { success: false, error: result.error };
+    return { success: true, data: result.data };
   } catch (error) {
     console.error('事業者情報の取得エラー:', error);
-    if (error instanceof BriefDataFormatError) {
-      return { success: false, error: ERROR_MESSAGES.BRIEF.INVALID_DATA_FORMAT };
-    }
     return {
       success: false,
       error: error instanceof Error ? error.message : ERROR_MESSAGES.BRIEF.FETCH_FAILED,

@@ -144,6 +144,18 @@ class HeadingFlowService extends SupabaseService {
     return this.success({ lead, sections: sectionContents });
   }
 
+  async saveCombinedContentForStep7(sessionId: string, userId: string): Promise<SupabaseResult<string>> {
+    const combinedResult = await this.getCombinedContentForPrompt(sessionId);
+    if (!combinedResult.success) return combinedResult;
+    const lead = combinedResult.data.lead.trim();
+    const sections = combinedResult.data.sections.trim();
+    const content = lead && sections ? `${lead}\n\n${sections}` : lead || sections;
+    if (!content) return this.failure('保存する内容がありません');
+    const saveResult = await this.saveCombinedContentSnapshot(sessionId, content, userId);
+    if (!saveResult.success) return saveResult;
+    return this.success(content);
+  }
+
   /**
    * 全文Canvas編集後の完成形を session_combined_contents に保存する。
    */
@@ -212,6 +224,11 @@ class HeadingFlowService extends SupabaseService {
    * chat_messages の user メッセージ（model=blog_creation_step7_lead）からのみ取得する。
    */
   async getStep7UserLead(sessionId: string): Promise<string | null> {
+    const result = await this.getStep7UserLeadResult(sessionId);
+    return result.success ? result.data?.trim() || null : null;
+  }
+
+  async getStep7UserLeadResult(sessionId: string): Promise<SupabaseResult<string | null>> {
     const { data: leadData, error: leadError } = await this.supabase
       .from('chat_messages')
       .select('content')
@@ -221,10 +238,8 @@ class HeadingFlowService extends SupabaseService {
       .order('created_at', { ascending: false })
       .limit(1);
 
-    if (!leadError && leadData?.length && leadData[0]?.content?.trim()) {
-      return leadData[0].content.trim();
-    }
-    return null;
+    if (leadError) return this.failure('書き出し案の取得に失敗しました', { error: leadError });
+    return this.success(leadData?.[0]?.content ?? null);
   }
 
   /**

@@ -17,6 +17,7 @@ import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGua
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { resolveKnowledgeBlocksForRequest } from '@/lib/knowledgeInjection';
+import { CONTINUATION_INSTRUCTION, mergeTrailingUserMessage } from '@/lib/chat-continuation';
 import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import {
@@ -139,18 +140,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 履歴の正規化: 最後のメッセージがuserの場合、今回の入力と結合する
-    // Anthropic APIはuser/assistantの交互配置を要求するため、連続するuserメッセージを防ぐ
-    const normalizedMessages = [...messages];
-    let combinedUserMessage = userMessage;
-
-    const lastMessage = normalizedMessages[normalizedMessages.length - 1];
-    if (lastMessage && lastMessage.role === 'user') {
-      const lastMsg = normalizedMessages.pop();
-      if (lastMsg) {
-        combinedUserMessage = `${lastMsg.content}\n\n${userMessage}`;
-      }
-    }
+    const { messages: normalizedMessages, userMessage: combinedUserMessage } =
+      mergeTrailingUserMessage(messages, userMessage);
 
     // Step7 完成形は Canvas 側の全文を正本とし、追加コンテキストは注入しない。
     const effectiveUserMessage =
@@ -161,8 +152,6 @@ export async function POST(req: NextRequest) {
     // Anthropic用のメッセージ形式に変換（Prompt Caching対応）
     // isContinuation: 途切れた箇所の「続きのみ」を出力するよう指示する user メッセージを末尾に追加
     // 通常: 末尾に user メッセージを追加
-    const continuationInstruction =
-      '返答がmax_tokensにより途中で途切れました。途切れた箇所の続きのみを出力してください。冒頭から繰り返さないこと。';
     const anthropicMessages = [
       ...normalizedMessages.map((msg, index) => {
         if (index === normalizedMessages.length - 1 && msg.content.trim().length > 0) {
@@ -184,7 +173,7 @@ export async function POST(req: NextRequest) {
       }),
       {
         role: 'user' as const,
-        content: isContinuation ? continuationInstruction : effectiveUserMessage,
+        content: isContinuation ? CONTINUATION_INSTRUCTION : effectiveUserMessage,
       },
     ];
 

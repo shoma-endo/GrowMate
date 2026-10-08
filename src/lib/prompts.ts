@@ -199,6 +199,7 @@ import { extractStep7HeadingIndexFromModel } from '@/lib/canvas-content';
 import { formatMarkdownHeading } from '@/lib/heading-extractor';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { headingFlowService } from '@/server/services/headingFlowService';
+import { briefService } from '@/server/services/briefService';
 
 const supabaseService = new SupabaseService();
 
@@ -215,6 +216,42 @@ const getCachedBrief = cache(async (): Promise<BriefInput | null> => {
     return null;
   }
 });
+
+/**
+ * userId を明示する経路（Cookie の無い after() の中）の事業者情報。
+ * 手動フローの getCachedBrief と同じく、形式不正は事業者情報なしとして扱う（再開しても直らないため）。
+ * 読み取り失敗だけは例外にする（一時的な失敗を「未登録」と取り違えないため）
+ */
+async function getBriefByExplicitUserId(userId: string): Promise<BriefInput | null> {
+  const result = await briefService.getValidatedBriefByUserId(userId);
+  if (result.success) return result.data;
+  if (result.kind === 'invalid_format') return null;
+  throw new Error(result.error);
+}
+
+/**
+ * 置換しきれなかった {{変数}} を消す（開発時は目印に置き換える）。
+ * 未登録の事業者情報などで残った変数を、そのまま AI に渡さないため
+ */
+function removeUnresolvedPlaceholders(
+  prompt: string,
+  logLabel: string,
+  logContext: Record<string, unknown>
+): string {
+  const unresolvedPlaceholders = (prompt.match(/{{(\w+)}}/g) || []).map(token =>
+    token.replace(/[{}]/g, '')
+  );
+  if (unresolvedPlaceholders.length === 0) return prompt;
+
+  console.warn(`${logLabel} 未解決のDBプロンプト変数を検出 - 空文字で置換`, {
+    ...logContext,
+    unresolvedPlaceholders,
+  });
+  if (process.env.NODE_ENV === 'development') {
+    return prompt.replace(/{{\w+}}/g, match => `[未解決: ${match}]`);
+  }
+  return prompt.replace(/{{\w+}}/g, '');
+}
 
 // appendInternalLinksInstruction はテンプレ変数への埋め込み方針に変更したため不要
 
@@ -550,10 +587,11 @@ const generateLpDraftPrompt = cache(
 async function generateHeadingUnitPrompt(
   sessionId: string,
   activeSection: { heading_text: string; heading_level?: number },
-  nextSection?: { heading_text: string; heading_level?: number }
+  nextSection: { heading_text: string; heading_level?: number } | undefined,
+  options: { userId: string } | undefined
 ): Promise<string> {
   try {
-    const basePrompt = await generateBlogCreationPromptByStep('step7', sessionId);
+    const basePrompt = await generateBlogCreationPromptByStep('step7', sessionId, options);
 
     const headingLine = formatMarkdownHeading(
       activeSection.heading_level ?? 3,
@@ -574,6 +612,7 @@ async function generateHeadingUnitPrompt(
 
     return [basePrompt, headingConstraintBlock].filter(Boolean).join('\n');
   } catch (error) {
+    if (options?.userId) throw error;
     console.error('Step7見出し単位プロンプト生成エラー:', error);
     return SYSTEM_PROMPT;
   }
@@ -585,17 +624,18 @@ async function generateHeadingUnitPrompt(
  */
 async function generateBlogCreationPromptByStep(
   step: BlogStepId,
-  sessionId?: string
+  sessionId: string | undefined,
+  options: { userId: string } | undefined = undefined
 ): Promise<string> {
   try {
     const templateName = toTemplateName(step);
-    const [template, auth, businessInfo] = await Promise.all([
+    const [template, authUserId, businessInfo] = await Promise.all([
       PromptService.getTemplateByName(templateName),
-      authMiddleware(),
-      getCachedBrief(),
+      options?.userId ? Promise.resolve(options.userId) : authMiddleware().then(auth => auth.error ? null : auth.userId),
+      options?.userId ? getBriefByExplicitUserId(options.userId) : getCachedBrief(),
     ]);
 
-    const userId = auth.error ? undefined : auth.userId;
+    const userId = authUserId ?? undefined;
     const isStep7 = isBlogStep7(step); // 現step7を本文作成として扱う
     const canonicalLinkEntries =
       isStep7 && userId ? await PromptService.getCanonicalLinkEntriesByUserId(userId) : [];
@@ -626,24 +666,7 @@ async function generateBlogCreationPromptByStep(
       // ブログ作成は今のところ特定のサービスに依存しない（全体Profileを使用）
       const afterBusiness = replaceTemplateVariables(template.content, businessInfo);
       const mergedPrompt = PromptService.replaceVariables(afterBusiness, vars);
-      const unresolvedPlaceholders = (mergedPrompt.match(/{{(\w+)}}/g) || []).map(token =>
-        token.replace(/[{}]/g, '')
-      );
-
-      if (unresolvedPlaceholders.length > 0) {
-        console.warn('[BlogPrompt] 未解決のDBプロンプト変数を検出 - 空文字で置換', {
-          step,
-          templateName,
-          unresolvedPlaceholders,
-        });
-        if (process.env.NODE_ENV === 'development') {
-          return mergedPrompt.replace(/{{\w+}}/g, match => `[未解決: ${match}]`);
-        }
-        // TODO: エラートラッキングサービスに送信
-        return mergedPrompt.replace(/{{\w+}}/g, '');
-      }
-
-      return mergedPrompt;
+      return removeUnresolvedPlaceholders(mergedPrompt, '[BlogPrompt]', { step, templateName });
     }
 
     console.warn('[BlogPrompt] Step template not found. Using SYSTEM_PROMPT as fallback', {
@@ -653,6 +676,7 @@ async function generateBlogCreationPromptByStep(
     });
     return SYSTEM_PROMPT;
   } catch (error) {
+    if (options?.userId) throw error;
     console.error('ブログ作成ステッププロンプト生成エラー:', error);
     return SYSTEM_PROMPT;
   }
@@ -680,26 +704,13 @@ async function generateTitleMetaPrompt(
     if (template?.content) {
       const businessMergedPrompt = replaceTemplateVariables(template.content, businessInfo, serviceId);
       const mergedPrompt = PromptService.replaceVariables(businessMergedPrompt, contentVars);
-      const unresolvedPlaceholders = (mergedPrompt.match(/{{(\w+)}}/g) || []).map(token =>
-        token.replace(/[{}]/g, '')
-      );
-
-      if (unresolvedPlaceholders.length > 0) {
-        console.warn('[TitleMetaPrompt] 未解決のDBプロンプト変数を検出 - 空文字で置換', {
-          unresolvedPlaceholders,
-          hasSession: Boolean(sessionId),
-          hasUserId: Boolean(userId),
-          authError: auth.error ?? null,
-          hasContentAnnotation: Boolean(contentAnnotation),
-          hasBrief: Boolean(businessInfo),
-        });
-        if (process.env.NODE_ENV === 'development') {
-          return mergedPrompt.replace(/{{\w+}}/g, match => `[未解決: ${match}]`);
-        }
-        return mergedPrompt.replace(/{{\w+}}/g, '');
-      }
-
-      return mergedPrompt;
+      return removeUnresolvedPlaceholders(mergedPrompt, '[TitleMetaPrompt]', {
+        hasSession: Boolean(sessionId),
+        hasUserId: Boolean(userId),
+        authError: auth.error ?? null,
+        hasContentAnnotation: Boolean(contentAnnotation),
+        hasBrief: Boolean(businessInfo),
+      });
     }
 
     console.warn(
@@ -724,6 +735,21 @@ export async function getBlogCreationTemplatePrompt(
   return generateBlogCreationPromptByStep(step, sessionId);
 }
 
+export async function generateInstagramBlogKeywordPrompt(
+  userId: string,
+  instagramCaption: string
+): Promise<string> {
+  const templateName = 'instagram_blog_keyword_generation';
+  const [template, businessInfo] = await Promise.all([
+    PromptService.getTemplateByName(templateName),
+    getBriefByExplicitUserId(userId),
+  ]);
+  if (!template?.content) throw new Error('Instagram blog keyword prompt template is missing');
+  const businessPrompt = replaceTemplateVariables(template.content, businessInfo);
+  const mergedPrompt = PromptService.replaceVariables(businessPrompt, { instagramCaption });
+  return removeUnresolvedPlaceholders(mergedPrompt, '[InstagramBlogKeywordPrompt]', { templateName });
+}
+
 // =============================================================================
 // 共通：モデル別システムプロンプト解決
 // =============================================================================
@@ -742,15 +768,16 @@ export async function getSystemPrompt(
   model: string,
   _liffAccessToken?: string,
   sessionId?: string,
-  serviceIdOverride?: string
+  serviceIdOverride?: string,
+  options?: { userId: string }
 ): Promise<string> {
   // セッションに紐づくサービスIDを解決（オーバーライドがなければ）
   let serviceId = serviceIdOverride;
-  let authUserId: string | null = null;
+  let authUserId: string | null = options?.userId ?? null;
   if (sessionId) {
-    const authResult = await authMiddleware();
-    if (!authResult.error && authResult.userId) {
-      authUserId = authResult.userId;
+    if (!options?.userId) {
+      const authResult = await authMiddleware();
+      if (!authResult.error && authResult.userId) authUserId = authResult.userId;
     }
     if (!serviceId && authUserId) {
       const result = await supabaseService.getSessionServiceId(sessionId, authUserId);
@@ -791,7 +818,8 @@ export async function getSystemPrompt(
             return generateHeadingUnitPrompt(
               sessionId,
               activeSection,
-              sectionsResult.data[step7HeadingIndex + 1]
+              sectionsResult.data[step7HeadingIndex + 1],
+              options
             );
           }
           console.warn('[getSystemPrompt] Step7 heading section could not be resolved', {
@@ -808,9 +836,10 @@ export async function getSystemPrompt(
         sessionId,
         step7HeadingIndex,
       });
+      if (options?.userId) throw new Error('Step7 heading section could not be resolved');
     }
 
-    return await generateBlogCreationPromptByStep(step, sessionId);
+    return await generateBlogCreationPromptByStep(step, sessionId, options);
   }
   switch (model) {
     case 'ad_copy_creation':
