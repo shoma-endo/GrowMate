@@ -891,6 +891,32 @@ export const ERROR_MESSAGES = {
    * Instagram連携関連のエラーメッセージ
    */
   INSTAGRAM: {
+    BLOG_DRAFT_STARTING: '作成を開始中...',
+    BLOG_DRAFT_LIMIT_REACHED: '一度に作成できるのは10件までです',
+    BLOG_DRAFT_ACTIVE_EXISTS: '作成中の記事があります。終わってから次を選んでください',
+    BLOG_DRAFT_START_FAILED: 'ブログ記事の作成を開始できませんでした。もう一度お試しください',
+    BLOG_DRAFT_RESUME_STARTED: '続きから作成を始めました',
+    /** 対象外の理由ごとの件数。0件の理由は省く */
+    BLOG_DRAFT_EXCLUDED_BREAKDOWN: (excluded: {
+      created: number;
+      emptyCaption: number;
+      unavailable: number;
+    }): string =>
+      [
+        { count: excluded.created, label: '作成あり' },
+        { count: excluded.emptyCaption, label: 'キャプションなし' },
+        { count: excluded.unavailable, label: 'その他' },
+      ]
+        .filter(({ count }) => count > 0)
+        .map(({ count, label }) => `${label} ${count}件`)
+        .join('・'),
+    BLOG_DRAFT_ALL_EXCLUDED: (counts: string): string =>
+      `選んだ投稿はすべて対象外でした（対象外: ${counts}）`,
+    BLOG_DRAFT_STARTED: (count: number, resumed: number, excluded: string): string => {
+      const resumedText = resumed > 0 ? `（うち続きから ${resumed}件）` : '';
+      const excludedText = excluded ? `（対象外: ${excluded}）` : '';
+      return `${count}件のブログ記事の作成を始めました${resumedText}${excludedText}`;
+    },
     /** Instagram連携機能へのアクセス権がない場合 */
     ACCESS_DENIED: 'Instagram連携機能へのアクセス権がありません',
 

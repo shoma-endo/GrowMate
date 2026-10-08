@@ -5,6 +5,7 @@ import { Info, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   isEmailLinkConflictResult,
@@ -12,6 +13,10 @@ import {
 } from '@/lib/auth/emailLinkConflictClient';
 import { summarizeContentAnnotation } from '@/server/actions/contentAnnotationSummary.actions';
 import type { AnnotationRecord } from '@/types/annotation';
+
+/** AI に作らせる操作のボタンの色（［AIで要約］・Instagram の［続きを作成］） */
+export const AI_ACTION_BUTTON_CLASS =
+  'border-purple-200 bg-purple-50 text-purple-900 hover:bg-purple-100 hover:text-purple-900';
 
 interface ContentAnnotationSummaryActionProps {
   sessionId?: string | null;
@@ -88,7 +93,7 @@ export default function ContentAnnotationSummaryAction({
           size={size}
           onClick={handleSummarize}
           disabled={!canSummarize || disabled || isSummarizing}
-          className="min-h-9 border-purple-200 bg-purple-50 text-purple-900 hover:bg-purple-100 hover:text-purple-900"
+          className={cn('min-h-9', AI_ACTION_BUTTON_CLASS)}
         >
           {isSummarizing ? (
             <>

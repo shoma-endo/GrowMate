@@ -173,6 +173,34 @@ export class EmailService {
       };
     }
   }
+
+  async sendInstagramBlogDraftNotification(
+    to: string,
+    subject: string,
+    htmlContent: string,
+    idempotencyKey: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const resendClient = this.getResendClient();
+      if (!resendClient) {
+        console.error('[EmailService] RESEND_API_KEY is not configured');
+        return { success: false, error: 'RESEND_API_KEY is not configured' };
+      }
+      const emailFrom = process.env.EMAIL_FROM?.trim() || DEFAULT_EMAIL_FROM;
+      const response = await resendClient.emails.send(
+        { from: emailFrom, to, subject, html: htmlContent },
+        { idempotencyKey }
+      );
+      if (response.error) {
+        console.error('[EmailService] Failed to send Instagram blog draft email:', response.error);
+        return { success: false, error: response.error.message };
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('[EmailService] Unexpected Instagram blog draft email error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'メール送信に失敗しました' };
+    }
+  }
 }
 
 export const emailService = new EmailService();

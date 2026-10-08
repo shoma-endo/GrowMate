@@ -40,6 +40,11 @@ interface LLMOptions {
   maxRetries?: number | undefined;
 }
 
+interface LLMChatResult {
+  content: string;
+  stopReason: string | null;
+}
+
 class LLMService {
   private openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   private anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
@@ -50,6 +55,16 @@ class LLMService {
     messages: LLMMessage[],
     opts: LLMOptions = {}
   ): Promise<string> {
+    const result = await this.llmChatWithStopReason(providerKey, model, messages, opts);
+    return result.content.trim();
+  }
+
+  async llmChatWithStopReason(
+    providerKey: 'openai' | 'anthropic',
+    model: string,
+    messages: LLMMessage[],
+    opts: LLMOptions = {}
+  ): Promise<LLMChatResult> {
     const startTime = Date.now();
 
     // 先頭に system があれば分離
@@ -89,12 +104,13 @@ class LLMService {
               opts.anthropicSystemBlocks
             );
 
-      const text = await llmPromise.finally(() => {
+      const result = await llmPromise.finally(() => {
         clearTimeout(timeoutId);
         opts.signal?.removeEventListener('abort', abortFromCaller);
       });
+      if (!result.content.trim()) throw new Error(`${providerKey}: 応答が空でした`);
 
-      return text;
+      return result;
     } catch (error) {
       const latency = Date.now() - startTime;
       console.error(
@@ -120,7 +136,7 @@ class LLMService {
     systemPrompt: string | undefined,
     messages: LLMMessage[],
     opts: LLMOptions
-  ): Promise<string> {
+  ): Promise<LLMChatResult> {
     const completion = await this.openai.chat.completions.create(
       {
         model,
@@ -134,9 +150,9 @@ class LLMService {
       { signal: opts.signal }
     );
 
-    const text = completion.choices[0]?.message?.content?.trim() ?? '';
+    const text = completion.choices[0]?.message?.content ?? '';
     if (!text) throw new Error('OpenAI: 応答が空でした');
-    return text;
+    return { content: text, stopReason: completion.choices[0]?.finish_reason ?? null };
   }
 
   private async callAnthropic(
@@ -145,7 +161,7 @@ class LLMService {
     messages: LLMMessage[],
     opts: LLMOptions,
     anthropicSystemBlocks?: AnthropicSystemBlock[]
-  ): Promise<string> {
+  ): Promise<LLMChatResult> {
     const systemBlocks =
       anthropicSystemBlocks && anthropicSystemBlocks.length > 0
         ? anthropicSystemBlocks
@@ -197,12 +213,12 @@ class LLMService {
     const text =
       resp.content
         ?.map(block => (block.type === 'text' ? block.text : ''))
-        .join('')
-        .trim() ?? '';
+        .join('') ?? '';
     if (!text) throw new Error('Anthropic: 応答が空でした');
-    return text;
+    return { content: text, stopReason: resp.stop_reason };
   }
 }
 
 const llmService = new LLMService();
 export const llmChat = llmService.llmChat.bind(llmService);
+export const llmChatWithStopReason = llmService.llmChatWithStopReason.bind(llmService);

@@ -23,21 +23,26 @@ function queryBuilder(response: { data: unknown[]; count: number; error: null })
     eq: vi.fn(),
     gte: vi.fn(),
     lte: vi.fn(),
+    in: vi.fn(),
+    limit: vi.fn(),
     order: vi.fn(),
     range: vi.fn(),
-    then: undefined as unknown,
-  } as Record<string, any>;
+    then: (
+      resolve: (value: typeof response) => unknown,
+      reject: (error: unknown) => unknown
+    ) => Promise.resolve(response).then(resolve, reject),
+  };
 
-  for (const method of ['select', 'eq', 'gte', 'lte', 'order', 'range']) {
-    builder[method].mockImplementation((...args: unknown[]) => {
+  const methods = [
+    ['select', builder.select], ['eq', builder.eq], ['gte', builder.gte], ['lte', builder.lte],
+    ['in', builder.in], ['limit', builder.limit], ['order', builder.order], ['range', builder.range],
+  ] as const;
+  for (const [method, mock] of methods) {
+    mock.mockImplementation((...args: unknown[]) => {
       builder.calls.push([method, ...args]);
       return builder;
     });
   }
-  builder.then = (
-    resolve: (value: typeof response) => unknown,
-    reject: (error: unknown) => unknown
-  ) => Promise.resolve(response).then(resolve, reject);
   return builder;
 }
 
@@ -83,7 +88,9 @@ beforeEach(() => {
 describe('InstagramMediaService.getPage', () => {
   it('エンゲージメント率で並べ替え、目標下限を DB に渡す', async () => {
     const query = queryBuilder({ data: [mediaRow()], count: 1, error: null });
-    clientMock.from.mockReturnValue(query);
+    clientMock.from.mockImplementation((table: string) => table === 'instagram_media'
+      ? query
+      : queryBuilder({ data: [], count: 0, error: null }));
 
     const result = await instagramMediaService.getPage('user-1', {
       page: 1,
@@ -116,7 +123,9 @@ describe('InstagramMediaService.getPage', () => {
       count: 1,
       error: null,
     });
-    clientMock.from.mockReturnValue(query);
+    clientMock.from.mockImplementation((table: string) => table === 'instagram_media'
+      ? query
+      : queryBuilder({ data: [], count: 0, error: null }));
 
     const result = await instagramMediaService.getPage('user-1', {
       page: 1,
@@ -132,6 +141,34 @@ describe('InstagramMediaService.getPage', () => {
     expect(result.items[0]?.engagementRate).toBeNull();
     expect(result.items[0]?.likeRate).toBeNull();
     expect(query.calls.some((call: unknown[]) => call[0] === 'gte')).toBe(false);
+  });
+
+  it('絞り込みで0件のページでも、作成中のまとまりがあればその進み具合を返す', async () => {
+    const activeJobQuery = queryBuilder({ data: [{ batch_id: 'batch-1' }], count: 1, error: null });
+    const batchJobsQuery = queryBuilder({
+      data: [{ status: 'completed' }, { status: 'failed' }, { status: 'running' }],
+      count: 3,
+      error: null,
+    });
+    const jobQueries = [activeJobQuery, batchJobsQuery];
+    clientMock.from.mockImplementation((table: string) => table === 'instagram_blog_draft_jobs'
+      ? jobQueries.shift()
+      : queryBuilder({ data: [], count: 0, error: null }));
+
+    const result = await instagramMediaService.getPage('user-1', {
+      page: 1,
+      perPage: 10,
+      type: 'all',
+      startDate: null,
+      endDate: null,
+      sort: 'posted_at',
+      order: 'desc',
+      minEngagementRate: 4,
+    });
+
+    expect(result.items).toEqual([]);
+    expect(result.activeBlogDraft).toEqual({ processed: 2, total: 3 });
+    expect(batchJobsQuery.calls).toContainEqual(['eq', 'batch_id', 'batch-1']);
   });
 
   // インサイト由来の列は対象外（insights_unavailable）を末尾へ寄せ、未取得（null）は昇順でも末尾。
@@ -162,7 +199,9 @@ describe('InstagramMediaService.getPage', () => {
     ],
   ] as const)('%s（%s）の並び順', async (sort, order, expectedOrders) => {
     const query = queryBuilder({ data: [mediaRow()], count: 1, error: null });
-    clientMock.from.mockReturnValue(query);
+    clientMock.from.mockImplementation((table: string) => table === 'instagram_media'
+      ? query
+      : queryBuilder({ data: [], count: 0, error: null }));
 
     await instagramMediaService.getPage('user-1', {
       page: 1,

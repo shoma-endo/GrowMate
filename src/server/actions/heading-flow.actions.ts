@@ -413,27 +413,7 @@ export async function saveCombinedContentForStep7(
     return { success: false, error: 'セッションへのアクセス権がありません', content: null };
   }
 
-  const combinedResult = await headingFlowService.getCombinedContentForPrompt(parsed.sessionId);
-  if (!combinedResult.success) {
-    return { success: false, error: combinedResult.error.userMessage, content: null };
-  }
-
-  const lead = (combinedResult.data.lead ?? '').trim();
-  const sections = (combinedResult.data.sections ?? '').trim();
-  const content = lead && sections ? `${lead}\n\n${sections}` : lead || sections;
-
-  if (!content) {
-    return { success: false, error: '保存する内容がありません', content: null };
-  }
-
-  const saveResult = await headingFlowService.saveCombinedContentSnapshot(
-    parsed.sessionId,
-    content,
-    auth.userId
-  );
-  if (!saveResult.success) {
-    return { success: false, error: saveResult.error.userMessage, content: null };
-  }
-
-  return { success: true, content };
+  const result = await headingFlowService.saveCombinedContentForStep7(parsed.sessionId, auth.userId);
+  if (!result.success) return { success: false, error: result.error.userMessage, content: null };
+  return { success: true, content: result.data };
 }
