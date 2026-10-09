@@ -37,12 +37,21 @@ export function buildAdminSignupNotificationEmail(
     user.role === 'unavailable'
       ? '<p>権限を変更するまで、このユーザーは GrowMate を利用できません。</p>'
       : '';
-  const html = sanitizeEmailHtml(
-    `<div><p>新しいユーザーが登録しました。</p><ul>` +
-      `<li>名前: ${escapeHtml(user.fullName)}</li>` +
-      `<li>メールアドレス: ${escapeHtml(user.email)}</li>` +
-      `<li>登録日時: ${escapeHtml(formatDateTimeWithSeconds(user.createdAt))}</li>` +
-      `</ul><p><a href="${escapeHtml(usersHref)}">ユーザー一覧を開く</a></p>${unavailableNote}</div>`
-  );
-  return { subject: `【GrowMate】新規ユーザー登録：${user.fullName}`, html };
+  const html = `
+    <div>
+      <h1>新規ユーザーが登録しました</h1>
+      <ul>
+        <li>名前: ${escapeHtml(user.fullName)}</li>
+        <li>メールアドレス: ${escapeHtml(user.email)}</li>
+        <li>登録日時: ${escapeHtml(formatDateTimeWithSeconds(user.createdAt))}</li>
+      </ul>
+      ${unavailableNote}
+
+      <p><a href="${escapeHtml(usersHref)}">GrowMate でユーザー一覧を開く</a></p>
+
+      <hr />
+      <p>新規ユーザー登録の通知先に設定されているため送信しています。</p>
+    </div>
+  `;
+  return { subject: `【GrowMate】新規ユーザーが登録しました：${user.fullName}`, html: sanitizeEmailHtml(html) };
 }

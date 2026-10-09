@@ -17,11 +17,12 @@ describe('buildAdminSignupNotificationEmail', () => {
   it('件名に名前、本文に名前・メールアドレス・日本時間の登録日時・ユーザー一覧へのリンクを載せる', () => {
     const email = buildAdminSignupNotificationEmail('https://example.com', user);
 
-    expect(email.subject).toBe('【GrowMate】新規ユーザー登録：山田太郎');
+    expect(email.subject).toBe('【GrowMate】新規ユーザーが登録しました：山田太郎');
+    expect(email.html).toContain('<h1>新規ユーザーが登録しました</h1>');
     expect(email.html).toContain('山田太郎');
     expect(email.html).toContain('taro@example.com');
     expect(email.html).toContain('2026/10/10 08:05:09');
-    expect(email.html).toContain('<a href="https://example.com/admin/users">ユーザー一覧を開く</a>');
+    expect(email.html).toContain('<a href="https://example.com/admin/users">GrowMate でユーザー一覧を開く</a>');
   });
 
   it.each([

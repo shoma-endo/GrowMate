@@ -92,7 +92,7 @@ describe('registerFullName の管理者通知', () => {
     expect(mocks.sendAdminSignupNotification).toHaveBeenCalledTimes(1);
     expect(mocks.sendAdminSignupNotification).toHaveBeenCalledWith(
       ['admin@example.com'],
-      '【GrowMate】新規ユーザー登録：山田太郎',
+      '【GrowMate】新規ユーザーが登録しました：山田太郎',
       expect.any(String),
       'admin-signup-notification/user-1'
     );
