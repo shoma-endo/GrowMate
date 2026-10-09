@@ -66,3 +66,50 @@ describe('EmailService.sendContentAnnotationSummaryCompletion', () => {
     expect(mocks.send).not.toHaveBeenCalled();
   });
 });
+
+describe('EmailService.sendAdminSignupNotification', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.env.RESEND_API_KEY = 'test-resend-key';
+    vi.stubEnv('EMAIL_FROM', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('複数の宛先と冪等キーを Resend へ渡す', async () => {
+    mocks.send.mockResolvedValue({ data: { id: 'email-1' }, error: null });
+    const service = new EmailService();
+
+    const result = await service.sendAdminSignupNotification(
+      ['a@b.test', 'c@d.test'],
+      '件名',
+      '<p>x</p>',
+      'admin-signup-notification/user-1'
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(mocks.send).toHaveBeenCalledWith(
+      { from: 'GrowMate <noreply@mail.growmate.tokyo>', to: ['a@b.test', 'c@d.test'], subject: '件名', html: '<p>x</p>' },
+      { idempotencyKey: 'admin-signup-notification/user-1' }
+    );
+  });
+
+  it('Resend がエラーを返したら失敗を返す', async () => {
+    mocks.send.mockResolvedValue({
+      data: null,
+      error: { name: 'concurrent_idempotent_requests', message: 'conflict' },
+    });
+    const service = new EmailService();
+
+    const result = await service.sendAdminSignupNotification(
+      ['a@b.test'],
+      '件名',
+      '<p>x</p>',
+      'admin-signup-notification/user-1'
+    );
+
+    expect(result).toEqual({ success: false, error: 'conflict' });
+  });
+});

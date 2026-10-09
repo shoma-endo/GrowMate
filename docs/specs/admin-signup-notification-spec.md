@@ -3,7 +3,7 @@
 ## メタデータ
 
 - 文書名: 新規ユーザー登録の管理者メール通知
-- ステータス: `approved`
+- ステータス: `implemented`
 - 作成日: 2026-10-09
 - 最終更新日: 2026-10-09
 - 作成者: shoma-endo（Claude Code で起草）
@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: spec-review 通過
-- 止まっている理由・待っている人: なし
-- 次の一手: `takt -w spec-to-pr -t "docs/plans/admin-signup-notification-spec.md 仕様書に沿って実装してください"`
-- 未確認事項: Q-003（カオルさんの GrowMate アカウントが `admin` ロールか）。本番で環境変数を設定する前のリリース前ゲートとして残置。仕様レビューと実装着手のブロッカーにしない
-- 関連ブランチ・PR: `develop`
-- 更新日・更新した工程: 2026-10-09 spec-review finalize
+- 現在の工程: 実装 PR レビュー待ち
+- 止まっている理由・待っている人: 人間の PR 確認と merge
+- 次の一手: PR 確認と merge
+- 未確認事項: PR 本文の `## 最終確認（引き継ぎ用）` を参照（6項目）
+- 関連ブランチ・PR: `feature/admin-signup-notification`
+- 更新日・更新した工程: 2026-10-09 spec-to-pr create_pr
 
 ## 1. 背景・目的・成功指標
 
@@ -434,3 +434,4 @@ Feature: 新規ユーザー登録の管理者メール通知
 | 2026-10-09 | 初版作成。Q-001・Q-002 を回答済みで記録 | 依頼「ユーザー登録後にカオルさんへメール連絡」 | shoma-endo（Claude Code で起草） |
 | 2026-10-09 | spec-review cycle 1 の指摘 F-01〜F-09 を反映（環境変数の検証位置、登録日時の出どころ、ロール例外の承認、Q-003 のリリース前ゲート化、409 の扱い、最後の一文のロール条件、Gherkin の画面名、`after()` 公式根拠、呼び出し元2つ）。公式ドキュメント照合を記録 | spec-review audit cycle 1 | Claude Code（spec-review revise） |
 | 2026-10-09 | spec-review 通過（audit cycle 2 approved、🔴0 / 🟡0 / 🟢3）。cycle 1 の F-01〜F-09 は revise で反映済み。ステータスを `approved` に更新。Q-003 はリリース前ゲートとして残置 | 仕様レビュー | spec-review |
+| 2026-10-09 | 実装 PR 作成（feature/admin-signup-notification）。名前の初回保存時に `after()` で `ADMIN_SIGNUP_NOTIFICATION_EMAILS` の管理者へ通知メールを送る（Server Action・メール組み立て lib・EmailService 送信メソッド・環境変数・単体テスト） | 仕様に沿った実装 | spec-to-pr |
