@@ -15,6 +15,7 @@
 - 実装の最小化（YAGNI ラダー）は `.takt/workflows/rules/minimal-impl-ladder.md` に従う。
 - コードコメントは `.takt/workflows/rules/code-comments.md` に従う（コードから読み取れないことだけを書く）。
 - UI（`app/**`・`src/components/**`）を変える前に `.agents/skills/growmate-ui-ux/SKILL.md` を読み、同種の既存 UI を調べて「UI 既存パターン対照表」を作る。同種の既存 UI があれば、そのまま使う・共通化する・マークアップとクラスを変えずに写すのいずれかにし、見出し・文言・色（トークン化を含む）を自分の判断で変えない。`eslint-suppressions.json` の件数は増やさない（写すと生の色の違反が増えるなら、既存ファイル内で部品を export して共通化する）。
+- この AGENTS.md や skills に書かれたパス・構成・コマンド・運用が実態と食い違っていたら、実態に合わせて作業し、食い違いを報告する（黙って従わない・黙って直さない）。`docs/plans/` の仕様書は未実装分を含むため対象外で、仕様とコードの食い違いは仕様が正。
 
 ## Workflow Source of Truth
 
