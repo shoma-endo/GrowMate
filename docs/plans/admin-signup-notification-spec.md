@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: 仕様書作成済み・spec-review 前
+- 現在の工程: spec-review cycle 1 の audit 指摘（🟡 F-01〜F-04、🟢 F-05〜F-09）を反映済み・再 audit 待ち
 - 止まっている理由・待っている人: なし
-- 次の一手: ローカル TAKT で `takt -w spec-review` を実行する。approved 後に `takt -w spec-to-pr`
-- 未確認事項: Q-003（カオルさんの GrowMate アカウントが `admin` ロールか）。実装には影響しないが、本番で環境変数を設定する前に確認する
+- 次の一手: spec-review の再 audit。approved 後に spec-to-pr
+- 未確認事項: Q-003（カオルさんの GrowMate アカウントが `admin` ロールか）。本番で環境変数を設定する前のリリース前ゲート。仕様レビューと実装着手のブロッカーにしない
 - 関連ブランチ・PR: `develop`
-- 更新日・更新した工程: 2026-10-09 仕様書作成
+- 更新日・更新した工程: 2026-10-09 spec-review revise（cycle 1）
 
 ## 1. 背景・目的・成功指標
 
@@ -86,6 +86,7 @@
 ### 対象範囲
 
 - 画面・操作: なし（UI 変更なし）
+- 影響する既存機能: `registerFullName` の呼び出し元2つ。通常ログイン（`app/login/LoginClient.tsx`）と審査用ログイン（`src/components/ReviewLoginForm.tsx`、R-003）の名前保存。どちらも UI は変わらない
 - API・外部連携: Resend によるメール送信（既存 `EmailService` にメソッドを追加）
 - データ・DB: なし（migration なし）
 - 権限・ロール: 通知のきっかけは `unavailable` ユーザーの登録、受信者は管理者（§6 権限の例外を参照）
@@ -145,8 +146,8 @@
 | --- | --- | --- | --- | --- |
 | FR-001 | 名前未保存のユーザーが名前を保存したら、管理者へ通知メールを送る | Must | 依頼（2026-10-09）、Q-002 | 名前保存の成功後に1通送信される |
 | FR-002 | 名前を保存済みのユーザーには送らない | Must | BR-01 | `registerFullName` が再度呼ばれても送信されない |
-| FR-003 | メールに登録者の名前・メールアドレス・登録日時（日本時間）・ユーザー一覧へのリンクを載せる | Must | 依頼「誰が登録したのか分かるように名前も出す」「ユーザー一覧画面のリンクへ誘導」 | 本文に各項目があり、リンクが `${NEXT_PUBLIC_SITE_URL}/admin/users` |
-| FR-004 | 宛先は `ADMIN_SIGNUP_NOTIFICATION_EMAILS`（カンマ区切り）。未設定なら送らない | Must | Q-001 | 未設定時は送信せず警告ログのみ |
+| FR-003 | メールに登録者の名前・メールアドレス・登録日時（日本時間）・ユーザー一覧へのリンクを載せる。登録日時は `users.created_at`（`resolveOrCreateEmailUser` が返す `user.createdAt`）を Asia/Tokyo で表示し、`/admin/users` の「登録日」と同じ値にする（送信時刻は使わない）。「権限を変更するまで…利用できません」の一文は `user.role` が `unavailable` のときだけ載せる | Must | 依頼「誰が登録したのか分かるように名前も出す」「ユーザー一覧画面のリンクへ誘導」 | 本文に各項目があり、リンクが `${NEXT_PUBLIC_SITE_URL}/admin/users`。登録日時が `users.created_at` と一致する。`unavailable` 以外のロールでは最後の一文が無い |
+| FR-004 | 宛先は `ADMIN_SIGNUP_NOTIFICATION_EMAILS`（カンマ区切り）。未設定なら送らない。`src/env.ts` のスキーマは `z.string().min(1).optional()` にとどめ、カンマ区切りの分割・trim・空要素の除去は送信時に `src/server/lib/admin-signup-notification-email.ts`（またはその呼び出し側）で行う。個々のアドレス形式は検証しない（不正なら Resend のエラーとしてログに残る）。env スキーマで厳しく検証すると、値の打ち間違い1つで `env` を読む全サーバー処理が起動時に例外になり BR-02 に反するため | Must | Q-001、BR-02 | 未設定時、または分割結果が0件のときは送信せず警告ログのみ。不正な値でもアプリの起動とログインは妨げない |
 | FR-005 | 送信失敗・未設定でも登録処理は成功として返す | Must | BR-02 | Resend 失敗時も `registerFullName` が `success: true` |
 | FR-006 | 名前の連続送信で重複メールを送らない | Should | 冪等性 | Resend の Idempotency-Key に `admin-signup-notification/<userId>` を渡す |
 
@@ -155,10 +156,10 @@
 - 入力値・形式・必須条件: `registerFullName(fullName)` の既存入力（1〜100文字）。変更しない。
 - 正常時の出力:
   - 件名: `【GrowMate】新規ユーザー登録：<名前>`
-  - 本文: 名前、メールアドレス、登録日時（Asia/Tokyo）、「ユーザー一覧を開く」リンク、「権限を変更するまで、このユーザーは GrowMate を利用できません。」
+  - 本文: 名前、メールアドレス、登録日時（`users.created_at` を Asia/Tokyo で表示）、「ユーザー一覧を開く」リンク、「権限を変更するまで、このユーザーは GrowMate を利用できません。」（最後の一文は `user.role` が `unavailable` のときだけ載せる）
 - エラー時の出力: ユーザーへの表示は変えない。サーバーログに `[admin-signup-notification]` 接頭辞で記録する。
 - 状態と遷移条件: `users.full_name` が空 → 保存成功 → 通知を `after()` で予約。
-- 冪等性・重複実行時の挙動: 2回目以降は `full_name` が保存済みなので送らない。同時に2回呼ばれても Idempotency-Key で1通になる（Resend のキー保持期間は24時間）。
+- 冪等性・重複実行時の挙動: 2回目以降は `full_name` が保存済みなので送らない。同時に2回呼ばれても Idempotency-Key で1通になる（Resend のキー保持期間は24時間）。2通目は Resend が 409（`concurrent_idempotent_requests`、または本文が異なる場合の `invalid_idempotent_request`）を返し、`[admin-signup-notification]` のエラーログに残る。これは想定内で、追加の処理はしない。名前の異なる2回の同時保存では、DB の名前とメールの名前がずれうる（受容）。
 
 ### 画面設計
 
@@ -166,7 +167,9 @@ UI 変更なし。
 
 ### 権限
 
-AGENTS.md の既定（新規機能は `admin` / `paid` に提供）に対する例外として明記する。本機能はユーザーに機能を提供するものではなく、`unavailable` ロールで作られる新規ユーザーの登録をきっかけに**管理者へ**通知するものである。通知のきっかけを `unavailable` に限定するのではなく、名前の初回保存を条件にする（新規ユーザーは必ず `unavailable` で作られるため）。
+AGENTS.md の既定（新規機能は `admin` / `paid` に提供）に対する例外として明記する。本機能はユーザーに機能を提供するものではなく、`unavailable` ロールで作られる新規ユーザーの登録をきっかけに**管理者へ**通知するものである。通知のきっかけを `unavailable` に限定するのではなく、名前の初回保存を条件にする（新規ユーザーは必ず `unavailable` で作られるため）。ただし名前未保存の既存ユーザー（`paid` など）や、名前入力前に admin が権限を変えたユーザーも対象になりうるため、「利用できません」の一文はロールが `unavailable` のときだけ載せる（FR-003）。
+
+承認: 依頼者（2026-10-09 の依頼「ユーザー登録後、マスター（カオルさん）にメール連絡する」）。新規登録＝`unavailable` ユーザーの登録をきっかけにすることが依頼内容そのもの。Q-001・Q-002 で宛先・時点も回答済み。
 
 | ロール | 閲覧 | 作成・実行 | 更新 | 削除・解除 |
 | --- | --- | --- | --- | --- |
@@ -186,7 +189,7 @@ Feature: 新規ユーザー登録の管理者メール通知
     Given 通知先メールアドレスが設定されている
     And 名前が未登録のユーザーがログインしている
     When ユーザーが名前「山田太郎」を保存する
-    Then ユーザーは利用停止画面へ進む
+    Then ユーザーは承認待ち画面（`/unavailable`）へ進む
     And 管理者に件名「【GrowMate】新規ユーザー登録：山田太郎」のメールが送られる
     And メール本文に名前・メールアドレス・登録日時・ユーザー一覧へのリンクが含まれる
 
@@ -232,7 +235,7 @@ Feature: 新規ユーザー登録の管理者メール通知
 | 可用性・信頼性 | 送信失敗時のリトライはしない | 単体テスト | Non-goals |
 | セキュリティ・プライバシー | 名前・メールアドレスは HTML エスケープし `sanitizeEmailHtml` を通す。宛先は管理者のみ（サーバー環境変数） | 単体テスト | 確定 |
 | 認証・認可 | 既存 `registerFullName` のセッション検証を流用。リンク先は既存 admin 認可 | コードレビュー | 確定 |
-| 監査・ログ | 失敗時は userId とエラーをログに残す。メールアドレス・名前はログに出さない | コードレビュー | 確定 |
+| 監査・ログ | 失敗時は userId とエラーをログに残す。メールアドレス・名前はログに出さない。Idempotency-Key 重複による 409 も失敗としてログに残るが想定内（§6 冪等性） | コードレビュー | 確定 |
 | 障害対応 | Resend 障害時は通知が欠ける。`/admin/users` の登録日で取りこぼしを確認できる | 運用 | 確定 |
 | バックアップ・復旧 | 対象外（保存データなし） | - | 対象外 |
 | 運用・監視 | 対象外（専用監視は作らない） | - | Non-goals |
@@ -251,7 +254,7 @@ Feature: 新規ユーザー登録の管理者メール通知
 - 作成・更新・削除するデータ: なし（既存の `users.full_name` 更新に便乗するだけ）
 - データの所有者: -
 - 保持期間・削除条件: -
-- 移行・既存データとの互換性: 既存の名前未保存ユーザーが今後名前を保存した場合も通知される（新規登録と同じ扱いで問題ない）
+- 移行・既存データとの互換性: 既存の名前未保存ユーザーが今後名前を保存した場合も通知される（新規登録と同じ扱いで問題ない。ロールが `unavailable` 以外なら「利用できません」の一文は載せない。FR-003）
 - RLS・Service Role・ユーザー境界: 変更なし
 
 ### 外部連携
@@ -268,9 +271,9 @@ Feature: 新規ユーザー登録の管理者メール通知
 - 再利用する既存実装:
   - 再利用: `EmailService`（`src/server/services/emailService.ts`）の送信パターン。Idempotency-Key を渡す形は `sendGa4ContentEvaluation` 等と同じ
   - 再利用: `sanitizeEmailHtml`（`src/server/lib/email-html.ts`）、本文組み立ての形は `src/server/lib/instagram-blog-draft-email.ts`
-  - 再利用: `after()` の利用例 `app/api/instagram/blog-drafts/route.ts`
+  - 再利用: `after()` の利用例 `app/api/instagram/blog-drafts/route.ts`（Route Handler）。Server Action 内での前例はリポジトリに無いが、公式で Server Functions での利用が明記されている（https://nextjs.org/docs/app/api-reference/functions/after 、確認日 2026-10-09。引用: "It can be used in Server Components (including generateMetadata), Server Functions, Route Handlers, and Proxy."）
   - 拡張: `registerFullName`（`src/server/actions/auth.actions.ts`）に送信予約を追加
-  - 新規: 環境変数 `ADMIN_SIGNUP_NOTIFICATION_EMAILS`（`src/env.ts`）
+  - 新規: 環境変数 `ADMIN_SIGNUP_NOTIFICATION_EMAILS`（`src/env.ts`。スキーマは `z.string().min(1).optional()`、分割・検証は送信時。FR-004）
 
 ### 制約条件
 
@@ -330,7 +333,7 @@ Feature: 新規ユーザー登録の管理者メール通知
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Q-001 | 通知の宛先をどう決めるか | 実装方式が変わる | 依頼者 | - | 回答済み | 環境変数で指定（カンマ区切りで複数可） | 2026-10-09 |
 | Q-002 | どの時点で送るか | 名前を載せられるかが変わる | 依頼者 | - | 回答済み | 名前の入力完了時 | 2026-10-09 |
-| Q-003 | カオルさんの GrowMate アカウントは `admin` ロールか | リンク先 `/admin/users` は admin でないと開けない | 開発チーム | 本番設定前 | 未回答 |  |  |
+| Q-003 | カオルさんの GrowMate アカウントは `admin` ロールか | リンク先 `/admin/users` は admin でないと開けない。本番の環境変数を設定する前のリリース前ゲート。回答がどうであっても要件・Gherkin・実装は変わらないため、仕様レビューと実装着手のブロッカーにしない | 開発チーム | 本番設定前 | 未回答（リリース前ゲート） |  |  |
 
 ### 未決定事項（今は決めない）
 
@@ -343,11 +346,11 @@ Feature: 新規ユーザー登録の管理者メール通知
 ### テスト方針
 
 - 単体:
-  - メール本文の組み立て（項目・リンク・エスケープ・日本時間）
+  - メール本文の組み立て（項目・リンク・エスケープ・日本時間。登録日時が `users.created_at` 由来であること、`unavailable` 以外のロールで最後の一文が出ないこと）
   - `EmailService.sendAdminSignupNotification`（未設定キー・成功・失敗・Idempotency-Key）
   - `registerFullName` の送信条件（名前未保存のみ送信、保存済みは送らない、宛先未設定、送信失敗でも成功）
 - Gherkinシナリオとの対応: §7 の全シナリオを単体テストで確認する
-- 外部API・失敗系・境界条件: Resend はモック。宛先のカンマ区切り（空白・空要素）を確認する
+- 外部API・失敗系・境界条件: Resend はモック。宛先のカンマ区切り（空白・空要素・分割結果0件は未設定扱い）を確認する
 - セキュリティ・権限・RLS: 名前の HTML エスケープ
 - 実画面確認: preview 環境で開発者のアドレスを宛先にし、新規メールアドレスで登録して受信とリンクを確認する
 
@@ -371,7 +374,7 @@ Feature: 新規ユーザー登録の管理者メール通知
 
 1. 本仕様書のレビュー（`takt -w spec-review`）
 2. 実装（`takt -w spec-to-pr`）
-   1. `src/env.ts` に `ADMIN_SIGNUP_NOTIFICATION_EMAILS`（任意）を追加
+   1. `src/env.ts` に `ADMIN_SIGNUP_NOTIFICATION_EMAILS`（任意。`z.string().min(1).optional()`。分割・検証は送信時に行う。FR-004）を追加
    2. `src/server/lib/admin-signup-notification-email.ts` を新規作成
    3. `EmailService.sendAdminSignupNotification` を追加
    4. `registerFullName` で `user.fullName` が空かつ保存成功時に `after()` で送信
@@ -385,7 +388,7 @@ Feature: 新規ユーザー登録の管理者メール通知
 
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
-| 本番設定前 | Q-003（カオルさんが admin か） | 開発チーム | 未確認 |
+| 本番設定前 | Q-003（カオルさんが admin か）。リリース前ゲート。仕様レビューと実装着手のブロッカーにしない | 開発チーム | 未確認 |
 | リリース後 | カオルさんが通知メールを受信できたか | 依頼者 | 未確認 |
 
 ## 15. 完了条件
@@ -403,12 +406,18 @@ Feature: 新規ユーザー登録の管理者メール通知
 
 | 回 | 日付 | 指摘件数（🔴 / 🟡 / 🟢） | 反映状況 | 残置合意した論点と理由 |
 | --- | --- | --- | --- | --- |
-|  |  |  |  |  |
+| 1 | 2026-10-09 | 0 / 4 / 5 | F-01〜F-09 をすべて本文へ反映（F-01: env スキーマは緩く送信時に分割、F-02: 登録日時=`users.created_at`、F-03: ロール例外の承認を明記、F-04: Q-003 をリリース前ゲートと明記、F-05: 409 は想定内、F-06: 最後の一文は `unavailable` のみ、F-07: Gherkin を承認待ち画面へ、F-08: `after()` 公式根拠、F-09: 呼び出し元2つ） | Q-003 は未回答のまま残置。本番の環境変数設定前のリリース前ゲートで、要件・実装に影響しないため仕様レビューの未解決に数えない（audit cycle 1 F-04） |
 
 #### 公式ドキュメント照合
 
-- 未実施（spec-review で照合する）
-- 参照 URL と確認日: §9 外部連携の Resend ドキュメント
+- 実施（2026-10-09、spec-review audit cycle 1 で WebFetch）
+- 参照 URL と確認日:
+  - https://resend.com/docs/api-reference/emails/send-email （2026-10-09）。引用: "Recipient email address. For multiple addresses, send as an array of strings." / "Max 50." / "Idempotency keys expire after 24 hours" / "Have a maximum length of 256 characters"
+    - 解釈: `to` 配列・Idempotency-Key の指定は本仕様と一致。キー `admin-signup-notification/<UUID>` は63文字で上限内
+  - https://resend.com/docs/dashboard/emails/idempotency-keys （2026-10-09）。引用: "Idempotency keys are kept in the system for 24 hours." / "`409`: `concurrent_idempotent_requests` - another request with the same idempotency key is in progress." / "`409`: `invalid_idempotent_request` - this idempotency key has already been used on a request that had a different payload."
+    - 解釈: 重複送信の2通目は 409 になり、ログに残る（§6 冪等性）
+  - https://nextjs.org/docs/app/api-reference/functions/after （version 16.4.0、2026-10-09）。引用: "It can be used in Server Components (including generateMetadata), Server Functions, Route Handlers, and Proxy." / "`after` will run for the platform's default or configured max duration of your route."
+    - 解釈: Server Action（`registerFullName`）内での `after()` 利用は公式で可（§10）
 
 ### 承認
 
@@ -422,3 +431,4 @@ Feature: 新規ユーザー登録の管理者メール通知
 | 日付 | 変更内容 | 変更理由 | 変更者 |
 | --- | --- | --- | --- |
 | 2026-10-09 | 初版作成。Q-001・Q-002 を回答済みで記録 | 依頼「ユーザー登録後にカオルさんへメール連絡」 | shoma-endo（Claude Code で起草） |
+| 2026-10-09 | spec-review cycle 1 の指摘 F-01〜F-09 を反映（環境変数の検証位置、登録日時の出どころ、ロール例外の承認、Q-003 のリリース前ゲート化、409 の扱い、最後の一文のロール条件、Gherkin の画面名、`after()` 公式根拠、呼び出し元2つ）。公式ドキュメント照合を記録 | spec-review audit cycle 1 | Claude Code（spec-review revise） |
