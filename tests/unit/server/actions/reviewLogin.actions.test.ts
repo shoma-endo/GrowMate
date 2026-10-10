@@ -15,6 +15,8 @@ vi.mock('next/headers', () => ({
   headers: async () => new Headers(),
 }));
 
+vi.mock('@/env', () => ({ env: {} }));
+
 vi.mock('@/server/middleware/auth.middleware', () => ({
   clearAuthCookies: vi.fn(),
 }));

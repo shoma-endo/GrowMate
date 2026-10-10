@@ -1,12 +1,20 @@
 'use server';
 
 import { headers } from 'next/headers';
+import { after } from 'next/server';
 
 import { isUnavailable } from '@/authUtils';
+import { env } from '@/env';
 import { isUnauthenticatedAuthError } from '@/lib/supabase/auth-errors';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { clearAuthCookies } from '@/server/middleware/auth.middleware';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import {
+  type AdminSignupNotificationUser,
+  buildAdminSignupNotificationEmail,
+  parseAdminSignupNotificationRecipients,
+} from '@/server/lib/admin-signup-notification-email';
+import { emailService } from '@/server/services/emailService';
 import { EmailAuthLinkConflictError, PendingAuthDeletionError, userService } from '@/server/services/userService';
 
 // インメモリ レート制限
@@ -158,9 +166,23 @@ export async function registerFullName(
     }
     throw e;
   }
+  // 保存後の値では初回かどうかを区別できないため、保存前の名前で判定する
+  const isFirstFullName = !user.fullName?.trim();
   const ok = await userService.updateFullName(user.id, fullName.trim());
   if (!ok) {
     return { success: false, error: '登録に失敗しました。もう一度お試しください。' };
+  }
+
+  if (isFirstFullName) {
+    const notifiedUser = {
+      id: user.id,
+      fullName: fullName.trim(),
+      email: authData.user.email!,
+      createdAt: user.createdAt,
+      role: user.role,
+    };
+    // 通知の成否・所要時間は登録結果に影響させない（BR-02）ため、応答後に送る
+    after(() => notifyAdminOfSignup(notifiedUser));
   }
 
   // 新規は unavailable のままなので停止画面へ。利用可能ロールはホームへ。
@@ -168,6 +190,26 @@ export async function registerFullName(
     success: true,
     nextPath: isUnavailable(user.role) ? '/unavailable' : '/',
   };
+}
+
+async function notifyAdminOfSignup(
+  user: AdminSignupNotificationUser & { id: string }
+): Promise<void> {
+  const recipients = parseAdminSignupNotificationRecipients(env.ADMIN_SIGNUP_NOTIFICATION_EMAILS);
+  if (recipients.length === 0) {
+    console.warn('[admin-signup-notification] recipients are not configured', { userId: user.id });
+    return;
+  }
+  const { subject, html } = buildAdminSignupNotificationEmail(env.NEXT_PUBLIC_SITE_URL, user);
+  const result = await emailService.sendAdminSignupNotification(
+    recipients,
+    subject,
+    html,
+    `admin-signup-notification/${user.id}`
+  );
+  if (!result.success) {
+    console.error('[admin-signup-notification] failed to send', { userId: user.id, error: result.error });
+  }
 }
 
 export async function verifyOtp(
