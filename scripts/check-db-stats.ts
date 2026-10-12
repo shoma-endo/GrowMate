@@ -21,8 +21,8 @@ interface TableSnapshot {
   recordCount: number;
 }
 
-/** データのある日だけで集計した、1ユーザーの gsc_query_metrics の1日あたり行数 */
-interface GscQueryUserStat {
+/** データのある日だけで集計した、1ユーザーの1日あたり行数 */
+interface UserDailyRowStat {
   name: string;
   avgPerDay: number;
   sdPerDay: number;
@@ -30,12 +30,38 @@ interface GscQueryUserStat {
   daysWithData: number;
 }
 
+type UserDailyRowStats = Record<string, UserDailyRowStat>;
+
+/**
+ * ユーザー別に1日あたり行数を数える日次メトリクス表。
+ * 各表のユニーク制約が (user_id, <プロパティ列>, date, ...) で始まるため、この3列で絞った count は索引で引ける
+ */
+const DAILY_ROW_BREAKDOWNS = [
+  {
+    key: 'gscQuery',
+    label: 'GSCクエリ',
+    table: 'gsc_query_metrics',
+    credentialPropertyColumn: 'property_uri',
+    metricsPropertyColumn: 'property_uri',
+  },
+  {
+    key: 'ga4Daily',
+    label: 'GA4日次',
+    table: 'ga4_page_metrics_daily',
+    credentialPropertyColumn: 'ga4_property_id',
+    metricsPropertyColumn: 'property_id',
+  },
+] as const;
+
+type DailyRowBreakdown = (typeof DAILY_ROW_BREAKDOWNS)[number];
+type DailyRowBreakdownKey = DailyRowBreakdown['key'];
+
 interface DbStatsSnapshot {
   capturedAt: string;
   databaseSizeBytes: number;
   tables: Record<string, TableSnapshot>;
   /** 追加前に保存されたスナップショットには無い */
-  gscQueryByUser?: Record<string, GscQueryUserStat>;
+  dailyRowsByUser?: Partial<Record<DailyRowBreakdownKey, UserDailyRowStats>>;
 }
 
 interface TableShareWarning {
@@ -62,10 +88,15 @@ interface DbStatsReport {
   tables: { name: string; sizeBytes: number; previousSizeBytes: number | null }[];
   shareWarnings: TableShareWarning[];
   growthWarnings: TableGrowth[];
-  gscQueryWindowDays: number;
-  gscQueryByUser: (GscQueryUserStat & { previousAvgPerDay: number | null })[];
-  /** null は対象ユーザーの一覧すら取れず、内訳を集計していない */
-  gscQueryFailedUserCount: number | null;
+  dailyRowWindowDays: number;
+  dailyRowBreakdowns: {
+    key: DailyRowBreakdownKey;
+    label: string;
+    table: string;
+    users: (UserDailyRowStat & { previousAvgPerDay: number | null })[];
+    /** null は対象ユーザーの一覧すら取れず、内訳を集計していない */
+    failedUserCount: number | null;
+  }[];
 }
 
 /** Supabase Pro プランの含まれるクォータ（https://supabase.com/pricing 参照） */
@@ -79,8 +110,8 @@ const SUPABASE_PRO_PLAN = {
 const HISTORY_FILE_PATH = join(__dirname, 'db-stats-history.json');
 const REPORT_FILE_PATH = join(__dirname, 'db-stats-report.json');
 
-const GSC_QUERY_WINDOW_DAYS = 30;
-const GSC_QUERY_COUNT_CONCURRENCY = 10;
+const DAILY_ROW_WINDOW_DAYS = 30;
+const DAILY_ROW_COUNT_CONCURRENCY = 10;
 
 /** テーブルが DB 全体のこの割合を超えたら警告 */
 const TABLE_DISK_SHARE_WARN_PERCENT = 30;
@@ -138,7 +169,7 @@ function buildSnapshot(
   databaseSizeBytes: number,
   tableSizes: TableSizeInfo[],
   tableCounts: Record<string, number>,
-  gscQueryByUser: Record<string, GscQueryUserStat> | undefined
+  dailyRowsByUser: NonNullable<DbStatsSnapshot['dailyRowsByUser']>
 ): DbStatsSnapshot {
   const tables: Record<string, TableSnapshot> = {};
   for (const tableSize of tableSizes) {
@@ -152,7 +183,7 @@ function buildSnapshot(
     capturedAt: new Date().toISOString(),
     databaseSizeBytes,
     tables,
-    ...(gscQueryByUser ? { gscQueryByUser } : {}),
+    dailyRowsByUser,
   };
 }
 
@@ -335,51 +366,40 @@ function recentDates(days: number): string[] {
 }
 
 /**
- * GSC プロパティを設定済みのユーザーごとに、gsc_query_metrics の1日あたり行数を集計する。
- * gsc_query_metrics は全件 count が失敗するほど大きいため、ユニーク制約
- * (user_id, property_uri, date, ...) の先頭3列で絞った日別 count を積み上げる。
+ * プロパティを設定済みのユーザーごとに、日次メトリクス表の1日あたり行数を集計する。
+ * 表全体の count は gsc_query_metrics で失敗するほど重いため、ユーザー×日の count を積み上げる
  */
-async function collectGscQueryByUser(
+async function collectDailyRowsByUser(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  client: any
-): Promise<{ stats: Record<string, GscQueryUserStat>; failedUserCount: number }> {
+  client: any,
+  breakdown: DailyRowBreakdown,
+  nameById: Map<string, string | null>
+): Promise<{ stats: UserDailyRowStats; failedUserCount: number }> {
   const { data: credentials, error: credentialError } = await client
     .from('gsc_credentials')
-    .select('user_id, property_uri')
-    .not('property_uri', 'is', null);
+    .select(`user_id, ${breakdown.credentialPropertyColumn}`)
+    .not(breakdown.credentialPropertyColumn, 'is', null);
   if (credentialError) {
     throw new Error(`gsc_credentials の取得に失敗しました: ${credentialError.message}`);
   }
 
-  const targets = (credentials ?? []) as { user_id: string; property_uri: string }[];
-  const { data: users, error: userError } = await client
-    .from('users')
-    .select('id, full_name')
-    .in(
-      'id',
-      targets.map(target => target.user_id)
-    );
-  if (userError) {
-    throw new Error(`users の取得に失敗しました: ${userError.message}`);
-  }
-  const nameById = new Map(
-    ((users ?? []) as { id: string; full_name: string | null }[]).map(user => [
-      user.id,
-      user.full_name,
-    ])
-  );
-
-  const dates = recentDates(GSC_QUERY_WINDOW_DAYS);
-  const stats: Record<string, GscQueryUserStat> = {};
+  const targets = (
+    (credentials ?? []) as Record<'user_id' | DailyRowBreakdown['credentialPropertyColumn'], string>[]
+  ).map(row => ({
+    userId: row.user_id,
+    property: row[breakdown.credentialPropertyColumn],
+  }));
+  const dates = recentDates(DAILY_ROW_WINDOW_DAYS);
+  const stats: UserDailyRowStats = {};
   let failedUserCount = 0;
 
   for (const target of targets) {
     const countForDate = async (date: string): Promise<number> => {
       const { count, error } = await client
-        .from('gsc_query_metrics')
+        .from(breakdown.table)
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', target.user_id)
-        .eq('property_uri', target.property_uri)
+        .eq('user_id', target.userId)
+        .eq(breakdown.metricsPropertyColumn, target.property)
         .eq('date', date);
       if (error) {
         throw new Error(`${date}: ${error.message}`);
@@ -389,13 +409,13 @@ async function collectGscQueryByUser(
 
     try {
       const counts: number[] = [];
-      for (let index = 0; index < dates.length; index += GSC_QUERY_COUNT_CONCURRENCY) {
-        const chunk = dates.slice(index, index + GSC_QUERY_COUNT_CONCURRENCY);
+      for (let index = 0; index < dates.length; index += DAILY_ROW_COUNT_CONCURRENCY) {
+        const chunk = dates.slice(index, index + DAILY_ROW_COUNT_CONCURRENCY);
         counts.push(...(await Promise.all(chunk.map(countForDate))));
       }
       const daysWithRows = counts.filter(count => count > 0);
-      stats[target.user_id] = {
-        name: nameById.get(target.user_id) || '未設定',
+      stats[target.userId] = {
+        name: nameById.get(target.userId) || '未設定',
         avgPerDay: daysWithRows.length > 0 ? mean(daysWithRows) : 0,
         sdPerDay: daysWithRows.length > 0 ? populationStdDev(daysWithRows) : 0,
         maxPerDay: daysWithRows.length > 0 ? Math.max(...daysWithRows) : 0,
@@ -403,8 +423,8 @@ async function collectGscQueryByUser(
       };
     } catch (error) {
       failedUserCount += 1;
-      console.error('gsc_query_metrics のユーザー別集計に失敗しました:', {
-        userId: target.user_id,
+      console.error(`${breakdown.table} のユーザー別集計に失敗しました:`, {
+        userId: target.userId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -413,28 +433,44 @@ async function collectGscQueryByUser(
   return { stats, failedUserCount };
 }
 
-function sortGscQueryUsers(
-  stats: Record<string, GscQueryUserStat>
-): [string, GscQueryUserStat][] {
+async function loadUserNames(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any
+): Promise<Map<string, string | null>> {
+  // 全件を1リクエストで読む。PostgREST の max_rows（Supabase 既定 1000）を超えたら超過分が「未設定」になるのでページングにする
+  const { data, error } = await client.from('users').select('id, full_name');
+  if (error) {
+    throw new Error(`users の取得に失敗しました: ${error.message}`);
+  }
+  return new Map(
+    ((data ?? []) as { id: string; full_name: string | null }[]).map(user => [
+      user.id,
+      user.full_name,
+    ])
+  );
+}
+
+function sortUsersByAvg(stats: UserDailyRowStats): [string, UserDailyRowStat][] {
   return Object.entries(stats).sort(([, a], [, b]) => b.avgPerDay - a.avgPerDay);
 }
 
-function printGscQueryByUser(
-  stats: Record<string, GscQueryUserStat>,
+function printDailyRowsByUser(
+  breakdown: DailyRowBreakdown,
+  stats: UserDailyRowStats,
   failedUserCount: number,
-  previous: DbStatsSnapshot | null
+  previousStats: UserDailyRowStats | undefined
 ): void {
   console.log(
-    `\n🔎 GSCクエリ行数（ユーザー別・直近${GSC_QUERY_WINDOW_DAYS}日のデータがある日の1日あたり）:`
+    `\n🔎 ${breakdown.label}の行数（${breakdown.table}・ユーザー別・直近${DAILY_ROW_WINDOW_DAYS}日のデータがある日の1日あたり）:`
   );
 
-  const sorted = sortGscQueryUsers(stats);
+  const sorted = sortUsersByAvg(stats);
   const withData = sorted.filter(([, stat]) => stat.daysWithData > 0);
   if (withData.length === 0) {
     console.log('  ℹ️  対象期間にデータのあるユーザーはいません。');
   }
   for (const [userId, stat] of withData) {
-    const previousAvg = previous?.gscQueryByUser?.[userId]?.avgPerDay;
+    const previousAvg = previousStats?.[userId]?.avgPerDay;
     const delta =
       previousAvg === undefined ? '' : `（前回比 ${formatSignedNumber(stat.avgPerDay - previousAvg)}）`;
     console.log(
@@ -463,7 +499,7 @@ function buildReport(
   current: DbStatsSnapshot,
   previous: DbStatsSnapshot | null,
   tableSizes: TableSizeInfo[],
-  gscQueryFailedUserCount: number | null
+  failedUserCounts: Partial<Record<DailyRowBreakdownKey, number>>
 ): DbStatsReport {
   return {
     capturedAt: current.capturedAt,
@@ -483,12 +519,26 @@ function buildReport(
     growthWarnings: previous
       ? computeTableDeltas(current, previous).filter(isSignificantTableGrowth)
       : [],
-    gscQueryWindowDays: GSC_QUERY_WINDOW_DAYS,
-    gscQueryByUser: sortGscQueryUsers(current.gscQueryByUser ?? {}).map(([userId, stat]) => ({
-      ...stat,
-      previousAvgPerDay: previous?.gscQueryByUser?.[userId]?.avgPerDay ?? null,
-    })),
-    gscQueryFailedUserCount,
+    dailyRowWindowDays: DAILY_ROW_WINDOW_DAYS,
+    dailyRowBreakdowns: DAILY_ROW_BREAKDOWNS.map(breakdown => {
+      const failedUserCount = failedUserCounts[breakdown.key];
+      const previousStats = previous?.dailyRowsByUser?.[breakdown.key];
+      return {
+        key: breakdown.key,
+        label: breakdown.label,
+        table: breakdown.table,
+        users:
+          failedUserCount === undefined
+            ? []
+            : sortUsersByAvg(current.dailyRowsByUser?.[breakdown.key] ?? {}).map(
+                ([userId, stat]) => ({
+                  ...stat,
+                  previousAvgPerDay: previousStats?.[userId]?.avgPerDay ?? null,
+                })
+              ),
+        failedUserCount: failedUserCount ?? null,
+      };
+    }),
   };
 }
 
@@ -664,32 +714,37 @@ async function checkDatabaseStats() {
     printTableDiskShareWarnings(tableSizes, databaseSize?.database_size_bytes ?? null);
     printProPlanQuotaAndRecommendations(databaseSize?.database_size_bytes ?? null);
 
-    // GSC の内訳が取れなくても、DB 容量の統計と比較用スナップショットは残す
-    let gscQuery: { stats: Record<string, GscQueryUserStat>; failedUserCount: number } | null =
-      null;
+    // 内訳が取れなくても、DB 容量の統計と比較用スナップショットは残す
+    const dailyRowsByUser: NonNullable<DbStatsSnapshot['dailyRowsByUser']> = {};
+    const failedUserCounts: Partial<Record<DailyRowBreakdownKey, number>> = {};
+    let nameById = new Map<string, string | null>();
     try {
-      gscQuery = await collectGscQueryByUser(client);
-      printGscQueryByUser(gscQuery.stats, gscQuery.failedUserCount, previousSnapshot);
+      nameById = await loadUserNames(client);
     } catch (error) {
-      console.error('GSCクエリ行数（ユーザー別）の集計に失敗しました:', error);
+      console.error('ユーザー別内訳の氏名取得に失敗しました。氏名は「未設定」で集計を続けます:', error);
+    }
+    for (const breakdown of DAILY_ROW_BREAKDOWNS) {
+      const previousStats = previousSnapshot?.dailyRowsByUser?.[breakdown.key];
+      try {
+        const result = await collectDailyRowsByUser(client, breakdown, nameById);
+        dailyRowsByUser[breakdown.key] = result.stats;
+        failedUserCounts[breakdown.key] = result.failedUserCount;
+        printDailyRowsByUser(breakdown, result.stats, result.failedUserCount, previousStats);
+      } catch (error) {
+        console.error(`${breakdown.label}の行数（ユーザー別）の集計に失敗しました:`, error);
+      }
     }
 
     const currentSnapshot =
       databaseSizeBytes > 0 && tableSizes.length > 0
-        ? buildSnapshot(
-            databaseSizeBytes,
-            tableSizes,
-            tableCounts,
-            // 集計に失敗した回は前回分を引き継ぎ、次回の比較基準を失わないようにする
-            gscQuery?.stats ?? previousSnapshot?.gscQueryByUser
-          )
+        ? buildSnapshot(databaseSizeBytes, tableSizes, tableCounts, dailyRowsByUser)
         : null;
 
     if (currentSnapshot) {
       printDeltaFromPrevious(currentSnapshot, previousSnapshot);
       writeFileSync(
         REPORT_FILE_PATH,
-        `${JSON.stringify(buildReport(currentSnapshot, previousSnapshot, tableSizes, gscQuery?.failedUserCount ?? null), null, 2)}\n`,
+        `${JSON.stringify(buildReport(currentSnapshot, previousSnapshot, tableSizes, failedUserCounts), null, 2)}\n`,
         'utf-8'
       );
       saveSnapshot(currentSnapshot);

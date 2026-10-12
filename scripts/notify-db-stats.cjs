@@ -105,8 +105,7 @@ function uniqueLabels(names) {
   });
 }
 
-function buildGscQueryTable(report) {
-  const withData = report.gscQueryByUser.filter(user => user.daysWithData > 0);
+function buildUserTable(usersWithData) {
   const numberColumn = (name, displayName) => ({
     name,
     display_name: displayName,
@@ -122,7 +121,7 @@ function buildGscQueryTable(report) {
       { name: 'delta', display_name: '前回比', data_type: 'text' },
       numberColumn('days', '日数'),
     ],
-    withData.map(user => ({
+    usersWithData.map(user => ({
       name: user.name,
       avg: Math.round(user.avgPerDay),
       sd: Math.round(user.sdPerDay),
@@ -136,23 +135,50 @@ function buildGscQueryTable(report) {
   );
 }
 
-function buildReportElements(report) {
-  const usersWithData = report.gscQueryByUser.filter(user => user.daysWithData > 0);
-  const noDataCount = report.gscQueryByUser.length - usersWithData.length;
-  const gscNotes = [
-    `直近${report.gscQueryWindowDays}日のうちデータがある日だけの、gsc_query_metrics の1日あたり行数`,
-    `データなし: ${noDataCount}人`,
-  ];
-  if (report.gscQueryFailedUserCount > 0) {
-    gscNotes.push(`⚠️ 集計に失敗: ${report.gscQueryFailedUserCount}人（実行ログを確認）`);
+function buildDailyRowSection(breakdown, windowDays, periodLabels) {
+  const elements = [hr(), div(`**🔎 ${breakdown.label}の行数（ユーザー別）**`)];
+  if (breakdown.failedUserCount === null) {
+    elements.push(div('⚠️ 集計に失敗しました（実行ログを確認）'));
+    return elements;
   }
-  const userLabels = uniqueLabels(usersWithData.map(user => user.name));
 
+  const usersWithData = breakdown.users.filter(user => user.daysWithData > 0);
+  if (usersWithData.length > 0) {
+    const userLabels = uniqueLabels(usersWithData.map(user => user.name));
+    elements.push(
+      comparisonBarChart({
+        periodLabels,
+        title: `${breakdown.label} 1日平均行数 上位${USER_CHART_LIMIT}人`,
+        unit: '行/日',
+        items: usersWithData.slice(0, USER_CHART_LIMIT).map((user, index) => ({
+          label: userLabels[index],
+          current: Math.round(user.avgPerDay),
+          previous: user.previousAvgPerDay === null ? null : Math.round(user.previousAvgPerDay),
+        })),
+      }),
+      buildUserTable(usersWithData)
+    );
+  } else {
+    elements.push(div('対象期間にデータのあるユーザーはいません'));
+  }
+
+  const notes = [
+    `直近${windowDays}日のうちデータがある日だけの、${breakdown.table} の1日あたり行数`,
+    `データなし: ${breakdown.users.length - usersWithData.length}人`,
+  ];
+  if (breakdown.failedUserCount > 0) {
+    notes.push(`⚠️ 集計に失敗: ${breakdown.failedUserCount}人（実行ログを確認）`);
+  }
+  elements.push(note(notes.join('\n')));
+  return elements;
+}
+
+function buildReportElements(report) {
   const periodLabels = {
     current: `今回 ${formatJstDate(report.capturedAt)}`,
     previous: report.previousCapturedAt ? `前回 ${formatJstDate(report.previousCapturedAt)}` : '前回',
   };
-  const elements = [
+  return [
     buildSummary(report),
     hr(),
     comparisonBarChart({
@@ -165,33 +191,10 @@ function buildReportElements(report) {
         previous: item.previousSizeBytes === null ? null : toMb(item.previousSizeBytes),
       })),
     }),
-    hr(),
-    div('**🔎 GSCクエリ行数（ユーザー別）**'),
+    ...report.dailyRowBreakdowns.flatMap(breakdown =>
+      buildDailyRowSection(breakdown, report.dailyRowWindowDays, periodLabels)
+    ),
   ];
-
-  if (report.gscQueryFailedUserCount === null) {
-    elements.push(div('⚠️ 集計に失敗しました（実行ログを確認）'));
-    return elements;
-  }
-  if (usersWithData.length > 0) {
-    elements.push(
-      comparisonBarChart({
-        periodLabels,
-        title: `1日平均行数 上位${USER_CHART_LIMIT}人`,
-        unit: '行/日',
-        items: usersWithData.slice(0, USER_CHART_LIMIT).map((user, index) => ({
-          label: userLabels[index],
-          current: Math.round(user.avgPerDay),
-          previous: user.previousAvgPerDay === null ? null : Math.round(user.previousAvgPerDay),
-        })),
-      }),
-      buildGscQueryTable(report)
-    );
-  } else {
-    elements.push(div('対象期間にデータのあるユーザーはいません'));
-  }
-  elements.push(note(gscNotes.join('\n')));
-  return elements;
 }
 
 function buildElements({ report, output, isSuccess, workflowUrl }) {
