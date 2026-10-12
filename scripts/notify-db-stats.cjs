@@ -25,6 +25,14 @@ const formatJstDate = iso =>
 const formatSigned = (value, digits = 0) =>
   `${value >= 0 ? '+' : ''}${value.toLocaleString('ja-JP', { maximumFractionDigits: digits })}`;
 
+const numberColumn = (name, displayName, precision = 0) => ({
+  name,
+  display_name: displayName,
+  data_type: 'number',
+  format: { precision, separator: true },
+});
+const textColumn = (name, displayName) => ({ name, display_name: displayName, data_type: 'text' });
+
 function readOptional(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8');
@@ -92,7 +100,37 @@ function buildSummary(report) {
       `⚠️ 急増: ${escapeLarkMd(growth.name)} ${formatSigned(toMb(growth.deltaBytes), 1)} MB（${formatSigned(growth.deltaPercent, 1)}%）`
     );
   }
-  return div(lines.join('\n'));
+  return [
+    div(lines.join('\n')),
+    note(
+      `Supabase Pro: ディスク ${toGb(report.diskQuotaBytes)} GB 込み（超過分 $${report.diskOverageUsdPerGb}/GB）`
+    ),
+  ];
+}
+
+function buildTablesTable(report) {
+  return table(
+    [
+      { ...textColumn('name', 'テーブル'), width: 'auto' },
+      numberColumn('size', 'サイズMB', 1),
+      textColumn('delta', '前回比MB'),
+      textColumn('records', 'レコード数'),
+      textColumn('perRecord', 'KB/件'),
+    ],
+    report.tables.map(item => ({
+      name: item.name,
+      size: toMb(item.sizeBytes),
+      delta:
+        item.previousSizeBytes === null
+          ? '—'
+          : formatSigned(toMb(item.sizeBytes - item.previousSizeBytes), 1),
+      records: item.recordCount === null ? '取得失敗' : item.recordCount.toLocaleString('ja-JP'),
+      perRecord:
+        item.recordCount === null || item.recordCount === 0
+          ? '—'
+          : (item.sizeBytes / item.recordCount / 1024).toFixed(2),
+    }))
+  );
 }
 
 /** グラフは label で棒をまとめるため、同名（「未設定」を含む）に連番を付けて分ける */
@@ -106,12 +144,6 @@ function uniqueLabels(names) {
 }
 
 function buildUserTable(usersWithData) {
-  const numberColumn = (name, displayName) => ({
-    name,
-    display_name: displayName,
-    data_type: 'number',
-    format: { precision: 0, separator: true },
-  });
   return table(
     [
       { name: 'name', display_name: '氏名', data_type: 'text', width: 'auto' },
@@ -133,6 +165,66 @@ function buildUserTable(usersWithData) {
       days: user.daysWithData,
     }))
   );
+}
+
+function buildChatSection(report, periodLabels) {
+  const elements = [hr(), div(`**💬 チャット利用（直近${report.chatWindowDays}日）**`)];
+  const activity = report.chatActivity;
+  if (activity === null) {
+    elements.push(div('⚠️ 集計に失敗しました（実行ログを確認）'));
+    return elements;
+  }
+  if (activity.users.length === 0) {
+    elements.push(div('今回・前回とも利用したユーザーはいません'));
+    return elements;
+  }
+
+  const delta = (current, previous) =>
+    previous === null ? '—' : formatSigned(current - previous);
+  const chartUsers = activity.users.slice(0, USER_CHART_LIMIT);
+  const labels = uniqueLabels(chartUsers.map(user => user.name));
+  elements.push(
+    comparisonBarChart({
+      periodLabels,
+      title: `送信メッセージ数 上位${USER_CHART_LIMIT}人`,
+      unit: '件',
+      items: chartUsers.map((user, index) => ({
+        label: labels[index],
+        current: user.messages,
+        previous: user.previousMessages,
+      })),
+    }),
+    table(
+      [
+        { ...textColumn('name', '氏名'), width: 'auto' },
+        numberColumn('messages', '送信'),
+        textColumn('messagesDelta', '前回比'),
+        numberColumn('sessions', '新規セッション'),
+        textColumn('sessionsDelta', '前回比'),
+      ],
+      activity.users.map(user => ({
+        name: user.name,
+        messages: user.messages,
+        messagesDelta: delta(user.messages, user.previousMessages),
+        sessions: user.sessions,
+        sessionsDelta: delta(user.sessions, user.previousSessions),
+      }))
+    )
+  );
+
+  const sum = key => activity.users.reduce((total, user) => total + (user[key] ?? 0), 0);
+  const activeUsers = activity.users.filter(user => user.messages > 0 || user.sessions > 0).length;
+  const notes = [
+    `送信メッセージは role=user のみ（AIの応答は数えない）`,
+    `合計: 送信 ${sum('messages').toLocaleString('ja-JP')}件 / 新規セッション ${sum('sessions').toLocaleString('ja-JP')}件 / 利用者 ${activeUsers}人`,
+  ];
+  if (activity.hasPrevious) {
+    notes.push(
+      `前回: 送信 ${sum('previousMessages').toLocaleString('ja-JP')}件 / 新規セッション ${sum('previousSessions').toLocaleString('ja-JP')}件`
+    );
+  }
+  elements.push(note(notes.join('\n')));
+  return elements;
 }
 
 function buildDailyRowSection(breakdown, windowDays, periodLabels) {
@@ -179,7 +271,7 @@ function buildReportElements(report) {
     previous: report.previousCapturedAt ? `前回 ${formatJstDate(report.previousCapturedAt)}` : '前回',
   };
   return [
-    buildSummary(report),
+    ...buildSummary(report),
     hr(),
     comparisonBarChart({
       periodLabels,
@@ -191,6 +283,8 @@ function buildReportElements(report) {
         previous: item.previousSizeBytes === null ? null : toMb(item.previousSizeBytes),
       })),
     }),
+    buildTablesTable(report),
+    ...buildChatSection(report, periodLabels),
     ...report.dailyRowBreakdowns.flatMap(breakdown =>
       buildDailyRowSection(breakdown, report.dailyRowWindowDays, periodLabels)
     ),
@@ -205,7 +299,8 @@ function buildElements({ report, output, isSuccess, workflowUrl }) {
   if (!report) {
     return [statusLine, hr(), fullText, hr(), logLink];
   }
-  return [...buildReportElements(report), hr(), fullText, hr(), logLink];
+  // 全文は実行ログで読めるので、図表のカードには載せない
+  return [...buildReportElements(report), hr(), logLink];
 }
 
 function main() {

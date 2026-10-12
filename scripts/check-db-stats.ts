@@ -56,12 +56,23 @@ const DAILY_ROW_BREAKDOWNS = [
 type DailyRowBreakdown = (typeof DAILY_ROW_BREAKDOWNS)[number];
 type DailyRowBreakdownKey = DailyRowBreakdown['key'];
 
+interface ChatUserActivity {
+  name: string;
+  /** role='user' の送信数（AI の応答は数えない） */
+  messages: number;
+  sessions: number;
+}
+
+type ChatActivityByUser = Record<string, ChatUserActivity>;
+
 interface DbStatsSnapshot {
   capturedAt: string;
   databaseSizeBytes: number;
   tables: Record<string, TableSnapshot>;
   /** 追加前に保存されたスナップショットには無い */
   dailyRowsByUser?: Partial<Record<DailyRowBreakdownKey, UserDailyRowStats>>;
+  /** 追加前に保存されたスナップショットには無い */
+  chatActivityByUser?: ChatActivityByUser;
 }
 
 interface TableShareWarning {
@@ -84,10 +95,26 @@ interface DbStatsReport {
   databaseSizeBytes: number;
   previousDatabaseSizeBytes: number | null;
   diskQuotaBytes: number;
+  diskOverageUsdPerGb: number;
   diskGrowthWarning: boolean;
-  tables: { name: string; sizeBytes: number; previousSizeBytes: number | null }[];
+  tables: {
+    name: string;
+    sizeBytes: number;
+    previousSizeBytes: number | null;
+    /** null は件数の取得に失敗した（gsc_query_metrics の全件 count は時々タイムアウトする） */
+    recordCount: number | null;
+  }[];
   shareWarnings: TableShareWarning[];
   growthWarnings: TableGrowth[];
+  chatWindowDays: number;
+  /** null は集計に失敗した。users は今回と前回のどちらかで利用があった人 */
+  chatActivity: {
+    users: (ChatUserActivity & {
+      previousMessages: number | null;
+      previousSessions: number | null;
+    })[];
+    hasPrevious: boolean;
+  } | null;
   dailyRowWindowDays: number;
   dailyRowBreakdowns: {
     key: DailyRowBreakdownKey;
@@ -102,6 +129,7 @@ interface DbStatsReport {
 /** Supabase Pro プランの含まれるクォータ（https://supabase.com/pricing 参照） */
 const SUPABASE_PRO_PLAN = {
   diskSizeBytes: 8 * 1024 * 1024 * 1024,
+  diskOverageUsdPerGb: 0.125,
   monthlyActiveUsers: 100_000,
   fileStorageBytes: 100 * 1024 * 1024 * 1024,
   egressBytes: 250 * 1024 * 1024 * 1024,
@@ -109,6 +137,10 @@ const SUPABASE_PRO_PLAN = {
 
 const HISTORY_FILE_PATH = join(__dirname, 'db-stats-history.json');
 const REPORT_FILE_PATH = join(__dirname, 'db-stats-report.json');
+
+const CHAT_WINDOW_DAYS = 7;
+/** PostgREST の max_rows（Supabase 既定 1000）以下にする */
+const FETCH_PAGE_SIZE = 1000;
 
 const DAILY_ROW_WINDOW_DAYS = 30;
 const DAILY_ROW_COUNT_CONCURRENCY = 10;
@@ -165,12 +197,19 @@ function saveSnapshot(snapshot: DbStatsSnapshot): void {
   writeFileSync(HISTORY_FILE_PATH, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf-8');
 }
 
-function buildSnapshot(
-  databaseSizeBytes: number,
-  tableSizes: TableSizeInfo[],
-  tableCounts: Record<string, number>,
-  dailyRowsByUser: NonNullable<DbStatsSnapshot['dailyRowsByUser']>
-): DbStatsSnapshot {
+function buildSnapshot({
+  databaseSizeBytes,
+  tableSizes,
+  tableCounts,
+  dailyRowsByUser,
+  chatActivityByUser,
+}: {
+  databaseSizeBytes: number;
+  tableSizes: TableSizeInfo[];
+  tableCounts: Record<string, number>;
+  dailyRowsByUser: NonNullable<DbStatsSnapshot['dailyRowsByUser']>;
+  chatActivityByUser: ChatActivityByUser | null;
+}): DbStatsSnapshot {
   const tables: Record<string, TableSnapshot> = {};
   for (const tableSize of tableSizes) {
     tables[tableSize.table_name] = {
@@ -184,6 +223,7 @@ function buildSnapshot(
     databaseSizeBytes,
     tables,
     dailyRowsByUser,
+    ...(chatActivityByUser ? { chatActivityByUser } : {}),
   };
 }
 
@@ -367,7 +407,7 @@ function recentDates(days: number): string[] {
 
 /**
  * プロパティを設定済みのユーザーごとに、日次メトリクス表の1日あたり行数を集計する。
- * 表全体の count は gsc_query_metrics で失敗するほど重いため、ユーザー×日の count を積み上げる
+ * gsc_query_metrics は表全体の count が時々タイムアウトするほど重いため、ユーザー×日の count を積み上げる
  */
 async function collectDailyRowsByUser(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -490,23 +530,142 @@ function printDailyRowsByUser(
   }
 }
 
+async function fetchUserIdsInRange(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  table: 'chat_messages' | 'chat_sessions',
+  range: { sinceIso: string; untilIso: string },
+  role?: string
+): Promise<string[]> {
+  const userIds: string[] = [];
+  for (let from = 0; ; from += FETCH_PAGE_SIZE) {
+    let query = client
+      .from(table)
+      .select('user_id')
+      .gte('created_at', range.sinceIso)
+      // 上限を固定しないと、ページング中に追加された行で offset がずれ、同じ行を二重に数える
+      .lt('created_at', range.untilIso)
+      .order('id')
+      .range(from, from + FETCH_PAGE_SIZE - 1);
+    if (role) {
+      query = query.eq('role', role);
+    }
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(`${table} の取得に失敗しました: ${error.message}`);
+    }
+    const rows = (data ?? []) as { user_id: string }[];
+    userIds.push(...rows.map(row => row.user_id));
+    if (rows.length < FETCH_PAGE_SIZE) {
+      return userIds;
+    }
+  }
+}
+
+async function collectChatActivityByUser(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  nameById: Map<string, string | null>
+): Promise<ChatActivityByUser> {
+  const now = Date.now();
+  const range = {
+    sinceIso: new Date(now - CHAT_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+    untilIso: new Date(now).toISOString(),
+  };
+  const [messageUserIds, sessionUserIds] = await Promise.all([
+    fetchUserIdsInRange(client, 'chat_messages', range, 'user'),
+    fetchUserIdsInRange(client, 'chat_sessions', range),
+  ]);
+
+  const activity: ChatActivityByUser = {};
+  const entryFor = (userId: string): ChatUserActivity =>
+    (activity[userId] ??= { name: nameById.get(userId) || '未設定', messages: 0, sessions: 0 });
+  messageUserIds.forEach(userId => {
+    entryFor(userId).messages += 1;
+  });
+  sessionUserIds.forEach(userId => {
+    entryFor(userId).sessions += 1;
+  });
+  return activity;
+}
+
+function sortByMessages(activity: ChatActivityByUser): [string, ChatUserActivity][] {
+  return Object.entries(activity).sort(
+    ([, a], [, b]) => b.messages - a.messages || b.sessions - a.sessions
+  );
+}
+
+function printChatActivity(
+  activity: ChatActivityByUser,
+  previous: ChatActivityByUser | undefined
+): void {
+  console.log(`\n💬 チャット利用（直近${CHAT_WINDOW_DAYS}日・送信メッセージは role=user のみ）:`);
+  const sorted = sortByMessages(activity);
+  if (sorted.length === 0) {
+    console.log('  ℹ️  対象期間に利用したユーザーはいません。');
+  }
+  for (const [userId, stat] of sorted) {
+    const previousStat = previous?.[userId];
+    const delta = previous
+      ? `（前回比 送信 ${formatSignedNumber(stat.messages - (previousStat?.messages ?? 0))} / セッション ${formatSignedNumber(stat.sessions - (previousStat?.sessions ?? 0))}）`
+      : '';
+    console.log(
+      `  ${stat.name}: 送信 ${stat.messages.toLocaleString()} / 新規セッション ${stat.sessions.toLocaleString()}${delta}`
+    );
+  }
+  const totalMessages = sorted.reduce((sum, [, stat]) => sum + stat.messages, 0);
+  const totalSessions = sorted.reduce((sum, [, stat]) => sum + stat.sessions, 0);
+  console.log(
+    `  合計: 送信 ${totalMessages.toLocaleString()} / 新規セッション ${totalSessions.toLocaleString()}（利用者 ${sorted.length}人）`
+  );
+}
+
+function buildChatActivityReport(
+  current: ChatActivityByUser,
+  previous: ChatActivityByUser | undefined
+): NonNullable<DbStatsReport['chatActivity']> {
+  const merged: ChatActivityByUser = { ...current };
+  // 今回は利用が無いが前回はあった人も、減ったことが見えるよう 0 件で並べる
+  for (const [userId, stat] of Object.entries(previous ?? {})) {
+    merged[userId] ??= { name: stat.name, messages: 0, sessions: 0 };
+  }
+  return {
+    users: sortByMessages(merged).map(([userId, stat]) => ({
+      ...stat,
+      previousMessages: previous ? (previous[userId]?.messages ?? 0) : null,
+      previousSessions: previous ? (previous[userId]?.sessions ?? 0) : null,
+    })),
+    hasPrevious: previous !== undefined,
+  };
+}
+
 function formatSignedNumber(value: number): string {
   const rounded = Math.round(value);
   return `${rounded >= 0 ? '+' : ''}${rounded.toLocaleString()}`;
 }
 
-function buildReport(
-  current: DbStatsSnapshot,
-  previous: DbStatsSnapshot | null,
-  tableSizes: TableSizeInfo[],
-  failedUserCounts: Partial<Record<DailyRowBreakdownKey, number>>
-): DbStatsReport {
+function buildReport({
+  current,
+  previous,
+  tableSizes,
+  countFailedTables,
+  failedUserCounts,
+  chatActivityByUser,
+}: {
+  current: DbStatsSnapshot;
+  previous: DbStatsSnapshot | null;
+  tableSizes: TableSizeInfo[];
+  countFailedTables: Set<string>;
+  failedUserCounts: Partial<Record<DailyRowBreakdownKey, number>>;
+  chatActivityByUser: ChatActivityByUser | null;
+}): DbStatsReport {
   return {
     capturedAt: current.capturedAt,
     previousCapturedAt: previous?.capturedAt ?? null,
     databaseSizeBytes: current.databaseSizeBytes,
     previousDatabaseSizeBytes: previous?.databaseSizeBytes ?? null,
     diskQuotaBytes: SUPABASE_PRO_PLAN.diskSizeBytes,
+    diskOverageUsdPerGb: SUPABASE_PRO_PLAN.diskOverageUsdPerGb,
     diskGrowthWarning: previous ? isDiskGrowthWarning(current, previous) : false,
     tables: [...tableSizes]
       .sort((a, b) => b.size_bytes - a.size_bytes)
@@ -514,11 +673,18 @@ function buildReport(
         name: table.table_name,
         sizeBytes: table.size_bytes,
         previousSizeBytes: previous?.tables[table.table_name]?.sizeBytes ?? null,
+        recordCount: countFailedTables.has(table.table_name)
+          ? null
+          : (current.tables[table.table_name]?.recordCount ?? null),
       })),
     shareWarnings: findTableShareWarnings(tableSizes, current.databaseSizeBytes),
     growthWarnings: previous
       ? computeTableDeltas(current, previous).filter(isSignificantTableGrowth)
       : [],
+    chatWindowDays: CHAT_WINDOW_DAYS,
+    chatActivity: chatActivityByUser
+      ? buildChatActivityReport(chatActivityByUser, previous?.chatActivityByUser)
+      : null,
     dailyRowWindowDays: DAILY_ROW_WINDOW_DAYS,
     dailyRowBreakdowns: DAILY_ROW_BREAKDOWNS.map(breakdown => {
       const failedUserCount = failedUserCounts[breakdown.key];
@@ -657,6 +823,7 @@ async function checkDatabaseStats() {
     console.log(`📋 検出されたテーブル数: ${tables.length}\n`);
     console.log('📈 各テーブルのレコード数:');
     const tableCounts: Record<string, number> = {};
+    const countFailedTables = new Set<string>();
     let totalRecords = 0;
 
     for (const table of tables) {
@@ -668,6 +835,7 @@ async function checkDatabaseStats() {
         if (error) {
           console.log(`  ${table}: エラー (${error.message})`);
           tableCounts[table] = 0;
+          countFailedTables.add(table);
         } else {
           const recordCount = count || 0;
           tableCounts[table] = recordCount;
@@ -677,6 +845,7 @@ async function checkDatabaseStats() {
       } catch {
         console.log(`  ${table}: エラー (テーブルが存在しない可能性があります)`);
         tableCounts[table] = 0;
+        countFailedTables.add(table);
       }
     }
 
@@ -735,16 +904,37 @@ async function checkDatabaseStats() {
       }
     }
 
+    let chatActivityByUser: ChatActivityByUser | null = null;
+    try {
+      chatActivityByUser = await collectChatActivityByUser(client, nameById);
+      printChatActivity(chatActivityByUser, previousSnapshot?.chatActivityByUser);
+    } catch (error) {
+      console.error('チャット利用の集計に失敗しました:', error);
+    }
+
     const currentSnapshot =
       databaseSizeBytes > 0 && tableSizes.length > 0
-        ? buildSnapshot(databaseSizeBytes, tableSizes, tableCounts, dailyRowsByUser)
+        ? buildSnapshot({
+            databaseSizeBytes,
+            tableSizes,
+            tableCounts,
+            dailyRowsByUser,
+            chatActivityByUser,
+          })
         : null;
 
     if (currentSnapshot) {
       printDeltaFromPrevious(currentSnapshot, previousSnapshot);
       writeFileSync(
         REPORT_FILE_PATH,
-        `${JSON.stringify(buildReport(currentSnapshot, previousSnapshot, tableSizes, failedUserCounts), null, 2)}\n`,
+        `${JSON.stringify(buildReport({
+            current: currentSnapshot,
+            previous: previousSnapshot,
+            tableSizes,
+            countFailedTables,
+            failedUserCounts,
+            chatActivityByUser,
+          }), null, 2)}\n`,
         'utf-8'
       );
       saveSnapshot(currentSnapshot);
