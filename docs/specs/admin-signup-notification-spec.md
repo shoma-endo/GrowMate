@@ -3,7 +3,7 @@
 ## メタデータ
 
 - 文書名: 新規ユーザー登録の管理者メール通知
-- ステータス: `approved`
+- ステータス: `implemented`
 - 作成日: 2026-10-09
 - 最終更新日: 2026-10-09
 - 作成者: shoma-endo（Claude Code で起草）
@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: spec-review 通過
-- 止まっている理由・待っている人: なし
-- 次の一手: `takt -w spec-to-pr -t "docs/plans/admin-signup-notification-spec.md 仕様書に沿って実装してください"`
-- 未確認事項: Q-003（カオルさんの GrowMate アカウントが `admin` ロールか）。本番で環境変数を設定する前のリリース前ゲートとして残置。仕様レビューと実装着手のブロッカーにしない
-- 関連ブランチ・PR: `develop`
-- 更新日・更新した工程: 2026-10-09 spec-review finalize
+- 現在の工程: 実装 PR レビュー待ち
+- 止まっている理由・待っている人: 人間の PR 確認と merge
+- 次の一手: PR 確認と merge
+- 未確認事項: PR 本文の `## 最終確認（引き継ぎ用）` を参照（6項目）
+- 関連ブランチ・PR: `feature/admin-signup-notification`
+- 更新日・更新した工程: 2026-10-09 spec-to-pr create_pr
 
 ## 1. 背景・目的・成功指標
 
@@ -155,8 +155,8 @@
 
 - 入力値・形式・必須条件: `registerFullName(fullName)` の既存入力（1〜100文字）。変更しない。
 - 正常時の出力:
-  - 件名: `【GrowMate】新規ユーザー登録：<名前>`
-  - 本文: 名前、メールアドレス、登録日時（`users.created_at` を Asia/Tokyo で表示）、「ユーザー一覧を開く」リンク、「権限を変更するまで、このユーザーは GrowMate を利用できません。」（最後の一文は `user.role` が `unavailable` のときだけ載せる）
+  - 件名: `【GrowMate】新規ユーザーが登録しました：<名前>`（既存の通知メール `【GrowMate】コンテンツ評価が完了しました：<記事名>` と同じ形）
+  - 本文: 既存の通知メール（`ga4-content-evaluation-email.ts` 等）と同じ構成（見出し `<h1>` → 本体 → 「GrowMate で〜」リンク → `<hr />` → 送信理由）。見出し「新規ユーザーが登録しました」、名前、メールアドレス、登録日時（`users.created_at` を Asia/Tokyo で表示）、「GrowMate でユーザー一覧を開く」リンク、送信理由「新規ユーザー登録の通知先に設定されているため送信しています。」、「権限を変更するまで、このユーザーは GrowMate を利用できません。」（最後の一文は `user.role` が `unavailable` のときだけ載せる）
 - エラー時の出力: ユーザーへの表示は変えない。サーバーログに `[admin-signup-notification]` 接頭辞で記録する。
 - 状態と遷移条件: `users.full_name` が空 → 保存成功 → 通知を `after()` で予約。
 - 冪等性・重複実行時の挙動: 2回目以降は `full_name` が保存済みなので送らない。同時に2回呼ばれても Idempotency-Key で1通になる（Resend のキー保持期間は24時間）。2通目は Resend が 409（`concurrent_idempotent_requests`、または本文が異なる場合の `invalid_idempotent_request`）を返し、`[admin-signup-notification]` のエラーログに残る。これは想定内で、追加の処理はしない。名前の異なる2回の同時保存では、DB の名前とメールの名前がずれうる（受容）。
@@ -190,7 +190,7 @@ Feature: 新規ユーザー登録の管理者メール通知
     And 名前が未登録のユーザーがログインしている
     When ユーザーが名前「山田太郎」を保存する
     Then ユーザーは承認待ち画面（`/unavailable`）へ進む
-    And 管理者に件名「【GrowMate】新規ユーザー登録：山田太郎」のメールが送られる
+    And 管理者に件名「【GrowMate】新規ユーザーが登録しました：山田太郎」のメールが送られる
     And メール本文に名前・メールアドレス・登録日時・ユーザー一覧へのリンクが含まれる
 
   Scenario: 名前を登録済みのユーザーには通知しない
@@ -434,3 +434,5 @@ Feature: 新規ユーザー登録の管理者メール通知
 | 2026-10-09 | 初版作成。Q-001・Q-002 を回答済みで記録 | 依頼「ユーザー登録後にカオルさんへメール連絡」 | shoma-endo（Claude Code で起草） |
 | 2026-10-09 | spec-review cycle 1 の指摘 F-01〜F-09 を反映（環境変数の検証位置、登録日時の出どころ、ロール例外の承認、Q-003 のリリース前ゲート化、409 の扱い、最後の一文のロール条件、Gherkin の画面名、`after()` 公式根拠、呼び出し元2つ）。公式ドキュメント照合を記録 | spec-review audit cycle 1 | Claude Code（spec-review revise） |
 | 2026-10-09 | spec-review 通過（audit cycle 2 approved、🔴0 / 🟡0 / 🟢3）。cycle 1 の F-01〜F-09 は revise で反映済み。ステータスを `approved` に更新。Q-003 はリリース前ゲートとして残置 | 仕様レビュー | spec-review |
+| 2026-10-09 | 実装 PR 作成（feature/admin-signup-notification）。名前の初回保存時に `after()` で `ADMIN_SIGNUP_NOTIFICATION_EMAILS` の管理者へ通知メールを送る（Server Action・メール組み立て lib・EmailService 送信メソッド・環境変数・単体テスト） | 仕様に沿った実装 | spec-to-pr |
+| 2026-10-09 | メールの件名・本文の構成を既存の通知メール（見出し → 本体 → 「GrowMate で〜」リンク → 区切り線 → 送信理由）にそろえた。件名を「新規ユーザーが登録しました：<名前>」に変更 | 依頼「メール文は他のものと構成を統一」 | shoma-endo（Claude Code で反映） |

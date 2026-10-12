@@ -188,7 +188,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 - **Supabase・サイト URL**: `NEXT_PUBLIC_SUPABASE_*`, `NEXT_PUBLIC_SITE_URL`, `SUPABASE_SERVICE_ROLE`
 - **AI**: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
-- **メール送信**: `RESEND_API_KEY`（任意・本番 OTP 送信に必要）, `EMAIL_FROM`
+- **メール送信**: `RESEND_API_KEY`（任意・本番 OTP 送信に必要）, `EMAIL_FROM`, `ADMIN_SIGNUP_NOTIFICATION_EMAILS`（任意・新規登録の管理者通知先。カンマ区切りで複数可。未設定なら通知しない）
 - **操作分析**: `NEXT_PUBLIC_CLARITY_PROJECT_ID`（任意。Clarity を使う場合は Vercel の Production に設定して再デプロイ）
 - **OAuth（連携時）**: `GOOGLE_OAUTH_*`, `GOOGLE_SEARCH_CONSOLE_REDIRECT_URI`, `WORDPRESS_COM_*`, `WORDPRESS_COM_REDIRECT_URI`, 任意で `COOKIE_SECRET`
 
