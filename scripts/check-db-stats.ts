@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import ws from 'ws';
 import { loadEnv } from './lib/load-env';
@@ -21,21 +21,129 @@ interface TableSnapshot {
   recordCount: number;
 }
 
+/** データのある日だけで集計した、1ユーザーの1日あたり行数 */
+interface UserDailyRowStat {
+  name: string;
+  avgPerDay: number;
+  sdPerDay: number;
+  maxPerDay: number;
+  daysWithData: number;
+}
+
+type UserDailyRowStats = Record<string, UserDailyRowStat>;
+
+/**
+ * ユーザー別に1日あたり行数を数える日次メトリクス表。
+ * 各表のユニーク制約が (user_id, <プロパティ列>, date, ...) で始まるため、この3列で絞った count は索引で引ける
+ */
+const DAILY_ROW_BREAKDOWNS = [
+  {
+    key: 'gscQuery',
+    label: 'GSCクエリ',
+    table: 'gsc_query_metrics',
+    credentialPropertyColumn: 'property_uri',
+    metricsPropertyColumn: 'property_uri',
+  },
+  {
+    key: 'ga4Daily',
+    label: 'GA4日次',
+    table: 'ga4_page_metrics_daily',
+    credentialPropertyColumn: 'ga4_property_id',
+    metricsPropertyColumn: 'property_id',
+  },
+] as const;
+
+type DailyRowBreakdown = (typeof DAILY_ROW_BREAKDOWNS)[number];
+type DailyRowBreakdownKey = DailyRowBreakdown['key'];
+
+interface ChatUserActivity {
+  name: string;
+  /** role='user' の送信数（AI の応答は数えない） */
+  messages: number;
+  sessions: number;
+}
+
+type ChatActivityByUser = Record<string, ChatUserActivity>;
+
 interface DbStatsSnapshot {
   capturedAt: string;
   databaseSizeBytes: number;
   tables: Record<string, TableSnapshot>;
+  /** 追加前に保存されたスナップショットには無い */
+  dailyRowsByUser?: Partial<Record<DailyRowBreakdownKey, UserDailyRowStats>>;
+  /** 追加前に保存されたスナップショットには無い */
+  chatActivityByUser?: ChatActivityByUser;
+}
+
+interface TableShareWarning {
+  name: string;
+  sizeBytes: number;
+  sharePercent: number;
+  critical: boolean;
+}
+
+interface TableGrowth {
+  name: string;
+  deltaBytes: number;
+  deltaPercent: number;
+}
+
+/** scripts/notify-db-stats.cjs が読む、Lark カード組み立て用の入力 */
+interface DbStatsReport {
+  capturedAt: string;
+  previousCapturedAt: string | null;
+  databaseSizeBytes: number;
+  previousDatabaseSizeBytes: number | null;
+  diskQuotaBytes: number;
+  diskOverageUsdPerGb: number;
+  diskGrowthWarning: boolean;
+  tables: {
+    name: string;
+    sizeBytes: number;
+    previousSizeBytes: number | null;
+    /** null は件数の取得に失敗した（gsc_query_metrics の全件 count は時々タイムアウトする） */
+    recordCount: number | null;
+  }[];
+  shareWarnings: TableShareWarning[];
+  growthWarnings: TableGrowth[];
+  chatWindowDays: number;
+  /** null は集計に失敗した。users は今回と前回のどちらかで利用があった人 */
+  chatActivity: {
+    users: (ChatUserActivity & {
+      previousMessages: number | null;
+      previousSessions: number | null;
+    })[];
+    hasPrevious: boolean;
+  } | null;
+  dailyRowWindowDays: number;
+  dailyRowBreakdowns: {
+    key: DailyRowBreakdownKey;
+    label: string;
+    table: string;
+    users: (UserDailyRowStat & { previousAvgPerDay: number | null })[];
+    /** null は対象ユーザーの一覧すら取れず、内訳を集計していない */
+    failedUserCount: number | null;
+  }[];
 }
 
 /** Supabase Pro プランの含まれるクォータ（https://supabase.com/pricing 参照） */
 const SUPABASE_PRO_PLAN = {
   diskSizeBytes: 8 * 1024 * 1024 * 1024,
+  diskOverageUsdPerGb: 0.125,
   monthlyActiveUsers: 100_000,
   fileStorageBytes: 100 * 1024 * 1024 * 1024,
   egressBytes: 250 * 1024 * 1024 * 1024,
 } as const;
 
 const HISTORY_FILE_PATH = join(__dirname, 'db-stats-history.json');
+const REPORT_FILE_PATH = join(__dirname, 'db-stats-report.json');
+
+const CHAT_WINDOW_DAYS = 7;
+/** PostgREST の max_rows（Supabase 既定 1000）以下にする */
+const FETCH_PAGE_SIZE = 1000;
+
+const DAILY_ROW_WINDOW_DAYS = 30;
+const DAILY_ROW_COUNT_CONCURRENCY = 10;
 
 /** テーブルが DB 全体のこの割合を超えたら警告 */
 const TABLE_DISK_SHARE_WARN_PERCENT = 30;
@@ -89,11 +197,19 @@ function saveSnapshot(snapshot: DbStatsSnapshot): void {
   writeFileSync(HISTORY_FILE_PATH, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf-8');
 }
 
-function buildSnapshot(
-  databaseSizeBytes: number,
-  tableSizes: TableSizeInfo[],
-  tableCounts: Record<string, number>
-): DbStatsSnapshot {
+function buildSnapshot({
+  databaseSizeBytes,
+  tableSizes,
+  tableCounts,
+  dailyRowsByUser,
+  chatActivityByUser,
+}: {
+  databaseSizeBytes: number;
+  tableSizes: TableSizeInfo[];
+  tableCounts: Record<string, number>;
+  dailyRowsByUser: NonNullable<DbStatsSnapshot['dailyRowsByUser']>;
+  chatActivityByUser: ChatActivityByUser | null;
+}): DbStatsSnapshot {
   const tables: Record<string, TableSnapshot> = {};
   for (const tableSize of tableSizes) {
     tables[tableSize.table_name] = {
@@ -106,7 +222,27 @@ function buildSnapshot(
     capturedAt: new Date().toISOString(),
     databaseSizeBytes,
     tables,
+    dailyRowsByUser,
+    ...(chatActivityByUser ? { chatActivityByUser } : {}),
   };
+}
+
+function findTableShareWarnings(
+  tableSizes: TableSizeInfo[],
+  databaseSizeBytes: number
+): TableShareWarning[] {
+  return tableSizes
+    .map(table => {
+      const sharePercent = (table.size_bytes / databaseSizeBytes) * 100;
+      return {
+        name: table.table_name,
+        sizeBytes: table.size_bytes,
+        sharePercent,
+        critical: sharePercent >= TABLE_DISK_SHARE_CRITICAL_PERCENT,
+      };
+    })
+    .filter(table => table.sharePercent >= TABLE_DISK_SHARE_WARN_PERCENT)
+    .sort((a, b) => b.sizeBytes - a.sizeBytes);
 }
 
 function printTableDiskShareWarnings(
@@ -120,13 +256,7 @@ function printTableDiskShareWarnings(
     return;
   }
 
-  const warnings = [...tableSizes]
-    .map(table => ({
-      ...table,
-      sharePercent: (table.size_bytes / databaseSizeBytes) * 100,
-    }))
-    .filter(table => table.sharePercent >= TABLE_DISK_SHARE_WARN_PERCENT)
-    .sort((a, b) => b.size_bytes - a.size_bytes);
+  const warnings = findTableShareWarnings(tableSizes, databaseSizeBytes);
 
   if (warnings.length === 0) {
     console.log('  ✅ 単一テーブルの占有率が高いボトルネックは検出されませんでした。');
@@ -134,13 +264,49 @@ function printTableDiskShareWarnings(
   }
 
   for (const table of warnings) {
-    const isCritical = table.sharePercent >= TABLE_DISK_SHARE_CRITICAL_PERCENT;
-    const icon = isCritical ? '🔴' : '⚠️';
-    const level = isCritical ? '要対処' : '要監視';
+    const icon = table.critical ? '🔴' : '⚠️';
+    const level = table.critical ? '要対処' : '要監視';
     console.log(
-      `  ${icon} ${table.table_name}: ${formatBytesAsMb(table.size_bytes)} MB（DB全体の ${table.sharePercent.toFixed(1)}%）— ${level}`
+      `  ${icon} ${table.name}: ${formatBytesAsMb(table.sizeBytes)} MB（DB全体の ${table.sharePercent.toFixed(1)}%）— ${level}`
     );
   }
+}
+
+function isDiskGrowthWarning(current: DbStatsSnapshot, previous: DbStatsSnapshot): boolean {
+  const deltaBytes = current.databaseSizeBytes - previous.databaseSizeBytes;
+  const deltaPercent =
+    previous.databaseSizeBytes > 0 ? (deltaBytes / previous.databaseSizeBytes) * 100 : 0;
+  return (
+    deltaBytes / 1024 / 1024 >= DISK_GROWTH_WARN_MB ||
+    (previous.databaseSizeBytes > 0 && deltaPercent >= DISK_GROWTH_WARN_PERCENT)
+  );
+}
+
+function computeTableDeltas(current: DbStatsSnapshot, previous: DbStatsSnapshot): TableGrowth[] {
+  return Object.entries(current.tables)
+    .map(([name, currentTable]) => {
+      const previousTable = previous.tables[name];
+      if (!previousTable) {
+        return null;
+      }
+      const deltaBytes = currentTable.sizeBytes - previousTable.sizeBytes;
+      if (deltaBytes === 0) {
+        return null;
+      }
+      const deltaPercent =
+        previousTable.sizeBytes > 0 ? (deltaBytes / previousTable.sizeBytes) * 100 : 0;
+      return { name, deltaBytes, deltaPercent };
+    })
+    .filter((row): row is TableGrowth => row !== null)
+    .sort((a, b) => b.deltaBytes - a.deltaBytes);
+}
+
+function isSignificantTableGrowth(row: TableGrowth): boolean {
+  return (
+    row.deltaBytes >= TABLE_GROWTH_WARN_MB * 1024 * 1024 ||
+    (row.deltaPercent >= TABLE_GROWTH_WARN_PERCENT &&
+      row.deltaBytes >= TABLE_GROWTH_MIN_MB * 1024 * 1024)
+  );
 }
 
 function printDeltaFromPrevious(current: DbStatsSnapshot, previous: DbStatsSnapshot | null): void {
@@ -157,7 +323,6 @@ function printDeltaFromPrevious(current: DbStatsSnapshot, previous: DbStatsSnaps
   console.log(`  前回: ${previousDate}`);
 
   const deltaBytes = current.databaseSizeBytes - previous.databaseSizeBytes;
-  const deltaMb = deltaBytes / 1024 / 1024;
   const deltaPercent =
     previous.databaseSizeBytes > 0 ? (deltaBytes / previous.databaseSizeBytes) * 100 : 0;
 
@@ -165,10 +330,7 @@ function printDeltaFromPrevious(current: DbStatsSnapshot, previous: DbStatsSnaps
     `  📦 DB全体: ${formatSignedMb(deltaBytes)} MB (${formatSignedPercent(deltaPercent)}%)`
   );
 
-  if (
-    deltaMb >= DISK_GROWTH_WARN_MB ||
-    (previous.databaseSizeBytes > 0 && deltaPercent >= DISK_GROWTH_WARN_PERCENT)
-  ) {
+  if (isDiskGrowthWarning(current, previous)) {
     console.log('  ⚠️  DB全体の増加率が閾値を超えています。データ肥大化を確認してください。');
   } else if (deltaBytes <= 0) {
     console.log('  ✅ DB全体のサイズは前回から増加していません。');
@@ -176,39 +338,14 @@ function printDeltaFromPrevious(current: DbStatsSnapshot, previous: DbStatsSnaps
     console.log('  ✅ DB全体の増加は閾値内です。');
   }
 
-  const tableGrowthWarnBytes = TABLE_GROWTH_WARN_MB * 1024 * 1024;
-  const tableGrowthMinBytes = TABLE_GROWTH_MIN_MB * 1024 * 1024;
-  const tableDeltas = Object.entries(current.tables)
-    .map(([name, currentTable]) => {
-      const previousTable = previous.tables[name];
-      if (!previousTable) {
-        return null;
-      }
-      const tableDeltaBytes = currentTable.sizeBytes - previousTable.sizeBytes;
-      if (tableDeltaBytes === 0) {
-        return null;
-      }
-      const tableDeltaPercent =
-        previousTable.sizeBytes > 0
-          ? (tableDeltaBytes / previousTable.sizeBytes) * 100
-          : 0;
-      return { name, tableDeltaBytes, tableDeltaPercent };
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== null)
-    .sort((a, b) => b.tableDeltaBytes - a.tableDeltaBytes);
-
-  const significantGrowth = tableDeltas.filter(
-    row =>
-      row.tableDeltaBytes >= tableGrowthWarnBytes ||
-      (row.tableDeltaPercent >= TABLE_GROWTH_WARN_PERCENT &&
-        row.tableDeltaBytes >= tableGrowthMinBytes)
-  );
+  const tableDeltas = computeTableDeltas(current, previous);
+  const significantGrowth = tableDeltas.filter(isSignificantTableGrowth);
 
   if (significantGrowth.length > 0) {
     console.log('  急増テーブル:');
     for (const row of significantGrowth.slice(0, 5)) {
       console.log(
-        `    ⚠️  ${row.name}: ${formatSignedMb(row.tableDeltaBytes)} MB (${formatSignedPercent(row.tableDeltaPercent)}%)`
+        `    ⚠️  ${row.name}: ${formatSignedMb(row.deltaBytes)} MB (${formatSignedPercent(row.deltaPercent)}%)`
       );
     }
   } else if (tableDeltas.length > 0) {
@@ -250,6 +387,325 @@ function printProPlanQuotaAndRecommendations(databaseSizeBytes: number | null): 
   console.log(
     '  ℹ️  MAU / ストレージ / エグレスは本スクリプトでは計測していません（Supabase Dashboard で確認）。'
   );
+}
+
+function mean(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function populationStdDev(values: number[]): number {
+  const average = mean(values);
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / values.length);
+}
+
+/** 昨日から遡って days 日分の日付（UTC の YYYY-MM-DD） */
+function recentDates(days: number): string[] {
+  return Array.from({ length: days }, (_, index) =>
+    new Date(Date.now() - (index + 1) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
+}
+
+/**
+ * プロパティを設定済みのユーザーごとに、日次メトリクス表の1日あたり行数を集計する。
+ * gsc_query_metrics は表全体の count が時々タイムアウトするほど重いため、ユーザー×日の count を積み上げる
+ */
+async function collectDailyRowsByUser(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  breakdown: DailyRowBreakdown,
+  nameById: Map<string, string | null>
+): Promise<{ stats: UserDailyRowStats; failedUserCount: number }> {
+  const { data: credentials, error: credentialError } = await client
+    .from('gsc_credentials')
+    .select(`user_id, ${breakdown.credentialPropertyColumn}`)
+    .not(breakdown.credentialPropertyColumn, 'is', null);
+  if (credentialError) {
+    throw new Error(`gsc_credentials の取得に失敗しました: ${credentialError.message}`);
+  }
+
+  const targets = (
+    (credentials ?? []) as Record<'user_id' | DailyRowBreakdown['credentialPropertyColumn'], string>[]
+  ).map(row => ({
+    userId: row.user_id,
+    property: row[breakdown.credentialPropertyColumn],
+  }));
+  const dates = recentDates(DAILY_ROW_WINDOW_DAYS);
+  const stats: UserDailyRowStats = {};
+  let failedUserCount = 0;
+
+  for (const target of targets) {
+    const countForDate = async (date: string): Promise<number> => {
+      const { count, error } = await client
+        .from(breakdown.table)
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', target.userId)
+        .eq(breakdown.metricsPropertyColumn, target.property)
+        .eq('date', date);
+      if (error) {
+        throw new Error(`${date}: ${error.message}`);
+      }
+      return count ?? 0;
+    };
+
+    try {
+      const counts: number[] = [];
+      for (let index = 0; index < dates.length; index += DAILY_ROW_COUNT_CONCURRENCY) {
+        const chunk = dates.slice(index, index + DAILY_ROW_COUNT_CONCURRENCY);
+        counts.push(...(await Promise.all(chunk.map(countForDate))));
+      }
+      const daysWithRows = counts.filter(count => count > 0);
+      stats[target.userId] = {
+        name: nameById.get(target.userId) || '未設定',
+        avgPerDay: daysWithRows.length > 0 ? mean(daysWithRows) : 0,
+        sdPerDay: daysWithRows.length > 0 ? populationStdDev(daysWithRows) : 0,
+        maxPerDay: daysWithRows.length > 0 ? Math.max(...daysWithRows) : 0,
+        daysWithData: daysWithRows.length,
+      };
+    } catch (error) {
+      failedUserCount += 1;
+      console.error(`${breakdown.table} のユーザー別集計に失敗しました:`, {
+        userId: target.userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { stats, failedUserCount };
+}
+
+async function loadUserNames(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any
+): Promise<Map<string, string | null>> {
+  // 全件を1リクエストで読む。PostgREST の max_rows（Supabase 既定 1000）を超えたら超過分が「未設定」になるのでページングにする
+  const { data, error } = await client.from('users').select('id, full_name');
+  if (error) {
+    throw new Error(`users の取得に失敗しました: ${error.message}`);
+  }
+  return new Map(
+    ((data ?? []) as { id: string; full_name: string | null }[]).map(user => [
+      user.id,
+      user.full_name,
+    ])
+  );
+}
+
+function sortUsersByAvg(stats: UserDailyRowStats): [string, UserDailyRowStat][] {
+  return Object.entries(stats).sort(([, a], [, b]) => b.avgPerDay - a.avgPerDay);
+}
+
+function printDailyRowsByUser(
+  breakdown: DailyRowBreakdown,
+  stats: UserDailyRowStats,
+  failedUserCount: number,
+  previousStats: UserDailyRowStats | undefined
+): void {
+  console.log(
+    `\n🔎 ${breakdown.label}の行数（${breakdown.table}・ユーザー別・直近${DAILY_ROW_WINDOW_DAYS}日のデータがある日の1日あたり）:`
+  );
+
+  const sorted = sortUsersByAvg(stats);
+  const withData = sorted.filter(([, stat]) => stat.daysWithData > 0);
+  if (withData.length === 0) {
+    console.log('  ℹ️  対象期間にデータのあるユーザーはいません。');
+  }
+  for (const [userId, stat] of withData) {
+    const previousAvg = previousStats?.[userId]?.avgPerDay;
+    const delta =
+      previousAvg === undefined ? '' : `（前回比 ${formatSignedNumber(stat.avgPerDay - previousAvg)}）`;
+    console.log(
+      `  ${stat.name}: 平均 ${Math.round(stat.avgPerDay).toLocaleString()} / 標準偏差 ${Math.round(stat.sdPerDay).toLocaleString()} / 最大 ${stat.maxPerDay.toLocaleString()} 行（${stat.daysWithData}日分）${delta}`
+    );
+  }
+
+  if (withData.length > 0) {
+    const averages = withData.map(([, stat]) => stat.avgPerDay);
+    console.log(
+      `  全体（${withData.length}人）: 平均 ${Math.round(mean(averages)).toLocaleString()} / 標準偏差 ${Math.round(populationStdDev(averages)).toLocaleString()} 行/日`
+    );
+  }
+  console.log(`  データなし: ${sorted.length - withData.length}人`);
+  if (failedUserCount > 0) {
+    console.log(`  ⚠️  集計に失敗したユーザー: ${failedUserCount}人`);
+  }
+}
+
+async function fetchUserIdsInRange(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  table: 'chat_messages' | 'chat_sessions',
+  range: { sinceIso: string; untilIso: string },
+  role?: string
+): Promise<string[]> {
+  const userIds: string[] = [];
+  for (let from = 0; ; from += FETCH_PAGE_SIZE) {
+    let query = client
+      .from(table)
+      .select('user_id')
+      .gte('created_at', range.sinceIso)
+      // 上限を固定しないと、ページング中に追加された行で offset がずれ、同じ行を二重に数える
+      .lt('created_at', range.untilIso)
+      .order('id')
+      .range(from, from + FETCH_PAGE_SIZE - 1);
+    if (role) {
+      query = query.eq('role', role);
+    }
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(`${table} の取得に失敗しました: ${error.message}`);
+    }
+    const rows = (data ?? []) as { user_id: string }[];
+    userIds.push(...rows.map(row => row.user_id));
+    if (rows.length < FETCH_PAGE_SIZE) {
+      return userIds;
+    }
+  }
+}
+
+async function collectChatActivityByUser(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  nameById: Map<string, string | null>
+): Promise<ChatActivityByUser> {
+  const now = Date.now();
+  const range = {
+    sinceIso: new Date(now - CHAT_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+    untilIso: new Date(now).toISOString(),
+  };
+  const [messageUserIds, sessionUserIds] = await Promise.all([
+    fetchUserIdsInRange(client, 'chat_messages', range, 'user'),
+    fetchUserIdsInRange(client, 'chat_sessions', range),
+  ]);
+
+  const activity: ChatActivityByUser = {};
+  const entryFor = (userId: string): ChatUserActivity =>
+    (activity[userId] ??= { name: nameById.get(userId) || '未設定', messages: 0, sessions: 0 });
+  messageUserIds.forEach(userId => {
+    entryFor(userId).messages += 1;
+  });
+  sessionUserIds.forEach(userId => {
+    entryFor(userId).sessions += 1;
+  });
+  return activity;
+}
+
+function sortByMessages(activity: ChatActivityByUser): [string, ChatUserActivity][] {
+  return Object.entries(activity).sort(
+    ([, a], [, b]) => b.messages - a.messages || b.sessions - a.sessions
+  );
+}
+
+function printChatActivity(
+  activity: ChatActivityByUser,
+  previous: ChatActivityByUser | undefined
+): void {
+  console.log(`\n💬 チャット利用（直近${CHAT_WINDOW_DAYS}日・送信メッセージは role=user のみ）:`);
+  const sorted = sortByMessages(activity);
+  if (sorted.length === 0) {
+    console.log('  ℹ️  対象期間に利用したユーザーはいません。');
+  }
+  for (const [userId, stat] of sorted) {
+    const previousStat = previous?.[userId];
+    const delta = previous
+      ? `（前回比 送信 ${formatSignedNumber(stat.messages - (previousStat?.messages ?? 0))} / セッション ${formatSignedNumber(stat.sessions - (previousStat?.sessions ?? 0))}）`
+      : '';
+    console.log(
+      `  ${stat.name}: 送信 ${stat.messages.toLocaleString()} / 新規セッション ${stat.sessions.toLocaleString()}${delta}`
+    );
+  }
+  const totalMessages = sorted.reduce((sum, [, stat]) => sum + stat.messages, 0);
+  const totalSessions = sorted.reduce((sum, [, stat]) => sum + stat.sessions, 0);
+  console.log(
+    `  合計: 送信 ${totalMessages.toLocaleString()} / 新規セッション ${totalSessions.toLocaleString()}（利用者 ${sorted.length}人）`
+  );
+}
+
+function buildChatActivityReport(
+  current: ChatActivityByUser,
+  previous: ChatActivityByUser | undefined
+): NonNullable<DbStatsReport['chatActivity']> {
+  const merged: ChatActivityByUser = { ...current };
+  // 今回は利用が無いが前回はあった人も、減ったことが見えるよう 0 件で並べる
+  for (const [userId, stat] of Object.entries(previous ?? {})) {
+    merged[userId] ??= { name: stat.name, messages: 0, sessions: 0 };
+  }
+  return {
+    users: sortByMessages(merged).map(([userId, stat]) => ({
+      ...stat,
+      previousMessages: previous ? (previous[userId]?.messages ?? 0) : null,
+      previousSessions: previous ? (previous[userId]?.sessions ?? 0) : null,
+    })),
+    hasPrevious: previous !== undefined,
+  };
+}
+
+function formatSignedNumber(value: number): string {
+  const rounded = Math.round(value);
+  return `${rounded >= 0 ? '+' : ''}${rounded.toLocaleString()}`;
+}
+
+function buildReport({
+  current,
+  previous,
+  tableSizes,
+  countFailedTables,
+  failedUserCounts,
+  chatActivityByUser,
+}: {
+  current: DbStatsSnapshot;
+  previous: DbStatsSnapshot | null;
+  tableSizes: TableSizeInfo[];
+  countFailedTables: Set<string>;
+  failedUserCounts: Partial<Record<DailyRowBreakdownKey, number>>;
+  chatActivityByUser: ChatActivityByUser | null;
+}): DbStatsReport {
+  return {
+    capturedAt: current.capturedAt,
+    previousCapturedAt: previous?.capturedAt ?? null,
+    databaseSizeBytes: current.databaseSizeBytes,
+    previousDatabaseSizeBytes: previous?.databaseSizeBytes ?? null,
+    diskQuotaBytes: SUPABASE_PRO_PLAN.diskSizeBytes,
+    diskOverageUsdPerGb: SUPABASE_PRO_PLAN.diskOverageUsdPerGb,
+    diskGrowthWarning: previous ? isDiskGrowthWarning(current, previous) : false,
+    tables: [...tableSizes]
+      .sort((a, b) => b.size_bytes - a.size_bytes)
+      .map(table => ({
+        name: table.table_name,
+        sizeBytes: table.size_bytes,
+        previousSizeBytes: previous?.tables[table.table_name]?.sizeBytes ?? null,
+        recordCount: countFailedTables.has(table.table_name)
+          ? null
+          : (current.tables[table.table_name]?.recordCount ?? null),
+      })),
+    shareWarnings: findTableShareWarnings(tableSizes, current.databaseSizeBytes),
+    growthWarnings: previous
+      ? computeTableDeltas(current, previous).filter(isSignificantTableGrowth)
+      : [],
+    chatWindowDays: CHAT_WINDOW_DAYS,
+    chatActivity: chatActivityByUser
+      ? buildChatActivityReport(chatActivityByUser, previous?.chatActivityByUser)
+      : null,
+    dailyRowWindowDays: DAILY_ROW_WINDOW_DAYS,
+    dailyRowBreakdowns: DAILY_ROW_BREAKDOWNS.map(breakdown => {
+      const failedUserCount = failedUserCounts[breakdown.key];
+      const previousStats = previous?.dailyRowsByUser?.[breakdown.key];
+      return {
+        key: breakdown.key,
+        label: breakdown.label,
+        table: breakdown.table,
+        users:
+          failedUserCount === undefined
+            ? []
+            : sortUsersByAvg(current.dailyRowsByUser?.[breakdown.key] ?? {}).map(
+                ([userId, stat]) => ({
+                  ...stat,
+                  previousAvgPerDay: previousStats?.[userId]?.avgPerDay ?? null,
+                })
+              ),
+        failedUserCount: failedUserCount ?? null,
+      };
+    }),
+  };
 }
 
 /**
@@ -343,6 +799,8 @@ async function checkDatabaseStats() {
   }
 
   const previousSnapshot = loadPreviousSnapshot();
+  // 途中で失敗した回に、前回分のレポートでカードが組まれないようにする
+  rmSync(REPORT_FILE_PATH, { force: true });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = createClient(supabaseUrl, supabaseServiceRole, {
@@ -365,6 +823,7 @@ async function checkDatabaseStats() {
     console.log(`📋 検出されたテーブル数: ${tables.length}\n`);
     console.log('📈 各テーブルのレコード数:');
     const tableCounts: Record<string, number> = {};
+    const countFailedTables = new Set<string>();
     let totalRecords = 0;
 
     for (const table of tables) {
@@ -376,6 +835,7 @@ async function checkDatabaseStats() {
         if (error) {
           console.log(`  ${table}: エラー (${error.message})`);
           tableCounts[table] = 0;
+          countFailedTables.add(table);
         } else {
           const recordCount = count || 0;
           tableCounts[table] = recordCount;
@@ -385,6 +845,7 @@ async function checkDatabaseStats() {
       } catch {
         console.log(`  ${table}: エラー (テーブルが存在しない可能性があります)`);
         tableCounts[table] = 0;
+        countFailedTables.add(table);
       }
     }
 
@@ -422,13 +883,60 @@ async function checkDatabaseStats() {
     printTableDiskShareWarnings(tableSizes, databaseSize?.database_size_bytes ?? null);
     printProPlanQuotaAndRecommendations(databaseSize?.database_size_bytes ?? null);
 
+    // 内訳が取れなくても、DB 容量の統計と比較用スナップショットは残す
+    const dailyRowsByUser: NonNullable<DbStatsSnapshot['dailyRowsByUser']> = {};
+    const failedUserCounts: Partial<Record<DailyRowBreakdownKey, number>> = {};
+    let nameById = new Map<string, string | null>();
+    try {
+      nameById = await loadUserNames(client);
+    } catch (error) {
+      console.error('ユーザー別内訳の氏名取得に失敗しました。氏名は「未設定」で集計を続けます:', error);
+    }
+    for (const breakdown of DAILY_ROW_BREAKDOWNS) {
+      const previousStats = previousSnapshot?.dailyRowsByUser?.[breakdown.key];
+      try {
+        const result = await collectDailyRowsByUser(client, breakdown, nameById);
+        dailyRowsByUser[breakdown.key] = result.stats;
+        failedUserCounts[breakdown.key] = result.failedUserCount;
+        printDailyRowsByUser(breakdown, result.stats, result.failedUserCount, previousStats);
+      } catch (error) {
+        console.error(`${breakdown.label}の行数（ユーザー別）の集計に失敗しました:`, error);
+      }
+    }
+
+    let chatActivityByUser: ChatActivityByUser | null = null;
+    try {
+      chatActivityByUser = await collectChatActivityByUser(client, nameById);
+      printChatActivity(chatActivityByUser, previousSnapshot?.chatActivityByUser);
+    } catch (error) {
+      console.error('チャット利用の集計に失敗しました:', error);
+    }
+
     const currentSnapshot =
       databaseSizeBytes > 0 && tableSizes.length > 0
-        ? buildSnapshot(databaseSizeBytes, tableSizes, tableCounts)
+        ? buildSnapshot({
+            databaseSizeBytes,
+            tableSizes,
+            tableCounts,
+            dailyRowsByUser,
+            chatActivityByUser,
+          })
         : null;
 
     if (currentSnapshot) {
       printDeltaFromPrevious(currentSnapshot, previousSnapshot);
+      writeFileSync(
+        REPORT_FILE_PATH,
+        `${JSON.stringify(buildReport({
+            current: currentSnapshot,
+            previous: previousSnapshot,
+            tableSizes,
+            countFailedTables,
+            failedUserCounts,
+            chatActivityByUser,
+          }), null, 2)}\n`,
+        'utf-8'
+      );
       saveSnapshot(currentSnapshot);
       console.log(`\n💾 比較用スナップショットを保存しました: ${HISTORY_FILE_PATH}`);
     }
