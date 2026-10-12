@@ -68,50 +68,7 @@ jobs:
             echo "" > db-stats-output.txt
           fi
 
-          # Node.jsでJSONペイロードを作成して送信
-          node << 'EOF'
-          const fs = require('fs');
-          const { escapeLarkMd, sendLarkCard, div, hr, note } = require('./scripts/lark-notify.cjs');
-
-          console.log('Starting webhook notification...');
-          console.log('STATUS:', process.env.STATUS);
-          console.log('Repository:', process.env.GITHUB_REPOSITORY);
-          console.log('Run ID:', process.env.GITHUB_RUN_ID);
-
-          let output = '';
-          try {
-            output = fs.readFileSync('db-stats-output.txt', 'utf-8');
-            console.log('Output file read successfully, length:', output.length);
-          } catch (error) {
-            console.warn('Failed to read output file:', error.message);
-            output = 'Output file not available';
-          }
-
-          const isSuccess = process.env.STATUS === 'success';
-          const statusEmoji = isSuccess ? '✅' : '❌';
-          const statusText = isSuccess ? '成功' : '失敗';
-          const workflowUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-
-          const elements = [
-            div(`**${statusEmoji} ${statusText}**`),
-            hr(),
-            div(`**📊 統計情報**\n\`\`\`\n${escapeLarkMd(output)}\n\`\`\``),
-            hr(),
-            note(`[実行ログを見る](${workflowUrl})`),
-          ];
-
-          sendLarkCard({
-            webhookUrl: process.env.DB_STATS_WEBHOOK_URL,
-            title: `📊 データベース統計レポート：${statusText}`,
-            template: isSuccess ? 'green' : 'red',
-            elements,
-          })
-            .then(() => process.exit(0))
-            .catch((error) => {
-              console.error('ERROR:', error.message);
-              process.exit(1);
-            });
-          EOF
+          node scripts/notify-db-stats.cjs
 
         env:
           STATUS: ${{ steps.db-stats.outputs.exit_code == '0' && 'success' || 'failure' }}
