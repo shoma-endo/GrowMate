@@ -28,6 +28,17 @@ function note(content) {
   return { tag: 'note', elements: [{ tag: 'lark_md', content }] };
 }
 
+// chartSpec は VChart の定義。関数や JS 構文は Lark 側で解釈されない
+function chart(chartSpec, { aspectRatio = '16:9' } = {}) {
+  return { tag: 'chart', aspect_ratio: aspectRatio, chart_spec: chartSpec };
+}
+
+// columns: [{ name, display_name, data_type, width?, format? }]、rows: name をキーにしたオブジェクト。
+// page_size は Lark の上限が 10
+function table(columns, rows, { pageSize = 10 } = {}) {
+  return { tag: 'table', page_size: pageSize, row_height: 'low', columns, rows };
+}
+
 // template: 'red' | 'orange' | 'blue' | 'green'（Lark card header の色）
 function sendLarkCard({ webhookUrl, title, template, elements }) {
   return new Promise((resolve, reject) => {
@@ -82,7 +93,21 @@ function sendLarkCard({ webhookUrl, title, template, elements }) {
       });
       res.on('end', () => {
         console.log('Response status:', res.statusCode);
-        if (res.statusCode >= 200 && res.statusCode < 300) {
+        // Lark はカードの形式エラーなども HTTP 200 で返し、本文の code で失敗を示す
+        let larkCode = 0;
+        try {
+          const parsed = JSON.parse(data);
+          if (typeof parsed.code === 'number') {
+            larkCode = parsed.code;
+          }
+        } catch {
+          // 本文が JSON でない場合は HTTP ステータスだけで判定する
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300 && larkCode !== 0) {
+          console.error(`❌ Webhook notification rejected by Lark (code ${larkCode})`);
+          console.error('Response body:', data.substring(0, 500));
+          reject(new Error(`Lark code ${larkCode}`));
+        } else if (res.statusCode >= 200 && res.statusCode < 300) {
           console.log('✅ Webhook notification sent successfully');
           console.log('Response body:', data.substring(0, 500)); // 最初の500文字のみ
           resolve();
@@ -111,4 +136,4 @@ function sendLarkCard({ webhookUrl, title, template, elements }) {
   });
 }
 
-module.exports = { escapeLarkMd, sendLarkCard, div, hr, note };
+module.exports = { escapeLarkMd, sendLarkCard, div, hr, note, chart, table };

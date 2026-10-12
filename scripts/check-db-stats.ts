@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import ws from 'ws';
 import { loadEnv } from './lib/load-env';
@@ -21,10 +21,51 @@ interface TableSnapshot {
   recordCount: number;
 }
 
+/** データのある日だけで集計した、1ユーザーの gsc_query_metrics の1日あたり行数 */
+interface GscQueryUserStat {
+  name: string;
+  avgPerDay: number;
+  sdPerDay: number;
+  maxPerDay: number;
+  daysWithData: number;
+}
+
 interface DbStatsSnapshot {
   capturedAt: string;
   databaseSizeBytes: number;
   tables: Record<string, TableSnapshot>;
+  /** 追加前に保存されたスナップショットには無い */
+  gscQueryByUser?: Record<string, GscQueryUserStat>;
+}
+
+interface TableShareWarning {
+  name: string;
+  sizeBytes: number;
+  sharePercent: number;
+  critical: boolean;
+}
+
+interface TableGrowth {
+  name: string;
+  deltaBytes: number;
+  deltaPercent: number;
+}
+
+/** scripts/notify-db-stats.cjs が読む、Lark カード組み立て用の入力 */
+interface DbStatsReport {
+  capturedAt: string;
+  previousCapturedAt: string | null;
+  databaseSizeBytes: number;
+  previousDatabaseSizeBytes: number | null;
+  diskQuotaBytes: number;
+  diskGrowthWarning: boolean;
+  tables: { name: string; sizeBytes: number; previousSizeBytes: number | null }[];
+  shareWarnings: TableShareWarning[];
+  growthWarnings: TableGrowth[];
+  gscQueryWindowDays: number;
+  gscQueryByUser: (GscQueryUserStat & { previousAvgPerDay: number | null })[];
+  /** null は対象ユーザーの一覧すら取れず、内訳を集計していない */
+  gscQueryFailedUserCount: number | null;
 }
 
 /** Supabase Pro プランの含まれるクォータ（https://supabase.com/pricing 参照） */
@@ -36,6 +77,10 @@ const SUPABASE_PRO_PLAN = {
 } as const;
 
 const HISTORY_FILE_PATH = join(__dirname, 'db-stats-history.json');
+const REPORT_FILE_PATH = join(__dirname, 'db-stats-report.json');
+
+const GSC_QUERY_WINDOW_DAYS = 30;
+const GSC_QUERY_COUNT_CONCURRENCY = 10;
 
 /** テーブルが DB 全体のこの割合を超えたら警告 */
 const TABLE_DISK_SHARE_WARN_PERCENT = 30;
@@ -92,7 +137,8 @@ function saveSnapshot(snapshot: DbStatsSnapshot): void {
 function buildSnapshot(
   databaseSizeBytes: number,
   tableSizes: TableSizeInfo[],
-  tableCounts: Record<string, number>
+  tableCounts: Record<string, number>,
+  gscQueryByUser: Record<string, GscQueryUserStat> | undefined
 ): DbStatsSnapshot {
   const tables: Record<string, TableSnapshot> = {};
   for (const tableSize of tableSizes) {
@@ -106,7 +152,26 @@ function buildSnapshot(
     capturedAt: new Date().toISOString(),
     databaseSizeBytes,
     tables,
+    ...(gscQueryByUser ? { gscQueryByUser } : {}),
   };
+}
+
+function findTableShareWarnings(
+  tableSizes: TableSizeInfo[],
+  databaseSizeBytes: number
+): TableShareWarning[] {
+  return tableSizes
+    .map(table => {
+      const sharePercent = (table.size_bytes / databaseSizeBytes) * 100;
+      return {
+        name: table.table_name,
+        sizeBytes: table.size_bytes,
+        sharePercent,
+        critical: sharePercent >= TABLE_DISK_SHARE_CRITICAL_PERCENT,
+      };
+    })
+    .filter(table => table.sharePercent >= TABLE_DISK_SHARE_WARN_PERCENT)
+    .sort((a, b) => b.sizeBytes - a.sizeBytes);
 }
 
 function printTableDiskShareWarnings(
@@ -120,13 +185,7 @@ function printTableDiskShareWarnings(
     return;
   }
 
-  const warnings = [...tableSizes]
-    .map(table => ({
-      ...table,
-      sharePercent: (table.size_bytes / databaseSizeBytes) * 100,
-    }))
-    .filter(table => table.sharePercent >= TABLE_DISK_SHARE_WARN_PERCENT)
-    .sort((a, b) => b.size_bytes - a.size_bytes);
+  const warnings = findTableShareWarnings(tableSizes, databaseSizeBytes);
 
   if (warnings.length === 0) {
     console.log('  ✅ 単一テーブルの占有率が高いボトルネックは検出されませんでした。');
@@ -134,13 +193,49 @@ function printTableDiskShareWarnings(
   }
 
   for (const table of warnings) {
-    const isCritical = table.sharePercent >= TABLE_DISK_SHARE_CRITICAL_PERCENT;
-    const icon = isCritical ? '🔴' : '⚠️';
-    const level = isCritical ? '要対処' : '要監視';
+    const icon = table.critical ? '🔴' : '⚠️';
+    const level = table.critical ? '要対処' : '要監視';
     console.log(
-      `  ${icon} ${table.table_name}: ${formatBytesAsMb(table.size_bytes)} MB（DB全体の ${table.sharePercent.toFixed(1)}%）— ${level}`
+      `  ${icon} ${table.name}: ${formatBytesAsMb(table.sizeBytes)} MB（DB全体の ${table.sharePercent.toFixed(1)}%）— ${level}`
     );
   }
+}
+
+function isDiskGrowthWarning(current: DbStatsSnapshot, previous: DbStatsSnapshot): boolean {
+  const deltaBytes = current.databaseSizeBytes - previous.databaseSizeBytes;
+  const deltaPercent =
+    previous.databaseSizeBytes > 0 ? (deltaBytes / previous.databaseSizeBytes) * 100 : 0;
+  return (
+    deltaBytes / 1024 / 1024 >= DISK_GROWTH_WARN_MB ||
+    (previous.databaseSizeBytes > 0 && deltaPercent >= DISK_GROWTH_WARN_PERCENT)
+  );
+}
+
+function computeTableDeltas(current: DbStatsSnapshot, previous: DbStatsSnapshot): TableGrowth[] {
+  return Object.entries(current.tables)
+    .map(([name, currentTable]) => {
+      const previousTable = previous.tables[name];
+      if (!previousTable) {
+        return null;
+      }
+      const deltaBytes = currentTable.sizeBytes - previousTable.sizeBytes;
+      if (deltaBytes === 0) {
+        return null;
+      }
+      const deltaPercent =
+        previousTable.sizeBytes > 0 ? (deltaBytes / previousTable.sizeBytes) * 100 : 0;
+      return { name, deltaBytes, deltaPercent };
+    })
+    .filter((row): row is TableGrowth => row !== null)
+    .sort((a, b) => b.deltaBytes - a.deltaBytes);
+}
+
+function isSignificantTableGrowth(row: TableGrowth): boolean {
+  return (
+    row.deltaBytes >= TABLE_GROWTH_WARN_MB * 1024 * 1024 ||
+    (row.deltaPercent >= TABLE_GROWTH_WARN_PERCENT &&
+      row.deltaBytes >= TABLE_GROWTH_MIN_MB * 1024 * 1024)
+  );
 }
 
 function printDeltaFromPrevious(current: DbStatsSnapshot, previous: DbStatsSnapshot | null): void {
@@ -157,7 +252,6 @@ function printDeltaFromPrevious(current: DbStatsSnapshot, previous: DbStatsSnaps
   console.log(`  前回: ${previousDate}`);
 
   const deltaBytes = current.databaseSizeBytes - previous.databaseSizeBytes;
-  const deltaMb = deltaBytes / 1024 / 1024;
   const deltaPercent =
     previous.databaseSizeBytes > 0 ? (deltaBytes / previous.databaseSizeBytes) * 100 : 0;
 
@@ -165,10 +259,7 @@ function printDeltaFromPrevious(current: DbStatsSnapshot, previous: DbStatsSnaps
     `  📦 DB全体: ${formatSignedMb(deltaBytes)} MB (${formatSignedPercent(deltaPercent)}%)`
   );
 
-  if (
-    deltaMb >= DISK_GROWTH_WARN_MB ||
-    (previous.databaseSizeBytes > 0 && deltaPercent >= DISK_GROWTH_WARN_PERCENT)
-  ) {
+  if (isDiskGrowthWarning(current, previous)) {
     console.log('  ⚠️  DB全体の増加率が閾値を超えています。データ肥大化を確認してください。');
   } else if (deltaBytes <= 0) {
     console.log('  ✅ DB全体のサイズは前回から増加していません。');
@@ -176,39 +267,14 @@ function printDeltaFromPrevious(current: DbStatsSnapshot, previous: DbStatsSnaps
     console.log('  ✅ DB全体の増加は閾値内です。');
   }
 
-  const tableGrowthWarnBytes = TABLE_GROWTH_WARN_MB * 1024 * 1024;
-  const tableGrowthMinBytes = TABLE_GROWTH_MIN_MB * 1024 * 1024;
-  const tableDeltas = Object.entries(current.tables)
-    .map(([name, currentTable]) => {
-      const previousTable = previous.tables[name];
-      if (!previousTable) {
-        return null;
-      }
-      const tableDeltaBytes = currentTable.sizeBytes - previousTable.sizeBytes;
-      if (tableDeltaBytes === 0) {
-        return null;
-      }
-      const tableDeltaPercent =
-        previousTable.sizeBytes > 0
-          ? (tableDeltaBytes / previousTable.sizeBytes) * 100
-          : 0;
-      return { name, tableDeltaBytes, tableDeltaPercent };
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== null)
-    .sort((a, b) => b.tableDeltaBytes - a.tableDeltaBytes);
-
-  const significantGrowth = tableDeltas.filter(
-    row =>
-      row.tableDeltaBytes >= tableGrowthWarnBytes ||
-      (row.tableDeltaPercent >= TABLE_GROWTH_WARN_PERCENT &&
-        row.tableDeltaBytes >= tableGrowthMinBytes)
-  );
+  const tableDeltas = computeTableDeltas(current, previous);
+  const significantGrowth = tableDeltas.filter(isSignificantTableGrowth);
 
   if (significantGrowth.length > 0) {
     console.log('  急増テーブル:');
     for (const row of significantGrowth.slice(0, 5)) {
       console.log(
-        `    ⚠️  ${row.name}: ${formatSignedMb(row.tableDeltaBytes)} MB (${formatSignedPercent(row.tableDeltaPercent)}%)`
+        `    ⚠️  ${row.name}: ${formatSignedMb(row.deltaBytes)} MB (${formatSignedPercent(row.deltaPercent)}%)`
       );
     }
   } else if (tableDeltas.length > 0) {
@@ -250,6 +316,180 @@ function printProPlanQuotaAndRecommendations(databaseSizeBytes: number | null): 
   console.log(
     '  ℹ️  MAU / ストレージ / エグレスは本スクリプトでは計測していません（Supabase Dashboard で確認）。'
   );
+}
+
+function mean(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function populationStdDev(values: number[]): number {
+  const average = mean(values);
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / values.length);
+}
+
+/** 昨日から遡って days 日分の日付（UTC の YYYY-MM-DD） */
+function recentDates(days: number): string[] {
+  return Array.from({ length: days }, (_, index) =>
+    new Date(Date.now() - (index + 1) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
+}
+
+/**
+ * GSC プロパティを設定済みのユーザーごとに、gsc_query_metrics の1日あたり行数を集計する。
+ * gsc_query_metrics は全件 count が失敗するほど大きいため、ユニーク制約
+ * (user_id, property_uri, date, ...) の先頭3列で絞った日別 count を積み上げる。
+ */
+async function collectGscQueryByUser(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any
+): Promise<{ stats: Record<string, GscQueryUserStat>; failedUserCount: number }> {
+  const { data: credentials, error: credentialError } = await client
+    .from('gsc_credentials')
+    .select('user_id, property_uri')
+    .not('property_uri', 'is', null);
+  if (credentialError) {
+    throw new Error(`gsc_credentials の取得に失敗しました: ${credentialError.message}`);
+  }
+
+  const targets = (credentials ?? []) as { user_id: string; property_uri: string }[];
+  const { data: users, error: userError } = await client
+    .from('users')
+    .select('id, full_name')
+    .in(
+      'id',
+      targets.map(target => target.user_id)
+    );
+  if (userError) {
+    throw new Error(`users の取得に失敗しました: ${userError.message}`);
+  }
+  const nameById = new Map(
+    ((users ?? []) as { id: string; full_name: string | null }[]).map(user => [
+      user.id,
+      user.full_name,
+    ])
+  );
+
+  const dates = recentDates(GSC_QUERY_WINDOW_DAYS);
+  const stats: Record<string, GscQueryUserStat> = {};
+  let failedUserCount = 0;
+
+  for (const target of targets) {
+    const countForDate = async (date: string): Promise<number> => {
+      const { count, error } = await client
+        .from('gsc_query_metrics')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', target.user_id)
+        .eq('property_uri', target.property_uri)
+        .eq('date', date);
+      if (error) {
+        throw new Error(`${date}: ${error.message}`);
+      }
+      return count ?? 0;
+    };
+
+    try {
+      const counts: number[] = [];
+      for (let index = 0; index < dates.length; index += GSC_QUERY_COUNT_CONCURRENCY) {
+        const chunk = dates.slice(index, index + GSC_QUERY_COUNT_CONCURRENCY);
+        counts.push(...(await Promise.all(chunk.map(countForDate))));
+      }
+      const daysWithRows = counts.filter(count => count > 0);
+      stats[target.user_id] = {
+        name: nameById.get(target.user_id) || '未設定',
+        avgPerDay: daysWithRows.length > 0 ? mean(daysWithRows) : 0,
+        sdPerDay: daysWithRows.length > 0 ? populationStdDev(daysWithRows) : 0,
+        maxPerDay: daysWithRows.length > 0 ? Math.max(...daysWithRows) : 0,
+        daysWithData: daysWithRows.length,
+      };
+    } catch (error) {
+      failedUserCount += 1;
+      console.error('gsc_query_metrics のユーザー別集計に失敗しました:', {
+        userId: target.user_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return { stats, failedUserCount };
+}
+
+function sortGscQueryUsers(
+  stats: Record<string, GscQueryUserStat>
+): [string, GscQueryUserStat][] {
+  return Object.entries(stats).sort(([, a], [, b]) => b.avgPerDay - a.avgPerDay);
+}
+
+function printGscQueryByUser(
+  stats: Record<string, GscQueryUserStat>,
+  failedUserCount: number,
+  previous: DbStatsSnapshot | null
+): void {
+  console.log(
+    `\n🔎 GSCクエリ行数（ユーザー別・直近${GSC_QUERY_WINDOW_DAYS}日のデータがある日の1日あたり）:`
+  );
+
+  const sorted = sortGscQueryUsers(stats);
+  const withData = sorted.filter(([, stat]) => stat.daysWithData > 0);
+  if (withData.length === 0) {
+    console.log('  ℹ️  対象期間にデータのあるユーザーはいません。');
+  }
+  for (const [userId, stat] of withData) {
+    const previousAvg = previous?.gscQueryByUser?.[userId]?.avgPerDay;
+    const delta =
+      previousAvg === undefined ? '' : `（前回比 ${formatSignedNumber(stat.avgPerDay - previousAvg)}）`;
+    console.log(
+      `  ${stat.name}: 平均 ${Math.round(stat.avgPerDay).toLocaleString()} / 標準偏差 ${Math.round(stat.sdPerDay).toLocaleString()} / 最大 ${stat.maxPerDay.toLocaleString()} 行（${stat.daysWithData}日分）${delta}`
+    );
+  }
+
+  if (withData.length > 0) {
+    const averages = withData.map(([, stat]) => stat.avgPerDay);
+    console.log(
+      `  全体（${withData.length}人）: 平均 ${Math.round(mean(averages)).toLocaleString()} / 標準偏差 ${Math.round(populationStdDev(averages)).toLocaleString()} 行/日`
+    );
+  }
+  console.log(`  データなし: ${sorted.length - withData.length}人`);
+  if (failedUserCount > 0) {
+    console.log(`  ⚠️  集計に失敗したユーザー: ${failedUserCount}人`);
+  }
+}
+
+function formatSignedNumber(value: number): string {
+  const rounded = Math.round(value);
+  return `${rounded >= 0 ? '+' : ''}${rounded.toLocaleString()}`;
+}
+
+function buildReport(
+  current: DbStatsSnapshot,
+  previous: DbStatsSnapshot | null,
+  tableSizes: TableSizeInfo[],
+  gscQueryFailedUserCount: number | null
+): DbStatsReport {
+  return {
+    capturedAt: current.capturedAt,
+    previousCapturedAt: previous?.capturedAt ?? null,
+    databaseSizeBytes: current.databaseSizeBytes,
+    previousDatabaseSizeBytes: previous?.databaseSizeBytes ?? null,
+    diskQuotaBytes: SUPABASE_PRO_PLAN.diskSizeBytes,
+    diskGrowthWarning: previous ? isDiskGrowthWarning(current, previous) : false,
+    tables: [...tableSizes]
+      .sort((a, b) => b.size_bytes - a.size_bytes)
+      .map(table => ({
+        name: table.table_name,
+        sizeBytes: table.size_bytes,
+        previousSizeBytes: previous?.tables[table.table_name]?.sizeBytes ?? null,
+      })),
+    shareWarnings: findTableShareWarnings(tableSizes, current.databaseSizeBytes),
+    growthWarnings: previous
+      ? computeTableDeltas(current, previous).filter(isSignificantTableGrowth)
+      : [],
+    gscQueryWindowDays: GSC_QUERY_WINDOW_DAYS,
+    gscQueryByUser: sortGscQueryUsers(current.gscQueryByUser ?? {}).map(([userId, stat]) => ({
+      ...stat,
+      previousAvgPerDay: previous?.gscQueryByUser?.[userId]?.avgPerDay ?? null,
+    })),
+    gscQueryFailedUserCount,
+  };
 }
 
 /**
@@ -343,6 +583,8 @@ async function checkDatabaseStats() {
   }
 
   const previousSnapshot = loadPreviousSnapshot();
+  // 途中で失敗した回に、前回分のレポートでカードが組まれないようにする
+  rmSync(REPORT_FILE_PATH, { force: true });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = createClient(supabaseUrl, supabaseServiceRole, {
@@ -422,13 +664,34 @@ async function checkDatabaseStats() {
     printTableDiskShareWarnings(tableSizes, databaseSize?.database_size_bytes ?? null);
     printProPlanQuotaAndRecommendations(databaseSize?.database_size_bytes ?? null);
 
+    // GSC の内訳が取れなくても、DB 容量の統計と比較用スナップショットは残す
+    let gscQuery: { stats: Record<string, GscQueryUserStat>; failedUserCount: number } | null =
+      null;
+    try {
+      gscQuery = await collectGscQueryByUser(client);
+      printGscQueryByUser(gscQuery.stats, gscQuery.failedUserCount, previousSnapshot);
+    } catch (error) {
+      console.error('GSCクエリ行数（ユーザー別）の集計に失敗しました:', error);
+    }
+
     const currentSnapshot =
       databaseSizeBytes > 0 && tableSizes.length > 0
-        ? buildSnapshot(databaseSizeBytes, tableSizes, tableCounts)
+        ? buildSnapshot(
+            databaseSizeBytes,
+            tableSizes,
+            tableCounts,
+            // 集計に失敗した回は前回分を引き継ぎ、次回の比較基準を失わないようにする
+            gscQuery?.stats ?? previousSnapshot?.gscQueryByUser
+          )
         : null;
 
     if (currentSnapshot) {
       printDeltaFromPrevious(currentSnapshot, previousSnapshot);
+      writeFileSync(
+        REPORT_FILE_PATH,
+        `${JSON.stringify(buildReport(currentSnapshot, previousSnapshot, tableSizes, gscQuery?.failedUserCount ?? null), null, 2)}\n`,
+        'utf-8'
+      );
       saveSnapshot(currentSnapshot);
       console.log(`\n💾 比較用スナップショットを保存しました: ${HISTORY_FILE_PATH}`);
     }

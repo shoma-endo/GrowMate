@@ -51,6 +51,7 @@ supabase/.temp/
 
 # scripts runtime state (CI は Actions cache で保持)
 scripts/db-stats-history.json
+scripts/db-stats-report.json
 
 # python bytecode cache
 __pycache__/
