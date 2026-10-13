@@ -14,6 +14,9 @@ description: GrowMateの機能実装全般で最初に使う基盤ポリシー�
   - 共有する型定義は `src/types/` に置き、フロント・サーバー両方から参照する。
   - バリデーションが必要なデータは `zod` スキーマを定義し、Server Actions や Route Handlers で入力を検証する。
 
+- **外部仕様の確認**
+  - 外部 API・モデルの仕様は、実装中も公式ドキュメント（一次情報）で確かめ、参照 URL を添える。推測で書かない。
+
 # Next.js / サーバー通信
 
 - **Server Actions と Route Handlers の使い分け**

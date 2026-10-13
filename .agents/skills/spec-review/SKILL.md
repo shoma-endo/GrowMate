@@ -41,7 +41,7 @@ description: docs/plansの仕様書・設計書を作成前、レビュー・監
 
 ### C. 非機能
 
-- [ ] データ量の見積りがあるか。大量行の取得・突合を含む場合、`docs/context/db-row-limits-and-data-truncation.md`（PostgREST `db-max-rows = 1000`）と矛盾しないか
+- [ ] データ量の見積りがあるか。大量行の取得・突合を含む場合、`docs/context/db-row-limits-and-data-truncation.md`（PostgREST `db-max-rows = 1000`）と矛盾しないか。一括処理・定期取込・データの多いユーザー・同時実行では、DB 負荷・タイムアウト・処理できる最大件数の見込みがあり、負荷対策としてまず差分取得を検討しているか
 - [ ] LLM / 外部 API の呼び出し回数・コスト・実行時間（`maxDuration`）の想定があるか
 - [ ] バッチ / 定期処理は失敗時の再実行設計があるか
 - [ ] 外部 API / LLM に依存する機能の場合、**壊れたときユーザーに何が見えるかが定義されているか**（外部依存のない変更では対象外）。**停止機構（feature flag / 環境変数 / 専用の設定テーブル / 段階リリース）の新設を既定で要求しない。**GrowMate は MVP 開発を最優先とするため（`AGENTS.md` Core Rules）、停止機構は次のいずれかに当てはまる場合だけ指摘対象とする。
