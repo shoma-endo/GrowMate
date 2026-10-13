@@ -141,7 +141,7 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
 ### 前提
 
 - 換算: 8時間 = 1人日
-- 見積の状態: `合意済み`（2026-10-13、`06-estimate-confirmation.md` で着手承認、shoma-endo）
+- 見積の状態: `合意済み`（2026-10-13、`06-estimate-confirmation.md` で着手承認、shoma-endo。spec-review の反映後に見直し、同日 shoma-endo が承認）
 - 含めるもの: 設計・実装・単体テスト・`npm run verify`・spec-review での照合・本番確認
 - 含めないもの: spec-review の往復、PO・クライアントの確認待ち、本番で初回の起動を待つ日数
 
@@ -150,13 +150,22 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
 | フェーズまたは区分 | 目的・主な成果物 | 工数（時間） | 人日 |
 | --- | --- | ---: | ---: |
 | 設計 | 本仕様書（EST-001） | 4〜8 | 0.5〜1.0 |
-| 実装 | cron 3本・GA4・GSC・WordPress 差分・マイホーム表示（EST-002〜007） | 46〜94 | 5.75〜11.75 |
+| 実装 | cron 3本・GA4・GSC・WordPress 差分・マイホーム表示（EST-002〜007） | 50〜90 | 6.25〜11.25 |
 | テスト | `npm run verify`・全シナリオの照合（EST-008） | 4〜8 | 0.5〜1.0 |
 | レビュー | spec-review での公式ドキュメント照合（EST-009） | 2〜6 | 0.25〜0.75 |
 | リリース準備 | 本番での起動・表示の確認（EST-010） | 2〜6 | 0.25〜0.75 |
-| **合計** |  | **58〜122** | **7.25〜15.25** |
+| **合計** |  | **62〜118** | **7.75〜14.75** |
 
-幅の主な原因は EST-005（見積時点では Q-010 が未回答だった。spec-review で回答済み）と EST-007（D-09 の判定方法）。D-09 は本仕様で B（取込の結果を保存）に決めたので、EST-007 は下限寄りになる見込み。
+- 着手承認時の概算は 7.25〜15.25人日。spec-review の反映後に、次の2点で見直した。
+  - 増えた作業（FR-001・FR-003 に追加された分）
+    - WordPress を `after` と `modified_after` の2通りで取って合わせる処理、GrowMate 側の絞り込み、本文も含めた上書き
+    - 取込済み記事を range ページングで全件読む修正（GSC の突合用と WordPress 用）
+    - GSC の PT 基準の日付・`dataState: "all"`・上限行数
+    - WordPress の件数上限の撤廃
+  - 減った不確実性
+    - Q-010 が回答済みになり、`modified_after` が使えない環境向けの別方式が要らなくなった（EST-005 の上限側）。
+    - D-09 の判定方法を B（取込の結果を保存）に決めた（EST-007 の上限側）。
+- 幅の主な原因は EST-005。中心処理の切り出しの範囲（OPEN-003）しだいで変わる。
 
 ### 内訳
 
@@ -164,10 +173,10 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
 | --- | --- | ---: |
 | EST-002 | cron 3本の登録（ルート・`vercel.json`・`CRON_CONFIGS`・workflow matrix・整合性テスト） | 0.5〜1.0 |
 | EST-003 | GA4 自動同期（ロール絞り込み・3日分の取り直し・`count-batch` 化） | 0.75〜1.5 |
-| EST-004 | GSC 自動取込（対象一覧の新設・ユーザーごとのループ・固定3日間） | 1.0〜2.0 |
-| EST-005 | WordPress 差分取込（中心処理の切り出し・マイグレーション・差分取得・手動も差分化・初回全件） | 2.5〜5.0 |
+| EST-004 | GSC 自動取込（対象一覧の新設・ユーザーごとのループ・PT 基準の3日間・`dataState: "all"`・上限行数・`loadAnnotationUrlMap` の全件読み） | 1.25〜2.5 |
+| EST-005 | WordPress 差分取込（中心処理の切り出し・マイグレーション・`after` / `modified_after` の取得と絞り込み・本文を含む上書き・件数上限の撤廃・取込済み記事の全件読み・手動も差分化・初回全件） | 2.75〜4.5 |
 | EST-006 | マイホームの Google 再連携表示（既存の確認とテスト追加） | 0〜0.25 |
-| EST-007 | マイホームの WordPress 再連携表示（D-09） | 1.0〜2.0 |
+| EST-007 | マイホームの WordPress 再連携表示（D-09。取込の結果を保存して読む） | 1.0〜1.5 |
 
 ### カレンダー上の前提（工数外）
 
@@ -827,3 +836,4 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 | 2026-10-13 | spec-review audit 1回目の13件を反映（GSC の PT 日付と `dataState: "all"`、WordPress の件数上限撤廃・差分の基準の定義・無条件の上書き・`after` の追加・結果の書き手と認証切れの判定、GA4 の人数上限と範囲計算の適用先、Q-010 回答、OPEN-004 新設、R-008 新設） | spec-review | Claude Code（spec-review revise） |
 | 2026-10-13 | spec-review audit 2回目の1件を反映（取込済み記事の読み込みを range ページングで全件読む形にする：WordPress の一括取込と GSC の `loadAnnotationUrlMap`） | spec-review | Claude Code（spec-review revise） |
 | 2026-10-13 | spec-review 通過（audit 1回目・2回目の指摘を反映。最終 audit で未解消事項なし） | 仕様レビュー | spec-review |
+| 2026-10-13 | §5 の概算を 7.25〜15.25人日から 7.75〜14.75人日に見直した（EST-004・005・007） | spec-review で作業が増え、Q-010 と D-09 の判定方法が決まって不確実性が減ったため | shoma-endo（Claude Code） |
