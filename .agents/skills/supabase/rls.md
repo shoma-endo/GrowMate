@@ -28,6 +28,7 @@ Supabase の Row Level Security (RLS) を安全かつ高効率に実装するた
 - RLS の変更は必ず `supabase/migrations/` 配下に SQL ファイルとして隔離し、ロールバック（`DROP POLICY ...`）の手順をコメントで残してください。
 - 通常はマイグレーションで適用します。ただし、既存本番DBへの緊急修正など、ユーザーが直接SQL適用を明示した場合は、実行SQL・検証結果を記録し、マイグレーションファイルは追加しません。
 - owner/staff共有モデルは廃止済みです。`get_accessible_user_ids`、`owner_user_id`、`owner_previous_role` を新規コード・RLS・RPCで参照しないでください。
+- このブランチで足し、まだ develop にマージしていないマイグレーションに変更を足すときは、新しいファイルを作らず同じファイルにまとめてください。
 
 ### 5. RPC の権限境界
 
