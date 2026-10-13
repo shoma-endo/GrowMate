@@ -3,7 +3,7 @@
 ## メタデータ
 
 - 文書名: GSC・GA4・WordPress の毎日の自動取込
-- ステータス: `draft`
+- ステータス: `approved`
 - 作成日: 2026-10-13
 - 最終更新日: 2026-10-13
 - 作成者: shoma-endo（Claude Code で作成）
@@ -17,12 +17,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: `Grill済み・仕様書作成中`
+- 現在の工程: `spec-review 通過`
 - 止まっている理由・待っている人: なし
-- 次の一手: `"$(./scripts/resolve-takt-bin.sh)" -w spec-review -t "docs/plans/auto-daily-imports-spec.md をレビューしてください"`
-- 未確認事項: Q-010（WordPress REST API の `modified_after` を対象環境で使えるか）。回答者は一次情報照合（spec-review の audit）。
+- 次の一手: `takt -w spec-to-pr -t "docs/plans/auto-daily-imports-spec.md 仕様書に沿って実装してください"`
+- 未確認事項: なし（残置合意した 🟡 はなし）。
 - 関連ブランチ・PR: `feature/auto-daily-imports`
-- 更新日・更新した工程: 2026-10-13・仕様書を作成
+- 更新日・更新した工程: 2026-10-13・spec-review finalize
 
 ## 1. 背景・目的・成功指標
 
@@ -47,12 +47,12 @@
 
 ### 成功指標
 
-【Claude案・未確認】依頼にも Grill にも成功指標は無いため、次を仮置きした。spec-review で妥当性を確認する。
+【仮置き・目標値は OPEN-004 で決める】依頼にも Grill にも成功指標は無いため、次を仮置きした。実装は目標値に左右されない。
 
 | 指標 | 現状 | 目標 | 測定方法 | 測定時期 |
 | --- | --- | --- | --- | --- |
-| 毎朝の自動取込の成功率（取込元ごと） | 自動取込なし | 連携が正常な対象ユーザーの全員が、毎朝の起動で成功する（連携切れのユーザーは分母から除く） | 各 cron の `count-batch` 応答の `success` / `failed`、`cron_run_logs` | リリース後7日間 |
-| 連携が正常な対象ユーザーの最新データ日 | 手動依存のため不揃い | GA4 は前日、GSC はデータが確定した日まで | `ga4_page_metrics_daily` / `gsc_page_metrics` のユーザーごとの最大 `date` | リリース後7日目 |
+| 毎朝の自動取込の成功率（取込元ごと） | 自動取込なし | 連携が正常な対象ユーザーの全員が、毎朝の起動で成功する（連携切れのユーザーは分母から除く。そのためには、1回の起動で対象者全員を処理できること＝OPEN-001 の制約） | 各 cron の `count-batch` 応答の `success` / `failed`、`cron_run_logs` | リリース後7日間 |
+| 連携が正常な対象ユーザーの最新データ日 | 手動依存のため不揃い | GA4 は前日。GSC は起動時点の PT の当日（JST の前日と同じ日付。速報値を含む。FR-001） | `ga4_page_metrics_daily` / `gsc_page_metrics` のユーザーごとの最大 `date` | リリース後7日目 |
 
 ## 2. 利用者・関係者・利用シナリオ
 
@@ -82,7 +82,7 @@
 ### 導入後（To-Be）
 
 ```text
-JST 04:05 GSC cron     → paid/admin で GSC 連携済みの全員：前日を含む直近3日分を取り直して上書き
+JST 04:05 GSC cron     → paid/admin で GSC 連携済みの全員：PT の当日（＝JST の前日の日付）を含む直近3日分を、速報値込みで取り直して上書き
 JST 04:25 GA4 cron     → paid/admin で GA4 連携済みの全員：カーソルを起点に直近3日分を含めて取り直して上書き
 JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：前回の取込以降に公開・更新された記事だけ取込
                          （まだ一度も取り込んでいない人は全件）
@@ -93,7 +93,7 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
 ### 業務ルール
 
 - BR-01: 自動取込の対象は `paid` / `admin` のみ（D-03）。`trial` / `unavailable` は対象外。
-- BR-02: GSC・GA4 は、毎回直近3日分を取り直して上書きする（D-04）。同じ日のデータは1日分のまま。
+- BR-02: GSC・GA4 は、毎回直近3日分を取り直して上書きする（D-04）。同じ日のデータは1日分のまま。GSC の日付は PT 基準（FR-001）。
 - BR-03: WordPress は、前回の取込より後に新しく公開された記事と更新された記事だけを取り込む（D-02）。「前回の取込」は、自動か手動かを区別しない（合意済みの解釈）。
   - 例外: 一度も取り込んでいないユーザーは、公開済みの記事をすべて取り込む（D-08）。
 - BR-04: 取込をきっかけに、AI 要約・評価を自動で始めない（D-07）。
@@ -112,7 +112,7 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
   - `/wordpress-import` の手動一括取込を差分取込に変える（D-02）。画面の見た目は変えない。
 - API・外部連携:
   - cron ルートを3本追加する：GSC、GA4、WordPress。
-  - WordPress REST API の一覧取得に、差分の指定を足す（方式は Q-010 で確定）。
+  - WordPress REST API の一覧取得に、差分の指定（`modified_after` と `after`）を足す（FR-003。Q-010 は回答済み）。
 - データ・DB:
   - `wordpress_settings` に次の列を足すマイグレーションを作る。新しいテーブルは作らない。
     - 差分の基準（前回の取込日時）
@@ -132,6 +132,7 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
 | GSC・GA4 の手動導線の期間・挙動の変更（`/gsc-import`、`/setup/ga4` の同期、`/ga4-dashboard` の「過去90日を再取込」） | 依頼に無い | — |
 | GA4 の初回取込日数（`INITIAL_SYNC_DAYS = 30`）の変更 | 依頼に無い | — |
 | Instagram・Google Ads の自動取込 | 依頼に無い | — |
+| WordPress 5.7 未満のサイトで、差分取得によって WordPress へのアクセス量を減らすこと | `modified_after` は 5.7 で追加された（Q-010）。5.7 未満でこの指定がどう扱われるかは公式に記載が無い（R-008）。指定が無視されても、GrowMate 側で基準より後の記事だけを処理するので、取り込む結果は正しい（FR-003）。アクセス量が今の全件取得と同じになるだけ | 5.7 未満のユーザーから負荷の相談が来たとき |
 | `/setup/*` に残る「再認証」を「再連携」へ直すこと | `home-today-spec.md` で既に範囲外。今回の依頼にも無い | 文言をまとめて直すとき |
 | `docs/plans/ga4-sync-cron-spec.md` の実装 | 本仕様で置き換える（ALT-001）。旧仕様は毎時実行・GitHub Actions を前提にしていて、今回の毎日実行・Vercel Cron と合わない | — |
 
@@ -155,7 +156,7 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
 | リリース準備 | 本番での起動・表示の確認（EST-010） | 2〜6 | 0.25〜0.75 |
 | **合計** |  | **58〜122** | **7.25〜15.25** |
 
-幅の主な原因は EST-005（Q-010 の結果しだい）と EST-007（D-09 の判定方法）。D-09 は本仕様で B（取込の結果を保存）に決めたので、EST-007 は下限寄りになる見込み。
+幅の主な原因は EST-005（見積時点では Q-010 が未回答だった。spec-review で回答済み）と EST-007（D-09 の判定方法）。D-09 は本仕様で B（取込の結果を保存）に決めたので、EST-007 は下限寄りになる見込み。
 
 ### 内訳
 
@@ -178,14 +179,14 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
 
 | ID | 機能要件 | 優先度 | 根拠・出典 | 受け入れ条件 |
 | --- | --- | --- | --- | --- |
-| FR-001 | GSC の日次指標を毎日 JST 04:05 に自動で取り込む。対象は `paid` / `admin` で GSC プロパティを設定済みのユーザー。前日を含む直近3日分を取り直し、既存の値を上書きする | Must | D-01 / D-03 / D-04 / D-06、ALT-003 | §7 の「毎日の実行時刻になると…」「ロールが…」「直近3日分の値が…」「重複して保存されない」 |
-| FR-002 | GA4 を毎日 JST 04:25 に自動で同期する。対象は `paid` / `admin` で GA4 プロパティを設定済みのユーザー。取得の開始日は「カーソルの翌日」と「前日の2日前」の早い方、終了日は前日とする。こうして直近3日分を取り直し、上書きする | Must | D-01 / D-03 / D-04 / D-06、ALT-003 | 同上（GA4） |
-| FR-003 | WordPress の記事を毎日 JST 04:45 に自動で取り込む。対象は `paid` / `admin` で WordPress を連携済みのユーザー。前回の取込より後に公開・更新された記事だけを取り込み、既存の記事は内容を置き換える | Must | D-01 / D-02 / D-03 / D-06 | §7 の WordPress の Rule |
-| FR-004 | 一度も WordPress の記事を取り込んでいないユーザー（差分の基準が無い人）は、公開済みの記事をすべて取り込む | Must | D-08 | §7「一度も WordPress の記事を取り込んでいないユーザーは…」 |
-| FR-005 | 手動の一括取込（`/wordpress-import`）も FR-003 と同じ差分取込にする。手動と自動は同じ「前回の取込」の基準を共有する | Must | D-02、合意済みの解釈 | §7「手動の一括取込も…」 |
+| FR-001 | GSC の日次指標を毎日 JST 04:05 に自動で取り込む。対象は `paid` / `admin` で GSC プロパティを設定済みのユーザー。直近3日分を取り直し、既存の値を上書きする。<br>・**日付は PT 基準**（Search Console API の日付は PT）。終了日は起動時点の PT の当日、開始日はその2日前。UTC 19:05 の起動時点では、PT の当日は JST の前日と同じ日付になる。<br>・**`dataState: "all"` を指定**し、確定前の速報値も取る（指定しないと確定済みのデータしか返らず、終了日付近の日が取り込まれない）。ページ指標・クエリ指標の両方の取得に付ける。<br>・**ページ指標の `maxRows` は 25,000**（公式の上限）。上限に達した（`pageMetricsHitLimit`）ら `console.error` に userId と期間を出す。<br>・`dataState` と `maxRows` は自動取込が渡すときだけ効く。手動の `/gsc-import` と `gsc-evaluate` の取得は変えない（Non-goal）。<br>・**記事との突合**：指標の行を記事に結び付けるための取込済み記事の読み込み（`gscImportService.ts` の `loadAnnotationUrlMap`）を、range ページングで全件読む形にする（`db-max-rows` 1,000 で切れるため。§9 データ）。共通の関数を1か所で直すので、手動の `/gsc-import` と `gsc-evaluate` にも効く。これは取りこぼしの修正で、期間・取得の挙動は変えないので、上の Non-goal と矛盾しない | Must | D-01 / D-03 / D-04 / D-06、ALT-003 | §7 の「毎日の実行時刻になると…」「ロールが…」「直近3日分の値が…」「重複して保存されない」 |
+| FR-002 | GA4 を毎日 JST 04:25 に自動で同期する。対象は `paid` / `admin` で GA4 プロパティを設定済みのユーザー。取得の開始日は「カーソルの翌日」と「前日の2日前」の早い方、終了日は前日とする。こうして直近3日分を取り直し、上書きする。<br>・この開始日の計算は、自動取込が `syncUser` に渡すオプションにだけ効く。`resolveGa4SyncRange` の既定の計算は変えない（手動同期 `/api/ga4/sync` と、`ga4-content-evaluate` が呼ぶ `syncUser(userId)` の取込範囲は今のまま。Non-goal）。<br>・1回の起動で対象者全員を処理する（人数の上限で打ち切らない。OPEN-001） | Must | D-01 / D-03 / D-04 / D-06、ALT-003 | 同上（GA4） |
+| FR-003 | WordPress の記事を毎日 JST 04:45 に自動で取り込む。対象は `paid` / `admin` で WordPress を連携済みのユーザー。前回の取込より後に公開・更新された記事だけを取り込み、既存の記事は内容を置き換える。<br>・**取得**：差分の基準（§9）を UTC のオフセット付き ISO8601 にして、`modified_after`（更新）と `after`（公開）の2通りで一覧を取り、合わせて重複を除く。`after` も使うのは、予約投稿が公開されるときは更新日時が変わらず、`modified_after` だけでは拾えないため（§9 外部連携の公式根拠）。<br>・**GrowMate 側の絞り込み**：取得した記事のうち、`modified_gmt` か `date_gmt` が基準より後のものだけを処理する。指定が無視される環境（R-008）でも結果が正しくなるようにするため。<br>・**上書き**：処理対象の既存記事は、本文（`wp_content_text`）を含めて無条件に上書きする。既存の一括取込の「変更なし」判定（タイトル・抜粋・カテゴリ・投稿タイプ・画像数だけを比べる）では読み飛ばさない。本文が取れなかった記事で既存の本文を消さない扱いは今のまま。<br>・**件数上限**：既存の一括取込の1,000件上限（取得の `maxItems` と `slice(0, 1000)`）を外す（FR-004 と同じ理由）。<br>・**取込済み記事との突合**：新規か既存かを判定するための取込済み記事（`content_annotations`）の読み込みを、range ページングで全件読む形にする（§9 データ）。今は1回の select で読んでおり、`db-max-rows` 1,000 で切れる。そのままだと、1,001件目以降の取込済み記事を新規と誤判定し、insert が一意制約に当たって取込全体が失敗し、差分の基準が進まないまま毎日失敗する | Must | D-01 / D-02 / D-03 / D-06 | §7 の WordPress の Rule |
+| FR-004 | 一度も WordPress の記事を取り込んでいないユーザー（差分の基準が無い人）は、公開済みの記事をすべて取り込む。1,000件の上限は設けない。上限を残すと、それを超える記事が取り込まれず、差分の基準を進めた後は二度と取り込まれない（クライアントは1,000〜2,000本規模の運用を想定）。処理時間の上限で途中で打ち切られた回は基準を進めない（§9）ので、翌日以降の起動で取り直す | Must | D-08 | §7「一度も WordPress の記事を取り込んでいないユーザーは…」 |
+| FR-005 | 手動の一括取込（`/wordpress-import`）も FR-003 と同じ差分取込にする（件数上限を外すことも含む）。手動と自動は同じ「前回の取込」の基準を共有し、手動の取込も基準を進める。ただし、自動取込の結果（FR-008 の状態）は書かない（§6 状態遷移） | Must | D-02、合意済みの解釈 | §7「手動の一括取込も…」 |
 | FR-006 | 3本の cron の起動時刻を、既存の定期実行の起動時刻と重ねない。GSC は UTC 19:05、GA4 は UTC 19:25、WordPress は UTC 19:45（いずれも JST では翌日の 04:05 / 04:25 / 04:45） | Must | D-06、CON-001 の回答 2-1 | §7「起動時刻は既存の定期実行の起動時刻と重ならない」 |
 | FR-007 | Google 連携が切れて取込が止まったら、マイホームに既存の GSC / GA4 再連携カードを出す。正常なら出さず、再連携したら消す | Must | D-05 | §7 Google の3シナリオ |
-| FR-008 | WordPress の認証が切れて自動取込が止まったら、マイホームに「WordPress の再連携が必要です」カードを出す。正常なら出さず、再連携したら消す。判定は、自動取込が保存した結果を読んで行う（画面を開くたびに WordPress へ接続しない） | Must | D-09、D-09 の判定方法（ユーザー判断 2026-10-13） | §7 WordPress の3シナリオ |
+| FR-008 | WordPress の認証が切れて自動取込が止まったら、マイホームに「WordPress の再連携が必要です」カードを出す。正常なら出さず、再連携したら消す。判定は、自動取込が保存した結果を読んで行う（画面を開くたびに WordPress へ接続しない）。結果を書くのは自動取込だけ（認証切れの判定条件は §6 状態遷移） | Must | D-09、D-09 の判定方法（ユーザー判断 2026-10-13） | §7 WordPress の3シナリオ |
 | FR-009 | 取込をきっかけに、AI 要約・評価を始めない | Must | D-07 | §7「AI 要約と評価は始まらない」 |
 | FR-010 | 3本の cron を、既存の cron 基盤（`CRON_CONFIGS`・観測・手動実行用の workflow matrix）に登録する | Must | 既存パターン | 整合性テスト `tests/unit/server/lib/cron-config-consistency.test.ts` が通る |
 
@@ -203,14 +204,22 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
   | 状態 | 遷移の条件 | マイホーム |
   | --- | --- | --- |
   | 未実行（NULL） | 初期値。まだ一度も自動取込が動いていない | カードなし |
-  | 成功 | 取込が最後まで終わった | カードなし |
-  | 認証切れ | WordPress が認証エラー（401 / 403、WordPress.com のトークン更新失敗）を返した | 「WordPress の再連携が必要です」カード |
-  | 一時的な失敗 | ネットワーク・5xx・タイムアウトなど、認証以外の失敗 | カードなし（翌日に再試行。表示は OPEN-002 と合わせて実装時に決める） |
+  | 成功 | 取込が最後まで終わり、記事の insert / update が1件も失敗しなかった | カードなし |
+  | 認証切れ | 認証切れの判定条件（下記）に当たった | 「WordPress の再連携が必要です」カード |
+  | 一時的な失敗 | ネットワーク・5xx・タイムアウト・処理時間の上限での打ち切り・記事の insert / update の一部失敗など、認証以外の失敗 | カードなし（翌日に再試行。表示は OPEN-002 と合わせて実装時に決める） |
 
+  - 結果を書くのは自動取込だけ。手動の一括取込は結果を書かない（成功しても「認証切れ」は消えない）。
+    - 理由：手動の WordPress.com 取込は cookie のトークンを優先する（`wordpressContext.ts:37`）。手動で成功しても、自動取込が使う DB のトークンが有効だとは限らない。
+  - 認証切れの判定条件（GrowMate 側の判定ルール。認証情報が失効したときのステータスコードは公式に記載が無い。R-008）:
+    - 一覧取得で試す候補 URL（`wordpressService.ts` の `buildRestFetchCandidates`。最大3つ）のどれかが 401 / 403 を返し、成功した候補が無いとき。最後に試した候補のステータスだけでは判定しない（最後の候補は 404 を返しうる）。
+    - WordPress.com のトークン更新が失敗したとき。
   - 「認証切れ」から抜けるのは、次のどちらかのとき。
-    - 取込が成功したとき。
+    - 自動取込が成功したとき。
     - `/setup/wordpress` で連携情報を保存し直したとき、または WordPress.com の OAuth を完了したとき。このとき結果を未実行（NULL）に戻す。
   - 再連携を終えたら、翌朝の自動取込を待たずにカードが消える（§7「再連携を終えたユーザーには…」）。
+- 差分の基準（`wordpress_settings` に保存。定義は §9）の遷移:
+  - 自動・手動とも、取込が最後まで終わり、記事の insert / update が1件も失敗しなかった回だけ進める。それ以外（認証切れ・一時的な失敗・打ち切り・一部失敗）は据え置く。
+  - サイト（`wp_type` / `wp_site_url` / `wp_site_id`）か、取込対象の投稿タイプ（`wp_content_types`）が変わったら、NULL に戻す（次回は全件取込）。保存経路はどれも `supabaseService.ts` の `createOrUpdateWordPressSettings` / `createOrUpdateSelfHostedWordPressSettings` / `updateWordPressContentTypes` を通る。
 - 冪等性・重複実行時の挙動:
   - GSC・GA4 は upsert なので、同じ起動が2回届いても結果は変わらない。
   - WordPress は、二重に起動すると新規の insert が一意制約に当たりうる（R-005）。
@@ -235,7 +244,7 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
   | --- | --- | --- |
   | カードの種類・並び | `gsc-reauth` / `ga4-reauth` / `google-ads-reauth` / `instagram-reauth`（`kind: 'reauth'`。異常を先に並べる） | そのまま使う。`kind: 'reauth'` の項目として同じ並びに入れる |
   | 見出し | 「Google Search Console の再連携が必要です」など「<サービス名> の再連携が必要です」 | 同じ型で「WordPress の再連携が必要です」 |
-  | 説明 | 「検索順位の取得が止まっています。」「投稿データの取得が止まっています。」 | 同じ型で「記事の取込が止まっています。」 |
+  | 説明 | 「検索順位の取得が止まっています。」「投稿データの取得が止まっています。」（既存4件はすべて「〜の取得が止まっています。」。`home-today.ts:89,100,117,126`） | 同じ型で「記事の取得が止まっています。」 |
   | ボタン | 「再連携する」→ 各 `/setup/<サービス>` | 同じ文言で、遷移先は `/setup/wordpress` |
   | 表示の条件 | `hasPaidFeatureAccess(role)` かつ再連携が必要 | 同じ。`paid` / `admin` のみ |
 
@@ -246,7 +255,7 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
   | 内部状態（WordPress の自動取込の結果） | ユーザー向け表示 | 主操作 | 操作制限 |
   | --- | --- | --- | --- |
   | 未実行 / 成功 / 一時的な失敗 | カードなし | — | — |
-  | 認証切れ | 「WordPress の再連携が必要です／記事の取込が止まっています。」 | 「再連携する」→ `/setup/wordpress` | `trial` / `unavailable` には出さない |
+  | 認証切れ | 「WordPress の再連携が必要です／記事の取得が止まっています。」 | 「再連携する」→ `/setup/wordpress` | `trial` / `unavailable` には出さない |
   | WordPress 未連携 | カードなし（未連携は「変化」ではない。既存方針どおり） | — | — |
 
 - 画面遷移: `/` →「再連携する」→ `/setup/wordpress` → 保存または OAuth 完了 → `/` に戻るとカードが消えている
@@ -444,7 +453,7 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 
 | 分類 | 要件・目標値 | 検証方法 | 状態・根拠 |
 | --- | --- | --- | --- |
-| 性能・レイテンシ | 各 cron は `maxDuration` 内（既存と同じく最大800秒）に終わる。処理し切れなかったユーザーは、翌日に回る | 本番の初回起動のログで所要時間を確認する | 未確定。人数は GA4 の17人（2026-08-21）以外は未確認（R-004、OPEN-001） |
+| 性能・レイテンシ | 各 cron は `maxDuration` 内（既存と同じく最大800秒）に終わる。人数の上限では打ち切らず、時間の上限でだけ打ち切る（OPEN-001）。時間の上限で処理し切れなかったユーザーは、翌日に回る（WordPress は差分の基準を進めない） | 本番の初回起動のログで所要時間を確認する | 未確定。人数は GA4 の17人（2026-08-21）以外は未確認。WordPress の初回全件取込は件数上限を外すので、1人あたりの時間が延びうる（R-004、OPEN-001） |
 | 可用性・信頼性 | 1日1回の best effort。起動が抜けても、GSC・GA4 は翌日の3日分の取り直しで埋まる | — | Vercel Cron の仕様に従う（`vercel-cron-migration-spec.md`） |
 | セキュリティ・プライバシー | cron ルートは `CRON_SECRET` 必須。WordPress のトークンは DB から読み、ログに出さない | 単体テスト（認証なしは 401） | 既存の cron と同じ |
 | 認証・認可 | 対象一覧を作るクエリで、`paid` / `admin` に絞る。Service Role で読み書きするので、RLS は通らない。そのぶんクエリでユーザー境界を守る | 単体テスト（ロール別） | — |
@@ -467,10 +476,15 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 - 作成・更新・削除するデータ:
   - `gsc_page_metrics` / `gsc_query_metrics`：直近3日分を upsert する（既存の onConflict）。
   - `ga4_page_metrics_daily`：直近3日分を upsert する（onConflict `user_id,property_id,date,normalized_path`）。`gsc_credentials.ga4_last_synced_at` のカーソルを更新する。
-  - `content_annotations`：WordPress の新規記事を insert し、更新された記事を update する（既存の一括取込の処理を使う）。削除はしない。
+  - `content_annotations`：WordPress の新規記事を insert し、差分取得で返ってきた既存記事を本文ごと無条件に update する（FR-003。既存の一括取込の「変更なし」判定は使わない）。削除はしない。
+  - 取込済み記事の読み込み（突合用）：Supabase（PostgREST）は1回の返却が `db-max-rows` 1,000 行で切れる（`docs/context/db-row-limits-and-data-truncation.md` §0。WordPress の記事が1,047本の口座が実在する）。次の2か所は、ユーザー単位で range ページングして全件を読む。順序はタイブレーク付きで決定的にする（例 `id` 順）。読み込みが失敗したら、そのユーザーのその回は失敗として扱う（WordPress は差分の基準を進めない）。
+    - WordPress の一括取込（`wordpressImport.actions.ts:148-153`）
+    - GSC の `loadAnnotationUrlMap`（`gscImportService.ts:799-818`。呼び出し元は同ファイルの `importMetrics`（L64）と `importQueryMetricsForUrl`（L285））
+    - ページングには既存の `SupabaseService.fetchAllPaged`（`supabaseService.ts:137`）を使う。`protected` なので、呼び出せる形にする方法は実装時に決める（OPEN-003 と同じ扱い）。
   - `wordpress_settings`：次の列を追加する（マイグレーション）。列名は実装時に `project-naming` で決める。どちらも NULL 可。
-    - 差分の基準：前回、取込が最後まで終わった日時。
-    - 自動取込の結果：未実行（NULL）/ 成功 / 認証切れ / 一時的な失敗と、その日時。
+    - 差分の基準：取込を**開始した時刻（UTC）**。その回が最後まで終わり、記事の insert / update が1件も失敗しなかったときだけ書く（§6 状態遷移）。完了時刻ではなく開始時刻を使うのは、取得中に WordPress で更新・公開された記事を次回の取得範囲に残すため。サイトか投稿タイプが変わったら NULL に戻す。
+    - 自動取込の結果：未実行（NULL）/ 成功 / 認証切れ / 一時的な失敗と、その日時。自動取込だけが書く。
+  - 差分の基準の送り方：`modified_after` / `after` には、基準を UTC のオフセット付き ISO8601（例 `2026-10-13T19:45:00+00:00`）で送る。オフセットの無い値がどのタイムゾーンとして扱われるかは公式に記載が無いため。
 - データの所有者: 各ユーザー（`user_id`）。
 - 保持期間・削除条件: 既存のテーブルに従う。追加する列は、連携を削除すると行ごと消える。
 - 移行・既存データとの互換性:
@@ -485,9 +499,51 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 
 | 連携先 | 用途 | API・権限 | 失敗時の挙動 | 公式根拠 |
 | --- | --- | --- | --- | --- |
-| Google Search Console API | 日次指標の取得（`searchAnalytics.query`） | 既存の OAuth（`gsc_credentials`） | そのユーザーを失敗として記録し、次へ進む。連携切れはマイホームの既存カードで分かる | 確定までの遅れは R-002（spec-review で照合） |
+| Google Search Console API | 日次指標の取得（`searchAnalytics.query`。自動取込は `dataState: "all"`、ページ指標の `rowLimit` 25,000） | 既存の OAuth（`gsc_credentials`） | そのユーザーを失敗として記録し、次へ進む。連携切れはマイホームの既存カードで分かる | 下の「公式根拠（GSC）」。確定までの遅れは R-002 |
 | GA4 Data API | 日次レポートの取得（`runReport`） | 既存の OAuth（`gsc_credentials`、GA4 スコープ） | 同上 | 確定までの遅れは R-001 |
-| WordPress REST API（セルフホスト `/wp-json/wp/v2` と、WordPress.com `public-api.wordpress.com/wp/v2/sites/{id}`） | 記事一覧の差分取得 | アプリケーションパスワード、または WordPress.com の OAuth（DB のトークンを使い、期限が切れていれば更新する） | 認証エラーは「認証切れ」として保存し、マイホームのカードを出す。それ以外は「一時的な失敗」 | `modified_after`: https://developer.wordpress.org/rest-api/reference/posts/ （リファレンスに引数の記載はあるが、対応する版と WordPress.com での扱いは未確認。Q-010） |
+| WordPress REST API（セルフホスト `/wp-json/wp/v2` と、WordPress.com `public-api.wordpress.com/wp/v2/sites/{id}`） | 記事一覧の差分取得 | アプリケーションパスワード、または WordPress.com の OAuth（DB のトークンを使い、期限が切れていれば更新する） | 認証切れの判定条件（§6 状態遷移）に当たれば「認証切れ」として保存し、マイホームのカードを出す。それ以外は「一時的な失敗」 | 下の「公式根拠（WordPress）」。公式に記載が無い点は R-008 |
+
+#### 公式根拠（GSC）
+
+確認日はすべて 2026-10-13（spec-review audit が WebFetch で取得した本文の verbatim 引用）。
+
+- https://developers.google.com/webmaster-tools/v1/searchanalytics/query
+  - "Start date of the requested date range, in YYYY-MM-DD format, in PT time (UTC - 7:00/8:00)."
+  - "If "final" (case-insensitive) or if this parameter is omitted, the returned data will include only finalized data."
+  - "If "all" (case-insensitive), data will include fresh data."
+  - "All values after the `first_incomplete_date` may still change noticeably."
+  - "Valid range is 1–25,000; Default is 1,000."（`rowLimit`）
+- https://developers.google.com/webmaster-tools/v1/how-tos/all-your-data
+  - "Data is typically available after 2-3 days"
+- 解釈（GrowMate 側）:
+  - 日付は PT で数える。UTC 19:05 の起動時点で、PT の当日は JST の前日と同じ日付になる。
+  - `dataState` を省略した既存の取得（`gscImportService.ts:398-404`）では、確定前の日は返らない。D-04 の「直近3日分を取り直して上書き」を満たすには `"all"` が要る。
+  - ある日 X の値は、X・X+1・X+2（PT）の3回の起動で取り直され、その後は自動では取り直さない。3回目の後も値が変わりうる（R-002）。
+
+#### 公式根拠（WordPress）
+
+確認日はすべて 2026-10-13。
+
+- https://developer.wordpress.org/rest-api/reference/posts/ （revise が WebFetch で取得）
+  - `modified_after`: "Limit response to posts modified after a given ISO8601 compliant date."
+  - `after`: "Limit response to posts published after a given ISO8601 compliant date."
+  - `modified_gmt`: "The date the post was last modified, as GMT."
+  - `date_gmt`: "The date the post was published, as GMT."
+- https://developer.wordpress.org/rest-api/reference/pages/ （audit が確認）: pages にも `modified_after` がある。
+- https://make.wordpress.org/core/2021/02/23/rest-api-changes-in-wordpress-5-7/ （audit が取得）
+  - "Introduced in 50024 the REST API posts collection endpoints now accept modified_before and modified_after"
+- https://developer.wordpress.com/docs/api/ （audit が取得）
+  - "Note that this API is also enabled on WordPress.com."
+- https://developer.wordpress.org/reference/functions/wp_publish_post/ （revise が WebFetch で取得）
+  - "This function does not do anything except transition the post status."
+  - 該当のソース行: `$wpdb->update( $wpdb->posts, array( 'post_status' => 'publish' ), array( 'ID' => $post->ID ) );`
+- https://developer.wordpress.org/reference/functions/check_and_publish_future_post/ （revise が WebFetch で取得）
+  - "Invoked by cron ‘publish_future_post’ event. This safeguard prevents cron from publishing drafts, etc."
+  - 該当のソース行: `wp_publish_post( $post->ID );`
+- 解釈（GrowMate 側）:
+  - `modified_after` は WordPress 5.7 以上で使える（§10 前提）。
+  - 予約投稿が公開されるときは `post_status` しか変わらず、更新日時は予約を設定した時点のまま。そのため `modified_after` だけでは、前回の取込より前に予約され、その後に公開された記事を拾えない。公開日時（`date_gmt`）で絞る `after` も使う（FR-003）。
+  - 公式に記載が無いこと（R-008）：5.7 未満で `modified_after` が無視されるかエラーになるか／WordPress.com の `/wp/v2/sites/{site}` で `modified_after` / `after` が効くか／オフセットの無い日時の扱い／認証情報が失効したときのステータスコード。
 
 ## 10. 制約・前提・依存関係
 
@@ -496,15 +552,16 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 - 既存システム・ライブラリ・社内標準:
   - Vercel Cron（Pro）で起動し、`vercel.json` の時刻は UTC で書く。
   - 既存 cron の型に合わせる：1ルート1バッチ、`CRON_CONFIGS`、`cron-observability.ts`、手動実行用の `hourly-cron.yml` matrix、`scripts/invoke-cron.sh`。
+  - WordPress は 5.7 以上を前提とする（`modified_after` が追加された版。§9 公式根拠（WordPress））。5.7 未満でも取り込む結果は正しいが、アクセス量は減らない（Non-goal）。
 - 再利用する既存実装:
 
   | 対象 | 採用 | 根拠 path | 備考 |
   | --- | --- | --- | --- |
   | マイホームの Google 再連携カード（FR-007） | 再利用 | `src/lib/home-today.ts:84-102`、`app/page.tsx`、`src/server/lib/home-google-credential.ts:28-70` | Google 側はコードを変えない。確認とテストの追加だけ |
-  | GA4 の `runBatch()` / `syncUser()`（FR-002） | 拡張 | `src/server/services/ga4ImportService.ts:67-207`、`src/server/lib/ga4-sync-range.ts:19-43`、`supabaseService.ts:1707-1733` | ロールの絞り込みと3日分の取り直しを足す。手動の「過去90日を再取込」（`backfillDays`）は変えない |
+  | GA4 の `runBatch()` / `syncUser()`（FR-002） | 拡張 | `src/server/services/ga4ImportService.ts:67-207`、`src/server/lib/ga4-sync-range.ts:19-43`、`supabaseService.ts:1707-1733` | ロールの絞り込みと3日分の取り直しを足す。3日分の取り直しは自動取込が渡すオプションにだけ効かせ、`resolveGa4SyncRange` の既定の計算（手動同期・`ga4-content-evaluate`）と手動の「過去90日を再取込」（`backfillDays`）は変えない |
   | cron 基盤（FR-010） | 再利用 | `vercel.json`、`src/server/lib/cron-definitions.ts`、`cron-observability.ts`、`.github/workflows/hourly-cron.yml`、`scripts/invoke-cron.sh`、`tests/unit/server/lib/cron-config-consistency.test.ts` | 3か所への登録手順は `hourly-cron.yml:4` |
-  | GSC の `importMetrics`（FR-001） | 拡張 | `src/server/services/gscImportService.ts:45-92,233-256` | ロールで絞った対象一覧は新しく作る |
-  | WordPress の一括取込の中心処理（FR-003〜005） | 拡張＋一部新規 | `src/server/actions/wordpressImport.actions.ts:25-439`、`src/server/services/wordpressService.ts:497-628`、`src/server/services/wordpressContentSync.ts:129-153` | cookie に依存しない形に切り出す。WordPress.com のトークンは DB から読み、`refreshWpComAccessToken` で更新する |
+  | GSC の `importMetrics`（FR-001） | 拡張 | `src/server/services/gscImportService.ts:45-92,233-256,369-429` | ロールで絞った対象一覧は新しく作る。`dataState` を渡せるようにし、自動取込だけが `"all"` と `maxRows` 25,000 を渡す。`loadAnnotationUrlMap`（`:799-818`）は range ページングで全件読む形にする（全呼び出し元に効く） |
+  | WordPress の一括取込の中心処理（FR-003〜005） | 拡張＋一部新規 | `src/server/actions/wordpressImport.actions.ts:25-439`、`src/server/services/wordpressService.ts:497-628`、`src/server/services/wordpressContentSync.ts:129-153` | cookie に依存しない形に切り出す。WordPress.com のトークンは DB から読み、`refreshWpComAccessToken` で更新する。差分の指定（`modified_after` / `after`）・1,000件上限の撤廃・取込済み記事の range ページングでの全件読み込み・無条件の上書き・候補 URL ごとのステータスの保持（認証切れの判定用）を足す |
   | マイホームの項目定義（FR-008） | 拡張 | `src/lib/home-today.ts`（`buildHomeToday`）、`app/_components/TodayChecklist.tsx`、`app/page.tsx` | WordPress の状態を DB から読んで、項目を1件足す |
 
 ### 制約条件
@@ -559,7 +616,7 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 
 ### ALT-003: GSC・GA4 の「直近3日」の決め方
 
-- 判断: GA4 はカーソルを起点にする。GSC は、前日を含む固定の3日間にする。
+- 判断: GA4 はカーソルを起点にする。GSC は、前日を含む固定の3日間にする（GSC の日付は PT。「前日」は起動時点の PT の当日と同じ日付。FR-001）。
 - 比較した案:
   - 案A: GA4 はカーソルを起点にする（開始日は「カーソルの翌日」と「前日の2日前」の早い方、終了日は前日）。GSC は、前日を含む固定の3日間にする。
   - 案B: 両方とも、固定の3日間にする。
@@ -580,12 +637,13 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 | ID | リスク | 発生条件・影響 | 対策 | 担当 | 状態 |
 | --- | --- | --- | --- | --- | --- |
 | R-001 | JST 04:05〜04:45 の時点で、前日分のデータが Google 側にそろっていない | 確定前の値を取り込むことになる | 3日分の取り直しで、翌日以降に正しい値へ置き換わる | 開発 | 受容 |
-| R-002 | GSC のデータが確定するまでの遅れに、前日を含む3日間では足りない | 確定までに3日を超えると、一部の日の値が確定値とずれたまま残る | spec-review で Search Console の公式記述と照合する。足りなければ日数の変更を別途判断する | 一次情報照合 | 未確認 |
-| R-003 | トークンは有効なまま API の権限だけ失う（例：プロパティ権限を外されて 403 になる） | Google 側はマイホームの判定がトークン更新だけなので、カードが出ない。WordPress 側は「一時的な失敗」に分類されると、カードが出ない | 失敗は `console.error` に残る。気づけない事故が起きたら表示を見直す | 特定できない | 受容 |
-| R-004 | 1日1回の起動で、対象者全員を処理し切れない | 打ち切られたユーザーは翌日まで更新されない。GSC はこれが3日以上続くと欠損になる | 本番の初回起動で所要時間を測り、OPEN-001 で人数・時間の上限を調整する | 開発 | 未確認 |
+| R-002 | GSC の値は、3回目の取得（PT で X+2）の後も変わりうる | 公式は "All values after the `first_incomplete_date` may still change noticeably." "Data is typically available after 2-3 days" とする（§9 公式根拠（GSC））。ある日の値が、確定値とずれたまま残ることがある。日ごとの欠落ではなく、値のずれ | 手動の `/gsc-import` で期間を指定して上書きできる。ずれが問題になったら日数の変更を別途判断する | 開発 | 受容 |
+| R-003 | トークンは有効なまま API の権限だけ失う（例：プロパティ権限を外されて 403 になる）。または、WordPress の特定の記事の insert / update が毎回失敗する | Google 側はマイホームの判定がトークン更新だけなので、カードが出ない。WordPress 側は「一時的な失敗」に分類されると、カードが出ない。記事の書き込みが毎回失敗すると、差分の基準が進まず、毎日同じ範囲を取り直す | 失敗は `console.error` に残る。気づけない事故が起きたら表示を見直す | 特定できない | 受容 |
+| R-004 | 1日1回の起動で、対象者全員を処理し切れない | 時間の上限で打ち切られたユーザーは翌日まで更新されない。GSC はこれが3日以上続くと欠損になる。WordPress の初回全件取込（件数上限なし）が1人で800秒を超えると、そのユーザーは基準が進まず毎日やり直しになる | 本番の初回起動で所要時間を測り、OPEN-001 で時間の上限を調整する | 開発 | 未確認 |
 | R-005 | Vercel Cron が同じ起動を2回届ける | WordPress の新規 insert が一意制約 `(user_id, wp_post_id)` / `(user_id, canonical_url)` に当たり、エラーが見かけ上増える。GSC・GA4 は upsert なので影響しない | 実装時に、二重起動でもエラーにならない書き込み方を選ぶ | 開発 | 未確認 |
 | R-006 | GA4 の `syncUser` は、取得が0行のときにカーソルを進めない（`ga4ImportService.ts:187-193`） | GA4 側にデータが無いユーザーは、取得期間が毎日1日ずつ伸び続ける | 今回は直さない。API 呼び出しの増加が目立ったら直す | 開発 | 受容 |
-| R-007 | 更新日が変わらずに、表示内容だけが変わるページ（ショートコードや外部データで表示が変わるもの） | 差分取込では拾えず、内容が古いまま残る。今の全件取得なら拾えていた | 対象ユーザーがいれば、週1回の全件取得などを別途判断する | PO | 受容 |
+| R-007 | 更新日が変わらずに、表示内容だけが変わるページ（ショートコードや外部データで表示が変わるもの） | 差分取込では拾えず、内容が古いまま残る（今の全件取込も、本文だけの変更は「変更なし」と判定して反映していない） | 対象ユーザーがいれば、週1回の全件取得などを別途判断する | PO | 受容 |
+| R-008 | WordPress の公式に記載が無い挙動（§9 公式根拠（WordPress）の「公式に記載が無いこと」） | ・5.7 未満や WordPress.com で差分の指定が無視されると、毎回全件が返り、アクセス量が減らない（GrowMate 側の絞り込みで結果は正しい）。エラーになる場合は「一時的な失敗」が続く。<br>・認証切れが 401 / 403 以外で返ると、カードが出ない（R-003 と同じ）。<br>・WordPress と GrowMate の時計がずれていると、基準の前後で記事を取りこぼしうる。<br>・予約投稿の公開が WordPress 側で遅れ、公開時に公開日時が前回の基準より前のままだと、拾えない | 本番の初回起動のログで、差分の件数と失敗を確認する。問題が出たら取得方式を別途判断する | 開発 | 受容 |
 
 ### 確認質問
 
@@ -600,16 +658,17 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 | Q-007 | 対象外は？ | 範囲を決めるため | ユーザー | — | 回答済み | 取り込んだ記事の AI 要約・評価の自動開始 | 2026-10-13 |
 | Q-008 | 「重ならない」の判定と、具体的な時刻は？ | `vercel.json` に書くため | ユーザー | — | 回答済み | 起動時刻だけで判定する。GSC が JST 04:05、GA4 が 04:25、WordPress が 04:45 | 2026-10-13 |
 | Q-009 | WordPress の認証が切れたときもマイホームに出すか？ | 画面とシナリオを決めるため | ユーザー | — | 回答済み | 出す（D-09）。判定方法は、自動取込の結果を保存して使う | 2026-10-13 |
-| Q-010 | WordPress REST API の `modified_after` は、どの WordPress の版から使えるか。WordPress.com（`public-api.wordpress.com/wp/v2`）でも使えるか。使えない環境では、この指定が無視されて全件が返るのか、エラーになるのか | FR-003 の取得方式と、使えない環境での扱い（全件取得になってよいか、別方式が要るか）を決めるため | 一次情報照合（spec-review の audit） | spec-review 完了まで | 未回答 |  |  |
+| Q-010 | WordPress REST API の `modified_after` は、どの WordPress の版から使えるか。WordPress.com（`public-api.wordpress.com/wp/v2`）でも使えるか。使えない環境では、この指定が無視されて全件が返るのか、エラーになるのか | FR-003 の取得方式と、使えない環境での扱い（全件取得になってよいか、別方式が要るか）を決めるため | 一次情報照合（spec-review の audit） | spec-review 完了まで | 回答済み（audit 2026-10-13） | 5.7 から（"Introduced in 50024 the REST API posts collection endpoints now accept modified_before and modified_after"、make.wordpress.org 2021-02-23 の記事）。WordPress.com での扱いと、5.7 未満で無視されるかエラーになるかは公式に記載が無い。どちらでも実装が変わらないよう、GrowMate 側でも基準より後の記事だけを処理する（FR-003）。5.7 未満でアクセス量を減らすことは Non-goal、記載が無い点は R-008 | 2026-10-13 |
 | Q-011 | ALT-001〜003、D-08、合意済みの解釈2点、Non-goal 2点を承認するか？ | Claude 案を確定させるため | ユーザー | — | 回答済み | 承認 | 2026-10-13 |
 
 ### 未決定事項（今は決めない）
 
 | ID | 未決定事項 | 今決めない理由 | 決めるタイミング | 決める人 |
 | --- | --- | --- | --- | --- |
-| OPEN-001 | 1回の実行で処理する人数と時間の上限（今の値は `MAX_USERS_PER_BATCH = 10`、`MAX_DURATION_MS = 280_000`） | 本番で実測して調整すれば足りる | 実装時（spec-to-pr の plan） | 開発 |
+| OPEN-001 | 1回の実行の時間の上限（GA4 の今の値は `MAX_USERS_PER_BATCH = 10`、`MAX_DURATION_MS = 280_000`。`supabaseService.ts:1714-1719` の `limit(10)` も同じ人数の上限）。**制約**：3本とも、人数の上限は対象人数（ロールで絞り込んだ後の人数。GA4 は17人、2026-08-21）より小さくしない。打ち切りは時間の上限（`maxDuration` 800秒に対する余裕）だけで行う。今の10人の上限のままだと、毎朝全員を処理できず FR-002 を満たせない | 時間の上限の値は本番で実測して調整すれば足りる。人数の上限は上の制約で決まる | 実装時（spec-to-pr の plan） | 開発 |
 | OPEN-002 | ユーザー単位の失敗の返し方（`count-batch` の集計項目、`console.error` の形式）と、連携が切れたユーザーを毎日試し続けるか | マイホームの表示は FR-008 の状態で決まり、これに左右されない。既存の型に合わせれば足りる | 実装時（spec-to-pr の plan） | 開発 |
-| OPEN-003 | WordPress の取込処理を、cron と手動の両方から呼べるようにする切り出し方（cookie のトークンと DB のトークンの使い分け、`refreshWpComAccessToken` の公開の仕方） | Q-010 で取得方式が決まるまで、切り出す範囲が決まらない | 実装時（spec-to-pr の plan） | 開発 |
+| OPEN-003 | WordPress の取込処理を、cron と手動の両方から呼べるようにする切り出し方（cookie のトークンと DB のトークンの使い分け、`refreshWpComAccessToken` の公開の仕方） | 取得方式は FR-003 で決まった。切り出し方はコードの構造の判断で、外から見える挙動（FR-003〜005・§6 状態遷移）は変わらない | 実装時（spec-to-pr の plan） | 開発 |
+| OPEN-004 | 成功指標（§1）の目標値 | 実装は目標値に左右されない。仮置きの値は §1 にある | リリース前 | shoma-endo |
 
 ## 13. テスト・リリース・ロールバック
 
@@ -617,14 +676,29 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 
 - 単体・統合・E2E・実画面確認:
   - **cron ルート**：認証なしは 401 になること。対象一覧がロールで絞られていること（admin / paid / trial / unavailable）。
-  - **GSC**：前日を含む3日間の期間を計算すること。upsert で同じ日のデータが1日分のままであること。
-  - **GA4**：開始日が「カーソルの翌日」と「前日の2日前」の早い方になること。手動の `backfillDays` の範囲が変わらないこと。
+  - **GSC**：
+    - 期間が PT の日付で計算されること（UTC 19:05 の起動で、終了日が PT の当日＝JST の前日と同じ日付、開始日がその2日前。夏時間・冬時間の両方）。
+    - 自動取込のリクエストに `dataState: "all"` と、ページ指標の `rowLimit` 25,000 が付くこと。手動の `/gsc-import` と `gsc-evaluate` のリクエストは今のまま（`dataState` なし、既定の行数）であること。
+    - `pageMetricsHitLimit` のとき `console.error` が出ること。
+    - upsert で同じ日のデータが1日分のままであること。
+    - 取込済み記事が1,000件を超えるユーザーで、1,001件目以降の記事の指標も記事に結び付き、捨てられないこと。
+  - **GA4**：
+    - 自動取込の開始日が「カーソルの翌日」と「前日の2日前」の早い方になること。
+    - 手動同期（`/api/ga4/sync`）・`ga4-content-evaluate` の `syncUser(userId)`・手動の `backfillDays` の取込範囲が変わらないこと。
+    - 対象が10人を超えても、時間の上限内なら全員を処理すること（OPEN-001）。
   - **WordPress**：
-    - 差分の基準が無いときは全件を取り込み、あるときは差分の指定を付けて取得すること。
-    - 変更の無い記事を書き換えないこと。
-    - 手動の一括取込も同じ基準を使うこと。
-    - 認証エラーのときは結果を「認証切れ」として保存し、それ以外は「一時的な失敗」として保存すること。
-    - 連携を保存し直すと、結果が未実行に戻ること。
+    - 差分の基準が無いときは全件を取り込み、あるときは `modified_after` と `after` を UTC のオフセット付きで付けて取得すること。
+    - 1,000件を超える記事を、初回にすべて取り込むこと（件数上限なし）。
+    - 取込済み記事が1,000件を超えるユーザーで、既存の記事を新規と誤判定しないこと（一意制約のエラーにならず、既存の記事が update されること）。
+    - 打ち切り（時間の上限）・記事の書き込みの一部失敗・認証切れ・一時的な失敗の回は、差分の基準を進めず、翌回に取り残しが出ないこと。
+    - 成功した回は、差分の基準が取込の開始時刻になること。
+    - 本文だけを更新した記事が、本文ごと置き換わること。
+    - 予約投稿（更新日時が基準より前で、公開日時が基準より後）が取り込まれること。
+    - 差分の指定が無視されて全件が返っても、基準より後の記事だけを処理すること。
+    - 変更の無い記事（基準より後に更新も公開もされていない）を書き換えないこと。
+    - 手動の一括取込も同じ基準を使って進め、自動取込の結果は書かないこと。
+    - 候補 URL のどれかが 401 / 403 で、成功した候補が無いときは「認証切れ」、最後の候補が 404 でも「認証切れ」になること。WordPress.com のトークン更新失敗も「認証切れ」。それ以外は「一時的な失敗」。
+    - 連携を保存し直すと、結果が未実行に戻ること。サイト（`wp_type` / `wp_site_url` / `wp_site_id`）か投稿タイプが変わると、差分の基準が NULL に戻ること。
   - **マイホーム**：`tests/unit/lib/home-today.test.ts` に、WordPress の認証切れ × ロール別の表示と、正常・未実行・一時的な失敗では出ないことを足す。
   - **整合性テスト**：`cron-config-consistency.test.ts` で、`vercel.json`・`CRON_CONFIGS`・workflow matrix が一致していること。
   - **実画面**：admin で `/` のカードの表示と遷移先を確かめる。`/wordpress-import` で、差分取込の結果の件数を確かめる。
@@ -637,6 +711,7 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
   - cron の認証。ロールでの絞り込み。
   - Service Role の書き込みに `user_id` の条件が付いていること。
 - 非機能要件の測定: 本番の初回起動の所要時間（R-004）。
+- ドキュメント: README の「主な機能」・環境変数（`CRON_SECRET`）・「運用」の節に cron の一覧があり、影響しそう（`README.md:25,199,299`）。要否の判断は spec-to-pr の readme_sync が行う。
 
 ### リリース方針
 
@@ -674,7 +749,7 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
-| spec-review の audit | Q-010 と R-002 の公式ドキュメント照合の結果で、FR-003 の方式が確定しているか | shoma-endo | 未確認 |
+| spec-review の audit | Q-010 と R-002 の公式ドキュメント照合の結果で、FR-003 の方式が確定しているか | shoma-endo | 照合済み（audit 2026-10-13。FR-001 / FR-003 / R-002 / R-008 に反映） |
 | マイグレーション適用前 | 追加する列名と型（本番の DB にそのまま反映されるため） | shoma-endo | 未確認 |
 | 本番の初回起動の翌日 | §13 の本番確認項目 | shoma-endo | 未確認 |
 
@@ -698,13 +773,44 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 
 | 回 | 日付 | 指摘件数（🔴 / 🟡 / 🟢） | 反映状況 | 残置合意した論点と理由 |
 | --- | --- | --- | --- | --- |
-| 1 |  |  |  |  |
+| 1 | 2026-10-13 | 2 / 9 / 2 | 13件すべて revise で反映（下の「revise での判断」） | 残置合意した 🟡 は無い |
+| 2 | 2026-10-13 | 1 / 0 / 0 | 1件を revise で反映（下の「audit 2回目」）。回1の13件は audit 2回目で resolved、revise の指摘外の追加2点も audit 2回目で確認済み | 残置合意した 🟡 は無い |
+
+- 反映した指摘（finding_id）:
+  - 🔴 SPEC-NEW-gsc-datastate-pt-window → FR-001・§3・BR-02・ALT-003・R-002・§9 公式根拠（GSC）・§13
+  - 🔴 SPEC-NEW-wp-initial-full-1000cap → FR-003・FR-004・FR-005・§8・R-004・§13
+  - 🟡 SPEC-NEW-wp-update-body-skipped → FR-003・§9 データ・R-007・§13
+  - 🟡 SPEC-NEW-wp-baseline-definition → §6 状態遷移・§9 データ・§13
+  - 🟡 SPEC-NEW-q010-wp-version-wpcom → FR-003・§10・Non-goals・Q-010・R-008
+  - 🟡 SPEC-NEW-wp-baseline-reset-on-relink → §6 状態遷移・§9 データ・§13
+  - 🟡 SPEC-NEW-wp-status-write-rules → FR-005・FR-008・§6 状態遷移・§13
+  - 🟡 SPEC-NEW-ga4-batch-cap-vs-goal → FR-002・§8・OPEN-001・§13
+  - 🟡 SPEC-NEW-ga4-range-shared-path → FR-002・§10 再利用・§13
+  - 🟡 SPEC-NEW-gsc-maxrows → FR-001・§10 再利用・§13
+  - 🟡 SPEC-NEW-success-metric-claude-unapproved → §1 成功指標・OPEN-004
+  - 🟢 SPEC-NEW-ui-card-wording → §6 UI 既存パターン対照表・状態別UI
+  - 🟢 SPEC-NEW-readme-forecast → §13
+- revise での判断（audit が選択肢を示した指摘。再 audit で確認すること）:
+  - SPEC-NEW-wp-initial-full-1000cap は (a) 上限を外す を採用。(b)「上限を残し、`modified_gmt` 昇順で基準を進める」は、投稿タイプを順に取る既存の取得（`wordpressService.ts:600-625`）では、上限に達した投稿タイプより後の投稿タイプが1件も取れず、基準を進めれば取り残し、進めなければ毎回同じ1,000件を取り直すことになる。(a) は承認済みの Gherkin「公開済みの記事がすべて取り込まれる」をそのまま満たす。打ち切り時は基準を進めない規則（SPEC-NEW-wp-baseline-definition）で取り残しを防ぐ。
+  - SPEC-NEW-wp-baseline-definition は「取込を開始した時刻（UTC）」を採用。取得中に更新・公開された記事を次回の範囲に残せる。`modified_gmt` の最大値では、公開日時で拾う予約投稿（下記）に対応できない。時計のずれは R-008 に残す。
+  - SPEC-NEW-wp-status-write-rules は「手動の一括取込は結果を書かない」を採用。手動の WordPress.com 取込は cookie のトークンを優先する（`wordpressContext.ts:37`）ため、手動の成功は自動取込が使う DB のトークンの有効性を示さない。
+  - SPEC-NEW-gsc-datastate-pt-window は audit の推奨どおり `dataState: "all"` を採用。D-04・Gherkin・R-001（確定前の値を取り直しで置き換える）と一致するので、確認質問は立てない。
+  - SPEC-NEW-success-metric-claude-unapproved は OPEN-004 へ移した（PO の承認は記録していない）。
+- revise が追加した点（audit の指摘外。再 audit で確認すること）:
+  - FR-003 の取得に `after`（公開日時）を足した。予約投稿は公開時に `post_status` だけが変わり、更新日時が変わらない（§9 公式根拠（WordPress）の `wp_publish_post` / `check_and_publish_future_post`）。`modified_after` だけでは、Gherkin「前回の取込より後に新しく公開された記事が取り込まれる」を予約投稿で満たせないため。
+  - 差分の基準を NULL に戻す保存経路に、audit が挙げた2関数に加えて `updateWordPressContentTypes`（`supabaseService.ts:900`、`wordpressImport.actions.ts:79` から呼ばれる）を含めた。
+- audit 2回目:
+  - 🔴 SPEC-NEW-annotation-lookup-db-max-rows → FR-001・FR-003・§9 データ・§10 再利用・§13
+  - revise での判断（audit が「range ページング」と「差分取得で返ってきた記事のキーだけを指定して読む」の2案を示した。再 audit で確認すること）: range ページングを採用。
+    - 既存の `SupabaseService.fetchAllPaged`（`supabaseService.ts:137`）を再利用できる。
+    - 初回の全件取込では、キーを指定する読み方でも指定するキーが全記事分になり、読む量が減らない。
+    - GSC の `loadAnnotationUrlMap` は、ユーザーの全記事の URL 対応表を作る関数。`importMetrics`（`gscImportService.ts:64`。手動の `/gsc-import` の `gscImport.actions.ts:58` と `gsc-evaluate` の `gscEvaluationService.ts:83` から呼ばれる）と `importQueryMetricsForUrl`（同 L285）が使う。ページングなら呼び出し元の引数を変えずに1か所で直せる。WordPress と同じ読み方に揃えられる。
 
 #### 公式ドキュメント照合
 
-- 実施 / 未実施: 未実施（spec-review の audit で行う。Q-010、R-002）
-- 参照 URL と確認日（YYYY-MM-DD）:
-  - https://developer.wordpress.org/rest-api/reference/posts/ （2026-10-13、`modified_after` の引数の記載を確認。対応する版の記載なし）
+- 実施 / 未実施: 実施（spec-review audit 2026-10-13、WebFetch で本文を取得。revise でも WordPress の3ページを追加で取得）
+- 参照 URL と確認日（YYYY-MM-DD）・引用: §9「公式根拠（GSC）」「公式根拠（WordPress）」に記載（すべて 2026-10-13）。
+- 公式に記載が無かった事項: R-008 に記録。
 
 ### 承認
 
@@ -718,3 +824,6 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 | 日付 | 変更内容 | 変更理由 | 変更者 |
 | --- | --- | --- | --- |
 | 2026-10-13 | 仕様書を作成（grill-to-gherkin run `20261013-030146-gsc-ga4-wordpress-gsc-ga4-w` から反映）。D-09 の判定方法を「自動取込の結果を保存して使う」に決定 | 新規作成 | shoma-endo（Claude Code） |
+| 2026-10-13 | spec-review audit 1回目の13件を反映（GSC の PT 日付と `dataState: "all"`、WordPress の件数上限撤廃・差分の基準の定義・無条件の上書き・`after` の追加・結果の書き手と認証切れの判定、GA4 の人数上限と範囲計算の適用先、Q-010 回答、OPEN-004 新設、R-008 新設） | spec-review | Claude Code（spec-review revise） |
+| 2026-10-13 | spec-review audit 2回目の1件を反映（取込済み記事の読み込みを range ページングで全件読む形にする：WordPress の一括取込と GSC の `loadAnnotationUrlMap`） | spec-review | Claude Code（spec-review revise） |
+| 2026-10-13 | spec-review 通過（audit 1回目・2回目の指摘を反映。最終 audit で未解消事項なし） | 仕様レビュー | spec-review |
