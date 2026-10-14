@@ -161,6 +161,24 @@ describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () =
     const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
     expect(url.searchParams.get('modified_after')).toBe('2026-10-13T02:00:00+00:00');
     expect(url.searchParams.get('after')).toBe('2026-10-13T02:00:00+00:00');
+    expect(url.searchParams.get('orderby')).toBe('id');
+    expect(url.searchParams.get('order')).toBe('asc');
+  });
+
+  it('要求した投稿タイプごとに、ページ間で重複した記事 ID を除いて数える（id / ID の両方）', async () => {
+    const page = (posts: unknown[]) => new Response(JSON.stringify(posts), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '3' },
+    });
+    fetchMock
+      .mockResolvedValueOnce(page([{ id: 1, type: 'product' }, { ID: 2, type: 'product' }]))
+      .mockResolvedValueOnce(page([{ id: 2, type: 'product' }, { id: 3, type: 'product' }]));
+
+    const result = await service().fetchAllContentByTypes(['products'], { perPage: 2 });
+
+    expect(result.totalsByType).toEqual({ products: 3 });
+    expect(result.uniqueIdCountsByType).toEqual({ products: 3 });
+    expect(result.posts).toHaveLength(4);
   });
 
   it('失敗した候補の status をすべて例外へ残す', async () => {

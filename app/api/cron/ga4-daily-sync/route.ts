@@ -6,8 +6,12 @@ export async function GET(request: NextRequest) {
   const startedAt = Date.now();
   try {
     const secret = process.env.CRON_SECRET;
-    if (!secret) return NextResponse.json({ success: false, error: 'Cron secret not configured' }, { status: 500 });
+    if (!secret) {
+      console.error('[cron/ga4-daily-sync] CRON_SECRET is not configured');
+      return NextResponse.json({ success: false, error: 'Cron secret not configured' }, { status: 500 });
+    }
     if (request.headers.get('authorization') !== `Bearer ${secret}`) {
+      console.warn('[cron/ga4-daily-sync] Unauthorized request');
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     return NextResponse.json({ success: true, data: await ga4ImportService.runBatch() });

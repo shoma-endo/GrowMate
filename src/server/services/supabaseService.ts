@@ -964,12 +964,30 @@ export class SupabaseService {
     }
   }
 
-  async advanceWordPressImportBaseline(userId: string, startedAtIso: string): Promise<void> {
-    const { error } = await asPendingClient<WordPressAutoImportDatabase>(this.supabase)
+  /**
+   * 取込を始めた時点の基準・連携先がまだ同じ行だけ基準を進める。取込中に再連携されて基準が NULL に
+   * 戻った場合に、旧サイトで取った時刻で上書きして新サイトの既存記事を取りこぼすのを防ぐ。
+   * 投稿タイプの変更は配列の一致条件を付けていないため、初回取込の最中に変えられた場合は防げない。
+   * @returns 基準を進めたら true
+   */
+  async advanceWordPressImportBaseline(
+    userId: string,
+    startedAtIso: string,
+    expected: { baselineAt: string | null; siteUrl: string | null; siteId: string | null }
+  ): Promise<boolean> {
+    let query = asPendingClient<WordPressAutoImportDatabase>(this.supabase)
       .from('wordpress_settings')
       .update({ wp_import_baseline_at: startedAtIso, updated_at: new Date().toISOString() })
       .eq('user_id', userId);
+    query =
+      expected.baselineAt === null
+        ? query.is('wp_import_baseline_at', null)
+        : query.eq('wp_import_baseline_at', expected.baselineAt);
+    query = expected.siteUrl === null ? query.is('wp_site_url', null) : query.eq('wp_site_url', expected.siteUrl);
+    query = expected.siteId === null ? query.is('wp_site_id', null) : query.eq('wp_site_id', expected.siteId);
+    const { data, error } = await query.select('user_id');
     if (error) throw new Error(ERROR_MESSAGES.WORDPRESS.IMPORT_BASELINE_UPDATE_FAILED(error.message));
+    return (data?.length ?? 0) > 0;
   }
 
   async recordWordPressAutoImportResult(
@@ -1052,7 +1070,8 @@ export class SupabaseService {
         refreshToken?: string | null;
         expiresAt?: string | null;
       }
-    | { success: false; error: string }
+    /** transient は通信エラー・5xx・429。再連携では直らない一時的な失敗を、認証切れと分けるために返す */
+    | { success: false; error: string; transient?: true }
   > {
     const settings = wpSettings ?? (await this.getWordPressSettingsByUserId(userId));
     if (!settings || settings.wpType !== 'wordpress_com') {
@@ -1084,7 +1103,10 @@ export class SupabaseService {
 
       if (!resp.ok) {
         const text = await resp.text();
-        return { success: false, error: `token refresh failed: ${resp.status} ${text}` };
+        const error = `token refresh failed: ${resp.status} ${text}`;
+        return resp.status >= 500 || resp.status === 429
+          ? { success: false, error, transient: true }
+          : { success: false, error };
       }
 
       const json = (await resp.json()) as {
@@ -1120,7 +1142,7 @@ export class SupabaseService {
     } catch (error) {
       if (signal?.aborted) throw error;
       console.error('[SupabaseService.refreshWpComToken] error', error);
-      return { success: false, error: ERROR_MESSAGES.COMMON.TOKEN_REFRESH_REQUEST_FAILED };
+      return { success: false, error: ERROR_MESSAGES.COMMON.TOKEN_REFRESH_REQUEST_FAILED, transient: true };
     }
   }
 

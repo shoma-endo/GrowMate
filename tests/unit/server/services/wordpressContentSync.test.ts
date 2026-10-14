@@ -44,7 +44,9 @@ import {
   canFetchWpPostContentLive,
   fetchWpPostContentLive,
   fetchWpPostContentWithCache,
+  resolveWpComAccessToken,
 } from '@/server/services/wordpressContentSync';
+import { SupabaseService } from '@/server/services/supabaseService';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -280,5 +282,44 @@ describe('canFetchWpPostContentLive', () => {
 
     expect(await canFetchWpPostContentLive(USER_ID)).toBe(expected);
     expect(mocks.refreshWpComToken).toHaveBeenCalledTimes(refreshCalls);
+  });
+});
+
+describe('resolveWpComAccessToken（auto-daily-imports-spec FR-008 の認証切れ判定）', () => {
+  const expiringSoon = () => new Date(Date.now() + 30 * 1000).toISOString();
+
+  it.each([
+    ['トークンが無い', { wpAccessToken: null }, undefined, { failure: 'auth_expired' }],
+    [
+      '期限まで余裕がある',
+      { wpAccessToken: 'token', wpTokenExpiresAt: new Date(Date.now() + 3600 * 1000).toISOString() },
+      undefined,
+      { accessToken: 'token' },
+    ],
+    [
+      '更新が拒否された（リフレッシュトークン失効など）',
+      { wpAccessToken: 'token', wpTokenExpiresAt: expiringSoon() },
+      { success: false, error: 'token refresh failed: 400' },
+      { failure: 'auth_expired' },
+    ],
+    [
+      '更新が通信エラー・5xx で失敗した',
+      { wpAccessToken: 'token', wpTokenExpiresAt: expiringSoon() },
+      { success: false, error: 'network', transient: true },
+      { failure: 'temporary_failure' },
+    ],
+    [
+      '更新に成功した',
+      { wpAccessToken: 'token', wpTokenExpiresAt: expiringSoon() },
+      { success: true, accessToken: 'new-token', refreshToken: 'refresh', expiresAt: null },
+      { accessToken: 'new-token' },
+    ],
+  ] as const)('%s', async (_label, settings, refreshResult, expected) => {
+    if (refreshResult) mocks.refreshWpComToken.mockResolvedValue(refreshResult);
+    const wpSettings = { wpType: 'wordpress_com', ...settings } as Parameters<typeof resolveWpComAccessToken>[2];
+
+    await expect(
+      resolveWpComAccessToken('user-1', new SupabaseService(), wpSettings)
+    ).resolves.toEqual(expected);
   });
 });

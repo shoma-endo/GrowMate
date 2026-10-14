@@ -161,7 +161,7 @@ export default function WordPressImportClient() {
           <h1 className="text-3xl font-bold text-gray-900">WordPress記事一括インポート</h1>
           <p className="text-gray-600 mt-2">
             WordPressブログ記事URLをコンテンツとして一括登録します。
-            既に登録されているURLはスキップされます。
+            前回の取込以降に公開・更新された記事だけを取り込みます（初回はすべての記事）。
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link

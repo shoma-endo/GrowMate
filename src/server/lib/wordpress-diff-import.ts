@@ -38,11 +38,7 @@ export function hasWordPressImportTargetChanged(
     oldTypes.some((type, index) => type !== newTypes[index]);
 }
 
-export function classifyWordPressImportFailure(
-  error: unknown,
-  tokenRefreshFailed = false
-): 'auth_expired' | 'temporary_failure' {
-  if (tokenRefreshFailed) return 'auth_expired';
+export function classifyWordPressImportFailure(error: unknown): 'auth_expired' | 'temporary_failure' {
   if (error && typeof error === 'object' && 'statuses' in error) {
     const { statuses } = error as { statuses?: unknown };
     if (Array.isArray(statuses) && statuses.some(status => status === 401 || status === 403)) {

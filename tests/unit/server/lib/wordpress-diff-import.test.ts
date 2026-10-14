@@ -19,10 +19,10 @@ describe('WordPress 差分取込（auto-daily-imports-spec §6）', () => {
   });
 
   it.each([
-    ['候補に401がある', { statuses: [401, 404] }, false, 'auth_expired'],
-    ['token refreshに失敗', null, true, 'auth_expired'],
-    ['5xx/ネットワークだけ', { statuses: [503, 0] }, false, 'temporary_failure'],
-  ] as const)('%sを分類する', (_label, error, tokenFailed, expected) => {
-    expect(classifyWordPressImportFailure(error, tokenFailed)).toBe(expected);
+    ['候補に401がある', { statuses: [401, 404] }, 'auth_expired'],
+    ['5xx/ネットワークだけ', { statuses: [503, 0] }, 'temporary_failure'],
+    ['ステータスの無いエラー', null, 'temporary_failure'],
+  ] as const)('%sを分類する', (_label, error, expected) => {
+    expect(classifyWordPressImportFailure(error)).toBe(expected);
   });
 });

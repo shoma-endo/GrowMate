@@ -5,7 +5,7 @@ import { runDailyImportBatch } from '@/server/lib/daily-import-batch';
 import { classifyWordPressImportFailure, isChangedSinceBaseline } from '@/server/lib/wordpress-diff-import';
 import { normalizeContentType, normalizeContentTypes } from '@/server/services/wordpressContentTypes';
 import { buildWordPressServiceFromSettings } from '@/server/services/wordpressContext';
-import { refreshWpComAccessToken } from '@/server/services/wordpressContentSync';
+import { resolveWpComAccessToken } from '@/server/services/wordpressContentSync';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { normalizeWordPressRestPosts, WordPressService } from '@/server/services/wordpressService';
 import type { Database } from '@/types/database.types';
@@ -61,17 +61,29 @@ async function fetchImportPosts(
   fetchedCount: number;
   fetchedByType: Record<string, number>;
   totalsByType: Record<string, number>;
-  skippedExistingPosts: number;
+  skippedExistingByType: Record<string, number>;
+  /** 全件取得で、投稿タイプごとの件数が WordPress の総数に届かなかったタイプ */
+  incompleteTypes: string[];
 }> {
   if (!baseline) {
-    const { posts, totalsByType } = await wpService.fetchAllContentByTypes(contentTypes, { perPage: 100 });
+    const { posts, totalsByType, uniqueIdCountsByType } = await wpService.fetchAllContentByTypes(contentTypes, { perPage: 100 });
     const normalizedPosts = normalizeWordPressRestPosts(posts);
     const fetchedByType: Record<string, number> = {};
     for (const post of normalizedPosts) {
       const type = normalizeContentType(post.post_type ?? 'posts');
       fetchedByType[type] = (fetchedByType[type] ?? 0) + 1;
     }
-    return { posts: normalizedPosts, fetchedCount: normalizedPosts.length, fetchedByType, totalsByType, skippedExistingPosts: 0 };
+    const incompleteTypes = Object.entries(totalsByType)
+      .filter(([type, total]) => (uniqueIdCountsByType[type] ?? 0) < total)
+      .map(([type]) => type);
+    return {
+      posts: normalizedPosts,
+      fetchedCount: normalizedPosts.length,
+      fetchedByType,
+      totalsByType,
+      skippedExistingByType: {},
+      incompleteTypes,
+    };
   }
 
   const queryDate = offsetDate(baseline);
@@ -99,18 +111,22 @@ async function fetchImportPosts(
     }
   }
   const fetchedPosts = Array.from(unique.values());
-  const changedPosts = fetchedPosts.filter(post => isChangedSinceBaseline(post, baseline));
   const fetchedByType: Record<string, number> = {};
-  for (const post of fetchedPosts) {
+  const skippedExistingByType: Record<string, number> = {};
+  const changedPosts = fetchedPosts.filter(post => {
     const type = normalizeContentType(post.type ?? 'posts');
     fetchedByType[type] = (fetchedByType[type] ?? 0) + 1;
-  }
+    const changed = isChangedSinceBaseline(post, baseline);
+    if (!changed) skippedExistingByType[type] = (skippedExistingByType[type] ?? 0) + 1;
+    return changed;
+  });
   return {
     posts: normalizeWordPressRestPosts(changedPosts),
     fetchedCount: fetchedPosts.length,
     fetchedByType,
     totalsByType,
-    skippedExistingPosts: fetchedPosts.length - changedPosts.length,
+    skippedExistingByType,
+    incompleteTypes: [],
   };
 }
 
@@ -145,7 +161,9 @@ export async function importWordPressContent({
       baseline = null;
     }
 
-    const { posts, fetchedCount, fetchedByType, totalsByType, skippedExistingPosts } = await fetchImportPosts(wpService, contentTypes, baseline);
+    const { posts, fetchedCount, fetchedByType, totalsByType, skippedExistingByType, incompleteTypes } =
+      await fetchImportPosts(wpService, contentTypes, baseline);
+    const skippedExistingPosts = Object.values(skippedExistingByType).reduce((sum, count) => sum + count, 0);
     const keys = await supabaseService.listContentAnnotationKeys(userId);
     const existingByCanonical = new Map<string, ExistingAnnotation>();
     const existingByPostId = new Map<number, ExistingAnnotation>();
@@ -159,8 +177,9 @@ export async function importWordPressContent({
     const statsByType: ImportStats['statsByType'] = {};
     const ensureStats = (type: string) => statsByType[type] ??= {
       totalAvailable: totalsByType[type] ?? 0, retrieved: fetchedByType[type] ?? 0, newCandidates: 0,
-      skippedExisting: 0, skippedWithoutCanonical: 0, processed: 0, duplicate: 0, error: 0,
+      skippedExisting: skippedExistingByType[type] ?? 0, skippedWithoutCanonical: 0, processed: 0, duplicate: 0, error: 0,
     };
+    for (const type of Object.keys(skippedExistingByType)) ensureStats(type);
     const seenIds = new Set<number>();
     const seenCanonicals = new Set<string>();
     const inserts: Database['public']['Tables']['content_annotations']['Insert'][] = [];
@@ -254,7 +273,24 @@ export async function importWordPressContent({
         error: ERROR_MESSAGES.WORDPRESS.PARTIAL_UPDATES_FAILED(updates.length - failedUpdates, failedUpdates),
       };
     }
-    await supabaseService.advanceWordPressImportBaseline(userId, startedAt);
+    // 全件取得が総数に届かなかった回は、取れなかった記事を差分で二度と拾えなくなるので基準を進めない（次回も全件取得）
+    if (incompleteTypes.length > 0) {
+      console.error('[wordpress-import] full fetch returned fewer posts than WordPress reported; baseline kept', {
+        userId,
+        incompleteTypes,
+        fetchedByType,
+        totalsByType,
+      });
+    } else {
+      const advanced = await supabaseService.advanceWordPressImportBaseline(userId, startedAt, {
+        baselineAt: baseline,
+        siteUrl: settings.wpSiteUrl ?? null,
+        siteId: settings.wpSiteId ?? null,
+      });
+      if (!advanced) {
+        console.warn('[wordpress-import] settings changed during import; baseline kept', { userId });
+      }
+    }
 
     return {
       kind: 'success',
@@ -302,18 +338,22 @@ class WordPressImportService {
         importUser: async userId => {
           const settings = await this.supabaseService.getWordPressSettingsByUserId(userId);
           if (!settings) return { ok: false, reason: 'settings_missing' };
-          let tokenRefreshFailed = false;
+          let tokenFailure: 'auth_expired' | 'temporary_failure' | null = null;
           if (settings.wpType === 'wordpress_com') {
-            const token = await refreshWpComAccessToken(userId, this.supabaseService, settings);
-            if (!token) tokenRefreshFailed = true;
-            else settings.wpAccessToken = token;
+            const resolved = await resolveWpComAccessToken(userId, this.supabaseService, settings);
+            if ('failure' in resolved) tokenFailure = resolved.failure;
+            else settings.wpAccessToken = resolved.accessToken;
           }
-          const context = tokenRefreshFailed
+          const context = tokenFailure
             ? null
             : buildWordPressServiceFromSettings(settings, () => undefined);
           const imported = context?.success
             ? await importWordPressContent({ userId, settings, wpService: context.service, supabaseService: this.supabaseService, startedAt: new Date(startedAtMs).toISOString() })
-            : { kind: 'failure' as const, failure: classifyWordPressImportFailure(null, tokenRefreshFailed), error: 'WordPress authentication unavailable' };
+            : {
+                kind: 'failure' as const,
+                failure: tokenFailure ?? classifyWordPressImportFailure(null),
+                error: 'WordPress authentication unavailable',
+              };
           const status = imported.kind === 'success' ? 'succeeded' : imported.failure;
           await this.supabaseService.recordWordPressAutoImportResult(userId, status);
           return imported.kind === 'success' ? { ok: true } : { ok: false, reason: imported.failure };

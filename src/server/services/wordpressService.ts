@@ -508,6 +508,9 @@ export class WordPressService {
     params.set('per_page', String(options.perPage));
     params.set('page', String(options.page));
     params.set('status', options.status ?? 'publish');
+    // 既定の post_date 順は同日時の記事がページ間で入れ替わり、page 送りで取りこぼすため一意な id で固定する
+    params.set('orderby', 'id');
+    params.set('order', 'asc');
     if (options.embed !== false) {
       params.set('_embed', 'true');
     }
@@ -601,12 +604,15 @@ export class WordPressService {
   ): Promise<{
     posts: WordPressRestPost[];
     totalsByType: Record<string, number>;
+    /** 要求した投稿タイプ（REST のパス名）ごとの、重複を除いた記事 ID の数。totalsByType と同じキー */
+    uniqueIdCountsByType: Record<string, number>;
   }> {
     const perPage = Math.min(options.perPage ?? 100, 100);
     const status = options.status ?? 'publish';
 
     const aggregated: WordPressRestPost[] = [];
     const totalsByType: Record<string, number> = {};
+    const uniqueIdCountsByType: Record<string, number> = {};
 
     for (const postTypeRaw of postTypes) {
       const postType = postTypeRaw && postTypeRaw.trim() ? postTypeRaw.trim() : 'posts';
@@ -615,6 +621,7 @@ export class WordPressService {
       let fetchedForType = 0;
       let totalForType = 0;
       let hasMore = true;
+      const idsForType = new Set<string>();
 
       while (hasMore) {
         const { posts, total } = await this.fetchRestCollection(normalizedType, page, perPage, {
@@ -624,16 +631,21 @@ export class WordPressService {
         });
         totalForType = total;
         aggregated.push(...posts);
+        for (const post of posts) {
+          const id = post.id ?? post.ID;
+          if (id !== undefined && id !== null) idsForType.add(String(id));
+        }
         fetchedForType += posts.length;
         hasMore = fetchedForType < total && posts.length === perPage;
         page += 1;
       }
 
       totalsByType[normalizedType] = totalForType;
+      uniqueIdCountsByType[normalizedType] = idsForType.size;
 
     }
 
-    return { posts: aggregated, totalsByType };
+    return { posts: aggregated, totalsByType, uniqueIdCountsByType };
   }
 }
 
