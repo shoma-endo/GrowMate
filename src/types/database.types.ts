@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "12.2.3 (519615d)"
+    PostgrestVersion: "12.2.3"
   }
   public: {
     Tables: {
@@ -1852,9 +1852,12 @@ export type Database = {
           user_id: string
           wp_access_token: string | null
           wp_application_password: string | null
+          wp_auto_import_status: string | null
+          wp_auto_import_status_at: string | null
           wp_client_id: string | null
           wp_client_secret: string | null
           wp_content_types: string[]
+          wp_import_baseline_at: string | null
           wp_refresh_token: string | null
           wp_site_id: string | null
           wp_site_url: string | null
@@ -1869,9 +1872,12 @@ export type Database = {
           user_id: string
           wp_access_token?: string | null
           wp_application_password?: string | null
+          wp_auto_import_status?: string | null
+          wp_auto_import_status_at?: string | null
           wp_client_id?: string | null
           wp_client_secret?: string | null
           wp_content_types?: string[]
+          wp_import_baseline_at?: string | null
           wp_refresh_token?: string | null
           wp_site_id?: string | null
           wp_site_url?: string | null
@@ -1886,9 +1892,12 @@ export type Database = {
           user_id?: string
           wp_access_token?: string | null
           wp_application_password?: string | null
+          wp_auto_import_status?: string | null
+          wp_auto_import_status_at?: string | null
           wp_client_id?: string | null
           wp_client_secret?: string | null
           wp_content_types?: string[]
+          wp_import_baseline_at?: string | null
           wp_refresh_token?: string | null
           wp_site_id?: string | null
           wp_site_url?: string | null

@@ -27,9 +27,13 @@ import type {
 } from '@/types/google-ads-negative-keywords-suggestion';
 import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
 import type { InstagramCredential } from '@/types/instagram';
-import { WordPressSettings, WordPressType } from '@/types/wordpress';
+import {
+  toWordPressAutoImportStatus,
+  type WordPressAutoImportStatus,
+  WordPressSettings,
+  WordPressType,
+} from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
-import { asPendingClient, type WordPressAutoImportDatabase, type WordPressAutoImportStatus } from '@/types/database.types.pending';
 import { PAID_FEATURE_ROLES } from '@/types/user';
 import { hasWordPressImportTargetChanged } from '@/server/lib/wordpress-diff-import';
 
@@ -781,7 +785,7 @@ export class SupabaseService {
   async getWordPressSettingsResultByUserId(
     userId: string
   ): Promise<SupabaseResult<WordPressSettings | null>> {
-    const client = asPendingClient<WordPressAutoImportDatabase>(this.supabase);
+    const client = this.supabase;
     const { data, error } = await client
       .from('wordpress_settings')
       .select('*')
@@ -813,7 +817,7 @@ export class SupabaseService {
       wpTokenExpiresAt: data.wp_token_expires_at ?? undefined,
       wpContentTypes: normalizeContentTypes(data.wp_content_types as string[] | null),
       wpImportBaselineAt: data.wp_import_baseline_at,
-      wpAutoImportStatus: data.wp_auto_import_status,
+      wpAutoImportStatus: toWordPressAutoImportStatus(data.wp_auto_import_status),
       createdAt: data.created_at ?? undefined,
       updatedAt: data.updated_at ?? undefined,
     });
@@ -834,7 +838,7 @@ export class SupabaseService {
       tokenExpiresAt?: string;
     }
   ): Promise<void> {
-    const client = asPendingClient<WordPressAutoImportDatabase>(this.supabase);
+    const client = this.supabase;
     const { data: previous, error: readError } = await client
       .from('wordpress_settings')
       .select('wp_type, wp_site_url, wp_site_id, wp_content_types')
@@ -847,7 +851,7 @@ export class SupabaseService {
       wpSiteId,
       wpContentTypes: options?.wpContentTypes ?? previous?.wp_content_types ?? null,
     });
-    const payload: WordPressAutoImportDatabase['public']['Tables']['wordpress_settings']['Insert'] = {
+    const payload: Database['public']['Tables']['wordpress_settings']['Insert'] = {
       user_id: userId,
       wp_type: 'wordpress_com',
       wp_client_id: wpClientId,
@@ -894,7 +898,7 @@ export class SupabaseService {
     wpApplicationPassword: string,
     options?: { wpContentTypes?: string[] }
   ): Promise<void> {
-    const client = asPendingClient<WordPressAutoImportDatabase>(this.supabase);
+    const client = this.supabase;
     const { data: previous, error: readError } = await client
       .from('wordpress_settings')
       .select('wp_type, wp_site_url, wp_site_id, wp_content_types')
@@ -907,7 +911,7 @@ export class SupabaseService {
       wpSiteId: previous?.wp_site_id ?? null,
       wpContentTypes: options?.wpContentTypes ?? previous?.wp_content_types ?? null,
     });
-    const payload: WordPressAutoImportDatabase['public']['Tables']['wordpress_settings']['Insert'] = {
+    const payload: Database['public']['Tables']['wordpress_settings']['Insert'] = {
       user_id: userId,
       wp_type: 'self_hosted',
       wp_site_url: wpSiteUrl,
@@ -936,7 +940,7 @@ export class SupabaseService {
   }
 
   async updateWordPressContentTypes(userId: string, wpContentTypes: string[]): Promise<void> {
-    const client = asPendingClient<WordPressAutoImportDatabase>(this.supabase);
+    const client = this.supabase;
     const { data: previous, error: readError } = await client
       .from('wordpress_settings')
       .select('wp_type, wp_site_url, wp_site_id, wp_content_types')
@@ -975,7 +979,7 @@ export class SupabaseService {
     startedAtIso: string,
     expected: { baselineAt: string | null; siteUrl: string | null; siteId: string | null }
   ): Promise<boolean> {
-    let query = asPendingClient<WordPressAutoImportDatabase>(this.supabase)
+    let query = this.supabase
       .from('wordpress_settings')
       .update({ wp_import_baseline_at: startedAtIso, updated_at: new Date().toISOString() })
       .eq('user_id', userId);
@@ -995,7 +999,7 @@ export class SupabaseService {
     status: WordPressAutoImportStatus
   ): Promise<void> {
     const now = new Date().toISOString();
-    const { error } = await asPendingClient<WordPressAutoImportDatabase>(this.supabase)
+    const { error } = await this.supabase
       .from('wordpress_settings')
       .update({ wp_auto_import_status: status, wp_auto_import_status_at: now, updated_at: now })
       .eq('user_id', userId);

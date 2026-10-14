@@ -6,6 +6,16 @@ export type WordPressType = 'wordpress_com' | 'self_hosted';
 /**
  * WordPress設定（統合型）
  */
+/** `wordpress_settings.wp_auto_import_status` の CHECK 制約と同じ値。生成型は CHECK を反映せず string になる */
+const WORDPRESS_AUTO_IMPORT_STATUSES = ['succeeded', 'auth_expired', 'temporary_failure'] as const;
+export type WordPressAutoImportStatus = (typeof WORDPRESS_AUTO_IMPORT_STATUSES)[number];
+
+export function toWordPressAutoImportStatus(value: string | null): WordPressAutoImportStatus | null {
+  return (WORDPRESS_AUTO_IMPORT_STATUSES as readonly string[]).includes(value ?? '')
+    ? (value as WordPressAutoImportStatus)
+    : null;
+}
+
 export interface WordPressSettings {
   id?: string | undefined;
   userId: string;
@@ -24,7 +34,7 @@ export interface WordPressSettings {
   wpTokenExpiresAt?: string | null | undefined;
   wpContentTypes?: string[] | undefined;
   wpImportBaselineAt?: string | null | undefined;
-  wpAutoImportStatus?: 'succeeded' | 'auth_expired' | 'temporary_failure' | null | undefined;
+  wpAutoImportStatus?: WordPressAutoImportStatus | null | undefined;
   createdAt?: string | undefined;
   updatedAt?: string | undefined;
 }
