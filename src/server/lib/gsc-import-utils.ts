@@ -1,3 +1,10 @@
+import { addDaysISO, formatPacificDateISO } from '@/lib/date-utils';
+
+export function buildGscDailyImportRange(now: Date): { startDate: string; endDate: string } {
+  const endDate = formatPacificDateISO(now);
+  return { startDate: addDaysISO(endDate, -2), endDate };
+}
+
 type QuerySummary = {
   fetchedRows: number;
   keptRows: number;

@@ -28,13 +28,6 @@ export function parseWpPostId(id: unknown): number | null {
   return typeof id === 'number' ? id : Number.isFinite(Number(id)) ? Number(id) : null;
 }
 
-export function areArraysEqual<T>(a: T[] | null, b: T[] | null): boolean {
-  if (!a && !b) return true;
-  if (!a || !b) return false;
-  if (a.length !== b.length) return false;
-  return a.every((value, index) => value === b[index]);
-}
-
 /**
  * 数値をフォーマット（カンマ区切り）
  */

@@ -126,30 +126,42 @@ async function resolveWpPostIdFromCanonical(
   return null;
 }
 
+/**
+ * WordPress.com のアクセストークンを、期限切れ間近なら更新してから返す。
+ * 失敗は、再連携が要る `auth_expired` と、通信エラーなど再連携では直らない `temporary_failure` に分ける。
+ */
+export async function resolveWpComAccessToken(
+  userId: string,
+  supabase: SupabaseService,
+  wpSettings: NonNullable<Awaited<ReturnType<SupabaseService['getWordPressSettingsByUserId']>>>,
+  signal?: AbortSignal
+): Promise<{ accessToken: string } | { failure: 'auth_expired' | 'temporary_failure' }> {
+  const accessToken = wpSettings.wpAccessToken ?? null;
+  if (!accessToken) return { failure: 'auth_expired' };
+
+  const expiresAt = wpSettings.wpTokenExpiresAt
+    ? new Date(wpSettings.wpTokenExpiresAt).getTime()
+    : null;
+  if (!expiresAt || expiresAt - Date.now() >= 60 * 1000) return { accessToken };
+
+  const refreshed = await supabase.refreshWpComToken(userId, wpSettings, signal);
+  if (!refreshed.success) {
+    return { failure: refreshed.transient ? 'temporary_failure' : 'auth_expired' };
+  }
+  wpSettings.wpAccessToken = refreshed.accessToken ?? null;
+  wpSettings.wpRefreshToken = refreshed.refreshToken ?? wpSettings.wpRefreshToken ?? null;
+  wpSettings.wpTokenExpiresAt = refreshed.expiresAt ?? wpSettings.wpTokenExpiresAt ?? null;
+  return { accessToken: refreshed.accessToken };
+}
+
 async function refreshWpComAccessToken(
   userId: string,
   supabase: SupabaseService,
   wpSettings: NonNullable<Awaited<ReturnType<SupabaseService['getWordPressSettingsByUserId']>>>,
   signal?: AbortSignal
 ): Promise<string | null> {
-  let accessToken = wpSettings.wpAccessToken ?? null;
-  const expiresAt = wpSettings.wpTokenExpiresAt
-    ? new Date(wpSettings.wpTokenExpiresAt).getTime()
-    : null;
-
-  if (accessToken && expiresAt && expiresAt - Date.now() < 60 * 1000) {
-    const refreshed = await supabase.refreshWpComToken(userId, wpSettings, signal);
-    if (refreshed.success) {
-      accessToken = refreshed.accessToken;
-      wpSettings.wpAccessToken = refreshed.accessToken ?? null;
-      wpSettings.wpRefreshToken = refreshed.refreshToken ?? wpSettings.wpRefreshToken ?? null;
-      wpSettings.wpTokenExpiresAt = refreshed.expiresAt ?? wpSettings.wpTokenExpiresAt ?? null;
-    } else {
-      accessToken = null;
-    }
-  }
-
-  return accessToken;
+  const resolved = await resolveWpComAccessToken(userId, supabase, wpSettings, signal);
+  return 'accessToken' in resolved ? resolved.accessToken : null;
 }
 
 /**

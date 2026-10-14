@@ -1,5 +1,8 @@
 # GA4 日次取込の自動実行（cron 化）
 
+> **この仕様書は `docs/specs/auto-daily-imports-spec.md` に置き換えた（2026-10-13）。実装しない。**
+> 置き換えた理由: 本仕様は毎時実行・GitHub Actions を前提にしている。置き換え先では、GSC・WordPress と合わせて「毎日決まった時刻・Vercel Cron」で取り込むことに決めたため（置き換え先の ALT-001）。
+
 ## メタデータ
 
 - 文書名: GA4 日次取込の自動実行（cron 化）

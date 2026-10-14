@@ -17,6 +17,13 @@ import {
   BLOCKED_WORDPRESS_CONTENT_TYPES,
 } from '@/server/services/wordpressContentTypes';
 
+export class WordPressRestFetchError extends Error {
+  constructor(message: string, readonly statuses: number[]) {
+    super(message);
+    this.name = 'WordPressRestFetchError';
+  }
+}
+
 // WordPress.com認証情報
 interface WordPressComAuth {
   accessToken: string;
@@ -495,15 +502,20 @@ export class WordPressService {
   }
 
   public buildRestQueryParams(
-    options: { perPage: number; page: number; status?: string; embed?: boolean }
+    options: { perPage: number; page: number; status?: string; embed?: boolean; modifiedAfter?: string; after?: string }
   ): string {
     const params = new URLSearchParams();
     params.set('per_page', String(options.perPage));
     params.set('page', String(options.page));
     params.set('status', options.status ?? 'publish');
+    // 既定の post_date 順は同日時の記事がページ間で入れ替わり、page 送りで取りこぼすため一意な id で固定する
+    params.set('orderby', 'id');
+    params.set('order', 'asc');
     if (options.embed !== false) {
       params.set('_embed', 'true');
     }
+    if (options.modifiedAfter !== undefined) params.set('modified_after', options.modifiedAfter);
+    if (options.after !== undefined) params.set('after', options.after);
     return params.toString();
   }
 
@@ -530,9 +542,9 @@ export class WordPressService {
     postType: string,
     page: number,
     perPage: number,
-    options: { status?: string; embed?: boolean } = {}
+    options: { status?: string; embed?: boolean; modifiedAfter?: string; after?: string } = {}
   ): Promise<{ posts: WordPressRestPost[]; total: number }> {
-    const queryOptions: { perPage: number; page: number; status?: string; embed?: boolean } = {
+    const queryOptions: { perPage: number; page: number; status?: string; embed?: boolean; modifiedAfter?: string; after?: string } = {
       perPage,
       page,
     };
@@ -542,10 +554,13 @@ export class WordPressService {
     if (options.embed !== undefined) {
       queryOptions.embed = options.embed;
     }
+    if (options.modifiedAfter !== undefined) queryOptions.modifiedAfter = options.modifiedAfter;
+    if (options.after !== undefined) queryOptions.after = options.after;
 
     const params = this.buildRestQueryParams(queryOptions);
     const { headers, urls } = this.buildRestFetchCandidates(postType, params);
 
+    const statuses: number[] = [];
     let lastStatus = 0;
     let lastErrorText = '';
 
@@ -553,6 +568,7 @@ export class WordPressService {
       try {
         const resp = await fetch(url, { headers, cache: 'no-store' });
         if (!resp.ok) {
+          statuses.push(resp.status);
           lastStatus = resp.status;
           lastErrorText = await resp.text().catch(() => resp.statusText);
           continue;
@@ -570,32 +586,33 @@ export class WordPressService {
 
         return { posts: normalizedPosts, total };
       } catch (error) {
+        statuses.push(0);
         lastStatus = lastStatus || 0;
         lastErrorText = error instanceof Error ? error.message : 'Unknown fetch error';
       }
     }
 
-    throw new Error(
-      `[WordPressService] Failed to fetch ${postType}: HTTP ${lastStatus} ${lastErrorText}`.trim()
+    throw new WordPressRestFetchError(
+      `[WordPressService] Failed to fetch ${postType}: HTTP ${lastStatus} ${lastErrorText}`.trim(),
+      statuses
     );
   }
 
   public async fetchAllContentByTypes(
     postTypes: string[],
-    options: { perPage?: number; maxItems?: number; status?: string } = {}
+    options: { perPage?: number; status?: string; modifiedAfter?: string; after?: string } = {}
   ): Promise<{
     posts: WordPressRestPost[];
     totalsByType: Record<string, number>;
-    wasTruncated: boolean;
-    maxItems: number;
+    /** 要求した投稿タイプ（REST のパス名）ごとの、重複を除いた記事 ID の数。totalsByType と同じキー */
+    uniqueIdCountsByType: Record<string, number>;
   }> {
     const perPage = Math.min(options.perPage ?? 100, 100);
-    const maxItems = options.maxItems ?? 1000;
     const status = options.status ?? 'publish';
 
     const aggregated: WordPressRestPost[] = [];
     const totalsByType: Record<string, number> = {};
-    let wasTruncated = false;
+    const uniqueIdCountsByType: Record<string, number> = {};
 
     for (const postTypeRaw of postTypes) {
       const postType = postTypeRaw && postTypeRaw.trim() ? postTypeRaw.trim() : 'posts';
@@ -604,27 +621,31 @@ export class WordPressService {
       let fetchedForType = 0;
       let totalForType = 0;
       let hasMore = true;
+      const idsForType = new Set<string>();
 
-      while (hasMore && aggregated.length < maxItems) {
+      while (hasMore) {
         const { posts, total } = await this.fetchRestCollection(normalizedType, page, perPage, {
           status,
+          ...(options.modifiedAfter ? { modifiedAfter: options.modifiedAfter } : {}),
+          ...(options.after ? { after: options.after } : {}),
         });
         totalForType = total;
         aggregated.push(...posts);
+        for (const post of posts) {
+          const id = post.id ?? post.ID;
+          if (id !== undefined && id !== null) idsForType.add(String(id));
+        }
         fetchedForType += posts.length;
         hasMore = fetchedForType < total && posts.length === perPage;
         page += 1;
       }
 
       totalsByType[normalizedType] = totalForType;
+      uniqueIdCountsByType[normalizedType] = idsForType.size;
 
-      if (aggregated.length >= maxItems) {
-        wasTruncated = true;
-        break;
-      }
     }
 
-    return { posts: aggregated, totalsByType, wasTruncated, maxItems };
+    return { posts: aggregated, totalsByType, uniqueIdCountsByType };
   }
 }
 

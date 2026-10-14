@@ -8,6 +8,7 @@ import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
 import { hasPaidFeatureAccess } from '@/types/user';
+import { SupabaseService } from '@/server/services/supabaseService';
 import { buildHomeToday, isGoogleAdsFetchFailed, type HomeTodayInput } from '@/lib/home-today';
 import { TodayChecklist } from './_components/TodayChecklist';
 
@@ -47,10 +48,13 @@ export default async function HomePage() {
   const paid = hasPaidFeatureAccess(role);
   const input: HomeTodayInput = { role };
 
-  const [gscCredential, googleAds, instagram] = await Promise.all([
+  const [gscCredential, googleAds, instagram, wordpress] = await Promise.all([
     paid ? settle('GSC/GA4 credential', resolveHomeGoogleCredential(authResult.userId)) : undefined,
     settle('Google Ads status', getGoogleAdsConnectionStatus()),
     canAccessInstagram(role) ? settle('Instagram status', getInstagramConnectionStatus()) : undefined,
+    paid
+      ? settle('WordPress status', new SupabaseService().getWordPressSettingsResultByUserId(authResult.userId))
+      : undefined,
   ]);
 
   if (gscCredential) {
@@ -80,6 +84,11 @@ export default async function HomePage() {
   }
   if (instagram) {
     input.instagram = instagram.ok && instagram.value.success && instagram.value.data ? instagram.value.data : null;
+  }
+  if (wordpress) {
+    input.wordpress = wordpress.ok && wordpress.value.success
+      ? { needsReauth: wordpress.value.data?.wpAutoImportStatus === 'auth_expired' }
+      : null;
   }
 
   return <TodayChecklist today={buildHomeToday(input)} canOpenSetup={paid} />;

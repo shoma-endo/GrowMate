@@ -1,0 +1,68 @@
+name: Daily Import Cron
+
+# 手動実行（workflow_dispatch）用。定期起動は vercel.json の Vercel Cron。
+#
+# hourly-cron.yml とは別ファイルにする理由: 起動間隔が違う（毎時 vs 1日1回）。
+# matrix 形式・profile の意味・各パラメータの読み方は hourly-cron.yml のコメントと同じ。
+# maxRetries: 1 … 再実行すると同じ取込がもう一度走り、WordPress の新規登録が重複しうるため（仕様 R-005）。
+#
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  invoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeoutMinutes || 20 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: gsc-daily-import
+            path: /api/cron/gsc-daily-import
+            profile: count-batch
+            interval: daily
+            maxTime: 820
+            maxRetries: 1
+            timeoutMinutes: 20
+          - id: ga4-daily-sync
+            path: /api/cron/ga4-daily-sync
+            profile: count-batch
+            interval: daily
+            maxTime: 820
+            maxRetries: 1
+            timeoutMinutes: 20
+          - id: wordpress-daily-import
+            path: /api/cron/wordpress-daily-import
+            profile: count-batch
+            interval: daily
+            maxTime: 820
+            maxRetries: 1
+            timeoutMinutes: 20
+    concurrency:
+      group: daily-import-cron-${{ matrix.id }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Invoke ${{ matrix.id }}
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          TARGET_PATH: ${{ matrix.path }}
+          PROFILE: ${{ matrix.profile }}
+          MAX_TIME: ${{ matrix.maxTime }}
+          MAX_RETRIES: ${{ matrix.maxRetries }}
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "NEXT_PUBLIC_SITE_URL is not set" >&2
+            exit 1
+          fi
+          chmod +x scripts/invoke-cron.sh
+          scripts/invoke-cron.sh \
+            --url "${SITE_URL}${TARGET_PATH}" \
+            --profile "$PROFILE" \
+            --max-time "$MAX_TIME" \
+            --max-retries "$MAX_RETRIES"

@@ -54,6 +54,18 @@ describe('@/server/lib/ga4-sync-range', () => {
         resolveGa4SyncRange({ ...baseInput, lastSyncedDate: '2026-08-17' })
       ).toEqual({ ok: false, reason: 'already_synced' });
     });
+
+    it.each([
+      ['カーソルが新しい', '2026-08-16', '2026-08-15'],
+      ['カーソルが古い', '2026-08-10', '2026-08-11'],
+      ['カーソルが無い（初回日数分を保つ）', null, '2026-07-19'],
+    ])('自動同期は直近3日を含める（%s）', (_label, lastSyncedDate, expectedStart) => {
+      expect(resolveGa4SyncRange({
+        ...baseInput,
+        lastSyncedDate,
+        recentRefetchDays: 3,
+      })).toEqual({ ok: true, range: { startDate: expectedStart, endDate: '2026-08-17' } });
+    });
   });
 
   describe('splitGa4SyncRange', () => {

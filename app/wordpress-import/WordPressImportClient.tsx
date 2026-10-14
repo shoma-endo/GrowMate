@@ -50,8 +50,6 @@ interface ImportResult {
       error: number;
     }
   >;
-  maxLimitReached?: boolean;
-  maxLimitValue?: number;
   backfilledTitles?: number;
 }
 
@@ -98,8 +96,6 @@ export default function WordPressImportClient() {
         existingContentTotal: 0,
         contentTypes: [],
         statsByType: {},
-        maxLimitReached: false,
-        maxLimitValue: 1000,
         backfilledTitles: 0,
       };
     }
@@ -123,11 +119,6 @@ export default function WordPressImportClient() {
         typeof payload.statsByType === 'object' && payload.statsByType !== null
           ? (payload.statsByType as ImportResult['statsByType'])
           : {},
-      maxLimitReached: Boolean(payload.maxLimitReached),
-      maxLimitValue:
-        typeof payload.maxLimitValue === 'number' && !Number.isNaN(payload.maxLimitValue)
-          ? payload.maxLimitValue
-          : 1000,
       backfilledTitles:
         typeof payload.backfilledTitles === 'number' && !Number.isNaN(payload.backfilledTitles)
           ? payload.backfilledTitles
@@ -170,7 +161,7 @@ export default function WordPressImportClient() {
           <h1 className="text-3xl font-bold text-gray-900">WordPress記事一括インポート</h1>
           <p className="text-gray-600 mt-2">
             WordPressブログ記事URLをコンテンツとして一括登録します。
-            既に登録されているURLはスキップされます。
+            前回の取込以降に公開・更新された記事だけを取り込みます（初回はすべての記事）。
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
@@ -236,19 +227,6 @@ export default function WordPressImportClient() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {result.maxLimitReached && (
-                <Alert
-                  variant="default"
-                  className="mb-4 border-yellow-300 bg-yellow-50 text-yellow-800"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    最大取得件数（{result.maxLimitValue ?? 1000}
-                    件）に達したため、これ以上のコンテンツは取得できませんでした。
-                    投稿タイプや期間を絞り込んで再実行することをご検討ください。
-                  </AlertDescription>
-                </Alert>
-              )}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600">{result.totalPosts}</div>
