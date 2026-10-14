@@ -58,7 +58,7 @@ describe('@/server/lib/ga4-sync-range', () => {
     it.each([
       ['カーソルが新しい', '2026-08-16', '2026-08-15'],
       ['カーソルが古い', '2026-08-10', '2026-08-11'],
-      ['カーソルが無い', null, '2026-08-15'],
+      ['カーソルが無い（初回日数分を保つ）', null, '2026-07-19'],
     ])('自動同期は直近3日を含める（%s）', (_label, lastSyncedDate, expectedStart) => {
       expect(resolveGa4SyncRange({
         ...baseInput,
