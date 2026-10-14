@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DAILY_IMPORT_TIME_BUDGET_MS, runDailyImportBatch } from '@/server/lib/daily-import-batch';
+import { DAILY_IMPORT_TIME_BUDGET_MS, rotateForDay, runDailyImportBatch } from '@/server/lib/daily-import-batch';
 
 describe('runDailyImportBatch (auto-daily-imports-spec §6)', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -34,5 +34,28 @@ describe('runDailyImportBatch (auto-daily-imports-spec §6)', () => {
     expect(now).toHaveBeenCalledTimes(2);
     expect(importUser).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ total: 3, succeeded: 1, failed: 0, skippedDueToLimit: 2 });
+  });
+  it.each([
+    ['0日目', 0, ['a', 'b', 'c']],
+    ['1日目', 1, ['b', 'c', 'a']],
+    ['3日目（人数で一周）', 3, ['a', 'b', 'c']],
+    ['4日目', 4, ['b', 'c', 'a']],
+  ] as const)('処理順の先頭を日ごとにずらす: %s', (_label, day, expected) => {
+    const startedAt = day * 24 * 60 * 60 * 1000 + 19 * 60 * 60 * 1000;
+    expect(rotateForDay(['a', 'b', 'c'], startedAt)).toEqual(expected);
+  });
+
+  it('1日1人しか処理できずに打ち切られても、翌日は前日と別のユーザーから処理が始まる', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const runDay = async (startedAt: number) => {
+      vi.spyOn(Date, 'now').mockReturnValueOnce(startedAt).mockReturnValue(startedAt + DAILY_IMPORT_TIME_BUDGET_MS);
+      const importUser = vi.fn(async (_userId: string) => ({ ok: true as const }));
+      await runDailyImportBatch({ source: 'gsc', userIds: ['one', 'two'], startedAt, importUser });
+      vi.restoreAllMocks();
+      return importUser.mock.calls.map(([userId]) => userId);
+    };
+
+    expect(await runDay(0)).toEqual(['one']);
+    expect(await runDay(day)).toEqual(['two']);
   });
 });
