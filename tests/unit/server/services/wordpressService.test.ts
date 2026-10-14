@@ -181,6 +181,32 @@ describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () =
     expect(result.posts).toHaveLength(4);
   });
 
+  it('全件取得をページごとに正規化し、件数の集計は生の記事 ID で行う', async () => {
+    const page = (posts: unknown[]) => new Response(JSON.stringify(posts), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '3' },
+    });
+    fetchMock
+      .mockResolvedValueOnce(page([
+        { id: 1, type: 'post', link: 'https://example.com/a', content: { rendered: '<p>本文A</p><img src="a.jpg">' } },
+        { id: 2, type: 'post', link: 'https://example.com/b', content: { rendered: '<p>本文B</p>' } },
+      ]))
+      .mockResolvedValueOnce(page([
+        { id: 3, type: 'post', link: 'https://example.com/c', content: { rendered: '<p>本文C</p>' } },
+      ]));
+
+    const result = await service().fetchAllNormalizedContentByTypes(['posts'], { perPage: 2 });
+
+    expect(result.totalsByType).toEqual({ posts: 3 });
+    expect(result.uniqueIdCountsByType).toEqual({ posts: 3 });
+    expect(result.posts.map(post => [post.id, post.content_text, post.image_count])).toEqual([
+      [1, '本文A', 1],
+      [2, '本文B', 0],
+      [3, '本文C', 0],
+    ]);
+    expect(result.posts[0]).not.toHaveProperty('content');
+  });
+
   it('失敗した候補の status をすべて例外へ残す', async () => {
     fetchMock
       .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
