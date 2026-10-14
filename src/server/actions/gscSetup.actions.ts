@@ -11,6 +11,7 @@ import {
 } from '@/server/lib/gsc-status';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GscSiteEntry, GscCredential, GscConnectionStatus } from '@/types/gsc';
+import { hasPaidFeatureAccess } from '@/types/user';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 import { ensureValidAccessToken } from '@/server/services/googleTokenService';
@@ -52,6 +53,9 @@ const getAuthUserId = async (): Promise<GscSetupAuthIdResult> => {
   }
   if (authResult.error || !authResult.userId) {
     return { error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+  }
+  if (!hasPaidFeatureAccess(authResult.userDetails?.role ?? null)) {
+    return { error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
   }
   return {
     userId: authResult.userId,

@@ -13,6 +13,7 @@ import {
 } from '@/server/middleware/withAuth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { isAdmin as isAdminRole } from '@/authUtils';
+import { hasPaidFeatureAccess } from '@/types/user';
 import {
   WordPressSettings,
   WordPressRestTerm,
@@ -376,6 +377,9 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return { success: false as const, error: ERROR_MESSAGES.AUTH.AUTHENTICATION_FAILED };
     }
+    if (!hasPaidFeatureAccess(authResult.userDetails.role)) {
+      return { success: false as const, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
+    }
 
     const realUserId = authResult.userId;
 
@@ -439,6 +443,9 @@ export async function testWordPressConnectionAction(): Promise<
     if (testWpConflict) return testWpConflict;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return { success: false as const, error: ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
+    }
+    if (!hasPaidFeatureAccess(authResult.userDetails.role)) {
+      return { success: false as const, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
     }
     const isAdmin = isAdminRole(authResult.userDetails.role);
     const wpSettings = await supabaseService.getWordPressSettingsByUserId(authResult.userId);

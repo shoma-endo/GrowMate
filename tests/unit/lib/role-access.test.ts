@@ -7,11 +7,15 @@ describe('@/lib/role-access', () => {
     expect(getRoleAccessRedirectPath('/ga4-dashboard', 'trial')).toBe('/unauthorized');
     expect(getRoleAccessRedirectPath('/setup', 'trial')).toBe('/unauthorized');
     expect(getRoleAccessRedirectPath('/admin/users', 'trial')).toBe('/unauthorized');
+    expect(getRoleAccessRedirectPath('/gsc-import', 'trial')).toBe('/unauthorized');
+    expect(getRoleAccessRedirectPath('/wordpress-import', 'trial')).toBe('/unauthorized');
   });
 
   it('paid は有料画面を利用できるが管理者画面からは退避させる', () => {
     expect(getRoleAccessRedirectPath('/analytics/example', 'paid')).toBeNull();
     expect(getRoleAccessRedirectPath('/setup/wordpress', 'paid')).toBeNull();
+    expect(getRoleAccessRedirectPath('/gsc-import', 'paid')).toBeNull();
+    expect(getRoleAccessRedirectPath('/wordpress-import', 'paid')).toBeNull();
     expect(getRoleAccessRedirectPath('/admin', 'paid')).toBe('/unauthorized');
   });
 

@@ -233,7 +233,7 @@ Vercel Cron（vercel.json の crons。UTC）
       - 対象の経路: 初回のベースライン記録（`:313`）、評価成功（`:348`。現行でも履歴 INSERT より前）、メトリクスが無い no_metrics（`:251-276` の `bulkImportFailed === false` の場合）、position が null（`:282-309`）。no_metrics と position が null の2経路は、`updateCooldown`（`:605-614`）を履歴 INSERT より前に移し、条件付きにする。
       - 評価行の更新を条件付きにし、更新できなければ履歴を INSERT せず、その記事をスキップする。
       - 対象外の経路: 一括取込に失敗した経路（`:251-276` の `bulkImportFailed === true`。履歴を INSERT するが評価行を更新しない）と system_error（`:130-133` → `logSystemError` `:165-192`）。エラー行は `suggestion_status` を持たず、LLM 呼び出しの対象にならないため、§4 の「二重送信・二重課金が起きうるもの」に当たらない。この2経路のエラー履歴の重複は許容する（R-07）。
-      - 手動実行の経路: `processEvaluation` は手動実行の経路（`gscDashboard.actions.ts:1199` の `force: true`、`gscImport.actions.ts:87`、`app/api/gsc/evaluate/route.ts:29`）と共有されているので、同じ確保がこれらにも効く。
+      - 手動実行の経路: `processEvaluation` は手動実行の経路（`gscDashboard.actions.ts:1196` の `force: true`、`gscImport.actions.ts:88`。2026-10-14 に `app/api/gsc/evaluate/route.ts` は削除済み）と共有されているので、同じ確保がこれらにも効く。
       - 確保に負けた記事の集計: エラー（`skippedSystemError`）にも処理済み（`processed` / `improved` / `advanced` / `baselineInitialized`）にも数えず、スキップとして数える（バッチの `totalSkipped` に合算する。ユーザー単位の結果で専用の件数を持つかは plan で決める）。
     - ga4-content-evaluate: 記事ごとの処理（`runDueArticle` の呼び出し。`ga4ContentEvaluationBatchService.ts:304`）の前に、`ga4_last_evaluated_on` を抽出時の値から当日へ条件付きで更新して確保する。確保できなければスキップする。処理の結果クールダウンを進めない場合（`shouldAdvanceCooldown === false`）は、確保で書いた値を抽出時の値へ戻す（戻す更新は「`ga4_last_evaluated_on` が当日である場合だけ」の条件付きにする。`updated_at` は同じ行を毎時0分に GSC 評価も更新するため、確保の識別に使わない）。これで「次の毎時に再試行する」現行の挙動を保つ。
       - 確保に負けた記事の集計: `articlesEvaluated` にも `articlesFailed` にも数えず、スキップとして数え、`batch_completed` ログの `skipped` に含める（結果オブジェクトでの件数名は plan で決める）。
