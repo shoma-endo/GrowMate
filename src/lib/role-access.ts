@@ -2,7 +2,7 @@ import { isAdmin, isUnavailable } from '@/authUtils';
 import { hasPaidFeatureAccess, type UserRole } from '@/types/user';
 
 const ADMIN_REQUIRED_PATHS = ['/admin'] as const;
-// '/ga4-dashboard' と取込画面は有料機能の画面。Server Action だけでなく画面遷移時にも trial を拒否する。
+// 有料機能の画面。Server Action だけでなく画面遷移時にも trial を拒否する。
 const PAID_FEATURE_REQUIRED_PATHS = [
   '/analytics',
   '/ga4-dashboard',

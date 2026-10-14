@@ -36,7 +36,7 @@ type GscSetupAuthIdResult =
   | { error: string; emailLinkConflict?: true }
   | { userId: string };
 
-/** getAuthUserId のエラー枝を Server Action の失敗形へ（競合フラグを落とさない） */
+/** getPaidUserId のエラー枝を Server Action の失敗形へ（競合フラグを落とさない） */
 function gscSetupReturnAuthError(authId: { error: string; emailLinkConflict?: true }) {
   return {
     success: false as const,
@@ -45,7 +45,7 @@ function gscSetupReturnAuthError(authId: { error: string; emailLinkConflict?: tr
   };
 }
 
-const getAuthUserId = async (): Promise<GscSetupAuthIdResult> => {
+const getPaidUserId = async (): Promise<GscSetupAuthIdResult> => {
   const authResult = await authMiddleware();
   const linkConflict = emailLinkConflictErrorPayload(authResult);
   if (linkConflict) {
@@ -63,7 +63,7 @@ const getAuthUserId = async (): Promise<GscSetupAuthIdResult> => {
 };
 
 export async function fetchGscStatus() {
-  const authId = await getAuthUserId();
+  const authId = await getPaidUserId();
   if ('error' in authId) {
     return gscSetupReturnAuthError(authId);
   }
@@ -77,7 +77,7 @@ export async function fetchGscStatus() {
 
 export async function fetchGscProperties() {
   try {
-    const authId = await getAuthUserId();
+    const authId = await getPaidUserId();
     if ('error' in authId) {
       return gscSetupReturnAuthError(authId);
     }
@@ -115,7 +115,7 @@ export async function saveGscProperty(params: {
   permissionLevel?: string | null;
 }) {
   try {
-    const authId = await getAuthUserId();
+    const authId = await getPaidUserId();
     if ('error' in authId) {
       return gscSetupReturnAuthError(authId);
     }
@@ -159,10 +159,10 @@ export async function saveGscProperty(params: {
 
 export async function disconnectGsc() {
   try {
-    const authId = await getAuthUserId();
+    const authId = await getPaidUserId();
 
     if ('error' in authId) {
-      console.error('[GSC Setup] disconnectGsc: ユーザー認証失敗', { error: authId.error });
+      console.error('[GSC Setup] disconnectGsc: auth or role check failed', { error: authId.error });
       return gscSetupReturnAuthError(authId);
     }
     const { userId } = authId;

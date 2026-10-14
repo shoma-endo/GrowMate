@@ -45,9 +45,11 @@ vi.mock('@/server/services/gscService', () => ({
 }));
 
 import {
+  disconnectGsc,
   fetchGscProperties,
   fetchGscStatus,
   refetchGscStatusWithValidation,
+  saveGscProperty,
 } from '@/server/actions/gscSetup.actions';
 
 const USER_ID = 'b0ed75ba-bb37-4dd7-89a0-c6ce940f991c';
@@ -240,5 +242,15 @@ describe('GSC 設定 Server Action のロール制限', () => {
     expect(status).toEqual({ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED });
     expect(properties).toEqual({ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED });
     expect(mocks.getGscCredentialByUserId).not.toHaveBeenCalled();
+  });
+
+  it('trial は GSC プロパティの保存と連携解除を拒否され、credential を更新しない', async () => {
+    const saved = await saveGscProperty({ propertyUri: 'sc-domain:example.com' });
+    const disconnected = await disconnectGsc();
+
+    expect(saved).toEqual({ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED });
+    expect(disconnected).toEqual({ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED });
+    expect(mocks.getGscCredentialByUserId).not.toHaveBeenCalled();
+    expect(mocks.updateGscCredential).not.toHaveBeenCalled();
   });
 });
