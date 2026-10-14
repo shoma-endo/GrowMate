@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseService } from '@/server/services/supabaseService';
-import type { WordPressService } from '@/server/services/wordpressService';
+import { normalizeWordPressRestPosts, type WordPressService } from '@/server/services/wordpressService';
 import type { WordPressSettings } from '@/types/wordpress';
 
 const mocks = vi.hoisted(() => ({
@@ -95,8 +95,8 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
       advanceWordPressImportBaseline: advanceBaseline,
     } as unknown as SupabaseService;
     const wpService = {
-      fetchAllContentByTypes: vi.fn().mockResolvedValue({
-        posts: [{ id: 1, type: postType, link: 'https://example.com/post', content: { rendered: '<p>Body</p>' } }],
+      fetchAllNormalizedContentByTypes: vi.fn().mockResolvedValue({
+        posts: normalizeWordPressRestPosts([{ id: 1, type: postType, link: 'https://example.com/post', content: { rendered: '<p>Body</p>' } }]),
         totalsByType,
         uniqueIdCountsByType,
       }),
@@ -152,6 +152,124 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     });
 
     expect(result).toMatchObject({ kind: 'failure', failure: 'temporary_failure' });
+    expect(advanceBaseline).not.toHaveBeenCalled();
+  });
+  it('初回の全件取得で記事が多いとき、新規は500件ずつ upsert し、既存の更新は同時20件までに抑える', async () => {
+    const existingCount = 45;
+    const newCount = 1001;
+    const upsertSizes: number[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const client = {
+      from: () => ({
+        upsert: (rows: Array<{ canonical_url: string }>) => {
+          upsertSizes.push(rows.length);
+          return {
+            select: () => Promise.resolve({
+              data: rows.map(row => ({ canonical_url: row.canonical_url, wp_post_title: 'Title' })),
+              error: null,
+            }),
+          };
+        },
+        update: () => ({
+          eq: () => ({
+            eq: () => {
+              inFlight += 1;
+              maxInFlight = Math.max(maxInFlight, inFlight);
+              return new Promise(resolve => setTimeout(() => {
+                inFlight -= 1;
+                resolve({ error: null });
+              }, 0));
+            },
+          }),
+        }),
+      }),
+    };
+    const supabaseService = {
+      getClient: () => client,
+      listContentAnnotationKeys: vi.fn().mockResolvedValue(Array.from({ length: existingCount }, (_, i) => ({
+        id: `annotation-${i + 1}`,
+        canonical_url: `https://example.com/p/${i + 1}`,
+        normalized_url: null,
+        wp_post_id: i + 1,
+      }))),
+      advanceWordPressImportBaseline: vi.fn().mockResolvedValue(true),
+    } as unknown as SupabaseService;
+    const total = existingCount + newCount;
+    const wpService = {
+      fetchAllNormalizedContentByTypes: vi.fn().mockResolvedValue({
+        posts: normalizeWordPressRestPosts(Array.from({ length: total }, (_, i) => ({
+          id: i + 1,
+          type: 'post',
+          link: `https://example.com/p/${i + 1}`,
+          title: { rendered: 'Title' },
+        }))),
+        totalsByType: { posts: total },
+        uniqueIdCountsByType: { posts: total },
+      }),
+    } as unknown as WordPressService;
+
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes: ['posts'], wpImportBaselineAt: null } as WordPressSettings,
+      wpService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+    });
+
+    expect(upsertSizes).toEqual([500, 500, 1]);
+    expect(maxInFlight).toBe(20);
+    expect(result).toMatchObject({
+      kind: 'success',
+      stats: { insertedPosts: newCount, updatedPosts: existingCount },
+    });
+  });
+  it('新規の upsert が途中のバッチで失敗したら、既存の更新と基準の更新をせずに失敗を返す', async () => {
+    const upsertSizes: number[] = [];
+    const update = vi.fn();
+    const advanceBaseline = vi.fn();
+    const client = {
+      from: () => ({
+        upsert: (rows: unknown[]) => {
+          upsertSizes.push(rows.length);
+          const error = upsertSizes.length === 2 ? { message: 'payload too large' } : null;
+          return { select: () => Promise.resolve({ data: error ? null : [], error }) };
+        },
+        update,
+      }),
+    };
+    const supabaseService = {
+      getClient: () => client,
+      listContentAnnotationKeys: vi.fn().mockResolvedValue([
+        { id: 'annotation-1', canonical_url: 'https://example.com/p/1', normalized_url: null, wp_post_id: 1 },
+      ]),
+      advanceWordPressImportBaseline: advanceBaseline,
+    } as unknown as SupabaseService;
+    const total = 1201;
+    const wpService = {
+      fetchAllNormalizedContentByTypes: vi.fn().mockResolvedValue({
+        posts: normalizeWordPressRestPosts(Array.from({ length: total }, (_, i) => ({
+          id: i + 1,
+          type: 'post',
+          link: `https://example.com/p/${i + 1}`,
+          title: { rendered: 'Title' },
+        }))),
+        totalsByType: { posts: total },
+        uniqueIdCountsByType: { posts: total },
+      }),
+    } as unknown as WordPressService;
+
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes: ['posts'], wpImportBaselineAt: null } as WordPressSettings,
+      wpService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+    });
+
+    expect(result.kind).toBe('failure');
+    expect(upsertSizes).toEqual([500, 500]);
+    expect(update).not.toHaveBeenCalled();
     expect(advanceBaseline).not.toHaveBeenCalled();
   });
 });

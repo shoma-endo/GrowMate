@@ -40,6 +40,11 @@ type ImportResult =
   | { kind: 'success'; stats: ImportStats }
   | { kind: 'failure'; failure: 'auth_expired' | 'temporary_failure'; error: string };
 
+// 初回の全件取得は1万件を超えるサイトがある。1回の upsert に全件を載せると本文込みで数十MBになり、
+// 既存行の UPDATE を一斉に投げると接続が詰まるため、書き込みを分割する
+const INSERT_BATCH_SIZE = 500;
+const UPDATE_CONCURRENCY = 20;
+
 interface ExistingAnnotation {
   id: string;
   canonical_url: string | null;
@@ -66,8 +71,8 @@ async function fetchImportPosts(
   incompleteTypes: string[];
 }> {
   if (!baseline) {
-    const { posts, totalsByType, uniqueIdCountsByType } = await wpService.fetchAllContentByTypes(contentTypes, { perPage: 100 });
-    const normalizedPosts = normalizeWordPressRestPosts(posts);
+    const { posts: normalizedPosts, totalsByType, uniqueIdCountsByType } =
+      await wpService.fetchAllNormalizedContentByTypes(contentTypes, { perPage: 100 });
     const fetchedByType: Record<string, number> = {};
     for (const post of normalizedPosts) {
       const type = normalizeContentType(post.post_type ?? 'posts');
@@ -236,13 +241,13 @@ export async function importWordPressContent({
 
     let insertedPosts = 0;
     let backfilledTitles = 0;
-    if (inserts.length) {
+    for (let index = 0; index < inserts.length; index += INSERT_BATCH_SIZE) {
       const { data, error } = await supabaseService.getClient()
         .from('content_annotations')
-        .upsert(inserts, { onConflict: 'user_id,wp_post_id', ignoreDuplicates: true })
+        .upsert(inserts.slice(index, index + INSERT_BATCH_SIZE), { onConflict: 'user_id,wp_post_id', ignoreDuplicates: true })
         .select('canonical_url, wp_post_title');
       if (error) throw error;
-      insertedPosts = data?.length ?? 0;
+      insertedPosts += data?.length ?? 0;
       const missingTitles = data?.filter(row => !row.wp_post_title?.trim()) ?? [];
       const canonicalUrls = missingTitles.map(row => row.canonical_url?.trim()).filter((url): url is string => Boolean(url));
       if (canonicalUrls.length) {
@@ -253,13 +258,16 @@ export async function importWordPressContent({
           .in('canonical_url', canonicalUrls)
           .select('canonical_url');
         if (backfillError) throw backfillError;
-        backfilledTitles = backfilled?.length ?? 0;
+        backfilledTitles += backfilled?.length ?? 0;
       }
     }
 
-    const updateResults = await Promise.all(updates.map(({ id, data }) =>
-      supabaseService.getClient().from('content_annotations').update(data).eq('id', id).eq('user_id', userId)
-    ));
+    const updateResults = [];
+    for (let index = 0; index < updates.length; index += UPDATE_CONCURRENCY) {
+      updateResults.push(...await Promise.all(updates.slice(index, index + UPDATE_CONCURRENCY).map(({ id, data }) =>
+        supabaseService.getClient().from('content_annotations').update(data).eq('id', id).eq('user_id', userId)
+      )));
+    }
     const failedUpdates = updateResults.filter(result => result.error).length;
     if (failedUpdates > 0) {
       console.error('[wordpress-import] article updates failed', {

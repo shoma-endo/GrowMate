@@ -600,17 +600,31 @@ export class WordPressService {
 
   public async fetchAllContentByTypes(
     postTypes: string[],
-    options: { perPage?: number; status?: string; modifiedAfter?: string; after?: string } = {}
-  ): Promise<{
-    posts: WordPressRestPost[];
-    totalsByType: Record<string, number>;
-    /** 要求した投稿タイプ（REST のパス名）ごとの、重複を除いた記事 ID の数。totalsByType と同じキー */
-    uniqueIdCountsByType: Record<string, number>;
-  }> {
+    options: FetchAllContentOptions = {}
+  ): Promise<FetchAllContentResult<WordPressRestPost>> {
+    return this.collectContentByTypes(postTypes, options, posts => posts);
+  }
+
+  /**
+   * 全件取得をページごとに正規化して集める。生の記事（本文HTML・_embedded・yoast_head）を
+   * 全ページ分保持すると1万件超のサイトで数百MB〜1GB規模になるため、ページを受け取るたびに落とす。
+   */
+  public async fetchAllNormalizedContentByTypes(
+    postTypes: string[],
+    options: FetchAllContentOptions = {}
+  ): Promise<FetchAllContentResult<WordPressNormalizedPost>> {
+    return this.collectContentByTypes(postTypes, options, posts => normalizeWordPressRestPosts(posts));
+  }
+
+  private async collectContentByTypes<T>(
+    postTypes: string[],
+    options: FetchAllContentOptions,
+    mapPage: (posts: WordPressRestPost[]) => T[]
+  ): Promise<FetchAllContentResult<T>> {
     const perPage = Math.min(options.perPage ?? 100, 100);
     const status = options.status ?? 'publish';
 
-    const aggregated: WordPressRestPost[] = [];
+    const aggregated: T[] = [];
     const totalsByType: Record<string, number> = {};
     const uniqueIdCountsByType: Record<string, number> = {};
 
@@ -630,7 +644,7 @@ export class WordPressService {
           ...(options.after ? { after: options.after } : {}),
         });
         totalForType = total;
-        aggregated.push(...posts);
+        aggregated.push(...mapPage(posts));
         for (const post of posts) {
           const id = post.id ?? post.ID;
           if (id !== undefined && id !== null) idsForType.add(String(id));
@@ -648,6 +662,15 @@ export class WordPressService {
     return { posts: aggregated, totalsByType, uniqueIdCountsByType };
   }
 }
+
+type FetchAllContentOptions = { perPage?: number; status?: string; modifiedAfter?: string; after?: string };
+
+type FetchAllContentResult<T> = {
+  posts: T[];
+  totalsByType: Record<string, number>;
+  /** 要求した投稿タイプ（REST のパス名）ごとの、重複を除いた記事 ID の数。totalsByType と同じキー */
+  uniqueIdCountsByType: Record<string, number>;
+};
 
 function normalizeWordPressPostResponse(data: unknown): WordPressPostResponse | null {
   if (!data || typeof data !== 'object') return null;
