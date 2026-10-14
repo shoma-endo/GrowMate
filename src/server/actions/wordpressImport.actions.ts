@@ -145,20 +145,6 @@ export async function runWordpressBulkImport() {
       };
     }
 
-    const { data: existingAnnotations, error: existingError } = await supabaseClient
-      .from('content_annotations')
-      .select(
-        'id, canonical_url, wp_post_id, wp_post_title, wp_excerpt, wp_categories, wp_category_names, wp_post_type, wp_image_count'
-      )
-      .eq('user_id', userId);
-
-    if (existingError) {
-      return {
-        success: false,
-        error: ERROR_MESSAGES.WORDPRESS.ANNOTATION_FETCH_ERROR(existingError.message),
-      };
-    }
-
     interface ExistingAnnotation {
       id: string;
       canonical_url: string | null;
@@ -172,12 +158,36 @@ export async function runWordpressBulkImport() {
       wp_image_count: number | null;
     }
 
+    // 1回の select は db-max-rows（1000行）で切れる。読み残した既存記事を新規と誤判定すると
+    // INSERT が (user_id, wp_post_id) の一意制約で落ちるため、全件をページングで読む
+    const existingAnnotations: ExistingAnnotation[] = [];
+    const existingPageSize = 1000;
+    for (let from = 0; ; from += existingPageSize) {
+      const { data: page, error: existingError } = await supabaseClient
+        .from('content_annotations')
+        .select(
+          'id, canonical_url, wp_post_id, wp_post_title, wp_excerpt, wp_categories, wp_category_names, wp_post_type, wp_image_count'
+        )
+        .eq('user_id', userId)
+        .order('id', { ascending: true })
+        .range(from, from + existingPageSize - 1);
+
+      if (existingError) {
+        return {
+          success: false,
+          error: ERROR_MESSAGES.WORDPRESS.ANNOTATION_FETCH_ERROR(existingError.message),
+        };
+      }
+      existingAnnotations.push(...page);
+      if (page.length < existingPageSize) break;
+    }
+
     const existingUrls = new Set<string>();
     const existingPostIds = new Set<number>();
     const existingByCanonical = new Map<string, ExistingAnnotation>();
     const existingByPostId = new Map<number, ExistingAnnotation>();
 
-    (existingAnnotations as ExistingAnnotation[] | null | undefined)?.forEach(annotation => {
+    existingAnnotations.forEach(annotation => {
       const canonicalTrimmed = annotation.canonical_url?.trim();
       if (canonicalTrimmed) {
         existingUrls.add(canonicalTrimmed);
@@ -324,6 +334,7 @@ export async function runWordpressBulkImport() {
         const { data: backfilledRows, error: backfillError } = await supabaseClient
           .from('content_annotations')
           .update({ wp_post_title: 'タイトル未設定' })
+          .eq('user_id', userId)
           .in(
             'canonical_url',
             needBackfill

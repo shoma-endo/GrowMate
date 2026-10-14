@@ -797,23 +797,31 @@ class GscImportService {
   }
 
   private async loadAnnotationUrlMap(userId: string): Promise<Map<string, string>> {
-    const { data, error } = await this.supabaseService
-      .getClient()
-      .from('content_annotations')
-      .select('id, normalized_url')
-      .eq('user_id', userId)
-      .not('normalized_url', 'is', null);
-
-    if (error) {
-      throw new Error(error.message || 'content_annotations の取得に失敗しました');
-    }
-
+    // 1回の select は db-max-rows（1000行）で切れる。読み残した記事の指標は
+    // content_annotation_id = null で upsert され、紐付けが外れるため全件をページングで読む
     const map = new Map<string, string>();
-    (data ?? []).forEach(row => {
-      if (row.normalized_url && row.id) {
-        map.set(row.normalized_url, row.id);
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await this.supabaseService
+        .getClient()
+        .from('content_annotations')
+        .select('id, normalized_url')
+        .eq('user_id', userId)
+        .not('normalized_url', 'is', null)
+        .order('id', { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        throw new Error(error.message || 'content_annotations の取得に失敗しました');
       }
-    });
+
+      data.forEach(row => {
+        if (row.normalized_url && row.id) {
+          map.set(row.normalized_url, row.id);
+        }
+      });
+      if (data.length < pageSize) break;
+    }
     return map;
   }
 
