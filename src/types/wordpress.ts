@@ -23,6 +23,8 @@ export interface WordPressSettings {
   wpRefreshToken?: string | null | undefined;
   wpTokenExpiresAt?: string | null | undefined;
   wpContentTypes?: string[] | undefined;
+  wpImportBaselineAt?: string | null | undefined;
+  wpAutoImportStatus?: 'succeeded' | 'auth_expired' | 'temporary_failure' | null | undefined;
   createdAt?: string | undefined;
   updatedAt?: string | undefined;
 }
@@ -84,6 +86,8 @@ export interface WordPressRestPost {
   ID?: number;
   date?: string;
   modified?: string;
+  date_gmt?: string;
+  modified_gmt?: string;
   title?: WordPressRenderedField;
   link?: string;
   categories?: number[];

@@ -14,6 +14,7 @@ export interface ResolveGa4SyncRangeInput {
   lastSyncedDate: string | null;
   initialSyncDays: number;
   backfillDays?: number | undefined;
+  recentRefetchDays?: number | undefined;
 }
 
 export function resolveGa4SyncRange(
@@ -29,6 +30,13 @@ export function resolveGa4SyncRange(
         endDate,
       },
     };
+  }
+
+  if (input.recentRefetchDays !== undefined) {
+    const recentStartDate = addDaysISO(endDate, -(input.recentRefetchDays - 1));
+    const cursorStartDate = input.lastSyncedDate ? addDaysISO(input.lastSyncedDate, 1) : recentStartDate;
+    const startDate = cursorStartDate < recentStartDate ? cursorStartDate : recentStartDate;
+    return { ok: true, range: { startDate, endDate } };
   }
 
   const startDate = input.lastSyncedDate

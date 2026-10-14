@@ -17,6 +17,7 @@ const allBroken: Omit<HomeTodayInput, 'role'> = {
   ga4: { connected: true, connectionStage: 'configured', needsReauth: true },
   googleAds: { connected: true, needsReauth: true },
   instagram: { connected: true, needsReauth: true },
+  wordpress: { needsReauth: true },
 };
 
 const allHealthy: Omit<HomeTodayInput, 'role'> = {
@@ -24,6 +25,7 @@ const allHealthy: Omit<HomeTodayInput, 'role'> = {
   ga4: { connected: true, connectionStage: 'configured', needsReauth: false },
   googleAds: { connected: true, needsReauth: false },
   instagram: { connected: true, needsReauth: false },
+  wordpress: { needsReauth: false },
 };
 
 const idsOf = (input: HomeTodayInput) => buildHomeToday(input).items.map(item => item.id);
@@ -36,11 +38,18 @@ describe('@/lib/home-today', () => {
         'ga4-reauth',
         'google-ads-reauth',
         'instagram-reauth',
+        'wordpress-reauth',
       ]);
     });
 
     it('trial は Google Ads の再連携だけ（/setup /analytics /instagram に入れないため）', () => {
       expect(idsOf({ role: 'trial', ...allBroken })).toEqual(['google-ads-reauth']);
+    });
+
+    it('WordPress は paid/admin の認証切れだけで表示し、trial と正常時は表示しない', () => {
+      expect(idsOf({ role: 'paid', ...allHealthy, wordpress: { needsReauth: true } })).toContain('wordpress-reauth');
+      expect(idsOf({ role: 'trial', ...allHealthy, wordpress: { needsReauth: true } })).not.toContain('wordpress-reauth');
+      expect(idsOf({ role: 'admin', ...allHealthy })).not.toContain('wordpress-reauth');
     });
 
     it('全連携が正常なら空（空状態を出す）', () => {

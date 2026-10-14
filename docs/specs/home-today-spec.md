@@ -84,7 +84,7 @@
 ### Non-goals
 
 - KPI 数字（表示回数・セッション・広告費・直近チャット）: 何を出すか未定義。要件が出てから別仕様で扱う。
-- 「未連携」の常時表示（WordPress / GSC / GA4 を繋いでいない案内）: 繋ぐ意思の無い利用者に毎日出続けるため「変化」ではない。空状態の 1 行（「連携がまだの場合は設定から」）に留める。
+- 「未連携」の常時表示（WordPress / GSC / GA4 を繋いでいない案内）: 繋ぐ意思の無い利用者に毎日出続けるため「変化」ではない。空状態の 1 行（「連携がまだの場合は設定から」）に留める。WordPress の認証切れカードは `docs/specs/auto-daily-imports-spec.md` の FR-008 に従う。
 - 評価完了・GA4 評価結果の通知: 「完了」を検出するための既読管理が無く、新テーブルが要る。
 - 未読の改善提案の項目: 当初は置く案だったが、同じ画面右下に同内容の toast（`GscNotificationHandler`、閉じるまで常時）が出るため二重になる。toast に任せ、本画面には置かない（2026-09-09 ユーザー決定）。
 - 「新規チャットを開始」カード: 遷移先がサイドバー「チャット」と同じで HOME-01 に反する。置かない（同日決定）。
@@ -224,7 +224,7 @@ PC（lg 以上、サイドバー展開時）:
 
 ## 10. リスク・未決定事項
 
-- 「再連携が必要」の判定（`needsReauth`）は `/setup` と同じ関数を使うが、`/setup` はクライアント側で WordPress 状態を追加取得している。本画面では WordPress を扱わない（異常の概念が「未設定」しか無いため。§4 Non-goal）。
+- WordPress の再連携判定は `wordpress_settings.wp_auto_import_status` を使い、画面表示のために WordPress へ接続しない（`docs/specs/auto-daily-imports-spec.md` FR-008）。
 - DB 障害と「未連携」の区別: `getGscCredentialByUserId` は DB エラーでも `null` を返す（`/setup` と同じ）。本画面では未連携として表示され、項目 7 にはならない。service 側で `console.error` は出る。strict 変種の新設は見送り（受容）。Google Ads は `needsReauth:false` の `error`（未連携・一時的なリフレッシュ失敗等）を取得失敗として拾う（`isGoogleAdsFetchFailed`）。`needsReauth:true` は再連携待ちの正当な状態として区別する。
 - Google側の一時的な 5xx/429 リフレッシュ失敗を「未連携」「再連携要」のいずれとも区別し、項目 7（取得失敗）に落とす。GSC/GA4/Google Ads いずれも `src/domain/errors/google-oauth-error-handlers.ts` の `isGoogleOAuthReauthError` （ステータスコード優先の判定）を共有する（`googleTokenService.refreshAccessToken` がステータスに関わらず同一文言のエラーを投げるため、文字列一致だけでは区別できないことが判明したための対策。2026-09-12、`/setup` 系の旧分類器 `isTokenExpiredError`/`isGa4ReauthError` もこの1本に統合済み）。
 - スマホ（ドロワー内のユーザーブロック）ではメールアドレスに到達できない（ツールチップ非対応）。必要になったら事業者情報かアカウント画面に出す。

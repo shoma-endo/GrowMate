@@ -121,6 +121,7 @@ export interface GscImportOptions {
   searchType?: GscSearchType;
   maxRows?: number;
   runEvaluation?: boolean;
+  dataState?: 'all';
 }
 
 export interface GscSearchAnalyticsRow {

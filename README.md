@@ -21,9 +21,9 @@
 - **キャンバス編集**: TipTap ベースの `CanvasPanel`、Markdown レンダリング／見出しアウトライン／バージョン履歴、選択範囲リライト
 - **見出しフロー・バージョン管理**: Step5 生成見出しからの `session_heading_sections` 初期化、個別 AI 生成・`session_combined_contents` への結合保存、`save_atomic_combined_content` RPC で競合シリアライズ
 - **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。評価未設定フィルタとコンテンツ評価状態・スコア・診断を一覧で確認し、`/analytics/[annotationId]` の記事詳細で手動評価と履歴を表示する。GSC 評価履歴では順位変化に応じたステージ進行ロジックを表示し、履歴ごとにメモを残せる。一覧では記事を選択して**検索順位・コンテンツ評価サイクルを一括開始**できる（全選択は絞り込みに依存せず全記事が対象。1回あたり最大1000件）。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・エンゲージメント率の表示・列見出しでの並べ替え（昇順／降順）・高エンゲージメント率の絞り込み・手動「最新化」同期）を表示。Instagram タブでは投稿を選んで**ブログ記事を一括作成**できる（1回10件まで。キーワード案〜見出しごとの本文〜完成形までをバックグラウンドで作り、コンテンツ一覧とチャットに保存。止まった作成は［続きを作成］で再開でき、選んだ投稿がすべて終わると結果をメール通知）
-- **WordPress 連携**: OAuth・Application Password 両対応、投稿の一括インポート、`AnnotationPanel` でメモ・キーワード・ペルソナ等を再利用
-- **Google Search Console 連携**: OAuth 認証、日次指標保存（`gsc_page_metrics` / `gsc_query_metrics`）、記事評価・改善提案（`gsc_article_evaluations`）、改善提案ジョブの Cron 実行（`/api/cron/gsc-suggestions`）
-- **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`）、サマリー・ランキング・時系列ダッシュボード、記事ごとのコンテンツ評価、メディア全体の資産価値・実効スコアと散布図
+- **WordPress 連携**: OAuth・Application Password 両対応、投稿の一括インポート（日次の自動取込と手動取込は差分更新）、`AnnotationPanel` でメモ・キーワード・ペルソナ等を再利用
+- **Google Search Console 連携**: OAuth 認証、日次指標保存（`gsc_page_metrics` / `gsc_query_metrics`、`paid` / `admin` は毎朝自動取込）、記事評価・改善提案（`gsc_article_evaluations`）、改善提案ジョブの Cron 実行（`/api/cron/gsc-suggestions`）
+- **GA4 連携**: 日次ページ指標保存（`ga4_page_metrics_daily`、`paid` / `admin` は毎朝自動同期）、サマリー・ランキング・時系列ダッシュボード、記事ごとのコンテンツ評価、メディア全体の資産価値・実効スコアと散布図
 - **Google Ads 連携**: OAuth 認証、MCC アカウント選択、キーワード・キャンペーン指標、GSC 順位と WordPress 記事在庫を考慮した AI コンテンツ戦略提案、除外キーワード提案（自動配信メール対応）
 - **Instagram 連携**: Business Login for Instagram による OAuth 認証、プロアカウント（ビジネス/クリエイター）連携、投稿プレビュー（`/setup/instagram`）。Phase 2 では手動同期で `instagram_media` / `instagram_account_insights_daily` に指標を保存し、`/analytics` の Instagram タブで閲覧（cron なし）。認証情報は `instagram_credentials` に保存
 - **管理者ダッシュボード** (`/admin`): プロンプトテンプレート編集・バージョン保存、ユーザーロール管理。GA4コンテンツ評価の文章化テンプレートも `/admin/prompts` から登録する
@@ -196,7 +196,7 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 | 変数名 | 必須 | 用途 |
 | ------ | ---- | ---- |
-| `CRON_SECRET` | 任意（`/api/cron/*` バッチを使う場合は必須） | Cron バッチの Bearer 認証（`gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion` / `content-annotation-summary`）。Instagram ブログ一括作成の自動引き継ぎ（[`app/api/instagram/blog-drafts/continue/`](app/api/instagram/blog-drafts/continue)）の Bearer 認証にも使う（未設定だと時間上限で止まった作成は自動で続かず、［続きを作成］での再開になる） |
+| `CRON_SECRET` | 任意（`/api/cron/*` バッチを使う場合は必須） | Cron バッチの Bearer 認証（`gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion` / `content-annotation-summary` / `gsc-daily-import` / `ga4-daily-sync` / `wordpress-daily-import`）。Instagram ブログ一括作成の自動引き継ぎ（[`app/api/instagram/blog-drafts/continue/`](app/api/instagram/blog-drafts/continue)）の Bearer 認証にも使う（未設定だと時間上限で止まった作成は自動で続かず、［続きを作成］での再開になる） |
 | `GOOGLE_ADS_REDIRECT_URI` | 任意（Google Ads OAuth 利用時は必須） | [`app/api/google-ads/oauth/`](app/api/google-ads/oauth) |
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | 任意（Google Ads API 利用時は必須） | [`src/server/services/googleAdsService.ts`](src/server/services/googleAdsService.ts) |
 | `EMAIL_FROM` | 任意（未設定時は既定の送信元にフォールバック） | [`src/server/services/emailService.ts`](src/server/services/emailService.ts) の送信元アドレス |
@@ -296,12 +296,12 @@ takt -w grill-to-gherkin  # 対話モード Grill Me を選び、機能の概要
 - Vercel を想定。一部の Route Handler は Node.js Runtime を明示し、その他は Next.js のデフォルト Runtime を使用
 - **Vercel のプランは Pro**（チーム `shoma-endo's projects`。2026-09-24 にダッシュボードで確認）。仕様書・レビューでは確認済みの前提として扱ってよい。Pro であることに依存しているもの: `maxDuration` 800 秒のルート、Vercel Cron の毎時・10 分間隔の起動（Hobby は1日1回まで）、runtime log の保持1日
 - **Supabase のプランは Pro**（プロジェクト `rnmljzdsncucvkcmoaun`。本番と開発で共有。2026-09-25 に確認）。仕様書・レビューでは確認済みの前提として扱ってよい
-- 定期起動（Vercel Cron、[`vercel.json`](vercel.json)。UTC）: 毎時 `gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion`、10 分間隔 `content-annotation-summary`（`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）。失敗は Vercel の runtime log で確認する。経緯は [`docs/plans/vercel-cron-migration-spec.md`](docs/plans/vercel-cron-migration-spec.md)
+- 定期起動（Vercel Cron、[`vercel.json`](vercel.json)。UTC）: 毎日 19:05 `gsc-daily-import`、19:25 `ga4-daily-sync`、19:45 `wordpress-daily-import`。毎時 `gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion`、10 分間隔 `content-annotation-summary`（`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）。失敗は Vercel の runtime log で確認する。経緯は [`docs/plans/vercel-cron-migration-spec.md`](docs/plans/vercel-cron-migration-spec.md)
 - ローカル品質ゲート: `npm run verify`（`audit` → `lint` → `test:coverage` → `build` → `knip` を順次実行）
 - husky フック: **pre-commit = `lint` + staged 分の docs パス参照・UI 文言チェック + 仕様書図解 HTML 追従、pre-push = takt pin ガード + `test:coverage` + `build` + `knip`**（pre-push の本体は [`scripts/pre-push.sh`](scripts/pre-push.sh)。husky はフックを `sh` で起動しシェバンを無視するため、bash 専用構文を `.husky/pre-push` に直接書かない）（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
 - CI 品質ゲート: `npm audit --omit=dev --audit-level=high`（dev 依存は非ブロッキングで別途実行）、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip`
 - 環境変数は Vercel Project Settings へ反映し、本番は WordPress 本番サイトなどの外部連携設定に切り替え
-- GitHub Actions: 上記 cron の手動実行（`hourly-cron.yml` / `content-annotation-summary-cron.yml` の `workflow_dispatch`。定期起動はしない）、CI（audit / lint / test / build / knip + Lark 通知）、`main` 以外への push 時の Auto PR（`develop` は `main` 宛て、それ以外は `develop` 宛て。新規作成時は [`scripts/generate-pr-body.ts`](scripts/generate-pr-body.ts) が diff から本文を LLM 生成し、失敗時は静的テンプレート。`ZAI_API_KEY` を使用）、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
+- GitHub Actions: 上記 cron の手動実行（`hourly-cron.yml` / `daily-import-cron.yml` / `content-annotation-summary-cron.yml` の `workflow_dispatch`。定期起動はしない）、CI（audit / lint / test / build / knip + Lark 通知）、`main` 以外への push 時の Auto PR（`develop` は `main` 宛て、それ以外は `develop` 宛て。新規作成時は [`scripts/generate-pr-body.ts`](scripts/generate-pr-body.ts) が diff から本文を LLM 生成し、失敗時は静的テンプレート。`ZAI_API_KEY` を使用）、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
 - **Supabase スキーマ**: Vercel のデプロイだけでは DB は更新されない。変更は `supabase/migrations/` にコミットし、マイグレーション内にロールバック案をコメントで残す。**本番（共有プロジェクト）への適用タイミングと手順は「セットアップ手順」の Supabase 注意書きに従う。**
 
 ## 📄 ライセンス

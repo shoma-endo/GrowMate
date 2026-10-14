@@ -3,9 +3,9 @@
 ## メタデータ
 
 - 文書名: GSC・GA4・WordPress の毎日の自動取込
-- ステータス: `approved`
+- ステータス: `implemented`
 - 作成日: 2026-10-13
-- 最終更新日: 2026-10-13
+- 最終更新日: 2026-10-14
 - 作成者: shoma-endo（Claude Code で作成）
 - 承認者: 未承認
 - 対象リリース: 未定
@@ -17,12 +17,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: `spec-review 通過`
-- 止まっている理由・待っている人: なし
-- 次の一手: `takt -w spec-to-pr -t "docs/plans/auto-daily-imports-spec.md 仕様書に沿って実装してください"`
-- 未確認事項: なし（残置合意した 🟡 はなし）。
+- 現在の工程: `実装 PR レビュー待ち`
+- 止まっている理由・待っている人: 人間の PR 確認と merge
+- 次の一手: PR 確認と merge。管理者作業（マイグレーション適用・型再生成）と実環境の確認は PR 本文の `## 最終確認（引き継ぎ用）` を参照
+- 未確認事項: PR 本文の `## 最終確認（引き継ぎ用）` を参照（24項目）
 - 関連ブランチ・PR: `feature/auto-daily-imports`
-- 更新日・更新した工程: 2026-10-13・spec-review finalize
+- 更新日・更新した工程: 2026-10-14・spec-to-pr create_pr
 
 ## 1. 背景・目的・成功指標
 
@@ -837,3 +837,4 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 | 2026-10-13 | spec-review audit 2回目の1件を反映（取込済み記事の読み込みを range ページングで全件読む形にする：WordPress の一括取込と GSC の `loadAnnotationUrlMap`） | spec-review | Claude Code（spec-review revise） |
 | 2026-10-13 | spec-review 通過（audit 1回目・2回目の指摘を反映。最終 audit で未解消事項なし） | 仕様レビュー | spec-review |
 | 2026-10-13 | §5 の概算を 7.25〜15.25人日から 7.75〜14.75人日に見直した（EST-004・005・007） | spec-review で作業が増え、Q-010 と D-09 の判定方法が決まって不確実性が減ったため | shoma-endo（Claude Code） |
+| 2026-10-14 | 実装 PR 作成（feature/auto-daily-imports）。日次cron（GSC・GA4・WordPress）の追加、WordPress差分取込、再連携カードを実装 | 仕様に沿った実装 | spec-to-pr |

@@ -126,7 +126,7 @@ async function resolveWpPostIdFromCanonical(
   return null;
 }
 
-async function refreshWpComAccessToken(
+export async function refreshWpComAccessToken(
   userId: string,
   supabase: SupabaseService,
   wpSettings: NonNullable<Awaited<ReturnType<SupabaseService['getWordPressSettingsByUserId']>>>,

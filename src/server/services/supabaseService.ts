@@ -29,6 +29,9 @@ import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc'
 import type { InstagramCredential } from '@/types/instagram';
 import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
+import { asPendingClient, type WordPressAutoImportDatabase, type WordPressAutoImportStatus } from '@/types/database.types.pending';
+import { PAID_FEATURE_ROLES } from '@/types/user';
+import { hasWordPressImportTargetChanged } from '@/server/lib/wordpress-diff-import';
 
 type InstagramCredentialRow = Tables<'instagram_credentials'>;
 type InstagramCredentialInsertRow = TablesInsert<'instagram_credentials'>;
@@ -778,7 +781,8 @@ export class SupabaseService {
   async getWordPressSettingsResultByUserId(
     userId: string
   ): Promise<SupabaseResult<WordPressSettings | null>> {
-    const { data, error } = await this.supabase
+    const client = asPendingClient<WordPressAutoImportDatabase>(this.supabase);
+    const { data, error } = await client
       .from('wordpress_settings')
       .select('*')
       .eq('user_id', userId)
@@ -808,6 +812,8 @@ export class SupabaseService {
       wpRefreshToken: data.wp_refresh_token ?? undefined,
       wpTokenExpiresAt: data.wp_token_expires_at ?? undefined,
       wpContentTypes: normalizeContentTypes(data.wp_content_types as string[] | null),
+      wpImportBaselineAt: data.wp_import_baseline_at,
+      wpAutoImportStatus: data.wp_auto_import_status,
       createdAt: data.created_at ?? undefined,
       updatedAt: data.updated_at ?? undefined,
     });
@@ -828,12 +834,28 @@ export class SupabaseService {
       tokenExpiresAt?: string;
     }
   ): Promise<void> {
-    const payload: Database['public']['Tables']['wordpress_settings']['Insert'] = {
+    const client = asPendingClient<WordPressAutoImportDatabase>(this.supabase);
+    const { data: previous, error: readError } = await client
+      .from('wordpress_settings')
+      .select('wp_type, wp_site_url, wp_site_id, wp_content_types')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (readError) throw new Error(ERROR_MESSAGES.WORDPRESS.SETTINGS_FETCH_FAILED(readError.message));
+    const targetChanged = hasWordPressImportTargetChanged(previous, {
+      wpType: 'wordpress_com',
+      wpSiteUrl: previous?.wp_site_url ?? null,
+      wpSiteId,
+      wpContentTypes: options?.wpContentTypes ?? previous?.wp_content_types ?? null,
+    });
+    const payload: WordPressAutoImportDatabase['public']['Tables']['wordpress_settings']['Insert'] = {
       user_id: userId,
       wp_type: 'wordpress_com',
       wp_client_id: wpClientId,
       wp_client_secret: wpClientSecret, // 注意: 現状は平文で保存されます
       wp_site_id: wpSiteId,
+      ...(targetChanged ? { wp_import_baseline_at: null } : {}),
+      wp_auto_import_status: null,
+      wp_auto_import_status_at: null,
       ...(options?.wpContentTypes && {
         wp_content_types: normalizeContentTypes(options.wpContentTypes) ?? [],
       }),
@@ -849,7 +871,7 @@ export class SupabaseService {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await this.supabase
+    const { error } = await client
       .from('wordpress_settings')
       .upsert(payload, {
         onConflict: 'user_id', // user_id が重複した場合は更新
@@ -872,19 +894,35 @@ export class SupabaseService {
     wpApplicationPassword: string,
     options?: { wpContentTypes?: string[] }
   ): Promise<void> {
-    const payload: Database['public']['Tables']['wordpress_settings']['Insert'] = {
+    const client = asPendingClient<WordPressAutoImportDatabase>(this.supabase);
+    const { data: previous, error: readError } = await client
+      .from('wordpress_settings')
+      .select('wp_type, wp_site_url, wp_site_id, wp_content_types')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (readError) throw new Error(ERROR_MESSAGES.WORDPRESS.SETTINGS_FETCH_FAILED(readError.message));
+    const targetChanged = hasWordPressImportTargetChanged(previous, {
+      wpType: 'self_hosted',
+      wpSiteUrl,
+      wpSiteId: previous?.wp_site_id ?? null,
+      wpContentTypes: options?.wpContentTypes ?? previous?.wp_content_types ?? null,
+    });
+    const payload: WordPressAutoImportDatabase['public']['Tables']['wordpress_settings']['Insert'] = {
       user_id: userId,
       wp_type: 'self_hosted',
       wp_site_url: wpSiteUrl,
       wp_username: wpUsername,
       wp_application_password: wpApplicationPassword, // 注意: 現状は平文で保存されます
+      ...(targetChanged ? { wp_import_baseline_at: null } : {}),
+      wp_auto_import_status: null,
+      wp_auto_import_status_at: null,
       ...(options?.wpContentTypes && {
         wp_content_types: normalizeContentTypes(options.wpContentTypes) ?? [],
       }),
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await this.supabase
+    const { error } = await client
       .from('wordpress_settings')
       .upsert(payload, {
         onConflict: 'user_id', // user_id が重複した場合は更新
@@ -898,10 +936,24 @@ export class SupabaseService {
   }
 
   async updateWordPressContentTypes(userId: string, wpContentTypes: string[]): Promise<void> {
-    const { error } = await this.supabase
+    const client = asPendingClient<WordPressAutoImportDatabase>(this.supabase);
+    const { data: previous, error: readError } = await client
+      .from('wordpress_settings')
+      .select('wp_type, wp_site_url, wp_site_id, wp_content_types')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (readError) throw new Error(ERROR_MESSAGES.WORDPRESS.SETTINGS_FETCH_FAILED(readError.message));
+    const targetChanged = hasWordPressImportTargetChanged(previous, {
+      wpType: previous?.wp_type ?? null,
+      wpSiteUrl: previous?.wp_site_url ?? null,
+      wpSiteId: previous?.wp_site_id ?? null,
+      wpContentTypes,
+    });
+    const { error } = await client
       .from('wordpress_settings')
       .update({
         wp_content_types: normalizeContentTypes(wpContentTypes),
+        ...(targetChanged ? { wp_import_baseline_at: null } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('user_id', userId);
@@ -910,6 +962,80 @@ export class SupabaseService {
       console.error('Error updating WordPress content types:', error);
       throw new Error(`WordPress投稿タイプの更新に失敗しました: ${error.message}`);
     }
+  }
+
+  async advanceWordPressImportBaseline(userId: string, startedAtIso: string): Promise<void> {
+    const { error } = await asPendingClient<WordPressAutoImportDatabase>(this.supabase)
+      .from('wordpress_settings')
+      .update({ wp_import_baseline_at: startedAtIso, updated_at: new Date().toISOString() })
+      .eq('user_id', userId);
+    if (error) throw new Error(ERROR_MESSAGES.WORDPRESS.IMPORT_BASELINE_UPDATE_FAILED(error.message));
+  }
+
+  async recordWordPressAutoImportResult(
+    userId: string,
+    status: WordPressAutoImportStatus
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const { error } = await asPendingClient<WordPressAutoImportDatabase>(this.supabase)
+      .from('wordpress_settings')
+      .update({ wp_auto_import_status: status, wp_auto_import_status_at: now, updated_at: now })
+      .eq('user_id', userId);
+    if (error) throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_RESULT_SAVE_FAILED(error.message));
+  }
+
+  async listContentAnnotationKeys(userId: string): Promise<Array<{
+    id: string;
+    canonical_url: string | null;
+    normalized_url: string | null;
+    wp_post_id: number | null;
+  }>> {
+    const { data, error, truncated } = await this.fetchAllPaged(
+      (from, to) => this.supabase
+        .from('content_annotations')
+        .select('id, canonical_url, normalized_url, wp_post_id', { count: 'exact' })
+        .eq('user_id', userId)
+        .order('id', { ascending: true })
+        .range(from, to),
+      { pageSize: 1000 }
+    );
+    if (error || truncated) {
+      throw new Error(ERROR_MESSAGES.WORDPRESS.ANNOTATION_FETCH_ERROR(error?.message ?? 'truncated'));
+    }
+    return data;
+  }
+
+  async listGscAutoImportTargets(): Promise<string[]> {
+    const { data, error, truncated } = await this.fetchAllPaged(
+      (from, to) => this.supabase
+        .from('gsc_credentials')
+        .select('user_id, users!inner(role)', { count: 'exact' })
+        .not('property_uri', 'is', null)
+        .in('users.role', [...PAID_FEATURE_ROLES])
+        .order('user_id', { ascending: true })
+        .range(from, to),
+      { pageSize: 1000 }
+    );
+    if (error || truncated) {
+      throw new Error(ERROR_MESSAGES.GSC.AUTO_IMPORT_TARGETS_FETCH_FAILED(error?.message ?? 'truncated'));
+    }
+    return data.map(row => row.user_id);
+  }
+
+  async listWordPressAutoImportTargets(): Promise<string[]> {
+    const { data, error, truncated } = await this.fetchAllPaged(
+      (from, to) => this.supabase
+        .from('wordpress_settings')
+        .select('user_id, wp_site_id, wp_site_url, users!inner(role)', { count: 'exact' })
+        .in('users.role', [...PAID_FEATURE_ROLES])
+        .order('user_id', { ascending: true })
+        .range(from, to),
+      { pageSize: 1000 }
+    );
+    if (error || truncated) {
+      throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_TARGETS_FETCH_FAILED(error?.message ?? 'truncated'));
+    }
+    return data.filter(row => row.wp_site_id !== null || row.wp_site_url !== null).map(row => row.user_id);
   }
 
   /**
@@ -1704,23 +1830,27 @@ export class SupabaseService {
     }
   }
 
-  async listGa4SyncTargets(limit: number): Promise<
+  async listGa4SyncTargets(): Promise<
     Array<{
       userId: string;
       propertyId: string;
       lastSyncedAt: string | null;
     }>
   > {
-    const { data, error } = await this.supabase
-      .from('gsc_credentials')
-      .select('user_id, ga4_property_id, ga4_last_synced_at')
-      .not('ga4_property_id', 'is', null)
-      .order('ga4_last_synced_at', { ascending: true, nullsFirst: true })
-      .limit(limit);
+    const { data, error, truncated } = await this.fetchAllPaged(
+      (from, to) => this.supabase
+        .from('gsc_credentials')
+        .select('user_id, ga4_property_id, ga4_last_synced_at, users!inner(role)', { count: 'exact' })
+        .not('ga4_property_id', 'is', null)
+        .in('users.role', [...PAID_FEATURE_ROLES])
+        .order('user_id', { ascending: true })
+        .range(from, to),
+      { pageSize: 1000 }
+    );
 
-    if (error) {
+    if (error || truncated) {
       console.error('Failed to list GA4 sync targets:', error);
-      throw new Error(`GA4同期対象の取得に失敗しました: ${error.message}`);
+      throw new Error(`GA4同期対象の取得に失敗しました: ${error?.message ?? 'truncated'}`);
     }
 
     return (data ?? [])

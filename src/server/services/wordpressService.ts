@@ -17,6 +17,13 @@ import {
   BLOCKED_WORDPRESS_CONTENT_TYPES,
 } from '@/server/services/wordpressContentTypes';
 
+export class WordPressRestFetchError extends Error {
+  constructor(message: string, readonly statuses: number[]) {
+    super(message);
+    this.name = 'WordPressRestFetchError';
+  }
+}
+
 // WordPress.com認証情報
 interface WordPressComAuth {
   accessToken: string;
@@ -495,7 +502,7 @@ export class WordPressService {
   }
 
   public buildRestQueryParams(
-    options: { perPage: number; page: number; status?: string; embed?: boolean }
+    options: { perPage: number; page: number; status?: string; embed?: boolean; modifiedAfter?: string; after?: string }
   ): string {
     const params = new URLSearchParams();
     params.set('per_page', String(options.perPage));
@@ -504,6 +511,8 @@ export class WordPressService {
     if (options.embed !== false) {
       params.set('_embed', 'true');
     }
+    if (options.modifiedAfter !== undefined) params.set('modified_after', options.modifiedAfter);
+    if (options.after !== undefined) params.set('after', options.after);
     return params.toString();
   }
 
@@ -530,9 +539,9 @@ export class WordPressService {
     postType: string,
     page: number,
     perPage: number,
-    options: { status?: string; embed?: boolean } = {}
+    options: { status?: string; embed?: boolean; modifiedAfter?: string; after?: string } = {}
   ): Promise<{ posts: WordPressRestPost[]; total: number }> {
-    const queryOptions: { perPage: number; page: number; status?: string; embed?: boolean } = {
+    const queryOptions: { perPage: number; page: number; status?: string; embed?: boolean; modifiedAfter?: string; after?: string } = {
       perPage,
       page,
     };
@@ -542,10 +551,13 @@ export class WordPressService {
     if (options.embed !== undefined) {
       queryOptions.embed = options.embed;
     }
+    if (options.modifiedAfter !== undefined) queryOptions.modifiedAfter = options.modifiedAfter;
+    if (options.after !== undefined) queryOptions.after = options.after;
 
     const params = this.buildRestQueryParams(queryOptions);
     const { headers, urls } = this.buildRestFetchCandidates(postType, params);
 
+    const statuses: number[] = [];
     let lastStatus = 0;
     let lastErrorText = '';
 
@@ -553,6 +565,7 @@ export class WordPressService {
       try {
         const resp = await fetch(url, { headers, cache: 'no-store' });
         if (!resp.ok) {
+          statuses.push(resp.status);
           lastStatus = resp.status;
           lastErrorText = await resp.text().catch(() => resp.statusText);
           continue;
@@ -570,32 +583,30 @@ export class WordPressService {
 
         return { posts: normalizedPosts, total };
       } catch (error) {
+        statuses.push(0);
         lastStatus = lastStatus || 0;
         lastErrorText = error instanceof Error ? error.message : 'Unknown fetch error';
       }
     }
 
-    throw new Error(
-      `[WordPressService] Failed to fetch ${postType}: HTTP ${lastStatus} ${lastErrorText}`.trim()
+    throw new WordPressRestFetchError(
+      `[WordPressService] Failed to fetch ${postType}: HTTP ${lastStatus} ${lastErrorText}`.trim(),
+      statuses
     );
   }
 
   public async fetchAllContentByTypes(
     postTypes: string[],
-    options: { perPage?: number; maxItems?: number; status?: string } = {}
+    options: { perPage?: number; status?: string; modifiedAfter?: string; after?: string } = {}
   ): Promise<{
     posts: WordPressRestPost[];
     totalsByType: Record<string, number>;
-    wasTruncated: boolean;
-    maxItems: number;
   }> {
     const perPage = Math.min(options.perPage ?? 100, 100);
-    const maxItems = options.maxItems ?? 1000;
     const status = options.status ?? 'publish';
 
     const aggregated: WordPressRestPost[] = [];
     const totalsByType: Record<string, number> = {};
-    let wasTruncated = false;
 
     for (const postTypeRaw of postTypes) {
       const postType = postTypeRaw && postTypeRaw.trim() ? postTypeRaw.trim() : 'posts';
@@ -605,9 +616,11 @@ export class WordPressService {
       let totalForType = 0;
       let hasMore = true;
 
-      while (hasMore && aggregated.length < maxItems) {
+      while (hasMore) {
         const { posts, total } = await this.fetchRestCollection(normalizedType, page, perPage, {
           status,
+          ...(options.modifiedAfter ? { modifiedAfter: options.modifiedAfter } : {}),
+          ...(options.after ? { after: options.after } : {}),
         });
         totalForType = total;
         aggregated.push(...posts);
@@ -618,13 +631,9 @@ export class WordPressService {
 
       totalsByType[normalizedType] = totalForType;
 
-      if (aggregated.length >= maxItems) {
-        wasTruncated = true;
-        break;
-      }
     }
 
-    return { posts: aggregated, totalsByType, wasTruncated, maxItems };
+    return { posts: aggregated, totalsByType };
   }
 }
 

@@ -21,6 +21,37 @@ export function asPendingClient<TDatabase>(
   return client as unknown as SupabaseClient<TDatabase>;
 }
 
+// PROVISIONAL: supabase/migrations/20261014000000_add_wordpress_auto_import_columns.sql
+export type WordPressAutoImportStatus = 'succeeded' | 'auth_expired' | 'temporary_failure';
+type WordPressSettingsTable = Database['public']['Tables']['wordpress_settings'];
+type WordPressSettingsRow = WordPressSettingsTable['Row'] & {
+  wp_import_baseline_at: string | null;
+  wp_auto_import_status: WordPressAutoImportStatus | null;
+  wp_auto_import_status_at: string | null;
+};
+type WordPressSettingsInsert = WordPressSettingsTable['Insert'] & {
+  wp_import_baseline_at?: string | null;
+  wp_auto_import_status?: WordPressAutoImportStatus | null;
+  wp_auto_import_status_at?: string | null;
+};
+type WordPressSettingsUpdate = WordPressSettingsTable['Update'] & {
+  wp_import_baseline_at?: string | null;
+  wp_auto_import_status?: WordPressAutoImportStatus | null;
+  wp_auto_import_status_at?: string | null;
+};
+export type WordPressAutoImportDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables'> & {
+    Tables: Omit<Database['public']['Tables'], 'wordpress_settings'> & {
+      wordpress_settings: {
+        Row: WordPressSettingsRow;
+        Insert: WordPressSettingsInsert;
+        Update: WordPressSettingsUpdate;
+        Relationships: WordPressSettingsTable['Relationships'];
+      };
+    };
+  };
+};
+
 /**
  * PERMANENT: due 抽出 RPC `list_due_ga4_content_evaluations` の戻り値1行。
  *
