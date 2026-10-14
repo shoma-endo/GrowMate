@@ -62,7 +62,7 @@ export class AnalyticsContentService extends SupabaseService {
 
 ## 6. マイグレーション未適用テーブルへの暫定アクセス（Pending Migration Types）
 
-`src/types/database.types.ts`はリモートDBから`npm run supabase:types`で生成される。マイグレーション適用（`supabase db push`）は管理者が手動で行う運用のため、実装時点でマイグレーションがまだリモートに未適用の場合、新規テーブル・新規列は生成型に存在しない。
+`src/types/database.types.ts`はリモートDBから`npm run supabase:types`で生成される。マイグレーション適用は管理者の承認を得て手作業で行う運用（[`rls.md`](rls.md) §4）のため、実装時点でマイグレーションがまだリモートに未適用の場合、新規テーブル・新規列は生成型に存在しない。
 
 **この状態を理由に実装を止めない。** `database.types.ts`は直接編集せず、次のパターンで実装を完了させる。
 

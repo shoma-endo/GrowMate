@@ -229,7 +229,7 @@ npm run dev  # http://localhost:3000
 takt -w grill-to-gherkin  # 対話モード Grill Me を選び、機能の概要を入力する
 ```
 
-> **Supabase 注意**: 本番と開発で同一プロジェクトを共有しています。`npx supabase db push` をリモートに対して実行しないこと。スキーマ変更は `supabase/migrations/` にコミットし、適用は管理者が行います。
+> **Supabase 注意**: 本番と開発で同一プロジェクトを共有しています。`npx supabase db push` を、[`.agents/skills/supabase/rls.md`](.agents/skills/supabase/rls.md) §4 の確認（`migration list --linked` と `--dry-run` で、流れるのが今回のマイグレーションだけであること）と管理者の承認なしにリモートへ実行しないこと。スキーマ変更は `supabase/migrations/` にコミットし、適用は管理者が行うか、管理者の承認を得たエージェントが同じ手順で行います（マイグレーションを適用する CI は無い）。Supabase MCP の `apply_migration` は適用履歴のバージョンがリポとずれるため使いません。
 
 > **GA4コンテンツ評価の運用**: 管理者が `/admin/prompts` で文章化テンプレートを登録したうえで評価を実行する。評価の可否はロール（`admin` / `paid`）とデータ充足で決まり、DB Kill Switch は使わない。
 
