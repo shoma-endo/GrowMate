@@ -33,6 +33,10 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // 日次バッチは実行日で取込範囲（太平洋時間）とユーザーの処理順（rotateForDay）が変わる。
+    // 行の日付 2026-10-12 が範囲に入り、user-1 から処理される日に固定する
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-14T00:00:00.000Z'));
     vi.stubGlobal('fetch', fetchMock);
     mocks.getCredential.mockResolvedValue({
       refreshToken: 'refresh-token',
@@ -50,6 +54,7 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
