@@ -264,7 +264,8 @@ export default function WordPressImportClient() {
               </div>
               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                 <p className="text-sm text-gray-700">
-                  {result.isDiffImport && result.totalPosts === 0
+                  {/* 差分取込では、WordPress が返した候補のうち基準時刻以前のものを「変更なし」で除くので、残りで判定する */}
+                  {result.isDiffImport && result.totalPosts === result.skippedExistingPosts
                     ? '前回の取込以降に公開・更新された記事はありませんでした。'
                     : `WordPressから${result.totalPosts}件の記事を取得しました。`}
                   <br />• 対象タイプ:{' '}

@@ -300,4 +300,34 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
 
     expect(result).toMatchObject({ kind: 'success', stats: { isDiffImport: expectedDiff, totalPosts: 0 } });
   });
+  it('差分取込で WordPress が返した候補がすべて基準時刻以前なら、取得件数と「変更なし」の件数が一致する（画面の0件表示の条件）', async () => {
+    const oldPost = {
+      id: 1,
+      type: 'post',
+      link: 'https://example.com/old',
+      modified_gmt: '2026-10-12T00:00:00',
+      date_gmt: '2026-10-01T00:00:00',
+    };
+    const supabaseService = {
+      getClient: () => ({ from: () => ({ update: mocks.update }) }),
+      listContentAnnotationKeys: vi.fn().mockResolvedValue([]),
+      advanceWordPressImportBaseline: vi.fn().mockResolvedValue(true),
+    } as unknown as SupabaseService;
+    const wpService = {
+      fetchAllContentByTypes: vi.fn().mockResolvedValue({ posts: [oldPost], totalsByType: { posts: 1 }, uniqueIdCountsByType: { posts: 1 } }),
+    } as unknown as WordPressService;
+
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes: ['posts'], wpImportBaselineAt: '2026-10-13T00:00:00.000Z' } as WordPressSettings,
+      wpService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+    });
+
+    expect(result).toMatchObject({
+      kind: 'success',
+      stats: { isDiffImport: true, totalPosts: 1, skippedExistingPosts: 1, newPosts: 0, updatedPosts: 0 },
+    });
+  });
 });
