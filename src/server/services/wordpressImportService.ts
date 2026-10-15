@@ -12,6 +12,8 @@ import type { Database } from '@/types/database.types';
 import type { WordPressNormalizedPost, WordPressSettings } from '@/types/wordpress';
 
 type ImportStats = {
+  /** 前回の取込を基準にした差分取込だったか（false は初回などの全件取得） */
+  isDiffImport: boolean;
   totalPosts: number;
   newPosts: number;
   updatedPosts: number;
@@ -303,6 +305,7 @@ export async function importWordPressContent({
     return {
       kind: 'success',
       stats: {
+        isDiffImport: baseline !== null,
         totalPosts: fetchedCount,
         newPosts: inserts.length,
         updatedPosts: updates.length,

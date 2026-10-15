@@ -27,6 +27,7 @@ const isWordPressAuthError = (errorMessage: string | undefined): boolean => {
 };
 
 interface ImportResult {
+  isDiffImport: boolean;
   totalPosts: number;
   newPosts: number;
   updatedPosts: number;
@@ -85,6 +86,7 @@ export default function WordPressImportClient() {
   const normalizeResult = (data: unknown): ImportResult => {
     if (!data || typeof data !== 'object') {
       return {
+        isDiffImport: false,
         totalPosts: 0,
         newPosts: 0,
         updatedPosts: 0,
@@ -102,6 +104,7 @@ export default function WordPressImportClient() {
 
     const payload = data as Record<string, unknown>;
     return {
+      isDiffImport: payload.isDiffImport === true,
       totalPosts: typeof payload.totalPosts === 'number' ? payload.totalPosts : 0,
       newPosts: typeof payload.newPosts === 'number' ? payload.newPosts : 0,
       updatedPosts: typeof payload.updatedPosts === 'number' ? payload.updatedPosts : 0,
@@ -261,7 +264,10 @@ export default function WordPressImportClient() {
               </div>
               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                 <p className="text-sm text-gray-700">
-                  WordPressから{result.totalPosts}件の記事を取得しました。
+                  {/* 差分取込では、WordPress が返した候補のうち基準時刻以前のものを「変更なし」で除くので、残りで判定する */}
+                  {result.isDiffImport && result.totalPosts === result.skippedExistingPosts
+                    ? '前回の取込以降に公開・更新された記事はありませんでした。'
+                    : `WordPressから${result.totalPosts}件の記事を取得しました。`}
                   <br />• 対象タイプ:{' '}
                   {result.contentTypes.length > 0
                     ? result.contentTypes.map(formatTypeLabel).join(', ')
