@@ -50,6 +50,26 @@ function readInvokeCronWorkflows(): { file: string; source: string }[] {
     .filter(({ source }) => source.includes('scripts/invoke-cron.sh'));
 }
 
+function cronFieldValues(field: string, max: number): number[] {
+  if (field === '*') return Array.from({ length: max }, (_, value) => value);
+  const step = field.match(/^\*\/(\d+)$/);
+  if (step) return Array.from({ length: max }, (_, value) => value).filter(value => value % Number(step[1]) === 0);
+  if (/^\d+$/.test(field) && Number(field) < max) return [Number(field)];
+  throw new Error(`Unsupported cron field: ${field}`);
+}
+
+function dailyTimeSlots(schedule: string): Set<string> {
+  const [minuteField, hourField, day, month, weekday] = schedule.split(' ');
+  if (day !== '*' || month !== '*' || weekday !== '*') {
+    throw new Error(`Unsupported cron calendar field: ${schedule}`);
+  }
+  const slots = new Set<string>();
+  for (const hour of cronFieldValues(hourField ?? '', 24)) {
+    for (const minute of cronFieldValues(minuteField ?? '', 60)) slots.add(`${hour}:${minute}`);
+  }
+  return slots;
+}
+
 describe('cron config consistency', () => {
   it('宣言とGitHub Actions matrixが一致する', () => {
     const declared = Object.values(CRON_CONFIGS)
@@ -98,6 +118,23 @@ describe('cron config consistency', () => {
       left.path.localeCompare(right.path);
 
     expect(vercelCrons.sort(byPath)).toStrictEqual(declaredCrons.sort(byPath));
+  });
+
+  it('全 cron の毎日の起動時刻が重ならない', () => {
+    const configs = Object.values(CRON_CONFIGS).map(config => ({
+      id: config.workflowId,
+      isNewDailyImport: ['gsc-daily-import', 'ga4-daily-sync', 'wordpress-daily-import'].includes(config.workflowId),
+      slots: dailyTimeSlots(config.schedule),
+    }));
+    for (let left = 0; left < configs.length; left += 1) {
+      for (let right = left + 1; right < configs.length; right += 1) {
+        const first = configs[left];
+        const second = configs[right];
+        if (!first || !second) continue;
+        if (!first.isNewDailyImport && !second.isNewDailyImport) continue;
+        expect([...first.slots].some(slot => second.slots.has(slot)), `${first.id} / ${second.id}`).toBe(false);
+      }
+    }
   });
 
   it.each(Object.values(CRON_CONFIGS))(

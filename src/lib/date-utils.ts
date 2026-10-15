@@ -145,6 +145,20 @@ export function formatJstDateISO(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+export function formatPacificDateISO(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find(part => part.type === 'year')?.value;
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+  if (!year || !month || !day) throw new Error('Unable to format Pacific calendar date');
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * タイムスタンプ文字列を JST の YYYY-MM-DD に変換する
  * @param timestamp - ISO 形式などの日時文字列

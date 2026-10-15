@@ -31,7 +31,7 @@ export function isValidUserRole(role: unknown): role is UserRole {
 /**
  * 管理機能（設定・コンテンツ一覧）へのアクセスを許可するロール
  */
-const PAID_FEATURE_ROLES = ['paid', 'admin'] as const;
+export const PAID_FEATURE_ROLES = ['paid', 'admin'] as const;
 
 type PaidFeatureRole = (typeof PAID_FEATURE_ROLES)[number];
 

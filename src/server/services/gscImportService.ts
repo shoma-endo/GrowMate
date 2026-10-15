@@ -13,12 +13,55 @@ import type {
   GscImportOptions,
   GscImportResult,
 } from '@/types/gsc';
+import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
+import { runDailyImportBatch } from '@/server/lib/daily-import-batch';
+import { buildGscDailyImportRange } from '@/server/lib/gsc-import-utils';
 
 class GscImportService {
   private readonly gscService = new GscService();
   private readonly supabaseService = new SupabaseService();
   private readonly queryRowLimit = getGscQueryRowLimit();
   private readonly queryMaxPages = getGscQueryMaxPages();
+
+  async runDailyBatch() {
+    return CRON_DEFINITIONS.gscDailyImport.runBatch(async startedAt => {
+      const userIds = await this.supabaseService.listGscAutoImportTargets();
+      const range = buildGscDailyImportRange(new Date(startedAt));
+      const result = await runDailyImportBatch({
+        source: 'gsc',
+        userIds,
+        startedAt,
+        importUser: async userId => {
+          const { result: imported, pageWriteFailures } = await this.importMetricsWithOutcome(userId, {
+            ...range,
+            searchType: 'web',
+            maxRows: 25_000,
+            dataState: 'all',
+          });
+          if (imported.pageMetricsHitLimit) {
+            console.error('[daily-import:gsc] page metrics reached row limit', { userId, ...range });
+          }
+          const reasons = [
+            ...(pageWriteFailures > 0 ? [`page_metrics_save_failed:${pageWriteFailures}`] : []),
+            ...(imported.querySummary && imported.querySummary.fetchErrorPages > 0
+              ? [`query_fetch_failed:${imported.querySummary.fetchErrorPages}`]
+              : []),
+          ];
+          if (reasons.length > 0) {
+            return { ok: false, reason: reasons.join(',') };
+          }
+          return { ok: true };
+        },
+      });
+      CRON_DEFINITIONS.gscDailyImport.log('info', 'batch_completed', {
+        total: result.total,
+        succeeded: result.succeeded,
+        failed: result.failed,
+        remaining: result.skippedDueToLimit,
+      });
+      return result;
+    });
+  }
 
   private async getAccessContext(userId: string): Promise<{
     accessToken: string;
@@ -43,6 +86,14 @@ class GscImportService {
   }
 
   async importMetrics(userId: string, options: GscImportOptions): Promise<GscImportResult> {
+    const { result } = await this.importMetricsWithOutcome(userId, options);
+    return result;
+  }
+
+  private async importMetricsWithOutcome(
+    userId: string,
+    options: GscImportOptions
+  ): Promise<{ result: GscImportResult; pageWriteFailures: number }> {
     const startDate = options.startDate;
     const endDate = options.endDate;
     const searchType = options.searchType ?? 'web';
@@ -58,11 +109,12 @@ class GscImportService {
       searchType,
       rowLimit: maxRows,
       dimensions: ['date', 'page'],
+      ...(options.dataState ? { dataState: options.dataState } : {}),
     });
 
     const metrics = this.mapSearchRowsToPageMetrics(userId, propertyUri, searchType, rows);
     const matchMap = await this.loadAnnotationUrlMap(userId);
-    const { upserted, skipped, unmatched } = await this.upsertPageMetrics({
+    const { upserted, skipped, unmatched, failedChunks } = await this.upsertPageMetrics({
       userId,
       metrics,
       resolveAnnotationId: normalized => (normalized ? (matchMap.get(normalized) ?? null) : null),
@@ -78,16 +130,20 @@ class GscImportService {
       startDate,
       endDate,
       matchMap,
+      ...(options.dataState ? { dataState: options.dataState } : {}),
     });
 
     return {
-      totalFetched: metrics.length,
-      upserted,
-      skipped,
-      unmatched,
-      evaluated: 0,
-      pageMetricsHitLimit: rows.length >= maxRows,
-      querySummary,
+      result: {
+        totalFetched: metrics.length,
+        upserted,
+        skipped,
+        unmatched,
+        evaluated: 0,
+        pageMetricsHitLimit: rows.length >= maxRows,
+        querySummary,
+      },
+      pageWriteFailures: failedChunks,
     };
   }
 
@@ -159,9 +215,10 @@ class GscImportService {
     metrics: GscPageMetric[];
     resolveAnnotationId: (normalizedUrl: string | null) => string | null;
     countUnmatched: boolean;
-  }): Promise<{ upserted: number; skipped: number; unmatched: number }> {
+  }): Promise<{ upserted: number; skipped: number; unmatched: number; failedChunks: number }> {
     let skipped = 0;
     let unmatched = 0;
+    let failedChunks = 0;
 
     const importedAt = new Date().toISOString();
 
@@ -249,13 +306,14 @@ class GscImportService {
           error: error.message,
         });
         skipped += chunk.length;
+        failedChunks += 1;
         continue;
       }
 
       upserted += chunk.length;
     }
 
-    return { upserted, skipped, unmatched };
+    return { upserted, skipped, unmatched, failedChunks };
   }
 
   async importQueryMetricsForUrl(
@@ -376,6 +434,7 @@ class GscImportService {
     startRow,
     dimensions,
     dimensionFilterGroups,
+      dataState,
   }: {
     accessToken: string;
     propertyUri: string;
@@ -393,6 +452,7 @@ class GscImportService {
         expression: string;
       }>;
     }>;
+    dataState?: 'all';
   }): Promise<GscSearchAnalyticsRow[]> {
     const url = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(propertyUri)}/searchAnalytics/query`;
     const body: Record<string, unknown> = {
@@ -409,6 +469,7 @@ class GscImportService {
     if (dimensionFilterGroups && dimensionFilterGroups.length > 0) {
       body.dimensionFilterGroups = dimensionFilterGroups;
     }
+    if (dataState) body.dataState = dataState;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -468,6 +529,7 @@ class GscImportService {
     endDate,
     matchMap,
     pageUrl,
+    dataState,
   }: {
     userId: string;
     propertyUri: string;
@@ -478,6 +540,7 @@ class GscImportService {
     endDate: string;
     matchMap: Map<string, string>;
     pageUrl?: string;
+    dataState?: 'all';
   }): Promise<{
     fetchedRows: number;
     keptRows: number;
@@ -498,6 +561,7 @@ class GscImportService {
       endDate,
       searchType,
       ...(pageUrl ? { pageUrl } : {}),
+      ...(dataState ? { dataState } : {}),
     });
 
     const skipped = {
@@ -635,6 +699,7 @@ class GscImportService {
     endDate,
     searchType,
     pageUrl,
+    dataState,
   }: {
     accessToken: string;
     propertyUri: string;
@@ -642,6 +707,7 @@ class GscImportService {
     endDate: string;
     searchType: GscSearchType;
     pageUrl?: string;
+    dataState?: 'all';
   }): Promise<{ rows: GscSearchAnalyticsRow[]; hitLimit: boolean; fetchErrorPages: number }> {
     const rows: GscSearchAnalyticsRow[] = [];
     const maxPages = this.queryMaxPages;
@@ -668,6 +734,7 @@ class GscImportService {
               searchType,
               rowLimit,
               startRow,
+              ...(dataState ? { dataState } : {}),
               // dimensions 順に合わせて keys を受け取る
               dimensions: ['date', 'query', 'page'],
               ...(pageUrl
@@ -797,31 +864,14 @@ class GscImportService {
   }
 
   private async loadAnnotationUrlMap(userId: string): Promise<Map<string, string>> {
-    // 1回の select は db-max-rows（1000行）で切れる。読み残した記事の指標は
-    // content_annotation_id = null で upsert され、紐付けが外れるため全件をページングで読む
+    const data = await this.supabaseService.listContentAnnotationKeys(userId);
+
     const map = new Map<string, string>();
-    const pageSize = 1000;
-    for (let from = 0; ; from += pageSize) {
-      const { data, error } = await this.supabaseService
-        .getClient()
-        .from('content_annotations')
-        .select('id, normalized_url')
-        .eq('user_id', userId)
-        .not('normalized_url', 'is', null)
-        .order('id', { ascending: true })
-        .range(from, from + pageSize - 1);
-
-      if (error) {
-        throw new Error(error.message || 'content_annotations の取得に失敗しました');
+    data.forEach(row => {
+      if (row.normalized_url && row.id) {
+        map.set(row.normalized_url, row.id);
       }
-
-      data.forEach(row => {
-        if (row.normalized_url && row.id) {
-          map.set(row.normalized_url, row.id);
-        }
-      });
-      if (data.length < pageSize) break;
-    }
+    });
     return map;
   }
 

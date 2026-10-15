@@ -1,6 +1,36 @@
 import { defineCronDefinitions } from '@/server/lib/cron-observability';
 
 export const CRON_CONFIGS = {
+  gscDailyImport: {
+    name: 'gsc_daily_import',
+    workflowId: 'gsc-daily-import',
+    routePath: '/api/cron/gsc-daily-import',
+    schedule: '5 19 * * *',
+    profile: 'count-batch',
+    maxDuration: 800,
+    maxTime: 820,
+    maxRetries: 1,
+  },
+  ga4DailySync: {
+    name: 'ga4_daily_sync',
+    workflowId: 'ga4-daily-sync',
+    routePath: '/api/cron/ga4-daily-sync',
+    schedule: '25 19 * * *',
+    profile: 'count-batch',
+    maxDuration: 800,
+    maxTime: 820,
+    maxRetries: 1,
+  },
+  wordpressDailyImport: {
+    name: 'wordpress_daily_import',
+    workflowId: 'wordpress-daily-import',
+    routePath: '/api/cron/wordpress-daily-import',
+    schedule: '45 19 * * *',
+    profile: 'count-batch',
+    maxDuration: 800,
+    maxTime: 820,
+    maxRetries: 1,
+  },
   gscEvaluate: {
     name: 'gsc_evaluate',
     workflowId: 'gsc-evaluate',

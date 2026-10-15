@@ -27,6 +27,9 @@ export const ERROR_MESSAGES = {
     SETTINGS_NOT_REGISTERED_DETAIL:
       'WordPress設定が登録されていません。設定画面から連携を完了してください。',
 
+    /** WordPress設定の取得に失敗した場合 */
+    SETTINGS_FETCH_FAILED: (detail: string): string => `WordPress設定の取得に失敗しました: ${detail}`,
+
     /** WordPress投稿タイプの取得に失敗した場合 */
     CONTENT_TYPE_FETCH_FAILED:
       'WordPressの投稿タイプを取得できませんでした。設定ダッシュボードでWordPress接続設定を確認してください。',
@@ -85,9 +88,6 @@ export const ERROR_MESSAGES = {
     /** 既存アノテーション取得エラー */
     ANNOTATION_FETCH_ERROR: (message: string): string => `既存アノテーション取得エラー: ${message}`,
 
-    /** WordPressコンテンツの取得中にエラーが発生 */
-    CONTENT_FETCH_ERROR: 'WordPressコンテンツの取得中にエラーが発生しました',
-
     /** WordPress未連携の記事でAI要約を実行しようとした場合 */
     SUMMARY_SOURCE_NOT_LINKED: 'WordPress連携後に利用できます',
 
@@ -133,11 +133,18 @@ export const ERROR_MESSAGES = {
     /** インポート処理中にエラーが発生 */
     IMPORT_ERROR: 'インポート処理中にエラーが発生しました',
 
-    /** 全ての更新が失敗した場合 */
-    ALL_UPDATES_FAILED: (failures: string[]): string =>
-      `全ての更新が失敗しました: ${failures.slice(0, 3).join('; ')}${
-        failures.length > 3 ? '...' : ''
-      }`,
+    /** 一括取込の一部の記事更新に失敗した場合 */
+    PARTIAL_UPDATES_FAILED: (succeeded: number, failed: number): string =>
+      `記事の更新に一部失敗しました（更新成功 ${succeeded} 件、更新失敗 ${failed} 件）。時間をおいて再実行してください。`,
+
+    /** WordPress差分基準の更新に失敗した場合 */
+    IMPORT_BASELINE_UPDATE_FAILED: (detail: string): string => `WordPress差分基準の更新に失敗しました: ${detail}`,
+
+    /** WordPress自動取込結果の保存に失敗した場合 */
+    AUTO_IMPORT_RESULT_SAVE_FAILED: (detail: string): string => `WordPress自動取込結果の保存に失敗しました: ${detail}`,
+
+    /** WordPress自動取込対象の取得に失敗した場合 */
+    AUTO_IMPORT_TARGETS_FETCH_FAILED: (detail: string): string => `WordPress自動取込対象の取得に失敗しました: ${detail}`,
 
     /** コンテンツの削除に失敗 */
     CONTENT_DELETE_FAILED: 'コンテンツの削除に失敗しました',
@@ -503,6 +510,8 @@ export const ERROR_MESSAGES = {
    * Google Search Console関連のエラーメッセージ
    */
   GSC: {
+    /** GSC自動取込対象の取得に失敗した場合 */
+    AUTO_IMPORT_TARGETS_FETCH_FAILED: (detail: string): string => `GSC自動取込対象の取得に失敗しました: ${detail}`,
     /** Google Search Consoleが未接続の場合 */
     NOT_CONNECTED: 'Google Search Consoleが未接続です',
 

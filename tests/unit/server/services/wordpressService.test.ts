@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { WordPressService } from '@/server/services/wordpressService';
+import { WordPressRestFetchError, WordPressService } from '@/server/services/wordpressService';
 import { normalizeWordPressRestPosts } from '@/server/services/wordpressService';
 
 describe('WordPressService（REST API フォールバック）', () => {
@@ -129,6 +129,92 @@ describe('WordPressService（REST API フォールバック）', () => {
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const service = () => new WordPressService({
+    type: 'self_hosted',
+    selfHostedAuth: { siteUrl: 'https://example.com', username: 'test', applicationPassword: 'secret' },
+  });
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('modified_after と after を +00:00 付きでクエリにする', async () => {
+    fetchMock.mockResolvedValue(new Response('[]', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '0' },
+    }));
+    await service().fetchRestCollection('posts', 1, 100, {
+      modifiedAfter: '2026-10-13T02:00:00+00:00',
+      after: '2026-10-13T02:00:00+00:00',
+    });
+
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(url.searchParams.get('modified_after')).toBe('2026-10-13T02:00:00+00:00');
+    expect(url.searchParams.get('after')).toBe('2026-10-13T02:00:00+00:00');
+    expect(url.searchParams.get('orderby')).toBe('id');
+    expect(url.searchParams.get('order')).toBe('asc');
+  });
+
+  it('要求した投稿タイプごとに、ページ間で重複した記事 ID を除いて数える（id / ID の両方）', async () => {
+    const page = (posts: unknown[]) => new Response(JSON.stringify(posts), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '3' },
+    });
+    fetchMock
+      .mockResolvedValueOnce(page([{ id: 1, type: 'product' }, { ID: 2, type: 'product' }]))
+      .mockResolvedValueOnce(page([{ id: 2, type: 'product' }, { id: 3, type: 'product' }]));
+
+    const result = await service().fetchAllContentByTypes(['products'], { perPage: 2 });
+
+    expect(result.totalsByType).toEqual({ products: 3 });
+    expect(result.uniqueIdCountsByType).toEqual({ products: 3 });
+    expect(result.posts).toHaveLength(4);
+  });
+
+  it('全件取得をページごとに正規化し、件数の集計は生の記事 ID で行う', async () => {
+    const page = (posts: unknown[]) => new Response(JSON.stringify(posts), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '3' },
+    });
+    fetchMock
+      .mockResolvedValueOnce(page([
+        { id: 1, type: 'post', link: 'https://example.com/a', content: { rendered: '<p>本文A</p><img src="a.jpg">' } },
+        { id: 2, type: 'post', link: 'https://example.com/b', content: { rendered: '<p>本文B</p>' } },
+      ]))
+      .mockResolvedValueOnce(page([
+        { id: 3, type: 'post', link: 'https://example.com/c', content: { rendered: '<p>本文C</p>' } },
+      ]));
+
+    const result = await service().fetchAllNormalizedContentByTypes(['posts'], { perPage: 2 });
+
+    expect(result.totalsByType).toEqual({ posts: 3 });
+    expect(result.uniqueIdCountsByType).toEqual({ posts: 3 });
+    expect(result.posts.map(post => [post.id, post.content_text, post.image_count])).toEqual([
+      [1, '本文A', 1],
+      [2, '本文B', 0],
+      [3, '本文C', 0],
+    ]);
+    expect(result.posts[0]).not.toHaveProperty('content');
+  });
+
+  it('失敗した候補の status をすべて例外へ残す', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
+      .mockResolvedValueOnce(new Response('Not Found', { status: 404 }));
+
+    await expect(service().fetchRestCollection('posts', 1, 100)).rejects.toMatchObject({
+      statuses: [401, 404],
+    } satisfies Partial<WordPressRestFetchError>);
   });
 });
 

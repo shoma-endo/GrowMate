@@ -15,6 +15,8 @@ import { GA4_EVALUATION_DEFAULT_DAYS } from '@/lib/ga4-evaluation-period';
 import { addDaysISO } from '@/lib/date-utils';
 import { resolveGa4SyncRange, splitGa4SyncRange } from '@/server/lib/ga4-sync-range';
 import { mergeGa4Reports, type Ga4ReportRow } from '@/server/lib/ga4-report-merge';
+import { runDailyImportBatch } from '@/server/lib/daily-import-batch';
+import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 
 interface ReportFetchResult {
   rows: Ga4ReportRow[];
@@ -38,11 +40,10 @@ type Ga4SyncResult =
 
 interface Ga4SyncOptions {
   backfillDays?: number | undefined;
+  recentRefetchDays?: number | undefined;
 }
 
 class Ga4ImportService {
-  static readonly MAX_USERS_PER_BATCH = 10;
-  static readonly MAX_DURATION_MS = 280_000;
   static readonly MAX_ROWS_PER_REQUEST = 10_000;
   static readonly MAX_TOTAL_ROWS = 50_000;
   /** 初回同期時に遡る日数（当日含まず） */
@@ -62,47 +63,26 @@ class Ga4ImportService {
     return `${dateIso}T00:00:00Z`;
   }
 
-  /**
-   * バッチ処理: 複数ユーザーのGA4データを一括同期
-   * 
-   * **注意**: MVPでは未使用。本番投入後のCron実装時に使用予定。
-   * 現時点では手動同期（`syncUser()`）のみ対応。
-   */
-  async runBatch(): Promise<{
-    processed: number;
-    attempted: number;
-    stoppedReason: 'completed' | 'time_limit' | 'max_users';
-  }> {
-    const startMs = Date.now();
-    const targets = await this.supabaseService.listGa4SyncTargets(
-      Ga4ImportService.MAX_USERS_PER_BATCH
-    );
-
-    let processed = 0;
-    let attempted = 0;
-    let stoppedReason: 'completed' | 'time_limit' | 'max_users' = 'completed';
-
-    for (const target of targets) {
-      attempted += 1;
-      const elapsed = Date.now() - startMs;
-      if (elapsed > Ga4ImportService.MAX_DURATION_MS) {
-        stoppedReason = 'time_limit';
-        break;
-      }
-
-      try {
-        await this.syncUser(target.userId);
-        processed += 1;
-      } catch (error) {
-        console.error('[ga4ImportService] sync failed for user', target.userId, error);
-      }
-      if (processed >= Ga4ImportService.MAX_USERS_PER_BATCH) {
-        stoppedReason = 'max_users';
-        break;
-      }
-    }
-
-    return { processed, attempted, stoppedReason };
+  async runBatch() {
+    return CRON_DEFINITIONS.ga4DailySync.runBatch(async startedAt => {
+      const targets = await this.supabaseService.listGa4SyncTargets();
+      const result = await runDailyImportBatch({
+        source: 'ga4',
+        userIds: targets.map(target => target.userId),
+        startedAt,
+        importUser: async userId => {
+          const synced = await this.syncUser(userId, { recentRefetchDays: 3 });
+          return synced.ok ? { ok: true } : { ok: false, reason: synced.reason };
+        },
+      });
+      CRON_DEFINITIONS.ga4DailySync.log('info', 'batch_completed', {
+        total: result.total,
+        succeeded: result.succeeded,
+        failed: result.failed,
+        remaining: result.skippedDueToLimit,
+      });
+      return result;
+    });
   }
 
   async syncUser(userId: string, options?: Ga4SyncOptions): Promise<Ga4SyncResult> {
@@ -127,6 +107,7 @@ class Ga4ImportService {
       lastSyncedDate,
       initialSyncDays: Ga4ImportService.INITIAL_SYNC_DAYS,
       backfillDays: options?.backfillDays,
+      recentRefetchDays: options?.recentRefetchDays,
     });
 
     if (!syncRange.ok) {
