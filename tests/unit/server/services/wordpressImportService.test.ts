@@ -75,7 +75,7 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
       siteUrl: null,
       siteId: null,
     });
-    expect(result).toMatchObject({ kind: 'success', stats: { totalPosts: 1, updatedPosts: 1 } });
+    expect(result).toMatchObject({ kind: 'success', stats: { isDiffImport: true, totalPosts: 1, updatedPosts: 1 } });
   });
 
   it.each([
@@ -114,7 +114,7 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
       startedAt: '2026-10-14T02:00:00.000Z',
     });
 
-    expect(result.kind).toBe('success');
+    expect(result).toMatchObject({ kind: 'success', stats: { isDiffImport: false } });
     if (shouldAdvance) {
       expect(advanceBaseline).toHaveBeenCalledWith('user-1', '2026-10-14T02:00:00.000Z', {
         baselineAt: null,
@@ -271,5 +271,33 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     expect(upsertSizes).toEqual([500, 500]);
     expect(update).not.toHaveBeenCalled();
     expect(advanceBaseline).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['前回の取込以降の記事が0件の差分取込', ['posts'], true],
+    // 投稿タイプを自動検出した回は基準を捨てて全件取得になるので、差分取込ではない
+    ['投稿タイプを自動検出した回', [], false],
+  ])('%sでは isDiffImport を取得の方法どおりに返す', async (_label, wpContentTypes, expectedDiff) => {
+    const fetchAll = vi.fn().mockResolvedValue({ posts: [], totalsByType: {}, uniqueIdCountsByType: {} });
+    const supabaseService = {
+      getClient: () => ({ from: () => ({ update: mocks.update }) }),
+      listContentAnnotationKeys: vi.fn().mockResolvedValue([]),
+      updateWordPressContentTypes: vi.fn().mockResolvedValue(undefined),
+      advanceWordPressImportBaseline: vi.fn().mockResolvedValue(true),
+    } as unknown as SupabaseService;
+    const wpService = {
+      fetchAvailableContentTypes: vi.fn().mockResolvedValue({ success: true, data: ['posts'] }),
+      fetchAllContentByTypes: fetchAll,
+      fetchAllNormalizedContentByTypes: fetchAll,
+    } as unknown as WordPressService;
+
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes, wpImportBaselineAt: '2026-10-13T00:00:00.000Z' } as WordPressSettings,
+      wpService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+    });
+
+    expect(result).toMatchObject({ kind: 'success', stats: { isDiffImport: expectedDiff, totalPosts: 0 } });
   });
 });
