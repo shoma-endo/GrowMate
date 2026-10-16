@@ -38,9 +38,9 @@ jobs:
             path: /api/cron/wordpress-daily-import
             profile: count-batch
             interval: daily
-            maxTime: 820
+            maxTime: 1820
             maxRetries: 1
-            timeoutMinutes: 20
+            timeoutMinutes: 35
     concurrency:
       group: daily-import-cron-${{ matrix.id }}
       cancel-in-progress: false

@@ -58,4 +58,29 @@ describe('runDailyImportBatch (auto-daily-imports-spec §6)', () => {
     expect(await runDay(0)).toEqual(['one']);
     expect(await runDay(day)).toEqual(['two']);
   });
+  it('各ユーザーの取込に、バッチ開始＋時間予算を締め切りとして渡す（予算は取込元ごとに指定できる）', async () => {
+    const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
+    vi.spyOn(Date, 'now').mockReturnValue(5000);
+    await runDailyImportBatch({ source: 'wordpress', userIds: ['one'], startedAt: 5000, importUser, timeBudgetMs: 1_700_000 });
+    await runDailyImportBatch({ source: 'gsc', userIds: ['one'], startedAt: 5000, importUser });
+
+    expect(importUser.mock.calls).toEqual([
+      ['one', 5000 + 1_700_000],
+      ['one', 5000 + DAILY_IMPORT_TIME_BUDGET_MS],
+    ]);
+  });
+
+  it('時間予算を指定すると、その予算で残りのユーザーを打ち切る', async () => {
+    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(1_000_000).mockReturnValueOnce(1_500_000);
+    const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
+    const result = await runDailyImportBatch({
+      source: 'wordpress', userIds: ['one', 'two', 'three'], startedAt: 0, importUser, timeBudgetMs: 1_700_000,
+    });
+
+    // 共通の700秒なら2人目で打ち切られるが、1700秒の予算では続ける
+    expect(importUser.mock.calls.map(([userId, deadlineAt]) => [userId, deadlineAt])).toEqual([
+      ['one', 1_700_000], ['two', 1_700_000], ['three', 1_700_000],
+    ]);
+    expect(result.skippedDueToLimit).toBe(0);
+  });
 });

@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { WordPressRestFetchError, WordPressService } from '@/server/services/wordpressService';
+import { WordPressImportDeadlineError, WordPressRestFetchError, WordPressService } from '@/server/services/wordpressService';
 import { normalizeWordPressRestPosts } from '@/server/services/wordpressService';
 
 describe('WordPressService（REST API フォールバック）', () => {
@@ -205,6 +205,66 @@ describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () =
       [3, '本文C', 0],
     ]);
     expect(result.posts[0]).not.toHaveProperty('content');
+  });
+
+  it('各ページの取得にタイムアウトの signal を付ける', async () => {
+    fetchMock.mockResolvedValue(new Response('[]', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '0' },
+    }));
+    await service().fetchRestCollection('posts', 1, 100);
+
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('締め切りを過ぎていたら、次のページを取らずに WordPressImportDeadlineError で打ち切る', async () => {
+    const page = (ids: number[]) => new Response(JSON.stringify(ids.map(id => ({ id, type: 'post' }))), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '4' },
+    });
+    fetchMock.mockResolvedValueOnce(page([1, 2]));
+    // 1ページ目（ページ前・候補前・応答待ちの上限の計算）は締め切り前、2ページ目の前で過ぎる
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValue(2000);
+
+    await expect(service().fetchAllNormalizedContentByTypes(['posts'], { perPage: 2, deadlineAt: 2000 }))
+      .rejects.toBeInstanceOf(WordPressImportDeadlineError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    now.mockRestore();
+  });
+
+  it('応答待ちのタイムアウトは status 0 として次の候補へ進み、全候補が失敗したら例外にまとめる', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'))
+      .mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
+
+    await expect(service().fetchRestCollection('posts', 1, 100)).rejects.toMatchObject({
+      statuses: [0, 0],
+    } satisfies Partial<WordPressRestFetchError>);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('候補 URL を試す途中で締め切りを過ぎたら、次の候補を試さずに打ち切る', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('Forbidden', { status: 403 }));
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValue(9000);
+
+    await expect(service().fetchRestCollection('posts', 1, 100, { deadlineAt: 5000 }))
+      .rejects.toBeInstanceOf(WordPressImportDeadlineError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    now.mockRestore();
+  });
+
+  it('最後の候補の応答待ちを締め切りで打ち切ったときは、取得の失敗ではなく締め切りとして返す', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('Forbidden', { status: 403 }))
+      .mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
+    // 1つ目と2つ目の候補の前は締め切り前、ループを抜けた時点で過ぎている
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValue(5000);
+
+    await expect(service().fetchRestCollection('posts', 1, 100, { deadlineAt: 5000 }))
+      .rejects.toBeInstanceOf(WordPressImportDeadlineError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    now.mockRestore();
   });
 
   it('失敗した候補の status をすべて例外へ残す', async () => {

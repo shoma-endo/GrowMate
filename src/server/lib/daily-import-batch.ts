@@ -26,21 +26,25 @@ export async function runDailyImportBatch({
   userIds,
   startedAt,
   importUser,
+  timeBudgetMs = DAILY_IMPORT_TIME_BUDGET_MS,
 }: {
   source: 'gsc' | 'ga4' | 'wordpress';
   userIds: string[];
   startedAt: number;
-  importUser: (userId: string) => Promise<{ ok: true } | { ok: false; reason: string }>;
+  /** deadlineAt（epoch ms）を受け取る取込は、それを超えないように途中で打ち切る */
+  importUser: (userId: string, deadlineAt: number) => Promise<{ ok: true } | { ok: false; reason: string }>;
+  /** route の maxDuration より、打ち切り後の後始末（結果の記録・ログ）の分だけ短くする */
+  timeBudgetMs?: number;
 }): Promise<DailyImportBatchResult> {
   let succeeded = 0;
   let failed = 0;
   let attempted = 0;
 
   for (const userId of rotateForDay(userIds, startedAt)) {
-    if (Date.now() - startedAt >= DAILY_IMPORT_TIME_BUDGET_MS) break;
+    if (Date.now() - startedAt >= timeBudgetMs) break;
     attempted += 1;
     try {
-      const result = await importUser(userId);
+      const result = await importUser(userId, startedAt + timeBudgetMs);
       if (result.ok) {
         succeeded += 1;
       } else {

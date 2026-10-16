@@ -23,4 +23,5 @@ export async function GET(request: NextRequest) {
 }
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 800;
+// 記事の多いサイトの初回全件取込を1回で終えるため、Pro の拡張上限（ベータ）を使う
+export const maxDuration = 1800;

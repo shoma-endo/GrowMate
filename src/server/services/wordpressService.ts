@@ -24,6 +24,27 @@ export class WordPressRestFetchError extends Error {
   }
 }
 
+/** 取込の締め切りを過ぎたので、次のページの取得や次の書き込みをせずに打ち切った */
+export class WordPressImportDeadlineError extends Error {
+  constructor() {
+    super('WordPress import stopped at the deadline');
+    this.name = 'WordPressImportDeadlineError';
+  }
+}
+
+export function assertBeforeDeadline(deadlineAt: number | undefined): void {
+  if (deadlineAt !== undefined && Date.now() >= deadlineAt) throw new WordPressImportDeadlineError();
+}
+
+// 1リクエストの応答を待つ上限。応答しないサイトで残り時間を使い切らないため
+const REST_FETCH_TIMEOUT_MS = 60_000;
+
+/** 締め切りがあれば、その時刻を越えて待たない */
+function restFetchSignal(deadlineAt: number | undefined): AbortSignal {
+  const remaining = deadlineAt === undefined ? REST_FETCH_TIMEOUT_MS : deadlineAt - Date.now();
+  return AbortSignal.timeout(Math.max(1, Math.min(REST_FETCH_TIMEOUT_MS, remaining)));
+}
+
 // WordPress.com認証情報
 interface WordPressComAuth {
   accessToken: string;
@@ -396,7 +417,7 @@ export class WordPressService {
     return this.baseUrl;
   }
 
-  public async fetchAvailableContentTypes(): Promise<WordPressApiResult<string[]>> {
+  public async fetchAvailableContentTypes(deadlineAt?: number): Promise<WordPressApiResult<string[]>> {
     const headers = this.getRestHeaders();
     const urls = new Set<string>();
 
@@ -412,8 +433,9 @@ export class WordPressService {
     let lastErrorText = '';
 
     for (const url of urls) {
+      assertBeforeDeadline(deadlineAt);
       try {
-        const response = await fetch(url, { headers, cache: 'no-store' });
+        const response = await fetch(url, { headers, cache: 'no-store', signal: restFetchSignal(deadlineAt) });
         if (!response.ok) {
           lastStatus = response.status;
           lastErrorText = await response.text().catch(() => response.statusText);
@@ -494,6 +516,8 @@ export class WordPressService {
       }
     }
 
+    // 締め切りで応答待ちを打ち切った場合は、取得の失敗ではなく締め切りとして返す
+    assertBeforeDeadline(deadlineAt);
     const message = `[WordPressService] 投稿タイプの取得に失敗しました: HTTP ${lastStatus} ${lastErrorText}`.trim();
     return {
       success: false,
@@ -542,7 +566,7 @@ export class WordPressService {
     postType: string,
     page: number,
     perPage: number,
-    options: { status?: string; embed?: boolean; modifiedAfter?: string; after?: string } = {}
+    options: { status?: string; embed?: boolean; modifiedAfter?: string; after?: string; deadlineAt?: number } = {}
   ): Promise<{ posts: WordPressRestPost[]; total: number }> {
     const queryOptions: { perPage: number; page: number; status?: string; embed?: boolean; modifiedAfter?: string; after?: string } = {
       perPage,
@@ -565,8 +589,9 @@ export class WordPressService {
     let lastErrorText = '';
 
     for (const url of urls) {
+      assertBeforeDeadline(options.deadlineAt);
       try {
-        const resp = await fetch(url, { headers, cache: 'no-store' });
+        const resp = await fetch(url, { headers, cache: 'no-store', signal: restFetchSignal(options.deadlineAt) });
         if (!resp.ok) {
           statuses.push(resp.status);
           lastStatus = resp.status;
@@ -592,6 +617,8 @@ export class WordPressService {
       }
     }
 
+    // 締め切りで応答待ちを打ち切った場合は、取得の失敗ではなく締め切りとして返す
+    assertBeforeDeadline(options.deadlineAt);
     throw new WordPressRestFetchError(
       `[WordPressService] Failed to fetch ${postType}: HTTP ${lastStatus} ${lastErrorText}`.trim(),
       statuses
@@ -638,10 +665,12 @@ export class WordPressService {
       const idsForType = new Set<string>();
 
       while (hasMore) {
+        assertBeforeDeadline(options.deadlineAt);
         const { posts, total } = await this.fetchRestCollection(normalizedType, page, perPage, {
           status,
           ...(options.modifiedAfter ? { modifiedAfter: options.modifiedAfter } : {}),
           ...(options.after ? { after: options.after } : {}),
+          ...(options.deadlineAt !== undefined ? { deadlineAt: options.deadlineAt } : {}),
         });
         totalForType = total;
         aggregated.push(...mapPage(posts));
@@ -663,7 +692,14 @@ export class WordPressService {
   }
 }
 
-type FetchAllContentOptions = { perPage?: number; status?: string; modifiedAfter?: string; after?: string };
+type FetchAllContentOptions = {
+  perPage?: number;
+  status?: string;
+  modifiedAfter?: string;
+  after?: string;
+  /** epoch ms。各ページを取る前に確かめ、過ぎていたら WordPressImportDeadlineError */
+  deadlineAt?: number;
+};
 
 type FetchAllContentResult<T> = {
   posts: T[];
