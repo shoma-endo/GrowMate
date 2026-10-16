@@ -9,6 +9,8 @@ import { buildWordPressServiceFromSettings } from '@/server/services/wordpressCo
 import { importWordPressContent } from '@/server/services/wordpressImportService';
 import { SupabaseService } from '@/server/services/supabaseService';
 
+const MANUAL_IMPORT_TIME_BUDGET_MS = 700_000;
+
 export async function runWordpressBulkImport() {
   try {
     const authResult = await authMiddleware();
@@ -43,6 +45,8 @@ export async function runWordpressBulkImport() {
       wpService: context.service,
       supabaseService,
       startedAt: new Date().toISOString(),
+      // ページの maxDuration（800秒）で強制終了すると結果を返せないので、その手前で打ち切る
+      deadlineAt: Date.now() + MANUAL_IMPORT_TIME_BUDGET_MS,
     });
     if (result.kind === 'failure') return { success: false, error: result.error };
 

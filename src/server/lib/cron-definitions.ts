@@ -27,8 +27,8 @@ export const CRON_CONFIGS = {
     routePath: '/api/cron/wordpress-daily-import',
     schedule: '45 19 * * *',
     profile: 'count-batch',
-    maxDuration: 800,
-    maxTime: 820,
+    maxDuration: 1800,
+    maxTime: 1820,
     maxRetries: 1,
   },
   gscEvaluate: {

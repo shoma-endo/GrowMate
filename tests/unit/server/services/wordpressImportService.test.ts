@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { SupabaseService } from '@/server/services/supabaseService';
 import { normalizeWordPressRestPosts, type WordPressService } from '@/server/services/wordpressService';
 import type { WordPressSettings } from '@/types/wordpress';
@@ -329,5 +330,81 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
       kind: 'success',
       stats: { isDiffImport: true, totalPosts: 1, skippedExistingPosts: 1, newPosts: 0, updatedPosts: 0 },
     });
+  });
+  it('書き込みの途中で締め切りを過ぎたら、残りを書かずに一時的な失敗で終え、基準を進めない', async () => {
+    const upsertSizes: number[] = [];
+    const update = vi.fn();
+    const advanceBaseline = vi.fn();
+    const client = {
+      from: () => ({
+        upsert: (rows: Array<{ canonical_url: string }>) => {
+          upsertSizes.push(rows.length);
+          return { select: () => Promise.resolve({ data: rows.map(row => ({ canonical_url: row.canonical_url, wp_post_title: 'Title' })), error: null }) };
+        },
+        update,
+      }),
+    };
+    const supabaseService = {
+      getClient: () => client,
+      listContentAnnotationKeys: vi.fn().mockResolvedValue([
+        { id: 'annotation-1', canonical_url: 'https://example.com/p/1', normalized_url: null, wp_post_id: 1 },
+      ]),
+      advanceWordPressImportBaseline: advanceBaseline,
+    } as unknown as SupabaseService;
+    const total = 1001;
+    const wpService = {
+      fetchAllNormalizedContentByTypes: vi.fn().mockResolvedValue({
+        posts: normalizeWordPressRestPosts(Array.from({ length: total }, (_, i) => ({
+          id: i + 1,
+          type: 'post',
+          link: `https://example.com/p/${i + 1}`,
+          title: { rendered: 'Title' },
+        }))),
+        totalsByType: { posts: total },
+        uniqueIdCountsByType: { posts: total },
+      }),
+    } as unknown as WordPressService;
+    // 1回目の新規書き込みの前は締め切り前、2回目の前で締め切りを過ぎる
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValue(5000);
+
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes: ['posts'], wpImportBaselineAt: null } as WordPressSettings,
+      wpService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+      deadlineAt: 5000,
+    });
+    now.mockRestore();
+
+    expect(result).toEqual({
+      kind: 'failure',
+      failure: 'temporary_failure',
+      error: ERROR_MESSAGES.WORDPRESS.IMPORT_TIMED_OUT,
+    });
+    expect(upsertSizes).toEqual([500]);
+    expect(update).not.toHaveBeenCalled();
+    expect(advanceBaseline).not.toHaveBeenCalled();
+    expect(wpService.fetchAllNormalizedContentByTypes).toHaveBeenCalledWith(['posts'], { perPage: 100, deadlineAt: 5000 });
+  });
+  it('投稿タイプの自動検出にも締め切りを渡し、締め切りで打ち切られたら時間切れの案内で終える', async () => {
+    const { WordPressImportDeadlineError } = await import('@/server/services/wordpressService');
+    const fetchAvailableContentTypes = vi.fn().mockRejectedValue(new WordPressImportDeadlineError());
+    const supabaseService = {
+      getClient: () => ({ from: () => ({ update: mocks.update }) }),
+      advanceWordPressImportBaseline: vi.fn(),
+    } as unknown as SupabaseService;
+
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes: [], wpImportBaselineAt: null } as unknown as WordPressSettings,
+      wpService: { fetchAvailableContentTypes } as unknown as WordPressService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+      deadlineAt: 5000,
+    });
+
+    expect(fetchAvailableContentTypes).toHaveBeenCalledWith(5000);
+    expect(result).toEqual({ kind: 'failure', failure: 'temporary_failure', error: ERROR_MESSAGES.WORDPRESS.IMPORT_TIMED_OUT });
   });
 });

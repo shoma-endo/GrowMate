@@ -1,13 +1,18 @@
 import { normalizeCategories, normalizeCategoryNames, normalizeText, parseWpPostId } from '@/lib/utils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
+import { CRON_CONFIGS, CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 import { runDailyImportBatch } from '@/server/lib/daily-import-batch';
 import { classifyWordPressImportFailure, isChangedSinceBaseline } from '@/server/lib/wordpress-diff-import';
 import { normalizeContentType, normalizeContentTypes } from '@/server/services/wordpressContentTypes';
 import { buildWordPressServiceFromSettings } from '@/server/services/wordpressContext';
 import { resolveWpComAccessToken } from '@/server/services/wordpressContentSync';
 import { SupabaseService } from '@/server/services/supabaseService';
-import { normalizeWordPressRestPosts, WordPressService } from '@/server/services/wordpressService';
+import {
+  assertBeforeDeadline,
+  normalizeWordPressRestPosts,
+  WordPressImportDeadlineError,
+  WordPressService,
+} from '@/server/services/wordpressService';
 import type { Database } from '@/types/database.types';
 import type { WordPressNormalizedPost, WordPressSettings } from '@/types/wordpress';
 
@@ -47,6 +52,14 @@ type ImportResult =
 const INSERT_BATCH_SIZE = 500;
 const UPDATE_CONCURRENCY = 20;
 
+/**
+ * 日次 cron の時間予算。route の maxDuration から、締め切り後に走りうる書き込み1回分と、
+ * 結果の記録・完了ログの分を残す（WordPress への取得は締め切りまでで打ち切られる）。
+ * 上限：1人の全件取込がこの予算を超えるサイトは毎回打ち切られて終わらない。その場合は
+ * 全件取込を途中から再開できるようにする（仕様 R-004）。
+ */
+const WORDPRESS_DAILY_IMPORT_TIME_BUDGET_MS = (CRON_CONFIGS.wordpressDailyImport.maxDuration - 100) * 1000;
+
 interface ExistingAnnotation {
   id: string;
   canonical_url: string | null;
@@ -62,7 +75,8 @@ function offsetDate(value: string): string {
 async function fetchImportPosts(
   wpService: WordPressService,
   contentTypes: string[],
-  baseline: string | null
+  baseline: string | null,
+  deadlineAt: number | undefined
 ): Promise<{
   posts: WordPressNormalizedPost[];
   fetchedCount: number;
@@ -74,7 +88,7 @@ async function fetchImportPosts(
 }> {
   if (!baseline) {
     const { posts: normalizedPosts, totalsByType, uniqueIdCountsByType } =
-      await wpService.fetchAllNormalizedContentByTypes(contentTypes, { perPage: 100 });
+      await wpService.fetchAllNormalizedContentByTypes(contentTypes, { perPage: 100, ...(deadlineAt !== undefined ? { deadlineAt } : {}) });
     const fetchedByType: Record<string, number> = {};
     for (const post of normalizedPosts) {
       const type = normalizeContentType(post.post_type ?? 'posts');
@@ -96,8 +110,8 @@ async function fetchImportPosts(
   const queryDate = offsetDate(baseline);
   const results = await Promise.all(contentTypes.flatMap(async contentType => {
     const [modified, published] = await Promise.all([
-      wpService.fetchAllContentByTypes([contentType], { perPage: 100, modifiedAfter: queryDate }),
-      wpService.fetchAllContentByTypes([contentType], { perPage: 100, after: queryDate }),
+      wpService.fetchAllContentByTypes([contentType], { perPage: 100, modifiedAfter: queryDate, ...(deadlineAt !== undefined ? { deadlineAt } : {}) }),
+      wpService.fetchAllContentByTypes([contentType], { perPage: 100, after: queryDate, ...(deadlineAt !== undefined ? { deadlineAt } : {}) }),
     ]);
     return { contentType, posts: [...modified.posts, ...published.posts], total: Math.max(
       modified.totalsByType[contentType] ?? 0,
@@ -143,18 +157,21 @@ export async function importWordPressContent({
   wpService,
   supabaseService,
   startedAt,
+  deadlineAt,
 }: {
   userId: string;
   settings: WordPressSettings;
   wpService: WordPressService;
   supabaseService: SupabaseService;
   startedAt: string;
+  /** epoch ms。過ぎたら次のページの取得や次の書き込みをせずに一時的な失敗で終える（基準は進めない） */
+  deadlineAt?: number;
 }): Promise<ImportResult> {
   try {
     let contentTypes = normalizeContentTypes(settings.wpContentTypes);
     let baseline = settings.wpImportBaselineAt ?? null;
     if (contentTypes.length === 0) {
-      const fetchedTypes = await wpService.fetchAvailableContentTypes();
+      const fetchedTypes = await wpService.fetchAvailableContentTypes(deadlineAt);
       if (!fetchedTypes.success || !Array.isArray(fetchedTypes.data)) {
         const error = fetchedTypes.error || ERROR_MESSAGES.WORDPRESS.CONTENT_TYPE_FETCH_FAILED;
         console.error('[wordpress-import] content type discovery failed', { userId, error });
@@ -169,7 +186,7 @@ export async function importWordPressContent({
     }
 
     const { posts, fetchedCount, fetchedByType, totalsByType, skippedExistingByType, incompleteTypes } =
-      await fetchImportPosts(wpService, contentTypes, baseline);
+      await fetchImportPosts(wpService, contentTypes, baseline, deadlineAt);
     const skippedExistingPosts = Object.values(skippedExistingByType).reduce((sum, count) => sum + count, 0);
     const keys = await supabaseService.listContentAnnotationKeys(userId);
     const existingByCanonical = new Map<string, ExistingAnnotation>();
@@ -244,6 +261,7 @@ export async function importWordPressContent({
     let insertedPosts = 0;
     let backfilledTitles = 0;
     for (let index = 0; index < inserts.length; index += INSERT_BATCH_SIZE) {
+      assertBeforeDeadline(deadlineAt);
       const { data, error } = await supabaseService.getClient()
         .from('content_annotations')
         .upsert(inserts.slice(index, index + INSERT_BATCH_SIZE), { onConflict: 'user_id,wp_post_id', ignoreDuplicates: true })
@@ -266,6 +284,7 @@ export async function importWordPressContent({
 
     const updateResults = [];
     for (let index = 0; index < updates.length; index += UPDATE_CONCURRENCY) {
+      assertBeforeDeadline(deadlineAt);
       updateResults.push(...await Promise.all(updates.slice(index, index + UPDATE_CONCURRENCY).map(({ id, data }) =>
         supabaseService.getClient().from('content_annotations').update(data).eq('id', id).eq('user_id', userId)
       )));
@@ -331,7 +350,9 @@ export async function importWordPressContent({
     return {
       kind: 'failure',
       failure,
-      error: ERROR_MESSAGES.WORDPRESS.IMPORT_ERROR,
+      error: error instanceof WordPressImportDeadlineError
+        ? ERROR_MESSAGES.WORDPRESS.IMPORT_TIMED_OUT
+        : ERROR_MESSAGES.WORDPRESS.IMPORT_ERROR,
     };
   }
 }
@@ -346,20 +367,28 @@ class WordPressImportService {
         source: 'wordpress',
         userIds,
         startedAt: startedAtMs,
-        importUser: async userId => {
+        timeBudgetMs: WORDPRESS_DAILY_IMPORT_TIME_BUDGET_MS,
+        importUser: async (userId, deadlineAt) => {
           const settings = await this.supabaseService.getWordPressSettingsByUserId(userId);
           if (!settings) return { ok: false, reason: 'settings_missing' };
           let tokenFailure: 'auth_expired' | 'temporary_failure' | null = null;
           if (settings.wpType === 'wordpress_com') {
-            const resolved = await resolveWpComAccessToken(userId, this.supabaseService, settings);
-            if ('failure' in resolved) tokenFailure = resolved.failure;
-            else settings.wpAccessToken = resolved.accessToken;
+            const tokenSignal = AbortSignal.timeout(Math.max(1, deadlineAt - Date.now()));
+            try {
+              const resolved = await resolveWpComAccessToken(userId, this.supabaseService, settings, tokenSignal);
+              if ('failure' in resolved) tokenFailure = resolved.failure;
+              else settings.wpAccessToken = resolved.accessToken;
+            } catch (error) {
+              // 締め切りでトークン更新を打ち切った（refreshWpComToken は中断を投げ直す）。結果を記録して次へ進む
+              if (!tokenSignal.aborted) throw error;
+              tokenFailure = 'temporary_failure';
+            }
           }
           const context = tokenFailure
             ? null
             : buildWordPressServiceFromSettings(settings, () => undefined);
           const imported = context?.success
-            ? await importWordPressContent({ userId, settings, wpService: context.service, supabaseService: this.supabaseService, startedAt: new Date(startedAtMs).toISOString() })
+            ? await importWordPressContent({ userId, settings, wpService: context.service, supabaseService: this.supabaseService, startedAt: new Date(startedAtMs).toISOString(), deadlineAt })
             : {
                 kind: 'failure' as const,
                 failure: tokenFailure ?? classifyWordPressImportFailure(null),

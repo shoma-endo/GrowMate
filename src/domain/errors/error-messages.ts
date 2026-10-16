@@ -133,6 +133,10 @@ export const ERROR_MESSAGES = {
     /** インポート処理中にエラーが発生 */
     IMPORT_ERROR: 'インポート処理中にエラーが発生しました',
 
+    /** 記事が多く、画面からの一括取込が時間内に終わらなかった場合 */
+    IMPORT_TIMED_OUT:
+      '記事が多いため、時間内に取り込み切れませんでした。有料プランでは毎朝の自動取込で取り込みます。',
+
     /** 一括取込の一部の記事更新に失敗した場合 */
     PARTIAL_UPDATES_FAILED: (succeeded: number, failed: number): string =>
       `記事の更新に一部失敗しました（更新成功 ${succeeded} 件、更新失敗 ${failed} 件）。時間をおいて再実行してください。`,
