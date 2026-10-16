@@ -188,7 +188,9 @@ export async function importWordPressContent({
     const { posts, fetchedCount, fetchedByType, totalsByType, skippedExistingByType, incompleteTypes } =
       await fetchImportPosts(wpService, contentTypes, baseline, deadlineAt);
     const skippedExistingPosts = Object.values(skippedExistingByType).reduce((sum, count) => sum + count, 0);
+    assertBeforeDeadline(deadlineAt);
     const keys = await supabaseService.listContentAnnotationKeys(userId);
+    assertBeforeDeadline(deadlineAt);
     const existingByCanonical = new Map<string, ExistingAnnotation>();
     const existingByPostId = new Map<number, ExistingAnnotation>();
     for (const row of keys) {

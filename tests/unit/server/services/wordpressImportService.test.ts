@@ -364,8 +364,8 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
         uniqueIdCountsByType: { posts: total },
       }),
     } as unknown as WordPressService;
-    // 1回目の新規書き込みの前は締め切り前、2回目の前で締め切りを過ぎる
-    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValue(5000);
+    // 取得後・キー読み込み後・1回目の新規書き込みの前は締め切り前、2回目の前で締め切りを過ぎる
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValue(5000);
 
     const result = await importWordPressContent({
       userId: 'user-1',
@@ -406,5 +406,30 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
 
     expect(fetchAvailableContentTypes).toHaveBeenCalledWith(5000);
     expect(result).toEqual({ kind: 'failure', failure: 'temporary_failure', error: ERROR_MESSAGES.WORDPRESS.IMPORT_TIMED_OUT });
+  });
+  it('取得が締め切りの直前に終わったら、既存記事キーの読み込みに進まずに打ち切る', async () => {
+    const listContentAnnotationKeys = vi.fn();
+    const supabaseService = {
+      getClient: () => ({ from: () => ({ update: mocks.update }) }),
+      listContentAnnotationKeys,
+      advanceWordPressImportBaseline: vi.fn(),
+    } as unknown as SupabaseService;
+    const wpService = {
+      fetchAllNormalizedContentByTypes: vi.fn().mockResolvedValue({ posts: [], totalsByType: {}, uniqueIdCountsByType: {} }),
+    } as unknown as WordPressService;
+    const now = vi.spyOn(Date, 'now').mockReturnValue(5000);
+
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes: ['posts'], wpImportBaselineAt: null } as WordPressSettings,
+      wpService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+      deadlineAt: 5000,
+    });
+    now.mockRestore();
+
+    expect(listContentAnnotationKeys).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ kind: 'failure', error: ERROR_MESSAGES.WORDPRESS.IMPORT_TIMED_OUT });
   });
 });

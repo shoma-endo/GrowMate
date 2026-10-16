@@ -12,6 +12,8 @@ import { SupabaseService } from '@/server/services/supabaseService';
 const MANUAL_IMPORT_TIME_BUDGET_MS = 700_000;
 
 export async function runWordpressBulkImport() {
+  // ページの maxDuration は Server Action の呼び出し全体にかかるので、締め切りは入口から数える
+  const deadlineAt = Date.now() + MANUAL_IMPORT_TIME_BUDGET_MS;
   try {
     const authResult = await authMiddleware();
     const linkConflict = emailLinkConflictErrorPayload(authResult);
@@ -45,8 +47,7 @@ export async function runWordpressBulkImport() {
       wpService: context.service,
       supabaseService,
       startedAt: new Date().toISOString(),
-      // ページの maxDuration（800秒）で強制終了すると結果を返せないので、その手前で打ち切る
-      deadlineAt: Date.now() + MANUAL_IMPORT_TIME_BUDGET_MS,
+      deadlineAt,
     });
     if (result.kind === 'failure') return { success: false, error: result.error };
 
