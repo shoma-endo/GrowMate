@@ -45,9 +45,11 @@ vi.mock('@/server/services/gscService', () => ({
 }));
 
 import {
+  disconnectGsc,
   fetchGscProperties,
   fetchGscStatus,
   refetchGscStatusWithValidation,
+  saveGscProperty,
 } from '@/server/actions/gscSetup.actions';
 
 const USER_ID = 'b0ed75ba-bb37-4dd7-89a0-c6ce940f991c';
@@ -76,7 +78,7 @@ const VALID_CREDENTIAL = {
 describe('fetchGscProperties のリフレッシュ失敗分類', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID });
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID, userDetails: { role: 'paid' } });
     mocks.getGscCredentialByUserId.mockResolvedValue(EXPIRED_CREDENTIAL);
   });
 
@@ -128,7 +130,7 @@ describe('fetchGscProperties のリフレッシュ失敗分類', () => {
 describe('fetchGscStatus の再認証判定', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID });
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID, userDetails: { role: 'paid' } });
     mocks.getGscCredentialByUserId.mockResolvedValue(EXPIRED_CREDENTIAL);
   });
 
@@ -179,7 +181,7 @@ describe('fetchGscStatus の再認証判定', () => {
 describe('refetchGscStatusWithValidation の一時的失敗の伝播', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID });
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID, userDetails: { role: 'paid' } });
     mocks.getGscCredentialByUserId.mockResolvedValue(VALID_CREDENTIAL);
   });
 
@@ -224,5 +226,31 @@ describe('refetchGscStatusWithValidation の一時的失敗の伝播', () => {
       expect(result.needsReauth).toBe(false);
       expect(result.data.hasTemporaryError).toBeFalsy();
     }
+  });
+});
+
+describe('GSC 設定 Server Action のロール制限', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID, userDetails: { role: 'trial' } });
+  });
+
+  it('trial は GSC 連携の状態取得・プロパティ取得を拒否され、credential を読まない', async () => {
+    const status = await fetchGscStatus();
+    const properties = await fetchGscProperties();
+
+    expect(status).toEqual({ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED });
+    expect(properties).toEqual({ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED });
+    expect(mocks.getGscCredentialByUserId).not.toHaveBeenCalled();
+  });
+
+  it('trial は GSC プロパティの保存と連携解除を拒否され、credential を更新しない', async () => {
+    const saved = await saveGscProperty({ propertyUri: 'sc-domain:example.com' });
+    const disconnected = await disconnectGsc();
+
+    expect(saved).toEqual({ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED });
+    expect(disconnected).toEqual({ success: false, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED });
+    expect(mocks.getGscCredentialByUserId).not.toHaveBeenCalled();
+    expect(mocks.updateGscCredential).not.toHaveBeenCalled();
   });
 });

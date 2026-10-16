@@ -450,8 +450,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
    * `last_evaluated_on` を進めても、こちらの due 判定は影響を受けない）。
    *
    * ロール絞り込みはSQL側で行う（RPCが `users.role in ('admin','paid')` を強制するため、
-   * 呼び出し側で再確認しない）。GSC側のdue抽出はロールを見ていないが、GSCはLLMを呼ばないため
-   * 実害が小さい。GA4はLLMを呼ぶのでこの絞り込みを落としてはいけない。
+   * 呼び出し側で再確認しない）。GA4はLLMを呼ぶのでこの絞り込みを落としてはいけない。
    *
    * 1,000行上限（db-max-rows）は SupabaseService.fetchAllPaged で回避する。ページングはRPC関数の
    * 引数ではなくPostgRESTの.range()に委ねる: 関数内部でLIMIT/OFFSETを適用すると count:'exact' が

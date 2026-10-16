@@ -5,6 +5,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { isAdmin as isAdminRole } from '@/authUtils';
+import { hasPaidFeatureAccess } from '@/types/user';
 
 const supabaseService = new SupabaseService();
 
@@ -22,6 +23,9 @@ export async function GET(request: NextRequest) {
     if (conflict409get) return conflict409get;
     if (authResult.error || !authResult.userId || !authResult.userDetails?.role) {
       return NextResponse.json({ success: false, connected: false, message: 'ユーザー認証に失敗しました' }, { status: 401 });
+    }
+    if (!hasPaidFeatureAccess(authResult.userDetails.role)) {
+      return NextResponse.json({ success: false, connected: false, message: ERROR_MESSAGES.AUTH.UNAUTHORIZED }, { status: 403 });
     }
     const isAdmin = isAdminRole(authResult.userDetails.role);
     const wpSettings = await supabaseService.getWordPressSettingsByUserId(authResult.userId);
@@ -116,6 +120,9 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'ユーザー認証に失敗しました' },
         { status: 401 }
       );
+    }
+    if (!hasPaidFeatureAccess(authResult.userDetails.role)) {
+      return NextResponse.json({ success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED }, { status: 403 });
     }
     const isAdmin = isAdminRole(authResult.userDetails.role);
     const wpSettings = await supabaseService.getWordPressSettingsByUserId(authResult.userId);

@@ -8,6 +8,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { buildWordPressServiceFromSettings } from '@/server/services/wordpressContext';
 import { importWordPressContent } from '@/server/services/wordpressImportService';
 import { SupabaseService } from '@/server/services/supabaseService';
+import { hasPaidFeatureAccess } from '@/types/user';
 
 const MANUAL_IMPORT_TIME_BUDGET_MS = 700_000;
 
@@ -22,7 +23,7 @@ export async function runWordpressBulkImport() {
       return { success: false, error: authResult.error || ERROR_MESSAGES.AUTH.AUTH_FAILED };
     }
     const role = authResult.userDetails?.role ?? null;
-    if (!role || role === 'unavailable') {
+    if (!hasPaidFeatureAccess(role)) {
       return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
     }
 
