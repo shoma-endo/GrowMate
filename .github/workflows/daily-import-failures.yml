@@ -39,7 +39,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: scripts/daily-import-failures-state.json
-          key: daily-import-failures-state-${{ github.run_id }}
+          key: daily-import-failures-state-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             daily-import-failures-state-
 
