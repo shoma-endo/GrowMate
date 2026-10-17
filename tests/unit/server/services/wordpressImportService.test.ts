@@ -155,7 +155,7 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     expect(result).toMatchObject({ kind: 'failure', failure: 'temporary_failure' });
     expect(advanceBaseline).not.toHaveBeenCalled();
   });
-  it('初回の全件取得で記事が多いとき、新規は500件ずつ upsert し、既存の更新は同時20件までに抑える', async () => {
+  it('初回の全件取得で記事が多いとき、新規は100件ずつ upsert し、既存の更新は同時20件までに抑える', async () => {
     const existingCount = 45;
     const newCount = 1001;
     const upsertSizes: number[] = [];
@@ -218,7 +218,7 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
       startedAt: '2026-10-14T02:00:00.000Z',
     });
 
-    expect(upsertSizes).toEqual([500, 500, 1]);
+    expect(upsertSizes).toEqual([...Array<number>(10).fill(100), 1]);
     expect(maxInFlight).toBe(20);
     expect(result).toMatchObject({
       kind: 'success',
@@ -226,6 +226,7 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     });
   });
   it('新規の upsert が途中のバッチで失敗したら、既存の更新と基準の更新をせずに失敗を返す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const upsertSizes: number[] = [];
     const update = vi.fn();
     const advanceBaseline = vi.fn();
@@ -233,7 +234,9 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
       from: () => ({
         upsert: (rows: unknown[]) => {
           upsertSizes.push(rows.length);
-          const error = upsertSizes.length === 2 ? { message: 'payload too large' } : null;
+          const error = upsertSizes.length === 2
+            ? { message: 'payload too large', code: '413', details: null, hint: null }
+            : null;
           return { select: () => Promise.resolve({ data: error ? null : [], error }) };
         },
         update,
@@ -269,7 +272,11 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     });
 
     expect(result.kind).toBe('failure');
-    expect(upsertSizes).toEqual([500, 500]);
+    expect(upsertSizes).toEqual([100, 100]);
+    // DB のエラーは Error ではないオブジェクトなので、中身を落とさずにログへ残す
+    expect(consoleError).toHaveBeenCalledWith('[wordpress-import] import failed', expect.objectContaining({
+      error: { message: 'payload too large', code: '413', details: null, hint: null },
+    }));
     expect(update).not.toHaveBeenCalled();
     expect(advanceBaseline).not.toHaveBeenCalled();
   });
@@ -382,7 +389,7 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
       failure: 'temporary_failure',
       error: ERROR_MESSAGES.WORDPRESS.IMPORT_TIMED_OUT,
     });
-    expect(upsertSizes).toEqual([500]);
+    expect(upsertSizes).toEqual([100]);
     expect(update).not.toHaveBeenCalled();
     expect(advanceBaseline).not.toHaveBeenCalled();
     expect(wpService.fetchAllNormalizedContentByTypes).toHaveBeenCalledWith(['posts'], { perPage: 100, deadlineAt: 5000 });
