@@ -6,15 +6,17 @@ on:
     - cron: '0 1 1 * *'
   workflow_dispatch:
 
-# state 更新PRを作成するため write 権限が必要
-permissions:
-  contents: write
-  pull-requests: write
+# 後から足したジョブが write 権限を黙って継承しないよう、権限はジョブ単位で付ける
+permissions: {}
 
 jobs:
   monitor:
     name: Check API Changelogs
     runs-on: ubuntu-latest
+    # state 更新PRを作成するため write 権限が必要
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout
