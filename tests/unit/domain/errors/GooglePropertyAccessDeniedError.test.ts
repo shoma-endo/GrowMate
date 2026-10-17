@@ -19,8 +19,9 @@ describe('プロパティの権限切れの判定（auto-daily-imports-spec FR-0
     expect(isGscPropertyAccessDenied(403, 'not json')).toBe(false);
   });
 
-  it('GA4 は 403 PERMISSION_DENIED で理由（ErrorInfo）が付いていないときだけ権限切れ', () => {
+  it('GA4 は 403 PERMISSION_DENIED のうち、API 無効化とスコープ不足を除いたものが権限切れ', () => {
     expect(isGa4PropertyAccessDenied(403, ga4Body())).toBe(true);
+    expect(isGa4PropertyAccessDenied(403, ga4Body([{ reason: 'SOME_FUTURE_REASON' }]))).toBe(true);
     expect(isGa4PropertyAccessDenied(403, ga4Body([{ reason: 'SERVICE_DISABLED' }]))).toBe(false);
     expect(isGa4PropertyAccessDenied(403, ga4Body([{ reason: 'ACCESS_TOKEN_SCOPE_INSUFFICIENT' }]))).toBe(false);
     expect(isGa4PropertyAccessDenied(403, JSON.stringify({ error: { code: 403, message: 'm' } }))).toBe(false);

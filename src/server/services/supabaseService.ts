@@ -1012,20 +1012,28 @@ export class SupabaseService {
     if (error) throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_RESULT_SAVE_FAILED(error.message));
   }
 
+  /**
+   * 取込に使ったプロパティがまだ選ばれているときだけ書く。取込の最中に別のプロパティへ保存し直されたら、
+   * 古いプロパティの結果で「未実行（NULL）」を上書きしない
+   */
   async recordGoogleAutoImportResult(
     userId: string,
     source: 'gsc' | 'ga4',
-    status: GoogleAutoImportStatus
+    status: GoogleAutoImportStatus,
+    property: string
   ): Promise<void> {
     const now = new Date().toISOString();
-    const record: TablesUpdate<'gsc_credentials'> =
+    const query =
       source === 'gsc'
-        ? { gsc_auto_import_status: status, gsc_auto_import_status_at: now }
-        : { ga4_auto_import_status: status, ga4_auto_import_status_at: now };
-    const { error } = await this.supabase
-      .from('gsc_credentials')
-      .update(record)
-      .eq('user_id', userId);
+        ? this.supabase
+            .from('gsc_credentials')
+            .update({ gsc_auto_import_status: status, gsc_auto_import_status_at: now })
+            .eq('property_uri', property)
+        : this.supabase
+            .from('gsc_credentials')
+            .update({ ga4_auto_import_status: status, ga4_auto_import_status_at: now })
+            .eq('ga4_property_id', property);
+    const { error } = await query.eq('user_id', userId);
     if (error) throw new Error(ERROR_MESSAGES.GOOGLE_AUTO_IMPORT.RESULT_SAVE_FAILED(source, error.message));
   }
 

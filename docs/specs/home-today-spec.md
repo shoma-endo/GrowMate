@@ -5,7 +5,7 @@
 - 文書名: マイホーム: 機能カードを廃し、連携の異常だけを出す画面へ置き換え
 - ステータス: `implemented`
 - 作成日: 2026-09-09
-- 最終更新日: 2026-09-09
+- 最終更新日: 2026-10-17
 - 作成者: shoma-endo（Claude Code 同席）
 - 承認者: shoma-endo
 - 対象リリース: `feature/pc-first-app-shell` に続けて develop へ
@@ -181,10 +181,12 @@ PC（lg 以上、サイドバー展開時）:
 | 4 | Google Ads 再連携 | 全役割 かつ `googleAdsStatus.needsReauth` | Google Ads の再連携が必要です / 広告データの取得が止まっています。 | 再連携する → `/setup/google-ads` |
 | 5 | Instagram 再連携 | `canAccessInstagram(role)` かつ `instagramStatus.needsReauth` | Instagram の再連携が必要です / 投稿データの取得が止まっています。 | 再連携する → `/setup/instagram` |
 | 6 | WordPress 再連携 | paid/admin かつ、毎日の自動取込が保存した結果が「認証切れ」（`wordpress_settings.wp_auto_import_status = 'auth_expired'`）。画面を開いたときに WordPress へは接続しない（`docs/specs/auto-daily-imports-spec.md` FR-008） | WordPress の再連携が必要です / 記事の取得が止まっています。 | 再連携する → `/setup/wordpress` |
-| 7 | 空状態 | 1〜6 が 0 件 | 確認が必要なことはありません / paid・admin で未連携がある（`hasUnlinked`）: 連携がまだの場合は 設定 から始められます。（「設定」はリンク）。それ以外: 新しい提案や連携の異常があるとここに出ます。（全部連携済みの人に毎日「設定」を出さない。trial は `/setup` に入れないので常にこちら） | なし |
+| 9 | GSC プロパティにアクセスできない | paid/admin かつ `gscStatus.connected && propertyAccessDenied`、かつ 1 が出ていない。毎日の自動取込が保存した結果（`gsc_credentials.gsc_auto_import_status = 'permission_denied'`）で判定し、画面を開いたときに Google へは接続しない（`docs/specs/auto-daily-imports-spec.md` FR-011） | Google Search Console のプロパティにアクセスできません / 連携中の Google アカウントから権限が外れ、検索順位の取得が止まっています。Google Search Console 側で権限を戻すか、別のプロパティを選んでください。 | プロパティを選ぶ → `/setup/gsc` |
+| 10 | GA4 プロパティにアクセスできない | paid/admin かつ `ga4Status.connected && propertyAccessDenied`、かつ 2 が出ていない（`ga4_auto_import_status = 'permission_denied'`。FR-011） | Google Analytics 4 のプロパティにアクセスできません / 連携中の Google アカウントから権限が外れ、アクセス解析の取得が止まっています。Google Analytics 4 側で権限を戻すか、別のプロパティを選んでください。 | プロパティを選ぶ → `/setup/ga4` |
+| 7 | 空状態 | 1〜6・9・10 が 0 件 | 確認が必要なことはありません / paid・admin で未連携がある（`hasUnlinked`）: 連携がまだの場合は 設定 から始められます。（「設定」はリンク）。それ以外: 新しい提案や連携の異常があるとここに出ます。（全部連携済みの人に毎日「設定」を出さない。trial は `/setup` に入れないので常にこちら） | なし |
 | 8 | 取得失敗 | 連携状態または件数の取得で例外 | 一部の情報を取得できませんでした / ページを再読み込みしてください。 | なし |
 
-- 順序: 1〜6 の順。放置するとデータが止まるものが上。
+- 順序: 1, 9, 2, 10, 3, 4, 5, 6 の順。放置するとデータが止まるものが上。9・10 は FR-011 で後から足したので番号が飛ぶ（ほかの節が「項目 8（取得失敗）」などの番号で参照しているため、番号は振り直さない）。9・10 の説明は2文（次にやることを足すため。既存の項目は1文）。
 - 利用者向けの語は辞書どおり「再連携」（`ui-text.md`: 「再連携 | 再認証、再接続 | 目視」）。既存の `/setup/*` 画面は「再認証が必要です」と書いており辞書から逸脱しているが、本仕様では直さない（§4 Non-goal）。
 
 ### サイドバーの変更
