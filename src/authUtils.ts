@@ -7,6 +7,12 @@ export function isAdmin(role: UserRole | null): boolean {
   return role === 'admin';
 }
 
+// AI要約（単記事・一括）は一時的に管理者限定。解除時は呼び出し元を元の判定へ戻す
+// （単記事はロール判定なし、一括は canWriteGa4）
+export function canUseContentAnnotationSummary(role: UserRole | null): boolean {
+  return isAdmin(role);
+}
+
 export function isUnavailable(role: UserRole | null): boolean {
   return role === 'unavailable';
 }

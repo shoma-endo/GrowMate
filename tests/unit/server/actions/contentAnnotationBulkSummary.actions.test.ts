@@ -57,7 +57,7 @@ function authAs(role: string | null) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.cookies.mockResolvedValue({ get: () => undefined });
-  authAs('paid');
+  authAs('admin');
   mocks.findActiveJob.mockResolvedValue(null);
   mocks.createJob.mockImplementation(
     async ({ targetAnnotationIds }: { targetAnnotationIds: string[] }) => ({
@@ -68,8 +68,9 @@ beforeEach(() => {
   );
 });
 
-describe('認可（FR-B10 / AC-B09）', () => {
+describe('認可（FR-B10 / AC-B09。一時的に admin のみ）', () => {
   it.each([
+    ['paid', 'paid'],
     ['trial', 'trial'],
     ['role なし', null],
   ])('%s はサーバー側で拒否し、ジョブを作らない', async (_name, role) => {
@@ -79,7 +80,7 @@ describe('認可（FR-B10 / AC-B09）', () => {
       contentAnnotationIds: [uuid(1)],
     });
     expect(result.success).toBe(false);
-    expect(result.error).toBe(ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED);
+    expect(result.error).toBe(ERROR_MESSAGES.WORDPRESS.SUMMARY_SUSPENDED);
     expect(mocks.createJob).not.toHaveBeenCalled();
   });
 });
