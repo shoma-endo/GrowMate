@@ -51,6 +51,17 @@ const REDUCED_PER_PAGE_STEPS = [20, 5];
  * 候補 URL のどれか1つでも当てはまれば取り直す（もう一方の形式がサイトで使えず 404・403 になることがある）。
  * どの候補も認証エラーや 404 だけなら、件数を減らしても変わらない。
  */
+/**
+ * 投稿タイプの REST の入り口がサイトに無い（設定に残っているが、プラグインを外した・REST に公開していない）。
+ * そのタイプには取り込む記事が無いので、取込全体を失敗にせずに飛ばす。
+ */
+function isMissingRoute(error: unknown): boolean {
+  return error instanceof WordPressRestFetchError &&
+    error.statuses.length > 0 &&
+    error.statuses.every(status => status === 404) &&
+    error.message.includes('rest_no_route');
+}
+
 function isHeavyPageFailure(error: unknown): boolean {
   return error instanceof WordPressRestFetchError &&
     error.statuses.some(status => status === 0 || status >= 500);
@@ -693,6 +704,10 @@ export class WordPressService {
             ...(options.deadlineAt !== undefined ? { deadlineAt: options.deadlineAt } : {}),
           });
         } catch (error) {
+          if (page === 1 && isMissingRoute(error)) {
+            console.warn('[WordPressService] content type has no REST route; skipped', { postType: normalizedType });
+            break;
+          }
           const smaller = REDUCED_PER_PAGE_STEPS.find(size => size < perPage && perPage % size === 0);
           if (smaller === undefined || !isHeavyPageFailure(error)) throw error;
           // 取れていない位置（offset）から、小さいページで続きを取る
