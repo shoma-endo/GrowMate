@@ -1067,11 +1067,11 @@ export class SupabaseService {
     return data.map(row => row.user_id);
   }
 
-  async listWordPressAutoImportTargets(): Promise<string[]> {
+  async listWordPressAutoImportTargets(): Promise<Array<{ userId: string; needsFullImport: boolean }>> {
     const { data, error, truncated } = await this.fetchAllPaged(
       (from, to) => this.supabase
         .from('wordpress_settings')
-        .select('user_id, wp_site_id, wp_site_url, users!inner(role)', { count: 'exact' })
+        .select('user_id, wp_site_id, wp_site_url, wp_import_baseline_at, users!inner(role)', { count: 'exact' })
         .in('users.role', [...PAID_FEATURE_ROLES])
         .order('user_id', { ascending: true })
         .range(from, to),
@@ -1080,7 +1080,9 @@ export class SupabaseService {
     if (error || truncated) {
       throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_TARGETS_FETCH_FAILED(error?.message ?? 'truncated'));
     }
-    return data.filter(row => row.wp_site_id !== null || row.wp_site_url !== null).map(row => row.user_id);
+    return data
+      .filter(row => row.wp_site_id !== null || row.wp_site_url !== null)
+      .map(row => ({ userId: row.user_id, needsFullImport: row.wp_import_baseline_at === null }));
   }
 
   /**

@@ -83,4 +83,26 @@ describe('runDailyImportBatch (auto-daily-imports-spec §6)', () => {
     ]);
     expect(result.skippedDueToLimit).toBe(0);
   });
+  it('後回しのユーザー（初回全件取込など）は、通常のユーザーをすべて処理してから処理する', async () => {
+    const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
+    const result = await runDailyImportBatch({
+      source: 'wordpress', userIds: ['a', 'b'], deferredUserIds: ['heavy'], startedAt: Date.now(), importUser,
+    });
+
+    const order = importUser.mock.calls.map(([userId]) => userId);
+    // 通常のユーザーの順は日ごとにずれるが、後回しのユーザーは常に最後
+    expect(order.slice(0, 2).sort()).toEqual(['a', 'b']);
+    expect(order[2]).toBe('heavy');
+    expect(result).toEqual({ total: 3, succeeded: 3, failed: 0, skippedDueToLimit: 0 });
+  });
+  it('時間予算で打ち切られるときは、後回しのユーザーから取り込まれずに残る', async () => {
+    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(DAILY_IMPORT_TIME_BUDGET_MS);
+    const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
+    const result = await runDailyImportBatch({
+      source: 'wordpress', userIds: ['a', 'b'], deferredUserIds: ['heavy'], startedAt: 0, importUser,
+    });
+
+    expect(importUser.mock.calls.map(([userId]) => userId)).not.toContain('heavy');
+    expect(result).toEqual({ total: 3, succeeded: 2, failed: 0, skippedDueToLimit: 1 });
+  });
 });

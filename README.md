@@ -294,7 +294,7 @@ takt -w grill-to-gherkin  # 対話モード Grill Me を選び、機能の概要
 ## 📱 デプロイと運用
 
 - Vercel を想定。一部の Route Handler は Node.js Runtime を明示し、その他は Next.js のデフォルト Runtime を使用
-- **Vercel のプランは Pro**（チーム `shoma-endo's projects`。2026-09-24 にダッシュボードで確認）。仕様書・レビューでは確認済みの前提として扱ってよい。Pro であることに依存しているもの: `maxDuration` 800 秒のルート、Vercel Cron の毎時・10 分間隔の起動（Hobby は1日1回まで）、runtime log の保持1日
+- **Vercel のプランは Pro**（チーム `shoma-endo's projects`。2026-09-24 にダッシュボードで確認）。仕様書・レビューでは確認済みの前提として扱ってよい。Pro であることに依存しているもの: `maxDuration` 800 秒のルート、`maxDuration` 1800 秒の WordPress 日次取込（拡張上限・ベータ）、Vercel Cron の毎時・10 分間隔の起動（Hobby は1日1回まで）、runtime log の保持1日
 - **Supabase のプランは Pro**（プロジェクト `rnmljzdsncucvkcmoaun`。本番と開発で共有。2026-09-25 に確認）。仕様書・レビューでは確認済みの前提として扱ってよい
 - 定期起動（Vercel Cron、[`vercel.json`](vercel.json)。UTC）: 毎日 19:05 `gsc-daily-import`、19:25 `ga4-daily-sync`、19:45 `wordpress-daily-import`。毎時 `gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion`、10 分間隔 `content-annotation-summary`（`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）。失敗は Vercel の runtime log で確認する。経緯は [`docs/plans/vercel-cron-migration-spec.md`](docs/plans/vercel-cron-migration-spec.md)
 - ローカル品質ゲート: `npm run verify`（`audit` → `lint` → `test:coverage` → `build` → `knip` を順次実行）

@@ -52,14 +52,14 @@ describe('自動取込の対象一覧はロールで絞る（auto-daily-imports-
 
   it('WordPress はサイト URL かサイト ID のある行だけを対象にする', async () => {
     mocks.rows = [
-      { user_id: 'self-hosted', wp_site_id: null, wp_site_url: 'https://example.com' },
-      { user_id: 'wpcom', wp_site_id: '123', wp_site_url: null },
-      { user_id: 'unconfigured', wp_site_id: null, wp_site_url: null },
+      { user_id: 'self-hosted', wp_site_id: null, wp_site_url: 'https://example.com', wp_import_baseline_at: '2026-10-16T19:45:00Z' },
+      { user_id: 'wpcom', wp_site_id: '123', wp_site_url: null, wp_import_baseline_at: null },
+      { user_id: 'unconfigured', wp_site_id: null, wp_site_url: null, wp_import_baseline_at: null },
     ];
 
     await expect(new SupabaseService().listWordPressAutoImportTargets()).resolves.toEqual([
-      'self-hosted',
-      'wpcom',
+      { userId: 'self-hosted', needsFullImport: false },
+      { userId: 'wpcom', needsFullImport: true },
     ]);
   });
 });

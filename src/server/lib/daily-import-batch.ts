@@ -27,9 +27,15 @@ export async function runDailyImportBatch({
   startedAt,
   importUser,
   timeBudgetMs = DAILY_IMPORT_TIME_BUDGET_MS,
+  deferredUserIds = [],
 }: {
   source: 'gsc' | 'ga4' | 'wordpress';
   userIds: string[];
+  /**
+   * userIds の後に回すユーザー（WordPress の初回全件取込など、1人で時間予算の多くを使うもの）。
+   * 1人あたりの上限が無いので、先に処理すると後ろのユーザーが時間予算の打ち切りで取り込まれなくなる
+   */
+  deferredUserIds?: string[];
   startedAt: number;
   /** deadlineAt（epoch ms）を受け取る取込は、それを超えないように途中で打ち切る */
   importUser: (userId: string, deadlineAt: number) => Promise<{ ok: true } | { ok: false; reason: string }>;
@@ -40,7 +46,8 @@ export async function runDailyImportBatch({
   let failed = 0;
   let attempted = 0;
 
-  for (const userId of rotateForDay(userIds, startedAt)) {
+  const ordered = [...rotateForDay(userIds, startedAt), ...rotateForDay(deferredUserIds, startedAt)];
+  for (const userId of ordered) {
     if (Date.now() - startedAt >= timeBudgetMs) break;
     attempted += 1;
     try {
@@ -61,9 +68,9 @@ export async function runDailyImportBatch({
   }
 
   return {
-    total: userIds.length,
+    total: ordered.length,
     succeeded,
     failed,
-    skippedDueToLimit: userIds.length - attempted,
+    skippedDueToLimit: ordered.length - attempted,
   };
 }
