@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { classifyWordPressImportFailure, hasWordPressImportTargetChanged, isChangedSinceBaseline } from '@/server/lib/wordpress-diff-import';
+import {
+  classifyWordPressImportFailure,
+  hasWordPressImportTargetChanged,
+  isChangedSinceBaseline,
+  isWordPressImportStalled,
+} from '@/server/lib/wordpress-diff-import';
 
 describe('WordPress 差分取込（auto-daily-imports-spec §6）', () => {
   it.each([
@@ -39,5 +44,23 @@ describe('WordPress 差分取込（auto-daily-imports-spec §6）', () => {
     ['ステータスの無いエラー', null, 'temporary_failure'],
   ] as const)('%sを分類する', (_label, error, expected) => {
     expect(classifyWordPressImportFailure(error)).toBe(expected);
+  });
+});
+
+describe('isWordPressImportStalled（auto-daily-imports-spec FR-012）', () => {
+  const now = new Date('2026-10-20T00:00:00Z').getTime();
+  it.each([
+    ['一時的な失敗で、最後に取り込めたのが3日前', 'temporary_failure', '2026-10-17T00:00:00Z', '2026-09-01T00:00:00Z', true],
+    ['一時的な失敗だが、最後に取り込めたのが2日前', 'temporary_failure', '2026-10-18T00:00:00Z', '2026-09-01T00:00:00Z', false],
+    ['一度も取り込めず、連携から3日以上たった', 'temporary_failure', null, '2026-10-16T00:00:00Z', true],
+    ['一度も取り込めず、連携から間もない', 'temporary_failure', null, '2026-10-19T00:00:00Z', false],
+    ['成功している', 'succeeded', '2026-10-01T00:00:00Z', '2026-09-01T00:00:00Z', false],
+    ['認証切れ（別のカードで知らせる）', 'auth_expired', '2026-10-01T00:00:00Z', '2026-09-01T00:00:00Z', false],
+    ['未実行', null, null, '2026-09-01T00:00:00Z', false],
+    ['日付が無い', 'temporary_failure', null, null, false],
+    // Supabase の timestamptz はマイクロ秒付きで返る
+    ['マイクロ秒付きの日時', 'temporary_failure', '2026-10-16T23:59:59.123456+00:00', null, true],
+  ] as const)('%s', (_label, autoImportStatus, importBaselineAt, createdAt, expected) => {
+    expect(isWordPressImportStalled({ autoImportStatus, importBaselineAt, createdAt }, now)).toBe(expected);
   });
 });
