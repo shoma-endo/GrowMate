@@ -52,7 +52,7 @@ describe('GA4 日次同期の結果の保存（auto-daily-imports-spec FR-011）
     vi.restoreAllMocks();
   });
 
-  it('403 は権限切れとして保存し、ほかのユーザーの成功は成功として保存する', async () => {
+  it('権限切れは権限切れとして保存し、ほかのユーザーの成功は成功として保存する', async () => {
     mocks.runReport.mockImplementation(async (_token: string, propertyId: string) => {
       if (propertyId === 'properties/user-1') {
         throw new GooglePropertyAccessDeniedError('GA4レポート取得に失敗しました: 403 PERMISSION_DENIED');
@@ -72,7 +72,7 @@ describe('GA4 日次同期の結果の保存（auto-daily-imports-spec FR-011）
     expect(mocks.recordResult).toHaveBeenCalledTimes(2);
   });
 
-  it('403 以外の失敗では結果を書き換えない', async () => {
+  it('権限不足以外の失敗では結果を書き換えない', async () => {
     mocks.listTargets.mockResolvedValue([{ userId: 'user-1' }]);
     mocks.runReport.mockRejectedValue(new Error('GA4レポート取得に失敗しました: 503 unavailable'));
 

@@ -20,7 +20,7 @@
 - 現在の工程: `追加実装（FR-011）`
 - 止まっている理由・待っている人: なし
 - 次の一手: FR-011（Google のプロパティ権限切れをマイホームに出す）の PR を確認して merge する。マイグレーション `20261017005449_add_google_auto_import_status.sql` は共有 DB に適用済み（2026-10-17、ユーザー承認）
-- 未確認事項: FR-011 の文言（Claude案・未確認。§6 画面設計）
+- 未確認事項: FR-011 のカードの文言（§6 画面設計）と、権限切れの判定ルール（§6 状態遷移）。どちらも Claude案・未確認
 - 関連ブランチ・PR: `feature/auto-daily-imports`、PR #636（実装済み）。FR-011 は `feat/google-property-access-denied-card`
 - 更新日・更新した工程: 2026-10-17・FR-011 を追加
 
@@ -234,13 +234,13 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
   | 状態 | 遷移の条件 | マイホーム |
   | --- | --- | --- |
   | 未実行（NULL） | 初期値。まだ一度も自動取込が動いていない | カードなし |
-  | 成功 | そのユーザーの取込が例外なく終わった（GSC はページ・クエリ指標の保存の一部失敗を例外にしないので、そのときも成功。Google の API から取得できた時点で権限はある） | カードなし |
+  | 成功 | GSC はそのユーザーの取込が例外なく終わったとき（ページ指標の保存の一部失敗・クエリ指標の取得失敗は例外にしないので、そのときも成功。ページ指標を取得できた時点で権限はある）。GA4 は `syncUser` が成功を返したとき（未連携・同期済みで何もしなかった回は書かない） | カードなし |
   | 権限切れ | Google の API が権限不足の 403 を返した（判定ルールは下記） | 「<サービス名> のプロパティにアクセスできません」カード（トークン失効のカードが出ているときは出さない） |
 
   - WordPress と違い「一時的な失敗」は持たない。権限切れ以外の失敗（トークン更新の失敗・5xx・通信エラー・例外になる書き込みの失敗）では状態を書き換えない。権限が戻ったかどうかの判断材料にならないため。トークン失効は FR-007 のカードが担う。
   - 権限切れの判定ルール（GrowMate 側の判定。Claude案・未確認）: 403 でも、API の無効化や割り当て超過はプロパティの選び直しや再連携で直らないので含めない。
     - GSC（Search Analytics）: 403 で、`error.errors[].reason` に `forbidden` があるとき（2026-10-17 の本番ログで、権限が無いサイトへの応答がこの形だった）。`rateLimitExceeded`・`accessNotConfigured` などは含めない。
-    - GA4（Data API の runReport）: 403 で `error.status` が `PERMISSION_DENIED`、かつ `error.details[].reason` に `SERVICE_DISABLED` が無いとき。
+    - GA4（Data API の runReport）: 403 で `error.status` が `PERMISSION_DENIED`、かつ `error.details[]` に理由（ErrorInfo の `reason`）が1つも無いとき。公式のエラー一覧では、プロパティにアクセスできないときの PERMISSION_DENIED に理由は付かない。API 無効化（`SERVICE_DISABLED`）やスコープ不足（`ACCESS_TOKEN_SCOPE_INSUFFICIENT`）は理由が付くので除く。
   - 結果を書くのは自動取込だけ。手動の `/gsc-import`・`/setup/ga4` の同期・`ga4-content-evaluate` は書かない。
   - 「権限切れ」から抜けるのは、次のどれかのとき。
     - 自動取込が成功したとき（Google 側で権限を戻しただけなら、翌朝の取込で消える）。
@@ -567,7 +567,7 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
   - `wordpress_settings`：次の列を追加する（マイグレーション）。列名は実装時に `project-naming` で決める。どちらも NULL 可。
     - 差分の基準：取込を**開始した時刻（UTC）**。その回が最後まで終わり、記事の insert / update が1件も失敗しなかったときだけ書く（§6 状態遷移）。完了時刻ではなく開始時刻を使うのは、取得中に WordPress で更新・公開された記事を次回の取得範囲に残すため。サイトか投稿タイプが変わったら NULL に戻す。
     - 自動取込の結果：未実行（NULL）/ 成功 / 認証切れ / 一時的な失敗と、その日時。自動取込だけが書く。
-  - `gsc_credentials`：GSC と GA4 の自動取込の結果（未実行（NULL）/ 成功 / 権限切れ）と、その日時を、それぞれ別の列で持つ（FR-011。マイグレーション）。どれも NULL 可。自動取込だけが書き、OAuth の完了とプロパティの保存で NULL に戻す（§6 状態遷移）。
+  - `gsc_credentials`：GSC と GA4 の自動取込の結果（未実行（NULL）/ 成功 / 権限切れ）と、その日時を、それぞれ別の列で持つ（FR-011。マイグレーション）。どれも NULL 可。自動取込だけが書き、OAuth の完了と `/setup/gsc`・`/setup/ga4` の保存で NULL に戻す（§6 状態遷移）。
   - 差分の基準の送り方：`modified_after` / `after` には、基準を UTC のオフセット付き ISO8601（例 `2026-10-13T19:45:00+00:00`）で送る。オフセットの無い値がどのタイムゾーンとして扱われるかは公式に記載が無いため。
 - データの所有者: 各ユーザー（`user_id`）。
 - 保持期間・削除条件: 既存のテーブルに従う。追加する列は、連携を削除すると行ごと消える。
@@ -641,7 +641,7 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 
   | 対象 | 採用 | 根拠 path | 備考 |
   | --- | --- | --- | --- |
-  | マイホームの Google 再連携カード（FR-007） | 再利用 | `src/lib/home-today.ts:84-102`、`app/page.tsx`、`src/server/lib/home-google-credential.ts:28-70` | Google 側はコードを変えない。確認とテストの追加だけ |
+  | マイホームの Google 再連携カード（FR-007） | 再利用 | `src/lib/home-today.ts:84-102`、`app/page.tsx`、`src/server/lib/home-google-credential.ts:28-70` | FR-007 のトークン失効の判定は変えない。FR-011 のカードを同じ `buildHomeToday` に足し、トークン失効のカードを優先する |
   | GA4 の `runBatch()` / `syncUser()`（FR-002） | 拡張 | `src/server/services/ga4ImportService.ts:67-207`、`src/server/lib/ga4-sync-range.ts:19-43`、`supabaseService.ts:1707-1733` | ロールの絞り込みと3日分の取り直しを足す。3日分の取り直しは自動取込が渡すオプションにだけ効かせ、`resolveGa4SyncRange` の既定の計算（手動同期・`ga4-content-evaluate`）と手動の「過去90日を再取込」（`backfillDays`）は変えない |
   | cron 基盤（FR-010） | 再利用 | `vercel.json`、`src/server/lib/cron-definitions.ts`、`cron-observability.ts`、`.github/workflows/hourly-cron.yml`、`scripts/invoke-cron.sh`、`tests/unit/server/lib/cron-config-consistency.test.ts` | 3か所への登録手順は `hourly-cron.yml:4` |
   | GSC の `importMetrics`（FR-001） | 拡張 | `src/server/services/gscImportService.ts:45-92,233-256,369-429` | ロールで絞った対象一覧は新しく作る。`dataState` を渡せるようにし、自動取込だけが `"all"` と `maxRows` 25,000 を渡す。`loadAnnotationUrlMap`（`:799-818`）は range ページングで全件読む形にする（全呼び出し元に効く） |
@@ -785,12 +785,18 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
     - 候補 URL のどれかが 401 / 403 で、成功した候補が無いときは「認証切れ」、最後の候補が 404 でも「認証切れ」になること。WordPress.com のトークン更新失敗も「認証切れ」。それ以外は「一時的な失敗」。
     - 連携を保存し直すと、結果が未実行に戻ること。サイト（`wp_type` / `wp_site_url` / `wp_site_id`）か投稿タイプが変わると、差分の基準が NULL に戻ること。
   - **マイホーム**：`tests/unit/lib/home-today.test.ts` に、WordPress の認証切れ × ロール別の表示と、正常・未実行・一時的な失敗では出ないことを足す。
+  - **Google のプロパティ権限切れ（FR-011）**：
+    - 判定：GSC は 403 かつ `forbidden` だけ、GA4 は 403 `PERMISSION_DENIED` で理由が付かないときだけ権限切れになること。割り当て超過・API 無効化・スコープ不足は権限切れにならないこと。
+    - 結果の保存：権限切れのユーザーは「権限切れ」、取込できたユーザーは「成功」を書き、権限切れ以外の失敗では書き換えないこと（GSC・GA4）。
+    - マイホーム：権限切れでカードが出ること、トークン失効のときは再連携カードだけが出ること、`trial` には出ないこと。
+    - リセット：OAuth の upsert は GSC・GA4 とも、`/setup/gsc` の保存は GSC だけ、`/setup/ga4` の保存は GA4 だけを未実行に戻すこと。
   - **整合性テスト**：`cron-config-consistency.test.ts` で、`vercel.json`・`CRON_CONFIGS`・workflow matrix が一致していること。
   - **実画面**：admin で `/` のカードの表示と遷移先を確かめる。`/wordpress-import` で、差分取込の結果の件数を確かめる。
 - Gherkinシナリオとの対応: §7 のシナリオ対応表の FR ごとに、上の単体テストを当てる。
 - 外部API・失敗系・境界条件:
   - WordPress の 401 / 403 / 5xx / タイムアウト。WordPress.com のトークン更新失敗。
   - GSC・GA4 のトークン切れ。
+  - GSC・GA4 のプロパティ権限切れ（FR-011）。
   - 0件の差分。
 - セキュリティ・権限・RLS:
   - cron の認証。ロールでの絞り込み。
@@ -841,7 +847,7 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 ## 15. 完了条件
 
 - Definition of Done（すべて満たして完了）:
-  - FR-001〜FR-010 を満たし、§7 の全シナリオに対応する単体テストが通っている。
+  - FR-001〜FR-011 を満たし、§7 の全シナリオに対応する単体テストが通っている。
   - `npm run verify` が通っている。
   - 本番で、3本の cron が JST 04:05 / 04:25 / 04:45 に起動し、対象ユーザーの取込が記録されている。
   - `docs/plans/ga4-sync-cron-spec.md` の冒頭に、置き換え先として本仕様が書かれている。

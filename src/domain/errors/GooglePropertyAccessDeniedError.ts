@@ -32,12 +32,12 @@ export function isGscPropertyAccessDenied(status: number, text: string): boolean
   return parseGoogleApiErrorBody(text)?.errors?.some(e => e.reason === 'forbidden') ?? false;
 }
 
-/** GA4 Data API は status: PERMISSION_DENIED を返す。API 無効化も同じ status なので、details の reason で除く */
+/**
+ * GA4 Data API はプロパティの権限が無いとき、理由（ErrorInfo）を付けずに status: PERMISSION_DENIED を返す。
+ * API 無効化（SERVICE_DISABLED）やスコープ不足（ACCESS_TOKEN_SCOPE_INSUFFICIENT）は同じ status に理由が付くので除く
+ */
 export function isGa4PropertyAccessDenied(status: number, text: string): boolean {
   if (status !== 403) return false;
   const error = parseGoogleApiErrorBody(text);
-  return (
-    error?.status === 'PERMISSION_DENIED' &&
-    !(error.details ?? []).some(d => d.reason === 'SERVICE_DISABLED')
-  );
+  return error?.status === 'PERMISSION_DENIED' && !(error.details ?? []).some(d => d.reason);
 }

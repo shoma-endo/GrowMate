@@ -164,7 +164,7 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
       return body.dimensions.includes('page') && !body.dimensions.includes('query');
     };
 
-    it('403 は権限切れとして保存し、failed に数えて次のユーザーへ進む', async () => {
+    it('権限不足の 403 は権限切れとして保存し、failed に数えて次のユーザーへ進む', async () => {
       mocks.listDailyTargets.mockResolvedValue(['user-1', 'user-2']);
       let pageFetches = 0;
       fetchMock.mockImplementation(async (_input, init) => {
@@ -189,7 +189,7 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
       expect(userFailure?.[1]).toEqual({ userId: 'user-1', reason: expect.stringMatching(/^permission_denied: GSC Search Analytics API エラー: 403 /) });
     });
 
-    it('403 以外の失敗では結果を書き換えない', async () => {
+    it('権限不足以外の失敗では結果を書き換えない', async () => {
       mocks.listDailyTargets.mockResolvedValue(['user-1']);
       fetchMock.mockImplementation(async (_input, init) =>
         pageOnly(init)
