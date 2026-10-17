@@ -267,6 +267,53 @@ describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () =
     now.mockRestore();
   });
 
+  it('一覧のページが重くてサイト側が 5xx を返したら、件数を減らして同じ位置から取り直す', async () => {
+    const page = (ids: number[], total: number) => new Response(JSON.stringify(ids.map(id => ({ id, type: 'page' }))), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': String(total) },
+    });
+    fetchMock
+      // 100件のページは wp-json と rest_route の両方で 500
+      .mockResolvedValueOnce(new Response('Maximum execution time of 30 seconds exceeded', { status: 500 }))
+      .mockResolvedValueOnce(new Response('Maximum execution time of 30 seconds exceeded', { status: 500 }))
+      .mockResolvedValueOnce(page(Array.from({ length: 20 }, (_, i) => i + 1), 30))
+      .mockResolvedValueOnce(page(Array.from({ length: 10 }, (_, i) => i + 21), 30));
+
+    const result = await service().fetchAllContentByTypes(['pages'], { perPage: 100 });
+
+    expect(result.posts).toHaveLength(30);
+    expect(result.uniqueIdCountsByType).toEqual({ pages: 30 });
+    const queried = fetchMock.mock.calls.map(([url]) => {
+      const params = new URL(String(url)).searchParams;
+      return [params.get('per_page'), params.get('page')];
+    });
+    expect(queried).toEqual([['100', '1'], ['100', '1'], ['20', '1'], ['20', '2']]);
+  });
+
+  it('片方の候補 URL だけが重さで失敗し、もう一方の形式がサイトで使えない（404）場合も、件数を減らして取り直す', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('Maximum execution time of 30 seconds exceeded', { status: 500 }))
+      .mockResolvedValueOnce(new Response('Not Found', { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: 1, type: 'page' }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'X-WP-Total': '1' },
+      }));
+
+    const result = await service().fetchAllContentByTypes(['pages'], { perPage: 100 });
+
+    expect(result.posts).toHaveLength(1);
+    expect(new URL(String(fetchMock.mock.calls[2]?.[0])).searchParams.get('per_page')).toBe('20');
+  });
+
+  it('認証エラーは件数を減らしても変わらないので、取り直さずにそのまま失敗する', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
+      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }));
+
+    await expect(service().fetchAllContentByTypes(['posts'], { perPage: 100 })).rejects.toMatchObject({ statuses: [401, 401] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('失敗した候補の status をすべて例外へ残す', async () => {
     fetchMock
       .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
