@@ -19,8 +19,10 @@ vi.mock('@/lib/client-manager', () => ({
     getInstance: () => ({
       getServiceRoleClient: () => {
         mocks.upsert.mockReturnValue({ select: () => Promise.resolve({ error: null }) });
-        mocks.eq.mockResolvedValue({ error: null });
-        mocks.update.mockReturnValue({ eq: mocks.eq });
+        // update().eq() は待てる値で、さらに .eq() も続けられる（PostgREST のビルダーと同じ）
+        const chain = Object.assign(Promise.resolve({ error: null }), { eq: mocks.eq });
+        mocks.eq.mockReturnValue(chain);
+        mocks.update.mockReturnValue(chain);
         mocks.from.mockReturnValue({ upsert: mocks.upsert, update: mocks.update });
         return { from: mocks.from };
       },
@@ -64,13 +66,29 @@ describe('gsc_credentials の自動取込の結果', () => {
     expect(tokenOnly).not.toHaveProperty('ga4_auto_import_status');
   });
 
-  it('結果の記録は取込元の列だけを書く', async () => {
-    await new SupabaseService().recordGoogleAutoImportResult('user-1', 'ga4', 'permission_denied');
+  it('結果の記録は取込元の列だけを、取込に使ったプロパティが選ばれている行にだけ書く', async () => {
+    await new SupabaseService().recordGoogleAutoImportResult('user-1', 'ga4', 'permission_denied', 'properties/1');
 
     const record = mocks.update.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(record).toMatchObject({ ga4_auto_import_status: 'permission_denied' });
     expect(typeof record.ga4_auto_import_status_at).toBe('string');
     expect(record).not.toHaveProperty('gsc_auto_import_status');
-    expect(mocks.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(mocks.eq.mock.calls).toEqual([
+      ['ga4_property_id', 'properties/1'],
+      ['user_id', 'user-1'],
+    ]);
+  });
+
+  it('GSC の結果は property_uri で絞る', async () => {
+    await new SupabaseService().recordGoogleAutoImportResult('user-1', 'gsc', 'succeeded', 'sc-domain:example.com');
+
+    const record = mocks.update.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(record).toMatchObject({ gsc_auto_import_status: 'succeeded' });
+    expect(typeof record.gsc_auto_import_status_at).toBe('string');
+    expect(record).not.toHaveProperty('ga4_auto_import_status');
+    expect(mocks.eq.mock.calls).toEqual([
+      ['property_uri', 'sc-domain:example.com'],
+      ['user_id', 'user-1'],
+    ]);
   });
 });

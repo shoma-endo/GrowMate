@@ -17,12 +17,14 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: `FR-011 本番反映待ち`
-- 止まっている理由・待っている人: develop → main のマージ（人間）
-- 次の一手: 本番反映の翌朝、GSC・GA4 の日次取込のあとに `gsc_credentials` の `gsc_auto_import_status` / `ga4_auto_import_status` を確かめる（権限切れのユーザーが `permission_denied`、ほかが `succeeded`）。マイグレーション `20261017005449_add_google_auto_import_status.sql` は共有 DB に適用済み（2026-10-17、ユーザー承認）
+- 現在の工程: `FR-011 本番反映済み・一部確認待ち`
+- 止まっている理由・待っている人: shoma-endo（FR-011 のカードの文言と判定ルールの確認）
+- 次の一手: FR-011 の文言と判定ルールを確認してもらう。本番に出ているのは PR #654・#656 の形（GA4 は「理由が付かない PERMISSION_DENIED」だけを権限切れにし、結果の記録をプロパティで絞らない）。§6 の今の判定ルールと「取込に使ったプロパティの行にだけ書く」は PR #657 の形で、develop → main のマージ待ち。本番で確かめたことと確かめていないことは次のとおり。
+  - 確かめたこと（2026-10-17、PR #656 の本番反映後に手動で日次取込を起動）: DB の `gsc_credentials` に、GSC の権限切れの1人が `gsc_auto_import_status = permission_denied`、GSC・GA4 の取込に成功した利用者が `succeeded` で記録された。admin の `/` に、正常な連携では新しいカードが出ないこと（画面）。マイグレーション `20261017005449_add_google_auto_import_status.sql` の適用（ユーザー承認後、advisors の新しい指摘0件）
+  - 確かめていないこと: 権限切れのカードが本番の画面に出ること（本人のアカウントでしか見られない。単体テストで代えている）。GA4 の権限切れ（本番でまだ一度も起きていない。判定は GA4 の実際の応答で確かめていない）
 - 未確認事項: FR-011 のカードの文言（§6 画面設計）と、権限切れの判定ルール（§6 状態遷移）。どちらも Claude案・未確認
 - WordPress の未確認事項: WordPress の cron を1800秒にしてから初めての定時実行（2026-10-18 JST 04:45）で `batch_completed` が出て、残り0人になること。500件ずつの書き込みが失敗した原因（R-004）は、Supabase のログで確かめた（2026-10-17。DB の再起動と重なっていた）
-- 関連ブランチ・PR: `feature/auto-daily-imports`、PR #636（実装済み）。FR-011 は `feat/google-property-access-denied-card`、PR #654（develop にマージ）
+- 関連ブランチ・PR: `feature/auto-daily-imports`、PR #636（実装済み）。FR-011 は `feat/google-property-access-denied-card`、PR #654・#656（本番反映済み）
 - 更新日・更新した工程: 2026-10-17・FR-011 を追加
 
 ## 1. 背景・目的・成功指標
@@ -110,6 +112,7 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
   - マイホーム（`/`）に「WordPress の再連携が必要です」カードを追加する（D-09）。
     - これにより、`docs/specs/home-today-spec.md` の「本画面では WordPress を扱わない」（§10 リスク・§4 Non-goal）が変わる。実装の PR で、同仕様の該当箇所も更新する。
   - Google の再連携カードは、既存のものをそのまま使う（D-05）。
+  - マイホームに「Google Search Console のプロパティにアクセスできません」「Google Analytics 4 のプロパティにアクセスできません」カードを足す（FR-011）。
   - `/wordpress-import` の手動一括取込を差分取込に変える（D-02）。画面の見た目は変えない。
 - API・外部連携:
   - cron ルートを3本追加する：GSC、GA4、WordPress。
@@ -241,8 +244,9 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
   - WordPress と違い「一時的な失敗」は持たない。権限切れ以外の失敗（トークン更新の失敗・5xx・通信エラー・例外になる書き込みの失敗）では状態を書き換えない。権限が戻ったかどうかの判断材料にならないため。トークン失効は FR-007 のカードが担う。
   - 権限切れの判定ルール（GrowMate 側の判定。Claude案・未確認）: 403 でも、API の無効化や割り当て超過はプロパティの選び直しや再連携で直らないので含めない。
     - GSC（Search Analytics）: 403 で、`error.errors[].reason` に `forbidden` があるとき（2026-10-17 の本番ログで、権限が無いサイトへの応答がこの形だった）。`rateLimitExceeded`・`accessNotConfigured` などは含めない。
-    - GA4（Data API の runReport）: 403 で `error.status` が `PERMISSION_DENIED`、かつ `error.details[]` に理由（ErrorInfo の `reason`）が1つも無いとき。公式のエラー一覧では、プロパティにアクセスできないときの PERMISSION_DENIED に理由は付かない。API 無効化（`SERVICE_DISABLED`）やスコープ不足（`ACCESS_TOKEN_SCOPE_INSUFFICIENT`）は理由が付くので除く。
+    - GA4（Data API の runReport）: 403 で `error.status` が `PERMISSION_DENIED`、かつ `error.details[].reason` が `SERVICE_DISABLED`（API 無効化）でも `ACCESS_TOKEN_SCOPE_INSUFFICIENT`（スコープ不足）でもないとき。公式のエラー一覧（https://developers.google.com/analytics/devguides/reporting/data/v1/errors）は、権限が無いときの例として "User does not have sufficient permissions for this property." を挙げるだけで、details に何が付くかは書いていない。そのため「理由が付かないこと」を条件にせず、直らない理由だけを除く（Google が理由を付けるようになってもカードが黙って出なくならないようにするため）。GA4 の権限切れの実際の応答は、本番でまだ確かめていない。
   - 結果を書くのは自動取込だけ。手動の `/gsc-import`・`/setup/ga4` の同期・`ga4-content-evaluate` は書かない。
+  - 結果は、取込に使ったプロパティがまだ選ばれている行にだけ書く（GSC は `property_uri`、GA4 は `ga4_property_id` を条件にする）。取込の最中に別のプロパティへ保存し直されたら、古いプロパティの結果で未実行（NULL）を上書きしない。
   - 「権限切れ」から抜けるのは、次のどれかのとき。
     - 自動取込が成功したとき（Google 側で権限を戻しただけなら、翌朝の取込で消える）。
     - Google の OAuth を完了したとき（GSC・GA4 とも NULL に戻す）。
@@ -264,7 +268,7 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
 
 | 画面 | パス | 新規/既存 | 概要・変更点 |
 | --- | --- | --- | --- |
-| マイホーム | `/` | 既存 | 「今日の確認」に WordPress の再連携カードを足す（FR-008）。Google のカードは変えない |
+| マイホーム | `/` | 既存 | 「今日の確認」に WordPress の再連携カードを足す（FR-008）。Google の再連携カードは変えず、Google のプロパティにアクセスできないカード2枚を足す（FR-011） |
 | WordPress 記事一括インポート | `/wordpress-import` | 既存 | 押したときの取込が差分になる（FR-005）。説明文の「既に登録されているURLはスキップされます。」を「前回の取込以降に公開・更新された記事だけを取り込みます（初回はすべての記事）。」に直す（挙動が変わり、元の文が事実と食い違うため）。1,000件の上限に達したときの警告は、上限を外したので消す。差分取込で対象の記事が0件だった回（WordPress が返した候補がすべて基準時刻以前で「変更なし」になった回を含む）は、結果の1行目を「前回の取込以降に公開・更新された記事はありませんでした。」にする（「0件の記事を取得しました」だけだと、壊れたように見えるため）。ほかの見た目は変えない |
 
 #### 画面ごとの詳細
@@ -291,6 +295,12 @@ JST 04:45 WordPress cron → paid/admin で WordPress 連携済みの全員：�
   | 未実行 / 成功 / 一時的な失敗 | カードなし | — | — |
   | 認証切れ | 「WordPress の再連携が必要です／記事の取得が止まっています。」 | 「再連携する」→ `/setup/wordpress` | `trial` / `unavailable` には出さない |
   | WordPress 未連携 | カードなし（未連携は「変化」ではない。既存方針どおり） | — | — |
+
+  | 内部状態（GSC・GA4 の自動取込の結果。FR-011） | ユーザー向け表示 | 主操作 | 操作制限 |
+  | --- | --- | --- | --- |
+  | 未実行 / 成功 | カードなし | — | — |
+  | 権限切れ（トークンは有効） | 「<サービス名> のプロパティにアクセスできません」（画面設計の FR-011 のカード） | 「プロパティを選ぶ」→ `/setup/gsc`・`/setup/ga4` | `trial` / `unavailable` には出さない |
+  | 権限切れ＋トークン失効 | トークン失効の再連携カードだけ（FR-007。2枚重ねない） | 「再連携する」 | 同上 |
 
 - 画面遷移: `/` →「再連携する」→ `/setup/wordpress` → 保存または OAuth 完了 → `/` に戻るとカードが消えている
 - FR-011 のカード（文言は Claude案・未確認）:
@@ -844,6 +854,8 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 | spec-review の audit | Q-010 と R-002 の公式ドキュメント照合の結果で、FR-003 の方式が確定しているか | shoma-endo | 照合済み（audit 2026-10-13。FR-001 / FR-003 / R-002 / R-008 に反映） |
 | マイグレーション適用前 | 追加する列名と型（本番の DB にそのまま反映されるため） | shoma-endo | 未確認 |
 | 本番の初回起動の翌日 | §13 の本番確認項目 | shoma-endo | 未確認 |
+| FR-011 のマイグレーション適用前 | `gsc_credentials` に足す列名と型（`gsc_auto_import_status`・`ga4_auto_import_status` と各 `_at`） | shoma-endo | 承認済み（2026-10-17。適用後の advisors に新しい指摘なし） |
+| FR-011 の本番反映後 | 権限切れの結果の記録（DB）と、カードの文言・判定ルール | shoma-endo | 記録は確認済み（2026-10-17、手動の日次取込）。文言・判定ルールは未確認 |
 
 ## 15. 完了条件
 
@@ -933,3 +945,5 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 | 2026-10-17 | FR-011 のレビュー反映：権限切れの判定を権限不足の 403 に絞る（API 無効化・割り当て超過を除く）。カードの見出しを「プロパティ」にそろえ、説明に次の行動を足し、ボタンを「プロパティを選ぶ」にする。GA4 は設定を保存したら（プロパティが同じでも）NULL に戻す。成功の定義を明確にし、リセットのシナリオを足す | サブエージェントの self-review と UI/UX レビュー | shoma-endo（Claude Code） |
 | 2026-10-17 | 一連の修正のレビューを反映：候補 URL の片方がサイトの失敗なら 403 では認証切れにしない（401 は認証切れ）、初回全件取込のユーザーを最後に回す、投稿タイプを外すだけでは基準をリセットしない（R-004・§6）。§8 の上限・OPEN-001 の決定・R-003 の実例・500件ずつの失敗の原因が未確定であることを反映 | サブエージェントによる経緯と修正内容のレビュー | shoma-endo（Claude Code） |
 | 2026-10-17 | R-004 に、500件ずつの書き込みが失敗した原因（DB の再起動と重なっていたこと、メモリ不足と推定）を記録し、未確認事項から外す | Supabase のログ（Logs Explorer）と `pg_postmaster_start_time()` で確かめたため | shoma-endo（Claude Code） |
+| 2026-10-17 | FR-011 を本番に反映し、手動の日次取込で結果の保存を確かめた（現在地を更新） | 本番での実証 | shoma-endo（Claude Code） |
+| 2026-10-17 | FR-011 のレビュー反映：現在地を確かめた範囲だけに直す。§4・§6 画面一覧・状態別UIに FR-011 を足す。GA4 の判定を「直らない理由（API 無効化・スコープ不足）だけを除く」に戻し、公式の根拠の書き方を弱める。結果の記録は、取込に使ったプロパティがまだ選ばれている行にだけ書く。§14 にチェックポイントを足す | サブエージェントによる今日の対応全体のレビュー | shoma-endo（Claude Code） |

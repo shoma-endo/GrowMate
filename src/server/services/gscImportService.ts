@@ -1,3 +1,4 @@
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GscService } from './gscService';
 import { SupabaseService } from './supabaseService';
 import { getGscQueryMaxPages, getGscQueryRowLimit } from '../lib/gsc-config';
@@ -46,10 +47,10 @@ class GscImportService {
             });
           } catch (error) {
             if (!(error instanceof GooglePropertyAccessDeniedError)) throw error;
-            await this.supabaseService.recordGoogleAutoImportResult(userId, 'gsc', 'permission_denied');
+            await this.supabaseService.recordGoogleAutoImportResult(userId, 'gsc', 'permission_denied', error.property);
             return { ok: false, reason: `permission_denied: ${error.message}` };
           }
-          await this.supabaseService.recordGoogleAutoImportResult(userId, 'gsc', 'succeeded');
+          await this.supabaseService.recordGoogleAutoImportResult(userId, 'gsc', 'succeeded', outcome.propertyUri);
           const { result: imported, pageWriteFailures } = outcome;
           if (imported.pageMetricsHitLimit) {
             console.error('[daily-import:gsc] page metrics reached row limit', { userId, ...range });
@@ -106,7 +107,7 @@ class GscImportService {
   private async importMetricsWithOutcome(
     userId: string,
     options: GscImportOptions
-  ): Promise<{ result: GscImportResult; pageWriteFailures: number }> {
+  ): Promise<{ result: GscImportResult; pageWriteFailures: number; propertyUri: string }> {
     const startDate = options.startDate;
     const endDate = options.endDate;
     const searchType = options.searchType ?? 'web';
@@ -157,6 +158,7 @@ class GscImportService {
         querySummary,
       },
       pageWriteFailures: failedChunks,
+      propertyUri,
     };
   }
 
@@ -495,8 +497,10 @@ class GscImportService {
 
     if (!response.ok) {
       const text = await response.text();
-      const message = `GSC Search Analytics API エラー: ${response.status} ${text}`;
-      if (isGscPropertyAccessDenied(response.status, text)) throw new GooglePropertyAccessDeniedError(message);
+      const message = ERROR_MESSAGES.GSC.SEARCH_ANALYTICS_API_FAILED(response.status, text);
+      if (isGscPropertyAccessDenied(response.status, text)) {
+        throw new GooglePropertyAccessDeniedError(message, propertyUri);
+      }
       throw new Error(message);
     }
 

@@ -77,11 +77,11 @@ class Ga4ImportService {
             synced = await this.syncUser(userId, { recentRefetchDays: 3 });
           } catch (error) {
             if (!(error instanceof GooglePropertyAccessDeniedError)) throw error;
-            await this.supabaseService.recordGoogleAutoImportResult(userId, 'ga4', 'permission_denied');
+            await this.supabaseService.recordGoogleAutoImportResult(userId, 'ga4', 'permission_denied', error.property);
             return { ok: false, reason: `permission_denied: ${error.message}` };
           }
           if (!synced.ok) return { ok: false, reason: synced.reason };
-          await this.supabaseService.recordGoogleAutoImportResult(userId, 'ga4', 'succeeded');
+          await this.supabaseService.recordGoogleAutoImportResult(userId, 'ga4', 'succeeded', synced.data.propertyId);
           return { ok: true };
         },
       });
