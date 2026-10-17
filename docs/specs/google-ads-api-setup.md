@@ -46,6 +46,6 @@
 ## 2. 参考リンク
 
 - [Google Ads API ドキュメント](https://developers.google.com/google-ads/api/docs/start)
-- [keyword_view フィールドリファレンス](https://developers.google.com/google-ads/api/fields/v22/keyword_view)
-- [GAQL クエリビルダー](https://developers.google.com/google-ads/api/fields/v22/query_builder)
+- [keyword_view フィールドリファレンス](https://developers.google.com/google-ads/api/fields/v26/keyword_view)
+- [GAQL クエリビルダー](https://developers.google.com/google-ads/api/fields/v26/query_builder)
 - [エラーコード一覧](https://developers.google.com/google-ads/api/docs/common-errors)
