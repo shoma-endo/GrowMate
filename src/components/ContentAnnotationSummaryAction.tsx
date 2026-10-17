@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Info, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { canUseContentAnnotationSummary } from '@/authUtils';
+import { useAuth } from '@/components/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -11,6 +13,7 @@ import {
   isEmailLinkConflictResult,
   replaceToEmailLinkConflictLogin,
 } from '@/lib/auth/emailLinkConflictClient';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { summarizeContentAnnotation } from '@/server/actions/contentAnnotationSummary.actions';
 import type { AnnotationRecord } from '@/types/annotation';
 
@@ -40,12 +43,14 @@ export default function ContentAnnotationSummaryAction({
   onPendingChange,
 }: ContentAnnotationSummaryActionProps) {
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const { user } = useAuth();
+  const isRoleAllowed = canUseContentAnnotationSummary(user?.role ?? null);
   const summaryTarget = annotationId
     ? ({ annotationId } as const)
     : sessionId
       ? ({ sessionId } as const)
       : null;
-  const canSummarize = Boolean(summaryTarget) && isWordPressLinked;
+  const canSummarize = Boolean(summaryTarget) && isWordPressLinked && isRoleAllowed;
 
   const handleSummarize = async () => {
     if (!summaryTarget || !canSummarize || disabled || isSummarizing) {
@@ -128,7 +133,9 @@ export default function ContentAnnotationSummaryAction({
       </div>
       {!canSummarize && (
         <span className="text-xs text-muted-foreground">
-          {!isWordPressLinked
+          {!isRoleAllowed
+            ? ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY
+            : !isWordPressLinked
             ? 'WordPress投稿URLを保存すると利用できます'
             : 'コンテンツ情報を再読み込みしてからお試しください'}
         </span>

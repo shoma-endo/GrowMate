@@ -34,6 +34,8 @@ import type {
   InstagramMediaTypeFilter,
 } from '@/types/instagram';
 import { useRouter } from 'next/navigation';
+import { canUseContentAnnotationSummary } from '@/authUtils';
+import { useAuth } from '@/components/AuthProvider';
 import { buildListingSelectionKey } from './selection-scope';
 import { summarizeContentAnnotationsBulk } from '@/server/actions/contentAnnotationBulkSummary.actions';
 import { resolveRawSelectedCount, toggleIdMembership } from '@/lib/analytics-selection';
@@ -251,12 +253,15 @@ export default function AnalyticsClient({
   const [excludedIds, setExcludedIds] = React.useState<Set<string>>(() => new Set());
   const [isStarting, setIsStarting] = React.useState(false);
   const [isSummarizing, setIsSummarizing] = React.useState(false);
+  const { user } = useAuth();
+  const isSummaryRoleAllowed = canUseContentAnnotationSummary(user?.role ?? null);
   const isDateRangeChanged = rangeStart !== startDate || rangeEnd !== endDate;
   // チェック列・全選択・一括ツールバーは常時出す。評価一括と AI 要約一括で1本を共有し
   // （実装メモ §3.1）、要約一括は WordPress 連携が前提で GSC とは無関係なので、
   // GSC 条件を共有列へ持ち込むと GSC 未連携かつ WordPress 連携済みの paid/admin が
   // 要約一括を1件も実行できなくなる（評価親 AC-05c / 要約親 BR-04・AC-02）。
-  // admin/paid の限定は /analytics のルートゲート（proxy.ts）で担保済み。
+  // admin/paid の限定は /analytics のルートゲート（proxy.ts）で担保済み。要約一括の
+  // 管理者限定は isSummaryRoleAllowed でボタンだけを止める（共有列は残す）。
   //
   // GSC 未連携で隠すのは評価固有の操作系だけ。disabled ではなく非表示にする
   // （評価親 AC-05c「『評価サイクルを開始』は表示されない」）。
@@ -556,7 +561,7 @@ export default function AnalyticsClient({
                 // 同じ機能が2箇所にあるので、色とアイコンまで揃えないと別物に見える
                 className={cn(buttonVariants({ variant: 'outline' }), 'h-9 inline-flex items-center gap-2', BULK_SUMMARY_BUTTON_CLASS)}
                 onClick={startBulkSummary}
-                disabled={isSummarizing || isStarting}
+                disabled={isSummarizing || isStarting || !isSummaryRoleAllowed}
                 aria-busy={isSummarizing}
               >
                 {isSummarizing ? (
@@ -571,6 +576,9 @@ export default function AnalyticsClient({
                   </>
                 )}
               </button>
+              {!isSummaryRoleAllowed ? (
+                <BulkActionNote>{ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY}</BulkActionNote>
+              ) : null}
               {isSelectionClamped ? (
                 <BulkActionNote>
                   1000件へ丸めました（残りは行チェックで選択）

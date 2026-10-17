@@ -3,10 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
+import { canUseContentAnnotationSummary } from '@/authUtils';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { ServerActionResult } from '@/lib/async-handler';
 import { MAX_BULK_SUMMARY_TARGETS } from '@/lib/constants';
-import { canWriteGa4 } from '@/server/lib/ga4-permissions';
 import { normalizeBulkTargetIds } from '@/server/lib/gsc-bulk-evaluation';
 import { isWithAuthEmailLinkConflict, withAuth } from '@/server/middleware/withAuth.middleware';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
@@ -59,11 +59,11 @@ export async function summarizeContentAnnotationsBulk(
   try {
     const authResult = await withAuth(async ({ userId, userDetails }) => {
       // UI だけでなくサーバー側でも認可を検証する（AGENTS.md Core Rules。AC-B09）
-      if (!canWriteGa4({ role: userDetails?.role ?? null })) {
+      if (!canUseContentAnnotationSummary(userDetails?.role ?? null)) {
         console.error('[content-annotation-bulk-summary] forbidden role:', {
           role: userDetails?.role ?? null,
         });
-        return { success: false as const, error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED };
+        return { success: false as const, error: ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY };
       }
 
       // ---- 対象 ID の解決（起票時に1回だけ。BR-B02）-------------------------
