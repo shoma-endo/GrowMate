@@ -74,3 +74,4 @@ docs/plans/_html/
 docs/plans/.workflow/
 docs/architecture-diagram.html
 docs/architecture-diagram.archify.json
+scripts/daily-import-failures-state.json
