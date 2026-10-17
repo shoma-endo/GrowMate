@@ -39,6 +39,20 @@ export function assertBeforeDeadline(deadlineAt: number | undefined): void {
 // 1リクエストの応答を待つ上限。応答しないサイトで残り時間を使い切らないため
 const REST_FETCH_TIMEOUT_MS = 60_000;
 
+/**
+ * 一覧の1ページが重すぎてサイト側が失敗したときに、件数を減らして取り直す段階。
+ * ページビルダー（Elementor など）を使うサイトは、本文の描画が PHP の実行時間上限（30秒など）を超え、
+ * 100件のページで 500 や途中で切れた応答を返す。
+ */
+const REDUCED_PER_PAGE_STEPS = [20, 5];
+
+/** 件数を減らせば通る見込みがある失敗（5xx・応答が途中で切れた・タイムアウト）か。認証や 404 は減らしても変わらない */
+function isHeavyPageFailure(error: unknown): boolean {
+  return error instanceof WordPressRestFetchError &&
+    error.statuses.length > 0 &&
+    error.statuses.every(status => status === 0 || status >= 500);
+}
+
 /** 締め切りがあれば、その時刻を越えて待たない */
 function restFetchSignal(deadlineAt: number | undefined): AbortSignal {
   const remaining = deadlineAt === undefined ? REST_FETCH_TIMEOUT_MS : deadlineAt - Date.now();
@@ -648,7 +662,7 @@ export class WordPressService {
     options: FetchAllContentOptions,
     mapPage: (posts: WordPressRestPost[]) => T[]
   ): Promise<FetchAllContentResult<T>> {
-    const perPage = Math.min(options.perPage ?? 100, 100);
+    const initialPerPage = Math.min(options.perPage ?? 100, 100);
     const status = options.status ?? 'publish';
 
     const aggregated: T[] = [];
@@ -659,6 +673,7 @@ export class WordPressService {
       const postType = postTypeRaw && postTypeRaw.trim() ? postTypeRaw.trim() : 'posts';
       const normalizedType = normalizeContentType(postType);
       let page = 1;
+      let perPage = initialPerPage;
       let fetchedForType = 0;
       let totalForType = 0;
       let hasMore = true;
@@ -666,12 +681,23 @@ export class WordPressService {
 
       while (hasMore) {
         assertBeforeDeadline(options.deadlineAt);
-        const { posts, total } = await this.fetchRestCollection(normalizedType, page, perPage, {
-          status,
-          ...(options.modifiedAfter ? { modifiedAfter: options.modifiedAfter } : {}),
-          ...(options.after ? { after: options.after } : {}),
-          ...(options.deadlineAt !== undefined ? { deadlineAt: options.deadlineAt } : {}),
-        });
+        let result: { posts: WordPressRestPost[]; total: number };
+        try {
+          result = await this.fetchRestCollection(normalizedType, page, perPage, {
+            status,
+            ...(options.modifiedAfter ? { modifiedAfter: options.modifiedAfter } : {}),
+            ...(options.after ? { after: options.after } : {}),
+            ...(options.deadlineAt !== undefined ? { deadlineAt: options.deadlineAt } : {}),
+          });
+        } catch (error) {
+          const smaller = REDUCED_PER_PAGE_STEPS.find(size => size < perPage && perPage % size === 0);
+          if (smaller === undefined || !isHeavyPageFailure(error)) throw error;
+          // 取れていない位置（offset）から、小さいページで続きを取る
+          page = ((page - 1) * perPage) / smaller + 1;
+          perPage = smaller;
+          continue;
+        }
+        const { posts, total } = result;
         totalForType = total;
         aggregated.push(...mapPage(posts));
         for (const post of posts) {
