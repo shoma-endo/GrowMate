@@ -39,6 +39,25 @@ export function hasWordPressImportTargetChanged(
     typeAdded;
 }
 
+/** 一時的な失敗がこの日数続いたら、マイホームで知らせる（FR-012） */
+const WORDPRESS_IMPORT_STALLED_DAYS = 3;
+
+/**
+ * WordPress の自動取込が「一時的な失敗」のまま止まっているか（FR-012）。
+ * 最後に最後まで取り込めた回は差分の基準（その回の開始時刻）で分かる。一度も取り込めていなければ、
+ * 連携した日から数える。手動の一括インポートで最後まで取り込めた場合も基準が進むので、知らせは消える。
+ */
+export function isWordPressImportStalled(
+  settings: { autoImportStatus: string | null; importBaselineAt: string | null; createdAt: string | null },
+  now: number
+): boolean {
+  if (settings.autoImportStatus !== 'temporary_failure') return false;
+  const lastProgressAt = settings.importBaselineAt ?? settings.createdAt;
+  if (!lastProgressAt) return false;
+  const elapsed = now - new Date(lastProgressAt).getTime();
+  return elapsed >= WORDPRESS_IMPORT_STALLED_DAYS * 24 * 60 * 60 * 1000;
+}
+
 export function classifyWordPressImportFailure(error: unknown): 'auth_expired' | 'temporary_failure' {
   if (error && typeof error === 'object' && 'statuses' in error) {
     const { statuses } = error as { statuses?: unknown };
