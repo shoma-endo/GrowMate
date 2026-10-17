@@ -20,9 +20,8 @@ import type {
 } from '@/types/googleAds.types';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
-/** Google Ads API v22 のベース URL */
 /** Google Ads API バージョン */
-const API_VERSION = 'v22';
+const API_VERSION = 'v26';
 /** Google Ads API のベース URL */
 const GOOGLE_ADS_API_BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 
