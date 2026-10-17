@@ -166,6 +166,11 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
 
     it('権限不足の 403 は権限切れとして保存し、failed に数えて次のユーザーへ進む', async () => {
       mocks.listDailyTargets.mockResolvedValue(['user-1', 'user-2']);
+      mocks.getCredential.mockImplementation(async (userId: string) => ({
+        refreshToken: 'refresh-token',
+        propertyUri: `https://${userId}.example.com/`,
+        propertyType: 'url-prefix',
+      }));
       let pageFetches = 0;
       fetchMock.mockImplementation(async (_input, init) => {
         if (pageOnly(init) && ++pageFetches === 1) {
@@ -182,8 +187,8 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
 
       expect(result).toMatchObject({ total: 2, succeeded: 1, failed: 1 });
       expect(mocks.recordResult.mock.calls).toEqual([
-        ['user-1', 'gsc', 'permission_denied', 'https://example.com/'],
-        ['user-2', 'gsc', 'succeeded', 'https://example.com/'],
+        ['user-1', 'gsc', 'permission_denied', 'https://user-1.example.com/'],
+        ['user-2', 'gsc', 'succeeded', 'https://user-2.example.com/'],
       ]);
       const userFailure = errorLog.mock.calls.find(([message]) => message === '[daily-import:gsc] user failed');
       expect(userFailure?.[1]).toEqual({ userId: 'user-1', reason: expect.stringMatching(/^permission_denied: GSC Search Analytics API エラー: 403 /) });

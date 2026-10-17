@@ -82,6 +82,10 @@ describe('gsc_credentials の自動取込の結果', () => {
   it('GSC の結果は property_uri で絞る', async () => {
     await new SupabaseService().recordGoogleAutoImportResult('user-1', 'gsc', 'succeeded', 'sc-domain:example.com');
 
+    const record = mocks.update.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(record).toMatchObject({ gsc_auto_import_status: 'succeeded' });
+    expect(typeof record.gsc_auto_import_status_at).toBe('string');
+    expect(record).not.toHaveProperty('ga4_auto_import_status');
     expect(mocks.eq.mock.calls).toEqual([
       ['property_uri', 'sc-domain:example.com'],
       ['user_id', 'user-1'],

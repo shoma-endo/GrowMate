@@ -19,6 +19,16 @@ describe('Ga4Service.runReport のエラー（auto-daily-imports-spec FR-011）'
     expect((error as Error).message).toBe(`GA4レポート取得に失敗しました: 403 ${body}`);
   });
 
+  it('権限切れの例外には、保存されている形のままのプロパティ ID を入れる（結果の記録が ga4_property_id で絞るため）', async () => {
+    const body = '{"error":{"code":403,"status":"PERMISSION_DENIED"}}';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { status: 403 })));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const error = await new Ga4Service().runReport('token', '123', {}).catch((e: unknown) => e);
+
+    expect((error as GooglePropertyAccessDeniedError).property).toBe('123');
+  });
+
   it.each([
     ['503', new Response('unavailable', { status: 503 })],
     [
