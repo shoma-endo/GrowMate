@@ -321,6 +321,7 @@ describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () =
     expect(result.posts).toHaveLength(1);
     expect(result.totalsByType).toEqual({ product: 0, posts: 1 });
     expect(result.uniqueIdCountsByType).toEqual({ product: 0, posts: 1 });
+    expect(result.missingRouteTypes).toEqual(['product']);
   });
 
   it('認証エラーは件数を減らしても変わらないので、取り直さずにそのまま失敗する', async () => {

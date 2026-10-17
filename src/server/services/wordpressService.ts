@@ -682,6 +682,7 @@ export class WordPressService {
     const aggregated: T[] = [];
     const totalsByType: Record<string, number> = {};
     const uniqueIdCountsByType: Record<string, number> = {};
+    const missingRouteTypes: string[] = [];
 
     for (const postTypeRaw of postTypes) {
       const postType = postTypeRaw && postTypeRaw.trim() ? postTypeRaw.trim() : 'posts';
@@ -706,6 +707,7 @@ export class WordPressService {
         } catch (error) {
           if (page === 1 && isMissingRoute(error)) {
             console.warn('[WordPressService] content type has no REST route; skipped', { postType: normalizedType });
+            missingRouteTypes.push(normalizedType);
             break;
           }
           const smaller = REDUCED_PER_PAGE_STEPS.find(size => size < perPage && perPage % size === 0);
@@ -732,7 +734,7 @@ export class WordPressService {
 
     }
 
-    return { posts: aggregated, totalsByType, uniqueIdCountsByType };
+    return { posts: aggregated, totalsByType, uniqueIdCountsByType, missingRouteTypes };
   }
 }
 
@@ -750,6 +752,8 @@ type FetchAllContentResult<T> = {
   totalsByType: Record<string, number>;
   /** 要求した投稿タイプ（REST のパス名）ごとの、重複を除いた記事 ID の数。totalsByType と同じキー */
   uniqueIdCountsByType: Record<string, number>;
+  /** REST の入り口がサイトに無く、飛ばした投稿タイプ */
+  missingRouteTypes: string[];
 };
 
 function normalizeWordPressPostResponse(data: unknown): WordPressPostResponse | null {
