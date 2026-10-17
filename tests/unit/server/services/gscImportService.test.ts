@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   listDailyTargets: vi.fn(),
   upsertPageMetrics: vi.fn(),
   refreshAccessToken: vi.fn(),
+  recordResult: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -14,6 +15,7 @@ vi.mock('@/server/services/supabaseService', () => ({
     getGscCredentialByUserId = mocks.getCredential;
     listContentAnnotationKeys = mocks.listAnnotationKeys;
     listGscAutoImportTargets = mocks.listDailyTargets;
+    recordGoogleAutoImportResult = mocks.recordResult;
     getClient = () => ({
       from: () => ({ upsert: mocks.upsertPageMetrics }),
     });
@@ -47,6 +49,7 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
     mocks.listAnnotationKeys.mockResolvedValue([]);
     mocks.listDailyTargets.mockResolvedValue([]);
     mocks.upsertPageMetrics.mockResolvedValue({ error: null });
+    mocks.recordResult.mockResolvedValue(undefined);
     fetchMock.mockImplementation(async () => new Response(JSON.stringify({ rows: [] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -152,6 +155,53 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
     expect(userFailure?.[1]).toEqual({
       userId: 'user-1',
       reason: expect.stringMatching(/^query_fetch_failed:\d+$/),
+    });
+  });
+
+  describe('日次バッチの結果の保存（FR-011）', () => {
+    const pageOnly = (init: RequestInit | undefined) => {
+      const body = JSON.parse(String(init?.body)) as { dimensions: string[] };
+      return body.dimensions.includes('page') && !body.dimensions.includes('query');
+    };
+
+    it('403 は権限切れとして保存し、failed に数えて次のユーザーへ進む', async () => {
+      mocks.listDailyTargets.mockResolvedValue(['user-1', 'user-2']);
+      let pageFetches = 0;
+      fetchMock.mockImplementation(async (_input, init) => {
+        if (pageOnly(init) && ++pageFetches === 1) {
+          return new Response(
+            '{"error":{"code":403,"message":"User does not have sufficient permission for site","errors":[{"reason":"forbidden"}]}}',
+            { status: 403 }
+          );
+        }
+        return new Response(JSON.stringify({ rows: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      });
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const result = await gscImportService.runDailyBatch();
+
+      expect(result).toMatchObject({ total: 2, succeeded: 1, failed: 1 });
+      expect(mocks.recordResult.mock.calls).toEqual([
+        ['user-1', 'gsc', 'permission_denied'],
+        ['user-2', 'gsc', 'succeeded'],
+      ]);
+      const userFailure = errorLog.mock.calls.find(([message]) => message === '[daily-import:gsc] user failed');
+      expect(userFailure?.[1]).toEqual({ userId: 'user-1', reason: expect.stringMatching(/^permission_denied: GSC Search Analytics API エラー: 403 /) });
+    });
+
+    it('403 以外の失敗では結果を書き換えない', async () => {
+      mocks.listDailyTargets.mockResolvedValue(['user-1']);
+      fetchMock.mockImplementation(async (_input, init) =>
+        pageOnly(init)
+          ? new Response('upstream unavailable', { status: 503 })
+          : new Response(JSON.stringify({ rows: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      );
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const result = await gscImportService.runDailyBatch();
+
+      expect(result).toMatchObject({ total: 1, failed: 1 });
+      expect(mocks.recordResult).not.toHaveBeenCalled();
     });
   });
 });

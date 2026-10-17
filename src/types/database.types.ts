@@ -997,6 +997,8 @@ export type Database = {
           access_token: string | null
           access_token_expires_at: string | null
           created_at: string | null
+          ga4_auto_import_status: string | null
+          ga4_auto_import_status_at: string | null
           ga4_conversion_events: string[] | null
           ga4_last_synced_at: string | null
           ga4_property_id: string | null
@@ -1004,6 +1006,8 @@ export type Database = {
           ga4_threshold_engagement_sec: number | null
           ga4_threshold_read_rate: number | null
           google_account_email: string | null
+          gsc_auto_import_status: string | null
+          gsc_auto_import_status_at: string | null
           id: string
           last_synced_at: string | null
           permission_level: string | null
@@ -1020,6 +1024,8 @@ export type Database = {
           access_token?: string | null
           access_token_expires_at?: string | null
           created_at?: string | null
+          ga4_auto_import_status?: string | null
+          ga4_auto_import_status_at?: string | null
           ga4_conversion_events?: string[] | null
           ga4_last_synced_at?: string | null
           ga4_property_id?: string | null
@@ -1027,6 +1033,8 @@ export type Database = {
           ga4_threshold_engagement_sec?: number | null
           ga4_threshold_read_rate?: number | null
           google_account_email?: string | null
+          gsc_auto_import_status?: string | null
+          gsc_auto_import_status_at?: string | null
           id?: string
           last_synced_at?: string | null
           permission_level?: string | null
@@ -1043,6 +1051,8 @@ export type Database = {
           access_token?: string | null
           access_token_expires_at?: string | null
           created_at?: string | null
+          ga4_auto_import_status?: string | null
+          ga4_auto_import_status_at?: string | null
           ga4_conversion_events?: string[] | null
           ga4_last_synced_at?: string | null
           ga4_property_id?: string | null
@@ -1050,6 +1060,8 @@ export type Database = {
           ga4_threshold_engagement_sec?: number | null
           ga4_threshold_read_rate?: number | null
           google_account_email?: string | null
+          gsc_auto_import_status?: string | null
+          gsc_auto_import_status_at?: string | null
           id?: string
           last_synced_at?: string | null
           permission_level?: string | null

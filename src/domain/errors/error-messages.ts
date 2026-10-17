@@ -510,6 +510,12 @@ export const ERROR_MESSAGES = {
     DELETE_DB_FAILED: 'データの削除に失敗しました。時間をおいて再試行してください',
   },
 
+  GOOGLE_AUTO_IMPORT: {
+    /** GSC・GA4 自動取込結果の保存に失敗した場合 */
+    RESULT_SAVE_FAILED: (source: 'gsc' | 'ga4', detail: string): string =>
+      `${source === 'gsc' ? 'GSC' : 'GA4'}自動取込結果の保存に失敗しました: ${detail}`,
+  },
+
   /**
    * Google Search Console関連のエラーメッセージ
    */

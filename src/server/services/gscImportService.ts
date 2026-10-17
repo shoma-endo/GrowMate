@@ -15,6 +15,10 @@ import type {
 } from '@/types/gsc';
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 import { runDailyImportBatch } from '@/server/lib/daily-import-batch';
+import {
+  GooglePropertyAccessDeniedError,
+  isGscPropertyAccessDenied,
+} from '@/domain/errors/GooglePropertyAccessDeniedError';
 import { buildGscDailyImportRange } from '@/server/lib/gsc-import-utils';
 
 class GscImportService {
@@ -32,12 +36,21 @@ class GscImportService {
         userIds,
         startedAt,
         importUser: async userId => {
-          const { result: imported, pageWriteFailures } = await this.importMetricsWithOutcome(userId, {
-            ...range,
-            searchType: 'web',
-            maxRows: 25_000,
-            dataState: 'all',
-          });
+          let outcome: Awaited<ReturnType<typeof this.importMetricsWithOutcome>>;
+          try {
+            outcome = await this.importMetricsWithOutcome(userId, {
+              ...range,
+              searchType: 'web',
+              maxRows: 25_000,
+              dataState: 'all',
+            });
+          } catch (error) {
+            if (!(error instanceof GooglePropertyAccessDeniedError)) throw error;
+            await this.supabaseService.recordGoogleAutoImportResult(userId, 'gsc', 'permission_denied');
+            return { ok: false, reason: `permission_denied: ${error.message}` };
+          }
+          await this.supabaseService.recordGoogleAutoImportResult(userId, 'gsc', 'succeeded');
+          const { result: imported, pageWriteFailures } = outcome;
           if (imported.pageMetricsHitLimit) {
             console.error('[daily-import:gsc] page metrics reached row limit', { userId, ...range });
           }
@@ -482,7 +495,9 @@ class GscImportService {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`GSC Search Analytics API エラー: ${response.status} ${text}`);
+      const message = `GSC Search Analytics API エラー: ${response.status} ${text}`;
+      if (isGscPropertyAccessDenied(response.status, text)) throw new GooglePropertyAccessDeniedError(message);
+      throw new Error(message);
     }
 
     const json = (await response.json()) as { rows?: GscSearchAnalyticsRow[] };

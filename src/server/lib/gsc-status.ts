@@ -27,6 +27,7 @@ export function toGscConnectionStatus(credential: GscCredential | null): GscConn
     permissionLevel: credential.permissionLevel ?? null,
     verified: credential.verified ?? null,
     lastSyncedAt: credential.lastSyncedAt ?? null,
+    propertyAccessDenied: credential.gscAutoImportStatus === 'permission_denied',
     updatedAt: credential.updatedAt ?? null,
     scope: credential.scope ?? null,
   };

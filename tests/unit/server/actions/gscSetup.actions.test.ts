@@ -48,6 +48,7 @@ import {
   fetchGscProperties,
   fetchGscStatus,
   refetchGscStatusWithValidation,
+  saveGscProperty,
 } from '@/server/actions/gscSetup.actions';
 
 const USER_ID = 'b0ed75ba-bb37-4dd7-89a0-c6ce940f991c';
@@ -224,5 +225,23 @@ describe('refetchGscStatusWithValidation の一時的失敗の伝播', () => {
       expect(result.needsReauth).toBe(false);
       expect(result.data.hasTemporaryError).toBeFalsy();
     }
+  });
+});
+
+describe('saveGscProperty の自動取込の結果のリセット（auto-daily-imports-spec FR-011）', () => {
+  it('プロパティを保存すると GSC の結果を未実行に戻す（アクセスできないカードを消す）', async () => {
+    vi.clearAllMocks();
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID });
+    mocks.getGscCredentialByUserId.mockResolvedValue(VALID_CREDENTIAL);
+    mocks.updateGscCredential.mockResolvedValue(undefined);
+
+    const result = await saveGscProperty({ propertyUri: 'sc-domain:example.com' });
+
+    expect(result.success).toBe(true);
+    expect(mocks.updateGscCredential).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ propertyUri: 'sc-domain:example.com', gscAutoImportStatus: null })
+    );
+    expect(mocks.updateGscCredential.mock.calls[0]?.[1]).not.toHaveProperty('ga4AutoImportStatus');
   });
 });
