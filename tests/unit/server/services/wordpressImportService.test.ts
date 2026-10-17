@@ -439,4 +439,69 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     expect(listContentAnnotationKeys).not.toHaveBeenCalled();
     expect(result).toMatchObject({ kind: 'failure', error: ERROR_MESSAGES.WORDPRESS.IMPORT_TIMED_OUT });
   });
+  it('REST の入り口が無い投稿タイプは設定から外し、残りのタイプで全件取込を終えて基準を進める', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const updateWordPressContentTypes = vi.fn().mockResolvedValue(undefined);
+    const advanceBaseline = vi.fn().mockResolvedValue(true);
+    const supabaseService = {
+      getClient: () => ({
+        from: () => ({
+          update: mocks.update,
+          upsert: () => ({ select: () => Promise.resolve({ data: [{ canonical_url: 'https://example.com/a', wp_post_title: 'A' }], error: null }) }),
+        }),
+      }),
+      listContentAnnotationKeys: vi.fn().mockResolvedValue([]),
+      // 取込中に利用者が pages を足した。古い設定で上書きせず、今の設定から product だけを除く
+      getWordPressSettingsByUserId: vi.fn().mockResolvedValue({ wpContentTypes: ['posts', 'pages', 'product'] }),
+      updateWordPressContentTypes,
+      advanceWordPressImportBaseline: advanceBaseline,
+    } as unknown as SupabaseService;
+    const wpService = {
+      fetchAllNormalizedContentByTypes: vi.fn().mockResolvedValue({
+        posts: normalizeWordPressRestPosts([{ id: 1, type: 'post', link: 'https://example.com/a', title: { rendered: 'A' } }]),
+        totalsByType: { posts: 1, product: 0 },
+        uniqueIdCountsByType: { posts: 1, product: 0 },
+        missingRouteTypes: ['product'],
+      }),
+    } as unknown as WordPressService;
+
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes: ['posts', 'product'], wpImportBaselineAt: null } as WordPressSettings,
+      wpService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+    });
+
+    expect(updateWordPressContentTypes).toHaveBeenCalledWith('user-1', ['posts', 'pages']);
+    expect(advanceBaseline).toHaveBeenCalledWith('user-1', '2026-10-14T02:00:00.000Z', expect.objectContaining({ baselineAt: null }));
+    expect(result).toMatchObject({ kind: 'success', stats: { contentTypes: ['posts'], insertedPosts: 1 } });
+  });
+  it('設定の投稿タイプがすべてサイトに無いときは、設定を空にせず一時的な失敗で終える', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const updateWordPressContentTypes = vi.fn();
+    const advanceBaseline = vi.fn();
+    const supabaseService = {
+      getClient: () => ({ from: () => ({ update: mocks.update }) }),
+      updateWordPressContentTypes,
+      advanceWordPressImportBaseline: advanceBaseline,
+    } as unknown as SupabaseService;
+    const wpService = {
+      fetchAllNormalizedContentByTypes: vi.fn().mockResolvedValue({
+        posts: [], totalsByType: { product: 0 }, uniqueIdCountsByType: { product: 0 }, missingRouteTypes: ['product'],
+      }),
+    } as unknown as WordPressService;
+
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes: ['product'], wpImportBaselineAt: null } as WordPressSettings,
+      wpService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+    });
+
+    expect(result).toMatchObject({ kind: 'failure', failure: 'temporary_failure' });
+    expect(updateWordPressContentTypes).not.toHaveBeenCalled();
+    expect(advanceBaseline).not.toHaveBeenCalled();
+  });
 });

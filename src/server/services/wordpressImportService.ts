@@ -95,9 +95,11 @@ async function fetchImportPosts(
   skippedExistingByType: Record<string, number>;
   /** 全件取得で、投稿タイプごとの件数が WordPress の総数に届かなかったタイプ */
   incompleteTypes: string[];
+  /** REST の入り口がサイトに無く、飛ばした投稿タイプ */
+  missingRouteTypes: string[];
 }> {
   if (!baseline) {
-    const { posts: normalizedPosts, totalsByType, uniqueIdCountsByType } =
+    const { posts: normalizedPosts, totalsByType, uniqueIdCountsByType, missingRouteTypes } =
       await wpService.fetchAllNormalizedContentByTypes(contentTypes, { perPage: 100, ...(deadlineAt !== undefined ? { deadlineAt } : {}) });
     const fetchedByType: Record<string, number> = {};
     for (const post of normalizedPosts) {
@@ -114,6 +116,7 @@ async function fetchImportPosts(
       totalsByType,
       skippedExistingByType: {},
       incompleteTypes,
+      missingRouteTypes: missingRouteTypes ?? [],
     };
   }
 
@@ -123,7 +126,7 @@ async function fetchImportPosts(
       wpService.fetchAllContentByTypes([contentType], { perPage: 100, modifiedAfter: queryDate, ...(deadlineAt !== undefined ? { deadlineAt } : {}) }),
       wpService.fetchAllContentByTypes([contentType], { perPage: 100, after: queryDate, ...(deadlineAt !== undefined ? { deadlineAt } : {}) }),
     ]);
-    return { contentType, posts: [...modified.posts, ...published.posts], total: Math.max(
+    return { contentType, missing: [...(modified.missingRouteTypes ?? []), ...(published.missingRouteTypes ?? [])], posts: [...modified.posts, ...published.posts], total: Math.max(
       modified.totalsByType[contentType] ?? 0,
       published.totalsByType[contentType] ?? 0
     ) };
@@ -158,6 +161,7 @@ async function fetchImportPosts(
     totalsByType,
     skippedExistingByType,
     incompleteTypes: [],
+    missingRouteTypes: [...new Set(results.flatMap(result => result.missing))],
   };
 }
 
@@ -195,8 +199,26 @@ export async function importWordPressContent({
       baseline = null;
     }
 
-    const { posts, fetchedCount, fetchedByType, totalsByType, skippedExistingByType, incompleteTypes } =
+    const { posts, fetchedCount, fetchedByType, totalsByType, skippedExistingByType, incompleteTypes, missingRouteTypes } =
       await fetchImportPosts(wpService, contentTypes, baseline, deadlineAt);
+    if (missingRouteTypes.length > 0) {
+      contentTypes = contentTypes.filter(type => !missingRouteTypes.includes(type));
+      // 全タイプが無いときに空で保存すると、次回「未設定」として全タイプを自動検出してしまう
+      if (contentTypes.length === 0) {
+        console.error('[wordpress-import] no configured content type has a REST route', { userId, missingRouteTypes });
+        return { kind: 'failure', failure: 'temporary_failure', error: ERROR_MESSAGES.WORDPRESS.CONTENT_TYPE_FETCH_FAILED };
+      }
+      // サイトに無い投稿タイプは設定から外す。投稿タイプが変わると基準が NULL に戻るので、
+      // 後でタイプを設定に戻したときは全件取得になり、それまでの記事を取りこぼさない。
+      // 取込中に利用者が設定を変えていることがあるので、今の設定から無いタイプだけを除く
+      const current = await supabaseService.getWordPressSettingsByUserId(userId);
+      const currentTypes = normalizeContentTypes(current?.wpContentTypes);
+      const remaining = currentTypes.filter(type => !missingRouteTypes.includes(type));
+      if (remaining.length > 0 && remaining.length < currentTypes.length) {
+        console.warn('[wordpress-import] content types without REST route removed from settings', { userId, missingRouteTypes });
+        await supabaseService.updateWordPressContentTypes(userId, remaining);
+      }
+    }
     const skippedExistingPosts = Object.values(skippedExistingByType).reduce((sum, count) => sum + count, 0);
     assertBeforeDeadline(deadlineAt);
     const keys = await supabaseService.listContentAnnotationKeys(userId);
