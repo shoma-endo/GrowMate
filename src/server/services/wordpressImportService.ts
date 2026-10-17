@@ -47,9 +47,9 @@ type ImportResult =
   | { kind: 'success'; stats: ImportStats }
   | { kind: 'failure'; failure: 'auth_expired' | 'temporary_failure'; error: string };
 
-// 初回の全件取得は1万件を超えるサイトがある。1回の upsert に全件を載せると本文込みで数十MBになり、
+// 初回の全件取得は1万件を超えるサイトがある。1回の upsert に載せる件数が多いと本文込みで送信が大きくなり、
 // 既存行の UPDATE を一斉に投げると接続が詰まるため、書き込みを分割する
-const INSERT_BATCH_SIZE = 500;
+const INSERT_BATCH_SIZE = 100;
 const UPDATE_CONCURRENCY = 20;
 
 /**
@@ -64,6 +64,16 @@ interface ExistingAnnotation {
   id: string;
   canonical_url: string | null;
   wp_post_id: number | null;
+}
+
+/** supabase-js は DB のエラーを Error ではないオブジェクトで返すので、ログに残す項目を取り出す */
+function describeImportError(error: unknown): string | Record<string, unknown> | null {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const { message, code, details, hint } = error as Record<string, unknown>;
+    return { message, code, details, hint };
+  }
+  return error === undefined ? null : String(error);
 }
 
 function offsetDate(value: string): string {
@@ -347,7 +357,7 @@ export async function importWordPressContent({
     console.error('[wordpress-import] import failed', {
       userId,
       failure,
-      error: error instanceof Error ? error.message : null,
+      error: describeImportError(error),
     });
     return {
       kind: 'failure',
