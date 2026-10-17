@@ -58,6 +58,7 @@ import {
   fetchGa4KeyEvents,
   fetchGa4Status,
   refetchGa4StatusWithValidation,
+  saveGa4Settings,
 } from '@/server/actions/ga4Setup.actions';
 
 const USER_ID = 'b0ed75ba-bb37-4dd7-89a0-c6ce940f991c';
@@ -212,5 +213,22 @@ describe('refetchGa4StatusWithValidation の一時的失敗の伝播', () => {
       expect(result.needsReauth).toBe(false);
       expect(result.data.hasTemporaryError).toBeFalsy();
     }
+  });
+});
+
+describe('saveGa4Settings の自動取込の結果のリセット（auto-daily-imports-spec FR-011）', () => {
+  it('設定を保存すると、同じプロパティでも GA4 の結果を未実行に戻す', async () => {
+    vi.clearAllMocks();
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID, userDetails: { role: 'paid' } });
+    mocks.getGscCredentialByUserId.mockResolvedValue({ ga4PropertyId: 'properties/123' });
+    mocks.updateGscCredential.mockResolvedValue(undefined);
+
+    const result = await saveGa4Settings({ propertyId: 'properties/123', conversionEvents: [] });
+
+    expect(result.success).toBe(true);
+    const updates = mocks.updateGscCredential.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(updates).toMatchObject({ ga4AutoImportStatus: null });
+    expect(updates).not.toHaveProperty('ga4LastSyncedAt');
+    expect(updates).not.toHaveProperty('gscAutoImportStatus');
   });
 });

@@ -166,3 +166,37 @@ describe('@/lib/home-today', () => {
     });
   });
 });
+
+describe('buildHomeToday: プロパティの権限切れ（auto-daily-imports-spec FR-011）', () => {
+  const denied: Omit<HomeTodayInput, 'role'> = {
+    ...allHealthy,
+    gsc: { connected: true, needsReauth: false, propertyAccessDenied: true },
+    ga4: { connected: true, connectionStage: 'configured', needsReauth: false, propertyAccessDenied: true },
+  };
+
+  it('トークンが有効で権限切れなら、GSC・GA4 のアクセスできないカードが出る', () => {
+    const today = buildHomeToday({ role: 'paid', ...denied });
+    expect(today.items.map(item => item.id)).toEqual(['gsc-property-denied', 'ga4-property-denied']);
+    expect(today.items.every(item => item.kind === 'reauth')).toBe(true);
+    expect(today.items.map(item => item.cta.href)).toEqual(['/setup/gsc', '/setup/ga4']);
+  });
+
+  it('トークン失効のときは再連携カードだけを出し、アクセスできないカードは重ねない', () => {
+    expect(
+      idsOf({
+        role: 'paid',
+        ...denied,
+        gsc: { connected: true, needsReauth: true, propertyAccessDenied: true },
+        ga4: { connected: true, connectionStage: 'configured', needsReauth: true, propertyAccessDenied: true },
+      })
+    ).toEqual(['gsc-reauth', 'ga4-reauth']);
+  });
+
+  it('権限切れでなければ出ない', () => {
+    expect(idsOf({ role: 'paid', ...allHealthy })).toEqual([]);
+  });
+
+  it('trial には出さない', () => {
+    expect(idsOf({ role: 'trial', ...denied })).toEqual([]);
+  });
+});

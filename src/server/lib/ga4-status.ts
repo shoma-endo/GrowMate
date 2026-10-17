@@ -34,6 +34,7 @@ export function toGa4ConnectionStatus(credential: GscCredential | null): Ga4Conn
     thresholdEngagementSec: credential.ga4ThresholdEngagementSec ?? null,
     thresholdReadRate: credential.ga4ThresholdReadRate ?? null,
     lastSyncedAt: credential.ga4LastSyncedAt ?? null,
+    propertyAccessDenied: credential.ga4AutoImportStatus === 'permission_denied',
     updatedAt: credential.updatedAt ?? null,
   };
 }

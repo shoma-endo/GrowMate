@@ -141,6 +141,7 @@ export async function saveGscProperty(params: {
       permissionLevel: permissionLevel ?? null,
       verified,
       lastSyncedAt: new Date().toISOString(),
+      gscAutoImportStatus: null,
     });
 
     const updatedCredential = await supabaseService.getGscCredentialByUserId(userId);
