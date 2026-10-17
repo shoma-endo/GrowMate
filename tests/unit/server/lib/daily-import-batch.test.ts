@@ -105,4 +105,15 @@ describe('runDailyImportBatch (auto-daily-imports-spec §6)', () => {
     expect(importUser.mock.calls.map(([userId]) => userId)).not.toContain('heavy');
     expect(result).toEqual({ total: 3, succeeded: 2, failed: 0, skippedDueToLimit: 1 });
   });
+  it('通常のユーザーが時間予算の半分を使ったら、残りは後回しのユーザーに回す（後回しが一度も始まらない状態にしない）', async () => {
+    const half = DAILY_IMPORT_TIME_BUDGET_MS / 2;
+    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(half).mockReturnValue(half);
+    const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
+    const result = await runDailyImportBatch({
+      source: 'wordpress', userIds: ['a', 'b'], deferredUserIds: ['heavy'], startedAt: 0, importUser,
+    });
+
+    expect(importUser.mock.calls).toEqual([['a', half], ['heavy', DAILY_IMPORT_TIME_BUDGET_MS]]);
+    expect(result).toEqual({ total: 3, succeeded: 2, failed: 0, skippedDueToLimit: 1 });
+  });
 });

@@ -46,31 +46,38 @@ export async function runDailyImportBatch({
   let failed = 0;
   let attempted = 0;
 
-  const ordered = [...rotateForDay(userIds, startedAt), ...rotateForDay(deferredUserIds, startedAt)];
-  for (const userId of ordered) {
-    if (Date.now() - startedAt >= timeBudgetMs) break;
-    attempted += 1;
-    try {
-      const result = await importUser(userId, startedAt + timeBudgetMs);
-      if (result.ok) {
-        succeeded += 1;
-      } else {
+  const runGroup = async (ids: string[], budgetMs: number) => {
+    for (const userId of rotateForDay(ids, startedAt)) {
+      if (Date.now() - startedAt >= budgetMs) return;
+      attempted += 1;
+      try {
+        const result = await importUser(userId, startedAt + budgetMs);
+        if (result.ok) {
+          succeeded += 1;
+        } else {
+          failed += 1;
+          console.error(`[daily-import:${source}] user failed`, { userId, reason: result.reason });
+        }
+      } catch (error) {
         failed += 1;
-        console.error(`[daily-import:${source}] user failed`, { userId, reason: result.reason });
+        console.error(`[daily-import:${source}] user failed`, {
+          userId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
       }
-    } catch (error) {
-      failed += 1;
-      console.error(`[daily-import:${source}] user failed`, {
-        userId,
-        reason: error instanceof Error ? error.message : String(error),
-      });
     }
-  }
+  };
+
+  // 後回しのユーザーがいる日は、通常のユーザーに時間予算の半分までしか使わせない。
+  // 通常のユーザーだけで予算を使い切る日が続くと、後回しのユーザーが一度も処理されなくなるため
+  const total = userIds.length + deferredUserIds.length;
+  await runGroup(userIds, deferredUserIds.length > 0 ? timeBudgetMs / 2 : timeBudgetMs);
+  await runGroup(deferredUserIds, timeBudgetMs);
 
   return {
-    total: ordered.length,
+    total,
     succeeded,
     failed,
-    skippedDueToLimit: ordered.length - attempted,
+    skippedDueToLimit: total - attempted,
   };
 }
