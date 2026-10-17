@@ -208,8 +208,8 @@ export async function importWordPressContent({
         console.error('[wordpress-import] no configured content type has a REST route', { userId, missingRouteTypes });
         return { kind: 'failure', failure: 'temporary_failure', error: ERROR_MESSAGES.WORDPRESS.CONTENT_TYPE_FETCH_FAILED };
       }
-      // サイトに無い投稿タイプは設定から外す。投稿タイプが変わると基準が NULL に戻るので、
-      // 後でタイプを設定に戻したときは全件取得になり、それまでの記事を取りこぼさない。
+      // サイトに無い投稿タイプは設定から外す（外すだけでは基準は変わらない）。後でタイプを設定に戻すと、
+      // タイプの追加として基準が NULL に戻り、全件取得でそれまでの記事を取りこぼさない。
       // 取込中に利用者が設定を変えていることがあるので、今の設定から無いタイプだけを除く
       const current = await supabaseService.getWordPressSettingsByUserId(userId);
       const currentTypes = normalizeContentTypes(current?.wpContentTypes);
@@ -396,10 +396,11 @@ class WordPressImportService {
 
   async runDailyBatch() {
     return CRON_DEFINITIONS.wordpressDailyImport.runBatch(async startedAtMs => {
-      const userIds = await this.supabaseService.listWordPressAutoImportTargets();
+      const targets = await this.supabaseService.listWordPressAutoImportTargets();
       const result = await runDailyImportBatch({
         source: 'wordpress',
-        userIds,
+        userIds: targets.filter(target => !target.needsFullImport).map(target => target.userId),
+        deferredUserIds: targets.filter(target => target.needsFullImport).map(target => target.userId),
         startedAt: startedAtMs,
         timeBudgetMs: WORDPRESS_DAILY_IMPORT_TIME_BUDGET_MS,
         importUser: async (userId, deadlineAt) => {
