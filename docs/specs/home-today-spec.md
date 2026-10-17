@@ -183,10 +183,11 @@ PC（lg 以上、サイドバー展開時）:
 | 6 | WordPress 再連携 | paid/admin かつ、毎日の自動取込が保存した結果が「認証切れ」（`wordpress_settings.wp_auto_import_status = 'auth_expired'`）。画面を開いたときに WordPress へは接続しない（`docs/specs/auto-daily-imports-spec.md` FR-008） | WordPress の再連携が必要です / 記事の取得が止まっています。 | 再連携する → `/setup/wordpress` |
 | 9 | GSC プロパティにアクセスできない | paid/admin かつ `gscStatus.connected && propertyAccessDenied`、かつ 1 が出ていない。毎日の自動取込が保存した結果（`gsc_credentials.gsc_auto_import_status = 'permission_denied'`）で判定し、画面を開いたときに Google へは接続しない（`docs/specs/auto-daily-imports-spec.md` FR-011） | Google Search Console のプロパティにアクセスできません / 連携中の Google アカウントから権限が外れ、検索順位の取得が止まっています。Google Search Console 側で権限を戻すか、別のプロパティを選んでください。 | プロパティを選ぶ → `/setup/gsc` |
 | 10 | GA4 プロパティにアクセスできない | paid/admin かつ `ga4Status.connected && propertyAccessDenied`、かつ 2 が出ていない（`ga4_auto_import_status = 'permission_denied'`。FR-011） | Google Analytics 4 のプロパティにアクセスできません / 連携中の Google アカウントから権限が外れ、アクセス解析の取得が止まっています。Google Analytics 4 側で権限を戻すか、別のプロパティを選んでください。 | プロパティを選ぶ → `/setup/ga4` |
-| 7 | 空状態 | 1〜6・9・10 が 0 件 | 確認が必要なことはありません / paid・admin で未連携がある（`hasUnlinked`）: 連携がまだの場合は 設定 から始められます。（「設定」はリンク）。それ以外: 新しい提案や連携の異常があるとここに出ます。（全部連携済みの人に毎日「設定」を出さない。trial は `/setup` に入れないので常にこちら） | なし |
+| 11 | WordPress の取込が止まっている | paid/admin かつ、毎日の自動取込が保存した結果が「一時的な失敗」で、最後に最後まで取り込めた回（`wp_import_baseline_at`。無ければ連携した日 `created_at`）から3日以上たっている。かつ 6 が出ていない（`docs/specs/auto-daily-imports-spec.md` FR-012） | WordPress の記事の取込に失敗しています / サイトが表示されるかと、WordPress 側の設定を確認してください。 | 設定を確認する → `/setup/wordpress` |
+| 7 | 空状態 | 1〜6・9〜11 が 0 件 | 確認が必要なことはありません / paid・admin で未連携がある（`hasUnlinked`）: 連携がまだの場合は 設定 から始められます。（「設定」はリンク）。それ以外: 新しい提案や連携の異常があるとここに出ます。（全部連携済みの人に毎日「設定」を出さない。trial は `/setup` に入れないので常にこちら） | なし |
 | 8 | 取得失敗 | 連携状態または件数の取得で例外 | 一部の情報を取得できませんでした / ページを再読み込みしてください。 | なし |
 
-- 順序: 1, 9, 2, 10, 3, 4, 5, 6 の順。放置するとデータが止まるものが上。9・10 は FR-011 で後から足したので番号が飛ぶ（ほかの節が「項目 8（取得失敗）」などの番号で参照しているため、番号は振り直さない）。9・10 の説明は2文（次にやることを足すため。既存の項目は1文）。
+- 順序: 1, 9, 2, 10, 3, 4, 5, 6, 11 の順。放置するとデータが止まるものが上。9・10 は FR-011、11 は FR-012 で後から足したので番号が飛ぶ（ほかの節が「項目 8（取得失敗）」などの番号で参照しているため、番号は振り直さない）。9・10 の説明は2文（次にやることを足すため。既存の項目は1文）。
 - 利用者向けの語は辞書どおり「再連携」（`ui-text.md`: 「再連携 | 再認証、再接続 | 目視」）。既存の `/setup/*` 画面は「再認証が必要です」と書いており辞書から逸脱しているが、本仕様では直さない（§4 Non-goal）。
 
 ### サイドバーの変更
@@ -198,7 +199,7 @@ PC（lg 以上、サイドバー展開時）:
 
 | ファイル | 役割 |
 | --- | --- |
-| `app/page.tsx` | server component に作り替え。`authMiddleware` → `roleUnavailable` なら `/unavailable`（`/` は proxy の公開パスで proxy が振り分けないため。無いと `/login` ⇄ `/` の無限リダイレクト）→ 役割判定 → 連携状態（GSC/GA4 は `resolveHomeGoogleCredential`（`src/server/lib/home-google-credential.ts`。実際にトークンリフレッシュを試みてから `toGscConnectionStatus` / `toGa4ConnectionStatus` に渡す）、`getGoogleAdsConnectionStatus`、`canAccessInstagram` なら `getInstagramConnectionStatus`、paid/admin なら WordPress 設定の自動取込の結果（`getWordPressSettingsResultByUserId`。WordPress へは接続しない））を `Promise.all` ＋ `settle()`（例外を `ok:false` に落とす）で並列取得。失敗は項目 8 に落とす |
+| `app/page.tsx` | server component に作り替え。`authMiddleware` → `roleUnavailable` なら `/unavailable`（`/` は proxy の公開パスで proxy が振り分けないため。無いと `/login` ⇄ `/` の無限リダイレクト）→ 役割判定 → 連携状態（GSC/GA4 は `resolveHomeGoogleCredential`（`src/server/lib/home-google-credential.ts`。実際にトークンリフレッシュを試みてから `toGscConnectionStatus` / `toGa4ConnectionStatus` に渡す）、`getGoogleAdsConnectionStatus`、`canAccessInstagram` なら `getInstagramConnectionStatus`、paid/admin なら WordPress 設定の自動取込の結果（`resolveHomeWordPressStatus` → `getWordPressSettingsResultByUserId`。認証切れと、3日以上取り込めていないか（`isWordPressImportStalled`）を判定する。WordPress へは接続しない））を `Promise.all` ＋ `settle()`（例外を `ok:false` に落とす）で並列取得。失敗は項目 8 に落とす |
 | `app/_components/TodayChecklist.tsx`（新規、server component） | 項目 1〜8 の描画。props は取得済みの状態と役割だけ。クリックは `Link` のみでクライアント状態を持たない |
 | `src/lib/home-today.ts`（新規、純粋ロジック） | `buildHomeToday({ role, gsc, ga4, googleAds, instagram, wordpress })` → `{ items, fetchFailed, hasUnlinked }`。`null` は取得失敗、`undefined` は役割上取得しない。表示条件（HOME-02）をここに集約し `tests/unit/lib/home-today.test.ts` で検査 |
 | `src/components/AppShell.tsx` | ユーザーブロックのアバターにメールのツールチップ |
