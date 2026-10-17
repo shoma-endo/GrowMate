@@ -47,11 +47,6 @@ const REST_FETCH_TIMEOUT_MS = 60_000;
 const REDUCED_PER_PAGE_STEPS = [20, 5];
 
 /**
- * 件数を減らせば通る見込みがある失敗（5xx・応答が途中で切れた・タイムアウト）か。
- * 候補 URL のどれか1つでも当てはまれば取り直す（もう一方の形式がサイトで使えず 404・403 になることがある）。
- * どの候補も認証エラーや 404 だけなら、件数を減らしても変わらない。
- */
-/**
  * 投稿タイプの REST の入り口がサイトに無い（設定に残っているが、プラグインを外した・REST に公開していない）。
  * そのタイプには取り込む記事が無いので、取込全体を失敗にせずに飛ばす。
  */
@@ -62,6 +57,11 @@ function isMissingRoute(error: unknown): boolean {
     error.message.includes('rest_no_route');
 }
 
+/**
+ * 件数を減らせば通る見込みがある失敗（5xx・応答が途中で切れた・タイムアウト）か。
+ * 候補 URL のどれか1つでも当てはまれば取り直す（もう一方の形式がサイトで使えず 404・403 になることがある）。
+ * どの候補も認証エラーや 404 だけなら、件数を減らしても変わらない。
+ */
 function isHeavyPageFailure(error: unknown): boolean {
   return error instanceof WordPressRestFetchError &&
     error.statuses.some(status => status === 0 || status >= 500);
