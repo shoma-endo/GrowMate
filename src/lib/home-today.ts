@@ -161,7 +161,7 @@ export function buildHomeToday(input: HomeTodayInput): HomeToday {
       kind: 'reauth',
       title: 'WordPress の記事の取込に失敗しています',
       description: 'サイトが表示されるかと、WordPress 側の設定を確認してください。',
-      cta: { label: '設定を確認する', href: '/setup/wordpress' },
+      cta: { label: '連携設定を開く', href: '/setup/wordpress' },
     });
   }
 
