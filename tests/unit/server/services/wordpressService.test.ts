@@ -305,6 +305,25 @@ describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () =
     expect(new URL(String(fetchMock.mock.calls[2]?.[0])).searchParams.get('per_page')).toBe('20');
   });
 
+  it('投稿タイプの REST の入り口がサイトに無い（404 rest_no_route）ときは、そのタイプを飛ばして残りのタイプを取る', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const noRoute = () => new Response(JSON.stringify({ code: 'rest_no_route', data: { status: 404 } }), { status: 404 });
+    fetchMock
+      .mockResolvedValueOnce(noRoute())
+      .mockResolvedValueOnce(noRoute())
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: 1, type: 'post' }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'X-WP-Total': '1' },
+      }));
+
+    const result = await service().fetchAllContentByTypes(['product', 'posts'], { perPage: 100 });
+
+    expect(result.posts).toHaveLength(1);
+    expect(result.totalsByType).toEqual({ product: 0, posts: 1 });
+    expect(result.uniqueIdCountsByType).toEqual({ product: 0, posts: 1 });
+    expect(result.missingRouteTypes).toEqual(['product']);
+  });
+
   it('認証エラーは件数を減らしても変わらないので、取り直さずにそのまま失敗する', async () => {
     fetchMock
       .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
