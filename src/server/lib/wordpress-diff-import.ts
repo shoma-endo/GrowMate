@@ -29,20 +29,24 @@ export function hasWordPressImportTargetChanged(
   }
 ): boolean {
   if (!previous) return true;
-  const oldTypes = normalizeContentTypes(previous.wp_content_types).sort();
-  const newTypes = normalizeContentTypes(next.wpContentTypes).sort();
+  const oldTypes = new Set(normalizeContentTypes(previous.wp_content_types));
+  // 投稿タイプを外すだけなら、残りのタイプは差分取込を続けられる。足したタイプは基準より前の記事を
+  // 取り込んでいないので、全件取得に戻すために基準をリセットする
+  const typeAdded = normalizeContentTypes(next.wpContentTypes).some(type => !oldTypes.has(type));
   return previous.wp_type !== next.wpType ||
     previous.wp_site_url !== next.wpSiteUrl ||
     previous.wp_site_id !== next.wpSiteId ||
-    oldTypes.length !== newTypes.length ||
-    oldTypes.some((type, index) => type !== newTypes[index]);
+    typeAdded;
 }
 
 export function classifyWordPressImportFailure(error: unknown): 'auth_expired' | 'temporary_failure' {
   if (error && typeof error === 'object' && 'statuses' in error) {
     const { statuses } = error as { statuses?: unknown };
-    if (Array.isArray(statuses) && statuses.some(status => status === 401 || status === 403)) {
-      return 'auth_expired';
+    // 401 は認証情報が無効になった。403 は、別の候補 URL がサイトの失敗（0・5xx）なら、その形式が
+    // ファイアウォール等で使えないだけのことがあり、再連携では直らないので認証切れにしない
+    if (Array.isArray(statuses)) {
+      const siteFailure = statuses.some(status => status === 0 || status >= 500);
+      if (statuses.includes(401) || (statuses.includes(403) && !siteFailure)) return 'auth_expired';
     }
   }
   return 'temporary_failure';

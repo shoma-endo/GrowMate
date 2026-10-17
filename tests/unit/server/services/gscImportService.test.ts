@@ -182,8 +182,8 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
 
       expect(result).toMatchObject({ total: 2, succeeded: 1, failed: 1 });
       expect(mocks.recordResult.mock.calls).toEqual([
-        ['user-1', 'gsc', 'permission_denied'],
-        ['user-2', 'gsc', 'succeeded'],
+        ['user-1', 'gsc', 'permission_denied', 'https://example.com/'],
+        ['user-2', 'gsc', 'succeeded', 'https://example.com/'],
       ]);
       const userFailure = errorLog.mock.calls.find(([message]) => message === '[daily-import:gsc] user failed');
       expect(userFailure?.[1]).toEqual({ userId: 'user-1', reason: expect.stringMatching(/^permission_denied: GSC Search Analytics API エラー: 403 /) });

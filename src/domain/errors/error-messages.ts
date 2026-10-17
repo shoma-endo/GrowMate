@@ -520,6 +520,9 @@ export const ERROR_MESSAGES = {
    * Google Search Console関連のエラーメッセージ
    */
   GSC: {
+    /** Search Analytics API が失敗応答を返した場合 */
+    SEARCH_ANALYTICS_API_FAILED: (status: number, body: string): string =>
+      `GSC Search Analytics API エラー: ${status} ${body}`,
     /** GSC自動取込対象の取得に失敗した場合 */
     AUTO_IMPORT_TARGETS_FETCH_FAILED: (detail: string): string => `GSC自動取込対象の取得に失敗しました: ${detail}`,
     /** Google Search Consoleが未接続の場合 */
@@ -661,6 +664,10 @@ export const ERROR_MESSAGES = {
    * GA4関連のエラーメッセージ
    */
   GA4: {
+    /** GA4 Data API の runReport が失敗応答を返した場合 */
+    RUN_REPORT_FAILED: (status: number, body: string): string => `GA4レポート取得に失敗しました: ${status} ${body}`,
+    /** GA4 Data API の runReport に到達できなかった場合（ネットワークエラー・リダイレクト） */
+    RUN_REPORT_FETCH_FAILED: (detail: string): string => `GA4レポート取得に失敗しました (fetch error): ${detail}`,
     /** GA4が未接続の場合 */
     NOT_CONNECTED: 'GA4が未接続です',
 

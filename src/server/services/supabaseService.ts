@@ -1012,20 +1012,28 @@ export class SupabaseService {
     if (error) throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_RESULT_SAVE_FAILED(error.message));
   }
 
+  /**
+   * 取込に使ったプロパティがまだ選ばれているときだけ書く。取込の最中に別のプロパティへ保存し直されたら、
+   * 古いプロパティの結果で「未実行（NULL）」を上書きしない
+   */
   async recordGoogleAutoImportResult(
     userId: string,
     source: 'gsc' | 'ga4',
-    status: GoogleAutoImportStatus
+    status: GoogleAutoImportStatus,
+    property: string
   ): Promise<void> {
     const now = new Date().toISOString();
-    const record: TablesUpdate<'gsc_credentials'> =
+    const query =
       source === 'gsc'
-        ? { gsc_auto_import_status: status, gsc_auto_import_status_at: now }
-        : { ga4_auto_import_status: status, ga4_auto_import_status_at: now };
-    const { error } = await this.supabase
-      .from('gsc_credentials')
-      .update(record)
-      .eq('user_id', userId);
+        ? this.supabase
+            .from('gsc_credentials')
+            .update({ gsc_auto_import_status: status, gsc_auto_import_status_at: now })
+            .eq('property_uri', property)
+        : this.supabase
+            .from('gsc_credentials')
+            .update({ ga4_auto_import_status: status, ga4_auto_import_status_at: now })
+            .eq('ga4_property_id', property);
+    const { error } = await query.eq('user_id', userId);
     if (error) throw new Error(ERROR_MESSAGES.GOOGLE_AUTO_IMPORT.RESULT_SAVE_FAILED(source, error.message));
   }
 
@@ -1067,11 +1075,11 @@ export class SupabaseService {
     return data.map(row => row.user_id);
   }
 
-  async listWordPressAutoImportTargets(): Promise<string[]> {
+  async listWordPressAutoImportTargets(): Promise<Array<{ userId: string; needsFullImport: boolean }>> {
     const { data, error, truncated } = await this.fetchAllPaged(
       (from, to) => this.supabase
         .from('wordpress_settings')
-        .select('user_id, wp_site_id, wp_site_url, users!inner(role)', { count: 'exact' })
+        .select('user_id, wp_site_id, wp_site_url, wp_import_baseline_at, users!inner(role)', { count: 'exact' })
         .in('users.role', [...PAID_FEATURE_ROLES])
         .order('user_id', { ascending: true })
         .range(from, to),
@@ -1080,7 +1088,9 @@ export class SupabaseService {
     if (error || truncated) {
       throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_TARGETS_FETCH_FAILED(error?.message ?? 'truncated'));
     }
-    return data.filter(row => row.wp_site_id !== null || row.wp_site_url !== null).map(row => row.user_id);
+    return data
+      .filter(row => row.wp_site_id !== null || row.wp_site_url !== null)
+      .map(row => ({ userId: row.user_id, needsFullImport: row.wp_import_baseline_at === null }));
   }
 
   /**

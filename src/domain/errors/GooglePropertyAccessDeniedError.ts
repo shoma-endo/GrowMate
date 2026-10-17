@@ -3,8 +3,12 @@
  * API の無効化や割り当て超過の 403 は含めない（プロパティの選び直しや再連携では直らないため）。
  */
 export class GooglePropertyAccessDeniedError extends Error {
-  constructor(message: string) {
+  /** 拒否されたプロパティ（GSC は property_uri、GA4 は ga4_property_id と同じ値） */
+  readonly property: string;
+
+  constructor(message: string, property: string) {
     super(message);
+    this.property = property;
     this.name = 'GooglePropertyAccessDeniedError';
     Object.setPrototypeOf(this, new.target.prototype);
   }
@@ -32,12 +36,15 @@ export function isGscPropertyAccessDenied(status: number, text: string): boolean
   return parseGoogleApiErrorBody(text)?.errors?.some(e => e.reason === 'forbidden') ?? false;
 }
 
-/**
- * GA4 Data API はプロパティの権限が無いとき、理由（ErrorInfo）を付けずに status: PERMISSION_DENIED を返す。
- * API 無効化（SERVICE_DISABLED）やスコープ不足（ACCESS_TOKEN_SCOPE_INSUFFICIENT）は同じ status に理由が付くので除く
- */
+/** 同じ PERMISSION_DENIED でも、プロパティの選び直しや再連携では直らない理由 */
+const GA4_NON_PROPERTY_DENIED_REASONS = new Set(['SERVICE_DISABLED', 'ACCESS_TOKEN_SCOPE_INSUFFICIENT']);
+
+/** GA4 Data API は status: PERMISSION_DENIED を返す。API 無効化とスコープ不足は details の reason で除く */
 export function isGa4PropertyAccessDenied(status: number, text: string): boolean {
   if (status !== 403) return false;
   const error = parseGoogleApiErrorBody(text);
-  return error?.status === 'PERMISSION_DENIED' && !(error.details ?? []).some(d => d.reason);
+  return (
+    error?.status === 'PERMISSION_DENIED' &&
+    !(error.details ?? []).some(d => d.reason !== undefined && GA4_NON_PROPERTY_DENIED_REASONS.has(d.reason))
+  );
 }

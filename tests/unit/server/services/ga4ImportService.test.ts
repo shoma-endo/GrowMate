@@ -55,7 +55,7 @@ describe('GA4 日次同期の結果の保存（auto-daily-imports-spec FR-011）
   it('権限切れは権限切れとして保存し、ほかのユーザーの成功は成功として保存する', async () => {
     mocks.runReport.mockImplementation(async (_token: string, propertyId: string) => {
       if (propertyId === 'properties/user-1') {
-        throw new GooglePropertyAccessDeniedError('GA4レポート取得に失敗しました: 403 PERMISSION_DENIED');
+        throw new GooglePropertyAccessDeniedError('GA4レポート取得に失敗しました: 403 PERMISSION_DENIED', propertyId);
       }
       return { rows: [] };
     });
@@ -65,8 +65,8 @@ describe('GA4 日次同期の結果の保存（auto-daily-imports-spec FR-011）
     expect(result).toMatchObject({ total: 2, succeeded: 1, failed: 1 });
     expect(mocks.recordResult.mock.calls).toEqual(
       expect.arrayContaining([
-        ['user-1', 'ga4', 'permission_denied'],
-        ['user-2', 'ga4', 'succeeded'],
+        ['user-1', 'ga4', 'permission_denied', 'properties/user-1'],
+        ['user-2', 'ga4', 'succeeded', 'properties/user-2'],
       ])
     );
     expect(mocks.recordResult).toHaveBeenCalledTimes(2);
