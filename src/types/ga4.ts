@@ -20,6 +20,8 @@ export interface Ga4ConnectionStatus {
   /** refresh tokenは生きているが一時的に確認できない（Google側5xx/429・ネットワーク・DB書き込み失敗等）。needsReauthとは排他 */
   hasTemporaryError?: boolean;
   temporaryErrorMessage?: string | null;
+  /** 自動取込で、選んだプロパティの権限が無かった（403）。トークン失効とは別 */
+  propertyAccessDenied?: boolean;
   googleAccountEmail?: string | null;
   propertyId?: string | null;
   propertyName?: string | null;

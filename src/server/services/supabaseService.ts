@@ -25,7 +25,13 @@ import type {
   GoogleAdsNegativeKeywordsSuggestionSettingsRecord,
   UpsertGoogleAdsNegativeKeywordsSuggestionSettingsInput,
 } from '@/types/google-ads-negative-keywords-suggestion';
-import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
+import {
+  toGoogleAutoImportStatus,
+  type GoogleAutoImportStatus,
+  type GscCredential,
+  type GscPropertyType,
+  type GscSearchType,
+} from '@/types/gsc';
 import type { InstagramCredential } from '@/types/instagram';
 import {
   toWordPressAutoImportStatus,
@@ -1006,6 +1012,23 @@ export class SupabaseService {
     if (error) throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_RESULT_SAVE_FAILED(error.message));
   }
 
+  async recordGoogleAutoImportResult(
+    userId: string,
+    source: 'gsc' | 'ga4',
+    status: GoogleAutoImportStatus
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const record: TablesUpdate<'gsc_credentials'> =
+      source === 'gsc'
+        ? { gsc_auto_import_status: status, gsc_auto_import_status_at: now }
+        : { ga4_auto_import_status: status, ga4_auto_import_status_at: now };
+    const { error } = await this.supabase
+      .from('gsc_credentials')
+      .update(record)
+      .eq('user_id', userId);
+    if (error) throw new Error(ERROR_MESSAGES.GOOGLE_AUTO_IMPORT.RESULT_SAVE_FAILED(source, error.message));
+  }
+
   async listContentAnnotationKeys(userId: string): Promise<Array<{
     id: string;
     canonical_url: string | null;
@@ -1195,6 +1218,8 @@ export class SupabaseService {
       ga4ThresholdReadRate:
         typeof data.ga4_threshold_read_rate === 'number' ? data.ga4_threshold_read_rate : null,
       ga4LastSyncedAt: data.ga4_last_synced_at,
+      gscAutoImportStatus: toGoogleAutoImportStatus(data.gsc_auto_import_status),
+      ga4AutoImportStatus: toGoogleAutoImportStatus(data.ga4_auto_import_status),
       createdAt: data.created_at ?? new Date().toISOString(),
       updatedAt: data.updated_at ?? new Date().toISOString(),
     };
@@ -1638,6 +1663,10 @@ export class SupabaseService {
       permission_level: payload.permissionLevel ?? null,
       verified: payload.verified ?? null,
       last_synced_at: payload.lastSyncedAt ?? null,
+      gsc_auto_import_status: null,
+      gsc_auto_import_status_at: null,
+      ga4_auto_import_status: null,
+      ga4_auto_import_status_at: null,
       updated_at: new Date().toISOString(),
     };
 
@@ -1693,6 +1722,9 @@ export class SupabaseService {
       ga4ThresholdEngagementSec: number | null;
       ga4ThresholdReadRate: number | null;
       ga4LastSyncedAt: string | null;
+      /** null に戻す（未実行）ことだけを許す。結果を書くのは recordGoogleAutoImportResult */
+      gscAutoImportStatus: null;
+      ga4AutoImportStatus: null;
     }>
   ): Promise<void> {
     const record: Partial<TablesUpdate<'gsc_credentials'>> = {
@@ -1746,6 +1778,14 @@ export class SupabaseService {
     }
     if ('ga4LastSyncedAt' in updates) {
       record.ga4_last_synced_at = updates.ga4LastSyncedAt ?? null;
+    }
+    if ('gscAutoImportStatus' in updates) {
+      record.gsc_auto_import_status = null;
+      record.gsc_auto_import_status_at = null;
+    }
+    if ('ga4AutoImportStatus' in updates) {
+      record.ga4_auto_import_status = null;
+      record.ga4_auto_import_status_at = null;
     }
 
     const { error } = await this.supabase

@@ -1,5 +1,15 @@
 export type GscPropertyType = 'sc-domain' | 'url-prefix';
 
+/** `gsc_credentials.gsc_auto_import_status` / `ga4_auto_import_status` の CHECK 制約と同じ値。生成型は CHECK を反映せず string になる */
+const GOOGLE_AUTO_IMPORT_STATUSES = ['succeeded', 'permission_denied'] as const;
+export type GoogleAutoImportStatus = (typeof GOOGLE_AUTO_IMPORT_STATUSES)[number];
+
+export function toGoogleAutoImportStatus(value: string | null): GoogleAutoImportStatus | null {
+  return (GOOGLE_AUTO_IMPORT_STATUSES as readonly string[]).includes(value ?? '')
+    ? (value as GoogleAutoImportStatus)
+    : null;
+}
+
 export interface GscCredential {
   id: string;
   userId: string;
@@ -20,6 +30,8 @@ export interface GscCredential {
   ga4ThresholdEngagementSec?: number | null;
   ga4ThresholdReadRate?: number | null;
   ga4LastSyncedAt?: string | null;
+  gscAutoImportStatus?: GoogleAutoImportStatus | null;
+  ga4AutoImportStatus?: GoogleAutoImportStatus | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,6 +42,8 @@ export interface GscConnectionStatus {
   /** refresh tokenは生きているが一時的に確認できない（Google側5xx/429・ネットワーク・DB書き込み失敗等）。needsReauthとは排他 */
   hasTemporaryError?: boolean;
   temporaryErrorMessage?: string | null;
+  /** 自動取込で、選んだプロパティの権限が無かった（403）。トークン失効とは別 */
+  propertyAccessDenied?: boolean;
   googleAccountEmail?: string | null;
   propertyUri?: string | null;
   propertyDisplayName?: string | null;

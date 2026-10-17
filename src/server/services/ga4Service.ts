@@ -1,4 +1,8 @@
 import type { Ga4KeyEvent, Ga4PropertySummary } from '@/types/ga4';
+import {
+  GooglePropertyAccessDeniedError,
+  isGa4PropertyAccessDenied,
+} from '@/domain/errors/GooglePropertyAccessDeniedError';
 
 interface Ga4AccountSummaryResponse {
   accountSummaries?: Array<{
@@ -149,7 +153,9 @@ export class Ga4Service {
         url,
         responseBody: text.slice(0, 500),
       });
-      throw new Error(`GA4レポート取得に失敗しました: ${response.status} ${text}`);
+      const message = `GA4レポート取得に失敗しました: ${response.status} ${text}`;
+      if (isGa4PropertyAccessDenied(response.status, text)) throw new GooglePropertyAccessDeniedError(message);
+      throw new Error(message);
     }
 
     return (await response.json()) as Ga4RunReportResponse;
