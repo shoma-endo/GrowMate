@@ -1,11 +1,13 @@
 # 要件定義: AI 要約一括実行のバックグラウンド化
 
+> **一時措置（2026-10-17〜、ユーザー指示）**: 起票は `admin` のみ。`paid` も Server Action が `ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY` で拒否し、ボタンは disabled＋理由表示。判定は `src/authUtils.ts` の `canUseContentAnnotationSummary`（`canWriteGa4` は現在使っていない）。cron は変更なし。本書で「`admin` / `paid` が起票できる」「`canWriteGa4` で判定」とある箇所は、解除後の本来の仕様として読む。
+
 ## メタデータ
 
 - 文書名: AI 要約一括実行のバックグラウンド化
 - ステータス: `approved`
 - 作成日: 2026-09-04
-- 最終更新日: 2026-09-07
+- 最終更新日: 2026-10-17
 - 作成者: Claude（Cloud セッション。下書き）
 - 承認者: 未確定
 - 対象リリース: 未確定
@@ -305,7 +307,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 新規機能の対象ロールは `admin` / `paid`（`CLAUDE.md` Core Rules。既存の `canWriteGa4` = `GA4_ALLOWED_ROLES = ['admin', 'paid']` を流用）。`trial` / `unavailable` は例外なく対象外。
 
-> **2026-10-17 から一時措置**: 起票は `admin` のみ（ユーザー指示）。`paid` も Server Action で拒否する（`canUseContentAnnotationSummary`）。本節・FR-B10・下表・実装メモにある `admin` / `paid`（`canWriteGa4`）は解除後の本来の判定。
+> **一時措置中**（冒頭の注記）: 下表と箇条は解除後の本来の判定。現在は起票も `admin` のみ。
 
 | ロール | 閲覧（進捗表示） | 作成・実行（起票） | 更新 | 削除・解除 |
 | --- | --- | --- | --- | --- |
@@ -314,7 +316,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | `trial` | 不可 | ✕（Server Action で拒否。AC-B09） | 不可 | 不可 |
 | `unavailable` | 不可 | ✕ | 不可 | 不可 |
 
-- ジョブ起票: UI だけでなく Server Action 側でも `canWriteGa4` を検証する。
+- ジョブ起票: UI だけでなく Server Action 側でも `canWriteGa4` を検証する（一時措置中は `canUseContentAnnotationSummary` で admin のみ。冒頭の注記）。
 - 進捗の閲覧: **起票者本人のみ**。`admin` でも他人のジョブは表示しない（進捗表示に管理用途はない）。
 - cron 実行: 既存 cron と同じ `CRON_SECRET` の Bearer 認証（`/api/cron/*` の共通ガード）。処理は Service Role で行い、**ジョブ行の `user_id` を明示的にスコープ**して他人の記事に触れない。
   - **例外は完了メールの掃き出しだけ**: claim の前に行う未通知ジョブの取得（§9「完了メールの起動経路」経路2）は**全利用者のジョブを横断して取得する**（未通知の行がどの利用者のものか事前に分からないため）。ただし宛先（`public.users.email`）と本文は**取得した各行の `user_id` から解決**し、**行をまたいだ結合はしない**。他のクエリ（claim・記事取得・進捗保存・進捗表示）は例外なく単一 `user_id` にスコープする。
@@ -742,7 +744,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 429 の判定 | `src/domain/errors/ChatError.ts` の `ChatErrorCode.ANTHROPIC_RATE_LIMIT`（`:118` / `:178` で 429・`rate_limit_error` を分類済み） | **再利用**（新しい判定・待機・再試行は書かない。§9「429 の判定経路」） |
 | メール本文ビルダー | `src/server/lib/ga4-content-evaluation-email.ts` / `src/server/lib/email-html.ts` の `sanitizeEmailHtml` | **同型で新規**（`content-annotation-summary-email.ts`。§9「完了メールの件名・本文」） |
 | メール送信 | `src/server/services/emailService.ts` | **拡張**（新規メソッド追加。§9） |
-| 権限判定 | `src/server/lib/ga4-permissions.ts` の `canWriteGa4` | **再利用** |
+| 権限判定 | `src/server/lib/ga4-permissions.ts` の `canWriteGa4` | **再利用**（一時措置中は `canUseContentAnnotationSummary` で admin のみ。冒頭の注記） |
 | cron ルート | `app/api/cron/ga4-content-evaluate/route.ts` の共通ガード（`CRON_SECRET` の Bearer 認証） | **再利用**（同型で新規ルートを作る） |
 
 ### 制約条件

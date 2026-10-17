@@ -1,11 +1,13 @@
 # 要件定義: コンテンツ一覧からの AI 要約一括実行
 
+> **一時措置（2026-10-17〜、ユーザー指示）**: AI 要約は一括・単記事とも `admin` のみ実行できる。`paid` / `trial` は両 Server Action が `ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY` で拒否し、ボタンは disabled＋理由表示（一覧コンポーネントにもロール分岐あり）。判定は `src/authUtils.ts` の `canUseContentAnnotationSummary`。本書で「`admin` / `paid` が実行できる」「単記事要約は変えない」「単記事への role 強制は Non-goal」とある箇所は、解除後の本来の仕様として読む。
+
 ## メタデータ
 
 - 文書名: コンテンツ一覧からの AI 要約一括実行
 - ステータス: `approved`
 - 作成日: 2026-08-24
-- 最終更新日: 2026-08-31
+- 最終更新日: 2026-10-17
 - 作成者: 開発（grill-to-gherkin 会話合意に基づく草案）
 - 承認者: spec-review（TAKT）
 - 対象リリース: 未定（MVP）
@@ -329,7 +331,7 @@ WordPress 一括インポート（本仕様では変更しない）
 
 ### 権限
 
-> **2026-10-17 から一時措置**: 一括要約・単記事要約とも `admin` のみ（ユーザー指示）。`paid` / `trial` はサーバー側（両 Server Action）で拒否し、ボタンは disabled＋理由表示。判定は `src/authUtils.ts` の `canUseContentAnnotationSummary`。下表は解除後の本来の権限。
+> **一時措置中**（冒頭の注記）: 下表は解除後の本来の権限。現在は一括・単記事とも `admin` のみ。
 
 | ロール | 閲覧一覧 | 一括要約の実行 | 単記事要約 | 削除・解除 |
 | --- | --- | --- | --- | --- |
