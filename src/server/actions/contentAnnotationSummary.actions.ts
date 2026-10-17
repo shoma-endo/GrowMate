@@ -33,7 +33,7 @@ export async function summarizeContentAnnotation(
       console.error('[content-annotation-summary] forbidden role:', {
         role: userDetails?.role ?? null,
       });
-      return { success: false as const, error: ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY };
+      return { success: false as const, error: ERROR_MESSAGES.WORDPRESS.SUMMARY_SUSPENDED };
     }
 
     const summaryResult = await contentAnnotationSummaryService.generateSummary({

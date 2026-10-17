@@ -58,7 +58,7 @@ describe('認可（一時的に admin のみ）', () => {
   ])('%s はサーバー側で拒否し、要約を生成しない', async (_name, role) => {
     authAs(role);
     const result = await summarizeContentAnnotation({ annotationId: ANNOTATION_ID });
-    expect(result).toEqual({ success: false, error: ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY });
+    expect(result).toEqual({ success: false, error: ERROR_MESSAGES.WORDPRESS.SUMMARY_SUSPENDED });
     expect(mocks.generateSummary).not.toHaveBeenCalled();
   });
 

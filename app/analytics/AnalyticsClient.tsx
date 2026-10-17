@@ -36,6 +36,7 @@ import type {
 import { useRouter } from 'next/navigation';
 import { canUseContentAnnotationSummary } from '@/authUtils';
 import { useAuth } from '@/components/AuthProvider';
+import { SummarySuspendedTooltip } from '@/components/ContentAnnotationSummaryAction';
 import { buildListingSelectionKey } from './selection-scope';
 import { summarizeContentAnnotationsBulk } from '@/server/actions/contentAnnotationBulkSummary.actions';
 import { resolveRawSelectedCount, toggleIdMembership } from '@/lib/analytics-selection';
@@ -555,30 +556,29 @@ export default function AnalyticsClient({
                   {isStarting ? '開始中...' : '評価サイクルを開始'}
                 </button>
               ) : null}
-              <button
-                type="button"
-                // 単記事の「AIで要約」（ContentAnnotationSummaryAction）と同じ見た目にする。
-                // 同じ機能が2箇所にあるので、色とアイコンまで揃えないと別物に見える
-                className={cn(buttonVariants({ variant: 'outline' }), 'h-9 inline-flex items-center gap-2', BULK_SUMMARY_BUTTON_CLASS)}
-                onClick={startBulkSummary}
-                disabled={isSummarizing || isStarting || !isSummaryRoleAllowed}
-                aria-busy={isSummarizing}
-              >
-                {isSummarizing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    要約中...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    AIで要約
-                  </>
-                )}
-              </button>
-              {!isSummaryRoleAllowed ? (
-                <BulkActionNote>{ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY}</BulkActionNote>
-              ) : null}
+              <SummarySuspendedTooltip suspended={!isSummaryRoleAllowed}>
+                <button
+                  type="button"
+                  // 単記事の「AIで要約」（ContentAnnotationSummaryAction）と同じ見た目にする。
+                  // 同じ機能が2箇所にあるので、色とアイコンまで揃えないと別物に見える
+                  className={cn(buttonVariants({ variant: 'outline' }), 'h-9 inline-flex items-center gap-2', BULK_SUMMARY_BUTTON_CLASS)}
+                  onClick={startBulkSummary}
+                  disabled={isSummarizing || isStarting || !isSummaryRoleAllowed}
+                  aria-busy={isSummarizing}
+                >
+                  {isSummarizing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      要約中...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      AIで要約
+                    </>
+                  )}
+                </button>
+              </SummarySuspendedTooltip>
               {isSelectionClamped ? (
                 <BulkActionNote>
                   1000件へ丸めました（残りは行チェックで選択）

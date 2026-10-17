@@ -63,7 +63,7 @@ export async function summarizeContentAnnotationsBulk(
         console.error('[content-annotation-bulk-summary] forbidden role:', {
           role: userDetails?.role ?? null,
         });
-        return { success: false as const, error: ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY };
+        return { success: false as const, error: ERROR_MESSAGES.WORDPRESS.SUMMARY_SUSPENDED };
       }
 
       // ---- 対象 ID の解決（起票時に1回だけ。BR-B02）-------------------------

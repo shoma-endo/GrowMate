@@ -80,7 +80,7 @@ describe('認可（FR-B10 / AC-B09。一時的に admin のみ）', () => {
       contentAnnotationIds: [uuid(1)],
     });
     expect(result.success).toBe(false);
-    expect(result.error).toBe(ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY);
+    expect(result.error).toBe(ERROR_MESSAGES.WORDPRESS.SUMMARY_SUSPENDED);
     expect(mocks.createJob).not.toHaveBeenCalled();
   });
 });

@@ -92,7 +92,7 @@ export const ERROR_MESSAGES = {
     SUMMARY_SOURCE_NOT_LINKED: 'WordPress連携後に利用できます',
 
     /** AI要約（単記事・一括）を管理者以外が実行しようとした場合 */
-    SUMMARY_ADMIN_ONLY: 'AI要約は現在、管理者のみ利用できます',
+    SUMMARY_SUSPENDED: 'AI要約は現在機能停止にしています',
 
     /** AI要約のWordPress本文取得に失敗した場合 */
     SUMMARY_CONTENT_FETCH_FAILED:

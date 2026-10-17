@@ -21,6 +21,29 @@ import type { AnnotationRecord } from '@/types/annotation';
 export const AI_ACTION_BUTTON_CLASS =
   'border-purple-200 bg-purple-50 text-purple-900 hover:bg-purple-100 hover:text-purple-900';
 
+/** AI要約を止めている間、押せないボタンにホバーで理由を出す（disabled のボタンはホバーを拾わないので span で包む） */
+export function SummarySuspendedTooltip({
+  suspended,
+  children,
+}: {
+  suspended: boolean;
+  children: React.ReactNode;
+}) {
+  if (!suspended) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex" tabIndex={0}>
+          {children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{ERROR_MESSAGES.WORDPRESS.SUMMARY_SUSPENDED}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 interface ContentAnnotationSummaryActionProps {
   sessionId?: string | null;
   annotationId?: string | null;
@@ -92,26 +115,28 @@ export default function ContentAnnotationSummaryAction({
   return (
     <div className="flex flex-col items-start gap-1">
       <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size={size}
-          onClick={handleSummarize}
-          disabled={!canSummarize || disabled || isSummarizing}
-          className={cn('min-h-9', AI_ACTION_BUTTON_CLASS)}
-        >
-          {isSummarizing ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              要約中...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4" />
-              AIで要約
-            </>
-          )}
-        </Button>
+        <SummarySuspendedTooltip suspended={!isRoleAllowed}>
+          <Button
+            type="button"
+            variant="outline"
+            size={size}
+            onClick={handleSummarize}
+            disabled={!canSummarize || disabled || isSummarizing}
+            className={cn('min-h-9', AI_ACTION_BUTTON_CLASS)}
+          >
+            {isSummarizing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                要約中...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                AIで要約
+              </>
+            )}
+          </Button>
+        </SummarySuspendedTooltip>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -124,18 +149,14 @@ export default function ContentAnnotationSummaryAction({
               </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-[300px] text-xs">
-              <p>
-                WordPress本文から生成し直します。現在入力中の未保存内容も含めて上書きされます。
-              </p>
+              <p>WordPress本文から生成し直します。現在入力中の未保存内容も含めて上書きされます。</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
-      {!canSummarize && (
+      {!canSummarize && isRoleAllowed && (
         <span className="text-xs text-muted-foreground">
-          {!isRoleAllowed
-            ? ERROR_MESSAGES.WORDPRESS.SUMMARY_ADMIN_ONLY
-            : !isWordPressLinked
+          {!isWordPressLinked
             ? 'WordPress投稿URLを保存すると利用できます'
             : 'コンテンツ情報を再読み込みしてからお試しください'}
         </span>
