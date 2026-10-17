@@ -17,11 +17,11 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: `FR-011 本番反映待ち`
-- 止まっている理由・待っている人: develop → main のマージ（人間）
-- 次の一手: 本番反映の翌朝、GSC・GA4 の日次取込のあとに `gsc_credentials` の `gsc_auto_import_status` / `ga4_auto_import_status` を確かめる（権限切れのユーザーが `permission_denied`、ほかが `succeeded`）。マイグレーション `20261017005449_add_google_auto_import_status.sql` は共有 DB に適用済み（2026-10-17、ユーザー承認）
+- 現在の工程: `FR-011 本番反映・確認済み`
+- 止まっている理由・待っている人: なし
+- 次の一手: なし（FR-011 のカードの文言と判定ルールの確認だけ残る）。本番反映（2026-10-17、PR #656）後に手動で日次取込を起動し、権限切れの1人が `gsc_auto_import_status = permission_denied`、GSC・GA4 の取込に成功した利用者が `succeeded` になったことを DB で確かめた。マイグレーション `20261017005449_add_google_auto_import_status.sql` は共有 DB に適用済み
 - 未確認事項: FR-011 のカードの文言（§6 画面設計）と、権限切れの判定ルール（§6 状態遷移）。どちらも Claude案・未確認
-- 関連ブランチ・PR: `feature/auto-daily-imports`、PR #636（実装済み）。FR-011 は `feat/google-property-access-denied-card`、PR #654（develop にマージ）
+- 関連ブランチ・PR: `feature/auto-daily-imports`、PR #636（実装済み）。FR-011 は `feat/google-property-access-denied-card`、PR #654・#656（本番反映済み）
 - 更新日・更新した工程: 2026-10-17・FR-011 を追加
 
 ## 1. 背景・目的・成功指標
@@ -930,3 +930,4 @@ Feature: GSC・GA4・WordPress の毎日の自動取込
 | 2026-10-17 | R-004 に、REST の入り口が無い投稿タイプ（`404 rest_no_route`）を飛ばし、設定から外すことを追加 | kurupika24.com の設定に残っていた `product` が `rest_no_route` になり、取れていた投稿・固定ページまで保存されず記事が0件のままだったため | shoma-endo（Claude Code） |
 | 2026-10-17 | FR-011 を追加（GSC・GA4 のプロパティ権限切れをマイホームに出す）。§6 状態遷移・画面設計・誤読しやすい罠、§7 シナリオ、§9 データ、R-003、Q-012、Non-goal を更新。カードの文言は Claude案・未確認 | R-003 が実際に起きた（GSC の日次取込で1人が毎回 403。トークンは有効なのでカードが出ず、本人が気づけなかった）。ユーザー判断（Q-012） | shoma-endo（Claude Code） |
 | 2026-10-17 | FR-011 のレビュー反映：権限切れの判定を権限不足の 403 に絞る（API 無効化・割り当て超過を除く）。カードの見出しを「プロパティ」にそろえ、説明に次の行動を足し、ボタンを「プロパティを選ぶ」にする。GA4 は設定を保存したら（プロパティが同じでも）NULL に戻す。成功の定義を明確にし、リセットのシナリオを足す | サブエージェントの self-review と UI/UX レビュー | shoma-endo（Claude Code） |
+| 2026-10-17 | FR-011 を本番に反映し、手動の日次取込で結果の保存を確かめた（現在地を更新） | 本番での実証 | shoma-endo（Claude Code） |
