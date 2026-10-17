@@ -17,11 +17,11 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: `追加実装（FR-011）`
-- 止まっている理由・待っている人: なし
-- 次の一手: FR-011（Google のプロパティ権限切れをマイホームに出す）の PR を確認して merge する。マイグレーション `20261017005449_add_google_auto_import_status.sql` は共有 DB に適用済み（2026-10-17、ユーザー承認）
+- 現在の工程: `FR-011 本番反映待ち`
+- 止まっている理由・待っている人: develop → main のマージ（人間）
+- 次の一手: 本番反映の翌朝、GSC・GA4 の日次取込のあとに `gsc_credentials` の `gsc_auto_import_status` / `ga4_auto_import_status` を確かめる（権限切れのユーザーが `permission_denied`、ほかが `succeeded`）。マイグレーション `20261017005449_add_google_auto_import_status.sql` は共有 DB に適用済み（2026-10-17、ユーザー承認）
 - 未確認事項: FR-011 のカードの文言（§6 画面設計）と、権限切れの判定ルール（§6 状態遷移）。どちらも Claude案・未確認
-- 関連ブランチ・PR: `feature/auto-daily-imports`、PR #636（実装済み）。FR-011 は `feat/google-property-access-denied-card`
+- 関連ブランチ・PR: `feature/auto-daily-imports`、PR #636（実装済み）。FR-011 は `feat/google-property-access-denied-card`、PR #654（develop にマージ）
 - 更新日・更新した工程: 2026-10-17・FR-011 を追加
 
 ## 1. 背景・目的・成功指標
