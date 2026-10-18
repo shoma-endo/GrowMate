@@ -26,6 +26,7 @@ import {
   mergeTokenUsage,
 } from '@/server/lib/anthropic-token-usage';
 import { ChatError } from '@/domain/errors/ChatError';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { withAnthropicRetry, type AnthropicRetryInfo } from '@/server/lib/anthropic-retry';
 
 export const runtime = 'nodejs';
@@ -97,7 +98,9 @@ const CANVAS_EDIT_TOOL = {
       },
     },
     required: ['full_markdown'],
+    additionalProperties: false,
   },
+  strict: true,
 };
 
 const normalizeCandidateUrl = (rawUrl: string): string | null => {
@@ -581,7 +584,9 @@ export async function POST(req: NextRequest) {
                       }),
                     },
                   ],
-                  tool_choice: { type: 'tool', name: 'web_search' },
+                  // Sonnet 5.5 は強制 tool_choice（tool / any）を 400 で拒否するため auto にし、
+                  // 検索させる指示は system プロンプトで行う。検索しなかった場合は結果を空として扱う（下の didWebSearch）
+                  tool_choice: { type: 'auto' },
                   messages: [
                     {
                       role: 'user',
@@ -608,6 +613,16 @@ export async function POST(req: NextRequest) {
 
                 const finalSearchMessage = await searchStream.finalMessage();
                 webSearchUsage = mergeTokenUsage(webSearchUsage, finalSearchMessage?.usage);
+
+                // tool_choice が auto のため、検索せずに学習知識だけで答えることがある。
+                // その文や URL を「検索で確認できた情報」として本文の編集に渡さない
+                const didWebSearch = finalSearchMessage.content.some(
+                  block => block.type === 'server_tool_use'
+                );
+                if (!didWebSearch) {
+                  console.warn('[Canvas Web Search] Model answered without searching', { sessionId });
+                  return { searchResults: '', extractedReferences: [] as WebReference[], webSearchUsage };
+                }
 
                 const referencesFromStructuredResult =
                   extractWebReferencesFromSearchMessage(finalSearchMessage);
@@ -727,7 +742,9 @@ export async function POST(req: NextRequest) {
             ...(thinking !== undefined && { thinking }),
             system: anthropicSystem,
             tools: [CANVAS_EDIT_TOOL],
-            tool_choice: { type: 'tool', name: 'apply_full_text_replacement' },
+            // Sonnet 5.5 は強制 tool_choice を 400 で拒否するため auto。ツールを使う指示は system プロンプトにあり、
+            // 呼ばれなかった場合は本文を置き換えずにエラーにする（下の toolUseBlock の判定）
+            tool_choice: { type: 'auto' },
             messages: [
               ...canvasHistory.map(msg => ({
                 role: msg.role,
@@ -772,6 +789,11 @@ export async function POST(req: NextRequest) {
                 );
               }
 
+              // 拒否された応答（途中までのツール入力を含む）を本文として採用しない
+              if (message.stop_reason === 'refusal') {
+                throw new CanvasStreamResponseError('refusal', ERROR_MESSAGES.CHAT.AI_REFUSED);
+              }
+
               const toolUseBlock = message.content.find(
                 block => block.type === 'tool_use' && block.name === 'apply_full_text_replacement'
               );
@@ -802,17 +824,16 @@ export async function POST(req: NextRequest) {
                 }
               }
 
-              // フォールバック: Tool Useが見つからない場合
-              if (!finalMarkdown.trim()) {
-                // 1. 通常のテキスト回答として返ってきた可能性があるためチェック
-                const textBlock = message.content.find(block => block.type === 'text');
-                if (textBlock && textBlock.type === 'text') {
-                  console.warn('[Canvas Stream] Tool use missing, using text content fallback.');
-                  finalMarkdown = textBlock.text.trim();
-                }
+              // ツールを呼ばずに文章だけ返した場合（確認の質問や前置きなど）、それで記事全体を置き換えない
+              if (!toolUseBlock) {
+                console.error('[Canvas Stream] Tool use missing. Message:', JSON.stringify(message.content));
+                throw new CanvasStreamResponseError('no_tool_use', ERROR_MESSAGES.CHAT.CANVAS_EDIT_NOT_RETURNED);
+              }
 
-                // 2. それでも空で、かつJSONデータが蓄積されている場合（max_tokens等で途中終了したケース）
-                if (!finalMarkdown.trim() && accumulatedJson.trim()) {
+              // フォールバック: ツール入力から本文を取り出せなかった場合
+              if (!finalMarkdown.trim()) {
+                // JSONデータが蓄積されている場合（途中終了したケース）
+                if (accumulatedJson.trim()) {
                   console.warn(
                     '[Canvas Stream] Attempting to recover markdown from partial JSON...'
                   );
