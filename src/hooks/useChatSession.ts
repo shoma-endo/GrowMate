@@ -160,6 +160,27 @@ export const useChatSession = (
         }));
       }
 
+      const baseContent = continuationMode ? (truncatedContent ?? '') : '';
+      const updateLastAssistant = (
+        messages: ChatMessage[],
+        update: (msg: ChatMessage) => ChatMessage
+      ): ChatMessage[] =>
+        messages.map((msg, idx) =>
+          idx === messages.length - 1 && (!continuationMode || msg.role === 'assistant')
+            ? update(msg)
+            : msg
+        );
+      // 保存されなかった途中の出力を画面に残すと、次の送信で DB に無い内容が履歴として送られる
+      const discardUnsavedOutput = (messages: ChatMessage[]): ChatMessage[] => {
+        if (continuationMode) {
+          return updateLastAssistant(messages, msg => ({ ...msg, content: baseContent }));
+        }
+        return messages[messages.length - 1]?.role === 'assistant'
+          ? messages.slice(0, -1)
+          : messages;
+      };
+      let streamSucceeded = false;
+
       try {
         const response = await fetch('/api/chat/anthropic/stream', {
           method: 'POST',
@@ -185,23 +206,13 @@ export const useChatSession = (
           const bodyText = await response.text().catch(() => '');
           const warningMessage = extractWarningMessage(bodyText);
 
-          setState(prev => {
-            const shouldRemovePlaceholder =
-              !continuationMode &&
-              prev.messages.length > 0 &&
-              prev.messages[prev.messages.length - 1]?.role === 'assistant';
-            const updatedMessages = shouldRemovePlaceholder
-              ? prev.messages.slice(0, -1)
-              : prev.messages;
-
-            return {
-              ...prev,
-              messages: updatedMessages,
-              warning: warningMessage,
-              error: null,
-              isLoading: false,
-            };
-          });
+          setState(prev => ({
+            ...prev,
+            messages: discardUnsavedOutput(prev.messages),
+            warning: warningMessage,
+            error: null,
+            isLoading: false,
+          }));
 
           return false;
         }
@@ -244,18 +255,6 @@ export const useChatSession = (
         let accumulatedText = '';
         let idleTimeout: ReturnType<typeof setTimeout> | null = null;
         let sseBuffer = '';
-        let streamSucceeded = false;
-
-        const baseContent = continuationMode ? (truncatedContent ?? '') : '';
-        const updateLastAssistant = (
-          messages: ChatMessage[],
-          update: (msg: ChatMessage) => ChatMessage
-        ): ChatMessage[] =>
-          messages.map((msg, idx) =>
-            idx === messages.length - 1 && (!continuationMode || msg.role === 'assistant')
-              ? update(msg)
-              : msg
-          );
 
         const resetIdleTimeout = () => {
           if (idleTimeout) clearTimeout(idleTimeout);
@@ -333,17 +332,12 @@ export const useChatSession = (
                   }
                 } else if (eventType === 'error') {
                   const data = JSON.parse(dataCombined);
-                  // 保存されなかった途中の出力を画面に残すと、次の送信で DB に無い内容が履歴として送られる
-                  const keepStreamed = data.type === 'snapshot_save_failed';
                   setState(prev => ({
                     ...prev,
-                    messages: keepStreamed
-                      ? prev.messages
-                      : continuationMode
-                        ? updateLastAssistant(prev.messages, msg => ({ ...msg, content: baseContent }))
-                        : prev.messages[prev.messages.length - 1]?.role === 'assistant'
-                          ? prev.messages.slice(0, -1)
-                          : prev.messages,
+                    messages:
+                      data.type === 'snapshot_save_failed'
+                        ? prev.messages
+                        : discardUnsavedOutput(prev.messages),
                     isLoading: false,
                     error: data.message || 'ストリーミングエラー',
                     warning: null,
@@ -373,11 +367,23 @@ export const useChatSession = (
           reader.releaseLock();
         }
 
+        // final も error も届かずに切れた（idle timeout など）
+        if (!streamSucceeded) {
+          console.error('Stream ended without final event');
+          setState(prev => ({
+            ...prev,
+            messages: discardUnsavedOutput(prev.messages),
+            isLoading: false,
+            error: ERROR_MESSAGES.CHAT.STREAM_INTERRUPTED,
+            warning: null,
+          }));
+        }
         return streamSucceeded;
       } catch (error) {
         console.error('Streaming error:', error);
         setState(prev => ({
           ...prev,
+          messages: streamSucceeded ? prev.messages : discardUnsavedOutput(prev.messages),
           isLoading: false,
           error: error instanceof Error ? error.message : 'ストリーミングに失敗しました',
           warning: null,
