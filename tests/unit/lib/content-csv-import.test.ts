@@ -58,6 +58,7 @@ describe('content CSV import', () => {
     ['Japanese path', ' https://example.com/記事 ', 'https://example.com/%E8%A8%98%E4%BA%8B'],
     ['missing scheme', 'example.com/article', null],
     ['non-http scheme', 'ftp://example.com/article', null],
+    ['missing slashes', 'http:example.com/article', null],
   ])('canonicalizes URL: %s', (_label, value, expected) => {
     const result = parseContentCsv(`記事URL\n${value}`);
     if (expected === null) {

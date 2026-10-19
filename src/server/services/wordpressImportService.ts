@@ -64,7 +64,6 @@ const WORDPRESS_DAILY_IMPORT_TIME_BUDGET_MS = (CRON_CONFIGS.wordpressDailyImport
 interface ExistingAnnotation {
   id: string;
   canonical_url: string | null;
-  normalized_url: string | null;
   wp_post_id: number | null;
 }
 
@@ -232,7 +231,6 @@ export async function importWordPressContent({
       const item: ExistingAnnotation = {
         id: row.id,
         canonical_url: row.canonical_url,
-        normalized_url: row.normalized_url,
         wp_post_id: row.wp_post_id,
       };
       const canonical = row.canonical_url?.trim();

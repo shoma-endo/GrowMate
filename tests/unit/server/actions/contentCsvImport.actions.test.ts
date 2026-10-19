@@ -57,6 +57,33 @@ describe('importContentCsvRows', () => {
     ]);
   });
 
+  it('maps the RPC row_index to the spreadsheet row after rows skipped in the action', async () => {
+    mocks.importContentAnnotationsCsv.mockResolvedValue({
+      success: true,
+      data: { updated: 1, created: 0, unchanged: 0, skipped: [{ row_index: 2, url: 'https://example.com/d', reason: 'no_values' }] },
+    });
+    const result = await importContentCsvRows({
+      rows: [
+        { rowNumber: 2, url: 'https://example.com/b', values: { main_kw: 'x'.repeat(20_001) } },
+        { rowNumber: 3, url: 'https://example.com/c', values: { main_kw: 'keyword' } },
+        { rowNumber: 4, url: 'https://example.com/d', values: {} },
+      ],
+    });
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        updated: 1,
+        created: 0,
+        unchanged: 0,
+        skipped: [
+          { rowNumber: 2, url: 'https://example.com/b', reason: 'too_long' },
+          { rowNumber: 4, url: 'https://example.com/d', reason: 'no_values' },
+        ],
+      },
+    });
+  });
+
   it('rejects a 2,001 row batch before authorization or RPC', async () => {
     const result = await importContentCsvRows({
       rows: Array.from({ length: 2_001 }, (_, index) => ({

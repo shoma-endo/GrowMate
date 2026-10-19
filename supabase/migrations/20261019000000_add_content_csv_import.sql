@@ -127,9 +127,29 @@ $$;
 revoke execute on function public.import_content_annotations_csv(uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.import_content_annotations_csv(uuid, jsonb) to service_role;
 
--- 検証SQL（ローカルで実行する）:
---   set request.jwt.role = 'authenticated';
---   select public.import_content_annotations_csv(gen_random_uuid(), '[]'::jsonb); -- 'service role required' で失敗すればOK
---   set request.jwt.role = 'service_role';
---   select public.import_content_annotations_csv(gen_random_uuid(), '[]'::jsonb); -- 0件の jsonb が返ればOK
--- Rollback: drop function public.import_content_annotations_csv(uuid, jsonb); drop index public.idx_content_annotations_user_normalized_url;
+-- 想定どおりの権限と search_path になったかを確かめる（想定外なら適用を失敗させる）
+do $$
+declare
+  fn_oid oid := 'public.import_content_annotations_csv(uuid,jsonb)'::regprocedure;
+begin
+  if not has_function_privilege('service_role', fn_oid, 'execute') then
+    raise exception 'service_role が import_content_annotations_csv を実行できない';
+  end if;
+  if has_function_privilege('anon', fn_oid, 'execute') then
+    raise exception 'anon が import_content_annotations_csv を実行できてしまう（revoke 漏れ）';
+  end if;
+  if has_function_privilege('authenticated', fn_oid, 'execute') then
+    raise exception 'authenticated が import_content_annotations_csv を実行できてしまう（revoke 漏れ）';
+  end if;
+  if not exists (
+    select 1 from pg_proc p, unnest(p.proconfig) as cfg
+    where p.oid = fn_oid and cfg = 'search_path=public'
+  ) then
+    raise exception 'import_content_annotations_csv の search_path が public になっていない';
+  end if;
+end $$;
+
+-- Rollback:
+--   drop function public.import_content_annotations_csv(uuid, jsonb);
+--   drop index public.idx_content_annotations_user_normalized_url;
+--   CHECK 制約を元の式（wp_post_id または session_id）に戻すのは、URL だけの記事が無いときだけ（あれば先に消すか、戻さない）

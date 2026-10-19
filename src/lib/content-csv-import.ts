@@ -118,6 +118,7 @@ function normalizedHeader(value: string): string {
 
 export function canonicalizeContentCsvUrl(value: string): string | null {
   const trimmed = value.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
   try {
     const parsed = new URL(trimmed);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
@@ -194,13 +195,19 @@ export function parseContentCsv(input: string): ParsedContentCsv {
   return { rows: rows.sort((left, right) => left.rowNumber - right.rowNumber), skipped, duplicateCount };
 }
 
+export function contentCsvTemplateHeaders(): Array<{ key: 'url' | AnnotationFieldKey; label: string }> {
+  return [
+    { key: 'url', label: '記事URL' },
+    ...ANNOTATION_FIELD_KEYS.map(key => {
+      const label = ANALYTICS_COLUMNS.find(column => column.id === key)?.label;
+      if (!label) throw new Error(`CSV template label is missing for ${key}`);
+      return { key, label };
+    }),
+  ];
+}
+
 export function buildContentCsvTemplate(): string {
-  const labels = ANNOTATION_FIELD_KEYS.map(key => {
-    const label = ANALYTICS_COLUMNS.find(column => column.id === key)?.label;
-    if (!label) throw new Error(`CSV template label is missing for ${key}`);
-    return label;
-  });
-  return `\uFEFF${['記事URL', ...labels].join(',')}`;
+  return `\uFEFF${contentCsvTemplateHeaders().map(header => header.label).join(',')}`;
 }
 
 export function buildContentCsvImportBatches(rows: ContentCsvImportRow[]): ContentCsvImportRow[][] {

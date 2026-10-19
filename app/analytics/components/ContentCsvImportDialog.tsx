@@ -18,6 +18,7 @@ import {
   buildContentCsvImportBatches,
   buildContentCsvTemplate,
   ContentCsvImportParseError,
+  contentCsvTemplateHeaders,
   decodeContentCsv,
   parseContentCsv,
   type ContentCsvImportRow,
@@ -26,6 +27,7 @@ import {
 } from '@/lib/content-csv-import';
 import { importContentCsvRows } from '@/server/actions/contentCsvImport.actions';
 import { cn } from '@/lib/utils';
+import type { AnnotationFieldKey } from '@/types/annotation';
 
 type ImportPhase = 'ready' | 'error' | 'running' | 'failed' | 'done';
 
@@ -38,18 +40,18 @@ interface ImportTotals {
 
 const EMPTY_TOTALS: ImportTotals = { updated: 0, created: 0, unchanged: 0, skipped: [] };
 
-const COLUMN_DEFINITIONS = [
-  ['記事URL（必須）', '公開中の記事ページの URL（ブラウザで開いたときのアドレス。http:// または https:// から）。管理画面やプレビューの URL ではありません。'],
-  ['主軸kw（任意）', '記事の主となる検索キーワード'],
-  ['kw（参考）（任意）', '関連する検索キーワード（複数は改行区切り）'],
-  ['表示回数（任意）', '表示回数や検索ボリュームの情報'],
-  ['ニーズ（任意）', '検索する人が知りたいこと'],
-  ['デモグラ・ペルソナ（任意）', '想定する読者像'],
-  ['ゴール（任意）', '読み終えた読者に取ってほしい行動'],
-  ['PREP（任意）', '主張・理由・具体例・結論'],
-  ['基本構成（任意）', '導入や見出しの構成'],
-  ['書き出し案（任意）', '書き出しの方向性や冒頭で伝えたい内容'],
-] as const;
+const COLUMN_DESCRIPTIONS: Record<'url' | AnnotationFieldKey, string> = {
+  url: '公開中の記事ページの URL（ブラウザで開いたときのアドレス。http:// または https:// から）。管理画面やプレビューの URL ではありません。',
+  main_kw: '記事の主となる検索キーワード',
+  kw: '関連する検索キーワード（複数は改行区切り）',
+  impressions: '表示回数や検索ボリュームの情報',
+  needs: '検索する人が知りたいこと',
+  persona: '想定する読者像',
+  goal: '読み終えた読者に取ってほしい行動',
+  prep: '主張・理由・具体例・結論',
+  basic_structure: '導入や見出しの構成',
+  opening_proposal: '書き出しの方向性や冒頭で伝えたい内容',
+};
 
 export function ContentCsvImportDialog() {
   const router = useRouter();
@@ -87,7 +89,6 @@ export function ContentCsvImportDialog() {
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = '';
     setParsed(null);
     setParseError('');
     setFailure('');
@@ -147,7 +148,7 @@ export function ContentCsvImportDialog() {
         updated: nextTotals.updated + result.data.updated,
         created: nextTotals.created + result.data.created,
         unchanged: nextTotals.unchanged + result.data.unchanged,
-        skipped: [...nextTotals.skipped, ...result.data.skipped],
+        skipped: [...nextTotals.skipped, ...result.data.skipped].sort((left, right) => left.rowNumber - right.rowNumber),
       };
       nextProcessed += batch.length;
       setTotals(nextTotals);
@@ -180,6 +181,7 @@ export function ContentCsvImportDialog() {
       </DialogTrigger>
       <DialogContent
         className="max-h-screen max-w-3xl overflow-y-auto"
+        aria-describedby={undefined}
         hideCloseButton={phase === 'running'}
         onEscapeKeyDown={event => { if (phase === 'running') event.preventDefault(); }}
         onPointerDownOutside={event => { if (phase === 'running') event.preventDefault(); }}
@@ -201,13 +203,16 @@ export function ContentCsvImportDialog() {
                 <li>Excel で保存するときは、ファイルの種類で「CSV UTF-8（コンマ区切り）」を選んでください。</li>
               </ul>
             </InfoTooltipButton>
-            <span className="text-sm text-muted-foreground">列の定義を確認してください</span>
           </div>
           <Table>
-            <TableHeader><TableRow><TableHead>見出し</TableHead><TableHead>列の定義</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>見出し</TableHead><TableHead>必須</TableHead><TableHead>列の定義</TableHead></TableRow></TableHeader>
             <TableBody>
-              {COLUMN_DEFINITIONS.map(([label, description]) => (
-                <TableRow key={label}><TableCell>{label}</TableCell><TableCell>{description}</TableCell></TableRow>
+              {contentCsvTemplateHeaders().map(({ key, label }) => (
+                <TableRow key={key}>
+                  <TableCell>{label}</TableCell>
+                  <TableCell>{key === 'url' ? '必須' : '任意'}</TableCell>
+                  <TableCell>{COLUMN_DESCRIPTIONS[key]}</TableCell>
+                </TableRow>
               ))}
             </TableBody>
           </Table>
@@ -216,13 +221,13 @@ export function ContentCsvImportDialog() {
           <h3 className="font-medium">2. 作った CSV を選ぶ</h3>
           <p className="text-sm text-muted-foreground">UTF-8・最大2万行</p>
           <div className="flex flex-wrap items-center gap-2">
-            <Input type="file" accept=".csv,text/csv" aria-label="CSVファイルを選択" onChange={handleFileChange} disabled={phase === 'running'} />
+            <Input type="file" accept=".csv,text/csv" aria-label="CSV ファイルを選択" onClick={event => { event.currentTarget.value = ''; }} onChange={handleFileChange} disabled={phase === 'running'} />
             <Button type="button" onClick={handleImport} disabled={!parsed || phase === 'running'}>取り込む</Button>
           </div>
         </section>
         {phase === 'error' && (
           <Alert variant="destructive">
-            <AlertTitle>CSVを読み込めません</AlertTitle>
+            <AlertTitle>{ERROR_MESSAGES.CONTENT_CSV_IMPORT.PARSE_FAILED_TITLE}</AlertTitle>
             <AlertDescription>{parseError}</AlertDescription>
           </Alert>
         )}
@@ -236,7 +241,7 @@ export function ContentCsvImportDialog() {
         )}
         {phase === 'failed' && (
           <Alert variant="destructive">
-            <AlertTitle>途中で取り込みに失敗しました</AlertTitle>
+            <AlertTitle>{ERROR_MESSAGES.CONTENT_CSV_IMPORT.IMPORT_STOPPED_TITLE}</AlertTitle>
             <AlertDescription className="space-y-3">
               <p>処理済み {processed.toLocaleString()} 件。{failure}</p>
               <Button type="button" variant="outline" onClick={handleImport}>同じファイルで再試行</Button>
@@ -244,7 +249,7 @@ export function ContentCsvImportDialog() {
           </Alert>
         )}
         {phase === 'done' && parsed && (
-          <Alert variant="success">
+          <section className="space-y-3">
             <h3 className="font-medium">取り込み完了</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               <ImportResultCount count={totals.updated} label="更新" tone="indigo" />
@@ -253,9 +258,9 @@ export function ContentCsvImportDialog() {
               <ImportResultCount count={totals.skipped.length} label="スキップ" tone="red" />
               <ImportResultCount count={parsed.duplicateCount} label="重複" tone="yellow" />
             </div>
-            <div>
-              <h4 className="font-medium">スキップした行</h4>
-              {totals.skipped.length === 0 ? null : (
+            {totals.skipped.length > 0 && (
+              <div>
+                <h4 className="font-medium">スキップした行</h4>
                 <ul className="max-h-56 space-y-1 overflow-y-auto text-sm">
                   {totals.skipped.map((row, index) => (
                     <li key={`${row.rowNumber}-${row.reason}-${index}`}>
@@ -263,10 +268,10 @@ export function ContentCsvImportDialog() {
                     </li>
                   ))}
                 </ul>
-              )}
-            </div>
+              </div>
+            )}
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>閉じる</Button>
-          </Alert>
+          </section>
         )}
       </DialogContent>
     </Dialog>
