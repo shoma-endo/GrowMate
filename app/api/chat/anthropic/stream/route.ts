@@ -427,8 +427,9 @@ export async function POST(req: NextRequest) {
                   );
                   if (!snapRes.success) {
                     console.error('[Stream] saveCombinedContentSnapshot failed:', snapRes.error);
+                    // チャットへの保存は済んでいるので、クライアントが表示中の応答を消さないよう他の save_failed と分ける
                     sendSaveErrorAndExit(
-                      'save_failed',
+                      'snapshot_save_failed',
                       '完成形の保存に失敗しました。チャットには表示されていますが、Canvas のバージョン管理には反映されていません。'
                     );
                     return;

@@ -333,8 +333,17 @@ export const useChatSession = (
                   }
                 } else if (eventType === 'error') {
                   const data = JSON.parse(dataCombined);
+                  // 保存されなかった途中の出力を画面に残すと、次の送信で DB に無い内容が履歴として送られる
+                  const keepStreamed = data.type === 'snapshot_save_failed';
                   setState(prev => ({
                     ...prev,
+                    messages: keepStreamed
+                      ? prev.messages
+                      : continuationMode
+                        ? updateLastAssistant(prev.messages, msg => ({ ...msg, content: baseContent }))
+                        : prev.messages[prev.messages.length - 1]?.role === 'assistant'
+                          ? prev.messages.slice(0, -1)
+                          : prev.messages,
                     isLoading: false,
                     error: data.message || 'ストリーミングエラー',
                     warning: null,
