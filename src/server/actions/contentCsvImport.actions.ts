@@ -61,10 +61,6 @@ export async function importContentCsvRows(params: unknown): Promise<ServerActio
       };
       if (rows.length === 0) return { success: true as const, data: result };
 
-      if (rows.length > CONTENT_CSV_IMPORT_LIMITS.maxBatchRows) {
-        return { success: false as const, error: ERROR_MESSAGES.COMMON.VALIDATION_FAILED };
-      }
-
       const rpcResult = await new SupabaseService().importContentAnnotationsCsv(userId, rows);
       if (!rpcResult.success) throw new Error(rpcResult.error.userMessage);
       result.updated = rpcResult.data.updated;

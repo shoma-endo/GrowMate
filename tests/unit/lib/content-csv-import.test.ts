@@ -51,7 +51,7 @@ describe('content CSV import', () => {
 
   it('uses spreadsheet row numbers when a cell contains a newline', () => {
     const result = parseContentCsv('記事URL,主軸kw\nhttps://example.com/a,"first\nsecond"\nhttps://example.com/b,next');
-    expect(result.rows.map(row => row.rowNumber)).toEqual([2, 4]);
+    expect(result.rows.map(row => row.rowNumber)).toEqual([2, 3]);
   });
 
   it.each([
@@ -94,6 +94,15 @@ describe('content CSV import', () => {
     expect(batches.every(batch => batch.length <= 2_000)).toBe(true);
     expect(batches.every(batch => new TextEncoder().encode(JSON.stringify({ rows: batch })).byteLength < 800 * 1024)).toBe(true);
     expect(batches.flat()).toHaveLength(rows.length);
+  });
+
+  it('splits URL-only rows at 2,000 rows per batch', () => {
+    const rows = Array.from({ length: 2_001 }, (_, index) => ({
+      rowNumber: index + 2,
+      url: `https://example.com/${index}`,
+      values: {},
+    }));
+    expect(buildContentCsvImportBatches(rows).map(batch => batch.length)).toEqual([2_000, 1]);
   });
 
   it('builds the UTF-8 BOM template with the approved headers', () => {

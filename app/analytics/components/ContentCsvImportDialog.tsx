@@ -103,6 +103,9 @@ export function ContentCsvImportDialog() {
       setParsed(parseContentCsv(csvText));
       setPhase('ready');
     } catch (error) {
+      if (!(error instanceof ContentCsvImportParseError)) {
+        console.error('[content-csv-import] file parsing failed:', error);
+      }
       const message = error instanceof ContentCsvImportParseError
         ? ERROR_MESSAGES.CONTENT_CSV_IMPORT[error.code]
         : ERROR_MESSAGES.CONTENT_CSV_IMPORT.MALFORMED_CSV;
@@ -165,11 +168,6 @@ export function ContentCsvImportDialog() {
       setFailure(ERROR_MESSAGES.CONTENT_CSV_IMPORT.IMPORT_FAILED);
       setPhase('failed');
     }
-  };
-
-  const handleRetry = async () => {
-    if (!parsed || phase === 'running') return;
-    await handleImport();
   };
 
   return (
@@ -241,7 +239,7 @@ export function ContentCsvImportDialog() {
             <AlertTitle>途中で取り込みに失敗しました</AlertTitle>
             <AlertDescription className="space-y-3">
               <p>処理済み {processed.toLocaleString()} 件。{failure}</p>
-              <Button type="button" variant="outline" onClick={handleRetry}>同じファイルで再試行</Button>
+              <Button type="button" variant="outline" onClick={handleImport}>同じファイルで再試行</Button>
             </AlertDescription>
           </Alert>
         )}

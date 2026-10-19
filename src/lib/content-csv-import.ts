@@ -54,7 +54,6 @@ function parseCsvRecords(input: string): CsvRecord[] {
   let cell = '';
   let quoted = false;
   let rowNumber = 1;
-  let recordStartLine = 1;
   let recordStarted = false;
 
   for (let index = 0; index < input.length; index += 1) {
@@ -81,18 +80,16 @@ function parseCsvRecords(input: string): CsvRecord[] {
           cell += '\n';
           index += 1;
         }
-        rowNumber += 1;
         continue;
       }
 
       cells.push(cell);
-      records.push({ rowNumber: recordStartLine, cells });
+      records.push({ rowNumber, cells });
       cells = [];
       cell = '';
       recordStarted = false;
       if (char === '\r' && input[index + 1] === '\n') index += 1;
       rowNumber += 1;
-      recordStartLine = rowNumber;
       continue;
     }
 
@@ -110,7 +107,7 @@ function parseCsvRecords(input: string): CsvRecord[] {
   if (quoted) throw new ContentCsvImportParseError('MALFORMED_CSV');
   if (recordStarted || cells.length > 0 || cell.length > 0) {
     cells.push(cell);
-    records.push({ rowNumber: recordStartLine, cells });
+    records.push({ rowNumber, cells });
   }
   return records;
 }
@@ -207,22 +204,26 @@ export function buildContentCsvTemplate(): string {
 }
 
 export function buildContentCsvImportBatches(rows: ContentCsvImportRow[]): ContentCsvImportRow[][] {
+  const encoder = new TextEncoder();
+  // JSON.stringify({ rows }) は '{"rows":[' + 各行を ',' でつないだもの + ']}' なので、行ごとのバイト数を足して全体の大きさを出す
+  const envelopeBytes = encoder.encode(JSON.stringify({ rows: [] })).byteLength;
   const batches: ContentCsvImportRow[][] = [];
   let batch: ContentCsvImportRow[] = [];
+  let batchBytes = envelopeBytes;
 
   for (const row of rows) {
-    const next = [...batch, row];
-    const byteLength = new TextEncoder().encode(JSON.stringify({ rows: next })).byteLength;
-    if (next.length > CONTENT_CSV_IMPORT_LIMITS.maxBatchRows || byteLength >= CONTENT_CSV_IMPORT_LIMITS.maxBatchBytes) {
-      if (batch.length === 0) throw new Error('A CSV row exceeds the import batch size limit');
+    const rowBytes = encoder.encode(JSON.stringify(row)).byteLength;
+    if (envelopeBytes + rowBytes >= CONTENT_CSV_IMPORT_LIMITS.maxBatchBytes) {
+      throw new Error('A CSV row exceeds the import batch size limit');
+    }
+    const nextBytes = batchBytes + rowBytes + (batch.length > 0 ? 1 : 0);
+    if (batch.length + 1 > CONTENT_CSV_IMPORT_LIMITS.maxBatchRows || nextBytes >= CONTENT_CSV_IMPORT_LIMITS.maxBatchBytes) {
       batches.push(batch);
       batch = [row];
-      const singleRowBytes = new TextEncoder().encode(JSON.stringify({ rows: batch })).byteLength;
-      if (singleRowBytes >= CONTENT_CSV_IMPORT_LIMITS.maxBatchBytes) {
-        throw new Error('A CSV row exceeds the import batch size limit');
-      }
+      batchBytes = envelopeBytes + rowBytes;
     } else {
-      batch = next;
+      batch.push(row);
+      batchBytes = nextBytes;
     }
   }
 
