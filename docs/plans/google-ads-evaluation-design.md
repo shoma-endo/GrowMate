@@ -20,6 +20,7 @@
 >   - **MVP は UI（画面）変更なし**（サーバー・プロンプト・メール出力のみ）。
 >   - **工数 約3.5〜4日**。LLMコンテキスト量増を踏まえ、データ形式設計・トークン最適化（区切り表＝TSV/CSV風、本文フル投入回避）と メール順位表のコード生成 を独立計上。
 > - 2026-10-19: Section 17 の開発ステータスを実態に合わせて訂正。Increment 2（メール機械生成順位表）は 2026-06-03 / 06-06 に実装済み（commit `8042539e` / `740a9e48`）。本番プロンプト本文への追記状況はリポジトリ外のため未確認と明記。
+> - 2026-10-19 (追記): maxTokens の記述（§4.1・§8.4・§16.10・§16.13・§17.4）を実装値 20000 に合わせて訂正。フェーズ2で予定していた 8000→12000 の変更は不要になった。§17.7 の工数表と過去の改訂履歴は当時の記録として残す。
 
 ## 1. 目的
 
@@ -74,7 +75,7 @@
 
 - Claude claude-sonnet-4-6 にキーワードデータ + 事業者コンテキストを渡し、自然言語で分析・提案を生成する。
 - プロンプトテンプレートは `prompt_templates` テーブルで管理し、admin/prompts 画面で編集可能。
-- モデル設定: `MODEL_CONFIGS['google_ads_ai_evaluation']`（ANTHROPIC_BASE, maxTokens: **12000**。フェーズ2で JSON 併出するため Section 16.10 参照）
+- モデル設定: `MODEL_CONFIGS['google_ads_ai_evaluation']`（ANTHROPIC_BASE, maxTokens: **20000**。TOP5 末尾 JSON と §17 の判定出力を含めた実測〜1万トークン前後に約2倍の余裕を持たせた値。Section 16.10 参照）
 
 ### 4.2 プロンプト変数
 
@@ -312,7 +313,7 @@ export class GoogleAdsAiAnalysisService {
 ```typescript
 google_ads_ai_evaluation: {
   ...ANTHROPIC_BASE,
-  maxTokens: 8000,  // フェーズ2着手時に 12000 へ変更（Section 16.10 参照）
+  maxTokens: 20000,  // 初期設計は 8000。§17 Increment 2（2026-06-06）で 20000 に増加（Section 16.10 参照）
 }
 ```
 
@@ -1333,16 +1334,9 @@ const emailResult = await this.emailService.sendGoogleAdsAnalysis(/* ... */);
 
 #### maxTokens 調整
 
-Phase 1 プロンプトに「構造化データ出力」セクション（JSON ブロック）を追加することで、AI 応答全体のトークン数が増加する。現状 `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens: 8000` だと **TOP5 詳細 + JSON で切り詰めされるリスク**があるため、`maxTokens: 12000` に増やす（`src/lib/constants.ts` の変更）。
+Phase 1 プロンプトに「構造化データ出力」セクション（JSON ブロック）を追加することで、AI 応答全体のトークン数が増加する。当初は 8000 では **TOP5 詳細 + JSON で切り詰めされるリスク**があるため 12000 へ増やす計画だったが、§17 Increment 2（2026-06-06）で `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens` は **20000** に増やし済み（`src/lib/constants.ts`）。フェーズ2着手時の maxTokens 変更は不要。
 
-```typescript
-// 旧
-google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 8000, label: '...' }
-// 新
-google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
-```
-
-実装時に実出力サイズを計測し、12000 でも切り詰めが発生するなら段階的に増やす（Claude Sonnet 4.6 の最大出力は 64000）。
+実装時に実出力サイズを計測し、20000 でも切り詰めが発生するなら段階的に増やす（Claude Sonnet 4.6 の最大出力は 64000）。
 
 ### 16.11 実装工数見積もり（フェーズ2）
 
@@ -1459,7 +1453,7 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 #### 必須前提
 - フェーズ1（AI分析メール送信）の完成後に着手する。
 - Phase 1 プロンプトの末尾に **JSON ブロック追加が必須**（admin/prompts で本番DBを更新）。
-- Phase 1 の `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens` を **8000 → 12000** に増やすコード変更が必須（JSON ブロック追加でトークン消費増のため。Section 16.10 参照）。
+- Phase 1 の `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens` は §17 Increment 2 で **20000** に増やし済みのため、フェーズ2でのコード変更は不要（Section 16.10 参照）。
 - メール本文には JSON ブロックを含めない（サービス側でパース後に除去）。
 - DB 保存はメール送信より **先** に実行（順序の理由は Section 16.10 参照）。
 - content_annotations の wp_post_id NULLABLE 化に伴う **既存クエリ監査が必須**（Section 16.6 のチェックリスト参照）。
@@ -1487,7 +1481,7 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 #### 実装前スパイク（強く推奨）
 
 本フェーズ着手前に **1〜2 日のスパイク** を行うことを推奨する:
-1. 本番プロンプト末尾に JSON ブロックを追加した状態で **1 回実出力** を実施し、JSON フォーマット遵守度と総トークン数を計測。`maxTokens=12000` で足りるかを判定。
+1. 本番プロンプト末尾に JSON ブロックを追加した状態で **1 回実出力** を実施し、JSON フォーマット遵守度と総トークン数を計測。`maxTokens=20000` で足りるかを判定。
 2. `createBlogSessionFromSuggestion` のモック実装（chat_session 作成 + content_annotations UPSERT + Step 5/6 の llmChat ×2回）の **実行時間を計測** し、`maxDuration=120` で収まるかを判定。
 3. 計測結果に応じて Section 16.10（maxTokens）と本セクションのフォールバック方針を確定する。
 
@@ -1614,7 +1608,7 @@ MVPメールの各提案ブロックの表示イメージ（GSC順位が取れ�
    - `src/lib/prompt-descriptions.ts` の `VARIABLE_TYPE_DESCRIPTIONS` に `existingContent` / `rankingData` の説明を追加。
 
 4. **maxTokens 確認**
-   - 既存コンテンツ・順位データ追加で入力トークンが増える。`MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens: 8000`（`src/lib/constants.ts`）で出力が切り詰められないか実出力で確認し、必要なら増やす（フェーズ2 でも 12000 への増加が予定＝Section 16.10）。
+   - 既存コンテンツ・順位データ追加で入力トークンが増える。2026-06-06 に `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens` を 8000 → **20000** に増やし済み（`src/lib/constants.ts`。5提案＋サマリー＋末尾JSONの実測〜1万トークン前後に約2倍の余裕）。切り詰めは max_tokens 切れ検知ログで確認する。
 
 ##### プロンプト追記テンプレート（admin/prompts で `google_ads_ai_evaluation` に貼り付け）
 
@@ -1676,7 +1670,7 @@ rank 1〜5 まで同形式で出力する。`main_kw` は必須、`kw` は無け
 | 突合方法 | `normalizeQuery`（NFKC＋小文字化＋空白圧縮）で GSC `query_normalized` と一致 |
 | 失敗時 | JSONが無い/壊れている→順位表なしで通常送信（degrade only） |
 
-**反映後の確認手順**: ①②③を保存 → DEV（`NODE_ENV=development`）で実行しメール末尾に「## 現状成績」順位表が出るか・本文にJSONが残っていないか確認 → 入力トークンを実測し出力が切れるなら `maxTokens` を 8000→12000。
+**反映後の確認手順**: ①②③を保存 → DEV（`NODE_ENV=development`）で実行しメール末尾に「## 現状成績」順位表が出るか・本文にJSONが残っていないか確認 → max_tokens 切れ検知ログが出ていないか確認する（`maxTokens` は 20000 設定済み）。
 
 #### フェーズ2 連携（将来・設計に織り込む）
 
