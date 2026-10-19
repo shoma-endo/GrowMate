@@ -3,7 +3,7 @@
 ## メタデータ
 
 - 文書名: 外部作成コンテンツの CSV 取り込み
-- ステータス: `draft`
+- ステータス: `approved`
 - 作成日: 2026-10-19
 - 最終更新日: 2026-10-19
 - 作成者: Claude（会話での合意をもとに作成）
@@ -18,12 +18,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: 仕様書作成中（初版をサブエージェント3本でレビューし、指摘を反映済み）
+- 現在の工程: spec-review 通過
 - 止まっている理由・待っている人: なし
-- 次の一手: `takt -w spec-review`（2回目）→ `takt -w spec-to-pr`（親仕様の FR-006 は移管済みと更新済み、ブランチ `docs/api-cost-reduction-spec` の `afafb5a9`）
-- 未確認事項: OPEN-001（AI への依頼文の最終文面。クライアントが直す。実装を止めない）
+- 次の一手: `takt -w spec-to-pr -t "docs/plans/content-csv-import-spec.md 仕様書に沿って実装してください"`
+- 未確認事項: なし
 - 関連ブランチ・PR: `docs/content-csv-import-spec`
-- 更新日・更新した工程: 2026-10-19 初版作成・レビュー反映 / 2026-10-19 Q-004〜Q-009 をユーザーが Claude案どおりで承認 / 2026-10-19 spec-review 1回目（§14 の確認待ちで ABORT）→ §14「実装前」のクライアント確認済み
+- 更新日・更新した工程: 2026-10-19 初版作成・レビュー反映 / 2026-10-19 Q-004〜Q-009 をユーザーが Claude案どおりで承認 / 2026-10-19 spec-review 1回目（§14 の確認待ちで ABORT）→ §14「実装前」のクライアント確認済み / 2026-10-19 spec-review 2回目の audit 指摘を反映 / 2026-10-19 spec-review finalize（approved）
 
 ## 1. 背景・目的・成功指標
 
@@ -154,7 +154,7 @@
 
 ### カレンダー上の前提（工数外）
 
-- クライアント確認: 画面のたたき台・依頼文・事前共有の制約（§14）
+- クライアント確認: 画面のたたき台・依頼文・事前共有の制約（§14。2026-10-19 に確認済み）
 - 希望リリース時期との関係: 未定
 
 ## 6. 機能要件
@@ -271,19 +271,19 @@
 
 ##### `/analytics`（CSV 取り込みダイアログ）
 
-- UI 既存パターン対照表（`growmate-ui-ux`。「Claude案」とした箇所は、§14「実装前」のダイアログのたたき台に含めてクライアントに確認する）:
+- UI 既存パターン対照表（`growmate-ui-ux`。「Claude案」とした箇所は、§14「実装前」の確認（2026-10-19、ユーザー回答）で、本書のたたき台（ボタン文言「CSV で取り込む」、アイコン、5区分の色、コピーボタンの見た目）のまま確定。たたき台からの変更の記録は無い）:
 
   | 今回の UI 要素 | 同種の既存 UI | 採る方法 | 変える点と根拠 |
   | --- | --- | --- | --- |
-  | 「CSV で取り込む」ボタン | 「WordPress記事一括インポート」ボタン（`app/analytics/AnalyticsClient.tsx:459-465`、`cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')`、アイコン `Download` + `<span>` の文言） | 写す（クラスと構成は変えない） | 要素を Link からダイアログを開くボタンにする。アイコンは lucide-react の `Upload`（取り込む向き。隣の `Download`・`BarChart3` と同じく `w-4 h-4` `aria-hidden`。Claude案）。文言は Q-008 で承認した構成の「CSV で取り込む」を仮置きとし、隣の2つが「〜インポート」である差は §14「実装前」のたたき台確認でクライアントに確認して決める |
+  | 「CSV で取り込む」ボタン | 「WordPress記事一括インポート」ボタン（`app/analytics/AnalyticsClient.tsx:459-465`、`cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')`、アイコン `Download` + `<span>` の文言） | 写す（クラスと構成は変えない） | 要素を Link からダイアログを開くボタンにする。アイコンは lucide-react の `Upload`（取り込む向き。隣の `Download`・`BarChart3` と同じく `w-4 h-4` `aria-hidden`。Claude案）。文言は「CSV で取り込む」（Q-008 で承認した構成。隣の2つが「〜インポート」である差も含め、§14「実装前」の確認（2026-10-19、ユーザー回答）でたたき台のまま確定。たたき台からの変更の記録は無い） |
   | ダイアログ | 一覧の編集ダイアログ（`src/components/AnalyticsTable.tsx:1364-1390`、部品は `src/components/ui/dialog.tsx`） | そのまま使う | なし |
   | 結果の件数表示 | WordPress 取り込みの結果の件数グリッド（`app/wordpress-import/WordPressImportClient.tsx:233-264`。1マスは :234-237 の形で、数字 `text-2xl font-bold text-<色>-600` と項目名 `text-sm text-gray-600`） | 共通化（件数1マスを `WordPressImportClient.tsx` の中で部品として export し、WordPress 取り込みの結果と本機能の結果の両方で使う） | 写すと生の Tailwind 色で `shadcn/no-raw-colors` の違反が増える（同ファイルは `eslint-suppressions.json:364-367` で29件抑制）ため、`growmate-ui-ux` SKILL の「写さず既存ファイル内で export して共通化する」に従う。区分を本機能の5つにし、色は既存の同じ意味の区分に合わせる（Claude案）: 更新=indigo（既存「更新件数」:246-249）、新規作成=green（「新規登録対象」:238-241）、変更なし=orange（「変更なしでスキップ」:250-255）、重複=yellow（「重複スキップ」:256-259）、スキップ=red（「エラー」:260-263） |
-  | テンプレートのダウンロード | 「WordPress記事一括インポート」ボタンのアイコン（`app/analytics/AnalyticsClient.tsx:464` の `Download`） | 写す（アイコン名だけ） | ボタンの見た目は上の「CSV で取り込む」ボタンと同じクラス。アイコンは lucide-react の `Download`（Claude案） |
+  | テンプレートのダウンロード | 「WordPress記事一括インポート」ボタンのアイコン（`app/analytics/AnalyticsClient.tsx:463` の `Download`） | 写す（アイコン名だけ） | ボタンの見た目は上の「CSV で取り込む」ボタンと同じクラス。アイコンは lucide-react の `Download`（Claude案） |
   | 依頼文のコピー | Canvas のコピー（`app/chat/components/CanvasPanel.tsx:784` の `navigator.clipboard.writeText`、アイコンは :957 の lucide-react `Copy`） | 写す（コピー処理とアイコン名） | ボタンの色は Canvas の `bg-green-600` を写さず、既存の `Button` の既定の見た目を使う（Canvas のボタンはツールバー用で、写すと生の色の違反が増えるため。Claude案） |
   | ファイル選択欄 | 無し（`app`・`src` に `type="file"` の前例なし） | 新規 | ラベルを付ける |
 
 - 置き場所: ブログタブだけに出す（Instagram タブには出さない）。
-- 構成（Claude案、Q-008 で承認済み。たたき台をクライアントに確認する）:
+- 構成（Claude案、Q-008 で承認済み。§14「実装前」の確認（2026-10-19、ユーザー回答）で、このたたき台のまま確定。たたき台からの変更の記録は無い）:
 
   ```text
   [CSV で取り込む] ダイアログ
@@ -462,7 +462,7 @@ Feature: 外部作成コンテンツの CSV 取り込み
 | --- | --- | --- | --- |
 | Q-004〜Q-009 の回答 | Claude案の承認 | 回答済み（2026-10-19） | — |
 | クライアントの確認 | §14「実装前」のチェックポイント | 確認済み（2026-10-19） | — |
-| migration の適用 | ユーザー承認・advisors（前後） | 適用済み | 実装中に RPC を確かめられない |
+| migration の適用 | ユーザー承認・advisors（前後） | 未適用（spec-to-pr で migration ファイルを作り、ユーザー承認後に本番へ適用。完了確認は本番の `list_migrations` に本書の migration があること） | 実装中に RPC を確かめられない |
 
 ## 11. トレードオフ判断
 
@@ -522,7 +522,7 @@ Feature: 外部作成コンテンツの CSV 取り込み
 
 | ID | 未決定事項 | 今決めない理由 | 決めるタイミング | 決める人 |
 | --- | --- | --- | --- | --- |
-| OPEN-001 | AI への依頼文の最終文面 | クライアントはプロンプトを自分で直す（§1.9.5「評価軸のロジックとプロンプトはクライアントが調査のうえ提案」）。たたき台を渡して直してもらうのが早く、後から文言だけ変えられる | 画面のたたき台の確認時 | クライアント |
+| OPEN-001 | AI への依頼文の最終文面 | クライアントはプロンプトを自分で直す（§1.9.5「評価軸のロジックとプロンプトはクライアントが調査のうえ提案」）。たたき台を渡して直してもらうのが早く、後から文言だけ変えられる | 決めない（閉じた項目）。GrowMate は FR-001 のたたき台を載せる。最終文面はクライアントが手元で直す（GrowMate 側の決定は不要。依頼文のたたき台は §14「実装前」で 2026-10-19 に確認済み） | クライアント |
 
 ## 13. テスト・リリース・ロールバック
 
@@ -558,7 +558,7 @@ Feature: 外部作成コンテンツの CSV 取り込み
 ### 手順
 
 1. 本書のレビュー（Q-004〜Q-009 は 2026-10-19 に回答済み）
-2. 画面のたたき台・依頼文・事前共有の制約をクライアントに確認
+2. 画面のたたき台・依頼文・事前共有の制約をクライアントに確認（2026-10-19 に確認済み。たたき台のまま確定）
 3. 親仕様（`api-cost-reduction-spec.md`）の FR-006 を「本書へ移した」に更新
 4. `takt -w spec-review`
 5. `takt -w spec-to-pr`（migration の本番適用はユーザー承認を取ってから）
@@ -590,7 +590,7 @@ Feature: 外部作成コンテンツの CSV 取り込み
   - `npm run verify` が通る
   - 本番で数行の CSV の取り込みを確認した
 - 検証方法・証跡: テスト結果、本番での取り込み結果の画面
-- 完了確認者・確認日: 未確定（理由: §14「実装前」のクライアント確認のあとに決める。確認者: ユーザー。確認期限: spec-to-pr の前）
+- 完了確認者・確認日: 完了確認者はユーザー。確認日は、本番で数行の CSV の取り込みを確認した日
 
 ## 16. レビュー記録・承認・変更履歴
 
@@ -601,12 +601,18 @@ Feature: 外部作成コンテンツの CSV 取り込み
 | 0（spec-review 前のサブエージェントレビュー） | 2026-10-19 | 仕様レビュー 1 / 11 / 8、事実照合 誤り9、クライアント整合 要確認1 | 反映（本番の CHECK 制約への対応、一意制約をやめて取り込み処理の中の照合に、WordPress 取り込みの照合順を保持、RPC の権限、行ごとの判定の穴、AC の追加、Claude案を Q-004〜Q-009 に） | AI 要約を paid に戻さない件は、10-19 の指示「これでAI要約機能は不要となる」を根拠として確認質問にしない |
 | 0-2（反映後の再レビュー） | 2026-10-19 | 1 / 2 / 5 | 全件反映 | なし |
 | 0-3（照合規則の最終確認） | 2026-10-19 | 0 / 3（記述誤り1・規則の抜け1・理由づけ1） / 0 | 全件反映 | なし |
-| 1（spec-review） | 2026-10-19 | 0 / 0 / —（revise の修正は取り込み済み） | ABORT（§14「実装前」のクライアント確認が未確認のため `approved_with_questions`） | なし。確認はその後済み |
-| 1（`takt -w spec-review` の audit） | 2026-10-19 | 0 / 5 / 3 | 全件反映（分割送信の測り方と上限、WordPress 照合の2段階と見送った投稿の件数、UI 既存パターン対照表の共通化・色・アイコン・`file:line`、事前共有の追加と許可を得る項目の明記、テンプレートの空欄、AC-09 の対応、README の更新予告、ロール確認の関数） | 残置合意した 🟡 はなし。未解決の承認ゲート「§14 実装前（クライアント確認。項目7・8は許可を得る）」が残る。revise では解消できず、扱い（全項目を spec-review 前に確認する／UI と依頼文のたたき台だけを実装前ゲートにする／全体を実装前ゲートにする）はユーザーの判断待ち |
+| 1-1（`takt -w spec-review` 1回目の audit） | 2026-10-19 | 0 / 5 / 3 | 全件反映（分割送信の測り方と上限、WordPress 照合の2段階と見送った投稿の件数、UI 既存パターン対照表の共通化・色・アイコン・`file:line`、事前共有の追加と許可を得る項目の明記、テンプレートの空欄、AC-09 の対応、README の更新予告、ロール確認の関数） | 残置合意した 🟡 はなし。未解決の承認ゲート「§14 実装前（クライアント確認。項目7・8は許可を得る）」が残る。revise では解消できず、扱い（全項目を spec-review 前に確認する／UI と依頼文のたたき台だけを実装前ゲートにする／全体を実装前ゲートにする）はユーザーの判断待ち → その後確認済み（1-2 の行・変更履歴の 2026-10-19「spec-review 1回目は…ABORT」の行） |
+| 1-2（`takt -w spec-review` 1回目の再 audit） | 2026-10-19 | 0 / 0 / 1（revise の修正は取り込み済み） | ABORT（§14「実装前」のクライアント確認が未確認のため `approved_with_questions`） | なし。確認はその後済み |
+| 2（`takt -w spec-review` 2回目の audit） | 2026-10-19 | 0 / 2 / 2 | 全件反映（§14「実装前」の確認結果を UI 対照表・構成・OPEN-001・§15 に反映、§10 の migration を「未適用」に訂正、レビュー記録の回の振り直しと PostgREST の公式照合、`AnalyticsClient.tsx` の行番号） | 残置合意した 🟡 はなし。§14「実装前」の承認ゲートは解消済み（audit 判定） |
 
 #### 公式ドキュメント照合
 
-- 回1の audit で実施（Supabase のみ。確認日 2026-10-19）。`security definer` と `search_path`、関数の実行権限の revoke、service_role が RLS を通らないことは公式と矛盾なし。PostgREST の返却行の上限（Max rows）は公式に記述が見つからず未確認で、リポ内の正本 `docs/context/db-row-limits-and-data-truncation.md` を根拠にした（jsonb の1値で返すので、上限が何行でも結果は欠けない）。URL と引用は audit レポート（`.takt/runs/20261019-122440-docs-plans-content-csv-import/reports/spec-audit.md`）。
+- 回1-1 の audit で実施（Supabase のみ。確認日 2026-10-19）。`security definer` と `search_path`、関数の実行権限の revoke、service_role が RLS を通らないことは公式と矛盾なし。URL と引用は audit レポート（`.takt/runs/20261019-122440-docs-plans-content-csv-import/reports/spec-audit.md`）。
+- 回2 の audit で実施（Supabase・PostgREST・PostgreSQL。確認日 2026-10-19。取得に失敗した URL はない）。URL と引用は audit レポート（`.takt/runs/20261019-124717-docs-plans-content-csv-import/reports/spec-audit.md`）。
+- PostgREST の返却行の上限（Max rows）: 確認済み（回1-1 では公式に記述が見つからず未確認としていた）。
+  - 参照: https://docs.postgrest.org/en/stable/references/configuration.html （確認日 2026-10-19）
+  - 原文: "A hard limit to the number of rows PostgREST will fetch from a view, table, or function."
+  - 解釈: 上限は返す「行」の数に効く。本書の RPC は結果を jsonb の1値（1行）で返すので、上限があっても結果は欠けない（§6 FR-002・FR-003、リポ内の正本 `docs/context/db-row-limits-and-data-truncation.md`）。
 - Next.js の Server Action の受信上限は `node_modules/next/dist/docs/01-app/02-guides/server-actions.md` で確認（2026-10-19）。
 
 ### 承認
@@ -629,3 +635,5 @@ Feature: 外部作成コンテンツの CSV 取り込み
 | 2026-10-19 | テンプレートのファイル名を「コンテンツ情報_取り込みテンプレート.csv」に決めた | 利用者が見て分かる名前にするため（ユーザー指摘） | Claude |
 | 2026-10-19 | spec-review 回1の指摘を反映。分割送信（UTF-8 のバイト数・2,000行・文字数超過のブラウザ判定）、WordPress 照合の2段階と見送りの件数、UI 対照表（件数表示の共通化・色・アイコン・`file:line`・ボタン文言の確認）、事前共有9と項目7・8の許可、リリース・ロールバック・画面遷移・承認者の記入、AC-09 の対応、README 予告、ロール確認の関数 | spec-review 指摘 | Claude |
 | 2026-10-19 | spec-review 1回目は §14「実装前」のクライアント確認が未確認のため ABORT（仕様の 🔴/🟡 は0件）。その後ユーザーから「実装前のクライアント確認済み」と回答があり、§14 と依存関係を確認済みに更新 | ユーザー回答 | Claude |
+| 2026-10-19 | spec-review 2回目の audit 指摘を反映。§14「実装前」の確認結果（たたき台のまま確定）を UI 対照表・構成・ボタン文言に反映、OPEN-001 を閉じ、§15 の完了確認者をユーザーに確定、§10 の migration を「未適用」に訂正、レビュー記録の回を 1-1 / 1-2 に振り直し、PostgREST の Max rows を公式で確認済みに、`AnalyticsClient.tsx` の行番号を :463 に | spec-review 指摘 | Claude |
+| 2026-10-19 | spec-review 通過。前回指摘（🟡2・🟢2）を反映し、ステータスを `approved` に更新 | 仕様レビュー | spec-review |
