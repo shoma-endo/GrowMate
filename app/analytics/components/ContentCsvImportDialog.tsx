@@ -89,15 +89,8 @@ export function ContentCsvImportDialog() {
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
-    setParsed(null);
-    setParseError('');
-    setFailure('');
-    setProcessed(0);
-    setTotals(EMPTY_TOTALS);
-    if (!file) {
-      setPhase('ready');
-      return;
-    }
+    reset();
+    if (!file) return;
 
     try {
       const csvText = decodeContentCsv(new Uint8Array(await file.arrayBuffer()));
@@ -221,7 +214,7 @@ export function ContentCsvImportDialog() {
           <h3 className="font-medium">2. 作った CSV を選ぶ</h3>
           <p className="text-sm text-muted-foreground">UTF-8・最大2万行</p>
           <div className="flex flex-wrap items-center gap-2">
-            <Input type="file" accept=".csv,text/csv" aria-label="CSV ファイルを選択" onClick={event => { event.currentTarget.value = ''; }} onChange={handleFileChange} disabled={phase === 'running'} />
+            <Input type="file" accept=".csv,text/csv" aria-label="CSV ファイルを選択" onClick={event => { event.currentTarget.value = ''; reset(); }} onChange={handleFileChange} disabled={phase === 'running'} />
             <Button type="button" onClick={handleImport} disabled={!parsed || phase === 'running'}>取り込む</Button>
           </div>
         </section>
