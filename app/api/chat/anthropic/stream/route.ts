@@ -347,6 +347,16 @@ export async function POST(req: NextRequest) {
                 return;
               }
 
+              // 続きを頼んでも履歴が伸びて同じ上限に当たるので、max_tokens と違い続き生成に回さない
+              if (stopReason === 'model_context_window_exceeded') {
+                console.error('[Stream] Context window exceeded:', { model, resolvedModel });
+                sendSaveErrorAndExit(
+                  'context_window_exceeded',
+                  ERROR_MESSAGES.CHAT.CONTEXT_WINDOW_EXCEEDED
+                );
+                return;
+              }
+
               try {
                 const postStreamLimitError = await checkTrialDailyLimit(userRole, userId);
                 if (postStreamLimitError) {

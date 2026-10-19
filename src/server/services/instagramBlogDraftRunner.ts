@@ -460,8 +460,14 @@ class InstagramBlogDraftRunner extends SupabaseService {
         console.error('[Instagram BlogDraft] response refused by model', { model });
         throw new InstagramBlogDraftFailure('AI_FAILED');
       }
+      // 続きを頼んでも履歴が伸びて同じ上限に当たるので、max_tokens と違い続き生成に回さない
+      if (result.stopReason === 'model_context_window_exceeded') {
+        console.error('[Instagram BlogDraft] context window exceeded', { model });
+        throw new InstagramBlogDraftFailure('MAX_TOKENS');
+      }
       return { content: result.content, truncated: result.stopReason === 'max_tokens' };
     } catch (error) {
+      if (error instanceof InstagramBlogDraftFailure) throw error;
       if (error instanceof ChatError && error.code === ChatErrorCode.ANTHROPIC_RATE_LIMIT) {
         throw new InstagramBlogDraftFailure('AI_RATE_LIMITED');
       }
