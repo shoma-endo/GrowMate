@@ -12,6 +12,19 @@
 const INVALID_URL = '有効なURLを入力してください';
 
 export const ERROR_MESSAGES = {
+  CONTENT_CSV_IMPORT: {
+    INVALID_ENCODING: 'UTF-8 の CSV を選んでください。Excel の場合は「CSV UTF-8」で保存し直してください。',
+    URL_COLUMN_MISSING: '記事URL または URL の列がありません。見出しを確認してください。',
+    TOO_MANY_ROWS: 'ファイルを分けて順に取り込んでください。同じ行を何度取り込んでも結果は同じです。',
+    MALFORMED_CSV: 'CSV の形式を確認して、ファイルを選び直してください。',
+    IMPORT_FAILED: 'CSV の取り込みに失敗しました。時間をおいて、同じファイルでもう一度お試しください。',
+    SKIP_REASONS: {
+      invalid_url: 'URL が不正',
+      too_long: '文字数超過',
+      multiple_matches: '同じ URL の記事が複数ある',
+      no_values: '値が無い',
+    },
+  },
   /**
    * WordPress関連のエラーメッセージ
    */

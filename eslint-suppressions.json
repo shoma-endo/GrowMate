@@ -363,7 +363,7 @@
   },
   "app/wordpress-import/WordPressImportClient.tsx": {
     "shadcn/no-raw-colors": {
-      "count": 29
+      "count": 16
     }
   },
   "src/components/AnalyticsTable.tsx": {

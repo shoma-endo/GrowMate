@@ -5,6 +5,7 @@ import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
+import { asPendingClient, type ContentCsvImportDatabase, type PendingContentCsvImportRow } from '@/types/database.types.pending';
 import {
   DbChatMessage,
   DbChatSession,
@@ -1056,6 +1057,27 @@ export class SupabaseService {
       throw new Error(ERROR_MESSAGES.WORDPRESS.ANNOTATION_FETCH_ERROR(error?.message ?? 'truncated'));
     }
     return data;
+  }
+
+  async importContentAnnotationsCsv(
+    userId: string,
+    rows: PendingContentCsvImportRow[]
+  ): Promise<SupabaseResult<ContentCsvImportDatabase['public']['Functions']['import_content_annotations_csv']['Returns']>> {
+    const { data, error } = await asPendingClient<ContentCsvImportDatabase>(this.supabase).rpc(
+      'import_content_annotations_csv',
+      {
+        p_user_id: userId,
+        p_rows: rows.map(({ url, values }) => ({ url, ...values })),
+      }
+    );
+    if (error) {
+      return this.failure('CSV の取り込みに失敗しました', {
+        error,
+        developerMessage: 'Content CSV import RPC failed',
+        context: { userId, rowCount: rows.length },
+      });
+    }
+    return this.success(data);
   }
 
   async listGscAutoImportTargets(): Promise<string[]> {

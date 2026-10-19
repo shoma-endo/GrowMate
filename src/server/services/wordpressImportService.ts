@@ -1,4 +1,5 @@
 import { normalizeCategories, normalizeCategoryNames, normalizeText, parseWpPostId } from '@/lib/utils';
+import { normalizeUrl } from '@/lib/normalize-url';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { CRON_CONFIGS, CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 import { runDailyImportBatch } from '@/server/lib/daily-import-batch';
@@ -63,6 +64,7 @@ const WORDPRESS_DAILY_IMPORT_TIME_BUDGET_MS = (CRON_CONFIGS.wordpressDailyImport
 interface ExistingAnnotation {
   id: string;
   canonical_url: string | null;
+  normalized_url: string | null;
   wp_post_id: number | null;
 }
 
@@ -225,11 +227,22 @@ export async function importWordPressContent({
     assertBeforeDeadline(deadlineAt);
     const existingByCanonical = new Map<string, ExistingAnnotation>();
     const existingByPostId = new Map<number, ExistingAnnotation>();
+    const unlinkedByNormalized = new Map<string, ExistingAnnotation[]>();
     for (const row of keys) {
-      const item: ExistingAnnotation = { id: row.id, canonical_url: row.canonical_url, wp_post_id: row.wp_post_id };
+      const item: ExistingAnnotation = {
+        id: row.id,
+        canonical_url: row.canonical_url,
+        normalized_url: row.normalized_url,
+        wp_post_id: row.wp_post_id,
+      };
       const canonical = row.canonical_url?.trim();
       if (canonical) existingByCanonical.set(canonical, item);
       if (row.wp_post_id !== null) existingByPostId.set(row.wp_post_id, item);
+      if (row.wp_post_id === null && row.normalized_url) {
+        const matches = unlinkedByNormalized.get(row.normalized_url) ?? [];
+        matches.push(item);
+        unlinkedByNormalized.set(row.normalized_url, matches);
+      }
     }
 
     const statsByType: ImportStats['statsByType'] = {};
@@ -245,6 +258,14 @@ export async function importWordPressContent({
     let skippedWithoutCanonical = 0;
     let duplicatePosts = 0;
     const timestamp = startedAt;
+
+    const candidates: Array<{
+      post: WordPressNormalizedPost;
+      type: string;
+      canonical: string;
+      wpPostId: number | null;
+      stats: ImportStats['statsByType'][string];
+    }> = [];
 
     for (const post of posts) {
       const type = normalizeContentType(post.post_type ?? 'posts');
@@ -264,15 +285,83 @@ export async function importWordPressContent({
       if (wpPostId !== null) seenIds.add(wpPostId);
       seenCanonicals.add(canonical);
 
-      const existing = existingByCanonical.get(canonical) ??
-        (wpPostId !== null ? existingByPostId.get(wpPostId) : undefined);
+      candidates.push({ post, type, canonical, wpPostId, stats });
+    }
+
+    const assigned = new Map<number, { existing: ExistingAnnotation; preserveCanonical: boolean }>();
+    const claimed = new Set<string>();
+    const skippedCandidates = new Set<number>();
+    for (const [index, candidate] of candidates.entries()) {
+      if (candidate.wpPostId === null) continue;
+      const existing = existingByPostId.get(candidate.wpPostId);
+      if (!existing) continue;
+      const canonicalOwner = existingByCanonical.get(candidate.canonical);
+      const preserveCanonical = Boolean(canonicalOwner && canonicalOwner.id !== existing.id);
+      assigned.set(index, { existing, preserveCanonical });
+      claimed.add(existing.id);
+      if (preserveCanonical && canonicalOwner) {
+        console.warn('[wordpress-import] canonical URL belongs to another annotation; preserved existing URL', {
+          userId,
+          postId: candidate.wpPostId,
+          canonicalUrl: candidate.canonical,
+          annotationId: existing.id,
+          conflictingAnnotationId: canonicalOwner.id,
+        });
+      }
+    }
+
+    for (const [index, candidate] of candidates.entries()) {
+      if (assigned.has(index)) continue;
+      let existing = existingByCanonical.get(candidate.canonical);
+      if (!existing) {
+        const normalized = normalizeUrl(candidate.canonical);
+        const matches = normalized ? unlinkedByNormalized.get(normalized) ?? [] : [];
+        if (matches.length > 1) {
+          skippedCandidates.add(index);
+          candidate.stats.duplicate += 1;
+          duplicatePosts += 1;
+          console.warn('[wordpress-import] normalized URL matched multiple unlinked annotations', {
+            userId,
+            postId: candidate.wpPostId,
+            canonicalUrl: candidate.canonical,
+            annotationIds: matches.map(match => match.id),
+          });
+          continue;
+        }
+        existing = matches[0];
+      }
+
+      if (existing && claimed.has(existing.id)) {
+        skippedCandidates.add(index);
+        candidate.stats.duplicate += 1;
+        duplicatePosts += 1;
+        console.warn('[wordpress-import] post matched an annotation already claimed in this import', {
+          userId,
+          postId: candidate.wpPostId,
+          canonicalUrl: candidate.canonical,
+          annotationId: existing.id,
+        });
+        continue;
+      }
+
+      if (existing) {
+        assigned.set(index, { existing, preserveCanonical: false });
+        claimed.add(existing.id);
+      }
+    }
+
+    for (const [index, candidate] of candidates.entries()) {
+      if (skippedCandidates.has(index)) continue;
+      const assignment = assigned.get(index);
+      const { post, canonical, wpPostId, stats } = candidate;
+
       const nextPostType = normalizeText(post.post_type);
       const nextContent = normalizeText(post.content_text);
       const nextImageCount = post.image_count ?? null;
       const data: Database['public']['Tables']['content_annotations']['Update'] = {
         wp_post_id: wpPostId,
         wp_post_title: normalizeText(post.title),
-        canonical_url: canonical,
+        ...(!assignment?.preserveCanonical ? { canonical_url: canonical } : {}),
         wp_categories: normalizeCategories(post.categories),
         wp_category_names: normalizeCategoryNames(post.categoryNames),
         wp_excerpt: normalizeText(post.excerpt),
@@ -282,8 +371,8 @@ export async function importWordPressContent({
         ...(nextImageCount !== null ? { wp_image_count: nextImageCount } : {}),
       };
 
-      if (existing) {
-        updates.push({ id: existing.id, data });
+      if (assignment) {
+        updates.push({ id: assignment.existing.id, data });
         stats.processed += 1;
       } else {
         inserts.push({ user_id: userId, ...data, created_at: timestamp });

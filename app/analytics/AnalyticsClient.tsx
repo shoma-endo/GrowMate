@@ -37,6 +37,7 @@ import { useRouter } from 'next/navigation';
 import { canUseContentAnnotationSummary } from '@/authUtils';
 import { useAuth } from '@/components/AuthProvider';
 import { SummarySuspendedTooltip } from '@/components/ContentAnnotationSummaryAction';
+import { ContentCsvImportDialog } from './components/ContentCsvImportDialog';
 import { buildListingSelectionKey } from './selection-scope';
 import { summarizeContentAnnotationsBulk } from '@/server/actions/contentAnnotationBulkSummary.actions';
 import { resolveRawSelectedCount, toggleIdMembership } from '@/lib/analytics-selection';
@@ -463,6 +464,7 @@ export default function AnalyticsClient({
             <Download className="w-4 h-4" aria-hidden />
             <span>WordPress記事一括インポート</span>
           </Link>
+          <ContentCsvImportDialog />
           <Link
             href="/gsc-import"
             className={cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')}

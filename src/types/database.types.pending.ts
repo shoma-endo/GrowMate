@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from './database.types';
+import type { Database, Json } from './database.types';
+import type { AnnotationFieldKey } from './annotation';
 
 /**
  * 生成型（`database.types.ts`）を部分的に差し替えて Supabase クライアントを使うための型置き場。
@@ -70,6 +71,35 @@ export type Ga4ContentEvaluationScheduleDatabase = Omit<Database, 'public'> & {
       list_due_ga4_content_evaluations: {
         Args: { p_today_jst: string };
         Returns: Ga4DueEvaluationRow[];
+      };
+    };
+  };
+};
+
+// PROVISIONAL: supabase/migrations/20261019000000_add_content_csv_import.sql
+export interface PendingContentCsvImportRow {
+  rowNumber: number;
+  url: string;
+  values: Partial<Record<AnnotationFieldKey, string>>;
+}
+
+interface ContentCsvImportRpcResult {
+  updated: number;
+  created: number;
+  unchanged: number;
+  skipped: Array<{
+    row_index: number;
+    url: string;
+    reason: 'invalid_url' | 'multiple_matches' | 'no_values';
+  }>;
+}
+
+export type ContentCsvImportDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Functions'> & {
+    Functions: Omit<Database['public']['Functions'], 'import_content_annotations_csv'> & {
+      import_content_annotations_csv: {
+        Args: { p_user_id: string; p_rows: Json };
+        Returns: ContentCsvImportRpcResult;
       };
     };
   };
