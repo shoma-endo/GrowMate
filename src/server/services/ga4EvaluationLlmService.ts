@@ -4,7 +4,6 @@ import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { llmChat } from '@/server/services/llmService';
 import { extractJsonObjectText } from '@/server/lib/llm-json';
 import type { Ga4EvaluationErrorCode } from '@/types/ga4-evaluation';
-import type { AnthropicThinkingConfig } from '@/lib/constants';
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 2_000;
@@ -17,7 +16,7 @@ export interface Ga4EvaluationLlmRequest<T> {
   userPrompt: string;
   schema: z.ZodType<T>;
   maxTokens: number;
-  thinking?: AnthropicThinkingConfig;
+  thinking?: { type: 'disabled' | 'adaptive' };
   onAttempt?: (attemptCount: number) => Promise<void>;
 }
 

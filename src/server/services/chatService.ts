@@ -14,7 +14,7 @@ import {
   ServerChatSession,
 } from '@/types/chat';
 import { SupabaseService, type SupabaseResult } from './supabaseService';
-import { MODEL_CONFIGS, CHAT_HISTORY_LIMIT, CHAT_HISTORY_CHAR_LIMIT, type AnthropicThinkingConfig } from '@/lib/constants';
+import { MODEL_CONFIGS, CHAT_HISTORY_LIMIT, CHAT_HISTORY_CHAR_LIMIT } from '@/lib/constants';
 import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
 
@@ -84,7 +84,7 @@ class ChatService {
             temperature: number | undefined;
             maxTokens: number;
             anthropicSystemBlocks?: AnthropicSystemBlock[];
-            thinking?: AnthropicThinkingConfig;
+            thinking?: { type: 'disabled' | 'adaptive' };
           } = {
             temperature: config.temperature,
             maxTokens: config.maxTokens,
@@ -286,7 +286,7 @@ class ChatService {
             temperature: number | undefined;
             maxTokens: number;
             anthropicSystemBlocks?: AnthropicSystemBlock[];
-            thinking?: AnthropicThinkingConfig;
+            thinking?: { type: 'disabled' | 'adaptive' };
           } = {
             temperature: config.temperature,
             maxTokens: config.maxTokens,

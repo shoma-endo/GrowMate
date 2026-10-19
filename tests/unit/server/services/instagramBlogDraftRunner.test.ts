@@ -215,17 +215,6 @@ describe('Instagram ブログ自動作成の実行（Runner）', () => {
     expect(llmChatWithStopReason).toHaveBeenCalledTimes(2);
   });
 
-  it('AI が応答を拒否（refusal）したら AI_FAILED で、途中の出力を保存しない', async () => {
-    seedSession();
-    seedJob({ session_id: SESSION_ID, stage: 'step1' });
-    llmReturns({ content: '途中まで', stopReason: 'refusal' });
-
-    await expect(run()).rejects.toMatchObject({ code: 'AI_FAILED' });
-    expect(llmChatWithStopReason).toHaveBeenCalledOnce();
-    expect(rows('content_annotations')[0]?.needs).toBeUndefined();
-    expect(rows('instagram_blog_draft_jobs')[0]).toMatchObject({ stage: 'step1' });
-  });
-
   describe('一時的な AI の失敗（529・500）', () => {
     beforeEach(() => {
       vi.useFakeTimers({ toFake: ['setTimeout'] });

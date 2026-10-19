@@ -426,12 +426,6 @@ export const ERROR_MESSAGES = {
 
     /** チャットセッションの検索に失敗した場合 */
     SESSION_SEARCH_FAILED: 'チャットセッションの検索に失敗しました',
-
-    /** AI が安全上の理由で応答を断った場合（stop_reason: refusal） */
-    AI_REFUSED: 'AIがこのメッセージへの応答を控えました。内容を変えてもう一度お試しください。',
-
-    /** Canvas 編集で AI が編集結果（ツール呼び出し）を返さなかった場合 */
-    CANVAS_EDIT_NOT_RETURNED: 'AIが編集結果を返しませんでした。もう一度お試しください。',
   },
 
   /**

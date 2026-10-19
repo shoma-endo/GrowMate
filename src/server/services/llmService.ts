@@ -3,7 +3,6 @@ import OpenAI from 'openai';
 import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
 import { env } from '@/env';
 import type { AnthropicSystemBlock } from '@/lib/knowledgeInjection';
-import type { AnthropicThinkingConfig } from '@/lib/constants';
 
 interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
@@ -28,7 +27,7 @@ interface LLMOptions {
    * 思考トークンが出力料金で課金されるため。思考テキストはレスポンスに返らないので、
    * 指定漏れは請求額でしか気づけない。
    */
-  thinking?: AnthropicThinkingConfig | undefined;
+  thinking?: { type: 'disabled' | 'adaptive' } | undefined;
   /**
    * Anthropic SDK のリクエスト単位の再送回数（Anthropic 経路のみ）。**未指定なら渡さない**ので、
    * 既存の呼び出し側は SDK 既定（2回）のまま（`thinking` / `temperature` と同じ扱い）。

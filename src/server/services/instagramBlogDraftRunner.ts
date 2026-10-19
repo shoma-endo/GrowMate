@@ -455,11 +455,6 @@ class InstagramBlogDraftRunner extends SupabaseService {
         await new Promise<void>(resolve => setTimeout(resolve, TRANSIENT_AI_RETRY_DELAY_MS));
         result = await request();
       }
-      // 拒否された応答は空か途中までなので、下書きとして保存しない
-      if (result.stopReason === 'refusal') {
-        console.error('[Instagram BlogDraft] response refused by model', { model });
-        throw new InstagramBlogDraftFailure('AI_FAILED');
-      }
       return { content: result.content, truncated: result.stopReason === 'max_tokens' };
     } catch (error) {
       if (error instanceof ChatError && error.code === ChatErrorCode.ANTHROPIC_RATE_LIMIT) {
