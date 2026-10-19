@@ -49,6 +49,18 @@ describe('content CSV import', () => {
     );
   });
 
+  it.each([
+    ['text after a closing quote', '記事URL,主軸kw\nhttps://example.com/a,"keyword"extra'],
+    ['an unclosed quote', '記事URL,主軸kw\nhttps://example.com/a,"keyword'],
+  ])('rejects %s as malformed', (_label, input) => {
+    expect(() => parseContentCsv(input)).toThrowError(expect.objectContaining({ code: 'MALFORMED_CSV' }));
+  });
+
+  it('accepts a quoted cell followed by a delimiter, a newline, or the end', () => {
+    const result = parseContentCsv('記事URL,主軸kw,kw（参考）\r\n"https://example.com/a","k1","a""b"\n"https://example.com/b","k2",""');
+    expect(result.rows.map(row => row.values)).toEqual([{ main_kw: 'k1', kw: 'a"b' }, { main_kw: 'k2' }]);
+  });
+
   it('uses spreadsheet row numbers when a cell contains a newline', () => {
     const result = parseContentCsv('記事URL,主軸kw\nhttps://example.com/a,"first\nsecond"\nhttps://example.com/b,next');
     expect(result.rows.map(row => row.rowNumber)).toEqual([2, 3]);

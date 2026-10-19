@@ -64,6 +64,10 @@ function parseCsvRecords(input: string): CsvRecord[] {
         index += 1;
       } else if (quoted) {
         quoted = false;
+        const next = input[index + 1];
+        if (next !== undefined && next !== ',' && next !== '\r' && next !== '\n') {
+          throw new ContentCsvImportParseError('MALFORMED_CSV');
+        }
       } else if (cell.length === 0) {
         quoted = true;
         recordStarted = true;

@@ -1,3 +1,7 @@
+-- 本番は既に NULL 可だが、リポの migration だけで作った DB では NOT NULL のままなので、URL だけの記事を作れるよう外す
+alter table public.content_annotations
+  alter column wp_post_id drop not null;
+
 alter table public.content_annotations
   drop constraint if exists content_annotations_key_presence_chk;
 
