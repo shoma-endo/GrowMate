@@ -26,6 +26,7 @@ import {
   type ParsedContentCsv,
 } from '@/lib/content-csv-import';
 import { importContentCsvRows } from '@/server/actions/contentCsvImport.actions';
+import { isEmailLinkConflictResult, replaceToEmailLinkConflictLogin } from '@/lib/auth/emailLinkConflictClient';
 import { cn } from '@/lib/utils';
 import type { AnnotationFieldKey } from '@/types/annotation';
 
@@ -123,6 +124,10 @@ export function ContentCsvImportDialog() {
 
     for (const batch of batches) {
       const result = await importContentCsvRows({ rows: batch });
+      if (isEmailLinkConflictResult(result)) {
+        replaceToEmailLinkConflictLogin();
+        return;
+      }
       if (!result.success) {
         setFailure(result.error ?? ERROR_MESSAGES.CONTENT_CSV_IMPORT.IMPORT_FAILED);
         setProcessed(nextProcessed);
