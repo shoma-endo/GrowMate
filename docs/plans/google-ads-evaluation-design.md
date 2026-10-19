@@ -19,6 +19,7 @@
 >   - **MVPメール書式（§17.4）**: 「本テーマでコンテンツを作成する」リンクは飛び先がチャット作成フロー依存のため **フェーズ2扱い・MVP非搭載**。MVPは各KWの現状成績（検索順位・タイトル・記事URL）＋新規/修正判断のみ。**順位・タイトル・URLはコード側で機械生成し LLM に書かせない**（捏造防止）。URL/タイトルの突合は **`content_annotation_id`（FK）経由**。
 >   - **MVP は UI（画面）変更なし**（サーバー・プロンプト・メール出力のみ）。
 >   - **工数 約3.5〜4日**。LLMコンテキスト量増を踏まえ、データ形式設計・トークン最適化（区切り表＝TSV/CSV風、本文フル投入回避）と メール順位表のコード生成 を独立計上。
+> - 2026-10-19: Section 17 の開発ステータスを実態に合わせて訂正。Increment 2（メール機械生成順位表）は 2026-06-03 / 06-06 に実装済み（commit `8042539e` / `740a9e48`）。本番プロンプト本文への追記状況はリポジトリ外のため未確認と明記。
 
 ## 1. 目的
 
@@ -1502,10 +1503,12 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 > | 項目 | 状態 |
 > |------|------|
 > | **仕様の確定度** | 基本設計（2026-05-31）。確定版ではない |
-> | **開発着手** | **実装中**。Increment 1（データ層＋LLMコンテキスト注入）完了（2026-05-31）。Increment 2（メール機械生成順位表）未着手 |
+> | **開発着手** | **コード実装済み**。Increment 1（データ層＋LLMコンテキスト注入）完了（2026-05-31）。Increment 2（メール機械生成順位表）完了（2026-06-03、2026-06-06 に提案内インライン化・maxTokens 20000 化） |
 > | **依存** | フェーズ1（Section 1〜15）完成済みを前提。GSC連携・WordPress取込が利用可能なユーザーが対象 |
 >
-> **Increment 1 実装済み（2026-05-31）**: `SupabaseService.getContentInventoryByUserId` / `getRankingSnapshotByUserId`（GSC は `property_uri` + `search_type='web'` で絞り込み）、`googleAdsAiAnalysisService` への結線（非致命）・フォーマッタ2種・プロンプト変数 `existingContent`/`rankingData`・DEVサンプル、`prompt-descriptions` 変数説明。**未実施**: メール機械生成順位表（§17.4・要 TOP5 紐付け方式決定）、admin/prompts 本文更新、maxTokens 実測。
+> **Increment 1 実装済み（2026-05-31）**: `SupabaseService.getContentInventoryByUserId` / `getRankingSnapshotByUserId`（GSC は `property_uri` + `search_type='web'` で絞り込み）、`googleAdsAiAnalysisService` への結線（非致命）・フォーマッタ2種・プロンプト変数 `existingContent`/`rankingData`・DEVサンプル、`prompt-descriptions` 変数説明。
+
+**Increment 2 実装済み（2026-06-03 / 2026-06-06）**: TOP5 JSON 突合による順位表のコード機械生成（`extractTopProposals` / `buildRankingBlocks`）、「▼ 新規作成 / 既存修正の判定 ▼」見出しをアンカーにした提案内インライン挿入（`[[RANKING:N]]` マーカー方式は廃止）、GSC 未ランク時の WP 在庫フォールバック、`maxTokens` 8000→20000、出力切れ検知ログ。**リポジトリから確認できないもの**: 本番 `prompt_templates.google_ads_ai_evaluation` 本文への §17.4 テンプレート追記状況（admin/prompts 画面で確認する。未追記なら順位表なしで通常送信される）。
 
 ### 17.1 目的
 
