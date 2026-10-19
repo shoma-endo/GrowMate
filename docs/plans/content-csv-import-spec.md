@@ -190,6 +190,11 @@
 
   - 9項目は今コンテンツ情報として入力する項目すべて（`src/types/annotation.ts`、`src/components/AnnotationFormFields.tsx`）。ユーザー定義の項目は無い。
   - 列の定義は、自前のコードで CSV を書き出す利用者向けに、ダイアログ上で表として見られるようにする。
+- 「テンプレート（CSV）」ボタンの横に「ⓘ」を置き、マウスを乗せると次の説明を出す（2026-10-19 ユーザー指示）:
+  - 1行目の見出しは変えないでください。1記事につき1行です。
+  - 記事URL には、公開中の記事ページの URL を書いてください。
+  - 分からない項目は空欄のままにしてください。
+  - Excel で保存するときは、ファイルの種類で「CSV UTF-8 (コンマ区切り)」を選んでください。
 
 ### FR-002・FR-003 取り込み
 
@@ -270,6 +275,7 @@
   | 今回の UI 要素 | 同種の既存 UI | 採る方法 | 変える点と根拠 |
   | --- | --- | --- | --- |
   | 「CSV で取り込む」ボタン | 「WordPress記事一括インポート」ボタン（`app/analytics/AnalyticsClient.tsx:459-465`、`cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')`、アイコン `Download` + `<span>` の文言） | 写す（クラスと構成は変えない） | 要素を Link からダイアログを開くボタンにする。アイコンは lucide-react の `Upload`（取り込む向き。隣の `Download`・`BarChart3` と同じく `w-4 h-4` `aria-hidden`。Claude案）。文言は「CSV で取り込む」（Q-008 で承認した構成。隣の2つが「〜インポート」である差も含め、§14「実装前」の確認（2026-10-19、ユーザー回答）でたたき台のまま確定。たたき台からの変更の記録は無い） |
+  | テンプレートの説明（ⓘ） | AI要約ボタンの横の「ⓘ」（`src/components/ContentAnnotationSummaryAction.tsx:145` 付近の `Info` アイコンのボタン＋ `Tooltip`） | 写す | 説明文と `aria-label` だけ変える |
   | ダイアログ | 一覧の編集ダイアログ（`src/components/AnalyticsTable.tsx:1364-1390`、部品は `src/components/ui/dialog.tsx`） | そのまま使う | なし |
   | 結果の件数表示 | WordPress 取り込みの結果の件数グリッド（`app/wordpress-import/WordPressImportClient.tsx:233-264`。1マスは :234-237 の形で、数字 `text-2xl font-bold text-<色>-600` と項目名 `text-sm text-gray-600`） | 共通化（件数1マスを `WordPressImportClient.tsx` の中で部品として export し、WordPress 取り込みの結果と本機能の結果の両方で使う） | 写すと生の Tailwind 色で `shadcn/no-raw-colors` の違反が増える（同ファイルは `eslint-suppressions.json:364-367` で29件抑制）ため、`growmate-ui-ux` SKILL の「写さず既存ファイル内で export して共通化する」に従う。区分を本機能の5つにし、色は既存の同じ意味の区分に合わせる（Claude案）: 更新=indigo（既存「更新件数」:246-249）、新規作成=green（「新規登録対象」:238-241）、変更なし=orange（「変更なしでスキップ」:250-255）、重複=yellow（「重複スキップ」:256-259）、スキップ=red（「エラー」:260-263） |
   | テンプレートのダウンロード | 「WordPress記事一括インポート」ボタンのアイコン（`app/analytics/AnalyticsClient.tsx:463` の `Download`） | 写す（アイコン名だけ） | ボタンの見た目は上の「CSV で取り込む」ボタンと同じクラス。アイコンは lucide-react の `Download`（Claude案） |
@@ -280,7 +286,7 @@
 
   ```text
   [CSV で取り込む] ダイアログ
-   1. テンプレートをダウンロード   [テンプレート（CSV）]  列の定義（表）
+   1. テンプレートをダウンロード   [テンプレート（CSV）] ⓘ  列の定義（表）
    2. 作った CSV を選ぶ             [ファイルを選択]  （UTF-8・最大2万行）
                                     [取り込む]
    結果: 更新 N件 / 新規作成 N件 / 変更なし N件 / スキップ N件 / 重複 N件
@@ -324,6 +330,7 @@ Feature: 外部作成コンテンツの CSV 取り込み
     When テンプレートをダウンロードする
     Then 1行目に記事URL と9項目の見出しだけがある UTF-8 の CSV が手に入る
     And 各列に何を書くかの定義が表示される
+    And テンプレートの横の「ⓘ」にマウスを乗せると、CSV の作り方の注意が表示される
 
   Scenario: AC-02 既存の記事は値のあるセルだけ上書きされる
     Given 利用者の記事に URL「https://example.com/a/」があり、基本構成が入っている
@@ -630,3 +637,4 @@ Feature: 外部作成コンテンツの CSV 取り込み
 | 2026-10-19 | spec-review 2回目の audit 指摘を反映。§14「実装前」の確認結果（たたき台のまま確定）を UI 対照表・構成・ボタン文言に反映、OPEN-001 を閉じ、§15 の完了確認者をユーザーに確定、§10 の migration を「未適用」に訂正、レビュー記録の回を 1-1 / 1-2 に振り直し、PostgREST の Max rows を公式で確認済みに、`AnalyticsClient.tsx` の行番号を :463 に | spec-review 指摘 | Claude |
 | 2026-10-19 | spec-review 通過。前回指摘（🟡2・🟢2）を反映し、ステータスを `approved` に更新 | 仕様レビュー | spec-review |
 | 2026-10-19 | AI への依頼文（表示・コピー）を削除。FR-001・AC-01・UI 既存パターン対照表・画面の構成・状態別 UI・R-002・R-005・OPEN-001・工数（テンプレート 2〜4時間 → 1〜2時間）を更新 | ユーザー指示（依頼文は指示していない機能だった） | Claude |
+| 2026-10-19 | テンプレートの横に「ⓘ」（マウスを乗せると説明が出る。既存の AI 要約ボタンの横と同じ形）を追加し、説明4点を FR-001・UI 既存パターン対照表・画面の構成・AC-01 に反映 | ユーザー指示 | Claude |
