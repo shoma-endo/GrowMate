@@ -27,6 +27,7 @@ jobs:
       group: auto-pr-${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
