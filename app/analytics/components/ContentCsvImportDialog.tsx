@@ -216,7 +216,7 @@ export function ContentCsvImportDialog() {
                 <TableRow key={key}>
                   <TableCell>{label}</TableCell>
                   <TableCell>{key === 'url' ? '必須' : '任意'}</TableCell>
-                  <TableCell>{COLUMN_DESCRIPTIONS[key]}</TableCell>
+                  <TableCell className="whitespace-normal">{COLUMN_DESCRIPTIONS[key]}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -266,7 +266,7 @@ export function ContentCsvImportDialog() {
             {totals.skipped.length > 0 && (
               <div>
                 <h4 className="font-medium">スキップした行</h4>
-                <ul className="max-h-56 space-y-1 overflow-y-auto text-sm">
+                <ul className="max-h-56 space-y-1 overflow-y-auto text-sm break-all">
                   {totals.skipped.map((row, index) => (
                     <li key={`${row.rowNumber}-${row.reason}-${index}`}>
                       行 {row.rowNumber} · {row.url} · {ERROR_MESSAGES.CONTENT_CSV_IMPORT.SKIP_REASONS[row.reason]}
