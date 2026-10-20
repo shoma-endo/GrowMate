@@ -17,16 +17,20 @@ GrowMate の新規機能は、TAKT標準の Grill Me で要件を確認してか
 workflow YAML は、リポジトリ直下の `.takt-version` が指す pin 版だけを正とする。
 
 ```bash
-./scripts/takt-install-pinned.sh   # ~/.local/takt/<ver> に設置（冪等）
+./scripts/takt-install-pinned.sh   # ~/.local/takt/<ver> に設置し、プロバイダも入れる（冪等）
 ./scripts/resolve-takt-bin.sh      # 検証に使う実体パスを表示
 ```
+
+takt 0.71.0 以降はプロバイダ（`codex` / `claude-sdk`）が同梱されない。`takt-install-pinned.sh` は本体のあと pin 版で `takt install codex` と `takt install claude-sdk` を実行し、設定ディレクトリ（`TAKT_CONFIG_DIR`、未指定なら `~/.takt`）の下に入れる。入っていれば takt 側がスキップする。
+
+`takt install` は設定ディレクトリに symlink があると（既定の `~/.takt` なら `.takt` 以下）`Private artifact path contains a symlink` で止まる。スクリプトは `TAKT_CONFIG_DIR`（未指定なら `~/.takt`）を実パスに解決して渡すので、`~/.takt` が symlink でもそのまま実行してよい。プロバイダだけ入れ直すときも、PATH の takt で `takt install` せずにこのスクリプトを再実行する（版ごとに入れるプロバイダの版が違うため）。
 
 TAKT は開発フローでありプロダクトではないため、Vitest・pre-push・CI では検証しない。workflow YAML / facets を変えたとき、または版を上げたときは、手で `npm run verify:agent-skills`（pin 版での `workflow doctor` を含む）を実行する。
 
 版を上げるときは **同じ変更で** 次を行う。
 
 1. `.takt-version` を新しい版にする
-2. `./scripts/takt-install-pinned.sh` を実行する
+2. `./scripts/takt-install-pinned.sh` を実行する（本体とプロバイダの両方が入る）
 3. `npm run verify:agent-skills` を緑にする
 4. 必要なら workflow YAML / facets を破壊的変更に追随させる
 

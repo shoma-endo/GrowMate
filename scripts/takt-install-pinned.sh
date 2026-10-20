@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# `.takt-version` が指す版の takt を専用 prefix に設置する（冪等）。
+# `.takt-version` が指す版の takt を専用 prefix に設置し、その版で
+# プロバイダ（codex / claude-sdk）を設定ディレクトリへ入れる（冪等）。
 #
 # PATH / Homebrew / `npm install -g takt` は検証正本にしない。
 # 実体は ${TAKT_RUNTIME_ROOT:-$HOME/.local/takt}/<version> に閉じ込める（約1GB）。
+# takt 0.71.0 以降はプロバイダを同梱しないため、`takt install <provider>` が要る。
 #
 # 用法:
 #   ./scripts/takt-install-pinned.sh          # pin 版を設置
@@ -10,8 +12,8 @@
 #
 # 版を上げる手順:
 #   1. `.takt-version` を新しい版にする
-#   2. このスクリプトを実行する
-#   3. pin 版で `takt workflow doctor` と contract テストを緑にする
+#   2. このスクリプトを実行する（本体とプロバイダの両方が入る）
+#   3. `npm run verify:agent-skills`（pin 版での `takt workflow doctor` を含む）を緑にする
 #   4. 同じ PR で workflow YAML も追随させる
 set -euo pipefail
 
@@ -83,6 +85,22 @@ else
   fi
   echo "✓ takt ${WANT} を設置しました: ${BIN}"
 fi
+
+# `takt install` は設定ディレクトリ（`.takt` 以下、`.takt` を含まない経路なら全体）に
+# symlink があると "Private artifact path contains a symlink" で止まるため、実パスにして渡す。
+CONFIG_DIR="${TAKT_CONFIG_DIR:-${HOME}/.takt}"
+if [[ -d "${CONFIG_DIR}" ]]; then
+  CONFIG_DIR="$(cd -P "${CONFIG_DIR}" && pwd -P)"
+fi
+
+for provider in codex claude-sdk; do
+  # この版の同梱 manifest と一致し整合性検査に通るものが入っていれば、takt 側で何もしない。
+  if ! TAKT_CONFIG_DIR="${CONFIG_DIR}" "${BIN}" install "${provider}"; then
+    printf '%s\n' "✗ プロバイダ ${provider} を ${CONFIG_DIR}/${provider} に入れられませんでした。" \
+      "  手で再実行: TAKT_CONFIG_DIR='${CONFIG_DIR}' '${BIN}' install ${provider}" >&2
+    exit 1
+  fi
+done
 
 if [[ "${PRUNE}" -eq 1 ]]; then
   shopt -s nullglob
