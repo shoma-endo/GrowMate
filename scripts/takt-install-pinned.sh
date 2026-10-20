@@ -12,7 +12,7 @@
 #
 # 版を上げる手順:
 #   1. `.takt-version` を新しい版にする
-#   2. このスクリプトを実行する（本体とプロバイダの両方が入る）
+#   2. このスクリプトを実行する
 #   3. `npm run verify:agent-skills`（pin 版での `takt workflow doctor` を含む）を緑にする
 #   4. 同じ PR で workflow YAML も追随させる
 set -euo pipefail
@@ -89,9 +89,8 @@ fi
 # `takt install` は設定ディレクトリ（`.takt` 以下、`.takt` を含まない経路なら全体）に
 # symlink があると "Private artifact path contains a symlink" で止まるため、実パスにして渡す。
 CONFIG_DIR="${TAKT_CONFIG_DIR:-${HOME}/.takt}"
-if [[ -d "${CONFIG_DIR}" ]]; then
-  CONFIG_DIR="$(cd -P "${CONFIG_DIR}" && pwd -P)"
-fi
+mkdir -p "${CONFIG_DIR}"
+CONFIG_DIR="$(cd -P "${CONFIG_DIR}" && pwd -P)"
 
 for provider in codex claude-sdk; do
   # この版の同梱 manifest と一致し整合性検査に通るものが入っていれば、takt 側で何もしない。
