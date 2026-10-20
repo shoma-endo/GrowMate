@@ -11,6 +11,7 @@ import { gscImportService } from '@/server/services/gscImportService';
 import { formatDateISO, addDaysISO } from '@/lib/date-utils';
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 import type { TablesUpdate } from '@/types/database.types';
+import { PAID_FEATURE_ROLES } from '@/types/user';
 
 class GscEvaluationService {
   private readonly supabaseService = new SupabaseService();
@@ -464,8 +465,9 @@ class GscEvaluationService {
     const { data: fetchedData, error: evalError } = await this.supabaseService
       .getClient()
       .from('gsc_article_evaluations')
-      .select('*')
+      .select('*, users!inner(role)')
       .eq('status', 'active')
+      .in('users.role', [...PAID_FEATURE_ROLES])
       .lte('next_evaluation_date', todayJst);
 
     if (evalError) {

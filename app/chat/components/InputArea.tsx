@@ -49,6 +49,8 @@ const MODEL_PLACEHOLDERS: Record<string, string> = {
 interface InputAreaProps {
   onSendMessage: (content: string, model: string) => Promise<void>;
   disabled: boolean;
+  /** Canvas の選択範囲編集中は、チャット送信につながる操作だけを止める（編集後の再読み込みが送信中のやり取りを消すため） */
+  isCanvasStreaming?: boolean;
   currentSessionTitle?: string | undefined;
   currentSessionId?: string | undefined;
   isMobile?: boolean | undefined;
@@ -136,6 +138,7 @@ interface InputAreaProps {
 const InputArea: React.FC<InputAreaProps> = ({
   onSendMessage,
   disabled,
+  isCanvasStreaming = false,
   currentSessionTitle,
   currentSessionId,
   isMobile: propIsMobile,
@@ -225,7 +228,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     selectedModel === 'blog_creation' &&
     activeHeadingIndex !== undefined &&
     (totalHeadings ?? 0) > 0;
-  const isInputDisabled = disabled || !isModelSelected || isStep7HeadingPhase;
+  const isInputDisabled = disabled || isCanvasStreaming || !isModelSelected || isStep7HeadingPhase;
 
   // ブログ作成のプレースホルダーはUIヒント用ステップを表示
   const placeholderMessage = (() => {
@@ -642,6 +645,7 @@ const InputArea: React.FC<InputAreaProps> = ({
               {...(nextStepForSend !== undefined && { nextStepForSend })}
               className="flex-wrap gap-3"
               disabled={isStepActionBarDisabled}
+              isCanvasStreaming={isCanvasStreaming}
               {...(onSaveClick !== undefined && { onSaveClick })}
               {...(annotationLoading !== undefined && { annotationLoading })}
               {...(isSavingHeading !== undefined && { isSavingHeading })}

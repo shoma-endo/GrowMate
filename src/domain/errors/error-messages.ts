@@ -441,6 +441,9 @@ export const ERROR_MESSAGES = {
 
     /** チャットセッションの検索に失敗した場合 */
     SESSION_SEARCH_FAILED: 'チャットセッションの検索に失敗しました',
+
+    /** 応答の受信が完了前に途切れた場合 */
+    STREAM_INTERRUPTED: '応答を最後まで受け取れませんでした。もう一度お試しください。',
   },
 
   /**

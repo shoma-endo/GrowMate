@@ -52,6 +52,8 @@ export interface CanvasPanelProps {
   /** 見出し保存エラー（保存/再結合失敗）を操作ボタン付近に表示する */
   headingSaveError?: string | null;
   isStreaming?: boolean;
+  /** チャット送信中は選択範囲の編集メニューを隠す（編集後の再読み込みが送信中のやり取りを消すため） */
+  isChatLoading?: boolean;
   /** true のときアウトラインを非表示（見出し単位編集時のみ） */
   hideOutline?: boolean;
   /** マッピングできない旧形式の Step7 タイル表示中の場合 true。完成形 UI を除外する */

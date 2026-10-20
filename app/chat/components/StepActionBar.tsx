@@ -33,6 +33,8 @@ interface StepActionBarProps {
   stepForNavigation?: BlogStepId;
   className?: string;
   disabled?: boolean;
+  /** true のときブログ保存以外を止める（チャット送信・セッション再読み込みにつながるため） */
+  isCanvasStreaming?: boolean;
   hasDetectedBlogStep?: boolean;
   onSaveClick?: () => void;
   annotationLoading?: boolean;
@@ -87,6 +89,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     {
       className,
       disabled,
+      isCanvasStreaming = false,
       step,
       stepForNavigation,
       hasDetectedBlogStep,
@@ -140,7 +143,8 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
     // UI制御
     const isStepReady =
       flowStatus === 'waitingAction' || (hasDetectedBlogStep && flowStatus === 'idle');
-    const isDisabled = disabled || !isStepReady;
+    const isSaveDisabled = disabled || !isStepReady;
+    const isDisabled = isSaveDisabled || isCanvasStreaming;
     const isStep6 = displayStep === 'step6';
     const isStep7 = displayStep === 'step7';
     const isStep1 = displayStep === 'step1';
@@ -360,7 +364,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
         )}
         <Button
           onClick={() => onSaveClick?.()}
-          disabled={isDisabled || isHeadingFlowBusy || !onSaveClick || annotationLoading}
+          disabled={isSaveDisabled || isHeadingFlowBusy || !onSaveClick || annotationLoading}
           size="sm"
           className="flex items-center gap-1 bg-black text-white hover:bg-black/90"
         >
