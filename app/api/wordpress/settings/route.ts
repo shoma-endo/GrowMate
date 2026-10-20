@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { isAdmin as isAdminRole } from '@/authUtils';
+import { hasPaidFeatureAccess } from '@/types/user';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -42,6 +43,9 @@ export async function POST(request: NextRequest) {
         { success: false, error: ERROR_MESSAGES.AUTH.AUTHENTICATION_FAILED },
         { status: 401 }
       );
+    }
+    if (!hasPaidFeatureAccess(authResult.userDetails.role)) {
+      return NextResponse.json({ success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED }, { status: 403 });
     }
     const isAdmin = isAdminRole(authResult.userDetails.role);
 
