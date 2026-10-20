@@ -55,6 +55,13 @@ const createSessionPreview = (content: string, sessionId: string): ChatSession =
 const isOpenAIModel = (model: string): boolean =>
   MODEL_CONFIGS[model]?.provider === 'openai';
 
+const toStreamErrorMessage = (error: unknown): string => {
+  // fetch・reader.read() の回線断は TypeError（文言はブラウザごとの英語）になる
+  if (error instanceof TypeError) return ERROR_MESSAGES.CHAT.STREAM_INTERRUPTED;
+  if (error instanceof Error) return error.message;
+  return 'ストリーミングに失敗しました';
+};
+
 const createStreamingMessagePair = (content: string, model: string) => {
   const responseModel = getResponseModelForBlogCreation(model);
   return {
@@ -391,11 +398,16 @@ export const useChatSession = (
         return streamSucceeded;
       } catch (error) {
         console.error('Streaming error:', error);
+        // final 受信後（保存済み）に切れた場合は、表示済みの応答をそのまま成功として扱う
+        if (streamSucceeded) {
+          setSendState(prev => ({ ...prev, isLoading: false }));
+          return true;
+        }
         setSendState(prev => ({
           ...prev,
-          messages: streamSucceeded ? prev.messages : discardUnsavedOutput(prev.messages),
+          messages: discardUnsavedOutput(prev.messages),
           isLoading: false,
-          error: error instanceof Error ? error.message : 'ストリーミングに失敗しました',
+          error: toStreamErrorMessage(error),
           warning: null,
         }));
         return false;
