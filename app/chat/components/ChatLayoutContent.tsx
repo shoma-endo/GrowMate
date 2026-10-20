@@ -230,6 +230,12 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
     [ctx]
   );
 
+  // 送信中のやり取りは完了まで DB に無いため、開いているセッションを読み直すと送った内容ごと消える
+  const loadSessionUnlessOpenAndBusy = async (sessionId: string) => {
+    if (chatSession.state.isLoading && sessionId === chatSession.state.currentSessionId) return;
+    await chatSession.actions.loadSession(sessionId);
+  };
+
   return (
     <>
       {/* デスクトップサイドバー */}
@@ -237,7 +243,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
         <SessionSidebar
           sessions={chatSession.state.sessions}
           currentSessionId={chatSession.state.currentSessionId}
-          actions={chatSession.actions}
+          actions={{ ...chatSession.actions, loadSession: loadSessionUnlessOpenAndBusy }}
           isLoading={chatSession.state.isLoading}
           isMobile={false}
           searchQuery={chatSession.state.searchQuery}
@@ -258,7 +264,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
               actions={{
                 ...chatSession.actions,
                 loadSession: async (sessionId: string) => {
-                  await chatSession.actions.loadSession(sessionId);
+                  await loadSessionUnlessOpenAndBusy(sessionId);
                   ui.sidebar.setOpen(false);
                 },
                 startNewSession: () => {
@@ -301,7 +307,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           {...(onOpenCombinedCanvas && { onOpenCombinedCanvas })}
         />
 
-        {chatSession.state.isTruncated && !chatSession.state.isLoading && (
+        {chatSession.state.isTruncated && !chatSession.state.isLoading && !isCanvasStreaming && (
           <div className="mx-3 mb-2 flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800">
             <span className="flex items-center gap-1.5">
               <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -321,6 +327,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
         <InputArea
           onSendMessage={onSendMessage}
           disabled={chatSession.state.isLoading || ui.annotation.loading}
+          isCanvasStreaming={isCanvasStreaming}
           shouldShowStepActionBar={shouldShowStepActionBar}
           stepActionBarRef={stepActionBarRef}
           displayStep={displayStep}
