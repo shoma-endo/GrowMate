@@ -1,9 +1,5 @@
 name: Auto Create Pull Request
 
-concurrency:
-  group: auto-pr-${{ github.ref }}
-  cancel-in-progress: true
-
 on:
   push:
     branches-ignore:
@@ -17,6 +13,16 @@ permissions:
 
 jobs:
   create-pr:
+    # PR が既にあるブランチへの push では動かさない（Actions の分数を食うだけで何もしないため）。
+    # 上限: マージ後に同じブランチへ push し直しても PR は自動では作られない（月2件程度）。手で作る。
+    if: >-
+      (github.event.created || github.ref_name == 'develop') &&
+      !startsWith(github.ref_name, 'codex/') &&
+      !startsWith(github.ref_name, 'claude/')
+    # ジョブ側に置く。workflow 側に置くと、スキップされる後続 push の run が実行中の run を取り消してしまう
+    concurrency:
+      group: auto-pr-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -46,11 +52,6 @@ jobs:
         run: |
           BRANCH_NAME="${GITHUB_REF_NAME}"
           LABEL_NAME="automated-pr"
-
-          if echo "${BRANCH_NAME}" | grep -Eq '^(codex|claude)/'; then
-            echo "Skip auto PR for branch: ${BRANCH_NAME}"
-            exit 0
-          fi
 
           # ベースブランチの決定
           if [ "${BRANCH_NAME}" = "develop" ]; then
