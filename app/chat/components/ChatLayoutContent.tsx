@@ -326,7 +326,8 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
 
         <InputArea
           onSendMessage={onSendMessage}
-          disabled={chatSession.state.isLoading || isCanvasStreaming || ui.annotation.loading}
+          disabled={chatSession.state.isLoading || ui.annotation.loading}
+          isCanvasStreaming={isCanvasStreaming}
           shouldShowStepActionBar={shouldShowStepActionBar}
           stepActionBarRef={stepActionBarRef}
           displayStep={displayStep}
@@ -338,9 +339,7 @@ export const ChatLayoutContent: React.FC<{ ctx: ChatLayoutCtx }> = ({ ctx }) => 
           hasStep7Content={hasStep7Content}
           onGenerateTitleMeta={onGenerateTitleMeta}
           isGenerateTitleMetaLoading={isGenerateTitleMetaLoading}
-          stepActionBarDisabled={
-            chatSession.state.isLoading || isCanvasStreaming || ui.annotation.loading
-          }
+          stepActionBarDisabled={chatSession.state.isLoading || ui.annotation.loading}
           currentSessionTitle={currentSessionTitle}
           currentSessionId={chatSession.state.currentSessionId}
           isMobile={isMobile}
