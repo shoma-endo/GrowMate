@@ -235,6 +235,7 @@ export async function saveGa4Settings(input: unknown) {
       ga4ConversionEvents: conversionEvents,
       ga4ThresholdEngagementSec: parsed.data.thresholdEngagementSec ?? null,
       ga4ThresholdReadRate: parsed.data.thresholdReadRate ?? null,
+      ga4AutoImportStatus: null,
       ...(propertyChanged && { ga4LastSyncedAt: null }),
     });
 

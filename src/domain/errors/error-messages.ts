@@ -91,6 +91,9 @@ export const ERROR_MESSAGES = {
     /** WordPress未連携の記事でAI要約を実行しようとした場合 */
     SUMMARY_SOURCE_NOT_LINKED: 'WordPress連携後に利用できます',
 
+    /** AI要約（単記事・一括）を管理者以外が実行しようとした場合 */
+    SUMMARY_SUSPENDED: 'AI要約は現在機能停止にしています',
+
     /** AI要約のWordPress本文取得に失敗した場合 */
     SUMMARY_CONTENT_FETCH_FAILED:
       'WordPress記事の本文取得に失敗しました。WordPress連携設定を確認してください。',
@@ -132,6 +135,10 @@ export const ERROR_MESSAGES = {
 
     /** インポート処理中にエラーが発生 */
     IMPORT_ERROR: 'インポート処理中にエラーが発生しました',
+
+    /** 記事が多く、画面からの一括取込が時間内に終わらなかった場合 */
+    IMPORT_TIMED_OUT:
+      '記事が多いため、時間内に取り込み切れませんでした。有料プランでは毎朝の自動取込で取り込みます。',
 
     /** 一括取込の一部の記事更新に失敗した場合 */
     PARTIAL_UPDATES_FAILED: (succeeded: number, failed: number): string =>
@@ -419,6 +426,9 @@ export const ERROR_MESSAGES = {
 
     /** チャットセッションの検索に失敗した場合 */
     SESSION_SEARCH_FAILED: 'チャットセッションの検索に失敗しました',
+
+    /** 応答の受信が完了前に途切れた場合 */
+    STREAM_INTERRUPTED: '応答を最後まで受け取れませんでした。もう一度お試しください。',
   },
 
   /**
@@ -506,10 +516,19 @@ export const ERROR_MESSAGES = {
     DELETE_DB_FAILED: 'データの削除に失敗しました。時間をおいて再試行してください',
   },
 
+  GOOGLE_AUTO_IMPORT: {
+    /** GSC・GA4 自動取込結果の保存に失敗した場合 */
+    RESULT_SAVE_FAILED: (source: 'gsc' | 'ga4', detail: string): string =>
+      `${source === 'gsc' ? 'GSC' : 'GA4'}自動取込結果の保存に失敗しました: ${detail}`,
+  },
+
   /**
    * Google Search Console関連のエラーメッセージ
    */
   GSC: {
+    /** Search Analytics API が失敗応答を返した場合 */
+    SEARCH_ANALYTICS_API_FAILED: (status: number, body: string): string =>
+      `GSC Search Analytics API エラー: ${status} ${body}`,
     /** GSC自動取込対象の取得に失敗した場合 */
     AUTO_IMPORT_TARGETS_FETCH_FAILED: (detail: string): string => `GSC自動取込対象の取得に失敗しました: ${detail}`,
     /** Google Search Consoleが未接続の場合 */
@@ -651,6 +670,10 @@ export const ERROR_MESSAGES = {
    * GA4関連のエラーメッセージ
    */
   GA4: {
+    /** GA4 Data API の runReport が失敗応答を返した場合 */
+    RUN_REPORT_FAILED: (status: number, body: string): string => `GA4レポート取得に失敗しました: ${status} ${body}`,
+    /** GA4 Data API の runReport に到達できなかった場合（ネットワークエラー・リダイレクト） */
+    RUN_REPORT_FETCH_FAILED: (detail: string): string => `GA4レポート取得に失敗しました (fetch error): ${detail}`,
     /** GA4が未接続の場合 */
     NOT_CONNECTED: 'GA4が未接続です',
 

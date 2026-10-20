@@ -254,3 +254,21 @@ describe('GSC 設定 Server Action のロール制限', () => {
     expect(mocks.updateGscCredential).not.toHaveBeenCalled();
   });
 });
+
+describe('saveGscProperty の自動取込の結果のリセット（auto-daily-imports-spec FR-011）', () => {
+  it('プロパティを保存すると GSC の結果を未実行に戻す（アクセスできないカードを消す）', async () => {
+    vi.clearAllMocks();
+    mocks.authMiddleware.mockResolvedValue({ userId: USER_ID, userDetails: { role: 'paid' } });
+    mocks.getGscCredentialByUserId.mockResolvedValue(VALID_CREDENTIAL);
+    mocks.updateGscCredential.mockResolvedValue(undefined);
+
+    const result = await saveGscProperty({ propertyUri: 'sc-domain:example.com' });
+
+    expect(result.success).toBe(true);
+    expect(mocks.updateGscCredential).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ propertyUri: 'sc-domain:example.com', gscAutoImportStatus: null })
+    );
+    expect(mocks.updateGscCredential.mock.calls[0]?.[1]).not.toHaveProperty('ga4AutoImportStatus');
+  });
+});

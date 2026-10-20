@@ -1,4 +1,9 @@
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { Ga4KeyEvent, Ga4PropertySummary } from '@/types/ga4';
+import {
+  GooglePropertyAccessDeniedError,
+  isGa4PropertyAccessDenied,
+} from '@/domain/errors/GooglePropertyAccessDeniedError';
 
 interface Ga4AccountSummaryResponse {
   accountSummaries?: Array<{
@@ -138,7 +143,7 @@ export class Ga4Service {
         error: fetchError instanceof Error ? fetchError.message : String(fetchError),
       });
       throw new Error(
-        `GA4レポート取得に失敗しました (fetch error): ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+        ERROR_MESSAGES.GA4.RUN_REPORT_FETCH_FAILED(fetchError instanceof Error ? fetchError.message : String(fetchError))
       );
     }
 
@@ -149,7 +154,11 @@ export class Ga4Service {
         url,
         responseBody: text.slice(0, 500),
       });
-      throw new Error(`GA4レポート取得に失敗しました: ${response.status} ${text}`);
+      const message = ERROR_MESSAGES.GA4.RUN_REPORT_FAILED(response.status, text);
+      if (isGa4PropertyAccessDenied(response.status, text)) {
+        throw new GooglePropertyAccessDeniedError(message, propertyId);
+      }
+      throw new Error(message);
     }
 
     return (await response.json()) as Ga4RunReportResponse;

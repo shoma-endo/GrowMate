@@ -28,7 +28,7 @@ export interface HomeTodayInput {
   ga4?: Ga4ConnectionStatus | null;
   googleAds?: { connected: boolean; needsReauth: boolean } | null;
   instagram?: InstagramConnectionStatus | null;
-  wordpress?: { needsReauth: boolean } | null;
+  wordpress?: { needsReauth: boolean; importStalled: boolean } | null;
 }
 
 export interface HomeToday {
@@ -91,6 +91,15 @@ export function buildHomeToday(input: HomeTodayInput): HomeToday {
       description: '検索順位の取得が止まっています。',
       cta: { label: '再連携する', href: '/setup/gsc' },
     });
+  } else if (paid && gsc?.connected && gsc.propertyAccessDenied) {
+    items.push({
+      id: 'gsc-property-denied',
+      kind: 'reauth',
+      title: 'Google Search Console のプロパティにアクセスできません',
+      description:
+        '連携中の Google アカウントから権限が外れ、検索順位の取得が止まっています。Google Search Console 側で権限を戻すか、別のプロパティを選んでください。',
+      cta: { label: 'プロパティを選ぶ', href: '/setup/gsc' },
+    });
   }
   // GSC だけ連携した利用者は GA4 が unlinked かつ needsReauth になる（ga4-status.ts）。
   // 未連携は「変化」ではないので connected を必須にする（/setup の ga4Setup.actions と同じ扱い）
@@ -101,6 +110,15 @@ export function buildHomeToday(input: HomeTodayInput): HomeToday {
       title: 'Google Analytics 4 の再連携が必要です',
       description: 'アクセス解析の取得が止まっています。',
       cta: { label: '再連携する', href: '/setup/ga4' },
+    });
+  } else if (paid && ga4?.connected && ga4.propertyAccessDenied) {
+    items.push({
+      id: 'ga4-property-denied',
+      kind: 'reauth',
+      title: 'Google Analytics 4 のプロパティにアクセスできません',
+      description:
+        '連携中の Google アカウントから権限が外れ、アクセス解析の取得が止まっています。Google Analytics 4 側で権限を戻すか、別のプロパティを選んでください。',
+      cta: { label: 'プロパティを選ぶ', href: '/setup/ga4' },
     });
   } else if (paid && ga4?.connectionStage === 'linked_unselected') {
     items.push({
@@ -136,6 +154,14 @@ export function buildHomeToday(input: HomeTodayInput): HomeToday {
       title: 'WordPress の再連携が必要です',
       description: '記事の取得が止まっています。',
       cta: { label: '再連携する', href: '/setup/wordpress' },
+    });
+  } else if (paid && wordpress?.importStalled) {
+    items.push({
+      id: 'wordpress-import-stalled',
+      kind: 'reauth',
+      title: 'WordPress の記事の取込に失敗しています',
+      description: 'サイトが表示されるかと、WordPress 側の設定を確認してください。',
+      cta: { label: '連携設定を開く', href: '/setup/wordpress' },
     });
   }
 

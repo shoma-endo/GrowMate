@@ -5,11 +5,11 @@
 > - 2026-05-17: フェーズ2（Section 16）をフェーズ1実装完了後の確定方針で全面書き換え。AI自動実行範囲を Step 3〜6 から **Step 5〜6 のみ** に縮小、TOP5 抽出を **プロンプト末尾の JSON ブロック方式** に確定、Step 1〜4 UX を **自動入力＋ユーザー確認・修正のハイブリッド** に変更、Step 5〜6 自動実行を **Server Action 同期実行** に簡素化。
 > - 2026-05-18: フェーズ2 のカード選択フローに **プレビュー/編集モーダル** を追加（カードクリック → モーダルで7フィールド編集 → [記事作成を開始] でセッション作成）。`createBlogSessionFromSuggestion` の引数を編集後フィールドを受け取る形に変更。`google_ads_blog_suggestions` 自体は更新せず、編集内容は `content_annotations` にのみ保存（同じ提案を別パターンで複数記事化可能）。
 > - 2026-05-18 (追記): `google_ads_blog_suggestions` の保存戦略を **直近 N=3 回分のローリング保持** に変更（旧設計の上書き方式を廃止）。ダッシュボードは最新 TOP5 のみ表示、「履歴を見る」リンクで過去 N-1 回分を **履歴モーダル** で閲覧可能に。古いレコードは UPSERT 時にアプリケーション層で自動削除。
-> - 2026-05-18 (追記2): 設計レビューで検出した 8 点のリスクを反映。(1) suggestions DB 保存をメール送信より先に実行、(2) Phase1 maxTokens を 8000→12000 に増加、(3) Step 5・6 自動実行を chat_messages 対として記録、(4) content_annotations.wp_post_id NULLABLE 化に伴う既存クエリ監査チェックリスト追加、(5) [記事作成を開始] 連打防止仕様明記、(6) Step 4→5 トリガー条件を「[次へ] 押下 + 保存 await 後」と明確化、(7) プレビュー編集モーダルをフォーカス時拡張型に変更、(8) モーダル on モーダル禁止（履歴→編集は閉じてから開く）。
+> - 2026-05-18 (追記2): 設計レビューで検出した 8 点のリスクを反映。(1) suggestions DB 保存をメール送信より先に実行、(2) Phase1 maxTokens を 8000→12000 に増加（※実装では 2026-06-06 に 8000→20000 とした）、(3) Step 5・6 自動実行を chat_messages 対として記録、(4) content_annotations.wp_post_id NULLABLE 化に伴う既存クエリ監査チェックリスト追加、(5) [記事作成を開始] 連打防止仕様明記、(6) Step 4→5 トリガー条件を「[次へ] 押下 + 保存 await 後」と明確化、(7) プレビュー編集モーダルをフォーカス時拡張型に変更、(8) モーダル on モーダル禁止（履歴→編集は閉じてから開く）。
 > - 2026-05-18 (追記3): Phase 1 既述セクション（4.2, 8.3, 8.5, 8.6, 12.1, 12.2, 12.4）を本番DB現状合わせで更新。初期設計の `{{serviceName}}` / `{{strength}}` 変数を削除し、本番で追加された `{{searchTermData}}` を反映。Section 12.1/12.4 には「本セクションは初期設計時の参考。最新は本番DBを参照」注記を追加（プロンプト本文は本番運用で大幅改修済みのため）。
 > - 2026-05-19: フェーズ2 の UI/UX 設計判断の根拠を集約した **Section 16.12「UI/UX 設計判断の根拠」** を新設（旧 16.12「前提・注意点」を 16.13 にリナンバー）。8つの主要決定（ハイブリッド UX、編集モーダル挟込、カード形式、最新+履歴モーダル、ローリング保持、フォーカス時拡張フォーム、モーダル on モーダル禁止、引き継ぎバナー常時表示）について、不採用案と受け入れたトレードオフを明文化。将来の改修判断時の参照用。
 > - 2026-05-19 (追記5): §16.1 の保存タイミングを明確化。7フィールドは分析完了時に `google_ads_blog_suggestions` へ保存し、`content_annotations` への書き込みは「記事作成を開始」時のみ（モーダル編集中はフロント state のみ）と明記。
-> - 2026-05-19 (追記4): フォローアップレビュー指摘を反映。§4.1 の maxTokens を 12000 に統一、§16.4 の Option A 向け文言修正、`upsertBlogSuggestions` メソッド名統一、§16.9 の `getSystemPrompt` + system/user 2段 `llmChat` パターン明記、ローディング UI の実完了連動・E2E（Step 7 見出し初期化）を追記。
+> - 2026-05-19 (追記4): フォローアップレビュー指摘を反映。§4.1 の maxTokens を 12000 に統一（※実装値は 20000。2026-10-19 に §4.1 を訂正）、§16.4 の Option A 向け文言修正、`upsertBlogSuggestions` メソッド名統一、§16.9 の `getSystemPrompt` + system/user 2段 `llmChat` パターン明記、ローディング UI の実完了連動・E2E（Step 7 見出し初期化）を追記。
 > - 2026-05-19 (追記2): 設計レビューで指摘された **チャットフロー実態との乖離** を受けて **Option A** に大幅ピボット。具体的な変更: (1) Step 4→5 トリガーを廃止しモーダル内 Server Action で Step 5/6 を一気通貫実行、(2) チャットは `initialStep=step7` で起動、(3) 編集 UI は既存 `AnnotationPanel` を流用、(4) プロンプト取得は `getSystemPrompt`（既存 export）を使用、(5) `upsertContentAnnotationBySession` 流用を明記、(6) `getLatestContentAnnotationByUserId` に `wp_post_id IS NOT NULL` フィルタ必須を追記、(7) maxDuration 超過時のフォールバック（Step 5 のみ同期 + Step 6 チャット内追動）を Section 16.13 に追加、(8) 実装前スパイク（JSON フォーマット検証 + 実行時間計測）を強く推奨。工数は 9日 → 8.5日に微減（ChatLayout 改修削減と Server Actions 統合増の差し引き）。
 > - 2026-05-20: Phase1 プロンプトの **▼ ユーザーのゴール ▼** が「3 候補 + 推奨」の構造で出力されることを踏まえ、`goal` フィールドの抽出仕様（§16.3, §16.4）を「【推奨ゴール】ブロックのみ（内容 + 選定理由）、【ゴール案1〜3】は破棄」と曖昧性なく明記。他フィールド（main_kw, kw, persona, needs, prep, impressions）は単一パターン出力のため変更なし。
 > - 2026-05-20 (区切り): **フェーズ2の仕様検討を一旦ここで区切り**。開発は未着手。再開時に仕様変更の可能性あり（Section 16 冒頭の「開発ステータス」参照）。
@@ -19,6 +19,11 @@
 >   - **MVPメール書式（§17.4）**: 「本テーマでコンテンツを作成する」リンクは飛び先がチャット作成フロー依存のため **フェーズ2扱い・MVP非搭載**。MVPは各KWの現状成績（検索順位・タイトル・記事URL）＋新規/修正判断のみ。**順位・タイトル・URLはコード側で機械生成し LLM に書かせない**（捏造防止）。URL/タイトルの突合は **`content_annotation_id`（FK）経由**。
 >   - **MVP は UI（画面）変更なし**（サーバー・プロンプト・メール出力のみ）。
 >   - **工数 約3.5〜4日**。LLMコンテキスト量増を踏まえ、データ形式設計・トークン最適化（区切り表＝TSV/CSV風、本文フル投入回避）と メール順位表のコード生成 を独立計上。
+> - 2026-10-19: Section 17 の開発ステータスを実態に合わせて訂正。Increment 2（メール機械生成順位表）は 2026-06-03 / 06-06 に実装済み（commit `8042539e` / `740a9e48`）。本番プロンプト本文への追記状況はリポジトリ外のため未確認と明記。
+> - 2026-10-19 (追記): maxTokens の記述（§4.1・§8.4・§16.10・§16.13・§17.4・§17.7）を実装値 20000 に合わせて訂正。フェーズ2で予定していた 8000→12000 の変更は不要になった。2026-05-18 / 05-19 の改訂履歴は当時の決定を残したまま、実装値の注記を添えた。
+> - 2026-10-19 (追記2): §17.4 ② の見出しを、コードが順位ブロックの差し込み目印にしている「▼ 新規作成 / 既存修正の判定 ▼」に合わせて訂正し、「優先順位N位」アンカーの出力指示・パーサ仕様表・確認手順を追記。
+> - 2026-10-19 (追記3): 本番プロンプトに §17.4 ①②③が反映済みであることを SQL で確認し、§17 開発ステータスの「リポジトリから確認できないもの」を更新。
+> - 2026-10-19 (追記4): 実メールで順位ブロックが提案内に差し込まれていることを確認し、§17 MVP の開発ステータスを「完了」に更新。
 
 ## 1. 目的
 
@@ -73,7 +78,7 @@
 
 - Claude claude-sonnet-4-6 にキーワードデータ + 事業者コンテキストを渡し、自然言語で分析・提案を生成する。
 - プロンプトテンプレートは `prompt_templates` テーブルで管理し、admin/prompts 画面で編集可能。
-- モデル設定: `MODEL_CONFIGS['google_ads_ai_evaluation']`（ANTHROPIC_BASE, maxTokens: **12000**。フェーズ2で JSON 併出するため Section 16.10 参照）
+- モデル設定: `MODEL_CONFIGS['google_ads_ai_evaluation']`（ANTHROPIC_BASE, maxTokens: **20000**。TOP5 末尾 JSON と §17 の判定出力を含めた実測〜1万トークン前後に約2倍の余裕を持たせた値。Section 16.10 参照）
 
 ### 4.2 プロンプト変数
 
@@ -311,7 +316,7 @@ export class GoogleAdsAiAnalysisService {
 ```typescript
 google_ads_ai_evaluation: {
   ...ANTHROPIC_BASE,
-  maxTokens: 8000,  // フェーズ2着手時に 12000 へ変更（Section 16.10 参照）
+  maxTokens: 20000,  // 初期設計は 8000。§17 Increment 2（2026-06-06）で 20000 に増加（Section 16.10 参照）
 }
 ```
 
@@ -1332,16 +1337,9 @@ const emailResult = await this.emailService.sendGoogleAdsAnalysis(/* ... */);
 
 #### maxTokens 調整
 
-Phase 1 プロンプトに「構造化データ出力」セクション（JSON ブロック）を追加することで、AI 応答全体のトークン数が増加する。現状 `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens: 8000` だと **TOP5 詳細 + JSON で切り詰めされるリスク**があるため、`maxTokens: 12000` に増やす（`src/lib/constants.ts` の変更）。
+Phase 1 プロンプトに「構造化データ出力」セクション（JSON ブロック）を追加することで、AI 応答全体のトークン数が増加する。当初は 8000 では **TOP5 詳細 + JSON で切り詰めされるリスク**があるため 12000 へ増やす計画だったが、§17 Increment 2（2026-06-06）で `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens` は **20000** に増やし済み（`src/lib/constants.ts`）。フェーズ2着手時の maxTokens 変更は不要。
 
-```typescript
-// 旧
-google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 8000, label: '...' }
-// 新
-google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
-```
-
-実装時に実出力サイズを計測し、12000 でも切り詰めが発生するなら段階的に増やす（Claude Sonnet 4.6 の最大出力は 64000）。
+実装時に実出力サイズを計測し、20000 でも切り詰めが発生するなら段階的に増やす（Claude Sonnet 4.6 の最大出力は 64000）。
 
 ### 16.11 実装工数見積もり（フェーズ2）
 
@@ -1458,7 +1456,7 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 #### 必須前提
 - フェーズ1（AI分析メール送信）の完成後に着手する。
 - Phase 1 プロンプトの末尾に **JSON ブロック追加が必須**（admin/prompts で本番DBを更新）。
-- Phase 1 の `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens` を **8000 → 12000** に増やすコード変更が必須（JSON ブロック追加でトークン消費増のため。Section 16.10 参照）。
+- Phase 1 の `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens` は §17 Increment 2 で **20000** に増やし済みのため、フェーズ2でのコード変更は不要（Section 16.10 参照）。
 - メール本文には JSON ブロックを含めない（サービス側でパース後に除去）。
 - DB 保存はメール送信より **先** に実行（順序の理由は Section 16.10 参照）。
 - content_annotations の wp_post_id NULLABLE 化に伴う **既存クエリ監査が必須**（Section 16.6 のチェックリスト参照）。
@@ -1486,7 +1484,7 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 #### 実装前スパイク（強く推奨）
 
 本フェーズ着手前に **1〜2 日のスパイク** を行うことを推奨する:
-1. 本番プロンプト末尾に JSON ブロックを追加した状態で **1 回実出力** を実施し、JSON フォーマット遵守度と総トークン数を計測。`maxTokens=12000` で足りるかを判定。
+1. 本番プロンプト末尾に JSON ブロックを追加した状態で **1 回実出力** を実施し、JSON フォーマット遵守度と総トークン数を計測。`maxTokens=20000` で足りるかを判定。
 2. `createBlogSessionFromSuggestion` のモック実装（chat_session 作成 + content_annotations UPSERT + Step 5/6 の llmChat ×2回）の **実行時間を計測** し、`maxDuration=120` で収まるかを判定。
 3. 計測結果に応じて Section 16.10（maxTokens）と本セクションのフォールバック方針を確定する。
 
@@ -1502,10 +1500,12 @@ google_ads_ai_evaluation: { ...ANTHROPIC_BASE, maxTokens: 12000, label: '...' }
 > | 項目 | 状態 |
 > |------|------|
 > | **仕様の確定度** | 基本設計（2026-05-31）。確定版ではない |
-> | **開発着手** | **実装中**。Increment 1（データ層＋LLMコンテキスト注入）完了（2026-05-31）。Increment 2（メール機械生成順位表）未着手 |
+> | **開発着手** | **完了（MVP）**。Increment 1（データ層＋LLMコンテキスト注入）完了（2026-05-31）。Increment 2（メール機械生成順位表）完了（2026-06-03、2026-06-06 に提案内インライン化・maxTokens 20000 化） |
 > | **依存** | フェーズ1（Section 1〜15）完成済みを前提。GSC連携・WordPress取込が利用可能なユーザーが対象 |
 >
-> **Increment 1 実装済み（2026-05-31）**: `SupabaseService.getContentInventoryByUserId` / `getRankingSnapshotByUserId`（GSC は `property_uri` + `search_type='web'` で絞り込み）、`googleAdsAiAnalysisService` への結線（非致命）・フォーマッタ2種・プロンプト変数 `existingContent`/`rankingData`・DEVサンプル、`prompt-descriptions` 変数説明。**未実施**: メール機械生成順位表（§17.4・要 TOP5 紐付け方式決定）、admin/prompts 本文更新、maxTokens 実測。
+> **Increment 1 実装済み（2026-05-31）**: `SupabaseService.getContentInventoryByUserId` / `getRankingSnapshotByUserId`（GSC は `property_uri` + `search_type='web'` で絞り込み）、`googleAdsAiAnalysisService` への結線（非致命）・フォーマッタ2種・プロンプト変数 `existingContent`/`rankingData`・DEVサンプル、`prompt-descriptions` 変数説明。
+
+**Increment 2 実装済み（2026-06-03 / 2026-06-06）**: TOP5 JSON 突合による順位表のコード機械生成（`extractTopProposals` / `buildRankingBlocks`）、「▼ 新規作成 / 既存修正の判定 ▼」見出しをアンカーにした提案内インライン挿入（`[[RANKING:N]]` マーカー方式は廃止）、GSC 未ランク時の WP 在庫フォールバック、`maxTokens` 8000→20000、出力切れ検知ログ。**本番プロンプト反映済み（2026-10-19 確認）**: 本番 `prompt_templates.google_ads_ai_evaluation`（updated_at 2026-06-08）の本文に §17.4 の ①（`{{existingContent}}` / `{{rankingData}}`）・②（判定見出し `▼ 新規作成 / 既存修正の判定 ▼`）・③（構造化データ出力）があることを SQL で確認。実メールで、順位ブロックが各提案の判定ブロック内に差し込まれていることを確認済み（2026-10-19）。
 
 ### 17.1 目的
 
@@ -1611,7 +1611,7 @@ MVPメールの各提案ブロックの表示イメージ（GSC順位が取れ�
    - `src/lib/prompt-descriptions.ts` の `VARIABLE_TYPE_DESCRIPTIONS` に `existingContent` / `rankingData` の説明を追加。
 
 4. **maxTokens 確認**
-   - 既存コンテンツ・順位データ追加で入力トークンが増える。`MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens: 8000`（`src/lib/constants.ts`）で出力が切り詰められないか実出力で確認し、必要なら増やす（フェーズ2 でも 12000 への増加が予定＝Section 16.10）。
+   - 既存コンテンツ・順位データ追加で入力トークンが増える。2026-06-06 に `MODEL_CONFIGS.google_ads_ai_evaluation.maxTokens` を 8000 → **20000** に増やし済み（`src/lib/constants.ts`。5提案＋サマリー＋末尾JSONの実測〜1万トークン前後に約2倍の余裕）。切り詰めは max_tokens 切れ検知ログで確認する。
 
 ##### プロンプト追記テンプレート（admin/prompts で `google_ads_ai_evaluation` に貼り付け）
 
@@ -1630,8 +1630,9 @@ Increment 2（メール順位表のコード機械生成）を有効化するに
 **② 分析指示**（評価・提案の指示セクションに追記）
 
 ```markdown
-### 新規作成 vs 既存修正の判定
+▼ 新規作成 / 既存修正の判定 ▼
 TOP5 の各提案について、「既存コンテンツ一覧」と「検索順位（GSC）」を踏まえ、次を判定すること。
+- 出力形式: 各提案は「優先順位N位」（N は末尾 JSON の `rank` と同じ番号）を含む見出しで始め、その提案の中に「▼ 新規作成 / 既存修正の判定 ▼」の見出しを置いて判定を書くこと。
 - 当該KWをカバーする自社記事が**ある**（タイトル/KW/本文で一致、またはGSCでランクイン）→ **既存修正**を推奨する。順位が中位帯（概ね4〜30位）なら上昇余地大として優先、上位安定（1〜3位）なら現状維持寄り。
 - カバーする記事が**ない** → **新規作成**を推奨（カニバリなし）。
 - 既存コンテンツ一覧に、当該KWの検索意図を実際にカバーする記事が見当たらない場合は **新規作成** と判定すること。トピックの異なる無関係な記事（例: 別事業・別ジャンルの記事）を「既存修正の対象」と見なしてはならない。
@@ -1672,8 +1673,10 @@ rank 1〜5 まで同形式で出力する。`main_kw` は必須、`kw` は無け
 | `kw` の分割 | 改行・`,`・`、` で分割し各サブKWを順位突合 |
 | 突合方法 | `normalizeQuery`（NFKC＋小文字化＋空白圧縮）で GSC `query_normalized` と一致 |
 | 失敗時 | JSONが無い/壊れている→順位表なしで通常送信（degrade only） |
+| 差し込み位置 | 本文の「優先順位N位」で提案を `rank` と対応づけ、その後の `▼…新規作成…既存修正…判定…▼` 行から次の見出し（`#` または `▼` で始まる行）の手前に順位ブロックを挿入 |
+| 差し込み失敗時 | 判定見出しまたは「優先順位N位」が無い提案は、メール末尾の「## 現状成績」へまとめて付記 |
 
-**反映後の確認手順**: ①②③を保存 → DEV（`NODE_ENV=development`）で実行しメール末尾に「## 現状成績」順位表が出るか・本文にJSONが残っていないか確認 → 入力トークンを実測し出力が切れるなら `maxTokens` を 8000→12000。
+**反映後の確認手順**: ①②③を保存 → DEV（`NODE_ENV=development`）で実行し、各提案の判定ブロック直後に順位ブロックが入るか（メール末尾の「## 現状成績」に回っていないか）・本文にJSONが残っていないか確認 → max_tokens 切れ検知ログが出ていないか確認する（`maxTokens` は 20000 設定済み）。
 
 #### フェーズ2 連携（将来・設計に織り込む）
 
@@ -1727,7 +1730,7 @@ rank 1〜5 まで同形式で出力する。`main_kw` は必須、`kw` は無け
 | **メール順位表のコード生成** | KW↔記事（`content_annotation_id`）突合 → 検索順位/タイトル/URL ブロックを決定的に組み立て、メール Markdown に差し込み（LLMに書かせない部分） | 0.5日 |
 | `googleAdsAiAnalysisService` 結線 | `Promise.all` 追加・プロンプト変数注入・順位表差し込み・DEVサンプル追加 | 0.5日 |
 | プロンプト更新 | admin/prompts 本文へ既存コンテンツ/順位セクション + 判定指示追記（コード変更なし）+ `prompt-descriptions` 変数説明 | 0.5日 |
-| トークン計測・maxTokens 調整 | 在庫/順位を足した実プロンプトのトークン量を計測、入出力が収まるか確認、必要なら 8000→12000 | 0.5日 |
+| トークン計測・maxTokens 調整 | 在庫/順位を足した実プロンプトのトークン量を計測、入出力が収まるか確認、8000→20000 に増加（2026-06-06 実施済み） | 0.5日 |
 | E2E検証・確認 | DEV/本番経路（修正/新規の出し分け）、GSC・WP未連携時の非致命性、`lint`/`build` | 0.5〜1日 |
 | **MVP 合計** | | **約 3.5〜4日** |
 

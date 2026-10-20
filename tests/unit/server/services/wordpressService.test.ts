@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { WordPressRestFetchError, WordPressService } from '@/server/services/wordpressService';
+import { WordPressImportDeadlineError, WordPressRestFetchError, WordPressService } from '@/server/services/wordpressService';
 import { normalizeWordPressRestPosts } from '@/server/services/wordpressService';
 
 describe('WordPressService（REST API フォールバック）', () => {
@@ -179,6 +179,158 @@ describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () =
     expect(result.totalsByType).toEqual({ products: 3 });
     expect(result.uniqueIdCountsByType).toEqual({ products: 3 });
     expect(result.posts).toHaveLength(4);
+  });
+
+  it('全件取得をページごとに正規化し、件数の集計は生の記事 ID で行う', async () => {
+    const page = (posts: unknown[]) => new Response(JSON.stringify(posts), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '3' },
+    });
+    fetchMock
+      .mockResolvedValueOnce(page([
+        { id: 1, type: 'post', link: 'https://example.com/a', content: { rendered: '<p>本文A</p><img src="a.jpg">' } },
+        { id: 2, type: 'post', link: 'https://example.com/b', content: { rendered: '<p>本文B</p>' } },
+      ]))
+      .mockResolvedValueOnce(page([
+        { id: 3, type: 'post', link: 'https://example.com/c', content: { rendered: '<p>本文C</p>' } },
+      ]));
+
+    const result = await service().fetchAllNormalizedContentByTypes(['posts'], { perPage: 2 });
+
+    expect(result.totalsByType).toEqual({ posts: 3 });
+    expect(result.uniqueIdCountsByType).toEqual({ posts: 3 });
+    expect(result.posts.map(post => [post.id, post.content_text, post.image_count])).toEqual([
+      [1, '本文A', 1],
+      [2, '本文B', 0],
+      [3, '本文C', 0],
+    ]);
+    expect(result.posts[0]).not.toHaveProperty('content');
+  });
+
+  it('各ページの取得にタイムアウトの signal を付ける', async () => {
+    fetchMock.mockResolvedValue(new Response('[]', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '0' },
+    }));
+    await service().fetchRestCollection('posts', 1, 100);
+
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('締め切りを過ぎていたら、次のページを取らずに WordPressImportDeadlineError で打ち切る', async () => {
+    const page = (ids: number[]) => new Response(JSON.stringify(ids.map(id => ({ id, type: 'post' }))), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': '4' },
+    });
+    fetchMock.mockResolvedValueOnce(page([1, 2]));
+    // 1ページ目（ページ前・候補前・応答待ちの上限の計算）は締め切り前、2ページ目の前で過ぎる
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValue(2000);
+
+    await expect(service().fetchAllNormalizedContentByTypes(['posts'], { perPage: 2, deadlineAt: 2000 }))
+      .rejects.toBeInstanceOf(WordPressImportDeadlineError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    now.mockRestore();
+  });
+
+  it('応答待ちのタイムアウトは status 0 として次の候補へ進み、全候補が失敗したら例外にまとめる', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'))
+      .mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
+
+    await expect(service().fetchRestCollection('posts', 1, 100)).rejects.toMatchObject({
+      statuses: [0, 0],
+    } satisfies Partial<WordPressRestFetchError>);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('候補 URL を試す途中で締め切りを過ぎたら、次の候補を試さずに打ち切る', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('Forbidden', { status: 403 }));
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValue(9000);
+
+    await expect(service().fetchRestCollection('posts', 1, 100, { deadlineAt: 5000 }))
+      .rejects.toBeInstanceOf(WordPressImportDeadlineError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    now.mockRestore();
+  });
+
+  it('最後の候補の応答待ちを締め切りで打ち切ったときは、取得の失敗ではなく締め切りとして返す', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('Forbidden', { status: 403 }))
+      .mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
+    // 1つ目と2つ目の候補の前は締め切り前、ループを抜けた時点で過ぎている
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1000).mockReturnValueOnce(1000).mockReturnValue(5000);
+
+    await expect(service().fetchRestCollection('posts', 1, 100, { deadlineAt: 5000 }))
+      .rejects.toBeInstanceOf(WordPressImportDeadlineError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    now.mockRestore();
+  });
+
+  it('一覧のページが重くてサイト側が 5xx を返したら、件数を減らして同じ位置から取り直す', async () => {
+    const page = (ids: number[], total: number) => new Response(JSON.stringify(ids.map(id => ({ id, type: 'page' }))), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-WP-Total': String(total) },
+    });
+    fetchMock
+      // 100件のページは wp-json と rest_route の両方で 500
+      .mockResolvedValueOnce(new Response('Maximum execution time of 30 seconds exceeded', { status: 500 }))
+      .mockResolvedValueOnce(new Response('Maximum execution time of 30 seconds exceeded', { status: 500 }))
+      .mockResolvedValueOnce(page(Array.from({ length: 20 }, (_, i) => i + 1), 30))
+      .mockResolvedValueOnce(page(Array.from({ length: 10 }, (_, i) => i + 21), 30));
+
+    const result = await service().fetchAllContentByTypes(['pages'], { perPage: 100 });
+
+    expect(result.posts).toHaveLength(30);
+    expect(result.uniqueIdCountsByType).toEqual({ pages: 30 });
+    const queried = fetchMock.mock.calls.map(([url]) => {
+      const params = new URL(String(url)).searchParams;
+      return [params.get('per_page'), params.get('page')];
+    });
+    expect(queried).toEqual([['100', '1'], ['100', '1'], ['20', '1'], ['20', '2']]);
+  });
+
+  it('片方の候補 URL だけが重さで失敗し、もう一方の形式がサイトで使えない（404）場合も、件数を減らして取り直す', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('Maximum execution time of 30 seconds exceeded', { status: 500 }))
+      .mockResolvedValueOnce(new Response('Not Found', { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: 1, type: 'page' }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'X-WP-Total': '1' },
+      }));
+
+    const result = await service().fetchAllContentByTypes(['pages'], { perPage: 100 });
+
+    expect(result.posts).toHaveLength(1);
+    expect(new URL(String(fetchMock.mock.calls[2]?.[0])).searchParams.get('per_page')).toBe('20');
+  });
+
+  it('投稿タイプの REST の入り口がサイトに無い（404 rest_no_route）ときは、そのタイプを飛ばして残りのタイプを取る', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const noRoute = () => new Response(JSON.stringify({ code: 'rest_no_route', data: { status: 404 } }), { status: 404 });
+    fetchMock
+      .mockResolvedValueOnce(noRoute())
+      .mockResolvedValueOnce(noRoute())
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: 1, type: 'post' }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'X-WP-Total': '1' },
+      }));
+
+    const result = await service().fetchAllContentByTypes(['product', 'posts'], { perPage: 100 });
+
+    expect(result.posts).toHaveLength(1);
+    expect(result.totalsByType).toEqual({ product: 0, posts: 1 });
+    expect(result.uniqueIdCountsByType).toEqual({ product: 0, posts: 1 });
+    expect(result.missingRouteTypes).toEqual(['product']);
+  });
+
+  it('認証エラーは件数を減らしても変わらないので、取り直さずにそのまま失敗する', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
+      .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }));
+
+    await expect(service().fetchAllContentByTypes(['posts'], { perPage: 100 })).rejects.toMatchObject({ statuses: [401, 401] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('失敗した候補の status をすべて例外へ残す', async () => {

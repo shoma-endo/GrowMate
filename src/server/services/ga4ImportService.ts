@@ -16,6 +16,7 @@ import { addDaysISO } from '@/lib/date-utils';
 import { resolveGa4SyncRange, splitGa4SyncRange } from '@/server/lib/ga4-sync-range';
 import { mergeGa4Reports, type Ga4ReportRow } from '@/server/lib/ga4-report-merge';
 import { runDailyImportBatch } from '@/server/lib/daily-import-batch';
+import { GooglePropertyAccessDeniedError } from '@/domain/errors/GooglePropertyAccessDeniedError';
 import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 
 interface ReportFetchResult {
@@ -71,8 +72,17 @@ class Ga4ImportService {
         userIds: targets.map(target => target.userId),
         startedAt,
         importUser: async userId => {
-          const synced = await this.syncUser(userId, { recentRefetchDays: 3 });
-          return synced.ok ? { ok: true } : { ok: false, reason: synced.reason };
+          let synced: Ga4SyncResult;
+          try {
+            synced = await this.syncUser(userId, { recentRefetchDays: 3 });
+          } catch (error) {
+            if (!(error instanceof GooglePropertyAccessDeniedError)) throw error;
+            await this.supabaseService.recordGoogleAutoImportResult(userId, 'ga4', 'permission_denied', error.property);
+            return { ok: false, reason: `permission_denied: ${error.message}` };
+          }
+          if (!synced.ok) return { ok: false, reason: synced.reason };
+          await this.supabaseService.recordGoogleAutoImportResult(userId, 'ga4', 'succeeded', synced.data.propertyId);
+          return { ok: true };
         },
       });
       CRON_DEFINITIONS.ga4DailySync.log('info', 'batch_completed', {

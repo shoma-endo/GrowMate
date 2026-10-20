@@ -24,6 +24,55 @@ export class WordPressRestFetchError extends Error {
   }
 }
 
+/** 取込の締め切りを過ぎたので、次のページの取得や次の書き込みをせずに打ち切った */
+export class WordPressImportDeadlineError extends Error {
+  constructor() {
+    super('WordPress import stopped at the deadline');
+    this.name = 'WordPressImportDeadlineError';
+  }
+}
+
+export function assertBeforeDeadline(deadlineAt: number | undefined): void {
+  if (deadlineAt !== undefined && Date.now() >= deadlineAt) throw new WordPressImportDeadlineError();
+}
+
+// 1リクエストの応答を待つ上限。応答しないサイトで残り時間を使い切らないため
+const REST_FETCH_TIMEOUT_MS = 60_000;
+
+/**
+ * 一覧の1ページが重すぎてサイト側が失敗したときに、件数を減らして取り直す段階。
+ * ページビルダー（Elementor など）を使うサイトは、本文の描画が PHP の実行時間上限（30秒など）を超え、
+ * 100件のページで 500 や途中で切れた応答を返す。
+ */
+const REDUCED_PER_PAGE_STEPS = [20, 5];
+
+/**
+ * 投稿タイプの REST の入り口がサイトに無い（設定に残っているが、プラグインを外した・REST に公開していない）。
+ * そのタイプには取り込む記事が無いので、取込全体を失敗にせずに飛ばす。
+ */
+function isMissingRoute(error: unknown): boolean {
+  return error instanceof WordPressRestFetchError &&
+    error.statuses.length > 0 &&
+    error.statuses.every(status => status === 404) &&
+    error.message.includes('rest_no_route');
+}
+
+/**
+ * 件数を減らせば通る見込みがある失敗（5xx・応答が途中で切れた・タイムアウト）か。
+ * 候補 URL のどれか1つでも当てはまれば取り直す（もう一方の形式がサイトで使えず 404・403 になることがある）。
+ * どの候補も認証エラーや 404 だけなら、件数を減らしても変わらない。
+ */
+function isHeavyPageFailure(error: unknown): boolean {
+  return error instanceof WordPressRestFetchError &&
+    error.statuses.some(status => status === 0 || status >= 500);
+}
+
+/** 締め切りがあれば、その時刻を越えて待たない */
+function restFetchSignal(deadlineAt: number | undefined): AbortSignal {
+  const remaining = deadlineAt === undefined ? REST_FETCH_TIMEOUT_MS : deadlineAt - Date.now();
+  return AbortSignal.timeout(Math.max(1, Math.min(REST_FETCH_TIMEOUT_MS, remaining)));
+}
+
 // WordPress.com認証情報
 interface WordPressComAuth {
   accessToken: string;
@@ -396,7 +445,7 @@ export class WordPressService {
     return this.baseUrl;
   }
 
-  public async fetchAvailableContentTypes(): Promise<WordPressApiResult<string[]>> {
+  public async fetchAvailableContentTypes(deadlineAt?: number): Promise<WordPressApiResult<string[]>> {
     const headers = this.getRestHeaders();
     const urls = new Set<string>();
 
@@ -412,8 +461,9 @@ export class WordPressService {
     let lastErrorText = '';
 
     for (const url of urls) {
+      assertBeforeDeadline(deadlineAt);
       try {
-        const response = await fetch(url, { headers, cache: 'no-store' });
+        const response = await fetch(url, { headers, cache: 'no-store', signal: restFetchSignal(deadlineAt) });
         if (!response.ok) {
           lastStatus = response.status;
           lastErrorText = await response.text().catch(() => response.statusText);
@@ -494,6 +544,8 @@ export class WordPressService {
       }
     }
 
+    // 締め切りで応答待ちを打ち切った場合は、取得の失敗ではなく締め切りとして返す
+    assertBeforeDeadline(deadlineAt);
     const message = `[WordPressService] 投稿タイプの取得に失敗しました: HTTP ${lastStatus} ${lastErrorText}`.trim();
     return {
       success: false,
@@ -542,7 +594,7 @@ export class WordPressService {
     postType: string,
     page: number,
     perPage: number,
-    options: { status?: string; embed?: boolean; modifiedAfter?: string; after?: string } = {}
+    options: { status?: string; embed?: boolean; modifiedAfter?: string; after?: string; deadlineAt?: number } = {}
   ): Promise<{ posts: WordPressRestPost[]; total: number }> {
     const queryOptions: { perPage: number; page: number; status?: string; embed?: boolean; modifiedAfter?: string; after?: string } = {
       perPage,
@@ -565,8 +617,9 @@ export class WordPressService {
     let lastErrorText = '';
 
     for (const url of urls) {
+      assertBeforeDeadline(options.deadlineAt);
       try {
-        const resp = await fetch(url, { headers, cache: 'no-store' });
+        const resp = await fetch(url, { headers, cache: 'no-store', signal: restFetchSignal(options.deadlineAt) });
         if (!resp.ok) {
           statuses.push(resp.status);
           lastStatus = resp.status;
@@ -592,6 +645,8 @@ export class WordPressService {
       }
     }
 
+    // 締め切りで応答待ちを打ち切った場合は、取得の失敗ではなく締め切りとして返す
+    assertBeforeDeadline(options.deadlineAt);
     throw new WordPressRestFetchError(
       `[WordPressService] Failed to fetch ${postType}: HTTP ${lastStatus} ${lastErrorText}`.trim(),
       statuses
@@ -600,37 +655,71 @@ export class WordPressService {
 
   public async fetchAllContentByTypes(
     postTypes: string[],
-    options: { perPage?: number; status?: string; modifiedAfter?: string; after?: string } = {}
-  ): Promise<{
-    posts: WordPressRestPost[];
-    totalsByType: Record<string, number>;
-    /** 要求した投稿タイプ（REST のパス名）ごとの、重複を除いた記事 ID の数。totalsByType と同じキー */
-    uniqueIdCountsByType: Record<string, number>;
-  }> {
-    const perPage = Math.min(options.perPage ?? 100, 100);
+    options: FetchAllContentOptions = {}
+  ): Promise<FetchAllContentResult<WordPressRestPost>> {
+    return this.collectContentByTypes(postTypes, options, posts => posts);
+  }
+
+  /**
+   * 全件取得をページごとに正規化して集める。生の記事（本文HTML・_embedded・yoast_head）を
+   * 全ページ分保持すると1万件超のサイトで数百MB〜1GB規模になるため、ページを受け取るたびに落とす。
+   */
+  public async fetchAllNormalizedContentByTypes(
+    postTypes: string[],
+    options: FetchAllContentOptions = {}
+  ): Promise<FetchAllContentResult<WordPressNormalizedPost>> {
+    return this.collectContentByTypes(postTypes, options, posts => normalizeWordPressRestPosts(posts));
+  }
+
+  private async collectContentByTypes<T>(
+    postTypes: string[],
+    options: FetchAllContentOptions,
+    mapPage: (posts: WordPressRestPost[]) => T[]
+  ): Promise<FetchAllContentResult<T>> {
+    const initialPerPage = Math.min(options.perPage ?? 100, 100);
     const status = options.status ?? 'publish';
 
-    const aggregated: WordPressRestPost[] = [];
+    const aggregated: T[] = [];
     const totalsByType: Record<string, number> = {};
     const uniqueIdCountsByType: Record<string, number> = {};
+    const missingRouteTypes: string[] = [];
 
     for (const postTypeRaw of postTypes) {
       const postType = postTypeRaw && postTypeRaw.trim() ? postTypeRaw.trim() : 'posts';
       const normalizedType = normalizeContentType(postType);
       let page = 1;
+      let perPage = initialPerPage;
       let fetchedForType = 0;
       let totalForType = 0;
       let hasMore = true;
       const idsForType = new Set<string>();
 
       while (hasMore) {
-        const { posts, total } = await this.fetchRestCollection(normalizedType, page, perPage, {
-          status,
-          ...(options.modifiedAfter ? { modifiedAfter: options.modifiedAfter } : {}),
-          ...(options.after ? { after: options.after } : {}),
-        });
+        assertBeforeDeadline(options.deadlineAt);
+        let result: { posts: WordPressRestPost[]; total: number };
+        try {
+          result = await this.fetchRestCollection(normalizedType, page, perPage, {
+            status,
+            ...(options.modifiedAfter ? { modifiedAfter: options.modifiedAfter } : {}),
+            ...(options.after ? { after: options.after } : {}),
+            ...(options.deadlineAt !== undefined ? { deadlineAt: options.deadlineAt } : {}),
+          });
+        } catch (error) {
+          if (page === 1 && isMissingRoute(error)) {
+            console.warn('[WordPressService] content type has no REST route; skipped', { postType: normalizedType });
+            missingRouteTypes.push(normalizedType);
+            break;
+          }
+          const smaller = REDUCED_PER_PAGE_STEPS.find(size => size < perPage && perPage % size === 0);
+          if (smaller === undefined || !isHeavyPageFailure(error)) throw error;
+          // 取れていない位置（offset）から、小さいページで続きを取る
+          page = ((page - 1) * perPage) / smaller + 1;
+          perPage = smaller;
+          continue;
+        }
+        const { posts, total } = result;
         totalForType = total;
-        aggregated.push(...posts);
+        aggregated.push(...mapPage(posts));
         for (const post of posts) {
           const id = post.id ?? post.ID;
           if (id !== undefined && id !== null) idsForType.add(String(id));
@@ -645,9 +734,27 @@ export class WordPressService {
 
     }
 
-    return { posts: aggregated, totalsByType, uniqueIdCountsByType };
+    return { posts: aggregated, totalsByType, uniqueIdCountsByType, missingRouteTypes };
   }
 }
+
+type FetchAllContentOptions = {
+  perPage?: number;
+  status?: string;
+  modifiedAfter?: string;
+  after?: string;
+  /** epoch ms。各ページを取る前に確かめ、過ぎていたら WordPressImportDeadlineError */
+  deadlineAt?: number;
+};
+
+type FetchAllContentResult<T> = {
+  posts: T[];
+  totalsByType: Record<string, number>;
+  /** 要求した投稿タイプ（REST のパス名）ごとの、重複を除いた記事 ID の数。totalsByType と同じキー */
+  uniqueIdCountsByType: Record<string, number>;
+  /** REST の入り口がサイトに無く、飛ばした投稿タイプ */
+  missingRouteTypes: string[];
+};
 
 function normalizeWordPressPostResponse(data: unknown): WordPressPostResponse | null {
   if (!data || typeof data !== 'object') return null;

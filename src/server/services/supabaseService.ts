@@ -25,7 +25,13 @@ import type {
   GoogleAdsNegativeKeywordsSuggestionSettingsRecord,
   UpsertGoogleAdsNegativeKeywordsSuggestionSettingsInput,
 } from '@/types/google-ads-negative-keywords-suggestion';
-import type { GscCredential, GscPropertyType, GscSearchType } from '@/types/gsc';
+import {
+  toGoogleAutoImportStatus,
+  type GoogleAutoImportStatus,
+  type GscCredential,
+  type GscPropertyType,
+  type GscSearchType,
+} from '@/types/gsc';
 import type { InstagramCredential } from '@/types/instagram';
 import {
   toWordPressAutoImportStatus,
@@ -1006,6 +1012,31 @@ export class SupabaseService {
     if (error) throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_RESULT_SAVE_FAILED(error.message));
   }
 
+  /**
+   * 取込に使ったプロパティがまだ選ばれているときだけ書く。取込の最中に別のプロパティへ保存し直されたら、
+   * 古いプロパティの結果で「未実行（NULL）」を上書きしない
+   */
+  async recordGoogleAutoImportResult(
+    userId: string,
+    source: 'gsc' | 'ga4',
+    status: GoogleAutoImportStatus,
+    property: string
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const query =
+      source === 'gsc'
+        ? this.supabase
+            .from('gsc_credentials')
+            .update({ gsc_auto_import_status: status, gsc_auto_import_status_at: now })
+            .eq('property_uri', property)
+        : this.supabase
+            .from('gsc_credentials')
+            .update({ ga4_auto_import_status: status, ga4_auto_import_status_at: now })
+            .eq('ga4_property_id', property);
+    const { error } = await query.eq('user_id', userId);
+    if (error) throw new Error(ERROR_MESSAGES.GOOGLE_AUTO_IMPORT.RESULT_SAVE_FAILED(source, error.message));
+  }
+
   async listContentAnnotationKeys(userId: string): Promise<Array<{
     id: string;
     canonical_url: string | null;
@@ -1044,11 +1075,11 @@ export class SupabaseService {
     return data.map(row => row.user_id);
   }
 
-  async listWordPressAutoImportTargets(): Promise<string[]> {
+  async listWordPressAutoImportTargets(): Promise<Array<{ userId: string; needsFullImport: boolean }>> {
     const { data, error, truncated } = await this.fetchAllPaged(
       (from, to) => this.supabase
         .from('wordpress_settings')
-        .select('user_id, wp_site_id, wp_site_url, users!inner(role)', { count: 'exact' })
+        .select('user_id, wp_site_id, wp_site_url, wp_import_baseline_at, users!inner(role)', { count: 'exact' })
         .in('users.role', [...PAID_FEATURE_ROLES])
         .order('user_id', { ascending: true })
         .range(from, to),
@@ -1057,7 +1088,9 @@ export class SupabaseService {
     if (error || truncated) {
       throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_TARGETS_FETCH_FAILED(error?.message ?? 'truncated'));
     }
-    return data.filter(row => row.wp_site_id !== null || row.wp_site_url !== null).map(row => row.user_id);
+    return data
+      .filter(row => row.wp_site_id !== null || row.wp_site_url !== null)
+      .map(row => ({ userId: row.user_id, needsFullImport: row.wp_import_baseline_at === null }));
   }
 
   /**
@@ -1195,6 +1228,8 @@ export class SupabaseService {
       ga4ThresholdReadRate:
         typeof data.ga4_threshold_read_rate === 'number' ? data.ga4_threshold_read_rate : null,
       ga4LastSyncedAt: data.ga4_last_synced_at,
+      gscAutoImportStatus: toGoogleAutoImportStatus(data.gsc_auto_import_status),
+      ga4AutoImportStatus: toGoogleAutoImportStatus(data.ga4_auto_import_status),
       createdAt: data.created_at ?? new Date().toISOString(),
       updatedAt: data.updated_at ?? new Date().toISOString(),
     };
@@ -1638,6 +1673,10 @@ export class SupabaseService {
       permission_level: payload.permissionLevel ?? null,
       verified: payload.verified ?? null,
       last_synced_at: payload.lastSyncedAt ?? null,
+      gsc_auto_import_status: null,
+      gsc_auto_import_status_at: null,
+      ga4_auto_import_status: null,
+      ga4_auto_import_status_at: null,
       updated_at: new Date().toISOString(),
     };
 
@@ -1693,6 +1732,9 @@ export class SupabaseService {
       ga4ThresholdEngagementSec: number | null;
       ga4ThresholdReadRate: number | null;
       ga4LastSyncedAt: string | null;
+      /** null に戻す（未実行）ことだけを許す。結果を書くのは recordGoogleAutoImportResult */
+      gscAutoImportStatus: null;
+      ga4AutoImportStatus: null;
     }>
   ): Promise<void> {
     const record: Partial<TablesUpdate<'gsc_credentials'>> = {
@@ -1746,6 +1788,14 @@ export class SupabaseService {
     }
     if ('ga4LastSyncedAt' in updates) {
       record.ga4_last_synced_at = updates.ga4LastSyncedAt ?? null;
+    }
+    if ('gscAutoImportStatus' in updates) {
+      record.gsc_auto_import_status = null;
+      record.gsc_auto_import_status_at = null;
+    }
+    if ('ga4AutoImportStatus' in updates) {
+      record.ga4_auto_import_status = null;
+      record.ga4_auto_import_status_at = null;
     }
 
     const { error } = await this.supabase

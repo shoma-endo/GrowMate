@@ -1,11 +1,13 @@
 # 要件定義: AI 要約一括実行のバックグラウンド化
 
+> **一時措置（2026-10-17〜、ユーザー指示）**: 起票は `admin` のみ。`paid` も Server Action が `ERROR_MESSAGES.WORDPRESS.SUMMARY_SUSPENDED` で拒否し、ボタンは disabled にしてホバーで「AI要約は現在機能停止にしています」を出す。判定は `src/authUtils.ts` の `canUseContentAnnotationSummary`（`canWriteGa4` は現在使っていない）。cron は変更なし。本書で「`admin` / `paid` が起票できる」「`canWriteGa4` で判定」とある箇所は、解除後の本来の仕様として読む。
+
 ## メタデータ
 
 - 文書名: AI 要約一括実行のバックグラウンド化
 - ステータス: `approved`
 - 作成日: 2026-09-04
-- 最終更新日: 2026-09-07
+- 最終更新日: 2026-10-17
 - 作成者: Claude（Cloud セッション。下書き）
 - 承認者: 未確定
 - 対象リリース: 未確定
@@ -305,6 +307,8 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 
 新規機能の対象ロールは `admin` / `paid`（`CLAUDE.md` Core Rules。既存の `canWriteGa4` = `GA4_ALLOWED_ROLES = ['admin', 'paid']` を流用）。`trial` / `unavailable` は例外なく対象外。
 
+> **一時措置中**（冒頭の注記）: 下表と箇条は解除後の本来の判定。現在は起票も `admin` のみ。
+
 | ロール | 閲覧（進捗表示） | 作成・実行（起票） | 更新 | 削除・解除 |
 | --- | --- | --- | --- | --- |
 | `admin` | 自分のジョブのみ | ○ | 不可（更新は cron の Service Role のみ） | 不可（キャンセル導線は Non-goals） |
@@ -312,7 +316,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | `trial` | 不可 | ✕（Server Action で拒否。AC-B09） | 不可 | 不可 |
 | `unavailable` | 不可 | ✕ | 不可 | 不可 |
 
-- ジョブ起票: UI だけでなく Server Action 側でも `canWriteGa4` を検証する。
+- ジョブ起票: UI だけでなく Server Action 側でも `canWriteGa4` を検証する（一時措置中は `canUseContentAnnotationSummary` で admin のみ。冒頭の注記）。
 - 進捗の閲覧: **起票者本人のみ**。`admin` でも他人のジョブは表示しない（進捗表示に管理用途はない）。
 - cron 実行: 既存 cron と同じ `CRON_SECRET` の Bearer 認証（`/api/cron/*` の共通ガード）。処理は Service Role で行い、**ジョブ行の `user_id` を明示的にスコープ**して他人の記事に触れない。
   - **例外は完了メールの掃き出しだけ**: claim の前に行う未通知ジョブの取得（§9「完了メールの起動経路」経路2）は**全利用者のジョブを横断して取得する**（未通知の行がどの利用者のものか事前に分からないため）。ただし宛先（`public.users.email`）と本文は**取得した各行の `user_id` から解決**し、**行をまたいだ結合はしない**。他のクエリ（claim・記事取得・進捗保存・進捗表示）は例外なく単一 `user_id` にスコープする。
@@ -740,7 +744,7 @@ processing --[前進の無い claim が3回連続（attempt_count >= 3）した�
 | 429 の判定 | `src/domain/errors/ChatError.ts` の `ChatErrorCode.ANTHROPIC_RATE_LIMIT`（`:118` / `:178` で 429・`rate_limit_error` を分類済み） | **再利用**（新しい判定・待機・再試行は書かない。§9「429 の判定経路」） |
 | メール本文ビルダー | `src/server/lib/ga4-content-evaluation-email.ts` / `src/server/lib/email-html.ts` の `sanitizeEmailHtml` | **同型で新規**（`content-annotation-summary-email.ts`。§9「完了メールの件名・本文」） |
 | メール送信 | `src/server/services/emailService.ts` | **拡張**（新規メソッド追加。§9） |
-| 権限判定 | `src/server/lib/ga4-permissions.ts` の `canWriteGa4` | **再利用** |
+| 権限判定 | `src/server/lib/ga4-permissions.ts` の `canWriteGa4` | **再利用**（一時措置中は `canUseContentAnnotationSummary` で admin のみ。冒頭の注記） |
 | cron ルート | `app/api/cron/ga4-content-evaluate/route.ts` の共通ガード（`CRON_SECRET` の Bearer 認証） | **再利用**（同型で新規ルートを作る） |
 
 ### 制約条件
@@ -1295,3 +1299,5 @@ cycle 5 の反映（完了メールの件名分岐 / 本文取得の可否判定
 | 2026-09-04 | **ステータスを `draft` から `approved` に変更し、§16 承認表を記入した**（要件承認者・技術レビューとも承認、日付 2026-09-04）。本文の要件・設計・工数・コスト・Non-goals に変更は無い | クライアントから承認を受領したため。本書に残っていた唯一の停止要因（承認表の空欄・ステータス `draft`）が解消し、`spec-to-pr` の入口ゲートを満たす状態になった。対象リリースは未確定のままとする（リリース計画は本仕様の範囲外） | Claude（Cloud セッション） |
 | 2026-09-04 | `spec-review` サイクル8の指摘14件（F-53〜F-66）を反映（コスト試算に新トークナイザ〈同じテキストで約30%多いトークン〉を織り込み「一律 2/3・約33%減」を「実効 約13%減・1件約6円 / 267件約1,620円 / 1000件約6,070円 ≒ $40」へ引き直し確定値は実測に委ねる、`llmChat` 呼び出し側への `thinking: modelConfig.thinking` の詰め替えを実装契約に追加、Non-goals の「1 cron プロファイル」を「`CRON_CONFIGS` の1エントリ（profile は既存 `count-batch`）」へ訂正、移行前後比較を BR-B08 と両立する形〈基準値は先行 PR #515、移行後は別記事集合〉へ差し替え、手順2完了時のチェックポイントを実行可能な内容に限定して発生率・課金の確認を手順7へ統合、§15 DoD にモデル移行の受け入れを追加、代替案を「まずモデル ID を戻す」に置き換え adaptive 案を OPEN-B05 へ、レート上限を公式値へ、ロールバックの記述を「要約のエントリ1箇所＝2行」に統一、レビュー記録の表の分断を修復、`claude-api` skill の出典表記を訂正、Service 層の分割要求を §14 手順2 へ、汎用化しない判断を §12 / §10 にも記録、`scripts/check-api-changelogs.ts:450` の併記を手順に追加）。**あわせて公式 Thinking ドキュメントを照合し、`thinking` の既定挙動・`display` の既定と併用不可・サンプリング制約の適用条件・思考トークンの課金と `max_tokens` 算入・出力上限 128k・SDK の streaming 要求境界を一次情報へ差し替え、扱わない thinking 関連機能を Non-goals に1行追加** | cycle 7 で入れた Sonnet 5 移行の記述に、公式の一次情報と突き合わせると成立しない点（コストの一律 2/3）と、実装すると請求にしか現れない欠陥（`thinking` の詰め替え漏れでアダプティブ思考が既定で有効なまま課金される）が残っていたため。移行の検証手順も、手順2完了時には `failed_by_code` を持つジョブ行が作れず実行不能で、BR-B08 の再判定により「同じ記事集合の移行前後比較」も成立しなかった（判断の記録は §16「8周目で決めた設計判断」「cycle 8 追加反映」） | Claude（spec-review revise） |
 | 2026-09-07 | §11 に「スループット試算（ALT-002 の算式の一般化）」を追記し、ALT-002 の「将来変更する条件」から `p_limit` の引き上げを外した。1起動66件・実効11〜12分/起動という導出、単独利用者の所要時間（1000件で約2.8時間）、複数利用者の待ち行列（各1000件なら10人、各267件なら33人で24時間超）、24時間を超えたときに壊れるのは完了メールの**再送だけ**であること（完走した起動が直接送るため本体は届く）、スループットのレバーが `p_limit` ではなく `CONTENT_ANNOTATION_BULK_SUMMARY_CONCURRENCY` であることを記録した。**要件・設計・データ・工数・コストに変更は無く、確定済み定数からの導出の記録のみ**（実装への影響0） | 「24時間を超えるクエリ処理は考えづらいが、何件からそうなるのか」というクライアントの問いに答えるため。あわせて 2026-09-07 の本番実測（対象24件 / 成功13件 / `carriedOver: false`。cron から Cookie 無しで WordPress.com のトークン取得と LLM 生成が成立することを確認）を前提の裏付けとして反映した。ALT-002 の `p_limit` 記述は実コード（`JOBS_PER_INVOCATION = 1`、1起動760秒の予算は固定）と突き合わせると誤りで、そのままでは将来の対処を誤らせるため訂正した | Claude（Cloud セッション） |
+| 2026-10-17 | **起票を一時的に `admin` のみに制限**（§6 権限）。`paid` は Server Action で拒否し、`/analytics` の［AIで要約］は disabled＋理由表示。判定は `src/authUtils.ts` の `canUseContentAnnotationSummary` に集約。cron 側は変更しない（適用時点の未完了ジョブ0件） | ユーザー指示（2026-10-17、会話）。解除時は `canWriteGa4` に戻す | ユーザー・Claude |
+| 2026-10-17 | 押せない理由の出し方を変更: 文言を「AI要約は現在機能停止にしています」に、定数を `SUMMARY_SUSPENDED` に改名。理由はボタンのホバーで出し（`SummarySuspendedTooltip`）、ボタン下・横の文字表示はやめた。タッチ端末では理由が出ない | ユーザー指示（2026-10-17、会話） | ユーザー・Claude |

@@ -1,0 +1,54 @@
+name: Daily Import Failures
+
+# 毎日の自動取込（GSC 04:05・GA4 04:25・WordPress 04:45 JST）の失敗を運営向けに Lark へ送る
+# （docs/specs/auto-daily-imports-spec.md FR-013）。cron は利用者ごとの失敗でも HTTP 200 を返すので、
+# Vercel の表示だけでは気づけない。WordPress が上限の1800秒まで延びても終わっている 05:30 JST に動かす。
+# 問題が無い日は送らない。月曜以外は、前日から増えた問題だけを送る（同じ問題を毎朝送り続けない）。
+
+on:
+  schedule:
+    - cron: '30 20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-import-failures
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 前回送った問題（月曜以外は前日から増えた問題だけを送るため）。キャッシュが切れたら全件を送る
+      - name: Restore previous report state
+        uses: actions/cache@v4
+        with:
+          path: scripts/daily-import-failures-state.json
+          key: daily-import-failures-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            daily-import-failures-state-
+
+      - name: Notify daily import failures
+        run: node scripts/notify-daily-import-failures.cjs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+          LARK_WEBHOOK_URL: ${{ secrets.CI_WEBHOOK_URL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}

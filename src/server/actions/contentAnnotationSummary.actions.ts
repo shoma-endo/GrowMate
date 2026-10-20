@@ -1,5 +1,6 @@
 'use server';
 
+import { canUseContentAnnotationSummary } from '@/authUtils';
 import { withAuth, isWithAuthEmailLinkConflict } from '@/server/middleware/withAuth.middleware';
 import {
   getContentAnnotationSummaryErrorMessage,
@@ -27,7 +28,14 @@ export async function summarizeContentAnnotation(
     };
   }
 
-  const authResult = await withAuth(async ({ userId, cookieStore }) => {
+  const authResult = await withAuth(async ({ userId, userDetails, cookieStore }) => {
+    if (!canUseContentAnnotationSummary(userDetails?.role ?? null)) {
+      console.error('[content-annotation-summary] forbidden role:', {
+        role: userDetails?.role ?? null,
+      });
+      return { success: false as const, error: ERROR_MESSAGES.WORDPRESS.SUMMARY_SUSPENDED };
+    }
+
     const summaryResult = await contentAnnotationSummaryService.generateSummary({
       target: parsed.data,
       executorUserId: userId,
