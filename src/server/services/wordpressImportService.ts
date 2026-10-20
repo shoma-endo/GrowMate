@@ -348,10 +348,22 @@ export async function importWordPressContent({
       }
     }
 
+    const insertedNormalized = new Set<string>();
     for (const [index, candidate] of candidates.entries()) {
       if (skippedCandidates.has(index)) continue;
       const assignment = assigned.get(index);
       const { post, canonical, wpPostId, stats } = candidate;
+
+      if (!assignment) {
+        const normalized = normalizeUrl(canonical);
+        if (normalized && insertedNormalized.has(normalized)) {
+          stats.duplicate += 1;
+          duplicatePosts += 1;
+          console.warn('[wordpress-import] new post shares a normalized URL with another new post in this import', { userId, postId: wpPostId, canonicalUrl: canonical });
+          continue;
+        }
+        if (normalized) insertedNormalized.add(normalized);
+      }
 
       const nextPostType = normalizeText(post.post_type);
       const nextContent = normalizeText(post.content_text);

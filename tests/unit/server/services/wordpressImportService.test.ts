@@ -607,6 +607,23 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     ]);
   });
 
+  it('同じ回の新規の投稿どうしで正規化 URL が重なったら、2件目は作らず重複として見送る', async () => {
+    const { result, inserts, warningCalls } = await runImportWithAnnotations(
+      [
+        { id: 1, link: 'https://example.com/a' },
+        { id: 2, link: 'http://www.example.com/a/' },
+      ],
+      []
+    );
+
+    expect(result).toMatchObject({ kind: 'success', stats: { insertedPosts: 1, duplicatePosts: 1 } });
+    expect(inserts.flat().map(row => row.canonical_url)).toEqual(['https://example.com/a']);
+    expect(warningCalls).toContainEqual([
+      '[wordpress-import] new post shares a normalized URL with another new post in this import',
+      expect.objectContaining({ postId: 2 }),
+    ]);
+  });
+
   it('投稿IDで当たった記事と生URLの別記事が衝突したらcanonical_urlを保ち、別記事を変更しない', async () => {
     const { result, updates, inserts, warningCalls } = await runImportWithAnnotations(
       [{ id: 1, link: 'https://example.com/new' }],
