@@ -168,6 +168,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
   hideOutline = false,
   hideHeadingProgressAndNav = false,
   isStreaming = false,
+  isChatLoading = false,
 }) => {
   const [markdownContent, setMarkdownContent] = useState('');
 
@@ -1018,7 +1019,7 @@ const CanvasPanel: React.FC<CanvasPanelProps> = ({
 
       {/* エディタエリア - ChatGPT風Canvas同様のスタイル */}
       <div className="flex-1 overflow-auto ml-2 pt-4 relative" ref={scrollContainerRef}>
-        {onSelectionEdit && selectionMode && selectionMenuPosition && (
+        {onSelectionEdit && selectionMode && selectionMenuPosition && !isChatLoading && (
           <div
             className="absolute z-50 max-w-xs"
             style={{ top: selectionMenuPosition.top, left: selectionMenuPosition.left }}

@@ -598,6 +598,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           isSavingHeading={isSavingHeading}
           headingSaveError={headingSaveError}
           isStreaming={isCanvasStreaming}
+          isChatLoading={chatSession.state.isLoading}
         />
       )}
     </div>
