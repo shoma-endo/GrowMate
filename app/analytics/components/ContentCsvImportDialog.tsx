@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -63,8 +63,11 @@ export function ContentCsvImportDialog() {
   const [failure, setFailure] = useState('');
   const [processed, setProcessed] = useState(0);
   const [totals, setTotals] = useState<ImportTotals>(EMPTY_TOTALS);
+  // 読み込み中に選び直し・閉じるが起きたら、古い読み込みの結果を捨てるための番号
+  const fileReadIdRef = useRef(0);
 
   const reset = () => {
+    fileReadIdRef.current += 1;
     setPhase('ready');
     setParsed(null);
     setParseError('');
@@ -92,12 +95,16 @@ export function ContentCsvImportDialog() {
     const file = event.currentTarget.files?.[0];
     reset();
     if (!file) return;
+    const readId = fileReadIdRef.current;
 
     try {
-      const csvText = decodeContentCsv(new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (readId !== fileReadIdRef.current) return;
+      const csvText = decodeContentCsv(bytes);
       setParsed(parseContentCsv(csvText));
       setPhase('ready');
     } catch (error) {
+      if (readId !== fileReadIdRef.current) return;
       if (!(error instanceof ContentCsvImportParseError)) {
         console.error('[content-csv-import] file parsing failed:', error);
       }
