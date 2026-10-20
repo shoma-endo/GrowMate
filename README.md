@@ -15,11 +15,12 @@
 
 - **認証・ユーザー管理**: メール OTP（Supabase Auth）、[`proxy.ts`](proxy.ts) によるセッション更新・CSP・ロール別パスゲート、`authMiddleware`（Server Actions / Route Handlers）、ロール管理（`trial` / `paid` / `admin` / `unavailable`）
 - **ランディング** (`/home`): 未ログイン向けの公開 LP
-- **マイホーム** (`/`): ログイン済みユーザー向けに、連携の再認証・未設定など「今日確認が必要なこと」だけを表示（[`src/lib/home-today.ts`](src/lib/home-today.ts)）
+- **マイホーム** (`/`): ログイン済みユーザー向けに、連携の再認証・未設定や WordPress 日次取込の停止（3日以上）など「今日確認が必要なこと」だけを表示（[`src/lib/home-today.ts`](src/lib/home-today.ts)）
 - **アプリシェル**: 共通ナビは左サイドバー（アイコンレールに折りたたみ可、モバイルはドロワー）。項目定義の正本は [`src/lib/app-nav.ts`](src/lib/app-nav.ts)
 - **AI コンテンツ支援**: 7 ステップのブログ作成フロー（ニーズ整理〜本文作成）、広告／LP テンプレート、AI 応答ストリーミング
 - **キャンバス編集**: TipTap ベースの `CanvasPanel`、Markdown レンダリング／見出しアウトライン／バージョン履歴、選択範囲リライト
 - **見出しフロー・バージョン管理**: Step5 生成見出しからの `session_heading_sections` 初期化、個別 AI 生成・`session_combined_contents` への結合保存、`save_atomic_combined_content` RPC で競合シリアライズ
+- **AI 要約**: WordPress 本文からコンテンツ情報を AI で埋める（単記事・`/analytics` の一括）。**現在は管理者（`admin`）限定で一時停止中**（[`src/authUtils.ts`](src/authUtils.ts) の `canUseContentAnnotationSummary`）
 - **コンテンツ分析** (`/analytics`): GSC 指標・GA4 指標・改善提案を注釈軸で横断表示（paid 以上）。評価未設定フィルタとコンテンツ評価状態・スコア・診断を一覧で確認し、`/analytics/[annotationId]` の記事詳細で手動評価と履歴を表示する。GSC 評価履歴では順位変化に応じたステージ進行ロジックを表示し、履歴ごとにメモを残せる。一覧では記事を選択して**検索順位・コンテンツ評価サイクルを一括開始**できる（全選択は絞り込みに依存せず全記事が対象。1回あたり最大1000件）。Instagram 連携済みユーザー向けに Instagram タブ（投稿一覧・指標・エンゲージメント率の表示・列見出しでの並べ替え（昇順／降順）・高エンゲージメント率の絞り込み・手動「最新化」同期）を表示。Instagram タブでは投稿を選んで**ブログ記事を一括作成**できる（1回10件まで。キーワード案〜見出しごとの本文〜完成形までをバックグラウンドで作り、コンテンツ一覧とチャットに保存。止まった作成は［続きを作成］で再開でき、選んだ投稿がすべて終わると結果をメール通知）
 - **WordPress 連携**: OAuth・Application Password 両対応、投稿の一括インポート（日次の自動取込と手動取込は差分更新）、`AnnotationPanel` でメモ・キーワード・ペルソナ等を再利用
 - **コンテンツ情報の CSV 取り込み** (`/analytics` のブログタブ、paid 以上): テンプレート CSV をダウンロードし、外部（利用者の AI など）で埋めた CSV をアップロードすると、URL（正規化）で照合して既存記事のコンテンツ情報を上書き（空欄は上書きしない）し、無い URL は値のある行だけ新規作成する。1ファイル最大2万行、ブラウザで解析して分割送信（[`app/analytics/components/ContentCsvImportDialog.tsx`](app/analytics/components/ContentCsvImportDialog.tsx)）。WordPress 取込は CSV で作った記事に正規化 URL で紐付く
@@ -50,6 +51,8 @@ graph TB
     Ga4Dashboard["GA4 Dashboard"]
     GoogleAdsDashboard["Google Ads Dashboard"]
     InstagramSetup["Instagram Setup"]
+    SetupPages["Setup（WordPress / GA4 / Google Ads）"]
+    ImportPages["GSC / WordPress Import"]
   end
 
   subgraph Server["サーバー（app/api/*・src/server/actions/*・proxy.ts）"]
@@ -60,7 +63,7 @@ graph TB
     AdminAPI["api/admin/*"]
     UserAPI["api/user/*, api/auth/*"]
     GscAPI["api/gsc/*"]
-    GscCron["api/cron/*"]
+    CronAPI["api/cron/*（GSC・GA4・Google Ads・WordPress・AI 要約）"]
     Ga4API["api/ga4/*"]
     GoogleAdsAPI["api/google-ads/*"]
     InstagramAPI["api/instagram/*"]
@@ -88,6 +91,7 @@ graph TB
   ProxyGate --> AuthMiddleware
   Home --> ServerActions
   ChatUI --> ChatAPI
+  ChatUI --> ServerActions
   Canvas --> ChatAPI
   HeadingFlow --> ServerActions
   Annotation --> ServerActions
@@ -95,9 +99,11 @@ graph TB
   BusinessForm --> ServerActions
   AdminUI --> ServerActions
   GscSetup --> GscAPI
-  AnalyticsDetail --> GscAPI
   Ga4Dashboard --> Ga4API
-  GoogleAdsDashboard --> GoogleAdsAPI
+  SetupPages --> WordPressAPI
+  SetupPages --> Ga4API
+  SetupPages --> GoogleAdsAPI
+  ImportPages --> ServerActions
   InstagramSetup --> InstagramAPI
   AnalyticsDetail --> ServerActions
   Ga4Dashboard --> ServerActions
@@ -109,16 +115,26 @@ graph TB
   WordPressAPI --> IntegrationData
   AdminAPI --> AdminData
   GscAPI --> IntegrationData
-  GscCron --> IntegrationData
+  CronAPI --> IntegrationData
+  CronAPI --> ContentData
   Ga4API --> IntegrationData
   GoogleAdsAPI --> IntegrationData
   InstagramAPI --> IntegrationData
 
   ChatAPI --> Anthropic
-  ChatAPI --> OpenAI
+  ServerActions --> OpenAI
+  ServerActions --> Anthropic
+  ServerActions --> GSC
+  ServerActions --> GA4
+  ServerActions --> GoogleAds
+  ServerActions --> WordPress
   WordPressAPI --> WordPress
   GscAPI --> GSC
-  GscCron --> GSC
+  CronAPI --> GSC
+  CronAPI --> GA4
+  CronAPI --> GoogleAds
+  CronAPI --> WordPress
+  CronAPI --> Anthropic
   Ga4API --> GA4
   GoogleAdsAPI --> GoogleAds
   InstagramAPI --> Instagram
@@ -189,9 +205,9 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 
 - **Supabase・サイト URL**: `NEXT_PUBLIC_SUPABASE_*`, `NEXT_PUBLIC_SITE_URL`, `SUPABASE_SERVICE_ROLE`
 - **AI**: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
-- **メール送信**: `RESEND_API_KEY`（任意・本番 OTP 送信に必要）, `EMAIL_FROM`, `ADMIN_SIGNUP_NOTIFICATION_EMAILS`（任意・新規登録の管理者通知先。カンマ区切りで複数可。未設定なら通知しない）
+- **メール送信**: `RESEND_API_KEY`（任意・本番 OTP 送信に必要）, `ADMIN_SIGNUP_NOTIFICATION_EMAILS`（任意・新規登録の管理者通知先。カンマ区切りで複数可。未設定なら通知しない）
 - **操作分析**: `NEXT_PUBLIC_CLARITY_PROJECT_ID`（任意。Clarity を使う場合は Vercel の Production に設定して再デプロイ）
-- **OAuth（連携時）**: `GOOGLE_OAUTH_*`, `GOOGLE_SEARCH_CONSOLE_REDIRECT_URI`, `WORDPRESS_COM_*`, `WORDPRESS_COM_REDIRECT_URI`, 任意で `COOKIE_SECRET`
+- **OAuth（連携時）**: `GOOGLE_OAUTH_*`, `GOOGLE_SEARCH_CONSOLE_REDIRECT_URI`, `WORDPRESS_COM_*`, 任意で `COOKIE_SECRET`
 
 ### `src/env.ts` に含まれないが `process.env` 直接参照
 
@@ -202,14 +218,14 @@ npm 依存のバージョンは **[`package.json`](package.json)** を正とし�
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | 任意（Google Ads API 利用時は必須） | [`src/server/services/googleAdsService.ts`](src/server/services/googleAdsService.ts) |
 | `EMAIL_FROM` | 任意（未設定時は既定の送信元にフォールバック） | [`src/server/services/emailService.ts`](src/server/services/emailService.ts) の送信元アドレス |
 | `GSC_QUERY_ROW_LIMIT` | 任意（未設定時は既定値） | [`src/server/lib/gsc-config.ts`](src/server/lib/gsc-config.ts) のクエリ取得行数上限 |
-| `INSTAGRAM_APP_ID` | 任意（Instagram OAuth 利用時は必須） | [`app/api/instagram/oauth/`](app/api/instagram/oauth) |
+| `INSTAGRAM_APP_ID` | 任意（Instagram OAuth 利用時は必須） | [`app/api/instagram/oauth/`](app/api/instagram/oauth), [`src/server/services/instagramService.ts`](src/server/services/instagramService.ts), [`app/setup/instagram/page.tsx`](app/setup/instagram/page.tsx) |
 | `INSTAGRAM_APP_SECRET` | 任意（Instagram OAuth 利用時は必須） | 同上 |
 | `INSTAGRAM_REDIRECT_URI` | 任意（Instagram OAuth 利用時は必須） | 同上 |
 | `INSTAGRAM_SYNC_ENABLED` | 任意（未設定または `true` で有効。`false` で手動同期を停止し UI に告知。一覧は既存 DB データを表示） | [`src/server/lib/instagram-sync-config.ts`](src/server/lib/instagram-sync-config.ts) |
-| `REVIEW_LOGIN_EMAIL` | 任意（App Review 期間のみ設定。審査終了後は削除して経路を塞ぐ） | [`app/review-login/page.tsx`](app/review-login/page.tsx), [`src/server/actions/auth.actions.ts`](src/server/actions/auth.actions.ts) の `signInWithReviewPassword`。**撤去時はこの行と併せて以下も削除する**: [`src/components/ReviewLoginForm.tsx`](src/components/ReviewLoginForm.tsx) / [`proxy.ts`](proxy.ts) と [`src/lib/public-paths.ts`](src/lib/public-paths.ts) の `/review-login` / [`src/domain/errors/error-messages.ts`](src/domain/errors/error-messages.ts) の `REVIEW_LOGIN_*` / `tests/unit/server/actions/reviewLogin.actions.test.ts` / `tests/unit/lib/public-paths.test.ts` の `/review-login` ケース / [`src/components/AuthProvider.tsx`](src/components/AuthProvider.tsx) の `FULL_NAME_DIALOG_PATHS` |
+| `REVIEW_LOGIN_EMAIL` | 任意（App Review 期間のみ設定。審査終了後は削除して経路を塞ぐ） | [`app/review-login/page.tsx`](app/review-login/page.tsx), [`src/server/actions/auth.actions.ts`](src/server/actions/auth.actions.ts) の `signInWithReviewPassword`。**撤去時はこの行と併せて以下も削除する**: [`src/components/ReviewLoginForm.tsx`](src/components/ReviewLoginForm.tsx) / [`proxy.ts`](proxy.ts) と [`src/lib/public-paths.ts`](src/lib/public-paths.ts) の `/review-login` / [`src/domain/errors/error-messages.ts`](src/domain/errors/error-messages.ts) の `REVIEW_LOGIN_*` / `tests/unit/server/actions/reviewLogin.actions.test.ts` / `tests/unit/lib/urls-and-links.test.ts` の `/review-login` ケース / [`src/components/AuthProvider.tsx`](src/components/AuthProvider.tsx) の `FULL_NAME_DIALOG_PATHS` |
 | `NEXT_PUBLIC_APP_URL` | 任意（内部 API 呼び出しのベース URL） | [`src/server/actions/adminUsers.actions.ts`](src/server/actions/adminUsers.actions.ts) |
-| `VERCEL_URL` | Vercel が自動設定 | [`src/server/middleware/authMiddlewareGuards.ts`](src/server/middleware/authMiddlewareGuards.ts) の許可オリジン判定 |
-| `VERCEL_ENV` | Vercel が自動設定 | [`src/server/lib/cron-observability.ts`](src/server/lib/cron-observability.ts) の実行環境判定（production / preview。それ以外は local） |
+| `VERCEL_URL` | Vercel が自動設定 | [`src/server/middleware/authMiddlewareGuards.ts`](src/server/middleware/authMiddlewareGuards.ts) の許可オリジン判定、[`src/server/services/instagramBlogDraftJobService.ts`](src/server/services/instagramBlogDraftJobService.ts) の preview のベース URL |
+| `VERCEL_ENV` | Vercel が自動設定 | [`src/server/lib/cron-observability.ts`](src/server/lib/cron-observability.ts) の実行環境判定（production / preview。それ以外は local）、[`src/server/services/instagramBlogDraftJobService.ts`](src/server/services/instagramBlogDraftJobService.ts) |
 
 追加・リネーム時は **`env.ts` の更新と README の「区分」行の見直し**が必要（フル一覧はソースを見ろ、という運用）。
 
@@ -256,7 +272,7 @@ takt -w grill-to-gherkin  # 対話モード Grill Me を選び、機能の概要
 
 ## ✅ 動作確認
 
-`npm audit --omit=dev --audit-level=high`、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip` で基本チェック（5点まとめは `npm run verify`）。コアロジックと分離済みZodスキーマはVitest、UIの表示・操作感・導線と外部APIを含む実画面は人間の目視で確認する。Agent Skills を変更した場合は `npm run verify:agent-skills` も実行する。husky で **pre-commit に lint + staged 分の docs パス参照・UI 文言チェック + 仕様書図解 HTML 追従、pre-push に takt pin ガード + test:coverage + build + knip** を配置し、CIでも`npm audit --omit=dev --audit-level=high`（dev 依存の audit は非ブロッキング） / lint / test:coverage / build / knipを実行する。各機能の詳細な検証手順は [`quality-gate`](.agents/skills/quality-gate/SKILL.md) スキルを参照。
+`npm audit --omit=dev --audit-level=high`、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip` で基本チェック（5点まとめは `npm run verify`）。コアロジックと分離済みZodスキーマはVitest、UIの表示・操作感・導線と外部APIを含む実画面は人間の目視で確認する。Agent Skills を変更した場合は `npm run verify:agent-skills` も実行する。husky で **pre-commit に lint + staged 分の docs パス参照・UI 文言チェック + 仕様書図解 HTML 追従、pre-push に test:coverage + build + knip** を配置し、CIでも`npm audit --omit=dev --audit-level=high`（dev 依存の audit は非ブロッキング） / lint / test:coverage / build / knipを実行する。各機能の詳細な検証手順は [`quality-gate`](.agents/skills/quality-gate/SKILL.md) スキルを参照。
 
 ## 📁 プロジェクト構成（概要）
 
@@ -271,7 +287,7 @@ takt -w grill-to-gherkin  # 対話モード Grill Me を選び、機能の概要
 | [`src/server/actions/`](src/server/actions/) | Server Actions（`*.actions.ts` がドメインごとに並ぶ） |
 | [`src/server/services/`](src/server/services/) | サーバー統合層（LLM / WordPress / GSC / GA4 / Google Ads / Instagram（setup・sync・media 等）） |
 | [`src/server/middleware/`](src/server/middleware/) | `authMiddleware` 等 |
-| [`tests/unit/`](tests/unit/) | Vitestユニットテスト（`app/`・`domain/`・`lib/`・`server/`・`scripts/`・`takt/`・`types/`） |
+| [`tests/unit/`](tests/unit/) | Vitestユニットテスト（`app/`・`domain/`・`lib/`・`server/`・`scripts/`・`types/`） |
 | [`supabase/migrations/`](supabase/migrations/) | DB マイグレーション |
 | [`docs/context/`](docs/context/) | クライアント文脈・開発上の判断基準・調査知見 |
 | [`docs/specs/`](docs/specs/) | 機能仕様書・要件定義（実装状況は各文書を参照） |
@@ -286,23 +302,23 @@ takt -w grill-to-gherkin  # 対話モード Grill Me を選び、機能の概要
 ## 🛡️ セキュリティと運用の注意点
 
 - Supabase では主要テーブルに RLS を適用済み（開発ポリシーが残る箇所は運用前に見直す）
-- [`proxy.ts`](proxy.ts) が Supabase セッション更新・CSP ヘッダ付与・ロール別リダイレクト（`/admin`・`/analytics`・`/setup` 等）を担当。`authMiddleware` は Server Actions / Route Handlers 側でメールセッションを解決する
-- `get_accessible_user_ids` と関連 RLS / RPC は一部テーブルで残存しており、旧共有アクセス構成の互換レイヤーとして機能している
+- [`proxy.ts`](proxy.ts) が Supabase セッション更新・CSP ヘッダ付与・ロール別リダイレクト（`/admin` は admin、`/analytics`・`/ga4-dashboard`・`/gsc-import`・`/wordpress-import` などは paid 以上。正本は [`src/lib/role-access.ts`](src/lib/role-access.ts)）を担当。`authMiddleware` は Server Actions / Route Handlers 側でメールセッションを解決する。proxy は Route Handler と Server Action の直接呼び出しを守らないため、GSC・WordPress の取込・設定の Server Action と `/api/gsc/oauth/start`・`/api/wordpress/settings`・`/api/wordpress/test-connection`・`/api/ga4/sync` などはサーバー側でも paid を確認する
+- `get_accessible_user_ids` は旧共有アクセス構成の名残として、一部の RLS と RPC（`search_chat_sessions`・`get_sessions_with_messages`・`save_atomic_combined_content`）に残る。`src/` から直接は呼ばない。スタッフの行が無いため、アクセスは実質的に本人のデータのみ
 - WordPress.com の OAuth アクセストークンは HTTP-only Cookie と `wordpress_settings` に保存し、Application Password 等の設定値も `wordpress_settings` に保存する（現状は平文のため、本番では KMS / Secrets 管理への移行を推奨）
 - SSE は 20 秒ごとの ping と 5 分アイドルタイムアウトで接続維持を調整
-- `AnnotationPanel` の URL 正規化で内部／ローカルホストへの誤登録を防止
+- `AnnotationPanel` の URL は、URL として解釈できるかを検証する（スキームは限定せず、内部・ローカルホストの判定もしない）。WordPress 設定があれば、WordPress の記事に解決できたものだけを保存する
 
 ## 📱 デプロイと運用
 
 - Vercel を想定。一部の Route Handler は Node.js Runtime を明示し、その他は Next.js のデフォルト Runtime を使用
 - **Vercel のプランは Pro**（チーム `shoma-endo's projects`。2026-09-24 にダッシュボードで確認）。仕様書・レビューでは確認済みの前提として扱ってよい。Pro であることに依存しているもの: `maxDuration` 800 秒のルート、`maxDuration` 1800 秒の WordPress 日次取込（拡張上限・ベータ）、Vercel Cron の毎時・10 分間隔の起動（Hobby は1日1回まで）、runtime log の保持1日
 - **Supabase のプランは Pro**（プロジェクト `rnmljzdsncucvkcmoaun`。本番と開発で共有。2026-09-25 に確認）。仕様書・レビューでは確認済みの前提として扱ってよい
-- 定期起動（Vercel Cron、[`vercel.json`](vercel.json)。UTC）: 毎日 19:05 `gsc-daily-import`、19:25 `ga4-daily-sync`、19:45 `wordpress-daily-import`。毎時 `gsc-evaluate` / `gsc-suggestions` / `ga4-content-evaluate` / `google-ads-negative-keywords-suggestion`、10 分間隔 `content-annotation-summary`（`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知）。失敗は Vercel の runtime log で確認する。経緯は [`docs/plans/vercel-cron-migration-spec.md`](docs/plans/vercel-cron-migration-spec.md)
+- 定期起動（Vercel Cron、[`vercel.json`](vercel.json)。UTC）: 毎日 19:05 `gsc-daily-import`、19:25 `ga4-daily-sync`、19:45 `wordpress-daily-import`。毎時 `gsc-evaluate` / `ga4-content-evaluate`（どちらも `paid` / `admin` のみ） / `gsc-suggestions` / `google-ads-negative-keywords-suggestion`、10 分間隔 `content-annotation-summary`（`/analytics` の AI 要約一括をバックグラウンドで処理し、完了時にメール通知。AI 要約は現在 admin 限定）。cron は利用者ごとの失敗では HTTP 200 を返すため、日次取込3本の失敗は GitHub Actions `daily-import-failures.yml`（毎日 20:30 UTC）が `cron_run_logs` を見て Lark に通知する。それ以外は Vercel の runtime log で確認する。経緯は [`docs/plans/vercel-cron-migration-spec.md`](docs/plans/vercel-cron-migration-spec.md)
 - ローカル品質ゲート: `npm run verify`（`audit` → `lint` → `test:coverage` → `build` → `knip` を順次実行）
-- husky フック: **pre-commit = `lint` + staged 分の docs パス参照・UI 文言チェック + 仕様書図解 HTML 追従、pre-push = takt pin ガード + `test:coverage` + `build` + `knip`**（pre-push の本体は [`scripts/pre-push.sh`](scripts/pre-push.sh)。husky はフックを `sh` で起動しシェバンを無視するため、bash 専用構文を `.husky/pre-push` に直接書かない）（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
+- husky フック: **pre-commit = `lint` + staged 分の docs パス参照・UI 文言チェック + 仕様書図解 HTML 追従、pre-push = `test:coverage` + `build` + `knip`**（pre-push の本体は [`scripts/pre-push.sh`](scripts/pre-push.sh)。husky はフックを `sh` で起動しシェバンを無視するため、bash 専用構文を `.husky/pre-push` に直接書かない）（`--no-verify` で回避可能だが、その場合は CI で必ず検知される）
 - CI 品質ゲート: `npm audit --omit=dev --audit-level=high`（dev 依存は非ブロッキングで別途実行）、`npm run lint`、`npm run test:coverage`、`npm run build`、`npm run knip`
 - 環境変数は Vercel Project Settings へ反映し、本番は WordPress 本番サイトなどの外部連携設定に切り替え
-- GitHub Actions: 上記 cron の手動実行（`hourly-cron.yml` / `daily-import-cron.yml` / `content-annotation-summary-cron.yml` の `workflow_dispatch`。定期起動はしない）、CI（audit / lint / test / build / knip + Lark 通知）、`main` 以外への push 時の Auto PR（`develop` は `main` 宛て、それ以外は `develop` 宛て。新規作成時は [`scripts/generate-pr-body.ts`](scripts/generate-pr-body.ts) が diff から本文を LLM 生成し、失敗時は静的テンプレート。`ZAI_API_KEY` を使用）、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
+- GitHub Actions: 上記 cron の手動実行（`hourly-cron.yml` / `daily-import-cron.yml` / `content-annotation-summary-cron.yml` の `workflow_dispatch`。定期起動はしない）、CI（audit / lint / test / build / knip + Lark 通知）、`main` 以外（`automation/api-changelog-state` も除く）への push 時の Auto PR（`develop` は `main` 宛て、それ以外は `develop` 宛て。新規作成時は [`scripts/generate-pr-body.ts`](scripts/generate-pr-body.ts) が diff から本文を LLM 生成し、失敗時は静的テンプレート。`ZAI_API_KEY` を使用）、日次取込の失敗通知（`daily-import-failures.yml`）、週次 DB・Vercel・アクティブユーザー統計、Supabase バックアップ、外部 API 更新監視。必要な値は GitHub Actions Secrets で管理
 - **Supabase スキーマ**: Vercel のデプロイだけでは DB は更新されない。変更は `supabase/migrations/` にコミットし、マイグレーション内にロールバック案をコメントで残す。**本番（共有プロジェクト）への適用タイミングと手順は「セットアップ手順」の Supabase 注意書きに従う。**
 
 ## 📄 ライセンス
