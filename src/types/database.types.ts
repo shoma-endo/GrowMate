@@ -2212,6 +2212,10 @@ export type Database = {
           table_name: string
         }[]
       }
+      import_content_annotations_csv: {
+        Args: { p_rows: Json; p_user_id: string }
+        Returns: Json
+      }
       increment_google_search_count: {
         Args: { user_id: string }
         Returns: undefined

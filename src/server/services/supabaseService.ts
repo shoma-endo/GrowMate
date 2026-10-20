@@ -5,7 +5,8 @@ import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
-import { asPendingClient, type ContentCsvImportDatabase, type PendingContentCsvImportRow } from '@/types/database.types.pending';
+import { asPendingClient, type ContentCsvImportDatabase } from '@/types/database.types.pending';
+import type { ContentCsvImportRow } from '@/lib/content-csv-import';
 import {
   DbChatMessage,
   DbChatSession,
@@ -1061,7 +1062,7 @@ export class SupabaseService {
 
   async importContentAnnotationsCsv(
     userId: string,
-    rows: PendingContentCsvImportRow[]
+    rows: ContentCsvImportRow[]
   ): Promise<SupabaseResult<ContentCsvImportDatabase['public']['Functions']['import_content_annotations_csv']['Returns']>> {
     const { data, error } = await asPendingClient<ContentCsvImportDatabase>(this.supabase).rpc(
       'import_content_annotations_csv',

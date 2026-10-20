@@ -1,6 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database, Json } from './database.types';
-import type { AnnotationFieldKey } from './annotation';
+import type { Database } from './database.types';
 
 /**
  * 生成型（`database.types.ts`）を部分的に差し替えて Supabase クライアントを使うための型置き場。
@@ -76,13 +75,12 @@ export type Ga4ContentEvaluationScheduleDatabase = Omit<Database, 'public'> & {
   };
 };
 
-// PROVISIONAL: supabase/migrations/20261019000000_add_content_csv_import.sql
-export interface PendingContentCsvImportRow {
-  rowNumber: number;
-  url: string;
-  values: Partial<Record<AnnotationFieldKey, string>>;
-}
-
+/**
+ * PERMANENT: CSV 取り込み RPC `import_content_annotations_csv` の戻り値。
+ *
+ * RPC は `returns jsonb` なので生成型は `Json` になる
+ * （`supabase/migrations/20261019000000_add_content_csv_import.sql` の `jsonb_build_object`）。
+ */
 interface ContentCsvImportRpcResult {
   updated: number;
   created: number;
@@ -98,7 +96,7 @@ export type ContentCsvImportDatabase = Omit<Database, 'public'> & {
   public: Omit<Database['public'], 'Functions'> & {
     Functions: Omit<Database['public']['Functions'], 'import_content_annotations_csv'> & {
       import_content_annotations_csv: {
-        Args: { p_user_id: string; p_rows: Json };
+        Args: Database['public']['Functions']['import_content_annotations_csv']['Args'];
         Returns: ContentCsvImportRpcResult;
       };
     };

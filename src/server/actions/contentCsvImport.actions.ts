@@ -4,11 +4,10 @@ import { hasPaidFeatureAccess } from '@/types/user';
 import { ANNOTATION_FIELD_KEYS } from '@/types/annotation';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import type { ServerActionResult } from '@/lib/async-handler';
-import { CONTENT_CSV_IMPORT_LIMITS, canonicalizeContentCsvUrl, type ContentCsvSkippedRow } from '@/lib/content-csv-import';
+import { CONTENT_CSV_IMPORT_LIMITS, canonicalizeContentCsvUrl, type ContentCsvImportRow, type ContentCsvSkippedRow } from '@/lib/content-csv-import';
 import { isWithAuthEmailLinkConflict, withAuth } from '@/server/middleware/withAuth.middleware';
 import { contentCsvImportSchema } from '@/server/schemas/contentCsvImport.schema';
 import { SupabaseService } from '@/server/services/supabaseService';
-import type { PendingContentCsvImportRow } from '@/types/database.types.pending';
 
 export interface ContentCsvImportActionResult {
   updated: number;
@@ -31,7 +30,7 @@ export async function importContentCsvRows(params: unknown): Promise<ServerActio
         return { success: false as const, error: ERROR_MESSAGES.USER.INSUFFICIENT_PERMISSIONS };
       }
 
-      const rows: PendingContentCsvImportRow[] = [];
+      const rows: ContentCsvImportRow[] = [];
       const skipped: ContentCsvSkippedRow[] = [];
       for (const row of parsed.data.rows) {
         const url = canonicalizeContentCsvUrl(row.url);
@@ -40,7 +39,7 @@ export async function importContentCsvRows(params: unknown): Promise<ServerActio
           continue;
         }
 
-        const values: PendingContentCsvImportRow['values'] = {};
+        const values: ContentCsvImportRow['values'] = {};
         for (const key of ANNOTATION_FIELD_KEYS) {
           const value = row.values[key];
           if (value !== undefined) values[key] = value;
