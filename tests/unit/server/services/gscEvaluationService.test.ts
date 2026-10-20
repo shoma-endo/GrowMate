@@ -2,14 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   lte: vi.fn(),
+  select: vi.fn(),
+  in: vi.fn(),
 }));
 
 vi.mock('@/server/services/supabaseService', () => ({
   SupabaseService: class {
     getClient() {
       const query = {
-        select: vi.fn(() => query),
+        select: mocks.select.mockImplementation(() => query),
         eq: vi.fn(() => query),
+        in: mocks.in.mockImplementation(() => query),
         lte: mocks.lte,
       };
       return { from: vi.fn(() => query) };
@@ -58,6 +61,15 @@ describe('gscEvaluationService.runAllDueEvaluations', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('評価対象を paid / admin のユーザーに絞って取得する', async () => {
+    mocks.lte.mockResolvedValue({ data: [], error: null });
+
+    await gscEvaluationService.runAllDueEvaluations();
+
+    expect(mocks.select).toHaveBeenCalledWith('*, users!inner(role)');
+    expect(mocks.in).toHaveBeenCalledWith('users.role', ['paid', 'admin']);
   });
 
   it('完了ログの主要カウンタをユーザー単位に統一する', async () => {

@@ -7,6 +7,7 @@ import { gscEvaluationService } from '@/server/services/gscEvaluationService';
 import { splitRangeByDays, aggregateImportResults } from '@/server/lib/gsc-import-utils';
 import { getGscQueryRowLimit, getGscQueryMaxPages } from '@/server/lib/gsc-config';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { hasPaidFeatureAccess } from '@/types/user';
 
 import { emailLinkConflictErrorPayload } from '@/server/middleware/authMiddlewareGuards';
 
@@ -27,7 +28,7 @@ export async function runGscImport(params: GscImportParams) {
       return { success: false, error: authResult.error || ERROR_MESSAGES.AUTH.USER_AUTH_FAILED };
     }
     const role = authResult.userDetails?.role ?? null;
-    if (!role || role === 'unavailable') {
+    if (!hasPaidFeatureAccess(role)) {
       return { success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED };
     }
 

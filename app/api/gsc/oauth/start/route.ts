@@ -3,6 +3,7 @@ import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { generateOAuthState } from '@/server/lib/oauth-state';
 import { GOOGLE_SEARCH_CONSOLE_SCOPES } from '@/lib/constants';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
+import { hasPaidFeatureAccess } from '@/types/user';
 import { nextResponseRedirectLoginIfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 
 const ALLOWED_RETURN_TO_PATHS = new Set(['/setup/gsc', '/setup/ga4']);
@@ -47,6 +48,9 @@ export async function GET(request: NextRequest) {
       { error: authResult.error || 'ユーザー認証に失敗しました' },
       { status: 401 }
     );
+  }
+  if (!hasPaidFeatureAccess(authResult.userDetails?.role ?? null)) {
+    return NextResponse.json({ error: ERROR_MESSAGES.GA4.FEATURE_ACCESS_DENIED }, { status: 403 });
   }
   const { state } = generateOAuthState(authResult.userId, cookieSecret, returnTo);
 

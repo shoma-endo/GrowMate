@@ -176,7 +176,7 @@ WordPress 一括インポート
 | AI 要約の自動開始 | §1.9.3 の要望には含まれるが、本チケットの目的外 | 別仕様 |
 | 評価サイクルの停止・削除の一括操作 | 既存単記事 UI にも無い。増やさない | 単記事側で先に提供されてから |
 | Feature flag / 専用設定テーブル / 監視ダッシュボード | 要件に無い。壊れたときはデプロイ巻き戻しと UI 非表示で足りる | 該当なし |
-| 既存の単記事開始経路（`registerEvaluation` / `app/api/gsc/evaluations/register/route.ts`）への role 強制の追加 | ~~現状これらに role チェックは無く（両者とも `authMiddleware` の認証のみ）、`/gsc-dashboard` は `proxy.ts` のロールゲート対象外のため `trial` でも単記事開始が可能。これは本仕様以前からの既存挙動であり、塞ぐと `trial` の既存操作を止める**プロダクト判断**になる。~~<br>**2026-08-26 訂正（実測。この根拠の大半は既に失効している）**: (1) **`registerEvaluation` には `canWriteGa4` が入った**（`src/server/actions/gscDashboard.actions.ts:401`。フェーズ1が `ga4-content-evaluation-spec.md` §3.3 のポリシーに従って追加）。(2) 記事詳細は `/analytics/[annotationId]` へ移設され、`PAID_FEATURE_REQUIRED_PATHS = ['/analytics']` に**プレフィックスマッチで含まれる**ため画面自体がロールゲート下にある。旧 `/gsc-dashboard` は恒久 redirect で、redirect 後に proxy が `/unauthorized` へ誘導する。**したがって「`trial` でも単記事開始が可能」はもはや成り立たない。**<br>**残っているのは Route Handler だけ**: `app/api/gsc/evaluations/register/route.ts` は現在も `authMiddleware` のみで role チェックが無い（2026-08-26 実測）。ここは直URL到達点であり、塞ぐかどうかは引き続きプロダクト判断とする。本仕様の要件（一括開始）には含まれないため据え置き、一括経路のみ新規に強制する。共通化する際も **role チェックは一括エントリポイント側に置き、共通の登録コアには入れない** | PO が Route Handler 側を塞ぐ判断をしたとき（別チケット） |
+| 既存の単記事開始経路（`registerEvaluation` / `app/api/gsc/evaluations/register/route.ts`）への role 強制の追加 | ~~現状これらに role チェックは無く（両者とも `authMiddleware` の認証のみ）、`/gsc-dashboard` は `proxy.ts` のロールゲート対象外のため `trial` でも単記事開始が可能。これは本仕様以前からの既存挙動であり、塞ぐと `trial` の既存操作を止める**プロダクト判断**になる。~~<br>**2026-08-26 訂正（実測。この根拠の大半は既に失効している）**: (1) **`registerEvaluation` には `canWriteGa4` が入った**（`src/server/actions/gscDashboard.actions.ts:401`。フェーズ1が `ga4-content-evaluation-spec.md` §3.3 のポリシーに従って追加）。(2) 記事詳細は `/analytics/[annotationId]` へ移設され、`PAID_FEATURE_REQUIRED_PATHS = ['/analytics']` に**プレフィックスマッチで含まれる**ため画面自体がロールゲート下にある。旧 `/gsc-dashboard` は恒久 redirect で、redirect 後に proxy が `/unauthorized` へ誘導する。**したがって「`trial` でも単記事開始が可能」はもはや成り立たない。**<br>**残っているのは Route Handler だけ**: `app/api/gsc/evaluations/register/route.ts` は現在も `authMiddleware` のみで role チェックが無い（2026-08-26 実測）。ここは直URL到達点であり、塞ぐかどうかは引き続きプロダクト判断とする。本仕様の要件（一括開始）には含まれないため据え置き、一括経路のみ新規に強制する。共通化する際も **role チェックは一括エントリポイント側に置き、共通の登録コアには入れない**<br>**2026-10-14 追記**: この Route Handler は呼び出し元が無かったため削除した。単記事開始の未強制経路は残っていない | 解消済み（2026-10-14 Route Handler 削除） |
 | `needsReauth` と連動した一括 UI の失効検知 | BR-04 の判定は `property_uri` の有無のみで、既存の単記事開始と同一。失効検知を一括だけに入れると既存と挙動が食い違い、要件にも無い（MVP 最優先）。失効時の結果は既存の `import_failed` 表示に委ねる（§12 R-005） | 既存 GSC 連携全体で失効検知（`needsReauth` の常時反映）を設計するとき。本仕様の責務外 |
 
 ## 5. 開発工数（概算）
@@ -344,7 +344,7 @@ WordPress 一括インポート
 | --- | --- | --- | --- | --- |
 | admin | 可 | 可 | 可（既存） | 不可（既存どおり提供しない） |
 | paid | 可 | 可 | 可（既存） | 不可 |
-| trial | 不可（`/analytics` は `proxy.ts` で `admin`/`paid` のみ） | 不可（本仕様でサーバー強制を新設） | 方針としては不可。~~ただし **既存実装では強制されていない**（`/gsc-dashboard` はロールゲート対象外で `registerEvaluation` に role チェックが無い）。~~ **2026-08-26 訂正: 画面（`/analytics/[annotationId]`。proxy のプレフィックスマッチ）と Server Action（`registerEvaluation` の `canWriteGa4`）の両方で強制されるようになった。**未強制のまま残るのは Route Handler `app/api/gsc/evaluations/register/route.ts` のみ。本仕様では変更しない（§4 Non-goals） | 不可（削除・解除 UI は存在しない） |
+| trial | 不可（`/analytics` は `proxy.ts` で `admin`/`paid` のみ） | 不可（本仕様でサーバー強制を新設） | 方針としては不可。~~ただし **既存実装では強制されていない**（`/gsc-dashboard` はロールゲート対象外で `registerEvaluation` に role チェックが無い）。~~ **2026-08-26 訂正: 画面（`/analytics/[annotationId]`。proxy のプレフィックスマッチ）と Server Action（`registerEvaluation` の `canWriteGa4`）の両方で強制されるようになった。**~~未強制のまま残るのは Route Handler `app/api/gsc/evaluations/register/route.ts` のみ。本仕様では変更しない（§4 Non-goals）~~ **2026-10-14: 当該 Route Handler は削除済み** | 不可（削除・解除 UI は存在しない） |
 | unavailable | 不可（`proxy.ts` が `/unavailable` へ送る） | 不可 | 不可 | 不可 |
 
 #### 認可の実装方針（既存の事実と、今回新規に作るもの）
@@ -352,7 +352,7 @@ WordPress 一括インポート
 既存コードの事実（2026-08-27 時点）:
 
 - 単記事登録 `registerEvaluation`（`src/server/actions/gscDashboard.actions.ts`）は **`canWriteGa4` で role を強制している**（`admin` / `paid` のみ）。GA4 サイクル統合後、GSC 評価登録も同 Action 経由のため、命名は `canWriteGa4` のままだが実質は統合評価サイクルの write 権限である。
-- `app/api/gsc/evaluations/register/route.ts`（POST）は **依然として `authMiddleware` の認証のみ**で role チェックが無い（§4 Non-goals 据え置き）。
+- ~~`app/api/gsc/evaluations/register/route.ts`（POST）は **依然として `authMiddleware` の認証のみ**で role チェックが無い（§4 Non-goals 据え置き）。~~ 2026-10-14 に削除済み（呼び出し元が無かった）。
 - `/analytics` は `PAID_FEATURE_REQUIRED_PATHS` に含まれ、`/analytics/[annotationId]` もプレフィックスマッチで保護される。
 
 今回の方針:
@@ -569,7 +569,7 @@ BR-04 の判定は `gsc_credentials.property_uri` の有無のみであり、**G
 - 既存システム・ライブラリ・社内標準: Next.js App Router、Server Actions、`ERROR_MESSAGES`、`AnalyticsTable` / `CategoryFilter` の評価未設定フィルタ
 - 再利用する既存実装:
   - `registerEvaluation`（`gscDashboard.actions.ts`）の登録ロジック（一括用にラップまたは共通化）
-  - 重複経路として `app/api/gsc/evaluations/register/route.ts`（POST）が同等の単記事登録を提供している（こちらは `propertyUri` をリクエストボディで受け取る）。共通化する際はこの経路も同じ共通関数へ寄せられる（**本仕様では必須としない**）。少なくとも **3経路目を新設しない**こと。
+  - 重複経路として `app/api/gsc/evaluations/register/route.ts`（POST）が同等の単記事登録を提供している（こちらは `propertyUri` をリクエストボディで受け取る）。共通化する際はこの経路も同じ共通関数へ寄せられる（**本仕様では必須としない**）。少なくとも **3経路目を新設しない**こと。（2026-10-14: この重複経路は削除済み）
   - `gscEvaluationService` の due 判定・初回計測（ベースライン）・初回評価（変更しない）
   - 一覧 RPC `get_filtered_content_annotations` の `p_has_unstarted_gsc_evaluation`（「評価未設定」フィルタ。他のフィルタ条件と AND 結合）。**これは推奨導線（§2）と AC-03 の行消失確認に使う既存フィルタであり、全選択の母集団とは無関係である。母集団の定義の正本は BR-07 で、ID 解決はフィルタ条件なしで行う（BR-07「ID 解決の方式」）。**
   - GSC `property_uri` 解決: `SupabaseService.resolveGscPropertyUri`（`src/server/services/supabaseService.ts`）。**未連携（null）と取得失敗（DB エラー）を区別する**唯一の既存手段。現在 `private` のため public 化して使う。`getGscCredentialByUserId` は DB エラー時も `null` を返すため BR-04 の判定には使わない。
@@ -796,6 +796,7 @@ Q-006 / Q-007 / Q-008 は 2026-08-29 に PO 回答済み。未回答の確認質
 
 | 日付 | 変更内容 | 変更理由 | 変更者 |
 | --- | --- | --- | --- |
+| 2026-10-14 | 単記事開始の重複経路 `app/api/gsc/evaluations/register/route.ts`（role チェック無し）を削除した。§4 Non-goals・§6 権限・§10・§16 判断表・付録A の該当記述を「削除済み」に更新 | アプリ内に呼び出し元が無く、trial が直接叩ける経路だったため。ユーザー承認のうえ削除 | 開発 |
 | 2026-09-03 | **行チェックの選択スコープを「表示中ページ内」から「ページ送りをまたいで保持」へ変更**（§6 項目定義・BR-07「全選択後の個別解除」／実装メモ §2・§3.1／要約親 FR-002・§6・§16）。実装は `app/analytics/selection-scope.ts` の `buildListingSelectionKey` からページ番号を外すのみで、追加の永続化（sessionStorage 等）は作らない。**フィルタ変更での解除は維持**する。リロード・別ページからの復帰では消える（そこまでは要件外）。 | PO 指示（2026-09-03）「『前へ』『次へ』でページジャンプしてもチェックは付いたままにする」。全選択の母集団はもともとページ非依存（BR-07）で、行チェックだけがページ送りで消えるのは非対称だった。また §12 R-007 が丸め超過分の回避手段として挙げる「行チェック（ページ送り）での個別選択」は、保持されて初めて成立する。 | 開発 |
 | 2026-08-31 | **AI 要約一括のゲート撤廃に追随。** BR-06 の「要約側との非対称」を撤回し、§6 UI 記述・レイアウト図・誤読罠・判断6・Q-007 の記録・付録A の理由表示記述を改訂した。 | 要約親 BR-04 で「未要約」ON ゲートを撤廃したため。当時「要約は LLM 費用が取り消せないので維持」とした非対称の前提が、母集団のフィルタ非依存化と実行前再検証の実装で成り立たなくなっていた。 | 開発 |
 | 2026-08-29 | **BR-07 内の ID 解決方式の矛盾を解消し、方式を1本に確定した。** 「母集団の定義」ルールが「ID 解決には一覧 RPC をフィルタ条件なしで呼ぶ」と書きながら、「ID 解決の方式」ルールは「一覧 RPC と同型の解決クエリ（新設）」と書いており、しかも前者は**実現不能**（一覧 RPC は `p_per_page` が100にクランプされ1回で1000件返せない）だった。方式を **`content_annotations` の直接クエリ（`user_id` 一致・`updated_at` 降順 nulls last・`limit 1000`・`count: 'exact'`）1回**へ確定し、一覧 RPC の使い回しと新規 SQL 関数の両方を明示的に不採用にした。あわせて直接クエリと「フィルタ条件なしの一覧 RPC」が同一集合であることの実測根拠（`filtered` CTE の基底と各述語の未指定時分岐）と、**上限1000 と `db-max-rows`(1000) の結合**（上限を上げるなら同時に見直す）を明記。§5 工数・§16 残置合意・付録A・M の取得方法も同期した。 | `spec-to-pr` の implement が「仕様と計画で ID 解決方式が食い違い、Coder の裁量では選べない」として ABORT したため。新規 SQL 関数は migration が増え MVP 最優先に反するので採らない。 | 開発 |
@@ -840,10 +841,10 @@ Q-006 / Q-007 / Q-008 は 2026-08-29 に PO 回答済み。未回答の確認質
 
 | 論点 | 判断 | 理由 |
 | --- | --- | --- |
-| 既存単記事経路（`registerEvaluation` / `app/api/gsc/evaluations/register/route.ts`）に role チェックが無い | 本仕様では塞がず据え置き。一括経路のみ新規強制 | 既存挙動の変更＝`trial` の既存操作停止であり、要件外のプロダクト判断。§4 Non-goals に記録（将来条件付き） |
+| 既存単記事経路（`registerEvaluation` / `app/api/gsc/evaluations/register/route.ts`）に role チェックが無い | 本仕様では塞がず据え置き。一括経路のみ新規強制 | 既存挙動の変更＝`trial` の既存操作停止であり、要件外のプロダクト判断。§4 Non-goals に記録（将来条件付き）。2026-10-14 に Route Handler を削除して解消 |
 | GSC 認可失効の検知（`needsReauth` 連動） | 追加しない | 既存単記事と同じ判定に揃える。要件に無く MVP 最優先。結果は既存 `import_failed` に現れる（§12 R-005） |
 | 既存バッチの due 取得が `db-max-rows` / 時間予算で無言クランプされる | 本仕様では改修しない | 生成列 `next_evaluation_date` により未処理行は due のまま残り、恒久欠落ではなく遅延。§4 対象範囲外（§12 R-003 に機構を明示） |
-| 重複経路 `app/api/gsc/evaluations/register/route.ts` の共通化 | 任意（必須にしない） | 🟢 相当の共通化の候補。必須化すると本仕様のスコープを超える。3経路目を作らない旨だけ §10 に明記 |
+| 重複経路 `app/api/gsc/evaluations/register/route.ts` の共通化 | 任意（必須にしない） | 🟢 相当の共通化の候補。必須化すると本仕様のスコープを超える。3経路目を作らない旨だけ §10 に明記。2026-10-14 に Route Handler を削除したため不要 |
 | 「選択中 N 件 / 全 M 件」表示の**必須性** | ~~要件にしない（実装する場合の plumbing だけ明記）~~ → **要件とする（Must）** | ~~§6 で元から「可能なら」の hedge。評価一括単独では必須化しない~~ **2026-08-29 訂正（新規要件の追加ではなく、本文への同期）**: Q-006 で丸めを採用した結果、丸め時の「1000 / 全 M 件」表示が Must になり（§6 項目定義／付録A）、その表示には M（＝BR-07 の母集団の件数。フィルタ非依存の全記事）が必要になった。§6 の「可能なら」hedge は既に外れており、§4 対象範囲（`ui-text.md` 追記対象）・§5 内訳（丸め時の件数表示を工数計上）・付録A（「フィルタ無しの総件数を別途取得する必要がある」「この表示は Must」）も「作る」前提で揃っている。実装メモ §3.4 も「必須性の出典: **両方で必須**。2026-08-29 に評価一括も丸めを採用したため、**単独先行でも丸め表示が要る**」と確定済み（同メモ IR-01「親が正本。食い違いは親を直し本メモを追随」に従い、親側である本節を訂正した）。M は `app/analytics/page.tsx` の `total`（絞り込み後）を流用できず、フィルタ条件なしで一覧 RPC を呼び `total_count` だけ使う（付録A） |
 | §5 見積の状態が `仮置き`（`2026-08-23。合意前`） | そのまま残す | 内部 go/no-go 用の概算であり、§14 チェックポイントにも §16 承認表にも承認ゲートとして置かれていない。未解決の承認ゲートとして数えない（2026-08-29 audit の判定と一致） |
 | §12 R-003（既存バッチ due 取得の無言クランプ）／ R-005（GSC 認可失効中の一括開始） | 機構を明示のうえ「受容」で確定 | いずれも本仕様の対象範囲外、または要件に無い安全機構。単なるリスク記録であり未解決事項として数えない（2026-08-29 再確認） |
@@ -882,7 +883,7 @@ Q-006 / Q-007 / Q-008 は 2026-08-29 に PO 回答済み。未回答の確認質
 
 実装時の指針。要件の変更権限は持たない。
 
-- 新規 Server Action 案: `registerEvaluationsBulk`（`gscDashboard.actions.ts` または専用 actions）。内部で既存登録ロジックをループ／共通関数化。共通化する場合は `app/api/gsc/evaluations/register/route.ts` も同じコアに寄せられる（必須ではない。§10）。role チェックは共通コアではなく一括エントリポイント側に置く（§6 権限）。
+- 新規 Server Action 案: `registerEvaluationsBulk`（`gscDashboard.actions.ts` または専用 actions）。内部で既存登録ロジックをループ／共通関数化。~~共通化する場合は `app/api/gsc/evaluations/register/route.ts` も同じコアに寄せられる（必須ではない。§10）。~~ 2026-10-14 に当該 Route Handler は削除済み。role チェックは共通コアではなく一括エントリポイント側に置く（§6 権限）。
 - 認可: 一括エントリポイントで **`canWriteGa4({ role })`** を `registerEvaluation` と同型に適用する。
 - 1リクエスト上限: **1000**。超過は 400。取得件数と**フィルタ無しの** `total_count` の突合必須。`items.length >= limit` での打ち切り検知は使えない（1ページの `items` は `p_per_page` の 100件クランプで頭打ちになるだけで、母集団の総数とは関係しない）。**`db-max-rows` は当該経路の制約ではない**（一覧 RPC は jsonb 集約1行返し。BR-07「根拠にしないもの」）。
 - 全選択の実装: **サーバー側の直接クエリ1本のみ**（BR-07「ID 解決の方式」）。クライアントは ID 配列も画面の絞り込み状態も送らない。実装形は次のとおり。
