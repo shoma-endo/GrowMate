@@ -668,7 +668,7 @@ class Ga4ContentEvaluationBatchService extends SupabaseService {
 
   /**
    * 確保で書いた値を抽出時の値へ戻す。条件は GA4 専用列の ga4_last_evaluated_on が当日のまま。
-   * updated_at は同じ行を毎時0分に GSC 評価も更新するため、確保の識別に使えない（戻らずに
+   * updated_at は同じ行を毎時の GSC 評価も更新するため、確保の識別に使えない（戻らずに
    * 再試行が次の評価周期まで飛ぶ）。手動実行が評価を終えて当日を書いた直後にここへ来ると
    * その値も戻すが、already_running の判定から戻すまでの間に手動実行が完了した場合に限られる。
    */

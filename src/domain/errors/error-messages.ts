@@ -531,6 +531,9 @@ export const ERROR_MESSAGES = {
       `GSC Search Analytics API エラー: ${status} ${body}`,
     /** GSC自動取込対象の取得に失敗した場合 */
     AUTO_IMPORT_TARGETS_FETCH_FAILED: (detail: string): string => `GSC自動取込対象の取得に失敗しました: ${detail}`,
+    /** クエリ指標の保存（既存行の読み出しを含む）に失敗した場合 */
+    QUERY_METRICS_SAVE_FAILED: (detail: string): string =>
+      `Google Search Consoleクエリ指標の保存に失敗しました: ${detail}`,
     /** Google Search Consoleが未接続の場合 */
     NOT_CONNECTED: 'Google Search Consoleが未接続です',
 
