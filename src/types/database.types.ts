@@ -74,6 +74,32 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_continuation_events: {
+        Row: {
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_continuation_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           content: string
@@ -2211,6 +2237,10 @@ export type Database = {
           size_pretty: string
           table_name: string
         }[]
+      }
+      import_content_annotations_csv: {
+        Args: { p_rows: Json; p_user_id: string }
+        Returns: Json
       }
       increment_google_search_count: {
         Args: { user_id: string }

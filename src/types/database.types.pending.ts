@@ -74,20 +74,3 @@ export type Ga4ContentEvaluationScheduleDatabase = Omit<Database, 'public'> & {
     };
   };
 };
-
-/**
- * PROVISIONAL: supabase/migrations/20261021010000_add_chat_continuation_events.sql
- * 適用して `npm run supabase:types` を実行したら、この定義を消して呼び出し側を生成型へ戻す。
- */
-export type ChatContinuationEventsDatabase = Omit<Database, 'public'> & {
-  public: Omit<Database['public'], 'Tables'> & {
-    Tables: Database['public']['Tables'] & {
-      chat_continuation_events: {
-        Row: { id: string; user_id: string; created_at: string };
-        Insert: { id?: string; user_id: string; created_at?: string };
-        Update: { id?: string; user_id?: string; created_at?: string };
-        Relationships: [];
-      };
-    };
-  };
-};

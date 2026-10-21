@@ -5,7 +5,6 @@ import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
-import { asPendingClient, type ChatContinuationEventsDatabase } from '@/types/database.types.pending';
 import {
   DbChatMessage,
   DbChatSession,
@@ -799,7 +798,7 @@ export class SupabaseService {
     fromIso: string,
     toIso: string
   ): Promise<SupabaseResult<number>> {
-    const { count, error } = await asPendingClient<ChatContinuationEventsDatabase>(this.supabase)
+    const { count, error } = await this.supabase
       .from('chat_continuation_events')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
@@ -818,7 +817,7 @@ export class SupabaseService {
   }
 
   async recordChatContinuation(userId: string): Promise<SupabaseResult<null>> {
-    const { error } = await asPendingClient<ChatContinuationEventsDatabase>(this.supabase)
+    const { error } = await this.supabase
       .from('chat_continuation_events')
       .insert({ user_id: userId });
 
