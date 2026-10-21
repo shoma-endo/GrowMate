@@ -135,4 +135,15 @@ describe('upsertSplittingOnTimeout', () => {
     expect(result).toEqual({ written: 0, error: otherError });
     expect(upsert).toHaveBeenCalledTimes(1);
   });
+
+  it('左の下限チャンクが 57014 でも右半分の書ける行は書く', async () => {
+    const upsert = vi.fn(async (chunk: number[]) => ({
+      error: chunk.length > 25 || chunk[0] === 0 ? timeout : null,
+    }));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const result = await upsertSplittingOnTimeout(Array.from({ length: 200 }, (_, i) => i), upsert);
+
+    expect(result).toEqual({ written: 175, error: timeout });
+  });
 });
