@@ -13,6 +13,7 @@ jobs:
   monitor:
     name: Check API Changelogs
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # state 更新PRを作成するため write 権限が必要
     permissions:
       contents: write

@@ -234,37 +234,17 @@ VitestはPostgreSQL関数自体を実行しないため、「DBとの同一挙�
 
 ### CI
 
-現在の `.github/workflows/ci.yml` にはaudit・lint・build・knipジョブが存在する。これらと並列の独立した`test`ジョブを追加する。
+`.github/workflows/ci.yml` は1ジョブ（`ci`）の中で audit・lint・test・build・knip を直列のステップとして実行する。ジョブごとに課金が1分へ切り上がるため、並列ジョブには分けない（並列6ジョブで1回あたり約6.4分、1ジョブで約2分。2026-10 実測）。
 
-```yaml
-test:
-  name: Test
-  runs-on: ubuntu-latest
-  if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-  steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-    - name: Setup Node.js
-      uses: actions/setup-node@v6
-      with:
-        node-version: '24'
-        cache: 'npm'
-    - name: Install dependencies
-      run: npm ci
-    - name: Run tests
-      run: npm run test:coverage
-```
-
-通知ジョブでは次の両方を更新し、テスト失敗をLark通知でも失敗として扱う。
-
-- `needs`を`[audit, lint, test, build, knip]`へ変更する
-- `STATUS`判定式へ`needs.test.result == 'success'`を追加する
+- 各検査ステップは `if: ${{ !cancelled() && steps.install.outcome == 'success' }}` とし、前の検査が落ちても残りを実行して失敗を1回の run ですべて出す
+- test ステップは `npm run test:coverage` を実行する
+- 最後の通知ステップは `if: always()` で、`STATUS` に `job.status` を渡す。どの検査が落ちても Lark へ失敗として通知する
 
 ### Phase 3 完了条件
 
 - `npm run verify` がaudit・lint・test・build・knipを実行して成功する
 - CIのaudit・lint・test・build・knipが成功する
-- testジョブ失敗時に、notifyジョブの`STATUS`が`failure`となり、Larkへ失敗状態を通知できる構成になっている
+- test失敗時に、通知ステップの`STATUS`が`failure`となり、Larkへ失敗状態を通知できる構成になっている
 - pre-pushでtest・build・knipが順番に実行される
 - `npm run verify:agent-skills`が成功する
 
@@ -298,7 +278,7 @@ test:
 
 ### 閾値の合意記録（2026-09-03）
 
-上記の「別仕様として合意する」に対応する記録。`vitest.config.ts` の `coverage.thresholds` を `npm run verify` と CI（`.github/workflows/ci.yml` の test ジョブ）で強制する。
+上記の「別仕様として合意する」に対応する記録。`vitest.config.ts` の `coverage.thresholds` を `npm run verify` と CI（`.github/workflows/ci.yml` の test ステップ）で強制する。
 
 - 分母は `src/**` と `app/**` の全 TS ファイル（`src/types/**` と `*.d.ts` を除く）。従来の「テストが import したファイルのみ」の集計（lines 48.8%）は未テストのファイルを見えなくするため採らない
 - 初期値は develop の全ファイル基準の実測（2026-09-08: lines 17.48% / statements 17.5% / functions 18.83% / branches 13.09%、テスト 703 件）から **1 ポイントの余白を引いた床**（lines 16 / statements 16 / functions 17 / branches 12）。低い数字をそのまま出発点にし、上げるためのテストは書かない
