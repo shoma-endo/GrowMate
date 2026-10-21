@@ -1,77 +1,50 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
-const mocks = vi.hoisted(() => ({
-  countUserMessagesBetween: vi.fn(),
-  countChatContinuationsBetween: vi.fn(),
-  recordChatContinuation: vi.fn(),
-}));
+const reserveMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/services/supabaseService', () => ({
   SupabaseService: class {
-    countUserMessagesBetween = mocks.countUserMessagesBetween;
-    countChatContinuationsBetween = mocks.countChatContinuationsBetween;
-    recordChatContinuation = mocks.recordChatContinuation;
+    reserveTrialChatSend = reserveMock;
   },
 }));
 
-import { checkTrialDailyLimit, recordTrialContinuation } from '@/server/services/chatLimitService';
+import { reserveTrialChatSend } from '@/server/services/chatLimitService';
 
-const ok = (data: number | null) => ({ success: true, data });
-const failure = { success: false, error: { userMessage: ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED } };
-
-describe('checkTrialDailyLimit', () => {
+describe('reserveTrialChatSend', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('続き生成は user メッセージを残さないので、記録した件数も足して上限を判定する', async () => {
-    mocks.countUserMessagesBetween.mockResolvedValue(ok(1));
-    mocks.countChatContinuationsBetween.mockResolvedValue(ok(2));
+  it('trial は当日（日本時間）の範囲と上限3回で予約し、予約できれば通す', async () => {
+    reserveMock.mockResolvedValue({ success: true, data: true });
 
-    await expect(checkTrialDailyLimit('trial', 'user-1')).resolves.toBe(ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT);
+    await expect(reserveTrialChatSend('trial', 'user-1')).resolves.toBeNull();
+
+    const [userId, fromIso, toIso, limit] = reserveMock.mock.calls[0]!;
+    expect(userId).toBe('user-1');
+    expect(new Date(toIso).getTime() - new Date(fromIso).getTime()).toBe(24 * 60 * 60 * 1000);
+    expect(new Date(fromIso).getUTCHours()).toBe(15);
+    expect(limit).toBe(3);
   });
 
-  it('合計が上限未満なら通す', async () => {
-    mocks.countUserMessagesBetween.mockResolvedValue(ok(1));
-    mocks.countChatContinuationsBetween.mockResolvedValue(ok(1));
+  it('上限に達して予約できなければ、日次上限の文言を返す', async () => {
+    reserveMock.mockResolvedValue({ success: true, data: false });
 
-    await expect(checkTrialDailyLimit('trial', 'user-1')).resolves.toBeNull();
+    await expect(reserveTrialChatSend('trial', 'user-1')).resolves.toBe(ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT);
   });
 
-  it('続き生成の件数を数えられなければ通さない', async () => {
-    mocks.countUserMessagesBetween.mockResolvedValue(ok(0));
-    mocks.countChatContinuationsBetween.mockResolvedValue(failure);
+  it('予約の処理に失敗したら、生成させないようエラー文言を返す', async () => {
+    reserveMock.mockResolvedValue({
+      success: false,
+      error: { userMessage: ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED },
+    });
 
-    await expect(checkTrialDailyLimit('trial', 'user-1')).resolves.toBe(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED);
+    await expect(reserveTrialChatSend('trial', 'user-1')).resolves.toBe(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED);
   });
 
-  it('trial 以外は数えない', async () => {
-    await expect(checkTrialDailyLimit('paid', 'user-1')).resolves.toBeNull();
-    expect(mocks.countUserMessagesBetween).not.toHaveBeenCalled();
-  });
-});
-
-describe('recordTrialContinuation', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('trial の続き生成を記録する', async () => {
-    mocks.recordChatContinuation.mockResolvedValue(ok(null));
-
-    await expect(recordTrialContinuation('trial', 'user-1')).resolves.toBeNull();
-    expect(mocks.recordChatContinuation).toHaveBeenCalledWith('user-1');
-  });
-
-  it('記録に失敗したら、上限をすり抜けないようエラー文言を返す', async () => {
-    mocks.recordChatContinuation.mockResolvedValue(failure);
-
-    await expect(recordTrialContinuation('trial', 'user-1')).resolves.toBe(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED);
-  });
-
-  it('trial 以外は記録しない', async () => {
-    await expect(recordTrialContinuation('admin', 'user-1')).resolves.toBeNull();
-    expect(mocks.recordChatContinuation).not.toHaveBeenCalled();
+  it('trial 以外は予約しない', async () => {
+    await expect(reserveTrialChatSend('paid', 'user-1')).resolves.toBeNull();
+    expect(reserveMock).not.toHaveBeenCalled();
   });
 });

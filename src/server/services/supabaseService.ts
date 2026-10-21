@@ -5,6 +5,7 @@ import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
+import { asPendingClient, type TrialChatSendReservationDatabase } from '@/types/database.types.pending';
 import {
   DbChatMessage,
   DbChatSession,
@@ -766,70 +767,28 @@ export class SupabaseService {
   }
 
   /**
-   * 指定したユーザーのメッセージ数を、時間範囲でカウント
-   * role は 'user' のみを対象（送信回数としてカウントするため）
+   * trial の送信を1回分予約する。当日の予約が上限に達していれば false（数えて入れるまでを DB の1関数で行う）
    */
-  async countUserMessagesBetween(
+  async reserveTrialChatSend(
     userId: string,
     fromIso: string,
-    toIso: string
-  ): Promise<SupabaseResult<number>> {
-    const { count, error } = await this.supabase
-      .from('chat_messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('role', 'user')
-      .gte('created_at', toIsoTimestamp(fromIso))
-      .lt('created_at', toIsoTimestamp(toIso));
-
-    if (error) {
-      return this.failure('メッセージ数の取得に失敗しました', {
-        error,
-        developerMessage: 'Failed to count user messages in range',
-        context: { userId, fromIso, toIso },
-      });
-    }
-
-    return this.success(count ?? 0);
-  }
-
-  async countChatContinuationsBetween(
-    userId: string,
-    fromIso: string,
-    toIso: string
-  ): Promise<SupabaseResult<number>> {
-    const { count, error } = await this.supabase
-      .from('chat_continuation_events')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .gte('created_at', toIsoTimestamp(fromIso))
-      .lt('created_at', toIsoTimestamp(toIso));
+    toIso: string,
+    limit: number
+  ): Promise<SupabaseResult<boolean>> {
+    const { data, error } = await asPendingClient<TrialChatSendReservationDatabase>(this.supabase).rpc(
+      'reserve_trial_chat_send',
+      { p_user_id: userId, p_from: fromIso, p_to: toIso, p_limit: limit }
+    );
 
     if (error) {
       return this.failure(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED, {
         error,
-        developerMessage: 'Failed to count chat continuations in range',
+        developerMessage: 'Failed to reserve trial chat send',
         context: { userId, fromIso, toIso },
       });
     }
 
-    return this.success(count ?? 0);
-  }
-
-  async recordChatContinuation(userId: string): Promise<SupabaseResult<null>> {
-    const { error } = await this.supabase
-      .from('chat_continuation_events')
-      .insert({ user_id: userId });
-
-    if (error) {
-      return this.failure(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED, {
-        error,
-        developerMessage: 'Failed to record chat continuation',
-        context: { userId },
-      });
-    }
-
-    return this.success(null);
+    return this.success(data === true);
   }
 
   /**

@@ -9,12 +9,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
-// セルフホストへの fetch は名前解決で公開アドレスか確かめる。テストでは公開アドレスに解決させる
-vi.mock('node:dns/promises', () => ({ lookup: vi.fn(async () => [{ address: '93.184.216.34', family: 4 }]) }));
+// 接続先の検査は public-url-guard のテストで見る。ここでは global fetch へそのまま流す
+const fetchPublicUrlMock = vi.hoisted(() => vi.fn((url: string, init?: RequestInit) => fetch(url, init)));
+vi.mock('@/server/lib/public-url-guard', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/server/lib/public-url-guard')>()),
+  fetchPublicUrl: fetchPublicUrlMock,
+}));
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { WordPressImportDeadlineError, WordPressRestFetchError, WordPressService } from '@/server/services/wordpressService';
 import { normalizeWordPressRestPosts } from '@/server/services/wordpressService';
-import { lookup } from 'node:dns/promises';
+import { PublicUrlBlockedError } from '@/server/lib/public-url-guard';
 
 describe('WordPressService（REST API フォールバック）', () => {
   const createSelfHostedService = () =>
@@ -413,15 +417,15 @@ describe('WordPressService（セルフホストの接続先の検査）', () => 
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.mocked(lookup).mockResolvedValue([{ address: '93.184.216.34', family: 4 }] as never);
   });
 
-  it('サイトURLが内部アドレスに解決されるなら、接続テストで fetch しない', async () => {
-    vi.mocked(lookup).mockResolvedValue([{ address: '169.254.169.254', family: 4 }] as never);
+  it('セルフホストへの接続はすべて接続先を検査する経路を通り、内部アドレスなら接続テストは失敗を返す', async () => {
+    fetchPublicUrlMock.mockRejectedValueOnce(new PublicUrlBlockedError('private_address'));
 
     const result = await service.testConnection();
 
     expect(result).toEqual({ success: false, error: ERROR_MESSAGES.WORDPRESS.SITE_URL_NOT_PUBLIC });
+    expect(fetchPublicUrlMock).toHaveBeenCalledWith('https://internal.example.com/wp-json/', expect.anything());
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

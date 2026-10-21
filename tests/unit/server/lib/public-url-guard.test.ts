@@ -1,9 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
+import { gzipSync } from 'node:zlib';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
 const lookupMock = vi.hoisted(() => vi.fn());
 vi.mock('node:dns/promises', () => ({ lookup: lookupMock }));
+
+const httpsRequestMock = vi.hoisted(() => vi.fn());
+vi.mock('node:https', () => ({ request: httpsRequestMock }));
 
 import { checkPublicHttpsUrl, fetchPublicUrl, PublicUrlBlockedError } from '@/server/lib/public-url-guard';
 
@@ -76,67 +82,171 @@ describe('checkPublicHttpsUrl', () => {
   });
 });
 
-describe('fetchPublicUrl', () => {
-  const fetchMock = vi.fn<typeof fetch>();
+type FakeReply = { status: number; headers?: Record<string, string>; body?: string | Buffer };
+type LookupCallback = (error: Error | null) => void;
 
+/**
+ * node:https の request の代わり。本物と同じく、接続の直前に options.lookup で宛先を解決させ、
+ * 解決に失敗（検査で拒否）したら error を出し、通れば replies の応答を返す。
+ */
+function serve(reply: (url: URL) => FakeReply) {
+  httpsRequestMock.mockImplementation(
+    (
+      url: URL,
+      options: { lookup: (host: string, opts: { all: boolean }, cb: LookupCallback) => void },
+      onResponse: (incoming: Readable) => void
+    ) => {
+      const request = Object.assign(new EventEmitter(), {
+        setTimeout: () => request,
+        destroy: (error?: Error) => request.emit('error', error),
+        end: () => {
+          options.lookup(url.hostname, { all: true }, error => {
+            if (error) {
+              request.emit('error', error);
+              return;
+            }
+            const { status, headers = {}, body } = reply(url);
+            onResponse(
+              Object.assign(Readable.from(body ? [Buffer.from(body)] : []), {
+                statusCode: status,
+                statusMessage: '',
+                headers,
+              })
+            );
+          });
+        },
+      });
+      return request;
+    }
+  );
+}
+
+describe('fetchPublicUrl', () => {
   beforeEach(() => {
     lookupMock.mockReset();
-    fetchMock.mockReset();
-    vi.stubGlobal('fetch', fetchMock);
+    httpsRequestMock.mockReset();
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
+  it('名前解決は接続の中で1回だけ行い、その結果が内部アドレスなら接続しない（DNS rebinding 対策）', async () => {
+    resolvesTo('127.0.0.1');
+    serve(() => ({ status: 200, body: 'internal' }));
+
+    await expect(fetchPublicUrl('https://rebind.example.com/wp-json/')).rejects.toMatchObject({
+      reason: 'private_address',
+    });
+    expect(lookupMock).toHaveBeenCalledTimes(1);
+    expect(httpsRequestMock.mock.calls[0]?.[1]).toHaveProperty('lookup');
   });
 
-  it('リダイレクトを自動で追わせず、宛先を検査してから追う', async () => {
+  it('公開アドレスなら応答の状態・ヘッダー・本文をそのまま返す', async () => {
+    resolvesTo('93.184.216.34');
+    serve(() => ({ status: 200, headers: { 'content-type': 'application/json' }, body: '{"ok":true}' }));
+
+    const response = await fetchPublicUrl('https://example.com/wp-json/');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/json');
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it('リダイレクト先が内部アドレスなら追わない', async () => {
     lookupMock.mockImplementation(async (host: string) =>
       host === 'internal.example.com'
         ? [{ address: '169.254.169.254', family: 4 }]
         : [{ address: '93.184.216.34', family: 4 }]
     );
-    fetchMock.mockResolvedValueOnce(
-      new Response(null, { status: 302, headers: { location: 'https://internal.example.com/' } })
+    serve(url =>
+      url.hostname === 'example.com'
+        ? { status: 302, headers: { location: 'https://internal.example.com/' } }
+        : { status: 200, body: 'metadata' }
     );
 
     await expect(fetchPublicUrl('https://example.com/wp-json/')).rejects.toBeInstanceOf(PublicUrlBlockedError);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ redirect: 'manual' });
   });
 
   it('公開アドレスへのリダイレクトは追い、別オリジンには Authorization を送らない', async () => {
     resolvesTo('93.184.216.34');
-    fetchMock
-      .mockResolvedValueOnce(new Response(null, { status: 301, headers: { location: 'https://www.example.org/wp-json/' } }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    serve(url =>
+      url.hostname === 'example.com'
+        ? { status: 301, headers: { location: 'https://www.example.org/wp-json/' } }
+        : { status: 200, body: '{}' }
+    );
 
     const response = await fetchPublicUrl('https://example.com/wp-json/', {
       headers: { Authorization: 'Basic secret', Accept: 'application/json' },
     });
 
     expect(response.status).toBe(200);
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://www.example.org/wp-json/');
-    const secondHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
-    expect(secondHeaders.get('authorization')).toBeNull();
-    expect(secondHeaders.get('accept')).toBe('application/json');
+    expect(String(httpsRequestMock.mock.calls[1]?.[0])).toBe('https://www.example.org/wp-json/');
+    const secondHeaders = httpsRequestMock.mock.calls[1]?.[1]?.headers as Record<string, string>;
+    expect(secondHeaders.authorization).toBeUndefined();
+    expect(secondHeaders.accept).toBe('application/json');
   });
 
   it('http へのリダイレクトは追わない', async () => {
     resolvesTo('93.184.216.34');
-    fetchMock.mockResolvedValueOnce(
-      new Response(null, { status: 301, headers: { location: 'http://example.com/wp-json/' } })
-    );
+    serve(() => ({ status: 301, headers: { location: 'http://example.com/wp-json/' } }));
 
     await expect(fetchPublicUrl('https://example.com/wp-json/')).rejects.toMatchObject({ reason: 'not_https' });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(httpsRequestMock).toHaveBeenCalledTimes(1);
   });
 
   it('リダイレクトが続きすぎたら止める', async () => {
     resolvesTo('93.184.216.34');
-    fetchMock.mockImplementation(async () =>
-      new Response(null, { status: 302, headers: { location: 'https://example.com/loop' } })
-    );
+    serve(() => ({ status: 302, headers: { location: 'https://example.com/loop' } }));
 
     await expect(fetchPublicUrl('https://example.com/')).rejects.toMatchObject({ reason: 'too_many_redirects' });
   });
+
+  it('本文を持てないステータス（205）に本文が付いていても、本文なしの応答として返す', async () => {
+    resolvesTo('93.184.216.34');
+    serve(() => ({ status: 205, body: 'x' }));
+
+    const response = await fetchPublicUrl('https://example.com/');
+
+    expect(response.status).toBe(205);
+    expect(response.body).toBeNull();
+  });
+
+  it('Response にできないステータス（999）は、例外で止まらず reject する', async () => {
+    resolvesTo('93.184.216.34');
+    serve(() => ({ status: 999, body: 'x' }));
+
+    await expect(fetchPublicUrl('https://example.com/')).rejects.toThrow('Unsupported response status: 999');
+  });
+
+  it('identity を求めても gzip で返すサーバーの本文は展開して返す', async () => {
+    resolvesTo('93.184.216.34');
+    serve(() => ({ status: 200, headers: { 'content-encoding': 'gzip' }, body: gzipSync('{"ok":true}') }));
+
+    const response = await fetchPublicUrl('https://example.com/wp-json/');
+
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(httpsRequestMock.mock.calls[0]?.[1]?.headers['accept-encoding']).toBe('identity');
+  });
+
+  it('圧縮した本文の受信が途中で中断されても、読み取りは止まらずに失敗する', async () => {
+    resolvesTo('93.184.216.34');
+    const partial = gzipSync('{"ok":true}'.repeat(100)).subarray(0, 20);
+    httpsRequestMock.mockImplementation((url: URL, options, onResponse: (incoming: Readable) => void) => {
+      const request = Object.assign(new EventEmitter(), {
+        setTimeout: () => request,
+        end: () => {
+          options.lookup(url.hostname, { all: true }, () => {
+            const incoming = new Readable({ read() {} });
+            onResponse(
+              Object.assign(incoming, { statusCode: 200, statusMessage: '', headers: { 'content-encoding': 'gzip' } })
+            );
+            incoming.push(partial);
+            setTimeout(() => incoming.destroy(new Error('aborted')), 10);
+          });
+        },
+      });
+      return request;
+    });
+
+    const response = await fetchPublicUrl('https://example.com/wp-json/');
+
+    await expect(response.text()).rejects.toBeInstanceOf(Error);
+  }, 2000);
 });

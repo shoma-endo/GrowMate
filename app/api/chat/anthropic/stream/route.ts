@@ -19,7 +19,7 @@ import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { resolveKnowledgeBlocksForRequest } from '@/lib/knowledgeInjection';
 import { CONTINUATION_INSTRUCTION, mergeTrailingUserMessage } from '@/lib/chat-continuation';
-import { checkTrialDailyLimit, recordTrialContinuation } from '@/server/services/chatLimitService';
+import { reserveTrialChatSend } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import {
   createEmptyTokenUsageTotals,
@@ -115,18 +115,6 @@ export async function POST(req: NextRequest) {
     const { userId, userDetails } = authResult;
     const userRole = (userDetails?.role ?? 'trial') as UserRole;
 
-    const limitError = await checkTrialDailyLimit(userRole, userId);
-    if (limitError) {
-      return new Response(sendSSE('error', { type: 'daily_limit', message: limitError }), {
-        status: 429,
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-store',
-          Connection: 'keep-alive',
-        },
-      });
-    }
-
     if (isContinuation && !sessionId) {
       return new Response(sendSSE('error', { type: 'invalid_request', message: 'continuation モードには sessionId が必要です' }), {
         status: 400,
@@ -138,19 +126,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (isContinuation) {
-      // 上限チェックとこの記録の間に並列リクエストが割り込めば上限を少し超えられる（通常の送信と同じ水準）
-      const recordError = await recordTrialContinuation(userRole, userId);
-      if (recordError) {
-        return new Response(sendSSE('error', { type: 'daily_limit', message: recordError }), {
-          status: 429,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-store',
-            Connection: 'keep-alive',
-          },
-        });
-      }
+    const limitError = await reserveTrialChatSend(userRole, userId);
+    if (limitError) {
+      return new Response(sendSSE('error', { type: 'daily_limit', message: limitError }), {
+        status: 429,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-store',
+          Connection: 'keep-alive',
+        },
+      });
     }
 
     const { messages: normalizedMessages, userMessage: combinedUserMessage } =
@@ -346,15 +331,6 @@ export async function POST(req: NextRequest) {
               };
 
               try {
-                // 続き生成はストリーム前に枠を記録済みなので、ここで数えると自分の分で上限に達してしまう
-                const postStreamLimitError = isContinuation
-                  ? null
-                  : await checkTrialDailyLimit(userRole, userId);
-                if (postStreamLimitError) {
-                  sendSaveErrorAndExit('daily_limit', postStreamLimitError);
-                  return;
-                }
-
                 let result;
                 if (isContinuation && sessionId) {
                   // continuationMode: "続けてください" を保存せず、途切れた assistant メッセージを上書き

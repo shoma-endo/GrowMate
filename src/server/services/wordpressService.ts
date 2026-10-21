@@ -1,7 +1,12 @@
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { countImageTags } from '@/lib/content-text';
 import { stripHtml } from '@/lib/utils';
-import { fetchPublicUrl, PublicUrlBlockedError, siteUrlRejectMessage } from '@/server/lib/public-url-guard';
+import {
+  fetchPublicUrl,
+  PublicUrlBlockedError,
+  siteUrlRejectMessage,
+  type PublicRequestInit,
+} from '@/server/lib/public-url-guard';
 import {
   WordPressPostResponse,
   WordPressPostApiResponse,
@@ -159,7 +164,7 @@ export class WordPressService {
   /**
    * セルフホストは利用者が入力した URL へ接続するので、公開アドレスかどうかを毎回検査する。
    */
-  private request(url: string, init?: RequestInit): Promise<Response> {
+  private request(url: string, init?: PublicRequestInit): Promise<Response> {
     return this.type === 'self_hosted' ? fetchPublicUrl(url, init) : fetch(url, init);
   }
 

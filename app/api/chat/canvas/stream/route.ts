@@ -12,7 +12,7 @@ import {
   htmlToMarkdownForCanvas,
   sanitizeHtmlForCanvas,
 } from '@/lib/canvas-content';
-import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
+import { reserveTrialChatSend } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import { STEP7_ID } from '@/lib/constants';
 import { generateOrderedTimestamps } from '@/lib/timestamps';
@@ -323,18 +323,6 @@ export async function POST(req: NextRequest) {
     const { userId, userDetails } = authResult;
     const userRole = (userDetails?.role ?? 'trial') as UserRole;
 
-    const limitError = await checkTrialDailyLimit(userRole, userId);
-    if (limitError) {
-      return new Response(sendSSE('error', { type: 'daily_limit', message: limitError }), {
-        status: 429,
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-store',
-          Connection: 'keep-alive',
-        },
-      });
-    }
-
     // MODEL_CONFIGSから設定を取得
     const modelKey = `blog_creation_${targetStep}`;
     const modelConfig = MODEL_CONFIGS[modelKey];
@@ -354,6 +342,18 @@ export async function POST(req: NextRequest) {
         }),
         { status: 400, headers: { 'Content-Type': 'text/event-stream' } }
       );
+    }
+
+    const limitError = await reserveTrialChatSend(userRole, userId);
+    if (limitError) {
+      return new Response(sendSSE('error', { type: 'daily_limit', message: limitError }), {
+        status: 429,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-store',
+          Connection: 'keep-alive',
+        },
+      });
     }
 
     const { maxTokens, temperature, actualModel, thinking } = modelConfig;
@@ -1008,17 +1008,6 @@ export async function POST(req: NextRequest) {
                 targetStep as BlogStepId,
                 resolvedStep7HeadingIndex
               );
-              const postStreamLimitError = await checkTrialDailyLimit(userRole, userId);
-              if (postStreamLimitError) {
-                controller.enqueue(
-                  sendSSE('error', { type: 'daily_limit', message: postStreamLimitError })
-                );
-                if (pingInterval) clearInterval(pingInterval);
-                cleanup();
-                controller.close();
-                return;
-              }
-
               await chatService.continueChat(
                 userId!,
                 sessionId,

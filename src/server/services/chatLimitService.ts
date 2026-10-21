@@ -27,51 +27,21 @@ function getCurrentJstRange() {
 }
 
 /**
- * trial ユーザーの日次チャット送信上限をチェックし、超過時はエラー文言を返す。
- * 続き生成は user メッセージを残さないため、別に記録した件数も足して数える。
+ * trial ユーザーの送信（通常・続き生成とも）を、生成の前に1回分予約する。
+ * 当日の予約が上限に達していれば、または予約できなければエラー文言を返す（呼び出し元は生成しない）。
+ * 予約した後に生成が失敗しても枠は戻さない。
  */
-export async function checkTrialDailyLimit(role: UserRole, userId: string): Promise<string | null> {
+export async function reserveTrialChatSend(role: UserRole, userId: string): Promise<string | null> {
   if (role !== 'trial') {
     return null;
   }
 
-  const supabase = new SupabaseService();
   const { fromUtcIso, toUtcIso } = getCurrentJstRange();
-  const [sentCountResult, continuationCountResult] = await Promise.all([
-    supabase.countUserMessagesBetween(userId, fromUtcIso, toUtcIso),
-    supabase.countChatContinuationsBetween(userId, fromUtcIso, toUtcIso),
-  ]);
+  const result = await new SupabaseService().reserveTrialChatSend(userId, fromUtcIso, toUtcIso, DAILY_CHAT_LIMIT);
 
-  if (!sentCountResult.success) {
-    console.warn('[ChatLimitService] Daily limit check failed:', sentCountResult.error);
-    return sentCountResult.error.userMessage;
-  }
-  if (!continuationCountResult.success) {
-    console.warn('[ChatLimitService] Daily limit check failed:', continuationCountResult.error);
-    return continuationCountResult.error.userMessage;
-  }
-
-  const sentCountToday = sentCountResult.data + continuationCountResult.data;
-
-  if (sentCountToday >= DAILY_CHAT_LIMIT) {
-    return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
-  }
-
-  return null;
-}
-
-/**
- * trial の続き生成を1回の送信として記録する。記録できなければエラー文言を返す（上限をすり抜けないよう、呼び出し元は送信を止める）。
- */
-export async function recordTrialContinuation(role: UserRole, userId: string): Promise<string | null> {
-  if (role !== 'trial') {
-    return null;
-  }
-
-  const result = await new SupabaseService().recordChatContinuation(userId);
   if (!result.success) {
-    console.error('[ChatLimitService] Failed to record continuation:', result.error);
+    console.error('[ChatLimitService] Failed to reserve trial chat send:', result.error);
     return result.error.userMessage;
   }
-  return null;
+  return result.data ? null : ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
 }

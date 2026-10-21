@@ -74,3 +74,18 @@ export type Ga4ContentEvaluationScheduleDatabase = Omit<Database, 'public'> & {
     };
   };
 };
+
+/**
+ * PROVISIONAL: supabase/migrations/20261022000000_reserve_trial_chat_sends.sql
+ * 適用して `npm run supabase:types` を実行したら、この定義を消して呼び出し側を生成型へ戻す。
+ */
+export type TrialChatSendReservationDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Functions'> & {
+    Functions: Database['public']['Functions'] & {
+      reserve_trial_chat_send: {
+        Args: { p_user_id: string; p_from: string; p_to: string; p_limit: number };
+        Returns: boolean;
+      };
+    };
+  };
+};

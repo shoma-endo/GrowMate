@@ -3,8 +3,7 @@ import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
   authMiddleware: vi.fn(),
-  checkTrialDailyLimit: vi.fn(),
-  recordTrialContinuation: vi.fn(),
+  reserveTrialChatSend: vi.fn(),
   getSystemPrompt: vi.fn(),
   messagesStream: vi.fn(),
   updateLastAssistantMessage: vi.fn(),
@@ -20,8 +19,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 vi.mock('@/server/middleware/auth.middleware', () => ({ authMiddleware: mocks.authMiddleware }));
 vi.mock('@/server/middleware/authMiddlewareGuards', () => ({ sse409IfEmailLinkConflict: () => null }));
 vi.mock('@/server/services/chatLimitService', () => ({
-  checkTrialDailyLimit: mocks.checkTrialDailyLimit,
-  recordTrialContinuation: mocks.recordTrialContinuation,
+  reserveTrialChatSend: mocks.reserveTrialChatSend,
 }));
 vi.mock('@/lib/prompts', () => ({ getSystemPrompt: mocks.getSystemPrompt }));
 vi.mock('@/lib/knowledgeInjection', () => ({
@@ -64,8 +62,7 @@ describe('POST /api/chat/anthropic/stream の費用の境界', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authMiddleware.mockResolvedValue({ lineUserId: '', userId: USER_ID, userDetails: { role: 'trial' } });
-    mocks.checkTrialDailyLimit.mockResolvedValue(null);
-    mocks.recordTrialContinuation.mockResolvedValue(null);
+    mocks.reserveTrialChatSend.mockResolvedValue(null);
     mocks.getSystemPrompt.mockResolvedValue('サーバー側のシステムプロンプト');
     mocks.messagesStream.mockImplementation(async () => completedStream('続きの本文'));
     mocks.updateLastAssistantMessage.mockResolvedValue({ sessionId: 'session-1' });
@@ -87,22 +84,21 @@ describe('POST /api/chat/anthropic/stream の費用の境界', () => {
     expect(params.tools[0].max_uses).toBe(3);
   });
 
-  it('trial の続き生成は、ストリームの前に1回分を記録してから生成する', async () => {
-    const response = await POST(
-      streamRequest({ sessionId: 'session-1', isContinuation: true, truncatedContent: '前半' })
-    );
+  it.each([
+    ['通常の送信', {}],
+    ['続き生成', { sessionId: 'session-1', isContinuation: true, truncatedContent: '前半' }],
+  ])('%s は、生成の前に trial の枠を1回分予約する', async (_label, body) => {
+    const response = await POST(streamRequest(body));
     await readEvents(response);
 
-    expect(mocks.recordTrialContinuation).toHaveBeenCalledWith('trial', USER_ID);
-    expect(mocks.recordTrialContinuation.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.reserveTrialChatSend).toHaveBeenCalledTimes(1);
+    expect(mocks.reserveTrialChatSend).toHaveBeenCalledWith('trial', USER_ID);
+    expect(mocks.reserveTrialChatSend.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.messagesStream.mock.invocationCallOrder[0]!
     );
   });
 
-  it('続き生成の記録で当日の上限に達しても、生成した本文は保存する（自分の記録で弾かない）', async () => {
-    // 事前チェックは通り、ストリーム後に数え直すと今回の記録で上限に達する状況
-    mocks.checkTrialDailyLimit.mockResolvedValueOnce(null).mockResolvedValue(ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT);
-
+  it('続き生成は、予約した後の保存で上限に引っかからず、本文を元のメッセージへ上書き保存する', async () => {
     const response = await POST(
       streamRequest({ sessionId: 'session-1', isContinuation: true, truncatedContent: '前半' })
     );
@@ -115,11 +111,10 @@ describe('POST /api/chat/anthropic/stream の費用の境界', () => {
       expect.anything()
     );
     expect(events).toContain('event: final');
-    expect(events).not.toContain('daily_limit');
   });
 
-  it('続き生成を記録できなければ、生成せずに断る', async () => {
-    mocks.recordTrialContinuation.mockResolvedValue(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED);
+  it('枠を予約できなければ、生成せずに 429 で断る', async () => {
+    mocks.reserveTrialChatSend.mockResolvedValue(ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT);
 
     const response = await POST(
       streamRequest({ sessionId: 'session-1', isContinuation: true, truncatedContent: '前半' })
