@@ -197,7 +197,7 @@ export function ContentCsvImportDialog() {
         <section className="space-y-3 rounded-md border p-4">
           <h3 className="font-medium">1. テンプレートをダウンロード</h3>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" onClick={downloadTemplate} className="h-9 inline-flex items-center gap-2">
+            <Button type="button" variant="outline" onClick={downloadTemplate} className="h-9 inline-flex items-center gap-2">
               <Download className="w-4 h-4" aria-hidden />
               <span>テンプレート（CSV）</span>
             </Button>
@@ -209,18 +209,23 @@ export function ContentCsvImportDialog() {
               </ul>
             </InfoTooltipButton>
           </div>
-          <Table>
-            <TableHeader><TableRow><TableHead>見出し</TableHead><TableHead>必須</TableHead><TableHead>列の定義</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {contentCsvTemplateHeaders().map(({ key, label }) => (
-                <TableRow key={key}>
-                  <TableCell>{label}</TableCell>
-                  <TableCell>{key === 'url' ? '必須' : '任意'}</TableCell>
-                  <TableCell>{COLUMN_DESCRIPTIONS[key]}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <details className="rounded-md border p-3 text-sm">
+            <summary className="cursor-pointer font-medium">列の定義を確認</summary>
+            <div className="mt-2">
+              <Table>
+                <TableHeader><TableRow><TableHead>見出し</TableHead><TableHead>必須</TableHead><TableHead>列の定義</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {contentCsvTemplateHeaders().map(({ key, label }) => (
+                    <TableRow key={key}>
+                      <TableCell>{label}</TableCell>
+                      <TableCell>{key === 'url' ? '必須' : '任意'}</TableCell>
+                      <TableCell>{COLUMN_DESCRIPTIONS[key]}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </details>
         </section>
         <section className="space-y-3 rounded-md border p-4">
           <h3 className="font-medium">2. 作った CSV を選ぶ</h3>
