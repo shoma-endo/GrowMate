@@ -1,11 +1,12 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, Upload } from 'lucide-react';
+import { Download, Loader2, Upload } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { ImportResultCount } from '../../wordpress-import/WordPressImportClient';
+import { JobProgressText } from '../AnalyticsClient';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -30,7 +31,7 @@ import { isEmailLinkConflictResult, replaceToEmailLinkConflictLogin } from '@/li
 import { cn } from '@/lib/utils';
 import type { AnnotationFieldKey } from '@/types/annotation';
 
-type ImportPhase = 'ready' | 'error' | 'running' | 'failed' | 'done';
+type ImportPhase = 'ready' | 'reading' | 'error' | 'running' | 'failed' | 'done';
 
 interface ImportTotals {
   updated: number;
@@ -40,6 +41,10 @@ interface ImportTotals {
 }
 
 const EMPTY_TOTALS: ImportTotals = { updated: 0, created: 0, unchanged: 0, skipped: [] };
+
+/** 空行を除いたデータ行の数（取り込む行・ブラウザでスキップした行・後の行に置き換わった重複行） */
+const countDataRows = (parsedFile: ParsedContentCsv) =>
+  parsedFile.rows.length + parsedFile.skipped.length + parsedFile.duplicateCount;
 
 const COLUMN_DESCRIPTIONS: Record<'url' | AnnotationFieldKey, string> = {
   url: '公開中の記事ページの URL（ブラウザで開いたときのアドレス。http:// または https:// から）。管理画面やプレビューの URL ではありません。',
@@ -96,6 +101,7 @@ export function ContentCsvImportDialog() {
     reset();
     if (!file) return;
     const readId = fileReadIdRef.current;
+    setPhase('reading');
 
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
@@ -118,7 +124,7 @@ export function ContentCsvImportDialog() {
 
   const importRows = async (rows: ContentCsvImportRow[], parsedFile: ParsedContentCsv) => {
     const batches = buildContentCsvImportBatches(rows);
-    const totalRows = parsedFile.rows.length + parsedFile.skipped.length + parsedFile.duplicateCount;
+    const totalRows = countDataRows(parsedFile);
     let nextTotals: ImportTotals = {
       ...EMPTY_TOTALS,
       skipped: [...parsedFile.skipped],
@@ -176,6 +182,14 @@ export function ContentCsvImportDialog() {
     }
   };
 
+  // 状態の変化を読み上げる（見えている表示は状態ごとに出し分けるので、常に出ている要素に文を入れる）
+  const liveStatus =
+    phase === 'reading' ? '読み込み中'
+      : phase === 'ready' && parsed ? `${countDataRows(parsed).toLocaleString()} 件を読み込みました`
+        : phase === 'running' ? '取り込み中'
+          : phase === 'done' ? '取り込み完了'
+            : '';
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
@@ -194,6 +208,7 @@ export function ContentCsvImportDialog() {
         <DialogHeader>
           <DialogTitle>CSV で取り込む</DialogTitle>
         </DialogHeader>
+        <p className="sr-only" aria-live="polite">{liveStatus}</p>
         <section className="space-y-3 rounded-md border p-4">
           <h3 className="font-medium">1. テンプレートをダウンロード</h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -229,11 +244,22 @@ export function ContentCsvImportDialog() {
         </section>
         <section className="space-y-3 rounded-md border p-4">
           <h3 className="font-medium">2. 作った CSV を選ぶ</h3>
-          <p className="text-sm text-muted-foreground">UTF-8・最大2万行</p>
+          <p className="text-sm text-muted-foreground">最大2万行。Excel で保存した場合は「CSV UTF-8（コンマ区切り）」形式。</p>
           <div className="flex flex-wrap items-center gap-2">
             <Input type="file" accept=".csv,text/csv" aria-label="CSV ファイルを選択" onClick={event => { event.currentTarget.value = ''; reset(); }} onChange={handleFileChange} disabled={phase === 'running'} />
-            <Button type="button" onClick={handleImport} disabled={!parsed || phase === 'running'}>取り込む</Button>
+            <Button type="button" onClick={handleImport} disabled={!parsed || phase !== 'ready'}>取り込む</Button>
           </div>
+          {phase === 'reading' && (
+            <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              読み込み中...
+            </p>
+          )}
+          {phase === 'ready' && parsed && (
+            <p className="text-sm text-muted-foreground">
+              {countDataRows(parsed).toLocaleString()} 件を読み込みました（重複 {parsed.duplicateCount.toLocaleString()} 件）
+            </p>
+          )}
         </section>
         {phase === 'error' && (
           <Alert variant="destructive">
@@ -242,10 +268,8 @@ export function ContentCsvImportDialog() {
           </Alert>
         )}
         {phase === 'running' && parsed && (
-          <section aria-live="polite" className="space-y-2">
-            <h3 className="font-medium">取り込み中</h3>
-            <p>処理済み {processed.toLocaleString()} / {(parsed.rows.length + parsed.skipped.length + parsed.duplicateCount).toLocaleString()} 件</p>
-            <progress className="w-full" max={parsed.rows.length + parsed.skipped.length + parsed.duplicateCount} value={processed} />
+          <section className="space-y-2">
+            <JobProgressText label="取り込み中" processed={processed.toLocaleString()} total={countDataRows(parsed).toLocaleString()} />
             <p className="text-sm text-muted-foreground">完了までダイアログを閉じられません。</p>
           </section>
         )}

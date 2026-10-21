@@ -122,6 +122,15 @@ function BulkSelectionCount({ children }: { children: React.ReactNode }) {
   return <span className="text-sm text-gray-600">{children}</span>;
 }
 
+/** 処理の進み具合（AI 要約一括と CSV 取り込みで共用） */
+export function JobProgressText({ label, processed, total }: { label: string; processed: number | string; total: number | string }) {
+  return (
+    <p className="mb-4 text-sm text-gray-600">
+      {label}...（処理済み {processed} / 対象 {total} 件）
+    </p>
+  );
+}
+
 /** 一括操作ツールバーのボタン横の補足（押せない理由・丸めた件数など） */
 function BulkActionNote({ children }: { children: React.ReactNode }) {
   return <span className="text-xs text-gray-500">{children}</span>;
@@ -437,9 +446,7 @@ export default function AnalyticsClient({
 
   const summaryJobProgress =
     summaryJobProcessedCount !== null && summaryJobTotalCount !== null ? (
-      <p className="mb-4 text-sm text-gray-600">
-        要約中...（処理済み {summaryJobProcessedCount} / 対象 {summaryJobTotalCount} 件）
-      </p>
+      <JobProgressText label="要約中" processed={summaryJobProcessedCount} total={summaryJobTotalCount} />
     ) : null;
 
   const blogContent = (
