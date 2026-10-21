@@ -1,5 +1,5 @@
--- 開発初期の全許可ポリシー（FOR ALL USING (true)、対象ロール public）が本番に残っていた。
--- RLS のポリシーは OR で効くため、*_own ポリシーがあっても anon キーだけで全行を読み書きできる状態だった。
+-- ロール public への FOR ALL USING (true) があると、RLS のポリシーは OR で効くため、
+-- *_own ポリシーがあっても anon キーだけで全行を読み書きできる。そのため外す。
 -- アプリのテーブルアクセスはすべて Service Role（RLS をバイパス）なので、外してもアプリの動作は変わらない。
 drop policy if exists "開発環境用全許可ポリシー_users" on public.users;
 drop policy if exists "開発環境用全許可ポリシー_briefs" on public.briefs;
