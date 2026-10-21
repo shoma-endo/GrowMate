@@ -249,4 +249,36 @@ describe('fetchPublicUrl', () => {
 
     await expect(response.text()).rejects.toBeInstanceOf(Error);
   }, 2000);
+
+  it('101 で upgrade を返すサーバーにも、待ち続けずに reject する', async () => {
+    resolvesTo('93.184.216.34');
+    httpsRequestMock.mockImplementation((url: URL, options) => {
+      const request = Object.assign(new EventEmitter(), {
+        setTimeout: () => request,
+        end: () => {
+          options.lookup(url.hostname, { all: true }, () => {
+            request.emit('upgrade', {}, { destroy: () => undefined });
+          });
+        },
+      });
+      return request;
+    });
+
+    await expect(fetchPublicUrl('https://example.com/')).rejects.toThrow('Unsupported response status: 101');
+  }, 2000);
+
+  it('応答の前に接続が閉じたら、待ち続けずに reject する', async () => {
+    resolvesTo('93.184.216.34');
+    httpsRequestMock.mockImplementation((url: URL, options) => {
+      const request = Object.assign(new EventEmitter(), {
+        setTimeout: () => request,
+        end: () => {
+          options.lookup(url.hostname, { all: true }, () => request.emit('close'));
+        },
+      });
+      return request;
+    });
+
+    await expect(fetchPublicUrl('https://example.com/')).rejects.toThrow('Connection closed before a response');
+  }, 2000);
 });

@@ -202,6 +202,12 @@ function requestPinned(url: URL, init: PublicRequestInit): Promise<Response> {
       request.destroy(new Error(`Request timed out after ${SOCKET_IDLE_TIMEOUT_MS}ms of inactivity`));
     });
     request.on('error', reject);
+    // 101 は応答のコールバックに来ず upgrade イベントになる。応答前に閉じた場合も含め、待ち続けないよう reject する
+    request.on('upgrade', (_incoming, socket) => {
+      socket.destroy();
+      reject(new Error('Unsupported response status: 101'));
+    });
+    request.on('close', () => reject(new Error('Connection closed before a response')));
     request.end(init.body);
   });
 }
