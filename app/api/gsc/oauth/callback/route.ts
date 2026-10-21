@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { verifyOAuthState } from '@/server/lib/oauth-state';
+import { verifyOAuthStateCookie } from '@/server/lib/oauth-flow';
 import { SupabaseService } from '@/server/services/supabaseService';
 import {
   GscService,
@@ -39,8 +40,8 @@ export async function GET(request: NextRequest) {
   }
 
   const storedState = request.cookies.get(stateCookieName)?.value;
-  if (storedState && storedState !== state) {
-    console.error('GSC OAuth state mismatch', { storedState, received: state });
+  if (verifyOAuthStateCookie({ storedState, receivedState: state }) !== 'ok') {
+    console.error('GSC OAuth state mismatch', { stored: !!storedState, received: !!state });
     return buildJsonResponse({ error: 'stateが一致しません' }, { status: 400 });
   }
 

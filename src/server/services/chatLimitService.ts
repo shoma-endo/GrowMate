@@ -27,27 +27,21 @@ function getCurrentJstRange() {
 }
 
 /**
- * trial ユーザーの日次チャット送信上限をチェックし、超過時はエラー文言を返す
+ * trial ユーザーの送信（通常・続き生成とも）を、生成の前に1回分予約する。
+ * 当日の予約が上限に達していれば、または予約できなければエラー文言を返す（呼び出し元は生成しない）。
+ * 予約した後に生成が失敗しても枠は戻さない。
  */
-export async function checkTrialDailyLimit(role: UserRole, userId: string): Promise<string | null> {
+export async function reserveTrialChatSend(role: UserRole, userId: string): Promise<string | null> {
   if (role !== 'trial') {
     return null;
   }
 
-  const supabase = new SupabaseService();
   const { fromUtcIso, toUtcIso } = getCurrentJstRange();
-  const sentCountResult = await supabase.countUserMessagesBetween(userId, fromUtcIso, toUtcIso);
+  const result = await new SupabaseService().reserveTrialChatSend(userId, fromUtcIso, toUtcIso, DAILY_CHAT_LIMIT);
 
-  if (!sentCountResult.success) {
-    console.warn('[ChatLimitService] Daily limit check failed:', sentCountResult.error);
-    return sentCountResult.error.userMessage;
+  if (!result.success) {
+    console.error('[ChatLimitService] Failed to reserve trial chat send:', result.error);
+    return result.error.userMessage;
   }
-
-  const sentCountToday = sentCountResult.data;
-
-  if (sentCountToday >= DAILY_CHAT_LIMIT) {
-    return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
-  }
-
-  return null;
+  return result.data ? null : ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
 }

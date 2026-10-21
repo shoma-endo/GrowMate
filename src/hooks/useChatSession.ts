@@ -75,7 +75,6 @@ interface StreamingParams {
   model: string;
   currentSessionId: string;
   recentMessages: SerializableMessage[];
-  systemPrompt?: string;
   serviceId?: string;
   /** 本文生成ボタン用: blog_creation_step7 の応答を session_combined_contents に保存 */
   step7FullBodyGeneration?: boolean;
@@ -151,7 +150,6 @@ export const useChatSession = (
       model,
       currentSessionId,
       recentMessages,
-      systemPrompt,
       serviceId,
       step7FullBodyGeneration,
       continuationMode,
@@ -211,7 +209,6 @@ export const useChatSession = (
             })),
             userMessage: content,
             model,
-            ...(systemPrompt ? { systemPrompt } : {}),
             ...(serviceId ? { serviceId } : {}),
             ...(step7FullBodyGeneration ? { step7FullBodyGeneration: true } : {}),
             ...(continuationMode ? { isContinuation: true, truncatedContent: truncatedContent ?? '' } : {}),
@@ -422,7 +419,6 @@ export const useChatSession = (
       model,
       currentSessionId,
       recentMessages,
-      systemPrompt,
       serviceId,
     }: StreamingParams): Promise<boolean> => {
       const setSendState = createViewScopedSetState();
@@ -442,7 +438,6 @@ export const useChatSession = (
           isNewSession: !currentSessionId,
           sessionId: currentSessionId || undefined,
           messages: recentMessages,
-          systemPrompt,
           serviceId,
         });
 
@@ -529,7 +524,6 @@ export const useChatSession = (
       content: string,
       model: string,
       options?: {
-        systemPrompt?: string;
         serviceId?: string;
         step7FullBodyGeneration?: boolean;
         /** true のとき過去のチャット履歴を送信しない */
@@ -568,10 +562,6 @@ export const useChatSession = (
                     : MAX_MESSAGES,
               }),
         };
-
-        if (options?.systemPrompt) {
-          streamingParams.systemPrompt = options.systemPrompt;
-        }
 
         if (options?.serviceId) {
           streamingParams.serviceId = options.serviceId;

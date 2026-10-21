@@ -133,12 +133,9 @@ export class ModelHandlerService {
       messages,
       userMessage,
       model,
-      systemPrompt: customSystemPrompt,
       serviceId,
     } = data;
-    // カスタムsystemPromptが渡されていればそれを使用、なければキャッシュ戦略を活用した動的プロンプト取得
-    const systemPrompt =
-      customSystemPrompt ?? (await getSystemPrompt(model, undefined, sessionId, serviceId));
+    const systemPrompt = await getSystemPrompt(model, undefined, sessionId, serviceId);
 
     if (model === 'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2') {
       const config = MODEL_CONFIGS[model];

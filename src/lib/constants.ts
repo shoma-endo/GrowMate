@@ -10,6 +10,7 @@ import type { LinkedMessageRule } from '@/components/LinkedMessage';
 // Chat Configuration
 export const CHAT_HISTORY_LIMIT = 10; // 件数制限を緩和し、文字数制限(CHAR_LIMIT)を主とする
 export const CHAT_HISTORY_CHAR_LIMIT = 30000; // 約20k-30kトークン相当
+export const WEB_SEARCH_MAX_USES = 3;
 
 export const GA4_SCOPE = 'https://www.googleapis.com/auth/analytics.readonly';
 

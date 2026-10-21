@@ -1767,6 +1767,32 @@ export type Database = {
           },
         ]
       }
+      trial_chat_send_reservations: {
+        Row: {
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trial_chat_send_reservations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_table_field_configs: {
         Row: {
           created_at: string
@@ -2250,6 +2276,15 @@ export type Database = {
       normalize_keyword: { Args: { input_text: string }; Returns: string }
       normalize_to_path: { Args: { input_text: string }; Returns: string }
       normalize_url: { Args: { url: string }; Returns: string }
+      reserve_trial_chat_send: {
+        Args: {
+          p_from: string
+          p_limit: number
+          p_to: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       save_atomic_combined_content: {
         Args: {
           p_authenticated_user_id?: string
