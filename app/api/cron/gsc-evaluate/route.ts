@@ -5,7 +5,7 @@ import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 /**
  * GSC 評価バッチ Cron エンドポイント
  *
- * Vercel Cron（`vercel.json`）が毎時0分に GET で呼び出す。手動実行は GitHub Actions の `workflow_dispatch`。
+ * Vercel Cron（`vercel.json`）が毎時 GET で呼び出す。手動実行は GitHub Actions の `workflow_dispatch`。
  * 「次回評価予定日時 <= 現在日時」のユーザーのみ評価を実行する。
  *
  * 認証: CRON_SECRET による Bearer トークン認証

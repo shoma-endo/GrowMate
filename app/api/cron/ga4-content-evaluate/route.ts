@@ -5,12 +5,12 @@ import { CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
 /**
  * GA4コンテンツ評価 定期バッチ Cron エンドポイント（docs/specs/ga4-content-evaluation-spec.md §8.3）
  *
- * Vercel Cron（`vercel.json`）が毎時0分に GET で呼び出す。手動実行は GitHub Actions の `workflow_dispatch`。
+ * Vercel Cron（`vercel.json`）が毎時 GET で呼び出す。手動実行は GitHub Actions の `workflow_dispatch`。
  * 「GA4の次回評価予定日時 <= 現在日時」の記事のみ評価を実行する。
  *
  * スケジュール（基準日・サイクル日数・実行時刻）はGSC検索順位評価と同じ gsc_article_evaluations の
  * 1行が正で、GA4は実行進捗（ga4_last_evaluated_on）だけを系統別に持つ（2026-08-26 サイクル統合）。
- * gsc-evaluate と同じ毎時実行に並んで走るが、互いの進捗列には触れない。
+ * gsc-evaluate も同じ行を毎時更新するが、互いの進捗列には触れない。
  *
  * 認証: CRON_SECRET による Bearer トークン認証。
  * セッションが存在しないため、ロールとGA4連携状態の絞り込みは due 抽出の SQL（§8.3 手順1）で行う。

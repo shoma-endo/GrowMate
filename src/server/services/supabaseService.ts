@@ -42,6 +42,33 @@ import {
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
 import { PAID_FEATURE_ROLES } from '@/types/user';
 import { hasWordPressImportTargetChanged } from '@/server/lib/wordpress-diff-import';
+import {
+  chunkRows,
+  groupByReadScope,
+  isSameAtScale,
+  selectChangedRows,
+  upsertSplittingOnTimeout,
+  type GscMetricsReadScope,
+} from '@/server/lib/gsc-metrics-upsert';
+import { normalizeUrl } from '@/lib/normalize-url';
+
+/** migration の numeric(p, s) の s。値が同じかはこの桁に丸めて比べる */
+const GSC_QUERY_METRICS_SCALE = { ctr: 4, position: 2 } as const;
+const GSC_PAGE_METRICS_SCALE = { ctr: 4, position: 4 } as const;
+
+export interface GscPageMetricUpsertRow {
+  user_id: string;
+  content_annotation_id: string;
+  property_uri: string;
+  search_type: string;
+  date: string;
+  url: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  imported_at: string;
+}
 
 type InstagramCredentialRow = Tables<'instagram_credentials'>;
 type InstagramCredentialInsertRow = TablesInsert<'instagram_credentials'>;
@@ -1989,39 +2016,186 @@ export class SupabaseService {
       return;
     }
 
-    const chunkSize = 500;
-    for (let i = 0; i < rows.length; i += chunkSize) {
-      const chunk = rows.slice(i, i + chunkSize);
-      const nowIso = new Date().toISOString();
-      const payload = chunk.map(row => ({
-        user_id: row.userId,
-        property_uri: row.propertyUri,
-        property_type: row.propertyType,
-        search_type: row.searchType,
-        date: row.date,
-        url: row.url,
-        normalized_url: row.normalizedUrl,
-        query: row.query,
-        query_normalized: row.queryNormalized,
-        clicks: row.clicks,
-        impressions: row.impressions,
-        ctr: row.ctr,
-        position: row.position,
-        content_annotation_id: row.contentAnnotationId ?? null,
-        imported_at: row.importedAt,
-        created_at: row.importedAt,
-        updated_at: nowIso,
-      }));
+    const changedRows: typeof rows = [];
+    for (const group of groupByReadScope(
+      rows,
+      row => ({ userId: row.userId, propertyUri: row.propertyUri, searchType: row.searchType, date: row.date }),
+      row => row.normalizedUrl
+    )) {
+      const { data: existing, error } = await this.listGscQueryMetricsForScope(group.scope);
+      if (error) {
+        console.error('Error reading existing GSC query metrics:', { scope: group.scope, error });
+        throw new Error(ERROR_MESSAGES.GSC.QUERY_METRICS_SAVE_FAILED(error.message));
+      }
+      changedRows.push(
+        ...selectChangedRows(
+          group.rows,
+          existing,
+          row => JSON.stringify([row.date, row.normalizedUrl, row.queryNormalized]),
+          stored => JSON.stringify([stored.date, stored.normalized_url, stored.query_normalized]),
+          (row, stored) =>
+            row.url === stored.url &&
+            row.query === stored.query &&
+            row.propertyType === stored.property_type &&
+            row.clicks === stored.clicks &&
+            row.impressions === stored.impressions &&
+            isSameAtScale(row.ctr, stored.ctr, GSC_QUERY_METRICS_SCALE.ctr) &&
+            isSameAtScale(row.position, stored.position, GSC_QUERY_METRICS_SCALE.position) &&
+            (row.contentAnnotationId ?? null) === stored.content_annotation_id
+        )
+      );
+    }
 
-      const { error } = await this.supabase.from('gsc_query_metrics').upsert(payload, {
-        onConflict: 'user_id,property_uri,date,normalized_url,query_normalized,search_type',
-      });
+    const nowIso = new Date().toISOString();
+    const payload = changedRows.map(row => ({
+      user_id: row.userId,
+      property_uri: row.propertyUri,
+      property_type: row.propertyType,
+      search_type: row.searchType,
+      date: row.date,
+      url: row.url,
+      normalized_url: row.normalizedUrl,
+      query: row.query,
+      query_normalized: row.queryNormalized,
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position,
+      content_annotation_id: row.contentAnnotationId ?? null,
+      imported_at: row.importedAt,
+      created_at: row.importedAt,
+      updated_at: nowIso,
+    }));
+
+    for (const chunk of chunkRows(payload)) {
+      const { error } = await upsertSplittingOnTimeout(chunk, part =>
+        this.supabase.from('gsc_query_metrics').upsert(part, {
+          onConflict: 'user_id,property_uri,date,normalized_url,query_normalized,search_type',
+        })
+      );
 
       if (error) {
         console.error('Error upserting GSC query metrics:', error);
-        throw new Error(`Google Search Consoleクエリ指標の保存に失敗しました: ${error.message}`);
+        throw new Error(ERROR_MESSAGES.GSC.QUERY_METRICS_SAVE_FAILED(error.message));
       }
     }
+  }
+
+  private listGscQueryMetricsForScope(scope: GscMetricsReadScope) {
+    return this.fetchAllPaged((from, to) => {
+      let query = this.supabase
+        .from('gsc_query_metrics')
+        .select(
+          'date, normalized_url, query_normalized, url, query, property_type, clicks, impressions, ctr, position, content_annotation_id'
+        )
+        .eq('user_id', scope.userId)
+        .eq('property_uri', scope.propertyUri)
+        .eq('search_type', scope.searchType)
+        .gte('date', scope.dateFrom)
+        .lte('date', scope.dateTo);
+      if (scope.normalizedUrl) query = query.eq('normalized_url', scope.normalizedUrl);
+      return query
+        .order('date', { ascending: true })
+        .order('normalized_url', { ascending: true })
+        .order('query_normalized', { ascending: true })
+        .range(from, to);
+    });
+  }
+
+  /**
+   * gsc_page_metrics を一意キー単位で保存する。値が同じ行は書かない。
+   * 失敗は投げずに件数で返す（呼び出し側は失敗したチャンクを数えて残りの取込を続ける）。
+   */
+  async upsertGscPageMetrics(rows: GscPageMetricUpsertRow[]): Promise<{
+    written: number;
+    unchanged: number;
+    failedRows: number;
+    failedChunks: number;
+  }> {
+    let unreadRows = 0;
+    let unwrittenRows = 0;
+    let failedChunks = 0;
+    const changedRows: GscPageMetricUpsertRow[] = [];
+
+    for (const group of groupByReadScope(
+      rows,
+      row => ({ userId: row.user_id, propertyUri: row.property_uri, searchType: row.search_type, date: row.date }),
+      row => normalizeUrl(row.url)
+    )) {
+      const { data: existing, error } = await this.listGscPageMetricsForScope(group.scope);
+      if (error) {
+        console.error('[gsc-import] reading existing page metrics failed:', {
+          scope: group.scope,
+          error: error.message,
+        });
+        unreadRows += group.rows.length;
+        failedChunks += 1;
+        continue;
+      }
+      changedRows.push(
+        ...selectChangedRows(
+          group.rows,
+          existing,
+          row => {
+            const normalizedUrl = normalizeUrl(row.url);
+            return normalizedUrl === null ? null : JSON.stringify([row.date, normalizedUrl]);
+          },
+          stored => (stored.normalized_url === null ? null : JSON.stringify([stored.date, stored.normalized_url])),
+          (row, stored) =>
+            row.url === stored.url &&
+            row.clicks === stored.clicks &&
+            row.impressions === stored.impressions &&
+            isSameAtScale(row.ctr, stored.ctr, GSC_PAGE_METRICS_SCALE.ctr) &&
+            isSameAtScale(row.position, stored.position, GSC_PAGE_METRICS_SCALE.position) &&
+            row.content_annotation_id === stored.content_annotation_id
+        )
+      );
+    }
+
+    let written = 0;
+    for (const chunk of chunkRows(changedRows)) {
+      const result = await upsertSplittingOnTimeout(chunk, part =>
+        this.supabase.from('gsc_page_metrics').upsert(part, {
+          onConflict: 'user_id,property_uri,date,normalized_url,search_type',
+        })
+      );
+      written += result.written;
+      if (result.error) {
+        console.error('[gsc-import] upsertPageMetrics chunk failed:', {
+          userId: chunk[0]?.user_id,
+          chunkSize: chunk.length,
+          error: result.error.message,
+        });
+        unwrittenRows += chunk.length - result.written;
+        failedChunks += 1;
+      }
+    }
+
+    return {
+      written,
+      unchanged: rows.length - unreadRows - changedRows.length,
+      failedRows: unreadRows + unwrittenRows,
+      failedChunks,
+    };
+  }
+
+  private listGscPageMetricsForScope(scope: GscMetricsReadScope) {
+    return this.fetchAllPaged((from, to) => {
+      let query = this.supabase
+        .from('gsc_page_metrics')
+        .select('id, date, normalized_url, url, clicks, impressions, ctr, position, content_annotation_id')
+        .eq('user_id', scope.userId)
+        .eq('property_uri', scope.propertyUri)
+        .eq('search_type', scope.searchType)
+        .gte('date', scope.dateFrom)
+        .lte('date', scope.dateTo);
+      if (scope.normalizedUrl) query = query.eq('normalized_url', scope.normalizedUrl);
+      return query
+        .order('date', { ascending: true })
+        .order('normalized_url', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to);
+    });
   }
 
   /**

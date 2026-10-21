@@ -120,10 +120,10 @@ describe('cron config consistency', () => {
     expect(vercelCrons.sort(byPath)).toStrictEqual(declaredCrons.sort(byPath));
   });
 
+  // DB の書き込みが重ならないよう、毎時の cron 同士も同じ時刻に起動しない
   it('全 cron の毎日の起動時刻が重ならない', () => {
     const configs = Object.values(CRON_CONFIGS).map(config => ({
       id: config.workflowId,
-      isNewDailyImport: ['gsc-daily-import', 'ga4-daily-sync', 'wordpress-daily-import'].includes(config.workflowId),
       slots: dailyTimeSlots(config.schedule),
     }));
     for (let left = 0; left < configs.length; left += 1) {
@@ -131,7 +131,6 @@ describe('cron config consistency', () => {
         const first = configs[left];
         const second = configs[right];
         if (!first || !second) continue;
-        if (!first.isNewDailyImport && !second.isNewDailyImport) continue;
         expect([...first.slots].some(slot => second.slots.has(slot)), `${first.id} / ${second.id}`).toBe(false);
       }
     }

@@ -16,9 +16,7 @@ vi.mock('@/server/services/supabaseService', () => ({
     listContentAnnotationKeys = mocks.listAnnotationKeys;
     listGscAutoImportTargets = mocks.listDailyTargets;
     recordGoogleAutoImportResult = mocks.recordResult;
-    getClient = () => ({
-      from: () => ({ upsert: mocks.upsertPageMetrics }),
-    });
+    upsertGscPageMetrics = mocks.upsertPageMetrics;
     upsertGscQueryMetrics = vi.fn();
   },
 }));
@@ -48,7 +46,7 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
     mocks.refreshAccessToken.mockResolvedValue({ accessToken: 'access-token' });
     mocks.listAnnotationKeys.mockResolvedValue([]);
     mocks.listDailyTargets.mockResolvedValue([]);
-    mocks.upsertPageMetrics.mockResolvedValue({ error: null });
+    mocks.upsertPageMetrics.mockResolvedValue({ written: 0, unchanged: 0, failedRows: 0, failedChunks: 0 });
     mocks.recordResult.mockResolvedValue(undefined);
     fetchMock.mockImplementation(async () => new Response(JSON.stringify({ rows: [] }), {
       status: 200,
@@ -87,12 +85,41 @@ describe('GSC daily import request options（auto-daily-imports-spec FR-001）',
     expect(manualBodies.find(body => Array.isArray(body.dimensions) && body.dimensions.includes('page'))?.rowLimit).toBe(1_000);
   });
 
+  it('値が同じで書かなかったページ行も保存済み（upserted）に数える', async () => {
+    mocks.listAnnotationKeys.mockResolvedValue([{ id: 'annotation-1', normalized_url: 'example.com/post' }]);
+    mocks.upsertPageMetrics.mockResolvedValue({ written: 1, unchanged: 2, failedRows: 0, failedChunks: 0 });
+    fetchMock.mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { dimensions: string[] };
+      const rows = body.dimensions.includes('query')
+        ? []
+        : ['2026-10-11', '2026-10-12', '2026-10-13'].map(date => ({
+            keys: [date, 'https://example.com/post/'],
+            clicks: 1,
+            impressions: 2,
+            ctr: 0.5,
+            position: 1,
+          }));
+      return new Response(JSON.stringify({ rows }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+
+    const result = await gscImportService.importMetrics('user-1', {
+      startDate: '2026-10-11',
+      endDate: '2026-10-13',
+      searchType: 'web',
+    });
+
+    expect(mocks.upsertPageMetrics).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ date: '2026-10-12', content_annotation_id: 'annotation-1' })])
+    );
+    expect(result).toMatchObject({ totalFetched: 3, upserted: 3, skipped: 0 });
+  });
+
   it('日次バッチはページ保存失敗をfailedに数え、次のユーザーへ進む', async () => {
     mocks.listDailyTargets.mockResolvedValue(['user-1', 'user-2']);
     mocks.listAnnotationKeys.mockResolvedValue([{ id: 'annotation-1', normalized_url: 'example.com/post' }]);
     mocks.upsertPageMetrics
-      .mockResolvedValueOnce({ error: { message: 'database write failed' } })
-      .mockResolvedValueOnce({ error: null });
+      .mockResolvedValueOnce({ written: 0, unchanged: 0, failedRows: 1, failedChunks: 1 })
+      .mockResolvedValueOnce({ written: 1, unchanged: 0, failedRows: 0, failedChunks: 0 });
     fetchMock.mockImplementation(async (_input, init) => {
       const body = JSON.parse(String(init?.body)) as { dimensions: string[] };
       const rows = body.dimensions.includes('page')
