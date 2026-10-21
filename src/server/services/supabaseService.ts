@@ -5,7 +5,6 @@ import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
-import { asPendingClient, type TrialChatSendReservationDatabase } from '@/types/database.types.pending';
 import {
   DbChatMessage,
   DbChatSession,
@@ -775,10 +774,12 @@ export class SupabaseService {
     toIso: string,
     limit: number
   ): Promise<SupabaseResult<boolean>> {
-    const { data, error } = await asPendingClient<TrialChatSendReservationDatabase>(this.supabase).rpc(
-      'reserve_trial_chat_send',
-      { p_user_id: userId, p_from: fromIso, p_to: toIso, p_limit: limit }
-    );
+    const { data, error } = await this.supabase.rpc('reserve_trial_chat_send', {
+      p_user_id: userId,
+      p_from: fromIso,
+      p_to: toIso,
+      p_limit: limit,
+    });
 
     if (error) {
       return this.failure(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED, {
