@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { ImportResultCount } from '../../wordpress-import/WordPressImportClient';
 import { JobProgressText } from '../AnalyticsClient';
+import { DashedPanel } from '../[annotationId]/EvaluationSettings';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -271,7 +272,7 @@ export function ContentCsvImportDialog() {
         </section>
         <section className="space-y-3 rounded-md border p-4">
           <h3 className="font-medium">2. 作った CSV を選ぶ</h3>
-          <div
+          <DashedPanel
             onDragOver={event => {
               event.preventDefault();
               if (phase !== 'running' && event.dataTransfer.types.includes('Files')) setIsDragging(true);
@@ -281,10 +282,7 @@ export function ContentCsvImportDialog() {
               if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragging(false);
             }}
             onDrop={handleDrop}
-            className={cn(
-              'space-y-2 rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground',
-              isDragging && 'border-primary bg-primary/5'
-            )}
+            className={cn('space-y-2 text-sm text-muted-foreground', isDragging && 'border-primary bg-primary/5')}
           >
             <p className="inline-flex items-center gap-2">
               <Upload className="h-4 w-4" aria-hidden />
@@ -304,7 +302,7 @@ export function ContentCsvImportDialog() {
               aria-hidden
               onChange={event => { void selectFile(event.currentTarget.files?.[0]); }}
             />
-          </div>
+          </DashedPanel>
           {fileName && (
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <FileText className="h-4 w-4 text-muted-foreground" aria-hidden />
