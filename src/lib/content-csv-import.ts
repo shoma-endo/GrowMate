@@ -210,6 +210,40 @@ export function contentCsvTemplateHeaders(): Array<{ key: 'url' | AnnotationFiel
   ];
 }
 
+export const CONTENT_CSV_COLUMN_DESCRIPTIONS: Record<'url' | AnnotationFieldKey, string> = {
+  url: '公開中の記事ページの URL（ブラウザで開いたときのアドレス。http:// または https:// から）。管理画面やプレビューの URL ではありません。',
+  main_kw: '記事の主となる検索キーワード',
+  kw: '関連する検索キーワード（複数は改行区切り）',
+  impressions: '表示回数や検索ボリュームの情報',
+  needs: '検索する人が知りたいこと',
+  persona: '想定する読者像',
+  goal: '読み終えた読者に取ってほしい行動',
+  prep: '主張・理由・具体例・結論',
+  basic_structure: '導入や見出しの構成',
+  opening_proposal: '書き出しの方向性や冒頭で伝えたい内容',
+};
+
+/** 利用者が自分の AI にテンプレートと一緒に渡す指示文。列の説明は列の定義と同じ文言から作る */
+export function buildContentCsvAiInstruction(): string {
+  const columns = contentCsvTemplateHeaders().map(
+    ({ key, label }) => `・${label}：${CONTENT_CSV_COLUMN_DESCRIPTIONS[key].replace(/。?$/, '。')}`
+  );
+  return [
+    '添付の CSV テンプレートに、私のサイトの記事情報を入力してください。',
+    '',
+    '【守ること】',
+    '・1行目の見出しは変えず、列の順番もそのままにしてください。',
+    '・1記事につき1行で入力してください。',
+    '・「記事URL」は必須です。URL を作ったり推測したりしないでください。',
+    '・分からない項目は空欄のままにしてください。空欄の項目は、取り込み先の既存の内容を上書きしません。',
+    '・カンマ・改行・「"」を含むセルは、全体を「"」で囲んでください。セルの中の「"」は「""」と2つ重ねてください。',
+    '・UTF-8 の CSV ファイルとして出力してください。',
+    '',
+    '【各列に書く内容】',
+    ...columns,
+  ].join('\n');
+}
+
 export function buildContentCsvTemplate(): string {
   return `\uFEFF${contentCsvTemplateHeaders().map(header => header.label).join(',')}`;
 }

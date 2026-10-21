@@ -1,7 +1,8 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, FileText, Loader2, Upload, X } from 'lucide-react';
+import { Copy, Download, FileText, Loader2, Upload, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -17,7 +18,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { InfoTooltipButton } from '@/components/ContentAnnotationSummaryAction';
 import {
   buildContentCsvImportBatches,
+  buildContentCsvAiInstruction,
   buildContentCsvTemplate,
+  CONTENT_CSV_COLUMN_DESCRIPTIONS,
   ContentCsvImportParseError,
   contentCsvTemplateHeaders,
   decodeContentCsv,
@@ -29,7 +32,6 @@ import {
 import { importContentCsvRows } from '@/server/actions/contentCsvImport.actions';
 import { isEmailLinkConflictResult, replaceToEmailLinkConflictLogin } from '@/lib/auth/emailLinkConflictClient';
 import { cn } from '@/lib/utils';
-import type { AnnotationFieldKey } from '@/types/annotation';
 
 type ImportPhase = 'ready' | 'reading' | 'error' | 'running' | 'failed' | 'done';
 
@@ -46,18 +48,6 @@ const EMPTY_TOTALS: ImportTotals = { updated: 0, created: 0, unchanged: 0, skipp
 const countDataRows = (parsedFile: ParsedContentCsv) =>
   parsedFile.rows.length + parsedFile.skipped.length + parsedFile.duplicateCount;
 
-const COLUMN_DESCRIPTIONS: Record<'url' | AnnotationFieldKey, string> = {
-  url: '公開中の記事ページの URL（ブラウザで開いたときのアドレス。http:// または https:// から）。管理画面やプレビューの URL ではありません。',
-  main_kw: '記事の主となる検索キーワード',
-  kw: '関連する検索キーワード（複数は改行区切り）',
-  impressions: '表示回数や検索ボリュームの情報',
-  needs: '検索する人が知りたいこと',
-  persona: '想定する読者像',
-  goal: '読み終えた読者に取ってほしい行動',
-  prep: '主張・理由・具体例・結論',
-  basic_structure: '導入や見出しの構成',
-  opening_proposal: '書き出しの方向性や冒頭で伝えたい内容',
-};
 
 export function ContentCsvImportDialog() {
   const router = useRouter();
@@ -123,6 +113,16 @@ export function ContentCsvImportDialog() {
         : ERROR_MESSAGES.CONTENT_CSV_IMPORT.MALFORMED_CSV;
       setParseError(message);
       setPhase('error');
+    }
+  };
+
+  const copyAiInstruction = async () => {
+    try {
+      await navigator.clipboard.writeText(buildContentCsvAiInstruction());
+      toast.success('コピーしました');
+    } catch (error) {
+      console.error('[content-csv-import] copying the AI instruction failed:', error);
+      toast.error(ERROR_MESSAGES.COMMON.COPY_FAILED);
     }
   };
 
@@ -251,6 +251,10 @@ export function ContentCsvImportDialog() {
                 <li>分からない項目は空欄のままにしてください。</li>
               </ul>
             </InfoTooltipButton>
+            <Button type="button" variant="outline" onClick={copyAiInstruction} className="h-9 inline-flex items-center gap-2">
+              <Copy className="w-4 h-4" aria-hidden />
+              <span>AI への指示文をコピー</span>
+            </Button>
           </div>
           <details className="rounded-md border p-3 text-sm">
             <summary className="cursor-pointer font-medium">列の定義を確認</summary>
@@ -262,7 +266,7 @@ export function ContentCsvImportDialog() {
                     <TableRow key={key}>
                       <TableCell>{label}</TableCell>
                       <TableCell>{key === 'url' ? '必須' : '任意'}</TableCell>
-                      <TableCell className="whitespace-normal">{COLUMN_DESCRIPTIONS[key]}</TableCell>
+                      <TableCell className="whitespace-normal">{CONTENT_CSV_COLUMN_DESCRIPTIONS[key]}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -389,6 +389,9 @@ export const ERROR_MESSAGES = {
   },
 
   COMMON: {
+    /** クリップボードへのコピーの失敗 */
+    COPY_FAILED: 'コピーに失敗しました',
+
     /** 一般的なサーバーエラー */
     SERVER_ERROR: 'サーバーエラーが発生しました',
 

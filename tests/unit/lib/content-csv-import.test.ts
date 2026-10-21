@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildContentCsvAiInstruction,
   buildContentCsvImportBatches,
   buildContentCsvTemplate,
   CONTENT_CSV_IMPORT_LIMITS,
@@ -116,6 +117,13 @@ describe('content CSV import', () => {
       values: {},
     }));
     expect(buildContentCsvImportBatches(rows).map(batch => batch.length)).toEqual([2_000, 1]);
+  });
+
+  it('lists every template header in the AI instruction exactly as written in the template', () => {
+    const columnLines = buildContentCsvAiInstruction().split('\n').filter(line => line.startsWith('・') && line.includes('：'));
+    const labels = columnLines.map(line => line.slice(1, line.indexOf('：')));
+    expect(labels.join(',')).toBe(buildContentCsvTemplate().replace(/^\uFEFF/, ''));
+    expect(columnLines.every(line => line.endsWith('。'))).toBe(true);
   });
 
   it('builds the UTF-8 BOM template with the approved headers', () => {
