@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, Loader2, Upload } from 'lucide-react';
+import { Download, FileText, Loader2, Upload, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
@@ -12,7 +12,6 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { InfoTooltipButton } from '@/components/ContentAnnotationSummaryAction';
 import {
@@ -68,6 +67,9 @@ export function ContentCsvImportDialog() {
   const [failure, setFailure] = useState('');
   const [processed, setProcessed] = useState(0);
   const [totals, setTotals] = useState<ImportTotals>(EMPTY_TOTALS);
+  const [fileName, setFileName] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // 読み込み中に選び直し・閉じるが起きたら、古い読み込みの結果を捨てるための番号
   const fileReadIdRef = useRef(0);
 
@@ -79,6 +81,7 @@ export function ContentCsvImportDialog() {
     setFailure('');
     setProcessed(0);
     setTotals(EMPTY_TOTALS);
+    setFileName('');
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -96,11 +99,11 @@ export function ContentCsvImportDialog() {
     URL.revokeObjectURL(objectUrl);
   };
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
+  const selectFile = async (file: File | undefined) => {
     reset();
     if (!file) return;
     const readId = fileReadIdRef.current;
+    setFileName(file.name);
     setPhase('reading');
 
     try {
@@ -120,6 +123,28 @@ export function ContentCsvImportDialog() {
       setParseError(message);
       setPhase('error');
     }
+  };
+
+  const openFilePicker = () => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    input.value = '';
+    input.click();
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    if (phase === 'running') return;
+    const files = event.dataTransfer.files;
+    if (files.length === 0) return;
+    if (files.length > 1) {
+      reset();
+      setParseError(ERROR_MESSAGES.CONTENT_CSV_IMPORT.SINGLE_FILE_ONLY);
+      setPhase('error');
+      return;
+    }
+    void selectFile(files[0]);
   };
 
   const importRows = async (rows: ContentCsvImportRow[], parsedFile: ParsedContentCsv) => {
@@ -204,6 +229,9 @@ export function ContentCsvImportDialog() {
         hideCloseButton={phase === 'running'}
         onEscapeKeyDown={event => { if (phase === 'running') event.preventDefault(); }}
         onPointerDownOutside={event => { if (phase === 'running') event.preventDefault(); }}
+        // 枠の外に落としたファイルをブラウザが開いて、ダイアログの状態が消えないようにする
+        onDragOver={event => event.preventDefault()}
+        onDrop={event => event.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle>CSV で取り込む</DialogTitle>
@@ -243,22 +271,65 @@ export function ContentCsvImportDialog() {
         </section>
         <section className="space-y-3 rounded-md border p-4">
           <h3 className="font-medium">2. 作った CSV を選ぶ</h3>
-          <p className="text-sm text-muted-foreground">最大2万行。Excel で保存した場合は「CSV UTF-8（コンマ区切り）」形式。</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input type="file" accept=".csv,text/csv" aria-label="CSV ファイルを選択" onClick={event => { event.currentTarget.value = ''; reset(); }} onChange={handleFileChange} disabled={phase === 'running'} />
+          <div
+            onDragOver={event => {
+              event.preventDefault();
+              if (phase !== 'running' && event.dataTransfer.types.includes('Files')) setIsDragging(true);
+            }}
+            onDragLeave={event => {
+              // 枠の中の子要素へ移っただけでも dragleave が来るので、枠の外へ出たときだけ戻す
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragging(false);
+            }}
+            onDrop={handleDrop}
+            className={cn(
+              'space-y-2 rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground',
+              isDragging && 'border-primary bg-primary/5'
+            )}
+          >
+            <p className="inline-flex items-center gap-2">
+              <Upload className="h-4 w-4" aria-hidden />
+              ここに CSV ファイルをドラッグ＆ドロップ
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <span>または</span>
+              <Button type="button" variant="outline" className="text-foreground" onClick={openFilePicker} disabled={phase === 'running'}>ファイルを選択</Button>
+            </div>
+            <p>CSV ファイル1つ・最大2万行。Excel で保存した場合は「CSV UTF-8（コンマ区切り）」形式。</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden
+              onChange={event => { void selectFile(event.currentTarget.files?.[0]); }}
+            />
+          </div>
+          {fileName && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <FileText className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <span className="break-all font-medium">{fileName}</span>
+              {phase === 'reading' && (
+                <span className="inline-flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  読み込み中...
+                </span>
+              )}
+              {phase === 'ready' && parsed && (
+                <span className="text-muted-foreground">
+                  {countDataRows(parsed).toLocaleString()} 件を読み込みました（重複 {parsed.duplicateCount.toLocaleString()} 件）
+                </span>
+              )}
+              {phase !== 'running' && (
+                <Button type="button" variant="ghost" size="icon" aria-label="選んだファイルを外す" onClick={reset}>
+                  <X className="h-4 w-4" aria-hidden />
+                </Button>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end">
             <Button type="button" onClick={handleImport} disabled={!parsed || phase !== 'ready'}>取り込む</Button>
           </div>
-          {phase === 'reading' && (
-            <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              読み込み中...
-            </p>
-          )}
-          {phase === 'ready' && parsed && (
-            <p className="text-sm text-muted-foreground">
-              {countDataRows(parsed).toLocaleString()} 件を読み込みました（重複 {parsed.duplicateCount.toLocaleString()} 件）
-            </p>
-          )}
         </section>
         {phase === 'error' && (
           <Alert variant="destructive">

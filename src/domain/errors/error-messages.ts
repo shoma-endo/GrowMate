@@ -18,6 +18,7 @@ export const ERROR_MESSAGES = {
     INVALID_ENCODING: 'UTF-8 の CSV を選んでください。Excel の場合は「CSV UTF-8（コンマ区切り）」で保存し直してください。',
     URL_COLUMN_MISSING: '記事URL または URL の列がありません。見出しを確認してください。',
     TOO_MANY_ROWS: '2万行を超えています。ファイルを分けて順に取り込んでください。同じ行を何度取り込んでも結果は同じです。',
+    SINGLE_FILE_ONLY: 'CSV ファイルは1つずつ選んでください。',
     MALFORMED_CSV: 'CSV の形式を確認して、ファイルを選び直してください。',
     IMPORT_FAILED: 'CSV の取り込みに失敗しました。時間をおいて、同じファイルでもう一度お試しください。',
     SKIP_REASONS: {
