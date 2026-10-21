@@ -116,14 +116,15 @@ describe('upsertSplittingOnTimeout', () => {
     expect(upsert.mock.calls.map(([chunk]) => chunk.length)).toEqual([200, 100, 100]);
   });
 
-  it('下限まで割っても 57014 ならエラーを返し、残りは書かない', async () => {
+  it('両半分が下限でも 57014 ならエラーを返し、右半分も試す', async () => {
     const upsert = vi.fn(async (_chunk: number[]) => ({ error: timeout }));
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     const result = await upsertSplittingOnTimeout(Array.from({ length: 200 }, (_, i) => i), upsert, 25);
 
     expect(result).toEqual({ written: 0, error: timeout });
-    expect(upsert.mock.calls.map(([chunk]) => chunk.length)).toEqual([200, 100, 50, 25]);
+    expect(upsert.mock.calls.some(([chunk]) => chunk[0] === 100)).toBe(true);
+    expect(upsert.mock.calls.some(([chunk]) => chunk.length === 25 && chunk[0] === 0)).toBe(true);
   });
 
   it('57014 以外のエラーは割らずに返す', async () => {

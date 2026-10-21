@@ -119,10 +119,6 @@ export function chunkRows<T>(rows: readonly T[], size = GSC_METRICS_UPSERT_CHUNK
   return chunks;
 }
 
-/**
- * statement timeout（57014）のときだけチャンクを半分に割って書き直す。
- * 半分が下限を下回る大きさでも失敗したら、その時点のエラーを返す（残りは書かない）。
- */
 export async function upsertSplittingOnTimeout<T>(
   rows: T[],
   upsert: (chunk: T[]) => PromiseLike<{ error: PostgrestError | null }>,
@@ -141,7 +137,6 @@ export async function upsertSplittingOnTimeout<T>(
     nextChunkSize: half,
   });
   const first = await upsertSplittingOnTimeout(rows.slice(0, half), upsert, minChunkSize);
-  if (first.error) return first;
   const second = await upsertSplittingOnTimeout(rows.slice(half), upsert, minChunkSize);
-  return { written: first.written + second.written, error: second.error };
+  return { written: first.written + second.written, error: first.error ?? second.error };
 }

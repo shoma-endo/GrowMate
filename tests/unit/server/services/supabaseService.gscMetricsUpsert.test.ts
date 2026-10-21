@@ -194,7 +194,7 @@ describe('GSC 指標の upsert は値が同じ行を書かない', () => {
       const rows = Array.from({ length: 200 }, (_, i) => queryRow({ query: `q${i}` }));
 
       await expect(new SupabaseService().upsertGscQueryMetrics(rows)).rejects.toThrow('statement timeout');
-      expect(mocks.upserts.map(call => call.rows.length)).toEqual([200, 100, 50, 25]);
+      expect(mocks.upserts.some(call => call.rows[0]?.query === 'q100')).toBe(true);
     });
 
     it('既存行を読めなければ書かずにエラーにする', async () => {
@@ -259,7 +259,7 @@ describe('GSC 指標の upsert は値が同じ行を書かない', () => {
 
       const result = await new SupabaseService().upsertGscPageMetrics(rows);
 
-      expect(mocks.upserts.map(call => call.rows.length)).toEqual([60, 30]);
+      expect(mocks.upserts.map(call => call.rows.length)).toEqual([60, 30, 30]);
       expect(result).toEqual({ written: 0, unchanged: 0, failedRows: 60, failedChunks: 1 });
     });
   });
