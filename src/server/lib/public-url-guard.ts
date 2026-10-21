@@ -24,8 +24,9 @@ for (const [network, prefix] of [
   blockedAddresses.addSubnet(network, prefix, 'ipv4');
 }
 for (const [network, prefix] of [
-  // IPv4 互換（::a.b.c.d）・NAT64・6to4 は IPv4 の宛先を埋め込めるので、まとめて拒否する
+  // IPv4 互換（::a.b.c.d）・IPv4 変換（::ffff:0:a.b.c.d）・NAT64・6to4 は IPv4 の宛先を埋め込めるので、まとめて拒否する
   ['::', 96],
+  ['::ffff:0:0:0', 96],
   ['64:ff9b::', 96],
   ['64:ff9b:1::', 48],
   ['2002::', 16],
@@ -58,8 +59,20 @@ export function siteUrlRejectMessage(reason: PublicUrlBlockedError['reason']): s
     : ERROR_MESSAGES.WORDPRESS.SITE_URL_NOT_PUBLIC;
 }
 
+/** IPv4 射影アドレス（::ffff:a.b.c.d と、URL が正規化した ::ffff:7f00:1 の形の両方）から IPv4 を取り出す */
+function embeddedMappedIpv4(address: string): string | null {
+  const lower = address.toLowerCase();
+  const dotted = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  if (dotted) return dotted;
+  const hex = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (!hex) return null;
+  const high = parseInt(hex[1]!, 16);
+  const low = parseInt(hex[2]!, 16);
+  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+}
+
 function isBlockedAddress(address: string): boolean {
-  const mappedV4 = address.toLowerCase().match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  const mappedV4 = embeddedMappedIpv4(address);
   if (mappedV4) return blockedAddresses.check(mappedV4, 'ipv4');
   const family = isIP(address);
   if (family === 4) return blockedAddresses.check(address, 'ipv4');

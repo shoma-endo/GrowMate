@@ -47,7 +47,10 @@ describe('checkPublicHttpsUrl', () => {
     'https://[fd00::1]/',
     'https://[fe80::1]/',
     'https://[::ffff:127.0.0.1]/',
+    'https://[::ffff:7f00:1]/',
+    'https://[0:0:0:0:0:ffff:a9fe:a9fe]/',
     'https://[::7f00:1]/',
+    'https://[::ffff:0:7f00:1]/',
     'https://[64:ff9b::a9fe:a9fe]/',
     'https://[2002:a9fe:a9fe::1]/',
     'https://2130706433/',
@@ -63,6 +66,16 @@ describe('checkPublicHttpsUrl', () => {
       ok: false,
       reason: 'private_address',
     });
+  });
+
+  it('IPv4 射影の16進表記で解決される名前も、埋め込まれた IPv4 で判定する', async () => {
+    resolvesTo('::ffff:a9fe:a9fe');
+    await expect(checkPublicHttpsUrl('https://mapped-hex.example.com')).resolves.toEqual({
+      ok: false,
+      reason: 'private_address',
+    });
+    resolvesTo('::ffff:808:808');
+    await expect(checkPublicHttpsUrl('https://mapped-public.example.com')).resolves.toMatchObject({ ok: true });
   });
 
   it('IPv4 射影の IPv6 で内部アドレスに解決される名前は拒否する', async () => {
