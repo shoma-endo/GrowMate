@@ -7,9 +7,14 @@
  * fetch のスタブは describe 内に閉じているため、もう一方へ漏れない。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('server-only', () => ({}));
+// セルフホストへの fetch は名前解決で公開アドレスか確かめる。テストでは公開アドレスに解決させる
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn(async () => [{ address: '93.184.216.34', family: 4 }]) }));
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { WordPressImportDeadlineError, WordPressRestFetchError, WordPressService } from '@/server/services/wordpressService';
 import { normalizeWordPressRestPosts } from '@/server/services/wordpressService';
+import { lookup } from 'node:dns/promises';
 
 describe('WordPressService（REST API フォールバック）', () => {
   const createSelfHostedService = () =>
@@ -391,5 +396,42 @@ describe('normalizeWordPressRestPosts', () => {
       expect(normalized?.content_text).toBeUndefined();
       expect(normalized?.image_count).toBe(0);
     });
+  });
+});
+
+describe('WordPressService（セルフホストの接続先の検査）', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const service = new WordPressService({
+    type: 'self_hosted',
+    selfHostedAuth: { siteUrl: 'https://internal.example.com', username: 'u', applicationPassword: 'p' },
+  });
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(lookup).mockResolvedValue([{ address: '93.184.216.34', family: 4 }] as never);
+  });
+
+  it('サイトURLが内部アドレスに解決されるなら、接続テストで fetch しない', async () => {
+    vi.mocked(lookup).mockResolvedValue([{ address: '169.254.169.254', family: 4 }] as never);
+
+    const result = await service.testConnection();
+
+    expect(result).toEqual({ success: false, error: ERROR_MESSAGES.WORDPRESS.SITE_URL_NOT_PUBLIC });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('接続テストの失敗では、サイトの応答本文を画面向けのエラーに入れない', async () => {
+    fetchMock.mockImplementation(async () => new Response('INTERNAL-SECRET-BODY', { status: 403 }));
+
+    const result = await service.testConnection();
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('[reachability] HTTP 403');
+    expect(result.error).not.toContain('INTERNAL-SECRET-BODY');
   });
 });

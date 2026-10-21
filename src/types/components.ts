@@ -40,13 +40,14 @@ export interface WordPressSettingsFormProps {
   role: UserRole;
 }
 
-interface ExistingWordPressSettings {
+/** ブラウザへ渡す WordPress 設定。秘密値（パスワード・トークン・クライアントシークレット）は入れない */
+export interface ExistingWordPressSettings {
   id?: string | undefined;
   wpType: WordPressType;
   wpSiteId?: string | undefined;
   wpSiteUrl?: string | undefined;
   wpUsername?: string | undefined;
-  wpApplicationPassword?: string | undefined;
+  hasApplicationPassword: boolean;
   wpContentTypes?: string[] | undefined;
   createdAt?: string | undefined;
   updatedAt?: string | undefined;

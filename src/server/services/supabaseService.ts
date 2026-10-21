@@ -5,6 +5,7 @@ import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
+import { asPendingClient, type ChatContinuationEventsDatabase } from '@/types/database.types.pending';
 import {
   DbChatMessage,
   DbChatSession,
@@ -791,6 +792,45 @@ export class SupabaseService {
     }
 
     return this.success(count ?? 0);
+  }
+
+  async countChatContinuationsBetween(
+    userId: string,
+    fromIso: string,
+    toIso: string
+  ): Promise<SupabaseResult<number>> {
+    const { count, error } = await asPendingClient<ChatContinuationEventsDatabase>(this.supabase)
+      .from('chat_continuation_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('created_at', toIsoTimestamp(fromIso))
+      .lt('created_at', toIsoTimestamp(toIso));
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED, {
+        error,
+        developerMessage: 'Failed to count chat continuations in range',
+        context: { userId, fromIso, toIso },
+      });
+    }
+
+    return this.success(count ?? 0);
+  }
+
+  async recordChatContinuation(userId: string): Promise<SupabaseResult<null>> {
+    const { error } = await asPendingClient<ChatContinuationEventsDatabase>(this.supabase)
+      .from('chat_continuation_events')
+      .insert({ user_id: userId });
+
+    if (error) {
+      return this.failure(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED, {
+        error,
+        developerMessage: 'Failed to record chat continuation',
+        context: { userId },
+      });
+    }
+
+    return this.success(null);
   }
 
   /**

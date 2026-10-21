@@ -1,6 +1,7 @@
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { countImageTags } from '@/lib/content-text';
 import { stripHtml } from '@/lib/utils';
+import { fetchPublicUrl, PublicUrlBlockedError, siteUrlRejectMessage } from '@/server/lib/public-url-guard';
 import {
   WordPressPostResponse,
   WordPressPostApiResponse,
@@ -156,10 +157,17 @@ export class WordPressService {
   }
 
   /**
+   * セルフホストは利用者が入力した URL へ接続するので、公開アドレスかどうかを毎回検査する。
+   */
+  private request(url: string, init?: RequestInit): Promise<Response> {
+    return this.type === 'self_hosted' ? fetchPublicUrl(url, init) : fetch(url, init);
+  }
+
+  /**
    * セルフホスト環境で /wp-json/ が拒否される場合に、rest_route 形式へフォールバックする。
    */
   private async fetchRestResource(resource: string, signal?: AbortSignal): Promise<Response> {
-    const primaryResponse = await fetch(`${this.baseUrl}/${resource}`, {
+    const primaryResponse = await this.request(`${this.baseUrl}/${resource}`, {
       headers: this.getAuthHeaders(),
       ...(signal ? { signal } : {}),
     });
@@ -181,7 +189,7 @@ export class WordPressService {
       status: primaryResponse.status,
       resource: pathname,
     });
-    return fetch(fallbackUrl, {
+    return this.request(fallbackUrl, {
       headers: this.getAuthHeaders(),
       ...(signal ? { signal } : {}),
     });
@@ -213,69 +221,54 @@ export class WordPressService {
 
       if (this.type === 'wordpress_com') {
         // WordPress.com用：v1.1 APIを使用
-        response = await fetch(`https://public-api.wordpress.com/rest/v1.1/sites/${this.siteId}`, {
+        response = await this.request(`https://public-api.wordpress.com/rest/v1.1/sites/${this.siteId}`, {
           headers: this.getAuthHeaders(),
         });
       } else {
         // セルフホスト用：段階テスト（到達 -> 認証 -> 権限）
         // 1) 到達確認
         const rootUrl = `${(this.siteUrl || '').replace(/\/$/, '')}/wp-json/`;
-        const reachabilityResp = await fetch(rootUrl, {
+        const reachabilityResp = await this.request(rootUrl, {
           headers: { Accept: 'application/json', 'User-Agent': 'IndustrySpecificMC/1.0 (+app)' },
         });
         if (!reachabilityResp.ok) {
           // Xserver等で /wp-json/ がブロックされる場合のフォールバック
           const altRoot = `${(this.siteUrl || '').replace(/\/$/, '')}/index.php?rest_route=/`;
-          const altResp = await fetch(altRoot, {
+          const altResp = await this.request(altRoot, {
             headers: { Accept: 'application/json', 'User-Agent': 'IndustrySpecificMC/1.0 (+app)' },
           });
           if (!altResp.ok) {
-            const bodyText = await reachabilityResp.text().catch(() => reachabilityResp.statusText);
-            const altText = await altResp.text().catch(() => altResp.statusText);
-            return {
-              success: false,
-              error: `[reachability] HTTP ${reachabilityResp.status}: ${bodyText || reachabilityResp.statusText} | alt HTTP ${altResp.status}: ${altText || altResp.statusText}`,
-            };
+            return this.testConnectionStageFailure('reachability', reachabilityResp, altResp);
           }
         }
 
         // 2) 認証確認（ユーザー情報取得）
-        const authResp = await fetch(`${this.baseUrl}/users/me`, {
+        const authResp = await this.request(`${this.baseUrl}/users/me`, {
           headers: this.getAuthHeaders(),
         });
         if (!authResp.ok) {
           // フォールバック: index.php?rest_route=
           const altAuthUrl = `${(this.siteUrl || '').replace(/\/$/, '')}/index.php?rest_route=/wp/v2/users/me`;
-          const altAuthResp = await fetch(altAuthUrl, { headers: this.getAuthHeaders() });
+          const altAuthResp = await this.request(altAuthUrl, { headers: this.getAuthHeaders() });
           if (!altAuthResp.ok) {
-            const authErrBody = await authResp.text().catch(() => authResp.statusText);
-            const altAuthBody = await altAuthResp.text().catch(() => altAuthResp.statusText);
             const stage =
               authResp.status === 401 || altAuthResp.status === 401
                 ? 'authentication'
                 : 'auth_or_waf';
-            return {
-              success: false,
-              error: `[${stage}] HTTP ${authResp.status}: ${authErrBody || authResp.statusText} | alt HTTP ${altAuthResp.status}: ${altAuthBody || altAuthResp.statusText}`,
-            };
+            return this.testConnectionStageFailure(stage, authResp, altAuthResp);
           }
         }
 
         // 3) 権限確認（設定エンドポイント）
-        response = await fetch(`${this.baseUrl}/settings`, {
+        response = await this.request(`${this.baseUrl}/settings`, {
           headers: this.getAuthHeaders(),
         });
         if (!response.ok) {
           // フォールバック: index.php?rest_route=
           const altSettingsUrl = `${(this.siteUrl || '').replace(/\/$/, '')}/index.php?rest_route=/wp/v2/settings`;
-          const altSettingsResp = await fetch(altSettingsUrl, { headers: this.getAuthHeaders() });
+          const altSettingsResp = await this.request(altSettingsUrl, { headers: this.getAuthHeaders() });
           if (!altSettingsResp.ok) {
-            const bodyText = await response.text().catch(() => response.statusText);
-            const altText = await altSettingsResp.text().catch(() => altSettingsResp.statusText);
-            return {
-              success: false,
-              error: `[permission_or_waf] HTTP ${response.status}: ${bodyText || response.statusText} | alt HTTP ${altSettingsResp.status}: ${altText || altSettingsResp.statusText}`,
-            };
+            return this.testConnectionStageFailure('permission_or_waf', response, altSettingsResp);
           }
           // フォールバック成功時は以降の処理で altSettingsResp を使う
           response = altSettingsResp as unknown as Response;
@@ -314,11 +307,39 @@ export class WordPressService {
       }
     } catch (error) {
       console.error('Error in testConnection:', error);
+      if (error instanceof PublicUrlBlockedError) {
+        return { success: false, error: siteUrlRejectMessage(error.reason) };
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : ERROR_MESSAGES.WORDPRESS.TEST_CONNECTION_UNEXPECTED,
       };
     }
+  }
+
+  /**
+   * 利用者が入力した URL の応答本文は画面へ返さず（内部サーバーの応答を読み出す SSRF の出口になる）、ログにだけ残す。
+   */
+  private async testConnectionStageFailure(
+    stage: string,
+    primary: Response,
+    fallback: Response
+  ): Promise<WordPressApiResult<WordPressSiteInfo>> {
+    const [primaryBody, fallbackBody] = await Promise.all([
+      primary.text().catch(() => ''),
+      fallback.text().catch(() => ''),
+    ]);
+    console.error('[WordPressService] testConnection failed', {
+      stage,
+      primaryStatus: primary.status,
+      fallbackStatus: fallback.status,
+      primaryBody: primaryBody.slice(0, 500),
+      fallbackBody: fallbackBody.slice(0, 500),
+    });
+    return {
+      success: false,
+      error: `[${stage}] HTTP ${`${primary.status} ${primary.statusText}`.trim()} | alt HTTP ${`${fallback.status} ${fallback.statusText}`.trim()}`,
+    };
   }
 
   /**
@@ -438,11 +459,8 @@ export class WordPressService {
     return this.getAuthHeaders();
   }
 
-  /**
-   * REST API ベースURLを取得
-   */
-  public getRestBaseUrl(): string {
-    return this.baseUrl;
+  public fetchRestPath(resource: string): Promise<Response> {
+    return this.request(`${this.baseUrl}/${resource}`, { headers: this.getAuthHeaders() });
   }
 
   public async fetchAvailableContentTypes(deadlineAt?: number): Promise<WordPressApiResult<string[]>> {
@@ -463,7 +481,7 @@ export class WordPressService {
     for (const url of urls) {
       assertBeforeDeadline(deadlineAt);
       try {
-        const response = await fetch(url, { headers, cache: 'no-store', signal: restFetchSignal(deadlineAt) });
+        const response = await this.request(url, { headers, cache: 'no-store', signal: restFetchSignal(deadlineAt) });
         if (!response.ok) {
           lastStatus = response.status;
           lastErrorText = await response.text().catch(() => response.statusText);
@@ -619,7 +637,7 @@ export class WordPressService {
     for (const url of urls) {
       assertBeforeDeadline(options.deadlineAt);
       try {
-        const resp = await fetch(url, { headers, cache: 'no-store', signal: restFetchSignal(options.deadlineAt) });
+        const resp = await this.request(url, { headers, cache: 'no-store', signal: restFetchSignal(options.deadlineAt) });
         if (!resp.ok) {
           statuses.push(resp.status);
           lastStatus = resp.status;

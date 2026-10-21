@@ -12,6 +12,7 @@ import {
   type WithAuthEmailLinkConflict,
 } from '@/server/middleware/withAuth.middleware';
 import { SupabaseService } from '@/server/services/supabaseService';
+import { resolveSelfHostedSettingsInput } from '@/server/lib/wordpress-self-hosted-settings';
 import { isAdmin as isAdminRole } from '@/authUtils';
 import { hasPaidFeatureAccess } from '@/types/user';
 import {
@@ -34,6 +35,7 @@ import type {
   SessionAnnotationUpsertPayload,
 } from '@/types/annotation';
 import type { DbChatSession } from '@/types/chat';
+import type { ExistingWordPressSettings } from '@/types/components';
 import type { Database } from '@/types/database.types';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 
@@ -61,14 +63,25 @@ function isDuplicateCanonicalConstraint(error: {
 /**
  * WordPress設定を取得
  */
-export async function getWordPressSettings(): Promise<WordPressSettings | null> {
+export async function getWordPressSettings(): Promise<ExistingWordPressSettings | null> {
   const result = await withAuth(async ({ userId }) => {
     return await supabaseService.getWordPressSettingsByUserId(userId);
   });
   if (isWithAuthEmailLinkConflict(result)) {
     redirect('/login?reason=email_link_conflict');
   }
-  return result;
+  if (!result) return null;
+  return {
+    id: result.id,
+    wpType: result.wpType,
+    wpSiteId: result.wpSiteId,
+    wpSiteUrl: result.wpSiteUrl,
+    wpUsername: result.wpUsername,
+    hasApplicationPassword: Boolean(result.wpApplicationPassword),
+    wpContentTypes: result.wpContentTypes,
+    createdAt: result.createdAt,
+    updatedAt: result.updatedAt,
+  };
 }
 
 type CookieStore = Awaited<ReturnType<typeof cookies>>;
@@ -390,18 +403,20 @@ export async function saveWordPressSettingsAction(params: SaveWordPressSettingsP
     }
 
     if (wpType === 'self_hosted') {
-      if (!wpSiteUrl || !wpUsername || !wpApplicationPassword) {
-        return {
-          success: false as const,
-          error: ERROR_MESSAGES.WORDPRESS.SELF_HOSTED_REQUIRED_FIELDS,
-        };
+      const resolved = await resolveSelfHostedSettingsInput(supabaseService, realUserId, {
+        wpSiteUrl,
+        wpUsername,
+        wpApplicationPassword,
+      });
+      if (!resolved.ok) {
+        return { success: false as const, error: resolved.error };
       }
 
       await supabaseService.createOrUpdateSelfHostedWordPressSettings(
         realUserId,
-        wpSiteUrl,
-        wpUsername,
-        wpApplicationPassword,
+        resolved.siteUrl,
+        resolved.username,
+        resolved.applicationPassword,
         { wpContentTypes: contentTypes }
       );
     } else if (wpType === 'wordpress_com') {

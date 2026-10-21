@@ -25,6 +25,7 @@ import {
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { diagnoseWordPressError } from '@/domain/errors/wordpress-error-diagnostics';
 import { isDeploymentMismatchError } from '@/lib/async-handler';
+import { normalizeWordPressSiteUrl } from '@/lib/wordpress-link';
 
 interface StatusOutcome {
   success: boolean;
@@ -126,9 +127,12 @@ export default function WordPressSettingsForm({
   // セルフホスト用
   const [wpSiteUrl, setWpSiteUrl] = useState(existingSettings?.wpSiteUrl || '');
   const [wpUsername, setWpUsername] = useState(existingSettings?.wpUsername || '');
-  const [wpApplicationPassword, setWpApplicationPassword] = useState(
-    existingSettings?.wpApplicationPassword || ''
-  );
+  // 保存済みのパスワードはブラウザへ渡さない。空欄のまま保存すると保存済みの値が使われる
+  const [wpApplicationPassword, setWpApplicationPassword] = useState('');
+  // サイトURLを変えたときは、保存済みのパスワードを新しい送り先へ渡さない（サーバー側も同じ判定）
+  const canReuseSavedPassword =
+    (existingSettings?.hasApplicationPassword ?? false) &&
+    normalizeWordPressSiteUrl(wpSiteUrl) === normalizeWordPressSiteUrl(existingSettings?.wpSiteUrl ?? '');
 
   // 保存済み設定が存在するか（接続テストは保存後のみ許可）
   const hasSavedSettings = Boolean(existingSettings);
@@ -152,7 +156,10 @@ export default function WordPressSettingsForm({
       return;
     }
 
-    if (wpType === 'self_hosted' && (!wpSiteUrl || !wpUsername || !wpApplicationPassword)) {
+    if (
+      wpType === 'self_hosted' &&
+      (!wpSiteUrl || !wpUsername || (!wpApplicationPassword && !canReuseSavedPassword))
+    ) {
       setSaveStatus({
         success: false,
         primary:
@@ -280,16 +287,6 @@ export default function WordPressSettingsForm({
     // バリデーション
     if (wpType === 'wordpress_com' && !wpSiteId) {
       setConnectionStatus({ success: false, primary: 'WordPress.comのサイトIDが必要です' });
-      setExpandedPanel(prev => (prev === 'connection' ? null : prev));
-      return;
-    }
-
-    if (wpType === 'self_hosted' && (!wpSiteUrl || !wpUsername || !wpApplicationPassword)) {
-      setConnectionStatus({
-        success: false,
-        primary:
-          'セルフホスト版では、サイトURL、ユーザー名、アプリケーションパスワードがすべて必要です',
-      });
       setExpandedPanel(prev => (prev === 'connection' ? null : prev));
       return;
     }
@@ -457,15 +454,20 @@ export default function WordPressSettingsForm({
 
                 <div className="space-y-2">
                   <label className="block text-sm font-medium">
-                    アプリケーションパスワード <span className="text-red-500">*</span>
+                    アプリケーションパスワード{' '}
+                    {!canReuseSavedPassword && <span className="text-red-500">*</span>}
                   </label>
                   <Input
                     type="password"
-                    placeholder="例: abcd efgh ijkl mnop qrst uvwx"
+                    placeholder={
+                      canReuseSavedPassword
+                        ? '保存済み（変更するときだけ入力）'
+                        : '例: abcd efgh ijkl mnop qrst uvwx'
+                    }
                     value={wpApplicationPassword}
                     onChange={e => setWpApplicationPassword(e.target.value)}
                     className="w-full"
-                    required
+                    required={!canReuseSavedPassword}
                   />
                   <p className="text-xs text-gray-500">
                     WordPress管理画面で生成したアプリケーションパスワードを入力してください

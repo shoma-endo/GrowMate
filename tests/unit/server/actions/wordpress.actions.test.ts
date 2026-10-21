@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('server-only', () => ({}));
+
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   select: vi.fn(),
@@ -41,7 +43,7 @@ vi.mock('@/server/services/supabaseService', () => ({
   },
 }));
 
-import { updateContentAnnotationFields } from '@/server/actions/wordpress.actions';
+import { getWordPressSettings, updateContentAnnotationFields } from '@/server/actions/wordpress.actions';
 
 describe('updateContentAnnotationFields', () => {
   beforeEach(() => {
@@ -72,5 +74,39 @@ describe('updateContentAnnotationFields', () => {
     });
     expect(mocks.getWordPressSettingsByUserId).not.toHaveBeenCalled();
     expect(mocks.eq).toHaveBeenCalledWith('user_id', 'user-id');
+  });
+});
+
+describe('getWordPressSettings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('ブラウザへ渡す設定に、パスワード・トークン・クライアントシークレットを入れない', async () => {
+    mocks.getWordPressSettingsByUserId.mockResolvedValue({
+      id: 'settings-id',
+      userId: 'user-id',
+      wpType: 'self_hosted',
+      wpSiteUrl: 'https://blog.example.com',
+      wpUsername: 'admin',
+      wpApplicationPassword: 'app-password-secret',
+      wpClientSecret: 'client-secret',
+      wpAccessToken: 'access-token',
+      wpRefreshToken: 'refresh-token',
+      wpContentTypes: ['posts'],
+    });
+
+    const settings = await getWordPressSettings();
+
+    expect(settings).toMatchObject({
+      wpType: 'self_hosted',
+      wpSiteUrl: 'https://blog.example.com',
+      wpUsername: 'admin',
+      hasApplicationPassword: true,
+    });
+    const serialized = JSON.stringify(settings);
+    for (const secret of ['app-password-secret', 'client-secret', 'access-token', 'refresh-token']) {
+      expect(serialized).not.toContain(secret);
+    }
   });
 });

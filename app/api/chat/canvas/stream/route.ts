@@ -5,7 +5,7 @@ import { chatService } from '@/server/services/chatService';
 import { headingFlowService } from '@/server/services/headingFlowService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { env } from '@/env';
-import { BLOG_STEP_LABELS, MODEL_CONFIGS } from '@/lib/constants';
+import { BLOG_STEP_LABELS, MODEL_CONFIGS, WEB_SEARCH_MAX_USES } from '@/lib/constants';
 import type { BlogStepId } from '@/lib/constants';
 import {
   getSaveModelForCanvasStep,
@@ -66,7 +66,6 @@ interface CanvasStreamRequest {
   /** Step7見出し単位生成時の見出しインデックス。BlogPreviewTile の見出し表示に利用 */
   step7HeadingIndex?: number;
   webSearchConfig?: {
-    maxUses?: number;
     allowedDomains?: string[];
     blockedDomains?: string[];
   };
@@ -572,7 +571,7 @@ export async function POST(req: NextRequest) {
                     {
                       type: 'web_search_20250305' as const,
                       name: 'web_search' as const,
-                      max_uses: webSearchConfig.maxUses || 3,
+                      max_uses: WEB_SEARCH_MAX_USES,
                       ...(webSearchConfig.allowedDomains && {
                         allowed_domains: webSearchConfig.allowedDomains,
                       }),

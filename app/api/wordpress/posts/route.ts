@@ -26,10 +26,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const perPage = Math.min(parseInt(searchParams.get('per_page') || '20', 10), 100);
 
-    const baseUrl = context.service.getRestBaseUrl();
-    const headers = context.service.getRestHeaders();
-    const postsUrl = `${baseUrl}/posts?_embed=true&per_page=${perPage}&page=${page}`;
-    const resp = await fetch(postsUrl, { headers });
+    const resp = await context.service.fetchRestPath(`posts?_embed=true&per_page=${perPage}&page=${page}`);
 
     if (!resp.ok) {
       return NextResponse.json(

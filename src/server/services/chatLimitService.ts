@@ -27,7 +27,8 @@ function getCurrentJstRange() {
 }
 
 /**
- * trial ユーザーの日次チャット送信上限をチェックし、超過時はエラー文言を返す
+ * trial ユーザーの日次チャット送信上限をチェックし、超過時はエラー文言を返す。
+ * 続き生成は user メッセージを残さないため、別に記録した件数も足して数える。
  */
 export async function checkTrialDailyLimit(role: UserRole, userId: string): Promise<string | null> {
   if (role !== 'trial') {
@@ -36,18 +37,41 @@ export async function checkTrialDailyLimit(role: UserRole, userId: string): Prom
 
   const supabase = new SupabaseService();
   const { fromUtcIso, toUtcIso } = getCurrentJstRange();
-  const sentCountResult = await supabase.countUserMessagesBetween(userId, fromUtcIso, toUtcIso);
+  const [sentCountResult, continuationCountResult] = await Promise.all([
+    supabase.countUserMessagesBetween(userId, fromUtcIso, toUtcIso),
+    supabase.countChatContinuationsBetween(userId, fromUtcIso, toUtcIso),
+  ]);
 
   if (!sentCountResult.success) {
     console.warn('[ChatLimitService] Daily limit check failed:', sentCountResult.error);
     return sentCountResult.error.userMessage;
   }
+  if (!continuationCountResult.success) {
+    console.warn('[ChatLimitService] Daily limit check failed:', continuationCountResult.error);
+    return continuationCountResult.error.userMessage;
+  }
 
-  const sentCountToday = sentCountResult.data;
+  const sentCountToday = sentCountResult.data + continuationCountResult.data;
 
   if (sentCountToday >= DAILY_CHAT_LIMIT) {
     return ERROR_MESSAGES.CHAT.DAILY_CHAT_LIMIT;
   }
 
+  return null;
+}
+
+/**
+ * trial の続き生成を1回の送信として記録する。記録できなければエラー文言を返す（上限をすり抜けないよう、呼び出し元は送信を止める）。
+ */
+export async function recordTrialContinuation(role: UserRole, userId: string): Promise<string | null> {
+  if (role !== 'trial') {
+    return null;
+  }
+
+  const result = await new SupabaseService().recordChatContinuation(userId);
+  if (!result.success) {
+    console.error('[ChatLimitService] Failed to record continuation:', result.error);
+    return result.error.userMessage;
+  }
   return null;
 }

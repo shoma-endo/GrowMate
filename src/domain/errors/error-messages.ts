@@ -69,6 +69,16 @@ export const ERROR_MESSAGES = {
     /** WordPress.comにサイトIDが必要な場合 */
     WORDPRESS_COM_SITE_ID_REQUIRED: 'WordPress.com連携にはサイトIDが必要です',
 
+    /** セルフホストのサイトURLが https でない、または公開されていないアドレスを指す場合 */
+    SITE_URL_NOT_PUBLIC: 'サイトURLには、インターネットに公開されている https:// のアドレスを入力してください',
+
+    /** セルフホストのサイトURLの名前解決に失敗した、またはリダイレクトが続きすぎる場合 */
+    SITE_URL_UNREACHABLE: 'サイトURLに接続できませんでした。URLを確かめて、時間をおいてもう一度お試しください。',
+
+    /** 保存済みのパスワードを、別のサイトURLへ送らないために再入力を求める場合 */
+    APPLICATION_PASSWORD_REQUIRED_FOR_NEW_SITE_URL:
+      'サイトURLを変更するときは、アプリケーションパスワードも入力してください',
+
     /** 有効なURLを入力してください */
     INVALID_URL,
 
@@ -429,6 +439,9 @@ export const ERROR_MESSAGES = {
 
     /** 応答の受信が完了前に途切れた場合 */
     STREAM_INTERRUPTED: '応答を最後まで受け取れませんでした。もう一度お試しください。',
+
+    /** trial の利用回数（続き生成を含む）を数えられない・記録できない場合 */
+    USAGE_CHECK_FAILED: '利用回数を確認できませんでした。もう一度お試しください。',
   },
 
   /**
