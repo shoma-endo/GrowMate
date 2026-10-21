@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type HTMLAttributes } from 'react';
 import { Loader2, Info, Calendar as CalendarIcon, Settings, Save, Clock, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,11 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import type { EvaluationResultSummary } from '@/types/gsc';
+import { cn } from '@/lib/utils';
+
+export function DashedPanel({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('rounded-lg border-2 border-dashed p-8 text-center bg-gray-50/50', className)} {...props} />;
+}
 
 // 時間選択用の選択肢を生成
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
@@ -490,12 +495,12 @@ export function EvaluationSettings({
           )}
         </div>
       ) : (
-        <div className="rounded-lg border-2 border-dashed p-8 text-center bg-gray-50/50 mt-4">
+        <DashedPanel className="mt-4">
           <p className="text-muted-foreground font-medium mb-1">未設定</p>
           <p className="text-sm text-gray-500">
             まだ評価サイクルが設定されていません。「評価サイクルを開始」ボタンから設定してください。
           </p>
-        </div>
+        </DashedPanel>
       )}
     </div>
   );

@@ -74,3 +74,31 @@ export type Ga4ContentEvaluationScheduleDatabase = Omit<Database, 'public'> & {
     };
   };
 };
+
+/**
+ * PERMANENT: CSV 取り込み RPC `import_content_annotations_csv` の戻り値。
+ *
+ * RPC は `returns jsonb` なので生成型は `Json` になる
+ * （`supabase/migrations/20261019000000_add_content_csv_import.sql` の `jsonb_build_object`）。
+ */
+interface ContentCsvImportRpcResult {
+  updated: number;
+  created: number;
+  unchanged: number;
+  skipped: Array<{
+    row_index: number;
+    url: string;
+    reason: 'invalid_url' | 'multiple_matches' | 'no_values';
+  }>;
+}
+
+export type ContentCsvImportDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Functions'> & {
+    Functions: Omit<Database['public']['Functions'], 'import_content_annotations_csv'> & {
+      import_content_annotations_csv: {
+        Args: Database['public']['Functions']['import_content_annotations_csv']['Args'];
+        Returns: ContentCsvImportRpcResult;
+      };
+    };
+  };
+};

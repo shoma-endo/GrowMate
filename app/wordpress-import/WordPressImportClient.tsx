@@ -10,6 +10,35 @@ import Link from 'next/link';
 import { ErrorAlert } from '@/components/ErrorAlert';
 import { runWordpressBulkImport } from '@/server/actions/wordpressImport.actions';
 
+type ImportCountTone = 'blue' | 'green' | 'purple' | 'indigo' | 'orange' | 'yellow' | 'red';
+
+const IMPORT_COUNT_TONE_CLASS: Record<ImportCountTone, string> = {
+  blue: 'text-blue-600',
+  green: 'text-green-600',
+  purple: 'text-purple-600',
+  indigo: 'text-indigo-600',
+  orange: 'text-orange-600',
+  yellow: 'text-yellow-600',
+  red: 'text-red-600',
+};
+
+export function ImportResultCount({
+  count,
+  label,
+  tone,
+}: {
+  count: number;
+  label: string;
+  tone: ImportCountTone;
+}) {
+  return (
+    <div className="text-center">
+      <div className={`text-2xl font-bold ${IMPORT_COUNT_TONE_CLASS[tone]}`}>{count}</div>
+      <div className="text-sm text-gray-600">{label}</div>
+    </div>
+  );
+}
+
 // WordPress OAuth/認証エラーかどうかを判定
 const isWordPressAuthError = (errorMessage: string | undefined): boolean => {
   if (!errorMessage) return false;
@@ -231,36 +260,13 @@ export default function WordPressImportClient() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">{result.totalPosts}</div>
-                  <div className="text-sm text-gray-600">取得記事数</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{result.newPosts}</div>
-                  <div className="text-sm text-gray-600">新規登録対象</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-purple-600">{result.insertedPosts}</div>
-                  <div className="text-sm text-gray-600">登録成功</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-indigo-600">{result.updatedPosts}</div>
-                  <div className="text-sm text-gray-600">更新件数</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-orange-600">
-                    {result.skippedExistingPosts}
-                  </div>
-                  <div className="text-sm text-gray-600">変更なしでスキップ</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-yellow-600">{result.duplicatePosts}</div>
-                  <div className="text-sm text-gray-600">重複スキップ</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{result.errorPosts}</div>
-                  <div className="text-sm text-gray-600">エラー</div>
-                </div>
+                <ImportResultCount count={result.totalPosts} label="取得記事数" tone="blue" />
+                <ImportResultCount count={result.newPosts} label="新規登録対象" tone="green" />
+                <ImportResultCount count={result.insertedPosts} label="登録成功" tone="purple" />
+                <ImportResultCount count={result.updatedPosts} label="更新件数" tone="indigo" />
+                <ImportResultCount count={result.skippedExistingPosts} label="変更なしでスキップ" tone="orange" />
+                <ImportResultCount count={result.duplicatePosts} label="重複スキップ" tone="yellow" />
+                <ImportResultCount count={result.errorPosts} label="エラー" tone="red" />
               </div>
               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                 <p className="text-sm text-gray-700">
