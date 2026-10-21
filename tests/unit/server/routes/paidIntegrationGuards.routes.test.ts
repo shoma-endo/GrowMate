@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('server-only', () => ({}));
 
+vi.mock('@/server/lib/public-url-guard', () => ({
+  checkPublicHttpsUrl: vi.fn(async (url: string) => ({ ok: true, url: new URL(url) })),
+}));
+
 vi.mock('@/server/middleware/auth.middleware', () => ({
   authMiddleware: mocks.authMiddleware,
 }));

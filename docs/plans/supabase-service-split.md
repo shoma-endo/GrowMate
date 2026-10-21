@@ -150,7 +150,7 @@ import { SupabaseService } from '@/server/services/supabaseService'   ← パス
 | 0 | `src/server/services/supabase/base.ts`（新規） | `SupabaseBaseService` | constructor, success, failure, fetchAllPaged, getClient, withServiceRoleClient, `SupabaseResult` / `SupabaseErrorInfo` 型（1–304 のうち googleAds / admin / **instagram** の型を除く。base.ts に残る型はこの 2 つだけ。`InstagramCredentialRow` / `InstagramCredentialInsertRow` / `InstagramCredentialUpdateRow`（`supabaseService.ts:33-35`）は行12 の `instagram.ts` へ） | 200 |
 | 1 | `src/server/services/supabase/users.ts`（新規） | `SupabaseUsersService` | getUserById … getAllUsers（305–417） | 115 |
 | 2 | `src/server/services/supabase/chatSession.ts`（新規） | `SupabaseChatSessionService` | createChatSession … updateSessionLastMessageAt（418–686）、deleteChatSession（2321–2381） | 330 |
-| 3 | `src/server/services/supabase/chatMessage.ts`（新規） | `SupabaseChatMessageService` | createChatMessage … countUserMessagesBetween（687–845） | 160 |
+| 3 | `src/server/services/supabase/chatMessage.ts`（新規） | `SupabaseChatMessageService` | createChatMessage … reserveTrialChatSend（687–845。行番号は分割計画作成時点） | 160 |
 | 4 | `src/server/services/supabase/wordpress.ts`（新規） | `SupabaseWordPressService` | getWordPressSettingsByUserId … refreshWpComToken（846–1057） | 215 |
 | 5 | `src/server/services/supabase/gscCredential.ts`（新規） | `SupabaseGscCredentialService` | getGscCredentialByUserId（1058–1107）、upsertGscCredential / updateGscCredential / deleteGscCredential（1474–1648） | 230 |
 | 6 | `src/server/services/supabase/gscMetrics.ts`（新規） | `SupabaseGscMetricsService` | upsertGa4PageMetricsDaily / listGa4SyncTargets（1649–1757）、upsertGscQueryMetrics … hasOldGscQueryMetrics（1783–1898）、cleanupOldGscPageMetrics（2300–2320） | 250 |

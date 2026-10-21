@@ -3,6 +3,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { WPCOM_TOKEN_COOKIE_NAME } from '@/server/services/wordpressContext';
 import { verifyOAuthState } from '@/server/lib/oauth-state';
+import { verifyOAuthStateCookie } from '@/server/lib/oauth-flow';
 import { isAdmin as isAdminRole } from '@/authUtils';
 import type { UserRole } from '@/types/user';
 
@@ -36,11 +37,8 @@ export async function GET(request: NextRequest) {
   }
 
   const storedState = request.cookies.get(stateCookieName)?.value;
-  if (storedState && state !== storedState) {
-    console.error('State mismatch between cookie and query.', {
-      receivedState: state,
-      storedState,
-    });
+  if (verifyOAuthStateCookie({ storedState, receivedState: state }) !== 'ok') {
+    console.error('State mismatch between cookie and query.', { stored: !!storedState, received: !!state });
     return NextResponse.json({ error: ERROR_MESSAGES.AUTH.INVALID_STATE }, { status: 400 });
   }
 
@@ -85,7 +83,7 @@ export async function GET(request: NextRequest) {
       const errorBody = await tokenResponse.text();
       console.error('Failed to fetch access token:', tokenResponse.status, errorBody);
       return NextResponse.json(
-        { error: ERROR_MESSAGES.AUTH.ACCESS_TOKEN_FETCH_FAILED, details: errorBody },
+        { error: ERROR_MESSAGES.AUTH.ACCESS_TOKEN_FETCH_FAILED },
         { status: tokenResponse.status }
       );
     }
@@ -94,7 +92,7 @@ export async function GET(request: NextRequest) {
     const { access_token, refresh_token, expires_in } = tokenData;
 
     if (!access_token) {
-      console.error('Access token not found in response from WordPress.com', tokenData);
+      console.error('Access token not found in response from WordPress.com', { keys: Object.keys(tokenData ?? {}) });
       return NextResponse.json({ error: ERROR_MESSAGES.AUTH.ACCESS_TOKEN_FETCH_FAILED }, { status: 500 });
     }
 
