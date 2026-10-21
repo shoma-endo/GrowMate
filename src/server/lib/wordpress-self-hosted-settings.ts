@@ -17,7 +17,8 @@ export async function resolveSelfHostedSettingsInput(
   | { ok: true; siteUrl: string; username: string; applicationPassword: string }
   | { ok: false; error: string }
 > {
-  const siteUrl = input.wpSiteUrl ?? '';
+  // 前後の空白が残ると、WordPressService が組み立てる REST の URL が不正になる
+  const siteUrl = input.wpSiteUrl?.trim() ?? '';
   const username = input.wpUsername ?? '';
   if (!siteUrl || !username) {
     return { ok: false, error: ERROR_MESSAGES.WORDPRESS.SELF_HOSTED_REQUIRED_FIELDS };

@@ -98,4 +98,13 @@ describe('resolveSelfHostedSettingsInput', () => {
     });
     expect(result).toEqual({ ok: false, error: ERROR_MESSAGES.WORDPRESS.SITE_URL_UNREACHABLE });
   });
+
+  it('保存するサイトURLは前後の空白を除いた値にする', async () => {
+    getWordPressSettingsByUserId.mockResolvedValue({ ...savedSelfHosted, wpSiteUrl: 'https://blog.example.com' });
+    const result = await resolveSelfHostedSettingsInput(supabaseService, 'user-1', {
+      wpSiteUrl: ' https://blog.example.com ',
+      wpUsername: 'admin',
+    });
+    expect(result).toMatchObject({ ok: true, siteUrl: 'https://blog.example.com' });
+  });
 });
