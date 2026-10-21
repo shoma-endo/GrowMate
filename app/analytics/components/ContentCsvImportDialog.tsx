@@ -220,7 +220,6 @@ export function ContentCsvImportDialog() {
               <ul className="list-disc space-y-1 pl-4">
                 <li>1行目の見出しは変えないでください。1記事につき1行です。</li>
                 <li>分からない項目は空欄のままにしてください。</li>
-                <li>Excel で保存するときは、ファイルの種類で「CSV UTF-8（コンマ区切り）」を選んでください。</li>
               </ul>
             </InfoTooltipButton>
           </div>
