@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authMiddleware } from '@/server/middleware/auth.middleware';
 import { isAdmin as isAdminRole } from '@/authUtils';
+import { hasPaidFeatureAccess } from '@/types/user';
 import { SupabaseService } from '@/server/services/supabaseService';
+import { resolveSelfHostedSettingsInput } from '@/server/lib/wordpress-self-hosted-settings';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { nextJson409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
@@ -43,6 +45,9 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+    if (!hasPaidFeatureAccess(authResult.userDetails.role)) {
+      return NextResponse.json({ success: false, error: ERROR_MESSAGES.AUTH.UNAUTHORIZED }, { status: 403 });
+    }
     const isAdmin = isAdminRole(authResult.userDetails.role);
 
     // 管理者以外はWordPress.comを禁止
@@ -55,18 +60,20 @@ export async function POST(request: NextRequest) {
 
     // WordPress設定を保存（セルフホスト対応）
     if (wpType === 'self_hosted') {
-      if (!wpSiteUrl || !wpUsername || !wpApplicationPassword) {
-        return NextResponse.json(
-          { success: false, error: ERROR_MESSAGES.WORDPRESS.SELF_HOSTED_REQUIRED_FIELDS },
-          { status: 400 }
-        );
-      }
-      
-      await supabaseService.createOrUpdateSelfHostedWordPressSettings(
-        authResult.userId,
+      const resolved = await resolveSelfHostedSettingsInput(supabaseService, authResult.userId, {
         wpSiteUrl,
         wpUsername,
         wpApplicationPassword,
+      });
+      if (!resolved.ok) {
+        return NextResponse.json({ success: false, error: resolved.error }, { status: 400 });
+      }
+
+      await supabaseService.createOrUpdateSelfHostedWordPressSettings(
+        authResult.userId,
+        resolved.siteUrl,
+        resolved.username,
+        resolved.applicationPassword,
         { wpContentTypes: contentTypes }
       );
     } else if (wpType === 'wordpress_com') {

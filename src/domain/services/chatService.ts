@@ -220,7 +220,6 @@ export class ChatService implements IChatService {
     const response = await startChatSA({
       userMessage: params.content,
       model: params.model,
-      ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
       ...(params.serviceId !== undefined ? { serviceId: params.serviceId } : {}),
     });
 
@@ -244,7 +243,6 @@ export class ChatService implements IChatService {
       messages: params.messages,
       userMessage: params.content,
       model: params.model,
-      ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
       ...(params.serviceId !== undefined ? { serviceId: params.serviceId } : {}),
     });
 

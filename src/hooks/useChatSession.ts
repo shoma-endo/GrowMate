@@ -55,6 +55,13 @@ const createSessionPreview = (content: string, sessionId: string): ChatSession =
 const isOpenAIModel = (model: string): boolean =>
   MODEL_CONFIGS[model]?.provider === 'openai';
 
+const toStreamErrorMessage = (error: unknown): string => {
+  // fetch・reader.read() の回線断は TypeError（文言はブラウザごとの英語）になる
+  if (error instanceof TypeError) return ERROR_MESSAGES.CHAT.STREAM_INTERRUPTED;
+  if (error instanceof Error) return error.message;
+  return 'ストリーミングに失敗しました';
+};
+
 const createStreamingMessagePair = (content: string, model: string) => {
   const responseModel = getResponseModelForBlogCreation(model);
   return {
@@ -68,7 +75,6 @@ interface StreamingParams {
   model: string;
   currentSessionId: string;
   recentMessages: SerializableMessage[];
-  systemPrompt?: string;
   serviceId?: string;
   /** 本文生成ボタン用: blog_creation_step7 の応答を session_combined_contents に保存 */
   step7FullBodyGeneration?: boolean;
@@ -82,8 +88,16 @@ export const useChatSession = (
   chatService: IChatService
 ): ChatSessionHook => {
   const [state, setState] = useState<ChatState>(initialChatState);
-  // loadSession() の最新リクエストを追跡（古いレスポンスで state が上書きされるのを防ぐ）
-  const loadSessionRequestRef = useRef(0);
+  // セッションの読み込み・新規チャット・開いているセッションの削除で画面が差し替わるたびに進める。
+  // 差し替え前に始まった読み込みや送信の結果で、今の画面を上書きしないため
+  const viewGenerationRef = useRef(0);
+
+  const createViewScopedSetState = useCallback(() => {
+    const generation = viewGenerationRef.current;
+    return (update: (prev: ChatState) => ChatState) => {
+      if (generation === viewGenerationRef.current) setState(update);
+    };
+  }, []);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -100,13 +114,13 @@ export const useChatSession = (
 
   const loadSession = useCallback(
     async (sessionId: string) => {
-      const requestId = ++loadSessionRequestRef.current;
+      const requestId = ++viewGenerationRef.current;
       setState(prev => ({ ...prev, isLoading: true, error: null, warning: null }));
 
       try {
         const messages = await chatService.loadSessionMessages(sessionId);
         // 新しいリクエストが来ていた場合は古い結果を捨てる（並行実行時の上書き防止）
-        if (requestId !== loadSessionRequestRef.current) return;
+        if (requestId !== viewGenerationRef.current) return;
         setState(prev => ({
           ...prev,
           messages,
@@ -115,7 +129,7 @@ export const useChatSession = (
           isTruncated: false,
         }));
       } catch (error) {
-        if (requestId !== loadSessionRequestRef.current) return;
+        if (requestId !== viewGenerationRef.current) return;
         console.error('Load session error:', error);
         const errorMessage =
           error instanceof Error ? error.message : 'セッションの読み込みに失敗しました';
@@ -136,12 +150,12 @@ export const useChatSession = (
       model,
       currentSessionId,
       recentMessages,
-      systemPrompt,
       serviceId,
       step7FullBodyGeneration,
       continuationMode,
       truncatedContent,
     }: StreamingParams) => {
+      const setSendState = createViewScopedSetState();
       // step7FullBodyGeneration: 楽観的表示は短いトリガーを使い、loadSession 後の表示と一致させる
       const displayContent =
         step7FullBodyGeneration && model === 'blog_creation_step7'
@@ -152,13 +166,34 @@ export const useChatSession = (
           displayContent,
           model
         );
-        setState(prev => ({
+        setSendState(prev => ({
           ...prev,
           messages: [...prev.messages, userMessage, assistantMessage],
           error: null,
           warning: null,
         }));
       }
+
+      const baseContent = continuationMode ? (truncatedContent ?? '') : '';
+      const updateLastAssistant = (
+        messages: ChatMessage[],
+        update: (msg: ChatMessage) => ChatMessage
+      ): ChatMessage[] =>
+        messages.map((msg, idx) =>
+          idx === messages.length - 1 && (!continuationMode || msg.role === 'assistant')
+            ? update(msg)
+            : msg
+        );
+      // 保存されなかった途中の出力を画面に残すと、次の送信で DB に無い内容が履歴として送られる
+      const discardUnsavedOutput = (messages: ChatMessage[]): ChatMessage[] => {
+        if (continuationMode) {
+          return updateLastAssistant(messages, msg => ({ ...msg, content: baseContent }));
+        }
+        return messages[messages.length - 1]?.role === 'assistant'
+          ? messages.slice(0, -1)
+          : messages;
+      };
+      let streamSucceeded = false;
 
       try {
         const response = await fetch('/api/chat/anthropic/stream', {
@@ -174,7 +209,6 @@ export const useChatSession = (
             })),
             userMessage: content,
             model,
-            ...(systemPrompt ? { systemPrompt } : {}),
             ...(serviceId ? { serviceId } : {}),
             ...(step7FullBodyGeneration ? { step7FullBodyGeneration: true } : {}),
             ...(continuationMode ? { isContinuation: true, truncatedContent: truncatedContent ?? '' } : {}),
@@ -185,29 +219,19 @@ export const useChatSession = (
           const bodyText = await response.text().catch(() => '');
           const warningMessage = extractWarningMessage(bodyText);
 
-          setState(prev => {
-            const shouldRemovePlaceholder =
-              !continuationMode &&
-              prev.messages.length > 0 &&
-              prev.messages[prev.messages.length - 1]?.role === 'assistant';
-            const updatedMessages = shouldRemovePlaceholder
-              ? prev.messages.slice(0, -1)
-              : prev.messages;
-
-            return {
-              ...prev,
-              messages: updatedMessages,
-              warning: warningMessage,
-              error: null,
-              isLoading: false,
-            };
-          });
+          setSendState(prev => ({
+            ...prev,
+            messages: discardUnsavedOutput(prev.messages),
+            warning: warningMessage,
+            error: null,
+            isLoading: false,
+          }));
 
           return false;
         }
 
         if (response.status === 409) {
-          setState(prev => {
+          setSendState(prev => {
             const msgs = prev.messages;
             const last = msgs[msgs.length - 1];
             const second = msgs[msgs.length - 2];
@@ -244,18 +268,6 @@ export const useChatSession = (
         let accumulatedText = '';
         let idleTimeout: ReturnType<typeof setTimeout> | null = null;
         let sseBuffer = '';
-        let streamSucceeded = false;
-
-        const baseContent = continuationMode ? (truncatedContent ?? '') : '';
-        const updateLastAssistant = (
-          messages: ChatMessage[],
-          update: (msg: ChatMessage) => ChatMessage
-        ): ChatMessage[] =>
-          messages.map((msg, idx) =>
-            idx === messages.length - 1 && (!continuationMode || msg.role === 'assistant')
-              ? update(msg)
-              : msg
-          );
 
         const resetIdleTimeout = () => {
           if (idleTimeout) clearTimeout(idleTimeout);
@@ -300,7 +312,7 @@ export const useChatSession = (
                 if (eventType === 'chunk') {
                   const data = JSON.parse(dataCombined);
                   accumulatedText += data; // サーバーはJSON文字列を送る
-                  setState(prev => ({
+                  setSendState(prev => ({
                     ...prev,
                     messages: updateLastAssistant(prev.messages, msg => ({
                       ...msg,
@@ -312,7 +324,7 @@ export const useChatSession = (
                   const data = JSON.parse(dataCombined);
                   const responseModel = getResponseModelForBlogCreation(model);
                   const mergedContent = baseContent + data.message;
-                  setState(prev => ({
+                  setSendState(prev => ({
                     ...prev,
                     currentSessionId: data.sessionId || prev.currentSessionId,
                     messages: updateLastAssistant(prev.messages, msg => ({
@@ -333,8 +345,13 @@ export const useChatSession = (
                   }
                 } else if (eventType === 'error') {
                   const data = JSON.parse(dataCombined);
-                  setState(prev => ({
+                  console.error('[Stream] error event:', data.type, data.message);
+                  setSendState(prev => ({
                     ...prev,
+                    messages:
+                      data.type === 'snapshot_save_failed'
+                        ? prev.messages
+                        : discardUnsavedOutput(prev.messages),
                     isLoading: false,
                     error: data.message || 'ストリーミングエラー',
                     warning: null,
@@ -348,7 +365,7 @@ export const useChatSession = (
                   }
                 } else if (eventType === 'done') {
                   // 明示終了
-                  setState(prev => ({
+                  setSendState(prev => ({
                     ...prev,
                     isLoading: false,
                   }));
@@ -364,19 +381,36 @@ export const useChatSession = (
           reader.releaseLock();
         }
 
+        // final も error も届かずに切れた（idle timeout など）
+        if (!streamSucceeded) {
+          console.error('Stream ended without final event');
+          setSendState(prev => ({
+            ...prev,
+            messages: discardUnsavedOutput(prev.messages),
+            isLoading: false,
+            error: ERROR_MESSAGES.CHAT.STREAM_INTERRUPTED,
+            warning: null,
+          }));
+        }
         return streamSucceeded;
       } catch (error) {
         console.error('Streaming error:', error);
-        setState(prev => ({
+        // final 受信後（保存済み）に切れた場合は、表示済みの応答をそのまま成功として扱う
+        if (streamSucceeded) {
+          setSendState(prev => ({ ...prev, isLoading: false }));
+          return true;
+        }
+        setSendState(prev => ({
           ...prev,
+          messages: discardUnsavedOutput(prev.messages),
           isLoading: false,
-          error: error instanceof Error ? error.message : 'ストリーミングに失敗しました',
+          error: toStreamErrorMessage(error),
           warning: null,
         }));
         return false;
       }
     },
-    []
+    [createViewScopedSetState]
   );
 
   const handleNonStreamingMessage = useCallback(
@@ -385,11 +419,11 @@ export const useChatSession = (
       model,
       currentSessionId,
       recentMessages,
-      systemPrompt,
       serviceId,
     }: StreamingParams): Promise<boolean> => {
+      const setSendState = createViewScopedSetState();
       const { userMessage, assistantMessage } = createStreamingMessagePair(content, model);
-      setState(prev => ({
+      setSendState(prev => ({
         ...prev,
         messages: [...prev.messages, userMessage, assistantMessage],
         error: null,
@@ -404,13 +438,12 @@ export const useChatSession = (
           isNewSession: !currentSessionId,
           sessionId: currentSessionId || undefined,
           messages: recentMessages,
-          systemPrompt,
           serviceId,
         });
 
         if (response.warning) {
           // 日次制限などの警告: assistant placeholder のみ除去し、user メッセージは保持
-          setState(prev => ({
+          setSendState(prev => ({
             ...prev,
             messages:
               prev.messages.length > 0 &&
@@ -426,7 +459,7 @@ export const useChatSession = (
 
         if (response.error) {
           if (isEmailLinkConflictResult(response)) {
-            setState(prev => ({
+            setSendState(prev => ({
               ...prev,
               messages: prev.messages.slice(0, -2),
               error: null,
@@ -437,7 +470,7 @@ export const useChatSession = (
             return false;
           }
 
-          setState(prev => ({
+          setSendState(prev => ({
             ...prev,
             messages: prev.messages.slice(0, -2),
             error: response.error ?? '送信に失敗しました',
@@ -449,7 +482,7 @@ export const useChatSession = (
 
         const responseModel = getResponseModelForBlogCreation(model);
         const isNewSession = !currentSessionId && !!response.sessionId;
-        setState(prev => ({
+        setSendState(prev => ({
           ...prev,
           currentSessionId: response.sessionId || prev.currentSessionId,
           messages: prev.messages.map((msg, idx) =>
@@ -459,10 +492,11 @@ export const useChatSession = (
           ),
           isLoading: false,
           isTruncated: false,
-          ...(isNewSession && response.sessionId
-            ? { sessions: [createSessionPreview(content, response.sessionId), ...prev.sessions] }
-            : {}),
         }));
+        if (isNewSession && response.sessionId) {
+          const newSession = createSessionPreview(content, response.sessionId);
+          setState(prev => ({ ...prev, sessions: [newSession, ...prev.sessions] }));
+        }
         return true;
       } catch (error) {
         console.error('Non-streaming send error:', error);
@@ -472,7 +506,7 @@ export const useChatSession = (
             : error instanceof Error
               ? error.message
               : '送信に失敗しました';
-        setState(prev => ({
+        setSendState(prev => ({
           ...prev,
           messages: prev.messages.slice(0, -2),
           error: errorMessage,
@@ -482,7 +516,7 @@ export const useChatSession = (
         return false;
       }
     },
-    [chatService]
+    [chatService, createViewScopedSetState]
   );
 
   const sendMessage = useCallback(
@@ -490,7 +524,6 @@ export const useChatSession = (
       content: string,
       model: string,
       options?: {
-        systemPrompt?: string;
         serviceId?: string;
         step7FullBodyGeneration?: boolean;
         /** true のとき過去のチャット履歴を送信しない */
@@ -500,7 +533,8 @@ export const useChatSession = (
         continuationMode?: boolean;
       }
     ) => {
-      setState(prev => ({
+      const setSendState = createViewScopedSetState();
+      setSendState(prev => ({
         ...prev,
         isLoading: true,
         error: null,
@@ -529,10 +563,6 @@ export const useChatSession = (
               }),
         };
 
-        if (options?.systemPrompt) {
-          streamingParams.systemPrompt = options.systemPrompt;
-        }
-
         if (options?.serviceId) {
           streamingParams.serviceId = options.serviceId;
         }
@@ -545,7 +575,7 @@ export const useChatSession = (
           const lastMessage = state.messages[state.messages.length - 1];
           if (!lastMessage || lastMessage.role !== 'assistant') {
             console.warn('continuationMode requires last message to be an assistant message');
-            setState(prev => ({
+            setSendState(prev => ({
               ...prev,
               isLoading: false,
               error: '続きを生成するためのアシスタントメッセージがありません',
@@ -558,7 +588,7 @@ export const useChatSession = (
 
         if (isOpenAIModel(model)) {
           if (options?.continuationMode) {
-            setState(prev => ({
+            setSendState(prev => ({
               ...prev,
               isLoading: false,
               error: 'OpenAI モデルでは続き生成に対応していません',
@@ -579,7 +609,7 @@ export const useChatSession = (
               ? error.message
               : '送信に失敗しました';
 
-        setState(prev => ({
+        setSendState(prev => ({
           ...prev,
           isLoading: false,
           error: errorMessage,
@@ -588,13 +618,20 @@ export const useChatSession = (
         return false;
       }
     },
-    [state.currentSessionId, state.messages, handleStreamingMessage, handleNonStreamingMessage]
+    [
+      state.currentSessionId,
+      state.messages,
+      handleStreamingMessage,
+      handleNonStreamingMessage,
+      createViewScopedSetState,
+    ]
   );
 
   const deleteSession = useCallback(
     async (sessionId: string) => {
       try {
         await chatService.deleteSession(sessionId);
+        if (sessionId === state.currentSessionId) viewGenerationRef.current += 1;
         setState(prev => ({
           ...prev,
           sessions: prev.sessions.filter(s => s.id !== sessionId),
@@ -603,6 +640,10 @@ export const useChatSession = (
             ? {
                 currentSessionId: '',
                 messages: [],
+                isLoading: false,
+                isTruncated: false,
+                error: null,
+                warning: null,
               }
             : {}),
         }));
@@ -613,7 +654,7 @@ export const useChatSession = (
         setState(prev => ({ ...prev, error: errorMessage, warning: null }));
       }
     },
-    [chatService]
+    [chatService, state.currentSessionId]
   );
 
   const searchSessions = useCallback(
@@ -719,6 +760,7 @@ export const useChatSession = (
   );
 
   const startNewSession = useCallback(() => {
+    viewGenerationRef.current += 1;
     setState(prev => ({
       ...prev,
       currentSessionId: '',
@@ -726,6 +768,7 @@ export const useChatSession = (
       error: null,
       warning: null,
       isTruncated: false,
+      isLoading: false,
     }));
   }, []);
 

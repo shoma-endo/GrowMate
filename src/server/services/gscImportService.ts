@@ -1,6 +1,6 @@
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { GscService } from './gscService';
-import { SupabaseService } from './supabaseService';
+import { SupabaseService, type GscPageMetricUpsertRow } from './supabaseService';
 import { getGscQueryMaxPages, getGscQueryRowLimit } from '../lib/gsc-config';
 import { normalizeQuery } from '../../lib/normalize-query';
 import { normalizeUrl } from '../../lib/normalize-url';
@@ -237,24 +237,10 @@ class GscImportService {
 
     const importedAt = new Date().toISOString();
 
-    type PayloadEntry = {
-      user_id: string;
-      content_annotation_id: string;
-      property_uri: string;
-      search_type: string;
-      date: string;
-      url: string;
-      clicks: number;
-      impressions: number;
-      ctr: number;
-      position: number;
-      imported_at: string;
-    };
-
     // GSC は同一ページを末尾スラッシュ・クエリパラメータ違いなど複数の URL 表記で返す場合がある。
     // normalized_url が同じ行が同一チャンクに含まれると ON CONFLICT DO UPDATE が同一行を
     // 2 回更新しようとしてチャンク全体が失敗するため、投入前に集約する。
-    const dedupMap = new Map<string, { payload: PayloadEntry; weightedPositionSum: number }>();
+    const dedupMap = new Map<string, { payload: GscPageMetricUpsertRow; weightedPositionSum: number }>();
 
     for (const metric of metrics) {
       const annotationId = resolveAnnotationId(metric.normalizedUrl ?? null);
@@ -302,33 +288,15 @@ class GscImportService {
       position: payload.impressions > 0 ? weightedPositionSum / payload.impressions : payload.position,
     }));
 
-    const chunkSize = 500;
-    let upserted = 0;
-    for (let i = 0; i < payloads.length; i += chunkSize) {
-      const chunk = payloads.slice(i, i + chunkSize);
-      const { error } = await this.supabaseService
-        .getClient()
-        .from('gsc_page_metrics')
-        .upsert(chunk, {
-          onConflict: 'user_id,property_uri,date,normalized_url,search_type',
-        });
+    const saved = await this.supabaseService.upsertGscPageMetrics(payloads);
 
-      if (error) {
-        console.error('[gsc-import] upsertPageMetrics chunk failed:', {
-          userId,
-          chunkIndex: Math.floor(i / chunkSize),
-          chunkSize: chunk.length,
-          error: error.message,
-        });
-        skipped += chunk.length;
-        failedChunks += 1;
-        continue;
-      }
-
-      upserted += chunk.length;
-    }
-
-    return { upserted, skipped, unmatched, failedChunks };
+    // 値が同じで書かなかった行も保存済みとして数える
+    return {
+      upserted: saved.written + saved.unchanged,
+      skipped: skipped + saved.failedRows,
+      unmatched,
+      failedChunks: saved.failedChunks,
+    };
   }
 
   async importQueryMetricsForUrl(

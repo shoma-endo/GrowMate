@@ -43,7 +43,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -849,11 +852,34 @@ __root.addEventListener('click', function(ev){{
     return html, js
 
 
+def _assert_js_syntax(blocks: list[tuple[str, str]]) -> None:
+    """生成側（LLM）が書いたビューの JS に構文エラーがあると、ブラウザは黙ってその <script> を捨てる。
+
+    node が無い環境では検査できないので、警告だけ出して続ける。拡張子 .cjs はブラウザの通常の
+    <script> と同じくモジュール構文を認めない判定にするため。
+    """
+    node = shutil.which("node")
+    if not node:
+        print("spec-html.py: 警告: node が無いため JS の構文検査を省略した", file=sys.stderr)
+        return
+    for name, js in blocks:
+        with tempfile.NamedTemporaryFile("w", suffix=".cjs", encoding="utf-8", delete=False) as f:
+            f.write(js)
+            tmp = f.name
+        try:
+            res = subprocess.run([node, "--check", tmp], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        finally:
+            os.unlink(tmp)
+        if res.returncode != 0:
+            detail = "\n".join(res.stderr.strip().splitlines()[:6])
+            raise SystemExit(f"spec-html.py: {name} の JS に構文エラーがある\n{detail}")
+
+
 def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | None) -> list[dict]:
     """ビューを単一 HTML に結合する。戻り値は整合性チェックの findings（原本が無いときは空）。"""
     styles: list[str] = []
     panels: list[str] = []
-    scripts: list[str] = []
+    scripts: list[tuple[str, str]] = []
     tabs: list[str] = []
 
     for i, (label, path) in enumerate(views):
@@ -872,7 +898,7 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
 
         hidden = "" if i == 0 else " hidden"
         panels.append(f'<section class="panel" id="{panel_id}"{hidden}>\n{body}\n</section>')
-        scripts.append(f"/* ===== {path.name} ===== */\n(function(){{\n{_scope(js, panel_id)}\n}})();")
+        scripts.append((path.name, f"/* ===== {path.name} ===== */\n(function(){{\n{_scope(js, panel_id)}\n}})();"))
         tabs.append(
             f'  <button type="button" class="tab" role="tab" data-panel="{panel_id}" '
             f'aria-selected="{"true" if i == 0 else "false"}">{_escape(label)}</button>'
@@ -885,7 +911,7 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
         grow_id = f"panel-{len(views) + 1}"
         grow_html, grow_js = _render_prompts(out.parent / out.stem, source, grow_id)
         panels.append(f'<section class="panel" id="{grow_id}" hidden>\n{grow_html}\n</section>')
-        scripts.append(f"/* ===== ビューを増やす ===== */\n(function(){{\n{grow_js}\n}})();")
+        scripts.append(("ビューを増やす", f"/* ===== ビューを増やす ===== */\n(function(){{\n{grow_js}\n}})();"))
         tabs.append(
             f'  <button type="button" class="tab" role="tab" data-panel="{grow_id}" '
             f'aria-selected="false">ビューを増やす</button>'
@@ -893,6 +919,13 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
 
     brand = f'<span class="brand">{_escape(source)}</span>\n' if source else ""
     nl = "\n"
+
+    # タブ切り替え（SHELL_JS）とビューごとの JS を別々の <script> に分ける。1つにまとめると、
+    # どれか1つのビューの構文エラーで全体が捨てられてタブ切り替えまで止まり、実行時の例外でも
+    # それより後のビューの初期化が止まるため。
+    script_blocks = [("タブ切り替え", SHELL_JS), *scripts]
+    _assert_js_syntax(script_blocks)
+    script_tags = nl.join(f"<script>\n{js}\n</script>" for _, js in script_blocks)
 
     # 整合性チェック（原本があるときだけ）。自己申告に留め、ビルドは落とさない
     ig_html = ""
@@ -941,10 +974,7 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
 {ig_html}
 {nl.join(panels)}
 
-<script>
-{SHELL_JS}
-{nl.join(scripts)}
-</script>
+{script_tags}
 </body>
 </html>
 """
@@ -972,10 +1002,7 @@ def build(views: list[tuple[str, Path]], out: Path, title: str, source: str | No
 {ig_html}
 {nl.join(panels)}
 
-<script>
-{SHELL_JS}
-{nl.join(scripts)}
-</script>
+{script_tags}
 """
     for tag in ("<!doctype", "<html", "</html>", "<head>", "</head>", "<body", "</body>"):
         if tag in artifact.lower():

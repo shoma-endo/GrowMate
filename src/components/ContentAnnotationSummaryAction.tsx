@@ -44,6 +44,31 @@ export function SummarySuspendedTooltip({
   );
 }
 
+export function InfoTooltipButton({
+  ariaLabel,
+  children,
+}: {
+  ariaLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={ariaLabel}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Info size={16} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[300px] text-xs">{children}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 interface ContentAnnotationSummaryActionProps {
   sessionId?: string | null;
   annotationId?: string | null;
@@ -137,22 +162,9 @@ export default function ContentAnnotationSummaryAction({
             )}
           </Button>
         </SummarySuspendedTooltip>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label="AI要約による上書きについて"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Info size={16} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-[300px] text-xs">
-              <p>WordPress本文から生成し直します。現在入力中の未保存内容も含めて上書きされます。</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <InfoTooltipButton ariaLabel="AI要約による上書きについて">
+          <p>WordPress本文から生成し直します。現在入力中の未保存内容も含めて上書きされます。</p>
+        </InfoTooltipButton>
       </div>
       {!canSummarize && isRoleAllowed && (
         <span className="text-xs text-muted-foreground">

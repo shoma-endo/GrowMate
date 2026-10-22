@@ -37,6 +37,7 @@ import { useRouter } from 'next/navigation';
 import { canUseContentAnnotationSummary } from '@/authUtils';
 import { useAuth } from '@/components/AuthProvider';
 import { SummarySuspendedTooltip } from '@/components/ContentAnnotationSummaryAction';
+import { ContentCsvImportDialog } from './components/ContentCsvImportDialog';
 import { buildListingSelectionKey } from './selection-scope';
 import { summarizeContentAnnotationsBulk } from '@/server/actions/contentAnnotationBulkSummary.actions';
 import { resolveRawSelectedCount, toggleIdMembership } from '@/lib/analytics-selection';
@@ -119,6 +120,15 @@ const BULK_SUMMARY_BUTTON_CLASS =
 /** 一括操作ツールバーの「選択中 N 件」。ブログ一覧と Instagram タブで共用する */
 function BulkSelectionCount({ children }: { children: React.ReactNode }) {
   return <span className="text-sm text-gray-600">{children}</span>;
+}
+
+/** 処理の進み具合（AI 要約一括と CSV 取り込みで共用） */
+export function JobProgressText({ label, processed, total }: { label: string; processed: number | string; total: number | string }) {
+  return (
+    <p className="mb-4 text-sm text-gray-600">
+      {label}...（処理済み {processed} / 対象 {total} 件）
+    </p>
+  );
 }
 
 /** 一括操作ツールバーのボタン横の補足（押せない理由・丸めた件数など） */
@@ -436,9 +446,7 @@ export default function AnalyticsClient({
 
   const summaryJobProgress =
     summaryJobProcessedCount !== null && summaryJobTotalCount !== null ? (
-      <p className="mb-4 text-sm text-gray-600">
-        要約中...（処理済み {summaryJobProcessedCount} / 対象 {summaryJobTotalCount} 件）
-      </p>
+      <JobProgressText label="要約中" processed={summaryJobProcessedCount} total={summaryJobTotalCount} />
     ) : null;
 
   const blogContent = (
@@ -463,6 +471,7 @@ export default function AnalyticsClient({
             <Download className="w-4 h-4" aria-hidden />
             <span>WordPress記事一括インポート</span>
           </Link>
+          <ContentCsvImportDialog />
           <Link
             href="/gsc-import"
             className={cn(buttonVariants(), 'h-9 inline-flex items-center gap-2')}

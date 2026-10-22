@@ -12,6 +12,22 @@
 const INVALID_URL = '有効なURLを入力してください';
 
 export const ERROR_MESSAGES = {
+  CONTENT_CSV_IMPORT: {
+    PARSE_FAILED_TITLE: 'CSV を読み込めません',
+    IMPORT_STOPPED_TITLE: '途中で取り込みに失敗しました',
+    INVALID_ENCODING: 'UTF-8 の CSV を選んでください。Excel の場合は「CSV UTF-8（コンマ区切り）」で保存し直してください。',
+    URL_COLUMN_MISSING: '記事URL または URL の列がありません。見出しを確認してください。',
+    TOO_MANY_ROWS: '2万行を超えています。ファイルを分けて順に取り込んでください。同じ行を何度取り込んでも結果は同じです。',
+    SINGLE_FILE_ONLY: 'CSV ファイルは1つずつ選んでください。',
+    MALFORMED_CSV: 'CSV の形式を確認して、ファイルを選び直してください。',
+    IMPORT_FAILED: 'CSV の取り込みに失敗しました。時間をおいて、同じファイルでもう一度お試しください。',
+    SKIP_REASONS: {
+      invalid_url: 'URL が不正',
+      too_long: '文字数超過',
+      multiple_matches: '同じ URL の記事が複数ある',
+      no_values: '値がない',
+    },
+  },
   /**
    * WordPress関連のエラーメッセージ
    */
@@ -68,6 +84,16 @@ export const ERROR_MESSAGES = {
 
     /** WordPress.comにサイトIDが必要な場合 */
     WORDPRESS_COM_SITE_ID_REQUIRED: 'WordPress.com連携にはサイトIDが必要です',
+
+    /** セルフホストのサイトURLが https でない、または公開されていないアドレスを指す場合 */
+    SITE_URL_NOT_PUBLIC: 'サイトURLには、インターネットに公開されている https:// のアドレスを入力してください',
+
+    /** セルフホストのサイトURLの名前解決に失敗した、またはリダイレクトが続きすぎる場合 */
+    SITE_URL_UNREACHABLE: 'サイトURLに接続できませんでした。URLを確かめて、時間をおいてもう一度お試しください。',
+
+    /** 保存済みのパスワードを、別のサイトURLへ送らないために再入力を求める場合 */
+    APPLICATION_PASSWORD_REQUIRED_FOR_NEW_SITE_URL:
+      'サイトURLを変更するときは、アプリケーションパスワードも入力してください',
 
     /** 有効なURLを入力してください */
     INVALID_URL,
@@ -373,6 +399,9 @@ export const ERROR_MESSAGES = {
   },
 
   COMMON: {
+    /** クリップボードへのコピーの失敗 */
+    COPY_FAILED: 'コピーに失敗しました',
+
     /** 一般的なサーバーエラー */
     SERVER_ERROR: 'サーバーエラーが発生しました',
 
@@ -426,6 +455,12 @@ export const ERROR_MESSAGES = {
 
     /** チャットセッションの検索に失敗した場合 */
     SESSION_SEARCH_FAILED: 'チャットセッションの検索に失敗しました',
+
+    /** 応答の受信が完了前に途切れた場合 */
+    STREAM_INTERRUPTED: '応答を最後まで受け取れませんでした。もう一度お試しください。',
+
+    /** trial の利用回数（続き生成を含む）を数えられない・記録できない場合 */
+    USAGE_CHECK_FAILED: '利用回数を確認できませんでした。もう一度お試しください。',
 
     /** AI が安全上の理由で応答を断った場合（stop_reason: refusal） */
     AI_REFUSED: 'AIがこのメッセージへの応答を控えました。内容を変えてもう一度お試しください。',
@@ -538,6 +573,9 @@ export const ERROR_MESSAGES = {
       `GSC Search Analytics API エラー: ${status} ${body}`,
     /** GSC自動取込対象の取得に失敗した場合 */
     AUTO_IMPORT_TARGETS_FETCH_FAILED: (detail: string): string => `GSC自動取込対象の取得に失敗しました: ${detail}`,
+    /** クエリ指標の保存（既存行の読み出しを含む）に失敗した場合 */
+    QUERY_METRICS_SAVE_FAILED: (detail: string): string =>
+      `Google Search Consoleクエリ指標の保存に失敗しました: ${detail}`,
     /** Google Search Consoleが未接続の場合 */
     NOT_CONNECTED: 'Google Search Consoleが未接続です',
 

@@ -1,9 +1,5 @@
 name: Auto Create Pull Request
 
-concurrency:
-  group: auto-pr-${{ github.ref }}
-  cancel-in-progress: true
-
 on:
   push:
     branches-ignore:
@@ -17,7 +13,21 @@ permissions:
 
 jobs:
   create-pr:
+    # ブランチを作った push と develop の push だけで動かす。PR が既にあるブランチへの push は
+    # 何もせず Actions の分数を食うだけだったため。
+    # 上限: 次の場合は後の push でも PR が自動では作られない。手で作る。
+    #   - マージ後に同じブランチへ push し直した
+    #   - 最初の push にコミットが無かった、または最初の run が落ちた
+    if: >-
+      (github.event.created || github.ref_name == 'develop') &&
+      !startsWith(github.ref_name, 'codex/') &&
+      !startsWith(github.ref_name, 'claude/')
+    # ジョブ側に置く。workflow 側に置くと、スキップされる後続 push の run が実行中の run を取り消してしまう
+    concurrency:
+      group: auto-pr-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
@@ -47,11 +57,6 @@ jobs:
           BRANCH_NAME="${GITHUB_REF_NAME}"
           LABEL_NAME="automated-pr"
 
-          if echo "${BRANCH_NAME}" | grep -Eq '^(codex|claude)/'; then
-            echo "Skip auto PR for branch: ${BRANCH_NAME}"
-            exit 0
-          fi
-
           # ベースブランチの決定
           if [ "${BRANCH_NAME}" = "develop" ]; then
             BASE_BRANCH="main"
@@ -71,6 +76,11 @@ jobs:
           fi
 
           git fetch --no-tags origin "${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
+
+          if [ "$(git rev-list --count "origin/${BASE_BRANCH}..HEAD")" = "0" ]; then
+            echo "No commits ahead of ${BASE_BRANCH}. Later pushes to this branch do not run this job; create the PR manually."
+            exit 0
+          fi
 
           # 今回のpushに含まれるコミットメッセージのみ取得
           COMMIT_MESSAGES=$(echo "${PUSH_COMMITS}" | jq -r '.[] | "- " + (.message | split("\n")[0])')
