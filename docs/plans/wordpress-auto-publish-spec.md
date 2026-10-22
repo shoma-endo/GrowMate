@@ -5,7 +5,7 @@
 - 文書名: WordPress 自動投稿（完成した記事を WordPress へ送る）
 - ステータス: `draft`
 - 作成日: 2026-10-21
-- 最終更新日: 2026-10-21
+- 最終更新日: 2026-10-22
 - 作成者: 開発（Cursor Cloud Agent 起票）
 - 承認者: 未定
 - 対象リリース: 未定（「今後開発予定」として先に仕様化）
@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: 仕様書ドラフト作成（Grill Me 未実施。依頼文・既存コード調査・WordPress 公式ドキュメント照合から起票）
-- 止まっている理由・待っている人: §12 の確認質問 Q-001〜Q-007 が未回答（依頼者／クライアント）
-- 次の一手: Q に回答をもらい本書へ書き戻す → ローカルで `takt -w spec-review -t "docs/plans/wordpress-auto-publish-spec.md をレビューしてください"`（本書 §16 の読み合わせは正式レビューではない）
+- 現在の工程: 仕様レビュー回1（正式 audit、2026-10-22）の指摘を反映済み。ステータスは `draft`
+- 止まっている理由・待っている人: §12 の確認質問 Q-001〜Q-007 が未回答（依頼者／クライアント）。未回答のまま `approved` にしない
+- 次の一手: Q の回答を本書へ書き戻す。回答が揃うまで実装（`spec-to-pr`）に進まない
 - 未確認事項: §12 確認質問のとおり。R-003（`future` の日時指定）と R-007（予約の自動公開が日次取込から漏れるか）は実装時に実 WordPress で確認する
 - 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）
-- 更新日・更新した工程: 2026-10-21 起票後の読み合わせを反映
+- 更新日・更新した工程: 2026-10-22 正式 audit 回1（F-001〜F-010）を反映
 
 ## 0. 依頼時の参考資料との差分（先に読む）
 
@@ -109,13 +109,13 @@
 - ルール ID: BR-004（1記事1投稿。2回目以降は更新）
   - ルール: 1つのコンテンツ行（`content_annotations`）に対する WordPress 投稿は1件。行に `wp_post_id` が無ければ作成（`POST /wp/v2/posts`）、あれば更新（`POST /wp/v2/posts/{id}`）にする。同じ記事を2回送っても WordPress に重複投稿を作らない。
   - ルール（更新前の実態確認）: 更新のときは送信前に `GET /wp/v2/posts/{id}?context=edit` で WordPress 側の現在の `status` を見る。GrowMate の `wp_post_status` は送信時点の値で、WordPress 側で公開・削除されても日次取込までは古いままになるため、行の値だけを信じない。WordPress 側が `publish` なら更新せず、行を `publish` と `link` に同期して「すでに WordPress で公開されています」と返す。404（削除済み）なら行の `wp_post_id` / `wp_post_title` / `wp_post_status` を NULL に戻し、「WordPress 側で投稿が削除されていました。もう一度送信すると新しい投稿を作ります」と返す（S-13）。
-  - ルール（他の保存経路との整合）: 下書き・予約として送信済みの行（`wp_post_status` が `draft` / `future`）は `canonical_url` が空のまま `wp_post_id` を持つ。チャットの登録情報パネル（`upsertContentAnnotationBySession`、`src/server/actions/wordpress.actions.ts`）は現状、WordPress 投稿 URL が空で保存されると `wp_post_id` を NULL に上書きする（L194〜L197 で空 URL を `wpPostId: null` に解決し、L686〜L698 で書く）。このままだと送信済みの下書きの紐づけがパネルの保存で消え、次の送信が新規作成になって重複投稿ができる。本機能の実装時に、URL が空のまま変わらず `wp_post_status` が `draft` / `future` の行では `wp_post_id` / `wp_post_title` / `wp_post_status` を保持するよう同関数を直す（S-12）。コンテンツ一覧の「編集」（`updateContentAnnotationFields`）は URL が変わらなければ ID を保持する（L1006〜L1016）ため変更不要。
+  - ルール（他の保存経路との整合）: 下書き・予約として送信済みの行（`wp_post_status` が `draft` / `future`）は `canonical_url` が空のまま `wp_post_id` を持つ。チャットの登録情報パネル（`upsertContentAnnotationBySession`、`src/server/actions/wordpress.actions.ts`）は現状、WordPress 投稿 URL が空で保存されると `wp_post_id` を NULL に上書きする（L194〜L197 で空 URL を `wpPostId: null` に解決し、L686〜L698 で書く）。このままだと送信済みの下書きの紐づけがパネルの保存で消え、次の送信が新規作成になって重複投稿ができる。本機能の実装時に、URL が空のまま変わらず `wp_post_status` が `draft` / `future` の行では `wp_post_id` / `wp_post_title` / `wp_post_status` を保持するよう同関数を直す（S-12）。コンテンツ一覧の「編集」（`updateContentAnnotationFields`）は URL が変わらなければ ID を保持する（L1006〜L1016）ためサーバー側の変更は不要。画面の補足「空欄の場合は連携を解除します。」（`src/components/AnnotationFormFields.tsx` L128）はこの保持と逆に読めるため、2文に更新する（§4）。下書き・予約で URL が空のときは紐づけを残す。公開 URL が入っている行を空にして保存したときは従来どおり解除する。サーバー側の保持条件は変えない。
   - 例外: 行の `wp_post_status` が `publish`（公開済み）の場合、本機能からは更新しない（公開後の本文書き換えは `content-pdca-semi-auto-execution-spec.md` の範囲。公開済みの記事を Canvas の内容で上書きすると WordPress 側の手直しが消える）。WordPress 取込で入った行（`wp_post_status` が NULL で `wp_post_id` あり。本機能のリリース後に取込が触った行は `publish`）も同じく対象外。
 - ルール ID: BR-005（公開 URL は公開されてから保存する）
   - ルール: `canonical_url` は WordPress が返した `status` が `publish` のときだけ、レスポンスの `link` で保存する。`draft` / `future` のときは `canonical_url` を空のままにする（下書きの `link` は `?p=123` 形式の仮 URL で、公開時のパーマリンクと一致しない。GSC・GA4 の URL 突合を汚さない）。
   - 例外: なし。WordPress 側で公開されたあとの URL は、既存の日次 WordPress 取込（`src/server/services/wordpressImportService.ts` の `importWordPressContent`。`existingByPostId` で `wp_post_id` 一致の行を更新）が埋めることを期待する。ただし取込は `status=publish` の投稿を `modified_after` と `after`（基準日時 `wp_import_baseline_at` 以降）の差分で取り、`isChangedSinceBaseline`（`src/server/lib/wordpress-diff-import.ts`）で `modified_gmt` か `date_gmt` が基準日時より後の投稿だけを更新する。下書きを WordPress 管理画面で公開した場合は `modified_gmt` が進むので拾える。予約投稿が WordPress の自動公開で `publish` になった場合は `modified_gmt` が進まないことがあり、`date_gmt`（予約日時）が基準日時より後であることに依存する。予約日時を過ぎても WordPress 側の cron が動かず遅れて公開された（missed schedule）場合は両方とも基準日時より前になり、差分から漏れうる（R-007。実機確認）。漏れた行は手動の「WordPress 記事を一括インポート」でも差分条件が同じなら埋まらない。R-007 の結果次第で、取込側で「`wp_post_status` が `future` の行の `wp_post_id` を個別に `GET` する」補完を足す。
 - ルール ID: BR-006（セルフホストと WordPress.com の両方に同じ操作）
-  - ルール: `wordpress_settings.wp_type` が `self_hosted` でも `wordpress_com` でも同じダイアログ・同じ結果にする。差は `WordPressService` の `baseUrl` と認証ヘッダーだけに閉じる（既存の取込と同じ）。WordPress.com のアクセストークンは期限切れでも `resolveWpComAccessToken`（`src/server/services/wordpressContentSync.ts`。日次取込が L413 付近で使っている）で更新してから送る。`buildWordPressServiceFromSettings`（`src/server/services/wordpressContext.ts`）は保存済みトークンをそのまま使うだけで更新しないため、送信の Server Action では取込と同じ順で先に更新を通す。
+  - ルール: `wordpress_settings.wp_type` が `self_hosted` でも `wordpress_com` でも同じダイアログ・同じ結果にする。差は `WordPressService` の `baseUrl` と認証ヘッダーだけに閉じる（既存の取込と同じ）。WordPress.com の送信は既存クライアントの public-api（`src/server/services/wordpressService.ts` L116 と L130。`https://public-api.wordpress.com/wp/v2/sites/${siteId}`。保存済み site id）に載せる。サイト種別ごとのベース URL は新設しない（既存取込と同じ経路。MVP）。public-api の POST が失敗したときは §6 の 401 / 403 / 5xx に乗せ、301 を POST の再送条件にしない（R-006 と同じ。作成の重複を避ける。根拠は §9、確認日 2026-10-22）。WordPress.com のアクセストークンは期限切れでも `resolveWpComAccessToken`（`src/server/services/wordpressContentSync.ts`。日次取込が L413 付近で使っている）で更新してから送る。`buildWordPressServiceFromSettings`（`src/server/services/wordpressContext.ts`）は保存済みトークンをそのまま使うだけで更新しないため、送信の Server Action では取込と同じ順で先に更新を通す。
   - 例外: なし。なお WordPress.com 連携の保存は既存仕様で `admin` に限られている（`app/api/wordpress/settings/route.ts` L52〜L57「WordPress.com 連携は管理者のみ利用できます」）ため、`paid` ユーザーの送信先は実質セルフホストだけになる。本書はこの制限を変えない。
 
 ## 4. 対象範囲と Non-goals
@@ -136,12 +136,13 @@
   - `content_annotations.wp_post_status text null`（CHECK: `draft` / `future` / `publish`）を追加
   - 既存の日次 WordPress 取込が挿入・更新する行に `wp_post_status = 'publish'` を書く（取込は `status=publish` の投稿だけを取る。`data` は挿入と更新の両方に使われる）
   - チャットの登録情報パネル（`upsertContentAnnotationBySession`）が、送信済みの下書き・予約の `wp_post_id` を空 URL の保存で消さないようにする（BR-004）
+  - 登録情報パネルと一覧の「編集」が使う `src/components/AnnotationFormFields.tsx` の補足文（L128「空欄の場合は連携を解除します。」）を更新する。下書き・予約で URL が空のときは紐づけを残す。公開 URL が入っている行を空にして保存したときは従来どおり解除する。サーバー側の保持条件（BR-004 / S-12）は変えない
 - 権限・ロール: `admin` / `paid`。UI と Server Action の両方で判定（§6 権限）
 - 影響を受ける既存機能（仕様上は変更しないが挙動が変わるもの）:
-  - コンテンツの AI 要約（`src/server/services/contentAnnotationSummaryService.ts` L143 `isWordPressLinked`）と一覧の「未要約」絞り込み RPC（`supabase/migrations/20261013233000_narrow_get_filtered_content_annotations_working_set.sql` L123 `coalesce(ca.wp_post_id, 0) > 0`）は `wp_post_id` の有無で「WordPress 連携済み」を判定する。下書き・予約として送信した行は公開前から連携済みとして数えられ、要約の対象・未要約の件数に入る。本書では直さず OPEN-004 とする
+  - コンテンツの AI 要約（`src/server/services/contentAnnotationSummaryService.ts` L143〜L146 のローカル `isWordPressLinked`）と一覧の「未要約」絞り込み RPC（`supabase/migrations/20261013233000_narrow_get_filtered_content_annotations_working_set.sql` L123〜L124 の `or`）は、`wp_post_id` が正、または公開 URL（`canonical_url`）がある、で「WordPress 連携済み」を判定する。下書き・予約として送信した行は ID があり URL が空なので、公開前から連携済みとして数えられ、要約の対象・未要約の件数に入る。URL だけの行は本書の送信では作らない。本書では直さず OPEN-004 とする
 - 運用・監視: 送信結果は Sonner トーストで返す。失敗は Server Action のエラーメッセージで原因と次の操作を返す。新しい監視・ログテーブルは作らない
 - README: `🚀主な機能` の WordPress 連携の記述に「投稿」が増える可能性がある（最終判断は `spec-to-pr` の `readme_sync`）
-- UI 用語: `.agents/skills/growmate-ui-ux/ui-text.md` に「WordPress に投稿」「下書き」「予約投稿」「公開」を追記する（§6 UI 用語）
+- UI 用語: 実装時に `.agents/skills/growmate-ui-ux/ui-text.md` へ追記する（本書の revise では `ui-text.md` 自体は編集しない）。対象は「WordPress に投稿」「下書き」「予約投稿」「公開」と、登録情報の補足2文「下書き・予約で URL が空のときは、空のまま保存しても紐づけを残します。」「公開 URL が入っている行を空にして保存したときは、従来どおり連携を解除します。」（§6 UI 用語）
 
 ### Non-goals（今回の対象外）
 
@@ -216,7 +217,7 @@
   - `status`: `draft` / `publish` / `future`。既定 `draft`
   - `scheduledAt`: `status = future` のとき必須。現在時刻より後。`datetime-local` で入力し、サーバーで UTC の ISO 8601 に変換して `date_gmt` に送る
   - `categoryIds`: 整数配列、任意。`fetchCategories` の結果に含まれる ID だけを通す
-  - `slug`: 任意。空なら送らない（WordPress が生成）
+  - `slug`: 任意。空なら送らない（WordPress が生成）。空でなければそのまま `slug` に載せる。文字種の拒否はしない（WordPress 側に任せる）。長さの上限を足すならタイトルと同じ 200 文字（§9。Posts schema の slug は "An alphanumeric identifier for the post unique to its type." で、上限の記載は無い。確認日 2026-10-22）
   - Zod スキーマは `src/server/actions/wordpressPublish.actions.ts` の近くに置き、Server Action の入口で検証する（`nextjs-server` 規約）
 - 正常時の出力: `{ success: true, data: { wpPostId, status, link } }`。トースト「WordPress に下書きを送信しました」「WordPress で公開しました」「WordPress に予約しました（10/28 10:00）」と、`link` を開くリンク
 - エラー時の出力（`ServerActionResult` の `error` と、ダイアログ内の表示）:
@@ -224,7 +225,7 @@
   | 原因 | ユーザー向け表示 | 次の操作 | DB |
   | --- | --- | --- | --- |
   | `wordpress_settings` 行なし | WordPress と連携していません | 「連携を開始」→ `/setup/wordpress` | 変更なし |
-  | 完成形なし（`session_combined_contents` に `is_latest` 行が無い） | 完成した記事がありません。チャットで step7 の完成形を保存してください | 「チャットを開く」 | 変更なし |
+  | 完成形なし（`session_combined_contents` に `is_latest` 行が無い） | 完成した記事がありません。チャットで step7 の完成形を保存してください | 一覧から開いたときだけ「チャットを開く」。遷移先は既存と同じ `/chat?session={sessionId}&initialStep=step7`（`src/components/AnalyticsTable.tsx` L929〜L933。`session` は行の `session_id`）。`/chat` 上ではこの文だけ出し、「チャットを開く」は出さない | 変更なし |
   | 401（Application Password 失効・WordPress.com トークン失効・更新失敗） | WordPress との連携が切れています | 「再連携する」→ `/setup/wordpress` | 変更なし |
   | 403（ユーザーに `publish_posts` / `edit_posts` が無い、WAF） | WordPress のユーザーに投稿の権限がありません。WordPress の権限か、サイトのセキュリティ設定を確認してください | 閉じる | 変更なし |
   | 更新前の確認で WordPress 側が `publish`（S-13） | すでに WordPress で公開されています。公開後の変更は WordPress 側で行ってください | 閉じる（成功扱いのトーストにしない） | `wp_post_status = 'publish'`、`canonical_url = link`、`wp_post_title` を同期 |
@@ -255,7 +256,8 @@
   - 同じ行への送信は `wp_post_id` の有無で作成と更新を分ける（BR-004）。ダイアログの送信ボタンは送信中 disabled にし、二重送信を防ぐ（`growmate-ui-ux` 連打防止）。
   - 作成（POST）の 5xx・タイムアウトは「WordPress 側に作られたかどうか分からない」状態なので、自動リトライも「再試行」ボタンも出さない。ユーザーに WordPress の投稿一覧の確認を案内する（§6 エラー表）。更新（POST `/{id}`）は同じ ID への再送で重複しないので「再試行」を出す。
   - 作成に成功して DB 更新に失敗したとき、次の送信は `wp_post_id` が無いので新規作成になり、WordPress に下書きが2件できる。発生頻度と被害（下書きが1件余る。公開は既定ではない）から、送信前に WordPress を検索して突合する仕組みは作らない（R-002）。
-  - `rest_route` フォールバック: 既存の `fetchRestResource`（GET 用。`src/server/services/wordpressService.ts` L161〜L187）は JSON の 404 以外のすべての非 2xx で `index.php?rest_route=` に再送する。POST でこれを使うと、1回目の 5xx（WordPress 側で作成処理が走ったあとにエラーになった場合を含む）で作成済みかもしれない投稿を2回目で重複させる。POST 用の呼び出しは、1回目が **JSON でない 403 / 404**（WAF やパーマリンク設定で `/wp-json/` が塞がれている典型）のときだけフォールバックし、5xx・タイムアウト・JSON のエラー応答では再送しない（R-006）。
+  - `rest_route` フォールバック: 既存の `fetchRestResource`（GET 用。`src/server/services/wordpressService.ts` L161〜L187）は JSON の 404 以外のすべての非 2xx で `index.php?rest_route=` に再送する。POST でこれを使うと、1回目の 5xx（WordPress 側で作成処理が走ったあとにエラーになった場合を含む）で作成済みかもしれない投稿を2回目で重複させる。POST 用の呼び出しは、1回目が **JSON でない 403 / 404**（WAF やパーマリンク設定で `/wp-json/` が塞がれている典型）のときだけフォールバックし、5xx・タイムアウト・JSON のエラー応答では再送しない（R-006）。301（WordPress.com のカスタムドメインへのリダイレクトを含む）も POST の再送条件にしない（BR-006。作成の重複を避ける）。
+  - 更新は確認の GET と POST の直列で、各リクエストは `REST_FETCH_TIMEOUT_MS`（60 秒）まで待つ。呼び出し元ページの `maxDuration` はこの合計より大きくする（§8）。`/chat` が 60 秒未満で切れると、作成済みか不明のまま関数が落ち、上の「応答がありませんでした」に乗らない。
 
 ### 画面設計
 
@@ -267,7 +269,8 @@
 | コンテンツ一覧の行ボタン「WordPress に投稿」 | `src/components/AnalyticsTable.tsx` の操作列ボタン群（「編集」L1375〜L1382、「詳細」L1457〜L1485。`variant="outline" size="sm" className="flex items-center gap-2"`） | 写す | アイコンは lucide `Send`。「編集」の右、「詳細」の左に置く。表示条件は本節の状態遷移どおり |
 | コンテンツ一覧の「下書き」「予約」バッジ | `src/components/AnalyticsTable.tsx` の `<Badge variant="outline">サンプリング</Badge>`（L1579） | 写す | 文言のみ。タイトル列（`case 'wp_post_title'` L1683〜L1690。現状はプレーンテキストで、URL リンクは `case 'url'` L1702〜L1719 の別列）のタイトルの右に置く |
 | 投稿ダイアログの枠 | `src/components/AnalyticsTable.tsx` の「コンテンツ情報を編集」`Dialog`（L1374〜L1453。`DialogTrigger` / `DialogContent` / `DialogHeader` / `DialogFooter`、キャンセルと主操作の並び、送信中の `Loader2` + 「保存中...」） | 写す | 幅は `max-w-2xl`（編集ダイアログの `max-w-4xl` は項目数が多いため。本ダイアログの入力は5項目） |
-| フォーム項目（ラベル・入力・補足文） | shadcn の `Label` / `Input` / `Textarea`（`src/components/ui/label.tsx` / `input.tsx` / `textarea.tsx`）。既存の同種の並びは `src/components/WordPressSettingsForm.tsx`（`Input` を import し、ラベル + 入力 + 補足文で組んでいる） | そのまま使う | `src/components/AnnotationFormFields.tsx`（L127〜L141）は生の `<label>` / `<input>` に生の色クラスを当てており、写すと抑止件数が増えるため採らない |
+| フォーム項目（ラベル・入力・補足文） | shadcn の `Label` / `Input` / `Textarea`（`src/components/ui/label.tsx` / `input.tsx` / `textarea.tsx`）。既存の同種の並びは `src/components/WordPressSettingsForm.tsx`（`Input` を import し、ラベル + 入力 + 補足文で組んでいる） | そのまま使う | `src/components/AnnotationFormFields.tsx`（L127〜L141）は生の `<label>` / `<input>` に生の色クラスを当てており、投稿ダイアログのマークアップとしては写さない（抑止件数が増えるため） |
+| 登録情報の WordPress 投稿 URL の補足文 | `src/components/AnnotationFormFields.tsx` L126〜L129（「空欄の場合は連携を解除します。」） | 既存の文を更新 | マークアップとクラスは変えない。下書き・予約で URL が空のときは紐づけを残す。公開 URL が入っている行を空にして保存したときは従来どおり解除する。`ui-text.md` にはこの2文を実装時に足す（§4） |
 | 公開状態の選択 | `src/components/WordPressSettingsForm.tsx` L355〜L361 の shadcn `Select`（連携方式の選択。`src/components/ui/select.tsx`） | 写す | 3択なので `Select`。ラジオ部品は `src/components/ui/` に無いため新造しない。既存はラベルが生の `<label>` なので、本ダイアログは shadcn `Label` に揃える |
 | カテゴリの複数選択 | `src/components/CategoryFilter.tsx` L232〜L244 のチェックボックス行（`Checkbox`（`src/components/ui/checkbox.tsx`）+ ラベル） | 共通化（`CategoryFilter.tsx` 内のチェックボックス行を部品として export し、本ダイアログで使う） | 絞り込みではなく選択なので見出し「カテゴリ」。並びは WordPress の `name` 昇順 |
 | 日時入力 | `<input type="datetime-local">`（最小実装ラダー 4。既存の `<input type="date">` は Instagram タブの期間入力） | 新規（grep `datetime-local` で既存なし） | 日付のみの `date` では予約時刻を指定できないため |
@@ -307,7 +310,7 @@
 
   | 項目 | 型・形式 | 必須 | 初期値 | 表示条件・活性条件 |
   | --- | --- | --- | --- | --- |
-  | 送る本文の概要 | テキスト（見出し数・文字数） | 表示のみ | サーバーの既定値取得で算出 | 常時。完成形が無いときはダイアログ本体の代わりにエラー表示（「完成した記事がありません」と「チャットを開く」） |
+  | 送る本文の概要 | テキスト（見出し数・文字数） | 表示のみ | サーバーの既定値取得で算出 | 常時。完成形が無いときはダイアログ本体の代わりにエラー表示。一覧では「完成した記事がありません」と「チャットを開く」（遷移先は §6 エラー表）。`/chat` 上では文だけで「チャットを開く」は出さない |
   | タイトル | `Input`、1〜200 文字 | 必須 | 完成形の最初の `# ` 見出し → `wp_post_title` → `main_kw` | 常時 |
   | 公開状態 | `Select`（下書き / 公開 / 予約投稿） | 必須 | 下書き | 常時 |
   | 公開日時 | `<input type="datetime-local">` | 予約投稿のとき必須 | 空 | 公開状態が「予約投稿」のときだけ表示。現在より前なら欄の下にエラー |
@@ -321,14 +324,14 @@
   | --- | --- | --- | --- |
   | 既定値取得中 | skeleton と「読み込み中...」 | なし | 送信不可 |
   | WordPress 未連携 | 「WordPress と連携していません」 | 「連携を開始」（`/setup/wordpress`） | フォームを出さない |
-  | 完成形なし | 「完成した記事がありません。チャットで step7 の完成形を保存してください」 | 「チャットを開く」 | フォームを出さない |
+  | 完成形なし | 「完成した記事がありません。チャットで step7 の完成形を保存してください」 | 一覧: 「チャットを開く」（`/chat?session={sessionId}&initialStep=step7`。`src/components/AnalyticsTable.tsx` L929〜L933）。`/chat` 上: なし | フォームを出さない |
   | 入力中 | フォーム | 送信ボタン | タイトル空・予約日時不正では送信不可 |
   | 送信中 | 送信ボタンが「送信中...」 | なし | 全項目 disabled |
   | 成功 | ダイアログを閉じ、トースト（結果と `link`） | トーストのリンク | なし |
   | 失敗 | ダイアログ内上部に `Alert variant="destructive"`（編集ダイアログの「保存に失敗しました」と同形）で原因と次の操作 | 原因ごとの次の操作（§6 エラー表）。「再試行」は更新の 5xx だけ。作成の 5xx は閉じる | 入力は保持 |
 
 - 画面遷移: `/chat`（step7 その他の操作）→ 本ダイアログ / `/analytics`（行の「WordPress に投稿」）→ 本ダイアログ / 本ダイアログ（未連携）→ `/setup/wordpress` / 本ダイアログ（成功）→ 閉じて元画面（一覧は該当行を再取得してバッジと URL を更新）
-- UI用語: `ui-text.md` に追記する語は次のとおり。「WordPress に投稿」（ボタン・メニュー。「投稿する」「公開」「送る」と揺らさない。`WordPress` の後ろに助詞が来るので半角スペースを入れる）、「下書き」「公開」「予約投稿」（公開状態の3択）、「下書きとして送信」「公開する」「予約する」（送信ボタン）、「予約」（一覧バッジ。「予約投稿」の短縮。列幅のため）。既存の「連携」「再連携」「送信中...」はそのまま使う。
+- UI用語: 実装時に `ui-text.md` へ追記する語は次のとおり（`ui-text.md` 自体は実装時に書く）。「WordPress に投稿」（ボタン・メニュー。「投稿する」「公開」「送る」と揺らさない。`WordPress` の後ろに助詞が来るので半角スペースを入れる）、「下書き」「公開」「予約投稿」（公開状態の3択）、「下書きとして送信」「公開する」「予約する」（送信ボタン）、「予約」（一覧バッジ。「予約投稿」の短縮。列幅のため）。登録情報の補足は2文。「下書き・予約で URL が空のときは、空のまま保存しても紐づけを残します。」「公開 URL が入っている行を空にして保存したときは、従来どおり連携を解除します。」既存の「連携」「再連携」「送信中...」はそのまま使う。
 
 ##### `/chat`（既存。変更点のみ）
 
@@ -427,6 +430,8 @@ Feature: 完成した記事を WordPress へ送る
     Given チャットが step6 までしか進んでいない
     When コンテンツ一覧の行から「WordPress に投稿」を押す
     Then 「完成した記事がありません」と「チャットを開く」が表示され、送信ボタンは出ない
+    And 「チャットを開く」は `/chat?session={sessionId}&initialStep=step7` を開く（`src/components/AnalyticsTable.tsx` L929〜L933。`session` は行の `session_id`）
+    And `/chat` 上で完成形が無いときは、その場の文だけ出て「チャットを開く」は出ない
 
   Scenario: S-09 WordPress 側で公開したら URL が埋まる
     Given 「下書き」として送信済みの行がある
@@ -494,16 +499,16 @@ Feature: 完成した記事を WordPress へ送る
 
 | 分類 | 要件・目標値 | 検証方法 | 状態・根拠 |
 | --- | --- | --- | --- |
-| 性能・レイテンシ | 新規作成は WordPress への POST 1回。更新は確認の `GET /wp/v2/posts/{id}?context=edit` 1回のあと POST 1回。既定値取得は `session_combined_contents` 1行と `GET /wp/v2/categories`（`per_page=100`、`X-WP-TotalPages` に従い最大5ページ）。WordPress 1リクエストの上限は既存の `REST_FETCH_TIMEOUT_MS`（60 秒）。LLM は呼ばない | 実 WordPress で計測 | 案 |
+| 性能・レイテンシ | 新規作成は WordPress への POST 1回。更新は確認の `GET /wp/v2/posts/{id}?context=edit` 1回のあと POST 1回（直列）。既定値取得は `session_combined_contents` 1行と `GET /wp/v2/categories`（`per_page=100`、`X-WP-TotalPages` に従い最大5ページ）。WordPress 1リクエストの上限は既存の `REST_FETCH_TIMEOUT_MS`（60 秒）。送信アクションの予算は WordPress 待ち 60 秒に DB 更新を足した秒数。更新時は GET と POST で 60 秒が2回。`/analytics` は既存の `maxDuration = 800`（`app/analytics/page.tsx`）で足りる。`/chat` には同じ送信を載せる `app/chat/page.tsx` へ `export const maxDuration` を足し、60 秒の2回分より大きくする。新しい feature flag や停止テーブルは足さない（§13）。LLM は呼ばない | 実 WordPress で計測 | 案 |
 | 可用性・信頼性 | 更新の失敗は再送で回復する（同じ ID）。作成の 5xx・タイムアウトは自動リトライも「再試行」も出さない（作成済みか分からず重複するため）。POST の `rest_route` 再送は JSON でない 403 / 404 のときだけ | S-05, S-07 | 案 |
-| セキュリティ・プライバシー | 認証情報は `wordpress_settings` から Server Action 内でだけ読む。クライアントへ返すのは既定値（タイトル候補、見出し数、文字数、カテゴリ名と ID）と送信結果（`wpPostId` / `status` / `link`）だけ。サイト URL と認証情報は返さない。本文 HTML の防御は GrowMate 側だけが担う。WordPress の管理者は `unfiltered_html` を持つことが多く、コアの `wp_kses_post` が `<script>` を落とす保証は無い。`marked` 18 は出力 HTML をサニタイズしない（README の警告。sanitize オプションは無い）。`markdownToWordPressHtml` は raw HTML トークンをエスケープしてテキストとして出し、リンクの href は `http:` / `https:` / `mailto:` と相対パスだけを通す。`<script>` と `javascript:` を単体テストで固定する | 単体テスト | 案 |
+| セキュリティ・プライバシー | 認証情報は `wordpress_settings` から Server Action 内でだけ読む。クライアントへ返すのは既定値（タイトル候補、見出し数、文字数、カテゴリ名と ID）と送信結果（`wpPostId` / `status` / `link`）だけ。サイト URL と認証情報は返さない。本文 HTML の防御は GrowMate 側だけが担う。`unfiltered_html` の根拠（確認日 2026-10-22。<https://wordpress.org/documentation/article/roles-and-capabilities/>。全文は §9）: "Allows user to post HTML markup or even JavaScript code in pages, posts, comments and widgets." 単一サイトでは Editor も持つ（Editor の能力一覧に "unfiltered_html (not with Multisite)"）。"Note: In WordPress Multisite, only Super Admins have the `unfiltered_html` capability." 解釈: 主体は管理者に限らない。コアの `wp_kses_post` が `<script>` を落とす保証は無い。エスケープとリンク先の制限は変えない。`marked` 18 は出力 HTML をサニタイズしない（README の警告。sanitize オプションは無い）。`markdownToWordPressHtml` は raw HTML トークンをエスケープしてテキストとして出し、リンクの href は `http:` / `https:` / `mailto:` と相対パスだけを通す。`<script>` と `javascript:` を単体テストで固定する | 単体テスト | 案 |
 | 認証・認可 | `admin` / `paid`。Server Action で `hasPaidFeatureAccess` と行の所有者検証。§6 権限 | S-11 | 案 |
 | 監査・ログ | 送信の成否と `wpPostId`・行 ID を `console.info` / `console.error` に残す（本文・認証情報は出さない）。専用テーブルは作らない | ログ確認 | 案（Non-goals） |
 | 障害対応 | 更新の失敗と更新の 5xx は再送で対応する。作成の 5xx・タイムアウトは WordPress 側の投稿一覧をユーザーが確認する。作成成功・DB 更新失敗は R-002 | S-07, S-14 | 案 |
 | バックアップ・復旧 | 対象外（WordPress 側のデータは WordPress の責務。GrowMate 側は `wp_post_status` 1列で、取込で再生成できる） | 該当なし | 対象外 |
 | 運用・監視 | 対象外（MVP。失敗はユーザーに即時表示され、再送できる） | 該当なし | 対象外 |
 | 拡張性・互換性 | WordPress 5.6 以降（Application Passwords 同梱）。WordPress.com は既存の OAuth（scope `global`）で `posts` 権限を含む | 公式ドキュメント（§9） | 確認済み |
-| アクセシビリティ | ダイアログは shadcn `Dialog`（フォーカストラップ・Esc）。項目は `Label` と関連付け。ボタンは 44px タッチターゲット | 手動確認 | 案 |
+| アクセシビリティ | ダイアログは shadcn `Dialog`（フォーカストラップ・Esc）。項目は `Label` と関連付け。一覧の操作ボタン（`size="sm"`）とチャットの「その他の操作」（`app/chat/components/StepActionBar.tsx` L380 の `size="sm"`。メニュー項目は既存の `DropdownMenuItem`）は既存の高さを写し、変えない。`src/components/ui/button.tsx` の `sm` は `h-8`、`lg` は `h-10` で、44px の size は無い。新規ダイアログの主操作だけ、既存の編集ダイアログの保存ボタン（`Button` の default。`src/components/AnalyticsTable.tsx` L1438〜L1450）に合わせる。44px を新規サイズとして要求しない | 手動確認 | 案 |
 | コスト | WordPress API は無料。LLM 呼び出しなし | 該当なし | 確認済み |
 
 ### AI機能の追加観点
@@ -529,9 +534,9 @@ Feature: 完成した記事を WordPress へ送る
 
 | 連携先 | 用途 | API・権限 | 失敗時の挙動 | 公式根拠 |
 | --- | --- | --- | --- | --- |
-| セルフホスト WordPress | 投稿の作成・更新・更新前の確認 | `POST /wp/v2/posts`、`POST /wp/v2/posts/{id}`、`GET /wp/v2/posts/{id}?context=edit`。Basic 認証（Application Passwords）。WordPress ユーザーに `publish_posts`（公開・予約）と `edit_posts`（下書き・`context=edit`）の権限が要る。HTTPS 必須 | §6 エラー表 | 下記 |
+| セルフホスト WordPress | 投稿の作成・更新・更新前の確認 | `POST /wp/v2/posts`、`POST /wp/v2/posts/{id}`、`GET /wp/v2/posts/{id}?context=edit`。Basic 認証（Application Passwords）。posts のエンドポイントは `edit_posts` を要求しうる。`publish_posts` が無いユーザーは下書き保存に限られる（公開・予約を `publish_posts` 側に置くのは解釈。不足は §6 の 403）。`context=edit` でなければ `status` が欠ける、とは書かない。`status` の schema は Context: `view`, `edit`。HTTPS 必須 | §6 エラー表 | 下記 |
 | セルフホスト WordPress | カテゴリ一覧 | `GET /wp/v2/categories?per_page=100&orderby=name&order=asc`。`X-WP-TotalPages` まで最大5ページ | 未選択で続行（FR-009）。5ページを超えた分は出さない（R-004） | 下記 |
-| WordPress.com | 同上 | `https://public-api.wordpress.com/wp/v2/sites/{site}/posts`。Bearer（既存 OAuth、scope `global`） | 同上 | 下記 |
+| WordPress.com | 同上 | 既存 `WordPressService.baseUrl` の `https://public-api.wordpress.com/wp/v2/sites/{site}/posts`（保存済み site id。サイト種別ごとのベース URL は新設しない）。Bearer（既存 OAuth、scope `global`）。301 は POST の再送条件にしない | 同上（401 / 403 / 5xx。301 の再送はしない） | 下記（2026-10-22 追記） |
 
 #### 公式ドキュメント照合（2026-10-21 取得）
 
@@ -543,7 +548,10 @@ Feature: 完成した記事を WordPress へ送る
   - 引用（Schema `link`）: "URL to the post. … Read only"
   - 引用（Schema `categories`）: "The terms assigned to the post in the category taxonomy. JSON data type: array"
   - 引用（Schema `excerpt`）: "The excerpt for the post. JSON data type: object"、（Schema `slug`）: "An alphanumeric identifier for the post unique to its type."
-  - 解釈: 本書の `status` 3値、`date_gmt`、`categories`（ID 配列）、`slug` は公式の引数名と一致する。`excerpt` は公式にあるが本書では送らない（Non-goals）。`link` は読み取り専用なので、公開 URL はレスポンスから取る。`context=edit` は更新前の `status` 確認に使う（投稿の編集権限が要る）。`future` のときに `date_gmt` が必須かどうか、および過去日時を渡したときに WordPress が `status` を書き換えるかどうかは、このページに記述が無い。**公式未記載・実機確認が必要**（R-003）
+  - 解釈: 本書の `status` 3値、`date_gmt`、`categories`（ID 配列）、`slug` は公式の引数名と一致する。`excerpt` は公式にあるが本書では送らない（Non-goals）。`link` は読み取り専用なので、公開 URL はレスポンスから取る。`slug` は空なら送らず、空でなければそのまま載せる。文字種の拒否はしない（WordPress 側に任せる）。長さの上限を足すならタイトルと同じ 200 文字。確認日 2026-10-22。上の schema 文は文字種の説明で、上限は書いていない。更新前の確認は `GET /wp/v2/posts/{id}?context=edit` でよい。`context` の意味は次の Retrieve 引数。`future` のときに `date_gmt` が必須かどうか、および過去日時を渡したときに WordPress が `status` を書き換えるかどうかは、このページに記述が無い。**公式未記載・実機確認が必要**（R-003）
+  - 引用（Retrieve a Post の引数 `context`。確認日 2026-10-22）: "Scope under which the request is made; determines fields present in response." / "Default: `view`" / "One of: `view`, `embed`, `edit`"
+  - 引用（Schema `status` の Context。確認日 2026-10-22）: "Context: `view`, `edit`"
+  - 解釈: `context=edit` でなければ `status` が欠ける、とは書かない。`status` は `view` と `edit` の両方の context に含まれる。権限は Global Parameters ではなく Roles and Capabilities に書く。
 - WordPress REST API Handbook: Authentication <https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/>（Last modified: October 14, 2026）
   - 引用: "As of 5.6, WordPress has shipped with Application Passwords, which can be generated from an Edit User page (wp-admin -> Users -> Edit User)."
   - 引用: "The credentials can be passed along to REST API requests served over https:// using Basic Auth / RFC 7617"
@@ -559,6 +567,34 @@ Feature: 完成した記事を WordPress へ送る
 - WordPress.com OAuth2 <https://developer.wordpress.com/docs/oauth2/>（Last updated: January 22, 2026）
   - 引用（Available Scopes）: "posts: View and manage posts"、（Special Scopes）: "global: Grants comprehensive access to user data across all WordPress.com services and connected sites"
   - 解釈: 既存の OAuth 開始（`app/api/wordpress/oauth/start/route.ts` L57 `scope: 'global'`）で投稿権限を含む。スコープの追加や再連携は不要
+
+#### 公式ドキュメント照合の追記（確認日 2026-10-22）
+
+引用と解釈は分ける。
+
+- Global Parameters <https://developer.wordpress.org/rest-api/using-the-rest-api/global-parameters/>（Last updated: October 14, 2026）
+  - このページの目次は `_fields` / `_embed` / `_method` / `_envelope` / `_jsonp` のみで、`context` は無い。`context` の根拠にはしない。
+- Roles and Capabilities <https://wordpress.org/documentation/article/roles-and-capabilities/>（Last updated: September 2, 2026）
+  - 引用: "Other REST API endpoints can perform their own capability checks. For example, endpoints dealing with posts or pages may require capabilities such as:" の箇条書きに "`edit_posts`"
+  - 引用（`publish_posts`）: "See and use the “publish” button when editing their post (otherwise they can only save drafts)"
+  - 引用（`unfiltered_html`）: "Allows user to post HTML markup or even JavaScript code in pages, posts, comments and widgets."
+  - 引用: "Note: In WordPress Multisite, only Super Admins have the `unfiltered_html` capability."
+  - 引用（Editor の能力一覧）: "unfiltered_html (not with Multisite)"
+  - 解釈: posts のエンドポイントは `edit_posts` を要求しうる。`publish_posts` が無いユーザーは下書き保存に限られる。この権限と、`context=edit` の有無は別である。`unfiltered_html` は単一サイトの Editor も持つ。Multisite では Super Admin だけが持つ。主体は管理者に限らない。本文のエスケープとリンク先の制限は変えない（§8）。
+- WordPress.com REST API <https://developer.wordpress.com/docs/api/>（Last updated: October 07, 2025）
+  - 引用: "Note that this API is also enabled on WordPress.com, but the URL structure on WordPress.com is slightly different than for self-hosted sites."
+  - 解釈: このページはパスを定義しない。送信 URL の根拠にはしない。
+- WordPress.com REST API Namespaces <https://developer.wordpress.com/docs/api/namespaces/>（Last updated: October 01, 2025）
+  - 引用: "The /wp/ namespace implements the official WordPress REST API specification, ensuring full compatibility with both WordPress.com and self-hosted WordPress sites."
+  - 引用: "Base URL: `https://public-api.wordpress.com/wp/v2/`"
+  - 引用: 例に "`/wp/v2/sites/{site}/posts`"
+  - 解釈: public-api の `/wp/v2/sites/{site}/posts` はコア互換ネームスペースの例として実在する。比較表の「常にその1本」ではない。
+- REST API URLs by Site Type <https://developer.wordpress.com/docs/rest-api-urls-by-site-type/>（Last updated: September 21, 2026）
+  - 引用: "For these sites, you must use the WordPress.com public API proxy"
+  - 引用: "The general URL format is: `https://public-api.wordpress.com/wp/v2/sites/<your-custom-domain.com>/`"
+  - 引用（ホスティング有効）: "The general URL format is: `https://<your-custom-domain.com>/wp-json/`"
+  - 引用: "any requests to this endpoint are automatically redirected with a `301 Moved Permanently` response to the corresponding endpoint on the site’s custom domain"
+  - 解釈: カスタムドメインかつホスティング無し、の行だけが public-api を必須にしている。ホスティング有効サイトの推奨はカスタムドメインの `/wp-json/` で、`.wordpress.com/wp-json/wp/v2/posts` は 301 になる。本書の送信は既存クライアントの public-api（保存済み site id。`wordpressService.ts` L116 と L130）に載せ、サイト種別ごとのベース URL を新設しない（既存取込と同じ経路。MVP）。public-api の POST が失敗したときは §6 の 401 / 403 / 5xx に乗せ、301 を POST の再送条件にしない（R-006 と同じ。作成の重複を避ける）。
 
 #### 連携ライフサイクル（失効・剥奪・切断）
 
@@ -612,9 +648,9 @@ Feature: 完成した記事を WordPress へ送る
   - 案A: 同期の Server Action。ダイアログの送信 → WordPress POST → DB 更新 → 結果を返す
   - 案B: `wordpress_publish_jobs` テーブルに積み、cron が送る。進捗は一覧で見せ、完了をメールで知らせる
 - 採用案: 案A
-- 採用理由: 送信は WordPress への POST 1 回（LLM なし、数秒）。ユーザーは結果をその場で知りたい（公開 URL を開いて確認する）。ジョブ化はテーブル・cron・メールが増え、MVP 方針に反する。一括送信を採らない（Non-goals）ので長時間処理も無い
+- 採用理由: 送信は WordPress への呼び出し（新規は POST 1 回、更新は GET と POST の直列。LLM なし）。通常は数秒で返り、待ちの上限は §8。ユーザーは結果をその場で知りたい（公開 URL を開いて確認する）。ジョブ化はテーブル・cron・メールが増え、MVP 方針に反する。一括送信を採らない（Non-goals）ので、1操作が複数件に伸びる処理は無い
 - 却下した案と理由: 案B。一括送信や完成時の自動送信（Q-001・Q-002）を採るときに初めて必要になる
-- 影響: 実装が小さい。Vercel の Server Action 上限内（WordPress 60 秒タイムアウト）
+- 影響: 実装が小さい。送信アクションの予算は WordPress 待ち 60 秒に DB 更新を足した秒数。更新時は GET と POST の直列。`/analytics` は既存の `maxDuration = 800`（`app/analytics/page.tsx`）で足りる。`/chat` には同じ送信を載せる `app/chat/page.tsx` へ `export const maxDuration` を足し、60 秒の2回分より大きくする。新しい feature flag や停止テーブルは足さない（§13）
 - 将来変更する条件: Q-002 で一括送信を採り、1回の操作で 10 件以上を送るとき
 - 判断者・判断日: 起票者案（2026-10-21）
 
@@ -679,7 +715,7 @@ Feature: 完成した記事を WordPress へ送る
   - 案A: `session_id` と `wp_post_status` だけで出す。完成形の有無はダイアログを開いたときにサーバーが判定する（無ければ S-08 の表示）
   - 案B: 一覧の RPC `get_filtered_content_annotations` に「完成形あり」のフラグを足し、無い行にはボタンを出さない
 - 採用案: 案A
-- 採用理由: RPC 変更（`session_combined_contents` との結合）を避ける。完成形が無い行でボタンを押しても、理由と次の操作（チャットを開く）が出るので迷わない
+- 採用理由: RPC 変更（`session_combined_contents` との結合）を避ける。完成形が無い行でボタンを押しても、理由が出るので迷わない。一覧では次の操作「チャットを開く」で `/chat?session={sessionId}&initialStep=step7` を開く。`/chat` 上ではそのボタンは出さない（§6）
 - 却下した案と理由: 案B。RPC と `database.types.ts` の変更が増え、一覧の取得コストも増える
 - 影響: step7 未到達の行にもボタンが出る
 - 将来変更する条件: 「押したのに送れない」が多いと分かったとき
@@ -718,7 +754,7 @@ Feature: 完成した記事を WordPress へ送る
 | OPEN-001 | 成功トーストのリンク先を公開 URL（`link`）にするか、WordPress の編集画面（`/wp-admin/post.php?post={id}&action=edit`）にするか | 編集画面 URL は REST に無く、セルフホストと WordPress.com で形が違う。まず `link` で出し、下書きの `link`（仮 URL）が使いにくいと分かってから決める | リリース後、利用者の反応を見て | 依頼者 |
 | OPEN-002 | 「ブロックに変換」の案内をダイアログに書くか | 初回だけ知ればよい情報で、毎回出すと補足が増える（`growmate-ui-ux` 足さない） | リリース時の案内文を書くとき | 開発 |
 | OPEN-003 | `content-pdca-semi-auto-execution-spec.md` の `WordPressService.updatePost` と本書の `updatePost` の統合 | どちらが先に実装されるか未定。先に実装した側のシグネチャに合わせる | どちらかの `spec-to-pr` 着手時 | 開発 |
-| OPEN-004 | 下書き・予約の行を AI 要約と「未要約」絞り込みの対象に含めるか | どちらも `wp_post_id` の有無だけで「WordPress 連携済み」を見ている（`contentAnnotationSummaryService.ts` L143 のローカル `isWordPressLinked`、`20261013233000_narrow_get_filtered_content_annotations_working_set.sql` L123）。公開前の下書きが要約対象に入る。本書の送信には妨げにならないので、直さず受容する | 要約の対象から下書きを外したいと分かったとき | 依頼者 |
+| OPEN-004 | 下書き・予約の行を AI 要約と「未要約」絞り込みの対象に含めるか | どちらも `wp_post_id` が正、または公開 URL がある、で「WordPress 連携済み」を見ている（`contentAnnotationSummaryService.ts` L143〜L146 のローカル `isWordPressLinked`、`20261013233000_narrow_get_filtered_content_annotations_working_set.sql` L123〜L124 の `or`）。下書きは ID があり URL が空なので要約対象に入る。本書の送信には妨げにならないので、直さず受容する | 要約の対象から下書きを外したいと分かったとき | 依頼者 |
 
 ## 13. テスト・リリース・ロールバック
 
@@ -753,7 +789,7 @@ Feature: 完成した記事を WordPress へ送る
 1. 要件定義（本ドキュメント）作成・レビュー
 2. Q-001〜Q-007 の回答を本書へ書き戻す
 3. 仕様レビュー通過（`takt -w spec-review`）
-4. 実装（`takt -w spec-to-pr`）。順序: migration と型 → `markdownToWordPressHtml` と単体テスト → `WordPressService` の 3 メソッドと単体テスト → Server Action → ダイアログ → チャットのメニュー項目 → 一覧のボタンとバッジ → 取込の `publish` 書き込み → `ui-text.md`
+4. 実装（`takt -w spec-to-pr`）。順序: migration と型 → `markdownToWordPressHtml` と単体テスト → `WordPressService` の 4 メソッド（`createPost` / `updatePost` / `fetchPost` / `fetchCategories`）と単体テスト → Server Action → ダイアログ → チャットのメニュー項目 → 一覧のボタンとバッジ → 登録情報の補足文 → 取込の `publish` 書き込み → `app/chat/page.tsx` の `maxDuration` → `ui-text.md`
 5. 品質ゲート通過（`npm run verify`、`npm run verify:ui-text`）
 6. PR作成・レビュー・マージ
 
@@ -784,7 +820,8 @@ Feature: 完成した記事を WordPress へ送る
 
 | 回 | 日付 | 指摘件数（🔴 / 🟡 / 🟢） | 反映状況 | 残置合意した論点と理由 |
 | --- | --- | --- | --- | --- |
-| 0 | 2026-10-21 | 🔴 1 / 🟡 8 / 🟢 6。起票直後の読み合わせ（readonly。コードと公式ドキュメントの照合）。正式な `takt -w spec-review` でも `spec-audit` でもない | 本改訂で反映 | 正式レビューはローカルの `takt -w spec-review` に残す。OPEN-004（下書きが要約対象に入る）は受容 |
+| 0 | 2026-10-21 | 🔴 1 / 🟡 8 / 🟢 6。起票直後の読み合わせ（readonly。コードと公式ドキュメントの照合）。正式な `takt -w spec-review` でも `spec-audit` でもない | 本改訂で反映 | 正式レビューは回1に進んだ。OPEN-004（下書きが要約対象に入る）は受容 |
+| 1 | 2026-10-22 | 🔴 0 / 🟡 6 / 🟢 4。正式 audit（`docs/plans/.workflow/wordpress-auto-publish-spec/review/02-audit.md`） | 本改訂で反映 | Q-001〜Q-007 は未回答のまま。回答が無いのでステータスは `draft`（`approved` にしない）。OPEN-004 の受容は維持。残置合意の 🟡 は無し |
 
 反映した指摘:
 
@@ -795,7 +832,7 @@ Feature: 完成した記事を WordPress へ送る
 - 🟡 `trial` は一覧に入れない。チャットのメニューと Server Action で止める（S-11）
 - 🟡 チャットのメニュー項目は `StepActionBar.tsx` 内で共通化し、`eslint-suppressions.json` を増やさない
 - 🟡 フォームは shadcn の `Label` / `Input`。`Select` は `WordPressSettingsForm.tsx`、カテゴリ行は `CategoryFilter.tsx` を正とする
-- 🟡 本文 HTML は GrowMate 側でエスケープし、リンク先を制限する（`marked` はサニタイズしない。管理者は `unfiltered_html`）
+- 🟡 本文 HTML は GrowMate 側でエスケープし、リンク先を制限する（`marked` はサニタイズしない。`unfiltered_html`。主体の範囲は回1で訂正）
 - 🟢 SELECT はオーナーと従業員、書き込みは本人の行
 - 🟢 WordPress.com は送信前にトークンを更新する。401 と 403 を分ける。連携保存は `admin` のみ
 - 🟢 カテゴリは Pagination のページに従い、最大5ページ
@@ -807,6 +844,24 @@ Feature: 完成した記事を WordPress へ送る
 
 - 実施
 - 参照 URL と確認日: §9「公式ドキュメント照合（2026-10-21 取得）」のとおり（Posts / Authentication / Pagination / Categories / WordPress.com OAuth2）
+
+回1で反映した指摘（F-001〜F-010）:
+
+- F-001 🟡 WordPress.com の送信は既存 public-api。サイト種別ごとのベース URL は新設しない。301 は POST の再送条件にしない
+- F-002 🟡 `context` は Posts の Retrieve 引数。権限は `edit_posts` と `publish_posts` に分ける。`context=edit` でなければ `status` が欠ける、とは書かない
+- F-003 🟡 空 URL の補足文を2文に分ける。サーバー側の保持条件（BR-004 / S-12）は変えない。`ui-text.md` は実装時に追記する
+- F-004 🟡 送信の予算は WordPress 待ち 60 秒に DB 更新を足した秒数。`/chat` のページに `maxDuration` を足す。停止機構は足さない
+- F-005 🟡 一覧とチャットの操作は既存の `size="sm"` の高さのまま。ダイアログの主操作は編集ダイアログの保存ボタン（`Button` の default）。44px の新規サイズは要求しない
+- F-006 🟡 一覧の「チャットを開く」は `/chat?session={sessionId}&initialStep=step7`。`/chat` 上では出さない
+- F-007 🟢 `WordPressService` は 4 メソッド
+- F-008 🟢 「WordPress 連携済み」は `wp_post_id` が正、または公開 URL がある。OPEN-004 の受容は維持
+- F-009 🟢 `unfiltered_html` は単一サイトの Editor も持つ。Multisite では Super Admin だけ。エスケープとリンク先制限は変えない
+- F-010 🟢 スラッグは空でなければそのまま送る。文字種の拒否はしない。長さの上限を足すなら 200 文字
+
+#### 公式ドキュメント照合（回1）
+
+- 実施（確認日 2026-10-22）
+- 参照 URL: §9「公式ドキュメント照合の追記（確認日 2026-10-22）」（Global Parameters は `context` の根拠にしない / Roles and Capabilities / WordPress.com REST API / Namespaces / REST API URLs by Site Type）。Posts の `context` と `status` と `slug` は同じ Posts ページを 2026-10-22 に追記
 
 ### 承認
 
@@ -821,3 +876,4 @@ Feature: 完成した記事を WordPress へ送る
 | --- | --- | --- | --- |
 | 2026-10-21 | 初版起票 | 依頼「ワードプレス自動投稿機能の仕様書を先に作る」 | 開発（Cursor Cloud Agent） |
 | 2026-10-21 | 読み合わせの指摘を反映。更新前の実態確認、登録情報保存での ID 保持、作成失敗時の再送禁止、権限、HTML のエスケープ、カテゴリのページング、抜粋と連携先表示の対象外、R-007 | 起票直後のコード照合（§16 回 0）。正式 spec-review の前 | 開発（Cursor Cloud Agent） |
+| 2026-10-22 | 正式 audit 回1（🔴 0 / 🟡 6 / 🟢 4）を反映。WordPress.com は既存 public-api、`context` と権限の分離、空 URL の補足文、`maxDuration`、44px を新規サイズにしない、チャット遷移先、4 メソッド、連携済み判定、`unfiltered_html` の主体、スラッグ | `02-audit.md` の F-001〜F-010。Q-001〜Q-007 は未回答のためステータスは `draft` | 開発（Cursor Cloud Agent） |
