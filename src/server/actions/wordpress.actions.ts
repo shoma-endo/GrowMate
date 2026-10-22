@@ -77,7 +77,8 @@ export async function getWordPressSettings(): Promise<ExistingWordPressSettings 
     wpSiteId: result.wpSiteId,
     wpSiteUrl: result.wpSiteUrl,
     wpUsername: result.wpUsername,
-    hasApplicationPassword: Boolean(result.wpApplicationPassword),
+    // セルフホスト以外で残っているパスワードは使い回せない（resolveSelfHostedSettingsInput もセルフホストの保存済みだけを使う）
+    hasApplicationPassword: result.wpType === 'self_hosted' && Boolean(result.wpApplicationPassword),
     wpContentTypes: result.wpContentTypes,
     createdAt: result.createdAt,
     updatedAt: result.updatedAt,

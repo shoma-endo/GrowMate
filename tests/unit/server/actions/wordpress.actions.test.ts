@@ -109,4 +109,18 @@ describe('getWordPressSettings', () => {
       expect(serialized).not.toContain(secret);
     }
   });
+
+  it('WordPress.com 型の設定に残っているパスワードは、保存済みとして扱わない', async () => {
+    mocks.getWordPressSettingsByUserId.mockResolvedValue({
+      id: 'settings-id',
+      userId: 'user-id',
+      wpType: 'wordpress_com',
+      wpSiteId: '123',
+      wpApplicationPassword: 'leftover-password',
+    });
+
+    const settings = await getWordPressSettings();
+
+    expect(settings?.hasApplicationPassword).toBe(false);
+  });
 });
