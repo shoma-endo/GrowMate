@@ -461,6 +461,16 @@ export const ERROR_MESSAGES = {
 
     /** trial の利用回数（続き生成を含む）を数えられない・記録できない場合 */
     USAGE_CHECK_FAILED: '利用回数を確認できませんでした。もう一度お試しください。',
+
+    /** AI が安全上の理由で応答を断った場合（stop_reason: refusal） */
+    AI_REFUSED: 'AIがこのメッセージへの応答を控えました。内容を変えてもう一度お試しください。',
+
+    /** 会話が長く、AI の扱える上限で応答が止まった場合（stop_reason: model_context_window_exceeded） */
+    CONTEXT_WINDOW_EXCEEDED:
+      '会話が長くなりすぎたため、AIの応答が途中で止まりました。新しいチャットで続けてください。',
+
+    /** Canvas 編集で AI が編集結果（ツール呼び出し）を返さなかった場合 */
+    CANVAS_EDIT_NOT_RETURNED: 'AIが編集結果を返しませんでした。もう一度お試しください。',
   },
 
   /**

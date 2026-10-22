@@ -14,6 +14,7 @@ import {
 } from '@/lib/constants';
 
 import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
@@ -329,6 +330,23 @@ export async function POST(req: NextRequest) {
                 cleanup();
                 controller.close();
               };
+
+              // 拒否された応答は空か途中までなので、正常完了として保存しない
+              if (stopReason === 'refusal') {
+                console.error('[Stream] Response refused by model:', { model, resolvedModel });
+                sendSaveErrorAndExit('refusal', ERROR_MESSAGES.CHAT.AI_REFUSED);
+                return;
+              }
+
+              // 続きを頼んでも履歴が伸びて同じ上限に当たるので、max_tokens と違い続き生成に回さない
+              if (stopReason === 'model_context_window_exceeded') {
+                console.error('[Stream] Context window exceeded:', { model, resolvedModel });
+                sendSaveErrorAndExit(
+                  'context_window_exceeded',
+                  ERROR_MESSAGES.CHAT.CONTEXT_WINDOW_EXCEEDED
+                );
+                return;
+              }
 
               try {
                 let result;
