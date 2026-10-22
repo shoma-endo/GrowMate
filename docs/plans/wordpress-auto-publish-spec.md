@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: 仕様レビュー回1（正式 audit、2026-10-22）の指摘を反映済み。ステータスは `draft`
+- 現在の工程: 仕様レビュー cycle 2 は `approved_with_questions`（2026-10-22）。finalize しない。ステータスは `draft`
 - 止まっている理由・待っている人: §12 の確認質問 Q-001〜Q-007 が未回答（依頼者／クライアント）。未回答のまま `approved` にしない
-- 次の一手: Q の回答を本書へ書き戻す。回答が揃うまで実装（`spec-to-pr`）に進まない
+- 次の一手: Q の回答を本書へ書き戻したあと、Cloud Agent で spec-review ループを再実行する。回答が揃うまで実装（`spec-to-pr`）に進まない
 - 未確認事項: §12 確認質問のとおり。R-003（`future` の日時指定）と R-007（予約の自動公開が日次取込から漏れるか）は実装時に実 WordPress で確認する
 - 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）
-- 更新日・更新した工程: 2026-10-22 正式 audit 回1（F-001〜F-010）を反映
+- 更新日・更新した工程: 2026-10-22 cycle 2 再監査。F-001〜F-010 は closed。新規指摘なし
 
 ## 0. 依頼時の参考資料との差分（先に読む）
 
@@ -822,6 +822,7 @@ Feature: 完成した記事を WordPress へ送る
 | --- | --- | --- | --- | --- |
 | 0 | 2026-10-21 | 🔴 1 / 🟡 8 / 🟢 6。起票直後の読み合わせ（readonly。コードと公式ドキュメントの照合）。正式な `takt -w spec-review` でも `spec-audit` でもない | 本改訂で反映 | 正式レビューは回1に進んだ。OPEN-004（下書きが要約対象に入る）は受容 |
 | 1 | 2026-10-22 | 🔴 0 / 🟡 6 / 🟢 4。正式 audit（`docs/plans/.workflow/wordpress-auto-publish-spec/review/02-audit.md`） | 本改訂で反映 | Q-001〜Q-007 は未回答のまま。回答が無いのでステータスは `draft`（`approved` にしない）。OPEN-004 の受容は維持。残置合意の 🟡 は無し |
+| 2 | 2026-10-22 | 🔴 0 / 🟡 0 / 🟢 0。再監査（`02-audit-r2.md`）。判定 `approved_with_questions` | F-001〜F-010 は closed。finalize しない | Q-001〜Q-007 が未回答。回答を書き戻したあと spec-review ループを再実行する |
 
 反映した指摘:
 
@@ -877,3 +878,4 @@ Feature: 完成した記事を WordPress へ送る
 | 2026-10-21 | 初版起票 | 依頼「ワードプレス自動投稿機能の仕様書を先に作る」 | 開発（Cursor Cloud Agent） |
 | 2026-10-21 | 読み合わせの指摘を反映。更新前の実態確認、登録情報保存での ID 保持、作成失敗時の再送禁止、権限、HTML のエスケープ、カテゴリのページング、抜粋と連携先表示の対象外、R-007 | 起票直後のコード照合（§16 回 0）。正式 spec-review の前 | 開発（Cursor Cloud Agent） |
 | 2026-10-22 | 正式 audit 回1（🔴 0 / 🟡 6 / 🟢 4）を反映。WordPress.com は既存 public-api、`context` と権限の分離、空 URL の補足文、`maxDuration`、44px を新規サイズにしない、チャット遷移先、4 メソッド、連携済み判定、`unfiltered_html` の主体、スラッグ | `02-audit.md` の F-001〜F-010。Q-001〜Q-007 は未回答のためステータスは `draft` | 開発（Cursor Cloud Agent） |
+| 2026-10-22 | cycle 2 の再監査結果を記録。判定は `approved_with_questions`。本文の追加修正は無し | F-001〜F-010 は closed。未回答の Q があるため finalize しない | 開発（Cursor Cloud Agent） |
