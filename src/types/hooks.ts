@@ -22,7 +22,6 @@ export interface ChatSessionActions {
     content: string,
     model: string,
     options?: {
-      systemPrompt?: string;
       serviceId?: string;
       step7FullBodyGeneration?: boolean;
       /** true のとき過去のチャット履歴を送信しない */

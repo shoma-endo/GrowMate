@@ -9,16 +9,18 @@ import {
   STEP7_BLOG_MODEL,
   STEP7_FULL_BODY_TRIGGER,
   STEP7_HEADING_CONFIG_KEY,
+  WEB_SEARCH_MAX_USES,
   isStep7HeadingModel,
 } from '@/lib/constants';
 
 import { ChatError, ChatErrorCode } from '@/domain/errors/ChatError';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { sse409IfEmailLinkConflict } from '@/server/middleware/authMiddlewareGuards';
 import { getResponseModelForBlogCreation } from '@/lib/canvas-content';
 import { getSystemPrompt } from '@/lib/prompts';
 import { resolveKnowledgeBlocksForRequest } from '@/lib/knowledgeInjection';
 import { CONTINUATION_INSTRUCTION, mergeTrailingUserMessage } from '@/lib/chat-continuation';
-import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
+import { reserveTrialChatSend } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import {
   createEmptyTokenUsageTotals,
@@ -35,7 +37,6 @@ interface StreamRequest {
   messages: { role: 'user' | 'assistant'; content: string }[];
   userMessage: string;
   model: string;
-  systemPrompt?: string;
   serviceId?: string;
   /** 本文生成ボタン用: blog_creation_step7 の応答を session_combined_contents に保存 */
   step7FullBodyGeneration?: boolean;
@@ -45,7 +46,6 @@ interface StreamRequest {
   truncatedContent?: string;
   enableWebSearch?: boolean;
   webSearchConfig?: {
-    maxUses?: number;
     allowedDomains?: string[];
     blockedDomains?: string[];
   };
@@ -73,7 +73,6 @@ export async function POST(req: NextRequest) {
       messages,
       userMessage,
       model,
-      systemPrompt: systemPromptOverride,
       serviceId,
       step7FullBodyGeneration = false,
       isContinuation = false,
@@ -117,10 +116,9 @@ export async function POST(req: NextRequest) {
     const { userId, userDetails } = authResult;
     const userRole = (userDetails?.role ?? 'trial') as UserRole;
 
-    const limitError = await checkTrialDailyLimit(userRole, userId);
-    if (limitError) {
-      return new Response(sendSSE('error', { type: 'daily_limit', message: limitError }), {
-        status: 429,
+    if (isContinuation && !sessionId) {
+      return new Response(sendSSE('error', { type: 'invalid_request', message: 'continuation モードには sessionId が必要です' }), {
+        status: 400,
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-store',
@@ -129,9 +127,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (isContinuation && !sessionId) {
-      return new Response(sendSSE('error', { type: 'invalid_request', message: 'continuation モードには sessionId が必要です' }), {
-        status: 400,
+    const limitError = await reserveTrialChatSend(userRole, userId);
+    if (limitError) {
+      return new Response(sendSSE('error', { type: 'daily_limit', message: limitError }), {
+        status: 429,
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-store',
@@ -230,14 +229,7 @@ export async function POST(req: NextRequest) {
           const resolvedTemperature = cfg.temperature;
           const resolvedThinking = cfg.thinking;
 
-          const l2SystemPrompt = systemPromptOverride?.trim()
-            ? systemPromptOverride
-            : await getSystemPrompt(
-                model,
-                undefined,
-                sessionId,
-                serviceId
-              );
+          const l2SystemPrompt = await getSystemPrompt(model, undefined, sessionId, serviceId);
 
           const { anthropicSystem } = await resolveKnowledgeBlocksForRequest(l2SystemPrompt, {
             modelKey: model,
@@ -271,7 +263,7 @@ export async function POST(req: NextRequest) {
                 {
                   type: 'web_search_20250305' as const,
                   name: 'web_search' as const,
-                  max_uses: webSearchConfig.maxUses ?? 3,
+                  max_uses: WEB_SEARCH_MAX_USES,
                   ...(webSearchConfig.allowedDomains && {
                     allowed_domains: webSearchConfig.allowedDomains,
                   }),
@@ -339,13 +331,24 @@ export async function POST(req: NextRequest) {
                 controller.close();
               };
 
-              try {
-                const postStreamLimitError = await checkTrialDailyLimit(userRole, userId);
-                if (postStreamLimitError) {
-                  sendSaveErrorAndExit('daily_limit', postStreamLimitError);
-                  return;
-                }
+              // 拒否された応答は空か途中までなので、正常完了として保存しない
+              if (stopReason === 'refusal') {
+                console.error('[Stream] Response refused by model:', { model, resolvedModel });
+                sendSaveErrorAndExit('refusal', ERROR_MESSAGES.CHAT.AI_REFUSED);
+                return;
+              }
 
+              // 続きを頼んでも履歴が伸びて同じ上限に当たるので、max_tokens と違い続き生成に回さない
+              if (stopReason === 'model_context_window_exceeded') {
+                console.error('[Stream] Context window exceeded:', { model, resolvedModel });
+                sendSaveErrorAndExit(
+                  'context_window_exceeded',
+                  ERROR_MESSAGES.CHAT.CONTEXT_WINDOW_EXCEEDED
+                );
+                return;
+              }
+
+              try {
                 let result;
                 if (isContinuation && sessionId) {
                   // continuationMode: "続けてください" を保存せず、途切れた assistant メッセージを上書き

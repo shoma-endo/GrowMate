@@ -15,7 +15,7 @@ import {
 } from '@/server/schemas/chat.schema';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { getEmailLinkConflictMessage } from '@/server/middleware/authMiddlewareGuards';
-import { checkTrialDailyLimit } from '@/server/services/chatLimitService';
+import { reserveTrialChatSend } from '@/server/services/chatLimitService';
 
 
 const updateChatSessionTitleSchema = z.object({
@@ -78,8 +78,7 @@ async function startChat(data: StartChatInput): Promise<ChatResponse> {
       };
     }
 
-    // trial ユーザーの日次制限チェック
-    const limitError = await checkTrialDailyLimit(auth.role, auth.userId);
+    const limitError = await reserveTrialChatSend(auth.role, auth.userId);
     if (limitError) {
       return { message: '', warning: limitError };
     }
@@ -106,8 +105,7 @@ async function continueChat(data: ContinueChatInput): Promise<ChatResponse> {
       };
     }
 
-    // trial ユーザーの日次制限チェック
-    const limitError = await checkTrialDailyLimit(auth.role, auth.userId);
+    const limitError = await reserveTrialChatSend(auth.role, auth.userId);
     if (limitError) {
       return { message: '', warning: limitError };
     }

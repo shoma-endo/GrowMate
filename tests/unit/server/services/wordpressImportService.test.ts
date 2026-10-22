@@ -31,6 +31,58 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     mocks.eq.mockReturnValue({ eq: () => Promise.resolve({ error: null }) });
   });
 
+  async function runImportWithAnnotations(
+    posts: Array<{ id: number; link: string }>,
+    annotations: Array<{ id: string; canonical_url: string | null; normalized_url: string | null; wp_post_id: number | null }>
+  ) {
+    const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
+    const inserts: Array<Array<{ canonical_url: string }>> = [];
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const client = {
+      from: () => ({
+        update: (data: Record<string, unknown>) => ({
+          eq: (_column: string, id: string) => ({
+            eq: () => {
+              updates.push({ id, data });
+              return Promise.resolve({ error: null });
+            },
+          }),
+        }),
+        upsert: (rows: Array<{ canonical_url: string }>) => {
+          inserts.push(rows);
+          return { select: () => Promise.resolve({ data: rows.map(row => ({ ...row, wp_post_title: 'Title' })), error: null }) };
+        },
+      }),
+    };
+    const supabaseService = {
+      getClient: () => client,
+      listContentAnnotationKeys: vi.fn().mockResolvedValue(annotations),
+      advanceWordPressImportBaseline: vi.fn().mockResolvedValue(true),
+    } as unknown as SupabaseService;
+    const wpService = {
+      fetchAllNormalizedContentByTypes: vi.fn().mockResolvedValue({
+        posts: normalizeWordPressRestPosts(posts.map(post => ({
+          id: post.id,
+          type: 'post',
+          link: post.link,
+          title: { rendered: `Post ${post.id}` },
+        }))),
+        totalsByType: { posts: posts.length },
+        uniqueIdCountsByType: { posts: posts.length },
+      }),
+    } as unknown as WordPressService;
+    const result = await importWordPressContent({
+      userId: 'user-1',
+      settings: { wpContentTypes: ['posts'], wpImportBaselineAt: null } as WordPressSettings,
+      wpService,
+      supabaseService,
+      startedAt: '2026-10-14T02:00:00.000Z',
+    });
+    const warningCalls = warning.mock.calls;
+    warning.mockRestore();
+    return { result, updates, inserts, warningCalls };
+  }
+
   it('既存記事の本文だけが変わった場合も更新し、成功後に開始時刻を基準にする', async () => {
     const advanceBaseline = vi.fn().mockResolvedValue(undefined);
     const supabaseService = {
@@ -503,5 +555,118 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     expect(result).toMatchObject({ kind: 'failure', failure: 'temporary_failure' });
     expect(updateWordPressContentTypes).not.toHaveBeenCalled();
     expect(advanceBaseline).not.toHaveBeenCalled();
+  });
+
+  it('正規化 URL で未紐付け記事に紐付き、コンテンツ情報9項目は更新しない', async () => {
+    const { result, updates, inserts } = await runImportWithAnnotations(
+      [{ id: 1, link: 'https://example.com/b/' }],
+      [{ id: 'csv-annotation', canonical_url: 'https://example.com/b', normalized_url: 'example.com/b', wp_post_id: null }]
+    );
+
+    expect(result).toMatchObject({ kind: 'success', stats: { updatedPosts: 1, insertedPosts: 0 } });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.id).toBe('csv-annotation');
+    expect(updates[0]?.data).not.toHaveProperty('main_kw');
+    expect(updates[0]?.data).not.toHaveProperty('kw');
+    expect(updates[0]?.data).not.toHaveProperty('impressions');
+    expect(updates[0]?.data).not.toHaveProperty('needs');
+    expect(updates[0]?.data).not.toHaveProperty('persona');
+    expect(updates[0]?.data).not.toHaveProperty('goal');
+    expect(updates[0]?.data).not.toHaveProperty('prep');
+    expect(updates[0]?.data).not.toHaveProperty('basic_structure');
+    expect(updates[0]?.data).not.toHaveProperty('opening_proposal');
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('正規化 URL が一致しても wp_post_id のある記事には紐付けず、新規作成する', async () => {
+    const { result, updates, inserts } = await runImportWithAnnotations(
+      [{ id: 1, link: 'https://example.com/b/' }],
+      [{ id: 'linked-annotation', canonical_url: 'https://example.com/b', normalized_url: 'example.com/b', wp_post_id: 99 }]
+    );
+
+    expect(result).toMatchObject({ kind: 'success', stats: { insertedPosts: 1, updatedPosts: 0 } });
+    expect(updates).toHaveLength(0);
+    expect(inserts).toHaveLength(1);
+  });
+
+  it('正規化 URL の候補が複数あるときは更新・作成せず重複として見送る', async () => {
+    const { result, updates, inserts, warningCalls } = await runImportWithAnnotations(
+      [{ id: 1, link: 'https://example.com/b/' }],
+      [
+        { id: 'csv-annotation-a', canonical_url: 'https://example.com/b', normalized_url: 'example.com/b', wp_post_id: null },
+        { id: 'csv-annotation-b', canonical_url: 'http://www.example.com/b/', normalized_url: 'example.com/b', wp_post_id: null },
+      ]
+    );
+
+    expect(result).toMatchObject({ kind: 'success', stats: { duplicatePosts: 1, updatedPosts: 0, insertedPosts: 0 } });
+    expect(updates).toHaveLength(0);
+    expect(inserts).toHaveLength(0);
+    expect(warningCalls).toContainEqual([
+      '[wordpress-import] normalized URL matched multiple unlinked annotations',
+      expect.objectContaining({ annotationIds: ['csv-annotation-a', 'csv-annotation-b'] }),
+    ]);
+  });
+
+  it('同じ回の新規の投稿どうしで正規化 URL が重なったら、2件目は作らず重複として見送る', async () => {
+    const { result, inserts, warningCalls } = await runImportWithAnnotations(
+      [
+        { id: 1, link: 'https://example.com/a' },
+        { id: 2, link: 'http://www.example.com/a/' },
+      ],
+      []
+    );
+
+    expect(result).toMatchObject({ kind: 'success', stats: { insertedPosts: 1, duplicatePosts: 1 } });
+    expect(inserts.flat().map(row => row.canonical_url)).toEqual(['https://example.com/a']);
+    expect(warningCalls).toContainEqual([
+      '[wordpress-import] new post shares a normalized URL with another new post in this import',
+      expect.objectContaining({ postId: 2 }),
+    ]);
+  });
+
+  it('投稿IDで当たった記事と生URLの別記事が衝突したらcanonical_urlを保ち、別記事を変更しない', async () => {
+    const { result, updates, inserts, warningCalls } = await runImportWithAnnotations(
+      [{ id: 1, link: 'https://example.com/new' }],
+      [
+        { id: 'wp-annotation', canonical_url: 'https://example.com/old', normalized_url: 'example.com/old', wp_post_id: 1 },
+        { id: 'csv-annotation', canonical_url: 'https://example.com/new', normalized_url: 'example.com/new', wp_post_id: null },
+      ]
+    );
+
+    expect(result).toMatchObject({ kind: 'success', stats: { updatedPosts: 1, insertedPosts: 0 } });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.id).toBe('wp-annotation');
+    expect(updates[0]?.data).not.toHaveProperty('canonical_url');
+    expect(inserts).toHaveLength(0);
+    expect(warningCalls).toContainEqual([
+      '[wordpress-import] canonical URL belongs to another annotation; preserved existing URL',
+      expect.objectContaining({ annotationId: 'wp-annotation', conflictingAnnotationId: 'csv-annotation' }),
+    ]);
+  });
+
+  it.each([
+    ['投稿1を先に受け取る', [
+      { id: 1, link: 'https://example.com/new' },
+      { id: 2, link: 'https://example.com/old' },
+    ]],
+    ['投稿2を先に受け取る', [
+      { id: 2, link: 'https://example.com/old' },
+      { id: 1, link: 'https://example.com/new' },
+    ]],
+  ])('%sスラッグ入れ替えで投稿ID照合を先に確保する', async (_label, posts) => {
+    const { result, updates, inserts, warningCalls } = await runImportWithAnnotations(
+      posts,
+      [{ id: 'annotation-a', canonical_url: 'https://example.com/old', normalized_url: 'example.com/old', wp_post_id: 1 }]
+    );
+
+    expect(result).toMatchObject({ kind: 'success', stats: { duplicatePosts: 1, updatedPosts: 1, insertedPosts: 0 } });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.id).toBe('annotation-a');
+    expect(updates[0]?.data.canonical_url).toBe('https://example.com/new');
+    expect(inserts).toHaveLength(0);
+    expect(warningCalls).toContainEqual([
+      '[wordpress-import] post matched an annotation already claimed in this import',
+      expect.objectContaining({ annotationId: 'annotation-a' }),
+    ]);
   });
 });

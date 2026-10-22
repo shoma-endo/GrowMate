@@ -201,9 +201,6 @@ export function useCanvasSelectionEditStream({
             enableWebSearch: shouldEnableWebSearch,
             ...(isHeadingUnit && { isHeadingUnit: true }),
             ...(headingContextIndex !== null && { step7HeadingIndex: headingContextIndex }),
-            webSearchConfig: {
-              maxUses: 3,
-            },
             ...(freeFormUserPrompt !== undefined && { freeFormUserPrompt }),
             canvasHistory: canvasEditHistory.slice(-4),
           }),

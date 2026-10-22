@@ -10,6 +10,7 @@ import type { LinkedMessageRule } from '@/components/LinkedMessage';
 // Chat Configuration
 export const CHAT_HISTORY_LIMIT = 10; // 件数制限を緩和し、文字数制限(CHAR_LIMIT)を主とする
 export const CHAT_HISTORY_CHAR_LIMIT = 30000; // 約20k-30kトークン相当
+export const WEB_SEARCH_MAX_USES = 3;
 
 export const GA4_SCOPE = 'https://www.googleapis.com/auth/analytics.readonly';
 
@@ -42,8 +43,8 @@ export const GOOGLE_ADS_REAUTH_LINK_RULES: LinkedMessageRule[] = [
  *
  * `display` は併記しない。`type: 'disabled'` と `display` の併用は 400 になる。
  */
-interface AnthropicThinkingConfig {
-  type: 'disabled' | 'adaptive';
+export interface AnthropicThinkingConfig {
+  type: 'disabled' | 'adaptive' | 'between_tools';
 }
 
 interface ModelConfig {
@@ -71,6 +72,25 @@ const ANTHROPIC_BASE = {
   seed: 42,
 };
 
+// ブログ作成は書き出し前（step1〜5）と書き出し以降でモデルを分けて試験運用している（クライアント指示）。
+// 巻き戻しは2つの BASE の actualModel と thinking を ANTHROPIC_BASE と同じ値に戻すだけで足りる。
+// Sonnet 5.5 は `thinking: {type:'disabled'}` を 400 で拒否するため、思考オフは between_tools で指定する
+// （effort が high 以下であることが条件。既定の high のまま使う）。
+const BLOG_PRE_LEAD_BASE = {
+  provider: 'anthropic' as const,
+  actualModel: 'claude-sonnet-5-5',
+  thinking: { type: 'between_tools' as const },
+  seed: 42,
+};
+
+// Haiku 5.5 は effort が high 以下なら disabled を受け付ける（既定は medium）
+const BLOG_POST_LEAD_BASE = {
+  provider: 'anthropic' as const,
+  actualModel: 'claude-haiku-5-5',
+  thinking: { type: 'disabled' as const },
+  seed: 42,
+};
+
 const OPENAI_BASE = {
   provider: 'openai' as const,
   temperature: 0.3,
@@ -86,17 +106,17 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   },
   ad_copy_creation: { ...ANTHROPIC_BASE, maxTokens: 4000 },
   lp_draft_creation: { ...ANTHROPIC_BASE, maxTokens: 32000 },
-  blog_creation_step1: { ...ANTHROPIC_BASE, maxTokens: 5000 },
+  blog_creation_step1: { ...BLOG_PRE_LEAD_BASE, maxTokens: 5000 },
   instagram_blog_keyword_generation: { ...ANTHROPIC_BASE, maxTokens: 1000 },
-  blog_creation_step2: { ...ANTHROPIC_BASE, maxTokens: 5000 },
-  blog_creation_step3: { ...ANTHROPIC_BASE, maxTokens: 5000 },
-  blog_creation_step4: { ...ANTHROPIC_BASE, maxTokens: 5000 },
-  blog_creation_step5: { ...ANTHROPIC_BASE, maxTokens: 6000 },
-  blog_creation_step6: { ...ANTHROPIC_BASE, maxTokens: 5000 },
-  blog_creation_step7: { ...ANTHROPIC_BASE, maxTokens: 64000 },
-  blog_creation_step7_heading: { ...ANTHROPIC_BASE, maxTokens: 7000 },
+  blog_creation_step2: { ...BLOG_PRE_LEAD_BASE, maxTokens: 5000 },
+  blog_creation_step3: { ...BLOG_PRE_LEAD_BASE, maxTokens: 5000 },
+  blog_creation_step4: { ...BLOG_PRE_LEAD_BASE, maxTokens: 5000 },
+  blog_creation_step5: { ...BLOG_PRE_LEAD_BASE, maxTokens: 6000 },
+  blog_creation_step6: { ...BLOG_POST_LEAD_BASE, maxTokens: 5000 },
+  blog_creation_step7: { ...BLOG_POST_LEAD_BASE, maxTokens: 64000 },
+  blog_creation_step7_heading: { ...BLOG_POST_LEAD_BASE, maxTokens: 7000 },
   blog_title_meta_generation: {
-    ...ANTHROPIC_BASE,
+    ...BLOG_POST_LEAD_BASE,
     maxTokens: 10000,
   },
   gsc_insight_ctr_boost: {
@@ -137,7 +157,7 @@ export const MODEL_CONFIGS: Record<string, ModelConfig> = {
   },
   // **AI要約だけ ANTHROPIC_BASE から切り出している**
   // （docs/specs/content-annotation-bulk-summary-background-spec.md §8 / §11 ALT-005）。
-  // ANTHROPIC_BASE は 18 エントリへ展開されており、そこを書き換えるとチャット・ブログ生成・
+  // ANTHROPIC_BASE は多数のエントリへ展開されており、そこを書き換えるとチャット・
   // GSC 提案・Google Ads 分析・GA4 コンテンツ評価まで一斉に別モデルへ移る。各機能は出力形式
   // （末尾 JSON ブロック・ストリーミング・長文生成）が異なり、本仕様のテストでは回帰を検知できない。
   //

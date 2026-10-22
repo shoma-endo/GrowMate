@@ -5,6 +5,8 @@ import { SupabaseClientManager } from '@/lib/client-manager';
 import { formatJstDateISO } from '@/lib/date-utils';
 import { parseTimestampSafe, toIsoTimestamp } from '@/lib/timestamps';
 import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database.types';
+import { asPendingClient, type ContentCsvImportDatabase } from '@/types/database.types.pending';
+import type { ContentCsvImportRow } from '@/lib/content-csv-import';
 import {
   DbChatMessage,
   DbChatSession,
@@ -766,31 +768,30 @@ export class SupabaseService {
   }
 
   /**
-   * 指定したユーザーのメッセージ数を、時間範囲でカウント
-   * role は 'user' のみを対象（送信回数としてカウントするため）
+   * trial の送信を1回分予約する。当日の予約が上限に達していれば false（数えて入れるまでを DB の1関数で行う）
    */
-  async countUserMessagesBetween(
+  async reserveTrialChatSend(
     userId: string,
     fromIso: string,
-    toIso: string
-  ): Promise<SupabaseResult<number>> {
-    const { count, error } = await this.supabase
-      .from('chat_messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('role', 'user')
-      .gte('created_at', toIsoTimestamp(fromIso))
-      .lt('created_at', toIsoTimestamp(toIso));
+    toIso: string,
+    limit: number
+  ): Promise<SupabaseResult<boolean>> {
+    const { data, error } = await this.supabase.rpc('reserve_trial_chat_send', {
+      p_user_id: userId,
+      p_from: fromIso,
+      p_to: toIso,
+      p_limit: limit,
+    });
 
     if (error) {
-      return this.failure('メッセージ数の取得に失敗しました', {
+      return this.failure(ERROR_MESSAGES.CHAT.USAGE_CHECK_FAILED, {
         error,
-        developerMessage: 'Failed to count user messages in range',
+        developerMessage: 'Failed to reserve trial chat send',
         context: { userId, fromIso, toIso },
       });
     }
 
-    return this.success(count ?? 0);
+    return this.success(data === true);
   }
 
   /**
@@ -1083,6 +1084,27 @@ export class SupabaseService {
       throw new Error(ERROR_MESSAGES.WORDPRESS.ANNOTATION_FETCH_ERROR(error?.message ?? 'truncated'));
     }
     return data;
+  }
+
+  async importContentAnnotationsCsv(
+    userId: string,
+    rows: ContentCsvImportRow[]
+  ): Promise<SupabaseResult<ContentCsvImportDatabase['public']['Functions']['import_content_annotations_csv']['Returns']>> {
+    const { data, error } = await asPendingClient<ContentCsvImportDatabase>(this.supabase).rpc(
+      'import_content_annotations_csv',
+      {
+        p_user_id: userId,
+        p_rows: rows.map(({ url, values }) => ({ url, ...values })),
+      }
+    );
+    if (error) {
+      return this.failure('CSV の取り込みに失敗しました', {
+        error,
+        developerMessage: 'Content CSV import RPC failed',
+        context: { userId, rowCount: rows.length },
+      });
+    }
+    return this.success(data);
   }
 
   async listGscAutoImportTargets(): Promise<string[]> {

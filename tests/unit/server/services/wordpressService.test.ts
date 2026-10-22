@@ -7,9 +7,18 @@
  * fetch のスタブは describe 内に閉じているため、もう一方へ漏れない。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('server-only', () => ({}));
+// 接続先の検査は public-url-guard のテストで見る。ここでは global fetch へそのまま流す
+const fetchPublicUrlMock = vi.hoisted(() => vi.fn((url: string, init?: RequestInit) => fetch(url, init)));
+vi.mock('@/server/lib/public-url-guard', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/server/lib/public-url-guard')>()),
+  fetchPublicUrl: fetchPublicUrlMock,
+}));
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { WordPressImportDeadlineError, WordPressRestFetchError, WordPressService } from '@/server/services/wordpressService';
 import { normalizeWordPressRestPosts } from '@/server/services/wordpressService';
+import { PublicUrlBlockedError } from '@/server/lib/public-url-guard';
 
 describe('WordPressService（REST API フォールバック）', () => {
   const createSelfHostedService = () =>
@@ -391,5 +400,42 @@ describe('normalizeWordPressRestPosts', () => {
       expect(normalized?.content_text).toBeUndefined();
       expect(normalized?.image_count).toBe(0);
     });
+  });
+});
+
+describe('WordPressService（セルフホストの接続先の検査）', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const service = new WordPressService({
+    type: 'self_hosted',
+    selfHostedAuth: { siteUrl: 'https://internal.example.com', username: 'u', applicationPassword: 'p' },
+  });
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('セルフホストへの接続はすべて接続先を検査する経路を通り、内部アドレスなら接続テストは失敗を返す', async () => {
+    fetchPublicUrlMock.mockRejectedValueOnce(new PublicUrlBlockedError('private_address'));
+
+    const result = await service.testConnection();
+
+    expect(result).toEqual({ success: false, error: ERROR_MESSAGES.WORDPRESS.SITE_URL_NOT_PUBLIC });
+    expect(fetchPublicUrlMock).toHaveBeenCalledWith('https://internal.example.com/wp-json/', expect.anything());
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('接続テストの失敗では、サイトの応答本文を画面向けのエラーに入れない', async () => {
+    fetchMock.mockImplementation(async () => new Response('INTERNAL-SECRET-BODY', { status: 403 }));
+
+    const result = await service.testConnection();
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('[reachability] HTTP 403');
+    expect(result.error).not.toContain('INTERNAL-SECRET-BODY');
   });
 });
