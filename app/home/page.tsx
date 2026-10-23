@@ -175,10 +175,10 @@ export default function LandingPage() {
               暮らしの困りごとを解決する事業者のための集客 AI
             </div>
             <h1 className="text-5xl md:text-6xl font-extrabold text-gray-900 tracking-tight mb-6 leading-tight max-w-4xl mx-auto">
-              AI で記事は作れる。
+              業界特化のマーケティングを
               <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
-                でも、その後の管理は誰が？
+                AIで自動化・最適化
               </span>
             </h1>
             <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
@@ -202,7 +202,7 @@ export default function LandingPage() {
 
         <section className="py-24 bg-gray-50">
           <div className="mx-auto w-full max-w-7xl px-4">
-            <HomeSectionHeading title="記事は増えたのに、問い合わせが増えない理由" />
+            <HomeSectionHeading title="AI で記事は作れる。でも、その後の管理は誰が？" />
             <div className="grid md:grid-cols-2 gap-8">
               {PAIN_POINTS.map(point => (
                 <HomeCard key={point}>
