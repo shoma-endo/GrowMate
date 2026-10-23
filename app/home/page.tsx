@@ -138,13 +138,13 @@ export default function LandingPage() {
               href="#compliance"
               className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
             >
-              Google連携
+              Google 連携
             </Link>
             <Link
               href="#instagram-compliance"
               className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
             >
-              Instagram連携
+              Instagram 連携
             </Link>
             <Link
               href="/privacy"
@@ -177,7 +177,7 @@ export default function LandingPage() {
               業界特化のマーケティングを
               <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
-                AIで自動化・最適化
+                AI で自動化・最適化
               </span>
             </h1>
             <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
@@ -215,7 +215,7 @@ export default function LandingPage() {
         <section id="features" className="py-24 bg-white">
           <div className="mx-auto w-full max-w-7xl px-4">
             <HomeSectionHeading
-              title="GrowMate は「作るAI」ではなく「育てるAI」です"
+              title="GrowMate は「作る AI」ではなく「育てる AI」です"
               description="記事を作った後の評価、改善、次の企画までを引き受けます。"
             />
 
@@ -267,7 +267,8 @@ export default function LandingPage() {
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-3">セキュアなデータ管理</h3>
                 <p className="text-gray-600 leading-relaxed">
-                  お客様のデータは厳重に管理され、許可された範囲内でのみAIの学習や分析に使用されます。プライバシー保護を最優先しています。
+                  お客様のデータは厳重に管理され、許可された範囲内でのみ AI
+                  の学習や分析に使用されます。プライバシー保護を最優先しています。
                 </p>
               </HomeCard>
             </div>
@@ -403,10 +404,12 @@ export default function LandingPage() {
                 Instagram Platform Data
               </p>
               <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                Instagram連携とデータ取り扱い
+                Instagram 連携とデータ取り扱い
               </h2>
               <p className="text-gray-600 max-w-3xl mx-auto leading-relaxed">
-                GrowMateは、中小事業者向けのマーケティング支援ツールです。お客様がご自身のInstagramビジネス／クリエイターアカウントを連携すると、投稿の実績データ（リーチ数・いいね数・保存数など）を取得し、管理画面にわかりやすく一覧表示します。取得したデータはお客様ご自身の投稿の振り返り・改善に役立てるためにのみ使用し、第三者への提供や広告目的での利用は一切行いません。
+                GrowMate は、中小事業者向けのマーケティング支援ツールです。お客様がご自身の
+                Instagram
+                ビジネス／クリエイターアカウントを連携すると、投稿の実績データ（リーチ数・いいね数・保存数など）を取得し、管理画面にわかりやすく一覧表示します。取得したデータはお客様ご自身の投稿の振り返り・改善に役立てるためにのみ使用し、第三者への提供や広告目的での利用は一切行いません。
               </p>
             </div>
 
@@ -423,7 +426,7 @@ export default function LandingPage() {
               <div className="p-8 bg-white rounded-2xl shadow-md border border-pink-100">
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">データ使用と保護</h3>
                 <ul className="space-y-3 text-gray-600 text-sm">
-                  <li>Instagramのデータは投稿実績の表示・分析のみに使用します。</li>
+                  <li>Instagram のデータは投稿実績の表示・分析のみに使用します。</li>
                   <li>Vercel 東京リージョン + Cloudflare で TLS 経由の通信を強制。</li>
                   <li>いつでも管理画面から連携を解除でき、解除時に取得済みデータを削除します。</li>
                 </ul>
@@ -465,7 +468,7 @@ export default function LandingPage() {
                 </li>
                 <li>
                   <Link href="#compliance" className="hover:text-white transition-colors">
-                    Google連携情報
+                    Google 連携情報
                   </Link>
                 </li>
               </ul>
