@@ -11,7 +11,7 @@ import { InstagramGlyph } from '@/components/InstagramGlyph';
 export const metadata: Metadata = {
   title: 'GrowMate - 作った記事を、問い合わせに変える集客 AI',
   description:
-    'ハウスクリーニング・不用品回収・解体・買取など、暮らしの困りごとを解決する事業者のための集客 AI。増えすぎた記事の中から、直すべき記事と問い合わせにつながっている記事を見つけて、次の一手を提案します。',
+    'ハウスクリーニング・不用品回収・解体・買取など、暮らしの困りごとを解決する事業者のための集客 AI。直すべき記事と、問い合わせにつながっている記事を見つけて、次の一手を提案します。',
 };
 
 const SUPPORT_EMAIL = 'support@dreamplanner.co.jp';
@@ -182,8 +182,7 @@ export default function LandingPage() {
               </span>
             </h1>
             <p className="text-xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-              GrowMate
-              は、増えすぎた記事の中から「直すべき記事」と「問い合わせにつながっている記事」を見つけて、次の一手を提案します。
+              直すべき記事と、問い合わせにつながっている記事を見つけて、次の一手を提案します。
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <ApplyButton />
