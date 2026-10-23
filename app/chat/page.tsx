@@ -1,6 +1,8 @@
 import ChatClient from './ChatClient';
 import { BLOG_STEP_IDS, type BlogStepId } from '@/lib/constants';
 
+export const maxDuration = 300;
+
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 interface ChatPageProps {

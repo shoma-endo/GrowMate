@@ -102,3 +102,38 @@ export type ContentCsvImportDatabase = Omit<Database, 'public'> & {
     };
   };
 };
+
+// PROVISIONAL: supabase/migrations/20261023000000_add_wp_post_status_to_content_annotations.sql
+export type ContentAnnotationPublishRow = Omit<Database['public']['Tables']['content_annotations']['Row'], 'wp_post_status' | 'wp_publish_claimed_at'> & {
+  wp_post_status: 'draft' | 'future' | 'publish' | null;
+  wp_publish_claimed_at: string | null;
+};
+
+type ContentAnnotationPublishInsert = Omit<Database['public']['Tables']['content_annotations']['Insert'], 'wp_post_status' | 'wp_publish_claimed_at'> & {
+  wp_post_status?: 'draft' | 'future' | 'publish' | null;
+  wp_publish_claimed_at?: string | null;
+};
+
+type ContentAnnotationPublishUpdate = Omit<Database['public']['Tables']['content_annotations']['Update'], 'wp_post_status' | 'wp_publish_claimed_at'> & {
+  wp_post_status?: 'draft' | 'future' | 'publish' | null;
+  wp_publish_claimed_at?: string | null;
+};
+
+type ContentAnnotationPublishDatabase = Omit<Database, 'public'> & {
+  public: Omit<Database['public'], 'Tables'> & {
+    Tables: Omit<Database['public']['Tables'], 'content_annotations'> & {
+      content_annotations: {
+        Row: ContentAnnotationPublishRow;
+        Insert: ContentAnnotationPublishInsert;
+        Update: ContentAnnotationPublishUpdate;
+        Relationships: Database['public']['Tables']['content_annotations']['Relationships'];
+      };
+    };
+  };
+};
+
+export function asContentAnnotationPublishClient(
+  client: SupabaseClient<Database>
+): SupabaseClient<ContentAnnotationPublishDatabase> {
+  return client as unknown as SupabaseClient<ContentAnnotationPublishDatabase>;
+}

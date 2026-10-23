@@ -380,6 +380,7 @@ export async function importWordPressContent({
         ...(nextContent !== null ? { wp_content_text: nextContent } : {}),
         ...(nextImageCount !== null ? { wp_image_count: nextImageCount } : {}),
       };
+      Object.assign(data, { wp_post_status: 'publish' as const });
 
       if (assignment) {
         updates.push({ id: assignment.existing.id, data });

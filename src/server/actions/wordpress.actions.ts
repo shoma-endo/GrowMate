@@ -605,16 +605,17 @@ export async function upsertContentAnnotationBySession(
     if (canonicalProvided) {
       const { data: existingData, error: existingError } = await client
         .from('content_annotations')
-        .select('canonical_url, wp_post_id, wp_post_title')
+        .select('*')
         .eq('user_id', sessionOwnerId)
         .eq('session_id', payload.session_id)
         .maybeSingle();
       if (!existingError && existingData) {
-        const typed = existingData as ExistingAnnotationData;
+        const typed = existingData as unknown as ExistingAnnotationData;
         existingAnnotation = {
           canonical_url: typed.canonical_url ?? null,
           wp_post_id: typed.wp_post_id ?? null,
           wp_post_title: typed.wp_post_title ?? null,
+          wp_post_status: typed.wp_post_status ?? null,
         };
 
         const existingCanonicalRaw = (existingAnnotation.canonical_url ?? '').trim();
@@ -637,30 +638,39 @@ export async function upsertContentAnnotationBySession(
     let resolvedCanonicalUrl: string | null | undefined = undefined;
     let resolvedWpId: number | null | undefined = undefined;
     let resolvedWpTitle: string | null | undefined = undefined;
+    let resolvedWpStatus: 'draft' | 'future' | 'publish' | null | undefined = undefined;
     let resolvedWpCategories: number[] | null | undefined = undefined;
     let resolvedWpCategoryNames: string[] | null | undefined = undefined;
 
     if (canonicalProvided) {
-      const resolution = await resolveCanonicalAndWpPostId({
-        canonicalUrl: payload.canonical_url,
-        supabaseService: supabaseServiceLocal,
-        userId: sessionOwnerId, // セッション所有者のWordPress設定を使用
-        cookieStore,
-      });
-      if (!resolution.success) {
-        if (canonicalMatchesExisting && existingAnnotation) {
-          resolvedCanonicalUrl = existingAnnotation.canonical_url ?? null;
-          resolvedWpId = existingAnnotation.wp_post_id ?? null;
-          resolvedWpTitle = existingAnnotation.wp_post_title ?? null;
-        } else {
-          return { success: false as const, error: resolution.error };
-        }
+      if (canonicalMatchesExisting && existingAnnotation && !nextCanonicalRaw &&
+        (existingAnnotation.wp_post_status === 'draft' || existingAnnotation.wp_post_status === 'future')) {
+        resolvedCanonicalUrl = existingAnnotation.canonical_url;
+        resolvedWpId = existingAnnotation.wp_post_id;
+        resolvedWpTitle = existingAnnotation.wp_post_title;
+        resolvedWpStatus = existingAnnotation.wp_post_status;
       } else {
-        resolvedCanonicalUrl = resolution.canonicalUrl;
-        resolvedWpId = resolution.wpPostId;
-        resolvedWpTitle = resolution.wpPostTitle ?? null;
-        resolvedWpCategories = resolution.wpCategories ?? null;
-        resolvedWpCategoryNames = resolution.wpCategoryNames ?? null;
+        const resolution = await resolveCanonicalAndWpPostId({
+          canonicalUrl: payload.canonical_url,
+          supabaseService: supabaseServiceLocal,
+          userId: sessionOwnerId, // セッション所有者のWordPress設定を使用
+          cookieStore,
+        });
+        if (!resolution.success) {
+          if (canonicalMatchesExisting && existingAnnotation) {
+            resolvedCanonicalUrl = existingAnnotation.canonical_url ?? null;
+            resolvedWpId = existingAnnotation.wp_post_id ?? null;
+            resolvedWpTitle = existingAnnotation.wp_post_title ?? null;
+          } else {
+            return { success: false as const, error: resolution.error };
+          }
+        } else {
+          resolvedCanonicalUrl = resolution.canonicalUrl;
+          resolvedWpId = resolution.wpPostId;
+          resolvedWpTitle = resolution.wpPostTitle ?? null;
+          resolvedWpCategories = resolution.wpCategories ?? null;
+          resolvedWpCategoryNames = resolution.wpCategoryNames ?? null;
+        }
       }
     }
 
@@ -721,6 +731,11 @@ export async function upsertContentAnnotationBySession(
           }
         : {}),
     };
+    if (canonicalProvided && resolvedWpId === null) {
+      Object.assign(upsertPayload, { wp_post_status: null });
+    } else if (canonicalProvided && resolvedWpStatus) {
+      Object.assign(upsertPayload, { wp_post_status: resolvedWpStatus });
+    }
 
     const { error } = await client
       .from('content_annotations')
@@ -1055,6 +1070,9 @@ export async function updateContentAnnotationFields(
       updateData.canonical_url = resolvedCanonicalUrl ?? null;
       if (resolvedWpId !== undefined) {
         updateData.wp_post_id = resolvedWpId ?? null;
+        if (resolvedWpId === null) {
+          Object.assign(updateData, { wp_post_status: null });
+        }
       }
       if (resolvedWpTitle !== undefined && resolvedWpTitle !== null) {
         updateData.wp_post_title = resolvedWpTitle;

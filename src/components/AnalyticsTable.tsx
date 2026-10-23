@@ -55,6 +55,7 @@ import {
   ChevronsRight,
   X,
   Sparkles,
+  Send,
   type LucideIcon,
 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -65,6 +66,7 @@ import {
   type AnnotationRecord,
 } from '@/types/annotation';
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
+import { WordPressPublishDialog, type WordPressPublishDialogHandle } from '@/components/WordPressPublishDialog';
 import { ChatService } from '@/domain/services/chatService';
 import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 import { getGa4DiagnosisLabel, getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
@@ -392,6 +394,7 @@ export default function AnalyticsTable({
   const searchParams = useSearchParams();
   const [pendingRowKey, setPendingRowKey] = React.useState<string | null>(null);
   const [editingRowKey, setEditingRowKey] = React.useState<string | null>(null);
+  const wordpressPublishDialogRef = React.useRef<WordPressPublishDialogHandle>(null);
   const [form, setForm] = React.useState<Record<AnnotationFieldKey, string>>(createEmptyForm);
   const [canonicalUrl, setCanonicalUrl] = React.useState('');
   const [canonicalUrlError, setCanonicalUrlError] = React.useState('');
@@ -1453,6 +1456,19 @@ export default function AnalyticsTable({
                                   </DialogContent>
                                 </Dialog>
 
+                                {annotation?.id && annotation.session_id &&
+                                  (annotation.wp_post_id == null || annotation.wp_post_status === 'draft' || annotation.wp_post_status === 'future') && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="flex items-center gap-2"
+                                      onClick={() => wordpressPublishDialogRef.current?.openFor({ annotationId: annotation.id as string, sessionId: annotation.session_id as string })}
+                                    >
+                                      <Send className="h-4 w-4" />
+                                      WordPress に投稿
+                                    </Button>
+                                  )}
+
                                 {annotation?.id ? (
                                   <Button
                                     variant="outline"
@@ -1687,6 +1703,8 @@ export default function AnalyticsTable({
                                     className="px-6 py-4 whitespace-nowrap text-sm"
                                   >
                                     {annotation?.wp_post_title || '—'}
+                                    {annotation?.wp_post_status === 'draft' && <Badge className="ml-2" variant="outline">下書き</Badge>}
+                                    {annotation?.wp_post_status === 'future' && <Badge className="ml-2" variant="outline">予約</Badge>}
                                   </td>
                                 );
                               case 'wp_excerpt':
@@ -1742,6 +1760,7 @@ export default function AnalyticsTable({
         mode="content"
         hasOrphanContent={hasOrphanContent}
       />
+      <WordPressPublishDialog ref={wordpressPublishDialogRef} showOpenChat onComplete={() => router.refresh()} />
     </>
   );
 }

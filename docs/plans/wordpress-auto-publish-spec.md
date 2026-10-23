@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: spec-review 通過。見た目は既存フォームの写しで確定。送信 UI の4点（公開済みは info、再送の初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし）も回答済み。正常応答の識別子と再送初期値の返却制約も明記済み。OPEN-001 は決着
-- 止まっている理由・待っている人: なし
-- 次の一手: `.takt/workflows/spec-to-pr.yaml` で実装（`takt -w spec-to-pr -t "docs/plans/wordpress-auto-publish-spec.md 仕様書に沿って実装してください"`）
-- 未確認事項: なし
-- 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）、PR #691
-- 更新日・更新した工程: 2026-10-23 レビュー指摘2件（応答の識別子・再送初期値の返却）を反映（実装前）
+- 現在の工程: 実装 PR レビュー待ち（spec-to-pr create_pr）
+- 止まっている理由・待っている人: 人間の PR 確認と merge。DB 適用（マイグレーション `20261023000000_add_wp_post_status_to_content_annotations.sql`）は承認待ち
+- 次の一手: PR 確認と merge。未実装分は UI 用語辞書 `.agents/skills/growmate-ui-ux/ui-text.md` への用語と補足2文の追記（無人実行で `.agents` に書き込めず未更新）
+- 未確認事項: 「PR 本文の `## 最終確認（引き継ぎ用）` を参照」（32 項目）
+- 関連ブランチ・PR: `shoma-endo/feat-wp-auto-publish`（PR はブランチから引く）
+- 更新日・更新した工程: 2026-10-24 実装 PR 作成（spec-to-pr create_pr）
 
 ## 0. 依頼時の参考資料との差分（先に読む）
 
@@ -1012,3 +1012,4 @@ cycle 3 で反映した指摘（F-011〜F-015）:
 | 2026-10-23 | PR #691 の未解決指摘を仕様へ反映。404 の解除は `rest_post_invalid_id` だけ。並行送信は `wp_publish_claimed_at` で1件に制限。WordPress.com は更新済みトークンを cookie より優先。予約のタイムゾーンは F-011 のまま | Codex と Bugbot のレビューコメント。工数の 47 時間と 5 人日の枠は変えない | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | 送信 UI の未決事項4点を反映。公開済みは DB 同期と info 表示、再送は現在の状態と予約済み日時を初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし。FR・状態別 UI・エラー表・S-01 / S-03 / S-04 / S-05 / S-07 / S-08 / S-13 を同期し、Q-008 を回答済み、OPEN-001 を決着済みにした | 依頼者の決定（2026-10-23） | 開発（Codex） |
 | 2026-10-23 | 正常応答に `outcome: sent / already_published` を明記し、公開成功の完了トーストと公開済み同期のお知らせ表示を区別。返却制約に再送時の現在の状態と予約済み日時を追加し、ダイアログ初期値・S-04 / S-05 / S-13・Q-008 と整合させた | レビュー指摘2件（応答の識別子・再送初期値の返却）への依頼者の修正指示 | 開発（Codex） |
+| 2026-10-24 | 実装 PR 作成（shoma-endo/feat-wp-auto-publish）。送信ダイアログ（チャット step7・一覧）、WordPress 投稿・固定ページの作成・更新・取得、送信権と公開済み同期、日次取込の publish 保存、マイグレーションのファイル作成（未適用） | 仕様に沿った実装 | spec-to-pr |
