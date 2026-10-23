@@ -7,11 +7,7 @@ import { SupabaseService } from '@/server/services/supabaseService';
 import { env } from '@/env';
 import { BLOG_STEP_LABELS, MODEL_CONFIGS, WEB_SEARCH_MAX_USES } from '@/lib/constants';
 import type { BlogStepId } from '@/lib/constants';
-import {
-  getSaveModelForCanvasStep,
-  htmlToMarkdownForCanvas,
-  sanitizeHtmlForCanvas,
-} from '@/lib/canvas-content';
+import { getSaveModelForCanvasStep } from '@/lib/canvas-content';
 import { reserveTrialChatSend } from '@/server/services/chatLimitService';
 import type { UserRole } from '@/types/user';
 import { STEP7_ID } from '@/lib/constants';
@@ -26,6 +22,7 @@ import {
   mergeTokenUsage,
 } from '@/server/lib/anthropic-token-usage';
 import { ChatError } from '@/domain/errors/ChatError';
+import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
 import { withAnthropicRetry, type AnthropicRetryInfo } from '@/server/lib/anthropic-retry';
 
 export const runtime = 'nodejs';
@@ -96,7 +93,9 @@ const CANVAS_EDIT_TOOL = {
       },
     },
     required: ['full_markdown'],
+    additionalProperties: false,
   },
+  strict: true,
 };
 
 const normalizeCandidateUrl = (rawUrl: string): string | null => {
@@ -494,7 +493,6 @@ export async function POST(req: NextRequest) {
     // ReadableStreamを作成
     const stream = new ReadableStream({
       async start(controller) {
-        let accumulatedJson = '';
         let finalMarkdown = '';
         let abortController: AbortController | null = new AbortController();
         let idleTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -580,7 +578,9 @@ export async function POST(req: NextRequest) {
                       }),
                     },
                   ],
-                  tool_choice: { type: 'tool', name: 'web_search' },
+                  // Sonnet 5.5 は強制 tool_choice（tool / any）を 400 で拒否するため auto にし、
+                  // 検索させる指示は system プロンプトで行う
+                  tool_choice: { type: 'auto' },
                   messages: [
                     {
                       role: 'user',
@@ -607,6 +607,16 @@ export async function POST(req: NextRequest) {
 
                 const finalSearchMessage = await searchStream.finalMessage();
                 webSearchUsage = mergeTokenUsage(webSearchUsage, finalSearchMessage?.usage);
+
+                // tool_choice が auto のため、検索せずに学習知識だけで答えることがある。
+                // その文や URL を「検索で確認できた情報」として本文の編集に渡さない
+                const didWebSearch = finalSearchMessage.content.some(
+                  block => block.type === 'server_tool_use'
+                );
+                if (!didWebSearch) {
+                  console.warn('[Canvas Web Search] Model answered without searching', { sessionId });
+                  return { searchResults: '', extractedReferences: [] as WebReference[], webSearchUsage };
+                }
 
                 const referencesFromStructuredResult =
                   extractWebReferencesFromSearchMessage(finalSearchMessage);
@@ -717,7 +727,6 @@ export async function POST(req: NextRequest) {
           const canvasMaxTokens = isHeadingUnitRequest ? Math.min(5000, maxTokens) : maxTokens;
 
           await withAnthropicRetry(async () => {
-            accumulatedJson = '';
             let canvasEditUsage = createEmptyTokenUsageTotals();
             const apiStream = await anthropic.messages.stream({
             model: actualModel,
@@ -726,7 +735,8 @@ export async function POST(req: NextRequest) {
             ...(thinking !== undefined && { thinking }),
             system: anthropicSystem,
             tools: [CANVAS_EDIT_TOOL],
-            tool_choice: { type: 'tool', name: 'apply_full_text_replacement' },
+            // Sonnet 5.5 は強制 tool_choice を 400 で拒否するため auto。ツールを使う指示は system プロンプトにある
+            tool_choice: { type: 'auto' },
             messages: [
               ...canvasHistory.map(msg => ({
                 role: msg.role,
@@ -749,7 +759,6 @@ export async function POST(req: NextRequest) {
               if (event.delta.type === 'input_json_delta') {
                 const chunk = event.delta.partial_json;
                 controller.enqueue(sendSSE('chunk', { content: chunk }));
-                accumulatedJson += chunk;
               }
             }
             if (event.type === 'message_start') {
@@ -764,85 +773,34 @@ export async function POST(req: NextRequest) {
               canvasEditUsage = mergeTokenUsage(canvasEditUsage, message.usage);
               requestTokenUsageTotal = addTokenUsageTotals(requestTokenUsageTotal, canvasEditUsage);
 
-              if (message.stop_reason === 'max_tokens') {
+              // 上限で止まった場合、ツール入力は途中までになるため本文として使わない
+              if (
+                message.stop_reason === 'max_tokens' ||
+                message.stop_reason === 'model_context_window_exceeded'
+              ) {
                 throw new CanvasStreamResponseError(
                   'max_tokens',
                   '出力が途中で途切れました。もう一度お試しください。'
                 );
               }
 
+              // 拒否された応答（途中までのツール入力を含む）を本文として採用しない
+              if (message.stop_reason === 'refusal') {
+                throw new CanvasStreamResponseError('refusal', ERROR_MESSAGES.CHAT.AI_REFUSED);
+              }
+
               const toolUseBlock = message.content.find(
                 block => block.type === 'tool_use' && block.name === 'apply_full_text_replacement'
               );
 
-              if (toolUseBlock && toolUseBlock.type === 'tool_use') {
-                const toolInput = toolUseBlock.input as {
-                  full_markdown?: string;
-                  markdown?: string;
-                  replacement_html?: string;
-                  replacement?: string;
-                  full_html?: string;
-                  html?: string;
-                };
-
-                const markdownCandidate = toolInput.full_markdown ?? toolInput.markdown ?? '';
-                finalMarkdown = markdownCandidate.trim();
-
-                if (!finalMarkdown) {
-                  const htmlCandidate =
-                    toolInput.replacement_html ??
-                    toolInput.replacement ??
-                    toolInput.full_html ??
-                    toolInput.html;
-                  if (typeof htmlCandidate === 'string' && htmlCandidate.trim().length > 0) {
-                    const sanitized = sanitizeHtmlForCanvas(htmlCandidate);
-                    finalMarkdown = htmlToMarkdownForCanvas(sanitized);
-                  }
-                }
+              // ツールを呼ばずに文章だけ返した場合（確認の質問や前置きなど）、それで記事全体を置き換えない
+              if (!toolUseBlock || toolUseBlock.type !== 'tool_use') {
+                console.error('[Canvas Stream] Tool use missing. Message:', JSON.stringify(message.content));
+                throw new CanvasStreamResponseError('no_tool_use', ERROR_MESSAGES.CHAT.CANVAS_EDIT_NOT_RETURNED);
               }
 
-              // フォールバック: Tool Useが見つからない場合
-              if (!finalMarkdown.trim()) {
-                // 1. 通常のテキスト回答として返ってきた可能性があるためチェック
-                const textBlock = message.content.find(block => block.type === 'text');
-                if (textBlock && textBlock.type === 'text') {
-                  console.warn('[Canvas Stream] Tool use missing, using text content fallback.');
-                  finalMarkdown = textBlock.text.trim();
-                }
-
-                // 2. それでも空で、かつJSONデータが蓄積されている場合（max_tokens等で途中終了したケース）
-                if (!finalMarkdown.trim() && accumulatedJson.trim()) {
-                  console.warn(
-                    '[Canvas Stream] Attempting to recover markdown from partial JSON...'
-                  );
-                  // JSON形式: {"full_markdown": "..."} の想定
-                  // "full_markdown"キーの値部分を抽出する正規表現（閉じクォート手前までキャプチャ）
-                  const match = accumulatedJson.match(
-                    /"(?:full_)?markdown"\s*:\s*"((?:[^"\\]|\\.)*)/
-                  );
-                  if (match && match[1]) {
-                    const rawContent = match[1];
-                    try {
-                      // JSON文字列としてアンエスケープ
-                      finalMarkdown = JSON.parse(`"${rawContent}"`);
-                    } catch {
-                      // パース失敗時は簡易的なアンエスケープを行う
-                      console.warn(
-                        '[Canvas Stream] JSON unescape failed, using raw content with manual unescape'
-                      );
-                      finalMarkdown = rawContent
-                        .replace(/\\n/g, '\n')
-                        .replace(/\\r/g, '\r')
-                        .replace(/\\t/g, '\t')
-                        .replace(/\\"/g, '"')
-                        .replace(/\\\//g, '/')
-                        .replace(/\\\\/g, '\\');
-                    }
-                  }
-                }
-              }
-
-              finalMarkdown = finalMarkdown.trim();
+              // 上限・拒否で止まった場合は上で除いており、strict なツール定義のため入力は { full_markdown: string } の形で返る
+              finalMarkdown = (toolUseBlock.input as { full_markdown: string }).full_markdown.trim();
 
               if (!finalMarkdown) {
                 console.error(
