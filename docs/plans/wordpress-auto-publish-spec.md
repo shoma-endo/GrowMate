@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: spec-review 通過。見た目は既存フォームの写しで確定
+- 現在の工程: spec-review 通過。見た目は既存フォームの写しで確定。送信 UI の4点（公開済みは info、再送の初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし）も回答済み。OPEN-001 は決着
 - 止まっている理由・待っている人: なし
 - 次の一手: `.takt/workflows/spec-to-pr.yaml` で実装（`takt -w spec-to-pr -t "docs/plans/wordpress-auto-publish-spec.md 仕様書に沿って実装してください"`）
 - 未確認事項: なし
 - 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）、PR #691
-- 更新日・更新した工程: 2026-10-23 spec-review finalize
+- 更新日・更新した工程: 2026-10-23 送信 UI の決定4点を書き戻し（実装前）
 
 ## 0. 依頼時の参考資料との差分（先に読む）
 
@@ -100,15 +100,15 @@
 - ルール ID: BR-001（送信はユーザーが押したときだけ）
   - ルール: WordPress への送信は、ユーザーが押したときだけ行う。入口はチャット（`/chat`）step7 の「その他の操作」と、コンテンツ一覧（`/analytics` ブログタブ）の行の操作列。どちらも投稿ダイアログを開き、ダイアログの送信ボタンで送る（Q-001、2026-10-23）。記事の完成・Instagram ブログ化の完了・日次 cron をきっかけに自動で送らない。
   - 例外: なし。一括もユーザーが押したときだけ（BR-008）。押していない送信はしない。
-- ルール ID: BR-002（既定は下書き）
-  - ルール: 公開状態の既定値は「下書き」。「公開」「予約」はユーザーが選んだときだけ送る。送信ボタンの文言は選んだ公開状態に合わせて変える（§6 画面設計）。LLM が書いた本文を確認なしで公開する事故を、既定値で防ぐ。
+- ルール ID: BR-002（未送信の既定は下書き、再送は現在の状態）
+  - ルール: 未送信の公開状態の既定値は「下書き」。「公開」「予約」はユーザーが選んだときだけ送る。再送時は現在の状態（下書き / 予約）と予約済み日時をダイアログの初期値に入れる。送信ボタンの文言は選んだ公開状態に合わせて変える（§6 画面設計）。LLM が書いた本文を確認なしで公開する事故を、既定値で防ぐ。
   - 例外: なし。
 - ルール ID: BR-003（送る本文は Canvas の最新の完成形）
   - ルール: 送る本文は `session_combined_contents` の `is_latest = true` の行（Canvas の step7 完成形）。チャットのメッセージ本文や見出し単体（`session_heading_sections`）からは組み立てない。完成形が無いセッションは送れない（「完成した記事がありません」）。
   - 例外: なし。Canvas で編集中の未保存内容は含めない（Canvas の保存で完成形が更新されてから送る）。
 - ルール ID: BR-004（1記事1投稿。2回目以降は更新）
   - ルール: 1つのコンテンツ行（`content_annotations`）に対する WordPress 側の1件は、投稿か固定ページのどちらか（BR-007）。行に `wp_post_id` が無ければ作成（`POST /wp/v2/{type}`）、あれば更新（`POST /wp/v2/{type}/{id}`）にする。`{type}` は `posts` または `pages`。同じ記事を2回送っても WordPress に重複を作らない。
-  - ルール（更新前の実態確認）: 更新のときは送信前に `GET /wp/v2/{type}/{id}?context=edit` で WordPress 側の現在の `status` を見る。`{type}` は保存済みの `wp_post_type`（BR-007）。GrowMate の `wp_post_status` は送信時点の値で、WordPress 側で公開・削除されても日次取込までは古いままになるため、行の値だけを信じない。WordPress 側が `publish` なら更新せず、行を `publish` と `link` に同期して「すでに WordPress で公開されています」と返す。応答 JSON の `code` が `rest_post_invalid_id` のときだけ、行の `wp_post_id` / `wp_post_title` / `wp_post_status` を NULL に戻し、「WordPress 側で投稿が削除されていました。もう一度送信すると新しい投稿を作ります」と返す（S-14。`WP_REST_Posts_Controller`。https://developer.wordpress.org/reference/classes/wp_rest_posts_controller/ ）。それ以外の 404（HTML、別の `code`、サイト削除、REST の不在、接続先の違い）は紐づけを残し、接続の失敗として返す。文言の「投稿」は保存済み `wp_post_type` が `posts` のときで、`pages` のときは「固定ページ」に置き換える。`wp_post_type` は NULL にしない（既存列が NOT NULL。解除後の送信先の初期値に残す）。
+  - ルール（更新前の実態確認）: 更新のときは送信前に `GET /wp/v2/{type}/{id}?context=edit` で WordPress 側の現在の `status` を見る。`{type}` は保存済みの `wp_post_type`（BR-007）。GrowMate の `wp_post_status` は送信時点の値で、WordPress 側で公開・削除されても日次取込までは古いままになるため、行の値だけを信じない。WordPress 側が `publish` なら更新せず、行を `publish` と `link` に同期して「すでに WordPress で公開されています」と返す。表示はお知らせ（info）とし、赤いエラーにしない。応答 JSON の `code` が `rest_post_invalid_id` のときだけ、行の `wp_post_id` / `wp_post_title` / `wp_post_status` を NULL に戻し、「WordPress 側で投稿が削除されていました。もう一度送信すると新しい投稿を作ります」と返す（S-14。`WP_REST_Posts_Controller`。https://developer.wordpress.org/reference/classes/wp_rest_posts_controller/ ）。それ以外の 404（HTML、別の `code`、サイト削除、REST の不在、接続先の違い）は紐づけを残し、接続の失敗として返す。文言の「投稿」は保存済み `wp_post_type` が `posts` のときで、`pages` のときは「固定ページ」に置き換える。`wp_post_type` は NULL にしない（既存列が NOT NULL。解除後の送信先の初期値に残す）。
   - ルール（他の保存経路との整合）: 下書き・予約として送信済みの行（`wp_post_status` が `draft` / `future`）は `canonical_url` が空のまま `wp_post_id` を持つ。チャットの登録情報パネル（`upsertContentAnnotationBySession`、`src/server/actions/wordpress.actions.ts`）は現状、WordPress 投稿 URL が空で保存されると `wp_post_id` を NULL に上書きする（L194〜L197 で空 URL を `wpPostId: null` に解決し、L686〜L698 で書く）。このままだと送信済みの下書きの紐づけがパネルの保存で消え、次の送信が新規作成になって重複投稿ができる。本機能の実装時に、URL が空のまま変わらず `wp_post_status` が `draft` / `future` の行では `wp_post_id` / `wp_post_title` / `wp_post_status` を保持するよう同関数を直す（S-12）。コンテンツ一覧の「編集」（`updateContentAnnotationFields`）は URL が変わらなければ ID を保持する（L1006〜L1016）ためサーバー側の変更は不要。画面の補足「空欄の場合は連携を解除します。」（`src/components/AnnotationFormFields.tsx` L128）はこの保持と逆に読めるため、2文に更新する（§4）。下書き・予約で URL が空のときは紐づけを残す。公開 URL が入っている行を空にして保存したときは従来どおり解除する。サーバー側の保持条件は変えない。
   - 例外: 行の `wp_post_status` が `publish`（公開済み）の場合、本機能からは更新しない（公開後の本文書き換えは `content-pdca-semi-auto-execution-spec.md` の範囲。公開済みの記事を Canvas の内容で上書きすると WordPress 側の手直しが消える）。WordPress 取込で入った行（`wp_post_status` が NULL で `wp_post_id` あり。本機能のリリース後に取込が触った行は `publish`）も同じく対象外。
 - ルール ID: BR-007（送信先は投稿か固定ページ。作成後は変えない）
@@ -136,7 +136,7 @@
 - 画面・操作:
   - チャット画面（`/chat`）: step7 の「その他の操作」メニュー（`app/chat/components/StepActionBar.tsx`）に「WordPress に投稿」を追加し、投稿ダイアログを開く
   - コンテンツ一覧（`/analytics` ブログタブ）: 行の操作列（`src/components/AnalyticsTable.tsx` の `AnalyticsOpsCell`）に「WordPress に投稿」を追加し、同じ投稿ダイアログを開く。タイトル列に「下書き」「予約」のバッジを出す
-  - 投稿ダイアログ（新規共通コンポーネント `src/components/WordPressPublishDialog.tsx`）: 送信先（投稿 / 固定ページ）・タイトル・公開状態（下書き・公開・予約。既定は下書き。Q-003）・公開日時・カテゴリ（投稿のときだけ）・スラッグ
+  - 投稿ダイアログ（新規共通コンポーネント `src/components/WordPressPublishDialog.tsx`）: 送信先（投稿 / 固定ページ）・タイトル・公開状態（下書き・公開・予約。未送信の既定は下書き。再送は現在の下書き / 予約と予約済み日時を初期値にする。Q-003）・公開日時・カテゴリ（投稿のときだけ）・スラッグ
   - 一括下書き（BR-008）: 対象は未送信と `draft` だけ。`future`・`publish`・取込由来・固定ページは送らない。Server Action とツールバーボタンを実装し、初回はボタンをマウントしない
 - API・外部連携:
   - `WordPressService` に `createPost` / `updatePost` / `fetchPost` / `fetchCategories` を追加。パスは `baseUrl` に `posts` または `pages` を付ける（`POST /wp/v2/posts` と `POST /wp/v2/pages`、更新と `GET ?context=edit` も同じ）。`fetchCategories` は送信先が `posts` のときだけ
@@ -216,11 +216,11 @@
 | --- | --- | --- | --- | --- |
 | FR-001 | チャット画面の step7 で「その他の操作」メニューから「WordPress に投稿」を選ぶと投稿ダイアログが開く | Must | 依頼文「チャット画面で自動投稿」 | S-01 |
 | FR-002 | コンテンツ一覧の行（`session_id` あり、`wp_post_status` が NULL または `draft` / `future`、取込由来でない）の操作列に「WordPress に投稿」が出て、押すと同じ投稿ダイアログが開く | Must | 依頼文「コンテンツ一覧画面で自動投稿」 | S-02 |
-| FR-003 | 投稿ダイアログで、送信先（投稿 / 固定ページ。既定は投稿。未送信のときだけ変更可）、タイトル（自動入力・必須）、公開状態（下書き・公開・予約。既定は下書き。Q-003）、公開日時（予約のとき必須）、カテゴリ（投稿のときだけ。複数選択・任意）、スラッグ（任意）を指定できる | Must | 2026-10-23 の回答（Q-003、Q-005） | S-01, S-03, S-15 |
-| FR-004 | 送信すると Canvas の完成形（Markdown）を HTML に変換し、選んだ送信先（`posts` または `pages`）へ作成する。成功したら `content_annotations` に `wp_post_id` / `wp_post_title` / `wp_post_status` / `wp_post_type` を保存し、`publish` のときは `canonical_url` も保存する | Must | 目的「URL の手入力が要らなくなる」 | S-01, S-03, S-04, S-15 |
-| FR-005 | 送信済み（`draft` / `future`）の行で再度送信すると、新規作成ではなく保存済みの `wp_post_type`（投稿または固定ページ）を更新する。更新前に WordPress 側の現在の状態を確認し、公開済みなら更新せず行を同期し、応答 JSON の `code` が `rest_post_invalid_id` のときだけ行の紐づけを外して次の送信を新規作成に戻す。それ以外の 404 は紐づけを残す | Must | BR-004（重複の防止・公開済みの上書き防止） | S-05, S-13, S-14 |
+| FR-003 | 投稿ダイアログで、送信先（投稿 / 固定ページ。既定は投稿。未送信のときだけ変更可）、タイトル（自動入力・必須）、公開状態（下書き・公開・予約。未送信の既定は下書き。再送は現在の下書き / 予約と予約済み日時を初期値にする。Q-003）、公開日時（予約のとき必須）、カテゴリ（投稿のときだけ。複数選択・任意）、スラッグ（任意）を指定できる | Must | 2026-10-23 の回答（Q-003、Q-005、Q-008） | S-01, S-03, S-05, S-15 |
+| FR-004 | 送信すると Canvas の完成形（Markdown）を HTML に変換し、選んだ送信先（`posts` または `pages`）へ作成する。成功したら `content_annotations` に `wp_post_id` / `wp_post_title` / `wp_post_status` / `wp_post_type` を保存し、`publish` のときは `canonical_url` も保存する。完了トーストは結果の文だけを表示し、WordPress へのリンク（URL）は付けない | Must | 目的「URL の手入力が要らなくなる」、Q-008 | S-01, S-03, S-04, S-15 |
+| FR-005 | 送信済み（`draft` / `future`）の行で再度送信すると、新規作成ではなく保存済みの `wp_post_type`（投稿または固定ページ）を更新する。更新前に WordPress 側の現在の状態を確認し、公開済みなら更新せず行を同期し、お知らせ（info）として表示する（赤いエラーにしない）。応答 JSON の `code` が `rest_post_invalid_id` のときだけ行の紐づけを外して次の送信を新規作成に戻す。それ以外の 404 は紐づけを残す | Must | BR-004（重複の防止・公開済みの上書き防止）、Q-008 | S-05, S-13, S-14 |
 | FR-006 | コンテンツ一覧のタイトル列に、`wp_post_status` が `draft` なら「下書き」、`future` なら「予約」のバッジを出す。`publish` はバッジ無し（URL は従来どおり URL 列のリンク） | Must | 利用シナリオ3 | S-06 |
-| FR-007 | WordPress 未連携、連携切れ（401）、権限不足（403）、サイト側障害（5xx・タイムアウト）、完成形なし、のそれぞれで原因と次の操作を表示し、`content_annotations` は変更しない | Must | 外部 API 依存機能の失敗時表示（`spec-review` C 観点） | S-07, S-08 |
+| FR-007 | WordPress 未連携、連携切れ（401）、権限不足（403）、サイト側障害（5xx・タイムアウト）、完成形なし、のそれぞれで原因と次の操作を表示し、`content_annotations` は変更しない。未連携と完成形なしはフォームの上に `Alert variant="destructive"` を出し、フォームは表示したまま送信不可にする | Must | 外部 API 依存機能の失敗時表示（`spec-review` C 観点）、Q-008 | S-07, S-08 |
 | FR-008 | WordPress 側で下書き・予約が公開されたあと、既存の日次 WordPress 取込が同じ行の `canonical_url` / `wp_post_title` / `wp_post_status = 'publish'` を埋める | Must | BR-005 | S-09 |
 | FR-009 | カテゴリ一覧の取得に失敗しても、カテゴリ未選択のまま送信できる（失敗理由を欄の下に表示） | Should | カテゴリは任意。取得失敗で投稿自体を止めない | S-10 |
 | FR-010 | 送信済みの下書き・予約の行は、チャットの登録情報パネルで WordPress 投稿 URL を空のまま保存しても `wp_post_id` / `wp_post_status` が保持される | Must | BR-004（他の保存経路との整合） | S-12 |
@@ -232,27 +232,27 @@
   - `annotationId`（UUID、必須。コンテンツ一覧から）または `sessionId`（チャットから。`content_annotations.session_id` で行を引く。行が無ければ `upsertContentAnnotationBySession`（`src/server/actions/wordpress.actions.ts`）と同じ経路で、`main_kw` をセッションのキーワードから埋めて作る。`ensureAnnotationChatSession`（L741）は逆方向、つまり一覧の行からチャットセッションを作る関数で、ここでは使わない）
   - `contentType`: `posts` または `pages`。既定 `posts`。`wp_post_id` がある再送信では送らず、保存済みの `wp_post_type` を使う（BR-007）
   - `title`: 1〜200 文字、必須。既定値は完成形 Markdown の最初の `# ` 見出し、無ければ `wp_post_title`。どちらも空なら空のままにし、`main_kw` は入れない（Q-004、2026-10-23）。「タイトル・説明文生成」の出力も入れない。空のままでは送信できない。行を新規作成するときのキーワード（`upsertContentAnnotationBySession` がセッションの `main_kw` を埋める）は、送信タイトルとは別で、従来どおり
-  - `status`: `draft` / `publish` / `future`。既定 `draft`
-  - `scheduledAt`: `status = future` のとき必須。`datetime-local` の値はブラウザのローカル壁時計とする。ブラウザで末尾 `Z` の UTC ISO 8601 に変換してから Server Action へ渡す。サーバーはその文字列をサーバーのタイムゾーンで解釈し直さない。`date_gmt` にはその文字列を載せる。「現在時刻より後」の比較も、変換前の同じ壁時計で行う。トーストの時刻は、変換前に利用者が入れた壁時計を出す。既存の日付表示は `src/lib/date-utils.ts` の `formatDateTime` が `timeZone: 'Asia/Tokyo'` 固定で、ブラウザが日本以外のときは、その表示と予約の壁時計がずれる。
+  - `status`: `draft` / `publish` / `future`。未送信の既定は `draft`。再送時は現在の `draft` / `future` を初期値にする
+  - `scheduledAt`: `status = future` のとき必須。再送時は予約済み日時を初期値に入れる（WordPress の `date_gmt` をブラウザのローカル壁時計へ変換して表示する）。`datetime-local` の値はブラウザのローカル壁時計とする。ブラウザで末尾 `Z` の UTC ISO 8601 に変換してから Server Action へ渡す。サーバーはその文字列をサーバーのタイムゾーンで解釈し直さない。`date_gmt` にはその文字列を載せる。「現在時刻より後」の比較も、変換前の同じ壁時計で行う。トーストの時刻は、変換前に利用者が入れた壁時計を出す。既存の日付表示は `src/lib/date-utils.ts` の `formatDateTime` が `timeZone: 'Asia/Tokyo'` 固定で、ブラウザが日本以外のときは、その表示と予約の壁時計がずれる。
   - `categoryIds`: 整数配列、任意。`contentType` が `posts` のときだけ送り、`fetchCategories` の結果に含まれる ID だけを通す。`pages` のときは空として扱い、カテゴリは送らない
   - `slug`: 任意。空なら送らない（WordPress が生成）。空でなければそのまま `slug` に載せる。文字種の拒否はしない（WordPress 側に任せる）。長さの上限を足すならタイトルと同じ 200 文字（§9。Posts schema の slug は "An alphanumeric identifier for the post unique to its type." で、上限の記載は無い。確認日 2026-10-22）
-  - Zod スキーマは `src/server/actions/wordpressPublish.actions.ts` の近くに置き、Server Action の入口で検証する（`nextjs-server` 規約）
-- 正常時の出力: `{ success: true, data: { wpPostId, status, link } }`。トースト「WordPress に下書きを送信しました」「WordPress で公開しました」「WordPress に予約しました（10/28 10:00）」と、`link` を開くリンク。予約トーストの「10/28 10:00」は、UTC へ変換する前の壁時計である
-- エラー時の出力（`ServerActionResult` の `error` と、ダイアログ内の表示）:
+  - Zod スキーマは新規の `src/server/actions/wordpressPublish.actions.ts` の近くに置き、Server Action の入口で検証する（`nextjs-server` 規約）
+- 正常時の出力: `{ success: true, data: { wpPostId, status, link } }`。トースト「WordPress に下書きを送信しました」「WordPress で公開しました」「WordPress に予約しました（10/28 10:00）」を結果の文だけで表示し、WordPress へのリンク（URL）は付けない。応答の `link` は DB の同期に使う。予約トーストの「10/28 10:00」は、UTC へ変換する前の壁時計である
+- エラー・お知らせの出力（エラーは `ServerActionResult` の `error`。公開済み同期はエラーにせず、お知らせ（info）として扱う）:
 
-  | 原因 | ユーザー向け表示 | 次の操作 | DB |
-  | --- | --- | --- | --- |
-  | `wordpress_settings` 行なし | WordPress と連携していません | 「連携を開始」→ `/setup/wordpress` | 変更なし |
-  | 完成形なし（`session_combined_contents` に `is_latest` 行が無い） | 完成した記事がありません。チャットで step7 の完成形を保存してください | 一覧から開いたときだけ「チャットを開く」。遷移先は既存と同じ `/chat?session={sessionId}&initialStep=step7`（`src/components/AnalyticsTable.tsx` L929〜L933。`session` は行の `session_id`）。`/chat` 上ではこの文だけ出し、「チャットを開く」は出さない | 変更なし |
-  | 401（Application Password 失効・WordPress.com トークン失効・更新失敗） | WordPress との連携が切れています | 「再連携する」→ `/setup/wordpress` | 変更なし |
-  | 403（ユーザーに `edit_posts` / `publish_posts`、または固定ページなら `edit_pages` / `publish_pages` が無い、WAF） | WordPress のユーザーに投稿または固定ページの権限がありません。WordPress の権限か、サイトのセキュリティ設定を確認してください | 閉じる | 変更なし |
-  | 更新前の確認で WordPress 側が `publish`（S-13） | すでに WordPress で公開されています。公開後の変更は WordPress 側で行ってください | 閉じる（成功扱いのトーストにしない） | `wp_post_status = 'publish'`、`canonical_url = link`、`wp_post_title` を同期 |
-  | 更新前の確認で JSON の `code` が `rest_post_invalid_id`（S-14） | WordPress 側で投稿が削除されていました。もう一度送信すると新しい投稿を作ります | 「もう一度送信」（ダイアログは開いたまま、送信ボタンが新規作成の文言に戻る） | `wp_post_id` / `wp_post_title` / `wp_post_status` を NULL |
-  | 更新前の確認で、上記以外の 404 | WordPress に接続できませんでした。紐づけは残しています。時間をおいて再度お試しください | 「再試行」 | 変更なし |
-  | 同じ行の送信権を取れなかった | この記事は送信中です。しばらくしてから再度お試しください | 閉じる | 変更なし（先のリクエストの印は残る） |
-  | 作成（POST）で 5xx・タイムアウト（60 秒）・ネットワーク | WordPress から応答がありませんでした。WordPress 側に下書きが作られている場合があります。WordPress の投稿一覧を確認してから、もう一度お試しください | 閉じる（自動の「再試行」ボタンは出さない。作成済みか分からない状態で再送すると重複するため） | 変更なし |
-  | 更新（POST `/{id}`）で 5xx・タイムアウト・ネットワーク | WordPress が応答しませんでした。時間をおいて再度お試しください | 「再試行」（更新は同じ ID への再送で重複しない） | 変更なし |
-  | WordPress 成功、`content_annotations` 更新失敗 | WordPress には送信できましたが、コンテンツ一覧への反映に失敗しました。WordPress の投稿一覧を確認し、コンテンツの「編集」で WordPress 投稿 URL を入れてください | 閉じる | `console.error` に `wpPostId` と行 ID を出す。再送すると `wp_post_id` が無いので新規作成になる（R-002） |
+  | 原因 | ユーザー向け表示 | 表示方法 | 次の操作 | DB |
+  | --- | --- | --- | --- | --- |
+  | `wordpress_settings` 行なし | WordPress と連携していません | フォームの上に `Alert variant="destructive"` | 「連携を開始」→ `/setup/wordpress` | 変更なし |
+  | 完成形なし（`session_combined_contents` に `is_latest` 行が無い） | 完成した記事がありません。チャットで step7 の完成形を保存してください | フォームの上に `Alert variant="destructive"` | 一覧から開いたときだけ「チャットを開く」。遷移先は既存と同じ `/chat?session={sessionId}&initialStep=step7`（`src/components/AnalyticsTable.tsx` L929〜L933。`session` は行の `session_id`）。`/chat` 上ではこの文だけ出し、「チャットを開く」は出さない | 変更なし |
+  | 401（Application Password 失効・WordPress.com トークン失効・更新失敗） | WordPress との連携が切れています | フォームの上に `Alert variant="destructive"` | 「再連携する」→ `/setup/wordpress` | 変更なし |
+  | 403（ユーザーに `edit_posts` / `publish_posts`、または固定ページなら `edit_pages` / `publish_pages` が無い、WAF） | WordPress のユーザーに投稿または固定ページの権限がありません。WordPress の権限か、サイトのセキュリティ設定を確認してください | フォームの上に `Alert variant="destructive"` | 閉じる | 変更なし |
+  | 更新前の確認で WordPress 側が `publish`（S-13） | すでに WordPress で公開されています。公開後の変更は WordPress 側で行ってください | フォームの上にお知らせ（info）の `Alert variant="default"`（赤いエラーにしない） | 閉じる（完了トーストは出さない。フォームは送信不可にし、元画面の該当行も再取得） | `wp_post_status = 'publish'`、`canonical_url = link`、`wp_post_title` を同期 |
+  | 更新前の確認で JSON の `code` が `rest_post_invalid_id`（S-14） | WordPress 側で投稿が削除されていました。もう一度送信すると新しい投稿を作ります | フォームの上に `Alert variant="destructive"` | 「もう一度送信」（ダイアログは開いたまま、送信ボタンが新規作成の文言に戻る） | `wp_post_id` / `wp_post_title` / `wp_post_status` を NULL |
+  | 更新前の確認で、上記以外の 404 | WordPress に接続できませんでした。紐づけは残しています。時間をおいて再度お試しください | フォームの上に `Alert variant="destructive"` | 「再試行」 | 変更なし |
+  | 同じ行の送信権を取れなかった | この記事は送信中です。しばらくしてから再度お試しください | フォームの上に `Alert variant="destructive"` | 閉じる | 変更なし（先のリクエストの印は残る） |
+  | 作成（POST）で 5xx・タイムアウト（60 秒）・ネットワーク | WordPress から応答がありませんでした。WordPress 側に下書きが作られている場合があります。WordPress の投稿一覧を確認してから、もう一度お試しください | フォームの上に `Alert variant="destructive"` | 閉じる（自動の「再試行」ボタンは出さない。作成済みか分からない状態で再送すると重複するため） | 変更なし |
+  | 更新（POST `/{id}`）で 5xx・タイムアウト・ネットワーク | WordPress が応答しませんでした。時間をおいて再度お試しください | フォームの上に `Alert variant="destructive"` | 「再試行」（更新は同じ ID への再送で重複しない） | 変更なし |
+  | WordPress 成功、`content_annotations` 更新失敗 | WordPress には送信できましたが、コンテンツ一覧への反映に失敗しました。WordPress の投稿一覧を確認し、コンテンツの「編集」で WordPress 投稿 URL を入れてください | フォームの上に `Alert variant="destructive"` | 閉じる | `console.error` に `wpPostId` と行 ID を出す。再送すると `wp_post_id` が無いので新規作成になる（R-002） |
 
 - 状態と遷移条件（`content_annotations.wp_post_status`。行単位の状態機械）:
 
@@ -311,7 +311,7 @@
 
 ##### 投稿ダイアログ（`src/components/WordPressPublishDialog.tsx`）
 
-- 概要: 記事1本を WordPress へ送る。開いた時点で既定値（タイトル候補・カテゴリ一覧・送る本文の概要）をサーバーから取る。
+- 概要: 記事1本を WordPress へ送る。開いた時点で既定値（タイトル候補・カテゴリ一覧・送る本文の概要）をサーバーから取る。再送時は保存済みタイプの `fetchPost` で現在の状態と予約済み日時も取得し、下書き / 予約と予約済み日時を初期値にする。送信直前の状態確認（BR-004）も行う。
 - レイアウト: 項目の順は下の ASCII。色・余白・部品は `growmate-ui-ux` に従い、上の対照表の既存 UI を写す。新しい画面パターンは作らない。見た目の実装前ゲートは置かない（依頼者、2026-10-23）。
 
   ```text
@@ -334,26 +334,27 @@
 
   | 項目 | 型・形式 | 必須 | 初期値 | 表示条件・活性条件 |
   | --- | --- | --- | --- | --- |
-  | 送る本文の概要 | テキスト（見出し数・文字数） | 表示のみ | サーバーの既定値取得で算出 | 常時。完成形が無いときはダイアログ本体の代わりにエラー表示。一覧では「完成した記事がありません」と「チャットを開く」（遷移先は §6 エラー表）。`/chat` 上では文だけで「チャットを開く」は出さない |
+  | 送る本文の概要 | テキスト（見出し数・文字数） | 表示のみ | サーバーの既定値取得で算出 | 常時。完成形が無いときはフォームの上に `Alert variant="destructive"` を表示し、フォームは表示したまま送信不可にする。一覧では「完成した記事がありません」と「チャットを開く」（遷移先は §6 エラー表）。`/chat` 上では文だけで「チャットを開く」は出さない |
   | 送信先 | `Select`（投稿 / 固定ページ） | 必須 | 未送信は投稿。`wp_post_type` が残っていればそれを初期値 | `wp_post_id` が NULL のときだけ変更可。再送信（ID あり）は保存済みタイプを表示し、選択は出さない |
   | タイトル | `Input`、1〜200 文字 | 必須 | 完成形の最初の `# ` 見出し → `wp_post_title`。どちらも空なら空。`main_kw` は入れない（Q-004） | 常時 |
-  | 公開状態 | `Select`（下書き / 公開 / 予約投稿） | 必須 | 下書き | 常時 |
-  | 公開日時 | `<input type="datetime-local">` | 予約投稿のとき必須 | 空 | 公開状態が「予約投稿」のときだけ表示。比較は変換前の壁時計。現在より前なら欄の下にエラー |
+  | 公開状態 | `Select`（下書き / 公開 / 予約投稿） | 必須 | 未送信は下書き。再送時は現在の下書き / 予約 | 常時 |
+  | 公開日時 | `<input type="datetime-local">` | 予約投稿のとき必須 | 未送信は空。再送時は予約済み日時をブラウザのローカル壁時計に変換した値 | 公開状態が「予約投稿」のときだけ表示。比較は変換前の壁時計。現在より前なら欄の下にエラー |
   | カテゴリ | チェックボックス群 | 任意 | 行の `wp_categories`（あれば）。無ければ未選択 | 送信先が投稿のときだけ。取得失敗時は理由の文と未選択で続行。固定ページでは出さない |
   | スラッグ | `Input` | 任意 | 空 | 常時 |
-  | 送信ボタン | `Button` | 必須 | 文言は公開状態で変わる: 下書き→「下書きとして送信」、公開→「公開する」、予約投稿→「予約する」。更新（`wp_post_id` あり）のときは末尾に「（更新）」 | 送信中は disabled + `Loader2` + 「送信中...」 |
+  | 送信ボタン | `Button` | 必須 | 文言は公開状態で変わる: 下書き→「下書きとして送信」、公開→「公開する」、予約投稿→「予約する」。更新（`wp_post_id` あり）のときは末尾に「（更新）」 | 未連携・完成形なし・公開済み同期後は disabled。送信中は disabled + `Loader2` + 「送信中...」 |
 
 - 状態別UI:
 
   | 内部状態 | ユーザー向け表示 | 主操作 | 操作制限 |
   | --- | --- | --- | --- |
   | 既定値取得中 | skeleton と「読み込み中...」 | なし | 送信不可 |
-  | WordPress 未連携 | 「WordPress と連携していません」 | 「連携を開始」（`/setup/wordpress`） | フォームを出さない |
-  | 完成形なし | 「完成した記事がありません。チャットで step7 の完成形を保存してください」 | 一覧: 「チャットを開く」（`/chat?session={sessionId}&initialStep=step7`。`src/components/AnalyticsTable.tsx` L929〜L933）。`/chat` 上: なし | フォームを出さない |
+  | WordPress 未連携 | フォームの上に `Alert variant="destructive"` で「WordPress と連携していません」 | 「連携を開始」（`/setup/wordpress`） | フォームは表示したまま送信不可 |
+  | 完成形なし | フォームの上に `Alert variant="destructive"` で「完成した記事がありません。チャットで step7 の完成形を保存してください」 | 一覧: 「チャットを開く」（`/chat?session={sessionId}&initialStep=step7`。`src/components/AnalyticsTable.tsx` L929〜L933）。`/chat` 上: なし | フォームは表示したまま送信不可 |
   | 入力中 | フォーム | 送信ボタン | タイトル空・予約日時不正では送信不可 |
   | 送信中 | 送信ボタンが「送信中...」 | なし | 全項目 disabled |
-  | 成功 | ダイアログを閉じ、トースト（結果と `link`） | トーストのリンク | なし |
-  | 失敗 | ダイアログ内上部に `Alert variant="destructive"`（編集ダイアログの「保存に失敗しました」と同形）で原因と次の操作 | 原因ごとの次の操作（§6 エラー表）。「再試行」は更新の 5xx だけ。作成の 5xx は閉じる | 入力は保持 |
+  | 成功 | ダイアログを閉じ、完了トーストは結果の文だけ（WordPress へのリンク・URL なし） | なし | なし |
+  | WordPress 側で公開済み（S-13） | フォームの上にお知らせ（info）の `Alert variant="default"` で「すでに WordPress で公開されています。公開後の変更は WordPress 側で行ってください」。DB と元画面の該当行を公開済みに同期 | 閉じる（完了トーストは出さない） | フォームは送信不可 |
+  | 失敗 | フォームの上に `Alert variant="destructive"`（編集ダイアログの「保存に失敗しました」と同形）で原因と次の操作 | 原因ごとの次の操作（§6 エラー表）。「再試行」は更新前の確認での接続障害と更新の 5xx 等。作成の 5xx 等は閉じる | 入力は保持 |
 
 - 画面遷移: `/chat`（step7 その他の操作）→ 本ダイアログ / `/analytics`（行の「WordPress に投稿」）→ 本ダイアログ / 本ダイアログ（未連携）→ `/setup/wordpress` / 本ダイアログ（成功）→ 閉じて元画面（一覧は該当行を再取得してバッジと URL を更新）
 - UI用語: 実装時に `ui-text.md` へ追記する語は次のとおり（`ui-text.md` 自体は実装時に書く）。「WordPress に投稿」（ボタン・メニュー。「投稿する」「公開」「送る」と揺らさない。`WordPress` の後ろに助詞が来るので半角スペースを入れる）、「送信先」「投稿」「固定ページ」（送信先の2択。ボタン名の「投稿」とは別）、「下書き」「公開」「予約投稿」（公開状態の3択）、「下書きとして送信」「公開する」「予約する」（送信ボタン）、「予約」（一覧バッジ。「予約投稿」の短縮。列幅のため）。登録情報の補足は2文。「下書き・予約で URL が空のときは、空のまま保存しても紐づけを残します。」「公開 URL が入っている行を空にして保存したときは、従来どおり連携を解除します。」既存の「連携」「再連携」「送信中...」はそのまま使う。
@@ -367,7 +368,7 @@
   | --- | --- | --- | --- | --- |
   | WordPress に投稿 | `DropdownMenuItem` | 該当なし | 該当なし | step7 のとき表示（「ブログ記事取得」と同じ `showLoadButton` 条件）。`hasPaidFeatureAccess` が偽（`trial` 等）なら出さない。見出し生成中・チャット送信中は disabled（既存の `isDisabled || isHeadingFlowBusy` と同じ） |
 
-- 画面遷移: メニュー選択 → 投稿ダイアログ。成功後はチャット画面に留まる（トーストに `link`）。
+- 画面遷移: メニュー選択 → 投稿ダイアログ。成功後はチャット画面に留まる（完了トーストは結果の文だけで、WordPress へのリンク・URL なし）。
 
 ##### `/analytics`（既存。変更点のみ）
 
@@ -383,7 +384,7 @@
 
 #### 誤読しやすい罠
 
-- 「WordPress に投稿」は「WordPress で公開」ではない。既定は下書きで、公開は公開状態で「公開」を選んだときだけ。ボタン文言が「下書きとして送信」「公開する」「予約する」に変わるのはこのため。
+- 「WordPress に投稿」は「WordPress で公開」ではない。未送信の既定は下書きで、再送は現在の下書き / 予約を使う。公開は公開状態で「公開」を選んだときだけ。ボタン文言が「下書きとして送信」「公開する」「予約する」に変わるのはこのため。
 - ボタン名の「投稿」は操作の名前である。WordPress の投稿タイプはダイアログの「送信先」で、投稿か固定ページかを選ぶ。既定は投稿。一度送った行は、そのタイプのまま更新する。
 - 取込由来の行（`wp_post_id` あり、`wp_post_status` NULL）と公開済みの行（`publish`）はどちらも「WordPress に投稿」が出ない。URL はタイトル列ではなく URL 列（`case 'url'`）に出る。タイトル列はプレーンテキストのまま。
 - 下書き・予約の行は `canonical_url` が空のため、URL 列は空で、タイトル列にバッジだけ付く。GA4・GSC の数値が「—」なのは未公開だからで、取得失敗ではない。
@@ -405,7 +406,7 @@
 ```gherkin
 Feature: 完成した記事を WordPress へ送る
 
-  Rule: 送信はユーザーが押したときだけ行い、既定は下書きにする
+  Rule: 送信はユーザーが押したときだけ行い、未送信の既定は下書き、再送は現在の状態にする
 
   Scenario: S-01 チャットから下書きとして送る
     Given ロールが paid のユーザーが WordPress 連携済みである
@@ -413,7 +414,7 @@ Feature: 完成した記事を WordPress へ送る
     When 「その他の操作」から「WordPress に投稿」を選び、公開状態を変えずに「下書きとして送信」を押す
     Then WordPress に下書きの投稿が1件できる
     And コンテンツ一覧の該当行に WordPress の投稿 ID とタイトルと「下書き」が記録され、公開 URL は空のままである
-    And 「WordPress に下書きを送信しました」と表示される
+    And 完了トーストに「WordPress に下書きを送信しました」とだけ表示され、WordPress へのリンク・URL は付かない
 
   Scenario: S-02 コンテンツ一覧から送る
     Given ロールが paid のユーザーが WordPress 連携済みである
@@ -428,17 +429,28 @@ Feature: 完成した記事を WordPress へ送る
     And 入れた日時はブラウザの壁時計で、末尾 `Z` の UTC ISO 8601 にしてから送り、トーストは変換前の壁時計を出す
     And 「現在より後」の判定も、その壁時計で行う
     And 該当行に「予約」が記録され、公開 URL は空のままである
+    And 完了トーストに WordPress へのリンク・URL は付かない
 
   Scenario: S-04 公開する
     Given S-01 の前提
     When 公開状態で「公開」を選び「公開する」を押す
     Then WordPress に公開済みの投稿が1件できる
     And 該当行に公開 URL とタイトルと「公開」が記録される
+    And 完了トーストに WordPress へのリンク・URL は付かない
 
-  Scenario: S-05 送信済みの記事をもう一度送っても重複しない
-    Given ある行が「下書き」として送信済みである
-    When 同じ行から再度「WordPress に投稿」を開き「下書きとして送信（更新）」を押す
+  Scenario Outline: S-05 再送は現在の状態と予約済み日時を初期値にし、重複を作らない
+    Given ある行が「<状態>」として送信済みである
+    When 同じ行から再度「WordPress に投稿」を開く
+    Then 公開状態の初期値は WordPress 側の現在の「<公開状態>」である
+    And 予約の場合、公開日時の初期値は予約済み日時をブラウザのローカル壁時計へ変換した値である
+    When 状態と日時を変えずに「<送信ボタン>」を押す
     Then WordPress の投稿は増えず、同じ投稿のタイトルと本文が更新される
+    And 予約の場合、予約済み日時は維持される
+
+    Examples:
+      | 状態   | 公開状態 | 送信ボタン                 |
+      | 下書き | 下書き   | 下書きとして送信（更新）   |
+      | 予約   | 予約投稿 | 予約する（更新）           |
 
   Scenario: S-06 一覧で下書き止まりの記事が分かる
     Given 「下書き」として送信済みの行と、公開済みの行がある
@@ -448,18 +460,25 @@ Feature: 完成した記事を WordPress へ送る
 
   Rule: 失敗したときは原因と次の操作を出し、コンテンツ一覧は変えない
 
-  Scenario: S-07 連携が切れている
-    Given WordPress の Application Password が WordPress 側で失効している
-    When 「下書きとして送信」を押す
-    Then 「WordPress との連携が切れています」と「再連携する」が表示される
+  Scenario Outline: S-07 WordPress の連携が利用できない
+    Given WordPress の連携状態が「<連携状態>」である
+    When <操作>
+    Then フォームの上に Alert で「<表示>」と「<次の操作>」が表示される
+    And 未連携の場合、フォームは表示されたまま送信不可である
     And コンテンツ一覧の行は変わらない
+
+    Examples:
+      | 連携状態                       | 操作                           | 表示                                 | 次の操作   |
+      | Application Password が失効済み | 「下書きとして送信」を押す     | WordPress との連携が切れています     | 再連携する |
+      | 未連携                         | 「WordPress に投稿」を開く     | WordPress と連携していません         | 連携を開始 |
 
   Scenario: S-08 完成形が無い
     Given チャットが step6 までしか進んでいない
     When コンテンツ一覧の行から「WordPress に投稿」を押す
-    Then 「完成した記事がありません」と「チャットを開く」が表示され、送信ボタンは出ない
+    Then フォームの上に Alert で「完成した記事がありません。チャットで step7 の完成形を保存してください」と「チャットを開く」が表示される
+    And フォームは表示されたまま送信不可で、コンテンツ一覧の行は変わらない
     And 「チャットを開く」は `/chat?session={sessionId}&initialStep=step7` を開く（`src/components/AnalyticsTable.tsx` L929〜L933。`session` は行の `session_id`）
-    And `/chat` 上で完成形が無いときは、その場の文だけ出て「チャットを開く」は出ない
+    And `/chat` 上で完成形が無いときもフォームの上に同じ Alert が出て送信不可となり、「チャットを開く」は出ない
 
   Scenario: S-09 WordPress 側で公開したら URL が埋まる
     Given 「下書き」として送信済みの行がある
@@ -492,8 +511,9 @@ Feature: 完成した記事を WordPress へ送る
     And その投稿は WordPress 側で公開済みである
     When 同じ行から「下書きとして送信（更新）」を押す
     Then WordPress の本文は変わらない
-    And 「すでに WordPress で公開されています」と表示される
-    And 該当行の公開状態が公開になり、URL 列に公開 URL が入る。タイトル列の「下書き」は消える
+    And フォームの上にお知らせ（info）の Alert で「すでに WordPress で公開されています」と表示され、赤いエラーにはならない
+    And フォームは送信不可で、閉じる操作ができ、完了トーストは出ない
+    And 該当行の公開状態とタイトルと公開 URL が WordPress 側の値に同期され、URL 列に公開 URL が入る。タイトル列の「下書き」は消える
 
   Scenario: S-14 WordPress 側で削除されていたら紐づけを外す
     Given ある行が「下書き」として送信済みである
@@ -544,7 +564,7 @@ Feature: 完成した記事を WordPress へ送る
 | S-02 | FR-002 | ALT-006 |
 | S-03 | FR-003, FR-004 | BR-005, ALT-004 |
 | S-04 | FR-003, FR-004 | BR-005 |
-| S-05 | FR-005 | BR-004, ALT-003 |
+| S-05 | FR-003, FR-005 | BR-004, ALT-003 |
 | S-06 | FR-006 | ALT-003 |
 | S-07 | FR-007 | 連携ライフサイクル（§9） |
 | S-08 | FR-007 | BR-003 |
@@ -762,7 +782,7 @@ Feature: 完成した記事を WordPress へ送る
 
 - 判断: MVP で「下書き」だけにするか、「公開」「予約」も出すか
 - 比較した案:
-  - 案A: 下書き・公開・予約の3択。既定は下書き
+  - 案A: 下書き・公開・予約の3択。未送信の既定は下書き。再送は現在の下書き / 予約と予約済み日時
   - 案B: 下書きだけ。公開は WordPress 側で行う
 - 採用案: 案A
 - 採用理由: マーケターの公開作業は「曜日・時刻を決めて予約する」が標準で、予約が無いと結局 WordPress 管理画面を開くことになり、画面またぎが残る。公開も同じ。安全側は既定値（下書き）と送信ボタンの文言（BR-002）で担保する
@@ -817,17 +837,18 @@ Feature: 完成した記事を WordPress へ送る
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Q-001 | 送信は常にユーザーが押す（BR-001）でよいか。それとも記事完成時・Instagram ブログ化完了時に自動で「下書き」として送るか | 人の承認点の位置がクライアント未確定（`client-vision-from-lark.md` §1.12.6）。自動送信にすると BR-001・ALT-001 と工数が変わる。起票者の推奨は「まず押す方式。自動化は下書き自動送信までを次の段で」 | 依頼者 | 2026-10-23 | 回答済み | 押したときだけ送る。入口はチャット（`/chat`）step7 の「その他の操作」と、コンテンツ一覧（`/analytics` ブログタブ）の行。完成時・Instagram 完了時の自動送信はしない | 2026-10-23 |
 | Q-002 | コンテンツ一覧の一括送信（チェック → ツールバー）は MVP に入れるか。入れる場合は下書きのみに限るか | 一括を出すと誤公開の件数と工数が増える | 依頼者 | 2026-10-23 | 回答済み | MVP に含める。画面には出さない（定数 `false` でマウントしない。feature flag は作らない）。処理は下書きの投稿だけ。公開・予約・固定ページの一括はしない。定数を `true` にすればすぐ使える（BR-008） | 2026-10-23 |
-| Q-003 | GrowMate から直接「公開」「予約」できてよいか。それとも下書きだけにして公開は WordPress 側で行うか | ALT-004。誤公開のリスク（R-001）と画面またぎの削減のどちらを取るか | 依頼者 | 2026-10-23 | 回答済み | 1件のダイアログは下書き・公開・予約の3択。既定は下書き。一括では公開も予約も送らない（Q-002） | 2026-10-23 |
+| Q-003 | GrowMate から直接「公開」「予約」できてよいか。それとも下書きだけにして公開は WordPress 側で行うか | ALT-004。誤公開のリスク（R-001）と画面またぎの削減のどちらを取るか | 依頼者 | 2026-10-23 | 回答済み | 1件のダイアログは下書き・公開・予約の3択。未送信の既定は下書き。再送は現在の状態と予約済み日時（Q-008）。一括では公開も予約も送らない（Q-002） | 2026-10-23 |
 | Q-004 | タイトルの既定値は「完成形の最初の `# ` 見出し → `wp_post_title` → `main_kw`」でよいか。「タイトル・説明文生成」の出力を自動で入れる要望はあるか | 生成結果はチャットのメッセージで構造化されていないため、自動で入れるには保存形式の変更が要る。要望が無ければ手入力（コピー）で進める | 依頼者 | 2026-10-23 | 回答済み | 見出し → `wp_post_title` まで。どちらも空なら空のままにし、送信はタイトル必須のため不可。`main_kw` はタイトルに使わない。「タイトル・説明文生成」の出力も入れない | 2026-10-23 |
 | Q-005 | 送信先の投稿タイプは `posts`（投稿）固定でよいか | 取込は複数タイプを扱う。固定ページとカスタム投稿を全部出せば選択 UI と REST の分岐が増える | 依頼者 | 2026-10-23 | 回答済み | 投稿（`posts`）と固定ページ（`pages`）だけ。既定は投稿。作成後は変えない。同日の追認「投稿と固定ページだけにする」で、カスタム投稿タイプは出さない。添付・リビジョン・メニュー・カスタム CSS も対象外。固定ページの親は選ばない（最上位として作る） | 2026-10-23 |
 | Q-006 | 送信対象ロールは `admin` / `paid` でよいか（`trial` に体験させる意図はないか） | AGENTS.md の既定。`trial` に出す場合は理由と承認が要る。`/analytics` は現状 `trial` が入れない | 依頼者 | 2026-10-23 | 回答済み | `admin` と `paid` だけ。`trial` には出さない。チャットはメニューを隠し、Server Action でも止める。WordPress.com 連携の保存が `admin` だけの既存制限は変えない | 2026-10-23 |
 | Q-007 | 投稿ダイアログに抜粋（`excerpt`）を入れるか | 起票時は入れていた。SEO の説明文と誤解され、要件にも無いため Non-goals に移した。マーケターが WordPress 標準の抜粋を GrowMate から入れたいなら戻す | 依頼者 | 2026-10-23 | 回答済み | 入れない。抜粋は WordPress 側で付ける | 2026-10-23 |
+| Q-008 | 送信 UI の公開済み表示・再送初期値・未連携と完成形なしの表示・完了トーストのリンクをどうするか | 状態別 UI とエラー表、受入条件をそろえるため | 依頼者 | 2026-10-23 | 回答済み | WordPress 側で公開済みなら DB を同期し、お知らせ（info）で表示。再送は現在の下書き / 予約と予約済み日時を初期値。未連携・完成形なしはフォームの上に Alert。完了トーストに WordPress へのリンク（URL）は付けない。OPEN-001 は決着 | 2026-10-23 |
 
-### 未決定事項（今は決めない）
+### 未決定事項・決着済み事項
 
-| ID | 未決定事項 | 今決めない理由 | 決めるタイミング | 決める人 |
+| ID | 論点・状態 | 判断・理由 | 決定日・決めるタイミング | 決める人 |
 | --- | --- | --- | --- | --- |
-| OPEN-001 | 成功トーストのリンク先を公開 URL（`link`）にするか、WordPress の編集画面（`/wp-admin/post.php?post={id}&action=edit`）にするか | 編集画面 URL は REST に無く、セルフホストと WordPress.com で形が違う。まず `link` で出し、下書きの `link`（仮 URL）が使いにくいと分かってから決める | リリース後、利用者の反応を見て | 依頼者 |
+| OPEN-001 | 決着済み: 完了トーストに WordPress へのリンク（URL）を付けない | 依頼者の決定。公開 URL・編集画面 URL のどちらもトーストには出さず、結果の文だけ表示する | 2026-10-23 に決着 | 依頼者 |
 | OPEN-002 | 「ブロックに変換」の案内をダイアログに書くか | 初回だけ知ればよい情報で、毎回出すと補足が増える（`growmate-ui-ux` 足さない） | リリース時の案内文を書くとき | 開発 |
 | OPEN-003 | `content-pdca-semi-auto-execution-spec.md` の `WordPressService.updatePost` と本書の `updatePost` の統合 | どちらが先に実装されるか未定。先に実装した側のシグネチャに合わせる | どちらかの `spec-to-pr` 着手時 | 開発 |
 | OPEN-004 | 下書き・予約の行を AI 要約と「未要約」絞り込みの対象に含めるか | どちらも `wp_post_id` が正、または公開 URL がある、で「WordPress 連携済み」を見ている（`contentAnnotationSummaryService.ts` L143〜L146 のローカル `isWordPressLinked`、`20261013233000_narrow_get_filtered_content_annotations_working_set.sql` L123〜L124 の `or`）。下書きは ID があり URL が空なので要約対象に入る。本書の送信には妨げにならないので、直さず受容する | 要約の対象から下書きを外したいと分かったとき | 依頼者 |
@@ -873,7 +894,7 @@ Feature: 完成した記事を WordPress へ送る
 
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
-| 承認点の確定 | Q-001 は押したときだけ。Q-003 は下書き・公開・予約で既定は下書き | 依頼者 | 2026-10-23 に決定 |
+| 承認点の確定 | Q-001 は押したときだけ。Q-003 は下書き・公開・予約で未送信の既定は下書き。再送は現在の状態と予約済み日時（Q-008） | 依頼者 | 2026-10-23 に決定 |
 | 見た目の正本 | §6 の対照表と ASCII。色・余白・部品は `growmate-ui-ux` の既存写し。別の見た目承認はしない | 依頼者 | 2026-10-23 に決定 |
 | 予約投稿の実機挙動 | R-003 と R-007 の確認結果を §9 に追記 | 開発 | 未確認 |
 | 実 WordPress での通し確認 | S-01・S-03・S-04・S-09・S-13・S-15 をセルフホストと WordPress.com で | 開発 → 依頼者 | 未確認 |
@@ -983,3 +1004,4 @@ cycle 3 で反映した指摘（F-011〜F-015）:
 | 2026-10-23 | 見た目の実装前ゲートを外した。並びは §6 の ASCII と対照表。色・余白・部品は `growmate-ui-ux` の既存写し。別の見た目承認はしない | 依頼者の「OK」（2026-10-23）。スキルは既存を写す範囲だけを決め、未確認のチェックポイント行は `spec-to-pr` の入口を止めていた | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | 実施の枠を 5 人日（40 時間）にした。人の仮置き 47 時間（幅 47〜52）は残す。範囲は削らない | 依頼者「5日にする」（2026-10-23）。40 時間は、仕様を渡して実装し、実装側 42 時間を約 3 割減、検証 5 時間はそのまま、とした枠。手戻りで 40 時間を超える分と本番リリースは枠外 | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | PR #691 の未解決指摘を仕様へ反映。404 の解除は `rest_post_invalid_id` だけ。並行送信は `wp_publish_claimed_at` で1件に制限。WordPress.com は更新済みトークンを cookie より優先。予約のタイムゾーンは F-011 のまま | Codex と Bugbot のレビューコメント。工数の 47 時間と 5 人日の枠は変えない | 開発（Cursor Cloud Agent） |
+| 2026-10-23 | 送信 UI の未決事項4点を反映。公開済みは DB 同期と info 表示、再送は現在の状態と予約済み日時を初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし。FR・状態別 UI・エラー表・S-01 / S-03 / S-04 / S-05 / S-07 / S-08 / S-13 を同期し、Q-008 を回答済み、OPEN-001 を決着済みにした | 依頼者の決定（2026-10-23） | 開発（Codex） |
