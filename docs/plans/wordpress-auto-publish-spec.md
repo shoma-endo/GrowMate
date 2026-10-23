@@ -13,9 +13,9 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: spec-review 通過
-- 止まっている理由・待っている人: ダイアログたたき台未承認（PO）
-- 次の一手: 図解 HTML の UIモックを PO が承認し、仕様の当該 CP を承認済みに更新してから spec-to-pr
+- 現在の工程: spec-review 通過。見た目は既存フォームの写しで確定
+- 止まっている理由・待っている人: なし
+- 次の一手: `.takt/workflows/spec-to-pr.yaml` で実装（`takt -w spec-to-pr -t "docs/plans/wordpress-auto-publish-spec.md 仕様書に沿って実装してください"`）
 - 未確認事項: なし
 - 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）、PR #691
 - 更新日・更新した工程: 2026-10-23 spec-review finalize
@@ -204,8 +204,8 @@
 
 ### カレンダー上の前提（工数外）
 
-- 仕様レビュー・承認の見込み: Q-001〜Q-007 は 2026-10-23 に書き戻した。次は spec-review の再実行（cycle 2 の判定は回答前のもの）
-- クライアント確認・たたき台合意の見込み: 投稿ダイアログの項目（§6）。Q-001 と Q-003 は依頼者が 2026-10-23 に決定した
+- 仕様レビュー・承認の見込み: Q-001〜Q-007 は 2026-10-23 に書き戻した。cycle 3 の spec-review は通過し、ステータスは `approved`
+- クライアント確認・見た目の見込み: 項目は §6。並びは同節の ASCII と対照表。色・余白・部品は `growmate-ui-ux` の既存写し。別の見た目承認はしない（依頼者、2026-10-23）
 - 希望リリース時期との関係: 未定。Instagram ブログ化（Phase 2）のリリース後に続けるのが自然（同機能の手作業の最終工程を埋めるため）
 
 ## 6. 機能要件
@@ -306,7 +306,7 @@
 ##### 投稿ダイアログ（`src/components/WordPressPublishDialog.tsx`）
 
 - 概要: 記事1本を WordPress へ送る。開いた時点で既定値（タイトル候補・カテゴリ一覧・送る本文の概要）をサーバーから取る。
-- レイアウト:
+- レイアウト: 項目の順は下の ASCII。色・余白・部品は `growmate-ui-ux` に従い、上の対照表の既存 UI を写す。新しい画面パターンは作らない。見た目の実装前ゲートは置かない（依頼者、2026-10-23）。
 
   ```text
   ┌ WordPress に投稿 ───────────────────────────────┐
@@ -844,8 +844,8 @@ Feature: 完成した記事を WordPress へ送る
 ### 手順
 
 1. 要件定義（本ドキュメント）作成・レビュー
-2. 確認質問 Q-001〜Q-007 は 2026-10-23 に書き戻した。次は回答反映後の spec-review
-3. 仕様レビュー通過（`takt -w spec-review`）
+2. 確認質問 Q-001〜Q-007 は 2026-10-23 に書き戻した。回答反映後の spec-review は cycle 3 で通過した
+3. 仕様レビュー通過（ステータス `approved`。2026-10-23。Cloud の spec-review ループ。`takt -w spec-review` のラン記録は無い）
 4. 実装（`takt -w spec-to-pr`）。順序: migration と型 → `markdownToWordPressHtml` と単体テスト → `WordPressService` の 4 メソッド（`createPost` / `updatePost` / `fetchPost` / `fetchCategories`）と単体テスト → Server Action（1件と、一括下書き） → ダイアログ → チャットのメニュー項目 → 一覧のボタンとバッジ → 一括ボタンは実装しマウントしない → 登録情報の補足文 → 取込の `publish` 書き込み → `app/chat/page.tsx` の `maxDuration` → `ui-text.md`
 5. 品質ゲート通過（`npm run verify`、`npm run verify:ui-text`）
 6. PR作成・レビュー・マージ
@@ -855,7 +855,7 @@ Feature: 完成した記事を WordPress へ送る
 | チェックポイント | 確認内容 | 確認者 | 状態 |
 | --- | --- | --- | --- |
 | 承認点の確定 | Q-001 は押したときだけ。Q-003 は下書き・公開・予約で既定は下書き | 依頼者 | 2026-10-23 に決定 |
-| ダイアログたたき台 | §6 のレイアウト。抜粋欄は Q-007 で入れないと決定 | 依頼者 | 抜粋は決定。レイアウト全体は未確認 |
+| 見た目の正本 | §6 の対照表と ASCII。色・余白・部品は `growmate-ui-ux` の既存写し。別の見た目承認はしない | 依頼者 | 2026-10-23 に決定 |
 | 予約投稿の実機挙動 | R-003 と R-007 の確認結果を §9 に追記 | 開発 | 未確認 |
 | 実 WordPress での通し確認 | S-01・S-03・S-04・S-09・S-13・S-15 をセルフホストと WordPress.com で | 開発 → 依頼者 | 未確認 |
 
@@ -961,3 +961,4 @@ cycle 3 で反映した指摘（F-011〜F-015）:
 | 2026-10-23 | Q-004、Q-006、Q-007 を回答済みにした。タイトル既定は見出し → `wp_post_title` まで（`main_kw` は使わない）。ロールは `admin` / `paid`。抜粋欄は入れない。確認質問はこれで全部回答済み | 依頼「全部一番推奨度の高いものでOK。004は見出し → wp_post_title まで」 | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | cycle 3 の指摘（F-011〜F-015）を反映した。予約の壁時計、一括は未送信と `draft` だけ、ALT-001、Namespaces の `/pages`、回答済みの文。再監査はまだ。ステータスは `draft` | `02-audit-r3.md`。`approved` にしない | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | spec-review 通過。F-011〜F-015（予約の壁時計、一括対象から future を外す、ALT-001、Namespaces の pages 例、回答済み文の残存）は解消済み | 仕様レビュー | spec-review |
+| 2026-10-23 | 見た目の実装前ゲートを外した。並びは §6 の ASCII と対照表。色・余白・部品は `growmate-ui-ux` の既存写し。別の見た目承認はしない | 依頼者の「OK」（2026-10-23）。スキルは既存を写す範囲だけを決め、未確認のチェックポイント行は `spec-to-pr` の入口を止めていた | 開発（Cursor Cloud Agent） |
