@@ -3,7 +3,7 @@
 ## メタデータ
 
 - 文書名: WordPress 自動投稿（完成した記事を WordPress へ送る）
-- ステータス: `draft`
+- ステータス: `approved`
 - 作成日: 2026-10-21
 - 最終更新日: 2026-10-23
 - 作成者: 開発（Cursor Cloud Agent 起票）
@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: 仕様レビュー cycle 2 は `approved_with_questions`（2026-10-22、Q の回答前）。Q-001〜Q-007 は 2026-10-23 に回答済み。回答後の再監査はまだ。finalize しない。ステータスは `draft`
-- 止まっている理由・待っている人: 確認質問は残っていない。回答を反映したあとの spec-review が未実施
-- 次の一手: Cloud Agent で spec-review ループを再実行する。`approved` になるまで実装（`spec-to-pr`）に進まない
-- 未確認事項: R-003（`future` の日時指定）と R-007（予約の自動公開が日次取込から漏れるか）は実装時に実 WordPress で確認する。OPEN-001〜OPEN-004 は今決めない
-- 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）
-- 更新日・更新した工程: 2026-10-23 Q-004（タイトルは見出し → `wp_post_title` まで。`main_kw` は使わない）、Q-006（`admin` / `paid` のみ）、Q-007（抜粋欄は入れない）を回答済みにした
+- 現在の工程: spec-review 通過
+- 止まっている理由・待っている人: ダイアログたたき台未承認（PO）
+- 次の一手: 図解 HTML の UIモックを PO が承認し、仕様の当該 CP を承認済みに更新してから spec-to-pr
+- 未確認事項: なし
+- 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）、PR #691
+- 更新日・更新した工程: 2026-10-23 spec-review finalize
 
 ## 0. 依頼時の参考資料との差分（先に読む）
 
@@ -60,7 +60,7 @@
 | --- | --- | --- |
 | 利用者 | `admin` / `paid` ロールで、WordPress 連携済み（`wordpress_settings` 行あり）のユーザー | 完成した記事を WordPress へ送る。公開状態・タイトル・カテゴリを選ぶ。公開前の最終確認は WordPress 側か Canvas で行う |
 | 運用担当 | GrowMate 開発・運用 | 失敗時のエラーメッセージから原因（連携切れ・権限不足・サイト側障害）を切り分けられる |
-| 管理者・承認者 | クライアント（カオルさん） | 「人の承認を残す箇所」（公開はユーザーが押すか、自動か）を決める（Q-001） |
+| 管理者・承認者 | クライアント（カオルさん） | Q-001 は 2026-10-23 に、押したときだけ、と決まった |
 | 外部サービス・連携先 | WordPress（セルフホスト REST API / WordPress.com REST API） | 投稿の作成・更新、カテゴリ一覧の提供 |
 
 ### 主な利用シナリオ
@@ -123,8 +123,8 @@
   - ルール: `wordpress_settings.wp_type` が `self_hosted` でも `wordpress_com` でも同じダイアログ・同じ結果にする。差は `WordPressService` の `baseUrl` と認証ヘッダーだけに閉じる（既存の取込と同じ）。WordPress.com の送信は既存クライアントの public-api（`src/server/services/wordpressService.ts` L116 と L130。`https://public-api.wordpress.com/wp/v2/sites/${siteId}`。保存済み site id）に載せる。サイト種別ごとのベース URL は新設しない（既存取込と同じ経路。MVP）。public-api の POST が失敗したときは §6 の 401 / 403 / 5xx に乗せ、301 を POST の再送条件にしない（R-006 と同じ。作成の重複を避ける。根拠は §9、確認日 2026-10-22）。WordPress.com のアクセストークンは期限切れでも `resolveWpComAccessToken`（`src/server/services/wordpressContentSync.ts`。日次取込が L413 付近で使っている）で更新してから送る。`buildWordPressServiceFromSettings`（`src/server/services/wordpressContext.ts`）は保存済みトークンをそのまま使うだけで更新しないため、送信の Server Action では取込と同じ順で先に更新を通す。
   - 例外: なし。なお WordPress.com 連携の保存は既存仕様で `admin` に限られている（`app/api/wordpress/settings/route.ts` L52〜L57「WordPress.com 連携は管理者のみ利用できます」）ため、`paid` ユーザーの送信先は実質セルフホストだけになる。本書はこの制限を変えない。
 - ルール ID: BR-008（一括は下書きだけ。初回の画面には出さない）
-  - ルール: コンテンツ一覧の複数行を、1件送信と同じ処理の直列で下書き送信できる。`status` は `draft` 固定。送信先は `posts`。タイトルは1件と同じ既定（最初の `# ` 見出し → `wp_post_title`。どちらも空の行は送らず、件数に残す。`main_kw` はタイトルに使わない。Q-004）。カテゴリとスラッグは送らない。対象行は1件送信と同じ（`session_id` があり、未送信、または `wp_post_status` が `draft` / `future`）。公開済みと取込由来は送らない。公開・予約・固定ページの一括はしない（Q-003 の3択は1件のダイアログだけ）。
-  - ルール: ツールバーのボタンは、既存の選択時ツールバー（`app/analytics/AnalyticsClient.tsx` L539〜L567。`selectedCount >= 1` のとき「評価サイクルを開始」と「AIで要約」）と同じ場所に実装する。初回リリースではマウントしない。定数1つで止め、その定数は `false` のまま出荷する。feature flag、設定テーブル、環境変数は作らない（Q-002「MVP に入れるが公開しない。あとですぐ使える状態」）。定数を `true` にしたとき、ボタン文言は「下書きとして一括送信」。押すと対象行を直列に送る。`/analytics` の既存 `maxDuration = 800` を超える前に止め、残りは送らず件数を返す。ジョブテーブルは作らない。
+  - ルール: コンテンツ一覧の複数行を、下書き送信の直列で送れる。`status` は `draft` 固定。送信先は `posts`。タイトルは1件と同じ既定（最初の `# ` 見出し → `wp_post_title`。どちらも空の行は送らない。`main_kw` はタイトルに使わない。Q-004）。カテゴリとスラッグは送らない。一括の対象は、`session_id` があり、未送信、または `wp_post_status` が `draft` の行だけである。`future`・`publish`・取込由来・固定ページは送らずスキップする。予約を下書きに戻すのは、1件ダイアログで公開状態を「下書き」にしたときだけである（Q-003 の3択は1件のダイアログだけ）。タイトルが空の行も送らずスキップする。戻りは成功、スキップ（タイトル空 / 予約 / 対象外）、時間切れで止めた残り、に分ける。
+  - ルール: ツールバーのボタンは、既存の選択時ツールバー（`app/analytics/AnalyticsClient.tsx` L539〜L567。`selectedCount >= 1` のとき「評価サイクルを開始」と「AIで要約」）と同じ場所に実装する。初回リリースではマウントしない。定数1つで止め、その定数は `false` のまま出荷する。feature flag、設定テーブル、環境変数は作らない（Q-002「MVP に入れるが公開しない。あとですぐ使える状態」）。定数を `true` にしたとき、ボタン文言は「下書きとして一括送信」。押すと対象行を直列に送る。`/analytics` の既存 `maxDuration = 800` を超える前に止め、残りは送らず、上の3区分で返す。ジョブテーブルは作らない。
   - 例外: なし。ボタンのマークアップは shadcn の `Button` を使う。同ファイルの生の色クラスは写さない（`eslint-suppressions.json` を増やさない）。
 
 ## 4. 対象範囲と Non-goals
@@ -137,7 +137,7 @@
   - チャット画面（`/chat`）: step7 の「その他の操作」メニュー（`app/chat/components/StepActionBar.tsx`）に「WordPress に投稿」を追加し、投稿ダイアログを開く
   - コンテンツ一覧（`/analytics` ブログタブ）: 行の操作列（`src/components/AnalyticsTable.tsx` の `AnalyticsOpsCell`）に「WordPress に投稿」を追加し、同じ投稿ダイアログを開く。タイトル列に「下書き」「予約」のバッジを出す
   - 投稿ダイアログ（新規共通コンポーネント `src/components/WordPressPublishDialog.tsx`）: 送信先（投稿 / 固定ページ）・タイトル・公開状態（下書き・公開・予約。既定は下書き。Q-003）・公開日時・カテゴリ（投稿のときだけ）・スラッグ
-  - 一括下書き（BR-008）: Server Action とツールバーボタンを実装し、初回はボタンをマウントしない
+  - 一括下書き（BR-008）: 対象は未送信と `draft` だけ。`future`・`publish`・取込由来・固定ページは送らない。Server Action とツールバーボタンを実装し、初回はボタンをマウントしない
 - API・外部連携:
   - `WordPressService` に `createPost` / `updatePost` / `fetchPost` / `fetchCategories` を追加。パスは `baseUrl` に `posts` または `pages` を付ける（`POST /wp/v2/posts` と `POST /wp/v2/pages`、更新と `GET ?context=edit` も同じ）。`fetchCategories` は送信先が `posts` のときだけ
   - Server Action `src/server/actions/wordpressPublish.actions.ts`: 投稿の既定値取得、カテゴリ取得、送信
@@ -183,7 +183,7 @@
 ### 前提
 
 - 換算: 8時間 = 1人日
-- 見積の状態: `仮置き`（2026-10-23。Q-001〜Q-007 は回答済み。この3件は工数を変えない）
+- 見積の状態: `仮置き`（2026-10-23。Q-001〜Q-007 は回答済み。Q-004 / Q-006 / Q-007 は工数を変えない）
 - 含めるもの: §4 対象範囲の実装、`WordPressService` の単体テスト、Markdown → HTML 変換の単体テスト、migration、UI 手動確認
 - 含めないもの: 仕様レビュー往復、クライアント確認待ち、本番リリース作業、`spec-review` の図解 HTML
 
@@ -222,7 +222,7 @@
 | FR-008 | WordPress 側で下書き・予約が公開されたあと、既存の日次 WordPress 取込が同じ行の `canonical_url` / `wp_post_title` / `wp_post_status = 'publish'` を埋める | Must | BR-005 | S-09 |
 | FR-009 | カテゴリ一覧の取得に失敗しても、カテゴリ未選択のまま送信できる（失敗理由を欄の下に表示） | Should | カテゴリは任意。取得失敗で投稿自体を止めない | S-10 |
 | FR-010 | 送信済みの下書き・予約の行は、チャットの登録情報パネルで WordPress 投稿 URL を空のまま保存しても `wp_post_id` / `wp_post_status` が保持される | Must | BR-004（他の保存経路との整合） | S-12 |
-| FR-011 | 一覧の複数行を下書きの投稿として直列に送れる。公開・予約・固定ページは送らない。ツールバーボタンは実装し、初回リリースではマウントしない | Must | Q-002（2026-10-23）。BR-008 | S-16 |
+| FR-011 | 一覧の未送信と `draft` だけを下書きの投稿として直列に送る。`future`・`publish`・取込由来・固定ページと、タイトルが空の行は送らずスキップする。成功、スキップ理由、時間切れの残りを分けて返す。ツールバーボタンは実装し、初回リリースではマウントしない | Must | Q-002（2026-10-23）。BR-008 | S-16 |
 
 ### 入力・出力・状態遷移
 
@@ -231,11 +231,11 @@
   - `contentType`: `posts` または `pages`。既定 `posts`。`wp_post_id` がある再送信では送らず、保存済みの `wp_post_type` を使う（BR-007）
   - `title`: 1〜200 文字、必須。既定値は完成形 Markdown の最初の `# ` 見出し、無ければ `wp_post_title`。どちらも空なら空のままにし、`main_kw` は入れない（Q-004、2026-10-23）。「タイトル・説明文生成」の出力も入れない。空のままでは送信できない。行を新規作成するときのキーワード（`upsertContentAnnotationBySession` がセッションの `main_kw` を埋める）は、送信タイトルとは別で、従来どおり
   - `status`: `draft` / `publish` / `future`。既定 `draft`
-  - `scheduledAt`: `status = future` のとき必須。現在時刻より後。`datetime-local` で入力し、サーバーで UTC の ISO 8601 に変換して `date_gmt` に送る
+  - `scheduledAt`: `status = future` のとき必須。`datetime-local` の値はブラウザのローカル壁時計とする。ブラウザで末尾 `Z` の UTC ISO 8601 に変換してから Server Action へ渡す。サーバーはその文字列をサーバーのタイムゾーンで解釈し直さない。`date_gmt` にはその文字列を載せる。「現在時刻より後」の比較も、変換前の同じ壁時計で行う。トーストの時刻は、変換前に利用者が入れた壁時計を出す。既存の日付表示は `src/lib/date-utils.ts` の `formatDateTime` が `timeZone: 'Asia/Tokyo'` 固定で、ブラウザが日本以外のときは、その表示と予約の壁時計がずれる。
   - `categoryIds`: 整数配列、任意。`contentType` が `posts` のときだけ送り、`fetchCategories` の結果に含まれる ID だけを通す。`pages` のときは空として扱い、カテゴリは送らない
   - `slug`: 任意。空なら送らない（WordPress が生成）。空でなければそのまま `slug` に載せる。文字種の拒否はしない（WordPress 側に任せる）。長さの上限を足すならタイトルと同じ 200 文字（§9。Posts schema の slug は "An alphanumeric identifier for the post unique to its type." で、上限の記載は無い。確認日 2026-10-22）
   - Zod スキーマは `src/server/actions/wordpressPublish.actions.ts` の近くに置き、Server Action の入口で検証する（`nextjs-server` 規約）
-- 正常時の出力: `{ success: true, data: { wpPostId, status, link } }`。トースト「WordPress に下書きを送信しました」「WordPress で公開しました」「WordPress に予約しました（10/28 10:00）」と、`link` を開くリンク
+- 正常時の出力: `{ success: true, data: { wpPostId, status, link } }`。トースト「WordPress に下書きを送信しました」「WordPress で公開しました」「WordPress に予約しました（10/28 10:00）」と、`link` を開くリンク。予約トーストの「10/28 10:00」は、UTC へ変換する前の壁時計である
 - エラー時の出力（`ServerActionResult` の `error` と、ダイアログ内の表示）:
 
   | 原因 | ユーザー向け表示 | 次の操作 | DB |
@@ -332,7 +332,7 @@
   | 送信先 | `Select`（投稿 / 固定ページ） | 必須 | 未送信は投稿。`wp_post_type` が残っていればそれを初期値 | `wp_post_id` が NULL のときだけ変更可。再送信（ID あり）は保存済みタイプを表示し、選択は出さない |
   | タイトル | `Input`、1〜200 文字 | 必須 | 完成形の最初の `# ` 見出し → `wp_post_title`。どちらも空なら空。`main_kw` は入れない（Q-004） | 常時 |
   | 公開状態 | `Select`（下書き / 公開 / 予約投稿） | 必須 | 下書き | 常時 |
-  | 公開日時 | `<input type="datetime-local">` | 予約投稿のとき必須 | 空 | 公開状態が「予約投稿」のときだけ表示。現在より前なら欄の下にエラー |
+  | 公開日時 | `<input type="datetime-local">` | 予約投稿のとき必須 | 空 | 公開状態が「予約投稿」のときだけ表示。比較は変換前の壁時計。現在より前なら欄の下にエラー |
   | カテゴリ | チェックボックス群 | 任意 | 行の `wp_categories`（あれば）。無ければ未選択 | 送信先が投稿のときだけ。取得失敗時は理由の文と未選択で続行。固定ページでは出さない |
   | スラッグ | `Input` | 任意 | 空 | 常時 |
   | 送信ボタン | `Button` | 必須 | 文言は公開状態で変わる: 下書き→「下書きとして送信」、公開→「公開する」、予約投稿→「予約する」。更新（`wp_post_id` あり）のときは末尾に「（更新）」 | 送信中は disabled + `Loader2` + 「送信中...」 |
@@ -419,6 +419,8 @@ Feature: 完成した記事を WordPress へ送る
     Given S-01 の前提
     When 公開状態で「予約投稿」を選び、未来の日時を入れ、カテゴリを1つ選んで「予約する」を押す
     Then WordPress に予約済みの投稿が、指定した日時と選んだカテゴリで1件できる
+    And 入れた日時はブラウザの壁時計で、末尾 `Z` の UTC ISO 8601 にしてから送り、トーストは変換前の壁時計を出す
+    And 「現在より後」の判定も、その壁時計で行う
     And 該当行に「予約」が記録され、公開 URL は空のままである
 
   Scenario: S-04 公開する
@@ -511,7 +513,9 @@ Feature: 完成した記事を WordPress へ送る
     When その2件を選択する
     Then 「評価サイクルを開始」と「AIで要約」は出る
     And 「下書きとして一括送信」は出ない
-    And 一括送信用の処理を呼ぶと、2件とも WordPress の投稿の下書きになり、公開も予約も固定ページも作られない
+    And 一括送信用の処理を呼ぶと、未送信の2件は WordPress の投稿の下書きになる
+    And `future`・`publish`・取込由来・固定ページ・タイトル空は送らずスキップし、成功、スキップ理由、時間切れの残りを分けて返す
+    And 予約を下書きに戻すのは、1件ダイアログで公開状態を「下書き」にしたときだけである
 ```
 
 ### シナリオ対応表
@@ -601,7 +605,7 @@ Feature: 完成した記事を WordPress へ送る
   - 引用（Schema `parent`）: "The ID for the parent of the post." / "JSON data type: integer" / "Context: `view`, `edit`"
   - 引用（Schema `slug`）: "An alphanumeric identifier for the post unique to its type."
   - 引用（Retrieve a Page の引数 `context`）: "Scope under which the request is made; determines fields present in response." / "Default: `view`" / "One of: `view`, `embed`, `edit`"
-  - 解釈: 固定ページの作成・更新・更新前の確認は Posts と同じ動詞で、パスだけ `pages` に替える。`status` の3値、`date_gmt`、`slug`、`context` は Posts と同じ読みでよい。このページの schema に `categories` は無い。カテゴリは送らず、取得もしない（BR-007）。`parent` は公式の引数だが本書では送らない。未指定の固定ページは最上位として作る（Non-goals）。`future` の日時必須と過去日時の扱いは Posts と同様、このページにも記述が無い（R-003）。WordPress.com の Namespaces の例は `/wp/v2/sites/{site}/posts` だけで、`/pages` の例は無い。`/wp/` がコア互換、という同ページの文から、既存 `baseUrl` に `/pages` を足す。専用のベース URL は新設しない。
+  - 解釈: 固定ページの作成・更新・更新前の確認は Posts と同じ動詞で、パスだけ `pages` に替える。`status` の3値、`date_gmt`、`slug`、`context` は Posts と同じ読みでよい。このページの schema に `categories` は無い。カテゴリは送らず、取得もしない（BR-007）。`parent` は公式の引数だが本書では送らない。未指定の固定ページは最上位として作る（Non-goals）。`future` の日時必須と過去日時の扱いは Posts と同様、このページにも記述が無い（R-003）。WordPress.com へ送る URL は、既存 `baseUrl` に `/pages` を足したまま変えない。専用のベース URL は新設しない。サイト付きの `/pages`（`.../sites/{site}/pages`）は、下の Namespaces の引用からの解釈である（確認日 2026-10-23）。
 - WordPress REST API Handbook: Authentication <https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/>（Last modified: October 14, 2026）
   - 引用: "As of 5.6, WordPress has shipped with Application Passwords, which can be generated from an Edit User page (wp-admin -> Users -> Edit User)."
   - 引用: "The credentials can be passed along to REST API requests served over https:// using Basic Auth / RFC 7617"
@@ -636,11 +640,12 @@ Feature: 完成した記事を WordPress へ送る
 - WordPress.com REST API <https://developer.wordpress.com/docs/api/>（Last updated: October 07, 2025）
   - 引用: "Note that this API is also enabled on WordPress.com, but the URL structure on WordPress.com is slightly different than for self-hosted sites."
   - 解釈: このページはパスを定義しない。送信 URL の根拠にはしない。
-- WordPress.com REST API Namespaces <https://developer.wordpress.com/docs/api/namespaces/>（Last updated: October 01, 2025）
+- WordPress.com REST API Namespaces <https://developer.wordpress.com/docs/api/namespaces/>（Last updated: October 01, 2025。確認日 2026-10-23）
   - 引用: "The /wp/ namespace implements the official WordPress REST API specification, ensuring full compatibility with both WordPress.com and self-hosted WordPress sites."
   - 引用: "Base URL: `https://public-api.wordpress.com/wp/v2/`"
-  - 引用: 例に "`/wp/v2/sites/{site}/posts`"
-  - 解釈: public-api の `/wp/v2/sites/{site}/posts` はコア互換ネームスペースの例として実在する。比較表の「常にその1本」ではない。
+  - 引用（Key Features）: "Standard WordPress resources (posts, pages, comments, taxonomies, users, media)"
+  - 引用（Example Endpoints）: "`/wp/v2/posts`"、"`/wp/v2/pages`"、"`/wp/v2/users`"、"`/wp/v2/media`"、"`/wp/v2/sites/{site}/posts`"
+  - 解釈: public-api の `/wp/v2/sites/{site}/posts` はコア互換ネームスペースの例として実在する。比較表の「常にその1本」ではない。Example Endpoints に `/wp/v2/pages` がある。サイト付きの例は posts だけなので、`.../sites/{site}/pages` は、上の `/wp/` の互換の引用と `/wp/v2/pages` からの解釈である。送る URL は既存 `baseUrl` に `/pages` を足したままで、変えない。
 - REST API URLs by Site Type <https://developer.wordpress.com/docs/rest-api-urls-by-site-type/>（Last updated: September 21, 2026）
   - 引用: "For these sites, you must use the WordPress.com public API proxy"
   - 引用: "The general URL format is: `https://public-api.wordpress.com/wp/v2/sites/<your-custom-domain.com>/`"
@@ -700,7 +705,7 @@ Feature: 完成した記事を WordPress へ送る
   - 案A: 同期の Server Action。ダイアログの送信 → WordPress POST → DB 更新 → 結果を返す
   - 案B: `wordpress_publish_jobs` テーブルに積み、cron が送る。進捗は一覧で見せ、完了をメールで知らせる
 - 採用案: 案A
-- 採用理由: 送信は WordPress への呼び出し（新規は POST 1 回、更新は GET と POST の直列。LLM なし）。通常は数秒で返り、待ちの上限は §8。ユーザーは結果をその場で知りたい（公開 URL を開いて確認する）。ジョブ化はテーブル・cron・メールが増え、MVP 方針に反する。一括送信を採らない（Non-goals）ので、1操作が複数件に伸びる処理は無い
+- 採用理由: 送信は WordPress への呼び出し（新規は POST 1 回、更新は GET と POST の直列。LLM なし）。通常は数秒で返り、待ちの上限は §8。ユーザーは結果をその場で知りたい（公開 URL を開いて確認する）。ジョブ化はテーブル・cron・メールが増え、MVP 方針に反する。一括は下書きの直列で、ジョブテーブルにはしない。初回はマウントしない（Q-002）
 - 却下した案と理由: 案B。Q-001 は押したときだけ、Q-002 の一括は1件送信の直列で、どちらもジョブにしない
 - 影響: 実装が小さい。送信アクションの予算は WordPress 待ち 60 秒に DB 更新を足した秒数。更新時は GET と POST の直列。`/analytics` は既存の `maxDuration = 800`（`app/analytics/page.tsx`）で足りる。`/chat` には同じ送信を載せる `app/chat/page.tsx` へ `export const maxDuration` を足し、60 秒の2回分より大きくする。新しい feature flag や停止テーブルは足さない（§13）。一括も同じ予算の中で直列に送り、超えそうなら残りを止める（BR-008）
 - 将来変更する条件: 1回の一括が `maxDuration = 800` に常に当たり、直列では足りないと分かったとき
@@ -779,7 +784,7 @@ Feature: 完成した記事を WordPress へ送る
 
 | ID | リスク | 発生条件・影響 | 対策 | 担当 | 状態 |
 | --- | --- | --- | --- | --- | --- |
-| R-001 | LLM が書いた本文を確認せずに公開してしまう | 公開状態で「公開」を選んだとき。誤情報の公開 | 既定を下書きにし、送信ボタンの文言を「公開する」に変える（BR-002）。Q-003 でクライアント確認 | 開発 | 対策済み（仕様） |
+| R-001 | LLM が書いた本文を確認せずに公開してしまう | 公開状態で「公開」を選んだとき。誤情報の公開 | 既定を下書きにし、送信ボタンの文言を「公開する」に変える（BR-002） | 開発 | 対策済み（仕様） |
 | R-002 | WordPress 作成成功・DB 更新失敗で、次の送信が新規作成になり WordPress に下書きが2件できる | DB 障害時。被害は余分な下書き1件（公開ではない） | `console.error` に `wpPostId` と行 ID を残す。ユーザーには「WordPress の投稿一覧を確認し、コンテンツの編集で WordPress 投稿 URL を入れてください」と出す（「再試行すれば同じ投稿を更新する」とは書かない。`wp_post_id` が残っていないため更新にならない）。送信前の WordPress 検索（slug 突合）は作らない | 開発 | 受容 |
 | R-003 | 予約投稿で `date_gmt` の扱いが想定と違う（`future` で日時必須か、過去日時で `publish` に変わるか） | 実機でしか分からない。公式未記載 | 実装時にセルフホストと WordPress.com の両方で確認し、結果を §9 に追記。想定と違えばレスポンスの `status` を正としてトーストと `wp_post_status` に反映する | 開発 | 未着手 |
 | R-004 | カテゴリが 500 件を超えるサイトで選択肢が足りない | `per_page=100` を最大5ページ | 5ページ（500件、名前順）まで取る。超えたら欄の下に「先頭 500 件を表示しています」と出す。不足の報告が出たら上限を上げる | 開発 | 受容 |
@@ -875,6 +880,7 @@ Feature: 完成した記事を WordPress へ送る
 | 0 | 2026-10-21 | 🔴 1 / 🟡 8 / 🟢 6。起票直後の読み合わせ（readonly。コードと公式ドキュメントの照合）。正式な `takt -w spec-review` でも `spec-audit` でもない | 本改訂で反映 | 正式レビューは回1に進んだ。OPEN-004（下書きが要約対象に入る）は受容 |
 | 1 | 2026-10-22 | 🔴 0 / 🟡 6 / 🟢 4。正式 audit（`docs/plans/.workflow/wordpress-auto-publish-spec/review/02-audit.md`） | 本改訂で反映 | Q-001〜Q-007 は未回答のまま。回答が無いのでステータスは `draft`（`approved` にしない）。OPEN-004 の受容は維持。残置合意の 🟡 は無し |
 | 2 | 2026-10-22 | 🔴 0 / 🟡 0 / 🟢 0。再監査（`02-audit-r2.md`）。判定 `approved_with_questions` | F-001〜F-010 は closed。finalize しない | Q-001〜Q-007 が未回答。回答を書き戻したあと spec-review ループを再実行する |
+| 3 | 2026-10-23 | 🔴 0 / 🟡 2 / 🟢 3。audit（`02-audit-r3.md`）。判定 `needs_fix` | 本改訂で F-011〜F-015 を反映。再監査はまだ | 残置合意の 🟡 は無し。ステータスは `draft`（`approved` にしない） |
 
 反映した指摘:
 
@@ -921,6 +927,19 @@ Feature: 完成した記事を WordPress へ送る
 - 実施。cycle 2 の再監査ではない
 - 参照 URL: Pages <https://developer.wordpress.org/rest-api/reference/pages/>（Last modified: October 14, 2026）。Roles and Capabilities の `edit_pages` と `publish_pages`（Last updated: September 2, 2026）。引用と解釈は §9
 
+#### 公式ドキュメント照合（cycle 3、確認日 2026-10-23）
+
+- 実施（`02-audit-r3.md`）
+- 参照 URL: Namespaces <https://developer.wordpress.com/docs/api/namespaces/>（Last updated: October 01, 2025）。Example Endpoints と Key Features の引用、サイト付き `/pages` の解釈は §9。送る URL は変えていない
+
+cycle 3 で反映した指摘（F-011〜F-015）:
+
+- F-011 🟡 予約の `datetime-local` はブラウザの壁時計。末尾 `Z` の UTC ISO 8601 にしてから Server Action へ渡す。サーバーは解釈し直さない。トーストと比較は変換前の壁時計。`Asia/Tokyo` 固定の既存表示との差を1行
+- F-012 🟡 一括の対象は未送信と `draft` だけ。`future`・`publish`・取込由来・固定ページとタイトル空はスキップ。予約を下書きに戻すのは1件ダイアログだけ。成功・スキップ理由・時間切れの残りを分ける
+- F-013 🟢 ALT-001 の採用理由は、一括は下書きの直列でジョブにしない。初回はマウントしない（Q-002）
+- F-014 🟢 Namespaces の Example Endpoints に `/wp/v2/pages` がある。サイト付き `/pages` は解釈。送る URL は変えない
+- F-015 🟢 §2 の Q-001、R-001、§5 の工数注釈を、回答済みの事実にした。ID を明示した
+
 ### 承認
 
 | 役割 | 氏名 | 判定 | 日付 | コメント |
@@ -940,3 +959,5 @@ Feature: 完成した記事を WordPress へ送る
 | 2026-10-23 | Q-005 の回答を依頼者の明示に合わせた。送信先は投稿と固定ページだけ。カスタム投稿タイプは出さない | 依頼「投稿と固定ページだけにする」。前の行は会話の解釈。この行で対象外を確定した | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | Q-001、Q-002、Q-003 を回答済みにした。送信は押したときだけ（チャットと一覧）。1件は下書き・公開・予約で既定は下書き。一括下書きは実装し初回は画面に出さない。見積は 47 時間 | 依頼者の決定（2026-10-23）。「公開しない」は、画面に出さないことと、一括では公開・予約・固定ページを送らないことの両方として書いた | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | Q-004、Q-006、Q-007 を回答済みにした。タイトル既定は見出し → `wp_post_title` まで（`main_kw` は使わない）。ロールは `admin` / `paid`。抜粋欄は入れない。確認質問はこれで全部回答済み | 依頼「全部一番推奨度の高いものでOK。004は見出し → wp_post_title まで」 | 開発（Cursor Cloud Agent） |
+| 2026-10-23 | cycle 3 の指摘（F-011〜F-015）を反映した。予約の壁時計、一括は未送信と `draft` だけ、ALT-001、Namespaces の `/pages`、回答済みの文。再監査はまだ。ステータスは `draft` | `02-audit-r3.md`。`approved` にしない | 開発（Cursor Cloud Agent） |
+| 2026-10-23 | spec-review 通過。F-011〜F-015（予約の壁時計、一括対象から future を外す、ALT-001、Namespaces の pages 例、回答済み文の残存）は解消済み | 仕様レビュー | spec-review |
