@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: spec-review 通過。見た目は既存フォームの写しで確定。送信 UI の4点（公開済みは info、再送の初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし）も回答済み。OPEN-001 は決着
+- 現在の工程: spec-review 通過。見た目は既存フォームの写しで確定。送信 UI の4点（公開済みは info、再送の初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし）も回答済み。正常応答の識別子と再送初期値の返却制約も明記済み。OPEN-001 は決着
 - 止まっている理由・待っている人: なし
 - 次の一手: `.takt/workflows/spec-to-pr.yaml` で実装（`takt -w spec-to-pr -t "docs/plans/wordpress-auto-publish-spec.md 仕様書に沿って実装してください"`）
 - 未確認事項: なし
 - 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）、PR #691
-- 更新日・更新した工程: 2026-10-23 送信 UI の決定4点を書き戻し（実装前）
+- 更新日・更新した工程: 2026-10-23 レビュー指摘2件（応答の識別子・再送初期値の返却）を反映（実装前）
 
 ## 0. 依頼時の参考資料との差分（先に読む）
 
@@ -237,7 +237,10 @@
   - `categoryIds`: 整数配列、任意。`contentType` が `posts` のときだけ送り、`fetchCategories` の結果に含まれる ID だけを通す。`pages` のときは空として扱い、カテゴリは送らない
   - `slug`: 任意。空なら送らない（WordPress が生成）。空でなければそのまま `slug` に載せる。文字種の拒否はしない（WordPress 側に任せる）。長さの上限を足すならタイトルと同じ 200 文字（§9。Posts schema の slug は "An alphanumeric identifier for the post unique to its type." で、上限の記載は無い。確認日 2026-10-22）
   - Zod スキーマは新規の `src/server/actions/wordpressPublish.actions.ts` の近くに置き、Server Action の入口で検証する（`nextjs-server` 規約）
-- 正常時の出力: `{ success: true, data: { wpPostId, status, link } }`。トースト「WordPress に下書きを送信しました」「WordPress で公開しました」「WordPress に予約しました（10/28 10:00）」を結果の文だけで表示し、WordPress へのリンク（URL）は付けない。応答の `link` は DB の同期に使う。予約トーストの「10/28 10:00」は、UTC へ変換する前の壁時計である
+- 正常時の出力: `{ success: true, data: { outcome, wpPostId, status, link } }`。`outcome` は `sent` または `already_published` とする。
+  - `outcome = sent`: WordPress への作成・更新と DB 反映が完了した場合。`status` に応じてトースト「WordPress に下書きを送信しました」「WordPress で公開しました」「WordPress に予約しました（10/28 10:00）」を結果の文だけで表示し、WordPress へのリンク（URL）は付けない。予約トーストの「10/28 10:00」は、UTC へ変換する前の壁時計である
+  - `outcome = already_published`: 更新前の確認で WordPress 側が公開済みだった場合。WordPress への更新は行わず、DB 同期後に `status = publish` と `link` を返す。フォームの上にお知らせ（info）の `Alert variant="default"` を表示し、フォームは送信不可にして元画面の該当行を再取得する。ダイアログは開いたまま閉じる操作を出し、完了トーストは出さない（S-13）
+  - 応答の `link` は DB の同期に使う。`status = publish` でも、`outcome` で公開成功と公開済み同期を区別する
 - エラー・お知らせの出力（エラーは `ServerActionResult` の `error`。公開済み同期はエラーにせず、お知らせ（info）として扱う）:
 
   | 原因 | ユーザー向け表示 | 表示方法 | 次の操作 | DB |
@@ -436,12 +439,14 @@ Feature: 完成した記事を WordPress へ送る
     When 公開状態で「公開」を選び「公開する」を押す
     Then WordPress に公開済みの投稿が1件できる
     And 該当行に公開 URL とタイトルと「公開」が記録される
+    And 正常応答は outcome が sent、status が publish である
     And 完了トーストに WordPress へのリンク・URL は付かない
 
   Scenario Outline: S-05 再送は現在の状態と予約済み日時を初期値にし、重複を作らない
     Given ある行が「<状態>」として送信済みである
     When 同じ行から再度「WordPress に投稿」を開く
     Then 公開状態の初期値は WordPress 側の現在の「<公開状態>」である
+    And 既定値取得の応答に再送時の現在の状態と、予約の場合は予約済み日時が含まれる
     And 予約の場合、公開日時の初期値は予約済み日時をブラウザのローカル壁時計へ変換した値である
     When 状態と日時を変えずに「<送信ボタン>」を押す
     Then WordPress の投稿は増えず、同じ投稿のタイトルと本文が更新される
@@ -511,6 +516,7 @@ Feature: 完成した記事を WordPress へ送る
     And その投稿は WordPress 側で公開済みである
     When 同じ行から「下書きとして送信（更新）」を押す
     Then WordPress の本文は変わらない
+    And DB 同期後の正常応答は outcome が already_published、status が publish である
     And フォームの上にお知らせ（info）の Alert で「すでに WordPress で公開されています」と表示され、赤いエラーにはならない
     And フォームは送信不可で、閉じる操作ができ、完了トーストは出ない
     And 該当行の公開状態とタイトルと公開 URL が WordPress 側の値に同期され、URL 列に公開 URL が入る。タイトル列の「下書き」は消える
@@ -584,7 +590,7 @@ Feature: 完成した記事を WordPress へ送る
 | --- | --- | --- | --- |
 | 性能・レイテンシ | 新規作成は WordPress への POST 1回（`/posts` または `/pages`）。更新は確認の `GET /wp/v2/{type}/{id}?context=edit` 1回のあと POST 1回（直列。`{type}` は保存済みの `wp_post_type`）。既定値取得は `session_combined_contents` 1行と、送信先が `posts` のときだけ `GET /wp/v2/categories`（`per_page=100`、`X-WP-TotalPages` に従い最大5ページ）。固定ページではカテゴリ取得をしない。WordPress 1リクエストの上限は既存の `REST_FETCH_TIMEOUT_MS`（60 秒）。送信アクションの予算は WordPress 待ち 60 秒に DB 更新を足した秒数。更新時は GET と POST で 60 秒が2回。`/analytics` は既存の `maxDuration = 800`（`app/analytics/page.tsx`）で足りる。`/chat` には同じ送信を載せる `app/chat/page.tsx` へ `export const maxDuration` を足し、60 秒の2回分より大きくする。新しい feature flag や停止テーブルは足さない（§13）。LLM は呼ばない | 実 WordPress で計測 | 案 |
 | 可用性・信頼性 | 更新の失敗は再送で回復する（同じ ID）。作成の 5xx・タイムアウトは自動リトライも「再試行」も出さない（作成済みか分からず重複するため）。POST の `rest_route` 再送は JSON でない 403 / 404 のときだけ | S-05, S-07 | 案 |
-| セキュリティ・プライバシー | 認証情報は `wordpress_settings` から Server Action 内でだけ読む。クライアントへ返すのは既定値（タイトル候補、見出し数、文字数、カテゴリ名と ID）と送信結果（`wpPostId` / `status` / `link`）だけ。サイト URL と認証情報は返さない。本文 HTML の防御は GrowMate 側だけが担う。`unfiltered_html` の根拠（確認日 2026-10-22。<https://wordpress.org/documentation/article/roles-and-capabilities/>。全文は §9）: "Allows user to post HTML markup or even JavaScript code in pages, posts, comments and widgets." 単一サイトでは Editor も持つ（Editor の能力一覧に "unfiltered_html (not with Multisite)"）。"Note: In WordPress Multisite, only Super Admins have the `unfiltered_html` capability." 解釈: 主体は管理者に限らない。コアの `wp_kses_post` が `<script>` を落とす保証は無い。エスケープとリンク先の制限は変えない。`marked` 18 は出力 HTML をサニタイズしない（README の警告。sanitize オプションは無い）。`markdownToWordPressHtml` は raw HTML トークンをエスケープしてテキストとして出し、リンクの href は `http:` / `https:` / `mailto:` と相対パスだけを通す。`<script>` と `javascript:` を単体テストで固定する | 単体テスト | 案 |
+| セキュリティ・プライバシー | 認証情報は `wordpress_settings` から Server Action 内でだけ読む。クライアントへ返すのは既定値（タイトル候補、見出し数、文字数、カテゴリ名と ID、再送時の WordPress 側の現在の状態と予約済み日時）と送信結果（`outcome` / `wpPostId` / `status` / `link`）だけ。再送の初期値用に、保存済みタイプの `fetchPost` で取得した `status` と、`future` の場合は `date_gmt` を UTC と明示した日時として返す。ブラウザで予約済み日時をローカル壁時計へ変換し、§6 の公開状態・公開日時の初期値に使う。サイト URL と認証情報は返さない。本文 HTML の防御は GrowMate 側だけが担う。`unfiltered_html` の根拠（確認日 2026-10-22。<https://wordpress.org/documentation/article/roles-and-capabilities/>。全文は §9）: "Allows user to post HTML markup or even JavaScript code in pages, posts, comments and widgets." 単一サイトでは Editor も持つ（Editor の能力一覧に "unfiltered_html (not with Multisite)"）。"Note: In WordPress Multisite, only Super Admins have the `unfiltered_html` capability." 解釈: 主体は管理者に限らない。コアの `wp_kses_post` が `<script>` を落とす保証は無い。エスケープとリンク先の制限は変えない。`marked` 18 は出力 HTML をサニタイズしない（README の警告。sanitize オプションは無い）。`markdownToWordPressHtml` は raw HTML トークンをエスケープしてテキストとして出し、リンクの href は `http:` / `https:` / `mailto:` と相対パスだけを通す。`<script>` と `javascript:` を単体テストで固定する | 単体テスト | 案 |
 | 認証・認可 | `admin` / `paid`。Server Action で `hasPaidFeatureAccess` と行の所有者検証。§6 権限 | S-11 | 案 |
 | 監査・ログ | 送信の成否と `wpPostId`・行 ID を `console.info` / `console.error` に残す（本文・認証情報は出さない）。専用テーブルは作らない | ログ確認 | 案（Non-goals） |
 | 障害対応 | 更新の失敗と更新の 5xx は再送で対応する。作成の 5xx・タイムアウトは WordPress 側の投稿一覧をユーザーが確認する。作成成功・DB 更新失敗は R-002 | S-07, S-14 | 案 |
@@ -842,7 +848,7 @@ Feature: 完成した記事を WordPress へ送る
 | Q-005 | 送信先の投稿タイプは `posts`（投稿）固定でよいか | 取込は複数タイプを扱う。固定ページとカスタム投稿を全部出せば選択 UI と REST の分岐が増える | 依頼者 | 2026-10-23 | 回答済み | 投稿（`posts`）と固定ページ（`pages`）だけ。既定は投稿。作成後は変えない。同日の追認「投稿と固定ページだけにする」で、カスタム投稿タイプは出さない。添付・リビジョン・メニュー・カスタム CSS も対象外。固定ページの親は選ばない（最上位として作る） | 2026-10-23 |
 | Q-006 | 送信対象ロールは `admin` / `paid` でよいか（`trial` に体験させる意図はないか） | AGENTS.md の既定。`trial` に出す場合は理由と承認が要る。`/analytics` は現状 `trial` が入れない | 依頼者 | 2026-10-23 | 回答済み | `admin` と `paid` だけ。`trial` には出さない。チャットはメニューを隠し、Server Action でも止める。WordPress.com 連携の保存が `admin` だけの既存制限は変えない | 2026-10-23 |
 | Q-007 | 投稿ダイアログに抜粋（`excerpt`）を入れるか | 起票時は入れていた。SEO の説明文と誤解され、要件にも無いため Non-goals に移した。マーケターが WordPress 標準の抜粋を GrowMate から入れたいなら戻す | 依頼者 | 2026-10-23 | 回答済み | 入れない。抜粋は WordPress 側で付ける | 2026-10-23 |
-| Q-008 | 送信 UI の公開済み表示・再送初期値・未連携と完成形なしの表示・完了トーストのリンクをどうするか | 状態別 UI とエラー表、受入条件をそろえるため | 依頼者 | 2026-10-23 | 回答済み | WordPress 側で公開済みなら DB を同期し、お知らせ（info）で表示。再送は現在の下書き / 予約と予約済み日時を初期値。未連携・完成形なしはフォームの上に Alert。完了トーストに WordPress へのリンク（URL）は付けない。OPEN-001 は決着 | 2026-10-23 |
+| Q-008 | 送信 UI の公開済み表示・再送初期値・未連携と完成形なしの表示・完了トーストのリンクをどうするか | 状態別 UI とエラー表、受入条件をそろえるため | 依頼者 | 2026-10-23 | 回答済み | WordPress 側で公開済みなら DB を同期し、お知らせ（info）で表示。再送は現在の下書き / 予約と予約済み日時を初期値。未連携・完成形なしはフォームの上に Alert。完了トーストに WordPress へのリンク（URL）は付けない。正常応答の `outcome` は送信完了が `sent`、公開済み同期が `already_published`。既定値の返却には再送時の現在の状態と予約済み日時も含める（レビュー指摘2件への依頼者の修正指示）。OPEN-001 は決着 | 2026-10-23 |
 
 ### 未決定事項・決着済み事項
 
@@ -1005,3 +1011,4 @@ cycle 3 で反映した指摘（F-011〜F-015）:
 | 2026-10-23 | 実施の枠を 5 人日（40 時間）にした。人の仮置き 47 時間（幅 47〜52）は残す。範囲は削らない | 依頼者「5日にする」（2026-10-23）。40 時間は、仕様を渡して実装し、実装側 42 時間を約 3 割減、検証 5 時間はそのまま、とした枠。手戻りで 40 時間を超える分と本番リリースは枠外 | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | PR #691 の未解決指摘を仕様へ反映。404 の解除は `rest_post_invalid_id` だけ。並行送信は `wp_publish_claimed_at` で1件に制限。WordPress.com は更新済みトークンを cookie より優先。予約のタイムゾーンは F-011 のまま | Codex と Bugbot のレビューコメント。工数の 47 時間と 5 人日の枠は変えない | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | 送信 UI の未決事項4点を反映。公開済みは DB 同期と info 表示、再送は現在の状態と予約済み日時を初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし。FR・状態別 UI・エラー表・S-01 / S-03 / S-04 / S-05 / S-07 / S-08 / S-13 を同期し、Q-008 を回答済み、OPEN-001 を決着済みにした | 依頼者の決定（2026-10-23） | 開発（Codex） |
+| 2026-10-23 | 正常応答に `outcome: sent / already_published` を明記し、公開成功の完了トーストと公開済み同期のお知らせ表示を区別。返却制約に再送時の現在の状態と予約済み日時を追加し、ダイアログ初期値・S-04 / S-05 / S-13・Q-008 と整合させた | レビュー指摘2件（応答の識別子・再送初期値の返却）への依頼者の修正指示 | 開発（Codex） |
