@@ -880,7 +880,7 @@ Feature: 完成した記事を WordPress へ送る
 | 0 | 2026-10-21 | 🔴 1 / 🟡 8 / 🟢 6。起票直後の読み合わせ（readonly。コードと公式ドキュメントの照合）。正式な `takt -w spec-review` でも `spec-audit` でもない | 本改訂で反映 | 正式レビューは回1に進んだ。OPEN-004（下書きが要約対象に入る）は受容 |
 | 1 | 2026-10-22 | 🔴 0 / 🟡 6 / 🟢 4。正式 audit（`docs/plans/.workflow/wordpress-auto-publish-spec/review/02-audit.md`） | 本改訂で反映 | Q-001〜Q-007 は未回答のまま。回答が無いのでステータスは `draft`（`approved` にしない）。OPEN-004 の受容は維持。残置合意の 🟡 は無し |
 | 2 | 2026-10-22 | 🔴 0 / 🟡 0 / 🟢 0。再監査（`02-audit-r2.md`）。判定 `approved_with_questions` | F-001〜F-010 は closed。finalize しない | Q-001〜Q-007 が未回答。回答を書き戻したあと spec-review ループを再実行する |
-| 3 | 2026-10-23 | 🔴 0 / 🟡 2 / 🟢 3。audit（`02-audit-r3.md`）。判定 `needs_fix` | 本改訂で F-011〜F-015 を反映。再監査はまだ | 残置合意の 🟡 は無し。ステータスは `draft`（`approved` にしない） |
+| 3 | 2026-10-23 | 🔴 0 / 🟡 2 / 🟢 3。audit（`02-audit-r3.md`）。判定 `needs_fix`。再確認（`02-audit-r3b.md`）は 🔴 0 / 🟡 0 / 🟢 0 で `approved` | F-011〜F-015 は反映済みで closed。finalize でステータスを `approved` にした | 残置合意の 🟡 は無し |
 
 反映した指摘:
 
