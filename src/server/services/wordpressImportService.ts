@@ -379,8 +379,8 @@ export async function importWordPressContent({
         ...(nextPostType !== null ? { wp_post_type: nextPostType } : {}),
         ...(nextContent !== null ? { wp_content_text: nextContent } : {}),
         ...(nextImageCount !== null ? { wp_image_count: nextImageCount } : {}),
+        wp_post_status: 'publish',
       };
-      Object.assign(data, { wp_post_status: 'publish' as const });
 
       if (assignment) {
         updates.push({ id: assignment.existing.id, data });

@@ -22,6 +22,7 @@ import {
   ResolveCanonicalParams,
   ExistingAnnotationData,
   SaveWordPressSettingsParams,
+  toWordPressPostStatus,
 } from '@/types/wordpress';
 import type { TablesUpdate } from '@/types/database.types';
 import {
@@ -605,17 +606,16 @@ export async function upsertContentAnnotationBySession(
     if (canonicalProvided) {
       const { data: existingData, error: existingError } = await client
         .from('content_annotations')
-        .select('*')
+        .select('canonical_url, wp_post_id, wp_post_title, wp_post_status')
         .eq('user_id', sessionOwnerId)
         .eq('session_id', payload.session_id)
         .maybeSingle();
       if (!existingError && existingData) {
-        const typed = existingData as unknown as ExistingAnnotationData;
         existingAnnotation = {
-          canonical_url: typed.canonical_url ?? null,
-          wp_post_id: typed.wp_post_id ?? null,
-          wp_post_title: typed.wp_post_title ?? null,
-          wp_post_status: typed.wp_post_status ?? null,
+          canonical_url: existingData.canonical_url ?? null,
+          wp_post_id: existingData.wp_post_id ?? null,
+          wp_post_title: existingData.wp_post_title ?? null,
+          wp_post_status: toWordPressPostStatus(existingData.wp_post_status),
         };
 
         const existingCanonicalRaw = (existingAnnotation.canonical_url ?? '').trim();
@@ -732,9 +732,9 @@ export async function upsertContentAnnotationBySession(
         : {}),
     };
     if (canonicalProvided && resolvedWpId === null) {
-      Object.assign(upsertPayload, { wp_post_status: null });
+      upsertPayload.wp_post_status = null;
     } else if (canonicalProvided && resolvedWpStatus) {
-      Object.assign(upsertPayload, { wp_post_status: resolvedWpStatus });
+      upsertPayload.wp_post_status = resolvedWpStatus;
     }
 
     const { error } = await client
@@ -1071,7 +1071,7 @@ export async function updateContentAnnotationFields(
       if (resolvedWpId !== undefined) {
         updateData.wp_post_id = resolvedWpId ?? null;
         if (resolvedWpId === null) {
-          Object.assign(updateData, { wp_post_status: null });
+          updateData.wp_post_status = null;
         }
       }
       if (resolvedWpTitle !== undefined && resolvedWpTitle !== null) {

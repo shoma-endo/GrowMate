@@ -12,7 +12,6 @@ import { WordPressPublishService } from '@/server/services/wordpressPublishServi
 import { buildWordPressServiceFromSettings } from '@/server/services/wordpressContext';
 import { resolveWpComAccessToken } from '@/server/services/wordpressContentSync';
 import { analyticsContentService } from '@/server/services/analyticsContentService';
-import { asContentAnnotationPublishClient } from '@/types/database.types.pending';
 
 const publishService = new WordPressPublishService();
 const supabaseService = new SupabaseService();
@@ -28,7 +27,7 @@ async function authorizePublish() {
 }
 
 async function ownsPublishTarget(userId: string, annotationId?: string, sessionId?: string): Promise<boolean> {
-  const client = asContentAnnotationPublishClient(supabaseService.getClient());
+  const client = supabaseService.getClient();
   if (annotationId) {
     const { data } = await client.from('content_annotations').select('id').eq('id', annotationId).eq('user_id', userId).maybeSingle();
     return Boolean(data);
@@ -146,7 +145,7 @@ export async function publishWordPressDraftsBulk(input: unknown) {
   const targetIds = parsed.data.mode === 'ids'
     ? [...new Set(parsed.data.contentAnnotationIds)]
     : (await analyticsContentService.resolveAllAnnotationIds(auth.userId, 1000))?.ids.filter(id => !(parsed.data.mode === 'all' && parsed.data.excludedIds?.includes(id))) ?? [];
-  const client = asContentAnnotationPublishClient(supabaseService.getClient());
+  const client = supabaseService.getClient();
   const { data: rows } = await client.from('content_annotations').select('*').eq('user_id', auth.userId).in('id', targetIds);
   const settings = await supabaseService.getWordPressSettingsByUserId(auth.userId);
   if (!settings) return { success: false as const, error: ERROR_MESSAGES.WORDPRESS.PUBLISH_NOT_CONNECTED };

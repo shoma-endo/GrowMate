@@ -16,6 +16,16 @@ export function toWordPressAutoImportStatus(value: string | null): WordPressAuto
     : null;
 }
 
+/** `content_annotations.wp_post_status` の CHECK 制約と同じ値。生成型は CHECK を反映せず string になる */
+const WORDPRESS_POST_STATUSES = ['draft', 'future', 'publish'] as const;
+type WordPressPostStatus = (typeof WORDPRESS_POST_STATUSES)[number];
+
+export function toWordPressPostStatus(value: string | null): WordPressPostStatus | null {
+  return (WORDPRESS_POST_STATUSES as readonly string[]).includes(value ?? '')
+    ? (value as WordPressPostStatus)
+    : null;
+}
+
 export interface WordPressSettings {
   id?: string | undefined;
   userId: string;

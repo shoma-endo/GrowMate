@@ -147,6 +147,24 @@ describe('WordPressPublishService', () => {
     ]));
   });
 
+  it('WordPressが想定外の状態を返したら、状態をDBに書かずに作成不明として返す', async () => {
+    const updates: unknown[] = [];
+    mocks.client = makeClient(true, updates);
+    mocks.createPost.mockResolvedValueOnce({ id: 123, status: 'pending', link: 'https://example.com/article', title: 'Article' });
+    const service = new WordPressPublishService();
+    vi.spyOn(service, 'getDefaults').mockResolvedValue(defaults);
+
+    const result = await service.publish('user-1', { userId: 'user-1', wpType: 'self_hosted' }, () => undefined, {
+      annotationId: 'annotation-1',
+      title: 'Article',
+      contentType: 'posts',
+      status: 'draft',
+    });
+
+    expect(result).toEqual({ success: false, error: ERROR_MESSAGES.WORDPRESS.PUBLISH_CREATE_UNCERTAIN, recovery: 'close' });
+    expect(updates).not.toContainEqual(expect.objectContaining({ wp_post_status: expect.anything() }));
+  });
+
   it('claimを取れない新規投稿ではWordPressへPOSTしない', async () => {
     mocks.client = makeClient(false, []);
     const service = new WordPressPublishService();
