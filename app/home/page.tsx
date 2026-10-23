@@ -17,8 +17,7 @@ export const metadata: Metadata = {
 const SUPPORT_EMAIL = 'support@dreamplanner.co.jp';
 
 const PAIN_POINTS = [
-  '地域別のページや料金相場の記事は、AI で何十本、何百本と作れるようになった。',
-  'でも、どの記事が読まれていて、どれが問い合わせにつながっているかは、誰も見ていない。',
+  'どの記事が読まれていて、どれが問い合わせにつながっているかは、誰も見ていない。',
   '小さな会社のホームページの「お知らせ」は、ほとんど見られない。だから Instagram で発信しているけれど、今度はブログが止まる。',
   '検索順位は見ている。でも、順位が上がっても電話は鳴らない。',
 ] as const;
@@ -202,7 +201,7 @@ export default function LandingPage() {
         <section className="py-24 bg-gray-50">
           <div className="mx-auto w-full max-w-7xl px-4">
             <HomeSectionHeading title="AI で記事は作れる。でも、その後の管理は誰が？" />
-            <div className="grid md:grid-cols-2 gap-8">
+            <div className="grid md:grid-cols-3 gap-8">
               {PAIN_POINTS.map(point => (
                 <HomeCard key={point}>
                   <p className="text-gray-600 leading-relaxed">{point}</p>
