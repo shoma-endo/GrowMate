@@ -12,7 +12,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "supabase:types": "supabase gen types typescript --schema public > src/types/database.types.ts",
+    "supabase:types": "bash scripts/gen-supabase-types.sh",
     "db:stats": "tsx scripts/check-db-stats.ts",
     "vercel:stats": "tsx scripts/check-vercel-stats.ts",
     "active:users": "tsx scripts/check-active-users.ts",
