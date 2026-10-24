@@ -1,6 +1,25 @@
 # ローカル TAKT 用。Cloud 無人の主系は cloud-agent-unattended Skill（TAKT CLI ではない）。
-# provider/model 割当は ~/.takt/runtime.yaml が正本（config.yaml に書くと doctor が mixed provider で落ちる）。
+# provider/model 割当は .takt/runtime.yaml が正本（config.yaml に書くと doctor が mixed provider で落ちる）。
 base_branch: develop
+# takt run / takt watch で失敗したタスクを1回だけ自動で積み直す。2回目の失敗は積み直さずに止まり、
+# TAKT_NOTIFY_WEBHOOK があれば run summary で通知される（docs/runbooks/takt-overnight-preflight.md）。
+auto_requeue_max_attempts: 1
+# 権限の解決順は project の step 上書き > global の step 上書き > project の既定 > global の既定。
+# full（Claude では bypassPermissions）はどこにも書かない。scripts/takt-preflight.sh が inspect の解決結果で検査する。
+provider_profiles:
+  claude-sdk:
+    default_permission_mode: edit
+    step_permission_overrides:
+      plan: readonly
+      ai_antipattern_review: readonly
+      architecture_review: readonly
+      frontend_review: readonly
+      review: readonly
+      self_review: readonly
+      final_gate: readonly
+      prepare_pr_summary: readonly
+      identify: readonly
+      audit: readonly
 workflow_command_gates:
   custom_scripts: true
 workflow_runtime_prepare:

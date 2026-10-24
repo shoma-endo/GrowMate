@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "reason_1_to_3_lines": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "captured",
+        "not_applicable",
+        "cannot_capture"
+      ],
+      "description": "captured=スクリプトが計測とスクリーンショットを出した（はみ出しの有無は問わない） / not_applicable=plan.md の UIモック: が対象外で UI 変更がない / cannot_capture=UI 変更があるのにスクリプトが終了コード3で採取できなかった"
+    }
+  },
+  "required": [
+    "reason_1_to_3_lines",
+    "verdict"
+  ],
+  "additionalProperties": false
+}

@@ -1,4 +1,4 @@
-下記に全文添付されたレビュー2本（`ai-antipattern-review.md` / `architecture-review.md`）を一次情報として、未解決の指摘だけをまとめて修正してください。実装規約の正本は implement ステップと同じ `.agents/skills/`（`implementation-guidelines` / `nextjs-server` / `growmate-ui-ux` / `react` / `supabase`）。
+下記に全文添付されたレビュー（`ai-antipattern-review.md` / `architecture-review.md`、選ばれた回は `frontend-review.md`）を一次情報として、`review-gate.md` の `unresolved_finding_ids` に挙がった未解決の指摘だけをまとめて修正してください。実装規約の正本は implement ステップと同じ `.agents/skills/`（`implementation-guidelines` / `nextjs-server` / `growmate-ui-ux` / `react` / `supabase`）。
 
 必須条件:
 - 対象仕様書は添付 `plan.md` の `# タスク計画` 直後の `対象仕様書:` 行のパス。修正着手前にその現行版を確認し、レビュー指摘の範囲を超える仕様変更がないか確認する。`docs/plans/` を列挙・推測しない。ヘッダ欠落、またはレビュー指摘が plan.md ヘッダ欠落・「UI 既存パターン対照表」の欠落のみの場合は、コードを直さず `info_missing`。
@@ -21,3 +21,9 @@
 
 ## architecture-review.md（全文）
 {report:architecture-review.md}
+
+## frontend-review.md（選ばれていない回は欠落文でよい）
+{report:frontend-review.md}
+
+## review-gate.md（全文。未解決として扱う finding_id の正本）
+{report:review-gate.md}

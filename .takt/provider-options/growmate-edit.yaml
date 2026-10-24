@@ -1,0 +1,9 @@
+# 実装・修正・git / gh 用。builtin の `edit` から Web を外し、許可ツールを明示する。
+claude:
+  allowed_tools:
+    - Read
+    - Glob
+    - Grep
+    - Edit
+    - Write
+    - Bash
