@@ -2,7 +2,7 @@
  *   npm run takt:ui-evidence -- --out <dir> --pair /app/target=/app/existing [--pair ...] [--base-url http://localhost:3000]
  *
  * --base-url が無ければ next dev を起動する。takt run の clone には .env.local が無いため TAKT_UI_ENV_FILE を渡す。
- * ログイン状態は TAKT_UI_STORAGE_STATE の Playwright storageState。
+ * env ファイルと storageState の中身（環境変数・セッション cookie）は出力しない。
  *
  * 終了コード: 0 = 対象画面にはみ出しなし / 2 = はみ出しあり / 3 = 採取できない。
  * 既存の類似画面のはみ出しは終了コードに含めない（今回の差分による回帰ではないため）。

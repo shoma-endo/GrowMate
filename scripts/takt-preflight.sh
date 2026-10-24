@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #   ./scripts/takt-preflight.sh [--ui] [--verify]
 #   --ui: UI 証跡の前提を必須にする / --verify: 土台で npm run verify が通るかも見る（約10分）
+# 夜通しのログに残るので、秘密の値は読まない・出さない。env ファイルとログイン状態は存在だけを見る。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

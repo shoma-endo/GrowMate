@@ -2,6 +2,7 @@
 # provider/model 割当は .takt/runtime.yaml が正本（config.yaml に書くと doctor が mixed provider で落ちる）。
 base_branch: develop
 auto_requeue_max_attempts: 1
+# 解決順は project の step 上書き > global の step 上書き > project の既定。global に claude-sdk の step 上書きがあるため、ここで step を明示する
 provider_profiles:
   claude-sdk:
     default_permission_mode: edit
