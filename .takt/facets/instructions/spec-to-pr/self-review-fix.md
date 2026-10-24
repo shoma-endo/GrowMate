@@ -1,4 +1,4 @@
-下記に全文添付された `self-review.md` の未解決指摘を一次情報として修正してください。architecture review は収束済みのため、同じ確認を繰り返さないでください。新しい architecture / antipattern 指摘を発明しないでください。
+下記に全文添付された `self-review.md` の未解決指摘と、final gate が `REJECT` した場合は `review-resolution.md` の未解消の問題を一次情報として修正してください。architecture review は収束済みのため、同じ確認を繰り返さないでください。新しい architecture / antipattern 指摘を発明しないでください。
 
 必須条件:
 - 対象仕様書は添付 `plan.md` の `# タスク計画` 直後の `対象仕様書:` 行のパス。修正着手前にその現行版を確認し、指摘の範囲を超える仕様変更がないか確認する。`docs/plans/` を列挙・推測しない。ヘッダ欠落、または指摘が plan.md ヘッダ欠落のみの場合は、コードを直さず `info_missing`。
@@ -17,6 +17,9 @@
 
 ## self-review.md（全文）
 {report:self-review.md}
+
+## review-resolution.md（final gate の判定。final gate 前は欠落文でよい）
+{report:review-resolution.md}
 
 ## architecture-review.md（全文・参考。APPROVE 済みの前提を崩さない）
 {report:architecture-review.md}

@@ -1,6 +1,33 @@
 # ローカル TAKT 用。Cloud 無人の主系は cloud-agent-unattended Skill（TAKT CLI ではない）。
-# provider/model 割当は ~/.takt/runtime.yaml が正本（config.yaml に書くと doctor が mixed provider で落ちる）。
+# provider/model 割当は .takt/runtime.yaml が正本（config.yaml に書くと doctor が mixed provider で落ちる）。
 base_branch: develop
+auto_requeue_max_attempts: 1
+# 解決順は project の step 上書き > global の step 上書き > project の既定。global に claude-sdk の step 上書きがあるため、ここで step を明示する
+provider_profiles:
+  claude-sdk:
+    default_permission_mode: edit
+    step_permission_overrides:
+      plan: readonly
+      seed_reports: readonly
+      # edit（acceptEdits）は allowed_tools に無い Edit / Write も自動承認する。loop judge は合成 step 名で引かれる
+      _loop_judge_ui_evidence_reviewers_review_fix: readonly
+      _loop_judge_reviewers_review: readonly
+      _loop_judge_self_review_self_review_fix_ui_evidence_recheck: readonly
+      _loop_judge_self_review_fix_ui_evidence_recheck_self_review_final_gate: readonly
+      ai_antipattern_review: readonly
+      architecture_review: readonly
+      frontend_review: readonly
+      review: readonly
+      self_review: readonly
+      final_gate: readonly
+      prepare_pr_summary: readonly
+      identify: readonly
+      audit: readonly
+# global の fallback 先（codex / cursor）には claude-sdk の provider_profiles が効かない（cursor は full になる）
+rate_limit_fallback:
+  switch_chain:
+    - provider: claude-sdk
+      model: sonnet
 workflow_command_gates:
   custom_scripts: true
 workflow_runtime_prepare:

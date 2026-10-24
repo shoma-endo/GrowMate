@@ -26,6 +26,7 @@
     "verify:agent-skills": "bash scripts/verify-agent-skills.sh",
     "verify:doc-paths": "bash scripts/check-doc-paths.sh",
     "verify:ui-text": "bash scripts/check-ui-text.sh",
+    "takt:ui-evidence": "tsx scripts/takt-ui-evidence.ts",
     "spec-html:refresh": "python3 scripts/spec-html.py refresh --all",
     "prepare": "husky"
   },
@@ -92,6 +93,7 @@
     "eslint-config-next": "^16.4.1",
     "husky": "^9.1.7",
     "knip": "^6.39.0",
+    "playwright": "1.63.0",
     "postcss": "^8.5.29",
     "supabase": "^2.119.0",
     "tailwindcss": "^4.3.3",
