@@ -14,22 +14,18 @@ workflow_config:
   runtime:
     prepare:
       - scripts/takt-check-provider-auth.sh
-# seed_reports 1 + happy path 13 step + レビュー往復 2周（ui_evidence・reviewers・review・fix・judge で 5 × 2）
-# + self_review 往復 2周（self_review_fix・ui_evidence_recheck・self_review で 3 × 2 + judge）
-# + final gate 往復 2周（4 × 2 + judge）= 40。根拠の無い承認のやり直し分を足して 45。
+# seed 1 + happy path 13 + レビュー往復 5×2 + self_review 往復 3×2+1 + final gate 往復 4×2+1 = 40、根拠の無い承認のやり直し分で 45。
 # 実行時間の上限は TAKT に run 全体のキーが無いため scripts/takt-overnight.sh が持つ。
 max_steps: 45
 initial_step: seed_reports
 loop_monitors:
-  # 同じ finding_id を2回差し戻したら3周目の reviewers の前に止める。
-  # ui_evidence を cycle に入れ、続行の遷移先を ui_evidence にする（fix の後に証跡を撮り直さずに reviewers へ進ませない）
+  # ui_evidence を cycle に入れるのは、続行時に証跡を撮り直さず reviewers へ進ませないため
   - cycle:
       - ui_evidence
       - reviewers
       - review
       - fix
-    # judge が続行を返すと検出の履歴が消えるため、2 にすると同じ finding_id の3回目の差し戻しまで止まらない。
-    # 毎周 judge を入れ、回数は review-history.md で数える
+    # judge が続行を返すと検出の履歴が消え、2 では3回目の差し戻しまで止まらない。回数は review-history.md で数える
     threshold: 1
     judge:
       persona: supervisor
@@ -60,7 +56,7 @@ loop_monitors:
           appendix: |
             同じ指摘の差し戻しが2回続いたため、3周目に入らず止めました。人間が次を判断してください。
             - {finding_id}: {何が足りないか。仕様の欠落・判断材料・手で確かめるべきこと}
-  # 根拠の無い承認が2回続いたら止める（reviewers をやり直しても根拠が出てこない）。
+  # reviewers をやり直しても根拠が出てこないため、根拠の無い承認が2回続いたら止める
   - cycle:
       - reviewers
       - review
@@ -140,11 +136,8 @@ loop_monitors:
             - {問題ID}: {何が足りないか}
 
 steps:
-  # 前の周のレポートを参照する step（reviewers の follow-up・review・self_review_fix・prepare_pr_summary・
-  # record_pr_comments）は、1周目にはまだ producer が走っていない。TAKT 0.71 の doctor は全経路で先に作られた
-  # レポートしか参照を認めないため、最初に1回だけ、実行時の欠落文と同じ1行でこれらを作っておく。
-  # 本物の producer が走ると同じ名前で上書きされ、2周目以降はこれまでどおり前の周のレポートを読む。
-  # plan などの再入り口に置くと、本物の記録を欠落文で上書きしてしまうため initial_step 専用にする。
+  # TAKT 0.71 の doctor は全経路で先に作られたレポートしか参照を認めないため、前の周のレポートを読む step 用に
+  # 欠落文と同じ1行で先に作る。再入り口に置くと本物の記録を上書きするため initial_step 専用。
   - name: seed_reports
     tags:
       - report
@@ -263,7 +256,6 @@ steps:
           format: coder-decisions
         - name: implement-report.md
           format: implementation-report
-  # fix・implement の後は必ずここを通り、証跡を撮り直してから reviewers へ進む（.takt/steps/ui-evidence.yaml）
   - name: ui_evidence
     uses: ui-evidence
     rules:
@@ -277,9 +269,7 @@ steps:
           UI 変更があるのに画面の証跡を採取できませんでした（scripts/takt-ui-evidence.ts が終了コード3）。
           夜通し実行の前に docs/runbooks/takt-overnight-preflight.md の手順（.env.local・ログイン状態の storageState・Chromium）を確認してから再実行してください。
 
-  # レビューは実装（coder）と別セッションで行う。アーキテクチャと AI アンチパターンは毎回、
-  # フロントエンドは UI 変更があるときだけ selector が選ぶ。どれも read-only なので同時に走らせる。
-  # 承認の判定は parallel の子では structured_output を持てないため、直後の review が集約する。
+  # parallel の子は structured_output を持てないため、承認の判定は直後の review が集約する
   - name: reviewers
     parallel:
       fixed:
@@ -365,8 +355,7 @@ steps:
       - condition: any("needs_fix")
         next: review
 
-  # push / PR へ進む遷移はすべて structured.review.approved == true を条件にする（prepare_pr_summary・final_gate）。
-  # loop judge の脱出口も readme_sync へは直結させない（承認なしで PR に届く経路を作らない）。
+  # 承認なしで PR に届く経路を作らないため、loop judge の脱出口も readme_sync へ直結させない
   - name: review
     tags:
       - review
@@ -493,7 +482,6 @@ steps:
         - name: self-review-fix-report.md
           format: implementation-report
 
-  # final gate が UI で REJECT した修正も含め、self_review_fix の後は証跡を撮り直してから self_review・final gate へ進む
   - name: ui_evidence_recheck
     uses: ui-evidence
     rules:
@@ -555,8 +543,6 @@ steps:
       report:
         - name: self-review.md
           format: spec-to-pr/self-review
-  # PR 前の最後の判定。TAKT 同梱の supervisor の final gate（step fragment peer-review-final-gate）を使い、
-  # 実装・レビューと別セッションで、現在のコード・前段の報告・UI 証跡から要件充足を判定する。
   - name: final_gate
     uses: peer-review-final-gate
     session_key: final-gate

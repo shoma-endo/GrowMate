@@ -1,13 +1,8 @@
 version: 1
 
-# GrowMate の provider 正本。~/.takt/runtime.yaml の provider と合成され、defaults と targets は
-# このファイルの値で丸ごと置き換わる（profiles だけは名前単位で両方残る）。
-# config.yaml に provider / model を書くと mixed provider configuration で全 run が止まる。
-#
-# 全 step を claude-sdk に寄せる。レビューの独立性は session_key（実装と別セッション）と、
-# ai-antipattern-reviewer を coder と別モデル（sonnet）にすることで保つ。
-# allowed_tools は profile に書かない。profile options は step の capabilities より後に
-# 合成されて上書きするため、step ごとのツール制限が効かなくなる（.takt/provider-options/ に置く）。
+# ~/.takt/runtime.yaml と合成されると defaults と targets はここの値で丸ごと置き換わる（profiles は名前単位で残る）。
+# レビューの独立性は provider ではなく session_key と ai-antipattern-reviewer の別モデルで保つ。
+# allowed_tools は profile に書かない。profile options は step の capabilities を上書きする（.takt/provider-options/ に置く）。
 provider:
   defaults:
     profile: growmate-opus
@@ -28,7 +23,7 @@ provider:
       model: haiku
       options:
         effort: high
-    # grill-to-gherkin 用。capabilities: readonly の Bash を、ここで意図して上書きして外す
+    # capabilities: readonly の Bash を意図して上書きで外す
     growmate-opus-grill:
       provider: claude-sdk
       model: opus

@@ -1,21 +1,11 @@
 /**
- * TAKT spec-to-pr の ui_evidence step から呼ぶ UI 証跡の採取スクリプト。
- *
- * 決めた画面幅ごとに、対象画面と既存の類似画面を開いて
- * - ページ全体の横はみ出し（documentElement の scrollWidth > clientWidth）
- * - 表のセル（操作列を含む）の中身のはみ出し（scrollWidth > clientWidth）
- * を測り、全画面のスクリーンショットを撮る。結果は --out に ui-evidence.json / ui-evidence.md として書く。
- *
- * 使い方:
  *   npm run takt:ui-evidence -- --out <dir> --pair /app/target=/app/existing [--pair ...] [--base-url http://localhost:3000]
  *
- * --base-url が無ければ、この作業ツリーで next dev を起動して終了時に止める。
- * takt run の作業ツリー（clone）には .env.local が無いため、TAKT_UI_ENV_FILE があればそれを読み込んで next dev に渡す。
- * ログイン状態は TAKT_UI_STORAGE_STATE（未指定なら .takt/ui-evidence/storage-state.json）の
- * Playwright storageState を使う。どちらのファイルも中身（環境変数・セッション cookie）は出力しない。
+ * --base-url が無ければ next dev を起動する。takt run の clone には .env.local が無いため TAKT_UI_ENV_FILE を渡す。
+ * ログイン状態は TAKT_UI_STORAGE_STATE の Playwright storageState。
  *
- * 終了コード: 0 = 対象画面にはみ出しなし / 2 = 対象画面にはみ出しあり / 3 = 採取できない（起動失敗・HTTP エラー・未ログイン・別画面への移動）。
- * 既存の類似画面のはみ出しは記録するが終了コードには含めない（今回の差分による回帰ではないため）。
+ * 終了コード: 0 = 対象画面にはみ出しなし / 2 = はみ出しあり / 3 = 採取できない。
+ * 既存の類似画面のはみ出しは終了コードに含めない（今回の差分による回帰ではないため）。
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -145,8 +135,7 @@ async function startDevServer(port: number): Promise<{ baseUrl: string; child: C
 function stopDevServer(child: ChildProcess): void {
   if (child.pid === undefined) return;
   try {
-    // detached で起こしたプロセスグループごと止める。npx が先に終わっても孫の next が残るため、
-    // child の終了状態は見ずにグループへ送る
+    // npx が先に終わっても孫の next が残るため、child の終了状態は見ずにグループへ送る
     process.kill(-child.pid, 'SIGTERM');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
@@ -164,8 +153,7 @@ function measure(tolerance: number) {
     Array.from(table.rows).forEach((row, rowIndex) => {
       Array.from(row.cells).forEach((cell, columnIndex) => {
         if (cell.offsetParent === null) return;
-        // セル自身を truncate（text-overflow: ellipsis）で省略表示しているのは意図したはみ出し。
-        // 子の truncate は自分で overflow: hidden なのでセルの scrollWidth を押し広げず、除外しない
+        // セル自身の truncate は意図した省略。子の truncate はセルの scrollWidth を広げないので除外しない
         if (getComputedStyle(cell).textOverflow === 'ellipsis') return;
         if (cell.scrollWidth > cell.clientWidth + tolerance) {
           cellOverflows.push({

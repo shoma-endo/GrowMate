@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# 夜通しの takt run の前に、権限・テスト準備・環境を確かめる（docs/runbooks/takt-overnight-preflight.md）。
-#
-#   ./scripts/takt-preflight.sh          # 軽い検査だけ
-#   ./scripts/takt-preflight.sh --ui     # UI 変更のある仕様を流す。UI 証跡の前提を必須にする
-#   ./scripts/takt-preflight.sh --verify # 土台の develop で npm run verify が通ることも確かめる（約10分）
-#
-# 秘密の値は読まない・出さない。env ファイルとログイン状態は存在だけを見る。
+#   ./scripts/takt-preflight.sh [--ui] [--verify]
+#   --ui: UI 証跡の前提を必須にする / --verify: 土台で npm run verify が通るかも見る（約10分）
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -89,7 +84,7 @@ else
 fi
 
 echo "--- 認証 ---"
-# TAKT_RUNTIME_ROOT があると、この検査は TAKT に渡す API キーを stdout に出す。値を端末に出さないよう捨てる
+# TAKT_RUNTIME_ROOT があると、この検査は API キーを stdout に出す
 if bash scripts/takt-check-provider-auth.sh >/dev/null 2>&1; then
   ok "Anthropic 認証"
 else
@@ -116,7 +111,6 @@ else
 fi
 
 echo "--- 環境 ---"
-# 値は読まない。ファイルがあるかだけを見る
 for name in TAKT_UI_ENV_FILE TAKT_UI_STORAGE_STATE; do
   value="${!name:-}"
   # takt run は clone の中で動くため、相対パスだと見つからない

@@ -1,4 +1,3 @@
-# 読み取り・検索だけ。builtin の `readonly` から Bash と Web を外し、許可ツールを明示する。
 # Bash は `edit: false` の step では TAKT が claude から外すので、書いても効かない。
 claude:
   allowed_tools:

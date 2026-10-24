@@ -1,6 +1,5 @@
-# ui_evidence 用。Bash は Playwright の計測スクリプトだけを許可する。
 # 使う側は `edit: true` が必要（claude provider は `edit: false` だと Bash ごと落ちる）。
-# Edit / Write は書いていないが、edit 権限（acceptEdits）では許可リストに無くても通る（.takt/steps/ui-evidence.yaml 参照）。
+# Edit / Write は書いていないが acceptEdits では通る（.takt/steps/ui-evidence.yaml 参照）。
 claude:
   allowed_tools:
     - Read

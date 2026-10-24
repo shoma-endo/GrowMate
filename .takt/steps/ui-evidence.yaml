@@ -1,12 +1,8 @@
-# UI 変更があるときだけ、決めた画面幅で対象画面と既存の類似画面を測ってスクリーンショットを撮る。
-# frontend_review（reviewers の pool）と final_gate がこのレポートを根拠にする。
-# spec-to-pr の ui_evidence（fix の後 → reviewers）と ui_evidence_recheck（self_review_fix の後 → self_review）が使う。
-# 遷移先が違うため rules は呼び出し側に置く。
+# 呼び出し元ごとに遷移先が違うため rules は呼び出し側に置く。
 #
-# ツール権限の前提: claude provider は `edit: false` だと Bash ごと落とすため `edit: true` を明示し、
-# capabilities で Bash を計測スクリプト1本に絞る。上限: `edit: true` は権限の下限を edit に固定し、Claude SDK の
-# acceptEdits は allowed_tools に無い Edit / Write も通す（TAKT 0.71 に禁止リストの設定は無い）。編集の禁止は
-# instruction 頼みで、紛れた差分は後段のレビューの差分に出る。TAKT に禁止リストが入ったらそちらで塞ぐ。
+# claude provider は `edit: false` だと Bash ごと落とすため `edit: true`。上限: edit の acceptEdits は
+# allowed_tools に無い Edit / Write も通し、TAKT 0.71 に禁止リストは無いので編集の禁止は instruction 頼み。
+# TAKT に禁止リストが入ったらそちらで塞ぐ。
 tags:
   - review
 edit: true

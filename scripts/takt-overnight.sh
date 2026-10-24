@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# 夜通しの takt run を、preflight と実行時間の上限つきで回す（docs/runbooks/takt-overnight-preflight.md）。
-#
-#   ./scripts/takt-overnight.sh [--limit-minutes N] [--ui] [--verify]   # 既定は 480 分
+#   ./scripts/takt-overnight.sh [--limit-minutes N] [--ui] [--verify]
 #
 # TAKT には run 全体の実行時間の上限キーが無い（max_steps は step 数、guards.call_timeout_ms は無応答時間）。
-# 上限に達したら SIGINT で中断させる。中断した run は takt の通常の中断扱いになり、翌朝 resume できる。
+# SIGINT で止めるのは、通常の中断扱いになり resume できるため。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,12 +35,11 @@ fi
 TAKT_BIN="$(./scripts/resolve-takt-bin.sh)"
 
 limit_seconds=$((limit_minutes * 60))
-# takt が SIGINT を受けてから後始末を終えるまで待つ時間
 grace_seconds=120
 
 "$TAKT_BIN" run &
 takt_pid=$!
-# スリープすると上限時間の計測も止まるため、takt が動いている間は起こしておく（macOS）
+# スリープすると上限時間の計測も止まる
 if command -v caffeinate >/dev/null 2>&1; then
   caffeinate -i -w "$takt_pid" &
 fi

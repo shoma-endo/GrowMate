@@ -1,21 +1,18 @@
-/** scripts/takt-ui-evidence.ts が画面を開いた結果を、測ってよい状態かで判定する */
 export interface NavigationResult {
-  /** page.goto のレスポンス（リダイレクト後の最終レスポンス）のステータス。レスポンスが無ければ null */
+  /** page.goto はリダイレクト後の最終レスポンスを返す */
   status: number | null;
   requestedPath: string;
   finalPath: string;
   /**
-   * Next がストリーミング中の notFound() で差し込む `<meta name="robots" content="noindex">` があるか。
-   * /unauthorized などが metadata で出す `noindex, nofollow` とは content の完全一致で区別する
+   * Next はストリーミング開始後の notFound() を 200 のまま `<meta name="robots" content="noindex">` で示す。
+   * /unauthorized などの `noindex, nofollow` とは content の完全一致で区別する
    */
   noindex: boolean;
 }
 
 /**
- * 測れない理由を返す。測ってよければ null。
- * HTTP エラーやリダイレクト先の別画面を測ると、エラーページや別の画面が「はみ出しなし」で合格してしまう。
- * ストリーミング開始後の notFound() は 200 のまま `noindex` の meta を差し込む（Next の HTTP の約束）ため、それも見る。
- * ストリーミング開始後に error.tsx が出た場合は 200 で目印も無く、ここでは検出できない。
+ * エラーページや別の画面を測ると「はみ出しなし」で合格してしまう。
+ * ストリーミング開始後の error.tsx は 200 で目印も無く、ここでは検出できない。
  */
 export function describeNavigationFailure({ status, requestedPath, finalPath, noindex }: NavigationResult): string | null {
   if (status === null) {
