@@ -322,7 +322,7 @@
   },
   "app/home/page.tsx": {
     "shadcn/no-raw-colors": {
-      "count": 109
+      "count": 102
     },
     "shadcn/no-unknown-classes": {
       "count": 1
