@@ -368,10 +368,10 @@
   },
   "src/components/AnalyticsTable.tsx": {
     "shadcn/no-arbitrary-values": {
-      "count": 11
+      "count": 10
     },
     "shadcn/no-inline-styles": {
-      "count": 9
+      "count": 8
     },
     "shadcn/no-raw-colors": {
       "count": 27

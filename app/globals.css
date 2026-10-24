@@ -117,6 +117,11 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* 項目の多いダイアログを画面内に収め、中身をスクロールさせる上限 */
+@utility max-h-dialog {
+  max-height: 85vh;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

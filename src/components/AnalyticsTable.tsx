@@ -71,6 +71,7 @@ import { ChatService } from '@/domain/services/chatService';
 import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 import { getGa4DiagnosisLabel, getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
 import { resolveHeaderChecked, resolveRowChecked } from '@/lib/analytics-selection';
+import { getAnalyticsOpsColumnStyle } from '@/lib/analytics-ops-column';
 
 /**
  * 一覧の選択チェックボックス。既定の border-input は行の背景（gray-50/100）に対して
@@ -202,38 +203,18 @@ function useAnalyticsOpsColumnState(): [boolean, () => void] {
   return [expanded, toggle];
 }
 
-const ANALYTICS_OPS_EXPANDED_WIDTH = 380;
-const ANALYTICS_OPS_COLLAPSED_WIDTH = 120;
-
-/**
- * 展開時の幅。既定はブログ一覧（ボタン4つ）の固定幅。
- * 'fit-content' は幅を指定せず、表示中の行で一番広いセルに合わせる（行ごとにボタンの数が変わる一覧向け）
- */
-type AnalyticsOpsExpandedWidth = number | 'fit-content';
-
-function getAnalyticsOpsColumnStyle(
-  expanded: boolean,
-  expandedWidth: AnalyticsOpsExpandedWidth
-): React.CSSProperties | undefined {
-  const width = expanded ? expandedWidth : ANALYTICS_OPS_COLLAPSED_WIDTH;
-  if (width === 'fit-content') return undefined;
-  return { width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` };
-}
-
-/** 左に固定する操作列の見出し。onToggle を渡さない一覧は折りたたみボタンを出さず、展開時の幅で固定する */
+/** 左に固定する操作列の見出し。onToggle を渡さない一覧は折りたたみボタンを出さない */
 export function AnalyticsOpsHeaderCell({
   expanded,
   onToggle,
-  expandedWidth = ANALYTICS_OPS_EXPANDED_WIDTH,
 }: {
   expanded: boolean;
   onToggle?: () => void;
-  expandedWidth?: AnalyticsOpsExpandedWidth;
 }) {
   return (
     <th
       className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap group/th"
-      style={{ ...getAnalyticsOpsColumnStyle(expanded, expandedWidth), transition: 'width 0.2s ease-in-out' }}
+      style={getAnalyticsOpsColumnStyle(expanded)}
     >
       <div className="flex items-center justify-center relative w-full">
         <span>操作</span>
@@ -260,16 +241,14 @@ export function AnalyticsOpsHeaderCell({
 export function AnalyticsOpsCell({
   expanded,
   children,
-  expandedWidth = ANALYTICS_OPS_EXPANDED_WIDTH,
 }: {
   expanded: boolean;
   children: React.ReactNode;
-  expandedWidth?: AnalyticsOpsExpandedWidth;
 }) {
   return (
     <td
       className="analytics-ops-cell px-2 py-4 whitespace-nowrap text-sm text-center"
-      style={getAnalyticsOpsColumnStyle(expanded, expandedWidth)}
+      style={getAnalyticsOpsColumnStyle(expanded)}
     >
       {children}
     </td>
@@ -1384,7 +1363,7 @@ export default function AnalyticsTable({
                                       編集
                                     </Button>
                                   </DialogTrigger>
-                                  <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                                  <DialogContent className="max-w-4xl max-h-dialog overflow-y-auto">
                                     <DialogHeader>
                                       <DialogTitle>コンテンツ情報を編集</DialogTitle>
                                       <DialogDescription>

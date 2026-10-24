@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { CategoryCheckboxRow } from '@/components/CategoryFilter';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getWordPressPublishCategories, getWordPressPublishDefaults, publishToWordPress } from '@/server/actions/wordpressPublish.actions';
+import { isWordPressPublishBlocked, WORDPRESS_CONTENT_TYPE_LABELS } from '@/lib/wordpress-publish-dialog';
 
 export interface WordPressPublishDialogHandle {
   openFor: (target: { annotationId?: string; sessionId?: string }) => void;
@@ -135,16 +136,20 @@ export const WordPressPublishDialog = forwardRef<WordPressPublishDialogHandle, W
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-dialog overflow-y-auto">
         <DialogHeader>
           <DialogTitle>WordPress に投稿</DialogTitle>
           <DialogDescription>完成した記事を WordPress に送信します。</DialogDescription>
         </DialogHeader>
         {(error || info) && <Alert variant={info ? 'default' : 'destructive'}><AlertCircle className="h-4 w-4" /><AlertDescription>{info || error}{recovery === 'setup' || recovery === 'relink' ? <Link className="ml-2 underline" href="/setup/wordpress">{recovery === 'setup' ? '連携を開始' : '再連携する'}</Link> : null}{showOpenChat && recovery === 'open_chat' && target.sessionId ? <Link className="ml-2 underline" href={`/chat?session=${target.sessionId}&initialStep=step7`}>チャットを開く</Link> : null}</AlertDescription></Alert>}
         <div className="space-y-4">
-          <div className="grid gap-2"><Label htmlFor="wp-publish-content-type">送信先</Label><Select value={contentType} onValueChange={value => { const nextType = value as 'posts' | 'pages'; setContentType(nextType); if (nextType === 'posts') void loadCategories(); }} disabled={loading || lockedType}><SelectTrigger id="wp-publish-content-type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="posts">投稿</SelectItem><SelectItem value="pages">固定ページ</SelectItem></SelectContent></Select></div>
           {loadingDefaults ? <p className="text-sm text-muted-foreground">読み込み中...</p> : <>
           <p className="text-sm text-muted-foreground">送る本文: 見出し {headingCount} 本・約 {characterCount.toLocaleString('ja-JP')} 文字（Canvas の最新の完成形）</p>
+          {lockedType ? (
+            <div className="grid gap-2"><Label>送信先</Label><p className="text-sm">{WORDPRESS_CONTENT_TYPE_LABELS[contentType]}</p></div>
+          ) : (
+            <div className="grid gap-2"><Label htmlFor="wp-publish-content-type">送信先</Label><Select value={contentType} onValueChange={value => { const nextType = value as 'posts' | 'pages'; setContentType(nextType); if (nextType === 'posts') void loadCategories(); }} disabled={loading}><SelectTrigger id="wp-publish-content-type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="posts">{WORDPRESS_CONTENT_TYPE_LABELS.posts}</SelectItem><SelectItem value="pages">{WORDPRESS_CONTENT_TYPE_LABELS.pages}</SelectItem></SelectContent></Select></div>
+          )}
           <div className="grid gap-2"><Label htmlFor="wp-publish-title">タイトル</Label><Input id="wp-publish-title" value={title} onChange={event => setTitle(event.target.value)} disabled={loading} maxLength={200} /></div>
           <div className="grid gap-2"><Label htmlFor="wp-publish-status">公開状態</Label><Select value={status} onValueChange={value => setStatus(value as 'draft' | 'publish' | 'future')} disabled={loading}><SelectTrigger id="wp-publish-status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="draft">下書き</SelectItem><SelectItem value="publish">公開</SelectItem><SelectItem value="future">予約投稿</SelectItem></SelectContent></Select></div>
           {status === 'future' && <div className="grid gap-2"><Label htmlFor="wp-scheduled-at">公開日時</Label><Input id="wp-scheduled-at" type="datetime-local" value={scheduledAt} disabled={loading} onChange={event => { setScheduledAt(event.target.value); setScheduledAtIsPast(Boolean(event.target.value) && new Date(event.target.value).getTime() <= Date.now()); }} />{scheduledAtIsPast && <p className="text-sm text-destructive">{ERROR_MESSAGES.WORDPRESS.PUBLISH_SCHEDULE_MUST_BE_FUTURE}</p>}</div>}
@@ -154,7 +159,7 @@ export const WordPressPublishDialog = forwardRef<WordPressPublishDialogHandle, W
         </div>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => setOpen(false)}>キャンセル</Button>
-          {!info && recovery !== 'close' && recovery !== 'open_chat' && recovery !== 'setup' && recovery !== 'relink' && <Button type="button" disabled={loading || loadingDefaults || !title.trim() || (status === 'future' && (!scheduledAt || scheduledAtIsPast))} onClick={() => void submit()}>{loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />送信中...</> : recovery === 'retry' ? '再試行' : `${status === 'draft' ? '下書きとして送信' : status === 'publish' ? '公開する' : '予約する'}${wpPostId ? '（更新）' : ''}`}</Button>}
+          <Button type="button" disabled={isWordPressPublishBlocked({ info, recovery }) || loading || loadingDefaults || !title.trim() || (status === 'future' && (!scheduledAt || scheduledAtIsPast))} onClick={() => void submit()}>{loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />送信中...</> : recovery === 'retry' ? '再試行' : `${status === 'draft' ? '下書きとして送信' : status === 'publish' ? '公開する' : '予約する'}${wpPostId ? '（更新）' : ''}`}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
