@@ -465,7 +465,6 @@ export const ANALYTICS_STORAGE_KEYS = {
   /** Instagram タブの並び順の向き（`asc` / `desc`）。IG_SORT と対で保存する */
   IG_SORT_ORDER: 'analytics.instagramSortOrder',
   IG_HIGH_ONLY: 'analytics.instagramHighOnly',
-  OPS_EXPANDED: 'analytics.opsExpanded',
   VISIBLE_COLUMNS: 'analytics.visibleColumns',
   IG_VISIBLE_COLUMNS: 'analytics.instagramVisibleColumns',
   /**

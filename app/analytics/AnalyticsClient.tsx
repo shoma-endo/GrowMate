@@ -40,6 +40,7 @@ import { SummarySuspendedTooltip } from '@/components/ContentAnnotationSummaryAc
 import { ContentCsvImportDialog } from './components/ContentCsvImportDialog';
 import { buildListingSelectionKey } from './selection-scope';
 import { summarizeContentAnnotationsBulk } from '@/server/actions/contentAnnotationBulkSummary.actions';
+import { publishWordPressDraftsBulk } from '@/server/actions/wordpressPublish.actions';
 import { resolveRawSelectedCount, toggleIdMembership } from '@/lib/analytics-selection';
 import {
   buildIgFilterHref,
@@ -113,6 +114,8 @@ interface AnalyticsClientProps {
   /** Instagramメディア一覧のフィールド構成（未保存なら null） */
   instagramFieldConfig: StoredFieldConfig | null;
 }
+
+const SHOW_BULK_WORDPRESS_DRAFT = false;
 
 const BULK_SUMMARY_BUTTON_CLASS =
   'border-purple-200 bg-purple-50 text-purple-900 hover:bg-purple-100 hover:text-purple-900';
@@ -563,6 +566,18 @@ export default function AnalyticsClient({
                 >
                   {isStarting && <Loader2 className="h-4 w-4 animate-spin" />}
                   {isStarting ? '開始中...' : '評価サイクルを開始'}
+                </button>
+              ) : null}
+              {SHOW_BULK_WORDPRESS_DRAFT ? (
+                <button
+                  type="button"
+                  className={cn(buttonVariants({ variant: 'outline' }), 'h-9 inline-flex items-center gap-2')}
+                  onClick={() => void publishWordPressDraftsBulk(isSelectAll
+                    ? { mode: 'all', excludedIds }
+                    : { mode: 'ids', contentAnnotationIds: selectedIds })}
+                >
+                  <FileText className="h-4 w-4" />
+                  下書きとして一括送信
                 </button>
               ) : null}
               <SummarySuspendedTooltip suspended={!isSummaryRoleAllowed}>

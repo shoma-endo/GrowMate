@@ -237,8 +237,10 @@ export type Database = {
           wp_excerpt: string | null
           wp_image_count: number | null
           wp_post_id: number | null
+          wp_post_status: string | null
           wp_post_title: string | null
           wp_post_type: string
+          wp_publish_claimed_at: string | null
         }
         Insert: {
           basic_structure?: string | null
@@ -263,8 +265,10 @@ export type Database = {
           wp_excerpt?: string | null
           wp_image_count?: number | null
           wp_post_id?: number | null
+          wp_post_status?: string | null
           wp_post_title?: string | null
           wp_post_type?: string
+          wp_publish_claimed_at?: string | null
         }
         Update: {
           basic_structure?: string | null
@@ -289,8 +293,10 @@ export type Database = {
           wp_excerpt?: string | null
           wp_image_count?: number | null
           wp_post_id?: number | null
+          wp_post_status?: string | null
           wp_post_title?: string | null
           wp_post_type?: string
+          wp_publish_claimed_at?: string | null
         }
         Relationships: []
       }

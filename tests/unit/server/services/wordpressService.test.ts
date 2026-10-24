@@ -141,6 +141,133 @@ describe('WordPressService（REST API フォールバック）', () => {
   });
 });
 
+describe('WordPressService（投稿 API）', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  const selfHostedService = () => new WordPressService({
+    type: 'self_hosted',
+    selfHostedAuth: { siteUrl: 'https://example.com', username: 'test-user', applicationPassword: 'test-password' },
+  });
+  const postResponse = () => new Response(JSON.stringify({
+    id: 42,
+    title: { raw: 'Title', rendered: 'Title' },
+    status: 'draft',
+    link: 'https://example.com/post',
+    date_gmt: '2026-10-23T12:00:00',
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it.each(['posts', 'pages'] as const)('$contentType を作成し、pagesにはcategoriesを送らない', async contentType => {
+    fetchMock.mockResolvedValueOnce(postResponse());
+    const result = await selfHostedService().createPost(contentType, {
+      title: 'Title', content: '<p>Body</p>', status: 'draft', categories: [3], slug: 'title',
+    });
+
+    expect(result.id).toBe(42);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`https://example.com/wp-json/wp/v2/${contentType}`);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+    const sentBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(sentBody).toMatchObject({ title: 'Title', content: '<p>Body</p>', status: 'draft', slug: 'title' });
+    if (contentType === 'posts') {
+      expect(sentBody).toHaveProperty('categories', [3]);
+    } else {
+      expect(sentBody).not.toHaveProperty('categories');
+    }
+  });
+
+  it.each(['posts', 'pages'] as const)('$contentType の投稿を指定 ID で更新する', async contentType => {
+    fetchMock.mockResolvedValueOnce(postResponse());
+    await selfHostedService().updatePost(contentType, 42, {
+      title: 'Title', content: 'Body', status: 'publish', categories: [3],
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`https://example.com/wp-json/wp/v2/${contentType}/42`);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    if (contentType === 'pages') expect(body).not.toHaveProperty('categories');
+    else expect(body).toHaveProperty('categories', [3]);
+  });
+
+  it('更新前の状態を context=edit で取得する', async () => {
+    fetchMock.mockResolvedValueOnce(postResponse());
+    await selfHostedService().fetchPost('posts', 42);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://example.com/wp-json/wp/v2/posts/42?context=edit');
+  });
+
+  it.each([
+    { status: 403, body: '<h1>Forbidden</h1>', contentType: 'text/html', requests: 2 },
+    { status: 404, body: 'Not Found', contentType: 'text/html', requests: 2 },
+    { status: 403, body: JSON.stringify({ code: 'rest_cannot_create', message: 'Forbidden' }), contentType: 'application/json', requests: 1 },
+    { status: 404, body: JSON.stringify({ code: 'rest_no_route', message: 'Not Found' }), contentType: 'application/json', requests: 1 },
+    { status: 401, body: 'Unauthorized', contentType: 'text/html', requests: 1 },
+    { status: 500, body: 'Server Error', contentType: 'text/html', requests: 1 },
+    { status: 301, body: 'Moved', contentType: 'text/html', requests: 1 },
+  ])('POST $status ($contentType) の再送条件を守る', async ({ status, body, contentType, requests }) => {
+    fetchMock.mockResolvedValueOnce(new Response(body, { status, headers: { 'Content-Type': contentType } }));
+    if (requests === 2) fetchMock.mockResolvedValueOnce(postResponse());
+
+    if (requests === 1) {
+      await expect(selfHostedService().createPost('posts', { title: 'T', content: 'C', status: 'draft' }))
+        .rejects.toMatchObject({ status });
+    } else {
+      await selfHostedService().createPost('posts', { title: 'T', content: 'C', status: 'draft' });
+      expect(fetchMock.mock.calls[1]?.[0]).toBe('https://example.com/index.php?rest_route=/wp/v2/posts');
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(requests);
+  });
+
+  it.each([
+    { status: 401, code: 'rest_not_logged_in' },
+    { status: 403, code: 'rest_cannot_create' },
+  ])('HTTP $status と WordPress code をエラーに保持する', async ({ status, code }) => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ code, message: 'Denied' }), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    await expect(selfHostedService().createPost('posts', { title: 'T', content: 'C', status: 'draft' }))
+      .rejects.toMatchObject({ status, code, message: 'Denied' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST timeout を status 0 として返し、再送しない', async () => {
+    fetchMock.mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
+    await expect(selfHostedService().createPost('posts', { title: 'T', content: 'C', status: 'draft' }))
+      .rejects.toMatchObject({ status: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('カテゴリを名前順に最大5ページ取得し、超過を返す', async () => {
+    for (let page = 1; page <= 5; page += 1) {
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([{ id: page, name: `Category ${page}` }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'X-WP-TotalPages': '6' },
+      }));
+    }
+    const result = await selfHostedService().fetchCategories();
+
+    expect(result).toEqual({
+      categories: [1, 2, 3, 4, 5].map(id => ({ id, name: `Category ${id}` })),
+      truncated: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    const firstUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(firstUrl.pathname).toBe('/wp-json/wp/v2/categories');
+    expect(firstUrl.searchParams.get('per_page')).toBe('100');
+    expect(firstUrl.searchParams.get('orderby')).toBe('name');
+    expect(firstUrl.searchParams.get('order')).toBe('asc');
+    expect(firstUrl.searchParams.get('page')).toBe('1');
+  });
+});
+
 describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () => {
   const fetchMock = vi.fn<typeof fetch>();
   const service = () => new WordPressService({

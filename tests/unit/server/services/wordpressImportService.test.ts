@@ -566,6 +566,7 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     expect(result).toMatchObject({ kind: 'success', stats: { updatedPosts: 1, insertedPosts: 0 } });
     expect(updates).toHaveLength(1);
     expect(updates[0]?.id).toBe('csv-annotation');
+    expect(updates[0]?.data).toHaveProperty('wp_post_status', 'publish');
     expect(updates[0]?.data).not.toHaveProperty('main_kw');
     expect(updates[0]?.data).not.toHaveProperty('kw');
     expect(updates[0]?.data).not.toHaveProperty('impressions');
@@ -587,6 +588,7 @@ describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () 
     expect(result).toMatchObject({ kind: 'success', stats: { insertedPosts: 1, updatedPosts: 0 } });
     expect(updates).toHaveLength(0);
     expect(inserts).toHaveLength(1);
+    expect(inserts.flat()).toEqual(expect.arrayContaining([expect.objectContaining({ wp_post_status: 'publish' })]));
   });
 
   it('正規化 URL の候補が複数あるときは更新・作成せず重複として見送る', async () => {
