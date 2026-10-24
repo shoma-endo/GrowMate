@@ -14,12 +14,12 @@ workflow_config:
   runtime:
     prepare:
       - scripts/takt-check-provider-auth.sh
-# happy path 13 step + レビュー往復 2周（ui_evidence・reviewers・review・fix・judge で 5 × 2）
+# seed_reports 1 + happy path 13 step + レビュー往復 2周（ui_evidence・reviewers・review・fix・judge で 5 × 2）
 # + self_review 往復 2周（self_review_fix・ui_evidence_recheck・self_review で 3 × 2 + judge）
-# + final gate 往復 2周（4 × 2 + judge）= 39。根拠の無い承認のやり直し分を足して 44。
+# + final gate 往復 2周（4 × 2 + judge）= 40。根拠の無い承認のやり直し分を足して 45。
 # 実行時間の上限は TAKT に run 全体のキーが無いため scripts/takt-overnight.sh が持つ。
-max_steps: 44
-initial_step: plan
+max_steps: 45
+initial_step: seed_reports
 loop_monitors:
   # 同じ finding_id を2回差し戻したら3周目の reviewers の前に止める。
   # ui_evidence を cycle に入れ、続行の遷移先を ui_evidence にする（fix の後に証跡を撮り直さずに reviewers へ進ませない）
@@ -140,6 +140,55 @@ loop_monitors:
             - {問題ID}: {何が足りないか}
 
 steps:
+  # 前の周のレポートを参照する step（reviewers の follow-up・review・self_review_fix・prepare_pr_summary・
+  # record_pr_comments）は、1周目にはまだ producer が走っていない。TAKT 0.71 の doctor は全経路で先に作られた
+  # レポートしか参照を認めないため、最初に1回だけ、実行時の欠落文と同じ1行でこれらを作っておく。
+  # 本物の producer が走ると同じ名前で上書きされ、2周目以降はこれまでどおり前の周のレポートを読む。
+  # plan などの再入り口に置くと、本物の記録を欠落文で上書きしてしまうため initial_step 専用にする。
+  - name: seed_reports
+    tags:
+      - report
+    edit: false
+    persona: reporter
+    capabilities: growmate-readonly
+    pass_previous_response: false
+    instruction: |
+      このステップは調べ物も編集もしません。後段のレポートの初期状態を用意するだけです。応答は「初期化した」の1行にしてください。
+    rules:
+      - condition: when(true)
+        next: plan
+    output_contracts:
+      report:
+        - name: fix-result.md
+          use_judge: false
+          order: &seed-order |
+            下の format の1行だけを、そのまま書く。見出し・説明・コードブロック・空行を足さない。
+          format: "（参照先の報告 fix-result.md はこの run に存在しない）"
+        - name: ai-antipattern-review.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 ai-antipattern-review.md はこの run に存在しない）"
+        - name: architecture-review.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 architecture-review.md はこの run に存在しない）"
+        - name: frontend-review.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 frontend-review.md はこの run に存在しない）"
+        - name: review-history.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 review-history.md はこの run に存在しない）"
+        - name: review-resolution.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 review-resolution.md はこの run に存在しない）"
+        - name: pr-comment-fix-result.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 pr-comment-fix-result.md はこの run に存在しない）"
+
   - name: plan
     tags:
       - plan

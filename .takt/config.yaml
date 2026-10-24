@@ -11,6 +11,7 @@ provider_profiles:
     default_permission_mode: edit
     step_permission_overrides:
       plan: readonly
+      seed_reports: readonly
       # Claude SDK の edit（acceptEdits）は allowed_tools に無い Edit / Write も自動承認するため、
       # 編集しない step は readonly にする。loop judge は合成 step 名で引かれる
       _loop_judge_ui_evidence_reviewers_review_fix: readonly

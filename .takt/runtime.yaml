@@ -47,6 +47,9 @@ provider:
       ai-antipattern-reviewer:
         profile: growmate-sonnet
     steps:
+      # 欠落文と同じ1行のレポートを書くだけ
+      spec-to-pr/seed_reports:
+        profile: growmate-haiku
       # git / gh を回すだけの定型作業
       spec-to-pr/create_pr:
         profile: growmate-haiku
