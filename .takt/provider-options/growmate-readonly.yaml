@@ -1,0 +1,6 @@
+# Bash は `edit: false` の step では TAKT が claude から外すので、書いても効かない。
+claude:
+  allowed_tools:
+    - Read
+    - Glob
+    - Grep

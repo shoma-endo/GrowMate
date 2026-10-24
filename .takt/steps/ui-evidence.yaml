@@ -1,0 +1,26 @@
+# 呼び出し元ごとに遷移先が違うため rules は呼び出し側に置く。
+#
+# claude provider は `edit: false` だと Bash ごと落とすため `edit: true`。上限: edit の acceptEdits は
+# allowed_tools に無い Edit / Write も通し、TAKT 0.71 に禁止リストは無いので編集の禁止は instruction 頼み（紛れた差分は後段のレビューの差分に出る）。
+# TAKT に禁止リストが入ったらそちらで塞ぐ。
+tags:
+  - review
+edit: true
+persona: supervisor
+session_key: ui-evidence
+session: refresh
+knowledge:
+  - growmate
+capabilities: growmate-ui-evidence
+pass_previous_response: false
+instruction: spec-to-pr/ui-evidence
+structured_output:
+  schema_ref: ui_evidence
+output_contracts:
+  report:
+    - name: ui-evidence.md
+      format: |
+        # UI 証跡
+        - 判定: captured / not_applicable / cannot_capture
+        - 実行したコマンドと終了コード
+        - スクリプトの標準出力（Markdown のまま）

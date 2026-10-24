@@ -97,7 +97,7 @@ workflow の最初の `grill` step は追加質問をせず、その指示書を
 
 成果物は `.takt/runs/<run>/reports/` に保存される。
 
-GrowMateのTAKT workflowは原則 `provider: claude-sdk` を使う。ただし、git commit / push / PR 操作を担当する `spec-review.finalize` と `spec-to-pr.create_pr` は `provider: cursor`、`model: gpt-5.6-luna-high` を使う。step間のレポート受け渡しは `{report:X}` プレースホルダ（本文をプロンプトへ全文注入。resume時はTAKTのsnapshotが引き継ぐ）で行い、エージェントはrunディレクトリのパスを一切必要としない。レポート保存はTAKTが行う。
+GrowMate の TAKT workflow は全 step で `claude-sdk` を使う。provider / model の正本は [`.takt/runtime.yaml`](../.takt/runtime.yaml)（`config.yaml` には書けない）で、`ai-antipattern-reviewer` だけ実装と別モデル（sonnet）、git / gh を回すだけの `spec-to-pr.create_pr` と `record_pr_comments` は haiku にしている。権限は `.takt/config.yaml` の `provider_profiles.claude-sdk`（既定 `edit`、読み取りだけの step は `readonly`、`full` は使わない）、許可ツールは `.takt/provider-options/` に明示する。step間のレポート受け渡しは `{report:X}` プレースホルダ（本文をプロンプトへ全文注入。resume時はTAKTのsnapshotが引き継ぐ）で行い、エージェントはrunディレクトリのパスを一切必要としない。レポート保存はTAKTが行う。
 
 - `01-grill.md`: Grill Me の決定事項・Non-goals と、代替案（ALT）・懸念点（CON）・未決定事項（OPEN）の記録
 - `02-gherkin.md`: Gherkin 形式の受け入れ条件
@@ -196,16 +196,20 @@ takt -w spec-to-pr -t "docs/plans/<slug>.md 仕様書に沿って実装してく
 - コード実装
 - 必要なテスト
 - `npm run verify`
-- AI アンチパターンレビュー
-- アーキテクチャレビュー
-- 指摘修正と再レビュー
+- UI 変更があるときだけ、Playwright で決めた画面幅（1280・1024）の対象画面と既存の類似画面を測り、スクリーンショットを撮る（`ui_evidence`）。fix・self_review_fix の後も毎回撮り直す
+- AI アンチパターンレビュー・アーキテクチャレビュー（毎回）と、UI 変更があるときのフロントエンドレビュー
+- レビュー承認の判定（`review`）。承認は読んだファイル:行番号、未解決は `path:行番号`（テスト失敗なら失敗テスト名とコマンド出力）が必須で、無い判定は無効
+- 指摘修正と再レビュー。同じ finding_id を2回差し戻したら3周目に入らず止まり、足りないものを返す
 - README 同期判断
-- PR 作成・更新
+- supervisor の final gate（要件充足を現在のコードと UI 証跡で判定）
+- PR 作成・更新（レビュー承認 `structured.review.approved == true` が無いと進まない）
 - PR 作成/更新の5分後に、PR コメントの取り込みと対応要否の判断（1回だけ）
 - 対応すると判断した指摘の修正・検証・commit・push
 - PR コメント対応の結果（対応しない判断と理由を含む）を、PR へコメント1件で記録
 
 実装中に仕様が不足している場合は、口頭で要件を補完しない。仕様書を修正し、`spec-to-pr` を再実行する。
+
+夜通し回すときは、`takt run` の前に [夜通し実行の preflight](runbooks/takt-overnight-preflight.md) を通す。
 
 PR 本文は開発後のカルテとして書かれる。最終確認だけを別の人に引き継いでも、本文だけで進められるようにするためである。節の構成は `.takt/facets/output-contracts/spec-to-pr/pr-summary.md` が正本で、TAKT を通さない PR も同じ構成の `.github/pull_request_template.md` で書く。主な節は次のとおり。
 

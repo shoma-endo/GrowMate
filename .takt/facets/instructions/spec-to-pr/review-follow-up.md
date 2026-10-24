@@ -11,7 +11,12 @@ GrowMate のレビュー往復向け規則（初回・再レビュー共通）:
 - `fix-result.md` で対応済み・対象外・追加修正不能と記録された ID を、新しい根拠なく再指摘しない。
 - `plan.md` に転記された spec-review 残置合意、および仕様書または GrowMate knowledge がテスト追加不要と明示する論点を再指摘しない。
 - 新規指摘は、観測できる実害または回帰に限る。未変更領域の一般探索や、指摘のための指摘を増やさない。
-- 初回レビューでも、各指摘に安定した `finding_id`（例: `ARCH-NEW-...` / `AI-NEW-...`）を付ける。
+- 初回レビューでも、各指摘に安定した `finding_id`（例: `ARCH-NEW-...` / `AI-NEW-...` / `FE-NEW-...`）を付ける。
+
+根拠の規則（後段の `review` が検査し、満たさない判定は無効になる）:
+- `approved` にするときは、レポートに「確認したファイル」として、実際に Read で開いたファイルを `path:行番号` で列挙する。列挙が無い承認は無効として扱われ、レビューがやり直しになる。
+- `resolved` は、前回の指摘箇所を今回 Read で開いて確かめた `path:行番号` を書く。`fix-result.md` の記載だけを根拠に `resolved` にしない。
+- 未解決（`new` / `persists` / `reopened`）の指摘には `path:行番号` を書く。テスト失敗を理由にする場合は、失敗したテスト名と、コマンド出力（`.takt/quality-gates/logs/` のログの該当行）を引用する。
 
 ## fix-result.md（前回修正。初回は欠落文でよい）
 {report:fix-result.md}
@@ -21,3 +26,6 @@ GrowMate のレビュー往復向け規則（初回・再レビュー共通）:
 
 ## 前回 architecture-review.md（初回は欠落文でよい）
 {report:architecture-review.md}
+
+## 前回 frontend-review.md（選ばれていない回・初回は欠落文でよい）
+{report:frontend-review.md}

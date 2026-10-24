@@ -14,50 +14,83 @@ workflow_config:
   runtime:
     prepare:
       - scripts/takt-check-provider-auth.sh
-max_steps: 27
-initial_step: plan
+# seed 1 + happy path 13 + レビュー往復 5×2 + self_review 往復 3×2+1 + final gate 往復 4×2+1 = 40、根拠の無い承認のやり直し分で 45。
+# 実行時間の上限は TAKT に run 全体のキーが無いため scripts/takt-overnight.sh が持つ。
+max_steps: 45
+initial_step: seed_reports
 loop_monitors:
+  # ui_evidence を cycle に入れるのは、続行時に証跡を撮り直さず reviewers へ進ませないため
   - cycle:
+      - ui_evidence
       - reviewers
+      - review
       - fix
-    threshold: 3
+    # judge が続行を返すと検出の履歴が消え、2 では3回目の差し戻しまで止まらない。回数は review-history.md で数える
+    threshold: 1
     judge:
       persona: supervisor
-      knowledge:
-        - growmate
       instruction: |
-        reviewers（AIアンチパターン＋アーキテクチャの並列レビュー） -> fix のループが {cycle_count} 回繰り返されました。
-        閾値到達後はループ継続不可。下記に全文添付された最新のレビュー2本と修正結果を確認し、収束して抜けられるか・ABORT するかを二択で判断してください。run ディレクトリやレポートパスの探索はしないでください。
-        `finding_id` 単位で見る。fix-result が `cannot_fix` / `not_applicable` と記録した ID、および persists のみで新規実害がない場合は方針差分として抜け候補。
-        残件が「テスト追加要求」のみで、対象仕様書または GrowMate knowledge がテスト追加不要を明示している場合は、追加修正で解消不能な方針差分として readme_sync を経て self_review に進めてください。
-        まだ直せそう・進捗がありそう、だけでは reviewers へ戻さないでください。必要なら ABORT し、人間が再実行します。
+        ui_evidence → reviewers → review → fix の1周が終わりました。次の周（UI 証跡の撮り直しから）へ進むか、ここで止めるかを判定してください。
 
-        ## ai-antipattern-review.md（最新・全文）
-        {report:ai-antipattern-review.md}
+        判定の根拠の規則（満たさない判定は無効）:
+        - fix-result.md で「直った」とされる finding_id は、指摘箇所の実コードと、関係するテストのファイルを Read で開いて確かめる。報告の記載だけで直ったとみなさない。
+        - 「未解決」と判定する finding_id には、失敗しているテスト名とコマンド出力（`.takt/quality-gates/logs/` のログの該当行）、またはテストが無い指摘なら `path:行番号` を書く。どちらも書けない指摘は未解決に数えない。
+        - review-history.md で、同じ finding_id が2回とも未解決（new / persists / reopened）だったかを数える。直ったとされたのに実コードで直っていない finding_id は、その回も未解決として数える。
 
-        ## architecture-review.md（最新・全文）
-        {report:architecture-review.md}
+        2回差し戻した finding_id が1件でもあれば止める。止めるときは、finding_id ごとに「何が足りないか（仕様の欠落・判断材料・手で確かめるべきこと）」を書く。
+        run ディレクトリやレポートパスの探索はしない（必要なレポートは下に全文添付してある）。
+
+        ## review-history.md（最新・全文）
+        {report:review-history.md}
+
+        ## review-gate.md（最新・全文）
+        {report:review-gate.md}
 
         ## fix-result.md（最新・全文）
         {report:fix-result.md}
       rules:
-        - condition: 収束済み（残件が追加修正で解消不能な方針差分のみ）
-          next: readme_sync
-        - condition: 非生産的（同じ指摘の反復・修正未反映・追加修正で解消可能に見える残件）
+        - condition: 2回差し戻した finding_id は無い
+          next: ui_evidence
+        - condition: 同じ finding_id を2回差し戻した
           next: ABORT
+          appendix: |
+            同じ指摘の差し戻しが2回続いたため、3周目に入らず止めました。人間が次を判断してください。
+            - {finding_id}: {何が足りないか。仕様の欠落・判断材料・手で確かめるべきこと}
+  # reviewers をやり直しても根拠が出てこないため、根拠の無い承認が2回続いたら止める
+  - cycle:
+      - reviewers
+      - review
+    threshold: 2
+    judge:
+      persona: supervisor
+      instruction: |
+        レビュアーの承認が、読んだファイル:行番号の根拠を欠いたまま {cycle_count} 回続きました。承認として扱えないので止めます。
+        どのレビュアーの承認に何が欠けていたかを、下の review-gate.md から書き出してください。
+
+        ## review-gate.md（最新・全文）
+        {report:review-gate.md}
+      rules:
+        - condition: 根拠の無い承認が続いたので止める
+          next: ABORT
+          appendix: |
+            レビュアーの承認に、読んだファイル:行番号の根拠がありませんでした。
+            - {レビュアー}: {欠けていた根拠}
   - cycle:
       - self_review
       - self_review_fix
-    threshold: 3
+      - ui_evidence_recheck
+    threshold: 2
     judge:
       persona: supervisor
-      knowledge:
-        - growmate
       instruction: |
-        self_review -> self_review_fix のループが {cycle_count} 回繰り返されました。
-        閾値到達後はループ継続不可。下記に全文添付された最新の self-review と修正結果を確認し、収束して抜けられるか・ABORT するかを二択で判断してください。run ディレクトリやレポートパスの探索はしないでください。
-        fix-result が追加修正不能（`cannot_fix`）と記録した残件、および「手動ブラウザ確認未実施」または管理者作業（マイグレーション適用・型再生成・pendingファイル削除）のみの場合は、追加修正で解消不能な残件として prepare_pr_summary に進めてください。
-        まだ直せそう・進捗がありそう、だけでは self_review へ戻さないでください。必要なら ABORT し、人間が再実行します。
+        self_review -> self_review_fix -> ui_evidence_recheck のループが {cycle_count} 回繰り返されました。final gate へ進めるか、ここで止めるかを判定してください。
+
+        判定の根拠の規則（満たさない判定は無効）:
+        - fix-result.md で「直った」とされる ID は、指摘箇所の実コードと関係するテストを Read で開いて確かめる。
+        - 「未解決」と判定する ID には、失敗しているテスト名とコマンド出力（`.takt/quality-gates/logs/` のログの該当行）、またはテストが無い指摘なら `path:行番号` を書く。
+
+        fix-result が追加修正不能（`cannot_fix`）と記録した残件、および「手動ブラウザ確認未実施」または管理者作業（マイグレーション適用・型再生成・pendingファイル削除）のみの場合は、追加修正で解消不能な残件として final gate に進める。
+        同じ ID を2回差し戻した場合は止める。run ディレクトリやレポートパスの探索はしない。
         注: readme_sync はこのループに含めない（reviewers 承認後の1回のみ。self_review_fix 後に README 判定へ戻さない）。
 
         ## self-review.md（最新・全文）
@@ -70,11 +103,85 @@ loop_monitors:
         {report:readme-sync.md}
       rules:
         - condition: 収束済み（残件が手動確認・管理者作業のみ、または指摘なし）
-          next: prepare_pr_summary
-        - condition: 非生産的（同じ指摘の反復・修正未反映・追加修正で解消可能に見える残件）
+          next: final_gate
+        - condition: 同じ ID を2回差し戻した、または直ったとされる項目が実コードで直っていない
           next: ABORT
+          appendix: |
+            セルフレビューの同じ指摘の差し戻しが2回続いたため止めました。人間が次を判断してください。
+            - {ID}: {何が足りないか}
+  - cycle:
+      - self_review_fix
+      - ui_evidence_recheck
+      - self_review
+      - final_gate
+    threshold: 2
+    judge:
+      persona: supervisor
+      instruction: |
+        final gate の REJECT から self_review_fix → ui_evidence_recheck → self_review → final gate のループが {cycle_count} 回繰り返されました。
+        review-resolution.md の未解消の問題 ID が2回とも残っていれば止めます。直ったとされる問題は実コードを Read で開いて確かめ、未解消と判定する問題には `path:行番号` を書いてください。
+
+        ## review-resolution.md（最新・全文）
+        {report:review-resolution.md}
+
+        ## fix-result.md（最新・全文）
+        {report:fix-result.md}
+      rules:
+        - condition: 2回とも残った問題 ID は無く、解消が進んでいる
+          next: self_review_fix
+        - condition: 同じ問題 ID が2回とも残った
+          next: ABORT
+          appendix: |
+            final gate の同じ指摘が2回続いたため止めました。人間が次を判断してください。
+            - {問題ID}: {何が足りないか}
 
 steps:
+  # TAKT 0.71 の doctor は全経路で先に作られたレポートしか参照を認めないため、前の周のレポートを読む step 用に
+  # 欠落文と同じ1行で先に作る。再入り口に置くと本物の記録を上書きするため initial_step 専用。
+  - name: seed_reports
+    tags:
+      - report
+    edit: false
+    persona: reporter
+    capabilities: growmate-readonly
+    pass_previous_response: false
+    instruction: |
+      このステップは調べ物も編集もしません。後段のレポートの初期状態を用意するだけです。応答は「初期化した」の1行にしてください。
+    rules:
+      - condition: when(true)
+        next: plan
+    output_contracts:
+      report:
+        - name: fix-result.md
+          use_judge: false
+          order: &seed-order |
+            下の format の1行だけを、そのまま書く。見出し・説明・コードブロック・空行を足さない。
+          format: "（参照先の報告 fix-result.md はこの run に存在しない）"
+        - name: ai-antipattern-review.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 ai-antipattern-review.md はこの run に存在しない）"
+        - name: architecture-review.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 architecture-review.md はこの run に存在しない）"
+        - name: frontend-review.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 frontend-review.md はこの run に存在しない）"
+        - name: review-history.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 review-history.md はこの run に存在しない）"
+        - name: review-resolution.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 review-resolution.md はこの run に存在しない）"
+        - name: pr-comment-fix-result.md
+          use_judge: false
+          order: *seed-order
+          format: "（参照先の報告 pr-comment-fix-result.md はこの run に存在しない）"
+
   - name: plan
     tags:
       - plan
@@ -83,7 +190,7 @@ steps:
     knowledge:
       - architecture
       - growmate
-    capabilities: readonly
+    capabilities: growmate-readonly
     instruction: spec-to-pr/plan
     rules:
       - condition: 実装前提を満たし実装可能（ステータス approved/implemented、UIゲート充足、spec-review 未解決なし）
@@ -117,7 +224,7 @@ steps:
       - coding
     knowledge:
       - growmate
-    capabilities: edit
+    capabilities: growmate-edit
     required_permission_mode: edit
     instruction: spec-to-pr/implement
     quality_gates:
@@ -130,11 +237,11 @@ steps:
         timeout_ms: 900000
     rules:
       - condition: 実装と必須検証（npm run verify）が完了した
-        next: reviewers
+        next: ui_evidence
       # 完了契約の「未完了」行（テスト・観測記録の不足）は仕様の問題ではなく reviewers → fix で閉じる。
       # この行が無いと判定が下の ABORT を選び、resume しても同じ所で止まり続ける。
       - condition: npm run verify は成功したが、実装レポートの完了契約に「未完了」の行が残っている（テスト不足・観測記録不足など、仕様書の修正を要しない残件）
-        next: reviewers
+        next: ui_evidence
       - condition: 対象仕様書が plan.md 作成後に変更されており、実装方針の再検討が必要
         next: plan
         command_gates: skip
@@ -149,57 +256,144 @@ steps:
           format: coder-decisions
         - name: implement-report.md
           format: implementation-report
-  # レビュー2系統（AIアンチパターン / アーキテクチャ）を並列実行する。
-  # どちらも read-only で作業ツリーを変更しないため同時実行できる。指摘の修正は fix 1本に統合。
+  - name: ui_evidence
+    uses: ui-evidence
+    rules:
+      - condition: when(structured.ui_evidence.verdict == "captured")
+        next: reviewers
+      - condition: when(structured.ui_evidence.verdict == "not_applicable")
+        next: reviewers
+      - condition: when(structured.ui_evidence.verdict == "cannot_capture")
+        next: ABORT
+        appendix: |
+          UI 変更があるのに画面の証跡を採取できませんでした（scripts/takt-ui-evidence.ts が終了コード3）。
+          夜通し実行の前に docs/runbooks/takt-overnight-preflight.md の手順（.env.local・ログイン状態の storageState・Chromium）を確認してから再実行してください。
+
+  # parallel の子は structured_output を持てないため、承認の判定は直後の review が集約する
   - name: reviewers
     parallel:
-      - name: ai_antipattern_review
-        session_key: ai-antipattern-review
-        tags:
-          - review
-        edit: false
-        persona: ai-antipattern-reviewer
-        policy:
-          - review
-          - ai-antipattern
-        knowledge:
-          - growmate
-        capabilities: readonly
-        instruction:
-          - ai-antipattern-review
-          - spec-to-pr/review-follow-up
-        rules:
-          - condition: approved
-          - condition: needs_fix
-        output_contracts:
-          report:
-            - name: ai-antipattern-review.md
-              format: ai-antipattern-review
-      - name: review
-        session_key: architecture-review
-        tags:
-          - review
-        edit: false
-        persona: architecture-reviewer
-        knowledge:
-          - architecture
-          - growmate
-        capabilities: readonly
-        rules:
-          - condition: approved
-          - condition: needs_fix
-        output_contracts:
-          report:
-            - name: architecture-review.md
-              format: architecture-review
-        instruction:
-          - spec-to-pr/architecture-review
-          - spec-to-pr/review-follow-up
+      fixed:
+        - name: ai_antipattern_review
+          session_key: ai-antipattern-review
+          tags:
+            - review
+          edit: false
+          persona: ai-antipattern-reviewer
+          policy:
+            - review
+            - ai-antipattern
+          knowledge:
+            - growmate
+          capabilities: growmate-readonly
+          instruction:
+            - ai-antipattern-review
+            - spec-to-pr/review-follow-up
+          rules:
+            - condition: approved
+            - condition: needs_fix
+          output_contracts:
+            report:
+              - name: ai-antipattern-review.md
+                format: ai-antipattern-review
+        - name: architecture_review
+          session_key: architecture-review
+          tags:
+            - review
+          edit: false
+          persona: architecture-reviewer
+          knowledge:
+            - architecture
+            - growmate
+          capabilities: growmate-readonly
+          instruction:
+            - spec-to-pr/architecture-review
+            - spec-to-pr/review-follow-up
+          rules:
+            - condition: approved
+            - condition: needs_fix
+          output_contracts:
+            report:
+              - name: architecture-review.md
+                format: architecture-review
+      pool:
+        - name: frontend_review
+          description: plan.md の UIモック が対象外でない、または app/ か src/components/ の画面・部品を変更したときに選ぶ。それ以外（サーバー処理・DB・docs だけの変更）では選ばない。
+          session_key: frontend-review
+          tags:
+            - review
+          edit: false
+          persona: frontend-reviewer
+          policy:
+            - frontend
+            - react
+            - review
+            - design-fidelity
+          knowledge:
+            - frontend
+            - react
+            - growmate
+          capabilities: growmate-readonly
+          instruction:
+            - frontend-review
+            - spec-to-pr/frontend-review
+            - spec-to-pr/review-follow-up
+          rules:
+            - condition: approved
+            - condition: needs_fix
+          output_contracts:
+            report:
+              - name: frontend-review.md
+                format: frontend-review
+      # 一度選んだ frontend_review は以降の回も走らせる（外れた回に前回の frontend-review.md を今回分として読ませない）
+      selection:
+        mode: cumulative
+        selector:
+          instruction: select-applicable-candidates
     rules:
       - condition: all("approved")
-        next: readme_sync
+        next: review
       - condition: any("needs_fix")
+        next: review
+
+  # 承認なしで PR に届く経路を作らないため、loop judge の脱出口も readme_sync へ直結させない
+  - name: review
+    tags:
+      - review
+    edit: false
+    persona: supervisor
+    session_key: review-gate
+    session: refresh
+    knowledge:
+      - growmate
+    capabilities: growmate-readonly
+    pass_previous_response: false
+    instruction: spec-to-pr/review-gate
+    structured_output:
+      schema_ref: review_gate
+    rules:
+      - condition: when(structured.review.approved == true && structured.review.verdict == "approved")
+        next: readme_sync
+      - condition: when(structured.review.verdict == "needs_fix")
         next: fix
+      - condition: when(structured.review.verdict == "invalid_approval")
+        next: reviewers
+    output_contracts:
+      report:
+        - name: review-gate.md
+          format: |
+            # レビュー承認の判定
+            - approved: true / false
+            - verdict: approved / needs_fix / invalid_approval
+            ## レビュアーごとの判定
+            | レビュアー | 判定 | 根拠（読んだファイル:行番号） | 有効 / 無効 |
+            ## 未解決の finding_id
+            | finding_id | レビュアー | 根拠（path:行番号 / 失敗テスト名とコマンド出力） |
+        # 過去の回の記録。判定は今回の review-gate.md だけで行う
+        - name: review-history.md
+          use_judge: false
+          format: |
+            # レビュー履歴
+            | finding_id | レビュアー | 1回目 | 2回目 | … | 差し戻し回数 |
 
   - name: fix
     tags:
@@ -211,7 +405,7 @@ steps:
       - coding
     knowledge:
       - growmate
-    capabilities: edit
+    capabilities: growmate-edit
     required_permission_mode: edit
     pass_previous_response: false
     instruction: spec-to-pr/fix
@@ -227,7 +421,7 @@ steps:
       schema_ref: fix
     rules:
       - condition: when(structured.fix.verdict == "fixed")
-        next: reviewers
+        next: ui_evidence
       - condition: when(structured.fix.verdict == "info_missing")
         next: plan
         command_gates: skip
@@ -254,7 +448,7 @@ steps:
       - coding
     knowledge:
       - growmate
-    capabilities: edit
+    capabilities: growmate-edit
     required_permission_mode: edit
     pass_previous_response: false
     instruction: spec-to-pr/self-review-fix
@@ -271,9 +465,9 @@ steps:
     rules:
       # readme_sync は reviewers 承認後の1回のみ。ここへ戻さない（空回り防止）
       - condition: when(structured.self_review_fix.verdict == "fixed")
-        next: self_review
+        next: ui_evidence_recheck
       - condition: when(structured.self_review_fix.verdict == "arch_impact")
-        next: reviewers
+        next: ui_evidence
         command_gates: skip
       - condition: when(structured.self_review_fix.verdict == "info_missing")
         next: plan
@@ -288,6 +482,19 @@ steps:
         - name: self-review-fix-report.md
           format: implementation-report
 
+  - name: ui_evidence_recheck
+    uses: ui-evidence
+    rules:
+      - condition: when(structured.ui_evidence_recheck.verdict == "captured")
+        next: self_review
+      - condition: when(structured.ui_evidence_recheck.verdict == "not_applicable")
+        next: self_review
+      - condition: when(structured.ui_evidence_recheck.verdict == "cannot_capture")
+        next: ABORT
+        appendix: |
+          UI 変更があるのに画面の証跡を採取できませんでした（scripts/takt-ui-evidence.ts が終了コード3）。
+          夜通し実行の前に docs/runbooks/takt-overnight-preflight.md の手順（.env.local・ログイン状態の storageState・Chromium）を確認してから再実行してください。
+
   - name: readme_sync
     tags:
       - coding
@@ -298,7 +505,7 @@ steps:
       - coding
     knowledge:
       - growmate
-    capabilities: edit
+    capabilities: growmate-edit
     required_permission_mode: edit
     instruction: spec-to-pr/readme-sync
     structured_output:
@@ -318,15 +525,16 @@ steps:
       - review
     edit: false
     persona: supervisor
+    session_key: self-review
     knowledge:
       - growmate
-    capabilities: readonly
+    capabilities: growmate-readonly
     instruction: spec-to-pr/self-review
     structured_output:
       schema_ref: self_review
     rules:
       - condition: when(structured.self_review.verdict == "pass")
-        next: prepare_pr_summary
+        next: final_gate
       - condition: when(structured.self_review.verdict == "needs_fix")
         next: self_review_fix
       - condition: when(structured.self_review.verdict == "cannot_verify")
@@ -335,6 +543,32 @@ steps:
       report:
         - name: self-review.md
           format: spec-to-pr/self-review
+  - name: final_gate
+    uses: peer-review-final-gate
+    session_key: final-gate
+    session: refresh
+    capabilities: growmate-readonly
+    with:
+      review_knowledge:
+        - architecture
+        - growmate
+      final_gate_policy:
+        - review
+      final_gate_instruction: spec-to-pr/final-gate
+    rules:
+      - condition: APPROVE && when(structured.review.approved == true && structured.review.verdict == "approved")
+        next: prepare_pr_summary
+      # 同じ意味ラベルの rule は appendix を揃える必要があるため、承認なしの停止理由は書けない
+      - condition: APPROVE
+        next: ABORT
+      - condition: REJECT
+        next: self_review_fix
+      - condition: BLOCKED
+        next: ABORT
+        appendix: |
+          final gate が、現在のコードと前段の報告だけでは要件充足を判定できませんでした。
+          - {判定できない要件}: {必要な外部判断または情報}
+
   - name: prepare_pr_summary
     tags:
       - report
@@ -342,11 +576,14 @@ steps:
     persona: reporter
     knowledge:
       - growmate
-    capabilities: readonly
+    capabilities: growmate-readonly
     instruction: spec-to-pr/pr-summary
     rules:
-      - condition: PR 本文正本（pr-summary.md）が完了した
+      - condition: PR 本文正本（pr-summary.md）が完了した && when(structured.review.approved == true && structured.review.verdict == "approved")
         next: create_pr
+      # レビュー承認が無いまま push / PR 作成へ進ませない
+      - condition: PR 本文正本（pr-summary.md）が完了した
+        next: ABORT
       - condition: 添付レポートの内容が欠落・破損しており、レビュー結果を確認できない
         next: ABORT
     output_contracts:
@@ -361,6 +598,7 @@ steps:
     persona: coder
     knowledge:
       - growmate
+    capabilities: growmate-edit
     required_permission_mode: edit
     allow_git_commit: true
     instruction: spec-to-pr/create-pr
@@ -427,7 +665,7 @@ steps:
       - coding
     knowledge:
       - growmate
-    capabilities: edit
+    capabilities: growmate-edit
     required_permission_mode: edit
     allow_git_commit: true
     pass_previous_response: false
