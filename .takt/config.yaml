@@ -11,6 +11,12 @@ provider_profiles:
     default_permission_mode: edit
     step_permission_overrides:
       plan: readonly
+      # Claude SDK の edit（acceptEdits）は allowed_tools に無い Edit / Write も自動承認するため、
+      # 編集しない step は readonly にする。loop judge は合成 step 名で引かれる
+      _loop_judge_reviewers_review_fix: readonly
+      _loop_judge_reviewers_review: readonly
+      _loop_judge_self_review_self_review_fix: readonly
+      _loop_judge_self_review_fix_self_review_final_gate: readonly
       ai_antipattern_review: readonly
       architecture_review: readonly
       frontend_review: readonly
@@ -20,6 +26,12 @@ provider_profiles:
       prepare_pr_summary: readonly
       identify: readonly
       audit: readonly
+# global の rate_limit_fallback（claude-headless → codex → cursor）を上書きする。切り替え先でも
+# claude-sdk の provider_profiles が効くよう、claude-sdk の別モデルだけにする（cursor は full になる）
+rate_limit_fallback:
+  switch_chain:
+    - provider: claude-sdk
+      model: sonnet
 workflow_command_gates:
   custom_scripts: true
 workflow_runtime_prepare:

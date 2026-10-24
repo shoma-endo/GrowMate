@@ -42,6 +42,10 @@ grace_seconds=120
 
 "$TAKT_BIN" run &
 takt_pid=$!
+# スリープすると上限時間の計測も止まるため、takt が動いている間は起こしておく（macOS）
+if command -v caffeinate >/dev/null 2>&1; then
+  caffeinate -i -w "$takt_pid" &
+fi
 
 (
   sleep "$limit_seconds"

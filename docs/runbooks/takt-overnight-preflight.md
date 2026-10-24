@@ -6,8 +6,9 @@
 
 - タスクが失敗したら1回だけ自動で積み直す（`.takt/config.yaml` の `auto_requeue_max_attempts: 1`）。2回目の失敗は積み直さずに止まる。
 - `takt run` のタスクが全部終わると、`TAKT_NOTIFY_WEBHOOK` に run summary が送られる。TAKT の通知は Slack Incoming Webhook 形式だけで、Lark の Webhook には送れない。
-- 実行時間の上限は `scripts/takt-overnight.sh` が持つ（既定 480 分）。TAKT には run 全体の時間上限の設定が無いため、上限に達したら SIGINT で中断させる。中断した run は翌朝 resume できる。
-- `max_steps: 30` を超えた run も止まる。レビューの差し戻しは同じ finding_id で2回までで、3周目に入る前に止まって足りないものを返す。
+- 実行時間の上限は `scripts/takt-overnight.sh` が持つ（既定 480 分）。TAKT には run 全体の時間上限の設定が無いため、上限に達したら SIGINT で中断させる。中断した run は翌朝 resume できる（下の「朝に確かめる」の注意を参照）。macOS では `caffeinate` で takt の実行中はスリープさせない。
+- `max_steps: 40` を超えた run も止まる。レビューの差し戻しは同じ finding_id で2回までで、3周目に入る前に止まって足りないものを返す。
+- rate limit に当たったときの切り替え先は claude-sdk の sonnet だけ（`.takt/config.yaml` の `rate_limit_fallback`）。global の切り替え先（codex・cursor）には落ちない。
 
 ## 1. 一度だけ用意する
 
@@ -22,6 +23,8 @@ UI 変更のある仕様を流すときだけ要る。
 
    - 開発と本番は同じ Supabase を使う。このログインも、`ui_evidence` が画面を開くことも、人がブラウザでログインして画面を開くのと同じ扱いになる。
    - ファイルの中身はセッション cookie なので、リポジトリに置かない・人に渡さない。ログインが切れたら作り直す。
+   - ログインするユーザーは `paid` か `admin` にする。`trial` などで `/unauthorized`・`/unavailable` へ飛ばされると、`ui_evidence` は別の画面を測らずに止まる。
+   - `ui-evidence.md` とスクリーンショットには、そのユーザーの実データ（表のセルの先頭40字・画面）がそのまま入り、PR 本文の材料にもなる。見られて困るデータのあるユーザーを使わない。
 
 ## 2. 寝る前に毎回
 
@@ -59,4 +62,4 @@ UI 変更のある仕様を流すときだけ要る。
 
 - 通知の run summary、または `.takt/runs/` の最新 run の `meta.json` の status を見る。
 - ABORT した run は、レポートの appendix に止まった理由（足りない仕様・判断材料）がある。仕様書を直して `spec-review` から回し直す。
-- 時間上限で中断した run は resume する。
+- 時間上限で中断した run は resume する。ただし `review` より後（readme_sync 以降）で止まった run は、resume しても final_gate で止まる。レビュー承認の記録（structured output）が resume で引き継がれないため。その場合は同じタスクを積み直して最初から回す。

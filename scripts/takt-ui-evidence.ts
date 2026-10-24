@@ -79,8 +79,11 @@ function parseArgs(argv: string[]): { out: string; pairs: Pair[]; baseUrl: strin
     } else if (flag === '--base-url') {
       baseUrl = value.replace(/\/$/, '');
     } else if (flag === '--pair') {
-      const [target, compare] = value.split('=');
-      if (!target?.startsWith('/') || (compare !== undefined && !compare.startsWith('/'))) {
+      // クエリの = と区別するため、比較先は「=/」で分ける
+      const separator = value.indexOf('=/');
+      const target = separator === -1 ? value : value.slice(0, separator);
+      const compare = separator === -1 ? undefined : value.slice(separator + 1);
+      if (!target.startsWith('/')) {
         throw new CannotCaptureError(`--pair は /path または /target=/compare の形で指定してください: ${value}`);
       }
       pairs.push({ target, compare });
@@ -113,6 +116,13 @@ async function startDevServer(port: number): Promise<{ baseUrl: string; child: C
     stdio: ['ignore', 'ignore', 'pipe'],
     detached: true,
   });
+  // 中断・タイムアウトで finally が走らなくても、detached のグループをポートに残さない
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.once(signal, () => {
+      stopDevServer(child);
+      process.exit(EXIT_CANNOT_CAPTURE);
+    });
+  }
   let stderrTail = '';
   child.stderr?.on('data', (chunk: Buffer) => {
     stderrTail = (stderrTail + chunk.toString()).slice(-2_000);
@@ -132,12 +142,15 @@ async function startDevServer(port: number): Promise<{ baseUrl: string; child: C
 }
 
 function stopDevServer(child: ChildProcess): void {
-  if (child.pid === undefined || child.exitCode !== null) return;
+  if (child.pid === undefined) return;
   try {
-    // detached で起こしたプロセスグループごと止める（next dev は子プロセスを持つ）
+    // detached で起こしたプロセスグループごと止める。npx が先に終わっても孫の next が残るため、
+    // child の終了状態は見ずにグループへ送る
     process.kill(-child.pid, 'SIGTERM');
   } catch (error) {
-    console.error('next dev の停止に失敗しました', error);
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+      console.error('next dev の停止に失敗しました', error);
+    }
   }
 }
 
@@ -145,16 +158,14 @@ function measure(tolerance: number) {
   const root = document.documentElement;
   const cellOverflows: CellOverflow[] = [];
   document.querySelectorAll('table').forEach((table, tableIndex) => {
-    const headers = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent?.trim() ?? '');
-    table.querySelectorAll('tr').forEach((row, rowIndex) => {
-      Array.from(row.children).forEach((cell, columnIndex) => {
-        if (!(cell instanceof HTMLElement) || cell.offsetParent === null) return;
-        // truncate（text-overflow: ellipsis）で省略表示している中身は意図したはみ出し
+    const headers = Array.from(table.tHead?.rows[0]?.cells ?? []).map((th) => th.textContent?.trim() ?? '');
+    // table.rows / row.cells は入れ子の表の行・セルを含まない
+    Array.from(table.rows).forEach((row, rowIndex) => {
+      Array.from(row.cells).forEach((cell, columnIndex) => {
+        if (cell.offsetParent === null) return;
+        // セル自身を truncate（text-overflow: ellipsis）で省略表示しているのは意図したはみ出し。
+        // 子の truncate は自分で overflow: hidden なのでセルの scrollWidth を押し広げず、除外しない
         if (getComputedStyle(cell).textOverflow === 'ellipsis') return;
-        const overflowingChild = Array.from(cell.querySelectorAll<HTMLElement>('*')).some(
-          (child) => getComputedStyle(child).textOverflow === 'ellipsis'
-        );
-        if (overflowingChild) return;
         if (cell.scrollWidth > cell.clientWidth + tolerance) {
           cellOverflows.push({
             table: tableIndex,
@@ -191,10 +202,15 @@ async function measurePage(
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   await page.goto(`${baseUrl}${pagePath}`, { waitUntil: 'networkidle', timeout: NAVIGATION_TIMEOUT_MS });
   const finalPath = new URL(page.url()).pathname;
-  if (finalPath === '/login' && pagePath !== '/login') {
+  const requestedPath = new URL(pagePath, baseUrl).pathname;
+  if (finalPath === '/login' && requestedPath !== '/login') {
     throw new CannotCaptureError(
       `${pagePath} が /login へ戻されました。ログイン状態（storageState）を用意してください（docs/runbooks/takt-overnight-preflight.md）`
     );
+  }
+  // /unauthorized・/unavailable などへ飛ばされた別の画面を測って合格にしない
+  if (finalPath !== requestedPath) {
+    throw new CannotCaptureError(`${pagePath} が ${finalPath} へ移動しました。ログイン状態のユーザーのロールを確認してください`);
   }
   const screenshot = path.join(out, `${slugOf(pagePath)}-${role}-${viewport.name}.png`);
   await page.screenshot({ path: screenshot, fullPage: true });

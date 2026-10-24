@@ -61,12 +61,15 @@ if [[ -n "$TAKT_BIN" ]]; then
 
   echo "--- 権限 ---"
   for workflow in spec-review spec-to-pr; do
-    inspect="$("$TAKT_BIN" workflow inspect "$workflow" 2>/dev/null)"
-    providers="$(grep -E '^\[INFO\] +provider: ' <<<"$inspect" | sed -E 's/.*provider: ([^ ]+).*/\1/' | sort -u | tr '\n' ' ')"
+    if ! inspect="$("$TAKT_BIN" workflow inspect "$workflow" 2>&1)"; then
+      fail "${workflow}: workflow inspect が失敗（${TAKT_BIN} workflow inspect ${workflow}）"
+      continue
+    fi
+    providers="$(grep -E '^\[INFO\] +provider: ' <<<"$inspect" | sed -E 's/.*provider: ([^ ]+).*/\1/' | sort -u | tr '\n' ' ' || true)"
     if [[ "$providers" == "claude-sdk " ]]; then
       ok "${workflow}: 全 step が claude-sdk"
     else
-      fail "${workflow}: claude-sdk 以外の provider が解決される（${providers}）。.takt/runtime.yaml を確認"
+      fail "${workflow}: claude-sdk 以外の provider が解決される（${providers:-解決結果なし}）。.takt/runtime.yaml を確認"
     fi
     if grep -qE '^\[INFO\] +permissionMode: full' <<<"$inspect"; then
       fail "${workflow}: permissionMode: full（Claude では bypassPermissions）に解決される step がある"
@@ -86,7 +89,8 @@ else
 fi
 
 echo "--- 認証 ---"
-if bash scripts/takt-check-provider-auth.sh 2>/dev/null; then
+# TAKT_RUNTIME_ROOT があると、この検査は TAKT に渡す API キーを stdout に出す。値を端末に出さないよう捨てる
+if bash scripts/takt-check-provider-auth.sh >/dev/null 2>&1; then
   ok "Anthropic 認証"
 else
   fail "Anthropic 認証がない（scripts/takt-check-provider-auth.sh）"
@@ -99,9 +103,9 @@ fi
 
 echo "--- テスト準備 ---"
 if npm ls --depth=0 >/dev/null 2>&1; then
-  ok "node_modules が package-lock.json と一致"
+  ok "package.json の依存が node_modules に揃っている"
 else
-  fail "node_modules が package-lock.json と食い違う（npm ci）"
+  fail "package.json の依存が node_modules に揃っていない（npm ci）"
 fi
 if node -e "require('playwright').chromium.launch().then((browser) => browser.close())" >/dev/null 2>&1; then
   ok "Playwright Chromium が起動する"
@@ -115,10 +119,11 @@ echo "--- 環境 ---"
 # 値は読まない。ファイルがあるかだけを見る
 for name in TAKT_UI_ENV_FILE TAKT_UI_STORAGE_STATE; do
   value="${!name:-}"
-  if [[ -n "$value" && -f "$value" ]]; then
+  # takt run は clone の中で動くため、相対パスだと見つからない
+  if [[ "$value" == /* && -f "$value" ]]; then
     ok "${name} のファイルあり"
   elif [[ "$require_ui" -eq 1 ]]; then
-    fail "${name} が未設定、またはファイルが無い（takt run の clone には .env.local とログイン状態が無い）"
+    fail "${name} が未設定、絶対パスでない、またはファイルが無い（takt run の clone には .env.local とログイン状態が無い）"
   else
     warn "${name} が未設定（UI 変更のある仕様は ui_evidence で止まる）"
   fi
