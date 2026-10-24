@@ -117,7 +117,7 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
-/* 項目の多いダイアログを画面内に収め、中身をスクロールさせる上限 */
+/* ダイアログの高さの上限。max-h-[85vh] は shadcn/no-arbitrary-values で禁止のため名前を付ける */
 @utility max-h-dialog {
   max-height: 85vh;
 }

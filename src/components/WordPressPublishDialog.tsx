@@ -146,7 +146,7 @@ export const WordPressPublishDialog = forwardRef<WordPressPublishDialogHandle, W
           {loadingDefaults ? <p className="text-sm text-muted-foreground">読み込み中...</p> : <>
           <p className="text-sm text-muted-foreground">送る本文: 見出し {headingCount} 本・約 {characterCount.toLocaleString('ja-JP')} 文字（Canvas の最新の完成形）</p>
           {lockedType ? (
-            <div className="grid gap-2"><Label>送信先</Label><p className="text-sm">{WORDPRESS_CONTENT_TYPE_LABELS[contentType]}</p></div>
+            <div className="grid gap-2"><span className="block text-sm font-medium leading-none">送信先</span><p className="text-sm">{WORDPRESS_CONTENT_TYPE_LABELS[contentType]}</p></div>
           ) : (
             <div className="grid gap-2"><Label htmlFor="wp-publish-content-type">送信先</Label><Select value={contentType} onValueChange={value => { const nextType = value as 'posts' | 'pages'; setContentType(nextType); if (nextType === 'posts') void loadCategories(); }} disabled={loading}><SelectTrigger id="wp-publish-content-type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="posts">{WORDPRESS_CONTENT_TYPE_LABELS.posts}</SelectItem><SelectItem value="pages">{WORDPRESS_CONTENT_TYPE_LABELS.pages}</SelectItem></SelectContent></Select></div>
           )}
