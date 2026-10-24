@@ -207,6 +207,7 @@ async function measurePage(
     status: response?.status() ?? null,
     requestedPath: new URL(pagePath, baseUrl).pathname,
     finalPath,
+    noindex: (await page.locator('meta[name="robots"][content*="noindex"]').count()) > 0,
   });
   if (failure !== null) {
     throw new CannotCaptureError(failure);

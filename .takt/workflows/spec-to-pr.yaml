@@ -14,7 +14,9 @@ workflow_config:
   runtime:
     prepare:
       - scripts/takt-check-provider-auth.sh
-# 1周 = plan 後の happy path 13 step。レビュー往復は1周ごとに judge が入り、2回目の差し戻しで止める（5 step × 2）。
+# happy path 13 step + レビュー往復 2周（ui_evidence・reviewers・review・fix・judge で 5 × 2）
+# + self_review 往復 2周（self_review_fix・ui_evidence_recheck・self_review で 3 × 2 + judge）
+# + final gate 往復 2周（4 × 2 + judge）= 39。根拠の無い承認のやり直し分を足して 44。
 # 実行時間の上限は TAKT に run 全体のキーが無いため scripts/takt-overnight.sh が持つ。
 max_steps: 44
 initial_step: plan
@@ -32,7 +34,7 @@ loop_monitors:
     judge:
       persona: supervisor
       instruction: |
-        reviewers → review → fix の1周が終わりました。次のレビューへ進むか、ここで止めるかを判定してください。
+        ui_evidence → reviewers → review → fix の1周が終わりました。次の周（UI 証跡の撮り直しから）へ進むか、ここで止めるかを判定してください。
 
         判定の根拠の規則（満たさない判定は無効）:
         - fix-result.md で「直った」とされる finding_id は、指摘箇所の実コードと、関係するテストのファイルを Read で開いて確かめる。報告の記載だけで直ったとみなさない。
@@ -85,7 +87,7 @@ loop_monitors:
     judge:
       persona: supervisor
       instruction: |
-        self_review -> self_review_fix のループが {cycle_count} 回繰り返されました。final gate へ進めるか、ここで止めるかを判定してください。
+        self_review -> self_review_fix -> ui_evidence_recheck のループが {cycle_count} 回繰り返されました。final gate へ進めるか、ここで止めるかを判定してください。
 
         判定の根拠の規則（満たさない判定は無効）:
         - fix-result.md で「直った」とされる ID は、指摘箇所の実コードと関係するテストを Read で開いて確かめる。
@@ -120,7 +122,7 @@ loop_monitors:
     judge:
       persona: supervisor
       instruction: |
-        final gate の REJECT から self_review_fix → self_review → final gate のループが {cycle_count} 回繰り返されました。
+        final gate の REJECT から self_review_fix → ui_evidence_recheck → self_review → final gate のループが {cycle_count} 回繰り返されました。
         review-resolution.md の未解消の問題 ID が2回とも残っていれば止めます。直ったとされる問題は実コードを Read で開いて確かめ、未解消と判定する問題には `path:行番号` を書いてください。
 
         ## review-resolution.md（最新・全文）
