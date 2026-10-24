@@ -24,8 +24,8 @@ describe('describeNavigationFailure', () => {
     );
   });
 
-  it('/login 以外の別画面へ移動したら測らない', () => {
-    expect(describeNavigationFailure({ status: 200, requestedPath: '/analytics', finalPath: '/unauthorized', noindex: false })).toBe(
+  it('/login 以外の別画面へ移動したら、移動先が noindex でもロールの確認を促す', () => {
+    expect(describeNavigationFailure({ status: 200, requestedPath: '/analytics', finalPath: '/unauthorized', noindex: true })).toBe(
       '/analytics が /unauthorized へ移動しました。ログイン状態のユーザーのロールを確認してください'
     );
   });
