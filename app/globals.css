@@ -141,14 +141,36 @@
     background-color: #f9fafb; /* gray-50 */
   }
 
+  :root {
+    --analytics-select-width: 44px;
+  }
+
+  /* チェック列と操作列は、この順で左に固定する */
+  .analytics-select-cell,
   .analytics-ops-cell {
     position: sticky;
     left: 0;
     z-index: 30;
     background-color: inherit;
-    box-shadow: 4px 0 8px -6px rgba(15, 23, 42, 0.25);
   }
 
+  .analytics-select-cell {
+    width: var(--analytics-select-width);
+    min-width: var(--analytics-select-width);
+    max-width: var(--analytics-select-width);
+  }
+
+  /* 幅を指定しないと表の min-width の余りがこの列に配られて中身より広がるので、
+     1px を指定して nowrap の中身の幅まで縮ませる */
+  .analytics-ops-cell {
+    width: 1px;
+  }
+
+  .analytics-select-cell + .analytics-ops-cell {
+    left: var(--analytics-select-width);
+  }
+
+  .analytics-select-cell::before,
   .analytics-ops-cell::before {
     content: '';
     position: absolute;
@@ -158,7 +180,14 @@
     z-index: -1;
   }
 
-  .analytics-ops-cell::after {
+  /* 境界の影と線は、固定した列のうち一番右の列にだけ付ける */
+  .analytics-ops-cell,
+  :where(.analytics-select-cell:not(:has(+ .analytics-ops-cell))) {
+    box-shadow: 4px 0 8px -6px rgba(15, 23, 42, 0.25);
+  }
+
+  .analytics-ops-cell::after,
+  .analytics-select-cell:not(:has(+ .analytics-ops-cell))::after {
     content: '';
     position: absolute;
     top: 0;
@@ -178,13 +207,10 @@
     box-shadow: 0 4px 8px -6px rgba(15, 23, 42, 0.25);
   }
 
+  /* ほかの見出し（40）より上、ダイアログのオーバーレイとメニュー（z-50）より下 */
+  .analytics-head .analytics-select-cell,
   .analytics-head .analytics-ops-cell {
     top: 0;
-    z-index: 60;
-  }
-
-  /* 任意のダイアログが開いている間は操作列の z-index を下げる */
-  body:has([data-state='open']) .analytics-ops-cell {
-    z-index: 1;
+    z-index: 45;
   }
 }

@@ -351,7 +351,7 @@ export default function InstagramMediaTable({
                     checked={allOnPageSelected ? true : selectedOnPage > 0 ? 'indeterminate' : false}
                     onCheckedChange={onToggleAll}
                   />
-                  {showOpsColumn ? <AnalyticsOpsHeaderCell expanded /> : null}
+                  {showOpsColumn ? <AnalyticsOpsHeaderCell /> : null}
                   <th className="px-6 py-3 whitespace-nowrap">サムネ</th>
                   {visibleOrdered.map(columnId => {
                     const col = columns.find(c => c.id === columnId);
@@ -397,7 +397,7 @@ export default function InstagramMediaTable({
                       />
                     </AnalyticsSelectionCell>
                     {showOpsColumn ? (
-                      <AnalyticsOpsCell expanded>
+                      <AnalyticsOpsCell>
                         <BlogDraftOperation item={item} now={now} active={isBlogDraftLocked} pending={pendingResumeId === item.id} onResume={onResume} onNavigate={href => router.push(href)} />
                       </AnalyticsOpsCell>
                     ) : null}
