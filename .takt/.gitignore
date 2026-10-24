@@ -26,6 +26,10 @@
 !facets/output-contracts/
 !facets/output-contracts/**
 
+# Step fragments referenced by workflows via `uses` (version-controlled)
+!steps/
+!steps/**
+
 # Structured output schemas (version-controlled)
 !schemas/
 !schemas/**

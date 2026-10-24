@@ -14,13 +14,14 @@
  * ログイン状態は TAKT_UI_STORAGE_STATE（未指定なら .takt/ui-evidence/storage-state.json）の
  * Playwright storageState を使う。どちらのファイルも中身（環境変数・セッション cookie）は出力しない。
  *
- * 終了コード: 0 = 対象画面にはみ出しなし / 2 = 対象画面にはみ出しあり / 3 = 採取できない（起動失敗・未ログイン等）。
+ * 終了コード: 0 = 対象画面にはみ出しなし / 2 = 対象画面にはみ出しあり / 3 = 採取できない（起動失敗・HTTP エラー・未ログイン・別画面への移動）。
  * 既存の類似画面のはみ出しは記録するが終了コードには含めない（今回の差分による回帰ではないため）。
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
+import { describeNavigationFailure } from './lib/ui-evidence-navigation';
 
 const VIEWPORTS = [
   { name: 'pc-1280', width: 1280, height: 800 },
@@ -200,17 +201,15 @@ async function measurePage(
   out: string
 ): Promise<PageMeasurement> {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
-  await page.goto(`${baseUrl}${pagePath}`, { waitUntil: 'networkidle', timeout: NAVIGATION_TIMEOUT_MS });
+  const response = await page.goto(`${baseUrl}${pagePath}`, { waitUntil: 'networkidle', timeout: NAVIGATION_TIMEOUT_MS });
   const finalPath = new URL(page.url()).pathname;
-  const requestedPath = new URL(pagePath, baseUrl).pathname;
-  if (finalPath === '/login' && requestedPath !== '/login') {
-    throw new CannotCaptureError(
-      `${pagePath} が /login へ戻されました。ログイン状態（storageState）を用意してください（docs/runbooks/takt-overnight-preflight.md）`
-    );
-  }
-  // /unauthorized・/unavailable などへ飛ばされた別の画面を測って合格にしない
-  if (finalPath !== requestedPath) {
-    throw new CannotCaptureError(`${pagePath} が ${finalPath} へ移動しました。ログイン状態のユーザーのロールを確認してください`);
+  const failure = describeNavigationFailure({
+    status: response?.status() ?? null,
+    requestedPath: new URL(pagePath, baseUrl).pathname,
+    finalPath,
+  });
+  if (failure !== null) {
+    throw new CannotCaptureError(failure);
   }
   const screenshot = path.join(out, `${slugOf(pagePath)}-${role}-${viewport.name}.png`);
   await page.screenshot({ path: screenshot, fullPage: true });

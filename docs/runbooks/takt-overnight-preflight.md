@@ -7,7 +7,7 @@
 - タスクが失敗したら1回だけ自動で積み直す（`.takt/config.yaml` の `auto_requeue_max_attempts: 1`）。2回目の失敗は積み直さずに止まる。
 - `takt run` のタスクが全部終わると、`TAKT_NOTIFY_WEBHOOK` に run summary が送られる。TAKT の通知は Slack Incoming Webhook 形式だけで、Lark の Webhook には送れない。
 - 実行時間の上限は `scripts/takt-overnight.sh` が持つ（既定 480 分）。TAKT には run 全体の時間上限の設定が無いため、上限に達したら SIGINT で中断させる。中断した run は翌朝 resume できる（下の「朝に確かめる」の注意を参照）。macOS では `caffeinate` で takt の実行中はスリープさせない。
-- `max_steps: 40` を超えた run も止まる。レビューの差し戻しは同じ finding_id で2回までで、3周目に入る前に止まって足りないものを返す。
+- `max_steps: 44` を超えた run も止まる。レビューの差し戻しは同じ finding_id で2回までで、3周目に入る前に止まって足りないものを返す。
 - rate limit に当たったときの切り替え先は claude-sdk の sonnet だけ（`.takt/config.yaml` の `rate_limit_fallback`）。global の切り替え先（codex・cursor）には落ちない。claude のログイン（サブスクリプション）で動かしている場合は上限が全モデル共通なので、上限に当たるとそこで止まる。
 
 ## 1. 一度だけ用意する

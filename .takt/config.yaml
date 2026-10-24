@@ -13,10 +13,10 @@ provider_profiles:
       plan: readonly
       # Claude SDK の edit（acceptEdits）は allowed_tools に無い Edit / Write も自動承認するため、
       # 編集しない step は readonly にする。loop judge は合成 step 名で引かれる
-      _loop_judge_reviewers_review_fix: readonly
+      _loop_judge_ui_evidence_reviewers_review_fix: readonly
       _loop_judge_reviewers_review: readonly
-      _loop_judge_self_review_self_review_fix: readonly
-      _loop_judge_self_review_fix_self_review_final_gate: readonly
+      _loop_judge_self_review_self_review_fix_ui_evidence_recheck: readonly
+      _loop_judge_self_review_fix_ui_evidence_recheck_self_review_final_gate: readonly
       ai_antipattern_review: readonly
       architecture_review: readonly
       frontend_review: readonly

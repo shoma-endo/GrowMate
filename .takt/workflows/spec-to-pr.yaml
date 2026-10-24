@@ -16,16 +16,16 @@ workflow_config:
       - scripts/takt-check-provider-auth.sh
 # 1周 = plan 後の happy path 13 step。レビュー往復は1周ごとに judge が入り、2回目の差し戻しで止める（5 step × 2）。
 # 実行時間の上限は TAKT に run 全体のキーが無いため scripts/takt-overnight.sh が持つ。
-max_steps: 40
+max_steps: 44
 initial_step: plan
 loop_monitors:
   # 同じ finding_id を2回差し戻したら3周目の reviewers の前に止める。
+  # ui_evidence を cycle に入れ、続行の遷移先を ui_evidence にする（fix の後に証跡を撮り直さずに reviewers へ進ませない）
   - cycle:
+      - ui_evidence
       - reviewers
       - review
       - fix
-    ignore_steps:
-      - ui_evidence
     # judge が続行を返すと検出の履歴が消えるため、2 にすると同じ finding_id の3回目の差し戻しまで止まらない。
     # 毎周 judge を入れ、回数は review-history.md で数える
     threshold: 1
@@ -52,7 +52,7 @@ loop_monitors:
         {report:fix-result.md}
       rules:
         - condition: 2回差し戻した finding_id は無い
-          next: reviewers
+          next: ui_evidence
         - condition: 同じ finding_id を2回差し戻した
           next: ABORT
           appendix: |
@@ -80,6 +80,7 @@ loop_monitors:
   - cycle:
       - self_review
       - self_review_fix
+      - ui_evidence_recheck
     threshold: 2
     judge:
       persona: supervisor
@@ -112,6 +113,7 @@ loop_monitors:
             - {ID}: {何が足りないか}
   - cycle:
       - self_review_fix
+      - ui_evidence_recheck
       - self_review
       - final_gate
     threshold: 2
@@ -210,26 +212,9 @@ steps:
           format: coder-decisions
         - name: implement-report.md
           format: implementation-report
-  # UI 変更があるときだけ、決めた画面幅で対象画面と既存の類似画面を測ってスクリーンショットを撮る。
-  # frontend_review（reviewers の pool）と final_gate がこのレポートを根拠にする。
-  # ツール権限の前提: claude provider は `edit: false` だと Bash ごと落とすため `edit: true` を明示し、
-  # capabilities で Bash を計測スクリプト1本に絞る。上限: `edit: true` は権限の下限を edit に固定し、Claude SDK の
-  # acceptEdits は allowed_tools に無い Edit / Write も通す（TAKT 0.71 に禁止リストの設定は無い）。編集の禁止は
-  # instruction 頼みで、紛れた差分は後段の reviewers の差分に出る。TAKT に禁止リストが入ったらそちらで塞ぐ。
+  # fix・implement の後は必ずここを通り、証跡を撮り直してから reviewers へ進む（.takt/steps/ui-evidence.yaml）
   - name: ui_evidence
-    tags:
-      - review
-    edit: true
-    persona: supervisor
-    session_key: ui-evidence
-    session: refresh
-    knowledge:
-      - growmate
-    capabilities: growmate-ui-evidence
-    pass_previous_response: false
-    instruction: spec-to-pr/ui-evidence
-    structured_output:
-      schema_ref: ui_evidence
+    uses: ui-evidence
     rules:
       - condition: when(structured.ui_evidence.verdict == "captured")
         next: reviewers
@@ -240,14 +225,6 @@ steps:
         appendix: |
           UI 変更があるのに画面の証跡を採取できませんでした（scripts/takt-ui-evidence.ts が終了コード3）。
           夜通し実行の前に docs/runbooks/takt-overnight-preflight.md の手順（.env.local・ログイン状態の storageState・Chromium）を確認してから再実行してください。
-    output_contracts:
-      report:
-        - name: ui-evidence.md
-          format: |
-            # UI 証跡
-            - 判定: captured / not_applicable / cannot_capture
-            - 実行したコマンドと終了コード
-            - スクリプトの標準出力（Markdown のまま）
 
   # レビューは実装（coder）と別セッションで行う。アーキテクチャと AI アンチパターンは毎回、
   # フロントエンドは UI 変更があるときだけ selector が選ぶ。どれも read-only なので同時に走らせる。
@@ -448,7 +425,7 @@ steps:
     rules:
       # readme_sync は reviewers 承認後の1回のみ。ここへ戻さない（空回り防止）
       - condition: when(structured.self_review_fix.verdict == "fixed")
-        next: self_review
+        next: ui_evidence_recheck
       - condition: when(structured.self_review_fix.verdict == "arch_impact")
         next: ui_evidence
         command_gates: skip
@@ -464,6 +441,20 @@ steps:
           format: coder-decisions
         - name: self-review-fix-report.md
           format: implementation-report
+
+  # final gate が UI で REJECT した修正も含め、self_review_fix の後は証跡を撮り直してから self_review・final gate へ進む
+  - name: ui_evidence_recheck
+    uses: ui-evidence
+    rules:
+      - condition: when(structured.ui_evidence_recheck.verdict == "captured")
+        next: self_review
+      - condition: when(structured.ui_evidence_recheck.verdict == "not_applicable")
+        next: self_review
+      - condition: when(structured.ui_evidence_recheck.verdict == "cannot_capture")
+        next: ABORT
+        appendix: |
+          UI 変更があるのに画面の証跡を採取できませんでした（scripts/takt-ui-evidence.ts が終了コード3）。
+          夜通し実行の前に docs/runbooks/takt-overnight-preflight.md の手順（.env.local・ログイン状態の storageState・Chromium）を確認してから再実行してください。
 
   - name: readme_sync
     tags:
