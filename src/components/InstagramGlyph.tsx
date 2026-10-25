@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
  *   Brand Resource Center（meta.com/brand/resources/instagram/icons）にあるが、
  *   2026-08-01 時点で本文を取得できず裏取りできていない。Business Login for Instagram の
  *   公式ドキュメントにボタン仕様（配色・サイズ・フォント）の指定は無い。
- * - 用途は「連携ボタンでのブランド表示」に限定する。要再認証ボタンは他連携と揃えて
+ * - 用途は「連携ボタンでのブランド表示」に限定する。要再連携ボタンは他連携と揃えて
  *   lucide の AlertTriangle を使う。
  * - growmate-ui-ux の「アイコンは lucide-react」規約に対する、ブランドアセットとしての例外。
  */

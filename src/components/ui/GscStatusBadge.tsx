@@ -11,17 +11,17 @@ interface GscStatusBadgeProps {
 /**
  * Google Search Console のステータスバッジコンポーネント
  * （GA4はconnectionStage別ラベルが必要なためGa4SetupClientでは使わず別実装。
- * 優先度と配色（要再認証>一時的失敗>接続済み>未設定）だけ揃えている）
+ * 優先度と配色（要再連携>一時的失敗>接続済み>未設定）だけ揃えている）
  *
  * 優先度：再認証 > 一時的失敗 > 接続済み > 未設定
  */
 export function GscStatusBadge({ connected, needsReauth, hasTemporaryError }: GscStatusBadgeProps) {
-  // 再認証が必要な場合は「要再認証」バッジを表示
+  // 再認証が必要な場合は「要再連携」バッジを表示
   if (needsReauth) {
     return (
       <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200">
         <AlertTriangle className="mr-1 h-4 w-4" />
-        要再認証
+        要再連携
       </Badge>
     );
   }

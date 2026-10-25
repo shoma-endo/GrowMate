@@ -135,9 +135,9 @@ export async function disconnectInstagram(): Promise<ServerActionResult<void>> {
 /**
  * Instagram 側でアプリの認可を解除されると保存済みトークンは即座に無効になるが、
  * `access_token_expires_at` は未来のままなので `/setup` は「連携済み」と表示し続け、
- * 実 API を叩く `/setup/instagram` だけが「要再認証」を出す（表示が食い違う）。
+ * 実 API を叩く `/setup/instagram` だけが「要再連携」を出す（表示が食い違う）。
  *
- * このコードベースでは **「期限が過去 = 要再認証」が正規の表現** であり
+ * このコードベースでは **「期限が過去 = 要再連携」が正規の表現** であり
  * （`isInstagramTokenExpired` / `resolveInstagramTokenAction` の両方がそう解釈する）、
  * 検知した時点で期限を現在時刻へ落とせば両画面とトークンサービスの判断が揃う。
  * 再連携すれば OAuth コールバックが本来の期限で上書きするため自己修復する。

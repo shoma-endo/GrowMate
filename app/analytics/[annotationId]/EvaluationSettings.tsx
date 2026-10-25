@@ -158,7 +158,7 @@ export function EvaluationSettings({
       // インポート失敗があった場合は警告を表示
       if (result.skippedImportFailed > 0) {
         toast.warning(
-          `検索順位評価: ${result.skippedImportFailed}件でデータ取得に失敗しました（GSC再認証が必要な可能性があります）`
+          `検索順位評価: ${result.skippedImportFailed}件でデータ取得に失敗しました（GSCの再連携が必要な可能性があります）`
         );
       }
 
