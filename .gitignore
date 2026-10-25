@@ -75,3 +75,10 @@ docs/plans/.workflow/
 docs/architecture-diagram.html
 docs/architecture-diagram.archify.json
 scripts/daily-import-failures-state.json
+
+# design-sync（Claude Design への同期）の生成物とローカル状態
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules

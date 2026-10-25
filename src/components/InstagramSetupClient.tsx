@@ -290,7 +290,7 @@ export default function InstagramSetupClient({
         <Alert className="bg-orange-50 border-orange-200">
           <AlertTitle className="text-orange-800 font-medium flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-orange-600" />
-            要再認証
+            要再連携
           </AlertTitle>
           <AlertDescription className="text-orange-700">
             {ERROR_MESSAGES.INSTAGRAM.AUTH_EXPIRED}
@@ -302,7 +302,7 @@ export default function InstagramSetupClient({
                   ) : (
                     <AlertTriangle size={16} className="mr-2" />
                   )}
-                  再認証する
+                  再連携する
                 </Link>
               </Button>
             </div>
@@ -339,7 +339,7 @@ export default function InstagramSetupClient({
                   : 'bg-gray-100 text-gray-800'
               }
             >
-              {needsReauth ? '要再認証' : '未連携'}
+              {needsReauth ? '要再連携' : '未連携'}
             </Badge>
           )}
         </CardHeader>

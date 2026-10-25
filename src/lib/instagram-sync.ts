@@ -38,7 +38,7 @@ export function getInstagramSyncToastMessage(
   if (result.needsReauth) {
     return {
       type: 'error',
-      message: 'Instagramの再認証が必要です。連携設定から再連携してください。',
+      message: 'Instagramの連携が切れています。連携設定から再連携してください。',
     };
   }
 

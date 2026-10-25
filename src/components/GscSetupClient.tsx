@@ -145,10 +145,10 @@ export default function GscSetupClient({
         <div className="rounded-lg border border-orange-300 bg-orange-50 p-4 space-y-3">
           <div className="flex items-center gap-2 text-orange-800">
             <AlertTriangle className="h-5 w-5" />
-            <p className="font-semibold">Googleアカウントの再認証が必要です</p>
+            <p className="font-semibold">Googleアカウントの再連携が必要です</p>
           </div>
           <div className="text-sm text-orange-700 space-y-2">
-            <p>認証トークンが期限切れまたは取り消されています。再認証してください。</p>
+            <p>認証トークンが期限切れまたは取り消されています。再連携してください。</p>
             <div>
               <p className="font-medium">考えられる理由:</p>
               <ul className="list-disc list-inside ml-2 mt-1">
@@ -158,7 +158,7 @@ export default function GscSetupClient({
               </ul>
             </div>
             <p className="text-sm text-orange-700">
-              「連携ステータス」カード内の「Googleでログイン」ボタンから再認証してください。
+              「連携ステータス」カード内の「Googleでログイン」ボタンから再連携してください。
             </p>
           </div>
         </div>
@@ -355,7 +355,7 @@ export default function GscSetupClient({
               {!canImport && (
                 <p className="text-xs text-gray-500">
                   {needsReauth
-                    ? '再認証が必要なため、インポートは無効です。'
+                    ? '再連携が必要なため、インポートは無効です。'
                     : !status.connected
                       ? 'GSC未接続のため、インポートは無効です。'
                       : !status.propertyUri
@@ -414,7 +414,7 @@ export default function GscSetupClient({
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>プロパティが表示されない → Search Console側で権限を確認してください</li>
                 <li>接続エラーが出る → 再読込ボタンで最新状態を取得してください</li>
-                <li>認証がうまくいかない → 一度連携解除してから再度認証してください</li>
+                <li>認証がうまくいかない → 一度連携解除してから再連携してください</li>
               </ul>
             </div>
 

@@ -736,7 +736,7 @@ export const ERROR_MESSAGES = {
     AUTH_EXPIRED_OR_REVOKED: 'Googleアカウントの認証が期限切れまたは取り消されています',
 
     /** GA4のスコープが不足している場合 */
-    SCOPE_MISSING: 'GA4の権限スコープが不足しています。再認証してください。',
+    SCOPE_MISSING: 'GA4の権限スコープが不足しています。再連携してください。',
 
     /** GA4プロパティ一覧の取得に失敗した場合 */
     PROPERTIES_FETCH_FAILED: 'GA4プロパティ一覧の取得に失敗しました',
@@ -789,7 +789,7 @@ export const ERROR_MESSAGES = {
     SERVER_ERROR: 'サーバーエラーが発生しました。時間をおいてもう一度お試しください',
 
     /** アカウント一覧の取得に失敗した場合 */
-    ACCOUNT_LIST_FETCH_FAILED: 'アカウント一覧の取得に失敗しました。再認証してください',
+    ACCOUNT_LIST_FETCH_FAILED: 'アカウント一覧の取得に失敗しました。再連携してください。',
 
     /** アクセス可能なアカウントが存在しない場合 */
     NO_ACCESSIBLE_ACCOUNTS:
@@ -801,7 +801,7 @@ export const ERROR_MESSAGES = {
 
     /** リフレッシュトークンが取得できなかった場合 */
     MISSING_REFRESH_TOKEN:
-      'リフレッシュトークンを取得できませんでした。Googleアカウントの「アカウントにアクセスできるアプリ」からアクセス権を削除し、再度連携してください',
+      'リフレッシュトークンを取得できませんでした。Googleアカウントの「アカウントにアクセスできるアプリ」からアクセス権を削除し、再連携してください。',
 
     /** 連携解除に失敗した場合 */
     DISCONNECT_FAILED: 'Google Ads連携の解除に失敗しました',
@@ -810,10 +810,10 @@ export const ERROR_MESSAGES = {
     CUSTOMER_ID_REQUIRED: 'アカウントを選択してください',
 
     /** 認証情報が見つからない場合 */
-    CREDENTIAL_NOT_FOUND: 'Google Ads認証情報が見つかりません。再認証してください。',
+    CREDENTIAL_NOT_FOUND: 'Google Ads認証情報が見つかりません。再連携してください。',
 
     /** アクセストークンの更新に失敗した場合 */
-    TOKEN_REFRESH_FAILED: 'アクセストークンの更新に失敗しました。再認証してください。',
+    TOKEN_REFRESH_FAILED: 'アクセストークンの更新に失敗しました。再連携してください。',
 
     /** アクセストークンの更新が一時的に失敗した場合（DB書き込み失敗・ネットワーク一時エラー・Google側5xx/429等） */
     TOKEN_REFRESH_TEMPORARY_FAILURE:
@@ -871,7 +871,7 @@ export const ERROR_MESSAGES = {
       'MCC 配下のアカウントが選択されていません。設定画面で対象アカウントを選択してください。',
 
     /** Google Ads ダッシュボードのデータ取得ガイダンス（認証期限） */
-    DASHBOARD_GUIDANCE_AUTH_EXPIRED: '認証が期限切れまたは取り消されています。再認証してください。',
+    DASHBOARD_GUIDANCE_AUTH_EXPIRED: '認証が期限切れまたは取り消されています。再連携してください。',
 
     /** Google Ads ダッシュボードのデータ取得ガイダンス（アカウント無効） */
     ACCOUNT_DISABLED:
@@ -1022,7 +1022,7 @@ export const ERROR_MESSAGES = {
     TOKEN_EXCHANGE_FAILED: 'Instagramとの連携に失敗しました。もう一度お試しください',
 
     /** Instagram認証が期限切れまたは無効な場合 */
-    AUTH_EXPIRED: 'Instagramの認証が期限切れまたは取り消されています。再連携してください',
+    AUTH_EXPIRED: 'Instagramの認証が期限切れまたは取り消されています。再連携してください。',
 
     /** 連携処理に失敗した場合 */
     CONNECTION_FAILED: 'Instagram連携に失敗しました。時間をおいてもう一度お試しください',

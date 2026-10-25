@@ -225,7 +225,7 @@ export async function refetchGscStatusWithValidation(): Promise<
           };
         }
         // 本当の認証失効ではない失敗（Google側5xx/429・ネットワーク等）。
-        // 誤って「要再認証」を出さず、一時的失敗として区別する。
+        // 誤って「要再連携」を出さず、一時的失敗として区別する。
         return {
           success: true,
           data: {

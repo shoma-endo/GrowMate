@@ -259,13 +259,13 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
         <div className="rounded-lg border border-orange-300 bg-orange-50 p-4 space-y-3">
           <div className="flex items-center gap-2 text-orange-800">
             <AlertTriangle className="h-5 w-5" />
-            <p className="font-semibold">GA4の再認証が必要です</p>
+            <p className="font-semibold">GA4の再連携が必要です</p>
           </div>
           <div className="text-sm text-orange-700 space-y-2">
             <p>
-              GA4の権限が不足しているか、認証トークンが期限切れまたは取り消しされています。再認証してください。
+              GA4の権限が不足しているか、認証トークンが期限切れまたは取り消されています。再連携してください。
             </p>
-            {ga4ScopeMissing && <p>GA4の読み取り権限を追加するため、再認証が必要です。</p>}
+            {ga4ScopeMissing && <p>GA4の読み取り権限を追加するため、再連携が必要です。</p>}
           </div>
         </div>
       )}
@@ -318,7 +318,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
                       : stageMeta.className
                 }
               >
-                {ga4NeedsReauth ? '要再認証' : ga4HasTemporaryError ? '未確認' : stageMeta.label}
+                {ga4NeedsReauth ? '要再連携' : ga4HasTemporaryError ? '未確認' : stageMeta.label}
               </Badge>
             </div>
             {isOauthConfigured ? (
@@ -547,7 +547,7 @@ export default function Ga4SetupClient({ initialStatus, isOauthConfigured }: Ga4
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>プロパティが表示されない: GA4側の権限を確認してください</li>
                 <li>接続エラーが出る: 再読込ボタンで最新状態を取得してください</li>
-                <li>認証がうまくいかない: Googleで再認証を実行してください</li>
+                <li>認証がうまくいかない: 「Googleでログイン」から再連携してください</li>
               </ul>
             </div>
           </div>

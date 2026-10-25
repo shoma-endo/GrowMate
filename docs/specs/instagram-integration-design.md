@@ -234,7 +234,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
   - **allowlist 非空時は `canAccessInstagram` は user_id のみを見る**（`src/server/lib/instagram-permissions.ts:28-30`）。`INSTAGRAM_ALLOWED_ROLES` に `trial` が含まれていても、allowlist 外ユーザーは Instagram UI に到達できない。**role は allowlist 解除後（Phase 2 item6）の §7 最終形および `proxy.ts` の経路ゲート用**であり、審査期間中の Instagram 露出理由として「trial だから」とは書かない
   - レビュアー用アカウントは **`role: 'admin'` にしない**（上記）。`/admin/*` は `isAdmin` で弾かれる。**`/setup/*` へは `proxy.ts` の `hasSetupAccess`（= `hasPaidFeatureAccess` → paid / admin のみ）が別途必要**（§9 Q7）。allowlist に載せただけでは `/setup/instagram` に到達できない
 - 型定義: `src/types/instagram.ts` に `InstagramConnectionStatus` / `InstagramProfile` / `InstagramMediaPreview` を **Phase 1-B の実 API 戻り値と同じ形状**で先に定義する。以降 Phase 1-B はこの型を変更せず中身だけ実装する
-- ~~`src/server/actions/instagramSetup.actions.ts` に `getInstagramConnectionStatus` / `fetchInstagramPreviewData` を **戻り値型は Phase 1-B と同一のまま** 先に実装し、`process.env.NODE_ENV === 'development'` の間は関数末尾に定義した `DEV_SAMPLE_INSTAGRAM_STATUS` / `DEV_SAMPLE_INSTAGRAM_PROFILE` / `DEV_SAMPLE_INSTAGRAM_MEDIA`（未連携・連携済み・要再認証・投稿0件・部分失敗の5パターン）を返す~~ → **2026-08-14 に撤去**。App Review 通過に伴い mock を残す理由がなくなったため、`NODE_ENV` 分岐・`DEV_SAMPLE_INSTAGRAM_*` 定数一式をコードごと削除し、開発時も常に実 API（credential 未保存なら「未連携」を正しく返す）を使うよう変更した
+- ~~`src/server/actions/instagramSetup.actions.ts` に `getInstagramConnectionStatus` / `fetchInstagramPreviewData` を **戻り値型は Phase 1-B と同一のまま** 先に実装し、`process.env.NODE_ENV === 'development'` の間は関数末尾に定義した `DEV_SAMPLE_INSTAGRAM_STATUS` / `DEV_SAMPLE_INSTAGRAM_PROFILE` / `DEV_SAMPLE_INSTAGRAM_MEDIA`（未連携・連携済み・要再連携・投稿0件・部分失敗の5パターン）を返す~~ → **2026-08-14 に撤去**。App Review 通過に伴い mock を残す理由がなくなったため、`NODE_ENV` 分岐・`DEV_SAMPLE_INSTAGRAM_*` 定数一式をコードごと削除し、開発時も常に実 API（credential 未保存なら「未連携」を正しく返す）を使うよう変更した
 - ~~状態確認は `DEV_SAMPLE_*` の定数を一時的に差し替えて目視する（既存踏襲。トグル UI 等の専用切替導線は作らない＝本番導線を汚さない）~~ → **2026-08-14 に撤去**（Google Ads 側の同型パターン `useMockGoogleAds` はスコープ外・維持）
 - 「連携を解除」ボタンは §11.2 の見た目のみ実装（`disconnectInstagram` の実処理は Phase 1-B。1-A では確認ダイアログの表示までで良い）
 - UI 実装: §11.1（`SetupDashboard.tsx` Instagram カード）・§11.2（`InstagramSetupClient.tsx`, `app/setup/instagram/page.tsx`）をここで完成させる。**Phase 1-B ではこのコンポーネント群は無変更** — データソースを `DEV_SAMPLE_*` から実サービス呼び出しへ差し替えるのみ
@@ -260,7 +260,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
 4. サービス層:
    - `src/server/services/instagramService.ts` — Graph API クライアント（exchangeCodeForTokens / exchangeForLongLivedToken / refreshLongLivedToken / fetchProfile / fetchMedia / fetchMediaInsights / fetchAccountInsights）。AbortController 10秒 timeout、`!response.ok` 時は status+body を `console.error`（プレフィックス `[Instagram]`）してから throw
    - `src/server/services/instagramTokenService.ts` — `ensureValidInstagramToken(credential)`: 期限まで**7日以上**なら再利用、7日未満かつ発行24時間超なら refresh + `updateInstagramCredential` で永続化、期限切れなら `needsReauth` 扱い
-   - `src/server/lib/instagram-status.ts` — `toInstagramConnectionStatus(credential)`: 戻り値型は `{ connected: boolean, needsReauth?: boolean }` で、`gsc-status.ts` と同型。未連携は `{ connected: false }`、要再認証は `{ connected: true, needsReauth: true }`、正常は `{ connected: true, needsReauth: false }`（または omit）。UI は3状態を区別表示する
+   - `src/server/lib/instagram-status.ts` — `toInstagramConnectionStatus(credential)`: 戻り値型は `{ connected: boolean, needsReauth?: boolean }` で、`gsc-status.ts` と同型。未連携は `{ connected: false }`、要再連携は `{ connected: true, needsReauth: true }`、正常は `{ connected: true, needsReauth: false }`（または omit）。UI は3状態を区別表示する
    - **credential 永続化 API（`SupabaseService` 直付け）**: `src/server/services/supabaseService.ts` に以下を追加（Phase 1 必須成果物）
      - `saveInstagramCredential(userId, payload)` — OAuth callback / 初回連携時の upsert（`onConflict: user_id`）。**`saveGoogleAdsCredential` と同型**
      - `getInstagramCredential(userId)` — ステータス・プレビュー・トークン延長用取得
@@ -342,7 +342,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
    - **専用インポート画面は設けない**（従来どおり）。GSC dashboard の `OverviewTab.tsx` inline「最新化」とは異なり、**確認ダイアログは設けずボタン押下で即実行**する（**2026-08-08 決定**: データ取得・upsert による表示更新のみで、削除や連携解除のような不可逆な操作ではないため。連打・APIコスト保護はダイアログではなく `disabled={!syncEnabled || isSyncing}` で担保する）
 
    実装:
-   - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ クリックで即 Server Action 実行（確認ダイアログなし）。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再認証/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
+   - 手動: Instagram タブの「最新化」ボタン（`RefreshCw`アイコン）→ クリックで即 Server Action 実行（確認ダイアログなし）。**結果メッセージは `getInstagramSyncToastMessage(result)` ヘルパーに集約**し（`getQueryImportToastMessage` と同型）、成功/部分失敗/要再連携/打ち切りの分岐をそこに閉じ込めて呼び出し側に判定ロジックを持たせない。**トースト文言・結果 UI の詳細は §11.3 が正本**（ここには重複して書かない）
    - **同期モードの分離（2026-08-08 追加）**: `syncInstagramData` / `instagramSyncService.syncUserData` に `mode: 'incremental' | 'backfill'` を追加。「最新化」は毎回 `after=null` から直近50件を再取得するだけで、51件目以降（それより古い投稿）が永遠に同期対象へ入らない対応漏れがあったため（下記「50件上限の扱い」を参照）。
      - `incremental`（既存「最新化」。挙動はほぼ維持）: 同期開始時に DB 内最新 `posted_at`（ウォーターマーク）を1回取得し、Graph API を新しい順にページングして「ウォーターマーク以下の投稿に到達したら打ち切る」。カーソルは保存しない（毎回 `after=null` から開始）
      - `backfill`（新規「過去の投稿をインポート」ボタン。`History`アイコン）: `instagram_credentials.backfill_cursor`（§5.1）を起点にページングし、**既に DB にある投稿はインサイト取得をスキップしつつページングだけ継続**して、未取得の古い投稿に到達したら通常どおり処理する。アカウント末端（`nextCursor=null`）に到達したら `backfill_completed_at` を立てて完了（ボタンは「過去の投稿をインポート（完了）」表示で disabled）
@@ -354,7 +354,7 @@ Google OAuth との重要な違い: **refresh_token という別トークンは�
      - **新規/既存ユーザーへの影響**: 移行スクリプト不要。新規ユーザー（51件以下）は `backfill` を押しても既に同期済みなので即完了（全件スキップ）。既存ユーザー（51件超、旧仕様で直近50件のみ同期済み）は `backfill` 初回実行で上位50件をスキップし51件目以降から自然に開始する
    - **⚠ トークン延長の契機がユーザー操作だけになる（重要）**: 当初は「トークン延長も cron 内で実施」する設計だった。cron を落としたことで、**長期トークン（60日）を延長する経路は `/setup/instagram` のプレビュー取得（`instagramSetup.actions.ts:195` の `ensureValidInstagramToken`）と、この「最新化」だけ**になる。
      - **リスクは限定的**: 延長条件は「期限まで7日未満かつ発行から24時間超」（`src/server/lib/instagram-token.ts`）なので、**60日のうち最後の7日間に一度でも画面を開けば延長される**。失効するのは「60日間まったく Instagram 機能を使わなかったユーザー」だけ
-     - **失効しても壊れない**: `needsReauth` として「要再認証」バッジ + 再連携導線が出る（§6・§11.2）。**サイレントに未連携へ落ちない**ことが担保されていれば MVP として許容する
+     - **失効しても壊れない**: `needsReauth` として「要再連携」バッジ + 再連携導線が出る（§6・§11.2）。**サイレントに未連携へ落ちない**ことが担保されていれば MVP として許容する
      - **「最新化」の Server Action でも必ず `ensureValidInstagramToken` を通す**こと。プレビューだけが延長契機になると、`/analytics` しか使わないユーザーが失効する
    - **キルスイッチ**: 環境変数 `INSTAGRAM_SYNC_ENABLED`（既定 `true`、`false` で無効）は**残す**。cron が無くても、Meta 側の仕様変更・障害時に手動同期を止める手段は要る。無効時の挙動:
      - 手動「最新化」: ボタンを disabled にし、ツールバー直下に情報色 Alert「Instagramの同期を一時停止しています」。**押せるのに何も起きない状態にしない**
@@ -609,9 +609,9 @@ create table public.instagram_account_insights_daily (
 | 事象 | 挙動 |
 |------|------|
 | OAuth 認可拒否 / state 不一致 / code 交換失敗 | `/setup/instagram?error=<種別>` へ **302 リダイレクト**（Google Ads 型）。`app/setup/instagram/page.tsx` の ERROR_MAP → `ERROR_MESSAGES.INSTAGRAM.*` を Alert 表示。credential は変更しない |
-| トークン期限切れ・無効化（API が 190 系エラー） | `isInstagramReauthError()` ヘルパーに判定を集約し `needsReauth: true` を返す。UI は「要再認証」バッジ + `/setup/instagram` 再連携導線（サイレントに未連携へフォールバックしない） |
-| **ユーザーが Meta 側で連携を解除**（2026-08-04 明記） | **Webhook では検知できない**（Instagram Login に deauthorize フィールドが無い — §3.3）。**API エラー起点でのみ検知**する。`isInstagramRevokedTokenError`（190 系限定）が真のときだけ保存済み `access_token_expires_at` を過去に倒し、表示を「要再認証」に揃える（実装済み） |
-| **Instagram アカウント削除・停止等で API が恒久エラー**（2026-08-05 追記） | **`needsReauth` と同じ UX**（要再認証バッジ + `/setup/instagram` 再連携）。**取得済み `instagram_media` / `instagram_account_insights_daily` は自動 purge しない**（連携解除操作まで DB に残す）。一覧は既存データを表示しつつ同期・最新化は `needsReauth` で止める |
+| トークン期限切れ・無効化（API が 190 系エラー） | `isInstagramReauthError()` ヘルパーに判定を集約し `needsReauth: true` を返す。UI は「要再連携」バッジ + `/setup/instagram` 再連携導線（サイレントに未連携へフォールバックしない） |
+| **ユーザーが Meta 側で連携を解除**（2026-08-04 明記） | **Webhook では検知できない**（Instagram Login に deauthorize フィールドが無い — §3.3）。**API エラー起点でのみ検知**する。`isInstagramRevokedTokenError`（190 系限定）が真のときだけ保存済み `access_token_expires_at` を過去に倒し、表示を「要再連携」に揃える（実装済み） |
+| **Instagram アカウント削除・停止等で API が恒久エラー**（2026-08-05 追記） | **`needsReauth` と同じ UX**（要再連携バッジ + `/setup/instagram` 再連携）。**取得済み `instagram_media` / `instagram_account_insights_daily` は自動 purge しない**（連携解除操作まで DB に残す）。一覧は既存データを表示しつつ同期・最新化は `needsReauth` で止める |
 | **判定ヘルパーの使い分け（重要）** | **credential を書き換える処理は `isInstagramRevokedTokenError`（190 系限定）を使う。表示だけ切り替える用途は広めの `isInstagramReauthError` でよい**。Meta はレート制限（code 4 / 17 / 32 / 613）にも `"type":"OAuthException"` を付けるため、広い方で書き換えると**一時的な制限を恒久失効として保存**してしまう。期限を過去に倒すと `resolveInstagramTokenAction` がリフレッシュを試みなくなり自力回復しない。**Phase 2 で cron を作らない（§4 Phase 2 item3）ため被害は当該ユーザーに閉じるが、そのユーザーは再連携するまで復旧できない** |
 | **恒久的に取得できないデータ**（プロ転換前 = `2108006` / 2年超 = `retention_expired` / フォロワー100未満の `follower_count`） | 「取得失敗」と**別カテゴリ**として表示する（情報色 Alert・「対象外」ラベル）。再試行導線を出さない。DB 側は `instagram_media.insights_unavailable` + `insights_unavailable_reason`（§5.2）でフラグ化し、以後コールしない |
 | **同期の停止（キルスイッチ）** | `INSTAGRAM_SYNC_ENABLED=false` で手動ボタンを disabled + 情報色 Alert、一覧は既存データを表示（§4 Phase 2 item3）。**押せるのに何も起きない状態を作らない** |
@@ -635,7 +635,7 @@ create table public.instagram_account_insights_daily (
 
 ### Phase 1-A（ハードコーディング UI モック・クライアント合意用）
 - [x] ~~`DEV_SAMPLE_*` を切り替えることで `/setup/instagram` が未設定・接続OK・要再認証・投稿0件・部分失敗の5状態を画面表示できる~~ → **2026-08-14 に `DEV_SAMPLE_*` 分岐をコードごと撤去したため失効**（以後は実アカウントの実際の状態遷移で確認する）
-- [ ] `/setup` ハブに Instagram カードが出て connected / needsReauth / unlinked が区別表示される（Badge 文言は §11.1 準拠: 接続OK / 未設定 / 要再認証）
+- [ ] `/setup` ハブに Instagram カードが出て connected / needsReauth / unlinked が区別表示される（Badge 文言は §11.1 準拠: 接続OK / 未設定 / 要再連携）
 - [ ] ERROR_MAP 経由でエラー Alert が表示される（state 改ざん等のエラー種別ごとの文言差し替えを確認）
 - [x] ~~`NODE_ENV==='production'` ビルド（`npm run build && npm run start` 相当）で `DEV_SAMPLE_*` 分岐に到達しないことを確認済み~~ → **2026-08-14 に `DEV_SAMPLE_*` 分岐自体を撤去したため失効**（開発・本番とも同一の実 API パス）
 - [x] ~~`INSTAGRAM_BETA_USER_IDS` に自分の user_id だけを入れた状態で、allowlist 外のユーザーには `/setup` の Instagram カードが出ず `/setup/instagram` も開けない~~ → **2026-08-14 に allowlist を撤去したため失効**
@@ -828,7 +828,7 @@ create table public.instagram_account_insights_daily (
 
 ## 11. UI/UX イメージ（ワイヤーフレーム）
 
-`growmate-ui-ux` スキル準拠: shadcn/ui primitives のみ・セマンティックトークン・lucide-react アイコン・日本語ラベル・状態（未連携/連携済み/要再認証/エラー/空/ローディング）の明示。ビジュアル刷新はしない（既存 `/setup/ga4` 系の見た目を踏襲）。
+`growmate-ui-ux` スキル準拠: shadcn/ui primitives のみ・セマンティックトークン・lucide-react アイコン・日本語ラベル・状態（未連携/連携済み/要再連携/エラー/空/ローディング）の明示。ビジュアル刷新はしない（既存 `/setup/ga4` 系の見た目を踏襲）。
 
 ### 11.1 `/setup` ハブ — Instagram カード追加（Phase 1）
 
@@ -837,16 +837,16 @@ create table public.instagram_account_insights_daily (
 ```text
 ┌─ Card ──────────────────────────────────────┐
 │ [Instagram icon] Instagram連携   [Badge]    │  Badge: 接続OK(default+green) /
-│ リール・フィード投稿の実績データを取得します │        要再認証(default+orange) /
+│ リール・フィード投稿の実績データを取得します │        要再連携(default+orange) /
 │                                              │        未設定(secondary+gray)
 │ 連携アカウント: @username（接続OK時のみ）    │
 │                          [設定へ →] Button   │  → /setup/instagram
 └──────────────────────────────────────────────┘
 ```
 
-- Badge 文言・色は `SetupDashboard.tsx:277-290`（GSC カード）準拠: 接続OK=`variant="default"` + `bg-green-100 text-green-800`、要再認証=`variant="default"` + `bg-orange-100 text-orange-800`（**destructive は使わない**）、未設定=`variant="secondary"` + gray。GA4 カード（`SetupDashboard.tsx:561-565`）と同一文言
+- Badge 文言・色は `SetupDashboard.tsx:277-290`（GSC カード）準拠: 接続OK=`variant="default"` + `bg-green-100 text-green-800`、要再連携=`variant="default"` + `bg-orange-100 text-orange-800`（**destructive は使わない**）、未設定=`variant="secondary"` + gray。GA4 カード（`SetupDashboard.tsx:561-565`）と同一文言
 - ステータス取得中は他カード（GSC 等）と同型: `Loader2` スピナー + `Badge variant="secondary" className="text-xs"`「確認中」（`SetupDashboard.tsx:269-275` 準拠）。
-- `needsReauth` 時はカード内に注意文言（AlertTriangle アイコン +「Instagramの再認証が必要です」）。GSC/GA4 カードと同一パターン（`SetupDashboard.tsx:255,298` 準拠）。
+- `needsReauth` 時はカード内に注意文言（AlertTriangle アイコン +「Instagramの再連携が必要です」）。GSC/GA4 カードと同一パターン（`SetupDashboard.tsx:255,298` 準拠）。
 
 ### 11.2 `/setup/instagram`（Phase 1、`InstagramSetupClient.tsx`）
 
@@ -929,12 +929,12 @@ create table public.instagram_account_insights_daily (
 └──────────────────────────────────────────────┘
 ```
 
-**状態C: 要再認証** — 状態Bの Badge を「要再認証」(default+orange、`SetupDashboard` 同型) に差し替え、Card 冒頭に Alert:
+**状態C: 要再連携** — 状態Bの Badge を「要再連携」(default+orange、`SetupDashboard` 同型) に差し替え、Card 冒頭に Alert:
 
 ```text
 ┌─ Alert (orange/warning) ─────────────────────┐
 │ ⚠ Instagramの認証が期限切れです。再連携して │
-│   ください。          [再連携する] Button    │  ← SetupDashboard / google-ads 要再認証 Alert 同型
+│   ください。          [再連携する] Button    │  ← SetupDashboard / google-ads 要再連携 Alert 同型
 └──────────────────────────────────────────────┘
 ```
 
@@ -1040,7 +1040,7 @@ create table public.instagram_account_insights_daily (
   - 成功（`failed=0`、incremental）: `toast.success('N件を更新しました', { id: toastId })`。`last_synced_at` をツールバー右に反映
   - backfill 完了（`backfillCompleted=true`）: `toast.success('過去の投稿のインポートが完了しました（今回N件）', { id: toastId })`
   - 部分失敗（`failed>0`）: `toast.warning('N件中M件の更新に失敗しました', { id: toastId })` + ツールバー直下 Alert（`ERROR_MESSAGES.INSTAGRAM.API_ERROR` または「一部の投稿データを取得できませんでした（M件）」）。取得できた行はテーブルに残す。incremental/backfill 共通（`syncAlert`/`backfillAlert` は state を分離）
-  - `needsReauth`: `toast.error(..., { id: toastId })` + Alert「Instagramの再認証が必要です」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレントに未連携へフォールバックしない
+  - `needsReauth`: `toast.error(..., { id: toastId })` + Alert「Instagramの再連携が必要です」+ [連携設定へ] Button（→ `/setup/instagram`）。サイレントに未連携へフォールバックしない
   - `truncated`（incremental）: `toast.info('直近${INSTAGRAM_SYNC_MEDIA_LIMIT}件まで取得しました。さらに新しい投稿がある可能性があります。「過去の投稿をインポート」からも取得できます。', { id: toastId })`（エラー扱いにしない。件数はハードコードでなく定数参照。§4 Phase2 item3「新着51件超のエッジケース」への誘導を兼ねる）
   - `truncated`（backfill、末端未到達）: `toast.info('過去の投稿をN件インポートしました。続きがあります。「過去の投稿をインポート」からさらに取得できます。', { id: toastId })`
   - `stoppedReason==='time_budget'|'consecutive_failures'`: 再試行の案内文言をモード別に出し分け（incremental→「再度「最新化」で続きを取得できます。」、backfill→「「過去の投稿をインポート」をもう一度押すと続きを取得できます。」）
