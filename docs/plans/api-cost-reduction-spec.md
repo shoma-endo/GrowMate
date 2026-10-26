@@ -321,6 +321,7 @@ AI 呼び出し（即時・Batch・チャットのストリーミング）の消
   - AI が応答を拒否（`refusal`）した場合は、途中の文章を保存せずエラーにする（チャット・Canvas は `ERROR_MESSAGES.CHAT.AI_REFUSED`、Instagram 下書きはジョブを `AI_FAILED` にする）。
   - Canvas は出力・入力の上限（`max_tokens` / `model_context_window_exceeded`）で止まった場合もエラーにする。チャット・Instagram 下書きの `max_tokens` は従来どおり続きの生成で扱う。
 - 確認済み（2026-10-19）: `npm run verify`、単体テスト（`tests/unit/lib/model-configs-blog.test.ts` ほか）。実 API で各ルートと同じ設定（モデル・思考・ツール・tool_choice）を直接呼び、400 にならないことを確認した（チャット step1・Web 検索あり、step6・見出しの本文・タイトル生成、Canvas の事前検索・編集）。チャット・Canvas のルートそのもの（ログインが要る）は通していない。
+- 未確認（2026-10-27）: Haiku 5.5 の工程で編集ツールを強制する設定（thinking `disabled`・`strict: true`・`tool_choice: {type:'tool'}`）は、実 API では呼んでいない（単体テストは SDK をモック）。プレビュー環境の Canvas 編集（step6・step7）で確認する。
 - 費用の目安: Haiku 5.5 は単価が Sonnet 5 の約20分の1（入力 0.10ドル・出力 0.50ドル / 100万トークン。10万トークン以下のプロンプト。超えると 0.50ドル・2.50ドルで4分の1）。Sonnet 5.5 は Sonnet 5 と同じ単価なので、step1〜5 の費用は変わらない。記事本文の生成（step7）が費用の中心なので、記事量産の費用が大きく下がる見込み。実際の値は FR-001 のログで確かめる。
 
 ### 入力・出力・状態遷移

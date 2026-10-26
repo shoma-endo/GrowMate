@@ -748,7 +748,7 @@ export async function POST(req: NextRequest) {
             ...(thinking !== undefined && { thinking }),
             system: anthropicSystem,
             tools: [CANVAS_EDIT_TOOL],
-            // 強制できないモデル（Sonnet 5.5）は auto にし、ツールを使う指示は system プロンプトで行う
+            // 強制を受け付けると確認できていないモデル（Sonnet 5.5 など）は auto にし、ツールを使う指示は system プロンプトで行う
             tool_choice: supportsForcedToolChoice(actualModel)
               ? { type: 'tool', name: CANVAS_EDIT_TOOL.name }
               : { type: 'auto' },

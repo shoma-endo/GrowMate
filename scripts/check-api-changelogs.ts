@@ -450,7 +450,7 @@ GrowMateは Next.js + TypeScript + Supabase を使ったマーケティングSaa
 - 使用モデル: claude-sonnet-5（チャット・GSC提案・Google Ads分析・GA4コンテンツ評価・AI要約）、claude-sonnet-5-5（ブログ生成の書き出し前）、claude-haiku-5-5（ブログ生成の書き出し以降）
 - 用途: チャット応答生成・ブログ記事生成・SEO改善提案生成（streaming）
 - 依存パラメータ: model / max_tokens / temperature / system / messages / stream / thinking / tools / tool_choice
-- 注意点: thinking は思考オフで使う（disabled。Sonnet 5.5 は between_tools）。Canvas の編集ツールは tool_choice で強制する（強制を 400 で拒否する Sonnet 5.5 だけ auto）
+- 注意点: thinking は思考オフで使う（disabled。Sonnet 5.5 は between_tools）。Canvas の編集ツールは強制を受け付けるモデル（Haiku 5.5）だけ tool_choice で強制し、ほかは auto
 
 ### OpenAI API
 - SDK: openai（client.chat.completions.create / stream）
