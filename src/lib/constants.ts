@@ -91,6 +91,12 @@ const BLOG_POST_LEAD_BASE = {
   seed: 42,
 };
 
+// 強制 tool_choice（tool / any）を 400 で拒否するモデル。Haiku 5.5 と Sonnet 5 は受け付ける
+const FORCED_TOOL_CHOICE_REJECTED_MODELS = new Set(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1']);
+
+export const supportsForcedToolChoice = (actualModel: string): boolean =>
+  !FORCED_TOOL_CHOICE_REJECTED_MODELS.has(actualModel);
+
 const OPENAI_BASE = {
   provider: 'openai' as const,
   temperature: 0.3,
