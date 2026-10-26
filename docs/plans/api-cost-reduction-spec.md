@@ -316,7 +316,7 @@ AI 呼び出し（即時・Batch・チャットのストリーミング）の消
   - Instagram 下書きは同じ設定キーを使うため、同じく切り替わる。`instagram_blog_keyword_generation`・広告文・LP・GSC 改善提案など他の機能は `claude-sonnet-5` のまま。
   - 巻き戻しは、ブログ用の2つの設定（`BLOG_PRE_LEAD_BASE` / `BLOG_POST_LEAD_BASE`）のモデルと思考を `ANTHROPIC_BASE` と同じ値に戻すだけで足りる。
 - あわせて変えたこと:
-  - Canvas の強制 `tool_choice`（Web 検索・編集ツール）を `auto` にした（Sonnet 5.5 は強制指定を 400 で拒否する）。編集ツールは `strict: true`。
+  - Canvas の Web 検索の `tool_choice` は全モデル `auto`。編集ツールは強制を受け付けるモデル（Haiku 5.5：step6・step7）で強制し、強制指定を 400 で拒否する Sonnet 5.5（step1〜5）は `auto`。編集ツールは `strict: true`。
   - Canvas の編集で、ツールを呼ばずに文章だけ返した応答で記事全体を置き換えない（`ERROR_MESSAGES.CHAT.CANVAS_EDIT_NOT_RETURNED` でエラーにする）。Canvas の事前検索で、検索しないで答えた内容を検索結果として扱わない。
   - AI が応答を拒否（`refusal`）した場合は、途中の文章を保存せずエラーにする（チャット・Canvas は `ERROR_MESSAGES.CHAT.AI_REFUSED`、Instagram 下書きはジョブを `AI_FAILED` にする）。
   - Canvas は出力・入力の上限（`max_tokens` / `model_context_window_exceeded`）で止まった場合もエラーにする。チャット・Instagram 下書きの `max_tokens` は従来どおり続きの生成で扱う。
@@ -746,3 +746,4 @@ Feature: AI 利用料の削減
 | 2026-10-19 | FR-006（CSV 取り込み）を `docs/plans/content-csv-import-spec.md` へ移管した旨を記載 | 先に開発するため切り出した | Claude |
 | 2026-10-22 | FR-007 を develop から `2fdcae27` で外して PR #672 に切り出した経緯を記載（PR #671 は閉じた）。#672 は 2026-10-22 に develop、2026-10-23 に PR #701 で main へ反映済み（本番反映済み）。文章の品質はクライアントのテストで確認 | 実態との食い違い（マージ・本番反映の状態は 2026-10-24 に訂正） | Claude |
 | 2026-10-24 | FR-007 の全記述を実装済み・本番反映済みに更新。#672 は 2026-10-22 に develop、2026-10-23 に PR #701 で main へ反映済み（本番反映済み）。文章の品質はクライアントのテストで確認。次の一手をクライアントの品質確認に変更し、FR-006 の PR #676 は develop・main にマージ済みと記載。Q-001・Q-002 は未回答のまま | マージ・本番反映の事実と仕様書を同期 | Codex |
+| 2026-10-27 | FR-007「あわせて変えたこと」の Canvas `tool_choice` を更新。編集ツールは Haiku 5.5 の工程（step6・step7）で強制に戻し、Sonnet 5.5 の工程だけ `auto` | 2026-10-26 に Canvas 編集のツール未呼び出し（no_tool_use）が Haiku 5.5 の工程で 15 件起きたため | Claude |

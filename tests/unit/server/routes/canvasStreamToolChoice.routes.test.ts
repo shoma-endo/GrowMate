@@ -72,7 +72,6 @@ describe('Canvas 編集の tool_choice', () => {
     mocks.messagesStream.mockReset();
   });
 
-  // ツールを呼ばず本文や確認の質問だけを返す失敗（no_tool_use）は Haiku 5.5 の工程に集中していた
   it.each(['step6', 'step7'])('Haiku 5.5 の %s は編集ツールの呼び出しを強制する', async step => {
     mocks.messagesStream.mockImplementation(async () => fakeStream(EDIT_RESULT));
 
