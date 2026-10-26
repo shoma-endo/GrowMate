@@ -56,7 +56,7 @@ export function useGscSetup(initialStatus: GscConnectionStatus): UseGscSetupResu
           // ステータスを再取得して needsReauth を更新
           refreshStatus();
           setAlertMessage(
-            'Googleアカウントの認証が期限切れまたは取り消されています。再認証してください。'
+            'Googleアカウントの認証が期限切れまたは取り消されています。再連携してください。'
           );
         }
       },

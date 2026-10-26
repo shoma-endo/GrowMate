@@ -405,7 +405,7 @@ export default function GscImportClient() {
                             <p>
                               Google Search Console との連携が切れています。
                               <br />
-                              再度連携を行ってください。
+                              再連携してください。
                             </p>
                             <Link href="/setup">
                               <Button variant="outline" size="sm">

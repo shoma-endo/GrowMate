@@ -93,10 +93,10 @@ async function GoogleAdsSetupContent({
         <Alert className="bg-orange-50 border-orange-200">
           <AlertTitle className="text-orange-800 font-medium flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-orange-600" />
-            <span>要再認証</span>
+            <span>要再連携</span>
           </AlertTitle>
           <AlertDescription className="text-orange-700">
-            認証トークンが期限切れまたは取り消されています。再認証してください。
+            認証トークンが期限切れまたは取り消されています。再連携してください。
             {connectionStatus.googleAccountEmail && (
               <span className="block mt-1">
                 連携アカウント: {connectionStatus.googleAccountEmail}

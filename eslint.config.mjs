@@ -152,6 +152,10 @@ const config = [
       'coverage',
       // Supabase 自動生成。max-lines の対象外
       'src/types/database.types.ts',
+      // design-sync（Claude Design への同期）が作る生成物。eslint は .gitignore を読まない
+      '.ds-sync',
+      'ds-bundle',
+      '.design-sync/.cache',
     ],
   },
   ...nextConfig,

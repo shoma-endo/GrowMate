@@ -1056,7 +1056,7 @@ export class GoogleAdsService {
           }
           if (firstError?.errorCode?.authenticationError === 'NOT_ADS_USER') {
             message =
-              '認証したGoogleアカウントがGoogle Adsアカウントと関連付けられていません。Google Adsアカウントにアクセス権限があるGoogleアカウントで再認証してください。';
+              '認証したGoogleアカウントがGoogle Adsアカウントと関連付けられていません。Google Adsアカウントにアクセス権限があるGoogleアカウントで再連携してください。';
           } else if (firstError?.message) {
             message = firstError.message;
           }

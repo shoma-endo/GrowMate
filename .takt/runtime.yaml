@@ -1,0 +1,57 @@
+version: 1
+
+# ~/.takt/runtime.yaml と合成されると defaults と targets はここの値で丸ごと置き換わる（profiles は名前単位で残る）。
+# レビューの独立性は provider ではなく session_key と ai-antipattern-reviewer の別モデルで保つ。
+# allowed_tools は profile に書かない。profile options は step の capabilities を上書きする（.takt/provider-options/ に置く）。
+provider:
+  defaults:
+    profile: growmate-opus
+
+  profiles:
+    growmate-opus:
+      provider: claude-sdk
+      model: opus
+      options:
+        effort: high
+    growmate-sonnet:
+      provider: claude-sdk
+      model: sonnet
+      options:
+        effort: high
+    growmate-haiku:
+      provider: claude-sdk
+      model: haiku
+      options:
+        effort: high
+    # capabilities: readonly の Bash を意図して上書きで外す
+    growmate-opus-grill:
+      provider: claude-sdk
+      model: opus
+      options:
+        effort: high
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+
+  targets:
+    tags:
+      grill-readonly:
+        profile: growmate-opus-grill
+    personas:
+      ai-antipattern-reviewer:
+        profile: growmate-sonnet
+    steps:
+      # 欠落文と同じ1行のレポートを書くだけ
+      spec-to-pr/seed_reports:
+        profile: growmate-haiku
+      # git / gh を回すだけの定型作業
+      spec-to-pr/create_pr:
+        profile: growmate-haiku
+      spec-to-pr/record_pr_comments:
+        profile: growmate-haiku
+    internal_agents:
+      selector:
+        profile: growmate-opus
+      loop-judge:
+        profile: growmate-opus

@@ -245,7 +245,7 @@ export default function SetupDashboard({
                   {gscNeedsReauth ? (
                     <>
                       <AlertTriangle className="text-orange-600" size={16} />
-                      <span className="text-sm font-medium text-orange-700">要再認証</span>
+                      <span className="text-sm font-medium text-orange-700">要再連携</span>
                     </>
                   ) : gscConnection.hasTemporaryError ? (
                     <>
@@ -289,7 +289,7 @@ export default function SetupDashboard({
                     }`}
                   >
                     {gscNeedsReauth
-                      ? '要再認証'
+                      ? '要再連携'
                       : gscConnection.hasTemporaryError
                         ? '未確認'
                         : gscConnection.connected
@@ -303,10 +303,10 @@ export default function SetupDashboard({
                 <div className="text-sm space-y-2">
                   <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
                     <p className="text-sm font-medium text-orange-800">
-                      Googleアカウントの再認証が必要です
+                      Googleアカウントの再連携が必要です
                     </p>
                     <p className="text-orange-700 text-xs mt-1">
-                      認証トークンが期限切れまたは取り消されています。再認証してください。
+                      認証トークンが期限切れまたは取り消されています。再連携してください。
                     </p>
                   </div>
                   <p className="text-gray-600">
@@ -367,7 +367,7 @@ export default function SetupDashboard({
                     <Button asChild className="w-full bg-orange-700 hover:bg-orange-800">
                       <Link href="/setup/gsc">
                         <AlertTriangle size={16} className="mr-2" />
-                        再認証する
+                        再連携する
                       </Link>
                     </Button>
                   ) : (
@@ -413,7 +413,7 @@ export default function SetupDashboard({
                   {ga4NeedsReauth ? (
                     <>
                       <AlertTriangle className="text-orange-600" size={16} />
-                      <span className="text-sm font-medium text-orange-700">要再認証</span>
+                      <span className="text-sm font-medium text-orange-700">要再連携</span>
                     </>
                   ) : ga4Connection.hasTemporaryError ? (
                     <>
@@ -455,7 +455,7 @@ export default function SetupDashboard({
                           : ga4StageMeta.className
                     }`}
                   >
-                    {ga4NeedsReauth ? '要再認証' : ga4Connection.hasTemporaryError ? '未確認' : ga4StageMeta.label}
+                    {ga4NeedsReauth ? '要再連携' : ga4Connection.hasTemporaryError ? '未確認' : ga4StageMeta.label}
                   </Badge>
                 )}
               </div>
@@ -464,10 +464,10 @@ export default function SetupDashboard({
                 <div className="text-sm space-y-2">
                   <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
                     <p className="text-sm font-medium text-orange-800">
-                      Googleアカウントの再認証が必要です
+                      Googleアカウントの再連携が必要です
                     </p>
                     <p className="text-orange-700 text-xs mt-1">
-                      認証トークンが期限切れまたは必要な権限が不足しています。再認証してください。
+                      認証トークンが期限切れまたは必要な権限が不足しています。再連携してください。
                     </p>
                   </div>
                   <p className="text-gray-600">
@@ -521,7 +521,7 @@ export default function SetupDashboard({
                     <Button asChild className="w-full bg-orange-700 hover:bg-orange-800">
                       <Link href="/setup/ga4">
                         <AlertTriangle size={16} className="mr-2" />
-                        再認証する
+                        再連携する
                       </Link>
                     </Button>
                   ) : (
@@ -571,7 +571,7 @@ export default function SetupDashboard({
                     {googleAdsStatus.needsReauth ? (
                       <>
                         <AlertTriangle className="text-orange-600" size={16} />
-                        <span className="text-sm font-medium text-orange-700">要再認証</span>
+                        <span className="text-sm font-medium text-orange-700">要再連携</span>
                       </>
                     ) : googleAdsStatus.hasTemporaryError ? (
                       <>
@@ -609,7 +609,7 @@ export default function SetupDashboard({
                     }`}
                   >
                     {googleAdsStatus.needsReauth
-                      ? '要再認証'
+                      ? '要再連携'
                       : googleAdsStatus.hasTemporaryError
                         ? '未確認'
                         : googleAdsStatus.connected
@@ -622,10 +622,10 @@ export default function SetupDashboard({
                   <div className="text-sm space-y-2">
                     <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
                       <p className="text-sm font-medium text-orange-800">
-                        Googleアカウントの再認証が必要です
+                        Googleアカウントの再連携が必要です
                       </p>
                       <p className="text-orange-700 text-xs mt-1">
-                        認証トークンが期限切れまたは取り消されています。再認証してください。
+                        認証トークンが期限切れまたは取り消されています。再連携してください。
                       </p>
                     </div>
                     <p className="text-gray-600">
@@ -667,7 +667,7 @@ export default function SetupDashboard({
                       <Button asChild className="w-full bg-orange-700 hover:bg-orange-800">
                         <Link href="/setup/google-ads">
                           <AlertTriangle size={16} className="mr-2" />
-                          再認証する
+                          再連携する
                         </Link>
                       </Button>
                     ) : (
@@ -704,7 +704,7 @@ export default function SetupDashboard({
                     {instagramStatus.needsReauth ? (
                       <>
                         <AlertTriangle className="text-orange-600" size={16} />
-                        <span className="text-sm font-medium text-orange-700">要再認証</span>
+                        <span className="text-sm font-medium text-orange-700">要再連携</span>
                       </>
                     ) : instagramStatus.connected ? (
                       <>
@@ -735,7 +735,7 @@ export default function SetupDashboard({
                     }`}
                   >
                     {instagramStatus.needsReauth
-                      ? '要再認証'
+                      ? '要再連携'
                       : instagramStatus.connected
                         ? '接続OK'
                         : '未設定'}
@@ -746,10 +746,10 @@ export default function SetupDashboard({
                   <div className="text-sm space-y-2">
                     <div className="p-3 rounded-lg bg-orange-50 border border-orange-200">
                       <p className="text-sm font-medium text-orange-800">
-                        Instagramの再認証が必要です
+                        Instagramの再連携が必要です
                       </p>
                       <p className="text-orange-700 text-xs mt-1">
-                        認証トークンが期限切れまたは取り消されています。再認証してください。
+                        認証トークンが期限切れまたは取り消されています。再連携してください。
                       </p>
                     </div>
                     {/* 連携済みブランチと同じ「連携アカウント」だと、今つながっていると
@@ -757,7 +757,7 @@ export default function SetupDashboard({
                         分かるように残す。 */}
                     {instagramStatus.username ? (
                       <p className="text-gray-600">
-                        再認証が必要なアカウント: @{instagramStatus.username}
+                        再連携が必要なアカウント: @{instagramStatus.username}
                       </p>
                     ) : null}
                   </div>
@@ -783,7 +783,7 @@ export default function SetupDashboard({
                       <Button asChild className="w-full bg-orange-700 hover:bg-orange-800">
                         <Link href="/setup/instagram">
                           <AlertTriangle size={16} className="mr-2" />
-                          再認証する
+                          再連携する
                         </Link>
                       </Button>
                     ) : (

@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "reason_1_to_3_lines": {
+      "type": "string",
+      "description": "判定理由の要約（1〜3行）"
+    },
+    "approved": {
+      "type": "boolean",
+      "description": "true=今回実行した全レビュアーが approved で、各承認に読んだファイル:行番号の根拠がある。false=needs_fix がある、または根拠の無い承認がある"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "needs_fix",
+        "invalid_approval"
+      ],
+      "description": "approved=承認が有効 / needs_fix=根拠付きの未解決指摘がある（fix へ） / invalid_approval=指摘は無いが、読んだファイル:行番号の無い承認がある（レビューをやり直す）"
+    },
+    "unresolved_finding_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "未解決として fix へ渡す finding_id。approved のときは空配列"
+    }
+  },
+  "required": [
+    "reason_1_to_3_lines",
+    "approved",
+    "verdict",
+    "unresolved_finding_ids"
+  ],
+  "additionalProperties": false
+}

@@ -6,6 +6,8 @@
 
 # Project configuration
 !config.yaml
+# provider / model の正本（config.yaml には書けない）
+!runtime.yaml
 
 # Facets and workflows (version-controlled)
 !workflows/
@@ -23,6 +25,10 @@
 !facets/partials/**
 !facets/output-contracts/
 !facets/output-contracts/**
+
+# Step fragments referenced by workflows via `uses` (version-controlled)
+!steps/
+!steps/**
 
 # Structured output schemas (version-controlled)
 !schemas/

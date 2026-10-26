@@ -154,6 +154,8 @@ steps:
     persona: coder
     knowledge:
       - growmate
+    # claude-sdk は allowed_tools に無い Bash を自動承認しないため、git commit に要るツールを明示する
+    capabilities: growmate-edit
     required_permission_mode: edit
     allow_git_commit: true
     instruction: spec-review/finalize

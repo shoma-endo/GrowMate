@@ -3,7 +3,7 @@ PR 本文は開発後のカルテである。実装後の最終確認だけを�
 
 必須条件:
 - 実装やレビュー判断は行わない。確認済みの事実と意見（完了判断）を分けて整理する。
-- 一次情報は下記添付の `plan.md` / `implement-report.md` / `fix-result.md` / `ai-antipattern-review.md` / `architecture-review.md` / `readme-sync.md` / `self-review.md` に限る。`fix-result.md` は fix 工程が一度も走らなかった run では欠落文になるが、正常であり ABORT 理由にしない。run ディレクトリやレポートパスを探索しない。**例外:** `plan.md` ヘッダの `UIモック:` が `対象外` 以外のときだけ、キャプチャ有無の確認のため `.takt/artifacts/pr-screenshots/` を列挙してよい（スクショの新規撮影・生成はしない）。**例外2:** `## 概要` の「なぜ」を書くためだけに、`plan.md` の `対象仕様書:` のパスにある仕様書の「背景・目的」節を読んでよい。
+- 一次情報は下記添付の `plan.md` / `implement-report.md` / `fix-result.md` / `ai-antipattern-review.md` / `architecture-review.md` / `frontend-review.md` / `review-gate.md` / `ui-evidence.md` / `readme-sync.md` / `self-review.md` / `review-resolution.md` に限る。`fix-result.md` は fix 工程が一度も走らなかった run、`frontend-review.md` と `ui-evidence.md` は UI 変更が無い run では欠落文になるが、正常であり ABORT 理由にしない。run ディレクトリやレポートパスを探索しない。**例外:** `plan.md` ヘッダの `UIモック:` が `対象外` 以外のときだけ、キャプチャ有無の確認のため `.takt/artifacts/pr-screenshots/` を列挙してよい（スクショの新規撮影・生成はしない）。**例外2:** `## 概要` の「なぜ」を書くためだけに、`plan.md` の `対象仕様書:` のパスにある仕様書の「背景・目的」節を読んでよい。
 - `self-review.md` の仕様書完全実装判定を読み取り、`## 関連仕様書` に転記する（実装やレビュー判断はしない、転記のみ）。
 - `pr-summary.md` は GitHub PR 本文としてそのまま使える Markdown にする。先頭に PR タイトル案を1行（`# ` 見出し）で書き、続けて本文セクションを書く。
 - PR タイトル形式（必須）:
@@ -29,7 +29,7 @@ PR 本文は開発後のカルテである。実装後の最終確認だけを�
   5. `## 変更要点` — 主要変更のみ（ファイル一覧の羅列は禁止。カテゴリ単位で3〜7点）
   6. `## 実装中の判断` — 仕様書に書かれておらず、実装中に決めたこと（`implement-report.md` と `fix-result.md` の判断記録から。どれを選び、なぜか）。次の担当者が同じ判断をやり直さないための記録。無ければ「なし」
   7. `## 受け入れ検証` — `self-review.md` の受け入れ検証表を転記する（シナリオ / 検証手段 / 結果）。結果は `自動検証済み` / `手動確認待ち` / `未検証` のいずれか。自分で判定し直さない。表が無ければ「self-review に記録なし」と書き、`## 最終確認（引き継ぎ用）` に「受け入れ条件を仕様書の Gherkin と突き合わせて確認する」を入れる
-  8. `## レビュー結果` — ai-antipattern / architecture-review / self-review の結論（approved / open findings 数）
+  8. `## レビュー結果` — ai-antipattern / architecture-review / frontend-review（選ばれた場合）/ self-review / final gate（`review-resolution.md`）の結論（approved / open findings 数）。UI 変更がある場合は `ui-evidence.md` の画面幅ごとのはみ出しの有無も1行ずつ書く
   9. `## 完了判断` — 事実（verify 成功、open findings 0、仕様要件充足など）と、それに基づく完了判断を分けて書く
   10. `## 検証` — `npm run verify` 等の結果（手動ブラウザ確認は無人のため未実施が既定）
   11. `## 画面キャプチャ` — `plan.md` の `UIモック:` が `対象外` なら「対象外」1行のみ。UI 対象（`なし` / `あり(...)`）なら `.takt/artifacts/pr-screenshots/` を列挙し、許可拡張子（`.png` `.jpg` `.jpeg` `.webp` `.gif` `.mp4` `.webm`）のファイルだけを `![alt](.takt/artifacts/pr-screenshots/NN-short-slug.ext)` で書く（alt は拡張子を除いたファイル名。create_pr が `--attach` で URL に書き換える）。0件なら「なし（ローカルキャプチャ未配置）」。モック HTML・図解バンドルへのリンクは書かない。スクショを新規に撮らない。
@@ -53,8 +53,20 @@ PR 本文は開発後のカルテである。実装後の最終確認だけを�
 ## architecture-review.md（全文）
 {report:architecture-review.md}
 
+## frontend-review.md（全文。UI 変更が無い run では欠落文）
+{report:frontend-review.md}
+
+## review-gate.md（全文）
+{report:review-gate.md}
+
+## ui-evidence.md（全文。UI 変更が無い run では欠落文）
+{report:ui-evidence.md}
+
 ## readme-sync.md（全文）
 {report:readme-sync.md}
 
 ## self-review.md（全文）
 {report:self-review.md}
+
+## review-resolution.md（final gate・全文）
+{report:review-resolution.md}

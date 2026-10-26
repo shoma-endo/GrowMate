@@ -297,7 +297,7 @@ processJob(job):  // job は claim RPC 戻り値（email_sent_at 含む）。必
 | `除外キーワードの取得に失敗しました` | `transient` | 同上 |
 | `Google Ads 除外キーワード提案のメール送信に失敗しました` | `transient` | Resend **409 `invalid_idempotent_request` 以外**の失敗（409 は §5.3.5 で送信済み success） |
 | `Google Ads 除外キーワード提案設定の更新に失敗しました` | `transient` | 同上 |
-| `アクセストークンの更新に失敗しました。再認証してください。` | `transient` | §5.3.3 の一時的 refresh 失敗 |
+| `アクセストークンの更新に失敗しました。再連携してください。` | `transient` | §5.3.3 の一時的 refresh 失敗 |
 | `Google Ads 除外キーワード提案の実行に失敗しました` | `transient` | LLM タイムアウト・未分類例外の正規化先。**529 等も現状ここに集約される**（再試行対象）。将来 529 専用文言を `error-messages.ts` に追加した場合は本表に行を追加し、`RUN_FAILED` と分離する |
 
 ジョブ更新時、`error_kind='permanent'` の行は claim RPC が当日再取得しないよう必ず `error_kind` 列に書き込む。
@@ -321,7 +321,7 @@ processJob(job):  // job は claim RPC 戻り値（email_sent_at 含む）。必
 | refresh 結果 | `sendNegativeKeywordsSuggestionForUser` の返却 | `error_kind` |
 |---|---|---|
 | OAuth `invalid_grant` / 取り消し済み refresh token | `AUTH_EXPIRED_OR_REVOKED` | `permanent` |
-| ネットワーク瞬断・Google 5xx・保存失敗（一時） | `アクセストークンの更新に失敗しました。再認証してください。`（`ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_FAILED`） | `transient` |
+| ネットワーク瞬断・Google 5xx・保存失敗（一時） | `アクセストークンの更新に失敗しました。再連携してください。`（`ERROR_MESSAGES.GOOGLE_ADS.TOKEN_REFRESH_FAILED`） | `transient` |
 
 恒久と判定した場合、§5.3.2 に従い `last_send_error` を更新し、設定画面の「最終エラー」に再連携案内が出る（`/setup/google-ads` 導線は既存 UI のまま）。
 

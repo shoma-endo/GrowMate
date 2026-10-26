@@ -1,0 +1,8 @@
+claude:
+  allowed_tools:
+    - Read
+    - Glob
+    - Grep
+    - Edit
+    - Write
+    - Bash

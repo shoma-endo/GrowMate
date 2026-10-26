@@ -56,7 +56,7 @@ export function useGa4Setup(initialStatus: Ga4ConnectionStatus): UseGa4SetupResu
       onError: (_error, result) => {
         if (result?.needsReauth) {
           refreshStatus();
-          setAlertMessage('GA4の認証が期限切れまたは取り消されています。再認証してください。');
+          setAlertMessage('GA4の認証が期限切れまたは取り消されています。再連携してください。');
         }
       },
       setLoading: setIsLoadingProperties,
@@ -76,7 +76,7 @@ export function useGa4Setup(initialStatus: Ga4ConnectionStatus): UseGa4SetupResu
       onError: (_error, result) => {
         if (result?.needsReauth) {
           refreshStatus();
-          setAlertMessage('GA4の認証が期限切れまたは取り消されています。再認証してください。');
+          setAlertMessage('GA4の認証が期限切れまたは取り消されています。再連携してください。');
         }
       },
       setLoading: setIsLoadingKeyEvents,
