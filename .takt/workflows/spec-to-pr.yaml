@@ -136,7 +136,7 @@ loop_monitors:
             - {問題ID}: {何が足りないか}
 
 steps:
-  # TAKT 0.71 の doctor は全経路で先に作られたレポートしか参照を認めないため、前の周のレポートを読む step 用に
+  # TAKT 0.72 の doctor は全経路で先に作られたレポートしか参照を認めないため、前の周のレポートを読む step 用に
   # 欠落文と同じ1行で先に作る。再入り口に置くと本物の記録を上書きするため initial_step 専用。
   - name: seed_reports
     tags:
