@@ -12,12 +12,15 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 npm run test:coverage
-# build は src/env.ts でサーバーの必須キーが「空でないか」だけを検証する。値の中身は使わない。
-# クラウド環境（Claude Code on the web）では ANTHROPIC_API_KEY が環境から外されるため、
+# build は src/env.ts で必須キーの形式（クライアントは URL 形式、サーバーは空でないか）だけを検証する。値の中身は使わない。
+# クラウド環境（Claude Code on the web）では ANTHROPIC_API_KEY が環境から外され、.env.local も無いため、
 # 未設定なら CI（.github/workflows/ci.yml の build ステップ）と同じダミー値で補う。
 # シェルに値があればそれを使う。.env.local にだけ書いてある環境ではダミーが優先される
 # （Next.js は process.env を .env.* より優先する）が、CI と同じ条件で通るので build の検証には足りる。
 # この build 成果物はデプロイしない。
+NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-https://dummy.supabase.co}" \
+NEXT_PUBLIC_SUPABASE_ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY:-dummy-anon-key}" \
+NEXT_PUBLIC_SITE_URL="${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}" \
 SUPABASE_SERVICE_ROLE="${SUPABASE_SERVICE_ROLE:-dummy-service-role}" \
 OPENAI_API_KEY="${OPENAI_API_KEY:-sk-dummy}" \
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-sk-ant-dummy}" \
