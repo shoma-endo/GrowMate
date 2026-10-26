@@ -261,7 +261,7 @@ describe('WordPressPublishService', () => {
 
     expect(result).toEqual({
       success: false,
-      error: 'WordPress 側で固定ページが削除されていました。もう一度送信すると新しい固定ページを作ります',
+      error: 'WordPress側で固定ページが削除されていました。もう一度送信すると新しい固定ページを作ります',
       recovery: 'resend',
     });
     expect(updates).toContainEqual({ wp_post_id: null, wp_post_title: null, wp_post_status: null });

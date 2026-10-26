@@ -451,7 +451,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                   onSelect={() => onOpenWordPressPublish?.()}
                 >
                   <Send size={14} />
-                  <span>WordPress に投稿</span>
+                  <span>WordPressに投稿</span>
                 </StepActionMenuItem>
               )}
             </DropdownMenuContent>

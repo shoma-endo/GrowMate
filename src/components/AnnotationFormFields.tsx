@@ -124,8 +124,8 @@ export default function AnnotationFormFields({
       <div className="mt-6 pt-6 border-t border-gray-200 space-y-3">
         <h4 className="text-md font-semibold text-gray-800">WordPress連携</h4>
         <p className="text-sm text-gray-600">
-          下書き・予約で URL が空のときは、空のまま保存しても紐づけを残します。
-          公開 URL が入っている行を空にして保存したときは、従来どおり連携を解除します。
+          下書き・予約でURLが空のときは、空のまま保存しても紐づけを残します。
+          公開URLが入っている行を空にして保存したときは、従来どおり連携を解除します。
         </p>
         <div className="space-y-1">
           <label className="block text-sm font-medium text-gray-700" htmlFor={canonicalUrlInputId}>

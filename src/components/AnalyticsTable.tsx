@@ -1339,7 +1339,7 @@ export default function AnalyticsTable({
                                     }
                                   >
                                     <Send />
-                                    WordPress に投稿
+                                    WordPressに投稿
                                   </DropdownMenuItem>
                                 )}
                                 {rowActions.detailPlacement === 'menu' && (
