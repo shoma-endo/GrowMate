@@ -5,7 +5,12 @@ import { chatService } from '@/server/services/chatService';
 import { headingFlowService } from '@/server/services/headingFlowService';
 import { SupabaseService } from '@/server/services/supabaseService';
 import { env } from '@/env';
-import { BLOG_STEP_LABELS, MODEL_CONFIGS, WEB_SEARCH_MAX_USES } from '@/lib/constants';
+import {
+  BLOG_STEP_LABELS,
+  MODEL_CONFIGS,
+  WEB_SEARCH_MAX_USES,
+  supportsForcedToolChoice,
+} from '@/lib/constants';
 import type { BlogStepId } from '@/lib/constants';
 import { getSaveModelForCanvasStep } from '@/lib/canvas-content';
 import { reserveTrialChatSend } from '@/server/services/chatLimitService';
@@ -376,20 +381,28 @@ export async function POST(req: NextRequest) {
             '',
           ]
         : [];
-    const outputRules = isHeadingUnitRequest
-      ? [
-          '1. **必ず apply_full_text_replacement ツールを使用する**',
-          '2. **full_markdown には、この1見出し分の本文のみを含める**',
-          '3. **見出し行（##/###/####）は含めない**',
-          '4. **他セクション・タイトル・リード文を追加しない**',
-        ]
-      : [
-          '1. **必ず apply_full_text_replacement ツールを使用する**',
-          '2. **full_markdown パラメータには、編集後の文章全体を最初から最後まで完全に含める**',
-          '3. **絶対に省略しない：** 「...（省略）...」「※以下同様」「（中略）」などの表現は厳禁',
-          '4. **選択範囲以外の部分も必ず全て含める：** タイトル、見出し、本文、すべてのセクションを出力',
-          '5. **文章の一部だけを返すことは厳禁：** 必ず冒頭から末尾まで完全で高品質な文章を返す',
-        ];
+    const toolOnlyRules = [
+      '**テキストだけの返答は無効：** 本文・修正内容の説明・確認の質問・お断りをテキストで返しても画面に反映されずエラーになる。指示が曖昧でも、編集対象のステップと違う内容に見えても、指示を反映した文章を apply_full_text_replacement で返す',
+      '**会話履歴のアシスタント発言（【主な修正内容】など）は過去の編集の要約：** その形式を真似ず、今回の結果は apply_full_text_replacement で返す',
+    ];
+    const outputRules = (
+      isHeadingUnitRequest
+        ? [
+            '**必ず apply_full_text_replacement ツールを使用する**',
+            ...toolOnlyRules,
+            '**full_markdown には、この1見出し分の本文のみを含める**',
+            '**見出し行（##/###/####）は含めない**',
+            '**他セクション・タイトル・リード文を追加しない**',
+          ]
+        : [
+            '**必ず apply_full_text_replacement ツールを使用する**',
+            ...toolOnlyRules,
+            '**full_markdown パラメータには、編集後の文章全体を最初から最後まで完全に含める**',
+            '**絶対に省略しない：** 「...（省略）...」「※以下同様」「（中略）」などの表現は厳禁',
+            '**選択範囲以外の部分も必ず全て含める：** タイトル、見出し、本文、すべてのセクションを出力',
+            '**文章の一部だけを返すことは厳禁：** 必ず冒頭から末尾まで完全で高品質な文章を返す',
+          ]
+    ).map((rule, index) => `${index + 1}. ${rule}`);
     const roleInstruction = isHeadingUnitRequest
       ? 'あなたは文章編集の専門エディターです。ユーザーが選択した部分の改善指示を受けて、**表示中の1見出し分本文だけを編集して出力**します。'
       : 'あなたは文章編集の専門エディターです。ユーザーが選択した部分の改善指示を受けて、**高品質で一貫性のある文章全体を編集して完全な全文を出力**します。';
@@ -735,8 +748,10 @@ export async function POST(req: NextRequest) {
             ...(thinking !== undefined && { thinking }),
             system: anthropicSystem,
             tools: [CANVAS_EDIT_TOOL],
-            // Sonnet 5.5 は強制 tool_choice を 400 で拒否するため auto。ツールを使う指示は system プロンプトにある
-            tool_choice: { type: 'auto' },
+            // 強制を受け付けると確認できていないモデル（Sonnet 5.5 など）は auto にし、ツールを使う指示は system プロンプトで行う
+            tool_choice: supportsForcedToolChoice(actualModel)
+              ? { type: 'tool', name: CANVAS_EDIT_TOOL.name }
+              : { type: 'auto' },
             messages: [
               ...canvasHistory.map(msg => ({
                 role: msg.role,

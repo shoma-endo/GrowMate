@@ -91,6 +91,12 @@ const BLOG_POST_LEAD_BASE = {
   seed: 42,
 };
 
+// 強制 tool_choice（tool / any）を受け付けると確認できたモデル。Sonnet 5.5・Opus 5.5・Fable 5.1 などは 400 で拒否する
+const FORCED_TOOL_CHOICE_SUPPORTED_MODELS = new Set(['claude-haiku-5-5', 'claude-sonnet-5']);
+
+export const supportsForcedToolChoice = (actualModel: string): boolean =>
+  FORCED_TOOL_CHOICE_SUPPORTED_MODELS.has(actualModel);
+
 const OPENAI_BASE = {
   provider: 'openai' as const,
   temperature: 0.3,
