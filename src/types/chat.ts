@@ -91,20 +91,8 @@ export interface OpenAIMessage {
 }
 
 
-/**
- * Server Component用の簡潔なChatMessage型
- */
-export interface ServerChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  created_at: IsoTimestamp;
-}
-
-/** Server Component用のChatSession型（メッセージを含む） */
 export interface ServerChatSession {
   id: string;
   title: string;
   last_message_at: IsoTimestamp;
-  messages?: ServerChatMessage[]; // RPC で埋め込む
 }

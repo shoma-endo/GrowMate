@@ -11,7 +11,6 @@ import {
   DbChatMessage,
   DbChatSession,
   DbChatSessionSearchRow,
-  ServerChatMessage,
   ServerChatSession,
 } from '@/types/chat';
 import type { DbUser, DbUserInsert, DbUserUpdate } from '@/types/user';
@@ -478,8 +477,7 @@ export class SupabaseService {
     return this.success(undefined);
   }
 
-  /** セッション一覧と、そのセッションに属するメッセージを取得 */
-  async getSessionsWithMessages(
+  async getChatSessions(
     userId: string,
     options?: { limit?: number }
   ): Promise<SupabaseResult<ServerChatSession[]>> {
@@ -499,45 +497,11 @@ export class SupabaseService {
       });
     }
 
-    const sessions = sessionRows ?? [];
-    if (sessions.length === 0) {
-      return this.success([]);
-    }
-
-    const sessionIds = sessions.map(session => session.id);
-    const { data: messageRows, error: messageError } = await this.supabase
-      .from('chat_messages')
-      .select('id, session_id, user_id, role, content, model, created_at')
-      .eq('user_id', userId)
-      .in('session_id', sessionIds)
-      .order('created_at', { ascending: true });
-
-    if (messageError) {
-      return this.failure('チャットメッセージの取得に失敗しました', {
-        error: messageError,
-        developerMessage: 'Failed to get chat messages for sessions',
-        context: { userId, limit, sessionIds },
-      });
-    }
-
-    const messagesBySession = new Map<string, ServerChatMessage[]>();
-    for (const message of messageRows ?? []) {
-      const messages = messagesBySession.get(message.session_id) ?? [];
-      messages.push({
-        id: message.id,
-        role: message.role as ServerChatMessage['role'],
-        content: message.content,
-        created_at: parseTimestampSafe(message.created_at),
-      });
-      messagesBySession.set(message.session_id, messages);
-    }
-
     return this.success(
-      sessions.map(session => ({
+      (sessionRows ?? []).map(session => ({
         id: session.id,
         title: session.title,
         last_message_at: parseTimestampSafe(session.last_message_at),
-        messages: messagesBySession.get(session.id) ?? [],
       }))
     );
   }
