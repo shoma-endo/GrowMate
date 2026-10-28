@@ -124,7 +124,7 @@ async function getChatSessions() {
     return { sessions: [], error: auth.error };
   }
 
-  const serverSessions = await chatService.getSessionsWithMessages(auth.userId);
+  const serverSessions = await chatService.getChatSessions(auth.userId);
   // ServerChatSession → ChatSession形式に変換
   const sessions = serverSessions.map(s => ({
     id: s.id,
