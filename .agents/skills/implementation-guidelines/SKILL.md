@@ -49,7 +49,7 @@ description: GrowMateの機能実装全般で最初に使う基盤ポリシー�
 # フロントエンド設計
 
 - **状態管理とサービス層**
-  - 画面ロジックと API 呼び出しは `src/domain/` のサービス層（例: `ChatService`, `SubscriptionService`）を通すことを優先し、同種のロジックを画面側に直書きしない。
+  - 画面ロジックと API 呼び出しは `src/domain/` のサービス層（例: `ChatService`）を通すことを優先し、同種のロジックを画面側に直書きしない。
 
 # ページ種別ごとの制約
 

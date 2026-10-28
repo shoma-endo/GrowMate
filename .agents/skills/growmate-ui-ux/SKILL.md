@@ -64,7 +64,7 @@ GrowMate は **広告運用・コンテンツマーケティング初心者** �
 
 ## 本 Skill の対象外
 
-**オンボーディング**（`/business-info` の初回フロー等）の UI 仕様は本 Skill に載せない。正本は `docs/plans/*` / `docs/specs/*`（例: `docs/plans/google-docs-knowledge-source-plan.md`）。
+**オンボーディング**（`/business-info` の初回フロー等）の UI 仕様は本 Skill に載せない。正本は `docs/plans/*` / `docs/specs/*`（例: `docs/specs/google-docs-knowledge-source-plan.md`）。
 
 ## デザインシステム（固定）
 

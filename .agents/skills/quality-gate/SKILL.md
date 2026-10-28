@@ -21,7 +21,7 @@ description: GrowMateのコード変更後・commit前・push前・PR前に必�
    開発中の確認は **変更に関係するテストだけ**を回す: `npm run test:related -- <変更したファイル…>`（`vitest related`。import をたどって関係するテストを選ぶ。`npx vitest` の直接実行はしない — `docs/specs/testing-strategy.md`）と `npx tsc --noEmit -p .`。
    ただし `test:related` は import のつながりしか追わず、ファイルを文字列で読むテスト（SQL migration・設定・TAKT ワークフロー契約など）を拾えない。**pre-push と CI の全件実行は削らない**（取りこぼしの安全網）。
    hook を通さない経路（クラウド環境での `--no-verify`、hook が入っていない環境）では `npm run verify` を回す。
-   個別に走らせる場合は `npm audit --audit-level=high` / `npm run lint` / `npm run test:coverage` / `npm run build` / `npm run knip`。
+   個別に走らせる場合は `npm audit --omit=dev --audit-level=high` / `npm run lint` / `npm run test:coverage` / `npm run build` / `npm run knip`。
    `test:coverage` は src/app 全体基準のカバレッジ閾値（`vitest.config.ts`）を下回ると失敗する。閾値合わせのテストは書かず、未テストの大きな追加が原因なら仕様側で扱う（`docs/specs/testing-strategy.md`「閾値の合意記録」）。
    `lint` の `max-lines`（500 行）warn は失敗にならないが、月次メンテの hotspot レビュー入力になる（`docs/runbooks/monthly-maintenance.md`）。
    **`tsc --noEmit` は `build` の代わりにならない**（Next.js の route segment config 静的解析や page data 収集が走らないため、過去に `maxDuration` 漏れが本番直前まで気付けなかった実例あり）。
