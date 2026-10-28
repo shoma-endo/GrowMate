@@ -533,7 +533,7 @@ class ChatService {
       'あなたは会話要約のアシスタントです。過去の会話を日本語で最重要ポイントのみ、箇条書きで3〜6項目、合計300文字程度で要約してください。前置きや蛇足は不要です。';
 
     const summarizerModel =
-      MODEL_CONFIGS['ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2']?.actualModel || 'gpt-4o-mini';
+      MODEL_CONFIGS['ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2']!.actualModel;
 
     const text = await llmChat(
       'openai',

@@ -105,10 +105,12 @@ const OPENAI_BASE = {
 };
 
 export const MODEL_CONFIGS: Record<string, ModelConfig> = {
+  // キーは既存セッションと UI の選択値に残っているため据え置く。微調整モデルとベースの
+  // gpt-4.1-nano は 2026-10-23 に OpenAI が提供終了し、公式の後継 gpt-5.6-luna を呼ぶ。
   'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2': {
     ...OPENAI_BASE,
     maxTokens: 3000,
-    actualModel: 'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2',
+    actualModel: 'gpt-5.6-luna',
   },
   ad_copy_creation: { ...ANTHROPIC_BASE, maxTokens: 4000 },
   lp_draft_creation: { ...ANTHROPIC_BASE, maxTokens: 32000 },

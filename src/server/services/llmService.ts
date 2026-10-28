@@ -147,6 +147,10 @@ class LLMService {
         ],
         temperature: opts.temperature ?? 0.7,
         max_completion_tokens: opts.maxTokens ?? 3000,
+        // gpt-5.6 系は推論が既定で medium になり、none 以外では temperature を受け付けない。
+        // OpenAI 経路は gpt-5.6-luna だけなので固定。推論を使うモデルや reasoning_effort を
+        // 受け付けない非推論モデルを足すときは ModelConfig から渡す形にする。
+        reasoning_effort: 'none',
       },
       { signal: opts.signal }
     );
