@@ -506,13 +506,12 @@ class ChatService {
     }
   }
 
-  /** Server Component用: セッション一覧とメッセージを取得 */
-  async getSessionsWithMessages(
+  async getChatSessions(
     userId: string,
     options?: { limit?: number }
   ): Promise<ServerChatSession[]> {
     return this.unwrapSupabaseResult(
-      await this.supabaseService.getSessionsWithMessages(userId, options),
+      await this.supabaseService.getChatSessions(userId, options),
       ChatErrorCode.SESSION_LOAD_FAILED,
       { userId, limit: options?.limit }
     );
