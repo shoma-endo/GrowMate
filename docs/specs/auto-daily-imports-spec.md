@@ -17,7 +17,7 @@
 
 ## 現在地と次の一手
 
-- **2026-10-30: WordPress の毎日の自動取込を廃止した（ユーザー判断）。** 廃止したのは FR-003・FR-004・FR-008・FR-012 と、FR-006・FR-010・FR-013 の WordPress の分（cron `/api/cron/wordpress-daily-import`・`vercel.json` の定時起動・手動実行の matrix・Lark 通知の WordPress の行）。手動の一括取込（FR-005）の差分取込と、差分の基準 `wp_import_baseline_at` は残す。`wordpress_settings.wp_auto_import_status` / `_at` の列は DB に残すが、読み書きはしない。値は廃止時点のまま古く残るので、参照しない（列の削除は別の変更）。以下の WordPress に関する記述は廃止前の記録。
+- **2026-10-30: WordPress の毎日の自動取込を廃止した（ユーザー判断）。** 廃止したのは FR-003・FR-004・FR-008・FR-012 と、FR-006・FR-010・FR-013 の WordPress の分（cron `/api/cron/wordpress-daily-import`・`vercel.json` の定時起動・手動実行の matrix・Lark 通知の WordPress の行）。手動の一括取込（FR-005）の差分取込と、差分の基準 `wp_import_baseline_at` は残す。`wordpress_settings.wp_auto_import_status` / `_at` の列は DB に残すが、読み書きはしない。値は廃止時点のまま古く残るので、参照しない。列は今後使う可能性があるので削除しない（2026-10-30 ユーザー判断）。以下の WordPress に関する記述は廃止前の記録。
   - 受け入れる制約（Non-goal）: 記事の多いサイトの初回全件取込は、手動取込の時間予算（700秒。`wordpressImport.actions.ts` の `MANUAL_IMPORT_TIME_BUDGET_MS`）で終わらないことがある。取得の段階で時間切れになると何も保存されず、差分の基準も進まないので、押し直しても終わらない（基準がリセットされた後の再取込も同じ）。利用者には「記事が多いため、時間内に取り込み切れませんでした。」とだけ出る。日次 cron（1800秒）がこのサイトを引き受けていたが、MVP では受け入れる。困るサイトが出たら、R-004 に書いた全件取込の途中再開を作る。
   - WordPress の認証切れは、マイホームに出なくなった（FR-008・FR-012 の廃止）。気づけるのは手動取込が失敗したときだけ
 - 現在の工程: `FR-011 本番反映済み・定時実行で確認済み（文言と判定ルールの確認待ち）`
