@@ -4,6 +4,7 @@ import { ChatErrorCode } from '@/domain/errors/ChatError';
 const mocks = vi.hoisted(() => ({
   anthropicCreate: vi.fn(),
   anthropicStream: vi.fn(),
+  openaiCreate: vi.fn(),
 }));
 
 vi.mock('@anthropic-ai/sdk', () => ({
@@ -16,7 +17,9 @@ vi.mock('@anthropic-ai/sdk', () => ({
 }));
 
 vi.mock('openai', () => ({
-  default: class {},
+  default: class {
+    chat = { completions: { create: mocks.openaiCreate } };
+  },
 }));
 
 vi.mock('@/env', () => ({
@@ -106,5 +109,21 @@ describe('llmService', () => {
       maxRetries: 0,
     });
     expect(mocks.anthropicStream.mock.calls[0]?.[1]).toMatchObject({ maxRetries: 0 });
+  });
+
+  /** gpt-5.6 系は推論が既定で有効になり、none 以外では temperature を渡すと拒否される */
+  it('OpenAI 経路は reasoning_effort を none にして temperature と一緒に送る', async () => {
+    mocks.openaiCreate.mockResolvedValue({
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+    });
+
+    await llmChat('openai', 'gpt-5.6-luna', [{ role: 'user', content: 'test' }], {
+      temperature: 0.3,
+    });
+    expect(mocks.openaiCreate.mock.calls[0]?.[0]).toMatchObject({
+      model: 'gpt-5.6-luna',
+      temperature: 0.3,
+      reasoning_effort: 'none',
+    });
   });
 });

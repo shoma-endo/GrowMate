@@ -138,10 +138,7 @@ export class ModelHandlerService {
     const systemPrompt = await getSystemPrompt(model, undefined, sessionId, serviceId);
 
     if (model === 'ft:gpt-4.1-nano-2025-04-14:personal::BZeCVPK2') {
-      const config = MODEL_CONFIGS[model];
-      const actualModel = config ? config.actualModel : model;
-      const temperature = config ? config.temperature : 0.5;
-      const maxTokens = config ? config.maxTokens : 1000;
+      const { actualModel, temperature, maxTokens } = MODEL_CONFIGS[model]!;
 
       const chatMessages = messages.map(msg => ({
         role: msg.role as 'user' | 'assistant' | 'system',
@@ -253,13 +250,11 @@ export class ModelHandlerService {
     model: string,
     serviceId?: string
   ): Promise<ChatResponse> {
-    const config = MODEL_CONFIGS[model];
-    const maxTokens = config ? config.maxTokens : 1000;
-    const temperature = config ? config.temperature : 0.5;
+    const { actualModel, temperature, maxTokens } = MODEL_CONFIGS[model]!;
 
     const aiReply = await llmChat(
       'openai',
-      model,
+      actualModel,
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage.trim() },

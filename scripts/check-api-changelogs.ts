@@ -453,10 +453,10 @@ GrowMateは Next.js + TypeScript + Supabase を使ったマーケティングSaa
 - 注意点: thinking は思考オフで使う（disabled。Sonnet 5.5 は between_tools）。Canvas の編集ツールは強制を受け付けるモデル（Haiku 5.5）だけ tool_choice で強制し、ほかは auto
 
 ### OpenAI API
-- SDK: openai（client.chat.completions.create / stream）
-- 使用モデル: gpt-4o, gpt-4o-mini など
-- 用途: チャット応答生成（Anthropicの代替として選択可能）
-- 依存パラメータ: model / max_tokens / temperature / messages / stream
+- SDK: openai（client.chat.completions.create）
+- 使用モデル: gpt-5.6-luna（チャットのキーワード選定・会話履歴の要約）
+- 用途: キーワード選定（今すぐ客／後から客の分類）と、長い会話履歴の要約
+- 依存パラメータ: model / max_completion_tokens / temperature / reasoning_effort（none 固定） / messages
 
 ### Supabase JS SDK
 - SDK: @supabase/supabase-js, @supabase/ssr
