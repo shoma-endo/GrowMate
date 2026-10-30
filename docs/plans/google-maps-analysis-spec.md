@@ -17,10 +17,10 @@
 - 止まっている理由・待っている人: §12 の確認質問 Q-001〜Q-003・Q-005・Q-006 が未回答。とくに Q-001（クライアント合意）と Q-002（「Pro の受付データ」の実体）が答えられないと対象範囲が決まらない
 - 次の一手:
   1. Q-001・Q-002 に回答をもらい本書へ書き戻す → `takt -w grill-to-gherkin` で §6・§7 を確定
-  2. GBP API は `aozora-gbp`（936972101339）で承認済み（D-001 完了）。2026-10-30 に Google My Business API・My Business Account Management API・My Business Business Information API・Business Profile Performance API の4つを有効化済み。利用目的の訂正（R-005）は 2026-10-30 に対応済み。次は `aozora-gbp` での OAuth 同意画面の作成・外部公開（D-002）を進める。外部公開（必要なら審査）が済むまでは、同意画面のテストユーザーに登録したアカウントしか連携できない
+  2. GBP API は `aozora-gbp`（936972101339）で承認済み・API 4つ有効化済み（D-001 完了）。OAuth 同意画面とクライアントはテスト中の状態まで作成済み（D-002 前半完了）。開発用アカウントをあおぞら養鶏の GBP 管理者に招待してもらえば、実データで検証できる。他の事業者へ開放する前に同意画面の外部公開（必要なら審査）が要る（D-002 後半）
 - 未確認事項: §12 確認質問のとおり
 - 関連ブランチ・PR: `develop`（仕様書のみ）
-- 更新日・更新した工程: 2026-10-30 API 4つの有効化と R-005（利用目的の訂正）対応済みを記録
+- 更新日・更新した工程: 2026-10-30 OAuth 同意画面・クライアントの作成（テスト中）を D-002 に記録
 
 ## 0. 事前調査の結論（Grill Me の入力）
 
@@ -250,7 +250,7 @@ Grill Me 後に `02-gherkin.md` から反映する。
 | ID | 依存対象 | 前提条件 | 完了確認 | 未完了時の影響 |
 | --- | --- | --- | --- | --- |
 | D-001 | GBP API 利用申請（Application for Basic API Access） | 申請者が「60日以上アクティブな確認済み GBP」のオーナー/管理者で、GBP に Web サイトが載っている。申請メールアドレスが GBP のオーナー/管理者 | Cloud Console のクォータが 300 QPM | P2・P3 を実データで検証できない（**2026-10-29 完了**: `aozora-gbp`（936972101339）が許可リストに追加、300 QPM）|
-| D-002 | `aozora-gbp` に GBP 連携専用の OAuth クライアントと同意画面（アプリ名 GrowMate、GrowMate ドメインの所有確認、`business.manage`）を作り、外部公開・必要なら審査 | D-001 と同じ GCP プロジェクト（`aozora-gbp`） | 外部ユーザーで同意できる | paid ユーザーが連携できない |
+| D-002 | `aozora-gbp` に GBP 連携専用の OAuth クライアントと同意画面（アプリ名 GrowMate、GrowMate ドメインの所有確認、`business.manage`）を作り、外部公開・必要なら審査 | D-001 と同じ GCP プロジェクト（`aozora-gbp`） | 外部ユーザーで同意できる | paid ユーザーが連携できない （**2026-10-30 テスト中まで完了**: 同意画面（アプリ名 GrowMate・外部・テスト中・テストユーザー2名＝クライアント／開発）、スコープ `business.manage`、ウェブアプリのクライアント（リダイレクト URI は本番 `https://www.growmate.tokyo/api/google-business-profile/oauth/callback` と localhost の2つ）。外部公開・審査は未着手）|
 | D-003 | Places API の有効化と API キー | 課金アカウント | 呼び出し成功 | P1 不可 |
 
 ## 11. トレードオフ判断
@@ -377,3 +377,4 @@ Grill Me 後に記載する。
 | 2026-10-29 | GBP API 承認（`aozora-gbp`・300 QPM）を D-001 に記録。Q-004・Q-007 を回答済みに | 開発（Claude Code） |
 | 2026-10-30 | `aozora-gbp` で GBP の API 4つ（Google My Business / Account Management / Business Information / Business Profile Performance）を有効化したことを記録 | 開発（Claude Code） |
 | 2026-10-30 | R-005（申請の利用目的を SaaS 用途に訂正）を対応済みに | 開発（Claude Code） |
+| 2026-10-30 | `aozora-gbp` の OAuth 同意画面・クライアント作成（テスト中）を D-002 に記録 | 開発（Claude Code） |
