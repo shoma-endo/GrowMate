@@ -127,6 +127,25 @@ export const ERROR_MESSAGES = {
     /** AI要約の本文サイズガード超過 */
     SUMMARY_CONTENT_TOO_LARGE: '本文が大きすぎるため要約できません',
 
+    PUBLISH_NOT_CONNECTED: 'WordPressと連携していません',
+    PUBLISH_NO_CONTENT: '完成した記事がありません。チャットでstep7の完成形を保存してください',
+    PUBLISH_RELINK: 'WordPressとの連携が切れています',
+    PUBLISH_FORBIDDEN: 'WordPressのユーザーに投稿または固定ページの権限がありません。WordPressの権限か、サイトのセキュリティ設定を確認してください',
+    PUBLISH_ALREADY_PUBLISHED: 'すでにWordPressで公開されています。公開後の変更はWordPress側で行ってください',
+    PUBLISH_DELETED: (contentType: 'posts' | 'pages'): string =>
+      `WordPress側で${contentType === 'pages' ? '固定ページ' : '投稿'}が削除されていました。もう一度送信すると新しい${contentType === 'pages' ? '固定ページ' : '投稿'}を作ります`,
+    PUBLISH_NOT_FOUND: 'WordPressに接続できませんでした。紐づけは残しています。時間をおいてもう一度お試しください',
+    PUBLISH_IN_PROGRESS: 'この記事は送信中です。しばらくしてからもう一度お試しください',
+    PUBLISH_CREATE_UNCERTAIN: 'WordPressから応答がありませんでした。WordPress側に下書きが作られている場合があります。WordPressの投稿一覧を確認してから、もう一度お試しください',
+    PUBLISH_UPDATE_FAILED: 'WordPressが応答しませんでした。時間をおいてもう一度お試しください',
+    PUBLISH_DB_SYNC_FAILED: 'WordPressには送信できましたが、コンテンツ一覧への反映に失敗しました。WordPressの投稿一覧を確認し、コンテンツの「編集」でWordPress投稿URLを入れてください',
+    PUBLISH_REJECTED: (message: string): string => `WordPressが送信内容を受け付けませんでした: ${message}`,
+    PUBLISH_CATEGORY_FETCH_FAILED: 'カテゴリを取得できませんでした。未選択のまま送信できます',
+    PUBLISH_SCHEDULE_MUST_BE_FUTURE: '現在より後の日時を指定してください',
+    PUBLISH_BULK_SKIP_TITLE_EMPTY: 'タイトルが空です',
+    PUBLISH_BULK_SKIP_SCHEDULED: '予約',
+    PUBLISH_BULK_SKIP_OUT_OF_SCOPE: '対象外',
+
     /** AI要約のClaude呼び出し失敗 */
     SUMMARY_AI_FAILED: 'AI要約の生成に失敗しました。しばらくしてからもう一度お試しください。',
 

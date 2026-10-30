@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   eq: vi.fn(),
   maybeSingle: vi.fn(),
+  upsert: vi.fn(),
   getWordPressSettingsByUserId: vi.fn(),
 }));
 
@@ -31,6 +32,7 @@ vi.mock('@/server/services/supabaseService', () => ({
         update: mocks.update,
         eq: mocks.eq,
         maybeSingle: mocks.maybeSingle,
+        upsert: mocks.upsert,
       };
       mocks.select.mockReturnValue(query);
       mocks.update.mockReturnValue(query);
@@ -43,7 +45,7 @@ vi.mock('@/server/services/supabaseService', () => ({
   },
 }));
 
-import { getWordPressSettings, updateContentAnnotationFields } from '@/server/actions/wordpress.actions';
+import { getWordPressSettings, updateContentAnnotationFields, upsertContentAnnotationBySession } from '@/server/actions/wordpress.actions';
 
 describe('updateContentAnnotationFields', () => {
   beforeEach(() => {
@@ -74,6 +76,54 @@ describe('updateContentAnnotationFields', () => {
     });
     expect(mocks.getWordPressSettingsByUserId).not.toHaveBeenCalled();
     expect(mocks.eq).toHaveBeenCalledWith('user_id', 'user-id');
+  });
+});
+
+describe('upsertContentAnnotationBySession WordPress state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.upsert.mockResolvedValue({ error: null });
+  });
+
+  it('URLが空のまま保存されたdraft行はID・タイトル・statusを保持する', async () => {
+    mocks.maybeSingle
+      .mockResolvedValueOnce({ data: { user_id: 'user-id' }, error: null })
+      .mockResolvedValueOnce({ data: {
+        canonical_url: null,
+        wp_post_id: 42,
+        wp_post_title: '保存済みタイトル',
+        wp_post_status: 'draft',
+      }, error: null });
+
+    const result = await upsertContentAnnotationBySession({
+      session_id: 'session-id',
+      canonical_url: '',
+    });
+
+    expect(result).toMatchObject({ success: true, wp_post_id: 42, wp_post_title: '保存済みタイトル' });
+    expect(mocks.upsert.mock.calls[0]?.[0]).toMatchObject({
+      wp_post_id: 42,
+      wp_post_title: '保存済みタイトル',
+      wp_post_status: 'draft',
+    });
+  });
+
+  it('WordPress投稿の紐づけをURL空で解除するとwp_post_statusもNULLにする', async () => {
+    mocks.maybeSingle
+      .mockResolvedValueOnce({ data: { user_id: 'user-id' }, error: null })
+      .mockResolvedValueOnce({ data: {
+        canonical_url: null,
+        wp_post_id: 42,
+        wp_post_title: '公開済みタイトル',
+        wp_post_status: 'publish',
+      }, error: null });
+
+    await upsertContentAnnotationBySession({ session_id: 'session-id', canonical_url: '' });
+
+    expect(mocks.upsert.mock.calls[0]?.[0]).toMatchObject({
+      wp_post_id: null,
+      wp_post_status: null,
+    });
   });
 });
 

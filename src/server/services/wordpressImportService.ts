@@ -379,6 +379,7 @@ export async function importWordPressContent({
         ...(nextPostType !== null ? { wp_post_type: nextPostType } : {}),
         ...(nextContent !== null ? { wp_content_text: nextContent } : {}),
         ...(nextImageCount !== null ? { wp_image_count: nextImageCount } : {}),
+        wp_post_status: 'publish',
       };
 
       if (assignment) {

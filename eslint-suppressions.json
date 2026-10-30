@@ -368,13 +368,10 @@
   },
   "src/components/AnalyticsTable.tsx": {
     "shadcn/no-arbitrary-values": {
-      "count": 11
-    },
-    "shadcn/no-inline-styles": {
-      "count": 9
+      "count": 10
     },
     "shadcn/no-raw-colors": {
-      "count": 27
+      "count": 19
     }
   },
   "src/components/AnnotationFormFields.tsx": {

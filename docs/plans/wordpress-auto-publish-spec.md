@@ -13,12 +13,12 @@
 
 ## 現在地と次の一手
 
-- 現在の工程: spec-review 通過。見た目は既存フォームの写しで確定。送信 UI の4点（公開済みは info、再送の初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし）も回答済み。正常応答の識別子と再送初期値の返却制約も明記済み。OPEN-001 は決着
-- 止まっている理由・待っている人: なし
-- 次の一手: `.takt/workflows/spec-to-pr.yaml` で実装（`takt -w spec-to-pr -t "docs/plans/wordpress-auto-publish-spec.md 仕様書に沿って実装してください"`）
-- 未確認事項: なし
-- 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）、PR #691
-- 更新日・更新した工程: 2026-10-23 レビュー指摘2件（応答の識別子・再送初期値の返却）を反映（実装前）
+- 現在の工程: 実装 PR レビュー待ち（spec-to-pr create_pr）
+- 止まっている理由・待っている人: 人間の PR 確認と merge。DB は適用済み（マイグレーション `20261023230121_add_wp_post_status_to_content_annotations.sql`、2026-10-24）
+- 次の一手: PR 確認と merge。未実装分は UI 用語辞書 `.agents/skills/growmate-ui-ux/ui-text.md` への用語と補足2文の追記（無人実行で `.agents` に書き込めず未更新）
+- 未確認事項: 「PR 本文の `## 最終確認（引き継ぎ用）` を参照」（32 項目）
+- 関連ブランチ・PR: `shoma-endo/feat-wp-auto-publish`（PR はブランチから引く）
+- 更新日・更新した工程: 2026-10-26 UI 文言の英字・数字と日本語の間のスペースを外す（Q-010）
 
 ## 0. 依頼時の参考資料との差分（先に読む）
 
@@ -98,7 +98,7 @@
 ### 業務ルール
 
 - ルール ID: BR-001（送信はユーザーが押したときだけ）
-  - ルール: WordPress への送信は、ユーザーが押したときだけ行う。入口はチャット（`/chat`）step7 の「その他の操作」と、コンテンツ一覧（`/analytics` ブログタブ）の行の操作列。どちらも投稿ダイアログを開き、ダイアログの送信ボタンで送る（Q-001、2026-10-23）。記事の完成・Instagram ブログ化の完了・日次 cron をきっかけに自動で送らない。
+  - ルール: WordPress への送信は、ユーザーが押したときだけ行う。入口はチャット（`/chat`）step7 の「その他の操作」と、コンテンツ一覧（`/analytics` ブログタブ）の行の操作列の「…」（その他の操作）。どちらも投稿ダイアログを開き、ダイアログの送信ボタンで送る（Q-001、2026-10-23）。記事の完成・Instagram ブログ化の完了・日次 cron をきっかけに自動で送らない。
   - 例外: なし。一括もユーザーが押したときだけ（BR-008）。押していない送信はしない。
 - ルール ID: BR-002（未送信の既定は下書き、再送は現在の状態）
   - ルール: 未送信の公開状態の既定値は「下書き」。「公開」「予約」はユーザーが選んだときだけ送る。再送時は現在の状態（下書き / 予約）と予約済み日時をダイアログの初期値に入れる。送信ボタンの文言は選んだ公開状態に合わせて変える（§6 画面設計）。LLM が書いた本文を確認なしで公開する事故を、既定値で防ぐ。
@@ -135,7 +135,7 @@
 
 - 画面・操作:
   - チャット画面（`/chat`）: step7 の「その他の操作」メニュー（`app/chat/components/StepActionBar.tsx`）に「WordPress に投稿」を追加し、投稿ダイアログを開く
-  - コンテンツ一覧（`/analytics` ブログタブ）: 行の操作列（`src/components/AnalyticsTable.tsx` の `AnalyticsOpsCell`）に「WordPress に投稿」を追加し、同じ投稿ダイアログを開く。タイトル列に「下書き」「予約」のバッジを出す
+  - コンテンツ一覧（`/analytics` ブログタブ）: 行の操作列（`src/components/AnalyticsTable.tsx` の `AnalyticsOpsCell`）の「…」（その他の操作）に「WordPress に投稿」を追加し、同じ投稿ダイアログを開く。タイトル列に「下書き」「予約」のバッジを出す
   - 投稿ダイアログ（新規共通コンポーネント `src/components/WordPressPublishDialog.tsx`）: 送信先（投稿 / 固定ページ）・タイトル・公開状態（下書き・公開・予約。未送信の既定は下書き。再送は現在の下書き / 予約と予約済み日時を初期値にする。Q-003）・公開日時・カテゴリ（投稿のときだけ）・スラッグ
   - 一括下書き（BR-008）: 対象は未送信と `draft` だけ。`future`・`publish`・取込由来・固定ページは送らない。Server Action とツールバーボタンを実装し、初回はボタンをマウントしない
 - API・外部連携:
@@ -215,7 +215,7 @@
 | ID | 機能要件 | 優先度 | 根拠・出典 | 受け入れ条件 |
 | --- | --- | --- | --- | --- |
 | FR-001 | チャット画面の step7 で「その他の操作」メニューから「WordPress に投稿」を選ぶと投稿ダイアログが開く | Must | 依頼文「チャット画面で自動投稿」 | S-01 |
-| FR-002 | コンテンツ一覧の行（`session_id` あり、`wp_post_status` が NULL または `draft` / `future`、取込由来でない）の操作列に「WordPress に投稿」が出て、押すと同じ投稿ダイアログが開く | Must | 依頼文「コンテンツ一覧画面で自動投稿」 | S-02 |
+| FR-002 | コンテンツ一覧の行（`session_id` あり、`wp_post_status` が NULL または `draft` / `future`、取込由来でない）の操作列の「…」（その他の操作）に「WordPress に投稿」が出て、押すと同じ投稿ダイアログが開く | Must | 依頼文「コンテンツ一覧画面で自動投稿」 | S-02 |
 | FR-003 | 投稿ダイアログで、送信先（投稿 / 固定ページ。既定は投稿。未送信のときだけ変更可）、タイトル（自動入力・必須）、公開状態（下書き・公開・予約。未送信の既定は下書き。再送は現在の下書き / 予約と予約済み日時を初期値にする。Q-003）、公開日時（予約のとき必須）、カテゴリ（投稿のときだけ。複数選択・任意）、スラッグ（任意）を指定できる | Must | 2026-10-23 の回答（Q-003、Q-005、Q-008） | S-01, S-03, S-05, S-15 |
 | FR-004 | 送信すると Canvas の完成形（Markdown）を HTML に変換し、選んだ送信先（`posts` または `pages`）へ作成する。成功したら `content_annotations` に `wp_post_id` / `wp_post_title` / `wp_post_status` / `wp_post_type` を保存し、`publish` のときは `canonical_url` も保存する。完了トーストは結果の文だけを表示し、WordPress へのリンク（URL）は付けない | Must | 目的「URL の手入力が要らなくなる」、Q-008 | S-01, S-03, S-04, S-15 |
 | FR-005 | 送信済み（`draft` / `future`）の行で再度送信すると、新規作成ではなく保存済みの `wp_post_type`（投稿または固定ページ）を更新する。更新前に WordPress 側の現在の状態を確認し、公開済みなら更新せず行を同期し、お知らせ（info）として表示する（赤いエラーにしない）。応答 JSON の `code` が `rest_post_invalid_id` のときだけ行の紐づけを外して次の送信を新規作成に戻す。それ以外の 404 は紐づけを残す | Must | BR-004（重複の防止・公開済みの上書き防止）、Q-008 | S-05, S-13, S-14 |
@@ -291,9 +291,9 @@
 | 今回の UI 要素 | 同種の既存 UI（`file:line`） | 採る方法 | 変える点と根拠 |
 | --- | --- | --- | --- |
 | チャット step7 のメニュー項目「WordPress に投稿」 | `app/chat/components/StepActionBar.tsx` の「その他の操作」`DropdownMenuItem`（「タイトル・説明文生成」「ブログ記事取得」。L390〜L422） | 共通化（同ファイル内で `DropdownMenuItem` + アイコン + `Loader2` の組み合わせをメニュー項目部品として切り出して export し、既存2項目と新項目で使う） | 既存項目のクラスには生の色（`bg-white text-gray-900` 等）があり、`eslint-suppressions.json` に同ファイルの抑止が 33 件ある（L222〜L227）。そのまま写すと抑止件数が増えるため、部品に閉じ込めて新規の違反を出さない。アイコンは lucide `Send`。文言は本書の用語 |
-| コンテンツ一覧の行ボタン「WordPress に投稿」 | `src/components/AnalyticsTable.tsx` の操作列ボタン群（「編集」L1375〜L1382、「詳細」L1457〜L1485。`variant="outline" size="sm" className="flex items-center gap-2"`） | 写す | アイコンは lucide `Send`。「編集」の右、「詳細」の左に置く。表示条件は本節の状態遷移どおり |
+| コンテンツ一覧の「…」（その他の操作）と項目「WordPress に投稿」 | 「…」ボタンは `app/chat/components/StepActionBar.tsx` の「その他の操作」。項目は `src/components/ui/dropdown-menu.tsx` の `DropdownMenuItem` | 「…」は写す。項目はそのまま使う | 「…」の `title` は外す（一覧のセルにホバーのツールチップを置かない）。チャットの `StepActionMenuItem` は生の色を持つため写さない。メニューは 編集 / WordPress に投稿 / 詳細 / 区切り線 / 削除（赤字）の順。アイコンは lucide `Send`。表示条件は本節の状態遷移どおり（Q-009） |
 | コンテンツ一覧の「下書き」「予約」バッジ | `src/components/AnalyticsTable.tsx` の `<Badge variant="outline">サンプリング</Badge>`（L1579） | 写す | 文言のみ。タイトル列（`case 'wp_post_title'` L1683〜L1690。現状はプレーンテキストで、URL リンクは `case 'url'` L1702〜L1719 の別列）のタイトルの右に置く |
-| 投稿ダイアログの枠 | `src/components/AnalyticsTable.tsx` の「コンテンツ情報を編集」`Dialog`（L1374〜L1453。`DialogTrigger` / `DialogContent` / `DialogHeader` / `DialogFooter`、キャンセルと主操作の並び、送信中の `Loader2` + 「保存中...」） | 写す | 幅は `max-w-2xl`（編集ダイアログの `max-w-4xl` は項目数が多いため。本ダイアログの入力は6項目） |
+| 投稿ダイアログの枠 | `src/components/AnalyticsTable.tsx` の「コンテンツ情報を編集」`Dialog`（`DialogContent` / `DialogHeader` / `DialogFooter`、キャンセルと主操作の並び、送信中の `Loader2` + 「保存中...」） | 写す | 幅は `max-w-2xl`（編集ダイアログの `max-w-4xl` は項目数が多いため。本ダイアログの入力は6項目） |
 | フォーム項目（ラベル・入力・補足文） | shadcn の `Label` / `Input` / `Textarea`（`src/components/ui/label.tsx` / `input.tsx` / `textarea.tsx`）。既存の同種の並びは `src/components/WordPressSettingsForm.tsx`（`Input` を import し、ラベル + 入力 + 補足文で組んでいる） | そのまま使う | `src/components/AnnotationFormFields.tsx`（L127〜L141）は生の `<label>` / `<input>` に生の色クラスを当てており、投稿ダイアログのマークアップとしては写さない（抑止件数が増えるため） |
 | 登録情報の WordPress 投稿 URL の補足文 | `src/components/AnnotationFormFields.tsx` L126〜L129（「空欄の場合は連携を解除します。」） | 既存の文を更新 | マークアップとクラスは変えない。下書き・予約で URL が空のときは紐づけを残す。公開 URL が入っている行を空にして保存したときは従来どおり解除する。`ui-text.md` にはこの2文を実装時に足す（§4） |
 | 公開状態の選択 | `src/components/WordPressSettingsForm.tsx` L355〜L361 の shadcn `Select`（連携方式の選択。`src/components/ui/select.tsx`） | 写す | 3択なので `Select`。ラジオ部品は `src/components/ui/` に無いため新造しない。既存はラベルが生の `<label>` なので、本ダイアログは shadcn `Label` に揃える |
@@ -307,7 +307,7 @@
 | 画面 | パス | 新規/既存 | 概要・変更点 |
 | --- | --- | --- | --- |
 | チャット | `/chat` | 既存 | step7 の「その他の操作」に「WordPress に投稿」を追加。投稿ダイアログを開く |
-| コンテンツ一覧（ブログタブ） | `/analytics` | 既存 | 操作列に「WordPress に投稿」を追加。タイトル列に「下書き」「予約」バッジ |
+| コンテンツ一覧（ブログタブ） | `/analytics` | 既存 | 操作列を「チャット」と「…」（その他の操作）にまとめ、「…」に「WordPress に投稿」を追加。タイトル列に「下書き」「予約」バッジ（Q-009） |
 | 投稿ダイアログ | （`/chat`・`/analytics` 上のモーダル） | 新規 | 送信先・公開状態・タイトル・カテゴリ等を指定して送信 |
 
 #### 画面ごとの詳細
@@ -375,15 +375,17 @@
 
 ##### `/analytics`（既存。変更点のみ）
 
-- 概要: 行の操作列に「WordPress に投稿」を追加し、タイトル列にバッジを出す。
+- 概要: 行の操作列を「チャット」と「…」（その他の操作）にまとめ、「…」に「WordPress に投稿」を追加する。タイトル列にバッジを出す（Q-009）。
 - 項目定義:
 
   | 項目 | 型・形式 | 必須 | 初期値 | 表示条件・活性条件 |
   | --- | --- | --- | --- | --- |
-  | WordPress に投稿 | `Button variant="outline" size="sm"` | 該当なし | 該当なし | 操作列展開時。`session_id` あり、かつ（`wp_post_id` NULL、または `wp_post_status` が `draft` / `future`）。ロール判定は足さない（`/analytics` は有料画面で、`trial` は入れない） |
+  | その他の操作（「…」） | `Button variant="outline" size="sm"` + `MoreHorizontal`、`aria-label="その他の操作"`（`title` は付けない） | 該当なし | 該当なし | 全行。項目は 編集 / WordPress に投稿 / 詳細 / 区切り線 / 削除（赤字）の順。記事データが無い行は 編集 / 削除 だけ |
+  | 詳細（行に出す） | 既存のベル付き「詳細」ボタン | 該当なし | 該当なし | 未読の改善提案がある行だけ。その行の「…」には詳細を入れない |
+  | WordPress に投稿 | 「…」の `DropdownMenuItem` | 該当なし | 該当なし | `session_id` あり、かつ（`wp_post_id` NULL、または `wp_post_status` が `draft` / `future`）。ロール判定は足さない（`/analytics` は有料画面で、`trial` は入れない） |
   | 下書き / 予約 バッジ | `Badge variant="outline"` | 該当なし | 該当なし | タイトル列。`wp_post_status` が `draft` → 「下書き」、`future` → 「予約」。`publish` / NULL は出さない |
 
-- 画面遷移: ボタン → 投稿ダイアログ。成功後は該当行を再取得。
+- 画面遷移: 「…」の「WordPress に投稿」 → 投稿ダイアログ。成功後は該当行を再取得。
 
 #### 誤読しやすい罠
 
@@ -422,7 +424,7 @@ Feature: 完成した記事を WordPress へ送る
   Scenario: S-02 コンテンツ一覧から送る
     Given ロールが paid のユーザーが WordPress 連携済みである
     And コンテンツ一覧に、チャットがあり WordPress に未送信の行がある
-    When その行の「WordPress に投稿」を押す
+    When その行の「…」（その他の操作）から「WordPress に投稿」を選ぶ
     Then S-01 と同じ投稿ダイアログが開く
 
   Scenario: S-03 予約投稿する
@@ -479,7 +481,7 @@ Feature: 完成した記事を WordPress へ送る
 
   Scenario: S-08 完成形が無い
     Given チャットが step6 までしか進んでいない
-    When コンテンツ一覧の行から「WordPress に投稿」を押す
+    When コンテンツ一覧の行の「…」（その他の操作）から「WordPress に投稿」を選ぶ
     Then フォームの上に Alert で「完成した記事がありません。チャットで step7 の完成形を保存してください」と「チャットを開く」が表示される
     And フォームは表示されたまま送信不可で、コンテンツ一覧の行は変わらない
     And 「チャットを開く」は `/chat?session={sessionId}&initialStep=step7` を開く（`src/components/AnalyticsTable.tsx` L929〜L933。`session` は行の `session_id`）
@@ -849,6 +851,8 @@ Feature: 完成した記事を WordPress へ送る
 | Q-006 | 送信対象ロールは `admin` / `paid` でよいか（`trial` に体験させる意図はないか） | AGENTS.md の既定。`trial` に出す場合は理由と承認が要る。`/analytics` は現状 `trial` が入れない | 依頼者 | 2026-10-23 | 回答済み | `admin` と `paid` だけ。`trial` には出さない。チャットはメニューを隠し、Server Action でも止める。WordPress.com 連携の保存が `admin` だけの既存制限は変えない | 2026-10-23 |
 | Q-007 | 投稿ダイアログに抜粋（`excerpt`）を入れるか | 起票時は入れていた。SEO の説明文と誤解され、要件にも無いため Non-goals に移した。マーケターが WordPress 標準の抜粋を GrowMate から入れたいなら戻す | 依頼者 | 2026-10-23 | 回答済み | 入れない。抜粋は WordPress 側で付ける | 2026-10-23 |
 | Q-008 | 送信 UI の公開済み表示・再送初期値・未連携と完成形なしの表示・完了トーストのリンクをどうするか | 状態別 UI とエラー表、受入条件をそろえるため | 依頼者 | 2026-10-23 | 回答済み | WordPress 側で公開済みなら DB を同期し、お知らせ（info）で表示。再送は現在の下書き / 予約と予約済み日時を初期値。未連携・完成形なしはフォームの上に Alert。完了トーストに WordPress へのリンク（URL）は付けない。正常応答の `outcome` は送信完了が `sent`、公開済み同期が `already_published`。既定値の返却には再送時の現在の状態と予約済み日時も含める（レビュー指摘2件への依頼者の修正指示）。OPEN-001 は決着 | 2026-10-23 |
+| Q-009 | 「WordPress に投稿」が増えて操作列が 515px まで広がった。操作列をどう狭くするか | ノート PC で一覧の3分の1を操作列が使う。6案のモックを実測で比べた（https://claude.ai/artifact/LiBv2G9zHhNGU5jgFYnA7y） | 依頼者 | 2026-10-24 | 回答済み | 操作列は「チャット」と「…」（その他の操作）だけにし、編集・WordPress に投稿・詳細・削除は「…」に入れる。未読の改善提案がある行だけ、ベル付きの「詳細」を行に出す（その行のメニューには詳細を入れない）。チェック列を左に固定し、操作列はその右に固定する。操作列の折りたたみはやめる。未送信の行に「WordPress に投稿」が出せることは「…」を開くまで見えなくなるが、受け入れる（下書き・予約はタイトル列のバッジで見える） | 2026-10-24 |
+| Q-010 | UI 文言の英字・数字と日本語の間に半角スペースを入れるか（本仕様は「WordPress に投稿」などスペースありで書いている） | UI 用語辞書 `ui-text.md` §7 を「入れない」へ反転したため（shoma-endo/GrowMate#713）。本仕様と §7 が食い違う | 依頼者 | 2026-10-26 | 回答済み | 入れない（`WordPressに投稿`、`先頭500件`）。本仕様の文中・Gherkin の UI 文言はスペースありのまま残すが、実装の表記は §7 に従う。語と文の中身は本仕様のまま | 2026-10-26 |
 
 ### 未決定事項・決着済み事項
 
@@ -1012,3 +1016,7 @@ cycle 3 で反映した指摘（F-011〜F-015）:
 | 2026-10-23 | PR #691 の未解決指摘を仕様へ反映。404 の解除は `rest_post_invalid_id` だけ。並行送信は `wp_publish_claimed_at` で1件に制限。WordPress.com は更新済みトークンを cookie より優先。予約のタイムゾーンは F-011 のまま | Codex と Bugbot のレビューコメント。工数の 47 時間と 5 人日の枠は変えない | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | 送信 UI の未決事項4点を反映。公開済みは DB 同期と info 表示、再送は現在の状態と予約済み日時を初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし。FR・状態別 UI・エラー表・S-01 / S-03 / S-04 / S-05 / S-07 / S-08 / S-13 を同期し、Q-008 を回答済み、OPEN-001 を決着済みにした | 依頼者の決定（2026-10-23） | 開発（Codex） |
 | 2026-10-23 | 正常応答に `outcome: sent / already_published` を明記し、公開成功の完了トーストと公開済み同期のお知らせ表示を区別。返却制約に再送時の現在の状態と予約済み日時を追加し、ダイアログ初期値・S-04 / S-05 / S-13・Q-008 と整合させた | レビュー指摘2件（応答の識別子・再送初期値の返却）への依頼者の修正指示 | 開発（Codex） |
+| 2026-10-24 | 実装 PR 作成（shoma-endo/feat-wp-auto-publish）。送信ダイアログ（チャット step7・一覧）、WordPress 投稿・固定ページの作成・更新・取得、送信権と公開済み同期、日次取込の publish 保存、マイグレーションのファイル作成（未適用） | 仕様に沿った実装 | spec-to-pr |
+| 2026-10-24 | マイグレーションを共有 Supabase に適用（記録 version `20261023230121`）。ファイル名を記録 version に合わせ、生成型を再生成して pending の暫定型を外した | 管理者の承認による適用 | 開発（Claude Code） |
+| 2026-10-24 | Q-009 を回答済みにした。一覧の操作列を「チャット」と「…」（その他の操作）にまとめ、未読の改善提案がある行だけ「詳細」を行に出す。チェック列を左に固定し、折りたたみをやめた。FR-002・§6 の対照表・画面一覧・`/analytics` の項目定義・BR-001 の入口・S-02 と S-08 の When を同期 | 依頼者の決定（2026-10-24）。6案のモック比較で案A を採用 | 開発（Claude Code） |
+| 2026-10-26 | Q-010 を回答済みにした。UI 文言の英字・数字と日本語の間に半角スペースを入れない（`ui-text.md` §7 の反転、shoma-endo/GrowMate#713）。実装の文言だけを直し、本仕様の文中の表記はスペースありのまま残す | 依頼者の決定（2026-10-26）。既存 UI の多数派に合わせた | 開発（Claude Code） |

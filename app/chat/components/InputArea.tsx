@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect, useId } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,8 @@ import StepActionBar, { StepActionBarRef } from './StepActionBar';
 import ChatSearch from './search/ChatSearch';
 import { ServiceSelector } from './ServiceSelector';
 import { Service } from '@/server/schemas/brief.schema';
+import { hasPaidFeatureAccess } from '@/types/user';
+import { WordPressPublishDialog, type WordPressPublishDialogHandle } from '@/components/WordPressPublishDialog';
 
 // 使用可能なモデル一覧
 const AVAILABLE_MODELS = {
@@ -203,6 +206,9 @@ const InputArea: React.FC<InputAreaProps> = ({
   lastAssistantIsBasicStructure = false,
 }) => {
   const [input, setInput] = useState('');
+  const wordpressPublishDialogRef = useRef<WordPressPublishDialogHandle>(null);
+  const { user } = useAuth();
+  const router = useRouter();
   const [selectedModel, setSelectedModel] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isMobile = propIsMobile ?? false;
@@ -214,6 +220,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   const isModelSelected = Boolean(selectedModel);
   const isStepActionBarDisabled = Boolean(stepActionBarDisabled);
+  const canPublishToWordPress = hasPaidFeatureAccess(user?.role ?? null) && Boolean(currentSessionId);
 
   // 送信モデル: 通常チャットは nextStepForSend のみ。Canvas の AI 生成は CanvasPanel 経由で分離。
   const targetBlogStep =
@@ -657,6 +664,7 @@ const InputArea: React.FC<InputAreaProps> = ({
               {...(onNextStepChange !== undefined && { onNextStepChange })}
               {...(blogFlowStatus !== undefined && { flowStatus: blogFlowStatus })}
               onLoadBlogArticle={handleLoadBlogArticle}
+              {...(canPublishToWordPress && currentSessionId && { onOpenWordPressPublish: () => wordpressPublishDialogRef.current?.openFor({ sessionId: currentSessionId }) })}
               isLoadBlogArticleLoading={isLoadingBlogArticle}
               {...(onManualStepChange !== undefined && { onManualStepChange })}
               {...(onBeforeManualStepChange !== undefined && { onBeforeManualStepChange })}
@@ -676,6 +684,12 @@ const InputArea: React.FC<InputAreaProps> = ({
             />
             {blogArticleError && <p className="mt-2 text-xs text-red-500">{blogArticleError}</p>}
           </div>
+        )}
+        {canPublishToWordPress && currentSessionId && (
+          <WordPressPublishDialog
+            ref={wordpressPublishDialogRef}
+            onComplete={() => router.refresh()}
+          />
         )}
         <div className="px-3 py-2">
           <form onSubmit={handleSubmit} className="relative">

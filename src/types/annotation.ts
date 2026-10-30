@@ -23,6 +23,7 @@ export interface AnnotationRecord extends AnnotationFields {
   wp_post_id?: number | null;
   wp_post_title?: string | null;
   wp_post_type?: string | null;
+  wp_post_status?: 'draft' | 'future' | 'publish' | null;
   wp_content_text?: string | null;
   wp_excerpt?: string | null;
   wp_content_cache?: string | null;

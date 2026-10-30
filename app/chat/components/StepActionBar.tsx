@@ -14,8 +14,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import {
   BookOpen,
+  Send,
   FilePenLine,
   FileText,
   Loader2,
@@ -45,6 +47,7 @@ interface StepActionBarProps {
   onNextStepChange?: (nextStep: BlogStepId | null) => void;
   flowStatus?: string;
   onLoadBlogArticle?: () => Promise<void>;
+  onOpenWordPressPublish?: () => void;
   isLoadBlogArticleLoading?: boolean;
   onManualStepChange?: (step: BlogStepId) => void;
   onBeforeManualStepChange?: (params: {
@@ -80,6 +83,25 @@ interface StepActionBarProps {
   nextStepForSend?: BlogStepId;
 }
 
+function StepActionMenuItem({
+  tone,
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuItem> & { tone: 'plain' | 'purple' }) {
+  return (
+    <DropdownMenuItem
+      {...props}
+      className={cn(
+        'flex items-center gap-1',
+        tone === 'plain'
+          ? 'bg-white text-gray-900 hover:bg-gray-100 data-[highlighted]:bg-gray-100'
+          : 'bg-purple-50 text-purple-900 border border-purple-200 hover:bg-purple-100 data-[highlighted]:bg-purple-100',
+        className
+      )}
+    />
+  );
+}
+
 export interface StepActionBarRef {
   getCurrentStepInfo: () => { currentStep: BlogStepId; nextStep: BlogStepId | null };
 }
@@ -102,6 +124,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
       onNextStepChange,
       flowStatus = 'idle',
       onLoadBlogArticle,
+      onOpenWordPressPublish,
       isLoadBlogArticleLoading = false,
       onManualStepChange,
       onBeforeManualStepChange,
@@ -155,6 +178,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
 
     // ボタン表示制御
     const showLoadButton = isStep7 && typeof onLoadBlogArticle === 'function';
+    const showWordPressPublish = isStep7 && typeof onOpenWordPressPublish === 'function';
     const showTitleMetaButton =
       isStep7 && Boolean(hasStep7Content) && typeof onGenerateTitleMeta === 'function';
     const showSkipButton = !isStep7;
@@ -371,7 +395,7 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
           <Save size={14} />
           <span>{annotationLoading ? '読み込み中...' : 'ブログ保存'}</span>
         </Button>
-        {isStep7 && (showLoadButton || showTitleMetaButton) && (
+        {isStep7 && (showLoadButton || showTitleMetaButton || showWordPressPublish) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -388,10 +412,10 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="end" className="min-w-[200px]">
               {showTitleMetaButton && (
-                <DropdownMenuItem
+                <StepActionMenuItem
+                  tone="purple"
                   disabled={isDisabled || !onGenerateTitleMeta || isGenerateTitleMetaLoading}
                   onSelect={() => onGenerateTitleMeta?.()}
-                  className="flex items-center gap-1 bg-purple-50 text-purple-900 border border-purple-200 hover:bg-purple-100 data-[highlighted]:bg-purple-100"
                 >
                   {isGenerateTitleMetaLoading ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -401,16 +425,16 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                   <span>
                     {isGenerateTitleMetaLoading ? '生成中...' : 'タイトル・説明文生成'}
                   </span>
-                </DropdownMenuItem>
+                </StepActionMenuItem>
               )}
               {showLoadButton && (
-                <DropdownMenuItem
+                <StepActionMenuItem
+                  tone="plain"
                   disabled={isDisabled || isLoadBlogArticleLoading}
                   onSelect={() => {
                     if (isDisabled || isLoadBlogArticleLoading) return;
                     void onLoadBlogArticle?.();
                   }}
-                  className="flex items-center gap-1 bg-white text-gray-900 hover:bg-gray-100 data-[highlighted]:bg-gray-100"
                 >
                   {isLoadBlogArticleLoading ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -418,7 +442,17 @@ const StepActionBar = forwardRef<StepActionBarRef, StepActionBarProps>(
                     <BookOpen size={14} />
                   )}
                   <span>{isLoadBlogArticleLoading ? '取得中...' : 'ブログ記事取得'}</span>
-                </DropdownMenuItem>
+                </StepActionMenuItem>
+              )}
+              {showWordPressPublish && (
+                <StepActionMenuItem
+                  tone="plain"
+                  disabled={isDisabled || isHeadingFlowBusy}
+                  onSelect={() => onOpenWordPressPublish?.()}
+                >
+                  <Send size={14} />
+                  <span>WordPressに投稿</span>
+                </StepActionMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>

@@ -24,10 +24,45 @@ import {
 } from '@/server/services/wordpressContentTypes';
 
 export class WordPressRestFetchError extends Error {
-  constructor(message: string, readonly statuses: number[]) {
+  constructor(
+    message: string,
+    readonly statuses: number[],
+    readonly code?: string
+  ) {
     super(message);
     this.name = 'WordPressRestFetchError';
   }
+
+  get status(): number {
+    return this.statuses.at(-1) ?? 0;
+  }
+}
+
+export interface WordPressPublishPayload {
+  title: string;
+  content: string;
+  status: 'draft' | 'future' | 'publish';
+  date_gmt?: string;
+  categories?: number[];
+  slug?: string;
+}
+
+export interface WordPressPublishPost {
+  id: number;
+  title: { raw?: string; rendered?: string } | string;
+  status: string;
+  link: string;
+  date_gmt?: string;
+}
+
+interface WordPressCategory {
+  id: number;
+  name: string;
+}
+
+export interface WordPressCategoriesResult {
+  categories: WordPressCategory[];
+  truncated: boolean;
 }
 
 /** 取込の締め切りを過ぎたので、次のページの取得や次の書き込みをせずに打ち切った */
@@ -215,6 +250,117 @@ export class WordPressService {
       return errorBody.message;
     }
     return response.statusText;
+  }
+
+  private async parsePublishResponse(response: Response): Promise<WordPressPublishPost> {
+    const body: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = body && typeof body === 'object' ? body : null;
+      const code = error && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+      const message = error && 'message' in error && typeof error.message === 'string'
+        ? error.message
+        : response.statusText;
+      throw new WordPressRestFetchError(message, [response.status], code);
+    }
+
+    if (!isWordPressPublishPost(body)) {
+      throw new WordPressRestFetchError('WordPress returned an invalid post response', [response.status]);
+    }
+    return body;
+  }
+
+  private async postPublishResource(resource: string, payload: WordPressPublishPayload): Promise<WordPressPublishPost> {
+    const headers = { ...this.getAuthHeaders(), 'Content-Type': 'application/json' };
+    let response: Response;
+    try {
+      response = await this.request(`${this.baseUrl}/${resource}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(REST_FETCH_TIMEOUT_MS),
+      });
+    } catch (error) {
+      throw createWordPressTransportError(error);
+    }
+
+    const isJson = response.headers.get('content-type')?.includes('application/json') ?? false;
+    if (
+      !response.ok &&
+      !isJson &&
+      (response.status === 403 || response.status === 404) &&
+      this.type === 'self_hosted' &&
+      this.siteUrl
+    ) {
+      const [pathname, query = ''] = resource.split('?', 2);
+      const fallbackUrl = `${this.siteUrl.replace(/\/$/, '')}/index.php?rest_route=/wp/v2/${pathname}${query ? `&${query}` : ''}`;
+      response = await this.request(fallbackUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(REST_FETCH_TIMEOUT_MS),
+      }).catch(error => {
+        throw createWordPressTransportError(error);
+      });
+    }
+
+    return this.parsePublishResponse(response);
+  }
+
+  public async createPost(
+    contentType: 'posts' | 'pages',
+    payload: WordPressPublishPayload
+  ): Promise<WordPressPublishPost> {
+    const requestPayload = contentType === 'pages'
+      ? omitCategories(payload)
+      : payload;
+    return this.postPublishResource(contentType, requestPayload);
+  }
+
+  public async updatePost(
+    contentType: 'posts' | 'pages',
+    id: number,
+    payload: WordPressPublishPayload
+  ): Promise<WordPressPublishPost> {
+    const requestPayload = contentType === 'pages'
+      ? omitCategories(payload)
+      : payload;
+    return this.postPublishResource(`${contentType}/${id}`, requestPayload);
+  }
+
+  public async fetchPost(contentType: 'posts' | 'pages', id: number): Promise<WordPressPublishPost> {
+    const response = await this.fetchRestResource(
+      `${contentType}/${id}?context=edit`,
+      AbortSignal.timeout(REST_FETCH_TIMEOUT_MS)
+    );
+    return this.parsePublishResponse(response);
+  }
+
+  public async fetchCategories(): Promise<WordPressCategoriesResult> {
+    const categories: WordPressCategory[] = [];
+    let totalPages = 1;
+    for (let page = 1; page <= Math.min(totalPages, 5); page += 1) {
+      const params = new URLSearchParams({
+        per_page: '100',
+        orderby: 'name',
+        order: 'asc',
+        page: String(page),
+      });
+      const response = await this.fetchRestResource(
+        `categories?${params.toString()}`,
+        AbortSignal.timeout(REST_FETCH_TIMEOUT_MS)
+      );
+      if (!response.ok) {
+        await this.parsePublishResponse(response);
+      }
+      const body: unknown = await response.json();
+      if (!Array.isArray(body) || !body.every(isWordPressCategory)) {
+        throw new WordPressRestFetchError('WordPress returned an invalid categories response', [response.status]);
+      }
+      categories.push(...body);
+      const headerPages = Number(response.headers.get('X-WP-TotalPages'));
+      totalPages = Number.isSafeInteger(headerPages) && headerPages > 0 ? headerPages : 1;
+    }
+    return { categories, truncated: totalPages > 5 };
   }
 
   /**
@@ -759,6 +905,31 @@ export class WordPressService {
 
     return { posts: aggregated, totalsByType, uniqueIdCountsByType, missingRouteTypes };
   }
+}
+
+function isWordPressPublishPost(value: unknown): value is WordPressPublishPost {
+  if (!value || typeof value !== 'object') return false;
+  return 'id' in value && typeof value.id === 'number' && Number.isSafeInteger(value.id) && value.id > 0 &&
+    'title' in value && (typeof value.title === 'string' || (typeof value.title === 'object' && value.title !== null)) &&
+    'status' in value && typeof value.status === 'string' &&
+    'link' in value && typeof value.link === 'string' &&
+    (!('date_gmt' in value) || typeof value.date_gmt === 'string');
+}
+
+function createWordPressTransportError(error: unknown): WordPressRestFetchError {
+  const message = error instanceof Error ? error.message : 'WordPress request failed';
+  return new WordPressRestFetchError(message, [0]);
+}
+
+function isWordPressCategory(value: unknown): value is WordPressCategory {
+  return Boolean(value && typeof value === 'object' && 'id' in value &&
+    typeof value.id === 'number' && Number.isSafeInteger(value.id) &&
+    'name' in value && typeof value.name === 'string');
+}
+
+function omitCategories(payload: WordPressPublishPayload): WordPressPublishPayload {
+  const { categories: _categories, ...pagePayload } = payload;
+  return pagePayload;
 }
 
 type FetchAllContentOptions = {

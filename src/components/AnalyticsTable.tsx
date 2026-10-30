@@ -42,8 +42,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Loader2,
@@ -51,10 +57,10 @@ import {
   FileText,
   Edit,
   Trash2,
-  ChevronsLeft,
-  ChevronsRight,
+  MoreHorizontal,
   X,
   Sparkles,
+  Send,
   type LucideIcon,
 } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -65,10 +71,12 @@ import {
   type AnnotationRecord,
 } from '@/types/annotation';
 import { DeleteChatDialog } from '@/components/DeleteChatDialog';
+import { WordPressPublishDialog, type WordPressPublishDialogHandle } from '@/components/WordPressPublishDialog';
 import { ChatService } from '@/domain/services/chatService';
 import ContentAnnotationSummaryAction from '@/components/ContentAnnotationSummaryAction';
 import { getGa4DiagnosisLabel, getGa4EvaluationStatusLabel } from '@/lib/ga4-evaluation-display';
 import { resolveHeaderChecked, resolveRowChecked } from '@/lib/analytics-selection';
+import { getAnalyticsRowActions } from '@/lib/analytics-row-actions';
 
 /**
  * 一覧の選択チェックボックス。既定の border-input は行の背景（gray-50/100）に対して
@@ -89,8 +97,6 @@ export function AnalyticsSelectionCheckbox(props: React.ComponentProps<typeof Ch
   );
 }
 
-const SELECTION_COLUMN_STYLE = { width: '44px', minWidth: '44px', maxWidth: '44px' };
-
 /** 一覧のチェック列の見出し（全選択）。ブログ一覧と Instagram タブで共用する */
 export function AnalyticsSelectionHeaderCell({
   checked,
@@ -102,7 +108,7 @@ export function AnalyticsSelectionHeaderCell({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <th className="px-2 py-3 text-center whitespace-nowrap" style={SELECTION_COLUMN_STYLE}>
+    <th className="analytics-select-cell px-2 py-3 text-center whitespace-nowrap">
       <AnalyticsSelectionCheckbox
         aria-label="全選択"
         disabled={disabled ?? false}
@@ -116,7 +122,7 @@ export function AnalyticsSelectionHeaderCell({
 /** 一覧のチェック列のセル。選べない行は children を渡さず空のセルにする */
 export function AnalyticsSelectionCell({ children }: { children?: React.ReactNode }) {
   return (
-    <td className="px-2 py-4 text-center" style={SELECTION_COLUMN_STYLE}>
+    <td className="analytics-select-cell px-2 py-4 text-center">
       {children}
     </td>
   );
@@ -188,87 +194,22 @@ export function LaunchChatButton({ label, isPending, onClick }: LaunchChatButton
   );
 }
 
-function useAnalyticsOpsColumnState(): [boolean, () => void] {
-  const [expanded, setExpanded] = React.useState(() => {
-    if (typeof window === 'undefined') return true;
-    return window.localStorage.getItem(ANALYTICS_STORAGE_KEYS.OPS_EXPANDED) !== 'false';
-  });
-  React.useEffect(() => {
-    window.localStorage.setItem(ANALYTICS_STORAGE_KEYS.OPS_EXPANDED, String(expanded));
-  }, [expanded]);
-  const toggle = React.useCallback(() => setExpanded(previous => !previous), []);
-  return [expanded, toggle];
+function openAnnotationDetail(annotationId: string) {
+  window.open(annotationDetailPath(annotationId), '_blank', 'noopener,noreferrer');
 }
 
-const ANALYTICS_OPS_EXPANDED_WIDTH = 380;
-const ANALYTICS_OPS_COLLAPSED_WIDTH = 120;
-
-/**
- * 展開時の幅。既定はブログ一覧（ボタン4つ）の固定幅。
- * 'fit-content' は幅を指定せず、表示中の行で一番広いセルに合わせる（行ごとにボタンの数が変わる一覧向け）
- */
-type AnalyticsOpsExpandedWidth = number | 'fit-content';
-
-function getAnalyticsOpsColumnStyle(
-  expanded: boolean,
-  expandedWidth: AnalyticsOpsExpandedWidth
-): React.CSSProperties | undefined {
-  const width = expanded ? expandedWidth : ANALYTICS_OPS_COLLAPSED_WIDTH;
-  if (width === 'fit-content') return undefined;
-  return { width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` };
-}
-
-/** 左に固定する操作列の見出し。onToggle を渡さない一覧は折りたたみボタンを出さず、展開時の幅で固定する */
-export function AnalyticsOpsHeaderCell({
-  expanded,
-  onToggle,
-  expandedWidth = ANALYTICS_OPS_EXPANDED_WIDTH,
-}: {
-  expanded: boolean;
-  onToggle?: () => void;
-  expandedWidth?: AnalyticsOpsExpandedWidth;
-}) {
+/** 左に固定する操作列の見出し。寄せは中身の寄せに合わせて className で変える */
+export function AnalyticsOpsHeaderCell({ className }: { className?: string }) {
   return (
-    <th
-      className="analytics-ops-cell px-2 py-3 text-center whitespace-nowrap group/th"
-      style={{ ...getAnalyticsOpsColumnStyle(expanded, expandedWidth), transition: 'width 0.2s ease-in-out' }}
-    >
-      <div className="flex items-center justify-center relative w-full">
-        <span>操作</span>
-        {onToggle ? (
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-6 w-6 ml-2 text-gray-500 hover:text-gray-700 bg-white border-gray-300 shadow-sm"
-            onClick={onToggle}
-            title={expanded ? '操作列を折りたたむ' : '操作列を展開する'}
-          >
-            {expanded ? (
-              <ChevronsLeft className="h-4 w-4" />
-            ) : (
-              <ChevronsRight className="h-4 w-4" />
-            )}
-          </Button>
-        ) : null}
-      </div>
+    <th className={cn('analytics-ops-cell px-2 py-3 text-center whitespace-nowrap', className)}>
+      <span>操作</span>
     </th>
   );
 }
 
-export function AnalyticsOpsCell({
-  expanded,
-  children,
-  expandedWidth = ANALYTICS_OPS_EXPANDED_WIDTH,
-}: {
-  expanded: boolean;
-  children: React.ReactNode;
-  expandedWidth?: AnalyticsOpsExpandedWidth;
-}) {
+export function AnalyticsOpsCell({ children }: { children: React.ReactNode }) {
   return (
-    <td
-      className="analytics-ops-cell px-2 py-4 whitespace-nowrap text-sm text-center"
-      style={getAnalyticsOpsColumnStyle(expanded, expandedWidth)}
-    >
+    <td className="analytics-ops-cell px-2 py-4 whitespace-nowrap text-sm text-center">
       {children}
     </td>
   );
@@ -392,6 +333,9 @@ export default function AnalyticsTable({
   const searchParams = useSearchParams();
   const [pendingRowKey, setPendingRowKey] = React.useState<string | null>(null);
   const [editingRowKey, setEditingRowKey] = React.useState<string | null>(null);
+  /** 編集ダイアログには DialogTrigger が無いので、閉じたときにフォーカスを戻す先として持つ */
+  const opsMenuTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const wordpressPublishDialogRef = React.useRef<WordPressPublishDialogHandle>(null);
   const [form, setForm] = React.useState<Record<AnnotationFieldKey, string>>(createEmptyForm);
   const [canonicalUrl, setCanonicalUrl] = React.useState('');
   const [canonicalUrlError, setCanonicalUrlError] = React.useState('');
@@ -466,9 +410,6 @@ export default function AnalyticsTable({
         storedFilter.selectedCategoryNames.length > 0 ||
         storedFilter.includeUncategorized)
   );
-
-  // 操作列の展開状態（初期値は true: 展開）
-  const [isOpsExpanded, toggleOpsExpanded] = useAnalyticsOpsColumnState();
 
   const columnLabelMap = React.useMemo(
     () =>
@@ -1222,7 +1163,7 @@ export default function AnalyticsTable({
                         onCheckedChange={checked => selection.onToggleAll(checked)}
                       />
                     ) : null}
-                    <AnalyticsOpsHeaderCell expanded={isOpsExpanded} onToggle={toggleOpsExpanded} />
+                    <AnalyticsOpsHeaderCell className="text-left" />
                     {orderedIds
                       .filter(id => visibleSet.has(id))
                       .map(id => (
@@ -1290,6 +1231,13 @@ export default function AnalyticsTable({
                     const hasUnreadSuggestion = annotation?.id
                       ? (unreadAnnotationIds?.has(annotation.id) ?? false)
                       : false;
+                    const rowActions = getAnalyticsRowActions({
+                      annotationId: annotation?.id,
+                      sessionId: annotation?.session_id,
+                      wpPostId: annotation?.wp_post_id,
+                      wpPostStatus: annotation?.wp_post_status,
+                      hasUnreadSuggestion,
+                    });
                     const avgEngagementSeconds =
                       ga4Summary && ga4Summary.sessions > 0
                         ? ga4Summary.engagementTimeSec / ga4Summary.sessions
@@ -1337,8 +1285,8 @@ export default function AnalyticsTable({
                             ) : null}
                           </AnalyticsSelectionCell>
                         ) : null}
-                        <AnalyticsOpsCell expanded={isOpsExpanded}>
-                          <div className="flex items-center justify-center gap-2">
+                        <AnalyticsOpsCell>
+                          <div className="flex items-center gap-2">
                             <LaunchChatButton
                               label="チャット"
                               isPending={pendingRowKey === item.rowKey}
@@ -1358,146 +1306,161 @@ export default function AnalyticsTable({
                                 });
                               }}
                             />
-
-                            {isOpsExpanded && (
-                              <>
-                                <Dialog
-                                  open={editingRowKey === item.rowKey}
-                                  onOpenChange={open => {
-                                    if (open) {
-                                      openEdit(item);
-                                    } else {
-                                      closeEdit();
-                                    }
-                                  }}
-                                >
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="flex items-center gap-2"
-                                    >
-                                      <Edit className="h-4 w-4" />
-                                      編集
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-                                    <DialogHeader>
-                                      <DialogTitle>コンテンツ情報を編集</DialogTitle>
-                                      <DialogDescription>
-                                        テーブルの各フィールドを直接編集し、保存できます。
-                                      </DialogDescription>
-                                    </DialogHeader>
-
-                                    {formError ? (
-                                      <Alert variant="destructive" className="mb-4">
-                                        <AlertTitle className="text-sm font-semibold">
-                                          保存に失敗しました
-                                        </AlertTitle>
-                                        <AlertDescription className="text-sm">
-                                          {formError}
-                                        </AlertDescription>
-                                      </Alert>
-                                    ) : null}
-
-                                    <AnnotationFormFields
-                                      form={form}
-                                      onFormChange={(key, value) =>
-                                        setForm(prev => ({ ...prev, [key]: value }))
-                                      }
-                                      canonicalUrl={canonicalUrl}
-                                      onCanonicalUrlChange={value => {
-                                        setCanonicalUrl(value);
-                                        if (canonicalUrlError) setCanonicalUrlError('');
-                                      }}
-                                      canonicalUrlError={canonicalUrlError}
-                                      wpPostTitle={wpPostTitle}
-                                    />
-
-                                    <DialogFooter className="sm:justify-between">
-                                      <ContentAnnotationSummaryAction
-                                        sessionId={annotation.session_id ?? null}
-                                        annotationId={annotation.id ?? null}
-                                        isWordPressLinked={isWordPressLinked}
-                                        disabled={isPendingEdit}
-                                        size="default"
-                                        onSuccess={handleSummarySuccess}
-                                        onError={setFormError}
-                                        onPendingChange={isPending =>
-                                          setSummarizingRowKey(isPending ? item.rowKey : null)
-                                        }
-                                      />
-                                      <div className="flex justify-end gap-2">
-                                        <Button
-                                          variant="ghost"
-                                          onClick={closeEdit}
-                                          disabled={isEditBusy}
-                                        >
-                                          キャンセル
-                                        </Button>
-                                        <Button
-                                          onClick={() => handleSave(annotation?.id)}
-                                          disabled={isEditBusy}
-                                        >
-                                          {isPendingEdit ? (
-                                            <>
-                                              <Loader2 className="h-4 w-4 animate-spin" />
-                                              保存中...
-                                            </>
-                                          ) : (
-                                            '保存'
-                                          )}
-                                        </Button>
-                                      </div>
-                                    </DialogFooter>
-                                  </DialogContent>
-                                </Dialog>
-
-                                {annotation?.id ? (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex items-center gap-2"
-                                    onClick={() => {
-                                      window.open(
-                                        annotationDetailPath(annotation.id ?? ''),
-                                        '_blank',
-                                        'noopener,noreferrer'
-                                      );
-                                    }}
-                                  >
-                                    <span className="inline-flex h-3 w-3 items-center justify-center">
-                                      {hasUnreadSuggestion ? (
-                                        <span
-                                          className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-600 animate-pulse"
-                                          title="改善提案があります"
-                                        >
-                                          <Bell className="h-3.5 w-3.5" />
-                                        </span>
-                                      ) : (
-                                        <FileText
-                                          className="h-3.5 w-3.5 text-gray-500"
-                                          aria-hidden
-                                        />
-                                      )}
-                                    </span>
-                                    <span>詳細</span>
-                                  </Button>
-                                ) : null}
-
+                            <DropdownMenu modal={false}>
+                              <DropdownMenuTrigger asChild>
                                 <Button
+                                  type="button"
                                   variant="outline"
                                   size="sm"
-                                  className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                                  onClick={() => handleDeleteClick(item)}
-                                  disabled={isDeleting && deletingRowKey === item.rowKey}
+                                  className="flex items-center gap-1 px-2.5"
+                                  aria-label="その他の操作"
+                                  onPointerDown={event => {
+                                    opsMenuTriggerRef.current = event.currentTarget;
+                                  }}
+                                  onKeyDown={event => {
+                                    opsMenuTriggerRef.current = event.currentTarget;
+                                  }}
                                 >
-                                  <Trash2 className="h-4 w-4" />
-                                  削除
+                                  <MoreHorizontal size={16} />
                                 </Button>
-                              </>
-                            )}
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                <DropdownMenuItem onSelect={() => openEdit(item)}>
+                                  <Edit />
+                                  編集
+                                </DropdownMenuItem>
+                                {rowActions.canPublishToWordPress && (
+                                  <DropdownMenuItem
+                                    onSelect={() =>
+                                      wordpressPublishDialogRef.current?.openFor({
+                                        annotationId: annotation.id as string,
+                                        sessionId: annotation.session_id as string,
+                                      })
+                                    }
+                                  >
+                                    <Send />
+                                    WordPressに投稿
+                                  </DropdownMenuItem>
+                                )}
+                                {rowActions.detailPlacement === 'menu' && (
+                                  <DropdownMenuItem onSelect={() => openAnnotationDetail(annotation.id ?? '')}>
+                                    <FileText />
+                                    詳細
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  disabled={isDeleting && deletingRowKey === item.rowKey}
+                                  onSelect={() => handleDeleteClick(item)}
+                                >
+                                  <Trash2 />
+                                  削除
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                            {rowActions.detailPlacement === 'row' ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex items-center gap-2"
+                                onClick={() => openAnnotationDetail(annotation.id ?? '')}
+                              >
+                                <span className="inline-flex h-3 w-3 items-center justify-center">
+                                  <span
+                                    className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-600 animate-pulse"
+                                    title="改善提案があります"
+                                  >
+                                    <Bell className="h-3.5 w-3.5" />
+                                  </span>
+                                </span>
+                                <span>詳細</span>
+                              </Button>
+                            ) : null}
                           </div>
+                          <Dialog
+                            open={editingRowKey === item.rowKey}
+                            onOpenChange={open => {
+                              if (!open) closeEdit();
+                            }}
+                          >
+                            <DialogContent
+                              className="max-w-4xl max-h-dialog overflow-y-auto"
+                              onCloseAutoFocus={event => {
+                                event.preventDefault();
+                                opsMenuTriggerRef.current?.focus();
+                              }}
+                            >
+                              <DialogHeader>
+                                <DialogTitle>コンテンツ情報を編集</DialogTitle>
+                                <DialogDescription>
+                                  テーブルの各フィールドを直接編集し、保存できます。
+                                </DialogDescription>
+                              </DialogHeader>
+
+                              {formError ? (
+                                <Alert variant="destructive" className="mb-4">
+                                  <AlertTitle className="text-sm font-semibold">
+                                    保存に失敗しました
+                                  </AlertTitle>
+                                  <AlertDescription className="text-sm">
+                                    {formError}
+                                  </AlertDescription>
+                                </Alert>
+                              ) : null}
+
+                              <AnnotationFormFields
+                                form={form}
+                                onFormChange={(key, value) =>
+                                  setForm(prev => ({ ...prev, [key]: value }))
+                                }
+                                canonicalUrl={canonicalUrl}
+                                onCanonicalUrlChange={value => {
+                                  setCanonicalUrl(value);
+                                  if (canonicalUrlError) setCanonicalUrlError('');
+                                }}
+                                canonicalUrlError={canonicalUrlError}
+                                wpPostTitle={wpPostTitle}
+                              />
+
+                              <DialogFooter className="sm:justify-between">
+                                <ContentAnnotationSummaryAction
+                                  sessionId={annotation.session_id ?? null}
+                                  annotationId={annotation.id ?? null}
+                                  isWordPressLinked={isWordPressLinked}
+                                  disabled={isPendingEdit}
+                                  size="default"
+                                  onSuccess={handleSummarySuccess}
+                                  onError={setFormError}
+                                  onPendingChange={isPending =>
+                                    setSummarizingRowKey(isPending ? item.rowKey : null)
+                                  }
+                                />
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    onClick={closeEdit}
+                                    disabled={isEditBusy}
+                                  >
+                                    キャンセル
+                                  </Button>
+                                  <Button
+                                    onClick={() => handleSave(annotation?.id)}
+                                    disabled={isEditBusy}
+                                  >
+                                    {isPendingEdit ? (
+                                      <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        保存中...
+                                      </>
+                                    ) : (
+                                      '保存'
+                                    )}
+                                  </Button>
+                                </div>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
                         </AnalyticsOpsCell>
                         {orderedIds
                           .filter(id => visibleSet.has(id))
@@ -1687,6 +1650,8 @@ export default function AnalyticsTable({
                                     className="px-6 py-4 whitespace-nowrap text-sm"
                                   >
                                     {annotation?.wp_post_title || '—'}
+                                    {annotation?.wp_post_status === 'draft' && <Badge className="ml-2" variant="outline">下書き</Badge>}
+                                    {annotation?.wp_post_status === 'future' && <Badge className="ml-2" variant="outline">予約</Badge>}
                                   </td>
                                 );
                               case 'wp_excerpt':
@@ -1742,6 +1707,7 @@ export default function AnalyticsTable({
         mode="content"
         hasOrphanContent={hasOrphanContent}
       />
+      <WordPressPublishDialog ref={wordpressPublishDialogRef} showOpenChat onComplete={() => router.refresh()} />
     </>
   );
 }

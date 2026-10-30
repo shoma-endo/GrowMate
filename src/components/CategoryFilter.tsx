@@ -35,6 +35,25 @@ interface CategoryFilterProps {
   onClearAll: () => void;
 }
 
+export function CategoryCheckboxRow({
+  label,
+  checked,
+  onCheckedChange,
+  disabled = false,
+}: {
+  label: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className={`flex items-center gap-2 px-2 py-1 rounded ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-gray-50'}`}>
+      <Checkbox checked={checked} onCheckedChange={value => onCheckedChange(value === true)} disabled={disabled} />
+      <span className="text-sm truncate">{label}</span>
+    </label>
+  );
+}
+
 const STATUS_FILTER_TONE_CLASSES = {
   blue: { row: 'hover:bg-blue-50', icon: 'text-blue-600', label: 'text-blue-800' },
   amber: { row: 'hover:bg-amber-50', icon: 'text-amber-600', label: 'text-amber-800' },
@@ -231,16 +250,12 @@ export default function CategoryFilter({
 
       <div className="max-h-[200px] overflow-y-auto space-y-2">
         {categories.map(categoryName => (
-          <label
+          <CategoryCheckboxRow
             key={categoryName}
-            className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded"
-          >
-            <Checkbox
-              checked={selectedCategoryNames.includes(categoryName)}
-              onCheckedChange={() => toggleCategory(categoryName)}
-            />
-            <span className="text-sm truncate">{categoryName}</span>
-          </label>
+            label={categoryName}
+            checked={selectedCategoryNames.includes(categoryName)}
+            onCheckedChange={() => toggleCategory(categoryName)}
+          />
         ))}
 
         {/* 未分類 */}
