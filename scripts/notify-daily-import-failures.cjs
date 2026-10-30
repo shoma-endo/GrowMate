@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 毎日の自動取込（GSC・GA4・WordPress）の失敗を、運営向けに Lark へ送る（docs/specs/auto-daily-imports-spec.md FR-013）。
+ * 毎日の自動取込（GSC・GA4）の失敗を、運営向けに Lark へ送る（docs/specs/auto-daily-imports-spec.md FR-013）。
  * cron は利用者ごとの失敗でも HTTP 200 を返すので、Vercel の表示だけでは気づけない。
  * cron_run_logs と各連携の自動取込の結果を読み、問題があった日だけ送る。
  *
@@ -27,12 +27,9 @@ const FULL_REPORT_WEEKDAY_JST = 1; // 月曜
 const DAILY_CRONS = [
   { name: 'gsc_daily_import', label: 'GSC 日次取込（04:05）' },
   { name: 'ga4_daily_sync', label: 'GA4 日次同期（04:25）' },
-  { name: 'wordpress_daily_import', label: 'WordPress 差分取込（04:45）' },
 ];
 const FAILURE_EVENTS = ['batch_failed', 'route_failed', 'route_timed_out', 'batch_time_budget_exceeded'];
 const STATUS_LABELS = {
-  auth_expired: '認証切れ（マイホームに再連携カード）',
-  temporary_failure: '一時的な失敗（3日以上ならマイホームにカード）',
   permission_denied: 'プロパティの権限切れ（マイホームにカード）',
 };
 
@@ -99,13 +96,6 @@ async function collect(supabase) {
     .order('logged_at', { ascending: true });
   if (logError) throw new Error(`cron_run_logs の取得に失敗しました: ${logError.message}`);
 
-  const { data: wordpress, error: wpError } = await supabase
-    .from('wordpress_settings')
-    .select('user_id, wp_auto_import_status, wp_auto_import_status_at, users!inner(full_name, role)')
-    .in('wp_auto_import_status', ['auth_expired', 'temporary_failure'])
-    .in('users.role', PAID_FEATURE_ROLES);
-  if (wpError) throw new Error(`wordpress_settings の取得に失敗しました: ${wpError.message}`);
-
   const { data: google, error: googleError } = await supabase
     .from('gsc_credentials')
     .select(
@@ -117,15 +107,6 @@ async function collect(supabase) {
 
   const nameOf = row => (Array.isArray(row.users) ? row.users[0]?.full_name : row.users?.full_name) ?? row.user_id;
   const users = [];
-  for (const row of wordpress ?? []) {
-    users.push({
-      key: `WordPress:${row.user_id}:${row.wp_auto_import_status}`,
-      source: 'WordPress',
-      name: nameOf(row),
-      status: row.wp_auto_import_status,
-      at: row.wp_auto_import_status_at,
-    });
-  }
   for (const row of google ?? []) {
     if (row.gsc_auto_import_status === 'permission_denied') {
       users.push({ key: `GSC:${row.user_id}:permission_denied`, source: 'GSC', name: nameOf(row), status: 'permission_denied', at: row.gsc_auto_import_status_at });
@@ -178,7 +159,7 @@ function buildElements({ cronIssues, users }, knownCount, allCronsOk) {
   if (cronIssues.length > 0) {
     elements.push(div(`**取込の実行**\n${cronIssues.map(issue => `・${escapeLarkMd(issue.text)}`).join('\n')}`));
   } else if (allCronsOk) {
-    elements.push(div('**取込の実行**\n・3本とも最後まで完了し、未処理の利用者はいません'));
+    elements.push(div('**取込の実行**\n・2本とも最後まで完了し、未処理の利用者はいません'));
   }
   if (users.length > 0) {
     elements.push(hr());

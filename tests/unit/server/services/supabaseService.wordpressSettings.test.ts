@@ -65,11 +65,7 @@ describe('createOrUpdateWordPressSettings のトークン保持', () => {
     expect(payload()).not.toHaveProperty('wp_token_expires_at');
     // 設定側は従来どおり書き込まれる
     expect(payload()).toMatchObject({ user_id: 'user-1', wp_site_id: 'site-1' });
-    expect(payload()).toMatchObject({
-      wp_import_baseline_at: null,
-      wp_auto_import_status: null,
-      wp_auto_import_status_at: null,
-    });
+    expect(payload()).toMatchObject({ wp_import_baseline_at: null });
   });
 
   it('トークン指定時（OAuth コールバック）は従来どおり書き込む', async () => {

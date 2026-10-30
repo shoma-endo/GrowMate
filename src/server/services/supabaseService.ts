@@ -34,12 +34,7 @@ import {
   type GscSearchType,
 } from '@/types/gsc';
 import type { InstagramCredential } from '@/types/instagram';
-import {
-  toWordPressAutoImportStatus,
-  type WordPressAutoImportStatus,
-  WordPressSettings,
-  WordPressType,
-} from '@/types/wordpress';
+import { WordPressSettings, WordPressType } from '@/types/wordpress';
 import { normalizeContentTypes } from '@/server/services/wordpressContentTypes';
 import { PAID_FEATURE_ROLES } from '@/types/user';
 import { hasWordPressImportTargetChanged } from '@/server/lib/wordpress-diff-import';
@@ -815,7 +810,6 @@ export class SupabaseService {
       wpTokenExpiresAt: data.wp_token_expires_at ?? undefined,
       wpContentTypes: normalizeContentTypes(data.wp_content_types as string[] | null),
       wpImportBaselineAt: data.wp_import_baseline_at,
-      wpAutoImportStatus: toWordPressAutoImportStatus(data.wp_auto_import_status),
       createdAt: data.created_at ?? undefined,
       updatedAt: data.updated_at ?? undefined,
     });
@@ -856,8 +850,6 @@ export class SupabaseService {
       wp_client_secret: wpClientSecret, // 注意: 現状は平文で保存されます
       wp_site_id: wpSiteId,
       ...(targetChanged ? { wp_import_baseline_at: null } : {}),
-      wp_auto_import_status: null,
-      wp_auto_import_status_at: null,
       ...(options?.wpContentTypes && {
         wp_content_types: normalizeContentTypes(options.wpContentTypes) ?? [],
       }),
@@ -916,8 +908,6 @@ export class SupabaseService {
       wp_username: wpUsername,
       wp_application_password: wpApplicationPassword, // 注意: 現状は平文で保存されます
       ...(targetChanged ? { wp_import_baseline_at: null } : {}),
-      wp_auto_import_status: null,
-      wp_auto_import_status_at: null,
       ...(options?.wpContentTypes && {
         wp_content_types: normalizeContentTypes(options.wpContentTypes) ?? [],
       }),
@@ -990,18 +980,6 @@ export class SupabaseService {
     const { data, error } = await query.select('user_id');
     if (error) throw new Error(ERROR_MESSAGES.WORDPRESS.IMPORT_BASELINE_UPDATE_FAILED(error.message));
     return (data?.length ?? 0) > 0;
-  }
-
-  async recordWordPressAutoImportResult(
-    userId: string,
-    status: WordPressAutoImportStatus
-  ): Promise<void> {
-    const now = new Date().toISOString();
-    const { error } = await this.supabase
-      .from('wordpress_settings')
-      .update({ wp_auto_import_status: status, wp_auto_import_status_at: now, updated_at: now })
-      .eq('user_id', userId);
-    if (error) throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_RESULT_SAVE_FAILED(error.message));
   }
 
   /**
@@ -1086,24 +1064,6 @@ export class SupabaseService {
       throw new Error(ERROR_MESSAGES.GSC.AUTO_IMPORT_TARGETS_FETCH_FAILED(error?.message ?? 'truncated'));
     }
     return data.map(row => row.user_id);
-  }
-
-  async listWordPressAutoImportTargets(): Promise<Array<{ userId: string; needsFullImport: boolean }>> {
-    const { data, error, truncated } = await this.fetchAllPaged(
-      (from, to) => this.supabase
-        .from('wordpress_settings')
-        .select('user_id, wp_site_id, wp_site_url, wp_import_baseline_at, users!inner(role)', { count: 'exact' })
-        .in('users.role', [...PAID_FEATURE_ROLES])
-        .order('user_id', { ascending: true })
-        .range(from, to),
-      { pageSize: 1000 }
-    );
-    if (error || truncated) {
-      throw new Error(ERROR_MESSAGES.WORDPRESS.AUTO_IMPORT_TARGETS_FETCH_FAILED(error?.message ?? 'truncated'));
-    }
-    return data
-      .filter(row => row.wp_site_id !== null || row.wp_site_url !== null)
-      .map(row => ({ userId: row.user_id, needsFullImport: row.wp_import_baseline_at === null }));
   }
 
   /**

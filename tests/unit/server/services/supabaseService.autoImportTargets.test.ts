@@ -41,25 +41,11 @@ describe('自動取込の対象一覧はロールで絞る（auto-daily-imports-
 
   it.each([
     ['GSC', (service: SupabaseService) => service.listGscAutoImportTargets(), 'gsc_credentials'],
-    ['WordPress', (service: SupabaseService) => service.listWordPressAutoImportTargets(), 'wordpress_settings'],
     ['GA4', (service: SupabaseService) => service.listGa4SyncTargets(), 'gsc_credentials'],
   ])('%s の対象を paid と admin だけに絞る', async (_label, list, table) => {
     await list(new SupabaseService());
 
     expect(mocks.tables).toEqual([table]);
     expect(mocks.inCalls).toEqual([['users.role', ['paid', 'admin']]]);
-  });
-
-  it('WordPress はサイト URL かサイト ID のある行だけを対象にする', async () => {
-    mocks.rows = [
-      { user_id: 'self-hosted', wp_site_id: null, wp_site_url: 'https://example.com', wp_import_baseline_at: '2026-10-16T19:45:00Z' },
-      { user_id: 'wpcom', wp_site_id: '123', wp_site_url: null, wp_import_baseline_at: null },
-      { user_id: 'unconfigured', wp_site_id: null, wp_site_url: null, wp_import_baseline_at: null },
-    ];
-
-    await expect(new SupabaseService().listWordPressAutoImportTargets()).resolves.toEqual([
-      { userId: 'self-hosted', needsFullImport: false },
-      { userId: 'wpcom', needsFullImport: true },
-    ]);
   });
 });

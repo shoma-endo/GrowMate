@@ -28,7 +28,6 @@ export interface HomeTodayInput {
   ga4?: Ga4ConnectionStatus | null;
   googleAds?: { connected: boolean; needsReauth: boolean } | null;
   instagram?: InstagramConnectionStatus | null;
-  wordpress?: { needsReauth: boolean; importStalled: boolean } | null;
 }
 
 export interface HomeToday {
@@ -80,7 +79,6 @@ export function buildHomeToday(input: HomeTodayInput): HomeToday {
   const ga4 = track(input.ga4);
   const googleAds = track(input.googleAds);
   const instagram = track(input.instagram);
-  const wordpress = track(input.wordpress);
 
   // 異常（放置するとデータが止まる）を先に置く
   if (paid && gsc?.connected && gsc.needsReauth) {
@@ -145,23 +143,6 @@ export function buildHomeToday(input: HomeTodayInput): HomeToday {
       title: 'Instagram の再連携が必要です',
       description: '投稿データの取得が止まっています。',
       cta: { label: '再連携する', href: '/setup/instagram' },
-    });
-  }
-  if (paid && wordpress?.needsReauth) {
-    items.push({
-      id: 'wordpress-reauth',
-      kind: 'reauth',
-      title: 'WordPress の再連携が必要です',
-      description: '記事の取得が止まっています。',
-      cta: { label: '再連携する', href: '/setup/wordpress' },
-    });
-  } else if (paid && wordpress?.importStalled) {
-    items.push({
-      id: 'wordpress-import-stalled',
-      kind: 'reauth',
-      title: 'WordPress の記事の取込に失敗しています',
-      description: 'サイトが表示されるかと、WordPress 側の設定を確認してください。',
-      cta: { label: '連携設定を開く', href: '/setup/wordpress' },
     });
   }
 

@@ -2,7 +2,6 @@
   "crons": [
     { "path": "/api/cron/gsc-daily-import", "schedule": "5 19 * * *" },
     { "path": "/api/cron/ga4-daily-sync", "schedule": "25 19 * * *" },
-    { "path": "/api/cron/wordpress-daily-import", "schedule": "45 19 * * *" },
     { "path": "/api/cron/gsc-evaluate", "schedule": "35 * * * *" },
     { "path": "/api/cron/ga4-content-evaluate", "schedule": "15 * * * *" },
     { "path": "/api/cron/google-ads-negative-keywords-suggestion", "schedule": "3 * * * *" },

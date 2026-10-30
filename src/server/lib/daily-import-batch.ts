@@ -26,58 +26,41 @@ export async function runDailyImportBatch({
   userIds,
   startedAt,
   importUser,
-  timeBudgetMs = DAILY_IMPORT_TIME_BUDGET_MS,
-  deferredUserIds = [],
 }: {
-  source: 'gsc' | 'ga4' | 'wordpress';
+  source: 'gsc' | 'ga4';
   userIds: string[];
-  /**
-   * userIds の後に回すユーザー（WordPress の初回全件取込など、1人で時間予算の多くを使うもの）。
-   * 1人あたりの上限が無いので、先に処理すると後ろのユーザーが時間予算の打ち切りで取り込まれなくなる
-   */
-  deferredUserIds?: string[];
   startedAt: number;
   /** deadlineAt（epoch ms）を受け取る取込は、それを超えないように途中で打ち切る */
   importUser: (userId: string, deadlineAt: number) => Promise<{ ok: true } | { ok: false; reason: string }>;
-  /** route の maxDuration より、打ち切り後の後始末（結果の記録・ログ）の分だけ短くする */
-  timeBudgetMs?: number;
 }): Promise<DailyImportBatchResult> {
   let succeeded = 0;
   let failed = 0;
   let attempted = 0;
 
-  const runGroup = async (ids: string[], budgetMs: number) => {
-    for (const userId of rotateForDay(ids, startedAt)) {
-      if (Date.now() - startedAt >= budgetMs) return;
-      attempted += 1;
-      try {
-        const result = await importUser(userId, startedAt + budgetMs);
-        if (result.ok) {
-          succeeded += 1;
-        } else {
-          failed += 1;
-          console.error(`[daily-import:${source}] user failed`, { userId, reason: result.reason });
-        }
-      } catch (error) {
+  for (const userId of rotateForDay(userIds, startedAt)) {
+    if (Date.now() - startedAt >= DAILY_IMPORT_TIME_BUDGET_MS) break;
+    attempted += 1;
+    try {
+      const result = await importUser(userId, startedAt + DAILY_IMPORT_TIME_BUDGET_MS);
+      if (result.ok) {
+        succeeded += 1;
+      } else {
         failed += 1;
-        console.error(`[daily-import:${source}] user failed`, {
-          userId,
-          reason: error instanceof Error ? error.message : String(error),
-        });
+        console.error(`[daily-import:${source}] user failed`, { userId, reason: result.reason });
       }
+    } catch (error) {
+      failed += 1;
+      console.error(`[daily-import:${source}] user failed`, {
+        userId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
     }
-  };
-
-  // 後回しのユーザーがいる日は、通常のユーザーに時間予算の半分までしか使わせない。
-  // 通常のユーザーだけで予算を使い切る日が続くと、後回しのユーザーが一度も処理されなくなるため
-  const total = userIds.length + deferredUserIds.length;
-  await runGroup(userIds, deferredUserIds.length > 0 ? timeBudgetMs / 2 : timeBudgetMs);
-  await runGroup(deferredUserIds, timeBudgetMs);
+  }
 
   return {
-    total,
+    total: userIds.length,
     succeeded,
     failed,
-    skippedDueToLimit: total - attempted,
+    skippedDueToLimit: userIds.length - attempted,
   };
 }

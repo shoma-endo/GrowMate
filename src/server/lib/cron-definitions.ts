@@ -21,16 +21,6 @@ export const CRON_CONFIGS = {
     maxTime: 820,
     maxRetries: 1,
   },
-  wordpressDailyImport: {
-    name: 'wordpress_daily_import',
-    workflowId: 'wordpress-daily-import',
-    routePath: '/api/cron/wordpress-daily-import',
-    schedule: '45 19 * * *',
-    profile: 'count-batch',
-    maxDuration: 1800,
-    maxTime: 1820,
-    maxRetries: 1,
-  },
   gscEvaluate: {
     name: 'gsc_evaluate',
     workflowId: 'gsc-evaluate',

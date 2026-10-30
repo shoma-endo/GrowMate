@@ -164,7 +164,7 @@ export const ERROR_MESSAGES = {
 
     /** 記事が多く、画面からの一括取込が時間内に終わらなかった場合 */
     IMPORT_TIMED_OUT:
-      '記事が多いため、時間内に取り込み切れませんでした。有料プランでは毎朝の自動取込で取り込みます。',
+      '記事が多いため、時間内に取り込み切れませんでした。',
 
     /** 一括取込の一部の記事更新に失敗した場合 */
     PARTIAL_UPDATES_FAILED: (succeeded: number, failed: number): string =>
@@ -172,12 +172,6 @@ export const ERROR_MESSAGES = {
 
     /** WordPress差分基準の更新に失敗した場合 */
     IMPORT_BASELINE_UPDATE_FAILED: (detail: string): string => `WordPress差分基準の更新に失敗しました: ${detail}`,
-
-    /** WordPress自動取込結果の保存に失敗した場合 */
-    AUTO_IMPORT_RESULT_SAVE_FAILED: (detail: string): string => `WordPress自動取込結果の保存に失敗しました: ${detail}`,
-
-    /** WordPress自動取込対象の取得に失敗した場合 */
-    AUTO_IMPORT_TARGETS_FETCH_FAILED: (detail: string): string => `WordPress自動取込対象の取得に失敗しました: ${detail}`,
 
     /** コンテンツの削除に失敗 */
     CONTENT_DELETE_FAILED: 'コンテンツの削除に失敗しました',
