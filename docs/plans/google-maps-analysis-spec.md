@@ -5,7 +5,7 @@
 - 文書名: Googleマップ分析（自社プロフィール・競合診断）
 - ステータス: `draft`
 - 作成日: 2026-10-26
-- 最終更新日: 2026-10-29
+- 最終更新日: 2026-10-30
 - 作成者: 開発（Claude Code 起票）
 - 承認者: 未定
 - 対象リリース: 未定
@@ -17,10 +17,10 @@
 - 止まっている理由・待っている人: §12 の確認質問 Q-001〜Q-003・Q-005・Q-006 が未回答。R-005（申請の利用目的の訂正）が未対応。とくに Q-001（クライアント合意）と Q-002（「Pro の受付データ」の実体）が答えられないと対象範囲が決まらない
 - 次の一手:
   1. Q-001・Q-002 に回答をもらい本書へ書き戻す → `takt -w grill-to-gherkin` で §6・§7 を確定
-  2. GBP API は `aozora-gbp`（936972101339）で承認済み（D-001 完了）。SaaS 用途への利用目的の訂正（R-005）と、`aozora-gbp` での OAuth 同意画面の作成・外部公開（D-002）を進める。外部公開（必要なら審査）が済むまでは、同意画面のテストユーザーに登録したアカウントしか連携できない
+  2. GBP API は `aozora-gbp`（936972101339）で承認済み（D-001 完了）。2026-10-30 に Google My Business API・My Business Account Management API・My Business Business Information API・Business Profile Performance API の4つを有効化済み。SaaS 用途への利用目的の訂正（R-005）と、`aozora-gbp` での OAuth 同意画面の作成・外部公開（D-002）を進める。外部公開（必要なら審査）が済むまでは、同意画面のテストユーザーに登録したアカウントしか連携できない
 - 未確認事項: §12 確認質問のとおり
 - 関連ブランチ・PR: `develop`（仕様書のみ）
-- 更新日・更新した工程: 2026-10-29 GBP API 承認（D-001 完了）を記録、Q-004・Q-007 を回答済みに
+- 更新日・更新した工程: 2026-10-30 `aozora-gbp` で GBP の API 4つを有効化したことを記録
 
 ## 0. 事前調査の結論（Grill Me の入力）
 
@@ -375,3 +375,4 @@ Grill Me 後に記載する。
 | 2026-10-29 | あおぞら養鶏の申請内容（`aozora-gbp`・利用目的「自社1件」）を Q-004 に書き戻し、R-005（利用目的の不一致）と Q-008（使う GCP プロジェクト）を追加 | 開発（Claude Code） |
 | 2026-10-29 | Q-008 回答（`aozora-gbp` を使う）を書き戻し、ALT-004 を案Bに確定、D-002 を `aozora-gbp` 前提に更新 | 開発（Claude Code） |
 | 2026-10-29 | GBP API 承認（`aozora-gbp`・300 QPM）を D-001 に記録。Q-004・Q-007 を回答済みに | 開発（Claude Code） |
+| 2026-10-30 | `aozora-gbp` で GBP の API 4つ（Google My Business / Account Management / Business Information / Business Profile Performance）を有効化したことを記録 | 開発（Claude Code） |
