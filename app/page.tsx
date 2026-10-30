@@ -8,10 +8,8 @@ import { getGoogleAdsConnectionStatus } from '@/server/actions/googleAds.actions
 import { canAccessInstagram } from '@/server/lib/instagram-permissions';
 import { getInstagramConnectionStatus } from '@/server/actions/instagramSetup.actions';
 import { hasPaidFeatureAccess } from '@/types/user';
-import { SupabaseService } from '@/server/services/supabaseService';
 import { buildHomeToday, isGoogleAdsFetchFailed, type HomeTodayInput } from '@/lib/home-today';
 import { TodayChecklist } from './_components/TodayChecklist';
-import { isWordPressImportStalled } from '@/server/lib/wordpress-diff-import';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,26 +23,6 @@ async function settle<T>(label: string, promise: Promise<T>): Promise<Settled<T>
     console.error(`[Home] Failed to load ${label}:`, error);
     return { ok: false };
   }
-}
-
-/** WordPress 設定の取得に失敗したら null（画面は落とさず取得失敗の注意書きにする） */
-async function resolveHomeWordPressStatus(
-  userId: string
-): Promise<{ needsReauth: boolean; importStalled: boolean } | null> {
-  const result = await new SupabaseService().getWordPressSettingsResultByUserId(userId);
-  if (!result.success) return null;
-  const settings = result.data;
-  return {
-    needsReauth: settings?.wpAutoImportStatus === 'auth_expired',
-    importStalled: isWordPressImportStalled(
-      {
-        autoImportStatus: settings?.wpAutoImportStatus ?? null,
-        importBaselineAt: settings?.wpImportBaselineAt ?? null,
-        createdAt: settings?.createdAt ?? null,
-      },
-      Date.now()
-    ),
-  };
 }
 
 /**
@@ -69,13 +47,10 @@ export default async function HomePage() {
   const paid = hasPaidFeatureAccess(role);
   const input: HomeTodayInput = { role };
 
-  const [gscCredential, googleAds, instagram, wordpress] = await Promise.all([
+  const [gscCredential, googleAds, instagram] = await Promise.all([
     paid ? settle('GSC/GA4 credential', resolveHomeGoogleCredential(authResult.userId)) : undefined,
     settle('Google Ads status', getGoogleAdsConnectionStatus()),
     canAccessInstagram(role) ? settle('Instagram status', getInstagramConnectionStatus()) : undefined,
-    paid
-      ? settle('WordPress status', resolveHomeWordPressStatus(authResult.userId))
-      : undefined,
   ]);
 
   if (gscCredential) {
@@ -105,9 +80,6 @@ export default async function HomePage() {
   }
   if (instagram) {
     input.instagram = instagram.ok && instagram.value.success && instagram.value.data ? instagram.value.data : null;
-  }
-  if (wordpress) {
-    input.wordpress = wordpress.ok ? wordpress.value : null;
   }
 
   return <TodayChecklist today={buildHomeToday(input)} canOpenSetup={paid} />;

@@ -141,7 +141,7 @@ describe('WordPressService（REST API フォールバック）', () => {
   });
 });
 
-describe('WordPress一覧差分取得（auto-daily-imports-spec FR-003）', () => {
+describe('WordPress一覧差分取得（auto-daily-imports-spec FR-005）', () => {
   const fetchMock = vi.fn<typeof fetch>();
   const service = () => new WordPressService({
     type: 'self_hosted',

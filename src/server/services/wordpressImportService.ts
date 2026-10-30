@@ -1,12 +1,8 @@
 import { normalizeCategories, normalizeCategoryNames, normalizeText, parseWpPostId } from '@/lib/utils';
 import { normalizeUrl } from '@/lib/normalize-url';
 import { ERROR_MESSAGES } from '@/domain/errors/error-messages';
-import { CRON_CONFIGS, CRON_DEFINITIONS } from '@/server/lib/cron-definitions';
-import { runDailyImportBatch } from '@/server/lib/daily-import-batch';
 import { classifyWordPressImportFailure, isChangedSinceBaseline } from '@/server/lib/wordpress-diff-import';
 import { normalizeContentType, normalizeContentTypes } from '@/server/services/wordpressContentTypes';
-import { buildWordPressServiceFromSettings } from '@/server/services/wordpressContext';
-import { resolveWpComAccessToken } from '@/server/services/wordpressContentSync';
 import { SupabaseService } from '@/server/services/supabaseService';
 import {
   assertBeforeDeadline,
@@ -52,14 +48,6 @@ type ImportResult =
 // 既存行の UPDATE を一斉に投げると接続が詰まるため、書き込みを分割する
 const INSERT_BATCH_SIZE = 100;
 const UPDATE_CONCURRENCY = 20;
-
-/**
- * 日次 cron の時間予算。route の maxDuration から、締め切り後に走りうる書き込み1回分と、
- * 結果の記録・完了ログの分を残す（WordPress への取得は締め切りまでで打ち切られる）。
- * 上限：1人の全件取込がこの予算を超えるサイトは毎回打ち切られて終わらない。その場合は
- * 全件取込を途中から再開できるようにする（仕様 R-004）。
- */
-const WORDPRESS_DAILY_IMPORT_TIME_BUDGET_MS = (CRON_CONFIGS.wordpressDailyImport.maxDuration - 100) * 1000;
 
 interface ExistingAnnotation {
   id: string;
@@ -489,59 +477,3 @@ export async function importWordPressContent({
     };
   }
 }
-
-class WordPressImportService {
-  private readonly supabaseService = new SupabaseService();
-
-  async runDailyBatch() {
-    return CRON_DEFINITIONS.wordpressDailyImport.runBatch(async startedAtMs => {
-      const targets = await this.supabaseService.listWordPressAutoImportTargets();
-      const result = await runDailyImportBatch({
-        source: 'wordpress',
-        userIds: targets.filter(target => !target.needsFullImport).map(target => target.userId),
-        deferredUserIds: targets.filter(target => target.needsFullImport).map(target => target.userId),
-        startedAt: startedAtMs,
-        timeBudgetMs: WORDPRESS_DAILY_IMPORT_TIME_BUDGET_MS,
-        importUser: async (userId, deadlineAt) => {
-          const settings = await this.supabaseService.getWordPressSettingsByUserId(userId);
-          if (!settings) return { ok: false, reason: 'settings_missing' };
-          let tokenFailure: 'auth_expired' | 'temporary_failure' | null = null;
-          if (settings.wpType === 'wordpress_com') {
-            const tokenSignal = AbortSignal.timeout(Math.max(1, deadlineAt - Date.now()));
-            try {
-              const resolved = await resolveWpComAccessToken(userId, this.supabaseService, settings, tokenSignal);
-              if ('failure' in resolved) tokenFailure = resolved.failure;
-              else settings.wpAccessToken = resolved.accessToken;
-            } catch (error) {
-              // 締め切りでトークン更新を打ち切った（refreshWpComToken は中断を投げ直す）。結果を記録して次へ進む
-              if (!tokenSignal.aborted) throw error;
-              tokenFailure = 'temporary_failure';
-            }
-          }
-          const context = tokenFailure
-            ? null
-            : buildWordPressServiceFromSettings(settings, () => undefined);
-          const imported = context?.success
-            ? await importWordPressContent({ userId, settings, wpService: context.service, supabaseService: this.supabaseService, startedAt: new Date(startedAtMs).toISOString(), deadlineAt })
-            : {
-                kind: 'failure' as const,
-                failure: tokenFailure ?? classifyWordPressImportFailure(null),
-                error: 'WordPress authentication unavailable',
-              };
-          const status = imported.kind === 'success' ? 'succeeded' : imported.failure;
-          await this.supabaseService.recordWordPressAutoImportResult(userId, status);
-          return imported.kind === 'success' ? { ok: true } : { ok: false, reason: imported.failure };
-        },
-      });
-      CRON_DEFINITIONS.wordpressDailyImport.log('info', 'batch_completed', {
-        total: result.total,
-        succeeded: result.succeeded,
-        failed: result.failed,
-        remaining: result.skippedDueToLimit,
-      });
-      return result;
-    });
-  }
-}
-
-export const wordpressImportService = new WordPressImportService();

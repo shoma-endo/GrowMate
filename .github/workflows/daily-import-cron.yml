@@ -4,7 +4,6 @@ name: Daily Import Cron
 #
 # hourly-cron.yml とは別ファイルにする理由: 起動間隔が違う（毎時 vs 1日1回）。
 # matrix 形式・profile の意味・各パラメータの読み方は hourly-cron.yml のコメントと同じ。
-# maxRetries: 1 … 再実行すると同じ取込がもう一度走り、WordPress の新規登録が重複しうるため（仕様 R-005）。
 #
 on:
   workflow_dispatch:
@@ -34,13 +33,6 @@ jobs:
             maxTime: 820
             maxRetries: 1
             timeoutMinutes: 20
-          - id: wordpress-daily-import
-            path: /api/cron/wordpress-daily-import
-            profile: count-batch
-            interval: daily
-            maxTime: 1820
-            maxRetries: 1
-            timeoutMinutes: 35
     concurrency:
       group: daily-import-cron-${{ matrix.id }}
       cancel-in-progress: false

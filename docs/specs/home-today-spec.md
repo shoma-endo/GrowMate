@@ -5,7 +5,7 @@
 - 文書名: マイホーム: 機能カードを廃し、連携の異常だけを出す画面へ置き換え
 - ステータス: `implemented`
 - 作成日: 2026-09-09
-- 最終更新日: 2026-10-25
+- 最終更新日: 2026-10-30
 - 作成者: shoma-endo（Claude Code 同席）
 - 承認者: shoma-endo
 - 対象リリース: `feature/pc-first-app-shell` に続けて develop へ
@@ -84,7 +84,7 @@
 ### Non-goals
 
 - KPI 数字（表示回数・セッション・広告費・直近チャット）: 何を出すか未定義。要件が出てから別仕様で扱う。
-- 「未連携」の常時表示（WordPress / GSC / GA4 を繋いでいない案内）: 繋ぐ意思の無い利用者に毎日出続けるため「変化」ではない。空状態の 1 行（「連携がまだの場合は設定から」）に留める。WordPress の認証切れカードは `docs/specs/auto-daily-imports-spec.md` の FR-008 に従う。
+- 「未連携」の常時表示（WordPress / GSC / GA4 を繋いでいない案内）: 繋ぐ意思の無い利用者に毎日出続けるため「変化」ではない。空状態の 1 行（「連携がまだの場合は設定から」）に留める。WordPress の認証切れカードは 2026-10-30 に廃止した（`docs/specs/auto-daily-imports-spec.md` FR-008。§ 実装メモの WordPress の再連携判定を参照）。
 - 評価完了・GA4 評価結果の通知: 「完了」を検出するための既読管理が無く、新テーブルが要る。
 - 未読の改善提案の項目: 当初は置く案だったが、同じ画面右下に同内容の toast（`GscNotificationHandler`、閉じるまで常時）が出るため二重になる。toast に任せ、本画面には置かない（2026-09-09 ユーザー決定）。
 - 「新規チャットを開始」カード: 遷移先がサイドバー「チャット」と同じで HOME-01 に反する。置かない（同日決定）。
@@ -180,14 +180,14 @@ PC（lg 以上、サイドバー展開時）:
 | 3 | GA4 プロパティ未選択 | paid/admin かつ `ga4Status.connectionStage === 'linked_unselected'` | Google Analytics 4 のプロパティが選ばれていません / 連携は済んでいますが、対象サイトが未選択です。 | プロパティを選ぶ → `/setup/ga4` |
 | 4 | Google Ads 再連携 | 全役割 かつ `googleAdsStatus.needsReauth` | Google Ads の再連携が必要です / 広告データの取得が止まっています。 | 再連携する → `/setup/google-ads` |
 | 5 | Instagram 再連携 | `canAccessInstagram(role)` かつ `instagramStatus.needsReauth` | Instagram の再連携が必要です / 投稿データの取得が止まっています。 | 再連携する → `/setup/instagram` |
-| 6 | WordPress 再連携 | paid/admin かつ、毎日の自動取込が保存した結果が「認証切れ」（`wordpress_settings.wp_auto_import_status = 'auth_expired'`）。画面を開いたときに WordPress へは接続しない（`docs/specs/auto-daily-imports-spec.md` FR-008） | WordPress の再連携が必要です / 記事の取得が止まっています。 | 再連携する → `/setup/wordpress` |
+| 6 | WordPress 再連携（2026-10-30 廃止） | 【廃止】WordPress の毎日の自動取込を廃止し、判定に使う結果が保存されなくなったため出さない。廃止前の条件: paid/admin かつ、毎日の自動取込が保存した結果が「認証切れ」（`wordpress_settings.wp_auto_import_status = 'auth_expired'`）。画面を開いたときに WordPress へは接続しない（`docs/specs/auto-daily-imports-spec.md` FR-008） | WordPress の再連携が必要です / 記事の取得が止まっています。 | 再連携する → `/setup/wordpress` |
 | 9 | GSC プロパティにアクセスできない | paid/admin かつ `gscStatus.connected && propertyAccessDenied`、かつ 1 が出ていない。毎日の自動取込が保存した結果（`gsc_credentials.gsc_auto_import_status = 'permission_denied'`）で判定し、画面を開いたときに Google へは接続しない（`docs/specs/auto-daily-imports-spec.md` FR-011） | Google Search Console のプロパティにアクセスできません / 連携中の Google アカウントから権限が外れ、検索順位の取得が止まっています。Google Search Console 側で権限を戻すか、別のプロパティを選んでください。 | プロパティを選ぶ → `/setup/gsc` |
 | 10 | GA4 プロパティにアクセスできない | paid/admin かつ `ga4Status.connected && propertyAccessDenied`、かつ 2 が出ていない（`ga4_auto_import_status = 'permission_denied'`。FR-011） | Google Analytics 4 のプロパティにアクセスできません / 連携中の Google アカウントから権限が外れ、アクセス解析の取得が止まっています。Google Analytics 4 側で権限を戻すか、別のプロパティを選んでください。 | プロパティを選ぶ → `/setup/ga4` |
-| 11 | WordPress の取込が止まっている | paid/admin かつ、毎日の自動取込が保存した結果が「一時的な失敗」で、最後に最後まで取り込めた回（`wp_import_baseline_at`。無ければ連携した日 `created_at`）から3日以上たっている。かつ 6 が出ていない（`docs/specs/auto-daily-imports-spec.md` FR-012） | WordPress の記事の取込に失敗しています / サイトが表示されるかと、WordPress 側の設定を確認してください。 | 連携設定を開く → `/setup/wordpress` |
+| 11 | WordPress の取込が止まっている（2026-10-30 廃止） | 【廃止】項目 6 と同じ理由で出さない。廃止前の条件: paid/admin かつ、毎日の自動取込が保存した結果が「一時的な失敗」で、最後に最後まで取り込めた回（`wp_import_baseline_at`。無ければ連携した日 `created_at`）から3日以上たっている。かつ 6 が出ていない（`docs/specs/auto-daily-imports-spec.md` FR-012） | WordPress の記事の取込に失敗しています / サイトが表示されるかと、WordPress 側の設定を確認してください。 | 連携設定を開く → `/setup/wordpress` |
 | 7 | 空状態 | 1〜6・9〜11 が 0 件 | 確認が必要なことはありません / paid・admin で未連携がある（`hasUnlinked`）: 連携がまだの場合は 設定 から始められます。（「設定」はリンク）。それ以外: 新しい提案や連携の異常があるとここに出ます。（全部連携済みの人に毎日「設定」を出さない。trial は `/setup` に入れないので常にこちら） | なし |
 | 8 | 取得失敗 | 連携状態または件数の取得で例外 | 一部の情報を取得できませんでした / ページを再読み込みしてください。 | なし |
 
-- 順序: 1, 9, 2, 10, 3, 4, 5, 6, 11 の順。放置するとデータが止まるものが上。9・10 は FR-011、11 は FR-012 で後から足したので番号が飛ぶ（ほかの節が「項目 8（取得失敗）」などの番号で参照しているため、番号は振り直さない）。9・10 の説明は2文（次にやることを足すため。既存の項目は1文）。
+- 順序: 1, 9, 2, 10, 3, 4, 5, 6, 11 の順（6・11 は 2026-10-30 に廃止）。放置するとデータが止まるものが上。9・10 は FR-011、11 は FR-012 で後から足したので番号が飛ぶ（ほかの節が「項目 8（取得失敗）」などの番号で参照しているため、番号は振り直さない）。9・10 の説明は2文（次にやることを足すため。既存の項目は1文）。
 - 利用者向けの語は辞書どおり「再連携」（`ui-text.md`: 「再連携 | 再認証、再接続 | 目視」）。~~既存の `/setup/*` 画面は「再認証が必要です」と書いており辞書から逸脱しているが、本仕様では直さない（§4 Non-goal）。~~ 2026-10-25 に別途「再連携」へ是正済み。
 
 ### サイドバーの変更
@@ -199,9 +199,9 @@ PC（lg 以上、サイドバー展開時）:
 
 | ファイル | 役割 |
 | --- | --- |
-| `app/page.tsx` | server component に作り替え。`authMiddleware` → `roleUnavailable` なら `/unavailable`（`/` は proxy の公開パスで proxy が振り分けないため。無いと `/login` ⇄ `/` の無限リダイレクト）→ 役割判定 → 連携状態（GSC/GA4 は `resolveHomeGoogleCredential`（`src/server/lib/home-google-credential.ts`。実際にトークンリフレッシュを試みてから `toGscConnectionStatus` / `toGa4ConnectionStatus` に渡す）、`getGoogleAdsConnectionStatus`、`canAccessInstagram` なら `getInstagramConnectionStatus`、paid/admin なら WordPress 設定の自動取込の結果（`resolveHomeWordPressStatus` → `getWordPressSettingsResultByUserId`。認証切れと、3日以上取り込めていないか（`isWordPressImportStalled`）を判定する。WordPress へは接続しない））を `Promise.all` ＋ `settle()`（例外を `ok:false` に落とす）で並列取得。失敗は項目 8 に落とす |
+| `app/page.tsx` | server component に作り替え。`authMiddleware` → `roleUnavailable` なら `/unavailable`（`/` は proxy の公開パスで proxy が振り分けないため。無いと `/login` ⇄ `/` の無限リダイレクト）→ 役割判定 → 連携状態（GSC/GA4 は `resolveHomeGoogleCredential`（`src/server/lib/home-google-credential.ts`。実際にトークンリフレッシュを試みてから `toGscConnectionStatus` / `toGa4ConnectionStatus` に渡す）、`getGoogleAdsConnectionStatus`、`canAccessInstagram` なら `getInstagramConnectionStatus`。WordPress 設定の読み込みは 2026-10-30 に外した）を `Promise.all` ＋ `settle()`（例外を `ok:false` に落とす）で並列取得。失敗は項目 8 に落とす |
 | `app/_components/TodayChecklist.tsx`（新規、server component） | 項目 1〜8 の描画。props は取得済みの状態と役割だけ。クリックは `Link` のみでクライアント状態を持たない |
-| `src/lib/home-today.ts`（新規、純粋ロジック） | `buildHomeToday({ role, gsc, ga4, googleAds, instagram, wordpress })` → `{ items, fetchFailed, hasUnlinked }`。`null` は取得失敗、`undefined` は役割上取得しない。表示条件（HOME-02）をここに集約し `tests/unit/lib/home-today.test.ts` で検査 |
+| `src/lib/home-today.ts`（新規、純粋ロジック） | `buildHomeToday({ role, gsc, ga4, googleAds, instagram })`（WordPress は 2026-10-30 に外した） → `{ items, fetchFailed, hasUnlinked }`。`null` は取得失敗、`undefined` は役割上取得しない。表示条件（HOME-02）をここに集約し `tests/unit/lib/home-today.test.ts` で検査 |
 | `src/components/AppShell.tsx` | ユーザーブロックのアバターにメールのツールチップ |
 | `.agents/skills/growmate-ui-ux/ui-text.md` | 変更なし（「マイホーム」「改善提案」は既存の語。新語は増やさない） |
 | `docs/specs/pc-first-app-shell-spec.md` | Non-goal「マイホームの再設計」を本仕様へ委譲した旨を追記 |
@@ -228,7 +228,7 @@ PC（lg 以上、サイドバー展開時）:
 
 ## 10. リスク・未決定事項
 
-- WordPress の再連携判定は `wordpress_settings.wp_auto_import_status` を使い、画面表示のために WordPress へ接続しない（`docs/specs/auto-daily-imports-spec.md` FR-008）。
+- WordPress の再連携判定は、2026-10-30 に WordPress の毎日の自動取込を廃止したため行わない（`docs/specs/auto-daily-imports-spec.md` FR-008・FR-012）。画面表示のために WordPress へ接続しない方針は変えないので、WordPress の認証切れはマイホームに出ない。
 - DB 障害と「未連携」の区別: `getGscCredentialByUserId` は DB エラーでも `null` を返す（`/setup` と同じ）。本画面では未連携として表示され、項目 8 にはならない。service 側で `console.error` は出る。strict 変種の新設は見送り（受容）。Google Ads は `needsReauth:false` の `error`（未連携・一時的なリフレッシュ失敗等）を取得失敗として拾う（`isGoogleAdsFetchFailed`）。`needsReauth:true` は再連携待ちの正当な状態として区別する。
 - Google側の一時的な 5xx/429 リフレッシュ失敗を「未連携」「再連携要」のいずれとも区別し、項目 8（取得失敗）に落とす。GSC/GA4/Google Ads いずれも `src/domain/errors/google-oauth-error-handlers.ts` の `isGoogleOAuthReauthError` （ステータスコード優先の判定）を共有する（`googleTokenService.refreshAccessToken` がステータスに関わらず同一文言のエラーを投げるため、文字列一致だけでは区別できないことが判明したための対策。2026-09-12、`/setup` 系の旧分類器 `isTokenExpiredError`/`isGa4ReauthError` もこの1本に統合済み）。
 - スマホ（ドロワー内のユーザーブロック）ではメールアドレスに到達できない（ツールチップ非対応）。必要になったら事業者情報かアカウント画面に出す。

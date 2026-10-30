@@ -17,7 +17,6 @@ const allBroken: Omit<HomeTodayInput, 'role'> = {
   ga4: { connected: true, connectionStage: 'configured', needsReauth: true },
   googleAds: { connected: true, needsReauth: true },
   instagram: { connected: true, needsReauth: true },
-  wordpress: { needsReauth: true, importStalled: false },
 };
 
 const allHealthy: Omit<HomeTodayInput, 'role'> = {
@@ -25,7 +24,6 @@ const allHealthy: Omit<HomeTodayInput, 'role'> = {
   ga4: { connected: true, connectionStage: 'configured', needsReauth: false },
   googleAds: { connected: true, needsReauth: false },
   instagram: { connected: true, needsReauth: false },
-  wordpress: { needsReauth: false, importStalled: false },
 };
 
 const idsOf = (input: HomeTodayInput) => buildHomeToday(input).items.map(item => item.id);
@@ -38,18 +36,11 @@ describe('@/lib/home-today', () => {
         'ga4-reauth',
         'google-ads-reauth',
         'instagram-reauth',
-        'wordpress-reauth',
       ]);
     });
 
     it('trial は Google Ads の再連携だけ（/setup /analytics /instagram に入れないため）', () => {
       expect(idsOf({ role: 'trial', ...allBroken })).toEqual(['google-ads-reauth']);
-    });
-
-    it('WordPress は paid/admin の認証切れだけで表示し、trial と正常時は表示しない', () => {
-      expect(idsOf({ role: 'paid', ...allHealthy, wordpress: { needsReauth: true, importStalled: false } })).toContain('wordpress-reauth');
-      expect(idsOf({ role: 'trial', ...allHealthy, wordpress: { needsReauth: true, importStalled: false } })).not.toContain('wordpress-reauth');
-      expect(idsOf({ role: 'admin', ...allHealthy })).not.toContain('wordpress-reauth');
     });
 
     it('全連携が正常なら空（空状態を出す）', () => {
@@ -198,33 +189,5 @@ describe('buildHomeToday: プロパティの権限切れ（auto-daily-imports-sp
 
   it('trial には出さない', () => {
     expect(idsOf({ role: 'trial', ...denied })).toEqual([]);
-  });
-});
-
-describe('buildHomeToday: WordPress の取込が止まっている（auto-daily-imports-spec FR-012）', () => {
-  it('一時的な失敗で止まっていれば、取込が止まっているカードを出す', () => {
-    const today = buildHomeToday({ role: 'paid', ...allHealthy, wordpress: { needsReauth: false, importStalled: true } });
-    expect(today.items.map(item => item.id)).toEqual(['wordpress-import-stalled']);
-    expect(today.items[0]).toMatchObject({ kind: 'reauth', cta: { href: '/setup/wordpress' } });
-  });
-
-  it('認証切れのときは再連携カードだけを出し、重ねない', () => {
-    expect(idsOf({ role: 'paid', ...allHealthy, wordpress: { needsReauth: true, importStalled: true } }))
-      .toEqual(['wordpress-reauth']);
-  });
-
-  it('trial には出さない', () => {
-    expect(idsOf({ role: 'trial', ...allHealthy, wordpress: { needsReauth: false, importStalled: true } })).toEqual([]);
-  });
-
-  it('admin にも出す', () => {
-    expect(idsOf({ role: 'admin', ...allHealthy, wordpress: { needsReauth: false, importStalled: true } }))
-      .toEqual(['wordpress-import-stalled']);
-  });
-
-  it('WordPress 設定の取得に失敗したらカードを出さず、取得失敗として扱う', () => {
-    const today = buildHomeToday({ role: 'paid', ...allHealthy, wordpress: null });
-    expect(today.items).toEqual([]);
-    expect(today.fetchFailed).toBe(true);
   });
 });

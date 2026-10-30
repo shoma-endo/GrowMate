@@ -58,62 +58,11 @@ describe('runDailyImportBatch (auto-daily-imports-spec §6)', () => {
     expect(await runDay(0)).toEqual(['one']);
     expect(await runDay(day)).toEqual(['two']);
   });
-  it('各ユーザーの取込に、バッチ開始＋時間予算を締め切りとして渡す（予算は取込元ごとに指定できる）', async () => {
+  it('各ユーザーの取込に、バッチ開始＋時間予算を締め切りとして渡す', async () => {
     const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
     vi.spyOn(Date, 'now').mockReturnValue(5000);
-    await runDailyImportBatch({ source: 'wordpress', userIds: ['one'], startedAt: 5000, importUser, timeBudgetMs: 1_700_000 });
     await runDailyImportBatch({ source: 'gsc', userIds: ['one'], startedAt: 5000, importUser });
 
-    expect(importUser.mock.calls).toEqual([
-      ['one', 5000 + 1_700_000],
-      ['one', 5000 + DAILY_IMPORT_TIME_BUDGET_MS],
-    ]);
-  });
-
-  it('時間予算を指定すると、その予算で残りのユーザーを打ち切る', async () => {
-    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(1_000_000).mockReturnValueOnce(1_500_000);
-    const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
-    const result = await runDailyImportBatch({
-      source: 'wordpress', userIds: ['one', 'two', 'three'], startedAt: 0, importUser, timeBudgetMs: 1_700_000,
-    });
-
-    // 共通の700秒なら2人目で打ち切られるが、1700秒の予算では続ける
-    expect(importUser.mock.calls.map(([userId, deadlineAt]) => [userId, deadlineAt])).toEqual([
-      ['one', 1_700_000], ['two', 1_700_000], ['three', 1_700_000],
-    ]);
-    expect(result.skippedDueToLimit).toBe(0);
-  });
-  it('後回しのユーザー（初回全件取込など）は、通常のユーザーをすべて処理してから処理する', async () => {
-    const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
-    const result = await runDailyImportBatch({
-      source: 'wordpress', userIds: ['a', 'b'], deferredUserIds: ['heavy'], startedAt: Date.now(), importUser,
-    });
-
-    const order = importUser.mock.calls.map(([userId]) => userId);
-    // 通常のユーザーの順は日ごとにずれるが、後回しのユーザーは常に最後
-    expect(order.slice(0, 2).sort()).toEqual(['a', 'b']);
-    expect(order[2]).toBe('heavy');
-    expect(result).toEqual({ total: 3, succeeded: 3, failed: 0, skippedDueToLimit: 0 });
-  });
-  it('時間予算で打ち切られるときは、後回しのユーザーから取り込まれずに残る', async () => {
-    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(DAILY_IMPORT_TIME_BUDGET_MS);
-    const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
-    const result = await runDailyImportBatch({
-      source: 'wordpress', userIds: ['a', 'b'], deferredUserIds: ['heavy'], startedAt: 0, importUser,
-    });
-
-    expect(importUser.mock.calls.map(([userId]) => userId)).not.toContain('heavy');
-    expect(result).toEqual({ total: 3, succeeded: 2, failed: 0, skippedDueToLimit: 1 });
-  });
-  it('通常のユーザーが時間予算の半分を使ったら、残りは後回しのユーザーに回す（後回しが一度も始まらない状態にしない）', async () => {
-    const half = DAILY_IMPORT_TIME_BUDGET_MS / 2;
-    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(half).mockReturnValue(half);
-    const importUser = vi.fn(async (_userId: string, _deadlineAt: number) => ({ ok: true as const }));
-    const result = await runDailyImportBatch({
-      source: 'wordpress', userIds: ['a', 'b'], deferredUserIds: ['heavy'], startedAt: 0, importUser,
-    });
-
-    expect(importUser.mock.calls).toEqual([['a', half], ['heavy', DAILY_IMPORT_TIME_BUDGET_MS]]);
-    expect(result).toEqual({ total: 3, succeeded: 2, failed: 0, skippedDueToLimit: 1 });
+    expect(importUser.mock.calls).toEqual([['one', 5000 + DAILY_IMPORT_TIME_BUDGET_MS]]);
   });
 });

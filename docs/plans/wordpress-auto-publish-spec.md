@@ -5,7 +5,7 @@
 - 文書名: WordPress 自動投稿（完成した記事を WordPress へ送る）
 - ステータス: `approved`
 - 作成日: 2026-10-21
-- 最終更新日: 2026-10-23
+- 最終更新日: 2026-10-30
 - 作成者: 開発（Cursor Cloud Agent 起票）
 - 承認者: 未定
 - 対象リリース: 未定（「今後開発予定」として先に仕様化）
@@ -14,11 +14,11 @@
 ## 現在地と次の一手
 
 - 現在の工程: spec-review 通過。見た目は既存フォームの写しで確定。送信 UI の4点（公開済みは info、再送の初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし）も回答済み。正常応答の識別子と再送初期値の返却制約も明記済み。OPEN-001 は決着
-- 止まっている理由・待っている人: なし
-- 次の一手: `.takt/workflows/spec-to-pr.yaml` で実装（`takt -w spec-to-pr -t "docs/plans/wordpress-auto-publish-spec.md 仕様書に沿って実装してください"`）
-- 未確認事項: なし
+- 止まっている理由・待っている人: Q-009（依頼者）。2026-10-30 に日次 WordPress 取込を廃止したため、FR-008（公開後の URL 埋め）の前提が崩れた
+- 次の一手: Q-009 の回答を待つ。回答を書き戻してから `.takt/workflows/spec-to-pr.yaml` で実装（`takt -w spec-to-pr -t "docs/plans/wordpress-auto-publish-spec.md 仕様書に沿って実装してください"`）
+- 未確認事項: Q-009
 - 関連ブランチ・PR: `cursor/wordpress-auto-publish-spec-f040`（仕様書のみ）、PR #691
-- 更新日・更新した工程: 2026-10-23 レビュー指摘2件（応答の識別子・再送初期値の返却）を反映（実装前）
+- 更新日・更新した工程: 2026-10-30 日次 WordPress 取込の廃止に伴い Q-009 を追加（実装前）
 
 ## 0. 依頼時の参考資料との差分（先に読む）
 
@@ -700,7 +700,7 @@ Feature: 完成した記事を WordPress へ送る
 
 #### 連携ライフサイクル（失効・剥奪・切断）
 
-- Application Password の失効・WordPress.com トークンの失効・`resolveWpComAccessToken` の `auth_expired`: 送信時の **401** で検知し、「WordPress との連携が切れています」と「再連携する」（`/setup/wordpress`）を出す（S-07）。既存の `getRestErrorMessage`（`wordpressService.ts` L191〜L193）は 401 と 403 を同じ `REST_API_ACCESS_DENIED` にまとめる。送信の分類はこの関数の文言を使わず、ステータスコードで 401 と 403 を分ける。保存済みの認証情報はこの機能からは消さない。日次取込が翌日に同じ 401 を受けて `wp_auto_import_status = 'auth_expired'` にし、ホームの「WordPress の再連携が必要です」（`src/lib/home-today.ts`）に出る。本機能で `wp_auto_import_status` を書き換えない（取込の状態を表す列であり、意味を混ぜない）
+- Application Password の失効・WordPress.com トークンの失効・`resolveWpComAccessToken` の `auth_expired`: 送信時の **401** で検知し、「WordPress との連携が切れています」と「再連携する」（`/setup/wordpress`）を出す（S-07）。既存の `getRestErrorMessage`（`wordpressService.ts` L191〜L193）は 401 と 403 を同じ `REST_API_ACCESS_DENIED` にまとめる。送信の分類はこの関数の文言を使わず、ステータスコードで 401 と 403 を分ける。保存済みの認証情報はこの機能からは消さない。日次取込が翌日に同じ 401 を受けて `wp_auto_import_status = 'auth_expired'` にし、ホームの「WordPress の再連携が必要です」（`src/lib/home-today.ts`）に出る（2026-10-30 に日次取込とこのカードを廃止したため、今は出ない。Q-009）。本機能で `wp_auto_import_status` を書き換えない（取込の状態を表す列であり、意味を混ぜない）
 - ユーザーが WordPress 側で連携を解除した場合: 上と同じ 401 として現れる。検知手段は送信時のエラーだけ（WordPress からの通知は無い）
 - 権限の縮小（Application Password のユーザーが投稿者から購読者に変わった等）: 403 で「WordPress のユーザーに投稿または固定ページの権限がありません」。再連携では直らないので、WordPress 側の権限確認を案内する
 - 外部アカウント・サイト自体の削除: 404 / 5xx として現れる。取得済みの `content_annotations` は残す（取込と同じ扱い）。投稿 GET の 404 で紐づけを外すのは、JSON の `code` が `rest_post_invalid_id` のときだけ（S-14）
@@ -738,7 +738,7 @@ Feature: 完成した記事を WordPress へ送る
 | --- | --- | --- | --- |
 | WordPress 連携（`/setup/wordpress`） | 既存。利用者が連携済み | 本番で稼働中 | 未連携ユーザーは「連携を開始」へ誘導 |
 | ブログ作成フロー step7 の完成形保存 | 既存。`session_combined_contents` に `is_latest` 行 | 本番で稼働中 | 完成形が無い記事は送れない（S-08） |
-| 日次 WordPress 取込（`wordpress-diff-import`） | 既存。公開後の URL 埋めに使う（FR-008）。管理画面での公開（`modified_gmt` が進む）は拾える。予約の自動公開は R-007 | 本番で稼働中 | 取込が止まっていると、管理画面で公開したあとも URL が空のまま残る。手動の一括インポートも同じ差分条件なら、漏れた予約公開は埋まらない |
+| 日次 WordPress 取込（`wordpress-diff-import`） | 既存。公開後の URL 埋めに使う（FR-008）。管理画面での公開（`modified_gmt` が進む）は拾える。予約の自動公開は R-007 | 2026-10-30 廃止（手動の一括インポートだけ残る。Q-009） | 取込が止まっていると、管理画面で公開したあとも URL が空のまま残る。手動の一括インポートも同じ差分条件なら、漏れた予約公開は埋まらない |
 | Instagram ブログ化 Phase 2 | 任意。先に出ていると本機能の価値が上がる | `docs/specs/instagram-high-engagement-blog-draft-spec.md` | 無くてもチャットで作った記事に使える |
 
 ## 11. トレードオフ判断
@@ -849,6 +849,7 @@ Feature: 完成した記事を WordPress へ送る
 | Q-006 | 送信対象ロールは `admin` / `paid` でよいか（`trial` に体験させる意図はないか） | AGENTS.md の既定。`trial` に出す場合は理由と承認が要る。`/analytics` は現状 `trial` が入れない | 依頼者 | 2026-10-23 | 回答済み | `admin` と `paid` だけ。`trial` には出さない。チャットはメニューを隠し、Server Action でも止める。WordPress.com 連携の保存が `admin` だけの既存制限は変えない | 2026-10-23 |
 | Q-007 | 投稿ダイアログに抜粋（`excerpt`）を入れるか | 起票時は入れていた。SEO の説明文と誤解され、要件にも無いため Non-goals に移した。マーケターが WordPress 標準の抜粋を GrowMate から入れたいなら戻す | 依頼者 | 2026-10-23 | 回答済み | 入れない。抜粋は WordPress 側で付ける | 2026-10-23 |
 | Q-008 | 送信 UI の公開済み表示・再送初期値・未連携と完成形なしの表示・完了トーストのリンクをどうするか | 状態別 UI とエラー表、受入条件をそろえるため | 依頼者 | 2026-10-23 | 回答済み | WordPress 側で公開済みなら DB を同期し、お知らせ（info）で表示。再送は現在の下書き / 予約と予約済み日時を初期値。未連携・完成形なしはフォームの上に Alert。完了トーストに WordPress へのリンク（URL）は付けない。正常応答の `outcome` は送信完了が `sent`、公開済み同期が `already_published`。既定値の返却には再送時の現在の状態と予約済み日時も含める（レビュー指摘2件への依頼者の修正指示）。OPEN-001 は決着 | 2026-10-23 |
+| Q-009 | 日次 WordPress 取込は 2026-10-30 に廃止した。FR-008（WordPress 側で下書き・予約が公開されたあと、取込が URL・タイトル・`publish` を埋める）は、手動の「WordPress 記事一括インポート」を押したときだけ動く。これでよいか。それとも送信した行だけを WordPress から取り直して埋める処理を足すか。あわせて、送信時の 401 のあと日次取込がホームに「WordPress の再連携が必要です」を出す流れ（§9 の S-07 の記述）も無くなった。再連携の案内は送信時の Alert だけでよいか | FR-008・S-09・R-007 と S-07 の後段は日次取込が毎日動く前提で書いている。手動だけにすると、押すまで公開後の URL が空のまま残り、GSC・GA4 の数値が紐付かない | 依頼者 | 実装前 | 未回答 | — | — |
 
 ### 未決定事項・決着済み事項
 
@@ -1012,3 +1013,4 @@ cycle 3 で反映した指摘（F-011〜F-015）:
 | 2026-10-23 | PR #691 の未解決指摘を仕様へ反映。404 の解除は `rest_post_invalid_id` だけ。並行送信は `wp_publish_claimed_at` で1件に制限。WordPress.com は更新済みトークンを cookie より優先。予約のタイムゾーンは F-011 のまま | Codex と Bugbot のレビューコメント。工数の 47 時間と 5 人日の枠は変えない | 開発（Cursor Cloud Agent） |
 | 2026-10-23 | 送信 UI の未決事項4点を反映。公開済みは DB 同期と info 表示、再送は現在の状態と予約済み日時を初期値、未連携・完成形なしはフォーム上の Alert、完了トーストはリンクなし。FR・状態別 UI・エラー表・S-01 / S-03 / S-04 / S-05 / S-07 / S-08 / S-13 を同期し、Q-008 を回答済み、OPEN-001 を決着済みにした | 依頼者の決定（2026-10-23） | 開発（Codex） |
 | 2026-10-23 | 正常応答に `outcome: sent / already_published` を明記し、公開成功の完了トーストと公開済み同期のお知らせ表示を区別。返却制約に再送時の現在の状態と予約済み日時を追加し、ダイアログ初期値・S-04 / S-05 / S-13・Q-008 と整合させた | レビュー指摘2件（応答の識別子・再送初期値の返却）への依頼者の修正指示 | 開発（Codex） |
+| 2026-10-30 | Q-009 を追加した。日次 WordPress 取込の廃止（ユーザー判断、会話）で FR-008 の前提が崩れたため、現在地を Q-009 待ちにした | `docs/specs/auto-daily-imports-spec.md` の 2026-10-30 の変更 | shoma-endo（Claude Code） |
