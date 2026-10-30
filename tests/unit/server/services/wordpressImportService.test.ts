@@ -24,7 +24,7 @@ vi.mock('@/server/services/supabaseService', () => ({
 
 import { importWordPressContent } from '@/server/services/wordpressImportService';
 
-describe('WordPress差分取込（auto-daily-imports-spec FR-003/FR-005）', () => {
+describe('WordPress差分取込（auto-daily-imports-spec FR-005）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.update.mockReturnValue({ eq: mocks.eq });

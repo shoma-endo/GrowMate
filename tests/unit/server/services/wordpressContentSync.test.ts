@@ -285,7 +285,7 @@ describe('canFetchWpPostContentLive', () => {
   });
 });
 
-describe('resolveWpComAccessToken（auto-daily-imports-spec FR-008 の認証切れ判定）', () => {
+describe('resolveWpComAccessToken（WordPress.com トークンの認証切れ判定）', () => {
   const expiringSoon = () => new Date(Date.now() + 30 * 1000).toISOString();
 
   it.each([
