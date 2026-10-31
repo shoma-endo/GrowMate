@@ -17,7 +17,7 @@ const supabaseService = new SupabaseService();
 const instagramService = new InstagramService();
 
 // proxy.ts の buildCspHeader（img-src）と同じ許可範囲（INSTAGRAM_CDN_HOSTS 共有）。
-// ダウンロード元は必ずこのいずれかでなければならない。DB や Meta API のレスポンスを
+// ダウンロード元は必ずこのいずれかでなければならない。Meta API のレスポンスを
 // 無条件に信用して任意URLへ fetch すると SSRF になるため、ダウンロード直前に必ずこのチェックを通す。
 const ALLOWED_IMAGE_HOSTS = INSTAGRAM_CDN_HOSTS.map(
   host => new RegExp(`(^|\\.)${host.replace(/\./g, '\\.')}$`)
@@ -84,15 +84,12 @@ async function resolveThumbnail(userId: string, igMediaId: string): Promise<Next
     return new NextResponse(null, { status: 404 });
   }
 
-  // DB に保存済みの URL（同期直後でまだ失効していない可能性がある）をまず直接試す。
-  // 失敗（失効・削除済み等）した場合のみ Meta へ最新の URL を問い合わせる。
-  const dbCandidate = pickCandidate(media);
-  let downloaded = dbCandidate ? await downloadImage(dbCandidate) : null;
-  if (!downloaded) {
-    const freshUrls = await fetchFreshUrls(userId, igMediaId);
-    const freshCandidate = freshUrls ? pickCandidate({ ...media, ...freshUrls }) : null;
-    downloaded = freshCandidate ? await downloadImage(freshCandidate) : null;
-  }
+  // DB の CDN URL は署名切れで 403 になるため使わず、Meta から返った URL だけを取得する。
+  const freshUrls = await fetchFreshUrls(userId, igMediaId);
+  const candidate = freshUrls
+    ? pickCandidate({ mediaProductType: media.mediaProductType, ...freshUrls })
+    : null;
+  const downloaded = candidate ? await downloadImage(candidate) : null;
   if (!downloaded) {
     return new NextResponse(null, { status: 404 });
   }
