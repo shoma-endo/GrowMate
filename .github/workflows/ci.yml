@@ -2,12 +2,22 @@ name: CI
 
 # push 起動に一本化している（2026-09-03）。
 # auto-pr.yml が GITHUB_TOKEN で作る PR の pull_request イベントは承認待ち（action_required）で
-# 止まり、毎回 approve API を手で叩いていた。branch protection は無く必須チェックの契約も無いので、
-# 全ブランチの push で同じ SHA を検証し、PR の Checks には commit のステータスとして表示させる。
+# 止まり、毎回 approve API を手で叩いていた。必須チェックの契約は無いので、
+# push で同じ SHA を検証し、PR の Checks には commit のステータスとして表示させる。
+#
+# Actions の分数を減らすため、次の push では走らせない。
+# - main: PR 元のブランチで検証済みの内容のマージなので。main を検証したいときは手動実行する。
+# - docs と Markdown だけの push: lint・テスト・ビルドの結果が変わらないので。
+#   上限: ステータスは SHA ごとなので、赤の直後に docs だけ push すると PR の Checks から赤が消える
+#   （赤になった時点の Lark 通知は届く）。
+# フィルタで飛ばした workflow の check は Pending のまま残る。CI を必須チェックにするならフィルタを外す。
 on:
   push:
-    branches:
-      - '**'
+    branches-ignore:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
 
 # 同じブランチへの連続 push は古い run を捨てる

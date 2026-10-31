@@ -17,7 +17,7 @@ description: GrowMateのコード変更後・commit前・push前・PR前に必�
 ## 基本フロー（コード変更後）
 
 1. `npm run verify`（`audit` → `lint` → `test:coverage` → `build` → `knip` を順次実行する SSoT スクリプト）。
-   **git hook が有効な環境では手で全件を回さない**（2026-09-26 合意）。`lint` は pre-commit、`test:coverage` → `build` → `knip` は pre-push（`scripts/pre-push.sh`）、`audit` は CI が必ず実行するため、手動の全件実行は重複になる。
+   **git hook が有効な環境では手で全件を回さない**（2026-09-26 合意）。`lint` は pre-commit、`test:coverage` → `build` → `knip` は pre-push（`scripts/pre-push.sh`）、`audit` は CI が実行するため（`main` への push と、`docs/**`・`**/*.md` だけの push は除く）、手動の全件実行は重複になる。
    開発中の確認は **変更に関係するテストだけ**を回す: `npm run test:related -- <変更したファイル…>`（`vitest related`。import をたどって関係するテストを選ぶ。`npx vitest` の直接実行はしない — `docs/specs/testing-strategy.md`）と `npx tsc --noEmit -p .`。
    ただし `test:related` は import のつながりしか追わず、ファイルを文字列で読むテスト（SQL migration・設定・TAKT ワークフロー契約など）を拾えない。**pre-push と CI の全件実行は削らない**（取りこぼしの安全網）。
    hook を通さない経路（クラウド環境での `--no-verify`、hook が入っていない環境）では `npm run verify` を回す。
